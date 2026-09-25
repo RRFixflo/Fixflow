@@ -2599,6 +2599,8 @@
         // person a real link and let their own tap deliver the file, which is far
         // more reliably permitted — and works with no Claude account or org membership.
         btn.style.display = 'none';
+        var fallbackHint = document.getElementById('doneHint');
+        if (fallbackHint) { fallbackHint.textContent = "We couldn't send it automatically. Save your PDF below, then email it to us, attached, using the button underneath."; }
         if (openLink) {
           openLink.href = lastPdfUrl;
           openLink.setAttribute('download', filename);
