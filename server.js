@@ -15,10 +15,15 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const REPORT_TO_EMAIL = process.env.REPORT_TO_EMAIL || 'jayk@residentialrealtors.co.uk';
 const REPORT_FROM_EMAIL = process.env.REPORT_FROM_EMAIL || 'Repair Reports <onboarding@resend.dev>';
 
-// AI tips / translation / urgency-opinion settings — set RESEND_API_KEY-style in
-// Railway under Settings -> Variables:
-//   ANTHROPIC_API_KEY (required)  your own key from console.anthropic.com
-//   ANTHROPIC_MODEL   (optional)  defaults to a fast, inexpensive model
+// AI tips / translation / urgency-opinion settings — set in Railway under
+// Settings -> Variables. Set ONE of these keys; if both are set, Gemini is used.
+//   GEMINI_API_KEY    free key from aistudio.google.com (free tier, no card)
+//   GEMINI_MODEL      (optional) defaults to Google's current Flash model
+//   ANTHROPIC_API_KEY paid key from console.anthropic.com
+//   ANTHROPIC_MODEL   (optional) defaults to a fast, inexpensive model
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
 
@@ -70,7 +75,7 @@ app.get('/', (req, res) => {
 // Simple existence check the frontend can use to confirm a real backend is present
 // (there is no such endpoint when this same file runs as a claude.ai artifact).
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, canEmail: !!RESEND_API_KEY, canAi: !!ANTHROPIC_API_KEY, canAddress: !!GETADDRESS_API_KEY });
+  res.json({ ok: true, canEmail: !!RESEND_API_KEY, canAi: !!(GEMINI_API_KEY || ANTHROPIC_API_KEY), canAddress: !!GETADDRESS_API_KEY });
 });
 
 // Step 1 of getAddress.io Autocomplete: suggestions for what the tenant has typed
@@ -148,8 +153,78 @@ app.get('/api/address/get/:id', async (req, res) => {
   }
 });
 
+// JSON replies are whole-page translations, which run far longer than a few tips;
+// a 600-token cap cut them off mid-array and they failed to parse.
+function maxOutputTokens(wantJson) { return wantJson ? 8000 : 1000; }
+
+async function askAnthropic(prompt, wantJson) {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: maxOutputTokens(wantJson),
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(function () { return ''; });
+    console.error('Anthropic API error:', resp.status, errText.slice(0, 300));
+    return { ok: false };
+  }
+  const data = await resp.json();
+  return { ok: true, text: String((data.content && data.content[0] && data.content[0].text) || '').trim() };
+}
+
+async function askGemini(prompt, wantJson, modelOverride) {
+  const model = modelOverride || GEMINI_MODEL;
+  const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' +
+    encodeURIComponent(model) + ':generateContent', {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': GEMINI_API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: Object.assign(
+        // Flash models may spend part of this on thinking, so leave headroom.
+        { maxOutputTokens: maxOutputTokens(wantJson) * 2 },
+        wantJson ? { responseMimeType: 'application/json' } : {}
+      )
+    })
+  });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(function () { return ''; });
+    console.error('Gemini API error:', model, resp.status, errText.slice(0, 300));
+    // The default is an alias; if Google ever stops recognising it, retry once
+    // on a fixed model so the tool keeps working without a redeploy.
+    if (resp.status === 404 && !modelOverride && !process.env.GEMINI_MODEL) {
+      return askGemini(prompt, wantJson, GEMINI_FALLBACK_MODEL);
+    }
+    return { ok: false };
+  }
+  const data = await resp.json();
+  const parts = (data.candidates && data.candidates[0] && data.candidates[0].content &&
+    data.candidates[0].content.parts) || [];
+  const text = parts
+    .filter(function (p) { return p && typeof p.text === 'string' && !p.thought; })
+    .map(function (p) { return p.text; })
+    .join('')
+    .trim();
+  if (!text) {
+    console.error('Gemini returned no text:', JSON.stringify(data).slice(0, 300));
+    return { ok: false };
+  }
+  return { ok: true, text: text };
+}
+
 app.post('/api/ai', async (req, res) => {
-  if (!ANTHROPIC_API_KEY) {
+  if (!GEMINI_API_KEY && !ANTHROPIC_API_KEY) {
     return res.status(503).json({ ok: false, error: 'ai-not-configured' });
   }
   if (!allowedByRateLimit(req.ip)) {
@@ -170,30 +245,13 @@ app.post('/api/ai', async (req, res) => {
       return res.status(413).json({ ok: false, error: 'prompt-too-long' });
     }
 
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        // JSON replies are whole-page translations, which run far longer than a
-        // few tips; 600 tokens cut them off mid-array and they failed to parse.
-        max_tokens: wantJson ? 8000 : 1000,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if (!resp.ok) {
-      const errText = await resp.text().catch(function () { return ''; });
-      console.error('Anthropic API error:', resp.status, errText.slice(0, 300));
-      return res.status(502).json({ ok: false, error: 'anthropic-error' });
+    const result = GEMINI_API_KEY
+      ? await askGemini(prompt, wantJson)
+      : await askAnthropic(prompt, wantJson);
+    if (!result.ok) {
+      return res.status(502).json({ ok: false, error: 'ai-provider-error' });
     }
-
-    const data = await resp.json();
-    const text = String((data.content && data.content[0] && data.content[0].text) || '').trim();
+    const text = result.text;
 
     if (wantJson) {
       const cleaned = text.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
