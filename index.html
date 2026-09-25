@@ -2862,14 +2862,24 @@
           subject: 'Repair report — ' + state.category + ' — ' + state.address,
           reportText: buildReportText(),
           tenantEmail: state.email || '',
-          sendCopyToTenant: !!state.email
+          sendCopyToTenant: !!state.email,
+          // The same details as structured fields, saved as a job in the database.
+          report: {
+            name: state.name, email: state.email, phone: state.phone, address: state.address,
+            category: state.category, affected: state.subLabel, symptom: state.symptomLabel,
+            location: state.location, description: state.description, urgency: state.urgency,
+            accessDays: state.accessDays, accessTime: state.accessTime, accessNotes: state.accessNotes,
+            keyPermission: state.keyPermission,
+            keyInstructions: state.keyPermission === 'Yes' ? state.keyInstructions : '',
+            photoCount: state.photos.length
+          }
         })
       });
       if (timer) { clearTimeout(timer); }
       if (!resp.ok) { return { sent: false }; }
       var data = await resp.json()['catch'](function(){ return null; });
       if (!data || data.ok !== true) { return { sent: false }; }
-      return { sent: true, tenantCopySent: !!data.tenantCopySent };
+      return { sent: true, emailed: data.emailed !== false, ref: data.ref || null, tenantCopySent: !!data.tenantCopySent };
     } catch (err) {
       // Network error, no route at this address (the claude.ai artifact case),
       // or a timeout — all treated the same: quietly fall back.
@@ -2903,12 +2913,19 @@
         document.getElementById('manualEmailRow').style.display = 'none';
         document.getElementById('manualNote').style.display = 'none';
         var doneHint = document.getElementById('doneHint');
-        if (doneHint) { doneHint.textContent = 'Your report has been sent.'; }
+        if (doneHint) {
+          doneHint.textContent = result.ref
+            ? 'Your report has been sent. Your reference is ' + result.ref + '.'
+            : 'Your report has been sent.';
+        }
         var sentNoteBody = document.getElementById('sentNoteBody');
         if (sentNoteBody) {
-          sentNoteBody.textContent = result.tenantCopySent
-            ? 'Jay will receive it by email shortly, PDF attached — we’ve also emailed you a copy for your records.'
-            : 'Jay will receive it by email shortly, PDF attached.';
+          var sentMsg = result.emailed
+            ? 'Jay will receive it by email shortly, PDF attached.'
+            : 'Our team has received it and will be in touch about next steps.';
+          if (result.ref) sentMsg += ' Please quote ' + result.ref + ' if you contact us about it.';
+          if (result.tenantCopySent) sentMsg += ' We’ve also emailed you a copy for your records.';
+          sentNoteBody.textContent = sentMsg;
         }
         document.getElementById('sentNote').style.display = '';
         if (openLink) {
