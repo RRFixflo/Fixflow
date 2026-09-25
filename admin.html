@@ -172,7 +172,35 @@
   .timeline li.k-completed { border-left-color: var(--ok); }
   .timeline li.k-created { border-left-color: var(--brick); }
   .timeline li.k-note { border-left-color: var(--ink-soft); }
+  .timeline li.k-contractor_message { border-left-color: #25D366; }
+  .nearby { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--blue-tint); font-size: .86rem; line-height: 1.5; }
+  .nearby ul { margin: 6px 0 10px; padding-left: 18px; }
   .timeline .when { display: block; font-size: .72rem; font-weight: 600; color: var(--ink-faint); margin-bottom: 2px; }
+  /* ---------- Selecting jobs to send together ---------- */
+  .jobrow { display: flex; align-items: stretch; gap: 8px; }
+  .jobrow .job { flex: 1; min-width: 0; }
+  .pick { flex-shrink: 0; display: grid; place-items: center; width: 44px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; cursor: pointer; }
+  .pick:hover { border-color: var(--line-strong); }
+  .pick input { width: 19px; height: 19px; accent-color: var(--brick); cursor: pointer; }
+  .jobrow.sel .pick, .jobrow.sel .job { border-color: var(--brick); background: var(--brick-tint); }
+  .bulkbar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 30; width: min(980px, calc(100vw - 24px));
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--ink); color: var(--panel); border-radius: 18px; box-shadow: var(--shadow-lift); }
+  .bulkbar .n { font-weight: 700; margin: 0 6px; }
+  .bulkbar .btn { background: transparent; color: var(--panel); border-color: rgba(255,255,255,.3); }
+  .bulkbar .btn:hover { background: rgba(255,255,255,.12); }
+  .bulkbar .btn.wa { background: #25D366; border-color: #25D366; color: #0b3d1f; }
+  .bulkbar .btn.wa:hover { filter: brightness(.95); }
+  .bulkbar input { flex: 1; min-width: 150px; min-height: 36px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.08); color: var(--panel); }
+  .bulkbar input::placeholder { color: rgba(255,255,255,.55); }
+  .bulkbar .grow { flex: 1; }
+  .btn.wa { background: #25D366; border-color: #25D366; color: #0b3d1f; }
+  .btn.wa:hover { filter: brightness(.95); background: #25D366; }
+  .wa-preview { white-space: pre-wrap; font-size: .85rem; line-height: 1.5; background: #E7FFDB; color: #111; border-radius: 12px; padding: 12px 14px; max-height: 320px; overflow-y: auto; font-family: var(--sans); border: 1px solid #c9ecb6; }
+  .modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: rgba(10,12,16,.45); }
+  .modal .card { width: min(560px, 100%); max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lift); }
+  body.has-bulk .wrap { padding-bottom: 140px; }
+  body.has-bulk .toast { bottom: 96px; }
+  @media (max-width: 700px) { body.has-bulk .toast { bottom: 170px; } }
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--panel); padding: 10px 18px; border-radius: 999px; font-weight: 600; font-size: .88rem; z-index: 60; box-shadow: var(--shadow-lift); }
 </style>
 </head>
@@ -246,6 +274,30 @@
 </aside>
 
 <datalist id="assignees"></datalist>
+
+<!-- SEND SELECTED JOBS TO A CONTRACTOR -->
+<div class="bulkbar" id="bulkBar" hidden>
+  <span class="n" id="bulkCount">0 selected</span>
+  <button class="btn small wa" id="bulkWa" type="button">Send on WhatsApp</button>
+  <button class="btn small" id="bulkCopy" type="button">Copy for contractor</button>
+  <button class="btn small" id="bulkArea" type="button" title="Also select open jobs in the same postcode area">+ Same area</button>
+  <input id="bulkAssign" list="assignees" placeholder="Assign all to…">
+  <button class="btn small" id="bulkAssignBtn" type="button">Assign</button>
+  <button class="btn small" id="bulkClear" type="button">Clear</button>
+</div>
+
+<!-- PREVIEW OF THE CONTRACTOR MESSAGE -->
+<div class="modal" id="waModal" hidden>
+  <div class="card">
+    <h3 id="waTitle">Message for contractor</h3>
+    <div class="wa-preview" id="waText"></div>
+    <div class="row-actions">
+      <button class="btn" id="waClose" type="button">Close</button>
+      <button class="btn" id="waCopy" type="button">Copy</button>
+      <button class="btn wa" id="waOpen" type="button">Open WhatsApp</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -321,6 +373,7 @@
   var meta = { statuses: [], urgencies: ['Emergency', 'Urgent', 'Routine'], canEmail: false, db: false };
   var filter = 'open';
   var openJobId = null;
+  var selected = new Set();   // job ids ticked in the list, to send to a contractor together
   try { var savedSort = localStorage.getItem('rrJobsSort'); if (savedSort) $('sort').value = savedSort; } catch (e) {}
 
   // ---------- Sign in ----------
@@ -415,8 +468,11 @@
       return;
     }
     el.innerHTML = list.map(function(j){
-      var t = timeInfo(j), p = profitOf(j);
-      return '<button type="button" class="job u-' + esc(j.urgency) + (isOpen(j) ? '' : ' done') + '" data-id="' + j.id + '">' +
+      var t = timeInfo(j), p = profitOf(j), on = selected.has(j.id);
+      return '<div class="jobrow' + (on ? ' sel' : '') + '">' +
+        '<label class="pick" title="Select to send with other jobs"><input type="checkbox" data-pick="' + j.id + '"' + (on ? ' checked' : '') +
+          ' aria-label="Select ' + esc(j.ref) + '"></label>' +
+        '<button type="button" class="job u-' + esc(j.urgency) + (isOpen(j) ? '' : ' done') + '" data-id="' + j.id + '">' +
         '<div><div class="ref">' + esc(j.ref) + '</div><div class="sub"><span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span></div></div>' +
         '<div class="c-issue"><div class="title">' + esc(j.property_address || 'No address') + '</div>' +
           '<div class="meta">' + esc(issueOf(j)) + (j.tenant_name ? ' — ' + esc(j.tenant_name) : '') + '</div></div>' +
@@ -425,13 +481,21 @@
           '<div class="sub">' + (j.assigned_to ? esc(j.assigned_to) : 'Unassigned') + '</div></div>' +
         '<div class="money ' + (p ? (p.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (p ? gbp(p.value) : '—') +
           '<small>' + (p ? (p.estimated ? 'est. profit' : 'profit') : 'no costs yet') + '</small></div>' +
-      '</button>';
+      '</button></div>';
     }).join('');
+    renderBulk();
   }
 
   $('list').addEventListener('click', function(e){
     var b = e.target.closest('.job');
     if (b) openJob(Number(b.dataset.id));
+  });
+  $('list').addEventListener('change', function(e){
+    var id = Number(e.target.dataset.pick);
+    if (!id) return;
+    if (e.target.checked) selected.add(id); else selected.delete(id);
+    e.target.closest('.jobrow').classList.toggle('sel', e.target.checked);
+    renderBulk();
   });
   document.querySelectorAll('.tabs button').forEach(function(b){
     b.addEventListener('click', function(){
@@ -445,6 +509,152 @@
   $('refreshBtn').addEventListener('click', function(){ loadJobs(); if (openJobId) openJob(openJobId); });
   setInterval(function(){ if (!$('appView').hidden) render(); }, 30000);         // keep "time left" current
   setInterval(function(){ if (!$('appView').hidden && !openJobId) loadJobs(); }, 120000); // pick up new reports
+
+  // ---------- Contractor messages (WhatsApp) ----------
+  // Only what a contractor needs: where, what, who to call, how to get in, and
+  // by when. Costs and charges are never included.
+  var POSTCODE_RE = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
+  function postcodeArea(addr){ var m = String(addr || '').match(POSTCODE_RE); return m ? m[1].toUpperCase() : null; }
+  function addrKey(addr){ return String(addr || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+  function fmtDue(d){ return d ? new Date(d).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null; }
+  function accessLine(j){
+    var bits = [];
+    if (j.access_days) bits.push(j.access_days);
+    if (j.access_time) bits.push(j.access_time);
+    if (j.access_notes) bits.push(j.access_notes);
+    var keys = j.key_permission === 'Yes' ? 'Keys can be released if tenant is out' + (j.key_instructions ? ' — ' + j.key_instructions : '')
+      : j.key_permission === 'No' ? 'Tenant must be home — arrange with them first' : null;
+    if (keys) bits.push(keys);
+    return bits.join(' · ') || 'Contact tenant to arrange';
+  }
+  function jobBlock(j, number){
+    var issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') + (j.location ? ' (' + j.location + ')' : '');
+    var lines = [];
+    lines.push((number ? number + '. ' : '') + '*' + j.ref + '* — ' + j.urgency.toUpperCase());
+    lines.push('🔧 ' + (issue || 'Repair'));
+    if (j.description) lines.push('📝 ' + j.description);
+    lines.push('👤 ' + (j.tenant_name || 'Tenant') + (j.tenant_phone ? ' — ' + j.tenant_phone : ' — no phone given'));
+    lines.push('🔑 ' + accessLine(j));
+    if (j.due_at && isOpen(j)) lines.push('⏰ Complete by ' + fmtDue(j.due_at));
+    return lines.join('\n');
+  }
+  function contractorMessage(list){
+    // Jobs at the same address go under one heading, so a multi-job visit reads as one stop.
+    var groups = [], byKey = {};
+    list.slice().sort(function(a, b){ return (URG_RANK[a.urgency] - URG_RANK[b.urgency]) || ((a.due_at ? new Date(a.due_at) : Infinity) - (b.due_at ? new Date(b.due_at) : Infinity)); })
+      .forEach(function(j){
+        var k = addrKey(j.property_address);
+        if (!byKey[k]) { byKey[k] = { address: j.property_address || 'Address not given', jobs: [] }; groups.push(byKey[k]); }
+        byKey[k].jobs.push(j);
+      });
+    var out = [];
+    if (list.length === 1) {
+      out.push('*Repair job — Residential Realtors*', '', '📍 *' + groups[0].address + '*', jobBlock(list[0]));
+    } else {
+      out.push('*' + list.length + ' repair jobs — Residential Realtors*');
+      out.push(groups.length === 1 ? 'All at one property.' : groups.length + ' properties.');
+      var n = 0;
+      groups.forEach(function(g){
+        out.push('', '📍 *' + g.address + '*' + (g.jobs.length > 1 ? ' (' + g.jobs.length + ' jobs)' : ''));
+        g.jobs.forEach(function(j){ n += 1; out.push(jobBlock(j, n)); if (g.jobs.length > 1) out.push(''); });
+        if (g.jobs.length > 1) out.pop();
+      });
+    }
+    out.push('', 'Please reply to confirm, and quote the job reference with any questions or invoices. Thanks!');
+    return out.join('\n');
+  }
+
+  var waJobs = [];
+  function showContractorMessage(list){
+    waJobs = list;
+    $('waTitle').textContent = list.length === 1 ? 'Send ' + list[0].ref + ' to a contractor' : 'Send ' + list.length + ' jobs to a contractor';
+    $('waText').textContent = contractorMessage(list);
+    $('waModal').hidden = false;
+  }
+  function logContractorSend(list, how){
+    var refs = list.map(function(j){ return j.ref; }).join(', ');
+    return Promise.all(list.map(function(j){
+      return api('POST', '/api/admin/jobs/' + j.id + '/updates', {
+        kind: 'contractor_message',
+        body: how + (list.length > 1 ? ' — sent together: ' + refs : '') + '.'
+      });
+    }));
+  }
+  function copyText(text){
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    return new Promise(function(resolve, reject){
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy') ? resolve() : reject(); } catch (e) { reject(e); }
+      ta.remove();
+    });
+  }
+  function afterSend(){ if (openJobId) openJob(openJobId); }
+  $('waClose').addEventListener('click', function(){ $('waModal').hidden = true; });
+  $('waModal').addEventListener('click', function(e){ if (e.target === $('waModal')) $('waModal').hidden = true; });
+  $('waCopy').addEventListener('click', function(){
+    copyText($('waText').textContent).then(function(){
+      toast('Copied — paste it into WhatsApp');
+      logContractorSend(waJobs, 'Job details copied for contractor').then(afterSend);
+    })['catch'](function(){ toast('Couldn’t copy — select the text and copy it instead'); });
+  });
+  $('waOpen').addEventListener('click', function(){
+    var text = $('waText').textContent;
+    // wa.me opens WhatsApp (app on a phone, WhatsApp Web on a computer) with the
+    // message filled in; you then pick the contractor. Very long messages can be
+    // cut off by the link, so those are copied as well.
+    if (text.length > 3500) copyText(text)['catch'](function(){});
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
+    logContractorSend(waJobs, 'Job details sent to contractor on WhatsApp').then(afterSend);
+    if (text.length > 3500) toast('Long message — it’s also been copied, in case WhatsApp cuts it short');
+  });
+
+  function selectedJobs(){ return jobs.filter(function(j){ return selected.has(j.id); }); }
+  function renderBulk(){
+    // Drop selections for jobs that no longer exist.
+    selected.forEach(function(id){ if (!jobs.some(function(j){ return j.id === id; })) selected.delete(id); });
+    var n = selected.size;
+    $('bulkBar').hidden = n === 0;
+    document.body.classList.toggle('has-bulk', n > 0);
+    $('bulkCount').textContent = n + ' job' + (n === 1 ? '' : 's') + ' selected';
+  }
+  $('bulkWa').addEventListener('click', function(){ showContractorMessage(selectedJobs()); });
+  $('bulkCopy').addEventListener('click', function(){
+    var list = selectedJobs();
+    copyText(contractorMessage(list)).then(function(){
+      toast('Copied ' + list.length + ' job' + (list.length === 1 ? '' : 's') + ' — paste into WhatsApp');
+      logContractorSend(list, 'Job details copied for contractor');
+    })['catch'](function(){ showContractorMessage(list); });
+  });
+  $('bulkArea').addEventListener('click', function(){
+    var areas = {};
+    selectedJobs().forEach(function(j){ var a = postcodeArea(j.property_address); if (a) areas[a] = true; });
+    var names = Object.keys(areas);
+    if (!names.length) { toast('No postcode found in the selected addresses'); return; }
+    var added = 0;
+    jobs.forEach(function(j){
+      if (isOpen(j) && !selected.has(j.id) && areas[postcodeArea(j.property_address)]) { selected.add(j.id); added += 1; }
+    });
+    toast(added ? 'Added ' + added + ' more open job' + (added === 1 ? '' : 's') + ' in ' + names.join(', ') : 'No other open jobs in ' + names.join(', '));
+    render();
+  });
+  $('bulkAssignBtn').addEventListener('click', function(){
+    var who = $('bulkAssign').value.trim();
+    var list = selectedJobs();
+    if (!who) { $('bulkAssign').focus(); return; }
+    Promise.all(list.map(function(j){
+      var body = { assigned_to: who };
+      if (j.status === 'New') body.status = 'Assigned';
+      return api('PATCH', '/api/admin/jobs/' + j.id, body);
+    })).then(function(results){
+      var ok = results.filter(function(r){ return r.ok; }).length;
+      toast('Assigned ' + ok + ' job' + (ok === 1 ? '' : 's') + ' to ' + who);
+      $('bulkAssign').value = '';
+      loadJobs();
+    });
+  });
+  $('bulkClear').addEventListener('click', function(){ selected.clear(); render(); });
 
   // ---------- Tenant message templates ----------
   var SIGN_OFF = '\n\nKind regards,\nResidential Realtors Maintenance Team';
@@ -536,6 +746,16 @@
         '<div class="row-actions"><span class="saved-note" id="savedNote"></span><button class="btn primary" id="saveBtn" type="button">Save changes</button></div>' +
       '</div>' +
 
+      // Contractor
+      '<div class="card"><h3>Send to contractor</h3>' +
+        '<p style="margin:0 0 10px;color:var(--ink-soft);font-size:.86rem;line-height:1.5">Address, the job, the tenant’s number and access details, ready for WhatsApp. Costs are never included.</p>' +
+        '<div class="row-actions" style="justify-content:flex-start;margin-top:0">' +
+          '<button class="btn wa" id="cWa" type="button">Send on WhatsApp</button>' +
+          '<button class="btn" id="cCopy" type="button">Copy for contractor</button>' +
+        '</div>' +
+        '<div id="cNearby"></div>' +
+      '</div>' +
+
       // Complete
       '<div class="card"><h3>Completion</h3>' +
         (completed
@@ -583,7 +803,7 @@
         '<textarea class="inp" id="fNote" placeholder="What’s happened — calls made, quotes received, contractor feedback…"></textarea>' +
         '<div class="row-actions"><button class="btn primary" id="addNote" type="button">Add update</button></div>' +
         '<ul class="timeline">' + updates.map(function(u){
-          var label = { created: 'Report received', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', completed: 'Completed' }[u.kind] || 'Update';
+          var label = { created: 'Report received', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', contractor_message: 'Sent to contractor', completed: 'Completed' }[u.kind] || 'Update';
           return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + '</span>' + esc(u.body) + '</li>';
         }).join('') + '</ul>' +
       '</div>';
@@ -592,6 +812,36 @@
   }
 
   function wireJob(j){
+    // Send this job to a contractor, or group it with nearby open jobs.
+    $('cWa').addEventListener('click', function(){ showContractorMessage([j]); });
+    $('cCopy').addEventListener('click', function(){
+      copyText(contractorMessage([j])).then(function(){
+        toast('Copied — paste it into WhatsApp');
+        logContractorSend([j], 'Job details copied for contractor').then(afterSend);
+      })['catch'](function(){ showContractorMessage([j]); });
+    });
+    var area = postcodeArea(j.property_address);
+    var same = addrKey(j.property_address);
+    var nearby = jobs.filter(function(o){
+      return o.id !== j.id && isOpen(o) && (addrKey(o.property_address) === same || (area && postcodeArea(o.property_address) === area));
+    });
+    if (nearby.length && isOpen(j)) {
+      $('cNearby').innerHTML = '<div class="nearby"><strong>' + nearby.length + ' other open job' + (nearby.length === 1 ? '' : 's') +
+        ' at this property or in ' + esc(area || 'the same area') + '</strong> — could be done on the same visit:<ul>' +
+        nearby.map(function(o){
+          return '<li>' + esc(o.ref) + ' · ' + esc(o.property_address || '') + ' — ' + esc(issueOf(o)) + ' (' + esc(o.urgency) + ')' +
+            (addrKey(o.property_address) === same ? ' <strong>same property</strong>' : '') + '</li>';
+        }).join('') + '</ul>' +
+        '<button class="btn wa small" id="cNearbyWa" type="button">Send all ' + (nearby.length + 1) + ' together</button> ' +
+        '<button class="btn small" id="cNearbySel" type="button">Select them in the list</button></div>';
+      $('cNearbyWa').addEventListener('click', function(){ showContractorMessage([j].concat(nearby)); });
+      $('cNearbySel').addEventListener('click', function(){
+        [j].concat(nearby).forEach(function(o){ selected.add(o.id); });
+        closeDrawer(); render();
+        toast((nearby.length + 1) + ' jobs selected — use the bar at the bottom');
+      });
+    }
+
     // Live profit as costs are typed.
     function readMoney(id){ var v = $(id).value.replace(/[£,\s]/g, ''); return v === '' ? null : Number(v); }
     function updateProfit(){

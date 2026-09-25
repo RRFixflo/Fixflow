@@ -64,8 +64,11 @@ CREATE INDEX IF NOT EXISTS job_updates_job_idx ON job_updates (job_id, created_a
 
 // Everything the list view needs; the PDF and full report text are left out so
 // the list stays quick however many jobs there are.
+// Description and access details are included so several jobs can be sent to a
+// contractor together straight from the list.
 const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenant_name, tenant_email,
-  tenant_phone, property_address, category, affected, symptom, location, assigned_to, next_steps,
+  tenant_phone, property_address, category, affected, symptom, location, description, access_days,
+  access_time, access_notes, key_permission, key_instructions, assigned_to, next_steps,
   estimated_cost, actual_cost, landlord_charge, completed_at, photo_count`;
 
 function str(v, max) {
@@ -304,7 +307,7 @@ module.exports = function mountJobs(app, opts) {
   app.post('/api/admin/jobs/:id/updates', withDb(async function (p, req, res) {
     const id = jobId(req);
     const text = str((req.body || {}).body, 5000);
-    const kind = (req.body || {}).kind === 'tenant_message' ? 'tenant_message' : 'note';
+    const kind = ['tenant_message', 'contractor_message'].indexOf((req.body || {}).kind) !== -1 ? req.body.kind : 'note';
     if (!text) return res.status(400).json({ ok: false, error: 'empty' });
     const r = await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1 RETURNING id', [id]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
