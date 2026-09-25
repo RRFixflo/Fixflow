@@ -15,12 +15,22 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const REPORT_TO_EMAIL = process.env.REPORT_TO_EMAIL || 'jayk@residentialrealtors.co.uk';
 const REPORT_FROM_EMAIL = process.env.REPORT_FROM_EMAIL || 'Repair Reports <onboarding@resend.dev>';
 
-// AI tips / translation / urgency-opinion settings — set RESEND_API_KEY-style in
-// Railway under Settings -> Variables:
-//   ANTHROPIC_API_KEY (required)  your own key from console.anthropic.com
-//   ANTHROPIC_MODEL   (optional)  defaults to a fast, inexpensive model
+// AI tips / translation / urgency-opinion settings — set in Railway under
+// Settings -> Variables. Set ONE of these keys; if both are set, Gemini is used.
+//   GEMINI_API_KEY    free key from aistudio.google.com (free tier, no card)
+//   GEMINI_MODEL      (optional) defaults to Google's current Flash model
+//   ANTHROPIC_API_KEY paid key from console.anthropic.com
+//   ANTHROPIC_MODEL   (optional) defaults to a fast, inexpensive model
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
+
+// Address lookup settings — set in Railway under Settings -> Variables:
+//   GETADDRESS_API_KEY (required for address lookup) your key from getaddress.io.
+// It is only ever used here on the server, never sent to the browser.
+const GETADDRESS_API_KEY = process.env.GETADDRESS_API_KEY || '';
 
 // This endpoint has no login of its own (same as the rest of the tool), so it is
 // reachable by anyone with the link — and unlike email, every call here costs
@@ -31,14 +41,21 @@ app.set('trust proxy', true);
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 const RATE_LIMIT_MAX_PER_IP = 40;
 const rateLimitMap = new Map();
-function allowedByRateLimit(ip) {
+// Address lookups get their own, looser buckets: autocomplete fires as the tenant
+// types (free on getAddress, but rate limited by them), while resolving a picked
+// address costs one look-up, so that one is kept tighter.
+const addressSearchLimitMap = new Map();
+const addressGetLimitMap = new Map();
+function allowedByRateLimit(ip, map, max) {
+  map = map || rateLimitMap;
+  max = max || RATE_LIMIT_MAX_PER_IP;
   const now = Date.now();
-  const entry = rateLimitMap.get(ip);
+  const entry = map.get(ip);
   if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
-    rateLimitMap.set(ip, { count: 1, windowStart: now });
+    map.set(ip, { count: 1, windowStart: now });
     return true;
   }
-  if (entry.count >= RATE_LIMIT_MAX_PER_IP) return false;
+  if (entry.count >= max) return false;
   entry.count += 1;
   return true;
 }
@@ -58,11 +75,156 @@ app.get('/', (req, res) => {
 // Simple existence check the frontend can use to confirm a real backend is present
 // (there is no such endpoint when this same file runs as a claude.ai artifact).
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, canEmail: !!RESEND_API_KEY, canAi: !!ANTHROPIC_API_KEY });
+  res.json({ ok: true, canEmail: !!RESEND_API_KEY, canAi: !!(GEMINI_API_KEY || ANTHROPIC_API_KEY), canAddress: !!GETADDRESS_API_KEY });
 });
 
+// Step 1 of getAddress.io Autocomplete: suggestions for what the tenant has typed
+// so far (part of an address, or a postcode — all=true lists every address at a
+// postcode). Proxied so the API key never reaches the browser.
+app.get('/api/address/autocomplete', async (req, res) => {
+  if (!GETADDRESS_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'address-not-configured' });
+  }
+  if (!allowedByRateLimit(req.ip, addressSearchLimitMap, 300)) {
+    return res.status(429).json({ ok: false, error: 'rate-limited' });
+  }
+  const term = String(req.query.term || '').trim().slice(0, 100);
+  if (term.length < 3) {
+    return res.json({ ok: true, suggestions: [] });
+  }
+  try {
+    const url = 'https://api.getAddress.io/autocomplete/' + encodeURIComponent(term) +
+      '?api-key=' + encodeURIComponent(GETADDRESS_API_KEY) + '&all=true&top=6';
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) {
+      console.error('getAddress autocomplete error:', resp.status);
+      return res.status(502).json({ ok: false, error: resp.status === 429 ? 'rate-limited' : 'lookup-failed' });
+    }
+    const data = await resp.json();
+    const suggestions = (data.suggestions || []).map(function (s) {
+      return { address: String(s.address || ''), id: String(s.id || '') };
+    }).filter(function (s) { return s.address && s.id; });
+    return res.json({ ok: true, suggestions: suggestions });
+  } catch (err) {
+    console.error('address autocomplete error:', err && err.message);
+    return res.status(502).json({ ok: false, error: 'lookup-failed' });
+  }
+});
+
+// Step 2: resolve the suggestion the tenant picked into the full address,
+// including its postcode (counts as one look-up on the getAddress account).
+app.get('/api/address/get/:id', async (req, res) => {
+  if (!GETADDRESS_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'address-not-configured' });
+  }
+  if (!allowedByRateLimit(req.ip, addressGetLimitMap, 60)) {
+    return res.status(429).json({ ok: false, error: 'rate-limited' });
+  }
+  const id = String(req.params.id || '');
+  if (!/^[A-Za-z0-9_=-]{1,200}$/.test(id)) {
+    return res.status(400).json({ ok: false, error: 'bad-id' });
+  }
+  try {
+    const url = 'https://api.getAddress.io/get/' + encodeURIComponent(id) +
+      '?api-key=' + encodeURIComponent(GETADDRESS_API_KEY);
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) {
+      console.error('getAddress get error:', resp.status);
+      return res.status(502).json({ ok: false, error: resp.status === 429 ? 'rate-limited' : 'lookup-failed' });
+    }
+    const a = await resp.json();
+    const lines = [a.line_1, a.line_2, a.line_3, a.line_4, a.locality, a.town_or_city]
+      .map(function (l) { return String(l || '').trim(); })
+      .filter(Boolean);
+    const postcode = String(a.postcode || '').trim();
+    return res.json({
+      ok: true,
+      address: {
+        lines: lines,
+        town: String(a.town_or_city || ''),
+        county: String(a.county || ''),
+        postcode: postcode,
+        full: lines.concat(postcode ? [postcode] : []).join(', ')
+      }
+    });
+  } catch (err) {
+    console.error('address get error:', err && err.message);
+    return res.status(502).json({ ok: false, error: 'lookup-failed' });
+  }
+});
+
+// JSON replies are whole-page translations, which run far longer than a few tips;
+// a 600-token cap cut them off mid-array and they failed to parse.
+function maxOutputTokens(wantJson) { return wantJson ? 8000 : 1000; }
+
+async function askAnthropic(prompt, wantJson) {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: maxOutputTokens(wantJson),
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(function () { return ''; });
+    console.error('Anthropic API error:', resp.status, errText.slice(0, 300));
+    return { ok: false };
+  }
+  const data = await resp.json();
+  return { ok: true, text: String((data.content && data.content[0] && data.content[0].text) || '').trim() };
+}
+
+async function askGemini(prompt, wantJson, modelOverride) {
+  const model = modelOverride || GEMINI_MODEL;
+  const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' +
+    encodeURIComponent(model) + ':generateContent', {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': GEMINI_API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: Object.assign(
+        // Flash models may spend part of this on thinking, so leave headroom.
+        { maxOutputTokens: maxOutputTokens(wantJson) * 2 },
+        wantJson ? { responseMimeType: 'application/json' } : {}
+      )
+    })
+  });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(function () { return ''; });
+    console.error('Gemini API error:', model, resp.status, errText.slice(0, 300));
+    // The default is an alias; if Google ever stops recognising it, retry once
+    // on a fixed model so the tool keeps working without a redeploy.
+    if (resp.status === 404 && !modelOverride && !process.env.GEMINI_MODEL) {
+      return askGemini(prompt, wantJson, GEMINI_FALLBACK_MODEL);
+    }
+    return { ok: false };
+  }
+  const data = await resp.json();
+  const parts = (data.candidates && data.candidates[0] && data.candidates[0].content &&
+    data.candidates[0].content.parts) || [];
+  const text = parts
+    .filter(function (p) { return p && typeof p.text === 'string' && !p.thought; })
+    .map(function (p) { return p.text; })
+    .join('')
+    .trim();
+  if (!text) {
+    console.error('Gemini returned no text:', JSON.stringify(data).slice(0, 300));
+    return { ok: false };
+  }
+  return { ok: true, text: text };
+}
+
 app.post('/api/ai', async (req, res) => {
-  if (!ANTHROPIC_API_KEY) {
+  if (!GEMINI_API_KEY && !ANTHROPIC_API_KEY) {
     return res.status(503).json({ ok: false, error: 'ai-not-configured' });
   }
   if (!allowedByRateLimit(req.ip)) {
@@ -71,34 +233,25 @@ app.post('/api/ai', async (req, res) => {
 
   try {
     const body = req.body || {};
-    const prompt = String(body.prompt || '').slice(0, 6000);
+    // Translating the page sends every visible string in one prompt, so this cap
+    // has to comfortably fit that; anything bigger is refused rather than cut
+    // off part-way (a truncated prompt gives a broken answer, not a shorter one).
+    const prompt = String(body.prompt || '');
     const wantJson = !!body.json;
     if (!prompt) {
       return res.status(400).json({ ok: false, error: 'missing-prompt' });
     }
-
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 600,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    if (!resp.ok) {
-      const errText = await resp.text().catch(function () { return ''; });
-      console.error('Anthropic API error:', resp.status, errText.slice(0, 300));
-      return res.status(502).json({ ok: false, error: 'anthropic-error' });
+    if (prompt.length > 40000) {
+      return res.status(413).json({ ok: false, error: 'prompt-too-long' });
     }
 
-    const data = await resp.json();
-    const text = String((data.content && data.content[0] && data.content[0].text) || '').trim();
+    const result = GEMINI_API_KEY
+      ? await askGemini(prompt, wantJson)
+      : await askAnthropic(prompt, wantJson);
+    if (!result.ok) {
+      return res.status(502).json({ ok: false, error: 'ai-provider-error' });
+    }
+    const text = result.text;
 
     if (wantJson) {
       const cleaned = text.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
