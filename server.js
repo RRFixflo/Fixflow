@@ -22,8 +22,16 @@ const REPORT_FROM_EMAIL = process.env.REPORT_FROM_EMAIL || 'Repair Reports <onbo
 //   ANTHROPIC_API_KEY paid key from console.anthropic.com
 //   ANTHROPIC_MODEL   (optional) defaults to a fast, inexpensive model
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
-const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash';
+// Free-tier Gemini models are often briefly "experiencing high demand" (503) or
+// rate limited (429), so each request walks this list until one answers. Names
+// Google doesn't recognise (404) are simply skipped. GEMINI_MODEL, if set, is
+// tried first.
+const GEMINI_MODELS = (process.env.GEMINI_MODEL ? [process.env.GEMINI_MODEL] : []).concat([
+  'gemini-flash-latest',
+  'gemini-flash-lite-latest',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite'
+]).filter(function (m, i, all) { return all.indexOf(m) === i; });
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
 
@@ -180,8 +188,15 @@ async function askAnthropic(prompt, wantJson) {
   return { ok: true, text: String((data.content && data.content[0] && data.content[0].text) || '').trim() };
 }
 
-async function askGemini(prompt, wantJson, modelOverride) {
-  const model = modelOverride || GEMINI_MODEL;
+async function askGemini(prompt, wantJson) {
+  for (const model of GEMINI_MODELS) {
+    const result = await askGeminiModel(model, prompt, wantJson);
+    if (result.ok || !result.retryable) return result;
+  }
+  return { ok: false };
+}
+
+async function askGeminiModel(model, prompt, wantJson) {
   const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' +
     encodeURIComponent(model) + ':generateContent', {
     method: 'POST',
@@ -200,13 +215,11 @@ async function askGemini(prompt, wantJson, modelOverride) {
   });
   if (!resp.ok) {
     const errText = await resp.text().catch(function () { return ''; });
-    console.error('Gemini API error:', model, resp.status, errText.slice(0, 300));
-    // The default is an alias; if Google ever stops recognising it, retry once
-    // on a fixed model so the tool keeps working without a redeploy.
-    if (resp.status === 404 && !modelOverride && !process.env.GEMINI_MODEL) {
-      return askGemini(prompt, wantJson, GEMINI_FALLBACK_MODEL);
-    }
-    return { ok: false };
+    console.error('Gemini API error:', model, resp.status, errText.replace(/\s+/g, ' ').slice(0, 200));
+    // Busy, rate limited, briefly down or unknown model: try the next model.
+    // Anything else (e.g. a rejected key) would fail the same way on every model.
+    const retryable = [404, 429, 500, 503].indexOf(resp.status) !== -1;
+    return { ok: false, retryable: retryable };
   }
   const data = await resp.json();
   const parts = (data.candidates && data.candidates[0] && data.candidates[0].content &&
@@ -217,8 +230,8 @@ async function askGemini(prompt, wantJson, modelOverride) {
     .join('')
     .trim();
   if (!text) {
-    console.error('Gemini returned no text:', JSON.stringify(data).slice(0, 300));
-    return { ok: false };
+    console.error('Gemini returned no text:', model, JSON.stringify(data).slice(0, 300));
+    return { ok: false, retryable: true };
   }
   return { ok: true, text: text };
 }
