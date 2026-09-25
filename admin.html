@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Repair Jobs — Residential Realtors</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0F1115; --ink-soft: #5D6470; --ink-faint: #8A919C;
+    --paper: #F4F5F7; --panel: #FFFFFF; --panel-2: #F7F8FA;
+    --line: #E4E6EB; --line-strong: #D3D7DE;
+    --brick: #D9262E; --brick-deep: #B01C23; --brick-tint: #FDEEEE;
+    --ok: #16A34A; --ok-tint: #EAF7EF; --warn: #D97706; --warn-tint: #FEF5E7;
+    --blue: #2563EB; --blue-tint: #EEF3FE;
+    --radius: 14px;
+    --display: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --shadow-md: 0 6px 16px -4px rgba(16,24,40,.10), 0 2px 4px -2px rgba(16,24,40,.06);
+    --shadow-lift: 0 24px 48px -12px rgba(16,24,40,.25);
+    --focus-ring: 0 0 0 4px var(--brick-tint), 0 0 0 1px var(--brick);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #F2F3F5; --ink-soft: #A3A9B4; --ink-faint: #7C838F;
+      --paper: #0D0F12; --panel: #16191E; --panel-2: #1D2127;
+      --line: #272B33; --line-strong: #353A44;
+      --brick: #F0484F; --brick-deep: #FF6B71; --brick-tint: #2C1718;
+      --ok: #34C46A; --ok-tint: #12251A; --warn: #F0A33C; --warn-tint: #2A1F10;
+      --blue: #60A5FA; --blue-tint: #132033;
+      --shadow-md: 0 6px 16px -4px rgba(0,0,0,.5); --shadow-lift: 0 24px 48px -12px rgba(0,0,0,.7);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #F2F3F5; --ink-soft: #A3A9B4; --ink-faint: #7C838F;
+    --paper: #0D0F12; --panel: #16191E; --panel-2: #1D2127;
+    --line: #272B33; --line-strong: #353A44;
+    --brick: #F0484F; --brick-deep: #FF6B71; --brick-tint: #2C1718;
+    --ok: #34C46A; --ok-tint: #12251A; --warn: #F0A33C; --warn-tint: #2A1F10;
+    --blue: #60A5FA; --blue-tint: #132033;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 15px; -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+
+  /* ---------- Sign in ---------- */
+  .login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+  .login-card { width: 100%; max-width: 380px; background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 32px 28px; box-shadow: var(--shadow-md); }
+  .login-card h1 { font-family: var(--display); font-size: 1.5rem; letter-spacing: -.02em; margin: 0 0 6px; }
+  .login-card p { color: var(--ink-soft); margin: 0 0 22px; line-height: 1.5; }
+  .err-msg { color: var(--brick); font-size: .85rem; font-weight: 500; margin-top: 10px; min-height: 1.2em; }
+
+  /* ---------- Top bar ---------- */
+  .topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: color-mix(in srgb, var(--panel) 85%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  .brand { font-family: var(--display); font-weight: 800; font-size: 1.05rem; letter-spacing: -.01em; }
+  .brand span { color: var(--brick); }
+  .topbar .grow { flex: 1; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px 20px 60px; }
+
+  /* ---------- Controls ---------- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 9px 16px; font-weight: 600; font-size: .88rem; cursor: pointer; transition: background .15s, border-color .15s, transform .1s; white-space: nowrap; }
+  a.btn { text-decoration: none; color: inherit; }
+  .btn:hover { border-color: var(--line-strong); background: var(--panel-2); }
+  .btn:active { transform: scale(.97); }
+  .btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+  .btn.primary { background: var(--brick); border-color: var(--brick); color: #fff; }
+  .btn.primary:hover { background: var(--brick-deep); border-color: var(--brick-deep); }
+  .btn.success { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .btn.success:hover { filter: brightness(.95); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn.small { padding: 6px 12px; font-size: .8rem; }
+  input.inp, select.inp, textarea.inp { width: 100%; min-height: 42px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); transition: border-color .15s, box-shadow .15s, background .15s; }
+  textarea.inp { min-height: 90px; resize: vertical; line-height: 1.5; }
+  .inp:focus { outline: none; border-color: var(--brick); box-shadow: var(--focus-ring); background: var(--panel); }
+  label.lbl { display: block; font-size: .78rem; font-weight: 600; color: var(--ink-soft); margin: 0 0 6px; }
+
+  /* ---------- Summary tiles ---------- */
+  .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
+  .tile .k { font-size: .75rem; font-weight: 600; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .05em; }
+  .tile .v { font-family: var(--display); font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; margin-top: 4px; }
+  .tile.alert .v { color: var(--brick); }
+  .tile.good .v { color: var(--ok); }
+  @media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, 1fr); } .tile:last-child { grid-column: 1 / -1; } }
+
+  /* ---------- Toolbar ---------- */
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  .tabs { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+  .tabs button { border: 0; background: none; padding: 7px 14px; border-radius: 999px; font-weight: 600; font-size: .85rem; color: var(--ink-soft); cursor: pointer; }
+  .tabs button.on { background: var(--ink); color: var(--panel); }
+  .tabs .count { opacity: .7; font-weight: 500; margin-left: 4px; }
+  .toolbar .search { flex: 1; min-width: 200px; }
+  .toolbar select.inp { width: auto; min-width: 190px; }
+
+  /* ---------- Job list ---------- */
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .job { display: grid; grid-template-columns: 110px 1fr 170px 150px 110px; gap: 14px; align-items: center; width: 100%; text-align: left; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--line-strong); border-radius: 14px; padding: 12px 16px; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
+  .job:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .job.u-Emergency { border-left-color: var(--brick); }
+  .job.u-Urgent { border-left-color: var(--warn); }
+  .job.u-Routine { border-left-color: var(--ok); }
+  .job.done { border-left-color: var(--line-strong); opacity: .85; }
+  .job .ref { font-weight: 700; font-size: .85rem; }
+  .job .sub { font-size: .78rem; color: var(--ink-soft); margin-top: 3px; }
+  .job .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job .meta { font-size: .8rem; color: var(--ink-soft); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job .money { text-align: right; font-weight: 700; font-size: .9rem; }
+  .job .money small { display: block; font-weight: 500; color: var(--ink-faint); font-size: .72rem; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.Emergency { color: var(--brick); background: var(--brick-tint); }
+  .pill.Urgent { color: var(--warn); background: var(--warn-tint); }
+  .pill.Routine { color: var(--ok); background: var(--ok-tint); }
+  .pill.status { color: var(--blue); background: var(--blue-tint); }
+  .pill.status.Completed { color: var(--ok); background: var(--ok-tint); }
+  .pill.status.Cancelled { color: var(--ink-faint); background: var(--panel-2); }
+  .pill.status.New { color: var(--brick); background: var(--brick-tint); }
+  .time { font-weight: 600; font-size: .85rem; }
+  .time.over { color: var(--brick); }
+  .time.soon { color: var(--warn); }
+  .time.ok { color: var(--ok); }
+  .profit-pos { color: var(--ok); }
+  .profit-neg { color: var(--brick); }
+  .empty { text-align: center; color: var(--ink-soft); padding: 48px 16px; background: var(--panel); border: 1px dashed var(--line-strong); border-radius: 16px; }
+  .banner { background: var(--warn-tint); border: 1px solid var(--warn); color: var(--ink); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; line-height: 1.5; }
+  @media (max-width: 900px) {
+    .job { grid-template-columns: 1fr auto; gap: 6px 12px; }
+    .job .c-issue { grid-column: 1 / -1; grid-row: 2; }
+    .job .c-time { grid-row: 3; }
+    .job .c-status { grid-row: 3; text-align: right; }
+    .job .money { grid-row: 1; grid-column: 2; }
+  }
+
+  /* ---------- Job drawer ---------- */
+  .scrim { position: fixed; inset: 0; background: rgba(10,12,16,.45); z-index: 40; animation: fade .2s; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(720px, 100vw); z-index: 41; background: var(--paper); box-shadow: var(--shadow-lift); display: flex; flex-direction: column; animation: slide .25s cubic-bezier(.16,1,.3,1); }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes slide { from { transform: translateX(40px); opacity: 0; } }
+  .d-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .d-head h2 { font-family: var(--display); font-size: 1.15rem; margin: 0; letter-spacing: -.01em; }
+  .d-head .grow { flex: 1; }
+  .d-body { overflow-y: auto; padding: 16px 18px 40px; display: flex; flex-direction: column; gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  .card h3 { font-family: var(--display); font-size: .95rem; margin: 0 0 12px; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 560px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .kv { display: grid; grid-template-columns: 150px 1fr; gap: 6px 12px; font-size: .88rem; }
+  .kv dt { color: var(--ink-soft); }
+  .kv dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; white-space: pre-wrap; }
+  @media (max-width: 560px) { .kv { grid-template-columns: 1fr; } .kv dd { margin-bottom: 6px; } }
+  .timebar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .profit-box { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 14px 16px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); }
+  .profit-box .big { font-family: var(--display); font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; }
+  .profit-box.pos { background: var(--ok-tint); border-color: var(--ok); }
+  .profit-box.pos .big { color: var(--ok); }
+  .profit-box.neg { background: var(--brick-tint); border-color: var(--brick); }
+  .profit-box.neg .big { color: var(--brick); }
+  .profit-box .lbl2 { font-size: .8rem; color: var(--ink-soft); }
+  .row-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 12px; }
+  .saved-note { font-size: .8rem; color: var(--ok); font-weight: 600; align-self: center; margin-right: auto; }
+  .complete-done { background: var(--ok-tint); border: 1px solid var(--ok); border-radius: 12px; padding: 12px 14px; line-height: 1.5; }
+  .timeline { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .timeline li { position: relative; padding: 10px 12px 10px 14px; border-radius: 12px; background: var(--panel-2); border-left: 3px solid var(--line-strong); font-size: .86rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .timeline li.k-tenant_message { border-left-color: var(--blue); }
+  .timeline li.k-completed { border-left-color: var(--ok); }
+  .timeline li.k-created { border-left-color: var(--brick); }
+  .timeline li.k-note { border-left-color: var(--ink-soft); }
+  .timeline .when { display: block; font-size: .72rem; font-weight: 600; color: var(--ink-faint); margin-bottom: 2px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--panel); padding: 10px 18px; border-radius: 999px; font-weight: 600; font-size: .88rem; z-index: 60; box-shadow: var(--shadow-lift); }
+</style>
+</head>
+<body>
+
+<!-- SIGN IN -->
+<div class="login-wrap" id="loginView" hidden>
+  <form class="login-card" id="loginForm">
+    <h1>Repair jobs</h1>
+    <p>Residential Realtors staff sign-in.</p>
+    <label class="lbl" for="pw">Password</label>
+    <input class="inp" type="password" id="pw" autocomplete="current-password" required>
+    <div class="err-msg" id="loginErr"></div>
+    <button class="btn primary" type="submit" style="width:100%; margin-top:8px; padding:12px;">Sign in</button>
+  </form>
+</div>
+
+<!-- DASHBOARD -->
+<div id="appView" hidden>
+  <div class="topbar">
+    <div class="brand">Residential Realtors <span>·</span> Repair jobs</div>
+    <div class="grow"></div>
+    <button class="btn small" id="refreshBtn" type="button">Refresh</button>
+    <button class="btn small" id="logoutBtn" type="button">Sign out</button>
+  </div>
+  <div class="wrap">
+    <div class="banner" id="dbBanner" hidden>
+      <strong>The database isn't connected yet.</strong> New reports are still emailed if email is set up, but they won't appear here
+      until a PostgreSQL database is added to the Railway project and <code>DATABASE_URL</code> is set on this service.
+    </div>
+
+    <div class="tiles">
+      <div class="tile"><div class="k">Open jobs</div><div class="v" id="tOpen">–</div></div>
+      <div class="tile alert"><div class="k">Overdue</div><div class="v" id="tOver">–</div></div>
+      <div class="tile"><div class="k">Due in 24 hours</div><div class="v" id="tSoon">–</div></div>
+      <div class="tile"><div class="k">Completed this month</div><div class="v" id="tDone">–</div></div>
+      <div class="tile good"><div class="k">Profit this month</div><div class="v" id="tProfit">–</div></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="tabs" role="tablist">
+        <button type="button" data-filter="open" class="on">Open<span class="count" id="cOpen"></span></button>
+        <button type="button" data-filter="completed">Completed<span class="count" id="cDone"></span></button>
+        <button type="button" data-filter="all">All<span class="count" id="cAll"></span></button>
+      </div>
+      <input class="inp search" id="search" type="search" placeholder="Search address, tenant, issue, reference, contractor…">
+      <select class="inp" id="sort" aria-label="Sort jobs">
+        <option value="priority">Sort: Priority (urgency, then deadline)</option>
+        <option value="due">Sort: Deadline — soonest first</option>
+        <option value="newest">Sort: Received — newest first</option>
+        <option value="oldest">Sort: Received — oldest first</option>
+        <option value="profit">Sort: Profit — highest first</option>
+      </select>
+    </div>
+
+    <div class="list" id="list"></div>
+  </div>
+</div>
+
+<!-- JOB DETAIL -->
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" hidden aria-modal="true" role="dialog" aria-labelledby="dTitle">
+  <div class="d-head">
+    <h2 id="dTitle">Job</h2>
+    <span id="dUrg"></span>
+    <span id="dStatus"></span>
+    <div class="grow"></div>
+    <button class="btn small" id="dClose" type="button" aria-label="Close">Close ✕</button>
+  </div>
+  <div class="d-body" id="dBody"></div>
+</aside>
+
+<datalist id="assignees"></datalist>
+
+<script>
+(function(){
+  'use strict';
+
+  // ---------- Helpers ----------
+  var TZ = 'Europe/London';
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
+  function num(v){ return v === null || v === undefined || v === '' ? null : Number(v); }
+  function gbp(v){ v = num(v); return v === null ? '—' : (v < 0 ? '−£' : '£') + Math.abs(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtDate(d){ return d ? new Date(d).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'; }
+  function fmtShort(d){ return d ? new Date(d).toLocaleString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'; }
+  function dur(ms){
+    ms = Math.abs(ms);
+    var m = Math.floor(ms / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+    if (d >= 1) return d + 'd ' + (h % 24) + 'h';
+    if (h >= 1) return h + 'h ' + (m % 60) + 'm';
+    return Math.max(1, m) + 'm';
+  }
+  function ago(d){ return dur(Date.now() - new Date(d).getTime()) + ' ago'; }
+  function toLocalInput(d){
+    if (!d) return '';
+    var x = new Date(d), pad = function(n){ return String(n).padStart(2, '0'); };
+    return x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()) + 'T' + pad(x.getHours()) + ':' + pad(x.getMinutes());
+  }
+  function isOpen(j){ return j.status !== 'Completed' && j.status !== 'Cancelled'; }
+  function issueOf(j){ return [j.category, j.affected, j.symptom].filter(Boolean).join(' · ') || 'Repair'; }
+  // Profit = charge to landlord minus what the job cost. Uses the actual cost once
+  // entered, otherwise the estimate (shown as "estimated").
+  function profitOf(j){
+    var charge = num(j.landlord_charge);
+    if (charge === null) return null;
+    var cost = num(j.actual_cost);
+    var estimated = false;
+    if (cost === null) { cost = num(j.estimated_cost); estimated = true; }
+    if (cost === null) return null;
+    return { value: Math.round((charge - cost) * 100) / 100, estimated: estimated, margin: charge > 0 ? (charge - cost) / charge : null };
+  }
+  function timeInfo(j){
+    if (j.completed_at) return { cls: 'ok', text: 'Completed ' + fmtShort(j.completed_at) };
+    if (!isOpen(j)) return { cls: '', text: j.status };
+    if (!j.due_at) return { cls: '', text: 'No deadline' };
+    var left = new Date(j.due_at).getTime() - Date.now();
+    if (left < 0) return { cls: 'over', text: 'Overdue by ' + dur(left) };
+    return { cls: left < 24 * 3600000 ? 'soon' : 'ok', text: dur(left) + ' left' };
+  }
+  var URG_RANK = { Emergency: 0, Urgent: 1, Routine: 2 };
+  function toast(msg){
+    var t = document.createElement('div');
+    t.className = 'toast'; t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function(){ t.remove(); }, 2600);
+  }
+
+  function api(method, url, body){
+    return fetch(url, {
+      method: method,
+      credentials: 'same-origin',
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function(r){
+      return r.json()['catch'](function(){ return { ok: false, error: 'bad-response' }; }).then(function(data){
+        if (r.status === 401) { showLogin(); }
+        data.status = r.status;
+        return data;
+      });
+    });
+  }
+
+  // ---------- State ----------
+  var jobs = [];
+  var meta = { statuses: [], urgencies: ['Emergency', 'Urgent', 'Routine'], canEmail: false, db: false };
+  var filter = 'open';
+  var openJobId = null;
+  try { var savedSort = localStorage.getItem('rrJobsSort'); if (savedSort) $('sort').value = savedSort; } catch (e) {}
+
+  // ---------- Sign in ----------
+  function showLogin(){
+    $('appView').hidden = true; closeDrawer(); $('loginView').hidden = false;
+    setTimeout(function(){ $('pw').focus(); }, 50);
+  }
+  $('loginForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    $('loginErr').textContent = '';
+    api('POST', '/api/admin/login', { password: $('pw').value }).then(function(d){
+      if (d.ok) { $('pw').value = ''; start(); return; }
+      $('loginErr').textContent = d.error === 'wrong-password' ? 'That password isn’t right.'
+        : d.error === 'too-many-attempts' ? 'Too many attempts — please wait 15 minutes.'
+        : d.error === 'admin-not-configured' ? 'Admin sign-in isn’t set up yet (ADMIN_PASSWORD is missing on the server).'
+        : 'Couldn’t sign in just now.';
+    });
+  });
+  $('logoutBtn').addEventListener('click', function(){ api('POST', '/api/admin/logout', {}).then(showLogin); });
+
+  function start(){
+    api('GET', '/api/admin/me').then(function(d){
+      if (!d.ok) { if (d.status !== 401) showLogin(); return; }
+      meta = d;
+      $('loginView').hidden = true;
+      $('appView').hidden = false;
+      $('dbBanner').hidden = !!d.db;
+      loadJobs();
+    });
+  }
+
+  // ---------- List ----------
+  function loadJobs(){
+    if (!meta.db) { jobs = []; render(); return; }
+    return api('GET', '/api/admin/jobs').then(function(d){
+      if (!d.ok) return;
+      jobs = d.jobs;
+      var names = {};
+      jobs.forEach(function(j){ if (j.assigned_to) names[j.assigned_to] = true; });
+      $('assignees').innerHTML = Object.keys(names).sort().map(function(n){ return '<option value="' + esc(n) + '">'; }).join('');
+      render();
+    });
+  }
+
+  function render(){
+    var now = new Date();
+    var open = jobs.filter(isOpen);
+    var done = jobs.filter(function(j){ return j.status === 'Completed'; });
+    var overdue = open.filter(function(j){ return j.due_at && new Date(j.due_at) < now; });
+    var soon = open.filter(function(j){ var t = j.due_at ? new Date(j.due_at) - now : Infinity; return t >= 0 && t < 24 * 3600000; });
+    var monthKey = function(d){ return new Date(d).toLocaleDateString('en-GB', { timeZone: TZ, month: '2-digit', year: 'numeric' }); };
+    var thisMonth = monthKey(now);
+    var doneMonth = done.filter(function(j){ return j.completed_at && monthKey(j.completed_at) === thisMonth; });
+    var profitMonth = doneMonth.reduce(function(sum, j){ var p = profitOf(j); return sum + (p ? p.value : 0); }, 0);
+    $('tOpen').textContent = open.length;
+    $('tOver').textContent = overdue.length;
+    $('tSoon').textContent = soon.length;
+    $('tDone').textContent = doneMonth.length;
+    $('tProfit').textContent = gbp(profitMonth);
+    $('cOpen').textContent = open.length;
+    $('cDone').textContent = done.length;
+    $('cAll').textContent = jobs.length;
+
+    var q = $('search').value.trim().toLowerCase();
+    var list = jobs.filter(function(j){
+      if (filter === 'open' && !isOpen(j)) return false;
+      if (filter === 'completed' && j.status !== 'Completed') return false;
+      if (!q) return true;
+      return [j.ref, j.property_address, j.tenant_name, j.tenant_email, j.tenant_phone, issueOf(j), j.location, j.assigned_to, j.status]
+        .join(' ').toLowerCase().indexOf(q) !== -1;
+    });
+
+    var sort = $('sort').value;
+    var due = function(j){ return j.due_at ? new Date(j.due_at).getTime() : Infinity; };
+    var created = function(j){ return new Date(j.created_at).getTime(); };
+    list.sort(function(a, b){
+      if (sort === 'newest') return created(b) - created(a);
+      if (sort === 'oldest') return created(a) - created(b);
+      if (sort === 'due') return (isOpen(b) - isOpen(a)) || (due(a) - due(b));
+      if (sort === 'profit') { var pa = profitOf(a), pb = profitOf(b); return (pb ? pb.value : -Infinity) - (pa ? pa.value : -Infinity); }
+      // Priority: open before closed, overdue first, then urgency, then deadline.
+      var oa = isOpen(a), ob = isOpen(b);
+      if (oa !== ob) return ob - oa;
+      var overA = oa && due(a) < now.getTime(), overB = ob && due(b) < now.getTime();
+      if (overA !== overB) return overB - overA;
+      return (URG_RANK[a.urgency] - URG_RANK[b.urgency]) || (due(a) - due(b));
+    });
+
+    var el = $('list');
+    if (!list.length) {
+      el.innerHTML = '<div class="empty">' + (jobs.length ? 'No jobs match.' : (meta.db ? 'No jobs yet — they’ll appear here as soon as a tenant submits a report.' : 'Connect the database to start saving jobs.')) + '</div>';
+      return;
+    }
+    el.innerHTML = list.map(function(j){
+      var t = timeInfo(j), p = profitOf(j);
+      return '<button type="button" class="job u-' + esc(j.urgency) + (isOpen(j) ? '' : ' done') + '" data-id="' + j.id + '">' +
+        '<div><div class="ref">' + esc(j.ref) + '</div><div class="sub"><span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span></div></div>' +
+        '<div class="c-issue"><div class="title">' + esc(j.property_address || 'No address') + '</div>' +
+          '<div class="meta">' + esc(issueOf(j)) + (j.tenant_name ? ' — ' + esc(j.tenant_name) : '') + '</div></div>' +
+        '<div class="c-time"><div class="time ' + t.cls + '">' + esc(t.text) + '</div><div class="sub">In ' + esc(ago(j.created_at)) + ' · ' + esc(fmtShort(j.created_at)) + '</div></div>' +
+        '<div class="c-status"><span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>' +
+          '<div class="sub">' + (j.assigned_to ? esc(j.assigned_to) : 'Unassigned') + '</div></div>' +
+        '<div class="money ' + (p ? (p.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (p ? gbp(p.value) : '—') +
+          '<small>' + (p ? (p.estimated ? 'est. profit' : 'profit') : 'no costs yet') + '</small></div>' +
+      '</button>';
+    }).join('');
+  }
+
+  $('list').addEventListener('click', function(e){
+    var b = e.target.closest('.job');
+    if (b) openJob(Number(b.dataset.id));
+  });
+  document.querySelectorAll('.tabs button').forEach(function(b){
+    b.addEventListener('click', function(){
+      filter = b.dataset.filter;
+      document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.toggle('on', x === b); });
+      render();
+    });
+  });
+  $('search').addEventListener('input', render);
+  $('sort').addEventListener('change', function(){ try { localStorage.setItem('rrJobsSort', $('sort').value); } catch (e) {} render(); });
+  $('refreshBtn').addEventListener('click', function(){ loadJobs(); if (openJobId) openJob(openJobId); });
+  setInterval(function(){ if (!$('appView').hidden) render(); }, 30000);         // keep "time left" current
+  setInterval(function(){ if (!$('appView').hidden && !openJobId) loadJobs(); }, 120000); // pick up new reports
+
+  // ---------- Tenant message templates ----------
+  var SIGN_OFF = '\n\nKind regards,\nResidential Realtors Maintenance Team';
+  var TEMPLATES = [
+    { name: 'Report received', subject: 'We’ve received your repair report [{ref}]',
+      body: 'Dear {name},\n\nThank you for reporting the issue at {address} ({issue}). Your reference is {ref}.\n\nWe’re reviewing it now and will be in touch shortly with next steps.' },
+    { name: 'Contractor assigned', subject: 'A contractor has been assigned [{ref}]',
+      body: 'Dear {name},\n\nWe’ve assigned {assigned} to your repair at {address} ({issue}).\n\nThey (or we) will contact you to arrange a convenient time to visit.' },
+    { name: 'Appointment booked', subject: 'Repair appointment booked [{ref}]',
+      body: 'Dear {name},\n\nYour repair at {address} ({issue}) has been booked in for [DATE AND TIME].\n\nThe visit will be carried out by {assigned}. Please make sure someone is available to give access, or let us know as soon as possible if this time doesn’t work.' },
+    { name: 'Update / next steps', subject: 'Update on your repair [{ref}]',
+      body: 'Dear {name},\n\nHere’s an update on your repair at {address} ({issue}).\n\n{next}\n\nWe’ll keep you posted.' },
+    { name: 'Delay — awaiting parts', subject: 'Update on your repair — awaiting parts [{ref}]',
+      body: 'Dear {name},\n\nWe’re sorry for the wait on your repair at {address} ({issue}). We’re currently waiting for parts to arrive, and we expect to be back in touch by [DATE].\n\nThank you for your patience.' },
+    { name: 'Access needed / more information', subject: 'We need a little more information [{ref}]',
+      body: 'Dear {name},\n\nTo move forward with your repair at {address} ({issue}), we need [ACCESS ON A PARTICULAR DATE / MORE PHOTOS / MORE DETAILS].\n\nPlease reply to this email or call the office at your earliest convenience.' },
+    { name: 'Job completed', subject: 'Your repair has been completed [{ref}]',
+      body: 'Dear {name},\n\nWe’re pleased to confirm that the repair at {address} ({issue}) has now been completed.\n\nIf the problem comes back or anything isn’t right, please report it again quoting {ref}.' },
+    { name: 'Follow-up check', subject: 'Checking in on your repair [{ref}]',
+      body: 'Dear {name},\n\nWe’re just checking that everything is working properly following the recent repair at {address} ({issue}).\n\nIf there’s still a problem, please let us know quoting {ref}.' }
+  ];
+  function fillTemplate(t, j){
+    var vals = {
+      name: j.tenant_name || 'Tenant',
+      ref: j.ref, address: j.property_address || 'your property',
+      issue: ([j.affected, j.symptom].filter(Boolean).join(' – ') || j.category || 'repair').toLowerCase(),
+      assigned: j.assigned_to || 'our contractor', next: j.next_steps || '[NEXT STEPS]'
+    };
+    var fill = function(s){ return s.replace(/\{(\w+)\}/g, function(_, k){ return vals[k] != null ? vals[k] : ''; }); };
+    return { subject: fill(t.subject), body: fill(t.body) + SIGN_OFF };
+  }
+
+  // ---------- Job detail ----------
+  function closeDrawer(){ $('drawer').hidden = true; $('scrim').hidden = true; openJobId = null; }
+  $('dClose').addEventListener('click', function(){ closeDrawer(); loadJobs(); });
+  $('scrim').addEventListener('click', function(){ closeDrawer(); loadJobs(); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && openJobId) { closeDrawer(); loadJobs(); } });
+
+  function openJob(id){
+    openJobId = id;
+    api('GET', '/api/admin/jobs/' + id).then(function(d){
+      if (!d.ok) { toast('Couldn’t open that job.'); return; }
+      renderJob(d.job, d.updates);
+      $('scrim').hidden = false;
+      $('drawer').hidden = false;
+    });
+  }
+
+  function renderJob(j, updates){
+    $('dTitle').textContent = j.ref;
+    $('dUrg').innerHTML = '<span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span>';
+    $('dStatus').innerHTML = '<span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>';
+    var t = timeInfo(j);
+    var completed = j.status === 'Completed';
+    var statusOpts = meta.statuses.filter(function(s){ return s !== 'Completed' || completed; });
+    var rows = function(pairs){
+      return '<dl class="kv">' + pairs.filter(function(p){ return p[1]; }).map(function(p){
+        return '<dt>' + esc(p[0]) + '</dt><dd>' + (p[2] ? p[1] : esc(p[1])) + '</dd>';
+      }).join('') + '</dl>';
+    };
+
+    $('dBody').innerHTML =
+      // Timing
+      '<div class="card"><h3>Timing</h3><div class="timebar">' +
+        '<span class="time ' + t.cls + '" style="font-size:1rem">' + esc(t.text) + '</span></div>' +
+        rows([['Received', fmtDate(j.created_at) + ' (' + ago(j.created_at) + ')'], ['Deadline', j.due_at ? fmtDate(j.due_at) : ''],
+          ['Completed', j.completed_at ? fmtDate(j.completed_at) : '']]) + '</div>' +
+
+      // Manage
+      '<div class="card"><h3>Manage job</h3>' +
+        '<div class="grid3">' +
+          '<div><label class="lbl" for="fStatus">Status</label><select class="inp" id="fStatus"' + (completed ? ' disabled' : '') + '>' +
+            statusOpts.map(function(s){ return '<option' + (s === j.status ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select></div>' +
+          '<div><label class="lbl" for="fUrg">Urgency</label><select class="inp" id="fUrg">' +
+            meta.urgencies.map(function(s){ return '<option' + (s === j.urgency ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select></div>' +
+          '<div><label class="lbl" for="fDue">Deadline</label><input class="inp" type="datetime-local" id="fDue" value="' + esc(toLocalInput(j.due_at)) + '"></div>' +
+        '</div>' +
+        '<div style="margin-top:12px"><label class="lbl" for="fAssigned">Assigned to</label>' +
+          '<input class="inp" id="fAssigned" list="assignees" placeholder="Contractor or team member" value="' + esc(j.assigned_to || '') + '"></div>' +
+        '<div style="margin-top:12px"><label class="lbl" for="fNext">Next steps</label>' +
+          '<textarea class="inp" id="fNext" placeholder="What needs to happen next, and when">' + esc(j.next_steps || '') + '</textarea></div>' +
+        '<h3 style="margin-top:18px">Costs</h3>' +
+        '<div class="grid3">' +
+          '<div><label class="lbl" for="fEst">Estimated cost (£)</label><input class="inp" id="fEst" inputmode="decimal" value="' + esc(j.estimated_cost == null ? '' : j.estimated_cost) + '"></div>' +
+          '<div><label class="lbl" for="fAct">Actual cost (£)</label><input class="inp" id="fAct" inputmode="decimal" value="' + esc(j.actual_cost == null ? '' : j.actual_cost) + '"></div>' +
+          '<div><label class="lbl" for="fCharge">Charge to landlord (£)</label><input class="inp" id="fCharge" inputmode="decimal" value="' + esc(j.landlord_charge == null ? '' : j.landlord_charge) + '"></div>' +
+        '</div>' +
+        '<div class="profit-box" id="profitBox"><div><div class="lbl2" id="profitLbl">Profit</div><div class="big" id="profitVal">—</div></div><div class="lbl2" id="profitMargin"></div></div>' +
+        '<div class="row-actions"><span class="saved-note" id="savedNote"></span><button class="btn primary" id="saveBtn" type="button">Save changes</button></div>' +
+      '</div>' +
+
+      // Complete
+      '<div class="card"><h3>Completion</h3>' +
+        (completed
+          ? '<div class="complete-done"><strong>Completed ' + esc(fmtDate(j.completed_at)) + '</strong>' +
+              (j.completion_notes ? '<br>' + esc(j.completion_notes) : '') + '</div>' +
+            '<div class="row-actions"><button class="btn" id="reopenBtn" type="button">Reopen job</button></div>'
+          : '<label class="lbl" for="fDoneNotes">Completion notes (what was done)</label>' +
+            '<textarea class="inp" id="fDoneNotes" placeholder="e.g. Replaced tap washer, tested, no further leaks"></textarea>' +
+            '<div class="row-actions"><button class="btn success" id="completeBtn" type="button">✓ Mark job completed</button></div>') +
+      '</div>' +
+
+      // Tenant message
+      '<div class="card"><h3>Message the tenant</h3>' +
+        '<label class="lbl" for="fTpl">Template</label><select class="inp" id="fTpl">' +
+          TEMPLATES.map(function(tp, i){ return '<option value="' + i + '">' + esc(tp.name) + '</option>'; }).join('') + '</select>' +
+        '<div style="margin-top:10px"><label class="lbl" for="fSubj">Subject</label><input class="inp" id="fSubj"></div>' +
+        '<div style="margin-top:10px"><label class="lbl" for="fMsg">Message</label><textarea class="inp" id="fMsg" style="min-height:190px"></textarea></div>' +
+        '<div class="row-actions">' +
+          '<button class="btn" id="copyMsg" type="button">Copy</button>' +
+          (j.tenant_email ? '<button class="btn" id="mailMsg" type="button">Open in my email</button>' : '') +
+          (meta.canEmail && j.tenant_email ? '<button class="btn primary" id="sendMsg" type="button">Send email to tenant</button>' : '') +
+        '</div>' +
+      '</div>' +
+
+      // Report
+      '<div class="card"><h3>Tenant &amp; property</h3>' + rows([
+        ['Tenant', j.tenant_name],
+        ['Email', j.tenant_email ? '<a href="mailto:' + esc(j.tenant_email) + '">' + esc(j.tenant_email) + '</a>' : '', true],
+        ['Phone', j.tenant_phone ? '<a href="tel:' + esc(j.tenant_phone.replace(/\s/g, '')) + '">' + esc(j.tenant_phone) + '</a>' : '', true],
+        ['Property', j.property_address],
+        ['Access days', j.access_days], ['Best time', j.access_time], ['Access notes', j.access_notes],
+        ['Keys to contractor', j.key_permission], ['Contractor notes', j.key_instructions]
+      ]) + '</div>' +
+      '<div class="card"><h3>Reported issue</h3>' + rows([
+        ['Issue type', j.category], ['What’s affected', j.affected], ['What’s happening', j.symptom],
+        ['Location', j.location], ['Urgency (tenant)', j.urgency], ['Description', j.description],
+        ['Photos', j.photo_count ? j.photo_count + ' (in the PDF)' : 'None']
+      ]) +
+        (j.has_pdf ? '<div class="row-actions"><a class="btn" href="/api/admin/jobs/' + j.id + '/pdf" target="_blank" rel="noopener">Open original report (PDF)</a></div>' : '') +
+      '</div>' +
+
+      // Timeline
+      '<div class="card"><h3>Updates &amp; history</h3>' +
+        '<label class="lbl" for="fNote">Add an update</label>' +
+        '<textarea class="inp" id="fNote" placeholder="What’s happened — calls made, quotes received, contractor feedback…"></textarea>' +
+        '<div class="row-actions"><button class="btn primary" id="addNote" type="button">Add update</button></div>' +
+        '<ul class="timeline">' + updates.map(function(u){
+          var label = { created: 'Report received', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', completed: 'Completed' }[u.kind] || 'Update';
+          return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + '</span>' + esc(u.body) + '</li>';
+        }).join('') + '</ul>' +
+      '</div>';
+
+    wireJob(j);
+  }
+
+  function wireJob(j){
+    // Live profit as costs are typed.
+    function readMoney(id){ var v = $(id).value.replace(/[£,\s]/g, ''); return v === '' ? null : Number(v); }
+    function updateProfit(){
+      var p = profitOf({ landlord_charge: readMoney('fCharge'), actual_cost: readMoney('fAct'), estimated_cost: readMoney('fEst') });
+      var box = $('profitBox');
+      box.classList.toggle('pos', !!p && p.value >= 0);
+      box.classList.toggle('neg', !!p && p.value < 0);
+      $('profitLbl').textContent = p && p.estimated ? 'Estimated profit (from estimated cost)' : 'Profit';
+      $('profitVal').textContent = p ? gbp(p.value) : '—';
+      $('profitMargin').textContent = p && p.margin !== null ? Math.round(p.margin * 100) + '% margin'
+        : 'Enter the charge to the landlord and a cost to see the profit';
+    }
+    ['fEst', 'fAct', 'fCharge'].forEach(function(id){ $(id).addEventListener('input', updateProfit); });
+    updateProfit();
+
+    $('saveBtn').addEventListener('click', function(){
+      var body = {};
+      var st = $('fStatus');
+      if (!st.disabled && st.value !== j.status) body.status = st.value;
+      if ($('fUrg').value !== j.urgency) body.urgency = $('fUrg').value;
+      var dueVal = $('fDue').value;
+      if (dueVal !== toLocalInput(j.due_at)) body.due_at = dueVal ? new Date(dueVal).toISOString() : null;
+      if ($('fAssigned').value.trim() !== (j.assigned_to || '')) body.assigned_to = $('fAssigned').value;
+      if ($('fNext').value.trim() !== (j.next_steps || '')) body.next_steps = $('fNext').value;
+      [['fEst', 'estimated_cost'], ['fAct', 'actual_cost'], ['fCharge', 'landlord_charge']].forEach(function(pair){
+        var v = readMoney(pair[0]);
+        if (v !== null && (isNaN(v) || v < 0)) { body.__bad = pair[0]; return; }
+        if (v !== num(j[pair[1]])) body[pair[1]] = v;
+      });
+      if (body.__bad) { toast('Please enter costs as numbers, e.g. 125.50'); $(body.__bad).focus(); return; }
+      if (!Object.keys(body).length) { $('savedNote').textContent = 'Nothing to save'; return; }
+      $('saveBtn').disabled = true;
+      api('PATCH', '/api/admin/jobs/' + j.id, body).then(function(d){
+        $('saveBtn').disabled = false;
+        if (!d.ok) { toast('Couldn’t save: ' + (d.error || 'error')); return; }
+        toast('Saved');
+        openJob(j.id);
+        loadJobs();
+      });
+    });
+
+    if ($('completeBtn')) $('completeBtn').addEventListener('click', function(){
+      if (!confirm('Mark ' + j.ref + ' as completed?')) return;
+      api('POST', '/api/admin/jobs/' + j.id + '/complete', { notes: $('fDoneNotes').value }).then(function(d){
+        if (!d.ok) { toast('Couldn’t complete the job.'); return; }
+        toast('Job completed');
+        openJob(j.id); loadJobs();
+        // Offer the "completed" message straight away.
+        setTimeout(function(){ var sel = $('fTpl'); if (sel) { sel.value = '6'; sel.dispatchEvent(new Event('change')); } }, 400);
+      });
+    });
+    if ($('reopenBtn')) $('reopenBtn').addEventListener('click', function(){
+      api('POST', '/api/admin/jobs/' + j.id + '/reopen', {}).then(function(d){
+        if (!d.ok) { toast('Couldn’t reopen the job.'); return; }
+        toast('Job reopened'); openJob(j.id); loadJobs();
+      });
+    });
+
+    function applyTemplate(){
+      var filled = fillTemplate(TEMPLATES[Number($('fTpl').value)], {
+        ref: j.ref, tenant_name: j.tenant_name, property_address: j.property_address,
+        category: j.category, affected: j.affected, symptom: j.symptom,
+        assigned_to: $('fAssigned').value.trim() || j.assigned_to, next_steps: $('fNext').value.trim() || j.next_steps
+      });
+      $('fSubj').value = filled.subject;
+      $('fMsg').value = filled.body;
+    }
+    $('fTpl').addEventListener('change', applyTemplate);
+    applyTemplate();
+
+    function logMessage(how){
+      return api('POST', '/api/admin/jobs/' + j.id + '/updates', {
+        kind: 'tenant_message', body: how + ' — ' + $('fSubj').value + '\n\n' + $('fMsg').value
+      });
+    }
+    $('copyMsg').addEventListener('click', function(){
+      var text = $('fSubj').value + '\n\n' + $('fMsg').value;
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function(){
+        toast('Copied — added to the history');
+        logMessage('Copied message for tenant').then(function(){ openJob(j.id); });
+      })['catch'](function(){ toast('Couldn’t copy — select the text and copy it instead'); });
+    });
+    if ($('mailMsg')) $('mailMsg').addEventListener('click', function(){
+      window.location.href = 'mailto:' + encodeURIComponent(j.tenant_email) +
+        '?subject=' + encodeURIComponent($('fSubj').value) + '&body=' + encodeURIComponent($('fMsg').value);
+      logMessage('Opened in email app').then(function(){ openJob(j.id); });
+    });
+    if ($('sendMsg')) $('sendMsg').addEventListener('click', function(){
+      if (!confirm('Send this email to ' + j.tenant_email + '?')) return;
+      $('sendMsg').disabled = true;
+      api('POST', '/api/admin/jobs/' + j.id + '/email-tenant', { subject: $('fSubj').value, body: $('fMsg').value }).then(function(d){
+        $('sendMsg').disabled = false;
+        if (!d.ok) { toast('Couldn’t send the email.'); return; }
+        toast('Email sent'); openJob(j.id);
+      });
+    });
+
+    $('addNote').addEventListener('click', function(){
+      var text = $('fNote').value.trim();
+      if (!text) { $('fNote').focus(); return; }
+      api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'note', body: text }).then(function(d){
+        if (!d.ok) { toast('Couldn’t add the update.'); return; }
+        toast('Update added'); openJob(j.id); loadJobs();
+      });
+    });
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>

@@ -96,6 +96,16 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Staff dashboard for managing jobs (see jobs.js); its API needs ADMIN_PASSWORD.
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+const jobs = require('./jobs')(app, {
+  sendEmail: function (opts) { return sendViaResend(opts); },
+  canEmail: function () { return !!RESEND_API_KEY; }
+});
+
 // Simple existence check the frontend can use to confirm a real backend is present
 // (there is no such endpoint when this same file runs as a claude.ai artifact).
 app.get('/api/health', (req, res) => {
@@ -320,17 +330,10 @@ app.post('/api/ai', async (req, res) => {
 });
 
 app.post('/api/send-report', async (req, res) => {
-  if (!RESEND_API_KEY) {
-    // Server is up but nobody has added the Resend API key yet in Railway's
-    // environment variables. Tell the frontend plainly so it can fall back.
-    return res.status(503).json({ ok: false, error: 'email-not-configured' });
-  }
-
   try {
     const body = req.body || {};
     const pdfBase64 = String(body.pdfBase64 || '');
     const filename = String(body.filename || 'Repair-Report.pdf').replace(/[^a-zA-Z0-9.\-_]+/g, '-');
-    const subject = String(body.subject || 'Repair report');
     const reportText = String(body.reportText || '');
     const tenantEmail = String(body.tenantEmail || '').trim();
     const sendCopyToTenant = !!body.sendCopyToTenant && !!tenantEmail;
@@ -339,35 +342,54 @@ app.post('/api/send-report', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'missing-pdf' });
     }
 
-    // 1) Email the report to Residential Realtors, PDF genuinely attached.
-    const mainResult = await sendViaResend({
-      to: [REPORT_TO_EMAIL],
-      subject: subject,
-      text: reportText,
-      attachmentFilename: filename,
-      attachmentBase64: pdfBase64
-    });
-
-    if (!mainResult.ok) {
-      return res.status(502).json({ ok: false, error: 'resend-failed', detail: mainResult.error });
+    // 1) Save it as a job in the database (when one is connected). This is the
+    // record the admin dashboard works from, so it comes first.
+    let saved = null;
+    try {
+      saved = await jobs.saveReport(body.report, pdfBase64, filename, reportText);
+    } catch (err) {
+      console.error('Saving report to database failed:', err.message);
     }
 
-    // 2) Optionally send the tenant their own copy too, best-effort — a failure
-    // here should not make the tool report failure, since the landlord copy
-    // (the important one) already went through.
+    const subject = String(body.subject || 'Repair report') + (saved ? ' [' + saved.ref + ']' : '');
+
+    // 2) Email it to Residential Realtors, PDF attached, when email is set up.
+    let emailed = false;
+    if (RESEND_API_KEY) {
+      const mainResult = await sendViaResend({
+        to: [REPORT_TO_EMAIL],
+        subject: subject,
+        text: (saved ? 'Job reference: ' + saved.ref + '\n\n' : '') + reportText,
+        attachmentFilename: filename,
+        attachmentBase64: pdfBase64
+      });
+      emailed = !!mainResult.ok;
+      if (!mainResult.ok) console.error('Report email failed:', mainResult.error);
+    }
+
+    // Neither saved nor emailed: tell the page, which falls back to the tenant
+    // emailing the PDF themselves.
+    if (!saved && !emailed) {
+      return res.status(503).json({ ok: false, error: RESEND_API_KEY ? 'resend-failed' : 'email-not-configured' });
+    }
+
+    // 3) Optionally send the tenant their own copy too, best-effort — a failure
+    // here should not make the tool report failure, since the report itself
+    // (the important part) already went through.
     let tenantCopySent = false;
-    if (sendCopyToTenant) {
+    if (sendCopyToTenant && RESEND_API_KEY) {
       const tenantResult = await sendViaResend({
         to: [tenantEmail],
-        subject: 'Your repair report — Residential Realtors',
-        text: 'This is a copy of the repair report you submitted, for your own records.\n\n' + reportText,
+        subject: 'Your repair report — Residential Realtors' + (saved ? ' [' + saved.ref + ']' : ''),
+        text: 'This is a copy of the repair report you submitted, for your own records.' +
+          (saved ? ' Your reference is ' + saved.ref + '.' : '') + '\n\n' + reportText,
         attachmentFilename: filename,
         attachmentBase64: pdfBase64
       });
       tenantCopySent = !!tenantResult.ok;
     }
 
-    return res.json({ ok: true, tenantCopySent: tenantCopySent });
+    return res.json({ ok: true, emailed: emailed, saved: !!saved, ref: saved ? saved.ref : null, tenantCopySent: tenantCopySent });
   } catch (err) {
     console.error('send-report error:', err);
     return res.status(500).json({ ok: false, error: 'server-error' });
@@ -387,9 +409,9 @@ async function sendViaResend(opts) {
         to: opts.to,
         subject: opts.subject,
         text: opts.text,
-        attachments: [
-          { filename: opts.attachmentFilename, content: opts.attachmentBase64 }
-        ]
+        attachments: opts.attachmentBase64
+          ? [{ filename: opts.attachmentFilename, content: opts.attachmentBase64 }]
+          : undefined
       })
     });
     if (!resp.ok) {
