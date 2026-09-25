@@ -990,21 +990,25 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
     </div>
     <h1 class="step-title">Your report is ready</h1>
-    <p>Tap Generate PDF report below, then tap the link that appears to open and save it, then send it to us by email, everything's already filled in for you.</p>
+    <p id="doneHint">Tap Send report below and we'll take care of the rest.</p>
     <div class="btnrow">
-      <button class="btn primary" id="downloadPdf">Generate PDF report</button>
+      <button class="btn primary" id="downloadPdf">Send report</button>
     </div>
     <a class="pdf-open-link" id="openPdfTab" href="#" target="_blank" rel="noopener" style="display:none;">Didn't download? Open the PDF in a new tab instead</a>
-    <div class="btnrow">
+    <div class="btnrow" id="manualEmailRow">
       <button class="btn ghost" id="openMail">Email to Residential Realtors</button>
       <button class="btn ghost" id="copyReport">Copy report text</button>
     </div>
-    <div class="btnrow">
+    <div class="btnrow" id="emailSelfRow">
       <button class="btn ghost" id="emailSelf">Email me a copy for my records</button>
     </div>
-    <div class="note-box">
+    <div class="note-box" id="manualNote">
       <strong>Attach the PDF before sending</strong><br>
       Email links can't attach files automatically. Once you've downloaded the PDF above, attach it in the email that opens, addressed to jayk@residentialrealtors.co.uk, before sending.
+    </div>
+    <div class="note-box" id="sentNote" style="display:none;">
+      <strong id="sentNoteHeading">Sent to Residential Realtors</strong><br>
+      <span id="sentNoteBody">Jay will receive it by email shortly, PDF attached.</span>
     </div>
     <div class="btnrow">
       <button class="btn ghost" id="startOver">Start another report</button>
@@ -2062,21 +2066,9 @@
   });
 
   // --- PDF generation ---
-  // Lazy, same reasoning as getSample() below: only ask for this the moment it's actually
-  // needed (the person taps "Generate PDF report"), not the instant the page loads for
-  // every visitor — nobody should be prompted for anything just from opening the link.
-  var downloadsNS = null;
-  var downloadsPromise = null;
-  function getDownloads(){
-    if (!downloadsPromise) {
-      if (window.claude && typeof window.claude.use === 'function') {
-        downloadsPromise = window.claude.use('downloads').then(function(ns){ downloadsNS = ns; return ns; })['catch'](function(){ downloadsNS = null; return null; });
-      } else {
-        downloadsPromise = Promise.resolve(null);
-      }
-    }
-    return downloadsPromise;
-  }
+  // No account/org-gated capability is used for this at all — every visitor gets the
+  // PDF via a plain, self-created blob link they tap themselves (see downloadPdf
+  // handler below). That works with no Claude login and no organisation membership.
 
   // --- AI (sample capability) ---
   // getSample() is awaited by every caller instead of reading a possibly-not-yet-set
@@ -2385,11 +2377,59 @@
 
   var lastPdfUrl = null;
 
+  // Turns a Blob into the plain base64 string a JSON API call can carry
+  // (strips the "data:application/pdf;base64," prefix FileReader adds).
+  function blobToBase64(blob){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onload = function(){
+        var result = String(reader.result || '');
+        var comma = result.indexOf(',');
+        resolve(comma >= 0 ? result.slice(comma + 1) : result);
+      };
+      reader.onerror = function(){ reject(reader.error || new Error('file-read-failed')); };
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // Tries the real backend (only present when this page is hosted on Railway,
+  // never inside the claude.ai artifact, which has no server of its own).
+  // Resolves to { sent:false } rather than throwing on any kind of failure,
+  // so the caller can always fall back to the manual email flow cleanly.
+  async function trySendReportToServer(blob, filename){
+    try {
+      var pdfBase64 = await blobToBase64(blob);
+      var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      var timer = controller ? setTimeout(function(){ controller.abort(); }, 20000) : null;
+      var resp = await fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller ? controller.signal : undefined,
+        body: JSON.stringify({
+          pdfBase64: pdfBase64,
+          filename: filename,
+          subject: 'Repair report — ' + state.category + ' — ' + state.address,
+          reportText: buildReportText(),
+          tenantEmail: state.email || '',
+          sendCopyToTenant: !!state.email
+        })
+      });
+      if (timer) { clearTimeout(timer); }
+      if (!resp.ok) { return { sent: false }; }
+      var data = await resp.json()['catch'](function(){ return null; });
+      if (!data || data.ok !== true) { return { sent: false }; }
+      return { sent: true, tenantCopySent: !!data.tenantCopySent };
+    } catch (err) {
+      // Network error, no route at this address (the claude.ai artifact case),
+      // or a timeout — all treated the same: quietly fall back.
+      return { sent: false };
+    }
+  }
+
   document.getElementById('downloadPdf').addEventListener('click', async function(){
     var btn = this;
-    var original = btn.textContent;
     btn.disabled = true;
-    btn.textContent = 'Preparing PDF…';
+    btn.textContent = 'Preparing your report…';
     var openLink = document.getElementById('openPdfTab');
     try {
       var blob = await Promise.race([
@@ -2402,16 +2442,35 @@
       if (lastPdfUrl) { URL.revokeObjectURL(lastPdfUrl); }
       lastPdfUrl = URL.createObjectURL(blob);
 
-      var dns = await getDownloads();
-      if (dns){
-        // Preferred path where available: a direct, mediated save with no extra tap needed.
-        await dns.save({ filename: filename, data: blob });
+      btn.textContent = 'Sending…';
+      var result = await trySendReportToServer(blob, filename);
+
+      if (result.sent) {
+        // Automatic path worked (this page is on a real server, e.g. Railway,
+        // with the email service configured) — nothing left for the tenant to do.
         btn.style.display = 'none';
-        if (openLink) { openLink.style.display = 'none'; }
+        document.getElementById('manualEmailRow').style.display = 'none';
+        document.getElementById('manualNote').style.display = 'none';
+        var doneHint = document.getElementById('doneHint');
+        if (doneHint) { doneHint.textContent = 'Your report has been sent.'; }
+        var sentNoteBody = document.getElementById('sentNoteBody');
+        if (sentNoteBody) {
+          sentNoteBody.textContent = result.tenantCopySent
+            ? 'Jay will receive it by email shortly, PDF attached — we’ve also emailed you a copy for your records.'
+            : 'Jay will receive it by email shortly, PDF attached.';
+        }
+        document.getElementById('sentNote').style.display = '';
+        if (openLink) {
+          openLink.href = lastPdfUrl;
+          openLink.setAttribute('download', filename);
+          openLink.textContent = 'Keep a copy of the PDF for yourself too';
+          openLink.style.display = 'inline-flex';
+        }
       } else {
-        // No auto-triggered download here on purpose: a script pretending to click a link is
-        // often silently blocked with no error to catch. Instead, hand the person a real link
-        // and let their own tap deliver the file, which is far more reliably permitted.
+        // No auto-triggered download here on purpose: a script pretending to click a
+        // link is often silently blocked with no error to catch. Instead, hand the
+        // person a real link and let their own tap deliver the file, which is far
+        // more reliably permitted — and works with no Claude account or org membership.
         btn.style.display = 'none';
         if (openLink) {
           openLink.href = lastPdfUrl;
@@ -2456,7 +2515,15 @@
     var openLink = document.getElementById('openPdfTab');
     if (openLink) { openLink.style.display = 'none'; openLink.href = '#'; openLink.textContent = "Didn't download? Open the PDF in a new tab instead"; }
     var genBtn = document.getElementById('downloadPdf');
-    if (genBtn) { genBtn.style.display = ''; genBtn.disabled = false; genBtn.textContent = 'Generate PDF report'; }
+    if (genBtn) { genBtn.style.display = ''; genBtn.disabled = false; genBtn.textContent = 'Send report'; }
+    var doneHint = document.getElementById('doneHint');
+    if (doneHint) { doneHint.textContent = "Tap Send report below and we'll take care of the rest."; }
+    var manualEmailRow = document.getElementById('manualEmailRow');
+    if (manualEmailRow) { manualEmailRow.style.display = ''; }
+    var manualNote = document.getElementById('manualNote');
+    if (manualNote) { manualNote.style.display = ''; }
+    var sentNote = document.getElementById('sentNote');
+    if (sentNote) { sentNote.style.display = 'none'; }
     state = { category: null, categoryKey: null, subKey: null, subLabel: null, symptomKey: null, symptomLabel: null, symptomTips: null, location: '', description: '', urgency: null, photos: [], name: '', address: '', email: '', phone: '', accessDays: [], accessTime: null, accessNotes: '', keyPermission: null, keyInstructions: '' };
     lastSkippedDiy = false;
     usedSubflow = false;
