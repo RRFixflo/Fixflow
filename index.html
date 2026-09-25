@@ -3172,18 +3172,21 @@
       'Never suggest opening a boiler casing, working on gas appliances or pipework, working on live electrics beyond resetting a labelled trip switch, or doing anything at height or on a roof. ' +
       'If the issue sounds like it could be dangerous (gas, electrical sparking or burning smell, fire, carbon monoxide), say to stop and continue with the report instead, and give no further troubleshooting steps. ' +
       'Keep the whole reply under 70 words, plain text, no headings. Respond in ' + langName + '.';
+    function stillCurrent(){
+      return key === state.categoryKey + '.' + (state.subKey || '') + '.' + (state.symptomKey || '');
+    }
     try {
       var finalText = '';
       await ns(prompt, {
         modelTier: 'quick',
         onText: function(evt){
           finalText = evt.text;
-          textEl.textContent = finalText;
+          if (stillCurrent()) textEl.textContent = finalText;
         }
       });
       aiTipsCache[key] = finalText;
     } catch(e){
-      box.style.display = 'none';
+      if (stillCurrent()) box.style.display = 'none';
     }
   }
 
