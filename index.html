@@ -2078,12 +2078,60 @@
   function getSample(){
     if (!samplePromise) {
       if (window.claude && typeof window.claude.use === 'function') {
+        // Inside the claude.ai artifact: use Claude's own AI capability directly.
         samplePromise = window.claude.use('sample').then(function(ns){ sampleNS = ns; return ns; })['catch'](function(){ sampleNS = null; return null; });
       } else {
-        samplePromise = Promise.resolve(null);
+        // Hosted elsewhere (e.g. Railway): window.claude never exists outside
+        // claude.ai, so fall back to asking our own server, which — if it has
+        // been given an Anthropic API key — proxies the same kind of request.
+        samplePromise = trySampleViaServer();
       }
     }
     return samplePromise;
+  }
+
+  // Reachability check first, so a page with no such backend (or one where nobody
+  // has added the API key yet) fails quietly rather than throwing on every call.
+  function trySampleViaServer(){
+    return fetch('/api/health')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      ['catch'](function(){ return null; })
+      .then(function(data){
+        return (data && data.ok && data.canAi) ? buildServerSampleShim() : null;
+      });
+  }
+
+  // Mimics the shape of the claude.ai "sample" capability closely enough that
+  // every existing call site (ns(prompt, opts) with onText, and ns.json(prompt))
+  // works completely unchanged, whichever source getSample() ends up using.
+  function buildServerSampleShim(){
+    function ns(prompt, opts){
+      opts = opts || {};
+      return fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompt, json: false })
+      })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          if (!data || data.ok !== true) { throw new Error('ai-failed'); }
+          if (typeof opts.onText === 'function') { opts.onText({ text: data.text }); }
+          return data.text;
+        });
+    }
+    ns.json = function(prompt){
+      return fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompt, json: true })
+      })
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          if (!data || data.ok !== true) { throw new Error('ai-failed'); }
+          return data.json;
+        });
+    };
+    return ns;
   }
 
   // --- Languages ---

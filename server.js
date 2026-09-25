@@ -15,6 +15,34 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const REPORT_TO_EMAIL = process.env.REPORT_TO_EMAIL || 'jayk@residentialrealtors.co.uk';
 const REPORT_FROM_EMAIL = process.env.REPORT_FROM_EMAIL || 'Repair Reports <onboarding@resend.dev>';
 
+// AI tips / translation / urgency-opinion settings — set RESEND_API_KEY-style in
+// Railway under Settings -> Variables:
+//   ANTHROPIC_API_KEY (required)  your own key from console.anthropic.com
+//   ANTHROPIC_MODEL   (optional)  defaults to a fast, inexpensive model
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
+
+// This endpoint has no login of its own (same as the rest of the tool), so it is
+// reachable by anyone with the link — and unlike email, every call here costs
+// real money against your Anthropic key. A simple per-IP hourly cap keeps a bad
+// actor (or a stuck retry loop) from running up a bill; it does not affect normal
+// tenant use, which is at most a handful of AI calls per report.
+app.set('trust proxy', true);
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const RATE_LIMIT_MAX_PER_IP = 40;
+const rateLimitMap = new Map();
+function allowedByRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateLimitMap.set(ip, { count: 1, windowStart: now });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX_PER_IP) return false;
+  entry.count += 1;
+  return true;
+}
+
 // The PDF (plus a photo or two folded into it) can be a few MB once base64-encoded,
 // so the default 100kb JSON body limit needs raising.
 app.use(express.json({ limit: '25mb' }));
@@ -30,7 +58,63 @@ app.get('/', (req, res) => {
 // Simple existence check the frontend can use to confirm a real backend is present
 // (there is no such endpoint when this same file runs as a claude.ai artifact).
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, canEmail: !!RESEND_API_KEY });
+  res.json({ ok: true, canEmail: !!RESEND_API_KEY, canAi: !!ANTHROPIC_API_KEY });
+});
+
+app.post('/api/ai', async (req, res) => {
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+  }
+  if (!allowedByRateLimit(req.ip)) {
+    return res.status(429).json({ ok: false, error: 'rate-limited' });
+  }
+
+  try {
+    const body = req.body || {};
+    const prompt = String(body.prompt || '').slice(0, 6000);
+    const wantJson = !!body.json;
+    if (!prompt) {
+      return res.status(400).json({ ok: false, error: 'missing-prompt' });
+    }
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(function () { return ''; });
+      console.error('Anthropic API error:', resp.status, errText.slice(0, 300));
+      return res.status(502).json({ ok: false, error: 'anthropic-error' });
+    }
+
+    const data = await resp.json();
+    const text = String((data.content && data.content[0] && data.content[0].text) || '').trim();
+
+    if (wantJson) {
+      const cleaned = text.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+      try {
+        const parsed = JSON.parse(cleaned);
+        return res.json({ ok: true, json: parsed });
+      } catch (e) {
+        return res.status(502).json({ ok: false, error: 'bad-json-from-model' });
+      }
+    }
+
+    return res.json({ ok: true, text: text });
+  } catch (err) {
+    console.error('ai endpoint error:', err);
+    return res.status(500).json({ ok: false, error: 'server-error' });
+  }
 });
 
 app.post('/api/send-report', async (req, res) => {
