@@ -377,6 +377,54 @@
     margin-top: 7px;
   }
   .field.invalid input, .field.invalid textarea, .field.invalid select { border-color: var(--danger); }
+
+  /* ---------- Address lookup ---------- */
+  .addr-wrap { position: relative; }
+  .addr-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 40;
+    list-style: none;
+    margin: 0;
+    padding: 6px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lift);
+    max-height: 300px;
+    overflow-y: auto;
+    animation: fadein .18s var(--ease);
+  }
+  .addr-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 11px 12px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  .addr-list li::before {
+    content: "";
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    background-color: var(--ink-faint);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z'/%3E%3Ccircle cx='12' cy='9.5' r='2.5'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z'/%3E%3Ccircle cx='12' cy='9.5' r='2.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .addr-list li:hover, .addr-list li.active { background: var(--brick-tint); }
+  .addr-list li:hover::before, .addr-list li.active::before { background-color: var(--brick); }
+  .addr-list li.addr-status { cursor: default; color: var(--ink-soft); }
+  .addr-list li.addr-status::before { display: none; }
+  .addr-list li.addr-status:hover { background: none; }
+  .addr-hint { font-size: 0.78rem; color: var(--ink-soft); margin-top: 7px; }
+  .addr-hint.ok { color: var(--ok); font-weight: 500; }
   .field.invalid .err { display: block; }
 
   /* ---------- Option cards (urgency, time, keys) ---------- */
@@ -1238,8 +1286,12 @@
     </div>
 
     <div class="field" id="f-address">
-      <label>Property address or reference</label>
-      <input type="text" id="propAddress" placeholder="e.g. Flat 14 Kensington Apartments, 11 Commercial Street">
+      <label for="propAddress">Property address or reference</label>
+      <div class="addr-wrap">
+        <input type="text" id="propAddress" placeholder="e.g. Flat 14 Kensington Apartments, 11 Commercial Street" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="addrList">
+        <ul class="addr-list" id="addrList" role="listbox" hidden></ul>
+      </div>
+      <div class="addr-hint" id="addrHint" hidden>Start typing your address or postcode, then pick it from the list.</div>
       <div class="err">Please enter the property address or reference.</div>
     </div>
 
@@ -2560,6 +2612,7 @@
     all.forEach(function(el){
       if (el.id === 'langGrid' || el.closest('#langGrid')) return;
       if (el.id === 'langBtnLabel') return;
+      if (el.closest('#addrList')) return;
       if (el.className === 'chev') return;
       if (el.children.length === 0 && el.textContent && el.textContent.trim().length && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE') {
         if (!el.hasAttribute('data-en')) el.setAttribute('data-en', el.textContent);
@@ -2945,6 +2998,153 @@
   }
 
   document.getElementById('startOver').addEventListener('click', resetTool);
+
+  // --- Address lookup (getAddress.io, via our own server so the key stays private) ---
+  // Only switched on when the server says it has a key; otherwise the field is a
+  // plain text box exactly as before.
+  (function(){
+    var input = document.getElementById('propAddress');
+    var list = document.getElementById('addrList');
+    var hint = document.getElementById('addrHint');
+    var HINT_TEXT = 'Start typing your address or postcode, then pick it from the list.';
+    var enabled = false;
+    var timer = null;
+    var seq = 0;
+    var items = [];
+    var activeIdx = -1;
+
+    fetch('/api/health')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){
+        if (data && data.canAddress) {
+          enabled = true;
+          hint.hidden = false;
+        }
+      })['catch'](function(){});
+
+    function setHint(text, ok){
+      hint.textContent = text;
+      hint.classList.toggle('ok', !!ok);
+    }
+
+    function close(){
+      list.hidden = true;
+      list.innerHTML = '';
+      items = [];
+      activeIdx = -1;
+      input.setAttribute('aria-expanded', 'false');
+    }
+
+    function showStatus(text){
+      list.innerHTML = '';
+      var li = document.createElement('li');
+      li.className = 'addr-status';
+      li.textContent = text;
+      list.appendChild(li);
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+    }
+
+    function render(suggestions){
+      items = suggestions;
+      activeIdx = -1;
+      list.innerHTML = '';
+      if (!suggestions.length) {
+        showStatus("No matches — you can just type the address in full instead.");
+        return;
+      }
+      suggestions.forEach(function(s, i){
+        var li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.id = 'addrOpt' + i;
+        li.textContent = s.address;
+        // mousedown (not click) so picking an item wins the race with the input's blur
+        li.addEventListener('mousedown', function(e){ e.preventDefault(); pick(i); });
+        list.appendChild(li);
+      });
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+    }
+
+    function highlight(idx){
+      var lis = list.querySelectorAll('li[role="option"]');
+      if (!lis.length) return;
+      activeIdx = (idx + lis.length) % lis.length;
+      lis.forEach(function(li, i){ li.classList.toggle('active', i === activeIdx); });
+      input.setAttribute('aria-activedescendant', lis[activeIdx].id);
+      lis[activeIdx].scrollIntoView({ block: 'nearest' });
+    }
+
+    function search(term){
+      var mine = ++seq;
+      fetch('/api/address/autocomplete?term=' + encodeURIComponent(term))
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          if (mine !== seq) return; // a newer keystroke has taken over
+          if (!data || !data.ok) {
+            showStatus(data && data.error === 'rate-limited'
+              ? 'Address search is busy — please type the address in full.'
+              : "Couldn't search addresses just now — please type the address in full.");
+            return;
+          }
+          render(data.suggestions || []);
+        })['catch'](function(){
+          if (mine === seq) showStatus("Couldn't search addresses just now — please type the address in full.");
+        });
+    }
+
+    function pick(i){
+      var s = items[i];
+      if (!s) return;
+      input.value = s.address;
+      seq++; // ignore any search still in flight
+      showStatus('Getting the full address…');
+      fetch('/api/address/get/' + encodeURIComponent(s.id))
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          if (data && data.ok && data.address && data.address.full) {
+            input.value = data.address.full;
+            setHint('✓ Address found' + (data.address.postcode ? ' — ' + data.address.postcode : ''), true);
+          } else {
+            setHint('Please check the address and add the postcode if it is missing.', false);
+          }
+        })['catch'](function(){
+          setHint('Please check the address and add the postcode if it is missing.', false);
+        })
+        .then(function(){
+          close();
+          clearError('f-address');
+        });
+    }
+
+    input.addEventListener('input', function(){
+      if (!enabled) return;
+      setHint(HINT_TEXT, false);
+      clearTimeout(timer);
+      var term = input.value.trim();
+      if (term.length < 3) { seq++; close(); return; }
+      timer = setTimeout(function(){ search(term); }, 250);
+    });
+
+    input.addEventListener('keydown', function(e){
+      if (list.hidden || !items.length) {
+        if (e.key === 'Escape') close();
+        return;
+      }
+      if (e.key === 'ArrowDown') { e.preventDefault(); highlight(activeIdx + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(activeIdx - 1); }
+      else if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); pick(activeIdx); }
+      else if (e.key === 'Escape') { close(); }
+    });
+
+    input.addEventListener('blur', function(){ setTimeout(close, 120); });
+
+    document.getElementById('startOver').addEventListener('click', function(){
+      seq++;
+      close();
+      setHint(HINT_TEXT, false);
+    });
+  })();
 
   var aiTipsCache = {};
 
