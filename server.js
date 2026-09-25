@@ -24,14 +24,30 @@ const REPORT_FROM_EMAIL = process.env.REPORT_FROM_EMAIL || 'Repair Reports <onbo
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 // Free-tier Gemini models are often briefly "experiencing high demand" (503) or
 // rate limited (429), so each request walks this list until one answers. Names
-// Google doesn't recognise (404) are simply skipped. GEMINI_MODEL, if set, is
+// Google doesn't recognise (404) are simply skipped. The Lite models come first:
+// the full Flash model took up to 52s for a few short tips in live use, while
+// Lite answers in a few seconds and is plenty for this. GEMINI_MODEL, if set, is
 // tried first.
 const GEMINI_MODELS = (process.env.GEMINI_MODEL ? [process.env.GEMINI_MODEL] : []).concat([
-  'gemini-flash-latest',
   'gemini-flash-lite-latest',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite'
+  'gemini-2.5-flash-lite',
+  'gemini-flash-latest',
+  'gemini-2.5-flash'
 ]).filter(function (m, i, all) { return all.indexOf(m) === i; });
+// How long one model gets before we give up on it and try the next. Translations
+// (JSON) return far more text than tips, so they get longer.
+const GEMINI_TIMEOUT_MS = { text: 12000, json: 30000 };
+
+// The same issue always produces the same prompt (and the same page produces the
+// same translation prompt), so answers are remembered: repeat views are instant
+// and don't use up the free allowance. Oldest entries are dropped past the cap.
+const AI_CACHE_MAX = 300;
+const aiCache = new Map();
+function aiCacheGet(key) { return aiCache.get(key); }
+function aiCacheSet(key, value) {
+  aiCache.set(key, value);
+  if (aiCache.size > AI_CACHE_MAX) aiCache.delete(aiCache.keys().next().value);
+}
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
 
@@ -189,7 +205,11 @@ async function askAnthropic(prompt, wantJson) {
 }
 
 async function askGemini(prompt, wantJson) {
+  // Overall budget across all models, so the tenant is never left waiting long;
+  // the page gives up a little after this too.
+  const deadline = Date.now() + (wantJson ? 60000 : 25000);
   for (const model of GEMINI_MODELS) {
+    if (Date.now() > deadline) break;
     const result = await askGeminiModel(model, prompt, wantJson);
     if (result.ok || !result.retryable) return result;
   }
@@ -197,22 +217,31 @@ async function askGemini(prompt, wantJson) {
 }
 
 async function askGeminiModel(model, prompt, wantJson) {
-  const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' +
-    encodeURIComponent(model) + ':generateContent', {
-    method: 'POST',
-    headers: {
-      'x-goog-api-key': GEMINI_API_KEY,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: Object.assign(
-        // Flash models may spend part of this on thinking, so leave headroom.
-        { maxOutputTokens: maxOutputTokens(wantJson) * 2 },
-        wantJson ? { responseMimeType: 'application/json' } : {}
-      )
-    })
-  });
+  const started = Date.now();
+  let resp;
+  try {
+    resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' +
+      encodeURIComponent(model) + ':generateContent', {
+      method: 'POST',
+      signal: AbortSignal.timeout(wantJson ? GEMINI_TIMEOUT_MS.json : GEMINI_TIMEOUT_MS.text),
+      headers: {
+        'x-goog-api-key': GEMINI_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: Object.assign(
+          // Flash models may spend part of this on thinking, so leave headroom.
+          { maxOutputTokens: maxOutputTokens(wantJson) * 2 },
+          wantJson ? { responseMimeType: 'application/json' } : {}
+        )
+      })
+    });
+  } catch (err) {
+    // Timed out (or the connection dropped): the next model may be quicker.
+    console.error('Gemini request failed:', model, (err && err.name) || err, 'after', Date.now() - started, 'ms');
+    return { ok: false, retryable: true };
+  }
   if (!resp.ok) {
     const errText = await resp.text().catch(function () { return ''; });
     console.error('Gemini API error:', model, resp.status, errText.replace(/\s+/g, ' ').slice(0, 200));
@@ -233,6 +262,7 @@ async function askGeminiModel(model, prompt, wantJson) {
     console.error('Gemini returned no text:', model, JSON.stringify(data).slice(0, 300));
     return { ok: false, retryable: true };
   }
+  console.log('Gemini ok:', model, Date.now() - started, 'ms');
   return { ok: true, text: text };
 }
 
@@ -258,24 +288,30 @@ app.post('/api/ai', async (req, res) => {
       return res.status(413).json({ ok: false, error: 'prompt-too-long' });
     }
 
-    const result = GEMINI_API_KEY
-      ? await askGemini(prompt, wantJson)
-      : await askAnthropic(prompt, wantJson);
-    if (!result.ok) {
-      return res.status(502).json({ ok: false, error: 'ai-provider-error' });
+    const cacheKey = (wantJson ? 'json:' : 'text:') + prompt;
+    let text = aiCacheGet(cacheKey);
+    if (text === undefined) {
+      const result = GEMINI_API_KEY
+        ? await askGemini(prompt, wantJson)
+        : await askAnthropic(prompt, wantJson);
+      if (!result.ok) {
+        return res.status(502).json({ ok: false, error: 'ai-provider-error' });
+      }
+      text = result.text;
     }
-    const text = result.text;
 
     if (wantJson) {
       const cleaned = text.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
       try {
         const parsed = JSON.parse(cleaned);
+        aiCacheSet(cacheKey, text);
         return res.json({ ok: true, json: parsed });
       } catch (e) {
         return res.status(502).json({ ok: false, error: 'bad-json-from-model' });
       }
     }
 
+    aiCacheSet(cacheKey, text);
     return res.json({ ok: true, text: text });
   } catch (err) {
     console.error('ai endpoint error:', err);

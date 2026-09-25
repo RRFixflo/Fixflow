@@ -2499,11 +2499,18 @@
   // every existing call site (ns(prompt, opts) with onText, and ns.json(prompt))
   // works completely unchanged, whichever source getSample() ends up using.
   function buildServerSampleShim(){
+    // Give up a little after the server's own budget (25s tips, 60s translations),
+    // so a stuck request ends in the normal "couldn't get advice" path instead of
+    // leaving a loading message on screen indefinitely.
+    function timeoutSignal(ms){
+      return (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(ms) : undefined;
+    }
     function ns(prompt, opts){
       opts = opts || {};
       return fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: timeoutSignal(30000),
         body: JSON.stringify({ prompt: prompt, json: false })
       })
         .then(function(r){ return r.json(); })
@@ -2517,6 +2524,7 @@
       return fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: timeoutSignal(65000),
         body: JSON.stringify({ prompt: prompt, json: true })
       })
         .then(function(r){ return r.json(); })
