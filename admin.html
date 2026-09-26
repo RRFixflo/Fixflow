@@ -2650,18 +2650,36 @@
       '</div>' +
 
       // Report
-      '<div class="card" data-pane="overview"><h3>Tenant, landlord &amp; property <span style="flex:1"></span><button class="btn small" id="editDetails" type="button">Edit details</button></h3>' + rows([
+      '<div class="card" data-pane="overview"><h3>Tenant &amp; property <span style="flex:1"></span><button class="btn small" id="editDetails" type="button">Edit details</button></h3>' + rows([
         ['Came in via', j.source],
         ['Tenant', j.tenant_name],
         ['Email', j.tenant_email ? '<a href="mailto:' + esc(j.tenant_email) + '">' + esc(j.tenant_email) + '</a>' : '', true],
         ['Phone', j.tenant_phone ? '<a href="tel:' + esc(j.tenant_phone.replace(/\s/g, '')) + '">' + esc(j.tenant_phone) + '</a>' : '', true],
-        ['Property', j.property_address],
-        ['Landlord', [LLJ.landlord_name, LLJ.landlord_address].filter(Boolean).join('\n')],
-        ['Landlord contact', [LLJ.landlord_phone ? '<a href="tel:' + esc(LLJ.landlord_phone.replace(/[^\d+]/g, '')) + '">' + esc(LLJ.landlord_phone) + '</a>' : '',
-          LLJ.landlord_email ? '<a href="mailto:' + esc(LLJ.landlord_email) + '">' + esc(LLJ.landlord_email) + '</a>' : ''].filter(Boolean).join(' · '), true]
+        ['Property', j.property_address]
       ]) + ('<div class="job-links">' + (j.property_address ? '<button class="btn small" id="propLink" type="button">All repairs at this property</button>' : '') +
-        (LLJ.id ? '<button class="btn small" id="llLink" type="button">' + esc(LLJ.landlord_name) + '’s properties</button>' : '') +
         (j.tenant_name || j.tenant_phone ? '<button class="btn small" id="tenantLink" type="button">All repairs for this tenant</button>' : '') + '</div>') + '</div>' +
+
+      // Landlord: add or change here; saving links the property to them.
+      '<div class="card" data-pane="overview" id="llCardJob"><h3>Landlord <span style="flex:1"></span>' +
+          '<button class="btn small' + (LLJ.landlord_name ? '' : ' primary') + '" id="editLl" type="button">' + (LLJ.landlord_name ? 'Change' : '+ Add landlord') + '</button></h3>' +
+        '<div id="llJobView">' + (LLJ.landlord_name
+          ? '<div style="display:flex;gap:12px;align-items:flex-start">' + avatar(LLJ.landlord_name) + '<div style="flex:1;min-width:0"><strong>' + esc(LLJ.landlord_name) + '</strong>' +
+              '<div class="prop-sub" style="margin:2px 0 0">' + [LLJ.landlord_phone ? '<a href="tel:' + esc(LLJ.landlord_phone.replace(/[^\d+]/g, '')) + '" style="color:var(--blue);text-decoration:none">' + esc(LLJ.landlord_phone) + '</a>' : '',
+                LLJ.landlord_email ? '<a href="mailto:' + esc(LLJ.landlord_email) + '" style="color:var(--blue);text-decoration:none">' + esc(LLJ.landlord_email) + '</a>' : ''].filter(Boolean).join(' · ') + '</div>' +
+              (LLJ.landlord_address ? '<div class="prop-sub" style="margin:4px 0 0;white-space:pre-line">' + esc(LLJ.landlord_address) + '</div>' : '') + '</div></div>' +
+            (LLJ.id ? '<div class="job-links"><button class="btn small" id="llLink" type="button">' + esc(LLJ.landlord_name) + '’s properties</button></div>' : '')
+          : '<p class="muted-note">No landlord saved for this property yet. Add one and they’ll be remembered for every job here.</p>') + '</div>' +
+        '<div id="llJobEdit" hidden>' +
+          '<div class="grid3">' +
+            '<div class="tenant-find"><label class="lbl" for="dlLlName">Landlord name</label><input class="inp" id="dlLlName" autocomplete="off" placeholder="Type to find a saved landlord" value="' + esc(LLJ.landlord_name || '') + '"><div class="tenant-results" id="dlLlResults" hidden></div></div>' +
+            '<div><label class="lbl" for="dlLlPhone">Phone</label><input class="inp" id="dlLlPhone" type="tel" value="' + esc(LLJ.landlord_phone || '') + '"></div>' +
+            '<div><label class="lbl" for="dlLlEmail">Email</label><input class="inp" id="dlLlEmail" type="email" value="' + esc(LLJ.landlord_email || '') + '"></div>' +
+          '</div>' +
+          '<div style="margin-top:12px"><label class="lbl" for="dlLlAddress">Address (shown on invoices)</label><textarea class="inp" id="dlLlAddress" rows="3" style="min-height:70px">' + esc(LLJ.landlord_address || '') + '</textarea></div>' +
+          '<p class="muted-note" style="margin-top:8px;font-size:.8rem">Saving adds them to your Landlords list (or updates them) and records ' + esc(j.property_address || 'this property') + ' as their property.</p>' +
+          '<div class="row-actions"><button class="btn" id="llJobCancel" type="button">Cancel</button><button class="btn primary" id="llJobSave" type="button">Save landlord</button></div>' +
+        '</div>' +
+      '</div>' +
       '<div class="card" data-pane="overview" id="accessCard"><h3>Access <span style="flex:1"></span><button class="btn small" id="editAccess" type="button">Edit</button></h3>' +
         '<div id="accessView">' + (j.access_days || j.access_time || j.access_notes || j.key_permission || j.key_instructions ? rows([
           ['Days that work', j.access_days], ['Best time', j.access_time],
@@ -2941,6 +2959,32 @@
       $('tenantLink').addEventListener('click', function(){ closeDrawer(); openTenant(tk); });
     }
     if ($('llLink')) $('llLink').addEventListener('click', function(){ closeDrawer(); openLandlord(LLJ_ID); });
+    // Landlord box: add / change the landlord for this job's property.
+    attachLandlordSuggest('dl');
+    function llJobEditing(on){
+      $('llJobView').hidden = on; $('llJobEdit').hidden = !on; $('editLl').hidden = on;
+      if (on) setTimeout(function(){ $('dlLlName').focus(); }, 50);
+    }
+    $('editLl').addEventListener('click', function(){ llJobEditing(true); });
+    $('llJobCancel').addEventListener('click', function(){ llJobEditing(false); });
+    $('llJobSave').addEventListener('click', function(){
+      var l = readLandlord('dl');
+      if (!l.landlord_name) { toast('Enter the landlord’s name'); $('dlLlName').focus(); return; }
+      if (!j.property_address) { toast('Add the property address to this job first'); return; }
+      busy($('llJobSave'), true, 'Saving…');
+      // Saved on the job; the server adds/updates the landlord and links the property.
+      api('PATCH', '/api/admin/jobs/' + j.id, l).then(function(d){
+        busy($('llJobSave'), false);
+        if (!d.ok) { toast('Couldn’t save (' + (d.error || 'error') + ')'); return Promise.reject(new Error('save failed')); }
+        if (!d.changed) {
+          // Same details as already on the job: make sure the property is linked anyway.
+          return api('POST', '/api/admin/landlords', { name: l.landlord_name, email: l.landlord_email, phone: l.landlord_phone, address: l.landlord_address, property_address: j.property_address });
+        }
+      }).then(function(){
+        toast(l.landlord_name + ' saved — ' + (j.property_address || 'this property') + ' is now their property');
+        return loadJobs();
+      }).then(function(){ openJob(j.id); })['catch'](function(){});
+    });
     if ($('propLink')) {
       var pk = propKey(j.property_address);
       var count = jobs.filter(function(o){ return propKey(o.property_address) === pk; }).length;
