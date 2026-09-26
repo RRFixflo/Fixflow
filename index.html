@@ -1345,10 +1345,6 @@
       <input type="tel" id="phone" placeholder="07…">
     </div>
 
-    <label class="diy-confirm" id="rememberWrap" style="margin-top:-6px">
-      <input type="checkbox" id="rememberMe" checked>
-      <span>Remember my name, address and contact details on this device for next time</span>
-    </label>
 
     <div class="field">
       <label>Which days generally work for access? <span class="optional">(optional)</span></label>
@@ -2532,7 +2528,6 @@
     state.phone = document.getElementById('phone').value.trim();
     state.accessNotes = document.getElementById('accessNotes').value.trim();
     state.keyInstructions = document.getElementById('keyInstructions').value.trim();
-    rememberDetails();
 
     goTo('done');
   });
@@ -3105,29 +3100,9 @@
     document.body.removeChild(ta);
   }
 
-  // Tenants who report more than once don't have to retype their details: they
-  // are kept in this browser only (never sent anywhere else) if the box is ticked.
-  var SAVED_KEY = 'rrTenantDetails';
-  function rememberDetails(){
-    try {
-      if (document.getElementById('rememberMe').checked) {
-        localStorage.setItem(SAVED_KEY, JSON.stringify({ name: state.name, address: state.address, email: state.email, phone: state.phone, accessNotes: state.accessNotes }));
-      } else {
-        localStorage.removeItem(SAVED_KEY);
-      }
-    } catch (e) { /* storage unavailable (private browsing etc.) — nothing to do */ }
-  }
-  function loadSavedDetails(){
-    var saved = null;
-    try { saved = JSON.parse(localStorage.getItem(SAVED_KEY) || 'null'); } catch (e) { saved = null; }
-    if (!saved) return;
-    [['fullName', 'name'], ['propAddress', 'address'], ['email', 'email'], ['phone', 'phone'], ['accessNotes', 'accessNotes']].forEach(function(p){
-      var el = document.getElementById(p[0]);
-      if (el && !el.value && saved[p[1]]) el.value = saved[p[1]];
-    });
-    document.getElementById('rememberMe').checked = true;
-  }
-  loadSavedDetails();
+  // Details are no longer remembered on the tenant's device (staff can look up
+  // saved tenants in the dashboard instead). Clear anything an earlier version saved.
+  try { localStorage.removeItem('rrTenantDetails'); } catch (e) { /* storage unavailable */ }
 
   function resetTool(){
     if (lastPdfUrl) { URL.revokeObjectURL(lastPdfUrl); lastPdfUrl = null; }
@@ -3168,7 +3143,6 @@
     document.getElementById('urgencyCheckResponse').style.display = 'none';
     document.getElementById('urgencyCheckText').textContent = '';
     thumbs.innerHTML = '';
-    loadSavedDetails();
     goTo(1);
   }
 
