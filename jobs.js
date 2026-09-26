@@ -61,7 +61,37 @@ CREATE TABLE IF NOT EXISTS job_updates (
 );
 CREATE INDEX IF NOT EXISTS job_updates_job_idx ON job_updates (job_id, created_at);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'Online report';
+CREATE TABLE IF NOT EXISTS contractors (
+  id         SERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  name       TEXT NOT NULL,
+  trade      TEXT,
+  phone      TEXT,
+  email      TEXT,
+  notes      TEXT,
+  active     BOOLEAN NOT NULL DEFAULT true
+);
 `;
+
+// The first contractors can be loaded from the CONTRACTORS_SEED variable (a JSON
+// list of {name, trade, phone, email, notes}) so their numbers never have to be
+// written into this public code. It is only used while the table is empty;
+// after that, contractors are managed from the dashboard.
+async function seedContractors(p) {
+  const raw = process.env.CONTRACTORS_SEED;
+  if (!raw) return;
+  const count = await p.query('SELECT count(*)::int AS n FROM contractors');
+  if (count.rows[0].n > 0) return;
+  let list;
+  try { list = JSON.parse(raw); } catch (e) { console.error('CONTRACTORS_SEED is not valid JSON'); return; }
+  if (!Array.isArray(list)) return;
+  for (const c of list) {
+    if (!c || !str(c.name)) continue;
+    await p.query('INSERT INTO contractors (name, trade, phone, email, notes) VALUES ($1, $2, $3, $4, $5)',
+      [str(c.name, 200), str(c.trade, 200), str(c.phone, 50), str(c.email, 200), str(c.notes, 1000)]);
+  }
+  console.log('Loaded ' + list.length + ' contractors from CONTRACTORS_SEED');
+}
 
 // How a job reached us. Tenant submissions are 'Online report'; staff pick one
 // of the others when adding a job by hand.
@@ -110,6 +140,7 @@ module.exports = function mountJobs(app, opts) {
     });
     pool.on('error', function (err) { console.error('Postgres pool error:', err.message); });
     ready = pool.query(SCHEMA)
+      .then(function () { return seedContractors(pool).catch(function (err) { console.error('Contractor seed failed:', err.message); }); })
       .then(function () { console.log('Jobs database ready'); return true; })
       .catch(function (err) { console.error('Jobs database setup failed:', err.message); return false; });
   } else if (DATABASE_URL && !Pool) {
@@ -323,6 +354,49 @@ module.exports = function mountJobs(app, opts) {
       await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', n]);
     }
     res.json({ ok: true, changed: true });
+  }));
+
+  // ---------- Contractors ----------
+  function cleanContractor(b) {
+    const out = {};
+    if ('name' in b) { out.name = str(b.name, 200); if (!out.name) return null; }
+    ['trade', 'email'].forEach(function (f) { if (f in b) out[f] = str(b[f], 200); });
+    if ('phone' in b) out.phone = str(b.phone, 50);
+    if ('notes' in b) out.notes = str(b.notes, 1000);
+    if ('active' in b) out.active = !!b.active;
+    return out;
+  }
+
+  app.get('/api/admin/contractors', withDb(async function (p, req, res) {
+    const r = await p.query('SELECT id, name, trade, phone, email, notes, active FROM contractors ORDER BY active DESC, lower(name)');
+    res.json({ ok: true, contractors: r.rows });
+  }));
+
+  app.post('/api/admin/contractors', withDb(async function (p, req, res) {
+    const c = cleanContractor(req.body || {});
+    if (!c || !c.name) return res.status(400).json({ ok: false, error: 'name-required' });
+    const r = await p.query('INSERT INTO contractors (name, trade, phone, email, notes) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [c.name, c.trade || null, c.phone || null, c.email || null, c.notes || null]);
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+
+  // Editing a contractor's name also updates the open jobs assigned to them, so
+  // they stay linked to the right person.
+  app.patch('/api/admin/contractors/:id', withDb(async function (p, req, res) {
+    const id = jobId(req);
+    const c = cleanContractor(req.body || {});
+    if (!c) return res.status(400).json({ ok: false, error: 'name-required' });
+    const cur = await p.query('SELECT name FROM contractors WHERE id = $1', [id]);
+    if (!cur.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    const keys = Object.keys(c);
+    if (!keys.length) return res.json({ ok: true });
+    await p.query('UPDATE contractors SET ' + keys.map(function (k, i) { return k + ' = $' + (i + 1); }).join(', ') +
+      ' WHERE id = $' + (keys.length + 1), keys.map(function (k) { return c[k]; }).concat([id]));
+    if (c.name && c.name !== cur.rows[0].name) {
+      await p.query(`UPDATE jobs SET assigned_to = $1 WHERE assigned_to = $2 AND status NOT IN ('Completed', 'Cancelled')`,
+        [c.name, cur.rows[0].name]);
+    }
+    res.json({ ok: true });
   }));
 
   // A job added by hand (phone call, email, inspection…). Uses the same cleaning

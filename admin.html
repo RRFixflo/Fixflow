@@ -202,6 +202,19 @@
   .modal .card.jf h3 { margin-bottom: 0; font-size: 1.1rem; }
   .jf-sec { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--brick); margin-top: 6px; }
   .jf.editing .jf-new { display: none; }
+  .modal .card.ct { width: min(760px, 100%); }
+  .ct-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .ct-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
+  .ct-row.off { opacity: .55; }
+  .ct-row .who { flex: 1; min-width: 160px; }
+  .ct-row .who strong { display: block; }
+  .ct-row .who span { font-size: .8rem; color: var(--ink-soft); }
+  .ct-row .tel { font-weight: 600; font-size: .88rem; color: inherit; text-decoration: none; }
+  .ct-form { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+  .wa-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .86rem; font-weight: 500; cursor: pointer; }
+  .wa-assign input { width: 17px; height: 17px; accent-color: var(--brick); }
+  .assignee-contact { font-size: .8rem; margin-top: 6px; color: var(--ink-soft); }
+  .assignee-contact a { color: inherit; font-weight: 600; }
   body.has-bulk .wrap { padding-bottom: 140px; }
   body.has-bulk .toast { bottom: 96px; }
   @media (max-width: 700px) { body.has-bulk .toast { bottom: 170px; } }
@@ -228,6 +241,7 @@
     <div class="brand">Residential Realtors <span>·</span> Repair jobs</div>
     <div class="grow"></div>
     <button class="btn small primary" id="newJobBtn" type="button">+ New job</button>
+    <button class="btn small" id="contractorsBtn" type="button">Contractors</button>
     <button class="btn small" id="refreshBtn" type="button">Refresh</button>
     <button class="btn small" id="logoutBtn" type="button">Sign out</button>
   </div>
@@ -346,10 +360,41 @@
 <datalist id="jfCats"></datalist>
 <datalist id="jfTimes"><option value="Morning"><option value="Afternoon"><option value="Evening"><option value="Anytime"></datalist>
 
+<!-- CONTRACTOR DIRECTORY -->
+<div class="modal" id="ctModal" hidden>
+  <div class="card ct">
+    <h3>Contractors <span style="flex:1"></span><button class="btn small" id="ctClose" type="button">Close ✕</button></h3>
+    <div id="ctList" class="ct-list"></div>
+    <form id="ctForm" class="ct-form" novalidate>
+      <div class="jf-sec" id="ctFormTitle">Add a contractor</div>
+      <div class="grid3">
+        <div><label class="lbl" for="ctName">Name *</label><input class="inp" id="ctName" placeholder="e.g. Jim"></div>
+        <div><label class="lbl" for="ctTrade">Trade</label><input class="inp" id="ctTrade" list="ctTrades" placeholder="e.g. Handyman"></div>
+        <div><label class="lbl" for="ctPhone">Mobile (for WhatsApp)</label><input class="inp" id="ctPhone" type="tel" placeholder="07…"></div>
+      </div>
+      <div class="grid2">
+        <div><label class="lbl" for="ctEmail">Email</label><input class="inp" id="ctEmail" type="email"></div>
+        <div><label class="lbl" for="ctNotes">Notes</label><input class="inp" id="ctNotes" placeholder="e.g. areas covered, day rate"></div>
+      </div>
+      <div class="err-msg" id="ctErr"></div>
+      <div class="row-actions">
+        <button class="btn" id="ctCancelEdit" type="button" hidden>Cancel edit</button>
+        <button class="btn primary" id="ctSave" type="submit">Add contractor</button>
+      </div>
+    </form>
+  </div>
+</div>
+<datalist id="ctTrades"><option value="Handyman"><option value="Plumber"><option value="Electrician"><option value="Electrician (EICR)"><option value="Gas engineer"><option value="Roofer"><option value="Locksmith"><option value="Decorator"><option value="Pest control"><option value="Cleaner"></datalist>
+
 <!-- PREVIEW OF THE CONTRACTOR MESSAGE -->
 <div class="modal" id="waModal" hidden>
   <div class="card">
     <h3 id="waTitle">Message for contractor</h3>
+    <div style="margin-bottom:10px">
+      <label class="lbl" for="waTo">Send to</label>
+      <select class="inp" id="waTo"></select>
+      <label class="wa-assign" id="waAssignWrap" hidden><input type="checkbox" id="waAssign" checked> <span id="waAssignText">Also assign to them</span></label>
+    </div>
     <div class="wa-preview" id="waText"></div>
     <div class="row-actions">
       <button class="btn" id="waClose" type="button">Close</button>
@@ -434,6 +479,7 @@
   var filter = 'open';
   var openJobId = null;
   var selected = new Set();   // job ids ticked in the list, to send to a contractor together
+  var contractors = [];       // the contractor directory
   try { var savedSort = localStorage.getItem('rrJobsSort'); if (savedSort) $('sort').value = savedSort; } catch (e) {}
 
   // ---------- Sign in ----------
@@ -461,7 +507,7 @@
       $('loginView').hidden = true;
       $('appView').hidden = false;
       $('dbBanner').hidden = !!d.db;
-      loadJobs();
+      loadContractors().then(loadJobs);
     });
   }
 
@@ -471,11 +517,23 @@
     return api('GET', '/api/admin/jobs').then(function(d){
       if (!d.ok) return;
       jobs = d.jobs;
-      var names = {};
-      jobs.forEach(function(j){ if (j.assigned_to) names[j.assigned_to] = true; });
-      $('assignees').innerHTML = Object.keys(names).sort().map(function(n){ return '<option value="' + esc(n) + '">'; }).join('');
+      rebuildAssignees();
       render();
     });
+  }
+
+  // "Assigned to" suggestions: contractors (with their trade) first, then any
+  // other names used on jobs before.
+  function rebuildAssignees(){
+    var seen = {};
+    var opts = contractors.filter(function(c){ return c.active; }).map(function(c){
+      seen[c.name.toLowerCase()] = true;
+      return '<option value="' + esc(c.name) + '" label="' + esc([c.trade, c.phone].filter(Boolean).join(' · ')) + '">';
+    });
+    jobs.forEach(function(j){
+      if (j.assigned_to && !seen[j.assigned_to.toLowerCase()]) { seen[j.assigned_to.toLowerCase()] = true; opts.push('<option value="' + esc(j.assigned_to) + '">'); }
+    });
+    $('assignees').innerHTML = opts.join('');
   }
 
   function render(){
@@ -624,12 +682,122 @@
     return out.join('\n');
   }
 
+  // ---------- Contractor directory ----------
+  // WhatsApp links need the number in international form: 07700 900123 -> 447700900123.
+  function waNumber(phone){
+    var d = String(phone || '').replace(/[^\d+]/g, '');
+    if (d.indexOf('+') === 0) d = d.slice(1);
+    else if (d.indexOf('00') === 0) d = d.slice(2);
+    else if (d.indexOf('0') === 0) d = '44' + d.slice(1);
+    return d.length >= 10 ? d : '';
+  }
+  function contractorByName(name){
+    var n = String(name || '').trim().toLowerCase();
+    return n ? contractors.filter(function(c){ return c.name.toLowerCase() === n; })[0] || null : null;
+  }
+  function loadContractors(){
+    if (!meta.db) return Promise.resolve();
+    return api('GET', '/api/admin/contractors').then(function(d){
+      if (d.ok) { contractors = d.contractors; rebuildAssignees(); renderContractors(); }
+    });
+  }
+  var ctEditing = null;
+  function renderContractors(){
+    var el = $('ctList');
+    if (!contractors.length) { el.innerHTML = '<div class="empty" style="padding:20px">No contractors yet — add your first one below.</div>'; return; }
+    el.innerHTML = contractors.map(function(c){
+      var open = jobs.filter(function(j){ return isOpen(j) && j.assigned_to && j.assigned_to.toLowerCase() === c.name.toLowerCase(); }).length;
+      var wa = waNumber(c.phone);
+      return '<div class="ct-row' + (c.active ? '' : ' off') + '">' +
+        '<div class="who"><strong>' + esc(c.name) + '</strong><span>' + esc([c.trade, c.active ? (open + ' open job' + (open === 1 ? '' : 's')) : 'Removed'].filter(Boolean).join(' · ')) +
+          (c.notes ? ' · ' + esc(c.notes) : '') + '</span></div>' +
+        (c.phone ? '<a class="tel" href="tel:' + esc(c.phone.replace(/\s/g, '')) + '">' + esc(c.phone) + '</a>' : '') +
+        (wa && c.active ? '<a class="btn small wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
+        '<button class="btn small" type="button" data-ct-edit="' + c.id + '">Edit</button>' +
+        '<button class="btn small" type="button" data-ct-toggle="' + c.id + '">' + (c.active ? 'Remove' : 'Restore') + '</button>' +
+      '</div>';
+    }).join('');
+  }
+  function resetContractorForm(){
+    ctEditing = null;
+    $('ctForm').reset();
+    $('ctErr').textContent = '';
+    $('ctFormTitle').textContent = 'Add a contractor';
+    $('ctSave').textContent = 'Add contractor';
+    $('ctCancelEdit').hidden = true;
+  }
+  $('contractorsBtn').addEventListener('click', function(){
+    if (!meta.db) { toast('Connect the database first'); return; }
+    resetContractorForm(); renderContractors(); $('ctModal').hidden = false;
+  });
+  $('ctClose').addEventListener('click', function(){ $('ctModal').hidden = true; });
+  $('ctModal').addEventListener('mousedown', function(e){ if (e.target === $('ctModal')) $('ctModal').hidden = true; });
+  $('ctCancelEdit').addEventListener('click', resetContractorForm);
+  $('ctList').addEventListener('click', function(e){
+    var edit = e.target.closest('[data-ct-edit]'), tog = e.target.closest('[data-ct-toggle]');
+    if (edit) {
+      var c = contractors.filter(function(x){ return x.id === Number(edit.dataset.ctEdit); })[0];
+      ctEditing = c;
+      $('ctName').value = c.name || ''; $('ctTrade').value = c.trade || ''; $('ctPhone').value = c.phone || '';
+      $('ctEmail').value = c.email || ''; $('ctNotes').value = c.notes || '';
+      $('ctFormTitle').textContent = 'Edit ' + c.name; $('ctSave').textContent = 'Save'; $('ctCancelEdit').hidden = false;
+      $('ctName').focus();
+    }
+    if (tog) {
+      var t = contractors.filter(function(x){ return x.id === Number(tog.dataset.ctToggle); })[0];
+      if (t.active && !confirm('Remove ' + t.name + ' from the contractor list? (Jobs already assigned to them keep their name.)')) return;
+      api('PATCH', '/api/admin/contractors/' + t.id, { active: !t.active }).then(function(d){
+        if (d.ok) loadContractors(); else toast('Couldn’t update ' + t.name);
+      });
+    }
+  });
+  $('ctForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var body = { name: $('ctName').value, trade: $('ctTrade').value, phone: $('ctPhone').value, email: $('ctEmail').value, notes: $('ctNotes').value };
+    if (!body.name.trim()) { $('ctErr').textContent = 'Please enter a name.'; $('ctName').focus(); return; }
+    if (body.phone.trim() && !waNumber(body.phone)) { $('ctErr').textContent = 'That phone number doesn’t look right.'; $('ctPhone').focus(); return; }
+    var req = ctEditing ? api('PATCH', '/api/admin/contractors/' + ctEditing.id, body) : api('POST', '/api/admin/contractors', body);
+    req.then(function(d){
+      if (!d.ok) { $('ctErr').textContent = 'Couldn’t save (' + (d.error || 'error') + ').'; return; }
+      toast(ctEditing ? 'Saved' : 'Added ' + body.name.trim());
+      resetContractorForm();
+      loadContractors().then(loadJobs);
+    });
+  });
+
   var waJobs = [];
   function showContractorMessage(list){
     waJobs = list;
     $('waTitle').textContent = list.length === 1 ? 'Send ' + list[0].ref + ' to a contractor' : 'Send ' + list.length + ' jobs to a contractor';
     $('waText').textContent = contractorMessage(list);
+    // Pre-pick the contractor these jobs are already assigned to, if they all share one.
+    var names = {};
+    list.forEach(function(j){ names[(j.assigned_to || '').toLowerCase()] = true; });
+    var shared = Object.keys(names).length === 1 ? contractorByName(list[0].assigned_to) : null;
+    var usable = contractors.filter(function(c){ return c.active && waNumber(c.phone); });
+    $('waTo').innerHTML = '<option value="">Choose the contact in WhatsApp</option>' + usable.map(function(c){
+      return '<option value="' + c.id + '"' + (shared && shared.id === c.id ? ' selected' : '') + '>' +
+        esc(c.name + (c.trade ? ' — ' + c.trade : '') + ' (' + c.phone + ')') + '</option>';
+    }).join('');
+    updateWaAssign();
     $('waModal').hidden = false;
+  }
+  function waChosen(){ var id = Number($('waTo').value); return contractors.filter(function(c){ return c.id === id; })[0] || null; }
+  function updateWaAssign(){
+    var c = waChosen();
+    var needs = c ? waJobs.filter(function(j){ return (j.assigned_to || '').toLowerCase() !== c.name.toLowerCase(); }).length : 0;
+    $('waAssignWrap').hidden = !needs;
+    $('waAssign').checked = true;
+    if (c) $('waAssignText').textContent = 'Also assign ' + (waJobs.length === 1 ? 'this job' : (needs === waJobs.length ? 'these ' + needs + ' jobs' : needs + ' of these jobs')) + ' to ' + c.name;
+    $('waOpen').textContent = c ? 'Open WhatsApp to ' + c.name : 'Open WhatsApp';
+  }
+  $('waTo').addEventListener('change', updateWaAssign);
+  function assignTo(list, name){
+    return Promise.all(list.filter(function(j){ return (j.assigned_to || '').toLowerCase() !== name.toLowerCase(); }).map(function(j){
+      var body = { assigned_to: name };
+      if (j.status === 'New') body.status = 'Assigned';
+      return api('PATCH', '/api/admin/jobs/' + j.id, body);
+    }));
   }
   function logContractorSend(list, how){
     var refs = list.map(function(j){ return j.ref; }).join(', ');
@@ -664,9 +832,15 @@
     // wa.me opens WhatsApp (app on a phone, WhatsApp Web on a computer) with the
     // message filled in; you then pick the contractor. Very long messages can be
     // cut off by the link, so those are copied as well.
+    var c = waChosen();
+    var list = waJobs;
     if (text.length > 3500) copyText(text)['catch'](function(){});
-    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
-    logContractorSend(waJobs, 'Job details sent to contractor on WhatsApp').then(afterSend);
+    window.open('https://wa.me/' + (c ? waNumber(c.phone) : '') + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
+    var assign = c && !$('waAssignWrap').hidden && $('waAssign').checked ? assignTo(list, c.name) : Promise.resolve();
+    assign.then(function(){
+      return logContractorSend(list, 'Job details sent on WhatsApp' + (c ? ' to ' + c.name : ''));
+    }).then(function(){ loadJobs(); afterSend(); });
+    $('waModal').hidden = true;
     if (text.length > 3500) toast('Long message — it’s also been copied, in case WhatsApp cuts it short');
   });
 
@@ -846,6 +1020,7 @@
     if (e.key !== 'Escape') return;
     if (!$('jfModal').hidden) { $('jfModal').hidden = true; return; }
     if (!$('waModal').hidden) { $('waModal').hidden = true; return; }
+    if (!$('ctModal').hidden) { $('ctModal').hidden = true; return; }
     if (openJobId) { closeDrawer(); loadJobs(); }
   });
 
@@ -889,7 +1064,8 @@
           '<div><label class="lbl" for="fDue">Deadline</label><input class="inp" type="datetime-local" id="fDue" value="' + esc(toLocalInput(j.due_at)) + '"></div>' +
         '</div>' +
         '<div style="margin-top:12px"><label class="lbl" for="fAssigned">Assigned to</label>' +
-          '<input class="inp" id="fAssigned" list="assignees" placeholder="Contractor or team member" value="' + esc(j.assigned_to || '') + '"></div>' +
+          '<input class="inp" id="fAssigned" list="assignees" placeholder="Pick a contractor or type a name" value="' + esc(j.assigned_to || '') + '">' +
+          '<div class="assignee-contact" id="assigneeContact"></div></div>' +
         '<div style="margin-top:12px"><label class="lbl" for="fNext">Next steps</label>' +
           '<textarea class="inp" id="fNext" placeholder="What needs to happen next, and when">' + esc(j.next_steps || '') + '</textarea></div>' +
         '<h3 style="margin-top:18px">Costs</h3>' +
@@ -970,6 +1146,16 @@
 
   function wireJob(j){
     $('editDetails').addEventListener('click', function(){ openJobForm(j); });
+    function showAssigneeContact(){
+      var c = contractorByName($('fAssigned').value);
+      var wa = c && waNumber(c.phone);
+      $('assigneeContact').innerHTML = c
+        ? esc([c.trade].filter(Boolean).join('')) + (c.phone ? (c.trade ? ' · ' : '') + '<a href="tel:' + esc(c.phone.replace(/\s/g, '')) + '">' + esc(c.phone) + '</a>' : '') +
+          (wa ? ' · <a href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '')
+        : ($('fAssigned').value.trim() ? 'Not in your contractor list' : '');
+    }
+    $('fAssigned').addEventListener('input', showAssigneeContact);
+    showAssigneeContact();
     // Send this job to a contractor, or group it with nearby open jobs.
     $('cWa').addEventListener('click', function(){ showContractorMessage([j]); });
     $('cCopy').addEventListener('click', function(){
