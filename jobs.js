@@ -120,6 +120,23 @@ CREATE TABLE IF NOT EXISTS property_landlords (
   landlord_id  INTEGER NOT NULL REFERENCES landlords(id) ON DELETE CASCADE,
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS tenants (
+  id         SERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  name       TEXT,
+  phone      TEXT,
+  email      TEXT,
+  notes      TEXT
+);
+CREATE TABLE IF NOT EXISTS property_tenants (
+  tenant_id    INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  property_key TEXT NOT NULL,
+  address      TEXT,
+  moved_out_at TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, property_key)
+);
 CREATE TABLE IF NOT EXISTS invoices (
   id             SERIAL PRIMARY KEY,
   job_id         INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
@@ -179,6 +196,48 @@ async function ensureLandlord(p, l, address) {
       ON CONFLICT (property_key) DO UPDATE SET landlord_id = excluded.landlord_id, address = excluded.address, updated_at = now()`, [key, str(address, 500), id]);
   }
   return id;
+}
+
+// ---------- Tenants ----------
+// A tenant is matched by phone number (last 10 digits, so 07… and +44 7… agree),
+// then email, then the same name at the same property. Details are topped up,
+// never wiped, and the property is linked (a property can have many tenants).
+function phoneTail(v) { const d = String(v || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : ''; }
+const PLACEHOLDER_NAMES = ['', 'tenant', 'tenants', 'no name'];
+async function ensureTenant(p, t, address) {
+  const name = str(t.tenant_name !== undefined ? t.tenant_name : t.name, 200);
+  const phone = str(t.tenant_phone !== undefined ? t.tenant_phone : t.phone, 50);
+  const email = str(t.tenant_email !== undefined ? t.tenant_email : t.email, 200);
+  if (!name && !phone && !email) return null;
+  const key = propKey(address);
+  let row = null;
+  const tail = phoneTail(phone);
+  if (tail) row = (await p.query(`SELECT id, name FROM tenants WHERE right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $1 ORDER BY id LIMIT 1`, [tail])).rows[0];
+  if (!row && email) row = (await p.query('SELECT id, name FROM tenants WHERE lower(email) = lower($1) ORDER BY id LIMIT 1', [email])).rows[0];
+  if (!row && name && key) row = (await p.query(`SELECT t.id, t.name FROM tenants t JOIN property_tenants pt ON pt.tenant_id = t.id
+    WHERE pt.property_key = $1 AND lower(t.name) = lower($2) ORDER BY t.id LIMIT 1`, [key, name])).rows[0];
+  let id;
+  if (row) {
+    id = row.id;
+    const betterName = name && PLACEHOLDER_NAMES.indexOf(String(row.name || '').trim().toLowerCase()) !== -1 ? name : null;
+    await p.query('UPDATE tenants SET name = coalesce($2, name), phone = coalesce(phone, $3), email = coalesce(email, $4), updated_at = now() WHERE id = $1',
+      [id, betterName, phone, email]);
+  } else {
+    id = (await p.query('INSERT INTO tenants (name, phone, email) VALUES ($1, $2, $3) RETURNING id', [name || 'Tenant', phone, email])).rows[0].id;
+  }
+  if (key) {
+    await p.query(`INSERT INTO property_tenants (tenant_id, property_key, address) VALUES ($1, $2, $3)
+      ON CONFLICT (tenant_id, property_key) DO UPDATE SET address = excluded.address`, [id, key, str(address, 500)]);
+  }
+  return id;
+}
+async function migrateTenants(p) {
+  const n = (await p.query('SELECT count(*)::int AS n FROM tenants')).rows[0].n;
+  if (n > 0) return;
+  const r = await p.query(`SELECT tenant_name, tenant_phone, tenant_email, property_address FROM jobs
+    WHERE coalesce(tenant_name, '') <> '' OR coalesce(tenant_phone, '') <> '' OR coalesce(tenant_email, '') <> '' ORDER BY created_at, id`);
+  for (const j of r.rows) await ensureTenant(p, j, j.property_address);
+  if (r.rows.length) console.log('Built the tenant list from ' + r.rows.length + ' job(s)');
 }
 
 // First run: build the landlord list from landlord details already on jobs.
@@ -295,6 +354,7 @@ module.exports = function mountJobs(app, opts) {
     ready = pool.query(SCHEMA)
       .then(function () { return seedContractors(pool).catch(function (err) { console.error('Contractor seed failed:', err.message); }); })
       .then(function () { return migrateLandlords(pool).catch(function (err) { console.error('Landlord migration failed:', err.message); }); })
+      .then(function () { return migrateTenants(pool).catch(function (err) { console.error('Tenant migration failed:', err.message); }); })
       .then(function () { console.log('Jobs database ready'); return true; })
       .catch(function (err) { console.error('Jobs database setup failed:', err.message); return false; });
   } else if (DATABASE_URL && !Pool) {
@@ -332,6 +392,7 @@ module.exports = function mountJobs(app, opts) {
       await p.query(`UPDATE jobs SET landlord_name = l.name, landlord_email = l.email, landlord_phone = l.phone, landlord_address = l.address
         FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE jobs.id = $1 AND pl.property_key = $2`, [id, propKey(r.address)]);
     } catch (err) { console.error('Landlord lookup failed:', err.message); }
+    try { await ensureTenant(p, { name: r.name, phone: r.phone, email: r.email }, r.address); } catch (err) { console.error('Saving tenant failed:', err.message); }
     // Photos are saved separately too, so staff can view them without the PDF.
     // A problem here shouldn't lose the report itself.
     try { await insertPhotos(p, id, decodePhotos(photos), 'tenant'); } catch (err) { console.error('Saving photos failed:', err.message); }
@@ -544,6 +605,10 @@ module.exports = function mountJobs(app, opts) {
     for (const n of notes) {
       await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', n]);
     }
+    if (['tenant_name', 'tenant_phone', 'tenant_email', 'property_address'].some(function (f) { return f in body; })) {
+      const tn = (await p.query('SELECT property_address, tenant_name, tenant_phone, tenant_email FROM jobs WHERE id = $1', [id])).rows[0];
+      await ensureTenant(p, tn, tn.property_address);
+    }
     // Landlord details entered on a job are saved to the landlord list and the property linked to them.
     if (['landlord_name', 'landlord_email', 'landlord_phone', 'landlord_address'].some(function (f) { return f in body; })) {
       const now = (await p.query('SELECT property_address, landlord_name, landlord_email, landlord_phone, landlord_address FROM jobs WHERE id = $1', [id])).rows[0];
@@ -604,6 +669,66 @@ module.exports = function mountJobs(app, opts) {
     if (!ok.rows.length) return res.status(404).json({ ok: false, error: 'landlord-not-found' });
     await p.query(`INSERT INTO property_landlords (property_key, address, landlord_id) VALUES ($1, $2, $3)
       ON CONFLICT (property_key) DO UPDATE SET landlord_id = excluded.landlord_id, address = excluded.address, updated_at = now()`, [key, str(b.address, 500), lid]);
+    res.json({ ok: true });
+  }));
+
+  // ---------- Tenant records ----------
+  app.get('/api/admin/tenant-records', withDb(async function (p, req, res) {
+    const t = await p.query('SELECT id, name, phone, email, notes, created_at, updated_at FROM tenants ORDER BY lower(name)');
+    const links = await p.query('SELECT tenant_id, property_key, address, moved_out_at FROM property_tenants ORDER BY created_at');
+    res.json({ ok: true, tenants: t.rows, links: links.rows });
+  }));
+
+  app.post('/api/admin/tenant-records', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    if (!str(b.name) && !str(b.phone) && !str(b.email)) return res.status(400).json({ ok: false, error: 'details-required' });
+    const id = await ensureTenant(p, { name: b.name, phone: b.phone, email: b.email }, b.property_address);
+    if ('notes' in b) await p.query('UPDATE tenants SET notes = $2 WHERE id = $1', [id, str(b.notes, 2000)]);
+    res.json({ ok: true, id: id });
+  }));
+
+  // Edit a tenant. Their open jobs get the new contact details too, so
+  // contractors are sent the right number.
+  app.patch('/api/admin/tenant-records/:id', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const id = jobId(req);
+    const cur = (await p.query('SELECT id, name, phone, email FROM tenants WHERE id = $1', [id])).rows[0];
+    if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+    const next = {
+      name: 'name' in b ? (str(b.name, 200) || cur.name) : cur.name,
+      phone: 'phone' in b ? str(b.phone, 50) : cur.phone,
+      email: 'email' in b ? str(b.email, 200) : cur.email
+    };
+    await p.query('UPDATE tenants SET name = $2, phone = $3, email = $4' + ('notes' in b ? ', notes = $5' : '') + ', updated_at = now() WHERE id = $1',
+      'notes' in b ? [id, next.name, next.phone, next.email, str(b.notes, 2000)] : [id, next.name, next.phone, next.email]);
+    const keys = (await p.query('SELECT property_key FROM property_tenants WHERE tenant_id = $1', [id])).rows.map(function (r) { return r.property_key; });
+    const open = await p.query(`SELECT id, tenant_name, tenant_phone, tenant_email, property_address FROM jobs
+      WHERE archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled')`);
+    const oldTail = phoneTail(cur.phone);
+    let updated = 0;
+    for (const j of open.rows) {
+      const samePhone = oldTail && phoneTail(j.tenant_phone) === oldTail;
+      const sameNameHere = cur.name && String(j.tenant_name || '').toLowerCase() === String(cur.name).toLowerCase() && keys.indexOf(propKey(j.property_address)) !== -1;
+      if (!samePhone && !sameNameHere) continue;
+      if (j.tenant_name === next.name && j.tenant_phone === next.phone && j.tenant_email === next.email) continue;
+      await p.query('UPDATE jobs SET tenant_name = $2, tenant_phone = $3, tenant_email = $4, updated_at = now() WHERE id = $1', [j.id, next.name, next.phone, next.email]);
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [j.id, 'change', 'Tenant details updated from the Tenants page.']);
+      updated += 1;
+    }
+    res.json({ ok: true, jobs_updated: updated });
+  }));
+
+  // Link a tenant to a property, mark them moved out / back in, or remove the link.
+  app.put('/api/admin/tenant-records/:id/property', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const id = jobId(req);
+    const key = propKey(b.address);
+    if (!key) return res.status(400).json({ ok: false, error: 'address-required' });
+    if (!(await p.query('SELECT id FROM tenants WHERE id = $1', [id])).rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    if (b.remove) { await p.query('DELETE FROM property_tenants WHERE tenant_id = $1 AND property_key = $2', [id, key]); return res.json({ ok: true }); }
+    await p.query(`INSERT INTO property_tenants (tenant_id, property_key, address, moved_out_at) VALUES ($1, $2, $3, $4)
+      ON CONFLICT (tenant_id, property_key) DO UPDATE SET moved_out_at = excluded.moved_out_at, address = coalesce(excluded.address, property_tenants.address)`,
+      [id, key, str(b.address, 500), b.moved_out ? new Date() : null]);
     res.json({ ok: true });
   }));
 
@@ -740,6 +865,39 @@ module.exports = function mountJobs(app, opts) {
   }));
 
   // ---------- Landlord invoices ----------
+  function cleanInvoiceData(d, number, total) {
+    return {
+      number: number, date: str(d.date, 20), due: str(d.due, 20), ref: str(d.ref, 100),
+      landlord: str(d.landlord, 200), landlordAddress: str(d.landlordAddress, 500), landlordEmail: str(d.landlordEmail, 200), landlordPhone: str(d.landlordPhone, 50),
+      lines: (Array.isArray(d.lines) ? d.lines : []).slice(0, 50).map(function (l) { return { desc: str(l && l.desc, 1000) || '', amount: money(l && l.amount) }; }),
+      sub: money(d.sub), vat: money(d.vat) || 0, total: total
+    };
+  }
+
+  // Edit a saved invoice in place (same record, change noted in the job history).
+  app.put('/api/admin/invoices/:id', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const total = money(b.total);
+    if (total === undefined || total === null) return res.status(400).json({ ok: false, error: 'bad-total' });
+    if (!b.data || typeof b.data !== 'object') return res.status(400).json({ ok: false, error: 'no-data' });
+    const cur = await p.query('SELECT i.id, i.job_id, i.number, i.total, j.property_address FROM invoices i JOIN jobs j ON j.id = i.job_id WHERE i.id = $1', [jobId(req)]);
+    if (!cur.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    const inv = cur.rows[0];
+    const number = str(b.invoice_number, 50) || inv.number;
+    const clean = cleanInvoiceData(b.data, number, total);
+    await p.query('UPDATE invoices SET number = $2, total = $3, landlord_name = $4, landlord_email = $5, data = $6 WHERE id = $1',
+      [inv.id, number, total, clean.landlord, clean.landlordEmail, JSON.stringify(clean)]);
+    // Keep the job's invoice summary in step when this is its latest invoice.
+    const latest = await p.query('SELECT max(id) AS id FROM invoices WHERE job_id = $1', [inv.job_id]);
+    if (latest.rows[0].id === inv.id) await p.query('UPDATE jobs SET invoice_number = $2, invoice_total = $3, updated_at = now() WHERE id = $1', [inv.job_id, number, total]);
+    if (str(b.landlord_name)) await ensureLandlord(p, b, inv.property_address);
+    const changes = [];
+    if (number !== inv.number) changes.push('number ' + inv.number + ' → ' + number);
+    if (Number(inv.total) !== total) changes.push('total ' + gbp(inv.total) + ' → ' + gbp(total));
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [inv.job_id, 'email',
+      'Invoice ' + number + ' edited' + (changes.length ? ' (' + changes.join(', ') + ')' : '') + '.']);
+    res.json({ ok: true });
+  }));
   // The PDF is made in the browser; this records that it was issued (number,
   // date, total) and remembers the landlord for this job.
   app.post('/api/admin/jobs/:id/invoice', withDb(async function (p, req, res) {
@@ -759,13 +917,7 @@ module.exports = function mountJobs(app, opts) {
     // Keep the whole invoice so it can be opened and resent exactly as issued.
     let invoiceId = null;
     if (b.data && typeof b.data === 'object') {
-      const d = b.data;
-      const clean = {
-        number: number, date: str(d.date, 20), due: str(d.due, 20), ref: str(d.ref, 100),
-        landlord: str(d.landlord, 200), landlordAddress: str(d.landlordAddress, 500), landlordEmail: str(d.landlordEmail, 200), landlordPhone: str(d.landlordPhone, 50),
-        lines: (Array.isArray(d.lines) ? d.lines : []).slice(0, 50).map(function (l) { return { desc: str(l && l.desc, 1000) || '', amount: money(l && l.amount) }; }),
-        sub: money(d.sub), vat: money(d.vat) || 0, total: total
-      };
+      const clean = cleanInvoiceData(b.data, number, total);
       invoiceId = (await p.query('INSERT INTO invoices (job_id, number, total, landlord_name, landlord_email, data) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
         [id, number, total, clean.landlord, clean.landlordEmail, JSON.stringify(clean)])).rows[0].id;
     }
@@ -1037,6 +1189,7 @@ module.exports = function mountJobs(app, opts) {
       [id, 'created', 'Job added by staff (' + source + ', ' + urgency + ').' +
         (str(body.assigned_to) ? ' Assigned to ' + str(body.assigned_to, 200) + '.' : '')]);
     if (str(body.landlord_name)) await ensureLandlord(p, body, body.property_address);
+    await ensureTenant(p, body, body.property_address);
     res.json({ ok: true, id: id, ref: refFor(id) });
   }));
 
