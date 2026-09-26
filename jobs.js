@@ -89,6 +89,7 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_name TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_email TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_phone TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_address TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contractor_paid_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_number TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_total NUMERIC(10,2);
@@ -115,24 +116,33 @@ CREATE TABLE IF NOT EXISTS contractors (
 );
 `;
 
-// The first contractors can be loaded from the CONTRACTORS_SEED variable (a JSON
-// list of {name, trade, phone, email, notes}) so their numbers never have to be
-// written into this public code. It is only used while the table is empty;
-// after that, contractors are managed from the dashboard.
+// Contractors can be loaded from the CONTRACTORS_SEED variable (a JSON list of
+// {name, trade, phone, email, notes}) so their details never have to be written
+// into this public code. On startup any listed contractor not already in the
+// directory (matched by name, phone or email) is added; existing ones, including
+// any edited or removed in the dashboard, are left alone.
 async function seedContractors(p) {
   const raw = process.env.CONTRACTORS_SEED;
   if (!raw) return;
-  const count = await p.query('SELECT count(*)::int AS n FROM contractors');
-  if (count.rows[0].n > 0) return;
   let list;
   try { list = JSON.parse(raw); } catch (e) { console.error('CONTRACTORS_SEED is not valid JSON'); return; }
   if (!Array.isArray(list)) return;
+  const have = (await p.query('SELECT name, phone, email FROM contractors')).rows;
+  const digits = function (v) { return String(v || '').replace(/\D/g, ''); };
+  let added = 0;
   for (const c of list) {
     if (!c || !str(c.name)) continue;
+    const known = have.some(function (h) {
+      return h.name.trim().toLowerCase() === str(c.name).toLowerCase() ||
+        (digits(c.phone) && digits(h.phone) === digits(c.phone)) ||
+        (str(c.email) && String(h.email || '').toLowerCase() === str(c.email).toLowerCase());
+    });
+    if (known) continue;
     await p.query('INSERT INTO contractors (name, trade, phone, email, notes) VALUES ($1, $2, $3, $4, $5)',
       [str(c.name, 200), str(c.trade, 200), str(c.phone, 50), str(c.email, 200), str(c.notes, 1000)]);
+    added += 1;
   }
-  console.log('Loaded ' + list.length + ' contractors from CONTRACTORS_SEED');
+  if (added) console.log('Added ' + added + ' contractor' + (added === 1 ? '' : 's') + ' from CONTRACTORS_SEED');
 }
 
 // How a job reached us. Tenant submissions are 'Online report'; staff pick one
@@ -149,7 +159,7 @@ const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenan
   estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
   archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved,
   (SELECT array_agg(ph.id ORDER BY ph.id) FROM job_photos ph WHERE ph.job_id = jobs.id) AS photo_ids,
-  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total`;
+  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total, contractor_paid_at`;
 
 function str(v, max) {
   if (v === undefined || v === null) return null;
@@ -496,7 +506,11 @@ module.exports = function mountJobs(app, opts) {
   // with landlords.
   const RECIPIENTS = {
     Council: 'the local council (for example environmental health, housing standards, pest control, highways, waste and bins, building control, or council tax — pick the right department from the issue and instructions). Write formally, identify the property clearly, explain the problem factually, say what action is requested of the council, and ask for a reference number and timescale.',
-    Landlord: 'the landlord who owns the property. Keep it professional and concise: what was reported, what has been done so far, the recommended next step, and any cost that needs their approval.',
+    Landlord: 'the landlord who owns the property. Unless the staff instructions ask for something different, structure it in plain text with short numbered headings: ' +
+      '1. The issue: what the tenant reported, where in the property, when, how urgent, and anything already done. ' +
+      '2. Possible solutions: one to three realistic options a UK contractor would typically consider for this kind of problem, each explained in a sentence or two in plain English, with the one we recommend marked, and a note that the exact fix will be confirmed once a contractor has inspected. ' +
+      '3. Cost estimates: an estimate for each option (see the cost rules below). ' +
+      'Then ask the landlord to approve the recommended option (or tell us which they prefer) so the work can go ahead, briefly mentioning any urgency, safety or legal repairing obligation where it genuinely applies. Professional, clear and concise.',
     Tenant: 'the tenant who lives at the property. Be warm, clear and reassuring, in plain English, with any next steps for them.',
     Contractor: 'a contractor who will carry out the work. Be practical: the job, the address, access arrangements and tenant contact, and what is needed by when.',
     Other: 'the recipient described in the instructions.'
@@ -528,16 +542,24 @@ module.exports = function mountJobs(app, opts) {
         fact('Access notes', j.access_notes) + fact('Keys can be released to contractor', j.key_permission) + fact('Contractor notes', j.key_instructions);
     }
     if (recipient === 'Landlord') {
-      facts += fact('Estimated cost to landlord', j.landlord_charge != null ? '£' + Number(j.landlord_charge).toFixed(2) : null);
+      facts += fact('Cost to landlord (our estimate for the recommended work)', j.landlord_charge != null ? '£' + Number(j.landlord_charge).toFixed(2) : null) +
+        fact('Photos provided by the tenant', j.photo_count || null);
     }
-    const history = u.rows.reverse().map(function (x) { return '- ' + when(x.created_at) + ': ' + String(x.body).replace(/\s+/g, ' ').slice(0, 300); }).join('\n');
+    // Cost changes in the history are internal (what we pay, our charge) and never go into a draft.
+    const COST_CHANGE = /(Estimated cost|Actual cost|Charge to landlord)\s*:/i;
+    const history = u.rows.reverse().filter(function (x) { return !(x.kind === 'change' && COST_CHANGE.test(x.body)); }).map(function (x) { return '- ' + when(x.created_at) + ': ' + String(x.body).replace(/\s+/g, ' ').slice(0, 300); }).join('\n');
 
     const prompt = 'You write emails for Residential Realtors, a UK letting and property management agency, about property repairs.\n\n' +
       'Write an email to ' + RECIPIENTS[recipient] + (toName ? ' Address it to: ' + toName + '.' : '') + '\n\n' +
       'Job details:\n' + facts + (history ? '\nRecent history:\n' + history + '\n' : '') +
       (instructions ? '\nWhat this email needs to do (from the staff member): ' + instructions + '\n' : '') +
-      '\nRules: use UK English. Only use the facts above — never invent names, dates, costs, reference numbers or events; where something is needed but unknown, put a placeholder in square brackets such as [DATE]. ' +
-      'Include the job reference. Do not mention internal costs, profit or margins' + (recipient === 'Landlord' ? ' other than the cost to the landlord given above' : '') + '. ' +
+      '\nRules: use UK English. Only use the facts above — never invent names, dates, ' + (recipient === 'Landlord' ? '' : 'costs, ') + 'reference numbers or events; where something is needed but unknown, put a placeholder in square brackets such as [DATE]. ' +
+      (recipient === 'Landlord'
+        ? 'Cost rules: if a "Cost to landlord" is given above, present it as our estimate for the recommended option. If the staff instructions give prices, use those exactly. ' +
+          'For any option without a given price, give an approximate typical UK price range (for example "typically £120–£200 including labour"), clearly labelled as an estimate that will be confirmed by a contractor\'s quote. ' +
+          'Never mention what we pay contractors, internal costs, profit or margins. '
+        : 'Do not mention internal costs, profit or margins. ') +
+      'Include the job reference. ' +
       'Sign off as "Residential Realtors Maintenance Team". Keep it as short as the purpose allows. ' +
       (variation ? 'This is alternative draft number ' + variation + ', so word it differently from a standard version. ' : '') +
       'Reply with ONLY a JSON object: {"subject": "...", "body": "..."} where body is plain text with \\n line breaks and no markdown.';
@@ -597,6 +619,71 @@ module.exports = function mountJobs(app, opts) {
   // Suggests an itemised breakdown of the charge to the landlord (labour,
   // materials, call-out…) that adds up exactly to the total staff entered. It's
   // a starting point for staff to check and edit, never sent without review.
+  // ---------- Contractor payments ----------
+  // Marks jobs as paid (or not paid) to the contractor. What's owed is worked
+  // out in the dashboard from each job's actual cost and contractor.
+  app.post('/api/admin/contractor-payments', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const ids = (Array.isArray(b.job_ids) ? b.job_ids : []).map(function (x) { return parseInt(x, 10); }).filter(function (x) { return x > 0; }).slice(0, 500);
+    if (!ids.length) return res.status(400).json({ ok: false, error: 'no-jobs' });
+    const paid = b.paid !== false;
+    const r = await p.query(
+      'UPDATE jobs SET contractor_paid_at = ' + (paid ? 'coalesce(contractor_paid_at, now())' : 'NULL') + ', updated_at = now() WHERE id = ANY($1::int[]) RETURNING id, assigned_to, actual_cost',
+      [ids]);
+    const note = str(b.note, 200);
+    for (const row of r.rows) {
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [row.id, 'change',
+        paid ? 'Contractor paid' + (row.assigned_to ? ' (' + row.assigned_to + ')' : '') + (row.actual_cost != null ? ': ' + gbp(row.actual_cost) : '') + (note ? ' — ' + note : '') + '.'
+             : 'Contractor payment un-marked.']);
+    }
+    res.json({ ok: true, updated: r.rows.length });
+  }));
+
+  // ---------- Assistant: plain-English (or spoken) commands ----------
+  // Turns something like "add a gas safety for 6 Whitworth House" into a
+  // structured job draft. Nothing is created here: the dashboard matches the
+  // property, tenant and contractor and shows the draft for staff to confirm.
+  app.post('/api/admin/assistant', withDb(async function (p, req, res) {
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    // Pasted messages can carry invisible direction marks around phone numbers.
+    const text = str(String((req.body || {}).text || '').replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, ''), 6000);
+    if (!text) return res.status(400).json({ ok: false, error: 'no-text' });
+    const trades = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY name')).rows
+      .map(function (c) { return c.name + (c.trade ? ' (' + c.trade + ')' : ''); }).join('; ');
+    const prompt = 'You turn instructions from a UK letting agent\'s maintenance manager into repair jobs for their job system.\n\n' +
+      'Instruction (spoken via speech-to-text, so allow for mis-heard words, or a pasted message that may list several properties, each with its tasks and tenant contacts), between the ---- lines:\n----\n' + text + '\n----\n\n' +
+      'Their contractors: ' + (trades || 'none listed') + '.\n\n' +
+      'Make exactly one job per property address mentioned (a pasted message may contain several, often each followed by "for Jim" or similar). Put all the tasks for the same property into that one job. For each job give:\n' +
+      '- address: the property as said, tidied up (e.g. "6 Whitworth House"); keep flat/house numbers exactly\n' +
+      '- category: a short issue type, e.g. "Gas safety", "EICR", "Plumbing", "Heating and boiler", "Electrics", "Damp and mould", "Doors and locks", "Pest control", "General repair"\n' +
+      '- title: a short job title, e.g. "Annual gas safety check (CP12)", or for several tasks a summary like "General repairs (5 items)"\n' +
+      '- description: for one task, one or two plain sentences for the contractor. For several tasks, one task per line (separated by \\n), each written clearly and keeping every detail given (room, item, what to do); do not drop or merge tasks. For gas safety checks and EICRs, and whenever the instruction says so, end with "Please contact the tenant directly to arrange a time."\n' +
+      '- tenants: the tenants for that property exactly as given in the instruction, as [{"name": "", "phone": ""}] (name "" if only a number is given; numbers written as given); [] if none given\n' +
+      '- urgency: "Emergency" (danger, no heating/water in winter, major leak), "Urgent", or "Routine" (checks, certificates, minor repairs)\n' +
+      '- contractor: the contractor name from the list that fits the trade or was named, or "" if none fits\n' +
+      '- send: true if the instruction asks to send, email or message it to the contractor, or to get them to arrange it; otherwise false\n' +
+      '- warning: if any task involves a gas appliance or gas supply (hob, cooker, boiler, gas fire, gas smell) and the chosen contractor is not a gas engineer, a short note such as "Gas hob fault needs a Gas Safe registered engineer"; otherwise ""\n' +
+      'Never invent tenant names, phone numbers, addresses or dates; only use what is in the instruction.\n' +
+      'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], "understood": true}. ' +
+      'If the instruction is not about creating a job, reply {"jobs": [], "understood": false}.';
+    const result = await opts.askAi(prompt, true);
+    if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
+    let parsed = null;
+    try { parsed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()); } catch (e) { parsed = null; }
+    if (!parsed) return res.status(502).json({ ok: false, error: 'ai-bad-reply' });
+    const jobs = (Array.isArray(parsed.jobs) ? parsed.jobs : []).slice(0, 20).map(function (j) {
+      return {
+        address: str(j.address, 300) || '', category: str(j.category, 100) || '', title: str(j.title, 200) || '',
+        description: str(j.description, 2000) || '', urgency: URGENCIES.indexOf(j.urgency) !== -1 ? j.urgency : 'Routine',
+        contractor: str(j.contractor, 200) || '', send: !!j.send, warning: str(j.warning, 300) || '',
+        tenants: (Array.isArray(j.tenants) ? j.tenants : []).slice(0, 10).map(function (t) {
+          return { name: str(t && t.name, 200) || '', phone: str(t && t.phone, 50) || '' };
+        }).filter(function (t) { return t.name || t.phone; })
+      };
+    }).filter(function (j) { return j.address || j.title; });
+    res.json({ ok: true, jobs: jobs, understood: parsed.understood !== false && jobs.length > 0 });
+  }));
+
   app.post('/api/admin/jobs/:id/ai-invoice', withDb(async function (p, req, res) {
     if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
     const total = money((req.body || {}).total);
