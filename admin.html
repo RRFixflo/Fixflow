@@ -754,10 +754,12 @@
       <button type="button">Add a gas safety for 6 Whitworth House and send it to DPH</button>
       <button type="button">Leaking tap in the bathroom at Flat 4, 22 Queen Street, give it to Jim</button>
       <button type="button">EICR needed at 9 Park Road</button>
+      <button type="button">Add a contractor: Miguel from NW Cleaning, cleaner, 07404 043045</button>
     </div>
     <div class="err-msg" id="askErr" style="margin:0"></div>
     <div class="row-actions" style="margin-top:0"><span class="muted-note" style="margin-right:auto;font-size:.78rem">Ctrl + Enter to go</span><button class="btn" id="askClose" type="button">Close</button><button class="btn primary" id="askGo" type="button">✦ Go</button></div>
     <div class="row-actions" id="askAllRow" style="margin-top:0" hidden><span class="muted-note" id="askAllNote" style="margin-right:auto"></span><button class="btn primary" id="askAll" type="button">Create all</button></div>
+    <div id="askContacts" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askDrafts" style="display:flex;flex-direction:column;gap:12px"></div>
   </div>
 </div>
@@ -3738,7 +3740,7 @@
   var rec = null, listening = false;
   function openAsk(mode){
     $('askModal').hidden = false; $('askErr').textContent = '';
-    if (!askDrafts.length) { $('askText').value = ''; $('askDrafts').innerHTML = ''; $('askAllRow').hidden = true; }
+    if (!askDrafts.length && !askContacts.length) { $('askText').value = ''; $('askDrafts').innerHTML = ''; $('askContacts').innerHTML = ''; $('askAllRow').hidden = true; }
     setAskMode(mode === 'email' ? 'email' : (typeof mode === 'string' ? mode : askMode));
     setTimeout(function(){ $('askText').focus(); }, 50);
   }
@@ -3796,7 +3798,9 @@
     api('POST', '/api/admin/assistant', { text: text, mode: askMode }).then(function(d){
       busy($('askGo'), false);
       if (!d.ok) { $('askErr').textContent = 'The AI is busy — please try again in a moment.'; return; }
-      if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs for you — try something like “add a gas safety for 6 Whitworth House”.'; $('askDrafts').innerHTML = ''; askDrafts = []; $('askAllRow').hidden = true; return; }
+      if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs and contacts — try “add a gas safety for 6 Whitworth House” or “add a contractor: Miguel, cleaner, 07404 043045”.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; renderAskContacts(); $('askAllRow').hidden = true; return; }
+      askContacts = (d.contacts || []).slice();
+      renderAskContacts();
       askDrafts = d.jobs.map(function(x){
         var pr = matchProperty(x.address), ts = tenantsAt(pr), c = matchContractor(x.contractor);
         return { ai: x, property: pr, tenants: ts, contractor: c, source: askSource };
@@ -3837,6 +3841,60 @@
     var who = Array.from(new Set(askDrafts.map(function(d){ return d.contractor ? d.contractor.name : ''; }).filter(Boolean)));
     $('askAllNote').textContent = askDrafts.length + ' jobs ready' + (who.length === 1 ? ' for ' + who[0] : '') + ' — check them, then create them all at once.';
   }
+  // Contacts from an instruction: new contractors, landlords and tenants.
+  var askContacts = [];
+  function renderAskContacts(){
+    var label = { contractor: 'contractor', landlord: 'landlord', tenant: 'tenant' };
+    $('askContacts').innerHTML = askContacts.map(function(c, i){
+      var name = c.type === 'contractor' && c.company && c.name ? c.name + ' (' + c.company + ')' : (c.name || c.company);
+      var dupe = c.type === 'contractor' ? contractors.filter(function(k){ return k.name.toLowerCase() === String(name).toLowerCase() || (phoneTail(c.phone) && phoneTail(k.phone) === phoneTail(c.phone)); })[0]
+        : c.type === 'landlord' ? landlords.filter(function(k){ return k.name.toLowerCase() === String(name).toLowerCase(); })[0]
+        : tenantRecs.filter(function(k){ return phoneTail(c.phone) && phoneTail(k.phone) === phoneTail(c.phone); })[0];
+      return '<div class="draft cdraft" data-i="' + i + '">' +
+        '<div style="display:flex;align-items:center;gap:8px"><strong>New ' + label[c.type] + '</strong><span style="flex:1"></span>' +
+          '<select class="inp" data-c="type" style="width:auto">' + ['contractor', 'landlord', 'tenant'].map(function(t){ return '<option value="' + t + '"' + (t === c.type ? ' selected' : '') + '>' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>'; }).join('') + '</select></div>' +
+        (dupe ? '<div class="banner" style="margin:0">You already have ' + esc(dupe.name) + ' saved — saving will ' + (c.type === 'contractor' ? 'add another entry' : 'update their details') + '.</div>' : '') +
+        '<div class="grid3">' +
+          '<div><label class="lbl">Name</label><input class="inp" data-c="name" value="' + esc(name) + '"></div>' +
+          '<div><label class="lbl">Phone</label><input class="inp" data-c="phone" value="' + esc(c.phone) + '"></div>' +
+          '<div><label class="lbl">Email</label><input class="inp" data-c="email" value="' + esc(c.email) + '"></div>' +
+        '</div>' +
+        '<div class="grid2">' +
+          '<div' + (c.type === 'contractor' ? '' : ' hidden') + ' data-show="contractor"><label class="lbl">Trade</label><input class="inp" data-c="trade" value="' + esc(c.trade) + '"></div>' +
+          '<div' + (c.type === 'contractor' ? ' hidden' : '') + ' data-show="landlord tenant"><label class="lbl">Property</label><input class="inp" data-c="property" list="askPropList" value="' + esc(c.property) + '"></div>' +
+          '<div><label class="lbl">Notes</label><input class="inp" data-c="notes" value="' + esc([c.type === 'contractor' ? '' : c.company, c.notes].filter(Boolean).join(' · ')) + '"></div>' +
+        '</div>' +
+        '<div' + (c.type === 'landlord' ? '' : ' hidden') + ' data-show="landlord"><label class="lbl">Landlord’s address (for invoices)</label><input class="inp" data-c="address" value="' + esc(c.address) + '"></div>' +
+        '<div class="row-actions" style="margin-top:0"><button class="btn" type="button" data-cact="skip">Skip</button><button class="btn primary" type="button" data-cact="save">Save ' + label[c.type] + '</button></div>' +
+      '</div>';
+    }).join('') + (askContacts.length ? '<datalist id="askPropList">' + propertiesFromJobs().map(function(pr){ return '<option value="' + esc(pr.address) + '">'; }).join('') + '</datalist>' : '');
+  }
+  $('askContacts').addEventListener('change', function(e){
+    if (e.target.dataset.c !== 'type') return;
+    var box = e.target.closest('.cdraft'), t = e.target.value;
+    box.querySelectorAll('[data-show]').forEach(function(el){ el.hidden = el.dataset.show.split(' ').indexOf(t) === -1; });
+    box.querySelector('[data-cact="save"]').textContent = 'Save ' + t;
+    box.querySelector('strong').textContent = 'New ' + t;
+  });
+  $('askContacts').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-cact]'); if (!b) return;
+    var box = b.closest('.cdraft'), i = Number(box.dataset.i);
+    var f = function(n){ var el = box.querySelector('[data-c="' + n + '"]'); return el ? el.value.trim() : ''; };
+    function done(msg){ askContacts.splice(i, 1); renderAskContacts(); if (msg) toast(msg); if (!askContacts.length && !askDrafts.length) closeAsk(); return loadContractors().then(loadJobs); }
+    if (b.dataset.cact === 'skip') { done(''); return; }
+    var type = f('type'), name = f('name');
+    if (!name) { toast('Add a name'); return; }
+    var req = type === 'contractor' ? api('POST', '/api/admin/contractors', { name: name, trade: f('trade'), phone: f('phone'), email: f('email'), notes: f('notes') })
+      : type === 'landlord' ? api('POST', '/api/admin/landlords', { name: name, phone: f('phone'), email: f('email'), address: f('address'), notes: f('notes'), property_address: f('property') })
+      : api('POST', '/api/admin/tenant-records', { name: name, phone: f('phone'), email: f('email'), notes: f('notes'), property_address: f('property') });
+    busy(b, true, 'Saving…');
+    req.then(function(d){
+      busy(b, false);
+      if (!d.ok) { toast('Couldn’t save (' + (d.error || 'error') + ')'); return; }
+      done(name + ' saved as a ' + type + (type !== 'contractor' && f('property') ? ' for ' + f('property') : ''));
+    });
+  });
+
   // Builds the new-job request from one draft card.
   function draftBody(box){
     var dr = askDrafts[Number(box.dataset.i)], x = dr.ai;
@@ -3876,7 +3934,7 @@
   function afterCreated(ids, send){
     return loadJobs().then(function(){
       var made = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; });
-      if (!askDrafts.length) closeAsk();
+      if (!askDrafts.length && !askContacts.length) closeAsk();
       if (send && made.length) showContractorMessage(made);
       else if (made.length === 1 && !askDrafts.length) openJob(made[0].id);
     });
