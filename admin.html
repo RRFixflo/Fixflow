@@ -279,7 +279,8 @@
   .btn.ask:hover { filter: brightness(1.06); background: linear-gradient(135deg, #7C3AED, #D9262E); }
   .ask-box { width: min(680px, 100%); display: flex; flex-direction: column; gap: 12px; }
   .ask-row { display: flex; gap: 10px; align-items: stretch; }
-  .ask-row textarea { flex: 1; min-height: 64px; font-size: 1rem; }
+  .ask-row textarea { flex: 1; min-height: 90px; max-height: 40vh; font-size: 1rem; }
+  .draft .tenant-list { font-size: .8rem; color: var(--ink-soft); margin-top: 4px; line-height: 1.5; }
   .mic { width: 64px; flex-shrink: 0; border-radius: 16px; border: 1px solid var(--line-strong); background: var(--panel-2); color: var(--ink); cursor: pointer; display: grid; place-items: center; transition: background .15s, color .15s; }
   .mic svg { width: 26px; height: 26px; }
   .mic.on { background: var(--brick); color: #fff; border-color: var(--brick); animation: pulse 1.2s infinite; }
@@ -667,7 +668,7 @@
     <h3 style="margin:0"><span class="ai-spark">✦</span> Tell Fixflow what to do</h3>
     <div class="ask-row">
       <button class="mic" id="askMic" type="button" title="Tap and speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button>
-      <textarea class="inp" id="askText" placeholder="e.g. Add a gas safety for 6 Whitworth House and email it to DPH"></textarea>
+      <textarea class="inp" id="askText" placeholder="Speak, type or paste — e.g. Add a gas safety for 6 Whitworth House and email it to DPH. You can paste a whole message with several properties, their jobs and tenant numbers."></textarea>
     </div>
     <div class="ideas" id="askIdeas">
       <button type="button">Add a gas safety for 6 Whitworth House and send it to DPH</button>
@@ -675,8 +676,9 @@
       <button type="button">EICR needed at 9 Park Road</button>
     </div>
     <div class="err-msg" id="askErr" style="margin:0"></div>
-    <div class="row-actions" style="margin-top:0"><button class="btn" id="askClose" type="button">Close</button><button class="btn primary" id="askGo" type="button">✦ Go</button></div>
-    <div id="askDrafts"></div>
+    <div class="row-actions" style="margin-top:0"><span class="muted-note" style="margin-right:auto;font-size:.78rem">Ctrl + Enter to go</span><button class="btn" id="askClose" type="button">Close</button><button class="btn primary" id="askGo" type="button">✦ Go</button></div>
+    <div class="row-actions" id="askAllRow" style="margin-top:0" hidden><span class="muted-note" id="askAllNote" style="margin-right:auto"></span><button class="btn primary" id="askAll" type="button">Create all</button></div>
+    <div id="askDrafts" style="display:flex;flex-direction:column;gap:12px"></div>
   </div>
 </div>
 
@@ -1174,8 +1176,10 @@
   // and whether we have keys. Nothing else (no costs, references or deadlines).
   function jobText(j){
     var issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') + (j.location ? ' (' + j.location + ')' : '');
-    var desc = String(j.description || '').replace(/\s+/g, ' ').trim();
-    return [issue, desc].filter(Boolean).join('. ') || 'Repair';
+    var lines = String(j.description || '').split(/\n+/).map(function(l){ return l.replace(/\s+/g, ' ').replace(/^(?:[-•*]|\d+[.)])\s*/, '').trim(); })
+      .filter(function(l){ return l && !/^Other tenants:/i.test(l); });
+    if (lines.length > 1) return (j.affected || issue || 'Repairs') + '\n' + lines.map(function(l){ return '- ' + l; }).join('\n');
+    return [issue, lines[0]].filter(Boolean).join('. ') || 'Repair';
   }
   function keysText(j){ return j.key_permission === 'Yes' ? 'Yes' : j.key_permission === 'No' ? 'No' : null; }
   function contractorMessage(list){
@@ -1198,6 +1202,9 @@
         var k = String(j.tenant_name || '').trim().toLowerCase();
         var t = byName[k] || (byName[k] = tenants[tenants.push({ name: j.tenant_name || 'Tenant', phones: [] }) - 1]);
         if (j.tenant_phone && t.phones.indexOf(j.tenant_phone) === -1) t.phones.push(j.tenant_phone);
+        // Extra tenants added from a pasted message are kept in the description.
+        var other = /^Other tenants:\s*(.+)$/im.exec(j.description || '');
+        if (other) other[1].split(/;\s*/).forEach(function(x){ if (x && !byName['~' + x]) { byName['~' + x] = true; tenants.push({ name: x, phones: [] }); } });
       });
       tenants.forEach(function(t){ lines.push('Tenant: ' + t.name + (t.phones.length ? ' – ' + t.phones.join(' / ') : '')); });
       var keys = uniq(g.jobs.map(keysText));
@@ -3068,7 +3075,7 @@
   $('askClose').addEventListener('click', closeAsk);
   $('askModal').addEventListener('mousedown', function(e){ if (e.target === $('askModal')) closeAsk(); });
   $('askIdeas').addEventListener('click', function(e){ var b = e.target.closest('button'); if (b) { $('askText').value = b.textContent; runAsk(); } });
-  $('askText').addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runAsk(); } });
+  $('askText').addEventListener('keydown', function(e){ if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runAsk(); } });
   $('askGo').addEventListener('click', runAsk);
   $('askMic').addEventListener('click', function(){
     if (!SpeechRec) return;
@@ -3127,52 +3134,99 @@
       var ctOpts = '<option value="">No contractor yet</option>' + contractors.filter(function(c){ return c.active; }).map(function(c){
         return '<option value="' + c.id + '"' + (dr.contractor && dr.contractor.id === c.id ? ' selected' : '') + '>' + esc(c.name + (c.trade ? ' — ' + c.trade : '')) + '</option>';
       }).join('');
-      var tOpts = dr.tenants.map(function(t, k){ return '<option value="' + k + '">' + esc((t.tenant_name || 'No name') + (t.tenant_phone ? ' – ' + t.tenant_phone : '')) + '</option>'; }).join('') + '<option value="">No tenant</option>';
+      var said = x.tenants || [];
+      var saidLabel = function(t){ return (t.name || 'Tenant') + (t.phone ? ' – ' + t.phone : ''); };
+      var tOpts = (said.length ? '<option value="msg">From your message: ' + esc(saidLabel(said[0])) + (said.length > 1 ? ' (+' + (said.length - 1) + ' more)' : '') + '</option>' : '') +
+        dr.tenants.map(function(t, k){ return '<option value="' + k + '">' + esc((t.tenant_name || 'No name') + (t.tenant_phone ? ' – ' + t.tenant_phone : '')) + ' (on file)</option>'; }).join('') + '<option value="">No tenant</option>';
       return '<div class="draft" data-i="' + i + '">' +
         '<div><label class="lbl">Property</label><input class="inp" data-f="address" value="' + esc(pr ? pr.address : x.address) + '">' +
           '<div class="match ' + (pr ? 'ok' : 'warn') + '">' + (pr ? '✓ Matched a property with ' + pr.jobs.length + ' previous job' + (pr.jobs.length === 1 ? '' : 's') : 'No previous jobs at “' + esc(x.address) + '” — check the address') + '</div></div>' +
+        (x.warning ? '<div class="banner" style="margin:0">⚠ ' + esc(x.warning) + '</div>' : '') +
         '<div class="grid2">' +
-          '<div><label class="lbl">Tenant (contractor will contact them)</label><select class="inp" data-f="tenant">' + tOpts + '</select></div>' +
+          '<div><label class="lbl">Tenant (contractor will contact them)</label><select class="inp" data-f="tenant">' + tOpts + '</select>' +
+            (said.length > 1 ? '<div class="tenant-list">All from your message: ' + said.map(function(t){ return esc(saidLabel(t)); }).join('; ') + '</div>' : '') + '</div>' +
           '<div><label class="lbl">Contractor</label><select class="inp" data-f="contractor">' + ctOpts + '</select></div>' +
         '</div>' +
         '<div class="grid2">' +
           '<div><label class="lbl">Job</label><input class="inp" data-f="title" value="' + esc(x.title || x.category) + '"></div>' +
           '<div><label class="lbl">Urgency</label><select class="inp" data-f="urgency">' + meta.urgencies.map(function(u){ return '<option' + (u === x.urgency ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div>' +
         '</div>' +
-        '<div><label class="lbl">Details for the contractor</label><textarea class="inp" data-f="description" style="min-height:60px">' + esc(x.description) + '</textarea></div>' +
+        '<div><label class="lbl">Details for the contractor' + (x.description.indexOf('\n') !== -1 ? ' (one task per line)' : '') + '</label><textarea class="inp" data-f="description" rows="' + Math.min(10, Math.max(2, x.description.split('\n').length + 1)) + '" style="min-height:60px">' + esc(x.description) + '</textarea></div>' +
         '<div class="row-actions" style="margin-top:0">' +
           '<button class="btn" type="button" data-act="create">Create job</button>' +
           '<button class="btn primary" type="button" data-act="send">Create &amp; send to contractor</button>' +
         '</div></div>';
     }).join('');
+    $('askAllRow').hidden = askDrafts.length < 2;
+    var who = Array.from(new Set(askDrafts.map(function(d){ return d.contractor ? d.contractor.name : ''; }).filter(Boolean)));
+    $('askAllNote').textContent = askDrafts.length + ' jobs ready' + (who.length === 1 ? ' for ' + who[0] : '') + ' — check them, then create them all at once.';
+  }
+  // Builds the new-job request from one draft card.
+  function draftBody(box){
+    var dr = askDrafts[Number(box.dataset.i)], x = dr.ai;
+    var f = function(n){ return box.querySelector('[data-f="' + n + '"]').value.trim(); };
+    if (!f('address')) return { error: 'Add the property address' };
+    var c = contractors.filter(function(k){ return String(k.id) === f('contractor'); })[0] || null;
+    var desc = f('description');
+    var body = { property_address: f('address'), category: x.category || 'General repair', affected: f('title'),
+      urgency: f('urgency'), source: 'Other' };
+    if (c) body.assigned_to = c.name;
+    var tv = f('tenant');
+    if (tv === 'msg') {
+      // Tenants from the message: the first is the main contact, the rest are listed for the contractor.
+      var said = x.tenants || [];
+      body.tenant_name = said[0].name || 'Tenant';
+      if (said[0].phone) body.tenant_phone = said[0].phone;
+      if (said.length > 1) desc += (desc ? '\n' : '') + 'Other tenants: ' + said.slice(1).map(function(t){ return (t.name || 'Tenant') + (t.phone ? ' – ' + t.phone : ''); }).join('; ');
+    } else if (tv !== '') {
+      var t = dr.tenants[Number(tv)];
+      ['tenant_name', 'tenant_phone', 'tenant_email', 'access_days', 'access_time', 'access_notes', 'key_permission', 'key_instructions']
+        .forEach(function(k){ if (t[k]) body[k] = t[k]; });
+    }
+    body.description = desc;
+    if (dr.property) { var ll = landlordAt(dr.property.address); if (ll) LL_FIELDS.forEach(function(k){ if (ll[k]) body[k] = ll[k]; }); }
+    return { body: body, contractor: c };
+  }
+  function afterCreated(ids, send){
+    return loadJobs().then(function(){
+      var made = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; });
+      if (!askDrafts.length) closeAsk();
+      if (send && made.length) showContractorMessage(made);
+      else if (made.length === 1 && !askDrafts.length) openJob(made[0].id);
+    });
   }
   $('askDrafts').addEventListener('click', function(e){
     var b = e.target.closest('button[data-act]'); if (!b) return;
-    var box = b.closest('.draft'), dr = askDrafts[Number(box.dataset.i)], x = dr.ai;
-    var f = function(n){ return box.querySelector('[data-f="' + n + '"]').value.trim(); };
-    if (!f('address')) { toast('Add the property address'); return; }
-    var t = f('tenant') === '' ? null : dr.tenants[Number(f('tenant'))];
-    var c = contractors.filter(function(k){ return String(k.id) === f('contractor'); })[0] || null;
-    if (b.dataset.act === 'send' && !c) { toast('Pick a contractor to send it to'); return; }
-    var body = { property_address: f('address'), category: x.category || 'General repair', affected: f('title'), description: f('description'),
-      urgency: f('urgency'), source: 'Other' };
-    if (c) body.assigned_to = c.name;
-    if (t) ['tenant_name', 'tenant_phone', 'tenant_email', 'access_days', 'access_time', 'access_notes', 'key_permission', 'key_instructions']
-      .forEach(function(k){ if (t[k]) body[k] = t[k]; });
-    if (dr.property) { var ll = landlordAt(dr.property.address); if (ll) LL_FIELDS.forEach(function(k){ if (ll[k]) body[k] = ll[k]; }); }
+    var box = b.closest('.draft'), r = draftBody(box);
+    if (r.error) { toast(r.error); return; }
+    if (b.dataset.act === 'send' && !r.contractor) { toast('Pick a contractor to send it to'); return; }
     busy(b, true, 'Creating…');
-    api('POST', '/api/admin/jobs', body).then(function(d){
+    api('POST', '/api/admin/jobs', r.body).then(function(d){
       busy(b, false);
       if (!d.ok) { toast('Couldn’t create the job (' + (d.error || 'error') + ')'); return; }
       askDrafts.splice(Number(box.dataset.i), 1);
       renderAskDrafts();
       toast(d.ref + ' created');
-      return loadJobs().then(function(){
-        var job = jobs.filter(function(j){ return j.id === d.id; })[0];
-        if (!askDrafts.length) closeAsk();
-        if (job && b.dataset.act === 'send') showContractorMessage([job]);
-        else if (job) openJob(job.id);
-      });
+      return afterCreated([d.id], b.dataset.act === 'send');
+    });
+  });
+  $('askAll').addEventListener('click', function(){
+    var boxes = Array.from($('askDrafts').querySelectorAll('.draft'));
+    var reqs = boxes.map(draftBody);
+    var bad = reqs.filter(function(r){ return r.error; })[0];
+    if (bad) { toast(bad.error); return; }
+    busy($('askAll'), true, 'Creating…');
+    var ids = [], refs = [];
+    // One at a time, so references come out in the same order as the drafts.
+    reqs.reduce(function(prev, r){
+      return prev.then(function(){ return api('POST', '/api/admin/jobs', r.body).then(function(d){ if (d.ok) { ids.push(d.id); refs.push(d.ref); } }); });
+    }, Promise.resolve()).then(function(){
+      busy($('askAll'), false);
+      if (ids.length < reqs.length) toast('Created ' + ids.length + ' of ' + reqs.length + ' — please check the rest');
+      else toast(ids.length + ' jobs created: ' + refs.join(', '));
+      askDrafts = ids.length === reqs.length ? [] : askDrafts.slice(ids.length);
+      renderAskDrafts();
+      return afterCreated(ids, false);
     });
   });
 
