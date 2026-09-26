@@ -12,9 +12,10 @@ const crypto = require('crypto');
 let Pool = null;
 try { Pool = require('pg').Pool; } catch (e) { /* pg not installed: jobs disabled */ }
 
-// How long each urgency gets before a job is overdue. A job's own due date can
-// be changed in the dashboard; these only set the starting point.
-const DUE_HOURS = { Emergency: 24, Urgent: 24 * 7, Routine: 24 * 28 };
+// How long each urgency gets before a job is overdue (the end of each target
+// window: Emergency 24-48 hours, Urgent 3-5 days, Routine 7-14 days). A job's own
+// due date can be changed in the dashboard; these only set the starting point.
+const DUE_HOURS = { Emergency: 48, Urgent: 24 * 5, Routine: 24 * 14 };
 const URGENCIES = ['Emergency', 'Urgent', 'Routine'];
 
 // Payment details printed on landlord invoices. Kept in Railway variables, not

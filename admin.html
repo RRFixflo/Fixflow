@@ -1555,7 +1555,7 @@
 
   function jfDefaultDue(){
     var rec = $('jfReceived').value ? new Date($('jfReceived').value) : new Date();
-    var hours = (meta.dueHours || { Emergency: 24, Urgent: 168, Routine: 672 })[$('jfUrg').value];
+    var hours = (meta.dueHours || { Emergency: 48, Urgent: 120, Routine: 336 })[$('jfUrg').value];
     $('jfDue').value = toLocalInput(new Date(rec.getTime() + hours * 3600000));
   }
   var jfDueTouched = false;
