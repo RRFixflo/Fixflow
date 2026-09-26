@@ -2418,9 +2418,10 @@
               ['Council', 'Landlord', 'Tenant', 'Contractor', 'Other'].map(function(r, i){
                 return '<button type="button" data-r="' + r + '"' + (i === 0 ? ' class="on"' : '') + '>' + r + '</button>';
               }).join('') + '</div>' +
-            '<div class="grid2" style="margin-top:12px">' +
+            '<div class="grid3" style="margin-top:12px">' +
               '<div><label class="lbl" for="aiName">To (name or department)</label><input class="inp" id="aiName" placeholder="e.g. Environmental Health, West Northamptonshire Council"></div>' +
-              '<div><label class="lbl" for="aiAddr">Their email address</label><input class="inp" id="aiAddr" type="email" placeholder="Optional — for sending"></div>' +
+              '<div><label class="lbl" for="aiAddr">Their email address</label><input class="inp" id="aiAddr" type="email" placeholder="Optional — for email"></div>' +
+              '<div><label class="lbl" for="aiPhone">Their WhatsApp number</label><input class="inp" id="aiPhone" type="tel" placeholder="Optional — for WhatsApp"></div>' +
             '</div>' +
             '<div style="margin-top:12px"><label class="lbl" for="aiWhat">What should the email say?</label>' +
               '<textarea class="inp" id="aiWhat" placeholder="e.g. Report rats in the shared bin store and ask for pest control to visit"></textarea>' +
@@ -2433,6 +2434,7 @@
                 '<button class="btn ghost" id="aiRegen" type="button">↻ Try another version</button>' +
                 '<button class="btn" id="aiCopy" type="button">Copy</button>' +
                 '<button class="btn" id="aiMail" type="button">Open in my email</button>' +
+                '<button class="btn wa" id="aiWa" type="button">Send on WhatsApp</button>' +
                 (meta.canEmail ? '<button class="btn primary" id="aiSend" type="button">Send</button>' : '') +
               '</div>' +
             '</div>'
@@ -2497,7 +2499,7 @@
   function wireAiEmail(j){
     if (!meta.canAi) return;
     var recipient = 'Council', variation = 0;
-    var DEFAULT_NAME = { Council: '', Landlord: '', Tenant: j.tenant_name || '', Contractor: j.assigned_to || '', Other: '' };
+    var DEFAULT_NAME = { Council: '', Landlord: j.landlord_name || (landlordAt(j.property_address) || {}).landlord_name || '', Tenant: j.tenant_name || '', Contractor: j.assigned_to || '', Other: '' };
     function showIdeas(){
       $('aiIdeas').innerHTML = AI_IDEAS[recipient].map(function(t){ return '<button type="button">' + esc(t) + '</button>'; }).join('');
     }
@@ -2507,8 +2509,13 @@
       recipient = b.dataset.r;
       $('aiTo').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
       $('aiName').value = DEFAULT_NAME[recipient];
+      var ll = j.landlord_name ? j : (landlordAt(j.property_address) || {});
       $('aiAddr').value = recipient === 'Tenant' ? (j.tenant_email || '') :
-        recipient === 'Contractor' ? ((contractorByName(j.assigned_to) || {}).email || '') : '';
+        recipient === 'Contractor' ? ((contractorByName(j.assigned_to) || {}).email || '') :
+        recipient === 'Landlord' ? (ll.landlord_email || '') : '';
+      $('aiPhone').value = recipient === 'Tenant' ? (j.tenant_phone || '') :
+        recipient === 'Contractor' ? ((contractorByName(j.assigned_to) || {}).phone || '') :
+        recipient === 'Landlord' ? (ll.landlord_phone || '') : '';
       $('aiName').placeholder = recipient === 'Council' ? 'e.g. Environmental Health, West Northamptonshire Council' : 'Name';
       showIdeas();
     });
@@ -2554,6 +2561,17 @@
       window.location.href = 'mailto:' + encodeURIComponent($('aiAddr').value.trim()) +
         '?subject=' + encodeURIComponent($('aiSubj').value) + '&body=' + encodeURIComponent($('aiBody').value);
       logEmail('Email opened in email app').then(function(){ openJob(j.id); });
+    });
+    // WhatsApp: the message only (no subject line). With no number, WhatsApp
+    // opens and asks who to send it to.
+    $('aiWa').addEventListener('click', function(){
+      var num = waNumber($('aiPhone').value);
+      if ($('aiPhone').value.trim() && !num) { toast('That WhatsApp number doesn’t look right'); $('aiPhone').focus(); return; }
+      window.open('https://wa.me/' + num + '?text=' + encodeURIComponent($('aiBody').value), '_blank', 'noopener');
+      var to = $('aiPhone').value.trim() || $('aiName').value.trim() || recipient;
+      api('POST', '/api/admin/jobs/' + j.id + '/updates', {
+        kind: 'email', body: 'Sent on WhatsApp (' + recipient.toLowerCase() + ': ' + to + ') — ' + $('aiSubj').value + '\n\n' + $('aiBody').value
+      }).then(function(){ openJob(j.id); });
     });
     if ($('aiSend')) $('aiSend').addEventListener('click', function(){
       var to = $('aiAddr').value.trim();
