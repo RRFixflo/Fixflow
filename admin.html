@@ -128,9 +128,9 @@
   label.lbl { display: block; font-size: .76rem; font-weight: 600; color: var(--ink-soft); margin: 0 0 5px; }
 
   /* ---------- Stat cards ---------- */
-  .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+  .tiles { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 20px; }
   .tile { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px 15px; box-shadow: var(--shadow-xs); overflow: hidden; }
-  .tile .k { display: flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 550; color: var(--ink-soft); }
+  .tile .k { display: flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 550; color: var(--ink-soft); white-space: nowrap; }
   .tile .k i { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: var(--panel-2); color: var(--ink-soft); font-style: normal; }
   .tile .k i svg { width: 14px; height: 14px; }
   .tile .v { font-family: var(--display); font-size: 1.75rem; font-weight: 700; letter-spacing: -.03em; margin-top: 10px; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -141,8 +141,16 @@
   .tile.good .k i { background: var(--ok-tint); color: var(--ok); }
   .tile.good .v { color: var(--ok); }
   .tile.blue .k i { background: var(--blue-tint); color: var(--blue); }
+  @media (max-width: 1320px) { .tiles:not(.prop-tiles) { grid-template-columns: repeat(4, 1fr); } }
   @media (max-width: 1100px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
-  @media (max-width: 640px) { .tiles { grid-template-columns: repeat(2, 1fr); gap: 10px; } .tile:last-child { grid-column: 1 / -1; } .tile .v { font-size: 1.5rem; } }
+  button.tile { font: inherit; color: inherit; text-align: left; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
+  button.tile:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  button.tile.on { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+  .tile.warnish .k i { background: var(--warn-tint); color: var(--warn); }
+  .tile.warnish.has .v { color: var(--warn); }
+  .filter-chip { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 5px 6px 5px 12px; border-radius: 999px; background: var(--ink); color: var(--panel); font-size: .8rem; font-weight: 600; }
+  .filter-chip button { border: 0; background: rgba(255,255,255,.18); color: inherit; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; font-size: .7rem; }
+  @media (max-width: 640px) { .tiles { grid-template-columns: repeat(2, 1fr); gap: 10px; } .tiles:not(.prop-tiles) .tile:last-child { grid-column: 1 / -1; } .tile .v { font-size: 1.5rem; } }
 
   /* ---------- Toolbar ---------- */
   .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
@@ -415,9 +423,11 @@
       <div id="jobsView">
       <div class="tiles">
         <div class="tile blue"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg></i>Open jobs</div><div class="v" id="tOpen">–</div></div>
+        <button type="button" class="tile clickable warnish" id="tUnassTile" data-assign="unassigned" title="Show unassigned open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/><path d="M3 3l18 18"/></svg></i>Unassigned</div><div class="v" id="tUnass">–</div></button>
+        <button type="button" class="tile clickable blue" id="tAssTile" data-assign="assigned" title="Show assigned open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg></i>Assigned</div><div class="v" id="tAss">–</div></button>
         <div class="tile alert" id="tOverTile"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17.5v.5"/></svg></i>Overdue</div><div class="v" id="tOver">–</div></div>
-        <div class="tile soonish"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></i>Due in 24 hours</div><div class="v" id="tSoon">–</div></div>
-        <div class="tile"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17 19 7"/></svg></i>Completed this month</div><div class="v" id="tDone">–</div></div>
+        <div class="tile soonish"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></i>Due in 24h</div><div class="v" id="tSoon">–</div></div>
+        <div class="tile"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17 19 7"/></svg></i>Done this month</div><div class="v" id="tDone">–</div></div>
         <div class="tile good"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg></i>Profit this month</div><div class="v" id="tProfit">–</div></div>
       </div>
 
@@ -438,6 +448,7 @@
         </select>
       </div>
 
+      <div class="filter-chip" id="assignChip" hidden><span id="assignChipText"></span><button type="button" id="assignChipClear" aria-label="Clear filter">✕</button></div>
       <div class="list" id="list"></div>
       </div>
 
@@ -705,6 +716,7 @@
   var selected = new Set();   // job ids ticked in the list, to send to a contractor together
   var contractors = [];       // the contractor directory
   var archivedJobs = [];      // deleted jobs, kept in the archive
+  var assignFilter = null;    // 'assigned' / 'unassigned' when a count tile is clicked
   try { var savedSort = localStorage.getItem('rrJobsSort'); if (savedSort) $('sort').value = savedSort; } catch (e) {}
 
   // ---------- Sign in ----------
@@ -798,6 +810,14 @@
     $('tOpen').textContent = open.length;
     $('tOver').textContent = overdue.length;
     $('tOverTile').classList.toggle('has', overdue.length > 0);
+    var unassigned = open.filter(function(j){ return !String(j.assigned_to || '').trim(); }).length;
+    $('tUnass').textContent = unassigned;
+    $('tAss').textContent = open.length - unassigned;
+    $('tUnassTile').classList.toggle('has', unassigned > 0);
+    $('tUnassTile').classList.toggle('on', assignFilter === 'unassigned');
+    $('tAssTile').classList.toggle('on', assignFilter === 'assigned');
+    $('assignChip').hidden = !assignFilter || filter === 'archived';
+    $('assignChipText').textContent = assignFilter === 'unassigned' ? 'Showing unassigned jobs' : 'Showing assigned jobs';
     $('sOpen').textContent = open.length;
     $('sOpen').classList.toggle('hot', overdue.length > 0);
     $('tSoon').textContent = soon.length;
@@ -812,6 +832,10 @@
     var list = (filter === 'archived' ? archivedJobs : jobs).filter(function(j){
       if (filter === 'open' && !isOpen(j)) return false;
       if (filter === 'completed' && j.status !== 'Completed') return false;
+      if (filter !== 'archived' && assignFilter) {
+        var has = !!String(j.assigned_to || '').trim();
+        if (assignFilter === 'unassigned' ? has : !has) return false;
+      }
       if (!q) return true;
       return [j.ref, j.property_address, j.tenant_name, j.tenant_email, j.tenant_phone, issueOf(j), j.location, j.assigned_to, j.status]
         .join(' ').toLowerCase().indexOf(q) !== -1;
@@ -864,6 +888,19 @@
     });
   });
   $('search').addEventListener('input', render);
+  // Clicking Assigned / Unassigned shows just those open jobs; click again (or the chip) to clear.
+  ['tUnassTile', 'tAssTile'].forEach(function(id){
+    $(id).addEventListener('click', function(){
+      var v = $(id).dataset.assign;
+      assignFilter = assignFilter === v ? null : v;
+      if (assignFilter) {
+        filter = 'open';
+        document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.toggle('on', x.dataset.filter === 'open'); });
+      }
+      render();
+    });
+  });
+  $('assignChipClear').addEventListener('click', function(){ assignFilter = null; render(); });
   $('sort').addEventListener('change', function(){ try { localStorage.setItem('rrJobsSort', $('sort').value); } catch (e) {} render(); });
   $('navJobs').addEventListener('click', function(){ window.scrollTo({ top: 0, behavior: 'smooth' }); });
   $('navNew').addEventListener('click', function(){ $('newJobBtn').click(); });
@@ -895,11 +932,11 @@
     var issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') + (j.location ? ' (' + j.location + ')' : '');
     var lines = [];
     lines.push((number ? number + '. ' : '') + '*' + j.ref + '* — ' + j.urgency.toUpperCase());
-    lines.push('🔧 ' + (issue || 'Repair'));
-    if (j.description) lines.push('📝 ' + j.description);
-    lines.push('👤 ' + (j.tenant_name || 'Tenant') + (j.tenant_phone ? ' — ' + j.tenant_phone : ' — no phone given'));
-    lines.push('🔑 ' + accessLine(j));
-    if (j.due_at && isOpen(j)) lines.push('⏰ Complete by ' + fmtDue(j.due_at));
+    lines.push('Job: ' + (issue || 'Repair'));
+    if (j.description) lines.push('Details: ' + j.description);
+    lines.push('Tenant: ' + (j.tenant_name || 'Tenant') + (j.tenant_phone ? ' — ' + j.tenant_phone : ' — no phone given'));
+    lines.push('Access: ' + accessLine(j));
+    if (j.due_at && isOpen(j)) lines.push('Complete by: ' + fmtDue(j.due_at));
     return lines.join('\n');
   }
   function contractorMessage(list){
@@ -913,13 +950,13 @@
       });
     var out = [];
     if (list.length === 1) {
-      out.push('*Repair job — Residential Realtors*', '', '📍 *' + groups[0].address + '*', jobBlock(list[0]));
+      out.push('*Repair job — Residential Realtors*', '', 'Address: *' + groups[0].address + '*', jobBlock(list[0]));
     } else {
       out.push('*' + list.length + ' repair jobs — Residential Realtors*');
       out.push(groups.length === 1 ? 'All at one property.' : groups.length + ' properties.');
       var n = 0;
       groups.forEach(function(g){
-        out.push('', '📍 *' + g.address + '*' + (g.jobs.length > 1 ? ' (' + g.jobs.length + ' jobs)' : ''));
+        out.push('', 'Address: *' + g.address + '*' + (g.jobs.length > 1 ? ' (' + g.jobs.length + ' jobs)' : ''));
         g.jobs.forEach(function(j){ n += 1; out.push(jobBlock(j, n)); if (g.jobs.length > 1) out.push(''); });
         if (g.jobs.length > 1) out.pop();
       });
