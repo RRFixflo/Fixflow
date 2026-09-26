@@ -2445,7 +2445,7 @@
         '<div><div class="k">Contractor</div><div class="v"><div class="who-chip">' + avatar(j.assigned_to) + '<span class="nm">' + esc(j.assigned_to || 'Unassigned') + '</span></div></div></div>' +
         '<div><div class="k">Received</div><div class="v">' + esc(ago(j.created_at)) + '<small>' + esc(fmtShort(j.created_at)) + (j.source ? ' · ' + esc(j.source) : '') + '</small></div></div>' +
         '<div><div class="k">Tenant</div><div class="v">' + esc(j.tenant_name || '—') + '<small>' + (j.tenant_phone ? '<a href="tel:' + esc(tel) + '" style="color:var(--blue);text-decoration:none">' + esc(j.tenant_phone) + '</a>' : 'No phone') + '</small></div></div>' +
-        '<div><div class="k">Access</div><div class="v">' + esc(j.access_days || 'Not given') + '<small>' + esc([j.access_time, j.key_permission ? 'Keys: ' + j.key_permission : ''].filter(Boolean).join(' · ') || '—') + '</small></div></div>' +
+        '<div id="glanceAccess" style="cursor:pointer" title="Edit access"><div class="k">Access ✎</div><div class="v">' + esc(j.access_days || 'Not given') + '<small>' + esc([j.access_time, j.key_permission ? 'Keys: ' + j.key_permission : ''].filter(Boolean).join(' · ') || '—') + '</small></div></div>' +
         '<div><div class="k">Profit</div><div class="v ' + (prof ? (prof.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (prof ? esc(gbp(prof.value)) : '—') +
           '<small>' + (j.invoiced_at ? 'Invoiced ' + esc(j.invoice_number || '') : prof && prof.estimated ? 'Estimated' : j.landlord_charge != null ? 'Not invoiced yet' : 'No costs yet') + '</small></div></div>' +
       '</div>' +
@@ -2565,18 +2565,47 @@
         ['Email', j.tenant_email ? '<a href="mailto:' + esc(j.tenant_email) + '">' + esc(j.tenant_email) + '</a>' : '', true],
         ['Phone', j.tenant_phone ? '<a href="tel:' + esc(j.tenant_phone.replace(/\s/g, '')) + '">' + esc(j.tenant_phone) + '</a>' : '', true],
         ['Property', j.property_address],
-        ['Access days', j.access_days], ['Best time', j.access_time], ['Access notes', j.access_notes],
-        ['Keys to contractor', j.key_permission], ['Contractor notes', j.key_instructions],
         ['Landlord', [j.landlord_name, j.landlord_address].filter(Boolean).join('\n')],
         ['Landlord contact', [j.landlord_phone ? '<a href="tel:' + esc(j.landlord_phone.replace(/[^\d+]/g, '')) + '">' + esc(j.landlord_phone) + '</a>' : '',
           j.landlord_email ? '<a href="mailto:' + esc(j.landlord_email) + '">' + esc(j.landlord_email) + '</a>' : ''].filter(Boolean).join(' · '), true]
       ]) + ('<div class="job-links">' + (j.property_address ? '<button class="btn small" id="propLink" type="button">All repairs at this property</button>' : '') +
         (j.tenant_name || j.tenant_phone ? '<button class="btn small" id="tenantLink" type="button">All repairs for this tenant</button>' : '') + '</div>') + '</div>' +
-      '<div class="card" data-pane="overview"><h3>Reported issue</h3>' + rows([
-        ['Issue type', j.category], ['What’s affected', j.affected], ['What’s happening', j.symptom],
-        ['Location', j.location], ['Urgency (tenant)', j.urgency], ['Description', j.description],
-        ['Photos', j.photo_count ? j.photo_count + ' (in the PDF)' : 'None']
-      ]) +
+      '<div class="card" data-pane="overview" id="accessCard"><h3>Access <span style="flex:1"></span><button class="btn small" id="editAccess" type="button">Edit</button></h3>' +
+        '<div id="accessView">' + (j.access_days || j.access_time || j.access_notes || j.key_permission || j.key_instructions ? rows([
+          ['Days that work', j.access_days], ['Best time', j.access_time],
+          ['Keys to contractor', j.key_permission === 'Yes' ? 'Yes — we can let the contractor in' : j.key_permission === 'No' ? 'No — tenant must be home' : ''],
+          ['Access notes', j.access_notes], ['Contractor notes', j.key_instructions]
+        ]) : '<p class="muted-note">No access details yet. Tap Edit to add days, times, keys and notes.</p>') + '</div>' +
+        '<div id="accessEdit" hidden>' +
+          '<div class="grid3">' +
+            '<div><label class="lbl" for="aDays">Days that work</label><input class="inp" id="aDays" placeholder="e.g. Mon, Wed" value="' + esc(j.access_days || '') + '"></div>' +
+            '<div><label class="lbl" for="aTime">Best time</label><input class="inp" id="aTime" list="jfTimes" placeholder="e.g. Morning" value="' + esc(j.access_time || '') + '"></div>' +
+            '<div><label class="lbl" for="aKeys">Keys to contractor?</label><select class="inp" id="aKeys">' +
+              [['', 'Not asked'], ['Yes', 'Yes'], ['No', 'No']].map(function(o){ return '<option value="' + o[0] + '"' + ((j.key_permission || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+          '</div>' +
+          '<div class="grid2" style="margin-top:12px">' +
+            '<div><label class="lbl" for="aNotes">Access notes</label><textarea class="inp" id="aNotes" style="min-height:60px" placeholder="e.g. entry code, parking, pets">' + esc(j.access_notes || '') + '</textarea></div>' +
+            '<div><label class="lbl" for="aKeyNotes">Contractor notes</label><textarea class="inp" id="aKeyNotes" style="min-height:60px" placeholder="e.g. key safe code, key with neighbour">' + esc(j.key_instructions || '') + '</textarea></div>' +
+          '</div>' +
+          '<div class="row-actions"><button class="btn" id="accessCancel" type="button">Cancel</button><button class="btn primary" id="accessSave" type="button">Save</button></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="card" data-pane="overview" id="issueCard"><h3>Reported issue <span style="flex:1"></span><button class="btn small" id="editIssue" type="button">Edit</button></h3>' +
+        '<div id="issueView">' + rows([
+          ['Issue type', j.category], ['What’s affected', j.affected], ['What’s happening', j.symptom],
+          ['Location', j.location], ['Urgency', j.urgency], ['Description', j.description],
+          ['Photos', photos.length ? photos.length + ' — see the Photos tab' : j.photo_count ? j.photo_count + ' (in the tenant’s PDF)' : 'None']
+        ]) + '</div>' +
+        '<div id="issueEdit" hidden>' +
+          '<div class="grid3">' +
+            '<div><label class="lbl" for="iCat">Issue type</label><input class="inp" id="iCat" list="jfCats" value="' + esc(j.category || '') + '"></div>' +
+            '<div><label class="lbl" for="iAffected">What’s affected</label><input class="inp" id="iAffected" value="' + esc(j.affected || '') + '"></div>' +
+            '<div><label class="lbl" for="iSymptom">What’s happening</label><input class="inp" id="iSymptom" value="' + esc(j.symptom || '') + '"></div>' +
+          '</div>' +
+          '<div style="margin-top:12px"><label class="lbl" for="iLocation">Where in the property</label><input class="inp" id="iLocation" value="' + esc(j.location || '') + '"></div>' +
+          '<div style="margin-top:12px"><label class="lbl" for="iDesc">Description (one task per line if there are several)</label><textarea class="inp" id="iDesc" rows="' + Math.min(12, Math.max(4, String(j.description || '').split('\n').length + 1)) + '">' + esc(j.description || '') + '</textarea></div>' +
+          '<div class="row-actions"><button class="btn" id="issueCancel" type="button">Cancel</button><button class="btn primary" id="issueSave" type="button">Save</button></div>' +
+        '</div>' +
         '<div class="row-actions">' +
           (j.has_pdf ? '<a class="btn" href="/api/admin/jobs/' + j.id + '/pdf" target="_blank" rel="noopener">Tenant\u2019s original report (PDF)</a>' : '') +
           '<button class="btn" id="jobPdf" type="button">Landlord report (PDF)</button>' +
@@ -2836,6 +2865,48 @@
     $('jobPdf').addEventListener('click', function(){ jobReport(false); });
     $('jobPdfShare').addEventListener('click', function(){ jobReport(true); });
     $('editDetails').addEventListener('click', function(){ openJobForm(j); });
+    // Edit access in place.
+    function accessEditing(on){
+      $('accessView').hidden = on; $('accessEdit').hidden = !on; $('editAccess').hidden = on;
+      if (on) { $('accessCard').scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(function(){ $('aDays').focus({ preventScroll: true }); }, 300); }
+    }
+    $('editAccess').addEventListener('click', function(){ accessEditing(true); });
+    $('glanceAccess').addEventListener('click', function(){ accessEditing(true); });
+    $('accessCancel').addEventListener('click', function(){ accessEditing(false); });
+    $('accessSave').addEventListener('click', function(){
+      var body = {};
+      [['aDays', 'access_days'], ['aTime', 'access_time'], ['aKeys', 'key_permission'], ['aNotes', 'access_notes'], ['aKeyNotes', 'key_instructions']].forEach(function(f){
+        var v = $(f[0]).value.trim(); if (v !== (j[f[1]] || '')) body[f[1]] = v;
+      });
+      if (!Object.keys(body).length) { accessEditing(false); return; }
+      busy($('accessSave'), true, 'Saving…');
+      api('PATCH', '/api/admin/jobs/' + j.id, body).then(function(d){
+        busy($('accessSave'), false);
+        if (!d.ok) { toast('Couldn’t save (' + (d.error || 'error') + ')'); return; }
+        toast('Access updated'); openJob(j.id); loadJobs();
+      });
+    });
+    // Edit the reported issue in place.
+    function issueEditing(on){
+      $('issueView').hidden = on; $('issueEdit').hidden = !on; $('editIssue').hidden = on;
+      if (on) $('iDesc').focus();
+    }
+    $('editIssue').addEventListener('click', function(){ issueEditing(true); });
+    $('issueCancel').addEventListener('click', function(){ issueEditing(false); });
+    $('issueSave').addEventListener('click', function(){
+      var body = {};
+      [['iCat', 'category'], ['iAffected', 'affected'], ['iSymptom', 'symptom'], ['iLocation', 'location'], ['iDesc', 'description']].forEach(function(f){
+        var v = $(f[0]).value.trim(); if (v !== (j[f[1]] || '')) body[f[1]] = v;
+      });
+      if (!Object.keys(body).length) { issueEditing(false); return; }
+      if (('category' in body) && !body.category && !$('iDesc').value.trim()) { toast('Give an issue type or a description'); return; }
+      busy($('issueSave'), true, 'Saving…');
+      api('PATCH', '/api/admin/jobs/' + j.id, body).then(function(d){
+        busy($('issueSave'), false);
+        if (!d.ok) { toast('Couldn’t save (' + (d.error || 'error') + ')'); return; }
+        toast('Issue updated'); openJob(j.id); loadJobs();
+      });
+    });
     function showAssigneeContact(){
       var c = contractorByName($('fAssigned').value);
       var wa = c && waNumber(c.phone);
