@@ -76,6 +76,11 @@
   .app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
   .side { position: sticky; top: 0; height: 100vh; background: var(--side); color: var(--side-ink); display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; }
   .side-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
+  button.side-brand { border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 10px; width: 100%; }
+  button.side-brand:hover { background: var(--side-hover); }
+  .brand-m { border: 0; width: 32px; height: 32px; border-radius: 9px; background: var(--side); color: #fff; font-family: var(--display); font-weight: 800; font-size: .72rem; letter-spacing: -.04em; cursor: pointer; flex-shrink: 0; }
+  .brand-m b { color: #D9262E; }
+  .back-btn { padding-left: 6px !important; }
   .side-brand .mark { width: 34px; height: 34px; border-radius: 9px; background: #fff; color: var(--side); display: flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 800; font-size: .78rem; letter-spacing: -.04em; white-space: nowrap; flex-shrink: 0; }
   .side-brand .mark b { color: #D9262E; }
   .side-brand .t { font-family: var(--display); font-weight: 700; font-size: .92rem; line-height: 1.15; letter-spacing: -.01em; }
@@ -506,7 +511,7 @@
 <!-- DASHBOARD -->
 <div id="appView" class="app" hidden>
   <aside class="side">
-    <div class="side-brand"><div class="mark">R<b>|</b>R</div><div class="t">Residential Realtors<span>Maintenance</span></div></div>
+    <button type="button" class="side-brand" id="brandHome" title="Back to repair jobs"><div class="mark">R<b>|</b>R</div><div class="t">Residential Realtors<span>Maintenance</span></div></button>
     <button class="side-search" type="button" id="sideSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<span class="kbd">Ctrl K</span></button>
     <button class="nav on" type="button" id="navJobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg> Repair jobs <span class="badge" id="sOpen">0</span></button>
     <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
@@ -524,6 +529,8 @@
 
   <main class="main">
     <header class="mainhead">
+      <button type="button" class="brand-m mobile-only" id="brandHomeM" title="Back to repair jobs">R<b>|</b>R</button>
+      <button type="button" class="btn small ghost back-btn" id="backBtn" title="Back" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span class="mobile-hide">Back</span></button>
       <h1 id="mainTitle">Repair jobs</h1><span class="date" id="todayLbl"></span>
       <div class="grow"></div>
       <button class="btn small ask" id="askBtn" type="button" title="Tell Fixflow what to do (speak or type)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg><span class="mobile-hide">Ask Fixflow</span></button>
@@ -605,6 +612,12 @@
           <div class="tiles prop-tiles" id="llTiles"></div>
           <div class="toolbar">
             <input class="inp search" id="llSearch" type="search" placeholder="Search landlords by name, phone, email or property">
+            <select class="inp" id="llSort" aria-label="Sort landlords" style="width:auto;min-width:190px">
+              <option value="owed">Sort: Owed — highest</option>
+              <option value="overdue">Sort: Overdue — highest</option>
+              <option value="az">Sort: Name — A to Z</option>
+              <option value="open">Sort: Open jobs — most</option>
+            </select>
             <button class="btn primary" id="llNew" type="button">+ Add landlord</button>
           </div>
           <div class="list" id="llList"></div>
@@ -1075,14 +1088,15 @@
       $('loginView').hidden = true;
       $('appView').hidden = false;
       $('dbBanner').hidden = !!d.db;
-      loadContractors().then(loadJobs).then(openJobFromLink);
+      if (!history.state) history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname + location.hash);
+      loadContractors().then(loadJobs).then(openJobFromLink).then(updateBack);
     });
   }
   // Links from phone alerts land on /admin#job=123 and open that job.
   function openJobFromLink(){
     var m = /^#job=(\d+)$/.exec(location.hash);
     if (!m) return;
-    history.replaceState(null, '', location.pathname);
+    history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname);
     openJob(Number(m[1]));
   }
 
@@ -1752,6 +1766,51 @@
   function chargedTotal(list){ return list.reduce(function(sum, j){ return sum + (num(j.landlord_charge) || 0); }, 0); }
 
   var view = 'jobs', openPropKey = null;
+  // ---------- Back / home navigation ----------
+  // Each page (view, property, tenant, landlord, open job) is a browser history
+  // entry, so the Back button and the phone's back gesture step back through them.
+  var navRestoring = false, navTimer = null;
+  function navState(){ return { v: view, prop: openPropKey || null, ten: openTenantKey || null, ll: openLlId || null, job: openJobId || null }; }
+  function sameNav(a, b){ return !!a && !!b && a.v === b.v && a.prop === b.prop && a.ten === b.ten && a.ll === b.ll && a.job === b.job; }
+  function atHome(){ var st = navState(); return st.v === 'jobs' && !st.job; }
+  function updateBack(){ $('backBtn').hidden = atHome(); }
+  function pushNav(){
+    if (navRestoring) return;
+    clearTimeout(navTimer);
+    navTimer = setTimeout(function(){
+      var st = navState(), cur = history.state;
+      if (!sameNav(st, cur)) { st.depth = ((cur && cur.depth) || 0) + 1; history.pushState(st, ''); }
+      updateBack();
+    }, 0);
+  }
+  function applyNav(st){
+    navRestoring = true;
+    openPropKey = st.prop || null; openTenantKey = st.ten || null; openLlId = st.ll || null;
+    $('propDetail').hidden = !openPropKey; $('propsListView').hidden = !!openPropKey;
+    $('tenantDetail').hidden = !openTenantKey; $('tenantsListView').hidden = !!openTenantKey;
+    $('llDetail').hidden = !openLlId; $('llListView').hidden = !!openLlId;
+    showView(st.v || 'jobs');
+    if (st.job) { if (openJobId !== st.job) openJob(st.job); }
+    else if (openJobId) { closeDrawer(); loadJobs(); }
+    navRestoring = false;
+    updateBack();
+  }
+  window.addEventListener('popstate', function(e){ if (!$('appView').hidden) applyNav(e.state || { v: 'jobs' }); });
+  function goBack(){
+    if ((history.state || {}).depth > 0) history.back();
+    else goHome();
+  }
+  function goHome(){
+    closeDrawer();
+    openPropKey = null; openTenantKey = null; openLlId = null;
+    applyNav({ v: 'jobs' });
+    pushNav();
+    window.scrollTo({ top: 0 });
+  }
+  $('backBtn').addEventListener('click', goBack);
+  $('brandHome').addEventListener('click', goHome);
+  $('brandHomeM').addEventListener('click', goHome);
+
   function showView(v){
     view = v;
     $('jobsView').hidden = v !== 'jobs';
@@ -1768,6 +1827,7 @@
     if (v === 'll') { openLlId ? renderLandlord() : renderLandlords(); }
     if (v === 'pay') renderPay();
     if (v === 'props') { openPropKey ? renderProperty() : renderProps(); }
+    pushNav();
     if (v === 'tenants') { openTenantKey ? renderTenant() : renderTenants(); }
     window.scrollTo({ top: 0 });
   }
@@ -1803,7 +1863,7 @@
     var b = e.target.closest('.prop-row');
     if (b) openProperty(b.dataset.key);
   });
-  $('propBack').addEventListener('click', function(){ openPropKey = null; $('propDetail').hidden = true; $('propsListView').hidden = false; renderProps(); });
+  $('propBack').addEventListener('click', function(){ openPropKey = null; $('propDetail').hidden = true; $('propsListView').hidden = false; renderProps(); pushNav(); });
   $('propRange').addEventListener('change', function(){ renderProperty(); });
 
   function openProperty(key){
@@ -1812,10 +1872,16 @@
     $('propDetail').hidden = false;
     $('propRange').value = 'all';
     if (view !== 'props') showView('props'); else renderProperty();
+    pushNav();
   }
   function propertyJobs(){
     var p = propertiesFromJobs().filter(function(x){ return x.key === openPropKey; })[0];
-    if (!p) return null;
+    if (!p) {
+      // A property linked to a landlord or tenant but with no jobs yet.
+      var link = llByKey[openPropKey] || tenantLinks.filter(function(l){ return l.property_key === openPropKey; })[0];
+      if (!link) return null;
+      p = { key: openPropKey, address: link.address || openPropKey, jobs: [], latest: 0 };
+    }
     var days = $('propRange').value;
     var from = days === 'all' ? 0 : Date.now() - Number(days) * 86400000;
     var list = p.jobs.filter(function(j){ return new Date(j.created_at).getTime() >= from; })
@@ -2003,7 +2069,7 @@
   }
   $('tenantSearch').addEventListener('input', renderTenants);
   $('tenantList').addEventListener('click', function(e){ var b = e.target.closest('.prop-row'); if (b) openTenant(Number(b.dataset.key)); });
-  $('tenantBack').addEventListener('click', function(){ openTenantKey = null; $('tenantDetail').hidden = true; $('tenantsListView').hidden = false; renderTenants(); });
+  $('tenantBack').addEventListener('click', function(){ openTenantKey = null; $('tenantDetail').hidden = true; $('tenantsListView').hidden = false; renderTenants(); pushNav(); });
   $('navTenants').addEventListener('click', function(){ openTenantKey = null; $('tenantDetail').hidden = true; $('tenantsListView').hidden = false; showView('tenants'); });
   $('tenantsBtnM').addEventListener('click', function(){ $('navTenants').click(); });
   $('tenantAdd').addEventListener('click', function(){ openTenantForm(null); });
@@ -2011,6 +2077,7 @@
     openTenantKey = id;
     $('tenantsListView').hidden = true; $('tenantDetail').hidden = false;
     if (view !== 'tenants') showView('tenants'); else renderTenant();
+    pushNav();
   }
   function currentTenant(){ return tenantRecById(openTenantKey); }
   function renderTenant(){
@@ -2731,8 +2798,13 @@
 
   // ---------- Job detail ----------
   function closeDrawer(){ $('drawer').hidden = true; $('scrim').hidden = true; openJobId = null; }
-  $('dClose').addEventListener('click', function(){ closeDrawer(); loadJobs(); });
-  $('scrim').addEventListener('click', function(){ closeDrawer(); loadJobs(); });
+  function userCloseDrawer(){
+    var st = history.state;
+    if (st && st.job && st.job === openJobId && st.depth > 0) { history.back(); return; }
+    closeDrawer(); loadJobs(); pushNav();
+  }
+  $('dClose').addEventListener('click', userCloseDrawer);
+  $('scrim').addEventListener('click', userCloseDrawer);
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
     if (!$('askModal').hidden) { closeAsk(); return; }
@@ -2743,11 +2815,12 @@
     if (!$('invModal').hidden) { $('invModal').hidden = true; return; }
     if (!$('waModal').hidden) { $('waModal').hidden = true; return; }
     if (!$('ctModal').hidden) { $('ctModal').hidden = true; return; }
-    if (openJobId) { closeDrawer(); loadJobs(); }
+    if (openJobId) userCloseDrawer();
   });
 
   function openJob(id){
     openJobId = id;
+    pushNav();
     api('GET', '/api/admin/jobs/' + id).then(function(d){
       if (!d.ok) { toast('Couldn’t open that job.'); return; }
       jobInvoices = d.invoices || [];
@@ -3623,6 +3696,18 @@
       return [l.name, l.email, props].join(' | ').toLowerCase().indexOf(q) !== -1 ||
         (digits.length >= 4 && String(l.phone || '').replace(/\D/g, '').indexOf(digits) !== -1);
     });
+    // Sort: work out each landlord's owed / overdue / open-jobs figures once.
+    var stats = {};
+    list.forEach(function(l){
+      var un = landlordInvoices(l).filter(function(i){ return !i.paid_at; });
+      stats[l.id] = { owed: sumTotal(un), overdue: sumTotal(un.filter(invOverdue)),
+        open: llProperties(l).reduce(function(a, x){ return a + x.jobs.filter(isOpen).length; }, 0) };
+    });
+    var by = $('llSort').value, az = function(a, b){ return String(a.name).localeCompare(String(b.name), 'en', { sensitivity: 'base' }); };
+    list = list.slice().sort(function(a, b){
+      var A = stats[a.id], B = stats[b.id];
+      return by === 'az' ? az(a, b) : ((by === 'open' ? B.open - A.open : by === 'overdue' ? B.overdue - A.overdue || B.owed - A.owed : B.owed - A.owed) || az(a, b));
+    });
     if (!list.length) { $('llList').innerHTML = '<div class="empty">' + (landlords.length ? 'No landlord matches.' : 'No landlords yet. Add one here, or enter landlord details on a job or invoice and they’re saved automatically.') + '</div>'; return; }
     $('llList').innerHTML = list.map(function(l){
       var props = llProperties(l), open = props.reduce(function(a, x){ return a + x.jobs.filter(isOpen).length; }, 0);
@@ -3640,6 +3725,7 @@
     openLlId = id;
     $('llListView').hidden = true; $('llDetail').hidden = false;
     if (view !== 'll') showView('ll'); else renderLandlord();
+    pushNav();
   }
   function renderLandlord(){
     var l = landlordById(openLlId);
@@ -3678,8 +3764,10 @@
   }
   wireInvList($('llOwed'));
   $('navLandlords').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; showView('ll'); });
-  $('llBack').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; renderLandlords(); });
+  $('llBack').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; renderLandlords(); pushNav(); });
   $('llSearch').addEventListener('input', renderLandlords);
+  try { if (localStorage.getItem('rrLlSort')) $('llSort').value = localStorage.getItem('rrLlSort'); } catch (e) {}
+  $('llSort').addEventListener('change', function(){ try { localStorage.setItem('rrLlSort', $('llSort').value); } catch (e) {} renderLandlords(); });
   $('llList').addEventListener('click', function(e){ var b = e.target.closest('.prop-row'); if (b) openLandlord(Number(b.dataset.id)); });
   $('llNew').addEventListener('click', function(){ openLandlordForm(null); });
   $('llProps').addEventListener('click', function(e){
