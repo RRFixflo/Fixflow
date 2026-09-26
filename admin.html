@@ -513,6 +513,7 @@
     <button class="nav" type="button" id="navTenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg> Tenants</button>
     <button class="nav" type="button" id="navPay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg> Payments <span class="badge" id="sOwed" hidden></span></button>
     <button class="nav" type="button" id="contractorsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg> Contractors</button>
+    <button class="nav" type="button" id="navEmail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
     <button class="nav" type="button" id="navNew"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <div class="side-sec">Links</div>
     <a class="nav" href="/" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Tenant report page</a>
@@ -665,11 +666,13 @@
 <!-- ASK FIXFLOW: speak or type an instruction -->
 <div class="modal" id="askModal" hidden>
   <div class="card ask-box">
-    <h3 style="margin:0"><span class="ai-spark">✦</span> Tell Fixflow what to do</h3>
+    <h3 style="margin:0"><span class="ai-spark">✦</span> <span id="askTitle">Tell Fixflow what to do</span></h3>
+    <div class="seg" id="askMode" style="align-self:flex-start"><button type="button" data-mode="say" class="on">Instruction</button><button type="button" data-mode="email">Paste a tenant’s email</button></div>
     <div class="ask-row">
       <button class="mic" id="askMic" type="button" title="Tap and speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button>
       <textarea class="inp" id="askText" placeholder="Speak, type or paste — e.g. Add a gas safety for 6 Whitworth House and email it to DPH. You can paste a whole message with several properties, their jobs and tenant numbers."></textarea>
     </div>
+    <p class="muted-note" id="askEmailHelp" hidden>Paste the tenant’s whole email — signature and all. Fixflow finds the tenant and property, splits the problems into jobs by trade, sets the urgency and suggests a contractor. The original email is saved on each job.</p>
     <div class="ideas" id="askIdeas">
       <button type="button">Add a gas safety for 6 Whitworth House and send it to DPH</button>
       <button type="button">Leaking tap in the bathroom at Flat 4, 22 Queen Street, give it to Jim</button>
@@ -3060,18 +3063,31 @@
   // ---------- Ask Fixflow (speak or type) ----------
   // The AI turns the instruction into job drafts; the property, tenant and
   // contractor are matched here from existing records and shown to confirm.
-  var askDrafts = [];
+  var askDrafts = [], askMode = 'say', askSource = '';
+  function setAskMode(m){
+    askMode = m;
+    $('askMode').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.dataset.mode === m); });
+    var email = m === 'email';
+    $('askTitle').textContent = email ? 'Add jobs from a tenant’s email' : 'Tell Fixflow what to do';
+    $('askEmailHelp').hidden = !email; $('askIdeas').hidden = email;
+    $('askMic').hidden = email || !SpeechRec;
+    $('askText').placeholder = email ? 'Paste the tenant’s email here…' : 'Speak, type or paste — e.g. Add a gas safety for 6 Whitworth House and email it to DPH. You can paste a whole message with several properties, their jobs and tenant numbers.';
+    $('askText').style.minHeight = email ? '200px' : '';
+    $('askGo').textContent = email ? '✦ Organise into jobs' : '✦ Go';
+  }
   var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
   var rec = null, listening = false;
-  function openAsk(){
+  function openAsk(mode){
     $('askModal').hidden = false; $('askErr').textContent = '';
-    if (!askDrafts.length) { $('askText').value = ''; $('askDrafts').innerHTML = ''; }
-    $('askMic').hidden = !SpeechRec;
+    if (!askDrafts.length) { $('askText').value = ''; $('askDrafts').innerHTML = ''; $('askAllRow').hidden = true; }
+    setAskMode(mode === 'email' ? 'email' : (typeof mode === 'string' ? mode : askMode));
     setTimeout(function(){ $('askText').focus(); }, 50);
   }
   function closeAsk(){ stopListening(); $('askModal').hidden = true; }
   function stopListening(){ if (rec && listening) { try { rec.stop(); } catch (e) {} } }
-  $('askBtn').addEventListener('click', openAsk);
+  $('askBtn').addEventListener('click', function(){ openAsk('say'); });
+  $('navEmail').addEventListener('click', function(){ openAsk('email'); });
+  $('askMode').addEventListener('click', function(e){ var b = e.target.closest('button[data-mode]'); if (b) { setAskMode(b.dataset.mode); $('askText').focus(); } });
   $('askClose').addEventListener('click', closeAsk);
   $('askModal').addEventListener('mousedown', function(e){ if (e.target === $('askModal')) closeAsk(); });
   $('askIdeas').addEventListener('click', function(e){ var b = e.target.closest('button'); if (b) { $('askText').value = b.textContent; runAsk(); } });
@@ -3117,13 +3133,14 @@
     if (!text) { $('askText').focus(); return; }
     if (!meta.canAi) { $('askErr').textContent = 'AI isn’t switched on (GEMINI_API_KEY).'; return; }
     $('askErr').textContent = ''; busy($('askGo'), true, 'Thinking…');
-    api('POST', '/api/admin/assistant', { text: text }).then(function(d){
+    askSource = askMode === 'email' ? text : '';
+    api('POST', '/api/admin/assistant', { text: text, mode: askMode }).then(function(d){
       busy($('askGo'), false);
       if (!d.ok) { $('askErr').textContent = 'The AI is busy — please try again in a moment.'; return; }
-      if (!d.understood) { $('askErr').textContent = 'I can add jobs for you — try something like “add a gas safety for 6 Whitworth House”.'; $('askDrafts').innerHTML = ''; askDrafts = []; return; }
+      if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs for you — try something like “add a gas safety for 6 Whitworth House”.'; $('askDrafts').innerHTML = ''; askDrafts = []; $('askAllRow').hidden = true; return; }
       askDrafts = d.jobs.map(function(x){
         var pr = matchProperty(x.address), ts = tenantsAt(pr), c = matchContractor(x.contractor);
-        return { ai: x, property: pr, tenants: ts, contractor: c };
+        return { ai: x, property: pr, tenants: ts, contractor: c, source: askSource };
       });
       renderAskDrafts();
     });
@@ -3135,8 +3152,8 @@
         return '<option value="' + c.id + '"' + (dr.contractor && dr.contractor.id === c.id ? ' selected' : '') + '>' + esc(c.name + (c.trade ? ' — ' + c.trade : '')) + '</option>';
       }).join('');
       var said = x.tenants || [];
-      var saidLabel = function(t){ return (t.name || 'Tenant') + (t.phone ? ' – ' + t.phone : ''); };
-      var tOpts = (said.length ? '<option value="msg">From your message: ' + esc(saidLabel(said[0])) + (said.length > 1 ? ' (+' + (said.length - 1) + ' more)' : '') + '</option>' : '') +
+      var saidLabel = function(t){ return (t.name || 'Tenant') + (t.phone ? ' – ' + t.phone : '') + (t.email ? ' – ' + t.email : ''); };
+      var tOpts = (said.length ? '<option value="msg">' + (dr.source ? 'From the email: ' : 'From your message: ') + esc(saidLabel(said[0])) + (said.length > 1 ? ' (+' + (said.length - 1) + ' more)' : '') + '</option>' : '') +
         dr.tenants.map(function(t, k){ return '<option value="' + k + '">' + esc((t.tenant_name || 'No name') + (t.tenant_phone ? ' – ' + t.tenant_phone : '')) + ' (on file)</option>'; }).join('') + '<option value="">No tenant</option>';
       return '<div class="draft" data-i="' + i + '">' +
         '<div><label class="lbl">Property</label><input class="inp" data-f="address" value="' + esc(pr ? pr.address : x.address) + '">' +
@@ -3144,7 +3161,7 @@
         (x.warning ? '<div class="banner" style="margin:0">⚠ ' + esc(x.warning) + '</div>' : '') +
         '<div class="grid2">' +
           '<div><label class="lbl">Tenant (contractor will contact them)</label><select class="inp" data-f="tenant">' + tOpts + '</select>' +
-            (said.length > 1 ? '<div class="tenant-list">All from your message: ' + said.map(function(t){ return esc(saidLabel(t)); }).join('; ') + '</div>' : '') + '</div>' +
+            (said.length > 1 ? '<div class="tenant-list">' + (dr.source ? 'All from the email: ' : 'All from your message: ') + said.map(function(t){ return esc(saidLabel(t)); }).join('; ') + '</div>' : '') + '</div>' +
           '<div><label class="lbl">Contractor</label><select class="inp" data-f="contractor">' + ctOpts + '</select></div>' +
         '</div>' +
         '<div class="grid2">' +
@@ -3169,7 +3186,7 @@
     var c = contractors.filter(function(k){ return String(k.id) === f('contractor'); })[0] || null;
     var desc = f('description');
     var body = { property_address: f('address'), category: x.category || 'General repair', affected: f('title'),
-      urgency: f('urgency'), source: 'Other' };
+      urgency: f('urgency'), source: dr.source ? 'Email' : 'Other' };
     if (c) body.assigned_to = c.name;
     var tv = f('tenant');
     if (tv === 'msg') {
@@ -3177,6 +3194,11 @@
       var said = x.tenants || [];
       body.tenant_name = said[0].name || 'Tenant';
       if (said[0].phone) body.tenant_phone = said[0].phone;
+      if (said[0].email) body.tenant_email = said[0].email;
+      // Same tenant already on file at this property: keep their access details too.
+      var known = dr.tenants.filter(function(t){ return said[0].name && String(t.tenant_name || '').toLowerCase() === said[0].name.toLowerCase(); })[0];
+      if (known) ['tenant_phone', 'tenant_email', 'access_days', 'access_time', 'access_notes', 'key_permission', 'key_instructions']
+        .forEach(function(k){ if (known[k] && !body[k]) body[k] = known[k]; });
       if (said.length > 1) desc += (desc ? '\n' : '') + 'Other tenants: ' + said.slice(1).map(function(t){ return (t.name || 'Tenant') + (t.phone ? ' – ' + t.phone : ''); }).join('; ');
     } else if (tv !== '') {
       var t = dr.tenants[Number(tv)];
@@ -3185,7 +3207,12 @@
     }
     body.description = desc;
     if (dr.property) { var ll = landlordAt(dr.property.address); if (ll) LL_FIELDS.forEach(function(k){ if (ll[k]) body[k] = ll[k]; }); }
-    return { body: body, contractor: c };
+    return { body: body, contractor: c, source: dr.source };
+  }
+  // Jobs made from a tenant's email keep the original email in their history.
+  function saveSource(id, source){
+    if (!source) return Promise.resolve();
+    return api('POST', '/api/admin/jobs/' + id + '/updates', { kind: 'note', body: 'Original email from the tenant:\n\n' + source.slice(0, 4900) });
   }
   function afterCreated(ids, send){
     return loadJobs().then(function(){
@@ -3202,6 +3229,9 @@
     if (b.dataset.act === 'send' && !r.contractor) { toast('Pick a contractor to send it to'); return; }
     busy(b, true, 'Creating…');
     api('POST', '/api/admin/jobs', r.body).then(function(d){
+      if (d.ok) return saveSource(d.id, r.source).then(function(){ return d; });
+      return d;
+    }).then(function(d){
       busy(b, false);
       if (!d.ok) { toast('Couldn’t create the job (' + (d.error || 'error') + ')'); return; }
       askDrafts.splice(Number(box.dataset.i), 1);
@@ -3219,7 +3249,7 @@
     var ids = [], refs = [];
     // One at a time, so references come out in the same order as the drafts.
     reqs.reduce(function(prev, r){
-      return prev.then(function(){ return api('POST', '/api/admin/jobs', r.body).then(function(d){ if (d.ok) { ids.push(d.id); refs.push(d.ref); } }); });
+      return prev.then(function(){ return api('POST', '/api/admin/jobs', r.body).then(function(d){ if (d.ok) { ids.push(d.id); refs.push(d.ref); return saveSource(d.id, r.source); } }); });
     }, Promise.resolve()).then(function(){
       busy($('askAll'), false);
       if (ids.length < reqs.length) toast('Created ' + ids.length + ' of ' + reqs.length + ' — please check the rest');
@@ -3257,7 +3287,8 @@
       { t: 'Tenants', s: 'Everyone who has reported', ic: IC.go, run: function(){ closeDrawer(); $('navTenants').click(); } },
       { t: 'Contractors', s: 'Directory and phone numbers', ic: IC.go, run: function(){ $('contractorsBtn').click(); } },
       { t: 'Contractor payments', s: 'What you owe contractors', ic: IC.go, run: function(){ closeDrawer(); showView('pay'); } },
-      { t: 'Ask Fixflow', s: 'Speak or type an instruction, e.g. add a gas safety', ic: IC.go, run: function(){ openAsk(); } }
+      { t: 'Ask Fixflow', s: 'Speak or type an instruction, e.g. add a gas safety', ic: IC.go, run: function(){ openAsk('say'); } },
+      { t: 'Jobs from an email', s: 'Paste a tenant’s email and let AI organise it into jobs', ic: IC.go, run: function(){ openAsk('email'); } }
     ].filter(function(a){ return !raw || hit(a.t + ' ' + a.s); });
     var js = (raw ? jobs.filter(function(j){
       return hit([j.ref, j.property_address, j.tenant_name, j.tenant_email, j.assigned_to, issueOf(j), j.description, j.status].join(' | ')) ||

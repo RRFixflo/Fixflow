@@ -639,6 +639,26 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true, updated: r.rows.length });
   }));
 
+  // A tenant's email listing their repairs: find the tenant and property, and
+  // organise the issues into jobs by trade so each can go to the right contractor.
+  function emailPrompt(text, trades) {
+    return 'You organise repair requests for Residential Realtors, a UK letting agent. Below is an email (or message) from a tenant, pasted by staff, between the ---- lines. It may include a signature, greetings, forwarded headers and quoted older messages; ignore anything that is not about current repairs.\n----\n' + text + '\n----\n\n' +
+      'Their contractors: ' + (trades || 'none listed') + '.\n\n' +
+      'Organise the reported problems into jobs: group problems that the same kind of tradesperson would fix (e.g. all plumbing together, all electrics together, gas appliances separately for a Gas Safe engineer, general handyman tasks together). If everything suits one handyman, make one job. For each job give:\n' +
+      '- address: the property address from the email (signature, subject or body), tidied up; keep flat/house numbers and postcode exactly. Same address on every job.\n' +
+      '- category: a short issue type, e.g. "Plumbing", "Electrics", "Heating and boiler", "Gas appliance", "Damp and mould", "Doors and locks", "Windows", "Pest control", "General repair"\n' +
+      '- title: a short job title, e.g. "Leaking kitchen tap" or "General repairs (3 items)"\n' +
+      '- description: for one problem, one or two plain sentences for the contractor; for several, one per line (separated by \\n). Keep every detail the tenant gave (room, item, what is wrong, since when). Do not drop problems.\n' +
+      '- tenants: the tenant(s) who wrote or are named, as [{"name": "", "phone": "", "email": ""}] using only what appears in the email (the sender\'s email address if shown); [] if none\n' +
+      '- urgency: "Emergency" (danger to people or property: gas smell, electrical danger, major leak, no heating or hot water in cold weather, insecure front door), "Urgent" (significant but not dangerous), or "Routine"\n' +
+      '- contractor: the contractor name from the list that fits the trade, or "" if none fits\n' +
+      '- send: false\n' +
+      '- warning: a short note if a job needs a specialist that none of the contractors are (e.g. "Gas hob fault needs a Gas Safe registered engineer"), or if the tenant mentions a safety risk; otherwise ""\n' +
+      'Never invent names, phone numbers, addresses or dates.\n' +
+      'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], "understood": true}. ' +
+      'If there are no repair requests in it, reply {"jobs": [], "understood": false}.';
+  }
+
   // ---------- Assistant: plain-English (or spoken) commands ----------
   // Turns something like "add a gas safety for 6 Whitworth House" into a
   // structured job draft. Nothing is created here: the dashboard matches the
@@ -650,7 +670,8 @@ module.exports = function mountJobs(app, opts) {
     if (!text) return res.status(400).json({ ok: false, error: 'no-text' });
     const trades = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY name')).rows
       .map(function (c) { return c.name + (c.trade ? ' (' + c.trade + ')' : ''); }).join('; ');
-    const prompt = 'You turn instructions from a UK letting agent\'s maintenance manager into repair jobs for their job system.\n\n' +
+    const fromEmail = (req.body || {}).mode === 'email';
+    const prompt = fromEmail ? emailPrompt(text, trades) : 'You turn instructions from a UK letting agent\'s maintenance manager into repair jobs for their job system.\n\n' +
       'Instruction (spoken via speech-to-text, so allow for mis-heard words, or a pasted message that may list several properties, each with its tasks and tenant contacts), between the ---- lines:\n----\n' + text + '\n----\n\n' +
       'Their contractors: ' + (trades || 'none listed') + '.\n\n' +
       'Make exactly one job per property address mentioned (a pasted message may contain several, often each followed by "for Jim" or similar). Put all the tasks for the same property into that one job. For each job give:\n' +
@@ -677,8 +698,8 @@ module.exports = function mountJobs(app, opts) {
         description: str(j.description, 2000) || '', urgency: URGENCIES.indexOf(j.urgency) !== -1 ? j.urgency : 'Routine',
         contractor: str(j.contractor, 200) || '', send: !!j.send, warning: str(j.warning, 300) || '',
         tenants: (Array.isArray(j.tenants) ? j.tenants : []).slice(0, 10).map(function (t) {
-          return { name: str(t && t.name, 200) || '', phone: str(t && t.phone, 50) || '' };
-        }).filter(function (t) { return t.name || t.phone; })
+          return { name: str(t && t.name, 200) || '', phone: str(t && t.phone, 50) || '', email: str(t && t.email, 200) || '' };
+        }).filter(function (t) { return t.name || t.phone || t.email; })
       };
     }).filter(function (j) { return j.address || j.title; });
     res.json({ ok: true, jobs: jobs, understood: parsed.understood !== false && jobs.length > 0 });
