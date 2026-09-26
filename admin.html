@@ -957,9 +957,11 @@
       <select class="inp" id="waTo"></select>
       <label class="wa-assign" id="waAssignWrap" hidden><input type="checkbox" id="waAssign" checked> <span id="waAssignText">Also assign to them</span></label>
     </div>
+    <label class="wa-assign" id="waPhotosWrap" hidden style="margin:0 0 10px"><input type="checkbox" id="waPhotos" checked> <span id="waPhotosText">Include a link to the photos</span></label>
     <div class="wa-preview" id="waText"></div>
     <div class="row-actions">
       <button class="btn" id="waClose" type="button">Close</button>
+      <button class="btn" id="waSharePhotos" type="button" hidden>Send photos</button>
       <button class="btn" id="waCopy" type="button">Copy</button>
       <button class="btn" id="waEmail" type="button" hidden>Send by email</button>
       <button class="btn wa" id="waOpen" type="button">Open WhatsApp</button>
@@ -1282,6 +1284,7 @@
     return [issue, lines[0]].filter(Boolean).join('. ') || 'Repair';
   }
   function keysText(j){ return j.key_permission === 'Yes' ? 'Yes' : j.key_permission === 'No' ? 'No' : null; }
+  var waLinks = {};   // job id -> public photo link, when "include photos" is ticked
   function contractorMessage(list){
     // Jobs at the same address go under one heading, so a multi-job visit reads as one stop.
     var groups = [], byKey = {};
@@ -1296,6 +1299,7 @@
       var lines = ['Address: ' + g.address];
       if (g.jobs.length === 1) lines.push('Job: ' + jobText(g.jobs[0]));
       else { lines.push('Jobs:'); g.jobs.forEach(function(j, n){ lines.push((n + 1) + '. ' + jobText(j)); }); }
+      g.jobs.forEach(function(j, n){ if (waLinks[j.id]) lines.push((g.jobs.length > 1 ? 'Photos (job ' + (n + 1) + '): ' : 'Photos: ') + waLinks[j.id]); });
       // One line per tenant, keeping a phone number from any of their jobs.
       var tenants = [], byName = {};
       g.jobs.forEach(function(j){
@@ -1407,8 +1411,17 @@
   var waJobs = [];
   function showContractorMessage(list){
     waJobs = list;
+    waLinks = {};
     $('waTitle').textContent = list.length === 1 ? 'Send ' + list[0].ref + ' to a contractor' : 'Send ' + list.length + ' jobs to a contractor';
     $('waText').textContent = contractorMessage(list);
+    // Photos on these jobs (from the job list, which knows each job's photos).
+    waPhotoIds = [];
+    list.forEach(function(j){ var lj = jobs.filter(function(x){ return x.id === j.id; })[0] || j; (lj.photo_ids || []).forEach(function(id){ waPhotoIds.push(id); }); });
+    $('waPhotosWrap').hidden = !waPhotoIds.length;
+    $('waPhotosText').textContent = 'Include a link to the ' + waPhotoIds.length + ' photo' + (waPhotoIds.length === 1 ? '' : 's');
+    $('waSharePhotos').hidden = !(waPhotoIds.length && canShareFiles());
+    $('waSharePhotos').textContent = 'Send ' + waPhotoIds.length + ' photo' + (waPhotoIds.length === 1 ? '' : 's');
+    if (waPhotoIds.length && $('waPhotos').checked) addPhotoLinks();
     // Pre-pick the contractor these jobs are already assigned to, if they all share one.
     var names = {};
     list.forEach(function(j){ names[(j.assigned_to || '').toLowerCase()] = true; });
@@ -1421,6 +1434,34 @@
     updateWaAssign();
     $('waModal').hidden = false;
   }
+  var waPhotoIds = [];
+  function canShareFiles(){
+    try { return !!(navigator.canShare && navigator.canShare({ files: [new File([''], 'x.jpg', { type: 'image/jpeg' })] })); } catch (e) { return false; }
+  }
+  function addPhotoLinks(){
+    var ids = waJobs.filter(function(j){ var lj = jobs.filter(function(x){ return x.id === j.id; })[0] || j; return (lj.photo_ids || []).length; }).map(function(j){ return j.id; });
+    if (!ids.length) return;
+    api('POST', '/api/admin/photo-links', { job_ids: ids }).then(function(d){
+      if (!d.ok || !$('waPhotos').checked) return;
+      waLinks = d.links || {};
+      $('waText').textContent = contractorMessage(waJobs);
+    });
+  }
+  $('waPhotos').addEventListener('change', function(){
+    if ($('waPhotos').checked) addPhotoLinks();
+    else { waLinks = {}; $('waText').textContent = contractorMessage(waJobs); }
+  });
+  // Phones: send the actual photos through the share sheet (choose WhatsApp, then the contractor).
+  $('waSharePhotos').addEventListener('click', function(){
+    busy($('waSharePhotos'), true, 'Getting photos…');
+    Promise.all(waPhotoIds.slice(0, 30).map(function(id, i){
+      return fetch('/api/admin/photos/' + id, { credentials: 'same-origin' }).then(function(r){ return r.blob(); })
+        .then(function(b){ return new File([b], (waJobs.length === 1 ? waJobs[0].ref : 'Job') + '-photo-' + (i + 1) + '.jpg', { type: b.type || 'image/jpeg' }); });
+    })).then(function(files){
+      busy($('waSharePhotos'), false);
+      return navigator.share({ files: files, title: 'Job photos' }).then(function(){ logContractorSend(waJobs, 'Photos sent to contractor (' + files.length + ')'); });
+    })['catch'](function(err){ busy($('waSharePhotos'), false); if (err && err.name !== 'AbortError') toast('Couldn’t share the photos — use the photo link instead'); });
+  });
   function waChosen(){ var id = Number($('waTo').value); return contractors.filter(function(c){ return c.id === id; })[0] || null; }
   function updateWaAssign(){
     var c = waChosen();

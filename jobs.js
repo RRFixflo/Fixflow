@@ -150,6 +150,8 @@ CREATE TABLE IF NOT EXISTS invoices (
 );
 CREATE INDEX IF NOT EXISTS invoices_job_idx ON invoices (job_id, id);
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS photo_token TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS jobs_photo_token_idx ON jobs (photo_token);
 CREATE TABLE IF NOT EXISTS contractors (
   id         SERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1090,6 +1092,64 @@ module.exports = function mountJobs(app, opts) {
       biggest.amount = Math.round((biggest.amount * 100 + again)) / 100;
     }
     res.json({ ok: true, lines: lines });
+  }));
+
+  // ---------- Photo links for contractors ----------
+  // Each job can have a long random link (/p/<token>) that shows its photos
+  // without signing in, so they can be sent in a WhatsApp message or email.
+  function baseUrl(req) {
+    if (PUBLIC_URL) return PUBLIC_URL;
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+    return proto + '://' + req.get('host');
+  }
+  app.post('/api/admin/photo-links', withDb(async function (p, req, res) {
+    const ids = (Array.isArray((req.body || {}).job_ids) ? req.body.job_ids : []).map(function (x) { return parseInt(x, 10); }).filter(function (x) { return x > 0; }).slice(0, 100);
+    const links = {};
+    for (const id of ids) {
+      const has = await p.query('SELECT photo_token, (SELECT count(*)::int FROM job_photos WHERE job_id = jobs.id) AS n FROM jobs WHERE id = $1', [id]);
+      if (!has.rows.length || !has.rows[0].n) continue;
+      let token = has.rows[0].photo_token;
+      if (!token) {
+        token = crypto.randomBytes(18).toString('base64url');
+        await p.query('UPDATE jobs SET photo_token = $2 WHERE id = $1 AND photo_token IS NULL', [id, token]);
+        token = (await p.query('SELECT photo_token FROM jobs WHERE id = $1', [id])).rows[0].photo_token;
+      }
+      links[id] = baseUrl(req) + '/p/' + token;
+    }
+    res.json({ ok: true, links: links });
+  }));
+
+  function htmlEsc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  app.get('/p/:token', withDb(async function (p, req, res) {
+    const token = String(req.params.token || '');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
+    const j = (await p.query('SELECT id, property_address, category, affected, symptom FROM jobs WHERE photo_token = $1 AND archived_at IS NULL', [token])).rows[0];
+    if (!j) return res.status(404).send('This link is no longer available.');
+    const ph = (await p.query('SELECT id FROM job_photos WHERE job_id = $1 ORDER BY id', [j.id])).rows;
+    const issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">' +
+      '<title>Job photos ' + refFor(j.id) + '</title><style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f4f4f6;color:#0b0c0f}' +
+      'header{padding:16px;background:#0e0f13;color:#fff}header b{color:#D9262E}h1{font-size:1rem;margin:6px 0 2px}p{margin:0;color:#b9bcc4;font-size:.85rem}' +
+      'main{padding:12px;display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}a{display:block;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1)}' +
+      'img{display:block;width:100%;height:auto}</style></head><body><header><div>R<b>|</b>R Residential Realtors</div><h1>' + refFor(j.id) + ' · ' + htmlEsc(j.property_address || '') + '</h1><p>' +
+      htmlEsc(issue) + ' · ' + ph.length + ' photo' + (ph.length === 1 ? '' : 's') + ' — tap a photo to open it full size</p></header><main>' +
+      ph.map(function (x, i) { const u = '/p/' + token + '/' + x.id; return '<a href="' + u + '" target="_blank" rel="noopener"><img loading="lazy" src="' + u + '" alt="Photo ' + (i + 1) + '"></a>'; }).join('') +
+      '</main></body></html>');
+  }));
+  app.get('/p/:token/:photo', withDb(async function (p, req, res) {
+    const token = String(req.params.token || '');
+    if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
+    const r = await p.query(`SELECT ph.mime, ph.data FROM job_photos ph JOIN jobs j ON j.id = ph.job_id
+      WHERE j.photo_token = $1 AND j.archived_at IS NULL AND ph.id = $2`, [token, parseInt(req.params.photo, 10) || 0]);
+    if (!r.rows.length) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', r.rows[0].mime);
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Robots-Tag', 'noindex');
+    res.send(r.rows[0].data);
   }));
 
   // ---------- Photos ----------
