@@ -103,7 +103,12 @@ app.get('/admin', (req, res) => {
 
 const jobs = require('./jobs')(app, {
   sendEmail: function (opts) { return sendViaResend(opts); },
-  canEmail: function () { return !!RESEND_API_KEY; }
+  canEmail: function () { return !!RESEND_API_KEY; },
+  // The same AI provider the tenant page uses, for drafting emails from a job.
+  canAi: function () { return !!(GEMINI_API_KEY || ANTHROPIC_API_KEY); },
+  askAi: function (prompt, wantJson) {
+    return GEMINI_API_KEY ? askGemini(prompt, wantJson) : askAnthropic(prompt, wantJson);
+  }
 });
 
 // Simple existence check the frontend can use to confirm a real backend is present
