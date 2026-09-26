@@ -2144,7 +2144,7 @@
   }
   function shLog(how){
     if (!shCtx || !shCtx.jobId) return;
-    api('POST', '/api/admin/jobs/' + shCtx.jobId + '/updates', { kind: 'email', body: 'Report shared with the landlord' + (shCtx.landlord && shCtx.landlord.landlord_name ? ' (' + shCtx.landlord.landlord_name + ')' : '') + ' by ' + how + '.' })
+    api('POST', '/api/admin/jobs/' + shCtx.jobId + '/updates', { kind: 'email', body: (shCtx.logText || 'Report shared with the landlord') + (shCtx.landlord && shCtx.landlord.landlord_name ? ' (' + shCtx.landlord.landlord_name + ')' : '') + ' by ' + how + '.' })
       .then(function(){ if (openJobId === shCtx.jobId) openJob(shCtx.jobId); });
   }
   function shDownload(doc){
@@ -2497,7 +2497,7 @@
     var doc = invoicePdf(j, v);
     if (!doc) return null;
     api('POST', '/api/admin/jobs/' + j.id + '/invoice', {
-      invoice_number: v.number, total: v.total, how: how,
+      invoice_number: v.number, total: v.total, how: how, data: v,
       landlord_name: $('invLlSave').checked ? v.landlord : null, landlord_email: $('invLlSave').checked ? v.landlordEmail : null,
       landlord_phone: $('invLlSave').checked ? v.landlordPhone : null, landlord_address: $('invLlSave').checked ? v.landlordAddress : null
     }).then(function(d){ if (d.ok) { loadJobs(); if (openJobId === j.id) openJob(j.id); } });
@@ -2577,6 +2577,7 @@
     openJobId = id;
     api('GET', '/api/admin/jobs/' + id).then(function(d){
       if (!d.ok) { toast('Couldn’t open that job.'); return; }
+      jobInvoices = d.invoices || [];
       renderJob(d.job, d.updates, d.photos || []);
       $('scrim').hidden = false;
       $('drawer').hidden = false;
@@ -2592,6 +2593,7 @@
   }
   $('dTabs').addEventListener('click', function(e){ var b = e.target.closest('button[data-tab]'); if (b) setDrawerTab(b.dataset.tab); });
 
+  var jobInvoices = [];
   function renderJob(j, updates, photos){
     $('dTitle').textContent = j.ref;
     $('dUrg').innerHTML = '<span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span>';
@@ -2687,10 +2689,19 @@
         '<div class="row-actions">' +
           '<button class="btn primary" id="saveMoney" type="button">Save costs</button></div>' +
       '</div>' +
-      '<div class="card" data-pane="money"><h3>Landlord invoice</h3>' +
-        (j.invoiced_at
-          ? '<div class="complete-done"><strong>Invoiced ' + esc(j.invoice_number || '') + ' · ' + esc(gbp(j.invoice_total)) + '</strong><br>' + esc(fmtDate(j.invoiced_at)) + (j.landlord_name ? ' · ' + esc(j.landlord_name) : '') + '</div>'
-          : '<p class="muted-note">Create a PDF invoice with our logo, company details and bank details. The AI can break the charge into labour, materials and call-out lines, and you can choose whether to add VAT.</p>') +
+      '<div class="card" data-pane="money"><h3>Landlord invoices' + (jobInvoices.length ? ' <span class="count-chip">' + jobInvoices.length + '</span>' : '') + '</h3>' +
+        (jobInvoices.length
+          ? '<div class="list">' + jobInvoices.map(function(inv, i){
+              return '<div class="pay-row" style="grid-template-columns:minmax(0,1fr) 110px auto">' +
+                '<div class="addr"><strong>' + esc(inv.number || 'Invoice') + '</strong><small>' + esc(fmtShort(inv.created_at) + (inv.landlord_name ? ' · ' + inv.landlord_name : '')) + '</small></div>' +
+                '<div class="amt">' + esc(gbp(inv.total)) + '</div>' +
+                '<div style="display:flex;gap:6px;justify-content:flex-end">' +
+                  (inv.data ? '<button class="btn small" type="button" data-inv-open="' + i + '">Open</button><button class="btn small primary" type="button" data-inv-send="' + i + '">Resend</button>' : '<span class="muted-note" style="font-size:.76rem">Issued before invoices were saved</span>') +
+                '</div></div>';
+            }).join('') + '</div>'
+          : j.invoiced_at
+            ? '<div class="complete-done"><strong>Invoiced ' + esc(j.invoice_number || '') + ' · ' + esc(gbp(j.invoice_total)) + '</strong><br>' + esc(fmtDate(j.invoiced_at)) + (j.landlord_name ? ' · ' + esc(j.landlord_name) : '') + '<br><span style="font-size:.8rem">Issued before invoices were saved — create it again to be able to resend it.</span></div>'
+            : '<p class="muted-note">Create a PDF invoice with our logo, company details and bank details. The AI can break the charge into labour, materials and call-out lines, and you can choose whether to add VAT.</p>') +
         '<div class="row-actions"><button class="btn primary" id="invBtn" type="button">' + (j.invoiced_at ? 'Create another invoice' : 'Create invoice') + '</button></div>' +
       '</div>' +
 
@@ -3004,6 +3015,36 @@
     photos = photos || [];
     var LLJ_ID = (landlordFor(j) || {}).id;
     $('invBtn').addEventListener('click', function(){ openInvoice(j); });
+    // Past invoices: open (view the PDF) or resend to the landlord.
+    function invDoc(inv){ var v = Object.assign({}, inv.data); v.number = v.number || inv.number; return invoicePdf(j, v); }
+    function invName(inv){ return (inv.number || 'Invoice') + '-' + pdfName('', j.property_address).replace(/^-/, ''); }
+    $('dBody').querySelectorAll('[data-inv-open]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var inv = jobInvoices[Number(b.dataset.invOpen)], doc = invDoc(inv);
+        if (!doc) return;
+        var url = URL.createObjectURL(doc.output('blob'));
+        var w = window.open(url, '_blank');
+        if (!w) deliverPdf(doc, invName(inv), false);
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+      });
+    });
+    $('dBody').querySelectorAll('[data-inv-send]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var inv = jobInvoices[Number(b.dataset.invSend)], v = inv.data, cfg = meta.invoice || {};
+        // Send to the landlord on the invoice, falling back to the property's current landlord for contact details.
+        var cur = landlordFor(j) || {};
+        var ll = { landlord_name: v.landlord || cur.landlord_name, landlord_email: v.landlordEmail || cur.landlord_email, landlord_phone: v.landlordPhone || cur.landlord_phone };
+        openShare({
+          landlord: ll.landlord_name ? ll : null, address: j.property_address, jobId: j.id, logText: 'Invoice ' + (inv.number || '') + ' resent to the landlord',
+          name: invName(inv), subject: 'Invoice ' + (inv.number || '') + ' — ' + (j.property_address || ''),
+          intro: 'Please find attached invoice ' + (inv.number || '') + ' for ' + gbp(inv.total) + ' for repair work at ' + (j.property_address || 'your property') + ' (ref ' + j.ref + ')' +
+            (v.due ? ', due by ' + ukDate(v.due) : '') + '.' +
+            (cfg.payee ? '\n\nPayment details:\nAccount name: ' + cfg.payee + '\nSort code: ' + cfg.sortCode + '\nAccount number: ' + cfg.accountNumber + (v.ref ? '\nReference: ' + v.ref : '') : ''),
+          makeDoc: function(){ return Promise.resolve(invDoc(inv)); },
+          onAddLandlord: function(){ setDrawerTab('overview'); $('editLl').click(); }
+        });
+      });
+    });
     $('qInv').addEventListener('click', function(){ openInvoice(j); });
     $('qWa').addEventListener('click', function(){ showContractorMessage([j]); });
     $('qNote').addEventListener('click', function(){ setDrawerTab('history'); $('fNote').focus(); });

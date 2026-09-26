@@ -120,6 +120,17 @@ CREATE TABLE IF NOT EXISTS property_landlords (
   landlord_id  INTEGER NOT NULL REFERENCES landlords(id) ON DELETE CASCADE,
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS invoices (
+  id             SERIAL PRIMARY KEY,
+  job_id         INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  number         TEXT,
+  total          NUMERIC(10,2),
+  landlord_name  TEXT,
+  landlord_email TEXT,
+  data           JSONB
+);
+CREATE INDEX IF NOT EXISTS invoices_job_idx ON invoices (job_id, id);
 CREATE TABLE IF NOT EXISTS contractors (
   id         SERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -449,7 +460,8 @@ module.exports = function mountJobs(app, opts) {
     job.ref = refFor(job.id);
     const u = await p.query('SELECT id, created_at, kind, body FROM job_updates WHERE job_id = $1 ORDER BY created_at DESC, id DESC', [id]);
     const ph = await p.query('SELECT id, created_at, added_by, name FROM job_photos WHERE job_id = $1 ORDER BY id', [id]);
-    res.json({ ok: true, job: job, updates: u.rows, photos: ph.rows });
+    const inv = await p.query('SELECT id, created_at, number, total, landlord_name, landlord_email, data FROM invoices WHERE job_id = $1 ORDER BY id DESC', [id]);
+    res.json({ ok: true, job: job, updates: u.rows, photos: ph.rows, invoices: inv.rows });
   }));
 
   app.get('/api/admin/jobs/:id/pdf', withDb(async function (p, req, res) {
@@ -744,10 +756,23 @@ module.exports = function mountJobs(app, opts) {
         str(b.landlord_phone, 50), str(b.landlord_address, 500)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     if (str(b.landlord_name)) await ensureLandlord(p, b, r.rows[0].property_address);
+    // Keep the whole invoice so it can be opened and resent exactly as issued.
+    let invoiceId = null;
+    if (b.data && typeof b.data === 'object') {
+      const d = b.data;
+      const clean = {
+        number: number, date: str(d.date, 20), due: str(d.due, 20), ref: str(d.ref, 100),
+        landlord: str(d.landlord, 200), landlordAddress: str(d.landlordAddress, 500), landlordEmail: str(d.landlordEmail, 200), landlordPhone: str(d.landlordPhone, 50),
+        lines: (Array.isArray(d.lines) ? d.lines : []).slice(0, 50).map(function (l) { return { desc: str(l && l.desc, 1000) || '', amount: money(l && l.amount) }; }),
+        sub: money(d.sub), vat: money(d.vat) || 0, total: total
+      };
+      invoiceId = (await p.query('INSERT INTO invoices (job_id, number, total, landlord_name, landlord_email, data) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+        [id, number, total, clean.landlord, clean.landlordEmail, JSON.stringify(clean)])).rows[0].id;
+    }
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'email', 'Invoice ' + number + ' issued to ' + (str(b.landlord_name, 200) || 'the landlord') + ' for ' + gbp(total) +
         (str(b.how, 100) ? ' (' + str(b.how, 100) + ')' : '') + '.']);
-    res.json({ ok: true, invoice_number: number });
+    res.json({ ok: true, invoice_number: number, invoice_id: invoiceId });
   }));
 
   // Suggests an itemised breakdown of the charge to the landlord (labour,
