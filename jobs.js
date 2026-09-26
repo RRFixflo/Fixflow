@@ -89,6 +89,7 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_name TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_email TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_phone TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_address TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contractor_paid_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_number TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_total NUMERIC(10,2);
@@ -158,7 +159,7 @@ const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenan
   estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
   archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved,
   (SELECT array_agg(ph.id ORDER BY ph.id) FROM job_photos ph WHERE ph.job_id = jobs.id) AS photo_ids,
-  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total`;
+  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total, contractor_paid_at`;
 
 function str(v, max) {
   if (v === undefined || v === null) return null;
@@ -618,6 +619,65 @@ module.exports = function mountJobs(app, opts) {
   // Suggests an itemised breakdown of the charge to the landlord (labour,
   // materials, call-out…) that adds up exactly to the total staff entered. It's
   // a starting point for staff to check and edit, never sent without review.
+  // ---------- Contractor payments ----------
+  // Marks jobs as paid (or not paid) to the contractor. What's owed is worked
+  // out in the dashboard from each job's actual cost and contractor.
+  app.post('/api/admin/contractor-payments', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const ids = (Array.isArray(b.job_ids) ? b.job_ids : []).map(function (x) { return parseInt(x, 10); }).filter(function (x) { return x > 0; }).slice(0, 500);
+    if (!ids.length) return res.status(400).json({ ok: false, error: 'no-jobs' });
+    const paid = b.paid !== false;
+    const r = await p.query(
+      'UPDATE jobs SET contractor_paid_at = ' + (paid ? 'coalesce(contractor_paid_at, now())' : 'NULL') + ', updated_at = now() WHERE id = ANY($1::int[]) RETURNING id, assigned_to, actual_cost',
+      [ids]);
+    const note = str(b.note, 200);
+    for (const row of r.rows) {
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [row.id, 'change',
+        paid ? 'Contractor paid' + (row.assigned_to ? ' (' + row.assigned_to + ')' : '') + (row.actual_cost != null ? ': ' + gbp(row.actual_cost) : '') + (note ? ' — ' + note : '') + '.'
+             : 'Contractor payment un-marked.']);
+    }
+    res.json({ ok: true, updated: r.rows.length });
+  }));
+
+  // ---------- Assistant: plain-English (or spoken) commands ----------
+  // Turns something like "add a gas safety for 6 Whitworth House" into a
+  // structured job draft. Nothing is created here: the dashboard matches the
+  // property, tenant and contractor and shows the draft for staff to confirm.
+  app.post('/api/admin/assistant', withDb(async function (p, req, res) {
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    const text = str((req.body || {}).text, 1000);
+    if (!text) return res.status(400).json({ ok: false, error: 'no-text' });
+    const trades = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY name')).rows
+      .map(function (c) { return c.name + (c.trade ? ' (' + c.trade + ')' : ''); }).join('; ');
+    const prompt = 'You turn instructions from a UK letting agent\'s maintenance manager into repair jobs for their job system.\n\n' +
+      'Instruction (may be speech-to-text, so allow for mis-heard words): "' + text.replace(/"/g, "'") + '"\n\n' +
+      'Their contractors: ' + (trades || 'none listed') + '.\n\n' +
+      'Work out one job per property mentioned (usually one). For each job give:\n' +
+      '- address: the property as said, tidied up (e.g. "6 Whitworth House"); keep flat/house numbers exactly\n' +
+      '- category: a short issue type, e.g. "Gas safety", "EICR", "Plumbing", "Heating and boiler", "Electrics", "Damp and mould", "Doors and locks", "Pest control", "General repair"\n' +
+      '- title: a short job title, e.g. "Annual gas safety check (CP12)"\n' +
+      '- description: one or two plain sentences for the contractor. For gas safety checks and EICRs, and whenever the instruction says so, end with "Please contact the tenant directly to arrange a time."\n' +
+      '- urgency: "Emergency" (danger, no heating/water in winter, major leak), "Urgent", or "Routine" (checks, certificates, minor repairs)\n' +
+      '- contractor: the contractor name from the list that fits the trade or was named, or "" if none fits\n' +
+      '- send: true if the instruction asks to send, email or message it to the contractor, or to get them to arrange it; otherwise false\n' +
+      'Do not invent tenant names, phone numbers or dates.\n' +
+      'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false}], "understood": true}. ' +
+      'If the instruction is not about creating a job, reply {"jobs": [], "understood": false}.';
+    const result = await opts.askAi(prompt, true);
+    if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
+    let parsed = null;
+    try { parsed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()); } catch (e) { parsed = null; }
+    if (!parsed) return res.status(502).json({ ok: false, error: 'ai-bad-reply' });
+    const jobs = (Array.isArray(parsed.jobs) ? parsed.jobs : []).slice(0, 10).map(function (j) {
+      return {
+        address: str(j.address, 300) || '', category: str(j.category, 100) || '', title: str(j.title, 200) || '',
+        description: str(j.description, 2000) || '', urgency: URGENCIES.indexOf(j.urgency) !== -1 ? j.urgency : 'Routine',
+        contractor: str(j.contractor, 200) || '', send: !!j.send
+      };
+    }).filter(function (j) { return j.address || j.title; });
+    res.json({ ok: true, jobs: jobs, understood: parsed.understood !== false && jobs.length > 0 });
+  }));
+
   app.post('/api/admin/jobs/:id/ai-invoice', withDb(async function (p, req, res) {
     if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
     const total = money((req.body || {}).total);

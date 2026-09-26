@@ -91,7 +91,7 @@
   .side-foot { border-top: 1px solid var(--side-line); padding-top: 10px; }
   .main { min-width: 0; }
   .mainhead { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; padding: 14px 28px; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px); border-bottom: 1px solid var(--line); }
-  .mainhead h1 { font-family: var(--display); font-size: 1.2rem; font-weight: 700; letter-spacing: -.02em; margin: 0; white-space: nowrap; }
+  .mainhead h1 { font-family: var(--display); font-size: 1.2rem; font-weight: 700; letter-spacing: -.02em; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .mainhead .date { color: var(--ink-faint); font-size: .82rem; margin-left: 4px; }
   .mainhead .grow { flex: 1; }
   .mobile-only { display: none !important; }
@@ -101,7 +101,10 @@
     .app { grid-template-columns: 1fr; }
     .side { display: none; }
     .mobile-only { display: inline-flex !important; }
-    .mainhead { padding: 12px 16px; }
+    .mainhead { padding: 12px 16px; gap: 6px; }
+    .mainhead h1 { font-size: 1.05rem; }
+    .mainhead .btn.small { padding: 6px 8px; }
+    #refreshBtn { display: none; }
     .mainhead .date { display: none; }
     .wrap { padding: 16px 16px 60px; }
   }
@@ -270,6 +273,39 @@
   .money-strip div { padding: 10px 12px; border-radius: 11px; background: var(--panel-2); }
   .money-strip span { display: block; font-size: .72rem; color: var(--ink-faint); font-weight: 600; }
   .money-strip b { font-variant-numeric: tabular-nums; font-size: .95rem; }
+
+  /* ---------- Assistant ---------- */
+  .btn.ask { background: linear-gradient(135deg, #7C3AED, #D9262E); border-color: transparent; color: #fff; }
+  .btn.ask:hover { filter: brightness(1.06); background: linear-gradient(135deg, #7C3AED, #D9262E); }
+  .ask-box { width: min(680px, 100%); display: flex; flex-direction: column; gap: 12px; }
+  .ask-row { display: flex; gap: 10px; align-items: stretch; }
+  .ask-row textarea { flex: 1; min-height: 64px; font-size: 1rem; }
+  .mic { width: 64px; flex-shrink: 0; border-radius: 16px; border: 1px solid var(--line-strong); background: var(--panel-2); color: var(--ink); cursor: pointer; display: grid; place-items: center; transition: background .15s, color .15s; }
+  .mic svg { width: 26px; height: 26px; }
+  .mic.on { background: var(--brick); color: #fff; border-color: var(--brick); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brick) 45%, transparent); } 50% { box-shadow: 0 0 0 10px transparent; } }
+  .draft { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--panel-2); display: flex; flex-direction: column; gap: 10px; }
+  .draft .match { font-size: .8rem; color: var(--ink-soft); margin-top: 4px; }
+  .draft .match.warn { color: var(--warn); font-weight: 600; }
+  .draft .match.ok { color: var(--ok); font-weight: 600; }
+
+  /* ---------- Contractor payments ---------- */
+  .pay-group { margin-bottom: 16px; }
+  .pay-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .pay-head .who { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 180px; }
+  .pay-head .who strong { display: block; font-size: .95rem; }
+  .pay-head .who div > span { font-size: .78rem; color: var(--ink-soft); display: block; }
+  .pay-head .who .av { width: 32px; height: 32px; }
+  .pay-head .amt { font-family: var(--display); font-size: 1.3rem; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .pay-row { display: grid; grid-template-columns: 34px 96px minmax(0,1fr) 130px 96px; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: .86rem; }
+  .pay-row:last-child { border-bottom: 0; }
+  .pay-row input { width: 16px; height: 16px; accent-color: var(--brick); }
+  .pay-row .ref { font-weight: 650; }
+  .pay-row .addr { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pay-row .addr small { display: block; color: var(--ink-faint); font-size: .76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pay-row .amt { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .pay-row button.link { border: 0; background: none; color: var(--blue); cursor: pointer; font-weight: 600; padding: 0; text-align: left; }
+  @media (max-width: 700px) { .pay-row { grid-template-columns: 28px minmax(0,1fr) 80px; } .pay-row .ref, .pay-row .when { display: none; } }
 
   /* ---------- Quick search (Ctrl+K) ---------- */
   .cmdk { place-items: start center; padding-top: 12vh; }
@@ -474,6 +510,7 @@
     <button class="nav on" type="button" id="navJobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg> Repair jobs <span class="badge" id="sOpen">0</span></button>
     <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
     <button class="nav" type="button" id="navTenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg> Tenants</button>
+    <button class="nav" type="button" id="navPay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg> Payments <span class="badge" id="sOwed" hidden></span></button>
     <button class="nav" type="button" id="contractorsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg> Contractors</button>
     <button class="nav" type="button" id="navNew"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <div class="side-sec">Links</div>
@@ -486,12 +523,13 @@
     <header class="mainhead">
       <h1 id="mainTitle">Repair jobs</h1><span class="date" id="todayLbl"></span>
       <div class="grow"></div>
+      <button class="btn small ask" id="askBtn" type="button" title="Tell Fixflow what to do (speak or type)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg><span class="mobile-hide">Ask Fixflow</span></button>
       <button class="btn small ghost mobile-only" id="searchBtnM" type="button" title="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
       <button class="btn small ghost" id="refreshBtn" type="button" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg><span class="mobile-hide">Refresh</span></button>
       <button class="btn small mobile-only" id="propsBtnM" type="button" title="Properties"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg></button>
       <button class="btn small mobile-only" id="tenantsBtnM" type="button" title="Tenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg></button>
       <button class="btn small mobile-only" id="contractorsBtnM" type="button" title="Contractors"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg></button>
-      <button class="btn small primary" id="newJobBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
+      <button class="btn small primary" id="newJobBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span class="mobile-hide">New job</span></button>
       <button class="btn small ghost mobile-only" id="logoutBtnM" type="button" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg></button>
     </header>
 
@@ -558,6 +596,21 @@
       </div>
 
       <!-- PROPERTIES: every property, and all repairs at one -->
+      <!-- CONTRACTOR PAYMENTS: what's owed for each contractor's jobs -->
+      <div id="payView" hidden>
+        <div class="tiles prop-tiles" id="payTiles"></div>
+        <div class="toolbar">
+          <div class="tabs" id="payTabs">
+            <button type="button" data-pay="owed" class="on">To pay</button>
+            <button type="button" data-pay="nocost">Missing a cost<span class="count" id="payNoCostN"></span></button>
+            <button type="button" data-pay="paid">Paid</button>
+          </div>
+          <select class="inp" id="payWho" aria-label="Contractor"><option value="">All contractors</option></select>
+        </div>
+        <p class="muted-note" id="payHelp" style="margin:0 0 12px"></p>
+        <div id="payList"></div>
+      </div>
+
       <div id="propsView" hidden>
         <div id="propsListView">
           <div class="toolbar">
@@ -607,6 +660,25 @@
 </aside>
 
 <datalist id="assignees"></datalist>
+
+<!-- ASK FIXFLOW: speak or type an instruction -->
+<div class="modal" id="askModal" hidden>
+  <div class="card ask-box">
+    <h3 style="margin:0"><span class="ai-spark">✦</span> Tell Fixflow what to do</h3>
+    <div class="ask-row">
+      <button class="mic" id="askMic" type="button" title="Tap and speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button>
+      <textarea class="inp" id="askText" placeholder="e.g. Add a gas safety for 6 Whitworth House and email it to DPH"></textarea>
+    </div>
+    <div class="ideas" id="askIdeas">
+      <button type="button">Add a gas safety for 6 Whitworth House and send it to DPH</button>
+      <button type="button">Leaking tap in the bathroom at Flat 4, 22 Queen Street, give it to Jim</button>
+      <button type="button">EICR needed at 9 Park Road</button>
+    </div>
+    <div class="err-msg" id="askErr" style="margin:0"></div>
+    <div class="row-actions" style="margin-top:0"><button class="btn" id="askClose" type="button">Close</button><button class="btn primary" id="askGo" type="button">✦ Go</button></div>
+    <div id="askDrafts"></div>
+  </div>
+</div>
 
 <!-- QUICK SEARCH (Ctrl+K) -->
 <div class="modal cmdk" id="cmdk" hidden>
@@ -939,6 +1011,9 @@
       render();
       if (view === 'props') { openPropKey ? renderProperty() : renderProps(); }
       if (view === 'tenants') { openTenantKey ? renderTenant() : renderTenants(); }
+      if (view === 'pay') renderPay();
+      var owedN = jobs.filter(isOwed).length;
+      $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
     });
   }
 
@@ -1582,10 +1657,13 @@
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
     $('tenantsView').hidden = v !== 'tenants';
+    $('payView').hidden = v !== 'pay';
+    $('navPay').classList.toggle('on', v === 'pay');
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments' }[v];
+    if (v === 'pay') renderPay();
     if (v === 'props') { openPropKey ? renderProperty() : renderProps(); }
     if (v === 'tenants') { openTenantKey ? renderTenant() : renderTenants(); }
     window.scrollTo({ top: 0 });
@@ -2277,6 +2355,7 @@
   $('scrim').addEventListener('click', function(){ closeDrawer(); loadJobs(); });
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
+    if (!$('askModal').hidden) { closeAsk(); return; }
     if (!$('jfModal').hidden) { $('jfModal').hidden = true; return; }
     if (!$('invModal').hidden) { $('invModal').hidden = true; return; }
     if (!$('waModal').hidden) { $('waModal').hidden = true; return; }
@@ -2390,6 +2469,11 @@
           '<div><label class="lbl" for="fCharge">Charge to landlord (£)</label><input class="inp" id="fCharge" inputmode="decimal" value="' + esc(j.landlord_charge == null ? '' : j.landlord_charge) + '"></div>' +
         '</div>' +
         '<div class="profit-box" id="profitBox"><div><div class="lbl2" id="profitLbl">Profit</div><div class="big" id="profitVal">—</div></div><div class="lbl2" id="profitMargin"></div></div>' +
+        (j.assigned_to && j.actual_cost != null
+          ? '<div class="nearby" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+              (j.contractor_paid_at ? '<span><strong>' + esc(j.assigned_to) + ' paid</strong> ' + esc(gbp(j.actual_cost)) + ' · ' + esc(fmtShort(j.contractor_paid_at)) + '</span><button class="btn small" id="unpayBtn" type="button">Undo</button>'
+                : '<span><strong>Owed to ' + esc(j.assigned_to) + ':</strong> ' + esc(gbp(j.actual_cost)) + '</span><button class="btn small primary" id="payBtn" type="button">Mark contractor paid</button>') + '</div>'
+          : '') +
         '<div class="row-actions">' +
           '<button class="btn primary" id="saveMoney" type="button">Save costs</button></div>' +
       '</div>' +
@@ -2670,6 +2754,8 @@
       setTimeout(function(){ $('fDoneNotes').focus({ preventScroll: true }); }, 350);
     });
     $('saveMoney').addEventListener('click', function(){ $('saveBtn').click(); });
+    if ($('payBtn')) $('payBtn').addEventListener('click', function(){ markPaid([j.id], true).then(function(){ openJob(j.id); }); });
+    if ($('unpayBtn')) $('unpayBtn').addEventListener('click', function(){ markPaid([j.id], false).then(function(){ openJob(j.id); }); });
     $('dBody').querySelectorAll('[data-goto]').forEach(function(b){ b.addEventListener('click', function(){ setDrawerTab(b.dataset.goto); }); });
     wireAiEmail(j);
     document.querySelectorAll('.gal-item').forEach(function(b){
@@ -2888,6 +2974,208 @@
     });
   }
 
+  // ---------- Contractor payments ----------
+  // Owed: a job with a contractor and an actual cost that hasn't been marked paid.
+  // Missing a cost: a completed job with a contractor but no actual cost yet.
+  var payTab = 'owed';
+  function isOwed(j){ return j.assigned_to && num(j.actual_cost) > 0 && !j.contractor_paid_at && j.status !== 'Cancelled'; }
+  function needsCost(j){ return j.assigned_to && j.status === 'Completed' && j.actual_cost == null; }
+  function owedTotal(){ return jobs.filter(isOwed).reduce(function(a, j){ return a + num(j.actual_cost); }, 0); }
+  function markPaid(ids, paid){
+    return api('POST', '/api/admin/contractor-payments', { job_ids: ids, paid: paid }).then(function(d){
+      if (!d.ok) { toast('Couldn’t update the payment'); return; }
+      toast(paid ? (ids.length === 1 ? 'Marked as paid' : ids.length + ' jobs marked as paid') : 'Payment un-marked');
+      return loadJobs();
+    });
+  }
+  function renderPay(){
+    var who = $('payWho').value;
+    var names = Array.from(new Set(jobs.filter(function(j){ return j.assigned_to; }).map(function(j){ return j.assigned_to.trim(); }))).sort();
+    $('payWho').innerHTML = '<option value="">All contractors</option>' + names.map(function(n){ return '<option' + (n === who ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('');
+    var owed = jobs.filter(isOwed), nocost = jobs.filter(needsCost);
+    var monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    var paidMonth = jobs.filter(function(j){ return j.contractor_paid_at && new Date(j.contractor_paid_at) >= monthStart; });
+    $('payTiles').innerHTML =
+      '<div class="tile alert' + (owed.length ? ' has' : '') + '"><div class="k">Owed to contractors</div><div class="v">' + gbp(owedTotal()) + '</div></div>' +
+      '<div class="tile"><div class="k">Jobs to pay</div><div class="v">' + owed.length + '</div></div>' +
+      '<div class="tile warnish' + (nocost.length ? ' has' : '') + '"><div class="k">Completed, no cost yet</div><div class="v">' + nocost.length + '</div></div>' +
+      '<div class="tile good"><div class="k">Paid this month</div><div class="v">' + gbp(paidMonth.reduce(function(a, j){ return a + num(j.actual_cost); }, 0)) + '</div></div>';
+    $('payNoCostN').textContent = nocost.length || '';
+    $('payTabs').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.dataset.pay === payTab); });
+    var list = (payTab === 'owed' ? owed : payTab === 'nocost' ? nocost : jobs.filter(function(j){ return j.contractor_paid_at; }))
+      .filter(function(j){ return !who || j.assigned_to.trim() === who; });
+    $('payHelp').textContent = payTab === 'owed' ? 'Jobs with an actual cost that you haven’t paid the contractor for yet. Tick jobs and mark them paid once you’ve paid.'
+      : payTab === 'nocost' ? 'Completed jobs with no actual cost entered, so they can’t be counted yet. Open a job and add the contractor’s price on its Money tab.'
+      : 'Jobs you’ve marked as paid, newest first.';
+    if (!list.length) { $('payList').innerHTML = '<div class="list"><div class="empty">' + (payTab === 'owed' ? 'Nothing owed — all paid up.' : payTab === 'nocost' ? 'Every completed job has a cost.' : 'No payments marked yet.') + '</div></div>'; return; }
+    var groups = {}, order = [];
+    list.forEach(function(j){ var k = j.assigned_to.trim(); if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(j); });
+    order.sort(function(a, b){ return a.localeCompare(b); });
+    $('payList').innerHTML = order.map(function(name){
+      var g = groups[name].sort(function(a, b){ return new Date(payTab === 'paid' ? b.contractor_paid_at : (a.completed_at || a.created_at)) - new Date(payTab === 'paid' ? a.contractor_paid_at : (b.completed_at || b.created_at)); });
+      var total = g.reduce(function(a, j){ return a + (num(j.actual_cost) || 0); }, 0);
+      var c = contractorByName(name) || {};
+      return '<div class="list pay-group" data-who="' + esc(name) + '"><div class="pay-head"><div class="who">' + avatar(name) + '<div><strong>' + esc(name) + '</strong><span>' +
+          esc([c.trade, g.length + ' job' + (g.length === 1 ? '' : 's')].filter(Boolean).join(' · ')) + '</span></div></div>' +
+          (payTab !== 'nocost' ? '<div class="amt">' + gbp(total) + '</div>' : '') +
+          (payTab === 'owed' ? '<button class="btn small" type="button" data-pay-sel="' + esc(name) + '">Mark ticked paid</button><button class="btn small primary" type="button" data-pay-all="' + esc(name) + '">Mark all paid</button>' : '') +
+        '</div>' + g.map(function(j){
+          return '<div class="pay-row">' +
+            (payTab === 'owed' ? '<input type="checkbox" data-pay-job="' + j.id + '" aria-label="Select ' + esc(j.ref) + '">' : '<span></span>') +
+            '<button type="button" class="link ref" data-open="' + j.id + '">' + esc(j.ref) + '</button>' +
+            '<div class="addr">' + esc(j.property_address || 'No address') + '<small>' + esc(issueOf(j)) + '</small></div>' +
+            '<div class="when">' + esc(payTab === 'paid' ? 'Paid ' + fmtShort(j.contractor_paid_at) : j.completed_at ? 'Done ' + fmtShort(j.completed_at) : j.status) + '</div>' +
+            '<div class="amt">' + (payTab === 'nocost' ? '<button type="button" class="link" data-open-money="' + j.id + '">Add cost</button>'
+              : gbp(j.actual_cost) + (payTab === 'paid' ? ' <button type="button" class="link" style="font-size:.76rem" data-unpay="' + j.id + '">Undo</button>' : '')) + '</div>' +
+          '</div>';
+        }).join('') + '</div>';
+    }).join('');
+  }
+  $('navPay').addEventListener('click', function(){ showView('pay'); });
+  $('payWho').addEventListener('change', renderPay);
+  $('payTabs').addEventListener('click', function(e){ var b = e.target.closest('button[data-pay]'); if (b) { payTab = b.dataset.pay; renderPay(); } });
+  $('payList').addEventListener('click', function(e){
+    var t = e.target.closest('button'); if (!t) return;
+    if (t.dataset.open) openJob(Number(t.dataset.open));
+    else if (t.dataset.openMoney) { drawerTab = 'money'; drawerTabJob = Number(t.dataset.openMoney); openJob(Number(t.dataset.openMoney)); }
+    else if (t.dataset.unpay) markPaid([Number(t.dataset.unpay)], false);
+    else if (t.dataset.payAll || t.dataset.paySel) {
+      var name = t.dataset.payAll || t.dataset.paySel;
+      var box = t.closest('.pay-group');
+      var ids = Array.from(box.querySelectorAll('input[data-pay-job]')).filter(function(i){ return t.dataset.payAll || i.checked; }).map(function(i){ return Number(i.dataset.payJob); });
+      if (!ids.length) { toast('Tick the jobs you’ve paid first'); return; }
+      var sum = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; }).reduce(function(a, j){ return a + num(j.actual_cost); }, 0);
+      if (!confirm('Mark ' + ids.length + ' job' + (ids.length === 1 ? '' : 's') + ' as paid to ' + name + ' (' + gbp(sum) + ')?')) return;
+      markPaid(ids, true);
+    }
+  });
+
+  // ---------- Ask Fixflow (speak or type) ----------
+  // The AI turns the instruction into job drafts; the property, tenant and
+  // contractor are matched here from existing records and shown to confirm.
+  var askDrafts = [];
+  var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var rec = null, listening = false;
+  function openAsk(){
+    $('askModal').hidden = false; $('askErr').textContent = '';
+    if (!askDrafts.length) { $('askText').value = ''; $('askDrafts').innerHTML = ''; }
+    $('askMic').hidden = !SpeechRec;
+    setTimeout(function(){ $('askText').focus(); }, 50);
+  }
+  function closeAsk(){ stopListening(); $('askModal').hidden = true; }
+  function stopListening(){ if (rec && listening) { try { rec.stop(); } catch (e) {} } }
+  $('askBtn').addEventListener('click', openAsk);
+  $('askClose').addEventListener('click', closeAsk);
+  $('askModal').addEventListener('mousedown', function(e){ if (e.target === $('askModal')) closeAsk(); });
+  $('askIdeas').addEventListener('click', function(e){ var b = e.target.closest('button'); if (b) { $('askText').value = b.textContent; runAsk(); } });
+  $('askText').addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runAsk(); } });
+  $('askGo').addEventListener('click', runAsk);
+  $('askMic').addEventListener('click', function(){
+    if (!SpeechRec) return;
+    if (listening) { stopListening(); return; }
+    rec = new SpeechRec();
+    rec.lang = 'en-GB'; rec.interimResults = true; rec.continuous = false;
+    var finalText = '';
+    rec.onresult = function(ev){
+      var interim = '';
+      for (var i = ev.resultIndex; i < ev.results.length; i++) {
+        if (ev.results[i].isFinal) finalText += ev.results[i][0].transcript; else interim += ev.results[i][0].transcript;
+      }
+      $('askText').value = (finalText + interim).trim();
+    };
+    rec.onerror = function(ev){ $('askErr').textContent = ev.error === 'not-allowed' ? 'Allow microphone access to speak to Fixflow (or just type).' : 'Didn’t catch that — try again or type it.'; };
+    rec.onend = function(){ listening = false; $('askMic').classList.remove('on'); if (finalText.trim()) runAsk(); };
+    listening = true; $('askMic').classList.add('on'); $('askErr').textContent = 'Listening… speak now';
+    rec.start();
+  });
+
+  function matchProperty(address){
+    var q = propKey(address);
+    if (!q) return null;
+    var re = new RegExp('(^| )' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '( |$)');
+    var hits = propertiesFromJobs().filter(function(pr){ return re.test(pr.key) || re.test(propKey(pr.address)); });
+    return hits.length === 1 ? hits[0] : hits.length ? hits.sort(function(a, b){ return a.key.length - b.key.length; })[0] : null;
+  }
+  function tenantsAt(pr){
+    if (!pr) return [];
+    return tenantsFromJobs().filter(function(t){ return t.addresses.some(function(a){ return propKey(a) === pr.key; }); });
+  }
+  function matchContractor(name){
+    if (!name) return null;
+    var n = name.toLowerCase();
+    return contractors.filter(function(c){ return c.active && (c.name.toLowerCase() === n || c.name.toLowerCase().indexOf(n) !== -1 || n.indexOf(c.name.toLowerCase()) !== -1); })[0] || null;
+  }
+  function runAsk(){
+    var text = $('askText').value.trim();
+    if (!text) { $('askText').focus(); return; }
+    if (!meta.canAi) { $('askErr').textContent = 'AI isn’t switched on (GEMINI_API_KEY).'; return; }
+    $('askErr').textContent = ''; busy($('askGo'), true, 'Thinking…');
+    api('POST', '/api/admin/assistant', { text: text }).then(function(d){
+      busy($('askGo'), false);
+      if (!d.ok) { $('askErr').textContent = 'The AI is busy — please try again in a moment.'; return; }
+      if (!d.understood) { $('askErr').textContent = 'I can add jobs for you — try something like “add a gas safety for 6 Whitworth House”.'; $('askDrafts').innerHTML = ''; askDrafts = []; return; }
+      askDrafts = d.jobs.map(function(x){
+        var pr = matchProperty(x.address), ts = tenantsAt(pr), c = matchContractor(x.contractor);
+        return { ai: x, property: pr, tenants: ts, contractor: c };
+      });
+      renderAskDrafts();
+    });
+  }
+  function renderAskDrafts(){
+    $('askDrafts').innerHTML = askDrafts.map(function(dr, i){
+      var x = dr.ai, pr = dr.property;
+      var ctOpts = '<option value="">No contractor yet</option>' + contractors.filter(function(c){ return c.active; }).map(function(c){
+        return '<option value="' + c.id + '"' + (dr.contractor && dr.contractor.id === c.id ? ' selected' : '') + '>' + esc(c.name + (c.trade ? ' — ' + c.trade : '')) + '</option>';
+      }).join('');
+      var tOpts = dr.tenants.map(function(t, k){ return '<option value="' + k + '">' + esc((t.tenant_name || 'No name') + (t.tenant_phone ? ' – ' + t.tenant_phone : '')) + '</option>'; }).join('') + '<option value="">No tenant</option>';
+      return '<div class="draft" data-i="' + i + '">' +
+        '<div><label class="lbl">Property</label><input class="inp" data-f="address" value="' + esc(pr ? pr.address : x.address) + '">' +
+          '<div class="match ' + (pr ? 'ok' : 'warn') + '">' + (pr ? '✓ Matched a property with ' + pr.jobs.length + ' previous job' + (pr.jobs.length === 1 ? '' : 's') : 'No previous jobs at “' + esc(x.address) + '” — check the address') + '</div></div>' +
+        '<div class="grid2">' +
+          '<div><label class="lbl">Tenant (contractor will contact them)</label><select class="inp" data-f="tenant">' + tOpts + '</select></div>' +
+          '<div><label class="lbl">Contractor</label><select class="inp" data-f="contractor">' + ctOpts + '</select></div>' +
+        '</div>' +
+        '<div class="grid2">' +
+          '<div><label class="lbl">Job</label><input class="inp" data-f="title" value="' + esc(x.title || x.category) + '"></div>' +
+          '<div><label class="lbl">Urgency</label><select class="inp" data-f="urgency">' + meta.urgencies.map(function(u){ return '<option' + (u === x.urgency ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div>' +
+        '</div>' +
+        '<div><label class="lbl">Details for the contractor</label><textarea class="inp" data-f="description" style="min-height:60px">' + esc(x.description) + '</textarea></div>' +
+        '<div class="row-actions" style="margin-top:0">' +
+          '<button class="btn" type="button" data-act="create">Create job</button>' +
+          '<button class="btn primary" type="button" data-act="send">Create &amp; send to contractor</button>' +
+        '</div></div>';
+    }).join('');
+  }
+  $('askDrafts').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var box = b.closest('.draft'), dr = askDrafts[Number(box.dataset.i)], x = dr.ai;
+    var f = function(n){ return box.querySelector('[data-f="' + n + '"]').value.trim(); };
+    if (!f('address')) { toast('Add the property address'); return; }
+    var t = f('tenant') === '' ? null : dr.tenants[Number(f('tenant'))];
+    var c = contractors.filter(function(k){ return String(k.id) === f('contractor'); })[0] || null;
+    if (b.dataset.act === 'send' && !c) { toast('Pick a contractor to send it to'); return; }
+    var body = { property_address: f('address'), category: x.category || 'General repair', affected: f('title'), description: f('description'),
+      urgency: f('urgency'), source: 'Other' };
+    if (c) body.assigned_to = c.name;
+    if (t) ['tenant_name', 'tenant_phone', 'tenant_email', 'access_days', 'access_time', 'access_notes', 'key_permission', 'key_instructions']
+      .forEach(function(k){ if (t[k]) body[k] = t[k]; });
+    if (dr.property) { var ll = landlordAt(dr.property.address); if (ll) LL_FIELDS.forEach(function(k){ if (ll[k]) body[k] = ll[k]; }); }
+    busy(b, true, 'Creating…');
+    api('POST', '/api/admin/jobs', body).then(function(d){
+      busy(b, false);
+      if (!d.ok) { toast('Couldn’t create the job (' + (d.error || 'error') + ')'); return; }
+      askDrafts.splice(Number(box.dataset.i), 1);
+      renderAskDrafts();
+      toast(d.ref + ' created');
+      return loadJobs().then(function(){
+        var job = jobs.filter(function(j){ return j.id === d.id; })[0];
+        if (!askDrafts.length) closeAsk();
+        if (job && b.dataset.act === 'send') showContractorMessage([job]);
+        else if (job) openJob(job.id);
+      });
+    });
+  });
+
   // ---------- Quick search (Ctrl+K / Cmd+K, or "/") ----------
   var cmdkItems = [], cmdkIndex = 0;
   var IC = {
@@ -2913,7 +3201,9 @@
       { t: 'Unassigned jobs', s: 'Open jobs with no contractor', ic: IC.go, run: function(){ closeDrawer(); showView('jobs'); $('tUnassTile').click(); } },
       { t: 'Properties', s: 'Every address and its repairs', ic: IC.go, run: function(){ closeDrawer(); $('navProps').click(); } },
       { t: 'Tenants', s: 'Everyone who has reported', ic: IC.go, run: function(){ closeDrawer(); $('navTenants').click(); } },
-      { t: 'Contractors', s: 'Directory and phone numbers', ic: IC.go, run: function(){ $('contractorsBtn').click(); } }
+      { t: 'Contractors', s: 'Directory and phone numbers', ic: IC.go, run: function(){ $('contractorsBtn').click(); } },
+      { t: 'Contractor payments', s: 'What you owe contractors', ic: IC.go, run: function(){ closeDrawer(); showView('pay'); } },
+      { t: 'Ask Fixflow', s: 'Speak or type an instruction, e.g. add a gas safety', ic: IC.go, run: function(){ openAsk(); } }
     ].filter(function(a){ return !raw || hit(a.t + ' ' + a.s); });
     var js = (raw ? jobs.filter(function(j){
       return hit([j.ref, j.property_address, j.tenant_name, j.tenant_email, j.assigned_to, issueOf(j), j.description, j.status].join(' | ')) ||
