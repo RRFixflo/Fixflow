@@ -915,8 +915,15 @@
       $('loginView').hidden = true;
       $('appView').hidden = false;
       $('dbBanner').hidden = !!d.db;
-      loadContractors().then(loadJobs);
+      loadContractors().then(loadJobs).then(openJobFromLink);
     });
+  }
+  // Links from phone alerts land on /admin#job=123 and open that job.
+  function openJobFromLink(){
+    var m = /^#job=(\d+)$/.exec(location.hash);
+    if (!m) return;
+    history.replaceState(null, '', location.pathname);
+    openJob(Number(m[1]));
   }
 
   // ---------- List ----------
