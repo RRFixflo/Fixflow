@@ -296,6 +296,25 @@
   .wa-assign input { width: 16px; height: 16px; accent-color: var(--brick); }
   .assignee-contact { font-size: .78rem; margin-top: 6px; color: var(--ink-soft); }
   .assignee-contact a { color: var(--blue); font-weight: 600; text-decoration: none; }
+  .ai-card { border-color: color-mix(in srgb, #7C3AED 28%, var(--line)); background: linear-gradient(180deg, color-mix(in srgb, #7C3AED 5%, var(--panel)), var(--panel) 120px); }
+  .ai-spark { color: #7C3AED; font-size: 1rem; }
+  .seg { display: inline-flex; flex-wrap: wrap; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: none; padding: 6px 12px; border-radius: 7px; font-weight: 550; font-size: .82rem; color: var(--ink-soft); cursor: pointer; }
+  .seg button.on { background: var(--panel); color: var(--ink); box-shadow: var(--shadow-xs), 0 0 0 1px var(--line); }
+  .ideas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .ideas button { border: 1px dashed var(--line-strong); background: none; border-radius: 999px; padding: 4px 10px; font-size: .76rem; color: var(--ink-soft); cursor: pointer; }
+  .ideas button:hover { border-style: solid; color: var(--ink); background: var(--panel-2); }
+  .muted-note { color: var(--ink-soft); font-size: .85rem; margin: 0; line-height: 1.5; }
+  .ai-loading { color: #7C3AED; font-size: .85rem; font-weight: 550; }
+  .timeline li.k-email::before { box-shadow: 0 0 0 2px #7C3AED; background: #7C3AED; }
+  .tenant-find { position: relative; }
+  .tenant-results { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 11px; box-shadow: var(--shadow-md); max-height: 260px; overflow-y: auto; }
+  .tenant-results button { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: none; padding: 9px 12px; cursor: pointer; }
+  .tenant-results button:last-child { border-bottom: 0; }
+  .tenant-results button:hover, .tenant-results button.active { background: var(--panel-2); }
+  .tenant-results strong { display: block; font-size: .86rem; }
+  .tenant-results span { font-size: .78rem; color: var(--ink-soft); }
+  .tenant-results .none { padding: 10px 12px; font-size: .82rem; color: var(--ink-soft); }
   .nearby { margin-top: 14px; padding: 12px 14px; border-radius: 11px; background: var(--blue-tint); font-size: .85rem; line-height: 1.5; }
   .nearby ul { margin: 6px 0 10px; padding-left: 18px; }
   body.has-bulk .wrap { padding-bottom: 140px; }
@@ -410,6 +429,12 @@
 <div class="modal" id="jfModal" hidden>
   <form class="card jf" id="jfForm" novalidate>
     <h3 id="jfTitle">New job</h3>
+    <div class="tenant-find jf-new">
+      <label class="lbl" for="jfFind">Existing tenant? Search to fill in their details</label>
+      <input class="inp search" id="jfFind" autocomplete="off" placeholder="Name, address, phone or email"
+        style="padding-left:34px;background:var(--panel) url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238B919C' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E&quot;) no-repeat 11px center / 15px">
+      <div class="tenant-results" id="jfFindResults" hidden></div>
+    </div>
     <div class="jf-sec">Property &amp; tenant</div>
     <div><label class="lbl" for="jfAddress">Property address *</label><input class="inp" id="jfAddress" required placeholder="e.g. Flat 4, 22 Queen St, Northampton NN2 6AB"></div>
     <div class="grid3">
@@ -1064,7 +1089,43 @@
     $('jfModal').hidden = false;
     setTimeout(function(){ $('jfAddress').focus(); }, 50);
   }
-  function closeJobForm(){ $('jfModal').hidden = true; jfEditing = null; }
+  function closeJobForm(){ $('jfModal').hidden = true; jfEditing = null; $('jfFindResults').hidden = true; }
+
+  // Search tenants already in the system and fill the form with their latest details.
+  var findTimer = null, findSeq = 0, findResults = [];
+  $('jfFind').addEventListener('input', function(){
+    clearTimeout(findTimer);
+    var q = $('jfFind').value.trim();
+    if (q.length < 2) { $('jfFindResults').hidden = true; return; }
+    findTimer = setTimeout(function(){
+      var mine = ++findSeq;
+      api('GET', '/api/admin/tenants?q=' + encodeURIComponent(q)).then(function(d){
+        if (mine !== findSeq) return;
+        findResults = (d.ok && d.tenants) || [];
+        var el = $('jfFindResults');
+        el.innerHTML = findResults.length ? findResults.map(function(t, i){
+          return '<button type="button" data-i="' + i + '"><strong>' + esc(t.tenant_name || 'No name') + '</strong><span>' +
+            esc([t.property_address, t.tenant_phone, t.tenant_email].filter(Boolean).join(' · ')) +
+            ' · ' + t.job_count + ' job' + (t.job_count == 1 ? '' : 's') + '</span></button>';
+        }).join('') : '<div class="none">No saved tenant matches — just fill in the details below.</div>';
+        el.hidden = false;
+      });
+    }, 220);
+  });
+  $('jfFindResults').addEventListener('mousedown', function(e){
+    var b = e.target.closest('button[data-i]');
+    if (!b) return;
+    e.preventDefault();
+    var t = findResults[Number(b.dataset.i)];
+    var map = { jfAddress: 'property_address', jfName: 'tenant_name', jfPhone: 'tenant_phone', jfEmail: 'tenant_email',
+      jfDays: 'access_days', jfTime: 'access_time', jfAccess: 'access_notes', jfKeys: 'key_permission', jfKeyNotes: 'key_instructions' };
+    Object.keys(map).forEach(function(id){ $(id).value = t[map[id]] || ''; });
+    $('jfFind').value = '';
+    $('jfFindResults').hidden = true;
+    toast('Filled in ' + (t.tenant_name || 'tenant') + '’s details');
+    $('jfCat').focus();
+  });
+  $('jfFind').addEventListener('blur', function(){ setTimeout(function(){ $('jfFindResults').hidden = true; }, 150); });
   $('newJobBtn').addEventListener('click', function(){ openJobForm(null); });
   $('jfCancel').addEventListener('click', closeJobForm);
   $('jfModal').addEventListener('mousedown', function(e){ if (e.target === $('jfModal')) closeJobForm(); });
@@ -1242,6 +1303,34 @@
         '</div>' +
       '</div>' +
 
+      // AI email writer
+      '<div class="card ai-card"><h3><span class="ai-spark">✦</span> Write an email with AI</h3>' +
+        (meta.canAi
+          ? '<div class="seg" id="aiTo" role="radiogroup" aria-label="Who is the email to">' +
+              ['Council', 'Landlord', 'Tenant', 'Contractor', 'Other'].map(function(r, i){
+                return '<button type="button" data-r="' + r + '"' + (i === 0 ? ' class="on"' : '') + '>' + r + '</button>';
+              }).join('') + '</div>' +
+            '<div class="grid2" style="margin-top:12px">' +
+              '<div><label class="lbl" for="aiName">To (name or department)</label><input class="inp" id="aiName" placeholder="e.g. Environmental Health, West Northamptonshire Council"></div>' +
+              '<div><label class="lbl" for="aiAddr">Their email address</label><input class="inp" id="aiAddr" type="email" placeholder="Optional — for sending"></div>' +
+            '</div>' +
+            '<div style="margin-top:12px"><label class="lbl" for="aiWhat">What should the email say?</label>' +
+              '<textarea class="inp" id="aiWhat" placeholder="e.g. Report rats in the shared bin store and ask for pest control to visit"></textarea>' +
+              '<div class="ideas" id="aiIdeas"></div></div>' +
+            '<div class="row-actions"><button class="btn primary" id="aiGen" type="button">✦ Write email</button></div>' +
+            '<div id="aiOut" hidden>' +
+              '<div style="margin-top:6px"><label class="lbl" for="aiSubj">Subject</label><input class="inp" id="aiSubj"></div>' +
+              '<div style="margin-top:10px"><label class="lbl" for="aiBody">Email</label><textarea class="inp" id="aiBody" style="min-height:240px"></textarea></div>' +
+              '<div class="row-actions">' +
+                '<button class="btn ghost" id="aiRegen" type="button">↻ Try another version</button>' +
+                '<button class="btn" id="aiCopy" type="button">Copy</button>' +
+                '<button class="btn" id="aiMail" type="button">Open in my email</button>' +
+                (meta.canEmail ? '<button class="btn primary" id="aiSend" type="button">Send</button>' : '') +
+              '</div>' +
+            '</div>'
+          : '<p class="muted-note">AI isn’t switched on — add <code>GEMINI_API_KEY</code> in Railway to draft emails to councils, landlords and others from a job.</p>') +
+      '</div>' +
+
       // Report
       '<div class="card"><h3>Tenant &amp; property <span style="flex:1"></span><button class="btn small" id="editDetails" type="button">Edit details</button></h3>' + rows([
         ['Came in via', j.source],
@@ -1266,7 +1355,7 @@
         '<textarea class="inp" id="fNote" placeholder="What’s happened — calls made, quotes received, contractor feedback…"></textarea>' +
         '<div class="row-actions"><button class="btn primary" id="addNote" type="button">Add update</button></div>' +
         '<ul class="timeline">' + updates.map(function(u){
-          var label = { created: 'Job created', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', contractor_message: 'Sent to contractor', completed: 'Completed' }[u.kind] || 'Update';
+          var label = { created: 'Job created', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', contractor_message: 'Sent to contractor', email: 'Email', completed: 'Completed' }[u.kind] || 'Update';
           return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + '</span>' + esc(u.body) + '</li>';
         }).join('') + '</ul>' +
       '</div>';
@@ -1274,7 +1363,92 @@
     wireJob(j);
   }
 
+  // Starting points for the AI email, per recipient; clicking one fills the box.
+  var AI_IDEAS = {
+    Council: ['Report pests / vermin in a shared area', 'Report fly-tipping or missed bin collections', 'Report a street light or pavement defect',
+      'Ask environmental health to inspect', 'Report a neighbouring property causing damage', 'Ask about building control approval'],
+    Landlord: ['Update on the repair and next steps', 'Ask for approval of the quote', 'Confirm the job is completed', 'Explain a delay'],
+    Tenant: ['Confirm the appointment', 'Ask for access on a date', 'Apologise for the delay and give an update', 'Confirm the job is completed'],
+    Contractor: ['Instruct them to carry out the job', 'Ask for a quote', 'Chase for an update', 'Ask for the invoice and completion photos'],
+    Other: ['Ask the utility company to attend', 'Notify the insurer about the damage', 'Request a quote from a specialist']
+  };
+
+  function wireAiEmail(j){
+    if (!meta.canAi) return;
+    var recipient = 'Council', variation = 0;
+    var DEFAULT_NAME = { Council: '', Landlord: '', Tenant: j.tenant_name || '', Contractor: j.assigned_to || '', Other: '' };
+    function showIdeas(){
+      $('aiIdeas').innerHTML = AI_IDEAS[recipient].map(function(t){ return '<button type="button">' + esc(t) + '</button>'; }).join('');
+    }
+    $('aiTo').addEventListener('click', function(e){
+      var b = e.target.closest('button[data-r]');
+      if (!b) return;
+      recipient = b.dataset.r;
+      $('aiTo').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
+      $('aiName').value = DEFAULT_NAME[recipient];
+      $('aiAddr').value = recipient === 'Tenant' ? (j.tenant_email || '') :
+        recipient === 'Contractor' ? ((contractorByName(j.assigned_to) || {}).email || '') : '';
+      $('aiName').placeholder = recipient === 'Council' ? 'e.g. Environmental Health, West Northamptonshire Council' : 'Name';
+      showIdeas();
+    });
+    $('aiIdeas').addEventListener('click', function(e){
+      var b = e.target.closest('button');
+      if (b) { $('aiWhat').value = b.textContent; $('aiWhat').focus(); }
+    });
+    showIdeas();
+
+    function generate(){
+      var btn = variation ? $('aiRegen') : $('aiGen');
+      var label = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Writing…';
+      api('POST', '/api/admin/jobs/' + j.id + '/ai-email', {
+        recipient: recipient, to_name: $('aiName').value, instructions: $('aiWhat').value, variation: variation
+      }).then(function(d){
+        btn.disabled = false; btn.textContent = label;
+        if (!d.ok) {
+          toast(d.error === 'ai-not-configured' ? 'AI isn’t set up' : 'The AI is busy — please try again in a moment');
+          return;
+        }
+        $('aiSubj').value = d.subject;
+        $('aiBody').value = d.body;
+        $('aiOut').hidden = false;
+      });
+    }
+    $('aiGen').addEventListener('click', function(){ variation = 0; generate(); });
+    $('aiRegen').addEventListener('click', function(){ variation += 1; generate(); });
+
+    function logEmail(how){
+      var to = $('aiAddr').value.trim() || $('aiName').value.trim() || recipient;
+      return api('POST', '/api/admin/jobs/' + j.id + '/updates', {
+        kind: 'email', body: how + ' (' + recipient.toLowerCase() + ': ' + to + ') — ' + $('aiSubj').value + '\n\n' + $('aiBody').value
+      });
+    }
+    $('aiCopy').addEventListener('click', function(){
+      copyText($('aiSubj').value + '\n\n' + $('aiBody').value).then(function(){
+        toast('Copied — added to the history');
+        logEmail('Email copied').then(function(){ openJob(j.id); });
+      })['catch'](function(){ toast('Couldn’t copy — select the text and copy it instead'); });
+    });
+    $('aiMail').addEventListener('click', function(){
+      window.location.href = 'mailto:' + encodeURIComponent($('aiAddr').value.trim()) +
+        '?subject=' + encodeURIComponent($('aiSubj').value) + '&body=' + encodeURIComponent($('aiBody').value);
+      logEmail('Email opened in email app').then(function(){ openJob(j.id); });
+    });
+    if ($('aiSend')) $('aiSend').addEventListener('click', function(){
+      var to = $('aiAddr').value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { toast('Enter their email address first'); $('aiAddr').focus(); return; }
+      if (!confirm('Send this email to ' + to + '?')) return;
+      $('aiSend').disabled = true;
+      api('POST', '/api/admin/jobs/' + j.id + '/email', { to: to, subject: $('aiSubj').value, body: $('aiBody').value }).then(function(d){
+        $('aiSend').disabled = false;
+        if (!d.ok) { toast('Couldn’t send the email'); return; }
+        toast('Email sent'); openJob(j.id);
+      });
+    });
+  }
+
   function wireJob(j){
+    wireAiEmail(j);
     $('editDetails').addEventListener('click', function(){ openJobForm(j); });
     function showAssigneeContact(){
       var c = contractorByName($('fAssigned').value);

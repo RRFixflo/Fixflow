@@ -241,7 +241,7 @@ module.exports = function mountJobs(app, opts) {
   });
 
   app.get('/api/admin/me', async function (req, res) {
-    res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES });
+    res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES });
   });
 
   // Wraps a handler: no database -> 503; unexpected errors -> 500 (logged).
@@ -356,6 +356,113 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true, changed: true });
   }));
 
+  // ---------- Saved tenants ----------
+  // Tenants aren't kept in a separate list: every job already records them, so
+  // this returns the most recent details for each tenant (by name + address),
+  // matching a name, address, phone or email. Used to fill in "New job".
+  app.get('/api/admin/tenants', withDb(async function (p, req, res) {
+    const q = String(req.query.q || '').trim().slice(0, 100);
+    if (q.length < 2) return res.json({ ok: true, tenants: [] });
+    const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%';
+    const digits = q.replace(/\D/g, '');
+    const r = await p.query(
+      `SELECT DISTINCT ON (lower(coalesce(tenant_name, '')), lower(coalesce(property_address, '')))
+         tenant_name, tenant_phone, tenant_email, property_address, access_days, access_time,
+         access_notes, key_permission, key_instructions, created_at,
+         count(*) OVER (PARTITION BY lower(coalesce(tenant_name, '')), lower(coalesce(property_address, ''))) AS job_count
+       FROM jobs
+       WHERE (tenant_name ILIKE $1 OR property_address ILIKE $1 OR tenant_email ILIKE $1
+              OR ($2 <> '' AND regexp_replace(coalesce(tenant_phone, ''), '\\D', '', 'g') LIKE '%' || $2 || '%'))
+         AND (tenant_name IS NOT NULL OR property_address IS NOT NULL)
+       ORDER BY lower(coalesce(tenant_name, '')), lower(coalesce(property_address, '')), created_at DESC
+       LIMIT 50`, [like, digits.length >= 4 ? digits : '']);
+    const tenants = r.rows.sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); }).slice(0, 8);
+    res.json({ ok: true, tenants: tenants });
+  }));
+
+  // ---------- AI email drafts ----------
+  // Drafts an email about a job for a council, landlord, tenant, contractor or
+  // anyone else. Built here from the saved job so the page only sends the
+  // choice of recipient and what the email should say. Costs are only shared
+  // with landlords.
+  const RECIPIENTS = {
+    Council: 'the local council (for example environmental health, housing standards, pest control, highways, waste and bins, building control, or council tax — pick the right department from the issue and instructions). Write formally, identify the property clearly, explain the problem factually, say what action is requested of the council, and ask for a reference number and timescale.',
+    Landlord: 'the landlord who owns the property. Keep it professional and concise: what was reported, what has been done so far, the recommended next step, and any cost that needs their approval.',
+    Tenant: 'the tenant who lives at the property. Be warm, clear and reassuring, in plain English, with any next steps for them.',
+    Contractor: 'a contractor who will carry out the work. Be practical: the job, the address, access arrangements and tenant contact, and what is needed by when.',
+    Other: 'the recipient described in the instructions.'
+  };
+
+  app.post('/api/admin/jobs/:id/ai-email', withDb(async function (p, req, res) {
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    const body = req.body || {};
+    const recipient = RECIPIENTS[body.recipient] ? body.recipient : 'Other';
+    const toName = str(body.to_name, 200);
+    const instructions = str(body.instructions, 2000);
+    const variation = Math.max(0, Math.min(20, parseInt(body.variation, 10) || 0));
+    const r = await p.query('SELECT * FROM jobs WHERE id = $1', [jobId(req)]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    const j = r.rows[0];
+    const u = await p.query(`SELECT created_at, kind, body FROM job_updates WHERE job_id = $1 AND kind IN ('note', 'completed', 'change')
+      ORDER BY created_at DESC LIMIT 8`, [j.id]);
+
+    const fact = function (label, v) { return v ? '- ' + label + ': ' + String(v).replace(/\s+/g, ' ').trim() + '\n' : ''; };
+    const when = function (d) { return d ? new Date(d).toLocaleString('en-GB', { timeZone: 'Europe/London', dateStyle: 'medium', timeStyle: 'short' }) : ''; };
+    let facts = fact('Job reference', refFor(j.id)) + fact('Property', j.property_address) +
+      fact('Issue', [j.category, j.affected, j.symptom].filter(Boolean).join(' – ')) + fact('Location in property', j.location) +
+      fact('Description', j.description) + fact('Urgency', j.urgency) + fact('Status', j.status) +
+      fact('Reported', when(j.created_at)) + fact('Deadline', when(j.due_at)) + fact('Completed', when(j.completed_at)) +
+      fact('Completion notes', j.completion_notes) + fact('Assigned contractor', j.assigned_to) + fact('Next steps', j.next_steps);
+    if (recipient === 'Tenant' || recipient === 'Contractor' || recipient === 'Landlord') facts += fact('Tenant name', j.tenant_name);
+    if (recipient === 'Contractor') {
+      facts += fact('Tenant phone', j.tenant_phone) + fact('Access days', j.access_days) + fact('Best time', j.access_time) +
+        fact('Access notes', j.access_notes) + fact('Keys can be released to contractor', j.key_permission) + fact('Contractor notes', j.key_instructions);
+    }
+    if (recipient === 'Landlord') {
+      facts += fact('Estimated cost to landlord', j.landlord_charge != null ? '£' + Number(j.landlord_charge).toFixed(2) : null);
+    }
+    const history = u.rows.reverse().map(function (x) { return '- ' + when(x.created_at) + ': ' + String(x.body).replace(/\s+/g, ' ').slice(0, 300); }).join('\n');
+
+    const prompt = 'You write emails for Residential Realtors, a UK letting and property management agency, about property repairs.\n\n' +
+      'Write an email to ' + RECIPIENTS[recipient] + (toName ? ' Address it to: ' + toName + '.' : '') + '\n\n' +
+      'Job details:\n' + facts + (history ? '\nRecent history:\n' + history + '\n' : '') +
+      (instructions ? '\nWhat this email needs to do (from the staff member): ' + instructions + '\n' : '') +
+      '\nRules: use UK English. Only use the facts above — never invent names, dates, costs, reference numbers or events; where something is needed but unknown, put a placeholder in square brackets such as [DATE]. ' +
+      'Include the job reference. Do not mention internal costs, profit or margins' + (recipient === 'Landlord' ? ' other than the cost to the landlord given above' : '') + '. ' +
+      'Sign off as "Residential Realtors Maintenance Team". Keep it as short as the purpose allows. ' +
+      (variation ? 'This is alternative draft number ' + variation + ', so word it differently from a standard version. ' : '') +
+      'Reply with ONLY a JSON object: {"subject": "...", "body": "..."} where body is plain text with \\n line breaks and no markdown.';
+
+    const result = await opts.askAi(prompt, true);
+    if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
+    let parsed = null;
+    try {
+      parsed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim());
+    } catch (e) { /* fall through */ }
+    if (!parsed || !parsed.body) return res.status(502).json({ ok: false, error: 'ai-bad-reply' });
+    res.json({ ok: true, subject: String(parsed.subject || '').slice(0, 300), body: String(parsed.body).slice(0, 10000) });
+  }));
+
+  // Emails sent to someone other than the tenant (council, landlord…), when email is set up.
+  app.post('/api/admin/jobs/:id/email', withDb(async function (p, req, res) {
+    if (!canEmail()) return res.status(503).json({ ok: false, error: 'email-not-configured' });
+    const b = req.body || {};
+    const to = str(b.to, 200);
+    const subject = str(b.subject, 300);
+    const text = str(b.body, 10000);
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ ok: false, error: 'bad-address' });
+    if (!subject || !text) return res.status(400).json({ ok: false, error: 'empty' });
+    const id = jobId(req);
+    const r = await p.query('SELECT id FROM jobs WHERE id = $1', [id]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    const sent = await sendEmail({ to: [to], subject: subject, text: text });
+    if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
+      [id, 'email', 'Emailed ' + to + ' — ' + subject + '\n\n' + text]);
+    await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1', [id]);
+    res.json({ ok: true });
+  }));
+
   // ---------- Contractors ----------
   function cleanContractor(b) {
     const out = {};
@@ -440,7 +547,7 @@ module.exports = function mountJobs(app, opts) {
   app.post('/api/admin/jobs/:id/updates', withDb(async function (p, req, res) {
     const id = jobId(req);
     const text = str((req.body || {}).body, 5000);
-    const kind = ['tenant_message', 'contractor_message'].indexOf((req.body || {}).kind) !== -1 ? req.body.kind : 'note';
+    const kind = ['tenant_message', 'contractor_message', 'email'].indexOf((req.body || {}).kind) !== -1 ? req.body.kind : 'note';
     if (!text) return res.status(400).json({ ok: false, error: 'empty' });
     const r = await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1 RETURNING id', [id]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
