@@ -439,7 +439,7 @@
   .prop-tiles { grid-template-columns: repeat(4, 1fr); }
   @media (max-width: 800px) { .prop-row { grid-template-columns: minmax(0,1fr) auto; } .prop-row .last, .prop-row .chev { display: none; } .prop-row .num:nth-of-type(3) { display: none; } .prop-tiles { grid-template-columns: repeat(2, 1fr); } }
   .tenant-card { margin-bottom: 4px; }
-  #tenantAvatar .av { width: 44px; height: 44px; font-size: .9rem; }
+  #tenantAvatar .av, #llAvatar .av { width: 44px; height: 44px; font-size: .9rem; }
   .prop-row .who-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .job-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .count-chip { font-family: var(--sans); font-size: .72rem; font-weight: 600; color: var(--ink-soft); background: var(--panel-2); border: 1px solid var(--line); padding: 1px 8px; border-radius: 999px; }
@@ -511,6 +511,7 @@
     <button class="nav on" type="button" id="navJobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg> Repair jobs <span class="badge" id="sOpen">0</span></button>
     <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
     <button class="nav" type="button" id="navTenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg> Tenants</button>
+    <button class="nav" type="button" id="navLandlords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg> Landlords</button>
     <button class="nav" type="button" id="navPay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg> Payments <span class="badge" id="sOwed" hidden></span></button>
     <button class="nav" type="button" id="contractorsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg> Contractors</button>
     <button class="nav" type="button" id="navEmail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
@@ -597,6 +598,33 @@
         </div>
       </div>
 
+      <!-- LANDLORDS: each landlord, their properties and repairs -->
+      <div id="llView" hidden>
+        <div id="llListView">
+          <div class="toolbar">
+            <input class="inp search" id="llSearch" type="search" placeholder="Search landlords by name, phone, email or property">
+            <button class="btn primary" id="llNew" type="button">+ Add landlord</button>
+          </div>
+          <div class="list" id="llList"></div>
+        </div>
+        <div id="llDetail" hidden>
+          <button class="btn small ghost" id="llBack" type="button">← All landlords</button>
+          <div class="prop-head">
+            <div style="display:flex;gap:14px;align-items:center"><span id="llAvatar"></span><div><h2 id="llTitle"></h2><div class="prop-sub" id="llSub"></div></div></div>
+            <div class="prop-actions" id="llActions"></div>
+          </div>
+          <div class="card" id="llCard"></div>
+          <div class="card" style="margin-top:12px"><h3>Properties</h3>
+            <div class="list" id="llProps"></div>
+            <div class="tenant-find" style="margin-top:12px"><label class="lbl" for="llAddProp">Add a property to this landlord</label>
+              <div style="display:flex;gap:8px"><input class="inp" id="llAddProp" list="llPropList" placeholder="Start typing an address from your jobs"><button class="btn" id="llAddPropBtn" type="button">Add</button></div>
+              <datalist id="llPropList"></datalist></div>
+          </div>
+          <h3 style="font-family:var(--display);margin:18px 0 10px">Repairs across their properties</h3>
+          <div class="list" id="llJobs"></div>
+        </div>
+      </div>
+
       <!-- PROPERTIES: every property, and all repairs at one -->
       <!-- CONTRACTOR PAYMENTS: what's owed for each contractor's jobs -->
       <div id="payView" hidden>
@@ -636,6 +664,7 @@
             </div>
           </div>
           <div class="tiles prop-tiles" id="propTiles"></div>
+          <div class="card" id="propLandlord" style="margin-bottom:12px"></div>
           <div class="list" id="propJobs"></div>
         </div>
       </div>
@@ -662,6 +691,22 @@
 </aside>
 
 <datalist id="assignees"></datalist>
+
+<!-- ADD / EDIT A LANDLORD -->
+<div class="modal" id="llfModal" hidden>
+  <form class="card jf" id="llfForm" novalidate style="width:min(560px,100%)">
+    <h3 id="llfTitle">Add a landlord</h3>
+    <div><label class="lbl" for="llfName">Name *</label><input class="inp" id="llfName" placeholder="e.g. Mr A Khan or Khan Properties Ltd"></div>
+    <div class="grid2">
+      <div><label class="lbl" for="llfPhone">Phone</label><input class="inp" id="llfPhone" type="tel"></div>
+      <div><label class="lbl" for="llfEmail">Email</label><input class="inp" id="llfEmail" type="email"></div>
+    </div>
+    <div><label class="lbl" for="llfAddress">Address (shown on invoices)</label><textarea class="inp" id="llfAddress" rows="3" style="min-height:70px"></textarea></div>
+    <div><label class="lbl" for="llfNotes">Notes</label><textarea class="inp" id="llfNotes" style="min-height:60px" placeholder="e.g. prefers WhatsApp, approve anything under £200"></textarea></div>
+    <div class="err-msg" id="llfErr"></div>
+    <div class="row-actions" style="margin-top:0"><button class="btn" id="llfCancel" type="button">Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</div>
 
 <!-- ASK FIXFLOW: speak or type an instruction -->
 <div class="modal" id="askModal" hidden>
@@ -1007,7 +1052,7 @@
   // ---------- List ----------
   function loadJobs(){
     if (!meta.db) { jobs = []; render(); return; }
-    return api('GET', '/api/admin/jobs').then(function(d){
+    return Promise.all([api('GET', '/api/admin/jobs'), loadLandlords()]).then(function(res){ var d = res[0];
       if (!d.ok) return;
       // Deleted jobs live in the archive: kept, but out of every day-to-day list and total.
       archivedJobs = d.jobs.filter(function(j){ return j.archived_at; });
@@ -1017,6 +1062,7 @@
       if (view === 'props') { openPropKey ? renderProperty() : renderProps(); }
       if (view === 'tenants') { openTenantKey ? renderTenant() : renderTenants(); }
       if (view === 'pay') renderPay();
+      if (view === 'll') { openLlId ? renderLandlord() : renderLandlords(); }
       var owedN = jobs.filter(isOwed).length;
       $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
     });
@@ -1668,11 +1714,14 @@
     $('propsView').hidden = v !== 'props';
     $('tenantsView').hidden = v !== 'tenants';
     $('payView').hidden = v !== 'pay';
+    $('llView').hidden = v !== 'll';
+    $('navLandlords').classList.toggle('on', v === 'll');
     $('navPay').classList.toggle('on', v === 'pay');
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords' }[v];
+    if (v === 'll') { openLlId ? renderLandlord() : renderLandlords(); }
     if (v === 'pay') renderPay();
     if (v === 'props') { openPropKey ? renderProperty() : renderProps(); }
     if (v === 'tenants') { openTenantKey ? renderTenant() : renderTenants(); }
@@ -1742,6 +1791,32 @@
       '<div class="tile"><div class="k">Completed</div><div class="v">' + done + '</div></div>' +
       '<div class="tile good"><div class="k">Charged to landlord</div><div class="v">' + gbp(chargedTotal(d.jobs)) + '</div></div>';
     $('propJobs').innerHTML = d.jobs.length ? d.jobs.map(rowHtml).join('') : '<div class="empty">No repairs in this period.</div>';
+    renderPropLandlord(d.property);
+  }
+  function renderPropLandlord(pr){
+    var l = landlordRecordAt(pr.address);
+    var opts = '<option value="">Choose a landlord…</option>' + landlords.map(function(x){ return '<option value="' + x.id + '"' + (l && l.id === x.id ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '<option value="new">+ New landlord…</option>';
+    $('propLandlord').innerHTML = '<h3>Landlord <span style="flex:1"></span>' + (l ? '<button class="btn small" id="plOpen" type="button">Open landlord</button>' : '') + '</h3>' +
+      (l ? '<div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">' + avatar(l.name) + '<div><strong>' + esc(l.name) + '</strong><div class="prop-sub" style="margin:0">' +
+          esc([l.phone, l.email].filter(Boolean).join(' · ') || 'No contact details yet') + '</div></div></div>'
+        : '<p class="muted-note" style="margin-bottom:10px">No landlord saved for this property yet.</p>') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><select class="inp" id="plPick" style="max-width:320px">' + opts + '</select>' +
+      (l ? '<button class="btn small ghost" id="plClear" type="button">Remove link</button>' : '') + '</div>';
+    if ($('plOpen')) $('plOpen').addEventListener('click', function(){ openLandlord(l.id); });
+    $('plPick').addEventListener('change', function(){
+      var v = $('plPick').value;
+      if (v === 'new') { openLandlordForm(null, pr.address); $('plPick').value = l ? l.id : ''; return; }
+      if (!v) return;
+      linkProperty(pr.address, Number(v));
+    });
+    if ($('plClear')) $('plClear').addEventListener('click', function(){ if (confirm('Remove ' + l.name + ' as the landlord for this property?')) linkProperty(pr.address, null); });
+  }
+  function linkProperty(address, id){
+    return api('PUT', '/api/admin/property-landlord', { address: address, landlord_id: id }).then(function(d){
+      if (!d.ok) { toast('Couldn’t update the landlord'); return; }
+      toast(id ? 'Saved — ' + (landlordById(id) || {}).name + '’s property' : 'Landlord removed from this property');
+      return loadJobs();
+    });
   }
   $('propJobs').addEventListener('click', function(e){
     var b = e.target.closest('.job');
@@ -2093,25 +2168,40 @@
     $('invRefNote').textContent = ref.length > 18 ? 'Many banks only show 18 characters of a reference — consider shortening it (' + ref.length + ' now).' : '';
   }
   // ---------- Landlords ----------
-  // Landlord details live on each job; a property's landlord is taken from its
-  // most recent job that has one, and saved landlords can be picked by name.
+  // Landlords are saved once each; every property is linked to its landlord
+  // (a landlord can have many). Entering landlord details on a job or invoice
+  // saves them and links the property automatically (done on the server).
   var LL_FIELDS = ['landlord_name', 'landlord_email', 'landlord_phone', 'landlord_address'];
+  var landlords = [], llByKey = {};
+  function loadLandlords(){
+    if (!meta.db) return Promise.resolve();
+    return api('GET', '/api/admin/landlords').then(function(d){
+      if (!d.ok) return;
+      landlords = d.landlords;
+      llByKey = {};
+      d.links.forEach(function(k){ llByKey[k.property_key] = k; });
+    });
+  }
+  function llAsFields(l){ return l ? { id: l.id, landlord_name: l.name, landlord_email: l.email, landlord_phone: l.phone, landlord_address: l.address } : null; }
+  function landlordById(id){ return landlords.filter(function(l){ return l.id === id; })[0] || null; }
+  function landlordRecordAt(address){ var k = llByKey[propKey(address)]; return k ? landlordById(k.landlord_id) : null; }
+  // The landlord for an address: the linked landlord, or (for older jobs) the last landlord named on a job there.
   function landlordAt(address){
+    var l = landlordRecordAt(address);
+    if (l) return llAsFields(l);
     var pk = propKey(address);
     return jobs.concat(archivedJobs).filter(function(o){ return o.landlord_name && propKey(o.property_address) === pk; })
       .sort(function(a, b){ return new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at); })[0] || null;
   }
+  function landlordFor(j){ return landlordAt(j.property_address) || (j.landlord_name ? j : null); }
+  function llProperties(l){
+    return Object.keys(llByKey).filter(function(k){ return llByKey[k].landlord_id === l.id; }).map(function(k){
+      var pr = propertiesFromJobs().filter(function(x){ return x.key === k; })[0];
+      return { key: k, address: pr ? pr.address : llByKey[k].address, jobs: pr ? pr.jobs : [] };
+    }).sort(function(a, b){ return a.address.localeCompare(b.address); });
+  }
   function savedLandlords(){
-    var map = {};
-    jobs.concat(archivedJobs).filter(function(o){ return o.landlord_name; })
-      .sort(function(a, b){ return new Date(a.updated_at || a.created_at) - new Date(b.updated_at || b.created_at); })
-      .forEach(function(o){
-        var k = o.landlord_name.trim().toLowerCase();
-        var l = map[k] || (map[k] = { props: {} });
-        LL_FIELDS.forEach(function(f){ if (o[f]) l[f] = o[f]; });
-        if (o.property_address) l.props[propKey(o.property_address)] = o.property_address;
-      });
-    return Object.keys(map).map(function(k){ var l = map[k]; l.properties = Object.keys(l.props).map(function(x){ return l.props[x]; }); return l; });
+    return landlords.map(function(l){ var f = llAsFields(l); f.properties = llProperties(l).map(function(x){ return x.address; }); return f; });
   }
   function llInputs(prefix){ return { landlord_name: prefix + 'LlName', landlord_email: prefix + 'LlEmail', landlord_phone: prefix + 'LlPhone', landlord_address: prefix + 'LlAddress' }; }
   function fillLandlord(prefix, l){ var ids = llInputs(prefix); LL_FIELDS.forEach(function(f){ $(ids[f]).value = (l && l[f]) || ''; }); }
@@ -2155,7 +2245,7 @@
     $('invTitle').textContent = 'Invoice landlord — ' + j.ref;
     $('invWarn').hidden = !!(cfg.payee && cfg.sortCode && cfg.accountNumber);
     // Landlord: from this job, or the most recent job at the same property.
-    fillLandlord('inv', j.landlord_name ? j : landlordAt(j.property_address));
+    fillLandlord('inv', landlordFor(j));
     $('invLlSave').checked = true;
     $('invNumber').value = j.invoice_number || ('INV-' + j.ref);
     $('invDate').value = isoDate(new Date());
@@ -2366,6 +2456,7 @@
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
     if (!$('askModal').hidden) { closeAsk(); return; }
+    if (!$('llfModal').hidden) { $('llfModal').hidden = true; return; }
     if (!$('jfModal').hidden) { $('jfModal').hidden = true; return; }
     if (!$('invModal').hidden) { $('invModal').hidden = true; return; }
     if (!$('waModal').hidden) { $('waModal').hidden = true; return; }
@@ -2411,7 +2502,7 @@
         (tb[2] ? '<span class="n">' + tb[2] + '</span>' : '') + '</button>';
     }).join('');
     $('dBody').dataset.tab = drawerTab;
-    var t = timeInfo(j), prof = profitOf(j);
+    var t = timeInfo(j), prof = profitOf(j), LLJ = landlordFor(j) || {};
     var completed = j.status === 'Completed';
     var statusOpts = meta.statuses.filter(function(s){ return s !== 'Completed' || completed; });
     var rows = function(pairs){
@@ -2565,10 +2656,11 @@
         ['Email', j.tenant_email ? '<a href="mailto:' + esc(j.tenant_email) + '">' + esc(j.tenant_email) + '</a>' : '', true],
         ['Phone', j.tenant_phone ? '<a href="tel:' + esc(j.tenant_phone.replace(/\s/g, '')) + '">' + esc(j.tenant_phone) + '</a>' : '', true],
         ['Property', j.property_address],
-        ['Landlord', [j.landlord_name, j.landlord_address].filter(Boolean).join('\n')],
-        ['Landlord contact', [j.landlord_phone ? '<a href="tel:' + esc(j.landlord_phone.replace(/[^\d+]/g, '')) + '">' + esc(j.landlord_phone) + '</a>' : '',
-          j.landlord_email ? '<a href="mailto:' + esc(j.landlord_email) + '">' + esc(j.landlord_email) + '</a>' : ''].filter(Boolean).join(' · '), true]
+        ['Landlord', [LLJ.landlord_name, LLJ.landlord_address].filter(Boolean).join('\n')],
+        ['Landlord contact', [LLJ.landlord_phone ? '<a href="tel:' + esc(LLJ.landlord_phone.replace(/[^\d+]/g, '')) + '">' + esc(LLJ.landlord_phone) + '</a>' : '',
+          LLJ.landlord_email ? '<a href="mailto:' + esc(LLJ.landlord_email) + '">' + esc(LLJ.landlord_email) + '</a>' : ''].filter(Boolean).join(' · '), true]
       ]) + ('<div class="job-links">' + (j.property_address ? '<button class="btn small" id="propLink" type="button">All repairs at this property</button>' : '') +
+        (LLJ.id ? '<button class="btn small" id="llLink" type="button">' + esc(LLJ.landlord_name) + '’s properties</button>' : '') +
         (j.tenant_name || j.tenant_phone ? '<button class="btn small" id="tenantLink" type="button">All repairs for this tenant</button>' : '') + '</div>') + '</div>' +
       '<div class="card" data-pane="overview" id="accessCard"><h3>Access <span style="flex:1"></span><button class="btn small" id="editAccess" type="button">Edit</button></h3>' +
         '<div id="accessView">' + (j.access_days || j.access_time || j.access_notes || j.key_permission || j.key_instructions ? rows([
@@ -2645,7 +2737,7 @@
   function wireAiEmail(j){
     if (!meta.canAi) return;
     var recipient = 'Council', variation = 0;
-    var DEFAULT_NAME = { Council: '', Landlord: j.landlord_name || (landlordAt(j.property_address) || {}).landlord_name || '', Tenant: j.tenant_name || '', Contractor: j.assigned_to || '', Other: '' };
+    var DEFAULT_NAME = { Council: '', Landlord: (landlordFor(j) || {}).landlord_name || '', Tenant: j.tenant_name || '', Contractor: j.assigned_to || '', Other: '' };
     function showIdeas(){
       $('aiIdeas').innerHTML = AI_IDEAS[recipient].map(function(t){ return '<button type="button">' + esc(t) + '</button>'; }).join('');
     }
@@ -2657,7 +2749,7 @@
       $('aiName').value = DEFAULT_NAME[recipient];
       var what = $('aiWhat').value.trim(), prefills = Object.keys(AI_IDEAS).map(function(k){ return AI_IDEAS[k][0]; });
       if (!what || prefills.indexOf(what) !== -1) $('aiWhat').value = recipient === 'Landlord' ? AI_IDEAS.Landlord[0] : '';
-      var ll = j.landlord_name ? j : (landlordAt(j.property_address) || {});
+      var ll = landlordFor(j) || {};
       $('aiAddr').value = recipient === 'Tenant' ? (j.tenant_email || '') :
         recipient === 'Contractor' ? ((contractorByName(j.assigned_to) || {}).email || '') :
         recipient === 'Landlord' ? (ll.landlord_email || '') : '';
@@ -2783,6 +2875,7 @@
 
   function wireJob(j, photos){
     photos = photos || [];
+    var LLJ_ID = (landlordFor(j) || {}).id;
     $('invBtn').addEventListener('click', function(){ openInvoice(j); });
     $('qInv').addEventListener('click', function(){ openInvoice(j); });
     $('qWa').addEventListener('click', function(){ showContractorMessage([j]); });
@@ -2847,6 +2940,7 @@
       $('tenantLink').textContent = 'All repairs for ' + (j.tenant_name || 'this tenant') + ' (' + tcount + ')';
       $('tenantLink').addEventListener('click', function(){ closeDrawer(); openTenant(tk); });
     }
+    if ($('llLink')) $('llLink').addEventListener('click', function(){ closeDrawer(); openLandlord(LLJ_ID); });
     if ($('propLink')) {
       var pk = propKey(j.property_address);
       var count = jobs.filter(function(o){ return propKey(o.property_address) === pk; }).length;
@@ -3054,6 +3148,108 @@
       });
     });
   }
+
+  // ---------- Landlords page ----------
+  var openLlId = null;
+  function renderLandlords(){
+    var q = $('llSearch').value.trim().toLowerCase(), digits = q.replace(/\D/g, '');
+    var list = landlords.filter(function(l){
+      if (!q) return true;
+      var props = llProperties(l).map(function(x){ return x.address; }).join(' | ');
+      return [l.name, l.email, props].join(' | ').toLowerCase().indexOf(q) !== -1 ||
+        (digits.length >= 4 && String(l.phone || '').replace(/\D/g, '').indexOf(digits) !== -1);
+    });
+    if (!list.length) { $('llList').innerHTML = '<div class="empty">' + (landlords.length ? 'No landlord matches.' : 'No landlords yet. Add one here, or enter landlord details on a job or invoice and they’re saved automatically.') + '</div>'; return; }
+    $('llList').innerHTML = list.map(function(l){
+      var props = llProperties(l), open = props.reduce(function(a, x){ return a + x.jobs.filter(isOpen).length; }, 0);
+      return '<button type="button" class="prop-row" data-id="' + l.id + '">' +
+        '<div class="who-cell">' + avatar(l.name) + '<div style="min-width:0"><div class="addr">' + esc(l.name) + '</div>' +
+          '<div class="prop-sub" style="margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc([l.phone, l.email].filter(Boolean).join(' · ') || 'No contact details') + '</div></div></div>' +
+        '<div class="num">' + props.length + '<small>propert' + (props.length === 1 ? 'y' : 'ies') + '</small></div>' +
+        '<div class="num' + (open ? ' hot' : '') + '">' + open + '<small>open jobs</small></div>' +
+        '<div class="last">' + esc(props.map(function(x){ return x.address; }).slice(0, 2).join('; ')) + '<small>' + (props.length > 2 ? '+' + (props.length - 2) + ' more' : '&nbsp;') + '</small></div>' +
+        '<span class="chev">›</span></button>';
+    }).join('');
+  }
+  function openLandlord(id){
+    openLlId = id;
+    $('llListView').hidden = true; $('llDetail').hidden = false;
+    if (view !== 'll') showView('ll'); else renderLandlord();
+  }
+  function renderLandlord(){
+    var l = landlordById(openLlId);
+    if (!l) { $('llBack').click(); return; }
+    var props = llProperties(l), all = [];
+    props.forEach(function(x){ all = all.concat(x.jobs); });
+    all.sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); });
+    var open = all.filter(isOpen).length;
+    $('llAvatar').innerHTML = avatar(l.name);
+    $('llTitle').textContent = l.name;
+    $('llSub').textContent = props.length + ' propert' + (props.length === 1 ? 'y' : 'ies') + ' · ' + all.length + ' repair' + (all.length === 1 ? '' : 's') + ' · ' + open + ' open · ' + gbp(chargedTotal(all)) + ' charged';
+    var wa = waNumber(l.phone);
+    $('llActions').innerHTML = (l.phone ? '<a class="btn" href="tel:' + esc(l.phone.replace(/[^\d+]/g, '')) + '">Call</a>' : '') +
+      (wa ? '<a class="btn wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
+      (l.email ? '<a class="btn" href="mailto:' + esc(l.email) + '">Email</a>' : '') +
+      '<button class="btn primary" id="llEditBtn" type="button">Edit details</button>';
+    $('llCard').innerHTML = '<dl class="kv">' + [['Name', l.name], ['Phone', l.phone], ['Email', l.email], ['Address (for invoices)', l.address], ['Notes', l.notes]]
+      .filter(function(r){ return r[1]; }).map(function(r){ return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
+    $('llEditBtn').addEventListener('click', function(){ openLandlordForm(l); });
+    $('llProps').innerHTML = props.length ? props.map(function(x){
+      var o = x.jobs.filter(isOpen).length;
+      return '<div class="prop-row" style="cursor:default"><div class="addr"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-prop="' + esc(x.key) + '">' + esc(x.address) + '</button></div>' +
+        '<div class="num">' + x.jobs.length + '<small>repairs</small></div><div class="num' + (o ? ' hot' : '') + '">' + o + '<small>open</small></div>' +
+        '<div class="last"><button type="button" class="btn small ghost" data-unlink="' + esc(x.address) + '">Remove</button></div><span></span></div>';
+    }).join('') : '<div class="empty" style="padding:18px">No properties linked yet — add one below.</div>';
+    var linked = {}; props.forEach(function(x){ linked[x.key] = true; });
+    $('llPropList').innerHTML = propertiesFromJobs().filter(function(pr){ return !linked[pr.key]; }).map(function(pr){ return '<option value="' + esc(pr.address) + '">'; }).join('');
+    $('llJobs').innerHTML = all.length ? all.map(rowHtml).join('') : '<div class="empty">No repairs at their properties yet.</div>';
+  }
+  $('navLandlords').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; showView('ll'); });
+  $('llBack').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; renderLandlords(); });
+  $('llSearch').addEventListener('input', renderLandlords);
+  $('llList').addEventListener('click', function(e){ var b = e.target.closest('.prop-row'); if (b) openLandlord(Number(b.dataset.id)); });
+  $('llNew').addEventListener('click', function(){ openLandlordForm(null); });
+  $('llProps').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.prop) openProperty(b.dataset.prop);
+    else if (b.dataset.unlink && confirm('Remove ' + b.dataset.unlink + ' from this landlord?')) linkProperty(b.dataset.unlink, null);
+  });
+  $('llAddPropBtn').addEventListener('click', function(){
+    var a = $('llAddProp').value.trim();
+    if (!a) { $('llAddProp').focus(); return; }
+    var cur = landlordRecordAt(a);
+    if (cur && cur.id !== openLlId && !confirm(a + ' is currently ' + cur.name + '’s property. Move it to this landlord?')) return;
+    $('llAddProp').value = '';
+    linkProperty(a, openLlId);
+  });
+  $('llJobs').addEventListener('click', function(e){ var b = e.target.closest('.job'); if (b) openJob(Number(b.dataset.id)); });
+
+  // Add / edit a landlord (optionally linking a property straight away).
+  var llEditing = null, llForAddress = null;
+  function openLandlordForm(l, address){
+    llEditing = l; llForAddress = address || null;
+    $('llfTitle').textContent = l ? 'Edit ' + l.name : 'Add a landlord' + (address ? ' for ' + address : '');
+    $('llfName').value = l ? l.name || '' : ''; $('llfPhone').value = l ? l.phone || '' : ''; $('llfEmail').value = l ? l.email || '' : '';
+    $('llfAddress').value = l ? l.address || '' : ''; $('llfNotes').value = l ? l.notes || '' : '';
+    $('llfErr').textContent = '';
+    $('llfModal').hidden = false;
+    setTimeout(function(){ $('llfName').focus(); }, 50);
+  }
+  $('llfCancel').addEventListener('click', function(){ $('llfModal').hidden = true; });
+  $('llfForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var body = { name: $('llfName').value.trim(), phone: $('llfPhone').value.trim(), email: $('llfEmail').value.trim(), address: $('llfAddress').value.trim(), notes: $('llfNotes').value.trim() };
+    if (!body.name) { $('llfErr').textContent = 'Please enter the landlord’s name.'; return; }
+    if (llForAddress) body.property_address = llForAddress;
+    var req = llEditing ? api('PATCH', '/api/admin/landlords/' + llEditing.id, body) : api('POST', '/api/admin/landlords', body);
+    req.then(function(d){
+      if (!d.ok) { $('llfErr').textContent = 'Couldn’t save (' + (d.error || 'error') + ')'; return; }
+      $('llfModal').hidden = true;
+      toast(llEditing ? 'Landlord updated' : 'Landlord saved' + (llForAddress ? ' and linked to this property' : ''));
+      var newId = llEditing ? llEditing.id : d.id;
+      loadJobs().then(function(){ if (view === 'll' && !llForAddress) openLandlord(newId); });
+    });
+  });
 
   // ---------- Contractor payments ----------
   // Owed: a job with a contractor and an actual cost that hasn't been marked paid.
@@ -3357,6 +3553,7 @@
       { t: 'Properties', s: 'Every address and its repairs', ic: IC.go, run: function(){ closeDrawer(); $('navProps').click(); } },
       { t: 'Tenants', s: 'Everyone who has reported', ic: IC.go, run: function(){ closeDrawer(); $('navTenants').click(); } },
       { t: 'Contractors', s: 'Directory and phone numbers', ic: IC.go, run: function(){ $('contractorsBtn').click(); } },
+      { t: 'Landlords', s: 'Landlords and their properties', ic: IC.go, run: function(){ closeDrawer(); $('navLandlords').click(); } },
       { t: 'Contractor payments', s: 'What you owe contractors', ic: IC.go, run: function(){ closeDrawer(); showView('pay'); } },
       { t: 'Ask Fixflow', s: 'Speak or type an instruction, e.g. add a gas safety', ic: IC.go, run: function(){ openAsk('say'); } },
       { t: 'Jobs from an email', s: 'Paste a tenant’s email and let AI organise it into jobs', ic: IC.go, run: function(){ openAsk('email'); } }
@@ -3380,6 +3577,11 @@
       var ps = propertiesFromJobs().filter(function(pr){ return hit(pr.address) || (pk && pr.key.indexOf(pk) !== -1); }).slice(0, 5);
       if (ps.length) sections.push({ h: 'Properties', items: ps.map(function(pr){
         return { t: pr.address, s: pr.jobs.length + ' repair' + (pr.jobs.length === 1 ? '' : 's') + ' · ' + pr.jobs.filter(isOpen).length + ' open', ic: IC.home, run: function(){ closeDrawer(); openProperty(pr.key); } };
+      }) });
+      var lls = landlords.filter(function(l){ return hit([l.name, l.email, l.phone].join(' | ')); }).slice(0, 4);
+      if (lls.length) sections.push({ h: 'Landlords', items: lls.map(function(l){
+        var n = llProperties(l).length;
+        return { t: l.name, s: [l.phone, n + ' propert' + (n === 1 ? 'y' : 'ies')].filter(Boolean).join(' · '), av: l.name, run: function(){ closeDrawer(); openLandlord(l.id); } };
       }) });
       var cs = contractors.filter(function(c){ return hit([c.name, c.trade, c.phone].join(' | ')); }).slice(0, 4);
       if (cs.length) sections.push({ h: 'Contractors', items: cs.map(function(c){
