@@ -115,24 +115,33 @@ CREATE TABLE IF NOT EXISTS contractors (
 );
 `;
 
-// The first contractors can be loaded from the CONTRACTORS_SEED variable (a JSON
-// list of {name, trade, phone, email, notes}) so their numbers never have to be
-// written into this public code. It is only used while the table is empty;
-// after that, contractors are managed from the dashboard.
+// Contractors can be loaded from the CONTRACTORS_SEED variable (a JSON list of
+// {name, trade, phone, email, notes}) so their details never have to be written
+// into this public code. On startup any listed contractor not already in the
+// directory (matched by name, phone or email) is added; existing ones, including
+// any edited or removed in the dashboard, are left alone.
 async function seedContractors(p) {
   const raw = process.env.CONTRACTORS_SEED;
   if (!raw) return;
-  const count = await p.query('SELECT count(*)::int AS n FROM contractors');
-  if (count.rows[0].n > 0) return;
   let list;
   try { list = JSON.parse(raw); } catch (e) { console.error('CONTRACTORS_SEED is not valid JSON'); return; }
   if (!Array.isArray(list)) return;
+  const have = (await p.query('SELECT name, phone, email FROM contractors')).rows;
+  const digits = function (v) { return String(v || '').replace(/\D/g, ''); };
+  let added = 0;
   for (const c of list) {
     if (!c || !str(c.name)) continue;
+    const known = have.some(function (h) {
+      return h.name.trim().toLowerCase() === str(c.name).toLowerCase() ||
+        (digits(c.phone) && digits(h.phone) === digits(c.phone)) ||
+        (str(c.email) && String(h.email || '').toLowerCase() === str(c.email).toLowerCase());
+    });
+    if (known) continue;
     await p.query('INSERT INTO contractors (name, trade, phone, email, notes) VALUES ($1, $2, $3, $4, $5)',
       [str(c.name, 200), str(c.trade, 200), str(c.phone, 50), str(c.email, 200), str(c.notes, 1000)]);
+    added += 1;
   }
-  console.log('Loaded ' + list.length + ' contractors from CONTRACTORS_SEED');
+  if (added) console.log('Added ' + added + ' contractor' + (added === 1 ? '' : 's') + ' from CONTRACTORS_SEED');
 }
 
 // How a job reached us. Tenant submissions are 'Online report'; staff pick one

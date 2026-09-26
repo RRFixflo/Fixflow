@@ -621,7 +621,7 @@
 <!-- SEND SELECTED JOBS TO A CONTRACTOR -->
 <div class="bulkbar" id="bulkBar" hidden>
   <span class="n" id="bulkCount">0 selected</span>
-  <button class="btn small wa" id="bulkWa" type="button">Send on WhatsApp</button>
+  <button class="btn small wa" id="bulkWa" type="button">Send to contractor</button>
   <button class="btn small" id="bulkCopy" type="button">Copy for contractor</button>
   <button class="btn small" id="bulkArea" type="button" title="Also select open jobs in the same postcode area">+ Same area</button>
   <input id="bulkAssign" list="assignees" placeholder="Assign all to…">
@@ -789,6 +789,7 @@
     <div class="row-actions">
       <button class="btn" id="waClose" type="button">Close</button>
       <button class="btn" id="waCopy" type="button">Copy</button>
+      <button class="btn" id="waEmail" type="button" hidden>Send by email</button>
       <button class="btn wa" id="waOpen" type="button">Open WhatsApp</button>
     </div>
   </div>
@@ -1160,6 +1161,7 @@
         '<div class="who">' + avatar(c.name) + '<div><strong>' + esc(c.name) + '</strong><span>' + esc([c.trade, c.active ? (open + ' open job' + (open === 1 ? '' : 's')) : 'Removed'].filter(Boolean).join(' · ')) +
           (c.notes ? ' · ' + esc(c.notes) : '') + '</span></div></div>' +
         (c.phone ? '<a class="tel" href="tel:' + esc(c.phone.replace(/\s/g, '')) + '">' + esc(c.phone) + '</a>' : '') +
+        (c.email ? '<a class="tel" href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>' : '') +
         (wa && c.active ? '<a class="btn small wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
         '<button class="btn small" type="button" data-ct-edit="' + c.id + '">Edit</button>' +
         '<button class="btn small" type="button" data-ct-toggle="' + c.id + '">' + (c.active ? 'Remove' : 'Restore') + '</button>' +
@@ -1222,10 +1224,10 @@
     var names = {};
     list.forEach(function(j){ names[(j.assigned_to || '').toLowerCase()] = true; });
     var shared = Object.keys(names).length === 1 ? contractorByName(list[0].assigned_to) : null;
-    var usable = contractors.filter(function(c){ return c.active && waNumber(c.phone); });
-    $('waTo').innerHTML = '<option value="">Choose the contact in WhatsApp</option>' + usable.map(function(c){
+    var usable = contractors.filter(function(c){ return c.active && (waNumber(c.phone) || c.email); });
+    $('waTo').innerHTML = '<option value="">Choose a contractor (or pick in WhatsApp)</option>' + usable.map(function(c){
       return '<option value="' + c.id + '"' + (shared && shared.id === c.id ? ' selected' : '') + '>' +
-        esc(c.name + (c.trade ? ' — ' + c.trade : '') + ' (' + c.phone + ')') + '</option>';
+        esc(c.name + (c.trade ? ' — ' + c.trade : '') + ' (' + [c.phone, c.email].filter(Boolean).join(', ') + ')') + '</option>';
     }).join('');
     updateWaAssign();
     $('waModal').hidden = false;
@@ -1238,6 +1240,11 @@
     $('waAssign').checked = true;
     if (c) $('waAssignText').textContent = 'Also assign ' + (waJobs.length === 1 ? 'this job' : (needs === waJobs.length ? 'these ' + needs + ' jobs' : needs + ' of these jobs')) + ' to ' + c.name;
     $('waOpen').textContent = c ? 'Open WhatsApp to ' + c.name : 'Open WhatsApp';
+    // Contractors with an email get "Send by email"; email-only ones (no mobile) get no WhatsApp button.
+    $('waEmail').hidden = !(c && c.email);
+    $('waEmail').textContent = c && c.email ? 'Email ' + c.name : 'Send by email';
+    $('waOpen').hidden = !!(c && !waNumber(c.phone));
+    $('waEmail').classList.toggle('primary', !!(c && c.email && !waNumber(c.phone)));
   }
   $('waTo').addEventListener('change', updateWaAssign);
   function assignTo(list, name){
@@ -1290,6 +1297,22 @@
     }).then(function(){ loadJobs(); afterSend(); });
     $('waModal').hidden = true;
     if (text.length > 3500) toast('Long message — it’s also been copied, in case WhatsApp cuts it short');
+  });
+
+  // Email: opens a new email in your own email app, to the contractor, with the
+  // same job details, so it's sent from (and kept in) your normal mailbox.
+  $('waEmail').addEventListener('click', function(){
+    var c = waChosen(); if (!c || !c.email) return;
+    var list = waJobs;
+    var addrs = list.map(function(j){ return j.property_address; }).filter(function(a, i, arr){ return a && arr.indexOf(a) === i; });
+    var subject = (list.length === 1 ? 'Repair job' : list.length + ' repair jobs') + (addrs.length === 1 ? ' – ' + addrs[0] : '');
+    var body = 'Hello,\n\nPlease could you carry out the following:\n\n' + $('waText').textContent +
+      '\n\nPlease let us know when you can attend.\n\nKind regards,\nResidential Realtors';
+    window.location.href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    var assign = !$('waAssignWrap').hidden && $('waAssign').checked ? assignTo(list, c.name) : Promise.resolve();
+    assign.then(function(){ return logContractorSend(list, 'Job details emailed to ' + c.name + ' (' + c.email + ')'); })
+      .then(function(){ loadJobs(); afterSend(); });
+    $('waModal').hidden = true;
   });
 
   function selectedJobs(){ return jobs.filter(function(j){ return selected.has(j.id); }); }
@@ -2288,7 +2311,7 @@
     $('dSub').innerHTML = '<strong>' + esc(issueOf(j)) + '</strong>' + (j.property_address ? ' · ' + esc(j.property_address) : '');
     var tel = j.tenant_phone ? j.tenant_phone.replace(/[^\d+]/g, '') : '';
     $('dQuick').innerHTML =
-      '<button class="btn wa" type="button" id="qWa">WhatsApp contractor</button>' +
+      '<button class="btn wa" type="button" id="qWa">Send to contractor</button>' +
       (j.status !== 'Completed' && !j.archived_at ? '<button class="btn success" type="button" id="qDone">✓ Mark complete</button>' : '') +
       '<button class="btn" type="button" id="qInv">' + (j.invoiced_at ? 'Invoice again' : 'Invoice landlord') + '</button>' +
       (tel ? '<a class="btn" href="tel:' + esc(tel) + '">Call tenant</a>' : '') +
@@ -2379,9 +2402,9 @@
 
       // Contractor
       '<div class="card" data-pane="overview"><h3>Send to contractor</h3>' +
-        '<p style="margin:0 0 10px;color:var(--ink-soft);font-size:.86rem;line-height:1.5">Just the address, the job, the tenant’s name and number, and whether we have keys — ready for WhatsApp.</p>' +
+        '<p style="margin:0 0 10px;color:var(--ink-soft);font-size:.86rem;line-height:1.5">Just the address, the job, the tenant’s name and number, and whether we have keys — by WhatsApp or email.</p>' +
         '<div class="row-actions" style="justify-content:flex-start;margin-top:0">' +
-          '<button class="btn wa" id="cWa" type="button">Send on WhatsApp</button>' +
+          '<button class="btn wa" id="cWa" type="button">Send to contractor</button>' +
           '<button class="btn" id="cCopy" type="button">Copy for contractor</button>' +
         '</div>' +
         '<div id="cNearby"></div>' +
