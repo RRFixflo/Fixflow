@@ -1148,7 +1148,7 @@
   <!-- STEP 1 -->
   <section class="panel active" id="panel-1">
     <h1 class="step-title">What's the problem?</h1>
-    <p class="step-hint">Choose the option that best matches the issue. You can search if it's easier.</p>
+    <p class="step-hint">Choose the option that best matches the issue. You can search if it's easier. <a href="/track" style="color:inherit;font-weight:600">Already reported? Check its progress</a></p>
 
     <div class="search-box">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
@@ -1445,6 +1445,7 @@
       <strong id="sentNoteHeading">Sent to Residential Realtors</strong><br>
       <span id="sentNoteBody">Jay will receive it by email shortly, PDF attached.</span>
     </div>
+    <a class="btn primary" id="trackLink" href="/track" style="display:none;text-decoration:none;margin:4px auto 0">Track the progress of this repair</a>
     <div class="btnrow">
       <button class="btn ghost" id="startOver">Start another report</button>
     </div>
@@ -3008,7 +3009,7 @@
       if (!resp.ok) { return { sent: false }; }
       var data = await resp.json()['catch'](function(){ return null; });
       if (!data || data.ok !== true) { return { sent: false }; }
-      return { sent: true, emailed: data.emailed !== false, ref: data.ref || null, tenantCopySent: !!data.tenantCopySent };
+      return { sent: true, emailed: data.emailed !== false, ref: data.ref || null, trackUrl: data.trackUrl || null, tenantCopySent: !!data.tenantCopySent };
     } catch (err) {
       // Network error, no route at this address (the claude.ai artifact case),
       // or a timeout — all treated the same: quietly fall back.
@@ -3057,6 +3058,8 @@
           sentNoteBody.textContent = sentMsg;
         }
         document.getElementById('sentNote').style.display = '';
+        var track = document.getElementById('trackLink');
+        if (track && result.trackUrl) { track.href = result.trackUrl; track.style.display = 'inline-flex'; }
         if (openLink) {
           openLink.href = lastPdfUrl;
           openLink.setAttribute('download', filename);

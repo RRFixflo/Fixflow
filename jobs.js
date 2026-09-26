@@ -150,6 +150,10 @@ CREATE TABLE IF NOT EXISTS invoices (
 );
 CREATE INDEX IF NOT EXISTS invoices_job_idx ON invoices (job_id, id);
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS photo_token TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS jobs_photo_token_idx ON jobs (photo_token);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS track_token TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS jobs_track_token_idx ON jobs (track_token);
 CREATE TABLE IF NOT EXISTS contractors (
   id         SERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -400,9 +404,20 @@ module.exports = function mountJobs(app, opts) {
     try { await insertPhotos(p, id, decodePhotos(photos), 'tenant'); } catch (err) { console.error('Saving photos failed:', err.message); }
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'created', 'Report submitted by ' + (str(r.name, 200) || 'tenant') + ' (' + urgency + ').']);
+    const trackToken = await ensureTrackToken(p, id);
     notifyNewJob({ id: id, urgency: urgency, address: r.address, issue: [r.category, r.affected, r.symptom].filter(Boolean).join(' – '),
       location: r.location, photos: parseInt(r.photoCount, 10) || 0 });
-    return { id: id, ref: refFor(id) };
+    return { id: id, ref: refFor(id), trackPath: trackToken ? '/t/' + trackToken : null };
+  }
+
+  // A tenant's private link to follow one repair (/t/<token>).
+  async function ensureTrackToken(p, id) {
+    const cur = (await p.query('SELECT track_token FROM jobs WHERE id = $1', [id])).rows[0];
+    if (!cur) return null;
+    if (cur.track_token) return cur.track_token;
+    const token = crypto.randomBytes(18).toString('base64url');
+    await p.query('UPDATE jobs SET track_token = $2 WHERE id = $1 AND track_token IS NULL', [id, token]);
+    return (await p.query('SELECT track_token FROM jobs WHERE id = $1', [id])).rows[0].track_token;
   }
 
   // Phone alert for a new job. Never delays or breaks saving the report.
@@ -1090,6 +1105,190 @@ module.exports = function mountJobs(app, opts) {
       biggest.amount = Math.round((biggest.amount * 100 + again)) / 100;
     }
     res.json({ ok: true, lines: lines });
+  }));
+
+  // ---------- Tenant repair tracker ----------
+  // /track: tenants look up their open repairs by reference or full address.
+  // /t/<token>: the private progress page linked from messages to the tenant.
+  // Only safe details are shown: reference, issue, progress stage, dates and the
+  // messages we sent them. Never names, phone numbers, contractors or costs.
+  app.post('/api/admin/jobs/:id/track-link', withDb(async function (p, req, res) {
+    const token = await ensureTrackToken(p, jobId(req));
+    if (!token) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json({ ok: true, url: baseUrl(req) + '/t/' + token });
+  }));
+
+  const STAGES = [
+    { key: 'reported', label: 'Reported' },
+    { key: 'arranging', label: 'Arranging a contractor' },
+    { key: 'booked', label: 'Contractor booked' },
+    { key: 'done', label: 'Completed' }
+  ];
+  function stageOf(status) {
+    return status === 'Completed' ? 3 : (status === 'Contractor booked' || status === 'Awaiting parts') ? 2 : status === 'New' ? 0 : 1;
+  }
+  const STATUS_TEXT = {
+    'New': 'We’ve received your report and are reviewing it.',
+    'Assigned': 'We’re arranging a contractor for this repair.',
+    'Contractor booked': 'A contractor has been booked. They or we will contact you to arrange access if needed.',
+    'Awaiting parts': 'The contractor is waiting for parts. We’ll be in touch when they arrive.',
+    'On hold': 'This repair is on hold for now. We’ll update you as soon as it can go ahead.',
+    'Completed': 'This repair has been completed.',
+    'Cancelled': 'This repair has been closed.'
+  };
+  const TARGET = { Emergency: 'within 48 hours', Urgent: 'within 5 days', Routine: 'within 14 days' };
+  function whenUk(d) { return d ? new Date(d).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }) : ''; }
+  function trackShell(title, inner) {
+    return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">' +
+      '<title>' + htmlEsc(title) + ' — Residential Realtors</title><style>' +
+      ':root{--ink:#0b0c0f;--soft:#5b616e;--line:#e6e7eb;--red:#D9262E;--ok:#139A4B;--bg:#f6f6f8}' +
+      '*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}' +
+      'header{background:#0e0f13;color:#fff;padding:18px 16px}header .in{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:10px}header b{color:var(--red)}header a{color:#fff;text-decoration:none;font-weight:700}' +
+      'main{max-width:640px;margin:0 auto;padding:18px 16px 60px}h1{font-size:1.35rem;margin:0 0 6px;letter-spacing:-.02em}.sub{color:var(--soft);margin:0 0 18px}' +
+      'form{display:flex;gap:8px;margin:0 0 18px}input{flex:1;min-width:0;padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit;background:#fff}button{padding:12px 18px;border:0;border-radius:12px;background:var(--ink);color:#fff;font:inherit;font-weight:600;cursor:pointer}' +
+      '.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}.ref{font-weight:700}.muted{color:var(--soft);font-size:.9rem}' +
+      '.steps{display:flex;gap:6px;margin:14px 0 8px}.steps div{flex:1;height:6px;border-radius:6px;background:#e7e8ec}.steps div.on{background:var(--ok)}' +
+      '.labels{display:flex;justify-content:space-between;font-size:.72rem;color:var(--soft);gap:4px}.labels span.on{color:var(--ink);font-weight:600}' +
+      '.status{font-weight:600;margin:10px 0 2px}.upd{border-top:1px solid var(--line);padding-top:10px;margin-top:10px;white-space:pre-line;font-size:.92rem}.upd .d{font-size:.78rem;color:var(--soft);font-weight:600}' +
+      'a.more{color:#2F5BEA;font-weight:600;text-decoration:none}.note{font-size:.85rem;color:var(--soft);margin-top:18px}</style></head><body>' +
+      '<header><div class="in"><a href="/">R<b>|</b>R Residential Realtors</a></div></header><main>' + inner + '</main></body></html>';
+  }
+  function progressHtml(j) {
+    const st = stageOf(j.status), cancelled = j.status === 'Cancelled';
+    return '<div class="steps">' + STAGES.map(function (x, i) { return '<div class="' + (!cancelled && i <= st ? 'on' : '') + '"></div>'; }).join('') + '</div>' +
+      '<div class="labels">' + STAGES.map(function (x, i) { return '<span class="' + (!cancelled && i === st ? 'on' : '') + '">' + x.label + '</span>'; }).join('') + '</div>' +
+      '<div class="status">' + htmlEsc(j.status === 'Completed' && j.completed_at ? 'Completed on ' + whenUk(j.completed_at) : j.status) + '</div>' +
+      '<div class="muted">' + htmlEsc(STATUS_TEXT[j.status] || '') + '</div>';
+  }
+  function issueText(j) { return [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') + (j.location ? ' (' + j.location + ')' : ''); }
+  // Light protection against guessing: a few lookups a minute per visitor.
+  const trackHits = new Map();
+  function trackAllowed(ip) {
+    const now = Date.now(), e = trackHits.get(ip);
+    if (!e || now - e.start > 10 * 60 * 1000) { trackHits.set(ip, { start: now, n: 1 }); return true; }
+    e.n += 1; return e.n <= 40;
+  }
+
+  app.get('/track', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
+    const q = String(req.query.q || '').trim().slice(0, 200);
+    let results = '';
+    if (q) {
+      if (!trackAllowed(req.ip)) {
+        results = '<div class="card">Too many searches — please wait a few minutes and try again.</div>';
+      } else {
+        const m = /^\s*RR[-\s]?0*(\d{1,7})\s*$/i.exec(q) || /^\s*0*(\d{1,7})\s*$/.exec(q);
+        let rows;
+        if (m) {
+          rows = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, track_token
+            FROM jobs WHERE id = $1 AND archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled')`, [parseInt(m[1], 10)])).rows;
+        } else {
+          // The address must start with what was typed and include the house/flat
+          // number, so a street name alone can't list other people's repairs.
+          const key = propKey(q);
+          const ok = key.split(' ').length >= 2 && /\d/.test(key);
+          const all = ok ? (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, track_token
+            FROM jobs WHERE archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled') ORDER BY created_at DESC LIMIT 2000`)).rows : [];
+          rows = all.filter(function (j) { const k = propKey(j.property_address); return k === key || k.indexOf(key + ' ') === 0; });
+        }
+        if (!rows.length) {
+          results = '<div class="card"><strong>No open repairs found.</strong><div class="muted">Check the reference (it looks like RR-00012) or type your full address, including the flat or house number. Completed repairs aren’t shown here.</div></div>';
+        } else {
+          for (const j of rows) { if (!j.track_token) j.track_token = await ensureTrackToken(p, j.id); }
+          results = rows.map(function (j) {
+            return '<div class="card"><div class="ref">' + refFor(j.id) + ' · ' + htmlEsc(issueText(j) || 'Repair') + '</div>' +
+              '<div class="muted">Reported ' + whenUk(j.created_at) + '</div>' + progressHtml(j) +
+              '<div style="margin-top:10px"><a class="more" href="/t/' + j.track_token + '">See full progress →</a></div></div>';
+          }).join('');
+        }
+      }
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(trackShell('Track your repair',
+      '<h1>Track your repair</h1><p class="sub">Enter your repair reference (for example RR-00012) or your full address to see the progress of your open repairs.</p>' +
+      '<form method="get" action="/track"><input name="q" value="' + htmlEsc(q) + '" placeholder="RR-00012 or Flat 4, 22 Queen Street" aria-label="Reference or address" required><button type="submit">Check</button></form>' +
+      results + '<p class="note">Need to report something new? <a class="more" href="/">Report a repair</a>. For emergencies such as a gas smell or flooding, call us straight away.</p>'));
+  }));
+
+  app.get('/t/:token', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
+    const token = String(req.params.token || '');
+    if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
+    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address
+      FROM jobs WHERE track_token = $1 AND archived_at IS NULL`, [token])).rows[0];
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    if (!j) return res.status(404).send(trackShell('Repair not found', '<h1>Repair not found</h1><p class="sub">This link is no longer available. <a class="more" href="/track">Look up a repair</a></p>'));
+    const u = (await p.query(`SELECT created_at, body FROM job_updates WHERE job_id = $1 AND kind = 'tenant_message' ORDER BY created_at DESC LIMIT 10`, [j.id])).rows;
+    const updates = u.map(function (x) {
+      // Stored as "<how> — <subject>\n\n<message>": show the subject and message.
+      const text = String(x.body || '').replace(/^[^\n]*? — /, '').slice(0, 1500);
+      return '<div class="upd"><div class="d">' + whenUk(x.created_at) + '</div>' + htmlEsc(text) + '</div>';
+    }).join('');
+    res.send(trackShell('Repair ' + refFor(j.id),
+      '<h1>Repair ' + refFor(j.id) + '</h1><p class="sub">' + htmlEsc(j.property_address || '') + '</p>' +
+      '<div class="card"><div class="ref">' + htmlEsc(issueText(j) || 'Repair') + '</div>' +
+        '<div class="muted">Reported ' + whenUk(j.created_at) + (j.status !== 'Completed' && TARGET[j.urgency] ? ' · ' + j.urgency + ' repairs are usually dealt with ' + TARGET[j.urgency] : '') + '</div>' +
+        progressHtml(j) + '<div class="muted" style="margin-top:8px">Last updated ' + whenUk(j.updated_at) + '</div></div>' +
+      (updates ? '<div class="card"><strong>Updates from us</strong>' + updates + '</div>' : '') +
+      '<p class="note">Questions about this repair? Reply to our last message and quote ' + refFor(j.id) + '. <a class="more" href="/track">Look up another repair</a></p>'));
+  }));
+
+  // ---------- Photo links for contractors ----------
+  // Each job can have a long random link (/p/<token>) that shows its photos
+  // without signing in, so they can be sent in a WhatsApp message or email.
+  function baseUrl(req) {
+    if (PUBLIC_URL) return PUBLIC_URL;
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+    return proto + '://' + req.get('host');
+  }
+  app.post('/api/admin/photo-links', withDb(async function (p, req, res) {
+    const ids = (Array.isArray((req.body || {}).job_ids) ? req.body.job_ids : []).map(function (x) { return parseInt(x, 10); }).filter(function (x) { return x > 0; }).slice(0, 100);
+    const links = {};
+    for (const id of ids) {
+      const has = await p.query('SELECT photo_token, (SELECT count(*)::int FROM job_photos WHERE job_id = jobs.id) AS n FROM jobs WHERE id = $1', [id]);
+      if (!has.rows.length || !has.rows[0].n) continue;
+      let token = has.rows[0].photo_token;
+      if (!token) {
+        token = crypto.randomBytes(18).toString('base64url');
+        await p.query('UPDATE jobs SET photo_token = $2 WHERE id = $1 AND photo_token IS NULL', [id, token]);
+        token = (await p.query('SELECT photo_token FROM jobs WHERE id = $1', [id])).rows[0].photo_token;
+      }
+      links[id] = baseUrl(req) + '/p/' + token;
+    }
+    res.json({ ok: true, links: links });
+  }));
+
+  function htmlEsc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  app.get('/p/:token', withDb(async function (p, req, res) {
+    const token = String(req.params.token || '');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
+    const j = (await p.query('SELECT id, property_address, category, affected, symptom FROM jobs WHERE photo_token = $1 AND archived_at IS NULL', [token])).rows[0];
+    if (!j) return res.status(404).send('This link is no longer available.');
+    const ph = (await p.query('SELECT id FROM job_photos WHERE job_id = $1 ORDER BY id', [j.id])).rows;
+    const issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">' +
+      '<title>Job photos ' + refFor(j.id) + '</title><style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f4f4f6;color:#0b0c0f}' +
+      'header{padding:16px;background:#0e0f13;color:#fff}header b{color:#D9262E}h1{font-size:1rem;margin:6px 0 2px}p{margin:0;color:#b9bcc4;font-size:.85rem}' +
+      'main{padding:12px;display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}a{display:block;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1)}' +
+      'img{display:block;width:100%;height:auto}</style></head><body><header><div>R<b>|</b>R Residential Realtors</div><h1>' + refFor(j.id) + ' · ' + htmlEsc(j.property_address || '') + '</h1><p>' +
+      htmlEsc(issue) + ' · ' + ph.length + ' photo' + (ph.length === 1 ? '' : 's') + ' — tap a photo to open it full size</p></header><main>' +
+      ph.map(function (x, i) { const u = '/p/' + token + '/' + x.id; return '<a href="' + u + '" target="_blank" rel="noopener"><img loading="lazy" src="' + u + '" alt="Photo ' + (i + 1) + '"></a>'; }).join('') +
+      '</main></body></html>');
+  }));
+  app.get('/p/:token/:photo', withDb(async function (p, req, res) {
+    const token = String(req.params.token || '');
+    if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
+    const r = await p.query(`SELECT ph.mime, ph.data FROM job_photos ph JOIN jobs j ON j.id = ph.job_id
+      WHERE j.photo_token = $1 AND j.archived_at IS NULL AND ph.id = $2`, [token, parseInt(req.params.photo, 10) || 0]);
+    if (!r.rows.length) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', r.rows[0].mime);
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Robots-Tag', 'noindex');
+    res.send(r.rows[0].data);
   }));
 
   // ---------- Photos ----------
