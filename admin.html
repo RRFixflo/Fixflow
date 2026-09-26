@@ -692,6 +692,21 @@
 
 <datalist id="assignees"></datalist>
 
+<!-- SHARE A REPORT WITH THE LANDLORD -->
+<div class="modal" id="shModal" hidden>
+  <div class="card" style="width:min(560px,100%);display:flex;flex-direction:column;gap:12px">
+    <h3 id="shTitle" style="margin:0">Share with landlord</h3>
+    <div id="shWho"></div>
+    <div><label class="lbl" for="shMsg">Message</label><textarea class="inp" id="shMsg" rows="7"></textarea></div>
+    <div class="row-actions" style="margin-top:0;flex-wrap:wrap">
+      <button class="btn" id="shOther" type="button">Share another way</button>
+      <button class="btn wa" id="shWa" type="button" hidden>WhatsApp</button>
+      <button class="btn primary" id="shEmail" type="button" hidden>Email</button>
+    </div>
+    <p class="muted-note" id="shNote" style="font-size:.8rem"></p>
+  </div>
+</div>
+
 <!-- ADD / EDIT A LANDLORD -->
 <div class="modal" id="llfModal" hidden>
   <form class="card jf" id="llfForm" novalidate style="width:min(560px,100%)">
@@ -1795,6 +1810,7 @@
   }
   function renderPropLandlord(pr){
     var l = landlordRecordAt(pr.address);
+    $('propShare').textContent = l ? 'Share with ' + l.name : 'Share report';
     var opts = '<option value="">Choose a landlord…</option>' + landlords.map(function(x){ return '<option value="' + x.id + '"' + (l && l.id === x.id ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '<option value="new">+ New landlord…</option>';
     $('propLandlord').innerHTML = '<h3>Landlord <span style="flex:1"></span>' + (l ? '<button class="btn small" id="plOpen" type="button">Open landlord</button>' : '') + '</h3>' +
       (l ? '<div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">' + avatar(l.name) + '<div><strong>' + esc(l.name) + '</strong><div class="prop-sub" style="margin:0">' +
@@ -2103,27 +2119,119 @@
         })['catch'](function(){ return null; });
     })).then(function(list){ return list.filter(function(ph){ return ph && ph.w && ph.h; }); });
   }
+  // ---------- Share a report with the landlord ----------
+  // o: { landlord (fields or null), address, name (file name), subject, intro, makeDoc() -> Promise<jsPDF>, jobId, onAddLandlord }
+  var shCtx = null;
+  var isPhone = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  function openShare(o){
+    shCtx = o;
+    var l = o.landlord;
+    $('shTitle').textContent = l && l.landlord_name ? 'Share with ' + l.landlord_name : 'Share report';
+    $('shWho').innerHTML = l && l.landlord_name
+      ? '<div style="display:flex;gap:12px;align-items:center">' + avatar(l.landlord_name) + '<div><strong>' + esc(l.landlord_name) + '</strong><div class="prop-sub" style="margin:0">' +
+          esc([l.landlord_phone, l.landlord_email].filter(Boolean).join(' · ') || 'No phone or email saved') + '</div></div></div>'
+      : '<div class="banner" style="margin:0">No landlord saved for this property yet.' + (o.onAddLandlord ? ' <button class="btn small" id="shAddLl" type="button" style="margin-left:6px">Add landlord</button>' : '') + '</div>';
+    if ($('shAddLl')) $('shAddLl').addEventListener('click', function(){ $('shModal').hidden = true; o.onAddLandlord(); });
+    var first = l && l.landlord_name ? l.landlord_name : 'Sir or Madam';
+    $('shMsg').value = 'Dear ' + first + ',\n\n' + o.intro + '\n\nKind regards,\nResidential Realtors Maintenance Team';
+    var email = l && l.landlord_email, wa = l && waNumber(l.landlord_phone);
+    $('shEmail').hidden = !email; $('shWa').hidden = !wa;
+    if (email) $('shEmail').textContent = (meta.canEmail ? 'Send email to ' : 'Email ') + l.landlord_name.split(' ').slice(0, 3).join(' ');
+    if (wa) $('shWa').textContent = 'WhatsApp ' + l.landlord_name.split(' ').slice(0, 3).join(' ');
+    $('shNote').textContent = email && !meta.canEmail ? 'Email opens your email app with the message ready and downloads the PDF for you to attach.' :
+      wa && !isPhone ? 'WhatsApp opens a chat with them and the PDF downloads for you to attach.' : '';
+    $('shModal').hidden = false;
+  }
+  function shLog(how){
+    if (!shCtx || !shCtx.jobId) return;
+    api('POST', '/api/admin/jobs/' + shCtx.jobId + '/updates', { kind: 'email', body: 'Report shared with the landlord' + (shCtx.landlord && shCtx.landlord.landlord_name ? ' (' + shCtx.landlord.landlord_name + ')' : '') + ' by ' + how + '.' })
+      .then(function(){ if (openJobId === shCtx.jobId) openJob(shCtx.jobId); });
+  }
+  function shDownload(doc){
+    var url = URL.createObjectURL(doc.output('blob'));
+    var a = document.createElement('a'); a.href = url; a.download = shCtx.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
+  }
+  function shWithDoc(btn, fn){
+    busy(btn, true, 'Preparing…');
+    shCtx.makeDoc().then(function(doc){ busy(btn, false); if (doc) fn(doc); }, function(){ busy(btn, false); toast('Couldn’t create the report'); });
+  }
+  $('shModal').addEventListener('mousedown', function(e){ if (e.target === $('shModal')) $('shModal').hidden = true; });
+  $('shOther').addEventListener('click', function(){
+    shWithDoc($('shOther'), function(doc){ $('shModal').hidden = true; deliverPdf(doc, shCtx.name, true); });
+  });
+  $('shEmail').addEventListener('click', function(){
+    var l = shCtx.landlord, msg = $('shMsg').value;
+    shWithDoc($('shEmail'), function(doc){
+      if (meta.canEmail && shCtx.jobId) {
+        var b64 = doc.output('datauristring').split(',')[1];
+        busy($('shEmail'), true, 'Sending…');
+        api('POST', '/api/admin/jobs/' + shCtx.jobId + '/email', { to: l.landlord_email, subject: shCtx.subject, body: msg, attachment_base64: b64, attachment_name: shCtx.name }).then(function(d){
+          busy($('shEmail'), false);
+          if (!d.ok) { toast('Couldn’t send — try again, or use Share another way'); return; }
+          $('shModal').hidden = true; toast('Sent to ' + l.landlord_email + ' with the PDF attached');
+          if (openJobId === shCtx.jobId) openJob(shCtx.jobId);
+        });
+        return;
+      }
+      shDownload(doc);
+      window.location.href = 'mailto:' + encodeURIComponent(l.landlord_email) + '?subject=' + encodeURIComponent(shCtx.subject) + '&body=' + encodeURIComponent(msg);
+      $('shModal').hidden = true;
+      toast('PDF downloaded — attach it to the email that’s opening');
+      shLog('email');
+    });
+  });
+  $('shWa').addEventListener('click', function(){
+    var l = shCtx.landlord, msg = $('shMsg').value;
+    shWithDoc($('shWa'), function(doc){
+      var file = typeof File !== 'undefined' ? new File([doc.output('blob')], shCtx.name, { type: 'application/pdf' }) : null;
+      $('shModal').hidden = true;
+      // Phones: the share sheet sends the PDF itself (choose WhatsApp, then the landlord).
+      if (isPhone && file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], text: msg, title: shCtx.subject }).then(function(){ shLog('WhatsApp'); })['catch'](function(){});
+        return;
+      }
+      shDownload(doc);
+      window.open('https://wa.me/' + waNumber(l.landlord_phone) + '?text=' + encodeURIComponent(msg), '_blank', 'noopener');
+      toast('PDF downloaded — attach it in the WhatsApp chat that’s opening');
+      shLog('WhatsApp');
+    });
+  });
+
   function busy(btn, on, label){
     if (!btn) return;
     if (on) { btn.dataset.label = btn.textContent; btn.textContent = label || 'Preparing…'; btn.disabled = true; }
     else { btn.textContent = btn.dataset.label || btn.textContent; btn.disabled = false; }
   }
-  function propertyReport(share){
-    var d = propertyJobs();
-    if (!d) return;
-    var btn = share ? $('propShare') : $('propPdf');
-    busy(btn, true, 'Adding photos…');
+  function propertyReportDoc(d){
     var photosByJob = {};
-    Promise.all(d.jobs.map(function(j){
+    return Promise.all(d.jobs.map(function(j){
       return loadPdfPhotos(j.photo_ids).then(function(list){ photosByJob[j.id] = list; });
     })).then(function(){
       var open = d.jobs.filter(isOpen).length;
-      var doc = landlordPdf(d.jobs, {
+      return landlordPdf(d.jobs, {
         title: 'Property repair report', address: d.property.address, subtitle: d.periodLabel,
         summary: [['Repairs', String(d.jobs.length)], ['Open', String(open)], ['Completed', String(d.jobs.filter(function(j){ return j.status === 'Completed'; }).length)], ['Charged', gbp(chargedTotal(d.jobs))]]
       }, photosByJob);
-      deliverPdf(doc, pdfName('Repair-report', d.property.address), share);
-    }).then(function(){ busy(btn, false); }, function(){ busy(btn, false); toast('Couldn\u2019t create the report'); });
+    });
+  }
+  function propertyReport(share){
+    var d = propertyJobs();
+    if (!d) return;
+    if (share) {
+      var open = d.jobs.filter(isOpen).length;
+      openShare({
+        landlord: landlordAt(d.property.address), address: d.property.address,
+        name: pdfName('Repair-report', d.property.address), subject: 'Repair report — ' + d.property.address,
+        intro: 'Please find attached the repair report for ' + d.property.address + ' (' + d.periodLabel.toLowerCase() + '): ' + d.jobs.length + ' repair' + (d.jobs.length === 1 ? '' : 's') + ', ' + open + ' still open.',
+        makeDoc: function(){ return propertyReportDoc(d); }
+      });
+      return;
+    }
+    busy($('propPdf'), true, 'Adding photos…');
+    propertyReportDoc(d).then(function(doc){
+      deliverPdf(doc, pdfName('Repair-report', d.property.address), false);
+    }).then(function(){ busy($('propPdf'), false); }, function(){ busy($('propPdf'), false); toast('Couldn\u2019t create the report'); });
   }
   $('propPdf').addEventListener('click', function(){ propertyReport(false); });
   $('propShare').addEventListener('click', function(){ propertyReport(true); });
@@ -2457,6 +2565,7 @@
     if (e.key !== 'Escape') return;
     if (!$('askModal').hidden) { closeAsk(); return; }
     if (!$('llfModal').hidden) { $('llfModal').hidden = true; return; }
+    if (!$('shModal').hidden) { $('shModal').hidden = true; return; }
     if (!$('jfModal').hidden) { $('jfModal').hidden = true; return; }
     if (!$('invModal').hidden) { $('invModal').hidden = true; return; }
     if (!$('waModal').hidden) { $('waModal').hidden = true; return; }
@@ -2719,7 +2828,7 @@
         '<div class="row-actions">' +
           (j.has_pdf ? '<a class="btn" href="/api/admin/jobs/' + j.id + '/pdf" target="_blank" rel="noopener">Tenant\u2019s original report (PDF)</a>' : '') +
           '<button class="btn" id="jobPdf" type="button">Landlord report (PDF)</button>' +
-          '<button class="btn primary" id="jobPdfShare" type="button">Share with landlord</button>' +
+          '<button class="btn primary" id="jobPdfShare" type="button">Share with ' + (LLJ.landlord_name ? esc(LLJ.landlord_name) : 'landlord') + '</button>' +
         '</div>' +
       '</div>' +
 
@@ -2991,14 +3100,28 @@
       $('propLink').textContent = 'All repairs at this property (' + count + ')';
       $('propLink').addEventListener('click', function(){ closeDrawer(); openProperty(pk); });
     }
-    function jobReport(share){
-      var btn = share ? $('jobPdfShare') : $('jobPdf');
-      busy(btn, true, photos.length ? 'Adding photos…' : 'Preparing…');
-      loadPdfPhotos(photos.map(function(ph){ return ph.id; })).then(function(list){
+    function jobReportDoc(){
+      return loadPdfPhotos(photos.map(function(ph){ return ph.id; })).then(function(list){
         var map = {}; map[j.id] = list;
-        deliverPdf(landlordPdf([j], { title: 'Repair report ' + j.ref, address: j.property_address || '', subtitle: 'Single repair' }, map),
-          pdfName('Repair-' + j.ref, j.property_address), share);
-      }).then(function(){ busy(btn, false); }, function(){ busy(btn, false); toast('Couldn\u2019t create the report'); });
+        return landlordPdf([j], { title: 'Repair report ' + j.ref, address: j.property_address || '', subtitle: 'Single repair' }, map);
+      });
+    }
+    function jobReport(share){
+      if (share) {
+        var what = [j.affected, j.symptom].filter(Boolean).join(' – ') || j.category || 'repair';
+        openShare({
+          landlord: landlordFor(j), address: j.property_address, jobId: j.id,
+          name: pdfName('Repair-' + j.ref, j.property_address), subject: 'Repair ' + j.ref + ' — ' + (j.property_address || ''),
+          intro: 'Please find attached our report on the ' + what.toLowerCase() + ' at ' + (j.property_address || 'your property') + ' (ref ' + j.ref + ').' +
+            (j.status === 'Completed' ? ' This repair has now been completed.' : ' Current status: ' + j.status.toLowerCase() + (j.next_steps ? '. Next steps: ' + j.next_steps : '') + '.'),
+          makeDoc: jobReportDoc,
+          onAddLandlord: function(){ setDrawerTab('overview'); $('editLl').click(); $('llCardJob').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+        });
+        return;
+      }
+      busy($('jobPdf'), true, photos.length ? 'Adding photos…' : 'Preparing…');
+      jobReportDoc().then(function(doc){ deliverPdf(doc, pdfName('Repair-' + j.ref, j.property_address), false); })
+        .then(function(){ busy($('jobPdf'), false); }, function(){ busy($('jobPdf'), false); toast('Couldn\u2019t create the report'); });
     }
     $('jobPdf').addEventListener('click', function(){ jobReport(false); });
     $('jobPdfShare').addEventListener('click', function(){ jobReport(true); });

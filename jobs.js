@@ -716,10 +716,13 @@ module.exports = function mountJobs(app, opts) {
     const id = jobId(req);
     const r = await p.query('SELECT id FROM jobs WHERE id = $1', [id]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
-    const sent = await sendEmail({ to: [to], subject: subject, text: text });
+    // Optional PDF attachment (e.g. a landlord report made in the browser).
+    const att = typeof b.attachment_base64 === 'string' && b.attachment_base64.length < 30 * 1024 * 1024 ? b.attachment_base64.replace(/^data:[^,]*,/, '') : null;
+    const attName = (str(b.attachment_name, 150) || 'Report.pdf').replace(/[^a-zA-Z0-9.\-_]+/g, '-');
+    const sent = await sendEmail({ to: [to], subject: subject, text: text, attachmentBase64: att || undefined, attachmentFilename: att ? attName : undefined });
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
-      [id, 'email', 'Emailed ' + to + ' — ' + subject + '\n\n' + text]);
+      [id, 'email', 'Emailed ' + to + (att ? ' (with ' + attName + ')' : '') + ' — ' + subject + '\n\n' + text]);
     await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1', [id]);
     res.json({ ok: true });
   }));
