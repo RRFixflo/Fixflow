@@ -684,6 +684,73 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true, jobs: jobs, understood: parsed.understood !== false && jobs.length > 0 });
   }));
 
+  // ---------- Tenant email -> jobs ----------
+  // A tenant's email (pasted, forwarded headers and all) listing one or more
+  // repairs. The AI pulls out who sent it, the property, access details and
+  // one job per repair, each with its trade, room and urgency. Nothing is saved
+  // here: the dashboard shows the jobs, matched to existing records, to add.
+  app.post('/api/admin/email-jobs', withDb(async function (p, req, res) {
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    const text = str(String((req.body || {}).text || '').replace(/[​-‏‪-‮⁦-⁩﻿]/g, ''), 12000);
+    if (!text) return res.status(400).json({ ok: false, error: 'no-text' });
+    const trades = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY name')).rows
+      .map(function (c) { return c.name + (c.trade ? ' (' + c.trade + ')' : ''); }).join('; ');
+    const prompt = 'You read emails from tenants of a UK letting agent (Residential Realtors) and turn the repairs they report into jobs for the maintenance team.\n\n' +
+      'The email, pasted as it arrived (it may include forwarded headers, a signature, earlier replies or chit-chat), between the ---- lines:\n----\n' + text + '\n----\n\n' +
+      'Their contractors: ' + (trades || 'none listed') + '.\n\n' +
+      'Find:\n' +
+      '- tenant: the tenant who wrote it: {"name": "", "email": "", "phone": ""}, from the From line, signature or text. Never use a Residential Realtors address or number as the tenant\'s.\n' +
+      '- address: the property address as written (flat/house number, street, postcode kept exactly); "" if not given\n' +
+      '- access: when the tenant says someone can come in: {"days": "", "time": "", "notes": ""} (e.g. days "Weekdays", time "After 3pm", notes "Dog in the flat, call first"); "" where not said\n' +
+      '- keys: "Yes" if they say a contractor may use keys / let themselves in, "No" if they say not to, otherwise ""\n' +
+      '- jobs: ONE job per separate repair or problem (a tap and a light in the same room are two jobs; the same problem mentioned twice is one job). Leave out anything that isn\'t a repair (thanks, rent questions, greetings). For each:\n' +
+      '  - category: the trade or issue type, one of "Plumbing", "Heating and boiler", "Electrics", "Gas", "Damp and mould", "Leaks and water damage", "Doors and locks", "Windows", "Roofing and guttering", "Appliances", "Pest control", "Carpentry", "Decorating", "Flooring", "Drainage", "Fire safety", "Garden and exterior", "Cleaning", "General repair"\n' +
+      '  - title: a short name for the job, e.g. "Kitchen mixer tap dripping"\n' +
+      '  - affected: the item, e.g. "Mixer tap"\n' +
+      '  - symptom: what is wrong, e.g. "Drips constantly"\n' +
+      '  - location: the room or place, e.g. "Kitchen", "Main bedroom", "Communal hallway"; "" if not said\n' +
+      '  - description: one to three plain sentences for the contractor, keeping every detail the tenant gave (how long, what they tried, make/model, which side). Do not add advice.\n' +
+      '  - urgency: "Emergency" (danger to people or the building now: gas smell, no heating or hot water in cold weather, major or ceiling leak, no power, sparking, can\'t lock the front door, sewage), "Urgent" (should be done within days: fridge or cooker not working, toilet not flushing when it\'s the only one, persistent leak, broken window), or "Routine"\n' +
+      '  - contractor: the name from the contractor list whose trade fits, or ""\n' +
+      '  - warning: a short safety note if there is one (e.g. "Gas smell: tell the tenant to call the National Gas Emergency line on 0800 111 999"), otherwise ""\n' +
+      '- summary: one short sentence describing the email, e.g. "3 repairs reported by Sarah Jones at Flat 2, 14 Mill Lane."\n' +
+      'Never invent names, numbers, addresses or dates; only use what is in the email.\n' +
+      'Reply with ONLY JSON: {"tenant": {"name": "", "email": "", "phone": ""}, "address": "", "access": {"days": "", "time": "", "notes": ""}, "keys": "", ' +
+      '"jobs": [{"category": "", "title": "", "affected": "", "symptom": "", "location": "", "description": "", "urgency": "Routine", "contractor": "", "warning": ""}], "summary": ""}. ' +
+      'If the email reports no repairs, reply with "jobs": [].';
+    const result = await opts.askAi(prompt, true);
+    if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
+    let parsed = null;
+    try { parsed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()); } catch (e) { parsed = null; }
+    if (!parsed || typeof parsed !== 'object') return res.status(502).json({ ok: false, error: 'ai-bad-reply' });
+    const t = parsed.tenant || {};
+    const a = parsed.access || {};
+    let email = str(t.email, 200) || '';
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) email = '';
+    const RANK = { Emergency: 0, Urgent: 1, Routine: 2 };
+    const jobsOut = (Array.isArray(parsed.jobs) ? parsed.jobs : []).slice(0, 30).map(function (j) {
+      return {
+        category: str(j.category, 100) || 'General repair', title: str(j.title, 200) || '', affected: str(j.affected, 200) || '',
+        symptom: str(j.symptom, 200) || '', location: str(j.location, 200) || '', description: str(j.description, 2000) || '',
+        urgency: URGENCIES.indexOf(j.urgency) !== -1 ? j.urgency : 'Routine', contractor: str(j.contractor, 200) || '',
+        warning: str(j.warning, 300) || ''
+      };
+    }).filter(function (j) { return j.title || j.description || j.affected; })
+      // Organised: most urgent first, then grouped by trade, keeping the tenant's order within each.
+      .map(function (j, i) { j._i = i; return j; })
+      .sort(function (x, y) { return RANK[x.urgency] - RANK[y.urgency] || x.category.localeCompare(y.category) || x._i - y._i; })
+      .map(function (j) { delete j._i; return j; });
+    res.json({
+      ok: true,
+      tenant: { name: str(t.name, 200) || '', email: email, phone: str(t.phone, 50) || '' },
+      address: str(parsed.address, 500) || '',
+      access: { days: str(a.days, 100) || '', time: str(a.time, 50) || '', notes: str(a.notes, 1000) || '' },
+      keys: parsed.keys === 'Yes' || parsed.keys === 'No' ? parsed.keys : '',
+      summary: str(parsed.summary, 300) || '',
+      jobs: jobsOut
+    });
+  }));
+
   app.post('/api/admin/jobs/:id/ai-invoice', withDb(async function (p, req, res) {
     if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
     const total = money((req.body || {}).total);

@@ -290,6 +290,23 @@
   .draft .match.warn { color: var(--warn); font-weight: 600; }
   .draft .match.ok { color: var(--ok); font-weight: 600; }
 
+  /* ---------- Tenant email -> jobs ---------- */
+  .em-box { width: min(760px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .em-box textarea#emText { min-height: 160px; max-height: 45vh; font-size: .95rem; }
+  .em-summary { font-size: .88rem; color: var(--ink-soft); }
+  .em-group h4 { margin: 6px 0 8px; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); }
+  .em-job { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: var(--panel-2); display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+  .em-job.off { opacity: .5; }
+  .em-job > input[type=checkbox] { width: 20px; height: 20px; margin-top: 8px; flex-shrink: 0; accent-color: var(--brick); }
+  .em-job .em-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  .em-job .grid3 { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
+  @media (max-width: 640px) { .em-job .grid3 { grid-template-columns: 1fr; } }
+  .em-job textarea { min-height: 54px; }
+  .urg-pill { display: inline-block; font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: 1px; }
+  .urg-pill.Emergency { background: var(--brick); color: #fff; }
+  .urg-pill.Urgent { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .urg-pill.Routine { background: var(--panel); color: var(--ink-soft); border: 1px solid var(--line); }
+
   /* ---------- Contractor payments ---------- */
   .pay-group { margin-bottom: 16px; }
   .pay-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
@@ -525,6 +542,7 @@
       <h1 id="mainTitle">Repair jobs</h1><span class="date" id="todayLbl"></span>
       <div class="grow"></div>
       <button class="btn small ask" id="askBtn" type="button" title="Tell Fixflow what to do (speak or type)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg><span class="mobile-hide">Ask Fixflow</span></button>
+      <button class="btn small" id="emBtn" type="button" title="Paste a tenant’s email and let AI turn it into jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/></svg><span class="mobile-hide">Tenant email</span></button>
       <button class="btn small ghost mobile-only" id="searchBtnM" type="button" title="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
       <button class="btn small ghost" id="refreshBtn" type="button" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg><span class="mobile-hide">Refresh</span></button>
       <button class="btn small mobile-only" id="propsBtnM" type="button" title="Properties"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg></button>
@@ -679,6 +697,36 @@
     <div class="row-actions" style="margin-top:0"><span class="muted-note" style="margin-right:auto;font-size:.78rem">Ctrl + Enter to go</span><button class="btn" id="askClose" type="button">Close</button><button class="btn primary" id="askGo" type="button">✦ Go</button></div>
     <div class="row-actions" id="askAllRow" style="margin-top:0" hidden><span class="muted-note" id="askAllNote" style="margin-right:auto"></span><button class="btn primary" id="askAll" type="button">Create all</button></div>
     <div id="askDrafts" style="display:flex;flex-direction:column;gap:12px"></div>
+  </div>
+</div>
+
+<!-- TENANT EMAIL: paste an email, AI turns it into organised jobs -->
+<div class="modal" id="emModal" hidden>
+  <div class="card em-box">
+    <h3 style="margin:0"><span class="ai-spark">✦</span> Turn a tenant’s email into jobs</h3>
+    <div id="emStep1" style="display:flex;flex-direction:column;gap:10px">
+      <textarea class="inp" id="emText" placeholder="Paste the tenant’s whole email here, including who it’s from. Fixflow picks out the tenant, the property, when they’re in, and makes one job for each repair, sorted by urgency and trade."></textarea>
+      <div class="err-msg" id="emErr" style="margin:0"></div>
+      <div class="row-actions" style="margin-top:0"><span class="muted-note" style="margin-right:auto;font-size:.78rem">Ctrl + Enter to go</span><button class="btn" id="emClose" type="button">Close</button><button class="btn primary" id="emGo" type="button">✦ Organise into jobs</button></div>
+    </div>
+    <div id="emStep2" hidden style="display:flex;flex-direction:column;gap:12px">
+      <div class="em-summary" id="emSummary"></div>
+      <div class="draft">
+        <div><label class="lbl">Property</label><input class="inp" id="emAddress"><div class="match" id="emAddrMatch"></div></div>
+        <div class="grid2">
+          <div><label class="lbl">Tenant</label><input class="inp" id="emName"></div>
+          <div><label class="lbl">Phone</label><input class="inp" id="emPhone" inputmode="tel"></div>
+        </div>
+        <div class="grid2">
+          <div><label class="lbl">Email</label><input class="inp" id="emEmail" type="email"></div>
+          <div><label class="lbl">When they’re in</label><input class="inp" id="emWhen" placeholder="e.g. Weekdays, after 3pm"></div>
+        </div>
+        <div><label class="lbl">Access notes for the contractor</label><input class="inp" id="emNotes"></div>
+      </div>
+      <div id="emJobs"></div>
+      <div class="err-msg" id="emErr2" style="margin:0"></div>
+      <div class="row-actions" style="margin-top:0"><button class="btn ghost" id="emBack" type="button" style="margin-right:auto">← Edit email</button><button class="btn" id="emClose2" type="button">Cancel</button><button class="btn primary" id="emAdd" type="button">Add jobs</button></div>
+    </div>
   </div>
 </div>
 
@@ -2363,6 +2411,7 @@
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
     if (!$('askModal').hidden) { closeAsk(); return; }
+    if (!$('emModal').hidden) { closeEm(); return; }
     if (!$('jfModal').hidden) { $('jfModal').hidden = true; return; }
     if (!$('invModal').hidden) { $('invModal').hidden = true; return; }
     if (!$('waModal').hidden) { $('waModal').hidden = true; return; }
@@ -3230,6 +3279,155 @@
     });
   });
 
+  // ---------- Tenant email -> jobs ----------
+  // The AI reads the email and returns the tenant, property, access details and
+  // one job per repair (most urgent first, grouped by trade). The property,
+  // tenant and contractors are matched here to existing records; staff untick
+  // or edit anything, then add them all at once. The email is kept on each job.
+  var em = null; // { data, property, jobs: [{ ai, on, contractor }] }
+  function openEm(){
+    $('emModal').hidden = false; $('emErr').textContent = '';
+    if (!em) { $('emText').value = ''; $('emStep1').hidden = false; $('emStep2').hidden = true; }
+    setTimeout(function(){ (em ? $('emAdd') : $('emText')).focus(); }, 50);
+  }
+  function closeEm(){ $('emModal').hidden = true; }
+  function resetEm(){ em = null; $('emStep1').hidden = false; $('emStep2').hidden = true; $('emErr2').textContent = ''; }
+  $('emBtn').addEventListener('click', openEm);
+  $('emClose').addEventListener('click', closeEm);
+  $('emClose2').addEventListener('click', function(){ resetEm(); closeEm(); });
+  $('emBack').addEventListener('click', function(){ resetEm(); $('emText').focus(); });
+  $('emModal').addEventListener('mousedown', function(e){ if (e.target === $('emModal')) closeEm(); });
+  $('emText').addEventListener('keydown', function(e){ if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runEm(); } });
+  $('emGo').addEventListener('click', runEm);
+  // Backup for contact details the AI misses: the first email address and UK phone number in the text.
+  function emFind(text, what){
+    var m = what === 'email'
+      ? String(text).match(/[A-Z0-9._%+-]+@(?!residentialrealtors\.)[A-Z0-9.-]+\.[A-Z]{2,}/i)
+      : String(text).match(/(?:\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}/);
+    return m ? m[0] : '';
+  }
+  function runEm(){
+    var text = $('emText').value.trim();
+    if (!text) { $('emText').focus(); return; }
+    if (!meta.canAi) { $('emErr').textContent = 'AI isn’t switched on (GEMINI_API_KEY).'; return; }
+    $('emErr').textContent = ''; busy($('emGo'), true, 'Reading the email…');
+    api('POST', '/api/admin/email-jobs', { text: text }).then(function(d){
+      busy($('emGo'), false);
+      if (!d.ok) { $('emErr').textContent = d.error === 'ai-not-configured' ? 'AI isn’t switched on (GEMINI_API_KEY).' : 'The AI is busy — please try again in a moment.'; return; }
+      if (!d.jobs.length) { $('emErr').textContent = 'I couldn’t find any repairs in that email. Check it’s the tenant’s message, or add the job by hand.'; return; }
+      var pr = d.address ? matchProperty(d.address) : null;
+      em = { text: text, data: d, property: pr, jobs: d.jobs.map(function(x){ return { ai: x, on: true, contractor: matchContractor(x.contractor) }; }) };
+      renderEm();
+    });
+  }
+  function renderEm(){
+    var d = em.data, pr = em.property;
+    // Anything the email doesn't say is filled from the tenant already on file at that property.
+    var onFile = tenantsAt(pr).filter(function(t){ return !d.tenant.name || String(t.tenant_name || '').toLowerCase() === d.tenant.name.toLowerCase(); })[0] || null;
+    var pick = function(a, k){ return a || (onFile && onFile[k]) || ''; };
+    $('emSummary').textContent = d.summary || (d.jobs.length + ' repair' + (d.jobs.length === 1 ? '' : 's') + ' found.');
+    $('emAddress').value = pr ? pr.address : d.address;
+    $('emAddrMatch').className = 'match ' + (pr ? 'ok' : 'warn');
+    $('emAddrMatch').textContent = pr ? '✓ Matched a property with ' + pr.jobs.length + ' previous job' + (pr.jobs.length === 1 ? '' : 's')
+      : d.address ? 'No previous jobs at “' + d.address + '” — check the address' : 'The email doesn’t give the address — add it here';
+    $('emName').value = pick(d.tenant.name, 'tenant_name');
+    $('emPhone').value = pick(d.tenant.phone || emFind(em.text, 'phone'), 'tenant_phone');
+    $('emEmail').value = pick(d.tenant.email || emFind(em.text, 'email'), 'tenant_email');
+    $('emWhen').value = [pick(d.access.days, 'access_days'), pick(d.access.time, 'access_time')].filter(Boolean).join(', ');
+    $('emNotes').value = pick(d.access.notes, 'access_notes');
+    var ctOpts = function(sel){
+      return '<option value="">No contractor yet</option>' + contractors.filter(function(c){ return c.active; }).map(function(c){
+        return '<option value="' + c.id + '"' + (sel && sel.id === c.id ? ' selected' : '') + '>' + esc(c.name + (c.trade ? ' — ' + c.trade : '')) + '</option>';
+      }).join('');
+    };
+    var html = '', lastCat = null;
+    em.jobs.forEach(function(j, i){
+      var x = j.ai;
+      if (x.category !== lastCat) { html += (lastCat === null ? '' : '</div>') + '<div class="em-group"><h4>' + esc(x.category) + '</h4>'; lastCat = x.category; }
+      html += '<div class="em-job' + (j.on ? '' : ' off') + '" data-i="' + i + '">' +
+        '<input type="checkbox" data-f="on"' + (j.on ? ' checked' : '') + ' title="Include this job">' +
+        '<div class="em-fields">' +
+          '<div><label class="lbl">Job<span class="urg-pill ' + esc(x.urgency) + '">' + esc(x.urgency) + '</span></label><input class="inp" data-f="title" value="' + esc(x.title || x.affected) + '"></div>' +
+          (x.warning ? '<div class="banner" style="margin:0">⚠ ' + esc(x.warning) + '</div>' : '') +
+          '<div class="grid3">' +
+            '<div><label class="lbl">Where</label><input class="inp" data-f="location" value="' + esc(x.location) + '" placeholder="Room"></div>' +
+            '<div><label class="lbl">Urgency</label><select class="inp" data-f="urgency">' + meta.urgencies.map(function(u){ return '<option' + (u === x.urgency ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div>' +
+            '<div><label class="lbl">Contractor</label><select class="inp" data-f="contractor">' + ctOpts(j.contractor) + '</select></div>' +
+          '</div>' +
+          '<div><label class="lbl">Details for the contractor</label><textarea class="inp" data-f="description" rows="2">' + esc(x.description) + '</textarea></div>' +
+        '</div></div>';
+    });
+    $('emJobs').innerHTML = html + (lastCat === null ? '' : '</div>');
+    $('emStep1').hidden = true; $('emStep2').hidden = false;
+    emCount();
+  }
+  function emCount(){
+    var n = em.jobs.filter(function(j){ return j.on; }).length;
+    $('emAdd').textContent = n ? 'Add ' + n + ' job' + (n === 1 ? '' : 's') : 'Nothing ticked';
+    $('emAdd').disabled = !n;
+  }
+  $('emJobs').addEventListener('change', function(e){
+    var box = e.target.closest('.em-job'); if (!box) return;
+    var j = em.jobs[Number(box.dataset.i)];
+    if (e.target.dataset.f === 'on') { j.on = e.target.checked; box.classList.toggle('off', !j.on); emCount(); }
+    if (e.target.dataset.f === 'urgency') { var pill = box.querySelector('.urg-pill'); pill.className = 'urg-pill ' + e.target.value; pill.textContent = e.target.value; }
+  });
+  $('emAddress').addEventListener('change', function(){
+    var pr = matchProperty($('emAddress').value);
+    em.property = pr;
+    $('emAddrMatch').className = 'match ' + (pr ? 'ok' : 'warn');
+    $('emAddrMatch').textContent = pr ? '✓ Matched a property with ' + pr.jobs.length + ' previous job' + (pr.jobs.length === 1 ? '' : 's') : 'New property — no previous jobs here';
+  });
+  $('emAdd').addEventListener('click', function(){
+    var address = $('emAddress').value.trim();
+    if (!address) { $('emErr2').textContent = 'Add the property address first.'; $('emAddress').focus(); return; }
+    $('emErr2').textContent = '';
+    var v = function(id){ return $(id).value.trim(); };
+    var when = v('emWhen'), ll = landlordAt(address);
+    var common = { property_address: address, source: 'Email' };
+    if (v('emName')) common.tenant_name = v('emName');
+    if (v('emPhone')) common.tenant_phone = v('emPhone');
+    if (v('emEmail')) common.tenant_email = v('emEmail');
+    if (when) common.access_time = when.slice(0, 50);
+    if (v('emNotes')) common.access_notes = v('emNotes');
+    if (em.data.keys) common.key_permission = em.data.keys;
+    if (ll) LL_FIELDS.forEach(function(k){ if (ll[k]) common[k] = ll[k]; });
+    var reqs = [];
+    Array.from($('emJobs').querySelectorAll('.em-job')).forEach(function(box){
+      var j = em.jobs[Number(box.dataset.i)], x = j.ai;
+      if (!j.on) return;
+      var f = function(n){ return box.querySelector('[data-f="' + n + '"]').value.trim(); };
+      var c = contractors.filter(function(k){ return String(k.id) === f('contractor'); })[0] || null;
+      var body = Object.assign({}, common, { category: x.category, affected: f('title') || x.affected, symptom: x.symptom,
+        location: f('location'), description: f('description') || x.description, urgency: f('urgency') });
+      if (c) body.assigned_to = c.name;
+      Object.keys(body).forEach(function(k){ if (body[k] === '' || body[k] == null) delete body[k]; });
+      reqs.push({ body: body, i: Number(box.dataset.i) });
+    });
+    if (!reqs.length) return;
+    busy($('emAdd'), true, 'Adding…');
+    var ids = [], refs = [], note = 'Tenant’s email:\n\n' + em.text.slice(0, 4900);
+    // One at a time, so references come out in the order shown.
+    reqs.reduce(function(prev, r){
+      return prev.then(function(){
+        return api('POST', '/api/admin/jobs', r.body).then(function(d){
+          if (!d.ok) return;
+          ids.push(d.id); refs.push(d.ref);
+          // Added: untick it so trying again doesn't add it twice.
+          em.jobs[r.i].on = false;
+          var box = $('emJobs').querySelector('.em-job[data-i="' + r.i + '"]');
+          if (box) { box.classList.add('off'); box.querySelector('[data-f="on"]').checked = false; }
+          return api('POST', '/api/admin/jobs/' + d.id + '/updates', { kind: 'tenant_message', body: note });
+        });
+      });
+    }, Promise.resolve()).then(function(){
+      busy($('emAdd'), false);
+      if (ids.length < reqs.length) { $('emErr2').textContent = 'Added ' + ids.length + ' of ' + reqs.length + ' (' + refs.join(', ') + '). Please check the rest and try again.'; emCount(); }
+      else { toast(ids.length + ' job' + (ids.length === 1 ? '' : 's') + ' added: ' + refs.join(', ')); resetEm(); closeEm(); }
+      return loadJobs().then(function(){ if (ids.length === 1 && $('emModal').hidden) openJob(ids[0]); });
+    });
+  });
+
   // ---------- Quick search (Ctrl+K / Cmd+K, or "/") ----------
   var cmdkItems = [], cmdkIndex = 0;
   var IC = {
@@ -3257,7 +3455,8 @@
       { t: 'Tenants', s: 'Everyone who has reported', ic: IC.go, run: function(){ closeDrawer(); $('navTenants').click(); } },
       { t: 'Contractors', s: 'Directory and phone numbers', ic: IC.go, run: function(){ $('contractorsBtn').click(); } },
       { t: 'Contractor payments', s: 'What you owe contractors', ic: IC.go, run: function(){ closeDrawer(); showView('pay'); } },
-      { t: 'Ask Fixflow', s: 'Speak or type an instruction, e.g. add a gas safety', ic: IC.go, run: function(){ openAsk(); } }
+      { t: 'Ask Fixflow', s: 'Speak or type an instruction, e.g. add a gas safety', ic: IC.go, run: function(){ openAsk(); } },
+      { t: 'Tenant email', s: 'Paste a tenant’s email and turn it into jobs', ic: IC.go, run: function(){ openEm(); } }
     ].filter(function(a){ return !raw || hit(a.t + ' ' + a.s); });
     var js = (raw ? jobs.filter(function(j){
       return hit([j.ref, j.property_address, j.tenant_name, j.tenant_email, j.assigned_to, issueOf(j), j.description, j.status].join(' | ')) ||
