@@ -198,6 +198,10 @@
   .wa-preview { white-space: pre-wrap; font-size: .85rem; line-height: 1.5; background: #E7FFDB; color: #111; border-radius: 12px; padding: 12px 14px; max-height: 320px; overflow-y: auto; font-family: var(--sans); border: 1px solid #c9ecb6; }
   .modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: rgba(10,12,16,.45); }
   .modal .card { width: min(560px, 100%); max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lift); }
+  .modal .card.jf { width: min(760px, 100%); display: flex; flex-direction: column; gap: 12px; }
+  .modal .card.jf h3 { margin-bottom: 0; font-size: 1.1rem; }
+  .jf-sec { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--brick); margin-top: 6px; }
+  .jf.editing .jf-new { display: none; }
   body.has-bulk .wrap { padding-bottom: 140px; }
   body.has-bulk .toast { bottom: 96px; }
   @media (max-width: 700px) { body.has-bulk .toast { bottom: 170px; } }
@@ -223,6 +227,7 @@
   <div class="topbar">
     <div class="brand">Residential Realtors <span>·</span> Repair jobs</div>
     <div class="grow"></div>
+    <button class="btn small primary" id="newJobBtn" type="button">+ New job</button>
     <button class="btn small" id="refreshBtn" type="button">Refresh</button>
     <button class="btn small" id="logoutBtn" type="button">Sign out</button>
   </div>
@@ -285,6 +290,61 @@
   <button class="btn small" id="bulkAssignBtn" type="button">Assign</button>
   <button class="btn small" id="bulkClear" type="button">Clear</button>
 </div>
+
+<!-- ADD / EDIT A JOB BY HAND -->
+<div class="modal" id="jfModal" hidden>
+  <form class="card jf" id="jfForm" novalidate>
+    <h3 id="jfTitle">New job</h3>
+    <div class="jf-sec">Property &amp; tenant</div>
+    <div><label class="lbl" for="jfAddress">Property address *</label><input class="inp" id="jfAddress" required placeholder="e.g. Flat 4, 22 Queen St, Northampton NN2 6AB"></div>
+    <div class="grid3">
+      <div><label class="lbl" for="jfName">Tenant name</label><input class="inp" id="jfName"></div>
+      <div><label class="lbl" for="jfPhone">Tenant phone</label><input class="inp" id="jfPhone" type="tel"></div>
+      <div><label class="lbl" for="jfEmail">Tenant email</label><input class="inp" id="jfEmail" type="email"></div>
+    </div>
+    <div class="jf-sec">The job</div>
+    <div class="grid3">
+      <div><label class="lbl" for="jfCat">Issue type *</label><input class="inp" id="jfCat" list="jfCats" placeholder="Choose or type"></div>
+      <div><label class="lbl" for="jfAffected">What’s affected</label><input class="inp" id="jfAffected" placeholder="e.g. Boiler"></div>
+      <div><label class="lbl" for="jfSymptom">What’s happening</label><input class="inp" id="jfSymptom" placeholder="e.g. No heating"></div>
+    </div>
+    <div class="grid2">
+      <div><label class="lbl" for="jfLocation">Where in the property</label><input class="inp" id="jfLocation" placeholder="e.g. Kitchen"></div>
+      <div class="jf-new"><label class="lbl" for="jfSource">Came in via</label><select class="inp" id="jfSource"></select></div>
+    </div>
+    <div><label class="lbl" for="jfDesc">Description</label><textarea class="inp" id="jfDesc" placeholder="What the tenant told you"></textarea></div>
+    <div class="grid3 jf-new">
+      <div><label class="lbl" for="jfUrg">Urgency</label><select class="inp" id="jfUrg"><option>Emergency</option><option>Urgent</option><option selected>Routine</option></select></div>
+      <div><label class="lbl" for="jfReceived">Received</label><input class="inp" type="datetime-local" id="jfReceived"></div>
+      <div><label class="lbl" for="jfDue">Deadline</label><input class="inp" type="datetime-local" id="jfDue"></div>
+    </div>
+    <div class="jf-sec">Access</div>
+    <div class="grid3">
+      <div><label class="lbl" for="jfDays">Days that work</label><input class="inp" id="jfDays" placeholder="e.g. Mon, Wed"></div>
+      <div><label class="lbl" for="jfTime">Best time</label><input class="inp" id="jfTime" list="jfTimes" placeholder="e.g. Morning"></div>
+      <div><label class="lbl" for="jfKeys">Keys to contractor?</label><select class="inp" id="jfKeys"><option value="">Not asked</option><option>Yes</option><option>No</option></select></div>
+    </div>
+    <div class="grid2">
+      <div><label class="lbl" for="jfAccess">Access notes</label><input class="inp" id="jfAccess" placeholder="e.g. entry code, parking, pets"></div>
+      <div><label class="lbl" for="jfKeyNotes">Contractor notes</label><input class="inp" id="jfKeyNotes" placeholder="e.g. key safe code, key with neighbour"></div>
+    </div>
+    <div class="jf-new">
+      <div class="jf-sec">Optional</div>
+      <div class="grid3">
+        <div><label class="lbl" for="jfAssigned">Assign to</label><input class="inp" id="jfAssigned" list="assignees"></div>
+        <div><label class="lbl" for="jfEst">Estimated cost (£)</label><input class="inp" id="jfEst" inputmode="decimal"></div>
+        <div><label class="lbl" for="jfCharge">Charge to landlord (£)</label><input class="inp" id="jfCharge" inputmode="decimal"></div>
+      </div>
+    </div>
+    <div class="err-msg" id="jfErr"></div>
+    <div class="row-actions">
+      <button class="btn" id="jfCancel" type="button">Cancel</button>
+      <button class="btn primary" id="jfSave" type="submit">Add job</button>
+    </div>
+  </form>
+</div>
+<datalist id="jfCats"></datalist>
+<datalist id="jfTimes"><option value="Morning"><option value="Afternoon"><option value="Evening"><option value="Anytime"></datalist>
 
 <!-- PREVIEW OF THE CONTRACTOR MESSAGE -->
 <div class="modal" id="waModal" hidden>
@@ -656,6 +716,97 @@
   });
   $('bulkClear').addEventListener('click', function(){ selected.clear(); render(); });
 
+  // ---------- Add a job by hand / edit a job's details ----------
+  var CATEGORY_NAMES = ['Damp and mould', 'Bathroom and Toilet', 'Kitchen', 'Heating and boiler', 'Water and Leaks',
+    'Doors, Garages and Locks', 'Internal floors, walls and ceilings', 'Lighting', 'Window', 'Exterior and Garden', 'Laundry',
+    'Furniture', 'Electricity', 'Hot Water', 'Alarms and Smoke Detectors', 'Pests/Vermin', 'Roof', 'Communal/Shared Facilities',
+    'Audiovisual', 'Utility Meters', 'Internet', 'Stairs', 'Property services', 'Smell Gas?', 'Air Conditioning', 'Smell Oil?',
+    'Swimming pool', 'Fire', 'Capex', 'Property Inspection', 'Other'];
+  $('jfCats').innerHTML = CATEGORY_NAMES.map(function(c){ return '<option value="' + esc(c) + '">'; }).join('');
+  // Form input -> job field. Shared by "New job" and "Edit details".
+  var JF_FIELDS = [
+    ['jfAddress', 'property_address'], ['jfName', 'tenant_name'], ['jfPhone', 'tenant_phone'], ['jfEmail', 'tenant_email'],
+    ['jfCat', 'category'], ['jfAffected', 'affected'], ['jfSymptom', 'symptom'], ['jfLocation', 'location'],
+    ['jfDesc', 'description'], ['jfDays', 'access_days'], ['jfTime', 'access_time'], ['jfKeys', 'key_permission'],
+    ['jfAccess', 'access_notes'], ['jfKeyNotes', 'key_instructions']
+  ];
+  var jfEditing = null;   // the job being edited, or null when adding
+
+  function jfDefaultDue(){
+    var rec = $('jfReceived').value ? new Date($('jfReceived').value) : new Date();
+    var hours = (meta.dueHours || { Emergency: 24, Urgent: 168, Routine: 672 })[$('jfUrg').value];
+    $('jfDue').value = toLocalInput(new Date(rec.getTime() + hours * 3600000));
+  }
+  var jfDueTouched = false;
+  $('jfDue').addEventListener('input', function(){ jfDueTouched = true; });
+  ['jfUrg', 'jfReceived'].forEach(function(id){ $(id).addEventListener('change', function(){ if (!jfDueTouched) jfDefaultDue(); }); });
+
+  function openJobForm(job){
+    jfEditing = job || null;
+    $('jfForm').reset();
+    $('jfForm').classList.toggle('editing', !!job);
+    $('jfErr').textContent = '';
+    $('jfTitle').textContent = job ? 'Edit details — ' + job.ref : 'New job';
+    $('jfSave').textContent = job ? 'Save details' : 'Add job';
+    $('jfSource').innerHTML = (meta.sources || ['Phone call']).filter(function(s){ return s !== 'Online report'; })
+      .map(function(s){ return '<option>' + esc(s) + '</option>'; }).join('');
+    if (job) {
+      JF_FIELDS.forEach(function(f){ $(f[0]).value = job[f[1]] || ''; });
+    } else {
+      $('jfReceived').value = toLocalInput(new Date());
+      jfDueTouched = false;
+      jfDefaultDue();
+    }
+    $('jfModal').hidden = false;
+    setTimeout(function(){ $('jfAddress').focus(); }, 50);
+  }
+  function closeJobForm(){ $('jfModal').hidden = true; jfEditing = null; }
+  $('newJobBtn').addEventListener('click', function(){ openJobForm(null); });
+  $('jfCancel').addEventListener('click', closeJobForm);
+  $('jfModal').addEventListener('mousedown', function(e){ if (e.target === $('jfModal')) closeJobForm(); });
+
+  $('jfForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var err = $('jfErr');
+    err.textContent = '';
+    if (!$('jfAddress').value.trim()) { err.textContent = 'Please enter the property address.'; $('jfAddress').focus(); return; }
+    if (!$('jfCat').value.trim() && !$('jfDesc').value.trim()) { err.textContent = 'Please give an issue type or a description.'; $('jfCat').focus(); return; }
+    var body = {};
+    if (jfEditing) {
+      JF_FIELDS.forEach(function(f){ var v = $(f[0]).value.trim(); if (v !== (jfEditing[f[1]] || '')) body[f[1]] = v; });
+      if (!Object.keys(body).length) { closeJobForm(); return; }
+    } else {
+      JF_FIELDS.forEach(function(f){ var v = $(f[0]).value.trim(); if (v) body[f[1]] = v; });
+      body.urgency = $('jfUrg').value;
+      body.source = $('jfSource').value;
+      if ($('jfReceived').value) body.received_at = new Date($('jfReceived').value).toISOString();
+      if ($('jfDue').value) body.due_at = new Date($('jfDue').value).toISOString();
+      var extra = [['jfAssigned', 'assigned_to'], ['jfEst', 'estimated_cost'], ['jfCharge', 'landlord_charge']];
+      for (var i = 0; i < extra.length; i++) {
+        var v = $(extra[i][0]).value.trim();
+        if (!v) continue;
+        if (extra[i][1] !== 'assigned_to' && !(Number(v.replace(/[£,\s]/g, '')) >= 0)) { err.textContent = 'Please enter costs as numbers, e.g. 125.50'; $(extra[i][0]).focus(); return; }
+        body[extra[i][1]] = v;
+      }
+    }
+    $('jfSave').disabled = true;
+    var editingId = jfEditing && jfEditing.id;
+    var req = jfEditing ? api('PATCH', '/api/admin/jobs/' + editingId, body) : api('POST', '/api/admin/jobs', body);
+    req.then(function(d){
+      $('jfSave').disabled = false;
+      if (!d.ok) {
+        err.textContent = d.error === 'address-required' ? 'Please enter the property address.'
+          : d.error === 'issue-required' ? 'Please give an issue type or a description.'
+          : 'Couldn’t save (' + (d.error || 'error') + ').';
+        return;
+      }
+      closeJobForm();
+      toast(editingId ? 'Details saved' : 'Added ' + d.ref);
+      loadJobs();
+      openJob(editingId || d.id);
+    });
+  });
+
   // ---------- Tenant message templates ----------
   var SIGN_OFF = '\n\nKind regards,\nResidential Realtors Maintenance Team';
   var TEMPLATES = [
@@ -691,7 +842,12 @@
   function closeDrawer(){ $('drawer').hidden = true; $('scrim').hidden = true; openJobId = null; }
   $('dClose').addEventListener('click', function(){ closeDrawer(); loadJobs(); });
   $('scrim').addEventListener('click', function(){ closeDrawer(); loadJobs(); });
-  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && openJobId) { closeDrawer(); loadJobs(); } });
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    if (!$('jfModal').hidden) { $('jfModal').hidden = true; return; }
+    if (!$('waModal').hidden) { $('waModal').hidden = true; return; }
+    if (openJobId) { closeDrawer(); loadJobs(); }
+  });
 
   function openJob(id){
     openJobId = id;
@@ -781,7 +937,8 @@
       '</div>' +
 
       // Report
-      '<div class="card"><h3>Tenant &amp; property</h3>' + rows([
+      '<div class="card"><h3>Tenant &amp; property <span style="flex:1"></span><button class="btn small" id="editDetails" type="button">Edit details</button></h3>' + rows([
+        ['Came in via', j.source],
         ['Tenant', j.tenant_name],
         ['Email', j.tenant_email ? '<a href="mailto:' + esc(j.tenant_email) + '">' + esc(j.tenant_email) + '</a>' : '', true],
         ['Phone', j.tenant_phone ? '<a href="tel:' + esc(j.tenant_phone.replace(/\s/g, '')) + '">' + esc(j.tenant_phone) + '</a>' : '', true],
@@ -803,7 +960,7 @@
         '<textarea class="inp" id="fNote" placeholder="What’s happened — calls made, quotes received, contractor feedback…"></textarea>' +
         '<div class="row-actions"><button class="btn primary" id="addNote" type="button">Add update</button></div>' +
         '<ul class="timeline">' + updates.map(function(u){
-          var label = { created: 'Report received', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', contractor_message: 'Sent to contractor', completed: 'Completed' }[u.kind] || 'Update';
+          var label = { created: 'Job created', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', contractor_message: 'Sent to contractor', completed: 'Completed' }[u.kind] || 'Update';
           return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + '</span>' + esc(u.body) + '</li>';
         }).join('') + '</ul>' +
       '</div>';
@@ -812,6 +969,7 @@
   }
 
   function wireJob(j){
+    $('editDetails').addEventListener('click', function(){ openJobForm(j); });
     // Send this job to a contractor, or group it with nearby open jobs.
     $('cWa').addEventListener('click', function(){ showContractorMessage([j]); });
     $('cCopy').addEventListener('click', function(){
