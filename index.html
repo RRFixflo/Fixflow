@@ -2335,7 +2335,7 @@
     var items = (flow ? flow.items : []).slice();
     // Always leave a way forward when none of the options fit.
     if (!items.some(function(it){ return it.key === 'other'; })) {
-      items.push({ key: 'other', label: 'Something else', tips: [OTHER_TIP] });
+      items.push({ key: 'other', label: 'Other', tips: [OTHER_TIP] });
     }
     items.forEach(function(item){
       var el = document.createElement('div');
@@ -2373,7 +2373,7 @@
     list.innerHTML = '';
     var iconSvg = '<svg class="choice-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">' + iconFor(state.categoryKey, item.key) + '</svg>';
     item.symptoms.concat(item.symptoms.some(function(x){ return x.key === 'other'; }) ? [] :
-        [{ key: 'other', label: 'Something else', tips: [OTHER_TIP] }]).forEach(function(sym){
+        [{ key: 'other', label: 'Other', tips: [OTHER_TIP] }]).forEach(function(sym){
       var el = document.createElement('div');
       el.className = 'choice-item';
       el.tabIndex = 0;

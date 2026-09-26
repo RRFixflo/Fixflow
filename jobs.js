@@ -104,7 +104,7 @@ const SOURCES = ['Online report', 'Phone call', 'Email', 'Text / WhatsApp', 'In 
 const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenant_name, tenant_email,
   tenant_phone, property_address, category, affected, symptom, location, description, access_days,
   access_time, access_notes, key_permission, key_instructions, assigned_to, next_steps,
-  estimated_cost, actual_cost, landlord_charge, completed_at, photo_count, source`;
+  estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source`;
 
 function str(v, max) {
   if (v === undefined || v === null) return null;
@@ -365,18 +365,28 @@ module.exports = function mountJobs(app, opts) {
     if (q.length < 2) return res.json({ ok: true, tenants: [] });
     const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%';
     const digits = q.replace(/\D/g, '');
+    // One entry per person: same name and phone number (or same name and address
+    // when there's no phone), taking the newest non-empty value of each detail so
+    // an email given on an older report still fills in.
+    const latest = function (col) {
+      return '(array_agg(' + col + ' ORDER BY created_at DESC) FILTER (WHERE ' + col + ' IS NOT NULL AND ' + col + " <> ''))[1] AS " + col;
+    };
     const r = await p.query(
-      `SELECT DISTINCT ON (lower(coalesce(tenant_name, '')), lower(coalesce(property_address, '')))
-         tenant_name, tenant_phone, tenant_email, property_address, access_days, access_time,
-         access_notes, key_permission, key_instructions, created_at,
-         count(*) OVER (PARTITION BY lower(coalesce(tenant_name, '')), lower(coalesce(property_address, ''))) AS job_count
-       FROM jobs
-       WHERE (tenant_name ILIKE $1 OR property_address ILIKE $1 OR tenant_email ILIKE $1
-              OR ($2 <> '' AND regexp_replace(coalesce(tenant_phone, ''), '\\D', '', 'g') LIKE '%' || $2 || '%'))
-         AND (tenant_name IS NOT NULL OR property_address IS NOT NULL)
-       ORDER BY lower(coalesce(tenant_name, '')), lower(coalesce(property_address, '')), created_at DESC
-       LIMIT 50`, [like, digits.length >= 4 ? digits : '']);
-    const tenants = r.rows.sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); }).slice(0, 8);
+      `SELECT ${['tenant_name', 'tenant_phone', 'tenant_email', 'property_address', 'access_days', 'access_time',
+          'access_notes', 'key_permission', 'key_instructions'].map(latest).join(', ')},
+         count(*)::int AS job_count, max(created_at) AS created_at
+       FROM (
+         SELECT *, lower(coalesce(tenant_name, '')) || '|' ||
+           coalesce(nullif(regexp_replace(coalesce(tenant_phone, ''), '\\D', '', 'g'), ''), lower(coalesce(property_address, ''))) AS person
+         FROM jobs
+         WHERE (tenant_name ILIKE $1 OR property_address ILIKE $1 OR tenant_email ILIKE $1
+                OR ($2 <> '' AND regexp_replace(coalesce(tenant_phone, ''), '\\D', '', 'g') LIKE '%' || $2 || '%'))
+           AND (tenant_name IS NOT NULL OR property_address IS NOT NULL)
+       ) x
+       GROUP BY person
+       ORDER BY max(created_at) DESC
+       LIMIT 8`, [like, digits.length >= 4 ? digits : '']);
+    const tenants = r.rows;
     res.json({ ok: true, tenants: tenants });
   }));
 
