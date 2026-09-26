@@ -672,6 +672,13 @@
       <div><label class="lbl" for="jfAccess">Access notes</label><input class="inp" id="jfAccess" placeholder="e.g. entry code, parking, pets"></div>
       <div><label class="lbl" for="jfKeyNotes">Contractor notes</label><input class="inp" id="jfKeyNotes" placeholder="e.g. key safe code, key with neighbour"></div>
     </div>
+    <div class="jf-sec">Landlord <span style="text-transform:none;letter-spacing:0;font-weight:500">— for invoices and reports (optional)</span></div>
+    <div class="grid3">
+      <div class="tenant-find"><label class="lbl" for="jfLlName">Landlord name</label><input class="inp" id="jfLlName" autocomplete="off" placeholder="e.g. Mr A Khan — type to find a saved landlord"><div class="tenant-results" id="jfLlResults" hidden></div></div>
+      <div><label class="lbl" for="jfLlEmail">Landlord email</label><input class="inp" id="jfLlEmail" type="email" autocomplete="off"></div>
+      <div><label class="lbl" for="jfLlPhone">Landlord phone</label><input class="inp" id="jfLlPhone" type="tel" autocomplete="off"></div>
+    </div>
+    <div><label class="lbl" for="jfLlAddress">Landlord address (shown on invoices)</label><textarea class="inp" id="jfLlAddress" rows="3" style="min-height:80px" placeholder="e.g. 12 High Street, Northampton NN1 1AA"></textarea></div>
     <div class="jf-new">
       <div class="jf-sec">Optional</div>
       <div class="grid3">
@@ -722,10 +729,13 @@
     <h3 id="invTitle">Invoice landlord</h3>
     <div class="banner" id="invWarn" hidden>Bank details aren't set up yet — add <code>INVOICE_PAYEE</code>, <code>INVOICE_SORT_CODE</code> and <code>INVOICE_ACCOUNT_NUMBER</code> in Railway so they appear on invoices.</div>
     <div class="jf-sec">Bill to</div>
-    <div class="grid2">
-      <div><label class="lbl" for="invLandlord">Landlord name</label><input class="inp" id="invLandlord" placeholder="e.g. Mr A Khan"></div>
-      <div><label class="lbl" for="invLandlordEmail">Landlord email</label><input class="inp" id="invLandlordEmail" type="email" placeholder="Optional"></div>
+    <div class="grid3">
+      <div class="tenant-find"><label class="lbl" for="invLlName">Landlord name</label><input class="inp" id="invLlName" autocomplete="off" placeholder="e.g. Mr A Khan — type to find a saved landlord"><div class="tenant-results" id="invLlResults" hidden></div></div>
+      <div><label class="lbl" for="invLlEmail">Landlord email</label><input class="inp" id="invLlEmail" type="email" autocomplete="off"></div>
+      <div><label class="lbl" for="invLlPhone">Landlord phone</label><input class="inp" id="invLlPhone" type="tel" autocomplete="off"></div>
     </div>
+    <div><label class="lbl" for="invLlAddress">Landlord address (shown on invoices)</label><textarea class="inp" id="invLlAddress" rows="3" style="min-height:80px" placeholder="e.g. 12 High Street, Northampton NN1 1AA"></textarea></div>
+    <label class="wa-assign"><input type="checkbox" id="invLlSave" checked> Save these landlord details for this property</label>
     <div class="jf-sec">Invoice</div>
     <div class="grid3">
       <div><label class="lbl" for="invNumber">Invoice number</label><input class="inp" id="invNumber"></div>
@@ -1347,7 +1357,8 @@
     ['jfAddress', 'property_address'], ['jfName', 'tenant_name'], ['jfPhone', 'tenant_phone'], ['jfEmail', 'tenant_email'],
     ['jfCat', 'category'], ['jfAffected', 'affected'], ['jfSymptom', 'symptom'], ['jfLocation', 'location'],
     ['jfDesc', 'description'], ['jfDays', 'access_days'], ['jfTime', 'access_time'], ['jfKeys', 'key_permission'],
-    ['jfAccess', 'access_notes'], ['jfKeyNotes', 'key_instructions']
+    ['jfAccess', 'access_notes'], ['jfKeyNotes', 'key_instructions'],
+    ['jfLlName', 'landlord_name'], ['jfLlEmail', 'landlord_email'], ['jfLlPhone', 'landlord_phone'], ['jfLlAddress', 'landlord_address']
   ];
   var jfEditing = null;   // the job being edited, or null when adding
 
@@ -1379,7 +1390,7 @@
     $('jfModal').hidden = false;
     setTimeout(function(){ $('jfAddress').focus(); }, 50);
   }
-  function closeJobForm(){ $('jfModal').hidden = true; jfEditing = null; ['jfFindResults', 'jfNameResults', 'jfPhoneResults', 'jfAddressResults'].forEach(function(id){ $(id).hidden = true; }); }
+  function closeJobForm(){ $('jfModal').hidden = true; jfEditing = null; ['jfFindResults', 'jfNameResults', 'jfPhoneResults', 'jfAddressResults', 'jfLlResults'].forEach(function(id){ $(id).hidden = true; }); }
 
   // Saved tenants: the search box at the top, and the Tenant name / phone boxes
   // themselves, suggest tenants already in the system. Picking one fills in their
@@ -1460,6 +1471,7 @@
         Object.keys(TENANT_FIELDS).forEach(function(id){ if (id !== 'jfAddress') $(id).value = t[TENANT_FIELDS[id]] || ''; });
         toast('Filled in ' + (t.tenant_name || 'the tenant') + ' from the last job here — change it if someone new has moved in');
       }
+      if (!jfEditing && !$('jfLlName').value.trim()) { var ll = landlordAt(pr.address); if (ll) fillLandlord('jf', ll); }
       $('jfCat').focus();
     }
     input.addEventListener('input', show);
@@ -1976,17 +1988,71 @@
     var ref = $('invRef').value.trim();
     $('invRefNote').textContent = ref.length > 18 ? 'Many banks only show 18 characters of a reference — consider shortening it (' + ref.length + ' now).' : '';
   }
+  // ---------- Landlords ----------
+  // Landlord details live on each job; a property's landlord is taken from its
+  // most recent job that has one, and saved landlords can be picked by name.
+  var LL_FIELDS = ['landlord_name', 'landlord_email', 'landlord_phone', 'landlord_address'];
+  function landlordAt(address){
+    var pk = propKey(address);
+    return jobs.concat(archivedJobs).filter(function(o){ return o.landlord_name && propKey(o.property_address) === pk; })
+      .sort(function(a, b){ return new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at); })[0] || null;
+  }
+  function savedLandlords(){
+    var map = {};
+    jobs.concat(archivedJobs).filter(function(o){ return o.landlord_name; })
+      .sort(function(a, b){ return new Date(a.updated_at || a.created_at) - new Date(b.updated_at || b.created_at); })
+      .forEach(function(o){
+        var k = o.landlord_name.trim().toLowerCase();
+        var l = map[k] || (map[k] = { props: {} });
+        LL_FIELDS.forEach(function(f){ if (o[f]) l[f] = o[f]; });
+        if (o.property_address) l.props[propKey(o.property_address)] = o.property_address;
+      });
+    return Object.keys(map).map(function(k){ var l = map[k]; l.properties = Object.keys(l.props).map(function(x){ return l.props[x]; }); return l; });
+  }
+  function llInputs(prefix){ return { landlord_name: prefix + 'LlName', landlord_email: prefix + 'LlEmail', landlord_phone: prefix + 'LlPhone', landlord_address: prefix + 'LlAddress' }; }
+  function fillLandlord(prefix, l){ var ids = llInputs(prefix); LL_FIELDS.forEach(function(f){ $(ids[f]).value = (l && l[f]) || ''; }); }
+  function readLandlord(prefix){ var ids = llInputs(prefix), o = {}; LL_FIELDS.forEach(function(f){ o[f] = $(ids[f]).value.trim(); }); return o; }
+  function attachLandlordSuggest(prefix){
+    var input = $(prefix + 'LlName'), box = $(prefix + 'LlResults'), results = [], active = 0;
+    function show(){
+      var q = input.value.trim().toLowerCase();
+      if (q.length < 2) { box.hidden = true; return; }
+      results = savedLandlords().filter(function(l){
+        return [l.landlord_name, l.landlord_email, l.landlord_phone].join(' | ').toLowerCase().indexOf(q) !== -1;
+      }).slice(0, 6);
+      if (!results.length || (results.length === 1 && results[0].landlord_name.toLowerCase() === q)) { box.hidden = true; return; }
+      active = 0;
+      box.innerHTML = '<div class="tr-head">Saved landlords</div>' + results.map(function(l, i){
+        return '<button type="button" data-i="' + i + '"' + (i === 0 ? ' class="active"' : '') + '><strong>' + esc(l.landlord_name) +
+          (l.landlord_phone ? ' <em>' + esc(l.landlord_phone) + '</em>' : '') + '</strong><span>' +
+          esc([l.landlord_email, l.properties.length + ' propert' + (l.properties.length === 1 ? 'y' : 'ies')].filter(Boolean).join(' · ')) + '</span></button>';
+      }).join('');
+      box.hidden = false;
+    }
+    function mark(){ box.querySelectorAll('button[data-i]').forEach(function(b){ b.classList.toggle('active', Number(b.dataset.i) === active); }); }
+    function pick(i){ if (!results[i]) return; fillLandlord(prefix, results[i]); box.hidden = true; toast('Filled in ' + results[i].landlord_name + '’s details'); }
+    input.addEventListener('input', show);
+    input.addEventListener('keydown', function(e){
+      if (box.hidden) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(results.length - 1, active + 1); mark(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); mark(); }
+      else if (e.key === 'Enter') { e.preventDefault(); pick(active); }
+      else if (e.key === 'Escape') { e.stopPropagation(); box.hidden = true; }
+    });
+    box.addEventListener('mousedown', function(e){ var b = e.target.closest('button[data-i]'); if (b) { e.preventDefault(); pick(Number(b.dataset.i)); } });
+    input.addEventListener('blur', function(){ setTimeout(function(){ box.hidden = true; }, 150); });
+  }
+  attachLandlordSuggest('inv');
+  attachLandlordSuggest('jf');
+
   function openInvoice(j){
     invJob = j;
     var cfg = meta.invoice || {};
     $('invTitle').textContent = 'Invoice landlord — ' + j.ref;
     $('invWarn').hidden = !!(cfg.payee && cfg.sortCode && cfg.accountNumber);
     // Landlord: from this job, or the most recent job at the same property.
-    var pk = propKey(j.property_address);
-    var prev = jobs.concat(archivedJobs).filter(function(o){ return o.landlord_name && propKey(o.property_address) === pk; })
-      .sort(function(a, b){ return new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at); })[0] || {};
-    $('invLandlord').value = j.landlord_name || prev.landlord_name || '';
-    $('invLandlordEmail').value = j.landlord_email || prev.landlord_email || '';
+    fillLandlord('inv', j.landlord_name ? j : landlordAt(j.property_address));
+    $('invLlSave').checked = true;
     $('invNumber').value = j.invoice_number || ('INV-' + j.ref);
     $('invDate').value = isoDate(new Date());
     $('invDue').value = isoDate(Date.now() + (cfg.paymentDays || 14) * 86400000);
@@ -2063,11 +2129,19 @@
     y = 188;
     t('BILL TO', M, y, 7.5, 'normal', SOFT);
     t(v.landlord || 'The landlord', M, y + 16, 11, 'bold');
+    var by = y + 30;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor.apply(doc, INK);
+    if (v.landlordAddress) {
+      var al = doc.splitTextToSize(pdfSafe(v.landlordAddress.replace(/\s*\n\s*/g, '\n')), W / 2 - M - 12);
+      doc.text(al, M, by); by += al.length * 12;
+    }
+    [v.landlordEmail, v.landlordPhone].filter(Boolean).forEach(function(c){ t(c, M, by, 9, 'normal', SOFT); by += 12; });
     t('PROPERTY', W / 2, y, 7.5, 'normal', SOFT);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.setTextColor.apply(doc, INK);
-    doc.text(doc.splitTextToSize(pdfSafe(j.property_address || ''), W / 2 - M), W / 2, y + 16);
+    var pl = doc.splitTextToSize(pdfSafe(j.property_address || ''), W / 2 - M);
+    doc.text(pl, W / 2, y + 16);
     // Items table
-    y = 250;
+    y = Math.max(250, by + 18, y + 30 + pl.length * 13);
     doc.setFillColor(247, 248, 250); doc.rect(M, y, W - M * 2, 24, 'F');
     t('DESCRIPTION', M + 10, y + 16, 8, 'bold', SOFT);
     t('AMOUNT', W - M - 10, y + 16, 8, 'bold', SOFT, 'right');
@@ -2116,11 +2190,14 @@
     if (!tot.lines.length || !(tot.total > 0)) { $('invErr').textContent = 'Add at least one item with an amount.'; return null; }
     if (tot.lines.some(function(l){ return l.amount !== null && !isFinite(l.amount); })) { $('invErr').textContent = 'Please enter amounts as numbers, e.g. 180.00'; return null; }
     var v = { number: $('invNumber').value.trim() || ('INV-' + j.ref), date: $('invDate').value, due: $('invDue').value,
-      landlord: $('invLandlord').value.trim(), ref: $('invRef').value.trim(), lines: tot.lines, sub: tot.sub, vat: tot.vat, total: tot.total };
+      landlord: $('invLlName').value.trim(), landlordAddress: $('invLlAddress').value.trim(), landlordEmail: $('invLlEmail').value.trim(),
+      landlordPhone: $('invLlPhone').value.trim(), ref: $('invRef').value.trim(), lines: tot.lines, sub: tot.sub, vat: tot.vat, total: tot.total };
     var doc = invoicePdf(j, v);
     if (!doc) return null;
     api('POST', '/api/admin/jobs/' + j.id + '/invoice', {
-      invoice_number: v.number, total: v.total, landlord_name: v.landlord, landlord_email: $('invLandlordEmail').value.trim(), how: how
+      invoice_number: v.number, total: v.total, how: how,
+      landlord_name: $('invLlSave').checked ? v.landlord : null, landlord_email: $('invLlSave').checked ? v.landlordEmail : null,
+      landlord_phone: $('invLlSave').checked ? v.landlordPhone : null, landlord_address: $('invLlSave').checked ? v.landlordAddress : null
     }).then(function(d){ if (d.ok) { loadJobs(); if (openJobId === j.id) openJob(j.id); } });
     return { doc: doc, v: v, name: v.number + '-' + pdfName('', j.property_address).replace(/^-/, '') };
   }
@@ -2141,7 +2218,7 @@
       ' (job ' + invJob.ref + ').\n\nAmount due: ' + gbp(r.v.total) + (r.v.due ? ' by ' + ukDate(r.v.due) : '') + '\n\n' +
       (cfg.payee ? 'Payment details:\nAccount name: ' + cfg.payee + '\nSort code: ' + cfg.sortCode + '\nAccount number: ' + cfg.accountNumber + '\nReference: ' + r.v.ref + '\n\n' : '') +
       'Kind regards,\n' + (cfg.from || 'Residential Realtors');
-    window.location.href = 'mailto:' + encodeURIComponent($('invLandlordEmail').value.trim()) +
+    window.location.href = 'mailto:' + encodeURIComponent($('invLlEmail').value.trim()) +
       '?subject=' + encodeURIComponent('Invoice ' + r.v.number + ' — ' + (invJob.property_address || '')) + '&body=' + encodeURIComponent(body);
     $('invModal').hidden = true;
     toast('Invoice downloaded — attach it to the email that’s opening');
@@ -2370,14 +2447,17 @@
       '</div>' +
 
       // Report
-      '<div class="card" data-pane="overview"><h3>Tenant &amp; property <span style="flex:1"></span><button class="btn small" id="editDetails" type="button">Edit details</button></h3>' + rows([
+      '<div class="card" data-pane="overview"><h3>Tenant, landlord &amp; property <span style="flex:1"></span><button class="btn small" id="editDetails" type="button">Edit details</button></h3>' + rows([
         ['Came in via', j.source],
         ['Tenant', j.tenant_name],
         ['Email', j.tenant_email ? '<a href="mailto:' + esc(j.tenant_email) + '">' + esc(j.tenant_email) + '</a>' : '', true],
         ['Phone', j.tenant_phone ? '<a href="tel:' + esc(j.tenant_phone.replace(/\s/g, '')) + '">' + esc(j.tenant_phone) + '</a>' : '', true],
         ['Property', j.property_address],
         ['Access days', j.access_days], ['Best time', j.access_time], ['Access notes', j.access_notes],
-        ['Keys to contractor', j.key_permission], ['Contractor notes', j.key_instructions]
+        ['Keys to contractor', j.key_permission], ['Contractor notes', j.key_instructions],
+        ['Landlord', [j.landlord_name, j.landlord_address].filter(Boolean).join('\n')],
+        ['Landlord contact', [j.landlord_phone ? '<a href="tel:' + esc(j.landlord_phone.replace(/[^\d+]/g, '')) + '">' + esc(j.landlord_phone) + '</a>' : '',
+          j.landlord_email ? '<a href="mailto:' + esc(j.landlord_email) + '">' + esc(j.landlord_email) + '</a>' : ''].filter(Boolean).join(' · '), true]
       ]) + ('<div class="job-links">' + (j.property_address ? '<button class="btn small" id="propLink" type="button">All repairs at this property</button>' : '') +
         (j.tenant_name || j.tenant_phone ? '<button class="btn small" id="tenantLink" type="button">All repairs for this tenant</button>' : '') + '</div>') + '</div>' +
       '<div class="card" data-pane="overview"><h3>Reported issue</h3>' + rows([

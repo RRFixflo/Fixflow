@@ -80,6 +80,8 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'Online r
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_name TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_email TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_phone TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_address TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_number TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_total NUMERIC(10,2);
@@ -140,7 +142,7 @@ const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenan
   estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
   archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved,
   (SELECT array_agg(ph.id ORDER BY ph.id) FROM job_photos ph WHERE ph.job_id = jobs.id) AS photo_ids,
-  landlord_name, landlord_email, invoice_number, invoiced_at, invoice_total`;
+  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total`;
 
 function str(v, max) {
   if (v === undefined || v === null) return null;
@@ -378,6 +380,8 @@ module.exports = function mountJobs(app, opts) {
     source: { clean: function (v) { return SOURCES.indexOf(v) !== -1 ? v : undefined; }, label: 'Came in via' },
     landlord_name: { clean: function (v) { return str(v, 200); }, label: 'Landlord' },
     landlord_email: { clean: function (v) { return str(v, 200); }, label: 'Landlord email' },
+    landlord_phone: { clean: function (v) { return str(v, 50); }, label: 'Landlord phone' },
+    landlord_address: { clean: function (v) { return str(v, 500); }, label: 'Landlord address' },
     estimated_cost: { clean: money, label: 'Estimated cost', show: gbp },
     actual_cost: { clean: money, label: 'Actual cost', show: gbp },
     landlord_charge: { clean: money, label: 'Charge to landlord', show: gbp }
@@ -550,8 +554,10 @@ module.exports = function mountJobs(app, opts) {
     const number = str(b.invoice_number, 50) || ('INV-' + refFor(id));
     const r = await p.query(
       `UPDATE jobs SET invoice_number = $2, invoiced_at = now(), invoice_total = $3,
-         landlord_name = coalesce($4, landlord_name), landlord_email = coalesce($5, landlord_email), updated_at = now()
-       WHERE id = $1 RETURNING id`, [id, number, total, str(b.landlord_name, 200), str(b.landlord_email, 200)]);
+         landlord_name = coalesce($4, landlord_name), landlord_email = coalesce($5, landlord_email),
+         landlord_phone = coalesce($6, landlord_phone), landlord_address = coalesce($7, landlord_address), updated_at = now()
+       WHERE id = $1 RETURNING id`, [id, number, total, str(b.landlord_name, 200), str(b.landlord_email, 200),
+        str(b.landlord_phone, 50), str(b.landlord_address, 500)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'email', 'Invoice ' + number + ' issued to ' + (str(b.landlord_name, 200) || 'the landlord') + ' for ' + gbp(total) +
@@ -708,7 +714,8 @@ module.exports = function mountJobs(app, opts) {
     const add = function (col, v) { cols.push(col); vals.push(v); };
     const fields = ['tenant_name', 'tenant_email', 'tenant_phone', 'property_address', 'category', 'affected',
       'symptom', 'location', 'description', 'access_days', 'access_time', 'access_notes', 'key_permission',
-      'key_instructions', 'assigned_to', 'next_steps', 'estimated_cost', 'landlord_charge'];
+      'key_instructions', 'assigned_to', 'next_steps', 'estimated_cost', 'landlord_charge',
+      'landlord_name', 'landlord_email', 'landlord_phone', 'landlord_address'];
     for (const f of fields) {
       if (!(f in body)) continue;
       const v = EDITABLE[f].clean(body[f]);
