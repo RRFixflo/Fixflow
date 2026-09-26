@@ -133,6 +133,12 @@
     backdrop-filter: saturate(180%) blur(14px);
     -webkit-backdrop-filter: saturate(180%) blur(14px);
   }
+  .track-btn { margin-left: auto; margin-right: 8px; display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line-strong, #d5d7dd); background: #fff; color: inherit; font-weight: 600; font-size: .85rem; text-decoration: none; white-space: nowrap; }
+  .track-btn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #139A4B; }
+  .track-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; margin: 0 0 16px; border-radius: 14px; border: 1px solid var(--line, #e6e7eb); background: #fff; text-decoration: none; color: inherit; }
+  .track-card strong { display: block; font-size: .92rem; }
+  .track-card span { font-size: .8rem; color: var(--ink-soft, #5b616e); }
+  .track-card em { font-style: normal; font-weight: 700; white-space: nowrap; }
   .brand-mark {
     font-family: var(--display);
     font-weight: 700;
@@ -1079,6 +1085,8 @@
 
   .no-match { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; margin-bottom: 12px; border-radius: 12px; background: var(--brick-tint); color: var(--ink); font-size: .88rem; line-height: 1.45; }
   .no-match strong { color: var(--brick-deep); }
+  .no-match[hidden] { display: none; }
+  @media (max-width: 600px) { .track-btn { display: none; } }
   .cant-find { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 14px; padding: 14px 16px; border: 1.5px dashed var(--line-strong); border-radius: 16px; background: var(--panel-2); color: var(--ink); font-family: var(--sans); font-size: .9rem; text-align: left; cursor: pointer; transition: border-color .15s var(--ease), background .15s var(--ease); }
   .cant-find:hover { border-color: var(--brick); border-style: solid; background: var(--brick-tint); }
   .cant-find svg { width: 26px; height: 26px; flex-shrink: 0; color: var(--brick); }
@@ -1114,6 +1122,7 @@
       <div class="brand-word" style="display:none;">Residential Realtors</div>
     </div>
     <div class="brand-sub">Report a repair or maintenance issue</div>
+    <a class="track-btn" href="/track">Track a repair</a>
     <button class="lang-btn" id="langOpenBtn" type="button" aria-label="Select language">🌐 <span id="langBtnLabel">English (UK)</span></button>
   </header>
 
@@ -1148,7 +1157,8 @@
   <!-- STEP 1 -->
   <section class="panel active" id="panel-1">
     <h1 class="step-title">What's the problem?</h1>
-    <p class="step-hint">Choose the option that best matches the issue. You can search if it's easier. <a href="/track" style="color:inherit;font-weight:600">Already reported? Check its progress</a></p>
+    <a class="track-card" href="/track"><div><strong>Already reported a repair?</strong><span>Track it with your reference, or your name and phone number.</span></div><em>Track →</em></a>
+    <p class="step-hint">Choose the option that best matches the issue. You can search if it's easier.</p>
 
     <div class="search-box">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>

@@ -1145,7 +1145,7 @@ module.exports = function mountJobs(app, opts) {
       '*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}' +
       'header{background:#0e0f13;color:#fff;padding:18px 16px}header .in{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:10px}header b{color:var(--red)}header a{color:#fff;text-decoration:none;font-weight:700}' +
       'main{max-width:640px;margin:0 auto;padding:18px 16px 60px}h1{font-size:1.35rem;margin:0 0 6px;letter-spacing:-.02em}.sub{color:var(--soft);margin:0 0 18px}' +
-      'form{display:flex;gap:8px;margin:0 0 18px}input{flex:1;min-width:0;padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit;background:#fff}button{padding:12px 18px;border:0;border-radius:12px;background:var(--ink);color:#fff;font:inherit;font-weight:600;cursor:pointer}' +
+      'form{display:flex;gap:8px;margin:0 0 18px}form[hidden]{display:none}form.stack{flex-direction:column}.tabs{display:inline-flex;background:#ececf0;border-radius:12px;padding:3px;margin:0 0 12px}.tabs button{background:none;color:var(--soft);padding:8px 14px;border-radius:9px}.tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}input{flex:1;min-width:0;padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit;background:#fff}button{padding:12px 18px;border:0;border-radius:12px;background:var(--ink);color:#fff;font:inherit;font-weight:600;cursor:pointer}' +
       '.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}.ref{font-weight:700}.muted{color:var(--soft);font-size:.9rem}' +
       '.steps{display:flex;gap:6px;margin:14px 0 8px}.steps div{flex:1;height:6px;border-radius:6px;background:#e7e8ec}.steps div.on{background:var(--ok)}' +
       '.labels{display:flex;justify-content:space-between;font-size:.72rem;color:var(--soft);gap:4px}.labels span.on{color:var(--ink);font-weight:600}' +
@@ -1171,43 +1171,64 @@ module.exports = function mountJobs(app, opts) {
 
   app.get('/track', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
-    const q = String(req.query.q || '').trim().slice(0, 200);
+    const ref = String(req.query.ref || req.query.q || '').trim().slice(0, 40);
+    const name = String(req.query.name || '').trim().slice(0, 120);
+    const phone = String(req.query.phone || '').trim().slice(0, 40);
+    const byPhone = !!(name || phone);
     let results = '';
-    if (q) {
+    const COLS = 'id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, track_token';
+    if (ref || byPhone) {
       if (!trackAllowed(req.ip)) {
         results = '<div class="card">Too many searches — please wait a few minutes and try again.</div>';
       } else {
-        const m = /^\s*RR[-\s]?0*(\d{1,7})\s*$/i.exec(q) || /^\s*0*(\d{1,7})\s*$/.exec(q);
-        let rows;
-        if (m) {
-          rows = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, track_token
-            FROM jobs WHERE id = $1 AND archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled')`, [parseInt(m[1], 10)])).rows;
+        let rows = [], problem = '';
+        if (byPhone) {
+          // Name and phone number: the tenant's own open repairs, and those at the
+          // property they live at (e.g. reported by a housemate).
+          const tail = phoneTail(phone);
+          const words = name.toLowerCase().split(/[^a-z']+/).filter(function (w) { return w.length >= 2; });
+          if (!tail || !words.length) problem = 'Please enter your name and the phone number you gave us.';
+          else {
+            const nameOk = function (n) { const have = String(n || '').toLowerCase(); return words.some(function (w) { return have.split(/[^a-z']+/).indexOf(w) !== -1; }); };
+            const open = (await p.query('SELECT ' + COLS + ", tenant_name, tenant_phone FROM jobs WHERE archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled') ORDER BY created_at DESC LIMIT 3000")).rows;
+            const mine = open.filter(function (j) { return phoneTail(j.tenant_phone) === tail && nameOk(j.tenant_name); });
+            const t = (await p.query(`SELECT t.name, pt.property_key FROM tenants t JOIN property_tenants pt ON pt.tenant_id = t.id
+              WHERE pt.moved_out_at IS NULL AND right(regexp_replace(coalesce(t.phone, ''), '\\D', '', 'g'), 10) = $1`, [tail])).rows.filter(function (x) { return nameOk(x.name); });
+            const keys = t.map(function (x) { return x.property_key; });
+            const seen = {};
+            rows = mine.concat(open.filter(function (j) { return keys.indexOf(propKey(j.property_address)) !== -1; }))
+              .filter(function (j) { if (seen[j.id]) return false; seen[j.id] = true; return true; });
+          }
         } else {
-          // The address must start with what was typed and include the house/flat
-          // number, so a street name alone can't list other people's repairs.
-          const key = propKey(q);
-          const ok = key.split(' ').length >= 2 && /\d/.test(key);
-          const all = ok ? (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, track_token
-            FROM jobs WHERE archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled') ORDER BY created_at DESC LIMIT 2000`)).rows : [];
-          rows = all.filter(function (j) { const k = propKey(j.property_address); return k === key || k.indexOf(key + ' ') === 0; });
+          const m = /^\s*RR[-\s]?0*(\d{1,7})\s*$/i.exec(ref) || /^\s*0*(\d{1,7})\s*$/.exec(ref);
+          if (!m) problem = 'That doesn’t look like a reference — it should look like RR-00012.';
+          else rows = (await p.query('SELECT ' + COLS + " FROM jobs WHERE id = $1 AND archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled')", [parseInt(m[1], 10)])).rows;
         }
-        if (!rows.length) {
-          results = '<div class="card"><strong>No open repairs found.</strong><div class="muted">Check the reference (it looks like RR-00012) or type your full address, including the flat or house number. Completed repairs aren’t shown here.</div></div>';
+        if (problem) results = '<div class="card">' + htmlEsc(problem) + '</div>';
+        else if (!rows.length) {
+          results = '<div class="card"><strong>No open repairs found.</strong><div class="muted">' + (byPhone
+            ? 'Check you’ve used the same name and phone number you gave when reporting, or search by your reference instead.'
+            : 'Check the reference — it’s in the messages we sent you and looks like RR-00012.') + ' Completed repairs aren’t shown here.</div></div>';
         } else {
           for (const j of rows) { if (!j.track_token) j.track_token = await ensureTrackToken(p, j.id); }
           results = rows.map(function (j) {
             return '<div class="card"><div class="ref">' + refFor(j.id) + ' · ' + htmlEsc(issueText(j) || 'Repair') + '</div>' +
-              '<div class="muted">Reported ' + whenUk(j.created_at) + '</div>' + progressHtml(j) +
+              '<div class="muted">' + htmlEsc(j.property_address || '') + ' · reported ' + whenUk(j.created_at) + '</div>' + progressHtml(j) +
               '<div style="margin-top:10px"><a class="more" href="/t/' + j.track_token + '">See full progress →</a></div></div>';
           }).join('');
         }
       }
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(trackShell('Track your repair',
-      '<h1>Track your repair</h1><p class="sub">Enter your repair reference (for example RR-00012) or your full address to see the progress of your open repairs.</p>' +
-      '<form method="get" action="/track"><input name="q" value="' + htmlEsc(q) + '" placeholder="RR-00012 or Flat 4, 22 Queen Street" aria-label="Reference or address" required><button type="submit">Check</button></form>' +
-      results + '<p class="note">Need to report something new? <a class="more" href="/">Report a repair</a>. For emergencies such as a gas smell or flooding, call us straight away.</p>'));
+    res.send(trackShell('Track a repair',
+      '<h1>Track a repair</h1><p class="sub">See how your open repairs are progressing. Use your reference, or your name and phone number.</p>' +
+      '<div class="tabs"><button type="button" data-t="ref" class="' + (byPhone ? '' : 'on') + '">Reference</button><button type="button" data-t="phone" class="' + (byPhone ? 'on' : '') + '">Name &amp; phone</button></div>' +
+      '<form method="get" action="/track" id="fRef"' + (byPhone ? ' hidden' : '') + '><input name="ref" value="' + htmlEsc(ref) + '" placeholder="Reference, e.g. RR-00012" aria-label="Reference" autocomplete="off"><button type="submit">Track</button></form>' +
+      '<form method="get" action="/track" id="fPhone" class="stack"' + (byPhone ? '' : ' hidden') + '><input name="name" value="' + htmlEsc(name) + '" placeholder="Your name" aria-label="Your name" autocomplete="name">' +
+        '<input name="phone" value="' + htmlEsc(phone) + '" placeholder="Your phone number" aria-label="Your phone number" type="tel" autocomplete="tel"><button type="submit">Track</button></form>' +
+      results + '<p class="note">Need to report something new? <a class="more" href="/">Report a repair</a>. For emergencies such as a gas smell or flooding, call us straight away.</p>' +
+      '<script>document.querySelectorAll(".tabs button").forEach(function(b){b.addEventListener("click",function(){var r=b.dataset.t==="ref";document.getElementById("fRef").hidden=!r;document.getElementById("fPhone").hidden=r;' +
+      'document.querySelectorAll(".tabs button").forEach(function(x){x.classList.toggle("on",x===b);});(r?document.querySelector("#fRef input"):document.querySelector("#fPhone input")).focus();});});</script>'));
   }));
 
   app.get('/t/:token', withDb(async function (p, req, res) {
