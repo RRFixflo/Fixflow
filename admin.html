@@ -2347,10 +2347,11 @@
   attachLandlordSuggest('inv');
   attachLandlordSuggest('jf');
 
-  function openInvoice(j){
-    invJob = j;
+  var invEditing = null;   // a saved invoice being edited, or null for a new one
+  function openInvoice(j, inv){
+    invJob = j; invEditing = inv && inv.data ? inv : null;
     var cfg = meta.invoice || {};
-    $('invTitle').textContent = 'Invoice landlord — ' + j.ref;
+    $('invTitle').textContent = invEditing ? 'Edit invoice ' + (invEditing.number || '') + ' — ' + j.ref : 'Invoice landlord — ' + j.ref;
     $('invWarn').hidden = !!(cfg.payee && cfg.sortCode && cfg.accountNumber);
     // Landlord: from this job, or the most recent job at the same property.
     fillLandlord('inv', landlordFor(j));
@@ -2366,6 +2367,19 @@
     $('invAi').hidden = !meta.canAi;
     $('invRef').value = paymentRef(j.property_address);
     $('invBank').innerHTML = cfg.payee ? 'Paid to <b>' + esc(cfg.payee) + '</b> · Sort code <b>' + esc(cfg.sortCode) + '</b> · Account <b>' + esc(cfg.accountNumber) + '</b>' : 'No bank details set up yet.';
+    if (invEditing) {
+      // Everything as it was issued.
+      var d = invEditing.data;
+      fillLandlord('inv', { landlord_name: d.landlord, landlord_email: d.landlordEmail, landlord_phone: d.landlordPhone, landlord_address: d.landlordAddress });
+      $('invNumber').value = d.number || invEditing.number || '';
+      if (d.date) $('invDate').value = d.date;
+      if (d.due) $('invDue').value = d.due;
+      $('invLines').innerHTML = (d.lines && d.lines.length ? d.lines : [{ desc: '', amount: null }]).map(function(l){
+        return invLineHtml(l.desc || '', l.amount != null ? Number(l.amount).toFixed(2) : '');
+      }).join('');
+      setVat(Number(d.vat) > 0);
+      if (d.ref) $('invRef').value = d.ref;
+    }
     $('invErr').textContent = '';
     updateInvTotals();
     $('invModal').hidden = false;
@@ -2496,11 +2510,18 @@
       landlordPhone: $('invLlPhone').value.trim(), ref: $('invRef').value.trim(), lines: tot.lines, sub: tot.sub, vat: tot.vat, total: tot.total };
     var doc = invoicePdf(j, v);
     if (!doc) return null;
-    api('POST', '/api/admin/jobs/' + j.id + '/invoice', {
+    var saveReq = { invoice_number: v.number, total: v.total, how: how, data: v,
+      landlord_name: $('invLlSave').checked ? v.landlord : null, landlord_email: $('invLlSave').checked ? v.landlordEmail : null,
+      landlord_phone: $('invLlSave').checked ? v.landlordPhone : null, landlord_address: $('invLlSave').checked ? v.landlordAddress : null };
+    (invEditing ? api('PUT', '/api/admin/invoices/' + invEditing.id, saveReq) : api('POST', '/api/admin/jobs/' + j.id + '/invoice', {
       invoice_number: v.number, total: v.total, how: how, data: v,
       landlord_name: $('invLlSave').checked ? v.landlord : null, landlord_email: $('invLlSave').checked ? v.landlordEmail : null,
       landlord_phone: $('invLlSave').checked ? v.landlordPhone : null, landlord_address: $('invLlSave').checked ? v.landlordAddress : null
-    }).then(function(d){ if (d.ok) { loadJobs(); if (openJobId === j.id) openJob(j.id); } });
+    })).then(function(d){
+      if (!d.ok) { toast('Couldn’t save the invoice (' + (d.error || 'error') + ')'); return; }
+      if (invEditing) toast('Invoice updated');
+      loadJobs(); if (openJobId === j.id) openJob(j.id);
+    });
     return { doc: doc, v: v, name: v.number + '-' + pdfName('', j.property_address).replace(/^-/, '') };
   }
   $('invDownload').addEventListener('click', function(){
@@ -2696,11 +2717,13 @@
                 '<div class="addr"><strong>' + esc(inv.number || 'Invoice') + '</strong><small>' + esc(fmtShort(inv.created_at) + (inv.landlord_name ? ' · ' + inv.landlord_name : '')) + '</small></div>' +
                 '<div class="amt">' + esc(gbp(inv.total)) + '</div>' +
                 '<div style="display:flex;gap:6px;justify-content:flex-end">' +
-                  (inv.data ? '<button class="btn small" type="button" data-inv-open="' + i + '">Open</button><button class="btn small primary" type="button" data-inv-send="' + i + '">Resend</button>' : '<span class="muted-note" style="font-size:.76rem">Issued before invoices were saved</span>') +
+                  (inv.data ? '<button class="btn small" type="button" data-inv-open="' + i + '">Open</button><button class="btn small" type="button" data-inv-edit="' + i + '">Edit</button><button class="btn small primary" type="button" data-inv-send="' + i + '">Resend</button>' : '<span class="muted-note" style="font-size:.76rem">Issued before invoices were saved</span>') +
                 '</div></div>';
             }).join('') + '</div>'
           : j.invoiced_at
-            ? '<div class="complete-done"><strong>Invoiced ' + esc(j.invoice_number || '') + ' · ' + esc(gbp(j.invoice_total)) + '</strong><br>' + esc(fmtDate(j.invoiced_at)) + (j.landlord_name ? ' · ' + esc(j.landlord_name) : '') + '<br><span style="font-size:.8rem">Issued before invoices were saved — create it again to be able to resend it.</span></div>'
+            ? '<div class="complete-done" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><strong>Invoiced ' + esc(j.invoice_number || '') + ' · ' + esc(gbp(j.invoice_total)) + '</strong><br>' + esc(fmtDate(j.invoiced_at)) + (j.landlord_name ? ' · ' + esc(j.landlord_name) : '') +
+                '<br><span style="font-size:.8rem">Made before invoices were saved in full. Edit it once to save it — then you can open, edit and resend it any time.</span></div>' +
+                '<button class="btn small primary" id="invLegacyEdit" type="button">Edit</button></div>'
             : '<p class="muted-note">Create a PDF invoice with our logo, company details and bank details. The AI can break the charge into labour, materials and call-out lines, and you can choose whether to add VAT.</p>') +
         '<div class="row-actions"><button class="btn primary" id="invBtn" type="button">' + (j.invoiced_at ? 'Create another invoice' : 'Create invoice') + '</button></div>' +
       '</div>' +
@@ -3014,7 +3037,7 @@
   function wireJob(j, photos){
     photos = photos || [];
     var LLJ_ID = (landlordFor(j) || {}).id;
-    $('invBtn').addEventListener('click', function(){ openInvoice(j); });
+    $('invBtn').addEventListener('click', function(){ openInvoice(j, null); });
     // Past invoices: open (view the PDF) or resend to the landlord.
     function invDoc(inv){ var v = Object.assign({}, inv.data); v.number = v.number || inv.number; return invoicePdf(j, v); }
     function invName(inv){ return (inv.number || 'Invoice') + '-' + pdfName('', j.property_address).replace(/^-/, ''); }
@@ -3027,6 +3050,22 @@
         if (!w) deliverPdf(doc, invName(inv), false);
         setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
       });
+    });
+    // Invoice made before invoices were saved: rebuild it from what was recorded (same number, landlord and amount).
+    if ($('invLegacyEdit')) $('invLegacyEdit').addEventListener('click', function(){
+      openInvoice(j, null);
+      $('invTitle').textContent = 'Edit invoice ' + (j.invoice_number || '') + ' — ' + j.ref;
+      if (j.invoice_number) $('invNumber').value = j.invoice_number;
+      if (j.invoiced_at) $('invDate').value = isoDate(new Date(j.invoiced_at));
+      var total = num(j.invoice_total), charge = num(j.landlord_charge);
+      // If the total was the charge plus 20% VAT, show it that way; otherwise one line for the total.
+      var withVat = total && charge && Math.abs(total - Math.round(charge * 120) / 100) < 0.011;
+      if (total) $('invLines').querySelector('.inv-amt').value = (withVat ? charge : total).toFixed(2);
+      setVat(!!withVat);
+      updateInvTotals();
+    });
+    $('dBody').querySelectorAll('[data-inv-edit]').forEach(function(b){
+      b.addEventListener('click', function(){ openInvoice(j, jobInvoices[Number(b.dataset.invEdit)]); });
     });
     $('dBody').querySelectorAll('[data-inv-send]').forEach(function(b){
       b.addEventListener('click', function(){

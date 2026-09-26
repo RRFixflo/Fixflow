@@ -1335,14 +1335,15 @@
     </div>
 
     <div class="field" id="f-email">
-      <label>Email</label>
-      <input type="email" id="email" placeholder="you@example.com">
+      <label for="email">Email</label>
+      <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
       <div class="err">Please enter a valid email.</div>
     </div>
 
-    <div class="field">
-      <label>Phone <span class="optional">(optional)</span></label>
-      <input type="tel" id="phone" placeholder="07…">
+    <div class="field" id="f-phone">
+      <label for="phone">Phone</label>
+      <input type="tel" id="phone" placeholder="07…" autocomplete="tel">
+      <div class="err">Please enter a phone number we can reach you on.</div>
     </div>
 
 
@@ -2514,18 +2515,26 @@
     var addr = document.getElementById('propAddress').value.trim();
     var email = document.getElementById('email').value.trim();
     var emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    var phone = document.getElementById('phone').value.trim();
+    var phoneDigits = phone.replace(/\D/g, '');
+    var phoneOk = phoneDigits.length >= 10 && phoneDigits.length <= 15 && !/[a-z]/i.test(phone);
 
     if(!name){ setError('f-name'); ok = false; } else { clearError('f-name'); }
     if(!addr){ setError('f-address'); ok = false; } else { clearError('f-address'); }
     if(!emailOk){ setError('f-email'); ok = false; } else { clearError('f-email'); }
+    if(!phoneOk){ setError('f-phone'); ok = false; } else { clearError('f-phone'); }
     if(!state.keyPermission){ setError('f-keyPermission'); ok = false; } else { clearError('f-keyPermission'); }
 
-    if(!ok) return;
+    if(!ok){
+      var firstBad = document.querySelector('#panel-4 .field.invalid, .panel.active .field.invalid');
+      if(firstBad){ firstBad.scrollIntoView({ behavior: 'smooth', block: 'center' }); var inp = firstBad.querySelector('input'); if(inp) inp.focus({ preventScroll: true }); }
+      return;
+    }
 
     state.name = name;
     state.address = addr;
     state.email = email;
-    state.phone = document.getElementById('phone').value.trim();
+    state.phone = phone;
     state.accessNotes = document.getElementById('accessNotes').value.trim();
     state.keyInstructions = document.getElementById('keyInstructions').value.trim();
 

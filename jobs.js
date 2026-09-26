@@ -740,6 +740,39 @@ module.exports = function mountJobs(app, opts) {
   }));
 
   // ---------- Landlord invoices ----------
+  function cleanInvoiceData(d, number, total) {
+    return {
+      number: number, date: str(d.date, 20), due: str(d.due, 20), ref: str(d.ref, 100),
+      landlord: str(d.landlord, 200), landlordAddress: str(d.landlordAddress, 500), landlordEmail: str(d.landlordEmail, 200), landlordPhone: str(d.landlordPhone, 50),
+      lines: (Array.isArray(d.lines) ? d.lines : []).slice(0, 50).map(function (l) { return { desc: str(l && l.desc, 1000) || '', amount: money(l && l.amount) }; }),
+      sub: money(d.sub), vat: money(d.vat) || 0, total: total
+    };
+  }
+
+  // Edit a saved invoice in place (same record, change noted in the job history).
+  app.put('/api/admin/invoices/:id', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const total = money(b.total);
+    if (total === undefined || total === null) return res.status(400).json({ ok: false, error: 'bad-total' });
+    if (!b.data || typeof b.data !== 'object') return res.status(400).json({ ok: false, error: 'no-data' });
+    const cur = await p.query('SELECT i.id, i.job_id, i.number, i.total, j.property_address FROM invoices i JOIN jobs j ON j.id = i.job_id WHERE i.id = $1', [jobId(req)]);
+    if (!cur.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    const inv = cur.rows[0];
+    const number = str(b.invoice_number, 50) || inv.number;
+    const clean = cleanInvoiceData(b.data, number, total);
+    await p.query('UPDATE invoices SET number = $2, total = $3, landlord_name = $4, landlord_email = $5, data = $6 WHERE id = $1',
+      [inv.id, number, total, clean.landlord, clean.landlordEmail, JSON.stringify(clean)]);
+    // Keep the job's invoice summary in step when this is its latest invoice.
+    const latest = await p.query('SELECT max(id) AS id FROM invoices WHERE job_id = $1', [inv.job_id]);
+    if (latest.rows[0].id === inv.id) await p.query('UPDATE jobs SET invoice_number = $2, invoice_total = $3, updated_at = now() WHERE id = $1', [inv.job_id, number, total]);
+    if (str(b.landlord_name)) await ensureLandlord(p, b, inv.property_address);
+    const changes = [];
+    if (number !== inv.number) changes.push('number ' + inv.number + ' → ' + number);
+    if (Number(inv.total) !== total) changes.push('total ' + gbp(inv.total) + ' → ' + gbp(total));
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [inv.job_id, 'email',
+      'Invoice ' + number + ' edited' + (changes.length ? ' (' + changes.join(', ') + ')' : '') + '.']);
+    res.json({ ok: true });
+  }));
   // The PDF is made in the browser; this records that it was issued (number,
   // date, total) and remembers the landlord for this job.
   app.post('/api/admin/jobs/:id/invoice', withDb(async function (p, req, res) {
@@ -759,13 +792,7 @@ module.exports = function mountJobs(app, opts) {
     // Keep the whole invoice so it can be opened and resent exactly as issued.
     let invoiceId = null;
     if (b.data && typeof b.data === 'object') {
-      const d = b.data;
-      const clean = {
-        number: number, date: str(d.date, 20), due: str(d.due, 20), ref: str(d.ref, 100),
-        landlord: str(d.landlord, 200), landlordAddress: str(d.landlordAddress, 500), landlordEmail: str(d.landlordEmail, 200), landlordPhone: str(d.landlordPhone, 50),
-        lines: (Array.isArray(d.lines) ? d.lines : []).slice(0, 50).map(function (l) { return { desc: str(l && l.desc, 1000) || '', amount: money(l && l.amount) }; }),
-        sub: money(d.sub), vat: money(d.vat) || 0, total: total
-      };
+      const clean = cleanInvoiceData(b.data, number, total);
       invoiceId = (await p.query('INSERT INTO invoices (job_id, number, total, landlord_name, landlord_email, data) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
         [id, number, total, clean.landlord, clean.landlordEmail, JSON.stringify(clean)])).rows[0].id;
     }
