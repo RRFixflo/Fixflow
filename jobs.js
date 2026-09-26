@@ -60,7 +60,12 @@ CREATE TABLE IF NOT EXISTS job_updates (
   body       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS job_updates_job_idx ON job_updates (job_id, created_at);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'Online report';
 `;
+
+// How a job reached us. Tenant submissions are 'Online report'; staff pick one
+// of the others when adding a job by hand.
+const SOURCES = ['Online report', 'Phone call', 'Email', 'Text / WhatsApp', 'In person', 'Inspection', 'Landlord request', 'Other'];
 
 // Everything the list view needs; the PDF and full report text are left out so
 // the list stays quick however many jobs there are.
@@ -69,7 +74,7 @@ CREATE INDEX IF NOT EXISTS job_updates_job_idx ON job_updates (job_id, created_a
 const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenant_name, tenant_email,
   tenant_phone, property_address, category, affected, symptom, location, description, access_days,
   access_time, access_notes, key_permission, key_instructions, assigned_to, next_steps,
-  estimated_cost, actual_cost, landlord_charge, completed_at, photo_count`;
+  estimated_cost, actual_cost, landlord_charge, completed_at, photo_count, source`;
 
 function str(v, max) {
   if (v === undefined || v === null) return null;
@@ -205,7 +210,7 @@ module.exports = function mountJobs(app, opts) {
   });
 
   app.get('/api/admin/me', async function (req, res) {
-    res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS });
+    res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES });
   });
 
   // Wraps a handler: no database -> 503; unexpected errors -> 500 (logged).
@@ -260,6 +265,22 @@ module.exports = function mountJobs(app, opts) {
     },
     assigned_to: { clean: function (v) { return str(v, 200); }, label: 'Assigned to' },
     next_steps: { clean: function (v) { return str(v, 2000); }, label: 'Next steps', quiet: true },
+    // Report details, correctable from "Edit details" (mainly for jobs typed in by hand).
+    tenant_name: { clean: function (v) { return str(v, 200); }, label: 'Tenant' },
+    tenant_email: { clean: function (v) { return str(v, 200); }, label: 'Tenant email' },
+    tenant_phone: { clean: function (v) { return str(v, 50); }, label: 'Tenant phone' },
+    property_address: { clean: function (v) { return str(v, 500); }, label: 'Property' },
+    category: { clean: function (v) { return str(v, 200); }, label: 'Issue type' },
+    affected: { clean: function (v) { return str(v, 200); }, label: 'What’s affected' },
+    symptom: { clean: function (v) { return str(v, 200); }, label: 'What’s happening' },
+    location: { clean: function (v) { return str(v, 200); }, label: 'Location' },
+    description: { clean: function (v) { return str(v, 5000); }, label: 'Description', quiet: true },
+    access_days: { clean: function (v) { return str(v, 100); }, label: 'Access days' },
+    access_time: { clean: function (v) { return str(v, 50); }, label: 'Best time' },
+    access_notes: { clean: function (v) { return str(v, 1000); }, label: 'Access notes' },
+    key_permission: { clean: function (v) { return v === 'Yes' || v === 'No' ? v : (v ? undefined : null); }, label: 'Keys to contractor' },
+    key_instructions: { clean: function (v) { return str(v, 1000); }, label: 'Contractor notes' },
+    source: { clean: function (v) { return SOURCES.indexOf(v) !== -1 ? v : undefined; }, label: 'Came in via' },
     estimated_cost: { clean: money, label: 'Estimated cost', show: gbp },
     actual_cost: { clean: money, label: 'Actual cost', show: gbp },
     landlord_charge: { clean: money, label: 'Charge to landlord', show: gbp }
@@ -302,6 +323,44 @@ module.exports = function mountJobs(app, opts) {
       await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', n]);
     }
     res.json({ ok: true, changed: true });
+  }));
+
+  // A job added by hand (phone call, email, inspection…). Uses the same cleaning
+  // rules as editing. "Received" can be set to when the call actually came in,
+  // and the deadline follows from it unless one is given.
+  app.post('/api/admin/jobs', withDb(async function (p, req, res) {
+    const body = req.body || {};
+    const cols = [];
+    const vals = [];
+    const add = function (col, v) { cols.push(col); vals.push(v); };
+    const fields = ['tenant_name', 'tenant_email', 'tenant_phone', 'property_address', 'category', 'affected',
+      'symptom', 'location', 'description', 'access_days', 'access_time', 'access_notes', 'key_permission',
+      'key_instructions', 'assigned_to', 'next_steps', 'estimated_cost', 'landlord_charge'];
+    for (const f of fields) {
+      if (!(f in body)) continue;
+      const v = EDITABLE[f].clean(body[f]);
+      if (v === undefined) return res.status(400).json({ ok: false, error: 'invalid-' + f });
+      if (v !== null) add(f, v);
+    }
+    if (!body.property_address || !str(body.property_address)) return res.status(400).json({ ok: false, error: 'address-required' });
+    if (!body.category && !body.description) return res.status(400).json({ ok: false, error: 'issue-required' });
+
+    const urgency = URGENCIES.indexOf(body.urgency) !== -1 ? body.urgency : 'Routine';
+    const source = SOURCES.indexOf(body.source) !== -1 && body.source !== 'Online report' ? body.source : 'Phone call';
+    let received = body.received_at ? new Date(body.received_at) : new Date();
+    if (isNaN(received) || received > new Date(Date.now() + 5 * 60 * 1000)) received = new Date();
+    let due = body.due_at ? new Date(body.due_at) : null;
+    if (!due || isNaN(due)) due = new Date(received.getTime() + DUE_HOURS[urgency] * 3600 * 1000);
+    const status = str(body.assigned_to) ? 'Assigned' : 'New';
+    add('urgency', urgency); add('source', source); add('created_at', received); add('due_at', due); add('status', status);
+
+    const r = await p.query('INSERT INTO jobs (' + cols.join(', ') + ') VALUES (' +
+      cols.map(function (_, i) { return '$' + (i + 1); }).join(', ') + ') RETURNING id', vals);
+    const id = r.rows[0].id;
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
+      [id, 'created', 'Job added by staff (' + source + ', ' + urgency + ').' +
+        (str(body.assigned_to) ? ' Assigned to ' + str(body.assigned_to, 200) + '.' : '')]);
+    res.json({ ok: true, id: id, ref: refFor(id) });
   }));
 
   app.post('/api/admin/jobs/:id/updates', withDb(async function (p, req, res) {
