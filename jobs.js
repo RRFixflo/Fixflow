@@ -32,6 +32,13 @@ const INVOICE = {
   companyNo: process.env.INVOICE_COMPANY_NO || '08760284',
   vatNo: process.env.INVOICE_VAT_NO || '178090487'
 };
+// Instant phone alerts for new reports, via the free ntfy app (ntfy.sh).
+//   NTFY_TOPIC   a long random channel name; staff subscribe to it in the app
+//   NTFY_SERVER  optional, defaults to https://ntfy.sh
+// Alerts carry the address, issue and urgency only, never tenant contact details.
+const NTFY_TOPIC = process.env.NTFY_TOPIC || '';
+const NTFY_SERVER = (process.env.NTFY_SERVER || 'https://ntfy.sh').replace(/\/+$/, '');
+const PUBLIC_URL = process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : '');
 const STATUSES = ['New', 'Assigned', 'Contractor booked', 'Awaiting parts', 'On hold', 'Completed', 'Cancelled'];
 
 const SCHEMA = `
@@ -239,7 +246,29 @@ module.exports = function mountJobs(app, opts) {
     try { await insertPhotos(p, id, decodePhotos(photos), 'tenant'); } catch (err) { console.error('Saving photos failed:', err.message); }
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'created', 'Report submitted by ' + (str(r.name, 200) || 'tenant') + ' (' + urgency + ').']);
+    notifyNewJob({ id: id, urgency: urgency, address: r.address, issue: [r.category, r.affected, r.symptom].filter(Boolean).join(' – '),
+      location: r.location, photos: parseInt(r.photoCount, 10) || 0 });
     return { id: id, ref: refFor(id) };
+  }
+
+  // Phone alert for a new job. Never delays or breaks saving the report.
+  function notifyNewJob(j) {
+    if (!NTFY_TOPIC || typeof fetch !== 'function') return;
+    const PRIORITY = { Emergency: 5, Urgent: 4, Routine: 3 };
+    const TAGS = { Emergency: ['rotating_light'], Urgent: ['warning'], Routine: ['wrench'] };
+    const body = {
+      topic: NTFY_TOPIC,
+      title: j.urgency.toUpperCase() + ' · New repair ' + refFor(j.id),
+      message: [String(j.address || 'No address given').replace(/\s+/g, ' ').trim(),
+        (j.issue || 'Repair') + (j.location ? ' (' + j.location + ')' : ''),
+        j.photos ? j.photos + ' photo' + (j.photos === 1 ? '' : 's') : ''].filter(Boolean).join('\n').slice(0, 1000),
+      priority: PRIORITY[j.urgency] || 3,
+      tags: TAGS[j.urgency] || ['wrench']
+    };
+    if (PUBLIC_URL) body.click = PUBLIC_URL + '/admin#job=' + j.id;
+    fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) })
+      .then(function (res) { if (!res.ok) console.error('Phone alert failed: HTTP ' + res.status); })
+      .catch(function (err) { console.error('Phone alert failed:', err.message); });
   }
 
   function refFor(id) { return 'RR-' + String(id).padStart(5, '0'); }
