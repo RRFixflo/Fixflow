@@ -1172,6 +1172,11 @@ module.exports = function mountJobs(app, opts) {
     }).filter(Boolean);
     return kept.join(', ');
   }
+  // The door numbers in an address ("Flat 3, 24 Wisden House" -> 3, 24), postcode
+  // left out, so a tenant can prove which home they live in.
+  function doorNumbers(addr) {
+    return (String(addr || '').replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); });
+  }
   function issueText(j) { return [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') + (j.location ? ' (' + j.location + ')' : ''); }
   // Light protection against guessing: a few lookups a minute per visitor.
   const trackHits = new Map();
@@ -1184,13 +1189,13 @@ module.exports = function mountJobs(app, opts) {
   app.get('/track', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     const ref = String(req.query.ref || req.query.q || '').trim().slice(0, 40);
-    const postcode = String(req.query.postcode || '').trim().slice(0, 12);
+    const door = String(req.query.door || '').trim().slice(0, 20);
     const name = String(req.query.name || '').trim().slice(0, 120);
     const phone = String(req.query.phone || '').trim().slice(0, 40);
     const byPhone = !!(name || phone);
     let results = '';
     const COLS = 'id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, track_token';
-    if (ref || postcode || byPhone) {
+    if (ref || door || byPhone) {
       if (!trackAllowed(req.ip)) {
         results = '<div class="card">Too many searches — please wait a few minutes and try again.</div>';
       } else {
@@ -1213,19 +1218,19 @@ module.exports = function mountJobs(app, opts) {
               .filter(function (j) { if (seen[j.id]) return false; seen[j.id] = true; return true; });
           }
         } else {
-          // Reference and postcode must both match, so a guessed reference shows nothing.
+          // Reference and door number must both match, so a guessed reference shows nothing.
           const m = /^\s*RR[-\s]?0*(\d{1,7})\s*$/i.exec(ref) || /^\s*0*(\d{1,7})\s*$/.exec(ref);
-          const pc = postcode.toUpperCase().replace(/\s+/g, '');
+          const dn = door.toUpperCase().replace(/^\s*(FLAT|APARTMENT|APT|UNIT|HOUSE|NO\.?|NUMBER)\s*/, '').replace(/\s+/g, '');
           if (!m) problem = 'That doesn’t look like a reference — it should look like RR-00012.';
-          else if (!/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/.test(pc)) problem = 'Please enter the full postcode of the property, e.g. NN2 6AB.';
+          else if (!/^\d{1,5}[A-Z]?$/.test(dn)) problem = 'Please enter your door number, e.g. 24 or 3B.';
           else rows = (await p.query('SELECT ' + COLS + " FROM jobs WHERE id = $1 AND archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled')", [parseInt(m[1], 10)])).rows
-            .filter(function (j) { return String(j.property_address || '').toUpperCase().replace(/\s+/g, '').indexOf(pc) !== -1; });
+            .filter(function (j) { return doorNumbers(j.property_address).indexOf(dn) !== -1; });
         }
         if (problem) results = '<div class="card">' + htmlEsc(problem) + '</div>';
         else if (!rows.length) {
           results = '<div class="card"><strong>No open repairs found.</strong><div class="muted">' + (byPhone
             ? 'Check you’ve used the same name and phone number you gave when reporting, or search by your reference instead.'
-            : 'Check the reference (it’s in the messages we sent you and looks like RR-00012) and the property’s postcode — or search with your name and phone number instead.') + ' Completed repairs aren’t shown here.</div></div>';
+            : 'Check the reference (it’s in the messages we sent you and looks like RR-00012) and your door number — or search with your name and phone number instead.') + ' Completed repairs aren’t shown here.</div></div>';
         } else {
           for (const j of rows) { if (!j.track_token) j.track_token = await ensureTrackToken(p, j.id); }
           results = rows.map(function (j) {
@@ -1238,10 +1243,10 @@ module.exports = function mountJobs(app, opts) {
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(trackShell('Track a repair',
-      '<h1>Track a repair</h1><p class="sub">See how your open repairs are progressing. Use your reference and postcode, or your name and phone number.</p>' +
-      '<div class="tabs"><button type="button" data-t="ref" class="' + (byPhone ? '' : 'on') + '">Reference &amp; postcode</button><button type="button" data-t="phone" class="' + (byPhone ? 'on' : '') + '">Name &amp; phone</button></div>' +
+      '<h1>Track a repair</h1><p class="sub">See how your open repairs are progressing. Use your reference and door number, or your name and phone number.</p>' +
+      '<div class="tabs"><button type="button" data-t="ref" class="' + (byPhone ? '' : 'on') + '">Reference &amp; door number</button><button type="button" data-t="phone" class="' + (byPhone ? 'on' : '') + '">Name &amp; phone</button></div>' +
       '<form method="get" action="/track" id="fRef" class="stack"' + (byPhone ? ' hidden' : '') + '><input name="ref" value="' + htmlEsc(ref) + '" placeholder="Reference, e.g. RR-00012" aria-label="Reference" autocomplete="off">' +
-        '<input name="postcode" value="' + htmlEsc(postcode) + '" placeholder="Postcode of the property, e.g. NN2 6AB" aria-label="Postcode" autocomplete="postal-code" autocapitalize="characters"><button type="submit">Track</button></form>' +
+        '<input name="door" value="' + htmlEsc(door) + '" placeholder="Your door number, e.g. 24 or Flat 3" aria-label="Door number" autocomplete="off"><button type="submit">Track</button></form>' +
       '<form method="get" action="/track" id="fPhone" class="stack"' + (byPhone ? '' : ' hidden') + '><input name="name" value="' + htmlEsc(name) + '" placeholder="Your name" aria-label="Your name" autocomplete="name">' +
         '<input name="phone" value="' + htmlEsc(phone) + '" placeholder="Your phone number" aria-label="Your phone number" type="tel" autocomplete="tel"><button type="submit">Track</button></form>' +
       results + '<p class="note">Need to report something new? <a class="more" href="/">Report a repair</a>. For emergencies such as a gas smell or flooding, call us straight away.</p>' +
