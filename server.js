@@ -359,6 +359,9 @@ app.post('/api/send-report', async (req, res) => {
     }
 
     const subject = String(body.subject || 'Repair report') + (saved ? ' [' + saved.ref + ']' : '');
+    // The tenant's link to follow the repair's progress.
+    const siteUrl = process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : req.protocol + '://' + req.get('host'));
+    const trackUrl = saved && saved.trackPath ? siteUrl + saved.trackPath : null;
 
     // 2) Email it to Residential Realtors, PDF attached, when email is set up.
     let emailed = false;
@@ -389,14 +392,15 @@ app.post('/api/send-report', async (req, res) => {
         to: [tenantEmail],
         subject: 'Your repair report — Residential Realtors' + (saved ? ' [' + saved.ref + ']' : ''),
         text: 'This is a copy of the repair report you submitted, for your own records.' +
-          (saved ? ' Your reference is ' + saved.ref + '.' : '') + '\n\n' + reportText,
+          (saved ? ' Your reference is ' + saved.ref + '.' : '') +
+          (trackUrl ? '\n\nYou can check the progress of your repair at any time here: ' + trackUrl : '') + '\n\n' + reportText,
         attachmentFilename: filename,
         attachmentBase64: pdfBase64
       });
       tenantCopySent = !!tenantResult.ok;
     }
 
-    return res.json({ ok: true, emailed: emailed, saved: !!saved, ref: saved ? saved.ref : null, tenantCopySent: tenantCopySent });
+    return res.json({ ok: true, emailed: emailed, saved: !!saved, ref: saved ? saved.ref : null, trackUrl: trackUrl, tenantCopySent: tenantCopySent });
   } catch (err) {
     console.error('send-report error:', err);
     return res.status(500).json({ ok: false, error: 'server-error' });

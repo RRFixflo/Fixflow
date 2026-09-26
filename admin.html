@@ -2834,7 +2834,7 @@
       assigned: j.assigned_to || 'our contractor', next: j.next_steps || '[NEXT STEPS]'
     };
     var fill = function(s){ return s.replace(/\{(\w+)\}/g, function(_, k){ return vals[k] != null ? vals[k] : ''; }); };
-    return { subject: fill(t.subject), body: fill(t.body) + SIGN_OFF };
+    return { subject: fill(t.subject), body: fill(t.body) + (j.track_url ? '\n\nYou can check the progress of your repair at any time here: ' + j.track_url : '') + SIGN_OFF };
   }
 
   // ---------- Job detail ----------
@@ -2880,7 +2880,7 @@
   }
   $('dTabs').addEventListener('click', function(e){ var b = e.target.closest('button[data-tab]'); if (b) setDrawerTab(b.dataset.tab); });
 
-  var jobInvoices = [];
+  var jobInvoices = [], trackUrls = {};
   function renderJob(j, updates, photos){
     $('dTitle').textContent = j.ref;
     $('dUrg').innerHTML = '<span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span>';
@@ -3209,7 +3209,14 @@
           return;
         }
         $('aiSubj').value = d.subject;
-        $('aiBody').value = d.body;
+        var bodyText = d.body;
+        // Messages to the tenant include their link to follow the repair.
+        if (recipient === 'Tenant' && trackUrls[j.id] && bodyText.indexOf(trackUrls[j.id]) === -1) {
+          var line = 'You can check the progress of your repair at any time here: ' + trackUrls[j.id];
+          var k = bodyText.search(/\n\s*(Kind regards|Best regards|Regards|Many thanks|Thanks)/i);
+          bodyText = k > 0 ? bodyText.slice(0, k) + '\n\n' + line + bodyText.slice(k) : bodyText + '\n\n' + line;
+        }
+        $('aiBody').value = bodyText;
         $('aiOut').hidden = false;
       });
     }
@@ -3625,13 +3632,21 @@
       var filled = fillTemplate(TEMPLATES[Number($('fTpl').value)], {
         ref: j.ref, tenant_name: j.tenant_name, property_address: j.property_address,
         category: j.category, affected: j.affected, symptom: j.symptom,
-        assigned_to: $('fAssigned').value.trim() || j.assigned_to, next_steps: $('fNext').value.trim() || j.next_steps
+        assigned_to: $('fAssigned').value.trim() || j.assigned_to, next_steps: $('fNext').value.trim() || j.next_steps,
+        track_url: jobTrackUrl
       });
       $('fSubj').value = filled.subject;
       $('fMsg').value = filled.body;
     }
+    // Each message to the tenant carries their link to follow the repair.
+    var jobTrackUrl = trackUrls[j.id] || null;
     $('fTpl').addEventListener('change', applyTemplate);
     applyTemplate();
+    if (!jobTrackUrl) api('POST', '/api/admin/jobs/' + j.id + '/track-link', {}).then(function(d){
+      if (!d.ok) return;
+      trackUrls[j.id] = jobTrackUrl = d.url;
+      if ($('fMsg') && $('fMsg').value.indexOf(d.url) === -1 && $('fMsg').value.indexOf('check the progress') === -1) applyTemplate();
+    });
 
     function logMessage(how){
       return api('POST', '/api/admin/jobs/' + j.id + '/updates', {
