@@ -1091,33 +1091,17 @@
   setInterval(function(){ if (!$('appView').hidden && !openJobId) loadJobs(); }, 120000); // pick up new reports
 
   // ---------- Contractor messages (WhatsApp) ----------
-  // Only what a contractor needs: where, what, who to call, how to get in, and
-  // by when. Costs and charges are never included.
   var POSTCODE_RE = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
   function postcodeArea(addr){ var m = String(addr || '').match(POSTCODE_RE); return m ? m[1].toUpperCase() : null; }
   function addrKey(addr){ return String(addr || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
-  function fmtDue(d){ return d ? new Date(d).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null; }
-  function accessLine(j){
-    var bits = [];
-    if (j.access_days) bits.push(j.access_days);
-    if (j.access_time) bits.push(j.access_time);
-    if (j.access_notes) bits.push(j.access_notes);
-    var keys = j.key_permission === 'Yes' ? 'Keys can be released if tenant is out' + (j.key_instructions ? ' — ' + j.key_instructions : '')
-      : j.key_permission === 'No' ? 'Tenant must be home — arrange with them first' : null;
-    if (keys) bits.push(keys);
-    return bits.join(' · ') || 'Contact tenant to arrange';
-  }
-  function jobBlock(j, number){
+  // Kept deliberately short: address, the job, the tenant's name and number,
+  // and whether we have keys. Nothing else (no costs, references or deadlines).
+  function jobText(j){
     var issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') + (j.location ? ' (' + j.location + ')' : '');
-    var lines = [];
-    lines.push((number ? number + '. ' : '') + '*' + j.ref + '* — ' + j.urgency.toUpperCase());
-    lines.push('Job: ' + (issue || 'Repair'));
-    if (j.description) lines.push('Details: ' + j.description);
-    lines.push('Tenant: ' + (j.tenant_name || 'Tenant') + (j.tenant_phone ? ' — ' + j.tenant_phone : ' — no phone given'));
-    lines.push('Access: ' + accessLine(j));
-    if (j.due_at && isOpen(j)) lines.push('Complete by: ' + fmtDue(j.due_at));
-    return lines.join('\n');
+    var desc = String(j.description || '').replace(/\s+/g, ' ').trim();
+    return [issue, desc].filter(Boolean).join('. ') || 'Repair';
   }
+  function keysText(j){ return j.key_permission === 'Yes' ? 'Yes' : j.key_permission === 'No' ? 'No' : null; }
   function contractorMessage(list){
     // Jobs at the same address go under one heading, so a multi-job visit reads as one stop.
     var groups = [], byKey = {};
@@ -1127,21 +1111,23 @@
         if (!byKey[k]) { byKey[k] = { address: j.property_address || 'Address not given', jobs: [] }; groups.push(byKey[k]); }
         byKey[k].jobs.push(j);
       });
-    var out = [];
-    if (list.length === 1) {
-      out.push('*Repair job — Residential Realtors*', '', 'Address: *' + groups[0].address + '*', jobBlock(list[0]));
-    } else {
-      out.push('*' + list.length + ' repair jobs — Residential Realtors*');
-      out.push(groups.length === 1 ? 'All at one property.' : groups.length + ' properties.');
-      var n = 0;
-      groups.forEach(function(g){
-        out.push('', 'Address: *' + g.address + '*' + (g.jobs.length > 1 ? ' (' + g.jobs.length + ' jobs)' : ''));
-        g.jobs.forEach(function(j){ n += 1; out.push(jobBlock(j, n)); if (g.jobs.length > 1) out.push(''); });
-        if (g.jobs.length > 1) out.pop();
+    var uniq = function(arr){ return arr.filter(function(x, i){ return x && arr.indexOf(x) === i; }); };
+    return groups.map(function(g){
+      var lines = ['Address: ' + g.address];
+      if (g.jobs.length === 1) lines.push('Job: ' + jobText(g.jobs[0]));
+      else { lines.push('Jobs:'); g.jobs.forEach(function(j, n){ lines.push((n + 1) + '. ' + jobText(j)); }); }
+      // One line per tenant, keeping a phone number from any of their jobs.
+      var tenants = [], byName = {};
+      g.jobs.forEach(function(j){
+        var k = String(j.tenant_name || '').trim().toLowerCase();
+        var t = byName[k] || (byName[k] = tenants[tenants.push({ name: j.tenant_name || 'Tenant', phones: [] }) - 1]);
+        if (j.tenant_phone && t.phones.indexOf(j.tenant_phone) === -1) t.phones.push(j.tenant_phone);
       });
-    }
-    out.push('', 'Please reply to confirm, and quote the job reference with any questions or invoices. Thanks!');
-    return out.join('\n');
+      tenants.forEach(function(t){ lines.push('Tenant: ' + t.name + (t.phones.length ? ' – ' + t.phones.join(' / ') : '')); });
+      var keys = uniq(g.jobs.map(keysText));
+      if (keys.length) lines.push('Keys: ' + keys.join(' / '));
+      return lines.join('\n');
+    }).join('\n\n');
   }
 
   // ---------- Contractor directory ----------
@@ -2393,7 +2379,7 @@
 
       // Contractor
       '<div class="card" data-pane="overview"><h3>Send to contractor</h3>' +
-        '<p style="margin:0 0 10px;color:var(--ink-soft);font-size:.86rem;line-height:1.5">Address, the job, the tenant’s number and access details, ready for WhatsApp. Costs are never included.</p>' +
+        '<p style="margin:0 0 10px;color:var(--ink-soft);font-size:.86rem;line-height:1.5">Just the address, the job, the tenant’s name and number, and whether we have keys — ready for WhatsApp.</p>' +
         '<div class="row-actions" style="justify-content:flex-start;margin-top:0">' +
           '<button class="btn wa" id="cWa" type="button">Send on WhatsApp</button>' +
           '<button class="btn" id="cCopy" type="button">Copy for contractor</button>' +
