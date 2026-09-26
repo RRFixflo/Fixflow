@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS job_updates (
 );
 CREATE INDEX IF NOT EXISTS job_updates_job_idx ON job_updates (job_id, created_at);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'Online report';
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS archived_reason TEXT;
+CREATE TABLE IF NOT EXISTS job_photos (
+  id         SERIAL PRIMARY KEY,
+  job_id     INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  added_by   TEXT NOT NULL DEFAULT 'tenant',
+  name       TEXT,
+  mime       TEXT NOT NULL,
+  data       BYTEA NOT NULL
+);
+CREATE INDEX IF NOT EXISTS job_photos_job_idx ON job_photos (job_id, id);
 CREATE TABLE IF NOT EXISTS contractors (
   id         SERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -104,7 +116,8 @@ const SOURCES = ['Online report', 'Phone call', 'Email', 'Text / WhatsApp', 'In 
 const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenant_name, tenant_email,
   tenant_phone, property_address, category, affected, symptom, location, description, access_days,
   access_time, access_notes, key_permission, key_instructions, assigned_to, next_steps,
-  estimated_cost, actual_cost, landlord_charge, completed_at, photo_count, source`;
+  estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
+  archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved`;
 
 function str(v, max) {
   if (v === undefined || v === null) return null;
@@ -117,6 +130,29 @@ function money(v) {
   const n = Number(String(v).replace(/[£,\s]/g, ''));
   if (!isFinite(n) || n < 0 || n > 10000000) return undefined; // undefined = invalid
   return Math.round(n * 100) / 100;
+}
+
+// Photos arrive as data URLs from the browser. Only real images are kept, each
+// under 6 MB (the tenant page shrinks them to a few hundred KB first).
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const MAX_PHOTOS_PER_UPLOAD = 30;
+function decodePhotos(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const ph of list.slice(0, MAX_PHOTOS_PER_UPLOAD)) {
+    const m = /^data:(image\/[a-z+]+);base64,([A-Za-z0-9+/=]+)$/.exec(String((ph && ph.dataUrl) || ''));
+    if (!m || PHOTO_TYPES.indexOf(m[1]) === -1) continue;
+    const buf = Buffer.from(m[2], 'base64');
+    if (!buf.length || buf.length > 6 * 1024 * 1024) continue;
+    out.push({ name: str(ph.name, 200), mime: m[1], data: buf });
+  }
+  return out;
+}
+async function insertPhotos(p, jobIdValue, photos, addedBy) {
+  for (const ph of photos) {
+    await p.query('INSERT INTO job_photos (job_id, added_by, name, mime, data) VALUES ($1, $2, $3, $4, $5)',
+      [jobIdValue, addedBy, ph.name, ph.mime, ph.data]);
+  }
 }
 
 function gbp(n) {
@@ -152,7 +188,7 @@ module.exports = function mountJobs(app, opts) {
   }
 
   // ---------- Saving a submitted report ----------
-  async function saveReport(r, pdfBase64, pdfFilename, reportText) {
+  async function saveReport(r, pdfBase64, pdfFilename, reportText, photos) {
     const p = await db();
     if (!p) return null;
     r = r || {};
@@ -173,6 +209,9 @@ module.exports = function mountJobs(app, opts) {
         str(pdfFilename, 200), pdf]
     );
     const id = res.rows[0].id;
+    // Photos are saved separately too, so staff can view them without the PDF.
+    // A problem here shouldn't lose the report itself.
+    try { await insertPhotos(p, id, decodePhotos(photos), 'tenant'); } catch (err) { console.error('Saving photos failed:', err.message); }
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'created', 'Report submitted by ' + (str(r.name, 200) || 'tenant') + ' (' + urgency + ').']);
     return { id: id, ref: refFor(id) };
@@ -274,7 +313,8 @@ module.exports = function mountJobs(app, opts) {
     delete job.pdf;
     job.ref = refFor(job.id);
     const u = await p.query('SELECT id, created_at, kind, body FROM job_updates WHERE job_id = $1 ORDER BY created_at DESC, id DESC', [id]);
-    res.json({ ok: true, job: job, updates: u.rows });
+    const ph = await p.query('SELECT id, created_at, added_by, name FROM job_photos WHERE job_id = $1 ORDER BY id', [id]);
+    res.json({ ok: true, job: job, updates: u.rows, photos: ph.rows });
   }));
 
   app.get('/api/admin/jobs/:id/pdf', withDb(async function (p, req, res) {
@@ -365,18 +405,28 @@ module.exports = function mountJobs(app, opts) {
     if (q.length < 2) return res.json({ ok: true, tenants: [] });
     const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%';
     const digits = q.replace(/\D/g, '');
+    // One entry per person: same name and phone number (or same name and address
+    // when there's no phone), taking the newest non-empty value of each detail so
+    // an email given on an older report still fills in.
+    const latest = function (col) {
+      return '(array_agg(' + col + ' ORDER BY created_at DESC) FILTER (WHERE ' + col + ' IS NOT NULL AND ' + col + " <> ''))[1] AS " + col;
+    };
     const r = await p.query(
-      `SELECT DISTINCT ON (lower(coalesce(tenant_name, '')), lower(coalesce(property_address, '')))
-         tenant_name, tenant_phone, tenant_email, property_address, access_days, access_time,
-         access_notes, key_permission, key_instructions, created_at,
-         count(*) OVER (PARTITION BY lower(coalesce(tenant_name, '')), lower(coalesce(property_address, ''))) AS job_count
-       FROM jobs
-       WHERE (tenant_name ILIKE $1 OR property_address ILIKE $1 OR tenant_email ILIKE $1
-              OR ($2 <> '' AND regexp_replace(coalesce(tenant_phone, ''), '\\D', '', 'g') LIKE '%' || $2 || '%'))
-         AND (tenant_name IS NOT NULL OR property_address IS NOT NULL)
-       ORDER BY lower(coalesce(tenant_name, '')), lower(coalesce(property_address, '')), created_at DESC
-       LIMIT 50`, [like, digits.length >= 4 ? digits : '']);
-    const tenants = r.rows.sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); }).slice(0, 8);
+      `SELECT ${['tenant_name', 'tenant_phone', 'tenant_email', 'property_address', 'access_days', 'access_time',
+          'access_notes', 'key_permission', 'key_instructions'].map(latest).join(', ')},
+         count(*)::int AS job_count, max(created_at) AS created_at
+       FROM (
+         SELECT *, lower(coalesce(tenant_name, '')) || '|' ||
+           coalesce(nullif(regexp_replace(coalesce(tenant_phone, ''), '\\D', '', 'g'), ''), lower(coalesce(property_address, ''))) AS person
+         FROM jobs
+         WHERE (tenant_name ILIKE $1 OR property_address ILIKE $1 OR tenant_email ILIKE $1
+                OR ($2 <> '' AND regexp_replace(coalesce(tenant_phone, ''), '\\D', '', 'g') LIKE '%' || $2 || '%'))
+           AND (tenant_name IS NOT NULL OR property_address IS NOT NULL)
+       ) x
+       GROUP BY person
+       ORDER BY max(created_at) DESC
+       LIMIT 8`, [like, digits.length >= 4 ? digits : '']);
+    const tenants = r.rows;
     res.json({ ok: true, tenants: tenants });
   }));
 
@@ -460,6 +510,49 @@ module.exports = function mountJobs(app, opts) {
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'email', 'Emailed ' + to + ' — ' + subject + '\n\n' + text]);
     await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1', [id]);
+    res.json({ ok: true });
+  }));
+
+  // ---------- Photos ----------
+  app.get('/api/admin/photos/:id', withDb(async function (p, req, res) {
+    const r = await p.query('SELECT mime, data FROM job_photos WHERE id = $1', [jobId(req)]);
+    if (!r.rows.length) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', r.rows[0].mime);
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(r.rows[0].data);
+  }));
+
+  app.post('/api/admin/jobs/:id/photos', withDb(async function (p, req, res) {
+    const id = jobId(req);
+    const photos = decodePhotos((req.body || {}).photos);
+    if (!photos.length) return res.status(400).json({ ok: false, error: 'no-photos' });
+    const r = await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1 RETURNING id', [id]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    await insertPhotos(p, id, photos, 'staff');
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
+      [id, 'note', photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' added by staff.']);
+    res.json({ ok: true, added: photos.length });
+  }));
+
+  // ---------- Archive ----------
+  // "Deleting" a job moves it to the archive: hidden from the day-to-day lists
+  // but kept with all its details, photos and history, and can be restored.
+  app.post('/api/admin/jobs/:id/archive', withDb(async function (p, req, res) {
+    const id = jobId(req);
+    const reason = str((req.body || {}).reason, 500);
+    const r = await p.query('UPDATE jobs SET archived_at = now(), archived_reason = $2, updated_at = now() WHERE id = $1 AND archived_at IS NULL RETURNING id', [id, reason]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found-or-archived' });
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
+      [id, 'change', 'Job deleted and moved to the archive.' + (reason ? ' Reason: ' + reason : '')]);
+    res.json({ ok: true });
+  }));
+
+  app.post('/api/admin/jobs/:id/restore', withDb(async function (p, req, res) {
+    const id = jobId(req);
+    const r = await p.query('UPDATE jobs SET archived_at = NULL, archived_reason = NULL, updated_at = now() WHERE id = $1 AND archived_at IS NOT NULL RETURNING id', [id]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found-or-not-archived' });
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', 'Job restored from the archive.']);
     res.json({ ok: true });
   }));
 

@@ -7,6 +7,7 @@
 <title>Repair Jobs — Residential Realtors</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -127,9 +128,9 @@
   label.lbl { display: block; font-size: .76rem; font-weight: 600; color: var(--ink-soft); margin: 0 0 5px; }
 
   /* ---------- Stat cards ---------- */
-  .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+  .tiles { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 20px; }
   .tile { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px 15px; box-shadow: var(--shadow-xs); overflow: hidden; }
-  .tile .k { display: flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 550; color: var(--ink-soft); }
+  .tile .k { display: flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 550; color: var(--ink-soft); white-space: nowrap; }
   .tile .k i { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: var(--panel-2); color: var(--ink-soft); font-style: normal; }
   .tile .k i svg { width: 14px; height: 14px; }
   .tile .v { font-family: var(--display); font-size: 1.75rem; font-weight: 700; letter-spacing: -.03em; margin-top: 10px; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -140,8 +141,16 @@
   .tile.good .k i { background: var(--ok-tint); color: var(--ok); }
   .tile.good .v { color: var(--ok); }
   .tile.blue .k i { background: var(--blue-tint); color: var(--blue); }
+  @media (max-width: 1320px) { .tiles:not(.prop-tiles) { grid-template-columns: repeat(4, 1fr); } }
   @media (max-width: 1100px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
-  @media (max-width: 640px) { .tiles { grid-template-columns: repeat(2, 1fr); gap: 10px; } .tile:last-child { grid-column: 1 / -1; } .tile .v { font-size: 1.5rem; } }
+  button.tile { font: inherit; color: inherit; text-align: left; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
+  button.tile:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  button.tile.on { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+  .tile.warnish .k i { background: var(--warn-tint); color: var(--warn); }
+  .tile.warnish.has .v { color: var(--warn); }
+  .filter-chip { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 5px 6px 5px 12px; border-radius: 999px; background: var(--ink); color: var(--panel); font-size: .8rem; font-weight: 600; }
+  .filter-chip button { border: 0; background: rgba(255,255,255,.18); color: inherit; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; font-size: .7rem; }
+  @media (max-width: 640px) { .tiles { grid-template-columns: repeat(2, 1fr); gap: 10px; } .tiles:not(.prop-tiles) .tile:last-child { grid-column: 1 / -1; } .tile .v { font-size: 1.5rem; } }
 
   /* ---------- Toolbar ---------- */
   .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
@@ -314,7 +323,46 @@
   .tenant-results button:hover, .tenant-results button.active { background: var(--panel-2); }
   .tenant-results strong { display: block; font-size: .86rem; }
   .tenant-results span { font-size: .78rem; color: var(--ink-soft); }
+  .tenant-results .tr-head { padding: 7px 12px 4px; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint); }
+  .tenant-results em { font-style: normal; font-weight: 500; color: var(--ink-soft); margin-left: 6px; }
+  .tenant-results { min-width: 280px; }
   .tenant-results .none { padding: 10px 12px; font-size: .82rem; color: var(--ink-soft); }
+  .prop-row { display: grid; grid-template-columns: minmax(0,1fr) 110px 110px 150px 20px; gap: 14px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 13px 16px; cursor: pointer; }
+  .prop-row:last-child { border-bottom: 0; }
+  .prop-row:hover { background: var(--hover); }
+  .prop-row .addr { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prop-row .num { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .prop-row .num small, .prop-row .last small { display: block; font-weight: 500; font-size: .72rem; color: var(--ink-faint); }
+  .prop-row .num.hot { color: var(--brick); }
+  .prop-row .chev { color: var(--ink-faint); font-size: 1.2rem; }
+  .prop-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px; margin: 12px 0 16px; }
+  .prop-head h2 { font-family: var(--display); font-size: 1.35rem; letter-spacing: -.025em; margin: 0; }
+  .prop-sub { color: var(--ink-soft); font-size: .86rem; margin-top: 4px; }
+  .prop-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .prop-actions select.inp { width: auto; }
+  .prop-tiles { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 800px) { .prop-row { grid-template-columns: minmax(0,1fr) auto; } .prop-row .last, .prop-row .chev { display: none; } .prop-row .num:nth-of-type(3) { display: none; } .prop-tiles { grid-template-columns: repeat(2, 1fr); } }
+  .job-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .count-chip { font-family: var(--sans); font-size: .72rem; font-weight: 600; color: var(--ink-soft); background: var(--panel-2); border: 1px solid var(--line); padding: 1px 8px; border-radius: 999px; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+  .gal-item { position: relative; aspect-ratio: 1; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel-2); cursor: zoom-in; }
+  .gal-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .25s var(--ease); }
+  .gal-item:hover img { transform: scale(1.05); }
+  .gal-tag { position: absolute; left: 6px; bottom: 6px; font-size: .64rem; font-weight: 700; background: rgba(0,0,0,.65); color: #fff; padding: 1px 6px; border-radius: 5px; }
+  .lightbox { position: fixed; inset: 0; z-index: 70; background: rgba(5,6,8,.92); display: grid; place-items: center; animation: fade .15s; }
+  .lightbox img { max-width: calc(100vw - 120px); max-height: calc(100vh - 110px); border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .lb-btn { position: absolute; border: 0; background: rgba(255,255,255,.1); color: #fff; width: 44px; height: 44px; border-radius: 50%; font-size: 1.5rem; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+  .lb-btn:hover { background: rgba(255,255,255,.2); }
+  .lb-close { top: 16px; right: 16px; font-size: 1rem; }
+  .lb-prev { left: 16px; top: 50%; transform: translateY(-50%); }
+  .lb-next { right: 16px; top: 50%; transform: translateY(-50%); }
+  .lb-bar { position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; gap: 18px; color: rgba(255,255,255,.8); font-size: .85rem; }
+  .lb-bar a { color: #fff; }
+  @media (max-width: 640px) { .lightbox img { max-width: 100vw; border-radius: 0; } .lb-prev { left: 6px; } .lb-next { right: 6px; } }
+  .archived-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--warn-tint); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); font-size: .88rem; line-height: 1.5; }
+  .danger-card { border-color: color-mix(in srgb, var(--brick) 25%, var(--line)); }
+  .btn.danger { color: var(--brick); border-color: color-mix(in srgb, var(--brick) 40%, var(--line-strong)); }
+  .btn.danger:hover { background: var(--brick); color: #fff; border-color: var(--brick); }
   .nearby { margin-top: 14px; padding: 12px 14px; border-radius: 11px; background: var(--blue-tint); font-size: .85rem; line-height: 1.5; }
   .nearby ul { margin: 6px 0 10px; padding-left: 18px; }
   body.has-bulk .wrap { padding-bottom: 140px; }
@@ -346,6 +394,7 @@
   <aside class="side">
     <div class="side-brand"><div class="mark">R<b>|</b>R</div><div class="t">Residential Realtors<span>Maintenance</span></div></div>
     <button class="nav on" type="button" id="navJobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg> Repair jobs <span class="badge" id="sOpen">0</span></button>
+    <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
     <button class="nav" type="button" id="contractorsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg> Contractors</button>
     <button class="nav" type="button" id="navNew"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <div class="side-sec">Links</div>
@@ -356,9 +405,10 @@
 
   <main class="main">
     <header class="mainhead">
-      <h1>Repair jobs</h1><span class="date" id="todayLbl"></span>
+      <h1 id="mainTitle">Repair jobs</h1><span class="date" id="todayLbl"></span>
       <div class="grow"></div>
       <button class="btn small ghost" id="refreshBtn" type="button" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg><span class="mobile-hide">Refresh</span></button>
+      <button class="btn small mobile-only" id="propsBtnM" type="button" title="Properties"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg></button>
       <button class="btn small mobile-only" id="contractorsBtnM" type="button" title="Contractors"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg></button>
       <button class="btn small primary" id="newJobBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
       <button class="btn small ghost mobile-only" id="logoutBtnM" type="button" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg></button>
@@ -370,11 +420,14 @@
         until a PostgreSQL database is added to the Railway project and <code>DATABASE_URL</code> is set on this service.
       </div>
 
+      <div id="jobsView">
       <div class="tiles">
         <div class="tile blue"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg></i>Open jobs</div><div class="v" id="tOpen">–</div></div>
+        <button type="button" class="tile clickable warnish" id="tUnassTile" data-assign="unassigned" title="Show unassigned open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/><path d="M3 3l18 18"/></svg></i>Unassigned</div><div class="v" id="tUnass">–</div></button>
+        <button type="button" class="tile clickable blue" id="tAssTile" data-assign="assigned" title="Show assigned open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg></i>Assigned</div><div class="v" id="tAss">–</div></button>
         <div class="tile alert" id="tOverTile"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17.5v.5"/></svg></i>Overdue</div><div class="v" id="tOver">–</div></div>
-        <div class="tile soonish"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></i>Due in 24 hours</div><div class="v" id="tSoon">–</div></div>
-        <div class="tile"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17 19 7"/></svg></i>Completed this month</div><div class="v" id="tDone">–</div></div>
+        <div class="tile soonish"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></i>Due in 24h</div><div class="v" id="tSoon">–</div></div>
+        <div class="tile"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17 19 7"/></svg></i>Done this month</div><div class="v" id="tDone">–</div></div>
         <div class="tile good"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg></i>Profit this month</div><div class="v" id="tProfit">–</div></div>
       </div>
 
@@ -383,6 +436,7 @@
           <button type="button" data-filter="open" class="on">Open<span class="count" id="cOpen"></span></button>
           <button type="button" data-filter="completed">Completed<span class="count" id="cDone"></span></button>
           <button type="button" data-filter="all">All<span class="count" id="cAll"></span></button>
+          <button type="button" data-filter="archived">Archived<span class="count" id="cArch"></span></button>
         </div>
         <input class="inp search" id="search" type="search" placeholder="Search address, tenant, issue, reference, contractor…">
         <select class="inp" id="sort" aria-label="Sort jobs">
@@ -394,7 +448,37 @@
         </select>
       </div>
 
+      <div class="filter-chip" id="assignChip" hidden><span id="assignChipText"></span><button type="button" id="assignChipClear" aria-label="Clear filter">✕</button></div>
       <div class="list" id="list"></div>
+      </div>
+
+      <!-- PROPERTIES: every property, and all repairs at one -->
+      <div id="propsView" hidden>
+        <div id="propsListView">
+          <div class="toolbar">
+            <input class="inp search" id="propSearch" type="search" placeholder="Search by address or postcode — e.g. Flat 4, 22 Queen St or NN2">
+          </div>
+          <div class="list" id="propList"></div>
+        </div>
+        <div id="propDetail" hidden>
+          <button class="btn small ghost" id="propBack" type="button">← All properties</button>
+          <div class="prop-head">
+            <div><h2 id="propTitle"></h2><div class="prop-sub" id="propSub"></div></div>
+            <div class="prop-actions">
+              <select class="inp" id="propRange" aria-label="Period for the report">
+                <option value="all">All time</option>
+                <option value="365">Last 12 months</option>
+                <option value="90">Last 3 months</option>
+                <option value="30">Last 30 days</option>
+              </select>
+              <button class="btn" id="propPdf" type="button">Landlord report (PDF)</button>
+              <button class="btn primary" id="propShare" type="button">Share report</button>
+            </div>
+          </div>
+          <div class="tiles prop-tiles" id="propTiles"></div>
+          <div class="list" id="propJobs"></div>
+        </div>
+      </div>
     </div>
   </main>
 </div>
@@ -438,8 +522,8 @@
     <div class="jf-sec">Property &amp; tenant</div>
     <div><label class="lbl" for="jfAddress">Property address *</label><input class="inp" id="jfAddress" required placeholder="e.g. Flat 4, 22 Queen St, Northampton NN2 6AB"></div>
     <div class="grid3">
-      <div><label class="lbl" for="jfName">Tenant name</label><input class="inp" id="jfName"></div>
-      <div><label class="lbl" for="jfPhone">Tenant phone</label><input class="inp" id="jfPhone" type="tel"></div>
+      <div class="tenant-find"><label class="lbl" for="jfName">Tenant name</label><input class="inp" id="jfName" autocomplete="off" placeholder="Start typing to find a saved tenant"><div class="tenant-results" id="jfNameResults" hidden></div></div>
+      <div class="tenant-find"><label class="lbl" for="jfPhone">Tenant phone</label><input class="inp" id="jfPhone" type="tel" autocomplete="off"><div class="tenant-results" id="jfPhoneResults" hidden></div></div>
       <div><label class="lbl" for="jfEmail">Tenant email</label><input class="inp" id="jfEmail" type="email"></div>
     </div>
     <div class="jf-sec">The job</div>
@@ -512,6 +596,15 @@
 </div>
 <datalist id="ctTrades"><option value="Handyman"><option value="Plumber"><option value="Electrician"><option value="Electrician (EICR)"><option value="Gas engineer"><option value="Roofer"><option value="Locksmith"><option value="Decorator"><option value="Pest control"><option value="Cleaner"></datalist>
 
+<!-- PHOTO VIEWER -->
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lb-btn lb-close" id="lbClose" type="button" aria-label="Close">✕</button>
+  <button class="lb-btn lb-prev" id="lbPrev" type="button" aria-label="Previous photo">‹</button>
+  <img id="lbImg" alt="">
+  <button class="lb-btn lb-next" id="lbNext" type="button" aria-label="Next photo">›</button>
+  <div class="lb-bar"><span id="lbCount"></span><a id="lbOpen" href="#" target="_blank" rel="noopener">Open full size</a></div>
+</div>
+
 <!-- PREVIEW OF THE CONTRACTOR MESSAGE -->
 <div class="modal" id="waModal" hidden>
   <div class="card">
@@ -569,6 +662,7 @@
     return { value: Math.round((charge - cost) * 100) / 100, estimated: estimated, margin: charge > 0 ? (charge - cost) / charge : null };
   }
   function timeInfo(j){
+    if (j.archived_at) return { cls: '', text: 'Archived ' + fmtShort(j.archived_at) };
     if (j.completed_at) return { cls: 'ok', text: 'Completed ' + fmtShort(j.completed_at) };
     if (!isOpen(j)) return { cls: '', text: j.status };
     if (!j.due_at) return { cls: '', text: 'No deadline' };
@@ -621,6 +715,8 @@
   var openJobId = null;
   var selected = new Set();   // job ids ticked in the list, to send to a contractor together
   var contractors = [];       // the contractor directory
+  var archivedJobs = [];      // deleted jobs, kept in the archive
+  var assignFilter = null;    // 'assigned' / 'unassigned' when a count tile is clicked
   try { var savedSort = localStorage.getItem('rrJobsSort'); if (savedSort) $('sort').value = savedSort; } catch (e) {}
 
   // ---------- Sign in ----------
@@ -657,9 +753,12 @@
     if (!meta.db) { jobs = []; render(); return; }
     return api('GET', '/api/admin/jobs').then(function(d){
       if (!d.ok) return;
-      jobs = d.jobs;
+      // Deleted jobs live in the archive: kept, but out of every day-to-day list and total.
+      archivedJobs = d.jobs.filter(function(j){ return j.archived_at; });
+      jobs = d.jobs.filter(function(j){ return !j.archived_at; });
       rebuildAssignees();
       render();
+      if (view === 'props') { openPropKey ? renderProperty() : renderProps(); }
     });
   }
 
@@ -677,6 +776,27 @@
     $('assignees').innerHTML = opts.join('');
   }
 
+  // One job as a list row (used by the jobs list and the property page).
+  function rowHtml(j){
+      var t = timeInfo(j), p = profitOf(j), on = selected.has(j.id), open = isOpen(j);
+      var pct = deadlinePct(j);
+      return '<div class="jobrow u-' + esc(j.urgency) + (open ? '' : ' closed') + (on ? ' sel' : '') + '">' +
+        '<label class="pick" title="Select to send with other jobs"><input type="checkbox" data-pick="' + j.id + '"' + (on ? ' checked' : '') +
+          ' aria-label="Select ' + esc(j.ref) + '"></label>' +
+        '<button type="button" class="job' + (open ? '' : ' done') + '" data-id="' + j.id + '">' +
+        '<div class="c-ref"><div class="ref">' + esc(j.ref) + '</div><div class="sub"><span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span></div></div>' +
+        '<div class="c-issue"><div class="title">' + esc(j.property_address || 'No address') + '</div>' +
+          '<div class="meta">' + esc(issueOf(j)) + (j.tenant_name ? ' · ' + esc(j.tenant_name) : '') + '</div></div>' +
+        '<div class="c-time"><div class="time ' + t.cls + '">' + esc(t.text) + '</div>' +
+          (open && pct !== null ? '<div class="bar" title="Time used before the deadline"><i class="' + t.cls + '" style="width:' + pct + '%"></i></div>' : '') +
+          '<div class="sub">Received ' + esc(fmtShort(j.created_at)) + '</div></div>' +
+        '<div class="c-status"><span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>' +
+          '<div class="who-chip">' + avatar(j.assigned_to) + '<span class="nm">' + (j.assigned_to ? esc(j.assigned_to) : 'Unassigned') + '</span></div></div>' +
+        '<div class="money ' + (p ? (p.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (p ? gbp(p.value) : '—') +
+          '<small>' + (p ? (p.estimated ? 'estimated' : 'profit') : 'no costs') + '</small></div>' +
+      '</button></div>';
+  }
+
   function render(){
     var now = new Date();
     var open = jobs.filter(isOpen);
@@ -690,6 +810,14 @@
     $('tOpen').textContent = open.length;
     $('tOver').textContent = overdue.length;
     $('tOverTile').classList.toggle('has', overdue.length > 0);
+    var unassigned = open.filter(function(j){ return !String(j.assigned_to || '').trim(); }).length;
+    $('tUnass').textContent = unassigned;
+    $('tAss').textContent = open.length - unassigned;
+    $('tUnassTile').classList.toggle('has', unassigned > 0);
+    $('tUnassTile').classList.toggle('on', assignFilter === 'unassigned');
+    $('tAssTile').classList.toggle('on', assignFilter === 'assigned');
+    $('assignChip').hidden = !assignFilter || filter === 'archived';
+    $('assignChipText').textContent = assignFilter === 'unassigned' ? 'Showing unassigned jobs' : 'Showing assigned jobs';
     $('sOpen').textContent = open.length;
     $('sOpen').classList.toggle('hot', overdue.length > 0);
     $('tSoon').textContent = soon.length;
@@ -698,11 +826,16 @@
     $('cOpen').textContent = open.length;
     $('cDone').textContent = done.length;
     $('cAll').textContent = jobs.length;
+    $('cArch').textContent = archivedJobs.length;
 
     var q = $('search').value.trim().toLowerCase();
-    var list = jobs.filter(function(j){
+    var list = (filter === 'archived' ? archivedJobs : jobs).filter(function(j){
       if (filter === 'open' && !isOpen(j)) return false;
       if (filter === 'completed' && j.status !== 'Completed') return false;
+      if (filter !== 'archived' && assignFilter) {
+        var has = !!String(j.assigned_to || '').trim();
+        if (assignFilter === 'unassigned' ? has : !has) return false;
+      }
       if (!q) return true;
       return [j.ref, j.property_address, j.tenant_name, j.tenant_email, j.tenant_phone, issueOf(j), j.location, j.assigned_to, j.status]
         .join(' ').toLowerCase().indexOf(q) !== -1;
@@ -727,30 +860,12 @@
     var el = $('list');
     if (!list.length) {
       el.innerHTML = '<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 14h8"/></svg>' +
-        (jobs.length ? 'No jobs match.' : (meta.db ? 'No jobs yet — they’ll appear here as soon as a tenant submits a report, or add one with <strong>New job</strong>.' : 'Connect the database to start saving jobs.')) + '</div>';
+        (filter === 'archived' ? 'The archive is empty. Deleted jobs are kept here and can be restored.' : jobs.length ? 'No jobs match.' : (meta.db ? 'No jobs yet — they’ll appear here as soon as a tenant submits a report, or add one with <strong>New job</strong>.' : 'Connect the database to start saving jobs.')) + '</div>';
       renderBulk();
       return;
     }
     el.innerHTML = '<div class="list-head"><span>Job</span><span>Property &amp; issue</span><span>Deadline</span><span>Status &amp; contractor</span><span>Profit</span></div>' +
-      list.map(function(j){
-      var t = timeInfo(j), p = profitOf(j), on = selected.has(j.id), open = isOpen(j);
-      var pct = deadlinePct(j);
-      return '<div class="jobrow u-' + esc(j.urgency) + (open ? '' : ' closed') + (on ? ' sel' : '') + '">' +
-        '<label class="pick" title="Select to send with other jobs"><input type="checkbox" data-pick="' + j.id + '"' + (on ? ' checked' : '') +
-          ' aria-label="Select ' + esc(j.ref) + '"></label>' +
-        '<button type="button" class="job' + (open ? '' : ' done') + '" data-id="' + j.id + '">' +
-        '<div class="c-ref"><div class="ref">' + esc(j.ref) + '</div><div class="sub"><span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span></div></div>' +
-        '<div class="c-issue"><div class="title">' + esc(j.property_address || 'No address') + '</div>' +
-          '<div class="meta">' + esc(issueOf(j)) + (j.tenant_name ? ' · ' + esc(j.tenant_name) : '') + '</div></div>' +
-        '<div class="c-time"><div class="time ' + t.cls + '">' + esc(t.text) + '</div>' +
-          (open && pct !== null ? '<div class="bar" title="Time used before the deadline"><i class="' + t.cls + '" style="width:' + pct + '%"></i></div>' : '') +
-          '<div class="sub">Received ' + esc(fmtShort(j.created_at)) + '</div></div>' +
-        '<div class="c-status"><span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>' +
-          '<div class="who-chip">' + avatar(j.assigned_to) + '<span class="nm">' + (j.assigned_to ? esc(j.assigned_to) : 'Unassigned') + '</span></div></div>' +
-        '<div class="money ' + (p ? (p.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (p ? gbp(p.value) : '—') +
-          '<small>' + (p ? (p.estimated ? 'estimated' : 'profit') : 'no costs') + '</small></div>' +
-      '</button></div>';
-    }).join('');
+      list.map(rowHtml).join('');
     renderBulk();
   }
 
@@ -773,6 +888,19 @@
     });
   });
   $('search').addEventListener('input', render);
+  // Clicking Assigned / Unassigned shows just those open jobs; click again (or the chip) to clear.
+  ['tUnassTile', 'tAssTile'].forEach(function(id){
+    $(id).addEventListener('click', function(){
+      var v = $(id).dataset.assign;
+      assignFilter = assignFilter === v ? null : v;
+      if (assignFilter) {
+        filter = 'open';
+        document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.toggle('on', x.dataset.filter === 'open'); });
+      }
+      render();
+    });
+  });
+  $('assignChipClear').addEventListener('click', function(){ assignFilter = null; render(); });
   $('sort').addEventListener('change', function(){ try { localStorage.setItem('rrJobsSort', $('sort').value); } catch (e) {} render(); });
   $('navJobs').addEventListener('click', function(){ window.scrollTo({ top: 0, behavior: 'smooth' }); });
   $('navNew').addEventListener('click', function(){ $('newJobBtn').click(); });
@@ -804,11 +932,11 @@
     var issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') + (j.location ? ' (' + j.location + ')' : '');
     var lines = [];
     lines.push((number ? number + '. ' : '') + '*' + j.ref + '* — ' + j.urgency.toUpperCase());
-    lines.push('🔧 ' + (issue || 'Repair'));
-    if (j.description) lines.push('📝 ' + j.description);
-    lines.push('👤 ' + (j.tenant_name || 'Tenant') + (j.tenant_phone ? ' — ' + j.tenant_phone : ' — no phone given'));
-    lines.push('🔑 ' + accessLine(j));
-    if (j.due_at && isOpen(j)) lines.push('⏰ Complete by ' + fmtDue(j.due_at));
+    lines.push('Job: ' + (issue || 'Repair'));
+    if (j.description) lines.push('Details: ' + j.description);
+    lines.push('Tenant: ' + (j.tenant_name || 'Tenant') + (j.tenant_phone ? ' — ' + j.tenant_phone : ' — no phone given'));
+    lines.push('Access: ' + accessLine(j));
+    if (j.due_at && isOpen(j)) lines.push('Complete by: ' + fmtDue(j.due_at));
     return lines.join('\n');
   }
   function contractorMessage(list){
@@ -822,13 +950,13 @@
       });
     var out = [];
     if (list.length === 1) {
-      out.push('*Repair job — Residential Realtors*', '', '📍 *' + groups[0].address + '*', jobBlock(list[0]));
+      out.push('*Repair job — Residential Realtors*', '', 'Address: *' + groups[0].address + '*', jobBlock(list[0]));
     } else {
       out.push('*' + list.length + ' repair jobs — Residential Realtors*');
       out.push(groups.length === 1 ? 'All at one property.' : groups.length + ' properties.');
       var n = 0;
       groups.forEach(function(g){
-        out.push('', '📍 *' + g.address + '*' + (g.jobs.length > 1 ? ' (' + g.jobs.length + ' jobs)' : ''));
+        out.push('', 'Address: *' + g.address + '*' + (g.jobs.length > 1 ? ' (' + g.jobs.length + ' jobs)' : ''));
         g.jobs.forEach(function(j){ n += 1; out.push(jobBlock(j, n)); if (g.jobs.length > 1) out.push(''); });
         if (g.jobs.length > 1) out.pop();
       });
@@ -1089,43 +1217,57 @@
     $('jfModal').hidden = false;
     setTimeout(function(){ $('jfAddress').focus(); }, 50);
   }
-  function closeJobForm(){ $('jfModal').hidden = true; jfEditing = null; $('jfFindResults').hidden = true; }
+  function closeJobForm(){ $('jfModal').hidden = true; jfEditing = null; ['jfFindResults', 'jfNameResults', 'jfPhoneResults'].forEach(function(id){ $(id).hidden = true; }); }
 
-  // Search tenants already in the system and fill the form with their latest details.
-  var findTimer = null, findSeq = 0, findResults = [];
-  $('jfFind').addEventListener('input', function(){
-    clearTimeout(findTimer);
-    var q = $('jfFind').value.trim();
-    if (q.length < 2) { $('jfFindResults').hidden = true; return; }
-    findTimer = setTimeout(function(){
-      var mine = ++findSeq;
-      api('GET', '/api/admin/tenants?q=' + encodeURIComponent(q)).then(function(d){
-        if (mine !== findSeq) return;
-        findResults = (d.ok && d.tenants) || [];
-        var el = $('jfFindResults');
-        el.innerHTML = findResults.length ? findResults.map(function(t, i){
-          return '<button type="button" data-i="' + i + '"><strong>' + esc(t.tenant_name || 'No name') + '</strong><span>' +
-            esc([t.property_address, t.tenant_phone, t.tenant_email].filter(Boolean).join(' · ')) +
-            ' · ' + t.job_count + ' job' + (t.job_count == 1 ? '' : 's') + '</span></button>';
-        }).join('') : '<div class="none">No saved tenant matches — just fill in the details below.</div>';
-        el.hidden = false;
-      });
-    }, 220);
-  });
-  $('jfFindResults').addEventListener('mousedown', function(e){
-    var b = e.target.closest('button[data-i]');
-    if (!b) return;
-    e.preventDefault();
-    var t = findResults[Number(b.dataset.i)];
-    var map = { jfAddress: 'property_address', jfName: 'tenant_name', jfPhone: 'tenant_phone', jfEmail: 'tenant_email',
-      jfDays: 'access_days', jfTime: 'access_time', jfAccess: 'access_notes', jfKeys: 'key_permission', jfKeyNotes: 'key_instructions' };
-    Object.keys(map).forEach(function(id){ $(id).value = t[map[id]] || ''; });
-    $('jfFind').value = '';
-    $('jfFindResults').hidden = true;
+  // Saved tenants: the search box at the top, and the Tenant name / phone boxes
+  // themselves, suggest tenants already in the system. Picking one fills in their
+  // number, email, address and access details straight away.
+  var TENANT_FIELDS = { jfAddress: 'property_address', jfName: 'tenant_name', jfPhone: 'tenant_phone', jfEmail: 'tenant_email',
+    jfDays: 'access_days', jfTime: 'access_time', jfAccess: 'access_notes', jfKeys: 'key_permission', jfKeyNotes: 'key_instructions' };
+  function fillTenant(t){
+    Object.keys(TENANT_FIELDS).forEach(function(id){ $(id).value = t[TENANT_FIELDS[id]] || ''; });
     toast('Filled in ' + (t.tenant_name || 'tenant') + '’s details');
-    $('jfCat').focus();
-  });
-  $('jfFind').addEventListener('blur', function(){ setTimeout(function(){ $('jfFindResults').hidden = true; }, 150); });
+  }
+  function attachTenantSuggest(inputId, resultsId, opts){
+    opts = opts || {};
+    var input = $(inputId), box = $(resultsId);
+    var timer = null, seq = 0, results = [];
+    input.addEventListener('input', function(){
+      if (jfEditing && !opts.alsoWhenEditing) return;
+      clearTimeout(timer);
+      var q = input.value.trim();
+      if (q.length < 2) { box.hidden = true; return; }
+      timer = setTimeout(function(){
+        var mine = ++seq;
+        api('GET', '/api/admin/tenants?q=' + encodeURIComponent(q)).then(function(d){
+          if (mine !== seq) return;
+          results = (d.ok && d.tenants) || [];
+          if (!results.length && opts.quietWhenEmpty) { box.hidden = true; return; }
+          box.innerHTML = results.length ? '<div class="tr-head">Saved tenants</div>' + results.map(function(t, i){
+            return '<button type="button" data-i="' + i + '"><strong>' + esc(t.tenant_name || 'No name') +
+              (t.tenant_phone ? ' <em>' + esc(t.tenant_phone) + '</em>' : '') + '</strong><span>' +
+              esc([t.property_address, t.tenant_email].filter(Boolean).join(' · ')) +
+              ' · ' + t.job_count + ' job' + (t.job_count == 1 ? '' : 's') + '</span></button>';
+          }).join('') : '<div class="none">No saved tenant matches — just fill in the details below.</div>';
+          box.hidden = false;
+        });
+      }, 200);
+    });
+    box.addEventListener('mousedown', function(e){
+      var b = e.target.closest('button[data-i]');
+      if (!b) return;
+      e.preventDefault();
+      fillTenant(results[Number(b.dataset.i)]);
+      if (opts.clearAfter) input.value = '';
+      box.hidden = true;
+      $('jfCat').focus();
+    });
+    input.addEventListener('blur', function(){ setTimeout(function(){ box.hidden = true; }, 150); });
+    input.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !box.hidden) { e.stopPropagation(); box.hidden = true; } });
+  }
+  attachTenantSuggest('jfFind', 'jfFindResults', { clearAfter: true });
+  attachTenantSuggest('jfName', 'jfNameResults', { quietWhenEmpty: true });
+  attachTenantSuggest('jfPhone', 'jfPhoneResults', { quietWhenEmpty: true });
   $('newJobBtn').addEventListener('click', function(){ openJobForm(null); });
   $('jfCancel').addEventListener('click', closeJobForm);
   $('jfModal').addEventListener('mousedown', function(e){ if (e.target === $('jfModal')) closeJobForm(); });
@@ -1171,6 +1313,229 @@
       openJob(editingId || d.id);
     });
   });
+
+  // ---------- Properties ----------
+  // Tenants type addresses in slightly different ways, so jobs are grouped by a
+  // tidied-up version of the address (case, punctuation, "Street"/"St" etc.).
+  var ADDR_WORDS = { street: 'st', road: 'rd', avenue: 'ave', lane: 'ln', drive: 'dr', close: 'cl', court: 'ct', place: 'pl', crescent: 'cres', gardens: 'gdns', apartment: 'flat', apt: 'flat' };
+  function propKey(addr){
+    return String(addr || '').replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean)
+      .map(function(w){ return ADDR_WORDS[w] || w; }).join(' ');
+  }
+  function propertiesFromJobs(){
+    var map = {};
+    jobs.forEach(function(j){
+      if (!j.property_address) return;
+      var k = propKey(j.property_address);
+      var p = map[k] || (map[k] = { key: k, address: j.property_address, jobs: [], latest: 0 });
+      p.jobs.push(j);
+      var t = new Date(j.created_at).getTime();
+      if (t > p.latest) p.latest = t;
+      // Show the fullest version of the address (with a postcode if anyone gave one).
+      var better = POSTCODE_RE.test(j.property_address) - POSTCODE_RE.test(p.address) || (j.property_address.length - p.address.length);
+      if (better > 0) p.address = j.property_address;
+    });
+    return Object.keys(map).map(function(k){ return map[k]; }).sort(function(a, b){ return b.latest - a.latest; });
+  }
+  function chargedTotal(list){ return list.reduce(function(sum, j){ return sum + (num(j.landlord_charge) || 0); }, 0); }
+
+  var view = 'jobs', openPropKey = null;
+  function showView(v){
+    view = v;
+    $('jobsView').hidden = v !== 'jobs';
+    $('propsView').hidden = v !== 'props';
+    $('navJobs').classList.toggle('on', v === 'jobs');
+    $('navProps').classList.toggle('on', v === 'props');
+    $('mainTitle').textContent = v === 'jobs' ? 'Repair jobs' : 'Properties';
+    if (v === 'props') { openPropKey ? renderProperty() : renderProps(); }
+    window.scrollTo({ top: 0 });
+  }
+  $('navProps').addEventListener('click', function(){ openPropKey = null; $('propDetail').hidden = true; $('propsListView').hidden = false; showView('props'); });
+  $('propsBtnM').addEventListener('click', function(){ $('navProps').click(); });
+  $('navJobs').addEventListener('click', function(){ showView('jobs'); });
+
+  function renderProps(){
+    var raw = $('propSearch').value.trim().toLowerCase(), q = propKey(raw);
+    var props = propertiesFromJobs().filter(function(p){
+      if (!raw) return true;
+      var text = p.jobs.map(function(j){ return (j.property_address || '').toLowerCase(); }).join(' | ');
+      return (q && p.key.indexOf(q) !== -1) || text.indexOf(raw) !== -1 || text.replace(/\s+/g, '').indexOf(raw.replace(/\s+/g, '')) !== -1;
+    });
+    var el = $('propList');
+    if (!props.length) {
+      el.innerHTML = '<div class="empty">' + (jobs.length ? 'No property matches.' : 'Properties appear here once jobs come in.') + '</div>';
+      return;
+    }
+    el.innerHTML = props.map(function(p){
+      var open = p.jobs.filter(isOpen).length;
+      return '<button type="button" class="prop-row" data-key="' + esc(p.key) + '">' +
+        '<div><div class="addr">' + esc(p.address) + '</div><div class="prop-sub" style="margin-top:2px">' +
+          esc(Array.from(new Set(p.jobs.map(function(j){ return j.tenant_name; }).filter(Boolean))).slice(0, 3).join(', ') || 'No tenant name') + '</div></div>' +
+        '<div class="num">' + p.jobs.length + '<small>repair' + (p.jobs.length === 1 ? '' : 's') + '</small></div>' +
+        '<div class="num' + (open ? ' hot' : '') + '">' + open + '<small>open</small></div>' +
+        '<div class="last">' + esc(fmtShort(p.latest)) + '<small>last reported</small></div>' +
+        '<span class="chev">›</span></button>';
+    }).join('');
+  }
+  $('propSearch').addEventListener('input', renderProps);
+  $('propList').addEventListener('click', function(e){
+    var b = e.target.closest('.prop-row');
+    if (b) openProperty(b.dataset.key);
+  });
+  $('propBack').addEventListener('click', function(){ openPropKey = null; $('propDetail').hidden = true; $('propsListView').hidden = false; renderProps(); });
+  $('propRange').addEventListener('change', function(){ renderProperty(); });
+
+  function openProperty(key){
+    openPropKey = key;
+    $('propsListView').hidden = true;
+    $('propDetail').hidden = false;
+    $('propRange').value = 'all';
+    if (view !== 'props') showView('props'); else renderProperty();
+  }
+  function propertyJobs(){
+    var p = propertiesFromJobs().filter(function(x){ return x.key === openPropKey; })[0];
+    if (!p) return null;
+    var days = $('propRange').value;
+    var from = days === 'all' ? 0 : Date.now() - Number(days) * 86400000;
+    var list = p.jobs.filter(function(j){ return new Date(j.created_at).getTime() >= from; })
+      .sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); });
+    return { property: p, jobs: list, periodLabel: $('propRange').selectedOptions[0].textContent };
+  }
+  function renderProperty(){
+    var d = propertyJobs();
+    if (!d) { $('propBack').click(); return; }
+    var open = d.jobs.filter(isOpen).length, done = d.jobs.filter(function(j){ return j.status === 'Completed'; }).length;
+    $('propTitle').textContent = d.property.address;
+    $('propSub').textContent = d.property.jobs.length + ' repair' + (d.property.jobs.length === 1 ? '' : 's') + ' on record' +
+      (postcodeArea(d.property.address) ? ' · ' + postcodeArea(d.property.address) : '');
+    $('propTiles').innerHTML =
+      '<div class="tile blue"><div class="k">Repairs (' + esc(d.periodLabel.toLowerCase()) + ')</div><div class="v">' + d.jobs.length + '</div></div>' +
+      '<div class="tile alert' + (open ? ' has' : '') + '"><div class="k">Open</div><div class="v">' + open + '</div></div>' +
+      '<div class="tile"><div class="k">Completed</div><div class="v">' + done + '</div></div>' +
+      '<div class="tile good"><div class="k">Charged to landlord</div><div class="v">' + gbp(chargedTotal(d.jobs)) + '</div></div>';
+    $('propJobs').innerHTML = d.jobs.length ? d.jobs.map(rowHtml).join('') : '<div class="empty">No repairs in this period.</div>';
+  }
+  $('propJobs').addEventListener('click', function(e){
+    var b = e.target.closest('.job');
+    if (b) openJob(Number(b.dataset.id));
+  });
+  $('propJobs').addEventListener('change', function(e){
+    var id = Number(e.target.dataset.pick);
+    if (!id) return;
+    if (e.target.checked) selected.add(id); else selected.delete(id);
+    e.target.closest('.jobrow').classList.toggle('sel', e.target.checked);
+    renderBulk();
+  });
+
+  // ---------- Landlord PDF reports ----------
+  // For landlords: what was reported, what happened, and what they're charged.
+  // Internal costs, profit and contractor notes are never included.
+  function pdfSafe(t){ return String(t == null ? '' : t).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/[^\x00-\xFF]/g, ''); }
+  function landlordPdf(list, o){
+    var J = window.jspdf && window.jspdf.jsPDF;
+    if (!J) { toast('The PDF tool didn’t load — check your connection and refresh'); return null; }
+    var doc = new J({ unit: 'pt', format: 'a4' });
+    var W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 44, y = M;
+    var RED = [217, 38, 46], INK = [15, 17, 21], SOFT = [93, 100, 112], LINE = [228, 230, 235];
+    function page(needed){ if (y + (needed || 40) > H - M) { doc.addPage(); y = M; } }
+    function text(t, x, size, style, colour, maxW){
+      doc.setFont('helvetica', style || 'normal'); doc.setFontSize(size); doc.setTextColor.apply(doc, colour || INK);
+      var lines = doc.splitTextToSize(pdfSafe(t), maxW || (W - M - x));
+      // y is the top of the text; each line moves it down by one line height.
+      lines.forEach(function(line){ page(size + 4); y += size; doc.text(line, x, y); y += size * 0.4; });
+    }
+    function row(label, value){
+      if (!value) return;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor.apply(doc, SOFT);
+      page(16); doc.text(pdfSafe(label), M, y + 9.5);
+      text(value, M + 130, 9.5, 'normal', INK, W - M * 2 - 130);
+      y += 1;
+    }
+    // Header
+    doc.setFillColor.apply(doc, INK); doc.rect(0, 0, W, 6, 'F');
+    doc.setFillColor.apply(doc, RED); doc.rect(0, 6, W, 2, 'F');
+    y = M + 6;
+    text('RESIDENTIAL REALTORS', M, 9, 'bold', RED);
+    y += 2;
+    text(o.title, M, 20, 'bold', INK);
+    text(o.address, M, 11.5, 'normal', INK);
+    text(o.subtitle + ' · Prepared ' + new Date().toLocaleDateString('en-GB', { timeZone: TZ, day: 'numeric', month: 'long', year: 'numeric' }), M, 9, 'normal', SOFT);
+    y += 6;
+    // Summary
+    if (o.summary) {
+      doc.setDrawColor.apply(doc, LINE); doc.setFillColor(247, 248, 250);
+      page(56); doc.roundedRect(M, y, W - M * 2, 46, 6, 6, 'FD');
+      var cols = o.summary, cw = (W - M * 2) / cols.length;
+      cols.forEach(function(c, i){
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor.apply(doc, SOFT);
+        doc.text(pdfSafe(c[0]).toUpperCase(), M + 14 + i * cw, y + 17);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor.apply(doc, INK);
+        doc.text(pdfSafe(c[1]), M + 14 + i * cw, y + 35);
+      });
+      y += 64;
+    }
+    // Jobs
+    list.forEach(function(j, idx){
+      page(110);
+      doc.setDrawColor.apply(doc, LINE); doc.line(M, y - 8, W - M, y - 8);
+      y += 6;
+      var issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' - ') || 'Repair';
+      text(j.ref + '  ·  ' + issue, M, 11.5, 'bold', INK);
+      y += 2;
+      row('Status', j.status + (j.urgency ? ' (' + j.urgency + ')' : ''));
+      row('Reported', fmtDate(j.created_at) + (j.source && j.source !== 'Online report' ? ' via ' + j.source.toLowerCase() : ''));
+      if (!o.hideLocation) row('Location', j.location);
+      row('Description', j.description);
+      row('Contractor', j.assigned_to);
+      row('Completed', j.completed_at ? fmtDate(j.completed_at) : '');
+      row('Work carried out', j.completion_notes);
+      row('Charge to landlord', j.landlord_charge != null ? gbp(j.landlord_charge).replace('−', '-') : 'Not yet confirmed');
+      if (o.history && o.history.length) {
+        y += 4; text('Progress', M, 9.5, 'bold', INK);
+        o.history.forEach(function(h){ row(fmtShort(h.created_at), h.body); });
+      }
+      y += 12;
+    });
+    if (!list.length) text('No repairs were recorded in this period.', M, 10.5, 'normal', SOFT);
+    // Footer
+    var pages = doc.internal.getNumberOfPages();
+    for (var i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor.apply(doc, SOFT);
+      doc.text('Residential Realtors · Repair report · Page ' + i + ' of ' + pages, M, H - 24);
+    }
+    return doc;
+  }
+  function pdfName(prefix, address){
+    return prefix + '-' + String(address || 'property').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 50) + '.pdf';
+  }
+  function deliverPdf(doc, name, share){
+    if (!doc) return;
+    var blob = doc.output('blob');
+    var file = typeof File !== 'undefined' ? new File([blob], name, { type: 'application/pdf' }) : null;
+    // On phones this opens the share sheet (WhatsApp, email…); elsewhere it downloads.
+    if (share && file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: name.replace(/\.pdf$/, '') })['catch'](function(){});
+      return;
+    }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
+    toast(share ? 'Downloaded — attach it to an email or WhatsApp to the landlord' : 'PDF downloaded');
+  }
+  function propertyReport(share){
+    var d = propertyJobs();
+    if (!d) return;
+    var open = d.jobs.filter(isOpen).length;
+    var doc = landlordPdf(d.jobs, {
+      title: 'Property repair report', address: d.property.address, subtitle: d.periodLabel,
+      summary: [['Repairs', String(d.jobs.length)], ['Open', String(open)], ['Completed', String(d.jobs.filter(function(j){ return j.status === 'Completed'; }).length)], ['Charged', gbp(chargedTotal(d.jobs))]]
+    });
+    deliverPdf(doc, pdfName('Repair-report', d.property.address), share);
+  }
+  $('propPdf').addEventListener('click', function(){ propertyReport(false); });
+  $('propShare').addEventListener('click', function(){ propertyReport(true); });
 
   // ---------- Tenant message templates ----------
   var SIGN_OFF = '\n\nKind regards,\nResidential Realtors Maintenance Team';
@@ -1219,13 +1584,13 @@
     openJobId = id;
     api('GET', '/api/admin/jobs/' + id).then(function(d){
       if (!d.ok) { toast('Couldn’t open that job.'); return; }
-      renderJob(d.job, d.updates);
+      renderJob(d.job, d.updates, d.photos || []);
       $('scrim').hidden = false;
       $('drawer').hidden = false;
     });
   }
 
-  function renderJob(j, updates){
+  function renderJob(j, updates, photos){
     $('dTitle').textContent = j.ref;
     $('dUrg').innerHTML = '<span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span>';
     $('dStatus').innerHTML = '<span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>';
@@ -1239,6 +1604,22 @@
     };
 
     $('dBody').innerHTML =
+      // Archived notice
+      (j.archived_at ? '<div class="archived-note"><div><strong>This job was deleted on ' + esc(fmtDate(j.archived_at)) + '</strong> and is kept in the archive.' +
+          (j.archived_reason ? '<br>Reason: ' + esc(j.archived_reason) : '') + '</div>' +
+          '<button class="btn small" id="restoreJob" type="button">Restore job</button></div>' : '') +
+
+      // Photos
+      '<div class="card"><h3>Photos <span class="count-chip">' + photos.length + '</span><span style="flex:1"></span>' +
+          '<button class="btn small" id="addPhotos" type="button">+ Add photos</button><input type="file" id="phInput" accept="image/*" multiple hidden></h3>' +
+        (photos.length ? '<div class="gallery">' + photos.map(function(ph, i){
+          return '<button type="button" class="gal-item" data-i="' + i + '" title="' + esc((ph.added_by === 'staff' ? 'Added by staff' : 'From the tenant') + ' · ' + fmtShort(ph.created_at)) + '">' +
+            '<img loading="lazy" src="/api/admin/photos/' + ph.id + '" alt="Photo ' + (i + 1) + '">' +
+            (ph.added_by === 'staff' ? '<span class="gal-tag">Staff</span>' : '') + '</button>';
+        }).join('') + '</div>'
+          : '<p class="muted-note">' + (j.photo_count ? 'This report\u2019s ' + j.photo_count + ' photo' + (j.photo_count === 1 ? ' is' : 's are') + ' inside the tenant\u2019s original PDF (it was sent before photos were saved separately).' : 'No photos yet.') + '</p>') +
+      '</div>' +
+
       // Timing
       '<div class="card"><h3>Timing</h3><div class="timebar">' +
         '<span class="time ' + t.cls + '" style="font-size:1rem">' + esc(t.text) + '</span></div>' +
@@ -1340,13 +1721,17 @@
         ['Property', j.property_address],
         ['Access days', j.access_days], ['Best time', j.access_time], ['Access notes', j.access_notes],
         ['Keys to contractor', j.key_permission], ['Contractor notes', j.key_instructions]
-      ]) + '</div>' +
+      ]) + (j.property_address ? '<div class="job-links"><button class="btn small" id="propLink" type="button">All repairs at this property</button></div>' : '') + '</div>' +
       '<div class="card"><h3>Reported issue</h3>' + rows([
         ['Issue type', j.category], ['What’s affected', j.affected], ['What’s happening', j.symptom],
         ['Location', j.location], ['Urgency (tenant)', j.urgency], ['Description', j.description],
         ['Photos', j.photo_count ? j.photo_count + ' (in the PDF)' : 'None']
       ]) +
-        (j.has_pdf ? '<div class="row-actions"><a class="btn" href="/api/admin/jobs/' + j.id + '/pdf" target="_blank" rel="noopener">Open original report (PDF)</a></div>' : '') +
+        '<div class="row-actions">' +
+          (j.has_pdf ? '<a class="btn" href="/api/admin/jobs/' + j.id + '/pdf" target="_blank" rel="noopener">Tenant\u2019s original report (PDF)</a>' : '') +
+          '<button class="btn" id="jobPdf" type="button">Landlord report (PDF)</button>' +
+          '<button class="btn primary" id="jobPdfShare" type="button">Share with landlord</button>' +
+        '</div>' +
       '</div>' +
 
       // Timeline
@@ -1358,9 +1743,14 @@
           var label = { created: 'Job created', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', contractor_message: 'Sent to contractor', email: 'Email', completed: 'Completed' }[u.kind] || 'Update';
           return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + '</span>' + esc(u.body) + '</li>';
         }).join('') + '</ul>' +
-      '</div>';
+      '</div>' +
 
-    wireJob(j);
+      // Delete (to the archive)
+      (j.archived_at ? '' : '<div class="card danger-card"><h3>Delete job</h3>' +
+        '<p class="muted-note">Deleting moves the job to the <strong>Archived</strong> tab. Nothing is lost — its details, photos and history are kept, and it can be restored at any time.</p>' +
+        '<div class="row-actions"><button class="btn danger" id="deleteJob" type="button">Delete job</button></div></div>');
+
+    wireJob(j, photos);
   }
 
   // Starting points for the AI email, per recipient; clicking one fills the box.
@@ -1447,8 +1837,101 @@
     });
   }
 
-  function wireJob(j){
+  // Photos added by staff are shrunk the same way as the tenant page does.
+  function shrinkImage(file){
+    return new Promise(function(resolve){
+      var reader = new FileReader();
+      reader.onerror = function(){ resolve(null); };
+      reader.onload = function(e){
+        var original = e.target.result, img = new Image();
+        img.onerror = function(){ resolve(original); };
+        img.onload = function(){
+          try {
+            var scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+            var c = document.createElement('canvas');
+            c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+            var ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            var small = c.toDataURL('image/jpeg', 0.82);
+            resolve(small.length < original.length ? small : original);
+          } catch (err) { resolve(original); }
+        };
+        img.src = original;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Full-screen photo viewer with previous / next (arrow keys too).
+  var lbPhotos = [], lbIndex = 0;
+  function showPhoto(i){
+    lbIndex = (i + lbPhotos.length) % lbPhotos.length;
+    var url = '/api/admin/photos/' + lbPhotos[lbIndex].id;
+    $('lbImg').src = url; $('lbOpen').href = url;
+    $('lbCount').textContent = 'Photo ' + (lbIndex + 1) + ' of ' + lbPhotos.length;
+    $('lbPrev').hidden = $('lbNext').hidden = lbPhotos.length < 2;
+  }
+  function openLightbox(list, i){ lbPhotos = list; $('lightbox').hidden = false; showPhoto(i); }
+  function closeLightbox(){ $('lightbox').hidden = true; $('lbImg').removeAttribute('src'); }
+  $('lbClose').addEventListener('click', closeLightbox);
+  $('lbPrev').addEventListener('click', function(){ showPhoto(lbIndex - 1); });
+  $('lbNext').addEventListener('click', function(){ showPhoto(lbIndex + 1); });
+  $('lightbox').addEventListener('click', function(e){ if (e.target === $('lightbox')) closeLightbox(); });
+  document.addEventListener('keydown', function(e){
+    if ($('lightbox').hidden) return;
+    if (e.key === 'ArrowLeft') showPhoto(lbIndex - 1);
+    else if (e.key === 'ArrowRight') showPhoto(lbIndex + 1);
+    else if (e.key === 'Escape') { e.stopImmediatePropagation(); closeLightbox(); }
+  }, true);
+
+  function wireJob(j, photos){
+    photos = photos || [];
     wireAiEmail(j);
+    document.querySelectorAll('.gal-item').forEach(function(b){
+      b.addEventListener('click', function(){ openLightbox(photos, Number(b.dataset.i)); });
+    });
+    $('addPhotos').addEventListener('click', function(){ $('phInput').click(); });
+    $('phInput').addEventListener('change', function(){
+      var files = Array.prototype.filter.call($('phInput').files, function(f){ return f.type.indexOf('image/') === 0; }).slice(0, 30);
+      if (!files.length) return;
+      $('addPhotos').disabled = true; $('addPhotos').textContent = 'Uploading…';
+      Promise.all(files.map(shrinkImage)).then(function(urls){
+        var list = urls.filter(Boolean).map(function(u, i){ return { name: files[i].name, dataUrl: u }; });
+        return api('POST', '/api/admin/jobs/' + j.id + '/photos', { photos: list });
+      }).then(function(d){
+        if (!d || !d.ok) { toast('Couldn\u2019t add the photos'); $('addPhotos').disabled = false; $('addPhotos').textContent = '+ Add photos'; return; }
+        toast(d.added + ' photo' + (d.added === 1 ? '' : 's') + ' added');
+        openJob(j.id); loadJobs();
+      });
+    });
+    if ($('deleteJob')) $('deleteJob').addEventListener('click', function(){
+      var reason = prompt('Delete ' + j.ref + '? It will be moved to the archive and can be restored.\n\nReason (optional):', '');
+      if (reason === null) return;
+      api('POST', '/api/admin/jobs/' + j.id + '/archive', { reason: reason }).then(function(d){
+        if (!d.ok) { toast('Couldn\u2019t delete the job'); return; }
+        selected.delete(j.id);
+        toast(j.ref + ' moved to the archive');
+        closeDrawer(); loadJobs();
+      });
+    });
+    if ($('restoreJob')) $('restoreJob').addEventListener('click', function(){
+      api('POST', '/api/admin/jobs/' + j.id + '/restore', {}).then(function(d){
+        if (!d.ok) { toast('Couldn\u2019t restore the job'); return; }
+        toast(j.ref + ' restored'); openJob(j.id); loadJobs();
+      });
+    });
+    if ($('propLink')) {
+      var pk = propKey(j.property_address);
+      var count = jobs.filter(function(o){ return propKey(o.property_address) === pk; }).length;
+      $('propLink').textContent = 'All repairs at this property (' + count + ')';
+      $('propLink').addEventListener('click', function(){ closeDrawer(); openProperty(pk); });
+    }
+    function jobReport(share){
+      deliverPdf(landlordPdf([j], { title: 'Repair report ' + j.ref, address: j.property_address || '', subtitle: 'Single repair' }),
+        pdfName('Repair-' + j.ref, j.property_address), share);
+    }
+    $('jobPdf').addEventListener('click', function(){ jobReport(false); });
+    $('jobPdfShare').addEventListener('click', function(){ jobReport(true); });
     $('editDetails').addEventListener('click', function(){ openJobForm(j); });
     function showAssigneeContact(){
       var c = contractorByName($('fAssigned').value);
