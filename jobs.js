@@ -16,6 +16,22 @@ try { Pool = require('pg').Pool; } catch (e) { /* pg not installed: jobs disable
 // be changed in the dashboard; these only set the starting point.
 const DUE_HOURS = { Emergency: 24, Urgent: 24 * 7, Routine: 24 * 28 };
 const URGENCIES = ['Emergency', 'Urgent', 'Routine'];
+
+// Payment details printed on landlord invoices. Kept in Railway variables, not
+// in this public code, and only sent to signed-in staff:
+//   INVOICE_PAYEE, INVOICE_SORT_CODE, INVOICE_ACCOUNT_NUMBER,
+//   INVOICE_PAYMENT_DAYS (optional, default 14), INVOICE_FROM (optional),
+//   INVOICE_ADDRESS, INVOICE_COMPANY_NO, INVOICE_VAT_NO (optional; default to the registered details below)
+const INVOICE = {
+  payee: process.env.INVOICE_PAYEE || '',
+  sortCode: process.env.INVOICE_SORT_CODE || '',
+  accountNumber: process.env.INVOICE_ACCOUNT_NUMBER || '',
+  paymentDays: parseInt(process.env.INVOICE_PAYMENT_DAYS, 10) || 14,
+  from: process.env.INVOICE_FROM || 'Residential Realtors',
+  address: process.env.INVOICE_ADDRESS || '28-30 Harper Road, London, SE1 6AD',
+  companyNo: process.env.INVOICE_COMPANY_NO || '08760284',
+  vatNo: process.env.INVOICE_VAT_NO || '178090487'
+};
 const STATUSES = ['New', 'Assigned', 'Contractor booked', 'Awaiting parts', 'On hold', 'Completed', 'Cancelled'];
 
 const SCHEMA = `
@@ -62,6 +78,11 @@ CREATE TABLE IF NOT EXISTS job_updates (
 CREATE INDEX IF NOT EXISTS job_updates_job_idx ON job_updates (job_id, created_at);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'Online report';
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_name TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_email TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_number TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_total NUMERIC(10,2);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS archived_reason TEXT;
 CREATE TABLE IF NOT EXISTS job_photos (
   id         SERIAL PRIMARY KEY,
@@ -117,7 +138,9 @@ const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenan
   tenant_phone, property_address, category, affected, symptom, location, description, access_days,
   access_time, access_notes, key_permission, key_instructions, assigned_to, next_steps,
   estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
-  archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved`;
+  archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved,
+  (SELECT array_agg(ph.id ORDER BY ph.id) FROM job_photos ph WHERE ph.job_id = jobs.id) AS photo_ids,
+  landlord_name, landlord_email, invoice_number, invoiced_at, invoice_total`;
 
 function str(v, max) {
   if (v === undefined || v === null) return null;
@@ -260,6 +283,7 @@ module.exports = function mountJobs(app, opts) {
     if (!ADMIN_PASSWORD) return res.status(503).json({ ok: false, error: 'admin-not-configured' });
     if (!loginAllowed(req.ip)) return res.status(429).json({ ok: false, error: 'too-many-attempts' });
     if (!passwordMatches((req.body || {}).password)) return res.status(401).json({ ok: false, error: 'wrong-password' });
+    loginAttempts.delete(req.ip); // only failed attempts count towards the limit
     res.setHeader('Set-Cookie', 'rr_admin=' + makeToken() + '; Path=/; HttpOnly; SameSite=Strict; Max-Age=' +
       (SESSION_DAYS * 86400) + (req.secure ? '; Secure' : ''));
     res.json({ ok: true });
@@ -280,7 +304,7 @@ module.exports = function mountJobs(app, opts) {
   });
 
   app.get('/api/admin/me', async function (req, res) {
-    res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES });
+    res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES });
   });
 
   // Wraps a handler: no database -> 503; unexpected errors -> 500 (logged).
@@ -352,6 +376,8 @@ module.exports = function mountJobs(app, opts) {
     key_permission: { clean: function (v) { return v === 'Yes' || v === 'No' ? v : (v ? undefined : null); }, label: 'Keys to contractor' },
     key_instructions: { clean: function (v) { return str(v, 1000); }, label: 'Contractor notes' },
     source: { clean: function (v) { return SOURCES.indexOf(v) !== -1 ? v : undefined; }, label: 'Came in via' },
+    landlord_name: { clean: function (v) { return str(v, 200); }, label: 'Landlord' },
+    landlord_email: { clean: function (v) { return str(v, 200); }, label: 'Landlord email' },
     estimated_cost: { clean: money, label: 'Estimated cost', show: gbp },
     actual_cost: { clean: money, label: 'Actual cost', show: gbp },
     landlord_charge: { clean: money, label: 'Charge to landlord', show: gbp }
@@ -513,6 +539,71 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true });
   }));
 
+  // ---------- Landlord invoices ----------
+  // The PDF is made in the browser; this records that it was issued (number,
+  // date, total) and remembers the landlord for this job.
+  app.post('/api/admin/jobs/:id/invoice', withDb(async function (p, req, res) {
+    const id = jobId(req);
+    const b = req.body || {};
+    const total = money(b.total);
+    if (total === undefined || total === null) return res.status(400).json({ ok: false, error: 'bad-total' });
+    const number = str(b.invoice_number, 50) || ('INV-' + refFor(id));
+    const r = await p.query(
+      `UPDATE jobs SET invoice_number = $2, invoiced_at = now(), invoice_total = $3,
+         landlord_name = coalesce($4, landlord_name), landlord_email = coalesce($5, landlord_email), updated_at = now()
+       WHERE id = $1 RETURNING id`, [id, number, total, str(b.landlord_name, 200), str(b.landlord_email, 200)]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
+      [id, 'email', 'Invoice ' + number + ' issued to ' + (str(b.landlord_name, 200) || 'the landlord') + ' for ' + gbp(total) +
+        (str(b.how, 100) ? ' (' + str(b.how, 100) + ')' : '') + '.']);
+    res.json({ ok: true, invoice_number: number });
+  }));
+
+  // Suggests an itemised breakdown of the charge to the landlord (labour,
+  // materials, call-out…) that adds up exactly to the total staff entered. It's
+  // a starting point for staff to check and edit, never sent without review.
+  app.post('/api/admin/jobs/:id/ai-invoice', withDb(async function (p, req, res) {
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    const total = money((req.body || {}).total);
+    if (!total) return res.status(400).json({ ok: false, error: 'bad-total' });
+    const r = await p.query('SELECT * FROM jobs WHERE id = $1', [jobId(req)]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    const j = r.rows[0];
+    const fact = function (label, v) { return v ? '- ' + label + ': ' + String(v).replace(/\s+/g, ' ').trim() + '\n' : ''; };
+    const prompt = 'You itemise invoices for Residential Realtors, a UK letting agent, billing a landlord for a repair.\n\n' +
+      'Repair:\n' + fact('Issue', [j.category, j.affected, j.symptom].filter(Boolean).join(' – ')) + fact('Location', j.location) +
+      fact('Tenant description', j.description) + fact('Work carried out', j.completion_notes) + fact('Contractor', j.assigned_to) +
+      '\nThe total to charge the landlord is £' + total.toFixed(2) + ' (excluding VAT).\n\n' +
+      'Break this total into 2 to 5 clear invoice lines typical for this kind of UK repair, e.g. labour (with a sensible number of hours), ' +
+      'materials or parts, call-out or attendance, waste disposal, or management/arrangement fee — only lines that fit this job. ' +
+      'Each description should be short and specific to the job. Amounts in pounds with 2 decimals, and they must add up to exactly £' + total.toFixed(2) + '. ' +
+      'Do not invent brand names, part numbers or dates. ' +
+      'Reply with ONLY JSON: {"lines": [{"desc": "...", "amount": 0.00}]}';
+    const result = await opts.askAi(prompt, true);
+    if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
+    let lines = null;
+    try {
+      const parsed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim());
+      lines = (parsed.lines || []).map(function (l) { return { desc: str(l.desc, 300), amount: money(l.amount) }; })
+        .filter(function (l) { return l.desc && typeof l.amount === 'number' && l.amount > 0; }).slice(0, 8);
+    } catch (e) { lines = null; }
+    if (!lines || !lines.length) return res.status(502).json({ ok: false, error: 'ai-bad-reply' });
+    // Make the lines add up to the total exactly (adjust the largest line by any rounding gap).
+    const sum = Math.round(lines.reduce(function (a, l) { return a + l.amount; }, 0) * 100);
+    const gap = Math.round(total * 100) - sum;
+    if (gap !== 0) {
+      if (Math.abs(gap) > Math.round(total * 100) * 0.2) {
+        // Too far off to trust: scale every line to the total.
+        const factor = total / (sum / 100);
+        lines.forEach(function (l) { l.amount = Math.round(l.amount * factor * 100) / 100; });
+      }
+      const again = Math.round(total * 100) - Math.round(lines.reduce(function (a, l) { return a + l.amount; }, 0) * 100);
+      const biggest = lines.reduce(function (a, l) { return l.amount > a.amount ? l : a; }, lines[0]);
+      biggest.amount = Math.round((biggest.amount * 100 + again)) / 100;
+    }
+    res.json({ ok: true, lines: lines });
+  }));
+
   // ---------- Photos ----------
   app.get('/api/admin/photos/:id', withDb(async function (p, req, res) {
     const r = await p.query('SELECT mime, data FROM job_photos WHERE id = $1', [jobId(req)]);
@@ -553,6 +644,14 @@ module.exports = function mountJobs(app, opts) {
     const r = await p.query('UPDATE jobs SET archived_at = NULL, archived_reason = NULL, updated_at = now() WHERE id = $1 AND archived_at IS NOT NULL RETURNING id', [id]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found-or-not-archived' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', 'Job restored from the archive.']);
+    res.json({ ok: true });
+  }));
+
+  // Permanently delete a job, with its photos and history (cascade). Only
+  // jobs already in the archive can be deleted this way.
+  app.delete('/api/admin/jobs/:id', withDb(async function (p, req, res) {
+    const r = await p.query('DELETE FROM jobs WHERE id = $1 AND archived_at IS NOT NULL RETURNING id', [jobId(req)]);
+    if (!r.rows.length) return res.status(409).json({ ok: false, error: 'not-archived' });
     res.json({ ok: true });
   }));
 
