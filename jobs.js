@@ -995,9 +995,14 @@ module.exports = function mountJobs(app, opts) {
       '- contractor: the contractor name from the list that fits the trade or was named, or "" if none fits\n' +
       '- send: true if the instruction asks to send, email or message it to the contractor, or to get them to arrange it; otherwise false\n' +
       '- warning: if any task involves a gas appliance or gas supply (hob, cooker, boiler, gas fire, gas smell) and the chosen contractor is not a gas engineer, a short note such as "Gas hob fault needs a Gas Safe registered engineer"; otherwise ""\n' +
-      'Never invent tenant names, phone numbers, addresses or dates; only use what is in the instruction.\n' +
-      'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], "understood": true}. ' +
-      'If the instruction is not about creating a job, reply {"jobs": [], "understood": false}.';
+      'Never invent tenant names, phone numbers, addresses or dates; only use what is in the instruction.\n\n' +
+      'The instruction may instead (or also) ask to ADD A CONTACT: a new contractor, a landlord, or a tenant (e.g. "add a contractor: Miguel, cleaner, NW Cleaning, 07404 043045" or "Mrs Jones is the landlord of 9 Park Road"). ' +
+      'Do not make a job for that. Put each contact in "contacts" with: type ("contractor", "landlord" or "tenant"), name (the person, as given), company (business name if given, else ""), ' +
+      'trade (for contractors: e.g. "Cleaner", "Plumber", "Handyman", "Electrician", "Gas safety"; else ""), phone, email, address (a landlord\'s own postal address if given, else ""), ' +
+      'property (for landlords and tenants: the property they own or live at, if given, else ""), notes (anything else useful, else "").\n' +
+      'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], ' +
+      '"contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "understood": true}. ' +
+      'Use [] for jobs or contacts when there are none. If the instruction is neither about a job nor a contact, reply {"jobs": [], "contacts": [], "understood": false}.';
     const result = await opts.askAi(prompt, true);
     if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
     let parsed = null;
@@ -1013,7 +1018,15 @@ module.exports = function mountJobs(app, opts) {
         }).filter(function (t) { return t.name || t.phone || t.email; })
       };
     }).filter(function (j) { return j.address || j.title; });
-    res.json({ ok: true, jobs: jobs, understood: parsed.understood !== false && jobs.length > 0 });
+    const contacts = (Array.isArray(parsed.contacts) ? parsed.contacts : []).slice(0, 10).map(function (c) {
+      return {
+        type: ['contractor', 'landlord', 'tenant'].indexOf(c && c.type) !== -1 ? c.type : 'contractor',
+        name: str(c && c.name, 200) || '', company: str(c && c.company, 200) || '', trade: str(c && c.trade, 100) || '',
+        phone: str(c && c.phone, 50) || '', email: str(c && c.email, 200) || '', address: str(c && c.address, 500) || '',
+        property: str(c && c.property, 300) || '', notes: str(c && c.notes, 500) || ''
+      };
+    }).filter(function (c) { return c.name || c.company || c.phone || c.email; });
+    res.json({ ok: true, jobs: jobs, contacts: contacts, understood: parsed.understood !== false && (jobs.length > 0 || contacts.length > 0) });
   }));
 
   app.post('/api/admin/jobs/:id/ai-invoice', withDb(async function (p, req, res) {
