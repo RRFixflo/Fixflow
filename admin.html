@@ -335,6 +335,26 @@
   .prop-tiles { grid-template-columns: repeat(4, 1fr); }
   @media (max-width: 800px) { .prop-row { grid-template-columns: minmax(0,1fr) auto; } .prop-row .last, .prop-row .chev { display: none; } .prop-row .num:nth-of-type(3) { display: none; } .prop-tiles { grid-template-columns: repeat(2, 1fr); } }
   .job-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .count-chip { font-family: var(--sans); font-size: .72rem; font-weight: 600; color: var(--ink-soft); background: var(--panel-2); border: 1px solid var(--line); padding: 1px 8px; border-radius: 999px; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+  .gal-item { position: relative; aspect-ratio: 1; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel-2); cursor: zoom-in; }
+  .gal-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .25s var(--ease); }
+  .gal-item:hover img { transform: scale(1.05); }
+  .gal-tag { position: absolute; left: 6px; bottom: 6px; font-size: .64rem; font-weight: 700; background: rgba(0,0,0,.65); color: #fff; padding: 1px 6px; border-radius: 5px; }
+  .lightbox { position: fixed; inset: 0; z-index: 70; background: rgba(5,6,8,.92); display: grid; place-items: center; animation: fade .15s; }
+  .lightbox img { max-width: calc(100vw - 120px); max-height: calc(100vh - 110px); border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .lb-btn { position: absolute; border: 0; background: rgba(255,255,255,.1); color: #fff; width: 44px; height: 44px; border-radius: 50%; font-size: 1.5rem; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+  .lb-btn:hover { background: rgba(255,255,255,.2); }
+  .lb-close { top: 16px; right: 16px; font-size: 1rem; }
+  .lb-prev { left: 16px; top: 50%; transform: translateY(-50%); }
+  .lb-next { right: 16px; top: 50%; transform: translateY(-50%); }
+  .lb-bar { position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; gap: 18px; color: rgba(255,255,255,.8); font-size: .85rem; }
+  .lb-bar a { color: #fff; }
+  @media (max-width: 640px) { .lightbox img { max-width: 100vw; border-radius: 0; } .lb-prev { left: 6px; } .lb-next { right: 6px; } }
+  .archived-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--warn-tint); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); font-size: .88rem; line-height: 1.5; }
+  .danger-card { border-color: color-mix(in srgb, var(--brick) 25%, var(--line)); }
+  .btn.danger { color: var(--brick); border-color: color-mix(in srgb, var(--brick) 40%, var(--line-strong)); }
+  .btn.danger:hover { background: var(--brick); color: #fff; border-color: var(--brick); }
   .nearby { margin-top: 14px; padding: 12px 14px; border-radius: 11px; background: var(--blue-tint); font-size: .85rem; line-height: 1.5; }
   .nearby ul { margin: 6px 0 10px; padding-left: 18px; }
   body.has-bulk .wrap { padding-bottom: 140px; }
@@ -406,6 +426,7 @@
           <button type="button" data-filter="open" class="on">Open<span class="count" id="cOpen"></span></button>
           <button type="button" data-filter="completed">Completed<span class="count" id="cDone"></span></button>
           <button type="button" data-filter="all">All<span class="count" id="cAll"></span></button>
+          <button type="button" data-filter="archived">Archived<span class="count" id="cArch"></span></button>
         </div>
         <input class="inp search" id="search" type="search" placeholder="Search address, tenant, issue, reference, contractor…">
         <select class="inp" id="sort" aria-label="Sort jobs">
@@ -564,6 +585,15 @@
 </div>
 <datalist id="ctTrades"><option value="Handyman"><option value="Plumber"><option value="Electrician"><option value="Electrician (EICR)"><option value="Gas engineer"><option value="Roofer"><option value="Locksmith"><option value="Decorator"><option value="Pest control"><option value="Cleaner"></datalist>
 
+<!-- PHOTO VIEWER -->
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lb-btn lb-close" id="lbClose" type="button" aria-label="Close">✕</button>
+  <button class="lb-btn lb-prev" id="lbPrev" type="button" aria-label="Previous photo">‹</button>
+  <img id="lbImg" alt="">
+  <button class="lb-btn lb-next" id="lbNext" type="button" aria-label="Next photo">›</button>
+  <div class="lb-bar"><span id="lbCount"></span><a id="lbOpen" href="#" target="_blank" rel="noopener">Open full size</a></div>
+</div>
+
 <!-- PREVIEW OF THE CONTRACTOR MESSAGE -->
 <div class="modal" id="waModal" hidden>
   <div class="card">
@@ -621,6 +651,7 @@
     return { value: Math.round((charge - cost) * 100) / 100, estimated: estimated, margin: charge > 0 ? (charge - cost) / charge : null };
   }
   function timeInfo(j){
+    if (j.archived_at) return { cls: '', text: 'Archived ' + fmtShort(j.archived_at) };
     if (j.completed_at) return { cls: 'ok', text: 'Completed ' + fmtShort(j.completed_at) };
     if (!isOpen(j)) return { cls: '', text: j.status };
     if (!j.due_at) return { cls: '', text: 'No deadline' };
@@ -673,6 +704,7 @@
   var openJobId = null;
   var selected = new Set();   // job ids ticked in the list, to send to a contractor together
   var contractors = [];       // the contractor directory
+  var archivedJobs = [];      // deleted jobs, kept in the archive
   try { var savedSort = localStorage.getItem('rrJobsSort'); if (savedSort) $('sort').value = savedSort; } catch (e) {}
 
   // ---------- Sign in ----------
@@ -709,7 +741,9 @@
     if (!meta.db) { jobs = []; render(); return; }
     return api('GET', '/api/admin/jobs').then(function(d){
       if (!d.ok) return;
-      jobs = d.jobs;
+      // Deleted jobs live in the archive: kept, but out of every day-to-day list and total.
+      archivedJobs = d.jobs.filter(function(j){ return j.archived_at; });
+      jobs = d.jobs.filter(function(j){ return !j.archived_at; });
       rebuildAssignees();
       render();
       if (view === 'props') { openPropKey ? renderProperty() : renderProps(); }
@@ -772,9 +806,10 @@
     $('cOpen').textContent = open.length;
     $('cDone').textContent = done.length;
     $('cAll').textContent = jobs.length;
+    $('cArch').textContent = archivedJobs.length;
 
     var q = $('search').value.trim().toLowerCase();
-    var list = jobs.filter(function(j){
+    var list = (filter === 'archived' ? archivedJobs : jobs).filter(function(j){
       if (filter === 'open' && !isOpen(j)) return false;
       if (filter === 'completed' && j.status !== 'Completed') return false;
       if (!q) return true;
@@ -801,7 +836,7 @@
     var el = $('list');
     if (!list.length) {
       el.innerHTML = '<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 14h8"/></svg>' +
-        (jobs.length ? 'No jobs match.' : (meta.db ? 'No jobs yet — they’ll appear here as soon as a tenant submits a report, or add one with <strong>New job</strong>.' : 'Connect the database to start saving jobs.')) + '</div>';
+        (filter === 'archived' ? 'The archive is empty. Deleted jobs are kept here and can be restored.' : jobs.length ? 'No jobs match.' : (meta.db ? 'No jobs yet — they’ll appear here as soon as a tenant submits a report, or add one with <strong>New job</strong>.' : 'Connect the database to start saving jobs.')) + '</div>';
       renderBulk();
       return;
     }
@@ -1512,13 +1547,13 @@
     openJobId = id;
     api('GET', '/api/admin/jobs/' + id).then(function(d){
       if (!d.ok) { toast('Couldn’t open that job.'); return; }
-      renderJob(d.job, d.updates);
+      renderJob(d.job, d.updates, d.photos || []);
       $('scrim').hidden = false;
       $('drawer').hidden = false;
     });
   }
 
-  function renderJob(j, updates){
+  function renderJob(j, updates, photos){
     $('dTitle').textContent = j.ref;
     $('dUrg').innerHTML = '<span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span>';
     $('dStatus').innerHTML = '<span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>';
@@ -1532,6 +1567,22 @@
     };
 
     $('dBody').innerHTML =
+      // Archived notice
+      (j.archived_at ? '<div class="archived-note"><div><strong>This job was deleted on ' + esc(fmtDate(j.archived_at)) + '</strong> and is kept in the archive.' +
+          (j.archived_reason ? '<br>Reason: ' + esc(j.archived_reason) : '') + '</div>' +
+          '<button class="btn small" id="restoreJob" type="button">Restore job</button></div>' : '') +
+
+      // Photos
+      '<div class="card"><h3>Photos <span class="count-chip">' + photos.length + '</span><span style="flex:1"></span>' +
+          '<button class="btn small" id="addPhotos" type="button">+ Add photos</button><input type="file" id="phInput" accept="image/*" multiple hidden></h3>' +
+        (photos.length ? '<div class="gallery">' + photos.map(function(ph, i){
+          return '<button type="button" class="gal-item" data-i="' + i + '" title="' + esc((ph.added_by === 'staff' ? 'Added by staff' : 'From the tenant') + ' · ' + fmtShort(ph.created_at)) + '">' +
+            '<img loading="lazy" src="/api/admin/photos/' + ph.id + '" alt="Photo ' + (i + 1) + '">' +
+            (ph.added_by === 'staff' ? '<span class="gal-tag">Staff</span>' : '') + '</button>';
+        }).join('') + '</div>'
+          : '<p class="muted-note">' + (j.photo_count ? 'This report\u2019s ' + j.photo_count + ' photo' + (j.photo_count === 1 ? ' is' : 's are') + ' inside the tenant\u2019s original PDF (it was sent before photos were saved separately).' : 'No photos yet.') + '</p>') +
+      '</div>' +
+
       // Timing
       '<div class="card"><h3>Timing</h3><div class="timebar">' +
         '<span class="time ' + t.cls + '" style="font-size:1rem">' + esc(t.text) + '</span></div>' +
@@ -1655,9 +1706,14 @@
           var label = { created: 'Job created', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', contractor_message: 'Sent to contractor', email: 'Email', completed: 'Completed' }[u.kind] || 'Update';
           return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + '</span>' + esc(u.body) + '</li>';
         }).join('') + '</ul>' +
-      '</div>';
+      '</div>' +
 
-    wireJob(j);
+      // Delete (to the archive)
+      (j.archived_at ? '' : '<div class="card danger-card"><h3>Delete job</h3>' +
+        '<p class="muted-note">Deleting moves the job to the <strong>Archived</strong> tab. Nothing is lost — its details, photos and history are kept, and it can be restored at any time.</p>' +
+        '<div class="row-actions"><button class="btn danger" id="deleteJob" type="button">Delete job</button></div></div>');
+
+    wireJob(j, photos);
   }
 
   // Starting points for the AI email, per recipient; clicking one fills the box.
@@ -1744,8 +1800,89 @@
     });
   }
 
-  function wireJob(j){
+  // Photos added by staff are shrunk the same way as the tenant page does.
+  function shrinkImage(file){
+    return new Promise(function(resolve){
+      var reader = new FileReader();
+      reader.onerror = function(){ resolve(null); };
+      reader.onload = function(e){
+        var original = e.target.result, img = new Image();
+        img.onerror = function(){ resolve(original); };
+        img.onload = function(){
+          try {
+            var scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+            var c = document.createElement('canvas');
+            c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+            var ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            var small = c.toDataURL('image/jpeg', 0.82);
+            resolve(small.length < original.length ? small : original);
+          } catch (err) { resolve(original); }
+        };
+        img.src = original;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Full-screen photo viewer with previous / next (arrow keys too).
+  var lbPhotos = [], lbIndex = 0;
+  function showPhoto(i){
+    lbIndex = (i + lbPhotos.length) % lbPhotos.length;
+    var url = '/api/admin/photos/' + lbPhotos[lbIndex].id;
+    $('lbImg').src = url; $('lbOpen').href = url;
+    $('lbCount').textContent = 'Photo ' + (lbIndex + 1) + ' of ' + lbPhotos.length;
+    $('lbPrev').hidden = $('lbNext').hidden = lbPhotos.length < 2;
+  }
+  function openLightbox(list, i){ lbPhotos = list; $('lightbox').hidden = false; showPhoto(i); }
+  function closeLightbox(){ $('lightbox').hidden = true; $('lbImg').removeAttribute('src'); }
+  $('lbClose').addEventListener('click', closeLightbox);
+  $('lbPrev').addEventListener('click', function(){ showPhoto(lbIndex - 1); });
+  $('lbNext').addEventListener('click', function(){ showPhoto(lbIndex + 1); });
+  $('lightbox').addEventListener('click', function(e){ if (e.target === $('lightbox')) closeLightbox(); });
+  document.addEventListener('keydown', function(e){
+    if ($('lightbox').hidden) return;
+    if (e.key === 'ArrowLeft') showPhoto(lbIndex - 1);
+    else if (e.key === 'ArrowRight') showPhoto(lbIndex + 1);
+    else if (e.key === 'Escape') { e.stopImmediatePropagation(); closeLightbox(); }
+  }, true);
+
+  function wireJob(j, photos){
+    photos = photos || [];
     wireAiEmail(j);
+    document.querySelectorAll('.gal-item').forEach(function(b){
+      b.addEventListener('click', function(){ openLightbox(photos, Number(b.dataset.i)); });
+    });
+    $('addPhotos').addEventListener('click', function(){ $('phInput').click(); });
+    $('phInput').addEventListener('change', function(){
+      var files = Array.prototype.filter.call($('phInput').files, function(f){ return f.type.indexOf('image/') === 0; }).slice(0, 30);
+      if (!files.length) return;
+      $('addPhotos').disabled = true; $('addPhotos').textContent = 'Uploading…';
+      Promise.all(files.map(shrinkImage)).then(function(urls){
+        var list = urls.filter(Boolean).map(function(u, i){ return { name: files[i].name, dataUrl: u }; });
+        return api('POST', '/api/admin/jobs/' + j.id + '/photos', { photos: list });
+      }).then(function(d){
+        if (!d || !d.ok) { toast('Couldn\u2019t add the photos'); $('addPhotos').disabled = false; $('addPhotos').textContent = '+ Add photos'; return; }
+        toast(d.added + ' photo' + (d.added === 1 ? '' : 's') + ' added');
+        openJob(j.id); loadJobs();
+      });
+    });
+    if ($('deleteJob')) $('deleteJob').addEventListener('click', function(){
+      var reason = prompt('Delete ' + j.ref + '? It will be moved to the archive and can be restored.\n\nReason (optional):', '');
+      if (reason === null) return;
+      api('POST', '/api/admin/jobs/' + j.id + '/archive', { reason: reason }).then(function(d){
+        if (!d.ok) { toast('Couldn\u2019t delete the job'); return; }
+        selected.delete(j.id);
+        toast(j.ref + ' moved to the archive');
+        closeDrawer(); loadJobs();
+      });
+    });
+    if ($('restoreJob')) $('restoreJob').addEventListener('click', function(){
+      api('POST', '/api/admin/jobs/' + j.id + '/restore', {}).then(function(d){
+        if (!d.ok) { toast('Couldn\u2019t restore the job'); return; }
+        toast(j.ref + ' restored'); openJob(j.id); loadJobs();
+      });
+    });
     if ($('propLink')) {
       var pk = propKey(j.property_address);
       var count = jobs.filter(function(o){ return propKey(o.property_address) === pk; }).length;

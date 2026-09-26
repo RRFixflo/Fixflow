@@ -503,6 +503,18 @@
   .dropzone.drag { border-color: var(--brick); background: var(--brick-tint); }
   .dropzone strong { color: var(--ink); font-size: 0.95rem; font-weight: 600; }
   .thumbs { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .photo-help { font-size: .86rem; line-height: 1.5; color: var(--ink-soft); background: var(--panel-2); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .photo-help strong { color: var(--ink); }
+  .photo-help ul { margin: 6px 0 0; padding-left: 18px; }
+  .photo-help li { margin: 2px 0; }
+  .thumb.add-more { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1.5px dashed var(--line-strong); background: var(--panel-2); color: var(--ink-soft); font-family: var(--sans); font-size: .72rem; font-weight: 600; cursor: pointer; box-shadow: none; }
+  .thumb.add-more span { font-size: 1.4rem; line-height: 1; color: var(--brick); }
+  .thumb.add-more:hover { border-color: var(--brick); color: var(--ink); }
+  .thumb.loading { display: grid; place-items: center; background: var(--panel-2); }
+  .thumb .spin { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--brick); animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .photo-count { margin-top: 10px; font-size: .84rem; font-weight: 500; color: var(--warn, #D97706); }
+  .photo-count.good { color: var(--ok); }
   .thumb {
     position: relative;
     width: 76px; height: 76px;
@@ -1276,12 +1288,22 @@
     </div>
 
     <div class="field" id="f-photos">
-      <label>Photos <span class="optional">(required — at least 1)</span></label>
+      <label>Photos <span class="optional">(add as many as you can — at least 1)</span></label>
+      <div class="photo-help">
+        <strong>The more photos, the faster we can fix it.</strong> Good photos mean the right contractor, with the right parts, first time. Try to include:
+        <ul>
+          <li>A wide shot showing where it is in the room</li>
+          <li>Close-ups of the problem from a couple of angles</li>
+          <li>Any damage, stains, leaks or error messages</li>
+          <li>Labels or model plates (e.g. on a boiler or appliance)</li>
+        </ul>
+      </div>
       <div class="dropzone" id="dropzone">
-        <strong>Tap to add photos</strong><br>or drag and drop them here — you won't be able to continue without at least one
+        <strong>Tap to add photos</strong><br>You can pick several at once, or drag and drop them here
         <input type="file" id="fileInput" accept="image/*" multiple hidden>
       </div>
       <div class="thumbs" id="thumbs"></div>
+      <div class="photo-count" id="photoCount" hidden></div>
       <div class="err">You'll need to add at least one photo before continuing.</div>
     </div>
 
@@ -2163,31 +2185,84 @@
   });
   fileInput.addEventListener('change', function(e){ handleFiles(e.target.files); });
 
-  function handleFiles(fileList){
-    Array.prototype.forEach.call(fileList, function(file){
-      if(!file.type.startsWith('image/')) return;
+  // Phone photos are often 4-8 MB each. They're shrunk here (longest side 1600px,
+  // JPEG) to a few hundred KB, which keeps them sharp enough to diagnose from
+  // while letting tenants send lots of them.
+  var MAX_PHOTOS = 20;
+  function shrinkImage(file){
+    return new Promise(function(resolve){
       var reader = new FileReader();
+      reader.onerror = function(){ resolve(null); };
       reader.onload = function(e){
-        var id = Date.now() + Math.random().toString(36).slice(2);
-        state.photos.push({ id: id, name: file.name, dataUrl: e.target.result });
-        renderThumbs();
+        var original = e.target.result;
+        var img = new Image();
+        img.onerror = function(){ resolve(original); };
+        img.onload = function(){
+          try {
+            var max = 1600, w = img.naturalWidth, h = img.naturalHeight;
+            var scale = Math.min(1, max / Math.max(w, h));
+            var c = document.createElement('canvas');
+            c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+            var ctx = c.getContext('2d');
+            ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            var small = c.toDataURL('image/jpeg', 0.82);
+            resolve(small.length < original.length ? small : original);
+          } catch (err) { resolve(original); }
+        };
+        img.src = original;
       };
       reader.readAsDataURL(file);
     });
+  }
+  function handleFiles(fileList){
+    var files = Array.prototype.filter.call(fileList, function(f){ return f.type.startsWith('image/'); });
+    var room = MAX_PHOTOS - state.photos.length;
+    if (files.length > room) {
+      alert(room > 0 ? 'You can add up to ' + MAX_PHOTOS + ' photos — the first ' + room + ' have been added.' : 'You\u2019ve reached the ' + MAX_PHOTOS + '-photo limit.');
+      files = files.slice(0, Math.max(0, room));
+    }
+    files.forEach(function(file){
+      var id = Date.now() + Math.random().toString(36).slice(2);
+      var entry = { id: id, name: file.name, dataUrl: null };
+      state.photos.push(entry);
+      renderThumbs();
+      shrinkImage(file).then(function(dataUrl){
+        if (!dataUrl) { state.photos = state.photos.filter(function(x){ return x.id !== id; }); }
+        else entry.dataUrl = dataUrl;
+        renderThumbs();
+      });
+    });
+    fileInput.value = '';
   }
 
   function renderThumbs(){
     thumbs.innerHTML = '';
     state.photos.forEach(function(p){
       var d = document.createElement('div');
-      d.className = 'thumb';
-      d.innerHTML = '<img src="' + p.dataUrl + '" alt=""><button type="button" aria-label="Remove photo">✕</button>';
+      d.className = 'thumb' + (p.dataUrl ? '' : ' loading');
+      d.innerHTML = (p.dataUrl ? '<img src="' + p.dataUrl + '" alt="">' : '<span class="spin"></span>') + '<button type="button" aria-label="Remove photo">✕</button>';
       d.querySelector('button').addEventListener('click', function(){
         state.photos = state.photos.filter(function(x){ return x.id !== p.id; });
         renderThumbs();
       });
       thumbs.appendChild(d);
     });
+    // A big "add more" tile right next to the photos, while there's room.
+    if (state.photos.length > 0 && state.photos.length < MAX_PHOTOS) {
+      var add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'thumb add-more';
+      add.innerHTML = '<span>+</span>Add more';
+      add.addEventListener('click', function(){ fileInput.click(); });
+      thumbs.appendChild(add);
+    }
+    var n = state.photos.length, count = document.getElementById('photoCount');
+    count.hidden = n === 0;
+    count.className = 'photo-count' + (n >= 3 ? ' good' : '');
+    count.textContent = n === 0 ? '' : n >= MAX_PHOTOS ? n + ' photos added — that\u2019s the maximum, thank you!'
+      : n >= 3 ? n + ' photos added — great, that really helps. Add more if there\u2019s anything else worth showing.'
+      : n + ' photo' + (n === 1 ? '' : 's') + ' added — please add a few more (a wide shot and close-ups) so we can get it right first time.';
     if(state.photos.length > 0) clearError('f-photos');
   }
 
@@ -2420,6 +2495,7 @@
     if(!desc){ setError('f-desc'); ok = false; } else { clearError('f-desc'); state.description = desc; }
     if(!state.urgency){ setError('f-urgency'); ok = false; }
     if(state.photos.length === 0){ setError('f-photos'); ok = false; }
+    if(state.photos.some(function(p){ return !p.dataUrl; })){ alert('Your photos are still being prepared — please wait a moment.'); return; }
     state.location = document.getElementById('location').value.trim();
     if(!ok) return;
     fillSummary();
@@ -2911,6 +2987,7 @@
           reportText: buildReportText(),
           tenantEmail: state.email || '',
           sendCopyToTenant: !!state.email,
+          photos: state.photos.filter(function(p){ return p.dataUrl; }).map(function(p){ return { name: p.name, dataUrl: p.dataUrl }; }),
           // The same details as structured fields, saved as a job in the database.
           report: {
             name: state.name, email: state.email, phone: state.phone, address: state.address,

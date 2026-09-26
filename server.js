@@ -86,7 +86,9 @@ function allowedByRateLimit(ip, map, max) {
 
 // The PDF (plus a photo or two folded into it) can be a few MB once base64-encoded,
 // so the default 100kb JSON body limit needs raising.
-app.use(express.json({ limit: '25mb' }));
+// Photos are also sent individually (shrunk on the phone first) so staff can
+// view them, which roughly doubles the size of a report with many photos.
+app.use(express.json({ limit: '60mb' }));
 
 // Serve the report tool as a static file — Railway sets PORT itself, so we read it
 // from the environment rather than hardcoding it.
@@ -351,7 +353,7 @@ app.post('/api/send-report', async (req, res) => {
     // record the admin dashboard works from, so it comes first.
     let saved = null;
     try {
-      saved = await jobs.saveReport(body.report, pdfBase64, filename, reportText);
+      saved = await jobs.saveReport(body.report, pdfBase64, filename, reportText, body.photos);
     } catch (err) {
       console.error('Saving report to database failed:', err.message);
     }
