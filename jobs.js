@@ -1160,6 +1160,18 @@ module.exports = function mountJobs(app, opts) {
       '<div class="status">' + htmlEsc(j.status === 'Completed' && j.completed_at ? 'Completed on ' + whenUk(j.completed_at) : j.status) + '</div>' +
       '<div class="muted">' + htmlEsc(STATUS_TEXT[j.status] || '') + '</div>';
   }
+  // Tenant-facing pages never show the door number: drop "Flat 4" / "Apartment 2"
+  // style parts and the house/building number, keeping street, town and postcode.
+  function publicAddress(addr) {
+    const parts = String(addr || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+    const kept = parts.map(function (x) {
+      if (/^(flat|apartment|apt|unit|room|studio|maisonette|no\.?)\s*[\w-]*\d[\w-]*$/i.test(x)) return '';   // "Flat 4", "Unit 2B"
+      if (/^[\d]+[a-z]?(\s*[-/]\s*\d+[a-z]?)?$/i.test(x)) return '';                                         // "22", "3-5"
+      return x.replace(/^(flat|apartment|apt|unit|room|studio)\s+[\w-]*\d[\w-]*\s+/i, '')                   // "Flat 4 22 Queen St"
+        .replace(/^\d+[a-z]?(\s*[-/]\s*\d+[a-z]?)?\s+/i, '');                                                   // "22 Queen St" -> "Queen St"
+    }).filter(Boolean);
+    return kept.join(', ');
+  }
   function issueText(j) { return [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') + (j.location ? ' (' + j.location + ')' : ''); }
   // Light protection against guessing: a few lookups a minute per visitor.
   const trackHits = new Map();
@@ -1213,7 +1225,7 @@ module.exports = function mountJobs(app, opts) {
           for (const j of rows) { if (!j.track_token) j.track_token = await ensureTrackToken(p, j.id); }
           results = rows.map(function (j) {
             return '<div class="card"><div class="ref">' + refFor(j.id) + ' · ' + htmlEsc(issueText(j) || 'Repair') + '</div>' +
-              '<div class="muted">' + htmlEsc(j.property_address || '') + ' · reported ' + whenUk(j.created_at) + '</div>' + progressHtml(j) +
+              '<div class="muted">' + htmlEsc(publicAddress(j.property_address)) + ' · reported ' + whenUk(j.created_at) + '</div>' + progressHtml(j) +
               '<div style="margin-top:10px"><a class="more" href="/t/' + j.track_token + '">See full progress →</a></div></div>';
           }).join('');
         }
@@ -1242,11 +1254,13 @@ module.exports = function mountJobs(app, opts) {
     const u = (await p.query(`SELECT created_at, body FROM job_updates WHERE job_id = $1 AND kind = 'tenant_message' ORDER BY created_at DESC LIMIT 10`, [j.id])).rows;
     const updates = u.map(function (x) {
       // Stored as "<how> — <subject>\n\n<message>": show the subject and message.
-      const text = String(x.body || '').replace(/^[^\n]*? — /, '').slice(0, 1500);
+      let text = String(x.body || '').replace(/^[^\n]*? — /, '').slice(0, 1500);
+      // Our messages quote the full address; show it without the door number here.
+      if (j.property_address) text = text.split(j.property_address).join(publicAddress(j.property_address));
       return '<div class="upd"><div class="d">' + whenUk(x.created_at) + '</div>' + htmlEsc(text) + '</div>';
     }).join('');
     res.send(trackShell('Repair ' + refFor(j.id),
-      '<h1>Repair ' + refFor(j.id) + '</h1><p class="sub">' + htmlEsc(j.property_address || '') + '</p>' +
+      '<h1>Repair ' + refFor(j.id) + '</h1><p class="sub">' + htmlEsc(publicAddress(j.property_address)) + '</p>' +
       '<div class="card"><div class="ref">' + htmlEsc(issueText(j) || 'Repair') + '</div>' +
         '<div class="muted">Reported ' + whenUk(j.created_at) + (j.status !== 'Completed' && TARGET[j.urgency] ? ' · ' + j.urgency + ' repairs are usually dealt with ' + TARGET[j.urgency] : '') + '</div>' +
         progressHtml(j) + '<div class="muted" style="margin-top:8px">Last updated ' + whenUk(j.updated_at) + '</div></div>' +
