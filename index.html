@@ -1065,6 +1065,14 @@
   .note-box strong { color: var(--ink); }
   #sentNote { border-color: var(--ok); background: var(--ok-tint); }
 
+  .no-match { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; margin-bottom: 12px; border-radius: 12px; background: var(--brick-tint); color: var(--ink); font-size: .88rem; line-height: 1.45; }
+  .no-match strong { color: var(--brick-deep); }
+  .cant-find { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 14px; padding: 14px 16px; border: 1.5px dashed var(--line-strong); border-radius: 16px; background: var(--panel-2); color: var(--ink); font-family: var(--sans); font-size: .9rem; text-align: left; cursor: pointer; transition: border-color .15s var(--ease), background .15s var(--ease); }
+  .cant-find:hover { border-color: var(--brick); border-style: solid; background: var(--brick-tint); }
+  .cant-find svg { width: 26px; height: 26px; flex-shrink: 0; color: var(--brick); }
+  .cant-find span:nth-of-type(1) { flex: 1; line-height: 1.4; color: var(--ink-soft); }
+  .cant-find strong { color: var(--ink); display: block; }
+  .cant-find .chev { color: var(--ink-faint); font-size: 1.3rem; }
   @media (max-width: 480px) {
     .grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .cat { padding: 14px 6px 12px; font-size: 0.74rem; border-radius: 16px; }
@@ -1135,7 +1143,16 @@
       <input type="text" id="catSearch" placeholder="Search your problem" autocomplete="off">
     </div>
 
+    <div class="no-match" id="noMatch" hidden>
+      <strong>No matching issue found.</strong>
+      <span>That’s fine — choose <em>Other</em> and describe the problem in your own words.</span>
+    </div>
     <div class="grid" id="catGrid"></div>
+    <button class="cant-find" id="cantFind" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
+      <span><strong>Can’t find your issue?</strong> Choose “Other” and describe it in your own words</span>
+      <span class="chev">›</span>
+    </button>
   </section>
 
   <!-- STEP 1b: SUBITEM -->
@@ -2040,8 +2057,9 @@
     el.dataset.key = c.key;
     el.dataset.label = c.label;
     el.innerHTML = '<span class="tick">✓</span><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">' + c.icon + '</svg><span>' + c.label + '</span>';
-    el.addEventListener('click', function(){ selectCategory(c); });
-    el.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); selectCategory(c); } });
+    var pick = function(){ if (c.key === 'other') chooseOther(); else selectCategory(c); };
+    el.addEventListener('click', pick);
+    el.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); pick(); } });
     grid.appendChild(el);
   });
 
@@ -2075,13 +2093,29 @@
     }
   }
 
+  // Search keeps the "Other" tile visible, so there's always a way forward, and
+  // says so plainly when nothing else matches.
   document.getElementById('catSearch').addEventListener('input', function(e){
     var q = e.target.value.trim().toLowerCase();
+    var matches = 0;
     document.querySelectorAll('.cat').forEach(function(el){
       var match = el.dataset.label.toLowerCase().indexOf(q) !== -1;
+      if (el.dataset.key === 'other') { el.classList.remove('hidden'); return; }
       el.classList.toggle('hidden', q.length > 0 && !match);
+      if (match) matches += 1;
     });
+    document.getElementById('noMatch').hidden = !(q.length > 0 && matches === 0);
   });
+
+  // "Other": whatever they searched for becomes the start of their description.
+  function chooseOther(){
+    var other = CATS.filter(function(c){ return c.key === 'other'; })[0];
+    var q = document.getElementById('catSearch').value.trim();
+    var desc = document.getElementById('description');
+    if (q && !desc.value.trim()) desc.value = q;
+    selectCategory(other);
+  }
+  document.getElementById('cantFind').addEventListener('click', chooseOther);
 
   // scoped single-select option rows (urgency, access time, key permission)
   function wireOptionRow(rowId, onPick){
@@ -2289,6 +2323,8 @@
     applyTranslations(document.body);
   }
 
+  var OTHER_TIP = "Describe the problem in your own words on the next step — a clear photo helps us a lot.";
+
   function renderSubitems(){
     var flow = SUBFLOW[state.categoryKey];
     document.getElementById('subCrumb').textContent = state.category;
@@ -2296,14 +2332,19 @@
     if (titleEl) titleEl.textContent = (flow && flow.prompt) ? flow.prompt : "What's affected?";
     var list = document.getElementById('subList');
     list.innerHTML = '';
-    (flow ? flow.items : []).forEach(function(item){
+    var items = (flow ? flow.items : []).slice();
+    // Always leave a way forward when none of the options fit.
+    if (!items.some(function(it){ return it.key === 'other'; })) {
+      items.push({ key: 'other', label: 'Something else', tips: [OTHER_TIP] });
+    }
+    items.forEach(function(item){
       var el = document.createElement('div');
       el.className = 'choice-item';
       el.tabIndex = 0;
       var iconSvg = '<svg class="choice-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">' + iconFor(state.categoryKey, item.key) + '</svg>';
       el.innerHTML = iconSvg + '<span class="choice-label">' + item.label + '</span><span class="chev">›</span>';
       el.addEventListener('click', function(){
-        if (flow && flow.singleLevel){
+        if ((flow && flow.singleLevel) || !item.symptoms){
           state.subKey = null;
           state.subLabel = null;
           state.symptomKey = item.key;
@@ -2331,7 +2372,8 @@
     var list = document.getElementById('symList');
     list.innerHTML = '';
     var iconSvg = '<svg class="choice-icon" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">' + iconFor(state.categoryKey, item.key) + '</svg>';
-    item.symptoms.forEach(function(sym){
+    item.symptoms.concat(item.symptoms.some(function(x){ return x.key === 'other'; }) ? [] :
+        [{ key: 'other', label: 'Something else', tips: [OTHER_TIP] }]).forEach(function(sym){
       var el = document.createElement('div');
       el.className = 'choice-item';
       el.tabIndex = 0;
@@ -2357,7 +2399,7 @@
   document.getElementById('diyBack').addEventListener('click', function(){
     if(usedSubflow){
       var flow = SUBFLOW[state.categoryKey];
-      if(flow && flow.singleLevel){ showRaw('panel-1b'); } else { showRaw('panel-1c'); }
+      if((flow && flow.singleLevel) || !state.subKey){ showRaw('panel-1b'); } else { showRaw('panel-1c'); }
     } else { goTo(1); }
   });
   document.getElementById('diyContinue').addEventListener('click', function(){ goTo(3); });
