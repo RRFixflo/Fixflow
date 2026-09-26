@@ -602,6 +602,7 @@
       <!-- LANDLORDS: each landlord, their properties and repairs -->
       <div id="llView" hidden>
         <div id="llListView">
+          <div class="tiles prop-tiles" id="llTiles"></div>
           <div class="toolbar">
             <input class="inp search" id="llSearch" type="search" placeholder="Search landlords by name, phone, email or property">
             <button class="btn primary" id="llNew" type="button">+ Add landlord</button>
@@ -615,6 +616,7 @@
             <div class="prop-actions" id="llActions"></div>
           </div>
           <div class="card" id="llCard"></div>
+          <div class="card" id="llOwed" style="margin-top:12px"></div>
           <div class="card" style="margin-top:12px"><h3>Properties</h3>
             <div class="list" id="llProps"></div>
             <div class="tenant-find" style="margin-top:12px"><label class="lbl" for="llAddProp">Add a property to this landlord</label>
@@ -918,7 +920,8 @@
       <button class="btn" id="invCancel" type="button">Cancel</button>
       <button class="btn" id="invDownload" type="button">Download PDF</button>
       <button class="btn" id="invEmail" type="button">Email landlord</button>
-      <button class="btn primary" id="invShare" type="button">Share invoice</button>
+      <button class="btn" id="invShare" type="button">Share invoice</button>
+      <button class="btn primary" id="invSave" type="button">Save</button>
     </div>
   </form>
 </div>
@@ -1086,7 +1089,7 @@
   // ---------- List ----------
   function loadJobs(){
     if (!meta.db) { jobs = []; render(); return; }
-    return Promise.all([api('GET', '/api/admin/jobs'), loadLandlords(), loadTenantRecs()]).then(function(res){ var d = res[0];
+    return Promise.all([api('GET', '/api/admin/jobs'), loadLandlords(), loadTenantRecs(), loadAllInvoices()]).then(function(res){ var d = res[0];
       if (!d.ok) return;
       // Deleted jobs live in the archive: kept, but out of every day-to-day list and total.
       archivedJobs = d.jobs.filter(function(j){ return j.archived_at; });
@@ -2666,6 +2669,12 @@
     });
     return { doc: doc, v: v, name: v.number + '-' + pdfName('', j.property_address).replace(/^-/, '') };
   }
+  // Save only: keep the invoice (open, resend or download it later from the Money tab).
+  $('invSave').addEventListener('click', function(){
+    var r = issueInvoice('saved'); if (!r) return;
+    $('invModal').hidden = true;
+    toast(invEditing ? 'Invoice updated' : r.v.number + ' saved — open, send or download it any time from the Money tab');
+  });
   $('invDownload').addEventListener('click', function(){
     var r = issueInvoice('downloaded'); if (!r) return;
     deliverPdf(r.doc, r.name, false); $('invModal').hidden = true;
@@ -2858,9 +2867,11 @@
         (jobInvoices.length
           ? '<div class="list">' + jobInvoices.map(function(inv, i){
               return '<div class="pay-row" style="grid-template-columns:minmax(0,1fr) 110px auto">' +
-                '<div class="addr"><strong>' + esc(inv.number || 'Invoice') + '</strong><small>' + esc(fmtShort(inv.created_at) + (inv.landlord_name ? ' · ' + inv.landlord_name : '')) + '</small></div>' +
+                '<div class="addr"><strong>' + esc(inv.number || 'Invoice') + '</strong> ' + (inv.paid_at ? '<span class="pill status Completed">Paid</span>' : '<span class="pill status New">Unpaid</span>') +
+                  '<small>' + esc(fmtShort(inv.created_at) + (inv.landlord_name ? ' · ' + inv.landlord_name : '') + (inv.paid_at ? ' · paid ' + fmtShort(inv.paid_at) : inv.data && inv.data.due ? ' · due ' + ukDate(inv.data.due) : '')) + '</small></div>' +
                 '<div class="amt">' + esc(gbp(inv.total)) + '</div>' +
                 '<div style="display:flex;gap:6px;justify-content:flex-end">' +
+                  (inv.paid_at ? '<button class="btn small ghost" type="button" data-inv-unpaid="' + inv.id + '">Undo paid</button>' : '<button class="btn small" type="button" data-inv-paid="' + inv.id + '">Mark paid</button>') +
                   (inv.data ? '<button class="btn small" type="button" data-inv-open="' + i + '">Open</button><button class="btn small" type="button" data-inv-edit="' + i + '">Edit</button><button class="btn small primary" type="button" data-inv-send="' + i + '">Resend</button>' : '<span class="muted-note" style="font-size:.76rem">Issued before invoices were saved</span>') +
                 '</div></div>';
             }).join('') + '</div>'
@@ -3209,6 +3220,8 @@
       setVat(!!withVat);
       updateInvTotals();
     });
+    $('dBody').querySelectorAll('[data-inv-paid]').forEach(function(b){ b.addEventListener('click', function(){ markInvoicePaid(Number(b.dataset.invPaid), true); }); });
+    $('dBody').querySelectorAll('[data-inv-unpaid]').forEach(function(b){ b.addEventListener('click', function(){ markInvoicePaid(Number(b.dataset.invUnpaid), false); }); });
     $('dBody').querySelectorAll('[data-inv-edit]').forEach(function(b){
       b.addEventListener('click', function(){ openInvoice(j, jobInvoices[Number(b.dataset.invEdit)]); });
     });
@@ -3543,9 +3556,66 @@
     });
   }
 
+  // ---------- What landlords owe us (unpaid invoices) ----------
+  var allInvoices = [];
+  function loadAllInvoices(){
+    if (!meta.db) return Promise.resolve();
+    return api('GET', '/api/admin/invoices').then(function(d){ if (d.ok) allInvoices = d.invoices.filter(function(i){ return !i.archived_at; }); });
+  }
+  function todayIso(){ return isoDate(new Date()); }
+  function invOverdue(i){ return !i.paid_at && i.due && i.due < todayIso(); }
+  // Invoices for a landlord: addressed to them by name, or (unnamed) for one of their properties.
+  function landlordInvoices(l){
+    var nm = String(l.name || '').trim().toLowerCase();
+    return allInvoices.filter(function(i){
+      if (i.landlord_name) return i.landlord_name.trim().toLowerCase() === nm;
+      var r = landlordRecordAt(i.property_address); return r && r.id === l.id;
+    });
+  }
+  function sumTotal(list){ return list.reduce(function(a, i){ return a + (num(i.total) || 0); }, 0); }
+  function markInvoicePaid(id, paid){
+    return api('POST', '/api/admin/invoices/' + id + '/paid', { paid: paid }).then(function(d){
+      if (!d.ok) { toast('Couldn’t update the invoice'); return; }
+      toast(paid ? 'Marked as paid' : 'Marked as not paid');
+      return loadJobs().then(function(){ if (openJobId) openJob(openJobId); });
+    });
+  }
+  function invRowHtml(i, showAddress){
+    var od = invOverdue(i);
+    return '<div class="pay-row" style="grid-template-columns:minmax(0,1fr) 120px 96px auto">' +
+      '<div class="addr"><button type="button" class="link ref" data-open="' + i.job_id + '" style="border:0;background:none;padding:0;color:var(--blue);font-weight:650;cursor:pointer">' + esc(i.number || 'Invoice') + '</button>' +
+        '<small>' + esc([showAddress ? i.property_address : '', 'Issued ' + fmtShort(i.created_at)].filter(Boolean).join(' · ')) + '</small></div>' +
+      '<div class="when">' + (i.paid_at ? '<span class="pill status Completed">Paid ' + esc(fmtShort(i.paid_at).split(',')[0]) + '</span>'
+        : i.due ? '<span style="' + (od ? 'color:var(--brick);font-weight:650' : '') + '">' + (od ? 'Overdue · ' : 'Due ') + esc(ukDate(i.due)) + '</span>' : '<span class="muted-note">No due date</span>') + '</div>' +
+      '<div class="amt">' + esc(gbp(i.total)) + '</div>' +
+      '<div style="display:flex;gap:6px;justify-content:flex-end">' + (i.paid_at
+        ? '<button type="button" class="btn small ghost" data-inv-unpaid="' + i.id + '">Undo</button>'
+        : '<button type="button" class="btn small" data-open-money="' + i.job_id + '">Resend</button><button type="button" class="btn small primary" data-inv-paid="' + i.id + '">Mark paid</button>') + '</div>' +
+    '</div>';
+  }
+  // Clicks inside any list of invoices.
+  function wireInvList(el){
+    el.addEventListener('click', function(e){
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.invPaid) { var inv = allInvoices.filter(function(x){ return x.id === Number(b.dataset.invPaid); })[0];
+        if (confirm('Mark ' + (inv ? inv.number + ' (' + gbp(inv.total) + ')' : 'this invoice') + ' as paid?')) markInvoicePaid(Number(b.dataset.invPaid), true); }
+      else if (b.dataset.invUnpaid) markInvoicePaid(Number(b.dataset.invUnpaid), false);
+      else if (b.dataset.openMoney) { drawerTab = 'money'; drawerTabJob = Number(b.dataset.openMoney); openJob(Number(b.dataset.openMoney)); }
+      else if (b.dataset.open) openJob(Number(b.dataset.open));
+    });
+  }
+
   // ---------- Landlords page ----------
   var openLlId = null;
   function renderLandlords(){
+    var unpaid = allInvoices.filter(function(i){ return !i.paid_at; }), overdue = unpaid.filter(invOverdue);
+    var monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    var received = allInvoices.filter(function(i){ return i.paid_at && new Date(i.paid_at) >= monthStart; });
+    $('llTiles').innerHTML =
+      '<div class="tile blue"><div class="k">Owed to us</div><div class="v">' + gbp(sumTotal(unpaid)) + '</div></div>' +
+      '<div class="tile"><div class="k">Unpaid invoices</div><div class="v">' + unpaid.length + '</div></div>' +
+      '<div class="tile alert' + (overdue.length ? ' has' : '') + '"><div class="k">Overdue</div><div class="v">' + gbp(sumTotal(overdue)) + '</div></div>' +
+      '<div class="tile good"><div class="k">Received this month</div><div class="v">' + gbp(sumTotal(received)) + '</div></div>';
     var q = $('llSearch').value.trim().toLowerCase(), digits = q.replace(/\D/g, '');
     var list = landlords.filter(function(l){
       if (!q) return true;
@@ -3561,7 +3631,8 @@
           '<div class="prop-sub" style="margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc([l.phone, l.email].filter(Boolean).join(' · ') || 'No contact details') + '</div></div></div>' +
         '<div class="num">' + props.length + '<small>propert' + (props.length === 1 ? 'y' : 'ies') + '</small></div>' +
         '<div class="num' + (open ? ' hot' : '') + '">' + open + '<small>open jobs</small></div>' +
-        '<div class="last">' + esc(props.map(function(x){ return x.address; }).slice(0, 2).join('; ')) + '<small>' + (props.length > 2 ? '+' + (props.length - 2) + ' more' : '&nbsp;') + '</small></div>' +
+        (function(){ var un = landlordInvoices(l).filter(function(i){ return !i.paid_at; }), od = un.filter(invOverdue);
+          return '<div class="last"' + (od.length ? ' style="color:var(--brick)"' : '') + '><strong>' + (un.length ? gbp(sumTotal(un)) : '£0') + '</strong><small>' + (od.length ? od.length + ' overdue' : un.length ? un.length + ' unpaid' : 'nothing owed') + '</small></div>'; })() +
         '<span class="chev">›</span></button>';
     }).join('');
   }
@@ -3597,7 +3668,15 @@
     var linked = {}; props.forEach(function(x){ linked[x.key] = true; });
     $('llPropList').innerHTML = propertiesFromJobs().filter(function(pr){ return !linked[pr.key]; }).map(function(pr){ return '<option value="' + esc(pr.address) + '">'; }).join('');
     $('llJobs').innerHTML = all.length ? all.map(rowHtml).join('') : '<div class="empty">No repairs at their properties yet.</div>';
+    var invs = landlordInvoices(l), un = invs.filter(function(i){ return !i.paid_at; }), paid = invs.filter(function(i){ return i.paid_at; });
+    var od = un.filter(invOverdue);
+    $('llOwed').innerHTML = '<h3>Owed to us <span class="count-chip">' + gbp(sumTotal(un)) + '</span>' + (od.length ? '<span class="pill Emergency" style="margin-left:4px">' + od.length + ' overdue</span>' : '') + '</h3>' +
+      (un.length ? '<div class="list">' + un.map(function(i){ return invRowHtml(i, true); }).join('') + '</div>'
+        : '<p class="muted-note">Nothing owed' + (invs.length ? ' — all invoices paid.' : ' — no invoices yet.') + '</p>') +
+      (paid.length ? '<details style="margin-top:12px"><summary class="muted-note" style="cursor:pointer">Paid invoices (' + paid.length + ' · ' + gbp(sumTotal(paid)) + ')</summary><div class="list" style="margin-top:8px">' +
+        paid.map(function(i){ return invRowHtml(i, true); }).join('') + '</div></details>' : '');
   }
+  wireInvList($('llOwed'));
   $('navLandlords').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; showView('ll'); });
   $('llBack').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; renderLandlords(); });
   $('llSearch').addEventListener('input', renderLandlords);

@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   data           JSONB
 );
 CREATE INDEX IF NOT EXISTS invoices_job_idx ON invoices (job_id, id);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
 CREATE TABLE IF NOT EXISTS contractors (
   id         SERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -521,7 +522,7 @@ module.exports = function mountJobs(app, opts) {
     job.ref = refFor(job.id);
     const u = await p.query('SELECT id, created_at, kind, body FROM job_updates WHERE job_id = $1 ORDER BY created_at DESC, id DESC', [id]);
     const ph = await p.query('SELECT id, created_at, added_by, name FROM job_photos WHERE job_id = $1 ORDER BY id', [id]);
-    const inv = await p.query('SELECT id, created_at, number, total, landlord_name, landlord_email, data FROM invoices WHERE job_id = $1 ORDER BY id DESC', [id]);
+    const inv = await p.query('SELECT id, created_at, number, total, landlord_name, landlord_email, data, paid_at FROM invoices WHERE job_id = $1 ORDER BY id DESC', [id]);
     res.json({ ok: true, job: job, updates: u.rows, photos: ph.rows, invoices: inv.rows });
   }));
 
@@ -873,6 +874,25 @@ module.exports = function mountJobs(app, opts) {
       sub: money(d.sub), vat: money(d.vat) || 0, total: total
     };
   }
+
+  // Every invoice (for what landlords owe), newest first, with its job's address.
+  app.get('/api/admin/invoices', withDb(async function (p, req, res) {
+    const r = await p.query(`SELECT i.id, i.job_id, i.created_at, i.number, i.total, i.landlord_name, i.landlord_email, i.paid_at,
+        i.data->>'due' AS due, i.data->>'landlordPhone' AS landlord_phone, j.property_address, j.archived_at
+      FROM invoices i JOIN jobs j ON j.id = i.job_id ORDER BY i.id DESC LIMIT 5000`);
+    res.json({ ok: true, invoices: r.rows.map(function (x) { x.ref = refFor(x.job_id); return x; }) });
+  }));
+
+  // Mark an invoice as paid by the landlord (or not paid).
+  app.post('/api/admin/invoices/:id/paid', withDb(async function (p, req, res) {
+    const paid = (req.body || {}).paid !== false;
+    const r = await p.query('UPDATE invoices SET paid_at = ' + (paid ? 'coalesce(paid_at, now())' : 'NULL') + ' WHERE id = $1 RETURNING job_id, number, total, landlord_name', [jobId(req)]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    const x = r.rows[0];
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [x.job_id, 'change',
+      paid ? 'Invoice ' + x.number + ' paid' + (x.landlord_name ? ' by ' + x.landlord_name : '') + ' (' + gbp(x.total) + ').' : 'Invoice ' + x.number + ' marked as not paid.']);
+    res.json({ ok: true });
+  }));
 
   // Edit a saved invoice in place (same record, change noted in the job history).
   app.put('/api/admin/invoices/:id', withDb(async function (p, req, res) {
