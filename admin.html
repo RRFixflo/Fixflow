@@ -2490,7 +2490,7 @@
   var AI_IDEAS = {
     Council: ['Report pests / vermin in a shared area', 'Report fly-tipping or missed bin collections', 'Report a street light or pavement defect',
       'Ask environmental health to inspect', 'Report a neighbouring property causing damage', 'Ask about building control approval'],
-    Landlord: ['Update on the repair and next steps', 'Ask for approval of the quote', 'Confirm the job is completed', 'Explain a delay'],
+    Landlord: ['Explain the issue reported, possible solutions and cost estimates, and ask for approval to go ahead', 'Update on the repair and next steps', 'Ask for approval of the quote', 'Confirm the job is completed', 'Explain a delay'],
     Tenant: ['Confirm the appointment', 'Ask for access on a date', 'Apologise for the delay and give an update', 'Confirm the job is completed'],
     Contractor: ['Instruct them to carry out the job', 'Ask for a quote', 'Chase for an update', 'Ask for the invoice and completion photos'],
     Other: ['Ask the utility company to attend', 'Notify the insurer about the damage', 'Request a quote from a specialist']
@@ -2509,6 +2509,8 @@
       recipient = b.dataset.r;
       $('aiTo').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
       $('aiName').value = DEFAULT_NAME[recipient];
+      var what = $('aiWhat').value.trim(), prefills = Object.keys(AI_IDEAS).map(function(k){ return AI_IDEAS[k][0]; });
+      if (!what || prefills.indexOf(what) !== -1) $('aiWhat').value = recipient === 'Landlord' ? AI_IDEAS.Landlord[0] : '';
       var ll = j.landlord_name ? j : (landlordAt(j.property_address) || {});
       $('aiAddr').value = recipient === 'Tenant' ? (j.tenant_email || '') :
         recipient === 'Contractor' ? ((contractorByName(j.assigned_to) || {}).email || '') :

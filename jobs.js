@@ -496,7 +496,11 @@ module.exports = function mountJobs(app, opts) {
   // with landlords.
   const RECIPIENTS = {
     Council: 'the local council (for example environmental health, housing standards, pest control, highways, waste and bins, building control, or council tax — pick the right department from the issue and instructions). Write formally, identify the property clearly, explain the problem factually, say what action is requested of the council, and ask for a reference number and timescale.',
-    Landlord: 'the landlord who owns the property. Keep it professional and concise: what was reported, what has been done so far, the recommended next step, and any cost that needs their approval.',
+    Landlord: 'the landlord who owns the property. Unless the staff instructions ask for something different, structure it in plain text with short numbered headings: ' +
+      '1. The issue: what the tenant reported, where in the property, when, how urgent, and anything already done. ' +
+      '2. Possible solutions: one to three realistic options a UK contractor would typically consider for this kind of problem, each explained in a sentence or two in plain English, with the one we recommend marked, and a note that the exact fix will be confirmed once a contractor has inspected. ' +
+      '3. Cost estimates: an estimate for each option (see the cost rules below). ' +
+      'Then ask the landlord to approve the recommended option (or tell us which they prefer) so the work can go ahead, briefly mentioning any urgency, safety or legal repairing obligation where it genuinely applies. Professional, clear and concise.',
     Tenant: 'the tenant who lives at the property. Be warm, clear and reassuring, in plain English, with any next steps for them.',
     Contractor: 'a contractor who will carry out the work. Be practical: the job, the address, access arrangements and tenant contact, and what is needed by when.',
     Other: 'the recipient described in the instructions.'
@@ -528,16 +532,24 @@ module.exports = function mountJobs(app, opts) {
         fact('Access notes', j.access_notes) + fact('Keys can be released to contractor', j.key_permission) + fact('Contractor notes', j.key_instructions);
     }
     if (recipient === 'Landlord') {
-      facts += fact('Estimated cost to landlord', j.landlord_charge != null ? '£' + Number(j.landlord_charge).toFixed(2) : null);
+      facts += fact('Cost to landlord (our estimate for the recommended work)', j.landlord_charge != null ? '£' + Number(j.landlord_charge).toFixed(2) : null) +
+        fact('Photos provided by the tenant', j.photo_count || null);
     }
-    const history = u.rows.reverse().map(function (x) { return '- ' + when(x.created_at) + ': ' + String(x.body).replace(/\s+/g, ' ').slice(0, 300); }).join('\n');
+    // Cost changes in the history are internal (what we pay, our charge) and never go into a draft.
+    const COST_CHANGE = /(Estimated cost|Actual cost|Charge to landlord)\s*:/i;
+    const history = u.rows.reverse().filter(function (x) { return !(x.kind === 'change' && COST_CHANGE.test(x.body)); }).map(function (x) { return '- ' + when(x.created_at) + ': ' + String(x.body).replace(/\s+/g, ' ').slice(0, 300); }).join('\n');
 
     const prompt = 'You write emails for Residential Realtors, a UK letting and property management agency, about property repairs.\n\n' +
       'Write an email to ' + RECIPIENTS[recipient] + (toName ? ' Address it to: ' + toName + '.' : '') + '\n\n' +
       'Job details:\n' + facts + (history ? '\nRecent history:\n' + history + '\n' : '') +
       (instructions ? '\nWhat this email needs to do (from the staff member): ' + instructions + '\n' : '') +
-      '\nRules: use UK English. Only use the facts above — never invent names, dates, costs, reference numbers or events; where something is needed but unknown, put a placeholder in square brackets such as [DATE]. ' +
-      'Include the job reference. Do not mention internal costs, profit or margins' + (recipient === 'Landlord' ? ' other than the cost to the landlord given above' : '') + '. ' +
+      '\nRules: use UK English. Only use the facts above — never invent names, dates, ' + (recipient === 'Landlord' ? '' : 'costs, ') + 'reference numbers or events; where something is needed but unknown, put a placeholder in square brackets such as [DATE]. ' +
+      (recipient === 'Landlord'
+        ? 'Cost rules: if a "Cost to landlord" is given above, present it as our estimate for the recommended option. If the staff instructions give prices, use those exactly. ' +
+          'For any option without a given price, give an approximate typical UK price range (for example "typically £120–£200 including labour"), clearly labelled as an estimate that will be confirmed by a contractor\'s quote. ' +
+          'Never mention what we pay contractors, internal costs, profit or margins. '
+        : 'Do not mention internal costs, profit or margins. ') +
+      'Include the job reference. ' +
       'Sign off as "Residential Realtors Maintenance Team". Keep it as short as the purpose allows. ' +
       (variation ? 'This is alternative draft number ' + variation + ', so word it differently from a standard version. ' : '') +
       'Reply with ONLY a JSON object: {"subject": "...", "body": "..."} where body is plain text with \\n line breaks and no markdown.';
