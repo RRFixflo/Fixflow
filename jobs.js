@@ -815,7 +815,7 @@ module.exports = function mountJobs(app, opts) {
 
     const fact = function (label, v) { return v ? '- ' + label + ': ' + String(v).replace(/\s+/g, ' ').trim() + '\n' : ''; };
     const when = function (d) { return d ? new Date(d).toLocaleString('en-GB', { timeZone: 'Europe/London', dateStyle: 'medium', timeStyle: 'short' }) : ''; };
-    let facts = fact('Job reference', refFor(j.id)) + fact('Property', j.property_address) +
+    let facts = (recipient === 'Contractor' ? '' : fact('Job reference', refFor(j.id))) + fact('Property', j.property_address) +
       fact('Issue', [j.category, j.affected, j.symptom].filter(Boolean).join(' – ')) + fact('Location in property', j.location) +
       fact('Description', j.description) + fact('Urgency', j.urgency) + fact('Status', j.status) +
       fact('Reported', when(j.created_at)) + fact('Deadline', when(j.due_at)) + fact('Completed', when(j.completed_at)) +
@@ -843,7 +843,7 @@ module.exports = function mountJobs(app, opts) {
           'For any option without a given price, give an approximate typical UK price range (for example "typically £120–£200 including labour"), clearly labelled as an estimate that will be confirmed by a contractor\'s quote. ' +
           'Never mention what we pay contractors, internal costs, profit or margins. '
         : 'Do not mention internal costs, profit or margins. ') +
-      'Include the job reference. ' +
+      (recipient === 'Contractor' ? 'Do not include any job reference number — identify the job by its address and issue. ' : 'Include the job reference. ') +
       'Sign off as "Residential Realtors Maintenance Team". Keep it as short as the purpose allows. ' +
       (variation ? 'This is alternative draft number ' + variation + ', so word it differently from a standard version. ' : '') +
       'Reply with ONLY a JSON object: {"subject": "...", "body": "..."} where body is plain text with \\n line breaks and no markdown.';
@@ -1150,8 +1150,8 @@ module.exports = function mountJobs(app, opts) {
       '.steps{display:flex;gap:6px;margin:14px 0 8px}.steps div{flex:1;height:6px;border-radius:6px;background:#e7e8ec}.steps div.on{background:var(--ok)}' +
       '.labels{display:flex;justify-content:space-between;font-size:.72rem;color:var(--soft);gap:4px}.labels span.on{color:var(--ink);font-weight:600}' +
       '.status{font-weight:600;margin:10px 0 2px}.upd{border-top:1px solid var(--line);padding-top:10px;margin-top:10px;white-space:pre-line;font-size:.92rem}.upd .d{font-size:.78rem;color:var(--soft);font-weight:600}' +
-      'a.more{color:#2F5BEA;font-weight:600;text-decoration:none}.note{font-size:.85rem;color:var(--soft);margin-top:18px}</style></head><body>' +
-      '<header><div class="in"><a class="logo" href="/"><img src="/logo-tight.png" alt="Residential Realtors"></a></div></header><main>' + inner + '</main></body></html>';
+      'a.more{color:#2F5BEA;font-weight:600;text-decoration:none}a.back{display:inline-flex;align-items:center;gap:4px;color:var(--soft);font-weight:600;font-size:.92rem;text-decoration:none;margin:0 0 12px;padding:6px 0}a.back:hover{color:var(--ink)}.note{font-size:.85rem;color:var(--soft);margin-top:18px}</style></head><body>' +
+      '<header><div class="in"><a class="logo" href="/"><img src="/logo-tight.png" alt="Residential Realtors"></a></div></header><main><a class="back" href="/" onclick="if(history.length>1){history.back();return false}">&larr; Back</a>' + inner + '</main></body></html>';
   }
   function progressHtml(j) {
     const st = stageOf(j.status), cancelled = j.status === 'Cancelled';
