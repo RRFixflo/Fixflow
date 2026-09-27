@@ -1413,6 +1413,27 @@
     return d.length >= 10 ? d : '';
   }
   // The complaints/escalation address for the job's contractor, if they have one.
+  // Which kinds of work a job (or the contractor on it) involves, so nearby jobs
+  // are only suggested together when one contractor could do them all.
+  var TRADE_GROUPS = [
+    ['gas', /\bgas\b|boiler|heating|cp12|radiator/i], ['electric', /electric|eicr|socket|wiring|fuse|light/i],
+    ['plumbing', /plumb|leak|water|toilet|bathroom|drain|tap|sink|shower|pipe/i], ['cleaning', /clean/i],
+    ['pest', /pest|vermin|\brats?\b|mice|insect/i], ['roof', /roof|gutter/i], ['locks', /lock|key/i], ['windows', /window|glaz/i]
+  ];
+  function tradeGroups(text){
+    var g = TRADE_GROUPS.filter(function(t){ return t[1].test(text || ''); }).map(function(t){ return t[0]; });
+    return g.length ? g : ['general'];
+  }
+  function isCouncil(c){ return !!c && (/council/i.test(c.trade || '') || /council/i.test(c.name || '') || /\.gov\.uk$/i.test(c.email || '')); }
+  function sameContractorWork(a, b){
+    var na = String(a.assigned_to || '').trim().toLowerCase(), nb = String(b.assigned_to || '').trim().toLowerCase();
+    if (na && nb) return na === nb;                                     // both assigned: only to the same contractor
+    var ca = contractorByName(a.assigned_to), cb = contractorByName(b.assigned_to);
+    if (isCouncil(ca) || isCouncil(cb)) return false;                   // council teams only take their own reports
+    var ga = ca && ca.trade ? tradeGroups(ca.trade) : tradeGroups([a.category, a.affected].join(' '));
+    var gb = cb && cb.trade ? tradeGroups(cb.trade) : tradeGroups([b.category, b.affected].join(' '));
+    return ga.some(function(x){ return gb.indexOf(x) !== -1; });
+  }
   function escalationFor(j){ var c = contractorByName(j.assigned_to); return c && c.escalation_email ? c.escalation_email : ''; }
   function contractorByName(name){
     var n = String(name || '').trim().toLowerCase();
@@ -3648,11 +3669,11 @@
     var area = postcodeArea(j.property_address);
     var same = addrKey(j.property_address);
     var nearby = jobs.filter(function(o){
-      return o.id !== j.id && isOpen(o) && (addrKey(o.property_address) === same || (area && postcodeArea(o.property_address) === area));
+      return o.id !== j.id && isOpen(o) && (addrKey(o.property_address) === same || (area && postcodeArea(o.property_address) === area)) && sameContractorWork(j, o);
     });
     if (nearby.length && isOpen(j)) {
       $('cNearby').innerHTML = '<div class="nearby"><strong>' + nearby.length + ' other open job' + (nearby.length === 1 ? '' : 's') +
-        ' at this property or in ' + esc(area || 'the same area') + '</strong> — could be done on the same visit:<ul>' +
+        ' at this property or in ' + esc(area || 'the same area') + '</strong> that ' + esc(j.assigned_to ? j.assigned_to : 'the same contractor') + ' could do on the same visit:<ul>' +
         nearby.map(function(o){
           return '<li>' + esc(o.ref) + ' · ' + esc(o.property_address || '') + ' — ' + esc(issueOf(o)) + ' (' + esc(o.urgency) + ')' +
             (addrKey(o.property_address) === same ? ' <strong>same property</strong>' : '') + '</li>';
