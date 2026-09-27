@@ -1181,7 +1181,7 @@ module.exports = function mountJobs(app, opts) {
   const STAGES = [
     { key: 'reported', label: 'Reported' },
     { key: 'arranging', label: 'Arranging a contractor' },
-    { key: 'booked', label: 'Contractor booked' },
+    { key: 'booked', label: 'Contractor arranged' },
     { key: 'done', label: 'Completed' }
   ];
   function stageOf(status) {
@@ -1190,12 +1190,18 @@ module.exports = function mountJobs(app, opts) {
   const STATUS_TEXT = {
     'New': 'We’ve received your report and are reviewing it.',
     'Assigned': 'We’re arranging a contractor for this repair.',
-    'Contractor booked': 'A contractor has been booked. They or we will contact you to arrange access if needed.',
+    'Contractor booked': 'A contractor has been arranged and will contact you directly to arrange a convenient time.',
     'Awaiting parts': 'The contractor is waiting for parts. We’ll be in touch when they arrive.',
     'On hold': 'This repair is on hold for now. We’ll update you as soon as it can go ahead.',
     'Completed': 'This repair has been completed.',
     'Cancelled': 'This repair has been closed.'
   };
+  // What tenants see for each status ("Contractor booked" reads as "Contractor arranged").
+  const PUBLIC_STATUS = { 'Contractor booked': 'Contractor arranged' };
+  function statusNote(j) {
+    if (j.status === 'Contractor booked' && j.direct_contact === 'No') return 'A contractor has been arranged. We’ll be in touch to arrange access.';
+    return STATUS_TEXT[j.status] || '';
+  }
   const TARGET = { Emergency: 'within 48 hours', Urgent: 'within 5 days', Routine: 'within 14 days' };
   function whenUk(d) { return d ? new Date(d).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }) : ''; }
   function trackShell(title, inner) {
@@ -1218,8 +1224,8 @@ module.exports = function mountJobs(app, opts) {
     const st = stageOf(j.status), cancelled = j.status === 'Cancelled';
     return '<div class="steps">' + STAGES.map(function (x, i) { return '<div class="' + (!cancelled && i <= st ? 'on' : '') + '"></div>'; }).join('') + '</div>' +
       '<div class="labels">' + STAGES.map(function (x, i) { return '<span class="' + (!cancelled && i === st ? 'on' : '') + '">' + x.label + '</span>'; }).join('') + '</div>' +
-      '<div class="status">' + htmlEsc(j.status === 'Completed' && j.completed_at ? 'Completed on ' + whenUk(j.completed_at) : j.status) + '</div>' +
-      '<div class="muted">' + htmlEsc(STATUS_TEXT[j.status] || '') + '</div>';
+      '<div class="status">' + htmlEsc(j.status === 'Completed' && j.completed_at ? 'Completed on ' + whenUk(j.completed_at) : (PUBLIC_STATUS[j.status] || j.status)) + '</div>' +
+      '<div class="muted">' + htmlEsc(statusNote(j)) + '</div>';
   }
   // Tenant-facing pages never show the door number: drop "Flat 4" / "Apartment 2"
   // style parts and the house/building number, keeping street, town and postcode.
@@ -1255,7 +1261,7 @@ module.exports = function mountJobs(app, opts) {
     const phone = String(req.query.phone || '').trim().slice(0, 40);
     const byPhone = !!(name || phone);
     let results = '';
-    const COLS = 'id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, track_token';
+    const COLS = 'id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, track_token';
     if (ref || door || byPhone) {
       if (!trackAllowed(req.ip)) {
         results = '<div class="card">Too many searches — please wait a few minutes and try again.</div>';
@@ -1319,7 +1325,7 @@ module.exports = function mountJobs(app, opts) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     const token = String(req.params.token || '');
     if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
-    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address
+    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact
       FROM jobs WHERE track_token = $1 AND archived_at IS NULL`, [token])).rows[0];
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (!j) return res.status(404).send(trackShell('Repair not found', '<h1>Repair not found</h1><p class="sub">This link is no longer available. <a class="more" href="/track">Look up a repair</a></p>'));
