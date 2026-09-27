@@ -513,6 +513,13 @@
   .addr-edit { border: 0; background: none; color: var(--blue); font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; padding: 2px 4px; white-space: nowrap; }
   .addr-warn { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .84rem; font-weight: 550; color: var(--warn); background: var(--warn-tint); border-radius: 10px; padding: 8px 10px; }
   .warn-pill { background: var(--warn-tint); color: var(--warn); font-size: .72rem; vertical-align: middle; }
+  .appt-box { border: 1px dashed var(--line-strong); border-radius: 12px; padding: 10px 12px; }
+  .appt-box.set { border-style: solid; border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: var(--ok-tint); }
+  .appt-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .appt-row input[type="date"] { width: auto; flex: 0 1 170px; }
+  .appt-row #fApptTime { flex: 1 1 180px; width: auto; }
+  .appt-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .appt-chip { display: inline-block; margin: 0 0 6px 6px; font-size: .72rem; font-weight: 650; color: var(--ok); background: var(--ok-tint); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
   .tenant-danger { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
   .tenant-danger .muted-note { margin: 0; }
   .check-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: .88rem; cursor: pointer; }
@@ -1244,6 +1251,7 @@
           (open && pct !== null ? '<div class="bar" title="Time used before the deadline"><i class="' + t.cls + '" style="width:' + pct + '%"></i></div>' : '') +
           '<div class="sub">Received ' + esc(fmtShort(j.created_at)) + '</div></div>' +
         '<div class="c-status"><span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>' +
+          (j.appointment_date && open ? '<span class="appt-chip">📅 ' + esc(apptShort(j)) + '</span>' : '') +
           '<div class="who-chip">' + avatar(j.assigned_to) + '<span class="nm">' + (j.assigned_to ? esc(j.assigned_to) : 'Unassigned') + '</span></div></div>' +
         '<div class="money ' + (p ? (p.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (p ? gbp(p.value) : '—') +
           '<small>' + (p ? (p.estimated ? 'estimated' : 'profit') : 'no costs') + '</small></div>' +
@@ -1455,6 +1463,8 @@
       tenants.forEach(function(t){ lines.push('Tenant: ' + t.name + (t.phones.length ? ' – ' + t.phones.join(' / ') : '')); });
       var keys = uniq(g.jobs.map(keysText));
       if (keys.length) lines.push('Keys: ' + keys.join(' / '));
+      var appts = uniq(g.jobs.map(function(j){ return isOpen(j) ? apptText(j) : ''; }));
+      if (appts.length) lines.push('Booked for: ' + appts.join(' / '));
       // Usually the contractor arranges access with the tenant themselves.
       if (g.jobs.some(function(j){ return j.direct_contact !== 'No'; })) lines.push('Please contact the tenant directly to arrange access.');
       else lines.push('We will arrange access with the tenant.');
@@ -3028,7 +3038,7 @@
     { name: 'Contractor assigned', subject: 'A contractor has been assigned [{ref}]',
       body: 'Dear {name},\n\nWe’ve assigned {assigned} to your repair at {address} ({issue}).\n\nThey will be in touch with you directly to arrange a convenient time to visit.' },
     { name: 'Appointment booked', subject: 'Repair appointment booked [{ref}]',
-      body: 'Dear {name},\n\nYour repair at {address} ({issue}) has been booked in for [DATE AND TIME].\n\nThe visit will be carried out by {assigned}. Please make sure someone is available to give access, or let us know as soon as possible if this time doesn’t work.' },
+      body: 'Dear {name},\n\nYour repair at {address} ({issue}) has been booked in for {appt}.\n\nThe visit will be carried out by {assigned}. Please make sure someone is available to give access, or let us know as soon as possible if this time doesn’t work.' },
     { name: 'Update / next steps', subject: 'Update on your repair [{ref}]',
       body: 'Dear {name},\n\nHere’s an update on your repair at {address} ({issue}).\n\n{next}\n\nWe’ll keep you posted.' },
     { name: 'Delay — awaiting parts', subject: 'Update on your repair — awaiting parts [{ref}]',
@@ -3040,12 +3050,27 @@
     { name: 'Follow-up check', subject: 'Checking in on your repair [{ref}]',
       body: 'Dear {name},\n\nWe’re just checking that everything is working properly following the recent repair at {address} ({issue}).\n\nIf there’s still a problem, please let us know quoting {ref}.' }
   ];
+  // A booked visit, e.g. "Tuesday 30 September, morning".
+  function apptDay(v){
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '')); if (!m) return '';
+    return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+  function apptText(j){ var d = apptDay(j.appointment_date); return d ? d + (j.appointment_time ? ', ' + j.appointment_time : '') : ''; }
+  function apptShort(j){
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(j.appointment_date || '')); if (!m) return '';
+    var d = new Date(+m[1], +m[2] - 1, +m[3]), t = new Date(); t.setHours(0, 0, 0, 0);
+    var diff = Math.round((d - t) / 86400000);
+    var day = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    return day + (j.appointment_time ? ', ' + j.appointment_time : '');
+  }
+  function ymd(d){ return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function fillTemplate(t, j){
     var vals = {
       name: j.tenant_name || 'Tenant',
       ref: j.ref, address: j.property_address || 'your property',
       issue: ([j.affected, j.symptom].filter(Boolean).join(' – ') || j.category || 'repair').toLowerCase(),
-      assigned: j.assigned_to || 'our contractor', next: j.next_steps || '[NEXT STEPS]'
+      assigned: j.assigned_to || 'our contractor', next: j.next_steps || '[NEXT STEPS]',
+      appt: apptText(j) || '[DATE AND TIME]'
     };
     var fill = function(s){ return s.replace(/\{(\w+)\}/g, function(_, k){ return vals[k] != null ? vals[k] : ''; }); };
     return { subject: fill(t.subject), body: fill(t.body) + (j.track_url ? '\n\nYou can check the progress of your repair at any time here: ' + j.track_url : '') + SIGN_OFF };
@@ -3088,7 +3113,7 @@
   }
   // When a contractor is assigned, get the tenant message ready: the AI writer
   // (or the "Contractor assigned" template) on the Messages tab, to check and send.
-  var tenantNotice = null;
+  var tenantNotice = null, bookedNotice = null;
   function noticeTenantAfterAssign(jobId, contractor){ if (jobId && contractor) tenantNotice = { jobId: jobId, contractor: contractor }; }
   function prepareTenantNotice(j, contractor){
     if (!j || (!j.tenant_phone && !j.tenant_email && !j.tenant_name)) return;
@@ -3199,6 +3224,17 @@
         '<div style="margin-top:12px"><label class="lbl" for="fAssigned">Assigned to</label>' +
           '<input class="inp" id="fAssigned" list="assignees" placeholder="Pick a contractor or type a name" value="' + esc(j.assigned_to || '') + '">' +
           '<div class="assignee-contact" id="assigneeContact"></div></div>' +
+        '<div class="appt-box' + (j.appointment_date ? ' set' : '') + '" style="margin-top:12px">' +
+          '<label class="lbl" for="fApptDate">Appointment' + (j.appointment_date ? ' — booked for ' + esc(apptText(j)) : '') + '</label>' +
+          '<div class="appt-row">' +
+            '<button type="button" class="btn small" data-appt-day="0">Today</button><button type="button" class="btn small" data-appt-day="1">Tomorrow</button>' +
+            '<input class="inp" type="date" id="fApptDate" value="' + esc(j.appointment_date || '') + '" aria-label="Appointment day">' +
+            '<input class="inp" id="fApptTime" list="apptTimes" placeholder="Time, e.g. Morning or 10am" value="' + esc(j.appointment_time || '') + '" aria-label="Appointment time">' +
+          '</div>' +
+          '<datalist id="apptTimes"><option value="Morning (8am–12pm)"><option value="Afternoon (12pm–5pm)"><option value="All day (8am–5pm)"><option value="8am–10am"><option value="10am–12pm"><option value="12pm–2pm"><option value="2pm–4pm"><option value="4pm–6pm"></datalist>' +
+          '<div class="appt-actions"><button type="button" class="btn primary small" id="apptBook">' + (j.appointment_date ? 'Update booking' : 'Book & message tenant') + '</button>' +
+            (j.appointment_date ? '<button type="button" class="btn small" id="apptMsg">Message tenant</button><button type="button" class="btn small ghost" id="apptClear">Clear</button>' : '') + '</div>' +
+        '</div>' +
         '<div style="margin-top:12px"><label class="lbl" for="fNext">Next steps</label>' +
           '<textarea class="inp" id="fNext" placeholder="What needs to happen next, and when">' + esc(j.next_steps || '') + '</textarea></div>' +
         '<div class="row-actions"><span class="saved-note" id="savedNote"></span>' +
@@ -3871,6 +3907,39 @@
       });
     });
 
+    // Booking a visit: set the day and time, mark the job booked, then offer the
+    // "Appointment booked" message to the tenant with the date filled in.
+    $('dBody').querySelectorAll('[data-appt-day]').forEach(function(b){
+      b.addEventListener('click', function(){ var d = new Date(); d.setDate(d.getDate() + Number(b.dataset.apptDay)); $('fApptDate').value = ymd(d); $('fApptTime').focus(); });
+    });
+    function offerBookedMessage(){
+      setDrawerTab('messages');
+      var i = TEMPLATES.map(function(t){ return t.name; }).indexOf('Appointment booked');
+      if (i !== -1 && $('fTpl')) { $('fTpl').value = String(i); $('fTpl').dispatchEvent(new Event('change')); $('fTpl').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    }
+    $('apptBook').addEventListener('click', function(){
+      var day = $('fApptDate').value, time = $('fApptTime').value.trim();
+      if (!day) { toast('Pick the day of the visit'); $('fApptDate').focus(); return; }
+      var body = { appointment_date: day, appointment_time: time };
+      if (j.status === 'New' || j.status === 'Assigned' || j.status === 'On hold') body.status = 'Contractor booked';
+      busy($('apptBook'), true, 'Booking…');
+      api('PATCH', '/api/admin/jobs/' + j.id, body).then(function(d){
+        busy($('apptBook'), false);
+        if (!d.ok) { toast('Couldn’t book (' + (d.error || 'error') + ')'); return; }
+        toast('Booked for ' + apptText({ appointment_date: day, appointment_time: time }) + ' — message ready for the tenant');
+        bookedNotice = j.id;
+        openJob(j.id); loadJobs();
+      });
+    });
+    if ($('apptMsg')) $('apptMsg').addEventListener('click', offerBookedMessage);
+    if ($('apptClear')) $('apptClear').addEventListener('click', function(){
+      api('PATCH', '/api/admin/jobs/' + j.id, { appointment_date: '', appointment_time: '' }).then(function(d){
+        if (!d.ok) { toast('Couldn’t clear it'); return; }
+        toast('Appointment cleared'); openJob(j.id); loadJobs();
+      });
+    });
+    if (bookedNotice === j.id) { bookedNotice = null; setTimeout(offerBookedMessage, 50); }
+
     if ($('completeBtn')) $('completeBtn').addEventListener('click', function(){
       if (!confirm('Mark ' + j.ref + ' as completed?')) return;
       api('POST', '/api/admin/jobs/' + j.id + '/complete', { notes: $('fDoneNotes').value }).then(function(d){
@@ -3894,6 +3963,7 @@
         ref: j.ref, tenant_name: j.tenant_name, property_address: j.property_address,
         category: j.category, affected: j.affected, symptom: j.symptom,
         assigned_to: $('fAssigned').value.trim() || j.assigned_to, next_steps: $('fNext').value.trim() || j.next_steps,
+        appointment_date: j.appointment_date, appointment_time: j.appointment_time,
         track_url: jobTrackUrl
       });
       $('fSubj').value = filled.subject;

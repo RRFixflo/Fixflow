@@ -91,6 +91,8 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_email TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_phone TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS direct_contact TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS summary TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS appointment_date TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS appointment_time TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_address TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contractor_paid_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_number TEXT;
@@ -187,6 +189,13 @@ const POSTCODE_RE = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
 const ADDR_WORDS = { street: 'st', road: 'rd', avenue: 'ave', lane: 'ln', drive: 'dr', close: 'cl', court: 'ct', place: 'pl', crescent: 'cres', gardens: 'gdns', apartment: 'flat', apt: 'flat' };
 // Job addresses need at least a door number and a full postcode. The postcode
 // is tidied to capitals with a single space (se16rw -> SE1 6RW).
+// A booked visit: the day (YYYY-MM-DD) and a free-text time ("Morning", "10am").
+function apptDay(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
+  if (!m) return '';
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12)).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' });
+}
+function apptText(j) { const d = apptDay(j.appointment_date); return d ? d + (j.appointment_time ? ', ' + j.appointment_time : '') : ''; }
 function tidyAddress(v) {
   const s = str(v, 500);
   return s ? s.replace(POSTCODE_RE, function (m, a, b) { return a.toUpperCase() + ' ' + b.toUpperCase(); }).replace(/\s+/g, ' ').replace(/\s+,/g, ',') : s;
@@ -340,7 +349,7 @@ const SOURCES = ['Online report', 'Phone call', 'Email', 'Text / WhatsApp', 'In 
 // contractor together straight from the list.
 const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenant_name, tenant_email,
   tenant_phone, property_address, category, affected, symptom, location, description, access_days,
-  access_time, access_notes, key_permission, key_instructions, direct_contact, summary, assigned_to, next_steps,
+  access_time, access_notes, key_permission, key_instructions, direct_contact, summary, appointment_date, appointment_time, assigned_to, next_steps,
   estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
   archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved,
   (SELECT array_agg(ph.id ORDER BY ph.id) FROM job_photos ph WHERE ph.job_id = jobs.id) AS photo_ids,
@@ -622,6 +631,8 @@ module.exports = function mountJobs(app, opts) {
     key_permission: { clean: function (v) { return v === 'Yes' || v === 'No' ? v : (v ? undefined : null); }, label: 'Keys to contractor' },
     key_instructions: { clean: function (v) { return str(v, 1000); }, label: 'Contractor notes' },
     direct_contact: { clean: function (v) { return v === 'Yes' || v === 'No' ? v : (v ? undefined : null); }, label: 'We arrange access (not the contractor)', show: function (v) { return v === 'No' ? 'yes' : 'no'; } },
+    appointment_date: { clean: function (v) { if (!v) return null; return apptDay(v) ? String(v) : undefined; }, label: 'Appointment', show: function (v) { return apptDay(v) || 'none'; } },
+    appointment_time: { clean: function (v) { return str(v, 60); }, label: 'Appointment time' },
     source: { clean: function (v) { return SOURCES.indexOf(v) !== -1 ? v : undefined; }, label: 'Came in via' },
     landlord_name: { clean: function (v) { return str(v, 200); }, label: 'Landlord' },
     landlord_email: { clean: function (v) { return str(v, 200); }, label: 'Landlord email' },
@@ -878,7 +889,8 @@ module.exports = function mountJobs(app, opts) {
       fact('Issue', [j.category, j.affected, j.symptom].filter(Boolean).join(' – ')) + fact('Location in property', j.location) +
       fact('Description', j.description) + fact('Urgency', j.urgency) + fact('Status', j.status) +
       fact('Reported', when(j.created_at)) + fact('Deadline', when(j.due_at)) + fact('Completed', when(j.completed_at)) +
-      fact('Completion notes', j.completion_notes) + fact('Assigned contractor', j.assigned_to) + fact('Next steps', j.next_steps);
+      fact('Completion notes', j.completion_notes) + fact('Assigned contractor', j.assigned_to) + fact('Next steps', j.next_steps) +
+      fact('Appointment booked for', j.status !== 'Completed' ? apptText(j) : '');
     if (recipient === 'Tenant' || recipient === 'Contractor' || recipient === 'Landlord') facts += fact('Tenant name', j.tenant_name);
     if (recipient === 'Contractor') {
       facts += fact('Tenant phone', j.tenant_phone) + fact('Access days', j.access_days) + fact('Best time', j.access_time) +
@@ -1199,6 +1211,8 @@ module.exports = function mountJobs(app, opts) {
   // What tenants see for each status ("Contractor booked" reads as "Contractor arranged").
   const PUBLIC_STATUS = { 'Contractor booked': 'Contractor arranged' };
   function statusNote(j) {
+    const appt = j.status !== 'Completed' && j.status !== 'Cancelled' ? apptText(j) : '';
+    if (appt) return 'Your repair is booked for ' + appt + '. Please make sure someone can give access, or let us know if this doesn’t suit.';
     if (j.status === 'Contractor booked' && j.direct_contact === 'No') return 'A contractor has been arranged. We’ll be in touch to arrange access.';
     return STATUS_TEXT[j.status] || '';
   }
@@ -1224,7 +1238,7 @@ module.exports = function mountJobs(app, opts) {
     const st = stageOf(j.status), cancelled = j.status === 'Cancelled';
     return '<div class="steps">' + STAGES.map(function (x, i) { return '<div class="' + (!cancelled && i <= st ? 'on' : '') + '"></div>'; }).join('') + '</div>' +
       '<div class="labels">' + STAGES.map(function (x, i) { return '<span class="' + (!cancelled && i === st ? 'on' : '') + '">' + x.label + '</span>'; }).join('') + '</div>' +
-      '<div class="status">' + htmlEsc(j.status === 'Completed' && j.completed_at ? 'Completed on ' + whenUk(j.completed_at) : (PUBLIC_STATUS[j.status] || j.status)) + '</div>' +
+      '<div class="status">' + htmlEsc(j.status === 'Completed' && j.completed_at ? 'Completed on ' + whenUk(j.completed_at) : (j.status !== 'Cancelled' && apptText(j) ? 'Booked for ' + apptText(j) : (PUBLIC_STATUS[j.status] || j.status))) + '</div>' +
       '<div class="muted">' + htmlEsc(statusNote(j)) + '</div>';
   }
   // Tenant-facing pages never show the door number: drop "Flat 4" / "Apartment 2"
@@ -1261,7 +1275,7 @@ module.exports = function mountJobs(app, opts) {
     const phone = String(req.query.phone || '').trim().slice(0, 40);
     const byPhone = !!(name || phone);
     let results = '';
-    const COLS = 'id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, track_token';
+    const COLS = 'id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, appointment_date, appointment_time, track_token';
     if (ref || door || byPhone) {
       if (!trackAllowed(req.ip)) {
         results = '<div class="card">Too many searches — please wait a few minutes and try again.</div>';
@@ -1325,7 +1339,7 @@ module.exports = function mountJobs(app, opts) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     const token = String(req.params.token || '');
     if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
-    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact
+    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, appointment_date, appointment_time
       FROM jobs WHERE track_token = $1 AND archived_at IS NULL`, [token])).rows[0];
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (!j) return res.status(404).send(trackShell('Repair not found', '<h1>Repair not found</h1><p class="sub">This link is no longer available. <a class="more" href="/track">Look up a repair</a></p>'));
