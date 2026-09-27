@@ -156,6 +156,14 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS photo_token TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_photo_token_idx ON jobs (photo_token);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS track_token TEXT;
+CREATE TABLE IF NOT EXISTS shared_docs (
+  id         SERIAL PRIMARY KEY,
+  token      TEXT NOT NULL UNIQUE,
+  job_id     INTEGER REFERENCES jobs(id) ON DELETE CASCADE,
+  name       TEXT,
+  pdf        BYTEA NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_track_token_idx ON jobs (track_token);
 CREATE TABLE IF NOT EXISTS contractors (
   id         SERIAL PRIMARY KEY,
@@ -1355,6 +1363,29 @@ module.exports = function mountJobs(app, opts) {
   }));
 
   function htmlEsc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // Reports and invoices shared by WhatsApp: the PDF is kept behind a private,
+  // unguessable link so it can go straight into the landlord's chat.
+  app.post('/api/admin/shared-docs', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const buf = Buffer.from(String(b.pdf_base64 || ''), 'base64');
+    if (buf.length < 100 || buf.length > 15 * 1024 * 1024 || buf.slice(0, 4).toString() !== '%PDF') return res.status(400).json({ ok: false, error: 'bad-pdf' });
+    const name = (str(b.name, 150) || 'Document.pdf').replace(/[^\w .()-]+/g, '-').replace(/(\.pdf)?$/i, '.pdf');
+    const jobIdN = parseInt(b.job_id, 10) || null;
+    const token = crypto.randomBytes(18).toString('base64url');
+    await p.query('INSERT INTO shared_docs (token, job_id, name, pdf) VALUES ($1, $2, $3, $4)', [token, jobIdN, name, buf]);
+    res.json({ ok: true, path: '/d/' + token + '/' + encodeURIComponent(name) });
+  }));
+  app.get('/d/:token/:name?', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    const r = (await p.query('SELECT name, pdf FROM shared_docs WHERE token = $1', [String(req.params.token || '')])).rows[0];
+    if (!r) return res.status(404).send('This link has expired or is not valid.');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="' + String(r.name || 'Document.pdf').replace(/"/g, '') + '"');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(r.pdf);
+  }));
+
   app.get('/p/:token', withDb(async function (p, req, res) {
     const token = String(req.params.token || '');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');

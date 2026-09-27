@@ -2564,7 +2564,7 @@
     if (email) $('shEmail').textContent = (meta.canEmail ? 'Send email to ' : 'Email ') + l.landlord_name.split(' ').slice(0, 3).join(' ');
     if (wa) $('shWa').textContent = 'WhatsApp ' + l.landlord_name.split(' ').slice(0, 3).join(' ');
     $('shNote').textContent = email && !meta.canEmail ? 'Email opens your email app with the message ready and downloads the PDF for you to attach.' :
-      wa && !isPhone ? 'WhatsApp opens a chat with them and the PDF downloads for you to attach.' : '';
+      wa ? 'WhatsApp opens your chat with ' + l.landlord_name.split(' ')[0] + ' with the message and a private link to the PDF, ready to send.' : '';
     $('shModal').hidden = false;
   }
   function shLog(how){
@@ -2606,20 +2606,27 @@
       shLog('email');
     });
   });
+  // WhatsApp: WhatsApp can't be handed a file for a particular chat, so the PDF
+  // is saved behind a private link and the landlord's chat opens with the
+  // message and the link ready to send.
   $('shWa').addEventListener('click', function(){
-    var l = shCtx.landlord, msg = $('shMsg').value;
+    var l = shCtx.landlord, msg = $('shMsg').value, ctx = shCtx;
+    // Open the window now, while the tap still counts, and point it at WhatsApp once the link is ready.
+    var win = window.open('about:blank', '_blank');
     shWithDoc($('shWa'), function(doc){
-      var file = typeof File !== 'undefined' ? new File([doc.output('blob')], shCtx.name, { type: 'application/pdf' }) : null;
-      $('shModal').hidden = true;
-      // Phones: the share sheet sends the PDF itself (choose WhatsApp, then the landlord).
-      if (isPhone && file && navigator.canShare && navigator.canShare({ files: [file] })) {
-        navigator.share({ files: [file], text: msg, title: shCtx.subject }).then(function(){ shLog('WhatsApp'); })['catch'](function(){});
-        return;
-      }
-      shDownload(doc);
-      window.open('https://wa.me/' + waNumber(l.landlord_phone) + '?text=' + encodeURIComponent(msg), '_blank', 'noopener');
-      toast('PDF downloaded — attach it in the WhatsApp chat that’s opening');
-      shLog('WhatsApp');
+      busy($('shWa'), true, 'Preparing…');
+      api('POST', '/api/admin/shared-docs', { job_id: ctx.jobId || null, name: ctx.name, pdf_base64: doc.output('datauristring').split(',')[1] }).then(function(d){
+        busy($('shWa'), false);
+        if (!d.ok) { if (win) win.close(); toast('Couldn’t prepare the PDF link — try Share another way'); return; }
+        var link = location.origin + d.path;
+        var line = (/invoice/i.test(ctx.name || '') ? 'View the invoice (PDF): ' : 'View the report (PDF): ') + link;
+        var body = msg.replace(/\bPlease find attached\b/, 'Please find'), k = body.search(/\n\s*(Kind regards|Best regards|Regards|Many thanks|Thanks)/i);
+        var text = k > 0 ? body.slice(0, k) + '\n\n' + line + body.slice(k) : body + '\n\n' + line;
+        var url = 'https://wa.me/' + waNumber(l.landlord_phone) + '?text=' + encodeURIComponent(text);
+        $('shModal').hidden = true;
+        if (win && !win.closed) win.location.href = url; else window.location.href = url;
+        shLog('WhatsApp');
+      });
     });
   });
 
