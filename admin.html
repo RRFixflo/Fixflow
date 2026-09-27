@@ -513,6 +513,14 @@
   .addr-edit { border: 0; background: none; color: var(--blue); font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; padding: 2px 4px; white-space: nowrap; }
   .addr-warn { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .84rem; font-weight: 550; color: var(--warn); background: var(--warn-tint); border-radius: 10px; padding: 8px 10px; }
   .warn-pill { background: var(--warn-tint); color: var(--warn); font-size: .72rem; vertical-align: middle; }
+  .part-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .part-row .pd small { display: block; color: var(--ink-faint); font-size: .78rem; }
+  .part-row .pm { display: flex; flex-direction: column; align-items: flex-end; font-size: .8rem; color: var(--ink-soft); white-space: nowrap; }
+  .part-row .pm .pc { font-weight: 650; color: var(--ink); }
+  .part-row .part-st { width: auto; min-height: 34px; padding: 4px 8px; font-size: .82rem; }
+  .parts-total { margin: 10px 0 4px; font-size: .86rem; color: var(--ink-soft); }
+  .part-add { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line-strong); }
+  @media (max-width: 560px) { .part-row { grid-template-columns: minmax(0,1fr) auto; } .part-row .part-st { grid-column: 1; justify-self: start; } .part-row .pm { grid-column: 2; grid-row: 1; } .part-row [data-part-del] { grid-column: 2; grid-row: 2; justify-self: end; } }
   .appt-box { border: 1px dashed var(--line-strong); border-radius: 12px; padding: 10px 12px; }
   .appt-box.set { border-style: solid; border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: var(--ok-tint); }
   .appt-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -1099,13 +1107,17 @@
   function issueOf(j){ return [j.category, j.affected, j.symptom].filter(Boolean).join(' · ') || 'Repair'; }
   // Profit = charge to landlord minus what the job cost. Uses the actual cost once
   // entered, otherwise the estimate (shown as "estimated").
+  // Parts charged to the landlord add to the charge; what we paid for them adds to the cost.
   function profitOf(j){
+    var pCharge = num(j.parts_charge) || 0, pCost = num(j.parts_cost) || 0;
     var charge = num(j.landlord_charge);
-    if (charge === null) return null;
+    if (charge === null && !pCharge) return null;
+    charge = (charge || 0) + pCharge;
     var cost = num(j.actual_cost);
     var estimated = false;
-    if (cost === null) { cost = num(j.estimated_cost); estimated = true; }
-    if (cost === null) return null;
+    if (cost === null) { cost = num(j.estimated_cost); estimated = cost !== null; }
+    if (cost === null && !pCost) return null;
+    cost = (cost || 0) + pCost;
     return { value: Math.round((charge - cost) * 100) / 100, estimated: estimated, margin: charge > 0 ? (charge - cost) / charge : null };
   }
   function timeInfo(j){
@@ -2008,7 +2020,7 @@
     });
     return Object.keys(map).map(function(k){ return map[k]; }).sort(function(a, b){ return b.latest - a.latest; });
   }
-  function chargedTotal(list){ return list.reduce(function(sum, j){ return sum + (num(j.landlord_charge) || 0); }, 0); }
+  function chargedTotal(list){ return list.reduce(function(sum, j){ return sum + (num(j.landlord_charge) || 0) + (num(j.parts_charge) || 0); }, 0); }
 
   var view = 'jobs', openPropKey = null;
   // ---------- Back / home navigation ----------
@@ -2494,7 +2506,8 @@
       row('Contractor', j.assigned_to);
       row('Completed', j.completed_at ? fmtDate(j.completed_at) : '');
       row('Work carried out', j.completion_notes);
-      row('Charge to landlord', j.landlord_charge != null ? gbp(j.landlord_charge).replace('−', '-') : 'Not yet confirmed');
+      var totalCharge = j.landlord_charge != null || num(j.parts_charge) ? (num(j.landlord_charge) || 0) + (num(j.parts_charge) || 0) : null;
+      row('Charge to landlord', totalCharge != null ? gbp(totalCharge).replace('−', '-') + (num(j.parts_charge) ? ' (including parts ' + gbp(num(j.parts_charge)) + ')' : '') : 'Not yet confirmed');
       if (o.history && o.history.length) {
         y += 4; text('Progress', M, 9.5, 'bold', INK);
         o.history.forEach(function(h){ row(fmtShort(h.created_at), h.body); });
@@ -2838,7 +2851,8 @@
     $('invDue').value = isoDate(Date.now() + (cfg.paymentDays || 14) * 86400000);
     var issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') || 'Repair';
     var desc = issue + (j.location ? ' (' + j.location + ')' : '') + (j.completion_notes ? '. Work carried out: ' + j.completion_notes : '');
-    $('invLines').innerHTML = invLineHtml(desc, j.landlord_charge != null ? Number(j.landlord_charge).toFixed(2) : '');
+    $('invLines').innerHTML = invLineHtml(desc, j.landlord_charge != null ? Number(j.landlord_charge).toFixed(2) : '') +
+      (j.id === openJobId ? jobParts : []).filter(function(x){ return num(x.charge); }).map(function(x){ return invLineHtml('Parts: ' + x.description, Number(x.charge).toFixed(2)); }).join('');
     setVat(false);
     $('invAiNote').hidden = true;
     $('invAi').hidden = !meta.canAi;
@@ -3104,6 +3118,9 @@
     api('GET', '/api/admin/jobs/' + id).then(function(d){
       if (!d.ok) { toast('Couldn’t open that job.'); return; }
       jobInvoices = d.invoices || [];
+      jobParts = d.parts || [];
+      d.job.parts_cost = jobParts.reduce(function(s, x){ return s + (num(x.cost) || 0); }, 0);
+      d.job.parts_charge = jobParts.reduce(function(s, x){ return s + (num(x.charge) || 0); }, 0);
       renderJob(d.job, d.updates, d.photos || []);
       $('scrim').hidden = false;
       $('drawer').hidden = false;
@@ -3113,7 +3130,7 @@
   }
   // When a contractor is assigned, get the tenant message ready: the AI writer
   // (or the "Contractor assigned" template) on the Messages tab, to check and send.
-  var tenantNotice = null, bookedNotice = null;
+  var tenantNotice = null, bookedNotice = null, jobParts = [];
   function noticeTenantAfterAssign(jobId, contractor){ if (jobId && contractor) tenantNotice = { jobId: jobId, contractor: contractor }; }
   function prepareTenantNotice(j, contractor){
     if (!j || (!j.tenant_phone && !j.tenant_email && !j.tenant_name)) return;
@@ -3246,7 +3263,7 @@
         '<div class="grid3">' +
           '<div><label class="lbl" for="fEst">Estimated cost (£)</label><input class="inp" id="fEst" inputmode="decimal" value="' + esc(j.estimated_cost == null ? '' : j.estimated_cost) + '"></div>' +
           '<div><label class="lbl" for="fAct">Actual cost (£)</label><input class="inp" id="fAct" inputmode="decimal" value="' + esc(j.actual_cost == null ? '' : j.actual_cost) + '"></div>' +
-          '<div><label class="lbl" for="fCharge">Charge to landlord (£)</label><input class="inp" id="fCharge" inputmode="decimal" value="' + esc(j.landlord_charge == null ? '' : j.landlord_charge) + '"></div>' +
+          '<div><label class="lbl" for="fCharge">Charge to landlord (£)' + (jobParts.length ? ' <span style="font-weight:500;color:var(--ink-faint)">+ parts below</span>' : '') + '</label><input class="inp" id="fCharge" inputmode="decimal" value="' + esc(j.landlord_charge == null ? '' : j.landlord_charge) + '"></div>' +
         '</div>' +
         '<div class="profit-box" id="profitBox"><div><div class="lbl2" id="profitLbl">Profit</div><div class="big" id="profitVal">—</div></div><div class="lbl2" id="profitMargin"></div></div>' +
         (j.assigned_to && j.actual_cost != null
@@ -3256,6 +3273,24 @@
           : '') +
         '<div class="row-actions">' +
           '<button class="btn primary" id="saveMoney" type="button">Save costs</button></div>' +
+      '</div>' +
+      '<div class="card" data-pane="money" id="partsCard"><h3>Parts' + (jobParts.length ? ' <span class="count-chip">' + jobParts.length + '</span>' : '') + '</h3>' +
+        (jobParts.length ? '<div class="parts-list">' + jobParts.map(function(x){
+          return '<div class="part-row" data-part="' + x.id + '"><div class="pd"><strong>' + esc(x.description) + '</strong>' + (x.supplier ? '<small>' + esc(x.supplier) + '</small>' : '') + '</div>' +
+            '<select class="inp part-st" data-part-status="' + x.id + '" aria-label="Part status">' + ['Ordered', 'Arrived', 'Fitted'].map(function(s){ return '<option' + (s === x.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
+            '<div class="pm"><span>Cost ' + esc(gbp(num(x.cost))) + '</span><span class="pc">Landlord ' + esc(gbp(num(x.charge))) + '</span></div>' +
+            '<button type="button" class="btn small ghost" data-part-del="' + x.id + '" aria-label="Remove part">✕</button></div>';
+        }).join('') + '</div>' +
+          '<div class="parts-total">Parts total: cost <strong>' + esc(gbp(j.parts_cost)) + '</strong> · charged to landlord <strong>' + esc(gbp(j.parts_charge)) + '</strong></div>' : '<p class="muted-note">No parts yet. Add any parts ordered for this job — the landlord charge is added to the job’s total and invoice.</p>') +
+        (jobParts.some(function(x){ return x.status === 'Ordered'; }) && j.status !== 'Awaiting parts' && isOpen(j) ? '<div class="nearby" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>Waiting for parts to arrive?</span><button class="btn small" id="partsAwait" type="button">Set status to Awaiting parts</button></div>' : '') +
+        (j.status === 'Awaiting parts' && jobParts.length && jobParts.every(function(x){ return x.status !== 'Ordered'; }) ? '<div class="nearby" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>All parts have arrived.</span><button class="btn small primary" id="partsBack" type="button">Set status to Contractor booked</button></div>' : '') +
+        '<div class="part-add"><div class="grid2">' +
+          '<div><label class="lbl" for="ptDesc">Part</label><input class="inp" id="ptDesc" placeholder="e.g. Boiler diverter valve"></div>' +
+          '<div><label class="lbl" for="ptSupplier">Supplier (optional)</label><input class="inp" id="ptSupplier" placeholder="e.g. Screwfix"></div>' +
+        '</div><div class="grid2" style="margin-top:10px">' +
+          '<div><label class="lbl" for="ptCost">What we paid (£)</label><input class="inp" id="ptCost" inputmode="decimal" placeholder="0.00"></div>' +
+          '<div><label class="lbl" for="ptCharge">Charge to landlord (£)</label><input class="inp" id="ptCharge" inputmode="decimal" placeholder="0.00"></div>' +
+        '</div><div class="row-actions"><button class="btn primary" id="ptAdd" type="button">+ Add part</button></div></div>' +
       '</div>' +
       '<div class="card" data-pane="money"><h3>Landlord invoices' + (jobInvoices.length ? ' <span class="count-chip">' + jobInvoices.length + '</span>' : '') + '</h3>' +
         (jobInvoices.length
@@ -3868,7 +3903,7 @@
     // Live profit as costs are typed.
     function readMoney(id){ var v = $(id).value.replace(/[£,\s]/g, ''); return v === '' ? null : Number(v); }
     function updateProfit(){
-      var p = profitOf({ landlord_charge: readMoney('fCharge'), actual_cost: readMoney('fAct'), estimated_cost: readMoney('fEst') });
+      var p = profitOf({ landlord_charge: readMoney('fCharge'), actual_cost: readMoney('fAct'), estimated_cost: readMoney('fEst'), parts_cost: j.parts_cost, parts_charge: j.parts_charge });
       var box = $('profitBox');
       box.classList.toggle('pos', !!p && p.value >= 0);
       box.classList.toggle('neg', !!p && p.value < 0);
@@ -3939,6 +3974,35 @@
       });
     });
     if (bookedNotice === j.id) { bookedNotice = null; setTimeout(offerBookedMessage, 50); }
+
+    // Parts
+    function partsReload(msg){ if (msg) toast(msg); drawerTab = 'money'; openJob(j.id); loadJobs(); }
+    $('ptCost').addEventListener('input', function(){ if (!$('ptCharge').dataset.touched) $('ptCharge').value = $('ptCost').value; });
+    $('ptCharge').addEventListener('input', function(){ $('ptCharge').dataset.touched = '1'; });
+    $('ptAdd').addEventListener('click', function(){
+      var desc = $('ptDesc').value.trim();
+      if (!desc) { toast('What is the part?'); $('ptDesc').focus(); return; }
+      var cost = $('ptCost').value.replace(/[£,\s]/g, ''), charge = $('ptCharge').value.replace(/[£,\s]/g, '');
+      if ((cost && !(Number(cost) >= 0)) || (charge && !(Number(charge) >= 0))) { toast('Please enter amounts as numbers, e.g. 45.99'); return; }
+      busy($('ptAdd'), true, 'Adding…');
+      api('POST', '/api/admin/jobs/' + j.id + '/parts', { description: desc, supplier: $('ptSupplier').value, cost: cost, charge: charge }).then(function(d){
+        busy($('ptAdd'), false);
+        if (!d.ok) { toast('Couldn’t add the part (' + (d.error || 'error') + ')'); return; }
+        partsReload('Part added');
+      });
+    });
+    $('partsCard').addEventListener('change', function(e){
+      var s = e.target.closest('[data-part-status]'); if (!s) return;
+      api('PATCH', '/api/admin/parts/' + s.dataset.partStatus, { status: s.value }).then(function(d){ if (!d.ok) { toast('Couldn’t update the part'); return; } partsReload('Part marked ' + s.value.toLowerCase()); });
+    });
+    $('partsCard').addEventListener('click', function(e){
+      var del = e.target.closest('[data-part-del]'); if (!del) return;
+      if (!confirm('Remove this part?')) return;
+      api('DELETE', '/api/admin/parts/' + del.dataset.partDel, { confirm: true }).then(function(d){ if (!d.ok) { toast('Couldn’t remove it'); return; } partsReload('Part removed'); });
+    });
+    function setStatus(s){ api('PATCH', '/api/admin/jobs/' + j.id, { status: s }).then(function(d){ if (!d.ok) { toast('Couldn’t change the status'); return; } partsReload('Status: ' + s); }); }
+    if ($('partsAwait')) $('partsAwait').addEventListener('click', function(){ setStatus('Awaiting parts'); });
+    if ($('partsBack')) $('partsBack').addEventListener('click', function(){ setStatus('Contractor booked'); });
 
     if ($('completeBtn')) $('completeBtn').addEventListener('click', function(){
       if (!confirm('Mark ' + j.ref + ' as completed?')) return;
