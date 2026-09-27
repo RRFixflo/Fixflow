@@ -1143,7 +1143,7 @@ module.exports = function mountJobs(app, opts) {
       '<title>' + htmlEsc(title) + ' — Residential Realtors</title><style>' +
       ':root{--ink:#0b0c0f;--soft:#5b616e;--line:#e6e7eb;--red:#D9262E;--ok:#139A4B;--bg:#f6f6f8}' +
       '*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}' +
-      'header{background:#0e0f13;color:#fff;padding:18px 16px}header .in{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:10px}header b{color:var(--red)}header a{color:#fff;text-decoration:none;font-weight:700}' +
+      'header{background:#0e0f13;color:#fff;padding:18px 16px}header .in{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:10px}header b{color:var(--red)}header a{color:#fff;text-decoration:none;font-weight:700}header .logo{display:inline-flex;background:#fff;border-radius:10px;padding:6px 10px}header .logo img{height:34px;width:auto;display:block}' +
       'main{max-width:640px;margin:0 auto;padding:18px 16px 60px}h1{font-size:1.35rem;margin:0 0 6px;letter-spacing:-.02em}.sub{color:var(--soft);margin:0 0 18px}' +
       'form{display:flex;gap:8px;margin:0 0 18px}form[hidden]{display:none}form.stack{flex-direction:column}.tabs{display:inline-flex;background:#ececf0;border-radius:12px;padding:3px;margin:0 0 12px}.tabs button{background:none;color:var(--soft);padding:8px 14px;border-radius:9px}.tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}input{flex:1;min-width:0;padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit;background:#fff}button{padding:12px 18px;border:0;border-radius:12px;background:var(--ink);color:#fff;font:inherit;font-weight:600;cursor:pointer}' +
       '.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}.ref{font-weight:700}.muted{color:var(--soft);font-size:.9rem}' +
@@ -1151,7 +1151,7 @@ module.exports = function mountJobs(app, opts) {
       '.labels{display:flex;justify-content:space-between;font-size:.72rem;color:var(--soft);gap:4px}.labels span.on{color:var(--ink);font-weight:600}' +
       '.status{font-weight:600;margin:10px 0 2px}.upd{border-top:1px solid var(--line);padding-top:10px;margin-top:10px;white-space:pre-line;font-size:.92rem}.upd .d{font-size:.78rem;color:var(--soft);font-weight:600}' +
       'a.more{color:#2F5BEA;font-weight:600;text-decoration:none}.note{font-size:.85rem;color:var(--soft);margin-top:18px}</style></head><body>' +
-      '<header><div class="in"><a href="/">R<b>|</b>R Residential Realtors</a></div></header><main>' + inner + '</main></body></html>';
+      '<header><div class="in"><a class="logo" href="/"><img src="/logo-tight.png" alt="Residential Realtors"></a></div></header><main>' + inner + '</main></body></html>';
   }
   function progressHtml(j) {
     const st = stageOf(j.status), cancelled = j.status === 'Cancelled';
@@ -1317,9 +1317,9 @@ module.exports = function mountJobs(app, opts) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">' +
       '<title>Job photos ' + refFor(j.id) + '</title><style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f4f4f6;color:#0b0c0f}' +
-      'header{padding:16px;background:#0e0f13;color:#fff}header b{color:#D9262E}h1{font-size:1rem;margin:6px 0 2px}p{margin:0;color:#b9bcc4;font-size:.85rem}' +
+      'header{padding:16px;background:#0e0f13;color:#fff}header .logo{display:inline-flex;background:#fff;border-radius:10px;padding:6px 10px}header .logo img{height:30px;width:auto;display:block}h1{font-size:1rem;margin:6px 0 2px}p{margin:0;color:#b9bcc4;font-size:.85rem}' +
       'main{padding:12px;display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}a{display:block;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1)}' +
-      'img{display:block;width:100%;height:auto}</style></head><body><header><div>R<b>|</b>R Residential Realtors</div><h1>' + refFor(j.id) + ' · ' + htmlEsc(j.property_address || '') + '</h1><p>' +
+      'img{display:block;width:100%;height:auto}</style></head><body><header><div class="logo"><img src="/logo-tight.png" alt="Residential Realtors"></div><h1>' + refFor(j.id) + ' · ' + htmlEsc(j.property_address || '') + '</h1><p>' +
       htmlEsc(issue) + ' · ' + ph.length + ' photo' + (ph.length === 1 ? '' : 's') + ' — tap a photo to open it full size</p></header><main>' +
       ph.map(function (x, i) { const u = '/p/' + token + '/' + x.id; return '<a href="' + u + '" target="_blank" rel="noopener"><img loading="lazy" src="' + u + '" alt="Photo ' + (i + 1) + '"></a>'; }).join('') +
       '</main></body></html>');
