@@ -90,6 +90,7 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_name TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_email TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_phone TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS direct_contact TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS summary TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_address TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contractor_paid_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_number TEXT;
@@ -339,7 +340,7 @@ const SOURCES = ['Online report', 'Phone call', 'Email', 'Text / WhatsApp', 'In 
 // contractor together straight from the list.
 const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenant_name, tenant_email,
   tenant_phone, property_address, category, affected, symptom, location, description, access_days,
-  access_time, access_notes, key_permission, key_instructions, direct_contact, assigned_to, next_steps,
+  access_time, access_notes, key_permission, key_instructions, direct_contact, summary, assigned_to, next_steps,
   estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
   archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved,
   (SELECT array_agg(ph.id ORDER BY ph.id) FROM job_photos ph WHERE ph.job_id = jobs.id) AS photo_ids,
@@ -620,7 +621,7 @@ module.exports = function mountJobs(app, opts) {
     access_notes: { clean: function (v) { return str(v, 1000); }, label: 'Access notes' },
     key_permission: { clean: function (v) { return v === 'Yes' || v === 'No' ? v : (v ? undefined : null); }, label: 'Keys to contractor' },
     key_instructions: { clean: function (v) { return str(v, 1000); }, label: 'Contractor notes' },
-    direct_contact: { clean: function (v) { return v === 'Yes' || v === 'No' ? v : (v ? undefined : null); }, label: 'Contractor contacts tenant directly' },
+    direct_contact: { clean: function (v) { return v === 'Yes' || v === 'No' ? v : (v ? undefined : null); }, label: 'We arrange access (not the contractor)', show: function (v) { return v === 'No' ? 'yes' : 'no'; } },
     source: { clean: function (v) { return SOURCES.indexOf(v) !== -1 ? v : undefined; }, label: 'Came in via' },
     landlord_name: { clean: function (v) { return str(v, 200); }, label: 'Landlord' },
     landlord_email: { clean: function (v) { return str(v, 200); }, label: 'Landlord email' },
@@ -662,6 +663,8 @@ module.exports = function mountJobs(app, opts) {
       notes.push('Due: moved to ' + EDITABLE.due_at.show(due) + ' to match the new urgency');
     }
     if (!sets.length) return res.json({ ok: true, changed: false });
+    // The one-line contractor summary is rewritten next time if the job's wording changed.
+    if (['category', 'affected', 'symptom', 'location', 'description'].some(function (f) { return sets.some(function (s) { return s.indexOf(f + ' =') === 0; }); })) sets.push('summary = NULL');
     vals.push(id);
     await p.query('UPDATE jobs SET ' + sets.join(', ') + ', updated_at = now() WHERE id = $' + vals.length, vals);
     for (const n of notes) {
@@ -880,7 +883,7 @@ module.exports = function mountJobs(app, opts) {
     if (recipient === 'Contractor') {
       facts += fact('Tenant phone', j.tenant_phone) + fact('Access days', j.access_days) + fact('Best time', j.access_time) +
         fact('Access notes', j.access_notes) + fact('Keys can be released to contractor', j.key_permission) + fact('Contractor notes', j.key_instructions) +
-        (j.direct_contact === 'Yes' ? fact('Arranging access', 'The contractor should contact the tenant directly to arrange a time') : '');
+        (j.direct_contact !== 'No' ? fact('Arranging access', 'The contractor will contact the tenant directly to arrange a time') : fact('Arranging access', 'We (the agency) will arrange access with the tenant'));
     }
     if (recipient === 'Landlord') {
       facts += fact('Cost to landlord (our estimate for the recommended work)', j.landlord_charge != null ? '£' + Number(j.landlord_charge).toFixed(2) : null) +
@@ -1363,6 +1366,41 @@ module.exports = function mountJobs(app, opts) {
   }));
 
   function htmlEsc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // One-line job summaries for contractor messages ("Kitchen sink overflowing –
+  // check waste and washing machine drain"), written once by AI and kept.
+  app.post('/api/admin/jobs/summaries', withDb(async function (p, req, res) {
+    const ids = (Array.isArray((req.body || {}).ids) ? req.body.ids : []).map(function (x) { return parseInt(x, 10); }).filter(Boolean).slice(0, 25);
+    if (!ids.length) return res.json({ ok: true, summaries: {} });
+    const rows = (await p.query('SELECT id, category, affected, symptom, location, description, summary FROM jobs WHERE id = ANY($1)', [ids])).rows;
+    const out = {};
+    rows.forEach(function (r) { if (r.summary) out[r.id] = r.summary; });
+    const todo = rows.filter(function (r) { return !r.summary; });
+    if (!todo.length || !opts.askAi || !opts.canAi || !opts.canAi()) return res.json({ ok: true, summaries: out });
+    const prompt = 'You write one-line job summaries for a UK letting agent to send to contractors.\n\n' +
+      'For each repair job below, write ONE short line (ideally under 15 words) saying what needs doing, in plain UK English, e.g. ' +
+      '"Kitchen sink overflowing – check waste pipe and washing machine drainage" or "Annual gas safety check (CP12)". ' +
+      'If a job lists several separate tasks, keep every task, very briefly, separated by semicolons. ' +
+      'Do not include names, phone numbers, addresses, dates, costs or the tenant\'s feelings. Do not invent anything.\n\n' +
+      todo.map(function (r) {
+        return '[' + r.id + '] ' + [r.category, r.affected, r.symptom].filter(Boolean).join(' – ') + (r.location ? ' (' + r.location + ')' : '') +
+          (r.description ? '\n' + String(r.description).replace(/^Other tenants:.*$/im, '').slice(0, 1500) : '');
+      }).join('\n\n') +
+      '\n\nReply with ONLY JSON: {"summaries": {"<id>": "<one line>"}}';
+    const result = await opts.askAi(prompt, true);
+    if (result.ok) {
+      let parsed = null;
+      try { parsed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()); } catch (e) { parsed = null; }
+      const got = (parsed && parsed.summaries) || {};
+      for (const r of todo) {
+        const s = str(String(got[r.id] || '').replace(/\s+/g, ' ').replace(/^["']|["']$/g, ''), 200);
+        if (!s) continue;
+        out[r.id] = s;
+        await p.query('UPDATE jobs SET summary = $2 WHERE id = $1', [r.id, s]);
+      }
+    }
+    res.json({ ok: true, summaries: out });
+  }));
+
   // Reports and invoices shared by WhatsApp: the PDF is kept behind a private,
   // unguessable link so it can go straight into the landlord's chat.
   app.post('/api/admin/shared-docs', withDb(async function (p, req, res) {
