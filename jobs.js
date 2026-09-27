@@ -263,12 +263,19 @@ async function migrateLandlords(p) {
 // into this public code. On startup any listed contractor not already in the
 // directory (matched by name, phone or email) is added; existing ones, including
 // any edited or removed in the dashboard, are left alone.
+// Public organisations (council teams) are listed here rather than in the variable.
+const BUILT_IN_CONTRACTORS = [
+  { name: 'Southwark Council', trade: 'Council repairs', email: 'repairs@southwark.gov.uk', escalation_email: 'complaints@southwark.gov.uk', notes: 'Southwark Council repairs team' },
+  { name: 'Leaksfromabove', trade: 'Council – leaks from above', email: 'leaksfromabove@southwark.gov.uk', escalation_email: 'complaints@southwark.gov.uk', notes: 'Southwark Council leaks from above team' }
+];
 async function seedContractors(p) {
+  let list = [];
   const raw = process.env.CONTRACTORS_SEED;
-  if (!raw) return;
-  let list;
-  try { list = JSON.parse(raw); } catch (e) { console.error('CONTRACTORS_SEED is not valid JSON'); return; }
-  if (!Array.isArray(list)) return;
+  if (raw) {
+    try { list = JSON.parse(raw); } catch (e) { console.error('CONTRACTORS_SEED is not valid JSON'); }
+    if (!Array.isArray(list)) list = [];
+  }
+  list = list.concat(BUILT_IN_CONTRACTORS);
   const have = (await p.query('SELECT name, phone, email FROM contractors')).rows;
   const digits = function (v) { return String(v || '').replace(/\D/g, ''); };
   let added = 0;
@@ -284,7 +291,7 @@ async function seedContractors(p) {
       [str(c.name, 200), str(c.trade, 200), str(c.phone, 50), str(c.email, 200), str(c.escalation_email, 200), str(c.notes, 1000)]);
     added += 1;
   }
-  if (added) console.log('Added ' + added + ' contractor' + (added === 1 ? '' : 's') + ' from CONTRACTORS_SEED');
+  if (added) console.log('Added ' + added + ' contractor' + (added === 1 ? '' : 's') + ' to the directory');
 }
 
 // How a job reached us. Tenant submissions are 'Online report'; staff pick one
