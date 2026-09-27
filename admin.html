@@ -145,7 +145,8 @@
   /* ---------- Stat cards ---------- */
   .tiles { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 20px; }
   .tile { position: relative; background: linear-gradient(180deg, var(--panel), color-mix(in srgb, var(--panel) 92%, var(--bg))); border: 1px solid var(--line); border-radius: 16px; padding: 15px 16px 16px; box-shadow: var(--shadow-xs); overflow: hidden; }
-  .tile .k { display: flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 550; color: var(--ink-soft); white-space: nowrap; }
+  .tile .k { display: flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 550; color: var(--ink-soft); line-height: 1.2; }
+  .tile .k i { flex-shrink: 0; }
   .tile .k i { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: var(--panel-2); color: var(--ink-soft); font-style: normal; }
   .tile .k i svg { width: 14px; height: 14px; }
   .tile .v { font-family: var(--display); font-size: 1.75rem; font-weight: 700; letter-spacing: -.03em; margin-top: 10px; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -165,7 +166,7 @@
   .tile.warnish.has .v { color: var(--warn); }
   .filter-chip { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 5px 6px 5px 12px; border-radius: 999px; background: var(--ink); color: var(--panel); font-size: .8rem; font-weight: 600; }
   .filter-chip button { border: 0; background: rgba(255,255,255,.18); color: inherit; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; font-size: .7rem; }
-  @media (max-width: 640px) { .tiles { grid-template-columns: repeat(2, 1fr); gap: 10px; } .tiles:not(.prop-tiles) .tile:last-child { grid-column: 1 / -1; } .tile .v { font-size: 1.5rem; } }
+  @media (max-width: 640px) { .tiles, .tiles:not(.prop-tiles) { grid-template-columns: repeat(2, 1fr); gap: 10px; } .tiles:not(.prop-tiles) .tile:last-child { grid-column: 1 / -1; } .tile .v { font-size: 1.5rem; } }
 
   /* ---------- Toolbar ---------- */
   .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
@@ -558,13 +559,13 @@
 
       <div id="jobsView">
       <div class="tiles">
-        <div class="tile blue"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg></i>Open jobs</div><div class="v" id="tOpen">–</div></div>
+        <button type="button" class="tile clickable blue" id="tOpenTile" data-assign="" title="Show all open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg></i>Open jobs</div><div class="v" id="tOpen">–</div></button>
         <button type="button" class="tile clickable warnish" id="tUnassTile" data-assign="unassigned" title="Show unassigned open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/><path d="M3 3l18 18"/></svg></i>Unassigned</div><div class="v" id="tUnass">–</div></button>
         <button type="button" class="tile clickable blue" id="tAssTile" data-assign="assigned" title="Show assigned open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg></i>Assigned</div><div class="v" id="tAss">–</div></button>
-        <div class="tile alert" id="tOverTile"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17.5v.5"/></svg></i>Overdue</div><div class="v" id="tOver">–</div></div>
-        <div class="tile soonish"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></i>Due in 24h</div><div class="v" id="tSoon">–</div></div>
-        <div class="tile"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17 19 7"/></svg></i>Done this month</div><div class="v" id="tDone">–</div></div>
-        <div class="tile good"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg></i>Profit this month</div><div class="v" id="tProfit">–</div></div>
+        <button type="button" class="tile clickable alert" id="tOverTile" data-assign="overdue" title="Show overdue jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17.5v.5"/></svg></i>Overdue</div><div class="v" id="tOver">–</div></button>
+        <button type="button" class="tile clickable soonish" id="tSoonTile" data-assign="soon" title="Show jobs due in the next 24 hours"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></i>Due in 24h</div><div class="v" id="tSoon">–</div></button>
+        <button type="button" class="tile clickable" id="tDoneTile" data-assign="doneMonth" title="Show jobs completed this month"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17 19 7"/></svg></i>Done this month</div><div class="v" id="tDone">–</div></button>
+        <button type="button" class="tile clickable good" id="tProfitTile" data-assign="doneMonth" title="Show jobs completed this month"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg></i>Profit this month</div><div class="v" id="tProfit">–</div></button>
       </div>
 
       <div class="toolbar">
@@ -1069,7 +1070,7 @@
   var selected = new Set();   // job ids ticked in the list, to send to a contractor together
   var contractors = [];       // the contractor directory
   var archivedJobs = [];      // deleted jobs, kept in the archive
-  var assignFilter = null;    // 'assigned' / 'unassigned' when a count tile is clicked
+  var assignFilter = null, activeTile = null;    // set by the count tiles: 'assigned', 'unassigned', 'overdue', 'soon' or 'doneMonth'
   try { var savedSort = localStorage.getItem('rrJobsSort'); if (savedSort) $('sort').value = savedSort; } catch (e) {}
 
   // ---------- Sign in ----------
@@ -1180,10 +1181,11 @@
     $('tUnass').textContent = unassigned;
     $('tAss').textContent = open.length - unassigned;
     $('tUnassTile').classList.toggle('has', unassigned > 0);
-    $('tUnassTile').classList.toggle('on', assignFilter === 'unassigned');
-    $('tAssTile').classList.toggle('on', assignFilter === 'assigned');
+    document.querySelectorAll('.tiles button.tile[data-assign]').forEach(function(t){
+      t.classList.toggle('on', t.dataset.assign ? !!assignFilter && activeTile === t.id : !assignFilter && filter === 'open');
+    });
     $('assignChip').hidden = !assignFilter || filter === 'archived';
-    $('assignChipText').textContent = assignFilter === 'unassigned' ? 'Showing unassigned jobs' : 'Showing assigned jobs';
+    $('assignChipText').textContent = (TILE_FILTER_TEXT || {})[assignFilter] || '';
     $('sOpen').textContent = open.length;
     $('sOpen').classList.toggle('hot', overdue.length > 0);
     $('tSoon').textContent = soon.length;
@@ -1200,7 +1202,11 @@
       if (filter === 'completed' && j.status !== 'Completed') return false;
       if (filter !== 'archived' && assignFilter) {
         var has = !!String(j.assigned_to || '').trim();
-        if (assignFilter === 'unassigned' ? has : !has) return false;
+        if (assignFilter === 'unassigned' && has) return false;
+        if (assignFilter === 'assigned' && !has) return false;
+        if (assignFilter === 'overdue' && overdue.indexOf(j) === -1) return false;
+        if (assignFilter === 'soon' && soon.indexOf(j) === -1) return false;
+        if (assignFilter === 'doneMonth' && doneMonth.indexOf(j) === -1) return false;
       }
       if (!q) return true;
       return [j.ref, j.property_address, j.tenant_name, j.tenant_email, j.tenant_phone, issueOf(j), j.location, j.assigned_to, j.status]
@@ -1249,21 +1255,29 @@
   document.querySelectorAll('.tabs button').forEach(function(b){
     b.addEventListener('click', function(){
       filter = b.dataset.filter;
+      if ((assignFilter === 'doneMonth' && filter === 'open') || ((assignFilter === 'overdue' || assignFilter === 'soon') && filter === 'completed')) assignFilter = null;
       document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.toggle('on', x === b); });
       render();
     });
   });
   $('search').addEventListener('input', render);
-  // Clicking Assigned / Unassigned shows just those open jobs; click again (or the chip) to clear.
-  ['tUnassTile', 'tAssTile'].forEach(function(id){
-    $(id).addEventListener('click', function(){
-      var v = $(id).dataset.assign;
-      assignFilter = assignFilter === v ? null : v;
-      if (assignFilter) {
-        filter = 'open';
-        document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.toggle('on', x.dataset.filter === 'open'); });
-      }
+  // Each count tile shows just those jobs; click it again (or the chip) to clear.
+  // Open jobs clears any tile filter and shows the open list.
+  var TILE_FILTER_TEXT = { unassigned: 'Showing unassigned jobs', assigned: 'Showing assigned jobs', overdue: 'Showing overdue jobs',
+    soon: 'Showing jobs due in the next 24 hours', doneMonth: 'Showing jobs completed this month' };
+  function setTab(f){
+    filter = f;
+    document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.toggle('on', x.dataset.filter === f); });
+  }
+  document.querySelectorAll('.tiles button.tile[data-assign]').forEach(function(t){
+    t.addEventListener('click', function(){
+      var v = t.dataset.assign || null;
+      assignFilter = v && !(assignFilter === v && activeTile === t.id) ? v : null;
+      activeTile = assignFilter ? t.id : null;
+      if (!v || assignFilter) setTab(assignFilter === 'doneMonth' ? 'completed' : 'open');
       render();
+      // On a phone the list is below the tiles, so bring it into view.
+      if (window.innerWidth <= 760) { var tb = document.querySelector('#jobsView .tabs'); if (tb) tb.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     });
   });
   $('assignChipClear').addEventListener('click', function(){ assignFilter = null; render(); });
