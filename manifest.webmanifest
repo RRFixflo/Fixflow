@@ -1,0 +1,13 @@
+{
+  "name": "Report a Repair — Residential Realtors",
+  "short_name": "RR Repairs",
+  "start_url": "/",
+  "scope": "/",
+  "display": "browser",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/icons/app-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/app-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
