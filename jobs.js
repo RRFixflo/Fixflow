@@ -174,6 +174,18 @@ ALTER TABLE contractors ADD COLUMN IF NOT EXISTS escalation_email TEXT;
 // propKey() in admin.html so both sides agree on which property is which.
 const POSTCODE_RE = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
 const ADDR_WORDS = { street: 'st', road: 'rd', avenue: 'ave', lane: 'ln', drive: 'dr', close: 'cl', court: 'ct', place: 'pl', crescent: 'cres', gardens: 'gdns', apartment: 'flat', apt: 'flat' };
+// Job addresses need at least a door number and a full postcode. The postcode
+// is tidied to capitals with a single space (se16rw -> SE1 6RW).
+function tidyAddress(v) {
+  const s = str(v, 500);
+  return s ? s.replace(POSTCODE_RE, function (m, a, b) { return a.toUpperCase() + ' ' + b.toUpperCase(); }).replace(/\s+/g, ' ').replace(/\s+,/g, ',') : s;
+}
+function addressProblem(a) {
+  if (!a) return 'address';
+  if (!POSTCODE_RE.test(a)) return 'postcode';
+  if (!/\d/.test(a.replace(POSTCODE_RE, ' '))) return 'door';
+  return null;
+}
 function propKey(addr) {
   return String(addr || '').replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean)
     .map(function (w) { return ADDR_WORDS[w] || w; }).join(' ');
@@ -577,7 +589,7 @@ module.exports = function mountJobs(app, opts) {
     tenant_name: { clean: function (v) { return str(v, 200); }, label: 'Tenant' },
     tenant_email: { clean: function (v) { return str(v, 200); }, label: 'Tenant email' },
     tenant_phone: { clean: function (v) { return str(v, 50); }, label: 'Tenant phone' },
-    property_address: { clean: function (v) { return str(v, 500); }, label: 'Property' },
+    property_address: { clean: function (v) { const a = tidyAddress(v); return addressProblem(a) ? undefined : a; }, label: 'Property' },
     category: { clean: function (v) { return str(v, 200); }, label: 'Issue type' },
     affected: { clean: function (v) { return str(v, 200); }, label: 'What’s affected' },
     symptom: { clean: function (v) { return str(v, 200); }, label: 'What’s happening' },
@@ -1400,6 +1412,30 @@ module.exports = function mountJobs(app, opts) {
     const r = await p.query('DELETE FROM jobs WHERE id = $1 AND archived_at IS NOT NULL RETURNING id', [jobId(req)]);
     if (!r.rows.length) return res.status(409).json({ ok: false, error: 'not-archived' });
     res.json({ ok: true });
+  }));
+
+  // Correct a property's address on every job there (and on its landlord and
+  // tenant links), e.g. to add a missing door number or postcode.
+  app.post('/api/admin/properties/rename', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const to = tidyAddress(b.to);
+    if (addressProblem(to)) return res.status(400).json({ ok: false, error: 'invalid-property_address' });
+    const fromKey = propKey(b.from), toKey = propKey(to);
+    if (!fromKey) return res.status(400).json({ ok: false, error: 'no-from' });
+    const rows = (await p.query('SELECT id, property_address FROM jobs WHERE property_address IS NOT NULL')).rows
+      .filter(function (r) { return propKey(r.property_address) === fromKey && r.property_address !== to; });
+    for (const r of rows) {
+      await p.query('UPDATE jobs SET property_address = $1, updated_at = now() WHERE id = $2', [to, r.id]);
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.id, 'change', 'Property: ' + r.property_address + ' → ' + to]);
+    }
+    if (toKey !== fromKey) {
+      // Keep an existing link at the new address rather than clashing with it.
+      await p.query('DELETE FROM property_landlords WHERE property_key = $1 AND EXISTS (SELECT 1 FROM property_landlords x WHERE x.property_key = $2)', [fromKey, toKey]);
+      await p.query('DELETE FROM property_tenants t WHERE property_key = $1 AND EXISTS (SELECT 1 FROM property_tenants x WHERE x.tenant_id = t.tenant_id AND x.property_key = $2)', [fromKey, toKey]);
+    }
+    await p.query('UPDATE property_landlords SET property_key = $2, address = $3, updated_at = now() WHERE property_key = $1', [fromKey, toKey, to]);
+    await p.query('UPDATE property_tenants SET property_key = $2, address = $3 WHERE property_key = $1', [fromKey, toKey, to]);
+    res.json({ ok: true, address: to, changed: rows.length });
   }));
 
   // ---------- Contractors ----------

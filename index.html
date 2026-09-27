@@ -1335,13 +1335,13 @@
     </div>
 
     <div class="field" id="f-address">
-      <label for="propAddress">Property address or reference</label>
+      <label for="propAddress">Property address</label>
       <div class="addr-wrap">
-        <input type="text" id="propAddress" placeholder="e.g. Flat 14 Kensington Apartments, 11 Commercial Street" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="addrList">
+        <input type="text" id="propAddress" placeholder="e.g. Flat 14, 11 Commercial Street, London SE1 6AB" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="addrList">
         <ul class="addr-list" id="addrList" role="listbox" hidden></ul>
       </div>
       <div class="addr-hint" id="addrHint" hidden>Start typing your address or postcode, then pick it from the list.</div>
-      <div class="err">Please enter the property address or reference.</div>
+      <div class="err" id="addrErr">Please enter the property address, including your door number and postcode.</div>
     </div>
 
     <div class="field" id="f-email">
@@ -2531,7 +2531,18 @@
     var phoneOk = phoneDigits.length >= 10 && phoneDigits.length <= 15 && !/[a-z]/i.test(phone);
 
     if(!name){ setError('f-name'); ok = false; } else { clearError('f-name'); }
-    if(!addr){ setError('f-address'); ok = false; } else { clearError('f-address'); }
+    // The address needs at least a door/flat number and a full postcode.
+    var PC = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
+    var hasPc = PC.test(addr), hasDoor = /\d/.test(addr.replace(PC, ' '));
+    var addrMsg = !addr ? 'Please enter the property address, including your door number and postcode.'
+      : !hasPc && !hasDoor ? 'Please include your door or flat number and the full postcode, e.g. Flat 14, 11 Commercial Street, SE1 6AB.'
+      : !hasPc ? 'Please add the full postcode, e.g. SE1 6AB.'
+      : !hasDoor ? 'Please add your door or flat number.' : '';
+    document.getElementById('addrErr').textContent = addrMsg || 'Please enter the property address.';
+    if(addrMsg){ setError('f-address'); ok = false; } else {
+      clearError('f-address');
+      addr = addr.replace(PC, function(m, x, y){ return x.toUpperCase() + ' ' + y.toUpperCase(); });
+    }
     if(!emailOk){ setError('f-email'); ok = false; } else { clearError('f-email'); }
     if(!phoneOk){ setError('f-phone'); ok = false; } else { clearError('f-phone'); }
     if(!state.keyPermission){ setError('f-keyPermission'); ok = false; } else { clearError('f-keyPermission'); }
