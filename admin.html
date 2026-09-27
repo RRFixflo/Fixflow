@@ -1646,6 +1646,15 @@
       return api('PATCH', '/api/admin/jobs/' + j.id, body);
     }));
   }
+  // Once the job has gone to the contractor, it moves to "Contractor booked",
+  // which the tenant's tracking page shows as "Contractor arranged".
+  function markArranged(list, name){
+    return Promise.all(list.filter(function(j){ return j.status === 'New' || j.status === 'Assigned'; }).map(function(j){
+      var body = { status: 'Contractor booked' };
+      if (name && !String(j.assigned_to || '').trim()) body.assigned_to = name;
+      return api('PATCH', '/api/admin/jobs/' + j.id, body);
+    }));
+  }
   function logContractorSend(list, how){
     var refs = list.map(function(j){ return j.ref; }).join(', ');
     return Promise.all(list.map(function(j){
@@ -1686,7 +1695,7 @@
     var willAssign = c && !$('waAssignWrap').hidden && $('waAssign').checked;
     if (willAssign && list.length === 1 && openJobId === list[0].id) noticeTenantAfterAssign(list[0].id, c.name);
     var assign = willAssign ? assignTo(list, c.name) : Promise.resolve();
-    assign.then(function(){
+    assign.then(function(){ return c && (willAssign || list.every(function(j){ return String(j.assigned_to || '').toLowerCase() === c.name.toLowerCase(); })) ? markArranged(list, c.name) : null; }).then(function(){
       return logContractorSend(list, 'Job details sent on WhatsApp' + (c ? ' to ' + c.name : ''));
     }).then(function(){ loadJobs(); afterSend(); });
     $('waModal').hidden = true;
@@ -1706,7 +1715,8 @@
     var willAssign = !$('waAssignWrap').hidden && $('waAssign').checked;
     if (willAssign && list.length === 1 && openJobId === list[0].id) noticeTenantAfterAssign(list[0].id, c.name);
     var assign = willAssign ? assignTo(list, c.name) : Promise.resolve();
-    assign.then(function(){ return logContractorSend(list, 'Job details emailed to ' + c.name + ' (' + c.email + ')'); })
+    assign.then(function(){ return willAssign || list.every(function(j){ return String(j.assigned_to || '').toLowerCase() === c.name.toLowerCase(); }) ? markArranged(list, c.name) : null; })
+      .then(function(){ return logContractorSend(list, 'Job details emailed to ' + c.name + ' (' + c.email + ')'); })
       .then(function(){ loadJobs(); afterSend(); });
     $('waModal').hidden = true;
   });
