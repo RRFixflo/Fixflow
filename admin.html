@@ -506,6 +506,10 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
   }
+  .addr-edit { border: 0; background: none; color: var(--blue); font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; padding: 2px 4px; white-space: nowrap; }
+  .addr-warn { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .84rem; font-weight: 550; color: var(--warn); background: var(--warn-tint); border-radius: 10px; padding: 8px 10px; }
+  .warn-pill { background: var(--warn-tint); color: var(--warn); font-size: .72rem; vertical-align: middle; }
+  .check-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: .88rem; cursor: pointer; }
   /* ---------- Phones ---------- */
   .tabbar { display: none; }
   @media (max-width: 900px) {
@@ -632,6 +636,7 @@
         </select>
       </div>
 
+      <div class="addr-warn" id="badAddrBanner" hidden style="margin:0 0 12px"><span id="badAddrText"></span> <button type="button" class="btn small" id="badAddrShow">Show them</button></div>
       <div class="filter-chip" id="assignChip" hidden><span id="assignChipText"></span><button type="button" id="assignChipClear" aria-label="Clear filter">✕</button></div>
       <div class="list" id="list"></div>
       </div>
@@ -724,6 +729,7 @@
           <div class="prop-head">
             <div><h2 id="propTitle"></h2><div class="prop-sub" id="propSub"></div></div>
             <div class="prop-actions">
+              <button class="btn small" id="propAddrEdit" type="button">✎ Edit address</button>
               <select class="inp" id="propRange" aria-label="Period for the report">
                 <option value="all">All time</option>
                 <option value="365">Last 12 months</option>
@@ -1007,6 +1013,17 @@
 </div>
 
 <!-- PREVIEW OF THE CONTRACTOR MESSAGE -->
+<div class="modal" id="addrModal" hidden>
+  <form class="card" id="addrForm" novalidate>
+    <h3>Edit address</h3>
+    <label class="lbl" for="addrInput">Property address</label>
+    <input class="inp" id="addrInput" autocomplete="off" placeholder="e.g. Flat 4, 6 Whitworth House, London SE1 6RW">
+    <div class="muted-note" style="margin-top:6px">Include the door or flat number and the full postcode.</div>
+    <label class="check-row" id="addrAllRow" hidden><input type="checkbox" id="addrAll" checked> <span id="addrAllText"></span></label>
+    <div class="err-msg" id="addrErr"></div>
+    <div class="row-actions"><button class="btn" type="button" id="addrCancel">Cancel</button><button class="btn primary" type="submit" id="addrSave">Save address</button></div>
+  </form>
+</div>
 <div class="modal" id="moreSheet" hidden>
   <div class="card more-card" role="dialog" aria-label="More">
     <div class="more-grab"></div>
@@ -1242,6 +1259,9 @@
       t.classList.toggle('on', t.dataset.assign ? !!assignFilter && activeTile === t.id : !assignFilter && filter === 'open');
     });
     $('assignChip').hidden = !assignFilter || filter === 'archived';
+    var badAddr = open.filter(function(j){ return addressProblem(j.property_address); }).length;
+    $('badAddrBanner').hidden = !badAddr || assignFilter === 'badAddr';
+    $('badAddrText').textContent = '⚠ ' + badAddr + ' open job' + (badAddr === 1 ? ' has' : 's have') + ' an address without a door number or postcode.';
     $('assignChipText').textContent = (TILE_FILTER_TEXT || {})[assignFilter] || '';
     $('sOpen').textContent = open.length;
     $('sOpen').classList.toggle('hot', overdue.length > 0);
@@ -1264,6 +1284,7 @@
         if (assignFilter === 'overdue' && overdue.indexOf(j) === -1) return false;
         if (assignFilter === 'soon' && soon.indexOf(j) === -1) return false;
         if (assignFilter === 'doneMonth' && doneMonth.indexOf(j) === -1) return false;
+        if (assignFilter === 'badAddr' && !addressProblem(j.property_address)) return false;
       }
       if (!q) return true;
       return [j.ref, j.property_address, j.tenant_name, j.tenant_email, j.tenant_phone, issueOf(j), j.location, j.assigned_to, j.status]
@@ -1321,7 +1342,7 @@
   // Each count tile shows just those jobs; click it again (or the chip) to clear.
   // Open jobs clears any tile filter and shows the open list.
   var TILE_FILTER_TEXT = { unassigned: 'Showing unassigned jobs', assigned: 'Showing assigned jobs', overdue: 'Showing overdue jobs',
-    soon: 'Showing jobs due in the next 24 hours', doneMonth: 'Showing jobs completed this month' };
+    soon: 'Showing jobs due in the next 24 hours', doneMonth: 'Showing jobs completed this month', badAddr: 'Showing open jobs with an incomplete address' };
   function setTab(f){
     filter = f;
     document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.toggle('on', x.dataset.filter === f); });
@@ -1338,6 +1359,7 @@
     });
   });
   $('assignChipClear').addEventListener('click', function(){ assignFilter = null; render(); });
+  $('badAddrShow').addEventListener('click', function(){ assignFilter = 'badAddr'; activeTile = null; setTab('open'); render(); });
   $('sort').addEventListener('change', function(){ try { localStorage.setItem('rrJobsSort', $('sort').value); } catch (e) {} render(); });
   $('navJobs').addEventListener('click', function(){ window.scrollTo({ top: 0, behavior: 'smooth' }); });
   $('navNew').addEventListener('click', function(){ $('newJobBtn').click(); });
@@ -1845,7 +1867,9 @@
     e.preventDefault();
     var err = $('jfErr');
     err.textContent = '';
-    if (!$('jfAddress').value.trim()) { err.textContent = 'Please enter the property address.'; $('jfAddress').focus(); return; }
+    var ap = addressProblem($('jfAddress').value);
+    if (ap) { err.textContent = ap; $('jfAddress').focus(); return; }
+    $('jfAddress').value = tidyAddress($('jfAddress').value);
     if (!$('jfCat').value.trim() && !$('jfDesc').value.trim()) { err.textContent = 'Please give an issue type or a description.'; $('jfCat').focus(); return; }
     var body = {};
     if (jfEditing) {
@@ -1872,6 +1896,7 @@
       $('jfSave').disabled = false;
       if (!d.ok) {
         err.textContent = d.error === 'address-required' ? 'Please enter the property address.'
+          : d.error === 'invalid-property_address' ? addressProblem($('jfAddress').value) || 'Please check the address.'
           : d.error === 'issue-required' ? 'Please give an issue type or a description.'
           : 'Couldn’t save (' + (d.error || 'error') + ').';
         return;
@@ -1887,6 +1912,20 @@
   // Tenants type addresses in slightly different ways, so jobs are grouped by a
   // tidied-up version of the address (case, punctuation, "Street"/"St" etc.).
   var ADDR_WORDS = { street: 'st', road: 'rd', avenue: 'ave', lane: 'ln', drive: 'dr', close: 'cl', court: 'ct', place: 'pl', crescent: 'cres', gardens: 'gdns', apartment: 'flat', apt: 'flat' };
+  // Every job address needs at least a door number and a full postcode (same
+  // rule as the server). The postcode is tidied to capitals with one space.
+  function tidyAddress(v){
+    return String(v || '').trim().replace(POSTCODE_RE, function(m, x, y){ return x.toUpperCase() + ' ' + y.toUpperCase(); }).replace(/\s+/g, ' ').replace(/\s+,/g, ',');
+  }
+  function addressProblem(v){
+    var s = tidyAddress(v);
+    if (!s) return 'Please enter the property address.';
+    var pc = POSTCODE_RE.test(s), door = /\d/.test(s.replace(POSTCODE_RE, ' '));
+    if (!pc && !door) return 'The address needs a door number and a full postcode, e.g. 6 Whitworth House, SE1 6RW.';
+    if (!pc) return 'Please add the full postcode, e.g. SE1 6RW.';
+    if (!door) return 'Please add the door or flat number, e.g. Flat 4 or 22.';
+    return '';
+  }
   function propKey(addr){
     return String(addr || '').replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean)
       .map(function(w){ return ADDR_WORDS[w] || w; }).join(' ');
@@ -2035,7 +2074,7 @@
     var d = propertyJobs();
     if (!d) { $('propBack').click(); return; }
     var open = d.jobs.filter(isOpen).length, done = d.jobs.filter(function(j){ return j.status === 'Completed'; }).length;
-    $('propTitle').textContent = d.property.address;
+    $('propTitle').innerHTML = esc(d.property.address) + (addressProblem(d.property.address) ? ' <span class="pill warn-pill" title="' + esc(addressProblem(d.property.address)) + '">Address incomplete</span>' : '');
     $('propSub').textContent = d.property.jobs.length + ' repair' + (d.property.jobs.length === 1 ? '' : 's') + ' on record' +
       (postcodeArea(d.property.address) ? ' · ' + postcodeArea(d.property.address) : '');
     $('propTiles').innerHTML =
@@ -2988,7 +3027,11 @@
     $('dUrg').innerHTML = '<span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span>';
     $('dStatus').innerHTML = '<span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>';
     if (drawerTabJob !== j.id) { drawerTab = 'overview'; drawerTabJob = j.id; }
-    $('dSub').innerHTML = '<strong>' + esc(issueOf(j)) + '</strong>' + (j.property_address ? ' · ' + esc(j.property_address) : '');
+    $('dSub').innerHTML = '<strong>' + esc(issueOf(j)) + '</strong> · ' + esc(j.property_address || 'No address') +
+      ' <button type="button" class="addr-edit" id="dAddrEdit" title="Edit address">✎ Edit address</button>' +
+      (addressProblem(j.property_address) ? '<div class="addr-warn">⚠ ' + esc(addressProblem(j.property_address)) + ' <button type="button" class="btn small" id="dAddrFix">Fix address</button></div>' : '');
+    $('dAddrEdit').addEventListener('click', function(){ openAddressEdit(j.property_address, j.id); });
+    if ($('dAddrFix')) $('dAddrFix').addEventListener('click', function(){ openAddressEdit(j.property_address, j.id); });
     var tel = j.tenant_phone ? j.tenant_phone.replace(/[^\d+]/g, '') : '';
     $('dQuick').innerHTML =
       '<button class="btn wa" type="button" id="qWa">Send to contractor</button>' +
@@ -4115,6 +4158,12 @@
     rec.start();
   });
 
+  // The first complete address (door number and postcode) recorded for a property.
+  function knownFullAddress(key){
+    var cands = jobs.map(function(j){ return j.property_address; })
+      .concat(landlords.reduce(function(a, l){ return a.concat(llProperties(l).map(function(x){ return x.address; })); }, []));
+    return cands.filter(function(ad){ return ad && propKey(ad) === key && !addressProblem(ad); })[0] || '';
+  }
   function matchProperty(address){
     var q = propKey(address);
     if (!q) return null;
@@ -4145,6 +4194,8 @@
       renderAskContacts();
       askDrafts = d.jobs.map(function(x){
         var pr = matchProperty(x.address), ts = tenantsAt(pr), c = matchContractor(x.contractor);
+        // A property on file with a complete address fills in a missing postcode.
+        if (pr && addressProblem(pr.address)) { var full = knownFullAddress(pr.key); if (full) pr.address = full; }
         return { ai: x, property: pr, tenants: ts, contractor: c, source: askSource };
       });
       renderAskDrafts();
@@ -4162,7 +4213,8 @@
         dr.tenants.map(function(t, k){ return '<option value="' + k + '">' + esc((t.tenant_name || 'No name') + (t.tenant_phone ? ' – ' + t.tenant_phone : '')) + ' (on file)</option>'; }).join('') + '<option value="">No tenant</option>';
       return '<div class="draft" data-i="' + i + '">' +
         '<div><label class="lbl">Property</label><input class="inp" data-f="address" value="' + esc(pr ? pr.address : x.address) + '">' +
-          '<div class="match ' + (pr ? 'ok' : 'warn') + '">' + (pr ? '✓ Matched a property with ' + pr.jobs.length + ' previous job' + (pr.jobs.length === 1 ? '' : 's') : 'No previous jobs at “' + esc(x.address) + '” — check the address') + '</div></div>' +
+          '<div class="match ' + (pr && !addressProblem(pr.address) ? 'ok' : 'warn') + '">' + (pr ? '✓ Matched a property with ' + pr.jobs.length + ' previous job' + (pr.jobs.length === 1 ? '' : 's') : 'No previous jobs at “' + esc(x.address) + '” — check the address') +
+            (addressProblem(pr ? pr.address : x.address) ? ' · ' + esc(addressProblem(pr ? pr.address : x.address)) : '') + '</div></div>' +
         (x.warning ? '<div class="banner" style="margin:0">⚠ ' + esc(x.warning) + '</div>' : '') +
         '<div class="grid2">' +
           '<div><label class="lbl">Tenant (contractor will contact them)</label><select class="inp" data-f="tenant">' + tOpts + '</select>' +
@@ -4241,13 +4293,14 @@
   function draftBody(box){
     var dr = askDrafts[Number(box.dataset.i)], x = dr.ai;
     var f = function(n){ return box.querySelector('[data-f="' + n + '"]').value.trim(); };
-    if (!f('address')) return { error: 'Add the property address' };
+    var apx = addressProblem(f('address'));
+    if (apx) return { error: apx.replace('Please enter the property address.', 'Add the property address') + ' (' + (f('address') || 'no address') + ')' };
     var c = contractors.filter(function(k){ return String(k.id) === f('contractor'); })[0] || null;
     var desc = f('description');
     var DIRECT_RE = /\s*Please contact the tenants? directly to arrange[^.\n]*\.?/i;
     var direct = DIRECT_RE.test(desc);
     if (direct) desc = desc.replace(DIRECT_RE, '').trim();
-    var body = { property_address: f('address'), category: x.category || 'General repair', affected: f('title'),
+    var body = { property_address: tidyAddress(f('address')), category: x.category || 'General repair', affected: f('title'),
       urgency: f('urgency'), source: dr.source ? 'Email' : 'Other' };
     if (direct) body.direct_contact = 'Yes';
     if (c) body.assigned_to = c.name;
@@ -4422,6 +4475,49 @@
     if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('cmdk').hidden ? openCmdk() : closeCmdk(); }
     else if (e.key === '/' && !typing && $('cmdk').hidden) { e.preventDefault(); openCmdk(); }
   });
+
+  // ---------- Editing an address ----------
+  // From a job (that job, or every job at the property) or from a property page
+  // (every job there). Landlord and tenant links move with the property.
+  var addrCtx = null;
+  function openAddressEdit(address, jobId){
+    var key = propKey(address);
+    var others = jobs.filter(function(o){ return o.id !== jobId && o.property_address && propKey(o.property_address) === key; });
+    addrCtx = { from: address || '', jobId: jobId || null, others: others.length };
+    $('addrInput').value = address || '';
+    $('addrErr').textContent = '';
+    $('addrAllRow').hidden = !jobId || !others.length;
+    $('addrAll').checked = true;
+    $('addrAllText').textContent = 'Also update the other ' + others.length + ' job' + (others.length === 1 ? '' : 's') + ' at this property';
+    $('addrModal').hidden = false;
+    setTimeout(function(){ $('addrInput').focus(); }, 50);
+  }
+  function closeAddressEdit(){ $('addrModal').hidden = true; addrCtx = null; }
+  $('addrCancel').addEventListener('click', closeAddressEdit);
+  $('addrModal').addEventListener('mousedown', function(e){ if (e.target === $('addrModal')) closeAddressEdit(); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !$('addrModal').hidden) { e.stopImmediatePropagation(); closeAddressEdit(); } }, true);
+  $('addrForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var ctx = addrCtx; if (!ctx) return;
+    var ap = addressProblem($('addrInput').value);
+    if (ap) { $('addrErr').textContent = ap; $('addrInput').focus(); return; }
+    var to = tidyAddress($('addrInput').value);
+    if (to === ctx.from) { closeAddressEdit(); return; }
+    var wasOpenProp = openPropKey && openPropKey === propKey(ctx.from);
+    var all = !ctx.jobId || (ctx.others && $('addrAll').checked);
+    busy($('addrSave'), true, 'Saving…');
+    var req = all ? api('POST', '/api/admin/properties/rename', { from: ctx.from, to: to })
+      : api('PATCH', '/api/admin/jobs/' + ctx.jobId, { property_address: to });
+    req.then(function(d){
+      busy($('addrSave'), false);
+      if (!d.ok) { $('addrErr').textContent = d.error === 'invalid-property_address' ? addressProblem(to) || 'Please check the address.' : 'Couldn’t save (' + (d.error || 'error') + ')'; return; }
+      closeAddressEdit();
+      toast(all ? 'Address updated' + (d.changed > 1 ? ' on ' + d.changed + ' jobs' : '') : 'Address updated');
+      if (wasOpenProp) openPropKey = propKey(to);
+      loadJobs().then(function(){ if (openJobId) openJob(openJobId); else if (wasOpenProp && view === 'props') renderProperty(); });
+    });
+  });
+  $('propAddrEdit').addEventListener('click', function(){ var d = propertyJobs(); if (d) openAddressEdit(d.property.address, null); });
 
   // Phones: a bottom tab bar standing in for the sidebar. The buttons reuse the
   // sidebar's icons and simply click the matching sidebar item.
