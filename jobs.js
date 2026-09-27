@@ -131,6 +131,8 @@ CREATE TABLE IF NOT EXISTS tenants (
   email      TEXT,
   notes      TEXT
 );
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS deleted_key TEXT;
 CREATE TABLE IF NOT EXISTS property_tenants (
   tenant_id    INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   property_key TEXT NOT NULL,
@@ -224,7 +226,10 @@ async function ensureLandlord(p, l, address) {
 // never wiped, and the property is linked (a property can have many tenants).
 function phoneTail(v) { const d = String(v || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : ''; }
 const PLACEHOLDER_NAMES = ['', 'tenant', 'tenants', 'no name'];
-async function ensureTenant(p, t, address) {
+// A tenant deleted on the Tenants page stays deleted when their old jobs are
+// edited; only a new report, a new job or adding them again (restore) brings
+// them back.
+async function ensureTenant(p, t, address, restore) {
   const name = str(t.tenant_name !== undefined ? t.tenant_name : t.name, 200);
   const phone = str(t.tenant_phone !== undefined ? t.tenant_phone : t.phone, 50);
   const email = str(t.tenant_email !== undefined ? t.tenant_email : t.email, 200);
@@ -232,10 +237,17 @@ async function ensureTenant(p, t, address) {
   const key = propKey(address);
   let row = null;
   const tail = phoneTail(phone);
-  if (tail) row = (await p.query(`SELECT id, name FROM tenants WHERE right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $1 ORDER BY id LIMIT 1`, [tail])).rows[0];
-  if (!row && email) row = (await p.query('SELECT id, name FROM tenants WHERE lower(email) = lower($1) ORDER BY id LIMIT 1', [email])).rows[0];
-  if (!row && name && key) row = (await p.query(`SELECT t.id, t.name FROM tenants t JOIN property_tenants pt ON pt.tenant_id = t.id
+  if (tail) row = (await p.query(`SELECT id, name, deleted_at FROM tenants WHERE right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $1 ORDER BY (deleted_at IS NULL) DESC, id LIMIT 1`, [tail])).rows[0];
+  if (!row && email) row = (await p.query('SELECT id, name, deleted_at FROM tenants WHERE lower(email) = lower($1) ORDER BY (deleted_at IS NULL) DESC, id LIMIT 1', [email])).rows[0];
+  if (!row && name && key) row = (await p.query(`SELECT t.id, t.name, t.deleted_at FROM tenants t JOIN property_tenants pt ON pt.tenant_id = t.id
     WHERE pt.property_key = $1 AND lower(t.name) = lower($2) ORDER BY t.id LIMIT 1`, [key, name])).rows[0];
+  // Deleted tenants lose their property links, so also check by name at the address they had.
+  if (!row && name && key) row = (await p.query(`SELECT id, name, deleted_at FROM tenants WHERE deleted_at IS NOT NULL AND lower(name) = lower($1)
+    AND deleted_key = $2 ORDER BY id LIMIT 1`, [name, key])).rows[0];
+  if (row && row.deleted_at) {
+    if (!restore) return null;
+    await p.query('UPDATE tenants SET deleted_at = NULL, deleted_key = NULL WHERE id = $1', [row.id]);
+  }
   let id;
   if (row) {
     id = row.id;
@@ -422,7 +434,7 @@ module.exports = function mountJobs(app, opts) {
       await p.query(`UPDATE jobs SET landlord_name = l.name, landlord_email = l.email, landlord_phone = l.phone, landlord_address = l.address
         FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE jobs.id = $1 AND pl.property_key = $2`, [id, propKey(r.address)]);
     } catch (err) { console.error('Landlord lookup failed:', err.message); }
-    try { await ensureTenant(p, { name: r.name, phone: r.phone, email: r.email }, r.address); } catch (err) { console.error('Saving tenant failed:', err.message); }
+    try { await ensureTenant(p, { name: r.name, phone: r.phone, email: r.email }, r.address, true); } catch (err) { console.error('Saving tenant failed:', err.message); }
     // Photos are saved separately too, so staff can view them without the PDF.
     // A problem here shouldn't lose the report itself.
     try { await insertPhotos(p, id, decodePhotos(photos), 'tenant'); } catch (err) { console.error('Saving photos failed:', err.message); }
@@ -716,15 +728,15 @@ module.exports = function mountJobs(app, opts) {
 
   // ---------- Tenant records ----------
   app.get('/api/admin/tenant-records', withDb(async function (p, req, res) {
-    const t = await p.query('SELECT id, name, phone, email, notes, created_at, updated_at FROM tenants ORDER BY lower(name)');
-    const links = await p.query('SELECT tenant_id, property_key, address, moved_out_at FROM property_tenants ORDER BY created_at');
+    const t = await p.query('SELECT id, name, phone, email, notes, created_at, updated_at FROM tenants WHERE deleted_at IS NULL ORDER BY lower(name)');
+    const links = await p.query('SELECT pt.tenant_id, pt.property_key, pt.address, pt.moved_out_at FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE t.deleted_at IS NULL ORDER BY pt.created_at');
     res.json({ ok: true, tenants: t.rows, links: links.rows });
   }));
 
   app.post('/api/admin/tenant-records', withDb(async function (p, req, res) {
     const b = req.body || {};
     if (!str(b.name) && !str(b.phone) && !str(b.email)) return res.status(400).json({ ok: false, error: 'details-required' });
-    const id = await ensureTenant(p, { name: b.name, phone: b.phone, email: b.email }, b.property_address);
+    const id = await ensureTenant(p, { name: b.name, phone: b.phone, email: b.email }, b.property_address, true);
     if ('notes' in b) await p.query('UPDATE tenants SET notes = $2 WHERE id = $1', [id, str(b.notes, 2000)]);
     res.json({ ok: true, id: id });
   }));
@@ -758,6 +770,17 @@ module.exports = function mountJobs(app, opts) {
       updated += 1;
     }
     res.json({ ok: true, jobs_updated: updated });
+  }));
+
+  // Delete a tenant from the Tenants page. Their jobs (and the tenant details
+  // recorded on them) are kept; the tenant record and property links go.
+  app.delete('/api/admin/tenant-records/:id', withDb(async function (p, req, res) {
+    const id = jobId(req);
+    const links = (await p.query('SELECT property_key FROM property_tenants WHERE tenant_id = $1 ORDER BY created_at DESC', [id])).rows;
+    const r = await p.query('UPDATE tenants SET deleted_at = now(), deleted_key = $2 WHERE id = $1 AND deleted_at IS NULL RETURNING id', [id, links.length ? links[0].property_key : null]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    await p.query('DELETE FROM property_tenants WHERE tenant_id = $1', [id]);
+    res.json({ ok: true });
   }));
 
   // Link a tenant to a property, mark them moved out / back in, or remove the link.
@@ -1519,7 +1542,7 @@ module.exports = function mountJobs(app, opts) {
       [id, 'created', 'Job added by staff (' + source + ', ' + urgency + ').' +
         (str(body.assigned_to) ? ' Assigned to ' + str(body.assigned_to, 200) + '.' : '')]);
     if (str(body.landlord_name)) await ensureLandlord(p, body, body.property_address);
-    await ensureTenant(p, body, body.property_address);
+    await ensureTenant(p, body, body.property_address, true);
     res.json({ ok: true, id: id, ref: refFor(id) });
   }));
 
