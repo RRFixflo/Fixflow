@@ -70,7 +70,7 @@
   .login-card p { color: var(--ink-soft); margin: 0 0 22px; }
   .login-mark { width: 42px; height: 42px; border-radius: 11px; background: var(--side); display: flex; align-items: center; justify-content: center; white-space: nowrap; color: #fff; font-family: var(--display); font-weight: 800; font-size: .95rem; letter-spacing: -.02em; }
   .login-mark b { color: var(--brick); }
-  .login-logo { display: block; height: 52px; width: auto; margin: 0 0 18px; }
+  .login-logo { display: block; margin: 0 0 18px; } .login-logo img { height: 48px; width: auto; display: block; }
   .err-msg { color: var(--brick); font-size: .82rem; font-weight: 500; margin-top: 8px; min-height: 1.2em; }
 
   /* ---------- App shell: sidebar + main ---------- */
@@ -81,15 +81,19 @@
   button.side-brand:hover { background: var(--side-hover); }
   .brand-m { border: 0; width: 32px; height: 32px; border-radius: 9px; background: var(--side); color: #fff; font-family: var(--display); font-weight: 800; font-size: .72rem; letter-spacing: -.04em; cursor: pointer; flex-shrink: 0; }
   .brand-m b { color: #D9262E; }
-  .brand-m:has(img) { width: auto; height: 34px; padding: 3px 8px; background: #fff; border: 1px solid var(--line); border-radius: 999px; display: flex; align-items: center; }
-  .brand-m img { height: 22px; width: auto; display: block; }
+  .brand-m:has(img) { width: auto; height: 36px; padding: 0 4px; background: none; border-radius: 8px; display: flex; align-items: center; }
+  .brand-m img { height: 28px; width: auto; display: block; }
+  /* Black logo on light backgrounds, white logo in dark mode. */
+  .lg-d { display: none !important; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lg-l { display: none !important; } :root:not([data-theme="light"]) .lg-d { display: block !important; } }
+  :root[data-theme="dark"] .lg-l { display: none !important; } :root[data-theme="dark"] .lg-d { display: block !important; }
   .back-btn { padding-left: 6px !important; }
   .side-brand .mark { width: 34px; height: 34px; border-radius: 9px; background: #fff; color: var(--side); display: flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 800; font-size: .78rem; letter-spacing: -.04em; white-space: nowrap; flex-shrink: 0; }
   .side-brand .mark b { color: #D9262E; }
-  .side-brand:has(.side-logo) { flex-direction: column; align-items: stretch; gap: 6px; }
-  .side-logo { display: flex; justify-content: center; background: #fff; border-radius: 12px; padding: 10px 12px; }
-  .side-logo img { max-width: 100%; height: 50px; width: auto; display: block; }
-  .side-sub { font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--side-soft); text-align: center; }
+  .side-brand:has(.side-logo) { flex-direction: column; align-items: flex-start; gap: 10px; padding: 10px 10px 16px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.08); border-radius: 10px 10px 0 0; }
+  .side-logo { display: block; }
+  .side-logo img { height: 44px; width: auto; max-width: 100%; display: block; }
+  .side-sub { font-size: .66rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--side-soft); padding-left: 2px; }
   .side-brand .t { font-family: var(--display); font-weight: 700; font-size: .92rem; line-height: 1.15; letter-spacing: -.01em; }
   .side-brand .t span { display: block; font-family: var(--sans); font-weight: 500; font-size: .74rem; color: var(--side-soft); }
   .nav { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; background: none; border-radius: 9px; color: var(--side-soft); font-weight: 500; font-size: .88rem; cursor: pointer; text-align: left; transition: background .15s, color .15s; }
@@ -166,7 +170,10 @@
   .tile.warnish.has .v { color: var(--warn); }
   .filter-chip { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 5px 6px 5px 12px; border-radius: 999px; background: var(--ink); color: var(--panel); font-size: .8rem; font-weight: 600; }
   .filter-chip button { border: 0; background: rgba(255,255,255,.18); color: inherit; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; font-size: .7rem; }
-  @media (max-width: 640px) { .tiles, .tiles:not(.prop-tiles) { grid-template-columns: repeat(2, 1fr); gap: 10px; } .tiles:not(.prop-tiles) .tile:last-child { grid-column: 1 / -1; } .tile .v { font-size: 1.5rem; } }
+  @media (max-width: 640px) { .tiles, .tiles:not(.prop-tiles) { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    #jobsView .tiles { grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; } #jobsView .tile { padding: 9px 8px 10px; border-radius: 12px; }
+    #jobsView .tile .k { font-size: .66rem; gap: 0; min-height: 2.4em; align-items: flex-start; } #jobsView .tile .k i { display: none; } #jobsView .tile .v { font-size: 1.2rem; margin-top: 4px; }
+    #jobsView #tProfitTile { grid-column: span 1; } #jobsView #tProfit { font-size: .95rem; } .tile .v { font-size: 1.5rem; } }
 
   /* ---------- Toolbar ---------- */
   .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
@@ -499,6 +506,46 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
   }
+  /* ---------- Phones ---------- */
+  .tabbar { display: none; }
+  @media (max-width: 900px) {
+    .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+      padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--panel) 92%, transparent);
+      backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px); border-top: 1px solid var(--line); }
+    .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 3px; border: 0; background: none; color: var(--ink-faint);
+      font: inherit; font-size: .66rem; font-weight: 600; padding: 6px 0 4px; border-radius: 10px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .tabbar button svg { width: 22px; height: 22px; }
+    .tabbar button.on { color: var(--ink); }
+    .tabbar button.on svg { color: var(--brick); }
+    .wrap { padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important; }
+    .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
+    body.has-bulk .toast { bottom: calc(170px + env(safe-area-inset-bottom)); }
+    .bulkbar { bottom: calc(72px + env(safe-area-inset-bottom)); }
+    /* Stop iPhones zooming in when a box is tapped (they do below 16px). */
+    input.inp, select.inp, textarea.inp, .search input, input[type="search"], input[type="text"], input[type="tel"], input[type="email"], input[type="number"], textarea, select { font-size: 16px; }
+    input.inp, select.inp { min-height: 44px; }
+    .btn { min-height: 40px; }
+    .btn.small { min-height: 36px; }
+    /* Pop-ups open as sheets from the bottom of the screen. */
+    .modal { padding: 0; place-items: end stretch; }
+    .modal .card, .modal .card.jf { width: 100%; max-width: none; max-height: calc(100dvh - 24px); border-radius: 18px 18px 0 0;
+      padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); animation: sheetup .28s var(--ease); }
+    .modal .card > .row-actions, .modal .card.jf .row-actions { position: sticky; bottom: calc(-18px - env(safe-area-inset-bottom)); background: var(--panel); padding: 10px 0 4px; z-index: 2; }
+    .modal .row-actions .btn { flex: 1; }
+    /* Tabs and toolbars scroll sideways rather than squashing. */
+    .tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tabs button { flex-shrink: 0; }
+    .d-quick { flex-wrap: wrap; overflow: visible; }
+    .d-quick .btn { min-height: 38px; }
+  }
+  @keyframes sheetup { from { transform: translateY(40px); opacity: 0; } }
+  .more-card { padding-top: 10px !important; }
+  .more-grab { width: 40px; height: 4px; border-radius: 4px; background: var(--line-strong); margin: 0 auto 12px; }
+  .more-item { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 8px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--ink); font: inherit; font-size: 1rem; font-weight: 550; text-align: left; text-decoration: none; cursor: pointer; }
+  .more-item svg { width: 22px; height: 22px; color: var(--ink-soft); }
+  .more-item:last-child { border-bottom: 0; }
+
 </style>
 </head>
 <body>
@@ -506,7 +553,7 @@
 <!-- SIGN IN -->
 <div class="login-wrap" id="loginView" hidden>
   <form class="login-card" id="loginForm">
-    <img class="login-logo" src="/logo-tight.png" alt="Residential Realtors">
+    <span class="login-logo"><img class="lg-l" src="/logo-tight.png" alt="Residential Realtors"><img class="lg-d" src="/logo-white.png" alt=""></span>
     <h1>Repair jobs</h1>
     <p>Residential Realtors staff sign-in.</p>
     <label class="lbl" for="pw">Password</label>
@@ -519,7 +566,7 @@
 <!-- DASHBOARD -->
 <div id="appView" class="app" hidden>
   <aside class="side">
-    <button type="button" class="side-brand" id="brandHome" title="Back to repair jobs"><span class="side-logo"><img src="/logo-tight.png" alt="Residential Realtors"></span><span class="side-sub">Maintenance</span></button>
+    <button type="button" class="side-brand" id="brandHome" title="Back to repair jobs"><span class="side-logo"><img src="/logo-white.png" alt="Residential Realtors"></span><span class="side-sub">Maintenance portal</span></button>
     <button class="side-search" type="button" id="sideSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<span class="kbd">Ctrl K</span></button>
     <button class="nav on" type="button" id="navJobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg> Repair jobs <span class="badge" id="sOpen">0</span></button>
     <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
@@ -537,18 +584,18 @@
 
   <main class="main">
     <header class="mainhead">
-      <button type="button" class="brand-m mobile-only" id="brandHomeM" title="Back to repair jobs"><img src="/logo-tight.png" alt="Residential Realtors"></button>
+      <button type="button" class="brand-m mobile-only" id="brandHomeM" title="Back to repair jobs"><img class="lg-l" src="/logo-tight.png" alt="Residential Realtors"><img class="lg-d" src="/logo-white.png" alt=""></button>
       <button type="button" class="btn small ghost back-btn" id="backBtn" title="Back" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span class="mobile-hide">Back</span></button>
       <h1 id="mainTitle">Repair jobs</h1><span class="date" id="todayLbl"></span>
       <div class="grow"></div>
       <button class="btn small ask" id="askBtn" type="button" title="Tell Fixflow what to do (speak or type)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg><span class="mobile-hide">Ask Fixflow</span></button>
       <button class="btn small ghost mobile-only" id="searchBtnM" type="button" title="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
       <button class="btn small ghost" id="refreshBtn" type="button" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg><span class="mobile-hide">Refresh</span></button>
-      <button class="btn small mobile-only" id="propsBtnM" type="button" title="Properties"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg></button>
-      <button class="btn small mobile-only" id="tenantsBtnM" type="button" title="Tenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg></button>
-      <button class="btn small mobile-only" id="contractorsBtnM" type="button" title="Contractors"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg></button>
+      <button class="btn small" hidden id="propsBtnM" type="button" title="Properties"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg></button>
+      <button class="btn small" hidden id="tenantsBtnM" type="button" title="Tenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg></button>
+      <button class="btn small" hidden id="contractorsBtnM" type="button" title="Contractors"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg></button>
       <button class="btn small primary" id="newJobBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span class="mobile-hide">New job</span></button>
-      <button class="btn small ghost mobile-only" id="logoutBtnM" type="button" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg></button>
+      <button class="btn small ghost" hidden id="logoutBtnM" type="button" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg></button>
     </header>
 
     <div class="wrap">
@@ -694,6 +741,7 @@
       </div>
     </div>
   </main>
+  <nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
 </div>
 
 <!-- JOB DETAIL -->
@@ -842,6 +890,7 @@
       <div><label class="lbl" for="jfDue">Deadline</label><input class="inp" type="datetime-local" id="jfDue"></div>
     </div>
     <div class="jf-sec">Access</div>
+    <div><label class="lbl" for="jfDirect">Arranging the visit</label><select class="inp" id="jfDirect"><option value="">We’ll arrange it with the tenant</option><option value="Yes">Contractor contacts the tenant directly</option></select></div>
     <div class="grid3">
       <div><label class="lbl" for="jfDays">Days that work</label><input class="inp" id="jfDays" placeholder="e.g. Mon, Wed"></div>
       <div><label class="lbl" for="jfTime">Best time</label><input class="inp" id="jfTime" list="jfTimes" placeholder="e.g. Morning"></div>
@@ -957,6 +1006,13 @@
 </div>
 
 <!-- PREVIEW OF THE CONTRACTOR MESSAGE -->
+<div class="modal" id="moreSheet" hidden>
+  <div class="card more-card" role="dialog" aria-label="More">
+    <div class="more-grab"></div>
+    <div id="moreList"></div>
+    <button class="btn" type="button" id="moreClose" style="width:100%;margin-top:10px">Close</button>
+  </div>
+</div>
 <div class="modal" id="waModal" hidden>
   <div class="card">
     <h3 id="waTitle">Message for contractor</h3>
@@ -1341,6 +1397,7 @@
       tenants.forEach(function(t){ lines.push('Tenant: ' + t.name + (t.phones.length ? ' – ' + t.phones.join(' / ') : '')); });
       var keys = uniq(g.jobs.map(keysText));
       if (keys.length) lines.push('Keys: ' + keys.join(' / '));
+      if (g.jobs.some(function(j){ return j.direct_contact === 'Yes'; })) lines.push('Please contact the tenant directly to arrange a time.');
       return lines.join('\n');
     }).join('\n\n');
   }
@@ -1624,7 +1681,7 @@
     ['jfAddress', 'property_address'], ['jfName', 'tenant_name'], ['jfPhone', 'tenant_phone'], ['jfEmail', 'tenant_email'],
     ['jfCat', 'category'], ['jfAffected', 'affected'], ['jfSymptom', 'symptom'], ['jfLocation', 'location'],
     ['jfDesc', 'description'], ['jfDays', 'access_days'], ['jfTime', 'access_time'], ['jfKeys', 'key_permission'],
-    ['jfAccess', 'access_notes'], ['jfKeyNotes', 'key_instructions'],
+    ['jfAccess', 'access_notes'], ['jfKeyNotes', 'key_instructions'], ['jfDirect', 'direct_contact'],
     ['jfLlName', 'landlord_name'], ['jfLlEmail', 'landlord_email'], ['jfLlPhone', 'landlord_phone'], ['jfLlAddress', 'landlord_address']
   ];
   var jfEditing = null;   // the job being edited, or null when adding
@@ -2956,7 +3013,7 @@
         '<div><div class="k">Contractor</div><div class="v"><div class="who-chip">' + avatar(j.assigned_to) + '<span class="nm">' + esc(j.assigned_to || 'Unassigned') + '</span></div></div></div>' +
         '<div><div class="k">Received</div><div class="v">' + esc(ago(j.created_at)) + '<small>' + esc(fmtShort(j.created_at)) + (j.source ? ' · ' + esc(j.source) : '') + '</small></div></div>' +
         '<div><div class="k">Tenant</div><div class="v">' + esc(j.tenant_name || '—') + '<small>' + (j.tenant_phone ? '<a href="tel:' + esc(tel) + '" style="color:var(--blue);text-decoration:none">' + esc(j.tenant_phone) + '</a>' : 'No phone') + '</small></div></div>' +
-        '<div id="glanceAccess" style="cursor:pointer" title="Edit access"><div class="k">Access ✎</div><div class="v">' + esc(j.access_days || 'Not given') + '<small>' + esc([j.access_time, j.key_permission ? 'Keys: ' + j.key_permission : ''].filter(Boolean).join(' · ') || '—') + '</small></div></div>' +
+        '<div id="glanceAccess" style="cursor:pointer" title="Edit access"><div class="k">Access ✎</div><div class="v">' + esc(j.access_days || 'Not given') + '<small>' + esc([j.direct_contact === 'Yes' ? 'Contractor contacts tenant' : '', j.access_time, j.key_permission ? 'Keys: ' + j.key_permission : ''].filter(Boolean).join(' · ') || '—') + '</small></div></div>' +
         '<div><div class="k">Profit</div><div class="v ' + (prof ? (prof.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (prof ? esc(gbp(prof.value)) : '—') +
           '<small>' + (j.invoiced_at ? 'Invoiced ' + esc(j.invoice_number || '') : prof && prof.estimated ? 'Estimated' : j.landlord_charge != null ? 'Not invoiced yet' : 'No costs yet') + '</small></div></div>' +
       '</div>' +
@@ -3115,12 +3172,15 @@
         '</div>' +
       '</div>' +
       '<div class="card" data-pane="overview" id="accessCard"><h3>Access <span style="flex:1"></span><button class="btn small" id="editAccess" type="button">Edit</button></h3>' +
-        '<div id="accessView">' + (j.access_days || j.access_time || j.access_notes || j.key_permission || j.key_instructions ? rows([
+        '<div id="accessView">' + (j.direct_contact === 'Yes' || j.access_days || j.access_time || j.access_notes || j.key_permission || j.key_instructions ? rows([
+          ['Arranging the visit', j.direct_contact === 'Yes' ? 'Contractor contacts the tenant directly' : ''],
           ['Days that work', j.access_days], ['Best time', j.access_time],
           ['Keys to contractor', j.key_permission === 'Yes' ? 'Yes — we can let the contractor in' : j.key_permission === 'No' ? 'No — tenant must be home' : ''],
           ['Access notes', j.access_notes], ['Contractor notes', j.key_instructions]
         ]) : '<p class="muted-note">No access details yet. Tap Edit to add days, times, keys and notes.</p>') + '</div>' +
         '<div id="accessEdit" hidden>' +
+          '<div style="margin-bottom:12px"><label class="lbl" for="aDirect">Arranging the visit</label><select class="inp" id="aDirect">' +
+            [['', 'We’ll arrange it with the tenant'], ['Yes', 'Contractor contacts the tenant directly']].map(function(o){ return '<option value="' + o[0] + '"' + ((j.direct_contact === 'Yes' ? 'Yes' : '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
           '<div class="grid3">' +
             '<div><label class="lbl" for="aDays">Days that work</label><input class="inp" id="aDays" placeholder="e.g. Mon, Wed" value="' + esc(j.access_days || '') + '"></div>' +
             '<div><label class="lbl" for="aTime">Best time</label><input class="inp" id="aTime" list="jfTimes" placeholder="e.g. Morning" value="' + esc(j.access_time || '') + '"></div>' +
@@ -3518,8 +3578,8 @@
     $('accessCancel').addEventListener('click', function(){ accessEditing(false); });
     $('accessSave').addEventListener('click', function(){
       var body = {};
-      [['aDays', 'access_days'], ['aTime', 'access_time'], ['aKeys', 'key_permission'], ['aNotes', 'access_notes'], ['aKeyNotes', 'key_instructions']].forEach(function(f){
-        var v = $(f[0]).value.trim(); if (v !== (j[f[1]] || '')) body[f[1]] = v;
+      [['aDays', 'access_days'], ['aTime', 'access_time'], ['aKeys', 'key_permission'], ['aNotes', 'access_notes'], ['aKeyNotes', 'key_instructions'], ['aDirect', 'direct_contact']].forEach(function(f){
+        var v = $(f[0]).value.trim(); if (v !== (f[1] === 'direct_contact' ? (j.direct_contact === 'Yes' ? 'Yes' : '') : (j[f[1]] || ''))) body[f[1]] = v;
       });
       if (!Object.keys(body).length) { accessEditing(false); return; }
       busy($('accessSave'), true, 'Saving…');
@@ -4146,8 +4206,12 @@
     if (!f('address')) return { error: 'Add the property address' };
     var c = contractors.filter(function(k){ return String(k.id) === f('contractor'); })[0] || null;
     var desc = f('description');
+    var DIRECT_RE = /\s*Please contact the tenants? directly to arrange[^.\n]*\.?/i;
+    var direct = DIRECT_RE.test(desc);
+    if (direct) desc = desc.replace(DIRECT_RE, '').trim();
     var body = { property_address: f('address'), category: x.category || 'General repair', affected: f('title'),
       urgency: f('urgency'), source: dr.source ? 'Email' : 'Other' };
+    if (direct) body.direct_contact = 'Yes';
     if (c) body.assigned_to = c.name;
     var tv = f('tenant');
     if (tv === 'msg') {
@@ -4320,6 +4384,36 @@
     if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('cmdk').hidden ? openCmdk() : closeCmdk(); }
     else if (e.key === '/' && !typing && $('cmdk').hidden) { e.preventDefault(); openCmdk(); }
   });
+
+  // Phones: a bottom tab bar standing in for the sidebar. The buttons reuse the
+  // sidebar's icons and simply click the matching sidebar item.
+  (function(){
+    var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
+    var MORE = [['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navEmail', 'Jobs from an email'], ['logoutBtn', 'Sign out']];
+    var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
+    $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
+      '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
+    $('moreList').innerHTML = MORE.map(function(t){ return '<button type="button" class="more-item" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
+      '<a class="more-item" href="/" target="_blank" rel="noopener">' + ($('navEmail').parentNode.querySelector('a.nav svg') || { outerHTML: '' }).outerHTML + '<span>Tenant report page</span></a>';
+    var closeMore = function(){ $('moreSheet').hidden = true; };
+    $('tabbar').addEventListener('click', function(e){
+      var b = e.target.closest('[data-go]');
+      if (b) { closeDrawer(); $(b.dataset.go).click(); window.scrollTo(0, 0); }
+      else if (e.target.closest('#tabMore')) $('moreSheet').hidden = false;
+    });
+    $('moreList').addEventListener('click', function(e){ var b = e.target.closest('[data-go]'); closeMore(); if (b) { closeDrawer(); $(b.dataset.go).click(); } });
+    $('moreClose').addEventListener('click', closeMore);
+    $('moreSheet').addEventListener('click', function(e){ if (e.target === $('moreSheet')) closeMore(); });
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !$('moreSheet').hidden) { e.stopImmediatePropagation(); closeMore(); } }, true);
+    // Highlight whichever section the sidebar marks as current.
+    var sync = function(){
+      var on = document.querySelector('.side .nav.on'), id = on ? on.id : '';
+      $('tabbar').querySelectorAll('[data-go]').forEach(function(b){ b.classList.toggle('on', b.dataset.go === id); });
+      $('tabMore').classList.toggle('on', MORE.some(function(t){ return t[0] === id; }));
+    };
+    new MutationObserver(sync).observe(document.querySelector('.side'), { subtree: true, attributes: true, attributeFilter: ['class'] });
+    sync();
+  })();
 
   start();
 })();
