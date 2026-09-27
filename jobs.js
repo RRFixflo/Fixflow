@@ -1166,6 +1166,7 @@ module.exports = function mountJobs(app, opts) {
   function whenUk(d) { return d ? new Date(d).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }) : ''; }
   function trackShell(title, inner) {
     return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">' +
+      '<link rel="icon" type="image/png" sizes="32x32" href="/icons/app-32.png"><link rel="apple-touch-icon" sizes="180x180" href="/icons/app-180.png">' +
       '<title>' + htmlEsc(title) + ' — Residential Realtors</title><style>' +
       ':root{--ink:#0b0c0f;--soft:#5b616e;--line:#e6e7eb;--red:#D9262E;--ok:#139A4B;--bg:#f6f6f8}' +
       '*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}' +
