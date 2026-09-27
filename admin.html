@@ -937,8 +937,9 @@
         <div><label class="lbl" for="ctTrade">Trade</label><input class="inp" id="ctTrade" list="ctTrades" placeholder="e.g. Handyman"></div>
         <div><label class="lbl" for="ctPhone">Mobile (for WhatsApp)</label><input class="inp" id="ctPhone" type="tel" placeholder="07…"></div>
       </div>
-      <div class="grid2">
+      <div class="grid3">
         <div><label class="lbl" for="ctEmail">Email</label><input class="inp" id="ctEmail" type="email"></div>
+        <div><label class="lbl" for="ctEsc">Complaints / escalation email</label><input class="inp" id="ctEsc" type="email" placeholder="Optional, e.g. a council complaints team"></div>
         <div><label class="lbl" for="ctNotes">Notes</label><input class="inp" id="ctNotes" placeholder="e.g. areas covered, day rate"></div>
       </div>
       <div class="err-msg" id="ctErr"></div>
@@ -1411,6 +1412,8 @@
     else if (d.indexOf('0') === 0) d = '44' + d.slice(1);
     return d.length >= 10 ? d : '';
   }
+  // The complaints/escalation address for the job's contractor, if they have one.
+  function escalationFor(j){ var c = contractorByName(j.assigned_to); return c && c.escalation_email ? c.escalation_email : ''; }
   function contractorByName(name){
     var n = String(name || '').trim().toLowerCase();
     return n ? contractors.filter(function(c){ return c.name.toLowerCase() === n; })[0] || null : null;
@@ -1460,7 +1463,7 @@
       var c = contractors.filter(function(x){ return x.id === Number(edit.dataset.ctEdit); })[0];
       ctEditing = c;
       $('ctName').value = c.name || ''; $('ctTrade').value = c.trade || ''; $('ctPhone').value = c.phone || '';
-      $('ctEmail').value = c.email || ''; $('ctNotes').value = c.notes || '';
+      $('ctEmail').value = c.email || ''; $('ctEsc').value = c.escalation_email || ''; $('ctNotes').value = c.notes || '';
       $('ctFormTitle').textContent = 'Edit ' + c.name; $('ctSave').textContent = 'Save'; $('ctCancelEdit').hidden = false;
       $('ctName').focus();
     }
@@ -1474,7 +1477,7 @@
   });
   $('ctForm').addEventListener('submit', function(e){
     e.preventDefault();
-    var body = { name: $('ctName').value, trade: $('ctTrade').value, phone: $('ctPhone').value, email: $('ctEmail').value, notes: $('ctNotes').value };
+    var body = { name: $('ctName').value, trade: $('ctTrade').value, phone: $('ctPhone').value, email: $('ctEmail').value, escalation_email: $('ctEsc').value, notes: $('ctNotes').value };
     if (!body.name.trim()) { $('ctErr').textContent = 'Please enter a name.'; $('ctName').focus(); return; }
     if (body.phone.trim() && !waNumber(body.phone)) { $('ctErr').textContent = 'That phone number doesn’t look right.'; $('ctPhone').focus(); return; }
     var req = ctEditing ? api('PATCH', '/api/admin/contractors/' + ctEditing.id, body) : api('POST', '/api/admin/contractors', body);
@@ -2971,7 +2974,8 @@
       (j.status !== 'Completed' && !j.archived_at ? '<button class="btn success" type="button" id="qDone">✓ Mark complete</button>' : '') +
       '<button class="btn" type="button" id="qInv">' + (j.invoiced_at ? 'Invoice again' : 'Invoice landlord') + '</button>' +
       (tel ? '<a class="btn" href="tel:' + esc(tel) + '">Call tenant</a>' : '') +
-      '<button class="btn" type="button" id="qNote">+ Add update</button>';
+      '<button class="btn" type="button" id="qNote">+ Add update</button>' +
+      (escalationFor(j) && meta.canAi && !j.archived_at ? '<button class="btn danger" type="button" id="qEsc" title="Write a formal complaint to ' + esc(escalationFor(j)) + '">Escalate complaint</button>' : '');
     var TABS = [['overview', 'Overview'], ['photos', 'Photos', photos.length], ['messages', 'Messages'], ['money', 'Money'], ['history', 'History', updates.length]];
     $('dTabs').innerHTML = TABS.map(function(tb){
       return '<button type="button" role="tab" data-tab="' + tb[0] + '"' + (tb[0] === drawerTab ? ' class="on" aria-selected="true"' : '') + '>' + tb[1] +
@@ -3242,7 +3246,7 @@
       'Ask environmental health to inspect', 'Report a neighbouring property causing damage', 'Ask about building control approval'],
     Landlord: ['Explain the issue reported, possible solutions and cost estimates, and ask for approval to go ahead', 'Update on the repair and next steps', 'Ask for approval of the quote', 'Confirm the job is completed', 'Explain a delay'],
     Tenant: ['Confirm the appointment', 'Ask for access on a date', 'Apologise for the delay and give an update', 'Confirm the job is completed'],
-    Contractor: ['Instruct them to carry out the job', 'Ask for a quote', 'Chase for an update', 'Ask for the invoice and completion photos'],
+    Contractor: ['Instruct them to carry out the job', 'Ask for a quote', 'Chase for an update', 'Ask for the invoice and completion photos', 'Escalate as a formal complaint'],
     Other: ['Ask the utility company to attend', 'Notify the insurer about the damage', 'Request a quote from a specialist']
   };
 
@@ -3447,6 +3451,19 @@
     $('qInv').addEventListener('click', function(){ openInvoice(j); });
     $('qWa').addEventListener('click', function(){ showContractorMessage([j]); });
     $('qNote').addEventListener('click', function(){ setDrawerTab('history'); $('fNote').focus(); });
+    // Escalate: the AI email writer, pre-filled for a formal complaint to the
+    // assigned contractor's complaints address (e.g. a council complaints team).
+    if ($('qEsc')) $('qEsc').addEventListener('click', function(){
+      var c = contractorByName(j.assigned_to) || {};
+      setDrawerTab('messages');
+      $('aiTo').querySelector('[data-r="Other"]').click();
+      $('aiName').value = (c.name || 'Council') + ' – Complaints';
+      $('aiAddr').value = c.escalation_email || '';
+      $('aiPhone').value = '';
+      $('aiWhat').value = 'Escalate this as a formal complaint. The repair was reported to ' + (c.name || 'them') + ' and has not been resolved. ' +
+        'Summarise what was reported and when, what has happened since, and the impact on the tenant. Ask for a complaint reference, a named contact, and a firm date for the work to be completed.';
+      $('aiWhat').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
     if ($('qDone')) $('qDone').addEventListener('click', function(){
       setDrawerTab('overview');
       $('completionCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
