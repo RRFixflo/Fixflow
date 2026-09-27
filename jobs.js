@@ -258,7 +258,7 @@ async function migrateLandlords(p) {
   if (r.rows.length) console.log('Built the landlord list from ' + r.rows.length + ' job(s)');
 }
 
-// Contractors can be loaded from the CONTRACTORS_SEED variable (a JSON list of
+// Contractors can be loaded from the CONTRACTORS_SEED variable(s) (a JSON list of
 // {name, trade, phone, email, escalation_email, notes}) so their details never have to be written
 // into this public code. On startup any listed contractor not already in the
 // directory (matched by name, phone or email) is added; existing ones, including
@@ -269,12 +269,15 @@ const BUILT_IN_CONTRACTORS = [
   { name: 'Leaksfromabove', trade: 'Council – leaks from above', email: 'leaksfromabove@southwark.gov.uk', escalation_email: 'complaints@southwark.gov.uk', notes: 'Southwark Council leaks from above team' }
 ];
 async function seedContractors(p) {
+  // CONTRACTORS_SEED plus any extra variables named CONTRACTORS_SEED_<anything>,
+  // so a contractor can be added without rewriting the existing list.
   let list = [];
-  const raw = process.env.CONTRACTORS_SEED;
-  if (raw) {
-    try { list = JSON.parse(raw); } catch (e) { console.error('CONTRACTORS_SEED is not valid JSON'); }
-    if (!Array.isArray(list)) list = [];
-  }
+  Object.keys(process.env).filter(function (k) { return /^CONTRACTORS_SEED(_\w+)?$/.test(k); }).sort().forEach(function (k) {
+    let part;
+    try { part = JSON.parse(process.env[k]); } catch (e) { console.error(k + ' is not valid JSON'); return; }
+    if (Array.isArray(part)) list = list.concat(part);
+    else if (part && typeof part === 'object') list.push(part);
+  });
   list = list.concat(BUILT_IN_CONTRACTORS);
   const have = (await p.query('SELECT name, phone, email FROM contractors')).rows;
   const digits = function (v) { return String(v || '').replace(/\D/g, ''); };
