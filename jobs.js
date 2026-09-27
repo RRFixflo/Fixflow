@@ -159,6 +159,17 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS photo_token TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_photo_token_idx ON jobs (photo_token);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS track_token TEXT;
+CREATE TABLE IF NOT EXISTS job_parts (
+  id          SERIAL PRIMARY KEY,
+  job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  description TEXT NOT NULL,
+  supplier    TEXT,
+  cost        NUMERIC(10,2),
+  charge      NUMERIC(10,2),
+  status      TEXT NOT NULL DEFAULT 'Ordered'
+);
+CREATE INDEX IF NOT EXISTS job_parts_job_idx ON job_parts (job_id, id);
 CREATE TABLE IF NOT EXISTS shared_docs (
   id         SERIAL PRIMARY KEY,
   token      TEXT NOT NULL UNIQUE,
@@ -353,6 +364,9 @@ const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenan
   estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
   archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved,
   (SELECT array_agg(ph.id ORDER BY ph.id) FROM job_photos ph WHERE ph.job_id = jobs.id) AS photo_ids,
+  (SELECT coalesce(sum(jp.cost), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_cost,
+  (SELECT coalesce(sum(jp.charge), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_charge,
+  (SELECT count(*)::int FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_count,
   landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total, contractor_paid_at`;
 
 function str(v, max) {
@@ -593,7 +607,8 @@ module.exports = function mountJobs(app, opts) {
     const u = await p.query('SELECT id, created_at, kind, body FROM job_updates WHERE job_id = $1 ORDER BY created_at DESC, id DESC', [id]);
     const ph = await p.query('SELECT id, created_at, added_by, name FROM job_photos WHERE job_id = $1 ORDER BY id', [id]);
     const inv = await p.query('SELECT id, created_at, number, total, landlord_name, landlord_email, data, paid_at FROM invoices WHERE job_id = $1 ORDER BY id DESC', [id]);
-    res.json({ ok: true, job: job, updates: u.rows, photos: ph.rows, invoices: inv.rows });
+    const parts = await p.query('SELECT id, created_at, description, supplier, cost, charge, status FROM job_parts WHERE job_id = $1 ORDER BY id', [id]);
+    res.json({ ok: true, job: job, updates: u.rows, photos: ph.rows, invoices: inv.rows, parts: parts.rows });
   }));
 
   app.get('/api/admin/jobs/:id/pdf', withDb(async function (p, req, res) {
@@ -897,6 +912,9 @@ module.exports = function mountJobs(app, opts) {
         fact('Access notes', j.access_notes) + fact('Keys can be released to contractor', j.key_permission) + fact('Contractor notes', j.key_instructions) +
         (j.direct_contact !== 'No' ? fact('Arranging access', 'The contractor will contact the tenant directly to arrange a time') : fact('Arranging access', 'We (the agency) will arrange access with the tenant'));
     }
+    const partRows = (await p.query('SELECT description, supplier, charge, status FROM job_parts WHERE job_id = $1 ORDER BY id', [j.id])).rows;
+    if (partRows.length && recipient === 'Landlord') facts += fact('Parts (charged to the landlord)', partRows.map(function (x) { return x.description + (x.charge != null ? ' £' + Number(x.charge).toFixed(2) : '') + ' (' + x.status.toLowerCase() + ')'; }).join('; '));
+    else if (partRows.length && recipient !== 'Council') facts += fact('Parts', partRows.map(function (x) { return x.description + ' (' + x.status.toLowerCase() + ')'; }).join('; '));
     if (recipient === 'Landlord') {
       facts += fact('Cost to landlord (our estimate for the recommended work)', j.landlord_charge != null ? '£' + Number(j.landlord_charge).toFixed(2) : null) +
         fact('Photos provided by the tenant', j.photo_count || null);
@@ -1386,6 +1404,50 @@ module.exports = function mountJobs(app, opts) {
   }));
 
   function htmlEsc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // ---------- Parts ----------
+  // Parts ordered for a job: what we paid and what we charge the landlord (added
+  // to the job's charge, its profit and the landlord invoice).
+  const PART_STATUSES = ['Ordered', 'Arrived', 'Fitted'];
+  function partLine(pt) { return pt.description + (pt.supplier ? ' from ' + pt.supplier : '') + ' (cost ' + gbp(pt.cost) + ', charge to landlord ' + gbp(pt.charge) + ')'; }
+  app.post('/api/admin/jobs/:id/parts', withDb(async function (p, req, res) {
+    const id = jobId(req), b = req.body || {};
+    const description = str(b.description, 300), cost = money(b.cost), charge = money(b.charge);
+    if (!description) return res.status(400).json({ ok: false, error: 'description-required' });
+    if (cost === undefined || charge === undefined) return res.status(400).json({ ok: false, error: 'bad-amount' });
+    if (!(await p.query('SELECT id FROM jobs WHERE id = $1', [id])).rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    const status = PART_STATUSES.indexOf(b.status) !== -1 ? b.status : 'Ordered';
+    const r = await p.query('INSERT INTO job_parts (job_id, description, supplier, cost, charge, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [id, description, str(b.supplier, 200), cost, charge, status]);
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', 'Part added: ' + partLine(r.rows[0])]);
+    await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1', [id]);
+    res.json({ ok: true, part: r.rows[0] });
+  }));
+  app.patch('/api/admin/parts/:id', withDb(async function (p, req, res) {
+    const id = jobId(req), b = req.body || {};
+    const cur = (await p.query('SELECT * FROM job_parts WHERE id = $1', [id])).rows[0];
+    if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+    const next = {
+      description: 'description' in b ? (str(b.description, 300) || cur.description) : cur.description,
+      supplier: 'supplier' in b ? str(b.supplier, 200) : cur.supplier,
+      cost: 'cost' in b ? money(b.cost) : cur.cost,
+      charge: 'charge' in b ? money(b.charge) : cur.charge,
+      status: 'status' in b ? (PART_STATUSES.indexOf(b.status) !== -1 ? b.status : undefined) : cur.status
+    };
+    if (next.cost === undefined || next.charge === undefined || next.status === undefined) return res.status(400).json({ ok: false, error: 'bad-value' });
+    await p.query('UPDATE job_parts SET description = $2, supplier = $3, cost = $4, charge = $5, status = $6 WHERE id = $1',
+      [id, next.description, next.supplier, next.cost, next.charge, next.status]);
+    const note = next.status !== cur.status && Object.keys(b).length === 1 ? 'Part ' + next.status.toLowerCase() + ': ' + next.description : 'Part updated: ' + partLine(next);
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [cur.job_id, 'change', note]);
+    await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1', [cur.job_id]);
+    res.json({ ok: true });
+  }));
+  app.delete('/api/admin/parts/:id', withDb(async function (p, req, res) {
+    const r = await p.query('DELETE FROM job_parts WHERE id = $1 RETURNING *', [jobId(req)]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.rows[0].job_id, 'change', 'Part removed: ' + r.rows[0].description]);
+    res.json({ ok: true });
+  }));
+
   // One-line job summaries for contractor messages ("Kitchen sink overflowing –
   // check waste and washing machine drain"), written once by AI and kept.
   app.post('/api/admin/jobs/summaries', withDb(async function (p, req, res) {
