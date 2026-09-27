@@ -513,7 +513,12 @@
   /* ---------- Phones ---------- */
   .tabbar { display: none; }
   @media (max-width: 900px) {
-    .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    /* The page itself never scrolls on phones — only the content between the
+       header and the tab bar does. iPhone Safari shrinks its toolbar while the
+       page scrolls, which left a fixed bottom bar floating mid-screen. */
+    .app { height: 100vh; height: 100dvh; min-height: 0; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; }
+    .app > .main { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; min-height: 0; }
+    .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: relative; z-index: 40;
       padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--panel) 92%, transparent);
       backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px); border-top: 1px solid var(--line); }
     .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 3px; border: 0; background: none; color: var(--ink-faint);
@@ -521,7 +526,8 @@
     .tabbar button svg { width: 22px; height: 22px; }
     .tabbar button.on { color: var(--ink); }
     .tabbar button.on svg { color: var(--brick); }
-    .wrap { padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important; }
+    .wrap { padding-bottom: 32px !important; }
+    #jobsView .tabs { scroll-margin-top: 72px; }
     .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
     body.has-bulk .toast { bottom: calc(170px + env(safe-area-inset-bottom)); }
     .bulkbar { bottom: calc(72px + env(safe-area-inset-bottom)); }
@@ -1361,7 +1367,13 @@
   $('assignChipClear').addEventListener('click', function(){ assignFilter = null; render(); });
   $('badAddrShow').addEventListener('click', function(){ assignFilter = 'badAddr'; activeTile = null; setTab('open'); render(); });
   $('sort').addEventListener('change', function(){ try { localStorage.setItem('rrJobsSort', $('sort').value); } catch (e) {} render(); });
-  $('navJobs').addEventListener('click', function(){ window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  // Back to the top of the page (on phones the content area is what scrolls).
+  function scrollTop(smooth){
+    var o = smooth ? { top: 0, behavior: 'smooth' } : { top: 0 };
+    window.scrollTo(o);
+    var m = document.querySelector('.app > .main'); if (m && m.scrollTo) m.scrollTo(o);
+  }
+  $('navJobs').addEventListener('click', function(){ scrollTop(true); });
   $('navNew').addEventListener('click', function(){ $('newJobBtn').click(); });
   $('contractorsBtnM').addEventListener('click', function(){ $('contractorsBtn').click(); });
   $('logoutBtnM').addEventListener('click', function(){ $('logoutBtn').click(); });
@@ -1987,7 +1999,7 @@
     openPropKey = null; openTenantKey = null; openLlId = null;
     applyNav({ v: 'jobs' });
     pushNav();
-    window.scrollTo({ top: 0 });
+    scrollTop();
   }
   $('backBtn').addEventListener('click', goBack);
   $('brandHome').addEventListener('click', goHome);
@@ -2011,7 +2023,7 @@
     if (v === 'props') { openPropKey ? renderProperty() : renderProps(); }
     pushNav();
     if (v === 'tenants') { openTenantKey ? renderTenant() : renderTenants(); }
-    window.scrollTo({ top: 0 });
+    scrollTop();
   }
   $('navProps').addEventListener('click', function(){ openPropKey = null; $('propDetail').hidden = true; $('propsListView').hidden = false; showView('props'); });
   $('propsBtnM').addEventListener('click', function(){ $('navProps').click(); });
@@ -4532,7 +4544,7 @@
     var closeMore = function(){ $('moreSheet').hidden = true; };
     $('tabbar').addEventListener('click', function(e){
       var b = e.target.closest('[data-go]');
-      if (b) { closeDrawer(); $(b.dataset.go).click(); window.scrollTo(0, 0); }
+      if (b) { closeDrawer(); $(b.dataset.go).click(); scrollTop(); }
       else if (e.target.closest('#tabMore')) $('moreSheet').hidden = false;
     });
     $('moreList').addEventListener('click', function(e){ var b = e.target.closest('[data-go]'); closeMore(); if (b) { closeDrawer(); $(b.dataset.go).click(); } });
