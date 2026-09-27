@@ -513,6 +513,8 @@
   .addr-edit { border: 0; background: none; color: var(--blue); font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; padding: 2px 4px; white-space: nowrap; }
   .addr-warn { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .84rem; font-weight: 550; color: var(--warn); background: var(--warn-tint); border-radius: 10px; padding: 8px 10px; }
   .warn-pill { background: var(--warn-tint); color: var(--warn); font-size: .72rem; vertical-align: middle; }
+  .tenant-danger { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .tenant-danger .muted-note { margin: 0; }
   .check-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: .88rem; cursor: pointer; }
   /* ---------- Phones ---------- */
   .tabbar { display: none; }
@@ -2304,8 +2306,21 @@
           '<button type="button" class="btn small ghost" data-tremove="' + esc(x.address) + '">Remove</button></div></div>';
       }).join('') + '</div>' : '<p class="muted-note">Not linked to a property yet.</p>') +
       '<div style="display:flex;gap:8px;margin-top:10px"><input class="inp" id="tenantAddProp" list="tenantPropList" placeholder="Add a property — start typing an address"><button class="btn" id="tenantAddPropBtn" type="button">Add</button></div>' +
-      '<datalist id="tenantPropList">' + propertiesFromJobs().map(function(pr){ return '<option value="' + esc(pr.address) + '">'; }).join('') + '</datalist>';
+      '<datalist id="tenantPropList">' + propertiesFromJobs().map(function(pr){ return '<option value="' + esc(pr.address) + '">'; }).join('') + '</datalist>' +
+      '<div class="tenant-danger"><button class="btn small danger" id="tenantDeleteBtn" type="button">Delete tenant</button>' +
+        '<span class="muted-note">Removes them from your tenant list. Their repair jobs and history are kept.</span></div>';
     $('tenantEditBtn').addEventListener('click', function(){ openTenantForm(t); });
+    $('tenantDeleteBtn').addEventListener('click', function(){
+      if (!confirm('Delete ' + (t.name || 'this tenant') + ' from your tenants?\n\nTheir repair jobs and history are kept. They’ll only come back if they report a new repair or you add them again.')) return;
+      busy($('tenantDeleteBtn'), true, 'Deleting…');
+      api('DELETE', '/api/admin/tenant-records/' + t.id, { confirm: true }).then(function(d){
+        busy($('tenantDeleteBtn'), false);
+        if (!d.ok) { toast('Couldn’t delete (' + (d.error || 'error') + ')'); return; }
+        toast((t.name || 'Tenant') + ' deleted');
+        openTenantKey = null;
+        loadJobs().then(function(){ $('tenantBack').click(); });
+      });
+    });
     $('tenantAddPropBtn').addEventListener('click', function(){
       var a = $('tenantAddProp').value.trim(); if (!a) { $('tenantAddProp').focus(); return; }
       tenantPropertyUpdate(t.id, { address: a }, t.name + ' added to ' + a);
