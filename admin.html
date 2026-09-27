@@ -908,7 +908,7 @@
       <div><label class="lbl" for="jfDue">Deadline</label><input class="inp" type="datetime-local" id="jfDue"></div>
     </div>
     <div class="jf-sec">Access</div>
-    <div><label class="lbl" for="jfDirect">Arranging the visit</label><select class="inp" id="jfDirect"><option value="">We’ll arrange it with the tenant</option><option value="Yes">Contractor contacts the tenant directly</option></select></div>
+    <div><label class="lbl" for="jfDirect">Arranging the visit</label><select class="inp" id="jfDirect"><option value="">Contractor contacts the tenant directly (usual)</option><option value="No">We’ll arrange access with the tenant</option></select></div>
     <div class="grid3">
       <div><label class="lbl" for="jfDays">Days that work</label><input class="inp" id="jfDays" placeholder="e.g. Mon, Wed"></div>
       <div><label class="lbl" for="jfTime">Best time</label><input class="inp" id="jfTime" list="jfTimes" placeholder="e.g. Morning"></div>
@@ -1394,14 +1394,31 @@
   function addrKey(addr){ return String(addr || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
   // Kept deliberately short: address, the job, the tenant's name and number,
   // and whether we have keys. Nothing else (no costs, references or deadlines).
+  // One-line summaries (written by AI and saved on the job) for contractor
+  // messages; fetched for any job that doesn't have one yet.
+  var summaryWait = {};
+  function ensureSummaries(list){
+    var need = list.filter(function(j){ return !j.summary && !summaryWait[j.id]; }).map(function(j){ return j.id; });
+    if (!need.length || !meta.canAi) return Promise.resolve(false);
+    need.forEach(function(id){ summaryWait[id] = true; });
+    return api('POST', '/api/admin/jobs/summaries', { ids: need }).then(function(d){
+      need.forEach(function(id){ delete summaryWait[id]; });
+      var got = (d && d.ok && d.summaries) || {}, any = false;
+      Object.keys(got).forEach(function(id){
+        jobs.concat(list).forEach(function(j){ if (String(j.id) === id) { j.summary = got[id]; any = true; } });
+      });
+      return any;
+    });
+  }
   function jobText(j){
+    if (j.summary) return j.summary;
     var issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') + (j.location ? ' (' + j.location + ')' : '');
     var lines = String(j.description || '').split(/\n+/).map(function(l){ return l.replace(/\s+/g, ' ').replace(/^(?:[-•*]|\d+[.)])\s*/, '').trim(); })
       .filter(function(l){ return l && !/^Other tenants:/i.test(l); });
     if (lines.length > 1) return (j.affected || issue || 'Repairs') + '\n' + lines.map(function(l){ return '- ' + l; }).join('\n');
     return [issue, lines[0]].filter(Boolean).join('. ') || 'Repair';
   }
-  function keysText(j){ return j.key_permission === 'Yes' ? 'Yes' : j.key_permission === 'No' ? 'No' : null; }
+  function keysText(j){ return j.key_permission === 'Yes' ? 'Yes – we can collect keys if needed' : j.key_permission === 'No' ? 'No – tenant needs to be in' : null; }
   var waLinks = {};   // job id -> public photo link, when "include photos" is ticked
   function contractorMessage(list){
     // Jobs at the same address go under one heading, so a multi-job visit reads as one stop.
@@ -1438,7 +1455,9 @@
       tenants.forEach(function(t){ lines.push('Tenant: ' + t.name + (t.phones.length ? ' – ' + t.phones.join(' / ') : '')); });
       var keys = uniq(g.jobs.map(keysText));
       if (keys.length) lines.push('Keys: ' + keys.join(' / '));
-      if (g.jobs.some(function(j){ return j.direct_contact === 'Yes'; })) lines.push('Please contact the tenant directly to arrange a time.');
+      // Usually the contractor arranges access with the tenant themselves.
+      if (g.jobs.some(function(j){ return j.direct_contact !== 'No'; })) lines.push('Please contact the tenant directly to arrange access.');
+      else lines.push('We will arrange access with the tenant.');
       return lines.join('\n');
     }).join('\n\n');
   }
@@ -1556,6 +1575,7 @@
     waLinks = {};
     $('waTitle').textContent = list.length === 1 ? 'Send ' + list[0].ref + ' to a contractor' : 'Send ' + list.length + ' jobs to a contractor';
     $('waText').textContent = contractorMessage(list);
+    ensureSummaries(list).then(function(changed){ if (changed && !$('waModal').hidden && waJobs === list) $('waText').textContent = contractorMessage(list); });
     // Photos on these jobs (from the job list, which knows each job's photos).
     waPhotoIds = [];
     list.forEach(function(j){ var lj = jobs.filter(function(x){ return x.id === j.id; })[0] || j; (lj.photo_ids || []).forEach(function(id){ waPhotoIds.push(id); }); });
@@ -1663,7 +1683,9 @@
     var list = waJobs;
     if (text.length > 3500) copyText(text)['catch'](function(){});
     window.open('https://wa.me/' + (c ? waNumber(c.phone) : '') + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
-    var assign = c && !$('waAssignWrap').hidden && $('waAssign').checked ? assignTo(list, c.name) : Promise.resolve();
+    var willAssign = c && !$('waAssignWrap').hidden && $('waAssign').checked;
+    if (willAssign && list.length === 1 && openJobId === list[0].id) noticeTenantAfterAssign(list[0].id, c.name);
+    var assign = willAssign ? assignTo(list, c.name) : Promise.resolve();
     assign.then(function(){
       return logContractorSend(list, 'Job details sent on WhatsApp' + (c ? ' to ' + c.name : ''));
     }).then(function(){ loadJobs(); afterSend(); });
@@ -1681,7 +1703,9 @@
     var body = 'Hello,\n\nPlease could you carry out the following:\n\n' + $('waText').textContent +
       '\n\nPlease let us know when you can attend.\n\nKind regards,\nResidential Realtors';
     window.location.href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
-    var assign = !$('waAssignWrap').hidden && $('waAssign').checked ? assignTo(list, c.name) : Promise.resolve();
+    var willAssign = !$('waAssignWrap').hidden && $('waAssign').checked;
+    if (willAssign && list.length === 1 && openJobId === list[0].id) noticeTenantAfterAssign(list[0].id, c.name);
+    var assign = willAssign ? assignTo(list, c.name) : Promise.resolve();
     assign.then(function(){ return logContractorSend(list, 'Job details emailed to ' + c.name + ' (' + c.email + ')'); })
       .then(function(){ loadJobs(); afterSend(); });
     $('waModal').hidden = true;
@@ -1770,6 +1794,7 @@
       .map(function(s){ return '<option>' + esc(s) + '</option>'; }).join('');
     if (job) {
       JF_FIELDS.forEach(function(f){ $(f[0]).value = job[f[1]] || ''; });
+      $('jfDirect').value = job.direct_contact === 'No' ? 'No' : '';
     } else {
       $('jfReceived').value = toLocalInput(new Date());
       jfDueTouched = false;
@@ -2991,7 +3016,7 @@
     { name: 'Report received', subject: 'We’ve received your repair report [{ref}]',
       body: 'Dear {name},\n\nThank you for reporting the issue at {address} ({issue}). Your reference is {ref}.\n\nWe’re reviewing it now and will be in touch shortly with next steps.' },
     { name: 'Contractor assigned', subject: 'A contractor has been assigned [{ref}]',
-      body: 'Dear {name},\n\nWe’ve assigned {assigned} to your repair at {address} ({issue}).\n\nThey (or we) will contact you to arrange a convenient time to visit.' },
+      body: 'Dear {name},\n\nWe’ve assigned {assigned} to your repair at {address} ({issue}).\n\nThey will be in touch with you directly to arrange a convenient time to visit.' },
     { name: 'Appointment booked', subject: 'Repair appointment booked [{ref}]',
       body: 'Dear {name},\n\nYour repair at {address} ({issue}) has been booked in for [DATE AND TIME].\n\nThe visit will be carried out by {assigned}. Please make sure someone is available to give access, or let us know as soon as possible if this time doesn’t work.' },
     { name: 'Update / next steps', subject: 'Update on your repair [{ref}]',
@@ -3047,7 +3072,32 @@
       renderJob(d.job, d.updates, d.photos || []);
       $('scrim').hidden = false;
       $('drawer').hidden = false;
+      if (tenantNotice && tenantNotice.jobId === id) { var tn = tenantNotice; tenantNotice = null; prepareTenantNotice(d.job, tn.contractor); }
+      ensureSummaries([d.job]);
     });
+  }
+  // When a contractor is assigned, get the tenant message ready: the AI writer
+  // (or the "Contractor assigned" template) on the Messages tab, to check and send.
+  var tenantNotice = null;
+  function noticeTenantAfterAssign(jobId, contractor){ if (jobId && contractor) tenantNotice = { jobId: jobId, contractor: contractor }; }
+  function prepareTenantNotice(j, contractor){
+    if (!j || (!j.tenant_phone && !j.tenant_email && !j.tenant_name)) return;
+    setDrawerTab('messages');
+    if (meta.canAi && $('aiTo')) {
+      $('aiTo').querySelector('[data-r="Tenant"]').click();
+      var direct = j.direct_contact !== 'No';
+      $('aiWhat').value = 'Let the tenant know that ' + contractor + ' has been assigned to their repair' +
+        (direct ? ' and will contact them directly to arrange a convenient time for access.' : '. We will be in touch to arrange access.') +
+        (j.key_permission === 'Yes' ? ' Mention that, as they gave permission, we may also collect keys to let the contractor in if needed.' : '') +
+        ' Keep it short and friendly.';
+      $('aiGen').click();
+      $('aiWhat').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast('Tenant message being written — check it and send');
+    } else if ($('fTpl')) {
+      var i = TEMPLATES.map(function(t){ return t.name; }).indexOf('Contractor assigned');
+      if (i !== -1) { $('fTpl').value = String(i); $('fTpl').dispatchEvent(new Event('change')); }
+      toast('Contractor assigned — let the tenant know');
+    }
   }
 
   var drawerTab = 'overview', drawerTabJob = null;
@@ -3119,7 +3169,7 @@
         '<div><div class="k">Contractor</div><div class="v"><div class="who-chip">' + avatar(j.assigned_to) + '<span class="nm">' + esc(j.assigned_to || 'Unassigned') + '</span></div></div></div>' +
         '<div><div class="k">Received</div><div class="v">' + esc(ago(j.created_at)) + '<small>' + esc(fmtShort(j.created_at)) + (j.source ? ' · ' + esc(j.source) : '') + '</small></div></div>' +
         '<div><div class="k">Tenant</div><div class="v">' + esc(j.tenant_name || '—') + '<small>' + (j.tenant_phone ? '<a href="tel:' + esc(tel) + '" style="color:var(--blue);text-decoration:none">' + esc(j.tenant_phone) + '</a>' : 'No phone') + '</small></div></div>' +
-        '<div id="glanceAccess" style="cursor:pointer" title="Edit access"><div class="k">Access ✎</div><div class="v">' + esc(j.access_days || 'Not given') + '<small>' + esc([j.direct_contact === 'Yes' ? 'Contractor contacts tenant' : '', j.access_time, j.key_permission ? 'Keys: ' + j.key_permission : ''].filter(Boolean).join(' · ') || '—') + '</small></div></div>' +
+        '<div id="glanceAccess" style="cursor:pointer" title="Edit access"><div class="k">Access ✎</div><div class="v">' + esc(j.access_days || 'Not given') + '<small>' + esc([j.direct_contact === 'No' ? 'We arrange access' : 'Contractor contacts tenant', j.access_time, j.key_permission ? 'Keys: ' + j.key_permission : ''].filter(Boolean).join(' · ') || '—') + '</small></div></div>' +
         '<div><div class="k">Profit</div><div class="v ' + (prof ? (prof.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (prof ? esc(gbp(prof.value)) : '—') +
           '<small>' + (j.invoiced_at ? 'Invoiced ' + esc(j.invoice_number || '') : prof && prof.estimated ? 'Estimated' : j.landlord_charge != null ? 'Not invoiced yet' : 'No costs yet') + '</small></div></div>' +
       '</div>' +
@@ -3278,15 +3328,15 @@
         '</div>' +
       '</div>' +
       '<div class="card" data-pane="overview" id="accessCard"><h3>Access <span style="flex:1"></span><button class="btn small" id="editAccess" type="button">Edit</button></h3>' +
-        '<div id="accessView">' + (j.direct_contact === 'Yes' || j.access_days || j.access_time || j.access_notes || j.key_permission || j.key_instructions ? rows([
-          ['Arranging the visit', j.direct_contact === 'Yes' ? 'Contractor contacts the tenant directly' : ''],
+        '<div id="accessView">' + rows([
+          ['Arranging the visit', j.direct_contact === 'No' ? 'We arrange access with the tenant' : 'Contractor contacts the tenant directly'],
           ['Days that work', j.access_days], ['Best time', j.access_time],
           ['Keys to contractor', j.key_permission === 'Yes' ? 'Yes — we can let the contractor in' : j.key_permission === 'No' ? 'No — tenant must be home' : ''],
           ['Access notes', j.access_notes], ['Contractor notes', j.key_instructions]
-        ]) : '<p class="muted-note">No access details yet. Tap Edit to add days, times, keys and notes.</p>') + '</div>' +
+        ]) + '</div>' +
         '<div id="accessEdit" hidden>' +
           '<div style="margin-bottom:12px"><label class="lbl" for="aDirect">Arranging the visit</label><select class="inp" id="aDirect">' +
-            [['', 'We’ll arrange it with the tenant'], ['Yes', 'Contractor contacts the tenant directly']].map(function(o){ return '<option value="' + o[0] + '"' + ((j.direct_contact === 'Yes' ? 'Yes' : '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+            [['', 'Contractor contacts the tenant directly (usual)'], ['No', 'We’ll arrange access with the tenant']].map(function(o){ return '<option value="' + o[0] + '"' + ((j.direct_contact === 'No' ? 'No' : '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
           '<div class="grid3">' +
             '<div><label class="lbl" for="aDays">Days that work</label><input class="inp" id="aDays" placeholder="e.g. Mon, Wed" value="' + esc(j.access_days || '') + '"></div>' +
             '<div><label class="lbl" for="aTime">Best time</label><input class="inp" id="aTime" list="jfTimes" placeholder="e.g. Morning" value="' + esc(j.access_time || '') + '"></div>' +
@@ -3698,7 +3748,7 @@
     $('accessSave').addEventListener('click', function(){
       var body = {};
       [['aDays', 'access_days'], ['aTime', 'access_time'], ['aKeys', 'key_permission'], ['aNotes', 'access_notes'], ['aKeyNotes', 'key_instructions'], ['aDirect', 'direct_contact']].forEach(function(f){
-        var v = $(f[0]).value.trim(); if (v !== (f[1] === 'direct_contact' ? (j.direct_contact === 'Yes' ? 'Yes' : '') : (j[f[1]] || ''))) body[f[1]] = v;
+        var v = $(f[0]).value.trim(); if (v !== (f[1] === 'direct_contact' ? (j.direct_contact === 'No' ? 'No' : '') : (j[f[1]] || ''))) body[f[1]] = v;
       });
       if (!Object.keys(body).length) { accessEditing(false); return; }
       busy($('accessSave'), true, 'Saving…');
@@ -3805,6 +3855,7 @@
         $('saveBtn').disabled = false;
         if (!d.ok) { toast('Couldn’t save: ' + (d.error || 'error')); return; }
         toast('Saved');
+        if (body.assigned_to && body.assigned_to.trim()) noticeTenantAfterAssign(j.id, body.assigned_to.trim());
         openJob(j.id);
         loadJobs();
       });
