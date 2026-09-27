@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS contractors (
   notes      TEXT,
   active     BOOLEAN NOT NULL DEFAULT true
 );
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS escalation_email TEXT;
 `;
 
 // ---------- Landlords and their properties ----------
@@ -258,7 +259,7 @@ async function migrateLandlords(p) {
 }
 
 // Contractors can be loaded from the CONTRACTORS_SEED variable (a JSON list of
-// {name, trade, phone, email, notes}) so their details never have to be written
+// {name, trade, phone, email, escalation_email, notes}) so their details never have to be written
 // into this public code. On startup any listed contractor not already in the
 // directory (matched by name, phone or email) is added; existing ones, including
 // any edited or removed in the dashboard, are left alone.
@@ -279,8 +280,8 @@ async function seedContractors(p) {
         (str(c.email) && String(h.email || '').toLowerCase() === str(c.email).toLowerCase());
     });
     if (known) continue;
-    await p.query('INSERT INTO contractors (name, trade, phone, email, notes) VALUES ($1, $2, $3, $4, $5)',
-      [str(c.name, 200), str(c.trade, 200), str(c.phone, 50), str(c.email, 200), str(c.notes, 1000)]);
+    await p.query('INSERT INTO contractors (name, trade, phone, email, escalation_email, notes) VALUES ($1, $2, $3, $4, $5, $6)',
+      [str(c.name, 200), str(c.trade, 200), str(c.phone, 50), str(c.email, 200), str(c.escalation_email, 200), str(c.notes, 1000)]);
     added += 1;
   }
   if (added) console.log('Added ' + added + ' contractor' + (added === 1 ? '' : 's') + ' from CONTRACTORS_SEED');
@@ -1395,7 +1396,7 @@ module.exports = function mountJobs(app, opts) {
   function cleanContractor(b) {
     const out = {};
     if ('name' in b) { out.name = str(b.name, 200); if (!out.name) return null; }
-    ['trade', 'email'].forEach(function (f) { if (f in b) out[f] = str(b[f], 200); });
+    ['trade', 'email', 'escalation_email'].forEach(function (f) { if (f in b) out[f] = str(b[f], 200); });
     if ('phone' in b) out.phone = str(b.phone, 50);
     if ('notes' in b) out.notes = str(b.notes, 1000);
     if ('active' in b) out.active = !!b.active;
@@ -1403,15 +1404,15 @@ module.exports = function mountJobs(app, opts) {
   }
 
   app.get('/api/admin/contractors', withDb(async function (p, req, res) {
-    const r = await p.query('SELECT id, name, trade, phone, email, notes, active FROM contractors ORDER BY active DESC, lower(name)');
+    const r = await p.query('SELECT id, name, trade, phone, email, escalation_email, notes, active FROM contractors ORDER BY active DESC, lower(name)');
     res.json({ ok: true, contractors: r.rows });
   }));
 
   app.post('/api/admin/contractors', withDb(async function (p, req, res) {
     const c = cleanContractor(req.body || {});
     if (!c || !c.name) return res.status(400).json({ ok: false, error: 'name-required' });
-    const r = await p.query('INSERT INTO contractors (name, trade, phone, email, notes) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-      [c.name, c.trade || null, c.phone || null, c.email || null, c.notes || null]);
+    const r = await p.query('INSERT INTO contractors (name, trade, phone, email, escalation_email, notes) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      [c.name, c.trade || null, c.phone || null, c.email || null, c.escalation_email || null, c.notes || null]);
     res.json({ ok: true, id: r.rows[0].id });
   }));
 
