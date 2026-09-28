@@ -2071,7 +2071,7 @@
         return;
       }
       closeJobForm();
-      toast(editingId ? 'Details saved' : 'Added ' + d.ref);
+      toast(editingId ? 'Details saved' : d.existing ? 'Already booked as ' + d.ref + ' — opening it' : 'Added ' + d.ref);
       loadJobs();
       openJob(editingId || d.id);
     });
@@ -5005,7 +5005,11 @@
 
   // Book the renewal: a job for the property, assigned to the right contractor,
   // with the tenant's details, then the usual "Send to contractor".
+  var booking = {};
   function bookCert(address, type, btn){
+    var lockKey = propKey(address) + '|' + type;
+    if (booking[lockKey]) return;
+    booking[lockKey] = true; setTimeout(function(){ delete booking[lockKey]; }, 8000);
     var def = certDef(type), key = propKey(address), c = certFor(key, type), st = certState(c);
     if (addressProblem(address)) { toast('Add the door number and postcode first'); openAddressEdit(address, null); return; }
     var who = certContractorName(type);
@@ -5034,6 +5038,7 @@
       var link = c ? api('PUT', '/api/admin/certificates/' + c.id + '/job', { job_id: d.id }) : Promise.resolve();
       link.then(loadCerts).then(loadJobs).then(function(){
         var jb = jobs.filter(function(j){ return j.id === d.id; })[0];
+        if (d.existing) { toast('Already booked as ' + d.ref + ' — opening it'); openJob(d.id); return; }
         toast(d.ref + ' created' + (who ? ' for ' + who : '') + ' — send it to them');
         if (jb) showContractorMessage([jb]);
       });
