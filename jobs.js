@@ -1872,8 +1872,30 @@ module.exports = function mountJobs(app, opts) {
       await p.query('DELETE FROM epc_checks WHERE property_key = $2 AND EXISTS (SELECT 1 FROM epc_checks x WHERE x.property_key = $1)', [fromKey, toKey]);
       await p.query('UPDATE epc_checks SET property_key = $2 WHERE property_key = $1', [fromKey, toKey]);
     }
+    // Tenancies at the property move too (otherwise the property splits in two).
+    await p.query(`UPDATE tenancies SET property_key = $2, address = $3, data = jsonb_set(data, '{address}', to_jsonb($3::text)), updated_at = now() WHERE property_key = $1`, [fromKey, toKey, to]);
     return rows.length;
   }
+  // One-off repair: tenancies left behind by an address change before renames
+  // included tenancies. A tenancy whose address has nothing else on file is
+  // moved to the property with the same postcode and door number that does.
+  async function relinkTenancies(p) {
+    const done = (await p.query("SELECT 1 FROM app_settings WHERE key = 'tenancy_relink_v1'")).rows.length;
+    if (done) return;
+    const known = new Set((await p.query('SELECT property_key FROM property_landlords UNION SELECT property_key FROM property_certificates')).rows.map(function (r) { return r.property_key; }));
+    const props = await allProperties(p);
+    for (const t of (await p.query('SELECT id, property_key, address FROM tenancies')).rows) {
+      if (!t.address || known.has(t.property_key)) continue;
+      const pc = POSTCODE_RE.exec(t.address); if (!pc) continue;
+      const code = (pc[1] + pc[2]).toUpperCase();
+      const hits = props.filter(function (x) { const m = POSTCODE_RE.exec(x.address); return x.key !== t.property_key && known.has(x.key) && m && (m[1] + m[2]).toUpperCase() === code && sameHome(t.address, x.address); });
+      if (hits.length !== 1) continue;
+      await p.query(`UPDATE tenancies SET property_key = $2, address = $3, data = jsonb_set(data, '{address}', to_jsonb($3::text)), updated_at = now() WHERE id = $1`, [t.id, hits[0].key, hits[0].address]);
+      console.log('Tenancy moved to its property: ' + t.address + ' → ' + hits[0].address);
+    }
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('tenancy_relink_v1', 'true') ON CONFLICT (key) DO NOTHING`);
+  }
+  setTimeout(function () { db().then(function (p) { return p && relinkTenancies(p); }).catch(function (err) { console.error('Tenancy relink failed:', err.message); }); }, 20 * 1000);
 
   // ---------- Certificates ----------
   // EPC (10 years), gas safety (12 months) and electrical safety / EICR (5 years)

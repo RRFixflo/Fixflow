@@ -364,6 +364,13 @@
   .tcy-row .num { font-weight: 700; } .tcy-row small { display: block; font-weight: 500; color: var(--ink-soft); font-size: .72rem; }
   @media (max-width: 700px) { .tcy-row { grid-template-columns: minmax(0,1fr) auto; } .tcy-row .when, .tcy-row .chev { display: none; } }
   .tcy-form .card { margin-bottom: 12px; }
+  .tcy-cert { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+  .tcy-cert-h { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; margin-bottom: 6px; }
+  .tcy-cert-f { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+  @media (max-width: 560px) { .tcy-cert-f { grid-template-columns: 1fr 1fr; } }
+  .tcy-cert-a { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+  .tcy-cert-a:empty { display: none; }
+  .tcy-epc-picks:empty { display: none; } .tcy-epc-picks { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
   @media (max-width: 560px) { .tcy-form .hide-phone { display: none; } }
   .sess-row { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .sess-row:last-child { border-bottom: 0; }
@@ -5860,12 +5867,77 @@
     tcyRefresh();
     renderTcyCerts();
   }
+  // Certificates, entered right in the tenancy form: date done or expiry for
+  // each (the other is worked out), EPC from the register, gas "not needed".
+  // Saved to the property's certificates when the tenancy is saved.
+  function tcyCertVal(type){
+    var key = propKey(tcyDraft.address), c = key ? certFor(key, type) : null, v = (tcyDraft.certs || {})[type];
+    if (v) return v;
+    return c ? { issued: c.issued_on || '', expires: c.expires_on || '', rating: c.rating || '', reference: c.reference || '', na: !!c.not_required, saved: true } : { issued: '', expires: '', rating: '', reference: '', na: false };
+  }
+  var tcyCertKey = null;
   function renderTcyCerts(){
     if (!$('tfCerts')) return;
     var address = tcyDraft.address, key = propKey(address);
-    $('tfCerts').innerHTML = '<h3>Certificates</h3>' + (key && address
-      ? '<div class="cert-grid">' + CERTS.map(function(def){ var c = certFor(key, def.type); return certCellHtml({ def: def, c: c, st: certState(c) }, address); }).join('') + '</div>'
-      : '<p class="muted-note" style="margin:0">Enter the property address to see and add its EPC, gas safety and electrical certificates.</p>');
+    tcyCertKey = key;
+    $('tfCerts').innerHTML = '<h3>Certificates</h3>' +
+      (key && address ? '' : '<p class="muted-note" style="margin:0 0 8px">Enter the property address first — then the EPC can be found on the register.</p>') +
+      CERTS.map(function(def){
+        var v = tcyCertVal(def.type), c = key ? certFor(key, def.type) : null, st = certState(c);
+        return '<div class="tcy-cert" data-ct="' + def.type + '">' +
+          '<div class="tcy-cert-h"><strong>' + esc(def.name) + '</strong><span class="muted-note" style="margin:0">' + (c ? esc(st.text) : 'Not recorded yet') + ' · lasts ' + def.years + ' year' + (def.years === 1 ? '' : 's') + '</span></div>' +
+          '<div class="tcy-cert-f"' + (v.na ? ' hidden' : '') + '>' +
+            '<div><label class="lbl">Date done</label><input class="inp" type="date" data-cf="issued" value="' + esc(v.issued) + '"></div>' +
+            '<div><label class="lbl">Expires on</label><input class="inp" type="date" data-cf="expires" value="' + esc(v.expires) + '"></div>' +
+            (def.type === 'EPC' ? '<div><label class="lbl">Rating</label><input class="inp" data-cf="rating" maxlength="2" value="' + esc(v.rating) + '" placeholder="e.g. C"></div>' : '') +
+          '</div>' +
+          '<div class="tcy-cert-a">' +
+            (def.type === 'EPC' ? '<button type="button" class="btn small" data-epc-find="1"' + (key ? '' : ' disabled') + '>🔎 Find on register</button>' : '') +
+            (def.type === 'Gas' ? '<label style="display:flex;gap:6px;align-items:center;font-size:.85rem"><input type="checkbox" data-cf="na"' + (v.na ? ' checked' : '') + '> Not needed (no gas supply)</label>' : '') +
+          '</div>' +
+          (def.type === 'EPC' ? '<div class="tcy-epc-picks" id="tfEpcPicks"></div>' : '') +
+        '</div>';
+      }).join('') +
+      '<p class="muted-note" style="margin:6px 0 0">Saved to the property with the tenancy. Enter either date — the other is filled in. Reminders and renewal jobs work as usual.</p>';
+  }
+  // The address changed: update the certificate boxes in place (never redraw them,
+  // so a box being clicked into or typed in is kept) with what's on file there.
+  function tcyCertsForAddress(){
+    var key = propKey(tcyDraft.address);
+    tcyCertKey = key;
+    if ($('tfEpcPicks')) $('tfEpcPicks').innerHTML = '';
+    var find = document.querySelector('[data-epc-find]'); if (find) find.disabled = !key;
+    document.querySelectorAll('#tfCerts .tcy-cert').forEach(function(row){
+      var def = certDef(row.dataset.ct), c = key ? certFor(key, def.type) : null, st = certState(c);
+      row.querySelector('.tcy-cert-h .muted-note').textContent = (c ? st.text : 'Not recorded yet') + ' · lasts ' + def.years + ' year' + (def.years === 1 ? '' : 's');
+      if (!c) return;
+      var fill = function(cf, v){ var el = row.querySelector('[data-cf="' + cf + '"]'); if (el && !el.value && v && el !== document.activeElement) el.value = v; };
+      fill('issued', c.issued_on); fill('expires', c.expires_on); fill('rating', c.rating);
+      var na = row.querySelector('[data-cf="na"]'); if (na && c.not_required) { na.checked = true; row.querySelector('.tcy-cert-f').hidden = true; }
+    });
+    tcyCertRead();
+  }
+  function tcyCertRead(){
+    tcyDraft.certs = tcyDraft.certs || {};
+    document.querySelectorAll('#tfCerts .tcy-cert').forEach(function(row){
+      var t = row.dataset.ct, v = Object.assign({}, tcyCertVal(t));
+      row.querySelectorAll('[data-cf]').forEach(function(inp){ v[inp.dataset.cf] = inp.type === 'checkbox' ? inp.checked : inp.value.trim(); });
+      tcyDraft.certs[t] = v;
+    });
+  }
+  // Save any certificate entered or changed on the form.
+  function tcySaveCerts(address){
+    tcyCertRead();
+    var key = propKey(address), jobs2 = [];
+    CERTS.forEach(function(def){
+      var v = tcyDraft.certs[def.type], c = certFor(key, def.type);
+      if (!v || (!v.expires && !v.na)) return;
+      var same = c && (c.expires_on || '') === (v.expires || '') && !!c.not_required === !!v.na && (c.issued_on || '') === (v.issued || '') && (c.rating || '') === (v.rating || '');
+      if (same) return;
+      jobs2.push(api('PUT', '/api/admin/certificates', { address: address, type: def.type, issued_on: v.na ? null : v.issued || null, expires_on: v.na ? null : v.expires || null,
+        rating: v.rating || null, reference: v.reference || (c && c.reference) || null, not_required: !!v.na, notes: c && c.notes || null, register_address: v.register_address || null }));
+    });
+    return Promise.all(jobs2).then(function(rs){ var n = rs.filter(function(r){ return r && r.ok; }).length; if (n) toast(n + ' certificate' + (n === 1 ? '' : 's') + ' saved'); return loadCerts(); });
   }
   // Read the form into the draft.
   function tcyRead(){
@@ -5967,6 +6039,15 @@
       if (id === 'tfSo' || id === 'tfSoN') e.target.dataset.auto = e.target.value ? '0' : '1';
       if (id === 'tfStart' && $('tfSo').dataset.auto !== '0') $('tfSo').value = addMonthsIso($('tfStart').value, 1);
       if (id === 'tfTerm' && $('tfSoN').dataset.auto !== '0') { var tm = parseInt($('tfTerm').value, 10); $('tfSoN').value = tm > 1 ? tm - 1 : ''; }
+      // Certificates: fill in the other date from how long each one lasts.
+      var row = e.target.closest('.tcy-cert');
+      if (row && e.target.dataset.cf) {
+        var def = certDef(row.dataset.ct), iss = row.querySelector('[data-cf="issued"]'), exp = row.querySelector('[data-cf="expires"]');
+        if (e.target === iss) { if (!exp.value || exp.dataset.auto === '1') { exp.value = iss.value ? addMonthsIso(iss.value, def.years * 12) : ''; exp.dataset.auto = '1'; } }
+        else if (e.target === exp) { exp.dataset.auto = '0'; if (!iss.value || iss.dataset.auto === '1') { iss.value = exp.value ? addMonthsIso(exp.value, -def.years * 12) : ''; iss.dataset.auto = '1'; } }
+        tcyCertRead();
+        return;
+      }
       tcyRefresh();
     });
     body.addEventListener('change', function(e){
@@ -5979,7 +6060,9 @@
           toast('Landlord filled in from the property');
         }
         tcyRefresh();
-        renderTcyCerts();
+        if (propKey(tcyDraft.address) !== tcyCertKey) tcyCertsForAddress();
+      } else if (tcyDraft && e.target.dataset.cf === 'na') {
+        var f = e.target.closest('.tcy-cert').querySelector('.tcy-cert-f'); f.hidden = e.target.checked; tcyCertRead();
       }
     });
     body.addEventListener('click', function(e){
@@ -6005,8 +6088,29 @@
         tcyRead(); tcyDraft.fees.splice(Number(b.dataset.delFee), 1); $('tfFees').innerHTML = tcyFeeRows(); tcyRefresh();
       } else if (b.dataset.doc) {
         tcyDoc(b.dataset.doc, b);
-      } else if (b.closest('#tfCerts')) {
-        certClick(e);
+      } else if (b.dataset.epcFind) {
+        // EPC from the public register: pick the flat, and its dates and rating fill in.
+        busy(b, true, 'Looking up…');
+        api('GET', '/api/admin/epc-lookup?address=' + encodeURIComponent(tcyDraft.address)).then(function(d){
+          busy(b, false);
+          var box = $('tfEpcPicks');
+          if (!d.ok) { box.innerHTML = '<p class="muted-note" style="margin:0">Couldn’t reach the register just now — type the dates in instead.</p>'; return; }
+          if (!d.results.length) { box.innerHTML = '<p class="muted-note" style="margin:0">No EPCs found for ' + esc(d.postcode) + '.</p>'; return; }
+          var doors = (tcyDraft.address.replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function(x){ return x.toUpperCase(); });
+          var list = d.results.map(function(x, i){ var got = (x.address.match(/\b\d+[a-z]?\b/gi) || []).map(function(y){ return y.toUpperCase(); }); return { x: x, i: i, s: doors.filter(function(n){ return got.indexOf(n) !== -1; }).length }; })
+            .sort(function(a, c){ return c.s - a.s; }).slice(0, 8);
+          box.innerHTML = '<div class="muted-note" style="margin:0">Tap the right address:</div>' + list.map(function(o){
+            return '<button type="button" class="epc-pick" data-epc-pick="' + o.i + '"><strong>' + esc(o.x.address) + '</strong><span>' + (o.x.rating ? 'Rating ' + esc(o.x.rating) + ' · ' : '') + (o.x.expires_on ? 'Valid until ' + esc(certDay(o.x.expires_on)) : o.x.expired ? 'Expired' : 'No date shown') + '</span></button>';
+          }).join('');
+          box.onclick = function(ev){
+            var pk = ev.target.closest('[data-epc-pick]'); if (!pk) return;
+            var x = d.results[Number(pk.dataset.epcPick)], row = document.querySelector('.tcy-cert[data-ct="EPC"]');
+            if (x.expires_on) { row.querySelector('[data-cf="expires"]').value = x.expires_on; row.querySelector('[data-cf="issued"]').value = addMonthsIso(x.expires_on, -120); }
+            if (x.rating) row.querySelector('[data-cf="rating"]').value = x.rating;
+            tcyCertRead(); tcyDraft.certs.EPC.reference = x.reference || ''; tcyDraft.certs.EPC.register_address = x.address;
+            box.innerHTML = '<p class="muted-note" style="margin:0">✓ ' + esc(x.address) + '</p>';
+          };
+        });
       }
     });
   })();
@@ -6033,7 +6137,7 @@
       busy($('tfSave'), false);
       if (!r.ok) { toast(r.error === 'address-required' ? 'Please add the property address' : 'Couldn’t save the tenancy'); return; }
       toast(isNew ? 'Tenancy saved — documents and emails are ready below' : 'Saved');
-      Promise.all([loadTenancies(), loadLandlords(), loadTenantRecs()]).then(function(){
+      Promise.all([loadTenancies(), loadLandlords(), loadTenantRecs(), tcySaveCerts(d.address)]).then(function(){
         // The "new tenancy" page becomes this tenancy's page (so Back goes to the list).
         if (isNew) { openTcyId = r.id; history.replaceState(Object.assign(navState(), { depth: (history.state || {}).depth || 0 }), ''); }
         openTenancy(r.id);
