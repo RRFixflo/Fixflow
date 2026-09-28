@@ -1340,7 +1340,7 @@ module.exports = function mountJobs(app, opts) {
       'property (for tenants: the property they live at; for landlords: every property they own, separated by "; "; else ""), notes (anything else useful, else "").\n' +
       'The instruction may instead be the details of a NEW TENANCY (a new let: property, tenants, rent, start date, landlord, deposit, fees — e.g. a pasted offer, Terms of Let or notes). ' +
       'Do not make a job or contacts for that. Put it in "tenancies" with: address (full, keep flat/house number and postcode), start_date, move_in_due (when the first rent and deposit are due), date_taken, checkin_date (all YYYY-MM-DD; today is ' + new Date().toISOString().slice(0, 10) + '; "" if not given), ' +
-      'checkin_time ("HH:MM" or ""), checkin_type ("clerk" if an inventory clerk / check-in is booked, "diy" for a DIY check-in / tenant\'s own inventory, "" if not said), term_months, break_months, rent_pcm (monthly rent in pounds; convert weekly rent × 52 / 12), deposit, holding (holding deposit / reservation fee paid) — numbers or null if not given, ' +
+      'checkin_time ("HH:MM" or ""), checkin_type ("clerk" if an inventory clerk / check-in is booked, "diy" for a DIY check-in / tenant\'s own inventory, "" if not said), term_months, break_months, rent_pcm (monthly rent in pounds; convert weekly rent × 52 / 12), deposit, holding (holding deposit / reservation fee paid) — numbers or null if not given, holding_date (when the holding deposit was paid, YYYY-MM-DD or ""), ' +
       'deposit_by ("agent" if we/the agent register it, "landlord" if the landlord does, "" if not said), deposit_scheme, negotiator, service ("Tenant Find", "Rent Collection" or "Fully Managed"), ' +
       'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis ("upfront" if the fee is on the annual rent / taken up front, "monthly" if monthly, "" if not said), ' +
       'tenants and guarantors (each [{"name": "", "email": "", "phone": ""}], names with titles as given), landlord ({"name": "", "email": "", "phone": "", "line1": "", "line2": "", "country": "", "postcode": ""} — their own address), ' +
@@ -1909,7 +1909,7 @@ module.exports = function mountJobs(app, opts) {
     return {
       address: s(b.address, 500), negotiator: s(b.negotiator), date_taken: day(b.date_taken),
       start_date: day(b.start_date), term_months: parseInt(b.term_months, 10) || null, break_months: parseInt(b.break_months, 10) || 0,
-      rent_pcm: amt(b.rent_pcm), deposit: amt(b.deposit), holding: amt(b.holding), deposit_by: b.deposit_by === 'landlord' ? 'landlord' : 'agent', deposit_scheme: s(b.deposit_scheme), pay_ref: s(b.pay_ref, 40),
+      rent_pcm: amt(b.rent_pcm), deposit: amt(b.deposit), holding: amt(b.holding), holding_date: day(b.holding_date), deposit_by: b.deposit_by === 'landlord' ? 'landlord' : 'agent', deposit_scheme: s(b.deposit_scheme), pay_ref: s(b.pay_ref, 40),
       move_in_due: day(b.move_in_due), so_start: day(b.so_start), so_payments: parseInt(b.so_payments, 10) || null,
       checkin_date: day(b.checkin_date), checkin_time: s(b.checkin_time, 20), checkin_type: b.checkin_type === 'diy' ? 'diy' : b.checkin_type === 'clerk' ? 'clerk' : null,
       tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
