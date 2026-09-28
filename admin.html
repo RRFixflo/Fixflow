@@ -4903,7 +4903,10 @@
     if (!certFor(key, 'EPC') && POSTCODE_RE.test(address) && !epcTried[key] && meta.db) {
       epcTried[key] = true;
       api('POST', '/api/admin/epc-auto', { address: address }).then(function(d){
-        if (d && d.ok && d.found) loadCerts().then(function(){ toast('EPC found on the register and saved'); if (view === 'props' && openPropKey === key) renderProperty(); renderCerts && view === 'certs' && renderCerts(); });
+        if (!d || !d.ok || (!d.found && !d.address)) return;
+        var stay = view === 'props' && openPropKey === key;
+        if (d.address && stay) openPropKey = propKey(d.address);
+        loadCerts().then(loadJobs).then(function(){ toast(d.found ? 'EPC found on the register' + (d.address ? ' — address updated to match' : '') : 'Address updated to match the EPC register'); });
       });
     }
     $('propCerts').innerHTML = '<h3>Certificates<span style="flex:1"></span><button type="button" class="btn small ghost" id="propCertsAll">All certificates ›</button></h3>' + certChips(key) + '<div class="cert-grid">' +
@@ -5029,11 +5032,12 @@
     if (!na && !$('certExpires').value) { $('certErr').textContent = 'Please enter the expiry date (or the date issued).'; $('certExpires').focus(); return; }
     busy($('certSave'), true, 'Saving…');
     api('PUT', '/api/admin/certificates', { address: certCtx.address, type: certCtx.type, issued_on: na ? '' : $('certIssued').value, expires_on: na ? '' : $('certExpires').value,
-      reference: $('certRef').value, rating: $('certRating').value, notes: $('certNotes').value, not_required: na }).then(function(d){
+      reference: $('certRef').value, rating: $('certRating').value, notes: $('certNotes').value, not_required: na, register_address: certCtx.registerAddress || '' }).then(function(d){
       busy($('certSave'), false);
       if (!d.ok) { $('certErr').textContent = 'Couldn’t save (' + (d.error || 'error') + ')'; return; }
-      $('certModal').hidden = true; toast(certDef(certCtx.type).name + ' saved');
-      loadCerts().then(function(){ renderCerts(); renderCertAlerts(); if (view === 'props' && openPropKey) renderProperty(); });
+      $('certModal').hidden = true; toast(certDef(certCtx.type).name + ' saved' + (d.address ? ' — address updated to ' + d.address : ''));
+      if (d.address && view === 'props' && openPropKey === propKey(certCtx.address)) openPropKey = propKey(d.address);
+      (d.address ? loadCerts().then(loadJobs) : loadCerts()).then(function(){ renderCerts(); renderCertAlerts(); if (view === 'props' && openPropKey) renderProperty(); });
       // A certificate already within 10 days gets its job raised straight away on the server.
       var dd = daysUntil($('certExpires').value);
       if (!na && dd !== null && dd <= CERT_REMIND) setTimeout(function(){ loadCerts().then(loadJobs).then(function(){ var c = certFor(propKey(certCtx ? certCtx.address : ''), certCtx ? certCtx.type : ''); if (c && c.job_id) toast('Renewal job raised automatically'); }); }, 1500);
@@ -5063,6 +5067,7 @@
       $('certEpcResults').onclick = function(e){
         var b = e.target.closest('.epc-pick'); if (!b) return; var x = d.results[Number(b.dataset.i)];
         if (x.expires_on) $('certExpires').value = x.expires_on;
+        certCtx.registerAddress = x.address;
         if (x.rating) $('certRating').value = x.rating;
         $('certRef').value = x.reference || $('certRef').value;
         $('certEpcResults').querySelectorAll('.epc-pick').forEach(function(y){ y.classList.toggle('on', y === b); });
