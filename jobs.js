@@ -187,6 +187,11 @@ CREATE TABLE IF NOT EXISTS property_certificates (
   UNIQUE (property_key, type)
 );
 ALTER TABLE property_certificates ADD COLUMN IF NOT EXISTS not_required BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS epc_checks (
+  property_key TEXT PRIMARY KEY,
+  checked_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  found        BOOLEAN NOT NULL DEFAULT false
+);
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      JSONB,
@@ -1697,40 +1702,119 @@ module.exports = function mountJobs(app, opts) {
     await p.query(`INSERT INTO app_settings (key, value) VALUES ('cert_contractors', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(v)]);
     res.json({ ok: true });
   }));
-  // Look a property up on the government EPC register (find-energy-certificate.service.gov.uk)
-  // by postcode, returning each certificate's address, rating and "valid until" date.
+  // Look a postcode up on the government EPC register (find-energy-certificate.service.gov.uk):
+  // each certificate's address, rating, "valid until" date and number.
+  async function epcSearch(postcode) {
+    const url = 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=' + encodeURIComponent(postcode);
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Fixflow; Residential Realtors)', 'Accept': 'text/html' }, signal: AbortSignal.timeout(12000) });
+    if (!r.ok) throw new Error('register-' + r.status);
+    const html = await r.text();
+    const clean = function (s) { return String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim(); };
+    const MONTHS = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+    const results = [];
+    const re = /<a[^>]+href="(\/energy-certificate\/[\d-]+)"[^>]*>([\s\S]*?)<\/a>([\s\S]*?)(?=<a[^>]+href="\/energy-certificate\/|<\/tbody>|$)/g;
+    let x;
+    while ((x = re.exec(html)) && results.length < 100) {
+      const rest = clean(x[3]);
+      const d = /(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})/i.exec(rest);
+      const rating = /(?:^|\s)([A-G])(?:\s|$)/.exec(rest);
+      results.push({
+        address: clean(x[2]), link: 'https://find-energy-certificate.service.gov.uk' + x[1], reference: x[1].split('/').pop(),
+        rating: rating ? rating[1] : '',
+        expires_on: d ? d[3] + '-' + String(MONTHS[d[2].toLowerCase()]).padStart(2, '0') + '-' + String(d[1]).padStart(2, '0') : null,
+        expired: /expired/i.test(rest)
+      });
+    }
+    return { url: url, results: results };
+  }
   app.get('/api/admin/epc-lookup', async function (req, res) {
     const m = POSTCODE_RE.exec(String(req.query.address || req.query.postcode || ''));
     if (!m) return res.status(400).json({ ok: false, error: 'postcode-required' });
     const pc = (m[1] + ' ' + m[2]).toUpperCase();
-    const url = 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=' + encodeURIComponent(pc);
-    try {
-      const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Fixflow; Residential Realtors)', 'Accept': 'text/html' }, signal: AbortSignal.timeout(12000) });
-      if (!r.ok) return res.json({ ok: false, error: 'register-' + r.status, url: url });
-      const html = await r.text();
-      const clean = function (s) { return String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim(); };
-      const MONTHS = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
-      const results = [];
-      const re = /<a[^>]+href="(\/energy-certificate\/[\d-]+)"[^>]*>([\s\S]*?)<\/a>([\s\S]*?)(?=<a[^>]+href="\/energy-certificate\/|<\/tbody>|$)/g;
-      let x;
-      while ((x = re.exec(html)) && results.length < 60) {
-        const rest = clean(x[3]);
-        const d = /(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})/i.exec(rest);
-        const rating = /(?:^|\s)([A-G])(?:\s|$)/.exec(rest);
-        results.push({
-          address: clean(x[2]),
-          link: 'https://find-energy-certificate.service.gov.uk' + x[1],
-          reference: x[1].split('/').pop(),
-          rating: rating ? rating[1] : '',
-          expires_on: d ? d[3] + '-' + String(MONTHS[d[2].toLowerCase()]).padStart(2, '0') + '-' + String(d[1]).padStart(2, '0') : null,
-          expired: /expired/i.test(rest)
-        });
-      }
-      res.json({ ok: true, postcode: pc, url: url, results: results });
-    } catch (err) {
-      res.json({ ok: false, error: 'register-unreachable', url: url });
-    }
+    try { const s = await epcSearch(pc); res.json({ ok: true, postcode: pc, url: s.url, results: s.results }); }
+    catch (err) { res.json({ ok: false, error: 'register-unreachable', url: 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=' + encodeURIComponent(pc) }); }
   });
+  // The register entry for one of our properties: same door/flat number (first
+  // number matching, all of ours present) and a street or building word in common.
+  // If the register lists more than one different address that fits, it's left alone.
+  const EPC_STOP = ['flat', 'apartment', 'london', 'floor', 'ground', 'first', 'second', 'third', 'basement'];
+  function epcMatch(address, results) {
+    const nums = function (s) { return (String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }); };
+    const words = function (s) { return String(s).replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 4 && EPC_STOP.indexOf(w) === -1; }); };
+    const an = nums(address), aw = words(address);
+    if (!an.length) return null;
+    const cands = results.filter(function (r) {
+      const rn = nums(r.address), rw = words(r.address);
+      return rn[0] === an[0] && an.every(function (n) { return rn.indexOf(n) !== -1; }) && (!aw.length || rw.some(function (w) { return aw.indexOf(w) !== -1; }));
+    });
+    const addrs = Array.from(new Set(cands.map(function (c) { return c.address.toLowerCase(); })));
+    if (addrs.length !== 1) return null;
+    return cands.filter(function (c) { return c.expires_on; }).sort(function (a, b) { return b.expires_on.localeCompare(a.expires_on); })[0] || null;
+  }
+  // Every property we know about, with the fullest version of its address.
+  async function allProperties(p) {
+    const rows = (await p.query(`SELECT property_address AS a FROM jobs WHERE property_address IS NOT NULL
+      UNION SELECT address FROM property_landlords WHERE address IS NOT NULL UNION SELECT address FROM property_certificates WHERE address IS NOT NULL`)).rows;
+    const map = {};
+    rows.forEach(function (r) {
+      const k = propKey(r.a); if (!k) return;
+      const cur = map[k], better = !cur || (POSTCODE_RE.test(r.a) && !POSTCODE_RE.test(cur)) || (POSTCODE_RE.test(r.a) === POSTCODE_RE.test(cur) && r.a.length > cur.length);
+      if (better) map[k] = r.a;
+    });
+    return Object.keys(map).map(function (k) { return { key: k, address: map[k] }; });
+  }
+  // Fill in EPCs from the register. Properties without one are re-checked every
+  // 30 days; ones expiring within 60 days (or expired) weekly, to catch a renewal.
+  async function autoEpc(p, onlyAddress, limit) {
+    const props = onlyAddress ? [{ key: propKey(onlyAddress), address: onlyAddress }] : await allProperties(p);
+    const epc = {}, checked = {};
+    (await p.query("SELECT property_key, expires_on FROM property_certificates WHERE type = 'EPC'")).rows.forEach(function (r) { epc[r.property_key] = r.expires_on; });
+    (await p.query('SELECT property_key, checked_at FROM epc_checks')).rows.forEach(function (r) { checked[r.property_key] = new Date(r.checked_at).getTime(); });
+    const now = Date.now(), soon = new Date(now + 60 * 86400000).toISOString().slice(0, 10);
+    const todo = props.filter(function (x) {
+      if (!x.key || !POSTCODE_RE.test(x.address)) return false;
+      if (onlyAddress) return true;
+      const age = checked[x.key] ? now - checked[x.key] : Infinity;
+      if (!epc[x.key]) return age > 30 * 86400000;
+      return epc[x.key] <= soon && age > 7 * 86400000;
+    });
+    const cache = {}; let found = 0, done = 0;
+    for (const x of todo.slice(0, limit || 1000)) {
+      const m = POSTCODE_RE.exec(x.address), pc = (m[1] + ' ' + m[2]).toUpperCase();
+      try {
+        if (!cache[pc]) { cache[pc] = (await epcSearch(pc)).results; await new Promise(function (r) { setTimeout(r, 1200); }); }
+      } catch (err) { console.error('EPC register lookup failed for ' + pc + ':', err.message); break; }
+      done += 1;
+      const hit = epcMatch(x.address, cache[pc]);
+      await p.query(`INSERT INTO epc_checks (property_key, checked_at, found) VALUES ($1, now(), $2)
+        ON CONFLICT (property_key) DO UPDATE SET checked_at = now(), found = excluded.found`, [x.key, !!hit]);
+      if (!hit || (epc[x.key] && epc[x.key] >= hit.expires_on)) continue;
+      const renewed = epc[x.key] !== hit.expires_on;
+      await p.query(`INSERT INTO property_certificates (property_key, address, type, expires_on, reference, rating, notes)
+        VALUES ($1, $2, 'EPC', $3, $4, $5, 'From the EPC register')
+        ON CONFLICT (property_key, type) DO UPDATE SET expires_on = excluded.expires_on, reference = excluded.reference, rating = excluded.rating,
+          notes = excluded.notes, not_required = false, updated_at = now()` + (renewed ? ', reminded_at = NULL, job_id = NULL' : ''),
+        [x.key, x.address, hit.expires_on, hit.reference, hit.rating]);
+      found += 1;
+    }
+    if (found) raiseCertificateJobs().catch(function () {});
+    return { checked: done, found: found, remaining: Math.max(0, todo.length - done) };
+  }
+  app.post('/api/admin/epc-auto', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const r = await autoEpc(p, str(b.address, 500) || null, b.address ? 1 : 25);
+    res.json(Object.assign({ ok: true }, r));
+  }));
+  let epcRunning = false;
+  function autoEpcAll() {
+    if (epcRunning) return; epcRunning = true;
+    db().then(function (p) { return p ? autoEpc(p, null, 1000) : null; })
+      .then(function (r) { if (r && (r.checked || r.found)) console.log('EPC register: checked ' + r.checked + ', filled in ' + r.found); })
+      .catch(function (err) { console.error('EPC register check failed:', err.message); })
+      .then(function () { epcRunning = false; });
+  }
+  setTimeout(autoEpcAll, 2 * 60 * 1000);
+  setInterval(autoEpcAll, 24 * 3600 * 1000).unref();
   // 10 days before a certificate expires (or once it has expired) with no open
   // job for it, raise the renewal job automatically — for the contractor who
   // renews that kind, with the tenant and landlord filled in — and send a phone

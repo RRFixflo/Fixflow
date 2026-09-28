@@ -513,6 +513,15 @@
   .addr-edit { border: 0; background: none; color: var(--blue); font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; padding: 2px 4px; white-space: nowrap; }
   .addr-warn { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .84rem; font-weight: 550; color: var(--warn); background: var(--warn-tint); border-radius: 10px; padding: 8px 10px; }
   .warn-pill { background: var(--warn-tint); color: var(--warn); font-size: .72rem; vertical-align: middle; }
+  .tick { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: .72rem; font-weight: 800; line-height: 1; flex-shrink: 0; }
+  .tick.yes { background: var(--ok); color: #fff; }
+  .tick.warn { background: var(--warn); color: #fff; }
+  .tick.no { background: var(--brick-tint); color: var(--brick); }
+  .tick.na { background: var(--panel-2); color: var(--ink-faint); }
+  .cert-chips { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; vertical-align: middle; }
+  #propCerts > .cert-chips { margin: 0 0 2px; }
+  .cert-chip { display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; font-weight: 650; color: var(--ink-soft); background: var(--panel-2); border-radius: 999px; padding: 2px 8px 2px 3px; }
+  .cert-cell .ct { display: flex; align-items: center; gap: 6px; }
   .cert-prop { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
   .cert-addr .link { border: 0; background: none; padding: 0; font: inherit; font-weight: 650; color: var(--ink); cursor: pointer; text-align: left; }
   .cert-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
@@ -764,6 +773,7 @@
             <div><label class="lbl" for="certWhoGas">Gas safety</label><select class="inp" id="certWhoGas" data-cert-who="Gas"></select></div>
             <div><label class="lbl" for="certWhoEICR">Electrical (EICR)</label><select class="inp" id="certWhoEICR" data-cert-who="EICR"></select></div>
           </div>
+          <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn small" type="button" id="epcAll">Fill in EPCs from the register</button><span class="muted-note" id="epcAllNote" style="margin:0">EPCs are public — they're looked up automatically every day.</span></div>
           <p class="muted-note" style="margin:8px 0 0">10 days before a certificate expires, a job is raised automatically for this contractor and you get a phone alert — open the job to send it to them.</p>
         </div>
         <div class="toolbar">
@@ -2180,7 +2190,7 @@
       var open = p.jobs.filter(isOpen).length;
       return '<button type="button" class="prop-row" data-key="' + esc(p.key) + '">' +
         '<div><div class="addr">' + esc(p.address) + '</div><div class="prop-sub" style="margin-top:2px">' +
-          esc(Array.from(new Set(p.jobs.map(function(j){ return j.tenant_name; }).filter(Boolean))).slice(0, 3).join(', ') || 'No tenant name') + '</div></div>' +
+          esc(Array.from(new Set(p.jobs.map(function(j){ return j.tenant_name; }).filter(Boolean))).slice(0, 3).join(', ') || 'No tenant name') + '</div>' + certChips(p.key) + '</div>' +
         '<div class="num">' + p.jobs.length + '<small>repair' + (p.jobs.length === 1 ? '' : 's') + '</small></div>' +
         '<div class="num' + (open ? ' hot' : '') + '">' + open + '<small>open</small></div>' +
         '<div class="last">' + esc(fmtShort(p.latest)) + '<small>last reported</small></div>' +
@@ -4848,22 +4858,40 @@
       api('PUT', '/api/admin/settings/cert-contractors', v).then(function(d){ if (d.ok) { certWho = v; toast('Saved — ' + (sel.value || 'no one') + ' renews ' + certDef(sel.dataset.certWho).name); renderCerts(); } });
     });
   });
+  // ✓ / ✗ per certificate: ✓ valid (amber when it expires within 60 days), ✗ expired or not recorded.
+  function certTick(st){
+    if (st.k === 'na') return '<span class="tick na" title="Not required">–</span>';
+    if (st.k === 'missing') return '<span class="tick no" title="Not recorded">✗</span>';
+    if (st.k === 'expired') return '<span class="tick no" title="Expired">✗</span>';
+    return '<span class="tick ' + (st.k === 'ok' ? 'yes' : 'warn') + '" title="' + esc(st.text) + '">✓</span>';
+  }
+  function certChips(key){
+    return '<span class="cert-chips">' + CERTS.map(function(def){ var st = certState(certFor(key, def.type)); return '<span class="cert-chip k-' + st.k + '">' + certTick(st) + esc(def.type === 'EICR' ? 'EICR' : def.type === 'Gas' ? 'Gas' : 'EPC') + '</span>'; }).join('') + '</span>';
+  }
   // One certificate box (EPC / Gas / EICR) for a property, with Book / Update.
   function certCellHtml(x, address){
     var st = x.st, jb = st.job;
     var status = st.booked ? 'Booked · ' + esc(jb.ref) + ' (' + esc(jb.status) + ')' : jb && jb.status === 'Completed' && st.k !== 'ok' ? 'Job ' + esc(jb.ref) + ' done — enter the new certificate' : '';
     var book = (st.k === 'expired' || st.k === 'due' || st.k === 'soon' || st.k === 'missing') && !st.booked;
     return '<div class="cert-cell c-' + st.k + (st.booked ? ' booked' : '') + '">' +
-      '<div class="ct">' + esc(x.def.name) + (x.c && x.c.rating ? ' <span class="count-chip">' + esc(x.c.rating) + '</span>' : '') + '</div>' +
+      '<div class="ct">' + certTick(st) + ' ' + esc(x.def.name) + (x.c && x.c.rating ? ' <span class="count-chip">' + esc(x.c.rating) + '</span>' : '') + '</div>' +
       '<div class="cs">' + esc(st.text) + '</div>' + (status ? '<div class="cb">' + status + '</div>' : '') +
       (x.c && x.c.reference ? '<div class="cs" style="font-size:.74rem">No. ' + esc(x.c.reference) + '</div>' : '') +
       '<div class="ca">' + (book ? '<button type="button" class="btn small ' + (st.k === 'expired' || st.k === 'due' ? 'primary' : '') + '" data-cert-book="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">Book ' + esc(certContractorName(x.def.type) || 'contractor') + '</button>' : '') +
         (st.booked ? '<button type="button" class="btn small" data-open-job="' + jb.id + '">Open job</button>' : '') +
         '<button type="button" class="btn small ghost" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">' + (x.c ? 'Update' : 'Add') + '</button></div></div>';
   }
+  var epcTried = {};
   function renderPropCerts(address){
     var key = propKey(address);
-    $('propCerts').innerHTML = '<h3>Certificates <span style="flex:1"></span><button type="button" class="btn small ghost" id="propCertsAll">All certificates ›</button></h3><div class="cert-grid">' +
+    // No EPC recorded yet: look it up on the public register straight away.
+    if (!certFor(key, 'EPC') && POSTCODE_RE.test(address) && !epcTried[key] && meta.db) {
+      epcTried[key] = true;
+      api('POST', '/api/admin/epc-auto', { address: address }).then(function(d){
+        if (d && d.ok && d.found) loadCerts().then(function(){ toast('EPC found on the register and saved'); if (view === 'props' && openPropKey === key) renderProperty(); renderCerts && view === 'certs' && renderCerts(); });
+      });
+    }
+    $('propCerts').innerHTML = '<h3>Certificates<span style="flex:1"></span><button type="button" class="btn small ghost" id="propCertsAll">All certificates ›</button></h3>' + certChips(key) + '<div class="cert-grid">' +
       CERTS.map(function(def){ var c = certFor(key, def.type); return certCellHtml({ def: def, c: c, st: certState(c) }, address); }).join('') + '</div>';
     $('propCertsAll').addEventListener('click', function(){ certFilter = 'all'; showView('certs'); });
   }
@@ -4901,6 +4929,21 @@
     }).join('');
   }
   $('certSearch').addEventListener('input', renderCerts);
+  $('epcAll').addEventListener('click', function(){
+    var total = 0, got = 0;
+    busy($('epcAll'), true, 'Checking the register…');
+    (function next(){
+      api('POST', '/api/admin/epc-auto', {}).then(function(d){
+        if (!d.ok) { busy($('epcAll'), false); toast('Couldn’t check the register'); return; }
+        total += d.checked; got += d.found;
+        $('epcAllNote').textContent = 'Checked ' + total + ' propert' + (total === 1 ? 'y' : 'ies') + ' · ' + got + ' EPC' + (got === 1 ? '' : 's') + ' filled in' + (d.remaining ? ' · ' + d.remaining + ' to go…' : '');
+        if (d.remaining && d.checked) return next();
+        busy($('epcAll'), false);
+        toast(got ? got + ' EPC' + (got === 1 ? '' : 's') + ' filled in from the register' : 'No new EPCs found — the rest may need adding by hand');
+        loadCerts().then(function(){ renderCerts(); renderCertAlerts(); });
+      });
+    })();
+  });
   $('certTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-cf]'); if (b) { certFilter = b.dataset.cf; renderCerts(); } });
   function certClick(e){
     var b = e.target.closest('button'); if (!b || b.id === 'propCertsAll') return;
