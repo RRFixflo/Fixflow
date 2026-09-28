@@ -5734,7 +5734,7 @@
       rent_pcm: null, deposit: null, holding: null, deposit_by: 'agent', deposit_scheme: last.deposit_scheme || '', move_in_due: addDaysIso(isoDay(new Date()), 2),
       so_start: '', so_payments: null, checkin_date: '', checkin_time: '12:00', checkin_type: last.checkin_type || 'clerk', tenants: [{ name: '', email: '', phone: '' }], guarantors: [],
       landlord: { name: '', email: '', phone: '', line1: '', line2: '', country: '', postcode: '' }, service: last.service || 'Tenant Find',
-      find_pct: last.find_pct != null ? last.find_pct : 8, find_basis: last.find_basis || 'monthly', collect_pct: null, manage_pct: null, fees: [], vat: true, notes: ''
+      find_pct: last.find_pct != null ? last.find_pct : 8, find_unit: last.find_pct != null ? (last.find_unit || 'pct') : 'pct', find_basis: last.find_basis || 'monthly', collect_pct: null, manage_pct: null, fees: [], vat: true, notes: ''
     };
     // Details pasted into Ask Fixflow: use everything it found, keep the defaults for the rest.
     var got = preset.data || null;
