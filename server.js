@@ -24,19 +24,21 @@ const REPORT_FROM_EMAIL = process.env.REPORT_FROM_EMAIL || 'Repair Reports <onbo
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 // Free-tier Gemini models are often briefly "experiencing high demand" (503) or
 // rate limited (429), so each request walks this list until one answers. Names
-// Google doesn't recognise (404) are simply skipped. The Lite models come first:
+// Google doesn't recognise (404) are simply skipped (Google retires numbered
+// models; the 2.5 ones went in September 2026). The Lite models come first:
 // the full Flash model took up to 52s for a few short tips in live use, while
 // Lite answers in a few seconds and is plenty for this. GEMINI_MODEL, if set, is
 // tried first.
 const GEMINI_MODELS = (process.env.GEMINI_MODEL ? [process.env.GEMINI_MODEL] : []).concat([
   'gemini-flash-lite-latest',
-  'gemini-2.5-flash-lite',
+  'gemini-3.5-flash-lite',
   'gemini-flash-latest',
-  'gemini-2.5-flash'
+  'gemini-3.8-flash'
 ]).filter(function (m, i, all) { return all.indexOf(m) === i; });
 // How long one model gets before we give up on it and try the next. Translations
 // (JSON) return far more text than tips, so they get longer.
-const GEMINI_TIMEOUT_MS = { text: 12000, json: 30000 };
+// Staff requests (Ask Fixflow, invoices) send long prompts and get JSON back.
+const GEMINI_TIMEOUT_MS = { text: 12000, json: 45000 };
 
 // The same issue always produces the same prompt (and the same page produces the
 // same translation prompt), so answers are remembered: repeat views are instant
@@ -229,7 +231,7 @@ async function askAnthropic(prompt, wantJson) {
 async function askGemini(prompt, wantJson) {
   // Overall budget across all models, so the tenant is never left waiting long;
   // the page gives up a little after this too.
-  const deadline = Date.now() + (wantJson ? 60000 : 25000);
+  const deadline = Date.now() + (wantJson ? 100000 : 25000);
   for (const model of GEMINI_MODELS) {
     if (Date.now() > deadline) break;
     const result = await askGeminiModel(model, prompt, wantJson);
