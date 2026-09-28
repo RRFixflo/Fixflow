@@ -960,6 +960,15 @@
     <div><label class="lbl" for="tmBody">Message <span class="muted-note" style="margin:0;font-weight:500">— you can edit it here</span></label><div class="mail-preview" id="tmBody" contenteditable="true" spellcheck="true"></div></div>
     <div><label class="lbl">Attach</label><div id="tmAtt" style="display:flex;flex-direction:column;gap:6px"></div></div>
     <p class="muted-note" id="tmNote" style="font-size:.8rem;margin:0"></p>
+    <details class="muted-note" style="font-size:.8rem;margin:0">
+      <summary style="cursor:pointer;font-weight:600">First time: make it open straight in Outlook (Classic)</summary>
+      <ol style="margin:6px 0 0;padding-left:18px;line-height:1.5">
+        <li>Press <strong>Open in Outlook</strong> once. The email downloads (a file ending <strong>.eml</strong>).</li>
+        <li>In Windows, right-click the downloaded file → <strong>Open with</strong> → <strong>Choose another app</strong> → pick <strong>Outlook (classic)</strong> → <strong>Always</strong>.</li>
+        <li>In Edge or Chrome, click the <strong>⋯</strong> next to the download → <strong>Always open files of this type</strong>.</li>
+      </ol>
+      <p style="margin:6px 0 0">After that, each time you press Open in Outlook, a new Outlook message pops up with the formatting and documents already in it — just press Send.</p>
+    </details>
     <div class="row-actions" style="margin-top:0;flex-wrap:wrap">
       <button class="btn ghost" id="tmCancel" type="button">Cancel</button>
       <button class="btn" id="tmCopy" type="button">Copy email</button>
