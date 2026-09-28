@@ -1738,7 +1738,13 @@
       if (g.jobs.some(function(j){ return j.direct_contact !== 'No'; })) lines.push('Please contact the tenant directly to arrange access.');
       else lines.push('We will arrange access with the tenant.');
       return lines.join('\n');
-    }).join('\n\n');
+    }).join('\n\n') + contractorLinkLine(list);
+  }
+  // Their own job link (if turned on), so they can see all their jobs in one place.
+  function contractorLinkLine(list){
+    var one = {}; list.forEach(function(j){ one[(j.assigned_to || '').trim().toLowerCase()] = true; });
+    var who = Object.keys(one).length === 1 && list[0] && list[0].assigned_to ? contractorByName(list[0].assigned_to) : null;
+    return who && who.portal_on && who.portal_token ? '\n\nSee all your jobs and mark them completed here: ' + location.origin + '/c/' + who.portal_token : '';
   }
 
   // ---------- Contractor directory ----------
@@ -4817,14 +4823,16 @@
       '</div>' +
       (c.id ? ctrLinkCard(c) : '') +
       '<div class="toolbar"><div class="tabs" id="ctrTabs">' + tabs.map(function(t){ return '<button type="button" data-ctr-tab="' + t[0] + '"' + (t[0] === ctrTab ? ' class="on"' : '') + '>' + t[1] + ' <span class="n">' + t[2] + '</span></button>'; }).join('') + '</div>' +
-        (ctrTab === 'owed' && owed.length ? '<button class="btn small" id="ctrPaySel" type="button">Mark ticked paid</button><button class="btn small primary" id="ctrPayAll" type="button">Mark all paid (' + gbp(sum(owed)) + ')</button>' : '') + '</div>' +
+        (ctrTab === 'owed' && owed.length ? '<button class="btn small" id="ctrPaySel" type="button">Mark ticked paid</button><button class="btn small primary" id="ctrPayAll" type="button">Mark all paid (' + gbp(sum(owed)) + ')</button>' : '') +
+        (ctrTab === 'open' && open.length ? '<button class="btn small" id="ctrSendSel" type="button">Send ticked</button><button class="btn small wa" id="ctrSendAll" type="button">Send all open jobs (' + open.length + ')</button>' : '') + '</div>' +
       '<div class="list">' + (rows.length ? rows.map(function(j){
         return '<div class="pay-row">' +
-          (ctrTab === 'owed' ? '<input type="checkbox" data-ctr-job="' + j.id + '" aria-label="Select ' + esc(j.ref) + '">' : '<span></span>') +
+          (ctrTab === 'owed' || ctrTab === 'open' ? '<input type="checkbox" data-ctr-job="' + j.id + '" aria-label="Select ' + esc(j.ref) + '">' : '<span></span>') +
           '<button type="button" class="link ref" data-open="' + j.id + '">' + esc(j.ref) + '</button>' +
           '<div class="addr" data-open="' + j.id + '" style="cursor:pointer">' + esc(j.property_address || 'No address') + '<small>' + esc(j.summary || issueOf(j)) + '</small></div>' +
           '<div class="when">' + esc(ctrTab === 'paid' ? 'Paid ' + fmtShort(j.contractor_paid_at) : j.status === 'Completed' ? 'Done ' + fmtShort(j.completed_at || j.updated_at) : j.status) + '</div>' +
-          '<div class="amt">' + (num(j.actual_cost) !== null ? gbp(j.actual_cost) : j.status === 'Completed' ? '<button type="button" class="link" data-open-money="' + j.id + '">Add cost</button>' : '—') + '</div>' +
+          '<div class="amt">' + (ctrTab === 'open' ? '<button type="button" class="btn small" data-ctr-send="' + j.id + '">Resend</button>'
+            : num(j.actual_cost) !== null ? gbp(j.actual_cost) : j.status === 'Completed' ? '<button type="button" class="link" data-open-money="' + j.id + '">Add cost</button>' : '—') + '</div>' +
         '</div>';
       }).join('') : '<div class="empty">' + { open: 'No open jobs with ' + esc(c.name) + '.', done: 'No completed jobs yet.', owed: 'Nothing owed — all paid up.', paid: 'No payments marked yet.' }[ctrTab] + '</div>') + '</div>';
     $('ctrBack').addEventListener('click', goBack);
@@ -4836,6 +4844,13 @@
       if (!confirm('Mark ' + ids.length + ' job' + (ids.length === 1 ? '' : 's') + ' as paid to ' + c.name + ' (' + gbp(total) + ')?')) return;
       markPaid(ids, true).then(function(){ if (view === 'ctr') renderContractorPage(); });
     };
+    var send = function(all){
+      var ids = payIds(all), list = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; });
+      if (!list.length) { toast('Tick the jobs to send first'); return; }
+      showContractorMessage(list);
+    };
+    if ($('ctrSendAll')) $('ctrSendAll').addEventListener('click', function(){ send(true); });
+    if ($('ctrSendSel')) $('ctrSendSel').addEventListener('click', function(){ send(false); });
     if ($('ctrPayAll')) $('ctrPayAll').addEventListener('click', function(){ pay(true); });
     if ($('ctrPaySel')) $('ctrPaySel').addEventListener('click', function(){ pay(false); });
   }
@@ -4876,6 +4891,7 @@
     }
     var t = e.target.closest('button, [data-open]'); if (!t) return;
     if (t.dataset.ctrTab) { ctrTab = t.dataset.ctrTab; renderContractorPage(); }
+    else if (t.dataset.ctrSend) { var sj = jobs.filter(function(j){ return j.id === Number(t.dataset.ctrSend); })[0]; if (sj) showContractorMessage([sj]); }
     else if (t.dataset.open) openJob(Number(t.dataset.open));
     else if (t.dataset.openMoney) { drawerTab = 'money'; drawerTabJob = Number(t.dataset.openMoney); openJob(Number(t.dataset.openMoney)); }
   });
