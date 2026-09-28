@@ -1722,7 +1722,8 @@ module.exports = function mountJobs(app, opts) {
     const type = CERT_TYPES[req.query.type] ? req.query.type : null;
     if (!type || !req.query.address) return res.status(400).json({ ok: false, error: 'bad-request' });
     const j = (await openCertJobs(p, type, String(req.query.address)))[0];
-    res.json({ ok: true, job_id: j ? j.id : null });
+    const sent = j ? (await p.query("SELECT 1 FROM job_updates WHERE job_id = $1 AND kind = 'contractor_message' LIMIT 1", [j.id])).rows.length > 0 : false;
+    res.json({ ok: true, job_id: j ? j.id : null, ref: j ? refFor(j.id) : null, sent: sent });
   }));
   // The job booked to renew a certificate.
   app.put('/api/admin/certificates/:id/job', withDb(async function (p, req, res) {
