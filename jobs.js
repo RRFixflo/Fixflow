@@ -1199,9 +1199,16 @@ module.exports = function mountJobs(app, opts) {
       'Do not make a job for that. Put each contact in "contacts" with: type ("contractor", "landlord" or "tenant"), name (the person, as given), company (business name if given, else ""), ' +
       'trade (for contractors: e.g. "Cleaner", "Plumber", "Handyman", "Electrician", "Gas safety"; else ""), phone, email, address (a landlord\'s own postal address if given, else ""), ' +
       'property (for tenants: the property they live at; for landlords: every property they own, separated by "; "; else ""), notes (anything else useful, else "").\n' +
+      'The instruction may instead be the details of a NEW TENANCY (a new let: property, tenants, rent, start date, landlord, deposit, fees — e.g. a pasted offer, Terms of Let or notes). ' +
+      'Do not make a job or contacts for that. Put it in "tenancies" with: address (full, keep flat/house number and postcode), start_date, move_in_due (when the first rent and deposit are due), date_taken, checkin_date (all YYYY-MM-DD; today is ' + new Date().toISOString().slice(0, 10) + '; "" if not given), ' +
+      'checkin_time ("HH:MM" or ""), term_months, break_months, rent_pcm (monthly rent in pounds; convert weekly rent × 52 / 12), deposit, holding (holding deposit / reservation fee paid) — numbers or null if not given, ' +
+      'deposit_by ("agent" if we/the agent register it, "landlord" if the landlord does, "" if not said), deposit_scheme, negotiator, service ("Tenant Find", "Rent Collection" or "Fully Managed"), ' +
+      'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis ("upfront" if the fee is on the annual rent / taken up front, "monthly" if monthly, "" if not said), ' +
+      'tenants and guarantors (each [{"name": "", "email": "", "phone": ""}], names with titles as given), landlord ({"name": "", "email": "", "phone": "", "line1": "", "line2": "", "country": "", "postcode": ""} — their own address), ' +
+      'fees (other fees charged to the landlord: [{"label": "", "amount": 0}]), notes (anything else useful).\n' +
       'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], ' +
-      '"contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "understood": true}. ' +
-      'Use [] for jobs or contacts when there are none. If the instruction is neither about a job nor a contact, reply {"jobs": [], "contacts": [], "understood": false}.';
+      '"contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "tenancies": [], "understood": true}. ' +
+      'Use [] for jobs, contacts or tenancies when there are none. If the instruction is none of these, reply {"jobs": [], "contacts": [], "tenancies": [], "understood": false}.';
     const result = await opts.askAi(prompt, true);
     if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
     let parsed = null;
@@ -1225,7 +1232,15 @@ module.exports = function mountJobs(app, opts) {
         property: str(c && c.property, 300) || '', notes: str(c && c.notes, 500) || ''
       };
     }).filter(function (c) { return c.name || c.company || c.phone || c.email; });
-    res.json({ ok: true, jobs: jobs, contacts: contacts, understood: parsed.understood !== false && (jobs.length > 0 || contacts.length > 0) });
+    // New tenancies: cleaned like a saved one, then shown for staff to check.
+    const tenancies = (Array.isArray(parsed.tenancies) ? parsed.tenancies : []).slice(0, 5).map(function (t) {
+      const d = cleanTenancy(t || {});
+      if (!(t && t.break_months)) d.break_months = 0;
+      if (!(t && (t.deposit_by === 'agent' || t.deposit_by === 'landlord'))) d.deposit_by = null;
+      if (!(t && (t.find_basis === 'upfront' || t.find_basis === 'monthly'))) d.find_basis = null;
+      return d;
+    }).filter(function (d) { return d.address || d.tenants.length; });
+    res.json({ ok: true, jobs: jobs, contacts: contacts, tenancies: tenancies, understood: parsed.understood !== false && (jobs.length > 0 || contacts.length > 0 || tenancies.length > 0) });
   }));
 
   app.post('/api/admin/jobs/:id/ai-invoice', withDb(async function (p, req, res) {
@@ -1732,7 +1747,7 @@ module.exports = function mountJobs(app, opts) {
     return {
       address: s(b.address, 500), negotiator: s(b.negotiator), date_taken: day(b.date_taken),
       start_date: day(b.start_date), term_months: parseInt(b.term_months, 10) || null, break_months: parseInt(b.break_months, 10) || 0,
-      rent_pcm: amt(b.rent_pcm), deposit: amt(b.deposit), holding: amt(b.holding), deposit_by: b.deposit_by === 'landlord' ? 'landlord' : 'agent', deposit_scheme: s(b.deposit_scheme),
+      rent_pcm: amt(b.rent_pcm), deposit: amt(b.deposit), holding: amt(b.holding), deposit_by: b.deposit_by === 'landlord' ? 'landlord' : 'agent', deposit_scheme: s(b.deposit_scheme), pay_ref: s(b.pay_ref, 40),
       move_in_due: day(b.move_in_due), so_start: day(b.so_start), so_payments: parseInt(b.so_payments, 10) || null,
       checkin_date: day(b.checkin_date), checkin_time: s(b.checkin_time, 20),
       tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
@@ -1829,7 +1844,7 @@ module.exports = function mountJobs(app, opts) {
     if (!a) return { error: 'no-template' };
     const v = body.values || {}, s = function (x) { return x == null ? '' : String(x).slice(0, 2000); };
     const clean = { tenants: (Array.isArray(v.tenants) ? v.tenants : []).slice(0, 12).map(s), guarantors: (Array.isArray(v.guarantors) ? v.guarantors : []).slice(0, 12).map(s), values: {} };
-    ['address', 'landlord', 'start', 'rent', 'deposit', 'deposit_scheme', 'first_rent', 'rent_day', 'second_rent', 'second_rent_month', 'agreement_date'].forEach(function (k) { clean[k] = s(v[k]); });
+    ['address', 'payment_reference', 'landlord', 'start', 'rent', 'deposit', 'deposit_scheme', 'first_rent', 'rent_day', 'second_rent', 'second_rent_month', 'agreement_date'].forEach(function (k) { clean[k] = s(v[k]); });
     Object.keys(v.values || {}).slice(0, 200).forEach(function (k) { clean.values[String(k).toLowerCase()] = s(v.values[k]); });
     const docx = tenancy.fillAgreement(Buffer.from(a.data, 'base64'), clean);
     if (body.format !== 'pdf') return { data: docx, type: 'docx' };
@@ -1860,6 +1875,9 @@ module.exports = function mountJobs(app, opts) {
       [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: 'Emailed ' + to.join(', ') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : '') }])]);
     res.json({ ok: true });
   }));
+
+  // Outlook drafts (Microsoft 365), see outlook.js.
+  require('./outlook')(app, { db: db, withDb: withDb, str: str, publicUrl: PUBLIC_URL });
 
   app.get('/api/admin/certificates', withDb(async function (p, req, res) {
     const r = await p.query('SELECT id, property_key, address, type, issued_on, expires_on, reference, rating, notes, not_required, job_id, reminded_at, updated_at FROM property_certificates ORDER BY expires_on NULLS LAST');
