@@ -99,6 +99,9 @@ function envText(name) { return String(process.env[name] || '').replace(/\\n/g, 
 
 function defaultTemplates() {
   return {
+    // Quick-add fees charged to landlords (editable in the admin page).
+    fee_presets: [{ label: 'Inventory - Check In', amount: 195 }, { label: 'EICR Certificate', amount: 120 }, { label: 'Gas Safety Certificate', amount: 60 },
+      { label: 'EPC', amount: 70 }, { label: 'Deposit Registration', amount: 145 }, { label: 'Referencing', amount: null }, { label: 'Professional Clean', amount: null }],
     tenant_subject: 'Preparing for your new home: {{address}}',
     tenant_body: TENANT_BODY,
     landlord_subject: 'Welcome pack: {{address}}',

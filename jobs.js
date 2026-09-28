@@ -1738,7 +1738,7 @@ module.exports = function mountJobs(app, opts) {
       tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       guarantors: (Array.isArray(b.guarantors) ? b.guarantors : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       landlord: { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(l.postcode, 20) },
-      service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
+      service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), find_basis: b.find_basis === 'upfront' ? 'upfront' : 'monthly', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
       fees: (Array.isArray(b.fees) ? b.fees : []).slice(0, 30).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount) }; }).filter(function (f) { return f.label; }),
       vat: b.vat !== false, statement_date: day(b.statement_date), notes: s(b.notes, 4000)
     };
@@ -1804,6 +1804,10 @@ module.exports = function mountJobs(app, opts) {
     ['tenant_subject', 'tenant_body', 'landlord_subject', 'landlord_body', 'bank_details', 'signature_tenant', 'signature_landlord'].forEach(function (k) {
       if (typeof b[k] === 'string') keep[k] = b[k].slice(0, 30000);
     });
+    if (Array.isArray(b.fee_presets)) keep.fee_presets = b.fee_presets.slice(0, 40).map(function (f) {
+      const m = money(f && f.amount);
+      return { label: str(f && f.label, 200), amount: m === undefined ? null : m };
+    }).filter(function (f) { return f.label; });
     await p.query(`INSERT INTO app_settings (key, value) VALUES ('tenancy_templates', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(keep)]);
     res.json({ ok: true, templates: await tenancyTemplates(p) });
   }));
