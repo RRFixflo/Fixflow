@@ -251,6 +251,8 @@ CREATE TABLE IF NOT EXISTS contractors (
   active     BOOLEAN NOT NULL DEFAULT true
 );
 ALTER TABLE contractors ADD COLUMN IF NOT EXISTS escalation_email TEXT;
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS portal_token TEXT;
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS portal_on BOOLEAN NOT NULL DEFAULT false;
 `;
 
 // ---------- Landlords and their properties ----------
@@ -473,6 +475,65 @@ async function insertPhotos(p, jobIdValue, photos, addedBy) {
 function gbp(n) {
   return n === null || n === undefined ? '—' : '£' + Number(n).toFixed(2);
 }
+
+
+// The contractor's job page (served at /c/<token>): lists their jobs from the
+// JSON endpoint and lets them mark each one completed.
+const CONTRACTOR_PAGE_JS = `(function(){
+  var TOKEN = __TOKEN__, list = document.getElementById('list');
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function day(v){ if (!v) return ''; var d = new Date(String(v).length === 10 ? v + 'T12:00:00' : v); return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); }
+  function row(k, v){ return v ? '<div style="margin:4px 0"><span class="muted">' + k + ':</span> ' + esc(v) + '</div>' : ''; }
+  function tel(v){ var n = String(v || '').replace(/[^0-9+]/g, ''); return n ? '<a href="tel:' + n + '">' + esc(v) + '</a>' : ''; }
+  function load(){
+    fetch('/api/c/' + TOKEN + '/jobs').then(function(r){ return r.json(); }).then(function(d){
+      if (!d.ok) { list.innerHTML = '<p class="muted">This link is no longer active. Please contact Residential Realtors.</p>'; return; }
+      var open = d.jobs.filter(function(j){ return j.status !== 'Completed'; }), done = d.jobs.filter(function(j){ return j.status === 'Completed'; });
+      list.innerHTML = '<h2 style="font-size:1.05rem;margin:18px 0 8px">To do (' + open.length + ')</h2>' +
+        (open.length ? open.map(card).join('') : '<p class="muted">No jobs waiting — thank you!</p>') +
+        (done.length ? '<h2 style="font-size:1.05rem;margin:22px 0 8px">Completed in the last 30 days</h2>' + done.map(function(j){
+          return '<div class="card" style="opacity:.75"><div class="ref">' + esc(j.ref) + ' · ✓ Completed ' + esc(day(j.completed_at)) + '</div><div>' + esc(j.property_address || '') + '</div><div class="muted">' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div></div>';
+        }).join('') : '');
+    }).catch(function(){ list.innerHTML = '<p class="muted">Couldn’t load your jobs — please check your connection and refresh.</p>'; });
+  }
+  function card(j){
+    var urgent = j.urgency === 'Emergency' || j.urgency === 'Urgent';
+    var access = j.direct_contact === 'No' ? 'Residential Realtors will arrange access with the tenant.' : 'Please contact the tenant directly to arrange a time.';
+    var keys = j.key_permission ? j.key_permission + (j.key_instructions ? ' — ' + j.key_instructions : '') : '';
+    return '<div class="card" data-id="' + j.id + '">' +
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><div class="ref">' + esc(j.ref) + '</div>' +
+        (urgent ? '<span style="color:#D9262E;font-weight:700;font-size:.85rem">' + esc(j.urgency) + '</span>' : '<span class="muted">' + esc(j.status) + '</span>') + '</div>' +
+      '<div style="font-weight:600;margin:4px 0">' + esc(j.property_address || '') + '</div>' +
+      '<div>' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div>' +
+      (j.appointment_date ? '<div style="margin:6px 0;font-weight:600">📅 Booked for ' + esc(day(j.appointment_date)) + (j.appointment_time ? ' at ' + esc(j.appointment_time) : '') + '</div>' : '') +
+      '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Details and access</summary>' +
+        row('Where', j.location) + (j.description ? '<div style="margin:6px 0;white-space:pre-wrap">' + esc(j.description) + '</div>' : '') +
+        (j.tenant_name || j.tenant_phone ? '<div style="margin:4px 0"><span class="muted">Tenant:</span> ' + esc(j.tenant_name || '') + (j.tenant_phone ? ' · ' + tel(j.tenant_phone) : '') + '</div>' : '') +
+        row('Access', access) + row('Best times', j.access_time) + row('Keys', keys) + row('Access notes', j.access_notes) +
+        row('Reported', day(j.created_at)) +
+      '</details>' +
+      '<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;color:#139A4B">✓ Mark completed</summary>' +
+        '<form class="stack" style="margin:10px 0 0" data-done="' + j.id + '">' +
+          '<textarea name="notes" rows="3" placeholder="What did you do? (optional)" style="padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit"></textarea>' +
+          '<input name="price" inputmode="decimal" placeholder="Your price £ (optional)">' +
+          '<button type="submit" style="background:#139A4B">Mark ' + esc(j.ref) + ' completed</button>' +
+        '</form></details>' +
+    '</div>';
+  }
+  list.addEventListener('submit', function(e){
+    var f = e.target.closest('[data-done]'); if (!f) return;
+    e.preventDefault();
+    var btn = f.querySelector('button'); btn.disabled = true; btn.textContent = 'Saving…';
+    var price = f.price.value.replace(/[£,\\s]/g, '');
+    fetch('/api/c/' + TOKEN + '/jobs/' + f.dataset.done + '/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: f.notes.value.trim(), price: price === '' ? null : price }) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        if (!d.ok) { btn.disabled = false; btn.textContent = d.error === 'bad-price' ? 'Check the price and try again' : 'Couldn’t save — try again'; return; }
+        load();
+      }).catch(function(){ btn.disabled = false; btn.textContent = 'Couldn’t save — try again'; });
+  });
+  load();
+})();`;
 
 module.exports = function mountJobs(app, opts) {
   const sendEmail = opts.sendEmail;           // async ({to, subject, text}) => {ok}
@@ -1463,7 +1524,8 @@ module.exports = function mountJobs(app, opts) {
   }
   const TARGET = { Emergency: 'within 48 hours', Urgent: 'within 5 days', Routine: 'within 14 days' };
   function whenUk(d) { return d ? new Date(d).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }) : ''; }
-  function trackShell(title, inner) {
+  // bare: no Back link or link to the tenant pages (the contractor's job page).
+  function trackShell(title, inner, bare) {
     return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">' +
       '<link rel="icon" type="image/png" sizes="32x32" href="/icons/app-32.png"><link rel="apple-touch-icon" sizes="180x180" href="/icons/app-180.png">' +
       '<title>' + htmlEsc(title) + ' — Residential Realtors</title><style>' +
@@ -1477,7 +1539,7 @@ module.exports = function mountJobs(app, opts) {
       '.labels{display:flex;justify-content:space-between;font-size:.72rem;color:var(--soft);gap:4px}.labels span.on{color:var(--ink);font-weight:600}' +
       '.status{font-weight:600;margin:10px 0 2px}.upd{border-top:1px solid var(--line);padding-top:10px;margin-top:10px;white-space:pre-line;font-size:.92rem}.upd .d{font-size:.78rem;color:var(--soft);font-weight:600}' +
       'a.more{color:#2F5BEA;font-weight:600;text-decoration:none}a.back{display:inline-flex;align-items:center;gap:4px;color:var(--soft);font-weight:600;font-size:.92rem;text-decoration:none;margin:0 0 12px;padding:6px 0}a.back:hover{color:var(--ink)}.note{font-size:.85rem;color:var(--soft);margin-top:18px}</style></head><body>' +
-      '<header><div class="in"><a class="logo" href="/"><img src="/logo-white.png" alt="Residential Realtors"></a></div></header><main><a class="back" href="/" onclick="if(history.length>1){history.back();return false}">&larr; Back</a>' + inner + '</main></body></html>';
+      '<header><div class="in">' + (bare ? '<span class="logo"><img src="/logo-white.png" alt="Residential Realtors"></span>' : '<a class="logo" href="/"><img src="/logo-white.png" alt="Residential Realtors"></a>') + '</div></header><main>' + (bare ? '' : '<a class="back" href="/" onclick="if(history.length>1){history.back();return false}">&larr; Back</a>') + inner + '</main></body></html>';
   }
   function progressHtml(j) {
     const st = stageOf(j.status), cancelled = j.status === 'Cancelled';
@@ -2535,7 +2597,7 @@ module.exports = function mountJobs(app, opts) {
   }
 
   app.get('/api/admin/contractors', withDb(async function (p, req, res) {
-    const r = await p.query('SELECT id, name, trade, phone, email, escalation_email, notes, active FROM contractors ORDER BY active DESC, lower(name)');
+    const r = await p.query('SELECT id, name, trade, phone, email, escalation_email, notes, active, portal_on, portal_token FROM contractors ORDER BY active DESC, lower(name)');
     res.json({ ok: true, contractors: r.rows });
   }));
 
@@ -2564,6 +2626,67 @@ module.exports = function mountJobs(app, opts) {
         [c.name, cur.rows[0].name]);
     }
     res.json({ ok: true });
+  }));
+
+  // ---------- Contractor job link ----------
+  // A private link per contractor (turned on by staff): the jobs given to them,
+  // with what they need to do the work (address, the problem, access, tenant
+  // contact), and a button to mark each one completed. No costs or landlords.
+  app.post('/api/admin/contractors/:id/portal', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req);
+    const cur = (await p.query('SELECT portal_token FROM contractors WHERE id = $1', [id])).rows[0];
+    if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+    const token = !cur.portal_token || b.regenerate ? crypto.randomBytes(18).toString('base64url') : cur.portal_token;
+    await p.query('UPDATE contractors SET portal_on = $2, portal_token = $3 WHERE id = $1', [id, b.on !== false, token]);
+    res.json({ ok: true, on: b.on !== false, url: baseUrl(req) + '/c/' + token });
+  }));
+  async function portalContractor(p, token) {
+    if (!/^[A-Za-z0-9_-]{20,}$/.test(String(token || ''))) return null;
+    return (await p.query('SELECT id, name FROM contractors WHERE portal_token = $1 AND portal_on AND active', [token])).rows[0] || null;
+  }
+  const portalHits = new Map();
+  function portalLimited(req) {
+    const now = Date.now(), e = portalHits.get(req.ip);
+    if (!e || now - e.start > 10 * 60 * 1000) { portalHits.set(req.ip, { start: now, n: 1 }); return false; }
+    if (portalHits.size > 5000) portalHits.clear();
+    return ++e.n > 300;
+  }
+  app.get('/api/c/:token/jobs', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const c = await portalContractor(p, req.params.token);
+    if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
+    const r = await p.query(`SELECT id, status, urgency, created_at, completed_at, category, affected, symptom, location, description, summary, property_address,
+        tenant_name, tenant_phone, access_time, access_notes, key_permission, key_instructions, direct_contact, appointment_date, appointment_time, completion_notes
+      FROM jobs WHERE archived_at IS NULL AND lower(trim(assigned_to)) = lower(trim($1))
+        AND (status NOT IN ('Completed', 'Cancelled') OR (status = 'Completed' AND completed_at > now() - interval '30 days'))
+      ORDER BY (status = 'Completed'), created_at DESC LIMIT 200`, [c.name]);
+    res.json({ ok: true, name: c.name, jobs: r.rows.map(function (j) { j.ref = refFor(j.id); return j; }) });
+  }));
+  app.post('/api/c/:token/jobs/:id/complete', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const c = await portalContractor(p, req.params.token);
+    if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
+    const b = req.body || {}, notes = str(b.notes, 3000), price = money(b.price);
+    if (price === undefined) return res.status(400).json({ ok: false, error: 'bad-price' });
+    const r = await p.query(`UPDATE jobs SET status = 'Completed', completed_at = now(), updated_at = now(),
+        completion_notes = coalesce($3, completion_notes), actual_cost = coalesce(actual_cost, $4)
+      WHERE id = $1 AND archived_at IS NULL AND lower(trim(assigned_to)) = lower(trim($2)) AND status NOT IN ('Completed', 'Cancelled')
+      RETURNING id, property_address`, [jobId(req), c.name, notes, price]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    const ref = refFor(r.rows[0].id);
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.rows[0].id, 'completed',
+      'Marked completed by ' + c.name + ' (contractor job link).' + (notes ? ' Notes: ' + notes : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '')]);
+    ntfy({ title: 'Job completed: ' + ref, message: c.name + ' marked ' + ref + ' completed — ' + (r.rows[0].property_address || ''), tags: ['white_check_mark'] }).catch(function () {});
+    res.json({ ok: true });
+  }));
+  app.get('/c/:token', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const c = await portalContractor(p, req.params.token);
+    if (!c) return res.status(404).send(trackShell('Link not available', '<h1>Link not available</h1><p class="sub">This job link is no longer active. Please contact Residential Realtors.</p>', true));
+    res.send(trackShell('Your jobs', '<h1>Hi ' + htmlEsc(c.name) + '</h1><p class="sub">Jobs from Residential Realtors. Tap a job for the details, and mark it completed when it’s done.</p>' +
+      '<div id="list"><p class="muted">Loading…</p></div>' +
+      '<script>' + CONTRACTOR_PAGE_JS.replace('__TOKEN__', JSON.stringify(String(req.params.token))) + '</script>', true));
   }));
 
   // A job added by hand (phone call, email, inspection…). Uses the same cleaning
