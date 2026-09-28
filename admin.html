@@ -465,6 +465,8 @@
   .ct-row .who .av { color: #fff; font-size: .66rem; width: 30px; height: 30px; }
   .ct-row .tel { font-weight: 550; font-size: .85rem; color: inherit; text-decoration: none; font-variant-numeric: tabular-nums; }
   .ct-form { display: flex; flex-direction: column; gap: 12px; }
+  #ctSortTabs button { padding: 6px 10px; white-space: nowrap; }
+  @media (max-width: 480px) { #ctSortTabs button { padding: 6px 8px; } }
   .wa-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; font-weight: 500; cursor: pointer; }
   .wa-assign input { width: 16px; height: 16px; accent-color: var(--brick); }
   .assignee-contact { font-size: .78rem; margin-top: 6px; color: var(--ink-soft); }
@@ -874,7 +876,8 @@
       <!-- CONTRACTORS: the directory, sorted by jobs or what's owed -->
       <div id="ctsView" hidden>
         <div class="card" style="margin-bottom:12px">
-          <h3 style="flex-wrap:wrap;gap:8px">All contractors<span style="flex:1"></span><select class="inp" id="ctSort" style="width:auto" aria-label="Sort contractors"><option value="open">Most open jobs</option><option value="total">Most jobs overall</option><option value="owed">Most owed</option><option value="name">A–Z</option></select><button class="btn small primary" id="ctAdd" type="button">+ Add contractor</button></h3>
+          <h3 style="flex-wrap:wrap;gap:8px">All contractors<span style="flex:1"></span><button class="btn small primary" id="ctAdd" type="button">+ Add contractor</button></h3>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px"><span class="muted-note" style="margin:0">Sort by</span><div id="ctSortTabs" role="tablist" aria-label="Sort contractors"></div></div>
           <div id="ctList" class="ct-list" style="margin-bottom:0"></div>
         </div>
         <div class="card">
@@ -1791,20 +1794,30 @@
       if (d.ok) { contractors = d.contractors; rebuildAssignees(); renderContractors(); }
     });
   }
-  var ctEditing = null;
+  var ctEditing = null, ctSort = { by: 'open', dir: 1 };
+  try { var savedSort = JSON.parse(localStorage.getItem('rr_ct_sort') || 'null'); if (savedSort && /^(open|total|owed|trade|name)$/.test(savedSort.by)) ctSort = { by: savedSort.by, dir: savedSort.dir === -1 ? -1 : 1 }; } catch (e) {}
   function renderContractors(){
     var el = $('ctList');
     if (!contractors.length) { el.innerHTML = '<div class="empty" style="padding:20px">No contractors yet — add your first one below.</div>'; return; }
-    // Sort by open jobs, all jobs, what's owed, or name (removed contractors last).
-    var sortBy = $('ctSort').value, stat = {};
+    // Sort by open jobs, all jobs, what's owed, trade or name (removed contractors last).
+    var sortBy = ctSort.by, dir = ctSort.dir, stat = {};
+    var SORTS = [['open', 'Open', 'Most open jobs first', 'Fewest open jobs first'], ['total', 'All jobs', 'Most jobs first', 'Fewest jobs first'], ['owed', 'Owed', 'Most owed first', 'Least owed first'], ['trade', 'Trade', 'Trade A–Z', 'Trade Z–A'], ['name', 'A–Z', 'Name A–Z', 'Name Z–A']];
+    $('ctSortTabs').className = 'tabs';
+    $('ctSortTabs').innerHTML = SORTS.map(function(t){
+      var on = t[0] === sortBy;
+      return '<button type="button" role="tab" aria-selected="' + on + '" data-ct-sort="' + t[0] + '"' + (on ? ' class="on"' : '') + ' title="' + esc(on ? (dir > 0 ? t[2] : t[3]) + ' — tap to reverse' : t[2]) + '">' + t[1] + (on ? ' ' + (dir > 0 ? '↓' : '↑') : '') + '</button>';
+    }).join('');
     contractors.forEach(function(c){
       var mine = ctrJobs(c.name);
       stat[c.id] = { open: mine.filter(isOpen).length, total: mine.length, owed: mine.filter(isOwed).reduce(function(a, j){ return a + num(j.actual_cost); }, 0) };
     });
     var sorted = contractors.slice().sort(function(a, b){
       if (a.active !== b.active) return a.active ? -1 : 1;
-      var d = sortBy === 'name' ? 0 : stat[b.id][sortBy] - stat[a.id][sortBy];
-      return d || a.name.localeCompare(b.name);
+      // Numbers: biggest first; words: A–Z first. Tapping the tab again reverses.
+      var d = sortBy === 'name' ? a.name.localeCompare(b.name)
+        : sortBy === 'trade' ? (!a.trade !== !b.trade ? (a.trade ? -1 : 1) : (a.trade || '').localeCompare(b.trade || '')) || a.name.localeCompare(b.name)
+        : (stat[b.id][sortBy] - stat[a.id][sortBy]) || a.name.localeCompare(b.name);
+      return dir * d;
     });
     el.innerHTML = sorted.map(function(c){
       var open = stat[c.id].open, st = stat[c.id];
@@ -1833,8 +1846,12 @@
     resetContractorForm(); showView('cts');
   });
   $('ctAdd').addEventListener('click', function(){ resetContractorForm(); $('ctForm').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('ctName').focus({ preventScroll: true }); });
-  $('ctSort').addEventListener('change', function(){ try { localStorage.setItem('rr_ct_sort', $('ctSort').value); } catch (e) {} renderContractors(); });
-  try { var savedSort = localStorage.getItem('rr_ct_sort'); if (savedSort) $('ctSort').value = savedSort; } catch (e) {}
+  $('ctSortTabs').addEventListener('click', function(e){
+    var b = e.target.closest('[data-ct-sort]'); if (!b) return;
+    if (ctSort.by === b.dataset.ctSort) ctSort.dir = -ctSort.dir; else ctSort = { by: b.dataset.ctSort, dir: 1 };
+    try { localStorage.setItem('rr_ct_sort', JSON.stringify(ctSort)); } catch (e) {}
+    renderContractors();
+  });
   $('ctCancelEdit').addEventListener('click', resetContractorForm);
   $('ctList').addEventListener('click', function(e){
     var edit = e.target.closest('[data-ct-edit]'), tog = e.target.closest('[data-ct-toggle]'), op = e.target.closest('[data-ct-open]');
