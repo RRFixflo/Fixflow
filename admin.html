@@ -904,7 +904,7 @@
     <div class="seg" id="askMode" style="align-self:flex-start"><button type="button" data-mode="say" class="on">Instruction</button><button type="button" data-mode="email">Paste a tenant’s email</button></div>
     <div class="ask-row">
       <button class="mic" id="askMic" type="button" title="Tap and speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button>
-      <textarea class="inp" id="askText" placeholder="Speak, type or paste — e.g. Add a gas safety for 6 Whitworth House and email it to DPH. You can paste a whole message with several properties, their jobs and tenant numbers."></textarea>
+      <textarea class="inp" id="askText" placeholder="Speak, type or paste — e.g. Add a gas safety for 6 Whitworth House and email it to DPH, or: Mr Khan, 07700 900123, is the landlord of 6 Whitworth House and 9 Park Road. You can paste a whole message with several properties, their jobs and tenant numbers."></textarea>
     </div>
     <p class="muted-note" id="askEmailHelp" hidden>Paste the tenant’s whole email — signature and all. Fixflow finds the tenant and property, splits the problems into jobs by trade, sets the urgency and suggests a contractor. The original email is saved on each job.</p>
     <div class="ideas" id="askIdeas">
@@ -3251,9 +3251,11 @@
     $('dStatus').innerHTML = '<span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>';
     if (drawerTabJob !== j.id) { drawerTab = 'overview'; drawerTabJob = j.id; }
     $('dSub').innerHTML = '<strong>' + esc(issueOf(j)) + '</strong> · ' + esc(j.property_address || 'No address') +
+      ' <button type="button" class="addr-edit" id="dAddrProp" title="Open this property">🏠 Property ›</button>' +
       ' <button type="button" class="addr-edit" id="dAddrEdit" title="Edit address">✎ Edit address</button>' +
       (addressProblem(j.property_address) ? '<div class="addr-warn">⚠ ' + esc(addressProblem(j.property_address)) + ' <button type="button" class="btn small" id="dAddrFix">Fix address</button></div>' : '');
     $('dAddrEdit').addEventListener('click', function(){ openAddressEdit(j.property_address, j.id); });
+    $('dAddrProp').addEventListener('click', function(){ closeDrawer(); openProperty(propKey(j.property_address)); });
     if ($('dAddrFix')) $('dAddrFix').addEventListener('click', function(){ openAddressEdit(j.property_address, j.id); });
     var tel = j.tenant_phone ? j.tenant_phone.replace(/[^\d+]/g, '') : '';
     $('dQuick').innerHTML =
@@ -4553,6 +4555,11 @@
   }
   // Contacts from an instruction: new contractors, landlords and tenants.
   var askContacts = [];
+  // Properties named in Ask Fixflow ("6 Whitworth House; 9 Park Road"), each
+  // swapped for the full address on file where there is one.
+  function askPropsFull(s){
+    return String(s || '').split(/\s*;\s*/).filter(Boolean).map(function(x){ var pr = matchProperty(x); return pr ? (knownFullAddress(pr.key) || pr.address) : x; }).join('; ');
+  }
   function renderAskContacts(){
     var label = { contractor: 'contractor', landlord: 'landlord', tenant: 'tenant' };
     $('askContacts').innerHTML = askContacts.map(function(c, i){
@@ -4571,7 +4578,7 @@
         '</div>' +
         '<div class="grid2">' +
           '<div' + (c.type === 'contractor' ? '' : ' hidden') + ' data-show="contractor"><label class="lbl">Trade</label><input class="inp" data-c="trade" value="' + esc(c.trade) + '"></div>' +
-          '<div' + (c.type === 'contractor' ? ' hidden' : '') + ' data-show="landlord tenant"><label class="lbl">Property</label><input class="inp" data-c="property" list="askPropList" value="' + esc(c.property) + '"></div>' +
+          '<div' + (c.type === 'contractor' ? ' hidden' : '') + ' data-show="landlord tenant"><label class="lbl">Propert' + (c.type === 'landlord' ? 'ies (separate with ;)' : 'y') + '</label><input class="inp" data-c="property" list="askPropList" value="' + esc(askPropsFull(c.property)) + '"></div>' +
           '<div><label class="lbl">Notes</label><input class="inp" data-c="notes" value="' + esc([c.type === 'contractor' ? '' : c.company, c.notes].filter(Boolean).join(' · ')) + '"></div>' +
         '</div>' +
         '<div' + (c.type === 'landlord' ? '' : ' hidden') + ' data-show="landlord"><label class="lbl">Landlord’s address (for invoices)</label><input class="inp" data-c="address" value="' + esc(c.address) + '"></div>' +
@@ -4595,7 +4602,7 @@
     var type = f('type'), name = f('name');
     if (!name) { toast('Add a name'); return; }
     var req = type === 'contractor' ? api('POST', '/api/admin/contractors', { name: name, trade: f('trade'), phone: f('phone'), email: f('email'), notes: f('notes') })
-      : type === 'landlord' ? api('POST', '/api/admin/landlords', { name: name, phone: f('phone'), email: f('email'), address: f('address'), notes: f('notes'), property_address: f('property') })
+      : type === 'landlord' ? api('POST', '/api/admin/landlords', { name: name, phone: f('phone'), email: f('email'), address: f('address'), notes: f('notes'), property_addresses: f('property').split(/\s*;\s*/).filter(Boolean) })
       : api('POST', '/api/admin/tenant-records', { name: name, phone: f('phone'), email: f('email'), notes: f('notes'), property_address: f('property') });
     busy(b, true, 'Saving…');
     req.then(function(d){
@@ -4858,6 +4865,13 @@
       api('PUT', '/api/admin/settings/cert-contractors', v).then(function(d){ if (d.ok) { certWho = v; toast('Saved — ' + (sel.value || 'no one') + ' renews ' + certDef(sel.dataset.certWho).name); renderCerts(); } });
     });
   });
+  // The EPC on the government register: the certificate itself when we have its
+  // number, otherwise the postcode search.
+  function epcSearchUrl(address){
+    var pc = POSTCODE_RE.exec(address || '');
+    return 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?lang=en&property_type=domestic' + (pc ? '&postcode=' + encodeURIComponent((pc[1] + ' ' + pc[2]).toUpperCase()) : '');
+  }
+  function epcUrl(c, address){ return c && /^\d{4}-\d{4}-\d{4}-\d{4}-\d{4}$/.test(c.reference || '') ? 'https://find-energy-certificate.service.gov.uk/energy-certificate/' + c.reference : epcSearchUrl(address); }
   // ✓ / ✗ per certificate: ✓ valid (amber when it expires within 60 days), ✗ expired or not recorded.
   function certTick(st){
     if (st.k === 'na') return '<span class="tick na" title="Not required">–</span>';
@@ -4879,6 +4893,7 @@
       (x.c && x.c.reference ? '<div class="cs" style="font-size:.74rem">No. ' + esc(x.c.reference) + '</div>' : '') +
       '<div class="ca">' + (book ? '<button type="button" class="btn small ' + (st.k === 'expired' || st.k === 'due' ? 'primary' : '') + '" data-cert-book="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">Book ' + esc(certContractorName(x.def.type) || 'contractor') + '</button>' : '') +
         (st.booked ? '<button type="button" class="btn small" data-open-job="' + jb.id + '">Open job</button>' : '') +
+        (x.def.type === 'EPC' ? '<a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(epcUrl(x.c, address)) + '">' + (x.c && x.c.reference ? 'View EPC ↗' : 'Find EPC ↗') + '</a>' : '') +
         '<button type="button" class="btn small ghost" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">' + (x.c ? 'Update' : 'Add') + '</button></div></div>';
   }
   var epcTried = {};
@@ -4999,7 +5014,7 @@
     $('certRatingWrap').hidden = type !== 'EPC';
     $('certEpcBox').hidden = type !== 'EPC'; $('certEpcResults').innerHTML = '';
     var pc = (POSTCODE_RE.exec(address) || []);
-    $('certEpcOpen').href = 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode' + (pc[0] ? '?postcode=' + encodeURIComponent((pc[1] + ' ' + pc[2]).toUpperCase()) : '');
+    $('certEpcOpen').href = epcSearchUrl(address);
     $('certHint').textContent = 'Lasts ' + (def.years === 1 ? '12 months' : def.years + ' years') + ' — enter the date issued and the expiry fills in.';
     $('certDelete').hidden = !c; $('certErr').textContent = '';
     $('certModal').hidden = false;

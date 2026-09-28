@@ -762,9 +762,11 @@ module.exports = function mountJobs(app, opts) {
     const b = req.body || {};
     const c = cleanLandlord(b);
     if (!c || !c.name) return res.status(400).json({ ok: false, error: 'name-required' });
-    const id = await ensureLandlord(p, c, b.property_address);
+    const addrs = (Array.isArray(b.property_addresses) ? b.property_addresses : [b.property_address]).map(function (x) { return str(x, 500); }).filter(Boolean).slice(0, 30);
+    const id = await ensureLandlord(p, c, addrs[0] || null);
+    for (const a of addrs.slice(1)) await ensureLandlord(p, Object.assign({}, c, { landlord_id: id }), a);
     if (c.notes !== undefined) await p.query('UPDATE landlords SET notes = $2 WHERE id = $1', [id, c.notes]);
-    res.json({ ok: true, id: id });
+    res.json({ ok: true, id: id, properties: addrs.length });
   }));
 
   app.patch('/api/admin/landlords/:id', withDb(async function (p, req, res) {
@@ -1156,7 +1158,7 @@ module.exports = function mountJobs(app, opts) {
       'The instruction may instead (or also) ask to ADD A CONTACT: a new contractor, a landlord, or a tenant (e.g. "add a contractor: Miguel, cleaner, NW Cleaning, 07404 043045" or "Mrs Jones is the landlord of 9 Park Road"). ' +
       'Do not make a job for that. Put each contact in "contacts" with: type ("contractor", "landlord" or "tenant"), name (the person, as given), company (business name if given, else ""), ' +
       'trade (for contractors: e.g. "Cleaner", "Plumber", "Handyman", "Electrician", "Gas safety"; else ""), phone, email, address (a landlord\'s own postal address if given, else ""), ' +
-      'property (for landlords and tenants: the property they own or live at, if given, else ""), notes (anything else useful, else "").\n' +
+      'property (for tenants: the property they live at; for landlords: every property they own, separated by "; "; else ""), notes (anything else useful, else "").\n' +
       'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], ' +
       '"contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "understood": true}. ' +
       'Use [] for jobs or contacts when there are none. If the instruction is neither about a job nor a contact, reply {"jobs": [], "contacts": [], "understood": false}.';
@@ -1705,7 +1707,7 @@ module.exports = function mountJobs(app, opts) {
   // Look a postcode up on the government EPC register (find-energy-certificate.service.gov.uk):
   // each certificate's address, rating, "valid until" date and number.
   async function epcSearch(postcode) {
-    const url = 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=' + encodeURIComponent(postcode);
+    const url = 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?lang=en&property_type=domestic&postcode=' + encodeURIComponent(postcode);
     const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Fixflow; Residential Realtors)', 'Accept': 'text/html' }, signal: AbortSignal.timeout(12000) });
     if (!r.ok) throw new Error('register-' + r.status);
     const html = await r.text();
@@ -1732,7 +1734,7 @@ module.exports = function mountJobs(app, opts) {
     if (!m) return res.status(400).json({ ok: false, error: 'postcode-required' });
     const pc = (m[1] + ' ' + m[2]).toUpperCase();
     try { const s = await epcSearch(pc); res.json({ ok: true, postcode: pc, url: s.url, results: s.results }); }
-    catch (err) { res.json({ ok: false, error: 'register-unreachable', url: 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=' + encodeURIComponent(pc) }); }
+    catch (err) { res.json({ ok: false, error: 'register-unreachable', url: 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?lang=en&property_type=domestic&postcode=' + encodeURIComponent(pc) }); }
   });
   // The register entry for one of our properties: same door/flat number (first
   // number matching, all of ours present) and a street or building word in common.
