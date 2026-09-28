@@ -872,6 +872,9 @@
         <div id="tcyDetail" hidden></div>
       </div>
 
+      <!-- CONTRACTOR: one contractor's jobs and what's owed to them -->
+      <div id="ctrView" hidden></div>
+
       <!-- ACTIVITY: where staff are signed in, visits to the tenant pages -->
       <div id="actView" hidden>
         <div class="card" style="margin-bottom:12px">
@@ -1481,6 +1484,7 @@
       if (view === 'll') { openLlId ? renderLandlord() : renderLandlords(); }
       if (view === 'certs') renderCerts();
       if (view === 'tcy') { if (openTcyId) renderTcyCerts(); else renderTenancies(); }
+      if (view === 'ctr') renderContractorPage();
       renderCertAlerts();
       var owedN = jobs.filter(isOwed).length;
       $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
@@ -1787,7 +1791,7 @@
       var open = jobs.filter(function(j){ return isOpen(j) && j.assigned_to && j.assigned_to.toLowerCase() === c.name.toLowerCase(); }).length;
       var wa = waNumber(c.phone);
       return '<div class="ct-row' + (c.active ? '' : ' off') + '">' +
-        '<div class="who">' + avatar(c.name) + '<div><strong>' + esc(c.name) + '</strong><span>' + esc([c.trade, c.active ? (open + ' open job' + (open === 1 ? '' : 's')) : 'Removed'].filter(Boolean).join(' · ')) +
+        '<div class="who" role="button" tabindex="0" data-ct-open="' + esc(c.name) + '" style="cursor:pointer" title="See ' + esc(c.name) + '’s jobs">' + avatar(c.name) + '<div><strong style="text-decoration:underline;text-underline-offset:3px">' + esc(c.name) + '</strong><span>' + esc([c.trade, c.active ? (open + ' open job' + (open === 1 ? '' : 's')) : 'Removed'].filter(Boolean).join(' · ')) +
           (c.notes ? ' · ' + esc(c.notes) : '') + '</span></div></div>' +
         (c.phone ? '<a class="tel" href="tel:' + esc(c.phone.replace(/\s/g, '')) + '">' + esc(c.phone) + '</a>' : '') +
         (c.email ? '<a class="tel" href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>' : '') +
@@ -1813,7 +1817,8 @@
   $('ctModal').addEventListener('mousedown', function(e){ if (e.target === $('ctModal')) $('ctModal').hidden = true; });
   $('ctCancelEdit').addEventListener('click', resetContractorForm);
   $('ctList').addEventListener('click', function(e){
-    var edit = e.target.closest('[data-ct-edit]'), tog = e.target.closest('[data-ct-toggle]');
+    var edit = e.target.closest('[data-ct-edit]'), tog = e.target.closest('[data-ct-toggle]'), op = e.target.closest('[data-ct-open]');
+    if (op) { $('ctModal').hidden = true; openContractor(op.dataset.ctOpen); return; }
     if (edit) {
       var c = contractors.filter(function(x){ return x.id === Number(edit.dataset.ctEdit); })[0];
       ctEditing = c;
@@ -2293,8 +2298,8 @@
   // Each page (view, property, tenant, landlord, open job) is a browser history
   // entry, so the Back button and the phone's back gesture step back through them.
   var navRestoring = false, navTimer = null;
-  function navState(){ return { v: view, prop: openPropKey || null, ten: openTenantKey || null, ll: openLlId || null, job: openJobId || null, tcy: openTcyId || null }; }
-  function sameNav(a, b){ return !!a && !!b && a.v === b.v && a.prop === b.prop && a.ten === b.ten && a.ll === b.ll && a.job === b.job && (a.tcy || null) === (b.tcy || null); }
+  function navState(){ return { v: view, prop: openPropKey || null, ten: openTenantKey || null, ll: openLlId || null, job: openJobId || null, tcy: openTcyId || null, ctr: openCtrName || null }; }
+  function sameNav(a, b){ return !!a && !!b && a.v === b.v && a.prop === b.prop && a.ten === b.ten && a.ll === b.ll && a.job === b.job && (a.tcy || null) === (b.tcy || null) && (a.ctr || null) === (b.ctr || null); }
   function atHome(){ var st = navState(); return st.v === 'jobs' && !st.job; }
   function updateBack(){ $('backBtn').hidden = atHome(); }
   function pushNav(){
@@ -2312,6 +2317,7 @@
     $('propDetail').hidden = !openPropKey; $('propsListView').hidden = !!openPropKey;
     $('tenantDetail').hidden = !openTenantKey; $('tenantsListView').hidden = !!openTenantKey;
     $('llDetail').hidden = !openLlId; $('llListView').hidden = !!openLlId;
+    openCtrName = st.ctr || null;
     if (st.tcy && st.v === 'tcy') { showView('tcy'); openTenancy(st.tcy); }
     else { if (openTcyId) { openTcyId = null; tcyDraft = null; $('tcyDetail').hidden = true; $('tcyListView').hidden = false; } showView(st.v || 'jobs'); }
     if (st.job) { if (openJobId !== st.job) openJob(st.job); }
@@ -2345,6 +2351,7 @@
     $('certsView').hidden = v !== 'certs';
     $('tcyView').hidden = v !== 'tcy';
     $('actView').hidden = v !== 'act';
+    $('ctrView').hidden = v !== 'ctr';
     $('navAct').classList.toggle('on', v === 'act');
     $('navTcy').classList.toggle('on', v === 'tcy');
     $('navCerts').classList.toggle('on', v === 'certs');
@@ -2353,10 +2360,11 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', act: 'Activity' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', act: 'Activity', ctr: 'Contractor' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'tcy' && !openTcyId) renderTenancies();
     if (v === 'act') loadActivity();
+    if (v === 'ctr') renderContractorPage();
     if (v === 'll') { openLlId ? renderLandlord() : renderLandlords(); }
     if (v === 'pay') renderPay();
     if (v === 'props') { openPropKey ? renderProperty() : renderProps(); }
@@ -4739,7 +4747,7 @@
       var g = groups[name].sort(function(a, b){ return new Date(payTab === 'paid' ? b.contractor_paid_at : (a.completed_at || a.created_at)) - new Date(payTab === 'paid' ? a.contractor_paid_at : (b.completed_at || b.created_at)); });
       var total = g.reduce(function(a, j){ return a + (num(j.actual_cost) || 0); }, 0);
       var c = contractorByName(name) || {};
-      return '<div class="list pay-group" data-who="' + esc(name) + '"><div class="pay-head"><div class="who">' + avatar(name) + '<div><strong>' + esc(name) + '</strong><span>' +
+      return '<div class="list pay-group" data-who="' + esc(name) + '"><div class="pay-head"><div class="who" data-ct-open="' + esc(name) + '" style="cursor:pointer" title="See all of ' + esc(name) + '’s jobs">' + avatar(name) + '<div><strong>' + esc(name) + ' ›</strong><span>' +
           esc([c.trade, g.length + ' job' + (g.length === 1 ? '' : 's')].filter(Boolean).join(' · ')) + '</span></div></div>' +
           (payTab !== 'nocost' ? '<div class="amt">' + gbp(total) + '</div>' : '') +
           (payTab === 'owed' ? '<button class="btn small" type="button" data-pay-sel="' + esc(name) + '">Mark ticked paid</button><button class="btn small primary" type="button" data-pay-all="' + esc(name) + '">Mark all paid</button>' : '') +
@@ -4759,6 +4767,7 @@
   $('payWho').addEventListener('change', renderPay);
   $('payTabs').addEventListener('click', function(e){ var b = e.target.closest('button[data-pay]'); if (b) { payTab = b.dataset.pay; renderPay(); } });
   $('payList').addEventListener('click', function(e){
+    var op = e.target.closest('[data-ct-open]'); if (op) { openContractor(op.dataset.ctOpen); return; }
     var t = e.target.closest('button'); if (!t) return;
     if (t.dataset.open) openJob(Number(t.dataset.open));
     else if (t.dataset.openMoney) { drawerTab = 'money'; drawerTabJob = Number(t.dataset.openMoney); openJob(Number(t.dataset.openMoney)); }
@@ -4772,6 +4781,68 @@
       if (!confirm('Mark ' + ids.length + ' job' + (ids.length === 1 ? '' : 's') + ' as paid to ' + name + ' (' + gbp(sum) + ')?')) return;
       markPaid(ids, true);
     }
+  });
+
+  // ---------- One contractor: their jobs, what's owed and paid ----------
+  var openCtrName = null, ctrTab = 'open';
+  function ctrJobs(name){ var n = String(name || '').trim().toLowerCase(); return jobs.filter(function(j){ return j.assigned_to && j.assigned_to.trim().toLowerCase() === n; }); }
+  function openContractor(name){ openCtrName = name; ctrTab = ctrJobs(name).some(isOwed) ? 'owed' : 'open'; if (view === 'ctr') { renderContractorPage(); pushNav(); } else showView('ctr'); scrollTop(); }
+  function renderContractorPage(){
+    var name = openCtrName; if (!name) return;
+    var c = contractorByName(name) || { name: name }, list = ctrJobs(name);
+    var open = list.filter(isOpen), done = list.filter(function(j){ return j.status === 'Completed'; }), owed = list.filter(isOwed), paid = list.filter(function(j){ return j.contractor_paid_at; }), nocost = list.filter(needsCost);
+    var sum = function(a){ return a.reduce(function(t, j){ return t + (num(j.actual_cost) || 0); }, 0); };
+    var yearStart = new Date(new Date().getFullYear(), 0, 1);
+    var wa = waNumber(c.phone);
+    var tabs = [['open', 'Open', open.length], ['done', 'Done', done.length], ['owed', 'Owed', owed.length], ['paid', 'Paid', paid.length]];
+    var rows = ctrTab === 'open' ? open : ctrTab === 'done' ? done : ctrTab === 'owed' ? owed : paid;
+    rows = rows.slice().sort(function(a, b){
+      var k = function(j){ return new Date(ctrTab === 'paid' ? j.contractor_paid_at : ctrTab === 'done' || ctrTab === 'owed' ? (j.completed_at || j.updated_at || j.created_at) : j.created_at).getTime(); };
+      return k(b) - k(a);
+    });
+    $('ctrView').innerHTML =
+      '<button class="btn small ghost" id="ctrBack" type="button">← Back</button>' +
+      '<div class="prop-head"><div style="display:flex;gap:14px;align-items:center">' + avatar(c.name) + '<div><h2>' + esc(c.name) + '</h2><div class="prop-sub">' + esc([c.trade, c.active === false ? 'Removed from the list' : ''].filter(Boolean).join(' · ') || 'Contractor') + (c.notes ? ' · ' + esc(c.notes) : '') + '</div></div></div>' +
+        '<div class="prop-actions">' +
+          (c.phone ? '<a class="btn small" href="tel:' + esc(c.phone.replace(/\s/g, '')) + '">📞 ' + esc(c.phone) + '</a>' : '') +
+          (wa ? '<a class="btn small wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
+          (c.email ? '<a class="btn small" href="mailto:' + esc(c.email) + '">✉ Email</a>' : '') +
+          (c.id ? '<button class="btn small" id="ctrEdit" type="button">✎ Edit details</button>' : '') +
+        '</div></div>' +
+      '<div class="tiles prop-tiles" style="margin-bottom:12px">' +
+        '<div class="tile blue"><div class="k">Open jobs</div><div class="v">' + open.length + '</div></div>' +
+        '<div class="tile"><div class="k">Done this year</div><div class="v">' + done.filter(function(j){ return new Date(j.completed_at || j.updated_at) >= yearStart; }).length + '</div><div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + done.length + ' in total</div></div>' +
+        '<div class="tile alert' + (owed.length ? ' has' : '') + '"><div class="k">Owed to them</div><div class="v">' + gbp(sum(owed)) + '</div><div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + owed.length + ' job' + (owed.length === 1 ? '' : 's') + (nocost.length ? ' · ' + nocost.length + ' done with no cost yet' : '') + '</div></div>' +
+        '<div class="tile good"><div class="k">Paid so far</div><div class="v">' + gbp(sum(paid)) + '</div><div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + paid.length + ' job' + (paid.length === 1 ? '' : 's') + '</div></div>' +
+      '</div>' +
+      '<div class="toolbar"><div class="tabs" id="ctrTabs">' + tabs.map(function(t){ return '<button type="button" data-ctr-tab="' + t[0] + '"' + (t[0] === ctrTab ? ' class="on"' : '') + '>' + t[1] + ' <span class="n">' + t[2] + '</span></button>'; }).join('') + '</div>' +
+        (ctrTab === 'owed' && owed.length ? '<button class="btn small" id="ctrPaySel" type="button">Mark ticked paid</button><button class="btn small primary" id="ctrPayAll" type="button">Mark all paid (' + gbp(sum(owed)) + ')</button>' : '') + '</div>' +
+      '<div class="list">' + (rows.length ? rows.map(function(j){
+        return '<div class="pay-row">' +
+          (ctrTab === 'owed' ? '<input type="checkbox" data-ctr-job="' + j.id + '" aria-label="Select ' + esc(j.ref) + '">' : '<span></span>') +
+          '<button type="button" class="link ref" data-open="' + j.id + '">' + esc(j.ref) + '</button>' +
+          '<div class="addr" data-open="' + j.id + '" style="cursor:pointer">' + esc(j.property_address || 'No address') + '<small>' + esc(j.summary || issueOf(j)) + '</small></div>' +
+          '<div class="when">' + esc(ctrTab === 'paid' ? 'Paid ' + fmtShort(j.contractor_paid_at) : j.status === 'Completed' ? 'Done ' + fmtShort(j.completed_at || j.updated_at) : j.status) + '</div>' +
+          '<div class="amt">' + (num(j.actual_cost) !== null ? gbp(j.actual_cost) : j.status === 'Completed' ? '<button type="button" class="link" data-open-money="' + j.id + '">Add cost</button>' : '—') + '</div>' +
+        '</div>';
+      }).join('') : '<div class="empty">' + { open: 'No open jobs with ' + esc(c.name) + '.', done: 'No completed jobs yet.', owed: 'Nothing owed — all paid up.', paid: 'No payments marked yet.' }[ctrTab] + '</div>') + '</div>';
+    $('ctrBack').addEventListener('click', goBack);
+    if ($('ctrEdit')) $('ctrEdit').addEventListener('click', function(){ $('contractorsBtn').click(); var b = document.querySelector('[data-ct-edit="' + c.id + '"]'); if (b) b.click(); });
+    var payIds = function(all){ return Array.from($('ctrView').querySelectorAll('[data-ctr-job]')).filter(function(i){ return all || i.checked; }).map(function(i){ return Number(i.dataset.ctrJob); }); };
+    var pay = function(all){
+      var ids = payIds(all); if (!ids.length) { toast('Tick the jobs you’ve paid first'); return; }
+      var total = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; }).reduce(function(a, j){ return a + num(j.actual_cost); }, 0);
+      if (!confirm('Mark ' + ids.length + ' job' + (ids.length === 1 ? '' : 's') + ' as paid to ' + c.name + ' (' + gbp(total) + ')?')) return;
+      markPaid(ids, true).then(function(){ if (view === 'ctr') renderContractorPage(); });
+    };
+    if ($('ctrPayAll')) $('ctrPayAll').addEventListener('click', function(){ pay(true); });
+    if ($('ctrPaySel')) $('ctrPaySel').addEventListener('click', function(){ pay(false); });
+  }
+  $('ctrView').addEventListener('click', function(e){
+    var t = e.target.closest('button, [data-open]'); if (!t) return;
+    if (t.dataset.ctrTab) { ctrTab = t.dataset.ctrTab; renderContractorPage(); }
+    else if (t.dataset.open) openJob(Number(t.dataset.open));
+    else if (t.dataset.openMoney) { drawerTab = 'money'; drawerTabJob = Number(t.dataset.openMoney); openJob(Number(t.dataset.openMoney)); }
   });
 
   // ---------- Ask Fixflow (speak or type) ----------
@@ -5132,7 +5203,7 @@
       }) });
       var cs = contractors.filter(function(c){ return hit([c.name, c.trade, c.phone].join(' | ')); }).slice(0, 4);
       if (cs.length) sections.push({ h: 'Contractors', items: cs.map(function(c){
-        return { t: c.name, s: [c.trade, c.phone].filter(Boolean).join(' · '), av: c.name, run: function(){ $('contractorsBtn').click(); } };
+        return { t: c.name, s: [c.trade, c.phone].filter(Boolean).join(' · '), av: c.name, run: function(){ openContractor(c.name); } };
       }) });
     }
     if (actions.length) sections.push({ h: 'Go to', items: actions });
