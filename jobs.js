@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS epc_checks (
   checked_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   found        BOOLEAN NOT NULL DEFAULT false
 );
+ALTER TABLE epc_checks ADD COLUMN IF NOT EXISTS address_synced BOOLEAN NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      JSONB,
@@ -478,6 +479,7 @@ module.exports = function mountJobs(app, opts) {
     const urgency = URGENCIES.indexOf(r.urgency) !== -1 ? r.urgency : 'Routine';
     const dueAt = new Date(Date.now() + DUE_HOURS[urgency] * 3600 * 1000);
     const pdf = pdfBase64 ? Buffer.from(pdfBase64, 'base64') : null;
+    try { r.address = await canonicalAddress(p, r.address); } catch (e) { /* keep as typed */ }
     const res = await p.query(
       `INSERT INTO jobs (urgency, due_at, tenant_name, tenant_email, tenant_phone, property_address,
          category, affected, symptom, location, description, access_days, access_time, access_notes,
@@ -1628,8 +1630,14 @@ module.exports = function mountJobs(app, opts) {
     const b = req.body || {};
     const to = tidyAddress(b.to);
     if (addressProblem(to)) return res.status(400).json({ ok: false, error: 'invalid-property_address' });
-    const fromKey = propKey(b.from), toKey = propKey(to);
-    if (!fromKey) return res.status(400).json({ ok: false, error: 'no-from' });
+    if (!propKey(b.from)) return res.status(400).json({ ok: false, error: 'no-from' });
+    const changed = await renameProperty(p, propKey(b.from), to);
+    res.json({ ok: true, address: to, changed: changed });
+  }));
+  // Give a property a new address everywhere: its jobs (with a history note),
+  // landlord and tenant links, certificates and EPC checks.
+  async function renameProperty(p, fromKey, to) {
+    const toKey = propKey(to);
     const rows = (await p.query('SELECT id, property_address FROM jobs WHERE property_address IS NOT NULL')).rows
       .filter(function (r) { return propKey(r.property_address) === fromKey && r.property_address !== to; });
     for (const r of rows) {
@@ -1645,8 +1653,12 @@ module.exports = function mountJobs(app, opts) {
     await p.query('UPDATE property_tenants SET property_key = $2, address = $3 WHERE property_key = $1', [fromKey, toKey, to]);
     if (toKey !== fromKey) await p.query('DELETE FROM property_certificates c WHERE property_key = $1 AND EXISTS (SELECT 1 FROM property_certificates x WHERE x.property_key = $2 AND x.type = c.type)', [fromKey, toKey]);
     await p.query('UPDATE property_certificates SET property_key = $2, address = $3, updated_at = now() WHERE property_key = $1', [fromKey, toKey, to]);
-    res.json({ ok: true, address: to, changed: rows.length });
-  }));
+    if (toKey !== fromKey) {
+      await p.query('DELETE FROM epc_checks WHERE property_key = $2 AND EXISTS (SELECT 1 FROM epc_checks x WHERE x.property_key = $1)', [fromKey, toKey]);
+      await p.query('UPDATE epc_checks SET property_key = $2 WHERE property_key = $1', [fromKey, toKey]);
+    }
+    return rows.length;
+  }
 
   // ---------- Certificates ----------
   // EPC (10 years), gas safety (12 months) and electrical safety / EICR (5 years)
@@ -1682,9 +1694,12 @@ module.exports = function mountJobs(app, opts) {
       [key, str(b.address, 500), type, notRequired ? null : issued, notRequired ? null : expires, str(b.reference, 100), str(b.rating, 5), str(b.notes, 1000), notRequired]);
     // Note it on the booked job, if there was one.
     if (cur && cur.job_id && renewed && expires) await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [cur.job_id, 'note', CERT_TYPES[type].name + ' renewed — now expires ' + certDay(expires) + '.']);
+    // An EPC picked from the register: use its exact address for the property.
+    let renamedTo = null;
+    if (type === 'EPC' && b.register_address) renamedTo = await adoptRegisterAddress(p, key, str(b.address, 500), b.register_address);
     // Already within 10 days? Raise the renewal job now rather than at the next check.
     if (expires && renewed) raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); });
-    res.json({ ok: true, id: r.rows[0].id });
+    res.json({ ok: true, id: r.rows[0].id, address: renamedTo });
   }));
   app.delete('/api/admin/certificates/:id', withDb(async function (p, req, res) {
     const r = await p.query('DELETE FROM property_certificates WHERE id = $1 RETURNING id', [jobId(req)]);
@@ -1753,6 +1768,42 @@ module.exports = function mountJobs(app, opts) {
     if (addrs.length !== 1) return null;
     return cands.filter(function (c) { return c.expires_on; }).sort(function (a, b) { return b.expires_on.localeCompare(a.expires_on); })[0] || null;
   }
+  // The register writes addresses in capitals ("6 WHITWORTH HOUSE, FALMOUTH ROAD,
+  // LONDON, SE1 6RW"); tidy them to "6 Whitworth House, Falmouth Road, London, SE1 6RW".
+  function registerAddress(a) {
+    return tidyAddress(String(a || '').replace(/\b([A-Z][A-Z'’-]{2,})\b/g, function (w) { return w.charAt(0) + w.slice(1).toLowerCase(); }));
+  }
+  // Swap the property's address for the register's exact one, when it's complete
+  // and has the same door number.
+  async function adoptRegisterAddress(p, key, current, regAddr) {
+    const to = registerAddress(regAddr);
+    if (!to || addressProblem(to) || to === current) return null;
+    const first = function (s) { return ((String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/i) || [''])[0]).toUpperCase(); };
+    if (first(to) !== first(current)) return null;
+    await renameProperty(p, key, to);
+    return to;
+  }
+  // A new report or job for a property we already know, written differently
+  // ("6 Whitworth House, SE1 6RW" for "6 Whitworth House, Falmouth Road, London,
+  // SE1 6RW"): same postcode, same door number(s) and a building/street word in
+  // common. Returns the address on file, or the address as given.
+  function sameHome(a, b) {
+    const nums = function (s) { return (String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }); };
+    const words = function (s) { return String(s).replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 4 && EPC_STOP.indexOf(w) === -1; }); };
+    const an = nums(a), bn = nums(b), aw = words(a), bw = words(b);
+    if (!an.length || an[0] !== bn[0]) return false;
+    const short = an.length <= bn.length ? an : bn, long = short === an ? bn : an;
+    return short.every(function (n) { return long.indexOf(n) !== -1; }) && (!aw.length || !bw.length || aw.some(function (w) { return bw.indexOf(w) !== -1; }));
+  }
+  async function canonicalAddress(p, addr) {
+    const a = str(addr, 500); const pc = a && POSTCODE_RE.exec(a);
+    if (!pc) return a;
+    const code = (pc[1] + pc[2]).toUpperCase(), key = propKey(a);
+    const props = (await allProperties(p)).filter(function (x) { const m = POSTCODE_RE.exec(x.address); return m && (m[1] + m[2]).toUpperCase() === code; });
+    if (props.some(function (x) { return x.key === key; })) return a;
+    const hits = props.filter(function (x) { return sameHome(a, x.address); });
+    return hits.length === 1 ? hits[0].address : a;
+  }
   // Every property we know about, with the fullest version of its address.
   async function allProperties(p) {
     const rows = (await p.query(`SELECT property_address AS a FROM jobs WHERE property_address IS NOT NULL
@@ -1771,16 +1822,18 @@ module.exports = function mountJobs(app, opts) {
     const props = onlyAddress ? [{ key: propKey(onlyAddress), address: onlyAddress }] : await allProperties(p);
     const epc = {}, checked = {};
     (await p.query("SELECT property_key, expires_on FROM property_certificates WHERE type = 'EPC'")).rows.forEach(function (r) { epc[r.property_key] = r.expires_on; });
-    (await p.query('SELECT property_key, checked_at FROM epc_checks')).rows.forEach(function (r) { checked[r.property_key] = new Date(r.checked_at).getTime(); });
+    const synced = {};
+    (await p.query('SELECT property_key, checked_at, address_synced FROM epc_checks')).rows.forEach(function (r) { checked[r.property_key] = new Date(r.checked_at).getTime(); synced[r.property_key] = r.address_synced; });
     const now = Date.now(), soon = new Date(now + 60 * 86400000).toISOString().slice(0, 10);
     const todo = props.filter(function (x) {
       if (!x.key || !POSTCODE_RE.test(x.address)) return false;
       if (onlyAddress) return true;
       const age = checked[x.key] ? now - checked[x.key] : Infinity;
       if (!epc[x.key]) return age > 30 * 86400000;
+      if (!synced[x.key]) return true;   // once, to take the register's exact address
       return epc[x.key] <= soon && age > 7 * 86400000;
     });
-    const cache = {}; let found = 0, done = 0;
+    const cache = {}; let found = 0, done = 0, newAddress = null;
     for (const x of todo.slice(0, limit || 1000)) {
       const m = POSTCODE_RE.exec(x.address), pc = (m[1] + ' ' + m[2]).toUpperCase();
       try {
@@ -1788,9 +1841,14 @@ module.exports = function mountJobs(app, opts) {
       } catch (err) { console.error('EPC register lookup failed for ' + pc + ':', err.message); break; }
       done += 1;
       const hit = epcMatch(x.address, cache[pc]);
-      await p.query(`INSERT INTO epc_checks (property_key, checked_at, found) VALUES ($1, now(), $2)
-        ON CONFLICT (property_key) DO UPDATE SET checked_at = now(), found = excluded.found`, [x.key, !!hit]);
-      if (!hit || (epc[x.key] && epc[x.key] >= hit.expires_on)) continue;
+      await p.query(`INSERT INTO epc_checks (property_key, checked_at, found, address_synced) VALUES ($1, now(), $2, true)
+        ON CONFLICT (property_key) DO UPDATE SET checked_at = now(), found = excluded.found, address_synced = true`, [x.key, !!hit]);
+      if (!hit) continue;
+      if (epc[x.key] && epc[x.key] >= hit.expires_on) {
+        const renamedOnly = await adoptRegisterAddress(p, x.key, x.address, hit.address);
+        if (renamedOnly) newAddress = renamedOnly;
+        continue;
+      }
       const renewed = epc[x.key] !== hit.expires_on;
       await p.query(`INSERT INTO property_certificates (property_key, address, type, expires_on, reference, rating, notes)
         VALUES ($1, $2, 'EPC', $3, $4, $5, 'From the EPC register')
@@ -1798,9 +1856,11 @@ module.exports = function mountJobs(app, opts) {
           notes = excluded.notes, not_required = false, updated_at = now()` + (renewed ? ', reminded_at = NULL, job_id = NULL' : ''),
         [x.key, x.address, hit.expires_on, hit.reference, hit.rating]);
       found += 1;
+      const renamed = await adoptRegisterAddress(p, x.key, x.address, hit.address);
+      if (renamed) { newAddress = renamed; console.log('Address updated from the EPC register: ' + x.address + ' → ' + renamed); }
     }
     if (found) raiseCertificateJobs().catch(function () {});
-    return { checked: done, found: found, remaining: Math.max(0, todo.length - done) };
+    return { checked: done, found: found, remaining: Math.max(0, todo.length - done), address: newAddress };
   }
   app.post('/api/admin/epc-auto', withDb(async function (p, req, res) {
     const b = req.body || {};
@@ -1936,6 +1996,7 @@ module.exports = function mountJobs(app, opts) {
     const cols = [];
     const vals = [];
     const add = function (col, v) { cols.push(col); vals.push(v); };
+    if (body.property_address) body.property_address = await canonicalAddress(p, body.property_address);
     const fields = ['tenant_name', 'tenant_email', 'tenant_phone', 'property_address', 'category', 'affected',
       'symptom', 'location', 'description', 'access_days', 'access_time', 'access_notes', 'key_permission',
       'key_instructions', 'direct_contact', 'assigned_to', 'next_steps', 'estimated_cost', 'landlord_charge',
