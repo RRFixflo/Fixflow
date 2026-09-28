@@ -513,6 +513,30 @@
   .addr-edit { border: 0; background: none; color: var(--blue); font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; padding: 2px 4px; white-space: nowrap; }
   .addr-warn { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .84rem; font-weight: 550; color: var(--warn); background: var(--warn-tint); border-radius: 10px; padding: 8px 10px; }
   .warn-pill { background: var(--warn-tint); color: var(--warn); font-size: .72rem; vertical-align: middle; }
+  .cert-prop { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
+  .cert-addr .link { border: 0; background: none; padding: 0; font: inherit; font-weight: 650; color: var(--ink); cursor: pointer; text-align: left; }
+  .cert-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+  .cert-cell { border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 4px; }
+  .cert-cell .ct { font-weight: 650; font-size: .86rem; }
+  .cert-cell .cs { font-size: .8rem; color: var(--ink-soft); }
+  .cert-cell .cb { font-size: .78rem; font-weight: 600; color: var(--blue); }
+  .cert-cell .ca { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; }
+  .cert-cell.c-expired, .cert-cell.c-due { border-color: color-mix(in srgb, var(--brick) 45%, var(--line)); background: var(--brick-tint); }
+  .cert-cell.c-expired .cs, .cert-cell.c-due .cs { color: var(--brick); font-weight: 600; }
+  .cert-cell.c-soon { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); background: var(--warn-tint); }
+  .cert-cell.c-ok .cs { color: var(--ok); }
+  .cert-cell.c-missing { border-style: dashed; }
+  .cert-cell.c-na { opacity: .6; }
+  .cert-cell.booked { background: var(--blue-tint); border-color: color-mix(in srgb, var(--blue) 35%, var(--line)); }
+  .epc-results { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 260px; overflow-y: auto; }
+  .epc-pick { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 8px 10px; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+  .epc-pick span { font-size: .78rem; color: var(--ink-soft); }
+  .epc-pick.best { border-color: var(--blue); }
+  .epc-pick.on { border-color: var(--ok); background: var(--ok-tint); }
+  .tabbar button { position: relative; }
+  .tabbar button.dot::after { content: ""; position: absolute; top: 4px; right: calc(50% - 16px); width: 8px; height: 8px; border-radius: 50%; background: var(--brick); }
+  .cert-warn { color: var(--brick); background: var(--brick-tint); }
+  @media (max-width: 760px) { .cert-grid { grid-template-columns: 1fr; } }
   .part-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .part-row .pd small { display: block; color: var(--ink-faint); font-size: .78rem; }
   .part-row .pm { display: flex; flex-direction: column; align-items: flex-end; font-size: .8rem; color: var(--ink-soft); white-space: nowrap; }
@@ -603,6 +627,7 @@
     <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
     <button class="nav" type="button" id="navTenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg> Tenants</button>
     <button class="nav" type="button" id="navLandlords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg> Landlords</button>
+    <button class="nav" type="button" id="navCerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/></svg> Certificates <span class="badge hot" id="sCerts" hidden></span></button>
     <button class="nav" type="button" id="navPay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg> Payments <span class="badge" id="sOwed" hidden></span></button>
     <button class="nav" type="button" id="contractorsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg> Contractors</button>
     <button class="nav" type="button" id="navEmail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
@@ -636,6 +661,7 @@
       </div>
 
       <div id="jobsView">
+      <div class="addr-warn cert-warn" id="certBanner" hidden style="margin:0 0 12px"><span id="certBannerText"></span> <button type="button" class="btn small" id="certBannerGo">Book now</button></div>
       <div class="tiles">
         <button type="button" class="tile clickable blue" id="tOpenTile" data-assign="" title="Show all open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg></i>Open jobs</div><div class="v" id="tOpen">–</div></button>
         <button type="button" class="tile clickable warnish" id="tUnassTile" data-assign="unassigned" title="Show unassigned open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/><path d="M3 3l18 18"/></svg></i>Unassigned</div><div class="v" id="tUnass">–</div></button>
@@ -730,6 +756,22 @@
 
       <!-- PROPERTIES: every property, and all repairs at one -->
       <!-- CONTRACTOR PAYMENTS: what's owed for each contractor's jobs -->
+      <div id="certsView" hidden>
+        <div class="tiles prop-tiles" id="certTiles"></div>
+        <div class="card cert-who"><h3 style="margin-bottom:8px">Who renews each certificate</h3>
+          <div class="grid3">
+            <div><label class="lbl" for="certWhoEPC">EPC</label><select class="inp" id="certWhoEPC" data-cert-who="EPC"></select></div>
+            <div><label class="lbl" for="certWhoGas">Gas safety</label><select class="inp" id="certWhoGas" data-cert-who="Gas"></select></div>
+            <div><label class="lbl" for="certWhoEICR">Electrical (EICR)</label><select class="inp" id="certWhoEICR" data-cert-who="EICR"></select></div>
+          </div>
+          <p class="muted-note" style="margin:8px 0 0">You’re prompted to book them 10 days before a certificate expires (and get a phone alert).</p>
+        </div>
+        <div class="toolbar">
+          <div class="tabs" id="certTabs"><button type="button" class="on" data-cf="action">Needs action <span class="n" id="cfAction"></span></button><button type="button" data-cf="all">All properties</button><button type="button" data-cf="missing">Missing <span class="n" id="cfMissing"></span></button></div>
+          <input class="inp search" type="search" id="certSearch" placeholder="Search by address or postcode" aria-label="Search certificates">
+        </div>
+        <div id="certList"></div>
+      </div>
       <div id="payView" hidden>
         <div class="tiles prop-tiles" id="payTiles"></div>
         <div class="toolbar">
@@ -1051,6 +1093,29 @@
     <div class="row-actions"><button class="btn" type="button" id="addrCancel">Cancel</button><button class="btn primary" type="submit" id="addrSave">Save address</button></div>
   </form>
 </div>
+<div class="modal" id="certModal" hidden>
+  <form class="card" id="certForm" novalidate style="display:flex;flex-direction:column;gap:10px">
+    <h3 id="certTitle" style="margin:0">Certificate</h3>
+    <div class="prop-sub" id="certAddr" style="margin:0"></div>
+    <div id="certEpcBox" hidden>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small" type="button" id="certEpcLookup">Look up on the EPC register</button><a class="btn small ghost" id="certEpcOpen" target="_blank" rel="noopener">Open the register ↗</a></div>
+      <div id="certEpcResults" class="epc-results"></div>
+    </div>
+    <div class="grid2">
+      <div><label class="lbl" for="certIssued">Date issued</label><input class="inp" type="date" id="certIssued"></div>
+      <div><label class="lbl" for="certExpires">Expiry date *</label><input class="inp" type="date" id="certExpires"></div>
+    </div>
+    <div class="muted-note" id="certHint" style="margin:0"></div>
+    <div class="grid2">
+      <div><label class="lbl" for="certRef">Certificate number (optional)</label><input class="inp" id="certRef"></div>
+      <div id="certRatingWrap"><label class="lbl" for="certRating">Energy rating</label><select class="inp" id="certRating"><option value="">—</option><option>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option></select></div>
+    </div>
+    <div><label class="lbl" for="certNotes">Notes (optional)</label><input class="inp" id="certNotes"></div>
+    <label class="check-row"><input type="checkbox" id="certNA"> <span>Not required at this property (e.g. no gas supply)</span></label>
+    <div class="err-msg" id="certErr"></div>
+    <div class="row-actions"><button class="btn ghost danger" type="button" id="certDelete">Remove</button><span style="flex:1"></span><button class="btn" type="button" id="certCancel">Cancel</button><button class="btn primary" type="submit" id="certSave">Save</button></div>
+  </form>
+</div>
 <div class="modal" id="moreSheet" hidden>
   <div class="card more-card" role="dialog" aria-label="More">
     <div class="more-grab"></div>
@@ -1209,6 +1274,7 @@
   }
   // Links from phone alerts land on /admin#job=123 and open that job.
   function openJobFromLink(){
+    if (location.hash === '#certs') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('certs'); return; }
     var m = /^#job=(\d+)$/.exec(location.hash);
     if (!m) return;
     history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname);
@@ -1218,7 +1284,7 @@
   // ---------- List ----------
   function loadJobs(){
     if (!meta.db) { jobs = []; render(); return; }
-    return Promise.all([api('GET', '/api/admin/jobs'), loadLandlords(), loadTenantRecs(), loadAllInvoices()]).then(function(res){ var d = res[0];
+    return Promise.all([api('GET', '/api/admin/jobs'), loadLandlords(), loadTenantRecs(), loadAllInvoices(), loadCerts()]).then(function(res){ var d = res[0];
       if (!d.ok) return;
       // Deleted jobs live in the archive: kept, but out of every day-to-day list and total.
       archivedJobs = d.jobs.filter(function(j){ return j.archived_at; });
@@ -1229,6 +1295,8 @@
       if (view === 'tenants') { openTenantKey ? renderTenant() : renderTenants(); }
       if (view === 'pay') renderPay();
       if (view === 'll') { openLlId ? renderLandlord() : renderLandlords(); }
+      if (view === 'certs') renderCerts();
+      renderCertAlerts();
       var owedN = jobs.filter(isOwed).length;
       $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
     });
@@ -2075,12 +2143,15 @@
     $('tenantsView').hidden = v !== 'tenants';
     $('payView').hidden = v !== 'pay';
     $('llView').hidden = v !== 'll';
+    $('certsView').hidden = v !== 'certs';
+    $('navCerts').classList.toggle('on', v === 'certs');
     $('navLandlords').classList.toggle('on', v === 'll');
     $('navPay').classList.toggle('on', v === 'pay');
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates' }[v];
+    if (v === 'certs') renderCerts();
     if (v === 'll') { openLlId ? renderLandlord() : renderLandlords(); }
     if (v === 'pay') renderPay();
     if (v === 'props') { openPropKey ? renderProperty() : renderProps(); }
@@ -4709,6 +4780,222 @@
     else if (e.key === '/' && !typing && $('cmdk').hidden) { e.preventDefault(); openCmdk(); }
   });
 
+  // ---------- Certificates ----------
+  // EPC (10 years), gas safety (12 months) and electrical/EICR (5 years) for every
+  // property. 10 days before one expires you're prompted to book the contractor.
+  var CERTS = [
+    { type: 'EPC', name: 'EPC', long: 'Energy Performance Certificate', years: 10, trade: /epc|energy/i, category: 'EPC', job: 'Energy Performance Certificate (EPC)' },
+    { type: 'Gas', name: 'Gas safety', long: 'Gas safety certificate', years: 1, trade: /gas/i, category: 'Gas safety', job: 'Annual gas safety check (CP12)' },
+    { type: 'EICR', name: 'Electrical (EICR)', long: 'Electrical safety certificate (EICR)', years: 5, trade: /eicr|electric/i, category: 'EICR', job: 'Electrical safety check (EICR)' }
+  ];
+  var certs = [], certWho = {}, CERT_REMIND = 10, certFilter = 'action';
+  function loadCerts(){
+    if (!meta.db) return Promise.resolve();
+    return api('GET', '/api/admin/certificates').then(function(d){ if (d.ok) { certs = d.certificates; certWho = d.contractors || {}; CERT_REMIND = d.remind_days || 10; } });
+  }
+  function certDay(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
+  function certDef(t){ return CERTS.filter(function(c){ return c.type === t; })[0]; }
+  function certFor(key, type){ return certs.filter(function(c){ return c.property_key === key && c.type === type; })[0] || null; }
+  function daysUntil(day){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || '')); if (!m) return null; var t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((new Date(+m[1], +m[2] - 1, +m[3]) - t) / 86400000); }
+  function certJob(c){ return c && c.job_id ? jobs.filter(function(j){ return j.id === c.job_id; })[0] || null : null; }
+  // missing / na / expired / due (within 10 days) / soon (60 days) / ok — and booked if an open job is on it.
+  function certState(c){
+    if (!c) return { k: 'missing', text: 'Not recorded' };
+    if (c.not_required) return { k: 'na', text: 'Not required' };
+    var d = daysUntil(c.expires_on), jb = certJob(c), booked = jb && isOpen(jb);
+    var k = d === null ? 'missing' : d < 0 ? 'expired' : d <= CERT_REMIND ? 'due' : d <= 60 ? 'soon' : 'ok';
+    var left = d > 60 ? '' : ' · ' + d + ' day' + (d === 1 ? '' : 's');
+    var text = d === null ? 'No expiry date' : d < 0 ? 'Expired ' + certDay(c.expires_on) : d === 0 ? 'Expires today' : 'Expires ' + certDay(c.expires_on) + left;
+    return { k: k, text: text, days: d, booked: booked, job: jb };
+  }
+  function certContractorName(type){
+    if (certWho[type]) return certWho[type];
+    var def = certDef(type), c = contractors.filter(function(x){ return x.active && def.trade.test((x.trade || '') + ' ' + x.name); })[0];
+    return c ? c.name : '';
+  }
+  // Every property we know about: from jobs, certificates and landlords.
+  function certProperties(){
+    var map = {};
+    var add = function(addr){ if (!addr) return; var k = propKey(addr); if (!k) return; var cur = map[k]; if (!cur || (addressProblem(cur) && !addressProblem(addr)) || (!addressProblem(addr) === !addressProblem(cur) && addr.length > cur.length)) map[k] = addr; };
+    propertiesFromJobs().forEach(function(p){ add(p.address); });
+    certs.forEach(function(c){ add(c.address); });
+    landlords.forEach(function(l){ llProperties(l).forEach(function(x){ add(x.address); }); });
+    return Object.keys(map).map(function(k){ return { key: k, address: map[k] }; });
+  }
+  function needsAction(st){ return (st.k === 'expired' || st.k === 'due') && !st.booked; }
+  function renderCertAlerts(){
+    var due = certs.filter(function(c){ return needsAction(certState(c)); });
+    $('sCerts').hidden = !due.length; $('sCerts').textContent = due.length;
+    if ($('tabMore')) $('tabMore').classList.toggle('dot', due.length > 0);
+    var expired = due.filter(function(c){ return certState(c).k === 'expired'; }).length;
+    $('certBanner').hidden = !due.length;
+    $('certBannerText').textContent = '📄 ' + due.length + ' certificate' + (due.length === 1 ? '' : 's') + (expired ? ' expired or' : '') + ' due to expire within ' + CERT_REMIND + ' days — book the contractor' + (due.length === 1 ? '' : 's') + '.';
+  }
+  $('certBannerGo').addEventListener('click', function(){ certFilter = 'action'; showView('certs'); });
+  $('navCerts').addEventListener('click', function(){ showView('certs'); });
+  function fillCertWho(){
+    document.querySelectorAll('[data-cert-who]').forEach(function(sel){
+      var t = sel.dataset.certWho, cur = certContractorName(t);
+      sel.innerHTML = '<option value="">Choose a contractor</option>' + contractors.filter(function(c){ return c.active; }).map(function(c){
+        return '<option' + (c.name === cur ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('');
+    });
+  }
+  document.querySelectorAll('[data-cert-who]').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      var v = {}; document.querySelectorAll('[data-cert-who]').forEach(function(s){ if (s.value) v[s.dataset.certWho] = s.value; });
+      api('PUT', '/api/admin/settings/cert-contractors', v).then(function(d){ if (d.ok) { certWho = v; toast('Saved — ' + (sel.value || 'no one') + ' renews ' + certDef(sel.dataset.certWho).name); renderCerts(); } });
+    });
+  });
+  function renderCerts(){
+    fillCertWho();
+    var props = certProperties(), raw = $('certSearch').value.trim().toLowerCase(), q = propKey(raw);
+    var rows = props.map(function(p){
+      var cells = CERTS.map(function(def){ var c = certFor(p.key, def.type); return { def: def, c: c, st: certState(c) }; });
+      var rank = Math.min.apply(null, cells.map(function(x){ return { expired: 0, due: 1, soon: 3, missing: 4, ok: 5, na: 6 }[x.st.k] + (x.st.booked ? 1.5 : 0); }));
+      return { p: p, cells: cells, rank: rank };
+    });
+    var counts = { action: 0, missing: 0 }, expired = 0, due = 0, soon = 0, missing = 0;
+    rows.forEach(function(r){
+      if (r.cells.some(function(x){ return needsAction(x.st); })) counts.action++;
+      if (r.cells.some(function(x){ return x.st.k === 'missing'; })) counts.missing++;
+      r.cells.forEach(function(x){ if (x.st.k === 'expired') expired++; else if (x.st.k === 'due') due++; else if (x.st.k === 'soon') soon++; else if (x.st.k === 'missing') missing++; });
+    });
+    $('cfAction').textContent = counts.action; $('cfMissing').textContent = counts.missing;
+    $('certTabs').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.dataset.cf === certFilter); });
+    $('certTiles').innerHTML =
+      '<div class="tile alert' + (expired ? ' has' : '') + '"><div class="k">Expired</div><div class="v">' + expired + '</div></div>' +
+      '<div class="tile alert' + (due ? ' has' : '') + '"><div class="k">Due in ' + CERT_REMIND + ' days</div><div class="v">' + due + '</div></div>' +
+      '<div class="tile soonish"><div class="k">Expiring in 60 days</div><div class="v">' + soon + '</div></div>' +
+      '<div class="tile"><div class="k">Not recorded</div><div class="v">' + missing + '</div></div>';
+    rows = rows.filter(function(r){
+      if (raw && r.p.address.toLowerCase().indexOf(raw) === -1 && (!q || r.p.key.indexOf(q) === -1)) return false;
+      if (certFilter === 'action') return r.cells.some(function(x){ return needsAction(x.st) || (x.st.k === 'soon' && !x.st.booked); });
+      if (certFilter === 'missing') return r.cells.some(function(x){ return x.st.k === 'missing'; });
+      return true;
+    }).sort(function(a, b){ return a.rank - b.rank || a.p.address.localeCompare(b.p.address); });
+    if (!rows.length) { $('certList').innerHTML = '<div class="empty">' + (certFilter === 'action' ? 'Nothing needs booking right now. 🎉' : certFilter === 'missing' ? 'Every property has its certificates recorded.' : 'No properties match.') + '</div>'; return; }
+    $('certList').innerHTML = rows.map(function(r){
+      return '<div class="cert-prop"><div class="cert-addr"><button type="button" class="link" data-cert-prop="' + esc(r.p.key) + '">' + esc(r.p.address) + '</button></div><div class="cert-grid">' +
+        r.cells.map(function(x){
+          var st = x.st, jb = st.job;
+          var status = st.booked ? 'Booked · ' + esc(jb.ref) + ' (' + esc(jb.status) + ')' : jb && jb.status === 'Completed' && st.k !== 'ok' ? 'Job ' + esc(jb.ref) + ' done — enter the new certificate' : '';
+          var book = (st.k === 'expired' || st.k === 'due' || st.k === 'soon' || st.k === 'missing') && !st.booked;
+          return '<div class="cert-cell c-' + st.k + (st.booked ? ' booked' : '') + '">' +
+            '<div class="ct">' + esc(x.def.name) + (x.c && x.c.rating ? ' <span class="count-chip">' + esc(x.c.rating) + '</span>' : '') + '</div>' +
+            '<div class="cs">' + esc(st.text) + '</div>' + (status ? '<div class="cb">' + status + '</div>' : '') +
+            '<div class="ca">' + (book ? '<button type="button" class="btn small ' + (st.k === 'expired' || st.k === 'due' ? 'primary' : '') + '" data-cert-book="' + esc(x.def.type) + '" data-addr="' + esc(r.p.address) + '">Book ' + esc(certContractorName(x.def.type) || 'contractor') + '</button>' : '') +
+              (st.booked ? '<button type="button" class="btn small" data-open-job="' + jb.id + '">Open job</button>' : '') +
+              '<button type="button" class="btn small ghost" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(r.p.address) + '">' + (x.c ? 'Update' : 'Add') + '</button></div></div>';
+        }).join('') + '</div></div>';
+    }).join('');
+  }
+  $('certSearch').addEventListener('input', renderCerts);
+  $('certTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-cf]'); if (b) { certFilter = b.dataset.cf; renderCerts(); } });
+  $('certList').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.certEdit) openCertEdit(b.dataset.addr, b.dataset.certEdit);
+    else if (b.dataset.certBook) bookCert(b.dataset.addr, b.dataset.certBook, b);
+    else if (b.dataset.openJob) openJob(Number(b.dataset.openJob));
+    else if (b.dataset.certProp) { var pr = propertiesFromJobs().filter(function(x){ return x.key === b.dataset.certProp; })[0]; if (pr) openProperty(pr.key); }
+  });
+
+  // Book the renewal: a job for the property, assigned to the right contractor,
+  // with the tenant's details, then the usual "Send to contractor".
+  function bookCert(address, type, btn){
+    var def = certDef(type), key = propKey(address), c = certFor(key, type), st = certState(c);
+    if (addressProblem(address)) { toast('Add the door number and postcode first'); openAddressEdit(address, null); return; }
+    var who = certContractorName(type);
+    var t = tenantsAtProperty(address)[0] || null;
+    var last = jobs.filter(function(j){ return propKey(j.property_address) === key && (j.tenant_name || j.tenant_phone); }).sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })[0] || {};
+    var body = { property_address: address, category: def.category, affected: def.job, urgency: 'Routine', source: 'Other',
+      description: def.long + (c && c.expires_on ? (st.days < 0 ? ' expired on ' : ' expires on ') + certDay(c.expires_on) : ' needed') + '. Please contact the tenant directly to arrange a time.' };
+    if (who) body.assigned_to = who;
+    if (t) { if (t.name) body.tenant_name = t.name; if (t.phone) body.tenant_phone = t.phone; if (t.email) body.tenant_email = t.email; }
+    else { ['tenant_name', 'tenant_phone', 'tenant_email', 'key_permission', 'key_instructions', 'access_notes'].forEach(function(f){ if (last[f]) body[f] = last[f]; }); }
+    if (c && c.expires_on && st.days > 0) { var due = new Date(c.expires_on + 'T17:00:00'); if (due > new Date()) body.due_at = due.toISOString(); }
+    var ll = landlordAt(address); if (ll) LL_FIELDS.forEach(function(k){ if (ll[k]) body[k] = ll[k]; });
+    busy(btn, true, 'Booking…');
+    api('POST', '/api/admin/jobs', body).then(function(d){
+      busy(btn, false);
+      if (!d.ok) { toast('Couldn’t create the job (' + (d.error || 'error') + ')'); return; }
+      var link = c ? api('PUT', '/api/admin/certificates/' + c.id + '/job', { job_id: d.id }) : Promise.resolve();
+      link.then(loadCerts).then(loadJobs).then(function(){
+        var jb = jobs.filter(function(j){ return j.id === d.id; })[0];
+        toast(d.ref + ' created' + (who ? ' for ' + who : '') + ' — send it to them');
+        if (jb) showContractorMessage([jb]);
+      });
+    });
+  }
+
+  // Add / update a certificate.
+  var certCtx = null;
+  function addYears(day, n){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day || ''); if (!m) return ''; var d = new Date(+m[1] + n, +m[2] - 1, +m[3]); d.setDate(d.getDate() - 1); return ymd(d); }
+  function openCertEdit(address, type){
+    var def = certDef(type), c = certFor(propKey(address), type), jb = certJob(c);
+    certCtx = { address: address, type: type, c: c };
+    $('certTitle').textContent = (c ? 'Update ' : 'Add ') + def.long;
+    $('certAddr').textContent = address;
+    $('certIssued').value = c && c.issued_on || ''; $('certExpires').value = c && c.expires_on || '';
+    // A completed renewal job: start from the day it was done.
+    if (jb && jb.status === 'Completed' && jb.completed_at && certState(c).k !== 'ok') { $('certIssued').value = ymd(new Date(jb.completed_at)); $('certExpires').value = addYears($('certIssued').value, def.years); }
+    $('certRef').value = c && c.reference || ''; $('certRating').value = c && c.rating || ''; $('certNotes').value = c && c.notes || '';
+    $('certNA').checked = !!(c && c.not_required);
+    $('certRatingWrap').hidden = type !== 'EPC';
+    $('certEpcBox').hidden = type !== 'EPC'; $('certEpcResults').innerHTML = '';
+    var pc = (POSTCODE_RE.exec(address) || []);
+    $('certEpcOpen').href = 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode' + (pc[0] ? '?postcode=' + encodeURIComponent((pc[1] + ' ' + pc[2]).toUpperCase()) : '');
+    $('certHint').textContent = 'Lasts ' + (def.years === 1 ? '12 months' : def.years + ' years') + ' — enter the date issued and the expiry fills in.';
+    $('certDelete').hidden = !c; $('certErr').textContent = '';
+    $('certModal').hidden = false;
+  }
+  $('certIssued').addEventListener('change', function(){ if ($('certIssued').value && certCtx) $('certExpires').value = addYears($('certIssued').value, certDef(certCtx.type).years); });
+  $('certCancel').addEventListener('click', function(){ $('certModal').hidden = true; });
+  $('certModal').addEventListener('mousedown', function(e){ if (e.target === $('certModal')) $('certModal').hidden = true; });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !$('certModal').hidden) { e.stopImmediatePropagation(); $('certModal').hidden = true; } }, true);
+  $('certForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var na = $('certNA').checked;
+    if (!na && !$('certExpires').value) { $('certErr').textContent = 'Please enter the expiry date (or the date issued).'; $('certExpires').focus(); return; }
+    busy($('certSave'), true, 'Saving…');
+    api('PUT', '/api/admin/certificates', { address: certCtx.address, type: certCtx.type, issued_on: na ? '' : $('certIssued').value, expires_on: na ? '' : $('certExpires').value,
+      reference: $('certRef').value, rating: $('certRating').value, notes: $('certNotes').value, not_required: na }).then(function(d){
+      busy($('certSave'), false);
+      if (!d.ok) { $('certErr').textContent = 'Couldn’t save (' + (d.error || 'error') + ')'; return; }
+      $('certModal').hidden = true; toast(certDef(certCtx.type).name + ' saved');
+      loadCerts().then(function(){ renderCerts(); renderCertAlerts(); if (view === 'props' && openPropKey) renderProperty(); });
+    });
+  });
+  $('certDelete').addEventListener('click', function(){
+    if (!certCtx || !certCtx.c || !confirm('Remove this certificate record?')) return;
+    api('DELETE', '/api/admin/certificates/' + certCtx.c.id, { confirm: true }).then(function(d){
+      if (!d.ok) { toast('Couldn’t remove it'); return; }
+      $('certModal').hidden = true; toast('Removed'); loadCerts().then(function(){ renderCerts(); renderCertAlerts(); });
+    });
+  });
+  // EPC register lookup (by postcode) — pick the matching address to fill in the dates.
+  $('certEpcLookup').addEventListener('click', function(){
+    busy($('certEpcLookup'), true, 'Looking up…');
+    fetch('/api/admin/epc-lookup?address=' + encodeURIComponent(certCtx.address), { credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(d){
+      busy($('certEpcLookup'), false);
+      if (!d.ok) { $('certEpcResults').innerHTML = '<p class="muted-note">Couldn’t read the register just now — open it with the button above and copy the “valid until” date.</p>'; return; }
+      if (!d.results.length) { $('certEpcResults').innerHTML = '<p class="muted-note">No certificates found for ' + esc(d.postcode) + ' — open the register to check.</p>'; return; }
+      var doors = (certCtx.address.replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function(x){ return x.toUpperCase(); });
+      var scored = d.results.map(function(x){ var got = (x.address.match(/\b\d+[a-z]?\b/gi) || []).map(function(y){ return y.toUpperCase(); }); return { x: x, s: doors.filter(function(n){ return got.indexOf(n) !== -1; }).length }; })
+        .sort(function(a, b){ return b.s - a.s; });
+      $('certEpcResults').innerHTML = '<div class="muted-note" style="margin:6px 0">Tap the right address:</div>' + scored.slice(0, 12).map(function(o, i){
+        var x = o.x;
+        return '<button type="button" class="epc-pick' + (o.s && i === 0 ? ' best' : '') + '" data-i="' + d.results.indexOf(x) + '"><strong>' + esc(x.address) + '</strong><span>' + (x.rating ? 'Rating ' + esc(x.rating) + ' · ' : '') + (x.expires_on ? 'Valid until ' + esc(certDay(x.expires_on)) : x.expired ? 'Expired' : 'No date shown') + '</span></button>';
+      }).join('');
+      $('certEpcResults').onclick = function(e){
+        var b = e.target.closest('.epc-pick'); if (!b) return; var x = d.results[Number(b.dataset.i)];
+        if (x.expires_on) $('certExpires').value = x.expires_on;
+        if (x.rating) $('certRating').value = x.rating;
+        $('certRef').value = x.reference || $('certRef').value;
+        $('certEpcResults').querySelectorAll('.epc-pick').forEach(function(y){ y.classList.toggle('on', y === b); });
+      };
+    })['catch'](function(){ busy($('certEpcLookup'), false); $('certEpcResults').innerHTML = '<p class="muted-note">Couldn’t reach the register — open it with the button above.</p>'; });
+  });
+
   // ---------- Editing an address ----------
   // From a job (that job, or every job at the property) or from a property page
   // (every job there). Landlord and tenant links move with the property.
@@ -4756,7 +5043,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navEmail', 'Jobs from an email'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navEmail', 'Jobs from an email'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
