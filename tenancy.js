@@ -101,6 +101,26 @@ Kind Regards,
 [logo]
 [small]` + DISCLAIMER + '[/small]';
 
+// To the landlord when a certificate is expiring (or has expired).
+const CERT_BODY = `Dear {{landlord_name}},
+
+[b][u]RE: {{address}}[/u][/b]
+
+[soon]I am writing to let you know that the {{cert_name}} for your property is due to expire on [red]{{expiry}}[/red].[/soon]
+[expired]I am writing to let you know that the {{cert_name}} for your property expired on [red]{{expiry}}[/red].[/expired]
+
+To keep the property compliant, we recommend arranging a new one [soon]before the current one expires[/soon][expired]as soon as possible[/expired].
+
+[b]Would you like us to book this in for you?[/b] Just reply to this email to confirm and we will arrange it with our contractor and liaise with the tenants for access.
+
+If you have already arranged a new certificate, please send us a copy so we can update our records.
+
+Kind Regards,
+
+{{signature}}
+[logo]
+[small]` + DISCLAIMER + '[/small]';
+
 function envText(name) { return String(process.env[name] || '').replace(/\\n/g, '\n').trim(); }
 
 function defaultTemplates() {
@@ -108,6 +128,8 @@ function defaultTemplates() {
     // Quick-add fees charged to landlords (editable in the admin page).
     fee_presets: [{ label: 'Inventory - Check In', amount: 195 }, { label: 'EICR Certificate', amount: 120 }, { label: 'Gas Safety Certificate', amount: 60 },
       { label: 'EPC', amount: 70 }, { label: 'Deposit Registration', amount: 145 }, { label: 'Referencing', amount: null }, { label: 'Professional Clean', amount: null }],
+    cert_subject: '{{cert_name}} — {{address}}',
+    cert_body: CERT_BODY,
     tenant_subject: 'Preparing for your new home: {{address}}',
     tenant_body: TENANT_BODY,
     landlord_subject: 'Welcome pack: {{address}}',

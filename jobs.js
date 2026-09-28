@@ -1776,7 +1776,12 @@ module.exports = function mountJobs(app, opts) {
       landlord: { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(l.postcode, 20) },
       service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), find_basis: b.find_basis === 'upfront' ? 'upfront' : 'monthly', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
       fees: (Array.isArray(b.fees) ? b.fees : []).slice(0, 30).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount) }; }).filter(function (f) { return f.label; }),
-      vat: b.vat !== false, statement_date: day(b.statement_date), notes: s(b.notes, 4000)
+      vat: b.vat !== false, statement_date: day(b.statement_date), notes: s(b.notes, 4000),
+      // Banking trail: extra move-in charges and each payment received.
+      admin_fee: amt(b.admin_fee), card_fee: amt(b.card_fee), ll_charge: amt(b.ll_charge), other_costs: amt(b.other_costs),
+      receipts: (Array.isArray(b.receipts) ? b.receipts : []).slice(0, 40).map(function (r) {
+        r = r || {}; return { desc: s(r.desc, 200), date: day(r.date), receipt: s(r.receipt, 60), method: s(r.method, 30), amount: amt(r.amount) };
+      }).filter(function (r) { return r.desc || r.date || r.amount != null; })
     };
   }
   async function linkTenancyPeople(p, d) {
@@ -1837,7 +1842,7 @@ module.exports = function mountJobs(app, opts) {
   }));
   app.put('/api/admin/tenancy-settings', withDb(async function (p, req, res) {
     const b = req.body || {}, keep = {};
-    ['tenant_subject', 'tenant_body', 'landlord_subject', 'landlord_body', 'bank_details', 'signature_tenant', 'signature_landlord'].forEach(function (k) {
+    ['tenant_subject', 'tenant_body', 'landlord_subject', 'landlord_body', 'cert_subject', 'cert_body', 'bank_details', 'signature_tenant', 'signature_landlord'].forEach(function (k) {
       if (typeof b[k] === 'string') keep[k] = b[k].slice(0, 30000);
     });
     if (Array.isArray(b.fee_presets)) keep.fee_presets = b.fee_presets.slice(0, 40).map(function (f) {

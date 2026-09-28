@@ -371,6 +371,8 @@
   .tcy-person { display: grid; grid-template-columns: 1.2fr 1fr 1fr 34px; gap: 8px; align-items: end; margin-bottom: 8px; }
   .tcy-person.g { grid-template-columns: 1.2fr 1fr 1fr 34px; }
   @media (max-width: 700px) { .tcy-person, .tcy-person.g { grid-template-columns: 1fr 1fr; } .tcy-person > :first-child { grid-column: 1 / -1; } }
+  .tcy-rc { display: grid; grid-template-columns: 1.4fr 1fr .9fr .7fr .9fr 34px; gap: 8px; align-items: end; margin-bottom: 8px; }
+  @media (max-width: 700px) { .tcy-rc { grid-template-columns: 1fr 1fr; } .tcy-rc > :first-child { grid-column: 1 / -1; } }
   .tcy-fee { display: grid; grid-template-columns: minmax(0,1fr) 120px 34px; gap: 8px; margin-bottom: 8px; }
   .tcy-x { height: 40px; border: 1px solid var(--line); background: none; border-radius: 10px; cursor: pointer; color: var(--ink-soft); font-size: 1.1rem; }
   .tcy-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
@@ -837,6 +839,8 @@
               <div><label class="lbl" for="tsSigL">Signature — landlord's email</label><textarea class="inp" id="tsSigL" rows="5"></textarea></div>
               <div><label class="lbl" for="tsTSub">Tenants' welcome email — subject</label><input class="inp" id="tsTSub"></div>
               <div><label class="lbl" for="tsTBody">Tenants' welcome email</label><textarea class="inp" id="tsTBody" rows="12"></textarea></div>
+              <div><label class="lbl" for="tsCSub">Certificate reminder to landlord — subject</label><input class="inp" id="tsCSub"></div>
+              <div><label class="lbl" for="tsCBody">Certificate reminder to landlord ({{cert_name}}, {{expiry}}; [soon]…[/soon] before it expires, [expired]…[/expired] after)</label><textarea class="inp" id="tsCBody" rows="8"></textarea></div>
               <div><label class="lbl" for="tsLSub">Landlord's welcome email — subject</label><input class="inp" id="tsLSub"></div>
               <div><label class="lbl" for="tsLBody">Landlord's welcome email</label><textarea class="inp" id="tsLBody" rows="10"></textarea></div>
               <p class="muted-note" style="margin:0">Formatting: [b]bold[/b], [u]underline[/u], [red]red and bold[/red], [small]small print[/small]. [clerk]…[/clerk] only when an inventory clerk is booked; [diy]…[/diy] only for a DIY check-in.</p>
@@ -5237,6 +5241,7 @@
       '<div class="ca">' + (st.k === 'missing' ? '<button type="button" class="btn small primary" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">+ Add certificate</button>' : '') +
         (book ? '<button type="button" class="btn small ' + (st.k === 'expired' || st.k === 'due' ? 'primary' : st.k === 'missing' ? 'ghost' : '') + '" data-cert-book="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">' + (st.k === 'missing' ? 'Book new' : 'Book ' + esc(certContractorName(x.def.type) || 'contractor')) + '</button>' : '') +
         (st.booked ? '<button type="button" class="btn small" data-open-job="' + jb.id + '">Open job</button>' : '') +
+        (st.k === 'expired' || st.k === 'due' || st.k === 'soon' ? '<button type="button" class="btn small ghost" data-cert-mail="' + esc(x.def.type) + '" data-addr="' + esc(address) + '" title="Ask the landlord if we should book it">✉ Email landlord</button>' : '') +
         (x.def.type === 'EPC' ? '<a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(epcUrl(x.c, address)) + '">' + (x.c && x.c.reference ? 'View EPC ↗' : 'Find EPC ↗') + '</a>' : '') +
         (st.k === 'missing' ? '' : '<button type="button" class="btn small ghost" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">Update</button>') + '</div></div>';
   }
@@ -5312,6 +5317,7 @@
     if (b.dataset.addrEdit) openAddressEdit(b.dataset.addrEdit, null);
     else if (b.dataset.certEdit) openCertEdit(b.dataset.addr, b.dataset.certEdit);
     else if (b.dataset.certBook) bookCert(b.dataset.addr, b.dataset.certBook, b);
+    else if (b.dataset.certMail) openCertMail(b.dataset.addr, b.dataset.certMail);
     else if (b.dataset.openJob) openJob(Number(b.dataset.openJob));
     else if (b.dataset.certProp) openProperty(b.dataset.certProp);
   }
@@ -5558,6 +5564,9 @@
     var depAuto = Math.floor(weekly * 5 + 1e-9), holdAuto = Math.floor(weekly + 1e-9);
     var deposit = num(d.deposit) !== null ? num(d.deposit) : depAuto, holding = num(d.holding) !== null ? num(d.holding) : holdAuto;
     var total = r2(rent + deposit), remaining = r2(total - holding);
+    // Banking trail: everything due at move-in (rent, deposit and any extras) against money received.
+    var extras = r2((num(d.admin_fee) || 0) + (num(d.card_fee) || 0) + (num(d.ll_charge) || 0) + (num(d.other_costs) || 0));
+    var btDue = r2(total + extras), btIn = r2((d.receipts || []).reduce(function(a, x){ return a + (num(x.amount) || 0); }, 0));
     var fees = [];
     var pct = function(v, label){ var p = num(v); if (p) fees.push({ label: label, amount: r2(rent * p / 100) }); };
     // Tenant find: a share of each month's rent, or taken up front on a year's rent.
@@ -5574,7 +5583,7 @@
       rent: rent, weekly: r2(weekly), deposit: deposit, depAuto: depAuto, holding: holding, holdAuto: holdAuto, total: total, remaining: remaining,
       fees: fees, sub: sub, vat: vat, feeTotal: feeTotal, income: income, balance: r2(income - feeTotal),
       soStart: soStart, soPayments: parseInt(d.so_payments, 10) || Math.max(1, term - 1), moveInDue: d.move_in_due || addDaysIso(isoDay(new Date()), 2),
-      periodEnd: addMonthsIso(d.start_date, 1), term: term
+      periodEnd: addMonthsIso(d.start_date, 1), term: term, btDue: btDue, btIn: btIn, btLeft: r2(btDue - btIn)
     };
   }
   // Payment reference: door/flat number and the building or road name, no spaces
@@ -5658,7 +5667,8 @@
       var d = x.data || {}, c = tcyCalc(d);
       return '<button type="button" class="tcy-row" data-tcy="' + x.id + '"><div><div class="addr" style="font-weight:600">' + esc(d.address || 'No address') + '</div>' +
         '<div class="prop-sub" style="margin-top:2px">' + esc(joinAnd(tcyNames(d.tenants)) || 'No tenants yet') + (d.landlord && d.landlord.name ? ' · Landlord: ' + esc(d.landlord.name) : '') + '</div></div>' +
-        '<div class="num">' + esc(gbp(c.rent)) + '<small>per month</small></div><div class="when">' + esc(tcyStatus(d)) + '</div><span class="chev">›</span></button>';
+        '<div class="num">' + esc(gbp(c.rent)) + '<small>per month</small></div><div class="when">' + esc(tcyStatus(d)) +
+          '<small style="color:' + (c.btLeft > 0.004 ? 'var(--red, #c00)' : 'var(--green, #16a34a)') + '">' + (c.btLeft > 0.004 ? esc(gbp(c.btLeft)) + ' still to pay' : 'Move-in monies paid ✓') + '</small></div><span class="chev">›</span></button>';
     }).join('') : '<div class="empty">' + (tenancies.length ? 'No tenancy matches.' : 'No tenancies yet — tap “New tenancy” to add one.') + '</div>';
   }
   function tcyShowList(){ openTcyId = null; tcyDraft = null; $('tcyDetail').hidden = true; $('tcyListView').hidden = false; renderTenancies(); }
@@ -5719,6 +5729,18 @@
         '<button type="button" class="tcy-x" data-del-person="' + kind + '" data-i="' + i + '" title="Remove"' + (kind === 'tenants' && list.length === 1 ? ' disabled' : '') + '>×</button></div>';
     }).join('');
   }
+  function tcyReceiptRows(){
+    return (tcyDraft.receipts || []).map(function(r, i){
+      return '<div class="tcy-rc" data-i="' + i + '">' +
+        '<div><label class="lbl">Paid by / description</label><input class="inp" data-rf="desc" value="' + esc(r.desc || '') + '"></div>' +
+        '<div><label class="lbl">Date</label><input class="inp" type="date" data-rf="date" value="' + esc(r.date || '') + '"></div>' +
+        '<div><label class="lbl">Receipt no.</label><input class="inp" data-rf="receipt" value="' + esc(r.receipt || '') + '"></div>' +
+        '<div><label class="lbl">Method</label><input class="inp" data-rf="method" list="tfMethods" value="' + esc(r.method || 'TRNF') + '"></div>' +
+        '<div><label class="lbl">Amount (£)</label><input class="inp" data-rf="amount" inputmode="decimal" value="' + esc(r.amount == null ? '' : r.amount) + '"></div>' +
+        '<button type="button" class="tcy-x" data-del-rc="' + i + '" title="Remove">×</button></div>';
+    }).join('') + '<datalist id="tfMethods"><option value="TRNF"><option value="CARD"><option value="CASH"><option value="CHQ"></datalist>' +
+      (tcyDraft.receipts && tcyDraft.receipts.length ? '' : '<p class="muted-note" style="margin:0 0 8px">No payments recorded yet.</p>');
+  }
   function tcyFeeRows(){
     return tcyDraft.fees.map(function(f, i){
       return '<div class="tcy-fee" data-i="' + i + '"><input class="inp" data-ff="label" placeholder="Fee" value="' + esc(f.label || '') + '"><input class="inp" data-ff="amount" inputmode="decimal" placeholder="£" value="' + esc(f.amount == null ? '' : f.amount) + '"><button type="button" class="tcy-x" data-del-fee="' + i + '" title="Remove">×</button></div>';
@@ -5771,6 +5793,13 @@
         '<div class="tcy-sum" id="tfFeeSum" style="margin-top:10px"></div>' +
       '</div>' +
       // Check-in
+      '<div class="card"><h3>Banking trail — move-in monies received</h3>' +
+        '<div class="grid2">' + tcyInp('tfAdminFee', 'Admin fee + VAT (£)', d.admin_fee, ' inputmode="decimal"') + tcyInp('tfCardFee', 'Credit card fee @ 3% (£)', d.card_fee, ' inputmode="decimal"') + '</div>' +
+        '<div class="grid2" style="margin-top:10px">' + tcyInp('tfLlCharge', 'Charge from landlord or splitting agent (£)', d.ll_charge, ' inputmode="decimal"') + tcyInp('tfOther', 'Other costs (£)', d.other_costs, ' inputmode="decimal"') + '</div>' +
+        '<label class="lbl" style="margin-top:12px">Payments received</label><div id="tfReceipts">' + tcyReceiptRows() + '</div>' +
+        '<button type="button" class="btn small" id="tfAddReceipt">+ Add payment received</button>' +
+        '<div class="tcy-sum" id="tfBtSum" style="margin-top:10px"></div>' +
+      '</div>' +
       '<div class="card"><h3>Check-in</h3>' +
         '<div class="seg" id="tfCiType" style="margin-bottom:10px"><button type="button" data-v="clerk"' + (d.checkin_type !== 'diy' ? ' class="on"' : '') + '>Inventory clerk</button><button type="button" data-v="diy"' + (d.checkin_type === 'diy' ? ' class="on"' : '') + '>DIY check-in</button></div>' +
         '<div class="grid2" id="tfCiWhen"' + (d.checkin_type === 'diy' ? ' hidden' : '') + '>' + tcyInp('tfCiDate', 'Inventory / check-in date', d.checkin_date, ' type="date"') + tcyInp('tfCiTime', 'Time', d.checkin_time || '12:00', ' type="time"') + '</div>' +
@@ -5784,6 +5813,7 @@
         '<button type="button" class="btn" data-doc="terms">📋 Terms of Let (PDF)</button>' +
         '<button type="button" class="btn" data-doc="statement">💷 Landlord statement (PDF)</button>' +
         '<button type="button" class="btn" data-doc="contacts">👥 Tenant contact sheet (PDF)</button>' +
+        '<button type="button" class="btn" data-doc="banking">🏦 Banking trail (PDF)</button>' +
         '<button type="button" class="btn primary" data-doc="mail-tenants">✉️ Welcome email to tenants</button>' +
         '<button type="button" class="btn primary" data-doc="mail-landlord">✉️ Welcome email to landlord</button>' +
         '</div><p class="muted-note" style="margin:8px 0 0">Documents use the details as last saved.</p></div>' +
@@ -5818,6 +5848,12 @@
         row.querySelectorAll('[data-f]').forEach(function(inp){ p[inp.dataset.f] = inp.value.trim(); });
       });
     });
+    d.admin_fee = n('tfAdminFee'); d.card_fee = n('tfCardFee'); d.ll_charge = n('tfLlCharge'); d.other_costs = n('tfOther');
+    d.receipts = d.receipts || [];
+    document.querySelectorAll('#tfReceipts .tcy-rc').forEach(function(row){
+      var r = d.receipts[Number(row.dataset.i)]; if (!r) return;
+      row.querySelectorAll('[data-rf]').forEach(function(inp){ var k = inp.dataset.rf, val = inp.value.trim(); r[k] = k === 'amount' ? (val.replace(/[£,\s]/g, '') === '' ? null : Number(val.replace(/[£,\s]/g, ''))) : val; });
+    });
     document.querySelectorAll('#tfFees .tcy-fee').forEach(function(row){
       var f = d.fees[Number(row.dataset.i)]; if (!f) return;
       f.label = row.querySelector('[data-ff="label"]').value.trim();
@@ -5842,6 +5878,8 @@
     $('tfDepByNote').textContent = d.deposit_by === 'landlord' ? 'The deposit goes to the landlord and shows on their statement.' : 'We hold and register the deposit. It is not on the landlord statement.';
     $('tfSum').innerHTML = '<div><span>Weekly rent</span><b>' + esc(gbp(c.weekly)) + '</b></div><div><span>First month + deposit</span><b>' + esc(gbp(c.total)) + '</b></div>' +
       '<div><span>Less holding deposit</span><b>−' + esc(gbp(c.holding)) + '</b></div><div><span>Still to pay</span><b>' + esc(gbp(c.remaining)) + '</b></div>';
+    $('tfBtSum').innerHTML = '<div><span>Move-in monies due</span><b>' + esc(gbp(c.btDue)) + '</b></div><div><span>Received</span><b>' + esc(gbp(c.btIn)) + '</b></div>' +
+      '<div><span>' + (c.btLeft > 0.004 ? 'Still to pay' : c.btLeft < -0.004 ? 'Overpaid' : 'Paid in full') + '</span><b style="color:' + (c.btLeft > 0.004 ? 'var(--red, #c00)' : 'var(--green, #16a34a)') + '">' + (Math.abs(c.btLeft) > 0.004 ? esc(gbp(Math.abs(c.btLeft))) : '✓') + '</b></div>';
     $('tfFeeSum').innerHTML = '<div><span>Fees</span><b>' + esc(gbp(c.sub)) + '</b></div><div><span>VAT</span><b>' + esc(gbp(c.vat)) + '</b></div>' +
       '<div><span>Rent' + (d.deposit_by === 'landlord' ? ' + deposit' : '') + '</span><b>' + esc(gbp(c.income)) + '</b></div>' + (c.balance < 0 ? '<div><span>Landlord owes us</span><b>' + esc(gbp(-c.balance)) + '</b></div>' : '<div><span>Paid to landlord</span><b>' + esc(gbp(c.balance)) + '</b></div>');
   }
@@ -5903,6 +5941,13 @@
         $('tfFees').innerHTML = tcyFeeRows(); tcyRefresh();
         var rows = $('tfFees').querySelectorAll('.tcy-fee'), last = rows[rows.length - 1];
         if (last) last.querySelector(f ? '[data-ff="amount"]' : '[data-ff="label"]').focus();
+      } else if (b.id === 'tfAddReceipt') {
+        tcyRead(); tcyDraft.receipts = tcyDraft.receipts || [];
+        tcyDraft.receipts.push({ desc: '', date: isoDay(new Date()), receipt: '', method: 'TRNF', amount: null });
+        $('tfReceipts').innerHTML = tcyReceiptRows(); tcyRefresh();
+        var rs = $('tfReceipts').querySelectorAll('[data-rf="desc"]'); rs[rs.length - 1].focus();
+      } else if (b.dataset.delRc) {
+        tcyRead(); tcyDraft.receipts.splice(Number(b.dataset.delRc), 1); $('tfReceipts').innerHTML = tcyReceiptRows(); tcyRefresh();
       } else if (b.dataset.delFee) {
         tcyRead(); tcyDraft.fees.splice(Number(b.dataset.delFee), 1); $('tfFees').innerHTML = tcyFeeRows(); tcyRefresh();
       } else if (b.dataset.doc) {
@@ -5926,6 +5971,8 @@
     if (d.holding === null) d.holding = c.holdAuto;
     if (!d.move_in_due) d.move_in_due = c.moveInDue;
     if (!d.pay_ref) d.pay_ref = payRef(d.address).slice(0, 18);
+    // The holding deposit is the first money received.
+    if (!(d.receipts || []).length && d.holding) d.receipts = [{ desc: 'Holding deposit', date: d.date_taken || '', receipt: '', method: 'TRNF', amount: d.holding }];
     var isNew = openTcyId === 'new';
     busy($('tfSave'), true, 'Saving…');
     api(isNew ? 'POST' : 'PUT', '/api/admin/tenancies' + (isNew ? '' : '/' + openTcyId), d).then(function(r){
@@ -6024,6 +6071,49 @@
     doc.text('Registered in England No. ' + (cfg.companyNo || '') + '. VAT No. ' + (cfg.vatNo || '') + '.', X - 2, fy + 36);
     return doc;
   }
+  // Banking trail, laid out like the agency's spreadsheet (pink headers).
+  function bankingPdf(d){
+    var doc = pdfDoc(); if (!doc) return null;
+    var c = tcyCalc(d), X = 56, R = doc.internal.pageSize.getWidth() - 56, W = R - X, PINK = [255, 153, 255];
+    var box = function(x, y, w, h, fill){ if (fill) { doc.setFillColor(fill[0], fill[1], fill[2]); doc.rect(x, y, w, h, 'FD'); } else doc.rect(x, y, w, h, 'S'); };
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0); doc.setDrawColor(0); doc.setLineWidth(0.7);
+    doc.text('Banking Trail', X, 70);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Property Address', X, 100); doc.setLineWidth(1.6); box(X + 190, 88, W - 190, 17); doc.setLineWidth(0.7); doc.text(doc.splitTextToSize(d.address || '', W - 196)[0] || '', X + 194, 100);
+    var y = 130; doc.setLineWidth(1.4); box(X, y, 430, 16, PINK); box(X + 430, y, 34, 16); doc.setLineWidth(0.7);
+    doc.text('Weekly Rent', X + 3, y + 12); doc.text(gbp(c.weekly).replace(/\.\d\d$/, ''), X + 461, y + 12, { align: 'right' });
+    y = 162;
+    var rows = [['One Months rent in advance', c.rent], ['Tenants Deposit', c.deposit], ['Admin Fee + VAT', num(d.admin_fee)], ['Credit card fee @ 3%', num(d.card_fee), 1], ['Charge from LL or splitting agent', num(d.ll_charge), 1], ['Other Costs', num(d.other_costs), 1]];
+    doc.setLineWidth(1.4); box(X, y, W, rows.length * 15); doc.setLineWidth(0.7);
+    rows.forEach(function(r, i){
+      var yy = y + i * 15; box(X, yy, W - 90, 15, r[2] ? PINK : null); box(X + W - 90, yy, 90, 15);
+      doc.text(r[0], X + 3, yy + 11);
+      if (r[1] !== null && r[1] !== undefined && r[1] !== 0) { doc.text('£', X + W - 86, yy + 11); doc.text(gbp(r[1]).replace('£', ''), R - 4, yy + 11, { align: 'right' }); }
+    });
+    y += rows.length * 15;
+    doc.text('Total', X + W - 125, y + 12, { align: 'right' }); doc.setLineWidth(1.4); box(X + W - 90, y, 90, 16); doc.setLineWidth(0.7);
+    doc.text('£', X + W - 86, y + 12); doc.text(gbp(c.btDue).replace('£', ''), R - 4, y + 12, { align: 'right' });
+    y += 36; doc.text('Monies Received', X, y);
+    y += 20; var cols = [[0, 118, 'Description'], [118, 70, 'Date Taken'], [188, 88, 'Receipt number'], [276, 54, 'Method'], [330, 86, 'Amount taken']];
+    cols.forEach(function(col){ box(X + col[0], y, col[1], 15, PINK); doc.text(col[2], X + col[0] + 3, y + 11); });
+    var list = (d.receipts || []).filter(function(r){ return r.desc || r.date || r.amount != null; }), n = Math.max(10, list.length);
+    for (var i = 0; i < n; i++) {
+      var yy = y + 15 + i * 15, r = list[i] || {};
+      cols.forEach(function(col){ box(X + col[0], yy, col[1], 15); });
+      if (list[i]) {
+        doc.text(doc.splitTextToSize(r.desc || '', 112)[0] || '', X + 3, yy + 11);
+        doc.text(ukDay(r.date), X + 185, yy + 11, { align: 'right' });
+        doc.text(doc.splitTextToSize(r.receipt || '', 82)[0] || '', X + 191, yy + 11);
+        doc.text(r.method || '', X + 279, yy + 11);
+        if (num(r.amount) !== null) doc.text(gbp(r.amount), X + 413, yy + 11, { align: 'right' });
+      }
+    }
+    y += 15 + n * 15;
+    box(X + 276, y, 54, 15); box(X + 330, y, 86, 15); doc.text('Total', X + 279, y + 11); doc.text(gbp(c.btIn), X + 413, y + 11, { align: 'right' });
+    y += 40; doc.setLineWidth(1.4); box(X, y, W, 16, PINK); doc.setLineWidth(0.7);
+    doc.text(c.btLeft < -0.004 ? 'Overpaid' : 'Move in monies to pay', X + 3, y + 12); doc.text(gbp(Math.abs(c.btLeft)), R - 4, y + 12, { align: 'right' });
+    return doc;
+  }
   function contactsPdf(d){
     var doc = pdfDoc(); if (!doc) return null;
     var W = doc.internal.pageSize.getWidth(), X = 60, R = W - 60;
@@ -6079,6 +6169,7 @@
     var d = tcySaved(); if (!d) { toast('Save the tenancy first'); return; }
     if (kind === 'terms') { var t = termsPdf(d); if (t) { deliverPdf(t, tcyFile(d, 'Terms of Let'), false); tcyLog('Terms of Let downloaded'); } return; }
     if (kind === 'statement') { var s = statementPdf(d); if (s) { deliverPdf(s, tcyFile(d, 'Landlord Statement'), false); tcyLog('Landlord statement downloaded'); } return; }
+    if (kind === 'banking') { var bt = bankingPdf(d); if (bt) { deliverPdf(bt, tcyFile(d, 'Banking Trail'), false); tcyLog('Banking trail downloaded'); } return; }
     if (kind === 'contacts') { var cs = contactsPdf(d); if (cs) { deliverPdf(cs, tcyFile(d, 'Tenant Contact Sheet'), false); tcyLog('Tenant contact sheet downloaded'); } return; }
     if (kind === 'agr-docx' || kind === 'agr-pdf') {
       var fmt = kind === 'agr-pdf' ? 'pdf' : 'docx';
@@ -6104,29 +6195,69 @@
         : [{ id: 'statement', name: tcyFile(d, 'Landlord Statement'), label: 'Landlord statement', on: true },
            { id: 'contacts', name: tcyFile(d, 'Tenant Contact Sheet'), label: 'Tenant contact sheet', on: true },
            { id: 'agr-pdf', name: tcyFile(d, 'Tenancy Agreement'), label: 'Tenancy agreement (PDF)', on: false }];
-      tmCtx = { who: who, d: d, atts: atts };
-      $('tmTitle').textContent = who === 'tenants' ? 'Welcome email to the tenants' : 'Welcome email to ' + ((d.landlord || {}).name || 'the landlord');
-      $('tmTo').value = to.join(', ');
-      $('tmSubject').value = fillTpl(who === 'tenants' ? t.tenant_subject : t.landlord_subject, vals);
-      $('tmBody').innerHTML = mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? t.tenant_body : t.landlord_body, d.checkin_type), vals), vals));
-      $('tmAtt').innerHTML = atts.map(function(a, i){ return '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-att="' + i + '"' + (a.on ? ' checked' : '') + '> ' + esc(a.label) + '</label>'; }).join('') +
-        (who === 'landlord' ? '<p class="muted-note" style="margin:2px 0 0">Add the signed agreement, tenant ID and deposit certificate yourself.</p>' : '');
-      var missing = !t.bank_details && who === 'tenants';
-      $('tmSend').textContent = meta.canEmail ? 'Send from Fixflow' : 'Other email app';
-      $('tmCopy').textContent = 'Copy email';
-      $('tmNote').textContent = (missing ? '⚠ No bank details saved yet — add them under Templates. ' : '') +
-        'Open in Outlook downloads the email as a draft, formatted as shown with the ticked documents attached — open the downloaded file and it opens in Outlook ready to send. ' +
-        (meta.canEmail ? 'Send from Fixflow sends it straight away.' : 'Other email app copies the formatted email for you to paste into the message that opens.');
-      var hasOl = outlook.configured && outlook.accounts.length;
-      $('tmFromRow').hidden = !hasOl; $('tmDraft').hidden = !hasOl;
-      $('tmOutlook').classList.toggle('primary', !hasOl);
-      if (hasOl) { $('tmFrom').innerHTML = outlook.accounts.map(function(a){ return '<option value="' + esc(a.email) + '">' + esc(a.name ? a.name + ' — ' + a.email : a.email) + '</option>'; }).join(''); $('tmFrom').value = olFrom(); }
-      $('tmModal').hidden = false;
+      var label = who === 'tenants' ? 'Welcome email to tenants' : 'Welcome email to landlord';
+      showMail({
+        who: who, d: d, atts: atts, sendUrl: '/api/admin/tenancies/' + openTcyId + '/email',
+        title: who === 'tenants' ? 'Welcome email to the tenants' : 'Welcome email to ' + ((d.landlord || {}).name || 'the landlord'),
+        to: to, subject: fillTpl(who === 'tenants' ? t.tenant_subject : t.landlord_subject, vals),
+        bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? t.tenant_body : t.landlord_body, d.checkin_type), vals), vals)),
+        attNote: who === 'landlord' ? 'Add the signed agreement, tenant ID and deposit certificate yourself.' : '',
+        warn: !t.bank_details && who === 'tenants' ? '⚠ No bank details saved yet — add them under Templates. ' : '',
+        fileName: tcyFile(d, label, 'eml'),
+        log: function(how){ tcyLog(label + ' ' + how); }
+      });
     };
     Promise.all([tcySet ? null : loadTcySettings(), loadOutlook()]).then(go);
   }
+  // Certificate reminder to the landlord: "your EPC is about to expire — shall we book one in?"
+  var CERT_LONG = { EPC: 'Energy Performance Certificate (EPC)', Gas: 'Gas Safety Certificate (CP12)', EICR: 'Electrical Installation Condition Report (EICR)' };
+  function openCertMail(address, type){
+    var go = function(){
+      var t = tcySet.templates, key = propKey(address), c = certFor(key, type), st = certState(c), l = landlordAt(address) || {};
+      var expired = st.k === 'expired';
+      var vals = {
+        address: address, landlord_name: l.landlord_name || 'Sir or Madam', cert_name: CERT_LONG[type] || type,
+        expiry: c && c.expires_on ? longDay(c.expires_on) : '', cert_status: expired ? 'expired on' : 'is due to expire on',
+        signature: sigMarkup(t.signature_landlord), year: String(new Date().getFullYear())
+      };
+      var body = fillTpl(t.cert_body || '', vals);
+      var keep = expired ? 'expired' : 'soon', drop = expired ? 'soon' : 'expired';
+      body = body.replace(new RegExp('\\[' + drop + '\\][\\s\\S]*?\\[\\/' + drop + '\\]\\n?', 'g'), '').replace(new RegExp('\\[\\/?' + keep + '\\]', 'g'), '').replace(/\n{3,}/g, '\n\n');
+      showMail({
+        title: 'Email ' + (l.landlord_name || 'the landlord') + ' about the ' + (type === 'Gas' ? 'gas safety certificate' : type),
+        to: [l.landlord_email].filter(Boolean), subject: fillTpl(t.cert_subject || '', vals), bodyHtml: mailHtml(body),
+        warn: l.landlord_email ? '' : '⚠ No email saved for this landlord — type it in above. ',
+        fileName: (type + ' reminder - ' + address).replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 120) + '.eml',
+        log: function(){}
+      });
+    };
+    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook()]).then(go);
+  }
+  // The email window, used for welcome emails and certificate reminders to landlords.
+  function showMail(o){
+    tmCtx = o;
+    $('tmTitle').textContent = o.title;
+    $('tmTo').value = (o.to || []).join(', ');
+    $('tmSubject').value = o.subject || '';
+    $('tmBody').innerHTML = o.bodyHtml || '';
+    var atts = o.atts || [];
+    $('tmAtt').parentNode.hidden = !atts.length && !o.attNote;
+    $('tmAtt').innerHTML = atts.map(function(a, i){ return '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-att="' + i + '"' + (a.on ? ' checked' : '') + '> ' + esc(a.label) + '</label>'; }).join('') +
+      (o.attNote ? '<p class="muted-note" style="margin:2px 0 0">' + esc(o.attNote) + '</p>' : '');
+    var direct = meta.canEmail && o.sendUrl;
+    $('tmSend').textContent = direct ? 'Send from Fixflow' : 'Other email app';
+    $('tmCopy').textContent = 'Copy email';
+    $('tmNote').textContent = (o.warn || '') +
+      'Open in Outlook downloads the email as a draft, formatted as shown' + (atts.length ? ' with the ticked documents attached' : '') + ' — open the downloaded file and it opens in Outlook ready to send. ' +
+      (direct ? 'Send from Fixflow sends it straight away.' : 'Other email app copies the formatted email for you to paste into the message that opens.');
+    var hasOl = outlook.configured && outlook.accounts.length;
+    $('tmFromRow').hidden = !hasOl; $('tmDraft').hidden = !hasOl;
+    $('tmOutlook').classList.toggle('primary', !hasOl);
+    if (hasOl) { $('tmFrom').innerHTML = outlook.accounts.map(function(a){ return '<option value="' + esc(a.email) + '">' + esc(a.name ? a.name + ' — ' + a.email : a.email) + '</option>'; }).join(''); $('tmFrom').value = olFrom(); }
+    $('tmModal').hidden = false;
+  }
   function tmAttachments(){
-    var d = tmCtx.d, list = tmCtx.atts.filter(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); return cb && cb.checked; });
+    var d = tmCtx.d, list = (tmCtx.atts || []).filter(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); return cb && cb.checked; });
     return Promise.all(list.map(function(a){
       if (a.id === 'agr-pdf') return agreementBlob(d, 'pdf').then(function(b){ return { name: a.name, blob: b }; });
       var doc = a.id === 'statement' ? statementPdf(d) : contactsPdf(d);
@@ -6197,7 +6328,7 @@
         }
         $('tmModal').hidden = true;
         toast('In your Outlook Drafts (' + r.from + ') — open it there and press Send');
-        tcyLog('Welcome email to ' + (ctx.who === 'tenants' ? 'tenants' : 'landlord') + ' put in Outlook Drafts of ' + r.from + ' (' + to.join(', ') + ')');
+        if (ctx.log) ctx.log('put in Outlook Drafts of ' + r.from + ' (' + to.join(', ') + ')');
       });
     }, function(err){ busy($('tmDraft'), false); agreementError(err); });
   });
@@ -6243,24 +6374,25 @@
     }).then(function(files){
       busy($('tmOutlook'), false);
       var eml = buildEml(to, subject, text, html, files);
-      saveBlob(new Blob([eml], { type: 'message/rfc822' }), tcyFile(ctx.d, ctx.who === 'tenants' ? 'Welcome email to tenants' : 'Welcome email to landlord', 'eml'));
+      saveBlob(new Blob([eml], { type: 'message/rfc822' }), ctx.fileName || 'Email.eml');
       $('tmModal').hidden = true;
       toast('Email downloaded — open it and it opens in Outlook, ready to send');
-      tcyLog('Welcome email to ' + (ctx.who === 'tenants' ? 'tenants' : 'landlord') + ' prepared for Outlook (' + to.join(', ') + ')');
+      if (ctx.log) ctx.log('prepared for Outlook (' + to.join(', ') + ')');
     }, function(err){ busy($('tmOutlook'), false); agreementError(err); });
   });
   $('tmCopy').addEventListener('click', function(){ copyMail().then(function(){ toast('Email copied with its formatting — paste it into your email'); }); });
   $('tmSend').addEventListener('click', function(){
     var to = $('tmTo').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean), subject = $('tmSubject').value, text = $('tmBody').innerText, html = tmHtml(), ctx = tmCtx;
     // Copy now, while the tap still counts (browsers only allow copying straight after a tap).
-    var copied = meta.canEmail ? Promise.resolve() : copyMail();
+    var direct = meta.canEmail && ctx.sendUrl;
+    var copied = direct ? Promise.resolve() : copyMail();
     if (!to.length) { toast('Add an email address'); return; }
     busy($('tmSend'), true, 'Preparing…');
     tmAttachments().then(function(files){
-      if (meta.canEmail) {
+      if (direct) {
         return Promise.all(files.map(function(f){ return blobB64(f.blob).then(function(b){ return { name: f.name, data: b }; }); })).then(function(atts){
           busy($('tmSend'), true, 'Sending…');
-          return api('POST', '/api/admin/tenancies/' + openTcyId + '/email', { to: to, subject: subject, body: text, html: html, attachments: atts }).then(function(r){
+          return api('POST', ctx.sendUrl, { to: to, subject: subject, body: text, html: html, attachments: atts }).then(function(r){
             busy($('tmSend'), false);
             if (!r.ok) { toast('Couldn’t send — try “Copy text” instead'); return; }
             $('tmModal').hidden = true; toast('Sent to ' + to.join(', '));
@@ -6275,7 +6407,7 @@
       });
       $('tmModal').hidden = true;
       toast('Email copied — paste it into the message that’s opening' + (files.length ? ', then attach the downloaded documents' : ''));
-      tcyLog('Welcome email to ' + (ctx.who === 'tenants' ? 'tenants' : 'landlord') + ' opened in email app (' + to.join(', ') + ')');
+      if (ctx.log) ctx.log('opened in email app (' + to.join(', ') + ')');
     }, function(err){ busy($('tmSend'), false); agreementError(err); });
   });
 
@@ -6284,7 +6416,7 @@
     if (!tcySet) return;
     var t = tcySet.templates, a = tcySet.agreement;
     $('tsBank').value = t.bank_details || ''; $('tsSigT').value = t.signature_tenant || ''; $('tsSigL').value = t.signature_landlord || '';
-    $('tsTSub').value = t.tenant_subject || ''; $('tsTBody').value = t.tenant_body || ''; $('tsLSub').value = t.landlord_subject || ''; $('tsLBody').value = t.landlord_body || '';
+    $('tsTSub').value = t.tenant_subject || ''; $('tsTBody').value = t.tenant_body || ''; $('tsLSub').value = t.landlord_subject || ''; $('tsLBody').value = t.landlord_body || ''; $('tsCSub').value = t.cert_subject || ''; $('tsCBody').value = t.cert_body || '';
     tsFeeList = tcyFeePresets().map(function(f){ return { label: f.label, amount: f.amount }; }); renderTsFees();
     $('tcyAgrInfo').innerHTML = a ? '✓ <strong>' + esc(a.name) + '</strong> · uploaded ' + esc(fmtDate(a.updated_at)) : '⚠ No template uploaded yet.';
   }
@@ -6307,7 +6439,7 @@
   $('tsSave').addEventListener('click', function(){
     busy($('tsSave'), true, 'Saving…');
     api('PUT', '/api/admin/tenancy-settings', { bank_details: $('tsBank').value, signature_tenant: $('tsSigT').value, signature_landlord: $('tsSigL').value,
-      fee_presets: (readTsFees(), tsFeeList.filter(function(f){ return f.label; })), tenant_subject: $('tsTSub').value, tenant_body: $('tsTBody').value, landlord_subject: $('tsLSub').value, landlord_body: $('tsLBody').value }).then(function(r){
+      fee_presets: (readTsFees(), tsFeeList.filter(function(f){ return f.label; })), tenant_subject: $('tsTSub').value, tenant_body: $('tsTBody').value, landlord_subject: $('tsLSub').value, landlord_body: $('tsLBody').value, cert_subject: $('tsCSub').value, cert_body: $('tsCBody').value }).then(function(r){
       busy($('tsSave'), false);
       if (!r.ok) { toast('Couldn’t save'); return; }
       tcySet.templates = r.templates; toast('Templates saved');
@@ -6316,7 +6448,7 @@
   $('tsReset').addEventListener('click', function(){
     if (!tcySet || !confirm('Put the two welcome emails back to the originals? (Bank details and signatures are kept.)')) return;
     var df = tcySet.defaults;
-    $('tsTSub').value = df.tenant_subject; $('tsTBody').value = df.tenant_body; $('tsLSub').value = df.landlord_subject; $('tsLBody').value = df.landlord_body;
+    $('tsTSub').value = df.tenant_subject; $('tsTBody').value = df.tenant_body; $('tsLSub').value = df.landlord_subject; $('tsLBody').value = df.landlord_body; $('tsCSub').value = df.cert_subject; $('tsCBody').value = df.cert_body;
     toast('Restored — press Save templates to keep it');
   });
   $('tcyAgrFile').addEventListener('change', function(){
