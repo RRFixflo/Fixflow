@@ -8,6 +8,7 @@
 // Without DATABASE_URL the report tool works exactly as before (email only) and
 // /admin says the database isn't connected.
 const crypto = require('crypto');
+const express = require('express');
 const tenancy = require('./tenancy');
 
 let Pool = null;
@@ -228,6 +229,30 @@ CREATE TABLE IF NOT EXISTS site_visitors (
   vhash TEXT NOT NULL,
   PRIMARY KEY (day, page, vhash)
 );
+CREATE TABLE IF NOT EXISTS site_sessions (
+  sid           TEXT PRIMARY KEY,
+  started_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  landing       TEXT,
+  pages         TEXT[] NOT NULL DEFAULT '{}',
+  device        TEXT,
+  browser       TEXT,
+  os            TEXT,
+  source        TEXT,
+  ref_host      TEXT,
+  screen        TEXT,
+  lang          TEXT,
+  tz            TEXT,
+  chosen_lang   TEXT,
+  steps         TEXT[] NOT NULL DEFAULT '{}',
+  categories    TEXT[] NOT NULL DEFAULT '{}',
+  subject       TEXT,
+  job_id        INTEGER,
+  submitted_ref TEXT,
+  views         INTEGER NOT NULL DEFAULT 0,
+  events        INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS site_sessions_started_idx ON site_sessions (started_at);
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      JSONB,
@@ -855,6 +880,87 @@ module.exports = function mountJobs(app, opts) {
     countVisit(req, page).catch(function () {});
     res.status(204).end();
   });
+  // Visit activity from /rrt.js: one row per visit (a random id per browser
+  // tab), with device, where they came from, steps reached and what they did.
+  function uaInfo(ua) {
+    const device = /iPad|Tablet|PlayBook|Silk|(Android(?!.*Mobile))/i.test(ua) ? 'Tablet' : /Mobi|iPhone|iPod|Android|Windows Phone/i.test(ua) ? 'Mobile' : 'Computer';
+    const browser = /FBAN|FBAV|Instagram/i.test(ua) ? 'Facebook / Instagram app' : /EdgA?\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung Internet'
+      : /OPR\/|Opera/.test(ua) ? 'Opera' : /Firefox|FxiOS/.test(ua) ? 'Firefox' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Other';
+    const os = /iPhone|iPad|iPod/.test(ua) ? 'iPhone / iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /CrOS/.test(ua) ? 'Chromebook'
+      : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Other';
+    return { device: device, browser: browser, os: os };
+  }
+  function visitSource(ref, utm, ownHost) {
+    const u = String(utm || '').toLowerCase();
+    if (u) return { source: /whatsapp|wa\b/.test(u) ? 'WhatsApp' : /mail/.test(u) ? 'Email' : /sms|text/.test(u) ? 'Text message' : /qr/.test(u) ? 'QR code' : /facebook|fb|insta/.test(u) ? 'Facebook / Instagram' : u.slice(0, 40), host: '' };
+    let host = '';
+    try { host = new URL(ref).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) {}
+    if (!host) return { source: 'Direct or a link in a message', host: '' };
+    const src = host === ownHost ? 'Fixflow (another page)' : /google\./.test(host) ? 'Google' : /bing\.|duckduckgo|yahoo\.|ecosia/.test(host) ? 'Other search engine'
+      : /facebook|fb\.|instagram/.test(host) ? 'Facebook / Instagram' : /whatsapp|wa\.me/.test(host) ? 'WhatsApp' : /mail\.|outlook\.|live\.com/.test(host) ? 'Email'
+      : /residentialrealtors/.test(host) ? 'Our website' : /rightmove|zoopla|onthemarket/.test(host) ? 'Property portal' : 'Another website';
+    return { source: src, host: host };
+  }
+  const visitEvents = new Map();
+  const VISIT_EVENTS = ['view', 'step', 'cat', 'lang', 'submit', 'hide', 'ping'];
+  app.post('/api/visit/e', express.text({ type: function () { return true; }, limit: '8kb' }), function (req, res) {
+    res.status(204).end();
+    (async function () {
+      const ua = String(req.get('user-agent') || '');
+      if (!ua || BOT_UA.test(ua)) return;
+      const now = Date.now(), e = visitEvents.get(req.ip);
+      if (!e || now - e.start > 10 * 60 * 1000) visitEvents.set(req.ip, { start: now, n: 1 });
+      else if (++e.n > 400) return;
+      if (visitEvents.size > 20000) visitEvents.clear();
+      let b; try { b = JSON.parse(typeof req.body === 'string' ? req.body : '{}'); } catch (err) { return; }
+      const sid = String(b.sid || ''), ev = String(b.ev || ''), page = ['report', 'track', 'portal'].indexOf(b.page) !== -1 ? b.page : null;
+      if (!/^[a-z0-9]{8,40}$/i.test(sid) || VISIT_EVENTS.indexOf(ev) === -1 || !page) return;
+      const v = b.v == null ? null : String(b.v).slice(0, 120);
+      const p = await db(); if (!p) return;
+      await p.query('INSERT INTO site_sessions (sid, landing) VALUES ($1, $2) ON CONFLICT (sid) DO NOTHING', [sid, page]);
+      if (ev === 'view') {
+        const u = uaInfo(ua), src = visitSource(b.ref, b.utm, String(req.get('host') || '').replace(/^www\./, '').split(':')[0]);
+        let subject = null, jobIdV = null;
+        const path = String(b.path || '');
+        const tm = /^\/t\/([A-Za-z0-9_-]{10,})/.exec(path), cm = /^\/c\/([A-Za-z0-9_-]{20,})/.exec(path);
+        if (tm) { const j = (await p.query('SELECT id FROM jobs WHERE track_token = $1', [tm[1]])).rows[0]; if (j) { jobIdV = j.id; subject = 'Tracker for ' + refFor(j.id); } }
+        else if (cm) { const c = (await p.query('SELECT name FROM contractors WHERE portal_token = $1', [cm[1]])).rows[0]; if (c) subject = c.name + '’s job link'; }
+        else if (page === 'track') subject = 'Repair look-up page';
+        // The first view sets where they came from; later pages add to the list.
+        await p.query(`UPDATE site_sessions SET last_at = now(), views = views + 1, events = events + 1,
+            pages = CASE WHEN $2 = ANY(pages) THEN pages ELSE array_append(pages, $2) END,
+            device = coalesce(device, $3), browser = coalesce(browser, $4), os = coalesce(os, $5),
+            source = coalesce(source, $6), ref_host = coalesce(ref_host, nullif($7, '')), screen = coalesce(screen, $8),
+            lang = coalesce(lang, nullif($9, '')), tz = coalesce(tz, nullif($10, '')),
+            subject = coalesce($11, subject), job_id = coalesce(job_id, $12)
+          WHERE sid = $1`, [sid, page, u.device, u.browser, u.os, src.source, src.host, (parseInt(b.w, 10) || 0) + '×' + (parseInt(b.h, 10) || 0),
+          String(b.lang || '').slice(0, 20), String(b.tz || '').slice(0, 60), subject, jobIdV]);
+        if (page === 'report') countVisit(req, 'report').catch(function () {});
+        return;
+      }
+      const sets = ['last_at = now()', 'events = events + 1'], args = [sid];
+      if (ev === 'step' && v) { args.push(v); sets.push('steps = CASE WHEN steps[array_length(steps, 1)] = $2 THEN steps ELSE array_append(steps, $2) END'); }
+      if (ev === 'cat' && v) { args.push(v); sets.push('categories = CASE WHEN $2 = ANY(categories) THEN categories ELSE array_append(categories, $2) END'); }
+      if (ev === 'lang' && v) { args.push(v); sets.push('chosen_lang = $2'); }
+      if (ev === 'submit' && v) {
+        const m = /^RR-0*(\d+)$/.exec(v);
+        args.push(v); sets.push('submitted_ref = $2');
+        if (m) { args.push(Number(m[1])); sets.push('job_id = $3'); }
+      }
+      await p.query('UPDATE site_sessions SET ' + sets.join(', ') + ' WHERE sid = $1', args);
+    })().catch(function () {});
+  });
+  // For the Activity page: every visit in the period, summed up, plus the latest visits.
+  app.get('/api/admin/site-sessions', withDb(async function (p, req, res) {
+    const days = String(Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30)));
+    const rows = (await p.query(`SELECT sid, started_at, last_at, landing, pages, device, browser, os, source, ref_host, screen, lang, tz, chosen_lang, steps, categories,
+        subject, job_id, submitted_ref, views, events, extract(epoch FROM last_at - started_at)::int AS secs,
+        extract(hour FROM started_at AT TIME ZONE 'Europe/London')::int AS hour, extract(isodow FROM started_at AT TIME ZONE 'Europe/London')::int AS dow
+      FROM site_sessions WHERE started_at > now() - ($1 || ' days')::interval ORDER BY started_at DESC LIMIT 20000`, [days])).rows;
+    const live = (await p.query("SELECT count(*)::int AS n FROM site_sessions WHERE last_at > now() - interval '5 minutes'")).rows[0].n;
+    const since = (await p.query('SELECT min(started_at) AS t FROM site_sessions')).rows[0].t;
+    res.json({ ok: true, days: Number(days), live: live, since: since, sessions: rows });
+  }));
   app.get('/api/admin/visits', withDb(async function (p, req, res) {
     const days = Math.min(365, Math.max(7, parseInt(req.query.days, 10) || 30));
     const from = londonDay(new Date(Date.now() - (days - 1) * 86400000));
@@ -901,6 +1007,7 @@ module.exports = function mountJobs(app, opts) {
   }));
   setInterval(function () {
     db().then(function (p) { return p && p.query("DELETE FROM site_visitors WHERE day < to_char(now() - interval '60 days', 'YYYY-MM-DD')"); }).catch(function () {});
+    db().then(function (p) { return p && p.query("DELETE FROM site_sessions WHERE started_at < now() - interval '400 days'"); }).catch(function () {});
   }, 24 * 3600 * 1000).unref();
 
   app.get('/api/admin/me', async function (req, res) {
@@ -1626,7 +1733,7 @@ module.exports = function mountJobs(app, opts) {
       '.labels{display:flex;justify-content:space-between;font-size:.72rem;color:var(--soft);gap:4px}.labels span.on{color:var(--ink);font-weight:600}' +
       '.status{font-weight:600;margin:10px 0 2px}.upd{border-top:1px solid var(--line);padding-top:10px;margin-top:10px;white-space:pre-line;font-size:.92rem}.upd .d{font-size:.78rem;color:var(--soft);font-weight:600}' +
       'a.more{color:#2F5BEA;font-weight:600;text-decoration:none}a.back{display:inline-flex;align-items:center;gap:4px;color:var(--soft);font-weight:600;font-size:.92rem;text-decoration:none;margin:0 0 12px;padding:6px 0}a.back:hover{color:var(--ink)}.note{font-size:.85rem;color:var(--soft);margin-top:18px}</style></head><body>' +
-      '<header><div class="in">' + (bare ? '<span class="logo"><img src="/logo-white.png" alt="Residential Realtors"></span>' : '<a class="logo" href="/"><img src="/logo-white.png" alt="Residential Realtors"></a>') + '</div></header><main>' + (bare ? '' : '<a class="back" href="/" onclick="if(history.length>1){history.back();return false}">&larr; Back</a>') + inner + '</main></body></html>';
+      '<header><div class="in">' + (bare ? '<span class="logo"><img src="/logo-white.png" alt="Residential Realtors"></span>' : '<a class="logo" href="/"><img src="/logo-white.png" alt="Residential Realtors"></a>') + '</div></header><main>' + (bare ? '' : '<a class="back" href="/" onclick="if(history.length>1){history.back();return false}">&larr; Back</a>') + inner + '</main><script src="/rrt.js" defer></script></body></html>';
   }
   function progressHtml(j) {
     const st = stageOf(j.status), cancelled = j.status === 'Cancelled';

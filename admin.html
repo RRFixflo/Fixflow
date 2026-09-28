@@ -410,6 +410,24 @@
   .act-table .r { text-align: right; font-variant-numeric: tabular-nums; }
   .act-table button.link { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--blue); cursor: pointer; text-align: left; }
   .act-table button.link:hover { text-decoration: underline; }
+  .sv-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 20px; }
+  @media (max-width: 1100px) { .sv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 640px) { .sv-grid { grid-template-columns: 1fr; } }
+  .sv-grid .hbar { grid-template-columns: minmax(0, 130px) minmax(0, 1fr) 40px; }
+  .act-chart.act-mini { height: 70px; margin-bottom: 30px; }
+  .act-chart.act-mini .axis span { flex: 1; text-align: center; }
+  #svHours .axis span { text-align: left; }
+  .act-chart.act-mini .act-bar i { background: var(--series-1); }
+  .funnel .hbar .n small { font-weight: 500; color: var(--ink-faint); margin-left: 3px; }
+  .sv-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .sv-row.go { cursor: pointer; }
+  .sv-row .t { font-size: .86rem; font-weight: 600; }
+  .sv-row .s { font-size: .76rem; color: var(--ink-soft); margin-top: 2px; }
+  .sv-row .w { font-size: .76rem; color: var(--ink-faint); text-align: right; white-space: nowrap; }
+  .sv-path { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .sv-path span { font-size: .7rem; padding: 2px 7px; border-radius: 999px; background: var(--panel-2); color: var(--ink-soft); }
+  .sv-path span.good { background: var(--ok-tint); color: var(--ok); font-weight: 600; }
+  .sv-path span.warn { background: var(--warn-tint); color: var(--warn); font-weight: 600; }
   .act-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
   .act-chips button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 5px 11px; font: inherit; font-size: .8rem; font-weight: 550; color: var(--ink-soft); cursor: pointer; }
   .act-chips button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
@@ -1017,6 +1035,19 @@
           <div class="act-chart" id="actChart" role="img"></div>
           <details style="margin-top:10px"><summary class="muted-note" style="cursor:pointer;margin:0">Show as a table</summary><div id="actTable" style="margin-top:8px"></div></details>
           <p class="muted-note" style="margin:10px 0 0">A visitor is counted once a day per device. Search engines and link previews aren't counted. Counting started on 28 September 2026.</p>
+        </div>
+        <div class="card" style="margin-bottom:12px">
+          <h3>Site visitors in detail</h3>
+          <p class="muted-note" id="svNote" style="margin:-4px 0 12px"></p>
+          <div class="tiles prop-tiles" id="svTiles" style="margin-bottom:14px"></div>
+          <div class="act-grid" style="margin-bottom:6px">
+            <div><div class="hbars-t">How far people got on the repair form</div><div id="svFunnel"></div></div>
+            <div><div class="hbars-t">Busiest times</div><div class="act-chart act-mini" id="svHours" role="img"></div><div class="act-chart act-mini" id="svDays" role="img"></div></div>
+          </div>
+          <div class="sv-grid" id="svBreak"></div>
+          <div class="hbars-t" style="margin-top:6px">Visits</div>
+          <div class="act-chips" id="svChips" role="tablist" aria-label="Filter visits"></div>
+          <div id="svList"></div>
         </div>
         <div class="card">
           <h3>Where you're signed in<span style="flex:1"></span><button class="btn small ghost danger" id="actOthers" type="button">Sign out all other devices</button></h3>
@@ -7103,7 +7134,7 @@
       }).join('') + (list.length > 8 && !showAllSess ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn small" id="actSessAll">Show all ' + list.length + ' devices</button></div>' : '') || '<p class="muted-note">No sign-ins recorded yet.</p>';
       if ($('actSessAll')) $('actSessAll').addEventListener('click', function(){ $('actSessions').dataset.all = '1'; loadActivity(); });
     });
-    loadVisits(); loadWork();
+    loadVisits(); loadWork(); loadSiteSessions();
   }
   $('actSessions').addEventListener('click', function(e){
     var b = e.target.closest('[data-sess-out]'); if (!b || !confirm('Sign this device out of Fixflow?')) return;
@@ -7113,7 +7144,123 @@
     if (!confirm('Sign out every other device? They’ll need the admin password to get back in.')) return;
     api('POST', '/api/admin/sessions/revoke-others', {}).then(function(d){ toast(d.ok ? d.signed_out + ' device' + (d.signed_out === 1 ? '' : 's') + ' signed out' : 'Couldn’t sign them out'); loadActivity(); });
   });
-  $('actDays').addEventListener('change', function(){ loadVisits(); loadWork(); });
+  $('actDays').addEventListener('change', function(){ loadVisits(); loadWork(); loadSiteSessions(); });
+
+  // ---- Site visitors in detail (from /rrt.js on the public pages) ----
+  var svRows = [], svFilter = 'all', svShown = 30;
+  var SV_STEP = { '1': 'The problem', '2': 'Quick check', '3': 'Tell us more', '4': 'Your details', done: 'Sent', resolved: 'Fixed it themselves' };
+  function svMax(r){ var m = 1; (r.steps || []).forEach(function(x){ var n = x === 'done' ? 5 : parseInt(x, 10); if (n > m) m = n; }); if (r.submitted_ref) m = 5; return m; }
+  function svOutcome(r){
+    var onReport = (r.pages || []).indexOf('report') !== -1;
+    if (r.submitted_ref || (r.steps || []).indexOf('done') !== -1) return { k: 'sent', t: 'Sent a report' + (r.submitted_ref && r.submitted_ref !== 'sent' ? ' · ' + r.submitted_ref : ''), c: 'good' };
+    if ((r.steps || []).indexOf('resolved') !== -1) return { k: 'diy', t: 'Fixed it themselves', c: 'good' };
+    if (onReport) {
+      var mx = svMax(r);
+      if (!(r.categories || []).length && mx < 2) return { k: 'bounce', t: r.subject ? r.subject : 'Left without choosing a problem', c: '' };
+      return { k: 'left', t: 'Left at “' + (SV_STEP[String(mx)] || 'the form') + '”', c: 'warn' };
+    }
+    if (r.landing === 'portal' || /job link/.test(r.subject || '')) return { k: 'portal', t: r.subject || 'Contractor job link', c: '' };
+    return { k: 'track', t: r.subject || 'Repair tracker', c: '' };
+  }
+  function svDur(secs){ if (!secs || secs < 10) return 'under 10 sec'; if (secs < 60) return secs + ' sec'; var m = Math.round(secs / 60); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' hr ' + (m % 60) + ' min'; }
+  function svIcon(d){ return d === 'Mobile' ? '📱' : d === 'Tablet' ? '📲' : '💻'; }
+  function loadSiteSessions(){
+    var days = Number($('actDays').value);
+    api('GET', '/api/admin/site-sessions?days=' + days).then(function(d){
+      if (!d.ok) return;
+      svRows = d.sessions; svShown = 30;
+      $('svNote').textContent = 'Every visit to the tenant repair page, the repair tracker and contractor job links — what device, where they came from and what they did. No names or IP addresses are kept.' +
+        (d.since ? ' Recording since ' + fmtDate(d.since) + '.' : ' Recording starts now.');
+      var rep = svRows.filter(function(r){ return (r.pages || []).indexOf('report') !== -1; });
+      var out = svRows.map(svOutcome), cnt = function(k){ return out.filter(function(o){ return o.k === k; }).length; };
+      var sent = cnt('sent'), diy = cnt('diy'), bounce = cnt('bounce');
+      var secs = svRows.map(function(r){ return r.secs || 0; }).sort(function(a, b){ return a - b; });
+      var med = secs.length ? secs[Math.floor(secs.length / 2)] : 0;
+      var avg = secs.length ? Math.round(secs.reduce(function(a, b){ return a + b; }, 0) / secs.length) : 0;
+      var mobile = svRows.filter(function(r){ return r.device !== 'Computer'; }).length;
+      var pct = function(a, b){ return b ? Math.round(a / b * 100) + '%' : '—'; };
+      var tile = function(k, v, sub, cls){ return '<div class="tile' + (cls ? ' ' + cls : '') + '"><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (sub ? '<div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + sub + '</div>' : '') + '</div>'; };
+      $('svTiles').innerHTML =
+        tile('On the site right now', d.live, 'active in the last 5 minutes', d.live ? 'blue' : '') +
+        tile('Visits', svRows.length, pct(mobile, svRows.length) + ' on a phone or tablet') +
+        tile('Sent a report', sent, pct(sent, rep.length) + ' of repair-page visits', 'good') +
+        tile('Fixed it themselves', diy, 'using the quick-check tips') +
+        tile('Time on the site', svDur(med), 'typical · average ' + svDur(avg)) +
+        tile('Left without starting', bounce, pct(bounce, rep.length) + ' of repair-page visits');
+      // Funnel.
+      var lv = [['Opened the repair page', rep.length], ['Chose a problem', rep.filter(function(r){ return (r.categories || []).length || svMax(r) >= 2; }).length],
+        ['Got to “Tell us more”', rep.filter(function(r){ return svMax(r) >= 3; }).length], ['Got to “Your details”', rep.filter(function(r){ return svMax(r) >= 4; }).length],
+        ['Sent the report', rep.filter(function(r){ return svMax(r) >= 5; }).length]];
+      var top = Math.max(1, lv[0][1]);
+      $('svFunnel').innerHTML = '<div class="hbars funnel">' + lv.map(function(x){
+        return '<div class="hbar" title="' + esc(x[0] + ': ' + x[1]) + '"><span class="l">' + esc(x[0]) + '</span><span class="b"><i style="width:' + (x[1] ? Math.max(2, Math.round(x[1] / top * 100)) : 0) + '%"></i></span><span class="n">' + x[1] + '<small>' + (lv[0][1] ? Math.round(x[1] / top * 100) + '%' : '') + '</small></span></div>';
+      }).join('') + '</div>';
+      // Busiest hours and days.
+      var mini = function(el, n, key, label, tip){
+        var c = []; for (var i = 0; i < n; i++) c.push(0);
+        svRows.forEach(function(r){ var k = key(r); if (k >= 0 && k < n) c[k]++; });
+        var mx = Math.max(1, Math.max.apply(null, c));
+        $(el).innerHTML = c.map(function(v, i){ return '<div class="act-bar" data-tip="' + esc(tip(i) + ': ' + v + ' visit' + (v === 1 ? '' : 's')) + '"><i style="height:' + (v ? Math.max(4, Math.round(v / mx * 100)) : 0) + '%"></i></div>'; }).join('') +
+          '<div class="axis">' + label.map(function(l){ return '<span>' + l + '</span>'; }).join('') + '</div>';
+      };
+      var hr = function(i){ return (i % 12 || 12) + (i < 12 ? 'am' : 'pm'); };
+      mini('svHours', 24, function(r){ return r.hour; }, ['12am', '6am', '12pm', '6pm'], function(i){ return hr(i) + '–' + hr((i + 1) % 24); });
+      var DN = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      mini('svDays', 7, function(r){ return r.dow - 1; }, ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], function(i){ return DN[i]; });
+      $('svHours').setAttribute('aria-label', 'Visits by hour of the day'); $('svDays').setAttribute('aria-label', 'Visits by day of the week');
+      // Breakdowns.
+      var tally = function(f){ var m = {}; svRows.forEach(function(r){ [].concat(f(r) || []).forEach(function(k){ if (k) m[k] = (m[k] || 0) + 1; }); });
+        return Object.keys(m).map(function(k){ return { k: k, n: m[k] }; }).sort(function(a, b){ return b.n - a.n; }).slice(0, 7); };
+      var PAGE = { report: 'Repair report page', track: 'Repair tracker', portal: 'Contractor job link' };
+      var hb = function(title, arr){
+        if (!arr.length) return '';
+        var max = Math.max.apply(null, arr.map(function(x){ return x.n; }));
+        return '<div><div class="hbars-t">' + title + '</div><div class="hbars">' + arr.map(function(x){
+          return '<div class="hbar" title="' + esc(x.k + ': ' + x.n) + '"><span class="l">' + esc(x.k) + '</span><span class="b"><i style="width:' + Math.max(2, Math.round(x.n / max * 100)) + '%"></i></span><span class="n">' + x.n + '</span></div>';
+        }).join('') + '</div></div>';
+      };
+      $('svBreak').innerHTML =
+        hb('Where they came from', tally(function(r){ return r.source || 'Unknown'; })) +
+        hb('Device', tally(function(r){ return r.device; })) +
+        hb('Phone / computer system', tally(function(r){ return r.os; })) +
+        hb('Browser', tally(function(r){ return r.browser; })) +
+        hb('Problems chosen', tally(function(r){ return r.categories; })) +
+        hb('Pages visited', tally(function(r){ return (r.pages || []).map(function(x){ return PAGE[x] || x; }); })) +
+        hb('Language picked on the page', tally(function(r){ return r.chosen_lang; })) +
+        hb('Websites that sent visitors', tally(function(r){ return r.ref_host; })) +
+        hb('Where their device is set to', tally(function(r){ return r.tz ? r.tz.replace(/_/g, ' ') : null; })) || '<p class="muted-note">No visits recorded yet.</p>';
+      drawSvList();
+    });
+  }
+  function drawSvList(){
+    var F = [['all', 'All'], ['sent', 'Sent a report'], ['left', 'Left part-way'], ['diy', 'Fixed it themselves'], ['bounce', 'Left straight away'], ['track', 'Tracker'], ['portal', 'Contractor links']];
+    var out = svRows.map(svOutcome), counts = {};
+    out.forEach(function(o){ counts[o.k] = (counts[o.k] || 0) + 1; });
+    $('svChips').innerHTML = F.filter(function(f){ return f[0] === 'all' || counts[f[0]]; }).map(function(f){
+      return '<button type="button" role="tab" data-sv="' + f[0] + '"' + (f[0] === svFilter ? ' class="on" aria-selected="true"' : '') + '>' + f[1] + '<span class="n">' + (f[0] === 'all' ? svRows.length : counts[f[0]]) + '</span></button>';
+    }).join('');
+    var list = svRows.map(function(r, i){ return { r: r, o: out[i] }; }).filter(function(x){ return svFilter === 'all' || x.o.k === svFilter; });
+    $('svList').innerHTML = list.slice(0, svShown).map(function(x){
+      var r = x.r, o = x.o, dt = new Date(r.started_at);
+      var path = (r.categories || []).map(function(c){ return '<span>' + esc(c) + '</span>'; }).join('') +
+        (r.steps || []).filter(function(st){ return SV_STEP[st] && st !== '1'; }).map(function(st){ return '<span' + (st === 'done' || st === 'resolved' ? ' class="good"' : '') + '>' + esc(SV_STEP[st]) + '</span>'; }).join('') +
+        (r.chosen_lang ? '<span>🌐 ' + esc(r.chosen_lang) + '</span>' : '') +
+        (r.subject && r.subject !== o.t ? '<span>👁 ' + esc(r.subject) + '</span>' : '');
+      return '<div class="sv-row' + (r.job_id ? ' go" data-sv-job="' + r.job_id : '') + '"' + (r.job_id ? ' role="button" tabindex="0" title="Open the job"' : '') + '>' +
+        '<span class="feed-ic" aria-hidden="true">' + svIcon(r.device) + '</span>' +
+        '<div><div class="t">' + esc(o.t) + '</div>' +
+          '<div class="s">' + esc([r.device, r.os, r.browser].filter(Boolean).join(' · ') + ' · from ' + (r.source || 'unknown') + (r.views > 1 ? ' · ' + r.views + ' page views' : '')) + '</div>' +
+          (path ? '<div class="sv-path">' + path + '</div>' : '') + '</div>' +
+        '<div class="w">' + esc(dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ', ' + dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })) + '<br>' + esc(svDur(r.secs)) + '</div></div>';
+    }).join('') + (list.length > svShown ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn small" id="svMore">Show more (' + (list.length - svShown) + ')</button></div>' : '') ||
+      '<p class="muted-note">No visits ' + (svRows.length ? 'of this kind ' : '') + 'in this period.</p>';
+  }
+  $('svChips').addEventListener('click', function(e){ var b = e.target.closest('[data-sv]'); if (!b) return; svFilter = b.dataset.sv; svShown = 30; drawSvList(); });
+  $('svList').addEventListener('click', function(e){
+    if (e.target.closest('#svMore')) { svShown += 50; drawSvList(); return; }
+    var r = e.target.closest('[data-sv-job]'); if (r) openJob(Number(r.dataset.svJob));
+  });
+  $('svList').addEventListener('keydown', function(e){ var r = e.target.closest('[data-sv-job]'); if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openJob(Number(r.dataset.svJob)); } });
 
   // ---- Repairs: jobs in and done, speed, messages, sources, contractors, feed ----
   var actFeed = [], actFeedKind = 'all', actFeedShown = 40;
@@ -7249,7 +7396,7 @@
   }
   (function(){
     var tip = null;
-    ['actChart', 'actJobChart'].forEach(function(id){
+    ['actChart', 'actJobChart', 'svHours', 'svDays'].forEach(function(id){
       $(id).addEventListener('mousemove', function(e){
         var b = e.target.closest('[data-tip]');
         if (!b) { if (tip) tip.hidden = true; return; }
