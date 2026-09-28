@@ -839,8 +839,8 @@
               <div><label class="lbl" for="tsTBody">Tenants' welcome email</label><textarea class="inp" id="tsTBody" rows="12"></textarea></div>
               <div><label class="lbl" for="tsLSub">Landlord's welcome email — subject</label><input class="inp" id="tsLSub"></div>
               <div><label class="lbl" for="tsLBody">Landlord's welcome email</label><textarea class="inp" id="tsLBody" rows="10"></textarea></div>
-              <p class="muted-note" style="margin:0">Formatting: [b]bold[/b], [u]underline[/u], [red]red and bold[/red], [small]small print[/small].</p>
-              <p class="muted-note" style="margin:0">Filled in automatically: {{address}}, {{payment_reference}}, {{landlord_name}}, {{tenant_names}}, {{start_date}}, {{move_in_due}}, {{standing_order_start}}, {{standing_order_payments}}, {{first_rent}}, {{deposit}}, {{move_in_total}}, {{holding_deposit}}, {{move_in_remaining}}, {{checkin_date}}, {{checkin_time}}, {{bank_details}}, {{signature}}, {{year}}.</p>
+              <p class="muted-note" style="margin:0">Formatting: [b]bold[/b], [u]underline[/u], [red]red and bold[/red], [small]small print[/small]. [clerk]…[/clerk] only when an inventory clerk is booked; [diy]…[/diy] only for a DIY check-in.</p>
+              <p class="muted-note" style="margin:0">Filled in automatically: {{address}}, {{payment_reference}}, {{landlord_name}}, {{tenant_names}}, {{start_date}}, {{move_in_due}}, {{standing_order_start}}, {{standing_order_payments}}, {{first_rent}}, {{deposit}}, {{move_in_total}}, {{holding_deposit}}, {{move_in_remaining}}, {{checkin_date}}, {{checkin_time}}, {{diy_link}}, {{bank_details}}, {{signature}}, {{year}}.</p>
               <div class="row-actions" style="margin-top:0"><button class="btn ghost" id="tsReset" type="button">Restore the original emails</button><button class="btn primary" id="tsSave" type="button">Save templates</button></div>
             </div>
           </details>
@@ -899,6 +899,7 @@
             <div><h2 id="propTitle"></h2><div class="prop-sub" id="propSub"></div></div>
             <div class="prop-actions">
               <button class="btn small" id="propAddrEdit" type="button">✎ Edit address</button>
+              <button class="btn small ghost danger" id="propDelete" type="button">🗑 Delete property</button>
               <select class="inp" id="propRange" aria-label="Period for the report">
                 <option value="all">All time</option>
                 <option value="365">Last 12 months</option>
@@ -2340,6 +2341,24 @@
     tenancies.forEach(function(t){ if (t.property_key === p.key) names = names.concat(tcyNames((t.data || {}).tenants)); });
     return Array.from(new Set(names.filter(Boolean))).slice(0, 3).join(', ');
   }
+  // Delete the open property (jobs to the archive; links, certificates and tenancies removed).
+  function deleteProperty(address){
+    var key = propKey(address);
+    var nJobs = jobs.filter(function(j){ return j.property_address && propKey(j.property_address) === key; }).length;
+    var nCerts = certs.filter(function(c){ return c.property_key === key; }).length;
+    var nTcy = tenancies.filter(function(t){ return t.property_key === key; }).length;
+    var parts = [nJobs ? nJobs + ' repair job' + (nJobs === 1 ? '' : 's') + ' will move to the Archived tab (they can be restored)' : '',
+      nCerts ? nCerts + ' certificate record' + (nCerts === 1 ? '' : 's') + ' will be removed' : '',
+      nTcy ? nTcy + ' tenancy record' + (nTcy === 1 ? '' : 's') + ' will be removed' : ''].filter(Boolean);
+    if (!confirm('Delete ' + address + '?\n\n' + (parts.length ? parts.join('\n') + '\n' : '') + 'Its landlord and tenant links are removed; the landlord and tenants stay on file.')) return;
+    api('DELETE', '/api/admin/properties', { address: address, confirm: true }).then(function(d){
+      if (!d.ok) { toast('Couldn’t delete the property'); return; }
+      toast(address + ' deleted' + (d.jobs_archived ? ' — ' + d.jobs_archived + ' job' + (d.jobs_archived === 1 ? '' : 's') + ' in the archive' : ''));
+      openPropKey = null; $('propDetail').hidden = true; $('propsListView').hidden = false;
+      loadJobs().then(function(){ if (view === 'props') renderProps(); pushNav(); });
+    });
+  }
+  $('propDelete').addEventListener('click', function(){ var d = propertyJobs(); if (d) deleteProperty(d.property.address); });
   function renderProps(){
     var raw = $('propSearch').value.trim().toLowerCase(), q = propKey(raw);
     var props = allPropsForList().filter(function(p){
@@ -5587,7 +5606,7 @@
       address: d.address || '', landlord_name: (d.landlord && d.landlord.name) || '', tenant_names: joinAnd(tcyNames(d.tenants)), start_date: longDay(d.start_date),
       payment_reference: d.pay_ref || payRef(d.address), move_in_due: weekdayDay(c.moveInDue), standing_order_start: ordDay(c.soStart), standing_order_payments: String(c.soPayments),
       first_rent: gbp(c.rent), deposit: gbp(c.deposit), move_in_total: gbp(c.total), holding_deposit: gbp(c.holding), move_in_remaining: gbp(c.remaining),
-      checkin_date: ukDay(d.checkin_date || d.start_date), checkin_time: d.checkin_time || '12:00', bank_details: bankMarkup(t.bank_details), year: String(new Date().getFullYear())
+      diy_link: DIY_LINK, checkin_date: ukDay(d.checkin_date || d.start_date), checkin_time: d.checkin_time || '12:00', bank_details: bankMarkup(t.bank_details), year: String(new Date().getFullYear())
     };
   }
   // Email formatting marks → HTML (for pasting into Outlook or sending), or plain text.
@@ -5610,6 +5629,13 @@
       var m = /^(.*?(?:sort code|account number|iban:?|swift(?: code)?:?|bic:?|account name|payee:?))\s+(.+)$/i.exec(line.trim());
       return m ? '[b]' + m[1] + '[/b] [red]' + m[2] + '[/red]' : line.trim() ? '[b]' + line.trim() + '[/b]' : '';
     }).join('\n');
+  }
+  var DIY_LINK = 'https://diy-check-in-production-6024.up.railway.app/';
+  // Keep the check-in section that fits this tenancy: [clerk]…[/clerk] or [diy]…[/diy].
+  function checkinBlocks(text, type){
+    var keep = type === 'diy' ? 'diy' : 'clerk', drop = keep === 'diy' ? 'clerk' : 'diy';
+    return String(text || '').replace(new RegExp('\\[' + drop + '\\][\\s\\S]*?\\[\\/' + drop + '\\]\\n*', 'g'), '')
+      .replace(new RegExp('\\[\\/?' + keep + '\\]', 'g'), '').replace(/\n{3,}/g, '\n\n');
   }
   function fillTpl(text, vals){ return String(text || '').replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, function(m, k){ k = k.toLowerCase(); return Object.prototype.hasOwnProperty.call(vals, k) ? vals[k] : m; }); }
   function tcyFile(d, what, ext){ return (what + ' - ' + (d.address || 'Tenancy')).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) + '.' + (ext || 'pdf'); }
@@ -5651,7 +5677,7 @@
     var d = {
       address: preset.address || '', negotiator: last.negotiator || '', date_taken: isoDay(new Date()), start_date: '', term_months: 12, break_months: 0,
       rent_pcm: null, deposit: null, holding: null, deposit_by: 'agent', deposit_scheme: last.deposit_scheme || '', move_in_due: addDaysIso(isoDay(new Date()), 2),
-      so_start: '', so_payments: null, checkin_date: '', checkin_time: '12:00', tenants: [{ name: '', email: '', phone: '' }], guarantors: [],
+      so_start: '', so_payments: null, checkin_date: '', checkin_time: '12:00', checkin_type: last.checkin_type || 'clerk', tenants: [{ name: '', email: '', phone: '' }], guarantors: [],
       landlord: { name: '', email: '', phone: '', line1: '', line2: '', country: '', postcode: '' }, service: last.service || 'Tenant Find',
       find_pct: last.find_pct != null ? last.find_pct : 8, find_basis: last.find_basis || 'monthly', collect_pct: null, manage_pct: null, fees: [], vat: true, notes: ''
     };
@@ -5745,7 +5771,10 @@
         '<div class="tcy-sum" id="tfFeeSum" style="margin-top:10px"></div>' +
       '</div>' +
       // Check-in
-      '<div class="card"><h3>Check-in</h3><div class="grid2">' + tcyInp('tfCiDate', 'Inventory / check-in date', d.checkin_date, ' type="date"') + tcyInp('tfCiTime', 'Time', d.checkin_time || '12:00', ' type="time"') + '</div></div>' +
+      '<div class="card"><h3>Check-in</h3>' +
+        '<div class="seg" id="tfCiType" style="margin-bottom:10px"><button type="button" data-v="clerk"' + (d.checkin_type !== 'diy' ? ' class="on"' : '') + '>Inventory clerk</button><button type="button" data-v="diy"' + (d.checkin_type === 'diy' ? ' class="on"' : '') + '>DIY check-in</button></div>' +
+        '<div class="grid2" id="tfCiWhen"' + (d.checkin_type === 'diy' ? ' hidden' : '') + '>' + tcyInp('tfCiDate', 'Inventory / check-in date', d.checkin_date, ' type="date"') + tcyInp('tfCiTime', 'Time', d.checkin_time || '12:00', ' type="time"') + '</div>' +
+        '<p class="muted-note" id="tfCiNote" style="margin:8px 0 0">' + (d.checkin_type === 'diy' ? 'The welcome email gives the tenants the link to the DIY check-in.' : 'The welcome email gives the check-in date and time and the inventory clerk’s details.') + '</p></div>' +
       // Certificates
       '<div class="card" id="tfCerts"></div>' +
       '<div class="card"><h3>Notes</h3><textarea class="inp" id="tfNotes" rows="3">' + esc(d.notes || '') + '</textarea></div>' +
@@ -5819,6 +5848,13 @@
   function wireTcyForm(){
     $('tcyBack').addEventListener('click', goBack);
     $('tfCancel').addEventListener('click', goBack);
+    $('tfCiType').addEventListener('click', function(e){
+      var b = e.target.closest('[data-v]'); if (!b) return;
+      tcyDraft.checkin_type = b.dataset.v;
+      $('tfCiType').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
+      $('tfCiWhen').hidden = b.dataset.v === 'diy';
+      $('tfCiNote').textContent = b.dataset.v === 'diy' ? 'The welcome email gives the tenants the link to the DIY check-in.' : 'The welcome email gives the check-in date and time and the inventory clerk’s details.';
+    });
     $('tfFindBasis').addEventListener('click', function(e){
       var b = e.target.closest('[data-v]'); if (!b) return;
       tcyDraft.find_basis = b.dataset.v;
@@ -6072,7 +6108,7 @@
       $('tmTitle').textContent = who === 'tenants' ? 'Welcome email to the tenants' : 'Welcome email to ' + ((d.landlord || {}).name || 'the landlord');
       $('tmTo').value = to.join(', ');
       $('tmSubject').value = fillTpl(who === 'tenants' ? t.tenant_subject : t.landlord_subject, vals);
-      $('tmBody').innerHTML = mailHtml(fillTpl(fillTpl(who === 'tenants' ? t.tenant_body : t.landlord_body, vals), vals));
+      $('tmBody').innerHTML = mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? t.tenant_body : t.landlord_body, d.checkin_type), vals), vals));
       $('tmAtt').innerHTML = atts.map(function(a, i){ return '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-att="' + i + '"' + (a.on ? ' checked' : '') + '> ' + esc(a.label) + '</label>'; }).join('') +
         (who === 'landlord' ? '<p class="muted-note" style="margin:2px 0 0">Add the signed agreement, tenant ID and deposit certificate yourself.</p>' : '');
       var missing = !t.bank_details && who === 'tenants';
