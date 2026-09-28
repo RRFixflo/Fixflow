@@ -1782,7 +1782,7 @@ module.exports = function mountJobs(app, opts) {
     const results = [];
     const re = /<a[^>]+href="(\/energy-certificate\/[\d-]+)"[^>]*>([\s\S]*?)<\/a>([\s\S]*?)(?=<a[^>]+href="\/energy-certificate\/|<\/tbody>|$)/g;
     let x;
-    while ((x = re.exec(html)) && results.length < 100) {
+    while ((x = re.exec(html)) && results.length < 2000) {
       const rest = clean(x[3]);
       const d = /(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})/i.exec(rest);
       const rating = /(?:^|\s)([A-G])(?:\s|$)/.exec(rest);
@@ -1804,20 +1804,44 @@ module.exports = function mountJobs(app, opts) {
   });
   // The register entry for one of our properties: same door/flat number (first
   // number matching, all of ours present) and a street or building word in common.
-  // If the register lists more than one different address that fits, it's left alone.
+  // The same flat is often written several ways over the years ("FLAT 52 ROWLAND
+  // HILL HOUSE" / "52, Rowland Hill House"), so those count as one address. When
+  // different addresses fit, the one sharing the most words wins; a tie is left alone.
   const EPC_STOP = ['flat', 'apartment', 'london', 'floor', 'ground', 'first', 'second', 'third', 'basement'];
-  function epcMatch(address, results) {
-    const nums = function (s) { return (String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }); };
-    const words = function (s) { return String(s).replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 4 && EPC_STOP.indexOf(w) === -1; }); };
-    const an = nums(address), aw = words(address);
-    if (!an.length) return null;
-    const cands = results.filter(function (r) {
-      const rn = nums(r.address), rw = words(r.address);
+  function epcNums(s) { return (String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }); }
+  function epcWords(s) { return String(s).replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 4 && EPC_STOP.indexOf(w) === -1; }); }
+  function epcCandidates(address, results) {
+    const an = epcNums(address), aw = epcWords(address);
+    if (!an.length) return [];
+    return results.filter(function (r) {
+      const rn = epcNums(r.address), rw = epcWords(r.address);
       return rn[0] === an[0] && an.every(function (n) { return rn.indexOf(n) !== -1; }) && (!aw.length || rw.some(function (w) { return aw.indexOf(w) !== -1; }));
     });
-    const addrs = Array.from(new Set(cands.map(function (c) { return c.address.toLowerCase(); })));
-    if (addrs.length !== 1) return null;
-    return cands.filter(function (c) { return c.expires_on; }).sort(function (a, b) { return b.expires_on.localeCompare(a.expires_on); })[0] || null;
+  }
+  const EPC_BUILDING = ['house', 'court', 'apartments', 'mansions', 'lodge', 'tower', 'point', 'building', 'buildings', 'block', 'heights', 'wharf'];
+  function epcMatch(address, results) {
+    const aw = epcWords(address);
+    const cands = epcCandidates(address, results);
+    if (!cands.length) return null;
+    // One group per spelling; best is the one sharing most words with ours, then
+    // with fewest extra words. Two different spellings equally good: left alone.
+    const groups = {};
+    cands.forEach(function (c) {
+      const w = Array.from(new Set(epcWords(c.address))).sort(), k = w.join(' ');
+      if (!groups[k]) groups[k] = { words: w, list: [], shared: w.filter(function (x) { return aw.indexOf(x) !== -1; }).length, extra: w.filter(function (x) { return aw.indexOf(x) === -1; }).length };
+      groups[k].list.push(c);
+    });
+    const ranked = Object.keys(groups).map(function (k) { return groups[k]; }).sort(function (x, y) { return (y.shared - x.shared) || (x.extra - y.extra); });
+    if (ranked.length > 1 && ranked[0].shared === ranked[1].shared && ranked[0].extra === ranked[1].extra) return null;
+    // Other spellings of the same flat count too: shorter ones that keep the
+    // building name, and — when ours names a building — longer ones.
+    const top = ranked[0], pool = top.list.slice(), inside = function (xs, ys) { return xs.every(function (w) { return ys.indexOf(w) !== -1; }); };
+    const building = aw.some(function (w) { return EPC_BUILDING.indexOf(w) !== -1; });
+    ranked.slice(1).forEach(function (g) {
+      if (!aw.length || g.words.indexOf(aw[0]) === -1) return;
+      if (inside(g.words, top.words) || (building && inside(top.words, g.words))) pool.push.apply(pool, g.list);
+    });
+    return pool.filter(function (c) { return c.expires_on; }).sort(function (x, y) { return y.expires_on.localeCompare(x.expires_on); })[0] || null;
   }
   // The register writes addresses in capitals ("6 WHITWORTH HOUSE, FALMOUTH ROAD,
   // LONDON, SE1 6RW"); tidy them to "6 Whitworth House, Falmouth Road, London, SE1 6RW".
@@ -1894,7 +1918,11 @@ module.exports = function mountJobs(app, opts) {
       const hit = epcMatch(x.address, cache[pc]);
       await p.query(`INSERT INTO epc_checks (property_key, checked_at, found, address_synced) VALUES ($1, now(), $2, true)
         ON CONFLICT (property_key) DO UPDATE SET checked_at = now(), found = excluded.found, address_synced = true`, [x.key, !!hit]);
-      if (!hit) continue;
+      if (!hit) {
+        const near = epcCandidates(x.address, cache[pc]).map(function (c) { return c.address + (c.expires_on ? ' (' + c.expires_on + ')' : ''); });
+        console.log('EPC register: no clear match for ' + x.address + ' among ' + cache[pc].length + ' certificates at ' + pc + (near.length ? '; close: ' + near.slice(0, 5).join(' | ') : ''));
+        continue;
+      }
       if (epc[x.key] && epc[x.key] >= hit.expires_on) {
         const renamedOnly = await adoptRegisterAddress(p, x.key, x.address, hit.address);
         if (renamedOnly) newAddress = renamedOnly;
@@ -1955,6 +1983,17 @@ module.exports = function mountJobs(app, opts) {
       .catch(function (err) { console.error('EPC register check failed:', err.message); })
       .then(function () { epcRunning = false; });
   }
+  // When the matching improves, look again at properties it couldn't place.
+  const EPC_MATCH_VERSION = '2';
+  setTimeout(function () {
+    db().then(async function (p) {
+      if (!p) return;
+      const v = (await p.query("SELECT value FROM app_settings WHERE key = 'epc_match_version'")).rows[0];
+      if (v && String(v.value).replace(/"/g, '') === EPC_MATCH_VERSION) return;
+      await p.query('DELETE FROM epc_checks WHERE found = false');
+      await p.query(`INSERT INTO app_settings (key, value) VALUES ('epc_match_version', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(EPC_MATCH_VERSION)]);
+    }).catch(function (err) { console.error('EPC recheck reset failed:', err.message); });
+  }, 60 * 1000);
   setTimeout(autoEpcAll, 2 * 60 * 1000);
   setInterval(autoEpcAll, 24 * 3600 * 1000).unref();
   // 10 days before a certificate expires (or once it has expired) with no open
