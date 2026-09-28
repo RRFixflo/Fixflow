@@ -4848,7 +4848,7 @@
     askSource = askMode === 'email' ? text : '';
     api('POST', '/api/admin/assistant', { text: text, mode: askMode }).then(function(d){
       busy($('askGo'), false);
-      if (!d.ok) { $('askErr').textContent = 'The AI is busy — please try again in a moment.'; return; }
+      if (!d.ok) { $('askErr').textContent = 'Google’s AI is overloaded right now — please try again in a minute.'; return; }
       if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs, contacts and tenancies — try “add a gas safety for 6 Whitworth House”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; renderAskContacts(); renderAskTenancies(); $('askAllRow').hidden = true; return; }
       askContacts = (d.contacts || []).slice();
       renderAskContacts();

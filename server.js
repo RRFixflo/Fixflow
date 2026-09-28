@@ -116,7 +116,13 @@ const jobs = require('./jobs')(app, {
   // The same AI provider the tenant page uses, for drafting emails from a job.
   canAi: function () { return !!(GEMINI_API_KEY || ANTHROPIC_API_KEY); },
   askAi: function (prompt, wantJson) {
-    return GEMINI_API_KEY ? askGemini(prompt, wantJson) : askAnthropic(prompt, wantJson);
+    // Gemini first (free); if Google is overloaded and a Claude key is set, use Claude.
+    if (!GEMINI_API_KEY) return askAnthropic(prompt, wantJson);
+    return askGemini(prompt, wantJson).then(function (r) {
+      if (r.ok || !ANTHROPIC_API_KEY) return r;
+      console.log('Gemini unavailable, using Claude');
+      return askAnthropic(prompt, wantJson);
+    });
   }
 });
 
@@ -232,10 +238,18 @@ async function askGemini(prompt, wantJson) {
   // Overall budget across all models, so the tenant is never left waiting long;
   // the page gives up a little after this too.
   const deadline = Date.now() + (wantJson ? 100000 : 25000);
-  for (const model of GEMINI_MODELS) {
-    if (Date.now() > deadline) break;
-    const result = await askGeminiModel(model, prompt, wantJson);
-    if (result.ok || !result.retryable) return result;
+  // Google's free tier often answers "high demand" (503) from every model at
+  // once for a few seconds, so go round the models again after a short pause.
+  let pause = 2000;
+  for (let round = 0; round < (wantJson ? 4 : 2); round++) {
+    for (const model of GEMINI_MODELS) {
+      if (Date.now() > deadline) return { ok: false };
+      const result = await askGeminiModel(model, prompt, wantJson);
+      if (result.ok || !result.retryable) return result;
+    }
+    if (Date.now() + pause > deadline) break;
+    await new Promise(function (r) { setTimeout(r, pause); });
+    pause *= 2;
   }
   return { ok: false };
 }
