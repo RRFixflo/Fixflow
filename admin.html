@@ -469,6 +469,50 @@
   .ct-row .tel { font-weight: 550; font-size: .85rem; color: inherit; text-decoration: none; font-variant-numeric: tabular-nums; }
   .ct-form { display: flex; flex-direction: column; gap: 12px; }
   #ctSortTabs button { padding: 6px 10px; white-space: nowrap; }
+  .ctg-sum { padding: 10px 14px; font-size: .82rem; color: var(--ink-soft); background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  .ctg-sum .owe, .ctg-n.owe b { color: #C2410C; }
+  .ct-row.ctg, .ctg { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 64px 76px 100px 310px; align-items: center; gap: 10px; padding: 10px 14px; }
+  .ctg-head { position: sticky; top: 0; z-index: 1; padding-top: 8px; padding-bottom: 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .ctg-h { display: inline-flex; align-items: center; justify-self: start; gap: 5px; border: 0; background: none; padding: 5px 8px; margin: 0 0 0 -8px; border-radius: 7px; font: inherit; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint); cursor: pointer; white-space: nowrap; }
+  .ctg-h.r { justify-self: end; margin: 0; }
+  .ctg-h:hover { background: var(--panel-2); color: var(--ink); }
+  .ctg-h i { font-style: normal; font-size: .66rem; opacity: .45; }
+  .ctg-h.on { color: var(--blue); background: color-mix(in srgb, var(--blue) 9%, transparent); }
+  .ctg-h.on i { opacity: 1; }
+  .ctg-group { padding: 12px 14px 6px; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint); background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  .ct-row.ctg:hover { background: color-mix(in srgb, var(--blue) 3%, var(--panel)); }
+  .ct-row.ctg .who { min-width: 0; cursor: pointer; }
+  .ct-row.ctg .who > div { min-width: 0; }
+  .ct-row.ctg .who strong { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+  .ct-row.ctg .who:hover strong { text-decoration-color: currentColor; }
+  .ctg-sub { display: none !important; }
+  .ctg-trade { font-size: .84rem; color: var(--ink-soft); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 7px; padding: 4px 8px; margin: 0 0 0 -8px; }
+  .ctg-n { text-align: right; font-variant-numeric: tabular-nums; border-radius: 7px; padding: 4px 8px; }
+  .ctg-n small { display: none; }
+  .ctg-n b { font-weight: 700; font-size: .95rem; }
+  .ctg-n.zero b { color: var(--ink-faint); font-weight: 500; }
+  .ctg-n.on, .ctg-trade.on { background: color-mix(in srgb, var(--blue) 8%, transparent); }
+  .ctg-act { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+  .ctg-lbl { display: none; }
+  #ctSortRow { display: none; }
+  @media (max-width: 1100px) {
+    #ctSortRow { display: flex; }
+    .ct-row.ctg, .ctg { grid-template-columns: minmax(0, 1fr) 60px 76px 100px; }
+    .ctg-trade, .ctg-head .ctg-h[data-ct-sort="trade"] { display: none; }
+    .ctg-sub { display: block !important; }
+    .ctg-act { grid-column: 1 / -1; justify-content: flex-start; }
+    .ctg-head > span { display: none; }
+  }
+  @media (max-width: 560px) {
+    .ctg-head { display: none; }
+    .ct-row.ctg { grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 12px; }
+    .ct-row.ctg .who { grid-column: 1 / -1; }
+    .ctg-n { text-align: left; background: var(--panel-2); padding: 6px 10px; }
+    .ctg-n small { display: block; font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); }
+    .ctg-n.on { background: color-mix(in srgb, var(--blue) 12%, var(--panel)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 35%, transparent); }
+    .ctg-n.on small { color: var(--blue); }
+    .ctg-lbl { display: inline; }
+  }
   @media (max-width: 480px) { #ctSortTabs button { padding: 6px 8px; } }
   .wa-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; font-weight: 500; cursor: pointer; }
   .wa-assign input { width: 16px; height: 16px; accent-color: var(--brick); }
@@ -880,7 +924,7 @@
       <div id="ctsView" hidden>
         <div class="card" style="margin-bottom:12px">
           <h3 style="flex-wrap:wrap;gap:8px">All contractors<span style="flex:1"></span><button class="btn small primary" id="ctAdd" type="button">+ Add contractor</button></h3>
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px"><span class="muted-note" style="margin:0">Sort by</span><div id="ctSortTabs" role="tablist" aria-label="Sort contractors"></div></div>
+          <div id="ctSortRow" style="flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px"><span class="muted-note" style="margin:0">Sort by</span><div id="ctSortTabs" role="tablist" aria-label="Sort contractors"></div></div>
           <div id="ctList" class="ct-list" style="margin-bottom:0"></div>
         </div>
         <div class="card">
@@ -1830,19 +1874,48 @@
         : (stat[b.id][sortBy] - stat[a.id][sortBy]) || a.name.localeCompare(b.name);
       return dir * d;
     });
-    el.innerHTML = sorted.map(function(c){
-      var open = stat[c.id].open, st = stat[c.id];
-      var wa = waNumber(c.phone);
-      return '<div class="ct-row' + (c.active ? '' : ' off') + '">' +
-        '<div class="who" role="button" tabindex="0" data-ct-open="' + esc(c.name) + '" style="cursor:pointer" title="See ' + esc(c.name) + '’s jobs">' + avatar(c.name) + '<div><strong style="text-decoration:underline;text-underline-offset:3px">' + esc(c.name) + '</strong><span>' + esc([c.trade, c.active ? (open + ' open · ' + st.total + ' job' + (st.total === 1 ? '' : 's') + ' in total' + (st.owed ? ' · ' + gbp(st.owed) + ' owed' : '')) : 'Removed'].filter(Boolean).join(' · ')) +
-          (c.notes ? ' · ' + esc(c.notes) : '') + '</span></div></div>' +
-        (c.phone ? '<a class="tel" href="tel:' + esc(c.phone.replace(/\s/g, '')) + '">' + esc(c.phone) + '</a>' : '') +
-        (c.email ? '<a class="tel" href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>' : '') +
-        (wa && c.active ? '<a class="btn small wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
-        '<button class="btn small" type="button" data-ct-edit="' + c.id + '">Edit</button>' +
-        '<button class="btn small" type="button" data-ct-toggle="' + c.id + '">' + (c.active ? 'Remove' : 'Restore') + '</button>' +
+    // A table: sortable column headings (the sorted column is tinted), grouped
+    // by trade when sorting by trade, removed contractors in their own section.
+    var act = sorted.filter(function(c){ return c.active; });
+    var tot = act.reduce(function(t, c){ t.open += stat[c.id].open; t.owed += stat[c.id].owed; return t; }, { open: 0, owed: 0 });
+    var hcell = function(k, label, cls){
+      var on = k === sortBy;
+      return '<button type="button" class="ctg-h' + (cls ? ' ' + cls : '') + (on ? ' on' : '') + '" data-ct-sort="' + k + '" title="Sort by ' + esc(label.toLowerCase()) + (on ? ' — click to reverse' : '') + '">' + label + '<i>' + (on ? (dir > 0 ? '▼' : '▲') : '↕') + '</i></button>';
+    };
+    var numCell = function(k, label, v, text, extra){
+      return '<div class="ctg-n' + (k === sortBy ? ' on' : '') + (v ? '' : ' zero') + (extra || '') + '"><small>' + label + '</small><b>' + text + '</b></div>';
+    };
+    var row = function(c){
+      var st = stat[c.id], wa = waNumber(c.phone);
+      return '<div class="ct-row ctg' + (c.active ? '' : ' off') + '">' +
+        '<div class="who" role="button" tabindex="0" data-ct-open="' + esc(c.name) + '" title="See ' + esc(c.name) + '’s jobs">' + avatar(c.name) + '<div><strong>' + esc(c.name) + '</strong>' +
+          '<span class="ctg-sub">' + esc([c.trade, c.notes].filter(Boolean).join(' · ') || '—') + '</span></div></div>' +
+        '<div class="ctg-trade' + (sortBy === 'trade' ? ' on' : '') + '">' + (c.trade ? esc(c.trade) : '<span class="muted">—</span>') + '</div>' +
+        numCell('open', 'Open', st.open, st.open) +
+        numCell('total', 'All jobs', st.total, st.total) +
+        numCell('owed', 'Owed', st.owed, st.owed ? gbp(st.owed) : '£0', st.owed ? ' owe' : '') +
+        '<div class="ctg-act">' +
+          (c.phone ? '<a class="btn small" href="tel:' + esc(c.phone.replace(/\s/g, '')) + '" title="Call ' + esc(c.phone) + '">📞<span class="ctg-lbl"> Call</span></a>' : '') +
+          (wa && c.active ? '<a class="btn small wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener" title="WhatsApp">WhatsApp</a>' : '') +
+          (c.email ? '<a class="btn small" href="mailto:' + esc(c.email) + '" title="Email ' + esc(c.email) + '">✉<span class="ctg-lbl"> Email</span></a>' : '') +
+          '<button class="btn small" type="button" data-ct-edit="' + c.id + '">Edit</button>' +
+          '<button class="btn small ghost" type="button" data-ct-toggle="' + c.id + '">' + (c.active ? 'Remove' : 'Restore') + '</button>' +
+        '</div>' +
       '</div>';
-    }).join('');
+    };
+    var html = '<div class="ctg-sum">' + act.length + ' contractor' + (act.length === 1 ? '' : 's') + ' · ' + tot.open + ' open job' + (tot.open === 1 ? '' : 's') + ' · ' + (tot.owed ? '<b class="owe">' + gbp(tot.owed) + ' owed</b>' : 'nothing owed') + '</div>' +
+      '<div class="ctg ctg-head">' + hcell('name', 'Contractor') + hcell('trade', 'Trade') + hcell('open', 'Open', 'r') + hcell('total', 'All jobs', 'r') + hcell('owed', 'Owed', 'r') + '<span></span></div>';
+    var lastGroup = null;
+    act.forEach(function(c){
+      if (sortBy === 'trade') {
+        var g = c.trade || 'No trade set';
+        if (g !== lastGroup) { html += '<div class="ctg-group">' + esc(g) + '</div>'; lastGroup = g; }
+      }
+      html += row(c);
+    });
+    var off = sorted.filter(function(c){ return !c.active; });
+    if (off.length) html += '<div class="ctg-group">Removed (' + off.length + ')</div>' + off.map(row).join('');
+    el.innerHTML = html;
   }
   function resetContractorForm(){
     ctEditing = null;
@@ -1857,14 +1930,15 @@
     resetContractorForm(); showView('cts');
   });
   $('ctAdd').addEventListener('click', function(){ resetContractorForm(); $('ctForm').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('ctName').focus({ preventScroll: true }); });
-  $('ctSortTabs').addEventListener('click', function(e){
-    var b = e.target.closest('[data-ct-sort]'); if (!b) return;
-    if (ctSort.by === b.dataset.ctSort) ctSort.dir = -ctSort.dir; else ctSort = { by: b.dataset.ctSort, dir: 1 };
+  function setCtSort(k){
+    if (ctSort.by === k) ctSort.dir = -ctSort.dir; else ctSort = { by: k, dir: 1 };
     try { localStorage.setItem('rr_ct_sort', JSON.stringify(ctSort)); } catch (e) {}
     renderContractors();
-  });
+  }
+  $('ctSortTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-ct-sort]'); if (b) setCtSort(b.dataset.ctSort); });
   $('ctCancelEdit').addEventListener('click', resetContractorForm);
   $('ctList').addEventListener('click', function(e){
+    var srt = e.target.closest('[data-ct-sort]'); if (srt) { setCtSort(srt.dataset.ctSort); return; }
     var edit = e.target.closest('[data-ct-edit]'), tog = e.target.closest('[data-ct-toggle]'), op = e.target.closest('[data-ct-open]');
     if (op) { openContractor(op.dataset.ctOpen); return; }
     if (edit) {
