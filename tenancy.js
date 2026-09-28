@@ -15,6 +15,7 @@ const DISCLAIMER = 'This e-mail message may contain confidential or legally priv
 // Formatting marks (shown in the admin page and in pasted/sent emails):
 // [b]bold[/b], [u]underline[/u], [red]red bold[/red], [small]small grey[/small], [logo] the company logo.
 // In signatures, T: M: W: A: labels are shown in red.
+// [clerk]…[/clerk] shows only when an inventory clerk is booked, [diy]…[/diy] only for a DIY check-in.
 const TENANT_BODY = `Dear Tenants,
 
 [b][u]RE: Preparing for your new home: {{address}}[/u][/b]
@@ -44,16 +45,16 @@ I can confirm that we have received [red]{{holding_deposit}}[/red] as your reser
 
 Please register with the relevant local authority for council tax purposes within 14 days of your tenancy commencement date, and register for all applicable utilities (gas, electricity, and water) in your name immediately upon moving in. The local authority, not the landlord or agent, is responsible for assessing and billing your council tax liability. Once billed, it is your responsibility to apply directly to the local authority for any exemption, discount, or reduction you may be entitled to (for example, single person discount or student exemption). We take no responsibility for any issues, delays, disruption, charges, or backdated liability relating to utility accounts, supply, or council tax, any such matters should be raised directly with the relevant provider or local authority.
 
-I can confirm an inventory/check-in has been booked for [red]{{checkin_date}}[/red] at [red]{{checkin_time}}[/red]. Upon your arrival the Inventory Clerk would have prepared a report on the condition of the property and an inventory check list at the time of handing over the keys, this report will be email out to you within 7 days of your move in, you will then given a further 7 days to check the inventory and suggest any ammendments if needs be. At the time of your move in keys will be handed over to you upon arrival by the clerk, please arrive a minimum of 15 minutes before your check-in time as the clerk would have strict time frames to adhere. Unfortunately due tight scheduling the inventory clerk is unable to wait for late comers. Should a check-in need to be rebooked a cost of £80.00 + VAT booking fee will be charged.
+[clerk]I can confirm an inventory/check-in has been booked for [red]{{checkin_date}}[/red] at [red]{{checkin_time}}[/red]. Upon your arrival the Inventory Clerk would have prepared a report on the condition of the property and an inventory check list at the time of handing over the keys, this report will be email out to you within 7 days of your move in, you will then given a further 7 days to check the inventory and suggest any ammendments if needs be. At the time of your move in keys will be handed over to you upon arrival by the clerk, please arrive a minimum of 15 minutes before your check-in time as the clerk would have strict time frames to adhere. Unfortunately due tight scheduling the inventory clerk is unable to wait for late comers. Should a check-in need to be rebooked a cost of £80.00 + VAT booking fee will be charged.
 
 [b][u]Your Inventory Clerk Details:[/u][/b]
 [b]Company: MC INVENTORY[/b]
 [b]Email:[/b] info@mcinventories.com
-[b]Number: 02034394840[/b]
+[b]Number: 02034394840[/b][/clerk]
 
-[b]Where no formal inventory has been commissioned for your property, you may submit your own record of the property's condition using our DIY check-in platform:[/b]
-https://diy-check-in-production-6024.up.railway.app/
-[b]Your submission, including photographs and written notes, must be completed within 7 days of your tenancy commencement date. We will review it and confirm in writing within 7 days if any part of it is disputed. If we do not raise a dispute within that period, your submission will stand as the agreed record of the property's condition for deposit purposes.[/b]
+[diy][b]Where no formal inventory has been commissioned for your property, you may submit your own record of the property's condition using our DIY check-in platform:[/b]
+{{diy_link}}
+[b]Your submission, including photographs and written notes, must be completed within 7 days of your tenancy commencement date. We will review it and confirm in writing within 7 days if any part of it is disputed. If we do not raise a dispute within that period, your submission will stand as the agreed record of the property's condition for deposit purposes.[/b][/diy]
 
 [b][u]Cleaning[/u][/b]
 We offer two options regarding the cleaning of the property:

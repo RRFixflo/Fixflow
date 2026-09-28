@@ -1201,7 +1201,7 @@ module.exports = function mountJobs(app, opts) {
       'property (for tenants: the property they live at; for landlords: every property they own, separated by "; "; else ""), notes (anything else useful, else "").\n' +
       'The instruction may instead be the details of a NEW TENANCY (a new let: property, tenants, rent, start date, landlord, deposit, fees — e.g. a pasted offer, Terms of Let or notes). ' +
       'Do not make a job or contacts for that. Put it in "tenancies" with: address (full, keep flat/house number and postcode), start_date, move_in_due (when the first rent and deposit are due), date_taken, checkin_date (all YYYY-MM-DD; today is ' + new Date().toISOString().slice(0, 10) + '; "" if not given), ' +
-      'checkin_time ("HH:MM" or ""), term_months, break_months, rent_pcm (monthly rent in pounds; convert weekly rent × 52 / 12), deposit, holding (holding deposit / reservation fee paid) — numbers or null if not given, ' +
+      'checkin_time ("HH:MM" or ""), checkin_type ("clerk" if an inventory clerk / check-in is booked, "diy" for a DIY check-in / tenant\'s own inventory, "" if not said), term_months, break_months, rent_pcm (monthly rent in pounds; convert weekly rent × 52 / 12), deposit, holding (holding deposit / reservation fee paid) — numbers or null if not given, ' +
       'deposit_by ("agent" if we/the agent register it, "landlord" if the landlord does, "" if not said), deposit_scheme, negotiator, service ("Tenant Find", "Rent Collection" or "Fully Managed"), ' +
       'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis ("upfront" if the fee is on the annual rent / taken up front, "monthly" if monthly, "" if not said), ' +
       'tenants and guarantors (each [{"name": "", "email": "", "phone": ""}], names with titles as given), landlord ({"name": "", "email": "", "phone": "", "line1": "", "line2": "", "country": "", "postcode": ""} — their own address), ' +
@@ -1687,6 +1687,27 @@ module.exports = function mountJobs(app, opts) {
     const changed = await renameProperty(p, propKey(b.from), to);
     res.json({ ok: true, address: to, changed: changed });
   }));
+  // Delete a property: its jobs go to the archive (restorable); its landlord and
+  // tenant links, certificates, EPC checks and tenancies are removed. Tenants
+  // and landlords themselves stay on file.
+  app.delete('/api/admin/properties', withDb(async function (p, req, res) {
+    const b = req.body || {}, key = propKey(str(b.address, 500));
+    if (!key || b.confirm !== true) return res.status(400).json({ ok: false, error: 'bad-request' });
+    const reason = 'Property deleted' + (str(b.reason, 300) ? ': ' + str(b.reason, 300) : '');
+    const jobsHere = (await p.query('SELECT id, property_address FROM jobs WHERE property_address IS NOT NULL AND archived_at IS NULL')).rows
+      .filter(function (r) { return propKey(r.property_address) === key; });
+    for (const r of jobsHere) {
+      await p.query('UPDATE jobs SET archived_at = now(), archived_reason = $2, updated_at = now() WHERE id = $1', [r.id, reason]);
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.id, 'change', 'Job moved to the archive — ' + reason + '.']);
+    }
+    const n = {};
+    for (const t of ['property_landlords', 'property_tenants', 'property_certificates', 'epc_checks', 'tenancies']) {
+      n[t] = (await p.query('DELETE FROM ' + t + ' WHERE property_key = $1', [key])).rowCount;
+    }
+    console.log('Property deleted: ' + str(b.address, 500) + ' (' + jobsHere.length + ' jobs archived)');
+    res.json({ ok: true, jobs_archived: jobsHere.length, removed: n });
+  }));
+
   // Give a property a new address everywhere: its jobs (with a history note),
   // landlord and tenant links, certificates and EPC checks.
   async function renameProperty(p, fromKey, to) {
@@ -1749,7 +1770,7 @@ module.exports = function mountJobs(app, opts) {
       start_date: day(b.start_date), term_months: parseInt(b.term_months, 10) || null, break_months: parseInt(b.break_months, 10) || 0,
       rent_pcm: amt(b.rent_pcm), deposit: amt(b.deposit), holding: amt(b.holding), deposit_by: b.deposit_by === 'landlord' ? 'landlord' : 'agent', deposit_scheme: s(b.deposit_scheme), pay_ref: s(b.pay_ref, 40),
       move_in_due: day(b.move_in_due), so_start: day(b.so_start), so_payments: parseInt(b.so_payments, 10) || null,
-      checkin_date: day(b.checkin_date), checkin_time: s(b.checkin_time, 20),
+      checkin_date: day(b.checkin_date), checkin_time: s(b.checkin_time, 20), checkin_type: b.checkin_type === 'diy' ? 'diy' : b.checkin_type === 'clerk' ? 'clerk' : null,
       tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       guarantors: (Array.isArray(b.guarantors) ? b.guarantors : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       landlord: { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(l.postcode, 20) },
@@ -2053,7 +2074,7 @@ module.exports = function mountJobs(app, opts) {
   }
   // Every property we know about, with the fullest version of its address.
   async function allProperties(p) {
-    const rows = (await p.query(`SELECT property_address AS a FROM jobs WHERE property_address IS NOT NULL
+    const rows = (await p.query(`SELECT property_address AS a FROM jobs WHERE property_address IS NOT NULL AND archived_at IS NULL
       UNION SELECT address FROM property_landlords WHERE address IS NOT NULL UNION SELECT address FROM property_certificates WHERE address IS NOT NULL`)).rows;
     const map = {};
     rows.forEach(function (r) {
