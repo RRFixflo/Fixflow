@@ -1181,7 +1181,7 @@
 <!-- CONTRACTOR DIRECTORY -->
 <div class="modal" id="ctModal" hidden>
   <div class="card ct">
-    <h3>Contractors <span style="flex:1"></span><button class="btn small" id="ctClose" type="button">Close ✕</button></h3>
+    <h3>Contractors <span style="flex:1"></span><select class="inp" id="ctSort" style="width:auto" aria-label="Sort contractors"><option value="open">Most open jobs</option><option value="total">Most jobs overall</option><option value="owed">Most owed</option><option value="name">A–Z</option></select><button class="btn small" id="ctClose" type="button">Close ✕</button></h3>
     <div id="ctList" class="ct-list"></div>
     <form id="ctForm" class="ct-form" novalidate>
       <div class="jf-sec" id="ctFormTitle">Add a contractor</div>
@@ -1793,11 +1793,22 @@
   function renderContractors(){
     var el = $('ctList');
     if (!contractors.length) { el.innerHTML = '<div class="empty" style="padding:20px">No contractors yet — add your first one below.</div>'; return; }
-    el.innerHTML = contractors.map(function(c){
-      var open = jobs.filter(function(j){ return isOpen(j) && j.assigned_to && j.assigned_to.toLowerCase() === c.name.toLowerCase(); }).length;
+    // Sort by open jobs, all jobs, what's owed, or name (removed contractors last).
+    var sortBy = $('ctSort').value, stat = {};
+    contractors.forEach(function(c){
+      var mine = ctrJobs(c.name);
+      stat[c.id] = { open: mine.filter(isOpen).length, total: mine.length, owed: mine.filter(isOwed).reduce(function(a, j){ return a + num(j.actual_cost); }, 0) };
+    });
+    var sorted = contractors.slice().sort(function(a, b){
+      if (a.active !== b.active) return a.active ? -1 : 1;
+      var d = sortBy === 'name' ? 0 : stat[b.id][sortBy] - stat[a.id][sortBy];
+      return d || a.name.localeCompare(b.name);
+    });
+    el.innerHTML = sorted.map(function(c){
+      var open = stat[c.id].open, st = stat[c.id];
       var wa = waNumber(c.phone);
       return '<div class="ct-row' + (c.active ? '' : ' off') + '">' +
-        '<div class="who" role="button" tabindex="0" data-ct-open="' + esc(c.name) + '" style="cursor:pointer" title="See ' + esc(c.name) + '’s jobs">' + avatar(c.name) + '<div><strong style="text-decoration:underline;text-underline-offset:3px">' + esc(c.name) + '</strong><span>' + esc([c.trade, c.active ? (open + ' open job' + (open === 1 ? '' : 's')) : 'Removed'].filter(Boolean).join(' · ')) +
+        '<div class="who" role="button" tabindex="0" data-ct-open="' + esc(c.name) + '" style="cursor:pointer" title="See ' + esc(c.name) + '’s jobs">' + avatar(c.name) + '<div><strong style="text-decoration:underline;text-underline-offset:3px">' + esc(c.name) + '</strong><span>' + esc([c.trade, c.active ? (open + ' open · ' + st.total + ' job' + (st.total === 1 ? '' : 's') + ' in total' + (st.owed ? ' · ' + gbp(st.owed) + ' owed' : '')) : 'Removed'].filter(Boolean).join(' · ')) +
           (c.notes ? ' · ' + esc(c.notes) : '') + '</span></div></div>' +
         (c.phone ? '<a class="tel" href="tel:' + esc(c.phone.replace(/\s/g, '')) + '">' + esc(c.phone) + '</a>' : '') +
         (c.email ? '<a class="tel" href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>' : '') +
@@ -1820,6 +1831,8 @@
     resetContractorForm(); renderContractors(); $('ctModal').hidden = false;
   });
   $('ctClose').addEventListener('click', function(){ $('ctModal').hidden = true; });
+  $('ctSort').addEventListener('change', function(){ try { localStorage.setItem('rr_ct_sort', $('ctSort').value); } catch (e) {} renderContractors(); });
+  try { var savedSort = localStorage.getItem('rr_ct_sort'); if (savedSort) $('ctSort').value = savedSort; } catch (e) {}
   $('ctModal').addEventListener('mousedown', function(e){ if (e.target === $('ctModal')) $('ctModal').hidden = true; });
   $('ctCancelEdit').addEventListener('click', resetContractorForm);
   $('ctList').addEventListener('click', function(e){
