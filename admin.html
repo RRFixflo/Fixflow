@@ -778,6 +778,13 @@
             <div><label class="lbl" for="certWhoGas">Gas safety</label><select class="inp" id="certWhoGas" data-cert-who="Gas"></select></div>
             <div><label class="lbl" for="certWhoEICR">Electrical (EICR)</label><select class="inp" id="certWhoEICR" data-cert-who="EICR"></select></div>
           </div>
+          <h3 style="margin:14px 0 8px">Cost to us</h3>
+          <div class="grid3">
+            <div><label class="lbl" for="certCostEPC">EPC (£)</label><input class="inp" id="certCostEPC" data-cert-cost="EPC" inputmode="decimal"></div>
+            <div><label class="lbl" for="certCostGas">Gas safety (£)</label><input class="inp" id="certCostGas" data-cert-cost="Gas" inputmode="decimal"></div>
+            <div><label class="lbl" for="certCostEICR">Electrical (EICR) (£)</label><input class="inp" id="certCostEICR" data-cert-cost="EICR" inputmode="decimal"></div>
+          </div>
+          <p class="muted-note" style="margin:6px 0 0">Added as the estimated cost on each certificate job. The charge to the landlord is left for you to fill in.</p>
           <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn small" type="button" id="epcAll">Fill in EPCs from the register</button><span class="muted-note" id="epcAllNote" style="margin:0">EPCs are public — they're looked up automatically every day.</span></div>
           <p class="muted-note" style="margin:8px 0 0">10 days before a certificate expires, a job is raised automatically for this contractor and you get a phone alert — open the job to send it to them.</p>
         </div>
@@ -4815,10 +4822,10 @@
     { type: 'Gas', name: 'Gas safety', long: 'Gas safety certificate', years: 1, trade: /gas/i, category: 'Gas safety', job: 'Annual gas safety check (CP12)' },
     { type: 'EICR', name: 'Electrical (EICR)', long: 'Electrical safety certificate (EICR)', years: 5, trade: /eicr|electric/i, category: 'EICR', job: 'Electrical safety check (EICR)' }
   ];
-  var certs = [], certWho = {}, CERT_REMIND = 10, certFilter = 'action';
+  var certs = [], certWho = {}, certCost = {}, CERT_REMIND = 10, certFilter = 'action';
   function loadCerts(){
     if (!meta.db) return Promise.resolve();
-    return api('GET', '/api/admin/certificates').then(function(d){ if (d.ok) { certs = d.certificates; certWho = d.contractors || {}; CERT_REMIND = d.remind_days || 10; } });
+    return api('GET', '/api/admin/certificates').then(function(d){ if (d.ok) { certs = d.certificates; certWho = d.contractors || {}; certCost = d.costs || {}; CERT_REMIND = d.remind_days || 10; } });
   }
   function certDay(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
   function certDef(t){ return CERTS.filter(function(c){ return c.type === t; })[0]; }
@@ -4860,6 +4867,17 @@
   }
   $('certBannerGo').addEventListener('click', function(){ certFilter = 'action'; showView('certs'); });
   $('navCerts').addEventListener('click', function(){ showView('certs'); });
+  function fillCertCosts(){
+    document.querySelectorAll('[data-cert-cost]').forEach(function(inp){ if (document.activeElement !== inp) inp.value = certCost[inp.dataset.certCost] != null ? Number(certCost[inp.dataset.certCost]).toFixed(2) : ''; });
+  }
+  document.querySelectorAll('[data-cert-cost]').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var v = inp.value.replace(/[£,\s]/g, '');
+      if (v && !(Number(v) >= 0)) { toast('Please enter a number, e.g. 60'); return; }
+      var body = {}; document.querySelectorAll('[data-cert-cost]').forEach(function(x){ body[x.dataset.certCost] = x.value.replace(/[£,\s]/g, ''); });
+      api('PUT', '/api/admin/settings/cert-costs', body).then(function(d){ if (d.ok) { certCost = d.costs; fillCertCosts(); toast(certDef(inp.dataset.certCost).name + ' cost saved'); } else toast('Couldn’t save the cost'); });
+    });
+  });
   function fillCertWho(){
     document.querySelectorAll('[data-cert-who]').forEach(function(sel){
       var t = sel.dataset.certWho, cur = certContractorName(t);
@@ -4922,7 +4940,7 @@
     $('propCertsAll').addEventListener('click', function(){ certFilter = 'all'; showView('certs'); });
   }
   function renderCerts(){
-    fillCertWho();
+    fillCertWho(); fillCertCosts();
     var props = certProperties(), raw = $('certSearch').value.trim().toLowerCase(), q = propKey(raw);
     var rows = props.map(function(p){
       var cells = CERTS.map(function(def){ var c = certFor(p.key, def.type); return { def: def, c: c, st: certState(c) }; });

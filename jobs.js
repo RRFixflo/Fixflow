@@ -1669,11 +1669,22 @@ module.exports = function mountJobs(app, opts) {
     EICR: { name: 'Electrical safety certificate (EICR)', years: 5, category: 'EICR', job: 'Electrical safety check (EICR)', long: 'Electrical safety certificate (EICR)', trade: /eicr|electric/i }
   };
   const REMIND_DAYS = 10;
+  // What each certificate costs us (the landlord charge varies, so it's left blank).
+  const CERT_COST_DEFAULT = { Gas: 60, EICR: 70, EPC: 70 };
+  async function certCosts(p) {
+    const s = (await p.query("SELECT value FROM app_settings WHERE key = 'cert_costs'")).rows[0];
+    return Object.assign({}, CERT_COST_DEFAULT, (s && s.value) || {});
+  }
+  // Which certificate a job is for, from its issue type / title.
+  function certTypeOf(category, affected) {
+    const t = String(category || '') + ' ' + String(affected || '');
+    return /eicr|electrical (safety|installation)/i.test(t) ? 'EICR' : /gas safety|cp12/i.test(t) ? 'Gas' : /\bepc\b|energy performance/i.test(t) ? 'EPC' : null;
+  }
   function isoDay(v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) && apptDay(v) ? String(v) : null; }
   app.get('/api/admin/certificates', withDb(async function (p, req, res) {
     const r = await p.query('SELECT id, property_key, address, type, issued_on, expires_on, reference, rating, notes, not_required, job_id, reminded_at, updated_at FROM property_certificates ORDER BY expires_on NULLS LAST');
     const s = (await p.query("SELECT value FROM app_settings WHERE key = 'cert_contractors'")).rows[0];
-    res.json({ ok: true, certificates: r.rows, contractors: (s && s.value) || {}, remind_days: REMIND_DAYS });
+    res.json({ ok: true, certificates: r.rows, contractors: (s && s.value) || {}, costs: await certCosts(p), remind_days: REMIND_DAYS });
   }));
   app.put('/api/admin/certificates', withDb(async function (p, req, res) {
     const b = req.body || {};
@@ -1712,6 +1723,12 @@ module.exports = function mountJobs(app, opts) {
     const r = await p.query('UPDATE property_certificates SET job_id = $2, updated_at = now() WHERE id = $1 RETURNING id', [jobId(req), jid]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json({ ok: true });
+  }));
+  app.put('/api/admin/settings/cert-costs', withDb(async function (p, req, res) {
+    const b = req.body || {}, v = {};
+    for (const t of Object.keys(CERT_TYPES)) { if (t in b) { const m = money(b[t]); if (m === undefined) return res.status(400).json({ ok: false, error: 'bad-amount' }); if (m !== null) v[t] = m; } }
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('cert_costs', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(v)]);
+    res.json({ ok: true, costs: await certCosts(p) });
   }));
   app.put('/api/admin/settings/cert-contractors', withDb(async function (p, req, res) {
     const b = req.body || {}, v = {};
@@ -1950,14 +1967,15 @@ module.exports = function mountJobs(app, opts) {
         const ll = (await p.query(`SELECT l.name, l.email, l.phone, l.address FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1`, [c.property_key])).rows[0] || null;
         const expiryAt = new Date(c.expires_on + 'T17:00:00Z');
         const due = expiryAt > new Date() ? expiryAt : new Date(Date.now() + DUE_HOURS.Urgent * 3600 * 1000);
+        const cost = (await certCosts(p))[c.type];
         const r = await p.query(`INSERT INTO jobs (status, urgency, due_at, source, property_address, category, affected, description, assigned_to,
-            tenant_name, tenant_phone, tenant_email, key_permission, key_instructions, access_notes, landlord_name, landlord_email, landlord_phone, landlord_address)
-          VALUES ($1, $2, $3, 'Other', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+            tenant_name, tenant_phone, tenant_email, key_permission, key_instructions, access_notes, landlord_name, landlord_email, landlord_phone, landlord_address, estimated_cost)
+          VALUES ($1, $2, $3, 'Other', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
           [assigned ? 'Assigned' : 'New', past ? 'Urgent' : 'Routine', due, tidyAddress(address), def.category, def.job,
             def.long + (past ? ' expired on ' : ' expires on ') + certDay(c.expires_on) + '. Please contact the tenant directly to arrange a time.', assigned,
             tenant ? tenant.name : last.tenant_name || null, tenant ? tenant.phone : last.tenant_phone || null, tenant ? tenant.email : last.tenant_email || null,
             last.key_permission || null, last.key_instructions || null, last.access_notes || null,
-            ll ? ll.name : null, ll ? ll.email : null, ll ? ll.phone : null, ll ? ll.address : null]);
+            ll ? ll.name : null, ll ? ll.email : null, ll ? ll.phone : null, ll ? ll.address : null, cost == null ? null : cost]);
         const id = r.rows[0].id;
         await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'created',
           'Job raised automatically: ' + def.name + (past ? ' expired on ' : ' expires on ') + certDay(c.expires_on) + '.' + (assigned ? ' Assigned to ' + assigned + '.' : ' No contractor chosen for ' + def.name + ' yet.')]);
@@ -1971,6 +1989,24 @@ module.exports = function mountJobs(app, opts) {
       }
     } finally { raising = false; }
   }
+  // Open certificate jobs raised before costs were set get the cost to us.
+  setTimeout(function () {
+    db().then(async function (p) {
+      if (!p) return;
+      const costs = await certCosts(p);
+      const rows = (await p.query(`SELECT id, category, affected FROM jobs WHERE estimated_cost IS NULL AND actual_cost IS NULL AND archived_at IS NULL
+        AND status NOT IN ('Completed', 'Cancelled')`)).rows;
+      let n = 0;
+      for (const r of rows) {
+        const t = certTypeOf(r.category, r.affected);
+        if (!t || costs[t] == null) continue;
+        await p.query('UPDATE jobs SET estimated_cost = $2 WHERE id = $1 AND estimated_cost IS NULL', [r.id, costs[t]]);
+        await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.id, 'change', 'Estimated cost: none → ' + gbp(costs[t]) + ' (usual ' + CERT_TYPES[t].name + ' cost)']);
+        n += 1;
+      }
+      if (n) console.log('Added the usual certificate cost to ' + n + ' open job(s)');
+    }).catch(function (err) { console.error('Certificate cost backfill failed:', err.message); });
+  }, 30 * 1000);
   setTimeout(function () { raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); }); }, 60 * 1000);
   setInterval(function () { raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); }); }, 3600 * 1000).unref();
 
@@ -2046,6 +2082,10 @@ module.exports = function mountJobs(app, opts) {
     let due = body.due_at ? new Date(body.due_at) : null;
     if (!due || isNaN(due)) due = new Date(received.getTime() + DUE_HOURS[urgency] * 3600 * 1000);
     const status = str(body.assigned_to) ? 'Assigned' : 'New';
+    if (!('estimated_cost' in body) || body.estimated_cost === '' || body.estimated_cost == null) {
+      const ct = certTypeOf(body.category, body.affected);
+      if (ct) { const costs = await certCosts(p); if (costs[ct] != null) add('estimated_cost', costs[ct]); }
+    }
     add('urgency', urgency); add('source', source); add('created_at', received); add('due_at', due); add('status', status);
 
     const r = await p.query('INSERT INTO jobs (' + cols.join(', ') + ') VALUES (' +
