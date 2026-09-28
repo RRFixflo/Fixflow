@@ -1956,9 +1956,9 @@ module.exports = function mountJobs(app, opts) {
       .filter(function (x) { return certTypeOf(x.category, x.affected) === type && sameProperty(x.property_address, address); });
   }
   // One job per certificate: where a property has more than one open job for the
-  // same certificate, keep the first (or the one already sent to the contractor)
-  // and archive automatically-raised extras that were never sent. Certificates
-  // are pointed at the job that's kept.
+  // same certificate, keep the one already sent to the contractor (or the oldest)
+  // and archive the extras that were never sent. Certificates are pointed at the
+  // job that's kept.
   async function dedupeCertJobs(p) {
     const open = (await p.query(`SELECT j.id, j.property_address, j.category, j.affected, j.created_at,
         EXISTS (SELECT 1 FROM job_updates u WHERE u.job_id = j.id AND u.kind = 'contractor_message') AS sent,
@@ -1975,7 +1975,7 @@ module.exports = function mountJobs(app, opts) {
       if (g.jobs.length < 2) continue;
       const keep = g.jobs.filter(function (x) { return x.sent; })[0] || g.jobs.filter(function (x) { return !x.auto; })[0] || g.jobs[0];
       for (const x of g.jobs) {
-        if (x.id === keep.id || !x.auto || x.sent) continue;
+        if (x.id === keep.id || x.sent) continue;
         await p.query('UPDATE jobs SET archived_at = now(), archived_reason = $2, updated_at = now() WHERE id = $1', [x.id, 'Duplicate of ' + refFor(keep.id)]);
         await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [x.id, 'change', 'Archived: duplicate of ' + refFor(keep.id) + ' (same ' + CERT_TYPES[g.type].name + ').']);
         await p.query('UPDATE property_certificates SET job_id = $2 WHERE job_id = $1', [x.id, keep.id]);
@@ -2139,6 +2139,12 @@ module.exports = function mountJobs(app, opts) {
     const vals = [];
     const add = function (col, v) { cols.push(col); vals.push(v); };
     if (body.property_address) body.property_address = await canonicalAddress(p, body.property_address);
+    // Never two open jobs for the same certificate at the same property.
+    const certType = certTypeOf(body.category, body.affected);
+    if (certType && body.property_address && !body.allow_duplicate) {
+      const already = (await openCertJobs(p, certType, body.property_address))[0];
+      if (already) return res.json({ ok: true, id: already.id, ref: refFor(already.id), existing: true });
+    }
     const fields = ['tenant_name', 'tenant_email', 'tenant_phone', 'property_address', 'category', 'affected',
       'symptom', 'location', 'description', 'access_days', 'access_time', 'access_notes', 'key_permission',
       'key_instructions', 'direct_contact', 'assigned_to', 'next_steps', 'estimated_cost', 'landlord_charge',
