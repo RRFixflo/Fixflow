@@ -5803,7 +5803,8 @@
           '<p class="muted-note" id="tfDepByNote" style="margin:6px 0 0"></p></div>' +
           '<div><label class="lbl" for="tfScheme">Deposit scheme (for the agreement)</label><input class="inp" id="tfScheme" list="tfSchemes" value="' + esc(d.deposit_scheme || '') + '"><datalist id="tfSchemes">' + TCY_SCHEMES.map(function(s){ return '<option value="' + esc(s) + '"></option>'; }).join('') + '</datalist></div></div>' +
         '<h3 style="margin:16px 0 8px">Move-in monies</h3>' +
-        '<div class="grid3">' + tcyInp('tfDue', 'First rent and deposit due by *', d.move_in_due, ' type="date"') + tcyInp('tfSo', 'Standing order starts', d.so_start, ' type="date"') + tcyInp('tfSoN', 'Standing order payments', d.so_payments, ' inputmode="numeric"') + '</div>' +
+        '<div class="grid3">' + tcyInp('tfDue', 'First rent and deposit due by *', d.move_in_due, ' type="date"') + tcyInp('tfSo', 'Standing order starts', d.so_start || addMonthsIso(d.start_date, 1), ' type="date" data-auto="' + (!d.so_start || d.so_start === addMonthsIso(d.start_date, 1) ? '1' : '0') + '"') +
+          tcyInp('tfSoN', 'Standing order payments', d.so_payments || Math.max(1, (parseInt(d.term_months, 10) || 12) - 1), ' inputmode="numeric" data-auto="' + (!d.so_payments || d.so_payments === Math.max(1, (parseInt(d.term_months, 10) || 12) - 1) ? '1' : '0') + '"') + '</div>' +
         '<div class="grid3" style="margin-top:10px">' + tcyInp('tfPayRef', 'Payment reference', d.pay_ref, ' maxlength="18" autocapitalize="off"') + '</div>' +
         '<p class="muted-note" style="margin:6px 0 10px">Usually 48 hours after the agreement is sent. The standing order starts a month after moving in unless you change it.</p>' +
         '<div class="tcy-sum" id="tfSum"></div>' +
@@ -5958,7 +5959,16 @@
   // Form events, attached once (the form itself is redrawn).
   (function(){
     var body = $('tcyDetail');
-    body.addEventListener('input', function(e){ if (tcyDraft && e.target.closest('.tcy-form')) tcyRefresh(); });
+    body.addEventListener('input', function(e){
+      if (!tcyDraft || !e.target.closest('.tcy-form')) return;
+      // The standing order starts a month after moving in, for the rest of the term,
+      // until someone types their own date or number.
+      var id = e.target.id;
+      if (id === 'tfSo' || id === 'tfSoN') e.target.dataset.auto = e.target.value ? '0' : '1';
+      if (id === 'tfStart' && $('tfSo').dataset.auto !== '0') $('tfSo').value = addMonthsIso($('tfStart').value, 1);
+      if (id === 'tfTerm' && $('tfSoN').dataset.auto !== '0') { var tm = parseInt($('tfTerm').value, 10); $('tfSoN').value = tm > 1 ? tm - 1 : ''; }
+      tcyRefresh();
+    });
     body.addEventListener('change', function(e){
       if (tcyDraft && e.target.id === 'tfAddress') {
         tcyRead();
