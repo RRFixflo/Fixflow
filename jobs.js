@@ -1717,6 +1717,13 @@ module.exports = function mountJobs(app, opts) {
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json({ ok: true });
   }));
+  // An open job already booked for this certificate at this property, if any.
+  app.get('/api/admin/certificates/open-job', withDb(async function (p, req, res) {
+    const type = CERT_TYPES[req.query.type] ? req.query.type : null;
+    if (!type || !req.query.address) return res.status(400).json({ ok: false, error: 'bad-request' });
+    const j = (await openCertJobs(p, type, String(req.query.address)))[0];
+    res.json({ ok: true, job_id: j ? j.id : null });
+  }));
   // The job booked to renew a certificate.
   app.put('/api/admin/certificates/:id/job', withDb(async function (p, req, res) {
     const jid = parseInt((req.body || {}).job_id, 10) || null;
@@ -1933,11 +1940,74 @@ module.exports = function mountJobs(app, opts) {
     return fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: NTFY_TOPIC }, body)), signal: AbortSignal.timeout(8000) })
       .then(function (r) { return r.ok; }).catch(function (err) { console.error('Phone alert failed:', err.message); return false; });
   }
+  // Same home? Same tidied address, or same postcode (or one missing) with the
+  // same door number(s) and a building/street word in common.
+  function sameProperty(a, b) {
+    if (!a || !b) return false;
+    if (propKey(a) === propKey(b)) return true;
+    const ma = POSTCODE_RE.exec(a), mb = POSTCODE_RE.exec(b);
+    if (ma && mb && (ma[1] + ma[2]).toUpperCase() !== (mb[1] + mb[2]).toUpperCase()) return false;
+    return sameHome(a, b);
+  }
+  // Open jobs for a certificate type at a property, oldest first.
+  async function openCertJobs(p, type, address) {
+    return (await p.query(`SELECT id, property_address, category, affected, status, created_at FROM jobs
+      WHERE archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled') ORDER BY created_at, id`)).rows
+      .filter(function (x) { return certTypeOf(x.category, x.affected) === type && sameProperty(x.property_address, address); });
+  }
+  // One job per certificate: where a property has more than one open job for the
+  // same certificate, keep the first (or the one already sent to the contractor)
+  // and archive automatically-raised extras that were never sent. Certificates
+  // are pointed at the job that's kept.
+  async function dedupeCertJobs(p) {
+    const open = (await p.query(`SELECT j.id, j.property_address, j.category, j.affected, j.created_at,
+        EXISTS (SELECT 1 FROM job_updates u WHERE u.job_id = j.id AND u.kind = 'contractor_message') AS sent,
+        EXISTS (SELECT 1 FROM job_updates u WHERE u.job_id = j.id AND u.kind = 'created' AND u.body LIKE 'Job raised automatically%') AS auto
+      FROM jobs j WHERE j.archived_at IS NULL AND j.status NOT IN ('Completed', 'Cancelled') ORDER BY j.created_at, j.id`)).rows
+      .map(function (x) { x.type = certTypeOf(x.category, x.affected); return x; }).filter(function (x) { return x.type; });
+    const groups = [];
+    open.forEach(function (x) {
+      const g = groups.filter(function (gr) { return gr.type === x.type && sameProperty(gr.jobs[0].property_address, x.property_address); })[0];
+      if (g) g.jobs.push(x); else groups.push({ type: x.type, jobs: [x] });
+    });
+    let archived = 0;
+    for (const g of groups) {
+      if (g.jobs.length < 2) continue;
+      const keep = g.jobs.filter(function (x) { return x.sent; })[0] || g.jobs.filter(function (x) { return !x.auto; })[0] || g.jobs[0];
+      for (const x of g.jobs) {
+        if (x.id === keep.id || !x.auto || x.sent) continue;
+        await p.query('UPDATE jobs SET archived_at = now(), archived_reason = $2, updated_at = now() WHERE id = $1', [x.id, 'Duplicate of ' + refFor(keep.id)]);
+        await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [x.id, 'change', 'Archived: duplicate of ' + refFor(keep.id) + ' (same ' + CERT_TYPES[g.type].name + ').']);
+        await p.query('UPDATE property_certificates SET job_id = $2 WHERE job_id = $1', [x.id, keep.id]);
+        archived += 1;
+      }
+    }
+    if (archived) console.log('Archived ' + archived + ' duplicate certificate job(s)');
+    return archived;
+  }
+  // Certificate jobs are Urgent once the certificate has expired, otherwise Routine
+  // (deadline: 5 days when urgent, else the expiry date).
+  async function syncCertUrgency(p) {
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = (await p.query(`SELECT c.type, c.expires_on, j.id, j.urgency, j.due_at FROM property_certificates c
+      JOIN jobs j ON j.id = c.job_id AND j.archived_at IS NULL AND j.status NOT IN ('Completed', 'Cancelled')
+      WHERE c.expires_on IS NOT NULL AND NOT c.not_required`)).rows;
+    for (const r of rows) {
+      const want = r.expires_on < today ? 'Urgent' : 'Routine';
+      if (r.urgency === want) continue;
+      const due = want === 'Urgent' ? new Date(Date.now() + DUE_HOURS.Urgent * 3600 * 1000) : new Date(r.expires_on + 'T17:00:00Z');
+      await p.query('UPDATE jobs SET urgency = $2, due_at = $3, updated_at = now() WHERE id = $1', [r.id, want, due]);
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.id, 'change',
+        'Urgency: ' + r.urgency + ' → ' + want + (want === 'Urgent' ? ' (the ' + CERT_TYPES[r.type].name + ' has expired)' : ' (certificate still in date)')]);
+    }
+  }
   let raising = false;
   async function raiseCertificateJobs() {
     if (raising) return; raising = true;
     try {
       const p = await db(); if (!p) return;
+      await dedupeCertJobs(p);
+      await syncCertUrgency(p);
       const today = new Date().toISOString().slice(0, 10);
       const soon = new Date(Date.now() + REMIND_DAYS * 86400000).toISOString().slice(0, 10);
       const rows = (await p.query(`SELECT c.* FROM property_certificates c
@@ -1952,6 +2022,13 @@ module.exports = function mountJobs(app, opts) {
         const claim = await p.query('UPDATE property_certificates SET reminded_at = now() WHERE id = $1 AND reminded_at IS NULL RETURNING id', [c.id]);
         if (!claim.rows.length) continue;
         const def = CERT_TYPES[c.type], past = c.expires_on < today;
+        // Already an open job for this certificate at this property? Use it — never book twice.
+        const existing = (await openCertJobs(p, c.type, c.address))[0];
+        if (existing) {
+          await p.query('UPDATE property_certificates SET job_id = $2, updated_at = now() WHERE id = $1', [c.id, existing.id]);
+          console.log('Linked ' + refFor(existing.id) + ' to the ' + def.name + ' at ' + c.address + ' (already booked)');
+          continue;
+        }
         const recent = (await p.query(`SELECT property_address, tenant_name, tenant_phone, tenant_email, key_permission, key_instructions, access_notes
           FROM jobs WHERE property_address IS NOT NULL ORDER BY created_at DESC LIMIT 2000`)).rows.filter(function (x) { return propKey(x.property_address) === c.property_key; });
         // Use a complete address (door number + postcode) from the certificate or an earlier job.

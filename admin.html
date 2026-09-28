@@ -5011,7 +5011,7 @@
     var who = certContractorName(type);
     var t = tenantsAtProperty(address)[0] || null;
     var last = jobs.filter(function(j){ return propKey(j.property_address) === key && (j.tenant_name || j.tenant_phone); }).sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })[0] || {};
-    var body = { property_address: address, category: def.category, affected: def.job, urgency: 'Routine', source: 'Other',
+    var body = { property_address: address, category: def.category, affected: def.job, urgency: c && st.days < 0 ? 'Urgent' : 'Routine', source: 'Other',
       description: def.long + (c && c.expires_on ? (st.days < 0 ? ' expired on ' : ' expires on ') + certDay(c.expires_on) : ' needed') + '. Please contact the tenant directly to arrange a time.' };
     if (who) body.assigned_to = who;
     if (t) { if (t.name) body.tenant_name = t.name; if (t.phone) body.tenant_phone = t.phone; if (t.email) body.tenant_email = t.email; }
@@ -5019,7 +5019,16 @@
     if (c && c.expires_on && st.days > 0) { var due = new Date(c.expires_on + 'T17:00:00'); if (due > new Date()) body.due_at = due.toISOString(); }
     var ll = landlordAt(address); if (ll) LL_FIELDS.forEach(function(k){ if (ll[k]) body[k] = ll[k]; });
     busy(btn, true, 'Booking…');
-    api('POST', '/api/admin/jobs', body).then(function(d){
+    // Only ever one job per certificate: reuse an open one if it's already booked.
+    api('GET', '/api/admin/certificates/open-job?type=' + encodeURIComponent(type) + '&address=' + encodeURIComponent(address)).then(function(ex){
+      if (ex && ex.ok && ex.job_id) {
+        busy(btn, false);
+        var linkEx = c ? api('PUT', '/api/admin/certificates/' + c.id + '/job', { job_id: ex.job_id }) : Promise.resolve();
+        return linkEx.then(loadCerts).then(loadJobs).then(function(){ toast('Already booked — opening that job'); openJob(ex.job_id); });
+      }
+      return createCertJob();
+    });
+    function createCertJob(){ return api('POST', '/api/admin/jobs', body).then(function(d){
       busy(btn, false);
       if (!d.ok) { toast('Couldn’t create the job (' + (d.error || 'error') + ')'); return; }
       var link = c ? api('PUT', '/api/admin/certificates/' + c.id + '/job', { job_id: d.id }) : Promise.resolve();
@@ -5028,7 +5037,7 @@
         toast(d.ref + ' created' + (who ? ' for ' + who : '') + ' — send it to them');
         if (jb) showContractorMessage([jb]);
       });
-    });
+    }); }
   }
 
   // Add / update a certificate.
