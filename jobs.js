@@ -1960,7 +1960,7 @@ module.exports = function mountJobs(app, opts) {
   // and archive the extras that were never sent. Certificates are pointed at the
   // job that's kept.
   async function dedupeCertJobs(p) {
-    const open = (await p.query(`SELECT j.id, j.property_address, j.category, j.affected, j.created_at,
+    const open = (await p.query(`SELECT j.id, j.property_address, j.category, j.affected, j.created_at, j.status,
         EXISTS (SELECT 1 FROM job_updates u WHERE u.job_id = j.id AND u.kind = 'contractor_message') AS sent,
         EXISTS (SELECT 1 FROM job_updates u WHERE u.job_id = j.id AND u.kind = 'created' AND u.body LIKE 'Job raised automatically%') AS auto
       FROM jobs j WHERE j.archived_at IS NULL AND j.status NOT IN ('Completed', 'Cancelled') ORDER BY j.created_at, j.id`)).rows
@@ -1973,16 +1973,22 @@ module.exports = function mountJobs(app, opts) {
     let archived = 0;
     for (const g of groups) {
       if (g.jobs.length < 2) continue;
-      const keep = g.jobs.filter(function (x) { return x.sent; })[0] || g.jobs.filter(function (x) { return !x.auto; })[0] || g.jobs[0];
+      // Keep the one furthest along (booked > awaiting parts > assigned > new),
+      // then one already sent to the contractor, then one added by hand, then the oldest.
+      const STAGE = { 'Contractor booked': 4, 'Awaiting parts': 3, 'On hold': 2, 'Assigned': 1, 'New': 0 };
+      const keep = g.jobs.slice().sort(function (a, b) {
+        return ((STAGE[b.status] || 0) - (STAGE[a.status] || 0)) || ((b.sent ? 1 : 0) - (a.sent ? 1 : 0)) || ((a.auto ? 1 : 0) - (b.auto ? 1 : 0)) || (new Date(a.created_at) - new Date(b.created_at));
+      })[0];
       for (const x of g.jobs) {
-        if (x.id === keep.id || x.sent) continue;
+        if (x.id === keep.id) continue;
         await p.query('UPDATE jobs SET archived_at = now(), archived_reason = $2, updated_at = now() WHERE id = $1', [x.id, 'Duplicate of ' + refFor(keep.id)]);
-        await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [x.id, 'change', 'Archived: duplicate of ' + refFor(keep.id) + ' (same ' + CERT_TYPES[g.type].name + ').']);
+        await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [x.id, 'change', 'Archived: duplicate of ' + refFor(keep.id) + ' (same ' + CERT_TYPES[g.type].name + ').' + (x.sent ? ' It had been sent to the contractor too — ' + refFor(keep.id) + ' is the job to use.' : '')]);
+        await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [keep.id, 'note', refFor(x.id) + ' was a duplicate of this job and has been archived.']);
         await p.query('UPDATE property_certificates SET job_id = $2 WHERE job_id = $1', [x.id, keep.id]);
         archived += 1;
       }
     }
-    if (archived) console.log('Archived ' + archived + ' duplicate certificate job(s)');
+    console.log('Duplicate check: ' + groups.filter(function (g) { return g.jobs.length > 1; }).length + ' set(s) found, ' + archived + ' job(s) archived');
     return archived;
   }
   // Certificate jobs are Urgent once the certificate has expired, otherwise Routine
