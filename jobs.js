@@ -8,6 +8,7 @@
 // Without DATABASE_URL the report tool works exactly as before (email only) and
 // /admin says the database isn't connected.
 const crypto = require('crypto');
+const tenancy = require('./tenancy');
 
 let Pool = null;
 try { Pool = require('pg').Pool; } catch (e) { /* pg not installed: jobs disabled */ }
@@ -193,6 +194,17 @@ CREATE TABLE IF NOT EXISTS epc_checks (
   found        BOOLEAN NOT NULL DEFAULT false
 );
 ALTER TABLE epc_checks ADD COLUMN IF NOT EXISTS address_synced BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS tenancies (
+  id           SERIAL PRIMARY KEY,
+  property_key TEXT,
+  address      TEXT,
+  start_date   TEXT,
+  data         JSONB NOT NULL DEFAULT '{}'::jsonb,
+  log          JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS tenancies_key ON tenancies (property_key);
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      JSONB,
@@ -1707,6 +1719,143 @@ module.exports = function mountJobs(app, opts) {
     return /eicr|electrical (safety|installation)/i.test(t) ? 'EICR' : /gas safety|cp12/i.test(t) ? 'Gas' : /\bepc\b|energy performance/i.test(t) ? 'EPC' : null;
   }
   function isoDay(v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) && apptDay(v) ? String(v) : null; }
+  // ---------- Tenancies ----------
+  // A tenancy's details are kept as one JSON document (the admin page works out
+  // the deposit, move-in monies and statements from them). Saving one also
+  // records the landlord and tenants against the property.
+  function cleanTenancy(b) {
+    const s = function (v, n) { return str(v, n || 200); };
+    const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null; };
+    const amt = function (v) { const m = money(v); return m === undefined ? null : m; };
+    const person = function (x) { x = x || {}; return { name: s(x.name), email: s(x.email), phone: s(x.phone, 50), address: s(x.address, 500) }; };
+    const l = b.landlord || {};
+    return {
+      address: s(b.address, 500), negotiator: s(b.negotiator), date_taken: day(b.date_taken),
+      start_date: day(b.start_date), term_months: parseInt(b.term_months, 10) || null, break_months: parseInt(b.break_months, 10) || 0,
+      rent_pcm: amt(b.rent_pcm), deposit: amt(b.deposit), holding: amt(b.holding), deposit_by: b.deposit_by === 'landlord' ? 'landlord' : 'agent', deposit_scheme: s(b.deposit_scheme),
+      move_in_due: day(b.move_in_due), so_start: day(b.so_start), so_payments: parseInt(b.so_payments, 10) || null,
+      checkin_date: day(b.checkin_date), checkin_time: s(b.checkin_time, 20),
+      tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
+      guarantors: (Array.isArray(b.guarantors) ? b.guarantors : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
+      landlord: { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(l.postcode, 20) },
+      service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
+      fees: (Array.isArray(b.fees) ? b.fees : []).slice(0, 30).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount) }; }).filter(function (f) { return f.label; }),
+      vat: b.vat !== false, statement_date: day(b.statement_date), notes: s(b.notes, 4000)
+    };
+  }
+  async function linkTenancyPeople(p, d) {
+    if (!d.address) return;
+    const l = d.landlord;
+    if (l.name) await ensureLandlord(p, { name: l.name, email: l.email, phone: l.phone, address: [l.line1, l.line2, l.country, l.postcode].filter(Boolean).join(', ') || null }, d.address);
+    for (const t of d.tenants) await ensureTenant(p, { name: t.name, email: t.email, phone: t.phone }, d.address, true);
+  }
+  app.get('/api/admin/tenancies', withDb(async function (p, req, res) {
+    const r = await p.query('SELECT id, property_key, address, start_date, data, log, created_at, updated_at FROM tenancies ORDER BY start_date DESC NULLS LAST, id DESC');
+    res.json({ ok: true, tenancies: r.rows });
+  }));
+  app.post('/api/admin/tenancies', withDb(async function (p, req, res) {
+    const d = cleanTenancy(req.body || {});
+    if (!d.address) return res.status(400).json({ ok: false, error: 'address-required' });
+    const r = await p.query(`INSERT INTO tenancies (property_key, address, start_date, data, log) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [propKey(d.address), d.address, d.start_date, JSON.stringify(d), JSON.stringify([{ at: new Date().toISOString(), text: 'Tenancy created' }])]);
+    await linkTenancyPeople(p, d);
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+  app.put('/api/admin/tenancies/:id', withDb(async function (p, req, res) {
+    const d = cleanTenancy(req.body || {});
+    if (!d.address) return res.status(400).json({ ok: false, error: 'address-required' });
+    const r = await p.query('UPDATE tenancies SET property_key = $2, address = $3, start_date = $4, data = $5, updated_at = now() WHERE id = $1 RETURNING id',
+      [jobId(req), propKey(d.address), d.address, d.start_date, JSON.stringify(d)]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    await linkTenancyPeople(p, d);
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+  app.delete('/api/admin/tenancies/:id', withDb(async function (p, req, res) {
+    const r = await p.query('DELETE FROM tenancies WHERE id = $1 RETURNING id', [jobId(req)]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json({ ok: true });
+  }));
+  // Something done with a tenancy (emails sent, documents made), for its history.
+  app.post('/api/admin/tenancies/:id/log', withDb(async function (p, req, res) {
+    const text = str((req.body || {}).text, 500);
+    if (!text) return res.status(400).json({ ok: false, error: 'empty' });
+    const r = await p.query(`UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1 RETURNING id`,
+      [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: text }])]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json({ ok: true });
+  }));
+  // Email templates, bank details and signatures (defaults until edited).
+  async function tenancyTemplates(p) {
+    const row = (await p.query("SELECT value FROM app_settings WHERE key = 'tenancy_templates'")).rows[0];
+    return Object.assign(tenancy.defaultTemplates(), row && row.value && typeof row.value === 'object' ? row.value : {});
+  }
+  async function agreementTemplate(p) {
+    const row = (await p.query("SELECT value, updated_at FROM app_settings WHERE key = 'tenancy_agreement'")).rows[0];
+    return row && row.value && row.value.data ? { name: row.value.name, data: row.value.data, updated_at: row.updated_at } : null;
+  }
+  app.get('/api/admin/tenancy-settings', withDb(async function (p, req, res) {
+    const a = await agreementTemplate(p);
+    let fields = [];
+    if (a) { try { fields = tenancy.docxPlaceholders(Buffer.from(a.data, 'base64')); } catch (e) { fields = []; } }
+    res.json({ ok: true, templates: await tenancyTemplates(p), defaults: tenancy.defaultTemplates(), agreement: a ? { name: a.name, updated_at: a.updated_at, fields: fields } : null });
+  }));
+  app.put('/api/admin/tenancy-settings', withDb(async function (p, req, res) {
+    const b = req.body || {}, keep = {};
+    ['tenant_subject', 'tenant_body', 'landlord_subject', 'landlord_body', 'bank_details', 'signature_tenant', 'signature_landlord'].forEach(function (k) {
+      if (typeof b[k] === 'string') keep[k] = b[k].slice(0, 30000);
+    });
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('tenancy_templates', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(keep)]);
+    res.json({ ok: true, templates: await tenancyTemplates(p) });
+  }));
+  // The tenancy agreement: a Word .docx with {{placeholders}}.
+  app.put('/api/admin/tenancy-agreement', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const data = typeof b.data === 'string' ? b.data.replace(/^data:[^,]*,/, '') : '';
+    if (!data || data.length > 20 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'no-file' });
+    let fields;
+    try { fields = tenancy.docxPlaceholders(Buffer.from(data, 'base64')); } catch (e) { return res.status(400).json({ ok: false, error: 'not-a-docx' }); }
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('tenancy_agreement', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`,
+      [JSON.stringify({ name: str(b.name, 200) || 'Tenancy agreement.docx', data: data })]);
+    res.json({ ok: true, fields: fields });
+  }));
+  // Fill in the agreement for a tenancy: Word, or PDF (LibreOffice on the server).
+  // The admin page sends the worked-out wording (dates, amounts, names).
+  async function makeAgreement(p, body) {
+    const a = await agreementTemplate(p);
+    if (!a) return { error: 'no-template' };
+    const v = body.values || {}, s = function (x) { return x == null ? '' : String(x).slice(0, 2000); };
+    const clean = { tenants: (Array.isArray(v.tenants) ? v.tenants : []).slice(0, 12).map(s), guarantors: (Array.isArray(v.guarantors) ? v.guarantors : []).slice(0, 12).map(s), values: {} };
+    ['address', 'landlord', 'start', 'rent', 'deposit', 'deposit_scheme', 'first_rent', 'rent_day', 'second_rent', 'second_rent_month', 'agreement_date'].forEach(function (k) { clean[k] = s(v[k]); });
+    Object.keys(v.values || {}).slice(0, 200).forEach(function (k) { clean.values[String(k).toLowerCase()] = s(v.values[k]); });
+    const docx = tenancy.fillAgreement(Buffer.from(a.data, 'base64'), clean);
+    if (body.format !== 'pdf') return { data: docx, type: 'docx' };
+    return { data: await tenancy.docxToPdf(docx), type: 'pdf' };
+  }
+  app.post('/api/admin/tenancies/:id/agreement', withDb(async function (p, req, res) {
+    let out;
+    try { out = await makeAgreement(p, req.body || {}); }
+    catch (e) { console.error('Tenancy agreement failed:', e.message); return res.status(500).json({ ok: false, error: (req.body || {}).format === 'pdf' ? 'pdf-failed' : 'bad-template' }); }
+    if (out.error) return res.status(404).json({ ok: false, error: out.error });
+    res.json({ ok: true, type: out.type, data: out.data.toString('base64') });
+  }));
+  // Send a welcome email (when email sending is set up), with PDFs attached.
+  app.post('/api/admin/tenancies/:id/email', withDb(async function (p, req, res) {
+    if (!canEmail()) return res.status(503).json({ ok: false, error: 'email-not-configured' });
+    const b = req.body || {};
+    const to = (Array.isArray(b.to) ? b.to : [b.to]).map(function (x) { return str(x, 200); }).filter(function (x) { return x && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x); }).slice(0, 12);
+    const subject = str(b.subject, 300), text = str(b.body, 30000);
+    if (!to.length) return res.status(400).json({ ok: false, error: 'bad-address' });
+    if (!subject || !text) return res.status(400).json({ ok: false, error: 'empty' });
+    const atts = (Array.isArray(b.attachments) ? b.attachments : []).slice(0, 6).map(function (a) {
+      return { filename: (str(a && a.name, 150) || 'Document.pdf').replace(/[^a-zA-Z0-9.\-_ ]+/g, '-'), content: String(a && a.data || '').replace(/^data:[^,]*,/, '') };
+    }).filter(function (a) { return a.content && a.content.length < 15 * 1024 * 1024; });
+    const sent = await sendEmail({ to: to, subject: subject, text: text, attachments: atts });
+    if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
+    await p.query(`UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1`,
+      [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: 'Emailed ' + to.join(', ') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : '') }])]);
+    res.json({ ok: true });
+  }));
+
   app.get('/api/admin/certificates', withDb(async function (p, req, res) {
     const r = await p.query('SELECT id, property_key, address, type, issued_on, expires_on, reference, rating, notes, not_required, job_id, reminded_at, updated_at FROM property_certificates ORDER BY expires_on NULLS LAST');
     const s = (await p.query("SELECT value FROM app_settings WHERE key = 'cert_contractors'")).rows[0];
