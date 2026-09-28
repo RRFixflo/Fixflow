@@ -2098,6 +2098,7 @@
   });
 
   function selectCategory(c){
+    if (window.rrt) window.rrt('cat', c.label);
     state.category = c.label;
     state.categoryKey = c.key;
     document.querySelectorAll('.cat').forEach(function(el){
@@ -2143,6 +2144,7 @@
 
   // "Other": whatever they searched for becomes the start of their description.
   function chooseOther(){
+    if (window.rrt) window.rrt('cat', 'Other');
     var other = CATS.filter(function(c){ return c.key === 'other'; })[0];
     var q = document.getElementById('catSearch').value.trim();
     var desc = document.getElementById('description');
@@ -2283,6 +2285,7 @@
 
   // navigation
   function goTo(step){
+    if (window.rrt) window.rrt('step', step);
     document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
     if(step === 'done'){
       document.getElementById('panel-done').classList.add('active');
@@ -2750,6 +2753,7 @@
       b.innerHTML = '<span class="flag">' + l.flag + '</span><span>' + l.native + '</span>' + (l.code === currentLang ? ' ✓' : '');
       b.addEventListener('click', function(){
         currentLang = l.code;
+        if (window.rrt) window.rrt('lang', l.en || l.code);
         document.getElementById('langBtnLabel').textContent = l.native;
         document.getElementById('langOverlay').style.display = 'none';
         applyTranslations(document.body);
@@ -3085,6 +3089,7 @@
         document.getElementById('sentNote').style.display = '';
         var track = document.getElementById('trackLink');
         if (track && result.trackUrl) { track.href = result.trackUrl; track.style.display = 'inline-flex'; }
+        if (window.rrt) window.rrt('submit', result.ref || 'sent');
         if (openLink) {
           openLink.href = lastPdfUrl;
           openLink.setAttribute('download', filename);
@@ -3505,9 +3510,6 @@
   goTo(1);
 })();
 </script>
-<script>
-  // Count this visit (once per page load; no personal details are sent).
-  try { if (navigator.sendBeacon) navigator.sendBeacon('/api/visit?p=report'); else fetch('/api/visit?p=report', { method: 'POST', keepalive: true }); } catch (e) {}
-</script>
+<script src="/rrt.js" defer></script>
 </body>
 </html>
