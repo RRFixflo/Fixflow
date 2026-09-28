@@ -2820,7 +2820,7 @@ module.exports = function mountJobs(app, opts) {
   app.post('/api/admin/jobs/:id/updates', withDb(async function (p, req, res) {
     const id = jobId(req);
     const text = str((req.body || {}).body, 5000);
-    const kind = ['tenant_message', 'contractor_message', 'email'].indexOf((req.body || {}).kind) !== -1 ? req.body.kind : 'note';
+    const kind = ['tenant_message', 'landlord_message', 'contractor_message', 'email'].indexOf((req.body || {}).kind) !== -1 ? req.body.kind : 'note';
     if (!text) return res.status(400).json({ ok: false, error: 'empty' });
     const r = await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1 RETURNING id', [id]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
