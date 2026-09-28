@@ -52,6 +52,8 @@ function aiCacheSet(key, value) {
 }
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
+// Keys made outside a workspace must name one (Anthropic console -> Settings -> Workspaces).
+const ANTHROPIC_WORKSPACE_ID = process.env.ANTHROPIC_WORKSPACE_ID || '';
 
 // Address lookup settings — set in Railway under Settings -> Variables:
 //   GETADDRESS_API_KEY (required for address lookup) your key from getaddress.io.
@@ -118,7 +120,7 @@ const jobs = require('./jobs')(app, {
   askAi: function (prompt, wantJson) {
     // Gemini first (free); if Google is overloaded and a Claude key is set, use Claude.
     if (!GEMINI_API_KEY) return askAnthropic(prompt, wantJson);
-    return askGemini(prompt, wantJson).then(function (r) {
+    return askGemini(prompt, wantJson, !!ANTHROPIC_API_KEY).then(function (r) {
       if (r.ok || !ANTHROPIC_API_KEY) return r;
       console.log('Gemini unavailable, using Claude');
       return askAnthropic(prompt, wantJson);
@@ -217,7 +219,8 @@ async function askAnthropic(prompt, wantJson) {
     headers: {
       'x-api-key': ANTHROPIC_API_KEY,
       'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      ...(ANTHROPIC_WORKSPACE_ID ? { 'anthropic-workspace-id': ANTHROPIC_WORKSPACE_ID } : {})
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
@@ -234,14 +237,15 @@ async function askAnthropic(prompt, wantJson) {
   return { ok: true, text: String((data.content && data.content[0] && data.content[0].text) || '').trim() };
 }
 
-async function askGemini(prompt, wantJson) {
+// quick: one pass over the models (used when Claude is there as a backup).
+async function askGemini(prompt, wantJson, quick) {
   // Overall budget across all models, so the tenant is never left waiting long;
   // the page gives up a little after this too.
-  const deadline = Date.now() + (wantJson ? 100000 : 25000);
+  const deadline = Date.now() + (quick ? (wantJson ? 40000 : 15000) : (wantJson ? 100000 : 25000));
   // Google's free tier often answers "high demand" (503) from every model at
   // once for a few seconds, so go round the models again after a short pause.
   let pause = 2000;
-  for (let round = 0; round < (wantJson ? 4 : 2); round++) {
+  for (let round = 0; round < (quick ? 1 : wantJson ? 4 : 2); round++) {
     for (const model of GEMINI_MODELS) {
       if (Date.now() > deadline) return { ok: false };
       const result = await askGeminiModel(model, prompt, wantJson);
