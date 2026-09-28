@@ -510,6 +510,11 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
   }
+  .title-edit { border: 0; background: none; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .title-edit .pen { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; font-size: .9rem; color: var(--blue); background: var(--blue-tint); vertical-align: middle; margin-left: 4px; }
+  #propList .prop-row { grid-template-columns: minmax(0,1fr) 110px 110px 150px 34px 20px; }
+  @media (max-width: 800px) { #propList .prop-row { grid-template-columns: minmax(0,1fr) auto 34px; } }
+  .row-edit { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; color: var(--blue); background: var(--blue-tint); font-size: .9rem; cursor: pointer; }
   .addr-edit { border: 0; background: none; color: var(--blue); font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; padding: 2px 4px; white-space: nowrap; }
   .addr-warn { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .84rem; font-weight: 550; color: var(--warn); background: var(--warn-tint); border-radius: 10px; padding: 8px 10px; }
   .warn-pill { background: var(--warn-tint); color: var(--warn); font-size: .72rem; vertical-align: middle; }
@@ -1098,7 +1103,8 @@
     <h3>Edit address</h3>
     <label class="lbl" for="addrInput">Property address</label>
     <input class="inp" id="addrInput" autocomplete="off" placeholder="e.g. Flat 4, 6 Whitworth House, London SE1 6RW">
-    <div class="muted-note" style="margin-top:6px">Include the door or flat number and the full postcode.</div>
+    <div class="muted-note" style="margin-top:6px">Include the door or flat number and the full postcode — or type the postcode to pick the exact address.</div>
+    <div class="epc-results" id="addrPicks"></div>
     <label class="check-row" id="addrAllRow" hidden><input type="checkbox" id="addrAll" checked> <span id="addrAllText"></span></label>
     <div class="err-msg" id="addrErr"></div>
     <div class="row-actions"><button class="btn" type="button" id="addrCancel">Cancel</button><button class="btn primary" type="submit" id="addrSave">Save address</button></div>
@@ -2194,11 +2200,13 @@
         '<div class="num">' + p.jobs.length + '<small>repair' + (p.jobs.length === 1 ? '' : 's') + '</small></div>' +
         '<div class="num' + (open ? ' hot' : '') + '">' + open + '<small>open</small></div>' +
         '<div class="last">' + esc(fmtShort(p.latest)) + '<small>last reported</small></div>' +
-        '<span class="chev">›</span></button>';
+        '<span class="row-edit" data-prop-edit="' + esc(p.address) + '" role="button" tabindex="0" title="Edit address">✎</span><span class="chev">›</span></button>';
     }).join('');
   }
   $('propSearch').addEventListener('input', renderProps);
   $('propList').addEventListener('click', function(e){
+    var ed = e.target.closest('[data-prop-edit]');
+    if (ed) { e.preventDefault(); openAddressEdit(ed.dataset.propEdit, null); return; }
     var b = e.target.closest('.prop-row');
     if (b) openProperty(b.dataset.key);
   });
@@ -2231,7 +2239,7 @@
     var d = propertyJobs();
     if (!d) { $('propBack').click(); return; }
     var open = d.jobs.filter(isOpen).length, done = d.jobs.filter(function(j){ return j.status === 'Completed'; }).length;
-    $('propTitle').innerHTML = esc(d.property.address) + (addressProblem(d.property.address) ? ' <span class="pill warn-pill" title="' + esc(addressProblem(d.property.address)) + '">Address incomplete</span>' : '');
+    $('propTitle').innerHTML = '<button type="button" class="title-edit" id="propTitleEdit" title="Edit address">' + esc(d.property.address) + ' <span class="pen">✎</span></button>' + (addressProblem(d.property.address) ? ' <span class="pill warn-pill" title="' + esc(addressProblem(d.property.address)) + '">Address incomplete</span>' : '');
     $('propSub').textContent = d.property.jobs.length + ' repair' + (d.property.jobs.length === 1 ? '' : 's') + ' on record' +
       (postcodeArea(d.property.address) ? ' · ' + postcodeArea(d.property.address) : '');
     $('propTiles').innerHTML =
@@ -4942,7 +4950,7 @@
     }).sort(function(a, b){ return a.rank - b.rank || a.p.address.localeCompare(b.p.address); });
     if (!rows.length) { $('certList').innerHTML = '<div class="empty">' + (certFilter === 'action' ? 'Nothing needs booking right now. 🎉' : certFilter === 'missing' ? 'Every property has its certificates recorded.' : 'No properties match.') + '</div>'; return; }
     $('certList').innerHTML = rows.map(function(r){
-      return '<div class="cert-prop"><div class="cert-addr"><button type="button" class="link" data-cert-prop="' + esc(r.p.key) + '">' + esc(r.p.address) + '</button></div><div class="cert-grid">' +
+      return '<div class="cert-prop"><div class="cert-addr"><button type="button" class="link" data-cert-prop="' + esc(r.p.key) + '">' + esc(r.p.address) + '</button> <button type="button" class="addr-edit" data-addr-edit="' + esc(r.p.address) + '">✎ Edit</button></div><div class="cert-grid">' +
         r.cells.map(function(x){ return certCellHtml(x, r.p.address); }).join('') + '</div></div>';
     }).join('');
   }
@@ -4965,7 +4973,8 @@
   $('certTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-cf]'); if (b) { certFilter = b.dataset.cf; renderCerts(); } });
   function certClick(e){
     var b = e.target.closest('button'); if (!b || b.id === 'propCertsAll') return;
-    if (b.dataset.certEdit) openCertEdit(b.dataset.addr, b.dataset.certEdit);
+    if (b.dataset.addrEdit) openAddressEdit(b.dataset.addrEdit, null);
+    else if (b.dataset.certEdit) openCertEdit(b.dataset.addr, b.dataset.certEdit);
     else if (b.dataset.certBook) bookCert(b.dataset.addr, b.dataset.certBook, b);
     else if (b.dataset.openJob) openJob(Number(b.dataset.openJob));
     else if (b.dataset.certProp) { var pr = propertiesFromJobs().filter(function(x){ return x.key === b.dataset.certProp; })[0]; if (pr) openProperty(pr.key); }
@@ -5085,6 +5094,8 @@
     addrCtx = { from: address || '', jobId: jobId || null, others: others.length };
     $('addrInput').value = address || '';
     $('addrErr').textContent = '';
+    $('addrPicks').innerHTML = '';
+    setTimeout(function(){ $('addrInput').dispatchEvent(new Event('input')); }, 60);
     $('addrAllRow').hidden = !jobId || !others.length;
     $('addrAll').checked = true;
     $('addrAllText').textContent = 'Also update the other ' + others.length + ' job' + (others.length === 1 ? '' : 's') + ' at this property';
@@ -5113,10 +5124,30 @@
       closeAddressEdit();
       toast(all ? 'Address updated' + (d.changed > 1 ? ' on ' + d.changed + ' jobs' : '') : 'Address updated');
       if (wasOpenProp) openPropKey = propKey(to);
-      loadJobs().then(function(){ if (openJobId) openJob(openJobId); else if (wasOpenProp && view === 'props') renderProperty(); });
+      loadCerts().then(loadJobs).then(function(){ if (openJobId) openJob(openJobId); else if (wasOpenProp && view === 'props') renderProperty(); else if (view === 'certs') renderCerts(); });
     });
   });
   $('propAddrEdit').addEventListener('click', function(){ var d = propertyJobs(); if (d) openAddressEdit(d.property.address, null); });
+  $('propTitle').addEventListener('click', function(e){ if (e.target.closest('#propTitleEdit')) $('propAddrEdit').click(); });
+  // Postcode typed in the edit box: list the homes there (EPC register) to pick from.
+  var addrPickSeq = 0, addrPickTimer = null;
+  $('addrInput').addEventListener('input', function(){
+    clearTimeout(addrPickTimer);
+    var v = $('addrInput').value, m = POSTCODE_RE.exec(v);
+    if (!m) { $('addrPicks').innerHTML = ''; return; }
+    addrPickTimer = setTimeout(function(){
+      var mine = ++addrPickSeq;
+      fetch('/api/address/postcode?postcode=' + encodeURIComponent(m[1] + ' ' + m[2])).then(function(r){ return r.json(); }).then(function(d){
+        if (mine !== addrPickSeq) return;
+        if (!d.ok || !d.addresses.length) { $('addrPicks').innerHTML = ''; return; }
+        var nums = (v.replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function(x){ return x.toUpperCase(); });
+        var list = d.addresses.filter(function(a){ if (a === tidyAddress(v)) return false; var got = (a.replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function(x){ return x.toUpperCase(); }); return nums.every(function(n){ return got.indexOf(n) !== -1; }); });
+        if (!list.length) list = d.addresses.filter(function(a){ return a !== tidyAddress(v); });
+        $('addrPicks').innerHTML = list.length ? '<div class="muted-note" style="margin:4px 0">Tap the exact address (from the EPC register):</div>' + list.slice(0, 40).map(function(a){ return '<button type="button" class="epc-pick" data-a="' + esc(a) + '"><strong>' + esc(a) + '</strong></button>'; }).join('') : '';
+      })['catch'](function(){});
+    }, 300);
+  });
+  $('addrPicks').addEventListener('click', function(e){ var b = e.target.closest('.epc-pick'); if (!b) return; $('addrInput').value = b.dataset.a; $('addrPicks').innerHTML = ''; $('addrErr').textContent = ''; });
 
   // Phones: a bottom tab bar standing in for the sidebar. The buttons reuse the
   // sidebar's icons and simply click the matching sidebar item.
