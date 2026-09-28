@@ -92,14 +92,19 @@ app.use(express.json({ limit: '60mb' }));
 
 // Serve the report tool as a static file — Railway sets PORT itself, so we read it
 // from the environment rather than hardcoding it.
-app.use(express.static(__dirname));
+// Pages are always re-checked, so phones pick up a new version straight away
+// (images and icons can still be cached).
+const noCache = function (res, p) { if (/\.html$/.test(p)) res.setHeader('Cache-Control', 'no-cache'); };
+app.use(express.static(__dirname, { setHeaders: noCache }));
 
 app.get('/', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Staff dashboard for managing jobs (see jobs.js); its API needs ADMIN_PASSWORD.
 app.get('/admin', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
