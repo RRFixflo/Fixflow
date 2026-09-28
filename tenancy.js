@@ -251,6 +251,39 @@ function signatureBoxes(parts, who, count) {
   parts.forEach(function (x, i) { if (!drop.has(i)) out.push(x); if (after[i]) out.push.apply(out, after[i]); });
   return out;
 }
+// Keep a paragraph with the one after it (so a heading or table row never
+// ends a page on its own). keepNext goes right after pStyle in <w:pPr>.
+function keepWithNext(p) {
+  if (/<w:keepNext\/>/.test(p)) return p;
+  if (/<w:pPr>/.test(p) || /<w:pPr\s[^>]*>/.test(p)) {
+    if (/<w:pStyle\b[^>]*\/>/.test(p)) return p.replace(/(<w:pStyle\b[^>]*\/>)/, '$1<w:keepNext/>');
+    return p.replace(/(<w:pPr(?:\s[^>]*)?>)/, '$1<w:keepNext/>');
+  }
+  if (/<w:pPr\/>/.test(p)) return p.replace('<w:pPr/>', '<w:pPr><w:keepNext/></w:pPr>');
+  return p.replace(/^(<w:p\b[^>]*>)/, '$1<w:pPr><w:keepNext/></w:pPr>');
+}
+// A signature box (Name / Signature / Date) stays on one page: rows can't
+// split, and every row but the last keeps with the next.
+function keepBoxTogether(tbl) {
+  const rows = tbl.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) || [];
+  let out = tbl;
+  rows.forEach(function (row, i) {
+    let r = row;
+    if (!/<w:cantSplit\/>/.test(r)) r = /<w:trPr>/.test(r) ? r.replace('<w:trPr>', '<w:trPr><w:cantSplit/>') : /<w:trPr\/>/.test(r) ? r.replace('<w:trPr/>', '<w:trPr><w:cantSplit/></w:trPr>') : r.replace(/^(<w:tr\b[^>]*>)/, '$1<w:trPr><w:cantSplit/></w:trPr>');
+    if (i < rows.length - 1) r = r.replace(/<w:p\b(?![rP])[^>]*?(?:\/>|>[\s\S]*?<\/w:p>)/g, function (p) { return /\/>$/.test(p) && !/<\/w:p>$/.test(p) ? p : keepWithNext(p); });
+    out = out.replace(row, r);
+  });
+  return out;
+}
+function keepSignaturesTogether(parts) {
+  return parts.map(function (x, i) {
+    if (/^<w:tbl\b/.test(x) && /^\s*Name:[\s\S]*Signature:[\s\S]*Date:\s*$/.test(plain(x))) return keepBoxTogether(x);
+    // "SIGNED BY THE …:" headings (and blank lines under them) stay with their box.
+    if (/^<w:p\b/.test(x) && /^\s*SIGNED BY THE/i.test(plain(x))) return keepWithNext(x);
+    if (isBlank(x) && i > 0 && /^\s*SIGNED BY THE/i.test(plain(parts[i - 1]))) return keepWithNext(x);
+    return x;
+  });
+}
 // The front page's "Guarantors (3) …" box, when there are none.
 function dropFrontGuarantors(parts) {
   const out = parts.slice();
@@ -357,6 +390,7 @@ function fillAgreement(buf, v) {
       let parts = signatureBoxes(d.parts, 'tenant', Math.max(1, nt));
       parts = signatureBoxes(parts, 'guarantor', ng);
       if (!ng) parts = dropFrontGuarantors(parts);
+      parts = keepSignaturesTogether(parts);
       f.data = Buffer.from(replaceText(unfieldDates(d.head + parts.join('') + d.tail), rules), 'utf8');
     } else if (/^word\/(header\d*|footer\d*|footnotes|endnotes)\.xml$/.test(f.name)) {
       f.data = Buffer.from(replaceText(f.data.toString('utf8'), rules), 'utf8');
