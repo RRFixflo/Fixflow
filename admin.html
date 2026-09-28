@@ -4920,10 +4920,11 @@
       '<div class="ct">' + certTick(st) + ' ' + esc(x.def.name) + (x.c && x.c.rating ? ' <span class="count-chip">' + esc(x.c.rating) + '</span>' : '') + '</div>' +
       '<div class="cs">' + esc(st.text) + '</div>' + (status ? '<div class="cb">' + status + '</div>' : '') +
       (x.c && x.c.reference ? '<div class="cs" style="font-size:.74rem">No. ' + esc(x.c.reference) + '</div>' : '') +
-      '<div class="ca">' + (book ? '<button type="button" class="btn small ' + (st.k === 'expired' || st.k === 'due' ? 'primary' : '') + '" data-cert-book="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">Book ' + esc(certContractorName(x.def.type) || 'contractor') + '</button>' : '') +
+      '<div class="ca">' + (st.k === 'missing' ? '<button type="button" class="btn small primary" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">+ Add certificate</button>' : '') +
+        (book ? '<button type="button" class="btn small ' + (st.k === 'expired' || st.k === 'due' ? 'primary' : st.k === 'missing' ? 'ghost' : '') + '" data-cert-book="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">' + (st.k === 'missing' ? 'Book new' : 'Book ' + esc(certContractorName(x.def.type) || 'contractor')) + '</button>' : '') +
         (st.booked ? '<button type="button" class="btn small" data-open-job="' + jb.id + '">Open job</button>' : '') +
         (x.def.type === 'EPC' ? '<a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(epcUrl(x.c, address)) + '">' + (x.c && x.c.reference ? 'View EPC ↗' : 'Find EPC ↗') + '</a>' : '') +
-        '<button type="button" class="btn small ghost" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">' + (x.c ? 'Update' : 'Add') + '</button></div></div>';
+        (st.k === 'missing' ? '' : '<button type="button" class="btn small ghost" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">Update</button>') + '</div></div>';
   }
   var epcTried = {};
   function renderPropCerts(address){
@@ -5009,6 +5010,8 @@
   function bookCert(address, type, btn){
     var lockKey = propKey(address) + '|' + type;
     if (booking[lockKey]) return;
+    var stNow = certState(certFor(propKey(address), type));
+    if (stNow.k === 'missing' && !confirm('No ' + certDef(type).long + ' is recorded for ' + address + '.\n\nBook ' + (certContractorName(type) || 'a contractor') + ' for a new one?\n\nIf the property already has one, tap Cancel and use “Add certificate” to record it instead.')) return;
     booking[lockKey] = true; setTimeout(function(){ delete booking[lockKey]; }, 8000);
     var def = certDef(type), key = propKey(address), c = certFor(key, type), st = certState(c);
     if (addressProblem(address)) { toast('Add the door number and postcode first'); openAddressEdit(address, null); return; }
@@ -5045,6 +5048,19 @@
     }); }
   }
 
+  // A certificate recorded as in date (or not required) while a job for it is
+  // still open: offer to remove the job if it hasn't been sent to the contractor.
+  function offerRemoveCertJob(address, type, notRequired){
+    api('GET', '/api/admin/certificates/open-job?type=' + encodeURIComponent(type) + '&address=' + encodeURIComponent(address)).then(function(d){
+      if (!d || !d.ok || !d.job_id) return;
+      if (d.sent) { toast(d.ref + ' is still open and was sent to the contractor — close it if it isn’t needed'); return; }
+      if (!confirm((notRequired ? 'This certificate is marked as not required' : 'This certificate is in date') + ', but ' + d.ref + ' is still open for it (not sent to a contractor).\n\nRemove ' + d.ref + '? It moves to the archive and can be restored.')) return;
+      api('POST', '/api/admin/jobs/' + d.job_id + '/archive', { reason: 'Not needed — ' + certDef(type).long + (notRequired ? ' not required' : ' already in date') }).then(function(r){
+        if (!r.ok) { toast('Couldn’t remove ' + d.ref); return; }
+        toast(d.ref + ' removed'); loadCerts().then(loadJobs);
+      });
+    });
+  }
   // Add / update a certificate.
   var certCtx = null;
   function addYears(day, n){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day || ''); if (!m) return ''; var d = new Date(+m[1] + n, +m[2] - 1, +m[3]); d.setDate(d.getDate() - 1); return ymd(d); }
@@ -5081,7 +5097,12 @@
       if (!d.ok) { $('certErr').textContent = 'Couldn’t save (' + (d.error || 'error') + ')'; return; }
       $('certModal').hidden = true; toast(certDef(certCtx.type).name + ' saved' + (d.address ? ' — address updated to ' + d.address : ''));
       if (d.address && view === 'props' && openPropKey === propKey(certCtx.address)) openPropKey = propKey(d.address);
-      (d.address ? loadCerts().then(loadJobs) : loadCerts()).then(function(){ renderCerts(); renderCertAlerts(); if (view === 'props' && openPropKey) renderProperty(); });
+      var savedAddr = d.address || certCtx.address, savedType = certCtx.type, dLeft = daysUntil($('certExpires').value);
+      (d.address ? loadCerts().then(loadJobs) : loadCerts()).then(function(){
+        renderCerts(); renderCertAlerts(); if (view === 'props' && openPropKey) renderProperty();
+        // Recorded as in date: an open job for it probably isn't needed.
+        if (na || dLeft === null || dLeft > CERT_REMIND) offerRemoveCertJob(savedAddr, savedType, na);
+      });
       // A certificate already within 10 days gets its job raised straight away on the server.
       var dd = daysUntil($('certExpires').value);
       if (!na && dd !== null && dd <= CERT_REMIND) setTimeout(function(){ loadCerts().then(loadJobs).then(function(){ var c = certFor(propKey(certCtx ? certCtx.address : ''), certCtx ? certCtx.type : ''); if (c && c.job_id) toast('Renewal job raised automatically'); }); }, 1500);
