@@ -253,6 +253,16 @@ CREATE TABLE IF NOT EXISTS site_sessions (
   events        INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS site_sessions_started_idx ON site_sessions (started_at);
+CREATE TABLE IF NOT EXISTS tenant_notices (
+  id            SERIAL PRIMARY KEY,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  subject       TEXT,
+  body          TEXT NOT NULL,
+  audience      TEXT,
+  property_keys TEXT[] NOT NULL DEFAULT '{}',
+  recipients    JSONB NOT NULL DEFAULT '[]'::jsonb,
+  sent          JSONB NOT NULL DEFAULT '{}'::jsonb
+);
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      JSONB,
@@ -950,6 +960,54 @@ module.exports = function mountJobs(app, opts) {
       await p.query('UPDATE site_sessions SET ' + sets.join(', ') + ' WHERE sid = $1', args);
     })().catch(function () {});
   });
+  // ---------- Notices to tenants (a property, a building, or everyone) ----------
+  // The message is written once; each tenant gets their own copy by email (sent
+  // here, one email each) or WhatsApp (opened one at a time on the admin page).
+  // Every notice is kept with who it went to and how.
+  app.post('/api/admin/tenant-notices', withDb(async function (p, req, res) {
+    const b = req.body || {}, body = str(b.body, 10000);
+    if (!body) return res.status(400).json({ ok: false, error: 'empty' });
+    const recips = (Array.isArray(b.recipients) ? b.recipients : []).slice(0, 1000).map(function (r) {
+      return { key: str(r && r.key, 80) || '', name: str(r && r.name, 120) || '', phone: str(r && r.phone, 40) || '', email: str(r && r.email, 200) || '', address: str(r && r.address, 300) || '' };
+    });
+    const keys = (Array.isArray(b.property_keys) ? b.property_keys : []).slice(0, 1000).map(function (k) { return str(k, 300); }).filter(Boolean);
+    const r = await p.query('INSERT INTO tenant_notices (subject, body, audience, property_keys, recipients) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [str(b.subject, 300), body, str(b.audience, 300), keys, JSON.stringify(recips)]);
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+  // Record how one tenant was sent the notice (WhatsApp / copied / email app).
+  app.post('/api/admin/tenant-notices/:id/sent', withDb(async function (p, req, res) {
+    const b = req.body || {}, k = str(b.key, 80), how = str(b.how, 40);
+    if (!k || !how) return res.status(400).json({ ok: false });
+    await p.query("UPDATE tenant_notices SET sent = sent || jsonb_build_object($2::text, $3::text) WHERE id = $1", [parseInt(req.params.id, 10) || 0, k, how]);
+    res.json({ ok: true });
+  }));
+  // Email each tenant their own copy.
+  app.post('/api/admin/tenant-notices/:id/email', withDb(async function (p, req, res) {
+    if (!canEmail()) return res.status(503).json({ ok: false, error: 'email-not-configured' });
+    const id = parseInt(req.params.id, 10) || 0, b = req.body || {};
+    const n = (await p.query('SELECT id FROM tenant_notices WHERE id = $1', [id])).rows[0];
+    if (!n) return res.status(404).json({ ok: false, error: 'not-found' });
+    const subject = str(b.subject, 300) || 'A message from Residential Realtors';
+    const list = (Array.isArray(b.messages) ? b.messages : []).slice(0, 300);
+    const done = {}, failed = [];
+    for (const m of list) {
+      const to = str(m && m.to, 200), text = str(m && m.text, 10000), k = str(m && m.key, 80);
+      if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to) || !text) { if (k) failed.push(k); continue; }
+      const sent = await sendEmail({ to: [to], subject: str(m && m.subject, 300) || subject, text: text }).catch(function () { return { ok: false }; });
+      if (sent && sent.ok) { if (k) done[k] = 'email'; } else if (k) failed.push(k);
+    }
+    if (Object.keys(done).length) await p.query('UPDATE tenant_notices SET sent = sent || $2::jsonb WHERE id = $1', [id, JSON.stringify(done)]);
+    res.json({ ok: true, sent: Object.keys(done), failed: failed });
+  }));
+  app.get('/api/admin/tenant-notices', withDb(async function (p, req, res) {
+    const k = str(req.query.property_key, 300);
+    const r = k
+      ? await p.query('SELECT id, created_at, subject, body, audience, property_keys, recipients, sent FROM tenant_notices WHERE $1 = ANY(property_keys) ORDER BY id DESC LIMIT 20', [k])
+      : await p.query('SELECT id, created_at, subject, body, audience, property_keys, recipients, sent FROM tenant_notices ORDER BY id DESC LIMIT 50');
+    res.json({ ok: true, notices: r.rows });
+  }));
+
   // For the Activity page: every visit in the period, summed up, plus the latest visits.
   app.get('/api/admin/site-sessions', withDb(async function (p, req, res) {
     const days = String(Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30)));
