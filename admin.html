@@ -820,6 +820,11 @@
                 <p class="muted-note" style="margin:6px 0 0">Upload your agreement as it is. Its blanks are filled in: PROPERTY ADDRESS, TENANCY START DATE, LANDLORD NAME, [LEAD TENANT], [TENANT 2]…, [GUARANTOR 1]…, [£RENT], [DEPOSIT], [FIRST RENT DATE], [RENT DAY], [SECOND RENT], [Deposit Scheme] and the "agreement made on" date. Signature boxes follow the number of tenants and guarantors.</p>
               </div>
               <div>
+                <label class="lbl">Outlook (Microsoft 365)</label>
+                <div id="olInfo" class="muted-note" style="margin:0 0 8px"></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap" id="olActions"></div>
+              </div>
+              <div>
                 <label class="lbl">Fees charged to landlords (quick-add list)</label>
                 <div id="tsFees"></div>
                 <button type="button" class="btn small" id="tsFeeAdd">+ Add a fee</button>
@@ -835,7 +840,7 @@
               <div><label class="lbl" for="tsLSub">Landlord's welcome email — subject</label><input class="inp" id="tsLSub"></div>
               <div><label class="lbl" for="tsLBody">Landlord's welcome email</label><textarea class="inp" id="tsLBody" rows="10"></textarea></div>
               <p class="muted-note" style="margin:0">Formatting: [b]bold[/b], [u]underline[/u], [red]red and bold[/red], [small]small print[/small].</p>
-              <p class="muted-note" style="margin:0">Filled in automatically: {{address}}, {{landlord_name}}, {{tenant_names}}, {{start_date}}, {{move_in_due}}, {{standing_order_start}}, {{standing_order_payments}}, {{first_rent}}, {{deposit}}, {{move_in_total}}, {{holding_deposit}}, {{move_in_remaining}}, {{checkin_date}}, {{checkin_time}}, {{bank_details}}, {{signature}}, {{year}}.</p>
+              <p class="muted-note" style="margin:0">Filled in automatically: {{address}}, {{payment_reference}}, {{landlord_name}}, {{tenant_names}}, {{start_date}}, {{move_in_due}}, {{standing_order_start}}, {{standing_order_payments}}, {{first_rent}}, {{deposit}}, {{move_in_total}}, {{holding_deposit}}, {{move_in_remaining}}, {{checkin_date}}, {{checkin_time}}, {{bank_details}}, {{signature}}, {{year}}.</p>
               <div class="row-actions" style="margin-top:0"><button class="btn ghost" id="tsReset" type="button">Restore the original emails</button><button class="btn primary" id="tsSave" type="button">Save templates</button></div>
             </div>
           </details>
@@ -955,6 +960,7 @@
 <div class="modal" id="tmModal" hidden>
   <div class="card" style="width:min(680px,100%);display:flex;flex-direction:column;gap:10px;max-height:92vh;overflow:auto">
     <h3 id="tmTitle" style="margin:0">Welcome email</h3>
+    <div id="tmFromRow" hidden><label class="lbl" for="tmFrom">From (your Outlook)</label><select class="inp" id="tmFrom"></select></div>
     <div><label class="lbl" for="tmTo">To</label><input class="inp" id="tmTo" placeholder="name@example.com, …"></div>
     <div><label class="lbl" for="tmSubject">Subject</label><input class="inp" id="tmSubject"></div>
     <div><label class="lbl" for="tmBody">Message <span class="muted-note" style="margin:0;font-weight:500">— you can edit it here</span></label><div class="mail-preview" id="tmBody" contenteditable="true" spellcheck="true"></div></div>
@@ -974,6 +980,7 @@
       <button class="btn" id="tmCopy" type="button">Copy email</button>
       <button class="btn" id="tmSend" type="button">Other email app</button>
       <button class="btn primary" id="tmOutlook" type="button">Open in Outlook</button>
+      <button class="btn primary" id="tmDraft" type="button" hidden>Put in Outlook Drafts</button>
     </div>
   </div>
 </div>
@@ -1029,6 +1036,7 @@
     <div class="err-msg" id="askErr" style="margin:0"></div>
     <div class="row-actions" style="margin-top:0"><span class="muted-note" style="margin-right:auto;font-size:.78rem">Ctrl + Enter to go</span><button class="btn" id="askClose" type="button">Close</button><button class="btn primary" id="askGo" type="button">✦ Go</button></div>
     <div class="row-actions" id="askAllRow" style="margin-top:0" hidden><span class="muted-note" id="askAllNote" style="margin-right:auto"></span><button class="btn primary" id="askAll" type="button">Create all</button></div>
+    <div id="askTenancies" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askContacts" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askDrafts" style="display:flex;flex-direction:column;gap:12px"></div>
   </div>
@@ -4786,9 +4794,11 @@
     api('POST', '/api/admin/assistant', { text: text, mode: askMode }).then(function(d){
       busy($('askGo'), false);
       if (!d.ok) { $('askErr').textContent = 'The AI is busy — please try again in a moment.'; return; }
-      if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs and contacts — try “add a gas safety for 6 Whitworth House” or “add a contractor: Miguel, cleaner, 07404 043045”.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; renderAskContacts(); $('askAllRow').hidden = true; return; }
+      if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs, contacts and tenancies — try “add a gas safety for 6 Whitworth House”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; renderAskContacts(); renderAskTenancies(); $('askAllRow').hidden = true; return; }
       askContacts = (d.contacts || []).slice();
       renderAskContacts();
+      askTenancies = (d.tenancies || []).slice();
+      renderAskTenancies();
       askDrafts = d.jobs.map(function(x){
         var pr = matchProperty(x.address), ts = tenantsAt(pr), c = matchContractor(x.contractor);
         // A property on file with a complete address fills in a missing postcode.
@@ -4839,6 +4849,29 @@
   function askPropsFull(s){
     return String(s || '').split(/\s*;\s*/).filter(Boolean).map(function(x){ var pr = matchProperty(x); return pr ? (knownFullAddress(pr.key) || pr.address) : x; }).join('; ');
   }
+  // A new tenancy from pasted details: a summary, then the tenancy form filled in to check and save.
+  var askTenancies = [];
+  function renderAskTenancies(){
+    $('askTenancies').innerHTML = askTenancies.map(function(t, i){
+      var names = tcyNames(t.tenants), g = tcyNames(t.guarantors), l = t.landlord || {};
+      return '<div class="draft cdraft" data-ti="' + i + '"><div style="display:flex;align-items:center;gap:8px"><strong>New tenancy</strong></div>' +
+        '<div style="font-weight:600">' + esc(t.address || 'No address given') + '</div>' +
+        '<div class="prop-sub" style="line-height:1.5">' + [
+          names.length ? 'Tenants: ' + esc(joinAnd(names)) : 'No tenants given',
+          g.length ? 'Guarantors: ' + esc(joinAnd(g)) : '',
+          t.rent_pcm ? 'Rent ' + esc(gbp(t.rent_pcm)) + ' a month' : 'Rent not given',
+          t.start_date ? 'Starts ' + esc(longDay(t.start_date)) : 'Start date not given',
+          l.name ? 'Landlord: ' + esc(l.name) : ''
+        ].filter(Boolean).join(' · ') + '</div>' +
+        '<div class="row-actions" style="margin-top:0"><button class="btn" type="button" data-tact="skip">Skip</button><button class="btn primary" type="button" data-tact="open">Check and save →</button></div></div>';
+    }).join('');
+  }
+  $('askTenancies').addEventListener('click', function(e){
+    var b = e.target.closest('[data-tact]'); if (!b) return;
+    var i = Number(b.closest('[data-ti]').dataset.ti), t = askTenancies[i];
+    askTenancies.splice(i, 1); renderAskTenancies();
+    if (b.dataset.tact === 'open') { closeAsk(); openTenancy('new', { data: t }); toast('Filled in from your message — check the details and press Save tenancy'); }
+  });
   function renderAskContacts(){
     var label = { contractor: 'contractor', landlord: 'landlord', tenant: 'tenant' };
     $('askContacts').innerHTML = askContacts.map(function(c, i){
@@ -5525,6 +5558,26 @@
       periodEnd: addMonthsIso(d.start_date, 1), term: term
     };
   }
+  // Payment reference: door/flat number and the building or road name, no spaces
+  // ("Flat 5, Dudley Court, Upper Berkeley Street" -> "5DudleyCourt").
+  var REF_WORDS = /^(house|court|road|street|lane|avenue|close|place|way|gardens|terrace|mansions|apartments|lodge|tower|point|building|buildings|heights|square|crescent|drive|grove|walk|row|hill|mews|wharf|quay|parade|rise|green|park|view|yard|estate|block)$/i;
+  function payRef(address){
+    var parts = String(address || '').replace(POSTCODE_RE, ' ').split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+    for (var i = 0; i < parts.length; i++) {
+      var m = /(\d+[a-z]?(?:-\d+[a-z]?)*)/i.exec(parts[i]); if (!m) continue;
+      var rest = parts[i].slice(m.index + m[0].length).replace(/^[\s,]+/, '');
+      if (!rest.replace(/\b(flat|apartment|apt|unit|room|studio)\b/gi, '').trim()) rest = parts[i + 1] || '';
+      // A comma-separated part is the name as written; without commas, stop after
+      // the building or road word ("… Court Upper Berkeley Street" -> "… Court").
+      var words = rest.split(/\s+/).filter(Boolean), keep = words;
+      if (words.length > 4) {
+        keep = [];
+        for (var w = 0; w < words.length; w++) { keep.push(words[w]); if (keep.length > 1 && REF_WORDS.test(words[w]) && !REF_WORDS.test(words[w + 1] || '')) break; }
+      }
+      return (m[1] + keep.join('')).replace(/[^A-Za-z0-9-]/g, '');
+    }
+    return (parts[0] || '').replace(/[^A-Za-z0-9-]/g, '');
+  }
   function tcyNames(list){ return (list || []).map(function(p){ return p.name; }).filter(Boolean); }
   function joinAnd(list){ return list.length <= 1 ? (list[0] || '') : list.slice(0, -1).join(', ') + ' & ' + list[list.length - 1]; }
   function tcyLandlordAddress(l){ return [l.line1, l.line2, l.country, l.postcode].filter(Boolean); }
@@ -5532,22 +5585,25 @@
     var c = tcyCalc(d), t = (tcySet && tcySet.templates) || {};
     return {
       address: d.address || '', landlord_name: (d.landlord && d.landlord.name) || '', tenant_names: joinAnd(tcyNames(d.tenants)), start_date: longDay(d.start_date),
-      move_in_due: weekdayDay(c.moveInDue), standing_order_start: ordDay(c.soStart), standing_order_payments: String(c.soPayments),
+      payment_reference: d.pay_ref || payRef(d.address), move_in_due: weekdayDay(c.moveInDue), standing_order_start: ordDay(c.soStart), standing_order_payments: String(c.soPayments),
       first_rent: gbp(c.rent), deposit: gbp(c.deposit), move_in_total: gbp(c.total), holding_deposit: gbp(c.holding), move_in_remaining: gbp(c.remaining),
       checkin_date: ukDay(d.checkin_date || d.start_date), checkin_time: d.checkin_time || '12:00', bank_details: bankMarkup(t.bank_details), year: String(new Date().getFullYear())
     };
   }
   // Email formatting marks → HTML (for pasting into Outlook or sending), or plain text.
-  var MAIL_RED = '#c00000';
+  var MAIL_RED = '#c00000', MAIL_LOGO = location.origin + '/logo.png';
+  // Signature: T: M: W: A: labels in red, as in the agency's own signature.
+  function sigMarkup(text){ return String(text || '').split('\n').map(function(l){ var m = /^([A-Z]{1,2}):\s*(.*)$/.exec(l.trim()); return m ? '[r]' + m[1] + ':[/r] ' + m[2] : l; }).join('\n'); }
   function mailHtml(text){
     var h = esc(text)
       .replace(/\[b\]/g, '<b>').replace(/\[\/b\]/g, '</b>').replace(/\[u\]/g, '<u>').replace(/\[\/u\]/g, '</u>')
       .replace(/\[red\]/g, '<span style="color:' + MAIL_RED + ';font-weight:bold">').replace(/\[\/red\]/g, '</span>')
-      .replace(/\[small\]/g, '<span style="font-size:7.5pt;color:#666">').replace(/\[\/small\]/g, '</span>')
-      .replace(/(https?:\/\/[^\s<]+[^\s<.,;:)])|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/g, function(m, url, mail){ return '<a href="' + (url ? url : 'mailto:' + mail) + '" style="color:#0563c1">' + m + '</a>'; });
-    return h.replace(/\n/g, '<br>');
+      .replace(/\[small\]/g, '<span style="font-size:7pt;color:#808080">').replace(/\[\/small\]/g, '</span>')
+      .replace(/\[r\]/g, '<span style="color:' + MAIL_RED + '">').replace(/\[\/r\]/g, '</span>')
+      .replace(/(https?:\/\/[^\s<]+[^\s<.,;:)])|(www\.[^\s<]+[^\s<.,;:)])|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/g, function(m, url, www, mail){ return '<a href="' + (url || (www ? 'https://' + www : 'mailto:' + mail)) + '" style="color:#0563c1">' + m + '</a>'; });
+    return h.replace(/\[logo\]\n?/g, '<img src="' + MAIL_LOGO + '" alt="Residential Realtors" width="100" style="display:block;width:100px;height:auto;margin:10px 0 8px;border:0">').replace(/\n/g, '<br>');
   }
-  function mailPlain(text){ return String(text || '').replace(/\[\/?(b|u|red|small)\]/g, ''); }
+  function mailPlain(text){ return String(text || '').replace(/\[logo\]\n?/g, '').replace(/\[\/?(b|u|red|small|r)\]/g, ''); }
   // Bank details: labels in bold, the numbers in red (as in the agency's email).
   function bankMarkup(text){
     return String(text || '').split('\n').map(function(line){
@@ -5599,7 +5655,19 @@
       landlord: { name: '', email: '', phone: '', line1: '', line2: '', country: '', postcode: '' }, service: last.service || 'Tenant Find',
       find_pct: last.find_pct != null ? last.find_pct : 8, find_basis: last.find_basis || 'monthly', collect_pct: null, manage_pct: null, fees: [], vat: true, notes: ''
     };
-    if (d.address) tcyFillLandlord(d);
+    // Details pasted into Ask Fixflow: use everything it found, keep the defaults for the rest.
+    var got = preset.data || null;
+    if (got) {
+      Object.keys(got).forEach(function(k){
+        var v = got[k];
+        if (v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length)) return;
+        if (k === 'landlord') { var lk = Object.keys(v).filter(function(x){ return v[x]; }); if (lk.length) d.landlord = Object.assign({}, d.landlord, v); return; }
+        if (k === 'vat' || k === 'service' && !v) return;
+        d[k] = v;
+      });
+      if (!d.tenants.length) d.tenants = [{ name: '', email: '', phone: '' }];
+    }
+    if (d.address && !(d.landlord && d.landlord.name)) tcyFillLandlord(d);
     return d;
   }
   // The landlord already on file for the property.
@@ -5654,6 +5722,7 @@
           '<div><label class="lbl" for="tfScheme">Deposit scheme (for the agreement)</label><input class="inp" id="tfScheme" list="tfSchemes" value="' + esc(d.deposit_scheme || '') + '"><datalist id="tfSchemes">' + TCY_SCHEMES.map(function(s){ return '<option value="' + esc(s) + '"></option>'; }).join('') + '</datalist></div></div>' +
         '<h3 style="margin:16px 0 8px">Move-in monies</h3>' +
         '<div class="grid3">' + tcyInp('tfDue', 'First rent and deposit due by *', d.move_in_due, ' type="date"') + tcyInp('tfSo', 'Standing order starts', d.so_start, ' type="date"') + tcyInp('tfSoN', 'Standing order payments', d.so_payments, ' inputmode="numeric"') + '</div>' +
+        '<div class="grid3" style="margin-top:10px">' + tcyInp('tfPayRef', 'Payment reference', d.pay_ref, ' maxlength="18" autocapitalize="off"') + '</div>' +
         '<p class="muted-note" style="margin:6px 0 10px">Usually 48 hours after the agreement is sent. The standing order starts a month after moving in unless you change it.</p>' +
         '<div class="tcy-sum" id="tfSum"></div>' +
       '</div>' +
@@ -5710,7 +5779,7 @@
     d.address = v('tfAddress'); d.negotiator = v('tfNeg'); d.date_taken = v('tfTaken'); d.service = v('tfService');
     d.start_date = v('tfStart'); d.term_months = n('tfTerm'); d.break_months = n('tfBreak') || 0; d.rent_pcm = n('tfRent');
     d.deposit = n('tfDeposit'); d.holding = n('tfHolding'); d.deposit_scheme = v('tfScheme');
-    d.move_in_due = v('tfDue'); d.so_start = v('tfSo'); d.so_payments = n('tfSoN');
+    d.move_in_due = v('tfDue'); d.so_start = v('tfSo'); d.pay_ref = v('tfPayRef').replace(/\s+/g, ''); d.so_payments = n('tfSoN');
     d.landlord = { name: v('tfLlName'), email: v('tfLlEmail'), phone: v('tfLlPhone'), line1: v('tfLl1'), line2: v('tfLl2'), country: v('tfLlCountry'), postcode: v('tfLlPc') };
     d.find_pct = n('tfFind'); d.collect_pct = n('tfCollect'); d.manage_pct = n('tfManage'); d.vat = $('tfVat').checked;
     d.checkin_date = v('tfCiDate'); d.checkin_time = v('tfCiTime'); d.notes = v('tfNotes');
@@ -5734,6 +5803,7 @@
     $('tfHoldHint').textContent = c.rent ? '· 1 week = ' + gbp(c.holdAuto) : '';
     $('tfDeposit').placeholder = c.rent ? String(c.depAuto) : '5 weeks, worked out from the rent';
     $('tfHolding').placeholder = c.rent ? String(c.holdAuto) : '1 week';
+    $('tfPayRef').placeholder = payRef(d.address) || 'e.g. 5DudleyCourt';
     $('tfSo').placeholder = c.soStart; $('tfSoN').placeholder = String(c.soPayments);
     if (!$('tfSo').value && c.soStart) $('tfSo').title = 'Starts ' + longDay(c.soStart);
     var fp = num(d.find_pct);
@@ -5819,6 +5889,7 @@
     if (d.deposit === null) d.deposit = c.depAuto;
     if (d.holding === null) d.holding = c.holdAuto;
     if (!d.move_in_due) d.move_in_due = c.moveInDue;
+    if (!d.pay_ref) d.pay_ref = payRef(d.address).slice(0, 18);
     var isNew = openTcyId === 'new';
     busy($('tfSave'), true, 'Saving…');
     api(isNew ? 'POST' : 'PUT', '/api/admin/tenancies' + (isNew ? '' : '/' + openTcyId), d).then(function(r){
@@ -5942,7 +6013,7 @@
   function agreementValues(d){
     var c = tcyCalc(d), so = parseDay(c.soStart);
     return {
-      address: d.address, landlord: (d.landlord || {}).name || '', start: longDay(d.start_date), rent: gbp(c.rent), deposit: gbp(c.deposit), deposit_scheme: d.deposit_scheme || '',
+      address: d.address, payment_reference: d.pay_ref || payRef(d.address), landlord: (d.landlord || {}).name || '', start: longDay(d.start_date), rent: gbp(c.rent), deposit: gbp(c.deposit), deposit_scheme: d.deposit_scheme || '',
       first_rent: longDay(c.moveInDue), rent_day: so ? ordinal(so.getDate()) : '', second_rent: ordDay(c.soStart), second_rent_month: so ? MONTHS_EN[so.getMonth()] : '',
       agreement_date: longDay(isoDay(new Date())), tenants: tcyNames(d.tenants), guarantors: tcyNames(d.guarantors), values: tcyValues(d)
     };
@@ -5990,7 +6061,7 @@
   function openTcyMail(who, d){
     var go = function(){
       var t = tcySet.templates, vals = tcyValues(d);
-      vals.signature = who === 'tenants' ? t.signature_tenant : t.signature_landlord;
+      vals.signature = sigMarkup(who === 'tenants' ? t.signature_tenant : t.signature_landlord);
       var to = who === 'tenants' ? (d.tenants || []).map(function(p){ return p.email; }).filter(Boolean) : [(d.landlord || {}).email].filter(Boolean);
       var atts = who === 'tenants'
         ? [{ id: 'agr-pdf', name: tcyFile(d, 'Tenancy Agreement'), label: 'Tenancy agreement (PDF) — if you’re not sending it by Adobe Sign', on: false }]
@@ -6010,9 +6081,13 @@
       $('tmNote').textContent = (missing ? '⚠ No bank details saved yet — add them under Templates. ' : '') +
         'Open in Outlook downloads the email as a draft, formatted as shown with the ticked documents attached — open the downloaded file and it opens in Outlook ready to send. ' +
         (meta.canEmail ? 'Send from Fixflow sends it straight away.' : 'Other email app copies the formatted email for you to paste into the message that opens.');
+      var hasOl = outlook.configured && outlook.accounts.length;
+      $('tmFromRow').hidden = !hasOl; $('tmDraft').hidden = !hasOl;
+      $('tmOutlook').classList.toggle('primary', !hasOl);
+      if (hasOl) { $('tmFrom').innerHTML = outlook.accounts.map(function(a){ return '<option value="' + esc(a.email) + '">' + esc(a.name ? a.name + ' — ' + a.email : a.email) + '</option>'; }).join(''); $('tmFrom').value = olFrom(); }
       $('tmModal').hidden = false;
     };
-    tcySet ? go() : loadTcySettings().then(go);
+    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook()]).then(go);
   }
   function tmAttachments(){
     var d = tmCtx.d, list = tmCtx.atts.filter(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); return cb && cb.checked; });
@@ -6039,19 +6114,82 @@
       sel.removeAllRanges();
     }
   }
+  // ----- Outlook (Microsoft 365) connection: drafts straight into Outlook -----
+  var outlook = { configured: false, accounts: [] };
+  function loadOutlook(){ if (!meta.db) return Promise.resolve(outlook); return api('GET', '/api/admin/outlook').then(function(d){ if (d.ok) outlook = d; return outlook; }); }
+  function olFrom(){ var saved = ''; try { saved = localStorage.getItem('rr_outlook_from') || ''; } catch (e) {} return outlook.accounts.some(function(a){ return a.email === saved; }) ? saved : (outlook.accounts[0] || {}).email || ''; }
+  function renderOutlook(){
+    if (!$('olInfo')) return;
+    if (!outlook.configured) {
+      $('olInfo').innerHTML = 'Not set up yet. Once Fixflow is registered with your Microsoft 365, emails can go straight into your Outlook Drafts folder. (Link to register: <code>' + esc(outlook.redirect || '') + '</code>)';
+      $('olActions').innerHTML = ''; return;
+    }
+    $('olInfo').innerHTML = outlook.accounts.length
+      ? 'Connected: ' + outlook.accounts.map(function(a){ return '<strong>' + esc(a.email) + '</strong>'; }).join(', ') + '. Welcome emails can go straight into Drafts.'
+      : 'Connect your mailbox so welcome emails go straight into your Outlook Drafts folder.';
+    $('olActions').innerHTML = '<a class="btn small primary" href="/api/admin/outlook/connect">' + (outlook.accounts.length ? '+ Connect another mailbox' : 'Connect Outlook') + '</a>' +
+      outlook.accounts.map(function(a){ return '<button type="button" class="btn small ghost" data-ol-del="' + esc(a.email) + '">Disconnect ' + esc(a.email) + '</button>'; }).join('');
+  }
+  $('olActions').addEventListener('click', function(e){
+    var b = e.target.closest('[data-ol-del]'); if (!b || !confirm('Disconnect ' + b.dataset.olDel + ' from Fixflow?')) return;
+    api('DELETE', '/api/admin/outlook/' + encodeURIComponent(b.dataset.olDel), { confirm: true }).then(function(){ loadOutlook().then(renderOutlook); });
+  });
+  // Coming back from signing in with Microsoft.
+  (function(){
+    var m = /[#&]outlook=([a-z-]+)/.exec(location.hash); if (!m) return;
+    history.replaceState(null, '', location.pathname);
+    var msg = { connected: 'Outlook connected — welcome emails can now go straight into your Drafts', cancelled: 'Outlook sign-in was cancelled', expired: 'That sign-in took too long — please try Connect Outlook again', failed: 'Couldn’t connect Outlook — please try again', 'not-set-up': 'Outlook isn’t set up for Fixflow yet' }[m[1]];
+    setTimeout(function(){ if (msg) toast(msg); if ($('navTcy')) { $('navTcy').click(); $('tcySettings').open = true; } }, 1200);
+  })();
+  $('tmDraft').addEventListener('click', function(){
+    var to = $('tmTo').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean), subject = $('tmSubject').value, ctx = tmCtx, from = $('tmFrom').value;
+    if (!to.length) { toast('Add an email address'); return; }
+    try { localStorage.setItem('rr_outlook_from', from); } catch (e) {}
+    var html = tmHtml();
+    busy($('tmDraft'), true, 'Preparing…');
+    tmAttachments().then(function(files){
+      return Promise.all(files.map(function(f){ return blobB64(f.blob).then(function(b){ return { name: f.name, data: b }; }); }));
+    }).then(function(atts){
+      busy($('tmDraft'), true, 'Adding to Outlook…');
+      var logo = logoB64(), withLogo = logo && html.indexOf(MAIL_LOGO) !== -1;
+      if (withLogo) { html = html.split(MAIL_LOGO).join('cid:rrlogo'); atts.push({ name: 'logo.png', data: logo, inline: true, cid: 'rrlogo' }); }
+      return api('POST', '/api/admin/outlook/draft', { from: from, to: to, subject: subject, html: html, attachments: atts }).then(function(r){
+        busy($('tmDraft'), false);
+        if (!r.ok) {
+          toast(r.error === 'reconnect' ? 'Please reconnect Outlook (Tenancies → Templates), then try again' : r.error === 'too-large' ? 'The attachments are too big for a draft — use Open in Outlook instead' : 'Couldn’t add it to Outlook — try Open in Outlook instead');
+          return;
+        }
+        $('tmModal').hidden = true;
+        toast('In your Outlook Drafts (' + r.from + ') — open it there and press Send');
+        tcyLog('Welcome email to ' + (ctx.who === 'tenants' ? 'tenants' : 'landlord') + ' put in Outlook Drafts of ' + r.from + ' (' + to.join(', ') + ')');
+      });
+    }, function(err){ busy($('tmDraft'), false); agreementError(err); });
+  });
+
   // Outlook (Classic): an .eml draft (X-Unsent) with the formatted email and
   // the documents attached. Opening it gives a new message ready to send.
   function b64utf8(str){ var bytes = new TextEncoder().encode(str), bin = ''; for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); }
   function wrap76(b64){ return b64.replace(/.{1,76}/g, '$&\r\n'); }
   function mimeWord(str){ return /^[\x20-\x7e]*$/.test(str) ? str : '=?UTF-8?B?' + b64utf8(str) + '?='; }
+  function logoB64(){ return logoData && /^data:image\/png;base64,/.test(logoData.url) ? logoData.url.split(',')[1] : ''; }
   function buildEml(to, subject, text, html, files){
     var mixed = 'mix_' + Math.random().toString(36).slice(2), alt = 'alt_' + Math.random().toString(36).slice(2), L = '\r\n';
     var out = 'X-Unsent: 1' + L + 'To: ' + to.join(', ') + L + 'Subject: ' + mimeWord(subject) + L + 'MIME-Version: 1.0' + L +
       'Content-Type: multipart/mixed; boundary="' + mixed + '"' + L + L +
       '--' + mixed + L + 'Content-Type: multipart/alternative; boundary="' + alt + '"' + L + L +
       '--' + alt + L + 'Content-Type: text/plain; charset=UTF-8' + L + 'Content-Transfer-Encoding: base64' + L + L + wrap76(b64utf8(text)) +
-      '--' + alt + L + 'Content-Type: text/html; charset=UTF-8' + L + 'Content-Transfer-Encoding: base64' + L + L +
-      wrap76(b64utf8('<html><head><meta charset="utf-8"></head><body>' + html + '</body></html>')) + '--' + alt + '--' + L;
+      htmlPart(html) + '--' + alt + '--' + L;
+    // The logo travels inside the email (so it shows even when pictures from the web are blocked).
+    function htmlPart(h){
+      var logo = logoB64();
+      var doc = wrap76(b64utf8('<html><head><meta charset="utf-8"></head><body>' + (logo ? h.split(MAIL_LOGO).join('cid:rrlogo') : h) + '</body></html>'));
+      var part = 'Content-Type: text/html; charset=UTF-8' + L + 'Content-Transfer-Encoding: base64' + L + L + doc;
+      if (!logo || h.indexOf(MAIL_LOGO) === -1) return '--' + alt + L + part;
+      var rel = 'rel_' + Math.random().toString(36).slice(2);
+      return '--' + alt + L + 'Content-Type: multipart/related; boundary="' + rel + '"' + L + L + '--' + rel + L + part +
+        '--' + rel + L + 'Content-Type: image/png; name="logo.png"' + L + 'Content-ID: <rrlogo>' + L + 'Content-Disposition: inline; filename="logo.png"' + L +
+        'Content-Transfer-Encoding: base64' + L + L + wrap76(logo) + '--' + rel + '--' + L;
+    }
     files.forEach(function(f){
       var name = f.name.replace(/"/g, ''), type = /\.pdf$/i.test(name) ? 'application/pdf' : 'application/octet-stream';
       out += '--' + mixed + L + 'Content-Type: ' + type + '; name="' + mimeWord(name) + '"' + L + 'Content-Disposition: attachment; filename="' + mimeWord(name) + '"' + L +
@@ -6129,7 +6267,7 @@
   }
   $('tsFeeAdd').addEventListener('click', function(){ readTsFees(); tsFeeList.push({ label: '', amount: null }); renderTsFees(); var r = $('tsFees').querySelectorAll('[data-tf="label"]'); r[r.length - 1].focus(); });
   $('tsFees').addEventListener('click', function(e){ var b = e.target.closest('[data-ts-del]'); if (!b) return; readTsFees(); tsFeeList.splice(Number(b.dataset.tsDel), 1); renderTsFees(); });
-  $('tcySettings').addEventListener('toggle', function(){ if ($('tcySettings').open) (tcySet ? Promise.resolve() : loadTcySettings()).then(renderTcySettings); });
+  $('tcySettings').addEventListener('toggle', function(){ if ($('tcySettings').open) { (tcySet ? Promise.resolve() : loadTcySettings()).then(renderTcySettings); loadOutlook().then(renderOutlook); } });
   $('tsSave').addEventListener('click', function(){
     busy($('tsSave'), true, 'Saving…');
     api('PUT', '/api/admin/tenancy-settings', { bank_details: $('tsBank').value, signature_tenant: $('tsSigT').value, signature_landlord: $('tsSigL').value,

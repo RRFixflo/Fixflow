@@ -10,10 +10,11 @@
 //   TENANCY_SIGNATURE_LANDLORD  signature under the landlord's welcome email
 const zlib = require('zlib');
 
-const DISCLAIMER = 'This e-mail message may contain confidential or legally privileged information and is intended only for the use of the intended recipient(s). Any unauthorised disclosure, dissemination, distribution, copying or the taking of any action in reliance on the information herein is prohibited. E-mails are not secure and cannot be guaranteed to be error free as they can be intercepted, amended, or contain viruses. Anyone who communicates with us by e-mail is deemed to have accepted these risks. Residential Realtors is not responsible for errors or omissions in this message and denies any responsibility for any damage arising from the use of e-mail. Any opinion and other statement contained in this message and any attachment are solely those of the author and do not necessarily represent those of the company. ©{{year}} Estallion Investments';
+const DISCLAIMER = 'This e-mail message may contain confidential or legally privileged information and is intended only for the use of the intended recipient(s). Any unauthorised disclosure, dissemination, distribution, copying or the taking of any action in reliance on the information herein is prohibited. E-mails are not secure and cannot be guaranteed to be error free as they can be intercepted, amended, or contain viruses. Anyone who communicates with us by e-mail is deemed to have accepted these risks. Residential Realtors is not responsible for errors or omissions in this message and denies any responsibility for any damage arising from the use of e-mail. Any opinion and other statement contained in this message and any attachment are solely those of the author and do not necessarily represent those of the company. ©{{year}} Estallion Investments Limited. All rights reserved. Registered in England and Wales with company No. 08760284. VAT No. 178090487';
 
 // Formatting marks (shown in the admin page and in pasted/sent emails):
-// [b]bold[/b], [u]underline[/u], [red]red bold[/red], [small]small grey[/small].
+// [b]bold[/b], [u]underline[/u], [red]red bold[/red], [small]small grey[/small], [logo] the company logo.
+// In signatures, T: M: W: A: labels are shown in red.
 const TENANT_BODY = `Dear Tenants,
 
 [b][u]RE: Preparing for your new home: {{address}}[/u][/b]
@@ -37,7 +38,7 @@ I can confirm that we have received [red]{{holding_deposit}}[/red] as your reser
 
 [b][u]Bank Account Details[/u][/b]
 {{bank_details}}
-[b]Reference: [red]{{address}}[/red][/b]
+[b]Reference: [red]{{payment_reference}}[/red][/b]
 
 [b]If you are a Southwark Student Resident, please apply for your council tax exemption using the link:[/b] https://coa.myforms.southwark.gov.uk/CoaPlus/launch
 
@@ -67,10 +68,10 @@ Similarly, properties can occasionally have issues we were not previously aware 
 
 We wish you the best of luck in your new home and should you have any other queries please contact me to discuss.
 
-Regards,
+Kind Regards,
 
 {{signature}}
-
+[logo]
 [small]` + DISCLAIMER + '[/small]';
 
 const LANDLORD_BODY = `Dear {{landlord_name}}
@@ -93,9 +94,11 @@ PS: If you have been pleased with the service you have been provided from Reside
 
 Thank you for choosing Residential Realtors as your agent.
 
-Regards,
+Kind Regards,
 
-{{signature}}`;
+{{signature}}
+[logo]
+[small]` + DISCLAIMER + '[/small]';
 
 function envText(name) { return String(process.env[name] || '').replace(/\\n/g, '\n').trim(); }
 
@@ -364,7 +367,9 @@ function agreementRules(v) {
     [/\[FIRST RENT DATE\]/g, v.first_rent || ''],
     [/\[DEPOSIT\]/g, v.deposit || ''],
     [/\[Deposit Scheme\]/gi, v.deposit_scheme || ''],
-    [/\[PROPERTY ?ADDRESS\]/g, v.address || ''],
+    // The rent payment reference ("Reference: [PROPERTYADDRESS]"): door number and road or building, no spaces.
+    [/\[PROPERTYADDRESS\]/g, v.payment_reference || v.address || ''],
+    [/\[PROPERTY ADDRESS\]/g, v.address || ''],
     [/PROPERTY ADDRESS/g, v.address || ''],
     [/TENANCY START DATE/g, v.start || ''],
     [/LANDLORD NAME/g, v.landlord || ''],
