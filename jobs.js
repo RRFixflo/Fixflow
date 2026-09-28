@@ -1862,6 +1862,35 @@ module.exports = function mountJobs(app, opts) {
     if (found) raiseCertificateJobs().catch(function () {});
     return { checked: done, found: found, remaining: Math.max(0, todo.length - done), address: newAddress };
   }
+  // Tenant page address finder: every home at a postcode, from the public EPC
+  // register (domestic), tidied. Cached for a day; limited per visitor.
+  const pcCache = new Map(), pcHits = new Map();
+  app.get('/api/address/postcode', async function (req, res) {
+    const m = POSTCODE_RE.exec(String(req.query.postcode || ''));
+    if (!m) return res.status(400).json({ ok: false, error: 'postcode-required' });
+    const pc = (m[1] + ' ' + m[2]).toUpperCase();
+    const now = Date.now(), hit = pcCache.get(pc);
+    if (hit && now - hit.t < 24 * 3600 * 1000) return res.json({ ok: true, postcode: pc, addresses: hit.list });
+    const e = pcHits.get(req.ip);
+    if (!e || now - e.start > 10 * 60 * 1000) pcHits.set(req.ip, { start: now, n: 1 });
+    else if (++e.n > 30) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    try {
+      const seen = {}, list = [];
+      (await epcSearch(pc)).results.forEach(function (r) {
+        const a = registerAddress(r.address), k = a.toLowerCase();
+        if (a && !seen[k]) { seen[k] = true; list.push(a); }
+      });
+      // Natural order: by the numbers in the address (flat, then building), then text.
+      const key = function (a) { return (a.replace(POSTCODE_RE, ' ').match(/\d+/g) || []).map(function (n) { return n.padStart(6, '0'); }).join('.') + ' ' + a; };
+      list.sort(function (a, b) { return key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0; });
+      if (pcCache.size > 2000) pcCache.clear();
+      pcCache.set(pc, { t: now, list: list });
+      res.json({ ok: true, postcode: pc, addresses: list });
+    } catch (err) {
+      res.json({ ok: false, error: 'unavailable' });
+    }
+  });
+
   app.post('/api/admin/epc-auto', withDb(async function (p, req, res) {
     const b = req.body || {};
     const r = await autoEpc(p, str(b.address, 500) || null, b.address ? 1 : 25);

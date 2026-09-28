@@ -3192,7 +3192,8 @@
     var input = document.getElementById('propAddress');
     var list = document.getElementById('addrList');
     var hint = document.getElementById('addrHint');
-    var HINT_TEXT = 'Start typing your address or postcode, then pick it from the list.';
+    var HINT_TEXT = 'Type your postcode (e.g. SE1 6RW) and pick your home from the list — or type the full address.';
+    var PC_RE = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
     var enabled = false;
     var timer = null;
     var seq = 0;
@@ -3202,11 +3203,11 @@
     fetch('/api/health')
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(data){
-        if (data && data.canAddress) {
-          enabled = true;
-          hint.hidden = false;
-        }
+        if (data && data.canAddress) enabled = true;
       })['catch'](function(){});
+    // The postcode finder (public EPC register) is always on.
+    hint.hidden = false;
+    hint.textContent = HINT_TEXT;
 
     function setHint(text, ok){
       hint.textContent = text;
@@ -3261,28 +3262,52 @@
       lis[activeIdx].scrollIntoView({ block: 'nearest' });
     }
 
+    // Every home at a postcode, from the EPC register. Any other numbers typed
+    // (e.g. "Flat 4") narrow the list down.
+    function searchPostcode(term, m){
+      var mine = ++seq;
+      var pc = (m[1] + ' ' + m[2]).toUpperCase();
+      showStatus('Finding addresses in ' + pc + '…');
+      fetch('/api/address/postcode?postcode=' + encodeURIComponent(pc))
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          if (mine !== seq) return;
+          if (!data || !data.ok) { showStatus(data && data.error === 'rate-limited' ? 'Address search is busy — please type the address in full.' : "Couldn't look up that postcode — please type the address in full."); return; }
+          var nums = (term.replace(PC_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function(x){ return x.toUpperCase(); });
+          var all = data.addresses.map(function(a){ return { address: a, full: true, postcode: data.postcode }; });
+          var narrowed = nums.length ? all.filter(function(s){ var got = (s.address.replace(PC_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function(x){ return x.toUpperCase(); }); return nums.every(function(n){ return got.indexOf(n) !== -1; }); }) : all;
+          var list = narrowed.length ? narrowed : all;
+          if (!list.length) { showStatus('No homes found for ' + data.postcode + ' — please type your full address.'); return; }
+          render(list.slice(0, 80));
+          var li = document.createElement('li'); li.className = 'addr-status'; li.textContent = 'Not listed? Just type your full address, including your door number.'; list.length && document.getElementById('addrList').appendChild(li);
+        })['catch'](function(){ if (mine === seq) showStatus("Couldn't look up that postcode — please type the address in full."); });
+    }
     function search(term){
+      var pm = PC_RE.exec(term);
+      if (pm) return searchPostcode(term, pm);
+      if (!enabled) { seq++; close(); return; }
       var mine = ++seq;
       fetch('/api/address/autocomplete?term=' + encodeURIComponent(term))
         .then(function(r){ return r.json(); })
         .then(function(data){
           if (mine !== seq) return; // a newer keystroke has taken over
-          if (!data || !data.ok) {
-            showStatus(data && data.error === 'rate-limited'
-              ? 'Address search is busy — please type the address in full.'
-              : "Couldn't search addresses just now — please type the address in full.");
-            return;
-          }
-          render(data.suggestions || []);
-        })['catch'](function(){
-          if (mine === seq) showStatus("Couldn't search addresses just now — please type the address in full.");
-        });
+          // If this search isn't working, stay quiet — the postcode finder still works.
+          if (!data || !data.ok) { close(); return; }
+          if (!(data.suggestions || []).length) { close(); return; }
+          render(data.suggestions);
+        })['catch'](function(){ if (mine === seq) close(); });
     }
 
     function pick(i){
       var s = items[i];
       if (!s) return;
       input.value = s.address;
+      if (s.full) {
+        seq++;
+        setHint('✓ Address found — ' + s.postcode, true);
+        close(); clearError('f-address');
+        return;
+      }
       seq++; // ignore any search still in flight
       showStatus('Getting the full address…');
       fetch('/api/address/get/' + encodeURIComponent(s.id))
@@ -3304,7 +3329,6 @@
     }
 
     input.addEventListener('input', function(){
-      if (!enabled) return;
       setHint(HINT_TEXT, false);
       clearTimeout(timer);
       var term = input.value.trim();
