@@ -764,7 +764,7 @@
             <div><label class="lbl" for="certWhoGas">Gas safety</label><select class="inp" id="certWhoGas" data-cert-who="Gas"></select></div>
             <div><label class="lbl" for="certWhoEICR">Electrical (EICR)</label><select class="inp" id="certWhoEICR" data-cert-who="EICR"></select></div>
           </div>
-          <p class="muted-note" style="margin:8px 0 0">You’re prompted to book them 10 days before a certificate expires (and get a phone alert).</p>
+          <p class="muted-note" style="margin:8px 0 0">10 days before a certificate expires, a job is raised automatically for this contractor and you get a phone alert — open the job to send it to them.</p>
         </div>
         <div class="toolbar">
           <div class="tabs" id="certTabs"><button type="button" class="on" data-cf="action">Needs action <span class="n" id="cfAction"></span></button><button type="button" data-cf="all">All properties</button><button type="button" data-cf="missing">Missing <span class="n" id="cfMissing"></span></button></div>
@@ -4963,6 +4963,9 @@
       if (!d.ok) { $('certErr').textContent = 'Couldn’t save (' + (d.error || 'error') + ')'; return; }
       $('certModal').hidden = true; toast(certDef(certCtx.type).name + ' saved');
       loadCerts().then(function(){ renderCerts(); renderCertAlerts(); if (view === 'props' && openPropKey) renderProperty(); });
+      // A certificate already within 10 days gets its job raised straight away on the server.
+      var dd = daysUntil($('certExpires').value);
+      if (!na && dd !== null && dd <= CERT_REMIND) setTimeout(function(){ loadCerts().then(loadJobs).then(function(){ var c = certFor(propKey(certCtx ? certCtx.address : ''), certCtx ? certCtx.type : ''); if (c && c.job_id) toast('Renewal job raised automatically'); }); }, 1500);
     });
   });
   $('certDelete').addEventListener('click', function(){

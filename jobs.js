@@ -1644,7 +1644,11 @@ module.exports = function mountJobs(app, opts) {
   // ---------- Certificates ----------
   // EPC (10 years), gas safety (12 months) and electrical safety / EICR (5 years)
   // for each property, with the contractor who renews each kind.
-  const CERT_TYPES = { EPC: { name: 'EPC', years: 10 }, Gas: { name: 'Gas safety certificate', years: 1 }, EICR: { name: 'Electrical safety certificate (EICR)', years: 5 } };
+  const CERT_TYPES = {
+    EPC: { name: 'EPC', years: 10, category: 'EPC', job: 'Energy Performance Certificate (EPC)', long: 'Energy Performance Certificate', trade: /epc|energy/i },
+    Gas: { name: 'Gas safety certificate', years: 1, category: 'Gas safety', job: 'Annual gas safety check (CP12)', long: 'Gas safety certificate', trade: /gas/i },
+    EICR: { name: 'Electrical safety certificate (EICR)', years: 5, category: 'EICR', job: 'Electrical safety check (EICR)', long: 'Electrical safety certificate (EICR)', trade: /eicr|electric/i }
+  };
   const REMIND_DAYS = 10;
   function isoDay(v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) && apptDay(v) ? String(v) : null; }
   app.get('/api/admin/certificates', withDb(async function (p, req, res) {
@@ -1671,6 +1675,8 @@ module.exports = function mountJobs(app, opts) {
       [key, str(b.address, 500), type, notRequired ? null : issued, notRequired ? null : expires, str(b.reference, 100), str(b.rating, 5), str(b.notes, 1000), notRequired]);
     // Note it on the booked job, if there was one.
     if (cur && cur.job_id && renewed && expires) await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [cur.job_id, 'note', CERT_TYPES[type].name + ' renewed — now expires ' + certDay(expires) + '.']);
+    // Already within 10 days? Raise the renewal job now rather than at the next check.
+    if (expires && renewed) raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); });
     res.json({ ok: true, id: r.rows[0].id });
   }));
   app.delete('/api/admin/certificates/:id', withDb(async function (p, req, res) {
@@ -1725,34 +1731,73 @@ module.exports = function mountJobs(app, opts) {
       res.json({ ok: false, error: 'register-unreachable', url: url });
     }
   });
-  // Phone alert (ntfy) when a certificate comes within 10 days of expiring and
-  // nothing is booked for it yet. Checked every few hours; each only once.
-  async function remindCertificates() {
-    if (!NTFY_TOPIC || typeof fetch !== 'function') return;
-    const p = await db(); if (!p) return;
-    const soon = new Date(Date.now() + REMIND_DAYS * 86400000).toISOString().slice(0, 10);
-    const rows = (await p.query(`SELECT c.id, c.address, c.type, c.expires_on FROM property_certificates c
-      LEFT JOIN jobs j ON j.id = c.job_id AND j.archived_at IS NULL AND j.status NOT IN ('Completed', 'Cancelled')
-      WHERE c.expires_on IS NOT NULL AND c.expires_on <= $1 AND c.reminded_at IS NULL AND j.id IS NULL`, [soon])).rows;
-    const s = (await p.query("SELECT value FROM app_settings WHERE key = 'cert_contractors'")).rows[0];
-    const who = (s && s.value) || {};
-    for (const c of rows) {
-      const past = c.expires_on < new Date().toISOString().slice(0, 10);
-      const body = {
-        topic: NTFY_TOPIC,
-        title: (past ? 'Expired: ' : 'Expires soon: ') + CERT_TYPES[c.type].name,
-        message: String(c.address || '').replace(/\s+/g, ' ') + '\n' + (past ? 'Expired ' : 'Expires ') + certDay(c.expires_on) + (who[c.type] ? '\nBook ' + who[c.type] : ''),
-        priority: past ? 5 : 4, tags: ['page_facing_up']
-      };
-      if (PUBLIC_URL) body.click = PUBLIC_URL + '/admin#certs';
-      try {
-        const r = await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
-        if (r.ok) await p.query('UPDATE property_certificates SET reminded_at = now() WHERE id = $1', [c.id]);
-      } catch (err) { console.error('Certificate reminder failed:', err.message); }
-    }
+  // 10 days before a certificate expires (or once it has expired) with no open
+  // job for it, raise the renewal job automatically — for the contractor who
+  // renews that kind, with the tenant and landlord filled in — and send a phone
+  // alert (ntfy). Checked a minute after start, then hourly, and whenever a
+  // certificate is saved. Each certificate is handled once until it's renewed.
+  function ntfy(body) {
+    if (!NTFY_TOPIC || typeof fetch !== 'function') return Promise.resolve(false);
+    return fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: NTFY_TOPIC }, body)), signal: AbortSignal.timeout(8000) })
+      .then(function (r) { return r.ok; }).catch(function (err) { console.error('Phone alert failed:', err.message); return false; });
   }
-  setTimeout(function () { remindCertificates().catch(function () {}); }, 60 * 1000);
-  setInterval(function () { remindCertificates().catch(function () {}); }, 6 * 3600 * 1000).unref();
+  let raising = false;
+  async function raiseCertificateJobs() {
+    if (raising) return; raising = true;
+    try {
+      const p = await db(); if (!p) return;
+      const today = new Date().toISOString().slice(0, 10);
+      const soon = new Date(Date.now() + REMIND_DAYS * 86400000).toISOString().slice(0, 10);
+      const rows = (await p.query(`SELECT c.* FROM property_certificates c
+        LEFT JOIN jobs j ON j.id = c.job_id AND j.archived_at IS NULL AND j.status NOT IN ('Completed', 'Cancelled')
+        WHERE NOT c.not_required AND c.expires_on IS NOT NULL AND c.expires_on <= $1 AND c.reminded_at IS NULL AND j.id IS NULL`, [soon])).rows;
+      if (!rows.length) return;
+      const s = (await p.query("SELECT value FROM app_settings WHERE key = 'cert_contractors'")).rows[0];
+      const who = (s && s.value) || {};
+      const contractorsList = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY id')).rows;
+      for (const c of rows) {
+        // Claim it first so it's never raised twice.
+        const claim = await p.query('UPDATE property_certificates SET reminded_at = now() WHERE id = $1 AND reminded_at IS NULL RETURNING id', [c.id]);
+        if (!claim.rows.length) continue;
+        const def = CERT_TYPES[c.type], past = c.expires_on < today;
+        const recent = (await p.query(`SELECT property_address, tenant_name, tenant_phone, tenant_email, key_permission, key_instructions, access_notes
+          FROM jobs WHERE property_address IS NOT NULL ORDER BY created_at DESC LIMIT 2000`)).rows.filter(function (x) { return propKey(x.property_address) === c.property_key; });
+        // Use a complete address (door number + postcode) from the certificate or an earlier job.
+        const address = [c.address].concat(recent.map(function (x) { return x.property_address; })).filter(function (a) { return a && !addressProblem(tidyAddress(a)); })[0];
+        if (!address) {
+          await ntfy({ title: 'Can’t raise job: ' + def.name, message: String(c.address || '') + '\nExpires ' + certDay(c.expires_on) + '\nAdd the door number and postcode, then book it from Certificates.', priority: 4, tags: ['page_facing_up'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#certs' : undefined });
+          continue;
+        }
+        const assigned = who[c.type] || (contractorsList.filter(function (x) { return def.trade.test((x.trade || '') + ' ' + x.name); })[0] || {}).name || null;
+        const tenant = (await p.query(`SELECT t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id
+          WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY pt.created_at DESC LIMIT 1`, [c.property_key])).rows[0] || null;
+        const last = recent.filter(function (x) { return x.tenant_name || x.tenant_phone; })[0] || {};
+        const ll = (await p.query(`SELECT l.name, l.email, l.phone, l.address FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1`, [c.property_key])).rows[0] || null;
+        const expiryAt = new Date(c.expires_on + 'T17:00:00Z');
+        const due = expiryAt > new Date() ? expiryAt : new Date(Date.now() + DUE_HOURS.Urgent * 3600 * 1000);
+        const r = await p.query(`INSERT INTO jobs (status, urgency, due_at, source, property_address, category, affected, description, assigned_to,
+            tenant_name, tenant_phone, tenant_email, key_permission, key_instructions, access_notes, landlord_name, landlord_email, landlord_phone, landlord_address)
+          VALUES ($1, $2, $3, 'Other', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+          [assigned ? 'Assigned' : 'New', past ? 'Urgent' : 'Routine', due, tidyAddress(address), def.category, def.job,
+            def.long + (past ? ' expired on ' : ' expires on ') + certDay(c.expires_on) + '. Please contact the tenant directly to arrange a time.', assigned,
+            tenant ? tenant.name : last.tenant_name || null, tenant ? tenant.phone : last.tenant_phone || null, tenant ? tenant.email : last.tenant_email || null,
+            last.key_permission || null, last.key_instructions || null, last.access_notes || null,
+            ll ? ll.name : null, ll ? ll.email : null, ll ? ll.phone : null, ll ? ll.address : null]);
+        const id = r.rows[0].id;
+        await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'created',
+          'Job raised automatically: ' + def.name + (past ? ' expired on ' : ' expires on ') + certDay(c.expires_on) + '.' + (assigned ? ' Assigned to ' + assigned + '.' : ' No contractor chosen for ' + def.name + ' yet.')]);
+        await p.query('UPDATE property_certificates SET job_id = $2, updated_at = now() WHERE id = $1', [c.id, id]);
+        console.log('Raised ' + refFor(id) + ' for ' + def.name + ' at ' + address);
+        await ntfy({
+          title: refFor(id) + ' raised: ' + def.name,
+          message: String(address).replace(/\s+/g, ' ') + '\n' + (past ? 'Expired ' : 'Expires ') + certDay(c.expires_on) + '\n' + (assigned ? 'Assigned to ' + assigned + ' — open it to send them the job.' : 'No contractor chosen yet — open it to assign one.'),
+          priority: past ? 5 : 4, tags: ['page_facing_up'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#job=' + id : undefined
+        });
+      }
+    } finally { raising = false; }
+  }
+  setTimeout(function () { raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); }); }, 60 * 1000);
+  setInterval(function () { raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); }); }, 3600 * 1000).unref();
 
   // ---------- Contractors ----------
   function cleanContractor(b) {
