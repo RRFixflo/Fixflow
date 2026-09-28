@@ -4815,6 +4815,7 @@
         '<div class="tile alert' + (owed.length ? ' has' : '') + '"><div class="k">Owed to them</div><div class="v">' + gbp(sum(owed)) + '</div><div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + owed.length + ' job' + (owed.length === 1 ? '' : 's') + (nocost.length ? ' · ' + nocost.length + ' done with no cost yet' : '') + '</div></div>' +
         '<div class="tile good"><div class="k">Paid so far</div><div class="v">' + gbp(sum(paid)) + '</div><div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + paid.length + ' job' + (paid.length === 1 ? '' : 's') + '</div></div>' +
       '</div>' +
+      (c.id ? ctrLinkCard(c) : '') +
       '<div class="toolbar"><div class="tabs" id="ctrTabs">' + tabs.map(function(t){ return '<button type="button" data-ctr-tab="' + t[0] + '"' + (t[0] === ctrTab ? ' class="on"' : '') + '>' + t[1] + ' <span class="n">' + t[2] + '</span></button>'; }).join('') + '</div>' +
         (ctrTab === 'owed' && owed.length ? '<button class="btn small" id="ctrPaySel" type="button">Mark ticked paid</button><button class="btn small primary" id="ctrPayAll" type="button">Mark all paid (' + gbp(sum(owed)) + ')</button>' : '') + '</div>' +
       '<div class="list">' + (rows.length ? rows.map(function(j){
@@ -4838,7 +4839,41 @@
     if ($('ctrPayAll')) $('ctrPayAll').addEventListener('click', function(){ pay(true); });
     if ($('ctrPaySel')) $('ctrPaySel').addEventListener('click', function(){ pay(false); });
   }
+  // The contractor's own job link: on/off, copy, send, or replace.
+  function ctrLinkCard(c){
+    var url = c.portal_token ? location.origin + '/c/' + c.portal_token : '', on = !!c.portal_on && !!url;
+    return '<div class="card" style="margin-bottom:12px"><label style="display:flex;gap:10px;align-items:center;font-weight:600;cursor:pointer">' +
+      '<input type="checkbox" id="ctrLinkOn"' + (on ? ' checked' : '') + '> Give ' + esc(c.name) + ' a link to see their jobs and mark them completed</label>' +
+      (on ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><input class="inp" id="ctrLinkUrl" readonly value="' + esc(url) + '" style="flex:1;min-width:220px">' +
+          '<button class="btn small" type="button" data-ctr-link="copy">Copy</button>' +
+          (waNumber(c.phone) ? '<button class="btn small wa" type="button" data-ctr-link="wa">Send on WhatsApp</button>' : '') +
+          (c.email ? '<button class="btn small" type="button" data-ctr-link="email">Email it</button>' : '') +
+          '<button class="btn small ghost" type="button" data-ctr-link="new" title="The old link stops working">Make a new link</button></div>' +
+        '<p class="muted-note" style="margin:8px 0 0">They see the jobs given to them (address, the problem, access and tenant contact — no costs or landlord details) and can mark each one completed; you get a phone alert when they do.</p>'
+        : '<p class="muted-note" style="margin:6px 0 0">Off — no link is active.</p>') + '</div>';
+  }
+  function ctrLink(c, body){
+    return api('POST', '/api/admin/contractors/' + c.id + '/portal', body).then(function(d){
+      if (!d.ok) { toast('Couldn’t update the link'); return null; }
+      return loadContractors ? Promise.resolve(loadContractors()).then(function(){ renderContractorPage(); return d; }) : d;
+    });
+  }
+  $('ctrView').addEventListener('change', function(e){
+    if (e.target.id !== 'ctrLinkOn') return;
+    var c = contractorByName(openCtrName); if (!c) return;
+    ctrLink(c, { on: e.target.checked }).then(function(d){ if (d) toast(d.on ? 'Link turned on — send it to ' + c.name : 'Link turned off'); });
+  });
   $('ctrView').addEventListener('click', function(e){
+    var lk = e.target.closest('[data-ctr-link]');
+    if (lk) {
+      var c = contractorByName(openCtrName), url = $('ctrLinkUrl') ? $('ctrLinkUrl').value : '';
+      var msg = 'Hi ' + (c.name || '').split(' ')[0] + ', here is your link to see the jobs we’ve given you and mark them completed when done: ' + url + '\n\nThanks, Residential Realtors';
+      if (lk.dataset.ctrLink === 'copy') { (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function(){ toast('Link copied'); }, function(){ $('ctrLinkUrl').select(); document.execCommand('copy'); toast('Link copied'); }); }
+      else if (lk.dataset.ctrLink === 'wa') window.open('https://wa.me/' + waNumber(c.phone) + '?text=' + encodeURIComponent(msg), '_blank');
+      else if (lk.dataset.ctrLink === 'email') window.location.href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent('Your jobs from Residential Realtors') + '&body=' + encodeURIComponent(msg);
+      else if (lk.dataset.ctrLink === 'new' && confirm('Make a new link? The old link will stop working.')) ctrLink(c, { on: true, regenerate: true }).then(function(d){ if (d) toast('New link made — send it to ' + c.name); });
+      return;
+    }
     var t = e.target.closest('button, [data-open]'); if (!t) return;
     if (t.dataset.ctrTab) { ctrTab = t.dataset.ctrTab; renderContractorPage(); }
     else if (t.dataset.open) openJob(Number(t.dataset.open));
