@@ -1853,7 +1853,8 @@ module.exports = function mountJobs(app, opts) {
     const atts = (Array.isArray(b.attachments) ? b.attachments : []).slice(0, 6).map(function (a) {
       return { filename: (str(a && a.name, 150) || 'Document.pdf').replace(/[^a-zA-Z0-9.\-_ ]+/g, '-'), content: String(a && a.data || '').replace(/^data:[^,]*,/, '') };
     }).filter(function (a) { return a.content && a.content.length < 15 * 1024 * 1024; });
-    const sent = await sendEmail({ to: to, subject: subject, text: text, attachments: atts });
+    const html = typeof b.html === 'string' && b.html.length < 300000 ? b.html.replace(/<script[\s\S]*?<\/script>/gi, '') : undefined;
+    const sent = await sendEmail({ to: to, subject: subject, text: text, html: html, attachments: atts });
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     await p.query(`UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1`,
       [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: 'Emailed ' + to.join(', ') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : '') }])]);
