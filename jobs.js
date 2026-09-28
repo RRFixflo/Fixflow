@@ -1899,13 +1899,14 @@ module.exports = function mountJobs(app, opts) {
     (await p.query("SELECT property_key, expires_on FROM property_certificates WHERE type = 'EPC'")).rows.forEach(function (r) { epc[r.property_key] = r.expires_on; });
     const synced = {};
     (await p.query('SELECT property_key, checked_at, address_synced FROM epc_checks')).rows.forEach(function (r) { checked[r.property_key] = new Date(r.checked_at).getTime(); synced[r.property_key] = r.address_synced; });
-    const now = Date.now(), soon = new Date(now + 60 * 86400000).toISOString().slice(0, 10);
+    const now = Date.now(), soon = new Date(now + 60 * 86400000).toISOString().slice(0, 10), today = new Date(now).toISOString().slice(0, 10);
     const todo = props.filter(function (x) {
       if (!x.key || !POSTCODE_RE.test(x.address)) return false;
       if (onlyAddress) return true;
       const age = checked[x.key] ? now - checked[x.key] : Infinity;
       if (!epc[x.key]) return age > 30 * 86400000;
       if (!synced[x.key]) return true;   // once, to take the register's exact address
+      if (epc[x.key] < today) return age > 86400000;   // expired: daily, to catch the new one
       return epc[x.key] <= soon && age > 7 * 86400000;
     });
     const cache = {}; let found = 0, done = 0, newAddress = null;
@@ -1984,13 +1985,14 @@ module.exports = function mountJobs(app, opts) {
       .then(function () { epcRunning = false; });
   }
   // When the matching improves, look again at properties it couldn't place.
-  const EPC_MATCH_VERSION = '2';
+  const EPC_MATCH_VERSION = '3';
   setTimeout(function () {
     db().then(async function (p) {
       if (!p) return;
       const v = (await p.query("SELECT value FROM app_settings WHERE key = 'epc_match_version'")).rows[0];
       if (v && String(v.value).replace(/"/g, '') === EPC_MATCH_VERSION) return;
-      await p.query('DELETE FROM epc_checks WHERE found = false');
+      await p.query(`DELETE FROM epc_checks c WHERE c.found = false OR EXISTS (SELECT 1 FROM property_certificates pc
+        WHERE pc.property_key = c.property_key AND pc.type = 'EPC' AND pc.expires_on <= to_char(now() + interval '60 days', 'YYYY-MM-DD'))`);
       await p.query(`INSERT INTO app_settings (key, value) VALUES ('epc_match_version', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(EPC_MATCH_VERSION)]);
     }).catch(function (err) { console.error('EPC recheck reset failed:', err.message); });
   }, 60 * 1000);
