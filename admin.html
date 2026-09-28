@@ -386,6 +386,30 @@
   .act-chart .act-bar i { display: block; width: 100%; background: var(--blue, #2563eb); border-radius: 4px 4px 0 0; min-height: 0; }
   .act-chart .act-bar:hover i { opacity: .8; }
   .act-chart .axis { position: absolute; left: 0; right: 0; bottom: -18px; display: flex; justify-content: space-between; font-size: .7rem; color: var(--ink-soft); }
+  .modal .card.tn-card { width: min(760px, 100%); display: flex; flex-direction: column; gap: 14px; }
+  .tn-sec { border-top: 1px solid var(--line); padding-top: 12px; }
+  .tn-lbl { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint); margin-bottom: 8px; }
+  .tn-scope { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tn-scope button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .82rem; font-weight: 550; cursor: pointer; color: var(--ink-soft); }
+  .tn-scope button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .tn-plist { max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+  .tn-plist label { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: .86rem; cursor: pointer; }
+  .tn-plist label:last-child { border-bottom: 0; }
+  .tn-plist label small { color: var(--ink-faint); margin-left: auto; white-space: nowrap; }
+  .tn-tpls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .tn-tpls button { border: 1px dashed var(--line-strong); background: none; border-radius: 8px; padding: 4px 9px; font: inherit; font-size: .78rem; color: var(--ink-soft); cursor: pointer; }
+  .tn-tpls button:hover { color: var(--ink); border-color: var(--ink-faint); }
+  .tn-row { display: grid; grid-template-columns: 22px 32px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .tn-row:last-child { border-bottom: 0; }
+  .tn-row .nm { font-weight: 600; font-size: .88rem; }
+  .tn-row .sub { font-size: .76rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tn-row .acts { display: flex; gap: 6px; align-items: center; }
+  .tn-row.none { opacity: .55; }
+  .tn-note { border-top: 1px solid var(--line); padding: 8px 0; }
+  .tn-note summary { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; cursor: pointer; font-size: .88rem; }
+  .tn-note-b { white-space: pre-wrap; font-size: .85rem; color: var(--ink-soft); background: var(--panel-2); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+  .tn-done { font-size: .75rem; font-weight: 700; color: var(--ok); white-space: nowrap; }
+  .tn-foot { position: sticky; bottom: -20px; background: var(--panel); padding: 10px 0 0; margin: 0; flex-wrap: wrap; }
   .act-sec { margin-bottom: 10px; padding: 0; overflow: hidden; }
   .act-sec > summary { display: flex; align-items: center; gap: 12px; padding: 14px 18px; cursor: pointer; list-style: none; border-radius: inherit; }
   .act-sec > summary::-webkit-details-marker { display: none; }
@@ -884,6 +908,7 @@
         <div id="tenantsListView">
           <div class="toolbar">
             <input class="inp search" id="tenantSearch" type="search" placeholder="Search by name, phone, email or address">
+            <button class="btn" id="tenantBroadcast" type="button">📣 Message tenants</button>
             <button class="btn primary" id="tenantAdd" type="button">+ Add tenant</button>
           </div>
           <div class="list" id="tenantList"></div>
@@ -1136,6 +1161,7 @@
           <div class="prop-head">
             <div><h2 id="propTitle"></h2><div class="prop-sub" id="propSub"></div></div>
             <div class="prop-actions">
+              <button class="btn small" id="propMsgTenants" type="button">📣 Message tenants</button>
               <button class="btn small" id="propAddrEdit" type="button">✎ Edit address</button>
               <button class="btn small ghost danger" id="propDelete" type="button">🗑 Delete property</button>
               <select class="inp" id="propRange" aria-label="Period for the report">
@@ -1152,6 +1178,7 @@
           <div class="card" id="propCerts" style="margin-bottom:12px"></div>
           <div class="card" id="propTcy" style="margin-bottom:12px"></div>
           <div class="grid2" style="margin-bottom:12px;align-items:start"><div class="card" id="propLandlord"></div><div class="card" id="propTenants"></div></div>
+          <div class="card" id="propNotices" hidden style="margin-bottom:12px"></div>
           <div class="list" id="propJobs"></div>
         </div>
       </div>
@@ -1436,6 +1463,36 @@
     <p class="muted-note" style="margin:0" id="ttIntro"></p>
     <div id="ttList"></div>
     <div class="row-actions" style="margin-top:0"><button class="btn" type="button" id="ttLl" hidden>🏠 Tell the landlord too</button><button class="btn primary" type="button" id="ttDone">Done</button></div>
+  </div>
+</div>
+<div class="modal" id="tnModal" hidden>
+  <div class="card tn-card" role="dialog" aria-labelledby="tnTitle">
+    <h3 id="tnTitle" style="margin:0">Message tenants</h3>
+    <div class="tn-sec">
+      <div class="tn-lbl">Who to send it to</div>
+      <div class="tn-scope" id="tnScope"></div>
+      <div id="tnPicker" hidden>
+        <input class="inp" id="tnSearch" type="search" placeholder="Search properties…" style="margin:8px 0">
+        <div class="tn-plist" id="tnPList"></div>
+      </div>
+    </div>
+    <div class="tn-sec">
+      <div class="tn-lbl">Message</div>
+      <div class="tn-tpls" id="tnTpls"></div>
+      <input class="inp" id="tnSubject" placeholder="Email subject" style="margin-bottom:8px">
+      <textarea class="inp" id="tnBody" rows="8" placeholder="Write your message…"></textarea>
+      <div class="muted-note" style="margin-top:4px">{first_name} and {address} are filled in for each tenant.</div>
+    </div>
+    <div class="tn-sec">
+      <div class="tn-lbl" id="tnCount">Tenants</div>
+      <div id="tnList"></div>
+    </div>
+    <div class="row-actions tn-foot">
+      <button class="btn ghost" type="button" id="tnClose">Close</button>
+      <span style="flex:1"></span>
+      <button class="btn" type="button" id="tnWaNext">WhatsApp next tenant</button>
+      <button class="btn primary" type="button" id="tnEmailAll">Email all</button>
+    </div>
   </div>
 </div>
 <div class="modal" id="addrModal" hidden>
@@ -2757,6 +2814,7 @@
     })(d.property.address);
     renderPropLandlord(d.property);
     renderPropTenants(d.property);
+    renderPropNotices();
   }
   function renderPropTenants(pr){
     var cur = tenantsAtProperty(pr.address), past = tenantsAtProperty(pr.address, true).filter(function(t){ return t.movedOut; });
@@ -3700,6 +3758,7 @@
     if (e.key !== 'Escape') return;
     if (!$('askModal').hidden) { closeAsk(); return; }
     if (!$('llfModal').hidden) { $('llfModal').hidden = true; return; }
+    if (!$('tnModal').hidden) { $('tnClose').click(); return; }
     if (!$('shModal').hidden) { $('shModal').hidden = true; return; }
     if (!$('tnfModal').hidden) { $('tnfModal').hidden = true; return; }
     if (!$('jfModal').hidden) { $('jfModal').hidden = true; return; }
@@ -3825,6 +3884,204 @@
   });
   $('ttDone').addEventListener('click', function(){ $('ttModal').hidden = true; if (openJobId) openJob(openJobId); });
   $('ttLl').addEventListener('click', function(){ openLandlordNotice(ttJobs); });
+
+  // ---------- Message tenants: a notice to every tenant at a property, a
+  // building, or all properties. Each tenant gets their own copy by email or
+  // WhatsApp, with {first_name} and {address} filled in. ----------
+  var TN_TEMPLATES = [
+    ['General notice', 'A message about your home', 'Hi {first_name},\n\n\n\nThanks,\nResidential Realtors'],
+    ['Water off', 'Water supply off — {address}', 'Hi {first_name},\n\nPlease note the water supply at {address} will be switched off on [day, date] between [time] and [time] for essential works. Please store some water beforehand if you need it.\n\nSorry for any inconvenience.\n\nThanks,\nResidential Realtors'],
+    ['Contractor visit', 'Contractor visit — {address}', 'Hi {first_name},\n\nA contractor will be visiting {address} on [day, date] at around [time] to [what they’re doing]. Please let us know if this doesn’t suit, or if they’ll need a key to get in.\n\nThanks,\nResidential Realtors'],
+    ['Inspection', 'Property inspection — {address}', 'Hi {first_name},\n\nWe’d like to carry out a routine inspection at {address} on [day, date] at [time]. It takes about 15–20 minutes. You don’t need to be home — we can use our key — but let us know if you’d prefer another time.\n\nThanks,\nResidential Realtors'],
+    ['Gas safety check', 'Annual gas safety check — {address}', 'Hi {first_name},\n\nThe annual gas safety check for {address} is due. Our engineer will be in touch to arrange a time, or you can reply to let us know which days suit you. The check is a legal requirement and takes about 30 minutes.\n\nThanks,\nResidential Realtors'],
+    ['Fire alarm test', 'Fire alarm test — {address}', 'Hi {first_name},\n\nThe fire alarm system at {address} will be tested on [day, date] between [time] and [time]. You may hear the alarm sound briefly — there’s no need to leave the building during the test.\n\nThanks,\nResidential Realtors'],
+    ['Bins / rubbish', 'Bin collection — {address}', 'Hi {first_name},\n\nA quick reminder about rubbish at {address}: [collection day / what’s changed]. Please keep communal areas clear of bags and bulky items.\n\nThanks,\nResidential Realtors']
+  ];
+  var tn = { keys: [], scope: 'one', baseKey: null, noticeId: null, sent: {}, recips: [] };
+  // "Flat 20, Amigo House, London SE1 7QE" and "5 Whitworth House, …" belong to
+  // a building ("amigo house|se1 7qe"); a plain house address has none.
+  function buildingOf(address){
+    var a = String(address || '').trim(), parts = a.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+    if (!parts.length) return null;
+    var hadFlat = false;
+    if (/^(flat|apartment|apt|unit|room|studio)\b/i.test(parts[0])) {
+      hadFlat = true;
+      var rest = parts[0].replace(/^(flat|apartment|apt|unit|room|studio)\.?\s*[\w-]+\s*/i, '').trim();
+      if (rest) parts[0] = rest; else parts.shift();
+    }
+    if (!parts.length) return null;
+    var first = parts[0], m = /^\d+[a-z]?\s+(.*\b(house|court|building|mansions|tower|lodge|point|heights|apartments|block|estate|gardens|place|wharf|works|centre|hall))$/i.exec(first);
+    if (m) { first = m[1]; hadFlat = true; }
+    if (!hadFlat) return null;
+    var pc = (/([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\s*$/i.exec(a) || [])[1] || '';
+    return { name: first, key: (first + '|' + pc.replace(/\s+/g, '')).toLowerCase() };
+  }
+  function tnProperties(){
+    // Every property, plus any known only from a saved tenant.
+    var list = propertiesFromJobs().slice(), seen = {};
+    list.forEach(function(p){ seen[p.key] = 1; });
+    tenantLinks.forEach(function(l){ if (!l.moved_out_at && !seen[l.property_key]) { seen[l.property_key] = 1; list.push({ key: l.property_key, address: l.address || l.property_key, jobs: [] }); } });
+    return list.sort(function(a, b){ return a.address.localeCompare(b.address); });
+  }
+  function tnRecipientsFor(pr){
+    var out = [], seen = {};
+    var add = function(t){
+      if (!t || (!t.name && !t.phone && !t.email)) return;
+      var id = phoneTail(t.phone) || String(t.email || '').toLowerCase() || String(t.name || '').trim().toLowerCase();
+      if (!id || seen[id]) return; seen[id] = 1;
+      out.push({ key: pr.key + '#' + id, name: t.name || '', phone: t.phone || '', email: t.email || '', address: pr.address, pkey: pr.key });
+    };
+    tenantsAtProperty(pr.address).forEach(add);
+    // The latest tenancy here counts as current: its tenants too.
+    var tl = tenancies.filter(function(t){ return t.property_key === pr.key; }).sort(function(a, b){ return String((b.data || {}).start_date || '').localeCompare(String((a.data || {}).start_date || '')); })[0];
+    if (tl) ((tl.data || {}).tenants || []).forEach(add);
+    return out;
+  }
+  function tnFill(text, r){
+    var first = String(r.name || '').trim().replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, '').split(/\s+/)[0];
+    return String(text || '').replace(/\{first_name\}/g, first && first.length > 1 ? first : 'there').replace(/\{address\}/g, shortAddr(r.address));
+  }
+  function openTenantBroadcast(address){
+    var props = tnProperties();
+    tn = { keys: [], scope: 'one', baseKey: null, noticeId: null, sent: {}, recips: [], excluded: {} };
+    if (address) { tn.baseKey = propKey(address); tn.keys = [tn.baseKey]; tn.scope = 'one'; }
+    else { tn.scope = 'pick'; }
+    $('tnSubject').value = TN_TEMPLATES[0][1]; $('tnBody').value = TN_TEMPLATES[0][2];
+    $('tnTpls').innerHTML = TN_TEMPLATES.map(function(t, i){ return '<button type="button" data-tn-tpl="' + i + '">' + esc(t[0]) + '</button>'; }).join('');
+    $('tnSearch').value = '';
+    tnDraw();
+    $('tnModal').hidden = false;
+    setTimeout(function(){ $('tnBody').focus(); $('tnBody').setSelectionRange(('Hi {first_name},\n\n').length, ('Hi {first_name},\n\n').length); }, 50);
+  }
+  function tnDraw(){
+    var props = tnProperties(), base = tn.baseKey ? props.filter(function(p){ return p.key === tn.baseKey; })[0] : null;
+    var bld = base ? buildingOf(base.address) : null;
+    var inBld = bld ? props.filter(function(p){ var b = buildingOf(p.address); return b && b.key === bld.key; }) : [];
+    var chips = [];
+    if (base) chips.push(['one', 'This property']);
+    if (inBld.length > 1) chips.push(['building', 'Every flat in ' + bld.name + ' (' + inBld.length + ')']);
+    chips.push(['all', 'All properties (' + props.length + ')'], ['pick', 'Choose properties…']);
+    if (tn.scope === 'one' && base) tn.keys = [base.key];
+    if (tn.scope === 'building') tn.keys = inBld.map(function(p){ return p.key; });
+    if (tn.scope === 'all') tn.keys = props.map(function(p){ return p.key; });
+    $('tnScope').innerHTML = chips.map(function(c){ return '<button type="button" data-tn-scope="' + c[0] + '"' + (c[0] === tn.scope ? ' class="on"' : '') + '>' + esc(c[1]) + '</button>'; }).join('');
+    $('tnPicker').hidden = tn.scope !== 'pick';
+    if (tn.scope === 'pick') tnDrawPicker();
+    var byKey = {}; props.forEach(function(p){ byKey[p.key] = p; });
+    tn.recips = [].concat.apply([], tn.keys.map(function(k){ return byKey[k] ? tnRecipientsFor(byKey[k]) : []; }));
+    var reach = tn.recips.filter(function(r){ return (r.phone || r.email) && !tn.excluded[r.key]; });
+    $('tnTitle').textContent = 'Message tenants' + (tn.scope === 'one' && base ? ' — ' + shortAddr(base.address) : tn.scope === 'building' && bld ? ' — ' + bld.name : tn.scope === 'all' ? ' — all properties' : '');
+    $('tnCount').textContent = tn.recips.length + ' tenant' + (tn.recips.length === 1 ? '' : 's') + ' at ' + tn.keys.length + ' propert' + (tn.keys.length === 1 ? 'y' : 'ies') + (tn.recips.length ? ' · ' + reach.length + ' will get it' : '');
+    var multi = tn.keys.length > 1;
+    $('tnList').innerHTML = tn.recips.length ? tn.recips.map(function(r, i){
+      var wa = waNumber(r.phone), can = wa || r.email, done = tn.sent[r.key];
+      return '<div class="tn-row' + (can ? '' : ' none') + '" data-i="' + i + '">' +
+        '<input type="checkbox" data-tn-inc="' + i + '"' + (can && !tn.excluded[r.key] ? ' checked' : '') + (can ? '' : ' disabled') + ' aria-label="Include ' + esc(r.name || 'tenant') + '">' +
+        avatar(r.name || '?') +
+        '<div style="min-width:0"><div class="nm">' + esc(r.name || 'Tenant') + '</div><div class="sub">' + esc([multi ? shortAddr(r.address) : '', r.phone, r.email].filter(Boolean).join(' · ') || 'No phone or email saved') + '</div></div>' +
+        '<div class="acts">' + (done ? '<span class="tn-done">✓ ' + esc(done) + '</span>' : '') +
+          (wa ? '<button type="button" class="btn small wa" data-tn-wa="' + i + '">WhatsApp</button>' : '') +
+          (r.email ? '<button type="button" class="btn small" data-tn-mail="' + i + '">Email</button>' : '') + '</div></div>';
+    }).join('') : '<p class="muted-note" style="margin:0">' + (tn.keys.length ? 'No tenants saved for ' + (tn.keys.length === 1 ? 'this property' : 'these properties') + ' yet — add them on the property page or in a tenancy.' : 'Choose which properties above.') + '</p>';
+    var emails = reach.filter(function(r){ return r.email; }).length, was = reach.filter(function(r){ return waNumber(r.phone) && !tn.sent[r.key]; }).length;
+    $('tnEmailAll').textContent = 'Email all (' + emails + ')'; $('tnEmailAll').disabled = !emails;
+    $('tnWaNext').textContent = 'WhatsApp next tenant' + (was ? ' (' + was + ' left)' : ''); $('tnWaNext').disabled = !was;
+  }
+  function tnDrawPicker(){
+    var q = propKey($('tnSearch').value), props = tnProperties().filter(function(p){ return !q || p.key.indexOf(q) !== -1; });
+    $('tnPList').innerHTML = props.map(function(p){
+      var n = tnRecipientsFor(p).length;
+      return '<label><input type="checkbox" data-tn-key="' + esc(p.key) + '"' + (tn.keys.indexOf(p.key) !== -1 ? ' checked' : '') + '> ' + esc(p.address) + '<small>' + n + ' tenant' + (n === 1 ? '' : 's') + '</small></label>';
+    }).join('') || '<p class="muted-note" style="padding:10px;margin:0">No properties match.</p>';
+  }
+  // The notice is saved on the first send, then each send is recorded against it.
+  function tnEnsureNotice(){
+    if (tn.noticeId) return Promise.resolve(tn.noticeId);
+    var body = $('tnBody').value.trim();
+    if (!body) { toast('Write the message first'); $('tnBody').focus(); return Promise.reject(); }
+    var one = tn.recips.length && tn.keys.length === 1 ? tn.recips[0] : null;
+    return api('POST', '/api/admin/tenant-notices', { subject: one ? tnFill($('tnSubject').value, one) : $('tnSubject').value.replace(/\{address\}/g, 'your home'), body: body, audience: $('tnTitle').textContent.replace(/^Message tenants — ?/, '') || 'Chosen properties', property_keys: tn.keys,
+      recipients: tn.recips.filter(function(r){ return !tn.excluded[r.key]; }).map(function(r){ return { key: r.key, name: r.name, phone: r.phone, email: r.email, address: r.address }; }) })
+      .then(function(d){ if (!d.ok) { toast('Couldn’t save the message'); throw new Error('save'); } tn.noticeId = d.id; return d.id; });
+  }
+  function tnMark(r, how){ tn.sent[r.key] = how; if (tn.noticeId) api('POST', '/api/admin/tenant-notices/' + tn.noticeId + '/sent', { key: r.key, how: how }); tnDraw(); }
+  function tnWa(r){
+    tnEnsureNotice().then(function(){ window.open('https://wa.me/' + waNumber(r.phone) + '?text=' + encodeURIComponent(tnFill($('tnBody').value, r)), '_blank', 'noopener'); tnMark(r, 'WhatsApp'); })['catch'](function(){});
+  }
+  $('tnModal').addEventListener('click', function(e){
+    var b;
+    if ((b = e.target.closest('[data-tn-scope]'))) { tn.scope = b.dataset.tnScope; if (tn.scope === 'pick' && !tn.keys.length && tn.baseKey) tn.keys = [tn.baseKey]; tnDraw(); return; }
+    if ((b = e.target.closest('[data-tn-tpl]'))) {
+      var t = TN_TEMPLATES[Number(b.dataset.tnTpl)], cur = $('tnBody').value.trim();
+      if (cur && cur !== TN_TEMPLATES.map(function(x){ return x[2]; }).filter(function(x){ return x.trim() === cur; })[0] && !confirm('Replace your message with the “' + t[0] + '” template?')) return;
+      $('tnSubject').value = t[1]; $('tnBody').value = t[2]; tn.noticeId = null; $('tnBody').focus(); return;
+    }
+    if ((b = e.target.closest('[data-tn-wa]'))) { tnWa(tn.recips[Number(b.dataset.tnWa)]); return; }
+    if ((b = e.target.closest('[data-tn-mail]'))) {
+      var r = tn.recips[Number(b.dataset.tnMail)];
+      tnEnsureNotice().then(function(id){
+        if (meta.canEmail) {
+          busy(b, true, '…');
+          return api('POST', '/api/admin/tenant-notices/' + id + '/email', { subject: tnFill($('tnSubject').value, r), messages: [{ key: r.key, to: r.email, text: tnFill($('tnBody').value, r) }] }).then(function(d){
+            busy(b, false); if (d.ok && d.sent.length) { tn.sent[r.key] = 'email'; tnDraw(); toast('Email sent to ' + (r.name || r.email)); } else toast('Couldn’t send the email');
+          });
+        }
+        window.location.href = 'mailto:' + encodeURIComponent(r.email) + '?subject=' + encodeURIComponent(tnFill($('tnSubject').value, r)) + '&body=' + encodeURIComponent(tnFill($('tnBody').value, r));
+        tnMark(r, 'email');
+      })['catch'](function(){});
+    }
+  });
+  $('tnModal').addEventListener('change', function(e){
+    var el = e.target;
+    if (el.dataset.tnKey) { var k = el.dataset.tnKey; tn.keys = el.checked ? tn.keys.concat([k]).filter(function(x, i, a){ return a.indexOf(x) === i; }) : tn.keys.filter(function(x){ return x !== k; }); tn.noticeId = null; tnDraw(); }
+    if (el.dataset.tnInc) { var r = tn.recips[Number(el.dataset.tnInc)]; if (el.checked) delete tn.excluded[r.key]; else tn.excluded[r.key] = 1; tnDraw(); }
+  });
+  $('tnSearch').addEventListener('input', tnDrawPicker);
+  ['tnBody', 'tnSubject'].forEach(function(id){ $(id).addEventListener('input', function(){ tn.noticeId = null; }); });
+  $('tnWaNext').addEventListener('click', function(){
+    var r = tn.recips.filter(function(x){ return waNumber(x.phone) && !tn.excluded[x.key] && !tn.sent[x.key]; })[0];
+    if (r) tnWa(r);
+  });
+  $('tnEmailAll').addEventListener('click', function(){
+    var list = tn.recips.filter(function(r){ return r.email && !tn.excluded[r.key]; });
+    if (!list.length) return;
+    var subj = $('tnSubject').value;
+    tnEnsureNotice().then(function(id){
+      if (meta.canEmail) {
+        var todo = list.filter(function(r){ return !tn.sent[r.key] || tn.sent[r.key] !== 'email'; });
+        if (!todo.length) { toast('Everyone’s already been emailed'); return; }
+        if (!confirm('Email ' + todo.length + ' tenant' + (todo.length === 1 ? '' : 's') + ' now? Each gets their own copy.')) return;
+        busy($('tnEmailAll'), true, 'Sending…');
+        return api('POST', '/api/admin/tenant-notices/' + id + '/email', { subject: tnFill(subj, todo[0]), messages: todo.map(function(r){ return { key: r.key, to: r.email, subject: tnFill(subj, r), text: tnFill($('tnBody').value, r) }; }) }).then(function(d){
+          busy($('tnEmailAll'), false);
+          if (!d.ok) { toast('Couldn’t send the emails'); return; }
+          d.sent.forEach(function(k){ tn.sent[k] = 'email'; }); tnDraw();
+          toast(d.sent.length + ' email' + (d.sent.length === 1 ? '' : 's') + ' sent' + (d.failed.length ? ' · ' + d.failed.length + ' failed' : ''));
+        });
+      }
+      // No email service: one email in your own mail app, tenants in Bcc so they can't see each other.
+      var body = $('tnBody').value.replace(/\{first_name\}/g, 'there').replace(/\{address\}/g, tn.keys.length === 1 ? shortAddr(list[0].address) : 'your home');
+      window.location.href = 'mailto:?bcc=' + encodeURIComponent(list.map(function(r){ return r.email; }).join(',')) + '&subject=' + encodeURIComponent(subj.replace(/\{address\}/g, tn.keys.length === 1 ? shortAddr(list[0].address) : 'your home')) + '&body=' + encodeURIComponent(body);
+      list.forEach(function(r){ tnMark(r, 'email'); });
+    })['catch'](function(){});
+  });
+  $('tnClose').addEventListener('click', function(){ $('tnModal').hidden = true; if (view === 'props' && openPropKey) renderPropNotices(); });
+  $('tnModal').addEventListener('mousedown', function(e){ if (e.target === $('tnModal')) $('tnClose').click(); });
+  $('tenantBroadcast').addEventListener('click', function(){ openTenantBroadcast(null); });
+  $('propMsgTenants').addEventListener('click', function(){ var d = propertyJobs(); if (d) openTenantBroadcast(d.property.address); });
+  // Notices already sent to this property's tenants, on the property page.
+  function renderPropNotices(){
+    var el = $('propNotices'), d = propertyJobs(); if (!el || !d) return;
+    api('GET', '/api/admin/tenant-notices?property_key=' + encodeURIComponent(d.property.key)).then(function(r){
+      if (!r.ok || !r.notices.length) { el.hidden = true; return; }
+      el.hidden = false;
+      el.innerHTML = '<h3>Messages to tenants</h3>' + r.notices.slice(0, 6).map(function(n){
+        var sent = Object.keys(n.sent || {}).filter(function(k){ return k.indexOf(d.property.key + '#') === 0; }).length;
+        var total = (n.recipients || []).filter(function(x){ return x.key.indexOf(d.property.key + '#') === 0; }).length;
+        return '<details class="tn-note"><summary><strong>' + esc(n.subject || String(n.body).split('\n').filter(Boolean)[1] || 'Message') + '</strong><span class="prop-sub" style="margin:0 0 0 auto">' + esc(fmtShort(n.created_at) + ' · sent to ' + sent + ' of ' + total + (n.property_keys.length > 1 ? ' · ' + (n.audience || n.property_keys.length + ' properties') : '')) + '</span></summary><div class="tn-note-b">' + esc(n.body) + '</div></details>';
+      }).join('');
+    });
+  }
 
   // Landlord updates: one message per landlord for their assigned jobs, with
   // what's being done, any booked visit and the job's progress link. The
