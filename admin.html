@@ -386,6 +386,18 @@
   .act-chart .act-bar i { display: block; width: 100%; background: var(--blue, #2563eb); border-radius: 4px 4px 0 0; min-height: 0; }
   .act-chart .act-bar:hover i { opacity: .8; }
   .act-chart .axis { position: absolute; left: 0; right: 0; bottom: -18px; display: flex; justify-content: space-between; font-size: .7rem; color: var(--ink-soft); }
+  .act-sec { margin-bottom: 10px; padding: 0; overflow: hidden; }
+  .act-sec > summary { display: flex; align-items: center; gap: 12px; padding: 14px 18px; cursor: pointer; list-style: none; border-radius: inherit; }
+  .act-sec > summary::-webkit-details-marker { display: none; }
+  @media (hover: hover) { .act-sec > summary:hover { background: var(--hover); } }
+  .act-sec-t { font-weight: 700; font-size: .98rem; white-space: nowrap; }
+  .act-sum { flex: 1; min-width: 0; font-size: .82rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .act-chev { width: 9px; height: 9px; border-right: 2px solid var(--ink-faint); border-bottom: 2px solid var(--ink-faint); transform: rotate(45deg); margin: -4px 4px 0 0; transition: transform .15s; flex: none; }
+  .act-sec[open] > summary .act-chev { transform: rotate(-135deg); margin-top: 4px; }
+  .act-sec[open] > summary { border-bottom: 1px solid var(--line); }
+  .act-sec-b { padding: 14px 18px 18px; }
+  .act-sub > summary { cursor: pointer; font-size: .82rem; font-weight: 600; color: var(--blue); }
+  @media (max-width: 560px) { .act-sec > summary { flex-wrap: wrap; row-gap: 2px; } .act-sum { flex-basis: 100%; order: 3; white-space: normal; } .act-sec-t { flex: 1; } }
   .act-bar-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
   .act-chart-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; margin-bottom: 8px; }
   .act-legend { display: flex; gap: 14px; font-size: .78rem; color: var(--ink-soft); }
@@ -1011,49 +1023,67 @@
 
       <!-- ACTIVITY: where staff are signed in, visits to the tenant pages -->
       <div id="actView" hidden>
-        <div class="act-bar-top"><span class="muted-note" style="margin:0">Showing</span><select class="inp" id="actDays" style="width:auto" aria-label="Period"><option value="30">Last 30 days</option><option value="7">Last 7 days</option><option value="90">Last 90 days</option><option value="365">Last 12 months</option></select><span class="muted-note" id="actStamp" style="margin:0"></span></div>
-        <div class="card" style="margin-bottom:12px">
-          <h3>Repairs</h3>
+        <div class="act-bar-top"><span class="muted-note" style="margin:0">Showing</span><select class="inp" id="actDays" style="width:auto" aria-label="Period"><option value="30">Last 30 days</option><option value="7">Last 7 days</option><option value="90">Last 90 days</option><option value="365">Last 12 months</option></select><span class="muted-note" id="actStamp" style="margin:0"></span><span style="flex:1"></span><button type="button" class="btn small ghost" id="actAll">Expand all</button></div>
+        <details class="card act-sec" data-sec="repairs">
+          <summary><span class="act-sec-t">Repairs</span><span class="act-sum" id="sum_repairs"></span><span class="act-chev" aria-hidden="true"></span></summary>
+          <div class="act-sec-b">
           <div class="tiles prop-tiles" id="actJobTiles" style="margin-bottom:14px"></div>
           <div class="act-chart-head"><div class="act-chart-title" id="actJobTitle" style="margin:0">Jobs reported and completed</div><div class="act-legend"><span><i class="s1"></i>Reported</span><span><i class="s2"></i>Completed</span></div></div>
           <div class="act-chart act-chart2" id="actJobChart" role="img"></div>
           <details style="margin-top:10px"><summary class="muted-note" style="cursor:pointer;margin:0">Show as a table</summary><div id="actJobTable" style="margin-top:8px"></div></details>
-        </div>
-        <div class="act-grid">
-          <div class="card"><h3>Where repairs come from</h3><div id="actSources"></div></div>
-          <div class="card"><h3>Contractors</h3><div id="actCtrs"></div></div>
-        </div>
-        <div class="card" style="margin:12px 0">
-          <h3>Recent activity</h3>
+          </div>
+        </details>
+        <details class="card act-sec" data-sec="sources">
+          <summary><span class="act-sec-t">Where repairs come from</span><span class="act-sum" id="sum_sources"></span><span class="act-chev" aria-hidden="true"></span></summary>
+          <div class="act-sec-b">
+          <div id="actSources"></div>
+          </div>
+        </details>
+        <details class="card act-sec" data-sec="ctrs">
+          <summary><span class="act-sec-t">Contractors</span><span class="act-sum" id="sum_ctrs"></span><span class="act-chev" aria-hidden="true"></span></summary>
+          <div class="act-sec-b">
+          <div id="actCtrs"></div>
+          </div>
+        </details>
+        <details class="card act-sec" data-sec="feed">
+          <summary><span class="act-sec-t">Recent activity</span><span class="act-sum" id="sum_feed"></span><span class="act-chev" aria-hidden="true"></span></summary>
+          <div class="act-sec-b">
           <div class="act-chips" id="actFeedChips" role="tablist" aria-label="Filter activity"></div>
           <div id="actFeed"></div>
-        </div>
-        <div class="card" style="margin-bottom:12px">
-          <h3>Tenant repair page</h3>
-          <div class="tiles prop-tiles" id="actTiles" style="margin-bottom:12px"></div>
-          <div class="act-chart-title" id="actChartTitle">Visitors per day</div>
-          <div class="act-chart" id="actChart" role="img"></div>
-          <details style="margin-top:10px"><summary class="muted-note" style="cursor:pointer;margin:0">Show as a table</summary><div id="actTable" style="margin-top:8px"></div></details>
-          <p class="muted-note" style="margin:10px 0 0">A visitor is counted once a day per device. Search engines and link previews aren't counted. Counting started on 28 September 2026.</p>
-        </div>
-        <div class="card" style="margin-bottom:12px">
-          <h3>Site visitors in detail</h3>
-          <p class="muted-note" id="svNote" style="margin:-4px 0 12px"></p>
+          </div>
+        </details>
+        <details class="card act-sec" data-sec="visits">
+          <summary><span class="act-sec-t">Site visitors</span><span class="act-sum" id="sum_visits"></span><span class="act-chev" aria-hidden="true"></span></summary>
+          <div class="act-sec-b">
+          <p class="muted-note" id="svNote" style="margin:0 0 12px"></p>
           <div class="tiles prop-tiles" id="svTiles" style="margin-bottom:14px"></div>
           <div class="act-grid" style="margin-bottom:6px">
             <div><div class="hbars-t">How far people got on the repair form</div><div id="svFunnel"></div></div>
             <div><div class="hbars-t">Busiest times</div><div class="act-chart act-mini" id="svHours" role="img"></div><div class="act-chart act-mini" id="svDays" role="img"></div></div>
           </div>
-          <div class="sv-grid" id="svBreak"></div>
-          <div class="hbars-t" style="margin-top:6px">Visits</div>
+          <details class="act-sub"><summary>More breakdowns — where they came from, devices, browsers, problems, languages</summary><div class="sv-grid" id="svBreak" style="margin-top:10px"></div></details>
+          <div class="hbars-t" style="margin-top:14px">Visits</div>
           <div class="act-chips" id="svChips" role="tablist" aria-label="Filter visits"></div>
           <div id="svList"></div>
-        </div>
-        <div class="card">
-          <h3>Where you're signed in<span style="flex:1"></span><button class="btn small ghost danger" id="actOthers" type="button">Sign out all other devices</button></h3>
-          <p class="muted-note" id="actSessNote" style="margin:0 0 8px"></p>
+          </div>
+        </details>
+        <details class="card act-sec" data-sec="daily">
+          <summary><span class="act-sec-t">Visitors per day</span><span class="act-sum" id="sum_daily"></span><span class="act-chev" aria-hidden="true"></span></summary>
+          <div class="act-sec-b">
+          <div class="tiles prop-tiles" id="actTiles" style="margin-bottom:12px"></div>
+          <div class="act-chart-title" id="actChartTitle">Visitors per day</div>
+          <div class="act-chart" id="actChart" role="img"></div>
+          <details style="margin-top:10px"><summary class="muted-note" style="cursor:pointer;margin:0">Show as a table</summary><div id="actTable" style="margin-top:8px"></div></details>
+          <p class="muted-note" style="margin:10px 0 0">A visitor is counted once a day per device. Search engines and link previews aren't counted. Counting started on 28 September 2026.</p>
+          </div>
+        </details>
+        <details class="card act-sec" data-sec="sessions">
+          <summary><span class="act-sec-t">Where you’re signed in</span><span class="act-sum" id="sum_sessions"></span><span class="act-chev" aria-hidden="true"></span></summary>
+          <div class="act-sec-b">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px"><p class="muted-note" id="actSessNote" style="margin:0"></p><button class="btn small ghost danger" id="actOthers" type="button">Sign out all other devices</button></div>
           <div id="actSessions"></div>
-        </div>
+          </div>
+        </details>
       </div>
 
       <div id="certsView" hidden>
@@ -7124,14 +7154,15 @@
       if (!d.ok) return;
       var list = d.sessions;
       $('actSessNote').textContent = 'Signed in on ' + list.length + ' device' + (list.length === 1 ? '' : 's') + '. If you don’t recognise one, sign it out — and change the admin password.';
+      actSum('sessions', list.length + ' device' + (list.length === 1 ? '' : 's') + ' · last active ' + (list[0] ? ago(list.map(function(x){ return x.last_seen; }).sort().pop()) : '—'));
       $('actOthers').hidden = list.length < 2;
       var showAllSess = $('actSessions').dataset.all === '1';
-      $('actSessions').innerHTML = list.slice(0, showAllSess ? list.length : 8).map(function(x){
+      $('actSessions').innerHTML = list.slice(0, showAllSess ? list.length : 5).map(function(x){
         var dv = deviceOf(x.user_agent);
         return '<div class="sess-row"><span class="sess-ico">' + dv.icon + '</span><div><div class="t">' + esc(dv.label) + (x.current ? ' <span class="count-chip">This device</span>' : '') + '</div>' +
           '<div class="s">Last active ' + esc(ago(x.last_seen)) + ' · signed in ' + esc(fmtDate(x.created_at)) + (x.ip ? ' · IP ' + esc(x.ip) : '') + '</div></div>' +
           (x.current ? '<span></span>' : '<button type="button" class="btn small ghost" data-sess-out="' + esc(x.id) + '">Sign out</button>') + '</div>';
-      }).join('') + (list.length > 8 && !showAllSess ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn small" id="actSessAll">Show all ' + list.length + ' devices</button></div>' : '') || '<p class="muted-note">No sign-ins recorded yet.</p>';
+      }).join('') + (list.length > 5 && !showAllSess ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn small" id="actSessAll">Show all ' + list.length + ' devices</button></div>' : '') || '<p class="muted-note">No sign-ins recorded yet.</p>';
       if ($('actSessAll')) $('actSessAll').addEventListener('click', function(){ $('actSessions').dataset.all = '1'; loadActivity(); });
     });
     loadVisits(); loadWork(); loadSiteSessions();
@@ -7145,9 +7176,24 @@
     api('POST', '/api/admin/sessions/revoke-others', {}).then(function(d){ toast(d.ok ? d.signed_out + ' device' + (d.signed_out === 1 ? '' : 's') + ' signed out' : 'Couldn’t sign them out'); loadActivity(); });
   });
   $('actDays').addEventListener('change', function(){ loadVisits(); loadWork(); loadSiteSessions(); });
+  // Each section folds away to a one-line summary; which ones are open is remembered.
+  function actSum(k, t){ var el = $('sum_' + k); if (el) el.textContent = t; }
+  (function(){
+    var secs = Array.prototype.slice.call(document.querySelectorAll('#actView .act-sec'));
+    var open = [];
+    try { var saved = JSON.parse(localStorage.getItem('rr_act_open') || 'null'); if (Array.isArray(saved)) open = saved; } catch (e) {}
+    secs.forEach(function(d){ d.open = open.indexOf(d.dataset.sec) !== -1; });
+    var save = function(){
+      try { localStorage.setItem('rr_act_open', JSON.stringify(secs.filter(function(d){ return d.open; }).map(function(d){ return d.dataset.sec; }))); } catch (e) {}
+      $('actAll').textContent = secs.every(function(d){ return d.open; }) ? 'Collapse all' : 'Expand all';
+    };
+    secs.forEach(function(d){ d.addEventListener('toggle', save); });
+    $('actAll').addEventListener('click', function(){ var all = secs.every(function(d){ return d.open; }); secs.forEach(function(d){ d.open = !all; }); save(); });
+    $('actAll').textContent = secs.every(function(d){ return d.open; }) ? 'Collapse all' : 'Expand all';
+  })();
 
   // ---- Site visitors in detail (from /rrt.js on the public pages) ----
-  var svRows = [], svFilter = 'all', svShown = 30;
+  var svRows = [], svFilter = 'all', svShown = 10;
   var SV_STEP = { '1': 'The problem', '2': 'Quick check', '3': 'Tell us more', '4': 'Your details', done: 'Sent', resolved: 'Fixed it themselves' };
   function svMax(r){ var m = 1; (r.steps || []).forEach(function(x){ var n = x === 'done' ? 5 : parseInt(x, 10); if (n > m) m = n; }); if (r.submitted_ref) m = 5; return m; }
   function svOutcome(r){
@@ -7168,7 +7214,7 @@
     var days = Number($('actDays').value);
     api('GET', '/api/admin/site-sessions?days=' + days).then(function(d){
       if (!d.ok) return;
-      svRows = d.sessions; svShown = 30;
+      svRows = d.sessions; svShown = 10;
       $('svNote').textContent = 'Every visit to the tenant repair page, the repair tracker and contractor job links — what device, where they came from and what they did. No names or IP addresses are kept.' +
         (d.since ? ' Recording since ' + fmtDate(d.since) + '.' : ' Recording starts now.');
       var rep = svRows.filter(function(r){ return (r.pages || []).indexOf('report') !== -1; });
@@ -7180,6 +7226,7 @@
       var mobile = svRows.filter(function(r){ return r.device !== 'Computer'; }).length;
       var pct = function(a, b){ return b ? Math.round(a / b * 100) + '%' : '—'; };
       var tile = function(k, v, sub, cls){ return '<div class="tile' + (cls ? ' ' + cls : '') + '"><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (sub ? '<div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + sub + '</div>' : '') + '</div>'; };
+      actSum('visits', (d.live ? d.live + ' on now · ' : '') + svRows.length + ' visit' + (svRows.length === 1 ? '' : 's') + ' · ' + sent + ' sent a report · ' + diy + ' fixed it themselves · ' + bounce + ' left without starting');
       $('svTiles').innerHTML =
         tile('On the site right now', d.live, 'active in the last 5 minutes', d.live ? 'blue' : '') +
         tile('Visits', svRows.length, pct(mobile, svRows.length) + ' on a phone or tablet') +
@@ -7255,15 +7302,15 @@
     }).join('') + (list.length > svShown ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn small" id="svMore">Show more (' + (list.length - svShown) + ')</button></div>' : '') ||
       '<p class="muted-note">No visits ' + (svRows.length ? 'of this kind ' : '') + 'in this period.</p>';
   }
-  $('svChips').addEventListener('click', function(e){ var b = e.target.closest('[data-sv]'); if (!b) return; svFilter = b.dataset.sv; svShown = 30; drawSvList(); });
+  $('svChips').addEventListener('click', function(e){ var b = e.target.closest('[data-sv]'); if (!b) return; svFilter = b.dataset.sv; svShown = 10; drawSvList(); });
   $('svList').addEventListener('click', function(e){
-    if (e.target.closest('#svMore')) { svShown += 50; drawSvList(); return; }
+    if (e.target.closest('#svMore')) { svShown += 20; drawSvList(); return; }
     var r = e.target.closest('[data-sv-job]'); if (r) openJob(Number(r.dataset.svJob));
   });
   $('svList').addEventListener('keydown', function(e){ var r = e.target.closest('[data-sv-job]'); if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openJob(Number(r.dataset.svJob)); } });
 
   // ---- Repairs: jobs in and done, speed, messages, sources, contractors, feed ----
-  var actFeed = [], actFeedKind = 'all', actFeedShown = 40;
+  var actFeed = [], actFeedKind = 'all', actFeedShown = 10;
   var FEED_KINDS = [
     ['all', 'All'], ['created', 'New jobs'], ['change', 'Changes'], ['msg', 'Messages'], ['completed', 'Completed'], ['portal', 'Contractor link'], ['note', 'Notes']
   ];
@@ -7290,6 +7337,10 @@
         tile('Messages sent', sentN, [[msgs.tenant_message, 'tenant'], [msgs.landlord_message, 'landlord'], [msgs.contractor_message, 'contractor'], [msgs.email, 'email']].filter(function(x){ return x[0]; }).map(function(x){ return x[0] + ' ' + x[1]; }).join(' · ')) +
         tile('Admin sign-ins', d.signins, (msgs.change || 0) + ' changes · ' + (msgs.note || 0) + ' notes');
       drawJobChart(d, days);
+      actSum('repairs', sumN(d.created) + ' new · ' + sumN(d.completed) + ' completed · ' + d.now.open + ' open' + (d.now.overdue ? ' · ' + d.now.overdue + ' overdue' : '') + ' · ' + sentN + ' messages sent');
+      actSum('sources', d.sources.length ? d.sources.slice(0, 3).map(function(x){ return x.k + ' ' + x.n; }).join(' · ') : 'No jobs in this period');
+      actSum('ctrs', d.contractors.length ? d.contractors.length + ' contractor' + (d.contractors.length === 1 ? '' : 's') + ' · ' + d.contractors.reduce(function(t, c){ return t + c.done; }, 0) + ' jobs done' + (d.contractors[0] ? ' · most: ' + d.contractors[0].name : '') : 'No contractor jobs in this period');
+      if (d.feed[0]) actSum('feed', 'Latest: ' + String(d.feed[0].body || '').split('\n')[0].replace(/:\s*$/, '').slice(0, 90) + ' · ' + ago(d.feed[0].created_at)); else actSum('feed', 'Nothing yet');
       // Where jobs come from.
       var hb = function(title, arr){
         if (!arr.length) return '';
@@ -7307,7 +7358,7 @@
         (d.portals.length ? '<div class="hbars-t" style="margin-top:14px">Job links — last opened</div><table class="act-table">' + d.portals.map(function(c){
           return '<tr><td>' + esc(c.name) + '</td><td class="r" style="color:var(--ink-soft)">' + (c.portal_seen_at ? esc(ago(c.portal_seen_at)) : 'Not opened yet') + '</td></tr>';
         }).join('') + '</table>' : '');
-      actFeed = d.feed; actFeedShown = 40;
+      actFeed = d.feed; actFeedShown = 10;
       drawFeed();
     });
   }
@@ -7348,9 +7399,9 @@
     if (rows.length > actFeedShown) html += '<div style="text-align:center;margin-top:10px"><button type="button" class="btn small" id="actFeedMore">Show more (' + (rows.length - actFeedShown) + ')</button></div>';
     $('actFeed').innerHTML = html || '<p class="muted-note">Nothing yet.</p>';
   }
-  $('actFeedChips').addEventListener('click', function(e){ var b = e.target.closest('[data-feed]'); if (!b) return; actFeedKind = b.dataset.feed; actFeedShown = 40; drawFeed(); });
+  $('actFeedChips').addEventListener('click', function(e){ var b = e.target.closest('[data-feed]'); if (!b) return; actFeedKind = b.dataset.feed; actFeedShown = 10; drawFeed(); });
   $('actFeed').addEventListener('click', function(e){
-    if (e.target.closest('#actFeedMore')) { actFeedShown += 60; drawFeed(); return; }
+    if (e.target.closest('#actFeedMore')) { actFeedShown += 20; drawFeed(); return; }
     var r = e.target.closest('[data-feed-job]'); if (r) openJob(Number(r.dataset.feedJob));
   });
   $('actFeed').addEventListener('keydown', function(e){ var r = e.target.closest('[data-feed-job]'); if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openJob(Number(r.dataset.feedJob)); } });
@@ -7367,6 +7418,7 @@
       var sum = function(arr, f){ return arr.reduce(function(a, x){ return a + f(x); }, 0); };
       var today = list.filter(function(x){ return x.day === d.today; }), last7 = list.slice(-7);
       var tile = function(k, v, sub){ return '<div class="tile"><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (sub ? '<div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + sub + '</div>' : '') + '</div>'; };
+      actSum('daily', sum(today, function(x){ return x.v.uniques; }) + ' today · ' + sum(list, function(x){ return x.v.uniques; }) + ' in this period · ' + sum(list, function(x){ return x.r; }) + ' reported online');
       $('actTiles').innerHTML =
         tile('Visitors today', sum(today, function(x){ return x.v.uniques; }), sum(today, function(x){ return x.v.visits; }) + ' visits') +
         tile('Visitors, last 7 days', sum(last7, function(x){ return x.v.uniques; }), sum(last7, function(x){ return x.v.visits; }) + ' visits') +
