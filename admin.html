@@ -22,6 +22,7 @@
     --brick: #D9262E; --brick-deep: #B51D24; --brick-tint: #FDEFEF;
     --ok: #139A4B; --ok-tint: #E9F7EF; --warn: #D17A06; --warn-tint: #FEF4E6;
     --blue: #2F5BEA; --blue-tint: #EEF2FE;
+    --series-1: #2a78d6; --series-2: #eb6834;
     --side: #0E0F13; --side-ink: #E8E9ED; --side-soft: #8C909B; --side-hover: #1A1C22; --side-line: #22242B;
     --radius: 14px;
     --display: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -40,7 +41,7 @@
       --line: #22252C; --line-strong: #2E323A;
       --brick: #F2555B; --brick-deep: #FF7378; --brick-tint: #2A1517;
       --ok: #3DCB78; --ok-tint: #10231A; --warn: #F2A83F; --warn-tint: #281E0F;
-      --blue: #7A9BFF; --blue-tint: #151D33;
+      --blue: #7A9BFF; --blue-tint: #151D33; --series-1: #3987e5; --series-2: #d95926;
       --side: #07080A; --side-hover: #14161A; --side-line: #1B1D22;
       --shadow-xs: 0 1px 2px rgba(0,0,0,.4);
       --shadow-md: 0 8px 24px -8px rgba(0,0,0,.6);
@@ -55,7 +56,7 @@
     --line: #22252C; --line-strong: #2E323A;
     --brick: #F2555B; --brick-deep: #FF7378; --brick-tint: #2A1517;
     --ok: #3DCB78; --ok-tint: #10231A; --warn: #F2A83F; --warn-tint: #281E0F;
-    --blue: #7A9BFF; --blue-tint: #151D33;
+    --blue: #7A9BFF; --blue-tint: #151D33; --series-1: #3987e5; --series-2: #d95926;
     --side: #07080A; --side-hover: #14161A; --side-line: #1B1D22;
     color-scheme: dark;
   }
@@ -127,6 +128,7 @@
     .mainhead { padding: 12px 16px; gap: 6px; }
     .mainhead h1 { font-size: 1.05rem; }
     .mainhead .btn.small { padding: 6px 8px; }
+    #refreshBtn { display: none; }
     .mainhead .date { display: none; }
     .wrap { padding: 16px 16px 60px; }
   }
@@ -380,10 +382,45 @@
   .sess-row .t { font-weight: 600; } .sess-row .s { font-size: .8rem; color: var(--ink-soft); }
   .act-chart-title { font-size: .8rem; font-weight: 600; color: var(--ink-soft); margin-bottom: 6px; }
   .act-chart { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 140px; border-bottom: 1px solid var(--line); margin-bottom: 26px; }
-  .act-chart .act-bar { flex: 1; min-width: 2px; height: 100%; display: flex; align-items: flex-end; cursor: default; }
+  .act-chart .act-bar { flex: 1; min-width: 0; height: 100%; display: flex; align-items: flex-end; cursor: default; }
   .act-chart .act-bar i { display: block; width: 100%; background: var(--blue, #2563eb); border-radius: 4px 4px 0 0; min-height: 0; }
   .act-chart .act-bar:hover i { opacity: .8; }
   .act-chart .axis { position: absolute; left: 0; right: 0; bottom: -18px; display: flex; justify-content: space-between; font-size: .7rem; color: var(--ink-soft); }
+  .act-bar-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .act-chart-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; margin-bottom: 8px; }
+  .act-legend { display: flex; gap: 14px; font-size: .78rem; color: var(--ink-soft); }
+  .act-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .act-legend .s1, .act-chart2 .act-bar i.s1 { background: var(--series-1); }
+  .act-legend .s2, .act-chart2 .act-bar i.s2 { background: var(--series-2); }
+  .act-chart2 .act-bar { gap: 2px; }
+  .act-chart2 .act-bar i { flex: 1; width: auto; }
+  .act-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 900px) { .act-grid { grid-template-columns: 1fr; } }
+  .hbars { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+  .hbars-t { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint); margin: 2px 0 8px; }
+  .hbar { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr) 44px; align-items: center; gap: 10px; font-size: .84rem; }
+  .hbar .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-soft); }
+  .hbar .b { height: 10px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
+  .hbar .b i { display: block; height: 100%; background: var(--series-1); border-radius: 4px; }
+  .hbar .n { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .act-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+  .act-table th { text-align: left; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); padding: 0 6px 6px; border-bottom: 1px solid var(--line); }
+  .act-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  .act-table tr:last-child td { border-bottom: 0; }
+  .act-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+  .act-table button.link { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--blue); cursor: pointer; text-align: left; }
+  .act-table button.link:hover { text-decoration: underline; }
+  .act-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .act-chips button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 5px 11px; font: inherit; font-size: .8rem; font-weight: 550; color: var(--ink-soft); cursor: pointer; }
+  .act-chips button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .act-chips .n { opacity: .6; margin-left: 4px; font-variant-numeric: tabular-nums; }
+  .feed-day { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint); padding: 12px 0 4px; }
+  .feed-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 9px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .feed-row:hover .t { text-decoration: underline; text-underline-offset: 2px; }
+  .feed-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-size: .95rem; background: var(--panel-2); }
+  .feed-row .t { font-size: .88rem; line-height: 1.35; word-break: break-word; }
+  .feed-row .s { font-size: .76rem; color: var(--ink-soft); margin-top: 2px; }
+  .feed-row .w { font-size: .76rem; color: var(--ink-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .act-tip { position: fixed; z-index: 80; pointer-events: none; background: var(--ink, #111); color: var(--bg, #fff); font-size: .78rem; padding: 6px 8px; border-radius: 8px; white-space: nowrap; }
   .mail-preview { background: #fff; color: #000; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; max-height: 46vh; overflow: auto; font: 10pt/1.35 Tahoma, Verdana, Segoe UI, sans-serif; outline: none; }
   .mail-preview:focus { border-color: var(--blue, #2563eb); }
@@ -956,18 +993,35 @@
 
       <!-- ACTIVITY: where staff are signed in, visits to the tenant pages -->
       <div id="actView" hidden>
+        <div class="act-bar-top"><span class="muted-note" style="margin:0">Showing</span><select class="inp" id="actDays" style="width:auto" aria-label="Period"><option value="30">Last 30 days</option><option value="7">Last 7 days</option><option value="90">Last 90 days</option><option value="365">Last 12 months</option></select><span class="muted-note" id="actStamp" style="margin:0"></span></div>
         <div class="card" style="margin-bottom:12px">
-          <h3>Where you're signed in<span style="flex:1"></span><button class="btn small ghost danger" id="actOthers" type="button">Sign out all other devices</button></h3>
-          <p class="muted-note" id="actSessNote" style="margin:0 0 8px"></p>
-          <div id="actSessions"></div>
+          <h3>Repairs</h3>
+          <div class="tiles prop-tiles" id="actJobTiles" style="margin-bottom:14px"></div>
+          <div class="act-chart-head"><div class="act-chart-title" id="actJobTitle" style="margin:0">Jobs reported and completed</div><div class="act-legend"><span><i class="s1"></i>Reported</span><span><i class="s2"></i>Completed</span></div></div>
+          <div class="act-chart act-chart2" id="actJobChart" role="img"></div>
+          <details style="margin-top:10px"><summary class="muted-note" style="cursor:pointer;margin:0">Show as a table</summary><div id="actJobTable" style="margin-top:8px"></div></details>
         </div>
-        <div class="card">
-          <h3>Tenant repair page<span style="flex:1"></span><select class="inp" id="actDays" style="width:auto"><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="7">Last 7 days</option></select></h3>
+        <div class="act-grid">
+          <div class="card"><h3>Where repairs come from</h3><div id="actSources"></div></div>
+          <div class="card"><h3>Contractors</h3><div id="actCtrs"></div></div>
+        </div>
+        <div class="card" style="margin:12px 0">
+          <h3>Recent activity</h3>
+          <div class="act-chips" id="actFeedChips" role="tablist" aria-label="Filter activity"></div>
+          <div id="actFeed"></div>
+        </div>
+        <div class="card" style="margin-bottom:12px">
+          <h3>Tenant repair page</h3>
           <div class="tiles prop-tiles" id="actTiles" style="margin-bottom:12px"></div>
           <div class="act-chart-title" id="actChartTitle">Visitors per day</div>
           <div class="act-chart" id="actChart" role="img"></div>
           <details style="margin-top:10px"><summary class="muted-note" style="cursor:pointer;margin:0">Show as a table</summary><div id="actTable" style="margin-top:8px"></div></details>
           <p class="muted-note" style="margin:10px 0 0">A visitor is counted once a day per device. Search engines and link previews aren't counted. Counting started on 28 September 2026.</p>
+        </div>
+        <div class="card">
+          <h3>Where you're signed in<span style="flex:1"></span><button class="btn small ghost danger" id="actOthers" type="button">Sign out all other devices</button></h3>
+          <p class="muted-note" id="actSessNote" style="margin:0 0 8px"></p>
+          <div id="actSessions"></div>
         </div>
       </div>
 
@@ -2154,7 +2208,7 @@
   }
   $('bulkWa').addEventListener('click', function(){ showContractorMessage(selectedJobs()); });
   $('bulkLl').addEventListener('click', function(){
-    var list = selectedJobs().filter(function(j){ return j.assigned_to; });
+    var list = selectedJobs().filter(function(j){ return j.assigned_to || j.status === 'Completed'; });
     if (!list.length) { toast('None of those jobs has a contractor yet'); return; }
     if (!list.some(llContact)) { toast('No landlord phone or email for those properties'); return; }
     openLandlordNotice(list);
@@ -3682,10 +3736,10 @@
     var ll = ttMode === 'landlord';
     var log = function(how){
       card.querySelector('.tt-done').hidden = false;
-      g.jobs.forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', ll ? { kind: 'landlord_message', body: 'Sent the landlord a progress update (' + how + '):\n\n' + msg } : { kind: 'tenant_message', body: 'Told the tenant the contractor will be in touch (' + how + '):\n\n' + msg }); });
+      g.jobs.forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', ll ? { kind: 'landlord_message', body: 'Sent the landlord an update (' + how + '):\n\n' + msg } : { kind: 'tenant_message', body: 'Told the tenant the contractor will be in touch (' + how + '):\n\n' + msg }); });
     };
     if (ll && b.dataset.tt === 'email') {
-      var llSubject = 'Repair update — ' + (g.jobs.length === 1 ? shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + ' repairs at your properties');
+      var llSubject = (g.jobs.every(function(j){ return j.status === 'Completed'; }) ? 'Repair completed — ' : 'Repair update — ') + (g.jobs.length === 1 ? shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + ' repairs at your properties');
       if (meta.canEmail) {
         busy(b, true, 'Sending…');
         // Sent once, logged on the first job; the others get a note.
@@ -3693,7 +3747,7 @@
           busy(b, false);
           if (!d.ok) { toast('Couldn’t send the email'); return; }
           card.querySelector('.tt-done').hidden = false; toast('Email sent to ' + (g.name || 'the landlord'));
-          g.jobs.slice(1).forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'landlord_message', body: 'Sent the landlord a progress update (email to ' + g.email + '):\n\n' + msg }); });
+          g.jobs.slice(1).forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'landlord_message', body: 'Sent the landlord an update (email to ' + g.email + '):\n\n' + msg }); });
         });
       } else { window.location.href = 'mailto:' + encodeURIComponent(g.email) + '?subject=' + encodeURIComponent(llSubject) + '&body=' + encodeURIComponent(msg); log('email'); }
       return;
@@ -3738,22 +3792,29 @@
   function landlordMessage(g, links){
     var jobs = g.jobs.slice().sort(function(a, b){ return a.id - b.id; });
     var oneHome = jobs.every(function(j){ return propKey(j.property_address) === propKey(jobs[0].property_address); });
+    var isDone = function(j){ return j.status === 'Completed'; };
+    var allDone = jobs.every(isDone);
     var line = function(j){
       var appt = apptText(j), link = links[j.id], who = llWho(j);
+      if (isDone(j)) {
+        var when = j.completed_at ? new Date(j.completed_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+        return llWorkText(j) + (oneHome ? '' : ' at ' + shortAddr(j.property_address)) + ' (ref ' + j.ref + '): ✅ completed' + (when ? ' on ' + when : '') + '.' +
+          (link ? '\nSee the details: ' + link : '');
+      }
       return llWorkText(j) + (oneHome ? '' : ' at ' + shortAddr(j.property_address)) + ' (ref ' + j.ref + '): ' +
         (who ? 'we’ve instructed ' + who + '.' : 'we’ve reported it to the council, who handle this repair.') +
         (appt ? ' The visit is booked for ' + appt + '.' : who ? ' They’re arranging a time to attend with the tenant.' : '') +
         (link ? '\nFollow the progress: ' + link : '');
     };
     var body = jobs.length === 1
-      ? 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n' + line(jobs[0])
+      ? (allDone ? 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
       : 'Here’s an update on the work at ' + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j){ return '• ' + line(j); }).join('\n\n');
-    return llGreeting(g.name) + ',\n\n' + body + '\n\nWe’ll keep you updated and let you know once the work is complete. Please get in touch if you have any questions.\n\nKind regards,\nResidential Realtors';
+    return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone ? 'Please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.') + '\n\nKind regards,\nResidential Realtors';
   }
   function openLandlordNotice(list){
     var groups = [], byKey = {};
     list.forEach(function(j){
-      var l = j.assigned_to ? llContact(j) : null; if (!l) return;
+      var l = j.assigned_to || j.status === 'Completed' ? llContact(j) : null; if (!l) return;
       var k = String(l.landlord_email || '').toLowerCase() || phoneTail(l.landlord_phone) || l.landlord_name;
       var g = byKey[k] || (byKey[k] = groups[groups.push({ name: l.landlord_name, phone: l.landlord_phone, email: l.landlord_email, jobs: [] }) - 1]);
       g.jobs.push(j);
@@ -3763,7 +3824,7 @@
     $('ttTitle').textContent = 'Let the landlord know';
     $('ttLl').hidden = true;
     var skipped = list.length - groups.reduce(function(n, g){ return n + g.jobs.length; }, 0);
-    $('ttIntro').textContent = (groups.length === 1 ? 'Send ' + (groups[0].name || 'the landlord') + ' an update' : 'Send each landlord an update') + ' with the progress link — check the message, then send.' +
+    $('ttIntro').textContent = (groups.length === 1 ? 'Send ' + (groups[0].name || 'the landlord') + ' an update' : 'Send each landlord an update') + ' with ' + (list.every(function(j){ return j.status === 'Completed'; }) ? 'the news that it’s done' : 'the progress link') + ' — check the message, then send.' +
       (skipped ? ' ' + skipped + ' job' + (skipped === 1 ? ' was' : 's were') + ' left out (no contractor yet, or no landlord contact).' : '');
     var links = {};
     var draw = function(){
@@ -3845,7 +3906,7 @@
       (tel ? '<a class="btn" href="tel:' + esc(tel) + '">Call tenant</a>' : '') +
       '<button class="btn" type="button" id="qNote">+ Add update</button>' +
       (j.assigned_to && isOpen(j) && (j.tenant_phone || j.tenant_email) ? '<button class="btn" type="button" id="qTell">📣 Tell tenant</button>' : '') +
-      (j.assigned_to && isOpen(j) && llContact(j) ? '<button class="btn" type="button" id="qTellLl" title="Send the landlord an update with the progress link">🏠 Tell landlord</button>' : '') +
+      (!j.archived_at && (j.status === 'Completed' || (j.assigned_to && isOpen(j))) && llContact(j) ? '<button class="btn" type="button" id="qTellLl" title="Send the landlord an update with the progress link">🏠 ' + (j.status === 'Completed' ? 'Tell landlord it’s done' : 'Tell landlord') + '</button>' : '') +
       (escalationFor(j) && meta.canAi && !j.archived_at ? '<button class="btn danger" type="button" id="qEsc" title="Write a formal complaint to ' + esc(escalationFor(j)) + '">Escalate complaint</button>' : '') +
       (j.archived_at ? '' : '<button class="btn ghost danger" type="button" id="qDel" title="Delete this job (moves it to the archive)">🗑 Delete job</button>');
     var TABS = [['overview', 'Overview'], ['photos', 'Photos', photos.length], ['messages', 'Messages'], ['money', 'Money'], ['history', 'History', updates.length]];
@@ -4692,8 +4753,9 @@
         toast('Job completed — let the tenant know');
         drawerTab = 'messages';
         openJob(j.id); loadJobs();
-        // Offer the "completed" message straight away.
+        // Offer the "completed" message straight away, and the landlord update.
         setTimeout(function(){ var sel = $('fTpl'); if (sel) { sel.value = '6'; sel.dispatchEvent(new Event('change')); } }, 400);
+        if (llContact(j)) setTimeout(function(){ openLandlordNotice([Object.assign({}, j, { status: 'Completed', completed_at: new Date().toISOString() })]); }, 700);
       });
     });
     if ($('reopenBtn')) $('reopenBtn').addEventListener('click', function(){
@@ -7032,14 +7094,16 @@
       var list = d.sessions;
       $('actSessNote').textContent = 'Signed in on ' + list.length + ' device' + (list.length === 1 ? '' : 's') + '. If you don’t recognise one, sign it out — and change the admin password.';
       $('actOthers').hidden = list.length < 2;
-      $('actSessions').innerHTML = list.map(function(x){
+      var showAllSess = $('actSessions').dataset.all === '1';
+      $('actSessions').innerHTML = list.slice(0, showAllSess ? list.length : 8).map(function(x){
         var dv = deviceOf(x.user_agent);
         return '<div class="sess-row"><span class="sess-ico">' + dv.icon + '</span><div><div class="t">' + esc(dv.label) + (x.current ? ' <span class="count-chip">This device</span>' : '') + '</div>' +
           '<div class="s">Last active ' + esc(ago(x.last_seen)) + ' · signed in ' + esc(fmtDate(x.created_at)) + (x.ip ? ' · IP ' + esc(x.ip) : '') + '</div></div>' +
           (x.current ? '<span></span>' : '<button type="button" class="btn small ghost" data-sess-out="' + esc(x.id) + '">Sign out</button>') + '</div>';
-      }).join('') || '<p class="muted-note">No sign-ins recorded yet.</p>';
+      }).join('') + (list.length > 8 && !showAllSess ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn small" id="actSessAll">Show all ' + list.length + ' devices</button></div>' : '') || '<p class="muted-note">No sign-ins recorded yet.</p>';
+      if ($('actSessAll')) $('actSessAll').addEventListener('click', function(){ $('actSessions').dataset.all = '1'; loadActivity(); });
     });
-    loadVisits();
+    loadVisits(); loadWork();
   }
   $('actSessions').addEventListener('click', function(e){
     var b = e.target.closest('[data-sess-out]'); if (!b || !confirm('Sign this device out of Fixflow?')) return;
@@ -7049,7 +7113,101 @@
     if (!confirm('Sign out every other device? They’ll need the admin password to get back in.')) return;
     api('POST', '/api/admin/sessions/revoke-others', {}).then(function(d){ toast(d.ok ? d.signed_out + ' device' + (d.signed_out === 1 ? '' : 's') + ' signed out' : 'Couldn’t sign them out'); loadActivity(); });
   });
-  $('actDays').addEventListener('change', loadVisits);
+  $('actDays').addEventListener('change', function(){ loadVisits(); loadWork(); });
+
+  // ---- Repairs: jobs in and done, speed, messages, sources, contractors, feed ----
+  var actFeed = [], actFeedKind = 'all', actFeedShown = 40;
+  var FEED_KINDS = [
+    ['all', 'All'], ['created', 'New jobs'], ['change', 'Changes'], ['msg', 'Messages'], ['completed', 'Completed'], ['portal', 'Contractor link'], ['note', 'Notes']
+  ];
+  var FEED_ICON = { created: '🆕', change: '✏️', note: '📝', tenant_message: '💬', landlord_message: '🏠', contractor_message: '🔧', email: '✉️', completed: '✅' };
+  var FEED_LABEL = { created: 'New job', change: 'Change', note: 'Note', tenant_message: 'Message to tenant', landlord_message: 'Message to landlord', contractor_message: 'Sent to contractor', email: 'Email', completed: 'Completed' };
+  function feedKind(u){ return /\(contractor job link\)/.test(u.body) ? 'portal' : /_message$|^email$/.test(u.kind) ? 'msg' : u.kind; }
+  function hrsText(h){ if (h == null) return '—'; return h < 48 ? h + ' hr' + (h === 1 ? '' : 's') : (Math.round(h / 24 * 10) / 10) + ' days'; }
+  function loadWork(){
+    var days = Number($('actDays').value);
+    api('GET', '/api/admin/activity?days=' + days).then(function(d){
+      if (!d.ok) return;
+      $('actStamp').textContent = '· updated ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      var sumN = function(a){ return a.reduce(function(t, x){ return t + x.n; }, 0); };
+      var msgs = {}; d.messages.forEach(function(m){ msgs[m.k] = m.n; });
+      var sentN = (msgs.tenant_message || 0) + (msgs.landlord_message || 0) + (msgs.contractor_message || 0) + (msgs.email || 0);
+      var sp = d.speed || {}, onTime = sp.with_due ? Math.round(sp.on_time / sp.with_due * 100) : null;
+      var tile = function(k, v, sub, cls){ return '<div class="tile' + (cls ? ' ' + cls : '') + '"><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (sub ? '<div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + sub + '</div>' : '') + '</div>'; };
+      var urg = {}; d.urgency.forEach(function(u){ urg[u.k] = u.n; });
+      $('actJobTiles').innerHTML =
+        tile('New jobs', sumN(d.created), ['Emergency', 'Urgent', 'Routine'].filter(function(k){ return urg[k]; }).map(function(k){ return urg[k] + ' ' + k.toLowerCase(); }).join(' · ') || 'none in this period', 'blue') +
+        tile('Completed', sumN(d.completed), sp.n ? 'typical time ' + hrsText(sp.median_hours) : '', 'good') +
+        tile('Average time to complete', hrsText(sp.avg_hours), onTime != null ? onTime + '% done by the deadline' : '') +
+        tile('Open now', d.now.open, d.now.overdue + ' overdue · ' + d.now.unassigned + ' unassigned', d.now.overdue ? 'alert has' : '') +
+        tile('Messages sent', sentN, [[msgs.tenant_message, 'tenant'], [msgs.landlord_message, 'landlord'], [msgs.contractor_message, 'contractor'], [msgs.email, 'email']].filter(function(x){ return x[0]; }).map(function(x){ return x[0] + ' ' + x[1]; }).join(' · ')) +
+        tile('Admin sign-ins', d.signins, (msgs.change || 0) + ' changes · ' + (msgs.note || 0) + ' notes');
+      drawJobChart(d, days);
+      // Where jobs come from.
+      var hb = function(title, arr){
+        if (!arr.length) return '';
+        var max = Math.max.apply(null, arr.map(function(x){ return x.n; }));
+        return '<div class="hbars-t">' + title + '</div><div class="hbars">' + arr.map(function(x){
+          return '<div class="hbar" title="' + esc(x.k + ': ' + x.n) + '"><span class="l">' + esc(x.k) + '</span><span class="b"><i style="width:' + Math.max(2, Math.round(x.n / max * 100)) + '%"></i></span><span class="n">' + x.n + '</span></div>';
+        }).join('') + '</div>';
+      };
+      $('actSources').innerHTML = (hb('How they were reported', d.sources) + hb('Type of repair', d.categories)) || '<p class="muted-note">No jobs in this period.</p>';
+      // Contractors.
+      var ctrRows = d.contractors.map(function(c){
+        return '<tr><td><button type="button" class="link" data-act-ctr="' + esc(c.name) + '">' + esc(c.name) + '</button></td><td class="r">' + c.given + '</td><td class="r">' + c.done + '</td><td class="r">' + hrsText(c.avg_hours) + '</td></tr>';
+      }).join('');
+      $('actCtrs').innerHTML = (ctrRows ? '<table class="act-table"><tr><th>Contractor</th><th class="r">Given</th><th class="r">Done</th><th class="r">Avg time</th></tr>' + ctrRows + '</table>' : '<p class="muted-note">No contractor jobs in this period.</p>') +
+        (d.portals.length ? '<div class="hbars-t" style="margin-top:14px">Job links — last opened</div><table class="act-table">' + d.portals.map(function(c){
+          return '<tr><td>' + esc(c.name) + '</td><td class="r" style="color:var(--ink-soft)">' + (c.portal_seen_at ? esc(ago(c.portal_seen_at)) : 'Not opened yet') + '</td></tr>';
+        }).join('') + '</table>' : '');
+      actFeed = d.feed; actFeedShown = 40;
+      drawFeed();
+    });
+  }
+  function drawJobChart(d, days){
+    var weekly = days > 45, made = {}, done = {};
+    var key = function(day){ if (!weekly) return day; var dt = parseDay(day); dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7)); return isoDay(dt); };
+    d.created.forEach(function(x){ var k = key(x.day); made[k] = (made[k] || 0) + x.n; });
+    d.completed.forEach(function(x){ var k = key(x.day); done[k] = (done[k] || 0) + x.n; });
+    var list = [], seen = {}, dt = parseDay(d.today); dt.setDate(dt.getDate() - (days - 1));
+    for (var i = 0; i < days; i++) { var k = key(isoDay(dt)); if (!seen[k]) { seen[k] = 1; list.push({ k: k, a: made[k] || 0, b: done[k] || 0 }); } dt.setDate(dt.getDate() + 1); }
+    var max = Math.max(1, Math.max.apply(null, list.map(function(x){ return Math.max(x.a, x.b); })));
+    var h = function(v){ return v ? Math.max(3, Math.round(v / max * 100)) : 0; };
+    var label = function(k){ return (weekly ? 'Week of ' : '') + longDay(k); };
+    $('actJobTitle').textContent = 'Jobs reported and completed ' + (weekly ? 'per week' : 'per day') + ' (max ' + max + ')';
+    $('actJobChart').setAttribute('aria-label', 'Jobs reported and completed ' + (weekly ? 'per week' : 'per day'));
+    $('actJobChart').innerHTML = list.map(function(x){
+      return '<div class="act-bar" data-tip="' + esc(label(x.k) + ': ' + x.a + ' reported, ' + x.b + ' completed') + '"><i class="s1" style="height:' + h(x.a) + '%"></i><i class="s2" style="height:' + h(x.b) + '%"></i></div>';
+    }).join('') + '<div class="axis"><span>' + esc(label(list[0].k)) + '</span><span>' + esc(label(list[list.length - 1].k)) + '</span></div>';
+    $('actJobTable').innerHTML = '<table class="act-table"><tr><th>' + (weekly ? 'Week of' : 'Day') + '</th><th class="r">Reported</th><th class="r">Completed</th></tr>' +
+      list.slice().reverse().map(function(x){ return '<tr><td>' + esc(longDay(x.k)) + '</td><td class="r">' + x.a + '</td><td class="r">' + x.b + '</td></tr>'; }).join('') + '</table>';
+  }
+  function drawFeed(){
+    var counts = {}; actFeed.forEach(function(u){ var k = feedKind(u); counts[k] = (counts[k] || 0) + 1; });
+    $('actFeedChips').innerHTML = FEED_KINDS.filter(function(f){ return f[0] === 'all' || counts[f[0]]; }).map(function(f){
+      return '<button type="button" role="tab" data-feed="' + f[0] + '"' + (f[0] === actFeedKind ? ' class="on" aria-selected="true"' : '') + '>' + f[1] + '<span class="n">' + (f[0] === 'all' ? actFeed.length : counts[f[0]]) + '</span></button>';
+    }).join('');
+    var rows = actFeed.filter(function(u){ return actFeedKind === 'all' || feedKind(u) === actFeedKind; });
+    var lastDay = '', html = '';
+    rows.slice(0, actFeedShown).forEach(function(u){
+      var dd = new Date(u.created_at), day = isoDay(dd);
+      if (day !== lastDay) { lastDay = day; var t = isoDay(new Date()), y = new Date(); y.setDate(y.getDate() - 1); html += '<div class="feed-day">' + (day === t ? 'Today' : day === isoDay(y) ? 'Yesterday' : esc(longDay(day))) + '</div>'; }
+      var first = String(u.body || '').split('\n')[0].replace(/:\s*$/, '');
+      if (first.length > 180) first = first.slice(0, 177) + '…';
+      html += '<div class="feed-row" role="button" tabindex="0" data-feed-job="' + u.job_id + '"><span class="feed-ic" aria-hidden="true">' + (FEED_ICON[u.kind] || '•') + '</span>' +
+        '<div><div class="t">' + esc(first || FEED_LABEL[u.kind] || 'Update') + '</div><div class="s">' + esc((FEED_LABEL[u.kind] || 'Update') + ' · ' + u.ref + ' · ' + shortAddr(u.property_address) + (u.archived_at ? ' · deleted' : '')) + '</div></div>' +
+        '<span class="w">' + esc(dd.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })) + '</span></div>';
+    });
+    if (rows.length > actFeedShown) html += '<div style="text-align:center;margin-top:10px"><button type="button" class="btn small" id="actFeedMore">Show more (' + (rows.length - actFeedShown) + ')</button></div>';
+    $('actFeed').innerHTML = html || '<p class="muted-note">Nothing yet.</p>';
+  }
+  $('actFeedChips').addEventListener('click', function(e){ var b = e.target.closest('[data-feed]'); if (!b) return; actFeedKind = b.dataset.feed; actFeedShown = 40; drawFeed(); });
+  $('actFeed').addEventListener('click', function(e){
+    if (e.target.closest('#actFeedMore')) { actFeedShown += 60; drawFeed(); return; }
+    var r = e.target.closest('[data-feed-job]'); if (r) openJob(Number(r.dataset.feedJob));
+  });
+  $('actFeed').addEventListener('keydown', function(e){ var r = e.target.closest('[data-feed-job]'); if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openJob(Number(r.dataset.feedJob)); } });
+  $('actCtrs').addEventListener('click', function(e){ var b = e.target.closest('[data-act-ctr]'); if (b) openContractor(b.dataset.actCtr); });
   function loadVisits(){
     var days = Number($('actDays').value);
     api('GET', '/api/admin/visits?days=' + days).then(function(d){
@@ -7067,28 +7225,41 @@
         tile('Visitors, last 7 days', sum(last7, function(x){ return x.v.uniques; }), sum(last7, function(x){ return x.v.visits; }) + ' visits') +
         tile('Visitors, ' + $('actDays').selectedOptions[0].textContent.toLowerCase(), sum(list, function(x){ return x.v.uniques; }), sum(list, function(x){ return x.v.visits; }) + ' visits') +
         tile('Repairs reported online', sum(list, function(x){ return x.r; }), sum(list, function(x){ return x.v.track; }) + ' repair-tracker views');
-      var max = Math.max(1, Math.max.apply(null, list.map(function(x){ return x.v.uniques; })));
-      $('actChartTitle').textContent = 'Visitors per day (max ' + max + ')';
-      $('actChart').setAttribute('aria-label', 'Visitors per day, ' + list.length + ' days');
-      $('actChart').innerHTML = list.map(function(x){
+      // Long periods are drawn per week so the bars stay readable.
+      var weekly = days > 45, bars = [];
+      if (weekly) {
+        var wk = {};
+        list.forEach(function(x){
+          var dt = parseDay(x.day); dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7)); var k = isoDay(dt);
+          var w = wk[k] || (wk[k] = bars[bars.push({ day: k, v: { visits: 0, uniques: 0, track: 0 }, r: 0 }) - 1]);
+          w.v.visits += x.v.visits; w.v.uniques += x.v.uniques; w.v.track += x.v.track; w.r += x.r;
+        });
+      } else bars = list;
+      var lbl = function(k){ return (weekly ? 'Week of ' : '') + longDay(k); };
+      var max = Math.max(1, Math.max.apply(null, bars.map(function(x){ return x.v.uniques; })));
+      $('actChartTitle').textContent = 'Visitors per ' + (weekly ? 'week' : 'day') + ' (max ' + max + ')';
+      $('actChart').setAttribute('aria-label', 'Visitors per ' + (weekly ? 'week' : 'day') + ', ' + list.length + ' days');
+      $('actChart').innerHTML = bars.map(function(x){
         var h = x.v.uniques ? Math.max(3, Math.round(x.v.uniques / max * 100)) : 0;
-        return '<div class="act-bar" data-tip="' + esc(longDay(x.day) + ': ' + x.v.uniques + ' visitor' + (x.v.uniques === 1 ? '' : 's') + ', ' + x.v.visits + ' visit' + (x.v.visits === 1 ? '' : 's') + (x.r ? ', ' + x.r + ' report' + (x.r === 1 ? '' : 's') : '')) + '"><i style="height:' + h + '%"></i></div>';
-      }).join('') + '<div class="axis"><span>' + esc(longDay(list[0].day)) + '</span><span>' + esc(longDay(list[list.length - 1].day)) + '</span></div>';
+        return '<div class="act-bar" data-tip="' + esc(lbl(x.day) + ': ' + x.v.uniques + ' visitor' + (x.v.uniques === 1 ? '' : 's') + ', ' + x.v.visits + ' visit' + (x.v.visits === 1 ? '' : 's') + (x.r ? ', ' + x.r + ' report' + (x.r === 1 ? '' : 's') : '')) + '"><i style="height:' + h + '%"></i></div>';
+      }).join('') + '<div class="axis"><span>' + esc(lbl(bars[0].day)) + '</span><span>' + esc(lbl(bars[bars.length - 1].day)) + '</span></div>';
       $('actTable').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><tr><th style="text-align:left">Day</th><th style="text-align:right">Visitors</th><th style="text-align:right">Visits</th><th style="text-align:right">Reports</th><th style="text-align:right">Tracker views</th></tr>' +
         list.slice().reverse().map(function(x){ return '<tr><td>' + esc(longDay(x.day)) + '</td><td style="text-align:right">' + x.v.uniques + '</td><td style="text-align:right">' + x.v.visits + '</td><td style="text-align:right">' + x.r + '</td><td style="text-align:right">' + x.v.track + '</td></tr>'; }).join('') + '</table>';
     });
   }
   (function(){
     var tip = null;
-    $('actChart').addEventListener('mousemove', function(e){
-      var b = e.target.closest('[data-tip]');
-      if (!b) { if (tip) tip.hidden = true; return; }
-      if (!tip) { tip = document.createElement('div'); tip.className = 'act-tip'; document.body.appendChild(tip); }
-      tip.hidden = false; tip.textContent = b.dataset.tip;
-      tip.style.left = Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX + 12) + 'px'; tip.style.top = (e.clientY - 34) + 'px';
+    ['actChart', 'actJobChart'].forEach(function(id){
+      $(id).addEventListener('mousemove', function(e){
+        var b = e.target.closest('[data-tip]');
+        if (!b) { if (tip) tip.hidden = true; return; }
+        if (!tip) { tip = document.createElement('div'); tip.className = 'act-tip'; document.body.appendChild(tip); }
+        tip.hidden = false; tip.textContent = b.dataset.tip;
+        tip.style.left = Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX + 12) + 'px'; tip.style.top = (e.clientY - 34) + 'px';
+      });
+      $(id).addEventListener('mouseleave', function(){ if (tip) tip.hidden = true; });
+      $(id).addEventListener('click', function(e){ var b = e.target.closest('[data-tip]'); if (b) toast(b.dataset.tip); });
     });
-    $('actChart').addEventListener('mouseleave', function(){ if (tip) tip.hidden = true; });
-    $('actChart').addEventListener('click', function(e){ var b = e.target.closest('[data-tip]'); if (b) toast(b.dataset.tip); });
   })();
   $('navAct').addEventListener('click', function(){ showView('act'); });
 

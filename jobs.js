@@ -255,6 +255,8 @@ CREATE TABLE IF NOT EXISTS contractors (
 ALTER TABLE contractors ADD COLUMN IF NOT EXISTS escalation_email TEXT;
 ALTER TABLE contractors ADD COLUMN IF NOT EXISTS portal_token TEXT;
 ALTER TABLE contractors ADD COLUMN IF NOT EXISTS portal_on BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS portal_seen_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS job_updates_created_idx ON job_updates (created_at);
 `;
 
 // ---------- Landlords and their properties ----------
@@ -860,6 +862,42 @@ module.exports = function mountJobs(app, opts) {
     const reports = (await p.query(`SELECT to_char(created_at AT TIME ZONE 'Europe/London', 'YYYY-MM-DD') AS day, count(*)::int AS n
       FROM jobs WHERE source = 'Online report' AND created_at > now() - ($1 || ' days')::interval GROUP BY 1 ORDER BY 1`, [String(days)])).rows;
     res.json({ ok: true, from: from, today: londonDay(), visits: v, reports: reports });
+  }));
+  // Everything for the Activity page over a period: jobs in and done, time to
+  // complete, messages sent, where jobs came from, contractors, and a feed of
+  // the latest updates across all jobs.
+  app.get('/api/admin/activity', withDb(async function (p, req, res) {
+    const days = String(Math.min(365, Math.max(7, parseInt(req.query.days, 10) || 30)));
+    const since = "now() - ($1 || ' days')::interval";
+    const q = function (sql) { return p.query(sql, [days]).then(function (r) { return r.rows; }); };
+    const out = await Promise.all([
+      q(`SELECT to_char(created_at AT TIME ZONE 'Europe/London', 'YYYY-MM-DD') AS day, count(*)::int AS n FROM jobs WHERE created_at > ${since} GROUP BY 1`),
+      q(`SELECT to_char(completed_at AT TIME ZONE 'Europe/London', 'YYYY-MM-DD') AS day, count(*)::int AS n FROM jobs WHERE status = 'Completed' AND completed_at > ${since} GROUP BY 1`),
+      q(`SELECT count(*)::int AS n, round(avg(extract(epoch FROM completed_at - created_at)) / 3600)::int AS avg_hours,
+           round((percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM completed_at - created_at)) / 3600)::numeric)::int AS median_hours,
+           count(*) FILTER (WHERE due_at IS NOT NULL AND completed_at <= due_at)::int AS on_time, count(*) FILTER (WHERE due_at IS NOT NULL)::int AS with_due
+         FROM jobs WHERE status = 'Completed' AND completed_at > ${since} AND completed_at >= created_at`),
+      q(`SELECT coalesce(nullif(source, ''), 'Other') AS k, count(*)::int AS n FROM jobs WHERE created_at > ${since} GROUP BY 1 ORDER BY 2 DESC`),
+      q(`SELECT coalesce(nullif(category, ''), 'Other') AS k, count(*)::int AS n FROM jobs WHERE created_at > ${since} GROUP BY 1 ORDER BY 2 DESC LIMIT 8`),
+      q(`SELECT coalesce(nullif(urgency, ''), 'Routine') AS k, count(*)::int AS n FROM jobs WHERE created_at > ${since} GROUP BY 1`),
+      q(`SELECT kind AS k, count(*)::int AS n FROM job_updates WHERE created_at > ${since} GROUP BY 1`),
+      q(`SELECT trim(assigned_to) AS name, count(*) FILTER (WHERE created_at > ${since})::int AS given,
+           count(*) FILTER (WHERE status = 'Completed' AND completed_at > ${since})::int AS done,
+           round(avg(extract(epoch FROM completed_at - created_at) / 3600) FILTER (WHERE status = 'Completed' AND completed_at > ${since} AND completed_at >= created_at))::int AS avg_hours
+         FROM jobs WHERE assigned_to IS NOT NULL AND trim(assigned_to) <> '' AND archived_at IS NULL GROUP BY 1
+         HAVING count(*) FILTER (WHERE created_at > ${since} OR (status = 'Completed' AND completed_at > ${since})) > 0 ORDER BY 3 DESC, 2 DESC LIMIT 12`),
+      p.query("SELECT name, portal_seen_at FROM contractors WHERE portal_on AND active ORDER BY portal_seen_at DESC NULLS LAST").then(function (r) { return r.rows; }),
+      q(`SELECT count(*)::int AS n FROM admin_sessions WHERE created_at > ${since}`),
+      p.query(`SELECT u.id, u.job_id, u.created_at, u.kind, left(u.body, 400) AS body, j.property_address, j.archived_at
+         FROM job_updates u JOIN jobs j ON j.id = u.job_id ORDER BY u.created_at DESC, u.id DESC LIMIT 150`).then(function (r) { return r.rows; }),
+      p.query(`SELECT count(*) FILTER (WHERE status NOT IN ('Completed', 'Cancelled'))::int AS open,
+           count(*) FILTER (WHERE status NOT IN ('Completed', 'Cancelled') AND due_at < now())::int AS overdue,
+           count(*) FILTER (WHERE status NOT IN ('Completed', 'Cancelled') AND (assigned_to IS NULL OR trim(assigned_to) = ''))::int AS unassigned
+         FROM jobs WHERE archived_at IS NULL`).then(function (r) { return r.rows[0]; })
+    ]);
+    res.json({ ok: true, days: Number(days), today: londonDay(), created: out[0], completed: out[1], speed: out[2][0], sources: out[3], categories: out[4],
+      urgency: out[5], messages: out[6], contractors: out[7], portals: out[8], signins: out[9][0].n,
+      feed: out[10].map(function (u) { u.ref = refFor(u.job_id); return u; }), now: out[11] });
   }));
   setInterval(function () {
     db().then(function (p) { return p && p.query("DELETE FROM site_visitors WHERE day < to_char(now() - interval '60 days', 'YYYY-MM-DD')"); }).catch(function () {});
@@ -2704,6 +2742,7 @@ module.exports = function mountJobs(app, opts) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const c = await portalContractor(p, req.params.token);
     if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
+    p.query("UPDATE contractors SET portal_seen_at = now() WHERE id = $1 AND (portal_seen_at IS NULL OR portal_seen_at < now() - interval '1 minute')", [c.id]).catch(function () {});
     const r = await p.query(`SELECT id, status, urgency, created_at, completed_at, category, affected, symptom, location, description, summary, property_address,
         tenant_name, tenant_phone, access_time, access_notes, key_permission, key_instructions, direct_contact, appointment_date, appointment_time, completion_notes
       FROM jobs WHERE archived_at IS NULL AND lower(trim(assigned_to)) = lower(trim($1))
@@ -2727,7 +2766,7 @@ module.exports = function mountJobs(app, opts) {
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.rows[0].id, 'completed',
       'Marked completed by ' + c.name + ' (contractor job link).' + (notes ? ' Notes: ' + notes.replace(/[.\s]*$/, '') + '.' : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '') +
       (photos.length ? ' ' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' added.' : '')]);
-    ntfy({ title: 'Job completed: ' + ref, message: c.name + ' marked ' + ref + ' completed — ' + (r.rows[0].property_address || ''), tags: ['white_check_mark'] }).catch(function () {});
+    ntfy({ title: 'Job completed: ' + ref, message: c.name + ' marked ' + ref + ' completed — ' + (r.rows[0].property_address || '') + '. Open the job in Fixflow to tell the tenant and landlord.', tags: ['white_check_mark'] }).catch(function () {});
     res.json({ ok: true });
   }));
   // The contractor says when they've booked the visit.
