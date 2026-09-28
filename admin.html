@@ -364,6 +364,17 @@
   .tcy-row .num { font-weight: 700; } .tcy-row small { display: block; font-weight: 500; color: var(--ink-soft); font-size: .72rem; }
   @media (max-width: 700px) { .tcy-row { grid-template-columns: minmax(0,1fr) auto; } .tcy-row .when, .tcy-row .chev { display: none; } }
   .tcy-form .card { margin-bottom: 12px; }
+  .sess-row { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .sess-row:last-child { border-bottom: 0; }
+  .sess-ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--soft, rgba(0,0,0,.05)); font-size: 1.1rem; }
+  .sess-row .t { font-weight: 600; } .sess-row .s { font-size: .8rem; color: var(--ink-soft); }
+  .act-chart-title { font-size: .8rem; font-weight: 600; color: var(--ink-soft); margin-bottom: 6px; }
+  .act-chart { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 140px; border-bottom: 1px solid var(--line); margin-bottom: 26px; }
+  .act-chart .act-bar { flex: 1; min-width: 2px; height: 100%; display: flex; align-items: flex-end; cursor: default; }
+  .act-chart .act-bar i { display: block; width: 100%; background: var(--blue, #2563eb); border-radius: 4px 4px 0 0; min-height: 0; }
+  .act-chart .act-bar:hover i { opacity: .8; }
+  .act-chart .axis { position: absolute; left: 0; right: 0; bottom: -18px; display: flex; justify-content: space-between; font-size: .7rem; color: var(--ink-soft); }
+  .act-tip { position: fixed; z-index: 80; pointer-events: none; background: var(--ink, #111); color: var(--bg, #fff); font-size: .78rem; padding: 6px 8px; border-radius: 8px; white-space: nowrap; }
   .mail-preview { background: #fff; color: #000; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; max-height: 46vh; overflow: auto; font: 10pt/1.35 Tahoma, Verdana, Segoe UI, sans-serif; outline: none; }
   .mail-preview:focus { border-color: var(--blue, #2563eb); }
   .mail-preview a { color: #0563c1; }
@@ -678,6 +689,7 @@
     <button class="nav" type="button" id="navCerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/></svg> Certificates <span class="badge hot" id="sCerts" hidden></span></button>
     <button class="nav" type="button" id="navPay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg> Payments <span class="badge" id="sOwed" hidden></span></button>
     <button class="nav" type="button" id="contractorsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg> Contractors</button>
+    <button class="nav" type="button" id="navAct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Activity</button>
     <button class="nav" type="button" id="navEmail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
     <button class="nav" type="button" id="navNew"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <div class="side-sec">Links</div>
@@ -850,6 +862,23 @@
           </details>
         </div>
         <div id="tcyDetail" hidden></div>
+      </div>
+
+      <!-- ACTIVITY: where staff are signed in, visits to the tenant pages -->
+      <div id="actView" hidden>
+        <div class="card" style="margin-bottom:12px">
+          <h3>Where you're signed in<span style="flex:1"></span><button class="btn small ghost danger" id="actOthers" type="button">Sign out all other devices</button></h3>
+          <p class="muted-note" id="actSessNote" style="margin:0 0 8px"></p>
+          <div id="actSessions"></div>
+        </div>
+        <div class="card">
+          <h3>Tenant repair page<span style="flex:1"></span><select class="inp" id="actDays" style="width:auto"><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="7">Last 7 days</option></select></h3>
+          <div class="tiles prop-tiles" id="actTiles" style="margin-bottom:12px"></div>
+          <div class="act-chart-title" id="actChartTitle">Visitors per day</div>
+          <div class="act-chart" id="actChart" role="img"></div>
+          <details style="margin-top:10px"><summary class="muted-note" style="cursor:pointer;margin:0">Show as a table</summary><div id="actTable" style="margin-top:8px"></div></details>
+          <p class="muted-note" style="margin:10px 0 0">A visitor is counted once a day per device. Search engines and link previews aren't counted. Counting started on 28 September 2026.</p>
+        </div>
       </div>
 
       <div id="certsView" hidden>
@@ -2307,6 +2336,8 @@
     $('llView').hidden = v !== 'll';
     $('certsView').hidden = v !== 'certs';
     $('tcyView').hidden = v !== 'tcy';
+    $('actView').hidden = v !== 'act';
+    $('navAct').classList.toggle('on', v === 'act');
     $('navTcy').classList.toggle('on', v === 'tcy');
     $('navCerts').classList.toggle('on', v === 'certs');
     $('navLandlords').classList.toggle('on', v === 'll');
@@ -2314,9 +2345,10 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', act: 'Activity' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'tcy' && !openTcyId) renderTenancies();
+    if (v === 'act') loadActivity();
     if (v === 'll') { openLlId ? renderLandlord() : renderLandlords(); }
     if (v === 'pay') renderPay();
     if (v === 'props') { openPropKey ? renderProperty() : renderProps(); }
@@ -6471,11 +6503,88 @@
   $('tcySearch').addEventListener('input', renderTenancies);
   $('tcyList').addEventListener('click', function(e){ var b = e.target.closest('[data-tcy]'); if (b) openTenancy(Number(b.dataset.tcy)); });
 
+  // ---------- Activity: sign-ins and visits ----------
+  function deviceOf(ua){
+    ua = String(ua || '');
+    var os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Windows/.test(ua) ? 'Windows PC' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Device';
+    var br = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
+    return { label: os + (br ? ' · ' + br : ''), icon: /iPhone|Android phone/.test(os) ? '📱' : os === 'iPad' ? '📱' : '💻' };
+  }
+  function ago(t){
+    var s = Math.max(0, (Date.now() - new Date(t).getTime()) / 1000);
+    return s < 90 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' day' + (Math.round(s / 86400) === 1 ? '' : 's') + ' ago';
+  }
+  function loadActivity(){
+    api('GET', '/api/admin/sessions').then(function(d){
+      if (!d.ok) return;
+      var list = d.sessions;
+      $('actSessNote').textContent = 'Signed in on ' + list.length + ' device' + (list.length === 1 ? '' : 's') + '. If you don’t recognise one, sign it out — and change the admin password.';
+      $('actOthers').hidden = list.length < 2;
+      $('actSessions').innerHTML = list.map(function(x){
+        var dv = deviceOf(x.user_agent);
+        return '<div class="sess-row"><span class="sess-ico">' + dv.icon + '</span><div><div class="t">' + esc(dv.label) + (x.current ? ' <span class="count-chip">This device</span>' : '') + '</div>' +
+          '<div class="s">Last active ' + esc(ago(x.last_seen)) + ' · signed in ' + esc(fmtDate(x.created_at)) + (x.ip ? ' · IP ' + esc(x.ip) : '') + '</div></div>' +
+          (x.current ? '<span></span>' : '<button type="button" class="btn small ghost" data-sess-out="' + esc(x.id) + '">Sign out</button>') + '</div>';
+      }).join('') || '<p class="muted-note">No sign-ins recorded yet.</p>';
+    });
+    loadVisits();
+  }
+  $('actSessions').addEventListener('click', function(e){
+    var b = e.target.closest('[data-sess-out]'); if (!b || !confirm('Sign this device out of Fixflow?')) return;
+    api('POST', '/api/admin/sessions/' + b.dataset.sessOut + '/revoke', {}).then(function(d){ toast(d.ok ? 'Device signed out' : 'Couldn’t sign it out'); loadActivity(); });
+  });
+  $('actOthers').addEventListener('click', function(){
+    if (!confirm('Sign out every other device? They’ll need the admin password to get back in.')) return;
+    api('POST', '/api/admin/sessions/revoke-others', {}).then(function(d){ toast(d.ok ? d.signed_out + ' device' + (d.signed_out === 1 ? '' : 's') + ' signed out' : 'Couldn’t sign them out'); loadActivity(); });
+  });
+  $('actDays').addEventListener('change', loadVisits);
+  function loadVisits(){
+    var days = Number($('actDays').value);
+    api('GET', '/api/admin/visits?days=' + days).then(function(d){
+      if (!d.ok) return;
+      var byDay = {}, rep = {};
+      d.visits.forEach(function(v){ var x = byDay[v.day] || (byDay[v.day] = { visits: 0, uniques: 0, track: 0 }); if (v.page === 'report') { x.visits += v.visits; x.uniques += v.uniques; } else x.track += v.visits; });
+      d.reports.forEach(function(r){ rep[r.day] = r.n; });
+      var list = [], dt = parseDay(d.from);
+      for (var i = 0; i < days; i++) { var k = isoDay(dt); list.push({ day: k, v: byDay[k] || { visits: 0, uniques: 0, track: 0 }, r: rep[k] || 0 }); dt.setDate(dt.getDate() + 1); }
+      var sum = function(arr, f){ return arr.reduce(function(a, x){ return a + f(x); }, 0); };
+      var today = list.filter(function(x){ return x.day === d.today; }), last7 = list.slice(-7);
+      var tile = function(k, v, sub){ return '<div class="tile"><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (sub ? '<div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + sub + '</div>' : '') + '</div>'; };
+      $('actTiles').innerHTML =
+        tile('Visitors today', sum(today, function(x){ return x.v.uniques; }), sum(today, function(x){ return x.v.visits; }) + ' visits') +
+        tile('Visitors, last 7 days', sum(last7, function(x){ return x.v.uniques; }), sum(last7, function(x){ return x.v.visits; }) + ' visits') +
+        tile('Visitors, ' + $('actDays').selectedOptions[0].textContent.toLowerCase(), sum(list, function(x){ return x.v.uniques; }), sum(list, function(x){ return x.v.visits; }) + ' visits') +
+        tile('Repairs reported online', sum(list, function(x){ return x.r; }), sum(list, function(x){ return x.v.track; }) + ' repair-tracker views');
+      var max = Math.max(1, Math.max.apply(null, list.map(function(x){ return x.v.uniques; })));
+      $('actChartTitle').textContent = 'Visitors per day (max ' + max + ')';
+      $('actChart').setAttribute('aria-label', 'Visitors per day, ' + list.length + ' days');
+      $('actChart').innerHTML = list.map(function(x){
+        var h = x.v.uniques ? Math.max(3, Math.round(x.v.uniques / max * 100)) : 0;
+        return '<div class="act-bar" data-tip="' + esc(longDay(x.day) + ': ' + x.v.uniques + ' visitor' + (x.v.uniques === 1 ? '' : 's') + ', ' + x.v.visits + ' visit' + (x.v.visits === 1 ? '' : 's') + (x.r ? ', ' + x.r + ' report' + (x.r === 1 ? '' : 's') : '')) + '"><i style="height:' + h + '%"></i></div>';
+      }).join('') + '<div class="axis"><span>' + esc(longDay(list[0].day)) + '</span><span>' + esc(longDay(list[list.length - 1].day)) + '</span></div>';
+      $('actTable').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:.82rem"><tr><th style="text-align:left">Day</th><th style="text-align:right">Visitors</th><th style="text-align:right">Visits</th><th style="text-align:right">Reports</th><th style="text-align:right">Tracker views</th></tr>' +
+        list.slice().reverse().map(function(x){ return '<tr><td>' + esc(longDay(x.day)) + '</td><td style="text-align:right">' + x.v.uniques + '</td><td style="text-align:right">' + x.v.visits + '</td><td style="text-align:right">' + x.r + '</td><td style="text-align:right">' + x.v.track + '</td></tr>'; }).join('') + '</table>';
+    });
+  }
+  (function(){
+    var tip = null;
+    $('actChart').addEventListener('mousemove', function(e){
+      var b = e.target.closest('[data-tip]');
+      if (!b) { if (tip) tip.hidden = true; return; }
+      if (!tip) { tip = document.createElement('div'); tip.className = 'act-tip'; document.body.appendChild(tip); }
+      tip.hidden = false; tip.textContent = b.dataset.tip;
+      tip.style.left = Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX + 12) + 'px'; tip.style.top = (e.clientY - 34) + 'px';
+    });
+    $('actChart').addEventListener('mouseleave', function(){ if (tip) tip.hidden = true; });
+    $('actChart').addEventListener('click', function(e){ var b = e.target.closest('[data-tip]'); if (b) toast(b.dataset.tip); });
+  })();
+  $('navAct').addEventListener('click', function(){ showView('act'); });
+
   // Phones: a bottom tab bar standing in for the sidebar. The buttons reuse the
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navTcy', 'Tenancies'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navEmail', 'Jobs from an email'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navTcy', 'Tenancies'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['navEmail', 'Jobs from an email'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';

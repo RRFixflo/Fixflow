@@ -205,6 +205,27 @@ CREATE TABLE IF NOT EXISTS tenancies (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS tenancies_key ON tenancies (property_key);
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  id          TEXT PRIMARY KEY,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ip          TEXT,
+  user_agent  TEXT,
+  revoked_at  TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS site_visits (
+  day     TEXT NOT NULL,
+  page    TEXT NOT NULL,
+  visits  INTEGER NOT NULL DEFAULT 0,
+  uniques INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, page)
+);
+CREATE TABLE IF NOT EXISTS site_visitors (
+  day   TEXT NOT NULL,
+  page  TEXT NOT NULL,
+  vhash TEXT NOT NULL,
+  PRIMARY KEY (day, page, vhash)
+);
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      JSONB,
@@ -561,17 +582,56 @@ module.exports = function mountJobs(app, opts) {
   const SESSION_DAYS = 30;
   const signingKey = crypto.createHash('sha256').update('rr-admin-session:' + ADMIN_PASSWORD).digest();
   function sign(exp) { return crypto.createHmac('sha256', signingKey).update('admin:' + exp).digest('hex'); }
-  function makeToken() {
-    const exp = Date.now() + SESSION_DAYS * 86400 * 1000;
-    return exp + '.' + sign(exp);
+  // A sign-in token: expiry, the sign-in (session) id, signature. Each sign-in is
+  // recorded in admin_sessions so staff can see where they're signed in and sign
+  // a device out. Older tokens (expiry.signature) are still accepted and are
+  // upgraded to a recorded sign-in on their next visit.
+  function makeToken(sid, exp) {
+    exp = exp || Date.now() + SESSION_DAYS * 86400 * 1000;
+    return exp + '.' + sid + '.' + sign(exp + '.' + sid);
   }
-  function validToken(tok) {
-    if (!ADMIN_PASSWORD || !tok) return false;
+  function parseToken(tok) {
+    if (!ADMIN_PASSWORD || !tok) return null;
     const parts = String(tok).split('.');
-    if (parts.length !== 2 || !(Number(parts[0]) > Date.now())) return false;
-    const a = Buffer.from(parts[1]);
-    const b = Buffer.from(sign(parts[0]));
-    return a.length === b.length && crypto.timingSafeEqual(a, b);
+    if (!(Number(parts[0]) > Date.now())) return null;
+    let signed, sig, sid = null;
+    if (parts.length === 2) { signed = parts[0]; sig = parts[1]; }
+    else if (parts.length === 3 && /^[a-f0-9]{16,64}$/.test(parts[1])) { signed = parts[0] + '.' + parts[1]; sig = parts[2]; sid = parts[1]; }
+    else return null;
+    const a = Buffer.from(sig), b = Buffer.from(sign(signed));
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    return { exp: Number(parts[0]), sid: sid };
+  }
+  function validToken(tok) { return !!parseToken(tok); }
+  function sessionCookie(req, token, exp) {
+    return 'rr_admin=' + token + '; Path=/; HttpOnly; SameSite=Strict; Max-Age=' + Math.max(0, Math.round((exp - Date.now()) / 1000)) + (req.secure ? '; Secure' : '');
+  }
+  const sessionCache = new Map();   // sid -> { revoked, touched }
+  async function startSession(req, sid) {
+    const p = await db();
+    if (!p) return;
+    await p.query('INSERT INTO admin_sessions (id, ip, user_agent) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING',
+      [sid, str(req.ip, 100), str(req.get('user-agent'), 400)]);
+    sessionCache.set(sid, { revoked: false, touched: Date.now() });
+  }
+  // Is this sign-in still allowed? Also notes when it was last used (every few minutes).
+  async function sessionOk(req, sid) {
+    let c = sessionCache.get(sid);
+    const p = await db();
+    if (!p) return true;
+    if (!c) {
+      const row = (await p.query('SELECT revoked_at FROM admin_sessions WHERE id = $1', [sid])).rows[0];
+      if (!row) { await startSession(req, sid); return true; }
+      c = { revoked: !!row.revoked_at, touched: 0 };
+      sessionCache.set(sid, c);
+    }
+    if (c.revoked) return false;
+    if (Date.now() - c.touched > 5 * 60 * 1000) {
+      c.touched = Date.now();
+      p.query('UPDATE admin_sessions SET last_seen = now(), ip = $2, user_agent = coalesce($3, user_agent) WHERE id = $1',
+        [sid, str(req.ip, 100), str(req.get('user-agent'), 400)]).catch(function () {});
+    }
+    return true;
   }
   function readCookie(req, name) {
     const m = (req.headers.cookie || '').match(new RegExp('(?:^|;\\s*)' + name + '=([^;]+)'));
@@ -597,24 +657,103 @@ module.exports = function mountJobs(app, opts) {
     if (!loginAllowed(req.ip)) return res.status(429).json({ ok: false, error: 'too-many-attempts' });
     if (!passwordMatches((req.body || {}).password)) return res.status(401).json({ ok: false, error: 'wrong-password' });
     loginAttempts.delete(req.ip); // only failed attempts count towards the limit
-    res.setHeader('Set-Cookie', 'rr_admin=' + makeToken() + '; Path=/; HttpOnly; SameSite=Strict; Max-Age=' +
-      (SESSION_DAYS * 86400) + (req.secure ? '; Secure' : ''));
+    const sid = crypto.randomBytes(16).toString('hex'), exp = Date.now() + SESSION_DAYS * 86400 * 1000;
+    startSession(req, sid).catch(function (err) { console.error('Sign-in record failed:', err.message); });
+    res.setHeader('Set-Cookie', sessionCookie(req, makeToken(sid, exp), exp));
     res.json({ ok: true });
   });
 
   app.post('/api/admin/logout', function (req, res) {
+    const t = parseToken(readCookie(req, 'rr_admin'));
+    if (t && t.sid) {
+      sessionCache.set(t.sid, { revoked: true, touched: Date.now() });
+      db().then(function (p) { return p && p.query('UPDATE admin_sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL', [t.sid]); }).catch(function () {});
+    }
     res.setHeader('Set-Cookie', 'rr_admin=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
     res.json({ ok: true });
   });
 
   // Everything below needs a valid session. State-changing requests must also be
   // JSON, which a cross-site form can't send — on top of the SameSite cookie.
-  app.use('/api/admin', function (req, res, next) {
+  app.use('/api/admin', async function (req, res, next) {
     if (!ADMIN_PASSWORD) return res.status(503).json({ ok: false, error: 'admin-not-configured' });
-    if (!validToken(readCookie(req, 'rr_admin'))) return res.status(401).json({ ok: false, error: 'signed-out' });
+    const t = parseToken(readCookie(req, 'rr_admin'));
+    if (!t) return res.status(401).json({ ok: false, error: 'signed-out' });
+    try {
+      if (t.sid) {
+        if (!(await sessionOk(req, t.sid))) {
+          res.setHeader('Set-Cookie', 'rr_admin=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+          return res.status(401).json({ ok: false, error: 'signed-out' });
+        }
+        req.sessionId = t.sid;
+      } else {
+        // A sign-in from before sign-ins were recorded: record it now, same expiry.
+        const sid = crypto.randomBytes(16).toString('hex');
+        await startSession(req, sid);
+        res.setHeader('Set-Cookie', sessionCookie(req, makeToken(sid, t.exp), t.exp));
+        req.sessionId = sid;
+      }
+    } catch (err) { console.error('Sign-in check failed:', err.message); }
     if (req.method !== 'GET' && !req.is('application/json')) return res.status(415).json({ ok: false, error: 'json-only' });
     next();
   });
+
+  // ---------- Where staff are signed in ----------
+  app.get('/api/admin/sessions', withDb(async function (p, req, res) {
+    const r = await p.query(`SELECT id, created_at, last_seen, ip, user_agent FROM admin_sessions
+      WHERE revoked_at IS NULL AND created_at > now() - interval '${SESSION_DAYS} days' ORDER BY last_seen DESC LIMIT 200`);
+    res.json({ ok: true, sessions: r.rows.map(function (x) { return { id: x.id, created_at: x.created_at, last_seen: x.last_seen, ip: x.ip, user_agent: x.user_agent, current: x.id === req.sessionId }; }) });
+  }));
+  app.post('/api/admin/sessions/:sid/revoke', withDb(async function (p, req, res) {
+    const sid = String(req.params.sid || '');
+    if (sid === req.sessionId) return res.status(400).json({ ok: false, error: 'this-device' });
+    await p.query('UPDATE admin_sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL', [sid]);
+    sessionCache.set(sid, { revoked: true, touched: Date.now() });
+    res.json({ ok: true });
+  }));
+  app.post('/api/admin/sessions/revoke-others', withDb(async function (p, req, res) {
+    const r = await p.query('UPDATE admin_sessions SET revoked_at = now() WHERE revoked_at IS NULL AND id <> $1 RETURNING id', [req.sessionId || '']);
+    r.rows.forEach(function (x) { sessionCache.set(x.id, { revoked: true, touched: Date.now() }); });
+    res.json({ ok: true, signed_out: r.rows.length });
+  }));
+
+  // ---------- Visits to the tenant pages ----------
+  // Counted per day (London time): visits, and unique visitors (a daily one-way
+  // hash of address + browser, so no one can be identified from it).
+  const BOT_UA = /bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|telegram|monitor|pingdom|uptime|curl|wget|python|axios|node-fetch|headless/i;
+  const londonDay = function (d) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d || new Date()); };
+  const visitHits = new Map();
+  async function countVisit(req, page) {
+    const ua = String(req.get('user-agent') || '');
+    if (!ua || BOT_UA.test(ua)) return;
+    const now = Date.now(), e = visitHits.get(req.ip);
+    if (!e || now - e.start > 10 * 60 * 1000) visitHits.set(req.ip, { start: now, n: 1 });
+    else if (++e.n > 60) return;
+    if (visitHits.size > 20000) visitHits.clear();
+    const p = await db();
+    if (!p) return;
+    const day = londonDay(), vhash = crypto.createHmac('sha256', signingKey).update(day + '|' + req.ip + '|' + ua).digest('hex').slice(0, 32);
+    const fresh = (await p.query('INSERT INTO site_visitors (day, page, vhash) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [day, page, vhash])).rowCount;
+    await p.query(`INSERT INTO site_visits (day, page, visits, uniques) VALUES ($1, $2, 1, $3)
+      ON CONFLICT (day, page) DO UPDATE SET visits = site_visits.visits + 1, uniques = site_visits.uniques + excluded.uniques`, [day, page, fresh]);
+  }
+  // The tenant repair page reports its own visit (so only real browsers count).
+  app.post('/api/visit', function (req, res) {
+    const page = req.query.p === 'track' ? 'track' : 'report';
+    countVisit(req, page).catch(function () {});
+    res.status(204).end();
+  });
+  app.get('/api/admin/visits', withDb(async function (p, req, res) {
+    const days = Math.min(365, Math.max(7, parseInt(req.query.days, 10) || 30));
+    const from = londonDay(new Date(Date.now() - (days - 1) * 86400000));
+    const v = (await p.query('SELECT day, page, visits, uniques FROM site_visits WHERE day >= $1 ORDER BY day', [from])).rows;
+    const reports = (await p.query(`SELECT to_char(created_at AT TIME ZONE 'Europe/London', 'YYYY-MM-DD') AS day, count(*)::int AS n
+      FROM jobs WHERE source = 'Online report' AND created_at > now() - ($1 || ' days')::interval GROUP BY 1 ORDER BY 1`, [String(days)])).rows;
+    res.json({ ok: true, from: from, today: londonDay(), visits: v, reports: reports });
+  }));
+  setInterval(function () {
+    db().then(function (p) { return p && p.query("DELETE FROM site_visitors WHERE day < to_char(now() - interval '60 days', 'YYYY-MM-DD')"); }).catch(function () {});
+  }, 24 * 3600 * 1000).unref();
 
   app.get('/api/admin/me', async function (req, res) {
     res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES });
@@ -1374,6 +1513,7 @@ module.exports = function mountJobs(app, opts) {
   }
 
   app.get('/track', withDb(async function (p, req, res) {
+    countVisit(req, 'track').catch(function () {});
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     const ref = String(req.query.ref || req.query.q || '').trim().slice(0, 40);
     const door = String(req.query.door || '').trim().slice(0, 20);
@@ -1442,6 +1582,7 @@ module.exports = function mountJobs(app, opts) {
   }));
 
   app.get('/t/:token', withDb(async function (p, req, res) {
+    countVisit(req, 'track').catch(function () {});
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     const token = String(req.params.token || '');
     if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
