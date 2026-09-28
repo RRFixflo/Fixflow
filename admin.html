@@ -127,7 +127,6 @@
     .mainhead { padding: 12px 16px; gap: 6px; }
     .mainhead h1 { font-size: 1.05rem; }
     .mainhead .btn.small { padding: 6px 8px; }
-    #refreshBtn { display: none; }
     .mainhead .date { display: none; }
     .wrap { padding: 16px 16px 60px; }
   }
@@ -469,6 +468,8 @@
   .ct-row .tel { font-weight: 550; font-size: .85rem; color: inherit; text-decoration: none; font-variant-numeric: tabular-nums; }
   .ct-form { display: flex; flex-direction: column; gap: 12px; }
   #ctSortTabs button { padding: 6px 10px; white-space: nowrap; }
+  #refreshBtn.spinning svg { animation: rrspin .7s linear infinite; }
+  @keyframes rrspin { to { transform: rotate(360deg); } }
   .ctg-sum { padding: 10px 14px; font-size: .82rem; color: var(--ink-soft); background: var(--panel-2); border-bottom: 1px solid var(--line); }
   .ctg-sum .owe, .ctg-n.owe b { color: #C2410C; }
   .ct-row.ctg, .ctg { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 60px 60px 76px 100px 310px; align-items: center; gap: 10px; padding: 10px 14px; }
@@ -1532,7 +1533,7 @@
   function loadJobs(){
     if (!meta.db) { jobs = []; render(); return; }
     return Promise.all([api('GET', '/api/admin/jobs'), loadLandlords(), loadTenantRecs(), loadAllInvoices(), loadCerts(), loadTenancies()]).then(function(res){ var d = res[0];
-      if (!d.ok) return;
+      if (!d.ok) return false;
       // Deleted jobs live in the archive: kept, but out of every day-to-day list and total.
       archivedJobs = d.jobs.filter(function(j){ return j.archived_at; });
       jobs = d.jobs.filter(function(j){ return !j.archived_at; });
@@ -1548,6 +1549,7 @@
       renderCertAlerts();
       var owedN = jobs.filter(isOwed).length;
       $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
+      return true;
     });
   }
 
@@ -1721,7 +1723,22 @@
   $('contractorsBtnM').addEventListener('click', function(){ $('contractorsBtn').click(); });
   $('logoutBtnM').addEventListener('click', function(){ $('logoutBtn').click(); });
   $('todayLbl').textContent = new Date().toLocaleDateString('en-GB', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' });
-  $('refreshBtn').addEventListener('click', function(){ loadJobs(); if (openJobId) openJob(openJobId); });
+  // Refresh: fetch everything again, redraw the page you're on, and say so.
+  $('refreshBtn').addEventListener('click', function(){
+    var btn = $('refreshBtn');
+    if (btn.classList.contains('spinning')) return;
+    btn.classList.add('spinning');
+    var t0 = Date.now();
+    Promise.resolve(loadContractors()).then(function(){ return loadJobs(); }).then(function(ok){
+      if (ok === false) throw new Error('refresh');
+      if (view === 'cts') renderContractors();
+      if (view === 'act') loadActivity();
+      if (openJobId) openJob(openJobId);
+      toast('Up to date · ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    }).catch(function(){ toast('Couldn’t refresh — check your connection'); }).then(function(){
+      setTimeout(function(){ btn.classList.remove('spinning'); }, Math.max(0, 500 - (Date.now() - t0)));
+    });
+  });
   setInterval(function(){ if (!$('appView').hidden) render(); }, 30000);         // keep "time left" current
   setInterval(function(){ if (!$('appView').hidden && !openJobId) loadJobs(); }, 120000); // pick up new reports
 
@@ -6971,7 +6988,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navTcy', 'Tenancies'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['navEmail', 'Jobs from an email'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navTcy', 'Tenancies'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['navEmail', 'Jobs from an email'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
