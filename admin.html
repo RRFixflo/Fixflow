@@ -268,7 +268,7 @@
   .d-close { width: 34px; height: 34px; padding: 0; border-radius: 50%; }
   .d-sub { margin-top: 6px; font-size: .9rem; color: var(--ink-soft); line-height: 1.4; }
   .d-sub strong { color: var(--ink); font-weight: 600; }
-  .d-quick { display: flex; gap: 8px; margin-top: 14px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .d-quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-bottom: 2px; }
   .d-quick::-webkit-scrollbar { display: none; }
   .d-quick .btn { border-radius: 999px; padding: 7px 13px; font-size: .82rem; flex-shrink: 0; }
   .d-tabs { display: flex; gap: 2px; margin: 14px -20px 0; padding: 0 14px; overflow-x: auto; scrollbar-width: none; }
@@ -428,6 +428,7 @@
   .timeline li { position: relative; padding: 0 0 14px 14px; font-size: .85rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .timeline li::before { content: ""; position: absolute; left: -19px; top: 5px; width: 9px; height: 9px; border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 2px var(--line-strong); }
   .timeline li.k-tenant_message::before { box-shadow: 0 0 0 2px var(--blue); background: var(--blue); }
+  .timeline li.k-landlord_message::before { box-shadow: 0 0 0 2px #7C3AED; background: #7C3AED; }
   .timeline li.k-completed::before { box-shadow: 0 0 0 2px var(--ok); background: var(--ok); }
   .timeline li.k-created::before { box-shadow: 0 0 0 2px var(--brick); background: var(--brick); }
   .timeline li.k-note::before { box-shadow: 0 0 0 2px var(--ink-soft); background: var(--ink-soft); }
@@ -1180,6 +1181,7 @@
   <span class="n" id="bulkCount">0 selected</span>
   <button class="btn small wa" id="bulkWa" type="button">Send to contractor</button>
   <button class="btn small" id="bulkCopy" type="button">Copy for contractor</button>
+  <button class="btn small" id="bulkLl" type="button" title="Send each landlord an update with the progress link">🏠 Tell landlords</button>
   <button class="btn small" id="bulkArea" type="button" title="Also select open jobs in the same postcode area">+ Same area</button>
   <input id="bulkAssign" list="assignees" placeholder="Assign all to…">
   <button class="btn small" id="bulkAssignBtn" type="button">Assign</button>
@@ -1315,10 +1317,10 @@
 <!-- PREVIEW OF THE CONTRACTOR MESSAGE -->
 <div class="modal" id="ttModal" hidden>
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
-    <h3 style="margin:0">Let the tenant know</h3>
+    <h3 style="margin:0" id="ttTitle">Let the tenant know</h3>
     <p class="muted-note" style="margin:0" id="ttIntro"></p>
     <div id="ttList"></div>
-    <div class="row-actions" style="margin-top:0"><button class="btn primary" type="button" id="ttDone">Done</button></div>
+    <div class="row-actions" style="margin-top:0"><button class="btn" type="button" id="ttLl" hidden>🏠 Tell the landlord too</button><button class="btn primary" type="button" id="ttDone">Done</button></div>
   </div>
 </div>
 <div class="modal" id="addrModal" hidden>
@@ -2151,6 +2153,12 @@
     $('bulkCount').textContent = n + ' job' + (n === 1 ? '' : 's') + ' selected';
   }
   $('bulkWa').addEventListener('click', function(){ showContractorMessage(selectedJobs()); });
+  $('bulkLl').addEventListener('click', function(){
+    var list = selectedJobs().filter(function(j){ return j.assigned_to; });
+    if (!list.length) { toast('None of those jobs has a contractor yet'); return; }
+    if (!list.some(llContact)) { toast('No landlord phone or email for those properties'); return; }
+    openLandlordNotice(list);
+  });
   $('bulkCopy').addEventListener('click', function(){
     var list = selectedJobs();
     copyText(contractorMessage(list)).then(function(){
@@ -3625,7 +3633,7 @@
       (link ? '\n\nYou can follow the progress here: ' + link : '') +
       '\n\nThanks,\nResidential Realtors';
   }
-  var ttGroups = [];
+  var ttGroups = [], ttMode = 'tenant', ttJobs = [];
   function openTenantNotice(list, contractor){
     // One message per tenant (a tenant with several jobs gets one message).
     var groups = [], byKey = {};
@@ -3637,8 +3645,10 @@
       var g = byKey[k] || (byKey[k] = groups[groups.push({ name: t.name, phone: t.phone, email: t.email, address: j.property_address, jobs: [] }) - 1]);
       g.jobs.push(j);
     });
-    if (!groups.length) return;
-    ttGroups = groups;
+    if (!groups.length) { if (list.some(function(j){ return j.assigned_to && llContact(j); })) openLandlordNotice(list); return; }
+    ttGroups = groups; ttMode = 'tenant'; ttJobs = list;
+    $('ttTitle').textContent = 'Let the tenant know';
+    $('ttLl').hidden = !list.some(function(j){ return j.assigned_to && llContact(j); });
     var who = contractor || (list[0] && list[0].assigned_to) || '';
     $('ttIntro').textContent = groups.length === 1 ? 'Tell ' + (groups[0].name || 'the tenant') + ' that ' + (who || 'the contractor') + ' will be in touch.' : 'Tell each tenant that ' + (who || 'the contractor') + ' will be in touch.';
     var links = {};
@@ -3658,6 +3668,7 @@
     Promise.all(list.map(function(j){ return trackUrls[j.id] ? Promise.resolve({ ok: true, url: trackUrls[j.id], id: j.id }) : api('POST', '/api/admin/jobs/' + j.id + '/track-link', {}).then(function(d){ d.id = j.id; return d; }); }))
       .then(function(res){
         res.forEach(function(d){ if (d && d.ok) { links[d.id] = d.url; trackUrls[d.id] = d.url; } });
+        if (ttMode !== 'tenant') return;
         $('ttList').querySelectorAll('.tt-card').forEach(function(card){
           var g = groups[Number(card.dataset.i)], ta = card.querySelector('.tt-msg');
           if (!ta.dataset.edited) ta.value = tenantMessage(g, who, links);
@@ -3668,10 +3679,25 @@
   $('ttList').addEventListener('click', function(e){
     var b = e.target.closest('[data-tt]'); if (!b) return;
     var card = b.closest('.tt-card'), g = ttGroups[Number(card.dataset.i)], msg = card.querySelector('.tt-msg').value;
+    var ll = ttMode === 'landlord';
     var log = function(how){
       card.querySelector('.tt-done').hidden = false;
-      g.jobs.forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'tenant_message', body: 'Told the tenant the contractor will be in touch (' + how + '):\n\n' + msg }); });
+      g.jobs.forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', ll ? { kind: 'landlord_message', body: 'Sent the landlord a progress update (' + how + '):\n\n' + msg } : { kind: 'tenant_message', body: 'Told the tenant the contractor will be in touch (' + how + '):\n\n' + msg }); });
     };
+    if (ll && b.dataset.tt === 'email') {
+      var llSubject = 'Repair update — ' + (g.jobs.length === 1 ? shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + ' repairs at your properties');
+      if (meta.canEmail) {
+        busy(b, true, 'Sending…');
+        // Sent once, logged on the first job; the others get a note.
+        api('POST', '/api/admin/jobs/' + g.jobs[0].id + '/email', { to: g.email, subject: llSubject, body: msg }).then(function(d){
+          busy(b, false);
+          if (!d.ok) { toast('Couldn’t send the email'); return; }
+          card.querySelector('.tt-done').hidden = false; toast('Email sent to ' + (g.name || 'the landlord'));
+          g.jobs.slice(1).forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'landlord_message', body: 'Sent the landlord a progress update (email to ' + g.email + '):\n\n' + msg }); });
+        });
+      } else { window.location.href = 'mailto:' + encodeURIComponent(g.email) + '?subject=' + encodeURIComponent(llSubject) + '&body=' + encodeURIComponent(msg); log('email'); }
+      return;
+    }
     if (b.dataset.tt === 'wa') { window.open('https://wa.me/' + waNumber(g.phone) + '?text=' + encodeURIComponent(msg), '_blank', 'noopener'); log('WhatsApp'); }
     else if (b.dataset.tt === 'copy') copyText(msg).then(function(){ toast('Copied'); log('copied'); })['catch'](function(){ toast('Couldn’t copy'); });
     else if (b.dataset.tt === 'email') {
@@ -3683,6 +3709,86 @@
     }
   });
   $('ttDone').addEventListener('click', function(){ $('ttModal').hidden = true; if (openJobId) openJob(openJobId); });
+  $('ttLl').addEventListener('click', function(){ openLandlordNotice(ttJobs); });
+
+  // Landlord updates: one message per landlord for their assigned jobs, with
+  // what's being done, any booked visit and the job's progress link. The
+  // contractor is described by trade ("our plumber"), not named.
+  function llContact(j){ var l = landlordFor(j); return l && (l.landlord_phone || l.landlord_email) ? l : null; }
+  function llWorkText(j){
+    var t = [j.affected, j.symptom].filter(Boolean).join(' – ') || String(j.summary || '').trim() || j.category || 'repair';
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+  function llWho(j){
+    var c = contractorByName(j.assigned_to), t = c && c.trade ? String(c.trade).replace(/\s*\(.*\)\s*/g, '').trim().toLowerCase() : '';
+    if (c && isCouncil(c)) return null;
+    if (!t) return 'one of our contractors';
+    // "our plumber", "our gas engineer"; a service ("gas safety") becomes "our gas safety contractor".
+    return 'our ' + t + (/(er|or|ian|man|ist|smith|fitter|team|company|contractor)s?$/.test(t) ? '' : ' contractor');
+  }
+  // "Dear Mrs Jones", "Dear Imran"; companies get "Dear Sir or Madam".
+  function llGreeting(name){
+    var n = String(name || '').trim();
+    if (!n || /\b(ltd|limited|llp|plc|properties|estates?|holdings|housing|council|trust)\b/i.test(n)) return 'Dear Sir or Madam';
+    var m = /^(mr|mrs|ms|miss|dr)\.?\s+(.+)$/i.exec(n);
+    if (m) { var words = m[2].split(/\s+/); return 'Dear ' + m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase() + ' ' + words[words.length - 1]; }
+    var first = n.split(/\s+/)[0];
+    return 'Dear ' + (first.replace(/\./g, '').length > 1 ? first : n);
+  }
+  function landlordMessage(g, links){
+    var jobs = g.jobs.slice().sort(function(a, b){ return a.id - b.id; });
+    var oneHome = jobs.every(function(j){ return propKey(j.property_address) === propKey(jobs[0].property_address); });
+    var line = function(j){
+      var appt = apptText(j), link = links[j.id], who = llWho(j);
+      return llWorkText(j) + (oneHome ? '' : ' at ' + shortAddr(j.property_address)) + ' (ref ' + j.ref + '): ' +
+        (who ? 'we’ve instructed ' + who + '.' : 'we’ve reported it to the council, who handle this repair.') +
+        (appt ? ' The visit is booked for ' + appt + '.' : who ? ' They’re arranging a time to attend with the tenant.' : '') +
+        (link ? '\nFollow the progress: ' + link : '');
+    };
+    var body = jobs.length === 1
+      ? 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n' + line(jobs[0])
+      : 'Here’s an update on the work at ' + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j){ return '• ' + line(j); }).join('\n\n');
+    return llGreeting(g.name) + ',\n\n' + body + '\n\nWe’ll keep you updated and let you know once the work is complete. Please get in touch if you have any questions.\n\nKind regards,\nResidential Realtors';
+  }
+  function openLandlordNotice(list){
+    var groups = [], byKey = {};
+    list.forEach(function(j){
+      var l = j.assigned_to ? llContact(j) : null; if (!l) return;
+      var k = String(l.landlord_email || '').toLowerCase() || phoneTail(l.landlord_phone) || l.landlord_name;
+      var g = byKey[k] || (byKey[k] = groups[groups.push({ name: l.landlord_name, phone: l.landlord_phone, email: l.landlord_email, jobs: [] }) - 1]);
+      g.jobs.push(j);
+    });
+    if (!groups.length) { toast('No landlord phone or email for ' + (list.length === 1 ? 'this property' : 'those properties')); return; }
+    ttGroups = groups; ttMode = 'landlord'; ttJobs = list;
+    $('ttTitle').textContent = 'Let the landlord know';
+    $('ttLl').hidden = true;
+    var skipped = list.length - groups.reduce(function(n, g){ return n + g.jobs.length; }, 0);
+    $('ttIntro').textContent = (groups.length === 1 ? 'Send ' + (groups[0].name || 'the landlord') + ' an update' : 'Send each landlord an update') + ' with the progress link — check the message, then send.' +
+      (skipped ? ' ' + skipped + ' job' + (skipped === 1 ? ' was' : 's were') + ' left out (no contractor yet, or no landlord contact).' : '');
+    var links = {};
+    var draw = function(){
+      $('ttList').innerHTML = groups.map(function(g, i){
+        var wa = waNumber(g.phone);
+        return '<div class="tt-card" data-i="' + i + '"><div class="tt-who">' + avatar(g.name || '?') + '<div><strong>' + esc(g.name || 'Landlord') + '</strong><div class="prop-sub" style="margin:0">' + esc([g.phone, g.email].filter(Boolean).join(' · ')) + (g.jobs.length > 1 ? ' · ' + g.jobs.length + ' jobs' : '') + '</div></div></div>' +
+          '<textarea class="inp tt-msg" rows="9">' + esc(landlordMessage(g, links)) + '</textarea>' +
+          '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(String(g.name || 'landlord').replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, '').split(' ')[0]) + '</button>' : '') +
+            (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? 'Send email' : 'Email') + '</button>' : '') +
+            '<button type="button" class="btn ghost" data-tt="copy">Copy</button><span class="tt-done" hidden>✓ Sent</span></div></div>';
+      }).join('');
+    };
+    draw();
+    $('ttModal').hidden = false;
+    var all = [].concat.apply([], groups.map(function(g){ return g.jobs; }));
+    Promise.all(all.map(function(j){ return trackUrls[j.id] ? Promise.resolve({ ok: true, url: trackUrls[j.id], id: j.id }) : api('POST', '/api/admin/jobs/' + j.id + '/track-link', {}).then(function(d){ d.id = j.id; return d; }); }))
+      .then(function(res){
+        res.forEach(function(d){ if (d && d.ok) { links[d.id] = d.url; trackUrls[d.id] = d.url; } });
+        if (ttMode !== 'landlord') return;
+        $('ttList').querySelectorAll('.tt-card').forEach(function(card){
+          var g = groups[Number(card.dataset.i)], ta = card.querySelector('.tt-msg');
+          if (!ta.dataset.edited) ta.value = landlordMessage(g, links);
+        });
+      });
+  }
   $('ttModal').addEventListener('mousedown', function(e){ if (e.target === $('ttModal')) $('ttModal').hidden = true; });
 
   // When a contractor is assigned, get the tenant message ready: the AI writer
@@ -3739,6 +3845,7 @@
       (tel ? '<a class="btn" href="tel:' + esc(tel) + '">Call tenant</a>' : '') +
       '<button class="btn" type="button" id="qNote">+ Add update</button>' +
       (j.assigned_to && isOpen(j) && (j.tenant_phone || j.tenant_email) ? '<button class="btn" type="button" id="qTell">📣 Tell tenant</button>' : '') +
+      (j.assigned_to && isOpen(j) && llContact(j) ? '<button class="btn" type="button" id="qTellLl" title="Send the landlord an update with the progress link">🏠 Tell landlord</button>' : '') +
       (escalationFor(j) && meta.canAi && !j.archived_at ? '<button class="btn danger" type="button" id="qEsc" title="Write a formal complaint to ' + esc(escalationFor(j)) + '">Escalate complaint</button>' : '') +
       (j.archived_at ? '' : '<button class="btn ghost danger" type="button" id="qDel" title="Delete this job (moves it to the archive)">🗑 Delete job</button>');
     var TABS = [['overview', 'Overview'], ['photos', 'Photos', photos.length], ['messages', 'Messages'], ['money', 'Money'], ['history', 'History', updates.length]];
@@ -4022,7 +4129,7 @@
         '<textarea class="inp" id="fNote" placeholder="What’s happened — calls made, quotes received, contractor feedback…"></textarea>' +
         '<div class="row-actions"><button class="btn primary" id="addNote" type="button">Add update</button></div>' +
         '<ul class="timeline">' + updates.map(function(u){
-          var label = { created: 'Job created', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', contractor_message: 'Sent to contractor', email: 'Email', completed: 'Completed' }[u.kind] || 'Update';
+          var label = { created: 'Job created', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', landlord_message: 'Message to landlord', contractor_message: 'Sent to contractor', email: 'Email', completed: 'Completed' }[u.kind] || 'Update';
           return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + '</span>' + esc(u.body) + '</li>';
         }).join('') + '</ul>' +
       '</div>' +
@@ -4255,6 +4362,7 @@
     $('qWa').addEventListener('click', function(){ showContractorMessage([j]); });
     $('qNote').addEventListener('click', function(){ setDrawerTab('history'); $('fNote').focus(); });
     if ($('qTell')) $('qTell').addEventListener('click', function(){ openTenantNotice([j], j.assigned_to); });
+    if ($('qTellLl')) $('qTellLl').addEventListener('click', function(){ openLandlordNotice([j]); });
     // Escalate: the AI email writer, pre-filled for a formal complaint to the
     // assigned contractor's complaints address (e.g. a council complaints team).
     if ($('qEsc')) $('qEsc').addEventListener('click', function(){
