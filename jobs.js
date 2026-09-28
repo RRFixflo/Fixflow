@@ -16,6 +16,8 @@ try { Pool = require('pg').Pool; } catch (e) { /* pg not installed: jobs disable
 // How long each urgency gets before a job is overdue (the end of each target
 // window: Emergency 24-48 hours, Urgent 3-5 days, Routine 7-14 days). A job's own
 // due date can be changed in the dashboard; these only set the starting point.
+// When this version went live: each Railway deploy starts the app afresh.
+const DEPLOYED_AT = new Date().toISOString();
 const DUE_HOURS = { Emergency: 48, Urgent: 24 * 5, Routine: 24 * 14 };
 const URGENCIES = ['Emergency', 'Urgent', 'Routine'];
 
@@ -864,7 +866,7 @@ module.exports = function mountJobs(app, opts) {
   }, 24 * 3600 * 1000).unref();
 
   app.get('/api/admin/me', async function (req, res) {
-    res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES });
+    res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
   });
 
   // Wraps a handler: no database -> 503; unexpected errors -> 500 (logged).

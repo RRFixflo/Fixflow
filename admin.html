@@ -109,6 +109,9 @@
   .side-sec { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #5E626C; padding: 16px 10px 6px; }
   .side .grow { flex: 1; }
   .side-foot { border-top: 1px solid var(--side-line); padding-top: 10px; }
+  .deployed { font-size: .72rem; color: var(--side-soft); padding: 0 10px 6px; line-height: 1.35; }
+  .deployed b { font-weight: 600; color: var(--side-ink); }
+  .more-deployed { font-size: .75rem; color: var(--ink-faint); text-align: center; margin-top: 10px; }
   .main { min-width: 0; }
   .mainhead { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; padding: 14px 28px; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px); border-bottom: 1px solid var(--line); }
   .mainhead h1 { font-family: var(--display); font-size: 1.2rem; font-weight: 700; letter-spacing: -.02em; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -704,7 +707,7 @@
     <div class="side-sec">Links</div>
     <a class="nav" href="/" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Tenant report page</a>
     <div class="grow"></div>
-    <div class="side-foot"><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
+    <div class="side-foot"><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
   </aside>
 
   <main class="main">
@@ -1313,6 +1316,7 @@
     <div class="more-grab"></div>
     <div id="moreList"></div>
     <button class="btn" type="button" id="moreClose" style="width:100%;margin-top:10px">Close</button>
+    <div class="more-deployed" id="deployedAtM" hidden></div>
   </div>
 </div>
 <div class="modal" id="waModal" hidden>
@@ -1460,6 +1464,13 @@
       $('loginView').hidden = true;
       $('appView').hidden = false;
       $('dbBanner').hidden = !!d.db;
+      // The date and time the latest version went live (UK time).
+      if (d.deployedAt) {
+        var dt = new Date(d.deployedAt), when = dt.toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        $('deployedAt').innerHTML = 'Last updated<br><b>' + esc(when) + '</b>'; $('deployedAt').hidden = false;
+        $('deployedAt').title = 'When the latest version of Fixflow went live';
+        $('deployedAtM').textContent = 'Last updated ' + when; $('deployedAtM').hidden = false;
+      }
       if (!history.state) history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname + location.hash);
       loadContractors().then(loadJobs).then(openJobFromLink).then(updateBack);
     });
