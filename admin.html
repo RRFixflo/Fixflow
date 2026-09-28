@@ -568,6 +568,11 @@
   .appt-row #fApptTime { flex: 1 1 180px; width: auto; }
   .appt-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .appt-chip { display: inline-block; margin: 0 0 6px 6px; font-size: .72rem; font-weight: 650; color: var(--ok); background: var(--ok-tint); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+  .tt-card { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 10px; }
+  .tt-who { display: flex; gap: 10px; align-items: center; }
+  .tt-msg { min-height: 130px; }
+  .tt-acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .tt-done { color: var(--ok); font-weight: 650; font-size: .86rem; }
   .tenant-danger { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
   .tenant-danger .muted-note { margin: 0; }
   .check-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: .88rem; cursor: pointer; }
@@ -1107,6 +1112,14 @@
 </div>
 
 <!-- PREVIEW OF THE CONTRACTOR MESSAGE -->
+<div class="modal" id="ttModal" hidden>
+  <div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <h3 style="margin:0">Let the tenant know</h3>
+    <p class="muted-note" style="margin:0" id="ttIntro"></p>
+    <div id="ttList"></div>
+    <div class="row-actions" style="margin-top:0"><button class="btn primary" type="button" id="ttDone">Done</button></div>
+  </div>
+</div>
 <div class="modal" id="addrModal" hidden>
   <form class="card" id="addrForm" novalidate>
     <h3>Edit address</h3>
@@ -1790,7 +1803,7 @@
       ta.remove();
     });
   }
-  function afterSend(){ if (openJobId) openJob(openJobId); }
+  function afterSend(){ if (openJobId && $('ttModal').hidden) openJob(openJobId); }
   $('waClose').addEventListener('click', function(){ $('waModal').hidden = true; });
   $('waModal').addEventListener('click', function(e){ if (e.target === $('waModal')) $('waModal').hidden = true; });
   $('waCopy').addEventListener('click', function(){
@@ -1809,8 +1822,8 @@
     if (text.length > 3500) copyText(text)['catch'](function(){});
     window.open('https://wa.me/' + (c ? waNumber(c.phone) : '') + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
     var willAssign = c && !$('waAssignWrap').hidden && $('waAssign').checked;
-    if (willAssign && list.length === 1 && openJobId === list[0].id) noticeTenantAfterAssign(list[0].id, c.name);
     var assign = willAssign ? assignTo(list, c.name) : Promise.resolve();
+    if (c) setTimeout(function(){ openTenantNotice(list, c.name); }, 400);
     assign.then(function(){ return c && (willAssign || list.every(function(j){ return String(j.assigned_to || '').toLowerCase() === c.name.toLowerCase(); })) ? markArranged(list, c.name) : null; }).then(function(){
       return logContractorSend(list, 'Job details sent on WhatsApp' + (c ? ' to ' + c.name : ''));
     }).then(function(){ loadJobs(); afterSend(); });
@@ -1829,8 +1842,8 @@
       '\n\nPlease let us know when you can attend.\n\nKind regards,\nResidential Realtors';
     window.location.href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
     var willAssign = !$('waAssignWrap').hidden && $('waAssign').checked;
-    if (willAssign && list.length === 1 && openJobId === list[0].id) noticeTenantAfterAssign(list[0].id, c.name);
     var assign = willAssign ? assignTo(list, c.name) : Promise.resolve();
+    setTimeout(function(){ openTenantNotice(list, c.name); }, 400);
     assign.then(function(){ return willAssign || list.every(function(j){ return String(j.assigned_to || '').toLowerCase() === c.name.toLowerCase(); }) ? markArranged(list, c.name) : null; })
       .then(function(){ return logContractorSend(list, 'Job details emailed to ' + c.name + ' (' + c.email + ')'); })
       .then(function(){ loadJobs(); afterSend(); });
@@ -3225,10 +3238,94 @@
       renderJob(d.job, d.updates, d.photos || []);
       $('scrim').hidden = false;
       $('drawer').hidden = false;
-      if (tenantNotice && tenantNotice.jobId === id) { var tn = tenantNotice; tenantNotice = null; prepareTenantNotice(d.job, tn.contractor); }
+      if (tenantNotice && tenantNotice.jobId === id) { var tn = tenantNotice; tenantNotice = null; openTenantNotice([d.job], tn.contractor); }
       ensureSummaries([d.job]);
     });
   }
+  // ---------- Let the tenant know ----------
+  // After a job goes to a contractor: a ready message for each tenant ("DPH London
+  // will be in touch to arrange a time for your gas safety check"), sent in one tap.
+  // "your annual gas safety check (CP12)" / "your repair (toilet – won't flush / blocked)"
+  function workText(j){
+    var cert = /check|certificate|inspection|\bepc\b|eicr|cp12/i.test((j.affected || '') + ' ' + (j.category || ''));
+    if (cert) { var c = String(j.affected || j.category || 'safety check').trim(); return 'your ' + c.charAt(0).toLowerCase() + c.slice(1); }
+    var t = [j.affected, j.symptom].filter(Boolean).join(' – ') || String(j.summary || '').trim() || j.category || '';
+    return t ? 'your repair (' + t.charAt(0).toLowerCase() + t.slice(1) + ')' : 'your repair';
+  }
+  function shortAddr(a){ return String(a || '').split(',').slice(0, 2).join(',').trim() || 'your home'; }
+  function tenantMessage(group, contractor, links){
+    var first = String(group.name || '').trim().split(/\s+/)[0];
+    var what = group.jobs.map(function(j){ return workText(j); });
+    var whatText = what.length > 1 ? what.slice(0, -1).join(', ') + ' and ' + what[what.length - 1] : what[0];
+    var direct = group.jobs.some(function(j){ return j.direct_contact !== 'No'; });
+    var appt = group.jobs.map(function(j){ return apptText(j); }).filter(Boolean)[0];
+    var link = group.jobs.map(function(j){ return links[j.id]; }).filter(Boolean)[0];
+    return 'Hi ' + (first && !/^tenant$/i.test(first) ? first : 'there') + ',\n\n' +
+      'This is Residential Realtors. We’ve booked ' + (contractor || 'our contractor') + ' for ' + whatText + ' at ' + shortAddr(group.address) + '.' +
+      (appt ? ' The visit is booked for ' + appt + '.' : direct ? ' They’ll be in touch with you directly to arrange a convenient time.' : ' We’ll be in touch to arrange access.') +
+      (link ? '\n\nYou can follow the progress here: ' + link : '') +
+      '\n\nThanks,\nResidential Realtors';
+  }
+  var ttGroups = [];
+  function openTenantNotice(list, contractor){
+    // One message per tenant (a tenant with several jobs gets one message).
+    var groups = [], byKey = {};
+    list.forEach(function(j){
+      var t = { name: j.tenant_name, phone: j.tenant_phone, email: j.tenant_email };
+      if (!t.phone && !t.email) { var rec = tenantForJob(j) || tenantsAtProperty(j.property_address)[0]; if (rec) t = { name: t.name || rec.name, phone: rec.phone, email: rec.email }; }
+      if (!t.phone && !t.email) return;
+      var k = phoneTail(t.phone) || String(t.email || '').toLowerCase();
+      var g = byKey[k] || (byKey[k] = groups[groups.push({ name: t.name, phone: t.phone, email: t.email, address: j.property_address, jobs: [] }) - 1]);
+      g.jobs.push(j);
+    });
+    if (!groups.length) return;
+    ttGroups = groups;
+    var who = contractor || (list[0] && list[0].assigned_to) || '';
+    $('ttIntro').textContent = groups.length === 1 ? 'Tell ' + (groups[0].name || 'the tenant') + ' that ' + (who || 'the contractor') + ' will be in touch.' : 'Tell each tenant that ' + (who || 'the contractor') + ' will be in touch.';
+    var links = {};
+    var draw = function(){
+      $('ttList').innerHTML = groups.map(function(g, i){
+        var wa = waNumber(g.phone);
+        return '<div class="tt-card" data-i="' + i + '"><div class="tt-who">' + avatar(g.name || '?') + '<div><strong>' + esc(g.name || 'Tenant') + '</strong><div class="prop-sub" style="margin:0">' + esc([g.phone, g.email].filter(Boolean).join(' · ')) + '</div></div></div>' +
+          '<textarea class="inp tt-msg" rows="6">' + esc(tenantMessage(g, who, links)) + '</textarea>' +
+          '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(String(g.name || 'tenant').split(' ')[0]) + '</button>' : '') +
+            (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? 'Send email' : 'Email') + '</button>' : '') +
+            '<button type="button" class="btn ghost" data-tt="copy">Copy</button><span class="tt-done" hidden>✓ Sent</span></div></div>';
+      }).join('');
+    };
+    draw();
+    $('ttModal').hidden = false;
+    // Add each job's tracking link once it's ready (only if the message hasn't been edited yet).
+    Promise.all(list.map(function(j){ return trackUrls[j.id] ? Promise.resolve({ ok: true, url: trackUrls[j.id], id: j.id }) : api('POST', '/api/admin/jobs/' + j.id + '/track-link', {}).then(function(d){ d.id = j.id; return d; }); }))
+      .then(function(res){
+        res.forEach(function(d){ if (d && d.ok) { links[d.id] = d.url; trackUrls[d.id] = d.url; } });
+        $('ttList').querySelectorAll('.tt-card').forEach(function(card){
+          var g = groups[Number(card.dataset.i)], ta = card.querySelector('.tt-msg');
+          if (!ta.dataset.edited) ta.value = tenantMessage(g, who, links);
+        });
+      });
+  }
+  $('ttList').addEventListener('input', function(e){ if (e.target.classList.contains('tt-msg')) e.target.dataset.edited = '1'; });
+  $('ttList').addEventListener('click', function(e){
+    var b = e.target.closest('[data-tt]'); if (!b) return;
+    var card = b.closest('.tt-card'), g = ttGroups[Number(card.dataset.i)], msg = card.querySelector('.tt-msg').value;
+    var log = function(how){
+      card.querySelector('.tt-done').hidden = false;
+      g.jobs.forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'tenant_message', body: 'Told the tenant the contractor will be in touch (' + how + '):\n\n' + msg }); });
+    };
+    if (b.dataset.tt === 'wa') { window.open('https://wa.me/' + waNumber(g.phone) + '?text=' + encodeURIComponent(msg), '_blank', 'noopener'); log('WhatsApp'); }
+    else if (b.dataset.tt === 'copy') copyText(msg).then(function(){ toast('Copied'); log('copied'); })['catch'](function(){ toast('Couldn’t copy'); });
+    else if (b.dataset.tt === 'email') {
+      var subject = 'Your repair at ' + shortAddr(g.address) + ' — contractor booked';
+      if (meta.canEmail) {
+        busy(b, true, 'Sending…');
+        api('POST', '/api/admin/jobs/' + g.jobs[0].id + '/email-tenant', { subject: subject, body: msg }).then(function(d){ busy(b, false); if (d.ok) { card.querySelector('.tt-done').hidden = false; toast('Email sent'); } else toast('Couldn’t send the email'); });
+      } else { window.location.href = 'mailto:' + encodeURIComponent(g.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(msg); log('email'); }
+    }
+  });
+  $('ttDone').addEventListener('click', function(){ $('ttModal').hidden = true; if (openJobId) openJob(openJobId); });
+  $('ttModal').addEventListener('mousedown', function(e){ if (e.target === $('ttModal')) $('ttModal').hidden = true; });
+
   // When a contractor is assigned, get the tenant message ready: the AI writer
   // (or the "Contractor assigned" template) on the Messages tab, to check and send.
   var tenantNotice = null, bookedNotice = null, jobParts = [];
@@ -3282,6 +3379,7 @@
       '<button class="btn" type="button" id="qInv">' + (j.invoiced_at ? 'Invoice again' : 'Invoice landlord') + '</button>' +
       (tel ? '<a class="btn" href="tel:' + esc(tel) + '">Call tenant</a>' : '') +
       '<button class="btn" type="button" id="qNote">+ Add update</button>' +
+      (j.assigned_to && isOpen(j) && (j.tenant_phone || j.tenant_email) ? '<button class="btn" type="button" id="qTell">📣 Tell tenant</button>' : '') +
       (escalationFor(j) && meta.canAi && !j.archived_at ? '<button class="btn danger" type="button" id="qEsc" title="Write a formal complaint to ' + esc(escalationFor(j)) + '">Escalate complaint</button>' : '');
     var TABS = [['overview', 'Overview'], ['photos', 'Photos', photos.length], ['messages', 'Messages'], ['money', 'Money'], ['history', 'History', updates.length]];
     $('dTabs').innerHTML = TABS.map(function(tb){
@@ -3787,6 +3885,7 @@
     $('qInv').addEventListener('click', function(){ openInvoice(j); });
     $('qWa').addEventListener('click', function(){ showContractorMessage([j]); });
     $('qNote').addEventListener('click', function(){ setDrawerTab('history'); $('fNote').focus(); });
+    if ($('qTell')) $('qTell').addEventListener('click', function(){ openTenantNotice([j], j.assigned_to); });
     // Escalate: the AI email writer, pre-filled for a formal complaint to the
     // assigned contractor's complaints address (e.g. a council complaints team).
     if ($('qEsc')) $('qEsc').addEventListener('click', function(){
