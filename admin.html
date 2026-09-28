@@ -364,6 +364,7 @@
   .tcy-row .num { font-weight: 700; } .tcy-row small { display: block; font-weight: 500; color: var(--ink-soft); font-size: .72rem; }
   @media (max-width: 700px) { .tcy-row { grid-template-columns: minmax(0,1fr) auto; } .tcy-row .when, .tcy-row .chev { display: none; } }
   .tcy-form .card { margin-bottom: 12px; }
+  @media (max-width: 560px) { .tcy-form .hide-phone { display: none; } }
   .sess-row { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .sess-row:last-child { border-bottom: 0; }
   .sess-ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--soft, rgba(0,0,0,.05)); font-size: 1.1rem; }
@@ -5797,6 +5798,7 @@
         '<div class="grid3" style="margin-top:10px">' + tcyInp('tfRent', 'Rent per month (£) *', d.rent_pcm, ' inputmode="decimal"') +
           '<div><label class="lbl" for="tfDeposit">Deposit (£) <span id="tfDepHint" class="muted-note" style="margin:0;font-weight:500"></span></label><input class="inp" id="tfDeposit" inputmode="decimal" value="' + esc(d.deposit == null ? '' : d.deposit) + '"></div>' +
           '<div><label class="lbl" for="tfHolding">Holding deposit paid (£) <span id="tfHoldHint" class="muted-note" style="margin:0;font-weight:500"></span></label><input class="inp" id="tfHolding" inputmode="decimal" value="' + esc(d.holding == null ? '' : d.holding) + '"></div></div>' +
+        '<div class="grid3" style="margin-top:10px"><div class="hide-phone"></div><div class="hide-phone"></div>' + tcyInp('tfHoldDate', 'Holding deposit paid on *', d.holding_date, ' type="date"') + '</div>' +
         '<div class="grid2" style="margin-top:10px"><div><label class="lbl">Who is registering the deposit?</label><div class="seg" id="tfDepBy"><button type="button" data-v="agent"' + (d.deposit_by !== 'landlord' ? ' class="on"' : '') + '>Us (Residential Realtors)</button><button type="button" data-v="landlord"' + (d.deposit_by === 'landlord' ? ' class="on"' : '') + '>The landlord</button></div>' +
           '<p class="muted-note" id="tfDepByNote" style="margin:6px 0 0"></p></div>' +
           '<div><label class="lbl" for="tfScheme">Deposit scheme (for the agreement)</label><input class="inp" id="tfScheme" list="tfSchemes" value="' + esc(d.deposit_scheme || '') + '"><datalist id="tfSchemes">' + TCY_SCHEMES.map(function(s){ return '<option value="' + esc(s) + '"></option>'; }).join('') + '</datalist></div></div>' +
@@ -5869,7 +5871,7 @@
     var d = tcyDraft, v = function(id){ return $(id) ? $(id).value.trim() : ''; }, n = function(id){ var s = v(id).replace(/[£,\s]/g, ''); return s === '' ? null : Number(s); };
     d.address = v('tfAddress'); d.negotiator = v('tfNeg'); d.date_taken = v('tfTaken'); d.service = v('tfService');
     d.start_date = v('tfStart'); d.term_months = n('tfTerm'); d.break_months = n('tfBreak') || 0; d.rent_pcm = n('tfRent');
-    d.deposit = n('tfDeposit'); d.holding = n('tfHolding'); d.deposit_scheme = v('tfScheme');
+    d.deposit = n('tfDeposit'); d.holding = n('tfHolding'); d.holding_date = v('tfHoldDate'); d.deposit_scheme = v('tfScheme');
     d.move_in_due = v('tfDue'); d.so_start = v('tfSo'); d.pay_ref = v('tfPayRef').replace(/\s+/g, ''); d.so_payments = n('tfSoN');
     d.landlord = { name: v('tfLlName'), email: v('tfLlEmail'), phone: v('tfLlPhone'), line1: v('tfLl1'), line2: v('tfLl2'), country: v('tfLlCountry'), postcode: v('tfLlPc') };
     d.find_pct = n('tfFind'); d.collect_pct = n('tfCollect'); d.manage_pct = n('tfManage'); d.vat = $('tfVat').checked;
@@ -5886,6 +5888,9 @@
       var r = d.receipts[Number(row.dataset.i)]; if (!r) return;
       row.querySelectorAll('[data-rf]').forEach(function(inp){ var k = inp.dataset.rf, val = inp.value.trim(); r[k] = k === 'amount' ? (val.replace(/[£,\s]/g, '') === '' ? null : Number(val.replace(/[£,\s]/g, ''))) : val; });
     });
+    // The holding deposit line in the banking trail follows the amount and date above.
+    var hr = (d.receipts || []).filter(function(r){ return /^holding deposit/i.test(r.desc || ''); })[0];
+    if (hr) { if (d.holding !== null) hr.amount = d.holding; if (d.holding_date) hr.date = d.holding_date; }
     document.querySelectorAll('#tfFees .tcy-fee').forEach(function(row){
       var f = d.fees[Number(row.dataset.i)]; if (!f) return;
       f.label = row.querySelector('[data-ff="label"]').value.trim();
@@ -5957,7 +5962,13 @@
     body.addEventListener('change', function(e){
       if (tcyDraft && e.target.id === 'tfAddress') {
         tcyRead();
-        if (!tcyDraft.landlord.name && tcyFillLandlord(tcyDraft)) { renderTcyForm(); toast('Landlord filled in from the property'); return; }
+        // Fill the landlord boxes in place (redrawing the form would lose what's being typed next).
+        if (!tcyDraft.landlord.name && tcyFillLandlord(tcyDraft)) {
+          var L = tcyDraft.landlord;
+          [['tfLlName', L.name], ['tfLlEmail', L.email], ['tfLlPhone', L.phone], ['tfLl1', L.line1], ['tfLl2', L.line2], ['tfLlCountry', L.country], ['tfLlPc', L.postcode]].forEach(function(f){ if ($(f[0])) $(f[0]).value = f[1] || ''; });
+          toast('Landlord filled in from the property');
+        }
+        tcyRefresh();
         renderTcyCerts();
       }
     });
@@ -5997,6 +6008,7 @@
     if (!c.rent) problems.push('the monthly rent');
     if (!tcyNames(d.tenants).length) problems.push('at least one tenant’s name');
     if (!d.landlord.name) problems.push('the landlord’s name');
+    if ((d.holding || c.holdAuto) && !d.holding_date) problems.push('the date the holding deposit was paid');
     if (problems.length) { toast('Please add ' + problems.join(', ')); return; }
     // Keep the worked-out amounts with the record, as agreed.
     if (d.deposit === null) d.deposit = c.depAuto;
@@ -6004,7 +6016,7 @@
     if (!d.move_in_due) d.move_in_due = c.moveInDue;
     if (!d.pay_ref) d.pay_ref = payRef(d.address).slice(0, 18);
     // The holding deposit is the first money received.
-    if (!(d.receipts || []).length && d.holding) d.receipts = [{ desc: 'Holding deposit', date: d.date_taken || '', receipt: '', method: 'TRNF', amount: d.holding }];
+    if (!(d.receipts || []).length && d.holding) d.receipts = [{ desc: 'Holding deposit', date: d.holding_date || d.date_taken || '', receipt: '', method: 'TRNF', amount: d.holding }];
     var isNew = openTcyId === 'new';
     busy($('tfSave'), true, 'Saving…');
     api(isNew ? 'POST' : 'PUT', '/api/admin/tenancies' + (isNew ? '' : '/' + openTcyId), d).then(function(r){
@@ -6039,7 +6051,7 @@
     row(y, 'Property Full Address', d.address, 340); y += 32;
     var top = y;
     [['Service Required', d.service], ['Tenant Find Fee %', (num(d.find_pct) || 0) + '%' + (d.find_basis === 'upfront' ? ' (up front)' : '')], ['Rent Collections', (num(d.collect_pct) || 0) + '%'], ['Management Fee', (num(d.manage_pct) || 0) + '%'],
-     ['Rent agreed per week', gbp(c.weekly)], ['Holding Deposit', gbp(c.holding)], ['Date Taken', ukDay(d.date_taken)], ['Tenancy Term', String(c.term)],
+     ['Rent agreed per week', gbp(c.weekly)], ['Holding Deposit', gbp(c.holding)], ['Holding Deposit Paid', ukDay(d.holding_date)], ['Date Taken', ukDay(d.date_taken)], ['Tenancy Term', String(c.term)],
      ['Break Clause', String(num(d.break_months) || 0)], ['Tenancy Start Date', ukDay(d.start_date)], ['Registering Deposit', d.deposit_by === 'landlord' ? 'Landlord' : 'Agent']]
       .forEach(function(r){ row(y, r[0], r[1], 124, true); y += 15; });
     // Right-hand boxes
