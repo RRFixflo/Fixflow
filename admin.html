@@ -958,6 +958,7 @@
   <button class="btn small" id="bulkArea" type="button" title="Also select open jobs in the same postcode area">+ Same area</button>
   <input id="bulkAssign" list="assignees" placeholder="Assign all to…">
   <button class="btn small" id="bulkAssignBtn" type="button">Assign</button>
+  <button class="btn small ghost danger" id="bulkDel" type="button">🗑 Delete</button>
   <button class="btn small" id="bulkClear" type="button">Clear</button>
 </div>
 
@@ -1895,6 +1896,19 @@
     });
   });
   $('bulkClear').addEventListener('click', function(){ selected.clear(); render(); });
+  $('bulkDel').addEventListener('click', function(){
+    var list = jobs.filter(function(j){ return selected.has(j.id) && !j.archived_at; });
+    if (!list.length) { toast('Nothing to delete'); return; }
+    var refs = list.map(function(j){ return j.ref; }).join(', ');
+    var reason = prompt('Delete ' + list.length + ' job' + (list.length === 1 ? '' : 's') + ' (' + refs + ')?\n\nThey move to the Archived tab and can be restored.\n\nReason (optional):', '');
+    if (reason === null) return;
+    Promise.all(list.map(function(j){ return api('POST', '/api/admin/jobs/' + j.id + '/archive', { reason: reason }); })).then(function(rs){
+      var ok = rs.filter(function(d){ return d && d.ok; }).length;
+      selected.clear();
+      toast(ok + ' job' + (ok === 1 ? '' : 's') + ' deleted' + (ok < list.length ? ' \u2014 ' + (list.length - ok) + ' failed' : ''));
+      loadJobs();
+    });
+  });
 
   // ---------- Add a job by hand / edit a job's details ----------
   var CATEGORY_NAMES = ['Damp and mould', 'Bathroom and Toilet', 'Kitchen', 'Heating and boiler', 'Water and Leaks',
@@ -3380,7 +3394,8 @@
       (tel ? '<a class="btn" href="tel:' + esc(tel) + '">Call tenant</a>' : '') +
       '<button class="btn" type="button" id="qNote">+ Add update</button>' +
       (j.assigned_to && isOpen(j) && (j.tenant_phone || j.tenant_email) ? '<button class="btn" type="button" id="qTell">📣 Tell tenant</button>' : '') +
-      (escalationFor(j) && meta.canAi && !j.archived_at ? '<button class="btn danger" type="button" id="qEsc" title="Write a formal complaint to ' + esc(escalationFor(j)) + '">Escalate complaint</button>' : '');
+      (escalationFor(j) && meta.canAi && !j.archived_at ? '<button class="btn danger" type="button" id="qEsc" title="Write a formal complaint to ' + esc(escalationFor(j)) + '">Escalate complaint</button>' : '') +
+      (j.archived_at ? '' : '<button class="btn ghost danger" type="button" id="qDel" title="Delete this job (moves it to the archive)">🗑 Delete job</button>');
     var TABS = [['overview', 'Overview'], ['photos', 'Photos', photos.length], ['messages', 'Messages'], ['money', 'Money'], ['history', 'History', updates.length]];
     $('dTabs').innerHTML = TABS.map(function(tb){
       return '<button type="button" role="tab" data-tab="' + tb[0] + '"' + (tb[0] === drawerTab ? ' class="on" aria-selected="true"' : '') + '>' + tb[1] +
@@ -3503,12 +3518,13 @@
                 '<div style="display:flex;gap:6px;justify-content:flex-end">' +
                   (inv.paid_at ? '<button class="btn small ghost" type="button" data-inv-unpaid="' + inv.id + '">Undo paid</button>' : '<button class="btn small" type="button" data-inv-paid="' + inv.id + '">Mark paid</button>') +
                   (inv.data ? '<button class="btn small" type="button" data-inv-open="' + i + '">Open</button><button class="btn small" type="button" data-inv-edit="' + i + '">Edit</button><button class="btn small primary" type="button" data-inv-send="' + i + '">Resend</button>' : '<span class="muted-note" style="font-size:.76rem">Issued before invoices were saved</span>') +
+                  '<button class="btn small ghost danger" type="button" data-inv-del="' + inv.id + '" title="Delete this invoice">Delete</button>' +
                 '</div></div>';
             }).join('') + '</div>'
           : j.invoiced_at
             ? '<div class="complete-done" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><strong>Invoiced ' + esc(j.invoice_number || '') + ' · ' + esc(gbp(j.invoice_total)) + '</strong><br>' + esc(fmtDate(j.invoiced_at)) + (j.landlord_name ? ' · ' + esc(j.landlord_name) : '') +
                 '<br><span style="font-size:.8rem">Made before invoices were saved in full. Edit it once to save it — then you can open, edit and resend it any time.</span></div>' +
-                '<button class="btn small primary" id="invLegacyEdit" type="button">Edit</button></div>'
+                '<div style="display:flex;gap:6px"><button class="btn small primary" id="invLegacyEdit" type="button">Edit</button><button class="btn small ghost danger" id="invLegacyDel" type="button">Delete</button></div></div>'
             : '<p class="muted-note">Create a PDF invoice with our logo, company details and bank details. The AI can break the charge into labour, materials and call-out lines, and you can choose whether to add VAT.</p>') +
         '<div class="row-actions"><button class="btn primary" id="invBtn" type="button">' + (j.invoiced_at ? 'Create another invoice' : 'Create invoice') + '</button></div>' +
       '</div>' +
@@ -3848,6 +3864,13 @@
       });
     });
     // Invoice made before invoices were saved: rebuild it from what was recorded (same number, landlord and amount).
+    if ($('invLegacyDel')) $('invLegacyDel').addEventListener('click', function(){
+      if (!confirm('Delete invoice ' + (j.invoice_number || '') + ' (' + gbp(num(j.invoice_total)) + ')?\n\nIt will no longer count towards what the landlord owes. This can\u2019t be undone.')) return;
+      api('DELETE', '/api/admin/jobs/' + j.id + '/invoice', { confirm: true }).then(function(d){
+        if (!d.ok) { toast('Couldn\u2019t delete the invoice'); return; }
+        toast('Invoice deleted'); loadJobs().then(function(){ openJob(j.id); });
+      });
+    });
     if ($('invLegacyEdit')) $('invLegacyEdit').addEventListener('click', function(){
       openInvoice(j, null);
       $('invTitle').textContent = 'Edit invoice ' + (j.invoice_number || '') + ' — ' + j.ref;
@@ -3862,6 +3885,7 @@
     });
     $('dBody').querySelectorAll('[data-inv-paid]').forEach(function(b){ b.addEventListener('click', function(){ markInvoicePaid(Number(b.dataset.invPaid), true); }); });
     $('dBody').querySelectorAll('[data-inv-unpaid]').forEach(function(b){ b.addEventListener('click', function(){ markInvoicePaid(Number(b.dataset.invUnpaid), false); }); });
+    $('dBody').querySelectorAll('[data-inv-del]').forEach(function(b){ b.addEventListener('click', function(){ deleteInvoice(Number(b.dataset.invDel)); }); });
     $('dBody').querySelectorAll('[data-inv-edit]').forEach(function(b){
       b.addEventListener('click', function(){ openInvoice(j, jobInvoices[Number(b.dataset.invEdit)]); });
     });
@@ -3926,16 +3950,18 @@
         openJob(j.id); loadJobs();
       });
     });
-    if ($('deleteJob')) $('deleteJob').addEventListener('click', function(){
+    function deleteThisJob(){
       var reason = prompt('Delete ' + j.ref + '? It will be moved to the archive and can be restored.\n\nReason (optional):', '');
       if (reason === null) return;
       api('POST', '/api/admin/jobs/' + j.id + '/archive', { reason: reason }).then(function(d){
         if (!d.ok) { toast('Couldn\u2019t delete the job'); return; }
         selected.delete(j.id);
-        toast(j.ref + ' moved to the archive');
+        toast(j.ref + ' deleted \u2014 it\u2019s in the Archived tab if you need it back');
         closeDrawer(); loadJobs();
       });
-    });
+    }
+    if ($('deleteJob')) $('deleteJob').addEventListener('click', deleteThisJob);
+    if ($('qDel')) $('qDel').addEventListener('click', deleteThisJob);
     if ($('purgeJob')) $('purgeJob').addEventListener('click', function(){
       var typed = prompt('Permanently delete ' + j.ref + '?\n\nIts details, photos and history will be removed for good and CANNOT be restored.\n\nType ' + j.ref + ' to confirm:', '');
       if (typed === null) return;
@@ -4306,6 +4332,16 @@
       return loadJobs().then(function(){ if (openJobId) openJob(openJobId); });
     });
   }
+  function deleteInvoice(id){
+    var inv = allInvoices.filter(function(x){ return x.id === id; })[0] || jobInvoices.filter(function(x){ return x.id === id; })[0];
+    var label = inv ? (inv.number || 'this invoice') + ' (' + gbp(num(inv.total)) + ')' : 'this invoice';
+    if (!confirm('Delete invoice ' + label + '?\n\nIt will be removed and no longer count towards what the landlord owes. This can’t be undone.')) return;
+    api('DELETE', '/api/admin/invoices/' + id, { confirm: true }).then(function(d){
+      if (!d.ok) { toast('Couldn’t delete the invoice'); return; }
+      toast('Invoice ' + (inv && inv.number ? inv.number + ' ' : '') + 'deleted');
+      loadJobs().then(function(){ if (openJobId) openJob(openJobId); if (view === 'll' && openLlId) renderLandlord(); });
+    });
+  }
   function invRowHtml(i, showAddress){
     var od = invOverdue(i);
     return '<div class="pay-row" style="grid-template-columns:minmax(0,1fr) 120px 96px auto">' +
@@ -4314,9 +4350,10 @@
       '<div class="when">' + (i.paid_at ? '<span class="pill status Completed">Paid ' + esc(fmtShort(i.paid_at).split(',')[0]) + '</span>'
         : i.due ? '<span style="' + (od ? 'color:var(--brick);font-weight:650' : '') + '">' + (od ? 'Overdue · ' : 'Due ') + esc(ukDate(i.due)) + '</span>' : '<span class="muted-note">No due date</span>') + '</div>' +
       '<div class="amt">' + esc(gbp(i.total)) + '</div>' +
-      '<div style="display:flex;gap:6px;justify-content:flex-end">' + (i.paid_at
+      '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">' + (i.paid_at
         ? '<button type="button" class="btn small ghost" data-inv-unpaid="' + i.id + '">Undo</button>'
-        : '<button type="button" class="btn small" data-open-money="' + i.job_id + '">Resend</button><button type="button" class="btn small primary" data-inv-paid="' + i.id + '">Mark paid</button>') + '</div>' +
+        : '<button type="button" class="btn small" data-open-money="' + i.job_id + '">Resend</button><button type="button" class="btn small primary" data-inv-paid="' + i.id + '">Mark paid</button>') +
+        '<button type="button" class="btn small ghost danger" data-inv-del="' + i.id + '" title="Delete this invoice">Delete</button></div>' +
     '</div>';
   }
   // Clicks inside any list of invoices.
@@ -4326,6 +4363,7 @@
       if (b.dataset.invPaid) { var inv = allInvoices.filter(function(x){ return x.id === Number(b.dataset.invPaid); })[0];
         if (confirm('Mark ' + (inv ? inv.number + ' (' + gbp(inv.total) + ')' : 'this invoice') + ' as paid?')) markInvoicePaid(Number(b.dataset.invPaid), true); }
       else if (b.dataset.invUnpaid) markInvoicePaid(Number(b.dataset.invUnpaid), false);
+      else if (b.dataset.invDel) deleteInvoice(Number(b.dataset.invDel));
       else if (b.dataset.openMoney) { drawerTab = 'money'; drawerTabJob = Number(b.dataset.openMoney); openJob(Number(b.dataset.openMoney)); }
       else if (b.dataset.open) openJob(Number(b.dataset.open));
     });

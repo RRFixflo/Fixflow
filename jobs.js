@@ -1035,6 +1035,32 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true });
   }));
 
+  // Delete an invoice (e.g. raised by mistake). The job's "invoiced" details fall
+  // back to its latest remaining invoice, or are cleared; noted in the history.
+  async function refreshJobInvoice(p, jid) {
+    const last = (await p.query('SELECT number, total, created_at FROM invoices WHERE job_id = $1 ORDER BY id DESC LIMIT 1', [jid])).rows[0];
+    await p.query('UPDATE jobs SET invoice_number = $2, invoice_total = $3, invoiced_at = $4, updated_at = now() WHERE id = $1',
+      [jid, last ? last.number : null, last ? last.total : null, last ? last.created_at : null]);
+  }
+  app.delete('/api/admin/invoices/:id', withDb(async function (p, req, res) {
+    const r = await p.query('DELETE FROM invoices WHERE id = $1 RETURNING job_id, number, total, landlord_name, paid_at', [jobId(req)]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    const x = r.rows[0];
+    await refreshJobInvoice(p, x.job_id);
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [x.job_id, 'change',
+      'Invoice ' + (x.number || '') + ' deleted (' + gbp(x.total) + (x.landlord_name ? ', ' + x.landlord_name : '') + (x.paid_at ? ', was marked paid' : '') + ').']);
+    res.json({ ok: true });
+  }));
+  // An invoice from before invoices were saved (only recorded on the job).
+  app.delete('/api/admin/jobs/:id/invoice', withDb(async function (p, req, res) {
+    const id = jobId(req);
+    const cur = (await p.query('SELECT invoice_number, invoice_total FROM jobs WHERE id = $1', [id])).rows[0];
+    if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+    await refreshJobInvoice(p, id);
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', 'Invoice ' + (cur.invoice_number || '') + ' deleted (' + gbp(cur.invoice_total) + ').']);
+    res.json({ ok: true });
+  }));
+
   // Edit a saved invoice in place (same record, change noted in the job history).
   app.put('/api/admin/invoices/:id', withDb(async function (p, req, res) {
     const b = req.body || {};
