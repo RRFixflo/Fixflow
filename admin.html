@@ -455,7 +455,6 @@
   .jf-sec { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint); margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
   .jf .jf-sec:first-of-type { border-top: 0; padding-top: 0; }
   .jf.editing .jf-new { display: none; }
-  .modal .card.ct { width: min(760px, 100%); }
   .ct-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
   .ct-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 11px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
   .ct-row:last-child { border-bottom: 0; }
@@ -872,6 +871,34 @@
         <div id="tcyDetail" hidden></div>
       </div>
 
+      <!-- CONTRACTORS: the directory, sorted by jobs or what's owed -->
+      <div id="ctsView" hidden>
+        <div class="card" style="margin-bottom:12px">
+          <h3 style="flex-wrap:wrap;gap:8px">All contractors<span style="flex:1"></span><select class="inp" id="ctSort" style="width:auto" aria-label="Sort contractors"><option value="open">Most open jobs</option><option value="total">Most jobs overall</option><option value="owed">Most owed</option><option value="name">A–Z</option></select><button class="btn small primary" id="ctAdd" type="button">+ Add contractor</button></h3>
+          <div id="ctList" class="ct-list" style="margin-bottom:0"></div>
+        </div>
+        <div class="card">
+          <form id="ctForm" class="ct-form" novalidate>
+            <h3 id="ctFormTitle" style="margin:0">Add a contractor</h3>
+            <div class="grid3">
+              <div><label class="lbl" for="ctName">Name *</label><input class="inp" id="ctName" placeholder="e.g. Jim"></div>
+              <div><label class="lbl" for="ctTrade">Trade</label><input class="inp" id="ctTrade" list="ctTrades" placeholder="e.g. Handyman"></div>
+              <div><label class="lbl" for="ctPhone">Mobile (for WhatsApp)</label><input class="inp" id="ctPhone" type="tel" placeholder="07…"></div>
+            </div>
+            <div class="grid3">
+              <div><label class="lbl" for="ctEmail">Email</label><input class="inp" id="ctEmail" type="email"></div>
+              <div><label class="lbl" for="ctEsc">Complaints / escalation email</label><input class="inp" id="ctEsc" type="email" placeholder="Optional, e.g. a council complaints team"></div>
+              <div><label class="lbl" for="ctNotes">Notes</label><input class="inp" id="ctNotes" placeholder="e.g. areas covered, day rate"></div>
+            </div>
+            <div class="err-msg" id="ctErr"></div>
+            <div class="row-actions">
+              <button class="btn" id="ctCancelEdit" type="button" hidden>Cancel edit</button>
+              <button class="btn primary" id="ctSave" type="submit">Add contractor</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- CONTRACTOR: one contractor's jobs and what's owed to them -->
       <div id="ctrView" hidden></div>
 
@@ -1178,31 +1205,6 @@
 <datalist id="jfCats"></datalist>
 <datalist id="jfTimes"><option value="Morning"><option value="Afternoon"><option value="Evening"><option value="Anytime"></datalist>
 
-<!-- CONTRACTOR DIRECTORY -->
-<div class="modal" id="ctModal" hidden>
-  <div class="card ct">
-    <h3>Contractors <span style="flex:1"></span><select class="inp" id="ctSort" style="width:auto" aria-label="Sort contractors"><option value="open">Most open jobs</option><option value="total">Most jobs overall</option><option value="owed">Most owed</option><option value="name">A–Z</option></select><button class="btn small" id="ctClose" type="button">Close ✕</button></h3>
-    <div id="ctList" class="ct-list"></div>
-    <form id="ctForm" class="ct-form" novalidate>
-      <div class="jf-sec" id="ctFormTitle">Add a contractor</div>
-      <div class="grid3">
-        <div><label class="lbl" for="ctName">Name *</label><input class="inp" id="ctName" placeholder="e.g. Jim"></div>
-        <div><label class="lbl" for="ctTrade">Trade</label><input class="inp" id="ctTrade" list="ctTrades" placeholder="e.g. Handyman"></div>
-        <div><label class="lbl" for="ctPhone">Mobile (for WhatsApp)</label><input class="inp" id="ctPhone" type="tel" placeholder="07…"></div>
-      </div>
-      <div class="grid3">
-        <div><label class="lbl" for="ctEmail">Email</label><input class="inp" id="ctEmail" type="email"></div>
-        <div><label class="lbl" for="ctEsc">Complaints / escalation email</label><input class="inp" id="ctEsc" type="email" placeholder="Optional, e.g. a council complaints team"></div>
-        <div><label class="lbl" for="ctNotes">Notes</label><input class="inp" id="ctNotes" placeholder="e.g. areas covered, day rate"></div>
-      </div>
-      <div class="err-msg" id="ctErr"></div>
-      <div class="row-actions">
-        <button class="btn" id="ctCancelEdit" type="button" hidden>Cancel edit</button>
-        <button class="btn primary" id="ctSave" type="submit">Add contractor</button>
-      </div>
-    </form>
-  </div>
-</div>
 <datalist id="ctTrades"><option value="Handyman"><option value="Plumber"><option value="Electrician"><option value="Electrician (EICR)"><option value="Gas engineer"><option value="Roofer"><option value="Locksmith"><option value="Decorator"><option value="Pest control"><option value="Cleaner"></datalist>
 
 <!-- LANDLORD INVOICE -->
@@ -1828,23 +1830,22 @@
   }
   $('contractorsBtn').addEventListener('click', function(){
     if (!meta.db) { toast('Connect the database first'); return; }
-    resetContractorForm(); renderContractors(); $('ctModal').hidden = false;
+    resetContractorForm(); showView('cts');
   });
-  $('ctClose').addEventListener('click', function(){ $('ctModal').hidden = true; });
+  $('ctAdd').addEventListener('click', function(){ resetContractorForm(); $('ctForm').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('ctName').focus({ preventScroll: true }); });
   $('ctSort').addEventListener('change', function(){ try { localStorage.setItem('rr_ct_sort', $('ctSort').value); } catch (e) {} renderContractors(); });
   try { var savedSort = localStorage.getItem('rr_ct_sort'); if (savedSort) $('ctSort').value = savedSort; } catch (e) {}
-  $('ctModal').addEventListener('mousedown', function(e){ if (e.target === $('ctModal')) $('ctModal').hidden = true; });
   $('ctCancelEdit').addEventListener('click', resetContractorForm);
   $('ctList').addEventListener('click', function(e){
     var edit = e.target.closest('[data-ct-edit]'), tog = e.target.closest('[data-ct-toggle]'), op = e.target.closest('[data-ct-open]');
-    if (op) { $('ctModal').hidden = true; openContractor(op.dataset.ctOpen); return; }
+    if (op) { openContractor(op.dataset.ctOpen); return; }
     if (edit) {
       var c = contractors.filter(function(x){ return x.id === Number(edit.dataset.ctEdit); })[0];
       ctEditing = c;
       $('ctName').value = c.name || ''; $('ctTrade').value = c.trade || ''; $('ctPhone').value = c.phone || '';
       $('ctEmail').value = c.email || ''; $('ctEsc').value = c.escalation_email || ''; $('ctNotes').value = c.notes || '';
       $('ctFormTitle').textContent = 'Edit ' + c.name; $('ctSave').textContent = 'Save'; $('ctCancelEdit').hidden = false;
-      $('ctName').focus();
+      $('ctForm').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('ctName').focus({ preventScroll: true });
     }
     if (tog) {
       var t = contractors.filter(function(x){ return x.id === Number(tog.dataset.ctToggle); })[0];
@@ -2371,6 +2372,8 @@
     $('tcyView').hidden = v !== 'tcy';
     $('actView').hidden = v !== 'act';
     $('ctrView').hidden = v !== 'ctr';
+    $('ctsView').hidden = v !== 'cts';
+    $('contractorsBtn').classList.toggle('on', v === 'cts' || v === 'ctr');
     $('navAct').classList.toggle('on', v === 'act');
     $('navTcy').classList.toggle('on', v === 'tcy');
     $('navCerts').classList.toggle('on', v === 'certs');
@@ -2379,11 +2382,12 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', act: 'Activity', ctr: 'Contractor' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'tcy' && !openTcyId) renderTenancies();
     if (v === 'act') loadActivity();
     if (v === 'ctr') renderContractorPage();
+    if (v === 'cts') renderContractors();
     if (v === 'll') { openLlId ? renderLandlord() : renderLandlords(); }
     if (v === 'pay') renderPay();
     if (v === 'props') { openPropKey ? renderProperty() : renderProps(); }
@@ -3458,7 +3462,6 @@
     if (!$('jfModal').hidden) { $('jfModal').hidden = true; return; }
     if (!$('invModal').hidden) { $('invModal').hidden = true; return; }
     if (!$('waModal').hidden) { $('waModal').hidden = true; return; }
-    if (!$('ctModal').hidden) { $('ctModal').hidden = true; return; }
     if (openJobId) userCloseDrawer();
   });
 
