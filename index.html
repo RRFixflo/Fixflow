@@ -3505,5 +3505,9 @@
   goTo(1);
 })();
 </script>
+<script>
+  // Count this visit (once per page load; no personal details are sent).
+  try { if (navigator.sendBeacon) navigator.sendBeacon('/api/visit?p=report'); else fetch('/api/visit?p=report', { method: 'POST', keepalive: true }); } catch (e) {}
+</script>
 </body>
 </html>
