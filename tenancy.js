@@ -391,6 +391,7 @@ function agreementRules(v) {
     [/\[DEPOSIT\]/g, v.deposit || ''],
     [/\[Deposit Scheme\]/gi, v.deposit_scheme || ''],
     // The rent payment reference ("Reference: [PROPERTYADDRESS]"): door number and road or building, no spaces.
+    [/(Reference:?\s*)(?:\[\s*PROPERTY\s*ADDRESS\s*\]|PROPERTY\s*ADDRESS|\[\s*ADDRESS\s*\])/gi, function (m, pre) { return pre + (v.payment_reference || v.address || ''); }],
     [/\[PROPERTYADDRESS\]/g, v.payment_reference || v.address || ''],
     [/\[PROPERTY ADDRESS\]/g, v.address || ''],
     [/PROPERTY ADDRESS/g, v.address || ''],
