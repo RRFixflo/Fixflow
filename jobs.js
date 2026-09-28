@@ -483,8 +483,9 @@ const CONTRACTOR_PAGE_JS = `(function(){
   var TOKEN = __TOKEN__, list = document.getElementById('list');
   function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function day(v){ if (!v) return ''; var d = new Date(String(v).length === 10 ? v + 'T12:00:00' : v); return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); }
-  function row(k, v){ return v ? '<div style="margin:4px 0"><span class="muted">' + k + ':</span> ' + esc(v) + '</div>' : ''; }
-  function tel(v){ var n = String(v || '').replace(/[^0-9+]/g, ''); return n ? '<a href="tel:' + n + '">' + esc(v) + '</a>' : ''; }
+  function item(icon, label, v){ return v ? '<div class="it"><span class="ic">' + icon + '</span><div><div class="lb">' + label + '</div><div class="vl">' + esc(v) + '</div></div></div>' : ''; }
+  function first(n){ var w = String(n || '').trim().split(/\\s+/).filter(function(x){ return !/^(mr|mrs|ms|miss|mx|dr)\\.?$/i.test(x); }); return w[0] || ''; }
+  function wa(v){ var n = String(v || '').replace(/[^0-9]/g, ''); if (/^0\\d{9,10}$/.test(n)) n = '44' + n.slice(1); return n.length >= 10 ? n : ''; }
   function load(){
     fetch('/api/c/' + TOKEN + '/jobs').then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) { list.innerHTML = '<p class="muted">This link is no longer active. Please contact Residential Realtors.</p>'; return; }
@@ -506,27 +507,73 @@ const CONTRACTOR_PAGE_JS = `(function(){
       '<div style="font-weight:600;margin:4px 0">' + esc(j.property_address || '') + '</div>' +
       '<div>' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div>' +
       (j.appointment_date ? '<div style="margin:6px 0;font-weight:600">📅 Booked for ' + esc(day(j.appointment_date)) + (j.appointment_time ? ' at ' + esc(j.appointment_time) : '') + '</div>' : '') +
-      '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Details and access</summary>' +
-        row('Where', j.location) + (j.description ? '<div style="margin:6px 0;white-space:pre-wrap">' + esc(j.description) + '</div>' : '') +
-        (j.tenant_name || j.tenant_phone ? '<div style="margin:4px 0"><span class="muted">Tenant:</span> ' + esc(j.tenant_name || '') + (j.tenant_phone ? ' · ' + tel(j.tenant_phone) : '') + '</div>' : '') +
-        row('Access', access) + row('Best times', j.access_time) + row('Keys', keys) + row('Access notes', j.access_notes) +
-        row('Reported', day(j.created_at)) +
-      '</details>' +
-      '<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;color:#139A4B">✓ Mark completed</summary>' +
+      '<details class="dt"><summary>Details and access</summary><div class="dbody">' +
+        (j.description ? '<div class="desc">' + esc(j.description) + '</div>' : '') +
+        item('📍', 'Where in the property', j.location) +
+        (j.tenant_name || j.tenant_phone ? '<div class="tn"><div class="lb">Tenant</div><div class="vl" style="font-weight:600">' + esc(j.tenant_name || 'Tenant') + '</div>' +
+          (j.tenant_phone ? '<div class="muted" style="margin:2px 0 8px">' + esc(j.tenant_phone) + '</div><div class="acts">' +
+            '<a class="abtn" href="tel:' + esc(String(j.tenant_phone).replace(/[^0-9+]/g, '')) + '">📞 Call</a>' +
+            (wa(j.tenant_phone) ? '<a class="abtn wa" target="_blank" rel="noopener" href="https://wa.me/' + wa(j.tenant_phone) + '?text=' + encodeURIComponent('Hi' + (first(j.tenant_name) ? ' ' + first(j.tenant_name) : '') + ', I’m the contractor from Residential Realtors for the repair at ' + (j.property_address || 'your property') + ' (' + j.ref + '). When would be a good time for me to come round?') + '">WhatsApp</a>' : '') +
+          '</div>' : '') + '</div>' : '') +
+        item('🔑', 'Access', access) + item('🕒', 'Best times', j.access_time) + item('🗝️', 'Keys', keys) + item('📝', 'Access notes', j.access_notes) +
+        item('📆', 'Reported', day(j.created_at)) +
+      '</div></details>' +
+      '<details class="dt"><summary>📅 ' + (j.appointment_date ? 'Change the booking' : 'Booked a visit? Say when') + '</summary>' +
+        '<form class="stack" style="margin:10px 0 0" data-book="' + j.id + '">' +
+          '<label class="muted">Date<input type="date" name="date" required value="' + esc(j.appointment_date || '') + '" style="display:block;width:100%;margin-top:4px"></label>' +
+          '<label class="muted">Time<input name="time" placeholder="e.g. 10am or 9–12" value="' + esc(j.appointment_time || '') + '" style="display:block;width:100%;margin-top:4px"></label>' +
+          '<input name="note" placeholder="Note (optional), e.g. tenant confirmed">' +
+          '<button type="submit">Save booking</button>' +
+        '</form></details>' +
+      '<details class="dt"><summary style="color:#139A4B">✓ Mark completed</summary>' +
         '<form class="stack" style="margin:10px 0 0" data-done="' + j.id + '">' +
           '<textarea name="notes" rows="3" placeholder="What did you do? (optional)" style="padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit"></textarea>' +
           '<input name="price" inputmode="decimal" placeholder="Your price £ (optional)">' +
+          '<label class="muted" style="display:block">Photos of the finished work (optional)<input type="file" name="photos" accept="image/*" multiple style="display:block;margin-top:6px;padding:10px;background:#fff"></label>' +
           '<button type="submit" style="background:#139A4B">Mark ' + esc(j.ref) + ' completed</button>' +
         '</form></details>' +
     '</div>';
   }
+  // Photos are made smaller on the phone before sending (max 1600px, JPEG).
+  function shrink(file){
+    return new Promise(function(resolve){
+      var fr = new FileReader();
+      fr.onload = function(){
+        var img = new Image();
+        img.onload = function(){
+          var k = Math.min(1, 1600 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+          cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          resolve({ name: file.name, dataUrl: cv.toDataURL('image/jpeg', 0.82) });
+        };
+        img.onerror = function(){ resolve(null); };
+        img.src = fr.result;
+      };
+      fr.onerror = function(){ resolve(null); };
+      fr.readAsDataURL(file);
+    });
+  }
   list.addEventListener('submit', function(e){
+    var bk = e.target.closest('[data-book]');
+    if (bk) {
+      e.preventDefault();
+      var bb = bk.querySelector('button'); bb.disabled = true; bb.textContent = 'Saving…';
+      fetch('/api/c/' + TOKEN + '/jobs/' + bk.dataset.book + '/book', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: bk.date.value, time: bk.time.value.trim(), note: bk.note.value.trim() }) })
+        .then(function(r){ return r.json(); }).then(function(d){
+          if (!d.ok) { bb.disabled = false; bb.textContent = d.error === 'bad-date' ? 'Pick a valid date and try again' : 'Couldn’t save — try again'; return; }
+          load();
+        }).catch(function(){ bb.disabled = false; bb.textContent = 'Couldn’t save — try again'; });
+      return;
+    }
     var f = e.target.closest('[data-done]'); if (!f) return;
     e.preventDefault();
     var btn = f.querySelector('button'); btn.disabled = true; btn.textContent = 'Saving…';
     var price = f.price.value.replace(/[£,\\s]/g, '');
-    fetch('/api/c/' + TOKEN + '/jobs/' + f.dataset.done + '/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notes: f.notes.value.trim(), price: price === '' ? null : price }) })
+    var files = Array.prototype.slice.call(f.photos.files || [], 0, 10);
+    if (files.length) btn.textContent = 'Uploading ' + files.length + ' photo' + (files.length === 1 ? '' : 's') + '…';
+    Promise.all(files.map(shrink)).then(function(ph){ return fetch('/api/c/' + TOKEN + '/jobs/' + f.dataset.done + '/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: f.notes.value.trim(), price: price === '' ? null : price, photos: ph.filter(Boolean) }) }); })
       .then(function(r){ return r.json(); }).then(function(d){
         if (!d.ok) { btn.disabled = false; btn.textContent = d.error === 'bad-price' ? 'Check the price and try again' : 'Couldn’t save — try again'; return; }
         load();
@@ -2666,7 +2713,7 @@ module.exports = function mountJobs(app, opts) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const c = await portalContractor(p, req.params.token);
     if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
-    const b = req.body || {}, notes = str(b.notes, 3000), price = money(b.price);
+    const b = req.body || {}, notes = str(b.notes, 3000), price = money(b.price), photos = decodePhotos(b.photos);
     if (price === undefined) return res.status(400).json({ ok: false, error: 'bad-price' });
     const r = await p.query(`UPDATE jobs SET status = 'Completed', completed_at = now(), updated_at = now(),
         completion_notes = coalesce($3, completion_notes), actual_cost = coalesce(actual_cost, $4)
@@ -2674,10 +2721,30 @@ module.exports = function mountJobs(app, opts) {
       RETURNING id, property_address`, [jobId(req), c.name, notes, price]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     const ref = refFor(r.rows[0].id);
+    if (photos.length) await insertPhotos(p, r.rows[0].id, photos, 'contractor');
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.rows[0].id, 'completed',
-      'Marked completed by ' + c.name + ' (contractor job link).' + (notes ? ' Notes: ' + notes : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '')]);
+      'Marked completed by ' + c.name + ' (contractor job link).' + (notes ? ' Notes: ' + notes.replace(/[.\s]*$/, '') + '.' : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '') +
+      (photos.length ? ' ' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' added.' : '')]);
     ntfy({ title: 'Job completed: ' + ref, message: c.name + ' marked ' + ref + ' completed — ' + (r.rows[0].property_address || ''), tags: ['white_check_mark'] }).catch(function () {});
     res.json({ ok: true });
+  }));
+  // The contractor says when they've booked the visit.
+  app.post('/api/c/:token/jobs/:id/book', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const c = await portalContractor(p, req.params.token);
+    if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
+    const b = req.body || {}, date = String(b.date || ''), time = str(b.time, 40), note = str(b.note, 1000);
+    if (!apptDay(date)) return res.status(400).json({ ok: false, error: 'bad-date' });
+    const r = await p.query(`UPDATE jobs SET appointment_date = $3, appointment_time = $4, updated_at = now(),
+        status = CASE WHEN status IN ('New', 'Assigned') THEN 'Contractor booked' ELSE status END
+      WHERE id = $1 AND archived_at IS NULL AND lower(trim(assigned_to)) = lower(trim($2)) AND status NOT IN ('Completed', 'Cancelled')
+      RETURNING id, property_address`, [jobId(req), c.name, date, time]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    const ref = refFor(r.rows[0].id), when = apptDay(date) + (time ? ', ' + time : '');
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.rows[0].id, 'change',
+      'Booked by ' + c.name + ' for ' + when + ' (contractor job link).' + (note ? ' Note: ' + note : '')]);
+    ntfy({ title: 'Job booked: ' + ref, message: c.name + ' booked ' + ref + ' for ' + when + ' — ' + (r.rows[0].property_address || ''), tags: ['date'] }).catch(function () {});
+    res.json({ ok: true, when: when });
   }));
   app.get('/c/:token', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
@@ -2685,6 +2752,13 @@ module.exports = function mountJobs(app, opts) {
     const c = await portalContractor(p, req.params.token);
     if (!c) return res.status(404).send(trackShell('Link not available', '<h1>Link not available</h1><p class="sub">This job link is no longer active. Please contact Residential Realtors.</p>', true));
     res.send(trackShell('Your jobs', '<h1>Hi ' + htmlEsc(c.name) + '</h1><p class="sub">Jobs from Residential Realtors. Tap a job for the details, and mark it completed when it’s done.</p>' +
+      '<style>' +
+        '.dt{margin-top:10px;border-top:1px solid #eee;padding-top:8px}.dt summary{cursor:pointer;font-weight:600;padding:6px 0;list-style:none}.dt summary::-webkit-details-marker{display:none}.dt summary:before{content:"▸ ";color:#888}.dt[open] summary:before{content:"▾ "}' +
+        '.dbody{display:flex;flex-direction:column;gap:10px;margin-top:6px}.desc{white-space:pre-wrap;background:#f6f6f8;border-radius:12px;padding:10px 12px;font-size:.95rem}' +
+        '.it{display:flex;gap:10px;align-items:flex-start}.it .ic{width:28px;text-align:center;font-size:1.1rem;flex:none}.lb{font-size:.78rem;color:#5b616e;text-transform:uppercase;letter-spacing:.03em}.vl{font-size:.98rem;word-break:break-word}' +
+        '.tn{border:1px solid #e6e7eb;border-radius:14px;padding:12px}.acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}.abtn{display:block;text-align:center;padding:12px;border-radius:12px;background:#0b0c0f;color:#fff;text-decoration:none;font-weight:600}.abtn.wa{background:#25D366;color:#fff}' +
+        'details>summary{min-height:32px}' +
+      '</style>' +
       '<div id="list"><p class="muted">Loading…</p></div>' +
       '<script>' + CONTRACTOR_PAGE_JS.replace('__TOKEN__', JSON.stringify(String(req.params.token))) + '</script>', true));
   }));
