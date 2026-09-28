@@ -170,6 +170,28 @@ CREATE TABLE IF NOT EXISTS job_parts (
   status      TEXT NOT NULL DEFAULT 'Ordered'
 );
 CREATE INDEX IF NOT EXISTS job_parts_job_idx ON job_parts (job_id, id);
+CREATE TABLE IF NOT EXISTS property_certificates (
+  id           SERIAL PRIMARY KEY,
+  property_key TEXT NOT NULL,
+  address      TEXT,
+  type         TEXT NOT NULL,
+  issued_on    TEXT,
+  expires_on   TEXT,
+  reference    TEXT,
+  rating       TEXT,
+  notes        TEXT,
+  job_id       INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+  reminded_at  TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (property_key, type)
+);
+ALTER TABLE property_certificates ADD COLUMN IF NOT EXISTS not_required BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      JSONB,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS shared_docs (
   id         SERIAL PRIMARY KEY,
   token      TEXT NOT NULL UNIQUE,
@@ -204,8 +226,11 @@ const ADDR_WORDS = { street: 'st', road: 'rd', avenue: 'ave', lane: 'ln', drive:
 function apptDay(v) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
   if (!m) return '';
-  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12)).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' });
+  const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
+  if (dt.getUTCMonth() !== +m[2] - 1 || dt.getUTCDate() !== +m[3]) return '';   // e.g. 31 February
+  return dt.toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' });
 }
+function certDay(v) { return apptDay(v) ? new Date(v + 'T12:00:00Z').toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' }) : ''; }
 function apptText(j) { const d = apptDay(j.appointment_date); return d ? d + (j.appointment_time ? ', ' + j.appointment_time : '') : ''; }
 function tidyAddress(v) {
   const s = str(v, 500);
@@ -319,6 +344,7 @@ async function migrateLandlords(p) {
 // Public organisations (council teams) are listed here rather than in the variable.
 const BUILT_IN_CONTRACTORS = [
   { name: 'Southwark Council', trade: 'Council repairs', email: 'repairs@southwark.gov.uk', escalation_email: 'complaints@southwark.gov.uk', notes: 'Southwark Council repairs team' },
+  { name: 'Marathon Energy', trade: 'EPC assessor', notes: 'Energy Performance Certificates (EPC)' },
   { name: 'Leaksfromabove', trade: 'Council – leaks from above', email: 'leaksfromabove@southwark.gov.uk', escalation_email: 'complaints@southwark.gov.uk', notes: 'Southwark Council leaks from above team' }
 ];
 async function seedContractors(p) {
@@ -1610,8 +1636,123 @@ module.exports = function mountJobs(app, opts) {
     }
     await p.query('UPDATE property_landlords SET property_key = $2, address = $3, updated_at = now() WHERE property_key = $1', [fromKey, toKey, to]);
     await p.query('UPDATE property_tenants SET property_key = $2, address = $3 WHERE property_key = $1', [fromKey, toKey, to]);
+    if (toKey !== fromKey) await p.query('DELETE FROM property_certificates c WHERE property_key = $1 AND EXISTS (SELECT 1 FROM property_certificates x WHERE x.property_key = $2 AND x.type = c.type)', [fromKey, toKey]);
+    await p.query('UPDATE property_certificates SET property_key = $2, address = $3, updated_at = now() WHERE property_key = $1', [fromKey, toKey, to]);
     res.json({ ok: true, address: to, changed: rows.length });
   }));
+
+  // ---------- Certificates ----------
+  // EPC (10 years), gas safety (12 months) and electrical safety / EICR (5 years)
+  // for each property, with the contractor who renews each kind.
+  const CERT_TYPES = { EPC: { name: 'EPC', years: 10 }, Gas: { name: 'Gas safety certificate', years: 1 }, EICR: { name: 'Electrical safety certificate (EICR)', years: 5 } };
+  const REMIND_DAYS = 10;
+  function isoDay(v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) && apptDay(v) ? String(v) : null; }
+  app.get('/api/admin/certificates', withDb(async function (p, req, res) {
+    const r = await p.query('SELECT id, property_key, address, type, issued_on, expires_on, reference, rating, notes, not_required, job_id, reminded_at, updated_at FROM property_certificates ORDER BY expires_on NULLS LAST');
+    const s = (await p.query("SELECT value FROM app_settings WHERE key = 'cert_contractors'")).rows[0];
+    res.json({ ok: true, certificates: r.rows, contractors: (s && s.value) || {}, remind_days: REMIND_DAYS });
+  }));
+  app.put('/api/admin/certificates', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const key = propKey(b.address), type = CERT_TYPES[b.type] ? b.type : null;
+    if (!key) return res.status(400).json({ ok: false, error: 'address-required' });
+    if (!type) return res.status(400).json({ ok: false, error: 'bad-type' });
+    const issued = b.issued_on ? isoDay(b.issued_on) : null, expires = b.expires_on ? isoDay(b.expires_on) : null;
+    if ((b.issued_on && !issued) || (b.expires_on && !expires)) return res.status(400).json({ ok: false, error: 'bad-date' });
+    const notRequired = !!b.not_required;
+    if (!expires && !notRequired) return res.status(400).json({ ok: false, error: 'expiry-required' });
+    const cur = (await p.query('SELECT id, expires_on, job_id FROM property_certificates WHERE property_key = $1 AND type = $2', [key, type])).rows[0];
+    const renewed = !cur || cur.expires_on !== expires;
+    const r = await p.query(`INSERT INTO property_certificates (property_key, address, type, issued_on, expires_on, reference, rating, notes, not_required)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (property_key, type) DO UPDATE SET address = excluded.address, issued_on = excluded.issued_on, expires_on = excluded.expires_on,
+        reference = excluded.reference, rating = excluded.rating, notes = excluded.notes, not_required = excluded.not_required, updated_at = now()` +
+        (renewed ? ', reminded_at = NULL, job_id = NULL' : '') + ' RETURNING id',
+      [key, str(b.address, 500), type, notRequired ? null : issued, notRequired ? null : expires, str(b.reference, 100), str(b.rating, 5), str(b.notes, 1000), notRequired]);
+    // Note it on the booked job, if there was one.
+    if (cur && cur.job_id && renewed && expires) await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [cur.job_id, 'note', CERT_TYPES[type].name + ' renewed — now expires ' + certDay(expires) + '.']);
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+  app.delete('/api/admin/certificates/:id', withDb(async function (p, req, res) {
+    const r = await p.query('DELETE FROM property_certificates WHERE id = $1 RETURNING id', [jobId(req)]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json({ ok: true });
+  }));
+  // The job booked to renew a certificate.
+  app.put('/api/admin/certificates/:id/job', withDb(async function (p, req, res) {
+    const jid = parseInt((req.body || {}).job_id, 10) || null;
+    const r = await p.query('UPDATE property_certificates SET job_id = $2, updated_at = now() WHERE id = $1 RETURNING id', [jobId(req), jid]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json({ ok: true });
+  }));
+  app.put('/api/admin/settings/cert-contractors', withDb(async function (p, req, res) {
+    const b = req.body || {}, v = {};
+    Object.keys(CERT_TYPES).forEach(function (t) { if (str(b[t], 200)) v[t] = str(b[t], 200); });
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('cert_contractors', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(v)]);
+    res.json({ ok: true });
+  }));
+  // Look a property up on the government EPC register (find-energy-certificate.service.gov.uk)
+  // by postcode, returning each certificate's address, rating and "valid until" date.
+  app.get('/api/admin/epc-lookup', async function (req, res) {
+    const m = POSTCODE_RE.exec(String(req.query.address || req.query.postcode || ''));
+    if (!m) return res.status(400).json({ ok: false, error: 'postcode-required' });
+    const pc = (m[1] + ' ' + m[2]).toUpperCase();
+    const url = 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=' + encodeURIComponent(pc);
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Fixflow; Residential Realtors)', 'Accept': 'text/html' }, signal: AbortSignal.timeout(12000) });
+      if (!r.ok) return res.json({ ok: false, error: 'register-' + r.status, url: url });
+      const html = await r.text();
+      const clean = function (s) { return String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim(); };
+      const MONTHS = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+      const results = [];
+      const re = /<a[^>]+href="(\/energy-certificate\/[\d-]+)"[^>]*>([\s\S]*?)<\/a>([\s\S]*?)(?=<a[^>]+href="\/energy-certificate\/|<\/tbody>|$)/g;
+      let x;
+      while ((x = re.exec(html)) && results.length < 60) {
+        const rest = clean(x[3]);
+        const d = /(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})/i.exec(rest);
+        const rating = /(?:^|\s)([A-G])(?:\s|$)/.exec(rest);
+        results.push({
+          address: clean(x[2]),
+          link: 'https://find-energy-certificate.service.gov.uk' + x[1],
+          reference: x[1].split('/').pop(),
+          rating: rating ? rating[1] : '',
+          expires_on: d ? d[3] + '-' + String(MONTHS[d[2].toLowerCase()]).padStart(2, '0') + '-' + String(d[1]).padStart(2, '0') : null,
+          expired: /expired/i.test(rest)
+        });
+      }
+      res.json({ ok: true, postcode: pc, url: url, results: results });
+    } catch (err) {
+      res.json({ ok: false, error: 'register-unreachable', url: url });
+    }
+  });
+  // Phone alert (ntfy) when a certificate comes within 10 days of expiring and
+  // nothing is booked for it yet. Checked every few hours; each only once.
+  async function remindCertificates() {
+    if (!NTFY_TOPIC || typeof fetch !== 'function') return;
+    const p = await db(); if (!p) return;
+    const soon = new Date(Date.now() + REMIND_DAYS * 86400000).toISOString().slice(0, 10);
+    const rows = (await p.query(`SELECT c.id, c.address, c.type, c.expires_on FROM property_certificates c
+      LEFT JOIN jobs j ON j.id = c.job_id AND j.archived_at IS NULL AND j.status NOT IN ('Completed', 'Cancelled')
+      WHERE c.expires_on IS NOT NULL AND c.expires_on <= $1 AND c.reminded_at IS NULL AND j.id IS NULL`, [soon])).rows;
+    const s = (await p.query("SELECT value FROM app_settings WHERE key = 'cert_contractors'")).rows[0];
+    const who = (s && s.value) || {};
+    for (const c of rows) {
+      const past = c.expires_on < new Date().toISOString().slice(0, 10);
+      const body = {
+        topic: NTFY_TOPIC,
+        title: (past ? 'Expired: ' : 'Expires soon: ') + CERT_TYPES[c.type].name,
+        message: String(c.address || '').replace(/\s+/g, ' ') + '\n' + (past ? 'Expired ' : 'Expires ') + certDay(c.expires_on) + (who[c.type] ? '\nBook ' + who[c.type] : ''),
+        priority: past ? 5 : 4, tags: ['page_facing_up']
+      };
+      if (PUBLIC_URL) body.click = PUBLIC_URL + '/admin#certs';
+      try {
+        const r = await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
+        if (r.ok) await p.query('UPDATE property_certificates SET reminded_at = now() WHERE id = $1', [c.id]);
+      } catch (err) { console.error('Certificate reminder failed:', err.message); }
+    }
+  }
+  setTimeout(function () { remindCertificates().catch(function () {}); }, 60 * 1000);
+  setInterval(function () { remindCertificates().catch(function () {}); }, 6 * 3600 * 1000).unref();
 
   // ---------- Contractors ----------
   function cleanContractor(b) {
