@@ -1937,7 +1937,8 @@ module.exports = function mountJobs(app, opts) {
       tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       guarantors: (Array.isArray(b.guarantors) ? b.guarantors : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       landlord: { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(l.postcode, 20) },
-      service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), find_basis: b.find_basis === 'upfront' ? 'upfront' : 'monthly', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
+      service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), find_basis: b.find_basis === 'upfront' ? 'upfront' : 'monthly',
+      find_unit: b.find_unit === 'gbp' ? 'gbp' : 'pct', collect_unit: b.collect_unit === 'gbp' ? 'gbp' : 'pct', manage_unit: b.manage_unit === 'gbp' ? 'gbp' : 'pct', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
       fees: (Array.isArray(b.fees) ? b.fees : []).slice(0, 30).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount) }; }).filter(function (f) { return f.label; }),
       vat: b.vat !== false, statement_date: day(b.statement_date), notes: s(b.notes, 4000),
       // Banking trail: extra move-in charges and each payment received.
