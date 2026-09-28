@@ -12,56 +12,58 @@ const zlib = require('zlib');
 
 const DISCLAIMER = 'This e-mail message may contain confidential or legally privileged information and is intended only for the use of the intended recipient(s). Any unauthorised disclosure, dissemination, distribution, copying or the taking of any action in reliance on the information herein is prohibited. E-mails are not secure and cannot be guaranteed to be error free as they can be intercepted, amended, or contain viruses. Anyone who communicates with us by e-mail is deemed to have accepted these risks. Residential Realtors is not responsible for errors or omissions in this message and denies any responsibility for any damage arising from the use of e-mail. Any opinion and other statement contained in this message and any attachment are solely those of the author and do not necessarily represent those of the company. ©{{year}} Estallion Investments';
 
+// Formatting marks (shown in the admin page and in pasted/sent emails):
+// [b]bold[/b], [u]underline[/u], [red]red bold[/red], [small]small grey[/small].
 const TENANT_BODY = `Dear Tenants,
 
-RE: Preparing for your new home: {{address}}
+[b][u]RE: Preparing for your new home: {{address}}[/u][/b]
 
 I am pleased to provide you with a copy of your tenancy agreement via Adobe E-sign. Please read the document carefully, it sets out the length of your tenancy, who is holding your deposit, and the terms and conditions of your let, including the Special Terms and Conditions at Schedule 1. Your tenancy agreement also outlines the account details for your rent payments. Please ensure a standing order is set up with your bank to pay your rent at least 3 days before your rent due date. If you have any queries relating to this document, please contact us immediately. Please also check for any misspelt names or addresses and let us know straight away so we can correct these.
 
-Move-in monies
-As set out in Schedule 1 of your tenancy agreement, full move-in monies must be paid by bank transfer within 48 hours of this email (by {{move_in_due}}), as agreed at the time of your reservation. Vacant possession of the property will not be given and keys will not be released until these funds have cleared in our account in full. If payment is not received within this 48-hour window, we reserve the right to withdraw the offer of tenancy and re-market the property.
+[b]Move-in monies[/b]
+As set out in Schedule 1 of your tenancy agreement, full move-in monies must be paid by bank transfer within 48 hours of this email (by [red]{{move_in_due}}[/red]), as agreed at the time of your reservation. Vacant possession of the property will not be given and keys will not be released until these funds have cleared in our account in full. If payment is not received within this 48-hour window, we reserve the right to withdraw the offer of tenancy and re-market the property.
 
 When paying by bank transfer, please check with your bank how long the transfer will take to clear, as international transfers can take longer than expected. Once paid, please email proof of transfer (e.g. a receipt confirmation PDF or screenshot) so we can confirm receipt efficiently.
 
-Standing order
-You will also need to set up a standing order starting {{standing_order_start}}, for a minimum of {{standing_order_payments}} payments. This must be set up from a single account, covering the full rent amount, rent cannot be paid individually by each tenant. As set out in Schedule 1, this standing order must be set up within 3 working days of signing your tenancy agreement, and you must send us written confirmation (a screenshot or reference confirmation) that this has been done. Keys will not be released until this is confirmed.
+[b]Standing order[/b]
+You will also need to set up a standing order starting [red]{{standing_order_start}}[/red], for a minimum of {{standing_order_payments}} payments. This must be set up from a single account, covering the full rent amount, rent cannot be paid individually by each tenant. As set out in Schedule 1, this standing order must be set up within 3 working days of signing your tenancy agreement, and you must send us written confirmation (a screenshot or reference confirmation) that this has been done. [red]Keys will not be released until this is confirmed.[/red]
 
-Break Down of Move in Monies
-First Month’s Rent: {{first_rent}}
-Five Week Deposit: {{deposit}}
-Total Excluding Reservation Fee: {{move_in_total}}
+[b][u]Break Down of Move in Monies[/u][/b]
+[b]First Month’s Rent: [red]{{first_rent}}[/red][/b]
+[b]Five Week Deposit: [red]{{deposit}}[/red][/b]
+[b]Total Excluding Reservation Fee: [red]{{move_in_total}}[/red][/b]
 
-I can confirm that we have received {{holding_deposit}} as your reservation fee as such the remaining balance of {{move_in_remaining}} must be paid within 48 hours of this email.
+I can confirm that we have received [red]{{holding_deposit}}[/red] as your reservation fee as such the remaining balance of [red]{{move_in_remaining}}[/red] must be paid within 48 hours of this email.
 
-Bank Account Details
+[b][u]Bank Account Details[/u][/b]
 {{bank_details}}
-Reference: {{address}}
+[b]Reference: [red]{{address}}[/red][/b]
 
-If you are a Southwark Student Resident, please apply for your council tax exemption using the link: https://coa.myforms.southwark.gov.uk/CoaPlus/launch
+[b]If you are a Southwark Student Resident, please apply for your council tax exemption using the link:[/b] https://coa.myforms.southwark.gov.uk/CoaPlus/launch
 
 Please register with the relevant local authority for council tax purposes within 14 days of your tenancy commencement date, and register for all applicable utilities (gas, electricity, and water) in your name immediately upon moving in. The local authority, not the landlord or agent, is responsible for assessing and billing your council tax liability. Once billed, it is your responsibility to apply directly to the local authority for any exemption, discount, or reduction you may be entitled to (for example, single person discount or student exemption). We take no responsibility for any issues, delays, disruption, charges, or backdated liability relating to utility accounts, supply, or council tax, any such matters should be raised directly with the relevant provider or local authority.
 
-I can confirm an inventory/check-in has been booked for {{checkin_date}} at {{checkin_time}}. Upon your arrival the Inventory Clerk would have prepared a report on the condition of the property and an inventory check list at the time of handing over the keys, this report will be email out to you within 7 days of your move in, you will then given a further 7 days to check the inventory and suggest any ammendments if needs be. At the time of your move in keys will be handed over to you upon arrival by the clerk, please arrive a minimum of 15 minutes before your check-in time as the clerk would have strict time frames to adhere. Unfortunately due tight scheduling the inventory clerk is unable to wait for late comers. Should a check-in need to be rebooked a cost of £80.00 + VAT booking fee will be charged.
+I can confirm an inventory/check-in has been booked for [red]{{checkin_date}}[/red] at [red]{{checkin_time}}[/red]. Upon your arrival the Inventory Clerk would have prepared a report on the condition of the property and an inventory check list at the time of handing over the keys, this report will be email out to you within 7 days of your move in, you will then given a further 7 days to check the inventory and suggest any ammendments if needs be. At the time of your move in keys will be handed over to you upon arrival by the clerk, please arrive a minimum of 15 minutes before your check-in time as the clerk would have strict time frames to adhere. Unfortunately due tight scheduling the inventory clerk is unable to wait for late comers. Should a check-in need to be rebooked a cost of £80.00 + VAT booking fee will be charged.
 
-Your Inventory Clerk Details:
-Company: MC INVENTORY
-Email: info@mcinventories.com
-Number: 02034394840
+[b][u]Your Inventory Clerk Details:[/u][/b]
+[b]Company: MC INVENTORY[/b]
+[b]Email:[/b] info@mcinventories.com
+[b]Number: 02034394840[/b]
 
-Where no formal inventory has been commissioned for your property, you may submit your own record of the property's condition using our DIY check-in platform:
+[b]Where no formal inventory has been commissioned for your property, you may submit your own record of the property's condition using our DIY check-in platform:[/b]
 https://diy-check-in-production-6024.up.railway.app/
-Your submission, including photographs and written notes, must be completed within 7 days of your tenancy commencement date. We will review it and confirm in writing within 7 days if any part of it is disputed. If we do not raise a dispute within that period, your submission will stand as the agreed record of the property's condition for deposit purposes.
+[b]Your submission, including photographs and written notes, must be completed within 7 days of your tenancy commencement date. We will review it and confirm in writing within 7 days if any part of it is disputed. If we do not raise a dispute within that period, your submission will stand as the agreed record of the property's condition for deposit purposes.[/b]
 
-Cleaning
+[b][u]Cleaning[/u][/b]
 We offer two options regarding the cleaning of the property:
 
-Option 1 – Property as-is: No professional clean is arranged before your move-in, and the property is taken in its current condition. In return, no professional clean is required from you at the end of your tenancy, saving you the cost.
-Option 2 – Professional clean arranged: We arrange a professional clean before you move in. In this case, as set out in your tenancy agreement, you will be expected to arrange a professional clean of the property to an equivalent standard when you vacate, and you may be asked to provide evidence of this (e.g. an invoice).
+[b]Option 1 – Property as-is:[/b] No professional clean is arranged before your move-in, and the property is taken in its current condition. In return, no professional clean is required from you at the end of your tenancy, saving you the cost.
+[b]Option 2 – Professional clean arranged:[/b] We arrange a professional clean before you move in. In this case, as set out in your tenancy agreement, you will be expected to arrange a professional clean of the property to an equivalent standard when you vacate, and you may be asked to provide evidence of this (e.g. an invoice).
 
 Please note that on occasion, a property may not be cleaned to the standard we expect on the day you move in. We ask for your understanding here, as there are times we may need to arrange the clean on your actual move-in day rather than before it. If this would be a problem for you, please let us know now so we can address it in advance.
 Similarly, properties can occasionally have issues we were not previously aware of. If you notice anything on moving in, please report it to us straight away so we can resolve it swiftly. Again, if this arrangement would be a problem for you, please raise it with us now.
 
-Please let us know which cleaning option you'd prefer.
+[b]Please let us know which cleaning option you'd prefer.[/b]
 
 We wish you the best of luck in your new home and should you have any other queries please contact me to discuss.
 
@@ -69,11 +71,11 @@ Regards,
 
 {{signature}}
 
-` + DISCLAIMER;
+[small]` + DISCLAIMER + '[/small]';
 
 const LANDLORD_BODY = `Dear {{landlord_name}}
 
-RE: {{address}}
+[b][u]RE: {{address}}[/u][/b]
 
 I am pleased to advise you that we have provided you with the following items by email as part of your welcome pack:
 

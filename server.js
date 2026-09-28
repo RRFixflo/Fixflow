@@ -425,6 +425,7 @@ async function sendViaResend(opts) {
         to: opts.to,
         subject: opts.subject,
         text: opts.text,
+        html: opts.html || undefined,
         attachments: opts.attachments && opts.attachments.length ? opts.attachments
           : opts.attachmentBase64 ? [{ filename: opts.attachmentFilename, content: opts.attachmentBase64 }]
           : undefined

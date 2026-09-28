@@ -364,6 +364,9 @@
   .tcy-row .num { font-weight: 700; } .tcy-row small { display: block; font-weight: 500; color: var(--ink-soft); font-size: .72rem; }
   @media (max-width: 700px) { .tcy-row { grid-template-columns: minmax(0,1fr) auto; } .tcy-row .when, .tcy-row .chev { display: none; } }
   .tcy-form .card { margin-bottom: 12px; }
+  .mail-preview { background: #fff; color: #000; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; max-height: 46vh; overflow: auto; font: 10pt/1.35 Tahoma, Verdana, Segoe UI, sans-serif; outline: none; }
+  .mail-preview:focus { border-color: var(--blue, #2563eb); }
+  .mail-preview a { color: #0563c1; }
   .tcy-form h3 { display: flex; align-items: center; gap: 8px; }
   .tcy-person { display: grid; grid-template-columns: 1.2fr 1fr 1fr 34px; gap: 8px; align-items: end; margin-bottom: 8px; }
   .tcy-person.g { grid-template-columns: 1.2fr 1fr 1fr 34px; }
@@ -831,6 +834,7 @@
               <div><label class="lbl" for="tsTBody">Tenants' welcome email</label><textarea class="inp" id="tsTBody" rows="12"></textarea></div>
               <div><label class="lbl" for="tsLSub">Landlord's welcome email — subject</label><input class="inp" id="tsLSub"></div>
               <div><label class="lbl" for="tsLBody">Landlord's welcome email</label><textarea class="inp" id="tsLBody" rows="10"></textarea></div>
+              <p class="muted-note" style="margin:0">Formatting: [b]bold[/b], [u]underline[/u], [red]red and bold[/red], [small]small print[/small].</p>
               <p class="muted-note" style="margin:0">Filled in automatically: {{address}}, {{landlord_name}}, {{tenant_names}}, {{start_date}}, {{move_in_due}}, {{standing_order_start}}, {{standing_order_payments}}, {{first_rent}}, {{deposit}}, {{move_in_total}}, {{holding_deposit}}, {{move_in_remaining}}, {{checkin_date}}, {{checkin_time}}, {{bank_details}}, {{signature}}, {{year}}.</p>
               <div class="row-actions" style="margin-top:0"><button class="btn ghost" id="tsReset" type="button">Restore the original emails</button><button class="btn primary" id="tsSave" type="button">Save templates</button></div>
             </div>
@@ -953,13 +957,14 @@
     <h3 id="tmTitle" style="margin:0">Welcome email</h3>
     <div><label class="lbl" for="tmTo">To</label><input class="inp" id="tmTo" placeholder="name@example.com, …"></div>
     <div><label class="lbl" for="tmSubject">Subject</label><input class="inp" id="tmSubject"></div>
-    <div><label class="lbl" for="tmBody">Message</label><textarea class="inp" id="tmBody" rows="14"></textarea></div>
+    <div><label class="lbl" for="tmBody">Message <span class="muted-note" style="margin:0;font-weight:500">— you can edit it here</span></label><div class="mail-preview" id="tmBody" contenteditable="true" spellcheck="true"></div></div>
     <div><label class="lbl">Attach</label><div id="tmAtt" style="display:flex;flex-direction:column;gap:6px"></div></div>
     <p class="muted-note" id="tmNote" style="font-size:.8rem;margin:0"></p>
     <div class="row-actions" style="margin-top:0;flex-wrap:wrap">
       <button class="btn ghost" id="tmCancel" type="button">Cancel</button>
-      <button class="btn" id="tmCopy" type="button">Copy text</button>
-      <button class="btn primary" id="tmSend" type="button">Open in email app</button>
+      <button class="btn" id="tmCopy" type="button">Copy email</button>
+      <button class="btn" id="tmSend" type="button">Other email app</button>
+      <button class="btn primary" id="tmOutlook" type="button">Open in Outlook</button>
     </div>
   </div>
 </div>
@@ -2815,7 +2820,7 @@
   function drawLogo(doc, x, y, height, alignRight, pageW){
     if (!logoData) return 0;
     var w = height * logoData.w / logoData.h;
-    try { doc.addImage(logoData.url, 'PNG', alignRight ? pageW - x - w : x, y, w, height); } catch (e) { return 0; }
+    try { doc.addImage(logoData.url, 'PNG', alignRight ? pageW - x - w : x, y, w, height, 'rr-logo', 'FAST'); } catch (e) { return 0; }
     return w;
   }
 
@@ -5520,8 +5525,26 @@
       address: d.address || '', landlord_name: (d.landlord && d.landlord.name) || '', tenant_names: joinAnd(tcyNames(d.tenants)), start_date: longDay(d.start_date),
       move_in_due: weekdayDay(c.moveInDue), standing_order_start: ordDay(c.soStart), standing_order_payments: String(c.soPayments),
       first_rent: gbp(c.rent), deposit: gbp(c.deposit), move_in_total: gbp(c.total), holding_deposit: gbp(c.holding), move_in_remaining: gbp(c.remaining),
-      checkin_date: ukDay(d.checkin_date || d.start_date), checkin_time: d.checkin_time || '12:00', bank_details: t.bank_details || '', year: String(new Date().getFullYear())
+      checkin_date: ukDay(d.checkin_date || d.start_date), checkin_time: d.checkin_time || '12:00', bank_details: bankMarkup(t.bank_details), year: String(new Date().getFullYear())
     };
+  }
+  // Email formatting marks → HTML (for pasting into Outlook or sending), or plain text.
+  var MAIL_RED = '#c00000';
+  function mailHtml(text){
+    var h = esc(text)
+      .replace(/\[b\]/g, '<b>').replace(/\[\/b\]/g, '</b>').replace(/\[u\]/g, '<u>').replace(/\[\/u\]/g, '</u>')
+      .replace(/\[red\]/g, '<span style="color:' + MAIL_RED + ';font-weight:bold">').replace(/\[\/red\]/g, '</span>')
+      .replace(/\[small\]/g, '<span style="font-size:7.5pt;color:#666">').replace(/\[\/small\]/g, '</span>')
+      .replace(/(https?:\/\/[^\s<]+[^\s<.,;:)])|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/g, function(m, url, mail){ return '<a href="' + (url ? url : 'mailto:' + mail) + '" style="color:#0563c1">' + m + '</a>'; });
+    return h.replace(/\n/g, '<br>');
+  }
+  function mailPlain(text){ return String(text || '').replace(/\[\/?(b|u|red|small)\]/g, ''); }
+  // Bank details: labels in bold, the numbers in red (as in the agency's email).
+  function bankMarkup(text){
+    return String(text || '').split('\n').map(function(line){
+      var m = /^(.*?(?:sort code|account number|iban:?|swift(?: code)?:?|bic:?|account name|payee:?))\s+(.+)$/i.exec(line.trim());
+      return m ? '[b]' + m[1] + '[/b] [red]' + m[2] + '[/red]' : line.trim() ? '[b]' + line.trim() + '[/b]' : '';
+    }).join('\n');
   }
   function fillTpl(text, vals){ return String(text || '').replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, function(m, k){ k = k.toLowerCase(); return Object.prototype.hasOwnProperty.call(vals, k) ? vals[k] : m; }); }
   function tcyFile(d, what, ext){ return (what + ' - ' + (d.address || 'Tenancy')).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) + '.' + (ext || 'pdf'); }
@@ -5969,13 +5992,15 @@
       $('tmTitle').textContent = who === 'tenants' ? 'Welcome email to the tenants' : 'Welcome email to ' + ((d.landlord || {}).name || 'the landlord');
       $('tmTo').value = to.join(', ');
       $('tmSubject').value = fillTpl(who === 'tenants' ? t.tenant_subject : t.landlord_subject, vals);
-      $('tmBody').value = fillTpl(fillTpl(who === 'tenants' ? t.tenant_body : t.landlord_body, vals), vals);
+      $('tmBody').innerHTML = mailHtml(fillTpl(fillTpl(who === 'tenants' ? t.tenant_body : t.landlord_body, vals), vals));
       $('tmAtt').innerHTML = atts.map(function(a, i){ return '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-att="' + i + '"' + (a.on ? ' checked' : '') + '> ' + esc(a.label) + '</label>'; }).join('') +
         (who === 'landlord' ? '<p class="muted-note" style="margin:2px 0 0">Add the signed agreement, tenant ID and deposit certificate yourself.</p>' : '');
       var missing = !t.bank_details && who === 'tenants';
-      $('tmSend').textContent = meta.canEmail ? 'Send email' : 'Open in email app';
+      $('tmSend').textContent = meta.canEmail ? 'Send from Fixflow' : 'Other email app';
+      $('tmCopy').textContent = 'Copy email';
       $('tmNote').textContent = (missing ? '⚠ No bank details saved yet — add them under Templates. ' : '') +
-        (meta.canEmail ? 'Sends from Fixflow with the ticked documents attached.' : 'Opens your email app with the message ready. Ticked documents download for you to attach.');
+        'Open in Outlook downloads the email as a draft, formatted as shown with the ticked documents attached — open the downloaded file and it opens in Outlook ready to send. ' +
+        (meta.canEmail ? 'Send from Fixflow sends it straight away.' : 'Other email app copies the formatted email for you to paste into the message that opens.');
       $('tmModal').hidden = false;
     };
     tcySet ? go() : loadTcySettings().then(go);
@@ -5990,19 +6015,69 @@
   }
   $('tmCancel').addEventListener('click', function(){ $('tmModal').hidden = true; });
   $('tmModal').addEventListener('mousedown', function(e){ if (e.target === $('tmModal')) $('tmModal').hidden = true; });
-  $('tmCopy').addEventListener('click', function(){
-    var text = $('tmBody').value;
-    (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function(){ toast('Email copied — paste it into your email'); }, function(){ $('tmBody').select(); document.execCommand('copy'); toast('Email copied'); });
+  // Copy the email with its formatting (bold, underline, red) for pasting into Outlook, Gmail etc.
+  function tmHtml(){ return '<div style="font-family:Tahoma,Verdana,sans-serif;font-size:10pt;color:#000">' + $('tmBody').innerHTML + '</div>'; }
+  function copyMail(){
+    var html = tmHtml(), text = $('tmBody').innerText;
+    if (navigator.clipboard && window.ClipboardItem) {
+      return navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })])['catch'](selectCopy);
+    }
+    return Promise.resolve(selectCopy());
+    function selectCopy(){
+      var r = document.createRange(), sel = window.getSelection();
+      r.selectNodeContents($('tmBody')); sel.removeAllRanges(); sel.addRange(r);
+      try { document.execCommand('copy'); } catch (e) {}
+      sel.removeAllRanges();
+    }
+  }
+  // Outlook (Classic): an .eml draft (X-Unsent) with the formatted email and
+  // the documents attached. Opening it gives a new message ready to send.
+  function b64utf8(str){ var bytes = new TextEncoder().encode(str), bin = ''; for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); }
+  function wrap76(b64){ return b64.replace(/.{1,76}/g, '$&\r\n'); }
+  function mimeWord(str){ return /^[\x20-\x7e]*$/.test(str) ? str : '=?UTF-8?B?' + b64utf8(str) + '?='; }
+  function buildEml(to, subject, text, html, files){
+    var mixed = 'mix_' + Math.random().toString(36).slice(2), alt = 'alt_' + Math.random().toString(36).slice(2), L = '\r\n';
+    var out = 'X-Unsent: 1' + L + 'To: ' + to.join(', ') + L + 'Subject: ' + mimeWord(subject) + L + 'MIME-Version: 1.0' + L +
+      'Content-Type: multipart/mixed; boundary="' + mixed + '"' + L + L +
+      '--' + mixed + L + 'Content-Type: multipart/alternative; boundary="' + alt + '"' + L + L +
+      '--' + alt + L + 'Content-Type: text/plain; charset=UTF-8' + L + 'Content-Transfer-Encoding: base64' + L + L + wrap76(b64utf8(text)) +
+      '--' + alt + L + 'Content-Type: text/html; charset=UTF-8' + L + 'Content-Transfer-Encoding: base64' + L + L +
+      wrap76(b64utf8('<html><head><meta charset="utf-8"></head><body>' + html + '</body></html>')) + '--' + alt + '--' + L;
+    files.forEach(function(f){
+      var name = f.name.replace(/"/g, ''), type = /\.pdf$/i.test(name) ? 'application/pdf' : 'application/octet-stream';
+      out += '--' + mixed + L + 'Content-Type: ' + type + '; name="' + mimeWord(name) + '"' + L + 'Content-Disposition: attachment; filename="' + mimeWord(name) + '"' + L +
+        'Content-Transfer-Encoding: base64' + L + L + wrap76(f.b64);
+    });
+    return out + '--' + mixed + '--' + L;
+  }
+  $('tmOutlook').addEventListener('click', function(){
+    var to = $('tmTo').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean), subject = $('tmSubject').value, ctx = tmCtx;
+    if (!to.length) { toast('Add an email address'); return; }
+    var text = $('tmBody').innerText, html = tmHtml();
+    busy($('tmOutlook'), true, 'Preparing…');
+    tmAttachments().then(function(files){
+      return Promise.all(files.map(function(f){ return blobB64(f.blob).then(function(b){ return { name: f.name, b64: b }; }); }));
+    }).then(function(files){
+      busy($('tmOutlook'), false);
+      var eml = buildEml(to, subject, text, html, files);
+      saveBlob(new Blob([eml], { type: 'message/rfc822' }), tcyFile(ctx.d, ctx.who === 'tenants' ? 'Welcome email to tenants' : 'Welcome email to landlord', 'eml'));
+      $('tmModal').hidden = true;
+      toast('Email downloaded — open it and it opens in Outlook, ready to send');
+      tcyLog('Welcome email to ' + (ctx.who === 'tenants' ? 'tenants' : 'landlord') + ' prepared for Outlook (' + to.join(', ') + ')');
+    }, function(err){ busy($('tmOutlook'), false); agreementError(err); });
   });
+  $('tmCopy').addEventListener('click', function(){ copyMail().then(function(){ toast('Email copied with its formatting — paste it into your email'); }); });
   $('tmSend').addEventListener('click', function(){
-    var to = $('tmTo').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean), subject = $('tmSubject').value, text = $('tmBody').value, ctx = tmCtx;
+    var to = $('tmTo').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean), subject = $('tmSubject').value, text = $('tmBody').innerText, html = tmHtml(), ctx = tmCtx;
+    // Copy now, while the tap still counts (browsers only allow copying straight after a tap).
+    var copied = meta.canEmail ? Promise.resolve() : copyMail();
     if (!to.length) { toast('Add an email address'); return; }
     busy($('tmSend'), true, 'Preparing…');
     tmAttachments().then(function(files){
       if (meta.canEmail) {
         return Promise.all(files.map(function(f){ return blobB64(f.blob).then(function(b){ return { name: f.name, data: b }; }); })).then(function(atts){
           busy($('tmSend'), true, 'Sending…');
-          return api('POST', '/api/admin/tenancies/' + openTcyId + '/email', { to: to, subject: subject, body: text, attachments: atts }).then(function(r){
+          return api('POST', '/api/admin/tenancies/' + openTcyId + '/email', { to: to, subject: subject, body: text, html: html, attachments: atts }).then(function(r){
             busy($('tmSend'), false);
             if (!r.ok) { toast('Couldn’t send — try “Copy text” instead'); return; }
             $('tmModal').hidden = true; toast('Sent to ' + to.join(', '));
@@ -6012,9 +6087,11 @@
       }
       busy($('tmSend'), false);
       files.forEach(function(f, i){ setTimeout(function(){ saveBlob(f.blob, f.name); }, i * 400); });
-      window.location.href = 'mailto:' + to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text);
+      copied.then(function(){
+        window.location.href = 'mailto:' + to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(subject);
+      });
       $('tmModal').hidden = true;
-      toast(files.length ? 'Documents downloaded — attach them to the email that’s opening' : 'Your email app is opening');
+      toast('Email copied — paste it into the message that’s opening' + (files.length ? ', then attach the downloaded documents' : ''));
       tcyLog('Welcome email to ' + (ctx.who === 'tenants' ? 'tenants' : 'landlord') + ' opened in email app (' + to.join(', ') + ')');
     }, function(err){ busy($('tmSend'), false); agreementError(err); });
   });
