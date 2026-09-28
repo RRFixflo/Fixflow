@@ -471,7 +471,7 @@
   #ctSortTabs button { padding: 6px 10px; white-space: nowrap; }
   .ctg-sum { padding: 10px 14px; font-size: .82rem; color: var(--ink-soft); background: var(--panel-2); border-bottom: 1px solid var(--line); }
   .ctg-sum .owe, .ctg-n.owe b { color: #C2410C; }
-  .ct-row.ctg, .ctg { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 64px 76px 100px 310px; align-items: center; gap: 10px; padding: 10px 14px; }
+  .ct-row.ctg, .ctg { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 60px 60px 76px 100px 310px; align-items: center; gap: 10px; padding: 10px 14px; }
   .ctg-head { position: sticky; top: 0; z-index: 1; padding-top: 8px; padding-bottom: 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .ctg-h { display: inline-flex; align-items: center; justify-self: start; gap: 5px; border: 0; background: none; padding: 5px 8px; margin: 0 0 0 -8px; border-radius: 7px; font: inherit; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint); cursor: pointer; white-space: nowrap; }
   .ctg-h.r { justify-self: end; margin: 0; }
@@ -497,7 +497,7 @@
   #ctSortRow { display: none; }
   @media (max-width: 1100px) {
     #ctSortRow { display: flex; }
-    .ct-row.ctg, .ctg { grid-template-columns: minmax(0, 1fr) 60px 76px 100px; }
+    .ct-row.ctg, .ctg { grid-template-columns: minmax(0, 1fr) 56px 56px 76px 100px; }
     .ctg-trade, .ctg-head .ctg-h[data-ct-sort="trade"] { display: none; }
     .ctg-sub { display: block !important; }
     .ctg-act { grid-column: 1 / -1; justify-content: flex-start; }
@@ -505,7 +505,7 @@
   }
   @media (max-width: 560px) {
     .ctg-head { display: none; }
-    .ct-row.ctg { grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 12px; }
+    .ct-row.ctg { grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; }
     .ct-row.ctg .who { grid-column: 1 / -1; }
     .ctg-n { text-align: left; background: var(--panel-2); padding: 6px 10px; }
     .ctg-n small { display: block; font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); }
@@ -513,7 +513,7 @@
     .ctg-n.on small { color: var(--blue); }
     .ctg-lbl { display: inline; }
   }
-  @media (max-width: 480px) { #ctSortTabs button { padding: 6px 8px; } }
+  @media (max-width: 480px) { #ctSortTabs button { padding: 6px 7px; } }
   .wa-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; font-weight: 500; cursor: pointer; }
   .wa-assign input { width: 16px; height: 16px; accent-color: var(--brick); }
   .assignee-contact { font-size: .78rem; margin-top: 6px; color: var(--ink-soft); }
@@ -1850,13 +1850,13 @@
     });
   }
   var ctEditing = null, ctSort = { by: 'open', dir: 1 };
-  try { var savedSort = JSON.parse(localStorage.getItem('rr_ct_sort') || 'null'); if (savedSort && /^(open|total|owed|trade|name)$/.test(savedSort.by)) ctSort = { by: savedSort.by, dir: savedSort.dir === -1 ? -1 : 1 }; } catch (e) {}
+  try { var savedSort = JSON.parse(localStorage.getItem('rr_ct_sort') || 'null'); if (savedSort && /^(open|done|total|owed|trade|name)$/.test(savedSort.by)) ctSort = { by: savedSort.by, dir: savedSort.dir === -1 ? -1 : 1 }; } catch (e) {}
   function renderContractors(){
     var el = $('ctList');
     if (!contractors.length) { el.innerHTML = '<div class="empty" style="padding:20px">No contractors yet — add your first one below.</div>'; return; }
-    // Sort by open jobs, all jobs, what's owed, trade or name (removed contractors last).
+    // Sort by open, completed or all jobs, what's owed, trade or name (removed contractors last).
     var sortBy = ctSort.by, dir = ctSort.dir, stat = {};
-    var SORTS = [['open', 'Open', 'Most open jobs first', 'Fewest open jobs first'], ['total', 'All jobs', 'Most jobs first', 'Fewest jobs first'], ['owed', 'Owed', 'Most owed first', 'Least owed first'], ['trade', 'Trade', 'Trade A–Z', 'Trade Z–A'], ['name', 'A–Z', 'Name A–Z', 'Name Z–A']];
+    var SORTS = [['open', 'Open', 'Most open jobs first', 'Fewest open jobs first'], ['done', 'Done', 'Most completed first', 'Fewest completed first'], ['total', 'All', 'Most jobs first', 'Fewest jobs first'], ['owed', 'Owed', 'Most owed first', 'Least owed first'], ['trade', 'Trade', 'Trade A–Z', 'Trade Z–A'], ['name', 'A–Z', 'Name A–Z', 'Name Z–A']];
     $('ctSortTabs').className = 'tabs';
     $('ctSortTabs').innerHTML = SORTS.map(function(t){
       var on = t[0] === sortBy;
@@ -1864,7 +1864,7 @@
     }).join('');
     contractors.forEach(function(c){
       var mine = ctrJobs(c.name);
-      stat[c.id] = { open: mine.filter(isOpen).length, total: mine.length, owed: mine.filter(isOwed).reduce(function(a, j){ return a + num(j.actual_cost); }, 0) };
+      stat[c.id] = { open: mine.filter(isOpen).length, done: mine.filter(function(j){ return j.status === 'Completed'; }).length, total: mine.length, owed: mine.filter(isOwed).reduce(function(a, j){ return a + num(j.actual_cost); }, 0) };
     });
     var sorted = contractors.slice().sort(function(a, b){
       if (a.active !== b.active) return a.active ? -1 : 1;
@@ -1877,7 +1877,7 @@
     // A table: sortable column headings (the sorted column is tinted), grouped
     // by trade when sorting by trade, removed contractors in their own section.
     var act = sorted.filter(function(c){ return c.active; });
-    var tot = act.reduce(function(t, c){ t.open += stat[c.id].open; t.owed += stat[c.id].owed; return t; }, { open: 0, owed: 0 });
+    var tot = act.reduce(function(t, c){ t.open += stat[c.id].open; t.done += stat[c.id].done; t.owed += stat[c.id].owed; return t; }, { open: 0, done: 0, owed: 0 });
     var hcell = function(k, label, cls){
       var on = k === sortBy;
       return '<button type="button" class="ctg-h' + (cls ? ' ' + cls : '') + (on ? ' on' : '') + '" data-ct-sort="' + k + '" title="Sort by ' + esc(label.toLowerCase()) + (on ? ' — click to reverse' : '') + '">' + label + '<i>' + (on ? (dir > 0 ? '▼' : '▲') : '↕') + '</i></button>';
@@ -1892,6 +1892,7 @@
           '<span class="ctg-sub">' + esc([c.trade, c.notes].filter(Boolean).join(' · ') || '—') + '</span></div></div>' +
         '<div class="ctg-trade' + (sortBy === 'trade' ? ' on' : '') + '">' + (c.trade ? esc(c.trade) : '<span class="muted">—</span>') + '</div>' +
         numCell('open', 'Open', st.open, st.open) +
+        numCell('done', 'Done', st.done, st.done) +
         numCell('total', 'All jobs', st.total, st.total) +
         numCell('owed', 'Owed', st.owed, st.owed ? gbp(st.owed) : '£0', st.owed ? ' owe' : '') +
         '<div class="ctg-act">' +
@@ -1903,8 +1904,8 @@
         '</div>' +
       '</div>';
     };
-    var html = '<div class="ctg-sum">' + act.length + ' contractor' + (act.length === 1 ? '' : 's') + ' · ' + tot.open + ' open job' + (tot.open === 1 ? '' : 's') + ' · ' + (tot.owed ? '<b class="owe">' + gbp(tot.owed) + ' owed</b>' : 'nothing owed') + '</div>' +
-      '<div class="ctg ctg-head">' + hcell('name', 'Contractor') + hcell('trade', 'Trade') + hcell('open', 'Open', 'r') + hcell('total', 'All jobs', 'r') + hcell('owed', 'Owed', 'r') + '<span></span></div>';
+    var html = '<div class="ctg-sum">' + act.length + ' contractor' + (act.length === 1 ? '' : 's') + ' · ' + tot.open + ' open job' + (tot.open === 1 ? '' : 's') + ' · ' + tot.done + ' completed · ' + (tot.owed ? '<b class="owe">' + gbp(tot.owed) + ' owed</b>' : 'nothing owed') + '</div>' +
+      '<div class="ctg ctg-head">' + hcell('name', 'Contractor') + hcell('trade', 'Trade') + hcell('open', 'Open', 'r') + hcell('done', 'Done', 'r') + hcell('total', 'All jobs', 'r') + hcell('owed', 'Owed', 'r') + '<span></span></div>';
     var lastGroup = null;
     act.forEach(function(c){
       if (sortBy === 'trade') {
