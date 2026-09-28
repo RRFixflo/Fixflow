@@ -528,6 +528,8 @@
   .cert-chip { display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; font-weight: 650; color: var(--ink-soft); background: var(--panel-2); border-radius: 999px; padding: 2px 8px 2px 3px; }
   .cert-cell .ct { display: flex; align-items: center; gap: 6px; }
   .cert-prop { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
+  .cert-addr .link .go { color: var(--blue); font-weight: 700; }
+  .cert-addr .link:hover { color: var(--blue); }
   .cert-addr .link { border: 0; background: none; padding: 0; font: inherit; font-weight: 650; color: var(--ink); cursor: pointer; text-align: left; }
   .cert-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
   .cert-cell { border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 4px; }
@@ -2232,7 +2234,8 @@
     var p = propertiesFromJobs().filter(function(x){ return x.key === openPropKey; })[0];
     if (!p) {
       // A property linked to a landlord or tenant but with no jobs yet.
-      var link = llByKey[openPropKey] || tenantLinks.filter(function(l){ return l.property_key === openPropKey; })[0];
+      var link = llByKey[openPropKey] || tenantLinks.filter(function(l){ return l.property_key === openPropKey; })[0] ||
+        certs.filter(function(c){ return c.property_key === openPropKey; })[0] || certProperties().filter(function(x){ return x.key === openPropKey; })[0];
       if (!link) return null;
       p = { key: openPropKey, address: link.address || openPropKey, jobs: [], latest: 0 };
     }
@@ -4968,7 +4971,7 @@
     }).sort(function(a, b){ return a.rank - b.rank || a.p.address.localeCompare(b.p.address); });
     if (!rows.length) { $('certList').innerHTML = '<div class="empty">' + (certFilter === 'action' ? 'Nothing needs booking right now. 🎉' : certFilter === 'missing' ? 'Every property has its certificates recorded.' : 'No properties match.') + '</div>'; return; }
     $('certList').innerHTML = rows.map(function(r){
-      return '<div class="cert-prop"><div class="cert-addr"><button type="button" class="link" data-cert-prop="' + esc(r.p.key) + '">' + esc(r.p.address) + '</button> <button type="button" class="addr-edit" data-addr-edit="' + esc(r.p.address) + '">✎ Edit</button></div><div class="cert-grid">' +
+      return '<div class="cert-prop"><div class="cert-addr"><button type="button" class="link" data-cert-prop="' + esc(r.p.key) + '">' + esc(r.p.address) + ' <span class="go">›</span></button> <button type="button" class="addr-edit" data-cert-prop="' + esc(r.p.key) + '">🏠 Open property</button> <button type="button" class="addr-edit" data-addr-edit="' + esc(r.p.address) + '">✎ Edit</button></div><div class="cert-grid">' +
         r.cells.map(function(x){ return certCellHtml(x, r.p.address); }).join('') + '</div></div>';
     }).join('');
   }
@@ -4995,7 +4998,7 @@
     else if (b.dataset.certEdit) openCertEdit(b.dataset.addr, b.dataset.certEdit);
     else if (b.dataset.certBook) bookCert(b.dataset.addr, b.dataset.certBook, b);
     else if (b.dataset.openJob) openJob(Number(b.dataset.openJob));
-    else if (b.dataset.certProp) { var pr = propertiesFromJobs().filter(function(x){ return x.key === b.dataset.certProp; })[0]; if (pr) openProperty(pr.key); }
+    else if (b.dataset.certProp) openProperty(b.dataset.certProp);
   }
   $('certList').addEventListener('click', certClick);
   $('propCerts').addEventListener('click', certClick);
