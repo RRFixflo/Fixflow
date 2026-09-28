@@ -2301,26 +2301,43 @@
   $('propsBtnM').addEventListener('click', function(){ $('navProps').click(); });
   $('navJobs').addEventListener('click', function(){ showView('jobs'); });
 
+  // Every property: those with repairs, plus ones known from a tenancy,
+  // landlord or certificate (with no repairs yet).
+  function allPropsForList(){
+    var list = propertiesFromJobs(), have = {};
+    list.forEach(function(p){ have[p.key] = true; });
+    certProperties().forEach(function(x){
+      if (have[x.key]) return;
+      var t = tenancies.filter(function(tc){ return tc.property_key === x.key; })[0];
+      list.push({ key: x.key, address: x.address, jobs: [], latest: t ? new Date(t.updated_at || t.created_at).getTime() : 0 });
+    });
+    return list.sort(function(a, b){ return b.latest - a.latest; });
+  }
+  function propTenantNames(p){
+    var names = p.jobs.map(function(j){ return j.tenant_name; });
+    tenancies.forEach(function(t){ if (t.property_key === p.key) names = names.concat(tcyNames((t.data || {}).tenants)); });
+    return Array.from(new Set(names.filter(Boolean))).slice(0, 3).join(', ');
+  }
   function renderProps(){
     var raw = $('propSearch').value.trim().toLowerCase(), q = propKey(raw);
-    var props = propertiesFromJobs().filter(function(p){
+    var props = allPropsForList().filter(function(p){
       if (!raw) return true;
-      var text = p.jobs.map(function(j){ return (j.property_address || '').toLowerCase(); }).join(' | ');
+      var text = [p.address.toLowerCase()].concat(p.jobs.map(function(j){ return (j.property_address || '').toLowerCase(); })).join(' | ');
       return (q && p.key.indexOf(q) !== -1) || text.indexOf(raw) !== -1 || text.replace(/\s+/g, '').indexOf(raw.replace(/\s+/g, '')) !== -1;
     });
     var el = $('propList');
     if (!props.length) {
-      el.innerHTML = '<div class="empty">' + (jobs.length ? 'No property matches.' : 'Properties appear here once jobs come in.') + '</div>';
+      el.innerHTML = '<div class="empty">' + (raw ? 'No property matches.' : 'Properties appear here once jobs or tenancies are added.') + '</div>';
       return;
     }
     el.innerHTML = props.map(function(p){
       var open = p.jobs.filter(isOpen).length;
       return '<button type="button" class="prop-row" data-key="' + esc(p.key) + '">' +
         '<div><div class="addr">' + esc(p.address) + '</div><div class="prop-sub" style="margin-top:2px">' +
-          esc(Array.from(new Set(p.jobs.map(function(j){ return j.tenant_name; }).filter(Boolean))).slice(0, 3).join(', ') || 'No tenant name') + '</div>' + certChips(p.key) + '</div>' +
+          esc(propTenantNames(p) || 'No tenant name') + '</div>' + certChips(p.key) + '</div>' +
         '<div class="num">' + p.jobs.length + '<small>repair' + (p.jobs.length === 1 ? '' : 's') + '</small></div>' +
         '<div class="num' + (open ? ' hot' : '') + '">' + open + '<small>open</small></div>' +
-        '<div class="last">' + esc(fmtShort(p.latest)) + '<small>last reported</small></div>' +
+        '<div class="last">' + (p.jobs.length ? esc(fmtShort(p.latest)) + '<small>last reported</small>' : '—<small>no repairs yet</small>') + '</div>' +
         '<span class="row-edit" data-prop-edit="' + esc(p.address) + '" role="button" tabindex="0" title="Edit address">✎</span><span class="chev">›</span></button>';
     }).join('');
   }
@@ -5086,6 +5103,7 @@
     var add = function(addr){ if (!addr) return; var k = propKey(addr); if (!k) return; var cur = map[k]; if (!cur || (addressProblem(cur) && !addressProblem(addr)) || (!addressProblem(addr) === !addressProblem(cur) && addr.length > cur.length)) map[k] = addr; };
     propertiesFromJobs().forEach(function(p){ add(p.address); });
     certs.forEach(function(c){ add(c.address); });
+    tenancies.forEach(function(t){ add(t.address); });
     landlords.forEach(function(l){ llProperties(l).forEach(function(x){ add(x.address); }); });
     return Object.keys(map).map(function(k){ return { key: k, address: map[k] }; });
   }
