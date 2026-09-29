@@ -4112,26 +4112,37 @@
     var oneHome = jobs.every(function(j){ return propKey(j.property_address) === propKey(jobs[0].property_address); });
     var isDone = function(j){ return j.status === 'Completed'; };
     var allDone = jobs.every(isDone);
+    // Each job: what the issue is (type, where, the tenant's own words, photos),
+    // then where it's up to, then the link to follow it.
+    var clean = function(t, max){ t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > max ? t.slice(0, max - 1).replace(/\s+\S*$/, '') + '…' : t; };
     var line = function(j){
-      var appt = apptText(j), link = links[j.id], who = llWho(j);
+      var appt = apptText(j), link = links[j.id], plink = links['p' + j.id], who = llWho(j);
+      var head = llWorkText(j) + (oneHome ? '' : ' at ' + shortAddr(j.property_address)) + ' (ref ' + j.ref + ')';
+      var det = [];
+      var cat = String(j.category || '').trim();
+      if (cat && head.toLowerCase().indexOf(cat.toLowerCase()) === -1 && !/^other$/i.test(cat)) det.push('Type of repair: ' + cat);
+      if (j.location) det.push('Where: ' + clean(j.location, 120));
+      var desc = clean(j.description, 500);
+      if (desc && desc.toLowerCase() !== llWorkText(j).toLowerCase()) det.push('What the tenant told us: “' + desc + '”');
+      if (plink) det.push('Photos from the tenant: ' + plink);
+      var status;
       if (isDone(j)) {
         var when = j.completed_at ? new Date(j.completed_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
-        return llWorkText(j) + (oneHome ? '' : ' at ' + shortAddr(j.property_address)) + ' (ref ' + j.ref + '): ✅ completed' + (when ? ' on ' + when : '') + '.' +
-          (link ? '\nSee the details: ' + link : '');
-      }
-      if (!j.assigned_to) {
+        var notes = clean(String(j.completion_notes || '').replace(/Their price:[^.]*\.?/gi, ''), 400);
+        status = '✅ Completed' + (when ? ' on ' + when : '') + '.' + (notes ? '\nWhat was done: ' + notes : '');
+      } else if (!j.assigned_to) {
         var rep = new Date(j.created_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-        return llWorkText(j) + (oneHome ? '' : ' at ' + shortAddr(j.property_address)) + ' (ref ' + j.ref + '): reported by the tenant on ' + rep + (j.urgency === 'Emergency' ? ' as an emergency' : j.urgency === 'Urgent' ? ' as urgent' : '') + '. We’re arranging a contractor and will keep you posted.' +
-          (link ? '\nSee the report and follow the progress: ' + link : '');
+        status = 'Reported by the tenant on ' + rep + (j.urgency === 'Emergency' ? ' as an emergency' : j.urgency === 'Urgent' ? ' as urgent' : '') + '. We’re arranging a contractor and will keep you posted.';
+      } else {
+        status = (who ? 'We’ve instructed ' + who + '.' : 'We’ve reported it to the council, who handle this repair.') +
+          (appt ? ' The visit is booked for ' + appt + '.' : who ? ' They’re arranging a time to attend with the tenant.' : '');
       }
-      return llWorkText(j) + (oneHome ? '' : ' at ' + shortAddr(j.property_address)) + ' (ref ' + j.ref + '): ' +
-        (who ? 'we’ve instructed ' + who + '.' : 'we’ve reported it to the council, who handle this repair.') +
-        (appt ? ' The visit is booked for ' + appt + '.' : who ? ' They’re arranging a time to attend with the tenant.' : '') +
-        (link ? '\nFollow the progress: ' + link : '');
+      return head + '\n' + det.map(function(x){ return '– ' + x; }).join('\n') + (det.length ? '\n' : '') + status +
+        (link ? '\n' + (isDone(j) ? 'See the details: ' : !j.assigned_to ? 'See the report and follow the progress: ' : 'Follow the progress: ') + link : '');
     };
     var body = jobs.length === 1
       ? (allDone ? 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : !jobs[0].assigned_to ? 'Just to let you know, a repair has been reported at ' + shortAddr(jobs[0].property_address) + '.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
-      : 'Here’s an update on the work at ' + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j){ return '• ' + line(j); }).join('\n\n');
+      : 'Here’s an update on the work at ' + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j, i){ return (i + 1) + '. ' + line(j); }).join('\n\n');
     return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone ? 'Please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.') + '\n\nKind regards,\nResidential Realtors';
   }
   function openLandlordNotice(list){
@@ -4154,7 +4165,7 @@
       $('ttList').innerHTML = groups.map(function(g, i){
         var wa = waNumber(g.phone);
         return '<div class="tt-card" data-i="' + i + '"><div class="tt-who">' + avatar(g.name || '?') + '<div><strong>' + esc(g.name || 'Landlord') + '</strong><div class="prop-sub" style="margin:0">' + esc([g.phone, g.email].filter(Boolean).join(' · ')) + (g.jobs.length > 1 ? ' · ' + g.jobs.length + ' jobs' : '') + '</div></div></div>' +
-          '<textarea class="inp tt-msg" rows="9">' + esc(landlordMessage(g, links)) + '</textarea>' +
+          '<textarea class="inp tt-msg" rows="12">' + esc(landlordMessage(g, links)) + '</textarea>' +
           '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(String(g.name || 'landlord').replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, '').split(' ')[0]) + '</button>' : '') +
             (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? 'Send email' : 'Email') + '</button>' : '') +
             '<button type="button" class="btn ghost" data-tt="copy">Copy</button><span class="tt-done" hidden>✓ Sent</span></div></div>';
@@ -4163,8 +4174,12 @@
     draw();
     $('ttModal').hidden = false;
     var all = [].concat.apply([], groups.map(function(g){ return g.jobs; }));
-    Promise.all(all.map(function(j){ return trackUrls[j.id] ? Promise.resolve({ ok: true, url: trackUrls[j.id], id: j.id }) : api('POST', '/api/admin/jobs/' + j.id + '/track-link', {}).then(function(d){ d.id = j.id; return d; }); }))
+    var withPhotos = all.filter(function(j){ var lj = jobs.filter(function(x){ return x.id === j.id; })[0] || j; return (lj.photo_ids || []).length || lj.photos_saved; }).map(function(j){ return j.id; });
+    var photoReq = withPhotos.length ? api('POST', '/api/admin/photo-links', { job_ids: withPhotos }).then(function(d){ return d.ok ? d.links || {} : {}; })['catch'](function(){ return {}; }) : Promise.resolve({});
+    Promise.all(all.map(function(j){ return trackUrls[j.id] ? Promise.resolve({ ok: true, url: trackUrls[j.id], id: j.id }) : api('POST', '/api/admin/jobs/' + j.id + '/track-link', {}).then(function(d){ d.id = j.id; return d; }); }).concat([photoReq]))
       .then(function(res){
+        var pl = res.pop() || {};
+        Object.keys(pl).forEach(function(id){ links['p' + id] = pl[id]; });
         res.forEach(function(d){ if (d && d.ok) { links[d.id] = d.url; trackUrls[d.id] = d.url; } });
         if (ttMode !== 'landlord') return;
         $('ttList').querySelectorAll('.tt-card').forEach(function(card){
