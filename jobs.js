@@ -1781,17 +1781,33 @@ module.exports = function mountJobs(app, opts) {
     return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">' +
       '<link rel="icon" type="image/png" sizes="32x32" href="/icons/app-32.png"><link rel="apple-touch-icon" sizes="180x180" href="/icons/app-180.png">' +
       '<title>' + htmlEsc(title) + ' — Residential Realtors</title><style>' +
-      ':root{--ink:#0b0c0f;--soft:#5b616e;--line:#e6e7eb;--red:#D9262E;--ok:#139A4B;--bg:#f6f6f8}' +
-      '*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}' +
-      'header{background:#0e0f13;color:#fff;padding:18px 16px}header .in{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:10px}header b{color:var(--red)}header a{color:#fff;text-decoration:none;font-weight:700}header .logo{display:inline-flex}header .logo img{height:36px;width:auto;display:block}' +
-      'main{max-width:640px;margin:0 auto;padding:18px 16px 60px}h1{font-size:1.35rem;margin:0 0 6px;letter-spacing:-.02em}.sub{color:var(--soft);margin:0 0 18px}' +
-      'form{display:flex;gap:8px;margin:0 0 18px}form[hidden]{display:none}form.stack{flex-direction:column}.tabs{display:inline-flex;background:#ececf0;border-radius:12px;padding:3px;margin:0 0 12px}.tabs button{background:none;color:var(--soft);padding:8px 14px;border-radius:9px}.tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}input{flex:1;min-width:0;padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit;background:#fff}button{padding:12px 18px;border:0;border-radius:12px;background:var(--ink);color:#fff;font:inherit;font-weight:600;cursor:pointer}' +
-      '.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}.ref{font-weight:700}.muted{color:var(--soft);font-size:.9rem}' +
+      ':root{--ink:#0b0c0f;--soft:#5b616e;--faint:#8b919c;--line:#e8e9ed;--red:#D9262E;--ok:#139A4B;--okt:#e9f7ef;--blue:#2F5BEA;--bluet:#eef2fe;--amber:#c26a00;--ambert:#fef4e6;--bg:#f4f5f7;--card:#fff;--shadow:0 1px 2px rgba(16,18,24,.04),0 8px 24px -12px rgba(16,18,24,.12)}' +
+      '*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Inter,Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}' +
+      'header{background:linear-gradient(180deg,#0e0f13,#16181e);color:#fff;padding:16px 16px 18px}header .in{max-width:640px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px}header b{color:var(--red)}header a{color:#fff;text-decoration:none;font-weight:700}header .logo{display:inline-flex}header .logo img{height:34px;width:auto;display:block}header .tag{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:#9da2ad;font-weight:600}' +
+      'main{max-width:640px;margin:0 auto;padding:16px 16px 48px}h1{font-size:1.45rem;margin:0 0 4px;letter-spacing:-.025em;line-height:1.2}.sub{color:var(--soft);margin:0 0 18px}' +
+      'form{display:flex;gap:8px;margin:0 0 18px}form[hidden]{display:none}form.stack{flex-direction:column}.tabs{display:inline-flex;background:#e9eaee;border-radius:12px;padding:3px;margin:0 0 12px}.tabs button{background:none;color:var(--soft);padding:8px 14px;border-radius:9px}.tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}input{flex:1;min-width:0;padding:12px 14px;border:1px solid #d9dbe1;border-radius:12px;font:inherit;background:#fff}input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--bluet)}button{padding:12px 18px;border:0;border-radius:12px;background:var(--ink);color:#fff;font:inherit;font-weight:600;cursor:pointer}' +
+      '.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:12px;box-shadow:var(--shadow)}.ref{font-weight:700}.muted{color:var(--soft);font-size:.9rem}' +
       '.steps{display:flex;gap:6px;margin:14px 0 8px}.steps div{flex:1;height:6px;border-radius:6px;background:#e7e8ec}.steps div.on{background:var(--ok)}' +
       '.labels{display:flex;justify-content:space-between;font-size:.72rem;color:var(--soft);gap:4px}.labels span.on{color:var(--ink);font-weight:600}' +
       '.status{font-weight:600;margin:10px 0 2px}.upd{border-top:1px solid var(--line);padding-top:10px;margin-top:10px;white-space:pre-line;font-size:.92rem}.upd .d{font-size:.78rem;color:var(--soft);font-weight:600}' +
-      'a.more{color:#2F5BEA;font-weight:600;text-decoration:none}a.back{display:inline-flex;align-items:center;gap:4px;color:var(--soft);font-weight:600;font-size:.92rem;text-decoration:none;margin:0 0 12px;padding:6px 0}a.back:hover{color:var(--ink)}.note{font-size:.85rem;color:var(--soft);margin-top:18px}</style></head><body>' +
-      '<header><div class="in">' + (bare ? '<span class="logo"><img src="/logo-white.png" alt="Residential Realtors"></span>' : '<a class="logo" href="/"><img src="/logo-white.png" alt="Residential Realtors"></a>') + '</div></header><main>' + (bare ? '' : '<a class="back" href="/" onclick="if(history.length>1){history.back();return false}">&larr; Back</a>') + inner + '</main><script src="/rrt.js" defer></script></body></html>';
+      'a.more{color:var(--blue);font-weight:600;text-decoration:none}a.back{display:inline-flex;align-items:center;gap:4px;color:var(--soft);font-weight:600;font-size:.9rem;text-decoration:none;margin:0 0 10px;padding:6px 0}a.back:hover{color:var(--ink)}.note{font-size:.85rem;color:var(--soft);margin-top:18px}' +
+      'footer{max-width:640px;margin:0 auto;padding:0 16px 32px;color:var(--faint);font-size:.78rem;text-align:center}' +
+      /* repair tracker */
+      '.hero{padding:20px}.chip{display:inline-flex;align-items:center;gap:6px;font-size:.74rem;font-weight:700;letter-spacing:.04em;padding:4px 10px;border-radius:999px;background:#f0f1f4;color:var(--soft)}.chip i{width:7px;height:7px;border-radius:50%;background:currentColor}' +
+      '.chip.blue{background:var(--bluet);color:var(--blue)}.chip.ok{background:var(--okt);color:var(--ok)}.chip.amber{background:var(--ambert);color:var(--amber)}.chip.grey{background:#f0f1f4;color:var(--soft)}' +
+      '.hero-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}.hero h1{font-size:1.3rem;margin:0}.addr{display:flex;align-items:center;gap:6px;color:var(--soft);font-size:.92rem;margin-top:6px}.addr svg{flex:none}' +
+      '.now{display:flex;gap:14px;align-items:flex-start;margin-top:16px;padding:14px;border-radius:14px;background:#f7f8fa}.now .ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;flex:none}.now .ic svg{width:22px;height:22px}' +
+      '.now.blue .ic{background:var(--bluet);color:var(--blue)}.now.ok .ic{background:var(--okt);color:var(--ok)}.now.amber .ic{background:var(--ambert);color:var(--amber)}.now.grey .ic{background:#eceef1;color:var(--soft)}' +
+      '.now h2{font-size:1.02rem;margin:0 0 3px;letter-spacing:-.01em}.now p{margin:0;color:var(--soft);font-size:.9rem}' +
+      '.sec{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}' +
+      '.tl{list-style:none;margin:0;padding:0}.tl li{position:relative;display:flex;gap:14px;padding-bottom:18px}.tl li:last-child{padding-bottom:0}.tl li:not(:last-child)::before{content:"";position:absolute;left:13px;top:28px;bottom:2px;width:2px;background:var(--line)}.tl li.done:not(:last-child)::before{background:var(--ok)}' +
+      '.tl .dot{width:28px;height:28px;border-radius:50%;flex:none;display:grid;place-items:center;background:#fff;border:2px solid #d9dbe1;color:#fff}.tl li.done .dot{background:var(--ok);border-color:var(--ok)}.tl li.cur .dot{border-color:var(--blue);box-shadow:0 0 0 4px var(--bluet)}.tl li.cur .dot::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--blue)}' +
+      '.tl .t{font-weight:600;font-size:.95rem;line-height:28px}.tl li.todo .t{color:var(--faint);font-weight:500}.tl .s{color:var(--soft);font-size:.84rem;margin-top:-2px}' +
+      '.facts{display:grid;grid-template-columns:1fr 1fr;gap:10px}.fact{background:#f7f8fa;border-radius:12px;padding:10px 12px}.fact .k{font-size:.72rem;color:var(--faint);font-weight:600;text-transform:uppercase;letter-spacing:.05em}.fact .v{font-weight:600;font-size:.92rem;margin-top:2px}' +
+      '.msg{border-top:1px solid var(--line);padding:14px 0 0;margin-top:14px}.sec+.msg{border-top:0;margin-top:0;padding-top:0}.msg .d{font-size:.78rem;color:var(--faint);font-weight:600;margin-bottom:4px}.msg .h{font-weight:650;font-size:.94rem;margin-bottom:4px}.msg .b{white-space:pre-line;font-size:.92rem;color:#2b2e36}' +
+      '.help{display:flex;flex-direction:column;gap:10px}.help p{margin:0;color:var(--soft);font-size:.9rem}.btns{display:flex;flex-wrap:wrap;gap:8px}.btn2{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 16px;border-radius:12px;font-weight:600;font-size:.9rem;text-decoration:none;background:var(--ink);color:#fff}.btn2.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}' +
+      '@media (max-width:420px){.facts{grid-template-columns:1fr 1fr}.hero h1{font-size:1.18rem}}</style></head><body>' +
+      '<header><div class="in">' + (bare ? '<span class="logo"><img src="/logo-white.png" alt="Residential Realtors"></span>' : '<a class="logo" href="/"><img src="/logo-white.png" alt="Residential Realtors"></a>') + '<span class="tag">Maintenance</span></div></header><main>' + (bare ? '' : '<a class="back" href="/" onclick="if(history.length>1){history.back();return false}">&larr; Back</a>') + inner + '</main><footer>Residential Realtors · Property maintenance</footer><script src="/rrt.js" defer></script></body></html>';
   }
   function progressHtml(j) {
     const st = stageOf(j.status), cancelled = j.status === 'Cancelled';
@@ -1900,25 +1916,84 @@ module.exports = function mountJobs(app, opts) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     const token = String(req.params.token || '');
     if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
-    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, appointment_date, appointment_time
+    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, appointment_date, appointment_time, assigned_to
       FROM jobs WHERE track_token = $1 AND archived_at IS NULL`, [token])).rows[0];
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (!j) return res.status(404).send(trackShell('Repair not found', '<h1>Repair not found</h1><p class="sub">This link is no longer available. <a class="more" href="/track">Look up a repair</a></p>'));
     const u = (await p.query(`SELECT created_at, body FROM job_updates WHERE job_id = $1 AND kind = 'tenant_message' ORDER BY created_at DESC LIMIT 10`, [j.id])).rows;
+    // Contractor names never show here (this link also goes to landlords).
+    const names = (await p.query("SELECT name FROM contractors WHERE coalesce(trim(name), '') <> ''")).rows.map(function (r) { return r.name.trim(); });
+    if (j.assigned_to && names.indexOf(j.assigned_to.trim()) === -1) names.push(j.assigned_to.trim());
+    names.sort(function (a, b) { return b.length - a.length; });
+    const reEsc = function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+    const pubAddr = publicAddress(j.property_address);
+    // A logged message is "<how> — <subject>\n\n<message>" or "Told the tenant …:\n\n<message>".
+    // Show just the subject and the message itself: no log wording, greeting,
+    // sign-off, links, contractor names or door numbers.
+    const seenMsg = {};
     const updates = u.map(function (x) {
-      // Stored as "<how> — <subject>\n\n<message>": show the subject and message.
-      let text = String(x.body || '').replace(/^[^\n]*? — /, '').slice(0, 1500);
-      // Our messages quote the full address; show it without the door number here.
-      if (j.property_address) text = text.split(j.property_address).join(publicAddress(j.property_address));
-      return '<div class="upd"><div class="d">' + whenUk(x.created_at) + '</div>' + htmlEsc(text) + '</div>';
+      let raw = String(x.body || ''), head = '';
+      const nl = raw.indexOf('\n');
+      const first = nl === -1 ? raw : raw.slice(0, nl);
+      if (/ — /.test(first)) { head = first.replace(/^[^\n]*? — /, '').trim(); raw = raw.slice(first.length); }
+      else if (/^(told the tenant|sent on whatsapp|copied|opened in|emailed tenant)/i.test(first)) raw = raw.slice(first.length);
+      let lines = raw.replace(/\r/g, '').split('\n');
+      lines = lines.filter(function (l) { return !/https?:\/\//.test(l) && !/check the progress|follow the progress/i.test(l); });
+      while (lines.length && !lines[0].trim()) lines.shift();
+      if (lines.length && /^(hi|dear|hello)\b[^\n]{0,60},\s*$/i.test(lines[0].trim())) lines.shift();
+      const signOff = lines.findIndex(function (l) { return /^(thanks|thank you|kind regards|best regards|regards|many thanks)\b[,!.]?\s*$/i.test(l.trim()); });
+      if (signOff !== -1) lines = lines.slice(0, signOff);
+      let text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 1500);
+      if (j.property_address) { text = text.split(j.property_address).join(pubAddr); head = head.split(j.property_address).join(pubAddr); }
+      names.forEach(function (n) { const re = new RegExp('\\b' + reEsc(n) + '\\b', 'gi'); text = text.replace(re, 'our contractor'); head = head.replace(re, 'our contractor'); });
+      text = text.replace(/\b(We’ve|We've) booked our contractor for/g, '$1 booked a contractor for').replace(/^our contractor/gm, 'Our contractor');
+      head = head.replace(/\s*\[RR-\d+\]\s*/g, ' ').trim();
+      text = text.replace(/^This is Residential Realtors\.\s*/i, '');
+      if (!text && !head) return '';
+      // The same message sent twice (WhatsApp and email, say) shows once.
+      const key = (head + '|' + text).toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 160);
+      if (seenMsg[key]) return '';
+      seenMsg[key] = 1;
+      return '<div class="msg"><div class="d">' + whenUk(x.created_at) + '</div>' + (head ? '<div class="h">' + htmlEsc(head) + '</div>' : '') + (text ? '<div class="b">' + htmlEsc(text) + '</div>' : '') + '</div>';
     }).join('');
+    const st = stageOf(j.status), cancelled = j.status === 'Cancelled', held = j.status === 'On hold';
+    const appt = !cancelled && j.status !== 'Completed' ? apptText(j) : '';
+    const tone = cancelled || held ? 'grey' : st === 3 ? 'ok' : st === 1 ? 'amber' : 'blue';
+    const ICONS = {
+      inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13l3.5 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/></svg>',
+      tool: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>',
+      cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M16 3v3M8 3v3M3 10h18"/></svg>',
+      check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+      pause: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/></svg>'
+    };
+    const headline = cancelled ? 'This repair has been closed' : held ? 'On hold for now' : j.status === 'Completed' ? 'Repair completed' + (j.completed_at ? ' on ' + whenUk(j.completed_at) : '')
+      : appt ? 'Booked for ' + appt : st === 2 ? 'Contractor arranged' : st === 1 ? 'Arranging a contractor' : 'Report received';
+    const icon = cancelled || held ? ICONS.pause : st === 3 ? ICONS.check : appt || st === 2 ? ICONS.cal : st === 1 ? ICONS.tool : ICONS.inbox;
+    const chipText = cancelled ? 'Closed' : held ? 'On hold' : j.status === 'Completed' ? 'Completed' : appt ? 'Booked' : (PUBLIC_STATUS[j.status] || (st === 1 ? 'In progress' : 'Received'));
+    const stepSub = [whenUk(j.created_at), st >= 1 ? (st === 1 ? 'In progress' : 'Done') : '', appt || (st >= 2 ? (st === 2 ? 'The contractor will be in touch' : 'Done') : ''), j.completed_at && st === 3 ? whenUk(j.completed_at) : ''];
+    const steps = STAGES.map(function (x, i) {
+      const cls = cancelled ? 'todo' : i < st || st === 3 ? 'done' : i === st ? 'cur' : 'todo';
+      return '<li class="' + cls + '"><span class="dot">' + (cls === 'done' ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>' : '') + '</span>' +
+        '<div><div class="t">' + x.label + '</div>' + (stepSub[i] ? '<div class="s">' + htmlEsc(stepSub[i]) + '</div>' : '') + '</div></li>';
+    }).join('');
+    const pin = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
     res.send(trackShell('Repair ' + refFor(j.id),
-      '<h1>Repair ' + refFor(j.id) + '</h1><p class="sub">' + htmlEsc(publicAddress(j.property_address)) + '</p>' +
-      '<div class="card"><div class="ref">' + htmlEsc(issueText(j) || 'Repair') + '</div>' +
-        '<div class="muted">Reported ' + whenUk(j.created_at) + (j.status !== 'Completed' && TARGET[j.urgency] ? ' · ' + j.urgency + ' repairs are usually dealt with ' + TARGET[j.urgency] : '') + '</div>' +
-        progressHtml(j) + '<div class="muted" style="margin-top:8px">Last updated ' + whenUk(j.updated_at) + '</div></div>' +
-      (updates ? '<div class="card"><strong>Updates from us</strong>' + updates + '</div>' : '') +
-      '<p class="note">Questions about this repair? Reply to our last message and quote ' + refFor(j.id) + '. <a class="more" href="/track">Look up another repair</a></p>'));
+      '<div class="card hero">' +
+        '<div class="hero-top"><span class="chip">' + refFor(j.id) + '</span><span class="chip ' + tone + '"><i></i>' + htmlEsc(chipText) + '</span></div>' +
+        '<h1>' + htmlEsc(issueText(j) || 'Repair') + '</h1>' +
+        '<div class="addr">' + pin + htmlEsc(pubAddr) + '</div>' +
+        '<div class="now ' + tone + '"><span class="ic">' + icon + '</span><div><h2>' + htmlEsc(headline) + '</h2><p>' + htmlEsc(appt ? 'Please make sure someone can give access, or let us know if this time doesn’t suit.' : statusNote(j)) + '</p></div></div>' +
+      '</div>' +
+      '<div class="card"><div class="sec">Progress</div><ol class="tl">' + steps + '</ol></div>' +
+      '<div class="card"><div class="sec">Details</div><div class="facts">' +
+        '<div class="fact"><div class="k">Reference</div><div class="v">' + refFor(j.id) + '</div></div>' +
+        '<div class="fact"><div class="k">Reported</div><div class="v">' + whenUk(j.created_at) + '</div></div>' +
+        '<div class="fact"><div class="k">Priority</div><div class="v">' + htmlEsc(j.urgency || 'Routine') + (j.status !== 'Completed' && TARGET[j.urgency] ? '<div class="muted" style="font-weight:400;font-size:.78rem">Usually ' + TARGET[j.urgency] + '</div>' : '') + '</div></div>' +
+        '<div class="fact"><div class="k">Last updated</div><div class="v">' + whenUk(j.updated_at) + '</div></div>' +
+      '</div></div>' +
+      (updates ? '<div class="card"><div class="sec">Updates from us</div>' + updates + '</div>' : '') +
+      '<div class="card help"><div class="sec" style="margin:0">Need help?</div><p>Questions about this repair? Reply to our last message and quote <strong>' + refFor(j.id) + '</strong>.</p>' +
+        '<div class="btns"><a class="btn2" href="/">Report another repair</a><a class="btn2 ghost" href="/track">Look up a repair</a></div></div>'));
   }));
 
   // ---------- Photo links for contractors ----------
