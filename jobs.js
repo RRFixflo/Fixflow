@@ -523,7 +523,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
   function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function day(v){ if (!v) return ''; var d = new Date(String(v).length === 10 ? v + 'T12:00:00' : v); return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); }
   function item(icon, label, v){ return v ? '<div class="it"><span class="ic">' + icon + '</span><div><div class="lb">' + label + '</div><div class="vl">' + esc(v) + '</div></div></div>' : ''; }
-  function first(n){ var w = String(n || '').trim().split(/\\s+/).filter(function(x){ return !/^(mr|mrs|ms|miss|mx|dr)\\.?$/i.test(x); }); return w[0] || ''; }
+  function first(n){ var s = String(n || '').trim(), m = /^(mr|mrs|ms|miss|mx|dr)\\.?\\s+(.+)$/i.exec(s); if (/^tenant$/i.test(s)) return ''; if (m) { var t = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase(), w = m[2].split(/\\s+/); return t + ' ' + (w.length > 1 && w[0].replace(/\\./g, '').length === 1 ? w[w.length - 1] : w[0]); } return s.split(/\\s+/)[0] || ''; }
   function wa(v){ var n = String(v || '').replace(/[^0-9]/g, ''); if (/^0\\d{9,10}$/.test(n)) n = '44' + n.slice(1); return n.length >= 10 ? n : ''; }
   function load(){
     fetch('/api/c/' + TOKEN + '/jobs').then(function(r){ return r.json(); }).then(function(d){

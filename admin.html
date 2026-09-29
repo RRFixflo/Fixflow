@@ -3741,7 +3741,7 @@
   function ymd(d){ return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function fillTemplate(t, j){
     var vals = {
-      name: j.tenant_name || 'Tenant',
+      name: greetName(j.tenant_name) || 'Tenant',
       ref: j.ref, address: j.property_address || 'your property',
       issue: ([j.affected, j.symptom].filter(Boolean).join(' – ') || j.category || 'repair').toLowerCase(),
       assigned: j.assigned_to || 'our contractor', next: j.next_steps || '[NEXT STEPS]',
@@ -3800,14 +3800,28 @@
     return t ? 'your repair (' + t.charAt(0).toLowerCase() + t.slice(1) + ')' : 'your repair';
   }
   function shortAddr(a){ return String(a || '').split(',').slice(0, 2).join(',').trim() || 'your home'; }
+  // How to greet a tenant: title and first name ("Miss Adeife"), title and
+  // surname when there's no first name ("Mrs Patel", "Mr A Khan" → "Mr Khan"),
+  // otherwise the first name. Empty when there's no real name.
+  function greetName(n){
+    var s = String(n || '').trim();
+    if (!s || /^tenant$/i.test(s)) return '';
+    var m = /^(mr|mrs|ms|miss|mx|dr)\.?\s+(.+)$/i.exec(s);
+    if (m) {
+      var t = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase(), w = m[2].split(/\s+/);
+      return t + ' ' + (w.length > 1 && w[0].replace(/\./g, '').length === 1 ? w[w.length - 1] : w[0]);
+    }
+    var f = s.split(/\s+/)[0];
+    return f.replace(/\./g, '').length > 1 ? f : s;
+  }
   function tenantMessage(group, contractor, links){
-    var first = String(group.name || '').trim().split(/\s+/)[0];
+    var first = greetName(group.name);
     var what = group.jobs.map(function(j){ return workText(j); });
     var whatText = what.length > 1 ? what.slice(0, -1).join(', ') + ' and ' + what[what.length - 1] : what[0];
     var direct = group.jobs.some(function(j){ return j.direct_contact !== 'No'; });
     var appt = group.jobs.map(function(j){ return apptText(j); }).filter(Boolean)[0];
     var link = group.jobs.map(function(j){ return links[j.id]; }).filter(Boolean)[0];
-    return 'Hi ' + (first && !/^tenant$/i.test(first) ? first : 'there') + ',\n\n' +
+    return 'Hi ' + (first || 'there') + ',\n\n' +
       'This is Residential Realtors. We’ve booked ' + (contractor || 'our contractor') + ' for ' + whatText + ' at ' + shortAddr(group.address) + '.' +
       (appt ? ' The visit is booked for ' + appt + '.' : direct ? ' They’ll be in touch with you directly to arrange a convenient time.' : ' We’ll be in touch to arrange access.') +
       (link ? '\n\nYou can follow the progress here: ' + link : '') +
@@ -3837,7 +3851,7 @@
         var wa = waNumber(g.phone);
         return '<div class="tt-card" data-i="' + i + '"><div class="tt-who">' + avatar(g.name || '?') + '<div><strong>' + esc(g.name || 'Tenant') + '</strong><div class="prop-sub" style="margin:0">' + esc([g.phone, g.email].filter(Boolean).join(' · ')) + '</div></div></div>' +
           '<textarea class="inp tt-msg" rows="6">' + esc(tenantMessage(g, who, links)) + '</textarea>' +
-          '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(String(g.name || 'tenant').split(' ')[0]) + '</button>' : '') +
+          '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(greetName(g.name) || 'tenant') + '</button>' : '') +
             (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? 'Send email' : 'Email') + '</button>' : '') +
             '<button type="button" class="btn ghost" data-tt="copy">Copy</button><span class="tt-done" hidden>✓ Sent</span></div></div>';
       }).join('');
@@ -3959,8 +3973,8 @@
     return out;
   }
   function tnFill(text, r){
-    var first = String(r.name || '').trim().replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, '').split(/\s+/)[0];
-    return String(text || '').replace(/\{first_name\}/g, first && first.length > 1 ? first : 'there').replace(/\{address\}/g, shortAddr(r.address));
+    var first = greetName(r.name);
+    return String(text || '').replace(/\{first_name\}/g, first || 'there').replace(/\{address\}/g, shortAddr(r.address));
   }
   function openTenantBroadcast(address){
     var props = tnProperties();
@@ -5167,7 +5181,7 @@
     var msgWho = function(){ return msgTo[$('fTo') ? Number($('fTo').value) : 0] || {}; };
     function drawMsgActs(){
       var r = msgWho(), wa = waNumber(r.phone), nm = String(r.name || '').trim();
-      var first = /^(mr|mrs|ms|miss|dr)\.?\s+/i.test(nm) ? nm.split(/\s+/)[0] + ' ' + nm.split(/\s+/).pop() : (nm.split(/\s+/)[0] || 'tenant');
+      var first = greetName(nm) || 'tenant';
       $('msgActs').innerHTML =
         (wa ? '<button class="btn wa" id="waMsg" type="button">WhatsApp ' + esc(first) + '</button>' : '') +
         '<button class="btn" id="copyMsg" type="button">Copy</button>' +
@@ -5177,8 +5191,8 @@
     }
     if ($('fTo')) $('fTo').addEventListener('change', function(){
       // Greet the chosen tenant by name.
-      var r = msgWho(), f = String(r.name || '').trim().replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, '').split(/\s+/)[0];
-      if (f && f.length > 1) $('fMsg').value = $('fMsg').value.replace(/^(Dear|Hi|Hello)\s+[^,\n]*,/, '$1 ' + f + ',');
+      var r = msgWho(), f = greetName(r.name);
+      if (f) $('fMsg').value = $('fMsg').value.replace(/^(Dear|Hi|Hello)\s+[^,\n]*,/, '$1 ' + f + ',');
       drawMsgActs();
     });
     function wireMsgActs(){
