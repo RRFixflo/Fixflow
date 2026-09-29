@@ -331,6 +331,10 @@
   .pay-row input { width: 16px; height: 16px; accent-color: var(--brick); }
   .pay-row .ref { font-weight: 650; }
   .pay-row .addr { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pay-row .addr[data-open] { cursor: pointer; }
+  .pay-row .addr[data-open]:hover { color: var(--blue); }
+  .pay-row .addr[data-open]::after { content: ''; }
+  @media (max-width: 700px) { .pay-row .addr[data-open] { padding-right: 14px; position: relative; } .pay-row .addr[data-open]::before { content: '›'; position: absolute; right: 0; top: 50%; transform: translateY(-50%); color: var(--ink-faint); font-size: 1.2rem; } }
   .pay-row .addr small { display: block; color: var(--ink-faint); font-size: .76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pay-row .amt { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
   .pay-row button.link { border: 0; background: none; color: var(--blue); cursor: pointer; font-weight: 600; padding: 0; text-align: left; }
@@ -5479,7 +5483,7 @@
           return '<div class="pay-row">' +
             (payTab === 'owed' ? '<input type="checkbox" data-pay-job="' + j.id + '" aria-label="Select ' + esc(j.ref) + '">' : '<span></span>') +
             '<button type="button" class="link ref" data-open="' + j.id + '">' + esc(j.ref) + '</button>' +
-            '<div class="addr">' + esc(j.property_address || 'No address') + '<small>' + esc(issueOf(j)) + '</small></div>' +
+            '<div class="addr" role="button" tabindex="0" data-open="' + j.id + '" title="Open ' + esc(j.ref) + '">' + esc(j.property_address || 'No address') + '<small>' + esc(j.ref + ' · ' + issueOf(j)) + '</small></div>' +
             '<div class="when">' + esc(payTab === 'paid' ? 'Paid ' + fmtShort(j.contractor_paid_at) : j.completed_at ? 'Done ' + fmtShort(j.completed_at) : j.status) + '</div>' +
             '<div class="amt">' + (payTab === 'nocost' ? '<button type="button" class="link" data-open-money="' + j.id + '">Add cost</button>'
               : gbp(j.actual_cost) + (payTab === 'paid' ? ' <button type="button" class="link" style="font-size:.76rem" data-unpay="' + j.id + '">Undo</button>' : '')) + '</div>' +
@@ -5488,10 +5492,12 @@
     }).join('');
   }
   $('navPay').addEventListener('click', function(){ showView('pay'); });
+  $('payList').addEventListener('keydown', function(e){ var r = e.target.closest('.addr[data-open]'); if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openJob(Number(r.dataset.open)); } });
   $('payWho').addEventListener('change', renderPay);
   $('payTabs').addEventListener('click', function(e){ var b = e.target.closest('button[data-pay]'); if (b) { payTab = b.dataset.pay; renderPay(); } });
   $('payList').addEventListener('click', function(e){
     var op = e.target.closest('[data-ct-open]'); if (op) { openContractor(op.dataset.ctOpen); return; }
+    var row = e.target.closest('.addr[data-open]'); if (row) { openJob(Number(row.dataset.open)); return; }
     var t = e.target.closest('button'); if (!t) return;
     if (t.dataset.open) openJob(Number(t.dataset.open));
     else if (t.dataset.openMoney) { drawerTab = 'money'; drawerTabJob = Number(t.dataset.openMoney); openJob(Number(t.dataset.openMoney)); }
