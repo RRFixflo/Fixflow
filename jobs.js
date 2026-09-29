@@ -2056,17 +2056,27 @@ module.exports = function mountJobs(app, opts) {
     if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
     const j = (await p.query('SELECT id, property_address, category, affected, symptom FROM jobs WHERE photo_token = $1 AND archived_at IS NULL', [token])).rows[0];
     if (!j) return res.status(404).send('This link is no longer available.');
-    const ph = (await p.query('SELECT id FROM job_photos WHERE job_id = $1 ORDER BY id', [j.id])).rows;
+    const ph = (await p.query('SELECT id, added_by FROM job_photos WHERE job_id = $1 ORDER BY id', [j.id])).rows;
     const issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ');
+    // Grouped: what the tenant reported, then the contractor's photos of the work, then any added by the office.
+    const GROUPS = [['tenant', 'Reported by the tenant'], ['contractor', 'From the contractor — the work'], ['other', 'Added by Residential Realtors']];
+    const groupOf = function (x) { return x.added_by === 'tenant' || x.added_by === 'contractor' ? x.added_by : 'other'; };
+    const used = GROUPS.filter(function (g) { return ph.some(function (x) { return groupOf(x) === g[0]; }); });
+    let n = 0;
+    const gallery = used.map(function (g) {
+      const list = ph.filter(function (x) { return groupOf(x) === g[0]; });
+      return (used.length > 1 ? '<h2>' + g[1] + ' <span>' + list.length + '</span></h2>' : '') + '<main>' + list.map(function (x) {
+        const u = '/p/' + token + '/' + x.id; n++;
+        return '<a href="' + u + '" target="_blank" rel="noopener"><img loading="lazy" src="' + u + '" alt="Photo ' + n + '"></a>';
+      }).join('') + '</main>';
+    }).join('');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">' +
       '<title>Job photos ' + refFor(j.id) + '</title><style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f4f4f6;color:#0b0c0f}' +
       'header{padding:16px;background:#0e0f13;color:#fff}header .logo{display:inline-flex;margin-bottom:6px}header .logo img{height:32px;width:auto;display:block}h1{font-size:1rem;margin:6px 0 2px}p{margin:0;color:#b9bcc4;font-size:.85rem}' +
       'main{padding:12px;display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}a{display:block;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1)}' +
-      'img{display:block;width:100%;height:auto}</style></head><body><header><div class="logo"><img src="/logo-white.png" alt="Residential Realtors"></div><h1>' + refFor(j.id) + ' · ' + htmlEsc(j.property_address || '') + '</h1><p>' +
-      htmlEsc(issue) + ' · ' + ph.length + ' photo' + (ph.length === 1 ? '' : 's') + ' — tap a photo to open it full size</p></header><main>' +
-      ph.map(function (x, i) { const u = '/p/' + token + '/' + x.id; return '<a href="' + u + '" target="_blank" rel="noopener"><img loading="lazy" src="' + u + '" alt="Photo ' + (i + 1) + '"></a>'; }).join('') +
-      '</main></body></html>');
+      'img{display:block;width:100%;height:auto}h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:#5b616e;margin:18px 12px 0}h2 span{color:#9a9ea8}</style></head><body><header><div class="logo"><img src="/logo-white.png" alt="Residential Realtors"></div><h1>' + refFor(j.id) + ' · ' + htmlEsc(j.property_address || '') + '</h1><p>' +
+      htmlEsc(issue) + ' · ' + ph.length + ' photo' + (ph.length === 1 ? '' : 's') + ' — tap a photo to open it full size</p></header>' + gallery + '</body></html>');
   }));
   app.get('/p/:token/:photo', withDb(async function (p, req, res) {
     const token = String(req.params.token || '');

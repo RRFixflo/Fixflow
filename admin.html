@@ -3858,6 +3858,21 @@
       card.querySelector('.tt-done').hidden = false;
       g.jobs.forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', ll ? { kind: 'landlord_message', body: 'Sent the landlord an update (' + how + '):\n\n' + msg } : { kind: 'tenant_message', body: 'Told the tenant the contractor will be in touch (' + how + '):\n\n' + msg }); });
     };
+    if (ll && b.dataset.tt === 'photos') {
+      // Phones: the actual photos through the share sheet (pick WhatsApp, then the landlord).
+      var ids = llPhotoIds(g);
+      busy(b, true, 'Getting photos…');
+      Promise.all(ids.map(function(id, i){
+        return fetch('/api/admin/photos/' + id, { credentials: 'same-origin' }).then(function(r){ return r.blob(); })
+          .then(function(bl){ return new File([bl], (g.jobs.length === 1 ? g.jobs[0].ref : 'Repair') + '-photo-' + (i + 1) + '.jpg', { type: bl.type || 'image/jpeg' }); });
+      })).then(function(files){
+        busy(b, false);
+        return navigator.share({ files: files, title: 'Repair photos' }).then(function(){
+          g.jobs.forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'landlord_message', body: 'Sent the landlord ' + files.length + ' photo' + (files.length === 1 ? '' : 's') + '.' }); });
+        });
+      })['catch'](function(err){ busy(b, false); if (err && err.name !== 'AbortError') toast('Couldn’t share the photos — the photo link in the message works too'); });
+      return;
+    }
     if (ll && b.dataset.tt === 'email') {
       var llSubject = (g.jobs.every(function(j){ return j.status === 'Completed'; }) ? 'Repair completed — ' : 'Repair update — ') + (g.jobs.length === 1 ? shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + ' repairs at your properties');
       if (meta.canEmail) {
@@ -4124,7 +4139,7 @@
       if (j.location) det.push('Where: ' + clean(j.location, 120));
       var desc = clean(j.description, 500);
       if (desc && desc.toLowerCase() !== llWorkText(j).toLowerCase()) det.push('What the tenant told us: “' + desc + '”');
-      if (plink) det.push('Photos from the tenant: ' + plink);
+      if (plink) det.push('Photos: ' + plink);
       var status;
       if (isDone(j)) {
         var when = j.completed_at ? new Date(j.completed_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
@@ -4145,6 +4160,7 @@
       : 'Here’s an update on the work at ' + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j, i){ return (i + 1) + '. ' + line(j); }).join('\n\n');
     return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone ? 'Please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.') + '\n\nKind regards,\nResidential Realtors';
   }
+  function llPhotoIds(g){ return [].concat.apply([], g.jobs.map(function(j){ var lj = jobs.filter(function(x){ return x.id === j.id; })[0] || j; return lj.photo_ids || []; })).slice(0, 30); }
   function openLandlordNotice(list){
     var groups = [], byKey = {};
     list.forEach(function(j){
@@ -4168,6 +4184,7 @@
           '<textarea class="inp tt-msg" rows="12">' + esc(landlordMessage(g, links)) + '</textarea>' +
           '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(String(g.name || 'landlord').replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, '').split(' ')[0]) + '</button>' : '') +
             (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? 'Send email' : 'Email') + '</button>' : '') +
+            (llPhotoIds(g).length && canShareFiles() ? '<button type="button" class="btn" data-tt="photos">📷 Send photos (' + llPhotoIds(g).length + ')</button>' : '') +
             '<button type="button" class="btn ghost" data-tt="copy">Copy</button><span class="tt-done" hidden>✓ Sent</span></div></div>';
       }).join('');
     };
