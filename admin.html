@@ -2948,6 +2948,12 @@
       return !(tail && phoneTail(t.phone) === tail) && !(nm && String(t.name || '').trim().toLowerCase() === nm);
     });
   }
+  // Who can be messaged about a job: its tenant (details filled from their saved
+  // record if missing), then the other tenants at the property.
+  function msgRecipients(j){
+    var rec = tenantForJob(j), main = { name: j.tenant_name || (rec && rec.name) || '', phone: j.tenant_phone || (rec && rec.phone) || '', email: j.tenant_email || (rec && rec.email) || '' };
+    return [main].concat(otherTenants(j).map(function(t){ return { name: t.name, phone: t.phone, email: t.email }; })).filter(function(r, i){ return i === 0 || r.phone || r.email; });
+  }
   function tenantForJob(j){
     var tail = phoneTail(j.tenant_phone), k = propKey(j.property_address), nm = String(j.tenant_name || '').trim().toLowerCase();
     return tenantRecs.filter(function(t){ return tail && phoneTail(t.phone) === tail; })[0] ||
@@ -4254,12 +4260,14 @@
     $('dAddrProp').addEventListener('click', function(){ closeDrawer(); openProperty(propKey(j.property_address)); });
     if ($('dAddrFix')) $('dAddrFix').addEventListener('click', function(){ openAddressEdit(j.property_address, j.id); });
     var tel = j.tenant_phone ? j.tenant_phone.replace(/[^\d+]/g, '') : '';
+    var msgTo = msgRecipients(j);
     $('dQuick').innerHTML =
       '<button class="btn wa" type="button" id="qWa">Send to contractor</button>' +
       (j.status !== 'Completed' && !j.archived_at ? '<button class="btn success" type="button" id="qDone">✓ Mark complete</button>' : '') +
       '<button class="btn" type="button" id="qInv">' + (j.invoiced_at ? 'Invoice again' : 'Invoice landlord') + '</button>' +
       (tel ? '<a class="btn" href="tel:' + esc(tel) + '">Call tenant</a>' : '') +
       '<button class="btn" type="button" id="qNote">+ Add update</button>' +
+      (msgTo.some(function(r){ return r.phone || r.email; }) && !j.archived_at ? '<button class="btn" type="button" id="qMsgT">💬 Message tenant</button>' : '') +
       (j.assigned_to && isOpen(j) && (j.tenant_phone || j.tenant_email) ? '<button class="btn" type="button" id="qTell">📣 Tell tenant</button>' : '') +
       (!j.archived_at && j.status !== 'Cancelled' ? '<button class="btn" type="button" id="qTellLl" title="Send the landlord an update with the progress link">🏠 ' + (j.status === 'Completed' ? 'Tell landlord it’s done' : 'Tell landlord') + '</button>' : '') +
       (escalationFor(j) && meta.canAi && !j.archived_at ? '<button class="btn danger" type="button" id="qEsc" title="Write a formal complaint to ' + esc(escalationFor(j)) + '">Escalate complaint</button>' : '') +
@@ -4419,16 +4427,13 @@
       '</div>' +
 
       // Tenant message
-      '<div class="card" data-pane="messages"><h3>Message the tenant</h3>' +
+      '<div class="card" data-pane="messages" id="msgCard"><h3>Message the tenant</h3>' +
+        (msgTo.length > 1 ? '<label class="lbl" for="fTo">To</label><select class="inp" id="fTo" style="margin-bottom:10px">' + msgTo.map(function(r, i){ return '<option value="' + i + '">' + esc((r.name || 'Tenant') + (r.phone || r.email ? ' — ' + [r.phone, r.email].filter(Boolean).join(' · ') : ' — no contact details')) + '</option>'; }).join('') + '</select>' : '') +
         '<label class="lbl" for="fTpl">Template</label><select class="inp" id="fTpl">' +
           TEMPLATES.map(function(tp, i){ return '<option value="' + i + '">' + esc(tp.name) + '</option>'; }).join('') + '</select>' +
         '<div style="margin-top:10px"><label class="lbl" for="fSubj">Subject</label><input class="inp" id="fSubj"></div>' +
         '<div style="margin-top:10px"><label class="lbl" for="fMsg">Message</label><textarea class="inp" id="fMsg" style="min-height:190px"></textarea></div>' +
-        '<div class="row-actions">' +
-          '<button class="btn" id="copyMsg" type="button">Copy</button>' +
-          (j.tenant_email ? '<button class="btn" id="mailMsg" type="button">Open in my email</button>' : '') +
-          (meta.canEmail && j.tenant_email ? '<button class="btn primary" id="sendMsg" type="button">Send email to tenant</button>' : '') +
-        '</div>' +
+        '<div class="row-actions" id="msgActs"></div>' +
       '</div>' +
 
       // AI email writer
@@ -4778,6 +4783,14 @@
     $('qWa').addEventListener('click', function(){ showContractorMessage([j]); });
     $('qNote').addEventListener('click', function(){ setDrawerTab('history'); $('fNote').focus(); });
     if ($('qTell')) $('qTell').addEventListener('click', function(){ openTenantNotice([j], j.assigned_to); });
+    if ($('qMsgT')) $('qMsgT').addEventListener('click', function(){
+      setDrawerTab('messages');
+      // Start from the template that fits where the job is up to.
+      var want = j.status === 'Completed' ? 'Job completed' : apptText(j) ? 'Appointment booked' : j.assigned_to ? 'Update / next steps' : 'Report received';
+      var i = TEMPLATES.map(function(t){ return t.name; }).indexOf(want);
+      if (i !== -1 && $('fTpl')) { $('fTpl').value = String(i); $('fTpl').dispatchEvent(new Event('change')); }
+      setTimeout(function(){ if ($('msgCard')) $('msgCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+    });
     if ($('qTellLl')) $('qTellLl').addEventListener('click', function(){
       // No landlord phone or email yet: go to the landlord box to add them first.
       if (!llContact(j)) { toast('Add the landlord’s phone or email first'); setDrawerTab('overview'); if ($('editLl')) { $('editLl').click(); $('editLl').scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
@@ -5150,6 +5163,30 @@
         kind: 'tenant_message', body: how + ' — ' + $('fSubj').value + '\n\n' + $('fMsg').value
       });
     }
+    var msgTo = msgRecipients(j);
+    var msgWho = function(){ return msgTo[$('fTo') ? Number($('fTo').value) : 0] || {}; };
+    function drawMsgActs(){
+      var r = msgWho(), wa = waNumber(r.phone), nm = String(r.name || '').trim();
+      var first = /^(mr|mrs|ms|miss|dr)\.?\s+/i.test(nm) ? nm.split(/\s+/)[0] + ' ' + nm.split(/\s+/).pop() : (nm.split(/\s+/)[0] || 'tenant');
+      $('msgActs').innerHTML =
+        (wa ? '<button class="btn wa" id="waMsg" type="button">WhatsApp ' + esc(first) + '</button>' : '') +
+        '<button class="btn" id="copyMsg" type="button">Copy</button>' +
+        (r.email ? '<button class="btn" id="mailMsg" type="button">Open in my email</button>' : '') +
+        (meta.canEmail && r.email && r.email === j.tenant_email ? '<button class="btn primary" id="sendMsg" type="button">Send email to tenant</button>' : '');
+      wireMsgActs();
+    }
+    if ($('fTo')) $('fTo').addEventListener('change', function(){
+      // Greet the chosen tenant by name.
+      var r = msgWho(), f = String(r.name || '').trim().replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, '').split(/\s+/)[0];
+      if (f && f.length > 1) $('fMsg').value = $('fMsg').value.replace(/^(Dear|Hi|Hello)\s+[^,\n]*,/, '$1 ' + f + ',');
+      drawMsgActs();
+    });
+    function wireMsgActs(){
+    if ($('waMsg')) $('waMsg').addEventListener('click', function(){
+      var r = msgWho();
+      window.open('https://wa.me/' + waNumber(r.phone) + '?text=' + encodeURIComponent($('fMsg').value), '_blank', 'noopener');
+      logMessage('Sent on WhatsApp' + (r.name ? ' to ' + r.name : '')).then(function(){ toast('Added to the history'); openJob(j.id); });
+    });
     $('copyMsg').addEventListener('click', function(){
       var text = $('fSubj').value + '\n\n' + $('fMsg').value;
       (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function(){
@@ -5158,7 +5195,7 @@
       })['catch'](function(){ toast('Couldn’t copy — select the text and copy it instead'); });
     });
     if ($('mailMsg')) $('mailMsg').addEventListener('click', function(){
-      window.location.href = 'mailto:' + encodeURIComponent(j.tenant_email) +
+      window.location.href = 'mailto:' + encodeURIComponent(msgWho().email) +
         '?subject=' + encodeURIComponent($('fSubj').value) + '&body=' + encodeURIComponent($('fMsg').value);
       logMessage('Opened in email app').then(function(){ openJob(j.id); });
     });
@@ -5171,6 +5208,8 @@
         toast('Email sent'); openJob(j.id);
       });
     });
+    }
+    drawMsgActs();
 
     $('addNote').addEventListener('click', function(){
       var text = $('fNote').value.trim();
