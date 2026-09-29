@@ -3287,7 +3287,7 @@
     if (email) $('shEmail').textContent = (meta.canEmail ? 'Send email to ' : 'Email ') + l.landlord_name.split(' ').slice(0, 3).join(' ');
     if (wa) $('shWa').textContent = 'WhatsApp ' + l.landlord_name.split(' ').slice(0, 3).join(' ');
     $('shNote').textContent = email && !meta.canEmail ? 'Email opens your email app with the message ready and downloads the PDF for you to attach.' :
-      wa ? 'WhatsApp opens your chat with ' + l.landlord_name.split(' ')[0] + ' with the message and a private link to the PDF, ready to send.' : '';
+      wa ? 'WhatsApp opens your chat with ' + (greetName(l.landlord_name) || 'the landlord') + ' with the message and a private link to the PDF, ready to send.' : '';
     $('shModal').hidden = false;
   }
   function shLog(how){
@@ -3809,10 +3809,13 @@
   // otherwise the first name. Empty when there's no real name.
   function greetName(n){
     var s = String(n || '').trim();
+    // Names typed in capitals ("MR JOHN SMITH") read better as "Mr John".
+    if (s && s === s.toUpperCase() && /[A-Z]{2}/.test(s)) s = s.toLowerCase().replace(/(^|[\s'-])([a-z])/g, function(_, a, b){ return a + b.toUpperCase(); });
     if (!s || /^tenant$/i.test(s)) return '';
-    var m = /^(mr|mrs|ms|miss|mx|dr)\.?\s+(.+)$/i.exec(s);
+    var m = /^(mrs|miss|mr|ms|mx|dr)\b\.?\s*(.*)$/i.exec(s);
     if (m) {
-      var t = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase(), w = m[2].split(/\s+/);
+      if (!m[2].trim()) return '';   // just a title, no name
+      var t = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase(), w = m[2].trim().split(/\s+/);
       return t + ' ' + (w.length > 1 && w[0].replace(/\./g, '').length === 1 ? w[w.length - 1] : w[0]);
     }
     var f = s.split(/\s+/)[0];
@@ -4206,7 +4209,7 @@
         var wa = waNumber(g.phone);
         return '<div class="tt-card" data-i="' + i + '"><div class="tt-who">' + avatar(g.name || '?') + '<div><strong>' + esc(g.name || 'Landlord') + '</strong><div class="prop-sub" style="margin:0">' + esc([g.phone, g.email].filter(Boolean).join(' · ')) + (g.jobs.length > 1 ? ' · ' + g.jobs.length + ' jobs' : '') + '</div></div></div>' +
           '<textarea class="inp tt-msg" rows="12">' + esc(landlordMessage(g, links)) + '</textarea>' +
-          '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(String(g.name || 'landlord').replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, '').split(' ')[0]) + '</button>' : '') +
+          '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(greetName(g.name) || 'landlord') + '</button>' : '') +
             (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? 'Send email' : 'Email') + '</button>' : '') +
             (llPhotoIds(g).length && canShareFiles() ? '<button type="button" class="btn" data-tt="photos">📷 Send photos (' + llPhotoIds(g).length + ')</button>' : '') +
             '<button type="button" class="btn ghost" data-tt="copy">Copy</button><span class="tt-done" hidden>✓ Sent</span></div></div>';
@@ -5606,7 +5609,7 @@
     var lk = e.target.closest('[data-ctr-link]');
     if (lk) {
       var c = contractorByName(openCtrName), url = $('ctrLinkUrl') ? $('ctrLinkUrl').value : '';
-      var msg = 'Hi ' + (c.name || '').split(' ')[0] + ', here is your link to see the jobs we’ve given you and mark them completed when done: ' + url + '\n\nThanks, Residential Realtors';
+      var msg = 'Hi ' + (greetName(c.name) || 'there') + ', here is your link to see the jobs we’ve given you and mark them completed when done: ' + url + '\n\nThanks, Residential Realtors';
       if (lk.dataset.ctrLink === 'copy') { (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function(){ toast('Link copied'); }, function(){ $('ctrLinkUrl').select(); document.execCommand('copy'); toast('Link copied'); }); }
       else if (lk.dataset.ctrLink === 'wa') window.open('https://wa.me/' + waNumber(c.phone) + '?text=' + encodeURIComponent(msg), '_blank');
       else if (lk.dataset.ctrLink === 'email') window.location.href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent('Your jobs from Residential Realtors') + '&body=' + encodeURIComponent(msg);
