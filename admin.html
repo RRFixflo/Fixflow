@@ -2326,8 +2326,8 @@
   }
   $('bulkWa').addEventListener('click', function(){ showContractorMessage(selectedJobs()); });
   $('bulkLl').addEventListener('click', function(){
-    var list = selectedJobs().filter(function(j){ return j.assigned_to || j.status === 'Completed'; });
-    if (!list.length) { toast('None of those jobs has a contractor yet'); return; }
+    var list = selectedJobs().filter(function(j){ return j.status !== 'Cancelled'; });
+    if (!list.length) return;
     if (!list.some(llContact)) { toast('No landlord phone or email for those properties'); return; }
     openLandlordNotice(list);
   });
@@ -4119,20 +4119,25 @@
         return llWorkText(j) + (oneHome ? '' : ' at ' + shortAddr(j.property_address)) + ' (ref ' + j.ref + '): ✅ completed' + (when ? ' on ' + when : '') + '.' +
           (link ? '\nSee the details: ' + link : '');
       }
+      if (!j.assigned_to) {
+        var rep = new Date(j.created_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+        return llWorkText(j) + (oneHome ? '' : ' at ' + shortAddr(j.property_address)) + ' (ref ' + j.ref + '): reported by the tenant on ' + rep + (j.urgency === 'Emergency' ? ' as an emergency' : j.urgency === 'Urgent' ? ' as urgent' : '') + '. We’re arranging a contractor and will keep you posted.' +
+          (link ? '\nSee the report and follow the progress: ' + link : '');
+      }
       return llWorkText(j) + (oneHome ? '' : ' at ' + shortAddr(j.property_address)) + ' (ref ' + j.ref + '): ' +
         (who ? 'we’ve instructed ' + who + '.' : 'we’ve reported it to the council, who handle this repair.') +
         (appt ? ' The visit is booked for ' + appt + '.' : who ? ' They’re arranging a time to attend with the tenant.' : '') +
         (link ? '\nFollow the progress: ' + link : '');
     };
     var body = jobs.length === 1
-      ? (allDone ? 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
+      ? (allDone ? 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : !jobs[0].assigned_to ? 'Just to let you know, a repair has been reported at ' + shortAddr(jobs[0].property_address) + '.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
       : 'Here’s an update on the work at ' + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j){ return '• ' + line(j); }).join('\n\n');
     return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone ? 'Please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.') + '\n\nKind regards,\nResidential Realtors';
   }
   function openLandlordNotice(list){
     var groups = [], byKey = {};
     list.forEach(function(j){
-      var l = j.assigned_to || j.status === 'Completed' ? llContact(j) : null; if (!l) return;
+      var l = j.status !== 'Cancelled' ? llContact(j) : null; if (!l) return;
       var k = String(l.landlord_email || '').toLowerCase() || phoneTail(l.landlord_phone) || l.landlord_name;
       var g = byKey[k] || (byKey[k] = groups[groups.push({ name: l.landlord_name, phone: l.landlord_phone, email: l.landlord_email, jobs: [] }) - 1]);
       g.jobs.push(j);
@@ -4143,7 +4148,7 @@
     $('ttLl').hidden = true;
     var skipped = list.length - groups.reduce(function(n, g){ return n + g.jobs.length; }, 0);
     $('ttIntro').textContent = (groups.length === 1 ? 'Send ' + (groups[0].name || 'the landlord') + ' an update' : 'Send each landlord an update') + ' with ' + (list.every(function(j){ return j.status === 'Completed'; }) ? 'the news that it’s done' : 'the progress link') + ' — check the message, then send.' +
-      (skipped ? ' ' + skipped + ' job' + (skipped === 1 ? ' was' : 's were') + ' left out (no contractor yet, or no landlord contact).' : '');
+      (skipped ? ' ' + skipped + ' job' + (skipped === 1 ? ' was' : 's were') + ' left out (no landlord phone or email saved).' : '');
     var links = {};
     var draw = function(){
       $('ttList').innerHTML = groups.map(function(g, i){
@@ -4224,7 +4229,7 @@
       (tel ? '<a class="btn" href="tel:' + esc(tel) + '">Call tenant</a>' : '') +
       '<button class="btn" type="button" id="qNote">+ Add update</button>' +
       (j.assigned_to && isOpen(j) && (j.tenant_phone || j.tenant_email) ? '<button class="btn" type="button" id="qTell">📣 Tell tenant</button>' : '') +
-      (!j.archived_at && (j.status === 'Completed' || (j.assigned_to && isOpen(j))) && llContact(j) ? '<button class="btn" type="button" id="qTellLl" title="Send the landlord an update with the progress link">🏠 ' + (j.status === 'Completed' ? 'Tell landlord it’s done' : 'Tell landlord') + '</button>' : '') +
+      (!j.archived_at && j.status !== 'Cancelled' ? '<button class="btn" type="button" id="qTellLl" title="Send the landlord an update with the progress link">🏠 ' + (j.status === 'Completed' ? 'Tell landlord it’s done' : 'Tell landlord') + '</button>' : '') +
       (escalationFor(j) && meta.canAi && !j.archived_at ? '<button class="btn danger" type="button" id="qEsc" title="Write a formal complaint to ' + esc(escalationFor(j)) + '">Escalate complaint</button>' : '') +
       (j.archived_at ? '' : '<button class="btn ghost danger" type="button" id="qDel" title="Delete this job (moves it to the archive)">🗑 Delete job</button>');
     var TABS = [['overview', 'Overview'], ['photos', 'Photos', photos.length], ['messages', 'Messages'], ['money', 'Money'], ['history', 'History', updates.length]];
@@ -4741,7 +4746,11 @@
     $('qWa').addEventListener('click', function(){ showContractorMessage([j]); });
     $('qNote').addEventListener('click', function(){ setDrawerTab('history'); $('fNote').focus(); });
     if ($('qTell')) $('qTell').addEventListener('click', function(){ openTenantNotice([j], j.assigned_to); });
-    if ($('qTellLl')) $('qTellLl').addEventListener('click', function(){ openLandlordNotice([j]); });
+    if ($('qTellLl')) $('qTellLl').addEventListener('click', function(){
+      // No landlord phone or email yet: go to the landlord box to add them first.
+      if (!llContact(j)) { toast('Add the landlord’s phone or email first'); setDrawerTab('overview'); if ($('editLl')) { $('editLl').click(); $('editLl').scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
+      openLandlordNotice([j]);
+    });
     // Escalate: the AI email writer, pre-filled for a formal complaint to the
     // assigned contractor's complaints address (e.g. a council complaints team).
     if ($('qEsc')) $('qEsc').addEventListener('click', function(){
