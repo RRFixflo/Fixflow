@@ -1939,6 +1939,23 @@ module.exports = function mountJobs(app, opts) {
       'document.querySelectorAll(".tabs button").forEach(function(x){x.classList.toggle("on",x===b);});(r?document.querySelector("#fRef input"):document.querySelector("#fPhone input")).focus();});});</script>'));
   }));
 
+  // The tenant page sends its photos here one at a time, straight after the
+  // report itself is saved, so a slow connection never loses the whole report.
+  // Only for a couple of hours after the report, and up to 30 photos.
+  app.post('/api/t/:token/photo', withDb(async function (p, req, res) {
+    const token = String(req.params.token || '');
+    if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).json({ ok: false });
+    const j = (await p.query(`SELECT id FROM jobs WHERE track_token = $1 AND archived_at IS NULL AND created_at > now() - interval '3 hours'`, [token])).rows[0];
+    if (!j) return res.status(404).json({ ok: false, error: 'not-found' });
+    const photos = decodePhotos([(req.body || {}).photo]);
+    if (!photos.length) return res.status(400).json({ ok: false, error: 'no-photo' });
+    const n = parseInt((await p.query("SELECT count(*) FROM job_photos WHERE job_id = $1 AND added_by = 'tenant'", [j.id])).rows[0].count, 10);
+    if (n >= MAX_PHOTOS_PER_UPLOAD) return res.status(409).json({ ok: false, error: 'too-many' });
+    await insertPhotos(p, j.id, photos, 'tenant');
+    await p.query('UPDATE jobs SET photo_count = GREATEST(photo_count, $2) WHERE id = $1', [j.id, n + 1]);
+    res.json({ ok: true });
+  }));
+
   app.get('/t/:token', withDb(async function (p, req, res) {
     countVisit(req, 'track').catch(function () {});
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');

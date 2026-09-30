@@ -1061,6 +1061,10 @@
   .confirm p { color: var(--ink-soft); max-width: 440px; margin: 0 auto 20px; line-height: 1.6; }
   .confirm .btnrow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
   #panel-done #downloadPdf { padding: 15px 40px; font-size: 1rem; }
+  .photo-progress { max-width: 360px; margin: 0 auto 14px; text-align: center; font-size: .9rem; color: var(--ink-soft, #555); }
+  .photo-progress .pp-bar { height: 8px; border-radius: 99px; background: var(--line, #E4E6EB); overflow: hidden; margin-bottom: 6px; }
+  .photo-progress .pp-bar i { display: block; height: 100%; width: 0; background: #139A4B; transition: width .3s; }
+  .photo-progress .btn { margin-top: 10px; }
   .track-btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; margin: 4px auto 14px; padding: 14px 22px; border-radius: 14px; background: var(--ink, #0b0c0f); color: #fff; font-weight: 700; }
   .send-note { text-align: center; font-size: .82rem; color: var(--ink-soft, #5b616e); margin: 12px 0 0; }
   .pdf-open-link {
@@ -1449,6 +1453,11 @@
     </div>
     <h1 class="step-title" id="doneTitle">Sending your report…</h1>
     <p id="doneHint">Please keep this page open — it only takes a few seconds.</p>
+    <div class="photo-progress" id="photoProgress" style="display:none">
+      <div class="pp-bar"><i id="ppFill"></i></div>
+      <span id="ppText"></span>
+      <button class="btn primary" id="retryPhotos" style="display:none">Send the photos again</button>
+    </div>
     <div class="btnrow">
       <button class="btn primary" id="downloadPdf" style="display:none">Try sending again</button>
     </div>
@@ -2913,6 +2922,32 @@
     });
   }
 
+  // A smaller copy of a photo for the PDF (the full photos are sent separately),
+  // so the report itself stays light and sends quickly. Null when this browser
+  // can't show the photo (it is still sent on its own).
+  function pdfCopy(dataUrl){
+    return new Promise(function(resolve){
+      var done = false, img = new Image();
+      var finish = function(v){ if (!done) { done = true; resolve(v); } };
+      img.onload = function(){
+        try {
+          var w = img.naturalWidth, h = img.naturalHeight;
+          if (!w || !h) return finish(null);
+          var scale = Math.min(1, 1000 / Math.max(w, h));
+          var c = document.createElement('canvas');
+          c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+          var ctx = c.getContext('2d');
+          ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          finish({ url: c.toDataURL('image/jpeg', 0.6), w: c.width, h: c.height });
+        } catch (e) { finish(null); }
+      };
+      img.onerror = function(){ finish(null); };
+      img.src = dataUrl;
+      setTimeout(function(){ finish(null); }, 6000);
+    });
+  }
+
   async function generateReportPdf(){
     if (!window.jspdf || !window.jspdf.jsPDF) { throw new Error('pdf-lib-missing'); }
     var jsPDF = window.jspdf.jsPDF;
@@ -3006,8 +3041,10 @@
       for (var i = 0; i < state.photos.length; i++){
         var p = state.photos[i];
         // A HEIC photo this browser couldn't convert is saved with the report instead.
-        if (!p.dataUrl || p.dataUrl.indexOf('data:image/heic') === 0) continue;
-        var dims = await getImageDims(p.dataUrl);
+        if (!p.dataUrl) continue;
+        var small = await pdfCopy(p.dataUrl);
+        if (!small) continue;
+        var dims = { w: small.w, h: small.h };
         var maxW = pageW - margin * 2;
         var maxH = 300;
         var scale = Math.min(maxW / dims.w, maxH / dims.h, 1);
@@ -3018,8 +3055,7 @@
           y = margin;
         }
 
-        var fmt = p.dataUrl.indexOf('image/png') !== -1 ? 'PNG' : 'JPEG';
-        try { doc.addImage(p.dataUrl, fmt, margin, y, w, h); } catch(e) {}
+        try { doc.addImage(small.url, 'JPEG', margin, y, w, h); } catch(e) {}
         y += h + 6;
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
         doc.setTextColor(140, 140, 140);
@@ -3064,11 +3100,11 @@
   // never inside the claude.ai artifact, which has no server of its own).
   // Resolves to { sent:false } rather than throwing on any kind of failure,
   // so the caller can always fall back to the manual email flow cleanly.
-  async function trySendReportToServer(blob, filename){
+  async function trySendReportToServer(blob, filename, retried){
     try {
       var pdfBase64 = await blobToBase64(blob);
       var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-      var timer = controller ? setTimeout(function(){ controller.abort(); }, 20000) : null;
+      var timer = controller ? setTimeout(function(){ controller.abort(); }, 90000) : null;
       var resp = await fetch('/api/send-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3080,7 +3116,8 @@
           reportText: buildReportText(),
           tenantEmail: state.email || '',
           sendCopyToTenant: !!state.email,
-          photos: state.photos.filter(function(p){ return p.dataUrl; }).map(function(p){ return { name: p.name, dataUrl: p.dataUrl }; }),
+          // Photos follow one at a time once the report is saved (see sendPhotos).
+          photos: [],
           // The same details as structured fields, saved as a job in the database.
           report: {
             name: state.name, email: state.email, phone: state.phone, address: state.address,
@@ -3099,11 +3136,57 @@
       if (!data || data.ok !== true) { return { sent: false }; }
       return { sent: true, emailed: data.emailed !== false, ref: data.ref || null, trackUrl: data.trackUrl || null, tenantCopySent: !!data.tenantCopySent };
     } catch (err) {
+      if (!retried) return trySendReportToServer(blob, filename, true);
       // Network error, no route at this address (the claude.ai artifact case),
       // or a timeout — all treated the same: quietly fall back.
       return { sent: false };
     }
   }
+
+  // Sends each photo on its own to the saved report, so one slow or failed
+  // photo never stops the report or the other photos. Tries each twice.
+  var photoToken = null, photosSent = {};
+  async function sendOnePhoto(p){
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timer = controller ? setTimeout(function(){ controller.abort(); }, 120000) : null;
+        var resp = await fetch('/api/t/' + photoToken + '/photo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          signal: controller ? controller.signal : undefined,
+          body: JSON.stringify({ photo: { name: p.name, dataUrl: p.dataUrl } })
+        });
+        if (timer) clearTimeout(timer);
+        if (resp.ok) return true;
+        if (resp.status === 400 || resp.status === 404 || resp.status === 409) return false;
+      } catch (e) {}
+    }
+    return false;
+  }
+  async function sendPhotos(){
+    var list = state.photos.filter(function(p){ return p.dataUrl && !photosSent[p.id]; });
+    var box = document.getElementById('photoProgress'), fill = document.getElementById('ppFill'), text = document.getElementById('ppText'), again = document.getElementById('retryPhotos');
+    var total = state.photos.filter(function(p){ return p.dataUrl; }).length;
+    if (!photoToken || !total) return;
+    box.style.display = ''; again.style.display = 'none';
+    var show = function(){
+      var n = Object.keys(photosSent).length;
+      fill.style.width = Math.round(n / total * 100) + '%';
+      text.textContent = n >= total ? '✓ All ' + total + ' photo' + (total === 1 ? '' : 's') + ' received' : 'Sending photos… ' + n + ' of ' + total + ' — please keep this page open';
+    };
+    show();
+    for (var i = 0; i < list.length; i++) {
+      if (await sendOnePhoto(list[i])) photosSent[list[i].id] = true;
+      show();
+    }
+    var left = total - Object.keys(photosSent).length;
+    if (left > 0) {
+      text.textContent = 'Your report has been sent, but ' + left + ' photo' + (left === 1 ? '' : 's') + ' didn’t go through. Check your signal, then tap below.';
+      again.style.display = '';
+    }
+    if (window.rrt) window.rrt('photos', (total - left) + '/' + total);
+  }
+  document.getElementById('retryPhotos').addEventListener('click', function(){ sendPhotos(); });
 
   document.getElementById('downloadPdf').addEventListener('click', async function(){
     var btn = this;
@@ -3150,6 +3233,9 @@
         document.getElementById('sentNote').style.display = '';
         var track = document.getElementById('trackLink');
         if (track && result.trackUrl) { track.href = result.trackUrl; track.style.display = 'inline-flex'; }
+        var tm = /\/t\/([A-Za-z0-9_-]+)/.exec(result.trackUrl || '');
+        photoToken = tm ? tm[1] : null; photosSent = {};
+        sendPhotos();
         if (window.rrt) window.rrt('submit', result.ref || 'sent');
         if (openLink) {
           openLink.href = lastPdfUrl;
