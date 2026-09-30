@@ -1464,6 +1464,30 @@ module.exports = function mountJobs(app, opts) {
   }));
 
   // Set (or clear, with landlord_id null) whose property an address is.
+  // ---------- Add a property (with its tenants, landlord and key number) ----------
+  app.post('/api/admin/properties', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    let address = tidyAddress(str(b.address, 500));
+    if (!address || !propKey(address)) return res.status(400).json({ ok: false, error: 'address' });
+    try { address = await canonicalAddress(p, address); } catch (e) { /* keep as typed */ }
+    const key = propKey(address);
+    await p.query(`INSERT INTO property_info (property_key, address, key_number, key_notes) VALUES ($1, $2, $3, $4)
+      ON CONFLICT (property_key) DO UPDATE SET address = excluded.address, key_number = coalesce(excluded.key_number, property_info.key_number),
+        key_notes = coalesce(excluded.key_notes, property_info.key_notes), updated_at = now()`, [key, address, str(b.key_number, 40), str(b.notes, 500)]);
+    let tenants = 0;
+    for (const t of (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12)) {
+      if (!str(t && t.name) && !str(t && t.phone) && !str(t && t.email)) continue;
+      await ensureTenant(p, { name: str(t.name, 200), phone: str(t.phone, 50), email: str(t.email, 200) }, address, true);
+      tenants += 1;
+    }
+    let landlord = null;
+    if (str(b.landlord_name)) {
+      await ensureLandlord(p, { landlord_name: str(b.landlord_name, 200), landlord_phone: str(b.landlord_phone, 50), landlord_email: str(b.landlord_email, 200) }, address);
+      landlord = str(b.landlord_name, 200);
+    }
+    res.json({ ok: true, address: address, key: key, tenants: tenants, landlord: landlord });
+  }));
+
   // ---------- Key numbers ----------
   app.get('/api/admin/property-info', withDb(async function (p, req, res) {
     res.json({ ok: true, info: (await p.query('SELECT property_key, address, key_number, key_notes, updated_at FROM property_info')).rows });
@@ -1890,6 +1914,9 @@ module.exports = function mountJobs(app, opts) {
       'Do not make a job for that. Put each contact in "contacts" with: type ("contractor", "landlord" or "tenant"), name (the person, as given), company (business name if given, else ""), ' +
       'trade (for contractors: e.g. "Cleaner", "Plumber", "Handyman", "Electrician", "Gas safety"; else ""), phone, email, address (a landlord\'s own postal address if given, else ""), ' +
       'property (for tenants: the property they live at; for landlords: every property they own, separated by "; "; else ""), notes (anything else useful, else "").\n' +
+      'The instruction may instead (or also) ask to ADD A PROPERTY, usually with the tenants who live there (e.g. "add 36 Balin House, tenants Sarah Jones 07700 900123 and Tom Lee", "new property Flat 2, 10 Long Lane SE1 4PA, landlord Mr Khan, key 12"). ' +
+      'Do not make a job for that, and do not also list those tenants or that landlord in "contacts". Put each in "properties" with: address (full as given, or the exact one from their property list if it clearly matches; keep flat/house number and postcode), ' +
+      'tenants ([{"name": "", "phone": "", "email": ""}] exactly as given), landlord (name as given, else ""), key_number (the office key tag number if given, else ""), notes (anything else useful, else "").\n' +
       'The instruction may instead be the details of a NEW TENANCY (a new let: property, tenants, rent, start date, landlord, deposit, fees — e.g. a pasted offer, Terms of Let or notes). ' +
       'Do not make a job or contacts for that. Put it in "tenancies" with: address (full, keep flat/house number and postcode), start_date, move_in_due (when the first rent and deposit are due), date_taken, checkin_date (all YYYY-MM-DD; today is ' + new Date().toISOString().slice(0, 10) + '; "" if not given), ' +
       'checkin_time ("HH:MM" or ""), checkin_type ("clerk" if an inventory clerk / check-in is booked, "diy" for a DIY check-in / tenant\'s own inventory, "" if not said), term_months, break_months, rent_pcm (monthly rent in pounds; convert weekly rent × 52 / 12), deposit, holding (holding deposit / reservation fee paid) — numbers or null if not given, holding_date (when the holding deposit was paid, YYYY-MM-DD or ""), ' +
@@ -1898,8 +1925,8 @@ module.exports = function mountJobs(app, opts) {
       'tenants and guarantors (each [{"name": "", "email": "", "phone": ""}], names with titles as given), landlord ({"name": "", "email": "", "phone": "", "line1": "", "line2": "", "country": "", "postcode": ""} — their own address), ' +
       'fees (other fees charged to the landlord: [{"label": "", "amount": 0}]), notes (anything else useful).\n' +
       'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], ' +
-      '"contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "tenancies": [], "understood": true}. ' +
-      'Use [] for jobs, contacts or tenancies when there are none. If the instruction is none of these, reply {"jobs": [], "contacts": [], "tenancies": [], "understood": false}.';
+      '"contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "properties": [{"address": "", "tenants": [], "landlord": "", "key_number": "", "notes": ""}], "tenancies": [], "understood": true}. ' +
+      'Use [] for jobs, contacts, properties or tenancies when there are none. If the instruction is none of these, reply {"jobs": [], "contacts": [], "properties": [], "tenancies": [], "understood": false}.';
     const result = await opts.askAi(prompt, true);
     if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
     let parsed = null;
@@ -1931,7 +1958,14 @@ module.exports = function mountJobs(app, opts) {
       if (!(t && (t.find_basis === 'upfront' || t.find_basis === 'monthly'))) d.find_basis = null;
       return d;
     }).filter(function (d) { return d.address || d.tenants.length; });
-    res.json({ ok: true, jobs: jobs, contacts: contacts, tenancies: tenancies, understood: parsed.understood !== false && (jobs.length > 0 || contacts.length > 0 || tenancies.length > 0) });
+    const properties = (Array.isArray(parsed.properties) ? parsed.properties : []).slice(0, 10).map(function (x) {
+      return {
+        address: str(x && x.address, 500) || '', landlord: str(x && x.landlord, 200) || '', key_number: str(x && x.key_number, 40) || '', notes: str(x && x.notes, 500) || '',
+        tenants: (Array.isArray(x && x.tenants) ? x.tenants : []).slice(0, 12).map(function (t) { return { name: str(t && t.name, 200) || '', phone: str(t && t.phone, 50) || '', email: str(t && t.email, 200) || '' }; })
+          .filter(function (t) { return t.name || t.phone || t.email; })
+      };
+    }).filter(function (x) { return x.address; });
+    res.json({ ok: true, jobs: jobs, contacts: contacts, properties: properties, tenancies: tenancies, understood: parsed.understood !== false && (jobs.length > 0 || contacts.length > 0 || properties.length > 0 || tenancies.length > 0) });
   }));
 
   app.post('/api/admin/jobs/:id/ai-invoice', withDb(async function (p, req, res) {
@@ -3262,7 +3296,8 @@ module.exports = function mountJobs(app, opts) {
   // Every property we know about, with the fullest version of its address.
   async function allProperties(p) {
     const rows = (await p.query(`SELECT property_address AS a FROM jobs WHERE property_address IS NOT NULL AND archived_at IS NULL
-      UNION SELECT address FROM property_landlords WHERE address IS NOT NULL UNION SELECT address FROM property_certificates WHERE address IS NOT NULL`)).rows;
+      UNION SELECT address FROM property_landlords WHERE address IS NOT NULL UNION SELECT address FROM property_certificates WHERE address IS NOT NULL
+      UNION SELECT address FROM property_info WHERE address IS NOT NULL UNION SELECT address FROM property_tenants WHERE address IS NOT NULL AND moved_out_at IS NULL`)).rows;
     const map = {};
     rows.forEach(function (r) {
       const k = propKey(r.a); if (!k) return;
