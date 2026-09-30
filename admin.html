@@ -1379,9 +1379,14 @@
       <button type="button">EICR needed at 9 Park Road</button>
       <button type="button">Add a contractor: Miguel from NW Cleaning, cleaner, 07404 043045</button>
     </div>
-    <div class="ask-file"><button class="btn small" id="askAttach" type="button">📎 Attach a document</button><span id="askFileName" class="muted-note" style="margin:0"></span>
+    <div class="ask-file"><button class="btn small" id="askAttach" type="button">📎 Attach a document</button><button class="btn small" id="askDriveBtn" type="button" title="Use a file from Google Drive">🔗 From Google Drive</button><span id="askFileName" class="muted-note" style="margin:0"></span>
       <button class="btn small ghost" id="askFileX" type="button" hidden title="Remove">✕</button>
       <input type="file" id="askFile" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" hidden></div>
+    <div class="ask-drive" id="askDriveRow" hidden>
+      <div style="display:flex;gap:8px"><input class="inp" id="askDrive" placeholder="Paste the Google Drive link (Share → Copy link)" autocomplete="off"><button class="btn small primary" id="askDriveUse" type="button">Use</button></div>
+      <div class="muted-note" style="margin:4px 0 0">In Google Drive: open the file’s menu → <b>Share</b> → set General access to <b>Anyone with the link</b> → <b>Copy link</b>, then paste it here. Works with PDFs, Word files, photos and Google Docs. On a phone you can also tap “Attach a document” and pick Google Drive.</div>
+    </div>
+    <div class="banner" id="askForProp" hidden style="margin:8px 0 0"></div>
     <div class="err-msg" id="askErr" style="margin:0"></div>
     <div class="row-actions" style="margin-top:0"><span class="muted-note" style="margin-right:auto;font-size:.78rem">Ctrl + Enter to go</span><button class="btn" id="askClose" type="button">Close</button><button class="btn primary" id="askGo" type="button">✦ Go</button></div>
     <div class="row-actions" id="askAllRow" style="margin-top:0" hidden><span class="muted-note" id="askAllNote" style="margin-right:auto"></span><button class="btn primary" id="askAll" type="button">Create all</button></div>
@@ -3307,8 +3312,9 @@
       '<div class="tile"><div class="k">Completed</div><div class="v">' + done + '</div></div>' +
       '<div class="tile good"><div class="k">Charged to landlord</div><div class="v">' + gbp(chargedTotal(d.jobs)) + '</div></div>' +
       keyTile(d.property.address) +
-      (function(){ var t = propTenancy(d.property.key); return '<div class="tile' + (t.k === 'none' ? ' alert has' : t.k === 'ending' ? ' warnish' : ' good') + '"><div class="k">Tenancy</div><div class="v" style="font-size:1rem">' + (t.k === 'none' ? 'None on file' : esc(t.text)) + '</div></div>'; })();
+      (function(){ var t = propTenancy(d.property.key); return '<div class="tile' + (t.k === 'none' ? ' alert has' : t.k === 'ending' ? ' warnish' : ' good') + '"><div class="k">Tenancy</div><div class="v" style="font-size:1rem">' + (t.k === 'none' ? 'None on file' : esc(t.text)) + '</div>' + (t.k === 'none' ? '<button type="button" class="btn small primary" id="propAddTerms" style="margin-top:6px">📄 Add Terms of Let</button>' : '') + '</div>'; })();
     bindKeyTile(d.property.address);
+    if ($('propAddTerms')) $('propAddTerms').addEventListener('click', function(){ askFromTerms(knownFullAddress(d.property.key) || d.property.address); });
     $('propJobs').innerHTML = d.jobs.length ? d.jobs.map(rowHtml).join('') : '<div class="empty">No repairs in this period.</div>';
     renderPropCerts(d.property.address);
     (function(address){
@@ -6388,12 +6394,13 @@
     setAskMode(mode === 'email' ? 'email' : (typeof mode === 'string' ? mode : askMode));
     setTimeout(function(){ $('askText').focus(); }, 50);
   }
-  function closeAsk(){ stopListening(); $('askModal').hidden = true; }
+  function closeAsk(){ stopListening(); $('askModal').hidden = true; if (typeof setAskForProp === 'function') setAskForProp(''); }
   // A document for Ask Fixflow to read (e.g. a Terms of Let → a new tenancy).
-  var askFileData = null;
+  var askFileData = null, askForProp = '';
   function setAskFile(f){
     askFileData = null; $('askFileName').textContent = ''; $('askFileX').hidden = true;
     if (!f) return;
+    if (f.drive) { askFileData = { drive: f.drive, name: 'Google Drive file' }; $('askFileName').textContent = '🔗 Google Drive file'; $('askFileX').hidden = false; $('askErr').textContent = ''; $('askDriveRow').hidden = true; return; }
     if (f.size > 15 * 1024 * 1024) { $('askErr').textContent = 'That file is too big (15 MB max).'; return; }
     if (/\.doc$/i.test(f.name)) { $('askErr').textContent = 'Please save it as a PDF or .docx (Word) first — old .doc files can’t be read.'; return; }
     var r = new FileReader();
@@ -6404,8 +6411,28 @@
   $('askAttach').addEventListener('click', function(){ $('askFile').value = ''; $('askFile').click(); });
   $('askFile').addEventListener('change', function(){ setAskFile(this.files && this.files[0]); });
   $('askFileX').addEventListener('click', function(){ setAskFile(null); });
+  $('askDriveBtn').addEventListener('click', function(){ $('askDriveRow').hidden = !$('askDriveRow').hidden; if (!$('askDriveRow').hidden) $('askDrive').focus(); });
+  function useDriveLink(){
+    var v = $('askDrive').value.trim();
+    if (!/^https:\/\/(drive|docs)\.google\.com\//i.test(v)) { $('askErr').textContent = 'That doesn’t look like a Google Drive link — it should start https://drive.google.com/ or https://docs.google.com/'; return; }
+    setAskFile({ drive: v }); $('askDrive').value = '';
+  }
+  $('askDriveUse').addEventListener('click', useDriveLink);
+  $('askDrive').addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); useDriveLink(); } });
+  $('askDrive').addEventListener('paste', function(){ setTimeout(function(){ if (/^https:\/\/(drive|docs)\.google\.com\//i.test($('askDrive').value.trim())) useDriveLink(); }, 0); });
+  function setAskForProp(addr){
+    askForProp = addr || '';
+    $('askForProp').hidden = !askForProp;
+    $('askForProp').innerHTML = askForProp ? '🏠 Tenancy for <b>' + esc(askForProp) + '</b> (already on file) <button type="button" class="btn small ghost" id="askForPropX" style="margin-left:6px">Not this property</button>' : '';
+    if (askForProp) $('askForPropX').addEventListener('click', function(){ setAskForProp(''); });
+  }
   // Open Ask Fixflow ready to read a Terms of Let.
-  function askFromTerms(){ openAsk('say'); $('askText').value = ''; $('askText').placeholder = 'Attach the Terms of Let (PDF, Word or a photo), then press Go — or paste the details here.'; $('askAttach').click(); }
+  // From a property on file (no tenancy yet): the new tenancy is for that property.
+  function askFromTerms(forAddr){
+    openAsk('say'); $('askText').value = '';
+    setAskForProp(typeof forAddr === 'string' ? forAddr : '');
+    $('askText').placeholder = 'Attach the Terms of Let (PDF, Word or a photo) or use a Google Drive link, then press Go — or paste the details here.';
+  }
   function stopListening(){ if (rec && listening) { try { rec.stop(); } catch (e) {} } }
   $('askBtn').addEventListener('click', function(){ openAsk('say'); });
   $('navEmail').addEventListener('click', function(){ openAsk('email'); });
@@ -6489,17 +6516,20 @@
     var text = $('askText').value.trim();
     if (!text && !askFileData) { $('askText').focus(); return; }
     if (!meta.canAi) { $('askErr').textContent = 'AI isn’t switched on (GEMINI_API_KEY).'; return; }
-    $('askErr').textContent = ''; busy($('askGo'), true, 'Thinking…');
+    $('askErr').textContent = ''; busy($('askGo'), true, askFileData ? 'Reading ' + askFileData.name.slice(0, 24) + '…' : 'Thinking…');
     askSource = askMode === 'email' ? text : '';
-    if (askFileData) busy($('askGo'), true, 'Reading ' + askFileData.name.slice(0, 24) + '…');
-    api('POST', '/api/admin/assistant', { text: text, mode: askMode, file: askFileData }).then(function(d){
+    api('POST', '/api/admin/assistant', { text: text, mode: askMode, file: askFileData, for_property: askForProp || undefined }).then(function(d){
       busy($('askGo'), false);
-      if (!d.ok) { $('askErr').textContent = { 'file-type': 'I can read PDFs, Word (.docx) files and photos.', 'file-unreadable': 'I couldn’t read the words in that Word file — try saving it as a PDF.', 'file-too-big': 'That file is too big (15 MB max).' }[d.error] || 'Google’s AI is overloaded right now — please try again in a minute.'; return; }
+      if (!d.ok) { $('askErr').textContent = { 'file-type': 'I can read PDFs, Word (.docx) files and photos.', 'file-unreadable': 'I couldn’t read the words in that Word file — try saving it as a PDF.', 'file-too-big': 'That file is too big (15 MB max).', 'drive-link': 'That doesn’t look like a link to a Google Drive file — use Share → Copy link on the file.', 'drive-type': 'Google Sheets and Slides can’t be read — download it as a PDF, or use a Google Doc, PDF, Word file or photo.', 'drive-private': 'Google wouldn’t let me open that file. In Drive, open Share and set General access to “Anyone with the link”, then try again (you can switch it back afterwards).', 'drive-fetch': 'I couldn’t reach Google Drive just now — please try again.' }[d.error] || 'Google’s AI is overloaded right now — please try again in a minute.'; return; }
       if (d.understood) setAskFile(null);
       if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs, properties, contacts and tenancies — try “add a gas safety for 6 Whitworth House”, “add 36 Balin House with tenants Sarah Jones 07700 900123 and Tom Lee”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; askProps = []; renderAskContacts(); renderAskTenancies(); renderAskProps(); $('askAllRow').hidden = true; return; }
       askContacts = (d.contacts || []).slice();
       renderAskContacts();
       askTenancies = (d.tenancies || []).slice();
+      askTenancies.forEach(function(t){
+        if (askForProp) { t.address = askForProp; return; }
+        var pr = t.address && matchProperty(t.address); if (pr) t.address = knownFullAddress(pr.key) || pr.address;   // the property on file
+      });
       renderAskTenancies();
       askProps = (d.properties || []).map(function(x){
         var pr = matchProperty(x.address);
@@ -6627,7 +6657,11 @@
     $('askTenancies').innerHTML = askTenancies.map(function(t, i){
       var names = tcyNames(t.tenants), g = tcyNames(t.guarantors), l = t.landlord || {};
       return '<div class="draft cdraft" data-ti="' + i + '"><div style="display:flex;align-items:center;gap:8px"><strong>New tenancy</strong></div>' +
-        '<div style="font-weight:600">' + esc(t.address || 'No address given') + '</div>' +
+        '<div style="font-weight:600">' + esc(t.address || 'No address given') + '</div>' + (function(){
+          var pr = t.address && matchProperty(t.address); if (!pr) return t.address ? '<div class="match warn">Not a property on file yet — it will be added when you save the tenancy</div>' : '';
+          var cur = propTenancy(pr.key);
+          return '<div class="match ' + (cur.k === 'none' ? 'ok' : 'warn') + '">' + (cur.k === 'none' ? '✓ Property on file — no tenancy yet' : '⚠ This property already has a tenancy (' + esc(cur.text) + ') — saving adds another') + '</div>';
+        })() +
         '<div class="prop-sub" style="line-height:1.5">' + [
           names.length ? 'Tenants: ' + esc(joinAnd(names)) : 'No tenants given',
           g.length ? 'Guarantors: ' + esc(joinAnd(g)) : '',

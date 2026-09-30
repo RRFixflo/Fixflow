@@ -2052,6 +2052,35 @@ module.exports = function mountJobs(app, opts) {
       'If there are no repair requests in it, reply {"jobs": [], "understood": false}.';
   }
 
+  // A file shared from Google Drive ("Anyone with the link"): Google Docs are
+  // downloaded as PDF, other files as they are. Only the file ID is taken from
+  // the link; the download address is always Google's own.
+  async function fetchDriveFile(link) {
+    link = String(link || '').trim();
+    let u; try { u = new URL(link); } catch (e) { return { error: 'drive-link' }; }
+    if (!/(^|\.)(drive|docs)\.google\.com$/i.test(u.hostname)) return { error: 'drive-link' };
+    const m = /\/(document|spreadsheets|presentation|file)\/d\/([\w-]{10,})/.exec(u.pathname), id = (m && m[2]) || (/^[\w-]{10,}$/.test(u.searchParams.get('id') || '') ? u.searchParams.get('id') : '');
+    if (!id) return { error: 'drive-link' };
+    const kind = m ? m[1] : 'file';
+    const url = kind === 'document' ? 'https://docs.google.com/document/d/' + id + '/export?format=pdf'
+      : kind === 'file' ? 'https://drive.google.com/uc?export=download&id=' + id : null;
+    if (!url) return { error: 'drive-type' };
+    let r;
+    try { r = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(30000) }); } catch (e) { return { error: 'drive-fetch' }; }
+    const type = String(r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!r.ok || type === 'text/html') return { error: 'drive-private' };   // a sign-in page: not shared with "Anyone with the link"
+    const len = parseInt(r.headers.get('content-length') || '0', 10);
+    if (len > 15 * 1024 * 1024) return { error: 'file-too-big' };
+    const buf = Buffer.from(await r.arrayBuffer());
+    const cd = String(r.headers.get('content-disposition') || '');
+    let name = ''; const n1 = /filename\*=UTF-8''([^;]+)/i.exec(cd), n2 = /filename="([^"]+)"/i.exec(cd);
+    try { name = n1 ? decodeURIComponent(n1[1]) : n2 ? n2[1] : ''; } catch (e) { name = n2 ? n2[1] : ''; }
+    if (!name) name = kind === 'document' ? 'Google Doc.pdf' : 'Drive file';
+    let mime = type;
+    if (!mime || mime === 'application/octet-stream') mime = /\.pdf$/i.test(name) ? 'application/pdf' : /\.docx$/i.test(name) ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : /\.jpe?g$/i.test(name) ? 'image/jpeg' : /\.png$/i.test(name) ? 'image/png' : mime;
+    return { buf: buf, name: name, mime: mime };
+  }
+
   // ---------- Assistant: plain-English (or spoken) commands ----------
   // Turns something like "add a gas safety for 6 Whitworth House" into a
   // structured job draft. Nothing is created here: the dashboard matches the
@@ -2062,10 +2091,17 @@ module.exports = function mountJobs(app, opts) {
     let text = str(String((req.body || {}).text || '').replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, ''), 6000);
     // An attached document (e.g. a Terms of Let): Word files are read here;
     // PDFs and photos go to the AI as they are.
-    const file = (req.body || {}).file, files = [];
+    let file = (req.body || {}).file;
+    const files = [];
     let fileNote = '';
-    if (file && file.data) {
-      const buf = Buffer.from(String(file.data), 'base64'), fname = String(file.name || ''), mime = String(file.mime || '').toLowerCase();
+    // Or a Google Drive / Google Docs share link: fetched from Google here.
+    if (file && file.drive) {
+      const got = await fetchDriveFile(file.drive);
+      if (got.error) return res.status(400).json({ ok: false, error: got.error });
+      file = got;
+    }
+    if (file && (file.data || file.buf)) {
+      const buf = file.buf || Buffer.from(String(file.data), 'base64'), fname = String(file.name || ''), mime = String(file.mime || '').toLowerCase();
       if (!buf.length || buf.length > 15 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'file-too-big' });
       if (/\.docx$/i.test(fname) || /wordprocessingml/.test(mime)) {
         const words = docxText(buf);
@@ -2075,6 +2111,9 @@ module.exports = function mountJobs(app, opts) {
       else if (/^image\/(jpeg|png|webp|heic|heif)$/.test(mime)) files.push({ mime: mime, data: buf.toString('base64') });
       else return res.status(400).json({ ok: false, error: 'file-type' });
       if (!text) text = 'The attached document is a Terms of Let / tenancy details for a new let. Create the tenancy from it.';
+      // Started from a property already on file: the tenancy is for that property.
+      const forProp = str((req.body || {}).for_property, 300);
+      if (forProp) text += '\n\nThis tenancy is for the property already on file: ' + forProp + ' — use exactly this address for it.';
       if (files.length) fileNote = '\n\n(The document "' + fname + '" is attached; read it in full.)';
     }
     if (!text) return res.status(400).json({ ok: false, error: 'no-text' });
