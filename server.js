@@ -131,14 +131,16 @@ const jobs = require('./jobs')(app, {
 // Simple existence check the frontend can use to confirm a real backend is present
 // (there is no such endpoint when this same file runs as a claude.ai artifact).
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, canEmail: !!RESEND_API_KEY, canAi: !!(GEMINI_API_KEY || ANTHROPIC_API_KEY), canAddress: !!GETADDRESS_API_KEY });
+  res.json({ ok: true, canEmail: !!RESEND_API_KEY, canAi: !!(GEMINI_API_KEY || ANTHROPIC_API_KEY), canAddress: !!GETADDRESS_API_KEY && !addressKeyRejected });
 });
 
 // Step 1 of getAddress.io Autocomplete: suggestions for what the tenant has typed
 // so far (part of an address, or a postcode — all=true lists every address at a
 // postcode). Proxied so the API key never reaches the browser.
+// Set when getAddress turns the key down, so the page stops offering this search.
+let addressKeyRejected = false;
 app.get('/api/address/autocomplete', async (req, res) => {
-  if (!GETADDRESS_API_KEY) {
+  if (!GETADDRESS_API_KEY || addressKeyRejected) {
     return res.status(503).json({ ok: false, error: 'address-not-configured' });
   }
   if (!allowedByRateLimit(req.ip, addressSearchLimitMap, 300)) {
@@ -152,6 +154,7 @@ app.get('/api/address/autocomplete', async (req, res) => {
     const url = 'https://api.getAddress.io/autocomplete/' + encodeURIComponent(term) +
       '?api-key=' + encodeURIComponent(GETADDRESS_API_KEY) + '&all=true&top=6';
     const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (resp.status === 401 || resp.status === 403) addressKeyRejected = true;
     if (!resp.ok) {
       console.error('getAddress autocomplete error:', resp.status);
       return res.status(502).json({ ok: false, error: resp.status === 429 ? 'rate-limited' : 'lookup-failed' });

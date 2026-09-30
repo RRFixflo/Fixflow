@@ -3451,8 +3451,9 @@
         .then(function(r){ return r.json(); })
         .then(function(data){
           if (mine !== seq) return; // a newer keystroke has taken over
-          // If this search isn't working, stay quiet — the postcode finder still works.
-          if (!data || !data.ok) { close(); return; }
+          // If this search isn't working, stay quiet and stop using it for this
+          // visit — the postcode finder still works.
+          if (!data || !data.ok) { if (data && data.error !== 'rate-limited') enabled = false; close(); return; }
           if (!(data.suggestions || []).length) { close(); return; }
           render(data.suggestions);
         })['catch'](function(){ if (mine === seq) close(); });
