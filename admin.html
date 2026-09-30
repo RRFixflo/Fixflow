@@ -628,6 +628,11 @@
   .kr-row[hidden] { display: none; }
   .kr-addr { font-size: .9rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
   @media (max-width: 640px) { .kr-row { grid-template-columns: 1fr 90px; } .kr-row .kr-notes { grid-column: 1 / -1; } }
+  .part-tell { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+  .part-tell.just { background: #FFF7E0; border-radius: 10px; padding: 6px 8px; }
+  .part-tell.just span { font-size: .85rem; font-weight: 600; margin-right: 4px; }
+  .u-send { display: flex; gap: 14px; margin-top: 2px; }
+  .u-send .linkish { padding: 2px 0; font-size: .8rem; }
   .linkish { background: none; border: 0; padding: 6px 0 0; color: var(--blue, #2563EB); font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; }
   .wa-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; font-weight: 500; cursor: pointer; }
   .wa-assign input { width: 16px; height: 16px; accent-color: var(--brick); }
@@ -4052,8 +4057,32 @@
       (link ? '\n\nYou can follow the progress here: ' + link : '') +
       '\n\nThanks,\nResidential Realtors';
   }
-  var ttGroups = [], ttMode = 'tenant', ttJobs = [];
-  function openTenantNotice(list, contractor){
+  var ttGroups = [], ttMode = 'tenant', ttJobs = [], ttCustom = null;
+  // Any update on a job, sent to the tenant or the landlord: the text is
+  // wrapped in a greeting, the job, the tracking link and a sign-off, and can
+  // be edited before sending.
+  function updateNotice(j, text, to){
+    text = String(text || '').trim();
+    var custom = {
+      title: 'Send the tenant an update', llTitle: 'Send the landlord an update',
+      text: function(g, links, who){
+        var link = links[j.id];
+        if (who === 'landlord') return llGreeting(g.name) + ',\n\nAn update on ' + llWorkText(j) + ' at ' + shortAddr(j.property_address) + ' (ref ' + j.ref + '):\n\n' + text +
+          (link ? '\n\nFollow the progress: ' + link : '') + '\n\nKind regards,\nResidential Realtors';
+        return 'Hi ' + (greetName(g.name) || 'there') + ',\n\nThis is Residential Realtors with an update on ' + workText(j) + ' at ' + shortAddr(j.property_address) + ':\n\n' + text +
+          (link ? '\n\nYou can follow the progress here: ' + link : '') + '\n\nThanks,\nResidential Realtors';
+      }
+    };
+    if (to === 'landlord') openLandlordNotice([j], custom); else openTenantNotice([j], '', custom);
+  }
+  // What to tell people about a part, by where it's up to (no prices or suppliers).
+  function partText(x, j){
+    var d = String(x.description || 'the part').trim(), appt = apptText(j);
+    if (x.status === 'Fitted') return 'The new part (' + d + ') has now been fitted.';
+    if (x.status === 'Arrived') return 'The part needed for the repair (' + d + ') has arrived' + (appt ? ', and the visit to fit it is booked for ' + appt + '.' : '. We’ll be in touch to arrange a time to fit it.');
+    return 'We’ve ordered the part needed to complete the repair (' + d + '). As soon as it arrives we’ll arrange for it to be fitted' + (j.direct_contact !== 'No' ? ' — the contractor will be in touch to arrange a time.' : '.');
+  }
+  function openTenantNotice(list, contractor, custom){
     // One message per tenant (a tenant with several jobs gets one message).
     var groups = [], byKey = {};
     list.forEach(function(j){
@@ -4064,19 +4093,20 @@
       var g = byKey[k] || (byKey[k] = groups[groups.push({ name: t.name, phone: t.phone, email: t.email, address: j.property_address, jobs: [] }) - 1]);
       g.jobs.push(j);
     });
-    if (!groups.length) { if (list.some(function(j){ return j.assigned_to && llContact(j); })) openLandlordNotice(list); return; }
-    ttGroups = groups; ttMode = 'tenant'; ttJobs = list;
-    $('ttTitle').textContent = 'Let the tenant know';
-    $('ttLl').hidden = !list.some(function(j){ return j.assigned_to && llContact(j); });
+    if (!groups.length) { if (custom) { toast('No phone or email for the tenant on this job'); return; } if (list.some(function(j){ return j.assigned_to && llContact(j); })) openLandlordNotice(list); return; }
+    ttGroups = groups; ttMode = 'tenant'; ttJobs = list; ttCustom = custom || null;
+    $('ttTitle').textContent = custom ? custom.title || 'Send the tenant an update' : 'Let the tenant know';
+    $('ttLl').hidden = !list.some(function(j){ return (custom || j.assigned_to) && llContact(j); });
     $('ttLl').textContent = '🏠 Tell the landlord too'; $('ttLl').dataset.to = 'landlord';
     var who = contractor || (list[0] && list[0].assigned_to) || '';
-    $('ttIntro').textContent = groups.length === 1 ? 'Tell ' + (groups[0].name || 'the tenant') + ' that ' + (who || 'the contractor') + ' will be in touch.' : 'Tell each tenant that ' + (who || 'the contractor') + ' will be in touch.';
+    $('ttIntro').textContent = custom ? 'Check the message, then send it to ' + (groups.length === 1 ? (groups[0].name || 'the tenant') : 'each tenant') + '.' : groups.length === 1 ? 'Tell ' + (groups[0].name || 'the tenant') + ' that ' + (who || 'the contractor') + ' will be in touch.' : 'Tell each tenant that ' + (who || 'the contractor') + ' will be in touch.';
     var links = {};
+    var tMsg = function(g){ return custom ? custom.text(g, links, 'tenant') : tenantMessage(g, who, links); };
     var draw = function(){
       $('ttList').innerHTML = groups.map(function(g, i){
         var wa = waNumber(g.phone);
         return '<div class="tt-card" data-i="' + i + '"><div class="tt-who">' + avatar(g.name || '?') + '<div><strong>' + esc(g.name || 'Tenant') + '</strong><div class="prop-sub" style="margin:0">' + esc([g.phone, g.email].filter(Boolean).join(' · ')) + '</div></div></div>' +
-          '<textarea class="inp tt-msg" rows="6">' + esc(tenantMessage(g, who, links)) + '</textarea>' +
+          '<textarea class="inp tt-msg" rows="' + (custom ? 9 : 6) + '">' + esc(tMsg(g)) + '</textarea>' +
           '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(greetName(g.name) || 'tenant') + '</button>' : '') +
             (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? 'Send email' : 'Email') + '</button>' : '') +
             '<button type="button" class="btn ghost" data-tt="copy">Copy</button><span class="tt-done" hidden>✓ Sent</span></div></div>';
@@ -4091,7 +4121,7 @@
         if (ttMode !== 'tenant') return;
         $('ttList').querySelectorAll('.tt-card').forEach(function(card){
           var g = groups[Number(card.dataset.i)], ta = card.querySelector('.tt-msg');
-          if (!ta.dataset.edited) ta.value = tenantMessage(g, who, links);
+          if (!ta.dataset.edited) ta.value = tMsg(g);
         });
       });
   }
@@ -4102,7 +4132,7 @@
     var ll = ttMode === 'landlord';
     var log = function(how){
       card.querySelector('.tt-done').hidden = false;
-      g.jobs.forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', ll ? { kind: 'landlord_message', body: 'Sent the landlord an update (' + how + '):\n\n' + msg } : { kind: 'tenant_message', body: 'Told the tenant the contractor will be in touch (' + how + '):\n\n' + msg }); });
+      g.jobs.forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', ll ? { kind: 'landlord_message', body: 'Sent the landlord an update (' + how + '):\n\n' + msg } : { kind: 'tenant_message', body: (ttCustom ? 'Sent the tenant an update (' : 'Told the tenant the contractor will be in touch (') + how + '):\n\n' + msg }); });
     };
     if (ll && b.dataset.tt === 'photos') {
       // Phones: the actual photos through the share sheet (pick WhatsApp, then the landlord).
@@ -4145,6 +4175,7 @@
   });
   $('ttDone').addEventListener('click', function(){ $('ttModal').hidden = true; if (openJobId) openJob(openJobId); });
   $('ttLl').addEventListener('click', function(){
+    if (ttCustom) { var cu = ttCustom; if ($('ttLl').dataset.to === 'tenant') openTenantNotice(ttJobs, '', cu); else openLandlordNotice(ttJobs, cu); return; }
     if ($('ttLl').dataset.to === 'tenant') {
       var js = ttJobs.filter(function(j){ return j.landlord_handles; });
       openTenantNotice(js, js[0] && js[0].landlord_handles === 'contractor' ? 'your landlord’s contractor' : 'your landlord');
@@ -4417,7 +4448,7 @@
     return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone || jobs.every(function(j){ return j.landlord_handles || isDone(j); }) ? 'Thank you — please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.') + '\n\nKind regards,\nResidential Realtors';
   }
   function llPhotoIds(g){ return [].concat.apply([], g.jobs.map(function(j){ var lj = jobs.filter(function(x){ return x.id === j.id; })[0] || j; return lj.photo_ids || []; })).slice(0, 30); }
-  function openLandlordNotice(list){
+  function openLandlordNotice(list, custom){
     var groups = [], byKey = {};
     list.forEach(function(j){
       var l = j.status !== 'Cancelled' ? llContact(j) : null; if (!l) return;
@@ -4426,22 +4457,24 @@
       g.jobs.push(j);
     });
     if (!groups.length) { toast('No landlord phone or email for ' + (list.length === 1 ? 'this property' : 'those properties')); return; }
-    ttGroups = groups; ttMode = 'landlord'; ttJobs = list;
-    $('ttTitle').textContent = 'Let the landlord know';
+    ttGroups = groups; ttMode = 'landlord'; ttJobs = list; ttCustom = custom || null;
+    $('ttTitle').textContent = custom ? (custom.llTitle || 'Send the landlord an update') : 'Let the landlord know';
     // For jobs the landlord is doing, the tenant can be told next.
     var llDoing = list.filter(function(j){ return j.landlord_handles && isOpen(j) && (j.tenant_phone || j.tenant_email); });
-    $('ttLl').hidden = !llDoing.length;
+    $('ttLl').hidden = custom ? !list.some(function(j){ return j.tenant_phone || j.tenant_email; }) : !llDoing.length;
     $('ttLl').textContent = '💬 Tell the tenant too';
     $('ttLl').dataset.to = 'tenant';
     var skipped = list.length - groups.reduce(function(n, g){ return n + g.jobs.length; }, 0);
     $('ttIntro').textContent = (groups.length === 1 ? 'Send ' + (groups[0].name || 'the landlord') + ' an update' : 'Send each landlord an update') + ' with ' + (list.every(function(j){ return j.status === 'Completed'; }) ? 'the news that it’s done' : 'the progress link') + ' — check the message, then send.' +
       (skipped ? ' ' + skipped + ' job' + (skipped === 1 ? ' was' : 's were') + ' left out (no landlord phone or email saved).' : '');
+    if (custom) $('ttIntro').textContent = 'Check the message, then send it to ' + (groups.length === 1 ? (groups[0].name || 'the landlord') : 'each landlord') + '.';
     var links = {};
+    var lMsg = function(g){ return custom ? custom.text(g, links, 'landlord') : landlordMessage(g, links); };
     var draw = function(){
       $('ttList').innerHTML = groups.map(function(g, i){
         var wa = waNumber(g.phone);
         return '<div class="tt-card" data-i="' + i + '"><div class="tt-who">' + avatar(g.name || '?') + '<div><strong>' + esc(g.name || 'Landlord') + '</strong><div class="prop-sub" style="margin:0">' + esc([g.phone, g.email].filter(Boolean).join(' · ')) + (g.jobs.length > 1 ? ' · ' + g.jobs.length + ' jobs' : '') + '</div></div></div>' +
-          '<textarea class="inp tt-msg" rows="12">' + esc(landlordMessage(g, links)) + '</textarea>' +
+          '<textarea class="inp tt-msg" rows="' + (custom ? 9 : 12) + '">' + esc(lMsg(g)) + '</textarea>' +
           '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(greetName(g.name) || 'landlord') + '</button>' : '') +
             (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? 'Send email' : 'Email') + '</button>' : '') +
             (llPhotoIds(g).length && canShareFiles() ? '<button type="button" class="btn" data-tt="photos">📷 Send photos (' + llPhotoIds(g).length + ')</button>' : '') +
@@ -4461,7 +4494,7 @@
         if (ttMode !== 'landlord') return;
         $('ttList').querySelectorAll('.tt-card').forEach(function(card){
           var g = groups[Number(card.dataset.i)], ta = card.querySelector('.tt-msg');
-          if (!ta.dataset.edited) ta.value = landlordMessage(g, links);
+          if (!ta.dataset.edited) ta.value = lMsg(g);
         });
       });
   }
@@ -4469,7 +4502,7 @@
 
   // When a contractor is assigned, get the tenant message ready: the AI writer
   // (or the "Contractor assigned" template) on the Messages tab, to check and send.
-  var tenantNotice = null, bookedNotice = null, jobParts = [];
+  var tenantNotice = null, bookedNotice = null, jobParts = [], partJust = null;
   function noticeTenantAfterAssign(jobId, contractor){ if (jobId && contractor) tenantNotice = { jobId: jobId, contractor: contractor }; }
   // A second contractor added on the job page: offer to send them the job straight away.
   function offerSendSecond(jobId, name){
@@ -4657,7 +4690,10 @@
           return '<div class="part-row" data-part="' + x.id + '"><div class="pd"><strong>' + esc(x.description) + '</strong>' + (x.supplier ? '<small>' + esc(x.supplier) + '</small>' : '') + '</div>' +
             '<select class="inp part-st" data-part-status="' + x.id + '" aria-label="Part status">' + ['Ordered', 'Arrived', 'Fitted'].map(function(s){ return '<option' + (s === x.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
             '<div class="pm"><span>Cost ' + esc(gbp(num(x.cost))) + '</span><span class="pc">Landlord ' + esc(gbp(num(x.charge))) + '</span></div>' +
-            '<button type="button" class="btn small ghost" data-part-del="' + x.id + '" aria-label="Remove part">✕</button></div>';
+            '<button type="button" class="btn small ghost" data-part-del="' + x.id + '" aria-label="Remove part">✕</button>' +
+            '<div class="part-tell' + (x.id === partJust ? ' just' : '') + '">' + (x.id === partJust ? '<span>Let them know it’s ' + esc(String(x.status).toLowerCase()) + ':</span>' : '') +
+              '<button type="button" class="btn small" data-part-tell="tenant" data-pid="' + x.id + '">💬 Tell tenant</button>' +
+              '<button type="button" class="btn small" data-part-tell="landlord" data-pid="' + x.id + '">🏠 Tell landlord</button></div></div>';
         }).join('') + '</div>' +
           '<div class="parts-total">Parts total: cost <strong>' + esc(gbp(j.parts_cost)) + '</strong> · charged to landlord <strong>' + esc(gbp(j.parts_charge)) + '</strong></div>' : '<p class="muted-note">No parts yet. Add any parts ordered for this job — the landlord charge is added to the job’s total and invoice.</p>') +
         (jobParts.some(function(x){ return x.status === 'Ordered'; }) && j.status !== 'Awaiting parts' && isOpen(j) ? '<div class="nearby" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>Waiting for parts to arrive?</span><button class="btn small" id="partsAwait" type="button">Set status to Awaiting parts</button></div>' : '') +
@@ -4834,10 +4870,12 @@
       '<div class="card" data-pane="history"><h3>Updates &amp; history</h3>' +
         '<label class="lbl" for="fNote">Add an update</label>' +
         '<textarea class="inp" id="fNote" placeholder="What’s happened — calls made, quotes received, contractor feedback…"></textarea>' +
-        '<div class="row-actions"><button class="btn primary" id="addNote" type="button">Add update</button></div>' +
+        '<div class="row-actions"><button class="btn" id="addNoteT" type="button">Add &amp; tell tenant</button><button class="btn" id="addNoteL" type="button">Add &amp; tell landlord</button><button class="btn primary" id="addNote" type="button">Add update</button></div>' +
         '<ul class="timeline">' + updates.map(function(u){
           var label = { created: 'Job created', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', landlord_message: 'Message to landlord', contractor_message: 'Sent to contractor', contractor_note: 'Note from contractor', email: 'Email', completed: 'Completed' }[u.kind] || 'Update';
-          return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + '</span>' + esc(u.body) + '</li>';
+          var sendable = ['note', 'contractor_note', 'completed'].indexOf(u.kind) !== -1 || (u.kind === 'change' && /^Status: /.test(u.body));
+          return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + '</span>' + esc(u.body) +
+            (sendable ? '<div class="u-send"><button type="button" class="linkish" data-u-send="tenant" data-uid="' + u.id + '">💬 Send to tenant</button><button type="button" class="linkish" data-u-send="landlord" data-uid="' + u.id + '">🏠 Send to landlord</button></div>' : '') + '</li>';
         }).join('') + '</ul>' +
       '</div>' +
 
@@ -4846,7 +4884,7 @@
         '<p class="muted-note">Deleting moves the job to the <strong>Archived</strong> tab. Nothing is lost — its details, photos and history are kept, and it can be restored at any time.</p>' +
         '<div class="row-actions"><button class="btn danger" id="deleteJob" type="button">Delete job</button></div></div>');
 
-    wireJob(j, photos);
+    wireJob(j, photos, updates);
   }
 
   // Starting points for the AI email, per recipient; clicking one fills the box.
@@ -5005,7 +5043,8 @@
     else if (e.key === 'Escape') { e.stopImmediatePropagation(); closeLightbox(); }
   }, true);
 
-  function wireJob(j, photos){
+  function wireJob(j, photos, updates){
+    partJust = null;   // the 'let them know' highlight shows once, after adding or changing a part
     photos = photos || [];
     var LLJ_ID = (landlordFor(j) || {}).id;
     $('invBtn').addEventListener('click', function(){ openInvoice(j, null); });
@@ -5414,14 +5453,16 @@
       api('POST', '/api/admin/jobs/' + j.id + '/parts', { description: desc, supplier: $('ptSupplier').value, cost: cost, charge: charge }).then(function(d){
         busy($('ptAdd'), false);
         if (!d.ok) { toast('Couldn’t add the part (' + (d.error || 'error') + ')'); return; }
-        partsReload('Part added');
+        partJust = d.part && d.part.id; partsReload('Part added — let the tenant know it’s on order');
       });
     });
     $('partsCard').addEventListener('change', function(e){
       var s = e.target.closest('[data-part-status]'); if (!s) return;
-      api('PATCH', '/api/admin/parts/' + s.dataset.partStatus, { status: s.value }).then(function(d){ if (!d.ok) { toast('Couldn’t update the part'); return; } partsReload('Part marked ' + s.value.toLowerCase()); });
+      api('PATCH', '/api/admin/parts/' + s.dataset.partStatus, { status: s.value }).then(function(d){ if (!d.ok) { toast('Couldn’t update the part'); return; } partJust = Number(s.dataset.partStatus); partsReload('Part marked ' + s.value.toLowerCase()); });
     });
     $('partsCard').addEventListener('click', function(e){
+      var tell = e.target.closest('[data-part-tell]');
+      if (tell) { var px = jobParts.filter(function(x){ return x.id === Number(tell.dataset.pid); })[0]; if (px) updateNotice(j, partText(px, j), tell.dataset.partTell); return; }
       var del = e.target.closest('[data-part-del]'); if (!del) return;
       if (!confirm('Remove this part?')) return;
       api('DELETE', '/api/admin/parts/' + del.dataset.partDel, { confirm: true }).then(function(d){ if (!d.ok) { toast('Couldn’t remove it'); return; } partsReload('Part removed'); });
@@ -5523,14 +5564,27 @@
     }
     drawMsgActs();
 
-    $('addNote').addEventListener('click', function(){
+    function addNote(to){
       var text = $('fNote').value.trim();
       if (!text) { $('fNote').focus(); return; }
       api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'note', body: text }).then(function(d){
         if (!d.ok) { toast('Couldn’t add the update.'); return; }
         toast('Update added'); openJob(j.id); loadJobs();
+        if (to) setTimeout(function(){ updateNotice(j, text, to); }, 500);
       });
-    });
+    }
+    $('addNote').addEventListener('click', function(){ addNote(); });
+    $('addNoteT').addEventListener('click', function(){ addNote('tenant'); });
+    $('addNoteL').addEventListener('click', function(){ addNote('landlord'); });
+    // Any update in the history: send it on. Wording tidied for the tenant/landlord.
+    $('drawer').querySelectorAll('[data-u-send]').forEach(function(b){ b.addEventListener('click', function(){
+      var u = updates.filter(function(x){ return String(x.id) === b.dataset.uid; })[0]; if (!u) return;
+      var t = String(u.body);
+      if (u.kind === 'contractor_note') t = t.replace(/^[^:]*:\s*/, '').replace(/\s*\[\d+ photos? added\]$/, '');
+      if (u.kind === 'change') { var m = /^Status: .* → (.+)$/.exec(t); t = m ? 'The repair is now: ' + m[1] + '.' : t; }
+      if (u.kind === 'completed') t = 'The work has been completed.' + (j.completion_notes ? ' ' + String(j.completion_notes).replace(/Their price:[^.]*\.?/gi, '').trim() : '');
+      updateNotice(j, t, b.dataset.uSend);
+    }); });
   }
 
   // ---------- What landlords owe us (unpaid invoices) ----------
