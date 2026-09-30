@@ -491,23 +491,43 @@ function money(v) {
 }
 
 // Photos arrive as data URLs from the browser. Only real images are kept, each
-// under 6 MB (the tenant page shrinks them to a few hundred KB first).
-const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+// under 12 MB (the tenant page shrinks them to a few hundred KB first). iPhone
+// HEIC photos are accepted and turned into JPEGs before saving, so every
+// browser (and the PDF) can show them.
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'];
 const MAX_PHOTOS_PER_UPLOAD = 30;
 function decodePhotos(list) {
   if (!Array.isArray(list)) return [];
   const out = [];
   for (const ph of list.slice(0, MAX_PHOTOS_PER_UPLOAD)) {
-    const m = /^data:(image\/[a-z+]+);base64,([A-Za-z0-9+/=]+)$/.exec(String((ph && ph.dataUrl) || ''));
-    if (!m || PHOTO_TYPES.indexOf(m[1]) === -1) continue;
+    const m = /^data:([a-z]*\/?[a-z0-9.+-]*);base64,([A-Za-z0-9+/=]+)$/i.exec(String((ph && ph.dataUrl) || ''));
+    if (!m) continue;
+    let mime = m[1].toLowerCase();
     const buf = Buffer.from(m[2], 'base64');
-    if (!buf.length || buf.length > 6 * 1024 * 1024) continue;
-    out.push({ name: str(ph.name, 200), mime: m[1], data: buf });
+    // Some browsers don't label HEIC files: tell by the name or the file itself ("ftypheic").
+    if (PHOTO_TYPES.indexOf(mime) === -1 && (/\.hei[cf]$/i.test(String(ph.name || '')) || /^ftyp(hei|hev|mif1|msf1)/.test(buf.slice(4, 12).toString('latin1')))) mime = 'image/heic';
+    if (PHOTO_TYPES.indexOf(mime) === -1) continue;
+    if (!buf.length || buf.length > 12 * 1024 * 1024) continue;
+    out.push({ name: str(ph.name, 200), mime: mime, data: buf });
   }
   return out;
 }
+// HEIC → JPEG (pure JavaScript, loaded only when needed). If it can't be
+// converted the original is kept, so nothing is lost.
+async function heicToJpeg(ph) {
+  if (ph.mime !== 'image/heic' && ph.mime !== 'image/heif') return ph;
+  try {
+    const convert = require('heic-convert');
+    const out = Buffer.from(await convert({ buffer: ph.data, format: 'JPEG', quality: 0.82 }));
+    return { name: String(ph.name || 'photo').replace(/\.hei[cf]$/i, '') + '.jpg', mime: 'image/jpeg', data: out };
+  } catch (err) {
+    console.error('HEIC photo could not be converted:', err.message);
+    return ph;
+  }
+}
 async function insertPhotos(p, jobIdValue, photos, addedBy) {
-  for (const ph of photos) {
+  for (const raw of photos) {
+    const ph = await heicToJpeg(raw);
     await p.query('INSERT INTO job_photos (job_id, added_by, name, mime, data) VALUES ($1, $2, $3, $4, $5)',
       [jobIdValue, addedBy, ph.name, ph.mime, ph.data]);
   }
@@ -570,7 +590,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
         '<form class="stack" style="margin:10px 0 0" data-done="' + j.id + '">' +
           '<textarea name="notes" rows="3" placeholder="What did you do? (optional)" style="padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit"></textarea>' +
           '<input name="price" inputmode="decimal" placeholder="Your price £ (optional)">' +
-          '<label class="muted" style="display:block">Photos of the finished work (optional)<input type="file" name="photos" accept="image/*" multiple style="display:block;margin-top:6px;padding:10px;background:#fff"></label>' +
+          '<label class="muted" style="display:block">Photos of the finished work (optional)<input type="file" name="photos" accept="image/*,.heic,.heif" multiple style="display:block;margin-top:6px;padding:10px;background:#fff"></label>' +
           '<button type="submit" style="background:#139A4B">Mark ' + esc(j.ref) + ' completed</button>' +
         '</form></details>' +
     '</div>';
@@ -587,7 +607,8 @@ const CONTRACTOR_PAGE_JS = `(function(){
           cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
           resolve({ name: file.name, dataUrl: cv.toDataURL('image/jpeg', 0.82) });
         };
-        img.onerror = function(){ resolve(null); };
+        // A photo this browser can't open (an iPhone HEIC, say) goes as it is; our server converts it.
+        img.onerror = function(){ resolve(/hei[cf]$/i.test(file.name || '') || /hei[cf]/i.test(file.type || '') ? { name: file.name, dataUrl: String(fr.result).replace(/^data:[^;,]*;base64,/, 'data:image/heic;base64,') } : null); };
         img.src = fr.result;
       };
       fr.onerror = function(){ resolve(null); };

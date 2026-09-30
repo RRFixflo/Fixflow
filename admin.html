@@ -4419,7 +4419,7 @@
 
       // Photos
       '<div class="card" data-pane="photos"><h3>Photos <span class="count-chip">' + photos.length + '</span><span style="flex:1"></span>' +
-          '<button class="btn small" id="addPhotos" type="button">+ Add photos</button><input type="file" id="phInput" accept="image/*" multiple hidden></h3>' +
+          '<button class="btn small" id="addPhotos" type="button">+ Add photos</button><input type="file" id="phInput" accept="image/*,.heic,.heif" multiple hidden></h3>' +
         (photos.length ? '<div class="gallery">' + photos.map(function(ph, i){
           return '<button type="button" class="gal-item" data-i="' + i + '" title="' + esc((ph.added_by === 'staff' ? 'Added by staff' : 'From the tenant') + ' · ' + fmtShort(ph.created_at)) + '">' +
             '<img loading="lazy" src="/api/admin/photos/' + ph.id + '" alt="Photo ' + (i + 1) + '">' +
@@ -4954,7 +4954,7 @@
     });
     $('addPhotos').addEventListener('click', function(){ $('phInput').click(); });
     $('phInput').addEventListener('change', function(){
-      var files = Array.prototype.filter.call($('phInput').files, function(f){ return f.type.indexOf('image/') === 0; }).slice(0, 30);
+      var files = Array.prototype.filter.call($('phInput').files, function(f){ return (f.type || '').indexOf('image/') === 0 || /\.hei[cf]$/i.test(f.name || ''); }).slice(0, 30);
       if (!files.length) return;
       $('addPhotos').disabled = true; $('addPhotos').textContent = 'Uploading…';
       Promise.all(files.map(shrinkImage)).then(function(urls){
