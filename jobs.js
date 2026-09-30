@@ -99,6 +99,12 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS appointment_date TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS appointment_time TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_handles TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_contractor TEXT;
+-- A second contractor on the job, and which of the two has finished their part
+-- first (the job completes when both have).
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS assigned_to_2 TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS part_done_by TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS part_done_at TIMESTAMPTZ;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS part_price NUMERIC(10,2);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_address TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contractor_paid_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_number TEXT;
@@ -468,7 +474,7 @@ const SOURCES = ['Online report', 'Phone call', 'Email', 'Text / WhatsApp', 'In 
 // contractor together straight from the list.
 const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenant_name, tenant_email,
   tenant_phone, property_address, category, affected, symptom, location, description, access_days,
-  access_time, access_notes, key_permission, key_instructions, direct_contact, summary, appointment_date, appointment_time, assigned_to, next_steps,
+  access_time, access_notes, key_permission, key_instructions, direct_contact, summary, appointment_date, appointment_time, assigned_to, assigned_to_2, part_done_by, next_steps,
   estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
   archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved,
   (SELECT array_agg(ph.id ORDER BY ph.id) FROM job_photos ph WHERE ph.job_id = jobs.id) AS photo_ids,
@@ -632,6 +638,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
         (urgent ? '<span style="color:#D9262E;font-weight:700;font-size:.85rem">' + esc(j.urgency) + '</span>' : '<span class="muted">' + esc(j.status) + '</span>') + '</div>' +
       '<div style="font-weight:600;margin:4px 0">' + esc(j.property_address || '') + '</div>' +
       '<div>' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div>' +
+      (j.with ? '<div class="muted" style="margin-top:4px">👷 Working alongside ' + esc(j.with) + ' — mark it completed when your part is done</div>' : '') +
       (j.appointment_date ? '<div style="margin:6px 0;font-weight:600">📅 Booked for ' + esc(day(j.appointment_date)) + (j.appointment_time ? ' at ' + esc(j.appointment_time) : '') + '</div>' : '') +
       '<details class="dt"><summary>Details and access</summary><div class="dbody">' +
         (j.description ? '<div class="desc">' + esc(j.description) + '</div>' : '') +
@@ -1214,6 +1221,7 @@ module.exports = function mountJobs(app, opts) {
       label: 'Due', show: function (v) { return v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', dateStyle: 'medium', timeStyle: 'short' }) : 'none'; }
     },
     assigned_to: { clean: function (v) { return str(v, 200); }, label: 'Assigned to' },
+    assigned_to_2: { clean: function (v) { return str(v, 200); }, label: 'Second contractor' },
     // The landlord does the work themselves ('self') or with their own contractor ('contractor').
     landlord_handles: { clean: function (v) { return v === 'self' || v === 'contractor' ? v : (v ? undefined : null); }, label: 'Done by',
       show: function (v) { return v === 'self' ? 'the landlord' : v === 'contractor' ? 'the landlord’s own contractor' : 'our contractor'; } },
@@ -1284,6 +1292,11 @@ module.exports = function mountJobs(app, opts) {
     await p.query('UPDATE jobs SET ' + sets.join(', ') + ', updated_at = now() WHERE id = $' + vals.length, vals);
     for (const n of notes) {
       await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', n]);
+    }
+    // A contractor who'd finished their part and is no longer on the job: forget it.
+    if ('assigned_to' in body || 'assigned_to_2' in body) {
+      await p.query(`UPDATE jobs SET part_done_by = NULL, part_done_at = NULL, part_price = NULL WHERE id = $1 AND part_done_by IS NOT NULL
+        AND lower(trim(part_done_by)) NOT IN (lower(trim(coalesce(assigned_to, ''))), lower(trim(coalesce(assigned_to_2, ''))))`, [id]);
     }
     if (['tenant_name', 'tenant_phone', 'tenant_email', 'property_address'].some(function (f) { return f in body; })) {
       const tn = (await p.query('SELECT property_address, tenant_name, tenant_phone, tenant_email FROM jobs WHERE id = $1', [id])).rows[0];
@@ -2026,14 +2039,14 @@ module.exports = function mountJobs(app, opts) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     const token = String(req.params.token || '');
     if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
-    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, appointment_date, appointment_time, assigned_to, landlord_handles
+    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, appointment_date, appointment_time, assigned_to, assigned_to_2, landlord_handles
       FROM jobs WHERE track_token = $1 AND archived_at IS NULL`, [token])).rows[0];
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (!j) return res.status(404).send(trackShell('Repair not found', '<h1>Repair not found</h1><p class="sub">This link is no longer available. <a class="more" href="/track">Look up a repair</a></p>'));
     const u = (await p.query(`SELECT created_at, body FROM job_updates WHERE job_id = $1 AND kind = 'tenant_message' ORDER BY created_at DESC LIMIT 10`, [j.id])).rows;
     // Contractor names never show here (this link also goes to landlords).
     const names = (await p.query("SELECT name FROM contractors WHERE coalesce(trim(name), '') <> ''")).rows.map(function (r) { return r.name.trim(); });
-    if (j.assigned_to && names.indexOf(j.assigned_to.trim()) === -1) names.push(j.assigned_to.trim());
+    [j.assigned_to, j.assigned_to_2].forEach(function (n) { if (n && n.trim() && names.indexOf(n.trim()) === -1) names.push(n.trim()); });
     names.sort(function (a, b) { return b.length - a.length; });
     const reEsc = function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
     const pubAddr = publicAddress(j.property_address);
@@ -3203,6 +3216,8 @@ module.exports = function mountJobs(app, opts) {
     if (c.name && c.name !== cur.rows[0].name) {
       await p.query(`UPDATE jobs SET assigned_to = $1 WHERE assigned_to = $2 AND status NOT IN ('Completed', 'Cancelled')`,
         [c.name, cur.rows[0].name]);
+      await p.query(`UPDATE jobs SET assigned_to_2 = $1 WHERE assigned_to_2 = $2 AND status NOT IN ('Completed', 'Cancelled')`,
+        [c.name, cur.rows[0].name]);
     }
     res.json({ ok: true });
   }));
@@ -3236,11 +3251,21 @@ module.exports = function mountJobs(app, opts) {
     if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
     p.query("UPDATE contractors SET portal_seen_at = now() WHERE id = $1 AND (portal_seen_at IS NULL OR portal_seen_at < now() - interval '1 minute')", [c.id]).catch(function () {});
     const r = await p.query(`SELECT id, status, urgency, created_at, completed_at, category, affected, symptom, location, description, summary, property_address,
-        tenant_name, tenant_phone, access_time, access_notes, key_permission, key_instructions, direct_contact, appointment_date, appointment_time, completion_notes
-      FROM jobs WHERE archived_at IS NULL AND lower(trim(assigned_to)) = lower(trim($1))
+        tenant_name, tenant_phone, access_time, access_notes, key_permission, key_instructions, direct_contact, appointment_date, appointment_time, completion_notes,
+        assigned_to, assigned_to_2, part_done_by, part_done_at
+      FROM jobs WHERE archived_at IS NULL AND (lower(trim(assigned_to)) = lower(trim($1)) OR lower(trim(assigned_to_2)) = lower(trim($1)))
         AND (status NOT IN ('Completed', 'Cancelled') OR (status = 'Completed' AND completed_at > now() - interval '30 days'))
       ORDER BY (status = 'Completed'), created_at DESC LIMIT 200`, [c.name]);
-    res.json({ ok: true, name: c.name, jobs: r.rows.map(function (j) { j.ref = refFor(j.id); return j; }) });
+    const me = c.name.trim().toLowerCase();
+    res.json({ ok: true, name: c.name, jobs: r.rows.map(function (j) {
+      // Their part is done while the other contractor's isn't: show it as done for them.
+      if (j.status !== 'Completed' && j.part_done_by && j.part_done_by.trim().toLowerCase() === me) { j.status = 'Completed'; j.completed_at = j.part_done_at; }
+      // Working alongside another contractor (their name only, never contact details).
+      const other = [j.assigned_to, j.assigned_to_2].filter(function (n) { return n && n.trim() && n.trim().toLowerCase() !== me; })[0];
+      const out = { ref: refFor(j.id), with: other ? other.trim() : '' };
+      Object.keys(j).forEach(function (k) { if (['assigned_to', 'assigned_to_2', 'part_done_by', 'part_done_at'].indexOf(k) === -1) out[k] = j[k]; });
+      return out;
+    }) });
   }));
   app.post('/api/c/:token/jobs/:id/complete', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -3248,15 +3273,35 @@ module.exports = function mountJobs(app, opts) {
     if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
     const b = req.body || {}, notes = str(b.notes, 3000), price = money(b.price), photos = decodePhotos(b.photos);
     if (price === undefined) return res.status(400).json({ ok: false, error: 'bad-price' });
+    const mine = `archived_at IS NULL AND (lower(trim(assigned_to)) = lower(trim($2)) OR lower(trim(assigned_to_2)) = lower(trim($2))) AND status NOT IN ('Completed', 'Cancelled')`;
+    const cur = (await p.query(`SELECT id, property_address, assigned_to, assigned_to_2, part_done_by FROM jobs WHERE id = $1 AND ` + mine, [jobId(req), c.name])).rows[0];
+    if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+    const ref = refFor(cur.id), me = c.name.trim().toLowerCase();
+    const note = notes ? c.name + ': ' + notes : null;
+    // Two contractors and the other hasn't finished yet: their part is done, the job stays open.
+    const others = [cur.assigned_to, cur.assigned_to_2].filter(function (n) { return n && n.trim() && n.trim().toLowerCase() !== me; });
+    const otherDone = cur.part_done_by && cur.part_done_by.trim().toLowerCase() !== me;
+    if (cur.part_done_by && !otherDone) return res.json({ ok: true, part: true });   // their part is already done
+    if (others.length && !otherDone) {
+      await p.query(`UPDATE jobs SET part_done_by = $2, part_done_at = now(), part_price = $3, updated_at = now(),
+          completion_notes = CASE WHEN $4::text IS NULL THEN completion_notes ELSE concat_ws(E'\n', completion_notes, $4::text) END WHERE id = $1`,
+        [cur.id, c.name, price, note]);
+      if (photos.length) await insertPhotos(p, cur.id, photos, 'contractor');
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [cur.id, 'change',
+        c.name + ' finished their part (contractor job link) — waiting for ' + others[0].trim() + '.' + (notes ? ' Notes: ' + notes.replace(/[.\s]*$/, '') + '.' : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '') +
+        (photos.length ? ' ' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' added.' : '')]);
+      ntfy({ title: 'Part done: ' + ref, message: c.name + ' finished their part of ' + ref + ' — ' + (cur.property_address || '') + '. Waiting for ' + others[0].trim() + '.', tags: ['hammer'] }).catch(function () {});
+      return res.json({ ok: true, part: true });
+    }
+    // The last (or only) contractor: the job is complete. With two, their prices add up.
     const r = await p.query(`UPDATE jobs SET status = 'Completed', completed_at = now(), updated_at = now(),
-        completion_notes = coalesce($3, completion_notes), actual_cost = coalesce(actual_cost, $4)
-      WHERE id = $1 AND archived_at IS NULL AND lower(trim(assigned_to)) = lower(trim($2)) AND status NOT IN ('Completed', 'Cancelled')
-      RETURNING id, property_address`, [jobId(req), c.name, notes, price]);
+        completion_notes = CASE WHEN $3::text IS NULL THEN completion_notes ELSE concat_ws(E'\n', completion_notes, $3::text) END,
+        actual_cost = coalesce(actual_cost, CASE WHEN $4::numeric IS NULL AND part_price IS NULL THEN NULL ELSE coalesce(part_price, 0) + coalesce($4::numeric, 0) END)
+      WHERE id = $1 AND ` + mine + ` RETURNING id, property_address`, [cur.id, c.name, others.length ? note : notes, price]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
-    const ref = refFor(r.rows[0].id);
     if (photos.length) await insertPhotos(p, r.rows[0].id, photos, 'contractor');
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.rows[0].id, 'completed',
-      'Marked completed by ' + c.name + ' (contractor job link).' + (notes ? ' Notes: ' + notes.replace(/[.\s]*$/, '') + '.' : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '') +
+      'Marked completed by ' + c.name + ' (contractor job link).' + (others.length ? ' Both contractors have now finished.' : '') + (notes ? ' Notes: ' + notes.replace(/[.\s]*$/, '') + '.' : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '') +
       (photos.length ? ' ' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' added.' : '')]);
     ntfy({ title: 'Job completed: ' + ref, message: c.name + ' marked ' + ref + ' completed — ' + (r.rows[0].property_address || '') + '. Open the job in Fixflow to tell the tenant and landlord.', tags: ['white_check_mark'] }).catch(function () {});
     res.json({ ok: true });
@@ -3270,7 +3315,7 @@ module.exports = function mountJobs(app, opts) {
     if (!apptDay(date)) return res.status(400).json({ ok: false, error: 'bad-date' });
     const r = await p.query(`UPDATE jobs SET appointment_date = $3, appointment_time = $4, updated_at = now(),
         status = CASE WHEN status IN ('New', 'Assigned') THEN 'Contractor booked' ELSE status END
-      WHERE id = $1 AND archived_at IS NULL AND lower(trim(assigned_to)) = lower(trim($2)) AND status NOT IN ('Completed', 'Cancelled')
+      WHERE id = $1 AND archived_at IS NULL AND (lower(trim(assigned_to)) = lower(trim($2)) OR lower(trim(assigned_to_2)) = lower(trim($2))) AND status NOT IN ('Completed', 'Cancelled')
       RETURNING id, property_address`, [jobId(req), c.name, date, time]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     const ref = refFor(r.rows[0].id), when = apptDay(date) + (time ? ', ' + time : '');
@@ -3374,7 +3419,7 @@ module.exports = function mountJobs(app, opts) {
   app.post('/api/admin/jobs/:id/reopen', withDb(async function (p, req, res) {
     const id = jobId(req);
     const r = await p.query(
-      `UPDATE jobs SET status = 'Assigned', completed_at = NULL, updated_at = now() WHERE id = $1 RETURNING id`, [id]);
+      `UPDATE jobs SET status = 'Assigned', completed_at = NULL, part_done_by = NULL, part_done_at = NULL, part_price = NULL, updated_at = now() WHERE id = $1 RETURNING id`, [id]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', 'Job reopened.']);
     res.json({ ok: true });
