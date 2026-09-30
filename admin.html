@@ -665,6 +665,12 @@
   .ask-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .sv-ip { color: #2F5BEA; cursor: pointer; font-variant-numeric: tabular-nums; }
   .sv-ip:hover { text-decoration: underline; }
+  .tcy-warn { background: #FFF7E6; color: #8A4B00; }
+  .tcy-end { border-color: #F5D39A; background: #FFFCF5; }
+  .te-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
+  .te-st { display: inline-block; margin-top: 4px; font-size: .75rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+  .te-st.todo { background: #FDECEC; color: #C0262D; } .te-st.wait { background: #EEF2FE; color: #2F5BEA; } .te-st.ok { background: #DDF3E6; color: #0F7A3B; } .te-st.bad { background: #FFF1DB; color: #A15C00; }
+  .ti-person { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .linkish { background: none; border: 0; padding: 6px 0 0; color: var(--blue, #2563EB); font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; }
   .wa-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; font-weight: 500; cursor: pointer; }
   .wa-assign input { width: 16px; height: 16px; accent-color: var(--brick); }
@@ -934,6 +940,7 @@
 
       <div id="jobsView">
       <div class="note-banner" id="noteBanner" hidden></div>
+      <div class="addr-warn tcy-warn" id="tcyEndBanner" hidden style="margin:0 0 12px"><span id="tcyEndBannerText"></span> <button type="button" class="btn small" id="tcyEndBannerGo">Ask the tenants</button></div>
       <div class="addr-warn cert-warn" id="certBanner" hidden style="margin:0 0 12px"><span id="certBannerText"></span> <button type="button" class="btn small" id="certBannerGo">Book now</button></div>
       <div class="tiles">
         <button type="button" class="tile clickable blue" id="tOpenTile" data-assign="" title="Show all open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg></i>Open jobs</div><div class="v" id="tOpen">–</div></button>
@@ -1034,6 +1041,7 @@
             <button class="btn" id="tcyFromTerms" type="button">📄 From a Terms of Let</button>
             <button class="btn primary" id="tcyAdd" type="button">+ New tenancy</button>
           </div>
+          <div id="tcyEnding"></div>
           <div class="prop-sortbar"><span class="muted-note" style="margin:0">Service</span><div id="tcySvcTabs" class="tabs" role="tablist" aria-label="Filter by service"></div></div>
           <div class="prop-sortbar"><span class="muted-note" style="margin:0">Sort by</span><div id="tcySortTabs" class="tabs" role="tablist" aria-label="Sort tenancies"></div></div>
           <div class="tcy-sum muted-note" id="tcySum"></div>
@@ -1416,6 +1424,22 @@
       <button class="btn wa" type="button" id="lpWa">WhatsApp</button>
       <button class="btn primary" type="button" id="lpClose">Done</button>
     </div>
+  </div>
+</div>
+
+<!-- ASK TENANTS THEIR PLANS AT THE END OF A TERM -->
+<div class="modal" id="tiModal" hidden>
+  <div class="card" role="dialog" aria-labelledby="tiTitle">
+    <h3 id="tiTitle">Ask the tenants their plans</h3>
+    <p class="muted-note" id="tiSub" style="margin:0 0 10px"></p>
+    <label class="lbl" for="tiSubj">Subject</label><input class="inp" id="tiSubj">
+    <label class="lbl" for="tiMsg" style="margin-top:8px">Message</label><textarea class="inp" id="tiMsg" rows="11"></textarea>
+    <div id="tiTo" style="display:flex;flex-direction:column;gap:6px;margin-top:10px"></div>
+    <div class="row-actions" style="margin-top:10px;flex-wrap:wrap"><button class="btn" type="button" id="tiCopy">Copy</button><button class="btn primary" type="button" id="tiEmail">Email all the tenants</button></div>
+    <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px"><div class="lbl">Their answer</div>
+      <div class="seg" id="tiAnswer"><button type="button" data-a="staying">Staying on</button><button type="button" data-a="leaving">Moving out</button><button type="button" data-a="undecided">Not decided</button></div>
+      <input class="inp" id="tiNote" placeholder="Note (optional), e.g. staying if the rent stays the same" style="margin-top:8px"></div>
+    <div class="row-actions" style="margin-top:12px"><button class="btn" type="button" id="tiClose">Done</button></div>
   </div>
 </div>
 
@@ -1828,6 +1852,7 @@
       if (view === 'ctr') renderContractorPage();
       renderCertAlerts();
       renderNoteAlerts();
+      renderTcyEndAlerts();
       var owedN = jobs.filter(isOwed).length;
       $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
       return true;
@@ -2891,6 +2916,103 @@
     });
     return list.sort(function(a, b){ return b.latest - a.latest; });
   }
+  // Tenancies roll from term to term (e.g. 12 months at a time): the end of the
+  // current term, how many days away, and whether it's past the first term.
+  function tcyNextEnd(d){
+    if (!parseDay(d.start_date)) return null;
+    var term = parseInt(d.term_months, 10) || 12, today = isoDay(new Date());
+    for (var k = 1; k < 200; k++) {
+      var iso = addMonthsIso(d.start_date, k * term);
+      if (iso >= today) return { end: iso, days: Math.round((parseDay(iso) - parseDay(today)) / 86400000), rolling: k > 1, term: term };
+    }
+    return null;
+  }
+  // Terms ending within 2 months, with whether the tenants have been asked.
+  function tcyEndingSoon(){
+    var today = isoDay(new Date());
+    return tenancies.map(function(t){
+      var d = t.data || {}; if (!d.start_date || d.start_date > today) return null;
+      var n = tcyNextEnd(d); if (!n || n.days > 61) return null;
+      return { t: t, d: d, n: n, it: (t.intention || {})[n.end] || {} };
+    }).filter(Boolean).sort(function(a, b){ return a.n.days - b.n.days; });
+  }
+  function tcyItText(it){ return it.answer ? { staying: '✓ Staying on', leaving: '✗ Moving out', undecided: '… Not decided' }[it.answer] : it.asked_at ? 'Asked ' + fmtShort(it.asked_at) + (it.how ? ' by ' + it.how : '') + ' — waiting to hear' : 'Not asked yet'; }
+  function renderTcyEndAlerts(){
+    var list = tcyEndingSoon(), notAsked = list.filter(function(x){ return !x.it.asked_at && !x.it.answer; }).length;
+    $('tcyEndBanner').hidden = !list.length;
+    if (list.length) $('tcyEndBannerText').textContent = '⏰ ' + list.length + ' tenanc' + (list.length === 1 ? 'y term ends' : 'y terms end') + ' within 2 months' + (notAsked ? ' — ' + notAsked + ' not asked their plans yet' : ' — all asked');
+    if (!$('tcyEnding')) return;
+    $('tcyEnding').innerHTML = list.length ? '<div class="card tcy-end"><h3>⏰ Terms ending within 2 months <span class="count-chip">' + list.length + '</span></h3>' + list.map(function(x){
+      var cls = x.it.answer === 'staying' ? 'ok' : x.it.answer === 'leaving' ? 'bad' : x.it.asked_at || x.it.answer ? 'wait' : 'todo';
+      return '<div class="te-row"><div><div style="font-weight:600">' + esc(x.d.address || x.t.address || '') + '</div><div class="prop-sub" style="margin:2px 0 0">' + esc(joinAnd(tcyNames(x.d.tenants)) || 'No tenants') + ' · term ends <b>' + esc(longDay(x.n.end)) + '</b> (' + (x.n.days <= 0 ? 'today' : 'in ' + x.n.days + ' days') + ')' + (x.n.rolling ? ' · rolling' : '') + '</div>' +
+        '<span class="te-st ' + cls + '">' + esc(tcyItText(x.it)) + '</span></div>' +
+        '<button type="button" class="btn small' + (cls === 'todo' ? ' primary' : '') + '" data-ask-tcy="' + x.t.id + '">' + (cls === 'todo' ? '✉️ Ask their plans' : 'Open') + '</button></div>';
+    }).join('') + '</div>' : '';
+  }
+  var tiCur = null;
+  function openTenancyIntention(id){
+    var t = tenancies.filter(function(x){ return x.id === id; })[0]; if (!t) return;
+    var d = t.data || {}, n = tcyNextEnd(d); if (!n) { toast('This tenancy has no start date'); return; }
+    tiCur = { t: t, d: d, n: n, it: Object.assign({}, (t.intention || {})[n.end] || {}) };
+    var people = (d.tenants || []).filter(function(x){ return x && (x.name || x.email || x.phone); });
+    var first = people.map(function(x){ return greetName(x.name); }).filter(Boolean);
+    var replyBy = addDaysIso(n.end, -35);
+    $('tiSub').textContent = (d.address || t.address) + ' — the term ends ' + longDay(n.end) + (n.days > 0 ? ' (in ' + n.days + ' days)' : '') + '. ' + tcyItText(tiCur.it) + '.';
+    $('tiSubj').value = 'Your tenancy at ' + shortAddr(d.address || t.address) + ' — your plans after ' + longDay(n.end);
+    $('tiMsg').value = 'Dear ' + (first.length ? joinAnd(first) : 'tenant') + ',\n\nWe hope you’re well. Your current tenancy term at ' + (d.address || t.address) + ' ends on ' + longDay(n.end) + '.\n\n' +
+      'Could you please let us know your plans' + (parseDay(replyBy) > new Date() ? ' by ' + longDay(replyBy) : ' as soon as possible') + ':\n' +
+      '• Would you like to stay on after ' + longDay(n.end) + '?\n• Or are you planning to move out?\n\n' +
+      'If you’d like to stay, just reply to let us know. If you’re planning to move out, please give notice as set out in your tenancy agreement.\n\nKind regards,\nResidential Realtors';
+    $('tiTo').innerHTML = people.map(function(x, i){
+      var wa = waNumber(x.phone);
+      return '<div class="ti-person"><span><b>' + esc(x.name || 'Tenant') + '</b> <span class="muted-note" style="margin:0">' + esc([x.phone, x.email].filter(Boolean).join(' · ') || 'No contact details') + '</span></span>' +
+        (wa ? '<button type="button" class="btn small wa" data-ti-wa="' + i + '">WhatsApp</button>' : '') + '</div>';
+    }).join('') || '<p class="muted-note">No tenant contact details on this tenancy — add them on the tenancy first.</p>';
+    tiCur.people = people;
+    $('tiEmail').hidden = !people.some(function(x){ return x.email; });
+    $('tiEmail').textContent = meta.canEmail ? 'Send email to the tenants' : 'Email the tenants';
+    $('tiAnswer').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.dataset.a === tiCur.it.answer); });
+    $('tiNote').value = tiCur.it.note || '';
+    $('tiModal').hidden = false;
+  }
+  function tiSave(body){
+    body.period_end = tiCur.n.end;
+    return api('POST', '/api/admin/tenancies/' + tiCur.t.id + '/intention', body).then(function(d){
+      if (!d.ok) { toast('Couldn’t save'); return; }
+      tiCur.t.intention = tiCur.t.intention || {}; tiCur.t.intention[tiCur.n.end] = d.intention; tiCur.it = d.intention;
+      renderTcyEndAlerts();
+    });
+  }
+  $('tiClose').addEventListener('click', function(){ var note = $('tiNote').value.trim(); if (tiCur && note !== (tiCur.it.note || '')) tiSave({ note: note }); $('tiModal').hidden = true; });
+  $('tiCopy').addEventListener('click', function(){ copyText($('tiMsg').value).then(function(){ toast('Copied'); tiSave({ asked: 'message' }); })['catch'](function(){ toast('Couldn’t copy'); }); });
+  $('tiEmail').addEventListener('click', function(){
+    var to = tiCur.people.map(function(x){ return x.email; }).filter(Boolean);
+    if (meta.canEmail) {
+      busy($('tiEmail'), true, 'Sending…');
+      api('POST', '/api/admin/tenancies/' + tiCur.t.id + '/email', { to: to, subject: $('tiSubj').value, body: $('tiMsg').value }).then(function(d){
+        busy($('tiEmail'), false);
+        if (!d.ok) { toast('Couldn’t send the email'); return; }
+        toast('Emailed ' + to.join(', ')); tiSave({ asked: 'email' });
+      });
+      return;
+    }
+    window.location.href = 'mailto:' + to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent($('tiSubj').value) + '&body=' + encodeURIComponent($('tiMsg').value);
+    tiSave({ asked: 'email' });
+  });
+  $('tiTo').addEventListener('click', function(e){
+    var b = e.target.closest('[data-ti-wa]'); if (!b) return;
+    var x = tiCur.people[Number(b.dataset.tiWa)], msg = $('tiMsg').value.replace(/^Dear [^,\n]*,/, 'Hi ' + (greetName(x.name) || 'there') + ',');
+    window.open('https://wa.me/' + waNumber(x.phone) + '?text=' + encodeURIComponent(msg), '_blank', 'noopener');
+    tiSave({ asked: 'WhatsApp' });
+  });
+  $('tiAnswer').addEventListener('click', function(e){
+    var b = e.target.closest('[data-a]'); if (!b) return;
+    var a = b.classList.contains('on') ? null : b.dataset.a;
+    $('tiAnswer').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b && !!a); });
+    tiSave({ answer: a, note: $('tiNote').value.trim() }).then(function(){ toast(a ? 'Saved: ' + { staying: 'staying on', leaving: 'moving out', undecided: 'not decided' }[a] : 'Answer cleared'); });
+  });
+  $('tcyEndBannerGo').addEventListener('click', function(){ showView('tcy'); });
+  document.addEventListener('click', function(e){ var b = e.target.closest('[data-ask-tcy]'); if (b) openTenancyIntention(Number(b.dataset.askTcy)); });
   // Where a property's tenancy is up to: running (and when the fixed term ends),
   // ending within 60 days, fixed term over, starting soon, a draft, or none.
   function propTenancy(key){
@@ -2901,8 +3023,11 @@
       var d = t.data || {}, s = parseDay(d.start_date), endIso = s ? addMonthsIso(d.start_date, parseInt(d.term_months, 10) || 12) : '', e = parseDay(endIso), st;
       if (!s) st = { k: 'draft', text: 'Tenancy being set up', sort: 3 };
       else if (s > today) st = { k: 'upcoming', text: 'Tenancy starts ' + longDay(d.start_date), sort: 2 };
-      else if (e && e >= today) st = (e - today) / 86400000 <= 60 ? { k: 'ending', text: 'Fixed term ends ' + longDay(endIso), sort: 1 } : { k: 'active', text: 'Tenancy until ' + longDay(endIso), sort: 0 };
-      else st = { k: 'rolling', text: 'Fixed term ended ' + longDay(endIso) + ' — now rolling', sort: 4 };
+      else {
+        var nx = tcyNextEnd(d);
+        st = nx && nx.days <= 61 ? { k: 'ending', text: 'Term ends ' + longDay(nx.end) + (nx.rolling ? ' (rolling)' : ''), sort: 1 }
+          : { k: nx && nx.rolling ? 'rolling' : 'active', text: (nx && nx.rolling ? 'Rolling — term ends ' : 'Tenancy until ') + (nx ? longDay(nx.end) : longDay(endIso)), sort: nx && nx.rolling ? 0.5 : 0 };
+      }
       st.id = t.id; st.tenants = tcyNames(d.tenants);
       if (!best || st.sort < best.sort) best = st;
     });
@@ -7217,6 +7342,7 @@
   function tcySvcOf(d){ var s = String(d.service || 'Tenant Find'); return /manag/i.test(s) ? 'managed' : /collect/i.test(s) ? 'collect' : 'find'; }
   function tcySvcMatch(d, f){ var k = tcySvcOf(d); return f === 'all' || f === k || (f === 'notmanaged' && k !== 'managed'); }
   function renderTenancies(){
+    renderTcyEndAlerts();
     var raw = $('tcySearch').value.trim().toLowerCase();
     $('tcySvcTabs').innerHTML = TCY_SVC.map(function(f){
       var n = tenancies.filter(function(x){ return tcySvcMatch(x.data || {}, f[0]); }).length;

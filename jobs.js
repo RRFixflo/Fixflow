@@ -231,6 +231,9 @@ CREATE TABLE IF NOT EXISTS tenancies (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS tenancies_key ON tenancies (property_key);
+-- Each term's end: when the tenants were asked their plans, and their answer.
+-- { "2027-09-24": { "asked_at": "...", "how": "email", "answer": "staying", "alerted_at": "..." } }
+ALTER TABLE tenancies ADD COLUMN IF NOT EXISTS intention JSONB NOT NULL DEFAULT '{}'::jsonb;
 CREATE TABLE IF NOT EXISTS admin_sessions (
   id          TEXT PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -3138,7 +3141,7 @@ module.exports = function mountJobs(app, opts) {
     for (const t of d.tenants) await ensureTenant(p, { name: t.name, email: t.email, phone: t.phone }, d.address, true);
   }
   app.get('/api/admin/tenancies', withDb(async function (p, req, res) {
-    const r = await p.query('SELECT id, property_key, address, start_date, data, log, created_at, updated_at FROM tenancies ORDER BY start_date DESC NULLS LAST, id DESC');
+    const r = await p.query('SELECT id, property_key, address, start_date, data, log, intention, created_at, updated_at FROM tenancies ORDER BY start_date DESC NULLS LAST, id DESC');
     res.json({ ok: true, tenancies: r.rows });
   }));
   app.post('/api/admin/tenancies', withDb(async function (p, req, res) {
@@ -3162,6 +3165,23 @@ module.exports = function mountJobs(app, opts) {
     const r = await p.query('DELETE FROM tenancies WHERE id = $1 RETURNING id', [jobId(req)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json({ ok: true });
+  }));
+  // The tenants' plans for the end of this term: asked (how) and/or their answer.
+  app.post('/api/admin/tenancies/:id/intention', withDb(async function (p, req, res) {
+    const b = req.body || {}, end = String(b.period_end || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) return res.status(400).json({ ok: false, error: 'bad-date' });
+    const cur = (await p.query('SELECT intention FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
+    if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+    const it = Object.assign({}, (cur.intention || {})[end] || {}), notes = [];
+    if (b.asked) { it.asked_at = new Date().toISOString(); it.how = str(b.asked, 40); notes.push('Asked the tenants their plans for ' + end + ' (' + it.how + ')'); }
+    if (b.answer !== undefined) {
+      it.answer = ['staying', 'leaving', 'undecided'].indexOf(b.answer) !== -1 ? b.answer : null; it.answered_at = new Date().toISOString();
+      if (it.answer) notes.push('Tenants’ plans for ' + end + ': ' + { staying: 'staying on', leaving: 'moving out', undecided: 'not decided yet' }[it.answer]);
+    }
+    if (b.note !== undefined) it.note = str(b.note, 1000);
+    await p.query(`UPDATE tenancies SET intention = intention || jsonb_build_object($2::text, $3::jsonb), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
+      [jobId(req), end, JSON.stringify(it), JSON.stringify(notes.map(function (t) { return { at: new Date().toISOString(), text: t }; }))]);
+    res.json({ ok: true, intention: it });
   }));
   // Something done with a tenancy (emails sent, documents made), for its history.
   app.post('/api/admin/tenancies/:id/log', withDb(async function (p, req, res) {
@@ -3761,6 +3781,36 @@ module.exports = function mountJobs(app, opts) {
     }).catch(function (err) { console.error('Certificate cost backfill failed:', err.message); });
   }, 30 * 1000);
   setTimeout(function () { raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); }); }, 60 * 1000);
+  // Tenancies roll from term to term (e.g. 12 months at a time). Two months
+  // before each term ends, a phone alert (once per term) to ask the tenants
+  // their plans — unless they've already been asked.
+  function nextTermEnd(start, months, today) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(start || '')); if (!m) return null;
+    months = parseInt(months, 10) || 12;
+    for (let k = 1; k < 200; k++) {
+      const d = new Date(Date.UTC(+m[1], +m[2] - 1 + k * months, +m[3]));
+      if (d.getUTCDate() !== +m[3]) d.setUTCDate(0);   // 31 Jan + 1 month → 28/29 Feb
+      const iso = d.toISOString().slice(0, 10);
+      if (iso >= today) return iso;
+    }
+    return null;
+  }
+  async function tenancyEndAlerts() {
+    const p = await db(); if (!p) return;
+    const today = new Date().toISOString().slice(0, 10), soon = new Date(Date.now() + 61 * 86400000).toISOString().slice(0, 10);
+    for (const t of (await p.query('SELECT id, address, data, intention FROM tenancies WHERE start_date IS NOT NULL')).rows) {
+      const d = t.data || {}; if (!d.start_date || d.start_date > today) continue;
+      const end = nextTermEnd(d.start_date, d.term_months, today); if (!end || end > soon) continue;
+      const it = (t.intention || {})[end] || {};
+      if (it.alerted_at || it.asked_at || it.answer) continue;
+      const names = (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean).join(' & ');
+      const sent = await ntfy({ title: 'Tenancy term ending: ' + shortAddrText(t.address), message: (names ? names + ' — ' : '') + t.address + '. The term ends ' + apptDay(end) + '. Open Tenancies in Fixflow to ask the tenants their plans.', tags: ['house'] }).catch(function () { return false; });
+      await p.query(`UPDATE tenancies SET intention = intention || jsonb_build_object($2::text, coalesce(intention->$2, '{}'::jsonb) || jsonb_build_object('alerted_at', $3::text)) WHERE id = $1`, [t.id, end, new Date().toISOString()]);
+      if (sent) console.log('Tenancy end alert: ' + t.address + ' (' + end + ')');
+    }
+  }
+  setTimeout(function () { tenancyEndAlerts().catch(function (err) { console.error('Tenancy alerts failed:', err.message); }); }, 90 * 1000);
+  setInterval(function () { tenancyEndAlerts().catch(function (err) { console.error('Tenancy alerts failed:', err.message); }); }, 6 * 3600 * 1000).unref();
   setInterval(function () { raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); }); }, 3600 * 1000).unref();
 
   // ---------- Contractors ----------
