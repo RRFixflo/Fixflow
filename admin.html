@@ -210,15 +210,19 @@
   .job { flex: 1; min-width: 0; display: grid; grid-template-columns: 118px minmax(0,1fr) 190px 170px 96px; gap: 14px; align-items: center; text-align: left; background: none; border: 0; padding: 13px 16px 13px 0; cursor: pointer; }
   .job:focus-visible { outline: none; box-shadow: inset var(--focus-ring); border-radius: 8px; }
   /* Completed jobs: green edge, soft green background and a clear badge. */
-  .jobrow.is-done::before { background: #139A4B; width: 4px; }
-  .jobrow.is-done { background: #F2FAF5; }
-  .jobrow.is-done:hover { background: #E8F6EE; }
-  .job.done .title { color: var(--ink-soft, #4a4f5a); }
-  .job.done .money { opacity: .8; }
+  .jobrow.is-done::before { background: #139A4B; width: 6px; top: 0; bottom: 0; border-radius: 0; }
+  .jobrow.is-done { background: #E2F5E9; border-bottom-color: #C4E8D2; }
+  .jobrow.is-done:hover { background: #D5F0DF; }
+  .job.done .money { opacity: .85; }
   .job.cancelled { opacity: .6; }
-  .done-badge { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: .8rem; color: #0F7A3B; background: #D9F2E3; border-radius: 999px; padding: 3px 10px; }
-  .done-tick { color: #139A4B; font-weight: 800; margin-right: 3px; }
-  .done-banner { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: #E6F6EC; color: #0F7A3B; font-weight: 600; font-size: .9rem; }
+  .done-badge { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: .82rem; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: #139A4B; border-radius: 8px; padding: 6px 12px; box-shadow: 0 2px 6px rgba(19,154,75,.3); }
+  .job.done .c-time .sub:first-of-type { color: #0F7A3B; font-weight: 600; }
+  .done-tick { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #139A4B; color: #fff; font-size: .72rem; font-weight: 900; margin-right: 6px; vertical-align: -4px; }
+  .pill.status.Completed { background: #139A4B !important; color: #fff !important; border-color: #139A4B !important; }
+  .pill.status.Completed::before { display: none !important; }
+  .done-banner { margin: 10px 0 0; padding: 14px 16px; border-radius: 14px; background: #139A4B; color: #fff; font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 10px; box-shadow: 0 4px 14px rgba(19,154,75,.25); }
+  .done-banner i { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: #fff; color: #139A4B; font-style: normal; font-weight: 900; flex: none; }
+  .done-banner small { display: block; font-weight: 500; font-size: .85rem; opacity: .9; }
   .job .ref { font-weight: 650; font-size: .84rem; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
   .job .sub { font-size: .76rem; color: var(--ink-faint); margin-top: 3px; }
   .job .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.005em; }
@@ -1833,7 +1837,7 @@
         '<div class="c-ref"><div class="ref">' + (fin ? '<span class="done-tick">✓</span>' : '') + esc(j.ref) + '</div><div class="sub"><span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span></div></div>' +
         '<div class="c-issue"><div class="title">' + esc(j.property_address || 'No address') + '</div>' +
           '<div class="meta">' + esc(issueOf(j)) + (j.tenant_name ? ' · ' + esc(j.tenant_name) : '') + '</div></div>' +
-        '<div class="c-time">' + (fin && j.completed_at ? '<span class="done-badge">✓ Completed</span><div class="sub">' + esc(fmtShort(j.completed_at)) + '</div>' : '<div class="time ' + t.cls + '">' + esc(t.text) + '</div>') +
+        '<div class="c-time">' + (fin && j.completed_at ? '<span class="done-badge">✓ Completed</span><div class="sub">on ' + esc(fmtShort(j.completed_at)) + '</div>' : '<div class="time ' + t.cls + '">' + esc(t.text) + '</div>') +
           (open && pct !== null ? '<div class="bar" title="Time used before the deadline"><i class="' + t.cls + '" style="width:' + pct + '%"></i></div>' : '') +
           '<div class="sub">Received ' + esc(fmtShort(j.created_at)) + '</div></div>' +
         '<div class="c-status"><span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + (fin ? '✓ ' : '') + esc(j.status) + '</span>' +
@@ -4587,7 +4591,7 @@
       ' <button type="button" class="addr-edit" id="dAddrProp" title="Open this property">🏠 Property ›</button>' +
       ' <button type="button" class="addr-edit" id="dAddrEdit" title="Edit address">✎ Edit address</button>' +
       (addressProblem(j.property_address) ? '<div class="addr-warn">⚠ ' + esc(addressProblem(j.property_address)) + ' <button type="button" class="btn small" id="dAddrFix">Fix address</button></div>' : '') +
-      (j.status === 'Completed' ? '<div class="done-banner">✓ This job was completed' + (j.completed_at ? ' on ' + esc(new Date(j.completed_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })) : '') + '</div>' : '');
+      (j.status === 'Completed' ? '<div class="done-banner"><i>✓</i><div>COMPLETED' + (j.completed_at ? '<small>' + esc(new Date(j.completed_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })) + (j.assigned_to ? ' · ' + esc(j.assigned_to) + (j.assigned_to_2 ? ' + ' + esc(j.assigned_to_2) : '') : '') + '</small>' : '') + '</div></div>' : '');
     $('dAddrEdit').addEventListener('click', function(){ openAddressEdit(j.property_address, j.id); });
     $('dAddrProp').addEventListener('click', function(){ closeDrawer(); openProperty(propKey(j.property_address)); });
     if ($('dAddrFix')) $('dAddrFix').addEventListener('click', function(){ openAddressEdit(j.property_address, j.id); });

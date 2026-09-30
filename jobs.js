@@ -2124,6 +2124,19 @@ module.exports = function mountJobs(app, opts) {
       FROM jobs WHERE archived_at IS NULL AND status <> 'Cancelled' ORDER BY created_at DESC`)).rows.filter(function (j) { return keys[propKey(j.property_address)] !== undefined; });
     for (const j of all) { if (!j.track_token) j.track_token = await ensureTrackToken(p, j.id); }
     const ids = all.map(function (j) { return j.id; });
+    // Photos: the problem (tenant and office) and the finished work (contractor).
+    const photos = {};
+    if (ids.length) (await p.query('SELECT id, job_id, added_by FROM job_photos WHERE job_id = ANY($1::int[]) ORDER BY id', [ids])).rows
+      .forEach(function (ph) { (photos[ph.job_id] = photos[ph.job_id] || []).push(ph); });
+    for (const j of all) {
+      if (!photos[j.id]) continue;
+      let t = (await p.query('SELECT photo_token FROM jobs WHERE id = $1', [j.id])).rows[0].photo_token;
+      if (!t) {
+        await p.query('UPDATE jobs SET photo_token = $2 WHERE id = $1 AND photo_token IS NULL', [j.id, crypto.randomBytes(18).toString('base64url')]);
+        t = (await p.query('SELECT photo_token FROM jobs WHERE id = $1', [j.id])).rows[0].photo_token;
+      }
+      j.photo_token = t;
+    }
     const invs = ids.length ? (await p.query('SELECT job_id, number, total, created_at, paid_at FROM invoices WHERE job_id = ANY($1::int[]) ORDER BY id', [ids])).rows : [];
     const certs = Object.keys(keys).length ? (await p.query("SELECT property_key, type, expires_on, not_required FROM property_certificates WHERE property_key = ANY($1::text[])", [Object.keys(keys)])).rows : [];
     const names = (await p.query("SELECT name FROM contractors WHERE coalesce(trim(name), '') <> ''")).rows.map(function (r) { return r.name.trim(); }).sort(function (a, b) { return b.length - a.length; });
@@ -2150,9 +2163,23 @@ module.exports = function mountJobs(app, opts) {
         '<div class="muted">Reported ' + htmlEsc(day(j.created_at)) + (!isDone && j.appointment_date ? ' · Visit booked ' + htmlEsc(day(j.appointment_date)) + (j.appointment_time ? ' ' + htmlEsc(j.appointment_time) : '') : '') +
           (j.landlord_handles ? ' · Arranged by you' : '') + '</div>' +
         (notes ? '<div class="lj-notes">' + htmlEsc(notes.slice(0, 300)) + '</div>' : '') +
+        photoStrip(j) +
         '<div class="lj-foot"><span>' + (c != null ? 'Cost to you: <b>' + money(c) + '</b>' : isDone ? '<span class="muted">No charge recorded</span>' : '<span class="muted">Cost not confirmed yet</span>') +
           (inv ? ' · Invoice ' + htmlEsc(inv.number || '') + ' ' + (inv.paid_at ? '<span class="paid">paid</span>' : '<span class="due">awaiting payment</span>') : '') + '</span>' +
           '<a href="/t/' + htmlEsc(j.track_token) + '">Details ›</a></div></div>';
+    };
+    const photoStrip = function (j) {
+      const list = photos[j.id] || [];
+      if (!list.length || !j.photo_token) return '';
+      const group = function (label, ps) {
+        if (!ps.length) return '';
+        return '<div class="ph-lb">' + label + ' (' + ps.length + ')</div><div class="ph">' + ps.slice(0, 6).map(function (ph) {
+          const u = '/p/' + htmlEsc(j.photo_token) + '/' + ph.id;
+          return '<a href="' + u + '" target="_blank" rel="noopener"><img loading="lazy" src="' + u + '" alt="Photo"></a>';
+        }).join('') + (ps.length > 6 ? '<a class="more" href="/p/' + htmlEsc(j.photo_token) + '" target="_blank" rel="noopener">+' + (ps.length - 6) + '</a>' : '') + '</div>';
+      };
+      return group('Photos of the problem', list.filter(function (ph) { return ph.added_by !== 'contractor'; })) +
+        group('Photos of the finished work', list.filter(function (ph) { return ph.added_by === 'contractor'; }));
     };
     const certName = { EPC: 'EPC', Gas: 'Gas safety', EICR: 'Electrical (EICR)' };
     const propBlocks = Object.keys(keys).map(function (k) {
@@ -2170,10 +2197,12 @@ module.exports = function mountJobs(app, opts) {
     const css = '<style>.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:0 0 14px}.tile{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px}.tile b{display:block;font-size:1.3rem}.tile span{font-size:.78rem;color:var(--soft)}' +
       'h2{font-size:1.05rem;margin:0 0 8px}h3{font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);margin:14px 0 6px}' +
       '.lj{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px}.lj.done{background:var(--okt);border-color:#cdebd9}.lj-top{display:flex;justify-content:space-between;gap:8px;align-items:center}' +
-      '.pill{font-size:.75rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bluet);color:var(--blue)}.pill.ok{background:#fff;color:var(--ok)}.lj-issue{font-weight:600;margin:4px 0 2px}' +
+      '.pill{font-size:.75rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bluet);color:var(--blue)}.pill.ok{background:var(--ok);color:#fff;text-transform:uppercase;letter-spacing:.04em}.lj.done{border-left:5px solid var(--ok)}.lj-issue{font-weight:600;margin:4px 0 2px}' +
       '.lj-notes{font-size:.88rem;margin-top:6px;white-space:pre-line}.lj-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;font-size:.9rem;flex-wrap:wrap}.lj-foot a{color:var(--blue);font-weight:600;text-decoration:none}' +
       '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
-      'details summary{cursor:pointer;font-weight:700;color:var(--ok);margin-top:14px}</style>';
+      'details summary{cursor:pointer;font-weight:700;color:var(--ok);margin-top:14px}' +
+      '.ph-lb{font-size:.75rem;color:var(--soft);font-weight:600;margin-top:10px}.ph{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.ph a{display:block;width:64px;height:64px;border-radius:10px;overflow:hidden;background:#eee}.ph img{width:100%;height:100%;object-fit:cover;display:block}' +
+      '.ph a.more{display:grid;place-items:center;font-weight:700;color:var(--soft);text-decoration:none}</style>';
     res.send(trackShell('Your properties', css + '<h1>Hi ' + htmlEsc(String(l.name || '').trim() || 'there') + '</h1><p class="sub">Your properties with Residential Realtors: every repair, where it’s up to and what it has cost.</p>' +
       '<div class="tiles"><div class="tile"><b>' + Object.keys(keys).length + '</b><span>Propert' + (Object.keys(keys).length === 1 ? 'y' : 'ies') + '</span></div>' +
         '<div class="tile"><b>' + open.length + '</b><span>Open repairs</span></div><div class="tile"><b>' + done.length + '</b><span>Completed</span></div>' +
