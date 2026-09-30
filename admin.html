@@ -649,6 +649,9 @@
   .prop-head h2 { font-family: var(--display); font-size: 1.35rem; letter-spacing: -.025em; margin: 0; }
   .prop-sub { color: var(--ink-soft); font-size: .86rem; margin-top: 4px; }
   .prop-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .prop-sortbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -4px 0 12px; }
+  #propSortTabs button { padding: 6px 10px; white-space: nowrap; }
+  @media (max-width: 700px) { #propSortTabs.tabs { display: flex; flex-wrap: wrap; overflow: visible; max-width: 100%; } #propSortTabs button { padding: 6px 9px; } }
   .prop-actions select.inp { width: auto; }
   .prop-tiles { grid-template-columns: repeat(4, 1fr); }
   @media (max-width: 800px) { .prop-row { grid-template-columns: minmax(0,1fr) auto; } .prop-row .last, .prop-row .chev { display: none; } .prop-row .num:nth-of-type(3) { display: none; } .prop-tiles { grid-template-columns: repeat(2, 1fr); } }
@@ -1158,6 +1161,7 @@
           <div class="toolbar">
             <input class="inp search" id="propSearch" type="search" placeholder="Search by address or postcode — e.g. Flat 4, 22 Queen St or NN2">
           </div>
+          <div class="prop-sortbar"><span class="muted-note" style="margin:0">Sort by</span><div id="propSortTabs" role="tablist" aria-label="Sort properties"></div></div>
           <div class="list" id="propList"></div>
         </div>
         <div id="propDetail" hidden>
@@ -2738,12 +2742,42 @@
     });
   }
   $('propDelete').addEventListener('click', function(){ var d = propertyJobs(); if (d) deleteProperty(d.property.address); });
+  var PROP_SORTS = [['open', 'Open repairs', 'Most open repairs first', 'Fewest open repairs first'], ['total', 'Most repairs', 'Most repairs first', 'Fewest repairs first'],
+    ['recent', 'Last reported', 'Most recently reported first', 'Longest ago first'], ['az', 'A–Z', 'Address A–Z', 'Address Z–A'],
+    ['postcode', 'Postcode', 'Postcode A–Z', 'Postcode Z–A'], ['landlord', 'Landlord', 'Landlord A–Z', 'Landlord Z–A'], ['certs', 'Certificates due', 'Expired or due soonest first', 'Latest expiry first']];
+  var propSort = { by: 'recent', dir: 1 };
+  try { var ps = JSON.parse(localStorage.getItem('rr_prop_sort') || 'null'); if (ps && PROP_SORTS.some(function(t){ return t[0] === ps.by; })) propSort = { by: ps.by, dir: ps.dir === -1 ? -1 : 1 }; } catch (e) {}
   function renderProps(){
     var raw = $('propSearch').value.trim().toLowerCase(), q = propKey(raw);
     var props = allPropsForList().filter(function(p){
       if (!raw) return true;
       var text = [p.address.toLowerCase()].concat(p.jobs.map(function(j){ return (j.property_address || '').toLowerCase(); })).join(' | ');
       return (q && p.key.indexOf(q) !== -1) || text.indexOf(raw) !== -1 || text.replace(/\s+/g, '').indexOf(raw.replace(/\s+/g, '')) !== -1;
+    });
+    // Sort: open repairs, most repairs, last reported, A–Z, postcode, landlord,
+    // or certificates due soonest. Tap the chosen tab again to reverse.
+    var by = propSort.by, dir = propSort.dir;
+    $('propSortTabs').className = 'tabs';
+    $('propSortTabs').innerHTML = PROP_SORTS.map(function(t){
+      var on = t[0] === by;
+      return '<button type="button" role="tab" aria-selected="' + on + '" data-prop-sort="' + t[0] + '"' + (on ? ' class="on"' : '') + ' title="' + esc(on ? (dir > 0 ? t[2] : t[3]) + ' — tap to reverse' : t[2]) + '">' + t[1] + (on ? ' ' + (dir > 0 ? '↓' : '↑') : '') + '</button>';
+    }).join('');
+    var key = {}, nat = function(a, b){ return String(a).localeCompare(String(b), 'en-GB', { numeric: true, sensitivity: 'base' }); };
+    props.forEach(function(p){
+      var open = p.jobs.filter(isOpen).length, ll = landlordRecordAt(p.address);
+      var days = CERTS.map(function(def){ var st = certState(certFor(p.key, def.type)); return st.k === 'na' ? null : st.k === 'missing' ? 0 : st.days; }).filter(function(x){ return x !== null && x !== undefined; });
+      key[p.key] = { open: open, total: p.jobs.length, latest: p.latest || 0, pc: postcodeArea(p.address) || '', ll: ll ? ll.name : '', cert: days.length ? Math.min.apply(null, days) : 99999 };
+    });
+    props.sort(function(a, b){
+      var A = key[a.key], B = key[b.key], d;
+      if (by === 'open') d = (B.open - A.open) || (B.latest - A.latest);
+      else if (by === 'total') d = (B.total - A.total) || (B.open - A.open);
+      else if (by === 'recent') d = B.latest - A.latest;
+      else if (by === 'postcode') d = (!A.pc !== !B.pc ? (A.pc ? -1 : 1) : nat(A.pc, B.pc)) || nat(a.address, b.address);
+      else if (by === 'landlord') d = (!A.ll !== !B.ll ? (A.ll ? -1 : 1) : nat(A.ll, B.ll)) || nat(a.address, b.address);
+      else if (by === 'certs') d = (A.cert - B.cert) || nat(a.address, b.address);
+      else d = nat(a.address, b.address);
+      return dir * (d || nat(a.address, b.address));
     });
     var el = $('propList');
     if (!props.length) {
@@ -2754,7 +2788,7 @@
       var open = p.jobs.filter(isOpen).length;
       return '<button type="button" class="prop-row" data-key="' + esc(p.key) + '">' +
         '<div><div class="addr">' + esc(p.address) + '</div><div class="prop-sub" style="margin-top:2px">' +
-          esc(propTenantNames(p) || 'No tenant name') + '</div>' + certChips(p.key) + '</div>' +
+          esc([propTenantNames(p) || 'No tenant name', by === 'landlord' ? (key[p.key].ll ? 'Landlord: ' + key[p.key].ll : 'No landlord') : ''].filter(Boolean).join(' · ')) + '</div>' + certChips(p.key) + '</div>' +
         '<div class="num">' + p.jobs.length + '<small>repair' + (p.jobs.length === 1 ? '' : 's') + '</small></div>' +
         '<div class="num' + (open ? ' hot' : '') + '">' + open + '<small>open</small></div>' +
         '<div class="last">' + (p.jobs.length ? esc(fmtShort(p.latest)) + '<small>last reported</small>' : '—<small>no repairs yet</small>') + '</div>' +
@@ -2762,6 +2796,12 @@
     }).join('');
   }
   $('propSearch').addEventListener('input', renderProps);
+  $('propSortTabs').addEventListener('click', function(e){
+    var b = e.target.closest('[data-prop-sort]'); if (!b) return;
+    if (propSort.by === b.dataset.propSort) propSort.dir = -propSort.dir; else propSort = { by: b.dataset.propSort, dir: 1 };
+    try { localStorage.setItem('rr_prop_sort', JSON.stringify(propSort)); } catch (e) {}
+    renderProps();
+  });
   $('propList').addEventListener('click', function(e){
     var ed = e.target.closest('[data-prop-edit]');
     if (ed) { e.preventDefault(); openAddressEdit(ed.dataset.propEdit, null); return; }
