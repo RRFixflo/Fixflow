@@ -1349,6 +1349,7 @@
     <div class="row-actions" style="margin-top:0"><span class="muted-note" style="margin-right:auto;font-size:.78rem">Ctrl + Enter to go</span><button class="btn" id="askClose" type="button">Close</button><button class="btn primary" id="askGo" type="button">✦ Go</button></div>
     <div class="row-actions" id="askAllRow" style="margin-top:0" hidden><span class="muted-note" id="askAllNote" style="margin-right:auto"></span><button class="btn primary" id="askAll" type="button">Create all</button></div>
     <div id="askTenancies" style="display:flex;flex-direction:column;gap:12px"></div>
+    <div id="askProps" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askContacts" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askDrafts" style="display:flex;flex-direction:column;gap:12px"></div>
   </div>
@@ -2867,7 +2868,7 @@
     return list.sort(function(a, b){ return b.latest - a.latest; });
   }
   function propTenantNames(p){
-    var names = p.jobs.map(function(j){ return j.tenant_name; });
+    var names = tenantsAtProperty(p.address).map(function(t){ return t.name; }).concat(p.jobs.map(function(j){ return j.tenant_name; }));
     tenancies.forEach(function(t){ if (t.property_key === p.key) names = names.concat(tcyNames((t.data || {}).tenants)); });
     return Array.from(new Set(names.filter(Boolean))).slice(0, 3).join(', ');
   }
@@ -6180,11 +6181,16 @@
     api('POST', '/api/admin/assistant', { text: text, mode: askMode }).then(function(d){
       busy($('askGo'), false);
       if (!d.ok) { $('askErr').textContent = 'Google’s AI is overloaded right now — please try again in a minute.'; return; }
-      if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs, contacts and tenancies — try “add a gas safety for 6 Whitworth House”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; renderAskContacts(); renderAskTenancies(); $('askAllRow').hidden = true; return; }
+      if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs, properties, contacts and tenancies — try “add a gas safety for 6 Whitworth House”, “add 36 Balin House with tenants Sarah Jones 07700 900123 and Tom Lee”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; askProps = []; renderAskContacts(); renderAskTenancies(); renderAskProps(); $('askAllRow').hidden = true; return; }
       askContacts = (d.contacts || []).slice();
       renderAskContacts();
       askTenancies = (d.tenancies || []).slice();
       renderAskTenancies();
+      askProps = (d.properties || []).map(function(x){
+        var pr = matchProperty(x.address);
+        return { ai: x, property: pr, address: pr ? (knownFullAddress(pr.key) || pr.address) : x.address, tenants: x.tenants.slice() };
+      });
+      renderAskProps();
       askDrafts = d.jobs.map(function(x){
         var pr = matchProperty(x.address), ts = tenantsAt(pr), c = matchContractor(x.contractor);
         // A property on file with a complete address fills in a missing postcode.
@@ -6229,6 +6235,54 @@
     $('askAllNote').textContent = askDrafts.length + ' jobs ready' + (who.length === 1 ? ' for ' + who[0] : '') + ' — check them, then create them all at once.';
   }
   // Contacts from an instruction: new contractors, landlords and tenants.
+  // A property to add from Ask Fixflow, with its tenants, landlord and key number.
+  var askProps = [];
+  function renderAskProps(){
+    $('askProps').innerHTML = askProps.map(function(dr, i){
+      var x = dr.ai, pr = dr.property, cur = pr ? tenantsAtProperty(pr.address) : [];
+      return '<div class="draft cdraft" data-pi="' + i + '"><div style="display:flex;align-items:center;gap:8px"><strong>' + (pr ? '🏠 Property on file' : '🏠 New property') + '</strong></div>' +
+        '<div><label class="lbl">Address</label><input class="inp" data-p="address" list="askPropList2" value="' + esc(dr.address) + '">' +
+          '<div class="match ' + (pr ? 'ok' : addressProblem(dr.address) ? 'warn' : 'ok') + '">' + (pr ? '✓ Already on file' + (cur.length ? ' — ' + cur.length + ' tenant' + (cur.length === 1 ? '' : 's') + ' saved: ' + esc(cur.map(function(t){ return t.name; }).join(', ')) : '') + '. The tenants below will be added to it.' : addressProblem(dr.address) ? '⚠ ' + esc(addressProblem(dr.address)) + ' — add the door number and postcode if you can' : 'A new property will be added') + '</div></div>' +
+        '<div><label class="lbl">Tenants</label>' + (dr.tenants.length ? dr.tenants.map(function(t, k){
+          var dupe = tenantRecs.filter(function(r){ return phoneTail(t.phone) && phoneTail(r.phone) === phoneTail(t.phone); })[0];
+          return '<div class="grid3 ap-t" data-k="' + k + '" style="margin-bottom:6px"><input class="inp" data-t="name" placeholder="Name" value="' + esc(t.name) + '"><input class="inp" data-t="phone" placeholder="Phone" value="' + esc(t.phone) + '">' +
+            '<div style="display:flex;gap:6px"><input class="inp" data-t="email" placeholder="Email" value="' + esc(t.email) + '"><button type="button" class="btn small ghost" data-t-del="' + k + '" title="Remove">✕</button></div>' +
+            (dupe ? (String(dupe.name || '').trim().toLowerCase() === String(t.name || '').trim().toLowerCase() || !t.name
+              ? '<div class="prop-sub" style="grid-column:1/-1;margin:0">✓ Already saved — they’ll be linked to this property.</div>'
+              : '<div class="prop-sub" style="grid-column:1/-1;margin:0">⚠ This phone number is already saved for <b>' + esc(dupe.name) + '</b> — they’ll be linked to this property as that tenant. Change the number if it’s someone else.</div>') : '') + '</div>';
+        }).join('') : '<p class="muted-note" style="margin:0 0 6px">No tenants given.</p>') +
+          '<button type="button" class="linkish" data-t-add="1">+ Add a tenant</button></div>' +
+        '<div class="grid2"><div><label class="lbl">Landlord (optional)</label><input class="inp" data-p="landlord" list="askLlList" value="' + esc(x.landlord || '') + '"></div>' +
+          '<div><label class="lbl">Key number (optional)</label><input class="inp" data-p="key" value="' + esc(x.key_number || '') + '"></div></div>' +
+        '<div class="row-actions" style="margin-top:0"><button class="btn" type="button" data-pact="skip">Skip</button><button class="btn primary" type="button" data-pact="save">' + (pr ? 'Save tenants to this property' : 'Add property' + (dr.tenants.length ? ' and tenants' : '')) + '</button></div></div>';
+    }).join('') + (askProps.length ? '<datalist id="askPropList2">' + allPropsForList().map(function(pr){ return '<option value="' + esc(pr.address) + '">'; }).join('') + '</datalist>' +
+      '<datalist id="askLlList">' + landlords.map(function(l){ return '<option value="' + esc(l.name) + '">'; }).join('') + '</datalist>' : '');
+  }
+  function readAskProp(box, dr){
+    dr.address = box.querySelector('[data-p=address]').value.trim();
+    dr.ai.landlord = box.querySelector('[data-p=landlord]').value.trim();
+    dr.ai.key_number = box.querySelector('[data-p=key]').value.trim();
+    dr.tenants = Array.prototype.map.call(box.querySelectorAll('.ap-t'), function(r){ return { name: r.querySelector('[data-t=name]').value.trim(), phone: r.querySelector('[data-t=phone]').value.trim(), email: r.querySelector('[data-t=email]').value.trim() }; });
+  }
+  $('askProps').addEventListener('click', function(e){
+    var box = e.target.closest('[data-pi]'); if (!box) return;
+    var i = Number(box.dataset.pi), dr = askProps[i];
+    if (e.target.closest('[data-t-add]')) { readAskProp(box, dr); dr.tenants.push({ name: '', phone: '', email: '' }); renderAskProps(); return; }
+    var del = e.target.closest('[data-t-del]');
+    if (del) { readAskProp(box, dr); dr.tenants.splice(Number(del.dataset.tDel), 1); renderAskProps(); return; }
+    var b = e.target.closest('[data-pact]'); if (!b) return;
+    if (b.dataset.pact === 'skip') { askProps.splice(i, 1); renderAskProps(); return; }
+    readAskProp(box, dr);
+    if (!dr.address) { toast('Which property?'); box.querySelector('[data-p=address]').focus(); return; }
+    busy(b, true, 'Saving…');
+    api('POST', '/api/admin/properties', { address: dr.address, tenants: dr.tenants.filter(function(t){ return t.name || t.phone || t.email; }), landlord_name: dr.ai.landlord, key_number: dr.ai.key_number, notes: dr.ai.notes }).then(function(d){
+      busy(b, false);
+      if (!d.ok) { toast('Couldn’t save the property'); return; }
+      askProps.splice(i, 1); renderAskProps();
+      toast((dr.property ? 'Saved to ' : 'Added ') + d.address + (d.tenants ? ' — ' + d.tenants + ' tenant' + (d.tenants === 1 ? '' : 's') : '') + (d.landlord ? ', landlord ' + d.landlord : ''));
+      return Promise.all([loadTenantRecs(), loadLandlords(), loadPropInfo()]).then(function(){ loadJobs(); });
+    });
+  });
   var askContacts = [];
   // Properties named in Ask Fixflow ("6 Whitworth House; 9 Park Road"), each
   // swapped for the full address on file where there is one.
@@ -6552,6 +6606,8 @@
     propertiesFromJobs().forEach(function(p){ add(p.address); });
     certs.forEach(function(c){ add(c.address); });
     tenancies.forEach(function(t){ add(t.address); });
+    Object.keys(propInfo || {}).forEach(function(k){ add(propInfo[k].address); });   // added by hand / from Ask Fixflow
+    (tenantLinks || []).forEach(function(l){ if (!l.moved_out_at) add(l.address); });
     landlords.forEach(function(l){ llProperties(l).forEach(function(x){ add(x.address); }); });
     return Object.keys(map).map(function(k){ return { key: k, address: map[k] }; });
   }
