@@ -1340,6 +1340,11 @@
 <div class="modal" id="jfModal" hidden>
   <form class="card jf" id="jfForm" novalidate>
     <h3 id="jfTitle">New job</h3>
+    <div class="jf-new jf-import">
+      <button class="btn small" type="button" id="jfImportBtn">📄 Add from a tenant’s PDF report</button>
+      <span class="muted" id="jfImportNote">Got a report PDF by email or WhatsApp? Add it with its details and photos.</span>
+      <input type="file" id="jfImportFile" accept="application/pdf,.pdf" hidden>
+    </div>
     <div class="tenant-find jf-new">
       <label class="lbl" for="jfFind">Existing tenant? Search to fill in their details</label>
       <input class="inp search" id="jfFind" autocomplete="off" placeholder="Name, address, phone or email"
@@ -2537,6 +2542,31 @@
   attachTenantSuggest('jfName', 'jfNameResults', { quietWhenEmpty: true });
   attachTenantSuggest('jfPhone', 'jfPhoneResults', { quietWhenEmpty: true });
   $('newJobBtn').addEventListener('click', function(){ openJobForm(null); });
+  // A report PDF from the tenant page (e.g. one that didn't send): the server
+  // reads its details and photos and saves it as a job.
+  $('jfImportBtn').addEventListener('click', function(){ $('jfImportFile').value = ''; $('jfImportFile').click(); });
+  $('jfImportFile').addEventListener('change', function(){
+    var f = this.files && this.files[0]; if (!f) return;
+    var btn = $('jfImportBtn'), note = $('jfImportNote');
+    btn.disabled = true; note.textContent = 'Reading ' + f.name + '…';
+    var r = new FileReader();
+    r.onload = function(){
+      var b64 = String(r.result).replace(/^data:[^,]*,/, '');
+      api('POST', '/api/admin/import-report', { pdfBase64: b64, filename: f.name }).then(function(d){
+        btn.disabled = false;
+        if (!d.ok) {
+          note.textContent = d.error === 'already-added' ? 'That report is already on the system as ' + d.ref + '.' : d.error === 'not-a-report' ? 'That doesn’t look like one of our repair report PDFs.' : 'Couldn’t add it — please try again.';
+          return;
+        }
+        note.textContent = 'Got a report PDF by email or WhatsApp? Add it with its details and photos.';
+        closeJobForm();
+        toast('Added as ' + d.ref + (d.photos ? ' with ' + d.photos + ' photo' + (d.photos === 1 ? '' : 's') : ''));
+        loadJobs(); openJob(d.id);
+      });
+    };
+    r.onerror = function(){ btn.disabled = false; note.textContent = 'Couldn’t read that file.'; };
+    r.readAsDataURL(f);
+  });
   $('jfCancel').addEventListener('click', closeJobForm);
   $('jfModal').addEventListener('mousedown', function(e){ if (e.target === $('jfModal')) closeJobForm(); });
 

@@ -512,6 +512,71 @@ function decodePhotos(list) {
   }
   return out;
 }
+// Reads a repair report PDF made by the tenant page back into its details and
+// photos. The page writes plain text lines ("PROPERTY", then the value) and the
+// photos as images, so no PDF library is needed. Null if it isn't one of ours.
+const PDF_LABELS = {
+  'PROPERTY': 'address', 'REPORTED BY': 'reporter', 'ISSUE TYPE': 'category', "WHAT'S AFFECTED": 'affected',
+  "WHAT'S HAPPENING": 'symptom', 'LOCATION IN PROPERTY': 'location', 'URGENCY': 'urgency', 'DESCRIPTION': 'description',
+  'DAYS THAT WORK FOR ACCESS': 'accessDays', 'BEST TIME OF DAY': 'accessTime', 'ACCESS NOTES': 'accessNotes',
+  'PERMISSION TO RELEASE KEYS TO A CONTRACTOR': 'keyPermission', 'CONTRACTOR INSTRUCTIONS': 'keyInstructions', 'PHOTOS': 'photos'
+};
+const PDF_HEADINGS = ['PROPERTY & REPORTED BY', 'ISSUE DETAILS', 'ACCESS & KEY PERMISSION', 'REPAIR REPORT'];
+function readReportPdf(buf) {
+  if (!buf || buf.length < 100 || buf.slice(0, 5).toString('latin1') !== '%PDF-') return null;
+  const raw = buf.toString('latin1');
+  const unesc = function (t) {
+    return t.replace(/\\([0-7]{1,3}|.)/g, function (m, c) {
+      if (/^[0-7]+$/.test(c)) return String.fromCharCode(parseInt(c, 8));
+      return { n: '\n', r: '', t: '\t', b: '', f: '' }[c] !== undefined ? { n: '\n', r: '', t: '\t', b: '', f: '' }[c] : c;
+    });
+  };
+  // WinAnsi characters the page uses (· – — ’ “ ”).
+  const win = { '\x95': '•', '\x96': '–', '\x97': '—', '\x91': '‘', '\x92': '’', '\x93': '“', '\x94': '”', '\x85': '…' };
+  const lines = [];
+  const re = /\(((?:[^()\\]|\\[\s\S])*)\)\s*Tj|\[((?:[^\]\\]|\\[\s\S])*)\]\s*TJ/g;
+  let m;
+  while ((m = re.exec(raw))) {
+    let t = m[1] !== undefined ? unesc(m[1]) : (m[2].match(/\(((?:[^()\\]|\\[\s\S])*)\)/g) || []).map(function (x) { return unesc(x.slice(1, -1)); }).join('');
+    t = t.replace(/[\x85\x91-\x97]/g, function (c) { return win[c]; }).trim();
+    if (t) lines.push(t);
+  }
+  const refLine = lines.filter(function (l) { return /^Ref RR-[A-Z0-9]+/.test(l); })[0];
+  if (lines[0] !== 'Repair Report' || lines.indexOf('PROPERTY') === -1) return null;
+  const out = {}, photoNames = [];
+  let cur = null;
+  lines.forEach(function (l) {
+    if (/^Residential Realtors\s+·\s+(Ref |\d)/.test(l) || /^Page \d+ of \d+$/.test(l) || /^Ref RR-/.test(l) || PDF_HEADINGS.indexOf(l.toUpperCase()) !== -1 && l === l.toUpperCase()) return;
+    if (PDF_LABELS[l]) { cur = PDF_LABELS[l]; return; }
+    if (!cur) return;
+    if (cur === 'photos') { photoNames.push(l); return; }
+    out[cur] = out[cur] ? out[cur] + (cur === 'description' || cur === 'accessNotes' || cur === 'keyInstructions' ? ' ' : ' ') + l : l;
+  });
+  if (!out.address) return null;
+  const who = String(out.reporter || '').split(/\s+·\s+/);
+  const email = who.filter(function (x) { return /@/.test(x); })[0] || '';
+  const phone = who.filter(function (x) { return /^[+\d][\d\s()-]{6,}$/.test(x); })[0] || '';
+  const report = {
+    name: who[0] || '', email: email, phone: phone, address: out.address, category: out.category || '', affected: out.affected || '',
+    symptom: out.symptom || '', location: out.location || '', description: out.description === '—' ? '' : (out.description || ''),
+    urgency: out.urgency || 'Routine', accessDays: out.accessDays || '', accessTime: out.accessTime || '', accessNotes: out.accessNotes || '',
+    keyPermission: out.keyPermission === 'Not specified' ? '' : (out.keyPermission || ''), keyInstructions: out.keyInstructions || ''
+  };
+  // Photos: the JPEG (or original HEIC) image streams; the first image is our logo.
+  const photos = [];
+  const imgRe = /<<([^>]*?\/Subtype \/Image[\s\S]*?)>>\s*stream\r?\n/g;
+  let im;
+  while ((im = imgRe.exec(raw))) {
+    const len = /\/Length (\d+)/.exec(im[1]);
+    if (!len || !/\/Filter \/DCTDecode/.test(im[1])) continue;
+    const data = buf.slice(im.index + im[0].length, im.index + im[0].length + parseInt(len[1], 10));
+    const heic = /^ftyp(hei|hev|mif1|msf1)/.test(data.slice(4, 12).toString('latin1'));
+    if (!heic && !(data[0] === 0xFF && data[1] === 0xD8)) continue;
+    photos.push({ name: photoNames[photos.length] || 'photo-' + (photos.length + 1) + (heic ? '.heic' : '.jpg'), dataUrl: 'data:' + (heic ? 'image/heic' : 'image/jpeg') + ';base64,' + data.toString('base64') });
+  }
+  report.photoCount = photos.length;
+  return { report: report, photos: photos, lines: lines, tenantRef: refLine ? /RR-[A-Z0-9]+/.exec(refLine)[0] : '' };
+}
 // HEIC → JPEG (pure JavaScript, loaded only when needed). If it can't be
 // converted the original is kept, so nothing is lost.
 async function heicToJpeg(ph) {
@@ -2233,6 +2298,56 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true, added: photos.length });
   }));
 
+  // ---------- A report PDF added by staff ----------
+  // A PDF from the tenant page that never reached us (e.g. the tenant emailed
+  // or WhatsApped it): read its details and photos and save it as a job.
+  // Shared with the one-off imports below. The job keeps the time the tenant
+  // made the PDF (its "RR-…" reference is that time, written in base 36).
+  async function importReportPdf(p, pdf, filename) {
+    const r = readReportPdf(pdf);
+    if (!r) return { error: 'not-a-report' };
+    if (r.tenantRef) {
+      const had = (await p.query("SELECT job_id FROM job_updates WHERE kind = 'created' AND body LIKE $1 LIMIT 1", ['%(tenant’s reference ' + r.tenantRef + ')%'])).rows[0];
+      if (had) return { error: 'already-added', id: had.job_id, ref: refFor(had.job_id) };
+    }
+    const saved = await saveReport(r.report, pdf.toString('base64'), String(filename || 'Repair-Report.pdf').replace(/[^a-zA-Z0-9.\-_]+/g, '-'), r.lines.join('\n'), r.photos);
+    if (!saved) return { error: 'no-db' };
+    await p.query("UPDATE job_updates SET body = body || $2 WHERE job_id = $1 AND kind = 'created'",
+      [saved.id, ' Added from the tenant’s PDF' + (r.tenantRef ? ' (tenant’s reference ' + r.tenantRef + ')' : '') + '.']);
+    const made = r.tenantRef ? parseInt(r.tenantRef.slice(3), 36) : NaN;
+    if (made > Date.now() - 90 * 86400000 && made <= Date.now()) {
+      await p.query('UPDATE jobs SET created_at = $2 WHERE id = $1', [saved.id, new Date(made)]);
+      await p.query("UPDATE job_updates SET created_at = $2 WHERE job_id = $1 AND kind = 'created'", [saved.id, new Date(made)]);
+    }
+    return { id: saved.id, ref: saved.ref, photos: r.photos.length };
+  }
+  app.post('/api/admin/import-report', withDb(async function (p, req, res) {
+    const out = await importReportPdf(p, Buffer.from(String((req.body || {}).pdfBase64 || ''), 'base64'), (req.body || {}).filename);
+    if (out.error) return res.status(out.error === 'already-added' ? 409 : out.error === 'not-a-report' ? 400 : 500).json(Object.assign({ ok: false }, out));
+    res.json(Object.assign({ ok: true }, out));
+  }));
+  // Reports that never reached us, added once on start-up. Each file in
+  // imports/ is a tenant's PDF locked with IMPORT_KEY (AES-256-GCM: 12-byte IV,
+  // 16-byte tag, then the data), so no tenant details are readable in the code.
+  setTimeout(function () {
+    const key = /^[0-9a-f]{64}$/i.test(process.env.IMPORT_KEY || '') ? Buffer.from(process.env.IMPORT_KEY, 'hex') : null;
+    const dir = require('path').join(__dirname, 'imports');
+    if (!key || !require('fs').existsSync(dir)) return;
+    db().then(async function (p) {
+      if (!p) return;
+      for (const f of require('fs').readdirSync(dir).filter(function (n) { return /\.enc$/.test(n); })) {
+        try {
+          const blob = require('fs').readFileSync(require('path').join(dir, f));
+          const d = require('crypto').createDecipheriv('aes-256-gcm', key, blob.slice(0, 12));
+          d.setAuthTag(blob.slice(12, 28));
+          const pdf = Buffer.concat([d.update(blob.slice(28)), d.final()]);
+          const out = await importReportPdf(p, pdf, 'Repair-Report.pdf');
+          console.log('Report import ' + f + ': ' + (out.error ? out.error + (out.ref ? ' (' + out.ref + ')' : '') : 'added as ' + out.ref + ' with ' + out.photos + ' photo(s)'));
+        } catch (err) { console.error('Report import ' + f + ' failed:', err.message); }
+      }
+    }).catch(function (err) { console.error('Report import failed:', err.message); });
+  }, 30 * 1000);
+
   // ---------- Archive ----------
   // "Deleting" a job moves it to the archive: hidden from the day-to-day lists
   // but kept with all its details, photos and history, and can be restored.
@@ -2340,6 +2455,32 @@ module.exports = function mountJobs(app, opts) {
     await p.query(`INSERT INTO app_settings (key, value) VALUES ('tenancy_relink_v1', 'true') ON CONFLICT (key) DO NOTHING`);
   }
   setTimeout(function () { db().then(function (p) { return p && relinkTenancies(p); }).catch(function (err) { console.error('Tenancy relink failed:', err.message); }); }, 20 * 1000);
+  // One-off repair: an EPC check once renamed properties to the register's
+  // shorter spelling, dropping part of the address ("Flat 5 Windsor Court 23
+  // Coopers Road" became "Flat 5, Windsor Court"). Put the full address back
+  // wherever a change only removed numbers and the property still has the
+  // shorter address.
+  async function restoreDroppedNumbers(p) {
+    if ((await p.query("SELECT 1 FROM app_settings WHERE key = 'restore_numbers_v1'")).rows.length) return;
+    const nums = function (s) { return (String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }); };
+    const code = function (s) { const m = POSTCODE_RE.exec(String(s)); return m ? (m[1] + m[2]).toUpperCase() : ''; };
+    const seen = {};
+    const logs = (await p.query("SELECT body FROM job_updates WHERE kind = 'change' AND body LIKE 'Property: % → %' ORDER BY created_at DESC")).rows;
+    for (const r of logs) {
+      const m = /^Property: ([\s\S]+?) → ([\s\S]+)$/.exec(r.body);
+      if (!m || seen[m[1] + '|' + m[2]]) continue;
+      seen[m[1] + '|' + m[2]] = true;
+      const from = m[1].trim(), to = m[2].trim(), fn = nums(from), tn = nums(to);
+      if (!code(from) || code(from) !== code(to)) continue;
+      if (!tn.every(function (n) { return fn.indexOf(n) !== -1; }) || fn.length <= tn.length) continue;
+      const toKey = propKey(to);
+      if (!(await allProperties(p)).some(function (x) { return x.key === toKey; })) continue;
+      await renameProperty(p, toKey, from);
+      console.log('Address restored: ' + to + ' → ' + from);
+    }
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('restore_numbers_v1', 'true') ON CONFLICT (key) DO NOTHING`);
+  }
+  setTimeout(function () { db().then(function (p) { return p && restoreDroppedNumbers(p); }).catch(function (err) { console.error('Address restore failed:', err.message); }); }, 25 * 1000);
 
   // ---------- Certificates ----------
   // EPC (10 years), gas safety (12 months) and electrical safety / EICR (5 years)
@@ -2674,14 +2815,49 @@ module.exports = function mountJobs(app, opts) {
     if (!to || addressProblem(to) || to === current) return null;
     const first = function (s) { return ((String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/i) || [''])[0]).toUpperCase(); };
     if (first(to) !== first(current)) return null;
-    // Only when the register's spelling keeps every number of ours: never drop
-    // part of the address (e.g. "23 Coopers Road" when the register just says
-    // "Flat 5, Windsor Court").
+    // Never drop part of the address: when the register leaves something out
+    // (e.g. "23 Coopers Road" when it just says "Flat 5, Windsor Court"), that
+    // part is put back into the register's spelling.
+    const merged = mergeMissingParts(to, current);
+    if (!merged || merged === current) return null;
+    await renameProperty(p, key, merged);
+    return merged;
+  }
+  // The register's address with any numbered part of ours it lacks put back,
+  // after the part it follows ("Flat 5, Windsor Court, 23 Coopers Road, London,
+  // SE1 5JA"). Null when that can't be done cleanly.
+  function mergeMissingParts(reg, ours) {
     const nums = function (s) { return (String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }); };
-    const tn = nums(to);
-    if (!nums(current).every(function (n) { return tn.indexOf(n) !== -1; })) return null;
-    await renameProperty(p, key, to);
-    return to;
+    const plain = function (s) { return String(s).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); };
+    let out = reg;
+    for (const n of nums(ours)) {
+      if (nums(out).indexOf(n) !== -1) continue;
+      const body = String(ours).replace(POSTCODE_RE, ' ');
+      const at = body.search(new RegExp('\\b' + n + '\\b', 'i'));
+      if (at < 0) return null;
+      // The missing part: the number and the words after it, up to a comma,
+      // another number or a word the register already has (e.g. the town).
+      const regWords = plain(out).split(' ');
+      const words = body.slice(at).split(/\s+/), part = [words[0]];
+      for (const w of words.slice(1)) {
+        if (!w || /,$/.test(part[part.length - 1]) || /\d/.test(w) || regWords.indexOf(plain(w)) !== -1) break;
+        part.push(w);
+      }
+      const segs = out.split(/\s*,\s*/);
+      // Just the number, and the register has the street it belongs to
+      // ("Windsor Court, Coopers Road"): put the number in front of the street.
+      const next = words[1] ? plain(words[1]) : '';
+      const street = part.length === 1 && next ? segs.findIndex(function (sg) { return plain(sg).split(' ')[0] === next && !POSTCODE_RE.test(sg); }) : -1;
+      if (street !== -1) { segs[street] = part[0].replace(/,$/, '') + ' ' + segs[street]; out = tidyAddress(segs.join(', ')); continue; }
+      const piece = registerAddress(part.join(' ').replace(/,$/, ''));
+      // Put it after the last register part found in the text before it.
+      const before = ' ' + plain(body.slice(0, at)) + ' ';
+      let after = -1;
+      segs.forEach(function (sg, i) { const t = plain(sg); if (t && !POSTCODE_RE.test(sg) && before.indexOf(' ' + t + ' ') !== -1) after = i; });
+      segs.splice(after + 1, 0, piece);
+      out = tidyAddress(segs.join(', '));
+    }
+    return nums(ours).every(function (n) { return nums(out).indexOf(n) !== -1; }) ? out : null;
   }
   // A new report or job for a property we already know, written differently
   // ("6 Whitworth House, SE1 6RW" for "6 Whitworth House, Falmouth Road, London,
@@ -2810,7 +2986,8 @@ module.exports = function mountJobs(app, opts) {
       .then(function () { epcRunning = false; });
   }
   // When the matching improves, look again at properties it couldn't place.
-  const EPC_MATCH_VERSION = '4';
+  // (5: every property takes the register's full address again, keeping any part it lacks.)
+  const EPC_MATCH_VERSION = '5';
   setTimeout(function () {
     db().then(async function (p) {
       if (!p) return;
@@ -2818,6 +2995,7 @@ module.exports = function mountJobs(app, opts) {
       if (v && String(v.value).replace(/"/g, '') === EPC_MATCH_VERSION) return;
       await p.query(`DELETE FROM epc_checks c WHERE c.found = false OR EXISTS (SELECT 1 FROM property_certificates pc
         WHERE pc.property_key = c.property_key AND pc.type = 'EPC' AND pc.expires_on <= to_char(now() + interval '60 days', 'YYYY-MM-DD'))`);
+      await p.query('UPDATE epc_checks SET address_synced = false');
       await p.query(`INSERT INTO app_settings (key, value) VALUES ('epc_match_version', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(EPC_MATCH_VERSION)]);
     }).catch(function (err) { console.error('EPC recheck reset failed:', err.message); });
   }, 60 * 1000);
