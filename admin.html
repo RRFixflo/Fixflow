@@ -651,8 +651,8 @@
   .prop-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .new-chip { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--blue-tint); color: var(--blue); font-size: .66rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; vertical-align: 2px; }
   .prop-sortbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -4px 0 12px; }
-  #propSortTabs button { padding: 6px 10px; white-space: nowrap; }
-  @media (max-width: 700px) { #propSortTabs.tabs { display: flex; flex-wrap: wrap; overflow: visible; max-width: 100%; } #propSortTabs button { padding: 6px 9px; } }
+  #propSortTabs button, .sort-tabs button { padding: 6px 10px; white-space: nowrap; }
+  @media (max-width: 700px) { #propSortTabs.tabs, .sort-tabs.tabs { display: flex; flex-wrap: wrap; overflow: visible; max-width: 100%; } #propSortTabs button, .sort-tabs button { padding: 6px 9px; } }
   .prop-actions select.inp { width: auto; }
   .prop-tiles { grid-template-columns: repeat(4, 1fr); }
   @media (max-width: 800px) { .prop-row { grid-template-columns: minmax(0,1fr) auto; } .prop-row .last, .prop-row .chev { display: none; } .prop-row .num:nth-of-type(3) { display: none; } .prop-tiles { grid-template-columns: repeat(2, 1fr); } }
@@ -916,14 +916,10 @@
         <div id="tenantsListView">
           <div class="toolbar">
             <input class="inp search" id="tenantSearch" type="search" placeholder="Search by name, phone, email or address">
-            <select class="inp" id="tenantSort" aria-label="Sort tenants" style="width:auto">
-              <option value="added">Sort: Recently added</option>
-              <option value="recent">Sort: Last reported</option>
-              <option value="az">Sort: Name — A to Z</option>
-            </select>
             <button class="btn" id="tenantBroadcast" type="button">📣 Message tenants</button>
             <button class="btn primary" id="tenantAdd" type="button">+ Add tenant</button>
           </div>
+          <div class="prop-sortbar"><span class="muted-note" style="margin:0">Sort by</span><div id="tenantSortTabs" class="sort-tabs" role="tablist" aria-label="Sort tenants"></div></div>
           <div class="list" id="tenantList"></div>
         </div>
         <div id="tenantDetail" hidden>
@@ -948,15 +944,9 @@
           <div class="tiles prop-tiles" id="llTiles"></div>
           <div class="toolbar">
             <input class="inp search" id="llSearch" type="search" placeholder="Search landlords by name, phone, email or property">
-            <select class="inp" id="llSort" aria-label="Sort landlords" style="width:auto;min-width:190px">
-              <option value="added">Sort: Recently added</option>
-              <option value="owed">Sort: Owed — highest</option>
-              <option value="overdue">Sort: Overdue — highest</option>
-              <option value="az">Sort: Name — A to Z</option>
-              <option value="open">Sort: Open jobs — most</option>
-            </select>
             <button class="btn primary" id="llNew" type="button">+ Add landlord</button>
           </div>
+          <div class="prop-sortbar"><span class="muted-note" style="margin:0">Sort by</span><div id="llSortTabs" class="sort-tabs" role="tablist" aria-label="Sort landlords"></div></div>
           <div class="list" id="llList"></div>
         </div>
         <div id="llDetail" hidden>
@@ -3024,6 +3014,25 @@
     return tenantRecs.filter(function(t){ return tail && phoneTail(t.phone) === tail; })[0] ||
       tenantsAtProperty(j.property_address, true).filter(function(t){ return nm && String(t.name || '').trim().toLowerCase() === nm; })[0] || null;
   }
+  // Sort tabs (Tenants, Landlords): tap a tab to sort, tap it again to reverse.
+  function loadSort(key, defs, dflt){
+    try { var v = JSON.parse(localStorage.getItem(key) || 'null'); if (v && defs.some(function(t){ return t[0] === v.by; })) return { by: v.by, dir: v.dir === -1 ? -1 : 1 }; } catch (e) {}
+    return { by: dflt, dir: 1 };
+  }
+  function tapSort(st, k, key){
+    if (st.by === k) st.dir = -st.dir; else { st.by = k; st.dir = 1; }
+    try { localStorage.setItem(key, JSON.stringify(st)); } catch (e) {}
+  }
+  function drawSortTabs(id, defs, st){
+    var el = $(id); if (!el) return;
+    el.className = 'tabs sort-tabs';
+    el.innerHTML = defs.map(function(t){
+      var on = t[0] === st.by;
+      return '<button type="button" role="tab" aria-selected="' + on + '" data-sort="' + t[0] + '"' + (on ? ' class="on"' : '') + ' title="' + esc(on ? (st.dir > 0 ? t[2] : t[3]) + ' — tap to reverse' : t[2]) + '">' + t[1] + (on ? ' ' + (st.dir > 0 ? '↓' : '↑') : '') + '</button>';
+    }).join('');
+  }
+  var TENANT_SORTS = [['added', 'Recently added', 'Newest first', 'Oldest first'], ['az', 'A–Z', 'Name A–Z', 'Name Z–A'], ['recent', 'Last reported', 'Most recent repair first', 'Longest ago first'], ['open', 'Open repairs', 'Most open repairs first', 'Fewest first']];
+  var tenantSort = loadSort('rr_tenant_sort2', TENANT_SORTS, 'added');
   var openTenantKey = null;   // tenant record id
   function renderTenants(){
     var raw = $('tenantSearch').value.trim().toLowerCase(), digits = raw.replace(/\D/g, ''), q = propKey(raw);
@@ -3035,9 +3044,12 @@
         (digits.length >= 4 && String(t.phone || '').replace(/\D/g, '').indexOf(digits) !== -1);
     }).map(function(t){ var js = jobsForTenant(t); return { t: t, jobs: js, props: tenantProps(t), latest: js.reduce(function(a, j){ return Math.max(a, new Date(j.created_at).getTime()); }, 0) }; })
       .sort(function(a, b){
-        var by = $('tenantSort').value, az = String(a.t.name || '').localeCompare(String(b.t.name || ''), 'en', { sensitivity: 'base' });
-        return by === 'az' ? az : by === 'added' ? (new Date(b.t.created_at) - new Date(a.t.created_at)) || az : (b.latest - a.latest) || az;
+        var by = tenantSort.by, az = String(a.t.name || '').localeCompare(String(b.t.name || ''), 'en', { sensitivity: 'base' });
+        var d = by === 'az' ? az : by === 'added' ? (new Date(b.t.created_at) - new Date(a.t.created_at)) || az
+          : by === 'open' ? (b.jobs.filter(isOpen).length - a.jobs.filter(isOpen).length) || (b.latest - a.latest) : (b.latest - a.latest) || az;
+        return tenantSort.dir * d;
       });
+    drawSortTabs('tenantSortTabs', TENANT_SORTS, tenantSort);
     var el = $('tenantList');
     if (!list.length) { el.innerHTML = '<div class="empty">' + (tenantRecs.length ? 'No tenant matches.' : 'Tenants appear here as reports and jobs come in, or add one.') + '</div>'; return; }
     el.innerHTML = list.map(function(x){
@@ -3054,8 +3066,7 @@
     }).join('');
   }
   $('tenantSearch').addEventListener('input', renderTenants);
-  try { if (localStorage.getItem('rr_tenant_sort')) $('tenantSort').value = localStorage.getItem('rr_tenant_sort'); } catch (e) {}
-  $('tenantSort').addEventListener('change', function(){ try { localStorage.setItem('rr_tenant_sort', $('tenantSort').value); } catch (e) {} renderTenants(); });
+  $('tenantSortTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-sort]'); if (b) { tapSort(tenantSort, b.dataset.sort, 'rr_tenant_sort2'); renderTenants(); } });
   $('tenantList').addEventListener('click', function(e){ var b = e.target.closest('.prop-row'); if (b) openTenant(Number(b.dataset.key)); });
   $('tenantBack').addEventListener('click', function(){ openTenantKey = null; $('tenantDetail').hidden = true; $('tenantsListView').hidden = false; renderTenants(); pushNav(); });
   $('navTenants').addEventListener('click', function(){ openTenantKey = null; $('tenantDetail').hidden = true; $('tenantsListView').hidden = false; showView('tenants'); });
@@ -5394,12 +5405,15 @@
       stats[l.id] = { owed: sumTotal(un), overdue: sumTotal(un.filter(invOverdue)),
         open: llProperties(l).reduce(function(a, x){ return a + x.jobs.filter(isOpen).length; }, 0) };
     });
-    var by = $('llSort').value, az = function(a, b){ return String(a.name).localeCompare(String(b.name), 'en', { sensitivity: 'base' }); };
-    list = list.slice().sort(function(a, b){
+    drawSortTabs('llSortTabs', LL_SORTS, llSort);
+    var by = llSort.by, dir = llSort.dir, az = function(a, b){ return String(a.name).localeCompare(String(b.name), 'en', { sensitivity: 'base' }); };
+    list = list.slice().sort(function(a, b){ return dir * llCmp(a, b); });
+    function llCmp(a, b){
       var A = stats[a.id], B = stats[b.id];
       if (by === 'added') return (new Date(b.created_at) - new Date(a.created_at)) || az(a, b);
+      if (by === 'props') return (llProperties(b).length - llProperties(a).length) || az(a, b);
       return by === 'az' ? az(a, b) : ((by === 'open' ? B.open - A.open : by === 'overdue' ? B.overdue - A.overdue || B.owed - A.owed : B.owed - A.owed) || az(a, b));
-    });
+    }
     if (!list.length) { $('llList').innerHTML = '<div class="empty">' + (landlords.length ? 'No landlord matches.' : 'No landlords yet. Add one here, or enter landlord details on a job or invoice and they’re saved automatically.') + '</div>'; return; }
     $('llList').innerHTML = list.map(function(l){
       var props = llProperties(l), open = props.reduce(function(a, x){ return a + x.jobs.filter(isOpen).length; }, 0);
@@ -5458,8 +5472,10 @@
   $('navLandlords').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; showView('ll'); });
   $('llBack').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; renderLandlords(); pushNav(); });
   $('llSearch').addEventListener('input', renderLandlords);
-  try { if (localStorage.getItem('rrLlSort')) $('llSort').value = localStorage.getItem('rrLlSort'); } catch (e) {}
-  $('llSort').addEventListener('change', function(){ try { localStorage.setItem('rrLlSort', $('llSort').value); } catch (e) {} renderLandlords(); });
+  var LL_SORTS = [['added', 'Recently added', 'Newest first', 'Oldest first'], ['az', 'A–Z', 'Name A–Z', 'Name Z–A'], ['props', 'Most properties', 'Most properties first', 'Fewest first'],
+    ['owed', 'Owed', 'Most owed first', 'Least owed first'], ['overdue', 'Overdue', 'Most overdue first', 'Least overdue first'], ['open', 'Open jobs', 'Most open jobs first', 'Fewest first']];
+  var llSort = loadSort('rr_ll_sort', LL_SORTS, 'added');
+  $('llSortTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-sort]'); if (b) { tapSort(llSort, b.dataset.sort, 'rr_ll_sort'); renderLandlords(); } });
   $('llList').addEventListener('click', function(e){ var b = e.target.closest('.prop-row'); if (b) openLandlord(Number(b.dataset.id)); });
   $('llNew').addEventListener('click', function(){ openLandlordForm(null); });
   $('llProps').addEventListener('click', function(e){
