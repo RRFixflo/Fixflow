@@ -2040,7 +2040,8 @@
   function taskText(j){
     var c = typeof waChosen === 'function' ? waChosen() : null, n = c ? c.name.trim().toLowerCase() : '';
     var adding = c && $('waAssignMode') && !$('waAssignMode').hidden && $('waAssignMode').value === 'second' && !onJob(j, c.name);
-    var task = adding ? $('waTask').value.trim() : (n && String(j.assigned_to_2 || '').trim().toLowerCase() === n ? j.task_2 : '');
+    var isSecond = n && String(j.assigned_to_2 || '').trim().toLowerCase() === n;
+    var task = adding ? $('waTask').value.trim() : isSecond ? ($('waTask') && !$('waTask').hidden ? $('waTask').value.trim() : j.task_2) : '';
     return task ? task + ' (part of: ' + jobText(j) + ')' : jobText(j);
   }
   function contractorMessage(list){
@@ -2286,7 +2287,7 @@
       return '<option value="' + c.id + '"' + (shared && shared.id === c.id ? ' selected' : '') + '>' +
         esc(c.name + (c.trade ? ' — ' + c.trade : '') + ' (' + [c.phone, c.email].filter(Boolean).join(', ') + ')') + '</option>';
     }).join('');
-    $('waTask').value = '';
+    $('waTask').value = ''; delete $('waTask').dataset.touched;
     updateWaAssign();
     $('waText').textContent = contractorMessage(waJobs);
     $('waModal').hidden = false;
@@ -2329,7 +2330,11 @@
     $('waAssignWrap').hidden = !needs;
     $('waAssign').checked = true;
     $('waAssignMode').hidden = !needs || !taken.length;
-    $('waTask').hidden = $('waAssignMode').hidden || $('waAssignMode').value !== 'second' || !$('waAssign').checked;
+    // Sending to the job's second contractor: their task, to fill in or check (saved on send).
+    var sec = c && waJobs.length === 1 && String(waJobs[0].assigned_to_2 || '').trim().toLowerCase() === c.name.trim().toLowerCase() ? waJobs[0] : null;
+    waSecondJob = sec;
+    if (sec) { $('waTask').hidden = false; if (!$('waTask').dataset.touched) $('waTask').value = sec.task_2 || ''; $('waTask').placeholder = 'What is ' + c.name + ' doing? e.g. Treat the other rooms'; }
+    else { $('waTask').placeholder = 'Their task, e.g. Replace the socket damaged by the leak'; $('waTask').hidden = $('waAssignMode').hidden || $('waAssignMode').value !== 'second' || !$('waAssign').checked; }
     if (taken.length) {
       var two = taken.length === 1 && String(taken[0].assigned_to_2 || '').trim();
       $('waAssignMode').options[0].textContent = two ? 'Replace ' + taken[0].assigned_to_2 + ' (second contractor) with ' + c.name : 'Add them as a second contractor';
@@ -2343,10 +2348,17 @@
     $('waOpen').hidden = !!(c && !waNumber(c.phone));
     $('waEmail').classList.toggle('primary', !!(c && c.email && !waNumber(c.phone)));
   }
-  $('waTo').addEventListener('change', function(){ $('waTask').value = ''; updateWaAssign(); $('waText').textContent = contractorMessage(waJobs); });
+  $('waTo').addEventListener('change', function(){ $('waTask').value = ''; delete $('waTask').dataset.touched; updateWaAssign(); $('waText').textContent = contractorMessage(waJobs); });
   $('waAssignMode').addEventListener('change', function(){ updateWaAssign(); $('waText').textContent = contractorMessage(waJobs); });
   $('waAssign').addEventListener('change', function(){ $('waTask').hidden = $('waAssignMode').hidden || $('waAssignMode').value !== 'second' || !$('waAssign').checked; $('waText').textContent = contractorMessage(waJobs); });
-  $('waTask').addEventListener('input', function(){ $('waText').textContent = contractorMessage(waJobs); });
+  var waSecondJob = null;
+  $('waTask').addEventListener('input', function(){ $('waTask').dataset.touched = '1'; $('waText').textContent = contractorMessage(waJobs); });
+  // The second contractor's task typed in the send window is saved on the job.
+  function saveSecondTask(){
+    var j = waSecondJob, t = $('waTask').value.trim();
+    if (!j || $('waTask').hidden || t === String(j.task_2 || '')) return Promise.resolve();
+    return api('PATCH', '/api/admin/jobs/' + j.id, { task_2: t });
+  }
   function assignTo(list, name){
     var second = !$('waAssignMode').hidden && $('waAssignMode').value === 'second';
     return Promise.all(list.filter(function(j){ return !onJob(j, name); }).map(function(j){
@@ -2389,7 +2401,7 @@
   $('waCopy').addEventListener('click', function(){
     copyText($('waText').textContent).then(function(){
       toast('Copied — paste it into WhatsApp');
-      logContractorSend(waJobs, 'Job details copied for contractor').then(afterSend);
+      saveSecondTask().then(function(){ return logContractorSend(waJobs, 'Job details copied for contractor'); }).then(function(){ loadJobs(); afterSend(); });
     })['catch'](function(){ toast('Couldn’t copy — select the text and copy it instead'); });
   });
   $('waOpen').addEventListener('click', function(){
@@ -2402,7 +2414,7 @@
     if (text.length > 3500) copyText(text)['catch'](function(){});
     window.open('https://wa.me/' + (c ? waNumber(c.phone) : '') + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
     var willAssign = c && !$('waAssignWrap').hidden && $('waAssign').checked;
-    var assign = willAssign ? assignTo(list, c.name) : Promise.resolve();
+    var assign = (willAssign ? assignTo(list, c.name) : Promise.resolve()).then(saveSecondTask);
     if (c) setTimeout(function(){ openTenantNotice(list, c.name); }, 400);
     assign.then(function(){ return c && (willAssign || list.every(function(j){ return onJob(j, c.name); })) ? markArranged(list, c.name) : null; }).then(function(){
       return logContractorSend(list, 'Job details sent on WhatsApp' + (c ? ' to ' + c.name : ''));
@@ -2422,7 +2434,7 @@
       '\n\nPlease let us know when you can attend.\n\nKind regards,\nResidential Realtors';
     window.location.href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
     var willAssign = !$('waAssignWrap').hidden && $('waAssign').checked;
-    var assign = willAssign ? assignTo(list, c.name) : Promise.resolve();
+    var assign = (willAssign ? assignTo(list, c.name) : Promise.resolve()).then(saveSecondTask);
     setTimeout(function(){ openTenantNotice(list, c.name); }, 400);
     assign.then(function(){ return willAssign || list.every(function(j){ return onJob(j, c.name); }) ? markArranged(list, c.name) : null; })
       .then(function(){ return logContractorSend(list, 'Job details emailed to ' + c.name + ' (' + c.email + ')'); })
@@ -4475,7 +4487,7 @@
       var status;
       if (isDone(j)) {
         var when = j.completed_at ? new Date(j.completed_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
-        var notes = clean(String(j.completion_notes || '').replace(/Their price:[^.]*\.?/gi, ''), 400);
+        var notes = clean(String(j.completion_notes || '').replace(/Their price:\s*£?\s*[\d,]+(?:\.\d+)?\.?/gi, ''), 400);
         status = '✅ Completed' + (when ? ' on ' + when : '') + '.' + (notes ? '\nWhat was done: ' + notes : '');
       } else if (j.landlord_handles) {
         var tn = [j.tenant_name, j.tenant_phone, j.tenant_email].filter(Boolean).join(', ');
@@ -5638,7 +5650,7 @@
       var t = String(u.body);
       if (u.kind === 'contractor_note') t = t.replace(/^[^:]*:\s*/, '').replace(/\s*\[\d+ photos? added\]$/, '');
       if (u.kind === 'change') { var m = /^Status: .* → (.+)$/.exec(t); t = m ? 'The repair is now: ' + m[1] + '.' : t; }
-      if (u.kind === 'completed') t = 'The work has been completed.' + (j.completion_notes ? ' ' + String(j.completion_notes).replace(/Their price:[^.]*\.?/gi, '').trim() : '');
+      if (u.kind === 'completed') t = 'The work has been completed.' + (j.completion_notes ? ' ' + String(j.completion_notes).replace(/Their price:\s*£?\s*[\d,]+(?:\.\d+)?\.?/gi, '').trim() : '');
       updateNotice(j, t, b.dataset.uSend);
     }); });
   }

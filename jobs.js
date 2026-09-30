@@ -2114,14 +2114,73 @@ module.exports = function mountJobs(app, opts) {
     const siteUrl = process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : req.protocol + '://' + req.get('host'));
     res.json({ ok: true, url: siteUrl + '/l/' + token });
   }));
+  // A landlord (by their link) and the property keys that are theirs.
+  async function landlordByToken(p, token) {
+    token = String(token || '');
+    const l = /^[A-Za-z0-9_-]{20,}$/.test(token) ? (await p.query('SELECT id, name FROM landlords WHERE portal_token = $1', [token])).rows[0] : null;
+    if (!l) return null;
+    const keys = {};
+    (await p.query('SELECT property_key, address FROM property_landlords WHERE landlord_id = $1', [l.id])).rows.forEach(function (r) { keys[r.property_key] = r.address; });
+    return { l: l, keys: keys };
+  }
+  // Every charge to the landlord, for their accounts (CSV).
+  app.get('/l/:token/costs.csv', withDb(async function (p, req, res) {
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).send('Not found');
+    const rows = (await p.query(`SELECT id, status, created_at, completed_at, category, affected, symptom, summary, property_address, landlord_charge,
+        (SELECT coalesce(sum(jp.charge), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_charge,
+        (SELECT string_agg(jp.description, '; ' ORDER BY jp.id) FROM job_parts jp WHERE jp.job_id = jobs.id AND jp.charge IS NOT NULL) AS parts,
+        (SELECT i.number FROM invoices i WHERE i.job_id = jobs.id ORDER BY i.id DESC LIMIT 1) AS inv_no,
+        (SELECT i.created_at FROM invoices i WHERE i.job_id = jobs.id ORDER BY i.id DESC LIMIT 1) AS inv_at,
+        (SELECT i.total FROM invoices i WHERE i.job_id = jobs.id ORDER BY i.id DESC LIMIT 1) AS inv_total,
+        (SELECT i.paid_at FROM invoices i WHERE i.job_id = jobs.id ORDER BY i.id DESC LIMIT 1) AS inv_paid
+      FROM jobs WHERE archived_at IS NULL AND status <> 'Cancelled' ORDER BY coalesce(completed_at, created_at)`)).rows
+      .filter(function (j) { return who.keys[propKey(j.property_address)] !== undefined; });
+    const d = function (v) { return v ? new Date(v).toISOString().slice(0, 10) : ''; };
+    const q = function (v) { const t = String(v == null ? '' : v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    const n = function (v) { return v == null || v === '' ? '' : Number(v).toFixed(2); };
+    const lines = [['Reference', 'Property', 'Repair', 'Status', 'Reported', 'Completed', 'Work charge', 'Parts', 'Parts charge', 'Total', 'Invoice', 'Invoice date', 'Invoice total', 'Paid'].join(',')];
+    rows.forEach(function (j) {
+      const tot = (j.landlord_charge == null ? 0 : Number(j.landlord_charge)) + Number(j.parts_charge || 0);
+      lines.push([refFor(j.id), j.property_address, j.summary || [j.affected, j.symptom].filter(Boolean).join(' – ') || j.category, j.status, d(j.created_at), d(j.completed_at),
+        n(j.landlord_charge), j.parts || '', Number(j.parts_charge) ? n(j.parts_charge) : '', j.landlord_charge == null && !Number(j.parts_charge) ? '' : n(tot),
+        j.inv_no || '', d(j.inv_at), n(j.inv_total), j.inv_no ? (j.inv_paid ? 'Paid ' + d(j.inv_paid) : 'Not yet') : ''].map(q).join(','));
+    });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="repair-costs.csv"');
+    res.setHeader('X-Robots-Tag', 'noindex');
+    res.send('\ufeff' + lines.join('\r\n'));
+  }));
+  // One of their invoices, as issued, with how to pay.
+  app.get('/l/:token/invoice/:id', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const who = await landlordByToken(p, req.params.token);
+    const inv = who ? (await p.query('SELECT i.id, i.number, i.total, i.created_at, i.paid_at, i.data, j.id AS job_id, j.property_address FROM invoices i JOIN jobs j ON j.id = i.job_id WHERE i.id = $1 AND j.archived_at IS NULL',
+      [parseInt(req.params.id, 10) || 0])).rows[0] : null;
+    if (!inv || who.keys[propKey(inv.property_address)] === undefined) return res.status(404).send(trackShell('Invoice not found', '<h1>Invoice not found</h1>', true));
+    const dt = inv.data || {}, day = function (v) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
+    const money = function (v) { return v == null ? '' : '£' + Number(v).toFixed(2); };
+    const overdue = !inv.paid_at && dt.due && dt.due < new Date().toISOString().slice(0, 10);
+    const pay = INVOICE.payee && INVOICE.accountNumber ? '<div class="card"><h3 style="margin:0 0 6px">How to pay</h3><div>' + htmlEsc(INVOICE.payee) + '</div><div>Sort code ' + htmlEsc(INVOICE.sortCode) + ' · Account ' + htmlEsc(INVOICE.accountNumber) + '</div><div class="muted">Please use the reference ' + htmlEsc(dt.ref || inv.number) + '</div></div>' : '';
+    res.send(trackShell('Invoice ' + inv.number, '<style>table{width:100%;border-collapse:collapse}td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}td.a{text-align:right;white-space:nowrap;padding-left:12px}tr.t td{font-weight:800;border-bottom:0;font-size:1.05rem}.st{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:700;font-size:.8rem}.st.ok{background:var(--ok);color:#fff}.st.due{background:var(--ambert);color:var(--amber)}.st.late{background:#fdecec;color:var(--red)}@media print{header,.noprint{display:none}}</style>' +
+      '<p class="noprint"><a href="/l/' + htmlEsc(req.params.token) + '" style="color:var(--blue);font-weight:600;text-decoration:none">← Your properties</a></p>' +
+      '<h1>Invoice ' + htmlEsc(inv.number) + '</h1><p class="sub">' + htmlEsc(inv.property_address || '') + ' · repair ' + htmlEsc(refFor(inv.job_id)) + '</p>' +
+      '<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div class="muted">Issued</div><b>' + htmlEsc(day(dt.date) || day(inv.created_at.toISOString())) + '</b></div>' +
+        (dt.due ? '<div><div class="muted">Due</div><b>' + htmlEsc(day(dt.due)) + '</b></div>' : '') +
+        '<div><div class="muted">Status</div>' + (inv.paid_at ? '<span class="st ok">Paid ' + htmlEsc(day(inv.paid_at.toISOString())) + '</span>' : overdue ? '<span class="st late">Overdue</span>' : '<span class="st due">Awaiting payment</span>') + '</div></div></div>' +
+      '<div class="card"><table>' + (dt.lines || []).map(function (x) { return '<tr><td>' + htmlEsc(x.desc) + '</td><td class="a">' + money(x.amount) + '</td></tr>'; }).join('') +
+        (dt.vat ? '<tr><td>Subtotal</td><td class="a">' + money(dt.sub) + '</td></tr><tr><td>VAT</td><td class="a">' + money(dt.vat) + '</td></tr>' : '') +
+        '<tr class="t"><td>Total</td><td class="a">' + money(inv.total) + '</td></tr></table></div>' + (inv.paid_at ? '' : pay) +
+      '<p class="noprint" style="text-align:center"><button onclick="window.print()">Print or save as PDF</button></p>', true));
+  }));
   app.get('/l/:token', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     const token = String(req.params.token || '');
-    const l = /^[A-Za-z0-9_-]{20,}$/.test(token) ? (await p.query('SELECT id, name FROM landlords WHERE portal_token = $1', [token])).rows[0] : null;
-    if (!l) return res.status(404).send(trackShell('Link not available', '<h1>Link not available</h1><p class="sub">This link is no longer active. Please contact Residential Realtors for a new one.</p>', true));
-    const links = (await p.query('SELECT property_key, address FROM property_landlords WHERE landlord_id = $1', [l.id])).rows;
-    const keys = {}; links.forEach(function (r) { keys[r.property_key] = r.address; });
+    const who = await landlordByToken(p, token);
+    if (!who) return res.status(404).send(trackShell('Link not available', '<h1>Link not available</h1><p class="sub">This link is no longer active. Please contact Residential Realtors for a new one.</p>', true));
+    const l = who.l, keys = who.keys;
     const all = (await p.query(`SELECT id, status, urgency, created_at, completed_at, category, affected, symptom, location, summary, property_address,
         appointment_date, appointment_time, landlord_charge, completion_notes, landlord_handles, track_token, task_2,
         (SELECT coalesce(sum(jp.charge), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_charge
@@ -2141,12 +2200,15 @@ module.exports = function mountJobs(app, opts) {
       }
       j.photo_token = t;
     }
-    const invs = ids.length ? (await p.query('SELECT job_id, number, total, created_at, paid_at FROM invoices WHERE job_id = ANY($1::int[]) ORDER BY id', [ids])).rows : [];
+    const invs = ids.length ? (await p.query("SELECT id, job_id, number, total, created_at, paid_at, data->>'due' AS due, data->>'date' AS date FROM invoices WHERE job_id = ANY($1::int[]) ORDER BY id", [ids])).rows : [];
+    const parts = {};
+    if (ids.length) (await p.query('SELECT job_id, description, charge, status FROM job_parts WHERE job_id = ANY($1::int[]) ORDER BY id', [ids])).rows
+      .forEach(function (x) { (parts[x.job_id] = parts[x.job_id] || []).push(x); });
     const certs = Object.keys(keys).length ? (await p.query("SELECT property_key, type, expires_on, not_required FROM property_certificates WHERE property_key = ANY($1::text[])", [Object.keys(keys)])).rows : [];
     const names = (await p.query("SELECT name FROM contractors WHERE coalesce(trim(name), '') <> ''")).rows.map(function (r) { return r.name.trim(); }).sort(function (a, b) { return b.length - a.length; });
     const reEsc = function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
     const scrub = function (t) {
-      let s = String(t || '').replace(/Their price:[^.\n]*\.?/gi, '').replace(/^[^:\n]{2,40}:\s*/gm, '');
+      let s = String(t || '').replace(/Their price:\s*£?\s*[\d,]+(?:\.\d+)?\.?/gi, '').replace(/^[^:\n]{2,40}:\s*/gm, '');
       names.forEach(function (n) { s = s.replace(new RegExp('\\b' + reEsc(n) + '\\b', 'gi'), 'our contractor'); });
       return s.replace(/\s+/g, ' ').trim();
     };
@@ -2169,9 +2231,24 @@ module.exports = function mountJobs(app, opts) {
           (j.landlord_handles ? ' · Arranged by you' : '') + '</div>' +
         (notes ? '<div class="lj-notes">' + htmlEsc(notes.slice(0, 300)) + '</div>' : '') +
         photoStrip(j) +
-        '<div class="lj-foot"><span>' + (c != null ? 'Cost to you: <b>' + money(c) + '</b>' : isDone ? '<span class="muted">No charge recorded</span>' : '<span class="muted">Cost not confirmed yet</span>') +
-          (inv ? ' · Invoice ' + htmlEsc(inv.number || '') + ' ' + (inv.paid_at ? '<span class="paid">paid</span>' : '<span class="due">awaiting payment</span>') : '') + '</span>' +
-          '<a href="/t/' + htmlEsc(j.track_token) + '">Details ›</a></div></div>';
+        costBox(j, c, inv) +
+        '<div class="lj-foot"><span></span><a href="/t/' + htmlEsc(j.track_token) + '">Progress and details ›</a></div></div>';
+    };
+    // What the repair costs them: the work, each part, the total, and the invoice.
+    const costBox = function (j, c, inv) {
+      const ps = (parts[j.id] || []).filter(function (x) { return x.charge != null && Number(x.charge); });
+      const isDone = j.status === 'Completed';
+      if (c == null && !inv) return '<div class="cost none">' + (isDone ? 'No charge recorded for this repair.' : 'Cost not confirmed yet — we’ll let you know before any charge.') + '</div>';
+      const row = function (a, b, cls) { return '<div class="cr' + (cls ? ' ' + cls : '') + '"><span>' + a + '</span><span>' + b + '</span></div>'; };
+      const overdue = inv && !inv.paid_at && inv.due && inv.due < new Date().toISOString().slice(0, 10);
+      return '<div class="cost">' +
+        (j.landlord_charge != null ? row('Labour and work', money(j.landlord_charge)) : '') +
+        ps.map(function (x) { return row('Part: ' + htmlEsc(x.description) + (x.status && !isDone ? ' <span class="muted">(' + htmlEsc(String(x.status).toLowerCase()) + ')</span>' : ''), money(x.charge)); }).join('') +
+        (c != null ? row(isDone ? 'Total cost to you' : 'Expected cost to you', money(c), 'tot') : '') +
+        (inv ? '<div class="ci">Invoice <b>' + htmlEsc(inv.number || '') + '</b> · ' + money(inv.total) + ' · ' +
+          (inv.paid_at ? '<span class="paid">Paid ' + htmlEsc(day(inv.paid_at)) + '</span>' : overdue ? '<span class="late">Overdue since ' + htmlEsc(day(inv.due)) + '</span>' : '<span class="due">Due ' + htmlEsc(inv.due ? day(inv.due) : 'now') + '</span>') +
+          ' · <a href="/l/' + htmlEsc(token) + '/invoice/' + inv.id + '">View invoice</a></div>' : '') +
+      '</div>';
     };
     const photoStrip = function (j) {
       const list = photos[j.id] || [];
@@ -2187,6 +2264,32 @@ module.exports = function mountJobs(app, opts) {
         group('Photos of the finished work', list.filter(function (ph) { return ph.added_by === 'contractor'; }));
     };
     const certName = { EPC: 'EPC', Gas: 'Gas safety', EICR: 'Electrical (EICR)' };
+    const yr = new Date().getFullYear();
+    const when = function (j) { return new Date(j.completed_at || j.created_at); };
+    const sumOf = function (list) { return list.reduce(function (t, j) { return t + (charge(j) || 0); }, 0); };
+    const doneC = all.filter(function (j) { return j.status === 'Completed' && charge(j) != null; });
+    const thisYr = doneC.filter(function (j) { return when(j).getFullYear() === yr; }), lastYr = doneC.filter(function (j) { return when(j).getFullYear() === yr - 1; });
+    const expected = all.filter(function (j) { return j.status !== 'Completed' && charge(j) != null; });
+    const byType = {};
+    doneC.forEach(function (j) { const k = String(j.category || 'Other').trim() || 'Other'; byType[k] = (byType[k] || 0) + charge(j); });
+    const types = Object.keys(byType).sort(function (a, b) { return byType[b] - byType[a]; });
+    const maxT = types.length ? byType[types[0]] : 0;
+    const spendCard = '<section class="card"><h2>Spending</h2><div class="sp">' +
+        '<div><span>This year (' + yr + ')</span><b>' + money(sumOf(thisYr)) + '</b><small>' + thisYr.length + ' repair' + (thisYr.length === 1 ? '' : 's') + '</small></div>' +
+        '<div><span>Last year (' + (yr - 1) + ')</span><b>' + money(sumOf(lastYr)) + '</b><small>' + lastYr.length + ' repair' + (lastYr.length === 1 ? '' : 's') + '</small></div>' +
+        '<div><span>All time</span><b>' + money(sumOf(doneC)) + '</b><small>' + doneC.length + ' repair' + (doneC.length === 1 ? '' : 's') + '</small></div>' +
+        (expected.length ? '<div><span>Expected (open repairs)</span><b>' + money(sumOf(expected)) + '</b><small>' + expected.length + ' repair' + (expected.length === 1 ? '' : 's') + '</small></div>' : '') + '</div>' +
+      (types.length ? '<h3>By type of repair</h3>' + types.slice(0, 8).map(function (t) { return '<div class="bt"><span>' + htmlEsc(t) + '</span><i style="width:' + Math.max(4, Math.round(byType[t] / maxT * 100)) + '%"></i><b>' + money(byType[t]) + '</b></div>'; }).join('') : '') +
+      (Object.keys(keys).length > 1 && doneC.length ? '<h3>By property</h3>' + Object.keys(keys).map(function (k) {
+          const pj = doneC.filter(function (j) { return propKey(j.property_address) === k; });
+          return pj.length ? '<div class="bp"><span>' + htmlEsc((pj[0] && pj[0].property_address) || keys[k]) + '</span><b>' + money(sumOf(pj)) + '</b></div>' : '';
+        }).join('') : '') +
+      '<p style="margin:12px 0 0"><a class="dl" href="/l/' + htmlEsc(token) + '/costs.csv">⬇ Download all costs (spreadsheet)</a></p></section>';
+    const invCard = invs.length ? '<section class="card"><h2>Invoices</h2>' + invs.slice().reverse().map(function (i) {
+        const j = all.filter(function (x) { return x.id === i.job_id; })[0] || {}, od = !i.paid_at && i.due && i.due < new Date().toISOString().slice(0, 10);
+        return '<a class="iv" href="/l/' + htmlEsc(token) + '/invoice/' + i.id + '"><div><b>' + htmlEsc(i.number || '') + '</b> · ' + htmlEsc(issue(j)) + '<div class="muted">' + htmlEsc(j.property_address || '') + ' · issued ' + htmlEsc(day(i.date || i.created_at)) + '</div></div>' +
+          '<div style="text-align:right"><b>' + money(i.total) + '</b><div>' + (i.paid_at ? '<span class="paid">Paid</span>' : od ? '<span class="late">Overdue</span>' : '<span class="due">Due ' + htmlEsc(i.due ? day(i.due) : '') + '</span>') + '</div></div></a>';
+      }).join('') + '</section>' : '';
     const propBlocks = Object.keys(keys).map(function (k) {
       const js = all.filter(function (j) { return propKey(j.property_address) === k; });
       const addr = (js[0] && js[0].property_address) || keys[k] || '';
@@ -2195,7 +2298,9 @@ module.exports = function mountJobs(app, opts) {
         return '<span class="cert' + (past ? ' late' : '') + '">' + htmlEsc(certName[c.type] || c.type) + ' ' + (past ? 'expired ' : 'until ') + htmlEsc(day(c.expires_on)) + '</span>';
       }).join('');
       const o = js.filter(function (j) { return j.status !== 'Completed'; }), d = js.filter(function (j) { return j.status === 'Completed'; });
-      return '<section class="card"><h2>' + htmlEsc(addr) + '</h2>' + (cs ? '<div class="certs">' + cs + '</div>' : '') +
+      const pSpent = sumOf(js.filter(function (j) { return j.status === 'Completed' && charge(j) != null; }));
+      const pYr = sumOf(js.filter(function (j) { return j.status === 'Completed' && charge(j) != null && when(j).getFullYear() === yr; }));
+      return '<section class="card"><h2>' + htmlEsc(addr) + '</h2>' + (pSpent ? '<div class="muted" style="margin:-4px 0 8px">Spent: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + (cs ? '<div class="certs">' + cs + '</div>' : '') +
         (o.length ? '<h3>Open repairs (' + o.length + ')</h3>' + o.map(jobCard).join('') : '<p class="muted">No open repairs.</p>') +
         (d.length ? '<details' + (o.length ? '' : ' open') + '><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '') + '</section>';
     }).join('');
@@ -2206,6 +2311,10 @@ module.exports = function mountJobs(app, opts) {
       '.lj-notes{font-size:.88rem;margin-top:6px;white-space:pre-line}.lj-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;font-size:.9rem;flex-wrap:wrap}.lj-foot a{color:var(--blue);font-weight:600;text-decoration:none}' +
       '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
       'details summary{cursor:pointer;font-weight:700;color:var(--ok);margin-top:14px}' +
+      '.cost{margin-top:10px;background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.9rem}.lj.done .cost{background:#fff}.cost.none{color:var(--soft)}.cr{display:flex;justify-content:space-between;gap:10px;padding:2px 0}.cr.tot{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;font-weight:800}.ci{margin-top:6px;font-size:.85rem}.ci a{color:var(--blue);font-weight:600;text-decoration:none}.late{color:var(--red);font-weight:700}' +
+      '.sp{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}.sp div{background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px}.sp span{display:block;font-size:.75rem;color:var(--soft)}.sp b{display:block;font-size:1.15rem}.sp small{color:var(--soft)}' +
+      '.bt{display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:center;font-size:.88rem;margin:4px 0}.bt i{display:block;height:8px;border-radius:8px;background:var(--blue)}.bp{display:flex;justify-content:space-between;gap:8px;font-size:.88rem;padding:4px 0;border-bottom:1px solid var(--line)}' +
+      '.dl{display:inline-block;padding:10px 14px;border-radius:12px;background:var(--ink);color:#fff;text-decoration:none;font-weight:600}.iv{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.iv:last-child{border-bottom:0}' +
       '.ph-lb{font-size:.75rem;color:var(--soft);font-weight:600;margin-top:10px}.ph{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.ph a{display:block;width:64px;height:64px;border-radius:10px;overflow:hidden;background:#eee}.ph img{width:100%;height:100%;object-fit:cover;display:block}' +
       '.ph a.more{display:grid;place-items:center;font-weight:700;color:var(--soft);text-decoration:none}</style>';
     res.send(trackShell('Your properties', css + '<h1>Hi ' + htmlEsc(String(l.name || '').trim() || 'there') + '</h1><p class="sub">Your properties with Residential Realtors: every repair, where it’s up to and what it has cost.</p>' +
@@ -2213,6 +2322,7 @@ module.exports = function mountJobs(app, opts) {
         '<div class="tile"><b>' + open.length + '</b><span>Open repairs</span></div><div class="tile"><b>' + done.length + '</b><span>Completed</span></div>' +
         '<div class="tile"><b>' + money(spent) + '</b><span>Charged, last 12 months</span></div>' +
         (unpaid.length ? '<div class="tile"><b>' + money(unpaid.reduce(function (t, i) { return t + Number(i.total || 0); }, 0)) + '</b><span>' + unpaid.length + ' invoice' + (unpaid.length === 1 ? '' : 's') + ' to pay</span></div>' : '') + '</div>' +
+      spendCard + invCard +
       (propBlocks || '<div class="card"><p class="muted">No properties are linked to you yet. Please contact Residential Realtors.</p></div>') +
       '<p class="muted" style="text-align:center;margin-top:18px">Questions? Reply to our message or call the office.</p>', true));
   }));
