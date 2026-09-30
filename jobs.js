@@ -2629,6 +2629,12 @@ module.exports = function mountJobs(app, opts) {
     if (!to || addressProblem(to) || to === current) return null;
     const first = function (s) { return ((String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/i) || [''])[0]).toUpperCase(); };
     if (first(to) !== first(current)) return null;
+    // Only when the register's spelling keeps every number of ours: never drop
+    // part of the address (e.g. "23 Coopers Road" when the register just says
+    // "Flat 5, Windsor Court").
+    const nums = function (s) { return (String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }); };
+    const tn = nums(to);
+    if (!nums(current).every(function (n) { return tn.indexOf(n) !== -1; })) return null;
     await renameProperty(p, key, to);
     return to;
   }
