@@ -380,7 +380,7 @@
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: var(--shadow-xs); }
   .card h3 { font-family: var(--display); font-size: .92rem; font-weight: 700; margin: 0 0 12px; letter-spacing: -.015em; display: flex; align-items: center; gap: 8px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .tcy-row { display: grid; grid-template-columns: minmax(0,1fr) 120px 110px 130px 20px; gap: 14px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 13px 16px; cursor: pointer; color: inherit; font: inherit; }
+  .tcy-row { display: grid; grid-template-columns: minmax(0,1fr) 110px 170px 130px 20px; gap: 14px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 13px 16px; cursor: pointer; color: inherit; font: inherit; }
   .tcy-row:hover { background: var(--hover, rgba(0,0,0,.03)); }
   .tcy-row .num { font-weight: 700; } .tcy-row small { display: block; font-weight: 500; color: var(--ink-soft); font-size: .72rem; }
   @media (max-width: 700px) { .tcy-row { grid-template-columns: minmax(0,1fr) auto; } .tcy-row .when, .tcy-row .chev, .tcy-row .fee { display: none; } }
@@ -7126,7 +7126,10 @@
       fees: fees, sub: sub, vat: vat, feeTotal: feeTotal, income: income, balance: r2(income - feeTotal),
       // The regular monthly fee: the % (or £ a month) fees only — tenant find,
       // collection, management — before VAT, without one-off extras.
-      monthlyFee: r2(fm + cm + mm), feePct: [fp && d.find_unit !== 'gbp' ? fp : 0, d.collect_unit !== 'gbp' ? num(d.collect_pct) || 0 : 0, d.manage_unit !== 'gbp' ? num(d.manage_pct) || 0 : 0].reduce(function(a, b){ return a + b; }, 0),
+      monthlyFee: r2(fm + cm + mm),
+      // Those fees over the whole tenancy: each month for the term (a Tenant
+      // Find taken up front is a year's worth).
+      termFee: r2((d.find_basis === 'upfront' ? fm * 12 : fm * term) + (cm + mm) * term), feePct: [fp && d.find_unit !== 'gbp' ? fp : 0, d.collect_unit !== 'gbp' ? num(d.collect_pct) || 0 : 0, d.manage_unit !== 'gbp' ? num(d.manage_pct) || 0 : 0].reduce(function(a, b){ return a + b; }, 0),
       soStart: soStart, soPayments: parseInt(d.so_payments, 10) || Math.max(1, term - 1), moveInDue: d.move_in_due || addDaysIso(isoDay(new Date()), 2),
       periodEnd: addMonthsIso(d.start_date, 1), term: term, btDue: btDue, btIn: btIn, btLeft: r2(btDue - btIn)
     };
@@ -7204,7 +7207,7 @@
   }
   // Sort and filter: by move-in date, fees, rent or when added; by service
   // (fully managed, not managed, tenant find only, rent collection).
-  var TCY_SORTS = [['movein', 'Move-in date', 'Soonest / latest move-in first'], ['fees', 'Monthly fee', 'Highest monthly fee first'], ['rent', 'Rent', 'Highest rent first'], ['added', 'Recently added', 'Newest first'], ['az', 'A–Z', 'Address A–Z']];
+  var TCY_SORTS = [['movein', 'Move-in date', 'Soonest / latest move-in first'], ['fees', 'Monthly fee', 'Highest monthly fee first'], ['termfee', 'Fees over tenancy', 'Highest total fees over the whole tenancy first'], ['rent', 'Rent', 'Highest rent first'], ['added', 'Recently added', 'Newest first'], ['az', 'A–Z', 'Address A–Z']];
   var TCY_SVC = [['all', 'All'], ['managed', 'Fully managed'], ['notmanaged', 'Not managed'], ['find', 'Tenant Find only'], ['collect', 'Rent collection']];
   var tcySort = { by: 'movein', dir: -1 }, tcySvc = 'all';
   try { var ts0 = JSON.parse(localStorage.getItem('rr_tcy_sort') || 'null'); if (ts0 && TCY_SORTS.some(function(t){ return t[0] === ts0.by; })) tcySort = ts0; tcySvc = localStorage.getItem('rr_tcy_svc') || 'all'; } catch (e) {}
@@ -7232,20 +7235,21 @@
       var A = a.data || {}, B = b.data || {}, d;
       if (tcySort.by === 'movein') { if (!A.start_date !== !B.start_date) return A.start_date ? -1 : 1; d = String(A.start_date).localeCompare(String(B.start_date)); }   // no date yet: always last
       else if (tcySort.by === 'fees') d = (calc[a.id].monthlyFee || 0) - (calc[b.id].monthlyFee || 0);
+      else if (tcySort.by === 'termfee') d = (calc[a.id].termFee || 0) - (calc[b.id].termFee || 0);
       else if (tcySort.by === 'rent') d = (calc[a.id].rent || 0) - (calc[b.id].rent || 0);
       else if (tcySort.by === 'added') d = new Date(a.created_at) - new Date(b.created_at);
       else d = -nat(A.address || '', B.address || '');
       return tcySort.dir * (d || 0) || nat(A.address || '', B.address || '');
     });
     var sum = function(f){ return list.reduce(function(t, x){ return t + (calc[x.id][f] || 0); }, 0); };
-    $('tcySum').textContent = list.length ? list.length + ' tenanc' + (list.length === 1 ? 'y' : 'ies') + ' · rent ' + gbp(sum('rent')) + ' a month · our fees ' + gbp(sum('monthlyFee')) + ' a month (+ VAT)' : '';
+    $('tcySum').textContent = list.length ? list.length + ' tenanc' + (list.length === 1 ? 'y' : 'ies') + ' · rent ' + gbp(sum('rent')) + ' a month · our fees ' + gbp(sum('monthlyFee')) + ' a month, ' + gbp(sum('termFee')) + ' over the tenancies (+ VAT)' : '';
     $('tcyList').innerHTML = list.length ? list.map(function(x){
       var d = x.data || {}, c = calc[x.id];
       return '<button type="button" class="tcy-row" data-tcy="' + x.id + '"><div><div class="addr" style="font-weight:600">' + esc(d.address || 'No address') + '</div>' +
         '<div class="prop-sub" style="margin-top:2px">' + esc(joinAnd(tcyNames(d.tenants)) || 'No tenants yet') + (d.landlord && d.landlord.name ? ' · Landlord: ' + esc(d.landlord.name) : '') + '</div>' +
         '<div style="margin-top:4px"><span class="svc-chip ' + tcySvcOf(d) + '">' + esc(d.service || 'Tenant Find') + '</span></div></div>' +
         '<div class="num">' + esc(gbp(c.rent)) + '<small>per month</small></div>' +
-        '<div class="num fee">' + esc(gbp(c.monthlyFee)) + '<small>fee a month' + (c.feePct ? ' · ' + esc(String(Math.round(c.feePct * 100) / 100)) + '%' : '') + '</small></div><div class="when">' + esc(tcyStatus(d)) +
+        '<div class="num fee">' + esc(gbp(c.monthlyFee)) + '<small>a month' + (c.feePct ? ' · ' + esc(String(Math.round(c.feePct * 100) / 100)) + '%' : '') + '</small><small>' + esc(gbp(c.termFee)) + ' over ' + c.term + ' months</small></div><div class="when">' + esc(tcyStatus(d)) +
           '<small style="color:' + (c.btLeft > 0.004 ? 'var(--red, #c00)' : 'var(--green, #16a34a)') + '">' + (c.btLeft > 0.004 ? esc(gbp(c.btLeft)) + ' still to pay' : 'Move-in monies paid ✓') + '</small></div><span class="chev">›</span></button>';
     }).join('') : '<div class="empty">' + (tenancies.length ? 'No tenancy matches.' : 'No tenancies yet — tap “New tenancy” to add one.') + '</div>';
   }
