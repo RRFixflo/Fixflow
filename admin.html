@@ -1622,6 +1622,7 @@
       <select class="inp" id="waTo"></select>
       <label class="wa-assign" id="waAssignWrap" hidden><input type="checkbox" id="waAssign" checked> <span id="waAssignText">Also assign to them</span></label>
       <select class="inp" id="waAssignMode" hidden style="margin-top:6px"><option value="second">Add them as a second contractor</option><option value="replace">Replace the current contractor</option></select>
+      <input class="inp" id="waTask" hidden style="margin-top:6px" placeholder="Their task, e.g. Replace the socket damaged by the leak">
     </div>
     <label class="wa-assign" id="waPhotosWrap" hidden style="margin:0 0 10px"><input type="checkbox" id="waPhotos" checked> <span id="waPhotosText">Include a link to the photos</span></label>
     <div class="wa-preview" id="waText"></div>
@@ -2034,6 +2035,14 @@
   }
   function keysText(j){ return j.key_permission === 'Yes' ? 'Yes – we can collect keys if needed' : j.key_permission === 'No' ? 'No – tenant needs to be in' : null; }
   var waLinks = {};   // job id -> public photo link, when "include photos" is ticked
+  // For the second contractor on a job: their own task, with the issue it's part of.
+  // Adding them from the send window: the task typed there.
+  function taskText(j){
+    var c = typeof waChosen === 'function' ? waChosen() : null, n = c ? c.name.trim().toLowerCase() : '';
+    var adding = c && $('waAssignMode') && !$('waAssignMode').hidden && $('waAssignMode').value === 'second' && !onJob(j, c.name);
+    var task = adding ? $('waTask').value.trim() : (n && String(j.assigned_to_2 || '').trim().toLowerCase() === n ? j.task_2 : '');
+    return task ? task + ' (part of: ' + jobText(j) + ')' : jobText(j);
+  }
   function contractorMessage(list){
     // Jobs at the same address go under one heading, so a multi-job visit reads as one stop.
     var groups = [], byKey = {};
@@ -2046,8 +2055,8 @@
     var uniq = function(arr){ return arr.filter(function(x, i){ return x && arr.indexOf(x) === i; }); };
     return groups.map(function(g){
       var lines = ['Address: ' + g.address];
-      if (g.jobs.length === 1) lines.push('Job: ' + jobText(g.jobs[0]));
-      else { lines.push('Jobs:'); g.jobs.forEach(function(j, n){ lines.push((n + 1) + '. ' + jobText(j)); }); }
+      if (g.jobs.length === 1) lines.push('Job: ' + taskText(g.jobs[0]));
+      else { lines.push('Jobs:'); g.jobs.forEach(function(j, n){ lines.push((n + 1) + '. ' + taskText(j)); }); }
       g.jobs.forEach(function(j, n){ if (waLinks[j.id]) lines.push((g.jobs.length > 1 ? 'Photos (job ' + (n + 1) + '): ' : 'Photos: ') + waLinks[j.id]); });
       // One line per tenant, keeping a phone number from any of their jobs.
       var tenants = [], byName = {};
@@ -2081,6 +2090,10 @@
   function contractorLinkLine(list){
     var one = {}; list.forEach(function(j){ one[(j.assigned_to || '').trim().toLowerCase()] = true; });
     var who = Object.keys(one).length === 1 && list[0] && list[0].assigned_to ? contractorByName(list[0].assigned_to) : null;
+    // Whoever it's being sent to gets their own link (never another contractor's).
+    var chosen = typeof waChosen === 'function' && !$('waModal').hidden ? waChosen() : null;
+    if (chosen) who = chosen;
+    else if ($('waTo') && $('waTo').value) who = contractors.filter(function(c){ return c.id === Number($('waTo').value); })[0] || who;
     return who && who.portal_on && who.portal_token ? '\n\nSee all your jobs and mark them completed here: ' + location.origin + '/c/' + who.portal_token : '';
   }
 
@@ -2273,7 +2286,9 @@
       return '<option value="' + c.id + '"' + (shared && shared.id === c.id ? ' selected' : '') + '>' +
         esc(c.name + (c.trade ? ' — ' + c.trade : '') + ' (' + [c.phone, c.email].filter(Boolean).join(', ') + ')') + '</option>';
     }).join('');
+    $('waTask').value = '';
     updateWaAssign();
+    $('waText').textContent = contractorMessage(waJobs);
     $('waModal').hidden = false;
   }
   var waPhotoIds = [];
@@ -2314,6 +2329,7 @@
     $('waAssignWrap').hidden = !needs;
     $('waAssign').checked = true;
     $('waAssignMode').hidden = !needs || !taken.length;
+    $('waTask').hidden = $('waAssignMode').hidden || $('waAssignMode').value !== 'second' || !$('waAssign').checked;
     if (taken.length) {
       var two = taken.length === 1 && String(taken[0].assigned_to_2 || '').trim();
       $('waAssignMode').options[0].textContent = two ? 'Replace ' + taken[0].assigned_to_2 + ' (second contractor) with ' + c.name : 'Add them as a second contractor';
@@ -2327,11 +2343,14 @@
     $('waOpen').hidden = !!(c && !waNumber(c.phone));
     $('waEmail').classList.toggle('primary', !!(c && c.email && !waNumber(c.phone)));
   }
-  $('waTo').addEventListener('change', updateWaAssign);
+  $('waTo').addEventListener('change', function(){ $('waTask').value = ''; updateWaAssign(); $('waText').textContent = contractorMessage(waJobs); });
+  $('waAssignMode').addEventListener('change', function(){ updateWaAssign(); $('waText').textContent = contractorMessage(waJobs); });
+  $('waAssign').addEventListener('change', function(){ $('waTask').hidden = $('waAssignMode').hidden || $('waAssignMode').value !== 'second' || !$('waAssign').checked; $('waText').textContent = contractorMessage(waJobs); });
+  $('waTask').addEventListener('input', function(){ $('waText').textContent = contractorMessage(waJobs); });
   function assignTo(list, name){
     var second = !$('waAssignMode').hidden && $('waAssignMode').value === 'second';
     return Promise.all(list.filter(function(j){ return !onJob(j, name); }).map(function(j){
-      var body = second && String(j.assigned_to || '').trim() ? { assigned_to_2: name } : { assigned_to: name };
+      var body = second && String(j.assigned_to || '').trim() ? { assigned_to_2: name, task_2: $('waTask').value.trim() } : { assigned_to: name };
       if (j.status === 'New') body.status = 'Assigned';
       return api('PATCH', '/api/admin/jobs/' + j.id, body);
     }));
@@ -4536,10 +4555,10 @@
   var tenantNotice = null, bookedNotice = null, jobParts = [], partJust = null;
   function noticeTenantAfterAssign(jobId, contractor){ if (jobId && contractor) tenantNotice = { jobId: jobId, contractor: contractor }; }
   // A second contractor added on the job page: offer to send them the job straight away.
-  function offerSendSecond(jobId, name){
+  function offerSendSecond(jobId, name, task){
     setTimeout(function(){
       var j = jobs.filter(function(x){ return x.id === jobId; })[0];
-      if (j && contractorByName(name)) showContractorMessage([Object.assign({}, j, { assigned_to_2: name })], name);
+      if (j && contractorByName(name)) showContractorMessage([Object.assign({}, j, { assigned_to_2: name, task_2: task || j.task_2 })], name);
     }, 900);
   }
   function prepareTenantNotice(j, contractor){
@@ -4647,7 +4666,7 @@
         '<div><div class="k">' + (completed ? 'Completed' : 'Deadline') + '</div><div class="v"><span class="time ' + t.cls + '">' + esc(t.text) + '</span>' +
           '<small>' + esc(completed && j.completed_at ? fmtDate(j.completed_at) : j.due_at ? 'Due ' + fmtDate(j.due_at) : 'No deadline set') + '</small></div></div>' +
         '<div><div class="k">Contractor' + (j.assigned_to_2 ? 's' : '') + '</div><div class="v"><div class="who-chip">' + avatar(j.assigned_to) + '<span class="nm">' + esc(j.assigned_to || 'Unassigned') + '</span></div>' +
-          (j.assigned_to_2 ? '<div class="who-chip" style="margin-top:4px">' + avatar(j.assigned_to_2) + '<span class="nm">' + esc(j.assigned_to_2) + '</span></div>' : '') + '</div></div>' +
+          (j.assigned_to_2 ? '<div class="who-chip" style="margin-top:4px">' + avatar(j.assigned_to_2) + '<span class="nm">' + esc(j.assigned_to_2) + '</span></div>' + (j.task_2 ? '<small>' + esc(j.task_2) + '</small>' : '') : '') + '</div></div>' +
         '<div><div class="k">Received</div><div class="v">' + esc(ago(j.created_at)) + '<small>' + esc(fmtShort(j.created_at)) + (j.source ? ' · ' + esc(j.source) : '') + '</small></div></div>' +
         '<div><div class="k">Tenant</div><div class="v">' + esc(j.tenant_name || '—') + '<small>' + (j.tenant_phone ? '<a href="tel:' + esc(tel) + '" style="color:var(--blue);text-decoration:none">' + esc(j.tenant_phone) + '</a>' : 'No phone') + '</small></div></div>' +
         '<div id="glanceAccess" style="cursor:pointer" title="Edit access"><div class="k">Access ✎</div><div class="v">' + esc(j.access_days || 'Not given') + '<small>' + esc([j.direct_contact === 'No' ? 'We arrange access' : 'Contractor contacts tenant', j.access_time, j.key_permission ? 'Keys: ' + j.key_permission : '', keyNo(j.property_address) ? '🔑 Key no. ' + keyNo(j.property_address) : ''].filter(Boolean).join(' · ') || '—') + '</small></div></div>' +
@@ -4680,7 +4699,9 @@
           '<div id="fAssigned2Wrap" style="margin-top:8px"' + (j.assigned_to_2 ? '' : ' hidden') + '><label class="lbl" for="fAssigned2">Second contractor' +
             (j.part_done_by && isOpen(j) ? ' <span class="muted">· ' + esc(j.part_done_by) + ' has finished their part</span>' : '') + '</label>' +
             '<div style="display:flex;gap:6px"><input class="inp" id="fAssigned2" list="assignees" placeholder="e.g. an electrician as well as the plumber" value="' + esc(j.assigned_to_2 || '') + '">' +
-            '<button type="button" class="btn small" id="fRemove2" title="Remove the second contractor">✕</button></div></div></div>' +
+            '<button type="button" class="btn small" id="fRemove2" title="Remove the second contractor">✕</button></div>' +
+            '<label class="lbl" for="fTask2" style="margin-top:8px">Their task</label>' +
+            '<input class="inp" id="fTask2" placeholder="e.g. Replace the socket damaged by the leak" value="' + esc(j.task_2 || '') + '"></div></div>' +
         '<div style="margin-top:10px" id="fLlCtrWrap"' + (j.landlord_handles === 'contractor' ? '' : ' hidden') + '><label class="lbl" for="fLlCtr">Landlord’s contractor (name and phone, if known)</label>' +
           '<input class="inp" id="fLlCtr" placeholder="e.g. Dan’s Plumbing 07700 900123" value="' + esc(j.landlord_contractor || '') + '"></div>' +
         (j.landlord_handles ? '<p class="muted-note" style="margin:8px 0 0">The landlord is arranging this repair — it’s left out of contractor payments. Use “Tell landlord” to send them the details and the tenant’s contact.</p>' : '') +
@@ -5341,7 +5362,7 @@
     }
     $('fAssigned').addEventListener('input', showAssigneeContact);
     $('fAdd2').addEventListener('click', function(){ $('fAdd2').hidden = true; $('fAssigned2Wrap').hidden = false; $('fAssigned2').focus(); });
-    $('fRemove2').addEventListener('click', function(){ $('fAssigned2').value = ''; $('fAssigned2Wrap').hidden = true; $('fAdd2').hidden = false; });
+    $('fRemove2').addEventListener('click', function(){ $('fAssigned2').value = ''; $('fTask2').value = ''; $('fAssigned2Wrap').hidden = true; $('fAdd2').hidden = false; });
     $('fWho').addEventListener('click', function(e){
       var b = e.target.closest('[data-who]'); if (!b) return;
       $('fWho').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
@@ -5412,7 +5433,10 @@
         if (!('status' in body) && j.status === 'New') body.status = 'Assigned';
       } else if ($('fAssigned').value.trim() !== (j.assigned_to || '')) body.assigned_to = $('fAssigned').value;
       if (!who && $('fAssigned2').value.trim() !== (j.assigned_to_2 || '')) body.assigned_to_2 = $('fAssigned2').value;
-      if (who && j.assigned_to_2) body.assigned_to_2 = '';
+      var t2 = $('fAssigned2').value.trim() ? $('fTask2').value.trim() : '';
+      if (!who && t2 !== (j.task_2 || '')) body.task_2 = t2;
+      if (who && j.assigned_to_2) { body.assigned_to_2 = ''; if (j.task_2) body.task_2 = ''; }
+      if (!who && $('fAssigned2').value.trim() && !t2) { toast('What is ' + $('fAssigned2').value.trim() + ' doing? Add their task.'); $('fTask2').focus(); return; }
       if (body.assigned_to_2 && body.assigned_to_2.trim().toLowerCase() === ('assigned_to' in body ? body.assigned_to : j.assigned_to || '').trim().toLowerCase()) { toast('The second contractor is the same as the first'); $('fAssigned2').focus(); return; }
       if ($('fNext').value.trim() !== (j.next_steps || '')) body.next_steps = $('fNext').value;
       [['fEst', 'estimated_cost'], ['fAct', 'actual_cost'], ['fCharge', 'landlord_charge']].forEach(function(pair){
@@ -5428,7 +5452,7 @@
         if (!d.ok) { toast('Couldn’t save: ' + (d.error || 'error')); return; }
         toast('Saved');
         if (body.assigned_to && body.assigned_to.trim()) noticeTenantAfterAssign(j.id, body.assigned_to.trim());
-        else if (body.assigned_to_2 && body.assigned_to_2.trim()) offerSendSecond(j.id, body.assigned_to_2.trim());
+        else if ((body.assigned_to_2 && body.assigned_to_2.trim()) || ('task_2' in body && body.task_2 && j.assigned_to_2)) offerSendSecond(j.id, (body.assigned_to_2 || j.assigned_to_2).trim(), 'task_2' in body ? body.task_2 : j.task_2);
         openJob(j.id);
         loadJobs();
         // Handed to the landlord: offer the message to them (with the tenant's contact), then the tenant.
