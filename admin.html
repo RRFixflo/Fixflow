@@ -649,6 +649,14 @@
   .sv-who { display: inline-block; font-size: .78rem; padding: 2px 8px; border-radius: 999px; background: #EEF2FE; color: #2F5BEA; margin-bottom: 3px; }
   .sv-who.k-landlord { background: #F3EEFE; color: #6D28D9; }
   .sv-who.k-contractor { background: #FFF4E5; color: #B45309; }
+  .tcy-line { margin-top: 4px; }
+  .tcy-chip { display: inline-block; font-size: .74rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+  .tcy-chip.ok { background: #DDF3E6; color: #0F7A3B; }
+  .tcy-chip.warn { background: #FFF1DB; color: #A15C00; }
+  .tcy-chip.blue { background: #EEF2FE; color: #2F5BEA; }
+  .tcy-chip.grey { background: #EFF0F3; color: #5B616E; }
+  .tcy-chip.none { background: #fff; color: #C0262D; border: 1px dashed #E7A3A6; }
+  #propTcyTabs .n { font-size: .75rem; opacity: .7; margin-left: 2px; }
   .linkish { background: none; border: 0; padding: 6px 0 0; color: var(--blue, #2563EB); font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; }
   .wa-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; font-weight: 500; cursor: pointer; }
   .wa-assign input { width: 16px; height: 16px; accent-color: var(--brick); }
@@ -1199,6 +1207,7 @@
             <input class="inp search" id="propSearch" type="search" placeholder="Search by address, postcode or key number — e.g. Flat 4, NN2 or key 14">
             <button class="btn" type="button" id="keyRegBtn">🔑 Key register</button>
           </div>
+          <div class="prop-sortbar"><span class="muted-note" style="margin:0">Tenancy</span><div id="propTcyTabs" class="tabs" role="tablist" aria-label="Filter by tenancy"></div></div>
           <div class="prop-sortbar"><span class="muted-note" style="margin:0">Sort by</span><div id="propSortTabs" role="tablist" aria-label="Sort properties"></div></div>
           <div class="list" id="propList"></div>
         </div>
@@ -2867,6 +2876,27 @@
     });
     return list.sort(function(a, b){ return b.latest - a.latest; });
   }
+  // Where a property's tenancy is up to: running (and when the fixed term ends),
+  // ending within 60 days, fixed term over, starting soon, a draft, or none.
+  function propTenancy(key){
+    var list = tenancies.filter(function(t){ return t.property_key === key; }), today = new Date(); today.setHours(0, 0, 0, 0);
+    if (!list.length) return { k: 'none', text: 'No tenancy', sort: 5 };
+    var best = null;
+    list.forEach(function(t){
+      var d = t.data || {}, s = parseDay(d.start_date), endIso = s ? addMonthsIso(d.start_date, parseInt(d.term_months, 10) || 12) : '', e = parseDay(endIso), st;
+      if (!s) st = { k: 'draft', text: 'Tenancy being set up', sort: 3 };
+      else if (s > today) st = { k: 'upcoming', text: 'Tenancy starts ' + longDay(d.start_date), sort: 2 };
+      else if (e && e >= today) st = (e - today) / 86400000 <= 60 ? { k: 'ending', text: 'Fixed term ends ' + longDay(endIso), sort: 1 } : { k: 'active', text: 'Tenancy until ' + longDay(endIso), sort: 0 };
+      else st = { k: 'rolling', text: 'Fixed term ended ' + longDay(endIso) + ' — now rolling', sort: 4 };
+      st.id = t.id; st.tenants = tcyNames(d.tenants);
+      if (!best || st.sort < best.sort) best = st;
+    });
+    return best;
+  }
+  function tcyChip(t){
+    var cls = { active: 'ok', ending: 'warn', rolling: 'grey', upcoming: 'blue', draft: 'grey', none: 'none' }[t.k];
+    return '<span class="tcy-chip ' + cls + '">' + (t.k === 'none' ? '✗ No tenancy' : '📄 ' + esc(t.text)) + '</span>';
+  }
   function propTenantNames(p){
     var names = tenantsAtProperty(p.address).map(function(t){ return t.name; }).concat(p.jobs.map(function(j){ return j.tenant_name; }));
     tenancies.forEach(function(t){ if (t.property_key === p.key) names = names.concat(tcyNames((t.data || {}).tenants)); });
@@ -2908,9 +2938,18 @@
     ts = ts.filter(function(x){ return x > 0; });
     return ts.length ? Math.min.apply(null, ts) : 0;
   }
+  var propTcyF = 'all';
+  try { propTcyF = localStorage.getItem('rr_prop_tcy') || 'all'; } catch (e) {}
+  function tcyMatch(t, f){ return f === 'all' || (f === 'with' ? ['active', 'ending', 'upcoming', 'rolling'].indexOf(t.k) !== -1 : f === 'none' ? t.k === 'none' || t.k === 'draft' : t.k === f); }
   function renderProps(){
     var raw = $('propSearch').value.trim().toLowerCase(), q = propKey(raw);
-    var props = allPropsForList().filter(function(p){
+    var base = allPropsForList(), tcyOf = {};
+    base.forEach(function(p){ tcyOf[p.key] = propTenancy(p.key); });
+    var TF = [['all', 'All'], ['with', 'With a tenancy'], ['none', 'No tenancy'], ['ending', 'Ending in 60 days'], ['rolling', 'Rolling / fixed term over']];
+    var tfCount = function(f){ return base.filter(function(p){ return tcyMatch(tcyOf[p.key], f); }).length; };
+    $('propTcyTabs').innerHTML = TF.map(function(f){ var n = tfCount(f[0]); return (f[0] === 'all' || n || f[0] === propTcyF) ? '<button type="button" data-ptf="' + f[0] + '"' + (propTcyF === f[0] ? ' class="on"' : '') + '>' + f[1] + ' <span class="n">' + n + '</span></button>' : ''; }).join('');
+    var props = base.filter(function(p){
+      if (!tcyMatch(tcyOf[p.key], propTcyF)) return false;
       if (!raw) return true;
       var kn = keyNo(p.address).toLowerCase();
       if (kn && (raw === kn || raw.replace(/^key\s*(no\.?|number)?\s*#?\s*/, '') === kn)) return true;
@@ -2953,7 +2992,7 @@
       var open = p.jobs.filter(isOpen).length;
       return '<button type="button" class="prop-row" data-key="' + esc(p.key) + '">' +
         '<div><div class="addr">' + esc(p.address) + newChip(key[p.key].added) + (key[p.key].kn ? ' <span class="key-chip">🔑 ' + esc(key[p.key].kn) + '</span>' : '') + '</div><div class="prop-sub" style="margin-top:2px">' +
-          esc([propTenantNames(p) || 'No tenant name', by === 'landlord' ? (key[p.key].ll ? 'Landlord: ' + key[p.key].ll : 'No landlord') : ''].filter(Boolean).join(' · ')) + '</div>' + certChips(p.key) + '</div>' +
+          esc([propTenantNames(p) || 'No tenant name', by === 'landlord' ? (key[p.key].ll ? 'Landlord: ' + key[p.key].ll : 'No landlord') : ''].filter(Boolean).join(' · ')) + '</div>' + '<div class="tcy-line">' + tcyChip(tcyOf[p.key]) + '</div>' + certChips(p.key) + '</div>' +
         '<div class="num">' + p.jobs.length + '<small>repair' + (p.jobs.length === 1 ? '' : 's') + '</small></div>' +
         '<div class="num' + (open ? ' hot' : '') + '">' + open + '<small>open</small></div>' +
         '<div class="last">' + (p.jobs.length ? esc(fmtShort(p.latest)) + '<small>last reported</small>' : '—<small>no repairs yet</small>') + '</div>' +
@@ -2961,6 +3000,7 @@
     }).join('');
   }
   $('propSearch').addEventListener('input', renderProps);
+  $('propTcyTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-ptf]'); if (!b) return; propTcyF = b.dataset.ptf; try { localStorage.setItem('rr_prop_tcy', propTcyF); } catch (x) {} renderProps(); });
   $('propSortTabs').addEventListener('click', function(e){
     var b = e.target.closest('[data-prop-sort]'); if (!b) return;
     if (propSort.by === b.dataset.propSort) propSort.dir = -propSort.dir; else propSort = { by: b.dataset.propSort, dir: 1 };
@@ -3011,7 +3051,8 @@
       '<div class="tile alert' + (open ? ' has' : '') + '"><div class="k">Open</div><div class="v">' + open + '</div></div>' +
       '<div class="tile"><div class="k">Completed</div><div class="v">' + done + '</div></div>' +
       '<div class="tile good"><div class="k">Charged to landlord</div><div class="v">' + gbp(chargedTotal(d.jobs)) + '</div></div>' +
-      keyTile(d.property.address);
+      keyTile(d.property.address) +
+      (function(){ var t = propTenancy(d.property.key); return '<div class="tile' + (t.k === 'none' ? ' alert has' : t.k === 'ending' ? ' warnish' : ' good') + '"><div class="k">Tenancy</div><div class="v" style="font-size:1rem">' + (t.k === 'none' ? 'None on file' : esc(t.text)) + '</div></div>'; })();
     bindKeyTile(d.property.address);
     $('propJobs').innerHTML = d.jobs.length ? d.jobs.map(rowHtml).join('') : '<div class="empty">No repairs in this period.</div>';
     renderPropCerts(d.property.address);
