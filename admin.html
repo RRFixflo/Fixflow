@@ -670,6 +670,7 @@
   .te-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
   .te-st { display: inline-block; margin-top: 4px; font-size: .75rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
   .te-st.todo { background: #FDECEC; color: #C0262D; } .te-st.wait { background: #EEF2FE; color: #2F5BEA; } .te-st.ok { background: #DDF3E6; color: #0F7A3B; } .te-st.bad { background: #FFF1DB; color: #A15C00; }
+  .ti-box { background: var(--panel-2, #F7F8FA); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
   .ti-person { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .linkish { background: none; border: 0; padding: 6px 0 0; color: var(--blue, #2563EB); font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; }
   .wa-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; font-weight: 500; cursor: pointer; }
@@ -1427,18 +1428,25 @@
   </div>
 </div>
 
-<!-- ASK TENANTS THEIR PLANS AT THE END OF A TERM -->
+<!-- TENANCY ANNIVERSARY: RENT REVIEW AND THE TENANTS' PLANS -->
 <div class="modal" id="tiModal" hidden>
   <div class="card" role="dialog" aria-labelledby="tiTitle">
-    <h3 id="tiTitle">Ask the tenants their plans</h3>
+    <h3 id="tiTitle">Anniversary — rent review</h3>
     <p class="muted-note" id="tiSub" style="margin:0 0 10px"></p>
-    <label class="lbl" for="tiSubj">Subject</label><input class="inp" id="tiSubj">
-    <label class="lbl" for="tiMsg" style="margin-top:8px">Message</label><textarea class="inp" id="tiMsg" rows="11"></textarea>
+    <div class="ti-box"><div class="lbl">Rent review</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span>New rent £</span><input class="inp" id="tiNewRent" inputmode="decimal" style="width:130px"><span class="muted-note" style="margin:0">a month from the anniversary</span></div>
+      <label class="wa-assign" style="margin-top:6px"><input type="checkbox" id="tiNoInc"> No increase this year</label>
+      <div id="tiLl" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"></div>
+      <div class="row-actions" style="margin-top:8px"><button class="btn small primary" type="button" id="tiSaveRent">Save the rent review</button></div></div>
+    <div class="lbl" style="margin-top:12px">Message to the tenants</div>
+    <div class="seg" id="tiTpl" style="margin-bottom:8px"><button type="button" data-tpl="plans">Ask their plans</button><button type="button" data-tpl="rent">The new rent</button></div>
+    <input class="inp" id="tiSubj" aria-label="Subject">
+    <textarea class="inp" id="tiMsg" rows="10" style="margin-top:6px" aria-label="Message"></textarea>
     <div id="tiTo" style="display:flex;flex-direction:column;gap:6px;margin-top:10px"></div>
     <div class="row-actions" style="margin-top:10px;flex-wrap:wrap"><button class="btn" type="button" id="tiCopy">Copy</button><button class="btn primary" type="button" id="tiEmail">Email all the tenants</button></div>
-    <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px"><div class="lbl">Their answer</div>
+    <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:10px"><div class="lbl">Are the tenants staying?</div>
       <div class="seg" id="tiAnswer"><button type="button" data-a="staying">Staying on</button><button type="button" data-a="leaving">Moving out</button><button type="button" data-a="undecided">Not decided</button></div>
-      <input class="inp" id="tiNote" placeholder="Note (optional), e.g. staying if the rent stays the same" style="margin-top:8px"></div>
+      <input class="inp" id="tiNote" placeholder="Note (optional)" style="margin-top:8px"></div>
     <div class="row-actions" style="margin-top:12px"><button class="btn" type="button" id="tiClose">Done</button></div>
   </div>
 </div>
@@ -2916,18 +2924,18 @@
     });
     return list.sort(function(a, b){ return b.latest - a.latest; });
   }
-  // Tenancies roll from term to term (e.g. 12 months at a time): the end of the
-  // current term, how many days away, and whether it's past the first term.
+  // A tenancy carries on; every 12 months from the start is its anniversary,
+  // when the rent can be reviewed. The next anniversary and how far away.
   function tcyNextEnd(d){
     if (!parseDay(d.start_date)) return null;
-    var term = parseInt(d.term_months, 10) || 12, today = isoDay(new Date());
+    var today = isoDay(new Date());
     for (var k = 1; k < 200; k++) {
-      var iso = addMonthsIso(d.start_date, k * term);
-      if (iso >= today) return { end: iso, days: Math.round((parseDay(iso) - parseDay(today)) / 86400000), rolling: k > 1, term: term };
+      var iso = addMonthsIso(d.start_date, k * 12);
+      if (iso >= today) return { end: iso, days: Math.round((parseDay(iso) - parseDay(today)) / 86400000), years: k };
     }
     return null;
   }
-  // Terms ending within 2 months, with whether the tenants have been asked.
+  // Anniversaries within 2 months, with where the rent review is up to.
   function tcyEndingSoon(){
     var today = isoDay(new Date());
     return tenancies.map(function(t){
@@ -2936,43 +2944,66 @@
       return { t: t, d: d, n: n, it: (t.intention || {})[n.end] || {} };
     }).filter(Boolean).sort(function(a, b){ return a.n.days - b.n.days; });
   }
-  function tcyItText(it){ return it.answer ? { staying: '✓ Staying on', leaving: '✗ Moving out', undecided: '… Not decided' }[it.answer] : it.asked_at ? 'Asked ' + fmtShort(it.asked_at) + (it.how ? ' by ' + it.how : '') + ' — waiting to hear' : 'Not asked yet'; }
+  function ordinal(n){ var s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+  function tcyRentNow(x){ return num(x.it.new_rent) || num((x.d || {}).rent_pcm) || 0; }
+  function tcyItText(it){
+    var parts = [];
+    if (it.no_increase) parts.push('No rent increase this year');
+    else if (num(it.new_rent)) parts.push('Rent to ' + gbp(it.new_rent) + (it.rent_from ? ' from ' + longDay(it.rent_from) : ''));
+    if (it.answer) parts.push({ staying: 'tenants staying on', leaving: 'tenants moving out', undecided: 'tenants not decided' }[it.answer]);
+    else if (it.asked_at) parts.push('asked ' + fmtShort(it.asked_at) + (it.how ? ' by ' + it.how : ''));
+    if (it.ll_asked_at && !num(it.new_rent) && !it.no_increase) parts.push('landlord asked ' + fmtShort(it.ll_asked_at));
+    var t = parts.join(' · ');
+    return t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Rent review to do';
+  }
   function renderTcyEndAlerts(){
-    var list = tcyEndingSoon(), notAsked = list.filter(function(x){ return !x.it.asked_at && !x.it.answer; }).length;
+    var list = tcyEndingSoon(), todo = list.filter(function(x){ return !num(x.it.new_rent) && !x.it.no_increase; }).length;
     $('tcyEndBanner').hidden = !list.length;
-    if (list.length) $('tcyEndBannerText').textContent = '⏰ ' + list.length + ' tenanc' + (list.length === 1 ? 'y term ends' : 'y terms end') + ' within 2 months' + (notAsked ? ' — ' + notAsked + ' not asked their plans yet' : ' — all asked');
+    if (list.length) $('tcyEndBannerText').textContent = '📅 ' + list.length + ' tenancy anniversar' + (list.length === 1 ? 'y' : 'ies') + ' in the next 2 months' + (todo ? ' — ' + todo + ' rent review' + (todo === 1 ? '' : 's') + ' to do' : ' — reviews done');
+    $('tcyEndBannerGo').textContent = 'Review rents';
     if (!$('tcyEnding')) return;
-    $('tcyEnding').innerHTML = list.length ? '<div class="card tcy-end"><h3>⏰ Terms ending within 2 months <span class="count-chip">' + list.length + '</span></h3>' + list.map(function(x){
-      var cls = x.it.answer === 'staying' ? 'ok' : x.it.answer === 'leaving' ? 'bad' : x.it.asked_at || x.it.answer ? 'wait' : 'todo';
-      return '<div class="te-row"><div><div style="font-weight:600">' + esc(x.d.address || x.t.address || '') + '</div><div class="prop-sub" style="margin:2px 0 0">' + esc(joinAnd(tcyNames(x.d.tenants)) || 'No tenants') + ' · term ends <b>' + esc(longDay(x.n.end)) + '</b> (' + (x.n.days <= 0 ? 'today' : 'in ' + x.n.days + ' days') + ')' + (x.n.rolling ? ' · rolling' : '') + '</div>' +
+    $('tcyEnding').innerHTML = list.length ? '<div class="card tcy-end"><h3>📅 Anniversaries in the next 2 months — rent review <span class="count-chip">' + list.length + '</span></h3>' + list.map(function(x){
+      var done = num(x.it.new_rent) || x.it.no_increase, cls = x.it.answer === 'leaving' ? 'bad' : done ? 'ok' : x.it.asked_at || x.it.ll_asked_at ? 'wait' : 'todo';
+      return '<div class="te-row"><div><div style="font-weight:600">' + esc(x.d.address || x.t.address || '') + '</div><div class="prop-sub" style="margin:2px 0 0">' + esc(joinAnd(tcyNames(x.d.tenants)) || 'No tenants') +
+        ' · ' + ordinal(x.n.years) + ' anniversary <b>' + esc(longDay(x.n.end)) + '</b> (' + (x.n.days <= 0 ? 'today' : 'in ' + x.n.days + ' days') + ') · rent ' + esc(gbp(num(x.d.rent_pcm) || 0)) + '</div>' +
         '<span class="te-st ' + cls + '">' + esc(tcyItText(x.it)) + '</span></div>' +
-        '<button type="button" class="btn small' + (cls === 'todo' ? ' primary' : '') + '" data-ask-tcy="' + x.t.id + '">' + (cls === 'todo' ? '✉️ Ask their plans' : 'Open') + '</button></div>';
+        '<button type="button" class="btn small' + (cls === 'todo' ? ' primary' : '') + '" data-ask-tcy="' + x.t.id + '">' + (cls === 'todo' ? 'Rent review →' : 'Open') + '</button></div>';
     }).join('') + '</div>' : '';
   }
-  var tiCur = null;
+  var tiCur = null, tiTpl = 'rent';
+  function tiText(kind){
+    var x = tiCur, d = x.d, addr = d.address || x.t.address, when = longDay(x.n.end), old = num(d.rent_pcm) || 0, nw = num($('tiNewRent').value.replace(/[£,\s]/g, '')) || old;
+    var first = x.people.map(function(p){ return greetName(p.name); }).filter(Boolean), dear = 'Dear ' + (first.length ? joinAnd(first) : 'tenant') + ',\n\n';
+    var replyBy = addDaysIso(x.n.end, -35), by = parseDay(replyBy) > new Date() ? ' by ' + longDay(replyBy) : ' as soon as possible';
+    if (kind === 'plans') return { subject: 'Your tenancy at ' + shortAddr(addr) + ' — anniversary on ' + when,
+      body: dear + 'We hope you’re well. ' + when + ' marks the anniversary of your tenancy at ' + addr + '.\n\nAs part of our annual review, could you please let us know' + by + ' whether you’re planning to stay on at the property over the coming year?\n\nKind regards,\nResidential Realtors' };
+    return { subject: 'Your rent at ' + shortAddr(addr) + ' from ' + when,
+      body: dear + 'As ' + when + ' marks the anniversary of your tenancy at ' + addr + ', we have carried out our annual rent review.\n\n' +
+        (nw > old ? 'From ' + when + ' the rent will be ' + gbp(nw) + ' per month (currently ' + gbp(old) + '). Please update your standing order to the new amount from that date.' : 'We’re pleased to let you know the rent will stay at ' + gbp(old) + ' per month.') +
+        '\n\nIf you have any questions, please get in touch.\n\nKind regards,\nResidential Realtors' };
+  }
+  function tiFill(){ var t = tiText(tiTpl); $('tiSubj').value = t.subject; $('tiMsg').value = t.body; $('tiTpl').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.dataset.tpl === tiTpl); }); }
   function openTenancyIntention(id){
     var t = tenancies.filter(function(x){ return x.id === id; })[0]; if (!t) return;
     var d = t.data || {}, n = tcyNextEnd(d); if (!n) { toast('This tenancy has no start date'); return; }
     tiCur = { t: t, d: d, n: n, it: Object.assign({}, (t.intention || {})[n.end] || {}) };
-    var people = (d.tenants || []).filter(function(x){ return x && (x.name || x.email || x.phone); });
-    var first = people.map(function(x){ return greetName(x.name); }).filter(Boolean);
-    var replyBy = addDaysIso(n.end, -35);
-    $('tiSub').textContent = (d.address || t.address) + ' — the term ends ' + longDay(n.end) + (n.days > 0 ? ' (in ' + n.days + ' days)' : '') + '. ' + tcyItText(tiCur.it) + '.';
-    $('tiSubj').value = 'Your tenancy at ' + shortAddr(d.address || t.address) + ' — your plans after ' + longDay(n.end);
-    $('tiMsg').value = 'Dear ' + (first.length ? joinAnd(first) : 'tenant') + ',\n\nWe hope you’re well. Your current tenancy term at ' + (d.address || t.address) + ' ends on ' + longDay(n.end) + '.\n\n' +
-      'Could you please let us know your plans' + (parseDay(replyBy) > new Date() ? ' by ' + longDay(replyBy) : ' as soon as possible') + ':\n' +
-      '• Would you like to stay on after ' + longDay(n.end) + '?\n• Or are you planning to move out?\n\n' +
-      'If you’d like to stay, just reply to let us know. If you’re planning to move out, please give notice as set out in your tenancy agreement.\n\nKind regards,\nResidential Realtors';
-    $('tiTo').innerHTML = people.map(function(x, i){
+    tiCur.people = (d.tenants || []).filter(function(x){ return x && (x.name || x.email || x.phone); });
+    $('tiTitle').textContent = ordinal(n.years) + ' anniversary — rent review';
+    $('tiSub').textContent = (d.address || t.address) + ' — anniversary on ' + longDay(n.end) + (n.days > 0 ? ' (in ' + n.days + ' days)' : '') + '. Rent now ' + gbp(num(d.rent_pcm) || 0) + ' a month. ' + tcyItText(tiCur.it) + '.';
+    $('tiNewRent').value = num(tiCur.it.new_rent) || num(d.rent_pcm) || '';
+    $('tiNoInc').checked = !!tiCur.it.no_increase;
+    var l = d.landlord || {};
+    $('tiLl').innerHTML = l.name ? 'Landlord: <b>' + esc(l.name) + '</b> ' + (waNumber(l.phone) ? '<button type="button" class="btn small wa" data-ti-ll="wa">WhatsApp landlord</button>' : '') + (l.email ? '<button type="button" class="btn small" data-ti-ll="email">Email landlord</button>' : '') : '<span class="muted-note" style="margin:0">No landlord on this tenancy.</span>';
+    $('tiTo').innerHTML = tiCur.people.map(function(x, i){
       var wa = waNumber(x.phone);
       return '<div class="ti-person"><span><b>' + esc(x.name || 'Tenant') + '</b> <span class="muted-note" style="margin:0">' + esc([x.phone, x.email].filter(Boolean).join(' · ') || 'No contact details') + '</span></span>' +
         (wa ? '<button type="button" class="btn small wa" data-ti-wa="' + i + '">WhatsApp</button>' : '') + '</div>';
     }).join('') || '<p class="muted-note">No tenant contact details on this tenancy — add them on the tenancy first.</p>';
-    tiCur.people = people;
-    $('tiEmail').hidden = !people.some(function(x){ return x.email; });
+    $('tiEmail').hidden = !tiCur.people.some(function(x){ return x.email; });
     $('tiEmail').textContent = meta.canEmail ? 'Send email to the tenants' : 'Email the tenants';
     $('tiAnswer').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.dataset.a === tiCur.it.answer); });
     $('tiNote').value = tiCur.it.note || '';
+    tiTpl = num(tiCur.it.new_rent) || tiCur.it.no_increase ? 'rent' : 'plans'; tiFill();
     $('tiModal').hidden = false;
   }
   function tiSave(body){
@@ -2983,27 +3014,47 @@
       renderTcyEndAlerts();
     });
   }
+  function tiLlText(){
+    var d = tiCur.d, l = d.landlord || {}, old = num(d.rent_pcm) || 0, nw = num($('tiNewRent').value.replace(/[£,\s]/g, '')) || old;
+    return llGreeting(l.name) + ',\n\nThe tenancy at ' + (d.address || tiCur.t.address) + ' reaches its anniversary on ' + longDay(tiCur.n.end) + ', when the rent can be reviewed. The rent is currently ' + gbp(old) + ' per month.' +
+      (nw > old ? '\n\nWe’d suggest increasing it to ' + gbp(nw) + ' per month from ' + longDay(tiCur.n.end) + '. Are you happy for us to go ahead?' : '\n\nWould you like us to increase the rent from that date? If so, let us know the new amount.') +
+      '\n\nKind regards,\nResidential Realtors';
+  }
+  $('tiTpl').addEventListener('click', function(e){ var b = e.target.closest('[data-tpl]'); if (!b) return; tiTpl = b.dataset.tpl; tiFill(); });
+  $('tiNewRent').addEventListener('input', function(){ if (tiTpl === 'rent') tiFill(); });
+  $('tiSaveRent').addEventListener('click', function(){
+    var v = num($('tiNewRent').value.replace(/[£,\s]/g, '')), no = $('tiNoInc').checked;
+    if (!no && !(v > 0)) { toast('Enter the new monthly rent'); $('tiNewRent').focus(); return; }
+    tiSave(no ? { no_increase: true } : { new_rent: v, rent_from: tiCur.n.end }).then(function(){ toast(no ? 'Saved: no increase this year' : 'Saved: rent ' + gbp(v) + ' from ' + longDay(tiCur.n.end)); tiTpl = 'rent'; tiFill(); });
+  });
+  $('tiLl').addEventListener('click', function(e){
+    var b = e.target.closest('[data-ti-ll]'); if (!b) return;
+    var l = tiCur.d.landlord || {}, msg = tiLlText();
+    if (b.dataset.tiLl === 'wa') window.open('https://wa.me/' + waNumber(l.phone) + '?text=' + encodeURIComponent(msg), '_blank', 'noopener');
+    else window.location.href = 'mailto:' + encodeURIComponent(l.email) + '?subject=' + encodeURIComponent('Rent review — ' + shortAddr(tiCur.d.address || tiCur.t.address)) + '&body=' + encodeURIComponent(msg);
+    tiSave({ asked_landlord: b.dataset.tiLl === 'wa' ? 'WhatsApp' : 'email' });
+  });
   $('tiClose').addEventListener('click', function(){ var note = $('tiNote').value.trim(); if (tiCur && note !== (tiCur.it.note || '')) tiSave({ note: note }); $('tiModal').hidden = true; });
-  $('tiCopy').addEventListener('click', function(){ copyText($('tiMsg').value).then(function(){ toast('Copied'); tiSave({ asked: 'message' }); })['catch'](function(){ toast('Couldn’t copy'); }); });
+  $('tiCopy').addEventListener('click', function(){ copyText($('tiMsg').value).then(function(){ toast('Copied'); tiSave(tiTpl === 'plans' ? { asked: 'message' } : { told: 'message' }); })['catch'](function(){ toast('Couldn’t copy'); }); });
   $('tiEmail').addEventListener('click', function(){
-    var to = tiCur.people.map(function(x){ return x.email; }).filter(Boolean);
+    var to = tiCur.people.map(function(x){ return x.email; }).filter(Boolean), mark = tiTpl === 'plans' ? { asked: 'email' } : { told: 'email' };
     if (meta.canEmail) {
       busy($('tiEmail'), true, 'Sending…');
       api('POST', '/api/admin/tenancies/' + tiCur.t.id + '/email', { to: to, subject: $('tiSubj').value, body: $('tiMsg').value }).then(function(d){
         busy($('tiEmail'), false);
         if (!d.ok) { toast('Couldn’t send the email'); return; }
-        toast('Emailed ' + to.join(', ')); tiSave({ asked: 'email' });
+        toast('Emailed ' + to.join(', ')); tiSave(mark);
       });
       return;
     }
     window.location.href = 'mailto:' + to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent($('tiSubj').value) + '&body=' + encodeURIComponent($('tiMsg').value);
-    tiSave({ asked: 'email' });
+    tiSave(mark);
   });
   $('tiTo').addEventListener('click', function(e){
     var b = e.target.closest('[data-ti-wa]'); if (!b) return;
     var x = tiCur.people[Number(b.dataset.tiWa)], msg = $('tiMsg').value.replace(/^Dear [^,\n]*,/, 'Hi ' + (greetName(x.name) || 'there') + ',');
     window.open('https://wa.me/' + waNumber(x.phone) + '?text=' + encodeURIComponent(msg), '_blank', 'noopener');
-    tiSave({ asked: 'WhatsApp' });
+    tiSave(tiTpl === 'plans' ? { asked: 'WhatsApp' } : { told: 'WhatsApp' });
   });
   $('tiAnswer').addEventListener('click', function(e){
     var b = e.target.closest('[data-a]'); if (!b) return;
@@ -3013,7 +3064,7 @@
   });
   $('tcyEndBannerGo').addEventListener('click', function(){ showView('tcy'); });
   document.addEventListener('click', function(e){ var b = e.target.closest('[data-ask-tcy]'); if (b) openTenancyIntention(Number(b.dataset.askTcy)); });
-  // Where a property's tenancy is up to: running (and when the fixed term ends),
+  // Where a property's tenancy is up to: running (and its next anniversary),
   // ending within 60 days, fixed term over, starting soon, a draft, or none.
   function propTenancy(key){
     var list = tenancies.filter(function(t){ return t.property_key === key; }), today = new Date(); today.setHours(0, 0, 0, 0);
@@ -3025,8 +3076,8 @@
       else if (s > today) st = { k: 'upcoming', text: 'Tenancy starts ' + longDay(d.start_date), sort: 2 };
       else {
         var nx = tcyNextEnd(d);
-        st = nx && nx.days <= 61 ? { k: 'ending', text: 'Term ends ' + longDay(nx.end) + (nx.rolling ? ' (rolling)' : ''), sort: 1 }
-          : { k: nx && nx.rolling ? 'rolling' : 'active', text: (nx && nx.rolling ? 'Rolling — term ends ' : 'Tenancy until ') + (nx ? longDay(nx.end) : longDay(endIso)), sort: nx && nx.rolling ? 0.5 : 0 };
+        st = nx && nx.days <= 61 ? { k: 'ending', text: 'Anniversary ' + longDay(nx.end) + ' — rent review', sort: 1 }
+          : { k: 'active', text: 'Tenancy since ' + longDay(d.start_date) + (nx ? ' · anniversary ' + longDay(nx.end) : ''), sort: 0 };
       }
       st.id = t.id; st.tenants = tcyNames(d.tenants);
       if (!best || st.sort < best.sort) best = st;
@@ -3085,7 +3136,7 @@
     var raw = $('propSearch').value.trim().toLowerCase(), q = propKey(raw);
     var base = allPropsForList(), tcyOf = {};
     base.forEach(function(p){ tcyOf[p.key] = propTenancy(p.key); });
-    var TF = [['all', 'All'], ['with', 'With a tenancy'], ['none', 'No tenancy'], ['ending', 'Ending in 60 days'], ['rolling', 'Rolling / fixed term over']];
+    var TF = [['all', 'All'], ['with', 'With a tenancy'], ['none', 'No tenancy'], ['ending', 'Anniversary within 2 months']];
     var tfCount = function(f){ return base.filter(function(p){ return tcyMatch(tcyOf[p.key], f); }).length; };
     $('propTcyTabs').innerHTML = TF.map(function(f){ var n = tfCount(f[0]); return (f[0] === 'all' || n || f[0] === propTcyF) ? '<button type="button" data-ptf="' + f[0] + '"' + (propTcyF === f[0] ? ' class="on"' : '') + '>' + f[1] + ' <span class="n">' + n + '</span></button>' : ''; }).join('');
     var props = base.filter(function(p){
