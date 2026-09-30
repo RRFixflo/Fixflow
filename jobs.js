@@ -401,6 +401,15 @@ async function ensureLandlord(p, l, address) {
 // never wiped, and the property is linked (a property can have many tenants).
 function phoneTail(v) { const d = String(v || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : ''; }
 const PLACEHOLDER_NAMES = ['', 'tenant', 'tenants', 'no name'];
+// A name reduced to first + last name, without titles or punctuation, so
+// "Miss Isobel May Parker", "isobel parker" and "Parker, Isobel" all match.
+function nameKey(n) {
+  let s = String(n || '').toLowerCase().replace(/[^a-z' -]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/,/.test(String(n || ''))) { const parts = String(n).toLowerCase().split(','); if (parts.length === 2) s = (parts[1] + ' ' + parts[0]).replace(/[^a-z' -]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+  const w = s.split(' ').filter(function (x) { return x && ['mr', 'mrs', 'miss', 'ms', 'mx', 'dr', 'prof'].indexOf(x) === -1; });
+  if (!w.length || PLACEHOLDER_NAMES.indexOf(w.join(' ')) !== -1) return '';
+  return w.length === 1 ? w[0] : w[0] + ' ' + w[w.length - 1];
+}
 // A tenant deleted on the Tenants page stays deleted when their old jobs are
 // edited; only a new report, a new job or adding them again (restore) brings
 // them back.
@@ -414,8 +423,18 @@ async function ensureTenant(p, t, address, restore) {
   const tail = phoneTail(phone);
   if (tail) row = (await p.query(`SELECT id, name, deleted_at FROM tenants WHERE right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $1 ORDER BY (deleted_at IS NULL) DESC, id LIMIT 1`, [tail])).rows[0];
   if (!row && email) row = (await p.query('SELECT id, name, deleted_at FROM tenants WHERE lower(email) = lower($1) ORDER BY (deleted_at IS NULL) DESC, id LIMIT 1', [email])).rows[0];
-  if (!row && name && key) row = (await p.query(`SELECT t.id, t.name, t.deleted_at FROM tenants t JOIN property_tenants pt ON pt.tenant_id = t.id
-    WHERE pt.property_key = $1 AND lower(t.name) = lower($2) ORDER BY t.id LIMIT 1`, [key, name])).rows[0];
+  // By name: someone at this property with the same name, or anyone anywhere
+  // with the same name when there's only one of them and their phone/email
+  // don't say it's someone else.
+  const nk = nameKey(name);
+  if (!row && nk) {
+    const same = (await p.query(`SELECT t.id, t.name, t.phone, t.email, t.deleted_at,
+        EXISTS (SELECT 1 FROM property_tenants pt WHERE pt.tenant_id = t.id AND pt.property_key = $1) AS here
+      FROM tenants t WHERE t.deleted_at IS NULL`, [key || ''])).rows.filter(function (x) { return nameKey(x.name) === nk; });
+    const fits = function (x) { return !(tail && phoneTail(x.phone) && phoneTail(x.phone) !== tail) && !(email && x.email && x.email.toLowerCase() !== email.toLowerCase()); };
+    row = same.filter(function (x) { return x.here; })[0] || null;
+    if (!row) { const ok = same.filter(fits); if (ok.length === 1) row = ok[0]; }
+  }
   // Deleted tenants lose their property links, so also check by name at the address they had.
   if (!row && name && key) row = (await p.query(`SELECT id, name, deleted_at FROM tenants WHERE deleted_at IS NOT NULL AND lower(name) = lower($1)
     AND deleted_key = $2 ORDER BY id LIMIT 1`, [name, key])).rows[0];
@@ -437,6 +456,51 @@ async function ensureTenant(p, t, address, restore) {
       ON CONFLICT (tenant_id, property_key) DO UPDATE SET address = excluded.address`, [id, key, str(address, 500)]);
   }
   return id;
+}
+// Tenants saved more than once (same phone number, same email, or the same
+// name at the same property) are merged into the first record: contact
+// details are filled in and every property link is kept.
+async function mergeDuplicateTenants(p) {
+  const rows = (await p.query('SELECT id, name, phone, email, notes FROM tenants WHERE deleted_at IS NULL ORDER BY id')).rows;
+  const links = {};
+  (await p.query('SELECT tenant_id, property_key FROM property_tenants')).rows.forEach(function (l) { (links[l.tenant_id] = links[l.tenant_id] || []).push(l.property_key); });
+  const into = {}, root = function (id) { while (into[id]) id = into[id]; return id; };
+  const byPhone = {}, byEmail = {}, byNameHere = {};
+  const conflicts = function (a, b) {
+    return (phoneTail(a.phone) && phoneTail(b.phone) && phoneTail(a.phone) !== phoneTail(b.phone)) ||
+      (a.email && b.email && a.email.toLowerCase() !== b.email.toLowerCase());
+  };
+  const byId = {}; rows.forEach(function (r) { byId[r.id] = r; });
+  let merged = 0;
+  const join = function (keep, dup) {
+    keep = root(keep); dup = root(dup);
+    if (keep === dup) return;
+    if (keep > dup) { const t = keep; keep = dup; dup = t; }
+    into[dup] = keep; merged += 1;
+    const k = byId[keep], d = byId[dup];
+    if (PLACEHOLDER_NAMES.indexOf(String(k.name || '').trim().toLowerCase()) !== -1 || String(d.name || '').length > String(k.name || '').length && nameKey(d.name) === nameKey(k.name)) k.name = d.name || k.name;
+    k.phone = k.phone || d.phone; k.email = k.email || d.email;
+    if (d.notes && d.notes !== k.notes) k.notes = [k.notes, d.notes].filter(Boolean).join('\n');
+  };
+  rows.forEach(function (r) {
+    const t = phoneTail(r.phone), e = String(r.email || '').toLowerCase();
+    if (t) { if (byPhone[t]) join(byPhone[t], r.id); else byPhone[t] = r.id; }
+    if (e) { if (byEmail[e] && !conflicts(byId[root(byEmail[e])], r)) join(byEmail[e], r.id); else if (!byEmail[e]) byEmail[e] = r.id; }
+    const nk = nameKey(r.name);
+    if (nk) (links[r.id] || []).forEach(function (pk) {
+      const k = nk + '|' + pk;
+      if (byNameHere[k] && !conflicts(byId[root(byNameHere[k])], r)) join(byNameHere[k], r.id); else if (!byNameHere[k]) byNameHere[k] = r.id;
+    });
+  });
+  for (const dupId of Object.keys(into)) {
+    const keep = root(Number(dupId)), k = byId[keep];
+    await p.query(`INSERT INTO property_tenants (tenant_id, property_key, address, moved_out_at, created_at)
+      SELECT $1, property_key, address, moved_out_at, created_at FROM property_tenants WHERE tenant_id = $2 ON CONFLICT (tenant_id, property_key) DO NOTHING`, [keep, Number(dupId)]);
+    await p.query('DELETE FROM tenants WHERE id = $1', [Number(dupId)]);
+    await p.query('UPDATE tenants SET name = $2, phone = $3, email = $4, notes = $5, updated_at = now() WHERE id = $1', [keep, k.name, k.phone, k.email, k.notes]);
+  }
+  if (merged) console.log('Tenants: merged ' + merged + ' duplicate record(s)');
+  return merged;
 }
 async function migrateTenants(p) {
   const n = (await p.query('SELECT count(*)::int AS n FROM tenants')).rows[0].n;
@@ -813,6 +877,7 @@ module.exports = function mountJobs(app, opts) {
       .then(function () { return seedContractors(pool).catch(function (err) { console.error('Contractor seed failed:', err.message); }); })
       .then(function () { return migrateLandlords(pool).catch(function (err) { console.error('Landlord migration failed:', err.message); }); })
       .then(function () { return migrateTenants(pool).catch(function (err) { console.error('Tenant migration failed:', err.message); }); })
+      .then(function () { return mergeDuplicateTenants(pool).catch(function (err) { console.error('Tenant merge failed:', err.message); }); })
       .then(function () { console.log('Jobs database ready'); return true; })
       .catch(function (err) { console.error('Jobs database setup failed:', err.message); return false; });
   } else if (DATABASE_URL && !Pool) {

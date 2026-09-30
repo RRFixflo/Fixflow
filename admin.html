@@ -6244,11 +6244,11 @@
         '<div><label class="lbl">Address</label><input class="inp" data-p="address" list="askPropList2" value="' + esc(dr.address) + '">' +
           '<div class="match ' + (pr ? 'ok' : addressProblem(dr.address) ? 'warn' : 'ok') + '">' + (pr ? '✓ Already on file' + (cur.length ? ' — ' + cur.length + ' tenant' + (cur.length === 1 ? '' : 's') + ' saved: ' + esc(cur.map(function(t){ return t.name; }).join(', ')) : '') + '. The tenants below will be added to it.' : addressProblem(dr.address) ? '⚠ ' + esc(addressProblem(dr.address)) + ' — add the door number and postcode if you can' : 'A new property will be added') + '</div></div>' +
         '<div><label class="lbl">Tenants</label>' + (dr.tenants.length ? dr.tenants.map(function(t, k){
-          var dupe = tenantRecs.filter(function(r){ return phoneTail(t.phone) && phoneTail(r.phone) === phoneTail(t.phone); })[0];
+          var dupe = findTenantRec(t, pr);
           return '<div class="grid3 ap-t" data-k="' + k + '" style="margin-bottom:6px"><input class="inp" data-t="name" placeholder="Name" value="' + esc(t.name) + '"><input class="inp" data-t="phone" placeholder="Phone" value="' + esc(t.phone) + '">' +
             '<div style="display:flex;gap:6px"><input class="inp" data-t="email" placeholder="Email" value="' + esc(t.email) + '"><button type="button" class="btn small ghost" data-t-del="' + k + '" title="Remove">✕</button></div>' +
-            (dupe ? (String(dupe.name || '').trim().toLowerCase() === String(t.name || '').trim().toLowerCase() || !t.name
-              ? '<div class="prop-sub" style="grid-column:1/-1;margin:0">✓ Already saved — they’ll be linked to this property.</div>'
+            (dupe ? (tNameKey(dupe.name) === tNameKey(t.name) || !t.name
+              ? '<div class="prop-sub" style="grid-column:1/-1;margin:0">✓ Already saved as ' + esc(dupe.name) + [dupe.phone, dupe.email].filter(Boolean).map(function(x){ return ' · ' + esc(x); }).join('') + ' — no duplicate will be made; missing details are filled in.</div>'
               : '<div class="prop-sub" style="grid-column:1/-1;margin:0">⚠ This phone number is already saved for <b>' + esc(dupe.name) + '</b> — they’ll be linked to this property as that tenant. Change the number if it’s someone else.</div>') : '') + '</div>';
         }).join('') : '<p class="muted-note" style="margin:0 0 6px">No tenants given.</p>') +
           '<button type="button" class="linkish" data-t-add="1">+ Add a tenant</button></div>' +
@@ -6257,6 +6257,23 @@
         '<div class="row-actions" style="margin-top:0"><button class="btn" type="button" data-pact="skip">Skip</button><button class="btn primary" type="button" data-pact="save">' + (pr ? 'Save tenants to this property' : 'Add property' + (dr.tenants.length ? ' and tenants' : '')) + '</button></div></div>';
     }).join('') + (askProps.length ? '<datalist id="askPropList2">' + allPropsForList().map(function(pr){ return '<option value="' + esc(pr.address) + '">'; }).join('') + '</datalist>' +
       '<datalist id="askLlList">' + landlords.map(function(l){ return '<option value="' + esc(l.name) + '">'; }).join('') + '</datalist>' : '');
+  }
+  // The tenant already on file for these details: same phone, same email, or
+  // the same name (at this property, or the only one with that name).
+  function tNameKey(n){
+    var w = String(n || '').toLowerCase().replace(/[^a-z' -]+/g, ' ').trim().split(/\s+/).filter(function(x){ return x && ['mr', 'mrs', 'miss', 'ms', 'mx', 'dr', 'prof'].indexOf(x) === -1; });
+    return !w.length || ['tenant', 'no name'].indexOf(w.join(' ')) !== -1 ? '' : w.length === 1 ? w[0] : w[0] + ' ' + w[w.length - 1];
+  }
+  function findTenantRec(t, pr){
+    var tail = phoneTail(t.phone), em = String(t.email || '').toLowerCase(), nk = tNameKey(t.name);
+    var hit = tail && tenantRecs.filter(function(r){ return phoneTail(r.phone) === tail; })[0];
+    if (!hit && em) hit = tenantRecs.filter(function(r){ return String(r.email || '').toLowerCase() === em; })[0];
+    if (!hit && nk) {
+      var same = tenantRecs.filter(function(r){ return tNameKey(r.name) === nk && !(tail && phoneTail(r.phone) && phoneTail(r.phone) !== tail) && !(em && r.email && r.email.toLowerCase() !== em); });
+      var here = pr ? same.filter(function(r){ return tenantLinks.some(function(l){ return l.tenant_id === r.id && l.property_key === pr.key; }); })[0] : null;
+      hit = here || (same.length === 1 ? same[0] : null);
+    }
+    return hit || null;
   }
   function readAskProp(box, dr){
     dr.address = box.querySelector('[data-p=address]').value.trim();
