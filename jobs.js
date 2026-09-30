@@ -1265,7 +1265,7 @@ module.exports = function mountJobs(app, opts) {
   // ---------- Tenant records ----------
   app.get('/api/admin/tenant-records', withDb(async function (p, req, res) {
     const t = await p.query('SELECT id, name, phone, email, notes, created_at, updated_at FROM tenants WHERE deleted_at IS NULL ORDER BY lower(name)');
-    const links = await p.query('SELECT pt.tenant_id, pt.property_key, pt.address, pt.moved_out_at FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE t.deleted_at IS NULL ORDER BY pt.created_at');
+    const links = await p.query('SELECT pt.tenant_id, pt.property_key, pt.address, pt.moved_out_at, pt.created_at FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE t.deleted_at IS NULL ORDER BY pt.created_at');
     res.json({ ok: true, tenants: t.rows, links: links.rows });
   }));
 
