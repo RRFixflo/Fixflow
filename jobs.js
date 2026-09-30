@@ -185,6 +185,15 @@ CREATE TABLE IF NOT EXISTS job_parts (
   status      TEXT NOT NULL DEFAULT 'Ordered'
 );
 CREATE INDEX IF NOT EXISTS job_parts_job_idx ON job_parts (job_id, id);
+-- Per-property details kept by the office: the number on the key tag, and notes
+-- about the keys (how many, fobs, where they're kept).
+CREATE TABLE IF NOT EXISTS property_info (
+  property_key TEXT PRIMARY KEY,
+  address      TEXT,
+  key_number   TEXT,
+  key_notes    TEXT,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS property_certificates (
   id           SERIAL PRIMARY KEY,
   property_key TEXT NOT NULL,
@@ -1384,6 +1393,27 @@ module.exports = function mountJobs(app, opts) {
   }));
 
   // Set (or clear, with landlord_id null) whose property an address is.
+  // ---------- Key numbers ----------
+  app.get('/api/admin/property-info', withDb(async function (p, req, res) {
+    res.json({ ok: true, info: (await p.query('SELECT property_key, address, key_number, key_notes, updated_at FROM property_info')).rows });
+  }));
+  app.put('/api/admin/property-info', withDb(async function (p, req, res) {
+    const b = req.body || {}, address = str(b.address, 500), key = propKey(address);
+    if (!key) return res.status(400).json({ ok: false, error: 'address' });
+    const num = str(b.key_number, 40), notes = str(b.key_notes, 500);
+    const before = (await p.query('SELECT key_number, key_notes FROM property_info WHERE property_key = $1', [key])).rows[0] || {};
+    await p.query(`INSERT INTO property_info (property_key, address, key_number, key_notes) VALUES ($1, $2, $3, $4)
+      ON CONFLICT (property_key) DO UPDATE SET address = excluded.address, key_number = excluded.key_number, key_notes = excluded.key_notes, updated_at = now()`, [key, address, num, notes]);
+    // Another property already using this number (worth a second look, but allowed).
+    const clash = num ? (await p.query('SELECT address FROM property_info WHERE property_key <> $1 AND lower(trim(key_number)) = lower(trim($2)) LIMIT 1', [key, num])).rows[0] : null;
+    // Note it on the property's open jobs, so the history shows when it changed.
+    if ((before.key_number || null) !== num) {
+      const ids = (await p.query("SELECT id, property_address FROM jobs WHERE archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled')")).rows.filter(function (r) { return propKey(r.property_address) === key; });
+      for (const r of ids) await p.query("INSERT INTO job_updates (job_id, kind, body) VALUES ($1, 'change', $2)", [r.id, 'Key number: ' + (before.key_number || 'none') + ' → ' + (num || 'none')]);
+    }
+    res.json({ ok: true, clash: clash ? clash.address : null });
+  }));
+
   app.put('/api/admin/property-landlord', withDb(async function (p, req, res) {
     const b = req.body || {};
     const key = propKey(b.address);
@@ -2474,6 +2504,9 @@ module.exports = function mountJobs(app, opts) {
       await p.query('DELETE FROM epc_checks WHERE property_key = $2 AND EXISTS (SELECT 1 FROM epc_checks x WHERE x.property_key = $1)', [fromKey, toKey]);
       await p.query('UPDATE epc_checks SET property_key = $2 WHERE property_key = $1', [fromKey, toKey]);
     }
+    if (toKey !== fromKey) await p.query('DELETE FROM property_info WHERE property_key = $1 AND EXISTS (SELECT 1 FROM property_info x WHERE x.property_key = $2 AND coalesce(x.key_number, x.key_notes) IS NOT NULL)', [fromKey, toKey]);
+    if (toKey !== fromKey) await p.query('DELETE FROM property_info WHERE property_key = $2 AND EXISTS (SELECT 1 FROM property_info x WHERE x.property_key = $1)', [fromKey, toKey]);
+    await p.query('UPDATE property_info SET property_key = $2, address = $3, updated_at = now() WHERE property_key = $1', [fromKey, toKey, to]);
     // Tenancies at the property move too (otherwise the property splits in two).
     await p.query(`UPDATE tenancies SET property_key = $2, address = $3, data = jsonb_set(data, '{address}', to_jsonb($3::text)), updated_at = now() WHERE property_key = $1`, [fromKey, toKey, to]);
     return rows.length;
