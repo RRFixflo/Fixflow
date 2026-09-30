@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS landlords (
   address    TEXT,
   notes      TEXT
 );
+ALTER TABLE landlords ADD COLUMN IF NOT EXISTS portal_token TEXT;
 CREATE TABLE IF NOT EXISTS property_landlords (
   property_key TEXT PRIMARY KEY,
   address      TEXT,
@@ -653,15 +654,11 @@ const CONTRACTOR_PAGE_JS = `(function(){
       '<div style="font-weight:600;margin:4px 0">' + esc(j.property_address || '') + '</div>' +
       '<div>' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div>' +
       (j.with ? '<div class="muted" style="margin-top:4px">👷 Working alongside ' + esc(j.with) + ' — mark it completed when your part is done</div>' : '') +
+      (j.status !== 'Completed' ? tenantBox(j) : '') +
       (j.appointment_date ? '<div style="margin:6px 0;font-weight:600">📅 Booked for ' + esc(day(j.appointment_date)) + (j.appointment_time ? ' at ' + esc(j.appointment_time) : '') + '</div>' : '') +
       '<details class="dt"><summary>Details and access</summary><div class="dbody">' +
         (j.description ? '<div class="desc">' + esc(j.description) + '</div>' : '') +
         item('📍', 'Where in the property', j.location) +
-        (j.tenant_name || j.tenant_phone ? '<div class="tn"><div class="lb">Tenant</div><div class="vl" style="font-weight:600">' + esc(j.tenant_name || 'Tenant') + '</div>' +
-          (j.tenant_phone ? '<div class="muted" style="margin:2px 0 8px">' + esc(j.tenant_phone) + '</div><div class="acts">' +
-            '<a class="abtn" href="tel:' + esc(String(j.tenant_phone).replace(/[^0-9+]/g, '')) + '">📞 Call</a>' +
-            (wa(j.tenant_phone) ? '<a class="abtn wa" target="_blank" rel="noopener" href="https://wa.me/' + wa(j.tenant_phone) + '?text=' + encodeURIComponent('Hi' + (first(j.tenant_name) ? ' ' + first(j.tenant_name) : '') + ', I’m the contractor from Residential Realtors for the repair at ' + (j.property_address || 'your property') + ' (' + j.ref + '). When would be a good time for me to come round?') + '">WhatsApp</a>' : '') +
-          '</div>' : '') + '</div>' : '') +
         item('🔑', 'Access', access) + item('🕒', 'Best times', j.access_time) + item('🗝️', 'Keys', keys) + item('📝', 'Access notes', j.access_notes) +
         item('📆', 'Reported', day(j.created_at)) +
       '</div></details>' +
@@ -680,6 +677,26 @@ const CONTRACTOR_PAGE_JS = `(function(){
           '<label class="muted" style="display:block">Photos of the finished work (optional)<input type="file" name="photos" accept="image/*,.heic,.heif" multiple style="display:block;margin-top:6px;padding:10px;background:#fff"></label>' +
           '<button type="submit" style="background:#139A4B">Mark ' + esc(j.ref) + ' completed</button>' +
         '</form></details>' +
+    '</div>';
+  }
+  // The tenant's details, up front: name, phone, email, one-tap call, WhatsApp
+  // and email, plus anyone else living there.
+  function tenantBox(j){
+    if (!j.tenant_name && !j.tenant_phone && !j.tenant_email) return '';
+    var msg = 'Hi' + (first(j.tenant_name) ? ' ' + first(j.tenant_name) : '') + ', I’m the contractor from Residential Realtors for the repair at ' + (j.property_address || 'your property') + ' (' + j.ref + '). When would be a good time for me to come round?';
+    var person = function(t, main){
+      return '<div class="' + (main ? '' : 'muted') + '" style="margin-top:' + (main ? 2 : 8) + 'px"><span style="font-weight:600">' + esc(t.name || 'Tenant') + '</span>' +
+        (t.phone ? ' · <a href="tel:' + esc(String(t.phone).replace(/[^0-9+]/g, '')) + '">' + esc(t.phone) + '</a>' : '') +
+        (t.email ? ' · <a href="mailto:' + esc(t.email) + '">' + esc(t.email) + '</a>' : '') + '</div>';
+    };
+    return '<div class="tn" style="margin-top:10px"><div class="lb">Tenant' + (j.direct_contact === 'No' ? ' · the office arranges access' : ' · please contact them to arrange a time') + '</div>' +
+      person({ name: j.tenant_name, phone: j.tenant_phone, email: j.tenant_email }, true) +
+      '<div class="acts" style="margin-top:8px">' +
+        (j.tenant_phone ? '<a class="abtn" href="tel:' + esc(String(j.tenant_phone).replace(/[^0-9+]/g, '')) + '">📞 Call</a>' : '') +
+        (wa(j.tenant_phone) ? '<a class="abtn wa" target="_blank" rel="noopener" href="https://wa.me/' + wa(j.tenant_phone) + '?text=' + encodeURIComponent(msg) + '">WhatsApp</a>' : '') +
+        (j.tenant_email ? '<a class="abtn" style="background:#2F5BEA" href="mailto:' + esc(j.tenant_email) + '?subject=' + encodeURIComponent('Repair at ' + (j.property_address || 'your property') + ' (' + j.ref + ')') + '&body=' + encodeURIComponent(msg) + '">✉️ Email</a>' : '') +
+      '</div>' +
+      ((j.other_tenants || []).length ? '<div class="lb" style="margin-top:10px">Also living there</div>' + j.other_tenants.map(function(t){ return person(t, false); }).join('') : '') +
     '</div>';
   }
   // Notes and questions for the office, with the ones already sent.
@@ -2077,6 +2094,95 @@ module.exports = function mountJobs(app, opts) {
       'document.querySelectorAll(".tabs button").forEach(function(x){x.classList.toggle("on",x===b);});(r?document.querySelector("#fRef input"):document.querySelector("#fPhone input")).focus();});});</script>'));
   }));
 
+  // ---------- The landlord's own page (/l/<token>) ----------
+  // Their properties, every repair (open and completed) with what it cost them,
+  // invoices and certificates. Never shows our costs or profit, contractor
+  // names or tenants' contact details.
+  app.post('/api/admin/landlords/:id/portal-link', withDb(async function (p, req, res) {
+    const id = jobId(req), fresh = !!(req.body || {}).fresh;
+    const l = (await p.query('SELECT id, portal_token FROM landlords WHERE id = $1', [id])).rows[0];
+    if (!l) return res.status(404).json({ ok: false, error: 'not-found' });
+    let token = l.portal_token;
+    if (!token || fresh) {
+      token = crypto.randomBytes(18).toString('base64url');
+      await p.query('UPDATE landlords SET portal_token = $2, updated_at = now() WHERE id = $1', [id, token]);
+    }
+    const siteUrl = process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : req.protocol + '://' + req.get('host'));
+    res.json({ ok: true, url: siteUrl + '/l/' + token });
+  }));
+  app.get('/l/:token', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const token = String(req.params.token || '');
+    const l = /^[A-Za-z0-9_-]{20,}$/.test(token) ? (await p.query('SELECT id, name FROM landlords WHERE portal_token = $1', [token])).rows[0] : null;
+    if (!l) return res.status(404).send(trackShell('Link not available', '<h1>Link not available</h1><p class="sub">This link is no longer active. Please contact Residential Realtors for a new one.</p>', true));
+    const links = (await p.query('SELECT property_key, address FROM property_landlords WHERE landlord_id = $1', [l.id])).rows;
+    const keys = {}; links.forEach(function (r) { keys[r.property_key] = r.address; });
+    const all = (await p.query(`SELECT id, status, urgency, created_at, completed_at, category, affected, symptom, location, summary, property_address,
+        appointment_date, appointment_time, landlord_charge, completion_notes, landlord_handles, track_token,
+        (SELECT coalesce(sum(jp.charge), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_charge
+      FROM jobs WHERE archived_at IS NULL AND status <> 'Cancelled' ORDER BY created_at DESC`)).rows.filter(function (j) { return keys[propKey(j.property_address)] !== undefined; });
+    for (const j of all) { if (!j.track_token) j.track_token = await ensureTrackToken(p, j.id); }
+    const ids = all.map(function (j) { return j.id; });
+    const invs = ids.length ? (await p.query('SELECT job_id, number, total, created_at, paid_at FROM invoices WHERE job_id = ANY($1::int[]) ORDER BY id', [ids])).rows : [];
+    const certs = Object.keys(keys).length ? (await p.query("SELECT property_key, type, expires_on, not_required FROM property_certificates WHERE property_key = ANY($1::text[])", [Object.keys(keys)])).rows : [];
+    const names = (await p.query("SELECT name FROM contractors WHERE coalesce(trim(name), '') <> ''")).rows.map(function (r) { return r.name.trim(); }).sort(function (a, b) { return b.length - a.length; });
+    const reEsc = function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+    const scrub = function (t) {
+      let s = String(t || '').replace(/Their price:[^.\n]*\.?/gi, '').replace(/^[^:\n]{2,40}:\s*/gm, '');
+      names.forEach(function (n) { s = s.replace(new RegExp('\\b' + reEsc(n) + '\\b', 'gi'), 'our contractor'); });
+      return s.replace(/\s+/g, ' ').trim();
+    };
+    const day = function (v) { return v ? new Date(v).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', year: 'numeric' }) : ''; };
+    const money = function (n) { return '£' + Number(n).toFixed(2); };
+    const charge = function (j) { const c = (j.landlord_charge == null ? 0 : Number(j.landlord_charge)) + Number(j.parts_charge || 0); return j.landlord_charge == null && !Number(j.parts_charge) ? null : c; };
+    const issue = function (j) { return String(j.summary || [j.affected, j.symptom].filter(Boolean).join(' – ') || j.category || 'Repair').trim(); };
+    const yearAgo = Date.now() - 365 * 86400000;
+    const done = all.filter(function (j) { return j.status === 'Completed'; }), open = all.filter(function (j) { return j.status !== 'Completed'; });
+    const spent = done.filter(function (j) { return new Date(j.completed_at || j.created_at).getTime() > yearAgo; }).reduce(function (t, j) { return t + (charge(j) || 0); }, 0);
+    const unpaid = invs.filter(function (i) { return !i.paid_at; });
+    const jobCard = function (j) {
+      const c = charge(j), inv = invs.filter(function (i) { return i.job_id === j.id; }).slice(-1)[0], isDone = j.status === 'Completed';
+      const notes = isDone ? scrub(j.completion_notes) : '';
+      return '<div class="lj' + (isDone ? ' done' : '') + '"><div class="lj-top"><span class="ref">' + htmlEsc('RR-' + String(j.id).padStart(5, '0')) + '</span>' +
+          (isDone ? '<span class="pill ok">✓ Completed ' + htmlEsc(day(j.completed_at)) + '</span>' : '<span class="pill">' + htmlEsc(j.status === 'New' ? 'Reported' : j.status) + '</span>') + '</div>' +
+        '<div class="lj-issue">' + htmlEsc(issue(j)) + (j.location ? ' <span class="muted">· ' + htmlEsc(j.location) + '</span>' : '') + '</div>' +
+        '<div class="muted">Reported ' + htmlEsc(day(j.created_at)) + (!isDone && j.appointment_date ? ' · Visit booked ' + htmlEsc(day(j.appointment_date)) + (j.appointment_time ? ' ' + htmlEsc(j.appointment_time) : '') : '') +
+          (j.landlord_handles ? ' · Arranged by you' : '') + '</div>' +
+        (notes ? '<div class="lj-notes">' + htmlEsc(notes.slice(0, 300)) + '</div>' : '') +
+        '<div class="lj-foot"><span>' + (c != null ? 'Cost to you: <b>' + money(c) + '</b>' : isDone ? '<span class="muted">No charge recorded</span>' : '<span class="muted">Cost not confirmed yet</span>') +
+          (inv ? ' · Invoice ' + htmlEsc(inv.number || '') + ' ' + (inv.paid_at ? '<span class="paid">paid</span>' : '<span class="due">awaiting payment</span>') : '') + '</span>' +
+          '<a href="/t/' + htmlEsc(j.track_token) + '">Details ›</a></div></div>';
+    };
+    const certName = { EPC: 'EPC', Gas: 'Gas safety', EICR: 'Electrical (EICR)' };
+    const propBlocks = Object.keys(keys).map(function (k) {
+      const js = all.filter(function (j) { return propKey(j.property_address) === k; });
+      const addr = (js[0] && js[0].property_address) || keys[k] || '';
+      const cs = certs.filter(function (c) { return c.property_key === k && !c.not_required && c.expires_on; }).map(function (c) {
+        const past = new Date(c.expires_on) < new Date();
+        return '<span class="cert' + (past ? ' late' : '') + '">' + htmlEsc(certName[c.type] || c.type) + ' ' + (past ? 'expired ' : 'until ') + htmlEsc(day(c.expires_on)) + '</span>';
+      }).join('');
+      const o = js.filter(function (j) { return j.status !== 'Completed'; }), d = js.filter(function (j) { return j.status === 'Completed'; });
+      return '<section class="card"><h2>' + htmlEsc(addr) + '</h2>' + (cs ? '<div class="certs">' + cs + '</div>' : '') +
+        (o.length ? '<h3>Open repairs (' + o.length + ')</h3>' + o.map(jobCard).join('') : '<p class="muted">No open repairs.</p>') +
+        (d.length ? '<details' + (o.length ? '' : ' open') + '><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '') + '</section>';
+    }).join('');
+    const css = '<style>.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:0 0 14px}.tile{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px}.tile b{display:block;font-size:1.3rem}.tile span{font-size:.78rem;color:var(--soft)}' +
+      'h2{font-size:1.05rem;margin:0 0 8px}h3{font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);margin:14px 0 6px}' +
+      '.lj{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px}.lj.done{background:var(--okt);border-color:#cdebd9}.lj-top{display:flex;justify-content:space-between;gap:8px;align-items:center}' +
+      '.pill{font-size:.75rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bluet);color:var(--blue)}.pill.ok{background:#fff;color:var(--ok)}.lj-issue{font-weight:600;margin:4px 0 2px}' +
+      '.lj-notes{font-size:.88rem;margin-top:6px;white-space:pre-line}.lj-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;font-size:.9rem;flex-wrap:wrap}.lj-foot a{color:var(--blue);font-weight:600;text-decoration:none}' +
+      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
+      'details summary{cursor:pointer;font-weight:700;color:var(--ok);margin-top:14px}</style>';
+    res.send(trackShell('Your properties', css + '<h1>Hi ' + htmlEsc(String(l.name || '').trim() || 'there') + '</h1><p class="sub">Your properties with Residential Realtors: every repair, where it’s up to and what it has cost.</p>' +
+      '<div class="tiles"><div class="tile"><b>' + Object.keys(keys).length + '</b><span>Propert' + (Object.keys(keys).length === 1 ? 'y' : 'ies') + '</span></div>' +
+        '<div class="tile"><b>' + open.length + '</b><span>Open repairs</span></div><div class="tile"><b>' + done.length + '</b><span>Completed</span></div>' +
+        '<div class="tile"><b>' + money(spent) + '</b><span>Charged, last 12 months</span></div>' +
+        (unpaid.length ? '<div class="tile"><b>' + money(unpaid.reduce(function (t, i) { return t + Number(i.total || 0); }, 0)) + '</b><span>' + unpaid.length + ' invoice' + (unpaid.length === 1 ? '' : 's') + ' to pay</span></div>' : '') + '</div>' +
+      (propBlocks || '<div class="card"><p class="muted">No properties are linked to you yet. Please contact Residential Realtors.</p></div>') +
+      '<p class="muted" style="text-align:center;margin-top:18px">Questions? Reply to our message or call the office.</p>', true));
+  }));
+
   // The tenant page sends its photos here one at a time, straight after the
   // report itself is saved, so a slow connection never loses the whole report.
   // Only for a couple of hours after the report, and up to 30 photos.
@@ -3314,12 +3420,26 @@ module.exports = function mountJobs(app, opts) {
     if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
     p.query("UPDATE contractors SET portal_seen_at = now() WHERE id = $1 AND (portal_seen_at IS NULL OR portal_seen_at < now() - interval '1 minute')", [c.id]).catch(function () {});
     const r = await p.query(`SELECT id, status, urgency, created_at, completed_at, category, affected, symptom, location, description, summary, property_address,
-        tenant_name, tenant_phone, access_time, access_notes, key_permission, key_instructions, direct_contact, appointment_date, appointment_time, completion_notes,
+        tenant_name, tenant_phone, tenant_email, access_time, access_notes, key_permission, key_instructions, direct_contact, appointment_date, appointment_time, completion_notes,
         assigned_to, assigned_to_2, part_done_by, part_done_at
       FROM jobs WHERE archived_at IS NULL AND (lower(trim(assigned_to)) = lower(trim($1)) OR lower(trim(assigned_to_2)) = lower(trim($1)))
         AND (status NOT IN ('Completed', 'Cancelled') OR (status = 'Completed' AND completed_at > now() - interval '30 days'))
       ORDER BY (status = 'Completed'), created_at DESC LIMIT 200`, [c.name]);
     const me = c.name.trim().toLowerCase();
+    // The tenants living there (from our tenant records), to fill in what a job
+    // is missing and to show anyone else at the property.
+    const living = {};
+    if (r.rows.length) (await p.query(`SELECT pt.property_key, t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id
+        WHERE pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY t.updated_at DESC`)).rows
+      .forEach(function (t) { (living[t.property_key] = living[t.property_key] || []).push({ name: t.name || '', phone: t.phone || '', email: t.email || '' }); });
+    r.rows.forEach(function (j) {
+      const here = living[propKey(j.property_address)] || [];
+      const tail = function (v) { return String(v || '').replace(/[^0-9]/g, '').slice(-9); };
+      const same = function (t) { return (j.tenant_phone && tail(t.phone) === tail(j.tenant_phone)) || (j.tenant_email && t.email && t.email.toLowerCase() === String(j.tenant_email).toLowerCase()) || (!j.tenant_phone && !j.tenant_email && j.tenant_name && t.name && t.name.toLowerCase() === j.tenant_name.toLowerCase()); };
+      const me2 = here.filter(same)[0] || (!j.tenant_phone && !j.tenant_email ? here[0] : null);
+      if (me2) { j.tenant_name = j.tenant_name || me2.name; j.tenant_phone = j.tenant_phone || me2.phone; j.tenant_email = j.tenant_email || me2.email; }
+      j.other_tenants = here.filter(function (t) { return t !== me2 && !same(t) && (t.phone || t.email); }).slice(0, 4);
+    });
     const mineNotes = {};
     if (r.rows.length) (await p.query(`SELECT job_id, created_at, body FROM job_updates WHERE kind = 'contractor_note' AND job_id = ANY($1::int[])
         AND lower(trim(author)) = lower(trim($2)) ORDER BY id`, [r.rows.map(function (j) { return j.id; }), c.name])).rows

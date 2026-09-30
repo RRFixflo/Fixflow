@@ -209,7 +209,16 @@
   .pick input { width: 16px; height: 16px; accent-color: var(--brick); cursor: pointer; }
   .job { flex: 1; min-width: 0; display: grid; grid-template-columns: 118px minmax(0,1fr) 190px 170px 96px; gap: 14px; align-items: center; text-align: left; background: none; border: 0; padding: 13px 16px 13px 0; cursor: pointer; }
   .job:focus-visible { outline: none; box-shadow: inset var(--focus-ring); border-radius: 8px; }
-  .job.done { opacity: .72; }
+  /* Completed jobs: green edge, soft green background and a clear badge. */
+  .jobrow.is-done::before { background: #139A4B; width: 4px; }
+  .jobrow.is-done { background: #F2FAF5; }
+  .jobrow.is-done:hover { background: #E8F6EE; }
+  .job.done .title { color: var(--ink-soft, #4a4f5a); }
+  .job.done .money { opacity: .8; }
+  .job.cancelled { opacity: .6; }
+  .done-badge { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: .8rem; color: #0F7A3B; background: #D9F2E3; border-radius: 999px; padding: 3px 10px; }
+  .done-tick { color: #139A4B; font-weight: 800; margin-right: 3px; }
+  .done-banner { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: #E6F6EC; color: #0F7A3B; font-weight: 600; font-size: .9rem; }
   .job .ref { font-weight: 650; font-size: .84rem; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
   .job .sub { font-size: .76rem; color: var(--ink-faint); margin-top: 3px; }
   .job .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.005em; }
@@ -1361,6 +1370,23 @@
   <button class="btn small" id="bulkClear" type="button">Clear</button>
 </div>
 
+<!-- A LANDLORD'S OWN PAGE -->
+<div class="modal" id="lpModal" hidden>
+  <div class="card" role="dialog" aria-labelledby="lpTitle">
+    <h3 id="lpTitle">Send the landlord their page</h3>
+    <p class="muted-note" style="margin:0 0 10px">A private page with all their properties and repairs — open and completed — what each has cost them, invoices and certificate dates. It never shows our costs, contractor names or tenants’ contact details.</p>
+    <textarea class="inp" id="lpMsg" rows="8"></textarea>
+    <div class="row-actions" style="margin-top:10px;flex-wrap:wrap">
+      <button class="btn ghost" type="button" id="lpNew" title="The old link stops working">New link</button>
+      <a class="btn" id="lpOpen" target="_blank" rel="noopener">Preview</a>
+      <button class="btn" type="button" id="lpCopy">Copy</button>
+      <button class="btn" type="button" id="lpEmail">Email</button>
+      <button class="btn wa" type="button" id="lpWa">WhatsApp</button>
+      <button class="btn primary" type="button" id="lpClose">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- KEY REGISTER -->
 <div class="modal" id="krModal" hidden>
   <div class="card kr-card" role="dialog" aria-labelledby="krTitle">
@@ -1799,17 +1825,18 @@
   function rowHtml(j){
       var t = timeInfo(j), p = profitOf(j), on = selected.has(j.id), open = isOpen(j);
       var pct = deadlinePct(j);
-      return '<div class="jobrow u-' + esc(j.urgency) + (open ? '' : ' closed') + (on ? ' sel' : '') + '">' +
+      var fin = j.status === 'Completed';
+      return '<div class="jobrow u-' + esc(j.urgency) + (open ? '' : ' closed') + (fin ? ' is-done' : '') + (on ? ' sel' : '') + '">' +
         '<label class="pick" title="Select to send with other jobs"><input type="checkbox" data-pick="' + j.id + '"' + (on ? ' checked' : '') +
           ' aria-label="Select ' + esc(j.ref) + '"></label>' +
-        '<button type="button" class="job' + (open ? '' : ' done') + '" data-id="' + j.id + '">' +
-        '<div class="c-ref"><div class="ref">' + esc(j.ref) + '</div><div class="sub"><span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span></div></div>' +
+        '<button type="button" class="job' + (fin ? ' done' : open ? '' : ' cancelled') + '" data-id="' + j.id + '">' +
+        '<div class="c-ref"><div class="ref">' + (fin ? '<span class="done-tick">✓</span>' : '') + esc(j.ref) + '</div><div class="sub"><span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span></div></div>' +
         '<div class="c-issue"><div class="title">' + esc(j.property_address || 'No address') + '</div>' +
           '<div class="meta">' + esc(issueOf(j)) + (j.tenant_name ? ' · ' + esc(j.tenant_name) : '') + '</div></div>' +
-        '<div class="c-time"><div class="time ' + t.cls + '">' + esc(t.text) + '</div>' +
+        '<div class="c-time">' + (fin && j.completed_at ? '<span class="done-badge">✓ Completed</span><div class="sub">' + esc(fmtShort(j.completed_at)) + '</div>' : '<div class="time ' + t.cls + '">' + esc(t.text) + '</div>') +
           (open && pct !== null ? '<div class="bar" title="Time used before the deadline"><i class="' + t.cls + '" style="width:' + pct + '%"></i></div>' : '') +
           '<div class="sub">Received ' + esc(fmtShort(j.created_at)) + '</div></div>' +
-        '<div class="c-status"><span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>' +
+        '<div class="c-status"><span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + (fin ? '✓ ' : '') + esc(j.status) + '</span>' +
           (j.appointment_date && open ? '<span class="appt-chip">📅 ' + esc(apptShort(j)) + '</span>' : '') +
           (j.unread_notes ? '<span class="note-chip">💬 New note</span>' : '') +
           '<div class="who-chip">' + (j.landlord_handles ? '<span class="av" style="background:#7C3AED">🏠</span><span class="nm">' + esc(whoDoes(j)) + '</span>' : avatar(j.assigned_to) + '<span class="nm">' + (j.assigned_to ? esc(j.assigned_to) + (j.assigned_to_2 ? ' + ' + esc(j.assigned_to_2) : '') : 'Unassigned') + '</span>') + '</div></div>' +
@@ -4554,12 +4581,13 @@
   function renderJob(j, updates, photos){
     $('dTitle').textContent = j.ref;
     $('dUrg').innerHTML = '<span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span>';
-    $('dStatus').innerHTML = '<span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>';
+    $('dStatus').innerHTML = '<span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + (j.status === 'Completed' ? '✓ ' : '') + esc(j.status) + '</span>';
     if (drawerTabJob !== j.id) { drawerTab = 'overview'; drawerTabJob = j.id; }
     $('dSub').innerHTML = '<strong>' + esc(issueOf(j)) + '</strong> · ' + esc(j.property_address || 'No address') +
       ' <button type="button" class="addr-edit" id="dAddrProp" title="Open this property">🏠 Property ›</button>' +
       ' <button type="button" class="addr-edit" id="dAddrEdit" title="Edit address">✎ Edit address</button>' +
-      (addressProblem(j.property_address) ? '<div class="addr-warn">⚠ ' + esc(addressProblem(j.property_address)) + ' <button type="button" class="btn small" id="dAddrFix">Fix address</button></div>' : '');
+      (addressProblem(j.property_address) ? '<div class="addr-warn">⚠ ' + esc(addressProblem(j.property_address)) + ' <button type="button" class="btn small" id="dAddrFix">Fix address</button></div>' : '') +
+      (j.status === 'Completed' ? '<div class="done-banner">✓ This job was completed' + (j.completed_at ? ' on ' + esc(new Date(j.completed_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })) : '') + '</div>' : '');
     $('dAddrEdit').addEventListener('click', function(){ openAddressEdit(j.property_address, j.id); });
     $('dAddrProp').addEventListener('click', function(){ closeDrawer(); openProperty(propKey(j.property_address)); });
     if ($('dAddrFix')) $('dAddrFix').addEventListener('click', function(){ openAddressEdit(j.property_address, j.id); });
@@ -5701,6 +5729,24 @@
     if (view !== 'll') showView('ll'); else renderLandlord();
     pushNav();
   }
+  var lpFor = null;
+  function openLlLink(l, fresh){
+    lpFor = l;
+    api('POST', '/api/admin/landlords/' + l.id + '/portal-link', fresh ? { fresh: true } : {}).then(function(d){
+      if (!d.ok) { toast('Couldn’t make the link'); return; }
+      $('lpMsg').value = llGreeting(l.name) + ',\n\nHere’s your own page with Residential Realtors. It shows all your properties, every repair (open and completed), what each has cost and any invoices:\n\n' + d.url +
+        '\n\nIt’s kept up to date, so you can check it any time.\n\nKind regards,\nResidential Realtors';
+      $('lpOpen').href = d.url;
+      $('lpWa').hidden = !waNumber(l.phone); $('lpEmail').hidden = !l.email;
+      $('lpModal').hidden = false;
+      if (fresh) toast('New link made — the old one no longer works');
+    });
+  }
+  $('lpClose').addEventListener('click', function(){ $('lpModal').hidden = true; });
+  $('lpNew').addEventListener('click', function(){ if (lpFor && confirm('Make a new link? The old one will stop working.')) openLlLink(lpFor, true); });
+  $('lpCopy').addEventListener('click', function(){ copyText($('lpMsg').value).then(function(){ toast('Copied'); })['catch'](function(){ toast('Couldn’t copy'); }); });
+  $('lpWa').addEventListener('click', function(){ window.open('https://wa.me/' + waNumber(lpFor.phone) + '?text=' + encodeURIComponent($('lpMsg').value), '_blank', 'noopener'); });
+  $('lpEmail').addEventListener('click', function(){ window.location.href = 'mailto:' + encodeURIComponent(lpFor.email) + '?subject=' + encodeURIComponent('Your properties with Residential Realtors') + '&body=' + encodeURIComponent($('lpMsg').value); });
   function renderLandlord(){
     var l = landlordById(openLlId);
     if (!l) { $('llBack').click(); return; }
@@ -5715,7 +5761,9 @@
     $('llActions').innerHTML = (l.phone ? '<a class="btn" href="tel:' + esc(l.phone.replace(/[^\d+]/g, '')) + '">Call</a>' : '') +
       (wa ? '<a class="btn wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
       (l.email ? '<a class="btn" href="mailto:' + esc(l.email) + '">Email</a>' : '') +
+      '<button class="btn" id="llLinkBtn" type="button">🔗 Send their page</button>' +
       '<button class="btn primary" id="llEditBtn" type="button">Edit details</button>';
+    $('llLinkBtn').addEventListener('click', function(){ openLlLink(l); });
     $('llCard').innerHTML = '<dl class="kv">' + [['Name', l.name], ['Phone', l.phone], ['Email', l.email], ['Address (for invoices)', l.address], ['Notes', l.notes]]
       .filter(function(r){ return r[1]; }).map(function(r){ return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
     $('llEditBtn').addEventListener('click', function(){ openLandlordForm(l); });
