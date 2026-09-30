@@ -2571,15 +2571,28 @@ module.exports = function mountJobs(app, opts) {
   const EPC_STOP = ['flat', 'apartment', 'london', 'floor', 'ground', 'first', 'second', 'third', 'basement'];
   function epcNums(s) { return (String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }); }
   function epcWords(s) { return String(s).replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 4 && EPC_STOP.indexOf(w) === -1; }); }
+  // Building names in an address: "windsor court", "rowland hill house".
+  function epcBuildings(s) {
+    const t = String(s).replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(Boolean), out = [];
+    t.forEach(function (w, i) { if (EPC_BUILDING.indexOf(w) !== -1 && i > 0 && EPC_STOP.indexOf(t[i - 1]) === -1 && !/^\d/.test(t[i - 1])) out.push(t[i - 1] + ' ' + w); });
+    return out;
+  }
   function epcCandidates(address, results) {
-    const an = epcNums(address), aw = epcWords(address);
+    const an = epcNums(address), aw = epcWords(address), ab = epcBuildings(address);
     if (!an.length) return [];
     return results.filter(function (r) {
       const rn = epcNums(r.address), rw = epcWords(r.address);
-      return rn[0] === an[0] && an.every(function (n) { return rn.indexOf(n) !== -1; }) && (!aw.length || rw.some(function (w) { return aw.indexOf(w) !== -1; }));
+      if (rn[0] !== an[0] || (aw.length && !rw.some(function (w) { return aw.indexOf(w) !== -1; }))) return false;
+      if (an.every(function (n) { return rn.indexOf(n) !== -1; })) return true;
+      // The register often leaves out the building's street number ("Flat 5,
+      // Windsor Court, Coopers Road" for "Flat 5 Windsor Court 23 Coopers Road").
+      // Allowed only when the building name matches too, so "5 Coopers Road"
+      // (a different home) never stands in for "Flat 5, 23 Coopers Road".
+      const low = String(r.address).toLowerCase().replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ');
+      return rn.every(function (n) { return an.indexOf(n) !== -1; }) && ab.some(function (b) { return low.indexOf(b) !== -1; });
     });
   }
-  const EPC_BUILDING = ['house', 'court', 'apartments', 'mansions', 'lodge', 'tower', 'point', 'building', 'buildings', 'block', 'heights', 'wharf'];
+  const EPC_BUILDING = ['house', 'court', 'apartments', 'mansions', 'lodge', 'tower', 'point', 'building', 'buildings', 'block', 'heights', 'wharf', 'gardens', 'place', 'lodge', 'hall'];
   function epcMatch(address, results) {
     const aw = epcWords(address);
     const cands = epcCandidates(address, results);
@@ -2682,7 +2695,7 @@ module.exports = function mountJobs(app, opts) {
         ON CONFLICT (property_key) DO UPDATE SET checked_at = now(), found = excluded.found, address_synced = true`, [x.key, !!hit]);
       if (!hit) {
         const near = epcCandidates(x.address, cache[pc]).map(function (c) { return c.address + (c.expires_on ? ' (' + c.expires_on + ')' : ''); });
-        console.log('EPC register: no clear match for ' + x.address + ' among ' + cache[pc].length + ' certificates at ' + pc + (near.length ? '; close: ' + near.slice(0, 5).join(' | ') : ''));
+        console.log('EPC register: no clear match for ' + x.address + ' among ' + cache[pc].length + ' certificates at ' + pc + (near.length ? '; close: ' + near.slice(0, 5).join(' | ') : '; on the register: ' + Array.from(new Set(cache[pc].map(function (c) { return c.address; }))).slice(0, 15).join(' | ')));
         continue;
       }
       if (epc[x.key] && epc[x.key] >= hit.expires_on) {
@@ -2746,7 +2759,7 @@ module.exports = function mountJobs(app, opts) {
       .then(function () { epcRunning = false; });
   }
   // When the matching improves, look again at properties it couldn't place.
-  const EPC_MATCH_VERSION = '3';
+  const EPC_MATCH_VERSION = '4';
   setTimeout(function () {
     db().then(async function (p) {
       if (!p) return;
