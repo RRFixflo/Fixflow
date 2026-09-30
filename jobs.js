@@ -278,6 +278,8 @@ CREATE TABLE IF NOT EXISTS site_sessions (
 CREATE INDEX IF NOT EXISTS site_sessions_started_idx ON site_sessions (started_at);
 -- Who a visit was, once known: from a report they sent, or a link we sent them.
 ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS vid TEXT;
+-- The visitor's internet (IP) address, as the connection arrived.
+ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS ip TEXT;
 ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS who TEXT;
 ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS who_kind TEXT;
 CREATE TABLE IF NOT EXISTS known_visitors (
@@ -1264,7 +1266,8 @@ module.exports = function mountJobs(app, opts) {
       if (!/^[a-z0-9]{8,40}$/i.test(sid) || VISIT_EVENTS.indexOf(ev) === -1 || !page) return;
       const v = b.v == null ? null : String(b.v).slice(0, 120);
       const p = await db(); if (!p) return;
-      await p.query('INSERT INTO site_sessions (sid, landing, vid) VALUES ($1, $2, $3) ON CONFLICT (sid) DO NOTHING', [sid, page, vid]);
+      const ip = String(req.ip || '').replace(/^::ffff:/, '').slice(0, 64) || null;
+      await p.query('INSERT INTO site_sessions (sid, landing, vid, ip) VALUES ($1, $2, $3, $4) ON CONFLICT (sid) DO UPDATE SET ip = coalesce(site_sessions.ip, excluded.ip)', [sid, page, vid, ip]);
       // Remember who this browser is (the latest thing we learnt), and label the visit.
       const recognise = async function (who) {
         if (vid && who) await p.query(`INSERT INTO known_visitors (vid, kind, name, detail, job_id) VALUES ($1, $2, $3, $4, $5)
@@ -1378,7 +1381,7 @@ module.exports = function mountJobs(app, opts) {
   app.get('/api/admin/site-sessions', withDb(async function (p, req, res) {
     const days = String(Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30)));
     const rows = (await p.query(`SELECT sid, started_at, last_at, landing, pages, device, browser, os, source, ref_host, screen, lang, tz, chosen_lang, steps, categories,
-        subject, job_id, submitted_ref, views, events, extract(epoch FROM last_at - started_at)::int AS secs,
+        subject, job_id, submitted_ref, views, events, ip, extract(epoch FROM last_at - started_at)::int AS secs,
         coalesce(who, (SELECT j.tenant_name || ' (' || split_part(coalesce(j.property_address, ''), ',', 1) || ')' FROM jobs j WHERE j.id = site_sessions.job_id AND site_sessions.submitted_ref IS NOT NULL)) AS who,
         coalesce(who_kind, CASE WHEN submitted_ref IS NOT NULL THEN 'tenant' END) AS who_kind,
         extract(hour FROM started_at AT TIME ZONE 'Europe/London')::int AS hour, extract(isodow FROM started_at AT TIME ZONE 'Europe/London')::int AS dow

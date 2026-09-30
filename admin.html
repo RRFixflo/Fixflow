@@ -663,6 +663,8 @@
   #tcySvcTabs .n { font-size: .75rem; opacity: .7; margin-left: 2px; }
   .tcy-sum { margin: 0 0 8px; max-width: none; width: 100%; }
   .ask-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sv-ip { color: #2F5BEA; cursor: pointer; font-variant-numeric: tabular-nums; }
+  .sv-ip:hover { text-decoration: underline; }
   .linkish { background: none; border: 0; padding: 6px 0 0; color: var(--blue, #2563EB); font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; }
   .wa-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; font-weight: 500; cursor: pointer; }
   .wa-assign input { width: 16px; height: 16px; accent-color: var(--brick); }
@@ -8279,7 +8281,7 @@
     api('GET', '/api/admin/site-sessions?days=' + days).then(function(d){
       if (!d.ok) return;
       svRows = d.sessions; svShown = 10;
-      $('svNote').textContent = 'Every visit to the tenant repair page, the repair tracker, contractor job links and landlord pages — who it was (once they’ve sent a report or opened a link we sent them, on that phone or computer), what device, where they came from and what they did. No IP addresses are kept.' +
+      $('svNote').textContent = 'Every visit to the tenant repair page, the repair tracker, contractor job links and landlord pages — who it was (once they’ve sent a report or opened a link we sent them, on that phone or computer), what device, its IP address, where they came from and what they did. Tap an IP address to see every visit from it.' +
         (d.since ? ' Recording since ' + fmtDate(d.since) + '.' : ' Recording starts now.');
       var rep = svRows.filter(function(r){ return (r.pages || []).indexOf('report') !== -1; });
       var out = svRows.map(svOutcome), cnt = function(k){ return out.filter(function(o){ return o.k === k; }).length; };
@@ -8334,6 +8336,7 @@
         hb('Where they came from', tally(function(r){ return r.source || 'Unknown'; })) +
         hb('Who visited', tally(function(r){ return r.who_kind ? { tenant: 'Tenants', landlord: 'Landlords', contractor: 'Contractors' }[r.who_kind] : 'Not known yet'; })) +
         hb('Device', tally(function(r){ return r.device; })) +
+        hb('IP addresses with the most visits', tally(function(r){ return r.ip; })) +
         hb('Phone / computer system', tally(function(r){ return r.os; })) +
         hb('Browser', tally(function(r){ return r.browser; })) +
         hb('Problems chosen', tally(function(r){ return r.categories; })) +
@@ -8352,7 +8355,9 @@
     $('svChips').innerHTML = F.filter(function(f){ return f[0] === 'all' || counts[f[0]]; }).map(function(f){
       return '<button type="button" role="tab" data-sv="' + f[0] + '"' + (f[0] === svFilter ? ' class="on" aria-selected="true"' : '') + '>' + f[1] + '<span class="n">' + (f[0] === 'all' ? svRows.length : counts[f[0]]) + '</span></button>';
     }).join('');
-    var list = svRows.map(function(r, i){ return { r: r, o: out[i] }; }).filter(function(x){ return svFilter === 'all' || (svFilter === 'known' ? !!x.r.who : x.o.k === svFilter); });
+    var ipCount = {}; svRows.forEach(function(r){ if (r.ip) ipCount[r.ip] = (ipCount[r.ip] || 0) + 1; });
+    var list = svRows.map(function(r, i){ return { r: r, o: out[i] }; }).filter(function(x){ return svFilter === 'all' || (/^ip:/.test(svFilter) ? x.r.ip === svFilter.slice(3) : svFilter === 'known' ? !!x.r.who : x.o.k === svFilter); });
+    if (/^ip:/.test(svFilter)) $('svChips').insertAdjacentHTML('beforeend', '<button type="button" role="tab" class="on" data-sv="all">IP ' + esc(svFilter.slice(3)) + ' ✕<span class="n">' + list.length + '</span></button>');
     var WHO = { tenant: ['🏠', 'Tenant'], landlord: ['🔑', 'Landlord'], contractor: ['🔧', 'Contractor'] };
     $('svList').innerHTML = list.slice(0, svShown).map(function(x){
       var r = x.r, o = x.o, dt = new Date(r.started_at);
@@ -8364,7 +8369,8 @@
         '<span class="feed-ic" aria-hidden="true">' + svIcon(r.device) + '</span>' +
         '<div>' + (r.who ? '<div class="sv-who k-' + esc(r.who_kind || '') + '">' + (WHO[r.who_kind] || ['👤', 'Visitor'])[0] + ' ' + esc((WHO[r.who_kind] || ['', 'Visitor'])[1]) + ': <b>' + esc(r.who) + '</b></div>' : '') +
           '<div class="t">' + esc(o.t) + '</div>' +
-          '<div class="s">' + esc([r.device, r.os, r.browser].filter(Boolean).join(' · ') + ' · from ' + (r.source || 'unknown') + (r.views > 1 ? ' · ' + r.views + ' page views' : '')) + '</div>' +
+          '<div class="s">' + esc([r.device, r.os, r.browser].filter(Boolean).join(' · ') + ' · from ' + (r.source || 'unknown') + (r.views > 1 ? ' · ' + r.views + ' page views' : '')) +
+            (r.ip ? ' · <span class="sv-ip" role="button" tabindex="0" data-sv-ip="' + esc(r.ip) + '" title="Show every visit from this IP address">IP ' + esc(r.ip) + (ipCount[r.ip] > 1 ? ' (' + ipCount[r.ip] + ' visits)' : '') + '</span>' : '') + '</div>' +
           (path ? '<div class="sv-path">' + path + '</div>' : '') + '</div>' +
         '<div class="w">' + esc(dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ', ' + dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })) + '<br>' + esc(svDur(r.secs)) + '</div></div>';
     }).join('') + (list.length > svShown ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn small" id="svMore">Show more (' + (list.length - svShown) + ')</button></div>' : '') ||
@@ -8373,6 +8379,8 @@
   $('svChips').addEventListener('click', function(e){ var b = e.target.closest('[data-sv]'); if (!b) return; svFilter = b.dataset.sv; svShown = 10; drawSvList(); });
   $('svList').addEventListener('click', function(e){
     if (e.target.closest('#svMore')) { svShown += 20; drawSvList(); return; }
+    var ipb = e.target.closest('[data-sv-ip]');
+    if (ipb) { e.stopPropagation(); svFilter = 'ip:' + ipb.dataset.svIp; svShown = 50; drawSvList(); return; }
     var r = e.target.closest('[data-sv-job]'); if (r) openJob(Number(r.dataset.svJob));
   });
   $('svList').addEventListener('keydown', function(e){ var r = e.target.closest('[data-sv-job]'); if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openJob(Number(r.dataset.svJob)); } });

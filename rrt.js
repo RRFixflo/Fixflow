@@ -1,8 +1,8 @@
 // Visit activity for the public pages (repair report, repair tracker, the
 // contractor job link and the landlord's page): which steps someone reached,
-// what they picked, how long they stayed. No names, contact details or IP
-// addresses are sent. A visit is a random id for this tab; the browser keeps a
-// second random id so the office can recognise a returning tenant, landlord or
+// what they picked, how long they stayed. No names or contact details are
+// sent; the server notes the connection's IP address for the office. A visit
+// is a random id for this tab; the browser keeps a second random id so the office can recognise a returning tenant, landlord or
 // contractor once they've sent a report or opened a link sent to them.
 (function () {
   try {
