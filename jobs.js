@@ -741,6 +741,30 @@ function readReportPdf(buf) {
   report.photoCount = photos.length;
   return { report: report, photos: photos, lines: lines, tenantRef: refLine ? /RR-[A-Z0-9]+/.exec(refLine)[0] : '' };
 }
+// The text of a Word document (.docx is a zip holding word/document.xml).
+// Only what's needed to read the words, so no extra library.
+function docxText(buf) {
+  const zlib = require('zlib');
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 70000); i--) { if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; } }
+  if (eocd < 0) return '';
+  const count = buf.readUInt16LE(eocd + 10); let off = buf.readUInt32LE(eocd + 16);
+  const parts = [];
+  for (let n = 0; n < count && off + 46 <= buf.length; n++) {
+    if (buf.readUInt32LE(off) !== 0x02014b50) break;
+    const method = buf.readUInt16LE(off + 10), csize = buf.readUInt32LE(off + 20), nlen = buf.readUInt16LE(off + 28), xlen = buf.readUInt16LE(off + 30), clen = buf.readUInt16LE(off + 32), local = buf.readUInt32LE(off + 42);
+    const name = buf.slice(off + 46, off + 46 + nlen).toString('utf8');
+    off += 46 + nlen + xlen + clen;
+    if (!/^word\/(document|header\d*|footer\d*)\.xml$/.test(name)) continue;
+    const lnlen = buf.readUInt16LE(local + 26), lxlen = buf.readUInt16LE(local + 28), start = local + 30 + lnlen + lxlen;
+    const raw = buf.slice(start, start + csize);
+    let xml = '';
+    try { xml = (method === 8 ? zlib.inflateRawSync(raw) : raw).toString('utf8'); } catch (e) { continue; }
+    parts.push({ main: name === 'word/document.xml', text: xml.replace(/<w:tab\/>/g, '\t').replace(/<\/w:p>/g, '\n').replace(/<w:br[^>]*\/>/g, '\n').replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() });
+  }
+  return parts.sort(function (a, b) { return b.main - a.main; }).map(function (x) { return x.text; }).join('\n\n');
+}
 // HEIC → JPEG (pure JavaScript, loaded only when needed). If it can't be
 // converted the original is kept, so nothing is lost.
 async function heicToJpeg(ph) {
@@ -2028,15 +2052,33 @@ module.exports = function mountJobs(app, opts) {
   app.post('/api/admin/assistant', withDb(async function (p, req, res) {
     if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
     // Pasted messages can carry invisible direction marks around phone numbers.
-    const text = str(String((req.body || {}).text || '').replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, ''), 6000);
+    let text = str(String((req.body || {}).text || '').replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, ''), 6000);
+    // An attached document (e.g. a Terms of Let): Word files are read here;
+    // PDFs and photos go to the AI as they are.
+    const file = (req.body || {}).file, files = [];
+    let fileNote = '';
+    if (file && file.data) {
+      const buf = Buffer.from(String(file.data), 'base64'), fname = String(file.name || ''), mime = String(file.mime || '').toLowerCase();
+      if (!buf.length || buf.length > 15 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'file-too-big' });
+      if (/\.docx$/i.test(fname) || /wordprocessingml/.test(mime)) {
+        const words = docxText(buf);
+        if (!words) return res.status(400).json({ ok: false, error: 'file-unreadable' });
+        fileNote = '\n\nAttached document "' + fname + '":\n' + words.slice(0, 40000);
+      } else if (mime === 'application/pdf' || /\.pdf$/i.test(fname)) files.push({ mime: 'application/pdf', data: buf.toString('base64') });
+      else if (/^image\/(jpeg|png|webp|heic|heif)$/.test(mime)) files.push({ mime: mime, data: buf.toString('base64') });
+      else return res.status(400).json({ ok: false, error: 'file-type' });
+      if (!text) text = 'The attached document is a Terms of Let / tenancy details for a new let. Create the tenancy from it.';
+      if (files.length) fileNote = '\n\n(The document "' + fname + '" is attached; read it in full.)';
+    }
     if (!text) return res.status(400).json({ ok: false, error: 'no-text' });
+    text = text + fileNote;
     const trades = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY name')).rows
       .map(function (c) { return c.name + (c.trade ? ' (' + c.trade + ')' : ''); }).join('; ');
     const fromEmail = (req.body || {}).mode === 'email';
     // Our properties, so a mis-heard or shortened address ("36 Balin house") becomes the one on file.
     const known = (await allProperties(p)).map(function (x) { return x.address; }).filter(Boolean).slice(0, 500);
     const prompt = fromEmail ? emailPrompt(text, trades) : 'You turn instructions from a UK letting agent\'s maintenance manager into repair jobs for their job system.\n\n' +
-      'Instruction (spoken via speech-to-text, so allow for mis-heard words, or a pasted message that may list several properties, each with its tasks and tenant contacts), between the ---- lines:\n----\n' + text + '\n----\n\n' +
+      'Instruction (spoken via speech-to-text, so allow for mis-heard words, or a pasted message that may list several properties, each with its tasks and tenant contacts, or an attached document such as a Terms of Let), between the ---- lines:\n----\n' + text + '\n----\n\n' +
       'Their contractors: ' + (trades || 'none listed') + '.\n\n' +
       (known.length ? 'Their properties (use the exact address from this list when the one said is clearly one of these, allowing for mis-heard or shortened names and a missing "Flat"; the door number must match): ' + known.join(' | ') + '\n\n' : '') +
       'Make exactly one job per property address mentioned (a pasted message may contain several, often each followed by "for Jim" or similar). Put all the tasks for the same property into that one job. For each job give:\n' +
@@ -2067,7 +2109,7 @@ module.exports = function mountJobs(app, opts) {
       'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], ' +
       '"contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "properties": [{"address": "", "tenants": [], "landlord": "", "key_number": "", "notes": ""}], "tenancies": [], "understood": true}. ' +
       'Use [] for jobs, contacts, properties or tenancies when there are none. If the instruction is none of these, reply {"jobs": [], "contacts": [], "properties": [], "tenancies": [], "understood": false}.';
-    const result = await opts.askAi(prompt, true);
+    const result = await opts.askAi(prompt, true, files);
     if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
     let parsed = null;
     try { parsed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()); } catch (e) { parsed = null; }

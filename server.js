@@ -117,13 +117,14 @@ const jobs = require('./jobs')(app, {
   canEmail: function () { return !!RESEND_API_KEY; },
   // The same AI provider the tenant page uses, for drafting emails from a job.
   canAi: function () { return !!(GEMINI_API_KEY || ANTHROPIC_API_KEY); },
-  askAi: function (prompt, wantJson) {
+  // files: optional [{ mime, data (base64) }] — PDFs and photos the AI reads directly.
+  askAi: function (prompt, wantJson, files) {
     // Gemini first (free); if Google is overloaded and a Claude key is set, use Claude.
-    if (!GEMINI_API_KEY) return askAnthropic(prompt, wantJson);
-    return askGemini(prompt, wantJson, !!ANTHROPIC_API_KEY).then(function (r) {
+    if (!GEMINI_API_KEY) return askAnthropic(prompt, wantJson, files);
+    return askGemini(prompt, wantJson, !!ANTHROPIC_API_KEY, files).then(function (r) {
       if (r.ok || !ANTHROPIC_API_KEY) return r;
       console.log('Gemini unavailable, using Claude');
-      return askAnthropic(prompt, wantJson);
+      return askAnthropic(prompt, wantJson, files);
     });
   }
 });
@@ -216,7 +217,12 @@ app.get('/api/address/get/:id', async (req, res) => {
 // a 600-token cap cut them off mid-array and they failed to parse.
 function maxOutputTokens(wantJson) { return wantJson ? 8000 : 1000; }
 
-async function askAnthropic(prompt, wantJson) {
+async function askAnthropic(prompt, wantJson, files) {
+  const content = (files && files.length) ? files.map(function (f) {
+    return f.mime === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } }
+      : { type: 'image', source: { type: 'base64', media_type: f.mime, data: f.data } };
+  }).concat([{ type: 'text', text: prompt }]) : prompt;
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -228,7 +234,7 @@ async function askAnthropic(prompt, wantJson) {
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
       max_tokens: maxOutputTokens(wantJson),
-      messages: [{ role: 'user', content: prompt }]
+      messages: [{ role: 'user', content: content }]
     })
   });
   if (!resp.ok) {
@@ -241,7 +247,7 @@ async function askAnthropic(prompt, wantJson) {
 }
 
 // quick: one pass over the models (used when Claude is there as a backup).
-async function askGemini(prompt, wantJson, quick) {
+async function askGemini(prompt, wantJson, quick, files) {
   // Overall budget across all models, so the tenant is never left waiting long;
   // the page gives up a little after this too.
   const deadline = Date.now() + (quick ? (wantJson ? 40000 : 15000) : (wantJson ? 100000 : 25000));
@@ -251,7 +257,7 @@ async function askGemini(prompt, wantJson, quick) {
   for (let round = 0; round < (quick ? 1 : wantJson ? 4 : 2); round++) {
     for (const model of GEMINI_MODELS) {
       if (Date.now() > deadline) return { ok: false };
-      const result = await askGeminiModel(model, prompt, wantJson);
+      const result = await askGeminiModel(model, prompt, wantJson, files);
       if (result.ok || !result.retryable) return result;
     }
     if (Date.now() + pause > deadline) break;
@@ -261,7 +267,7 @@ async function askGemini(prompt, wantJson, quick) {
   return { ok: false };
 }
 
-async function askGeminiModel(model, prompt, wantJson) {
+async function askGeminiModel(model, prompt, wantJson, files) {
   const started = Date.now();
   let resp;
   try {
@@ -274,7 +280,7 @@ async function askGeminiModel(model, prompt, wantJson) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        contents: [{ role: 'user', parts: [{ text: prompt }].concat((files || []).map(function (f) { return { inline_data: { mime_type: f.mime, data: f.data } }; })) }],
         generationConfig: Object.assign(
           // Flash models may spend part of this on thinking, so leave headroom.
           { maxOutputTokens: maxOutputTokens(wantJson) * 2 },
