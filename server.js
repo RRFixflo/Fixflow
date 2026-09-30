@@ -389,7 +389,7 @@ app.post('/api/send-report', async (req, res) => {
     const subject = String(body.subject || 'Repair report') + (saved ? ' [' + saved.ref + ']' : '');
     // The tenant's link to follow the repair's progress.
     const siteUrl = process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : req.protocol + '://' + req.get('host'));
-    const trackUrl = saved && saved.trackPath ? siteUrl + saved.trackPath : null;
+    const trackUrl = saved && saved.trackPath ? siteUrl + saved.trackPath + '?w=t' : null;   // w=t: the tenant's own link
 
     // 2) Email it to Residential Realtors, PDF attached, when email is set up.
     let emailed = false;

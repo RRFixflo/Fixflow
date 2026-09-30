@@ -646,6 +646,9 @@
   .part-tell.just span { font-size: .85rem; font-weight: 600; margin-right: 4px; }
   .u-send { display: flex; gap: 14px; margin-top: 2px; }
   .u-send .linkish { padding: 2px 0; font-size: .8rem; }
+  .sv-who { display: inline-block; font-size: .78rem; padding: 2px 8px; border-radius: 999px; background: #EEF2FE; color: #2F5BEA; margin-bottom: 3px; }
+  .sv-who.k-landlord { background: #F3EEFE; color: #6D28D9; }
+  .sv-who.k-contractor { background: #FFF4E5; color: #B45309; }
   .linkish { background: none; border: 0; padding: 6px 0 0; color: var(--blue, #2563EB); font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; }
   .wa-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; font-weight: 500; cursor: pointer; }
   .wa-assign input { width: 16px; height: 16px; accent-color: var(--brick); }
@@ -4028,7 +4031,7 @@
       appt: apptText(j) || '[DATE AND TIME]'
     };
     var fill = function(s){ return s.replace(/\{(\w+)\}/g, function(_, k){ return vals[k] != null ? vals[k] : ''; }); };
-    return { subject: fill(t.subject), body: fill(t.body) + (j.track_url ? '\n\nYou can check the progress of your repair at any time here: ' + j.track_url : '') + SIGN_OFF };
+    return { subject: fill(t.subject), body: fill(t.body) + (j.track_url ? '\n\nYou can check the progress of your repair at any time here: ' + tagUrl(j.track_url, 't') : '') + SIGN_OFF };
   }
 
   // ---------- Job detail ----------
@@ -4109,7 +4112,7 @@
     var whatText = what.length > 1 ? what.slice(0, -1).join(', ') + ' and ' + what[what.length - 1] : what[0];
     var direct = group.jobs.some(function(j){ return j.direct_contact !== 'No'; });
     var appt = group.jobs.map(function(j){ return apptText(j); }).filter(Boolean)[0];
-    var link = group.jobs.map(function(j){ return links[j.id]; }).filter(Boolean)[0];
+    var link = tagUrl(group.jobs.map(function(j){ return links[j.id]; }).filter(Boolean)[0], 't');
     if (/^your landlord/i.test(contractor || '')) return 'Hi ' + (first || 'there') + ',\n\n' +
       'This is Residential Realtors. ' + (contractor.charAt(0).toUpperCase() + contractor.slice(1)) + ' will be carrying out ' + whatText + ' at ' + shortAddr(group.address) + ' and will be in touch with you directly to arrange a time.' +
       (link ? '\n\nYou can follow the progress here: ' + link : '') + '\n\nThanks,\nResidential Realtors';
@@ -4120,6 +4123,9 @@
       '\n\nThanks,\nResidential Realtors';
   }
   var ttGroups = [], ttMode = 'tenant', ttJobs = [], ttCustom = null;
+  // Tracker links say who they were sent to (w=t tenant, w=l landlord), so the
+  // Activity page can tell who opened them.
+  function tagUrl(u, w){ return u && /\/t\//.test(u) && !/[?&]w=/.test(u) ? u + (u.indexOf('?') === -1 ? '?' : '&') + 'w=' + w : u; }
   // Any update on a job, sent to the tenant or the landlord: the text is
   // wrapped in a greeting, the job, the tracking link and a sign-off, and can
   // be edited before sending.
@@ -4128,7 +4134,7 @@
     var custom = {
       title: 'Send the tenant an update', llTitle: 'Send the landlord an update',
       text: function(g, links, who){
-        var link = links[j.id];
+        var link = tagUrl(links[j.id], who === 'landlord' ? 'l' : 't');
         if (who === 'landlord') return llGreeting(g.name) + ',\n\nAn update on ' + llWorkText(j) + ' at ' + shortAddr(j.property_address) + ' (ref ' + j.ref + '):\n\n' + text +
           (link ? '\n\nFollow the progress: ' + link : '') + '\n\nKind regards,\nResidential Realtors';
         return 'Hi ' + (greetName(g.name) || 'there') + ',\n\nThis is Residential Realtors with an update on ' + workText(j) + ' at ' + shortAddr(j.property_address) + ':\n\n' + text +
@@ -4475,7 +4481,7 @@
     // then where it's up to, then the link to follow it.
     var clean = function(t, max){ t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > max ? t.slice(0, max - 1).replace(/\s+\S*$/, '') + '…' : t; };
     var line = function(j){
-      var appt = apptText(j), link = links[j.id], plink = links['p' + j.id], who = llWho(j);
+      var appt = apptText(j), link = tagUrl(links[j.id], 'l'), plink = links['p' + j.id], who = llWho(j);
       var head = llWorkText(j) + (oneHome ? '' : ' at ' + shortAddr(j.property_address)) + ' (ref ' + j.ref + ')';
       var det = [];
       var cat = String(j.category || '').trim();
@@ -5009,7 +5015,7 @@
         var bodyText = d.body;
         // Messages to the tenant include their link to follow the repair.
         if (recipient === 'Tenant' && trackUrls[j.id] && bodyText.indexOf(trackUrls[j.id]) === -1) {
-          var line = 'You can check the progress of your repair at any time here: ' + trackUrls[j.id];
+          var line = 'You can check the progress of your repair at any time here: ' + tagUrl(trackUrls[j.id], 't');
           var k = bodyText.search(/\n\s*(Kind regards|Best regards|Regards|Many thanks|Thanks)/i);
           bodyText = k > 0 ? bodyText.slice(0, k) + '\n\n' + line + bodyText.slice(k) : bodyText + '\n\n' + line;
         }
@@ -8048,6 +8054,7 @@
       return { k: 'left', t: 'Left at “' + (SV_STEP[String(mx)] || 'the form') + '”', c: 'warn' };
     }
     if (r.landing === 'portal' || /job link/.test(r.subject || '')) return { k: 'portal', t: r.subject || 'Contractor job link', c: '' };
+    if (r.landing === 'landlord' || /landlord page/.test(r.subject || '')) return { k: 'landlord', t: r.subject || 'Landlord page', c: '' };
     return { k: 'track', t: r.subject || 'Repair tracker', c: '' };
   }
   function svDur(secs){ if (!secs || secs < 10) return 'under 10 sec'; if (secs < 60) return secs + ' sec'; var m = Math.round(secs / 60); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' hr ' + (m % 60) + ' min'; }
@@ -8057,7 +8064,7 @@
     api('GET', '/api/admin/site-sessions?days=' + days).then(function(d){
       if (!d.ok) return;
       svRows = d.sessions; svShown = 10;
-      $('svNote').textContent = 'Every visit to the tenant repair page, the repair tracker and contractor job links — what device, where they came from and what they did. No names or IP addresses are kept.' +
+      $('svNote').textContent = 'Every visit to the tenant repair page, the repair tracker, contractor job links and landlord pages — who it was (once they’ve sent a report or opened a link we sent them, on that phone or computer), what device, where they came from and what they did. No IP addresses are kept.' +
         (d.since ? ' Recording since ' + fmtDate(d.since) + '.' : ' Recording starts now.');
       var rep = svRows.filter(function(r){ return (r.pages || []).indexOf('report') !== -1; });
       var out = svRows.map(svOutcome), cnt = function(k){ return out.filter(function(o){ return o.k === k; }).length; };
@@ -8100,7 +8107,7 @@
       // Breakdowns.
       var tally = function(f){ var m = {}; svRows.forEach(function(r){ [].concat(f(r) || []).forEach(function(k){ if (k) m[k] = (m[k] || 0) + 1; }); });
         return Object.keys(m).map(function(k){ return { k: k, n: m[k] }; }).sort(function(a, b){ return b.n - a.n; }).slice(0, 7); };
-      var PAGE = { report: 'Repair report page', track: 'Repair tracker', portal: 'Contractor job link' };
+      var PAGE = { report: 'Repair report page', track: 'Repair tracker', portal: 'Contractor job link', landlord: 'Landlord page' };
       var hb = function(title, arr){
         if (!arr.length) return '';
         var max = Math.max.apply(null, arr.map(function(x){ return x.n; }));
@@ -8110,6 +8117,7 @@
       };
       $('svBreak').innerHTML =
         hb('Where they came from', tally(function(r){ return r.source || 'Unknown'; })) +
+        hb('Who visited', tally(function(r){ return r.who_kind ? { tenant: 'Tenants', landlord: 'Landlords', contractor: 'Contractors' }[r.who_kind] : 'Not known yet'; })) +
         hb('Device', tally(function(r){ return r.device; })) +
         hb('Phone / computer system', tally(function(r){ return r.os; })) +
         hb('Browser', tally(function(r){ return r.browser; })) +
@@ -8122,13 +8130,15 @@
     });
   }
   function drawSvList(){
-    var F = [['all', 'All'], ['sent', 'Sent a report'], ['left', 'Left part-way'], ['diy', 'Fixed it themselves'], ['bounce', 'Left straight away'], ['track', 'Tracker'], ['portal', 'Contractor links']];
+    var F = [['all', 'All'], ['known', 'Recognised'], ['sent', 'Sent a report'], ['left', 'Left part-way'], ['diy', 'Fixed it themselves'], ['bounce', 'Left straight away'], ['track', 'Tracker'], ['portal', 'Contractor links'], ['landlord', 'Landlord pages']];
     var out = svRows.map(svOutcome), counts = {};
     out.forEach(function(o){ counts[o.k] = (counts[o.k] || 0) + 1; });
+    counts.known = svRows.filter(function(r){ return r.who; }).length;
     $('svChips').innerHTML = F.filter(function(f){ return f[0] === 'all' || counts[f[0]]; }).map(function(f){
       return '<button type="button" role="tab" data-sv="' + f[0] + '"' + (f[0] === svFilter ? ' class="on" aria-selected="true"' : '') + '>' + f[1] + '<span class="n">' + (f[0] === 'all' ? svRows.length : counts[f[0]]) + '</span></button>';
     }).join('');
-    var list = svRows.map(function(r, i){ return { r: r, o: out[i] }; }).filter(function(x){ return svFilter === 'all' || x.o.k === svFilter; });
+    var list = svRows.map(function(r, i){ return { r: r, o: out[i] }; }).filter(function(x){ return svFilter === 'all' || (svFilter === 'known' ? !!x.r.who : x.o.k === svFilter); });
+    var WHO = { tenant: ['🏠', 'Tenant'], landlord: ['🔑', 'Landlord'], contractor: ['🔧', 'Contractor'] };
     $('svList').innerHTML = list.slice(0, svShown).map(function(x){
       var r = x.r, o = x.o, dt = new Date(r.started_at);
       var path = (r.categories || []).map(function(c){ return '<span>' + esc(c) + '</span>'; }).join('') +
@@ -8137,7 +8147,8 @@
         (r.subject && r.subject !== o.t ? '<span>👁 ' + esc(r.subject) + '</span>' : '');
       return '<div class="sv-row' + (r.job_id ? ' go" data-sv-job="' + r.job_id : '') + '"' + (r.job_id ? ' role="button" tabindex="0" title="Open the job"' : '') + '>' +
         '<span class="feed-ic" aria-hidden="true">' + svIcon(r.device) + '</span>' +
-        '<div><div class="t">' + esc(o.t) + '</div>' +
+        '<div>' + (r.who ? '<div class="sv-who k-' + esc(r.who_kind || '') + '">' + (WHO[r.who_kind] || ['👤', 'Visitor'])[0] + ' ' + esc((WHO[r.who_kind] || ['', 'Visitor'])[1]) + ': <b>' + esc(r.who) + '</b></div>' : '') +
+          '<div class="t">' + esc(o.t) + '</div>' +
           '<div class="s">' + esc([r.device, r.os, r.browser].filter(Boolean).join(' · ') + ' · from ' + (r.source || 'unknown') + (r.views > 1 ? ' · ' + r.views + ' page views' : '')) + '</div>' +
           (path ? '<div class="sv-path">' + path + '</div>' : '') + '</div>' +
         '<div class="w">' + esc(dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ', ' + dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })) + '<br>' + esc(svDur(r.secs)) + '</div></div>';
