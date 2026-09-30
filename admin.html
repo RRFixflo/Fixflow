@@ -1746,6 +1746,12 @@
     $('assignees').innerHTML = opts.join('');
   }
 
+  // Who's doing a job: our contractor, or the landlord (themselves or their own contractor).
+  function whoDoes(j){
+    if (j.landlord_handles === 'self') return 'Landlord (themselves)';
+    if (j.landlord_handles === 'contractor') return 'Landlord’s contractor' + (j.landlord_contractor ? ' — ' + j.landlord_contractor : '');
+    return j.assigned_to || '';
+  }
   // One job as a list row (used by the jobs list and the property page).
   function rowHtml(j){
       var t = timeInfo(j), p = profitOf(j), on = selected.has(j.id), open = isOpen(j);
@@ -1762,7 +1768,7 @@
           '<div class="sub">Received ' + esc(fmtShort(j.created_at)) + '</div></div>' +
         '<div class="c-status"><span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>' +
           (j.appointment_date && open ? '<span class="appt-chip">📅 ' + esc(apptShort(j)) + '</span>' : '') +
-          '<div class="who-chip">' + avatar(j.assigned_to) + '<span class="nm">' + (j.assigned_to ? esc(j.assigned_to) : 'Unassigned') + '</span></div></div>' +
+          '<div class="who-chip">' + (j.landlord_handles ? '<span class="av" style="background:#7C3AED">🏠</span><span class="nm">' + esc(whoDoes(j)) + '</span>' : avatar(j.assigned_to) + '<span class="nm">' + (j.assigned_to ? esc(j.assigned_to) : 'Unassigned') + '</span>') + '</div></div>' +
         '<div class="money ' + (p ? (p.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (p ? gbp(p.value) : '—') +
           '<small>' + (p ? (p.estimated ? 'estimated' : 'profit') : 'no costs') + '</small></div>' +
       '</button></div>';
@@ -1781,7 +1787,7 @@
     $('tOpen').textContent = open.length;
     $('tOver').textContent = overdue.length;
     $('tOverTile').classList.toggle('has', overdue.length > 0);
-    var unassigned = open.filter(function(j){ return !String(j.assigned_to || '').trim(); }).length;
+    var unassigned = open.filter(function(j){ return !String(j.assigned_to || '').trim() && !j.landlord_handles; }).length;
     $('tUnass').textContent = unassigned;
     $('tAss').textContent = open.length - unassigned;
     $('tUnassTile').classList.toggle('has', unassigned > 0);
@@ -1808,7 +1814,7 @@
       if (filter === 'open' && !isOpen(j)) return false;
       if (filter === 'completed' && j.status !== 'Completed') return false;
       if (filter !== 'archived' && assignFilter) {
-        var has = !!String(j.assigned_to || '').trim();
+        var has = !!String(j.assigned_to || '').trim() || !!j.landlord_handles;
         if (assignFilter === 'unassigned' && has) return false;
         if (assignFilter === 'assigned' && !has) return false;
         if (assignFilter === 'overdue' && overdue.indexOf(j) === -1) return false;
@@ -3905,6 +3911,9 @@
     var direct = group.jobs.some(function(j){ return j.direct_contact !== 'No'; });
     var appt = group.jobs.map(function(j){ return apptText(j); }).filter(Boolean)[0];
     var link = group.jobs.map(function(j){ return links[j.id]; }).filter(Boolean)[0];
+    if (/^your landlord/i.test(contractor || '')) return 'Hi ' + (first || 'there') + ',\n\n' +
+      'This is Residential Realtors. ' + (contractor.charAt(0).toUpperCase() + contractor.slice(1)) + ' will be carrying out ' + whatText + ' at ' + shortAddr(group.address) + ' and will be in touch with you directly to arrange a time.' +
+      (link ? '\n\nYou can follow the progress here: ' + link : '') + '\n\nThanks,\nResidential Realtors';
     return 'Hi ' + (first || 'there') + ',\n\n' +
       'This is Residential Realtors. We’ve booked ' + (contractor || 'our contractor') + ' for ' + whatText + ' at ' + shortAddr(group.address) + '.' +
       (appt ? ' The visit is booked for ' + appt + '.' : direct ? ' They’ll be in touch with you directly to arrange a convenient time.' : ' We’ll be in touch to arrange access.') +
@@ -3927,6 +3936,7 @@
     ttGroups = groups; ttMode = 'tenant'; ttJobs = list;
     $('ttTitle').textContent = 'Let the tenant know';
     $('ttLl').hidden = !list.some(function(j){ return j.assigned_to && llContact(j); });
+    $('ttLl').textContent = '🏠 Tell the landlord too'; $('ttLl').dataset.to = 'landlord';
     var who = contractor || (list[0] && list[0].assigned_to) || '';
     $('ttIntro').textContent = groups.length === 1 ? 'Tell ' + (groups[0].name || 'the tenant') + ' that ' + (who || 'the contractor') + ' will be in touch.' : 'Tell each tenant that ' + (who || 'the contractor') + ' will be in touch.';
     var links = {};
@@ -4002,7 +4012,12 @@
     }
   });
   $('ttDone').addEventListener('click', function(){ $('ttModal').hidden = true; if (openJobId) openJob(openJobId); });
-  $('ttLl').addEventListener('click', function(){ openLandlordNotice(ttJobs); });
+  $('ttLl').addEventListener('click', function(){
+    if ($('ttLl').dataset.to === 'tenant') {
+      var js = ttJobs.filter(function(j){ return j.landlord_handles; });
+      openTenantNotice(js, js[0] && js[0].landlord_handles === 'contractor' ? 'your landlord’s contractor' : 'your landlord');
+    } else openLandlordNotice(ttJobs);
+  });
 
   // ---------- Message tenants: a notice to every tenant at a property, a
   // building, or all properties. Each tenant gets their own copy by email or
@@ -4249,6 +4264,11 @@
         var when = j.completed_at ? new Date(j.completed_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
         var notes = clean(String(j.completion_notes || '').replace(/Their price:[^.]*\.?/gi, ''), 400);
         status = '✅ Completed' + (when ? ' on ' + when : '') + '.' + (notes ? '\nWhat was done: ' + notes : '');
+      } else if (j.landlord_handles) {
+        var tn = [j.tenant_name, j.tenant_phone, j.tenant_email].filter(Boolean).join(', ');
+        status = 'As agreed, you’re arranging this repair' + (j.landlord_handles === 'contractor' ? ' with your own contractor' + (j.landlord_contractor ? ' (' + j.landlord_contractor + ')' : '') : ' yourself') + '.' +
+          (tn ? '\nTenant to contact: ' + tn : '') + (j.access_time ? '\nBest time for access: ' + j.access_time : '') + (j.access_notes ? '\nAccess notes: ' + clean(j.access_notes, 200) : '') +
+          '\nPlease let us know when it’s booked in and once it’s done, so we can keep the tenant updated.';
       } else if (!j.assigned_to) {
         var rep = new Date(j.created_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
         status = 'Reported by the tenant on ' + rep + (j.urgency === 'Emergency' ? ' as an emergency' : j.urgency === 'Urgent' ? ' as urgent' : '') + '. We’re arranging a contractor and will keep you posted.';
@@ -4260,9 +4280,9 @@
         (link ? '\n' + (isDone(j) ? 'See the details: ' : !j.assigned_to ? 'See the report and follow the progress: ' : 'Follow the progress: ') + link : '');
     };
     var body = jobs.length === 1
-      ? (allDone ? 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : !jobs[0].assigned_to ? 'Just to let you know, a repair has been reported at ' + shortAddr(jobs[0].property_address) + '.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
+      ? (allDone ? 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : jobs[0].landlord_handles ? 'Here are the details of the repair at ' + shortAddr(jobs[0].property_address) + ' that you’re arranging.\n\n' : !jobs[0].assigned_to ? 'Just to let you know, a repair has been reported at ' + shortAddr(jobs[0].property_address) + '.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
       : 'Here’s an update on the work at ' + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j, i){ return (i + 1) + '. ' + line(j); }).join('\n\n');
-    return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone ? 'Please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.') + '\n\nKind regards,\nResidential Realtors';
+    return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone || jobs.every(function(j){ return j.landlord_handles || isDone(j); }) ? 'Thank you — please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.') + '\n\nKind regards,\nResidential Realtors';
   }
   function llPhotoIds(g){ return [].concat.apply([], g.jobs.map(function(j){ var lj = jobs.filter(function(x){ return x.id === j.id; })[0] || j; return lj.photo_ids || []; })).slice(0, 30); }
   function openLandlordNotice(list){
@@ -4276,7 +4296,11 @@
     if (!groups.length) { toast('No landlord phone or email for ' + (list.length === 1 ? 'this property' : 'those properties')); return; }
     ttGroups = groups; ttMode = 'landlord'; ttJobs = list;
     $('ttTitle').textContent = 'Let the landlord know';
-    $('ttLl').hidden = true;
+    // For jobs the landlord is doing, the tenant can be told next.
+    var llDoing = list.filter(function(j){ return j.landlord_handles && isOpen(j) && (j.tenant_phone || j.tenant_email); });
+    $('ttLl').hidden = !llDoing.length;
+    $('ttLl').textContent = '💬 Tell the tenant too';
+    $('ttLl').dataset.to = 'tenant';
     var skipped = list.length - groups.reduce(function(n, g){ return n + g.jobs.length; }, 0);
     $('ttIntro').textContent = (groups.length === 1 ? 'Send ' + (groups[0].name || 'the landlord') + ' an update' : 'Send each landlord an update') + ' with ' + (list.every(function(j){ return j.status === 'Completed'; }) ? 'the news that it’s done' : 'the progress link') + ' — check the message, then send.' +
       (skipped ? ' ' + skipped + ' job' + (skipped === 1 ? ' was' : 's were') + ' left out (no landlord phone or email saved).' : '');
@@ -4428,9 +4452,17 @@
             meta.urgencies.map(function(s){ return '<option' + (s === j.urgency ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select></div>' +
           '<div><label class="lbl" for="fDue">Deadline</label><input class="inp" type="datetime-local" id="fDue" value="' + esc(toLocalInput(j.due_at)) + '"></div>' +
         '</div>' +
-        '<div style="margin-top:12px"><label class="lbl" for="fAssigned">Assigned to</label>' +
+        '<div style="margin-top:12px"><label class="lbl">Who’s doing the work</label>' +
+          '<div class="seg" id="fWho" role="radiogroup" aria-label="Who is doing the work">' +
+            [['', 'Our contractor'], ['self', 'Landlord themselves'], ['contractor', 'Landlord’s own contractor']].map(function(o){
+              return '<button type="button" data-who="' + o[0] + '"' + ((j.landlord_handles || '') === o[0] ? ' class="on"' : '') + '>' + o[1] + '</button>';
+            }).join('') + '</div></div>' +
+        '<div style="margin-top:10px" id="fAssignedWrap"' + (j.landlord_handles ? ' hidden' : '') + '><label class="lbl" for="fAssigned">Assigned to</label>' +
           '<input class="inp" id="fAssigned" list="assignees" placeholder="Pick a contractor or type a name" value="' + esc(j.assigned_to || '') + '">' +
           '<div class="assignee-contact" id="assigneeContact"></div></div>' +
+        '<div style="margin-top:10px" id="fLlCtrWrap"' + (j.landlord_handles === 'contractor' ? '' : ' hidden') + '><label class="lbl" for="fLlCtr">Landlord’s contractor (name and phone, if known)</label>' +
+          '<input class="inp" id="fLlCtr" placeholder="e.g. Dan’s Plumbing 07700 900123" value="' + esc(j.landlord_contractor || '') + '"></div>' +
+        (j.landlord_handles ? '<p class="muted-note" style="margin:8px 0 0">The landlord is arranging this repair — it’s left out of contractor payments. Use “Tell landlord” to send them the details and the tenant’s contact.</p>' : '') +
         '<div class="appt-box' + (j.appointment_date ? ' set' : '') + '" style="margin-top:12px">' +
           '<label class="lbl" for="fApptDate">Appointment' + (j.appointment_date ? ' — booked for ' + esc(apptText(j)) : '') + '</label>' +
           '<div class="appt-row">' +
@@ -5081,6 +5113,13 @@
         : ($('fAssigned').value.trim() ? 'Not in your contractor list' : '');
     }
     $('fAssigned').addEventListener('input', showAssigneeContact);
+    $('fWho').addEventListener('click', function(e){
+      var b = e.target.closest('[data-who]'); if (!b) return;
+      $('fWho').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
+      $('fAssignedWrap').hidden = !!b.dataset.who;
+      $('fLlCtrWrap').hidden = b.dataset.who !== 'contractor';
+      if (b.dataset.who === 'contractor') $('fLlCtr').focus();
+    });
     showAssigneeContact();
     // Send this job to a contractor, or group it with nearby open jobs.
     $('cWa').addEventListener('click', function(){ showContractorMessage([j]); });
@@ -5134,7 +5173,15 @@
       if ($('fUrg').value !== j.urgency) body.urgency = $('fUrg').value;
       var dueVal = $('fDue').value;
       if (dueVal !== toLocalInput(j.due_at)) body.due_at = dueVal ? new Date(dueVal).toISOString() : null;
-      if ($('fAssigned').value.trim() !== (j.assigned_to || '')) body.assigned_to = $('fAssigned').value;
+      var who = ($('fWho').querySelector('button.on') || {}).dataset;
+      who = who ? who.who || '' : '';
+      if (who !== (j.landlord_handles || '')) body.landlord_handles = who || null;
+      if (who) {
+        // Landlord's doing it: no contractor of ours on the job.
+        if (j.assigned_to) body.assigned_to = '';
+        if (who === 'contractor' && $('fLlCtr').value.trim() !== (j.landlord_contractor || '')) body.landlord_contractor = $('fLlCtr').value;
+        if (!('status' in body) && j.status === 'New') body.status = 'Assigned';
+      } else if ($('fAssigned').value.trim() !== (j.assigned_to || '')) body.assigned_to = $('fAssigned').value;
       if ($('fNext').value.trim() !== (j.next_steps || '')) body.next_steps = $('fNext').value;
       [['fEst', 'estimated_cost'], ['fAct', 'actual_cost'], ['fCharge', 'landlord_charge']].forEach(function(pair){
         var v = readMoney(pair[0]);
@@ -5151,6 +5198,11 @@
         if (body.assigned_to && body.assigned_to.trim()) noticeTenantAfterAssign(j.id, body.assigned_to.trim());
         openJob(j.id);
         loadJobs();
+        // Handed to the landlord: offer the message to them (with the tenant's contact), then the tenant.
+        if (body.landlord_handles) setTimeout(function(){
+          var nj = Object.assign({}, j, { landlord_handles: body.landlord_handles, landlord_contractor: 'landlord_contractor' in body ? body.landlord_contractor : j.landlord_contractor, assigned_to: '' });
+          if (llContact(nj)) openLandlordNotice([nj]); else openTenantNotice([nj], body.landlord_handles === 'self' ? 'your landlord' : 'your landlord’s contractor');
+        }, 700);
       });
     });
 

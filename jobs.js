@@ -97,6 +97,8 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS direct_contact TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS summary TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS appointment_date TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS appointment_time TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_handles TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_contractor TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_address TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contractor_paid_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_number TEXT;
@@ -473,7 +475,7 @@ const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenan
   (SELECT coalesce(sum(jp.cost), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_cost,
   (SELECT coalesce(sum(jp.charge), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_charge,
   (SELECT count(*)::int FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_count,
-  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total, contractor_paid_at`;
+  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total, contractor_paid_at, landlord_handles, landlord_contractor`;
 
 function str(v, max) {
   if (v === undefined || v === null) return null;
@@ -1126,6 +1128,10 @@ module.exports = function mountJobs(app, opts) {
       label: 'Due', show: function (v) { return v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', dateStyle: 'medium', timeStyle: 'short' }) : 'none'; }
     },
     assigned_to: { clean: function (v) { return str(v, 200); }, label: 'Assigned to' },
+    // The landlord does the work themselves ('self') or with their own contractor ('contractor').
+    landlord_handles: { clean: function (v) { return v === 'self' || v === 'contractor' ? v : (v ? undefined : null); }, label: 'Done by',
+      show: function (v) { return v === 'self' ? 'the landlord' : v === 'contractor' ? 'the landlord’s own contractor' : 'our contractor'; } },
+    landlord_contractor: { clean: function (v) { return str(v, 300); }, label: 'Landlord’s contractor' },
     next_steps: { clean: function (v) { return str(v, 2000); }, label: 'Next steps', quiet: true },
     // Report details, correctable from "Edit details" (mainly for jobs typed in by hand).
     tenant_name: { clean: function (v) { return str(v, 200); }, label: 'Tenant' },
@@ -1771,6 +1777,7 @@ module.exports = function mountJobs(app, opts) {
   function statusNote(j) {
     const appt = j.status !== 'Completed' && j.status !== 'Cancelled' ? apptText(j) : '';
     if (appt) return 'Your repair is booked for ' + appt + '. Please make sure someone can give access, or let us know if this doesn’t suit.';
+    if (j.landlord_handles && j.status !== 'Completed' && j.status !== 'Cancelled') return 'Your landlord is arranging this repair' + (j.landlord_handles === 'contractor' ? ' with their own contractor' : '') + ' and will be in touch with you directly to arrange a time.';
     if (j.status === 'Contractor booked' && j.direct_contact === 'No') return 'A contractor has been arranged. We’ll be in touch to arrange access.';
     return STATUS_TEXT[j.status] || '';
   }
@@ -1916,7 +1923,7 @@ module.exports = function mountJobs(app, opts) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     const token = String(req.params.token || '');
     if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
-    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, appointment_date, appointment_time, assigned_to
+    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, appointment_date, appointment_time, assigned_to, landlord_handles
       FROM jobs WHERE track_token = $1 AND archived_at IS NULL`, [token])).rows[0];
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (!j) return res.status(404).send(trackShell('Repair not found', '<h1>Repair not found</h1><p class="sub">This link is no longer available. <a class="more" href="/track">Look up a repair</a></p>'));
@@ -1956,7 +1963,7 @@ module.exports = function mountJobs(app, opts) {
       seenMsg[key] = 1;
       return '<div class="msg"><div class="d">' + whenUk(x.created_at) + '</div>' + (head ? '<div class="h">' + htmlEsc(head) + '</div>' : '') + (text ? '<div class="b">' + htmlEsc(text) + '</div>' : '') + '</div>';
     }).join('');
-    const st = stageOf(j.status), cancelled = j.status === 'Cancelled', held = j.status === 'On hold';
+    const st = j.landlord_handles && (j.status === 'New' || j.status === 'Assigned') ? 2 : stageOf(j.status), cancelled = j.status === 'Cancelled', held = j.status === 'On hold';
     const appt = !cancelled && j.status !== 'Completed' ? apptText(j) : '';
     const tone = cancelled || held ? 'grey' : st === 3 ? 'ok' : st === 1 ? 'amber' : 'blue';
     const ICONS = {
@@ -1967,10 +1974,10 @@ module.exports = function mountJobs(app, opts) {
       pause: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/></svg>'
     };
     const headline = cancelled ? 'This repair has been closed' : held ? 'On hold for now' : j.status === 'Completed' ? 'Repair completed' + (j.completed_at ? ' on ' + whenUk(j.completed_at) : '')
-      : appt ? 'Booked for ' + appt : st === 2 ? 'Contractor arranged' : st === 1 ? 'Arranging a contractor' : 'Report received';
+      : appt ? 'Booked for ' + appt : j.landlord_handles ? 'Your landlord is arranging this' : st === 2 ? 'Contractor arranged' : st === 1 ? 'Arranging a contractor' : 'Report received';
     const icon = cancelled || held ? ICONS.pause : st === 3 ? ICONS.check : appt || st === 2 ? ICONS.cal : st === 1 ? ICONS.tool : ICONS.inbox;
-    const chipText = cancelled ? 'Closed' : held ? 'On hold' : j.status === 'Completed' ? 'Completed' : appt ? 'Booked' : (PUBLIC_STATUS[j.status] || (st === 1 ? 'In progress' : 'Received'));
-    const stepSub = [whenUk(j.created_at), st >= 1 ? (st === 1 ? 'In progress' : 'Done') : '', appt || (st >= 2 ? (st === 2 ? 'The contractor will be in touch' : 'Done') : ''), j.completed_at && st === 3 ? whenUk(j.completed_at) : ''];
+    const chipText = cancelled ? 'Closed' : held ? 'On hold' : j.status === 'Completed' ? 'Completed' : appt ? 'Booked' : j.landlord_handles ? 'Landlord arranging' : (PUBLIC_STATUS[j.status] || (st === 1 ? 'In progress' : 'Received'));
+    const stepSub = [whenUk(j.created_at), st >= 1 ? (st === 1 ? 'In progress' : 'Done') : '', appt || (st >= 2 ? (st === 2 ? (j.landlord_handles ? 'Your landlord will be in touch' : 'The contractor will be in touch') : 'Done') : ''), j.completed_at && st === 3 ? whenUk(j.completed_at) : ''];
     const steps = STAGES.map(function (x, i) {
       const cls = cancelled ? 'todo' : i < st || st === 3 ? 'done' : i === st ? 'cur' : 'todo';
       return '<li class="' + cls + '"><span class="dot">' + (cls === 'done' ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>' : '') + '</span>' +
