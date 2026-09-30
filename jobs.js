@@ -88,6 +88,9 @@ CREATE TABLE IF NOT EXISTS job_updates (
   body       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS job_updates_job_idx ON job_updates (job_id, created_at);
+-- Notes from contractors: who wrote them, and when staff saw them.
+ALTER TABLE job_updates ADD COLUMN IF NOT EXISTS author TEXT;
+ALTER TABLE job_updates ADD COLUMN IF NOT EXISTS seen_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'Online report';
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_name TEXT;
@@ -478,6 +481,8 @@ const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenan
   estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
   archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved,
   (SELECT array_agg(ph.id ORDER BY ph.id) FROM job_photos ph WHERE ph.job_id = jobs.id) AS photo_ids,
+  (SELECT count(*)::int FROM job_updates u WHERE u.job_id = jobs.id AND u.kind = 'contractor_note' AND u.seen_at IS NULL) AS unread_notes,
+  (SELECT u.body FROM job_updates u WHERE u.job_id = jobs.id AND u.kind = 'contractor_note' AND u.seen_at IS NULL ORDER BY u.id DESC LIMIT 1) AS last_note,
   (SELECT coalesce(sum(jp.cost), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_cost,
   (SELECT coalesce(sum(jp.charge), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_charge,
   (SELECT count(*)::int FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_count,
@@ -625,7 +630,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
       list.innerHTML = '<h2 style="font-size:1.05rem;margin:18px 0 8px">To do (' + open.length + ')</h2>' +
         (open.length ? open.map(card).join('') : '<p class="muted">No jobs waiting — thank you!</p>') +
         (done.length ? '<h2 style="font-size:1.05rem;margin:22px 0 8px">Completed in the last 30 days</h2>' + done.map(function(j){
-          return '<div class="card" style="opacity:.75"><div class="ref">' + esc(j.ref) + ' · ✓ Completed ' + esc(day(j.completed_at)) + '</div><div>' + esc(j.property_address || '') + '</div><div class="muted">' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div></div>';
+          return '<div class="card"><div style="opacity:.75"><div class="ref">' + esc(j.ref) + ' · ✓ Completed ' + esc(day(j.completed_at)) + '</div><div>' + esc(j.property_address || '') + '</div><div class="muted">' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div></div>' + noteBox(j) + '</div>';
         }).join('') : '');
     }).catch(function(){ list.innerHTML = '<p class="muted">Couldn’t load your jobs — please check your connection and refresh.</p>'; });
   }
@@ -658,6 +663,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
           '<input name="note" placeholder="Note (optional), e.g. tenant confirmed">' +
           '<button type="submit">Save booking</button>' +
         '</form></details>' +
+      noteBox(j) +
       '<details class="dt"><summary style="color:#139A4B">✓ Mark completed</summary>' +
         '<form class="stack" style="margin:10px 0 0" data-done="' + j.id + '">' +
           '<textarea name="notes" rows="3" placeholder="What did you do? (optional)" style="padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit"></textarea>' +
@@ -666,6 +672,16 @@ const CONTRACTOR_PAGE_JS = `(function(){
           '<button type="submit" style="background:#139A4B">Mark ' + esc(j.ref) + ' completed</button>' +
         '</form></details>' +
     '</div>';
+  }
+  // Notes and questions for the office, with the ones already sent.
+  function noteBox(j){
+    var sent = (j.notes || []).map(function(n){ return '<div class="desc" style="font-size:.9rem"><span class="muted">' + esc(day(n.at)) + ':</span> ' + esc(n.body) + '</div>'; }).join('');
+    return '<details class="dt"><summary>💬 Send a note to the office' + ((j.notes || []).length ? ' (' + j.notes.length + ' sent)' : '') + '</summary>' +
+      '<form class="stack" style="margin:10px 0 0" data-note="' + j.id + '">' + sent +
+        '<textarea name="note" rows="3" placeholder="e.g. Need a part, back on Friday · Tenant not home · Found another problem" style="padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit"></textarea>' +
+        '<label class="muted" style="display:block">Photos (optional)<input type="file" name="photos" accept="image/*,.heic,.heif" multiple style="display:block;margin-top:6px;padding:10px;background:#fff"></label>' +
+        '<button type="submit">Send note</button>' +
+      '</form></details>';
   }
   // Photos are made smaller on the phone before sending (max 1600px, JPEG).
   function shrink(file){
@@ -688,6 +704,20 @@ const CONTRACTOR_PAGE_JS = `(function(){
     });
   }
   list.addEventListener('submit', function(e){
+    var nf = e.target.closest('[data-note]');
+    if (nf) {
+      e.preventDefault();
+      var nb = nf.querySelector('button[type=submit]'), nfiles = Array.prototype.slice.call(nf.photos.files || [], 0, 10);
+      if (!nf.note.value.trim() && !nfiles.length) { nf.note.focus(); return; }
+      nb.disabled = true; nb.textContent = nfiles.length ? 'Uploading ' + nfiles.length + ' photo' + (nfiles.length === 1 ? '' : 's') + '…' : 'Sending…';
+      Promise.all(nfiles.map(shrink)).then(function(ph){ return fetch('/api/c/' + TOKEN + '/jobs/' + nf.dataset.note + '/note', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: nf.note.value.trim(), photos: ph.filter(Boolean) }) }); })
+        .then(function(r){ return r.json(); }).then(function(d){
+          if (!d.ok) { nb.disabled = false; nb.textContent = 'Couldn’t send — try again'; return; }
+          nb.textContent = '✓ Sent to the office'; setTimeout(load, 900);
+        }).catch(function(){ nb.disabled = false; nb.textContent = 'Couldn’t send — try again'; });
+      return;
+    }
     var bk = e.target.closest('[data-book]');
     if (bk) {
       e.preventDefault();
@@ -1196,7 +1226,7 @@ module.exports = function mountJobs(app, opts) {
     const job = r.rows[0];
     delete job.pdf;
     job.ref = refFor(job.id);
-    const u = await p.query('SELECT id, created_at, kind, body FROM job_updates WHERE job_id = $1 ORDER BY created_at DESC, id DESC', [id]);
+    const u = await p.query('SELECT id, created_at, kind, body, author, seen_at FROM job_updates WHERE job_id = $1 ORDER BY created_at DESC, id DESC', [id]);
     const ph = await p.query('SELECT id, created_at, added_by, name FROM job_photos WHERE job_id = $1 ORDER BY id', [id]);
     const inv = await p.query('SELECT id, created_at, number, total, landlord_name, landlord_email, data, paid_at FROM invoices WHERE job_id = $1 ORDER BY id DESC', [id]);
     const parts = await p.query('SELECT id, created_at, description, supplier, cost, charge, status FROM job_parts WHERE job_id = $1 ORDER BY id', [id]);
@@ -3257,12 +3287,16 @@ module.exports = function mountJobs(app, opts) {
         AND (status NOT IN ('Completed', 'Cancelled') OR (status = 'Completed' AND completed_at > now() - interval '30 days'))
       ORDER BY (status = 'Completed'), created_at DESC LIMIT 200`, [c.name]);
     const me = c.name.trim().toLowerCase();
+    const mineNotes = {};
+    if (r.rows.length) (await p.query(`SELECT job_id, created_at, body FROM job_updates WHERE kind = 'contractor_note' AND job_id = ANY($1::int[])
+        AND lower(trim(author)) = lower(trim($2)) ORDER BY id`, [r.rows.map(function (j) { return j.id; }), c.name])).rows
+      .forEach(function (n) { (mineNotes[n.job_id] = mineNotes[n.job_id] || []).push({ at: n.created_at, body: n.body.replace(/^[^:]*:\s*/, '') }); });
     res.json({ ok: true, name: c.name, jobs: r.rows.map(function (j) {
       // Their part is done while the other contractor's isn't: show it as done for them.
       if (j.status !== 'Completed' && j.part_done_by && j.part_done_by.trim().toLowerCase() === me) { j.status = 'Completed'; j.completed_at = j.part_done_at; }
       // Working alongside another contractor (their name only, never contact details).
       const other = [j.assigned_to, j.assigned_to_2].filter(function (n) { return n && n.trim() && n.trim().toLowerCase() !== me; })[0];
-      const out = { ref: refFor(j.id), with: other ? other.trim() : '' };
+      const out = { ref: refFor(j.id), with: other ? other.trim() : '', notes: (mineNotes[j.id] || []).slice(-5) };
       Object.keys(j).forEach(function (k) { if (['assigned_to', 'assigned_to_2', 'part_done_by', 'part_done_at'].indexOf(k) === -1) out[k] = j[k]; });
       return out;
     }) });
@@ -3304,6 +3338,26 @@ module.exports = function mountJobs(app, opts) {
       'Marked completed by ' + c.name + ' (contractor job link).' + (others.length ? ' Both contractors have now finished.' : '') + (notes ? ' Notes: ' + notes.replace(/[.\s]*$/, '') + '.' : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '') +
       (photos.length ? ' ' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' added.' : '')]);
     ntfy({ title: 'Job completed: ' + ref, message: c.name + ' marked ' + ref + ' completed — ' + (r.rows[0].property_address || '') + '. Open the job in Fixflow to tell the tenant and landlord.', tags: ['white_check_mark'] }).catch(function () {});
+    res.json({ ok: true });
+  }));
+  // A note or question from the contractor for the office (with photos if they
+  // like). Staff see it on the job and get a phone alert.
+  app.post('/api/c/:token/jobs/:id/note', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const c = await portalContractor(p, req.params.token);
+    if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
+    const b = req.body || {}, note = str(b.note, 3000), photos = decodePhotos(b.photos).slice(0, 10);
+    if (!note && !photos.length) return res.status(400).json({ ok: false, error: 'empty' });
+    const j = (await p.query(`SELECT id, property_address FROM jobs WHERE id = $1 AND archived_at IS NULL
+        AND (lower(trim(assigned_to)) = lower(trim($2)) OR lower(trim(assigned_to_2)) = lower(trim($2)))
+        AND (status <> 'Completed' OR completed_at > now() - interval '30 days')`, [jobId(req), c.name])).rows[0];
+    if (!j) return res.status(404).json({ ok: false, error: 'not-found' });
+    if (photos.length) await insertPhotos(p, j.id, photos, 'contractor');
+    const body = c.name + ': ' + (note || '(photos)') + (photos.length ? ' [' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' added]' : '');
+    await p.query("INSERT INTO job_updates (job_id, kind, body, author) VALUES ($1, 'contractor_note', $2, $3)", [j.id, body, c.name]);
+    await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1', [j.id]);
+    const ref = refFor(j.id);
+    ntfy({ title: 'Note from ' + c.name + ': ' + ref, message: (note || photos.length + ' photo(s) added').slice(0, 300) + ' — ' + (j.property_address || ''), tags: ['speech_balloon'] }).catch(function () {});
     res.json({ ok: true });
   }));
   // The contractor says when they've booked the visit.
@@ -3404,6 +3458,10 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true });
   }));
 
+  app.post('/api/admin/jobs/:id/notes-seen', withDb(async function (p, req, res) {
+    const r = await p.query("UPDATE job_updates SET seen_at = now() WHERE job_id = $1 AND kind = 'contractor_note' AND seen_at IS NULL", [jobId(req)]);
+    res.json({ ok: true, seen: r.rowCount });
+  }));
   app.post('/api/admin/jobs/:id/complete', withDb(async function (p, req, res) {
     const id = jobId(req);
     const notes = str((req.body || {}).notes, 5000);

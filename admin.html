@@ -611,6 +611,13 @@
     .ctg-lbl { display: inline; }
   }
   @media (max-width: 480px) { #ctSortTabs button { padding: 6px 7px; } }
+  .note-banner { margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; background: #EEF4FF; border: 1px solid #C9DAFF; }
+  .note-banner strong { display: block; margin-bottom: 6px; }
+  .note-banner button.nb-item { display: block; width: 100%; text-align: left; background: #fff; border: 1px solid #DCE6FB; border-radius: 10px; padding: 8px 10px; margin-top: 6px; font: inherit; font-size: .88rem; cursor: pointer; color: inherit; }
+  .note-chip { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; background: #2563EB; color: #fff; font-size: .72rem; font-weight: 700; }
+  .ctr-notes .cn { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 8px; white-space: pre-wrap; }
+  .ctr-notes .cn.new { border-color: #2563EB; background: #F3F7FF; }
+  .ctr-notes .cn small { display: block; color: var(--ink-faint); margin-bottom: 4px; white-space: normal; }
   .linkish { background: none; border: 0; padding: 6px 0 0; color: var(--blue, #2563EB); font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; }
   .wa-assign { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; font-weight: 500; cursor: pointer; }
   .wa-assign input { width: 16px; height: 16px; accent-color: var(--brick); }
@@ -879,6 +886,7 @@
       </div>
 
       <div id="jobsView">
+      <div class="note-banner" id="noteBanner" hidden></div>
       <div class="addr-warn cert-warn" id="certBanner" hidden style="margin:0 0 12px"><span id="certBannerText"></span> <button type="button" class="btn small" id="certBannerGo">Book now</button></div>
       <div class="tiles">
         <button type="button" class="tile clickable blue" id="tOpenTile" data-assign="" title="Show all open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg></i>Open jobs</div><div class="v" id="tOpen">–</div></button>
@@ -1733,6 +1741,7 @@
       if (view === 'tcy') { if (openTcyId) renderTcyCerts(); else renderTenancies(); }
       if (view === 'ctr') renderContractorPage();
       renderCertAlerts();
+      renderNoteAlerts();
       var owedN = jobs.filter(isOwed).length;
       $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
       return true;
@@ -1775,6 +1784,7 @@
           '<div class="sub">Received ' + esc(fmtShort(j.created_at)) + '</div></div>' +
         '<div class="c-status"><span class="pill status ' + esc(j.status.replace(/\s/g, '')) + '">' + esc(j.status) + '</span>' +
           (j.appointment_date && open ? '<span class="appt-chip">📅 ' + esc(apptShort(j)) + '</span>' : '') +
+          (j.unread_notes ? '<span class="note-chip">💬 New note</span>' : '') +
           '<div class="who-chip">' + (j.landlord_handles ? '<span class="av" style="background:#7C3AED">🏠</span><span class="nm">' + esc(whoDoes(j)) + '</span>' : avatar(j.assigned_to) + '<span class="nm">' + (j.assigned_to ? esc(j.assigned_to) + (j.assigned_to_2 ? ' + ' + esc(j.assigned_to_2) : '') : 'Unassigned') + '</span>') + '</div></div>' +
         '<div class="money ' + (p ? (p.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (p ? gbp(p.value) : '—') +
           '<small>' + (p ? (p.estimated ? 'estimated' : 'profit') : 'no costs') + '</small></div>' +
@@ -3912,6 +3922,12 @@
       d.job.parts_cost = jobParts.reduce(function(s, x){ return s + (num(x.cost) || 0); }, 0);
       d.job.parts_charge = jobParts.reduce(function(s, x){ return s + (num(x.charge) || 0); }, 0);
       renderJob(d.job, d.updates, d.photos || []);
+      if ((d.updates || []).some(function(u){ return u.kind === 'contractor_note' && !u.seen_at; })) {
+        api('POST', '/api/admin/jobs/' + id + '/notes-seen', {}).then(function(){
+          jobs.forEach(function(x){ if (x.id === id) x.unread_notes = 0; });
+          renderNoteAlerts(); render();
+        });
+      }
       $('scrim').hidden = false;
       $('drawer').hidden = false;
       if (tenantNotice && tenantNotice.jobId === id) { var tn = tenantNotice; tenantNotice = null; openTenantNotice([d.job], tn.contractor); }
@@ -4418,6 +4434,16 @@
   $('dTabs').addEventListener('click', function(e){ var b = e.target.closest('button[data-tab]'); if (b) setDrawerTab(b.dataset.tab); });
 
   var jobInvoices = [], trackUrls = {};
+  function ctrNotesCard(j, updates){
+    var notes = (updates || []).filter(function(u){ return u.kind === 'contractor_note'; });
+    if (!notes.length) return '';
+    return '<div class="card ctr-notes" data-pane="overview"><h3>💬 Notes from contractor' + (notes.length === 1 ? '' : 's') + '</h3>' + notes.slice(0, 6).map(function(u){
+      var c = contractorByName(u.author), w = c && waNumber(c.phone);
+      return '<div class="cn' + (u.seen_at ? '' : ' new') + '"><small>' + (u.seen_at ? '' : '<b style="color:#2563EB">New · </b>') + esc(u.author || 'Contractor') + ' · ' + esc(fmtShort(u.created_at)) +
+        (w ? ' · <a href="https://wa.me/' + w + '?text=' + encodeURIComponent('Re ' + j.ref + ' (' + shortAddr(j.property_address || '') + '): ') + '" target="_blank" rel="noopener">Reply on WhatsApp</a>' : c && c.phone ? ' · <a href="tel:' + esc(c.phone.replace(/\s/g, '')) + '">Call</a>' : '') +
+        '</small>' + esc(String(u.body).replace(/^[^:]*:\s*/, '')) + '</div>';
+    }).join('') + (notes.length > 6 ? '<p class="muted-note">Older notes are in History.</p>' : '') + '</div>';
+  }
   function renderJob(j, updates, photos){
     $('dTitle').textContent = j.ref;
     $('dUrg').innerHTML = '<span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span>';
@@ -4494,6 +4520,7 @@
         }).join('') + (photos.length > 5 ? '<button type="button" class="more" data-goto="photos">+' + (photos.length - 5) + '</button>' : '') + '</div>' : '') +
 
       // Manage
+      ctrNotesCard(j, updates) +
       '<div class="card" data-pane="overview"><h3>Manage job</h3>' +
         '<div class="grid3">' +
           '<div><label class="lbl" for="fStatus">Status</label><select class="inp" id="fStatus"' + (completed ? ' disabled' : '') + '>' +
@@ -4735,7 +4762,7 @@
         '<textarea class="inp" id="fNote" placeholder="What’s happened — calls made, quotes received, contractor feedback…"></textarea>' +
         '<div class="row-actions"><button class="btn primary" id="addNote" type="button">Add update</button></div>' +
         '<ul class="timeline">' + updates.map(function(u){
-          var label = { created: 'Job created', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', landlord_message: 'Message to landlord', contractor_message: 'Sent to contractor', email: 'Email', completed: 'Completed' }[u.kind] || 'Update';
+          var label = { created: 'Job created', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', landlord_message: 'Message to landlord', contractor_message: 'Sent to contractor', contractor_note: 'Note from contractor', email: 'Email', completed: 'Completed' }[u.kind] || 'Update';
           return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + '</span>' + esc(u.body) + '</li>';
         }).join('') + '</ul>' +
       '</div>' +
@@ -6263,6 +6290,18 @@
     return Object.keys(map).map(function(k){ return { key: k, address: map[k] }; });
   }
   function needsAction(st){ return (st.k === 'expired' || st.k === 'due') && !st.booked; }
+  // New notes from contractors: a banner above the jobs until each job is opened.
+  function renderNoteAlerts(){
+    var list = jobs.filter(function(j){ return j.unread_notes; }).sort(function(a, b){ return new Date(b.updated_at) - new Date(a.updated_at); });
+    var n = list.reduce(function(t, j){ return t + j.unread_notes; }, 0);
+    $('noteBanner').hidden = !n;
+    if (!n) return;
+    $('noteBanner').innerHTML = '<strong>💬 ' + n + ' new note' + (n === 1 ? '' : 's') + ' from contractors</strong>' + list.slice(0, 5).map(function(j){
+      return '<button type="button" class="nb-item" data-job="' + j.id + '"><b>' + esc(j.ref) + '</b> · ' + esc(shortAddr(j.property_address || '')) + (j.unread_notes > 1 ? ' · ' + j.unread_notes + ' notes' : '') +
+        '<br><span class="muted">' + esc(String(j.last_note || '').slice(0, 140)) + '</span></button>';
+    }).join('') + (list.length > 5 ? '<div class="muted" style="margin-top:6px">…and ' + (list.length - 5) + ' more jobs</div>' : '');
+  }
+  $('noteBanner').addEventListener('click', function(e){ var b = e.target.closest('[data-job]'); if (b) openJob(Number(b.dataset.job)); });
   function renderCertAlerts(){
     var due = certs.filter(function(c){ return needsAction(certState(c)); });
     $('sCerts').hidden = !due.length; $('sCerts').textContent = due.length;
@@ -7886,8 +7925,8 @@
   var FEED_KINDS = [
     ['all', 'All'], ['created', 'New jobs'], ['change', 'Changes'], ['msg', 'Messages'], ['completed', 'Completed'], ['portal', 'Contractor link'], ['note', 'Notes']
   ];
-  var FEED_ICON = { created: '🆕', change: '✏️', note: '📝', tenant_message: '💬', landlord_message: '🏠', contractor_message: '🔧', email: '✉️', completed: '✅' };
-  var FEED_LABEL = { created: 'New job', change: 'Change', note: 'Note', tenant_message: 'Message to tenant', landlord_message: 'Message to landlord', contractor_message: 'Sent to contractor', email: 'Email', completed: 'Completed' };
+  var FEED_ICON = { created: '🆕', change: '✏️', note: '📝', tenant_message: '💬', landlord_message: '🏠', contractor_message: '🔧', contractor_note: '👷', email: '✉️', completed: '✅' };
+  var FEED_LABEL = { created: 'New job', change: 'Change', note: 'Note', tenant_message: 'Message to tenant', landlord_message: 'Message to landlord', contractor_message: 'Sent to contractor', contractor_note: 'Note from contractor', email: 'Email', completed: 'Completed' };
   function feedKind(u){ return /\(contractor job link\)/.test(u.body) ? 'portal' : /_message$|^email$/.test(u.kind) ? 'msg' : u.kind; }
   function hrsText(h){ if (h == null) return '—'; return h < 48 ? h + ' hr' + (h === 1 ? '' : 's') : (Math.round(h / 24 * 10) / 10) + ' days'; }
   function loadWork(){
