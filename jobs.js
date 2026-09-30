@@ -276,6 +276,19 @@ CREATE TABLE IF NOT EXISTS site_sessions (
   events        INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS site_sessions_started_idx ON site_sessions (started_at);
+-- Who a visit was, once known: from a report they sent, or a link we sent them.
+ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS vid TEXT;
+ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS who TEXT;
+ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS who_kind TEXT;
+CREATE TABLE IF NOT EXISTS known_visitors (
+  vid        TEXT PRIMARY KEY,
+  kind       TEXT NOT NULL,
+  name       TEXT,
+  detail     TEXT,
+  job_id     INTEGER,
+  first_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS tenant_notices (
   id            SERIAL PRIMARY KEY,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -344,6 +357,11 @@ function addressProblem(a) {
   if (!POSTCODE_RE.test(a)) return 'postcode';
   if (!/\d/.test(a.replace(POSTCODE_RE, ' '))) return 'door';
   return null;
+}
+// A short form of an address for labels: "Flat 3 Chilham House" from the full one.
+function shortAddrText(addr) {
+  const a = String(addr || '').replace(POSTCODE_RE, ' ').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+  return a.length ? (a[0].length < 8 && a[1] ? a[0] + ' ' + a[1] : a[0]) : '';
 }
 function propKey(addr) {
   return String(addr || '').replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean)
@@ -1077,18 +1095,42 @@ module.exports = function mountJobs(app, opts) {
       else if (++e.n > 400) return;
       if (visitEvents.size > 20000) visitEvents.clear();
       let b; try { b = JSON.parse(typeof req.body === 'string' ? req.body : '{}'); } catch (err) { return; }
-      const sid = String(b.sid || ''), ev = String(b.ev || ''), page = ['report', 'track', 'portal'].indexOf(b.page) !== -1 ? b.page : null;
+      const sid = String(b.sid || ''), ev = String(b.ev || ''), page = ['report', 'track', 'portal', 'landlord'].indexOf(b.page) !== -1 ? b.page : null;
+      const vid = /^[a-z0-9]{8,40}$/i.test(String(b.vid || '')) ? String(b.vid) : null;
       if (!/^[a-z0-9]{8,40}$/i.test(sid) || VISIT_EVENTS.indexOf(ev) === -1 || !page) return;
       const v = b.v == null ? null : String(b.v).slice(0, 120);
       const p = await db(); if (!p) return;
-      await p.query('INSERT INTO site_sessions (sid, landing) VALUES ($1, $2) ON CONFLICT (sid) DO NOTHING', [sid, page]);
+      await p.query('INSERT INTO site_sessions (sid, landing, vid) VALUES ($1, $2, $3) ON CONFLICT (sid) DO NOTHING', [sid, page, vid]);
+      // Remember who this browser is (the latest thing we learnt), and label the visit.
+      const recognise = async function (who) {
+        if (vid && who) await p.query(`INSERT INTO known_visitors (vid, kind, name, detail, job_id) VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (vid) DO UPDATE SET kind = excluded.kind, name = excluded.name, detail = excluded.detail, job_id = coalesce(excluded.job_id, known_visitors.job_id), updated_at = now()`,
+          [vid, who.kind, who.name, who.detail || null, who.job_id || null]);
+        const known = who || (vid ? (await p.query('SELECT kind, name, detail FROM known_visitors WHERE vid = $1', [vid])).rows[0] : null);
+        if (known) await p.query('UPDATE site_sessions SET who = $2, who_kind = $3, vid = coalesce(vid, $4) WHERE sid = $1',
+          [sid, (known.name || '') + (known.detail ? ' (' + known.detail + ')' : ''), known.kind, vid]);
+      };
       if (ev === 'view') {
         const u = uaInfo(ua), src = visitSource(b.ref, b.utm, String(req.get('host') || '').replace(/^www\./, '').split(':')[0]);
         let subject = null, jobIdV = null;
         const path = String(b.path || '');
         const tm = /^\/t\/([A-Za-z0-9_-]{10,})/.exec(path), cm = /^\/c\/([A-Za-z0-9_-]{20,})/.exec(path);
-        if (tm) { const j = (await p.query('SELECT id FROM jobs WHERE track_token = $1', [tm[1]])).rows[0]; if (j) { jobIdV = j.id; subject = 'Tracker for ' + refFor(j.id); } }
-        else if (cm) { const c = (await p.query('SELECT name FROM contractors WHERE portal_token = $1', [cm[1]])).rows[0]; if (c) subject = c.name + '’s job link'; }
+        const lm = /^\/l\/([A-Za-z0-9_-]{20,})/.exec(path), w = String(b.to || '');
+        let who = null;
+        if (tm) {
+          const j = (await p.query('SELECT id, tenant_name, landlord_name, property_address FROM jobs WHERE track_token = $1', [tm[1]])).rows[0];
+          if (j) {
+            jobIdV = j.id; subject = 'Tracker for ' + refFor(j.id);
+            // The link says who it was sent to: ?w=t (tenant) or ?w=l (landlord).
+            if (w === 't' && j.tenant_name) who = { kind: 'tenant', name: j.tenant_name, detail: shortAddrText(j.property_address), job_id: j.id };
+            if (w === 'l') {
+              const ll = j.landlord_name || ((await p.query('SELECT l.name FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1 LIMIT 1', [propKey(j.property_address)])).rows[0] || {}).name;
+              if (ll) who = { kind: 'landlord', name: ll, detail: shortAddrText(j.property_address), job_id: j.id };
+            }
+          }
+        }
+        else if (cm) { const c = (await p.query('SELECT name FROM contractors WHERE portal_token = $1', [cm[1]])).rows[0]; if (c) { subject = c.name + '’s job link'; who = { kind: 'contractor', name: c.name }; } }
+        else if (lm) { const l = (await p.query('SELECT name FROM landlords WHERE portal_token = $1', [lm[1]])).rows[0]; if (l) { subject = l.name + '’s landlord page'; who = { kind: 'landlord', name: l.name }; } }
         else if (page === 'track') subject = 'Repair look-up page';
         // The first view sets where they came from; later pages add to the list.
         await p.query(`UPDATE site_sessions SET last_at = now(), views = views + 1, events = events + 1,
@@ -1099,6 +1141,7 @@ module.exports = function mountJobs(app, opts) {
             subject = coalesce($11, subject), job_id = coalesce(job_id, $12)
           WHERE sid = $1`, [sid, page, u.device, u.browser, u.os, src.source, src.host, (parseInt(b.w, 10) || 0) + '×' + (parseInt(b.h, 10) || 0),
           String(b.lang || '').slice(0, 20), String(b.tz || '').slice(0, 60), subject, jobIdV]);
+        await recognise(who);
         if (page === 'report') countVisit(req, 'report').catch(function () {});
         return;
       }
@@ -1112,6 +1155,11 @@ module.exports = function mountJobs(app, opts) {
         if (m) { args.push(Number(m[1])); sets.push('job_id = $3'); }
       }
       await p.query('UPDATE site_sessions SET ' + sets.join(', ') + ' WHERE sid = $1', args);
+      // A report sent from this browser: it's that tenant.
+      if (ev === 'submit' && v && /^RR-0*(\d+)$/.test(v)) {
+        const j = (await p.query('SELECT id, tenant_name, property_address FROM jobs WHERE id = $1', [Number(/^RR-0*(\d+)$/.exec(v)[1])])).rows[0];
+        if (j && j.tenant_name) await recognise({ kind: 'tenant', name: j.tenant_name, detail: shortAddrText(j.property_address), job_id: j.id });
+      }
     })().catch(function () {});
   });
   // ---------- Notices to tenants (a property, a building, or everyone) ----------
@@ -1167,6 +1215,8 @@ module.exports = function mountJobs(app, opts) {
     const days = String(Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30)));
     const rows = (await p.query(`SELECT sid, started_at, last_at, landing, pages, device, browser, os, source, ref_host, screen, lang, tz, chosen_lang, steps, categories,
         subject, job_id, submitted_ref, views, events, extract(epoch FROM last_at - started_at)::int AS secs,
+        coalesce(who, (SELECT j.tenant_name || ' (' || split_part(coalesce(j.property_address, ''), ',', 1) || ')' FROM jobs j WHERE j.id = site_sessions.job_id AND site_sessions.submitted_ref IS NOT NULL)) AS who,
+        coalesce(who_kind, CASE WHEN submitted_ref IS NOT NULL THEN 'tenant' END) AS who_kind,
         extract(hour FROM started_at AT TIME ZONE 'Europe/London')::int AS hour, extract(isodow FROM started_at AT TIME ZONE 'Europe/London')::int AS dow
       FROM site_sessions WHERE started_at > now() - ($1 || ' days')::interval ORDER BY started_at DESC LIMIT 20000`, [days])).rows;
     const live = (await p.query("SELECT count(*)::int AS n FROM site_sessions WHERE last_at > now() - interval '5 minutes'")).rows[0].n;
