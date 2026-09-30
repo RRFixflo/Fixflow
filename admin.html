@@ -670,6 +670,8 @@
   .te-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
   .te-st { display: inline-block; margin-top: 4px; font-size: .75rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
   .te-st.todo { background: #FDECEC; color: #C0262D; } .te-st.wait { background: #EEF2FE; color: #2F5BEA; } .te-st.ok { background: #DDF3E6; color: #0F7A3B; } .te-st.bad { background: #FFF1DB; color: #A15C00; }
+  .te-late { color: #C0262D; font-weight: 700; } .te-soon { color: #A15C00; font-weight: 700; }
+  #tiNotice[hidden] { display: none; }
   .ti-box { background: var(--panel-2, #F7F8FA); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
   .ti-person { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .linkish { background: none; border: 0; padding: 6px 0 0; color: var(--blue, #2563EB); font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; }
@@ -1438,6 +1440,12 @@
       <label class="wa-assign" style="margin-top:6px"><input type="checkbox" id="tiNoInc"> No increase this year</label>
       <div id="tiLl" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"></div>
       <div class="row-actions" style="margin-top:8px"><button class="btn small primary" type="button" id="tiSaveRent">Save the rent review</button></div></div>
+    <div class="ti-box" id="tiNotice" style="margin-top:10px"><div class="lbl">Rent increase notice (Form 4A)</div>
+      <p class="muted-note" id="tiNoticeText" style="margin:0 0 8px"></p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn small" id="tiFormLink" target="_blank" rel="noopener">📄 Get Form 4A on GOV.UK</a><button class="btn small" type="button" id="tiFormCopy">Copy the details for the form</button></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"><span>Served on</span><input class="inp" type="date" id="tiServedOn" style="width:160px">
+        <select class="inp" id="tiServedHow" style="width:auto"><option>email</option><option>post</option><option>by hand</option></select>
+        <button class="btn small primary" type="button" id="tiServed">Mark notice served</button></div></div>
     <div class="lbl" style="margin-top:12px">Message to the tenants</div>
     <div class="seg" id="tiTpl" style="margin-bottom:8px"><button type="button" data-tpl="plans">Ask their plans</button><button type="button" data-tpl="rent">The new rent</button></div>
     <input class="inp" id="tiSubj" aria-label="Subject">
@@ -2935,12 +2943,22 @@
     }
     return null;
   }
-  // Anniversaries within 2 months, with where the rent review is up to.
+  // A rent increase needs the government notice form (Form 4A) served at least
+  // 2 months before it starts: the serve-by date for an anniversary, and — if
+  // that's passed — the earliest date a new rent could start if served today.
+  var FORM_4A_URL = 'https://www.gov.uk/government/collections/assured-tenancy-forms';
+  function tcyNoticeBy(anniv){ return addMonthsIso(anniv, -2); }
+  function tcyEarliestIfToday(anniv){
+    var min = addMonthsIso(isoDay(new Date()), 2), d = anniv;
+    for (var k = 0; k < 24 && d < min; k++) d = addMonthsIso(anniv, k + 1);   // next rent day (same day of the month)
+    return d;
+  }
+  // Anniversaries within 3 months, with where the rent review is up to.
   function tcyEndingSoon(){
     var today = isoDay(new Date());
     return tenancies.map(function(t){
       var d = t.data || {}; if (!d.start_date || d.start_date > today) return null;
-      var n = tcyNextEnd(d); if (!n || n.days > 61) return null;
+      var n = tcyNextEnd(d); if (!n || n.days > 92) return null;
       return { t: t, d: d, n: n, it: (t.intention || {})[n.end] || {} };
     }).filter(Boolean).sort(function(a, b){ return a.n.days - b.n.days; });
   }
@@ -2950,6 +2968,7 @@
     var parts = [];
     if (it.no_increase) parts.push('No rent increase this year');
     else if (num(it.new_rent)) parts.push('Rent to ' + gbp(it.new_rent) + (it.rent_from ? ' from ' + longDay(it.rent_from) : ''));
+    if (it.notice_served) parts.push('notice served ' + longDay(it.notice_served) + (it.notice_how ? ' by ' + it.notice_how : ''));
     if (it.answer) parts.push({ staying: 'tenants staying on', leaving: 'tenants moving out', undecided: 'tenants not decided' }[it.answer]);
     else if (it.asked_at) parts.push('asked ' + fmtShort(it.asked_at) + (it.how ? ' by ' + it.how : ''));
     if (it.ll_asked_at && !num(it.new_rent) && !it.no_increase) parts.push('landlord asked ' + fmtShort(it.ll_asked_at));
@@ -2957,15 +2976,23 @@
     return t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Rent review to do';
   }
   function renderTcyEndAlerts(){
-    var list = tcyEndingSoon(), todo = list.filter(function(x){ return !num(x.it.new_rent) && !x.it.no_increase; }).length;
+    var list = tcyEndingSoon(), todoL = list.filter(function(x){ return !x.it.no_increase && !x.it.notice_served; }), todo = todoL.length;
     $('tcyEndBanner').hidden = !list.length;
-    if (list.length) $('tcyEndBannerText').textContent = '📅 ' + list.length + ' tenancy anniversar' + (list.length === 1 ? 'y' : 'ies') + ' in the next 2 months' + (todo ? ' — ' + todo + ' rent review' + (todo === 1 ? '' : 's') + ' to do' : ' — reviews done');
+    if (list.length) $('tcyEndBannerText').textContent = '📅 ' + list.length + ' tenancy anniversar' + (list.length === 1 ? 'y' : 'ies') + ' in the next 3 months' +
+      (function(){
+        if (!todo) return ' — reviews done';
+        var today = isoDay(new Date()), late = todoL.filter(function(x){ return tcyNoticeBy(x.n.end) < today; }).length, next = todoL.filter(function(x){ return tcyNoticeBy(x.n.end) >= today; })[0];
+        return ' — ' + todo + ' rent review' + (todo === 1 ? '' : 's') + ' to do' + (next ? '; next notice due by ' + longDay(tcyNoticeBy(next.n.end)) : '') + (late ? ' (' + late + ' past the 2-month notice date)' : '');
+      })();
     $('tcyEndBannerGo').textContent = 'Review rents';
     if (!$('tcyEnding')) return;
-    $('tcyEnding').innerHTML = list.length ? '<div class="card tcy-end"><h3>📅 Anniversaries in the next 2 months — rent review <span class="count-chip">' + list.length + '</span></h3>' + list.map(function(x){
-      var done = num(x.it.new_rent) || x.it.no_increase, cls = x.it.answer === 'leaving' ? 'bad' : done ? 'ok' : x.it.asked_at || x.it.ll_asked_at ? 'wait' : 'todo';
+    $('tcyEnding').innerHTML = list.length ? '<div class="card tcy-end"><h3>📅 Anniversaries in the next 3 months — rent review <span class="count-chip">' + list.length + '</span></h3>' +
+      '<p class="muted-note" style="margin:0 0 4px">A rent increase needs the government notice form (Form 4A), served at least 2 months before the new rent starts. <a href="' + FORM_4A_URL + '" target="_blank" rel="noopener">Get the form on GOV.UK</a></p>' + list.map(function(x){
+      var done = x.it.notice_served || x.it.no_increase, cls = x.it.answer === 'leaving' ? 'bad' : done ? 'ok' : x.it.asked_at || x.it.ll_asked_at || num(x.it.new_rent) ? 'wait' : 'todo';
+      var by = tcyNoticeBy(x.n.end), left = Math.round((parseDay(by) - parseDay(isoDay(new Date()))) / 86400000);
+      var dl = done ? '' : ' · <span class="' + (left < 0 ? 'te-late' : left <= 14 ? 'te-soon' : '') + '">' + (left < 0 ? 'too late to serve notice for the anniversary — served today, the earliest new rent date is ' + esc(longDay(tcyEarliestIfToday(x.n.end))) : 'serve notice by <b>' + esc(longDay(by)) + '</b> (' + (left === 0 ? 'today' : left + ' days') + ')') + '</span>';
       return '<div class="te-row"><div><div style="font-weight:600">' + esc(x.d.address || x.t.address || '') + '</div><div class="prop-sub" style="margin:2px 0 0">' + esc(joinAnd(tcyNames(x.d.tenants)) || 'No tenants') +
-        ' · ' + ordinal(x.n.years) + ' anniversary <b>' + esc(longDay(x.n.end)) + '</b> (' + (x.n.days <= 0 ? 'today' : 'in ' + x.n.days + ' days') + ') · rent ' + esc(gbp(num(x.d.rent_pcm) || 0)) + '</div>' +
+        ' · ' + ordinal(x.n.years) + ' anniversary <b>' + esc(longDay(x.n.end)) + '</b> (' + (x.n.days <= 0 ? 'today' : 'in ' + x.n.days + ' days') + ') · rent ' + esc(gbp(num(x.d.rent_pcm) || 0)) + dl + '</div>' +
         '<span class="te-st ' + cls + '">' + esc(tcyItText(x.it)) + '</span></div>' +
         '<button type="button" class="btn small' + (cls === 'todo' ? ' primary' : '') + '" data-ask-tcy="' + x.t.id + '">' + (cls === 'todo' ? 'Rent review →' : 'Open') + '</button></div>';
     }).join('') + '</div>' : '';
@@ -2979,7 +3006,7 @@
       body: dear + 'We hope you’re well. ' + when + ' marks the anniversary of your tenancy at ' + addr + '.\n\nAs part of our annual review, could you please let us know' + by + ' whether you’re planning to stay on at the property over the coming year?\n\nKind regards,\nResidential Realtors' };
     return { subject: 'Your rent at ' + shortAddr(addr) + ' from ' + when,
       body: dear + 'As ' + when + ' marks the anniversary of your tenancy at ' + addr + ', we have carried out our annual rent review.\n\n' +
-        (nw > old ? 'From ' + when + ' the rent will be ' + gbp(nw) + ' per month (currently ' + gbp(old) + '). Please update your standing order to the new amount from that date.' : 'We’re pleased to let you know the rent will stay at ' + gbp(old) + ' per month.') +
+        (nw > old ? 'From ' + when + ' the rent will be ' + gbp(nw) + ' per month (currently ' + gbp(old) + '). The formal notice of the new rent (Form 4A) is attached / enclosed. Please update your standing order to the new amount from that date.' : 'We’re pleased to let you know the rent will stay at ' + gbp(old) + ' per month.') +
         '\n\nIf you have any questions, please get in touch.\n\nKind regards,\nResidential Realtors' };
   }
   function tiFill(){ var t = tiText(tiTpl); $('tiSubj').value = t.subject; $('tiMsg').value = t.body; $('tiTpl').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.dataset.tpl === tiTpl); }); }
@@ -2991,6 +3018,13 @@
     $('tiTitle').textContent = ordinal(n.years) + ' anniversary — rent review';
     $('tiSub').textContent = (d.address || t.address) + ' — anniversary on ' + longDay(n.end) + (n.days > 0 ? ' (in ' + n.days + ' days)' : '') + '. Rent now ' + gbp(num(d.rent_pcm) || 0) + ' a month. ' + tcyItText(tiCur.it) + '.';
     $('tiNewRent').value = num(tiCur.it.new_rent) || num(d.rent_pcm) || '';
+    var by = tcyNoticeBy(n.end), late = by < isoDay(new Date());
+    $('tiFormLink').href = FORM_4A_URL;
+    $('tiNoticeText').innerHTML = tiCur.it.notice_served ? '✓ Notice served on <b>' + esc(longDay(tiCur.it.notice_served)) + '</b>' + (tiCur.it.notice_how ? ' by ' + esc(tiCur.it.notice_how) : '') + '.'
+      : late ? '⚠ It’s now less than 2 months to the anniversary, so a notice served today can’t start the new rent on ' + esc(longDay(n.end)) + '. The earliest would be <b>' + esc(longDay(tcyEarliestIfToday(n.end))) + '</b>.'
+      : 'To start the new rent on <b>' + esc(longDay(n.end)) + '</b>, serve the notice by <b>' + esc(longDay(by)) + '</b> — earlier if posting, to allow for delivery. Fill in the form from GOV.UK, send it to the tenants, then mark it served here.';
+    $('tiServedOn').value = tiCur.it.notice_served || isoDay(new Date()); $('tiServedHow').value = tiCur.it.notice_how || 'email';
+    $('tiNotice').hidden = !!tiCur.it.no_increase;
     $('tiNoInc').checked = !!tiCur.it.no_increase;
     var l = d.landlord || {};
     $('tiLl').innerHTML = l.name ? 'Landlord: <b>' + esc(l.name) + '</b> ' + (waNumber(l.phone) ? '<button type="button" class="btn small wa" data-ti-ll="wa">WhatsApp landlord</button>' : '') + (l.email ? '<button type="button" class="btn small" data-ti-ll="email">Email landlord</button>' : '') : '<span class="muted-note" style="margin:0">No landlord on this tenancy.</span>';
@@ -3020,6 +3054,24 @@
       (nw > old ? '\n\nWe’d suggest increasing it to ' + gbp(nw) + ' per month from ' + longDay(tiCur.n.end) + '. Are you happy for us to go ahead?' : '\n\nWould you like us to increase the rent from that date? If so, let us know the new amount.') +
       '\n\nKind regards,\nResidential Realtors';
   }
+  // The details the government form asks for, to copy across.
+  $('tiFormCopy').addEventListener('click', function(){
+    var d = tiCur.d, l = d.landlord || {}, old = num(d.rent_pcm) || 0, nw = num($('tiNewRent').value.replace(/[£,\s]/g, '')) || old;
+    var lAddr = [l.line1, l.line2, l.postcode, l.country].filter(Boolean).join(', ');
+    var start = tcyNoticeBy(tiCur.n.end) < isoDay(new Date()) ? tcyEarliestIfToday(tiCur.n.end) : tiCur.n.end;
+    var txt = ['Property: ' + (d.address || tiCur.t.address), 'Tenant(s): ' + (joinAnd(tcyNames(d.tenants)) || ''), 'Landlord: ' + (l.name || '') + (lAddr ? ', ' + lAddr : ''),
+      'Agent: Residential Realtors', 'Current rent: ' + gbp(old) + ' per month', 'Proposed new rent: ' + gbp(nw) + ' per month', 'New rent to start on: ' + longDay(start),
+      'Tenancy started: ' + longDay(d.start_date), 'Date of notice: ' + longDay($('tiServedOn').value || isoDay(new Date()))].join('\n');
+    copyText(txt).then(function(){ toast('Copied — paste into the form or your notes'); })['catch'](function(){ toast('Couldn’t copy'); });
+  });
+  $('tiServed').addEventListener('click', function(){
+    var on = $('tiServedOn').value; if (!on) { toast('When was it served?'); return; }
+    var need = tcyNoticeBy(tiCur.n.end);
+    tiSave({ notice_served: on, notice_how: $('tiServedHow').value }).then(function(){
+      toast(on > need ? 'Saved — note: served less than 2 months before ' + longDay(tiCur.n.end) : 'Notice marked as served on ' + longDay(on));
+      openTenancyIntention(tiCur.t.id);
+    });
+  });
   $('tiTpl').addEventListener('click', function(e){ var b = e.target.closest('[data-tpl]'); if (!b) return; tiTpl = b.dataset.tpl; tiFill(); });
   $('tiNewRent').addEventListener('input', function(){ if (tiTpl === 'rent') tiFill(); });
   $('tiSaveRent').addEventListener('click', function(){
@@ -3076,7 +3128,7 @@
       else if (s > today) st = { k: 'upcoming', text: 'Tenancy starts ' + longDay(d.start_date), sort: 2 };
       else {
         var nx = tcyNextEnd(d);
-        st = nx && nx.days <= 61 ? { k: 'ending', text: 'Anniversary ' + longDay(nx.end) + ' — rent review', sort: 1 }
+        st = nx && nx.days <= 92 ? { k: 'ending', text: 'Anniversary ' + longDay(nx.end) + ' — rent review', sort: 1 }
           : { k: 'active', text: 'Tenancy since ' + longDay(d.start_date) + (nx ? ' · anniversary ' + longDay(nx.end) : ''), sort: 0 };
       }
       st.id = t.id; st.tenants = tcyNames(d.tenants);
@@ -3136,7 +3188,7 @@
     var raw = $('propSearch').value.trim().toLowerCase(), q = propKey(raw);
     var base = allPropsForList(), tcyOf = {};
     base.forEach(function(p){ tcyOf[p.key] = propTenancy(p.key); });
-    var TF = [['all', 'All'], ['with', 'With a tenancy'], ['none', 'No tenancy'], ['ending', 'Anniversary within 2 months']];
+    var TF = [['all', 'All'], ['with', 'With a tenancy'], ['none', 'No tenancy'], ['ending', 'Anniversary within 3 months']];
     var tfCount = function(f){ return base.filter(function(p){ return tcyMatch(tcyOf[p.key], f); }).length; };
     $('propTcyTabs').innerHTML = TF.map(function(f){ var n = tfCount(f[0]); return (f[0] === 'all' || n || f[0] === propTcyF) ? '<button type="button" data-ptf="' + f[0] + '"' + (propTcyF === f[0] ? ' class="on"' : '') + '>' + f[1] + ' <span class="n">' + n + '</span></button>' : ''; }).join('');
     var props = base.filter(function(p){

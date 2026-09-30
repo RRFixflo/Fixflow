@@ -3186,6 +3186,10 @@ module.exports = function mountJobs(app, opts) {
     }
     if (b.no_increase) { it.no_increase = true; it.new_rent = null; notes.push('Rent review for ' + end + ': no increase'); }
     if (b.asked_landlord) { it.ll_asked_at = new Date().toISOString(); it.ll_how = str(b.asked_landlord, 40); notes.push('Asked the landlord about a rent increase (' + it.ll_how + ')'); }
+    if (b.notice_served !== undefined) {
+      const on = String(b.notice_served || '');
+      if (/^\d{4}-\d{2}-\d{2}$/.test(on)) { it.notice_served = on; it.notice_how = str(b.notice_how, 40); notes.push('Rent increase notice (Form 4A) served on ' + on + (it.notice_how ? ' by ' + it.notice_how : '')); }
+    }
     if (b.told) { it.told_at = new Date().toISOString(); it.told_how = str(b.told, 40); notes.push('Told the tenants the rent from ' + end + ' (' + it.told_how + ')'); }
     await p.query(`UPDATE tenancies SET intention = intention || jsonb_build_object($2::text, $3::jsonb), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
       [jobId(req), end, JSON.stringify(it), JSON.stringify(notes.map(function (t) { return { at: new Date().toISOString(), text: t }; }))]);
@@ -3790,8 +3794,9 @@ module.exports = function mountJobs(app, opts) {
   }, 30 * 1000);
   setTimeout(function () { raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); }); }, 60 * 1000);
   // A tenancy carries on; every 12 months from the start is its anniversary,
-  // when the rent can be reviewed. Two months before each one, a phone alert
-  // (once per anniversary) unless the review is already under way.
+  // when the rent can be reviewed. A rent increase needs the government notice
+  // (Form 4A) served at least 2 months before, so about 3 months before each
+  // anniversary: a phone alert (once) unless the review is already under way.
   function nextTermEnd(start, months, today) {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(start || '')); if (!m) return null;
     months = parseInt(months, 10) || 12;
@@ -3805,14 +3810,15 @@ module.exports = function mountJobs(app, opts) {
   }
   async function tenancyEndAlerts() {
     const p = await db(); if (!p) return;
-    const today = new Date().toISOString().slice(0, 10), soon = new Date(Date.now() + 61 * 86400000).toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10), soon = new Date(Date.now() + 92 * 86400000).toISOString().slice(0, 10);
     for (const t of (await p.query('SELECT id, address, data, intention FROM tenancies WHERE start_date IS NOT NULL')).rows) {
       const d = t.data || {}; if (!d.start_date || d.start_date > today) continue;
       const end = nextTermEnd(d.start_date, 12, today); if (!end || end > soon) continue;
       const it = (t.intention || {})[end] || {};
-      if (it.alerted_at || it.asked_at || it.answer || it.new_rent || it.no_increase || it.ll_asked_at) continue;
+      if (it.alerted_at || it.asked_at || it.answer || it.new_rent || it.no_increase || it.ll_asked_at || it.notice_served) continue;
+      const by = new Date(Date.UTC(+end.slice(0, 4), +end.slice(5, 7) - 3, +end.slice(8, 10))).toISOString().slice(0, 10);   // 2 months before
       const names = (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean).join(' & ');
-      const sent = await ntfy({ title: 'Tenancy anniversary: ' + shortAddrText(t.address), message: (names ? names + ' — ' : '') + t.address + '. Anniversary on ' + apptDay(end) + ' — time for the rent review. Open Tenancies in Fixflow.', tags: ['house'] }).catch(function () { return false; });
+      const sent = await ntfy({ title: 'Tenancy anniversary: ' + shortAddrText(t.address), message: (names ? names + ' — ' : '') + t.address + '. Anniversary on ' + apptDay(end) + ' — for a rent increase, serve the Form 4A notice by ' + apptDay(by) + '. Open Tenancies in Fixflow.', tags: ['house'] }).catch(function () { return false; });
       await p.query(`UPDATE tenancies SET intention = intention || jsonb_build_object($2::text, coalesce(intention->$2, '{}'::jsonb) || jsonb_build_object('alerted_at', $3::text)) WHERE id = $1`, [t.id, end, new Date().toISOString()]);
       if (sent) console.log('Tenancy anniversary alert: ' + t.address + ' (' + end + ')');
     }
