@@ -105,6 +105,8 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_contractor TEXT;
 -- A second contractor on the job, and which of the two has finished their part
 -- first (the job completes when both have).
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS assigned_to_2 TEXT;
+-- What the second contractor is doing (a different task on the same issue).
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS task_2 TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS part_done_by TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS part_done_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS part_price NUMERIC(10,2);
@@ -487,7 +489,7 @@ const SOURCES = ['Online report', 'Phone call', 'Email', 'Text / WhatsApp', 'In 
 // contractor together straight from the list.
 const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenant_name, tenant_email,
   tenant_phone, property_address, category, affected, symptom, location, description, access_days,
-  access_time, access_notes, key_permission, key_instructions, direct_contact, summary, appointment_date, appointment_time, assigned_to, assigned_to_2, part_done_by, next_steps,
+  access_time, access_notes, key_permission, key_instructions, direct_contact, summary, appointment_date, appointment_time, assigned_to, assigned_to_2, task_2, part_done_by, next_steps,
   estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
   archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved,
   (SELECT array_agg(ph.id ORDER BY ph.id) FROM job_photos ph WHERE ph.job_id = jobs.id) AS photo_ids,
@@ -652,8 +654,9 @@ const CONTRACTOR_PAGE_JS = `(function(){
       '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><div class="ref">' + esc(j.ref) + '</div>' +
         (urgent ? '<span style="color:#D9262E;font-weight:700;font-size:.85rem">' + esc(j.urgency) + '</span>' : '<span class="muted">' + esc(j.status) + '</span>') + '</div>' +
       '<div style="font-weight:600;margin:4px 0">' + esc(j.property_address || '') + '</div>' +
-      '<div>' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div>' +
-      (j.with ? '<div class="muted" style="margin-top:4px">👷 Working alongside ' + esc(j.with) + ' — mark it completed when your part is done</div>' : '') +
+      (j.my_task ? '<div style="font-weight:700">Your task: ' + esc(j.my_task) + '</div><div class="muted">Related to: ' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div>'
+        : '<div>' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div>') +
+      (j.with ? '<div class="muted" style="margin-top:4px">👷 ' + (j.other_task ? esc(j.with) + ' is also doing: ' + esc(j.other_task) : 'Working alongside ' + esc(j.with)) + ' — mark it completed when your part is done</div>' : '') +
       (j.status !== 'Completed' ? tenantBox(j) : '') +
       (j.appointment_date ? '<div style="margin:6px 0;font-weight:600">📅 Booked for ' + esc(day(j.appointment_date)) + (j.appointment_time ? ' at ' + esc(j.appointment_time) : '') + '</div>' : '') +
       '<details class="dt"><summary>Details and access</summary><div class="dbody">' +
@@ -1278,6 +1281,7 @@ module.exports = function mountJobs(app, opts) {
     },
     assigned_to: { clean: function (v) { return str(v, 200); }, label: 'Assigned to' },
     assigned_to_2: { clean: function (v) { return str(v, 200); }, label: 'Second contractor' },
+    task_2: { clean: function (v) { return str(v, 500); }, label: 'Second contractor’s task' },
     // The landlord does the work themselves ('self') or with their own contractor ('contractor').
     landlord_handles: { clean: function (v) { return v === 'self' || v === 'contractor' ? v : (v ? undefined : null); }, label: 'Done by',
       show: function (v) { return v === 'self' ? 'the landlord' : v === 'contractor' ? 'the landlord’s own contractor' : 'our contractor'; } },
@@ -2119,7 +2123,7 @@ module.exports = function mountJobs(app, opts) {
     const links = (await p.query('SELECT property_key, address FROM property_landlords WHERE landlord_id = $1', [l.id])).rows;
     const keys = {}; links.forEach(function (r) { keys[r.property_key] = r.address; });
     const all = (await p.query(`SELECT id, status, urgency, created_at, completed_at, category, affected, symptom, location, summary, property_address,
-        appointment_date, appointment_time, landlord_charge, completion_notes, landlord_handles, track_token,
+        appointment_date, appointment_time, landlord_charge, completion_notes, landlord_handles, track_token, task_2,
         (SELECT coalesce(sum(jp.charge), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_charge
       FROM jobs WHERE archived_at IS NULL AND status <> 'Cancelled' ORDER BY created_at DESC`)).rows.filter(function (j) { return keys[propKey(j.property_address)] !== undefined; });
     for (const j of all) { if (!j.track_token) j.track_token = await ensureTrackToken(p, j.id); }
@@ -2160,6 +2164,7 @@ module.exports = function mountJobs(app, opts) {
       return '<div class="lj' + (isDone ? ' done' : '') + '"><div class="lj-top"><span class="ref">' + htmlEsc('RR-' + String(j.id).padStart(5, '0')) + '</span>' +
           (isDone ? '<span class="pill ok">✓ Completed ' + htmlEsc(day(j.completed_at)) + '</span>' : '<span class="pill">' + htmlEsc(j.status === 'New' ? 'Reported' : j.status) + '</span>') + '</div>' +
         '<div class="lj-issue">' + htmlEsc(issue(j)) + (j.location ? ' <span class="muted">· ' + htmlEsc(j.location) + '</span>' : '') + '</div>' +
+        (j.task_2 ? '<div class="muted">Also being done: ' + htmlEsc(j.task_2) + '</div>' : '') +
         '<div class="muted">Reported ' + htmlEsc(day(j.created_at)) + (!isDone && j.appointment_date ? ' · Visit booked ' + htmlEsc(day(j.appointment_date)) + (j.appointment_time ? ' ' + htmlEsc(j.appointment_time) : '') : '') +
           (j.landlord_handles ? ' · Arranged by you' : '') + '</div>' +
         (notes ? '<div class="lj-notes">' + htmlEsc(notes.slice(0, 300)) + '</div>' : '') +
@@ -3450,7 +3455,7 @@ module.exports = function mountJobs(app, opts) {
     p.query("UPDATE contractors SET portal_seen_at = now() WHERE id = $1 AND (portal_seen_at IS NULL OR portal_seen_at < now() - interval '1 minute')", [c.id]).catch(function () {});
     const r = await p.query(`SELECT id, status, urgency, created_at, completed_at, category, affected, symptom, location, description, summary, property_address,
         tenant_name, tenant_phone, tenant_email, access_time, access_notes, key_permission, key_instructions, direct_contact, appointment_date, appointment_time, completion_notes,
-        assigned_to, assigned_to_2, part_done_by, part_done_at
+        assigned_to, assigned_to_2, task_2, part_done_by, part_done_at
       FROM jobs WHERE archived_at IS NULL AND (lower(trim(assigned_to)) = lower(trim($1)) OR lower(trim(assigned_to_2)) = lower(trim($1)))
         AND (status NOT IN ('Completed', 'Cancelled') OR (status = 'Completed' AND completed_at > now() - interval '30 days'))
       ORDER BY (status = 'Completed'), created_at DESC LIMIT 200`, [c.name]);
@@ -3479,7 +3484,10 @@ module.exports = function mountJobs(app, opts) {
       // Working alongside another contractor (their name only, never contact details).
       const other = [j.assigned_to, j.assigned_to_2].filter(function (n) { return n && n.trim() && n.trim().toLowerCase() !== me; })[0];
       const out = { ref: refFor(j.id), with: other ? other.trim() : '', notes: (mineNotes[j.id] || []).slice(-5) };
-      Object.keys(j).forEach(function (k) { if (['assigned_to', 'assigned_to_2', 'part_done_by', 'part_done_at'].indexOf(k) === -1) out[k] = j[k]; });
+      // The second contractor's own task: theirs to do, or what the other one is doing.
+      const second = j.assigned_to_2 && j.assigned_to_2.trim().toLowerCase() === me;
+      if (j.task_2) { if (second) out.my_task = j.task_2; else if (other) out.other_task = j.task_2; }
+      Object.keys(j).forEach(function (k) { if (['assigned_to', 'assigned_to_2', 'task_2', 'part_done_by', 'part_done_at'].indexOf(k) === -1) out[k] = j[k]; });
       return out;
     }) });
   }));
