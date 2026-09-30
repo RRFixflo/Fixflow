@@ -6744,7 +6744,13 @@
       // People
       '<div class="card"><h3>Tenants<span style="flex:1"></span><button type="button" class="btn small" id="tfAddTen">+ Add tenant</button></h3><div id="tfTenants">' + tcyPersonRows('tenants') + '</div></div>' +
       '<div class="card"><h3>Guarantors<span style="flex:1"></span><button type="button" class="btn small" id="tfAddGua">+ Add guarantor</button></h3><div id="tfGuarantors">' + (d.guarantors.length ? tcyPersonRows('guarantors') : '<p class="muted-note" style="margin:0">No guarantors. The agreement leaves the guarantor sections out.</p>') + '</div></div>' +
-      '<div class="card"><h3>Landlord<span style="flex:1"></span><button type="button" class="btn small ghost" id="tfLlFill">Use landlord on file</button></h3>' +
+      '<div class="card"><h3>Landlord</h3>' +
+        (landlords.length ? '<div style="margin:-2px 0 12px"><label class="lbl" for="tfLlPick">Choose a landlord on file</label><select class="inp" id="tfLlPick">' +
+          '<option value="">— Pick a landlord to fill in their details —</option>' +
+          landlords.slice().sort(function(a, b){ return String(a.name).localeCompare(String(b.name), 'en', { sensitivity: 'base' }); }).map(function(x){
+            var n = llProperties(x).length;
+            return '<option value="' + x.id + '"' + (l.name && String(l.name).toLowerCase() === String(x.name).toLowerCase() ? ' selected' : '') + '>' + esc(x.name + (n ? ' · ' + n + ' propert' + (n === 1 ? 'y' : 'ies') : '') + (x.phone ? ' · ' + x.phone : '')) + '</option>';
+          }).join('') + '</select><div class="muted-note" style="margin-top:4px">Or type a new landlord below — they’re saved when you save the tenancy.</div></div>' : '') +
         '<div class="grid3">' + tcyInp('tfLlName', 'Landlord name *', l.name) + tcyInp('tfLlEmail', 'Email', l.email, ' type="email"') + tcyInp('tfLlPhone', 'Phone', l.phone, ' type="tel"') + '</div>' +
         '<div class="grid2" style="margin-top:10px">' + tcyInp('tfLl1', 'Address — first line', l.line1) + tcyInp('tfLl2', 'Address — second line', l.line2) + '</div>' +
         '<div class="grid2" style="margin-top:10px">' + tcyInp('tfLlCountry', 'Country', l.country) + tcyInp('tfLlPc', 'Postcode', l.postcode) + '</div>' +
@@ -6954,7 +6960,17 @@
     });
     $('tfAddTen').addEventListener('click', function(){ tcyRead(); tcyDraft.tenants.push({ name: '', email: '', phone: '' }); $('tfTenants').innerHTML = tcyPersonRows('tenants'); });
     $('tfAddGua').addEventListener('click', function(){ tcyRead(); tcyDraft.guarantors.push({ name: '', email: '', phone: '' }); $('tfGuarantors').innerHTML = tcyPersonRows('guarantors'); });
-    $('tfLlFill').addEventListener('click', function(){ tcyRead(); if (tcyFillLandlord(tcyDraft)) renderTcyForm(); else toast('No landlord on file for this address yet'); });
+    // Picking a landlord on file fills their details in place (nothing else on the form changes).
+    if ($('tfLlPick')) $('tfLlPick').addEventListener('change', function(){
+      var x = landlordById(Number($('tfLlPick').value)); if (!x) return;
+      var parts = String(x.address || '').split(/\s*,\s*/).filter(Boolean), pc = '';
+      if (parts.length && POSTCODE_RE.test(parts[parts.length - 1])) pc = parts.pop();
+      var set = function(id, v){ if ($(id)) $(id).value = v || ''; };
+      set('tfLlName', x.name); set('tfLlEmail', x.email); set('tfLlPhone', x.phone);
+      set('tfLl1', parts.shift() || ''); set('tfLl2', parts.join(', ')); set('tfLlCountry', ''); set('tfLlPc', pc);
+      tcyRead();
+      toast('Filled in ' + x.name + '’s details');
+    });
     $('tfSave').addEventListener('click', tcySave);
     if ($('tfDelete')) $('tfDelete').addEventListener('click', function(){
       if (!confirm('Delete this tenancy record?\n\nTenants and the landlord stay on file.')) return;
