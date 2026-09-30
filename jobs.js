@@ -339,6 +339,65 @@ const ADDR_WORDS = { street: 'st', road: 'rd', avenue: 'ave', lane: 'ln', drive:
 // Job addresses need at least a door number and a full postcode. The postcode
 // is tidied to capitals with a single space (se16rw -> SE1 6RW).
 // A booked visit: the day (YYYY-MM-DD) and a free-text time ("Morning", "10am").
+// ---------- Calendar (.ics) ----------
+// A booking's time as typed ("10am", "9-12", "2.30pm", "Morning", "anytime")
+// becomes a start and end on the day; nothing clear means an all-day entry.
+function apptWindow(date, time) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date || ''));
+  if (!m) return null;
+  const day = m[1] + m[2] + m[3];
+  const t = String(time || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const hm = function (h, min, ap, hintPm) {
+    h = parseInt(h, 10); min = parseInt(min || '0', 10);
+    if (isNaN(h) || h > 23 || min > 59) return null;
+    if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0;
+    if (!ap && hintPm && h < 8) h += 12;          // "2" in "2-4" means 2pm
+    return h * 60 + min;
+  };
+  const fmt = function (mins) { mins = Math.min(mins, 23 * 60 + 59); return day + 'T' + String(Math.floor(mins / 60)).padStart(2, '0') + String(mins % 60).padStart(2, '0') + '00'; };
+  const named = { morning: [8, 12], am: [8, 12], afternoon: [12, 17], pm: [12, 17], evening: [17, 20], lunchtime: [12, 14], 'first thing': [8, 10] };
+  const range = /(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?\s*(?:-|–|—|to|till|until|and)\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?/.exec(t);
+  if (range) {
+    const endAp = range[6], a = hm(range[1], range[2], range[3] || (endAp === 'pm' && parseInt(range[1], 10) < parseInt(range[4], 10) ? 'pm' : null), true), b = hm(range[4], range[5], endAp, true);
+    if (a != null && b != null && b > a) return { allDay: false, start: fmt(a), end: fmt(b) };
+  }
+  const one = /(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?/.exec(t);
+  if (one && (one[3] || one[2] || /^\d{1,2}$/.test(t) || /\b(at|from|around|approx)\b/.test(t))) {
+    const a = hm(one[1], one[2], one[3], true);
+    if (a != null) return { allDay: false, start: fmt(a), end: fmt(a + 60) };
+  }
+  for (const k of Object.keys(named)) if (new RegExp('\\b' + k + '\\b').test(t)) return { allDay: false, start: fmt(named[k][0] * 60), end: fmt(named[k][1] * 60) };
+  const next = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + 1));
+  return { allDay: true, start: day, end: next.toISOString().slice(0, 10).replace(/-/g, '') };
+}
+function icsText(v) { return String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([;,])/g, '\\$1'); }
+function icsFold(line) {
+  const out = []; let s = line;
+  while (Buffer.byteLength(s, 'utf8') > 74) { let n = 74; while (Buffer.byteLength(s.slice(0, n), 'utf8') > 74) n--; out.push(s.slice(0, n)); s = ' ' + s.slice(n); }
+  out.push(s); return out.join('\r\n');
+}
+const ICS_LONDON = ['BEGIN:VTIMEZONE', 'TZID:Europe/London', 'BEGIN:DAYLIGHT', 'TZOFFSETFROM:+0000', 'TZOFFSETTO:+0100', 'TZNAME:BST', 'DTSTART:19700329T010000', 'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU', 'END:DAYLIGHT',
+  'BEGIN:STANDARD', 'TZOFFSETFROM:+0100', 'TZOFFSETTO:+0000', 'TZNAME:GMT', 'DTSTART:19701025T020000', 'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU', 'END:STANDARD', 'END:VTIMEZONE'];
+// A calendar file: name, and events {uid, window, summary, location, description, url, updated, cancelled}.
+function icsCalendar(name, events) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Residential Realtors//Fixflow//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:' + icsText(name),
+    'X-WR-TIMEZONE:Europe/London', 'REFRESH-INTERVAL;VALUE=DURATION:PT30M', 'X-PUBLISHED-TTL:PT30M'].concat(ICS_LONDON);
+  events.forEach(function (e) {
+    const w = e.window;
+    lines.push('BEGIN:VEVENT', 'UID:' + e.uid, 'DTSTAMP:' + stamp,
+      w.allDay ? 'DTSTART;VALUE=DATE:' + w.start : 'DTSTART;TZID=Europe/London:' + w.start,
+      w.allDay ? 'DTEND;VALUE=DATE:' + w.end : 'DTEND;TZID=Europe/London:' + w.end,
+      'SUMMARY:' + icsText(e.summary), 'LOCATION:' + icsText(e.location), 'DESCRIPTION:' + icsText(e.description));
+    if (e.url) lines.push('URL:' + e.url);
+    if (e.updated) lines.push('LAST-MODIFIED:' + new Date(e.updated).toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z'));
+    lines.push('STATUS:' + (e.cancelled ? 'CANCELLED' : 'CONFIRMED'), 'TRANSP:OPAQUE');
+    if (!w.allDay && !e.cancelled) lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + icsText(e.summary), 'TRIGGER:-PT1H', 'END:VALARM');
+    lines.push('END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  return lines.map(icsFold).join('\r\n') + '\r\n';
+}
 function apptDay(v) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
   if (!m) return '';
@@ -721,7 +780,8 @@ const CONTRACTOR_PAGE_JS = `(function(){
     fetch('/api/c/' + TOKEN + '/jobs').then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) { list.innerHTML = '<p class="muted">This link is no longer active. Please contact Residential Realtors.</p>'; return; }
       var open = d.jobs.filter(function(j){ return j.status !== 'Completed'; }), done = d.jobs.filter(function(j){ return j.status === 'Completed'; });
-      list.innerHTML = '<h2 style="font-size:1.05rem;margin:18px 0 8px">To do (' + open.length + ')</h2>' +
+      var booked = d.jobs.filter(function(j){ return j.appointment_date && j.status !== 'Completed'; }).length;
+      list.innerHTML = calBar(booked) + '<h2 style="font-size:1.05rem;margin:18px 0 8px">To do (' + open.length + ')</h2>' +
         (open.length ? open.map(card).join('') : '<p class="muted">No jobs waiting — thank you!</p>') +
         (done.length ? '<h2 style="font-size:1.05rem;margin:22px 0 8px">Completed in the last 30 days</h2>' + done.map(function(j){
           return '<div class="card"><div style="opacity:.75"><div class="ref">' + esc(j.ref) + ' · ✓ Completed ' + esc(day(j.completed_at)) + '</div><div>' + esc(j.property_address || '') + '</div><div class="muted">' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div></div>' + noteBox(j) + '</div>';
@@ -740,7 +800,8 @@ const CONTRACTOR_PAGE_JS = `(function(){
         : '<div>' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div>') +
       (j.with ? '<div class="muted" style="margin-top:4px">👷 ' + (j.other_task ? esc(j.with) + ' is also doing: ' + esc(j.other_task) : 'Working alongside ' + esc(j.with)) + ' — mark it completed when your part is done</div>' : '') +
       (j.status !== 'Completed' ? tenantBox(j) : '') +
-      (j.appointment_date ? '<div style="margin:6px 0;font-weight:600">📅 Booked for ' + esc(day(j.appointment_date)) + (j.appointment_time ? ' at ' + esc(j.appointment_time) : '') + '</div>' : '') +
+      (j.appointment_date ? '<div style="margin:6px 0;font-weight:600">📅 Booked for ' + esc(day(j.appointment_date)) + (j.appointment_time ? ' at ' + esc(j.appointment_time) : '') +
+        ' <a class="cal-add" href="/c/' + TOKEN + '/jobs/' + j.id + '/booking.ics">+ Add to my calendar</a></div>' : '') +
       '<details class="dt"><summary>Details and access</summary><div class="dbody">' +
         (j.description ? '<div class="desc">' + esc(j.description) + '</div>' : '') +
         item('📍', 'Where in the property', j.location) +
@@ -784,6 +845,19 @@ const CONTRACTOR_PAGE_JS = `(function(){
       ((j.other_tenants || []).length ? '<div class="lb" style="margin-top:10px">Also living there</div>' + j.other_tenants.map(function(t){ return person(t, false); }).join('') : '') +
     '</div>';
   }
+  // Subscribe once and every booking shows in their own calendar, kept up to date.
+  function calBar(booked){
+    var https = location.origin + '/c/' + TOKEN + '/calendar.ics', webcal = https.replace(/^https?:/, 'webcal:');
+    var enc = encodeURIComponent(https), name = encodeURIComponent('Residential Realtors jobs');
+    return '<details class="dt calbar"' + ((function(){ try { return localStorage.getItem('rr_cal_seen'); } catch (x) { return null; } })() ? '' : ' open') + '><summary>📅 Put your bookings in your calendar' + (booked ? ' (' + booked + ' booked)' : '') + '</summary>' +
+      '<p class="muted" style="margin:6px 0 10px">Do this once: every job you book here then appears in your calendar automatically, with the address, tenant and access details, and updates if a time changes.</p>' +
+      '<div class="acts">' +
+        '<a class="abtn" href="' + webcal + '" data-cal="1">📱 iPhone / Mac</a>' +
+        '<a class="abtn" style="background:#0F6CBD" target="_blank" rel="noopener" href="https://outlook.office.com/calendar/0/addfromweb?url=' + enc + '&name=' + name + '" data-cal="1">Outlook (work)</a>' +
+        '<a class="abtn" style="background:#0F6CBD" target="_blank" rel="noopener" href="https://outlook.live.com/calendar/0/addfromweb?url=' + enc + '&name=' + name + '" data-cal="1">Outlook.com / Hotmail</a>' +
+        '<a class="abtn" style="background:#1A73E8" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(webcal) + '" data-cal="1">Google / Android</a>' +
+      '</div><p class="muted" style="margin:8px 0 0;font-size:.82rem">On iPhone tap <b>Subscribe</b> when asked. In Outlook desktop: Add calendar → From internet, and paste <span style="word-break:break-all">' + esc(https) + '</span></p></details>';
+  }
   // Notes and questions for the office, with the ones already sent.
   function noteBox(j){
     var sent = (j.notes || []).map(function(n){ return '<div class="desc" style="font-size:.9rem"><span class="muted">' + esc(day(n.at)) + ':</span> ' + esc(n.body) + '</div>'; }).join('');
@@ -814,6 +888,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
       fr.readAsDataURL(file);
     });
   }
+  list.addEventListener('click', function(e){ if (e.target.closest('[data-cal]')) { try { localStorage.setItem('rr_cal_seen', '1'); } catch (x) {} } });
   list.addEventListener('submit', function(e){
     var nf = e.target.closest('[data-note]');
     if (nf) {
@@ -3831,6 +3906,49 @@ module.exports = function mountJobs(app, opts) {
     ntfy({ title: 'Job booked: ' + ref, message: c.name + ' booked ' + ref + ' for ' + when + ' — ' + (r.rows[0].property_address || ''), tags: ['date'] }).catch(function () {});
     res.json({ ok: true, when: when });
   }));
+  // The contractor's bookings as a calendar: subscribe once (iPhone, Outlook,
+  // Google) and every booked job appears and stays up to date; or add one.
+  async function contractorEvents(p, c, req, onlyId) {
+    const rows = (await p.query(`SELECT id, status, category, affected, symptom, summary, location, description, property_address, appointment_date, appointment_time,
+        tenant_name, tenant_phone, direct_contact, key_permission, key_instructions, access_notes, assigned_to, assigned_to_2, task_2, updated_at
+      FROM jobs WHERE archived_at IS NULL AND appointment_date IS NOT NULL AND (lower(trim(assigned_to)) = lower(trim($1)) OR lower(trim(assigned_to_2)) = lower(trim($1)))
+        AND (status <> 'Completed' OR completed_at > now() - interval '60 days')` + (onlyId ? ' AND id = $2' : ''), onlyId ? [c.name, onlyId] : [c.name])).rows;
+    const site = baseUrl(req), me = c.name.trim().toLowerCase();
+    return rows.map(function (j) {
+      const w = apptWindow(j.appointment_date, j.appointment_time); if (!w) return null;
+      const mine = j.assigned_to_2 && j.assigned_to_2.trim().toLowerCase() === me && j.task_2 ? j.task_2 : '';
+      const issue = mine || j.summary || [j.affected, j.symptom].filter(Boolean).join(' – ') || j.category || 'Repair';
+      return {
+        uid: 'fixflow-' + j.id + '-' + c.id + '@residentialrealtors', window: w, updated: j.updated_at, cancelled: j.status === 'Cancelled',
+        summary: refFor(j.id) + ' · ' + issue + ' – ' + shortAddrText(j.property_address),
+        location: j.property_address || '',
+        description: [issue + (mine ? ' (part of: ' + (j.summary || j.category || 'the repair') + ')' : ''), j.location ? 'Where: ' + j.location : '', j.description ? 'Tenant says: ' + j.description : '',
+          j.tenant_name || j.tenant_phone ? 'Tenant: ' + [j.tenant_name, j.tenant_phone].filter(Boolean).join(' – ') : '',
+          j.direct_contact === 'No' ? 'Access: arranged by Residential Realtors' : 'Access: contact the tenant directly',
+          j.key_permission ? 'Keys: ' + j.key_permission + (j.key_instructions ? ' – ' + j.key_instructions : '') : '', j.access_notes ? 'Access notes: ' + j.access_notes : '',
+          j.appointment_time ? 'Booked: ' + j.appointment_time : '', j.status === 'Completed' ? 'Completed' : ''].filter(Boolean).join('\n') + '\n\nYour jobs: ' + site + '/c/' + req.params.token,
+        url: site + '/c/' + req.params.token
+      };
+    }).filter(Boolean);
+  }
+  app.get('/c/:token/calendar.ics', withDb(async function (p, req, res) {
+    const c = await portalContractor(p, req.params.token);
+    if (!c) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="residential-realtors-jobs.ics"');
+    res.setHeader('Cache-Control', 'no-cache'); res.setHeader('X-Robots-Tag', 'noindex');
+    res.send(icsCalendar('Residential Realtors jobs', await contractorEvents(p, c, req)));
+  }));
+  app.get('/c/:token/jobs/:id/booking.ics', withDb(async function (p, req, res) {
+    const c = await portalContractor(p, req.params.token);
+    if (!c) return res.status(404).send('Not found');
+    const ev = await contractorEvents(p, c, req, jobId(req));
+    if (!ev.length) return res.status(404).send('No booking for this job yet');
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + refFor(jobId(req)) + '-booking.ics"');
+    res.setHeader('X-Robots-Tag', 'noindex');
+    res.send(icsCalendar('Residential Realtors job', ev));
+  }));
   app.get('/c/:token', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -3843,6 +3961,7 @@ module.exports = function mountJobs(app, opts) {
         '.it{display:flex;gap:10px;align-items:flex-start}.it .ic{width:28px;text-align:center;font-size:1.1rem;flex:none}.lb{font-size:.78rem;color:#5b616e;text-transform:uppercase;letter-spacing:.03em}.vl{font-size:.98rem;word-break:break-word}' +
         '.tn{border:1px solid #e6e7eb;border-radius:14px;padding:12px}.acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}.abtn{display:block;text-align:center;padding:12px;border-radius:12px;background:#0b0c0f;color:#fff;text-decoration:none;font-weight:600}.abtn.wa{background:#25D366;color:#fff}' +
         'details>summary{min-height:32px}' +
+        '.cal-add{display:inline-block;margin-left:6px;font-size:.85rem;font-weight:600;color:#2F5BEA;text-decoration:none;white-space:nowrap}.calbar{background:#fff;border:1px solid #e6e7eb;border-radius:14px;padding:10px 14px;margin-top:10px}.calbar .acts{grid-template-columns:1fr 1fr}' +
       '</style>' +
       '<div id="list"><p class="muted">Loading…</p></div>' +
       '<script>' + CONTRACTOR_PAGE_JS.replace('__TOKEN__', JSON.stringify(String(req.params.token))) + '</script>', true));
