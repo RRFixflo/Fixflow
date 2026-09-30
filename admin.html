@@ -6126,12 +6126,40 @@
       .concat(landlords.reduce(function(a, l){ return a.concat(llProperties(l).map(function(x){ return x.address; })); }, []));
     return cands.filter(function(ad){ return ad && propKey(ad) === key && !addressProblem(ad); })[0] || '';
   }
+  // Finds the property meant by an address as said or typed ("36 Balin house")
+  // among every property we know: from jobs, tenancies, tenants, landlords and
+  // certificates. Exact words first; then the same door number(s) with the
+  // building/street names allowing a small slip ("Balin" / "Ballin").
   function matchProperty(address){
     var q = propKey(address);
     if (!q) return null;
+    var all = allPropsForList().slice(), have = {};
+    all.forEach(function(pr){ have[pr.key] = true; });
+    (tenantLinks || []).forEach(function(l){ var k = propKey(l.address); if (k && !have[k]) { have[k] = true; all.push({ key: k, address: l.address, jobs: [] }); } });
     var re = new RegExp('(^| )' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '( |$)');
-    var hits = propertiesFromJobs().filter(function(pr){ return re.test(pr.key) || re.test(propKey(pr.address)); });
-    return hits.length === 1 ? hits[0] : hits.length ? hits.sort(function(a, b){ return a.key.length - b.key.length; })[0] : null;
+    var pick = function(hits){ return hits.length === 1 ? hits[0] : hits.length ? hits.sort(function(a, b){ return (b.jobs.length - a.jobs.length) || (a.key.length - b.key.length); })[0] : null; };
+    var exact = all.filter(function(pr){ return re.test(pr.key) || re.test(propKey(pr.address)); });
+    if (exact.length) return pick(exact);
+    var nums = function(k){ return k.split(' ').filter(function(w){ return /\d/.test(w); }); };
+    var words = function(k){ return k.split(' ').filter(function(w){ return w.length >= 3 && !/\d/.test(w) && ['flat', 'house', 'road', 'street', 'court', 'london', 'the', 'and', 'apartment'].indexOf(w) === -1; }); };
+    var near = function(a, b){
+      if (a === b) return true;
+      if (Math.abs(a.length - b.length) > 1 || a.length < 4) return false;
+      var i = 0, j = 0, edits = 0;
+      while (i < a.length && j < b.length) {
+        if (a[i] === b[j]) { i++; j++; continue; }
+        if (++edits > 1) return false;
+        if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+      }
+      return edits + (a.length - i) + (b.length - j) <= 1;
+    };
+    var qn = nums(q), qw = words(q);
+    if (!qn.length || !qw.length) return null;
+    var fuzzy = all.filter(function(pr){
+      var k = propKey(pr.address) || pr.key, kn = nums(k), kw = words(k);
+      return qn.every(function(n){ return kn.indexOf(n) !== -1; }) && qw.every(function(w){ return kw.some(function(x){ return near(w, x); }); });
+    });
+    return pick(fuzzy);
   }
   function tenantsAt(pr){
     if (!pr) return [];
@@ -6142,6 +6170,7 @@
     var n = name.toLowerCase();
     return contractors.filter(function(c){ return c.active && (c.name.toLowerCase() === n || c.name.toLowerCase().indexOf(n) !== -1 || n.indexOf(c.name.toLowerCase()) !== -1); })[0] || null;
   }
+  $('askText').addEventListener('input', function(){ if ($('askErr').textContent) $('askErr').textContent = ''; });
   function runAsk(){
     var text = $('askText').value.trim();
     if (!text) { $('askText').focus(); return; }
@@ -6177,7 +6206,7 @@
         dr.tenants.map(function(t, k){ return '<option value="' + k + '">' + esc((t.tenant_name || 'No name') + (t.tenant_phone ? ' – ' + t.tenant_phone : '')) + ' (on file)</option>'; }).join('') + '<option value="">No tenant</option>';
       return '<div class="draft" data-i="' + i + '">' +
         '<div><label class="lbl">Property</label><input class="inp" data-f="address" value="' + esc(pr ? pr.address : x.address) + '">' +
-          '<div class="match ' + (pr && !addressProblem(pr.address) ? 'ok' : 'warn') + '">' + (pr ? '✓ Matched a property with ' + pr.jobs.length + ' previous job' + (pr.jobs.length === 1 ? '' : 's') : 'No previous jobs at “' + esc(x.address) + '” — check the address') +
+          '<div class="match ' + (pr && !addressProblem(pr.address) ? 'ok' : 'warn') + '">' + (pr ? (pr.jobs.length ? '✓ Matched a property with ' + pr.jobs.length + ' previous job' + (pr.jobs.length === 1 ? '' : 's') : '✓ Matched a property on file') : 'No previous jobs at “' + esc(x.address) + '” — check the address') +
             (addressProblem(pr ? pr.address : x.address) ? ' · ' + esc(addressProblem(pr ? pr.address : x.address)) : '') + '</div></div>' +
         (x.warning ? '<div class="banner" style="margin:0">⚠ ' + esc(x.warning) + '</div>' : '') +
         '<div class="grid2">' +

@@ -1869,9 +1869,12 @@ module.exports = function mountJobs(app, opts) {
     const trades = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY name')).rows
       .map(function (c) { return c.name + (c.trade ? ' (' + c.trade + ')' : ''); }).join('; ');
     const fromEmail = (req.body || {}).mode === 'email';
+    // Our properties, so a mis-heard or shortened address ("36 Balin house") becomes the one on file.
+    const known = (await allProperties(p)).map(function (x) { return x.address; }).filter(Boolean).slice(0, 500);
     const prompt = fromEmail ? emailPrompt(text, trades) : 'You turn instructions from a UK letting agent\'s maintenance manager into repair jobs for their job system.\n\n' +
       'Instruction (spoken via speech-to-text, so allow for mis-heard words, or a pasted message that may list several properties, each with its tasks and tenant contacts), between the ---- lines:\n----\n' + text + '\n----\n\n' +
       'Their contractors: ' + (trades || 'none listed') + '.\n\n' +
+      (known.length ? 'Their properties (use the exact address from this list when the one said is clearly one of these, allowing for mis-heard or shortened names and a missing "Flat"; the door number must match): ' + known.join(' | ') + '\n\n' : '') +
       'Make exactly one job per property address mentioned (a pasted message may contain several, often each followed by "for Jim" or similar). Put all the tasks for the same property into that one job. For each job give:\n' +
       '- address: the property as said, tidied up (e.g. "6 Whitworth House"); keep flat/house numbers exactly\n' +
       '- category: a short issue type, e.g. "Gas safety", "EICR", "Plumbing", "Heating and boiler", "Electrics", "Damp and mould", "Doors and locks", "Pest control", "General repair"\n' +
