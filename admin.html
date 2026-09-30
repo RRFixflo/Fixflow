@@ -670,6 +670,8 @@
   .te-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
   .te-st { display: inline-block; margin-top: 4px; font-size: .75rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
   .te-st.todo { background: #FDECEC; color: #C0262D; } .te-st.wait { background: #EEF2FE; color: #2F5BEA; } .te-st.ok { background: #DDF3E6; color: #0F7A3B; } .te-st.bad { background: #FFF1DB; color: #A15C00; }
+  .te-head { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); margin: 12px 0 2px; } .te-head.late { color: #A15C00; }
+  .ann-chip { display: inline-block; font-size: .72rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #F2F4F7; color: var(--ink-soft); margin: 3px 0 0 4px; } .ann-chip.two { background: #FFF1DB; color: #A15C00; }
   .te-late { color: #C0262D; font-weight: 700; } .te-soon { color: #A15C00; font-weight: 700; }
   #tiNotice[hidden] { display: none; }
   .ti-box { background: var(--panel-2, #F7F8FA); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
@@ -2963,6 +2965,13 @@
     }).filter(Boolean).sort(function(a, b){ return a.n.days - b.n.days; });
   }
   function ordinal(n){ var s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+  // "2 months to go": the anniversary is 2 months away (within the next 2 weeks)
+  // or closer — the point where the rent increase notice has to be served.
+  function tcyTwoMonths(n){ return !!n && tcyNoticeBy(n.end) <= addDaysIso(isoDay(new Date()), 14); }
+  function tcyTwoText(n){
+    var by = tcyNoticeBy(n.end), left = Math.round((parseDay(by) - parseDay(isoDay(new Date()))) / 86400000);
+    return left > 0 ? '2 months to go on ' + longDay(by) + ' (in ' + left + ' day' + (left === 1 ? '' : 's') + ')' : left === 0 ? '2 months to go today' : 'under 2 months to go';
+  }
   function tcyRentNow(x){ return num(x.it.new_rent) || num((x.d || {}).rent_pcm) || 0; }
   function tcyItText(it){
     var parts = [];
@@ -2978,7 +2987,8 @@
   function renderTcyEndAlerts(){
     var list = tcyEndingSoon(), todoL = list.filter(function(x){ return !x.it.no_increase && !x.it.notice_served; }), todo = todoL.length;
     $('tcyEndBanner').hidden = !list.length;
-    if (list.length) $('tcyEndBannerText').textContent = '📅 ' + list.length + ' tenancy anniversar' + (list.length === 1 ? 'y' : 'ies') + ' in the next 3 months' +
+    var two = list.filter(function(x){ return tcyTwoMonths(x.n); }).length;
+    if (list.length) $('tcyEndBannerText').textContent = '📅 ' + list.length + ' tenancy anniversar' + (list.length === 1 ? 'y' : 'ies') + ' in the next 3 months' + (two ? ' (' + two + ' now 2 months away or less)' : '') +
       (function(){
         if (!todo) return ' — reviews done';
         var today = isoDay(new Date()), late = todoL.filter(function(x){ return tcyNoticeBy(x.n.end) < today; }).length, next = todoL.filter(function(x){ return tcyNoticeBy(x.n.end) >= today; })[0];
@@ -2987,11 +2997,13 @@
     $('tcyEndBannerGo').textContent = 'Review rents';
     if (!$('tcyEnding')) return;
     $('tcyEnding').innerHTML = list.length ? '<div class="card tcy-end"><h3>📅 Anniversaries in the next 3 months — rent review <span class="count-chip">' + list.length + '</span></h3>' +
-      '<p class="muted-note" style="margin:0 0 4px">A rent increase needs the government notice form (Form 4A), served at least 2 months before the new rent starts. <a href="' + FORM_4A_URL + '" target="_blank" rel="noopener">Get the form on GOV.UK</a></p>' + list.map(function(x){
+      '<p class="muted-note" style="margin:0 0 4px">A rent increase needs the government notice form (Form 4A), served at least 2 months before the new rent starts. <a href="' + FORM_4A_URL + '" target="_blank" rel="noopener">Get the form on GOV.UK</a></p>' + list.map(function(x, i){
       var done = x.it.notice_served || x.it.no_increase, cls = x.it.answer === 'leaving' ? 'bad' : done ? 'ok' : x.it.asked_at || x.it.ll_asked_at || num(x.it.new_rent) ? 'wait' : 'todo';
       var by = tcyNoticeBy(x.n.end), left = Math.round((parseDay(by) - parseDay(isoDay(new Date()))) / 86400000);
-      var dl = done ? '' : ' · <span class="' + (left < 0 ? 'te-late' : left <= 14 ? 'te-soon' : '') + '">' + (left < 0 ? 'too late to serve notice for the anniversary — served today, the earliest new rent date is ' + esc(longDay(tcyEarliestIfToday(x.n.end))) : 'serve notice by <b>' + esc(longDay(by)) + '</b> (' + (left === 0 ? 'today' : left + ' days') + ')') + '</span>';
-      return '<div class="te-row"><div><div style="font-weight:600">' + esc(x.d.address || x.t.address || '') + '</div><div class="prop-sub" style="margin:2px 0 0">' + esc(joinAnd(tcyNames(x.d.tenants)) || 'No tenants') +
+      var dl = done ? '' : ' · <span class="' + (left < 0 ? 'te-late' : left <= 14 ? 'te-soon' : '') + '">' + (left < 0 ? 'under 2 months to go — too late to serve notice for the anniversary; served today, the earliest new rent date is ' + esc(longDay(tcyEarliestIfToday(x.n.end))) : (left === 0 ? '<b>2 months to go today</b> — serve notice today' : '2 months to go on <b>' + esc(longDay(by)) + '</b> (in ' + left + ' days) — serve notice by then')) + '</span>';
+      var two = tcyTwoMonths(x.n), prevTwo = i > 0 && tcyTwoMonths(list[i - 1].n);
+      var head = i === 0 && two ? '<div class="te-head late">⏰ At or near 2 months to go — serve notice now</div>' : !two && (i === 0 || prevTwo) ? '<div class="te-head">Coming up — 2 to 3 months away</div>' : '';
+      return head + '<div class="te-row"><div><div style="font-weight:600">' + esc(x.d.address || x.t.address || '') + '</div><div class="prop-sub" style="margin:2px 0 0">' + esc(joinAnd(tcyNames(x.d.tenants)) || 'No tenants') +
         ' · ' + ordinal(x.n.years) + ' anniversary <b>' + esc(longDay(x.n.end)) + '</b> (' + (x.n.days <= 0 ? 'today' : 'in ' + x.n.days + ' days') + ') · rent ' + esc(gbp(num(x.d.rent_pcm) || 0)) + dl + '</div>' +
         '<span class="te-st ' + cls + '">' + esc(tcyItText(x.it)) + '</span></div>' +
         '<button type="button" class="btn small' + (cls === 'todo' ? ' primary' : '') + '" data-ask-tcy="' + x.t.id + '">' + (cls === 'todo' ? 'Rent review →' : 'Open') + '</button></div>';
@@ -3128,11 +3140,11 @@
       else if (s > today) st = { k: 'upcoming', text: 'Tenancy starts ' + longDay(d.start_date), sort: 2 };
       else {
         var nx = tcyNextEnd(d);
-        st = nx && nx.days <= 92 ? { k: 'ending', text: 'Anniversary ' + longDay(nx.end) + ' — rent review', sort: 1 }
+        st = nx && nx.days <= 92 ? { k: 'ending', text: 'Anniversary ' + longDay(nx.end) + ' — rent review' + (tcyTwoMonths(nx) ? ' · ' + tcyTwoText(nx) : ''), sort: 1, two: tcyTwoMonths(nx) }
           : { k: 'active', text: 'Tenancy since ' + longDay(d.start_date) + (nx ? ' · anniversary ' + longDay(nx.end) : ''), sort: 0 };
       }
       st.id = t.id; st.tenants = tcyNames(d.tenants);
-      if (!best || st.sort < best.sort) best = st;
+      if (!best || st.sort < best.sort || (st.sort === best.sort && st.two && !best.two)) best = st;
     });
     return best;
   }
@@ -3183,12 +3195,12 @@
   }
   var propTcyF = 'all';
   try { propTcyF = localStorage.getItem('rr_prop_tcy') || 'all'; } catch (e) {}
-  function tcyMatch(t, f){ return f === 'all' || (f === 'with' ? ['active', 'ending', 'upcoming', 'rolling'].indexOf(t.k) !== -1 : f === 'none' ? t.k === 'none' || t.k === 'draft' : t.k === f); }
+  function tcyMatch(t, f){ return f === 'all' || (f === 'two' ? !!t.two : (f === 'with' ? ['active', 'ending', 'upcoming', 'rolling'].indexOf(t.k) !== -1 : f === 'none' ? t.k === 'none' || t.k === 'draft' : t.k === f)); }
   function renderProps(){
     var raw = $('propSearch').value.trim().toLowerCase(), q = propKey(raw);
     var base = allPropsForList(), tcyOf = {};
     base.forEach(function(p){ tcyOf[p.key] = propTenancy(p.key); });
-    var TF = [['all', 'All'], ['with', 'With a tenancy'], ['none', 'No tenancy'], ['ending', 'Anniversary within 3 months']];
+    var TF = [['all', 'All'], ['with', 'With a tenancy'], ['none', 'No tenancy'], ['ending', 'Anniversary within 3 months'], ['two', '2 months to anniversary']];
     var tfCount = function(f){ return base.filter(function(p){ return tcyMatch(tcyOf[p.key], f); }).length; };
     $('propTcyTabs').innerHTML = TF.map(function(f){ var n = tfCount(f[0]); return (f[0] === 'all' || n || f[0] === propTcyF) ? '<button type="button" data-ptf="' + f[0] + '"' + (propTcyF === f[0] ? ' class="on"' : '') + '>' + f[1] + ' <span class="n">' + n + '</span></button>' : ''; }).join('');
     var props = base.filter(function(p){
@@ -7438,10 +7450,12 @@
   }
   // Sort and filter: by move-in date, fees, rent or when added; by service
   // (fully managed, not managed, tenant find only, rent collection).
-  var TCY_SORTS = [['movein', 'Move-in date', 'Soonest / latest move-in first'], ['fees', 'Monthly fee', 'Highest fee taken from the rent each month first'], ['upfront', 'Up-front fee', 'Highest fee taken up front first'], ['termfee', 'Fees over tenancy', 'Highest total fees over the whole tenancy first'], ['rent', 'Rent', 'Highest rent first'], ['added', 'Recently added', 'Newest first'], ['az', 'A–Z', 'Address A–Z']];
+  var TCY_SORTS = [['movein', 'Move-in date', 'Soonest / latest move-in first'], ['fees', 'Monthly fee', 'Highest fee taken from the rent each month first'], ['upfront', 'Up-front fee', 'Highest fee taken up front first'], ['termfee', 'Fees over tenancy', 'Highest total fees over the whole tenancy first'], ['rent', 'Rent', 'Highest rent first'], ['anniv', 'Next anniversary', 'Soonest anniversary first'], ['added', 'Recently added', 'Newest first'], ['az', 'A–Z', 'Address A–Z']];
   var TCY_SVC = [['all', 'All'], ['managed', 'Fully managed'], ['notmanaged', 'Not managed'], ['find', 'Tenant Find only'], ['collect', 'Rent collection']];
-  var tcySort = { by: 'movein', dir: -1 }, tcySvc = 'all';
+  var tcySort = { by: 'movein', dir: -1 }, tcySvc = 'all', tcyTwo = false;
   try { var ts0 = JSON.parse(localStorage.getItem('rr_tcy_sort') || 'null'); if (ts0 && TCY_SORTS.some(function(t){ return t[0] === ts0.by; })) tcySort = ts0; tcySvc = localStorage.getItem('rr_tcy_svc') || 'all'; } catch (e) {}
+  // Next anniversary of a tenancy that has started (null for drafts / future starts).
+  function tcyAnnOf(d){ return d.start_date && d.start_date <= isoDay(new Date()) ? tcyNextEnd(d) : null; }
   function tcySvcOf(d){ var s = String(d.service || 'Tenant Find'); return /manag/i.test(s) ? 'managed' : /collect/i.test(s) ? 'collect' : 'find'; }
   function tcySvcMatch(d, f){ var k = tcySvcOf(d); return f === 'all' || f === k || (f === 'notmanaged' && k !== 'managed'); }
   function renderTenancies(){
@@ -7450,7 +7464,8 @@
     $('tcySvcTabs').innerHTML = TCY_SVC.map(function(f){
       var n = tenancies.filter(function(x){ return tcySvcMatch(x.data || {}, f[0]); }).length;
       return '<button type="button" data-tsvc="' + f[0] + '"' + (tcySvc === f[0] ? ' class="on"' : '') + '>' + f[1] + ' <span class="n">' + n + '</span></button>';
-    }).join('');
+    }).join('') + '<button type="button" data-ttwo="1"' + (tcyTwo ? ' class="on"' : '') + ' title="Tenancies whose 12-month anniversary is 2 months away (in the next 2 weeks) or less — time to serve the rent increase notice">📅 2 months to anniversary <span class="n">' +
+      tenancies.filter(function(x){ return tcyTwoMonths(tcyAnnOf(x.data || {})); }).length + '</span></button>';
     $('tcySortTabs').innerHTML = TCY_SORTS.map(function(t){
       var on = tcySort.by === t[0];
       return '<button type="button" data-tsort="' + t[0] + '"' + (on ? ' class="on"' : '') + ' title="' + esc(t[2]) + (on ? ' — tap to reverse' : '') + '">' + t[1] + (on ? ' ' + (tcySort.dir < 0 ? '↓' : '↑') : '') + '</button>';
@@ -7458,6 +7473,7 @@
     var list = tenancies.filter(function(x){
       var d = x.data || {};
       if (!tcySvcMatch(d, tcySvc)) return false;
+      if (tcyTwo && !tcyTwoMonths(tcyAnnOf(d))) return false;
       if (!raw) return true;
       return [d.address, (d.landlord || {}).name, tcyNames(d.tenants).join(' '), tcyNames(d.guarantors).join(' '), d.service].join(' ').toLowerCase().indexOf(raw) !== -1;
     });
@@ -7470,6 +7486,7 @@
       else if (tcySort.by === 'upfront') d = (calc[a.id].upfrontFee || 0) - (calc[b.id].upfrontFee || 0);
       else if (tcySort.by === 'termfee') d = (calc[a.id].termFee || 0) - (calc[b.id].termFee || 0);
       else if (tcySort.by === 'rent') d = (calc[a.id].rent || 0) - (calc[b.id].rent || 0);
+      else if (tcySort.by === 'anniv') { var nA = tcyAnnOf(A), nB = tcyAnnOf(B); if (!nA !== !nB) return nA ? -1 : 1; d = nA ? nB.days - nA.days : 0; }   // none: always last
       else if (tcySort.by === 'added') d = new Date(a.created_at) - new Date(b.created_at);
       else d = -nat(A.address || '', B.address || '');
       return tcySort.dir * (d || 0) || nat(A.address || '', B.address || '');
@@ -7480,7 +7497,10 @@
       var d = x.data || {}, c = calc[x.id];
       return '<button type="button" class="tcy-row" data-tcy="' + x.id + '"><div><div class="addr" style="font-weight:600">' + esc(d.address || 'No address') + '</div>' +
         '<div class="prop-sub" style="margin-top:2px">' + esc(joinAnd(tcyNames(d.tenants)) || 'No tenants yet') + (d.landlord && d.landlord.name ? ' · Landlord: ' + esc(d.landlord.name) : '') + '</div>' +
-        '<div style="margin-top:4px"><span class="svc-chip ' + tcySvcOf(d) + '">' + esc(d.service || 'Tenant Find') + '</span></div></div>' +
+        '<div style="margin-top:4px"><span class="svc-chip ' + tcySvcOf(d) + '">' + esc(d.service || 'Tenant Find') + '</span>' + (function(){
+          var n = tcyAnnOf(d); if (!n) return '';
+          return '<span class="ann-chip' + (tcyTwoMonths(n) ? ' two' : '') + '">📅 ' + ordinal(n.years) + ' anniversary ' + esc(longDay(n.end)) + ' · ' + esc(tcyTwoText(n)) + '</span>';
+        })() + '</div></div>' +
         '<div class="num">' + esc(gbp(c.rent)) + '<small>per month</small></div>' +
         '<div class="num fee">' +
           (c.monthlyFee ? esc(gbp(c.monthlyFee)) + '<small>a month from the rent' + (c.monthlyPct ? ' · ' + esc(String(Math.round(c.monthlyPct * 100) / 100)) + '%' : '') + '</small>' : '') +
@@ -7490,7 +7510,7 @@
           '<small style="color:' + (c.btLeft > 0.004 ? 'var(--red, #c00)' : 'var(--green, #16a34a)') + '">' + (c.btLeft > 0.004 ? esc(gbp(c.btLeft)) + ' still to pay' : 'Move-in monies paid ✓') + '</small></div><span class="chev">›</span></button>';
     }).join('') : '<div class="empty">' + (tenancies.length ? 'No tenancy matches.' : 'No tenancies yet — tap “New tenancy” to add one.') + '</div>';
   }
-  $('tcySvcTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-tsvc]'); if (!b) return; tcySvc = b.dataset.tsvc; try { localStorage.setItem('rr_tcy_svc', tcySvc); } catch (x) {} renderTenancies(); });
+  $('tcySvcTabs').addEventListener('click', function(e){ if (e.target.closest('[data-ttwo]')) { tcyTwo = !tcyTwo; if (tcyTwo) tcySort = { by: 'anniv', dir: -1 }; renderTenancies(); return; } var b = e.target.closest('[data-tsvc]'); if (!b) return; tcySvc = b.dataset.tsvc; try { localStorage.setItem('rr_tcy_svc', tcySvc); } catch (x) {} renderTenancies(); });
   $('tcySortTabs').addEventListener('click', function(e){
     var b = e.target.closest('[data-tsort]'); if (!b) return;
     if (tcySort.by === b.dataset.tsort) tcySort.dir = -tcySort.dir; else tcySort = { by: b.dataset.tsort, dir: b.dataset.tsort === 'az' ? 1 : -1 };
