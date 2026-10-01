@@ -5341,6 +5341,9 @@
             '<div class="row-actions"><button class="btn" id="reopenBtn" type="button">Reopen job</button></div>'
           : '<label class="lbl" for="fDoneNotes">Completion notes (what was done)</label>' +
             '<textarea class="inp" id="fDoneNotes" placeholder="e.g. Replaced tap washer, tested, no further leaks"></textarea>' +
+            (jobCertType(j) ? '<label class="lbl" for="fCertDate" style="margin-top:10px">Date the ' + esc(certDef(jobCertType(j)).long.toLowerCase()) + ' was done</label>' +
+              '<input class="inp" id="fCertDate" type="date" value="' + esc(j.appointment_date && j.appointment_date <= ymd(new Date()) ? j.appointment_date : ymd(new Date())) + '" style="max-width:220px">' +
+              '<p class="muted-note" style="margin:4px 0 0">The certificate is updated straight away — expiry worked out (' + (certDef(jobCertType(j)).years === 1 ? '12 months' : certDef(jobCertType(j)).years + ' years') + ').</p>' : '') +
             '<div class="row-actions"><button class="btn success" id="completeBtn" type="button">✓ Mark job completed</button></div>') +
       '</div>' +
 
@@ -6087,9 +6090,11 @@
 
     if ($('completeBtn')) $('completeBtn').addEventListener('click', function(){
       if (!confirm('Mark ' + j.ref + ' as completed?')) return;
-      api('POST', '/api/admin/jobs/' + j.id + '/complete', { notes: $('fDoneNotes').value }).then(function(d){
+      if ($('fCertDate') && !$('fCertDate').value) { toast('Enter the date the certificate was done'); $('fCertDate').focus(); return; }
+      api('POST', '/api/admin/jobs/' + j.id + '/complete', { notes: $('fDoneNotes').value, cert_date: $('fCertDate') ? $('fCertDate').value : undefined }).then(function(d){
         if (!d.ok) { toast('Couldn’t complete the job.'); return; }
-        toast('Job completed — let the tenant know');
+        toast(d.cert ? 'Job completed — ' + certDef(d.cert.type).name + ' updated: expires ' + longDay(d.cert.expires) : 'Job completed — let the tenant know');
+        if (d.cert) loadCerts();
         drawerTab = 'messages';
         openJob(j.id); loadJobs();
         // Offer the "completed" message straight away, and the landlord update.
@@ -7370,6 +7375,8 @@
   function certDef(t){ return CERTS.filter(function(c){ return c.type === t; })[0]; }
   function certFor(key, type){ return certs.filter(function(c){ return c.property_key === key && c.type === type; })[0] || null; }
   function daysUntil(day){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || '')); if (!m) return null; var t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((new Date(+m[1], +m[2] - 1, +m[3]) - t) / 86400000); }
+  // A gas safety, EICR or EPC job (same rule as the server).
+  function jobCertType(j){ var t = String(j.category || '') + ' ' + String(j.affected || ''); return /eicr|electrical (safety|installation)/i.test(t) ? 'EICR' : /gas safety|cp12/i.test(t) ? 'Gas' : /\bepc\b|energy performance/i.test(t) ? 'EPC' : null; }
   function certJob(c){ return c && c.job_id ? jobs.filter(function(j){ return j.id === c.job_id; })[0] || null : null; }
   // missing / na / expired / due (within 10 days) / soon (60 days) / ok — and booked if an open job is on it.
   function certState(c){

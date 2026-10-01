@@ -910,6 +910,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
         '<form class="stack" style="margin:10px 0 0" data-done="' + j.id + '">' +
           '<textarea name="notes" rows="3" placeholder="What did you do? (optional)" style="padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit"></textarea>' +
           '<input name="price" inputmode="decimal" placeholder="Your price £ (optional)">' +
+          (j.cert ? '<label class="muted" style="display:block">Date the ' + esc(j.cert) + ' was done<input type="date" name="cert_date" required value="' + new Date().toISOString().slice(0, 10) + '" style="display:block;width:100%;margin-top:4px"></label>' : '') +
           '<label class="muted" style="display:block">Photos of the finished work (optional)<input type="file" name="photos" accept="image/*,.heic,.heif" multiple style="display:block;margin-top:6px;padding:10px;background:#fff"></label>' +
           '<button type="submit" style="background:#139A4B">Mark ' + esc(j.ref) + ' completed</button>' +
         '</form></details>' +
@@ -1013,7 +1014,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
     var files = Array.prototype.slice.call(f.photos.files || [], 0, 10);
     if (files.length) btn.textContent = 'Uploading ' + files.length + ' photo' + (files.length === 1 ? '' : 's') + '…';
     Promise.all(files.map(shrink)).then(function(ph){ return fetch('/api/c/' + TOKEN + '/jobs/' + f.dataset.done + '/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notes: f.notes.value.trim(), price: price === '' ? null : price, photos: ph.filter(Boolean) }) }); })
+      body: JSON.stringify({ notes: f.notes.value.trim(), price: price === '' ? null : price, cert_date: f.cert_date ? f.cert_date.value : undefined, photos: ph.filter(Boolean) }) }); })
       .then(function(r){ return r.json(); }).then(function(d){
         if (!d.ok) { btn.disabled = false; btn.textContent = d.error === 'bad-price' ? 'Check the price and try again' : 'Couldn’t save — try again'; return; }
         load();
@@ -3324,6 +3325,22 @@ module.exports = function mountJobs(app, opts) {
     return /eicr|electrical (safety|installation)/i.test(t) ? 'EICR' : /gas safety|cp12/i.test(t) ? 'Gas' : /\bepc\b|energy performance/i.test(t) ? 'EPC' : null;
   }
   function isoDay(v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) && apptDay(v) ? String(v) : null; }
+  // A gas safety, EICR or EPC job completed: the property's certificate is
+  // renewed from the date it was done (expiry worked out from how long it lasts).
+  async function recordCertFromJob(p, jobId, date, by) {
+    const j = (await p.query('SELECT id, property_address, category, affected FROM jobs WHERE id = $1', [jobId])).rows[0];
+    const type = j && certTypeOf(j.category, j.affected), issued = isoDay(date);
+    if (!type || !issued || !j.property_address) return null;
+    const key = propKey(j.property_address); if (!key) return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(issued), def = CERT_TYPES[type];
+    const ex = new Date(Date.UTC(+m[1] + def.years, +m[2] - 1, +m[3] - 1)).toISOString().slice(0, 10);   // e.g. 1 Oct 2026 → 30 Sep 2027
+    await p.query(`INSERT INTO property_certificates (property_key, address, type, issued_on, expires_on, not_required)
+      VALUES ($1, $2, $3, $4, $5, false)
+      ON CONFLICT (property_key, type) DO UPDATE SET address = coalesce(property_certificates.address, excluded.address), issued_on = excluded.issued_on, expires_on = excluded.expires_on,
+        not_required = false, reminded_at = NULL, job_id = NULL, updated_at = now()`, [key, j.property_address, type, issued, ex]);
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [j.id, 'note', def.name + ' recorded' + (by ? ' by ' + by : '') + ': done ' + certDay(issued) + ', expires ' + certDay(ex) + '. Certificates updated.']);
+    return { type: type, issued: issued, expires: ex };
+  }
   // ---------- Tenancies ----------
   // A tenancy's details are kept as one JSON document (the admin page works out
   // the deposit, move-in monies and statements from them). Saving one also
@@ -4173,7 +4190,8 @@ module.exports = function mountJobs(app, opts) {
       if (j.status !== 'Completed' && j.part_done_by && j.part_done_by.trim().toLowerCase() === me) { j.status = 'Completed'; j.completed_at = j.part_done_at; }
       // Working alongside another contractor (their name only, never contact details).
       const other = [j.assigned_to, j.assigned_to_2].filter(function (n) { return n && n.trim() && n.trim().toLowerCase() !== me; })[0];
-      const out = { ref: refFor(j.id), with: other ? other.trim() : '', notes: (mineNotes[j.id] || []).slice(-5) };
+      const ct = certTypeOf(j.category, j.affected);
+      const out = { ref: refFor(j.id), with: other ? other.trim() : '', notes: (mineNotes[j.id] || []).slice(-5), cert: ct ? CERT_TYPES[ct].long : '' };
       // The second contractor's own task: theirs to do, or what the other one is doing.
       const second = j.assigned_to_2 && j.assigned_to_2.trim().toLowerCase() === me;
       if (j.task_2) { if (second) out.my_task = j.task_2; else if (other) out.other_task = j.task_2; }
@@ -4217,7 +4235,9 @@ module.exports = function mountJobs(app, opts) {
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.rows[0].id, 'completed',
       'Marked completed by ' + c.name + ' (contractor job link).' + (others.length ? ' Both contractors have now finished.' : '') + (notes ? ' Notes: ' + notes.replace(/[.\s]*$/, '') + '.' : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '') +
       (photos.length ? ' ' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' added.' : '')]);
-    ntfy({ title: 'Job completed: ' + ref, message: c.name + ' marked ' + ref + ' completed — ' + (r.rows[0].property_address || '') + '. Open the job in Fixflow to tell the tenant and landlord.', tags: ['white_check_mark'] }).catch(function () {});
+    // A certificate job: the date the contractor gave (else today) renews the certificate.
+    const cert = await recordCertFromJob(p, r.rows[0].id, isoDay(b.cert_date) || new Date().toISOString().slice(0, 10), c.name);
+    ntfy({ title: 'Job completed: ' + ref, message: c.name + ' marked ' + ref + ' completed — ' + (r.rows[0].property_address || '') + '.' + (cert ? ' ' + CERT_TYPES[cert.type].name + ' updated: expires ' + certDay(cert.expires) + '.' : '') + ' Open the job in Fixflow to tell the tenant and landlord.', tags: ['white_check_mark'] }).catch(function () {});
     res.json({ ok: true });
   }));
   // A note or question from the contractor for the office (with photos if they
@@ -4395,7 +4415,8 @@ module.exports = function mountJobs(app, opts) {
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'completed', 'Job marked completed.' + (notes ? ' ' + notes : '')]);
-    res.json({ ok: true });
+    const cert = (req.body || {}).cert_date ? await recordCertFromJob(p, id, req.body.cert_date) : null;
+    res.json({ ok: true, cert: cert });
   }));
 
   app.post('/api/admin/jobs/:id/reopen', withDb(async function (p, req, res) {
