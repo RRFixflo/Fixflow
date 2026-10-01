@@ -1060,6 +1060,7 @@
           <div class="prop-sortbar"><span class="muted-note" style="margin:0">Sort by</span><div id="tcySortTabs" class="tabs" role="tablist" aria-label="Sort tenancies"></div></div>
           <div class="tcy-sum muted-note" id="tcySum"></div>
           <div class="card" style="padding:0;overflow:hidden"><div id="tcyList"></div></div>
+          <div id="tcyNoRecord"></div>
           <details class="card" id="tcySettings" style="margin-top:12px">
             <summary style="cursor:pointer;font-weight:700">Templates: tenancy agreement, welcome emails, bank details</summary>
             <div style="margin-top:12px;display:flex;flex-direction:column;gap:12px">
@@ -3262,7 +3263,7 @@
       var open = p.jobs.filter(isOpen).length;
       return '<button type="button" class="prop-row" data-key="' + esc(p.key) + '">' +
         '<div><div class="addr">' + esc(p.address) + newChip(key[p.key].added) + (key[p.key].kn ? ' <span class="key-chip">🔑 ' + esc(key[p.key].kn) + '</span>' : '') + '</div><div class="prop-sub" style="margin-top:2px">' +
-          esc([propTenantNames(p) || 'No tenant name', by === 'landlord' ? (key[p.key].ll ? 'Landlord: ' + key[p.key].ll : 'No landlord') : ''].filter(Boolean).join(' · ')) + '</div>' + '<div class="tcy-line">' + tcyChip(tcyOf[p.key]) + '</div>' + certChips(p.key) + '</div>' +
+          esc([propTenantNames(p) || 'No tenant name', by === 'landlord' ? (key[p.key].ll ? 'Landlord: ' + key[p.key].ll : 'No landlord') : ''].filter(Boolean).join(' · ')) + '</div>' + '<div class="tcy-line">' + tcyChip(tcyOf[p.key]) + (function(){ var st = licenceState(licenceOf(p.address)); return st.k === 'bad' || st.k === 'warn' ? ' <span class="tcy-chip ' + (st.k === 'bad' ? 'none' : 'warn') + '">📜 Licence: ' + esc(st.text) + '</span>' : ''; })() + '</div>' + certChips(p.key) + '</div>' +
         '<div class="num">' + p.jobs.length + '<small>repair' + (p.jobs.length === 1 ? '' : 's') + '</small></div>' +
         '<div class="num' + (open ? ' hot' : '') + '">' + open + '<small>open</small></div>' +
         '<div class="last">' + (p.jobs.length ? esc(fmtShort(p.latest)) + '<small>last reported</small>' : '—<small>no repairs yet</small>') + '</div>' +
@@ -3321,9 +3322,9 @@
       '<div class="tile alert' + (open ? ' has' : '') + '"><div class="k">Open</div><div class="v">' + open + '</div></div>' +
       '<div class="tile"><div class="k">Completed</div><div class="v">' + done + '</div></div>' +
       '<div class="tile good"><div class="k">Charged to landlord</div><div class="v">' + gbp(chargedTotal(d.jobs)) + '</div></div>' +
-      keyTile(d.property.address) +
+      keyTile(d.property.address) + licenceTile(d.property.address) +
       (function(){ var t = propTenancy(d.property.key); return '<div class="tile' + (t.k === 'none' ? ' alert has' : t.k === 'ending' ? ' warnish' : ' good') + '"><div class="k">Tenancy</div><div class="v" style="font-size:1rem">' + (t.k === 'none' ? 'None on file' : esc(t.text)) + '</div>' + (t.k === 'none' ? '<button type="button" class="btn small primary" id="propAddTerms" style="margin-top:6px">📄 Add Terms of Let</button><div class="drop-hint" style="margin-top:4px">or drag &amp; drop it onto this page</div>' : '') + '</div>'; })();
-    bindKeyTile(d.property.address);
+    bindKeyTile(d.property.address); bindLicenceTile(d.property.address);
     if ($('propAddTerms')) $('propAddTerms').addEventListener('click', function(){ askFromTerms(knownFullAddress(d.property.key) || d.property.address); });
     $('propJobs').innerHTML = d.jobs.length ? d.jobs.map(rowHtml).join('') : '<div class="empty">No repairs in this period.</div>';
     renderPropCerts(d.property.address);
@@ -3354,6 +3355,53 @@
     var go = function(){ saveKey(address, $('pkNum').value, $('pkNotes').value).then(function(ok){ if (ok) renderProperty(); }); };
     $('pkSave').addEventListener('click', go);
     [$('pkNum'), $('pkNotes')].forEach(function(i){ i.addEventListener('keydown', function(e){ if (e.key === 'Enter') go(); }); });
+  }
+  // The property licence, as found on the council's public register (the
+  // register needs a person to search it, so Fixflow opens it ready to search
+  // and the details found are saved here, with an alert before expiry).
+  var LICENCE_REGISTER = 'https://southwark.metastreet.co.uk/public-register';
+  var LICENCE_TYPES = ['Selective', 'Additional (HMO)', 'Mandatory HMO'];
+  function licenceOf(address){ var r = propInfo[propKey(address)]; return r && r.licence ? r.licence : null; }
+  function licenceState(l){
+    if (!l) return { k: 'unknown', text: 'Not checked' };
+    if (l.status === 'not_needed') return { k: 'ok', text: 'Not needed' };
+    if (l.status === 'none') return { k: 'bad', text: 'No licence found' };
+    if (l.status === 'applied') return { k: 'warn', text: 'Applied for' };
+    if (!l.expires) return { k: 'ok', text: 'Licensed' };
+    var days = Math.round((parseDay(l.expires) - parseDay(isoDay(new Date()))) / 86400000);
+    return days < 0 ? { k: 'bad', text: 'Expired ' + longDay(l.expires), days: days } : days <= 61 ? { k: 'warn', text: 'Expires ' + longDay(l.expires) + ' (' + days + ' days)', days: days } : { k: 'ok', text: 'Until ' + longDay(l.expires), days: days };
+  }
+  function licenceTile(address){
+    var l = licenceOf(address) || {}, st = licenceState(licenceOf(address));
+    return '<div class="tile' + (st.k === 'bad' ? ' alert has' : st.k === 'warn' ? ' warnish' : st.k === 'ok' ? ' good' : '') + '" id="propLicTile"><div class="k">📜 Property licence</div>' +
+      '<div id="plView"><div class="v" style="font-size:1rem">' + esc(st.text) + '</div>' +
+        (l.type || l.number ? '<small style="display:block;font-size:.78rem;color:var(--ink-soft)">' + esc([l.type, l.number].filter(Boolean).join(' · ')) + '</small>' : '') +
+        (l.checked_at ? '<small style="display:block;font-size:.72rem;color:var(--ink-soft)">Checked ' + esc(longDay(l.checked_at)) + '</small>' : '') +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button type="button" class="btn small" id="plCheck">🔎 Check register</button><button type="button" class="linkish" id="plEdit">' + (licenceOf(address) ? 'Edit' : '+ Add') + '</button></div></div>' +
+      '<div id="plForm" hidden style="display:grid;gap:6px">' +
+        '<select class="inp" id="plStatus">' + [['licensed', 'Licensed'], ['applied', 'Applied for'], ['none', 'No licence found'], ['not_needed', 'Not needed']].map(function(o){ return '<option value="' + o[0] + '"' + ((l.status || 'licensed') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
+        '<select class="inp" id="plType"><option value="">Licence type…</option>' + LICENCE_TYPES.map(function(t){ return '<option' + (l.type === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
+        '<input class="inp" id="plNumber" placeholder="Licence number" maxlength="60" value="' + esc(l.number || '') + '">' +
+        '<label class="lbl" style="margin:0">Expires</label><input class="inp" id="plExpires" type="date" value="' + esc(l.expires || '') + '">' +
+        '<input class="inp" id="plNotes" placeholder="Notes (optional)" maxlength="500" value="' + esc(l.notes || '') + '">' +
+        '<button type="button" class="btn small primary" id="plSave">Save</button></div></div>';
+  }
+  function bindLicenceTile(address){
+    $('plCheck').addEventListener('click', function(){
+      var q = address.replace(/\s*,?\s*[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\s*$/i, '');   // the register searches best without the postcode
+      try { navigator.clipboard.writeText(q); } catch (e) {}
+      window.open(LICENCE_REGISTER + '?search%5Bquery%5D=' + encodeURIComponent(q), '_blank', 'noopener');
+      toast('Opened the Southwark register — the address is copied if you need to paste it. Then tap Edit to save what it shows.');
+    });
+    $('plEdit').addEventListener('click', function(){ $('plView').hidden = true; $('plForm').hidden = false; });
+    $('plSave').addEventListener('click', function(){
+      var lic = { status: $('plStatus').value, type: $('plType').value, number: $('plNumber').value.trim(), expires: $('plExpires').value, notes: $('plNotes').value.trim() };
+      api('PUT', '/api/admin/property-licence', { address: address, licence: lic }).then(function(d){
+        if (!d.ok) { toast('Couldn’t save the licence'); return; }
+        var k = propKey(address); propInfo[k] = Object.assign({}, propInfo[k], { property_key: k, address: address, licence: d.licence });
+        toast('Licence saved'); renderProperty();
+      });
+    });
   }
   // Every property's key number in one list, to fill them all in quickly.
   function openKeyRegister(){
@@ -6742,14 +6790,16 @@
   // landlord) saved there, filling in any phone numbers and emails it lacks.
   function tcyOnFileTenants(pr){
     var out = [], seen = function(x){ return out.some(function(o){ return tcySameTenant(x, o, true); }); };
-    var add = function(x){ x = { name: x.name || '', email: x.email || '', phone: x.phone || '' }; if ((tNameKey(x.name) || x.phone || x.email) && !seen(x)) out.push(x); };
+    var src = '', add = function(x){ x = { name: x.name || '', email: x.email || '', phone: x.phone || '' }; if ((tNameKey(x.name) || x.phone || x.email) && !seen(x)) { Object.defineProperty(x, 'src', { value: src, enumerable: false }); out.push(x); } };
     // Tenants linked to the property (under any spelling of its address).
+    src = 'saved';
     (tenantLinks || []).forEach(function(l){
       if (l.moved_out_at) return;
       var m = l.property_key === pr.key || propKey(l.address) === pr.key || (function(){ var x = matchProperty(l.address); return x && x.key === pr.key; })();
       var r = m && tenantRecById(l.tenant_id); if (r) add(r);
     });
     // Tenants named on its repair jobs, and on earlier tenancies there.
+    src = 'jobs';
     tenantsAt(pr).forEach(function(j){ add({ name: j.tenant_name, email: j.tenant_email, phone: j.tenant_phone }); });
     tenancies.forEach(function(tc){ if (tc.property_key === pr.key || propKey((tc.data || {}).address) === pr.key) ((tc.data || {}).tenants || []).forEach(add); });
     return out;
@@ -7113,7 +7163,7 @@
   function saveKey(address, num, notes){
     return api('PUT', '/api/admin/property-info', { address: address, key_number: num, key_notes: notes }).then(function(d){
       if (!d.ok) { toast('Couldn’t save the key number'); return false; }
-      propInfo[propKey(address)] = { property_key: propKey(address), address: address, key_number: String(num || '').trim() || null, key_notes: String(notes || '').trim() || null };
+      propInfo[propKey(address)] = Object.assign({}, propInfo[propKey(address)], { property_key: propKey(address), address: address, key_number: String(num || '').trim() || null, key_notes: String(notes || '').trim() || null });
       toast(d.clash ? 'Saved — note: key ' + num + ' is also on ' + d.clash : num ? 'Key number saved' : 'Key number removed');
       return true;
     });
@@ -7723,13 +7773,35 @@
         })() + '</div></div>' +
         '<div class="num">' + esc(gbp(c.rent)) + '<small>per month</small></div>' +
         '<div class="num fee">' +
-          (c.monthlyFee ? esc(gbp(c.monthlyFee)) + '<small>a month from the rent' + (c.monthlyPct ? ' · ' + esc(String(Math.round(c.monthlyPct * 100) / 100)) + '%' : '') + '</small>' : '') +
-          (c.upfrontFee ? (c.monthlyFee ? '<small style="color:var(--ink)"><b>+ ' + esc(gbp(c.upfrontFee)) + '</b> up front</small>' : esc(gbp(c.upfrontFee)) + '<small>up front</small>') : '') +
+          (c.monthlyFee ? esc(gbp(c.monthlyFee)) + '<small>a month from the rent' + (c.rent ? ' · ' + esc(String(Math.round(c.monthlyFee / c.rent * 10000) / 100)) + '%' : c.monthlyPct ? ' · ' + esc(String(Math.round(c.monthlyPct * 100) / 100)) + '%' : '') + '</small>' : '') +
+          (c.upfrontFee ? (c.monthlyFee ? '<small style="color:var(--ink)"><b>+ ' + esc(gbp(c.upfrontFee)) + '</b> up front</small>' : esc(gbp(c.upfrontFee)) + '<small>up front' + (c.rent ? ' · ' + esc(String(Math.round(c.upfrontFee / (c.rent * 12) * 10000) / 100)) + '% of annual rent' : '') + '</small>') : '') +
           (!c.monthlyFee && !c.upfrontFee ? '—<small>no fee set</small>' : '') +
           '<small>' + esc(gbp(c.termFee)) + ' over ' + c.term + ' months</small></div><div class="when">' + esc(tcyStatus(d)) +
           '<small style="color:' + (c.btLeft > 0.004 ? 'var(--red, #c00)' : 'var(--green, #16a34a)') + '">' + (c.btLeft > 0.004 ? esc(gbp(c.btLeft)) + ' still to pay' : 'Move-in monies paid ✓') + '</small></div><span class="chev">›</span></button>';
     }).join('') : '<div class="empty">' + (tenancies.length ? 'No tenancy matches.' : 'No tenancies yet — tap “New tenancy” to add one.') + '</div>';
+    renderTcyNoRecord(raw);
   }
+  // Every tenant saved on Fixflow shows here: properties with tenants but no
+  // tenancy record yet, ready for a Terms of Let or a new tenancy.
+  function renderTcyNoRecord(raw){
+    var rows = allPropsForList().filter(function(pr){ return propTenancy(pr.key).k === 'none'; }).map(function(pr){
+      var ts = tcyOnFileTenants(pr).filter(function(t){ return t.src === 'saved'; });
+      return ts.length ? { pr: pr, ts: ts, addr: knownFullAddress(pr.key) || pr.address } : null;
+    }).filter(Boolean).filter(function(r){
+      return !raw || [r.addr, r.ts.map(function(t){ return [t.name, t.phone, t.email].join(' '); }).join(' ')].join(' ').toLowerCase().indexOf(raw) !== -1;
+    }).sort(function(a, b){ return a.addr.localeCompare(b.addr, 'en-GB', { numeric: true }); });
+    $('tcyNoRecord').innerHTML = rows.length ? '<div class="card"><h3>Tenants with no tenancy record yet <span class="count-chip">' + rows.length + '</span></h3>' +
+      '<p class="muted-note" style="margin:0 0 6px">Saved tenants at properties that don’t have a tenancy here yet. Add the Terms of Let (or drop it on the property) and the tenancy is made with these tenants.</p>' +
+      rows.map(function(r){
+        return '<div class="te-row"><div><div style="font-weight:600">' + esc(r.addr) + '</div><div class="prop-sub" style="margin:2px 0 0">' +
+          r.ts.map(function(t){ return esc(t.name || 'Tenant') + (t.phone ? ' · ' + esc(t.phone) : '') + (t.email ? ' · ' + esc(t.email) : ''); }).join('<br>') + '</div></div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button type="button" class="btn small primary" data-nr-terms="' + esc(r.addr) + '">📄 Add Terms of Let</button><button type="button" class="btn small" data-nr-new="' + esc(r.addr) + '">+ New tenancy</button></div></div>';
+      }).join('') + '</div>' : '';
+  }
+  $('tcyNoRecord').addEventListener('click', function(e){
+    var b = e.target.closest('[data-nr-terms]'); if (b) { askFromTerms(b.dataset.nrTerms); return; }
+    b = e.target.closest('[data-nr-new]'); if (b) openTenancy('new', { address: b.dataset.nrNew });
+  });
   $('tcySvcTabs').addEventListener('click', function(e){ if (e.target.closest('[data-ttwo]')) { tcyTwo = !tcyTwo; if (tcyTwo) tcySort = { by: 'anniv', dir: -1 }; renderTenancies(); return; } var b = e.target.closest('[data-tsvc]'); if (!b) return; tcySvc = b.dataset.tsvc; try { localStorage.setItem('rr_tcy_svc', tcySvc); } catch (x) {} renderTenancies(); });
   $('tcySortTabs').addEventListener('click', function(e){
     var b = e.target.closest('[data-tsort]'); if (!b) return;
@@ -7750,7 +7822,9 @@
     if (!tcyDraft.landlord || typeof tcyDraft.landlord !== 'object') tcyDraft.landlord = {};
     if (!tcyDraft.address && x) tcyDraft.address = x.address || '';
     // A saved tenancy with no tenants (or missing details): the tenants saved at the property.
-    var filledN = x ? tcyFillTenants(tcyDraft) : 0;
+    // Only the property's latest tenancy (an older one had other tenants).
+    var latest = x && !tenancies.some(function(t){ return t.id !== x.id && t.property_key === x.property_key && String((t.data || {}).start_date || '') > String(tcyDraft.start_date || ''); });
+    var filledN = latest ? tcyFillTenants(tcyDraft) : 0;
     tcyLocked = !!x;   // a saved tenancy opens read-only; "Edit tenancy" unlocks it
     // Blank tenant details filled from the property are saved straight away.
     if (filledN) api('PUT', '/api/admin/tenancies/' + x.id, tcyDraft).then(function(r){ if (r.ok) { x.data = JSON.parse(JSON.stringify(tcyDraft)); tcyLog('Tenants filled in from those saved at the property'); } });
@@ -7808,9 +7882,13 @@
     if (!list.length) { d.tenants = onFile.map(function(x){ return Object.assign({}, x); }); return d.tenants.length; }
     var n = 0;
     list.forEach(function(x){
-      var hit = onFile.filter(function(o){ return tcySameTenant(x, o); })[0]; if (!hit) return;
+      var hit = onFile.filter(function(o){ return tcySameTenant(x, o, true); })[0]; if (!hit) return;
       var got = false; ['name', 'email', 'phone'].forEach(function(k){ if (!x[k] && hit[k]) { x[k] = hit[k]; got = true; } }); if (got) n++;
     });
+    // Every current tenant saved at the property belongs on its tenancy (names
+    // only seen on old repair jobs are left out — they may have moved on).
+    onFile.filter(function(o){ return o.src === 'saved' && !list.some(function(x){ return tcySameTenant(x, o, true); }); }).forEach(function(o){ list.push(Object.assign({}, o)); n++; });
+    d.tenants = list;
     return n;
   }
   // A tenant typed into the form who's already saved anywhere: their details.
@@ -7905,8 +7983,8 @@
         '<div class="grid3">' + '<div>' + tcyInp('tfFind', 'Tenant find fee', d.find_pct, ' inputmode="decimal"') + unitSeg('find', d.find_unit) +
           '<div class="seg" id="tfFindBasis" style="margin-top:6px;font-size:.82rem"><button type="button" data-v="monthly"' + (d.find_basis !== 'upfront' ? ' class="on"' : '') + '>Monthly</button><button type="button" data-v="upfront"' + (d.find_basis === 'upfront' ? ' class="on"' : '') + '>Annual (% of yearly rent, up front)</button></div>' +
           '<p class="muted-note" id="tfFindNote" style="margin:4px 0 0"></p></div>' +
-          '<div>' + tcyInp('tfCollect', 'Rent collection (monthly)', d.collect_pct, ' inputmode="decimal"') + unitSeg('collect', d.collect_unit) + '</div>' +
-          '<div>' + tcyInp('tfManage', 'Management fee (monthly)', d.manage_pct, ' inputmode="decimal"') + unitSeg('manage', d.manage_unit) + '</div></div>' +
+          '<div>' + tcyInp('tfCollect', 'Rent collection (monthly)', d.collect_pct, ' inputmode="decimal"') + unitSeg('collect', d.collect_unit) + '<p class="muted-note" id="tfCollectNote" style="margin:4px 0 0"></p></div>' +
+          '<div>' + tcyInp('tfManage', 'Management fee (monthly)', d.manage_pct, ' inputmode="decimal"') + unitSeg('manage', d.manage_unit) + '<p class="muted-note" id="tfManageNote" style="margin:4px 0 0"></p></div></div>' +
         '<label class="lbl" style="margin-top:12px">Other fees</label><div class="tcy-chips" id="tfFeeChips">' + tcyFeePresets().map(function(f, i){ return '<button type="button" class="btn small ghost" data-fee-chip="' + i + '"' + (f.kind === 'find' ? ' title="A % of the annual rent"' : f.kind === 'manage' ? ' title="A % of the rent each month"' : '') + '>+ ' + esc(f.label) + (f.kind === 'find' ? ' (% of annual rent)' : f.kind === 'manage' ? ' (% monthly)' : num(f.amount) !== null ? ' · ' + esc(gbp(f.amount)) : '') + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-fee-chip="-1">+ Other</button></div>' +
         '<div id="tfFees">' + tcyFeeRows() + '</div>' +
         '<label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="tfVat"' + (d.vat === false ? '' : ' checked') + '> Add VAT (20%) to the fees</label>' +
@@ -8084,9 +8162,16 @@
     $('tfSo').placeholder = c.soStart; $('tfSoN').placeholder = String(c.soPayments);
     if (!$('tfSo').value && c.soStart) $('tfSo').title = 'Starts ' + longDay(c.soStart);
     var fp = num(d.find_pct), gbpFee = d.find_unit === 'gbp';
+    // A £ figure: what % of the rent it works out to.
+    var pctOf = function(v){ return c.rent ? ' — that’s ' + String(Math.round(v / c.rent * 10000) / 100) + '% of the rent' : ''; };
+    var looksGbp = function(v){ return v > 100 ? ' ⚠ ' + v + '% looks like a £ figure — tap “£ per month” if it’s pounds' + (c.rent ? ' (£' + v + ' a month is ' + String(Math.round(v / c.rent * 10000) / 100) + '% of the rent)' : '') + '.' : ''; };
     $('tfFindNote').textContent = !fp || (!c.rent && !gbpFee) ? '' : d.find_basis === 'upfront'
-      ? (gbpFee ? gbp(fp) + ' a month × 12 = ' + gbp(r2(fp * 12)) : fp + '% of ' + gbp(c.rent * 12) + ' = ' + gbp(r2(c.rent * 12 * fp / 100))) + ', on the first statement'
-      : (gbpFee ? gbp(fp) + ' a month' : fp + '% of each month’s rent = ' + gbp(r2(c.rent * fp / 100)) + ' a month');
+      ? (gbpFee ? gbp(fp) + ' a month × 12 = ' + gbp(r2(fp * 12)) + pctOf(fp).replace('of the rent', 'of the annual rent') : fp + '% of ' + gbp(c.rent * 12) + ' = ' + gbp(r2(c.rent * 12 * fp / 100))) + ', on the first statement' + (gbpFee ? '' : looksGbp(fp))
+      : (gbpFee ? gbp(fp) + ' a month' + pctOf(fp) : fp + '% of each month’s rent = ' + gbp(r2(c.rent * fp / 100)) + ' a month' + looksGbp(fp));
+    ['collect', 'manage'].forEach(function(w){
+      var el = $(w === 'collect' ? 'tfCollectNote' : 'tfManageNote'), v = num(d[w + '_pct']); if (!el) return;
+      el.textContent = !v ? '' : d[w + '_unit'] === 'gbp' ? gbp(v) + ' a month' + pctOf(v) : c.rent ? v + '% = ' + gbp(r2(c.rent * v / 100)) + ' a month' + looksGbp(v) : looksGbp(v);
+    });
     ['find', 'collect', 'manage'].forEach(function(w){ var el = $({ find: 'tfFind', collect: 'tfCollect', manage: 'tfManage' }[w]); if (el) el.placeholder = d[w + '_unit'] === 'gbp' ? '£ a month, e.g. 150' : '%, e.g. 8'; });
     $('tfDepByNote').textContent = d.deposit_by === 'landlord' ? 'The deposit goes to the landlord and shows on their statement.' : 'We hold and register the deposit. It is not on the landlord statement.';
     $('tfSum').innerHTML = '<div><span>Weekly rent</span><b>' + esc(gbp(c.weekly)) + '</b></div><div><span>First month + deposit</span><b>' + esc(gbp(c.total)) + '</b></div>' +

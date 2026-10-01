@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS property_info (
   key_notes    TEXT,
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE property_info ADD COLUMN IF NOT EXISTS licence JSONB;
 CREATE TABLE IF NOT EXISTS property_certificates (
   id           SERIAL PRIMARY KEY,
   property_key TEXT NOT NULL,
@@ -1721,7 +1722,7 @@ module.exports = function mountJobs(app, opts) {
 
   // ---------- Key numbers ----------
   app.get('/api/admin/property-info', withDb(async function (p, req, res) {
-    res.json({ ok: true, info: (await p.query('SELECT property_key, address, key_number, key_notes, updated_at FROM property_info')).rows });
+    res.json({ ok: true, info: (await p.query('SELECT property_key, address, key_number, key_notes, licence, updated_at FROM property_info')).rows });
   }));
   app.put('/api/admin/property-info', withDb(async function (p, req, res) {
     const b = req.body || {}, address = str(b.address, 500), key = propKey(address);
@@ -1738,6 +1739,21 @@ module.exports = function mountJobs(app, opts) {
       for (const r of ids) await p.query("INSERT INTO job_updates (job_id, kind, body) VALUES ($1, 'change', $2)", [r.id, 'Key number: ' + (before.key_number || 'none') + ' → ' + (num || 'none')]);
     }
     res.json({ ok: true, clash: clash ? clash.address : null });
+  }));
+
+  // The property's licence (selective / additional / HMO), as checked on the
+  // council's public register: whether it has one, its number and expiry.
+  app.put('/api/admin/property-licence', withDb(async function (p, req, res) {
+    const b = req.body || {}, address = str(b.address, 500), key = propKey(address), l = b.licence || {};
+    if (!key) return res.status(400).json({ ok: false, error: 'address' });
+    const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null; };
+    const lic = { status: ['licensed', 'none', 'not_needed', 'applied'].indexOf(l.status) !== -1 ? l.status : 'licensed', type: str(l.type, 60), number: str(l.number, 60), holder: str(l.holder, 200),
+      starts: day(l.starts), expires: day(l.expires), notes: str(l.notes, 500), checked_at: day(l.checked_at) || new Date().toISOString().slice(0, 10) };
+    const cur = (await p.query('SELECT licence FROM property_info WHERE property_key = $1', [key])).rows[0];
+    if (cur && cur.licence && cur.licence.expires === lic.expires) lic.alerted_for = cur.licence.alerted_for || null;   // same expiry: don't alert again
+    await p.query(`INSERT INTO property_info (property_key, address, licence) VALUES ($1, $2, $3)
+      ON CONFLICT (property_key) DO UPDATE SET licence = excluded.licence, address = coalesce(property_info.address, excluded.address), updated_at = now()`, [key, address, JSON.stringify(lic)]);
+    res.json({ ok: true, licence: lic });
   }));
 
   app.put('/api/admin/property-landlord', withDb(async function (p, req, res) {
@@ -3960,32 +3976,19 @@ module.exports = function mountJobs(app, opts) {
     }
   }
   setTimeout(function () { tenancyEndAlerts().catch(function (err) { console.error('Tenancy alerts failed:', err.message); }); }, 90 * 1000);
-  // TEMPORARY: look at the Southwark licence register's page so the licence
-  // check can be built to match it (logged once on start-up; removed after).
-  setTimeout(async function () {
-    const base = 'https://southwark.metastreet.co.uk';
-    const show = function (label, t) { console.log('[licence-probe] ' + label + ': ' + String(t).replace(/\s+/g, ' ').slice(0, 1500)); };
-    try {
-      const r = await fetch(base + '/public-register', { signal: AbortSignal.timeout(20000), headers: { 'user-agent': 'Mozilla/5.0 Fixflow' } });
-      const html = await r.text();
-      show('status', r.status + ' ' + r.headers.get('content-type') + ' ' + html.length + ' bytes');
-      show('head', html.slice(0, 1500));
-      show('forms', (html.match(/<form[\s\S]{0,600}?>/gi) || []).join(' | '));
-      show('inputs', (html.match(/<(input|select|button)[^>]{0,200}>/gi) || []).slice(0, 30).join(' | '));
-      const scripts = (html.match(/<script[^>]*src="[^"]+"/gi) || []).map(function (x) { return x.replace(/.*src="/, '').replace(/"$/, ''); });
-      show('scripts', scripts.join(' | '));
-      show('api-in-html', (html.match(/["'`][^"'`\s]*(api|search|register|licen[cs]e)[^"'`\s]*["'`]/gi) || []).slice(0, 60).join(' | '));
-      const body = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ');
-      show('text', body.slice(0, 1500));
-      for (const src of scripts.slice(0, 6)) {
-        const u = src.startsWith('http') ? src : base + (src.startsWith('/') ? '' : '/') + src;
-        try {
-          const js = await (await fetch(u, { signal: AbortSignal.timeout(20000) })).text();
-          show('js ' + src + ' (' + js.length + ')', (js.match(/["'`][^"'`\s]{0,80}(\/api\/|public-register|publicregister|licen[cs]e|search)[^"'`\s]{0,80}["'`]/gi) || []).filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 80).join(' | '));
-        } catch (e) { show('js-fail ' + src, e.message); }
-      }
-    } catch (e) { show('failed', e.message); }
-  }, 20 * 1000);
+  // A property licence expiring within 2 months (or expired): a phone alert, once per expiry date.
+  async function licenceAlerts() {
+    const p = await db(); if (!p) return;
+    const soon = new Date(Date.now() + 61 * 86400000).toISOString().slice(0, 10);
+    for (const r of (await p.query("SELECT property_key, address, licence FROM property_info WHERE licence->>'status' = 'licensed' AND licence->>'expires' IS NOT NULL")).rows) {
+      const l = r.licence || {}; if (!l.expires || l.expires > soon || l.alerted_for === l.expires) continue;
+      const past = l.expires < new Date().toISOString().slice(0, 10);
+      await ntfy({ title: 'Property licence ' + (past ? 'expired' : 'expiring') + ': ' + shortAddrText(r.address || r.property_key), message: (l.type ? l.type + ' licence' : 'Licence') + (l.number ? ' ' + l.number : '') + ' for ' + (r.address || r.property_key) + (past ? ' expired on ' : ' expires on ') + apptDay(l.expires) + '. Renew it on the council’s licensing site.', tags: ['page_facing_up'] }).catch(function () {});
+      await p.query("UPDATE property_info SET licence = licence || jsonb_build_object('alerted_for', $2::text) WHERE property_key = $1", [r.property_key, l.expires]);
+    }
+  }
+  setTimeout(function () { licenceAlerts().catch(function (err) { console.error('Licence alerts failed:', err.message); }); }, 120 * 1000);
+  setInterval(function () { licenceAlerts().catch(function (err) { console.error('Licence alerts failed:', err.message); }); }, 6 * 3600 * 1000).unref();
   setInterval(function () { tenancyEndAlerts().catch(function (err) { console.error('Tenancy alerts failed:', err.message); }); }, 6 * 3600 * 1000).unref();
   setInterval(function () { raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); }); }, 3600 * 1000).unref();
 
