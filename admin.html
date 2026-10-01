@@ -638,6 +638,8 @@
   #pkForm:not([hidden]) { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
   #pkView[hidden] { display: none; }
   .kr-list { overflow: auto; flex: 1; min-height: 120px; }
+  .inv-prop { padding: 10px 0; border-top: 1px solid var(--line); } .inv-prop:first-of-type { border-top: 0; }
+  .inv-prop-h { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; } .inv-prop-h span { color: var(--ink-soft); font-size: .88rem; }
   .modal .card.lc-card { overflow-y: auto; display: block; -webkit-overflow-scrolling: touch; }
   .lc-foot { position: sticky; bottom: -20px; margin: 12px -20px -20px; padding: 12px 20px; background: var(--card, #fff); border-top: 1px solid var(--line); }
   .kr-row { display: grid; grid-template-columns: 1fr 110px 1fr; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); transition: background .3s; }
@@ -1269,6 +1271,7 @@
           </div>
           <div class="tiles prop-tiles" id="propTiles"></div>
           <div class="card" id="propCerts" style="margin-bottom:12px"></div>
+          <div class="card" id="propInv" style="margin-bottom:12px" hidden></div>
           <div class="card" id="propTcy" style="margin-bottom:12px"></div>
           <div class="grid2" style="margin-bottom:12px;align-items:start"><div class="card" id="propLandlord"></div><div class="card" id="propTenants"></div></div>
           <div class="card" id="propNotices" hidden style="margin-bottom:12px"></div>
@@ -3371,6 +3374,16 @@
       keyTile(d.property.address) + licenceTile(d.property.address) +
       (function(){ var t = propTenancy(d.property.key); return '<div class="tile' + (t.k === 'none' ? ' alert has' : t.k === 'ending' ? ' warnish' : ' good') + '"><div class="k">Tenancy</div><div class="v" style="font-size:1rem">' + (t.k === 'none' ? 'None on file' : esc(t.text)) + '</div>' + (t.k === 'none' ? '<button type="button" class="btn small primary" id="propAddTerms" style="margin-top:6px">📄 Add Terms of Let</button><div class="drop-hint" style="margin-top:4px">or drag &amp; drop it onto this page</div>' : '') + '</div>'; })();
     bindKeyTile(d.property.address); bindLicenceTile(d.property.address);
+    // This property's invoices: what it has cost the landlord, and what's still owed.
+    (function(){
+      var pi = allInvoices.filter(function(i){ return propKey(i.property_address) === d.property.key || addrSame(i.property_address, d.property.address); })
+        .sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); });
+      var un = pi.filter(function(i){ return !i.paid_at; }), yr = new Date().getFullYear(), thisYr = pi.filter(function(i){ return new Date(i.created_at).getFullYear() === yr; });
+      $('propInv').hidden = !pi.length;
+      $('propInv').innerHTML = pi.length ? '<h3>🧾 Invoices for this property <span class="count-chip">' + pi.length + '</span></h3>' +
+        '<p class="muted-note" style="margin:0 0 6px">' + gbp(sumTotal(pi)) + ' invoiced in total · ' + gbp(sumTotal(thisYr)) + ' this year' + (un.length ? ' · <b style="color:var(--red,#c00)">' + gbp(sumTotal(un)) + ' owed</b>' : ' · all paid') + '</p>' +
+        '<div class="list">' + pi.map(function(i){ return invRowHtml(i, false); }).join('') + '</div>' : '';
+    })();
     if ($('propAddTerms')) $('propAddTerms').addEventListener('click', function(){ askFromTerms(knownFullAddress(d.property.key) || d.property.address); });
     $('propJobs').innerHTML = d.jobs.length ? d.jobs.map(rowHtml).join('') : '<div class="empty">No repairs in this period.</div>';
     renderPropCerts(d.property.address);
@@ -6438,13 +6451,19 @@
     $('llJobs').innerHTML = all.length ? all.map(rowHtml).join('') : '<div class="empty">No repairs at their properties yet.</div>';
     var invs = landlordInvoices(l), un = invs.filter(function(i){ return !i.paid_at; }), paid = invs.filter(function(i){ return i.paid_at; });
     var od = un.filter(invOverdue);
-    $('llOwed').innerHTML = '<h3>Owed to us <span class="count-chip">' + gbp(sumTotal(un)) + '</span>' + (od.length ? '<span class="pill Emergency" style="margin-left:4px">' + od.length + ' overdue</span>' : '') + '</h3>' +
-      (un.length ? '<div class="list">' + un.map(function(i){ return invRowHtml(i, true); }).join('') + '</div>'
-        : '<p class="muted-note">Nothing owed' + (invs.length ? ' — all invoices paid.' : ' — no invoices yet.') + '</p>') +
-      (paid.length ? '<details style="margin-top:12px"><summary class="muted-note" style="cursor:pointer">Paid invoices (' + paid.length + ' · ' + gbp(sumTotal(paid)) + ')</summary><div class="list" style="margin-top:8px">' +
-        paid.map(function(i){ return invRowHtml(i, true); }).join('') + '</div></details>' : '');
+    // Invoices by property, so it's clear what each property costs in maintenance.
+    var byProp = {};
+    invs.forEach(function(i){ var k = propKey(i.property_address) || '—'; (byProp[k] = byProp[k] || { addr: i.property_address || 'No property', list: [] }).list.push(i); });
+    var groups = Object.keys(byProp).map(function(k){ var g = byProp[k]; g.un = g.list.filter(function(i){ return !i.paid_at; }); g.paid = g.list.filter(function(i){ return i.paid_at; }); return g; })
+      .sort(function(a, b){ return sumTotal(b.un) - sumTotal(a.un) || sumTotal(b.list) - sumTotal(a.list); });
+    $('llOwed').innerHTML = '<h3>Invoices by property <span class="count-chip">' + gbp(sumTotal(un)) + ' owed</span>' + (od.length ? '<span class="pill Emergency" style="margin-left:4px">' + od.length + ' overdue</span>' : '') + '</h3>' +
+      (groups.length ? groups.map(function(g){
+        return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(g.addr) + '</b><span>' + gbp(sumTotal(g.list)) + ' invoiced' + (g.un.length ? ' · <span style="color:var(--red,#c00);font-weight:700">' + gbp(sumTotal(g.un)) + ' owed</span>' : ' · all paid') + '</span></div>' +
+          (g.un.length ? '<div class="list">' + g.un.map(function(i){ return invRowHtml(i, false); }).join('') + '</div>' : '') +
+          (g.paid.length ? '<details style="margin-top:6px"><summary class="muted-note" style="cursor:pointer">Paid (' + g.paid.length + ' · ' + gbp(sumTotal(g.paid)) + ')</summary><div class="list" style="margin-top:6px">' + g.paid.map(function(i){ return invRowHtml(i, true); }).join('') + '</div></details>' : '') + '</div>';
+      }).join('') : '<p class="muted-note">No invoices yet.</p>');
   }
-  wireInvList($('llOwed'));
+  wireInvList($('llOwed')); wireInvList($('propInv'));
   $('navLandlords').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; showView('ll'); });
   $('llBack').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; renderLandlords(); pushNav(); });
   $('llSearch').addEventListener('input', renderLandlords);
