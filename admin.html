@@ -1620,7 +1620,7 @@
       <input type="checkbox" id="invVat" hidden></div>
     <div class="inv-total"><span id="invTotalsText"></span><strong id="invTotal">£0.00</strong></div>
     <div class="jf-sec">Payment</div>
-    <div><label class="lbl" for="invRef">Payment reference (property number and name)</label><input class="inp" id="invRef">
+    <div><label class="lbl" for="invRef">Payment reference (property number and name, e.g. 80suttoncourt)</label><input class="inp" id="invRef">
       <div class="assignee-contact" id="invRefNote"></div></div>
     <div class="inv-bank" id="invBank"></div>
     <div class="err-msg" id="invErr"></div>
@@ -4271,6 +4271,8 @@
 
   // ---------- Landlord invoices ----------
   // Payment reference: the property number and street name, e.g. "Flat 4, 22 Queen St".
+  // Invoices: short, no spaces, lower case — e.g. "80suttoncourt" (banks often show only 18 characters).
+  function invPayRef(addr){ return (payRef(addr) || paymentRef(addr)).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 18); }
   function paymentRef(addr){
     var parts = String(addr || '').replace(POSTCODE_RE, '').split(',').map(function(x){ return x.trim(); }).filter(Boolean);
     var out = [];
@@ -4399,7 +4401,7 @@
     setVat(false);
     $('invAiNote').hidden = true;
     $('invAi').hidden = !meta.canAi;
-    $('invRef').value = paymentRef(j.property_address);
+    $('invRef').value = invPayRef(j.property_address);
     $('invBank').innerHTML = cfg.payee ? 'Paid to <b>' + esc(cfg.payee) + '</b> · Sort code <b>' + esc(cfg.sortCode) + '</b> · Account <b>' + esc(cfg.accountNumber) + '</b>' : 'No bank details set up yet.';
     if (invEditing) {
       // Everything as it was issued.
@@ -7997,7 +7999,10 @@
         keep = [];
         for (var w = 0; w < words.length; w++) { keep.push(words[w]); if (keep.length > 1 && REF_WORDS.test(words[w]) && !REF_WORDS.test(words[w + 1] || '')) break; }
       }
-      return (m[1] + keep.join('')).replace(/[^A-Za-z0-9-]/g, '');
+      // A road word after a building name is left off: "Sutton Court Road" -> "SuttonCourt".
+      if (keep.length > 2 && !keep.some(function(x){ return /\d/.test(x); }) && /^(road|rd|street|st|lane|ln|avenue|ave|close|way|drive|grove|place|terrace)$/i.test(keep[keep.length - 1])) keep = keep.slice(0, -1);
+      // A flat in a numbered building: keep the two numbers apart ("Flat 4, 22 Queen St" -> "4-22QueenSt").
+      return (m[1] + (/^\d/.test(keep[0] || '') ? '-' : '') + keep.join('')).replace(/[^A-Za-z0-9-]/g, '');
     }
     return (parts[0] || '').replace(/[^A-Za-z0-9-]/g, '');
   }
