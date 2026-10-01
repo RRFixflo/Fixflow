@@ -381,6 +381,8 @@
   .card h3 { font-family: var(--display); font-size: .92rem; font-weight: 700; margin: 0 0 12px; letter-spacing: -.015em; display: flex; align-items: center; gap: 8px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .tcy-row { display: grid; grid-template-columns: minmax(0,1fr) 110px 170px 130px 20px; gap: 14px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 13px 16px; cursor: pointer; color: inherit; font: inherit; }
+  .tcy-locked input:disabled, .tcy-locked select:disabled, .tcy-locked textarea:disabled { background: var(--hover, #F5F6F8); color: var(--ink); opacity: 1; -webkit-text-fill-color: var(--ink); cursor: default; }
+  .tcy-locked button:disabled { opacity: .45; cursor: default; }
   .tcy-row:hover { background: var(--hover, rgba(0,0,0,.03)); }
   .tcy-row .num { font-weight: 700; } .tcy-row small { display: block; font-weight: 500; color: var(--ink-soft); font-size: .72rem; }
   @media (max-width: 700px) { .tcy-row { grid-template-columns: minmax(0,1fr) auto; } .tcy-row .when, .tcy-row .chev, .tcy-row .fee { display: none; } }
@@ -660,6 +662,7 @@
   .svc-chip { display: inline-block; font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #EEF2FE; color: #2F5BEA; }
   .svc-chip.managed { background: #DDF3E6; color: #0F7A3B; }
   .svc-chip.collect { background: #FFF1DB; color: #A15C00; }
+  .svc-chip.r2r { background: #F1E8FD; color: #6B2FBF; }
   #tcySvcTabs .n { font-size: .75rem; opacity: .7; margin-left: 2px; }
   .tcy-sum { margin: 0 0 8px; max-width: none; width: 100%; }
   .ask-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -6551,11 +6554,18 @@
     };
     var qn = nums(q), qw = words(q);
     if (!qn.length || !qw.length) return null;
+    // Every number and name in the shorter address is in the longer one — either
+    // way round, so "Flat 404, Hurlock Heights, 7 Elephant Rd" finds a saved
+    // "404 Hurlock Heights" as well as the other way about.
+    var within = function(an, aw, bn, bw){ return an.length && aw.length && an.every(function(n){ return bn.indexOf(n) !== -1; }) && aw.every(function(w){ return bw.some(function(x){ return near(w, x); }); }); };
     var fuzzy = all.filter(function(pr){
       var k = propKey(pr.address) || pr.key, kn = nums(k), kw = words(k);
-      return qn.every(function(n){ return kn.indexOf(n) !== -1; }) && qw.every(function(w){ return kw.some(function(x){ return near(w, x); }); });
+      return within(qn, qw, kn, kw) || within(kn, kw, qn, qw);
     });
-    return pick(fuzzy);
+    // The most specific: most numbers and names in common ("Flat 404 …" over the whole building).
+    var score = function(pr){ var k = propKey(pr.address) || pr.key; return nums(k).filter(function(n){ return qn.indexOf(n) !== -1; }).length * 10 + words(k).filter(function(w){ return qw.some(function(x){ return near(w, x); }); }).length; };
+    var best = fuzzy.reduce(function(m, pr){ return Math.max(m, score(pr)); }, 0);
+    return pick(fuzzy.filter(function(pr){ return score(pr) === best; }));
   }
   function tenantsAt(pr){
     if (!pr) return [];
@@ -7511,7 +7521,16 @@
   // agreement (Word or PDF), and the welcome emails to tenants and landlord.
   var tenancies = [], tcySet = null, openTcyId = null, tcyDraft = null;
   // Quick-add fees: the list edited under Templates.
-  function tcyFeePresets(){ var t = tcySet && tcySet.templates; return t && Array.isArray(t.fee_presets) ? t.fee_presets : []; }
+  // Always offered: Tenant Find (a % of the annual rent) and the management fee
+  // (a % each month) fill in their % boxes; the others add a fee line.
+  var TCY_STD_FEES = [{ label: 'Tenant Find', kind: 'find' }, { label: 'Management Fee', kind: 'manage' }, { label: 'Tenancy Agreement' }, { label: 'Deposit Registration' }, { label: 'EICR' }];
+  function tcyFeeKind(label){ return /tenant\s*find/i.test(label) ? 'find' : /mana?g/i.test(label) ? 'manage' : ''; }
+  function tcyFeePresets(){
+    var t = tcySet && tcySet.templates, own = t && Array.isArray(t.fee_presets) ? t.fee_presets.filter(function(f){ return f && f.label; }) : [];
+    var out = own.map(function(f){ return { label: f.label, amount: f.amount, kind: tcyFeeKind(f.label) }; });
+    TCY_STD_FEES.forEach(function(f){ if (!out.some(function(o){ return (f.kind && o.kind === f.kind) || o.label.toLowerCase().indexOf(f.label.toLowerCase()) !== -1; })) out.push({ label: f.label, amount: null, kind: f.kind || '' }); });
+    return out;
+  }
   var TCY_SCHEMES = ['The Deposit Protection Service (DPS)', 'Tenancy Deposit Scheme (TDS)', 'mydeposits', 'Landlord to register'];
   function loadTenancies(){
     if (!meta.db) return Promise.resolve();
@@ -7652,12 +7671,12 @@
   // Sort and filter: by move-in date, fees, rent or when added; by service
   // (fully managed, not managed, tenant find only, rent collection).
   var TCY_SORTS = [['movein', 'Move-in date', 'Soonest / latest move-in first'], ['fees', 'Monthly fee', 'Highest fee taken from the rent each month first'], ['upfront', 'Up-front fee', 'Highest fee taken up front first'], ['termfee', 'Fees over tenancy', 'Highest total fees over the whole tenancy first'], ['rent', 'Rent', 'Highest rent first'], ['anniv', 'Next anniversary', 'Soonest anniversary first'], ['added', 'Recently added', 'Newest first'], ['az', 'A–Z', 'Address A–Z']];
-  var TCY_SVC = [['all', 'All'], ['managed', 'Fully managed'], ['notmanaged', 'Not managed'], ['find', 'Tenant Find only'], ['collect', 'Rent collection']];
+  var TCY_SVC = [['all', 'All'], ['managed', 'Fully managed'], ['notmanaged', 'Not managed'], ['find', 'Tenant Find only'], ['collect', 'Rent collection'], ['r2r', 'Rent4Rent']];
   var tcySort = { by: 'movein', dir: -1 }, tcySvc = 'all', tcyTwo = false;
   try { var ts0 = JSON.parse(localStorage.getItem('rr_tcy_sort') || 'null'); if (ts0 && TCY_SORTS.some(function(t){ return t[0] === ts0.by; })) tcySort = ts0; tcySvc = localStorage.getItem('rr_tcy_svc') || 'all'; } catch (e) {}
   // Next anniversary of a tenancy that has started (null for drafts / future starts).
   function tcyAnnOf(d){ return d.start_date && d.start_date <= isoDay(new Date()) ? tcyNextEnd(d) : null; }
-  function tcySvcOf(d){ var s = String(d.service || 'Tenant Find'); return /manag/i.test(s) ? 'managed' : /collect/i.test(s) ? 'collect' : 'find'; }
+  function tcySvcOf(d){ var s = String(d.service || 'Tenant Find'); return /rent\s*(4|for|2|to)\s*rent|r2r/i.test(s) ? 'r2r' : /manag/i.test(s) ? 'managed' : /collect/i.test(s) ? 'collect' : 'find'; }
   function tcySvcMatch(d, f){ var k = tcySvcOf(d); return f === 'all' || f === k || (f === 'notmanaged' && k !== 'managed'); }
   function renderTenancies(){
     renderTcyEndAlerts();
@@ -7697,7 +7716,7 @@
     $('tcyList').innerHTML = list.length ? list.map(function(x){
       var d = x.data || {}, c = calc[x.id];
       return '<button type="button" class="tcy-row" data-tcy="' + x.id + '"><div><div class="addr" style="font-weight:600">' + esc(d.address || 'No address') + '</div>' +
-        '<div class="prop-sub" style="margin-top:2px">' + esc(joinAnd(tcyNames(d.tenants)) || 'No tenants yet') + (d.landlord && d.landlord.name ? ' · Landlord: ' + esc(d.landlord.name) : '') + '</div>' +
+        '<div class="prop-sub" style="margin-top:2px">' + esc(joinAnd(tcyNames(d.tenants)) || (function(){ var pr = d.address && matchProperty(d.address), f = pr ? tcyOnFileTenants(pr) : []; return f.length ? joinAnd(f.map(function(t){ return t.name || t.phone; })) + ' (saved at the property)' : 'No tenants yet'; })()) + (d.landlord && d.landlord.name ? ' · Landlord: ' + esc(d.landlord.name) : '') + '</div>' +
         '<div style="margin-top:4px"><span class="svc-chip ' + tcySvcOf(d) + '">' + esc(d.service || 'Tenant Find') + '</span>' + (function(){
           var n = tcyAnnOf(d); if (!n) return '';
           return '<span class="ann-chip' + (tcyTwoMonths(n) ? ' two' : '') + '">📅 ' + ordinal(n.years) + ' anniversary ' + esc(longDay(n.end)) + ' · ' + esc(tcyTwoText(n)) + '</span>';
@@ -7725,9 +7744,19 @@
     if (id !== 'new' && !x) { tcyShowList(); return; }
     openTcyId = id;
     tcyDraft = x ? JSON.parse(JSON.stringify(x.data || {})) : tcyNew(preset || {});
+    // Older or partly filled tenancies: the lists the form needs.
+    ['tenants', 'guarantors', 'fees'].forEach(function(k){ if (!Array.isArray(tcyDraft[k])) tcyDraft[k] = []; });
+    if (!tcyDraft.tenants.length) tcyDraft.tenants = [{ name: '', email: '', phone: '' }];
+    if (!tcyDraft.landlord || typeof tcyDraft.landlord !== 'object') tcyDraft.landlord = {};
+    if (!tcyDraft.address && x) tcyDraft.address = x.address || '';
+    // A saved tenancy with no tenants (or missing details): the tenants saved at the property.
+    var filledN = x ? tcyFillTenants(tcyDraft) : 0;
+    tcyLocked = !!x;   // a saved tenancy opens read-only; "Edit tenancy" unlocks it
+    // Blank tenant details filled from the property are saved straight away.
+    if (filledN) api('PUT', '/api/admin/tenancies/' + x.id, tcyDraft).then(function(r){ if (r.ok) { x.data = JSON.parse(JSON.stringify(tcyDraft)); tcyLog('Tenants filled in from those saved at the property'); } });
     if (view !== 'tcy') showView('tcy'); else pushNav();
     $('tcyListView').hidden = true; $('tcyDetail').hidden = false;
-    var go = function(){ renderTcyForm(); scrollTop(); };
+    var go = function(){ renderTcyForm(); scrollTop(); if (filledN) toast('Tenants filled in from those saved at the property'); };
     tcySet ? go() : loadTcySettings().then(go);
   }
   function tcyNew(preset){
@@ -7737,7 +7766,7 @@
       rent_pcm: null, deposit: null, holding: null, deposit_by: 'agent', deposit_scheme: last.deposit_scheme || '', move_in_due: addDaysIso(isoDay(new Date()), 2),
       so_start: '', so_payments: null, checkin_date: '', checkin_time: '12:00', checkin_type: last.checkin_type || 'clerk', tenants: [{ name: '', email: '', phone: '' }], guarantors: [],
       landlord: { name: '', email: '', phone: '', line1: '', line2: '', country: '', postcode: '' }, service: last.service || 'Tenant Find',
-      find_pct: last.find_pct != null ? last.find_pct : 8, find_unit: last.find_pct != null ? (last.find_unit || 'pct') : 'pct', find_basis: last.find_basis || 'monthly', collect_pct: null, manage_pct: null, fees: [], vat: true, notes: ''
+      find_pct: last.find_pct != null ? last.find_pct : 8, find_unit: last.find_pct != null ? (last.find_unit || 'pct') : 'pct', find_basis: 'upfront', collect_pct: null, manage_pct: null, fees: [], vat: true, notes: ''
     };
     // Details pasted into Ask Fixflow: use everything it found, keep the defaults for the rest.
     var got = preset.data || null;
@@ -7836,7 +7865,7 @@
       '<div class="card"><h3>Property</h3>' +
         '<div><label class="lbl" for="tfAddress">Property full address *</label><input class="inp" id="tfAddress" list="tfProps" value="' + esc(d.address || '') + '" placeholder="Flat 5, Dudley Court, Upper Berkeley Street, London, W1H 5QA"><datalist id="tfProps">' + props + '</datalist></div>' +
         '<div class="grid3" style="margin-top:10px">' + tcyInp('tfNeg', 'Negotiator', d.negotiator) + tcyInp('tfTaken', 'Date taken', d.date_taken, ' type="date"') +
-          '<div><label class="lbl" for="tfService">Service</label><select class="inp" id="tfService">' + ['Tenant Find', 'Rent Collection', 'Fully Managed'].map(function(s){ return '<option' + (d.service === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div></div>' +
+          '<div><label class="lbl" for="tfService">Service</label><select class="inp" id="tfService">' + ['Tenant Find', 'Rent Collection', 'Fully Managed', 'Rent4Rent'].map(function(s){ return '<option' + (d.service === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div></div>' +
       '</div>' +
       // Tenancy and money
       '<div class="card"><h3>Tenancy and rent</h3>' +
@@ -7874,11 +7903,11 @@
       // Fees
       '<div class="card"><h3>Fees charged to the landlord</h3>' +
         '<div class="grid3">' + '<div>' + tcyInp('tfFind', 'Tenant find fee', d.find_pct, ' inputmode="decimal"') + unitSeg('find', d.find_unit) +
-          '<div class="seg" id="tfFindBasis" style="margin-top:6px;font-size:.82rem"><button type="button" data-v="monthly"' + (d.find_basis !== 'upfront' ? ' class="on"' : '') + '>Monthly</button><button type="button" data-v="upfront"' + (d.find_basis === 'upfront' ? ' class="on"' : '') + '>Up front (annual rent)</button></div>' +
+          '<div class="seg" id="tfFindBasis" style="margin-top:6px;font-size:.82rem"><button type="button" data-v="monthly"' + (d.find_basis !== 'upfront' ? ' class="on"' : '') + '>Monthly</button><button type="button" data-v="upfront"' + (d.find_basis === 'upfront' ? ' class="on"' : '') + '>Annual (% of yearly rent, up front)</button></div>' +
           '<p class="muted-note" id="tfFindNote" style="margin:4px 0 0"></p></div>' +
           '<div>' + tcyInp('tfCollect', 'Rent collection (monthly)', d.collect_pct, ' inputmode="decimal"') + unitSeg('collect', d.collect_unit) + '</div>' +
           '<div>' + tcyInp('tfManage', 'Management fee (monthly)', d.manage_pct, ' inputmode="decimal"') + unitSeg('manage', d.manage_unit) + '</div></div>' +
-        '<label class="lbl" style="margin-top:12px">Other fees</label><div class="tcy-chips" id="tfFeeChips">' + tcyFeePresets().map(function(f, i){ return '<button type="button" class="btn small ghost" data-fee-chip="' + i + '">+ ' + esc(f.label) + (num(f.amount) !== null ? ' · ' + esc(gbp(f.amount)) : '') + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-fee-chip="-1">+ Other</button></div>' +
+        '<label class="lbl" style="margin-top:12px">Other fees</label><div class="tcy-chips" id="tfFeeChips">' + tcyFeePresets().map(function(f, i){ return '<button type="button" class="btn small ghost" data-fee-chip="' + i + '"' + (f.kind === 'find' ? ' title="A % of the annual rent"' : f.kind === 'manage' ? ' title="A % of the rent each month"' : '') + '>+ ' + esc(f.label) + (f.kind === 'find' ? ' (% of annual rent)' : f.kind === 'manage' ? ' (% monthly)' : num(f.amount) !== null ? ' · ' + esc(gbp(f.amount)) : '') + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-fee-chip="-1">+ Other</button></div>' +
         '<div id="tfFees">' + tcyFeeRows() + '</div>' +
         '<label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="tfVat"' + (d.vat === false ? '' : ' checked') + '> Add VAT (20%) to the fees</label>' +
         '<div class="tcy-sum" id="tfFeeSum" style="margin-top:10px"></div>' +
@@ -7915,6 +7944,30 @@
     wireTcyForm();
     tcyRefresh();
     renderTcyCerts();
+    if (tcyLocked) tcyLock();
+  }
+  // A saved tenancy is read-only until "Edit tenancy": every box and button is
+  // locked except the documents and emails.
+  var tcyLocked = false;
+  function tcyLock(){
+    var form = $('tcyDetail').querySelector('.tcy-form'); if (!form) return;
+    form.classList.add('tcy-locked');
+    form.querySelectorAll('input, select, textarea, button').forEach(function(el){ if (!el.closest('.tcy-docs')) el.disabled = true; });
+    var save = form.querySelector('.tcy-save'); if (save) save.hidden = true;
+    var del = $('tfDelete'); if (del) del.closest('.card').hidden = true;
+    var head = $('tcyDetail').querySelector('.prop-head');
+    if (head && !$('tfEdit')) head.insertAdjacentHTML('beforeend', '<button type="button" class="btn primary" id="tfEdit">✎ Edit tenancy</button>');
+    if (!$('tfLockNote')) form.insertAdjacentHTML('afterbegin', '<div class="banner" id="tfLockNote" style="margin:0">🔒 This tenancy is saved and locked. Click <b>Edit tenancy</b> to change it.</div>');
+    $('tfEdit').addEventListener('click', function(){
+      tcyLocked = false; renderTcyForm();
+      $('tfCancel').textContent = 'Cancel editing';
+      var c = $('tfCancel').cloneNode(true); $('tfCancel').replaceWith(c);
+      c.addEventListener('click', function(){ openTenancy(openTcyId); });   // back to the saved version, locked
+      toast('Editing — press Save changes when you’re done');
+    });
+    // The certificates card fills in later: lock it as it appears.
+    var certs = $('tfCerts');
+    if (certs && window.MutationObserver) new MutationObserver(function(){ if (tcyLocked) certs.querySelectorAll('input, select, textarea, button').forEach(function(el){ el.disabled = true; }); }).observe(certs, { childList: true, subtree: true });
   }
   // Certificates, entered right in the tenancy form: date done or expiry for
   // each (the other is worked out), EPC from the register, gas "not needed".
@@ -8154,6 +8207,14 @@
         else $('tfGuarantors').innerHTML = tcyDraft.guarantors.length ? tcyPersonRows('guarantors') : '<p class="muted-note" style="margin:0">No guarantors. The agreement leaves the guarantor sections out.</p>';
       } else if (b.dataset.feeChip) {
         tcyRead(); var f = tcyFeePresets()[Number(b.dataset.feeChip)];
+        if (f && f.kind === 'find') {   // Tenant Find: the % box, on the annual rent
+          tcyDraft.find_basis = 'upfront'; tcyDraft.find_unit = 'pct';
+          $('tfFindBasis').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x.dataset.v === 'upfront'); });
+          var su = document.querySelector('[data-unit-for="find"]'); if (su) su.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x.dataset.u === 'pct'); });
+          if (!$('tfFind').value && num(f.amount) !== null) $('tfFind').value = f.amount;
+          tcyRefresh(); $('tfFind').focus(); $('tfFind').select(); toast('Enter the Tenant Find % — it’s worked out on the annual rent'); return;
+        }
+        if (f && f.kind === 'manage') { if (!$('tfManage').value && num(f.amount) !== null) $('tfManage').value = f.amount; tcyRefresh(); $('tfManage').focus(); $('tfManage').select(); toast('Enter the management fee % — taken from the rent each month'); return; }
         tcyDraft.fees.push({ label: f ? f.label : '', amount: f ? num(f.amount) : null });
         $('tfFees').innerHTML = tcyFeeRows(); tcyRefresh();
         var rows = $('tfFees').querySelectorAll('.tcy-fee'), last = rows[rows.length - 1];
