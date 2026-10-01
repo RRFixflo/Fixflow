@@ -638,6 +638,8 @@
   #pkForm:not([hidden]) { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
   #pkView[hidden] { display: none; }
   .kr-list { overflow: auto; flex: 1; min-height: 120px; }
+  .modal .card.lc-card { overflow-y: auto; display: block; -webkit-overflow-scrolling: touch; }
+  .lc-foot { position: sticky; bottom: -20px; margin: 12px -20px -20px; padding: 12px 20px; background: var(--card, #fff); border-top: 1px solid var(--line); }
   .kr-row { display: grid; grid-template-columns: 1fr 110px 1fr; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); transition: background .3s; }
   .kr-row.saved { background: #EAF8EF; }
   .kr-row[hidden] { display: none; }
@@ -1491,7 +1493,7 @@
 
 <!-- PROPERTY LICENCES: a postcode search on the council register, read back in -->
 <div class="modal" id="lcModal" hidden>
-  <div class="card kr-card" role="dialog" aria-labelledby="lcTitle">
+  <div class="card kr-card lc-card" role="dialog" aria-labelledby="lcTitle">
     <h3 id="lcTitle">📜 Property licences</h3>
     <p class="muted-note" style="margin:0 0 10px">1. Search the council’s register by postcode (Fixflow works out the council). 2. On the results page select everything (Ctrl/⌘+A), copy, and paste it below — or paste/drop a screenshot. 3. Check the matches and save.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="lcPc" placeholder="Postcode, e.g. SE1 6PG" style="max-width:200px;text-transform:uppercase"><button class="btn" type="button" id="lcOpen">🔎 Search the register</button></div>
@@ -1502,7 +1504,7 @@
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><button class="btn small" type="button" id="lcAttach">📎 Screenshot / PDF</button><span id="lcFile" class="muted-note" style="margin:0"></span><input type="file" id="lcFileIn" accept="image/*,.pdf,application/pdf" hidden><span style="flex:1"></span><button class="btn primary" type="button" id="lcRead">Read results</button></div>
     <p class="err" id="lcErr"></p>
     <div id="lcMatches"></div>
-    <div class="row-actions" style="margin-top:12px"><button class="btn" type="button" id="lcClose">Close</button><button class="btn primary" type="button" id="lcSave" hidden>Save licences</button></div>
+    <div class="row-actions lc-foot"><button class="btn" type="button" id="lcClose">Close</button><button class="btn primary" type="button" id="lcSave" hidden>Save licences</button></div>
   </div>
 </div>
 
