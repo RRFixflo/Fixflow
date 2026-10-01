@@ -2216,8 +2216,8 @@ module.exports = function mountJobs(app, opts) {
       'The instruction may instead be the details of a NEW TENANCY (a new let: property, tenants, rent, start date, landlord, deposit, fees — e.g. a pasted offer, Terms of Let or notes). ' +
       'Do not make a job or contacts for that — its tenants, guarantors and landlord go inside the tenancy, never also in "contacts". Put it in "tenancies" with: address (full, keep flat/house number and postcode), start_date (the tenancy start date — on a Terms of Let often called the "move-in date" or "move in"; they are the same date), move_in_due (the deadline for paying the move-in monies / first rent and deposit — not the move-in date; "" if no separate deadline is given), date_taken (the date the holding deposit was paid — the same as holding_date), checkin_date (all YYYY-MM-DD; today is ' + new Date().toISOString().slice(0, 10) + '; "" if not given), ' +
       'checkin_time ("HH:MM" or ""), checkin_type ("clerk" if an inventory clerk / check-in is booked, "diy" for a DIY check-in / tenant\'s own inventory, "" if not said), term_months, break_months, rent_pcm (monthly rent in pounds; convert weekly rent × 52 / 12), deposit, holding (holding deposit / reservation fee paid) — numbers or null if not given, holding_date (when the holding deposit was paid, YYYY-MM-DD or ""), ' +
-      'deposit_by ("agent" if we/the agent register it, "landlord" if the landlord does, "" if not said), deposit_scheme, negotiator, service ("Tenant Find", "Rent Collection" or "Fully Managed"), ' +
-      'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis ("upfront" if the fee is on the annual rent / taken up front, "monthly" if monthly, "" if not said), ' +
+      'deposit_by ("agent" if we/the agent register it, "landlord" if the landlord does, "" if not said), deposit_scheme, negotiator, service ("Tenant Find", "Rent Collection", "Fully Managed" or "Rent4Rent" — rent-to-rent, where a company rents the property to sublet it), ' +
+      'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis ("upfront" — the tenant find fee is normally a % of the annual rent; "monthly" only if it clearly says the tenant find fee is taken monthly), ' +
       'tenants and guarantors (each [{"name": "", "email": "", "phone": ""}], names with titles as given), landlord ({"name": "", "email": "", "phone": "", "line1": "", "line2": "", "country": "", "postcode": ""} — their own address), ' +
       'fees (other fees charged to the landlord: [{"label": "", "amount": 0}]), notes (anything else useful).\n' +
       'If a LANDLORD STATEMENT (statement of account to the landlord) is attached with it, add every charge or deduction made to the landlord for this let to that tenancy\'s fees, labelled as on the statement (e.g. "Inventory", "Tenancy agreement", "Deposit registration", "Referencing", "Gas safety certificate"), with the amount BEFORE VAT (if the statement shows VAT separately, use the net figure; if it says the amount includes VAT, divide by 1.2). ' +
@@ -2675,6 +2675,22 @@ module.exports = function mountJobs(app, opts) {
         return '<a class="iv" href="/l/' + htmlEsc(token) + '/invoice/' + i.id + '"><div><b>' + htmlEsc(i.number || '') + '</b> · ' + htmlEsc(issue(j)) + '<div class="muted">' + htmlEsc(j.property_address || '') + ' · issued ' + htmlEsc(day(i.date || i.created_at)) + '</div></div>' +
           '<div style="text-align:right"><b>' + money(i.total) + '</b><div>' + (i.paid_at ? '<span class="paid">Paid</span>' : od ? '<span class="late">Overdue</span>' : '<span class="due">Due ' + htmlEsc(i.due ? day(i.due) : '') + '</span>') + '</div></div></a>';
       }).join('') + '</section>' : '';
+    // The tenancy at each property: the tenants' names and phone numbers, when
+    // it started and when the fixed term ends (it rolls on after that).
+    const tcys = Object.keys(keys).length ? (await p.query("SELECT property_key, start_date, data FROM tenancies WHERE property_key = ANY($1::text[]) AND start_date IS NOT NULL ORDER BY start_date DESC", [Object.keys(keys)])).rows : [];
+    const isoOf = function (v) { return v instanceof Date ? v.toISOString().slice(0, 10) : String(v || '').slice(0, 10); };
+    const addMonths = function (iso, n) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); if (!m) return ''; const d = new Date(Date.UTC(+m[1], +m[2] - 1 + n, +m[3])); if (d.getUTCDate() !== +m[3]) d.setUTCDate(0); return d.toISOString().slice(0, 10); };
+    const tcyBox = function (k) {
+      const t = tcys.filter(function (x) { return x.property_key === k; })[0]; if (!t) return '';
+      const d = t.data || {}, start = isoOf(d.start_date || t.start_date), months = parseInt(d.term_months, 10) || 12, today = new Date().toISOString().slice(0, 10);
+      const endD = new Date(Date.UTC(+addMonths(start, months).slice(0, 4), +addMonths(start, months).slice(5, 7) - 1, +addMonths(start, months).slice(8, 10) - 1)).toISOString().slice(0, 10);   // the day before
+      const next = today >= start ? nextTermEnd(start, 12, today) : '';
+      const ppl = (d.tenants || []).filter(function (x) { return x && (x.name || x.phone); });
+      return '<div class="tcy"><h3>Tenancy</h3>' +
+        (ppl.length ? '<div class="tcy-ppl">' + ppl.map(function (x) { return '<div><b>' + htmlEsc(x.name || 'Tenant') + '</b>' + (x.phone ? ' · <a href="tel:' + htmlEsc(String(x.phone).replace(/[^\d+]/g, '')) + '">' + htmlEsc(x.phone) + '</a>' : '') + '</div>'; }).join('') + '</div>' : '') +
+        '<div class="muted">' + (start > today ? 'Starts ' : 'Started ') + '<b>' + htmlEsc(day(start)) + '</b> · ' + months + '-month fixed term ' + (endD < today ? 'ended' : 'ends') + ' <b>' + htmlEsc(day(endD)) + '</b>' + (endD < today ? ', now rolling' : ', then rolls on') +
+        (next ? ' · Next anniversary <b>' + htmlEsc(day(next)) + '</b>' : '') + '</div></div>';
+    };
     const propBlocks = Object.keys(keys).map(function (k) {
       const js = all.filter(function (j) { return propKey(j.property_address) === k; });
       const addr = (js[0] && js[0].property_address) || keys[k] || '';
@@ -2685,7 +2701,7 @@ module.exports = function mountJobs(app, opts) {
       const o = js.filter(function (j) { return j.status !== 'Completed'; }), d = js.filter(function (j) { return j.status === 'Completed'; });
       const pSpent = sumOf(js.filter(function (j) { return j.status === 'Completed' && charge(j) != null; }));
       const pYr = sumOf(js.filter(function (j) { return j.status === 'Completed' && charge(j) != null && when(j).getFullYear() === yr; }));
-      return '<section class="card"><h2>' + htmlEsc(addr) + '</h2>' + (pSpent ? '<div class="muted" style="margin:-4px 0 8px">Spent: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + (cs ? '<div class="certs">' + cs + '</div>' : '') +
+      return '<section class="card"><h2>' + htmlEsc(addr) + '</h2>' + (pSpent ? '<div class="muted" style="margin:-4px 0 8px">Spent: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + (cs ? '<div class="certs">' + cs + '</div>' : '') + tcyBox(k) +
         (o.length ? '<h3>Open repairs (' + o.length + ')</h3>' + o.map(jobCard).join('') : '<p class="muted">No open repairs.</p>') +
         (d.length ? '<details' + (o.length ? '' : ' open') + '><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '') + '</section>';
     }).join('');
@@ -2694,7 +2710,7 @@ module.exports = function mountJobs(app, opts) {
       '.lj{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px}.lj.done{background:var(--okt);border-color:#cdebd9}.lj-top{display:flex;justify-content:space-between;gap:8px;align-items:center}' +
       '.pill{font-size:.75rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bluet);color:var(--blue)}.pill.ok{background:var(--ok);color:#fff;text-transform:uppercase;letter-spacing:.04em}.lj.done{border-left:5px solid var(--ok)}.lj-issue{font-weight:600;margin:4px 0 2px}' +
       '.lj-notes{font-size:.88rem;margin-top:6px;white-space:pre-line}.lj-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;font-size:.9rem;flex-wrap:wrap}.lj-foot a{color:var(--blue);font-weight:600;text-decoration:none}' +
-      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
+      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
       'details summary{cursor:pointer;font-weight:700;color:var(--ok);margin-top:14px}' +
       '.cost{margin-top:10px;background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.9rem}.lj.done .cost{background:#fff}.cost.none{color:var(--soft)}.cr{display:flex;justify-content:space-between;gap:10px;padding:2px 0}.cr.tot{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;font-weight:800}.ci{margin-top:6px;font-size:.85rem}.ci a{color:var(--blue);font-weight:600;text-decoration:none}.late{color:var(--red);font-weight:700}' +
       '.sp{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}.sp div{background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px}.sp span{display:block;font-size:.75rem;color:var(--soft)}.sp b{display:block;font-size:1.15rem}.sp small{color:var(--soft)}' +
