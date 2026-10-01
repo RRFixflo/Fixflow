@@ -2692,6 +2692,40 @@ module.exports = function mountJobs(app, opts) {
     res.send('\ufeff' + lines.join('\r\n'));
   }));
   // One of their invoices, as issued, with how to pay.
+  // A repair reported by the landlord from their page: arranged by us, or by them.
+  app.post('/l/:token/jobs', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    const b = req.body || {}, k = String(b.key || ''), title = str(b.title, 200), details = str(b.details, 3000);
+    if (who.keys[k] === undefined) return res.status(404).json({ ok: false, error: 'not-your-property' });
+    if (!title) return res.status(400).json({ ok: false, error: 'title-required' });
+    const l = who.l, self = b.who === 'self', urgency = URGENCIES.indexOf(b.urgency) !== -1 ? b.urgency : 'Routine';
+    const address = (await allProperties(p)).filter(function (x) { return x.key === k; }).map(function (x) { return x.address; })[0] || who.keys[k] || k;
+    const t = (await p.query(`SELECT t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY t.updated_at DESC LIMIT 1`, [k])).rows[0] || {};
+    const due = new Date(Date.now() + DUE_HOURS[urgency] * 3600 * 1000);
+    const r = await p.query(`INSERT INTO jobs (property_address, category, summary, description, urgency, source, status, due_at, tenant_name, tenant_phone, tenant_email, landlord_name, landlord_email, landlord_phone, landlord_handles)
+      VALUES ($1, $2, $3, $4, $5, 'Landlord request', 'New', $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+      [address, 'General repair', title, details || title, urgency, due, t.name || null, t.phone || null, t.email || null, l.name || null, l.email || null, l.phone || null, self ? 'self' : null]);
+    const id = r.rows[0].id;
+    await ensureTrackToken(p, id);
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', 'Reported by the landlord, ' + (l.name || '') + ' (landlord page)' + (self ? ' — they are arranging it themselves.' : ' — asked us to arrange it.')]);
+    ntfy({ title: (self ? 'Landlord arranging repair: ' : 'Landlord reported repair: ') + refFor(id), message: (l.name || 'A landlord') + ' — ' + address + ': ' + title + (self ? ' (they’re arranging it)' : '') + '. Open Fixflow.', tags: ['house'] }).catch(function () {});
+    res.json({ ok: true, id: id, ref: refFor(id) });
+  }));
+  // The landlord books the visit for a repair they're arranging themselves.
+  app.post('/l/:token/jobs/:id/book', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    const b = req.body || {}, date = apptDay(b.date) ? String(b.date) : null, time = str(b.time, 60), visitor = str(b.who, 120);
+    if (!date) return res.status(400).json({ ok: false, error: 'date-required' });
+    const j = (await p.query("SELECT id, property_address, landlord_handles, status FROM jobs WHERE id = $1 AND archived_at IS NULL", [jobId(req)])).rows[0];
+    if (!j || who.keys[propKey(j.property_address)] === undefined || !j.landlord_handles || j.status === 'Completed' || j.status === 'Cancelled') return res.status(404).json({ ok: false, error: 'not-found' });
+    await p.query("UPDATE jobs SET appointment_date = $2, appointment_time = $3, status = CASE WHEN status IN ('New', 'Assigned') THEN 'Contractor booked' ELSE status END, updated_at = now() WHERE id = $1", [j.id, date, time]);
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [j.id, 'change', 'Visit booked by the landlord: ' + apptDay(date) + (time ? ' ' + time : '') + (visitor ? ' — ' + visitor : '') + '.']);
+    res.json({ ok: true });
+  }));
   // The tenant's original repair report (PDF), for a job at one of the landlord's properties.
   app.get('/l/:token/report/:id', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
@@ -2795,6 +2829,11 @@ module.exports = function mountJobs(app, opts) {
           (j.landlord_handles ? ' · Arranged by you' : '') + '</div>' +
         (notes ? '<div class="lj-notes">' + htmlEsc(notes.slice(0, 300)) + '</div>' : '') +
         photoStrip(j) +
+        // A repair the landlord is arranging: they book the visit here, then tell the tenants.
+        (j.landlord_handles && !isDone ? '<details class="lb"' + (j.appointment_date ? '' : ' open') + '><summary>📅 ' + (j.appointment_date ? 'Change the visit' : 'Book the visit') + '</summary><form class="lb-f" data-id="' + j.id + '" data-k="' + htmlEsc(propKey(j.property_address)) + '" data-issue="' + htmlEsc(issue(j)) + '" data-track="/t/' + htmlEsc(j.track_token) + '">' +
+          '<input type="date" name="date" required value="' + htmlEsc(j.appointment_date || '') + '"><input name="time" maxlength="60" placeholder="Time, e.g. 10am or 9–12" value="' + htmlEsc(j.appointment_time || '') + '">' +
+          '<input name="who" maxlength="120" placeholder="Who’s coming (optional), e.g. my plumber Dave">' +
+          '<button type="submit">Save the visit</button><p class="lb-msg muted"></p></form></details>' : '') +
         costBox(j, c, inv) +
         '<div class="lj-foot">' + (j.has_report ? '<a href="/l/' + htmlEsc(token) + '/report/' + j.id + '" target="_blank" rel="noopener">⬇ Tenant’s report (PDF)</a>' : '<span></span>') + '<a href="/t/' + htmlEsc(j.track_token) + '">Progress and details ›</a></div></div>';
     };
@@ -2860,7 +2899,18 @@ module.exports = function mountJobs(app, opts) {
       }).join('') + '</section>' : '';
     // The tenancy at each property: the tenants' names and phone numbers, when
     // it started and when the fixed term ends (it rolls on after that).
-    const tcys = Object.keys(keys).length ? (await p.query("SELECT property_key, start_date, data FROM tenancies WHERE property_key = ANY($1::text[]) AND start_date IS NOT NULL ORDER BY start_date DESC", [Object.keys(keys)])).rows : [];
+    const tcys = Object.keys(keys).length ? (await p.query("SELECT property_key, start_date, data, intention FROM tenancies WHERE property_key = ANY($1::text[]) AND start_date IS NOT NULL ORDER BY start_date DESC", [Object.keys(keys)])).rows : [];
+    // Everyone living at each property (the tenancy's tenants and those saved there), for the landlord to contact.
+    const saved = Object.keys(keys).length ? (await p.query(`SELECT pt.property_key, t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id
+      WHERE pt.property_key = ANY($1::text[]) AND pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY t.updated_at DESC`, [Object.keys(keys)])).rows : [];
+    const peopleAt = function (k) {
+      const t = tcys.filter(function (x) { return x.property_key === k; })[0], out = [];
+      const tail = function (v) { return String(v || '').replace(/\D/g, '').slice(-10); };
+      const add = function (x) { if (!x || !(x.name || x.phone || x.email)) return; if (out.some(function (o) { return (x.phone && tail(o.phone) === tail(x.phone)) || (x.email && o.email && o.email.toLowerCase() === String(x.email).toLowerCase()) || (x.name && o.name && o.name.toLowerCase() === String(x.name).toLowerCase()); })) return; out.push({ name: str(x.name, 120) || '', phone: str(x.phone, 40) || '', email: str(x.email, 160) || '' }); };
+      ((t && t.data && t.data.tenants) || []).forEach(add);
+      saved.filter(function (x) { return x.property_key === k; }).forEach(add);
+      return out.slice(0, 8);
+    };
     const isoOf = function (v) { return v instanceof Date ? v.toISOString().slice(0, 10) : String(v || '').slice(0, 10); };
     const addMonths = function (iso, n) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); if (!m) return ''; const d = new Date(Date.UTC(+m[1], +m[2] - 1 + n, +m[3])); if (d.getUTCDate() !== +m[3]) d.setUTCDate(0); return d.toISOString().slice(0, 10); };
     const tcyBox = function (k) {
@@ -2868,11 +2918,40 @@ module.exports = function mountJobs(app, opts) {
       const d = t.data || {}, start = isoOf(d.start_date || t.start_date), months = parseInt(d.term_months, 10) || 12, today = new Date().toISOString().slice(0, 10);
       const endD = new Date(Date.UTC(+addMonths(start, months).slice(0, 4), +addMonths(start, months).slice(5, 7) - 1, +addMonths(start, months).slice(8, 10) - 1)).toISOString().slice(0, 10);   // the day before
       const next = today >= start ? nextTermEnd(start, 12, today) : '';
-      const ppl = (d.tenants || []).filter(function (x) { return x && (x.name || x.phone); });
+      // The rent now: the latest agreed increase that has started, else the rent the tenancy began at.
+      let rent = Number(d.rent_pcm) || 0, upcoming = null;
+      Object.keys(t.intention || {}).sort().forEach(function (k2) { const it = t.intention[k2] || {}; const nr = Number(it.new_rent); if (!nr || it.no_increase) return; const from = it.rent_from || k2; if (from <= today) rent = nr; else if (!upcoming || from < upcoming.from) upcoming = { rent: nr, from: from }; });
       return '<div class="tcy"><h3>Tenancy</h3>' +
-        (ppl.length ? '<div class="tcy-ppl">' + ppl.map(function (x) { return '<div><b>' + htmlEsc(x.name || 'Tenant') + '</b>' + (x.phone ? ' · <a href="tel:' + htmlEsc(String(x.phone).replace(/[^\d+]/g, '')) + '">' + htmlEsc(x.phone) + '</a>' : '') + '</div>'; }).join('') + '</div>' : '') +
-        '<div class="muted">' + (start > today ? 'Starts ' : 'Started ') + '<b>' + htmlEsc(day(start)) + '</b> · ' + months + '-month fixed term ' + (endD < today ? 'ended' : 'ends') + ' <b>' + htmlEsc(day(endD)) + '</b>' + (endD < today ? ', now rolling' : ', then rolls on') +
-        (next ? ' · Next anniversary <b>' + htmlEsc(day(next)) + '</b>' : '') + '</div></div>';
+        '<div class="tcy-facts">' + (rent ? '<div><span>Rent now</span><b>£' + rent.toFixed(2) + '</b><small>a month</small></div>' : '') +
+          '<div><span>' + (start > today ? 'Starts' : 'Started') + '</span><b>' + htmlEsc(day(start)) + '</b><small>' + months + '-month term ' + (endD < today ? 'ended ' + htmlEsc(day(endD)) + ', now rolling' : 'to ' + htmlEsc(day(endD))) + '</small></div>' +
+          (next ? '<div><span>Next anniversary</span><b>' + htmlEsc(day(next)) + '</b><small>rent review</small></div>' : '') + '</div>' +
+        (upcoming ? '<div class="muted" style="margin-top:6px">New rent of <b>£' + upcoming.rent.toFixed(2) + '</b> a month from ' + htmlEsc(day(upcoming.from)) + '.</div>' : '') + '</div>';
+    };
+    // The landlord's own tools at each property: contact the tenants (call, WhatsApp,
+    // email, templates), report a repair, and — on repairs they arrange — book a visit.
+    const contactBox = function (k, addr) {
+      const ppl = peopleAt(k); if (!ppl.length) return '';
+      return '<div class="lt" data-k="' + htmlEsc(k) + '" data-addr="' + htmlEsc(addr) + '" data-people="' + htmlEsc(JSON.stringify(ppl)) + '"><h3>Your tenants</h3>' +
+        ppl.map(function (x) {
+          return '<div class="lt-p"><b>' + htmlEsc(x.name || 'Tenant') + '</b><span class="lt-a">' +
+            (x.phone ? '<a href="tel:' + htmlEsc(String(x.phone).replace(/[^\d+]/g, '')) + '">📞 Call</a><a href="#" data-wa="' + htmlEsc(x.phone) + '" data-name="' + htmlEsc(x.name || '') + '">💬 WhatsApp</a>' : '') +
+            (x.email ? '<a href="mailto:' + htmlEsc(x.email) + '">✉️ Email</a>' : '') + '</span>' +
+            '<small>' + htmlEsc([x.phone, x.email].filter(Boolean).join(' · ')) + '</small></div>';
+        }).join('') +
+        '<details class="lt-msg"><summary>💬 Send a message with a template</summary>' +
+          '<select class="lt-tpl"></select>' +
+          '<div class="lt-when"><input type="date" class="lt-date"><input class="lt-time" placeholder="Time, e.g. 10am"></div>' +
+          '<textarea class="lt-text" rows="6"></textarea>' +
+          '<div class="lt-send"></div></details></div>';
+    };
+    const repairForm = function (k, addr) {
+      return '<details class="lr"><summary>🛠 Report a repair</summary><form class="lr-f" data-k="' + htmlEsc(k) + '">' +
+        '<input name="title" required maxlength="200" placeholder="What’s wrong? e.g. Kitchen tap dripping">' +
+        '<textarea name="details" rows="3" maxlength="3000" placeholder="Details (where, since when, anything we should know)"></textarea>' +
+        '<select name="urgency"><option>Routine</option><option>Urgent</option><option>Emergency</option></select>' +
+        '<label class="lr-o"><input type="radio" name="who" value="us" checked> Please arrange it for me</label>' +
+        '<label class="lr-o"><input type="radio" name="who" value="self"> I’ll arrange it myself (I’ll book the visit here)</label>' +
+        '<button type="submit">Send repair</button><p class="lr-msg muted"></p></form></details>';
     };
     // Each property's licence (selective / HMO), as checked on the council register.
     const lics = {}, licAddr = {};
@@ -2893,6 +2972,73 @@ module.exports = function mountJobs(app, opts) {
       return '<div class="lic ' + st.c + '">📜 ' + htmlEsc(st.t) + (l.borough ? ' <span class="muted">· ' + htmlEsc(l.borough) + '</span>' : '') +
         (l.number && l.status !== 'not_needed' && l.status !== 'none' ? '<div class="lic-ref">Licence reference: <b>' + htmlEsc(l.number) + '</b></div>' : '') + (href ? ' · <a href="' + htmlEsc(href) + '" target="_blank" rel="noopener">' + (l.url ? 'View licence' : 'View on the council register') + ' ↗</a>' : '') + '</div>';
     };
+  const ownScript = String.raw`<script>(function(){
+var TOKEN = document.body.getAttribute('data-lt'), ME = document.body.getAttribute('data-me') || 'Your landlord';
+var esc = function(v){ return String(v == null ? '' : v).replace(/[&<>"]/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+var TPL = [
+  ['General message', 'Hi {first},\n\n\n\nThanks,\n{me}'],
+  ['Visit / appointment', 'Hi {first},\n\nSomeone will be visiting {address} on {date}{at} to [what they are doing]. Please let me know if this doesn’t suit, or if they’ll need a key to get in.\n\nThanks,\n{me}'],
+  ['Inspection', 'Hi {first},\n\nI’d like to carry out a routine inspection at {address} on {date}{at}. It takes about 15–20 minutes. Please let me know if this doesn’t suit.\n\nThanks,\n{me}'],
+  ['Repair update', 'Hi {first},\n\nA quick update on the repair at {address}: [update].\n\nThanks,\n{me}'],
+  ['Gas safety check', 'Hi {first},\n\nThe annual gas safety check at {address} is booked for {date}{at}. Please make sure the engineer can get in — the check is a legal requirement.\n\nThanks,\n{me}'],
+  ['Rent', 'Hi {first},\n\nA quick note about the rent for {address}: [message].\n\nThanks,\n{me}']
+];
+var waNum = function(v){ var d = String(v || '').replace(/[^\d+]/g, ''); if (/^\+/.test(d)) d = d.slice(1); else if (/^00/.test(d)) d = d.slice(2); else if (/^0/.test(d)) d = '44' + d.slice(1); return d.length >= 10 ? d : ''; };
+var first = function(n){ var w = String(n || '').replace(/^(mr|mrs|miss|ms|mx|dr)\.?\s+/i, '').trim().split(/\s+/)[0]; return w || 'there'; };
+var longDate = function(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : '[day, date]'; };
+var openWa = function(phone, text){ var n = waNum(phone); if (n) window.open('https://wa.me/' + n + '?text=' + encodeURIComponent(text), '_blank', 'noopener'); };
+var sendButtons = function(ppl, getText){
+  var h = ppl.map(function(x, i){ return waNum(x.phone) ? '<button type="button" data-i="' + i + '">💬 WhatsApp ' + esc(first(x.name)) + '</button>' : ''; }).join('');
+  var mails = ppl.filter(function(x){ return x.email; }).map(function(x){ return x.email; });
+  if (mails.length) h += '<button type="button" data-mail="1" class="sec">✉️ Email ' + (mails.length > 1 ? 'all' : esc(first(ppl.filter(function(x){ return x.email; })[0].name))) + '</button>';
+  return { html: h || '<span class="muted">No phone number or email saved for them.</span>', click: function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.getAttribute('data-mail')) { var t = getText('there'); window.location.href = 'mailto:' + mails.join(',') + '?subject=' + encodeURIComponent((t.split('\n').filter(Boolean)[1] || 'A message about your home').slice(0, 80)) + '&body=' + encodeURIComponent(t.replace(/^Hi there,/, 'Hi all,')); return; }
+    var x = ppl[+b.getAttribute('data-i')]; openWa(x.phone, getText(first(x.name))); b.textContent = '✓ ' + b.textContent.replace(/^✓ /, '');
+  } };
+};
+// Contact the tenants: one-tap WhatsApp per person, and messages from templates.
+document.querySelectorAll('.lt').forEach(function(box){
+  var ppl = JSON.parse(box.getAttribute('data-people') || '[]'), addr = box.getAttribute('data-addr');
+  box.querySelectorAll('[data-wa]').forEach(function(a){ a.addEventListener('click', function(e){ e.preventDefault(); openWa(a.getAttribute('data-wa'), 'Hi ' + first(a.getAttribute('data-name')) + ', '); }); });
+  var sel = box.querySelector('.lt-tpl'), txt = box.querySelector('.lt-text'), date = box.querySelector('.lt-date'), time = box.querySelector('.lt-time'), send = box.querySelector('.lt-send');
+  if (!sel) return;
+  sel.innerHTML = TPL.map(function(t, i){ return '<option value="' + i + '">' + esc(t[0]) + '</option>'; }).join('');
+  var fill = function(){ var t = TPL[+sel.value][1]; box.querySelector('.lt-when').style.display = /\{date\}/.test(t) ? '' : 'none';
+    txt.value = t.replace(/\{address\}/g, addr).replace(/\{date\}/g, longDate(date.value)).replace(/\{at\}/g, time.value.trim() ? ' at ' + time.value.trim() : '').replace(/\{me\}/g, ME); };
+  sel.addEventListener('change', fill); date.addEventListener('change', fill); time.addEventListener('input', fill); fill();
+  var sb = sendButtons(ppl, function(name){ return txt.value.replace(/\{first\}/g, name); });
+  send.innerHTML = sb.html; send.addEventListener('click', sb.click);
+});
+// Report a repair.
+document.querySelectorAll('.lr-f').forEach(function(f){
+  f.addEventListener('submit', function(e){
+    e.preventDefault(); var btn = f.querySelector('button'), msg = f.querySelector('.lr-msg'); btn.disabled = true; btn.textContent = 'Sending…';
+    fetch('/l/' + TOKEN + '/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: f.getAttribute('data-k'), title: f.elements.title.value, details: f.elements.details.value, urgency: f.elements.urgency.value, who: (f.querySelector('[name=who]:checked') || {}).value }) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        if (!d.ok) { btn.disabled = false; btn.textContent = 'Send repair'; msg.textContent = 'Couldn’t send that — please try again.'; return; }
+        msg.innerHTML = '✓ Sent — reference <b>' + esc(d.ref) + '</b>. ' + ((f.querySelector('[name=who]:checked') || {}).value === 'self' ? 'You can book the visit on it below.' : 'We’ll be in touch.');
+        setTimeout(function(){ location.reload(); }, 1600);
+      }).catch(function(){ btn.disabled = false; btn.textContent = 'Send repair'; msg.textContent = 'Couldn’t send that — please try again.'; });
+  });
+});
+// Book the visit on a repair the landlord is arranging, then tell the tenants.
+document.querySelectorAll('.lb-f').forEach(function(f){
+  f.addEventListener('submit', function(e){
+    e.preventDefault(); var btn = f.querySelector('button'), msg = f.querySelector('.lb-msg'); btn.disabled = true; btn.textContent = 'Saving…';
+    fetch('/l/' + TOKEN + '/jobs/' + f.getAttribute('data-id') + '/book', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: f.date.value, time: f.time.value, who: f.who.value }) })
+      .then(function(r){ return r.json(); }).then(function(d){
+        btn.disabled = false; btn.textContent = 'Save the visit';
+        if (!d.ok) { msg.textContent = 'Couldn’t save that — please try again.'; return; }
+        var box = document.querySelector('.lt[data-k="' + f.getAttribute('data-k') + '"]'), ppl = box ? JSON.parse(box.getAttribute('data-people') || '[]') : [], addr = box ? box.getAttribute('data-addr') : '';
+        var text = function(name){ return 'Hi ' + name + ',\n\nA visit has been booked at ' + addr + ' on ' + longDate(f.date.value) + (f.time.value.trim() ? ' at ' + f.time.value.trim() : '') + ' for: ' + f.getAttribute('data-issue') + (f.who.value.trim() ? ' (' + f.who.value.trim() + ')' : '') + '. Please make sure they can get in, and let me know if this time doesn’t suit.\n\nYou can follow the repair here: ' + location.origin + f.getAttribute('data-track') + '\n\nThanks,\n' + ME; };
+        var sb = sendButtons(ppl, text);
+        msg.innerHTML = '✓ Visit saved. Let your tenants know:<div class="lt-send">' + sb.html + '</div>';
+        msg.querySelector('.lt-send').addEventListener('click', sb.click);
+      }).catch(function(){ btn.disabled = false; btn.textContent = 'Save the visit'; msg.textContent = 'Couldn’t save that — please try again.'; });
+  });
+});
+})();</script>`;
     const quick = [];
     const propBlocks = Object.keys(keys).map(function (k) {
       const js = all.filter(function (j) { return propKey(j.property_address) === k; });
@@ -2922,7 +3068,7 @@ module.exports = function mountJobs(app, opts) {
         licBad ? '<span class="chip bad">Licence needs attention</span>' : ''].filter(Boolean).join('');
       const pid = 'p-' + k.replace(/[^a-z0-9]+/g, '-'), openIt = Object.keys(keys).length <= 2 || o.length > 0 || pUn > 0;
       quick.push('<a class="qrow" href="#' + htmlEsc(pid) + '" data-find="' + htmlEsc(String(addr).toLowerCase()) + '"><span class="qa">' + htmlEsc(addr) + '</span><span class="qc">' + chips + '</span><span class="qgo">›</span></a>');
-      return '<section class="card pcard" id="' + htmlEsc(pid) + '" data-find="' + htmlEsc(String(addr).toLowerCase()) + '"><details' + (openIt ? ' open' : '') + '><summary><h2>' + htmlEsc(addr) + '</h2><div class="qc">' + chips + '</div></summary>' + (pSpent ? '<div class="muted" style="margin:-4px 0 8px">Spent: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + (cs ? '<div class="certs">' + cs + '</div>' : '') + licBox(k) + tcyBox(k) + invBox +
+      return '<section class="card pcard" id="' + htmlEsc(pid) + '" data-find="' + htmlEsc(String(addr).toLowerCase()) + '"><details' + (openIt ? ' open' : '') + '><summary><h2>' + htmlEsc(addr) + '</h2><div class="qc">' + chips + '</div></summary>' + (pSpent ? '<div class="muted" style="margin:-4px 0 8px">Spent: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + (cs ? '<div class="certs">' + cs + '</div>' : '') + licBox(k) + tcyBox(k) + contactBox(k, addr) + repairForm(k, addr) + invBox +
         (o.length ? '<h3>Open repairs (' + o.length + ')</h3>' + o.map(jobCard).join('') : '<p class="muted">No open repairs.</p>') +
         (d.length ? '<details' + (o.length ? '' : ' open') + '><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '') + '<p class="totop"><a href="#top">↑ Back to the top</a></p></details></section>';
     }).join('');
@@ -2931,7 +3077,7 @@ module.exports = function mountJobs(app, opts) {
       '.lj{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px}.lj.done{background:var(--okt);border-color:#cdebd9}.lj-top{display:flex;justify-content:space-between;gap:8px;align-items:center}' +
       '.pill{font-size:.75rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bluet);color:var(--blue)}.pill.ok{background:var(--ok);color:#fff;text-transform:uppercase;letter-spacing:.04em}.lj.done{border-left:5px solid var(--ok)}.lj-issue{font-weight:600;margin:4px 0 2px}' +
       '.lj-notes{font-size:.88rem;margin-top:6px;white-space:pre-line}.lj-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;font-size:.9rem;flex-wrap:wrap}.lj-foot a{color:var(--blue);font-weight:600;text-decoration:none}' +
-      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}a.tile{color:inherit;text-decoration:none}html{scroll-behavior:smooth;scroll-padding-top:64px}.lnav{position:sticky;top:0;z-index:5;display:flex;gap:6px;overflow-x:auto;margin:0 -16px 12px;padding:8px 16px;background:rgba(244,245,247,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}.lnav a{flex:none;padding:7px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink);text-decoration:none;font-weight:600;font-size:.88rem}#lfind{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font:inherit;margin:0 0 8px}.qlist{display:grid}.qrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.qrow:last-child{border-bottom:0}.qa{font-weight:600}.qgo{grid-row:1/3;grid-column:2;color:var(--faint);font-size:1.3rem}.qc{display:flex;flex-wrap:wrap;gap:4px}.chip{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:#f1f2f5;color:var(--soft)}.chip.ok{background:var(--okt);color:var(--ok)}.chip.warn{background:var(--ambert);color:var(--amber)}.chip.bad{background:#fdecec;color:var(--red)}.pcard>details>summary{list-style:none;cursor:pointer;margin:0;color:inherit;font-weight:inherit}.pcard>details>summary::-webkit-details-marker{display:none}.pcard>details>summary h2{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}.pcard>details>summary h2::after{content:"▾";color:var(--faint);transition:transform .2s}.pcard>details:not([open])>summary h2::after{transform:rotate(-90deg)}.totop{text-align:right;margin:10px 0 0;font-size:.85rem}.totop a{color:var(--soft)}.fab{position:fixed;right:16px;bottom:16px;width:44px;height:44px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;text-decoration:none;font-size:1.2rem;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s}.bpt{display:grid;gap:2px;font-size:.9rem}.bpr{display:grid;grid-template-columns:minmax(0,2.2fr) 1fr 1fr 1fr;gap:8px;padding:7px 0;border-bottom:1px solid #eef0f3;color:inherit;text-decoration:none}.bpr span:not(:first-child){text-align:right}.bph{font-size:.75rem;color:#6b7280;font-weight:600;text-transform:uppercase}.pinv{margin:12px 0 4px}.pinv summary{cursor:pointer;font-weight:600}a.cert{color:inherit;text-decoration:none;border:1px solid #d9dce3}.lic{margin:10px 0 0;padding:8px 12px;border-radius:10px;font-size:.9rem;background:#eef8f1}.lic.soon{background:#fff4e0}.lic-ref{margin-top:3px;font-size:.85rem}.lic.late{background:#fdecec}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
+      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.lt,.lr{margin:12px 0 0;padding:12px 14px;border-radius:12px;background:#f6f8fc}.lt h3{margin:0 0 6px}.lt-p{display:grid;gap:2px;padding:6px 0;border-bottom:1px solid #e6e9f0}.lt-p:last-of-type{border-bottom:0}.lt-a{display:flex;gap:10px;flex-wrap:wrap;font-size:.9rem}.lt-a a{color:var(--blue);font-weight:600;text-decoration:none}.lt-p small{color:var(--soft)}.lt-msg,.lr{margin-top:8px}.lt-msg summary,.lr summary,.lb summary{color:var(--blue)!important;font-weight:700;margin-top:6px}.lt-msg select,.lt-msg textarea,.lt-msg input,.lr-f input,.lr-f textarea,.lr-f select,.lb-f input{display:block;width:100%;margin:6px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff}.lt-when{display:flex;gap:6px}.lt-send{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.lt-send button,.lr-f button,.lb-f button{padding:10px 14px;border:0;border-radius:10px;background:#25D366;color:#fff;font:inherit;font-weight:700;cursor:pointer}.lt-send button.sec,.lr-f button,.lb-f button{background:var(--ink)}.lr-o{display:flex;gap:8px;align-items:center;margin:4px 0;font-size:.92rem}.lr-o input{width:auto;margin:0}.lr-f{display:block;margin:0}.lb{margin-top:8px}.lb-f{display:block;margin:0}.tcy-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}.tcy-facts div{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px}.tcy-facts span{display:block;font-size:.72rem;color:var(--soft)}.tcy-facts b{display:block}.tcy-facts small{color:var(--soft);font-size:.75rem}a.tile{color:inherit;text-decoration:none}html{scroll-behavior:smooth;scroll-padding-top:64px}.lnav{position:sticky;top:0;z-index:5;display:flex;gap:6px;overflow-x:auto;margin:0 -16px 12px;padding:8px 16px;background:rgba(244,245,247,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}.lnav a{flex:none;padding:7px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink);text-decoration:none;font-weight:600;font-size:.88rem}#lfind{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font:inherit;margin:0 0 8px}.qlist{display:grid}.qrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.qrow:last-child{border-bottom:0}.qa{font-weight:600}.qgo{grid-row:1/3;grid-column:2;color:var(--faint);font-size:1.3rem}.qc{display:flex;flex-wrap:wrap;gap:4px}.chip{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:#f1f2f5;color:var(--soft)}.chip.ok{background:var(--okt);color:var(--ok)}.chip.warn{background:var(--ambert);color:var(--amber)}.chip.bad{background:#fdecec;color:var(--red)}.pcard>details>summary{list-style:none;cursor:pointer;margin:0;color:inherit;font-weight:inherit}.pcard>details>summary::-webkit-details-marker{display:none}.pcard>details>summary h2{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}.pcard>details>summary h2::after{content:"▾";color:var(--faint);transition:transform .2s}.pcard>details:not([open])>summary h2::after{transform:rotate(-90deg)}.totop{text-align:right;margin:10px 0 0;font-size:.85rem}.totop a{color:var(--soft)}.fab{position:fixed;right:16px;bottom:16px;width:44px;height:44px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;text-decoration:none;font-size:1.2rem;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s}.bpt{display:grid;gap:2px;font-size:.9rem}.bpr{display:grid;grid-template-columns:minmax(0,2.2fr) 1fr 1fr 1fr;gap:8px;padding:7px 0;border-bottom:1px solid #eef0f3;color:inherit;text-decoration:none}.bpr span:not(:first-child){text-align:right}.bph{font-size:.75rem;color:#6b7280;font-weight:600;text-transform:uppercase}.pinv{margin:12px 0 4px}.pinv summary{cursor:pointer;font-weight:600}a.cert{color:inherit;text-decoration:none;border:1px solid #d9dce3}.lic{margin:10px 0 0;padding:8px 12px;border-radius:10px;font-size:.9rem;background:#eef8f1}.lic.soon{background:#fff4e0}.lic-ref{margin-top:3px;font-size:.85rem}.lic.late{background:#fdecec}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
       'details summary{cursor:pointer;font-weight:700;color:var(--ok);margin-top:14px}' +
       '.cost{margin-top:10px;background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.9rem}.lj.done .cost{background:#fff}.cost.none{color:var(--soft)}.cr{display:flex;justify-content:space-between;gap:10px;padding:2px 0}.cr.tot{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;font-weight:800}.ci{margin-top:6px;font-size:.85rem}.ci a{color:var(--blue);font-weight:600;text-decoration:none}.late{color:var(--red);font-weight:700}' +
       '.sp{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}.sp div{background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px}.sp span{display:block;font-size:.75rem;color:var(--soft)}.sp b{display:block;font-size:1.15rem}.sp small{color:var(--soft)}' +
@@ -2939,7 +3085,7 @@ module.exports = function mountJobs(app, opts) {
       '.dl{display:inline-block;padding:10px 14px;border-radius:12px;background:var(--ink);color:#fff;text-decoration:none;font-weight:600}.iv{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.iv:last-child{border-bottom:0}' +
       '.ph-lb{font-size:.75rem;color:var(--soft);font-weight:600;margin-top:10px}.ph{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.ph a{display:block;width:64px;height:64px;border-radius:10px;overflow:hidden;background:#eee}.ph img{width:100%;height:100%;object-fit:cover;display:block}' +
       '.ph a.more{display:grid;place-items:center;font-weight:700;color:var(--soft);text-decoration:none}</style>';
-    res.send(trackShell('Your properties', css + '<div id="top"></div><h1>Hi ' + htmlEsc(String(l.name || '').trim() || 'there') + '</h1><p class="sub">Your properties with Residential Realtors: every repair, where it’s up to and what it has cost.</p>' +
+    res.send(trackShell('Your properties', css + '<script>document.body.setAttribute("data-lt", ' + JSON.stringify(token).replace(/</g, '\\u003c') + ');document.body.setAttribute("data-me", ' + JSON.stringify(String(l.name || '').trim() || 'Your landlord').replace(/</g, '\\u003c') + ');</script><div id="top"></div><h1>Hi ' + htmlEsc(String(l.name || '').trim() || 'there') + '</h1><p class="sub">Your properties with Residential Realtors: every repair, where it’s up to and what it has cost.</p>' +
       '<div class="tiles"><a class="tile" href="#props"><b>' + Object.keys(keys).length + '</b><span>Propert' + (Object.keys(keys).length === 1 ? 'y' : 'ies') + '</span></a>' +
         '<a class="tile" href="#props"><b>' + open.length + '</b><span>Open repairs</span></a><a class="tile" href="#props"><b>' + done.length + '</b><span>Completed</span></a>' +
         '<a class="tile" href="#spending"><b>' + money(spent) + '</b><span>Charged, last 12 months</span></a>' +
@@ -2951,6 +3097,7 @@ module.exports = function mountJobs(app, opts) {
       (propBlocks || '<div class="card"><p class="muted">No properties are linked to you yet. Please contact Residential Realtors.</p></div>') +
       spendCard +
       '<a href="#top" class="fab" aria-label="Back to the top">↑</a>' +
+      ownScript +
       '<script>(function(){var f=document.getElementById("lfind");if(f)f.addEventListener("input",function(){var q=f.value.trim().toLowerCase();document.querySelectorAll("[data-find]").forEach(function(el){el.style.display=!q||el.getAttribute("data-find").indexOf(q)!==-1?"":"none";});});' +
         'document.querySelectorAll(".qrow").forEach(function(a){a.addEventListener("click",function(){var s=document.querySelector(a.getAttribute("href"));var d=s&&s.querySelector("details");if(d)d.open=true;});});' +
         'var e=document.getElementById("lexp"),c=document.getElementById("lcol"),all=function(o){document.querySelectorAll(".pcard>details").forEach(function(d){d.open=o;});};if(e)e.addEventListener("click",function(ev){ev.preventDefault();all(true);});if(c)c.addEventListener("click",function(ev){ev.preventDefault();all(false);});' +
