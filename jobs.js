@@ -1803,7 +1803,7 @@ module.exports = function mountJobs(app, opts) {
     const prompt = 'Below is ' + (files.length ? 'a screenshot or PDF of ' : 'text copied from ') + 'a UK council\'s public register of property licences (selective, additional HMO or mandatory HMO licensing), usually the results of a postcode search.' +
       (text ? '\n----\n' + text + '\n----\n' : '\n') +
       'List every licence (or licence application) shown. Reply with ONLY JSON: {"licences": [{"address": "", "postcode": "", "type": "", "number": "", "status": "", "holder": "", "starts": "", "expires": ""}]}. ' +
-      'address: the licensed property address as shown (keep flat/house numbers exactly). type: "Selective", "Additional (HMO)" or "Mandatory HMO" (as shown, else ""). number: the licence/reference number. status: "licensed" if granted/issued, "applied" if an application in progress, "" if unclear. holder: the licence holder name if shown. starts and expires: YYYY-MM-DD ("" if not shown; UK dates are day/month/year). Never invent anything.';
+      'address: the licensed property address as shown (keep flat/house numbers exactly). type: "Selective", "Additional (HMO)" or "Mandatory HMO" (as shown, else ""). number: the licence/reference number. status: "licensed" if the licence has been granted/issued, "applied" if it has been submitted/applied for but not yet issued (e.g. "application received", "pending", "under consideration", "draft licence"), "" if unclear. holder: the licence holder name if shown. starts and expires: YYYY-MM-DD ("" if not shown; UK dates are day/month/year). Never invent anything.';
     const result = await opts.askAi(prompt, true, files);
     if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
     let parsed = null;
@@ -2768,6 +2768,23 @@ module.exports = function mountJobs(app, opts) {
         '<div class="muted">' + (start > today ? 'Starts ' : 'Started ') + '<b>' + htmlEsc(day(start)) + '</b> · ' + months + '-month fixed term ' + (endD < today ? 'ended' : 'ends') + ' <b>' + htmlEsc(day(endD)) + '</b>' + (endD < today ? ', now rolling' : ', then rolls on') +
         (next ? ' · Next anniversary <b>' + htmlEsc(day(next)) + '</b>' : '') + '</div></div>';
     };
+    // Each property's licence (selective / HMO), as checked on the council register.
+    const lics = {};
+    if (Object.keys(keys).length) (await p.query('SELECT property_key, licence FROM property_info WHERE property_key = ANY($1::text[]) AND licence IS NOT NULL', [Object.keys(keys)])).rows
+      .forEach(function (r) { lics[r.property_key] = r.licence; });
+    const licBox = function (k) {
+      const l = lics[k]; if (!l) return '';
+      const today = new Date().toISOString().slice(0, 10), soon = new Date(Date.now() + 61 * 86400000).toISOString().slice(0, 10);
+      const what = (l.type ? l.type + ' licence' : 'Property licence') + (l.number ? ' ' + l.number : '');
+      const st = l.status === 'not_needed' ? { c: 'ok', t: 'No property licence needed' }
+        : l.status === 'none' ? { c: 'late', t: 'No property licence found on the council register — we’ll be in touch' }
+        : l.status === 'applied' ? { c: 'soon', t: what + ' — application submitted, not yet issued by the council' }
+        : !l.expires ? { c: 'ok', t: what + ' — licensed' }
+        : l.expires < today ? { c: 'late', t: what + ' — expired ' + day(l.expires) }
+        : l.expires <= soon ? { c: 'soon', t: what + ' — expires ' + day(l.expires) }
+        : { c: 'ok', t: what + ' — valid until ' + day(l.expires) };
+      return '<div class="lic ' + st.c + '">📜 ' + htmlEsc(st.t) + (l.borough ? ' <span class="muted">· ' + htmlEsc(l.borough) + '</span>' : '') + '</div>';
+    };
     const propBlocks = Object.keys(keys).map(function (k) {
       const js = all.filter(function (j) { return propKey(j.property_address) === k; });
       const addr = (js[0] && js[0].property_address) || keys[k] || '';
@@ -2778,7 +2795,7 @@ module.exports = function mountJobs(app, opts) {
       const o = js.filter(function (j) { return j.status !== 'Completed'; }), d = js.filter(function (j) { return j.status === 'Completed'; });
       const pSpent = sumOf(js.filter(function (j) { return j.status === 'Completed' && charge(j) != null; }));
       const pYr = sumOf(js.filter(function (j) { return j.status === 'Completed' && charge(j) != null && when(j).getFullYear() === yr; }));
-      return '<section class="card"><h2>' + htmlEsc(addr) + '</h2>' + (pSpent ? '<div class="muted" style="margin:-4px 0 8px">Spent: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + (cs ? '<div class="certs">' + cs + '</div>' : '') + tcyBox(k) +
+      return '<section class="card"><h2>' + htmlEsc(addr) + '</h2>' + (pSpent ? '<div class="muted" style="margin:-4px 0 8px">Spent: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + (cs ? '<div class="certs">' + cs + '</div>' : '') + licBox(k) + tcyBox(k) +
         (o.length ? '<h3>Open repairs (' + o.length + ')</h3>' + o.map(jobCard).join('') : '<p class="muted">No open repairs.</p>') +
         (d.length ? '<details' + (o.length ? '' : ' open') + '><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '') + '</section>';
     }).join('');
@@ -2787,7 +2804,7 @@ module.exports = function mountJobs(app, opts) {
       '.lj{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px}.lj.done{background:var(--okt);border-color:#cdebd9}.lj-top{display:flex;justify-content:space-between;gap:8px;align-items:center}' +
       '.pill{font-size:.75rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bluet);color:var(--blue)}.pill.ok{background:var(--ok);color:#fff;text-transform:uppercase;letter-spacing:.04em}.lj.done{border-left:5px solid var(--ok)}.lj-issue{font-weight:600;margin:4px 0 2px}' +
       '.lj-notes{font-size:.88rem;margin-top:6px;white-space:pre-line}.lj-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;font-size:.9rem;flex-wrap:wrap}.lj-foot a{color:var(--blue);font-weight:600;text-decoration:none}' +
-      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
+      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.lic{margin:10px 0 0;padding:8px 12px;border-radius:10px;font-size:.9rem;background:#eef8f1}.lic.soon{background:#fff4e0}.lic.late{background:#fdecec}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
       'details summary{cursor:pointer;font-weight:700;color:var(--ok);margin-top:14px}' +
       '.cost{margin-top:10px;background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.9rem}.lj.done .cost{background:#fff}.cost.none{color:var(--soft)}.cr{display:flex;justify-content:space-between;gap:10px;padding:2px 0}.cr.tot{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;font-weight:800}.ci{margin-top:6px;font-size:.85rem}.ci a{color:var(--blue);font-weight:600;text-decoration:none}.late{color:var(--red);font-weight:700}' +
       '.sp{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}.sp div{background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px}.sp span{display:block;font-size:.75rem;color:var(--soft)}.sp b{display:block;font-size:1.15rem}.sp small{color:var(--soft)}' +
