@@ -2844,10 +2844,14 @@ module.exports = function mountJobs(app, opts) {
         '<div><span>All time</span><b>' + money(sumOf(doneC)) + '</b><small>' + doneC.length + ' repair' + (doneC.length === 1 ? '' : 's') + '</small></div>' +
         (expected.length ? '<div><span>Expected (open repairs)</span><b>' + money(sumOf(expected)) + '</b><small>' + expected.length + ' repair' + (expected.length === 1 ? '' : 's') + '</small></div>' : '') + '</div>' +
       (types.length ? '<h3>By type of repair</h3>' + types.slice(0, 8).map(function (t) { return '<div class="bt"><span>' + htmlEsc(t) + '</span><i style="width:' + Math.max(4, Math.round(byType[t] / maxT * 100)) + '%"></i><b>' + money(byType[t]) + '</b></div>'; }).join('') : '') +
-      (Object.keys(keys).length > 1 && doneC.length ? '<h3>By property</h3>' + Object.keys(keys).map(function (k) {
+      (doneC.length || invs.length ? '<h3>Maintenance cost by property</h3><div class="bpt"><div class="bpr bph"><span>Property</span><span>This year</span><span>All time</span><span>Unpaid</span></div>' + Object.keys(keys).map(function (k) {
           const pj = doneC.filter(function (j) { return propKey(j.property_address) === k; });
-          return pj.length ? '<div class="bp"><span>' + htmlEsc((pj[0] && pj[0].property_address) || keys[k]) + '</span><b>' + money(sumOf(pj)) + '</b></div>' : '';
-        }).join('') : '') +
+          const pi = invs.filter(function (i) { const j = all.filter(function (x) { return x.id === i.job_id; })[0]; return j && propKey(j.property_address) === k; });
+          const un = pi.filter(function (i) { return !i.paid_at; }).reduce(function (t, i) { return t + Number(i.total || 0); }, 0);
+          if (!pj.length && !pi.length) return '';
+          const addr = (pj[0] && pj[0].property_address) || keys[k];
+          return '<a class="bpr" href="#p-' + htmlEsc(k.replace(/[^a-z0-9]+/g, '-')) + '"><span>' + htmlEsc(addr) + '</span><span>' + money(sumOf(pj.filter(function (j) { return when(j).getFullYear() === yr; }))) + '</span><span><b>' + money(sumOf(pj)) + '</b></span><span' + (un ? ' class="due"' : '') + '>' + (un ? money(un) : '—') + '</span></a>';
+        }).join('') + '</div>' : '') +
       '<p style="margin:12px 0 0"><a class="dl" href="/l/' + htmlEsc(token) + '/costs.csv">⬇ Download all costs (spreadsheet)</a></p></section>';
     const invCard = invs.length ? '<section class="card"><h2>Invoices</h2>' + invs.slice().reverse().map(function (i) {
         const j = all.filter(function (x) { return x.id === i.job_id; })[0] || {}, od = !i.paid_at && i.due && i.due < new Date().toISOString().slice(0, 10);
@@ -2900,7 +2904,15 @@ module.exports = function mountJobs(app, opts) {
       const o = js.filter(function (j) { return j.status !== 'Completed'; }), d = js.filter(function (j) { return j.status === 'Completed'; });
       const pSpent = sumOf(js.filter(function (j) { return j.status === 'Completed' && charge(j) != null; }));
       const pYr = sumOf(js.filter(function (j) { return j.status === 'Completed' && charge(j) != null && when(j).getFullYear() === yr; }));
-      return '<section class="card"><h2>' + htmlEsc(addr) + '</h2>' + (pSpent ? '<div class="muted" style="margin:-4px 0 8px">Spent: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + (cs ? '<div class="certs">' + cs + '</div>' : '') + licBox(k) + tcyBox(k) +
+      // This property's invoices, with what's been invoiced and what's still to pay.
+      const pInv = invs.filter(function (i) { const j = all.filter(function (x) { return x.id === i.job_id; })[0]; return j && propKey(j.property_address) === k; }).slice().reverse();
+      const pUn = pInv.filter(function (i) { return !i.paid_at; }).reduce(function (t, i) { return t + Number(i.total || 0); }, 0), pAll = pInv.reduce(function (t, i) { return t + Number(i.total || 0); }, 0);
+      const invBox = pInv.length ? '<details class="pinv"' + (pUn ? ' open' : '') + '><summary>🧾 Invoices for this property (' + pInv.length + ') · ' + money(pAll) + (pUn ? ' · <span class="due">' + money(pUn) + ' to pay</span>' : ' · all paid') + '</summary>' + pInv.map(function (i) {
+          const j = all.filter(function (x) { return x.id === i.job_id; })[0] || {}, od = !i.paid_at && i.due && i.due < new Date().toISOString().slice(0, 10);
+          return '<a class="iv" href="/l/' + htmlEsc(token) + '/invoice/' + i.id + '"><div><b>' + htmlEsc(i.number || '') + '</b> · ' + htmlEsc(issue(j)) + '<div class="muted">Issued ' + htmlEsc(day(i.date || i.created_at)) + '</div></div>' +
+            '<div style="text-align:right"><b>' + money(i.total) + '</b><div>' + (i.paid_at ? '<span class="paid">Paid</span>' : od ? '<span class="late">Overdue</span>' : '<span class="due">Due ' + htmlEsc(i.due ? day(i.due) : '') + '</span>') + '</div></div></a>';
+        }).join('') + '</details>' : '';
+      return '<section class="card" id="p-' + htmlEsc(k.replace(/[^a-z0-9]+/g, '-')) + '"><h2>' + htmlEsc(addr) + '</h2>' + (pSpent ? '<div class="muted" style="margin:-4px 0 8px">Spent: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + (cs ? '<div class="certs">' + cs + '</div>' : '') + licBox(k) + tcyBox(k) + invBox +
         (o.length ? '<h3>Open repairs (' + o.length + ')</h3>' + o.map(jobCard).join('') : '<p class="muted">No open repairs.</p>') +
         (d.length ? '<details' + (o.length ? '' : ' open') + '><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '') + '</section>';
     }).join('');
@@ -2909,7 +2921,7 @@ module.exports = function mountJobs(app, opts) {
       '.lj{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px}.lj.done{background:var(--okt);border-color:#cdebd9}.lj-top{display:flex;justify-content:space-between;gap:8px;align-items:center}' +
       '.pill{font-size:.75rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bluet);color:var(--blue)}.pill.ok{background:var(--ok);color:#fff;text-transform:uppercase;letter-spacing:.04em}.lj.done{border-left:5px solid var(--ok)}.lj-issue{font-weight:600;margin:4px 0 2px}' +
       '.lj-notes{font-size:.88rem;margin-top:6px;white-space:pre-line}.lj-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;font-size:.9rem;flex-wrap:wrap}.lj-foot a{color:var(--blue);font-weight:600;text-decoration:none}' +
-      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}a.cert{color:inherit;text-decoration:none;border:1px solid #d9dce3}.lic{margin:10px 0 0;padding:8px 12px;border-radius:10px;font-size:.9rem;background:#eef8f1}.lic.soon{background:#fff4e0}.lic-ref{margin-top:3px;font-size:.85rem}.lic.late{background:#fdecec}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
+      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.bpt{display:grid;gap:2px;font-size:.9rem}.bpr{display:grid;grid-template-columns:minmax(0,2.2fr) 1fr 1fr 1fr;gap:8px;padding:7px 0;border-bottom:1px solid #eef0f3;color:inherit;text-decoration:none}.bpr span:not(:first-child){text-align:right}.bph{font-size:.75rem;color:#6b7280;font-weight:600;text-transform:uppercase}.pinv{margin:12px 0 4px}.pinv summary{cursor:pointer;font-weight:600}a.cert{color:inherit;text-decoration:none;border:1px solid #d9dce3}.lic{margin:10px 0 0;padding:8px 12px;border-radius:10px;font-size:.9rem;background:#eef8f1}.lic.soon{background:#fff4e0}.lic-ref{margin-top:3px;font-size:.85rem}.lic.late{background:#fdecec}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
       'details summary{cursor:pointer;font-weight:700;color:var(--ok);margin-top:14px}' +
       '.cost{margin-top:10px;background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.9rem}.lj.done .cost{background:#fff}.cost.none{color:var(--soft)}.cr{display:flex;justify-content:space-between;gap:10px;padding:2px 0}.cr.tot{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;font-weight:800}.ci{margin-top:6px;font-size:.85rem}.ci a{color:var(--blue);font-weight:600;text-decoration:none}.late{color:var(--red);font-weight:700}' +
       '.sp{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}.sp div{background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px}.sp span{display:block;font-size:.75rem;color:var(--soft)}.sp b{display:block;font-size:1.15rem}.sp small{color:var(--soft)}' +
@@ -2922,7 +2934,7 @@ module.exports = function mountJobs(app, opts) {
         '<div class="tile"><b>' + open.length + '</b><span>Open repairs</span></div><div class="tile"><b>' + done.length + '</b><span>Completed</span></div>' +
         '<div class="tile"><b>' + money(spent) + '</b><span>Charged, last 12 months</span></div>' +
         (unpaid.length ? '<div class="tile"><b>' + money(unpaid.reduce(function (t, i) { return t + Number(i.total || 0); }, 0)) + '</b><span>' + unpaid.length + ' invoice' + (unpaid.length === 1 ? '' : 's') + ' to pay</span></div>' : '') + '</div>' +
-      spendCard + invCard +
+      spendCard +
       (propBlocks || '<div class="card"><p class="muted">No properties are linked to you yet. Please contact Residential Realtors.</p></div>') +
       '<p class="muted" style="text-align:center;margin-top:18px">Questions? Reply to our message or call the office.</p>', true));
   }));
