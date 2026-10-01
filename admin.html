@@ -1464,7 +1464,7 @@
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span>New rent £</span><input class="inp" id="tiNewRent" inputmode="decimal" style="width:130px"><span>or up by</span><input class="inp" id="tiPct" inputmode="decimal" style="width:80px" placeholder="e.g. 5"><span>%</span><span class="muted-note" id="tiPctNote" style="margin:0">a month from the anniversary</span></div>
       <label class="wa-assign" style="margin-top:6px"><input type="checkbox" id="tiNoInc"> No increase this year</label>
       <div id="tiLl" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"></div>
-      <div class="row-actions" style="margin-top:8px"><button class="btn small primary" type="button" id="tiSaveRent">Save the rent review</button></div></div>
+      <div class="row-actions" style="margin-top:8px"><button class="btn small ghost" type="button" id="tiCancelInc" hidden>Cancel the proposed increase</button><button class="btn small primary" type="button" id="tiSaveRent">Save the rent review</button></div></div>
     <div class="ti-box" id="tiNotice" style="margin-top:10px"><div class="lbl">Rent increase notice (Form 4A)</div>
       <p class="muted-note" id="tiNoticeText" style="margin:0 0 8px"></p>
       <div class="ti-f4" style="display:grid;gap:6px;margin:0 0 8px;padding:10px;border:1px solid var(--line);border-radius:10px">
@@ -3100,6 +3100,8 @@
     $('tiTitle').textContent = ordinal(n.years) + ' anniversary — rent review';
     $('tiSub').textContent = (d.address || t.address) + ' — anniversary on ' + longDay(n.end) + (n.days > 0 ? ' (in ' + n.days + ' days)' : '') + '. Rent now ' + gbp(num(d.rent_pcm) || 0) + ' a month. ' + tcyItText(tiCur.it) + '.';
     $('tiNewRent').value = num(tiCur.it.new_rent) || num(d.rent_pcm) || ''; $('tiPct').value = ''; tiSyncPct();
+    // A proposed increase that hasn't started can be cancelled.
+    $('tiCancelInc').hidden = !(num(tiCur.it.new_rent) && !tiCur.it.no_increase && (tiCur.it.rent_from || n.end) > isoDay(new Date()));
     var by = tcyNoticeBy(n.end), late = by < isoDay(new Date());
     $('tiFormLink').href = FORM_4A_URL;
     $('tiNoticeText').innerHTML = tiCur.it.notice_served ? '✓ Notice served on <b>' + esc(longDay(tiCur.it.notice_served)) + '</b>' + (tiCur.it.notice_how ? ' by ' + esc(tiCur.it.notice_how) : '') + '.'
@@ -3184,6 +3186,18 @@
   });
   $('tiTpl').addEventListener('click', function(e){ var b = e.target.closest('[data-tpl]'); if (!b) return; tiTpl = b.dataset.tpl; tiFill(); });
   $('tiNewRent').addEventListener('input', function(){ if (tiTpl === 'rent') tiFill(); });
+  $('tiCancelInc').addEventListener('click', function(){
+    if (!tiCur) return;
+    if (!confirm('Cancel the proposed new rent of ' + gbp(num(tiCur.it.new_rent)) + ' from ' + longDay(tiCur.it.rent_from || tiCur.n.end) + '? If the notice has been served, let the tenants know it is withdrawn.')) return;
+    var b = $('tiCancelInc'); busy(b, true, 'Cancelling…');
+    api('POST', '/api/admin/tenancies/' + tiCur.t.id + '/cancel-increase', {}).then(function(d){
+      busy(b, false);
+      if (!d.ok) { toast(d.error || 'Couldn’t cancel it'); return; }
+      toast('Proposed increase cancelled (' + d.was + ')');
+      var id = tiCur.t.id;
+      loadTenancies().then(function(){ renderTenancies(); openTenancyIntention(id); });
+    });
+  });
   $('tiSaveRent').addEventListener('click', function(){
     var v = num($('tiNewRent').value.replace(/[£,\s]/g, '')), no = $('tiNoInc').checked;
     if (!no && !(v > 0)) { toast('Enter the new monthly rent'); $('tiNewRent').focus(); return; }

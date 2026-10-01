@@ -2927,7 +2927,7 @@ module.exports = function mountJobs(app, opts) {
         '<div class="tcy-facts">' + (rent ? '<div><span>Rent now</span><b>£' + rent.toFixed(2) + '</b><small>a month</small></div>' : '') +
           '<div><span>' + (start > today ? 'Starts' : 'Started') + '</span><b>' + htmlEsc(day(start)) + '</b><small>' + months + '-month term ' + (endD < today ? 'ended ' + htmlEsc(day(endD)) + ', now rolling' : 'to ' + htmlEsc(day(endD))) + '</small></div>' +
           (next ? '<div><span>Next anniversary</span><b>' + htmlEsc(day(next)) + '</b><small>rent review</small></div>' : '') + '</div>' +
-        (upcoming ? '<div class="muted" style="margin-top:6px">New rent of <b>£' + upcoming.rent.toFixed(2) + '</b> a month from ' + htmlEsc(day(upcoming.from)) + '.</div>' : '') +
+        (upcoming ? '<div class="muted lc-up" style="margin-top:6px">New rent of <b>£' + upcoming.rent.toFixed(2) + '</b> a month from ' + htmlEsc(day(upcoming.from)) + '. <a href="#" class="lc-x" data-id="' + t.id + '" data-k="' + htmlEsc(t.property_key) + '" data-was="' + htmlEsc('£' + upcoming.rent.toFixed(2) + ' a month from ' + day(upcoming.from)) + '">Cancel this increase</a><span class="lc-msg"></span></div>' : '') +
         f4aForm(t, start, today) + '</div>';
     };
     // Propose a rent increase on the official Form 4A, filled in for them.
@@ -3063,6 +3063,23 @@ document.querySelectorAll('.lf-f').forEach(function(f){
         msg.innerHTML = '✓ Form 4A downloaded (new rent ' + esc(amt) + ' from ' + esc(when) + ').<br><b>Now serve it on your tenants</b> at least 2 months before that date: hand it to them, post it (recorded delivery), or use a method your tenancy agreement allows (e.g. email). Keep proof of how and when you served it. If you send it by WhatsApp or email, attach the PDF:<div class="lt-send">' + sb.html + '</div>';
         msg.querySelector('.lt-send').addEventListener('click', sb.click);
       }).catch(function(){ btn.disabled = false; btn.textContent = 'Create the Form 4A (PDF)'; msg.textContent = 'Couldn’t create the form — please try again.'; });
+  });
+});
+// Cancel a proposed rent increase, then let the tenants know it's withdrawn.
+document.querySelectorAll('.lc-x').forEach(function(a){
+  a.addEventListener('click', function(e){
+    e.preventDefault();
+    if (!confirm('Cancel the proposed new rent of ' + a.getAttribute('data-was') + '? If the notice has already been given to your tenants, let them know it is withdrawn.')) return;
+    var msg = a.parentNode.querySelector('.lc-msg'); a.textContent = 'Cancelling…';
+    fetch('/l/' + TOKEN + '/tenancies/' + a.getAttribute('data-id') + '/cancel-increase', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(function(r){ return r.json(); }).then(function(d){
+        if (!d.ok) { a.textContent = 'Cancel this increase'; msg.textContent = ' ' + (d.error || 'Couldn’t cancel — please try again.'); return; }
+        var box = document.querySelector('.lt[data-k="' + a.getAttribute('data-k') + '"]'), ppl = box ? JSON.parse(box.getAttribute('data-people') || '[]') : [], addr = box ? box.getAttribute('data-addr') : '';
+        var sb = sendButtons(ppl, function(name){ return 'Hi ' + name + ',\n\nPlease note the proposed rent increase for ' + addr + ' (' + a.getAttribute('data-was') + ') has been withdrawn. Your rent stays the same.\n\nThanks,\n' + ME; });
+        var holder = a.parentNode;
+        holder.innerHTML = '✓ Proposed increase cancelled — your rent stays the same. If you gave your tenants the notice, let them know:<div class="lt-send">' + sb.html + '</div>';
+        holder.querySelector('.lt-send').addEventListener('click', sb.click);
+      }).catch(function(){ a.textContent = 'Cancel this increase'; msg.textContent = ' Couldn’t cancel — please try again.'; });
   });
 });
 // Book the visit on a repair the landlord is arranging, then tell the tenants.
@@ -3854,6 +3871,39 @@ document.querySelectorAll('.lb-f').forEach(function(f){
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="Form-4A-' + (addrLines(t.address).l1 || 'rent-increase').replace(/[^A-Za-z0-9]+/g, '-') + '.pdf"');
     res.send(r.pdf);
+  }));
+
+  // Cancel a proposed rent increase that hasn't started yet: the new rent comes off
+  // the tenancy (so a fresh one can be proposed) and the history notes it.
+  async function cancelIncrease(p, t, by) {
+    const today = new Date().toISOString().slice(0, 10), it = t.intention || {};
+    const keys = Object.keys(it).filter(function (k) { const x = it[k] || {}; return Number(x.new_rent) && !x.no_increase && (x.rent_from || k) > today; });
+    if (!keys.length) return { error: 'There’s no proposed increase to cancel (one that has already started can’t be cancelled here).' };
+    const was = keys.map(function (k) { return '£' + Number(it[k].new_rent).toFixed(2) + ' from ' + certDay(it[k].rent_from || k); }).join(', ');
+    for (const k of keys) {
+      await p.query(`UPDATE tenancies SET intention = jsonb_set(intention, ARRAY[$2::text], (intention->$2) - 'new_rent' - 'rent_from' - 'form4a_at' - 'form4a_by' - 'notice_served' - 'notice_how' || jsonb_build_object('increase_cancelled_at', $3::text, 'increase_cancelled_by', $4::text)) WHERE id = $1`,
+        [t.id, k, new Date().toISOString(), by]);
+    }
+    await p.query('UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1', [t.id, JSON.stringify([{ at: new Date().toISOString(), text: 'Proposed rent increase cancelled by ' + by + ' (was ' + was + ').' }])]);
+    return { ok: true, was: was };
+  }
+  app.post('/api/admin/tenancies/:id/cancel-increase', withDb(async function (p, req, res) {
+    const t = (await p.query('SELECT id, address, intention FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
+    if (!t) return res.status(404).json({ ok: false, error: 'not-found' });
+    const r = await cancelIncrease(p, t, 'Residential Realtors');
+    if (r.error) return res.status(400).json({ ok: false, error: r.error });
+    res.json(r);
+  }));
+  app.post('/l/:token/tenancies/:id/cancel-increase', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    const t = (await p.query('SELECT id, address, property_key, intention FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
+    if (!t || who.keys[t.property_key] === undefined) return res.status(404).json({ ok: false, error: 'not-found' });
+    const r = await cancelIncrease(p, t, 'the landlord, ' + (who.l.name || ''));
+    if (r.error) return res.status(400).json({ ok: false, error: r.error });
+    ntfy({ title: 'Landlord cancelled a rent increase', message: (who.l.name || 'A landlord') + ' — ' + t.address + ': cancelled the proposed new rent (' + r.was + ').', tags: ['x'] }).catch(function () {});
+    res.json(r);
   }));
 
   // The tenants' plans for the end of this term: asked (how) and/or their answer.
