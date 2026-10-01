@@ -1461,7 +1461,7 @@
     <h3 id="tiTitle">Anniversary — rent review</h3>
     <p class="muted-note" id="tiSub" style="margin:0 0 10px"></p>
     <div class="ti-box"><div class="lbl">Rent review</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span>New rent £</span><input class="inp" id="tiNewRent" inputmode="decimal" style="width:130px"><span class="muted-note" style="margin:0">a month from the anniversary</span></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span>New rent £</span><input class="inp" id="tiNewRent" inputmode="decimal" style="width:130px"><span>or up by</span><input class="inp" id="tiPct" inputmode="decimal" style="width:80px" placeholder="e.g. 5"><span>%</span><span class="muted-note" id="tiPctNote" style="margin:0">a month from the anniversary</span></div>
       <label class="wa-assign" style="margin-top:6px"><input type="checkbox" id="tiNoInc"> No increase this year</label>
       <div id="tiLl" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"></div>
       <div class="row-actions" style="margin-top:8px"><button class="btn small primary" type="button" id="tiSaveRent">Save the rent review</button></div></div>
@@ -3099,7 +3099,7 @@
     tiCur.people = (d.tenants || []).filter(function(x){ return x && (x.name || x.email || x.phone); });
     $('tiTitle').textContent = ordinal(n.years) + ' anniversary — rent review';
     $('tiSub').textContent = (d.address || t.address) + ' — anniversary on ' + longDay(n.end) + (n.days > 0 ? ' (in ' + n.days + ' days)' : '') + '. Rent now ' + gbp(num(d.rent_pcm) || 0) + ' a month. ' + tcyItText(tiCur.it) + '.';
-    $('tiNewRent').value = num(tiCur.it.new_rent) || num(d.rent_pcm) || '';
+    $('tiNewRent').value = num(tiCur.it.new_rent) || num(d.rent_pcm) || ''; $('tiPct').value = ''; tiSyncPct();
     var by = tcyNoticeBy(n.end), late = by < isoDay(new Date());
     $('tiFormLink').href = FORM_4A_URL;
     $('tiNoticeText').innerHTML = tiCur.it.notice_served ? '✓ Notice served on <b>' + esc(longDay(tiCur.it.notice_served)) + '</b>' + (tiCur.it.notice_how ? ' by ' + esc(tiCur.it.notice_how) : '') + '.'
@@ -3111,7 +3111,7 @@
     try { $('tiF4Signer').value = $('tiF4Signer').value || localStorage.getItem('rr_f4_signer') || ''; } catch (e) {}
     $('tiF4Make').disabled = false;
     api('GET', '/api/admin/tenancies/' + t.id + '/form4a-plan').then(function(pl){ if (!pl.ok || !tiCur || tiCur.t.id !== t.id) return; tiCur.f4 = pl; $('tiF4Start').min = pl.earliest; if (!$('tiF4Start').value || $('tiF4Start').value < pl.earliest) $('tiF4Start').value = pl.earliest;
-      $('tiF4Make').disabled = !pl.open;
+      $('tiF4Make').disabled = !pl.open; tiSyncPct();
       $('tiF4Earliest').textContent = pl.open ? 'earliest ' + longDay(pl.earliest) : 'the notice can be prepared from ' + longDay(pl.opensOn) + ' (month 10 — rent goes up once a year, with 2 months’ notice)'; });
     $('tiNotice').hidden = !!tiCur.it.no_increase;
     $('tiNoInc').checked = !!tiCur.it.no_increase;
@@ -3144,6 +3144,11 @@
       '\n\nKind regards,\nResidential Realtors';
   }
   // The details the government form asks for, to copy across.
+  // The new rent as an amount or a % increase on the rent now — each fills in the other.
+  function tiBaseRent(){ return (tiCur && tiCur.f4 && tiCur.f4.rent) || num(tiCur && tiCur.d.rent_pcm) || 0; }
+  function tiSyncPct(){ var base = tiBaseRent(), nr = num($('tiNewRent').value); $('tiPct').value = base && nr ? String(Math.round((nr / base - 1) * 1000) / 10) : ''; $('tiPctNote').textContent = base ? 'on ' + gbp(base) + ' now' : ''; }
+  $('tiPct').addEventListener('input', function(){ var base = tiBaseRent(), pc = num($('tiPct').value); if (base && pc !== null) { $('tiNewRent').value = (Math.round(base * (1 + pc / 100) * 100) / 100).toFixed(2); } $('tiPctNote').textContent = base ? 'on ' + gbp(base) + ' now' : ''; });
+  $('tiNewRent').addEventListener('input', tiSyncPct);
   $('tiF4Make').addEventListener('click', function(){
     if (!tiCur) return;
     var signer = $('tiF4Signer').value.trim(); if (!signer) { toast('Enter your name to sign the form'); $('tiF4Signer').focus(); return; }
