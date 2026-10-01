@@ -436,19 +436,55 @@ function propKey(addr) {
 // Saves a landlord (matched to an existing one by id, name or email, whose
 // details are topped up rather than wiped) and, given an address, records that
 // the property is theirs. Returns the landlord id, or null without a name.
+// A landlord is matched by email, phone, or name — titles ignored, and a
+// shorter or fuller version of the same name ("Kuldip", "Mr K Singh",
+// "Mr Kuldip Singh") counts — preferring the landlord already linked to the
+// property. Details are topped up, never wiped; a fuller name replaces a
+// shorter one.
+function llWords(n) {
+  return String(n || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9' -]+/g, ' ').split(/\s+/)
+    .filter(function (x) { return x && ['mr', 'mrs', 'miss', 'ms', 'mx', 'dr', 'prof', 'and'].indexOf(x) === -1; });
+}
+// 2 = the same name (first and last name agree); 1 = compatible (one is a
+// shorter form of the other: "Kuldip" / "K Singh" / "Kuldip Singh"); 0 = no.
+function llNameMatch(a, b) {
+  const A = llWords(a), B = llWords(b);
+  if (!A.length || !B.length) return 0;
+  if (A.join(' ') === B.join(' ') || (A.length > 1 && B.length > 1 && A[0] === B[0] && A[A.length - 1] === B[B.length - 1])) return 2;
+  const S = A.length <= B.length ? A : B, L = S === A ? B : A;
+  const same = function (x, y) { return x === y || (x.length === 1 && y[0] === x) || (y.length === 1 && x[0] === y); };
+  if (S.length === 1) return S[0].length > 1 && S[0] === L[0] ? 1 : 0;   // a first name on its own
+  if (!same(S[S.length - 1], L[L.length - 1]) || !same(S[0], L[0])) return 0;
+  return 1;
+}
+async function findLandlord(p, name, email, phone, address) {
+  const all = (await p.query('SELECT id, name, email, phone FROM landlords ORDER BY id')).rows;
+  if (email) { const m = all.filter(function (x) { return x.email && x.email.toLowerCase() === email.toLowerCase(); }); if (m.length) return m[0].id; }
+  const tail = phoneTail(phone);
+  if (tail) { const m = all.filter(function (x) { return phoneTail(x.phone) === tail; }); if (m.length === 1) return m[0].id; }
+  if (!name) return null;
+  const key = propKey(address);
+  if (key) {   // the landlord already on this property
+    const cur = (await p.query('SELECT landlord_id FROM property_landlords WHERE property_key = $1', [key])).rows[0];
+    const l = cur && all.filter(function (x) { return x.id === cur.landlord_id; })[0];
+    if (l && llNameMatch(l.name, name)) return l.id;
+  }
+  const exact = all.filter(function (x) { return llNameMatch(x.name, name) === 2; });
+  if (exact.length) return exact[0].id;
+  const close = all.filter(function (x) { return llNameMatch(x.name, name) === 1; });
+  return close.length === 1 ? close[0].id : null;
+}
 async function ensureLandlord(p, l, address) {
   const name = str(l.landlord_name || l.name, 200);
   if (!name) return null;
   const email = str(l.landlord_email || l.email, 200), phone = str(l.landlord_phone || l.phone, 50), addr = str(l.landlord_address || l.address, 500);
   let id = parseInt(l.landlord_id, 10) || null;
-  if (!id) {
-    const m = await p.query(`SELECT id FROM landlords WHERE lower(name) = lower($1) OR ($2::text IS NOT NULL AND lower(email) = lower($2))
-      ORDER BY (lower(name) = lower($1)) DESC, id LIMIT 1`, [name, email]);
-    if (m.rows.length) id = m.rows[0].id;
-  }
+  if (!id) id = await findLandlord(p, name, email, phone, address);
   if (id) {
-    await p.query(`UPDATE landlords SET email = coalesce($2, email), phone = coalesce($3, phone), address = coalesce($4, address), updated_at = now() WHERE id = $1`,
-      [id, email, phone, addr]);
+    const cur = (await p.query('SELECT name FROM landlords WHERE id = $1', [id])).rows[0];
+    const fuller = cur && llWords(name).join(' ').length > llWords(cur.name).join(' ').length && llNameMatch(cur.name, name) ? name : null;
+    await p.query(`UPDATE landlords SET name = coalesce($5, name), email = coalesce($2, email), phone = coalesce($3, phone), address = coalesce($4, address), updated_at = now() WHERE id = $1`,
+      [id, email, phone, addr, fuller]);
   } else {
     id = (await p.query('INSERT INTO landlords (name, email, phone, address) VALUES ($1, $2, $3, $4) RETURNING id', [name, email, phone, addr])).rows[0].id;
   }
@@ -458,6 +494,29 @@ async function ensureLandlord(p, l, address) {
       ON CONFLICT (property_key) DO UPDATE SET landlord_id = excluded.landlord_id, address = excluded.address, updated_at = now()`, [key, str(address, 500), id]);
   }
   return id;
+}
+// Landlords saved twice (same name ignoring titles, same email or same phone):
+// merged into the older one, keeping every detail and property.
+async function mergeDuplicateLandlords(p) {
+  const all = (await p.query('SELECT id, name, email, phone, address, notes, portal_token FROM landlords ORDER BY id')).rows;
+  const gone = new Set();
+  for (let i = 0; i < all.length; i++) {
+    const keep = all[i]; if (gone.has(keep.id)) continue;
+    for (let j = i + 1; j < all.length; j++) {
+      const d = all[j]; if (gone.has(d.id)) continue;
+      const same = llNameMatch(keep.name, d.name) === 2 || (keep.email && d.email && keep.email.toLowerCase() === d.email.toLowerCase()) || (phoneTail(keep.phone) && phoneTail(keep.phone) === phoneTail(d.phone));
+      if (!same) continue;
+      const fuller = llWords(d.name).join(' ').length > llWords(keep.name).join(' ').length && llNameMatch(keep.name, d.name) ? d.name : keep.name;
+      const notes = [keep.notes, d.notes].filter(Boolean).filter(function (v, k, a) { return a.indexOf(v) === k; }).join('\n') || null;
+      await p.query('UPDATE property_landlords SET landlord_id = $1 WHERE landlord_id = $2', [keep.id, d.id]);
+      await p.query(`UPDATE landlords SET name = $2, email = coalesce(email, $3), phone = coalesce(phone, $4), address = coalesce(address, $5), notes = $6, portal_token = coalesce(portal_token, $7), updated_at = now() WHERE id = $1`,
+        [keep.id, fuller, d.email, d.phone, d.address, notes, d.portal_token]);
+      await p.query('DELETE FROM landlords WHERE id = $1', [d.id]);
+      keep.name = fuller; keep.email = keep.email || d.email; keep.phone = keep.phone || d.phone; keep.notes = notes;
+      gone.add(d.id);
+      console.log('Merged duplicate landlord ' + d.id + ' into ' + keep.id);
+    }
+  }
 }
 
 // ---------- Tenants ----------
@@ -983,6 +1042,7 @@ module.exports = function mountJobs(app, opts) {
       .then(function () { return migrateLandlords(pool).catch(function (err) { console.error('Landlord migration failed:', err.message); }); })
       .then(function () { return migrateTenants(pool).catch(function (err) { console.error('Tenant migration failed:', err.message); }); })
       .then(function () { return mergeDuplicateTenants(pool).catch(function (err) { console.error('Tenant merge failed:', err.message); }); })
+      .then(function () { return mergeDuplicateLandlords(pool).catch(function (err) { console.error('Landlord merge failed:', err.message); }); })
       .then(function () { console.log('Jobs database ready'); return true; })
       .catch(function (err) { console.error('Jobs database setup failed:', err.message); return false; });
   } else if (DATABASE_URL && !Pool) {
@@ -2098,11 +2158,12 @@ module.exports = function mountJobs(app, opts) {
     const given = (Array.isArray(body.files) ? body.files : body.file ? [body.file] : []).slice(0, 4);
     const files = [], names = [];
     let fileNote = '';
-    for (let file of given) {
+    for (let fi = 0; fi < given.length; fi++) {
+      let file = given[fi];
       if (!file) continue;
       if (file.drive) {
         const got = await fetchDriveFile(file.drive);
-        if (got.error) return res.status(400).json({ ok: false, error: got.error });
+        if (got.error) return res.status(400).json({ ok: false, error: got.error, file_index: fi });
         file = got;
       }
       if (!file.data && !file.buf) continue;
@@ -2153,7 +2214,7 @@ module.exports = function mountJobs(app, opts) {
       'Do not make a job for that, and do not also list those tenants or that landlord in "contacts". Put each in "properties" with: address (full as given, or the exact one from their property list if it clearly matches; keep flat/house number and postcode), ' +
       'tenants ([{"name": "", "phone": "", "email": ""}] exactly as given), landlord (name as given, else ""), key_number (the office key tag number if given, else ""), notes (anything else useful, else "").\n' +
       'The instruction may instead be the details of a NEW TENANCY (a new let: property, tenants, rent, start date, landlord, deposit, fees — e.g. a pasted offer, Terms of Let or notes). ' +
-      'Do not make a job or contacts for that. Put it in "tenancies" with: address (full, keep flat/house number and postcode), start_date (the tenancy start date — on a Terms of Let often called the "move-in date" or "move in"; they are the same date), move_in_due (the deadline for paying the move-in monies / first rent and deposit — not the move-in date; "" if no separate deadline is given), date_taken (the date the holding deposit was paid — the same as holding_date), checkin_date (all YYYY-MM-DD; today is ' + new Date().toISOString().slice(0, 10) + '; "" if not given), ' +
+      'Do not make a job or contacts for that — its tenants, guarantors and landlord go inside the tenancy, never also in "contacts". Put it in "tenancies" with: address (full, keep flat/house number and postcode), start_date (the tenancy start date — on a Terms of Let often called the "move-in date" or "move in"; they are the same date), move_in_due (the deadline for paying the move-in monies / first rent and deposit — not the move-in date; "" if no separate deadline is given), date_taken (the date the holding deposit was paid — the same as holding_date), checkin_date (all YYYY-MM-DD; today is ' + new Date().toISOString().slice(0, 10) + '; "" if not given), ' +
       'checkin_time ("HH:MM" or ""), checkin_type ("clerk" if an inventory clerk / check-in is booked, "diy" for a DIY check-in / tenant\'s own inventory, "" if not said), term_months, break_months, rent_pcm (monthly rent in pounds; convert weekly rent × 52 / 12), deposit, holding (holding deposit / reservation fee paid) — numbers or null if not given, holding_date (when the holding deposit was paid, YYYY-MM-DD or ""), ' +
       'deposit_by ("agent" if we/the agent register it, "landlord" if the landlord does, "" if not said), deposit_scheme, negotiator, service ("Tenant Find", "Rent Collection" or "Fully Managed"), ' +
       'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis ("upfront" if the fee is on the annual rent / taken up front, "monthly" if monthly, "" if not said), ' +

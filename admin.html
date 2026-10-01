@@ -6575,12 +6575,31 @@
     askSource = askMode === 'email' ? text : '';
     api('POST', '/api/admin/assistant', { text: text, mode: askMode, files: askFiles.length ? askFiles : undefined, for_property: askForProp || undefined }).then(function(d){
       busy($('askGo'), false);
+      if (!d.ok && typeof d.file_index === 'number' && askFiles[d.file_index]) { askFiles.splice(d.file_index, 1); renderAskFiles(); }   // drop the link that failed
       if (!d.ok) { $('askErr').textContent = { 'file-type': 'I can read PDFs, Word (.docx) files and photos.', 'file-unreadable': 'I couldn’t read the words in that Word file — try saving it as a PDF.', 'file-too-big': 'That file is too big (15 MB max).', 'drive-link': 'That doesn’t look like a link to a Google Drive file — use Share → Copy link on the file.', 'drive-type': 'Google Sheets and Slides can’t be read — download it as a PDF, or use a Google Doc, PDF, Word file or photo.', 'drive-private': 'Google wouldn’t let me open that file. In Drive, open Share and set General access to “Anyone with the link”, then try again (you can switch it back afterwards).', 'drive-fetch': 'I couldn’t reach Google Drive just now — please try again.' }[d.error] || 'Google’s AI is overloaded right now — please try again in a minute.'; return; }
       if (d.understood) setAskFile(null);
       if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs, properties, contacts and tenancies — try “add a gas safety for 6 Whitworth House”, “add 36 Balin House with tenants Sarah Jones 07700 900123 and Tom Lee”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; askProps = []; renderAskContacts(); renderAskTenancies(); renderAskProps(); $('askAllRow').hidden = true; return; }
       askContacts = (d.contacts || []).slice();
-      renderAskContacts();
       askTenancies = (d.tenancies || []).slice();
+      // Tenants or a landlord the AI listed as separate contacts alongside a new
+      // tenancy belong to that tenancy (not new contacts to save again).
+      if (askTenancies.length) askContacts = askContacts.filter(function(c){
+        if (c.type !== 'tenant' && c.type !== 'landlord') return true;
+        var t = askTenancies.length === 1 ? askTenancies[0] : askTenancies.filter(function(x){ var a = matchProperty(x.address), b = matchProperty(c.property); return a && b && a.key === b.key; })[0];
+        if (!t) return true;
+        var who = { name: c.name || c.company || '', email: c.email || '', phone: c.phone || '' };
+        if (c.type === 'tenant') {
+          t.tenants = (t.tenants || []).filter(function(x){ return x && (x.name || x.phone || x.email); });
+          var same = t.tenants.filter(function(x){ return tcySameTenant(x, who, true); })[0];
+          if (same) ['name', 'email', 'phone'].forEach(function(k){ if (!same[k] && who[k]) same[k] = who[k]; }); else t.tenants.push(who);
+        } else {
+          var l = t.landlord = t.landlord || {};
+          if (!l.name || llNameMatch(l.name, who.name)) { ['name', 'email', 'phone'].forEach(function(k){ if (!l[k] && who[k]) l[k] = who[k]; }); if (c.address && !l.line1) l.line1 = c.address; }
+          else return true;
+        }
+        return false;
+      });
+      renderAskContacts();
       askTenancies.forEach(function(t){
         if (askForProp) t.address = askForProp;
         else { var pr = t.address && matchProperty(t.address); if (pr) t.address = knownFullAddress(pr.key) || pr.address; }   // the property on file
@@ -6712,45 +6731,84 @@
   // A Terms of Let for a property already on file: use the tenants (and
   // landlord) saved there, filling in any phone numbers and emails it lacks.
   function tcyOnFileTenants(pr){
-    var out = [], seen = function(x){ var nk = tNameKey(x.name), tail = phoneTail(x.phone), em = String(x.email || '').toLowerCase();
-      return out.some(function(o){ return (nk && tNameKey(o.name) === nk) || (tail && phoneTail(o.phone) === tail) || (em && String(o.email || '').toLowerCase() === em); }); };
-    tenantsAtProperty(pr.address).concat(knownFullAddress(pr.key) ? tenantsAtProperty(knownFullAddress(pr.key)) : []).forEach(function(r){
-      var x = { name: r.name || '', email: r.email || '', phone: r.phone || '' }; if ((x.name || x.phone || x.email) && !seen(x)) out.push(x);
+    var out = [], seen = function(x){ return out.some(function(o){ return tcySameTenant(x, o, true); }); };
+    var add = function(x){ x = { name: x.name || '', email: x.email || '', phone: x.phone || '' }; if ((tNameKey(x.name) || x.phone || x.email) && !seen(x)) out.push(x); };
+    // Tenants linked to the property (under any spelling of its address).
+    (tenantLinks || []).forEach(function(l){
+      if (l.moved_out_at) return;
+      var m = l.property_key === pr.key || propKey(l.address) === pr.key || (function(){ var x = matchProperty(l.address); return x && x.key === pr.key; })();
+      var r = m && tenantRecById(l.tenant_id); if (r) add(r);
     });
-    tenantsAt(pr).forEach(function(j){
-      var x = { name: j.tenant_name || '', email: j.tenant_email || '', phone: j.tenant_phone || '' }; if (tNameKey(x.name) && !seen(x)) out.push(x);
-    });
+    // Tenants named on its repair jobs, and on earlier tenancies there.
+    tenantsAt(pr).forEach(function(j){ add({ name: j.tenant_name, email: j.tenant_email, phone: j.tenant_phone }); });
+    tenancies.forEach(function(tc){ if (tc.property_key === pr.key || propKey((tc.data || {}).address) === pr.key) ((tc.data || {}).tenants || []).forEach(add); });
     return out;
   }
-  function tcySameTenant(a, b){
+  // The same person: same phone, email or name — or, at the same property, a
+  // shorter form of the name ("Mr R Stone" / "Riley Stone").
+  function tcySameTenant(a, b, loose){
     var ta = phoneTail(a.phone), tb = phoneTail(b.phone), ea = String(a.email || '').toLowerCase(), eb = String(b.email || '').toLowerCase();
-    return (ta && ta === tb) || (ea && ea === eb) || (tNameKey(a.name) && tNameKey(a.name) === tNameKey(b.name));
+    if ((ta && ta === tb) || (ea && ea === eb)) return true;
+    if (ta && tb && ta !== tb && ea && eb && ea !== eb) return false;
+    return (tNameKey(a.name) && tNameKey(a.name) === tNameKey(b.name)) || (!!loose && llNameMatch(a.name, b.name) > 0);
+  }
+  // 2 = same name (titles ignored), 1 = a shorter form ("Kuldip", "K Singh" for "Kuldip Singh").
+  function llWordsOf(n){ return String(n || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9' -]+/g, ' ').split(/\s+/).filter(function(x){ return x && ['mr', 'mrs', 'miss', 'ms', 'mx', 'dr', 'prof', 'and'].indexOf(x) === -1; }); }
+  function llNameMatch(a, b){
+    var A = llWordsOf(a), B = llWordsOf(b);
+    if (!A.length || !B.length) return 0;
+    if (A.join(' ') === B.join(' ') || (A.length > 1 && B.length > 1 && A[0] === B[0] && A[A.length - 1] === B[B.length - 1])) return 2;
+    var S = A.length <= B.length ? A : B, L = S === A ? B : A;
+    var same = function(x, y){ return x === y || (x.length === 1 && y[0] === x) || (y.length === 1 && x[0] === y); };
+    if (S.length === 1) return S[0].length > 1 && S[0] === L[0] ? 1 : 0;
+    return same(S[S.length - 1], L[L.length - 1]) && same(S[0], L[0]) ? 1 : 0;
+  }
+  // A landlord already saved: the one on the property, else by email, phone or name.
+  function findLandlordRec(l, address){
+    var em = String(l.email || '').toLowerCase(), tail = phoneTail(l.phone);
+    var onProp = address && landlordRecordAt(address);
+    if (onProp && (!l.name || llNameMatch(onProp.name, l.name))) return onProp;
+    var hit = em && landlords.filter(function(x){ return String(x.email || '').toLowerCase() === em; })[0];
+    if (!hit && tail) { var t = landlords.filter(function(x){ return phoneTail(x.phone) === tail; }); if (t.length === 1) hit = t[0]; }
+    if (!hit && l.name) {
+      hit = landlords.filter(function(x){ return llNameMatch(x.name, l.name) === 2; })[0];
+      if (!hit) { var c = landlords.filter(function(x){ return llNameMatch(x.name, l.name) === 1; }); if (c.length === 1) hit = c[0]; }
+    }
+    return hit || null;
   }
   function tcyUseOnFile(t){
     var pr = t.address && matchProperty(t.address); t.onFile = []; t.filled = []; t.extra = [];
-    if (!pr) return;
-    var onFile = tcyOnFileTenants(pr), list = (t.tenants || []).filter(function(x){ return x && (x.name || x.phone || x.email); });
-    if (!list.length) { t.tenants = onFile.map(function(x){ return Object.assign({}, x); }); t.onFile = t.tenants.map(function(x){ return x.name || x.phone; }); }
+    var onFile = pr ? tcyOnFileTenants(pr) : [], list = (t.tenants || []).filter(function(x){ return x && (x.name || x.phone || x.email); });
+    if (!list.length && onFile.length) { t.tenants = onFile.map(function(x){ return Object.assign({}, x); }); t.onFile = t.tenants.map(function(x){ return x.name || x.phone; }); }
     else {
       list.forEach(function(x){
-        var hit = onFile.filter(function(o){ return tcySameTenant(x, o); })[0] || findTenantRec(x, pr);
+        // Saved at this property, else saved anywhere.
+        var hit = onFile.filter(function(o){ return tcySameTenant(x, o, true); })[0] || findTenantRec(x, pr || null);
+        if (!hit && x.name) { var loose = tenantRecs.filter(function(r){ return llNameMatch(r.name, x.name) > 0; }); if (loose.length === 1) hit = loose[0]; }   // "Mr R Stone" → the one saved Riley Stone
         if (!hit) return;
         var got = false;
+        if (hit.name && llNameMatch(hit.name, x.name) === 1 && llWordsOf(hit.name).join(' ').length > llWordsOf(x.name).join(' ').length) { x.name = hit.name; got = true; }   // their full name
         if (!x.phone && hit.phone) { x.phone = hit.phone; got = true; }
         if (!x.email && hit.email) { x.email = hit.email; got = true; }
         if (!x.name && hit.name) { x.name = hit.name; got = true; }
         (got ? t.filled : t.onFile).push(x.name || x.phone);
       });
       t.tenants = list;
-      t.extra = onFile.filter(function(o){ return !list.some(function(x){ return tcySameTenant(x, o); }); });
+      t.extra = onFile.filter(function(o){ return !list.some(function(x){ return tcySameTenant(x, o, true); }); });
     }
-    // The landlord on file: fill in what the Terms of Let leaves out.
-    var l = landlordAt(t.address), cur = t.landlord || {};
-    if (l && l.landlord_name && (!cur.name || tNameKey(cur.name) === tNameKey(l.landlord_name))) {
-      var tmp = { address: t.address }; tcyFillLandlord(tmp);
-      var ll = tmp.landlord || {}; t.landlord = Object.assign({}, cur);
+    // The landlord already saved: fill in what the Terms of Let leaves out (and
+    // use their full name), rather than making a new landlord.
+    var cur = t.landlord || {}, rec = findLandlordRec(cur, t.address);
+    if (rec) {
+      var parts = String(rec.address || '').split(/\s*,\s*/).filter(Boolean), pc = '';
+      if (parts.length && POSTCODE_RE.test(parts[parts.length - 1])) pc = parts.pop();
+      var ll = { name: rec.name || '', email: rec.email || '', phone: rec.phone || '', line1: parts.shift() || '', line2: parts.join(', '), country: '', postcode: pc };
+      t.landlord = Object.assign({}, cur);
       Object.keys(ll).forEach(function(k){ if (!t.landlord[k] && ll[k]) t.landlord[k] = ll[k]; });
-      t.llOnFile = true;
+      if (rec.name && llWordsOf(rec.name).join(' ').length >= llWordsOf(t.landlord.name).join(' ').length) t.landlord.name = rec.name;
+      t.llOnFile = rec.name;
+    } else if (!cur.name && pr) {
+      var tmp = { address: t.address }; if (tcyFillLandlord(tmp)) { t.landlord = tmp.landlord; t.llOnFile = tmp.landlord.name; }
     }
   }
   function renderAskTenancies(){
@@ -6773,7 +6831,7 @@
         ((t.onFile || []).length || (t.filled || []).length || t.llOnFile ? '<div class="match ok">✓ ' + [
           (t.filled || []).length ? 'Contact details filled in from the tenants on file: ' + esc(joinAnd(t.filled)) : '',
           (t.onFile || []).length ? 'Tenants on file: ' + esc(joinAnd(t.onFile)) : '',
-          t.llOnFile ? 'landlord details from file' : ''
+          t.llOnFile ? 'landlord: ' + esc(t.llOnFile) + ' (already saved)' : ''
         ].filter(Boolean).join(' · ') + '</div>' : '') +
         ((t.extra || []).length ? '<div class="match warn">Also on file at this property but not on the Terms of Let: ' + t.extra.map(function(x, k){ return esc(x.name || x.phone) + ' <button type="button" class="btn small ghost" data-tadd="' + k + '">+ Add</button>'; }).join(' ') + '</div>' : '') +
         '<div class="row-actions" style="margin-top:0"><button class="btn" type="button" data-tact="skip">Skip</button><button class="btn primary" type="button" data-tact="open">Check and save →</button></div></div>';
@@ -6792,7 +6850,7 @@
     $('askContacts').innerHTML = askContacts.map(function(c, i){
       var name = c.type === 'contractor' && c.company && c.name ? c.name + ' (' + c.company + ')' : (c.name || c.company);
       var dupe = c.type === 'contractor' ? contractors.filter(function(k){ return k.name.toLowerCase() === String(name).toLowerCase() || (phoneTail(c.phone) && phoneTail(k.phone) === phoneTail(c.phone)); })[0]
-        : c.type === 'landlord' ? landlords.filter(function(k){ return k.name.toLowerCase() === String(name).toLowerCase(); })[0]
+        : c.type === 'landlord' ? findLandlordRec({ name: name, email: c.email, phone: c.phone }, null)
         : tenantRecs.filter(function(k){ return phoneTail(c.phone) && phoneTail(k.phone) === phoneTail(c.phone); })[0];
       return '<div class="draft cdraft" data-i="' + i + '">' +
         '<div style="display:flex;align-items:center;gap:8px"><strong>New ' + label[c.type] + '</strong><span style="flex:1"></span>' +
