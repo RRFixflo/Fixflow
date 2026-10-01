@@ -908,6 +908,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
         item('🔑', 'Access', access) + item('🕒', 'Best times', j.access_time) + item('🗝️', 'Keys', keys) + item('📝', 'Access notes', j.access_notes) +
         item('📆', 'Reported', day(j.created_at)) +
       '</div></details>' +
+      (j.has_report ? '<p style="margin:10px 0 0"><a href="/c/' + TOKEN + '/jobs/' + j.id + '/report.pdf" target="_blank" rel="noopener" style="font-weight:600">⬇ Tenant’s report (PDF)</a></p>' : '') +
       '<details class="dt"><summary>📅 ' + (j.appointment_date ? 'Change the booking' : 'Booked a visit? Say when') + '</summary>' +
         '<form class="stack" style="margin:10px 0 0" data-book="' + j.id + '">' +
           '<label class="muted">Date<input type="date" name="date" required value="' + esc(j.appointment_date || '') + '" style="display:block;width:100%;margin-top:4px"></label>' +
@@ -2691,6 +2692,16 @@ module.exports = function mountJobs(app, opts) {
     res.send('\ufeff' + lines.join('\r\n'));
   }));
   // One of their invoices, as issued, with how to pay.
+  // The tenant's original repair report (PDF), for a job at one of the landlord's properties.
+  app.get('/l/:token/report/:id', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
+    const who = await landlordByToken(p, req.params.token);
+    const r = who ? (await p.query('SELECT id, property_address, pdf, pdf_filename FROM jobs WHERE id = $1 AND archived_at IS NULL', [parseInt(req.params.id, 10) || 0])).rows[0] : null;
+    if (!r || !r.pdf || who.keys[propKey(r.property_address)] === undefined) return res.status(404).type('html').send(trackShell('Report not found', '<h1>Report not found</h1>', true));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="' + ('Tenant-report-' + refFor(r.id) + '.pdf').replace(/[^a-zA-Z0-9.\-_]+/g, '-') + '"');
+    res.send(r.pdf);
+  }));
   app.get('/l/:token/invoice/:id', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -2721,7 +2732,7 @@ module.exports = function mountJobs(app, opts) {
     if (!who) return res.status(404).send(trackShell('Link not available', '<h1>Link not available</h1><p class="sub">This link is no longer active. Please contact Residential Realtors for a new one.</p>', true));
     const l = who.l, keys = who.keys;
     const all = (await p.query(`SELECT id, status, urgency, created_at, completed_at, category, affected, symptom, location, summary, property_address,
-        appointment_date, appointment_time, landlord_charge, completion_notes, landlord_handles, track_token, task_2,
+        appointment_date, appointment_time, landlord_charge, completion_notes, landlord_handles, track_token, task_2, (pdf IS NOT NULL) AS has_report,
         (SELECT coalesce(sum(jp.charge), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_charge
       FROM jobs WHERE archived_at IS NULL AND status <> 'Cancelled' ORDER BY created_at DESC`)).rows.filter(function (j) { return keys[propKey(j.property_address)] !== undefined; });
     for (const j of all) { if (!j.track_token) j.track_token = await ensureTrackToken(p, j.id); }
@@ -2785,7 +2796,7 @@ module.exports = function mountJobs(app, opts) {
         (notes ? '<div class="lj-notes">' + htmlEsc(notes.slice(0, 300)) + '</div>' : '') +
         photoStrip(j) +
         costBox(j, c, inv) +
-        '<div class="lj-foot"><span></span><a href="/t/' + htmlEsc(j.track_token) + '">Progress and details ›</a></div></div>';
+        '<div class="lj-foot">' + (j.has_report ? '<a href="/l/' + htmlEsc(token) + '/report/' + j.id + '" target="_blank" rel="noopener">⬇ Tenant’s report (PDF)</a>' : '<span></span>') + '<a href="/t/' + htmlEsc(j.track_token) + '">Progress and details ›</a></div></div>';
     };
     // What the repair costs them: the work, each part, the total, and the invoice.
     const costBox = function (j, c, inv) {
@@ -4256,7 +4267,7 @@ module.exports = function mountJobs(app, opts) {
     p.query("UPDATE contractors SET portal_seen_at = now() WHERE id = $1 AND (portal_seen_at IS NULL OR portal_seen_at < now() - interval '1 minute')", [c.id]).catch(function () {});
     const r = await p.query(`SELECT id, status, urgency, created_at, completed_at, category, affected, symptom, location, description, summary, property_address,
         tenant_name, tenant_phone, tenant_email, access_time, access_notes, key_permission, key_instructions, direct_contact, appointment_date, appointment_time, completion_notes,
-        assigned_to, assigned_to_2, task_2, part_done_by, part_done_at
+        assigned_to, assigned_to_2, task_2, part_done_by, part_done_at, (pdf IS NOT NULL) AS has_report
       FROM jobs WHERE archived_at IS NULL AND (lower(trim(assigned_to)) = lower(trim($1)) OR lower(trim(assigned_to_2)) = lower(trim($1)))
         AND (status NOT IN ('Completed', 'Cancelled') OR (status = 'Completed' AND completed_at > now() - interval '30 days'))
       ORDER BY (status = 'Completed'), created_at DESC LIMIT 200`, [c.name]);
@@ -4404,6 +4415,18 @@ module.exports = function mountJobs(app, opts) {
     res.setHeader('Content-Disposition', 'inline; filename="residential-realtors-jobs.ics"');
     res.setHeader('Cache-Control', 'no-cache'); res.setHeader('X-Robots-Tag', 'noindex');
     res.send(icsCalendar('Residential Realtors jobs', await contractorEvents(p, c, req)));
+  }));
+  // The tenant's original report (PDF), for a job assigned to this contractor.
+  app.get('/c/:token/jobs/:id/report.pdf', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
+    const c = await portalContractor(p, req.params.token);
+    if (!c) return res.status(404).send('Not found');
+    const r = (await p.query(`SELECT id, pdf FROM jobs WHERE id = $1 AND archived_at IS NULL AND pdf IS NOT NULL
+      AND (lower(trim(assigned_to)) = lower(trim($2)) OR lower(trim(assigned_to_2)) = lower(trim($2)))`, [jobId(req), c.name])).rows[0];
+    if (!r) return res.status(404).send('No report for this job');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="Tenant-report-' + refFor(r.id) + '.pdf"');
+    res.send(r.pdf);
   }));
   app.get('/c/:token/jobs/:id/booking.ics', withDb(async function (p, req, res) {
     const c = await portalContractor(p, req.params.token);
