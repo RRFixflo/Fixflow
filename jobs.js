@@ -2856,7 +2856,7 @@ module.exports = function mountJobs(app, opts) {
     const licBox = function (k) {
       const l = lics[k]; if (!l) return '';
       const today = new Date().toISOString().slice(0, 10), soon = new Date(Date.now() + 61 * 86400000).toISOString().slice(0, 10);
-      const what = (l.type ? l.type + ' licence' : 'Property licence') + (l.number ? ' ' + l.number : '');
+      const what = l.type ? l.type + ' licence' : 'Property licence';
       const st = l.status === 'not_needed' ? { c: 'ok', t: 'No property licence needed' }
         : l.status === 'none' ? { c: 'late', t: 'No property licence found on the council register — we’ll be in touch' }
         : l.status === 'applied' ? { c: 'soon', t: what + ' — application submitted, not yet issued by the council' }
@@ -2865,7 +2865,8 @@ module.exports = function mountJobs(app, opts) {
         : l.expires <= soon ? { c: 'soon', t: what + ' — expires ' + day(l.expires) }
         : { c: 'ok', t: what + ' — valid until ' + day(l.expires) };
       const href = l.status !== 'not_needed' ? licLink(l, licAddr[k] || keys[k]) : '';
-      return '<div class="lic ' + st.c + '">📜 ' + htmlEsc(st.t) + (l.borough ? ' <span class="muted">· ' + htmlEsc(l.borough) + '</span>' : '') + (href ? ' · <a href="' + htmlEsc(href) + '" target="_blank" rel="noopener">' + (l.url ? 'View licence' : 'View on the council register') + ' ↗</a>' : '') + '</div>';
+      return '<div class="lic ' + st.c + '">📜 ' + htmlEsc(st.t) + (l.borough ? ' <span class="muted">· ' + htmlEsc(l.borough) + '</span>' : '') +
+        (l.number && l.status !== 'not_needed' && l.status !== 'none' ? '<div class="lic-ref">Licence reference: <b>' + htmlEsc(l.number) + '</b></div>' : '') + (href ? ' · <a href="' + htmlEsc(href) + '" target="_blank" rel="noopener">' + (l.url ? 'View licence' : 'View on the council register') + ' ↗</a>' : '') + '</div>';
     };
     const propBlocks = Object.keys(keys).map(function (k) {
       const js = all.filter(function (j) { return propKey(j.property_address) === k; });
@@ -2887,7 +2888,7 @@ module.exports = function mountJobs(app, opts) {
       '.lj{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px}.lj.done{background:var(--okt);border-color:#cdebd9}.lj-top{display:flex;justify-content:space-between;gap:8px;align-items:center}' +
       '.pill{font-size:.75rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bluet);color:var(--blue)}.pill.ok{background:var(--ok);color:#fff;text-transform:uppercase;letter-spacing:.04em}.lj.done{border-left:5px solid var(--ok)}.lj-issue{font-weight:600;margin:4px 0 2px}' +
       '.lj-notes{font-size:.88rem;margin-top:6px;white-space:pre-line}.lj-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;font-size:.9rem;flex-wrap:wrap}.lj-foot a{color:var(--blue);font-weight:600;text-decoration:none}' +
-      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}a.cert{color:inherit;text-decoration:none;border:1px solid #d9dce3}.lic{margin:10px 0 0;padding:8px 12px;border-radius:10px;font-size:.9rem;background:#eef8f1}.lic.soon{background:#fff4e0}.lic.late{background:#fdecec}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
+      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}a.cert{color:inherit;text-decoration:none;border:1px solid #d9dce3}.lic{margin:10px 0 0;padding:8px 12px;border-radius:10px;font-size:.9rem;background:#eef8f1}.lic.soon{background:#fff4e0}.lic-ref{margin-top:3px;font-size:.85rem}.lic.late{background:#fdecec}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
       'details summary{cursor:pointer;font-weight:700;color:var(--ok);margin-top:14px}' +
       '.cost{margin-top:10px;background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.9rem}.lj.done .cost{background:#fff}.cost.none{color:var(--soft)}.cr{display:flex;justify-content:space-between;gap:10px;padding:2px 0}.cr.tot{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;font-weight:800}.ci{margin-top:6px;font-size:.85rem}.ci a{color:var(--blue);font-weight:600;text-decoration:none}.late{color:var(--red);font-weight:700}' +
       '.sp{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}.sp div{background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px}.sp span{display:block;font-size:.75rem;color:var(--soft)}.sp b{display:block;font-size:1.15rem}.sp small{color:var(--soft)}' +
