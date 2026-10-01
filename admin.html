@@ -663,6 +663,10 @@
   #tcySvcTabs .n { font-size: .75rem; opacity: .7; margin-left: 2px; }
   .tcy-sum { margin: 0 0 8px; max-width: none; width: 100%; }
   .ask-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .drop-zone { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgba(8,9,12,.55); pointer-events: none; }
+  .drop-zone > div { border: 3px dashed #fff; border-radius: 18px; padding: 40px 48px; color: #fff; font-size: 1.25rem; font-weight: 700; text-align: center; background: rgba(255,255,255,.08); }
+  .drop-hint { color: var(--ink-soft); font-size: .8rem; }
+  .drop-zone small { display: block; font-size: .85rem; font-weight: 500; margin-top: 6px; opacity: .85; }
   .sv-ip { color: #2F5BEA; cursor: pointer; font-variant-numeric: tabular-nums; }
   .sv-ip:hover { text-decoration: underline; }
   .tcy-warn { background: #FFF7E6; color: #8A4B00; }
@@ -1043,7 +1047,7 @@
         <div id="tcyListView">
           <div class="toolbar">
             <input class="inp search" id="tcySearch" type="search" placeholder="Search by address, tenant or landlord">
-            <button class="btn" id="tcyFromTerms" type="button">📄 From a Terms of Let</button>
+            <button class="btn" id="tcyFromTerms" type="button" title="Or drag and drop a Terms of Let anywhere on this page">📄 From a Terms of Let</button>
             <button class="btn primary" id="tcyAdd" type="button">+ New tenancy</button>
           </div>
           <div id="tcyEnding"></div>
@@ -1364,6 +1368,7 @@
 </div>
 
 <!-- ASK FIXFLOW: speak or type an instruction -->
+<div class="drop-zone" id="dropZone" hidden><div><span id="dropZoneText">📄 Drop the Terms of Let</span><small id="dropZoneSub">PDF, Word, photo or a Google Drive link</small></div></div>
 <div class="modal" id="askModal" hidden>
   <div class="card ask-box">
     <h3 style="margin:0"><span class="ai-spark">✦</span> <span id="askTitle">Tell Fixflow what to do</span></h3>
@@ -1379,7 +1384,7 @@
       <button type="button">EICR needed at 9 Park Road</button>
       <button type="button">Add a contractor: Miguel from NW Cleaning, cleaner, 07404 043045</button>
     </div>
-    <div class="ask-file"><button class="btn small" id="askAttach" type="button">📎 Attach a document</button><button class="btn small" id="askDriveBtn" type="button" title="Use a file from Google Drive">🔗 From Google Drive</button><span id="askFileName" class="muted-note" style="margin:0"></span>
+    <div class="ask-file"><button class="btn small" id="askAttach" type="button">📎 Attach a document</button><button class="btn small" id="askDriveBtn" type="button" title="Use a file from Google Drive">🔗 From Google Drive</button><span id="askFileName" class="muted-note" style="margin:0"><span class="drop-hint">or drag &amp; drop a file here</span></span>
       <button class="btn small ghost" id="askFileX" type="button" hidden title="Remove">✕</button>
       <input type="file" id="askFile" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" hidden></div>
     <div class="ask-drive" id="askDriveRow" hidden>
@@ -3312,7 +3317,7 @@
       '<div class="tile"><div class="k">Completed</div><div class="v">' + done + '</div></div>' +
       '<div class="tile good"><div class="k">Charged to landlord</div><div class="v">' + gbp(chargedTotal(d.jobs)) + '</div></div>' +
       keyTile(d.property.address) +
-      (function(){ var t = propTenancy(d.property.key); return '<div class="tile' + (t.k === 'none' ? ' alert has' : t.k === 'ending' ? ' warnish' : ' good') + '"><div class="k">Tenancy</div><div class="v" style="font-size:1rem">' + (t.k === 'none' ? 'None on file' : esc(t.text)) + '</div>' + (t.k === 'none' ? '<button type="button" class="btn small primary" id="propAddTerms" style="margin-top:6px">📄 Add Terms of Let</button>' : '') + '</div>'; })();
+      (function(){ var t = propTenancy(d.property.key); return '<div class="tile' + (t.k === 'none' ? ' alert has' : t.k === 'ending' ? ' warnish' : ' good') + '"><div class="k">Tenancy</div><div class="v" style="font-size:1rem">' + (t.k === 'none' ? 'None on file' : esc(t.text)) + '</div>' + (t.k === 'none' ? '<button type="button" class="btn small primary" id="propAddTerms" style="margin-top:6px">📄 Add Terms of Let</button><div class="drop-hint" style="margin-top:4px">or drag &amp; drop it onto this page</div>' : '') + '</div>'; })();
     bindKeyTile(d.property.address);
     if ($('propAddTerms')) $('propAddTerms').addEventListener('click', function(){ askFromTerms(knownFullAddress(d.property.key) || d.property.address); });
     $('propJobs').innerHTML = d.jobs.length ? d.jobs.map(rowHtml).join('') : '<div class="empty">No repairs in this period.</div>';
@@ -6398,7 +6403,7 @@
   // A document for Ask Fixflow to read (e.g. a Terms of Let → a new tenancy).
   var askFileData = null, askForProp = '';
   function setAskFile(f){
-    askFileData = null; $('askFileName').textContent = ''; $('askFileX').hidden = true;
+    askFileData = null; $('askFileName').innerHTML = '<span class="drop-hint">or drag &amp; drop a file here</span>'; $('askFileX').hidden = true;
     if (!f) return;
     if (f.drive) { askFileData = { drive: f.drive, name: 'Google Drive file' }; $('askFileName').textContent = '🔗 Google Drive file'; $('askFileX').hidden = false; $('askErr').textContent = ''; $('askDriveRow').hidden = true; return; }
     if (f.size > 15 * 1024 * 1024) { $('askErr').textContent = 'That file is too big (15 MB max).'; return; }
@@ -6420,6 +6425,42 @@
   $('askDriveUse').addEventListener('click', useDriveLink);
   $('askDrive').addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); useDriveLink(); } });
   $('askDrive').addEventListener('paste', function(){ setTimeout(function(){ if (/^https:\/\/(drive|docs)\.google\.com\//i.test($('askDrive').value.trim())) useDriveLink(); }, 0); });
+  // Drag and drop a Terms of Let (or a Google Drive link) onto Ask Fixflow, the
+  // Tenancies page, or a property with no tenancy yet.
+  function dropTarget(){
+    if (!$('askModal').hidden) return { kind: 'ask' };
+    if (document.querySelector('.modal:not([hidden])')) return null;   // another window is open
+    if (view === 'tcy' && !openTcyId) return { kind: 'tcy' };
+    if (view === 'props' && openPropKey) {
+      var pr = allPropsForList().filter(function(x){ return x.key === openPropKey; })[0];
+      if (pr && propTenancy(pr.key).k === 'none') return { kind: 'prop', address: knownFullAddress(pr.key) || pr.address };
+    }
+    return null;
+  }
+  function dragHasFile(e){ var t = e.dataTransfer && e.dataTransfer.types; return !!t && Array.prototype.indexOf.call(t, 'Files') !== -1; }
+  function dragHasLink(e){ var t = e.dataTransfer && e.dataTransfer.types; return !!t && (Array.prototype.indexOf.call(t, 'text/uri-list') !== -1 || Array.prototype.indexOf.call(t, 'text/plain') !== -1); }
+  var dragDepth = 0;
+  document.addEventListener('dragenter', function(e){
+    if (!dragHasFile(e) && !dragHasLink(e)) return;
+    var t = dropTarget(); if (!t) return;
+    dragDepth++;
+    $('dropZoneText').textContent = t.kind === 'prop' ? '📄 Drop the Terms of Let for ' + shortAddr(t.address) : t.kind === 'ask' ? '📄 Drop the file to attach it' : '📄 Drop the Terms of Let to make the tenancy';
+    $('dropZone').hidden = false;
+  });
+  document.addEventListener('dragover', function(e){ if ((dragHasFile(e) || dragHasLink(e)) && dropTarget()) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+  document.addEventListener('dragleave', function(){ if (dragDepth > 0 && --dragDepth === 0) $('dropZone').hidden = true; });
+  document.addEventListener('drop', function(e){
+    dragDepth = 0; $('dropZone').hidden = true;
+    var t = dropTarget(); if (!t) return;
+    var f = e.dataTransfer.files && e.dataTransfer.files[0];
+    var link = !f ? String(e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').split(/\s+/).filter(function(x){ return /^https:\/\/(drive|docs)\.google\.com\//i.test(x); })[0] : '';
+    if (!f && !link) return;
+    e.preventDefault();
+    if (t.kind === 'tcy') askFromTerms();
+    else if (t.kind === 'prop') askFromTerms(t.address);
+    if (f && !/\.(pdf|docx?|jpe?g|png|webp|heic|heif)$/i.test(f.name) && !/^(image\/|application\/pdf)/.test(f.type || '')) { setAskFile(null); $('askErr').textContent = 'I can read PDFs, Word (.docx) files and photos.'; return; }
+    setAskFile(f || { drive: link });
+  });
   function setAskForProp(addr){
     askForProp = addr || '';
     $('askForProp').hidden = !askForProp;
@@ -6429,7 +6470,7 @@
   // Open Ask Fixflow ready to read a Terms of Let.
   // From a property on file (no tenancy yet): the new tenancy is for that property.
   function askFromTerms(forAddr){
-    openAsk('say'); $('askText').value = '';
+    openAsk('say'); $('askText').value = ''; setAskFile(null);
     setAskForProp(typeof forAddr === 'string' ? forAddr : '');
     $('askText').placeholder = 'Attach the Terms of Let (PDF, Word or a photo) or use a Google Drive link, then press Go — or paste the details here.';
   }
@@ -7583,6 +7624,9 @@
         d[k] = v;
       });
       if (!d.tenants.length) d.tenants = [{ name: '', email: '', phone: '' }];
+      // Date taken is the day the holding deposit was paid.
+      if (got.holding_date) d.date_taken = got.holding_date;
+      else if (got.date_taken) d.holding_date = got.date_taken;
     }
     if (d.address && !(d.landlord && d.landlord.name)) tcyFillLandlord(d);
     return d;
