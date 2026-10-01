@@ -5259,8 +5259,15 @@
         (jobParts.length ? '<div class="parts-list">' + jobParts.map(function(x){
           return '<div class="part-row" data-part="' + x.id + '"><div class="pd"><strong>' + esc(x.description) + '</strong>' + (x.supplier ? '<small>' + esc(x.supplier) + '</small>' : '') + '</div>' +
             '<select class="inp part-st" data-part-status="' + x.id + '" aria-label="Part status">' + ['Ordered', 'Arrived', 'Fitted'].map(function(s){ return '<option' + (s === x.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
-            '<div class="pm"><span>Cost ' + esc(gbp(num(x.cost))) + '</span><span class="pc">Landlord ' + esc(gbp(num(x.charge))) + '</span></div>' +
+            '<div class="pm"><span>Cost ' + (x.cost == null ? '<em style="color:var(--red,#c00)">not set</em>' : esc(gbp(num(x.cost)))) + '</span><span class="pc">Landlord ' + (x.charge == null ? '<em style="color:var(--red,#c00)">not set</em>' : esc(gbp(num(x.charge)))) + '</span>' +
+              '<button type="button" class="linkish" data-part-edit="' + x.id + '">✎ Edit</button></div>' +
             '<button type="button" class="btn small ghost" data-part-del="' + x.id + '" aria-label="Remove part">✕</button>' +
+            '<div class="part-edit" data-part-form="' + x.id + '" style="grid-column:1/-1;display:none;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;align-items:end">' +
+              '<div><label class="lbl">Part</label><input class="inp" data-pe="description" value="' + esc(x.description || '') + '"></div>' +
+              '<div><label class="lbl">Supplier</label><input class="inp" data-pe="supplier" value="' + esc(x.supplier || '') + '"></div>' +
+              '<div><label class="lbl">What we paid (£)</label><input class="inp" data-pe="cost" inputmode="decimal" placeholder="0.00" value="' + esc(x.cost == null ? '' : x.cost) + '"></div>' +
+              '<div><label class="lbl">Charge to landlord (£)</label><input class="inp" data-pe="charge" inputmode="decimal" placeholder="0.00" value="' + esc(x.charge == null ? '' : x.charge) + '"></div>' +
+              '<div><button type="button" class="btn small primary" data-part-save="' + x.id + '">Save part</button></div></div>' +
             '<div class="part-tell' + (x.id === partJust ? ' just' : '') + '">' + (x.id === partJust ? '<span>Let them know it’s ' + esc(String(x.status).toLowerCase()) + ':</span>' : '') +
               '<button type="button" class="btn small" data-part-tell="tenant" data-pid="' + x.id + '">💬 Tell tenant</button>' +
               '<button type="button" class="btn small" data-part-tell="landlord" data-pid="' + x.id + '">🏠 Tell landlord</button></div></div>';
@@ -6036,6 +6043,21 @@
     $('partsCard').addEventListener('click', function(e){
       var tell = e.target.closest('[data-part-tell]');
       if (tell) { var px = jobParts.filter(function(x){ return x.id === Number(tell.dataset.pid); })[0]; if (px) updateNotice(j, partText(px, j), tell.dataset.partTell); return; }
+      var ed = e.target.closest('[data-part-edit]');
+      if (ed) { var f = $('partsCard').querySelector('[data-part-form="' + ed.dataset.partEdit + '"]'), show = f.style.display === 'none'; f.style.display = show ? 'grid' : 'none'; if (show) f.querySelector('[data-pe="cost"]').focus(); return; }
+      var sv = e.target.closest('[data-part-save]');
+      if (sv) {
+        var form = $('partsCard').querySelector('[data-part-form="' + sv.dataset.partSave + '"]'), val = function(k){ return form.querySelector('[data-pe="' + k + '"]').value.trim(); };
+        var c = val('cost').replace(/[£,\s]/g, ''), ch = val('charge').replace(/[£,\s]/g, '');
+        if ((c && !(Number(c) >= 0)) || (ch && !(Number(ch) >= 0))) { toast('Please enter amounts as numbers, e.g. 45.99'); return; }
+        busy(sv, true, 'Saving…');
+        api('PATCH', '/api/admin/parts/' + sv.dataset.partSave, { description: val('description'), supplier: val('supplier'), cost: c, charge: ch }).then(function(d){
+          busy(sv, false);
+          if (!d.ok) { toast('Couldn’t save the part (' + (d.error || 'error') + ')'); return; }
+          partsReload('Part updated');
+        });
+        return;
+      }
       var del = e.target.closest('[data-part-del]'); if (!del) return;
       if (!confirm('Remove this part?')) return;
       api('DELETE', '/api/admin/parts/' + del.dataset.partDel, { confirm: true }).then(function(d){ if (!d.ok) { toast('Couldn’t remove it'); return; } partsReload('Part removed'); });
