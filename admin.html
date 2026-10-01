@@ -6568,8 +6568,9 @@
       renderAskContacts();
       askTenancies = (d.tenancies || []).slice();
       askTenancies.forEach(function(t){
-        if (askForProp) { t.address = askForProp; return; }
-        var pr = t.address && matchProperty(t.address); if (pr) t.address = knownFullAddress(pr.key) || pr.address;   // the property on file
+        if (askForProp) t.address = askForProp;
+        else { var pr = t.address && matchProperty(t.address); if (pr) t.address = knownFullAddress(pr.key) || pr.address; }   // the property on file
+        tcyUseOnFile(t);
       });
       renderAskTenancies();
       askProps = (d.properties || []).map(function(x){
@@ -6694,6 +6695,50 @@
   }
   // A new tenancy from pasted details: a summary, then the tenancy form filled in to check and save.
   var askTenancies = [];
+  // A Terms of Let for a property already on file: use the tenants (and
+  // landlord) saved there, filling in any phone numbers and emails it lacks.
+  function tcyOnFileTenants(pr){
+    var out = [], seen = function(x){ var nk = tNameKey(x.name), tail = phoneTail(x.phone), em = String(x.email || '').toLowerCase();
+      return out.some(function(o){ return (nk && tNameKey(o.name) === nk) || (tail && phoneTail(o.phone) === tail) || (em && String(o.email || '').toLowerCase() === em); }); };
+    tenantsAtProperty(pr.address).concat(knownFullAddress(pr.key) ? tenantsAtProperty(knownFullAddress(pr.key)) : []).forEach(function(r){
+      var x = { name: r.name || '', email: r.email || '', phone: r.phone || '' }; if ((x.name || x.phone || x.email) && !seen(x)) out.push(x);
+    });
+    tenantsAt(pr).forEach(function(j){
+      var x = { name: j.tenant_name || '', email: j.tenant_email || '', phone: j.tenant_phone || '' }; if (tNameKey(x.name) && !seen(x)) out.push(x);
+    });
+    return out;
+  }
+  function tcySameTenant(a, b){
+    var ta = phoneTail(a.phone), tb = phoneTail(b.phone), ea = String(a.email || '').toLowerCase(), eb = String(b.email || '').toLowerCase();
+    return (ta && ta === tb) || (ea && ea === eb) || (tNameKey(a.name) && tNameKey(a.name) === tNameKey(b.name));
+  }
+  function tcyUseOnFile(t){
+    var pr = t.address && matchProperty(t.address); t.onFile = []; t.filled = []; t.extra = [];
+    if (!pr) return;
+    var onFile = tcyOnFileTenants(pr), list = (t.tenants || []).filter(function(x){ return x && (x.name || x.phone || x.email); });
+    if (!list.length) { t.tenants = onFile.map(function(x){ return Object.assign({}, x); }); t.onFile = t.tenants.map(function(x){ return x.name || x.phone; }); }
+    else {
+      list.forEach(function(x){
+        var hit = onFile.filter(function(o){ return tcySameTenant(x, o); })[0] || findTenantRec(x, pr);
+        if (!hit) return;
+        var got = false;
+        if (!x.phone && hit.phone) { x.phone = hit.phone; got = true; }
+        if (!x.email && hit.email) { x.email = hit.email; got = true; }
+        if (!x.name && hit.name) { x.name = hit.name; got = true; }
+        (got ? t.filled : t.onFile).push(x.name || x.phone);
+      });
+      t.tenants = list;
+      t.extra = onFile.filter(function(o){ return !list.some(function(x){ return tcySameTenant(x, o); }); });
+    }
+    // The landlord on file: fill in what the Terms of Let leaves out.
+    var l = landlordAt(t.address), cur = t.landlord || {};
+    if (l && l.landlord_name && (!cur.name || tNameKey(cur.name) === tNameKey(l.landlord_name))) {
+      var tmp = { address: t.address }; tcyFillLandlord(tmp);
+      var ll = tmp.landlord || {}; t.landlord = Object.assign({}, cur);
+      Object.keys(ll).forEach(function(k){ if (!t.landlord[k] && ll[k]) t.landlord[k] = ll[k]; });
+      t.llOnFile = true;
+    }
+  }
   function renderAskTenancies(){
     $('askTenancies').innerHTML = askTenancies.map(function(t, i){
       var names = tcyNames(t.tenants), g = tcyNames(t.guarantors), l = t.landlord || {};
@@ -6704,20 +6749,28 @@
           return '<div class="match ' + (cur.k === 'none' ? 'ok' : 'warn') + '">' + (cur.k === 'none' ? '✓ Property on file — no tenancy yet' : '⚠ This property already has a tenancy (' + esc(cur.text) + ') — saving adds another') + '</div>';
         })() +
         '<div class="prop-sub" style="line-height:1.5">' + [
-          names.length ? 'Tenants: ' + esc(joinAnd(names)) : 'No tenants given',
+          names.length ? 'Tenants: ' + esc(joinAnd((t.tenants || []).map(function(x){ return (x.name || 'Tenant') + (x.phone || x.email ? ' (' + [x.phone, x.email].filter(Boolean).join(', ') + ')' : ''); }))) : 'No tenants given',
           g.length ? 'Guarantors: ' + esc(joinAnd(g)) : '',
           t.rent_pcm ? 'Rent ' + esc(gbp(t.rent_pcm)) + ' a month' : 'Rent not given',
           t.start_date ? 'Starts ' + esc(longDay(t.start_date)) : 'Start date not given',
           l.name ? 'Landlord: ' + esc(l.name) : ''
         ].filter(Boolean).join(' · ') + '</div>' +
+        ((t.onFile || []).length || (t.filled || []).length || t.llOnFile ? '<div class="match ok">✓ ' + [
+          (t.filled || []).length ? 'Contact details filled in from the tenants on file: ' + esc(joinAnd(t.filled)) : '',
+          (t.onFile || []).length ? 'Tenants on file: ' + esc(joinAnd(t.onFile)) : '',
+          t.llOnFile ? 'landlord details from file' : ''
+        ].filter(Boolean).join(' · ') + '</div>' : '') +
+        ((t.extra || []).length ? '<div class="match warn">Also on file at this property but not on the Terms of Let: ' + t.extra.map(function(x, k){ return esc(x.name || x.phone) + ' <button type="button" class="btn small ghost" data-tadd="' + k + '">+ Add</button>'; }).join(' ') + '</div>' : '') +
         '<div class="row-actions" style="margin-top:0"><button class="btn" type="button" data-tact="skip">Skip</button><button class="btn primary" type="button" data-tact="open">Check and save →</button></div></div>';
     }).join('');
   }
   $('askTenancies').addEventListener('click', function(e){
+    var a = e.target.closest('[data-tadd]');
+    if (a) { var tt = askTenancies[Number(a.closest('[data-ti]').dataset.ti)], x = tt.extra.splice(Number(a.dataset.tadd), 1)[0]; tt.tenants.push(x); tt.onFile.push(x.name || x.phone); renderAskTenancies(); return; }
     var b = e.target.closest('[data-tact]'); if (!b) return;
     var i = Number(b.closest('[data-ti]').dataset.ti), t = askTenancies[i];
     askTenancies.splice(i, 1); renderAskTenancies();
-    if (b.dataset.tact === 'open') { closeAsk(); openTenancy('new', { data: t }); toast('Filled in from your message — check the details and press Save tenancy'); }
+    if (b.dataset.tact === 'open') { closeAsk(); var clean = Object.assign({}, t); ['onFile', 'filled', 'extra', 'llOnFile'].forEach(function(k){ delete clean[k]; }); openTenancy('new', { data: clean }); toast('Filled in from your message — check the details and press Save tenancy'); }
   });
   function renderAskContacts(){
     var label = { contractor: 'contractor', landlord: 'landlord', tenant: 'tenant' };
@@ -7624,6 +7677,8 @@
         d[k] = v;
       });
       if (!d.tenants.length) d.tenants = [{ name: '', email: '', phone: '' }];
+      // The move-in date is the tenancy start date (check-in that day unless said otherwise).
+      if (got.start_date && !got.checkin_date) d.checkin_date = got.start_date;
       // Date taken is the day the holding deposit was paid.
       if (got.holding_date) d.date_taken = got.holding_date;
       else if (got.date_taken) d.holding_date = got.date_taken;
