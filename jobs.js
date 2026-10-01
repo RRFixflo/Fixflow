@@ -2366,9 +2366,14 @@ module.exports = function mountJobs(app, opts) {
       'fees (other fees charged to the landlord: [{"label": "", "amount": 0}]), notes (anything else useful).\n' +
       'If a LANDLORD STATEMENT (statement of account to the landlord) is attached with it, add every charge or deduction made to the landlord for this let to that tenancy\'s fees, labelled as on the statement (e.g. "Inventory", "Tenancy agreement", "Deposit registration", "Referencing", "Gas safety certificate"), with the amount BEFORE VAT (if the statement shows VAT separately, use the net figure; if it says the amount includes VAT, divide by 1.2). ' +
       'Do not put in fees: rent received, deposits or holding deposits, money paid to the landlord, a VAT line on its own, or the main tenant find / letting / management commission — give that as find_pct / collect_pct / manage_pct (and find_basis) instead, unless only a £ amount is shown for it with no percentage, in which case put it in fees. Fill in any other tenancy details the statement gives that the Terms of Let leaves out.\n' +
+      'The instruction may instead (or also) RECORD A CERTIFICATE the property already has — a gas safety certificate, EICR or EPC with a date it was done, starts, is valid from, issued or expires ' +
+      '(e.g. "add a gas safety for 134 Regina Road starting on 22/5/26", "EICR at 9 Park Road done 3 March 2025", "gas cert for Flat 2 expires 1/6/27"). That is NOT a job (a job is when a check needs booking or doing, with no date it was done). ' +
+      'Put each in "certificates" with: address (as said, or the exact one from their property list if it clearly matches), type ("Gas", "EICR" or "EPC"), issued_on (the date done / started / valid from, YYYY-MM-DD, UK dates are day/month/year, 2-digit years are 20xx; "" if only an expiry is given), ' +
+      'expires_on (YYYY-MM-DD if an expiry is given, else ""), reference (certificate number if given, else ""), rating (EPC rating letter if given, else "").\n' +
       'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], ' +
+      '"certificates": [{"address": "", "type": "Gas", "issued_on": "", "expires_on": "", "reference": "", "rating": ""}], ' +
       '"contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "properties": [{"address": "", "tenants": [], "landlord": "", "key_number": "", "notes": ""}], "tenancies": [], "understood": true}. ' +
-      'Use [] for jobs, contacts, properties or tenancies when there are none. If the instruction is none of these, reply {"jobs": [], "contacts": [], "properties": [], "tenancies": [], "understood": false}.';
+      'Use [] for jobs, certificates, contacts, properties or tenancies when there are none. If the instruction is none of these, reply {"jobs": [], "certificates": [], "contacts": [], "properties": [], "tenancies": [], "understood": false}.';
     const result = await opts.askAi(prompt, true, files);
     if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
     let parsed = null;
@@ -2407,7 +2412,12 @@ module.exports = function mountJobs(app, opts) {
           .filter(function (t) { return t.name || t.phone || t.email; })
       };
     }).filter(function (x) { return x.address; });
-    res.json({ ok: true, jobs: jobs, contacts: contacts, properties: properties, tenancies: tenancies, understood: parsed.understood !== false && (jobs.length > 0 || contacts.length > 0 || properties.length > 0 || tenancies.length > 0) });
+    // Certificates the property already has (date done / expiry): saved after staff check them.
+    const certificates = (Array.isArray(parsed.certificates) ? parsed.certificates : []).slice(0, 10).map(function (c) {
+      const type = c && CERT_TYPES[c.type] ? c.type : null;
+      return { address: str(c && c.address, 500) || '', type: type, issued_on: isoDay(c && c.issued_on) || '', expires_on: isoDay(c && c.expires_on) || '', reference: str(c && c.reference, 100) || '', rating: str(c && c.rating, 5) || '' };
+    }).filter(function (c) { return c.address && c.type && (c.issued_on || c.expires_on); });
+    res.json({ ok: true, jobs: jobs, certificates: certificates, contacts: contacts, properties: properties, tenancies: tenancies, understood: parsed.understood !== false && (jobs.length > 0 || certificates.length > 0 || contacts.length > 0 || properties.length > 0 || tenancies.length > 0) });
   }));
 
   app.post('/api/admin/jobs/:id/ai-invoice', withDb(async function (p, req, res) {

@@ -1405,6 +1405,7 @@
     <div class="row-actions" style="margin-top:0"><span class="muted-note" style="margin-right:auto;font-size:.78rem">Ctrl + Enter to go</span><button class="btn" id="askClose" type="button">Close</button><button class="btn primary" id="askGo" type="button">✦ Go</button></div>
     <div class="row-actions" id="askAllRow" style="margin-top:0" hidden><span class="muted-note" id="askAllNote" style="margin-right:auto"></span><button class="btn primary" id="askAll" type="button">Create all</button></div>
     <div id="askTenancies" style="display:flex;flex-direction:column;gap:12px"></div>
+    <div id="askCerts" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askProps" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askContacts" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askDrafts" style="display:flex;flex-direction:column;gap:12px"></div>
@@ -6863,7 +6864,7 @@
       if (!d.ok && typeof d.file_index === 'number' && askFiles[d.file_index]) { askFiles.splice(d.file_index, 1); renderAskFiles(); }   // drop the link that failed
       if (!d.ok) { $('askErr').textContent = { 'file-type': 'I can read PDFs, Word (.docx) files and photos.', 'file-unreadable': 'I couldn’t read the words in that Word file — try saving it as a PDF.', 'file-too-big': 'That file is too big (15 MB max).', 'drive-link': 'That doesn’t look like a link to a Google Drive file — use Share → Copy link on the file.', 'drive-type': 'Google Sheets and Slides can’t be read — download it as a PDF, or use a Google Doc, PDF, Word file or photo.', 'drive-private': 'Google wouldn’t let me open that file. In Drive, open Share and set General access to “Anyone with the link”, then try again (you can switch it back afterwards).', 'drive-fetch': 'I couldn’t reach Google Drive just now — please try again.' }[d.error] || 'Google’s AI is overloaded right now — please try again in a minute.'; return; }
       if (d.understood) setAskFile(null);
-      if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs, properties, contacts and tenancies — try “add a gas safety for 6 Whitworth House”, “add 36 Balin House with tenants Sarah Jones 07700 900123 and Tom Lee”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; askProps = []; renderAskContacts(); renderAskTenancies(); renderAskProps(); $('askAllRow').hidden = true; return; }
+      if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs, properties, contacts and tenancies — try “add a gas safety for 6 Whitworth House”, “add 36 Balin House with tenants Sarah Jones 07700 900123 and Tom Lee”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; askProps = []; askCerts = []; renderAskContacts(); renderAskTenancies(); renderAskProps(); renderAskCerts(); $('askAllRow').hidden = true; return; }
       askContacts = (d.contacts || []).slice();
       askTenancies = (d.tenancies || []).slice();
       // Tenants or a landlord the AI listed as separate contacts alongside a new
@@ -6891,6 +6892,12 @@
         tcyUseOnFile(t);
       });
       renderAskTenancies();
+      askCerts = (d.certificates || []).map(function(c){
+        var pr = matchProperty(c.address), addr = pr ? (knownFullAddress(pr.key) || pr.address) : c.address;
+        var iss = c.issued_on, exp = c.expires_on || (iss ? addYears(iss, certDef(c.type).years) : '');
+        return { type: c.type, address: addr, matched: !!pr, issued_on: iss, expires_on: exp, reference: c.reference, rating: c.rating };
+      });
+      renderAskCerts();
       askProps = (d.properties || []).map(function(x){
         var pr = matchProperty(x.address);
         return { ai: x, property: pr, address: pr ? (knownFullAddress(pr.key) || pr.address) : x.address, tenants: x.tenants.slice() };
@@ -6940,6 +6947,43 @@
     $('askAllNote').textContent = askDrafts.length + ' jobs ready' + (who.length === 1 ? ' for ' + who[0] : '') + ' — check them, then create them all at once.';
   }
   // Contacts from an instruction: new contractors, landlords and tenants.
+  // A certificate the property already has (e.g. "gas safety for 134 Regina Road
+  // starting on 22/5/26"): checked here, then saved to the property's certificates.
+  var askCerts = [];
+  function renderAskCerts(){
+    $('askCerts').innerHTML = askCerts.map(function(c, i){
+      var def = certDef(c.type), cur = certFor(propKey(c.address), c.type);
+      return '<div class="draft cdraft" data-ci="' + i + '"><div style="display:flex;align-items:center;gap:8px"><strong>📄 ' + esc(def.long) + '</strong></div>' +
+        '<div><label class="lbl">Property</label><input class="inp" data-c="address" list="askPropList2" value="' + esc(c.address) + '">' +
+          '<div class="match ' + (c.matched ? 'ok' : 'warn') + '">' + (c.matched ? '✓ Property on file' + (cur && cur.expires_on ? ' — current ' + esc(def.name.toLowerCase()) + ' ' + (daysUntil(cur.expires_on) < 0 ? 'expired ' : 'until ') + esc(longDay(cur.expires_on)) + ' (this replaces it)' : '') : 'Not a property on file yet — saving adds it') + '</div></div>' +
+        '<div class="grid3"><div><label class="lbl">Date done / starts</label><input class="inp" type="date" data-c="issued_on" value="' + esc(c.issued_on || '') + '"></div>' +
+          '<div><label class="lbl">Expires</label><input class="inp" type="date" data-c="expires_on" value="' + esc(c.expires_on || '') + '"></div>' +
+          '<div><label class="lbl">Certificate no. (optional)</label><input class="inp" data-c="reference" value="' + esc(c.reference || '') + '"></div></div>' +
+        '<p class="muted-note" style="margin:0">Lasts ' + (def.years === 1 ? '12 months' : def.years + ' years') + ' — change the start date and the expiry follows.</p>' +
+        '<div class="row-actions" style="margin-top:0"><button class="btn" type="button" data-cact="skip">Skip</button><button class="btn primary" type="button" data-cact="save">Save certificate</button></div></div>';
+    }).join('');
+  }
+  $('askCerts').addEventListener('change', function(e){
+    var box = e.target.closest('[data-ci]'); if (!box) return;
+    var c = askCerts[Number(box.dataset.ci)], f = e.target.dataset.c; if (!c || !f) return;
+    c[f] = e.target.value.trim();
+    if (f === 'issued_on' && c.issued_on) { c.expires_on = addYears(c.issued_on, certDef(c.type).years); box.querySelector('[data-c="expires_on"]').value = c.expires_on; }
+    if (f === 'address') { var pr = matchProperty(c.address); c.matched = !!pr; }
+  });
+  $('askCerts').addEventListener('click', function(e){
+    var b = e.target.closest('[data-cact]'); if (!b) return;
+    var i = Number(b.closest('[data-ci]').dataset.ci), c = askCerts[i];
+    if (b.dataset.cact === 'skip') { askCerts.splice(i, 1); renderAskCerts(); return; }
+    if (!c.expires_on) { toast('Enter the date it was done (or the expiry)'); return; }
+    busy(b, true, 'Saving…');
+    api('PUT', '/api/admin/certificates', { address: c.address, type: c.type, issued_on: c.issued_on, expires_on: c.expires_on, reference: c.reference, rating: c.rating || '' }).then(function(d){
+      busy(b, false);
+      if (!d.ok) { toast('Couldn’t save (' + (d.error || 'error') + ')'); return; }
+      toast(certDef(c.type).name + ' saved for ' + shortAddr(c.address) + ' — expires ' + longDay(c.expires_on));
+      askCerts.splice(i, 1); renderAskCerts();
+      loadCerts().then(function(){ if (view === 'certs') renderCerts(); renderCertAlerts(); if (view === 'props' && openPropKey) renderProperty(); if (daysUntil(c.expires_on) > CERT_REMIND) offerRemoveCertJob(c.address, c.type, false); });
+    });
+  });
   // A property to add from Ask Fixflow, with its tenants, landlord and key number.
   var askProps = [];
   function renderAskProps(){
