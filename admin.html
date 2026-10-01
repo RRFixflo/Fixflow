@@ -1498,6 +1498,7 @@
     <p class="muted-note" style="margin:0 0 10px">1. Search the council’s register by postcode (Fixflow works out the council). 2. On the results page select everything (Ctrl/⌘+A), copy, and paste it below — or paste/drop a screenshot. 3. Check the matches and save.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="lcPc" placeholder="Postcode, e.g. SE1 6PG" style="max-width:200px;text-transform:uppercase"><button class="btn" type="button" id="lcOpen">🔎 Search the register</button></div>
     <div id="lcQueue" style="margin:8px 0 0"></div>
+    <div id="lcPool" style="margin:6px 0 0"></div>
     <div id="lcBoro" class="muted-note" style="margin:8px 0 0"></div>
     <div id="lcProps" class="muted-note" style="margin:8px 0"></div>
     <textarea class="inp" id="lcText" rows="5" placeholder="Paste the register results here (text or a screenshot)"></textarea>
@@ -3498,9 +3499,13 @@
       q.map(function(x){ return '<button type="button" class="btn small' + (x.pc === $('lcPc').value.trim().toUpperCase() ? ' primary' : ' ghost') + '" data-lcq="' + esc(x.pc) + '">' + esc(x.pc) + ' · ' + x.n + '</button>'; }).join('') + '</div>'
       : '<div class="muted-note" style="margin:0">✓ Every property with a postcode has its licence checked.</div>';
   }
+  function lcRenderPool(){
+    $('lcPool').innerHTML = licencePool.length ? '<details><summary class="muted-note">📥 <b>' + licencePool.length + '</b> licence' + (licencePool.length === 1 ? '' : 's') + ' saved for properties not on Fixflow yet — added automatically when you add the property</summary>' +
+      licencePool.map(function(r){ var l = r.licence || {}; return '<div class="muted-note" style="margin:3px 0;display:flex;gap:6px;align-items:center"><span style="flex:1">' + esc(r.address) + ' — ' + esc([l.number, l.status === 'applied' ? 'submitted' : 'issued'].filter(Boolean).join(' · ')) + '</span><button type="button" class="linkish" data-pool-del="' + r.id + '" title="Remove">✕</button></div>'; }).join('') + '</details>' : '';
+  }
   function openLicences(pc){
     lcFileData = null; lcFound = []; $('lcText').value = ''; $('lcFile').textContent = ''; $('lcErr').textContent = ''; $('lcMatches').innerHTML = ''; $('lcSave').hidden = true;
-    $('lcPc').value = pc || ''; lcShowProps(); lcRenderQueue(); lcBorough = ''; lcRenderBoro(); $('lcModal').hidden = false; (pc ? $('lcText') : $('lcPc')).focus();
+    $('lcPc').value = pc || ''; lcShowProps(); lcRenderQueue(); lcRenderPool(); lcBorough = ''; lcRenderBoro(); $('lcModal').hidden = false; (pc ? $('lcText') : $('lcPc')).focus();
     return lcLookupBorough();
   }
   $('licRegBtn').addEventListener('click', function(){ var q = lcQueue(); openLicences(q.length ? q[0].pc : ''); });
@@ -3511,6 +3516,10 @@
     lcLookupBorough().then(function(){ $('lcOpen').click(); $('lcText').focus(); });
   });
   $('lcClose').addEventListener('click', function(){ $('lcModal').hidden = true; });
+  $('lcPool').addEventListener('click', function(e){
+    var b = e.target.closest('[data-pool-del]'); if (!b) return;
+    api('DELETE', '/api/admin/licence-pool/' + b.dataset.poolDel, { confirm: true }).then(function(){ licencePool = licencePool.filter(function(r){ return String(r.id) !== b.dataset.poolDel; }); lcRenderPool(); });
+  });
   $('lcProps').addEventListener('click', function(e){
     var b = e.target.closest('[data-lc-nn]'); if (!b) return;
     var a = b.dataset.lcNn;
@@ -3541,40 +3550,71 @@
   $('lcText').addEventListener('paste', function(e){ var it = Array.prototype.filter.call((e.clipboardData || {}).items || [], function(i){ return /^image\//.test(i.type); })[0]; if (it) { e.preventDefault(); lcSetFile(it.getAsFile()); } });
   $('lcModal').addEventListener('dragover', function(e){ e.preventDefault(); });
   $('lcModal').addEventListener('drop', function(e){ var f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) { e.preventDefault(); e.stopPropagation(); lcSetFile(f); } });
+  // A table copied from a register (address · reference · status columns) is read
+  // straight off, without the AI; anything else goes to the AI.
+  function lcParseTable(text){
+    var PC = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i, out = [];
+    String(text || '').split(/\r?\n/).forEach(function(line){
+      var cols = line.split(/\t| {3,}/).map(function(c){ return c.trim(); }).filter(Boolean);
+      if (cols.length < 2) {   // no tabs: "address … POSTCODE  REF  status"
+        var m = /^(.*?\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\s+([A-Z]{2,6}-?\d{5,})\s*(.*)$/i.exec(line.trim()); if (!m) return; cols = [m[1], m[2], m[3]];
+      }
+      var addr = cols.filter(function(c){ return PC.test(c) && /[a-z]/i.test(c.replace(PC, '')); })[0]; if (!addr) return;
+      var ref = cols.filter(function(c){ return c !== addr && /^[A-Z]{2,6}-?\d{5,}$/i.test(c); })[0] || '';
+      var st = cols.filter(function(c){ return /issued|granted|licensed|submitted|pending|received|applied|application|draft/i.test(c) && c !== addr; })[0] || '';
+      var type = cols.filter(function(c){ return /selective|additional|mandatory|hmo/i.test(c) && c !== addr; })[0] || '';
+      out.push({ address: addr, postcode: (PC.exec(addr) || [''])[0].toUpperCase(), number: ref, status: /submitted|pending|received|applied|application|draft/i.test(st) && !/issued|granted/i.test(st) ? 'applied' : 'licensed',
+        type: /mandatory/i.test(type) ? 'Mandatory HMO' : /additional/i.test(type) ? 'Additional (HMO)' : /selective/i.test(type) ? 'Selective' : '', holder: '', starts: '', expires: '' });
+    });
+    return out;
+  }
+  function lcShowResults(licences){
+    if (!$('lcPc').value.trim()) { var pcs = licences.map(function(l){ return l.postcode || pcOf(l.address); }).filter(Boolean); if (pcs.length) { $('lcPc').value = pcs[0]; lcShowProps(); lcLookupBorough(); } }
+    var ours = lcPropsIn($('lcPc').value), all = allPropsForList();
+    var samePc = function(a, b){ var x = pcOf(a).replace(/\s+/g, ''), y = pcOf(b).replace(/\s+/g, ''); return !x || !y || x === y; };
+    // Each licence matched to one of our properties (in the postcode first, then anywhere — never across postcodes).
+    lcFound = licences.map(function(l){
+      var hit = ours.filter(function(x){ return addrSame(x.addr, l.address) && samePc(x.addr, l.address); })[0];
+      if (!hit) { var pr = all.filter(function(pr){ var a = knownFullAddress(pr.key) || pr.address; return addrSame(a, l.address) && samePc(a, l.address); })[0]; if (pr) hit = { pr: pr, addr: knownFullAddress(pr.key) || pr.address }; }
+      return { l: l, ours: hit };
+    });
+    var mine = lcFound.filter(function(x){ return x.ours; }), others = lcFound.filter(function(x){ return !x.ours; }), missing = ours.filter(function(o){ return !mine.some(function(x){ return x.ours.pr.key === o.pr.key; }); });
+    var desc = function(l){ return [l.type || 'Licence', l.number, l.status === 'applied' ? 'submitted, not yet issued' : 'issued', l.expires ? 'expires ' + longDay(l.expires) : '', l.holder ? 'holder ' + l.holder : ''].filter(Boolean).join(' · '); };
+    $('lcMatches').innerHTML = '<p class="muted-note" style="margin:8px 0 4px">' + licences.length + ' licence' + (licences.length === 1 ? '' : 's') + ' read · <b>' + mine.length + '</b> at your properties' + (others.length ? ' · ' + others.length + ' not on Fixflow yet' : '') + '.</p>' +
+      mine.map(function(x){ return '<label class="kr-row" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" checked data-lc="' + lcFound.indexOf(x) + '"><span><b>' + esc(x.ours.addr) + '</b><br><span class="muted-note" style="margin:0">' + esc(desc(x.l)) + '</span></span></label>'; }).join('') +
+      (others.length ? '<label class="kr-row" style="display:flex;gap:8px;align-items:flex-start;margin-top:8px"><input type="checkbox" checked id="lcKeep"><span><b>Save the ' + others.length + ' other' + (others.length === 1 ? '' : 's') + ' for later</b><br><span class="muted-note" style="margin:0">Properties not on Fixflow yet — each licence is added automatically when you add the property.</span></span></label>' +
+        '<details style="margin:2px 0 0 26px"><summary class="muted-note">Show them</summary>' + others.map(function(x){ return '<div class="muted-note" style="margin:2px 0">' + esc(x.l.address) + ' — ' + esc(desc(x.l)) + '</div>'; }).join('') + '</details>' : '') +
+      (missing.length ? '<p class="muted-note" style="margin:10px 0 4px">Your properties in ' + esc($('lcPc').value.trim().toUpperCase()) + ' <b>not</b> in these results (if the results ran to more than one page, check the others first):</p>' + missing.map(function(o){ return '<div class="kr-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="flex:1;min-width:180px">' + esc(o.addr) + '</span><select class="inp" style="width:auto" data-lc-mark="' + esc(o.addr) + '"><option value="">Leave as it is</option><option value="not_needed">Licence not needed</option><option value="none">No licence found</option></select></div>'; }).join('') : '');
+    $('lcSave').hidden = !mine.length && !missing.length && !others.length;
+    $('lcSave').textContent = mine.length ? 'Save licences' : 'Save';
+  }
   $('lcRead').addEventListener('click', function(){
     var text = $('lcText').value.trim(); if (!text && !lcFileData) { $('lcText').focus(); return; }
-    $('lcErr').textContent = ''; busy($('lcRead'), true, 'Reading…');
+    $('lcErr').textContent = '';
+    var table = !lcFileData ? lcParseTable(text) : [];
+    if (table.length) { lcShowResults(table); return; }
+    busy($('lcRead'), true, 'Reading…');
     api('POST', '/api/admin/licence-read', { text: text, file: lcFileData }).then(function(d){
       busy($('lcRead'), false);
       if (!d.ok) { $('lcErr').textContent = d.error === 'ai-not-configured' ? 'AI isn’t switched on.' : 'Couldn’t read that — try copying the results again, or a screenshot.'; return; }
-      if (!$('lcPc').value.trim()) { var pcs = d.licences.map(function(l){ return l.postcode || pcOf(l.address); }).filter(Boolean); if (pcs.length) { $('lcPc').value = pcs[0]; lcShowProps(); } }
-      var ours = lcPropsIn($('lcPc').value), all = allPropsForList();
-      // Each licence matched to one of our properties (in the postcode first, then anywhere).
-      lcFound = d.licences.map(function(l){
-        var hit = ours.filter(function(x){ return addrSame(x.addr, l.address); })[0];
-        if (!hit) { var pr = all.filter(function(pr){ return addrSame(knownFullAddress(pr.key) || pr.address, l.address) && (!pcOf(l.address) || !pcOf(knownFullAddress(pr.key) || pr.address) || pcOf(l.address) === pcOf(knownFullAddress(pr.key) || pr.address)); })[0]; if (pr) hit = { pr: pr, addr: knownFullAddress(pr.key) || pr.address }; }
-        return { l: l, ours: hit };
-      });
-      var mine = lcFound.filter(function(x){ return x.ours; }), missing = ours.filter(function(o){ return !mine.some(function(x){ return x.ours.pr.key === o.pr.key; }); });
-      $('lcMatches').innerHTML = '<p class="muted-note" style="margin:8px 0 4px">' + d.licences.length + ' licence' + (d.licences.length === 1 ? '' : 's') + ' on the register results · ' + mine.length + ' at your properties.</p>' +
-        mine.map(function(x, i){ var l = x.l; return '<label class="kr-row" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" checked data-lc="' + lcFound.indexOf(x) + '"><span><b>' + esc(x.ours.addr) + '</b><br><span class="muted-note" style="margin:0">' + esc([l.type || 'Licence', l.number, l.status === 'applied' ? 'submitted, not yet issued' : '', l.expires ? 'expires ' + longDay(l.expires) : 'no expiry shown', l.holder ? 'holder ' + l.holder : ''].filter(Boolean).join(' · ')) + '</span></span></label>'; }).join('') +
-        (missing.length ? '<p class="muted-note" style="margin:10px 0 4px">Your properties in this postcode <b>not</b> in these results (if the results ran to more than one page, check the others first):</p>' + missing.map(function(o){ return '<div class="kr-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="flex:1;min-width:180px">' + esc(o.addr) + '</span><select class="inp" style="width:auto" data-lc-mark="' + esc(o.addr) + '"><option value="">Leave as it is</option><option value="not_needed">Licence not needed</option><option value="none">No licence found</option></select></div>'; }).join('') : '') +
-        (lcFound.length - mine.length ? '<details style="margin-top:8px"><summary class="muted-note">' + (lcFound.length - mine.length) + ' other licences in the results (not your properties)</summary>' + lcFound.filter(function(x){ return !x.ours; }).map(function(x){ return '<div class="muted-note" style="margin:2px 0">' + esc(x.l.address) + (x.l.expires ? ' · expires ' + esc(longDay(x.l.expires)) : '') + '</div>'; }).join('') + '</details>' : '');
-      $('lcSave').hidden = !mine.length && !missing.length;
-      if (!mine.length && missing.length) $('lcSave').textContent = 'Save'; else $('lcSave').textContent = 'Save licences';
+      lcShowResults(d.licences);
     });
   });
   $('lcSave').addEventListener('click', function(){
     var jobsTodo = [];
     $('lcMatches').querySelectorAll('[data-lc]:checked').forEach(function(cb){ var x = lcFound[Number(cb.dataset.lc)]; jobsTodo.push({ address: x.ours.addr, licence: { status: x.l.status, type: x.l.type, number: x.l.number, holder: x.l.holder, starts: x.l.starts, expires: x.l.expires, borough: lcBorough } }); });
     $('lcMatches').querySelectorAll('[data-lc-mark]').forEach(function(sel){ if (sel.value) jobsTodo.push({ address: sel.dataset.lcMark, licence: { status: sel.value, borough: lcBorough } }); });
-    if (!jobsTodo.length) { toast('Nothing ticked'); return; }
+    var keep = $('lcKeep') && $('lcKeep').checked ? lcFound.filter(function(x){ return !x.ours; }).map(function(x){ return x.l; }) : [];
+    if (!jobsTodo.length && !keep.length) { toast('Nothing ticked'); return; }
     busy($('lcSave'), true, 'Saving…');
-    Promise.all(jobsTodo.map(function(j){ return api('PUT', '/api/admin/property-licence', j).then(function(d){ if (d.ok) { var k = propKey(j.address); propInfo[k] = Object.assign({}, propInfo[k], { property_key: k, address: j.address, licence: d.licence }); } return d.ok; }); })).then(function(res){
+    var pooled = keep.length ? api('POST', '/api/admin/licence-pool', { licences: keep, borough: lcBorough }) : Promise.resolve({ ok: true, saved: 0 });
+    Promise.all(jobsTodo.map(function(j){ return api('PUT', '/api/admin/property-licence', j).then(function(d){ if (d.ok) { var k = propKey(j.address); propInfo[k] = Object.assign({}, propInfo[k], { property_key: k, address: j.address, licence: d.licence }); } return d.ok; }); }).concat([pooled])).then(function(res){
       busy($('lcSave'), false);
-      var n = res.filter(Boolean).length; lcShowProps(); lcRenderQueue();
+      var pr = res.pop() || {}, n = res.filter(Boolean).length; lcShowProps(); lcRenderQueue();
+      api('GET', '/api/admin/licence-pool').then(function(d){ if (d.ok) { licencePool = d.pool; lcRenderPool(); } });
       var next = lcQueue()[0];
-      toast(n + ' licence' + (n === 1 ? '' : 's') + ' saved' + (next ? ' — next postcode: ' + next.pc : ' — all checked'));
+      $('lcMatches').innerHTML = ''; $('lcSave').hidden = true; $('lcText').value = '';
+      toast((n ? n + ' licence' + (n === 1 ? '' : 's') + ' saved' : 'Saved') + (pr.saved ? ' · ' + pr.saved + ' kept for later' : '') + (next ? ' — next postcode: ' + next.pc : ' — all checked'));
       if (view === 'props') { openPropKey ? renderProperty() : renderProps(); }
     });
   });
@@ -6981,7 +7021,7 @@
   function addrSame(a, b){
     var ka = propKey(a), kb = propKey(b); if (!ka || !kb) return false; if (ka === kb) return true;
     var nums = function(k){ return k.split(' ').filter(function(w){ return /\d/.test(w); }); };
-    var words = function(k){ return k.split(' ').filter(function(w){ return w.length >= 3 && !/\d/.test(w) && ['flat', 'house', 'road', 'street', 'court', 'london', 'the', 'and', 'apartment'].indexOf(w) === -1; }); };
+    var words = function(k){ return k.split(' ').filter(function(w){ return w.length >= 3 && !/\d/.test(w) && ['flat', 'house', 'road', 'street', 'court', 'london', 'the', 'and', 'apartment', 'estate', 'maisonette'].indexOf(w) === -1; }); };
     var within = function(x, y){ var xn = nums(x), xw = words(x), yn = nums(y), yw = words(y); return xn.length && xw.length && xn.every(function(n){ return yn.indexOf(n) !== -1; }) && xw.every(function(w){ return yw.indexOf(w) !== -1; }); };
     return within(ka, kb) || within(kb, ka);
   }
@@ -7356,10 +7396,12 @@
   ];
   var certs = [], certWho = {}, certCost = {}, CERT_REMIND = 10, certFilter = 'action';
   // Key numbers (the number on the key tag in the office), by property.
-  var propInfo = {};
+  var propInfo = {}, licencePool = [];
   function loadPropInfo(){
     if (!meta.db) return Promise.resolve();
-    return api('GET', '/api/admin/property-info').then(function(d){ if (d.ok) { propInfo = {}; d.info.forEach(function(r){ propInfo[r.property_key] = r; }); } });
+    // Saved licences for properties added since are applied first (server side).
+    return api('GET', '/api/admin/licence-pool').then(function(d){ if (d.ok) licencePool = d.pool; }).catch(function(){})
+      .then(function(){ return api('GET', '/api/admin/property-info'); }).then(function(d){ if (d.ok) { propInfo = {}; d.info.forEach(function(r){ propInfo[r.property_key] = r; }); } });
   }
   function keyNo(address){ var r = propInfo[propKey(address)]; return r && r.key_number ? r.key_number : ''; }
   function saveKey(address, num, notes){
