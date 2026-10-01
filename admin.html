@@ -997,6 +997,7 @@
         <div id="tenantsListView">
           <div class="toolbar">
             <input class="inp search" id="tenantSearch" type="search" placeholder="Search by name, phone, email or address">
+            <button class="btn" id="tenantEmailAll" type="button">✉️ Email all tenants</button>
             <button class="btn" id="tenantBroadcast" type="button">📣 Message tenants</button>
             <button class="btn primary" id="tenantAdd" type="button">+ Add tenant</button>
           </div>
@@ -4954,11 +4955,11 @@
     var first = greetName(r.name);
     return String(text || '').replace(/\{first_name\}/g, first || 'there').replace(/\{address\}/g, shortAddr(r.address));
   }
-  function openTenantBroadcast(address){
+  function openTenantBroadcast(address, everyone){
     var props = tnProperties();
     tn = { keys: [], scope: 'one', baseKey: null, noticeId: null, sent: {}, recips: [], excluded: {} };
     if (address) { tn.baseKey = propKey(address); tn.keys = [tn.baseKey]; tn.scope = 'one'; }
-    else { tn.scope = 'pick'; }
+    else { tn.scope = everyone ? 'all' : 'pick'; }
     $('tnSubject').value = TN_TEMPLATES[0][1]; $('tnBody').value = TN_TEMPLATES[0][2];
     $('tnTpls').innerHTML = TN_TEMPLATES.map(function(t, i){ return '<button type="button" data-tn-tpl="' + i + '">' + esc(t[0]) + '</button>'; }).join('');
     $('tnSearch').value = '';
@@ -4982,6 +4983,16 @@
     if (tn.scope === 'pick') tnDrawPicker();
     var byKey = {}; props.forEach(function(p){ byKey[p.key] = p; });
     tn.recips = [].concat.apply([], tn.keys.map(function(k){ return byKey[k] ? tnRecipientsFor(byKey[k]) : []; }));
+    // "All" also reaches saved tenants not yet linked to any property.
+    if (tn.scope === 'all') {
+      var have = {}; tn.recips.forEach(function(r){ have[phoneTail(r.phone) || String(r.email || '').toLowerCase() || r.key] = 1; });
+      tenantRecs.forEach(function(t){
+        if (tenantLinks.some(function(l){ return l.tenant_id === t.id; })) return;
+        var id = phoneTail(t.phone) || String(t.email || '').toLowerCase();
+        if (!id || have[id]) return; have[id] = 1;
+        tn.recips.push({ key: 'rec#' + t.id, name: t.name || '', phone: t.phone || '', email: t.email || '', address: '', pkey: '' });
+      });
+    }
     var reach = tn.recips.filter(function(r){ return (r.phone || r.email) && !tn.excluded[r.key]; });
     $('tnTitle').textContent = 'Message tenants' + (tn.scope === 'one' && base ? ' — ' + shortAddr(base.address) : tn.scope === 'building' && bld ? ' — ' + bld.name : tn.scope === 'all' ? ' — all properties' : '');
     $('tnCount').textContent = tn.recips.length + ' tenant' + (tn.recips.length === 1 ? '' : 's') + ' at ' + tn.keys.length + ' propert' + (tn.keys.length === 1 ? 'y' : 'ies') + (tn.recips.length ? ' · ' + reach.length + ' will get it' : '');
@@ -5063,14 +5074,21 @@
       if (meta.canEmail) {
         var todo = list.filter(function(r){ return !tn.sent[r.key] || tn.sent[r.key] !== 'email'; });
         if (!todo.length) { toast('Everyone’s already been emailed'); return; }
+        if (!subj.trim()) { toast('Add a subject first'); $('tnSubject').focus(); return; }
         if (!confirm('Email ' + todo.length + ' tenant' + (todo.length === 1 ? '' : 's') + ' now? Each gets their own copy.')) return;
-        busy($('tnEmailAll'), true, 'Sending…');
-        return api('POST', '/api/admin/tenant-notices/' + id + '/email', { subject: tnFill(subj, todo[0]), messages: todo.map(function(r){ return { key: r.key, to: r.email, subject: tnFill(subj, r), text: tnFill($('tnBody').value, r) }; }) }).then(function(d){
-          busy($('tnEmailAll'), false);
-          if (!d.ok) { toast('Couldn’t send the emails'); return; }
-          d.sent.forEach(function(k){ tn.sent[k] = 'email'; }); tnDraw();
-          toast(d.sent.length + ' email' + (d.sent.length === 1 ? '' : 's') + ' sent' + (d.failed.length ? ' · ' + d.failed.length + ' failed' : ''));
-        });
+        // In batches of 15, so a long list never times out; the button shows progress.
+        var body = $('tnBody').value, sentN = 0, failN = 0, i = 0;
+        var next = function(){
+          if (i >= todo.length) { busy($('tnEmailAll'), false); tnDraw(); toast(sentN + ' email' + (sentN === 1 ? '' : 's') + ' sent' + (failN ? ' · ' + failN + ' failed' : '')); return; }
+          var part = todo.slice(i, i + 15); i += part.length;
+          if (!$('tnEmailAll').disabled) busy($('tnEmailAll'), true);
+          $('tnEmailAll').textContent = 'Sending ' + i + ' of ' + todo.length + '…';
+          return api('POST', '/api/admin/tenant-notices/' + id + '/email', { subject: tnFill(subj, part[0]), messages: part.map(function(r){ return { key: r.key, to: r.email, subject: tnFill(subj, r), text: tnFill(body, r) }; }) }).then(function(d){
+            if (!d.ok) { failN += part.length; } else { d.sent.forEach(function(k){ tn.sent[k] = 'email'; }); sentN += d.sent.length; failN += d.failed.length; }
+            return next();
+          });
+        };
+        return next();
       }
       // No email service: one email in your own mail app, tenants in Bcc so they can't see each other.
       var body = $('tnBody').value.replace(/\{first_name\}/g, 'there').replace(/\{address\}/g, tn.keys.length === 1 ? shortAddr(list[0].address) : 'your home');
@@ -5081,6 +5099,11 @@
   $('tnClose').addEventListener('click', function(){ $('tnModal').hidden = true; if (view === 'props' && openPropKey) renderPropNotices(); });
   $('tnModal').addEventListener('mousedown', function(e){ if (e.target === $('tnModal')) $('tnClose').click(); });
   $('tenantBroadcast').addEventListener('click', function(){ openTenantBroadcast(null); });
+  $('tenantEmailAll').addEventListener('click', function(){
+    openTenantBroadcast(null, true);
+    $('tnSubject').value = ''; $('tnBody').value = 'Hi {first_name},\n\n\n\nThanks,\nResidential Realtors';
+    setTimeout(function(){ $('tnSubject').focus(); }, 60);
+  });
   $('propMsgTenants').addEventListener('click', function(){ var d = propertyJobs(); if (d) openTenantBroadcast(d.property.address); });
   // Notices already sent to this property's tenants, on the property page.
   function renderPropNotices(){

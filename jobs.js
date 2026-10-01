@@ -1437,7 +1437,9 @@ module.exports = function mountJobs(app, opts) {
     const subject = str(b.subject, 300) || 'A message from Residential Realtors';
     const list = (Array.isArray(b.messages) ? b.messages : []).slice(0, 300);
     const done = {}, failed = [];
-    for (const m of list) {
+    for (const [n, m] of list.entries()) {
+      // The email service takes about 2 a second, so space them out.
+      if (n) await new Promise(function (r) { setTimeout(r, 550); });
       const to = str(m && m.to, 200), text = str(m && m.text, 10000), k = str(m && m.key, 80);
       if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to) || !text) { if (k) failed.push(k); continue; }
       const sent = await sendEmail({ to: [to], subject: str(m && m.subject, 300) || subject, text: text }).catch(function () { return { ok: false }; });
@@ -3114,7 +3116,7 @@ document.querySelectorAll('.lb-f').forEach(function(f){
       // This property's invoices, with what's been invoiced and what's still to pay.
       const pInv = invs.filter(function (i) { const j = all.filter(function (x) { return x.id === i.job_id; })[0]; return j && propKey(j.property_address) === k; }).slice().reverse();
       const pUn = pInv.filter(function (i) { return !i.paid_at; }).reduce(function (t, i) { return t + Number(i.total || 0); }, 0), pAll = pInv.reduce(function (t, i) { return t + Number(i.total || 0); }, 0);
-      const invBox = pInv.length ? '<details class="pinv"' + (pUn ? ' open' : '') + '><summary>🧾 Invoices for this property (' + pInv.length + ') · ' + money(pAll) + (pUn ? ' · <span class="due">' + money(pUn) + ' to pay</span>' : ' · all paid') + '</summary>' + pInv.map(function (i) {
+      const invBox = pInv.length ? '<details class="pinv" open><summary>🧾 Invoices for this property (' + pInv.length + ') · ' + money(pAll) + (pUn ? ' · <span class="due">' + money(pUn) + ' to pay</span>' : ' · all paid') + '</summary>' + pInv.map(function (i) {
           const j = all.filter(function (x) { return x.id === i.job_id; })[0] || {}, od = !i.paid_at && i.due && i.due < new Date().toISOString().slice(0, 10);
           return '<a class="iv" href="/l/' + htmlEsc(token) + '/invoice/' + i.id + '"><div><b>' + htmlEsc(i.number || '') + '</b> · ' + htmlEsc(issue(j)) + '<div class="muted">Issued ' + htmlEsc(day(i.date || i.created_at)) + '</div></div>' +
             '<div style="text-align:right"><b>' + money(i.total) + '</b><div>' + (i.paid_at ? '<span class="paid">Paid</span>' : od ? '<span class="late">Overdue</span>' : '<span class="due">Due ' + htmlEsc(i.due ? day(i.due) : '') + '</span>') + '</div></div></a>';
@@ -3126,11 +3128,22 @@ document.querySelectorAll('.lb-f').forEach(function(f){
       const chips = [o.length ? '<span class="chip warn">' + o.length + ' open repair' + (o.length === 1 ? '' : 's') + '</span>' : '<span class="chip ok">No open repairs</span>',
         pUn ? '<span class="chip warn">' + money(pUn) + ' to pay</span>' : '', certLate ? '<span class="chip bad">' + certLate + ' certificate' + (certLate === 1 ? '' : 's') + ' expired</span>' : '',
         licBad ? '<span class="chip bad">Licence needs attention</span>' : ''].filter(Boolean).join('');
-      const pid = 'p-' + k.replace(/[^a-z0-9]+/g, '-'), openIt = Object.keys(keys).length <= 2 || o.length > 0 || pUn > 0;
+      const pid = 'p-' + k.replace(/[^a-z0-9]+/g, '-');
       quick.push('<a class="qrow" href="#' + htmlEsc(pid) + '" data-find="' + htmlEsc(String(addr).toLowerCase()) + '"><span class="qa">' + htmlEsc(addr) + '</span><span class="qc">' + chips + '</span><span class="qgo">›</span></a>');
-      return '<section class="card pcard" id="' + htmlEsc(pid) + '" data-find="' + htmlEsc(String(addr).toLowerCase()) + '"><details' + (openIt ? ' open' : '') + '><summary><h2>' + htmlEsc(addr) + '</h2><div class="qc">' + chips + '</div></summary>' + (pSpent ? '<div class="muted" style="margin:-4px 0 8px">Spent: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + (cs ? '<div class="certs">' + cs + '</div>' : '') + licBox(k) + tcyBox(k) + contactBox(k, addr) + repairForm(k, addr) + invBox +
-        (o.length ? '<h3>Open repairs (' + o.length + ')</h3>' + o.map(jobCard).join('') : '<p class="muted">No open repairs.</p>') +
-        (d.length ? '<details' + (o.length ? '' : ' open') + '><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '') + '<p class="totop"><a href="#top">↑ Back to the top</a></p></details></section>';
+      // One property at a time, split into tabs so only one thing shows at once.
+      const tcyHtml = tcyBox(k) + contactBox(k, addr), docHtml = (cs ? '<div class="certs">' + cs + '</div>' : '') + licBox(k);
+      const tabs = [['rep', 'Repairs' + (o.length ? ' (' + o.length + ')' : ''),
+          repairForm(k, addr) + (o.length ? '<h3>Open repairs</h3>' + o.map(jobCard).join('') : '<p class="muted">No open repairs.</p>') +
+          (d.length ? '<details class="ldone"><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '')],
+        tcyHtml ? ['tcy', 'Tenancy', tcyHtml] : null,
+        docHtml ? ['doc', 'Certificates', docHtml] : null,
+        pInv.length || pSpent ? ['inv', 'Costs', (pSpent ? '<div class="muted" style="margin:0 0 8px">Spent on repairs: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + invBox] : null].filter(Boolean);
+      const ppl = peopleAt(k).length;
+      return '<section class="lview pv" id="' + htmlEsc(pid) + '" hidden>' + (Object.keys(keys).length > 1 ? '<a class="lback" href="#">← All properties</a>' : '') +
+        '<div class="card"><h2 class="pv-h">' + htmlEsc(addr) + '</h2><div class="qc">' + chips + '</div>' +
+        '<div class="pacts"><button type="button" class="go-rep">🛠 Report a repair</button>' + (ppl ? '<button type="button" class="go-msg sec">💬 Message tenants</button>' : '') + '</div></div>' +
+        '<div class="ptabs" role="tablist">' + tabs.map(function (t, i) { return '<button type="button" role="tab" data-t="' + t[0] + '"' + (i ? '' : ' class="on"') + '>' + t[1] + '</button>'; }).join('') + '</div>' +
+        tabs.map(function (t, i) { return '<div class="card ppane" data-p="' + t[0] + '"' + (i ? ' hidden' : '') + '>' + t[2] + '</div>'; }).join('') + '</section>';
     }).join('');
     const css = '<style>.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:0 0 14px}.tile{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px}.tile b{display:block;font-size:1.3rem}.tile span{font-size:.78rem;color:var(--soft)}' +
       'h2{font-size:1.05rem;margin:0 0 8px}h3{font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);margin:14px 0 6px}' +
@@ -3144,24 +3157,32 @@ document.querySelectorAll('.lb-f').forEach(function(f){
       '.bt{display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:center;font-size:.88rem;margin:4px 0}.bt i{display:block;height:8px;border-radius:8px;background:var(--blue)}.bp{display:flex;justify-content:space-between;gap:8px;font-size:.88rem;padding:4px 0;border-bottom:1px solid var(--line)}' +
       '.dl{display:inline-block;padding:10px 14px;border-radius:12px;background:var(--ink);color:#fff;text-decoration:none;font-weight:600}.iv{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.iv:last-child{border-bottom:0}' +
       '.ph-lb{font-size:.75rem;color:var(--soft);font-weight:600;margin-top:10px}.ph{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.ph a{display:block;width:64px;height:64px;border-radius:10px;overflow:hidden;background:#eee}.ph img{width:100%;height:100%;object-fit:cover;display:block}' +
-      '.ph a.more{display:grid;place-items:center;font-weight:700;color:var(--soft);text-decoration:none}</style>';
-    res.send(trackShell('Your properties', css + '<script>document.body.setAttribute("data-lt", ' + JSON.stringify(token).replace(/</g, '\\u003c') + ');document.body.setAttribute("data-me", ' + JSON.stringify(String(l.name || '').trim() || 'Your landlord').replace(/</g, '\\u003c') + ');</script><div id="top"></div><h1>Hi ' + htmlEsc(String(l.name || '').trim() || 'there') + '</h1><p class="sub">Your properties with Residential Realtors: every repair, where it’s up to and what it has cost.</p>' +
-      '<div class="tiles"><a class="tile" href="#props"><b>' + Object.keys(keys).length + '</b><span>Propert' + (Object.keys(keys).length === 1 ? 'y' : 'ies') + '</span></a>' +
-        '<a class="tile" href="#props"><b>' + open.length + '</b><span>Open repairs</span></a><a class="tile" href="#props"><b>' + done.length + '</b><span>Completed</span></a>' +
-        '<a class="tile" href="#spending"><b>' + money(spent) + '</b><span>Charged, last 12 months</span></a>' +
-        (unpaid.length ? '<a class="tile" href="#spending"><b>' + money(unpaid.reduce(function (t, i) { return t + Number(i.total || 0); }, 0)) + '</b><span>' + unpaid.length + ' invoice' + (unpaid.length === 1 ? '' : 's') + ' to pay</span></a>' : '') + '</div>' +
-      // Quick navigation: a bar that stays at the top, and every property with its status.
-      '<nav class="lnav"><a href="#top">Overview</a><a href="#props">Properties (' + Object.keys(keys).length + ')</a><a href="#spending">Spending &amp; invoices</a></nav>' +
-      (quick.length ? '<section class="card" id="props"><h2>Your properties</h2>' + (quick.length > 4 ? '<input id="lfind" type="search" placeholder="Find a property…" autocomplete="off">' : '') + '<div class="qlist">' + quick.join('') + '</div>' +
-        (quick.length > 2 ? '<p class="muted" style="margin:8px 0 0"><a href="#" id="lexp">Open all</a> · <a href="#" id="lcol">Close all</a></p>' : '') + '</section>' : '') +
+      '.ph a.more{display:grid;place-items:center;font-weight:700;color:var(--soft);text-decoration:none}' +
+      '.lback{display:inline-block;margin:0 0 10px;color:var(--blue);font-weight:700;text-decoration:none}.pv-h{font-size:1.2rem;margin:0 0 6px}.pacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.pacts button{flex:1 1 160px;padding:12px 14px;border:0;border-radius:12px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer}.pacts button.sec{background:#25D366}.pacts button{text-transform:none;letter-spacing:normal;font-size:1rem}' +
+      '.ptabs{display:flex;gap:6px;overflow-x:auto;margin:4px 0 10px;padding-bottom:2px}.ptabs button{flex:none;padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}.ptabs button.on{background:var(--ink);border-color:var(--ink);color:#fff}' +
+      '.ppane .lr:not([open]){display:none}.ppane>.lr{margin-top:0}.ppane>.tcy{margin-top:0}.ppane>h3:first-child,.ppane>.lr+h3{margin-top:0}.lspend{display:grid;grid-template-columns:1fr auto;margin-top:12px;padding:14px 16px}.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.tile b{font-size:1.1rem}.tiles[hidden]{display:none}</style>';
+    res.send(trackShell('Your properties', css + '<script>document.body.setAttribute("data-lt", ' + JSON.stringify(token).replace(/</g, '\\u003c') + ');document.body.setAttribute("data-me", ' + JSON.stringify(String(l.name || '').trim() || 'Your landlord').replace(/</g, '\\u003c') + ');</script><div id="top"></div><h1>Hi ' + htmlEsc(String(l.name || '').trim() || 'there') + '</h1><p class="sub">Your properties with Residential Realtors.</p>' +
+      // Home: a few numbers, then every property — tap one to open it.
+      '<div class="tiles"><div class="tile"><b>' + open.length + '</b><span>Open repair' + (open.length === 1 ? '' : 's') + '</span></div>' +
+        '<a class="tile" href="#spending"><b>' + money(unpaid.reduce(function (t, i) { return t + Number(i.total || 0); }, 0)) + '</b><span>To pay' + (unpaid.length ? ' (' + unpaid.length + ' invoice' + (unpaid.length === 1 ? '' : 's') + ')' : '') + '</span></a>' +
+        '<a class="tile" href="#spending"><b>' + money(sumOf(thisYr)) + '</b><span>Spent on repairs in ' + yr + '</span></a></div>' +
+      (Object.keys(keys).length > 1 ? '<section class="lview" id="home"><div class="card"><h2>Your properties</h2><p class="muted" style="margin:-4px 0 6px">Tap a property to see its repairs, tenancy, certificates and costs.</p>' +
+        (quick.length > 4 ? '<input id="lfind" type="search" placeholder="Find a property…" autocomplete="off">' : '') + '<div class="qlist">' + quick.join('') + '</div></div>' +
+        '<a class="card qrow lspend" href="#spending"><span class="qa">💷 Spending &amp; invoices — all properties</span><span class="qgo">›</span></a></section>' : '') +
       (propBlocks || '<div class="card"><p class="muted">No properties are linked to you yet. Please contact Residential Realtors.</p></div>') +
-      spendCard +
-      '<a href="#top" class="fab" aria-label="Back to the top">↑</a>' +
+      (Object.keys(keys).length === 1 ? '<a class="card qrow lspend lone" href="#spending"><span class="qa">💷 Spending &amp; invoices</span><span class="qgo">›</span></a>' : '') +
+      '<section class="lview" id="spending" hidden><a class="lback" href="#">← Back</a>' + spendCard.replace(' id="spending"', '') + '</section>' +
       ownScript +
-      '<script>(function(){var f=document.getElementById("lfind");if(f)f.addEventListener("input",function(){var q=f.value.trim().toLowerCase();document.querySelectorAll("[data-find]").forEach(function(el){el.style.display=!q||el.getAttribute("data-find").indexOf(q)!==-1?"":"none";});});' +
-        'document.querySelectorAll(".qrow").forEach(function(a){a.addEventListener("click",function(){var s=document.querySelector(a.getAttribute("href"));var d=s&&s.querySelector("details");if(d)d.open=true;});});' +
-        'var e=document.getElementById("lexp"),c=document.getElementById("lcol"),all=function(o){document.querySelectorAll(".pcard>details").forEach(function(d){d.open=o;});};if(e)e.addEventListener("click",function(ev){ev.preventDefault();all(true);});if(c)c.addEventListener("click",function(ev){ev.preventDefault();all(false);});' +
-        'var b=document.querySelector(".fab");window.addEventListener("scroll",function(){b.style.opacity=window.scrollY>600?"1":"0";b.style.pointerEvents=window.scrollY>600?"auto":"none";},{passive:true});})();</script>' +
+      '<script>(function(){var f=document.getElementById("lfind");if(f)f.addEventListener("input",function(){var q=f.value.trim().toLowerCase();document.querySelectorAll(".qrow[data-find]").forEach(function(el){el.style.display=!q||el.getAttribute("data-find").indexOf(q)!==-1?"":"none";});});' +
+        // One view at a time, chosen by the address bar (so Back works).
+        'var views=[].slice.call(document.querySelectorAll(".lview")),lone=document.querySelector(".lone");' +
+        'var route=function(){var h=decodeURIComponent(location.hash.slice(1)),t=h&&document.getElementById(h);if(!t||!t.classList.contains("lview"))t=views[0];views.forEach(function(v){v.hidden=v!==t;});if(lone)lone.hidden=t.id==="spending";var ti=document.querySelector(".tiles");if(ti)ti.hidden=t.classList.contains("pv")&&views.length>2;window.scrollTo(0,0);};' +
+        'window.addEventListener("hashchange",route);route();' +
+        'var pick=function(pv,name){pv.querySelectorAll(".ptabs button").forEach(function(b){b.classList.toggle("on",b.getAttribute("data-t")===name);});pv.querySelectorAll(".ppane").forEach(function(p){p.hidden=p.getAttribute("data-p")!==name;});};' +
+        'document.querySelectorAll(".pv").forEach(function(pv){pv.querySelector(".ptabs").addEventListener("click",function(e){var b=e.target.closest("button");if(b)pick(pv,b.getAttribute("data-t"));});' +
+          'var r=pv.querySelector(".go-rep");if(r)r.addEventListener("click",function(){pick(pv,"rep");var d=pv.querySelector(".lr");if(d){d.open=true;d.scrollIntoView({behavior:"smooth",block:"start"});var i=d.querySelector("input");if(i)setTimeout(function(){i.focus();},300);}});' +
+          'var m=pv.querySelector(".go-msg");if(m)m.addEventListener("click",function(){pick(pv,"tcy");var d=pv.querySelector(".lt-msg");if(d){d.open=true;d.scrollIntoView({behavior:"smooth",block:"start"});}});});' +
+      '})();</script>' +
       '<p class="muted" style="text-align:center;margin-top:18px">Questions? Reply to our message or call the office.</p>', true));
   }));
 
