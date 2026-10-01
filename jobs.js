@@ -2899,7 +2899,7 @@ module.exports = function mountJobs(app, opts) {
       }).join('') + '</section>' : '';
     // The tenancy at each property: the tenants' names and phone numbers, when
     // it started and when the fixed term ends (it rolls on after that).
-    const tcys = Object.keys(keys).length ? (await p.query("SELECT property_key, start_date, data, intention FROM tenancies WHERE property_key = ANY($1::text[]) AND start_date IS NOT NULL ORDER BY start_date DESC", [Object.keys(keys)])).rows : [];
+    const tcys = Object.keys(keys).length ? (await p.query("SELECT id, address, property_key, start_date, data, intention FROM tenancies WHERE property_key = ANY($1::text[]) AND start_date IS NOT NULL ORDER BY start_date DESC", [Object.keys(keys)])).rows : [];
     // Everyone living at each property (the tenancy's tenants and those saved there), for the landlord to contact.
     const saved = Object.keys(keys).length ? (await p.query(`SELECT pt.property_key, t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id
       WHERE pt.property_key = ANY($1::text[]) AND pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY t.updated_at DESC`, [Object.keys(keys)])).rows : [];
@@ -2925,7 +2925,23 @@ module.exports = function mountJobs(app, opts) {
         '<div class="tcy-facts">' + (rent ? '<div><span>Rent now</span><b>£' + rent.toFixed(2) + '</b><small>a month</small></div>' : '') +
           '<div><span>' + (start > today ? 'Starts' : 'Started') + '</span><b>' + htmlEsc(day(start)) + '</b><small>' + months + '-month term ' + (endD < today ? 'ended ' + htmlEsc(day(endD)) + ', now rolling' : 'to ' + htmlEsc(day(endD))) + '</small></div>' +
           (next ? '<div><span>Next anniversary</span><b>' + htmlEsc(day(next)) + '</b><small>rent review</small></div>' : '') + '</div>' +
-        (upcoming ? '<div class="muted" style="margin-top:6px">New rent of <b>£' + upcoming.rent.toFixed(2) + '</b> a month from ' + htmlEsc(day(upcoming.from)) + '.</div>' : '') + '</div>';
+        (upcoming ? '<div class="muted" style="margin-top:6px">New rent of <b>£' + upcoming.rent.toFixed(2) + '</b> a month from ' + htmlEsc(day(upcoming.from)) + '.</div>' : '') +
+        f4aForm(t, start, today) + '</div>';
+    };
+    // Propose a rent increase on the official Form 4A, filled in for them.
+    const f4aForm = function (t, start, today) {
+      if (start > today) return '';
+      const plan = form4aPlan(t); if (!plan.ok) return '';
+      const svc = String((t.data || {}).service || ''), agentOn = !/tenant find/i.test(svc) || !svc;
+      return '<details class="lf"><summary>📝 Propose a rent increase (Form 4A)</summary><form class="lf-f" data-id="' + t.id + '" data-k="' + htmlEsc(t.property_key) + '">' +
+        '<p class="muted" style="margin:6px 0">Current rent <b>£' + plan.rent.toFixed(2) + '</b> a month. The earliest the new rent can start is <b>' + htmlEsc(day(plan.earliest)) + '</b> — the notice must be served at least 2 months before, the first increase can’t start until 52 weeks after the tenancy began (or the last increase), and it starts on a rent day.</p>' +
+        '<label>New rent (£ a month)<input name="new_rent" inputmode="decimal" required placeholder="e.g. ' + Math.round(plan.rent * 1.05) + '"></label>' +
+        '<label>New rent starts on<input type="date" name="start" required min="' + plan.earliest + '" value="' + plan.earliest + '"></label>' +
+        '<label>Signed by (print name)<input name="signer" required maxlength="120" value="' + htmlEsc(String(l.name || '').trim()) + '"></label>' +
+        '<label class="lr-o"><input type="checkbox" name="sign" checked> Sign it electronically with this name</label>' +
+        '<label class="lr-o"><input type="checkbox" name="agent"' + (agentOn ? ' checked' : '') + '> Include Residential Realtors as my agent</label>' +
+        '<label class="lr-o"><input type="checkbox" name="landlord_email"> Add my email address (the tenant may then use it to serve documents)</label>' +
+        '<button type="submit">Create the Form 4A (PDF)</button><p class="lf-msg muted"></p></form></details>';
     };
     // The landlord's own tools at each property: contact the tenants (call, WhatsApp,
     // email, templates), report a repair, and — on repairs they arrange — book a visit.
@@ -3022,6 +3038,25 @@ document.querySelectorAll('.lr-f').forEach(function(f){
       }).catch(function(){ btn.disabled = false; btn.textContent = 'Send repair'; msg.textContent = 'Couldn’t send that — please try again.'; });
   });
 });
+// Form 4A: filled in on the server, downloaded, then how to serve it.
+document.querySelectorAll('.lf-f').forEach(function(f){
+  f.addEventListener('submit', function(e){
+    e.preventDefault(); var btn = f.querySelector('button'), msg = f.querySelector('.lf-msg'); btn.disabled = true; btn.textContent = 'Filling in the form…';
+    var body = { new_rent: f.elements.new_rent.value, start: f.elements.start.value, signer: f.elements.signer.value, sign: f.elements.sign.checked, agent: f.elements.agent.checked, landlord_email: f.elements.landlord_email.checked };
+    fetch('/l/' + TOKEN + '/tenancies/' + f.getAttribute('data-id') + '/form4a', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function(r){ return r.headers.get('content-type') && r.headers.get('content-type').indexOf('pdf') !== -1 ? r.blob().then(function(b){ return { pdf: b }; }) : r.json(); })
+      .then(function(d){
+        btn.disabled = false; btn.textContent = 'Create the Form 4A (PDF)';
+        if (!d.pdf) { msg.textContent = (d && d.error) || 'Couldn’t create the form — please try again.'; return; }
+        var a = document.createElement('a'); a.href = URL.createObjectURL(d.pdf); a.download = 'Form-4A.pdf'; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+        var box = document.querySelector('.lt[data-k="' + f.getAttribute('data-k') + '"]'), ppl = box ? JSON.parse(box.getAttribute('data-people') || '[]') : [], addr = box ? box.getAttribute('data-addr') : '';
+        var when = longDate(body.start), amt = '£' + Number(body.new_rent).toFixed(2);
+        var sb = sendButtons(ppl, function(name){ return 'Hi ' + name + ',\n\nPlease find attached a notice (Form 4A) proposing a new rent for ' + addr + ' of ' + amt + ' a month, starting on ' + when + '. The notice explains your options. Please get in touch if you have any questions.\n\nThanks,\n' + ME; });
+        msg.innerHTML = '✓ Form 4A downloaded (new rent ' + esc(amt) + ' from ' + esc(when) + ').<br><b>Now serve it on your tenants</b> at least 2 months before that date: hand it to them, post it (recorded delivery), or use a method your tenancy agreement allows (e.g. email). Keep proof of how and when you served it. If you send it by WhatsApp or email, attach the PDF:<div class="lt-send">' + sb.html + '</div>';
+        msg.querySelector('.lt-send').addEventListener('click', sb.click);
+      }).catch(function(){ btn.disabled = false; btn.textContent = 'Create the Form 4A (PDF)'; msg.textContent = 'Couldn’t create the form — please try again.'; });
+  });
+});
 // Book the visit on a repair the landlord is arranging, then tell the tenants.
 document.querySelectorAll('.lb-f').forEach(function(f){
   f.addEventListener('submit', function(e){
@@ -3077,7 +3112,7 @@ document.querySelectorAll('.lb-f').forEach(function(f){
       '.lj{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px}.lj.done{background:var(--okt);border-color:#cdebd9}.lj-top{display:flex;justify-content:space-between;gap:8px;align-items:center}' +
       '.pill{font-size:.75rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bluet);color:var(--blue)}.pill.ok{background:var(--ok);color:#fff;text-transform:uppercase;letter-spacing:.04em}.lj.done{border-left:5px solid var(--ok)}.lj-issue{font-weight:600;margin:4px 0 2px}' +
       '.lj-notes{font-size:.88rem;margin-top:6px;white-space:pre-line}.lj-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;font-size:.9rem;flex-wrap:wrap}.lj-foot a{color:var(--blue);font-weight:600;text-decoration:none}' +
-      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.lt,.lr{margin:12px 0 0;padding:12px 14px;border-radius:12px;background:#f6f8fc}.lt h3{margin:0 0 6px}.lt-p{display:grid;gap:2px;padding:6px 0;border-bottom:1px solid #e6e9f0}.lt-p:last-of-type{border-bottom:0}.lt-a{display:flex;gap:10px;flex-wrap:wrap;font-size:.9rem}.lt-a a{color:var(--blue);font-weight:600;text-decoration:none}.lt-p small{color:var(--soft)}.lt-msg,.lr{margin-top:8px}.lt-msg summary,.lr summary,.lb summary{color:var(--blue)!important;font-weight:700;margin-top:6px}.lt-msg select,.lt-msg textarea,.lt-msg input,.lr-f input,.lr-f textarea,.lr-f select,.lb-f input{display:block;width:100%;margin:6px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff}.lt-when{display:flex;gap:6px}.lt-send{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.lt-send button,.lr-f button,.lb-f button{padding:10px 14px;border:0;border-radius:10px;background:#25D366;color:#fff;font:inherit;font-weight:700;cursor:pointer}.lt-send button.sec,.lr-f button,.lb-f button{background:var(--ink)}.lr-o{display:flex;gap:8px;align-items:center;margin:4px 0;font-size:.92rem}.lr-o input{width:auto;margin:0}.lr-f{display:block;margin:0}.lb{margin-top:8px}.lb-f{display:block;margin:0}.tcy-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}.tcy-facts div{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px}.tcy-facts span{display:block;font-size:.72rem;color:var(--soft)}.tcy-facts b{display:block}.tcy-facts small{color:var(--soft);font-size:.75rem}a.tile{color:inherit;text-decoration:none}html{scroll-behavior:smooth;scroll-padding-top:64px}.lnav{position:sticky;top:0;z-index:5;display:flex;gap:6px;overflow-x:auto;margin:0 -16px 12px;padding:8px 16px;background:rgba(244,245,247,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}.lnav a{flex:none;padding:7px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink);text-decoration:none;font-weight:600;font-size:.88rem}#lfind{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font:inherit;margin:0 0 8px}.qlist{display:grid}.qrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.qrow:last-child{border-bottom:0}.qa{font-weight:600}.qgo{grid-row:1/3;grid-column:2;color:var(--faint);font-size:1.3rem}.qc{display:flex;flex-wrap:wrap;gap:4px}.chip{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:#f1f2f5;color:var(--soft)}.chip.ok{background:var(--okt);color:var(--ok)}.chip.warn{background:var(--ambert);color:var(--amber)}.chip.bad{background:#fdecec;color:var(--red)}.pcard>details>summary{list-style:none;cursor:pointer;margin:0;color:inherit;font-weight:inherit}.pcard>details>summary::-webkit-details-marker{display:none}.pcard>details>summary h2{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}.pcard>details>summary h2::after{content:"▾";color:var(--faint);transition:transform .2s}.pcard>details:not([open])>summary h2::after{transform:rotate(-90deg)}.totop{text-align:right;margin:10px 0 0;font-size:.85rem}.totop a{color:var(--soft)}.fab{position:fixed;right:16px;bottom:16px;width:44px;height:44px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;text-decoration:none;font-size:1.2rem;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s}.bpt{display:grid;gap:2px;font-size:.9rem}.bpr{display:grid;grid-template-columns:minmax(0,2.2fr) 1fr 1fr 1fr;gap:8px;padding:7px 0;border-bottom:1px solid #eef0f3;color:inherit;text-decoration:none}.bpr span:not(:first-child){text-align:right}.bph{font-size:.75rem;color:#6b7280;font-weight:600;text-transform:uppercase}.pinv{margin:12px 0 4px}.pinv summary{cursor:pointer;font-weight:600}a.cert{color:inherit;text-decoration:none;border:1px solid #d9dce3}.lic{margin:10px 0 0;padding:8px 12px;border-radius:10px;font-size:.9rem;background:#eef8f1}.lic.soon{background:#fff4e0}.lic-ref{margin-top:3px;font-size:.85rem}.lic.late{background:#fdecec}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
+      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.lt,.lr{margin:12px 0 0;padding:12px 14px;border-radius:12px;background:#f6f8fc}.lt h3{margin:0 0 6px}.lt-p{display:grid;gap:2px;padding:6px 0;border-bottom:1px solid #e6e9f0}.lt-p:last-of-type{border-bottom:0}.lt-a{display:flex;gap:10px;flex-wrap:wrap;font-size:.9rem}.lt-a a{color:var(--blue);font-weight:600;text-decoration:none}.lt-p small{color:var(--soft)}.lt-msg,.lr{margin-top:8px}.lt-msg summary,.lr summary,.lb summary{color:var(--blue)!important;font-weight:700;margin-top:6px}.lt-msg select,.lt-msg textarea,.lt-msg input,.lr-f input,.lr-f textarea,.lr-f select,.lb-f input{display:block;width:100%;margin:6px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff}.lt-when{display:flex;gap:6px}.lt-send{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.lt-send button,.lr-f button,.lb-f button{padding:10px 14px;border:0;border-radius:10px;background:#25D366;color:#fff;font:inherit;font-weight:700;cursor:pointer}.lt-send button.sec,.lr-f button,.lb-f button{background:var(--ink)}.lr-o{display:flex;gap:8px;align-items:center;margin:4px 0;font-size:.92rem}.lr-o input{width:auto;margin:0}.lr-f{display:block;margin:0}.lb{margin-top:8px}.lb-f{display:block;margin:0}.lf{margin-top:8px}.lf summary{color:var(--blue)!important;font-weight:700}.lf-f{display:block;margin:0}.lf-f label{display:block;font-size:.85rem;color:var(--soft);margin-top:6px}.lf-f input:not([type=checkbox]){display:block;width:100%;margin:4px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}.lf-f label.lr-o{color:var(--ink)}.lf-f button{margin-top:8px;padding:10px 14px;border:0;border-radius:10px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer}.tcy-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}.tcy-facts div{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px}.tcy-facts span{display:block;font-size:.72rem;color:var(--soft)}.tcy-facts b{display:block}.tcy-facts small{color:var(--soft);font-size:.75rem}a.tile{color:inherit;text-decoration:none}html{scroll-behavior:smooth;scroll-padding-top:64px}.lnav{position:sticky;top:0;z-index:5;display:flex;gap:6px;overflow-x:auto;margin:0 -16px 12px;padding:8px 16px;background:rgba(244,245,247,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}.lnav a{flex:none;padding:7px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink);text-decoration:none;font-weight:600;font-size:.88rem}#lfind{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font:inherit;margin:0 0 8px}.qlist{display:grid}.qrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.qrow:last-child{border-bottom:0}.qa{font-weight:600}.qgo{grid-row:1/3;grid-column:2;color:var(--faint);font-size:1.3rem}.qc{display:flex;flex-wrap:wrap;gap:4px}.chip{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;background:#f1f2f5;color:var(--soft)}.chip.ok{background:var(--okt);color:var(--ok)}.chip.warn{background:var(--ambert);color:var(--amber)}.chip.bad{background:#fdecec;color:var(--red)}.pcard>details>summary{list-style:none;cursor:pointer;margin:0;color:inherit;font-weight:inherit}.pcard>details>summary::-webkit-details-marker{display:none}.pcard>details>summary h2{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}.pcard>details>summary h2::after{content:"▾";color:var(--faint);transition:transform .2s}.pcard>details:not([open])>summary h2::after{transform:rotate(-90deg)}.totop{text-align:right;margin:10px 0 0;font-size:.85rem}.totop a{color:var(--soft)}.fab{position:fixed;right:16px;bottom:16px;width:44px;height:44px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;text-decoration:none;font-size:1.2rem;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s}.bpt{display:grid;gap:2px;font-size:.9rem}.bpr{display:grid;grid-template-columns:minmax(0,2.2fr) 1fr 1fr 1fr;gap:8px;padding:7px 0;border-bottom:1px solid #eef0f3;color:inherit;text-decoration:none}.bpr span:not(:first-child){text-align:right}.bph{font-size:.75rem;color:#6b7280;font-weight:600;text-transform:uppercase}.pinv{margin:12px 0 4px}.pinv summary{cursor:pointer;font-weight:600}a.cert{color:inherit;text-decoration:none;border:1px solid #d9dce3}.lic{margin:10px 0 0;padding:8px 12px;border-radius:10px;font-size:.9rem;background:#eef8f1}.lic.soon{background:#fff4e0}.lic-ref{margin-top:3px;font-size:.85rem}.lic.late{background:#fdecec}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
       'details summary{cursor:pointer;font-weight:700;color:var(--ok);margin-top:14px}' +
       '.cost{margin-top:10px;background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.9rem}.lj.done .cost{background:#fff}.cost.none{color:var(--soft)}.cr{display:flex;justify-content:space-between;gap:10px;padding:2px 0}.cr.tot{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;font-weight:800}.ci{margin-top:6px;font-size:.85rem}.ci a{color:var(--blue);font-weight:600;text-decoration:none}.late{color:var(--red);font-weight:700}' +
       '.sp{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}.sp div{background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px}.sp span{display:block;font-size:.75rem;color:var(--soft)}.sp b{display:block;font-size:1.15rem}.sp small{color:var(--soft)}' +
@@ -3685,6 +3720,129 @@ document.querySelectorAll('.lb-f').forEach(function(f){
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json({ ok: true });
   }));
+  // ---------- Form 4A: landlord's notice proposing a new rent (Housing Act 1988 s.13(2)) ----------
+  // The official form is filled in from the tenancy (and kept editable). The new rent
+  // must start: at least 2 months after the notice is served; no sooner than 52 weeks
+  // after the tenancy began (or the last increase); and on a rent day (Note A).
+  const isoD = function (v) { return v instanceof Date ? v.toISOString().slice(0, 10) : (/^\d{4}-\d{2}-\d{2}/.test(String(v || '')) ? String(v).slice(0, 10) : ''); };
+  const addDaysIso = function (iso, n) { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const addMonthsIso = function (iso, n) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); if (!m) return ''; const d = new Date(Date.UTC(+m[1], +m[2] - 1 + n, +m[3])); if (d.getUTCDate() !== +m[3]) d.setUTCDate(0); return d.toISOString().slice(0, 10); };
+  // The first rent day (same day of the month as the tenancy began) on or after `iso`.
+  const rentDayOnOrAfter = function (iso, startIso) {
+    const sd = +startIso.slice(8, 10);
+    for (let k = 0; k < 3; k++) {
+      const d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1 + k, 1)), last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+      const c = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), Math.min(sd, last))).toISOString().slice(0, 10);
+      if (c >= iso) return c;
+    }
+    return iso;
+  };
+  function form4aPlan(t, served) {
+    const d = t.data || {}, start = isoD(d.start_date || t.start_date), today = served || new Date().toISOString().slice(0, 10);
+    const incs = Object.keys(t.intention || {}).map(function (k) { const it = t.intention[k] || {}; return Number(it.new_rent) && !it.no_increase ? { rent: Number(it.new_rent), from: it.rent_from || k } : null; })
+      .filter(Boolean).sort(function (a, b) { return a.from < b.from ? -1 : 1; });
+    const done = incs.filter(function (x) { return x.from <= today; });
+    const last = done.length ? done[done.length - 1] : null, firstInc = incs.length ? incs[0].from : '';
+    const rent = last ? last.rent : Number(d.rent_pcm) || 0;
+    if (!start) return { ok: false, error: 'no-start-date' };
+    const earliest = rentDayOnOrAfter([addMonthsIso(today, 2), addDaysIso(last ? last.from : start, 364)].sort().pop(), start);
+    return { ok: true, start: start, rent: rent, lastIncrease: last ? last.from : '', firstIncrease: firstInc && firstInc <= today ? firstInc : '', earliest: earliest, served: today, rentDay: +start.slice(8, 10) };
+  }
+  function f4aCheck(plan, newStart) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newStart || '')) return 'Choose the date the new rent starts.';
+    if (newStart < addMonthsIso(plan.served, 2)) return 'The notice must be served at least 2 months before the new rent starts — the earliest is ' + certDay(plan.earliest) + '.';
+    if (newStart < addDaysIso(plan.lastIncrease || plan.start, 364)) return 'The new rent can’t start until 52 weeks after ' + (plan.lastIncrease ? 'the last increase' : 'the tenancy began') + ' — the earliest is ' + certDay(plan.earliest) + '.';
+    if (+newStart.slice(8, 10) !== plan.rentDay && !(plan.rentDay > 28 && newStart === rentDayOnOrAfter(newStart.slice(0, 8) + '01', plan.start))) return 'The new rent must start on a rent day (the ' + plan.rentDay + (plan.rentDay % 10 === 1 && plan.rentDay !== 11 ? 'st' : plan.rentDay % 10 === 2 && plan.rentDay !== 12 ? 'nd' : plan.rentDay % 10 === 3 && plan.rentDay !== 13 ? 'rd' : 'th') + ' of the month).';
+    return null;
+  }
+  // "Flat 9, Picker Court, London SE1 9ZZ" → first line, second line, town, postcode.
+  function addrLines(a) {
+    const m = POSTCODE_RE.exec(String(a || '')), pc = m ? (m[1] + ' ' + m[2]).toUpperCase() : '';
+    const parts = String(a || '').replace(POSTCODE_RE, '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+    const town = parts.length > 1 ? parts.pop() : '';
+    return { l1: parts.length > 1 ? parts.slice(0, -1).join(', ') : (parts[0] || ''), l2: parts.length > 1 ? parts[parts.length - 1] : '', town: town, pc: pc };
+  }
+  const ukD = function (iso) { return iso ? iso.slice(8, 10) + iso.slice(5, 7) + iso.slice(0, 4) : ''; };   // the form's date boxes: DDMMYYYY, one digit per square
+  async function fillForm4a(t, o) {
+    const { PDFDocument } = require('pdf-lib');
+    const doc = await PDFDocument.load(require('fs').readFileSync(require('path').join(__dirname, 'forms', 'form-4a.pdf')));
+    const form = doc.getForm(), d = t.data || {}, plan = o.plan;
+    const set = function (name, v) { try { form.getTextField(name).setText(v == null ? '' : String(v)); } catch (e) { /* field missing */ } };
+    const tick = function (name, on) { try { const c = form.getCheckBox(name); if (on) c.check(); else c.uncheck(); } catch (e) {} };
+    const prop = addrLines(d.address || t.address);
+    set('Text Field 109', (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean).join(', '));
+    set('Text Field 93', prop.l1); set('Text Field 92', prop.l2); set('Text Field 91', prop.town); set('Text Field 90', ''); set('Text Field 1018', prop.pc);
+    // The landlord: their own address, else care of the agent (where the tenant can serve documents).
+    const ll = o.landlord || {}, la = ll.l1 || POSTCODE_RE.test(ll.pc || '') ? ll : (o.agent ? Object.assign({}, addrLines(INVOICE.address), { l1: 'c/o ' + INVOICE.from + ', ' + addrLines(INVOICE.address).l1 }) : {});
+    set('Text Field 95', ll.name || ''); set('Text Field 107', la.l1 || ''); set('Text Field 106', la.l2 || ''); set('Text Field 105', la.town || ''); set('Text Field 104', ''); set('Text Field 103', la.pc || '');
+    set('Text Field 99', ll.phone || ''); set('Text Field 100', o.landlordEmail ? ll.email || '' : '');
+    if (o.agent) {
+      const ag = addrLines(INVOICE.address);
+      set('Text Field 128', INVOICE.from); set('Text Field 1017', ag.l1); set('Text Field 1016', ag.l2); set('Text Field 1015', ag.town); set('Text Field 1011', ''); set('Text Field 1010', ag.pc);
+      set('Text Field 127', process.env.OFFICE_PHONE || ''); set('Text Field 101', process.env.OFFICE_EMAIL || '');
+    }
+    set('Text Field 114', plan.rent ? plan.rent.toFixed(2) : ''); set('Text Field 113', 'per month');
+    set('Text Field 102', ukD(plan.start)); set('Text Field 1014', ukD(plan.lastIncrease)); set('Text Field 1012', ukD(plan.firstIncrease));
+    set('Text Field 116', Number(o.newRent).toFixed(2)); set('Text Field 115', 'per month'); set('Text Field 108', ukD(o.newStart));
+    ['129', '130', '131', '132', '133', '134', '135', '136', '137', '138'].forEach(function (n) { set('Text Field ' + n, 'nil'); });   // bills in the rent: none unless changed
+    tick('Check Box 37', o.as !== 'agent'); tick('Check Box 36', o.as === 'agent');
+    set('Text Field 111', o.sign ? o.signer : ''); set('Text Field 112', o.signer || ''); set('Text Field 1013', ukD(plan.served));
+    return Buffer.from(await doc.save());
+  }
+  // What the form needs from the request, checked; the tenancy's intention is updated so the new rent shows everywhere.
+  async function form4aFor(p, t, b, who) {
+    const plan = form4aPlan(t, isoDay(b.served) || null);
+    if (!plan.ok) return { error: 'This tenancy has no start date.' };
+    const newRent = money(b.new_rent);
+    if (!newRent) return { error: 'Enter the new rent.' };
+    if (newRent <= plan.rent) return { error: 'The new rent must be more than the current rent (£' + plan.rent.toFixed(2) + ').' };
+    const newStart = String(b.start || plan.earliest), bad = f4aCheck(plan, newStart);
+    if (bad) return { error: bad };
+    const signer = str(b.signer, 120) || '';
+    if (!signer) return { error: 'Enter the name of the person signing.' };
+    const pdf = await fillForm4a(t, { plan: plan, newRent: newRent, newStart: newStart, signer: signer, sign: !!b.sign, as: who.as, agent: who.agent, landlord: who.landlord, landlordEmail: !!b.landlord_email });
+    // Recorded against the anniversary it belongs to.
+    const key = nextTermEnd(plan.start, 12, plan.served) || newStart;
+    await p.query(`UPDATE tenancies SET intention = intention || jsonb_build_object($2::text, coalesce(intention->$2, '{}'::jsonb) || jsonb_build_object('new_rent', $3::numeric, 'rent_from', $4::text, 'no_increase', false, 'form4a_at', $5::text, 'form4a_by', $6::text)) WHERE id = $1`,
+      [t.id, key, newRent, newStart, new Date().toISOString(), who.by]);
+    await p.query('UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1',
+      [t.id, JSON.stringify([{ at: new Date().toISOString(), text: 'Form 4A rent increase notice prepared by ' + who.by + ': £' + newRent.toFixed(2) + ' a month from ' + certDay(newStart) + '.' }])]);
+    return { pdf: pdf, newRent: newRent, newStart: newStart, plan: plan };
+  }
+  function landlordFromTenancy(t, lrec) {
+    const l = (t.data || {}).landlord || {}, a = l.line1 || POSTCODE_RE.test(l.postcode || '') ? { l1: l.line1 || '', l2: l.line2 || '', town: '', pc: POSTCODE_RE.test(l.postcode || '') ? l.postcode : '' } : addrLines((lrec && lrec.address) || '');
+    return Object.assign({ name: l.name || (lrec && lrec.name) || '', phone: l.phone || (lrec && lrec.phone) || '', email: l.email || (lrec && lrec.email) || '' }, a);
+  }
+  app.get('/api/admin/tenancies/:id/form4a-plan', withDb(async function (p, req, res) {
+    const t = (await p.query('SELECT id, address, start_date, data, intention FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
+    if (!t) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json(form4aPlan(t));
+  }));
+  app.post('/api/admin/tenancies/:id/form4a', withDb(async function (p, req, res) {
+    const t = (await p.query('SELECT id, address, start_date, data, intention FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
+    if (!t) return res.status(404).json({ ok: false, error: 'not-found' });
+    const lrec = (await p.query('SELECT l.name, l.email, l.phone, l.address FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [propKey(t.address)])).rows[0];
+    const r = await form4aFor(p, t, req.body || {}, { as: 'agent', agent: true, landlord: landlordFromTenancy(t, lrec), by: 'Residential Realtors' });
+    if (r.error) return res.status(400).json({ ok: false, error: r.error });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="Form-4A-' + (addrLines(t.address).l1 || 'rent-increase').replace(/[^A-Za-z0-9]+/g, '-') + '.pdf"');
+    res.send(r.pdf);
+  }));
+  app.post('/l/:token/tenancies/:id/form4a', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    const t = (await p.query('SELECT id, address, property_key, start_date, data, intention FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
+    if (!t || who.keys[t.property_key] === undefined) return res.status(404).json({ ok: false, error: 'not-found' });
+    const b = req.body || {}, svc = String((t.data || {}).service || '');
+    const r = await form4aFor(p, t, b, { as: 'landlord', agent: b.agent === undefined ? !/tenant find/i.test(svc) || !svc : !!b.agent, landlord: landlordFromTenancy(t, who.l), by: 'the landlord, ' + (who.l.name || '') });
+    if (r.error) return res.status(400).json({ ok: false, error: r.error });
+    ntfy({ title: 'Landlord prepared a rent increase notice', message: (who.l.name || 'A landlord') + ' — ' + t.address + ': Form 4A, new rent £' + r.newRent.toFixed(2) + ' a month from ' + certDay(r.newStart) + '.', tags: ['page_facing_up'] }).catch(function () {});
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="Form-4A-' + (addrLines(t.address).l1 || 'rent-increase').replace(/[^A-Za-z0-9]+/g, '-') + '.pdf"');
+    res.send(r.pdf);
+  }));
+
   // The tenants' plans for the end of this term: asked (how) and/or their answer.
   app.post('/api/admin/tenancies/:id/intention', withDb(async function (p, req, res) {
     const b = req.body || {}, end = String(b.period_end || '');

@@ -1467,7 +1467,12 @@
       <div class="row-actions" style="margin-top:8px"><button class="btn small primary" type="button" id="tiSaveRent">Save the rent review</button></div></div>
     <div class="ti-box" id="tiNotice" style="margin-top:10px"><div class="lbl">Rent increase notice (Form 4A)</div>
       <p class="muted-note" id="tiNoticeText" style="margin:0 0 8px"></p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn small" id="tiFormLink" target="_blank" rel="noopener">📄 Get Form 4A on GOV.UK</a><button class="btn small" type="button" id="tiFormCopy">Copy the details for the form</button></div>
+      <div class="ti-f4" style="display:grid;gap:6px;margin:0 0 8px;padding:10px;border:1px solid var(--line);border-radius:10px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span>New rent starts</span><input class="inp" type="date" id="tiF4Start" style="width:160px"><span class="muted-note" id="tiF4Earliest" style="margin:0"></span></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span>Signed by</span><input class="inp" id="tiF4Signer" placeholder="Your name (print name)" style="max-width:220px"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="tiF4Sign" checked> sign electronically</label></div>
+        <div><button class="btn small primary" type="button" id="tiF4Make">📄 Fill in Form 4A (PDF)</button> <span class="muted-note" style="margin:0">Uses the new rent above · signed as the landlord’s agent · the PDF stays editable</span></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn small" id="tiFormLink" target="_blank" rel="noopener">📄 Blank Form 4A on GOV.UK</a><button class="btn small" type="button" id="tiFormCopy">Copy the details for the form</button></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"><span>Served on</span><input class="inp" type="date" id="tiServedOn" style="width:160px">
         <select class="inp" id="tiServedHow" style="width:auto"><option>email</option><option>post</option><option>by hand</option></select>
         <button class="btn small primary" type="button" id="tiServed">Mark notice served</button></div></div>
@@ -3101,6 +3106,10 @@
       : late ? '⚠ It’s now less than 2 months to the anniversary, so a notice served today can’t start the new rent on ' + esc(longDay(n.end)) + '. The earliest would be <b>' + esc(longDay(tcyEarliestIfToday(n.end))) + '</b>.'
       : 'To start the new rent on <b>' + esc(longDay(n.end)) + '</b>, serve the notice by <b>' + esc(longDay(by)) + '</b> — earlier if posting, to allow for delivery. Fill in the form from GOV.UK, send it to the tenants, then mark it served here.';
     $('tiServedOn').value = tiCur.it.notice_served || isoDay(new Date()); $('tiServedHow').value = tiCur.it.notice_how || 'email';
+    // Form 4A: the earliest valid start date (2 months' notice, 52 weeks, a rent day), worked out on the server.
+    $('tiF4Earliest').textContent = ''; $('tiF4Start').value = tiCur.it.rent_from || '';
+    try { $('tiF4Signer').value = $('tiF4Signer').value || localStorage.getItem('rr_f4_signer') || ''; } catch (e) {}
+    api('GET', '/api/admin/tenancies/' + t.id + '/form4a-plan').then(function(pl){ if (!pl.ok || !tiCur || tiCur.t.id !== t.id) return; tiCur.f4 = pl; $('tiF4Start').min = pl.earliest; if (!$('tiF4Start').value || $('tiF4Start').value < pl.earliest) $('tiF4Start').value = pl.earliest; $('tiF4Earliest').textContent = 'earliest ' + longDay(pl.earliest); });
     $('tiNotice').hidden = !!tiCur.it.no_increase;
     $('tiNoInc').checked = !!tiCur.it.no_increase;
     var l = d.landlord || {};
@@ -3132,6 +3141,22 @@
       '\n\nKind regards,\nResidential Realtors';
   }
   // The details the government form asks for, to copy across.
+  $('tiF4Make').addEventListener('click', function(){
+    if (!tiCur) return;
+    var signer = $('tiF4Signer').value.trim(); if (!signer) { toast('Enter your name to sign the form'); $('tiF4Signer').focus(); return; }
+    try { localStorage.setItem('rr_f4_signer', signer); } catch (e) {}
+    var b = $('tiF4Make'); busy(b, true, 'Filling in…');
+    fetch('/api/admin/tenancies/' + tiCur.t.id + '/form4a', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_rent: $('tiNewRent').value, start: $('tiF4Start').value, signer: signer, sign: $('tiF4Sign').checked }) })
+      .then(function(r){ return /pdf/.test(r.headers.get('content-type') || '') ? r.blob().then(function(x){ return { pdf: x, name: ((r.headers.get('content-disposition') || '').match(/filename="([^"]+)"/) || [])[1] }; }) : r.json(); })
+      .then(function(d){
+        busy(b, false);
+        if (!d.pdf) { toast((d && d.error) || 'Couldn’t fill in the form'); return; }
+        var a = document.createElement('a'); a.href = URL.createObjectURL(d.pdf); a.download = d.name || 'Form-4A.pdf'; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+        toast('Form 4A filled in — check it, then serve it on the tenants and mark it served');
+        var id = tiCur.t.id; loadTenancies().then(function(){ renderTenancies(); });
+      }).catch(function(){ busy(b, false); toast('Couldn’t fill in the form'); });
+  });
   $('tiFormCopy').addEventListener('click', function(){
     var d = tiCur.d, l = d.landlord || {}, old = num(d.rent_pcm) || 0, nw = num($('tiNewRent').value.replace(/[£,\s]/g, '')) || old;
     var lAddr = [l.line1, l.line2, l.postcode, l.country].filter(Boolean).join(', ');
