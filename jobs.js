@@ -4049,23 +4049,6 @@ module.exports = function mountJobs(app, opts) {
     }
   }
   setTimeout(function () { licenceAlerts().catch(function (err) { console.error('Licence alerts failed:', err.message); }); }, 120 * 1000);
-  // TEMPORARY: does the Southwark register answer a plain postcode search
-  // (no browser)? And what do its robots rules say? Logged once; removed after.
-  setTimeout(async function () {
-    const base = 'https://southwark.metastreet.co.uk';
-    const show = function (label, t) { console.log('[licence-test] ' + label + ': ' + String(t).replace(/\s+/g, ' ').slice(0, 2500)); };
-    try {
-      const rb = await fetch(base + '/robots.txt', { signal: AbortSignal.timeout(15000) });
-      show('robots ' + rb.status, await rb.text());
-      const r = await fetch(base + '/public-register?search%5Bquery%5D=' + encodeURIComponent('SE1 1PT'), { signal: AbortSignal.timeout(20000), headers: { 'user-agent': 'Mozilla/5.0 (Fixflow; Residential Realtors licence check)' } });
-      const html = await r.text();
-      show('search status', r.status + ' ' + r.url + ' ' + html.length + ' bytes');
-      const body = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-      const i = body.search(/result|licen[cs]e number|no results|recaptcha|captcha|error/i);
-      show('search text', body.slice(Math.max(0, i - 300), i + 2200));
-      show('tables', (html.match(/<table[\s\S]{0,300}/gi) || []).length + ' tables; ' + ((html.match(/data-js-[a-z-]+/gi) || []).filter(function (v, k, a) { return a.indexOf(v) === k; }).slice(0, 40).join(' ')));
-    } catch (e) { show('failed', e.message); }
-  }, 25 * 1000);
   setInterval(function () { licenceAlerts().catch(function (err) { console.error('Licence alerts failed:', err.message); }); }, 6 * 3600 * 1000).unref();
   setInterval(function () { tenancyEndAlerts().catch(function (err) { console.error('Tenancy alerts failed:', err.message); }); }, 6 * 3600 * 1000).unref();
   setInterval(function () { raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); }); }, 3600 * 1000).unref();
