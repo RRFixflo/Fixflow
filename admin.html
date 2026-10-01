@@ -1685,6 +1685,7 @@
       <button class="btn ghost" type="button" id="tnClose">Close</button>
       <span style="flex:1"></span>
       <button class="btn" type="button" id="tnWaNext">WhatsApp next tenant</button>
+      <button class="btn" type="button" id="tnCopyEmails">Copy email addresses</button>
       <button class="btn primary" type="button" id="tnEmailAll">Email all</button>
     </div>
   </div>
@@ -4958,7 +4959,7 @@
   }
   function openTenantBroadcast(address, everyone){
     var props = tnProperties();
-    tn = { keys: [], scope: 'one', baseKey: null, noticeId: null, sent: {}, recips: [], excluded: {} };
+    tn = { keys: [], scope: 'one', baseKey: null, noticeId: null, sent: {}, recips: [], excluded: {} }; tnMail = null;
     if (address) { tn.baseKey = propKey(address); tn.keys = [tn.baseKey]; tn.scope = 'one'; }
     else { tn.scope = everyone ? 'all' : 'pick'; }
     $('tnSubject').value = TN_TEMPLATES[0][1]; $('tnBody').value = TN_TEMPLATES[0][2];
@@ -5009,7 +5010,8 @@
           (r.email ? '<button type="button" class="btn small" data-tn-mail="' + i + '">Email</button>' : '') + '</div></div>';
     }).join('') : '<p class="muted-note" style="margin:0">' + (tn.keys.length ? 'No tenants saved for ' + (tn.keys.length === 1 ? 'this property' : 'these properties') + ' yet — add them on the property page or in a tenancy.' : 'Choose which properties above.') + '</p>';
     var emails = reach.filter(function(r){ return r.email; }).length, was = reach.filter(function(r){ return waNumber(r.phone) && !tn.sent[r.key]; }).length;
-    $('tnEmailAll').textContent = 'Email all (' + emails + ')'; $('tnEmailAll').disabled = !emails;
+    $('tnEmailAll').textContent = tnMail && tnMail.groups.length > 1 && tnMail.next > 0 ? (tnMail.next < tnMail.groups.length ? 'Open email ' + (tnMail.next + 1) + ' of ' + tnMail.groups.length : 'All ' + tnMail.groups.length + ' emails opened') : 'Email all (' + emails + ')';
+    $('tnEmailAll').disabled = !emails; $('tnCopyEmails').hidden = !emails;
     $('tnWaNext').textContent = 'WhatsApp next tenant' + (was ? ' (' + was + ' left)' : ''); $('tnWaNext').disabled = !was;
   }
   function tnDrawPicker(){
@@ -5045,12 +5047,6 @@
     if ((b = e.target.closest('[data-tn-mail]'))) {
       var r = tn.recips[Number(b.dataset.tnMail)];
       tnEnsureNotice().then(function(id){
-        if (meta.canEmail) {
-          busy(b, true, '…');
-          return api('POST', '/api/admin/tenant-notices/' + id + '/email', { subject: tnFill($('tnSubject').value, r), messages: [{ key: r.key, to: r.email, text: tnFill($('tnBody').value, r) }] }).then(function(d){
-            busy(b, false); if (d.ok && d.sent.length) { tn.sent[r.key] = 'email'; tnDraw(); toast('Email sent to ' + (r.name || r.email)); } else toast('Couldn’t send the email');
-          });
-        }
         window.location.href = 'mailto:' + encodeURIComponent(r.email) + '?subject=' + encodeURIComponent(tnFill($('tnSubject').value, r)) + '&body=' + encodeURIComponent(tnFill($('tnBody').value, r));
         tnMark(r, 'email');
       })['catch'](function(){});
@@ -5067,35 +5063,44 @@
     var r = tn.recips.filter(function(x){ return waNumber(x.phone) && !tn.excluded[x.key] && !tn.sent[x.key]; })[0];
     if (r) tnWa(r);
   });
+  // Email all: opens your own email app (tenants in Bcc, so they can't see each
+  // other). A long list is split into several emails, one per tap, as email
+  // links that are too long don't open in some mail apps.
+  var tnMail = null;
+  function tnMailList(){ return tn.recips.filter(function(r){ return r.email && !tn.excluded[r.key]; }); }
   $('tnEmailAll').addEventListener('click', function(){
-    var list = tn.recips.filter(function(r){ return r.email && !tn.excluded[r.key]; });
+    var list = tnMailList();
     if (!list.length) return;
-    var subj = $('tnSubject').value;
-    tnEnsureNotice().then(function(id){
-      if (meta.canEmail) {
-        var todo = list.filter(function(r){ return !tn.sent[r.key] || tn.sent[r.key] !== 'email'; });
-        if (!todo.length) { toast('Everyone’s already been emailed'); return; }
-        if (!subj.trim()) { toast('Add a subject first'); $('tnSubject').focus(); return; }
-        if (!confirm('Email ' + todo.length + ' tenant' + (todo.length === 1 ? '' : 's') + ' now? Each gets their own copy.')) return;
-        // In batches of 15, so a long list never times out; the button shows progress.
-        var body = $('tnBody').value, sentN = 0, failN = 0, i = 0;
-        var next = function(){
-          if (i >= todo.length) { busy($('tnEmailAll'), false); tnDraw(); toast(sentN + ' email' + (sentN === 1 ? '' : 's') + ' sent' + (failN ? ' · ' + failN + ' failed' : '')); return; }
-          var part = todo.slice(i, i + 15); i += part.length;
-          if (!$('tnEmailAll').disabled) busy($('tnEmailAll'), true);
-          $('tnEmailAll').textContent = 'Sending ' + i + ' of ' + todo.length + '…';
-          return api('POST', '/api/admin/tenant-notices/' + id + '/email', { subject: tnFill(subj, part[0]), messages: part.map(function(r){ return { key: r.key, to: r.email, subject: tnFill(subj, r), text: tnFill(body, r) }; }) }).then(function(d){
-            if (!d.ok) { failN += part.length; } else { d.sent.forEach(function(k){ tn.sent[k] = 'email'; }); sentN += d.sent.length; failN += d.failed.length; }
-            return next();
-          });
-        };
-        return next();
+    tnEnsureNotice().then(function(){
+      var one = tn.keys.length === 1 ? shortAddr(list[0].address) : 'your home';
+      var subj = $('tnSubject').value.replace(/\{address\}/g, one), body = $('tnBody').value.replace(/\{first_name\}/g, 'there').replace(/\{address\}/g, one);
+      var sig = list.map(function(r){ return r.email; }).join(',') + '|' + subj + '|' + body;
+      if (!tnMail || tnMail.sig !== sig) {
+        var groups = [], cur = [], room = Math.max(400, 1900 - encodeURIComponent(subj).length - encodeURIComponent(body).length);
+        list.forEach(function(r){ if (cur.length && encodeURIComponent(cur.concat([r.email]).join(',')).length > room) { groups.push(cur); cur = []; } cur.push(r); });
+        if (cur.length) groups.push(cur);
+        tnMail = { sig: sig, groups: groups, next: 0 };
       }
-      // No email service: one email in your own mail app, tenants in Bcc so they can't see each other.
-      var body = $('tnBody').value.replace(/\{first_name\}/g, 'there').replace(/\{address\}/g, tn.keys.length === 1 ? shortAddr(list[0].address) : 'your home');
-      window.location.href = 'mailto:?bcc=' + encodeURIComponent(list.map(function(r){ return r.email; }).join(',')) + '&subject=' + encodeURIComponent(subj.replace(/\{address\}/g, tn.keys.length === 1 ? shortAddr(list[0].address) : 'your home')) + '&body=' + encodeURIComponent(body);
-      list.forEach(function(r){ tnMark(r, 'email'); });
+      var g = tnMail.groups[tnMail.next];
+      if (!g) { tnMail.next = 0; g = tnMail.groups[0]; }
+      window.location.href = 'mailto:?bcc=' + encodeURIComponent(g.map(function(r){ return r.email; }).join(',')) + '&subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
+      g.forEach(function(r){ tnMark(r, 'email'); });
+      tnMail.next += 1;
+      var n = tnMail.groups.length;
+      if (n > 1) {
+        setTimeout(function(){
+          $('tnEmailAll').textContent = tnMail.next < n ? 'Open email ' + (tnMail.next + 1) + ' of ' + n : 'All ' + n + ' emails opened';
+          if (tnMail.next < n) toast('Long list — split into ' + n + ' emails. Send this one, then tap “Open email ' + (tnMail.next + 1) + ' of ' + n + '”.');
+        }, 50);
+      }
     })['catch'](function(){});
+  });
+  $('tnCopyEmails').addEventListener('click', function(){
+    var t = tnMailList().map(function(r){ return r.email; }).join(', ');
+    if (!t) { toast('No email addresses for these tenants'); return; }
+    var done = function(){ toast(tnMailList().length + ' email addresses copied — paste them into Bcc'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, function(){ window.prompt('Copy these addresses:', t); });
+    else window.prompt('Copy these addresses:', t);
   });
   $('tnClose').addEventListener('click', function(){ $('tnModal').hidden = true; if (view === 'props' && openPropKey) renderPropNotices(); });
   $('tnModal').addEventListener('mousedown', function(e){ if (e.target === $('tnModal')) $('tnClose').click(); });
