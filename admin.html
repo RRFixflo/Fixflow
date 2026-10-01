@@ -7699,6 +7699,7 @@
       else if (got.date_taken) d.holding_date = got.date_taken;
     }
     if (d.address && !(d.landlord && d.landlord.name)) tcyFillLandlord(d);
+    if (d.address && !got) tcyFillTenants(d);   // a new tenancy started from a property
     return d;
   }
   // The landlord already on file for the property.
@@ -7711,6 +7712,27 @@
     return true;
   }
 
+  // The tenants saved at the property: fill an empty tenant list with them, or
+  // add missing phone numbers / emails to the tenants already typed in.
+  function tcyFillTenants(d){
+    var pr = d.address && matchProperty(d.address); if (!pr) return 0;
+    var onFile = tcyOnFileTenants(pr); if (!onFile.length) return 0;
+    var list = (d.tenants || []).filter(function(x){ return x && (x.name || x.phone || x.email); });
+    if (!list.length) { d.tenants = onFile.map(function(x){ return Object.assign({}, x); }); return d.tenants.length; }
+    var n = 0;
+    list.forEach(function(x){
+      var hit = onFile.filter(function(o){ return tcySameTenant(x, o); })[0]; if (!hit) return;
+      var got = false; ['name', 'email', 'phone'].forEach(function(k){ if (!x[k] && hit[k]) { x[k] = hit[k]; got = true; } }); if (got) n++;
+    });
+    return n;
+  }
+  // A tenant typed into the form who's already saved anywhere: their details.
+  function tcySavedTenant(x, d){
+    var pr = d.address && matchProperty(d.address);
+    var hit = pr ? tcyOnFileTenants(pr).filter(function(o){ return tcySameTenant(x, o); })[0] : null;
+    return hit || findTenantRec(x, pr || null);
+  }
+
   // ----- Form -----
   function tcyInp(id, label, value, attrs){ return '<div><label class="lbl" for="' + id + '">' + label + '</label><input class="inp" id="' + id + '" value="' + esc(value == null ? '' : value) + '"' + (attrs || '') + '></div>'; }
   function tcyPersonRows(kind){
@@ -7718,7 +7740,7 @@
     return list.map(function(p, i){
       var lab = kind === 'tenants' ? (i === 0 ? 'Lead tenant' : 'Tenant ' + (i + 1)) : 'Guarantor ' + (i + 1);
       return '<div class="tcy-person' + (kind === 'guarantors' ? ' g' : '') + '" data-kind="' + kind + '" data-i="' + i + '">' +
-        '<div><label class="lbl">' + lab + ' — full name</label><input class="inp" data-f="name" value="' + esc(p.name || '') + '"></div>' +
+        '<div><label class="lbl">' + lab + ' — full name</label><input class="inp" data-f="name"' + (kind === 'tenants' ? ' list="tfTenantNames" autocomplete="off"' : '') + ' value="' + esc(p.name || '') + '"></div>' +
         '<div><label class="lbl">Email</label><input class="inp" type="email" data-f="email" value="' + esc(p.email || '') + '"></div>' +
         '<div><label class="lbl">Phone</label><input class="inp" type="tel" data-f="phone" value="' + esc(p.phone || '') + '"></div>' +
         '<button type="button" class="tcy-x" data-del-person="' + kind + '" data-i="' + i + '" title="Remove"' + (kind === 'tenants' && list.length === 1 ? ' disabled' : '') + '>×</button></div>';
@@ -7776,7 +7798,9 @@
         '<div class="tcy-sum" id="tfSum"></div>' +
       '</div>' +
       // People
-      '<div class="card"><h3>Tenants<span style="flex:1"></span><button type="button" class="btn small" id="tfAddTen">+ Add tenant</button></h3><div id="tfTenants">' + tcyPersonRows('tenants') + '</div></div>' +
+      '<div class="card"><h3>Tenants<span style="flex:1"></span><button type="button" class="btn small" id="tfAddTen">+ Add tenant</button></h3><div id="tfTenants">' + tcyPersonRows('tenants') + '</div>' +
+        '<datalist id="tfTenantNames">' + Array.from(new Set(tenantRecs.map(function(r){ return r.name; }).filter(Boolean))).sort().map(function(n){ return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
+        '<p class="muted-note" style="margin:6px 0 0">Start typing a saved tenant’s name, phone or email and the rest fills in.</p></div>' +
       '<div class="card"><h3>Guarantors<span style="flex:1"></span><button type="button" class="btn small" id="tfAddGua">+ Add guarantor</button></h3><div id="tfGuarantors">' + (d.guarantors.length ? tcyPersonRows('guarantors') : '<p class="muted-note" style="margin:0">No guarantors. The agreement leaves the guarantor sections out.</p>') + '</div></div>' +
       '<div class="card"><h3>Landlord</h3>' +
         (landlords.length ? '<div style="margin:-2px 0 12px"><label class="lbl" for="tfLlPick">Choose a landlord on file</label><select class="inp" id="tfLlPick">' +
@@ -8040,13 +8064,26 @@
       if (tcyDraft && e.target.id === 'tfAddress') {
         tcyRead();
         // Fill the landlord boxes in place (redrawing the form would lose what's being typed next).
+        var said = [];
         if (!tcyDraft.landlord.name && tcyFillLandlord(tcyDraft)) {
           var L = tcyDraft.landlord;
           [['tfLlName', L.name], ['tfLlEmail', L.email], ['tfLlPhone', L.phone], ['tfLl1', L.line1], ['tfLl2', L.line2], ['tfLlCountry', L.country], ['tfLlPc', L.postcode]].forEach(function(f){ if ($(f[0])) $(f[0]).value = f[1] || ''; });
-          toast('Landlord filled in from the property');
+          said.push('landlord');
         }
+        var nt = tcyFillTenants(tcyDraft);
+        if (nt) { $('tfTenants').innerHTML = tcyPersonRows('tenants'); said.push(nt === 1 ? 'tenant' : nt + ' tenants'); }
+        if (said.length) toast(said.join(' and ').replace(/^./, function(c){ return c.toUpperCase(); }) + ' filled in from the property');
         tcyRefresh();
         if (propKey(tcyDraft.address) !== tcyCertKey) tcyCertsForAddress();
+      } else if (tcyDraft && e.target.closest('.tcy-person[data-kind="tenants"]') && e.target.value.trim()) {
+        // A saved tenant: fill in the rest of their details.
+        var row = e.target.closest('.tcy-person'), i = Number(row.dataset.i);
+        tcyRead(); var x = tcyDraft.tenants[i]; if (!x) return;
+        var probe = {}; probe[e.target.dataset.f] = e.target.value.trim();
+        var hit = tcySavedTenant(probe, tcyDraft); if (!hit) return;
+        var filled = false;
+        ['name', 'email', 'phone'].forEach(function(k){ var inp = row.querySelector('[data-f="' + k + '"]'); if (inp && !inp.value.trim() && hit[k]) { inp.value = hit[k]; x[k] = hit[k]; filled = true; } });
+        if (filled) toast('Filled in from ' + (hit.name || 'the saved tenant'));
       } else if (tcyDraft && e.target.dataset.cf === 'na') {
         var f = e.target.closest('.tcy-cert').querySelector('.tcy-cert-f'); f.hidden = e.target.checked; tcyCertRead();
       }
