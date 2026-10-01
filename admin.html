@@ -1045,6 +1045,7 @@
               <div style="display:flex;gap:8px"><input class="inp" id="llAddProp" list="llPropList" placeholder="Start typing an address from your jobs"><button class="btn" id="llAddPropBtn" type="button">Add</button></div>
               <datalist id="llPropList"></datalist></div>
           </div>
+          <div class="card" id="llOwn" style="margin-top:12px" hidden></div>
           <h3 style="font-family:var(--display);margin:18px 0 10px">Repairs across their properties</h3>
           <div class="list" id="llJobs"></div>
         </div>
@@ -4363,12 +4364,12 @@
   // (a landlord can have many). Entering landlord details on a job or invoice
   // saves them and links the property automatically (done on the server).
   var LL_FIELDS = ['landlord_name', 'landlord_email', 'landlord_phone', 'landlord_address'];
-  var landlords = [], llByKey = {};
+  var landlords = [], llByKey = {}, llOwn = [];
   function loadLandlords(){
     if (!meta.db) return Promise.resolve();
     return api('GET', '/api/admin/landlords').then(function(d){
       if (!d.ok) return;
-      landlords = d.landlords;
+      landlords = d.landlords; llOwn = d.own || [];
       llByKey = {};
       d.links.forEach(function(k){ llByKey[k.property_key] = k; });
     });
@@ -6521,6 +6522,17 @@
     var linked = {}; props.forEach(function(x){ linked[x.key] = true; });
     $('llPropList').innerHTML = propertiesFromJobs().filter(function(pr){ return !linked[pr.key]; }).map(function(pr){ return '<option value="' + esc(pr.address) + '">'; }).join('');
     $('llJobs').innerHTML = all.length ? all.map(rowHtml).join('') : '<div class="empty">No repairs at their properties yet.</div>';
+    // Properties they added on their own page that we don't manage — possible new business.
+    var own = llOwn.filter(function(o){ return o.landlord_id === l.id; }), today = new Date().toISOString().slice(0, 10);
+    var day = function(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : v; };
+    $('llOwn').hidden = !own.length;
+    $('llOwn').innerHTML = '<h3>Their other properties <span class="count-chip">not managed by us</span></h3><p class="muted-note" style="margin:0 0 8px">Added by the landlord on their page.</p>' + own.map(function(o){
+      var d = o.data || {}, e = o.epc || {}, lic = d.licence || {};
+      var c = function(label, v){ return v ? label + ' ' + (v < today ? '<b style="color:var(--red,#c00)">expired ' + esc(day(v)) + '</b>' : 'to ' + esc(day(v))) : ''; };
+      var bits = [e.expires_on ? 'EPC ' + esc(e.rating || '') + ' ' + c('', e.expires_on) : 'No EPC found', c('Gas', d.gas), c('EICR', d.eicr), lic.status === 'licensed' ? 'Licence ' + esc(lic.number || '') + (lic.expires ? ' ' + c('', lic.expires) : '') : lic.status === 'applied' ? 'Licence applied for' : '',
+        d.rent ? gbp(d.rent) + '/month' : '', (d.tenants || []).length ? d.tenants.length + ' tenant' + (d.tenants.length === 1 ? '' : 's') : ''].filter(Boolean);
+      return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(o.address) + '</b>' + (d.manage_asked ? '<span class="pill Emergency">Asked us to manage it</span>' : '') + '</div><div class="muted-note" style="margin:2px 0 0">' + bits.join(' · ') + '</div></div>';
+    }).join('');
     var invs = landlordInvoices(l), un = invs.filter(function(i){ return !i.paid_at; }), paid = invs.filter(function(i){ return i.paid_at; });
     var od = un.filter(invOverdue);
     // Invoices by property, so it's clear what each property costs in maintenance.

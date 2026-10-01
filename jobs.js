@@ -143,6 +143,17 @@ CREATE TABLE IF NOT EXISTS property_landlords (
   landlord_id  INTEGER NOT NULL REFERENCES landlords(id) ON DELETE CASCADE,
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Properties a landlord keeps on their page that we don't manage (their own records).
+CREATE TABLE IF NOT EXISTS landlord_properties (
+  id             SERIAL PRIMARY KEY,
+  landlord_id    INTEGER NOT NULL REFERENCES landlords(id) ON DELETE CASCADE,
+  address        TEXT NOT NULL,
+  data           JSONB NOT NULL DEFAULT '{}'::jsonb,
+  epc            JSONB,
+  epc_checked_at TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS tenants (
   id         SERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1670,7 +1681,8 @@ module.exports = function mountJobs(app, opts) {
   app.get('/api/admin/landlords', withDb(async function (p, req, res) {
     const l = await p.query('SELECT id, name, email, phone, address, notes, created_at, updated_at FROM landlords ORDER BY lower(name)');
     const links = await p.query('SELECT property_key, address, landlord_id FROM property_landlords ORDER BY address');
-    res.json({ ok: true, landlords: l.rows, links: links.rows });
+    const own = await p.query('SELECT id, landlord_id, address, data, epc, created_at FROM landlord_properties ORDER BY address');
+    res.json({ ok: true, landlords: l.rows, links: links.rows, own: own.rows });
   }));
 
   function cleanLandlord(b) {
@@ -2730,6 +2742,77 @@ module.exports = function mountJobs(app, opts) {
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [j.id, 'change', 'Visit booked by the landlord: ' + apptDay(date) + (time ? ' ' + time : '') + (visitor ? ' — ' + visitor : '') + '.']);
     res.json({ ok: true });
   }));
+  // ---------- The landlord's own properties (not managed by us) ----------
+  // Kept on their page so all their properties are in one place. The EPC is
+  // looked up on the register when saved, and re-checked daily (see autoEpcAll).
+  function cleanOwnData(b) {
+    const lic = b.licence || {};
+    return {
+      rent: money(b.rent), tenancy_start: isoDay(b.tenancy_start) || '', gas: isoDay(b.gas) || '', eicr: isoDay(b.eicr) || '',
+      licence: { status: ['licensed', 'applied', 'not_needed', 'unknown'].indexOf(lic.status) !== -1 ? lic.status : 'unknown', number: str(lic.number, 80) || '', expires: isoDay(lic.expires) || '' },
+      tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 8).map(function (t) { return { name: str(t && t.name, 120) || '', phone: str(t && t.phone, 40) || '', email: str(t && t.email, 160) || '' }; }).filter(function (t) { return t.name || t.phone || t.email; }),
+      notes: str(b.notes, 2000) || ''
+    };
+  }
+  async function ownEpc(p, row) {
+    const m = POSTCODE_RE.exec(row.address || ''); if (!m) return null;
+    let hit = null;
+    try { hit = epcMatch(row.address, (await epcSearch((m[1] + ' ' + m[2]).toUpperCase())).results); } catch (err) { console.error('EPC lookup failed for own property ' + row.id + ':', err.message); return null; }
+    const epc = hit ? { expires_on: hit.expires_on, rating: hit.rating || '', reference: hit.reference || '' } : null;
+    if (epc) await p.query('UPDATE landlord_properties SET epc = $2, epc_checked_at = now() WHERE id = $1', [row.id, JSON.stringify(epc)]);
+    else await p.query('UPDATE landlord_properties SET epc_checked_at = now() WHERE id = $1', [row.id]);
+    return epc;
+  }
+  async function ownEpcAll(p) {
+    const soon = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+    const rows = (await p.query(`SELECT id, address FROM landlord_properties WHERE epc_checked_at IS NULL
+      OR (epc IS NULL AND epc_checked_at < now() - interval '30 days')
+      OR (epc->>'expires_on' <= $1 AND epc_checked_at < now() - interval '7 days') ORDER BY id LIMIT 200`, [soon])).rows;
+    for (const r of rows) { await ownEpc(p, r); await new Promise(function (res) { setTimeout(res, 1200); }); }
+  }
+  app.post('/l/:token/own', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    const b = req.body || {}, address = tidyAddress(str(b.address, 300) || '');
+    if (!address || !POSTCODE_RE.test(address)) return res.status(400).json({ ok: false, error: 'Please give the full address with its postcode.' });
+    if (who.keys[propKey(address)] !== undefined) return res.status(400).json({ ok: false, error: 'We already manage this property — it’s on your page.' });
+    const n = (await p.query('SELECT count(*)::int AS n FROM landlord_properties WHERE landlord_id = $1', [who.l.id])).rows[0].n;
+    if (n >= 100) return res.status(400).json({ ok: false, error: 'too-many' });
+    const r = await p.query('INSERT INTO landlord_properties (landlord_id, address, data) VALUES ($1, $2, $3) RETURNING id, address', [who.l.id, address, JSON.stringify(cleanOwnData(b))]);
+    const epc = await ownEpc(p, r.rows[0]);
+    ntfy({ title: 'Landlord added their own property', message: (who.l.name || 'A landlord') + ' added ' + address + ' to their page (not managed by us).', tags: ['house'] }).catch(function () {});
+    res.json({ ok: true, id: r.rows[0].id, epc: epc });
+  }));
+  app.put('/l/:token/own/:id', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    const b = req.body || {}, address = tidyAddress(str(b.address, 300) || '');
+    if (!address || !POSTCODE_RE.test(address)) return res.status(400).json({ ok: false, error: 'Please give the full address with its postcode.' });
+    const cur = (await p.query('SELECT id, address FROM landlord_properties WHERE id = $1 AND landlord_id = $2', [parseInt(req.params.id, 10) || 0, who.l.id])).rows[0];
+    if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+    await p.query('UPDATE landlord_properties SET address = $2, data = $3, updated_at = now()' + (address !== cur.address ? ', epc = NULL, epc_checked_at = NULL' : '') + ' WHERE id = $1', [cur.id, address, JSON.stringify(cleanOwnData(b))]);
+    if (address !== cur.address) await ownEpc(p, { id: cur.id, address: address });
+    res.json({ ok: true });
+  }));
+  app.delete('/l/:token/own/:id', withDb(async function (p, req, res) {
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    const r = await p.query('DELETE FROM landlord_properties WHERE id = $1 AND landlord_id = $2', [parseInt(req.params.id, 10) || 0, who.l.id]);
+    res.json({ ok: r.rowCount > 0 });
+  }));
+  // "Would you manage this for me?" — a phone alert to the office.
+  app.post('/l/:token/own/:id/manage', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, req.params.token);
+    const row = who ? (await p.query('SELECT id, address FROM landlord_properties WHERE id = $1 AND landlord_id = $2', [parseInt(req.params.id, 10) || 0, who.l.id])).rows[0] : null;
+    if (!row) return res.status(404).json({ ok: false, error: 'not-found' });
+    await p.query("UPDATE landlord_properties SET data = data || jsonb_build_object('manage_asked', now()::text) WHERE id = $1", [row.id]);
+    ntfy({ title: 'Landlord wants us to manage a property', message: (who.l.name || 'A landlord') + ' asked about us managing ' + row.address + '. Give them a call.', tags: ['house', 'star'] }).catch(function () {});
+    res.json({ ok: true });
+  }));
+
   // The tenant's original repair report (PDF), for a job at one of the landlord's properties.
   app.get('/l/:token/report/:id', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
@@ -3101,6 +3184,103 @@ document.querySelectorAll('.lb-f').forEach(function(f){
   });
 });
 })();</script>`;
+    // Their own properties (not managed by us), kept here so everything is in one place.
+    const owns = (await p.query('SELECT id, address, data, epc FROM landlord_properties WHERE landlord_id = $1 ORDER BY address', [l.id])).rows;
+    const todayI = new Date().toISOString().slice(0, 10), soonI = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+    const waLink = function (v) { let d = String(v || '').replace(/[^\d+]/g, ''); if (/^\+/.test(d)) d = d.slice(1); else if (/^00/.test(d)) d = d.slice(2); else if (/^0/.test(d)) d = '44' + d.slice(1); return d; };
+    const expState = function (d) { return !d ? '' : d < todayI ? 'bad' : d <= soonI ? 'warn' : 'ok'; };
+    const ownChips = function (o) {
+      const d = o.data || {}, e = o.epc || {}, out = [];
+      [['EPC', e.expires_on], ['Gas safety', d.gas], ['EICR', d.eicr], ['Licence', d.licence && d.licence.status === 'licensed' ? d.licence.expires : '']].forEach(function (c) {
+        const st = expState(c[1]); if (st === 'bad') out.push('<span class="chip bad">' + c[0] + ' expired</span>'); else if (st === 'warn') out.push('<span class="chip warn">' + c[0] + ' due ' + htmlEsc(day(c[1])) + '</span>');
+      });
+      return out.join('') || '<span class="chip">Your own records</span>';
+    };
+    const ownRows = owns.map(function (o) { return '<a class="qrow" href="#o-' + o.id + '" data-find="' + htmlEsc(String(o.address).toLowerCase()) + '"><span class="qa">' + htmlEsc(o.address) + '</span><span class="qc">' + ownChips(o) + '</span><span class="qgo">›</span></a>'; });
+    const ownViews = owns.map(function (o) {
+      const d = o.data || {}, e = o.epc, lic = d.licence || {};
+      const row = function (label, val, st) { return '<div class="ocr' + (st ? ' ' + st : '') + '"><span>' + label + '</span><b>' + val + '</b></div>'; };
+      const exp = function (v) { return v ? (v < todayI ? 'Expired ' : 'Until ') + htmlEsc(day(v)) : '<span class="muted">Not added</span>'; };
+      const licTxt = lic.status === 'not_needed' ? 'Not needed' : lic.status === 'applied' ? 'Applied, not yet issued' : lic.status === 'licensed' ? 'Licensed' + (lic.expires ? ' · ' + (lic.expires < todayI ? 'expired ' : 'until ') + htmlEsc(day(lic.expires)) : '') : '<span class="muted">Not added</span>';
+      const ten = d.tenants || [];
+      return '<section class="lview pv ov" id="o-' + o.id + '" hidden data-own="' + htmlEsc(JSON.stringify({ id: o.id, address: o.address, data: d })) + '"><a class="lback" href="#">← All properties</a>' +
+        '<div class="card"><h2 class="pv-h">' + htmlEsc(o.address) + '</h2><div class="qc"><span class="chip">Your own records — not managed by us</span></div>' +
+          '<div class="pacts"><button type="button" class="o-edit sec2">✏️ Edit</button>' + (d.manage_asked ? '<button type="button" disabled class="sec2">✓ We’ll be in touch about managing it</button>' : '<button type="button" class="o-manage">Ask us to manage it</button>') + '</div></div>' +
+        '<div class="card"><h3 style="margin-top:0">Certificates</h3>' +
+          row('EPC <small class="muted">(checked automatically)</small>', e && e.expires_on ? (e.rating ? 'Rating ' + htmlEsc(e.rating) + ' · ' : '') + exp(e.expires_on) + ' · <a href="' + htmlEsc(epcLink({ reference: e.reference, address: o.address }, o.address)) + '" target="_blank" rel="noopener">View ↗</a>' : '<span class="muted">None found on the register yet — we check daily</span>', e && expState(e.expires_on)) +
+          row('Gas safety', exp(d.gas), expState(d.gas)) + row('Electrical (EICR)', exp(d.eicr), expState(d.eicr)) +
+          row('Property licence', licTxt + (lic.number ? '<div class="muted">Ref ' + htmlEsc(lic.number) + '</div>' : ''), lic.status === 'licensed' ? expState(lic.expires) : '') + '</div>' +
+        '<div class="card"><h3 style="margin-top:0">Tenancy</h3>' +
+          row('Rent', d.rent ? '£' + Number(d.rent).toFixed(2) + ' a month' : '<span class="muted">Not added</span>') + row('Tenancy started', d.tenancy_start ? htmlEsc(day(d.tenancy_start)) : '<span class="muted">Not added</span>') +
+          (ten.length ? ten.map(function (t) {
+            return '<div class="lt-p"><b>' + htmlEsc(t.name || 'Tenant') + '</b><span class="lt-a">' + (t.phone ? '<a href="tel:' + htmlEsc(String(t.phone).replace(/[^\d+]/g, '')) + '">📞 Call</a><a href="https://wa.me/' + htmlEsc(waLink(t.phone)) + '" target="_blank" rel="noopener">💬 WhatsApp</a>' : '') + (t.email ? '<a href="mailto:' + htmlEsc(t.email) + '">✉️ Email</a>' : '') + '</span><small>' + htmlEsc([t.phone, t.email].filter(Boolean).join(' · ')) + '</small></div>';
+          }).join('') : '<p class="muted" style="margin:6px 0 0">No tenants added.</p>') + '</div>' +
+        (d.notes ? '<div class="card"><h3 style="margin-top:0">Notes</h3><p style="white-space:pre-line;margin:0">' + htmlEsc(d.notes) + '</p></div>' : '') +
+        '<p style="text-align:center"><a href="#" class="o-del" style="color:var(--red)">Remove this property</a></p></section>';
+    }).join('');
+    const ownForm = '<section class="lview" id="add" hidden><a class="lback" href="#">← Back</a><div class="card"><h2 id="oTitle">Add a property</h2>' +
+      '<p class="muted" style="margin-top:-4px">For a property we don’t manage — so all your properties are in one place. Only you (and our office) can see it. We’ll find its EPC automatically.</p>' +
+      '<form id="oForm"><label>Postcode<div class="o-pc"><input name="pc" placeholder="e.g. SE1 6RW" autocomplete="postal-code"><button type="button" id="oFind">Find</button></div></label><select id="oPick" hidden></select>' +
+      '<label>Address<input name="address" required maxlength="300" placeholder="e.g. Flat 2, 10 High Street, London SE1 6RW"></label>' +
+      '<div class="lf-two"><label>Rent (£ a month)<input name="rent" inputmode="decimal"></label><label>Tenancy started<input name="tenancy_start" type="date"></label></div>' +
+      '<h3>Tenants</h3><div id="oTen"></div><a href="#" id="oTenAdd">+ Another tenant</a>' +
+      '<h3>Certificates</h3><div class="lf-two"><label>Gas safety expires<input name="gas" type="date"></label><label>EICR expires<input name="eicr" type="date"></label></div>' +
+      '<label>Property licence<select name="lic_status"><option value="unknown">Not sure / not added</option><option value="licensed">Licensed</option><option value="applied">Applied, not yet issued</option><option value="not_needed">Not needed</option></select></label>' +
+      '<div class="lf-two"><label>Licence number<input name="lic_number" maxlength="80"></label><label>Licence expires<input name="lic_expires" type="date"></label></div>' +
+      '<label>Notes<textarea name="notes" rows="3" maxlength="2000" placeholder="Anything to keep a note of — mortgage, insurance, deposit scheme…"></textarea></label>' +
+      '<button type="submit">Save property</button><p class="o-msg muted"></p></form></div></section>';
+  // The landlord's own properties: add, edit, remove, and "ask us to manage it".
+  const ownPropScript = String.raw`<script>(function(){
+var TOKEN = document.body.getAttribute('data-lt'), f = document.getElementById('oForm'); if (!f) return;
+var editing = null, ten = document.getElementById('oTen');
+var tenRow = function(t){ t = t || {}; var d = document.createElement('div'); d.className = 'o-t';
+  ['name', 'phone', 'email'].forEach(function(k){ var i = document.createElement('input'); i.setAttribute('data-k', k); i.placeholder = { name: 'Name', phone: 'Phone', email: 'Email' }[k]; if (k === 'phone') i.type = 'tel'; if (k === 'email') i.type = 'email'; i.value = t[k] || ''; d.appendChild(i); });
+  ten.appendChild(d); };
+var fill = function(o){
+  editing = o ? o.id : null; var d = (o && o.data) || {}, lic = d.licence || {};
+  document.getElementById('oTitle').textContent = o ? 'Edit property' : 'Add a property';
+  f.reset(); f.elements.address.value = o ? o.address : ''; f.elements.rent.value = d.rent || ''; f.elements.tenancy_start.value = d.tenancy_start || '';
+  f.elements.gas.value = d.gas || ''; f.elements.eicr.value = d.eicr || ''; f.elements.lic_status.value = lic.status || 'unknown'; f.elements.lic_number.value = lic.number || ''; f.elements.lic_expires.value = lic.expires || ''; f.elements.notes.value = d.notes || '';
+  ten.innerHTML = ''; (d.tenants && d.tenants.length ? d.tenants : [{}]).forEach(tenRow);
+  document.getElementById('oPick').hidden = true; f.querySelector('.o-msg').textContent = '';
+};
+fill(null);
+window.addEventListener('hashchange', function(){ if (location.hash === '#add' && !editing) fill(null); if (location.hash !== '#add') editing = null; });
+document.getElementById('oTenAdd').addEventListener('click', function(e){ e.preventDefault(); tenRow(); });
+// Postcode lookup: every home at the postcode, from the EPC register.
+document.getElementById('oFind').addEventListener('click', function(){
+  var pc = f.elements.pc.value.trim(), pick = document.getElementById('oPick'), b = this; if (!pc) return;
+  b.disabled = true; b.textContent = '…';
+  fetch('/api/address/postcode?postcode=' + encodeURIComponent(pc)).then(function(r){ return r.json(); }).then(function(d){
+    b.disabled = false; b.textContent = 'Find';
+    if (!d.ok || !d.addresses.length) { f.querySelector('.o-msg').textContent = 'No addresses found — type the address below.'; pick.hidden = true; return; }
+    pick.innerHTML = '<option value="">Choose the address (' + d.addresses.length + ')…</option>' + d.addresses.map(function(a){ return '<option>' + a.replace(/[&<>"]/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }) + '</option>'; }).join('');
+    pick.hidden = false; pick.focus();
+  }).catch(function(){ b.disabled = false; b.textContent = 'Find'; });
+});
+document.getElementById('oPick').addEventListener('change', function(){ if (this.value) f.elements.address.value = this.value; });
+f.addEventListener('submit', function(e){
+  e.preventDefault(); var btn = f.querySelector('button[type=submit]'), msg = f.querySelector('.o-msg');
+  var body = { address: f.elements.address.value, rent: f.elements.rent.value, tenancy_start: f.elements.tenancy_start.value, gas: f.elements.gas.value, eicr: f.elements.eicr.value,
+    licence: { status: f.elements.lic_status.value, number: f.elements.lic_number.value, expires: f.elements.lic_expires.value }, notes: f.elements.notes.value,
+    tenants: [].map.call(ten.querySelectorAll('.o-t'), function(r){ var o = {}; r.querySelectorAll('input').forEach(function(i){ o[i.getAttribute('data-k')] = i.value; }); return o; }) };
+  btn.disabled = true; btn.textContent = editing ? 'Saving…' : 'Saving and finding the EPC…';
+  fetch('/l/' + TOKEN + '/own' + (editing ? '/' + editing : ''), { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function(r){ return r.json(); }).then(function(d){
+      btn.disabled = false; btn.textContent = 'Save property';
+      if (!d.ok) { msg.textContent = d.error && d.error.length > 12 ? d.error : 'Couldn’t save that — please check the address and try again.'; return; }
+      location.hash = '#o-' + (editing || d.id); location.reload();
+    }).catch(function(){ btn.disabled = false; btn.textContent = 'Save property'; msg.textContent = 'Couldn’t save that — please try again.'; });
+});
+document.querySelectorAll('.ov').forEach(function(v){
+  var o = JSON.parse(v.getAttribute('data-own'));
+  v.querySelector('.o-edit').addEventListener('click', function(){ fill(o); location.hash = '#add'; });
+  var m = v.querySelector('.o-manage');
+  if (m) m.addEventListener('click', function(){ m.disabled = true; fetch('/l/' + TOKEN + '/own/' + o.id + '/manage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(function(r){ return r.json(); }).then(function(d){ m.textContent = d.ok ? '✓ Thanks — we’ll be in touch' : 'Please try again'; if (!d.ok) m.disabled = false; }); });
+  v.querySelector('.o-del').addEventListener('click', function(e){ e.preventDefault(); if (!confirm('Remove ' + o.address + ' from your page?')) return;
+    fetch('/l/' + TOKEN + '/own/' + o.id, { method: 'DELETE' }).then(function(r){ return r.json(); }).then(function(d){ if (d.ok) { location.hash = ''; location.reload(); } }); });
+});
+})();</script>`;
     const quick = [];
     const propBlocks = Object.keys(keys).map(function (k) {
       const js = all.filter(function (j) { return propKey(j.property_address) === k; });
@@ -3145,6 +3325,7 @@ document.querySelectorAll('.lb-f').forEach(function(f){
         '<div class="ptabs" role="tablist">' + tabs.map(function (t, i) { return '<button type="button" role="tab" data-t="' + t[0] + '"' + (i ? '' : ' class="on"') + '>' + t[1] + '</button>'; }).join('') + '</div>' +
         tabs.map(function (t, i) { return '<div class="card ppane" data-p="' + t[0] + '"' + (i ? ' hidden' : '') + '>' + t[2] + '</div>'; }).join('') + '</section>';
     }).join('');
+    const homeView = Object.keys(keys).length !== 1 || owns.length > 0;
     const css = '<style>.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:0 0 14px}.tile{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px}.tile b{display:block;font-size:1.3rem}.tile span{font-size:.78rem;color:var(--soft)}' +
       'h2{font-size:1.05rem;margin:0 0 8px}h3{font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);margin:14px 0 6px}' +
       '.lj{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px}.lj.done{background:var(--okt);border-color:#cdebd9}.lj-top{display:flex;justify-content:space-between;gap:8px;align-items:center}' +
@@ -3160,26 +3341,30 @@ document.querySelectorAll('.lb-f').forEach(function(f){
       '.ph a.more{display:grid;place-items:center;font-weight:700;color:var(--soft);text-decoration:none}' +
       '.lback{display:inline-block;margin:0 0 10px;color:var(--blue);font-weight:700;text-decoration:none}.pv-h{font-size:1.2rem;margin:0 0 6px}.pacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.pacts button{flex:1 1 160px;padding:12px 14px;border:0;border-radius:12px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer}.pacts button.sec{background:#25D366}.pacts button{text-transform:none;letter-spacing:normal;font-size:1rem}' +
       '.ptabs{display:flex;gap:6px;overflow-x:auto;margin:4px 0 10px;padding-bottom:2px}.ptabs button{flex:none;padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}.ptabs button.on{background:var(--ink);border-color:var(--ink);color:#fff}' +
-      '.ppane .lr:not([open]){display:none}.ppane>.lr{margin-top:0}.ppane>.tcy{margin-top:0}.ppane>h3:first-child,.ppane>.lr+h3{margin-top:0}.lspend{display:grid;grid-template-columns:1fr auto;margin-top:12px;padding:14px 16px}.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.tile b{font-size:1.1rem}.tiles[hidden]{display:none}</style>';
+      '.ppane .lr:not([open]){display:none}.ppane>.lr{margin-top:0}.ppane>.tcy{margin-top:0}.ppane>h3:first-child,.ppane>.lr+h3{margin-top:0}.lspend{display:grid;grid-template-columns:1fr auto;margin-top:12px;padding:14px 16px}.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.tile b{font-size:1.1rem}.tiles[hidden]{display:none}' +
+      '.o-add{display:block;margin-top:10px;padding:12px;border:1.5px dashed var(--line);border-radius:12px;text-align:center;color:var(--blue);font-weight:700;text-decoration:none}.ocr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:8px 0;border-bottom:1px solid #eef0f3;font-size:.92rem}.ocr b{text-align:right;font-weight:600}.ocr.bad b{color:var(--red)}.ocr.warn b{color:var(--amber)}.ocr a{color:var(--blue)}' +
+      '#oForm label{display:block;font-size:.85rem;color:var(--soft);margin-top:8px}#oForm input,#oForm select,#oForm textarea{display:block;width:100%;margin:4px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}#oForm button{padding:10px 14px;border:0;border-radius:10px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer}#oForm button[type=submit]{margin-top:14px;width:100%;padding:13px}.o-pc{display:flex;gap:6px}.o-pc input{flex:1}.o-t{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}#oTenAdd{color:var(--blue);font-weight:600;font-size:.9rem}.pacts button.sec2{background:#fff;color:var(--ink);border:1px solid var(--line)}.pacts button:disabled{opacity:.7;cursor:default}@media(max-width:520px){.o-t{grid-template-columns:1fr}.o-t input:first-child{margin-top:10px}}</style>';
     res.send(trackShell('Your properties', css + '<script>document.body.setAttribute("data-lt", ' + JSON.stringify(token).replace(/</g, '\\u003c') + ');document.body.setAttribute("data-me", ' + JSON.stringify(String(l.name || '').trim() || 'Your landlord').replace(/</g, '\\u003c') + ');</script><div id="top"></div><h1>Hi ' + htmlEsc(String(l.name || '').trim() || 'there') + '</h1><p class="sub">Your properties with Residential Realtors.</p>' +
       // Home: a few numbers, then every property — tap one to open it.
-      '<div class="tiles"><div class="tile"><b>' + open.length + '</b><span>Open repair' + (open.length === 1 ? '' : 's') + '</span></div>' +
+      (!Object.keys(keys).length ? '' : '<div class="tiles"><div class="tile"><b>' + open.length + '</b><span>Open repair' + (open.length === 1 ? '' : 's') + '</span></div>' +
         '<a class="tile" href="#spending"><b>' + money(unpaid.reduce(function (t, i) { return t + Number(i.total || 0); }, 0)) + '</b><span>To pay' + (unpaid.length ? ' (' + unpaid.length + ' invoice' + (unpaid.length === 1 ? '' : 's') + ')' : '') + '</span></a>' +
-        '<a class="tile" href="#spending"><b>' + money(sumOf(thisYr)) + '</b><span>Spent on repairs in ' + yr + '</span></a></div>' +
-      (Object.keys(keys).length > 1 ? '<section class="lview" id="home"><div class="card"><h2>Your properties</h2><p class="muted" style="margin:-4px 0 6px">Tap a property to see its repairs, tenancy, certificates and costs.</p>' +
-        (quick.length > 4 ? '<input id="lfind" type="search" placeholder="Find a property…" autocomplete="off">' : '') + '<div class="qlist">' + quick.join('') + '</div></div>' +
-        '<a class="card qrow lspend" href="#spending"><span class="qa">💷 Spending &amp; invoices — all properties</span><span class="qgo">›</span></a></section>' : '') +
-      (propBlocks || '<div class="card"><p class="muted">No properties are linked to you yet. Please contact Residential Realtors.</p></div>') +
-      (Object.keys(keys).length === 1 ? '<a class="card qrow lspend lone" href="#spending"><span class="qa">💷 Spending &amp; invoices</span><span class="qgo">›</span></a>' : '') +
+        '<a class="tile" href="#spending"><b>' + money(sumOf(thisYr)) + '</b><span>Spent on repairs in ' + yr + '</span></a></div>') +
+      (homeView ? '<section class="lview" id="home">' + (quick.length ? '<div class="card"><h2>' + (owns.length ? 'Managed by us' : 'Your properties') + '</h2><p class="muted" style="margin:-4px 0 6px">Tap a property to see its repairs, tenancy, certificates and costs.</p>' +
+        (quick.length + owns.length > 4 ? '<input id="lfind" type="search" placeholder="Find a property…" autocomplete="off">' : '') + '<div class="qlist">' + quick.join('') + '</div></div>' : '') +
+        '<div class="card"><h2>' + (quick.length ? 'Your other properties' : 'Your properties') + '</h2>' + (owns.length ? '<div class="qlist">' + ownRows.join('') + '</div>' : '<p class="muted" style="margin:-4px 0 6px">Keep all your properties in one place — even ones we don’t manage. We’ll find each EPC automatically.</p>') +
+          '<a class="o-add" href="#add">＋ Add a property</a></div>' +
+        (quick.length ? '<a class="card qrow lspend" href="#spending"><span class="qa">💷 Spending &amp; invoices — all properties</span><span class="qgo">›</span></a>' : '') + '</section>' : '') +
+      propBlocks + ownViews + ownForm +
+      (!homeView ? '<div class="lone"><a class="card qrow lspend" href="#spending"><span class="qa">💷 Spending &amp; invoices</span><span class="qgo">›</span></a><a class="card qrow lspend" href="#add"><span class="qa">＋ Add a property we don’t manage</span><span class="qgo">›</span></a></div>' : '') +
       '<section class="lview" id="spending" hidden><a class="lback" href="#">← Back</a>' + spendCard.replace(' id="spending"', '') + '</section>' +
-      ownScript +
+      ownScript + ownPropScript +
       '<script>(function(){var f=document.getElementById("lfind");if(f)f.addEventListener("input",function(){var q=f.value.trim().toLowerCase();document.querySelectorAll(".qrow[data-find]").forEach(function(el){el.style.display=!q||el.getAttribute("data-find").indexOf(q)!==-1?"":"none";});});' +
         // One view at a time, chosen by the address bar (so Back works).
         'var views=[].slice.call(document.querySelectorAll(".lview")),lone=document.querySelector(".lone");' +
-        'var route=function(){var h=decodeURIComponent(location.hash.slice(1)),t=h&&document.getElementById(h);if(!t||!t.classList.contains("lview"))t=views[0];views.forEach(function(v){v.hidden=v!==t;});if(lone)lone.hidden=t.id==="spending";var ti=document.querySelector(".tiles");if(ti)ti.hidden=t.classList.contains("pv")&&views.length>2;window.scrollTo(0,0);};' +
+        'var route=function(){var h=decodeURIComponent(location.hash.slice(1)),t=h&&document.getElementById(h);if(!t||!t.classList.contains("lview"))t=views[0];views.forEach(function(v){v.hidden=v!==t;});if(lone)lone.hidden=!t.classList.contains("pv");var ti=document.querySelector(".tiles");if(ti)ti.hidden=t.classList.contains("pv")&&views.length>2;window.scrollTo(0,0);};' +
         'window.addEventListener("hashchange",route);route();' +
         'var pick=function(pv,name){pv.querySelectorAll(".ptabs button").forEach(function(b){b.classList.toggle("on",b.getAttribute("data-t")===name);});pv.querySelectorAll(".ppane").forEach(function(p){p.hidden=p.getAttribute("data-p")!==name;});};' +
-        'document.querySelectorAll(".pv").forEach(function(pv){pv.querySelector(".ptabs").addEventListener("click",function(e){var b=e.target.closest("button");if(b)pick(pv,b.getAttribute("data-t"));});' +
+        'document.querySelectorAll(".pv:not(.ov)").forEach(function(pv){pv.querySelector(".ptabs").addEventListener("click",function(e){var b=e.target.closest("button");if(b)pick(pv,b.getAttribute("data-t"));});' +
           'var r=pv.querySelector(".go-rep");if(r)r.addEventListener("click",function(){pick(pv,"rep");var d=pv.querySelector(".lr");if(d){d.open=true;d.scrollIntoView({behavior:"smooth",block:"start"});var i=d.querySelector("input");if(i)setTimeout(function(){i.focus();},300);}});' +
           'var m=pv.querySelector(".go-msg");if(m)m.addEventListener("click",function(){pick(pv,"tcy");var d=pv.querySelector(".lt-msg");if(d){d.open=true;d.scrollIntoView({behavior:"smooth",block:"start"});}});});' +
       '})();</script>' +
@@ -4371,7 +4556,7 @@ document.querySelectorAll('.lb-f').forEach(function(f){
   let epcRunning = false;
   function autoEpcAll() {
     if (epcRunning) return; epcRunning = true;
-    db().then(function (p) { return p ? autoEpc(p, null, 1000) : null; })
+    db().then(function (p) { return p ? autoEpc(p, null, 1000).then(function (r) { return ownEpcAll(p).then(function () { return r; }); }) : null; })
       .then(function (r) { if (r && (r.checked || r.found)) console.log('EPC register: checked ' + r.checked + ', filled in ' + r.found); })
       .catch(function (err) { console.error('EPC register check failed:', err.message); })
       .then(function () { epcRunning = false; });
