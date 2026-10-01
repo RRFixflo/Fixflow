@@ -3147,7 +3147,7 @@
   // Where a property's tenancy is up to: running (and its next anniversary),
   // ending within 60 days, fixed term over, starting soon, a draft, or none.
   function propTenancy(key){
-    var list = tenancies.filter(function(t){ return t.property_key === key; }), today = new Date(); today.setHours(0, 0, 0, 0);
+    var list = tenancies.filter(function(t){ return t.property_key === key || addrSame(t.property_key, key); }), today = new Date(); today.setHours(0, 0, 0, 0);
     if (!list.length) return { k: 'none', text: 'No tenancy', sort: 5 };
     var best = null;
     list.forEach(function(t){
@@ -6788,20 +6788,35 @@
   var askTenancies = [];
   // A Terms of Let for a property already on file: use the tenants (and
   // landlord) saved there, filling in any phone numbers and emails it lacks.
-  function tcyOnFileTenants(pr){
+  // The same property under two spellings: the same key, or every number and
+  // name in the shorter address is in the longer one ("Flat 404, Hurlock
+  // Heights, SE17 1AY" and "404 Hurlock Heights").
+  function addrSame(a, b){
+    var ka = propKey(a), kb = propKey(b); if (!ka || !kb) return false; if (ka === kb) return true;
+    var nums = function(k){ return k.split(' ').filter(function(w){ return /\d/.test(w); }); };
+    var words = function(k){ return k.split(' ').filter(function(w){ return w.length >= 3 && !/\d/.test(w) && ['flat', 'house', 'road', 'street', 'court', 'london', 'the', 'and', 'apartment'].indexOf(w) === -1; }); };
+    var within = function(x, y){ var xn = nums(x), xw = words(x), yn = nums(y), yw = words(y); return xn.length && xw.length && xn.every(function(n){ return yn.indexOf(n) !== -1; }) && xw.every(function(w){ return yw.indexOf(w) !== -1; }); };
+    return within(ka, kb) || within(kb, ka);
+  }
+  // Everyone Fixflow knows lives at the property: tenants saved there (under
+  // any spelling of the address), tenants named on its repair jobs since
+  // `since` (the tenancy start; else the last 18 months), and earlier tenancies.
+  function tcyOnFileTenants(pr, since){
     var out = [], seen = function(x){ return out.some(function(o){ return tcySameTenant(x, o, true); }); };
     var src = '', add = function(x){ x = { name: x.name || '', email: x.email || '', phone: x.phone || '' }; if ((tNameKey(x.name) || x.phone || x.email) && !seen(x)) { Object.defineProperty(x, 'src', { value: src, enumerable: false }); out.push(x); } };
-    // Tenants linked to the property (under any spelling of its address).
+    var here = function(a){ return a && (propKey(a) === pr.key || addrSame(a, pr.address)); };
     src = 'saved';
     (tenantLinks || []).forEach(function(l){
-      if (l.moved_out_at) return;
-      var m = l.property_key === pr.key || propKey(l.address) === pr.key || (function(){ var x = matchProperty(l.address); return x && x.key === pr.key; })();
-      var r = m && tenantRecById(l.tenant_id); if (r) add(r);
+      if (l.moved_out_at || !(l.property_key === pr.key || here(l.address))) return;
+      var r = tenantRecById(l.tenant_id); if (r) add(r);
     });
-    // Tenants named on its repair jobs, and on earlier tenancies there.
     src = 'jobs';
-    tenantsAt(pr).forEach(function(j){ add({ name: j.tenant_name, email: j.tenant_email, phone: j.tenant_phone }); });
-    tenancies.forEach(function(tc){ if (tc.property_key === pr.key || propKey((tc.data || {}).address) === pr.key) ((tc.data || {}).tenants || []).forEach(add); });
+    var from = since || addMonthsIso(isoDay(new Date()), -18);
+    jobs.filter(function(j){ return here(j.property_address) && String(j.created_at || '').slice(0, 10) >= from; })
+      .sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })
+      .forEach(function(j){ add({ name: j.tenant_name, email: j.tenant_email, phone: j.tenant_phone }); });
+    src = 'tcy';
+    tenancies.forEach(function(tc){ if (tc.property_key === pr.key || here((tc.data || {}).address)) ((tc.data || {}).tenants || []).forEach(add); });
     return out;
   }
   // The same person: same phone, email or name — or, at the same property, a
@@ -7785,7 +7800,7 @@
   // tenancy record yet, ready for a Terms of Let or a new tenancy.
   function renderTcyNoRecord(raw){
     var rows = allPropsForList().filter(function(pr){ return propTenancy(pr.key).k === 'none'; }).map(function(pr){
-      var ts = tcyOnFileTenants(pr).filter(function(t){ return t.src === 'saved'; });
+      var ts = tcyOnFileTenants(pr).filter(function(t){ return t.src !== 'tcy'; });
       return ts.length ? { pr: pr, ts: ts, addr: knownFullAddress(pr.key) || pr.address } : null;
     }).filter(Boolean).filter(function(r){
       return !raw || [r.addr, r.ts.map(function(t){ return [t.name, t.phone, t.email].join(' '); }).join(' ')].join(' ').toLowerCase().indexOf(raw) !== -1;
@@ -7823,7 +7838,7 @@
     if (!tcyDraft.address && x) tcyDraft.address = x.address || '';
     // A saved tenancy with no tenants (or missing details): the tenants saved at the property.
     // Only the property's latest tenancy (an older one had other tenants).
-    var latest = x && !tenancies.some(function(t){ return t.id !== x.id && t.property_key === x.property_key && String((t.data || {}).start_date || '') > String(tcyDraft.start_date || ''); });
+    var latest = x && !tenancies.some(function(t){ return t.id !== x.id && (t.property_key === x.property_key || addrSame((t.data || {}).address, tcyDraft.address)) && String((t.data || {}).start_date || '') > String(tcyDraft.start_date || ''); });
     var filledN = latest ? tcyFillTenants(tcyDraft) : 0;
     tcyLocked = !!x;   // a saved tenancy opens read-only; "Edit tenancy" unlocks it
     // Blank tenant details filled from the property are saved straight away.
@@ -7877,7 +7892,7 @@
   // add missing phone numbers / emails to the tenants already typed in.
   function tcyFillTenants(d){
     var pr = d.address && matchProperty(d.address); if (!pr) return 0;
-    var onFile = tcyOnFileTenants(pr); if (!onFile.length) return 0;
+    var onFile = tcyOnFileTenants(pr, d.start_date && d.start_date <= isoDay(new Date()) ? d.start_date : ''); if (!onFile.length) return 0;
     var list = (d.tenants || []).filter(function(x){ return x && (x.name || x.phone || x.email); });
     if (!list.length) { d.tenants = onFile.map(function(x){ return Object.assign({}, x); }); return d.tenants.length; }
     var n = 0;
@@ -7887,7 +7902,7 @@
     });
     // Every current tenant saved at the property belongs on its tenancy (names
     // only seen on old repair jobs are left out — they may have moved on).
-    onFile.filter(function(o){ return o.src === 'saved' && !list.some(function(x){ return tcySameTenant(x, o, true); }); }).forEach(function(o){ list.push(Object.assign({}, o)); n++; });
+    onFile.filter(function(o){ return (o.src === 'saved' || o.src === 'jobs') && !list.some(function(x){ return tcySameTenant(x, o, true); }); }).forEach(function(o){ list.push(Object.assign({}, o)); n++; });
     d.tenants = list;
     return n;
   }
