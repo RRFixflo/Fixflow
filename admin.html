@@ -3402,6 +3402,7 @@
         '<select class="inp" id="plType"><option value="">Licence type…</option>' + LICENCE_TYPES.map(function(t){ return '<option' + (l.type === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
         '<input class="inp" id="plNumber" placeholder="Licence number" maxlength="60" value="' + esc(l.number || '') + '">' +
         '<label class="lbl" style="margin:0">Expires</label><input class="inp" id="plExpires" type="date" value="' + esc(l.expires || '') + '">' +
+        '<input class="inp" id="plUrl" placeholder="Link to the licence (optional) — shown to the landlord" maxlength="500" value="' + esc(l.url || '') + '">' +
         '<input class="inp" id="plNotes" placeholder="Notes (optional)" maxlength="500" value="' + esc(l.notes || '') + '">' +
         '<button type="button" class="btn small primary" id="plSave">Save</button></div></div>';
   }
@@ -3422,7 +3423,7 @@
     });
     $('plSave').addEventListener('click', function(){
       var prev = licenceOf(address) || {};
-      var lic = { status: $('plStatus').value, type: $('plType').value, number: $('plNumber').value.trim(), expires: $('plExpires').value, notes: $('plNotes').value.trim(), holder: prev.holder, starts: prev.starts, borough: prev.borough };
+      var lic = { status: $('plStatus').value, type: $('plType').value, number: $('plNumber').value.trim(), expires: $('plExpires').value, notes: $('plNotes').value.trim(), url: $('plUrl').value.trim(), holder: prev.holder, starts: prev.starts, borough: prev.borough };
       api('PUT', '/api/admin/property-licence', { address: address, licence: lic }).then(function(d){
         if (!d.ok) { toast('Couldn’t save the licence'); return; }
         var k = propKey(address); propInfo[k] = Object.assign({}, propInfo[k], { property_key: k, address: address, licence: d.licence });
