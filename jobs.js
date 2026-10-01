@@ -1749,7 +1749,7 @@ module.exports = function mountJobs(app, opts) {
     if (!key) return res.status(400).json({ ok: false, error: 'address' });
     const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null; };
     const lic = { status: ['licensed', 'none', 'not_needed', 'applied'].indexOf(l.status) !== -1 ? l.status : 'licensed', type: str(l.type, 60), number: str(l.number, 60), holder: str(l.holder, 200),
-      starts: day(l.starts), expires: day(l.expires), notes: str(l.notes, 500), borough: str(l.borough, 80), checked_at: day(l.checked_at) || new Date().toISOString().slice(0, 10) };
+      starts: day(l.starts), expires: day(l.expires), notes: str(l.notes, 500), borough: str(l.borough, 80), url: /^https:\/\/\S+$/i.test(String(l.url || '')) ? str(l.url, 500) : null, checked_at: day(l.checked_at) || new Date().toISOString().slice(0, 10) };
     const cur = (await p.query('SELECT licence FROM property_info WHERE property_key = $1', [key])).rows[0];
     if (cur && cur.licence && cur.licence.expires === lic.expires) lic.alerted_for = cur.licence.alerted_for || null;   // same expiry: don't alert again
     await p.query(`INSERT INTO property_info (property_key, address, licence) VALUES ($1, $2, $3)
@@ -2667,7 +2667,21 @@ module.exports = function mountJobs(app, opts) {
     const parts = {};
     if (ids.length) (await p.query('SELECT job_id, description, charge, status FROM job_parts WHERE job_id = ANY($1::int[]) ORDER BY id', [ids])).rows
       .forEach(function (x) { (parts[x.job_id] = parts[x.job_id] || []).push(x); });
-    const certs = Object.keys(keys).length ? (await p.query("SELECT property_key, type, expires_on, not_required FROM property_certificates WHERE property_key = ANY($1::text[])", [Object.keys(keys)])).rows : [];
+    const certs = Object.keys(keys).length ? (await p.query("SELECT property_key, address, type, expires_on, not_required, reference FROM property_certificates WHERE property_key = ANY($1::text[])", [Object.keys(keys)])).rows : [];
+    // Where to see the certificate itself: the EPC on the government register (by
+    // its number, else a postcode search), the licence on the council register.
+    const pcOf = function (a) { const m = /([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i.exec(String(a || '')); return m ? (m[1] + ' ' + m[2]).toUpperCase() : ''; };
+    const epcLink = function (c, addr) {
+      return /^\d{4}-\d{4}-\d{4}-\d{4}-\d{4}$/.test(c.reference || '') ? 'https://find-energy-certificate.service.gov.uk/energy-certificate/' + c.reference
+        : 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?lang=en&property_type=domestic' + (pcOf(c.address || addr) ? '&postcode=' + encodeURIComponent(pcOf(c.address || addr)) : '');
+    };
+    const regRow = (await p.query("SELECT value FROM app_settings WHERE key = 'licence_registers'")).rows[0];
+    const registers = Object.assign({ Southwark: 'https://southwark.metastreet.co.uk/public-register' }, (regRow && regRow.value) || {});
+    const licLink = function (l, addr) {
+      if (l.url && /^https:\/\//i.test(l.url)) return l.url;
+      const reg = l.borough && registers[l.borough]; if (!reg) return '';
+      return /metastreet\.co\.uk/i.test(reg) && pcOf(addr) ? reg.replace(/\?.*$/, '') + '?search%5Bquery%5D=' + encodeURIComponent(pcOf(addr)) : reg;
+    };
     const names = (await p.query("SELECT name FROM contractors WHERE coalesce(trim(name), '') <> ''")).rows.map(function (r) { return r.name.trim(); }).sort(function (a, b) { return b.length - a.length; });
     const reEsc = function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
     const scrub = function (t) {
@@ -2770,9 +2784,9 @@ module.exports = function mountJobs(app, opts) {
         (next ? ' · Next anniversary <b>' + htmlEsc(day(next)) + '</b>' : '') + '</div></div>';
     };
     // Each property's licence (selective / HMO), as checked on the council register.
-    const lics = {};
-    if (Object.keys(keys).length) (await p.query('SELECT property_key, licence FROM property_info WHERE property_key = ANY($1::text[]) AND licence IS NOT NULL', [Object.keys(keys)])).rows
-      .forEach(function (r) { lics[r.property_key] = r.licence; });
+    const lics = {}, licAddr = {};
+    if (Object.keys(keys).length) (await p.query('SELECT property_key, address, licence FROM property_info WHERE property_key = ANY($1::text[]) AND licence IS NOT NULL', [Object.keys(keys)])).rows
+      .forEach(function (r) { lics[r.property_key] = r.licence; licAddr[r.property_key] = r.address; });
     const licBox = function (k) {
       const l = lics[k]; if (!l) return '';
       const today = new Date().toISOString().slice(0, 10), soon = new Date(Date.now() + 61 * 86400000).toISOString().slice(0, 10);
@@ -2784,14 +2798,16 @@ module.exports = function mountJobs(app, opts) {
         : l.expires < today ? { c: 'late', t: what + ' — expired ' + day(l.expires) }
         : l.expires <= soon ? { c: 'soon', t: what + ' — expires ' + day(l.expires) }
         : { c: 'ok', t: what + ' — valid until ' + day(l.expires) };
-      return '<div class="lic ' + st.c + '">📜 ' + htmlEsc(st.t) + (l.borough ? ' <span class="muted">· ' + htmlEsc(l.borough) + '</span>' : '') + '</div>';
+      const href = l.status !== 'not_needed' ? licLink(l, licAddr[k] || keys[k]) : '';
+      return '<div class="lic ' + st.c + '">📜 ' + htmlEsc(st.t) + (l.borough ? ' <span class="muted">· ' + htmlEsc(l.borough) + '</span>' : '') + (href ? ' · <a href="' + htmlEsc(href) + '" target="_blank" rel="noopener">' + (l.url ? 'View licence' : 'View on the council register') + ' ↗</a>' : '') + '</div>';
     };
     const propBlocks = Object.keys(keys).map(function (k) {
       const js = all.filter(function (j) { return propKey(j.property_address) === k; });
       const addr = (js[0] && js[0].property_address) || keys[k] || '';
       const cs = certs.filter(function (c) { return c.property_key === k && !c.not_required && c.expires_on; }).map(function (c) {
         const past = new Date(c.expires_on) < new Date();
-        return '<span class="cert' + (past ? ' late' : '') + '">' + htmlEsc(certName[c.type] || c.type) + ' ' + (past ? 'expired ' : 'until ') + htmlEsc(day(c.expires_on)) + '</span>';
+        const label = htmlEsc(certName[c.type] || c.type) + ' ' + (past ? 'expired ' : 'until ') + htmlEsc(day(c.expires_on));
+        return c.type === 'EPC' ? '<a class="cert' + (past ? ' late' : '') + '" href="' + htmlEsc(epcLink(c, addr)) + '" target="_blank" rel="noopener">' + label + ' ↗</a>' : '<span class="cert' + (past ? ' late' : '') + '">' + label + '</span>';
       }).join('');
       const o = js.filter(function (j) { return j.status !== 'Completed'; }), d = js.filter(function (j) { return j.status === 'Completed'; });
       const pSpent = sumOf(js.filter(function (j) { return j.status === 'Completed' && charge(j) != null; }));
@@ -2805,7 +2821,7 @@ module.exports = function mountJobs(app, opts) {
       '.lj{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:8px}.lj.done{background:var(--okt);border-color:#cdebd9}.lj-top{display:flex;justify-content:space-between;gap:8px;align-items:center}' +
       '.pill{font-size:.75rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--bluet);color:var(--blue)}.pill.ok{background:var(--ok);color:#fff;text-transform:uppercase;letter-spacing:.04em}.lj.done{border-left:5px solid var(--ok)}.lj-issue{font-weight:600;margin:4px 0 2px}' +
       '.lj-notes{font-size:.88rem;margin-top:6px;white-space:pre-line}.lj-foot{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px;font-size:.9rem;flex-wrap:wrap}.lj-foot a{color:var(--blue);font-weight:600;text-decoration:none}' +
-      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}.lic{margin:10px 0 0;padding:8px 12px;border-radius:10px;font-size:.9rem;background:#eef8f1}.lic.soon{background:#fff4e0}.lic.late{background:#fdecec}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
+      '.paid{color:var(--ok);font-weight:700}.due{color:var(--amber);font-weight:700}.certs{display:flex;flex-wrap:wrap;gap:6px}a.cert{color:inherit;text-decoration:none;border:1px solid #d9dce3}.lic{margin:10px 0 0;padding:8px 12px;border-radius:10px;font-size:.9rem;background:#eef8f1}.lic.soon{background:#fff4e0}.lic.late{background:#fdecec}.tcy{margin:12px 0 4px;padding:12px 14px;border-radius:12px;background:#f6f8fc}.tcy h3{margin:0 0 6px}.tcy-ppl{display:grid;gap:3px;margin-bottom:6px}.tcy a{color:inherit}.cert{font-size:.78rem;padding:3px 9px;border-radius:999px;background:#f1f2f5}.cert.late{background:#fdecec;color:var(--red);font-weight:700}' +
       'details summary{cursor:pointer;font-weight:700;color:var(--ok);margin-top:14px}' +
       '.cost{margin-top:10px;background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:.9rem}.lj.done .cost{background:#fff}.cost.none{color:var(--soft)}.cr{display:flex;justify-content:space-between;gap:10px;padding:2px 0}.cr.tot{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;font-weight:800}.ci{margin-top:6px;font-size:.85rem}.ci a{color:var(--blue);font-weight:600;text-decoration:none}.late{color:var(--red);font-weight:700}' +
       '.sp{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}.sp div{background:#fafafb;border:1px solid var(--line);border-radius:12px;padding:10px}.sp span{display:block;font-size:.75rem;color:var(--soft)}.sp b{display:block;font-size:1.15rem}.sp small{color:var(--soft)}' +
