@@ -1756,6 +1756,36 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true, licence: lic });
   }));
 
+  // Results copied (or a screenshot) from the council's licence register after a
+  // postcode search: every licence listed, for the dashboard to match to our
+  // properties and save once confirmed.
+  app.post('/api/admin/licence-read', withDb(async function (p, req, res) {
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    const b = req.body || {}, text = str(String(b.text || ''), 60000), files = [];
+    if (b.file && b.file.data) {
+      const mime = String(b.file.mime || '').toLowerCase(), buf = Buffer.from(String(b.file.data), 'base64');
+      if (!buf.length || buf.length > 15 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'file-too-big' });
+      if (mime === 'application/pdf' || /^image\/(jpeg|png|webp|heic|heif)$/.test(mime)) files.push({ mime: mime, data: buf.toString('base64') });
+      else return res.status(400).json({ ok: false, error: 'file-type' });
+    }
+    if (!text && !files.length) return res.status(400).json({ ok: false, error: 'nothing' });
+    const prompt = 'Below is ' + (files.length ? 'a screenshot or PDF of ' : 'text copied from ') + 'a UK council\'s public register of property licences (selective, additional HMO or mandatory HMO licensing), usually the results of a postcode search.' +
+      (text ? '\n----\n' + text + '\n----\n' : '\n') +
+      'List every licence (or licence application) shown. Reply with ONLY JSON: {"licences": [{"address": "", "postcode": "", "type": "", "number": "", "status": "", "holder": "", "starts": "", "expires": ""}]}. ' +
+      'address: the licensed property address as shown (keep flat/house numbers exactly). type: "Selective", "Additional (HMO)" or "Mandatory HMO" (as shown, else ""). number: the licence/reference number. status: "licensed" if granted/issued, "applied" if an application in progress, "" if unclear. holder: the licence holder name if shown. starts and expires: YYYY-MM-DD ("" if not shown; UK dates are day/month/year). Never invent anything.';
+    const result = await opts.askAi(prompt, true, files);
+    if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
+    let parsed = null;
+    try { parsed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()); } catch (e) { parsed = null; }
+    if (!parsed) return res.status(502).json({ ok: false, error: 'ai-bad-reply' });
+    const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : ''; };
+    const licences = (Array.isArray(parsed.licences) ? parsed.licences : []).slice(0, 300).map(function (l) {
+      return { address: str(l && l.address, 300) || '', postcode: str(l && l.postcode, 12) || '', type: str(l && l.type, 60) || '', number: str(l && l.number, 60) || '',
+        status: l && l.status === 'applied' ? 'applied' : 'licensed', holder: str(l && l.holder, 200) || '', starts: day(l && l.starts), expires: day(l && l.expires) };
+    }).filter(function (l) { return l.address; });
+    res.json({ ok: true, licences: licences });
+  }));
+
   app.put('/api/admin/property-landlord', withDb(async function (p, req, res) {
     const b = req.body || {};
     const key = propKey(b.address);
