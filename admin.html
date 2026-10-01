@@ -2243,6 +2243,29 @@
     var n = String(name || '').trim().toLowerCase();
     return n ? contractors.filter(function(c){ return c.name.toLowerCase() === n; })[0] || null : null;
   }
+  // What was typed in a contractor box ("DPH", "jim", "dph london") → the one
+  // contractor it means: exact name, else the only active contractor whose name
+  // (or a word in it, or its initials) starts with it, or whose name contains it.
+  function resolveContractor(v){
+    var n = String(v || '').trim().toLowerCase(); if (!n) return null;
+    var exact = contractorByName(n); if (exact) return exact;
+    var act = contractors.filter(function(c){ return c.active !== false; });
+    var initials = function(name){ return name.toLowerCase().split(/[\s&-]+/).filter(function(w){ return w && ['and', 'the', 'of', 'ltd', 'limited'].indexOf(w) === -1; }).map(function(w){ return w[0]; }).join(''); };
+    var tries = [
+      function(c){ return c.name.toLowerCase().indexOf(n) === 0; },
+      function(c){ return c.name.toLowerCase().split(/[\s&()-]+/).some(function(w){ return w.indexOf(n) === 0; }); },
+      function(c){ return n.length >= 2 && initials(c.name).indexOf(n.replace(/\s+/g, '')) === 0; },
+      function(c){ return n.length >= 3 && (c.name.toLowerCase().indexOf(n) !== -1 || String(c.trade || '').toLowerCase() === n); }
+    ];
+    for (var i = 0; i < tries.length; i++) { var hits = act.filter(tries[i]); if (hits.length === 1) return hits[0]; if (hits.length > 1) return null; }
+    return null;
+  }
+  // Every contractor box: a short form is replaced with the full name as you leave it.
+  document.addEventListener('change', function(e){
+    var el = e.target; if (!el || el.getAttribute('list') !== 'assignees') return;
+    var c = resolveContractor(el.value);
+    if (c && c.name !== el.value.trim()) { el.value = c.name; el.dispatchEvent(new Event('input', { bubbles: true })); toast('Contractor: ' + c.name); }
+  }, true);
   function loadContractors(){
     if (!meta.db) return Promise.resolve();
     return api('GET', '/api/admin/contractors').then(function(d){
@@ -2587,7 +2610,7 @@
     render();
   });
   $('bulkAssignBtn').addEventListener('click', function(){
-    var who = $('bulkAssign').value.trim();
+    var who = $('bulkAssign').value.trim(), rcb = resolveContractor(who); if (rcb) { who = rcb.name; $('bulkAssign').value = who; }
     var list = selectedJobs();
     if (!who) { $('bulkAssign').focus(); return; }
     Promise.all(list.map(function(j){
@@ -2808,6 +2831,7 @@
       body.source = $('jfSource').value;
       if ($('jfReceived').value) body.received_at = new Date($('jfReceived').value).toISOString();
       if ($('jfDue').value) body.due_at = new Date($('jfDue').value).toISOString();
+      var rcj = resolveContractor($('jfAssigned').value); if (rcj) $('jfAssigned').value = rcj.name;
       var extra = [['jfAssigned', 'assigned_to'], ['jfEst', 'estimated_cost'], ['jfCharge', 'landlord_charge']];
       for (var i = 0; i < extra.length; i++) {
         var v = $(extra[i][0]).value.trim();
@@ -5943,10 +5967,10 @@
       });
     });
     function showAssigneeContact(){
-      var c = contractorByName($('fAssigned').value);
+      var c = resolveContractor($('fAssigned').value);
       var wa = c && waNumber(c.phone);
       $('assigneeContact').innerHTML = c
-        ? esc([c.trade].filter(Boolean).join('')) + (c.phone ? (c.trade ? ' · ' : '') + '<a href="tel:' + esc(c.phone.replace(/\s/g, '')) + '">' + esc(c.phone) + '</a>' : '') +
+        ? (c.name !== $('fAssigned').value.trim() ? '<b>' + esc(c.name) + '</b> · ' : '') + esc([c.trade].filter(Boolean).join('')) + (c.phone ? (c.trade ? ' · ' : '') + '<a href="tel:' + esc(c.phone.replace(/\s/g, '')) + '">' + esc(c.phone) + '</a>' : '') +
           (wa ? ' · <a href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '')
         : ($('fAssigned').value.trim() ? 'Not in your contractor list' : '');
     }
@@ -6013,6 +6037,7 @@
       if ($('fUrg').value !== j.urgency) body.urgency = $('fUrg').value;
       var dueVal = $('fDue').value;
       if (dueVal !== toLocalInput(j.due_at)) body.due_at = dueVal ? new Date(dueVal).toISOString() : null;
+      ['fAssigned', 'fAssigned2'].forEach(function(id){ var el = $(id), rc = el && resolveContractor(el.value); if (rc) el.value = rc.name; });   // "DPH" → "DPH London"
       var who = ($('fWho').querySelector('button.on') || {}).dataset;
       who = who ? who.who || '' : '';
       if (who !== (j.landlord_handles || '')) body.landlord_handles = who || null;
