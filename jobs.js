@@ -2091,30 +2091,37 @@ module.exports = function mountJobs(app, opts) {
     let text = str(String((req.body || {}).text || '').replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, ''), 6000);
     // An attached document (e.g. a Terms of Let): Word files are read here;
     // PDFs and photos go to the AI as they are.
-    let file = (req.body || {}).file;
-    const files = [];
+    // Attached documents (e.g. a Terms of Let, and the landlord statement with
+    // its charges): Word files are read here; PDFs and photos go to the AI as
+    // they are; Google Drive / Docs share links are fetched from Google first.
+    const body = req.body || {};
+    const given = (Array.isArray(body.files) ? body.files : body.file ? [body.file] : []).slice(0, 4);
+    const files = [], names = [];
     let fileNote = '';
-    // Or a Google Drive / Google Docs share link: fetched from Google here.
-    if (file && file.drive) {
-      const got = await fetchDriveFile(file.drive);
-      if (got.error) return res.status(400).json({ ok: false, error: got.error });
-      file = got;
-    }
-    if (file && (file.data || file.buf)) {
-      const buf = file.buf || Buffer.from(String(file.data), 'base64'), fname = String(file.name || ''), mime = String(file.mime || '').toLowerCase();
+    for (let file of given) {
+      if (!file) continue;
+      if (file.drive) {
+        const got = await fetchDriveFile(file.drive);
+        if (got.error) return res.status(400).json({ ok: false, error: got.error });
+        file = got;
+      }
+      if (!file.data && !file.buf) continue;
+      const buf = file.buf || Buffer.from(String(file.data), 'base64'), fname = str(String(file.name || 'document'), 200), mime = String(file.mime || '').toLowerCase();
       if (!buf.length || buf.length > 15 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'file-too-big' });
       if (/\.docx$/i.test(fname) || /wordprocessingml/.test(mime)) {
         const words = docxText(buf);
         if (!words) return res.status(400).json({ ok: false, error: 'file-unreadable' });
-        fileNote = '\n\nAttached document "' + fname + '":\n' + words.slice(0, 40000);
-      } else if (mime === 'application/pdf' || /\.pdf$/i.test(fname)) files.push({ mime: 'application/pdf', data: buf.toString('base64') });
-      else if (/^image\/(jpeg|png|webp|heic|heif)$/.test(mime)) files.push({ mime: mime, data: buf.toString('base64') });
+        fileNote += '\n\nAttached document "' + fname + '":\n' + words.slice(0, 40000);
+      } else if (mime === 'application/pdf' || /\.pdf$/i.test(fname)) { files.push({ mime: 'application/pdf', data: buf.toString('base64') }); names.push(fname); }
+      else if (/^image\/(jpeg|png|webp|heic|heif)$/.test(mime)) { files.push({ mime: mime, data: buf.toString('base64') }); names.push(fname); }
       else return res.status(400).json({ ok: false, error: 'file-type' });
-      if (!text) text = 'The attached document is a Terms of Let / tenancy details for a new let. Create the tenancy from it.';
+    }
+    if (given.length) {
+      if (!text) text = 'The attached document' + (given.length > 1 ? 's are' : ' is') + ' a Terms of Let / tenancy details for a new let' + (given.length > 1 ? ' (and possibly the landlord statement for it)' : '') + '. Create the tenancy from ' + (given.length > 1 ? 'them' : 'it') + '.';
       // Started from a property already on file: the tenancy is for that property.
-      const forProp = str((req.body || {}).for_property, 300);
+      const forProp = str(body.for_property, 300);
       if (forProp) text += '\n\nThis tenancy is for the property already on file: ' + forProp + ' — use exactly this address for it.';
-      if (files.length) fileNote = '\n\n(The document "' + fname + '" is attached; read it in full.)';
+      if (names.length) fileNote += '\n\n(' + (names.length > 1 ? 'The documents ' + names.map(function (n) { return '"' + n + '"'; }).join(', ') + ' are' : 'The document "' + names[0] + '" is') + ' attached; read ' + (names.length > 1 ? 'them' : 'it') + ' in full.)';
     }
     if (!text) return res.status(400).json({ ok: false, error: 'no-text' });
     text = text + fileNote;
@@ -2152,6 +2159,8 @@ module.exports = function mountJobs(app, opts) {
       'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis ("upfront" if the fee is on the annual rent / taken up front, "monthly" if monthly, "" if not said), ' +
       'tenants and guarantors (each [{"name": "", "email": "", "phone": ""}], names with titles as given), landlord ({"name": "", "email": "", "phone": "", "line1": "", "line2": "", "country": "", "postcode": ""} — their own address), ' +
       'fees (other fees charged to the landlord: [{"label": "", "amount": 0}]), notes (anything else useful).\n' +
+      'If a LANDLORD STATEMENT (statement of account to the landlord) is attached with it, add every charge or deduction made to the landlord for this let to that tenancy\'s fees, labelled as on the statement (e.g. "Inventory", "Tenancy agreement", "Deposit registration", "Referencing", "Gas safety certificate"), with the amount BEFORE VAT (if the statement shows VAT separately, use the net figure; if it says the amount includes VAT, divide by 1.2). ' +
+      'Do not put in fees: rent received, deposits or holding deposits, money paid to the landlord, a VAT line on its own, or the main tenant find / letting / management commission — give that as find_pct / collect_pct / manage_pct (and find_basis) instead, unless only a £ amount is shown for it with no percentage, in which case put it in fees. Fill in any other tenancy details the statement gives that the Terms of Let leaves out.\n' +
       'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], ' +
       '"contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "properties": [{"address": "", "tenants": [], "landlord": "", "key_number": "", "notes": ""}], "tenancies": [], "understood": true}. ' +
       'Use [] for jobs, contacts, properties or tenancies when there are none. If the instruction is none of these, reply {"jobs": [], "contacts": [], "properties": [], "tenancies": [], "understood": false}.';

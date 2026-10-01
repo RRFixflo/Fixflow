@@ -666,6 +666,8 @@
   .drop-zone { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgba(8,9,12,.55); pointer-events: none; }
   .drop-zone > div { border: 3px dashed #fff; border-radius: 18px; padding: 40px 48px; color: #fff; font-size: 1.25rem; font-weight: 700; text-align: center; background: rgba(255,255,255,.08); }
   .drop-hint { color: var(--ink-soft); font-size: .8rem; }
+  .ask-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--hover, #F2F4F7); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: .8rem; color: var(--ink); margin: 2px 0; }
+  .ask-chip button { border: 0; background: none; cursor: pointer; color: var(--ink-soft); padding: 0 4px; font: inherit; }
   .drop-zone small { display: block; font-size: .85rem; font-weight: 500; margin-top: 6px; opacity: .85; }
   .sv-ip { color: #2F5BEA; cursor: pointer; font-variant-numeric: tabular-nums; }
   .sv-ip:hover { text-decoration: underline; }
@@ -1384,9 +1386,9 @@
       <button type="button">EICR needed at 9 Park Road</button>
       <button type="button">Add a contractor: Miguel from NW Cleaning, cleaner, 07404 043045</button>
     </div>
-    <div class="ask-file"><button class="btn small" id="askAttach" type="button">📎 Attach a document</button><button class="btn small" id="askDriveBtn" type="button" title="Use a file from Google Drive">🔗 From Google Drive</button><span id="askFileName" class="muted-note" style="margin:0"><span class="drop-hint">or drag &amp; drop a file here</span></span>
-      <button class="btn small ghost" id="askFileX" type="button" hidden title="Remove">✕</button>
-      <input type="file" id="askFile" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" hidden></div>
+    <div class="ask-file"><button class="btn small" id="askAttach" type="button">📎 Attach a document</button><button class="btn small" id="askDriveBtn" type="button" title="Use a file from Google Drive">🔗 From Google Drive</button><span id="askFileName" class="muted-note" style="margin:0"><span class="drop-hint">or drag &amp; drop files here</span></span>
+      <button class="btn small ghost" id="askFileX" type="button" hidden title="Remove all">Remove all</button>
+      <input type="file" id="askFile" multiple accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*" hidden></div>
     <div class="ask-drive" id="askDriveRow" hidden>
       <div style="display:flex;gap:8px"><input class="inp" id="askDrive" placeholder="Paste the Google Drive link (Share → Copy link)" autocomplete="off"><button class="btn small primary" id="askDriveUse" type="button">Use</button></div>
       <div class="muted-note" style="margin:4px 0 0">In Google Drive: open the file’s menu → <b>Share</b> → set General access to <b>Anyone with the link</b> → <b>Copy link</b>, then paste it here. Works with PDFs, Word files, photos and Google Docs. On a phone you can also tap “Attach a document” and pick Google Drive.</div>
@@ -6400,22 +6402,32 @@
     setTimeout(function(){ $('askText').focus(); }, 50);
   }
   function closeAsk(){ stopListening(); $('askModal').hidden = true; if (typeof setAskForProp === 'function') setAskForProp(''); }
-  // A document for Ask Fixflow to read (e.g. a Terms of Let → a new tenancy).
-  var askFileData = null, askForProp = '';
+  // Documents for Ask Fixflow to read (e.g. a Terms of Let → a new tenancy,
+  // with the landlord statement for its charges). Up to 4 at a time.
+  var askFiles = [], askForProp = '';
+  function renderAskFiles(){
+    $('askFileName').innerHTML = askFiles.length ? askFiles.map(function(x, i){ return '<span class="ask-chip">' + (x.drive ? '🔗 ' : '📄 ') + esc(x.name.length > 32 ? x.name.slice(0, 30) + '…' : x.name) + ' <button type="button" data-rmf="' + i + '" title="Remove">✕</button></span>'; }).join(' ') + (askFiles.length === 1 ? ' <span class="drop-hint">— you can add the landlord statement too</span>' : '')
+      : '<span class="drop-hint">or drag &amp; drop files here</span>';
+    $('askFileX').hidden = askFiles.length < 2;
+  }
   function setAskFile(f){
-    askFileData = null; $('askFileName').innerHTML = '<span class="drop-hint">or drag &amp; drop a file here</span>'; $('askFileX').hidden = true;
-    if (!f) return;
-    if (f.drive) { askFileData = { drive: f.drive, name: 'Google Drive file' }; $('askFileName').textContent = '🔗 Google Drive file'; $('askFileX').hidden = false; $('askErr').textContent = ''; $('askDriveRow').hidden = true; return; }
-    if (f.size > 15 * 1024 * 1024) { $('askErr').textContent = 'That file is too big (15 MB max).'; return; }
-    if (/\.doc$/i.test(f.name)) { $('askErr').textContent = 'Please save it as a PDF or .docx (Word) first — old .doc files can’t be read.'; return; }
+    if (!f) { askFiles = []; renderAskFiles(); return; }
+    if (askFiles.length >= 4) { $('askErr').textContent = 'Up to 4 documents at a time.'; return; }
+    if (f.drive) { askFiles.push({ drive: f.drive, name: 'Google Drive file' }); $('askErr').textContent = ''; $('askDriveRow').hidden = true; renderAskFiles(); return; }
+    if (f.size > 15 * 1024 * 1024) { $('askErr').textContent = f.name + ' is too big (15 MB max).'; return; }
+    if (/\.doc$/i.test(f.name)) { $('askErr').textContent = 'Please save ' + f.name + ' as a PDF or .docx (Word) first — old .doc files can’t be read.'; return; }
     var r = new FileReader();
-    r.onload = function(){ askFileData = { name: f.name, mime: f.type || (/\.pdf$/i.test(f.name) ? 'application/pdf' : /\.docx$/i.test(f.name) ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : ''), data: String(r.result).replace(/^data:[^,]*,/, '') };
-      $('askFileName').textContent = '📄 ' + f.name; $('askFileX').hidden = false; $('askErr').textContent = ''; };
+    r.onload = function(){
+      if (askFiles.length >= 4) return;
+      askFiles.push({ name: f.name, mime: f.type || (/\.pdf$/i.test(f.name) ? 'application/pdf' : /\.docx$/i.test(f.name) ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : ''), data: String(r.result).replace(/^data:[^,]*,/, '') });
+      $('askErr').textContent = ''; renderAskFiles();
+    };
     r.readAsDataURL(f);
   }
   $('askAttach').addEventListener('click', function(){ $('askFile').value = ''; $('askFile').click(); });
-  $('askFile').addEventListener('change', function(){ setAskFile(this.files && this.files[0]); });
+  $('askFile').addEventListener('change', function(){ Array.prototype.forEach.call(this.files || [], setAskFile); });
   $('askFileX').addEventListener('click', function(){ setAskFile(null); });
+  $('askFileName').addEventListener('click', function(e){ var b = e.target.closest('[data-rmf]'); if (b) { askFiles.splice(Number(b.dataset.rmf), 1); renderAskFiles(); } });
   $('askDriveBtn').addEventListener('click', function(){ $('askDriveRow').hidden = !$('askDriveRow').hidden; if (!$('askDriveRow').hidden) $('askDrive').focus(); });
   function useDriveLink(){
     var v = $('askDrive').value.trim();
@@ -6452,14 +6464,16 @@
   document.addEventListener('drop', function(e){
     dragDepth = 0; $('dropZone').hidden = true;
     var t = dropTarget(); if (!t) return;
-    var f = e.dataTransfer.files && e.dataTransfer.files[0];
+    var fl = Array.prototype.slice.call(e.dataTransfer.files || []), f = fl[0];
     var link = !f ? String(e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').split(/\s+/).filter(function(x){ return /^https:\/\/(drive|docs)\.google\.com\//i.test(x); })[0] : '';
     if (!f && !link) return;
     e.preventDefault();
     if (t.kind === 'tcy') askFromTerms();
     else if (t.kind === 'prop') askFromTerms(t.address);
-    if (f && !/\.(pdf|docx?|jpe?g|png|webp|heic|heif)$/i.test(f.name) && !/^(image\/|application\/pdf)/.test(f.type || '')) { setAskFile(null); $('askErr').textContent = 'I can read PDFs, Word (.docx) files and photos.'; return; }
-    setAskFile(f || { drive: link });
+    var ok = function(x){ return /\.(pdf|docx?|jpe?g|png|webp|heic|heif)$/i.test(x.name) || /^(image\/|application\/pdf)/.test(x.type || ''); };
+    if (!f) { setAskFile({ drive: link }); return; }
+    fl.filter(ok).forEach(setAskFile);
+    if (fl.some(function(x){ return !ok(x); })) $('askErr').textContent = 'I can read PDFs, Word (.docx) files and photos' + (fl.some(ok) ? ' — the others were left out.' : '.');
   });
   function setAskForProp(addr){
     askForProp = addr || '';
@@ -6555,11 +6569,11 @@
   $('askText').addEventListener('input', function(){ if ($('askErr').textContent) $('askErr').textContent = ''; });
   function runAsk(){
     var text = $('askText').value.trim();
-    if (!text && !askFileData) { $('askText').focus(); return; }
+    if (!text && !askFiles.length) { $('askText').focus(); return; }
     if (!meta.canAi) { $('askErr').textContent = 'AI isn’t switched on (GEMINI_API_KEY).'; return; }
-    $('askErr').textContent = ''; busy($('askGo'), true, askFileData ? 'Reading ' + askFileData.name.slice(0, 24) + '…' : 'Thinking…');
+    $('askErr').textContent = ''; busy($('askGo'), true, askFiles.length > 1 ? 'Reading ' + askFiles.length + ' documents…' : askFiles.length ? 'Reading ' + askFiles[0].name.slice(0, 24) + '…' : 'Thinking…');
     askSource = askMode === 'email' ? text : '';
-    api('POST', '/api/admin/assistant', { text: text, mode: askMode, file: askFileData, for_property: askForProp || undefined }).then(function(d){
+    api('POST', '/api/admin/assistant', { text: text, mode: askMode, files: askFiles.length ? askFiles : undefined, for_property: askForProp || undefined }).then(function(d){
       busy($('askGo'), false);
       if (!d.ok) { $('askErr').textContent = { 'file-type': 'I can read PDFs, Word (.docx) files and photos.', 'file-unreadable': 'I couldn’t read the words in that Word file — try saving it as a PDF.', 'file-too-big': 'That file is too big (15 MB max).', 'drive-link': 'That doesn’t look like a link to a Google Drive file — use Share → Copy link on the file.', 'drive-type': 'Google Sheets and Slides can’t be read — download it as a PDF, or use a Google Doc, PDF, Word file or photo.', 'drive-private': 'Google wouldn’t let me open that file. In Drive, open Share and set General access to “Anyone with the link”, then try again (you can switch it back afterwards).', 'drive-fetch': 'I couldn’t reach Google Drive just now — please try again.' }[d.error] || 'Google’s AI is overloaded right now — please try again in a minute.'; return; }
       if (d.understood) setAskFile(null);
@@ -6755,6 +6769,7 @@
           t.start_date ? 'Starts ' + esc(longDay(t.start_date)) : 'Start date not given',
           l.name ? 'Landlord: ' + esc(l.name) : ''
         ].filter(Boolean).join(' · ') + '</div>' +
+        ((t.fees || []).filter(function(f){ return f && f.label; }).length ? '<div class="prop-sub" style="line-height:1.5">Charges to add: ' + t.fees.filter(function(f){ return f && f.label; }).map(function(f){ return esc(f.label) + (num(f.amount) !== null ? ' ' + esc(gbp(num(f.amount))) : ''); }).join(', ') + ' <span class="muted-note" style="margin:0">(+ VAT)</span></div>' : '') +
         ((t.onFile || []).length || (t.filled || []).length || t.llOnFile ? '<div class="match ok">✓ ' + [
           (t.filled || []).length ? 'Contact details filled in from the tenants on file: ' + esc(joinAnd(t.filled)) : '',
           (t.onFile || []).length ? 'Tenants on file: ' + esc(joinAnd(t.onFile)) : '',
