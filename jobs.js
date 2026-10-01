@@ -3960,6 +3960,32 @@ module.exports = function mountJobs(app, opts) {
     }
   }
   setTimeout(function () { tenancyEndAlerts().catch(function (err) { console.error('Tenancy alerts failed:', err.message); }); }, 90 * 1000);
+  // TEMPORARY: look at the Southwark licence register's page so the licence
+  // check can be built to match it (logged once on start-up; removed after).
+  setTimeout(async function () {
+    const base = 'https://southwark.metastreet.co.uk';
+    const show = function (label, t) { console.log('[licence-probe] ' + label + ': ' + String(t).replace(/\s+/g, ' ').slice(0, 1500)); };
+    try {
+      const r = await fetch(base + '/public-register', { signal: AbortSignal.timeout(20000), headers: { 'user-agent': 'Mozilla/5.0 Fixflow' } });
+      const html = await r.text();
+      show('status', r.status + ' ' + r.headers.get('content-type') + ' ' + html.length + ' bytes');
+      show('head', html.slice(0, 1500));
+      show('forms', (html.match(/<form[\s\S]{0,600}?>/gi) || []).join(' | '));
+      show('inputs', (html.match(/<(input|select|button)[^>]{0,200}>/gi) || []).slice(0, 30).join(' | '));
+      const scripts = (html.match(/<script[^>]*src="[^"]+"/gi) || []).map(function (x) { return x.replace(/.*src="/, '').replace(/"$/, ''); });
+      show('scripts', scripts.join(' | '));
+      show('api-in-html', (html.match(/["'`][^"'`\s]*(api|search|register|licen[cs]e)[^"'`\s]*["'`]/gi) || []).slice(0, 60).join(' | '));
+      const body = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ');
+      show('text', body.slice(0, 1500));
+      for (const src of scripts.slice(0, 6)) {
+        const u = src.startsWith('http') ? src : base + (src.startsWith('/') ? '' : '/') + src;
+        try {
+          const js = await (await fetch(u, { signal: AbortSignal.timeout(20000) })).text();
+          show('js ' + src + ' (' + js.length + ')', (js.match(/["'`][^"'`\s]{0,80}(\/api\/|public-register|publicregister|licen[cs]e|search)[^"'`\s]{0,80}["'`]/gi) || []).filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 80).join(' | '));
+        } catch (e) { show('js-fail ' + src, e.message); }
+      }
+    } catch (e) { show('failed', e.message); }
+  }, 20 * 1000);
   setInterval(function () { tenancyEndAlerts().catch(function (err) { console.error('Tenancy alerts failed:', err.message); }); }, 6 * 3600 * 1000).unref();
   setInterval(function () { raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); }); }, 3600 * 1000).unref();
 
