@@ -8599,7 +8599,7 @@
       $('tfFindBasis').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x.dataset.v === (d.find_basis === 'upfront' ? 'upfront' : 'monthly')); });
       $('tfSvcNote').textContent = /rent\s*4\s*rent/i.test(sv) ? 'Rent4Rent — we rent the property from the landlord long term and re-let it ourselves, so there’s no VAT.'
         : /collect/i.test(sv) ? 'Rent Collection — the letting fee is the same % as Tenant Find, split monthly and taken from the rent.'
-        : /manag/i.test(sv) ? 'Fully Managed — the management fee can be split monthly or taken up front, whichever the landlord agreed.'
+        : /manag/i.test(sv) ? 'Fully Managed — the management fee can be split monthly or taken up front, whichever the landlord agreed. If a letting fee was agreed as well, fill in the letting fee too; otherwise leave it empty.'
         : 'Tenant Find — the letting fee is a % of the annual rent, taken up front.';
       if (announce && said) toast(said);
       tcyRefresh();
