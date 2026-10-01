@@ -3109,7 +3109,10 @@
     // Form 4A: the earliest valid start date (2 months' notice, 52 weeks, a rent day), worked out on the server.
     $('tiF4Earliest').textContent = ''; $('tiF4Start').value = tiCur.it.rent_from || '';
     try { $('tiF4Signer').value = $('tiF4Signer').value || localStorage.getItem('rr_f4_signer') || ''; } catch (e) {}
-    api('GET', '/api/admin/tenancies/' + t.id + '/form4a-plan').then(function(pl){ if (!pl.ok || !tiCur || tiCur.t.id !== t.id) return; tiCur.f4 = pl; $('tiF4Start').min = pl.earliest; if (!$('tiF4Start').value || $('tiF4Start').value < pl.earliest) $('tiF4Start').value = pl.earliest; $('tiF4Earliest').textContent = 'earliest ' + longDay(pl.earliest); });
+    $('tiF4Make').disabled = false;
+    api('GET', '/api/admin/tenancies/' + t.id + '/form4a-plan').then(function(pl){ if (!pl.ok || !tiCur || tiCur.t.id !== t.id) return; tiCur.f4 = pl; $('tiF4Start').min = pl.earliest; if (!$('tiF4Start').value || $('tiF4Start').value < pl.earliest) $('tiF4Start').value = pl.earliest;
+      $('tiF4Make').disabled = !pl.open;
+      $('tiF4Earliest').textContent = pl.open ? 'earliest ' + longDay(pl.earliest) : 'the notice can be prepared from ' + longDay(pl.opensOn) + ' (month 10 — rent goes up once a year, with 2 months’ notice)'; });
     $('tiNotice').hidden = !!tiCur.it.no_increase;
     $('tiNoInc').checked = !!tiCur.it.no_increase;
     var l = d.landlord || {};
@@ -7986,7 +7989,9 @@
       : { label: 'Tenant Find' + (d.find_unit === 'gbp' ? ' (' + gbp(fp) + ' pm)' : ''), amount: fm });
     var cm = monthly(d.collect_pct, d.collect_unit), mm = monthly(d.manage_pct, d.manage_unit);
     if (cm) fees.push({ label: 'Rent Collection (' + feeText(d.collect_pct, d.collect_unit) + ')', amount: cm });
-    if (mm) fees.push({ label: 'Management Fee (' + feeText(d.manage_pct, d.manage_unit) + ')', amount: mm });
+    var mUp = d.manage_basis === 'upfront';
+    if (mm) fees.push(mUp ? { label: 'Management Fee (' + (d.manage_unit === 'gbp' ? gbp(num(d.manage_pct)) + ' pm × 12' : num(d.manage_pct) + '% of annual rent ' + gbp(rent * 12)) + ', up front)', amount: r2(mm * 12) }
+      : { label: 'Management Fee (' + feeText(d.manage_pct, d.manage_unit) + ')', amount: mm });
     (d.fees || []).forEach(function(f){ if (f.label && num(f.amount) !== null) fees.push({ label: f.label, amount: r2(f.amount) }); });
     var sub = r2(fees.reduce(function(a, f){ return a + f.amount; }, 0)), vat = d.vat === false ? 0 : r2(sub * 0.2), feeTotal = r2(sub + vat);
     var income = r2(rent + (d.deposit_by === 'landlord' ? deposit : 0));
@@ -8000,9 +8005,9 @@
       // Fees taken from the rent each month (tenant find on a monthly basis,
       // collection, management), and any taken up front (tenant find on the
       // annual rent). Over the tenancy: the up-front fee plus every month's.
-      monthlyFee: r2((d.find_basis === 'upfront' ? 0 : fm) + cm + mm),
-      upfrontFee: r2(d.find_basis === 'upfront' ? fm * 12 : 0),
-      termFee: r2((d.find_basis === 'upfront' ? fm * 12 : fm * term) + (cm + mm) * term),
+      monthlyFee: r2((d.find_basis === 'upfront' ? 0 : fm) + cm + (mUp ? 0 : mm)),
+      upfrontFee: r2((d.find_basis === 'upfront' ? fm * 12 : 0) + (mUp ? mm * 12 : 0)),
+      termFee: r2((d.find_basis === 'upfront' ? fm * 12 : fm * term) + cm * term + (mUp ? mm * 12 : mm * term)),
       monthlyPct: [fp && d.find_unit !== 'gbp' && d.find_basis !== 'upfront' ? fp : 0, d.collect_unit !== 'gbp' ? num(d.collect_pct) || 0 : 0, d.manage_unit !== 'gbp' ? num(d.manage_pct) || 0 : 0].reduce(function(a, b){ return a + b; }, 0), feePct: [fp && d.find_unit !== 'gbp' ? fp : 0, d.collect_unit !== 'gbp' ? num(d.collect_pct) || 0 : 0, d.manage_unit !== 'gbp' ? num(d.manage_pct) || 0 : 0].reduce(function(a, b){ return a + b; }, 0),
       soStart: soStart, soPayments: parseInt(d.so_payments, 10) || Math.max(1, term - 1), moveInDue: d.move_in_due || addDaysIso(isoDay(new Date()), 2),
       periodEnd: addMonthsIso(d.start_date, 1), term: term, btDue: btDue, btIn: btIn, btLeft: r2(btDue - btIn)
@@ -8219,6 +8224,9 @@
       if (!d.tenants.length) d.tenants = [{ name: '', email: '', phone: '' }];
       // The move-in date is the tenancy start date (check-in that day unless said otherwise).
       if (got.start_date && !got.checkin_date) d.checkin_date = got.start_date;
+      // The service decides how the letting fee is taken, and Rent4Rent has no VAT.
+      if (/rent\s*4\s*rent/i.test(d.service || '')) d.vat = false;
+      if (/collect/i.test(d.service || '') && !got.find_basis) d.find_basis = 'monthly';
       // Date taken is the day the holding deposit was paid.
       if (got.holding_date) d.date_taken = got.holding_date;
       else if (got.date_taken) d.holding_date = got.date_taken;
@@ -8344,11 +8352,14 @@
       '</div>' +
       // Fees
       '<div class="card"><h3>Fees charged to the landlord</h3>' +
-        '<div class="grid3">' + '<div>' + tcyInp('tfFind', 'Tenant find fee', d.find_pct, ' inputmode="decimal"') + unitSeg('find', d.find_unit) +
-          '<div class="seg" id="tfFindBasis" style="margin-top:6px;font-size:.82rem"><button type="button" data-v="monthly"' + (d.find_basis !== 'upfront' ? ' class="on"' : '') + '>Monthly</button><button type="button" data-v="upfront"' + (d.find_basis === 'upfront' ? ' class="on"' : '') + '>Annual (% of yearly rent, up front)</button></div>' +
+        '<p class="muted-note" id="tfSvcNote" style="margin:0 0 8px"></p>' +
+        '<div class="grid3">' + '<div>' + tcyInp('tfFind', 'Tenant find / letting fee', d.find_pct, ' inputmode="decimal"') + unitSeg('find', d.find_unit) +
+          '<div class="seg" id="tfFindBasis" style="margin-top:6px;font-size:.82rem"><button type="button" data-v="monthly"' + (d.find_basis !== 'upfront' ? ' class="on"' : '') + '>Split monthly (rent collection)</button><button type="button" data-v="upfront"' + (d.find_basis === 'upfront' ? ' class="on"' : '') + '>Up front (% of annual rent)</button></div>' +
           '<p class="muted-note" id="tfFindNote" style="margin:4px 0 0"></p></div>' +
-          '<div>' + tcyInp('tfCollect', 'Rent collection (monthly)', d.collect_pct, ' inputmode="decimal"') + unitSeg('collect', d.collect_unit) + '<p class="muted-note" id="tfCollectNote" style="margin:4px 0 0"></p></div>' +
-          '<div>' + tcyInp('tfManage', 'Management fee (monthly)', d.manage_pct, ' inputmode="decimal"') + unitSeg('manage', d.manage_unit) + '<p class="muted-note" id="tfManageNote" style="margin:4px 0 0"></p></div></div>' +
+          '<div>' + tcyInp('tfCollect', 'Extra collection fee (only if charged on top)', d.collect_pct, ' inputmode="decimal"') + unitSeg('collect', d.collect_unit) + '<p class="muted-note" id="tfCollectNote" style="margin:4px 0 0"></p></div>' +
+          '<div>' + tcyInp('tfManage', 'Management fee', d.manage_pct, ' inputmode="decimal"') + unitSeg('manage', d.manage_unit) +
+            '<div class="seg" id="tfManageBasis" style="margin-top:6px;font-size:.82rem"><button type="button" data-v="monthly"' + (d.manage_basis !== 'upfront' ? ' class="on"' : '') + '>Split monthly</button><button type="button" data-v="upfront"' + (d.manage_basis === 'upfront' ? ' class="on"' : '') + '>Up front (% of annual rent)</button></div>' +
+            '<p class="muted-note" id="tfManageNote" style="margin:4px 0 0"></p></div></div>' +
         '<label class="lbl" style="margin-top:12px">Other fees</label><div class="tcy-chips" id="tfFeeChips">' + tcyFeePresets().map(function(f, i){ return '<button type="button" class="btn small ghost" data-fee-chip="' + i + '"' + (f.kind === 'find' ? ' title="A % of the annual rent"' : f.kind === 'manage' ? ' title="A % of the rent each month"' : '') + '>+ ' + esc(f.label) + (f.kind === 'find' ? ' (% of annual rent)' : f.kind === 'manage' ? ' (% monthly)' : num(f.amount) !== null ? ' · ' + esc(gbp(f.amount)) : '') + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-fee-chip="-1">+ Other</button></div>' +
         '<div id="tfFees">' + tcyFeeRows() + '</div>' +
         '<label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="tfVat"' + (d.vat === false ? '' : ' checked') + '> Add VAT (20%) to the fees</label>' +
@@ -8491,7 +8502,7 @@
     d.deposit = n('tfDeposit'); d.holding = n('tfHolding'); d.holding_date = v('tfHoldDate'); d.deposit_scheme = v('tfScheme');
     d.move_in_due = v('tfDue'); d.so_start = v('tfSo'); d.pay_ref = v('tfPayRef').replace(/\s+/g, ''); d.so_payments = n('tfSoN');
     d.landlord = { name: v('tfLlName'), email: v('tfLlEmail'), phone: v('tfLlPhone'), line1: v('tfLl1'), line2: v('tfLl2'), country: v('tfLlCountry'), postcode: v('tfLlPc') };
-    d.find_pct = n('tfFind'); d.collect_pct = n('tfCollect'); d.manage_pct = n('tfManage'); d.vat = $('tfVat').checked;
+    d.find_pct = n('tfFind'); d.collect_pct = n('tfCollect'); d.manage_pct = n('tfManage'); d.vat = $('tfVat').checked; d.manage_basis = d.manage_basis === 'upfront' ? 'upfront' : 'monthly';
     d.checkin_date = v('tfCiDate'); d.checkin_time = v('tfCiTime'); d.notes = v('tfNotes');
     ['tenants', 'guarantors'].forEach(function(kind){
       document.querySelectorAll('.tcy-person[data-kind="' + kind + '"]').forEach(function(row){
@@ -8569,6 +8580,32 @@
       $('tfFindBasis').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
       tcyRefresh();
     });
+    $('tfManageBasis').addEventListener('click', function(e){
+      var b = e.target.closest('[data-v]'); if (!b) return;
+      tcyDraft.manage_basis = b.dataset.v;
+      $('tfManageBasis').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
+      tcyRefresh();
+    });
+    // The service sets how the fee is taken: Tenant Find — a % of the annual rent up
+    // front; Rent Collection — the same % split monthly; Fully Managed — up front or
+    // monthly as agreed; Rent4Rent — we rent it from the landlord, so no VAT.
+    var svcApply = function(announce){
+      var sv = $('tfService').value, d = tcyDraft, said = '';
+      if (!announce) {}   // opening a tenancy: show the note, change nothing
+      else if (/rent\s*4\s*rent/i.test(sv)) { if (d.vat !== false) { d.vat = false; $('tfVat').checked = false; said = 'Rent4Rent: no VAT on the fees'; } }
+      else if (/collect/i.test(sv)) { if (d.find_basis !== 'monthly') { d.find_basis = 'monthly'; said = 'Rent Collection: the letting % is split monthly'; } }
+      else if (/tenant find/i.test(sv)) { if (d.find_basis !== 'upfront') { d.find_basis = 'upfront'; said = 'Tenant Find: the letting % of the annual rent, up front'; } }
+      if (!/rent\s*4\s*rent/i.test(sv) && d.vat === false && announce) { d.vat = true; $('tfVat').checked = true; }
+      $('tfFindBasis').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x.dataset.v === (d.find_basis === 'upfront' ? 'upfront' : 'monthly')); });
+      $('tfSvcNote').textContent = /rent\s*4\s*rent/i.test(sv) ? 'Rent4Rent — we rent the property from the landlord long term and re-let it ourselves, so there’s no VAT.'
+        : /collect/i.test(sv) ? 'Rent Collection — the letting fee is the same % as Tenant Find, split monthly and taken from the rent.'
+        : /manag/i.test(sv) ? 'Fully Managed — the management fee can be split monthly or taken up front, whichever the landlord agreed.'
+        : 'Tenant Find — the letting fee is a % of the annual rent, taken up front.';
+      if (announce && said) toast(said);
+      tcyRefresh();
+    };
+    $('tfService').addEventListener('change', function(){ tcyRead(); svcApply(true); });
+    svcApply(false);
     $('tfDepBy').addEventListener('click', function(e){
       var b = e.target.closest('[data-v]'); if (!b) return;
       tcyDraft.deposit_by = b.dataset.v;
@@ -8755,7 +8792,7 @@
     row(y, 'Negotiator Name', d.negotiator, 90); y += 30;
     row(y, 'Property Full Address', d.address, 340); y += 32;
     var top = y;
-    [['Service Required', d.service], ['Tenant Find Fee', feeText(d.find_pct, d.find_unit) + (d.find_basis === 'upfront' ? ' (up front)' : '')], ['Rent Collections', feeText(d.collect_pct, d.collect_unit)], ['Management Fee', feeText(d.manage_pct, d.manage_unit)],
+    [['Service Required', d.service], ['Tenant Find Fee', feeText(d.find_pct, d.find_unit) + (d.find_basis === 'upfront' ? ' (up front)' : '')], ['Rent Collections', feeText(d.collect_pct, d.collect_unit)], ['Management Fee', feeText(d.manage_pct, d.manage_unit) + (d.manage_basis === 'upfront' && num(d.manage_pct) ? ' (up front)' : '')],
      ['Rent agreed per week', gbp(c.weekly)], ['Holding Deposit', gbp(c.holding)], ['Holding Deposit Paid', ukDay(d.holding_date)], ['Date Taken', ukDay(d.date_taken)], ['Tenancy Term', String(c.term)],
      ['Break Clause', String(num(d.break_months) || 0)], ['Tenancy Start Date', ukDay(d.start_date)], ['Registering Deposit', d.deposit_by === 'landlord' ? 'Landlord' : 'Agent']]
       .forEach(function(r){ row(y, r[0], r[1], 124, true); y += 15; });

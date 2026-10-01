@@ -2362,7 +2362,7 @@ module.exports = function mountJobs(app, opts) {
       'Do not make a job or contacts for that — its tenants, guarantors and landlord go inside the tenancy, never also in "contacts". Put it in "tenancies" with: address (full, keep flat/house number and postcode), start_date (the tenancy start date — on a Terms of Let often called the "move-in date" or "move in"; they are the same date), move_in_due (the deadline for paying the move-in monies / first rent and deposit — not the move-in date; "" if no separate deadline is given), date_taken (the date the holding deposit was paid — the same as holding_date), checkin_date (all YYYY-MM-DD; today is ' + new Date().toISOString().slice(0, 10) + '; "" if not given), ' +
       'checkin_time ("HH:MM" or ""), checkin_type ("clerk" if an inventory clerk / check-in is booked, "diy" for a DIY check-in / tenant\'s own inventory, "" if not said), term_months, break_months, rent_pcm (monthly rent in pounds; convert weekly rent × 52 / 12), deposit, holding (holding deposit / reservation fee paid) — numbers or null if not given, holding_date (when the holding deposit was paid, YYYY-MM-DD or ""), ' +
       'deposit_by ("agent" if we/the agent register it, "landlord" if the landlord does, "" if not said), deposit_scheme, negotiator, service ("Tenant Find", "Rent Collection", "Fully Managed" or "Rent4Rent" — rent-to-rent, where a company rents the property to sublet it), ' +
-      'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis ("upfront" — the tenant find fee is normally a % of the annual rent; "monthly" only if it clearly says the tenant find fee is taken monthly), ' +
+      'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis and manage_basis ("upfront" or "monthly"). How fees work at this agency: Tenant Find — the letting fee (find_pct) is a % of the annual rent taken up front (find_basis "upfront"); Rent Collection — the same letting % split monthly (find_pct with find_basis "monthly"; collect_pct only if a separate extra collection fee is stated); Fully Managed — the management % (manage_pct) taken monthly or up front as agreed (manage_basis); Rent4Rent — the agency rents the property from the landlord and re-lets it, no VAT (vat false). ' +
       'tenants and guarantors (each [{"name": "", "email": "", "phone": ""}], names with titles as given), landlord ({"name": "", "email": "", "phone": "", "line1": "", "line2": "", "country": "", "postcode": ""} — their own address), ' +
       'fees (other fees charged to the landlord: [{"label": "", "amount": 0}]), notes (anything else useful).\n' +
       'If a LANDLORD STATEMENT (statement of account to the landlord) is attached with it, add every charge or deduction made to the landlord for this let to that tenancy\'s fees, labelled as on the statement (e.g. "Inventory", "Tenancy agreement", "Deposit registration", "Referencing", "Gas safety certificate"), with the amount BEFORE VAT (if the statement shows VAT separately, use the net figure; if it says the amount includes VAT, divide by 1.2). ' +
@@ -2404,6 +2404,8 @@ module.exports = function mountJobs(app, opts) {
       if (!(t && t.break_months)) d.break_months = 0;
       if (!(t && (t.deposit_by === 'agent' || t.deposit_by === 'landlord'))) d.deposit_by = null;
       if (!(t && (t.find_basis === 'upfront' || t.find_basis === 'monthly'))) d.find_basis = null;
+      if (!(t && (t.manage_basis === 'upfront' || t.manage_basis === 'monthly'))) d.manage_basis = null;
+      if (t && (t.vat === false || /rent\s*4\s*rent/i.test(String(t.service || '')))) d.vat = false;
       return d;
     }).filter(function (d) { return d.address || d.tenants.length; });
     const properties = (Array.isArray(parsed.properties) ? parsed.properties : []).slice(0, 10).map(function (x) {
@@ -2933,6 +2935,7 @@ module.exports = function mountJobs(app, opts) {
       if (start > today) return '';
       const plan = form4aPlan(t); if (!plan.ok) return '';
       const svc = String((t.data || {}).service || ''), agentOn = !/tenant find/i.test(svc) || !svc;
+      if (!plan.open) return '<p class="muted" style="margin:8px 0 0">📝 You can propose a rent increase (Form 4A) from <b>' + htmlEsc(day(plan.opensOn)) + '</b> — rent can go up once every 12 months, with 2 months’ notice.</p>';
       return '<details class="lf"><summary>📝 Propose a rent increase (Form 4A)</summary><form class="lf-f" data-id="' + t.id + '" data-k="' + htmlEsc(t.property_key) + '">' +
         '<p class="muted" style="margin:6px 0">Current rent <b>£' + plan.rent.toFixed(2) + '</b> a month. The earliest the new rent can start is <b>' + htmlEsc(day(plan.earliest)) + '</b> — the notice must be served at least 2 months before, the first increase can’t start until 52 weeks after the tenancy began (or the last increase), and it starts on a rent day.</p>' +
         '<label>New rent (£ a month)<input name="new_rent" inputmode="decimal" required placeholder="e.g. ' + Math.round(plan.rent * 1.05) + '"></label>' +
@@ -3678,7 +3681,7 @@ document.querySelectorAll('.lb-f').forEach(function(f){
       guarantors: (Array.isArray(b.guarantors) ? b.guarantors : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       landlord: { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(l.postcode, 20) },
       service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), find_basis: b.find_basis === 'upfront' ? 'upfront' : 'monthly',
-      find_unit: b.find_unit === 'gbp' ? 'gbp' : 'pct', collect_unit: b.collect_unit === 'gbp' ? 'gbp' : 'pct', manage_unit: b.manage_unit === 'gbp' ? 'gbp' : 'pct', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
+      manage_basis: b.manage_basis === 'upfront' ? 'upfront' : 'monthly', find_unit: b.find_unit === 'gbp' ? 'gbp' : 'pct', collect_unit: b.collect_unit === 'gbp' ? 'gbp' : 'pct', manage_unit: b.manage_unit === 'gbp' ? 'gbp' : 'pct', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
       fees: (Array.isArray(b.fees) ? b.fees : []).slice(0, 30).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount) }; }).filter(function (f) { return f.label; }),
       vat: b.vat !== false, statement_date: day(b.statement_date), notes: s(b.notes, 4000),
       // Banking trail: extra move-in charges and each payment received.
@@ -3746,7 +3749,10 @@ document.querySelectorAll('.lb-f').forEach(function(f){
     const rent = last ? last.rent : Number(d.rent_pcm) || 0;
     if (!start) return { ok: false, error: 'no-start-date' };
     const earliest = rentDayOnOrAfter([addMonthsIso(today, 2), addDaysIso(last ? last.from : start, 364)].sort().pop(), start);
-    return { ok: true, start: start, rent: rent, lastIncrease: last ? last.from : '', firstIncrease: firstInc && firstInc <= today ? firstInc : '', earliest: earliest, served: today, rentDay: +start.slice(8, 10) };
+    // Rent goes up at most every 12 months, with 2 months' notice: the notice can be
+    // prepared from month 10 (10 months after the tenancy began, or the last increase).
+    const opensOn = addMonthsIso(last ? last.from : start, 10);
+    return { ok: true, start: start, rent: rent, lastIncrease: last ? last.from : '', firstIncrease: firstInc && firstInc <= today ? firstInc : '', earliest: earliest, served: today, rentDay: +start.slice(8, 10), opensOn: opensOn, open: today >= opensOn };
   }
   function f4aCheck(plan, newStart) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newStart || '')) return 'Choose the date the new rent starts.';
@@ -3793,6 +3799,7 @@ document.querySelectorAll('.lb-f').forEach(function(f){
   async function form4aFor(p, t, b, who) {
     const plan = form4aPlan(t, isoDay(b.served) || null);
     if (!plan.ok) return { error: 'This tenancy has no start date.' };
+    if (!plan.open) return { error: 'A rent increase notice can be prepared from ' + certDay(plan.opensOn) + ' — 10 months after ' + (plan.lastIncrease ? 'the last increase' : 'the tenancy began') + ', so the new rent starts 12 months on with 2 months’ notice.' };
     const newRent = money(b.new_rent);
     if (!newRent) return { error: 'Enter the new rent.' };
     if (newRent <= plan.rent) return { error: 'The new rent must be more than the current rent (£' + plan.rent.toFixed(2) + ').' };
