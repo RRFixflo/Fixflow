@@ -198,6 +198,16 @@ CREATE TABLE IF NOT EXISTS property_info (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE property_info ADD COLUMN IF NOT EXISTS licence JSONB;
+CREATE TABLE IF NOT EXISTS licence_pool (
+  id          SERIAL PRIMARY KEY,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  address     TEXT NOT NULL,
+  ref         TEXT,
+  licence     JSONB NOT NULL,
+  applied_key TEXT,
+  applied_at  TIMESTAMPTZ
+);
 CREATE TABLE IF NOT EXISTS property_certificates (
   id           SERIAL PRIMARY KEY,
   property_key TEXT NOT NULL,
@@ -1718,7 +1728,8 @@ module.exports = function mountJobs(app, opts) {
       await ensureLandlord(p, { landlord_name: str(b.landlord_name, 200), landlord_phone: str(b.landlord_phone, 50), landlord_email: str(b.landlord_email, 200) }, address);
       landlord = str(b.landlord_name, 200);
     }
-    res.json({ ok: true, address: address, key: key, tenants: tenants, landlord: landlord });
+    const licence = await applyLicencePool(p).catch(function () { return 0; });   // a licence saved for it earlier
+    res.json({ ok: true, address: address, key: key, tenants: tenants, landlord: landlord, licence: licence });
   }));
 
   // ---------- Key numbers ----------
@@ -1816,6 +1827,61 @@ module.exports = function mountJobs(app, opts) {
         status: l && l.status === 'applied' ? 'applied' : 'licensed', holder: str(l && l.holder, 200) || '', starts: day(l && l.starts), expires: day(l && l.expires) };
     }).filter(function (l) { return l.address; });
     res.json({ ok: true, licences: licences });
+  }));
+
+  // Licences from the register for properties not on Fixflow yet: kept here and
+  // applied automatically once the property is added (by any route).
+  function sameAddr(a, b) {
+    const ka = propKey(a), kb = propKey(b); if (!ka || !kb) return false; if (ka === kb) return true;
+    const nums = function (k) { return k.split(' ').filter(function (w) { return /\d/.test(w); }); };
+    const words = function (k) { return k.split(' ').filter(function (w) { return w.length >= 3 && !/\d/.test(w) && ['flat', 'house', 'road', 'street', 'court', 'london', 'the', 'and', 'apartment', 'estate', 'maisonette'].indexOf(w) === -1; }); };
+    const within = function (x, y) { const xn = nums(x), xw = words(x), yn = nums(y), yw = words(y); return xn.length && xw.length && xn.every(function (n) { return yn.indexOf(n) !== -1; }) && xw.every(function (w) { return yw.indexOf(w) !== -1; }); };
+    const pc = function (a) { const m = POSTCODE_RE.exec(String(a || '')); return m ? String(m[0]).replace(/\s+/g, '').toUpperCase() : ''; };
+    if (pc(a) && pc(b) && pc(a) !== pc(b)) return false;   // different postcodes: never the same place
+    return within(ka, kb) || within(kb, ka);
+  }
+  function cleanPoolLicence(l, borough) {
+    const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null; };
+    return { status: l && l.status === 'applied' ? 'applied' : 'licensed', type: str(l && l.type, 60), number: str(l && l.number, 60), holder: str(l && l.holder, 200),
+      starts: day(l && l.starts), expires: day(l && l.expires), borough: str((l && l.borough) || borough, 80), checked_at: new Date().toISOString().slice(0, 10) };
+  }
+  async function applyLicencePool(p) {
+    const pool = (await p.query('SELECT id, address, licence FROM licence_pool WHERE applied_at IS NULL')).rows;
+    if (!pool.length) return 0;
+    const props = (await allProperties(p)).concat((await p.query('SELECT address FROM tenancies WHERE address IS NOT NULL')).rows.map(function (r) { return { key: propKey(r.address), address: r.address }; }));
+    let n = 0;
+    for (const row of pool) {
+      const hit = props.filter(function (x) { return x.key && sameAddr(x.address, row.address); })[0]; if (!hit) continue;
+      await p.query(`INSERT INTO property_info (property_key, address, licence) VALUES ($1, $2, $3)
+        ON CONFLICT (property_key) DO UPDATE SET licence = excluded.licence, updated_at = now()`, [hit.key, hit.address, JSON.stringify(row.licence)]);
+      await p.query('UPDATE licence_pool SET applied_key = $2, applied_at = now() WHERE id = $1', [row.id, hit.key]);
+      n++;
+    }
+    if (n) console.log('Licences applied from the saved list: ' + n);
+    return n;
+  }
+  app.get('/api/admin/licence-pool', withDb(async function (p, req, res) {
+    await applyLicencePool(p);
+    res.json({ ok: true, pool: (await p.query('SELECT id, created_at, address, ref, licence FROM licence_pool WHERE applied_at IS NULL ORDER BY address')).rows });
+  }));
+  app.post('/api/admin/licence-pool', withDb(async function (p, req, res) {
+    const b = req.body || {}, list = (Array.isArray(b.licences) ? b.licences : []).slice(0, 500);
+    let saved = 0;
+    for (const l of list) {
+      const address = str(l && l.address, 300); if (!address) continue;
+      const lic = cleanPoolLicence(l, b.borough), ref = lic.number || null;
+      // The same licence (by reference, else address) is updated, not added twice.
+      const cur = (await p.query('SELECT id FROM licence_pool WHERE applied_at IS NULL AND ((ref IS NOT NULL AND ref = $1) OR lower(address) = lower($2)) LIMIT 1', [ref, address])).rows[0];
+      if (cur) await p.query('UPDATE licence_pool SET address = $2, ref = $3, licence = $4, updated_at = now() WHERE id = $1', [cur.id, address, ref, JSON.stringify(lic)]);
+      else await p.query('INSERT INTO licence_pool (address, ref, licence) VALUES ($1, $2, $3)', [address, ref, JSON.stringify(lic)]);
+      saved++;
+    }
+    const applied = await applyLicencePool(p);
+    res.json({ ok: true, saved: saved, applied: applied });
+  }));
+  app.delete('/api/admin/licence-pool/:id', withDb(async function (p, req, res) {
+    await p.query('DELETE FROM licence_pool WHERE id = $1', [jobId(req)]);
+    res.json({ ok: true });
   }));
 
   app.put('/api/admin/property-landlord', withDb(async function (p, req, res) {
@@ -4090,6 +4156,7 @@ module.exports = function mountJobs(app, opts) {
   // A property licence expiring within 2 months (or expired): a phone alert, once per expiry date.
   async function licenceAlerts() {
     const p = await db(); if (!p) return;
+    await applyLicencePool(p).catch(function (err) { console.error('Licence pool failed:', err.message); });
     const soon = new Date(Date.now() + 61 * 86400000).toISOString().slice(0, 10);
     for (const r of (await p.query("SELECT property_key, address, licence FROM property_info WHERE licence->>'status' = 'licensed' AND licence->>'expires' IS NOT NULL")).rows) {
       const l = r.licence || {}; if (!l.expires || l.expires > soon || l.alerted_for === l.expires) continue;
