@@ -1748,12 +1748,43 @@ module.exports = function mountJobs(app, opts) {
     if (!key) return res.status(400).json({ ok: false, error: 'address' });
     const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null; };
     const lic = { status: ['licensed', 'none', 'not_needed', 'applied'].indexOf(l.status) !== -1 ? l.status : 'licensed', type: str(l.type, 60), number: str(l.number, 60), holder: str(l.holder, 200),
-      starts: day(l.starts), expires: day(l.expires), notes: str(l.notes, 500), checked_at: day(l.checked_at) || new Date().toISOString().slice(0, 10) };
+      starts: day(l.starts), expires: day(l.expires), notes: str(l.notes, 500), borough: str(l.borough, 80), checked_at: day(l.checked_at) || new Date().toISOString().slice(0, 10) };
     const cur = (await p.query('SELECT licence FROM property_info WHERE property_key = $1', [key])).rows[0];
     if (cur && cur.licence && cur.licence.expires === lic.expires) lic.alerted_for = cur.licence.alerted_for || null;   // same expiry: don't alert again
     await p.query(`INSERT INTO property_info (property_key, address, licence) VALUES ($1, $2, $3)
       ON CONFLICT (property_key) DO UPDATE SET licence = excluded.licence, address = coalesce(property_info.address, excluded.address), updated_at = now()`, [key, address, JSON.stringify(lic)]);
     res.json({ ok: true, licence: lic });
+  }));
+
+  // Which council a postcode is in (postcodes.io, free and public), and each
+  // council's licence register link (saved by staff; Southwark to start with).
+  const boroughCache = {};
+  app.get('/api/admin/borough', withDb(async function (p, req, res) {
+    const pc = String(req.query.postcode || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/.test(pc)) return res.status(400).json({ ok: false, error: 'postcode' });
+    if (!boroughCache[pc]) {
+      try {
+        const r = await fetch('https://api.postcodes.io/postcodes/' + pc, { signal: AbortSignal.timeout(8000) });
+        const d = await r.json();
+        if (!r.ok || !d.result) return res.json({ ok: false, error: 'not-found' });
+        boroughCache[pc] = d.result.admin_district || '';
+      } catch (e) { return res.status(502).json({ ok: false, error: 'lookup-failed' }); }
+    }
+    res.json({ ok: true, borough: boroughCache[pc] });
+  }));
+  const DEFAULT_REGISTERS = { Southwark: 'https://southwark.metastreet.co.uk/public-register' };
+  app.get('/api/admin/licence-registers', withDb(async function (p, req, res) {
+    const row = (await p.query("SELECT value FROM app_settings WHERE key = 'licence_registers'")).rows[0];
+    res.json({ ok: true, registers: Object.assign({}, DEFAULT_REGISTERS, (row && row.value) || {}) });
+  }));
+  app.put('/api/admin/licence-registers', withDb(async function (p, req, res) {
+    const b = req.body || {}, borough = str(b.borough, 80), url = str(b.url, 500);
+    if (!borough) return res.status(400).json({ ok: false, error: 'borough' });
+    if (url && !/^https:\/\/[^\s]+$/i.test(url)) return res.status(400).json({ ok: false, error: 'url' });
+    const row = (await p.query("SELECT value FROM app_settings WHERE key = 'licence_registers'")).rows[0];
+    const v = Object.assign({}, (row && row.value) || {}); if (url) v[borough] = url; else delete v[borough];
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('licence_registers', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(v)]);
+    res.json({ ok: true, registers: Object.assign({}, DEFAULT_REGISTERS, v) });
   }));
 
   // Results copied (or a screenshot) from the council's licence register after a
