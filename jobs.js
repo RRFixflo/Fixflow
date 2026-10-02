@@ -5849,7 +5849,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (c.invoice_id && list.some(function (x) { return x.invoice_id === c.invoice_id; })) return null;
     const row = Object.assign({ id: crypto.randomBytes(5).toString('hex'), from: stmtMonthFor(start, day < start ? start : day), at: new Date().toISOString() }, c);
     await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{month_costs}', coalesce(data->'month_costs', '[]'::jsonb) || $2::jsonb), log = log || $3::jsonb, updated_at = now() WHERE id = $1`,
-      [tid, JSON.stringify([row]), JSON.stringify([{ at: new Date().toISOString(), text: (c.money_in ? 'Money in added to the ' : 'Cost added to the ') + certDay(row.from) + ' statement: ' + c.label + ' ' + gbp(c.amount) + (c.novat && !c.money_in && !c.invoice_id ? ' (no VAT)' : '') }])]);
+      [tid, JSON.stringify([row]), JSON.stringify([{ at: new Date().toISOString(), text: (c.money_in ? 'Credit to the landlord added to the ' : 'Cost added to the ') + certDay(row.from) + ' statement: ' + c.label + ' ' + gbp(c.amount) + (c.novat && !c.money_in && !c.invoice_id ? ' (no VAT)' : '') }])]);
     return row;
   }
   app.post('/api/admin/tenancies/:id/month-cost', withDb(async function (p, req, res) {
