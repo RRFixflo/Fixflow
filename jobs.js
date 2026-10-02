@@ -734,6 +734,37 @@ function str(v, max) {
   return s ? s.slice(0, max || 500) : null;
 }
 
+// Certificate dates written as lines, e.g. "gas safety expiry: 30/03/2026",
+// "EICR expires 7/6/24", "EPC done 3 March 2025". UK day/month/year; 2-digit
+// years are 20xx. The rest of the text (other lines) is taken as the property.
+const CERT_LINE_MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
+function ukDateIso(t) {
+  let m = /\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})\b/.exec(t), d, mo, y;
+  if (m) { d = +m[1]; mo = +m[2]; y = +m[3]; }
+  else if ((m = /\b(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\.?,?\s+(\d{2}|\d{4})\b/i.exec(t)) && CERT_LINE_MONTHS[m[2].toLowerCase().slice(0, m[2].toLowerCase().startsWith('sept') ? 4 : 3)]) { d = +m[1]; mo = CERT_LINE_MONTHS[m[2].toLowerCase().slice(0, m[2].toLowerCase().startsWith('sept') ? 4 : 3)]; y = +m[3]; }
+  else return '';
+  if (y < 100) y += 2000;
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCDate() === d && dt.getUTCMonth() === mo - 1 ? dt.toISOString().slice(0, 10) : '';
+}
+function certLines(text) {
+  const out = [], rest = [];
+  String(text || '').split(/\r?\n|;/).forEach(function (line) {
+    const l = line.trim(); if (!l) return;
+    const t = /\b(gas(?:\s+safety)?(?:\s+cert(?:ificate)?)?|cp12|lgsr|eicr|electrical(?:\s+(?:safety|installation))?(?:\s+cert(?:ificate)?)?|epc|energy\s+performance(?:\s+cert(?:ificate)?)?)\b/i.exec(l);
+    const iso = t ? ukDateIso(l) : '';
+    if (!t || !iso) { rest.push(l); return; }
+    const type = /gas|cp12|lgsr/i.test(t[1]) ? 'Gas' : /epc|energy/i.test(t[1]) ? 'EPC' : 'EICR';
+    const done = /\b(done|issued|carried out|completed|dated|valid from|start(?:s|ed|ing)?|from)\b/i.test(l) && !/\b(expir\w*|exp|due|until|renew\w*|valid (?:until|to))\b/i.test(l);
+    // What's left of the line after the certificate and date may be the address.
+    const left = l.replace(t[0], ' ').replace(/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})\b|\b\d{1,2}(?:st|nd|rd|th)?\s+[a-z]{3,9}\.?,?\s+\d{2,4}\b/i, ' ')
+      .replace(/\b(expir\w*|exp|due|until|renew\w*|valid|to|from|done|issued|on|at|for|cert(?:ificate)?|date|starts?|started|starting|dated|is|was|the)\b|[:\-–]/gi, ' ').replace(/\s+/g, ' ').trim().replace(/^(please\s+)?(add|update|record|save)\s+(an?\s+)?/i, '');
+    out.push({ type: type, issued_on: done ? iso : '', expires_on: done ? '' : iso, address: left.length > 6 && /\d/.test(left) ? left : '' });
+  });
+  const addr = rest.join(', ').replace(/^(please\s+)?(add|update|record|save)\b[^,]*?(for|at)\s+/i, '').trim();
+  out.forEach(function (c) { if (!c.address) c.address = addr; });
+  return out;
+}
 function money(v) {
   if (v === undefined || v === null || v === '') return null;
   const n = Number(String(v).replace(/[£,\s]/g, ''));
@@ -2344,6 +2375,7 @@ module.exports = function mountJobs(app, opts) {
       if (names.length) fileNote += '\n\n(' + (names.length > 1 ? 'The documents ' + names.map(function (n) { return '"' + n + '"'; }).join(', ') + ' are' : 'The document "' + names[0] + '" is') + ' attached; read ' + (names.length > 1 ? 'them' : 'it') + ' in full.)';
     }
     if (!text) return res.status(400).json({ ok: false, error: 'no-text' });
+    const said = text;
     text = text + fileNote;
     const trades = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY name')).rows
       .map(function (c) { return c.name + (c.trade ? ' (' + c.trade + ')' : ''); }).join('; ');
@@ -2382,7 +2414,8 @@ module.exports = function mountJobs(app, opts) {
       'If a LANDLORD STATEMENT (statement of account to the landlord) is attached with it, add every charge or deduction made to the landlord for this let to that tenancy\'s fees, labelled as on the statement (e.g. "Inventory", "Tenancy agreement", "Deposit registration", "Referencing", "Gas safety certificate"), with the amount BEFORE VAT (if the statement shows VAT separately, use the net figure; if it says the amount includes VAT, divide by 1.2). ' +
       'Do not put in fees: rent received, deposits or holding deposits, money paid to the landlord, a VAT line on its own, or the main tenant find / letting / management commission — give that as find_pct / collect_pct / manage_pct (and find_basis) instead, unless only a £ amount is shown for it with no percentage, in which case put it in fees. Fill in any other tenancy details the statement gives that the Terms of Let leaves out.\n' +
       'The instruction may instead (or also) RECORD A CERTIFICATE the property already has — a gas safety certificate, EICR or EPC with a date it was done, starts, is valid from, issued or expires ' +
-      '(e.g. "add a gas safety for 134 Regina Road starting on 22/5/26", "EICR at 9 Park Road done 3 March 2025", "gas cert for Flat 2 expires 1/6/27"). That is NOT a job (a job is when a check needs booking or doing, with no date it was done). ' +
+      '(e.g. "add a gas safety for 134 Regina Road starting on 22/5/26", "EICR at 9 Park Road done 3 March 2025", "gas cert for Flat 2 expires 1/6/27", or a list such as "gas safety expiry: 30/03/2026 / eicr expiry: 7/6/24" with the property on another line — one certificate each, all for that property). ' +
+      'That is NOT a job (a job is when a check needs booking or doing, with no date it was done) — even when the expiry date given has already passed, record it as a certificate, not a job. ' +
       'Put each in "certificates" with: address (as said, or the exact one from their property list if it clearly matches), type ("Gas", "EICR" or "EPC"), issued_on (the date done / started / valid from, YYYY-MM-DD, UK dates are day/month/year, 2-digit years are 20xx; "" if only an expiry is given), ' +
       'expires_on (YYYY-MM-DD if an expiry is given, else ""), reference (certificate number if given, else ""), rating (EPC rating letter if given, else "").\n' +
       'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], ' +
@@ -2434,7 +2467,20 @@ module.exports = function mountJobs(app, opts) {
       const type = c && CERT_TYPES[c.type] ? c.type : null;
       return { address: str(c && c.address, 500) || '', type: type, issued_on: isoDay(c && c.issued_on) || '', expires_on: isoDay(c && c.expires_on) || '', reference: str(c && c.reference, 100) || '', rating: str(c && c.rating, 5) || '' };
     }).filter(function (c) { return c.address && c.type && (c.issued_on || c.expires_on); });
-    res.json({ ok: true, jobs: jobs, certificates: certificates, contacts: contacts, properties: properties, tenancies: tenancies, understood: parsed.understood !== false && (jobs.length > 0 || certificates.length > 0 || contacts.length > 0 || properties.length > 0 || tenancies.length > 0) });
+    // Certificate lines read straight from the text, in case the reply missed one
+    // or took a past expiry for a job to book: their dates are taken as written.
+    const lines = fromEmail ? [] : certLines(said);
+    lines.forEach(function (c) {
+      const have = certificates.filter(function (x) { return x.type === c.type; })[0];
+      if (have) { if (c.expires_on) have.expires_on = c.expires_on; if (c.issued_on) have.issued_on = c.issued_on; if (!have.address) have.address = c.address; return; }
+      const addr = (certificates[0] && certificates[0].address) || (jobs[0] && jobs[0].address) || (properties[0] && properties[0].address) || c.address;
+      if (addr) certificates.push({ address: addr, type: c.type, issued_on: c.issued_on, expires_on: c.expires_on, reference: '', rating: '' });
+    });
+    if (lines.length) {
+      const re = { Gas: /gas|cp12/i, EICR: /eicr|electric/i, EPC: /\bepc\b|energy performance/i };
+      for (let i = jobs.length - 1; i >= 0; i--) if (lines.some(function (c) { return re[c.type].test(jobs[i].title + ' ' + jobs[i].category); })) jobs.splice(i, 1);
+    }
+    res.json({ ok: true, jobs: jobs, certificates: certificates, contacts: contacts, properties: properties, tenancies: tenancies, understood: (parsed.understood !== false || certificates.length > 0) && (jobs.length > 0 || certificates.length > 0 || contacts.length > 0 || properties.length > 0 || tenancies.length > 0) });
   }));
 
   app.post('/api/admin/jobs/:id/ai-invoice', withDb(async function (p, req, res) {

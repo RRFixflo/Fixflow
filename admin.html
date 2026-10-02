@@ -7110,11 +7110,11 @@
   // starting on 22/5/26"): checked here, then saved to the property's certificates.
   var askCerts = [];
   function renderAskCerts(){
-    $('askCerts').innerHTML = askCerts.map(function(c, i){
+    $('askCerts').innerHTML = (askCerts.length > 1 ? '<div class="row-actions" style="margin:0"><span class="muted-note" style="flex:1;margin:0">' + askCerts.length + ' certificates — check the dates, then save them all at once.</span><button class="btn primary" type="button" data-cact="saveall">Save all ' + askCerts.length + ' certificates</button></div>' : '') + askCerts.map(function(c, i){
       var def = certDef(c.type), cur = certFor(propKey(c.address), c.type);
       return '<div class="draft cdraft" data-ci="' + i + '"><div style="display:flex;align-items:center;gap:8px"><strong>📄 ' + esc(def.long) + '</strong></div>' +
         '<div><label class="lbl">Property</label><input class="inp" data-c="address" list="askPropList2" value="' + esc(c.address) + '">' +
-          '<div class="match ' + (c.matched ? 'ok' : 'warn') + '">' + (c.matched ? '✓ Property on file' + (cur && cur.expires_on ? ' — current ' + esc(def.name.toLowerCase()) + ' ' + (daysUntil(cur.expires_on) < 0 ? 'expired ' : 'until ') + esc(longDay(cur.expires_on)) + ' (this replaces it)' : '') : 'Not a property on file yet — saving adds it') + '</div></div>' +
+          '<div class="match ' + (c.matched && !(cur && c.expires_on && cur.expires_on > c.expires_on) ? 'ok' : 'warn') + '">' + (c.matched ? '✓ Property on file' + (cur && cur.expires_on ? ' — current ' + esc(def.name.toLowerCase()) + ' ' + (daysUntil(cur.expires_on) < 0 ? 'expired ' : 'until ') + esc(longDay(cur.expires_on)) + (c.expires_on && cur.expires_on > c.expires_on ? ' — <b>newer than the date here</b>; saving replaces it with this older one' : ' (this replaces it)') : '') : 'Not a property on file yet — saving adds it') + '</div></div>' +
         '<div class="grid3"><div><label class="lbl">Date done / starts</label><input class="inp" type="date" data-c="issued_on" value="' + esc(c.issued_on || '') + '"></div>' +
           '<div><label class="lbl">Expires</label><input class="inp" type="date" data-c="expires_on" value="' + esc(c.expires_on || '') + '"></div>' +
           '<div><label class="lbl">Certificate no. (optional)</label><input class="inp" data-c="reference" value="' + esc(c.reference || '') + '"></div></div>' +
@@ -7131,6 +7131,20 @@
   });
   $('askCerts').addEventListener('click', function(e){
     var b = e.target.closest('[data-cact]'); if (!b) return;
+    if (b.dataset.cact === 'saveall') {
+      var bad = askCerts.filter(function(c){ return !c.expires_on; });
+      if (bad.length) { toast('Enter the date done (or expiry) for every certificate first'); return; }
+      busy(b, true, 'Saving…');
+      var list = askCerts.slice();
+      Promise.all(list.map(function(c){ return api('PUT', '/api/admin/certificates', { address: c.address, type: c.type, issued_on: c.issued_on, expires_on: c.expires_on, reference: c.reference, rating: c.rating || '' }).then(function(d){ return d.ok ? c : null; }); })).then(function(res){
+        busy(b, false);
+        var ok = res.filter(Boolean);
+        askCerts = askCerts.filter(function(c){ return ok.indexOf(c) === -1; }); renderAskCerts();
+        toast(ok.length ? ok.map(function(c){ return certDef(c.type).name + ' ' + (daysUntil(c.expires_on) < 0 ? 'expired ' : 'to ') + longDay(c.expires_on); }).join(' · ') + ' — saved for ' + shortAddr(ok[0].address) : 'Couldn’t save the certificates');
+        loadCerts().then(function(){ if (view === 'certs') renderCerts(); renderCertAlerts(); if (view === 'props' && openPropKey) renderProperty(); });
+      });
+      return;
+    }
     var i = Number(b.closest('[data-ci]').dataset.ci), c = askCerts[i];
     if (b.dataset.cact === 'skip') { askCerts.splice(i, 1); renderAskCerts(); return; }
     if (!c.expires_on) { toast('Enter the date it was done (or the expiry)'); return; }
