@@ -7933,15 +7933,16 @@
     var out = [];
     Object.keys(stmtsBy).forEach(function(k){
       var x = stmtsBy[k], m = x.months[x.months.length - 1];
-      if (!x.current || m.sent || m.from < addDaysIso(stmtToday, -31)) return;
+      x.months.forEach(function(o){ if (o !== m && o.changed) out.push({ x: x, m: o }); });
+      if (!x.current || (m.sent && !m.changed) || m.from < addDaysIso(stmtToday, -31)) return;
       out.push({ x: x, m: m });
     });
-    return out.sort(function(a, b){ return (stmtOwes(b.m) || b.m.bf ? 1 : 0) - (stmtOwes(a.m) || a.m.bf ? 1 : 0) || (a.m.from < b.m.from ? -1 : 1); });
+    return out.sort(function(a, b){ return (stmtOwes(b.m) || b.m.bf || b.m.changed ? 1 : 0) - (stmtOwes(a.m) || a.m.bf || a.m.changed ? 1 : 0) || (a.m.from < b.m.from ? -1 : 1); });
   }
   function renderStmtBanner(){
-    var due = stmtDue(), owe = due.filter(function(o){ return stmtOwes(o.m); }), n = due.length;
+    var due = stmtDue(), owe = due.filter(function(o){ return stmtOwes(o.m) && o.m === o.x.months[o.x.months.length - 1]; }), n = due.length, chg = due.filter(function(o){ return o.m.changed; }).length;
     $('stBanner').hidden = !n;
-    $('stBannerText').innerHTML = '📄 ' + n + ' landlord statement' + (n === 1 ? '' : 's') + ' to send for this month’s rent' +
+    $('stBannerText').innerHTML = '📄 ' + n + ' landlord statement' + (n === 1 ? '' : 's') + ' to send' + (chg ? ' (' + chg + ' changed since sent)' : ' for this month’s rent') +
       (owe.length ? ' — <b>' + owe.length + ' landlord' + (owe.length === 1 ? '' : 's') + ' still owe' + (owe.length === 1 ? 's' : '') + ' us ' + esc(gbp(owe.reduce(function(t, o){ return t + -o.m.balance; }, 0))) + '</b>' : '') + '.';
   }
   function stmtSummary(m){
@@ -7968,10 +7969,23 @@
     return '<div class="inv-prop"' + (stmtOwes(m) ? ' style="border-color:var(--brick)"' : '') + '><div class="inv-prop-h"><b>' + (withAddr ? esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') : esc(monthName(m.from)) + (m.n === 0 ? ' · move-in' : '')) + '</b>' +
       '<span class="muted-note" style="margin:0">' + (withAddr ? esc(monthName(m.from)) + ' · ' : '') + esc(ukDay(m.from)) + ' – ' + esc(ukDay(m.to)) + '</span></div>' +
       '<div style="margin:3px 0 6px;font-size:.92rem">' + stmtSummary(m) + '</div>' +
+      (m.changed ? '<div class="match warn" style="margin:0 0 6px">⚠ Changed since it was sent (closing balance was ' + esc(gbp(m.changed.was)) + ', now ' + esc(gbp(m.balance)) + ') — send the updated statement.</div>' : '') +
+      stmtOwnCosts(x, m, withAddr) +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><button type="button" class="btn small" data-st-pdf="' + k + '">📄 Statement PDF</button>' +
         (x.email ? '<a class="btn small primary" data-st-mail="' + k + '" href="' + esc(stmtMail(x, m)) + '">✉ Email landlord</a>' : '<span class="muted-note" style="margin:0">No landlord email saved.</span>') +
-        (m.sent ? '<span class="muted-note" style="margin:0;color:var(--green, #16a34a)">✓ Sent ' + esc(fmtShort(m.sent).split(',')[0]) + '</span> <button type="button" class="linkish" data-st-unsent="' + k + '">Undo</button>'
-          : '<button type="button" class="btn small ghost" data-st-sent="' + k + '">✓ Sent</button>') + '</div></div>';
+        (m.sent && !m.changed ? '<span class="muted-note" style="margin:0;color:var(--green, #16a34a)">✓ Sent ' + esc(fmtShort(m.sent.at || m.sent).split(',')[0]) + '</span> <button type="button" class="linkish" data-st-unsent="' + k + '">Undo</button>'
+          : '<button type="button" class="btn small ghost" data-st-sent="' + k + '">' + (m.changed ? '✓ Sent again' : '✓ Sent') + '</button>') +
+        (withAddr ? '' : '<button type="button" class="btn small ghost" data-st-addcost="' + k + '">+ Add cost</button>') + '</div>' +
+      (withAddr ? '' : '<div class="st-add" data-st-form="' + k + '" hidden style="margin-top:8px"><div class="tcy-fee nv4" style="grid-template-columns:minmax(0,1fr) 110px auto auto"><input class="inp" data-sc="label" placeholder="e.g. Plumber — leak repair"><input class="inp" data-sc="amount" inputmode="decimal" placeholder="£ before VAT"><label class="tcy-nv"><input type="checkbox" data-sc="novat"> No VAT</label><label class="tcy-nv"><input type="checkbox" data-sc="in"> Money in</label></div>' +
+        '<div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="btn small primary" data-st-savecost="' + k + '">Add to ' + esc(monthName(m.from)) + ' statement</button><button type="button" class="btn small ghost" data-st-addcost="' + k + '">Cancel</button></div></div>') + '</div>';
+  }
+  // Costs and money in added to this month only (removable), and invoices recovered from this rent.
+  function stmtOwnCosts(x, m, withAddr){
+    var own = m.fees.filter(function(f){ return f.cost_id; }).map(function(f){ return [f, '−']; }).concat((m.credits || []).filter(function(c){ return c.cost_id; }).map(function(c){ return [c, '+']; }));
+    if (!own.length) return '';
+    return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px">' + own.map(function(o){ var f = o[0];
+      return '<span class="chip" style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:var(--panel-2, #f6f7f9);font-size:.85rem">' + o[1] + ' ' + esc(f.label) + ' ' + esc(gbp(f.amount)) + (o[1] === '−' && f.vat ? ' + VAT' : o[1] === '−' && m.vatOn && !f.invoice_id ? ' (no VAT)' : '') +
+        (withAddr ? '' : ' <button type="button" class="linkish" title="Remove from this statement" data-st-delcost="' + x.tenancy_id + '|' + esc(f.cost_id) + '">×</button>') + '</span>'; }).join('') + '</div>';
   }
   function stmtCard(id){
     var x = stmtsBy[id];
@@ -7988,9 +8002,31 @@
   function stmtSent(k, sent, how){
     var f = stmtFind(k); if (!f || !f.m) return Promise.resolve();
     f.m.sent = sent ? new Date().toISOString() : null; renderStmtBanner();
-    return api('POST', '/api/admin/tenancies/' + f.x.tenancy_id + '/statement', { from: f.m.from, sent: sent, how: how }).then(function(){ return loadStatements(); });
+    return api('POST', '/api/admin/tenancies/' + f.x.tenancy_id + '/statement', { from: f.m.from, sent: sent, how: how, total: f.m.total, balance: f.m.balance }).then(function(){ return loadStatements(); });
   }
   function stmtClick(e){
+    var ac = e.target.closest('[data-st-addcost]');
+    if (ac) { var fm = document.querySelector('[data-st-form="' + ac.dataset.stAddcost + '"]'); if (fm) { fm.hidden = !fm.hidden; if (!fm.hidden) fm.querySelector('[data-sc=label]').focus(); } return; }
+    var sc = e.target.closest('[data-st-savecost]');
+    if (sc) {
+      var form = document.querySelector('[data-st-form="' + sc.dataset.stSavecost + '"]'), fc = stmtFind(sc.dataset.stSavecost); if (!form || !fc || !fc.m) return;
+      var lab = form.querySelector('[data-sc=label]').value.trim(), amt = num(form.querySelector('[data-sc=amount]').value);
+      if (!lab || !amt) { toast('Add what it’s for and the amount'); return; }
+      busy(sc, true, 'Adding…');
+      api('POST', '/api/admin/tenancies/' + fc.x.tenancy_id + '/month-cost', { from: fc.m.from, label: lab, amount: amt, novat: form.querySelector('[data-sc=novat]').checked, money_in: form.querySelector('[data-sc=in]').checked }).then(function(d){
+        busy(sc, false);
+        if (!d.ok) { toast('Couldn’t add that'); return; }
+        toast('Added to the ' + monthName(fc.m.from) + ' statement — it and the months after are updated'); loadTenancies().then(function(){ if (openTcyId) tcyRefresh(); });
+      });
+      return;
+    }
+    var dc = e.target.closest('[data-st-delcost]');
+    if (dc) {
+      if (!confirm('Remove this from the statement?')) return;
+      var pr = dc.dataset.stDelcost.split('|');
+      api('DELETE', '/api/admin/tenancies/' + pr[0] + '/month-cost/' + encodeURIComponent(pr[1]), { confirm: true }).then(function(d){ if (!d.ok) { toast('Couldn’t remove it'); return; } toast('Removed — statements updated'); loadTenancies().then(function(){ if (openTcyId) tcyRefresh(); }); });
+      return;
+    }
     var b = e.target.closest('[data-st-pdf],[data-st-mail],[data-st-sent],[data-st-unsent]'); if (!b) return;
     var k = b.dataset.stPdf || b.dataset.stMail || b.dataset.stSent || b.dataset.stUnsent, f = stmtFind(k); if (!f || !f.m) return;
     var d = stmtTcy(f.x.tenancy_id) || {};
@@ -8970,7 +9006,8 @@
   function tcyOwe(what, b){
     var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0]; if (!x) return;
     var d = x.data || {}, c = tcyCalc(d), owe = r2(-c.balance), inv = d.fees_invoice_id;
-    var sx = stmtsBy[x.id]; if (sx && sx.months.length > 1 && !inv && !d.fees_paid) owe = Math.max(0, r2(-sx.months[sx.months.length - 1].balance));
+    var sx = stmtsBy[x.id]; if (sx && sx.months[0] && sx.months[0].n === 0) owe = r2(-sx.months[0].balance);
+    if (sx && sx.months.length > 1 && !inv && !d.fees_paid) owe = Math.max(0, r2(-sx.months[sx.months.length - 1].balance));
     var refresh = function(){ return Promise.all([loadTenancies(), loadAllInvoices()]).then(function(){ tcyRefresh(); }); };
     if (what === 'invoice') {
       var fees = c.fees.map(function(f){ return f.label + ' ' + gbp(f.amount); }).join(', ');
@@ -9240,16 +9277,18 @@
     if (c.monthlyFee || c.upfrontFee) rows.push(['In a year', 'Our fees: ' + wv(r2(c.monthlyFee * 12 + c.upfrontFee))]);
     // The landlord owes us (the fees are more than the first rent we hold): invoice it, or mark it paid.
     var sv = openTcyId !== 'new' && tenancies.filter(function(t){ return t.id === openTcyId; })[0], svd = sv ? sv.data || {} : {};
-    if (c.balance < -0.004 && sv) {
+    // The saved move-in statement (with any costs added to that month) decides what is owed.
+    var m0 = sv && stmtsBy[openTcyId] && stmtsBy[openTcyId].months[0], bal0 = m0 && m0.n === 0 ? m0.balance : c.balance;
+    if (bal0 < -0.004 && sv) {
       var owe = r2(-c.balance), inv = svd.fees_invoice_id && allInvoices.filter(function(i){ return i.id === svd.fees_invoice_id; })[0];
       // Brought forward to the next rents (monthly statements): what is left after the latest one.
       var sx = stmtsBy[openTcyId], sl = sx && sx.months.length > 1 && !inv && !svd.fees_paid ? sx.months[sx.months.length - 1] : null;
-      if (sl) owe = Math.max(0, r2(-sl.balance));
+      owe = r2(-bal0); if (sl) owe = Math.max(0, r2(-sl.balance));
       rows.push(['Landlord owes us', inv
         ? 'Invoice <a href="/api/admin/invoices/' + inv.id + '/view" target="_blank" rel="noopener">' + esc(inv.number) + '</a> · ' + gbp(inv.total) + ' — ' + (inv.paid_at ? '<b style="color:var(--green, #16a34a)">✓ Paid ' + esc(fmtShort(inv.paid_at).split(',')[0]) + '</b> <button type="button" class="linkish" data-owe="inv-unpaid">Undo</button>' : '<b style="color:var(--brick)">not paid yet</b> <button type="button" class="btn small primary" data-owe="inv-paid">✓ Mark paid</button>')
         : svd.fees_paid ? '<b style="color:var(--green, #16a34a)">✓ Paid ' + esc(gbp(svd.fees_paid.amount || owe)) + ' on ' + esc(fmtShort(svd.fees_paid.at).split(',')[0]) + '</b> <button type="button" class="linkish" data-owe="unpaid">Undo</button>'
         : sl && !owe ? '<b style="color:var(--green, #16a34a)">✓ Cleared</b> — taken from the rent by the ' + esc(monthName(sl.from)) + ' statement'
-        : (sl ? gbp(r2(-c.balance)) + ' at move-in, brought forward and taken from the rent — after the ' + esc(monthName(sl.from)) + ' rent ' : '') + '<b style="color:var(--brick)">' + gbp(owe) + (sl ? ' still owed' : ' — not paid yet') + '</b> <button type="button" class="btn small primary" data-owe="invoice">🧾 Raise invoice</button> <button type="button" class="btn small" data-owe="paid">✓ Mark paid</button>']);
+        : (sl ? gbp(r2(-bal0)) + ' at move-in, brought forward and taken from the rent — after the ' + esc(monthName(sl.from)) + ' rent ' : '') + '<b style="color:var(--brick)">' + gbp(owe) + (sl ? ' still owed' : ' — not paid yet') + '</b> <button type="button" class="btn small primary" data-owe="invoice">🧾 Raise invoice</button> <button type="button" class="btn small" data-owe="paid">✓ Mark paid</button>']);
     }
     $('tfFeeSum').innerHTML = rows.length ? '<div class="fee-plain">' + rows.map(function(r){ return '<div><span>' + r[0] + '</span><p>' + r[1] + '</p></div>'; }).join('') + '</div>' : '<p class="muted-note" style="margin:0">' + (/rent\s*4\s*rent/i.test(String(d.service || '')) ? 'Rent4Rent — no fees charged to the landlord.' : 'Enter the rent and our fee to see what the landlord pays.') + '</p>';
   }
@@ -9692,7 +9731,7 @@
   function tcyDoc(kind, btn){
     var d = tcySaved(); if (!d) { toast('Save the tenancy first'); return; }
     if (kind === 'terms') { var t = termsPdf(d); if (t) { deliverPdf(t, tcyFile(d, 'Terms of Let'), false); tcyLog('Terms of Let downloaded'); } return; }
-    if (kind === 'statement') { var s = statementPdf(d); if (s) { deliverPdf(s, tcyFile(d, 'Landlord Statement'), false); tcyLog('Landlord statement downloaded'); } return; }
+    if (kind === 'statement') { var s0 = stmtsBy[openTcyId], s = statementPdf(d, s0 && s0.months[0] && s0.months[0].n === 0 ? Object.assign({ date: d.statement_date }, s0.months[0]) : null); if (s) { deliverPdf(s, tcyFile(d, 'Landlord Statement'), false); tcyLog('Landlord statement downloaded'); } return; }
     if (kind === 'banking') { var bt = bankingPdf(d); if (bt) { deliverPdf(bt, tcyFile(d, 'Banking Trail'), false); tcyLog('Banking trail downloaded'); } return; }
     if (kind === 'contacts') { var cs = contactsPdf(d); if (cs) { deliverPdf(cs, tcyFile(d, 'Tenant Contact Sheet'), false); tcyLog('Tenant contact sheet downloaded'); } return; }
     if (kind === 'agr-docx' || kind === 'agr-pdf') {
