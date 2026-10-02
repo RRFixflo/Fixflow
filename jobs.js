@@ -815,13 +815,13 @@ function rentCheck(rent, deposit, holding) {
 }
 // The door / flat numbers in an address (not the postcode): "Flat 2, 23 John
 // Maurice Close, SE17 1PZ" → ["2", "23"].
-function doorNumbers(a) { return (String(a || '').replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/gi, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }).sort().join(','); }
+function doorNumKey(a) { return (String(a || '').replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/gi, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }).sort().join(','); }
 // An address matched to one on file keeps the numbers as written: if the match
 // changed a door or flat number, it's a different property — use what was written.
 function keepWrittenAddress(chosen, written) {
   const w = String(written || '').trim(); if (!w) return chosen;
-  const wn = doorNumbers(w); if (!wn) return chosen;
-  return doorNumbers(chosen) === wn ? chosen : w;
+  const wn = doorNumKey(w); if (!wn) return chosen;
+  return doorNumKey(chosen) === wn ? chosen : w;
 }
 function money(v) {
   if (v === undefined || v === null || v === '') return null;
@@ -2965,13 +2965,10 @@ module.exports = function mountJobs(app, opts) {
     const address = (await allProperties(p)).filter(function (x) { return x.key === k; }).map(function (x) { return x.address; })[0] || who.keys[k] || k;
     return { key: k, address: address };
   }
-  app.post('/l/:token/cert-read', withDb(async function (p, req, res) {
-    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
-    const who = await landlordByToken(p, req.params.token);
-    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
-    const b = req.body || {}, t = await landlordTarget(p, who, b), f = certFile(b.file);
-    if (!t) return res.status(404).json({ ok: false, error: 'not-your-property' });
-    if (!f) return res.status(400).json({ ok: false, error: 'Please choose a PDF or a photo of the certificate (15 MB max).' });
+  // Read a certificate file (gas safety / EICR / EPC) for its type, dates,
+  // number and the address inspected; warn if it looks like another property.
+  async function readCertDoc(f, expectAddress) {
+    const t = { address: expectAddress || '' };
     let got = {};
     if (opts.askAi && opts.canAi && opts.canAi()) {
       const r = await opts.askAi('This is a UK property safety certificate: a gas safety record (CP12 / LGSR), an EICR (electrical installation condition report) or an EPC. Read it and reply with ONLY JSON: ' +
@@ -2986,9 +2983,24 @@ module.exports = function mountJobs(app, opts) {
     const addr = str(got.address, 300) || '';
     // A certificate that looks like it's for somewhere else: say so.
     const pc = function (a) { const m = POSTCODE_RE.exec(String(a || '')); return m ? (m[1] + m[2]).toUpperCase() : ''; };
-    const other = addr && pc(addr) && pc(t.address) && pc(addr) !== pc(t.address);
-    res.json({ ok: true, read: !!type, type: type, issued_on: issued, expires_on: expires, reference: str(got.reference, 100) || '', rating: str(got.rating, 5) || '', address: addr,
-      warning: other ? 'This certificate seems to be for ' + addr + ', not ' + t.address + '. Please check it’s the right one.' : '' });
+    const other = addr && t.address && ((pc(addr) && pc(t.address) && pc(addr) !== pc(t.address)) || (doorNumKey(addr) && doorNumKey(t.address) && doorNumKey(addr) !== doorNumKey(t.address)));
+    return { read: !!type, type: type, issued_on: issued, expires_on: expires, reference: str(got.reference, 100) || '', rating: str(got.rating, 5) || '', address: addr,
+      warning: other ? 'This certificate seems to be for ' + addr + ', not ' + t.address + '. Please check it’s the right one.' : '' };
+  }
+  // The office drops a certificate on a property or tenancy: read it.
+  app.post('/api/admin/certificates/read', withDb(async function (p, req, res) {
+    const b = req.body || {}, f = certFile(b.file);
+    if (!f) return res.status(400).json({ ok: false, error: 'Please use a PDF or a photo of the certificate (15 MB max).' });
+    res.json(Object.assign({ ok: true }, await readCertDoc(f, str(b.address, 500) || '')));
+  }));
+  app.post('/l/:token/cert-read', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    const b = req.body || {}, t = await landlordTarget(p, who, b), f = certFile(b.file);
+    if (!t) return res.status(404).json({ ok: false, error: 'not-your-property' });
+    if (!f) return res.status(400).json({ ok: false, error: 'Please choose a PDF or a photo of the certificate (15 MB max).' });
+    res.json(Object.assign({ ok: true }, await readCertDoc(f, t.address)));
   }));
   app.post('/l/:token/cert-save', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
