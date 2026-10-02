@@ -5809,6 +5809,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       inv = (await p.query('INSERT INTO invoices (job_id, tenancy_id, address, property_key, number, total, landlord_name, landlord_email, data) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
         [item.tenancy_id, item.address, k, number, amount, item.landlord || null, item.landlord_email || null, JSON.stringify(data)])).rows[0];
       inv.number = number;
+      // Already paid by the landlord: the invoice is recorded as paid straight away.
+      if (b.paid === true) { await p.query('UPDATE invoices SET paid_at = now() WHERE id = $1', [inv.id]); inv.paid = true; }
       // A link the landlord can open (their page), for the email.
       const ll = (await p.query('SELECT l.id, l.portal_token FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [k])).rows[0];
       if (ll) {
@@ -5819,7 +5821,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       }
     }
     await setIntention(p, item.tenancy_id, item.anniv, { renewal_fee: charged ? { amount: amount, at: new Date().toISOString(), invoice_id: inv.id, number: inv.number } : { skipped: true, at: new Date().toISOString() } },
-      charged ? 'Renewal fee charged for the year from ' + item.anniv + ': ' + gbp(amount) + (item.fee.vat ? ' (inc. VAT)' : '') + ' — invoice ' + inv.number : 'No renewal fee charged for the year from ' + item.anniv);
+      charged ? 'Renewal fee charged for the year from ' + item.anniv + ': ' + gbp(amount) + (item.fee.vat ? ' (inc. VAT)' : '') + ' — invoice ' + inv.number + (inv.paid ? ' (paid)' : '') : 'No renewal fee charged for the year from ' + item.anniv);
     res.json({ ok: true, invoice: inv });
   }));
   async function alertRenewalFees() {
