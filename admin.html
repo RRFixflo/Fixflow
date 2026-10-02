@@ -196,6 +196,8 @@
   .list { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-xs); overflow: hidden; }
   .list-head { display: grid; grid-template-columns: 118px minmax(0,1fr) 190px 170px 96px; gap: 14px; padding: 9px 16px 9px 40px; font-size: .72rem; font-weight: 600; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--line); background: var(--panel-2); }
   .list-head span:last-child { text-align: right; }
+  .lh-sort { all: unset; cursor: pointer; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; }
+  .lh-sort:hover { color: var(--ink); }
   .jobrow { position: relative; display: flex; align-items: stretch; border-bottom: 1px solid var(--line); transition: background .12s; }
   .jobrow:last-child { border-bottom: 0; }
   .jobrow::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--line-strong); }
@@ -980,6 +982,8 @@
         <input class="inp search" id="search" type="search" placeholder="Search address, tenant, issue, reference, contractor…">
         <select class="inp" id="sort" aria-label="Sort jobs">
           <option value="priority">Sort: Priority</option>
+          <option value="days">Sort: Days since raised — most first</option>
+          <option value="days-asc">Sort: Days since raised — fewest first</option>
           <option value="due">Sort: Deadline — soonest</option>
           <option value="newest">Sort: Received — newest</option>
           <option value="oldest">Sort: Received — oldest</option>
@@ -2033,6 +2037,9 @@
       if (sort === 'newest') return created(b) - created(a);
       if (sort === 'oldest') return created(a) - created(b);
       if (sort === 'due') return (isOpen(b) - isOpen(a)) || (due(a) - due(b));
+      // Days since the report was raised: open jobs first, longest waiting (or newest) at the top.
+      if (sort === 'days') return (isOpen(b) - isOpen(a)) || (created(a) - created(b));
+      if (sort === 'days-asc') return (isOpen(b) - isOpen(a)) || (created(b) - created(a));
       if (sort === 'profit') { var pa = profitOf(a), pb = profitOf(b); return (pb ? pb.value : -Infinity) - (pa ? pa.value : -Infinity); }
       // Priority: open before closed, overdue first, then urgency, then deadline.
       var oa = isOpen(a), ob = isOpen(b);
@@ -2049,7 +2056,7 @@
       renderBulk();
       return;
     }
-    el.innerHTML = '<div class="list-head"><span>Job</span><span>Property &amp; issue</span><span>Raised</span><span>Status &amp; contractor</span><span>Profit</span></div>' +
+    el.innerHTML = '<div class="list-head"><span>Job</span><span>Property &amp; issue</span><span><button type="button" class="lh-sort" id="lhRaised" title="Sort by days since raised">Raised' + (sort === 'days' ? ' ↓' : sort === 'days-asc' ? ' ↑' : '') + '</button></span><span>Status &amp; contractor</span><span>Profit</span></div>' +
       list.map(rowHtml).join('');
     renderBulk();
   }
@@ -2095,6 +2102,12 @@
   });
   $('assignChipClear').addEventListener('click', function(){ assignFilter = null; render(); });
   $('badAddrShow').addEventListener('click', function(){ assignFilter = 'badAddr'; activeTile = null; setTab('open'); render(); });
+  // Tap the "Raised" heading to sort by days since raised (tap again to reverse).
+  $('list').addEventListener('click', function(e){
+    if (!e.target.closest('#lhRaised')) return;
+    $('sort').value = $('sort').value === 'days' ? 'days-asc' : 'days';
+    $('sort').dispatchEvent(new Event('change'));
+  });
   $('sort').addEventListener('change', function(){ try { localStorage.setItem('rrJobsSort', $('sort').value); } catch (e) {} render(); });
   // Back to the top of the page (on phones the content area is what scrolls).
   function scrollTop(smooth){
