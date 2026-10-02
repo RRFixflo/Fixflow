@@ -961,6 +961,7 @@
       <div id="jobsView">
       <div class="note-banner" id="noteBanner" hidden></div>
       <div class="addr-warn tcy-warn" id="tcyEndBanner" hidden style="margin:0 0 12px"><span id="tcyEndBannerText"></span> <button type="button" class="btn small" id="tcyEndBannerGo">Ask the tenants</button></div>
+      <div class="addr-warn rent-warn" id="rentBanner" hidden style="margin:0 0 12px"><span id="rentBannerText"></span> <button type="button" class="btn small" id="rentBannerGo">Show</button></div>
       <div class="addr-warn cert-warn" id="certBanner" hidden style="margin:0 0 12px"><span id="certBannerText"></span> <button type="button" class="btn small" id="certBannerGo">Book now</button></div>
       <div class="tiles">
         <button type="button" class="tile clickable blue" id="tOpenTile" data-assign="" title="Show all open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg></i>Open jobs</div><div class="v" id="tOpen">–</div></button>
@@ -1663,6 +1664,14 @@
     <div class="row-actions" style="margin-top:0"><button class="btn" type="button" id="ttLl" hidden>🏠 Tell the landlord too</button><button class="btn primary" type="button" id="ttDone">Done</button></div>
   </div>
 </div>
+<div class="modal" id="rrModal" hidden>
+  <div class="card tn-card" role="dialog" aria-labelledby="rrTitle">
+    <h3 id="rrTitle" style="margin:0">Recover from the rent</h3>
+    <p class="muted-note" style="margin:6px 0 10px">Rent is due on these tenancies and the landlord has unpaid invoices. Take the amount from the rent you pass on, then mark it recovered (the invoices are marked paid).</p>
+    <div id="rrList"></div>
+    <div class="row-actions" style="margin-top:12px"><span style="flex:1"></span><button class="btn" type="button" id="rrClose">Close</button></div>
+  </div>
+</div>
 <div class="modal" id="tnModal" hidden>
   <div class="card tn-card" role="dialog" aria-labelledby="tnTitle">
     <h3 id="tnTitle" style="margin:0">Message tenants</h3>
@@ -1927,6 +1936,7 @@
       renderCertAlerts();
       renderNoteAlerts();
       renderTcyEndAlerts();
+      loadRentRecoveries();
       var owedN = jobs.filter(isOwed).length;
       $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
       return true;
@@ -7656,6 +7666,47 @@
     }).join('') + (list.length > 5 ? '<div class="muted" style="margin-top:6px">…and ' + (list.length - 5) + ' more jobs</div>' : '');
   }
   $('noteBanner').addEventListener('click', function(e){ var b = e.target.closest('[data-job]'); if (b) openJob(Number(b.dataset.job)); });
+  // Rent day: landlord charges to take from the rent (unpaid invoices at the property).
+  var rentRec = [];
+  function loadRentRecoveries(){
+    return api('GET', '/api/admin/rent-recoveries').then(function(d){ if (!d.ok) return; rentRec = d.items; renderRentBanner(); if (!$('rrModal').hidden) renderRentRec(); })['catch'](function(){});
+  }
+  function renderRentBanner(){
+    var n = rentRec.length, tot = rentRec.reduce(function(t, x){ return t + x.total; }, 0), today = rentRec.filter(function(x){ return x.today; }).length;
+    $('rentBanner').hidden = !n;
+    $('rentBannerText').textContent = '💷 ' + (today ? 'Rent day today' + (n > today ? ' (and ' + (n - today) + ' earlier this week)' : '') : 'Rent was due this week') + ': recover ' + gbp(tot) + ' of landlord charges from the rent — ' + n + ' propert' + (n === 1 ? 'y' : 'ies') + '.';
+  }
+  function renderRentRec(){
+    var day = function(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : v; };
+    $('rrList').innerHTML = rentRec.length ? rentRec.map(function(x){
+      return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(x.landlord || 'Landlord') + ' · ' + esc(shortAddr(x.address)) + '</b><span style="font-weight:800">' + gbp(x.total) + '</span></div>' +
+        '<div class="muted-note" style="margin:2px 0 6px">Rent ' + (x.rent ? gbp(x.rent) + ' ' : '') + (x.today ? 'due <b>today</b>' : 'was due ' + esc(day(x.rent_day))) +
+          (x.rent && x.total > x.rent ? ' · <b style="color:var(--brick)">more than one month’s rent — tick what to take now; the rest comes back next rent day</b>' : '') + '</div>' +
+        '<div class="rr-invs" data-key="' + esc(x.key) + '">' + (function(){ var run = 0; return x.invoices.map(function(i){
+          run += i.total; var on = !x.rent || run <= x.rent + 0.005 || run === i.total;
+          return '<label style="display:flex;gap:8px;align-items:center;font-size:.9rem;margin:2px 0"><input type="checkbox" data-inv="' + i.id + '" data-amt="' + i.total + '"' + (on ? ' checked' : '') + '> ' + esc(i.number) + ' · ' + gbp(i.total) + '</label>';
+        }).join(''); })() + '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" data-rr-done="' + esc(x.key) + '">✓ Recovered from rent</button><button type="button" class="btn small ghost" data-rr-skip="' + esc(x.key) + '">Not this time</button></div></div>';
+    }).join('') : '<p class="muted-note">Nothing to recover right now.</p>';
+  }
+  $('rentBannerGo').addEventListener('click', function(){ renderRentRec(); $('rrModal').hidden = false; });
+  $('rrClose').addEventListener('click', function(){ $('rrModal').hidden = true; });
+  $('rrModal').addEventListener('mousedown', function(e){ if (e.target === $('rrModal')) $('rrClose').click(); });
+  $('rrList').addEventListener('click', function(e){
+    var b = e.target.closest('[data-rr-done],[data-rr-skip]'); if (!b) return;
+    var done = !!b.dataset.rrDone, key = b.dataset.rrDone || b.dataset.rrSkip;
+    if (!done && !confirm('Leave these invoices unpaid and stop the reminder for this rent day?')) return;
+    var ids = [].map.call(document.querySelectorAll('.rr-invs[data-key="' + key + '"] input:checked'), function(i){ return Number(i.dataset.inv); });
+    if (done && !ids.length) { toast('Tick at least one invoice'); return; }
+    var amt = [].reduce.call(document.querySelectorAll('.rr-invs[data-key="' + key + '"] input:checked'), function(t, i){ return t + Number(i.dataset.amt); }, 0);
+    busy(b, true, '…');
+    api('POST', '/api/admin/rent-recoveries/' + encodeURIComponent(key), { action: done ? 'done' : 'skip', invoice_ids: ids }).then(function(d){
+      if (!d.ok) { busy(b, false); toast('Couldn’t save that'); return; }
+      toast(done ? 'Recovered ' + gbp(amt) + ' — invoices marked paid' : 'Reminder dismissed for this rent day');
+      rentRec = rentRec.filter(function(x){ return x.key !== key; }); renderRentRec(); renderRentBanner();
+      if (done) loadAllInvoices().then(function(){ if (view === 'll' && openLlId) renderLandlord(); });
+    });
+  });
   function renderCertAlerts(){
     var due = certs.filter(function(c){ return needsAction(certState(c)); });
     $('sCerts').hidden = !due.length; $('sCerts').textContent = due.length;
