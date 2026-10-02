@@ -5168,5 +5168,77 @@ document.querySelectorAll('.ov').forEach(function(v){
     res.json({ ok: true });
   }));
 
+  // ---------- Recover landlord charges from the rent ----------
+  // On each tenancy's rent day, any unpaid invoices for that property are listed
+  // (and a phone alert sent) so the money can be taken from the rent we pass on.
+  // Only where we collect the rent (not Tenant Find). Shown for 7 days after the
+  // rent day until marked recovered or skipped.
+  const rentDateIn = function (day, y, m) { const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); return new Date(Date.UTC(y, m, Math.min(day, last))).toISOString().slice(0, 10); };
+  async function rentRecoveries(p) {
+    const today = londonDay(), y = +today.slice(0, 4), m = +today.slice(5, 7) - 1;
+    const st = ((await p.query("SELECT value FROM app_settings WHERE key = 'rent_recover'")).rows[0] || {}).value || {};
+    const tcys = (await p.query("SELECT id, property_key, address, start_date, data FROM tenancies WHERE start_date IS NOT NULL AND start_date <= $1 ORDER BY start_date DESC", [today])).rows;
+    const seen = {}, out = [];
+    const invs = (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.landlord_name, j.property_address FROM invoices i JOIN jobs j ON j.id = i.job_id
+      WHERE i.paid_at IS NULL AND j.archived_at IS NULL ORDER BY i.id`)).rows;
+    const lls = {};
+    (await p.query('SELECT pl.property_key, l.name FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r.name; });
+    for (const t of tcys) {
+      if (!t.property_key || seen[t.property_key]) continue;
+      seen[t.property_key] = 1;   // the latest tenancy at each property is the current one
+      const d = t.data || {};
+      if (/tenant find/i.test(String(d.service || ''))) continue;
+      const base = /^\d{4}-\d{2}-\d{2}$/.test(d.so_start || '') ? d.so_start : String(t.start_date).slice(0, 10);
+      const day = +base.slice(8, 10); if (!day) continue;
+      let rd = rentDateIn(day, y, m);
+      if (rd > today) rd = rentDateIn(day, m ? y : y - 1, m ? m - 1 : 11);
+      if (rd < base || rd < addDaysIso(today, -7)) continue;
+      const k = t.id + '|' + rd;
+      if (st[k] === 'done' || st[k] === 'skip') continue;
+      const list = invs.filter(function (i) { return propKey(i.property_address) === t.property_key && new Date(i.created_at).toISOString().slice(0, 10) <= rd; });
+      if (!list.length) continue;
+      out.push({ key: k, tenancy_id: t.id, property_key: t.property_key, address: d.address || t.address || list[0].property_address, landlord: lls[t.property_key] || list[0].landlord_name || '',
+        rent_day: rd, today: rd === today, rent: Number(d.rent_pcm) || null, total: Math.round(list.reduce(function (a, i) { return a + Number(i.total || 0); }, 0) * 100) / 100,
+        invoices: list.map(function (i) { return { id: i.id, number: i.number, total: Number(i.total) }; }), alerted: !!st[k + '|alerted'] });
+    }
+    return { today: today, items: out };
+  }
+  async function setRecoverState(p, patch) {
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('rent_recover', $1::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = app_settings.value || excluded.value, updated_at = now()`, [JSON.stringify(patch)]);
+  }
+  app.get('/api/admin/rent-recoveries', withDb(async function (p, req, res) {
+    res.json(Object.assign({ ok: true }, await rentRecoveries(p)));
+  }));
+  // Taken from the rent: the invoices are marked paid, noted on each job.
+  app.post('/api/admin/rent-recoveries/:key', withDb(async function (p, req, res) {
+    const key = str(req.params.key, 60), how = (req.body || {}).action === 'skip' ? 'skip' : 'done';
+    const item = (await rentRecoveries(p)).items.filter(function (x) { return x.key === key; })[0];
+    if (!item) return res.status(404).json({ ok: false, error: 'not-found' });
+    // Only the invoices ticked (when charges are more than one month's rent); the rest come back next rent day.
+    const pick = Array.isArray((req.body || {}).invoice_ids) ? req.body.invoice_ids.map(Number) : null;
+    if (how === 'done') {
+      for (const i of item.invoices.filter(function (x) { return !pick || pick.indexOf(x.id) !== -1; })) {
+        const r = await p.query('UPDATE invoices SET paid_at = coalesce(paid_at, now()) WHERE id = $1 RETURNING job_id', [i.id]);
+        if (r.rows[0]) await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.rows[0].job_id, 'change', 'Invoice ' + i.number + ' (' + gbp(i.total) + ') recovered from the rent due ' + item.rent_day + '.']);
+      }
+    }
+    await setRecoverState(p, { [key]: how });
+    res.json({ ok: true });
+  }));
+  // Phone alert on the rent day itself (from 8am), once per tenancy and rent day.
+  async function alertRentRecoveries() {
+    const p = await db(); if (!p) return;
+    const hour = +new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false });
+    if (hour < 8) return;
+    const r = await rentRecoveries(p);
+    for (const x of r.items.filter(function (i) { return i.today && !i.alerted; })) {
+      await ntfy({ title: 'Rent day: recover ' + gbp(x.total) + ' from ' + (x.landlord || 'the landlord'), message: shortAddrText(x.address) + ' — rent due today. Unpaid invoice' + (x.invoices.length === 1 ? ' ' : 's ') + x.invoices.map(function (i) { return i.number; }).join(', ') + '. Take it from the rent, then mark it recovered in Fixflow.', tags: ['moneybag'] }).catch(function () {});
+      await setRecoverState(p, { [x.key + '|alerted']: new Date().toISOString() });
+    }
+  }
+  setTimeout(function () { alertRentRecoveries().catch(function (err) { console.error('Rent recovery alert failed:', err.message); }); }, 90 * 1000);
+  setInterval(function () { alertRentRecoveries().catch(function (err) { console.error('Rent recovery alert failed:', err.message); }); }, 3600 * 1000).unref();
+
   return { saveReport: saveReport, hasDb: async function () { return !!(await db()); } };
 };
