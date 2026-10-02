@@ -988,6 +988,7 @@
       <div class="note-banner" id="noteBanner" hidden></div>
       <div class="addr-warn tcy-warn" id="tcyEndBanner" hidden style="margin:0 0 12px"><span id="tcyEndBannerText"></span> <button type="button" class="btn small" id="tcyEndBannerGo">Ask the tenants</button></div>
       <div class="addr-warn rent-warn" id="feeBanner" hidden style="margin:0 0 12px"><span id="feeBannerText"></span> <button type="button" class="btn small" id="feeBannerGo">Show</button></div>
+      <div class="addr-warn rent-warn" id="stBanner" hidden style="margin:0 0 12px"><span id="stBannerText"></span> <button type="button" class="btn small" id="stBannerGo">Show</button></div>
       <div class="addr-warn rent-warn" id="rentBanner" hidden style="margin:0 0 12px"><span id="rentBannerText"></span> <button type="button" class="btn small" id="rentBannerGo">Show</button></div>
       <div class="addr-warn cert-warn" id="certBanner" hidden style="margin:0 0 12px"><span id="certBannerText"></span> <button type="button" class="btn small" id="certBannerGo">Book now</button></div>
       <div class="tiles">
@@ -1718,6 +1719,14 @@
     <p class="muted-note" style="margin:6px 0 10px">These tenancies pay the fee up front and are in month 12. Charge the landlord the fee for the next year (on the rent for that year) — “Charged” creates the invoice for the landlord.</p>
     <div id="rfList"></div>
     <div class="row-actions" style="margin-top:12px"><span style="flex:1"></span><button class="btn" type="button" id="rfClose">Close</button></div>
+  </div>
+</div>
+<div class="modal" id="stModal" hidden>
+  <div class="card tn-card" role="dialog" aria-labelledby="stTitle">
+    <h3 id="stTitle" style="margin:0">Landlord statements to send</h3>
+    <p class="muted-note" style="margin:6px 0 10px">A statement for each rent date. Where the landlord owed us from an earlier statement (e.g. the move-in fees were more than the first rent), it is brought forward and taken from this month’s rent — the ones still owing are at the top.</p>
+    <div id="stList"></div>
+    <div class="row-actions" style="margin-top:12px"><span style="flex:1"></span><button class="btn" type="button" id="stClose">Close</button></div>
   </div>
 </div>
 <div class="modal" id="rrModal" hidden>
@@ -7905,6 +7914,99 @@
       loadAllInvoices().then(function(){ if (view === 'll' && openLlId) renderLandlord(); if (ni.after) ni.after(d); });
     });
   });
+  // ---------- Monthly landlord statements ----------
+  // Worked out on the server (statementChain in jobs.js): one per rent date,
+  // with any balance the landlord owed brought forward to the next rent.
+  var stmtsBy = {}, stmtToday = '';
+  function loadStatements(){
+    if (!meta.db) return Promise.resolve();
+    return api('GET', '/api/admin/statements').then(function(d){
+      if (!d.ok) return; stmtsBy = {}; stmtToday = d.today; d.items.forEach(function(x){ stmtsBy[x.tenancy_id] = x; });
+      renderStmtBanner(); if (!$('stModal').hidden) renderStmtList();
+      if ($('tfStmts') && openTcyId && openTcyId !== 'new') $('tfStmts').innerHTML = stmtCard(openTcyId);
+    })['catch'](function(){});
+  }
+  function monthName(iso){ var d = parseDay(iso); return d ? MONTHS_EN[d.getMonth()] + ' ' + d.getFullYear() : ''; }
+  function stmtOwes(m){ return m.balance < -0.004; }
+  // The statements to send now: each current tenancy's latest month, not sent yet.
+  function stmtDue(){
+    var out = [];
+    Object.keys(stmtsBy).forEach(function(k){
+      var x = stmtsBy[k], m = x.months[x.months.length - 1];
+      if (!x.current || m.sent || m.from < addDaysIso(stmtToday, -31)) return;
+      out.push({ x: x, m: m });
+    });
+    return out.sort(function(a, b){ return (stmtOwes(b.m) || b.m.bf ? 1 : 0) - (stmtOwes(a.m) || a.m.bf ? 1 : 0) || (a.m.from < b.m.from ? -1 : 1); });
+  }
+  function renderStmtBanner(){
+    var due = stmtDue(), owe = due.filter(function(o){ return stmtOwes(o.m); }), n = due.length;
+    $('stBanner').hidden = !n;
+    $('stBannerText').innerHTML = '📄 ' + n + ' landlord statement' + (n === 1 ? '' : 's') + ' to send for this month’s rent' +
+      (owe.length ? ' — <b>' + owe.length + ' landlord' + (owe.length === 1 ? '' : 's') + ' still owe' + (owe.length === 1 ? 's' : '') + ' us ' + esc(gbp(owe.reduce(function(t, o){ return t + -o.m.balance; }, 0))) + '</b>' : '') + '.';
+  }
+  function stmtSummary(m){
+    var fees = r2(m.sub + m.vat);
+    return (m.n === 0 ? 'Move-in · ' : '') + 'Rent ' + gbp(m.rent) + (m.deposit ? ' + deposit ' + gbp(m.deposit) : '') + ((m.credits || []).length ? ' + ' + m.credits.map(function(c){ return esc(c.label) + ' ' + gbp(c.amount); }).join(' + ') : '') + (fees ? ' − fees ' + gbp(fees) + (m.vat ? ' (inc. VAT)' : '') : '') +
+      (m.bf ? ' − brought forward ' + gbp(m.bf) : '') + ' → ' + (stmtOwes(m) ? '<b style="color:var(--brick)">landlord still owes ' + gbp(-m.balance) + '</b>' : '<b>' + gbp(m.balance) + '</b> to pay the landlord' + (m.bf ? ' <span style="color:var(--green, #16a34a)">✓ cleared what they owed</span>' : ''));
+  }
+  function stmtTcy(id){ var t = tenancies.filter(function(x){ return x.id === Number(id); })[0]; return t ? t.data || {} : null; }
+  function stmtMail(x, m){
+    var d = stmtTcy(x.tenancy_id) || {}, cfg = meta.invoice || {}, fees = r2(m.sub + m.vat);
+    var lines = ['- Rent for ' + longDay(m.from) + ' to ' + longDay(m.to) + ': ' + gbp(m.rent)];
+    if (m.deposit) lines.push('- Deposit: ' + gbp(m.deposit));
+    (m.credits || []).forEach(function(c){ lines.push('- ' + c.label + ': ' + gbp(c.amount)); });
+    m.fees.forEach(function(f){ lines.push('- ' + f.label + ': ' + gbp(f.amount) + (f.vat ? ' + VAT ' + gbp(f.vat) : m.vatOn ? ' (no VAT)' : '')); });
+    if (m.bf) lines.push('- Balance brought forward from your ' + monthName(m.bf_from) + ' statement: ' + gbp(m.bf));
+    var body = llGreeting(x.landlord) + ',\n\nPlease find attached your statement for ' + shortAddr(x.address) + ' for ' + monthName(m.from) + ':\n\n' + lines.join('\n') +
+      '\n\nClosing balance: ' + (stmtOwes(m) ? '−' : '') + gbp(Math.abs(m.balance)) + '\n\n' +
+      (stmtOwes(m) ? 'After this month’s rent there is still ' + gbp(-m.balance) + ' owed to us. Please pay it by bank transfer' + (cfg.payee && cfg.accountNumber ? ' to ' + cfg.payee + ', sort code ' + cfg.sortCode + ', account ' + cfg.accountNumber + ', reference ' + (payRef(x.address) || 'the property address') : '') + ' — otherwise it will be taken from next month’s rent.'
+        : 'We will pay ' + gbp(m.balance) + ' to you by BACS within 3 working days.') + '\n\nKind regards,\nResidential Realtors';
+    return 'mailto:' + encodeURIComponent(x.email || '') + '?subject=' + encodeURIComponent('Statement — ' + shortAddr(x.address) + ' — ' + monthName(m.from)) + '&body=' + encodeURIComponent(body);
+  }
+  function stmtRow(x, m, withAddr){
+    var k = x.tenancy_id + '|' + m.from;
+    return '<div class="inv-prop"' + (stmtOwes(m) ? ' style="border-color:var(--brick)"' : '') + '><div class="inv-prop-h"><b>' + (withAddr ? esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') : esc(monthName(m.from)) + (m.n === 0 ? ' · move-in' : '')) + '</b>' +
+      '<span class="muted-note" style="margin:0">' + (withAddr ? esc(monthName(m.from)) + ' · ' : '') + esc(ukDay(m.from)) + ' – ' + esc(ukDay(m.to)) + '</span></div>' +
+      '<div style="margin:3px 0 6px;font-size:.92rem">' + stmtSummary(m) + '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><button type="button" class="btn small" data-st-pdf="' + k + '">📄 Statement PDF</button>' +
+        (x.email ? '<a class="btn small primary" data-st-mail="' + k + '" href="' + esc(stmtMail(x, m)) + '">✉ Email landlord</a>' : '<span class="muted-note" style="margin:0">No landlord email saved.</span>') +
+        (m.sent ? '<span class="muted-note" style="margin:0;color:var(--green, #16a34a)">✓ Sent ' + esc(fmtShort(m.sent).split(',')[0]) + '</span> <button type="button" class="linkish" data-st-unsent="' + k + '">Undo</button>'
+          : '<button type="button" class="btn small ghost" data-st-sent="' + k + '">✓ Sent</button>') + '</div></div>';
+  }
+  function stmtCard(id){
+    var x = stmtsBy[id];
+    if (!x || !x.months.length) return '<h3>Monthly statements</h3><p class="muted-note" style="margin:0">A statement appears here on each rent date' + (/tenant find/i.test(String((stmtTcy(id) || {}).service || '')) ? ' while the landlord owes us from the move-in statement (Tenant Find landlords collect the rent themselves otherwise)' : '') + '.</p>';
+    var owe = x.months[x.months.length - 1];
+    return '<h3>Monthly statements</h3>' + (stmtOwes(owe) ? '<div class="match warn" style="margin:0 0 8px">⚠ The landlord still owes us ' + esc(gbp(-owe.balance)) + ' — it’s brought forward to the next rent.</div>' : '') +
+      x.months.slice().reverse().map(function(m){ return stmtRow(x, m, false); }).join('');
+  }
+  function renderStmtList(){
+    var due = stmtDue();
+    $('stList').innerHTML = due.length ? due.map(function(o){ return stmtRow(o.x, o.m, true); }).join('') : '<p class="muted-note">All this month’s statements are sent.</p>';
+  }
+  function stmtFind(k){ var a = String(k).split('|'), x = stmtsBy[a[0]]; return x ? { x: x, m: x.months.filter(function(m){ return m.from === a[1]; })[0] } : null; }
+  function stmtSent(k, sent, how){
+    var f = stmtFind(k); if (!f || !f.m) return Promise.resolve();
+    f.m.sent = sent ? new Date().toISOString() : null; renderStmtBanner();
+    return api('POST', '/api/admin/tenancies/' + f.x.tenancy_id + '/statement', { from: f.m.from, sent: sent, how: how }).then(function(){ return loadStatements(); });
+  }
+  function stmtClick(e){
+    var b = e.target.closest('[data-st-pdf],[data-st-mail],[data-st-sent],[data-st-unsent]'); if (!b) return;
+    var k = b.dataset.stPdf || b.dataset.stMail || b.dataset.stSent || b.dataset.stUnsent, f = stmtFind(k); if (!f || !f.m) return;
+    var d = stmtTcy(f.x.tenancy_id) || {};
+    if (b.dataset.stPdf || b.dataset.stMail) {
+      var doc = statementPdf(d, f.m);
+      if (doc) deliverPdf(doc, tcyFile(d, 'Landlord Statement - ' + monthName(f.m.from)), !!b.dataset.stPdf);
+      if (b.dataset.stMail) { stmtSent(k, true, 'email'); toast('Statement downloaded — attach it to the email'); }
+      return;
+    }
+    stmtSent(k, !!b.dataset.stSent);
+  }
+  $('stList').addEventListener('click', stmtClick);
+  $('stBannerGo').addEventListener('click', function(){ renderStmtList(); $('stModal').hidden = false; });
+  $('stClose').addEventListener('click', function(){ $('stModal').hidden = true; });
+  $('stModal').addEventListener('mousedown', function(e){ if (e.target === $('stModal')) $('stClose').click(); });
+
   // Month 12 of a tenancy that pays its fee up front: charge the renewal fee.
   var renewFees = [];
   function loadRenewalFees(){
@@ -8369,10 +8471,13 @@
     TCY_STD_FEES.forEach(function(f){ if (!out.some(function(o){ return (f.kind && o.kind === f.kind) || o.label.toLowerCase().indexOf(f.label.toLowerCase()) !== -1; })) out.push({ label: f.label, amount: null, kind: f.kind || '' }); });
     return out;
   }
+  // Money paid out for the landlord (passed on at cost): added with No VAT ticked.
+  var TCY_NOVAT_COSTS = ['Labour', 'Materials', 'Council licence', 'Repairs'];
+  var NOVAT_WORDS = /\b(labou?r|materials?|licen[cs]e|council|on behalf|at cost|disbursement|reimburse)/i;
   var TCY_SCHEMES = ['The Deposit Protection Service (DPS)', 'Tenancy Deposit Scheme (TDS)', 'mydeposits', 'Landlord to register'];
   function loadTenancies(){
     if (!meta.db) return Promise.resolve();
-    return api('GET', '/api/admin/tenancies').then(function(d){ if (d.ok) tenancies = d.tenancies; });
+    return Promise.all([api('GET', '/api/admin/tenancies').then(function(d){ if (d.ok) tenancies = d.tenancies; }), loadStatements()]);
   }
   function loadTcySettings(){ return api('GET', '/api/admin/tenancy-settings').then(function(d){ if (d.ok) tcySet = d; return tcySet; }); }
 
@@ -8421,12 +8526,13 @@
     var vatOn = !(d.vat === false || /rent\s*4\s*rent/i.test(String(d.service || '')));
     fees.forEach(function(f){ f.vat = vatOn && !f.novat ? r2(f.amount * 0.2) : 0; });
     var sub = r2(fees.reduce(function(a, f){ return a + f.amount; }, 0)), vat = r2(fees.reduce(function(a, f){ return a + f.vat; }, 0)), feeTotal = r2(sub + vat);
-    var income = r2(rent + (d.deposit_by === 'landlord' ? deposit : 0));
+    var credits = (d.credits || []).filter(function(f){ return f && f.label && num(f.amount); }).map(function(f){ return { label: f.label, amount: r2(num(f.amount)) }; });
+    var income = r2(rent + (d.deposit_by === 'landlord' ? deposit : 0) + credits.reduce(function(a, f){ return a + f.amount; }, 0));
     var term = parseInt(d.term_months, 10) || 12;
     var soStart = d.so_start || addMonthsIso(d.start_date, 1);
     return {
       rent: rent, weekly: r2(weekly), deposit: deposit, depAuto: depAuto, holding: holding, holdAuto: holdAuto, total: total, remaining: remaining,
-      fees: fees, sub: sub, vat: vat, vatOn: vatOn, feeTotal: feeTotal, income: income, balance: r2(income - feeTotal),
+      fees: fees, credits: credits, sub: sub, vat: vat, vatOn: vatOn, feeTotal: feeTotal, income: income, balance: r2(income - feeTotal),
       // The regular monthly fee: the % (or £ a month) fees only — tenant find,
       // collection, management — before VAT, without one-off extras.
       // Fees taken from the rent each month (tenant find on a monthly basis,
@@ -8626,7 +8732,7 @@
     openTcyId = id;
     tcyDraft = x ? JSON.parse(JSON.stringify(x.data || {})) : tcyNew(preset || {});
     // Older or partly filled tenancies: the lists the form needs.
-    ['tenants', 'guarantors', 'fees'].forEach(function(k){ if (!Array.isArray(tcyDraft[k])) tcyDraft[k] = []; });
+    ['tenants', 'guarantors', 'fees', 'credits'].forEach(function(k){ if (!Array.isArray(tcyDraft[k])) tcyDraft[k] = []; });
     if (!tcyDraft.tenants.length) tcyDraft.tenants = [{ name: '', email: '', phone: '' }];
     if (!tcyDraft.landlord || typeof tcyDraft.landlord !== 'object') tcyDraft.landlord = {};
     if (!tcyDraft.address && x) tcyDraft.address = x.address || '';
@@ -8739,6 +8845,12 @@
     }).join('') + '<datalist id="tfMethods"><option value="TRNF"><option value="CARD"><option value="CASH"><option value="CHQ"></datalist>' +
       (tcyDraft.receipts && tcyDraft.receipts.length ? '' : '<p class="muted-note" style="margin:0 0 8px">No payments recorded yet.</p>');
   }
+  // Money in for the landlord on the move-in statement (e.g. a refund on materials): added to the income.
+  function tcyCreditRows(){
+    return (tcyDraft.credits || []).map(function(f, i){
+      return '<div class="tcy-fee" data-i="' + i + '"><input class="inp" data-cr="label" placeholder="e.g. B&Q refund" value="' + esc(f.label || '') + '"><input class="inp" data-cr="amount" inputmode="decimal" placeholder="£" value="' + esc(f.amount == null ? '' : f.amount) + '"><button type="button" class="tcy-x" data-del-cr="' + i + '" title="Remove">×</button></div>';
+    }).join('');
+  }
   function tcyFeeRows(){
     return tcyDraft.fees.map(function(f, i){
       return '<div class="tcy-fee nv4" data-i="' + i + '"><input class="inp" data-ff="label" placeholder="Fee" value="' + esc(f.label || '') + '"><input class="inp" data-ff="amount" inputmode="decimal" placeholder="£" value="' + esc(f.amount == null ? '' : f.amount) + '"><label class="tcy-nv" title="Tick if there is no VAT on this one (e.g. a council licence fee)"><input type="checkbox" data-ff="novat"' + (f.novat ? ' checked' : '') + '> No VAT</label><button type="button" class="tcy-x" data-del-fee="' + i + '" title="Remove">×</button></div>';
@@ -8808,7 +8920,10 @@
             '<div class="seg" id="tfManageBasis" style="margin-top:6px;font-size:.82rem"><button type="button" data-v="monthly"' + (d.manage_basis !== 'upfront' ? ' class="on"' : '') + '>Taken from each month’s rent</button><button type="button" data-v="upfront"' + (d.manage_basis === 'upfront' ? ' class="on"' : '') + '>Paid up front for the year</button></div>' +
             '<p class="muted-note" id="tfManageNote" style="margin:4px 0 0"></p></div></div>' +
         '<label class="lbl" style="margin-top:12px">Other fees</label><div class="tcy-chips" id="tfFeeChips">' + tcyFeePresets().map(function(f, i){ return '<button type="button" class="btn small ghost" data-fee-chip="' + i + '"' + (f.kind === 'find' ? ' title="A % of the annual rent"' : f.kind === 'manage' ? ' title="A % of the rent each month"' : '') + '>+ ' + esc(f.label) + (f.kind === 'find' ? ' (% of annual rent)' : f.kind === 'manage' ? ' (% monthly)' : num(f.amount) !== null ? ' · ' + esc(gbp(f.amount)) : '') + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-fee-chip="-1">+ Other</button></div>' +
+        '<label class="lbl" style="margin-top:10px">Costs we paid for the landlord · no VAT</label><div class="tcy-chips" id="tfNvChips">' + TCY_NOVAT_COSTS.map(function(l){ return '<button type="button" class="btn small ghost" data-nv-chip="' + esc(l) + '" title="Added with No VAT ticked">+ ' + esc(l) + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-nv-chip="">+ Other cost (no VAT)</button></div>' +
         '<div id="tfFees">' + tcyFeeRows() + '</div>' +
+        '<label class="lbl" style="margin-top:10px">Money in for the landlord · e.g. a refund</label><div id="tfCredits">' + tcyCreditRows() + '</div>' +
+        '<button type="button" class="btn small ghost" id="tfAddCredit">+ Add money in</button>' +
         '<label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="tfVat"' + (d.vat === false ? '' : ' checked') + '> Add VAT (20%) to the fees</label>' +
         '<div id="tfFeeSum" style="margin-top:10px"></div>' +
       '</div>' +
@@ -8837,6 +8952,7 @@
         '<button type="button" class="btn primary" data-doc="mail-tenants">✉️ Welcome email to tenants</button>' +
         '<button type="button" class="btn primary" data-doc="mail-landlord">✉️ Welcome email to landlord</button>' +
         '</div><p class="muted-note" style="margin:8px 0 0">Documents use the details as last saved.</p></div>' +
+        '<div class="card tcy-stmts" id="tfStmts">' + stmtCard(x.id) + '</div>' +
         '<div class="card"><h3>History</h3><ul class="tcy-log">' + (x.log || []).slice().reverse().map(function(e){ return '<li><span>' + esc(fmtDate(e.at)) + '</span>' + esc(e.text) + '</li>'; }).join('') + '</ul></div>' +
         '<div class="card danger-card"><h3>Delete tenancy</h3><p class="muted-note">Removes this tenancy record. Tenants and the landlord stay on file.</p><div class="row-actions"><button class="btn danger" id="tfDelete" type="button">Delete tenancy</button></div></div>' : '') +
       '<div class="tcy-save"><button class="btn ghost" id="tfCancel" type="button">Cancel</button><button class="btn primary" id="tfSave" type="button">' + (x ? 'Save changes' : 'Save tenancy') + '</button></div>' +
@@ -8847,6 +8963,7 @@
     if (tcyLocked) tcyLock();
   }
   $('tcyDetail').addEventListener('click', function(e){
+    if (e.target.closest('#tfStmts')) { stmtClick(e); return; }
     var b = e.target.closest('[data-tcy-prop],[data-tcy-ll],[data-tcy-inv],[data-owe]'); if (!b) return;
     if (b.dataset.tcyInv) { var dd = tcySaved() || tcyDraft; openNewInvoice({ address: dd.address, props: [dd.address], tenancy_id: openTcyId === 'new' ? null : openTcyId, vat: dd.vat !== false && !/rent\s*4\s*rent/i.test(String(dd.service || '')) }); return; }
     if (b.dataset.owe) { tcyOwe(b.dataset.owe, b); return; }
@@ -8856,11 +8973,13 @@
   function tcyOwe(what, b){
     var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0]; if (!x) return;
     var d = x.data || {}, c = tcyCalc(d), owe = r2(-c.balance), inv = d.fees_invoice_id;
+    var sx = stmtsBy[x.id]; if (sx && sx.months.length > 1 && !inv && !d.fees_paid) owe = Math.max(0, r2(-sx.months[sx.months.length - 1].balance));
     var refresh = function(){ return Promise.all([loadTenancies(), loadAllInvoices()]).then(function(){ tcyRefresh(); }); };
     if (what === 'invoice') {
       var fees = c.fees.map(function(f){ return f.label + ' ' + gbp(f.amount); }).join(', ');
       openNewInvoice({ address: d.address, props: [d.address], tenancy_id: x.id, kind: 'move_in', vat: false, title: 'Fees for the let — ' + shortAddr(d.address),
-        lines: [{ desc: 'Fees for the let (' + fees + (c.vat ? ', plus VAT ' + gbp(c.vat) : '') + ' = ' + gbp(c.feeTotal) + ') less the first rent we received (' + gbp(c.income) + ')', amount: owe.toFixed(2) }],
+        lines: [{ desc: 'Fees for the let (' + fees + (c.vat ? ', plus VAT ' + gbp(c.vat) : '') + ' = ' + gbp(c.feeTotal) + ') less the first rent we received (' + gbp(c.income) + ')' +
+          (sx && sx.months.length > 1 ? ', and the rent taken since — balance after the ' + monthName(sx.months[sx.months.length - 1].from) + ' statement' : ''), amount: owe.toFixed(2) }],
         after: function(){ refresh(); } });
       toast('VAT is already included in the amount owed');
       return;
@@ -8876,7 +8995,7 @@
   function tcyLock(){
     var form = $('tcyDetail').querySelector('.tcy-form'); if (!form) return;
     form.classList.add('tcy-locked');
-    form.querySelectorAll('input, select, textarea, button').forEach(function(el){ if (!el.closest('.tcy-docs') && !el.dataset.owe) el.disabled = true; });
+    form.querySelectorAll('input, select, textarea, button').forEach(function(el){ if (!el.closest('.tcy-docs') && !el.closest('.tcy-stmts') && !el.dataset.owe) el.disabled = true; });
     var save = form.querySelector('.tcy-save'); if (save) save.hidden = true;
     var del = $('tfDelete'); if (del) del.closest('.card').hidden = true;
     var head = $('tcyDetail').querySelector('.prop-head');
@@ -9067,6 +9186,12 @@
     // The holding deposit line in the banking trail follows the amount and date above.
     var hr = (d.receipts || []).filter(function(r){ return /^holding deposit/i.test(r.desc || ''); })[0];
     if (hr) { if (d.holding !== null) hr.amount = d.holding; if (d.holding_date) hr.date = d.holding_date; }
+    d.credits = d.credits || [];
+    document.querySelectorAll('#tfCredits .tcy-fee').forEach(function(row){
+      var f = d.credits[Number(row.dataset.i)]; if (!f) return;
+      f.label = row.querySelector('[data-cr="label"]').value.trim();
+      var a = row.querySelector('[data-cr="amount"]').value.replace(/[£,\s]/g, ''); f.amount = a === '' ? null : Number(a);
+    });
     document.querySelectorAll('#tfFees .tcy-fee').forEach(function(row){
       var f = d.fees[Number(row.dataset.i)]; if (!f) return;
       f.label = row.querySelector('[data-ff="label"]').value.trim();
@@ -9114,16 +9239,20 @@
     var oneVat = r2(c.fees.reduce(function(t, f){ return t + (f.extra ? f.vat : 0); }, 0)), anyNv = vr && (d.fees || []).some(function(f){ return f && f.novat && f.label && num(f.amount) !== null; });
     if (oneOff) rows.push(['One-off fees', (d.fees || []).filter(function(f){ return f && f.label && num(f.amount) !== null; }).map(function(f){ return esc(f.label) + ' ' + gbp(num(f.amount)) + (vr && f.novat ? ' (no VAT)' : ''); }).join(', ') + ' → ' +
       (oneVat ? gbp(oneOff) + ' + VAT ' + gbp(oneVat) + (anyNv ? ' (on ' + gbp(r2(oneVat / 0.2)) + ')' : '') + ' = <b>' + gbp(r2(oneOff + oneVat)) + '</b>' : '<b>' + gbp(oneOff) + '</b>' + (vr ? ' — no VAT' : ''))]);
-    if (c.upfrontFee || oneOff) rows.push(['First month', (d.deposit_by === 'landlord' ? 'Rent + deposit ' : 'Rent ') + gbp(c.income) + ' − all fees ' + gbp(c.feeTotal) + (vr ? ' (inc. VAT)' : '') + ' → ' + (c.balance < 0 ? '<b style="color:var(--brick)">the landlord owes us ' + gbp(-c.balance) + '</b>' : '<b>' + gbp(c.balance) + '</b> to the landlord')]);
+    if (c.upfrontFee || oneOff) rows.push(['First month', (d.deposit_by === 'landlord' ? 'Rent + deposit ' : 'Rent ') + (c.credits.length ? '+ money in ' : '') + gbp(c.income) + ' − all fees ' + gbp(c.feeTotal) + (vr ? ' (inc. VAT)' : '') + ' → ' + (c.balance < 0 ? '<b style="color:var(--brick)">the landlord owes us ' + gbp(-c.balance) + '</b>' : '<b>' + gbp(c.balance) + '</b> to the landlord')]);
     if (c.monthlyFee || c.upfrontFee) rows.push(['In a year', 'Our fees: ' + wv(r2(c.monthlyFee * 12 + c.upfrontFee))]);
     // The landlord owes us (the fees are more than the first rent we hold): invoice it, or mark it paid.
     var sv = openTcyId !== 'new' && tenancies.filter(function(t){ return t.id === openTcyId; })[0], svd = sv ? sv.data || {} : {};
     if (c.balance < -0.004 && sv) {
       var owe = r2(-c.balance), inv = svd.fees_invoice_id && allInvoices.filter(function(i){ return i.id === svd.fees_invoice_id; })[0];
+      // Brought forward to the next rents (monthly statements): what is left after the latest one.
+      var sx = stmtsBy[openTcyId], sl = sx && sx.months.length > 1 && !inv && !svd.fees_paid ? sx.months[sx.months.length - 1] : null;
+      if (sl) owe = Math.max(0, r2(-sl.balance));
       rows.push(['Landlord owes us', inv
         ? 'Invoice <a href="/api/admin/invoices/' + inv.id + '/view" target="_blank" rel="noopener">' + esc(inv.number) + '</a> · ' + gbp(inv.total) + ' — ' + (inv.paid_at ? '<b style="color:var(--green, #16a34a)">✓ Paid ' + esc(fmtShort(inv.paid_at).split(',')[0]) + '</b> <button type="button" class="linkish" data-owe="inv-unpaid">Undo</button>' : '<b style="color:var(--brick)">not paid yet</b> <button type="button" class="btn small primary" data-owe="inv-paid">✓ Mark paid</button>')
         : svd.fees_paid ? '<b style="color:var(--green, #16a34a)">✓ Paid ' + esc(gbp(svd.fees_paid.amount || owe)) + ' on ' + esc(fmtShort(svd.fees_paid.at).split(',')[0]) + '</b> <button type="button" class="linkish" data-owe="unpaid">Undo</button>'
-        : '<b style="color:var(--brick)">' + gbp(owe) + ' — not paid yet</b> <button type="button" class="btn small primary" data-owe="invoice">🧾 Raise invoice</button> <button type="button" class="btn small" data-owe="paid">✓ Mark paid</button>']);
+        : sl && !owe ? '<b style="color:var(--green, #16a34a)">✓ Cleared</b> — taken from the rent by the ' + esc(monthName(sl.from)) + ' statement'
+        : (sl ? gbp(r2(-c.balance)) + ' at move-in, brought forward and taken from the rent — after the ' + esc(monthName(sl.from)) + ' rent ' : '') + '<b style="color:var(--brick)">' + gbp(owe) + (sl ? ' still owed' : ' — not paid yet') + '</b> <button type="button" class="btn small primary" data-owe="invoice">🧾 Raise invoice</button> <button type="button" class="btn small" data-owe="paid">✓ Mark paid</button>']);
     }
     $('tfFeeSum').innerHTML = rows.length ? '<div class="fee-plain">' + rows.map(function(r){ return '<div><span>' + r[0] + '</span><p>' + r[1] + '</p></div>'; }).join('') + '</div>' : '<p class="muted-note" style="margin:0">' + (/rent\s*4\s*rent/i.test(String(d.service || '')) ? 'Rent4Rent — no fees charged to the landlord.' : 'Enter the rent and our fee to see what the landlord pays.') + '</p>';
   }
@@ -9244,6 +9373,11 @@
       tcyRefresh();
     });
     body.addEventListener('change', function(e){
+      if (tcyDraft && e.target.dataset.ff === 'novat') e.target.dataset.hand = '1';
+      if (tcyDraft && e.target.dataset.ff === 'label' && NOVAT_WORDS.test(e.target.value)) {
+        var nv = e.target.closest('.tcy-fee').querySelector('[data-ff="novat"]');
+        if (nv && !nv.checked && !nv.dataset.hand) { nv.checked = true; tcyRefresh(); toast('Ticked No VAT for “' + e.target.value.trim() + '” — untick it if VAT applies'); }
+      }
       if (tcyDraft && e.target.id === 'tfAddress') {
         tcyRead();
         // Fill the landlord boxes in place (redrawing the form would lose what's being typed next).
@@ -9277,6 +9411,11 @@
         tcyRead(); var kind = b.dataset.delPerson; tcyDraft[kind].splice(Number(b.dataset.i), 1);
         if (kind === 'tenants') $('tfTenants').innerHTML = tcyPersonRows('tenants');
         else $('tfGuarantors').innerHTML = tcyDraft.guarantors.length ? tcyPersonRows('guarantors') : '<p class="muted-note" style="margin:0">No guarantors. The agreement leaves the guarantor sections out.</p>';
+      } else if (b.dataset.nvChip !== undefined) {
+        tcyRead(); tcyDraft.fees.push({ label: b.dataset.nvChip, amount: null, novat: true });
+        $('tfFees').innerHTML = tcyFeeRows(); tcyRefresh();
+        var nr = $('tfFees').querySelectorAll('.tcy-fee'), nl = nr[nr.length - 1];
+        if (nl) nl.querySelector(b.dataset.nvChip ? '[data-ff="amount"]' : '[data-ff="label"]').focus();
       } else if (b.dataset.feeChip) {
         tcyRead(); var f = tcyFeePresets()[Number(b.dataset.feeChip)];
         if (f && f.kind === 'find') {   // Tenant Find: the % box, on the annual rent
@@ -9299,6 +9438,11 @@
         var rs = $('tfReceipts').querySelectorAll('[data-rf="desc"]'); rs[rs.length - 1].focus();
       } else if (b.dataset.delRc) {
         tcyRead(); tcyDraft.receipts.splice(Number(b.dataset.delRc), 1); $('tfReceipts').innerHTML = tcyReceiptRows(); tcyRefresh();
+      } else if (b.dataset.delCr) {
+        tcyRead(); tcyDraft.credits.splice(Number(b.dataset.delCr), 1); $('tfCredits').innerHTML = tcyCreditRows(); tcyRefresh();
+      } else if (b.id === 'tfAddCredit') {
+        tcyRead(); tcyDraft.credits.push({ label: '', amount: null }); $('tfCredits').innerHTML = tcyCreditRows();
+        var cl = $('tfCredits').querySelectorAll('[data-cr="label"]'); cl[cl.length - 1].focus();
       } else if (b.dataset.delFee) {
         tcyRead(); tcyDraft.fees.splice(Number(b.dataset.delFee), 1); $('tfFees').innerHTML = tcyFeeRows(); tcyRefresh();
       } else if (b.dataset.doc) {
@@ -9402,15 +9546,18 @@
     [['Move-in Monies Due', ukDay(c.moveInDue)], ['Standing Order Starts', ukDay(c.soStart) + ' (' + c.soPayments + ' payments)'], ['Deposit Scheme', d.deposit_scheme || '']].forEach(function(r){ row(y, r[0], r[1], 250); y += 15; });
     return doc;
   }
-  function statementPdf(d){
+  // A landlord statement: the move-in one from the tenancy figures, or month m
+  // from the server's statements (with any balance brought forward).
+  function statementPdf(d, m){
     var doc = pdfDoc(); if (!doc) return null;
-    var c = tcyCalc(d), cfg = meta.invoice || {}, W = doc.internal.pageSize.getWidth(), X = 60, R = W - 60, l = d.landlord || {};
+    if (!m) { var c0 = tcyCalc(d); m = { from: d.start_date, to: addDaysIso(addMonthsIso(d.start_date, 1), -1), date: d.statement_date, rent: c0.rent, deposit: d.deposit_by === 'landlord' ? c0.deposit : 0, income: c0.income, credits: c0.credits, fees: c0.fees, sub: c0.sub, vat: c0.vat, vatOn: c0.vatOn, bf: 0, total: c0.feeTotal, balance: c0.balance }; }
+    var c = { rent: m.rent, deposit: m.deposit, income: m.income, fees: m.fees, sub: m.sub, vat: m.vat, vatOn: m.vatOn, feeTotal: m.total, balance: m.balance }, cfg = meta.invoice || {}, W = doc.internal.pageSize.getWidth(), X = 60, R = W - 60, l = d.landlord || {};
     drawLogo(doc, X, 50, 38, false, W);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
     ['Residential Realtors'].concat(String(cfg.address || '28-30 Harper Road, London, SE1 6AD').split(/\s*,\s*/)).forEach(function(line, i){ doc.text(line, R, 60 + i * 14, { align: 'right' }); });
     var y = 150;
     [l.name].concat(tcyLandlordAddress(l)).filter(Boolean).forEach(function(line, i){ doc.text(line, X, y + i * 14); });
-    doc.text('Date', R - 100, y + 14); doc.text(ukDay(d.statement_date || isoDay(new Date())), R, y + 14, { align: 'right' });
+    doc.text('Date', R - 100, y + 14); doc.text(ukDay(m.date || (m.n ? m.from : '') || isoDay(new Date())), R, y + 14, { align: 'right' });
     y = 245; doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('STATEMENT OF ACCOUNT', W / 2, y, { align: 'center' });
     var VX = R - 95;
     var band = function(yy, title, vatCol){
@@ -9422,23 +9569,27 @@
       doc.setFont('helvetica', 'normal');
     };
     y = 290; band(y, 'Income');
-    y += 32; doc.text('Rent for period', X + 70, y); doc.text(ukDay(d.start_date) + '  -  ' + ukDay(c.periodEnd), X + 160, y); doc.text(pdfGbp(c.rent), R, y, { align: 'right' });
-    if (d.deposit_by === 'landlord') { y += 15; doc.text('Deposit (to be registered by the landlord)', X + 70, y); doc.text(pdfGbp(c.deposit), R, y, { align: 'right' }); }
+    y += 32; doc.text('Rent for period', X + 70, y); doc.text(ukDay(m.from) + '  -  ' + ukDay(m.to), X + 160, y); doc.text(pdfGbp(c.rent), R, y, { align: 'right' });
+    if (c.deposit) { y += 15; doc.text('Deposit (to be registered by the landlord)', X + 70, y); doc.text(pdfGbp(c.deposit), R, y, { align: 'right' }); }
+    (m.credits || []).forEach(function(f){ y += 15; doc.text(doc.splitTextToSize(f.label, 260)[0], X + 70, y); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); });
     y += 36; doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Total Income:', R - 150, y, { align: 'right' }); doc.text(pdfGbp(c.income), R, y, { align: 'right' });
     // Each fee with its own VAT (£0.00 on fees with no VAT), like the office statements.
     y += 50; band(y, 'Expenditure', c.vatOn);
     y += 32; doc.setFontSize(9.5);
-    c.fees.forEach(function(f){ doc.text(ukDay(d.start_date, true), X - 2, y); doc.text(doc.splitTextToSize(f.label, c.vatOn ? 250 : 300)[0], X + 48, y); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += 15; });
-    if (!c.fees.length) { doc.text('No fees', X + 48, y); y += 15; }
+    c.fees.forEach(function(f){ doc.text(ukDay(m.from, true), X - 2, y); doc.text(doc.splitTextToSize(f.label, c.vatOn ? 250 : 300)[0], X + 48, y); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += 15; });
+    if (!c.fees.length) { doc.text(m.bf ? 'No fees this month' : 'No fees', X + 48, y); y += 15; }
     y += 50; doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
     doc.text('Sub-Total:', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.sub), R, y, { align: 'right' });
     if (c.vat) { y += 18; doc.text('VAT (20%)', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.vat), R, y, { align: 'right' }); }
+    // What the landlord still owed from the last statement (VAT was already on it).
+    if (m.bf) { y += 18; doc.text('Balance brought forward' + (m.bf_from ? ' (' + monthName(m.bf_from) + ' statement)' : '') + ':', R - 80, y, { align: 'right' }); doc.text(pdfGbp(m.bf), R, y, { align: 'right' }); }
     y += 38; doc.setFontSize(11.5); doc.text('Total', X - 2, y); doc.text(pdfGbp(c.feeTotal), R, y, { align: 'right' });
     y += 32; doc.text('Closing Balance', X - 2, y); doc.text(pdfGbp(c.balance), R, y, { align: 'right' });
     // Fees can be more than the rent received (e.g. a tenant find fee taken up front): the landlord owes the difference.
     var owes = c.balance < 0;
     y += 24; doc.text(owes ? 'AMOUNT DUE FROM LANDLORD' : 'PAYMENT AMOUNT', X - 2, y); doc.text(pdfGbp(Math.abs(c.balance)), R, y, { align: 'right' });
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(owes ? 'Please pay by bank transfer within 7 days' : 'Paid by BACS within 3 working days', X - 2, y + 14);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(owes ? 'Please pay by bank transfer within 7 days, or it will be taken from next month\'s rent' : 'Paid by BACS within 3 working days', X - 2, y + 14);
+    if (owes && cfg.payee && cfg.accountNumber) doc.text(cfg.payee + ' · Sort code ' + cfg.sortCode + ' · Account ' + cfg.accountNumber + ' · Reference ' + (payRef(d.address) || ''), X - 2, y + 28);
     var fy = doc.internal.pageSize.getHeight() - 90;
     doc.setFontSize(6.5); doc.setTextColor(200, 16, 30); doc.setFont('helvetica', 'bold'); doc.text('Residential Realtors', X - 2, fy);
     doc.setTextColor(40); doc.setFont('helvetica', 'normal');
