@@ -1834,6 +1834,9 @@
   function $(id){ return document.getElementById(id); }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
   function num(v){ return v === null || v === undefined || v === '' ? null : Number(v); }
+  // Money for PDFs: the PDF fonts have no "−" (it prints as a stray mark and
+  // spreads the digits out), so a plain hyphen.
+  function pdfGbp(v){ return gbp(v).replace(/\u2212/g, '-'); }
   function gbp(v){ v = num(v); return v === null ? '—' : (v < 0 ? '−£' : '£') + Math.abs(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function fmtDate(d){ return d ? new Date(d).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'; }
   function fmtShort(d){ return d ? new Date(d).toLocaleString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'; }
@@ -9406,21 +9409,21 @@
       doc.setFont('helvetica', 'normal');
     };
     y = 290; band(y, 'Income');
-    y += 32; doc.text('Rent for period', X + 70, y); doc.text(ukDay(d.start_date) + '  -  ' + ukDay(c.periodEnd), X + 160, y); doc.text(gbp(c.rent), R, y, { align: 'right' });
-    if (d.deposit_by === 'landlord') { y += 15; doc.text('Deposit (to be registered by the landlord)', X + 70, y); doc.text(gbp(c.deposit), R, y, { align: 'right' }); }
-    y += 36; doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Total Income:', R - 150, y, { align: 'right' }); doc.text(gbp(c.income), R, y, { align: 'right' });
+    y += 32; doc.text('Rent for period', X + 70, y); doc.text(ukDay(d.start_date) + '  -  ' + ukDay(c.periodEnd), X + 160, y); doc.text(pdfGbp(c.rent), R, y, { align: 'right' });
+    if (d.deposit_by === 'landlord') { y += 15; doc.text('Deposit (to be registered by the landlord)', X + 70, y); doc.text(pdfGbp(c.deposit), R, y, { align: 'right' }); }
+    y += 36; doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Total Income:', R - 150, y, { align: 'right' }); doc.text(pdfGbp(c.income), R, y, { align: 'right' });
     y += 50; band(y, 'Expenditure');
     y += 32; doc.setFontSize(9.5);
-    c.fees.forEach(function(f){ doc.text(ukDay(d.start_date, true), X - 2, y); doc.text(doc.splitTextToSize(f.label, 300)[0], X + 48, y); doc.text(gbp(f.amount), R, y, { align: 'right' }); y += 15; });
+    c.fees.forEach(function(f){ doc.text(ukDay(d.start_date, true), X - 2, y); doc.text(doc.splitTextToSize(f.label, 300)[0], X + 48, y); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += 15; });
     if (!c.fees.length) { doc.text('No fees', X + 48, y); y += 15; }
     y += 50; doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-    doc.text('Sub-Total:', R - 80, y, { align: 'right' }); doc.text(gbp(c.sub), R, y, { align: 'right' });
-    if (c.vat) { y += 18; doc.text('VAT (20%)', R - 80, y, { align: 'right' }); doc.text(gbp(c.vat), R, y, { align: 'right' }); }
-    y += 38; doc.setFontSize(11.5); doc.text('Total', X - 2, y); doc.text(gbp(c.feeTotal), R, y, { align: 'right' });
-    y += 32; doc.text('Closing Balance', X - 2, y); doc.text(gbp(c.balance), R, y, { align: 'right' });
+    doc.text('Sub-Total:', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.sub), R, y, { align: 'right' });
+    if (c.vat) { y += 18; doc.text('VAT (20%)', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.vat), R, y, { align: 'right' }); }
+    y += 38; doc.setFontSize(11.5); doc.text('Total', X - 2, y); doc.text(pdfGbp(c.feeTotal), R, y, { align: 'right' });
+    y += 32; doc.text('Closing Balance', X - 2, y); doc.text(pdfGbp(c.balance), R, y, { align: 'right' });
     // Fees can be more than the rent received (e.g. a tenant find fee taken up front): the landlord owes the difference.
     var owes = c.balance < 0;
-    y += 24; doc.text(owes ? 'AMOUNT DUE FROM LANDLORD' : 'PAYMENT AMOUNT', X - 2, y); doc.text(gbp(Math.abs(c.balance)), R, y, { align: 'right' });
+    y += 24; doc.text(owes ? 'AMOUNT DUE FROM LANDLORD' : 'PAYMENT AMOUNT', X - 2, y); doc.text(pdfGbp(Math.abs(c.balance)), R, y, { align: 'right' });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(owes ? 'Please pay by bank transfer within 7 days' : 'Paid by BACS within 3 working days', X - 2, y + 14);
     var fy = doc.internal.pageSize.getHeight() - 90;
     doc.setFontSize(6.5); doc.setTextColor(200, 16, 30); doc.setFont('helvetica', 'bold'); doc.text('Residential Realtors', X - 2, fy);
@@ -9440,18 +9443,18 @@
     doc.setFont('helvetica', 'normal');
     doc.text('Property Address', X, 100); doc.setLineWidth(1.6); box(X + 190, 88, W - 190, 17); doc.setLineWidth(0.7); doc.text(doc.splitTextToSize(d.address || '', W - 196)[0] || '', X + 194, 100);
     var y = 130; doc.setLineWidth(1.4); box(X, y, 430, 16, PINK); box(X + 430, y, 34, 16); doc.setLineWidth(0.7);
-    doc.text('Weekly Rent', X + 3, y + 12); doc.text(gbp(c.weekly).replace(/\.\d\d$/, ''), X + 461, y + 12, { align: 'right' });
+    doc.text('Weekly Rent', X + 3, y + 12); doc.text(pdfGbp(c.weekly).replace(/\.\d\d$/, ''), X + 461, y + 12, { align: 'right' });
     y = 162;
     var rows = [['One Months rent in advance', c.rent], ['Tenants Deposit', c.deposit], ['Admin Fee + VAT', num(d.admin_fee)], ['Credit card fee @ 3%', num(d.card_fee), 1], ['Charge from LL or splitting agent', num(d.ll_charge), 1], ['Other Costs', num(d.other_costs), 1]];
     doc.setLineWidth(1.4); box(X, y, W, rows.length * 15); doc.setLineWidth(0.7);
     rows.forEach(function(r, i){
       var yy = y + i * 15; box(X, yy, W - 90, 15, r[2] ? PINK : null); box(X + W - 90, yy, 90, 15);
       doc.text(r[0], X + 3, yy + 11);
-      if (r[1] !== null && r[1] !== undefined && r[1] !== 0) { doc.text('£', X + W - 86, yy + 11); doc.text(gbp(r[1]).replace('£', ''), R - 4, yy + 11, { align: 'right' }); }
+      if (r[1] !== null && r[1] !== undefined && r[1] !== 0) { doc.text('£', X + W - 86, yy + 11); doc.text(pdfGbp(r[1]).replace('£', ''), R - 4, yy + 11, { align: 'right' }); }
     });
     y += rows.length * 15;
     doc.text('Total', X + W - 125, y + 12, { align: 'right' }); doc.setLineWidth(1.4); box(X + W - 90, y, 90, 16); doc.setLineWidth(0.7);
-    doc.text('£', X + W - 86, y + 12); doc.text(gbp(c.btDue).replace('£', ''), R - 4, y + 12, { align: 'right' });
+    doc.text('£', X + W - 86, y + 12); doc.text(pdfGbp(c.btDue).replace('£', ''), R - 4, y + 12, { align: 'right' });
     y += 36; doc.text('Monies Received', X, y);
     y += 20; var cols = [[0, 118, 'Description'], [118, 70, 'Date Taken'], [188, 88, 'Receipt number'], [276, 54, 'Method'], [330, 86, 'Amount taken']];
     cols.forEach(function(col){ box(X + col[0], y, col[1], 15, PINK); doc.text(col[2], X + col[0] + 3, y + 11); });
@@ -9464,13 +9467,13 @@
         doc.text(ukDay(r.date), X + 185, yy + 11, { align: 'right' });
         doc.text(doc.splitTextToSize(r.receipt || '', 82)[0] || '', X + 191, yy + 11);
         doc.text(r.method || '', X + 279, yy + 11);
-        if (num(r.amount) !== null) doc.text(gbp(r.amount), X + 413, yy + 11, { align: 'right' });
+        if (num(r.amount) !== null) doc.text(pdfGbp(r.amount), X + 413, yy + 11, { align: 'right' });
       }
     }
     y += 15 + n * 15;
-    box(X + 276, y, 54, 15); box(X + 330, y, 86, 15); doc.text('Total', X + 279, y + 11); doc.text(gbp(c.btIn), X + 413, y + 11, { align: 'right' });
+    box(X + 276, y, 54, 15); box(X + 330, y, 86, 15); doc.text('Total', X + 279, y + 11); doc.text(pdfGbp(c.btIn), X + 413, y + 11, { align: 'right' });
     y += 40; doc.setLineWidth(1.4); box(X, y, W, 16, PINK); doc.setLineWidth(0.7);
-    doc.text(c.btLeft < -0.004 ? 'Overpaid' : 'Move in monies to pay', X + 3, y + 12); doc.text(gbp(Math.abs(c.btLeft)), R - 4, y + 12, { align: 'right' });
+    doc.text(c.btLeft < -0.004 ? 'Overpaid' : 'Move in monies to pay', X + 3, y + 12); doc.text(pdfGbp(Math.abs(c.btLeft)), R - 4, y + 12, { align: 'right' });
     return doc;
   }
   function contactsPdf(d){
@@ -9480,7 +9483,7 @@
     doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(20); doc.text('Tenant Contact Sheet', X, 130);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
     doc.text(doc.splitTextToSize(d.address || '', R - X), X, 150);
-    doc.text('Tenancy start: ' + longDay(d.start_date) + '   ·   Rent: ' + gbp(num(d.rent_pcm)) + ' per month', X, 180);
+    doc.text('Tenancy start: ' + longDay(d.start_date) + '   ·   Rent: ' + pdfGbp(num(d.rent_pcm)) + ' per month', X, 180);
     var y = 215;
     var table = function(title, list){
       if (!list.length) return;
