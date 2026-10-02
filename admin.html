@@ -8197,14 +8197,16 @@
   function renderRenewFees(){
     $('rfList').innerHTML = renewFees.length ? renewFees.map(function(x){
       if (x.invoice) return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') + '</b><span style="font-weight:800">' + gbp(x.invoice.amount) + '</span></div>' +
-        '<div class="match ok" style="margin:4px 0 6px">✓ Invoice ' + esc(x.invoice.number) + ' created — it’s on the landlord’s page and in their invoices.</div>' +
+        '<div class="match ok" style="margin:4px 0 6px">✓ Invoice ' + esc(x.invoice.number) + ' created — it’s on the landlord’s page and in their invoices.' + (x.invoice.paid ? ' <b>Paid ✓</b>' : '') + '</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn small" href="/api/admin/invoices/' + x.invoice.id + '/view" target="_blank" rel="noopener">View invoice</a>' +
-          (x.landlord_email ? '<a class="btn small primary" data-rf-mailed="' + esc(x.key) + '" href="' + esc(renewMail(x)) + '">' + (x.mailed ? '✓ Emailed — send again' : '✉ Email it to the landlord') + '</a>' : '<span class="muted-note" style="margin:0">No landlord email saved — send it from their page.</span>') + '</div></div>';
+          (x.invoice.paid ? '<button type="button" class="linkish" data-rf-unpaid="' + esc(x.key) + '">Undo paid</button>' : '<button type="button" class="btn small" data-rf-paid="' + esc(x.key) + '">✓ Mark paid</button>') +
+          (x.invoice.paid ? '' : x.landlord_email ? '<a class="btn small primary" data-rf-mailed="' + esc(x.key) + '" href="' + esc(renewMail(x)) + '">' + (x.mailed ? '✓ Emailed — send again' : '✉ Email it to the landlord') + '</a>' : '<span class="muted-note" style="margin:0">No landlord email saved — send it from their page.</span>') + '</div></div>';
       return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') + '</b><span style="font-weight:800">' + gbp(x.fee.total) + '</span></div>' +
         '<div class="muted-note" style="margin:2px 0 6px">' + esc(x.service || 'Up-front fee') + ' · anniversary ' + esc(longDay(x.anniv)) + ' (year ' + x.year + ') · rent ' + gbp(x.fee.rent) + ' a month<br>' +
           x.fee.lines.map(function(l){ return esc(l.label) + ' ' + gbp(l.amount); }).join(' · ') + (x.fee.vat ? ' · VAT ' + gbp(x.fee.vat) : ' · no VAT') + '</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><label class="muted-note" style="margin:0">Amount £<input class="inp" style="width:110px;display:inline-block;margin-left:4px" data-rf-amt="' + esc(x.key) + '" value="' + x.fee.total.toFixed(2) + '"></label>' +
           '<button type="button" class="btn small primary" data-rf-done="' + esc(x.key) + '">✓ Charged — create invoice</button>' +
+          '<button type="button" class="btn small" data-rf-done="' + esc(x.key) + '" data-rf-already="1" title="The landlord has already paid: records the invoice as paid">✓ Already paid</button>' +
           (x.landlord_email ? '<a class="btn small" href="' + esc(renewMail(x)) + '">✉ Email landlord</a>' : '') +
           '<button type="button" class="btn small ghost" data-rf-skip="' + esc(x.key) + '">Not charging</button></div></div>';
     }).join('') : '<p class="muted-note">No renewal fees to charge right now.</p>';
@@ -8215,16 +8217,24 @@
   $('rfList').addEventListener('click', function(e){
     var ml = e.target.closest('[data-rf-mailed]');
     if (ml) { var mx = renewFees.filter(function(x){ return x.key === ml.dataset.rfMailed; })[0]; if (mx) { mx.mailed = true; api('POST', '/api/admin/tenancies/' + mx.tenancy_id + '/log', { text: 'Renewal fee invoice ' + (mx.invoice ? mx.invoice.number + ' ' : '') + 'emailed to the landlord' }); setTimeout(renderRenewFees, 300); } return; }
+    var pd = e.target.closest('[data-rf-paid],[data-rf-unpaid]');
+    if (pd) {
+      var pk = pd.dataset.rfPaid || pd.dataset.rfUnpaid, px = renewFees.filter(function(x){ return x.key === pk; })[0], on = !!pd.dataset.rfPaid; if (!px || !px.invoice) return;
+      busy(pd, true, '…');
+      api('POST', '/api/admin/invoices/' + px.invoice.id + '/paid', { paid: on }).then(function(d){ busy(pd, false); if (!d.ok) { toast('Couldn’t save that'); return; } px.invoice.paid = on; toast(on ? 'Marked as paid' : 'Marked as not paid'); renderRenewFees(); loadAllInvoices(); });
+      return;
+    }
     var b = e.target.closest('[data-rf-done],[data-rf-skip]'); if (!b) return;
     var done = !!b.dataset.rfDone, key = b.dataset.rfDone || b.dataset.rfSkip;
     if (!done && !confirm('Don’t charge a renewal fee for this year?')) return;
     var inp = document.querySelector('[data-rf-amt="' + key + '"]'), amt = inp ? num(inp.value) : null;
     busy(b, true, '…');
-    api('POST', '/api/admin/renewal-fees', { key: key, action: done ? 'charged' : 'skip', amount: amt }).then(function(d){
+    var already = !!b.dataset.rfAlready;
+    api('POST', '/api/admin/renewal-fees', { key: key, action: done ? 'charged' : 'skip', amount: amt, paid: already }).then(function(d){
       if (!d.ok) { busy(b, false); toast('Couldn’t save that'); return; }
       if (done && d.invoice) {
-        renewFees.forEach(function(x){ if (x.key === key) x.invoice = { id: d.invoice.id, number: d.invoice.number, url: d.invoice.url || '', amount: amt || x.fee.total }; });
-        toast('Invoice ' + d.invoice.number + ' created for ' + gbp(amt));
+        renewFees.forEach(function(x){ if (x.key === key) x.invoice = { id: d.invoice.id, number: d.invoice.number, url: d.invoice.url || '', amount: amt || x.fee.total, paid: !!d.invoice.paid }; });
+        toast('Invoice ' + d.invoice.number + ' created for ' + gbp(amt) + (d.invoice.paid ? ' and marked paid' : ''));
         renderRenewFees(); renderFeeBanner(); loadAllInvoices(); return;
       }
       toast('Noted — no renewal fee this year');
