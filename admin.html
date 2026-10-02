@@ -397,6 +397,8 @@
   .tcy-tiles b { display: block; font-size: 1.1rem; color: var(--ink); }
   .tcy-tiles span { font-size: .78rem; }
   .tcy-links { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .cert-drop-hint { font-size: .74rem; font-weight: 500; color: var(--ink-soft, #6b7280); margin-left: 8px; }
+  .cert-drop-on { outline: 2.5px dashed var(--ink); outline-offset: 3px; background: var(--panel-2, #f6f7f9); }
   .cert-up span { color: var(--ink-soft, #6b7280); font-size: .85rem; }
   .cert-up:hover, .cert-up.drag { border-color: var(--ink); }
   .tcy-row:hover { background: var(--hover, rgba(0,0,0,.03)); }
@@ -7920,7 +7922,8 @@
         loadCerts().then(loadJobs).then(function(){ toast(d.found ? 'EPC found on the register' + (d.address ? ' — address updated to match' : '') : 'Address updated to match the EPC register'); });
       });
     }
-    $('propCerts').innerHTML = '<h3>Certificates<span style="flex:1"></span><button type="button" class="btn small ghost" id="propCertsAll">All certificates ›</button></h3>' + certChips(key) + '<div class="cert-grid">' +
+    certDropZone($('propCerts'), function(){ var d = propertyJobs(); return d ? (knownFullAddress(d.property.key) || d.property.address) : ''; }, function(){ if (view === 'props' && openPropKey) renderProperty(); });
+    $('propCerts').innerHTML = '<h3>Certificates <span class="cert-drop-hint">📎 drop a certificate here</span><span style="flex:1"></span><button type="button" class="btn small ghost" id="propCertsAll">All certificates ›</button></h3>' + certChips(key) + '<div class="cert-grid">' +
       CERTS.map(function(def){ var c = certFor(key, def.type); return certCellHtml({ def: def, c: c, st: certState(c) }, address); }).join('') + '</div>';
     $('propCertsAll').addEventListener('click', function(){ certFilter = 'all'; showView('certs'); });
   }
@@ -8744,12 +8747,52 @@
     if (v) return v;
     return c ? { issued: c.issued_on || '', expires: c.expires_on || '', rating: c.rating || '', reference: c.reference || '', na: !!c.not_required, saved: true } : { issued: '', expires: '', rating: '', reference: '', na: false };
   }
+  // Drop a certificate (gas safety, EICR, EPC) on a Certificates section: it's
+  // read and saved to that property straight away, with the file kept. If it
+  // looks like another property, or the dates can't be read, it opens for checking.
+  function certDropZone(el, getAddress, after){
+    if (!el || el.dataset.certDrop) return; el.dataset.certDrop = '1';
+    var over = function(e){ if (!dragHasFile(e)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; el.classList.add('cert-drop-on'); $('dropZone').hidden = true; };
+    el.addEventListener('dragenter', over); el.addEventListener('dragover', over);
+    el.addEventListener('dragleave', function(e){ if (!el.contains(e.relatedTarget)) el.classList.remove('cert-drop-on'); });
+    el.addEventListener('drop', function(e){
+      if (!dragHasFile(e)) return;
+      e.preventDefault(); e.stopPropagation(); el.classList.remove('cert-drop-on'); dragDepth = 0; $('dropZone').hidden = true;
+      var address = getAddress();
+      if (!address) { toast('Enter the property address first'); return; }
+      Array.prototype.slice.call(e.dataTransfer.files || []).filter(function(f){ return /\.pdf$/i.test(f.name) || /^(image\/|application\/pdf)/.test(f.type || ''); }).slice(0, 3).forEach(function(f){
+        if (f.size > 15 * 1024 * 1024) { toast(f.name + ' is too big (15 MB max)'); return; }
+        var r = new FileReader();
+        r.onload = function(){
+          var file = { name: f.name, mime: f.type || 'application/pdf', data: String(r.result).replace(/^data:[^,]*,/, '') };
+          toast('Reading ' + f.name + '…');
+          api('POST', '/api/admin/certificates/read', { file: file, address: address }).then(function(d){
+            if (!d.ok) { toast(d.error || 'Couldn’t read that file'); return; }
+            if (!d.read || !d.expires_on || d.warning) {
+              // Check it first.
+              openAsk('say'); askCerts = [{ type: d.type || 'Gas', address: address, matched: true, issued_on: d.issued_on, expires_on: d.expires_on, reference: d.reference, rating: d.rating, file: file }]; renderAskCerts();
+              $('askErr').textContent = d.warning || 'I couldn’t read all the details from ' + f.name + ' — please check them, then save.';
+              return;
+            }
+            return api('PUT', '/api/admin/certificates', { address: address, type: d.type, issued_on: d.issued_on, expires_on: d.expires_on, reference: d.reference, rating: d.rating || '', doc: file }).then(function(s){
+              if (!s.ok) { toast('Couldn’t save the certificate'); return; }
+              if (tcyDraft && tcyDraft.certs) delete tcyDraft.certs[d.type];
+              toast('✓ ' + certDef(d.type).name + ' saved for ' + shortAddr(address) + (d.issued_on ? ' — done ' + longDay(d.issued_on) : '') + ', expires ' + longDay(d.expires_on));
+              loadCerts().then(function(){ renderCertAlerts(); if (after) after(); if (daysUntil(d.expires_on) > CERT_REMIND) offerRemoveCertJob(address, d.type, false); });
+            });
+          });
+        };
+        r.readAsDataURL(f);
+      });
+    });
+  }
   var tcyCertKey = null;
   function renderTcyCerts(){
     if (!$('tfCerts')) return;
     var address = tcyDraft.address, key = propKey(address);
     tcyCertKey = key;
-    $('tfCerts').innerHTML = '<h3>Certificates</h3>' +
+    certDropZone($('tfCerts'), function(){ return tcyDraft && tcyDraft.address; }, function(){ renderTcyCerts(); if (tcyLocked) tcyLock(); });
+    $('tfCerts').innerHTML = '<h3>Certificates <span class="cert-drop-hint">📎 drop a certificate here</span></h3>' +
       (key && address ? '' : '<p class="muted-note" style="margin:0 0 8px">Enter the property address first — then the EPC can be found on the register.</p>') +
       CERTS.map(function(def){
         var v = tcyCertVal(def.type), c = key ? certFor(key, def.type) : null, st = certState(c);
