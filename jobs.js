@@ -5516,5 +5516,72 @@ document.querySelectorAll('.lcu').forEach(function(box){
   setTimeout(function () { alertRentRecoveries().catch(function (err) { console.error('Rent recovery alert failed:', err.message); }); }, 90 * 1000);
   setInterval(function () { alertRentRecoveries().catch(function (err) { console.error('Rent recovery alert failed:', err.message); }); }, 3600 * 1000).unref();
 
+  // ---------- Renewal fee on tenancies that pay the fee up front ----------
+  // From the start of month 12 (11 months after the start or the last
+  // anniversary) to 30 days after the anniversary: prompt to charge the next
+  // year's up-front fee on the rent for that year. Phone alert once.
+  function renewalFeeFor(d, intention, anniv) {
+    let rent = Number(d.rent_pcm) || 0;
+    Object.keys(intention || {}).sort().forEach(function (k) { const it = intention[k] || {}; const nr = Number(it.new_rent); if (nr && !it.no_increase && (it.rent_from || k) <= anniv) rent = nr; });
+    const monthly = function (v, unit) { const x = Number(v) || 0; return !x ? 0 : unit === 'gbp' ? x : rent * x / 100; };
+    const lines = [];
+    if (d.find_basis === 'upfront') { const fm = monthly(d.find_pct, d.find_unit); if (fm) lines.push({ label: 'Tenant Find renewal (' + (d.find_unit === 'gbp' ? gbp(d.find_pct) + ' pm × 12' : d.find_pct + '% of annual rent ' + gbp(rent * 12)) + ')', amount: Math.round(fm * 12 * 100) / 100 }); }
+    if (d.manage_basis === 'upfront') { const mm = monthly(d.manage_pct, d.manage_unit); if (mm) lines.push({ label: 'Management fee renewal (' + (d.manage_unit === 'gbp' ? gbp(d.manage_pct) + ' pm × 12' : d.manage_pct + '% of annual rent ' + gbp(rent * 12)) + ', up front)', amount: Math.round(mm * 12 * 100) / 100 }); }
+    const sub = Math.round(lines.reduce(function (a, l) { return a + l.amount; }, 0) * 100) / 100, vat = d.vat === false ? 0 : Math.round(sub * 20) / 100;
+    return { rent: rent, lines: lines, sub: sub, vat: vat, total: Math.round((sub + vat) * 100) / 100 };
+  }
+  async function renewalFees(p) {
+    const today = londonDay();
+    const tcys = (await p.query('SELECT id, property_key, address, start_date, data, intention FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date DESC')).rows;
+    const lls = {};
+    (await p.query('SELECT pl.property_key, l.name, l.email, l.phone FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r; });
+    const seen = {}, out = [];
+    for (const t of tcys) {
+      if (!t.property_key || seen[t.property_key]) continue;
+      seen[t.property_key] = 1;   // the latest tenancy at the property is the current one
+      const d = t.data || {}, start = String(d.start_date || t.start_date).slice(0, 10);
+      if (d.find_basis !== 'upfront' && d.manage_basis !== 'upfront') continue;
+      for (let n = 1; n < 30; n++) {
+        const anniv = addMonthsIso(start, 12 * n); if (!anniv) break;
+        const from = addMonthsIso(start, 12 * n - 1);
+        if (from > today) break;
+        if (addDaysIso(anniv, 30) < today) continue;
+        const it = (t.intention || {})[anniv] || {};
+        if (it.renewal_fee || it.answer === 'leaving') continue;
+        const fee = renewalFeeFor(d, t.intention, anniv); if (!fee.total) continue;
+        const ll = lls[t.property_key] || {};
+        out.push({ key: t.id + '|' + anniv, tenancy_id: t.id, address: d.address || t.address, anniv: anniv, year: n + 1, service: d.service || '', landlord: (d.landlord && d.landlord.name) || ll.name || '',
+          landlord_email: (d.landlord && d.landlord.email) || ll.email || '', landlord_phone: (d.landlord && d.landlord.phone) || ll.phone || '', fee: fee, alerted: !!it.renewal_alerted });
+      }
+    }
+    return { today: today, items: out };
+  }
+  async function setIntention(p, id, anniv, patch, logText) {
+    await p.query(`UPDATE tenancies SET intention = jsonb_set(coalesce(intention, '{}'::jsonb), ARRAY[$2::text], coalesce(intention->$2, '{}'::jsonb) || $3::jsonb)` +
+      (logText ? ', log = log || $4::jsonb' : '') + ', updated_at = now() WHERE id = $1',
+      logText ? [id, anniv, JSON.stringify(patch), JSON.stringify([{ at: new Date().toISOString(), text: logText }])] : [id, anniv, JSON.stringify(patch)]);
+  }
+  app.get('/api/admin/renewal-fees', withDb(async function (p, req, res) { res.json(Object.assign({ ok: true }, await renewalFees(p))); }));
+  app.post('/api/admin/renewal-fees', withDb(async function (p, req, res) {
+    const b = req.body || {}, key = str(b.key, 60);
+    const item = (await renewalFees(p)).items.filter(function (x) { return x.key === key; })[0];
+    if (!item) return res.status(404).json({ ok: false, error: 'not-found' });
+    const charged = b.action !== 'skip', amount = money(b.amount) || item.fee.total;
+    await setIntention(p, item.tenancy_id, item.anniv, { renewal_fee: charged ? { amount: amount, at: new Date().toISOString() } : { skipped: true, at: new Date().toISOString() } },
+      charged ? 'Renewal fee charged for the year from ' + item.anniv + ': ' + gbp(amount) + (item.fee.vat ? ' (inc. VAT)' : '') : 'No renewal fee charged for the year from ' + item.anniv);
+    res.json({ ok: true });
+  }));
+  async function alertRenewalFees() {
+    const p = await db(); if (!p) return;
+    const hour = +new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false });
+    if (hour < 8) return;
+    for (const x of (await renewalFees(p)).items.filter(function (i) { return !i.alerted; })) {
+      await ntfy({ title: 'Renewal fee due: ' + gbp(x.fee.total) + ' — ' + shortAddrText(x.address), message: (x.landlord || 'The landlord') + ' — the tenancy reaches ' + certDay(x.anniv) + ' (start of year ' + x.year + '). The fee is paid up front: charge the renewal fee. Open Fixflow.', tags: ['receipt'] }).catch(function () {});
+      await setIntention(p, x.tenancy_id, x.anniv, { renewal_alerted: new Date().toISOString() });
+    }
+  }
+  setTimeout(function () { alertRenewalFees().catch(function (err) { console.error('Renewal fee alert failed:', err.message); }); }, 100 * 1000);
+  setInterval(function () { alertRenewalFees().catch(function (err) { console.error('Renewal fee alert failed:', err.message); }); }, 3600 * 1000).unref();
+
   return { saveReport: saveReport, hasDb: async function () { return !!(await db()); } };
 };
