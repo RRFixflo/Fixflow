@@ -2408,7 +2408,7 @@ module.exports = function mountJobs(app, opts) {
     // they are; Google Drive / Docs share links are fetched from Google first.
     const body = req.body || {};
     const given = (Array.isArray(body.files) ? body.files : body.file ? [body.file] : []).slice(0, 4);
-    const files = [], names = [];
+    const files = [], names = [], txtNames = [];
     let fileNote = '';
     for (let fi = 0; fi < given.length; fi++) {
       let file = given[fi];
@@ -2426,6 +2426,13 @@ module.exports = function mountJobs(app, opts) {
         if (!words) return res.status(400).json({ ok: false, error: 'file-unreadable' });
         fileNote += '\n\nAttached document "' + fname + '":\n' + words.slice(0, 40000);
       } else if (mime === 'application/pdf' || /\.pdf$/i.test(fname)) { files.push({ mime: 'application/pdf', data: buf.toString('base64') }); names.push(fname); }
+      // A plain text file (e.g. the tenants' names, numbers and emails sent with a Terms of Let).
+      else if (/^text\/plain/.test(mime) || /\.txt$/i.test(fname)) {
+        const words = buf.toString('utf8').replace(/^\uFEFF/, '').replace(/\r/g, '').slice(0, 20000).trim();
+        if (!words) return res.status(400).json({ ok: false, error: 'file-unreadable' });
+        txtNames.push(fname);
+        fileNote += '\n\nAttached text file "' + fname + '":\n' + words;
+      }
       else if (/^image\/(jpeg|png|webp|heic|heif)$/.test(mime)) { files.push({ mime: mime, data: buf.toString('base64') }); names.push(fname); }
       else return res.status(400).json({ ok: false, error: 'file-type' });
     }
@@ -2434,6 +2441,8 @@ module.exports = function mountJobs(app, opts) {
       // Started from a property already on file: the tenancy is for that property.
       const forProp = str(body.for_property, 300);
       if (forProp) text += '\n\nThis tenancy is for the property already on file: ' + forProp + ' — use exactly this address for it.';
+      // A text file sent with a Terms of Let: the tenants for that same let.
+      if (txtNames.length && given.length > txtNames.length) fileNote += '\n\n(The text file' + (txtNames.length > 1 ? 's' : '') + ' ' + txtNames.map(function (n) { return '"' + n + '"'; }).join(', ') + ' came with the other document' + (given.length - txtNames.length > 1 ? 's' : '') + ': unless it clearly says otherwise, the people in it are the TENANTS (and any guarantors) of the property in the Terms of Let — put them, with their phone numbers and emails, in that tenancy\'s tenants (merged with any already named there, no duplicates). Do not make contacts, a property or another tenancy from them.)';
       if (names.length) fileNote += '\n\n(' + (names.length > 1 ? 'The documents ' + names.map(function (n) { return '"' + n + '"'; }).join(', ') + ' are' : 'The document "' + names[0] + '" is') + ' attached; read ' + (names.length > 1 ? 'them' : 'it') + ' in full.)';
     }
     if (!text) return res.status(400).json({ ok: false, error: 'no-text' });
@@ -2535,6 +2544,18 @@ module.exports = function mountJobs(app, opts) {
           .filter(function (t) { return t.name || t.phone || t.email; })
       };
     }).filter(function (x) { return x.address; });
+    // People from a text file sent with a Terms of Let belong to that tenancy:
+    // any the reply put in contacts as tenants are moved into its tenants.
+    if (txtNames.length && tenancies.length === 1) {
+      const tc = tenancies[0], tail = function (v) { return String(v || '').replace(/\D/g, '').slice(-10); };
+      for (let i = contacts.length - 1; i >= 0; i--) {
+        const c = contacts[i]; if (c.type !== 'tenant') continue;
+        const dup = (tc.tenants || []).filter(function (t) { return (c.phone && tail(t.phone) === tail(c.phone)) || (c.email && String(t.email || '').toLowerCase() === c.email.toLowerCase()) || (c.name && String(t.name || '').toLowerCase() === c.name.toLowerCase()); })[0];
+        if (dup) { if (!dup.phone) dup.phone = c.phone; if (!dup.email) dup.email = c.email; }
+        else (tc.tenants = tc.tenants || []).push({ name: c.name, email: c.email, phone: c.phone });
+        contacts.splice(i, 1);
+      }
+    }
     // Certificates the property already has (date done / expiry): saved after staff check them.
     const certificates = (Array.isArray(parsed.certificates) ? parsed.certificates : []).slice(0, 10).map(function (c) {
       const type = c && CERT_TYPES[c.type] ? c.type : null;
@@ -3425,7 +3446,7 @@ document.querySelectorAll('.lb-f').forEach(function(f){
     if (owns.length) (await p.query('SELECT own_id, type FROM landlord_property_docs WHERE own_id = ANY($1::int[])', [owns.map(function (o) { return o.id; })])).rows.forEach(function (r) { ownDocs[r.own_id + '|' + r.type] = 1; });
     // Upload a certificate: read, checked by the landlord, then saved.
     const certUp = function (attr) {
-      return '<div class="lcu" ' + attr + '><button type="button" class="lcu-b">📎 Upload a certificate</button><span class="muted lcu-h">Gas safety, EICR or EPC — PDF or photo. We’ll read the dates for you.</span>' +
+      return '<div class="lcu" ' + attr + '><button type="button" class="lcu-b">📎 Upload a certificate</button><span class="muted lcu-h">Gas safety, EICR or EPC — PDF or photo, or drag and drop it here. We’ll read the dates for you.</span>' +
         '<form class="lcu-f" hidden><p class="lcu-w"></p><div class="lf-two"><label>Certificate<select name="type"><option value="Gas">Gas safety</option><option value="EICR">Electrical (EICR)</option><option value="EPC">EPC</option></select></label><label>Certificate no.<input name="reference" maxlength="100"></label></div>' +
         '<div class="lf-two"><label>Date done<input type="date" name="issued_on"></label><label>Expires<input type="date" name="expires_on" required></label></div>' +
         '<button type="submit">Save certificate</button> <button type="button" class="lcu-x sec2">Cancel</button><p class="lcu-m muted"></p></form></div>';
@@ -3531,10 +3552,9 @@ var TOKEN = document.body.getAttribute('data-lt');
 document.querySelectorAll('.lcu').forEach(function(box){
   var f = box.querySelector('.lcu-f'), b = box.querySelector('.lcu-b'), m = box.querySelector('.lcu-m'), w = box.querySelector('.lcu-w'), file = null;
   var where = box.getAttribute('data-own') ? { own_id: box.getAttribute('data-own') } : { key: box.getAttribute('data-key') };
-  b.addEventListener('click', function(){
-    var inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.pdf,application/pdf,image/*';
-    inp.addEventListener('change', function(){
-      var x = inp.files && inp.files[0]; if (!x) return;
+  var handle = function(x){
+      if (!x) return;
+      if (!/\.pdf$/i.test(x.name) && !/^(image\/|application\/pdf)/.test(x.type || '')) { alert('Please use a PDF or a photo of the certificate.'); return; }
       if (x.size > 15 * 1024 * 1024) { alert('That file is too big (15 MB max).'); return; }
       var r = new FileReader();
       r.onload = function(){
@@ -3552,9 +3572,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
           }).catch(function(){ b.disabled = false; b.textContent = '📎 Upload a certificate'; alert('Couldn’t read that file — please try again.'); });
       };
       r.readAsDataURL(x);
-    });
+  };
+  b.addEventListener('click', function(){
+    var inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.pdf,application/pdf,image/*';
+    inp.addEventListener('change', function(){ handle(inp.files && inp.files[0]); });
     inp.click();
   });
+  // Drag and drop: onto the box, or anywhere on its certificates card.
+  var zone = box.closest('.card') || box;
+  var isFile = function(e){ return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') !== -1; };
+  ['dragenter', 'dragover'].forEach(function(t){ zone.addEventListener(t, function(e){ if (!isFile(e)) return; e.preventDefault(); box.classList.add('on'); }); });
+  zone.addEventListener('dragleave', function(e){ if (!zone.contains(e.relatedTarget)) box.classList.remove('on'); });
+  zone.addEventListener('drop', function(e){ if (!isFile(e)) return; e.preventDefault(); box.classList.remove('on'); handle(e.dataTransfer.files[0]); });
   box.querySelector('.lcu-x').addEventListener('click', function(){ f.hidden = true; file = null; b.textContent = '📎 Upload a certificate'; });
   f.addEventListener('submit', function(e){
     e.preventDefault(); var s = f.querySelector('button[type=submit]'); s.disabled = true; s.textContent = 'Saving…';
@@ -3629,7 +3658,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '.lback{display:inline-block;margin:0 0 10px;color:var(--blue);font-weight:700;text-decoration:none}.pv-h{font-size:1.2rem;margin:0 0 6px}.pacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.pacts button{flex:1 1 160px;padding:12px 14px;border:0;border-radius:12px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer}.pacts button.sec{background:#25D366}.pacts button{text-transform:none;letter-spacing:normal;font-size:1rem}' +
       '.ptabs{display:flex;gap:6px;overflow-x:auto;margin:4px 0 10px;padding-bottom:2px}.ptabs button{flex:none;padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}.ptabs button.on{background:var(--ink);border-color:var(--ink);color:#fff}' +
       '.ppane .lr:not([open]){display:none}.ppane>.lr{margin-top:0}.ppane>.tcy{margin-top:0}.ppane>h3:first-child,.ppane>.lr+h3{margin-top:0}.lspend{display:grid;grid-template-columns:1fr auto;margin-top:12px;padding:14px 16px}.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.tile b{font-size:1.1rem}.tiles[hidden]{display:none}' +
-      '.lcu{margin-top:12px;padding:12px 14px;border:1.5px dashed var(--line);border-radius:12px}.lcu-b{padding:10px 14px;border:0;border-radius:10px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:normal}.lcu-h{display:block;font-size:.82rem;margin-top:6px}.lcu-f label{display:block;font-size:.85rem;color:var(--soft);margin-top:8px}.lcu-f input,.lcu-f select{display:block;width:100%;margin:4px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}.lcu-f button{margin-top:10px;padding:10px 14px;border:0;border-radius:10px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:normal}.lcu-f button.sec2{background:#fff;color:var(--ink);border:1px solid var(--line)}.lcu-w{margin:10px 0 0;font-size:.9rem}.lcu-w.bad{color:var(--red);font-weight:700}' +
+      '.lcu{margin-top:12px;padding:12px 14px;border:1.5px dashed var(--line);border-radius:12px}.lcu.on{border-color:var(--ink);background:#f6f8fc}.lcu-b{padding:10px 14px;border:0;border-radius:10px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:normal}.lcu-h{display:block;font-size:.82rem;margin-top:6px}.lcu-f label{display:block;font-size:.85rem;color:var(--soft);margin-top:8px}.lcu-f input,.lcu-f select{display:block;width:100%;margin:4px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}.lcu-f button{margin-top:10px;padding:10px 14px;border:0;border-radius:10px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:normal}.lcu-f button.sec2{background:#fff;color:var(--ink);border:1px solid var(--line)}.lcu-w{margin:10px 0 0;font-size:.9rem}.lcu-w.bad{color:var(--red);font-weight:700}' +
       '.o-add{display:block;margin-top:10px;padding:12px;border:1.5px dashed var(--line);border-radius:12px;text-align:center;color:var(--blue);font-weight:700;text-decoration:none}.ocr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:8px 0;border-bottom:1px solid #eef0f3;font-size:.92rem}.ocr b{text-align:right;font-weight:600}.ocr.bad b{color:var(--red)}.ocr.warn b{color:var(--amber)}.ocr a{color:var(--blue)}' +
       '#oForm label{display:block;font-size:.85rem;color:var(--soft);margin-top:8px}#oForm input,#oForm select,#oForm textarea{display:block;width:100%;margin:4px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}#oForm button{padding:10px 14px;border:0;border-radius:10px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer}#oForm button[type=submit]{margin-top:14px;width:100%;padding:13px}.o-pc{display:flex;gap:6px}.o-pc input{flex:1}.o-t{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}#oTenAdd{color:var(--blue);font-weight:600;font-size:.9rem}.pacts button.sec2{background:#fff;color:var(--ink);border:1px solid var(--line)}.pacts button:disabled{opacity:.7;cursor:default}@media(max-width:520px){.o-t{grid-template-columns:1fr}.o-t input:first-child{margin-top:10px}}</style>';
     res.send(trackShell('Your properties', css + '<script>document.body.setAttribute("data-lt", ' + JSON.stringify(token).replace(/</g, '\\u003c') + ');document.body.setAttribute("data-me", ' + JSON.stringify(String(l.name || '').trim() || 'Your landlord').replace(/</g, '\\u003c') + ');</script><div id="top"></div><h1>Hi ' + htmlEsc(String(l.name || '').trim() || 'there') + '</h1><p class="sub">Your properties with Residential Realtors.</p>' +
