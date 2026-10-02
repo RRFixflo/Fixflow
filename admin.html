@@ -386,6 +386,15 @@
   .tcy-locked input:disabled, .tcy-locked select:disabled, .tcy-locked textarea:disabled { background: var(--hover, #F5F6F8); color: var(--ink); opacity: 1; -webkit-text-fill-color: var(--ink); cursor: default; }
   .tcy-locked button:disabled { opacity: .45; cursor: default; }
   .cert-up { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin: 0 0 12px; padding: 14px 16px; border: 1.5px dashed var(--line); border-radius: 14px; background: var(--panel); cursor: pointer; }
+  /* Home reminders: one box that can be minimised to a row of chips. */
+  .todo-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
+  .todo-head b { font-size: .9rem; }
+  .todo-chips { display: none; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; min-width: 0; }
+  #todoBox.todo-min .todo-chips { display: flex; }
+  #todoBox.todo-min > .addr-warn { display: none; }
+  #todoBox.todo-min .todo-head { margin-bottom: 12px; }
+  .todo-chip { border: 1px solid var(--line, #e5e7eb); background: var(--panel-2, #f6f7f9); border-radius: 999px; padding: 4px 10px; font-size: .84rem; cursor: pointer; color: inherit; font: inherit; font-size: .84rem; }
+  .todo-chip:hover { border-color: var(--ink-soft, #6b7280); }
   .fee-plain { display: grid; gap: 6px; }
   .fee-plain > div { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 10px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2, #f6f7f9); }
   .fee-plain span { font-size: .78rem; font-weight: 650; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; padding-top: 2px; }
@@ -986,11 +995,14 @@
 
       <div id="jobsView">
       <div class="note-banner" id="noteBanner" hidden></div>
+      <div id="todoBox">
+      <div class="todo-head" id="todoHead" hidden><b id="todoTitle">To do</b><span class="todo-chips" id="todoChips"></span><span style="flex:1 0 0"></span><button type="button" class="btn small ghost" id="todoMin">Minimise</button></div>
       <div class="addr-warn tcy-warn" id="tcyEndBanner" hidden style="margin:0 0 12px"><span id="tcyEndBannerText"></span> <button type="button" class="btn small" id="tcyEndBannerGo">Ask the tenants</button></div>
       <div class="addr-warn rent-warn" id="feeBanner" hidden style="margin:0 0 12px"><span id="feeBannerText"></span> <button type="button" class="btn small" id="feeBannerGo">Show</button></div>
       <div class="addr-warn rent-warn" id="stBanner" hidden style="margin:0 0 12px"><span id="stBannerText"></span> <button type="button" class="btn small" id="stBannerGo">Show</button></div>
       <div class="addr-warn rent-warn" id="rentBanner" hidden style="margin:0 0 12px"><span id="rentBannerText"></span> <button type="button" class="btn small" id="rentBannerGo">Show</button></div>
       <div class="addr-warn cert-warn" id="certBanner" hidden style="margin:0 0 12px"><span id="certBannerText"></span> <button type="button" class="btn small" id="certBannerGo">Book now</button></div>
+      </div>
       <div class="tiles">
         <button type="button" class="tile clickable blue" id="tOpenTile" data-assign="" title="Show all open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg></i>Open jobs</div><div class="v" id="tOpen">–</div></button>
         <button type="button" class="tile clickable warnish" id="tUnassTile" data-assign="unassigned" title="Show unassigned open jobs"><div class="k"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/><path d="M3 3l18 18"/></svg></i>Unassigned</div><div class="v" id="tUnass">–</div></button>
@@ -7914,6 +7926,26 @@
       loadAllInvoices().then(function(){ if (view === 'll' && openLlId) renderLandlord(); if (ni.after) ni.after(d); });
     });
   });
+  // ---------- Home reminders box: minimise to chips (remembered) ----------
+  (function(){
+    var box = $('todoBox'), ids = ['tcyEndBanner', 'feeBanner', 'stBanner', 'rentBanner', 'certBanner'];
+    var min = false; try { min = localStorage.getItem('rr_todo_min') === '1'; } catch (e) {}
+    var short = function(t){ t = String(t || '').replace(/\s+/g, ' ').trim(); var cut = t.split(/ — | \(| for this month| within | in the next|: recover/)[0]; return cut.length > 46 ? cut.slice(0, 44) + '…' : cut; };
+    function draw(){
+      var on = ids.filter(function(id){ return !$(id).hidden; });
+      $('todoHead').hidden = !on.length;
+      box.classList.toggle('todo-min', min && !!on.length);
+      $('todoTitle').textContent = min ? 'To do · ' + on.length : 'To do';
+      $('todoMin').textContent = min ? 'Show all' : 'Minimise';
+      $('todoChips').innerHTML = on.map(function(id){ return '<button type="button" class="todo-chip" data-todo="' + id + '">' + esc(short($(id + 'Text').textContent)) + '</button>'; }).join('');
+    }
+    $('todoMin').addEventListener('click', function(){ min = !min; try { localStorage.setItem('rr_todo_min', min ? '1' : '0'); } catch (e) {} draw(); });
+    $('todoChips').addEventListener('click', function(e){ var c = e.target.closest('[data-todo]'); if (c) $(c.dataset.todo + 'Go').click(); });
+    var mo = new MutationObserver(draw);
+    ids.forEach(function(id){ mo.observe($(id), { attributes: true, attributeFilter: ['hidden'], childList: true, subtree: true, characterData: true }); });
+    draw();
+  })();
+
   // ---------- Monthly landlord statements ----------
   // Worked out on the server (statementChain in jobs.js): one per rent date,
   // with any balance the landlord owed brought forward to the next rent.
