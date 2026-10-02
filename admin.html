@@ -5179,6 +5179,16 @@
     var first = n.split(/\s+/)[0];
     return 'Dear ' + (first.replace(/\./g, '').length > 1 ? first : n);
   }
+  // Where a job came from: a tenant's report, a certificate renewal we raised,
+  // the landlord's own request, our inspection, or something else.
+  function jobOrigin(j){
+    var cat = String(j.category || '') + ' ' + String(j.affected || '');
+    if (/^(gas safety|eicr|epc)$/i.test(String(j.category || '').trim()) && (j.source === 'Other' || !j.source) && /\b(expires|expired) on\b/i.test(String(j.description || ''))) return 'cert';
+    if (j.source === 'Landlord request') return 'landlord';
+    if (j.source === 'Inspection') return 'inspection';
+    if (['Online report', 'Phone call', 'Text / WhatsApp', 'In person'].indexOf(j.source) !== -1) return 'tenant';
+    return /certificate|cp12|eicr|\bepc\b/i.test(cat) ? 'cert' : 'other';
+  }
   function landlordMessage(g, links){
     var jobs = g.jobs.slice().sort(function(a, b){ return a.id - b.id; });
     var oneHome = jobs.every(function(j){ return propKey(j.property_address) === propKey(jobs[0].property_address); });
@@ -5194,8 +5204,12 @@
       var cat = String(j.category || '').trim();
       if (cat && head.toLowerCase().indexOf(cat.toLowerCase()) === -1 && !/^other$/i.test(cat)) det.push('Type of repair: ' + cat);
       if (j.location) det.push('Where: ' + clean(j.location, 120));
-      var desc = clean(j.description, 500);
-      if (desc && desc.toLowerCase() !== llWorkText(j).toLowerCase()) det.push('What the tenant told us: “' + desc + '”');
+      // Say where the job came from: only what a tenant reported is "what the tenant told us".
+      var origin = jobOrigin(j);
+      var desc = clean(origin === 'cert' ? String(j.description || '').replace(/\s*Please contact the tenant directly[^.]*\.?/i, '') : j.description, 500);
+      if (desc && desc.toLowerCase() !== llWorkText(j).toLowerCase())
+        det.push(origin === 'tenant' ? 'What the tenant told us: “' + desc + '”' : origin === 'cert' ? 'Why: ' + desc.replace(/\.?$/, '.') + ' Renewing it on time is a legal requirement.'
+          : origin === 'landlord' ? 'Your request: “' + desc + '”' : origin === 'inspection' ? 'Found at our inspection: ' + desc : 'Details: ' + desc);
       if (plink) det.push('Photos: ' + plink);
       var status;
       if (isDone(j)) {
@@ -5209,7 +5223,8 @@
           '\nPlease let us know when it’s booked in and once it’s done, so we can keep the tenant updated.';
       } else if (!j.assigned_to) {
         var rep = new Date(j.created_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-        status = 'Reported by the tenant on ' + rep + (j.urgency === 'Emergency' ? ' as an emergency' : j.urgency === 'Urgent' ? ' as urgent' : '') + '. We’re arranging a contractor and will keep you posted.';
+        var urg = j.urgency === 'Emergency' ? ' as an emergency' : j.urgency === 'Urgent' ? ' as urgent' : '';
+        status = (origin === 'tenant' ? 'Reported by the tenant on ' + rep + urg : origin === 'cert' ? 'Due for renewal' : origin === 'landlord' ? 'You asked us on ' + rep : origin === 'inspection' ? 'Found at our inspection on ' + rep : 'Raised on ' + rep + urg) + '. We’re arranging a contractor and will keep you posted.';
       } else {
         status = (who ? 'We’ve instructed ' + who + '.' : 'We’ve reported it to the council, who handle this repair.') +
           (appt ? ' The visit is booked for ' + appt + '.' : who ? ' They’re arranging a time to attend with the tenant.' : '');

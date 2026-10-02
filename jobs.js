@@ -2074,7 +2074,7 @@ module.exports = function mountJobs(app, opts) {
   const RECIPIENTS = {
     Council: 'the local council (for example environmental health, housing standards, pest control, highways, waste and bins, building control, or council tax — pick the right department from the issue and instructions). Write formally, identify the property clearly, explain the problem factually, say what action is requested of the council, and ask for a reference number and timescale.',
     Landlord: 'the landlord who owns the property. Unless the staff instructions ask for something different, structure it in plain text with short numbered headings: ' +
-      '1. The issue: what the tenant reported, where in the property, when, how urgent, and anything already done. ' +
+      '1. The issue: what it is, where in the property, when, how urgent, and anything already done — say it was reported by the tenant only if "How it came in" says so (a certificate renewal or inspection was raised by us; a landlord request came from them). ' +
       '2. Possible solutions: one to three realistic options a UK contractor would typically consider for this kind of problem, each explained in a sentence or two in plain English, with the one we recommend marked, and a note that the exact fix will be confirmed once a contractor has inspected. ' +
       '3. Cost estimates: an estimate for each option (see the cost rules below). ' +
       'Then ask the landlord to approve the recommended option (or tell us which they prefer) so the work can go ahead, briefly mentioning any urgency, safety or legal repairing obligation where it genuinely applies. Professional, clear and concise.',
@@ -2101,7 +2101,9 @@ module.exports = function mountJobs(app, opts) {
     let facts = (recipient === 'Contractor' ? '' : fact('Job reference', refFor(j.id))) + fact('Property', j.property_address) +
       fact('Issue', [j.category, j.affected, j.symptom].filter(Boolean).join(' – ')) + fact('Location in property', j.location) +
       fact('Description', j.description) + fact('Urgency', j.urgency) + fact('Status', j.status) +
-      fact('Reported', when(j.created_at)) + fact('Deadline', when(j.due_at)) + fact('Completed', when(j.completed_at)) +
+      fact('Reported', when(j.created_at)) + fact('How it came in', j.source === 'Online report' ? 'Reported by the tenant online' : j.source === 'Landlord request' ? 'Requested by the landlord'
+        : j.source === 'Inspection' ? 'Found at our inspection' : /^(gas safety|eicr|epc)$/i.test(String(j.category || '').trim()) && /\b(expires|expired) on\b/i.test(String(j.description || '')) ? 'Raised by us: the certificate is due for renewal (not reported by the tenant)'
+        : ['Phone call', 'Text / WhatsApp', 'In person'].indexOf(j.source) !== -1 ? 'Reported by the tenant (' + j.source.toLowerCase() + ')' : 'Raised by us') + fact('Deadline', when(j.due_at)) + fact('Completed', when(j.completed_at)) +
       fact('Completion notes', j.completion_notes) + fact('Assigned contractor', j.assigned_to) + fact('Next steps', j.next_steps) +
       fact('Appointment booked for', j.status !== 'Completed' ? apptText(j) : '');
     if (recipient === 'Tenant' || recipient === 'Contractor' || recipient === 'Landlord') facts += fact('Tenant name', j.tenant_name);
