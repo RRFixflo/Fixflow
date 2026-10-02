@@ -813,6 +813,16 @@ function rentCheck(rent, deposit, holding) {
     return 'The deposit (£' + deposit.toFixed(2) + ') is usually five weeks’ rent, which would make the rent about £' + fromDep.toFixed(2) + ' a month — please check the rent.';
   return '';
 }
+// The door / flat numbers in an address (not the postcode): "Flat 2, 23 John
+// Maurice Close, SE17 1PZ" → ["2", "23"].
+function doorNumbers(a) { return (String(a || '').replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/gi, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }).sort().join(','); }
+// An address matched to one on file keeps the numbers as written: if the match
+// changed a door or flat number, it's a different property — use what was written.
+function keepWrittenAddress(chosen, written) {
+  const w = String(written || '').trim(); if (!w) return chosen;
+  const wn = doorNumbers(w); if (!wn) return chosen;
+  return doorNumbers(chosen) === wn ? chosen : w;
+}
 function money(v) {
   if (v === undefined || v === null || v === '') return null;
   const n = Number(String(v).replace(/[£,\s]/g, ''));
@@ -2437,7 +2447,8 @@ module.exports = function mountJobs(app, opts) {
     const prompt = fromEmail ? emailPrompt(text, trades) : 'You turn instructions from a UK letting agent\'s maintenance manager into repair jobs for their job system.\n\n' +
       'Instruction (spoken via speech-to-text, so allow for mis-heard words, or a pasted message that may list several properties, each with its tasks and tenant contacts, or an attached document such as a Terms of Let), between the ---- lines:\n----\n' + text + '\n----\n\n' +
       'Their contractors: ' + (trades || 'none listed') + '.\n\n' +
-      (known.length ? 'Their properties (use the exact address from this list when the one said is clearly one of these, allowing for mis-heard or shortened names and a missing "Flat"; the door number must match): ' + known.join(' | ') + '\n\n' : '') +
+      (known.length ? 'Their properties (use the exact address from this list when the one said is clearly one of these, allowing for mis-heard or shortened names and a missing "Flat"; the door number and flat number must match EXACTLY — "23 John Maurice Close" is NOT "21 John Maurice Close", a different number on the same street or building is a different property, so then give the address as written): ' + known.join(' | ') + '\n\n' : '') +
+      'For every job, property, tenancy and certificate also give "address_written": the address exactly as it appears in the instruction or document (before any matching to their list).\n\n' +
       'Make exactly one job per property address mentioned (a pasted message may contain several, often each followed by "for Jim" or similar). Put all the tasks for the same property into that one job. For each job give:\n' +
       '- address: the property as said, tidied up (e.g. "6 Whitworth House"); keep flat/house numbers exactly\n' +
       '- category: a short issue type, e.g. "Gas safety", "EICR", "Plumbing", "Heating and boiler", "Electrics", "Damp and mould", "Doors and locks", "Pest control", "General repair"\n' +
@@ -2484,7 +2495,7 @@ module.exports = function mountJobs(app, opts) {
     if (!parsed) return res.status(502).json({ ok: false, error: 'ai-bad-reply' });
     const jobs = (Array.isArray(parsed.jobs) ? parsed.jobs : []).slice(0, 20).map(function (j) {
       return {
-        address: str(j.address, 300) || '', category: str(j.category, 100) || '', title: str(j.title, 200) || '',
+        address: keepWrittenAddress(str(j.address, 300) || '', str(j.address_written, 300)), category: str(j.category, 100) || '', title: str(j.title, 200) || '',
         description: str(j.description, 2000) || '', urgency: URGENCIES.indexOf(j.urgency) !== -1 ? j.urgency : 'Routine',
         contractor: str(j.contractor, 200) || '', send: !!j.send, warning: str(j.warning, 300) || '',
         tenants: (Array.isArray(j.tenants) ? j.tenants : []).slice(0, 10).map(function (t) {
@@ -2502,6 +2513,7 @@ module.exports = function mountJobs(app, opts) {
     }).filter(function (c) { return c.name || c.company || c.phone || c.email; });
     // New tenancies: cleaned like a saved one, then shown for staff to check.
     const tenancies = (Array.isArray(parsed.tenancies) ? parsed.tenancies : []).slice(0, 5).map(function (t) {
+      if (t && t.address_written) t.address = keepWrittenAddress(t.address, str(t.address_written, 300));
       const d = cleanTenancy(t || {});
       if (!(t && t.break_months)) d.break_months = 0;
       if (!(t && (t.deposit_by === 'agent' || t.deposit_by === 'landlord'))) d.deposit_by = null;
@@ -2518,7 +2530,7 @@ module.exports = function mountJobs(app, opts) {
     }).filter(function (d) { return d.address || d.tenants.length; });
     const properties = (Array.isArray(parsed.properties) ? parsed.properties : []).slice(0, 10).map(function (x) {
       return {
-        address: str(x && x.address, 500) || '', landlord: str(x && x.landlord, 200) || '', key_number: str(x && x.key_number, 40) || '', notes: str(x && x.notes, 500) || '',
+        address: keepWrittenAddress(str(x && x.address, 500) || '', str(x && x.address_written, 500)), landlord: str(x && x.landlord, 200) || '', key_number: str(x && x.key_number, 40) || '', notes: str(x && x.notes, 500) || '',
         tenants: (Array.isArray(x && x.tenants) ? x.tenants : []).slice(0, 12).map(function (t) { return { name: str(t && t.name, 200) || '', phone: str(t && t.phone, 50) || '', email: str(t && t.email, 200) || '' }; })
           .filter(function (t) { return t.name || t.phone || t.email; })
       };
@@ -2527,7 +2539,7 @@ module.exports = function mountJobs(app, opts) {
     const certificates = (Array.isArray(parsed.certificates) ? parsed.certificates : []).slice(0, 10).map(function (c) {
       const type = c && CERT_TYPES[c.type] ? c.type : null;
       const doc = parseInt(c && c.document, 10);
-      return { address: str(c && c.address, 500) || '', type: type, issued_on: isoDay(c && c.issued_on) || '', expires_on: isoDay(c && c.expires_on) || '', reference: str(c && c.reference, 100) || '', rating: str(c && c.rating, 5) || '',
+      return { address: keepWrittenAddress(str(c && c.address, 500) || '', str(c && c.address_written, 500)), type: type, issued_on: isoDay(c && c.issued_on) || '', expires_on: isoDay(c && c.expires_on) || '', reference: str(c && c.reference, 100) || '', rating: str(c && c.rating, 5) || '',
         document: doc >= 1 && doc <= given.length ? doc : (given.length === 1 && !certLines(said).length ? 1 : 0) };
     }).filter(function (c) { return c.address && c.type && (c.issued_on || c.expires_on); });
     // Certificate lines read straight from the text, in case the reply missed one
