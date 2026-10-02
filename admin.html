@@ -386,6 +386,12 @@
   .tcy-locked input:disabled, .tcy-locked select:disabled, .tcy-locked textarea:disabled { background: var(--hover, #F5F6F8); color: var(--ink); opacity: 1; -webkit-text-fill-color: var(--ink); cursor: default; }
   .tcy-locked button:disabled { opacity: .45; cursor: default; }
   .cert-up { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin: 0 0 12px; padding: 14px 16px; border: 1.5px dashed var(--line); border-radius: 14px; background: var(--panel); cursor: pointer; }
+  .tcy-total { margin: 0 0 10px; max-width: none; width: 100%; }
+  .tcy-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+  .tcy-tiles > div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .tcy-tiles b { display: block; font-size: 1.1rem; color: var(--ink); }
+  .tcy-tiles span { font-size: .78rem; }
+  .tcy-links { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .cert-up span { color: var(--ink-soft, #6b7280); font-size: .85rem; }
   .cert-up:hover, .cert-up.drag { border-color: var(--ink); }
   .tcy-row:hover { background: var(--hover, rgba(0,0,0,.03)); }
@@ -1073,7 +1079,7 @@
           <div id="tcyEnding"></div>
           <div class="prop-sortbar"><span class="muted-note" style="margin:0">Service</span><div id="tcySvcTabs" class="tabs" role="tablist" aria-label="Filter by service"></div></div>
           <div class="prop-sortbar"><span class="muted-note" style="margin:0">Sort by</span><div id="tcySortTabs" class="tabs" role="tablist" aria-label="Sort tenancies"></div></div>
-          <div class="tcy-sum muted-note" id="tcySum"></div>
+          <div class="tcy-total muted-note" id="tcySum"></div>
           <div class="card" style="padding:0;overflow:hidden"><div id="tcyList"></div></div>
           <div id="tcyNoRecord"></div>
           <details class="card" id="tcySettings" style="margin-top:12px">
@@ -1672,7 +1678,7 @@
 <div class="modal" id="rfModal" hidden>
   <div class="card tn-card" role="dialog" aria-labelledby="rfTitle">
     <h3 id="rfTitle" style="margin:0">Renewal fees to charge</h3>
-    <p class="muted-note" style="margin:6px 0 10px">These tenancies pay the fee up front and are in month 12. Charge the landlord the fee for the next year (on the rent for that year), then mark it charged.</p>
+    <p class="muted-note" style="margin:6px 0 10px">These tenancies pay the fee up front and are in month 12. Charge the landlord the fee for the next year (on the rent for that year) — “Charged” creates the invoice for the landlord.</p>
     <div id="rfList"></div>
     <div class="row-actions" style="margin-top:12px"><span style="flex:1"></span><button class="btn" type="button" id="rfClose">Close</button></div>
   </div>
@@ -6457,14 +6463,15 @@
   function invRowHtml(i, showAddress){
     var od = invOverdue(i);
     return '<div class="pay-row" style="grid-template-columns:minmax(0,1fr) 120px 96px auto">' +
-      '<div class="addr"><button type="button" class="link ref" data-open="' + i.job_id + '" style="border:0;background:none;padding:0;color:var(--blue);font-weight:650;cursor:pointer">' + esc(i.number || 'Invoice') + '</button>' +
-        '<small>' + esc([showAddress ? i.property_address : '', 'Issued ' + fmtShort(i.created_at)].filter(Boolean).join(' · ')) + '</small></div>' +
+      '<div class="addr">' + (i.job_id ? '<button type="button" class="link ref" data-open="' + i.job_id + '" style="border:0;background:none;padding:0;color:var(--blue);font-weight:650;cursor:pointer">' + esc(i.number || 'Invoice') + '</button>'
+          : '<a class="link ref" href="/api/admin/invoices/' + i.id + '/view" target="_blank" rel="noopener" style="color:var(--blue);font-weight:650">' + esc(i.number || 'Invoice') + '</a>') +
+        '<small>' + esc([showAddress ? i.property_address : '', i.job_id ? '' : (i.title || 'Tenancy'), 'Issued ' + fmtShort(i.created_at)].filter(Boolean).join(' · ')) + '</small></div>' +
       '<div class="when">' + (i.paid_at ? '<span class="pill status Completed">Paid ' + esc(fmtShort(i.paid_at).split(',')[0]) + '</span>'
         : i.due ? '<span style="' + (od ? 'color:var(--brick);font-weight:650' : '') + '">' + (od ? 'Overdue · ' : 'Due ') + esc(ukDate(i.due)) + '</span>' : '<span class="muted-note">No due date</span>') + '</div>' +
       '<div class="amt">' + esc(gbp(i.total)) + '</div>' +
       '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">' + (i.paid_at
         ? '<button type="button" class="btn small ghost" data-inv-unpaid="' + i.id + '">Undo</button>'
-        : '<button type="button" class="btn small" data-open-money="' + i.job_id + '">Resend</button><button type="button" class="btn small primary" data-inv-paid="' + i.id + '">Mark paid</button>') +
+        : (i.job_id ? '<button type="button" class="btn small" data-open-money="' + i.job_id + '">Resend</button>' : '<a class="btn small" href="/api/admin/invoices/' + i.id + '/view" target="_blank" rel="noopener">View</a>') + '<button type="button" class="btn small primary" data-inv-paid="' + i.id + '">Mark paid</button>') +
         '<button type="button" class="btn small ghost danger" data-inv-del="' + i.id + '" title="Delete this invoice">Delete</button></div>' +
     '</div>';
   }
@@ -7737,22 +7744,31 @@
     return api('GET', '/api/admin/renewal-fees').then(function(d){ if (!d.ok) return; renewFees = d.items; renderFeeBanner(); if (!$('rfModal').hidden) renderRenewFees(); })['catch'](function(){});
   }
   function renderFeeBanner(){
-    var n = renewFees.length, tot = renewFees.reduce(function(t, x){ return t + x.fee.total; }, 0);
+    var todo = renewFees.filter(function(x){ return !x.invoice; }), n = todo.length, tot = todo.reduce(function(t, x){ return t + x.fee.total; }, 0);
     $('feeBanner').hidden = !n;
     $('feeBannerText').textContent = '🧾 ' + n + ' renewal fee' + (n === 1 ? '' : 's') + ' to charge (' + gbp(tot) + ') — tenanc' + (n === 1 ? 'y' : 'ies') + ' in month 12 that pay' + (n === 1 ? 's' : '') + ' the fee up front.';
   }
   function renewMail(x){
+    if (x.invoice) {
+      var b2 = llGreeting(x.landlord) + ',\n\nThe tenancy at ' + shortAddr(x.address) + ' reaches its anniversary on ' + longDay(x.anniv) + '. As the fee is paid up front, please find the renewal fee for the next year (on the rent of ' + gbp(x.fee.rent) + ' a month): invoice ' + x.invoice.number + ' for ' + gbp(x.invoice.amount) + '.' +
+        (x.invoice.url ? '\n\nView the invoice and how to pay: ' + x.invoice.url : '') + '\n\nPlease let us know if you have any questions.\n\nKind regards,\nResidential Realtors';
+      return 'mailto:' + encodeURIComponent(x.landlord_email || '') + '?subject=' + encodeURIComponent('Invoice ' + x.invoice.number + ' — renewal fee, ' + shortAddr(x.address)) + '&body=' + encodeURIComponent(b2);
+    }
     var lines = x.fee.lines.map(function(l){ return '- ' + l.label + ': ' + gbp(l.amount); }).join('\n') + (x.fee.vat ? '\n- VAT: ' + gbp(x.fee.vat) : '') + '\nTotal: ' + gbp(x.fee.total);
     var body = llGreeting(x.landlord) + ',\n\nThe tenancy at ' + shortAddr(x.address) + ' reaches its anniversary on ' + longDay(x.anniv) + '. As the fee is paid up front, the renewal fee for the next year (on the rent of ' + gbp(x.fee.rent) + ' a month) is due:\n\n' + lines + '\n\nPlease let us know if you have any questions.\n\nKind regards,\nResidential Realtors';
     return 'mailto:' + encodeURIComponent(x.landlord_email || '') + '?subject=' + encodeURIComponent('Renewal fee — ' + shortAddr(x.address)) + '&body=' + encodeURIComponent(body);
   }
   function renderRenewFees(){
     $('rfList').innerHTML = renewFees.length ? renewFees.map(function(x){
+      if (x.invoice) return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') + '</b><span style="font-weight:800">' + gbp(x.invoice.amount) + '</span></div>' +
+        '<div class="match ok" style="margin:4px 0 6px">✓ Invoice ' + esc(x.invoice.number) + ' created — it’s on the landlord’s page and in their invoices.</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn small" href="/api/admin/invoices/' + x.invoice.id + '/view" target="_blank" rel="noopener">View invoice</a>' +
+          (x.landlord_email ? '<a class="btn small primary" href="' + esc(renewMail(x)) + '">✉ Email it to the landlord</a>' : '<span class="muted-note" style="margin:0">No landlord email saved — send it from their page.</span>') + '</div></div>';
       return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') + '</b><span style="font-weight:800">' + gbp(x.fee.total) + '</span></div>' +
         '<div class="muted-note" style="margin:2px 0 6px">' + esc(x.service || 'Up-front fee') + ' · anniversary ' + esc(longDay(x.anniv)) + ' (year ' + x.year + ') · rent ' + gbp(x.fee.rent) + ' a month<br>' +
           x.fee.lines.map(function(l){ return esc(l.label) + ' ' + gbp(l.amount); }).join(' · ') + (x.fee.vat ? ' · VAT ' + gbp(x.fee.vat) : ' · no VAT') + '</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><label class="muted-note" style="margin:0">Amount £<input class="inp" style="width:110px;display:inline-block;margin-left:4px" data-rf-amt="' + esc(x.key) + '" value="' + x.fee.total.toFixed(2) + '"></label>' +
-          '<button type="button" class="btn small primary" data-rf-done="' + esc(x.key) + '">✓ Charged</button>' +
+          '<button type="button" class="btn small primary" data-rf-done="' + esc(x.key) + '">✓ Charged — create invoice</button>' +
           (x.landlord_email ? '<a class="btn small" href="' + esc(renewMail(x)) + '">✉ Email landlord</a>' : '') +
           '<button type="button" class="btn small ghost" data-rf-skip="' + esc(x.key) + '">Not charging</button></div></div>';
     }).join('') : '<p class="muted-note">No renewal fees to charge right now.</p>';
@@ -7768,7 +7784,12 @@
     busy(b, true, '…');
     api('POST', '/api/admin/renewal-fees', { key: key, action: done ? 'charged' : 'skip', amount: amt }).then(function(d){
       if (!d.ok) { busy(b, false); toast('Couldn’t save that'); return; }
-      toast(done ? 'Renewal fee of ' + gbp(amt) + ' recorded on the tenancy' : 'Noted — no renewal fee this year');
+      if (done && d.invoice) {
+        renewFees.forEach(function(x){ if (x.key === key) x.invoice = { id: d.invoice.id, number: d.invoice.number, url: d.invoice.url || '', amount: amt || x.fee.total }; });
+        toast('Invoice ' + d.invoice.number + ' created for ' + gbp(amt));
+        renderRenewFees(); renderFeeBanner(); loadAllInvoices(); return;
+      }
+      toast('Noted — no renewal fee this year');
       renewFees = renewFees.filter(function(x){ return x.key !== key; }); renderRenewFees(); renderFeeBanner();
     });
   });
@@ -8226,7 +8247,7 @@
     if (mm) fees.push(mUp ? { label: 'Management Fee (' + (d.manage_unit === 'gbp' ? gbp(num(d.manage_pct)) + ' pm × 12' : num(d.manage_pct) + '% of annual rent ' + gbp(rent * 12)) + ', up front)', amount: r2(mm * 12) }
       : { label: 'Management Fee (' + feeText(d.manage_pct, d.manage_unit) + ')', amount: mm });
     (d.fees || []).forEach(function(f){ if (f.label && num(f.amount) !== null) fees.push({ label: f.label, amount: r2(f.amount) }); });
-    var sub = r2(fees.reduce(function(a, f){ return a + f.amount; }, 0)), vat = d.vat === false ? 0 : r2(sub * 0.2), feeTotal = r2(sub + vat);
+    var sub = r2(fees.reduce(function(a, f){ return a + f.amount; }, 0)), vat = d.vat === false || /rent\s*4\s*rent/i.test(String(d.service || '')) ? 0 : r2(sub * 0.2), feeTotal = r2(sub + vat);
     var income = r2(rent + (d.deposit_by === 'landlord' ? deposit : 0));
     var term = parseInt(d.term_months, 10) || 12;
     var soStart = d.so_start || addMonthsIso(d.start_date, 1);
@@ -8363,8 +8384,20 @@
       else d = -nat(A.address || '', B.address || '');
       return tcySort.dir * (d || 0) || nat(A.address || '', B.address || '');
     });
-    var sum = function(f){ return list.reduce(function(t, x){ return t + (calc[x.id][f] || 0); }, 0); };
-    $('tcySum').textContent = list.length ? list.length + ' tenanc' + (list.length === 1 ? 'y' : 'ies') + ' · rent ' + gbp(sum('rent')) + ' a month · our fees ' + gbp(sum('monthlyFee')) + ' a month from rent' + (sum('upfrontFee') ? ' + ' + gbp(sum('upfrontFee')) + ' up front' : '') + ', ' + gbp(sum('termFee')) + ' over the tenancies (+ VAT)' : '';
+    // Totals count each property's current tenancy only (an older one at the
+    // same property has been replaced), with fees per year so they add up.
+    var newest = {};
+    tenancies.forEach(function(x){ var k = x.property_key || propKey((x.data || {}).address); if (!k) return; var s = String((x.data || {}).start_date || ''); if (!newest[k] || s > newest[k].s) newest[k] = { id: x.id, s: s }; });
+    var current = list.filter(function(x){ var k = x.property_key || propKey((x.data || {}).address); return !k || newest[k].id === x.id; });
+    var sum = function(f){ return current.reduce(function(t, x){ return t + (calc[x.id][f] || 0); }, 0); };
+    var older = list.length - current.length, mFee = sum('monthlyFee'), upFee = sum('upfrontFee');
+    $('tcySum').innerHTML = list.length ? '<div class="tcy-tiles">' +
+      '<div><b>' + current.length + '</b><span>current tenanc' + (current.length === 1 ? 'y' : 'ies') + (older ? ' <small>(+' + older + ' older)</small>' : '') + '</span></div>' +
+      '<div><b>' + esc(gbp(sum('rent'))) + '</b><span>rent a month</span></div>' +
+      '<div><b>' + esc(gbp(mFee)) + '</b><span>our fees a month, taken from the rent</span></div>' +
+      (upFee ? '<div><b>' + esc(gbp(upFee)) + '</b><span>our up-front fees a year</span></div>' : '') +
+      '<div><b>' + esc(gbp(mFee * 12 + upFee)) + '</b><span>our fees a year in total</span></div>' +
+      '</div><div style="margin-top:4px">Fees are before VAT. Totals count the current tenancy at each property' + (older ? '; older tenancies stay in the list below' : '') + '.</div>' : '';
     $('tcyList').innerHTML = list.length ? list.map(function(x){
       var d = x.data || {}, c = calc[x.id];
       return '<button type="button" class="tcy-row" data-tcy="' + x.id + '"><div><div class="addr" style="font-weight:600">' + esc(d.address || 'No address') + '</div>' +
@@ -8542,7 +8575,13 @@
     var props = certProperties().map(function(p){ return '<option value="' + esc(p.address) + '"></option>'; }).join('');
     $('tcyDetail').innerHTML =
       '<button class="btn small ghost" id="tcyBack" type="button">← All tenancies</button>' +
-      '<div class="prop-head"><div><h2>' + esc(x ? d.address || 'Tenancy' : 'New tenancy') + '</h2><div class="prop-sub">' + esc(x ? tcyStatus(d) : 'Fill in the details, then save to make the documents and emails.') + '</div></div></div>' +
+      '<div class="prop-head"><div><h2>' + esc(x ? d.address || 'Tenancy' : 'New tenancy') + '</h2><div class="prop-sub">' + esc(x ? tcyStatus(d) : 'Fill in the details, then save to make the documents and emails.') + '</div>' +
+        // Straight to the property and the landlord.
+        (x ? (function(){
+          var pr = d.address && matchProperty(d.address), lr = findLandlordRec(d.landlord || {}, d.address);
+          return (pr || lr) ? '<div class="tcy-links">' + (pr ? '<button type="button" class="btn small" data-tcy-prop="' + esc(pr.key) + '">🏠 Property</button>' : '') +
+            (lr ? '<button type="button" class="btn small" data-tcy-ll="' + lr.id + '">👤 Landlord: ' + esc(lr.name) + '</button>' : '') + '</div>' : '';
+        })() : '') + '</div></div>' +
       '<div class="tcy-form">' +
       // Property
       '<div class="card"><h3>Property</h3>' +
@@ -8632,6 +8671,10 @@
     renderTcyCerts();
     if (tcyLocked) tcyLock();
   }
+  $('tcyDetail').addEventListener('click', function(e){
+    var b = e.target.closest('[data-tcy-prop],[data-tcy-ll]'); if (!b) return;
+    if (b.dataset.tcyProp) openProperty(b.dataset.tcyProp); else openLandlord(Number(b.dataset.tcyLl));
+  });
   // A saved tenancy is read-only until "Edit tenancy": every box and button is
   // locked except the documents and emails.
   var tcyLocked = false;
