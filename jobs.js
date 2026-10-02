@@ -236,6 +236,16 @@ CREATE TABLE IF NOT EXISTS property_certificates (
   UNIQUE (property_key, type)
 );
 ALTER TABLE property_certificates ADD COLUMN IF NOT EXISTS not_required BOOLEAN NOT NULL DEFAULT false;
+-- Certificates a landlord uploads for a property of their own (not managed by us).
+CREATE TABLE IF NOT EXISTS landlord_property_docs (
+  own_id     INTEGER NOT NULL,
+  type       TEXT NOT NULL,
+  name       TEXT,
+  mime       TEXT,
+  data       BYTEA NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (own_id, type)
+);
 -- The certificate itself (PDF or photo), when uploaded.
 CREATE TABLE IF NOT EXISTS certificate_docs (
   cert_id    INTEGER PRIMARY KEY REFERENCES property_certificates(id) ON DELETE CASCADE,
@@ -2881,6 +2891,86 @@ module.exports = function mountJobs(app, opts) {
     res.setHeader('Content-Disposition', 'inline; filename="' + ('Tenant-report-' + refFor(r.id) + '.pdf').replace(/[^a-zA-Z0-9.\-_]+/g, '-') + '"');
     res.send(r.pdf);
   }));
+  // ---------- Landlords upload certificates ----------
+  // The file is read for the type, dates, number and address; the landlord
+  // checks them, then saves — to the property's certificates (ours), or to their
+  // own property's record.
+  const certFile = function (f) {
+    if (!f || typeof f.data !== 'string') return null;
+    const buf = Buffer.from(f.data.replace(/^data:[^,]*,/, ''), 'base64'), mime = String(f.mime || '').toLowerCase();
+    if (!buf.length || buf.length > 15 * 1024 * 1024) return null;
+    const m = mime === 'application/pdf' || /\.pdf$/i.test(String(f.name || '')) ? 'application/pdf' : /^image\/(jpeg|png|webp|heic|heif)$/.test(mime) ? mime : null;
+    return m ? { buf: buf, mime: m, name: str(f.name, 200) || 'certificate.pdf' } : null;
+  };
+  async function landlordTarget(p, who, b) {
+    if (b.own_id) {
+      const o = (await p.query('SELECT id, address, data FROM landlord_properties WHERE id = $1 AND landlord_id = $2', [parseInt(b.own_id, 10) || 0, who.l.id])).rows[0];
+      return o ? { own: o, address: o.address } : null;
+    }
+    const k = String(b.key || '');
+    if (who.keys[k] === undefined) return null;
+    const address = (await allProperties(p)).filter(function (x) { return x.key === k; }).map(function (x) { return x.address; })[0] || who.keys[k] || k;
+    return { key: k, address: address };
+  }
+  app.post('/l/:token/cert-read', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    const b = req.body || {}, t = await landlordTarget(p, who, b), f = certFile(b.file);
+    if (!t) return res.status(404).json({ ok: false, error: 'not-your-property' });
+    if (!f) return res.status(400).json({ ok: false, error: 'Please choose a PDF or a photo of the certificate (15 MB max).' });
+    let got = {};
+    if (opts.askAi && opts.canAi && opts.canAi()) {
+      const r = await opts.askAi('This is a UK property safety certificate: a gas safety record (CP12 / LGSR), an EICR (electrical installation condition report) or an EPC. Read it and reply with ONLY JSON: ' +
+        '{"type": "Gas" | "EICR" | "EPC" | "", "address": "the address of the property inspected (not the landlord\'s, agent\'s or engineer\'s company address)", "issued_on": "inspection / assessment date YYYY-MM-DD", ' +
+        '"expires_on": "next inspection due / recommended next inspection / valid until, YYYY-MM-DD, or \"\" if not printed", "reference": "certificate / report number", "rating": "EPC rating letter or \"\""}. UK dates are day/month/year.',
+        true, [{ mime: f.mime, data: f.buf.toString('base64') }]).catch(function () { return { ok: false }; });
+      if (r && r.ok) { try { got = JSON.parse(String(r.text).replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()) || {}; } catch (e) { got = {}; } }
+    }
+    const type = CERT_TYPES[got.type] ? got.type : '';
+    let issued = isoDay(got.issued_on) || '', expires = isoDay(got.expires_on) || '';
+    if (!expires && issued && type) { const d = new Date(issued + 'T12:00:00Z'); d.setUTCFullYear(d.getUTCFullYear() + CERT_TYPES[type].years); expires = d.toISOString().slice(0, 10); }
+    const addr = str(got.address, 300) || '';
+    // A certificate that looks like it's for somewhere else: say so.
+    const pc = function (a) { const m = POSTCODE_RE.exec(String(a || '')); return m ? (m[1] + m[2]).toUpperCase() : ''; };
+    const other = addr && pc(addr) && pc(t.address) && pc(addr) !== pc(t.address);
+    res.json({ ok: true, read: !!type, type: type, issued_on: issued, expires_on: expires, reference: str(got.reference, 100) || '', rating: str(got.rating, 5) || '', address: addr,
+      warning: other ? 'This certificate seems to be for ' + addr + ', not ' + t.address + '. Please check it’s the right one.' : '' });
+  }));
+  app.post('/l/:token/cert-save', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    const b = req.body || {}, t = await landlordTarget(p, who, b), f = certFile(b.file), type = CERT_TYPES[b.type] ? b.type : null;
+    if (!t) return res.status(404).json({ ok: false, error: 'not-your-property' });
+    if (!type) return res.status(400).json({ ok: false, error: 'Please choose which certificate it is.' });
+    const issued = isoDay(b.issued_on) || '', expires = isoDay(b.expires_on) || '';
+    if (!expires) return res.status(400).json({ ok: false, error: 'Please enter the expiry date.' });
+    if (t.own) {
+      // Their own property: gas and EICR dates go on its record (the EPC is looked up automatically).
+      const d = Object.assign({}, t.own.data || {});
+      if (type === 'Gas') d.gas = expires; else if (type === 'EICR') d.eicr = expires;
+      await p.query('UPDATE landlord_properties SET data = $2, updated_at = now()' + (type === 'EPC' ? ", epc = jsonb_build_object('expires_on', $3::text, 'rating', $4::text, 'reference', $5::text)" : '') + ' WHERE id = $1',
+        type === 'EPC' ? [t.own.id, JSON.stringify(d), expires, str(b.rating, 5) || '', str(b.reference, 100) || ''] : [t.own.id, JSON.stringify(d)]);
+      if (f) await p.query(`INSERT INTO landlord_property_docs (own_id, type, name, mime, data) VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (own_id, type) DO UPDATE SET name = excluded.name, mime = excluded.mime, data = excluded.data, created_at = now()`, [t.own.id, type, f.name, f.mime, f.buf]);
+      return res.json({ ok: true });
+    }
+    const out = await saveCertificate(p, { address: t.address, type: type, issued_on: issued, expires_on: expires, reference: str(b.reference, 100) || '', rating: str(b.rating, 5) || '',
+      notes: 'Uploaded by the landlord', doc: f ? { data: f.buf.toString('base64'), name: f.name, mime: f.mime } : undefined });
+    if (!out.json.ok) return res.status(out.status || 400).json(out.json);
+    ntfy({ title: 'Landlord uploaded a certificate', message: (who.l.name || 'A landlord') + ' uploaded the ' + CERT_TYPES[type].name.toLowerCase() + ' for ' + t.address + ' — expires ' + certDay(expires) + '. Check it in Fixflow.', tags: ['page_facing_up'] }).catch(function () {});
+    res.json({ ok: true });
+  }));
+  app.get('/l/:token/own/:id/doc/:type', withDb(async function (p, req, res) {
+    const who = await landlordByToken(p, req.params.token);
+    const d = who ? (await p.query(`SELECT d.name, d.mime, d.data FROM landlord_property_docs d JOIN landlord_properties o ON o.id = d.own_id
+      WHERE d.own_id = $1 AND d.type = $2 AND o.landlord_id = $3`, [parseInt(req.params.id, 10) || 0, String(req.params.type), who.l.id])).rows[0] : null;
+    if (!d) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', d.mime || 'application/pdf'); res.setHeader('X-Robots-Tag', 'noindex');
+    res.setHeader('Content-Disposition', 'inline; filename="' + String(d.name || 'certificate.pdf').replace(/[^a-zA-Z0-9.\-_ ]+/g, '-') + '"');
+    res.send(d.data);
+  }));
   // A certificate document for one of the landlord's properties.
   app.get('/l/:token/cert/:id', withDb(async function (p, req, res) {
     const who = await landlordByToken(p, req.params.token);
@@ -3251,6 +3341,15 @@ document.querySelectorAll('.lb-f').forEach(function(f){
 })();</script>`;
     // Their own properties (not managed by us), kept here so everything is in one place.
     const owns = (await p.query('SELECT id, address, data, epc FROM landlord_properties WHERE landlord_id = $1 ORDER BY address', [l.id])).rows;
+    const ownDocs = {};
+    if (owns.length) (await p.query('SELECT own_id, type FROM landlord_property_docs WHERE own_id = ANY($1::int[])', [owns.map(function (o) { return o.id; })])).rows.forEach(function (r) { ownDocs[r.own_id + '|' + r.type] = 1; });
+    // Upload a certificate: read, checked by the landlord, then saved.
+    const certUp = function (attr) {
+      return '<div class="lcu" ' + attr + '><button type="button" class="lcu-b">📎 Upload a certificate</button><span class="muted lcu-h">Gas safety, EICR or EPC — PDF or photo. We’ll read the dates for you.</span>' +
+        '<form class="lcu-f" hidden><p class="lcu-w"></p><div class="lf-two"><label>Certificate<select name="type"><option value="Gas">Gas safety</option><option value="EICR">Electrical (EICR)</option><option value="EPC">EPC</option></select></label><label>Certificate no.<input name="reference" maxlength="100"></label></div>' +
+        '<div class="lf-two"><label>Date done<input type="date" name="issued_on"></label><label>Expires<input type="date" name="expires_on" required></label></div>' +
+        '<button type="submit">Save certificate</button> <button type="button" class="lcu-x sec2">Cancel</button><p class="lcu-m muted"></p></form></div>';
+    };
     const todayI = new Date().toISOString().slice(0, 10), soonI = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
     const waLink = function (v) { let d = String(v || '').replace(/[^\d+]/g, ''); if (/^\+/.test(d)) d = d.slice(1); else if (/^00/.test(d)) d = d.slice(2); else if (/^0/.test(d)) d = '44' + d.slice(1); return d; };
     const expState = function (d) { return !d ? '' : d < todayI ? 'bad' : d <= soonI ? 'warn' : 'ok'; };
@@ -3273,8 +3372,9 @@ document.querySelectorAll('.lb-f').forEach(function(f){
           '<div class="pacts"><button type="button" class="o-edit sec2">✏️ Edit</button>' + (d.manage_asked ? '<button type="button" disabled class="sec2">✓ We’ll be in touch about managing it</button>' : '<button type="button" class="o-manage">Ask us to manage it</button>') + '</div></div>' +
         '<div class="card"><h3 style="margin-top:0">Certificates</h3>' +
           row('EPC <small class="muted">(checked automatically)</small>', e && e.expires_on ? (e.rating ? 'Rating ' + htmlEsc(e.rating) + ' · ' : '') + exp(e.expires_on) + ' · <a href="' + htmlEsc(epcLink({ reference: e.reference, address: o.address }, o.address)) + '" target="_blank" rel="noopener">View ↗</a>' : '<span class="muted">None found on the register yet — we check daily</span>', e && expState(e.expires_on)) +
-          row('Gas safety', exp(d.gas), expState(d.gas)) + row('Electrical (EICR)', exp(d.eicr), expState(d.eicr)) +
-          row('Property licence', licTxt + (lic.number ? '<div class="muted">Ref ' + htmlEsc(lic.number) + '</div>' : ''), lic.status === 'licensed' ? expState(lic.expires) : '') + '</div>' +
+          row('Gas safety', exp(d.gas) + (ownDocs[o.id + '|Gas'] ? ' · <a href="/l/' + htmlEsc(token) + '/own/' + o.id + '/doc/Gas" target="_blank" rel="noopener">📎 View</a>' : ''), expState(d.gas)) +
+          row('Electrical (EICR)', exp(d.eicr) + (ownDocs[o.id + '|EICR'] ? ' · <a href="/l/' + htmlEsc(token) + '/own/' + o.id + '/doc/EICR" target="_blank" rel="noopener">📎 View</a>' : ''), expState(d.eicr)) +
+          row('Property licence', licTxt + (lic.number ? '<div class="muted">Ref ' + htmlEsc(lic.number) + '</div>' : ''), lic.status === 'licensed' ? expState(lic.expires) : '') + certUp('data-own="' + o.id + '"') + '</div>' +
         '<div class="card"><h3 style="margin-top:0">Tenancy</h3>' +
           row('Rent', d.rent ? '£' + Number(d.rent).toFixed(2) + ' a month' : '<span class="muted">Not added</span>') + row('Tenancy started', d.tenancy_start ? htmlEsc(day(d.tenancy_start)) : '<span class="muted">Not added</span>') +
           (ten.length ? ten.map(function (t) {
@@ -3346,6 +3446,47 @@ document.querySelectorAll('.ov').forEach(function(v){
     fetch('/l/' + TOKEN + '/own/' + o.id, { method: 'DELETE' }).then(function(r){ return r.json(); }).then(function(d){ if (d.ok) { location.hash = ''; location.reload(); } }); });
 });
 })();</script>`;
+  const certUpScript = String.raw`<script>(function(){
+var TOKEN = document.body.getAttribute('data-lt');
+document.querySelectorAll('.lcu').forEach(function(box){
+  var f = box.querySelector('.lcu-f'), b = box.querySelector('.lcu-b'), m = box.querySelector('.lcu-m'), w = box.querySelector('.lcu-w'), file = null;
+  var where = box.getAttribute('data-own') ? { own_id: box.getAttribute('data-own') } : { key: box.getAttribute('data-key') };
+  b.addEventListener('click', function(){
+    var inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.pdf,application/pdf,image/*';
+    inp.addEventListener('change', function(){
+      var x = inp.files && inp.files[0]; if (!x) return;
+      if (x.size > 15 * 1024 * 1024) { alert('That file is too big (15 MB max).'); return; }
+      var r = new FileReader();
+      r.onload = function(){
+        file = { name: x.name, mime: x.type || (/\.pdf$/i.test(x.name) ? 'application/pdf' : ''), data: String(r.result).replace(/^data:[^,]*,/, '') };
+        b.disabled = true; b.textContent = 'Reading the certificate…';
+        fetch('/l/' + TOKEN + '/cert-read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ file: file }, where)) })
+          .then(function(res){ return res.json(); }).then(function(d){
+            b.disabled = false; b.textContent = '📎 Upload a different certificate';
+            if (!d.ok) { alert(d.error && d.error.length > 12 ? d.error : 'Couldn’t read that file — please try again.'); return; }
+            if (d.type) f.elements.type.value = d.type;
+            f.elements.issued_on.value = d.issued_on || ''; f.elements.expires_on.value = d.expires_on || ''; f.elements.reference.value = d.reference || '';
+            f.setAttribute('data-rating', d.rating || '');
+            w.textContent = d.warning || (d.read ? '✓ Read ' + x.name + ' — please check the details, then save.' : 'We couldn’t read the details from ' + x.name + ' — please fill them in.');
+            w.className = 'lcu-w' + (d.warning ? ' bad' : ''); f.hidden = false; m.textContent = '';
+          }).catch(function(){ b.disabled = false; b.textContent = '📎 Upload a certificate'; alert('Couldn’t read that file — please try again.'); });
+      };
+      r.readAsDataURL(x);
+    });
+    inp.click();
+  });
+  box.querySelector('.lcu-x').addEventListener('click', function(){ f.hidden = true; file = null; b.textContent = '📎 Upload a certificate'; });
+  f.addEventListener('submit', function(e){
+    e.preventDefault(); var s = f.querySelector('button[type=submit]'); s.disabled = true; s.textContent = 'Saving…';
+    fetch('/l/' + TOKEN + '/cert-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ file: file, type: f.elements.type.value, issued_on: f.elements.issued_on.value, expires_on: f.elements.expires_on.value, reference: f.elements.reference.value, rating: f.getAttribute('data-rating') || '' }, where)) })
+      .then(function(res){ return res.json(); }).then(function(d){
+        s.disabled = false; s.textContent = 'Save certificate';
+        if (!d.ok) { m.textContent = d.error && d.error.length > 12 ? d.error : 'Couldn’t save — please try again.'; return; }
+        m.textContent = '✓ Saved — thank you.'; setTimeout(function(){ location.reload(); }, 900);
+      }).catch(function(){ s.disabled = false; s.textContent = 'Save certificate'; m.textContent = 'Couldn’t save — please try again.'; });
+  });
+});
+})();</script>`;
     const quick = [];
     const propBlocks = Object.keys(keys).map(function (k) {
       const js = all.filter(function (j) { return propKey(j.property_address) === k; });
@@ -3382,7 +3523,7 @@ document.querySelectorAll('.ov').forEach(function(v){
           repairForm(k, addr) + (o.length ? '<h3>Open repairs</h3>' + o.map(jobCard).join('') : '<p class="muted">No open repairs.</p>') +
           (d.length ? '<details class="ldone"><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '')],
         tcyHtml ? ['tcy', 'Tenancy', tcyHtml] : null,
-        docHtml ? ['doc', 'Certificates', docHtml] : null,
+        ['doc', 'Certificates', docHtml + certUp('data-key="' + htmlEsc(k) + '"')],
         pInv.length || pSpent ? ['inv', 'Costs', (pSpent ? '<div class="muted" style="margin:0 0 8px">Spent on repairs: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + invBox] : null].filter(Boolean);
       const ppl = peopleAt(k).length;
       return '<section class="lview pv" id="' + htmlEsc(pid) + '" hidden>' + (Object.keys(keys).length > 1 ? '<a class="lback" href="#">← All properties</a>' : '') +
@@ -3408,6 +3549,7 @@ document.querySelectorAll('.ov').forEach(function(v){
       '.lback{display:inline-block;margin:0 0 10px;color:var(--blue);font-weight:700;text-decoration:none}.pv-h{font-size:1.2rem;margin:0 0 6px}.pacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.pacts button{flex:1 1 160px;padding:12px 14px;border:0;border-radius:12px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer}.pacts button.sec{background:#25D366}.pacts button{text-transform:none;letter-spacing:normal;font-size:1rem}' +
       '.ptabs{display:flex;gap:6px;overflow-x:auto;margin:4px 0 10px;padding-bottom:2px}.ptabs button{flex:none;padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}.ptabs button.on{background:var(--ink);border-color:var(--ink);color:#fff}' +
       '.ppane .lr:not([open]){display:none}.ppane>.lr{margin-top:0}.ppane>.tcy{margin-top:0}.ppane>h3:first-child,.ppane>.lr+h3{margin-top:0}.lspend{display:grid;grid-template-columns:1fr auto;margin-top:12px;padding:14px 16px}.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.tile b{font-size:1.1rem}.tiles[hidden]{display:none}' +
+      '.lcu{margin-top:12px;padding:12px 14px;border:1.5px dashed var(--line);border-radius:12px}.lcu-b{padding:10px 14px;border:0;border-radius:10px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:normal}.lcu-h{display:block;font-size:.82rem;margin-top:6px}.lcu-f label{display:block;font-size:.85rem;color:var(--soft);margin-top:8px}.lcu-f input,.lcu-f select{display:block;width:100%;margin:4px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}.lcu-f button{margin-top:10px;padding:10px 14px;border:0;border-radius:10px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:normal}.lcu-f button.sec2{background:#fff;color:var(--ink);border:1px solid var(--line)}.lcu-w{margin:10px 0 0;font-size:.9rem}.lcu-w.bad{color:var(--red);font-weight:700}' +
       '.o-add{display:block;margin-top:10px;padding:12px;border:1.5px dashed var(--line);border-radius:12px;text-align:center;color:var(--blue);font-weight:700;text-decoration:none}.ocr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:8px 0;border-bottom:1px solid #eef0f3;font-size:.92rem}.ocr b{text-align:right;font-weight:600}.ocr.bad b{color:var(--red)}.ocr.warn b{color:var(--amber)}.ocr a{color:var(--blue)}' +
       '#oForm label{display:block;font-size:.85rem;color:var(--soft);margin-top:8px}#oForm input,#oForm select,#oForm textarea{display:block;width:100%;margin:4px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}#oForm button{padding:10px 14px;border:0;border-radius:10px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer}#oForm button[type=submit]{margin-top:14px;width:100%;padding:13px}.o-pc{display:flex;gap:6px}.o-pc input{flex:1}.o-t{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}#oTenAdd{color:var(--blue);font-weight:600;font-size:.9rem}.pacts button.sec2{background:#fff;color:var(--ink);border:1px solid var(--line)}.pacts button:disabled{opacity:.7;cursor:default}@media(max-width:520px){.o-t{grid-template-columns:1fr}.o-t input:first-child{margin-top:10px}}</style>';
     res.send(trackShell('Your properties', css + '<script>document.body.setAttribute("data-lt", ' + JSON.stringify(token).replace(/</g, '\\u003c') + ');document.body.setAttribute("data-me", ' + JSON.stringify(String(l.name || '').trim() || 'Your landlord').replace(/</g, '\\u003c') + ');</script><div id="top"></div><h1>Hi ' + htmlEsc(String(l.name || '').trim() || 'there') + '</h1><p class="sub">Your properties with Residential Realtors.</p>' +
@@ -3423,7 +3565,7 @@ document.querySelectorAll('.ov').forEach(function(v){
       propBlocks + ownViews + ownForm +
       (!homeView ? '<div class="lone"><a class="card qrow lspend" href="#spending"><span class="qa">💷 Spending &amp; invoices</span><span class="qgo">›</span></a><a class="card qrow lspend" href="#add"><span class="qa">＋ Add a property we don’t manage</span><span class="qgo">›</span></a></div>' : '') +
       '<section class="lview" id="spending" hidden><a class="lback" href="#">← Back</a>' + spendCard.replace(' id="spending"', '') + '</section>' +
-      ownScript + ownPropScript +
+      ownScript + ownPropScript + certUpScript +
       '<script>(function(){var f=document.getElementById("lfind");if(f)f.addEventListener("input",function(){var q=f.value.trim().toLowerCase();document.querySelectorAll(".qrow[data-find]").forEach(function(el){el.style.display=!q||el.getAttribute("data-find").indexOf(q)!==-1?"":"none";});});' +
         // One view at a time, chosen by the address bar (so Back works).
         'var views=[].slice.call(document.querySelectorAll(".lview")),lone=document.querySelector(".lone");' +
@@ -4314,14 +4456,19 @@ document.querySelectorAll('.ov').forEach(function(v){
     res.json({ ok: true, certificates: r.rows, contractors: (s && s.value) || {}, costs: await certCosts(p), remind_days: REMIND_DAYS });
   }));
   app.put('/api/admin/certificates', withDb(async function (p, req, res) {
-    const b = req.body || {};
+    const out = await saveCertificate(p, req.body || {});
+    res.status(out.status || 200).json(out.json);
+  }));
+  // Save a property's certificate (and its document, if one is sent): used by
+  // the office and by landlords on their page.
+  async function saveCertificate(p, b) {
     const key = propKey(b.address), type = CERT_TYPES[b.type] ? b.type : null;
-    if (!key) return res.status(400).json({ ok: false, error: 'address-required' });
-    if (!type) return res.status(400).json({ ok: false, error: 'bad-type' });
+    if (!key) return { status: 400, json: { ok: false, error: 'address-required' } };
+    if (!type) return { status: 400, json: { ok: false, error: 'bad-type' } };
     const issued = b.issued_on ? isoDay(b.issued_on) : null, expires = b.expires_on ? isoDay(b.expires_on) : null;
-    if ((b.issued_on && !issued) || (b.expires_on && !expires)) return res.status(400).json({ ok: false, error: 'bad-date' });
+    if ((b.issued_on && !issued) || (b.expires_on && !expires)) return { status: 400, json: { ok: false, error: 'bad-date' } };
     const notRequired = !!b.not_required;
-    if (!expires && !notRequired) return res.status(400).json({ ok: false, error: 'expiry-required' });
+    if (!expires && !notRequired) return { status: 400, json: { ok: false, error: 'expiry-required' } };
     const cur = (await p.query('SELECT id, expires_on, job_id FROM property_certificates WHERE property_key = $1 AND type = $2', [key, type])).rows[0];
     const renewed = !cur || cur.expires_on !== expires;
     const r = await p.query(`INSERT INTO property_certificates (property_key, address, type, issued_on, expires_on, reference, rating, notes, not_required)
@@ -4345,8 +4492,8 @@ document.querySelectorAll('.ov').forEach(function(v){
     if (type === 'EPC' && b.register_address) renamedTo = await adoptRegisterAddress(p, key, str(b.address, 500), b.register_address);
     // Already within 10 days? Raise the renewal job now rather than at the next check.
     if (expires && renewed) raiseCertificateJobs().catch(function (err) { console.error('Certificate jobs failed:', err.message); });
-    res.json({ ok: true, id: r.rows[0].id, address: renamedTo });
-  }));
+    return { json: { ok: true, id: r.rows[0].id, address: renamedTo } };
+  }
   async function sendCertDoc(p, id, res) {
     const d = (await p.query('SELECT name, mime, data FROM certificate_docs WHERE cert_id = $1', [id])).rows[0];
     if (!d) return res.status(404).send('Not found');
