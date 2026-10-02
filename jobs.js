@@ -185,6 +185,11 @@ CREATE TABLE IF NOT EXISTS invoices (
 );
 CREATE INDEX IF NOT EXISTS invoices_job_idx ON invoices (job_id, id);
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+-- An invoice for a tenancy (e.g. the renewal fee) rather than a repair job.
+ALTER TABLE invoices ALTER COLUMN job_id DROP NOT NULL;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tenancy_id INTEGER;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS property_key TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS photo_token TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_photo_token_idx ON jobs (photo_token);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS track_token TEXT;
@@ -2208,23 +2213,27 @@ module.exports = function mountJobs(app, opts) {
 
   // Every invoice (for what landlords owe), newest first, with its job's address.
   app.get('/api/admin/invoices', withDb(async function (p, req, res) {
-    const r = await p.query(`SELECT i.id, i.job_id, i.created_at, i.number, i.total, i.landlord_name, i.landlord_email, i.paid_at,
-        i.data->>'due' AS due, i.data->>'landlordPhone' AS landlord_phone, j.property_address, j.archived_at
-      FROM invoices i JOIN jobs j ON j.id = i.job_id ORDER BY i.id DESC LIMIT 5000`);
-    res.json({ ok: true, invoices: r.rows.map(function (x) { x.ref = refFor(x.job_id); return x; }) });
+    const r = await p.query(`SELECT i.id, i.job_id, i.tenancy_id, i.created_at, i.number, i.total, i.landlord_name, i.landlord_email, i.paid_at,
+        i.data->>'due' AS due, i.data->>'landlordPhone' AS landlord_phone, i.data->>'title' AS title, coalesce(j.property_address, i.address) AS property_address, j.archived_at
+      FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.job_id IS NULL OR j.id IS NOT NULL ORDER BY i.id DESC LIMIT 5000`);
+    res.json({ ok: true, invoices: r.rows.map(function (x) { x.ref = x.job_id ? refFor(x.job_id) : (x.title || 'Tenancy'); return x; }) });
   }));
 
   // Mark an invoice as paid by the landlord (or not paid).
   app.post('/api/admin/invoices/:id/paid', withDb(async function (p, req, res) {
     const paid = (req.body || {}).paid !== false;
-    const r = await p.query('UPDATE invoices SET paid_at = ' + (paid ? 'coalesce(paid_at, now())' : 'NULL') + ' WHERE id = $1 RETURNING job_id, number, total, landlord_name', [jobId(req)]);
+    const r = await p.query('UPDATE invoices SET paid_at = ' + (paid ? 'coalesce(paid_at, now())' : 'NULL') + ' WHERE id = $1 RETURNING job_id, tenancy_id, number, total, landlord_name', [jobId(req)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     const x = r.rows[0];
-    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [x.job_id, 'change',
-      paid ? 'Invoice ' + x.number + ' paid' + (x.landlord_name ? ' by ' + x.landlord_name : '') + ' (' + gbp(x.total) + ').' : 'Invoice ' + x.number + ' marked as not paid.']);
+    await invoiceNote(p, x, paid ? 'Invoice ' + x.number + ' paid' + (x.landlord_name ? ' by ' + x.landlord_name : '') + ' (' + gbp(x.total) + ').' : 'Invoice ' + x.number + ' marked as not paid.', 'change');
     res.json({ ok: true });
   }));
 
+  // A note about an invoice: on its job's history, or its tenancy's.
+  async function invoiceNote(p, x, text, kind) {
+    if (x.job_id) await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [x.job_id, kind || 'change', text]);
+    else if (x.tenancy_id) await p.query('UPDATE tenancies SET log = log || $2::jsonb WHERE id = $1', [x.tenancy_id, JSON.stringify([{ at: new Date().toISOString(), text: text }])]);
+  }
   // Delete an invoice (e.g. raised by mistake). The job's "invoiced" details fall
   // back to its latest remaining invoice, or are cleared; noted in the history.
   async function refreshJobInvoice(p, jid) {
@@ -2233,12 +2242,11 @@ module.exports = function mountJobs(app, opts) {
       [jid, last ? last.number : null, last ? last.total : null, last ? last.created_at : null]);
   }
   app.delete('/api/admin/invoices/:id', withDb(async function (p, req, res) {
-    const r = await p.query('DELETE FROM invoices WHERE id = $1 RETURNING job_id, number, total, landlord_name, paid_at', [jobId(req)]);
+    const r = await p.query('DELETE FROM invoices WHERE id = $1 RETURNING job_id, tenancy_id, number, total, landlord_name, paid_at', [jobId(req)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     const x = r.rows[0];
-    await refreshJobInvoice(p, x.job_id);
-    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [x.job_id, 'change',
-      'Invoice ' + (x.number || '') + ' deleted (' + gbp(x.total) + (x.landlord_name ? ', ' + x.landlord_name : '') + (x.paid_at ? ', was marked paid' : '') + ').']);
+    if (x.job_id) await refreshJobInvoice(p, x.job_id);
+    await invoiceNote(p, x, 'Invoice ' + (x.number || '') + ' deleted (' + gbp(x.total) + (x.landlord_name ? ', ' + x.landlord_name : '') + (x.paid_at ? ', was marked paid' : '') + ').', 'change');
     res.json({ ok: true });
   }));
   // An invoice from before invoices were saved (only recorded on the job).
@@ -2257,7 +2265,7 @@ module.exports = function mountJobs(app, opts) {
     const total = money(b.total);
     if (total === undefined || total === null) return res.status(400).json({ ok: false, error: 'bad-total' });
     if (!b.data || typeof b.data !== 'object') return res.status(400).json({ ok: false, error: 'no-data' });
-    const cur = await p.query('SELECT i.id, i.job_id, i.number, i.total, j.property_address FROM invoices i JOIN jobs j ON j.id = i.job_id WHERE i.id = $1', [jobId(req)]);
+    const cur = await p.query('SELECT i.id, i.job_id, i.tenancy_id, i.number, i.total, coalesce(j.property_address, i.address) AS property_address FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.id = $1', [jobId(req)]);
     if (!cur.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     const inv = cur.rows[0];
     const number = str(b.invoice_number, 50) || inv.number;
@@ -2265,14 +2273,13 @@ module.exports = function mountJobs(app, opts) {
     await p.query('UPDATE invoices SET number = $2, total = $3, landlord_name = $4, landlord_email = $5, data = $6 WHERE id = $1',
       [inv.id, number, total, clean.landlord, clean.landlordEmail, JSON.stringify(clean)]);
     // Keep the job's invoice summary in step when this is its latest invoice.
-    const latest = await p.query('SELECT max(id) AS id FROM invoices WHERE job_id = $1', [inv.job_id]);
-    if (latest.rows[0].id === inv.id) await p.query('UPDATE jobs SET invoice_number = $2, invoice_total = $3, updated_at = now() WHERE id = $1', [inv.job_id, number, total]);
+    const latest = inv.job_id ? await p.query('SELECT max(id) AS id FROM invoices WHERE job_id = $1', [inv.job_id]) : { rows: [{}] };
+    if (inv.job_id && latest.rows[0].id === inv.id) await p.query('UPDATE jobs SET invoice_number = $2, invoice_total = $3, updated_at = now() WHERE id = $1', [inv.job_id, number, total]);
     if (str(b.landlord_name)) await ensureLandlord(p, b, inv.property_address);
     const changes = [];
     if (number !== inv.number) changes.push('number ' + inv.number + ' → ' + number);
     if (Number(inv.total) !== total) changes.push('total ' + gbp(inv.total) + ' → ' + gbp(total));
-    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [inv.job_id, 'email',
-      'Invoice ' + number + ' edited' + (changes.length ? ' (' + changes.join(', ') + ')' : '') + '.']);
+    await invoiceNote(p, inv, 'Invoice ' + number + ' edited' + (changes.length ? ' (' + changes.join(', ') + ')' : '') + '.', 'email');
     res.json({ ok: true });
   }));
   // The PDF is made in the browser; this records that it was issued (number,
@@ -3016,24 +3023,37 @@ module.exports = function mountJobs(app, opts) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     const who = await landlordByToken(p, req.params.token);
-    const inv = who ? (await p.query('SELECT i.id, i.number, i.total, i.created_at, i.paid_at, i.data, j.id AS job_id, j.property_address FROM invoices i JOIN jobs j ON j.id = i.job_id WHERE i.id = $1 AND j.archived_at IS NULL',
-      [parseInt(req.params.id, 10) || 0])).rows[0] : null;
+    const inv = who ? await invoiceRow(p, req.params.id) : null;
     if (!inv || who.keys[propKey(inv.property_address)] === undefined) return res.status(404).send(trackShell('Invoice not found', '<h1>Invoice not found</h1>', true));
+    res.send(invoicePage(inv, '/l/' + htmlEsc(req.params.token), '← Your properties'));
+  }));
+  // The office's view of an invoice (e.g. a tenancy's renewal fee).
+  app.get('/api/admin/invoices/:id/view', withDb(async function (p, req, res) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const inv = await invoiceRow(p, req.params.id);
+    if (!inv) return res.status(404).send(trackShell('Invoice not found', '<h1>Invoice not found</h1>', true));
+    res.send(invoicePage(inv, '/admin', '← Back to Fixflow'));
+  }));
+  async function invoiceRow(p, id) {
+    return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.paid_at, i.data, i.job_id, coalesce(j.property_address, i.address) AS property_address FROM invoices i
+      LEFT JOIN jobs j ON j.id = i.job_id WHERE i.id = $1 AND (i.job_id IS NULL OR j.archived_at IS NULL) AND (i.job_id IS NULL OR j.id IS NOT NULL)`, [parseInt(id, 10) || 0])).rows[0] || null;
+  }
+  function invoicePage(inv, back, backText) {
     const dt = inv.data || {}, day = function (v) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
     const money = function (v) { return v == null ? '' : '£' + Number(v).toFixed(2); };
     const overdue = !inv.paid_at && dt.due && dt.due < new Date().toISOString().slice(0, 10);
     const pay = INVOICE.payee && INVOICE.accountNumber ? '<div class="card"><h3 style="margin:0 0 6px">How to pay</h3><div>' + htmlEsc(INVOICE.payee) + '</div><div>Sort code ' + htmlEsc(INVOICE.sortCode) + ' · Account ' + htmlEsc(INVOICE.accountNumber) + '</div><div class="muted">Please use the reference ' + htmlEsc(dt.ref || inv.number) + '</div></div>' : '';
-    res.send(trackShell('Invoice ' + inv.number, '<style>table{width:100%;border-collapse:collapse}td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}td.a{text-align:right;white-space:nowrap;padding-left:12px}tr.t td{font-weight:800;border-bottom:0;font-size:1.05rem}.st{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:700;font-size:.8rem}.st.ok{background:var(--ok);color:#fff}.st.due{background:var(--ambert);color:var(--amber)}.st.late{background:#fdecec;color:var(--red)}@media print{header,.noprint{display:none}}</style>' +
-      '<p class="noprint"><a href="/l/' + htmlEsc(req.params.token) + '" style="color:var(--blue);font-weight:600;text-decoration:none">← Your properties</a></p>' +
-      '<h1>Invoice ' + htmlEsc(inv.number) + '</h1><p class="sub">' + htmlEsc(inv.property_address || '') + ' · repair ' + htmlEsc(refFor(inv.job_id)) + '</p>' +
+    return trackShell('Invoice ' + inv.number, '<style>table{width:100%;border-collapse:collapse}td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}td.a{text-align:right;white-space:nowrap;padding-left:12px}tr.t td{font-weight:800;border-bottom:0;font-size:1.05rem}.st{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:700;font-size:.8rem}.st.ok{background:var(--ok);color:#fff}.st.due{background:var(--ambert);color:var(--amber)}.st.late{background:#fdecec;color:var(--red)}@media print{header,.noprint{display:none}}</style>' +
+      '<p class="noprint"><a href="' + back + '" style="color:var(--blue);font-weight:600;text-decoration:none">' + backText + '</a></p>' +
+      '<h1>Invoice ' + htmlEsc(inv.number) + '</h1><p class="sub">' + htmlEsc(inv.property_address || '') + (inv.job_id ? ' · repair ' + htmlEsc(refFor(inv.job_id)) : dt.title ? ' · ' + htmlEsc(dt.title) : '') + '</p>' +
       '<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div class="muted">Issued</div><b>' + htmlEsc(day(dt.date) || day(inv.created_at.toISOString())) + '</b></div>' +
         (dt.due ? '<div><div class="muted">Due</div><b>' + htmlEsc(day(dt.due)) + '</b></div>' : '') +
         '<div><div class="muted">Status</div>' + (inv.paid_at ? '<span class="st ok">Paid ' + htmlEsc(day(inv.paid_at.toISOString())) + '</span>' : overdue ? '<span class="st late">Overdue</span>' : '<span class="st due">Awaiting payment</span>') + '</div></div></div>' +
       '<div class="card"><table>' + (dt.lines || []).map(function (x) { return '<tr><td>' + htmlEsc(x.desc) + '</td><td class="a">' + money(x.amount) + '</td></tr>'; }).join('') +
         (dt.vat ? '<tr><td>Subtotal</td><td class="a">' + money(dt.sub) + '</td></tr><tr><td>VAT</td><td class="a">' + money(dt.vat) + '</td></tr>' : '') +
         '<tr class="t"><td>Total</td><td class="a">' + money(inv.total) + '</td></tr></table></div>' + (inv.paid_at ? '' : pay) +
-      '<p class="noprint" style="text-align:center"><button onclick="window.print()">Print or save as PDF</button></p>', true));
-  }));
+      '<p class="noprint" style="text-align:center"><button onclick="window.print()">Print or save as PDF</button></p>', true);
+  }
   app.get('/l/:token', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -3060,7 +3080,9 @@ module.exports = function mountJobs(app, opts) {
       }
       j.photo_token = t;
     }
-    const invs = ids.length ? (await p.query("SELECT id, job_id, number, total, created_at, paid_at, data->>'due' AS due, data->>'date' AS date FROM invoices WHERE job_id = ANY($1::int[]) ORDER BY id", [ids])).rows : [];
+    const invs = (await p.query("SELECT id, job_id, number, total, created_at, paid_at, property_key, data->>'due' AS due, data->>'date' AS date, data->>'title' AS title FROM invoices WHERE job_id = ANY($1::int[]) OR (job_id IS NULL AND property_key = ANY($2::text[])) ORDER BY id", [ids, Object.keys(keys)])).rows;
+    // Which property an invoice is for: its repair's, or (a tenancy invoice) its own.
+    const invKey = function (i) { const j = all.filter(function (x) { return x.id === i.job_id; })[0]; return j ? propKey(j.property_address) : i.property_key; };
     const parts = {};
     if (ids.length) (await p.query('SELECT job_id, description, charge, status FROM job_parts WHERE job_id = ANY($1::int[]) ORDER BY id', [ids])).rows
       .forEach(function (x) { (parts[x.job_id] = parts[x.job_id] || []).push(x); });
@@ -3161,7 +3183,7 @@ module.exports = function mountJobs(app, opts) {
       (types.length ? '<h3>By type of repair</h3>' + types.slice(0, 8).map(function (t) { return '<div class="bt"><span>' + htmlEsc(t) + '</span><i style="width:' + Math.max(4, Math.round(byType[t] / maxT * 100)) + '%"></i><b>' + money(byType[t]) + '</b></div>'; }).join('') : '') +
       (doneC.length || invs.length ? '<h3>Maintenance cost by property</h3><div class="bpt"><div class="bpr bph"><span>Property</span><span>This year</span><span>All time</span><span>Unpaid</span></div>' + Object.keys(keys).map(function (k) {
           const pj = doneC.filter(function (j) { return propKey(j.property_address) === k; });
-          const pi = invs.filter(function (i) { const j = all.filter(function (x) { return x.id === i.job_id; })[0]; return j && propKey(j.property_address) === k; });
+          const pi = invs.filter(function (i) { return invKey(i) === k; });
           const un = pi.filter(function (i) { return !i.paid_at; }).reduce(function (t, i) { return t + Number(i.total || 0); }, 0);
           if (!pj.length && !pi.length) return '';
           const addr = (pj[0] && pj[0].property_address) || keys[k];
@@ -3535,11 +3557,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const pSpent = sumOf(js.filter(function (j) { return j.status === 'Completed' && charge(j) != null; }));
       const pYr = sumOf(js.filter(function (j) { return j.status === 'Completed' && charge(j) != null && when(j).getFullYear() === yr; }));
       // This property's invoices, with what's been invoiced and what's still to pay.
-      const pInv = invs.filter(function (i) { const j = all.filter(function (x) { return x.id === i.job_id; })[0]; return j && propKey(j.property_address) === k; }).slice().reverse();
+      const pInv = invs.filter(function (i) { return invKey(i) === k; }).slice().reverse();
       const pUn = pInv.filter(function (i) { return !i.paid_at; }).reduce(function (t, i) { return t + Number(i.total || 0); }, 0), pAll = pInv.reduce(function (t, i) { return t + Number(i.total || 0); }, 0);
       const invBox = pInv.length ? '<details class="pinv" open><summary>🧾 Invoices for this property (' + pInv.length + ') · ' + money(pAll) + (pUn ? ' · <span class="due">' + money(pUn) + ' to pay</span>' : ' · all paid') + '</summary>' + pInv.map(function (i) {
           const j = all.filter(function (x) { return x.id === i.job_id; })[0] || {}, od = !i.paid_at && i.due && i.due < new Date().toISOString().slice(0, 10);
-          return '<a class="iv" href="/l/' + htmlEsc(token) + '/invoice/' + i.id + '"><div><b>' + htmlEsc(i.number || '') + '</b> · ' + htmlEsc(issue(j)) + '<div class="muted">Issued ' + htmlEsc(day(i.date || i.created_at)) + '</div></div>' +
+          return '<a class="iv" href="/l/' + htmlEsc(token) + '/invoice/' + i.id + '"><div><b>' + htmlEsc(i.number || '') + '</b> · ' + htmlEsc(j.id ? issue(j) : i.title || 'Tenancy') + '<div class="muted">Issued ' + htmlEsc(day(i.date || i.created_at)) + '</div></div>' +
             '<div style="text-align:right"><b>' + money(i.total) + '</b><div>' + (i.paid_at ? '<span class="paid">Paid</span>' : od ? '<span class="late">Overdue</span>' : '<span class="due">Due ' + htmlEsc(i.due ? day(i.due) : '') + '</span>') + '</div></div></a>';
         }).join('') + '</details>' : '';
       // Status chips: what needs attention at this property, at a glance.
@@ -5455,8 +5477,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const st = ((await p.query("SELECT value FROM app_settings WHERE key = 'rent_recover'")).rows[0] || {}).value || {};
     const tcys = (await p.query("SELECT id, property_key, address, start_date, data FROM tenancies WHERE start_date IS NOT NULL AND start_date <= $1 ORDER BY start_date DESC", [today])).rows;
     const seen = {}, out = [];
-    const invs = (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.landlord_name, j.property_address FROM invoices i JOIN jobs j ON j.id = i.job_id
-      WHERE i.paid_at IS NULL AND j.archived_at IS NULL ORDER BY i.id`)).rows;
+    const invs = (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.landlord_name, coalesce(j.property_address, i.address) AS property_address FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id
+      WHERE i.paid_at IS NULL AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.id`)).rows;
     const lls = {};
     (await p.query('SELECT pl.property_key, l.name FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r.name; });
     for (const t of tcys) {
@@ -5495,8 +5517,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const pick = Array.isArray((req.body || {}).invoice_ids) ? req.body.invoice_ids.map(Number) : null;
     if (how === 'done') {
       for (const i of item.invoices.filter(function (x) { return !pick || pick.indexOf(x.id) !== -1; })) {
-        const r = await p.query('UPDATE invoices SET paid_at = coalesce(paid_at, now()) WHERE id = $1 RETURNING job_id', [i.id]);
-        if (r.rows[0]) await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.rows[0].job_id, 'change', 'Invoice ' + i.number + ' (' + gbp(i.total) + ') recovered from the rent due ' + item.rent_day + '.']);
+        const r = await p.query('UPDATE invoices SET paid_at = coalesce(paid_at, now()) WHERE id = $1 RETURNING job_id, tenancy_id', [i.id]);
+        if (r.rows[0]) await invoiceNote(p, r.rows[0], 'Invoice ' + i.number + ' (' + gbp(i.total) + ') recovered from the rent due ' + item.rent_day + '.', 'change');
       }
     }
     await setRecoverState(p, { [key]: how });
@@ -5527,7 +5549,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const lines = [];
     if (d.find_basis === 'upfront') { const fm = monthly(d.find_pct, d.find_unit); if (fm) lines.push({ label: 'Tenant Find renewal (' + (d.find_unit === 'gbp' ? gbp(d.find_pct) + ' pm × 12' : d.find_pct + '% of annual rent ' + gbp(rent * 12)) + ')', amount: Math.round(fm * 12 * 100) / 100 }); }
     if (d.manage_basis === 'upfront') { const mm = monthly(d.manage_pct, d.manage_unit); if (mm) lines.push({ label: 'Management fee renewal (' + (d.manage_unit === 'gbp' ? gbp(d.manage_pct) + ' pm × 12' : d.manage_pct + '% of annual rent ' + gbp(rent * 12)) + ', up front)', amount: Math.round(mm * 12 * 100) / 100 }); }
-    const sub = Math.round(lines.reduce(function (a, l) { return a + l.amount; }, 0) * 100) / 100, vat = d.vat === false ? 0 : Math.round(sub * 20) / 100;
+    const sub = Math.round(lines.reduce(function (a, l) { return a + l.amount; }, 0) * 100) / 100, vat = d.vat === false || /rent\s*4\s*rent/i.test(String(d.service || '')) ? 0 : Math.round(sub * 20) / 100;
     return { rent: rent, lines: lines, sub: sub, vat: vat, total: Math.round((sub + vat) * 100) / 100 };
   }
   async function renewalFees(p) {
@@ -5540,6 +5562,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (!t.property_key || seen[t.property_key]) continue;
       seen[t.property_key] = 1;   // the latest tenancy at the property is the current one
       const d = t.data || {}, start = String(d.start_date || t.start_date).slice(0, 10);
+      // Only fees taken up front renew yearly: not monthly Tenant Find, and never Rent4Rent.
+      if (/rent\s*4\s*rent/i.test(String(d.service || ''))) continue;
       if (d.find_basis !== 'upfront' && d.manage_basis !== 'upfront') continue;
       for (let n = 1; n < 30; n++) {
         const anniv = addMonthsIso(start, 12 * n); if (!anniv) break;
@@ -5567,9 +5591,32 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const item = (await renewalFees(p)).items.filter(function (x) { return x.key === key; })[0];
     if (!item) return res.status(404).json({ ok: false, error: 'not-found' });
     const charged = b.action !== 'skip', amount = money(b.amount) || item.fee.total;
-    await setIntention(p, item.tenancy_id, item.anniv, { renewal_fee: charged ? { amount: amount, at: new Date().toISOString() } : { skipped: true, at: new Date().toISOString() } },
-      charged ? 'Renewal fee charged for the year from ' + item.anniv + ': ' + gbp(amount) + (item.fee.vat ? ' (inc. VAT)' : '') : 'No renewal fee charged for the year from ' + item.anniv);
-    res.json({ ok: true });
+    let inv = null;
+    if (charged) {
+      // The invoice to the landlord: the fee lines (scaled if the amount was changed), VAT, total.
+      const scale = item.fee.total ? amount / item.fee.total : 1, r2 = function (v) { return Math.round(v * 100) / 100; };
+      const lines = item.fee.lines.map(function (l) { return { desc: l.label + ' — year from ' + certDay(item.anniv), amount: r2(l.amount * scale) }; });
+      const sub = r2(lines.reduce(function (a, l) { return a + l.amount; }, 0)), vat = r2(amount - sub);
+      const today = new Date().toISOString().slice(0, 10), due = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+      const number = 'INV-RF-' + String(item.tenancy_id).padStart(5, '0') + '-' + item.year;
+      const data = { number: number, title: 'Tenancy renewal fee', date: today, due: due, ref: str(b.ref, 40) || number, landlord: item.landlord, landlordEmail: item.landlord_email, landlordPhone: item.landlord_phone,
+        landlordAddress: str(b.landlord_address, 500) || '', lines: lines, sub: sub, vat: vat, total: amount };
+      const k = propKey(item.address);
+      inv = (await p.query('INSERT INTO invoices (job_id, tenancy_id, address, property_key, number, total, landlord_name, landlord_email, data) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+        [item.tenancy_id, item.address, k, number, amount, item.landlord || null, item.landlord_email || null, JSON.stringify(data)])).rows[0];
+      inv.number = number;
+      // A link the landlord can open (their page), for the email.
+      const ll = (await p.query('SELECT l.id, l.portal_token FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [k])).rows[0];
+      if (ll) {
+        let token = ll.portal_token;
+        if (!token) { token = crypto.randomBytes(18).toString('base64url'); await p.query('UPDATE landlords SET portal_token = $2, updated_at = now() WHERE id = $1', [ll.id, token]); }
+        const siteUrl = process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : req.protocol + '://' + req.get('host'));
+        inv.url = siteUrl + '/l/' + token + '/invoice/' + inv.id;
+      }
+    }
+    await setIntention(p, item.tenancy_id, item.anniv, { renewal_fee: charged ? { amount: amount, at: new Date().toISOString(), invoice_id: inv.id, number: inv.number } : { skipped: true, at: new Date().toISOString() } },
+      charged ? 'Renewal fee charged for the year from ' + item.anniv + ': ' + gbp(amount) + (item.fee.vat ? ' (inc. VAT)' : '') + ' — invoice ' + inv.number : 'No renewal fee charged for the year from ' + item.anniv);
+    res.json({ ok: true, invoice: inv });
   }));
   async function alertRenewalFees() {
     const p = await db(); if (!p) return;
