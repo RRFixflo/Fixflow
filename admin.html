@@ -391,6 +391,13 @@
   .fee-plain span { font-size: .78rem; font-weight: 650; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; padding-top: 2px; }
   .fee-plain p { margin: 0; font-size: .92rem; }
   @media (max-width: 600px) { .fee-plain > div { grid-template-columns: 1fr; gap: 2px; } }
+  .tcy-end > summary { list-style: none; cursor: pointer; }
+  .tcy-end > summary::-webkit-details-marker { display: none; }
+  .tcy-end > summary h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 0; }
+  .tcy-end[open] > summary h3 { margin-bottom: 8px; }
+  .te-fold { margin-left: auto; font-size: .8rem; font-weight: 600; color: var(--ink-soft); }
+  .te-fold::after { content: 'Minimise ▴'; }
+  .tcy-end:not([open]) .te-fold::after { content: 'Show ▾'; }
   .tcy-total { margin: 0 0 10px; max-width: none; width: 100%; }
   .tcy-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
   .tcy-tiles > div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
@@ -3121,7 +3128,11 @@
       })();
     $('tcyEndBannerGo').textContent = 'Review rents';
     if (!$('tcyEnding')) return;
-    $('tcyEnding').innerHTML = list.length ? '<div class="card tcy-end"><h3>📅 Anniversaries in the next 3 months — rent review <span class="count-chip">' + list.length + '</span></h3>' +
+    // Can be folded away to one line (remembered on this device).
+    var mini = false; try { mini = localStorage.getItem('rr_tcyend_min') === '1'; } catch (e) {}
+    var nowN = list.filter(function(x){ return tcyTwoMonths(x.n) && !x.it.no_increase && !x.it.notice_served; }).length;
+    $('tcyEnding').innerHTML = list.length ? '<details class="card tcy-end"' + (mini ? '' : ' open') + '><summary><h3>📅 Anniversaries in the next 3 months — rent review <span class="count-chip">' + list.length + '</span>' +
+        (nowN ? ' <span class="te-st todo" style="margin-left:6px">' + nowN + ' to serve now</span>' : '') + (todo ? '' : ' <span class="te-st ok" style="margin-left:6px">reviews done</span>') + '<span class="te-fold"></span></h3></summary>' +
       '<p class="muted-note" style="margin:0 0 4px">A rent increase needs the government notice form (Form 4A), served at least 2 months before the new rent starts. <a href="' + FORM_4A_URL + '" target="_blank" rel="noopener">Get the form on GOV.UK</a></p>' + list.map(function(x, i){
       var done = x.it.notice_served || x.it.no_increase, cls = x.it.answer === 'leaving' ? 'bad' : done ? 'ok' : x.it.asked_at || x.it.ll_asked_at || num(x.it.new_rent) ? 'wait' : 'todo';
       var by = tcyNoticeBy(x.n.end), left = Math.round((parseDay(by) - parseDay(isoDay(new Date()))) / 86400000);
@@ -3132,7 +3143,9 @@
         ' · ' + ordinal(x.n.years) + ' anniversary <b>' + esc(longDay(x.n.end)) + '</b> (' + (x.n.days <= 0 ? 'today' : 'in ' + x.n.days + ' days') + ') · rent ' + esc(gbp(num(x.d.rent_pcm) || 0)) + dl + '</div>' +
         '<span class="te-st ' + cls + '">' + esc(tcyItText(x.it)) + '</span></div>' +
         '<button type="button" class="btn small' + (cls === 'todo' ? ' primary' : '') + '" data-ask-tcy="' + x.t.id + '">' + (cls === 'todo' ? 'Rent review →' : 'Open') + '</button></div>';
-    }).join('') + '</div>' : '';
+    }).join('') + '</details>' : '';
+    var det = $('tcyEnding').querySelector('details');
+    if (det) det.addEventListener('toggle', function(){ try { localStorage.setItem('rr_tcyend_min', det.open ? '0' : '1'); } catch (e) {} });
   }
   var tiCur = null, tiTpl = 'rent';
   function tiText(kind){
