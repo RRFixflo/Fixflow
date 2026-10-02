@@ -7386,6 +7386,8 @@
           t.start_date ? 'Starts ' + esc(longDay(t.start_date)) : 'Start date not given',
           l.name ? 'Landlord: ' + esc(l.name) : ''
         ].filter(Boolean).join(' · ') + '</div>' +
+        (t.rent_text ? '<div class="prop-sub">Rent as written on the document: “' + esc(t.rent_text) + '”</div>' : '') +
+        (t.rent_check ? '<div class="match warn">⚠ ' + esc(t.rent_check) + '</div>' : '') +
         ((t.fees || []).filter(function(f){ return f && f.label; }).length ? '<div class="prop-sub" style="line-height:1.5">Charges to add: ' + t.fees.filter(function(f){ return f && f.label; }).map(function(f){ return esc(f.label) + (num(f.amount) !== null ? ' ' + esc(gbp(num(f.amount))) : ''); }).join(', ') + ' <span class="muted-note" style="margin:0">(+ VAT)</span></div>' : '') +
         ((t.onFile || []).length || (t.filled || []).length || t.llOnFile ? '<div class="match ok">✓ ' + [
           (t.filled || []).length ? 'Contact details filled in from the tenants on file: ' + esc(joinAnd(t.filled)) : '',
@@ -7402,7 +7404,7 @@
     var b = e.target.closest('[data-tact]'); if (!b) return;
     var i = Number(b.closest('[data-ti]').dataset.ti), t = askTenancies[i];
     askTenancies.splice(i, 1); renderAskTenancies();
-    if (b.dataset.tact === 'open') { closeAsk(); var clean = Object.assign({}, t); ['onFile', 'filled', 'extra', 'llOnFile'].forEach(function(k){ delete clean[k]; }); openTenancy('new', { data: clean }); toast('Filled in from your message — check the details and press Save tenancy'); }
+    if (b.dataset.tact === 'open') { closeAsk(); var clean = Object.assign({}, t); ['onFile', 'filled', 'extra', 'llOnFile', 'rent_text', 'rent_check'].forEach(function(k){ delete clean[k]; }); openTenancy('new', { data: clean }); toast(t.rent_check ? '⚠ ' + t.rent_check : 'Filled in from your message — check the details and press Save tenancy'); }
   });
   function renderAskContacts(){
     var label = { contractor: 'contractor', landlord: 'landlord', tenant: 'tenant' };
