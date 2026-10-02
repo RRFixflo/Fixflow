@@ -2576,7 +2576,7 @@ module.exports = function mountJobs(app, opts) {
       'deposit_by ("agent" if we/the agent register it, "landlord" if the landlord does, "" if not said), deposit_scheme, negotiator, service ("Tenant Find", "Rent Collection", "Fully Managed" or "Rent4Rent" — rent-to-rent, where a company rents the property to sublet it), ' +
       'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis and manage_basis ("upfront" or "monthly"). How fees work at this agency: Tenant Find — the letting fee (find_pct) is a % of the annual rent taken up front (find_basis "upfront"); Rent Collection — the same letting % split monthly (find_pct with find_basis "monthly"; collect_pct only if a separate extra collection fee is stated); Fully Managed — the management % (manage_pct) taken monthly or up front as agreed (manage_basis), sometimes with a letting fee as well (find_pct and find_basis, only if one is stated); Rent4Rent — the agency rents the property from the landlord and re-lets it, no VAT (vat false). ' +
       'tenants and guarantors (each [{"name": "", "email": "", "phone": ""}], names with titles as given), landlord ({"name": "", "email": "", "phone": "", "line1": "", "line2": "", "country": "", "postcode": ""} — their own address), ' +
-      'fees (other fees charged to the landlord: [{"label": "", "amount": 0, "novat": false}] — "novat": true when that charge has no VAT on it, e.g. the statement shows £0.00 VAT against it or says no VAT / exempt / at cost), notes (anything else useful).\n' +
+      'fees (other fees charged to the landlord: [{"label": "", "amount": 0, "novat": false}] — "novat": true when that charge has no VAT on it, e.g. the statement shows £0.00 VAT against it or says no VAT / exempt / at cost), credits (money IN for the landlord shown on a landlord statement income other than the rent and deposit, e.g. a refund: [{"label": "B&Q refund", "amount": 0}]), notes (anything else useful).\n' +
       'When SEVERAL DOCUMENTS come together, first work out what each one is: the TERMS OF LET (the tenancy details); a LANDLORD STATEMENT (statement of account / landlord statement / invoice or breakdown of what is deducted from the landlord — its charges go in that tenancy\'s fees as below); a TENANT CONTACT SHEET (names, phone numbers and emails of the tenants and any guarantors — they go in that tenancy\'s tenants / guarantors, merged with any already named, never in "contacts"); or a certificate. All of them are for the same tenancy unless they clearly show a different property. ' +
       'Also return "documents": one entry per attached document, [{"name": "the file name", "kind": "terms_of_let" | "landlord_statement" | "tenant_contacts" | "certificate" | "other"}]. ' +
       'If a LANDLORD STATEMENT (statement of account to the landlord) is attached with it, add every charge or deduction made to the landlord for this let to that tenancy\'s fees, labelled as on the statement (e.g. "Inventory", "Tenancy agreement", "Deposit registration", "Referencing", "Gas safety certificate"), with the amount BEFORE VAT (if the statement shows VAT separately, use the net figure; if it says the amount includes VAT, divide by 1.2). Look at the VAT on EACH line: statements often have a VAT column, and some charges (e.g. a council licence fee passed on at cost) show £0.00 VAT — give those "novat": true and their full amount; when the VAT column shows VAT on a line, leave novat false. ' +
@@ -4370,6 +4370,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       landlord: { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(l.postcode, 20) },
       service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), find_basis: b.find_basis === 'upfront' ? 'upfront' : 'monthly',
       manage_basis: b.manage_basis === 'upfront' ? 'upfront' : 'monthly', find_unit: b.find_unit === 'gbp' ? 'gbp' : 'pct', collect_unit: b.collect_unit === 'gbp' ? 'gbp' : 'pct', manage_unit: b.manage_unit === 'gbp' ? 'gbp' : 'pct', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
+      credits: (Array.isArray(b.credits) ? b.credits : []).slice(0, 20).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount) }; }).filter(function (f) { return f.label && f.amount; }),
       fees: (Array.isArray(b.fees) ? b.fees : []).slice(0, 30).map(function (f) { const x = { label: s(f && f.label, 200), amount: amt(f && f.amount) }; if (f && f.novat === true) x.novat = true; return x; }).filter(function (f) { return f.label; }),
       vat: b.vat !== false, statement_date: day(b.statement_date), notes: s(b.notes, 4000),
       // Banking trail: extra move-in charges and each payment received.
@@ -4402,7 +4403,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!d.address) return res.status(400).json({ ok: false, error: 'address-required' });
     // Kept from the saved tenancy: its move-in fees invoice and whether the landlord paid.
     const r = await p.query(`UPDATE tenancies SET property_key = $2, address = $3, start_date = $4,
-        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid')), updated_at = now() WHERE id = $1 RETURNING id`,
+        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid', 'stmt_sent', data->'stmt_sent')), updated_at = now() WHERE id = $1 RETURNING id`,
       [jobId(req), propKey(d.address), d.address, d.start_date, JSON.stringify(d)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await linkTenancyPeople(p, d);
@@ -5832,6 +5833,113 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   setTimeout(function () { alertRenewalFees().catch(function (err) { console.error('Renewal fee alert failed:', err.message); }); }, 100 * 1000);
   setInterval(function () { alertRenewalFees().catch(function (err) { console.error('Renewal fee alert failed:', err.message); }); }, 3600 * 1000).unref();
+
+  // ---------- Monthly landlord statements ----------
+  // A statement for every rent date: the move-in statement first (rent, less
+  // every fee), then each month's rent less the monthly fees. When the fees
+  // were more than the rent (the landlord owes us), the shortfall is brought
+  // forward and taken from the next rent, month by month until it is cleared.
+  // Rent Collection / Fully Managed: every month. Tenant Find: only while the
+  // landlord still owes us. Rent4Rent: move-in only. Same figures as tcyCalc in admin.html.
+  function stmtFees(d, rent, first) {
+    const r2 = function (v) { return Math.round(v * 100) / 100; };
+    const num = function (v) { const x = parseFloat(String(v == null ? '' : v).replace(/[£,\s]/g, '')); return isNaN(x) ? null : x; };
+    const monthly = function (v, unit) { const x = num(v); return !x ? 0 : unit === 'gbp' ? r2(x) : r2(rent * x / 100); };
+    const ft = function (v, unit) { const x = num(v) || 0; return unit === 'gbp' ? gbp(x) + ' pm' : x + '%'; };
+    const fees = [], fp = num(d.find_pct), fm = monthly(fp, d.find_unit), cm = monthly(d.collect_pct, d.collect_unit), mm = monthly(d.manage_pct, d.manage_unit), mUp = d.manage_basis === 'upfront';
+    if (fm && d.find_basis === 'upfront') { if (first) fees.push({ label: 'Tenant Find (' + (d.find_unit === 'gbp' ? gbp(fp) + ' pm × 12' : fp + '% of annual rent ' + gbp(rent * 12)) + ')', amount: r2(fm * 12) }); }
+    else if (fm) fees.push({ label: 'Tenant Find' + (d.find_unit === 'gbp' ? ' (' + gbp(fp) + ' pm)' : ''), amount: fm });
+    if (cm) fees.push({ label: 'Rent Collection (' + ft(d.collect_pct, d.collect_unit) + ')', amount: cm });
+    if (mm && mUp) { if (first) fees.push({ label: 'Management Fee (' + (d.manage_unit === 'gbp' ? gbp(num(d.manage_pct)) + ' pm × 12' : num(d.manage_pct) + '% of annual rent ' + gbp(rent * 12)) + ', up front)', amount: r2(mm * 12) }); }
+    else if (mm) fees.push({ label: 'Management Fee (' + ft(d.manage_pct, d.manage_unit) + ')', amount: mm });
+    if (first) (d.fees || []).forEach(function (f) { if (f && f.label && num(f.amount) !== null) fees.push({ label: f.label, amount: r2(num(f.amount)), novat: !!f.novat }); });
+    const vatOn = !(d.vat === false || /rent\s*4\s*rent/i.test(String(d.service || '')));
+    fees.forEach(function (f) { f.vat = vatOn && !f.novat ? r2(f.amount * 0.2) : 0; });
+    const sub = r2(fees.reduce(function (a, f) { return a + f.amount; }, 0)), vat = r2(fees.reduce(function (a, f) { return a + f.vat; }, 0));
+    return { fees: fees, sub: sub, vat: vat, vatOn: vatOn };
+  }
+  function statementChain(t, nextStart, settled, today) {
+    const d = t.data || {}, start = String(d.start_date || t.start_date || '').slice(0, 10), sent = d.stmt_sent || {};
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || start > today) return [];
+    const r2 = function (v) { return Math.round(v * 100) / 100; };
+    const sv = String(d.service || ''), r4r = /rent\s*4\s*rent/i.test(sv), tf = /tenant find/i.test(sv);
+    const rentAt = function (day) {
+      let rent = Number(d.rent_pcm) || 0;
+      Object.keys(t.intention || {}).sort().forEach(function (k) { const it = t.intention[k] || {}; const nr = Number(it.new_rent); if (nr && !it.no_increase && (it.rent_from || k) <= day) rent = nr; });
+      return rent;
+    };
+    const out = [];
+    let carry = 0;
+    for (let i = 0; i < 60; i++) {
+      const from = addMonthsIso(start, i);
+      if (from > today || (nextStart && from >= nextStart)) break;
+      // Paid off by the landlord (marked paid, or the move-in invoice paid) before this rent: nothing brought forward.
+      if (i > 0 && settled && settled < from) carry = 0;
+      if (i > 0 && (r4r || (tf && carry <= 0.004))) break;
+      const rent = i === 0 ? Number(d.rent_pcm) || 0 : rentAt(from);
+      let deposit = 0;
+      if (i === 0 && d.deposit_by === 'landlord') deposit = d.deposit != null && d.deposit !== '' ? Number(d.deposit) || 0 : Math.floor(rent * 12 / 52 * 5 + 1e-9);
+      const credits = i === 0 ? (d.credits || []).filter(function (c) { return c && c.label && Number(c.amount); }).map(function (c) { return { label: c.label, amount: r2(Number(c.amount)) }; }) : [];
+      const f = stmtFees(d, rent, i === 0), income = r2(rent + deposit + credits.reduce(function (a, c) { return a + c.amount; }, 0)), bf = r2(carry), total = r2(f.sub + f.vat + bf), balance = r2(income - total);
+      out.push({ n: i, from: from, to: addDaysIso(addMonthsIso(start, i + 1), -1), rent: rent, deposit: deposit, credits: credits, income: income, fees: f.fees, sub: f.sub, vat: f.vat, vatOn: f.vatOn,
+        bf: bf, bf_from: i > 0 && bf ? addMonthsIso(start, i - 1) : null, total: total, balance: balance, sent: sent[from] || null });
+      carry = balance < -0.004 ? -balance : 0;
+    }
+    return out;
+  }
+  async function statementsAll(p) {
+    const today = londonDay();
+    const tcys = (await p.query('SELECT id, property_key, address, start_date, data, intention FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date')).rows;
+    const paidInv = {};
+    (await p.query('SELECT id, paid_at FROM invoices WHERE paid_at IS NOT NULL AND tenancy_id IS NOT NULL')).rows.forEach(function (r) { paidInv[r.id] = new Date(r.paid_at).toISOString().slice(0, 10); });
+    const lls = {};
+    (await p.query('SELECT pl.property_key, l.name, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r; });
+    const out = [];
+    tcys.forEach(function (t, i) {
+      const d = t.data || {}, next = tcys.slice(i + 1).filter(function (x) { return x.property_key && x.property_key === t.property_key; })[0];
+      // The day the landlord paid what they owed from the move-in statement, if they have.
+      const settled = (d.fees_paid && String(d.fees_paid.at || today).slice(0, 10)) || (d.fees_invoice_id && paidInv[d.fees_invoice_id]) || null;
+      const months = statementChain(t, next ? String(next.start_date).slice(0, 10) : null, settled, today);
+      if (!months.length) return;
+      const ll = lls[t.property_key] || {};
+      out.push({ tenancy_id: t.id, address: d.address || t.address, current: !next, landlord: (d.landlord && d.landlord.name) || ll.name || '', email: (d.landlord && d.landlord.email) || ll.email || '', settled: settled, months: months });
+    });
+    return { today: today, items: out };
+  }
+  app.get('/api/admin/statements', withDb(async function (p, req, res) {
+    res.json(Object.assign({ ok: true }, await statementsAll(p)));
+  }));
+  // A month's statement sent to the landlord (or not).
+  app.post('/api/admin/tenancies/:id/statement', withDb(async function (p, req, res) {
+    const b = req.body || {}, from = isoDay(b.from), sent = b.sent !== false;
+    if (!from) return res.status(400).json({ ok: false, error: 'from' });
+    const r = await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{stmt_sent}', coalesce(data->'stmt_sent', '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1 RETURNING id`,
+      [jobId(req), from, sent ? JSON.stringify(new Date().toISOString()) : 'null', JSON.stringify([{ at: new Date().toISOString(), text: sent ? 'Landlord statement for the month from ' + certDay(from) + ' sent' + (b.how ? ' (' + str(b.how, 40) + ')' : '') : 'Statement for the month from ' + certDay(from) + ' marked not sent' }])]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json({ ok: true });
+  }));
+  // Phone alert on each rent date (from 8am): the statements to send, and any
+  // landlord who still owes us after this month's rent.
+  async function alertStatements() {
+    const p = await db(); if (!p) return;
+    const hour = +new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false });
+    if (hour < 8) return;
+    const r = await statementsAll(p);
+    const st = ((await p.query("SELECT value FROM app_settings WHERE key = 'stmt_alert'")).rows[0] || {}).value || {};
+    const due = [];
+    r.items.forEach(function (x) { const m = x.months[x.months.length - 1]; if (x.current && m.n > 0 && m.from === r.today && !m.sent && !st[x.tenancy_id + '|' + m.from]) due.push({ x: x, m: m }); });
+    if (!due.length) return;
+    const owe = due.filter(function (o) { return o.m.balance < -0.004 || o.m.bf; });
+    for (const o of owe) {
+      await ntfy({ title: 'Rent day: collect from ' + (o.x.landlord || 'the landlord') + ' — ' + shortAddrText(o.x.address), message: 'Brought forward ' + gbp(o.m.bf) + ' taken from this month’s rent of ' + gbp(o.m.rent) + '. ' + (o.m.balance < -0.004 ? 'They still owe ' + gbp(-o.m.balance) + '.' : 'Cleared — ' + gbp(o.m.balance) + ' to pay them.') + ' Send the statement from Fixflow.', tags: ['moneybag'] }).catch(function () {});
+    }
+    const rest = due.length - owe.length;
+    if (rest) await ntfy({ title: 'Rent day: ' + rest + ' landlord statement' + (rest === 1 ? '' : 's') + ' to send', message: due.filter(function (o) { return owe.indexOf(o) === -1; }).map(function (o) { return shortAddrText(o.x.address); }).join(', ') + '. Open Fixflow.', tags: ['page_facing_up'] }).catch(function () {});
+    const patch = {}; due.forEach(function (o) { patch[o.x.tenancy_id + '|' + o.m.from] = new Date().toISOString(); });
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('stmt_alert', $1::jsonb) ON CONFLICT (key) DO UPDATE SET value = app_settings.value || excluded.value, updated_at = now()`, [JSON.stringify(patch)]);
+  }
+  setTimeout(function () { alertStatements().catch(function (err) { console.error('Statement alert failed:', err.message); }); }, 110 * 1000);
+  setInterval(function () { alertStatements().catch(function (err) { console.error('Statement alert failed:', err.message); }); }, 3600 * 1000).unref();
 
   return { saveReport: saveReport, hasDb: async function () { return !!(await db()); } };
 };
