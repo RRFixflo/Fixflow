@@ -530,6 +530,9 @@
   .tcy-rc { display: grid; grid-template-columns: 1.4fr 1fr .9fr .7fr .9fr 34px; gap: 8px; align-items: end; margin-bottom: 8px; }
   @media (max-width: 700px) { .tcy-rc { grid-template-columns: 1fr 1fr; } .tcy-rc > :first-child { grid-column: 1 / -1; } }
   .tcy-fee { display: grid; grid-template-columns: minmax(0,1fr) 120px 34px; gap: 8px; margin-bottom: 8px; }
+  .tcy-fee.nv4 { grid-template-columns: minmax(0,1fr) 110px auto 34px; }
+  .tcy-nv { display: flex; align-items: center; gap: 5px; font-size: .82rem; color: var(--ink-soft); white-space: nowrap; cursor: pointer; }
+  .tcy-nv input { margin: 0; }
   .tcy-x { height: 40px; border: 1px solid var(--line); background: none; border-radius: 10px; cursor: pointer; color: var(--ink-soft); font-size: 1.1rem; }
   .tcy-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
   .tcy-sum { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
@@ -7510,7 +7513,7 @@
         }).join(' · ') + '</div>' : '') +
         (t.fees_check ? '<div class="match warn">⚠ ' + esc(t.fees_check) + '</div>' : '') +
         (t.rent_check ? '<div class="match warn">⚠ ' + esc(t.rent_check) + '</div>' : '') +
-        ((t.fees || []).filter(function(f){ return f && f.label; }).length ? '<div class="prop-sub" style="line-height:1.5">Charges to add: ' + t.fees.filter(function(f){ return f && f.label; }).map(function(f){ return esc(f.label) + (num(f.amount) !== null ? ' ' + esc(gbp(num(f.amount))) : ''); }).join(', ') + ' <span class="muted-note" style="margin:0">(+ VAT)</span></div>' : '') +
+        ((t.fees || []).filter(function(f){ return f && f.label; }).length ? '<div class="prop-sub" style="line-height:1.5">Charges to add: ' + t.fees.filter(function(f){ return f && f.label; }).map(function(f){ return esc(f.label) + (num(f.amount) !== null ? ' ' + esc(gbp(num(f.amount))) : '') + (f.novat && t.vat !== false ? ' <b>(no VAT)</b>' : ''); }).join(', ') + (t.vat === false ? '' : ' <span class="muted-note" style="margin:0">(+ VAT' + (t.fees.some(function(f){ return f && f.label && f.novat; }) ? ' except where marked' : '') + ')</span>') + '</div>' : '') +
         ((t.onFile || []).length || (t.filled || []).length || t.llOnFile ? '<div class="match ok">✓ ' + [
           (t.filled || []).length ? 'Contact details filled in from the tenants on file: ' + esc(joinAnd(t.filled)) : '',
           (t.onFile || []).length ? 'Tenants on file: ' + esc(joinAnd(t.onFile)) : '',
@@ -7863,18 +7866,18 @@
   }
   function niDrawLines(){
     $('niLines').innerHTML = ni.lines.map(function(l, i){
-      return '<div class="tcy-fee" data-i="' + i + '"><input class="inp" data-nl="desc" placeholder="Description" value="' + esc(l.desc || '') + '"><input class="inp" data-nl="amount" inputmode="decimal" placeholder="£" value="' + esc(l.amount == null ? '' : l.amount) + '"><button type="button" class="tcy-x" data-nl-del="' + i + '" title="Remove"' + (ni.lines.length === 1 ? ' disabled' : '') + '>×</button></div>';
+      return '<div class="tcy-fee nv4" data-i="' + i + '"><input class="inp" data-nl="desc" placeholder="Description" value="' + esc(l.desc || '') + '"><input class="inp" data-nl="amount" inputmode="decimal" placeholder="£" value="' + esc(l.amount == null ? '' : l.amount) + '"><label class="tcy-nv" title="Tick if there is no VAT on this line"><input type="checkbox" data-nl="novat"' + (l.novat ? ' checked' : '') + '> No VAT</label><button type="button" class="tcy-x" data-nl-del="' + i + '" title="Remove"' + (ni.lines.length === 1 ? ' disabled' : '') + '>×</button></div>';
     }).join('');
   }
-  function niRead(){ $('niLines').querySelectorAll('.tcy-fee').forEach(function(row){ var l = ni.lines[Number(row.dataset.i)]; l.desc = row.querySelector('[data-nl=desc]').value.trim(); l.amount = row.querySelector('[data-nl=amount]').value.replace(/[£,\s]/g, ''); }); }
+  function niRead(){ $('niLines').querySelectorAll('.tcy-fee').forEach(function(row){ var l = ni.lines[Number(row.dataset.i)]; l.desc = row.querySelector('[data-nl=desc]').value.trim(); l.amount = row.querySelector('[data-nl=amount]').value.replace(/[£,\s]/g, ''); l.novat = row.querySelector('[data-nl=novat]').checked; }); }
   function niUpdate(){
     niRead();
     var lr = landlordRecordAt($('niAddr').value);
     $('niLl').textContent = $('niAddr').value.trim() ? (lr ? 'To ' + lr.name + (lr.email ? ' · ' + lr.email : ' · no email saved') : 'No landlord linked to this property yet') : '';
-    var sub = r2(ni.lines.reduce(function(t, l){ return t + (num(l.amount) || 0); }, 0)), vat = $('niVat').checked ? r2(sub * 0.2) : 0;
+    var sub = r2(ni.lines.reduce(function(t, l){ return t + (num(l.amount) || 0); }, 0)), vat = $('niVat').checked ? r2(ni.lines.reduce(function(t, l){ return t + (l.novat ? 0 : num(l.amount) || 0); }, 0) * 0.2) : 0;
     $('niTotal').textContent = sub ? 'Total ' + gbp(r2(sub + vat)) + (vat ? ' (' + gbp(sub) + ' + VAT ' + gbp(vat) + ')' : '') : '';
   }
-  $('niLines').addEventListener('input', niUpdate);
+  $('niLines').addEventListener('input', niUpdate); $('niLines').addEventListener('change', niUpdate);
   $('niAddr').addEventListener('input', niUpdate); $('niVat').addEventListener('change', niUpdate);
   $('niLines').addEventListener('click', function(e){ var b = e.target.closest('[data-nl-del]'); if (!b) return; niRead(); ni.lines.splice(Number(b.dataset.nlDel), 1); niDrawLines(); niUpdate(); });
   $('niAddLine').addEventListener('click', function(){ niRead(); ni.lines.push({ desc: '', amount: '' }); niDrawLines(); var r = $('niLines').querySelectorAll('[data-nl=desc]'); r[r.length - 1].focus(); });
@@ -7886,7 +7889,7 @@
     if (!addr) { toast('Choose the property'); $('niAddr').focus(); return; }
     if (!lines.length) { toast('Add a line with a description and an amount'); return; }
     var b = $('niCreate'); busy(b, true, 'Creating…');
-    api('POST', '/api/admin/invoices', { address: addr, title: $('niTitleIn').value.trim() || lines[0].desc, lines: lines.map(function(l){ return { desc: l.desc, amount: num(l.amount) }; }), vat: $('niVat').checked, due: $('niDue').value, tenancy_id: ni.tenancy_id, kind: ni.kind }).then(function(d){
+    api('POST', '/api/admin/invoices', { address: addr, title: $('niTitleIn').value.trim() || lines[0].desc, lines: lines.map(function(l){ return { desc: l.desc, amount: num(l.amount), novat: !!l.novat }; }), vat: $('niVat').checked, due: $('niDue').value, tenancy_id: ni.tenancy_id, kind: ni.kind }).then(function(d){
       busy(b, false);
       if (!d.ok) { toast('Couldn’t create the invoice (' + (d.error || 'error') + ')'); return; }
       var body = llGreeting(d.landlord_name) + ',\n\nPlease find invoice ' + d.number + ' for ' + gbp(d.total) + ' — ' + ($('niTitleIn').value.trim() || lines[0].desc) + ' (' + shortAddr(addr) + ').' + (d.url ? '\n\nView the invoice and how to pay: ' + d.url : '') + '\n\nKind regards,\nResidential Realtors';
@@ -8413,14 +8416,17 @@
     var mUp = d.manage_basis === 'upfront';
     if (mm) fees.push(mUp ? { label: 'Management Fee (' + (d.manage_unit === 'gbp' ? gbp(num(d.manage_pct)) + ' pm × 12' : num(d.manage_pct) + '% of annual rent ' + gbp(rent * 12)) + ', up front)', amount: r2(mm * 12) }
       : { label: 'Management Fee (' + feeText(d.manage_pct, d.manage_unit) + ')', amount: mm });
-    (d.fees || []).forEach(function(f){ if (f.label && num(f.amount) !== null) fees.push({ label: f.label, amount: r2(f.amount) }); });
-    var sub = r2(fees.reduce(function(a, f){ return a + f.amount; }, 0)), vat = d.vat === false || /rent\s*4\s*rent/i.test(String(d.service || '')) ? 0 : r2(sub * 0.2), feeTotal = r2(sub + vat);
+    (d.fees || []).forEach(function(f){ if (f.label && num(f.amount) !== null) fees.push({ label: f.label, amount: r2(f.amount), novat: !!f.novat, extra: true }); });
+    // VAT at 20% on each fee, except fees marked "No VAT" (e.g. a council licence fee passed on at cost).
+    var vatOn = !(d.vat === false || /rent\s*4\s*rent/i.test(String(d.service || '')));
+    fees.forEach(function(f){ f.vat = vatOn && !f.novat ? r2(f.amount * 0.2) : 0; });
+    var sub = r2(fees.reduce(function(a, f){ return a + f.amount; }, 0)), vat = r2(fees.reduce(function(a, f){ return a + f.vat; }, 0)), feeTotal = r2(sub + vat);
     var income = r2(rent + (d.deposit_by === 'landlord' ? deposit : 0));
     var term = parseInt(d.term_months, 10) || 12;
     var soStart = d.so_start || addMonthsIso(d.start_date, 1);
     return {
       rent: rent, weekly: r2(weekly), deposit: deposit, depAuto: depAuto, holding: holding, holdAuto: holdAuto, total: total, remaining: remaining,
-      fees: fees, sub: sub, vat: vat, feeTotal: feeTotal, income: income, balance: r2(income - feeTotal),
+      fees: fees, sub: sub, vat: vat, vatOn: vatOn, feeTotal: feeTotal, income: income, balance: r2(income - feeTotal),
       // The regular monthly fee: the % (or £ a month) fees only — tenant find,
       // collection, management — before VAT, without one-off extras.
       // Fees taken from the rent each month (tenant find on a monthly basis,
@@ -8578,7 +8584,7 @@
           // Our fee in plain words: how much, and when it's taken.
           (c.monthlyFee ? esc(gbp(c.monthlyFee)) + '<small>a month, from the rent</small>' : '') +
           (c.upfrontFee ? (c.monthlyFee ? '<small style="color:var(--ink)"><b>+ ' + esc(gbp(c.upfrontFee)) + '</b> a year, up front</small>' : esc(gbp(c.upfrontFee)) + '<small>a year, paid up front</small>') : '') +
-          (!c.monthlyFee && !c.upfrontFee ? '—<small>' + (/rent\s*4\s*rent/i.test(String(d.service || '')) ? 'Rent4Rent — no fee' : 'no fee set') + '</small>' : '<small>' + esc(gbp(c.monthlyFee * 12 + c.upfrontFee)) + ' a year' + (c.vat ? ' + VAT' : '') + '</small>') +
+          (!c.monthlyFee && !c.upfrontFee ? '—<small>' + (/rent\s*4\s*rent/i.test(String(d.service || '')) ? 'Rent4Rent — no fee' : 'no fee set') + '</small>' : '<small>' + esc(gbp(c.monthlyFee * 12 + c.upfrontFee)) + ' a year' + (c.vatOn ? ' + VAT' : '') + '</small>') +
           '</div><div class="when">' + esc(tcyStatus(d)) +
           '<small style="color:' + (c.btLeft > 0.004 ? 'var(--red, #c00)' : 'var(--green, #16a34a)') + '">' + (c.btLeft > 0.004 ? esc(gbp(c.btLeft)) + ' still to pay' : 'Move-in monies paid ✓') + '</small></div><span class="chev">›</span></button>';
     }).join('') : '<div class="empty">' + (tenancies.length ? 'No tenancy matches.' : 'No tenancies yet — tap “New tenancy” to add one.') + '</div>';
@@ -8735,7 +8741,7 @@
   }
   function tcyFeeRows(){
     return tcyDraft.fees.map(function(f, i){
-      return '<div class="tcy-fee" data-i="' + i + '"><input class="inp" data-ff="label" placeholder="Fee" value="' + esc(f.label || '') + '"><input class="inp" data-ff="amount" inputmode="decimal" placeholder="£" value="' + esc(f.amount == null ? '' : f.amount) + '"><button type="button" class="tcy-x" data-del-fee="' + i + '" title="Remove">×</button></div>';
+      return '<div class="tcy-fee nv4" data-i="' + i + '"><input class="inp" data-ff="label" placeholder="Fee" value="' + esc(f.label || '') + '"><input class="inp" data-ff="amount" inputmode="decimal" placeholder="£" value="' + esc(f.amount == null ? '' : f.amount) + '"><label class="tcy-nv" title="Tick if there is no VAT on this one (e.g. a council licence fee)"><input type="checkbox" data-ff="novat"' + (f.novat ? ' checked' : '') + '> No VAT</label><button type="button" class="tcy-x" data-del-fee="' + i + '" title="Remove">×</button></div>';
     }).join('');
   }
   function renderTcyForm(){
@@ -9065,6 +9071,7 @@
       var f = d.fees[Number(row.dataset.i)]; if (!f) return;
       f.label = row.querySelector('[data-ff="label"]').value.trim();
       var a = row.querySelector('[data-ff="amount"]').value.replace(/[£,\s]/g, ''); f.amount = a === '' ? null : Number(a);
+      if (row.querySelector('[data-ff="novat"]').checked) f.novat = true; else delete f.novat;
     });
     return d;
   }
@@ -9096,14 +9103,17 @@
     $('tfBtSum').innerHTML = '<div><span>Move-in monies due</span><b>' + esc(gbp(c.btDue)) + '</b></div><div><span>Received</span><b>' + esc(gbp(c.btIn)) + '</b></div>' +
       '<div><span>' + (c.btLeft > 0.004 ? 'Still to pay' : c.btLeft < -0.004 ? 'Overpaid' : 'Paid in full') + '</span><b style="color:' + (c.btLeft > 0.004 ? 'var(--red, #c00)' : 'var(--green, #16a34a)') + '">' + (Math.abs(c.btLeft) > 0.004 ? esc(gbp(Math.abs(c.btLeft))) : '✓') + '</b></div>';
     // What the landlord pays us, in plain words.
-    var vr = c.vat ? 0.2 : 0, wv = function(v){ return vr ? gbp(v) + ' + VAT ' + gbp(r2(v * vr)) + ' = <b>' + gbp(r2(v * (1 + vr))) + '</b>' : '<b>' + gbp(v) + '</b>'; };
+    var vr = c.vatOn ? 0.2 : 0, wv = function(v){ return vr ? gbp(v) + ' + VAT ' + gbp(r2(v * vr)) + ' = <b>' + gbp(r2(v * (1 + vr))) + '</b>' : '<b>' + gbp(v) + '</b>'; };
     var oneOff = r2((d.fees || []).reduce(function(t, f){ return t + (f && f.label && num(f.amount) !== null ? num(f.amount) : 0); }, 0));
     var monthlyLl = r2(c.rent - c.monthlyFee * (1 + vr));
     var rows = [];
     if (c.monthlyFee) rows.push(['Every month', 'Rent ' + gbp(c.rent) + ' − our fee ' + wv(c.monthlyFee).replace(/<\/?b>/g, '') + ' → <b>' + gbp(monthlyLl) + '</b> to the landlord']);
     else if (c.rent) rows.push(['Every month', 'No monthly fee — the landlord gets the full rent of <b>' + gbp(c.rent) + '</b>' + (/tenant find/i.test(String(d.service || '')) ? ' (they collect it themselves)' : '')]);
     if (c.upfrontFee) rows.push(['Up front, once a year', 'Our fee for the year: ' + wv(c.upfrontFee) + ' — taken from the first rent, then charged again at each renewal']);
-    if (oneOff) rows.push(['One-off fees', (d.fees || []).filter(function(f){ return f && f.label && num(f.amount) !== null; }).map(function(f){ return esc(f.label) + ' ' + gbp(num(f.amount)); }).join(', ') + ' → ' + wv(oneOff)]);
+    // One-off fees: VAT only on those not marked "No VAT".
+    var oneVat = r2(c.fees.reduce(function(t, f){ return t + (f.extra ? f.vat : 0); }, 0)), anyNv = vr && (d.fees || []).some(function(f){ return f && f.novat && f.label && num(f.amount) !== null; });
+    if (oneOff) rows.push(['One-off fees', (d.fees || []).filter(function(f){ return f && f.label && num(f.amount) !== null; }).map(function(f){ return esc(f.label) + ' ' + gbp(num(f.amount)) + (vr && f.novat ? ' (no VAT)' : ''); }).join(', ') + ' → ' +
+      (oneVat ? gbp(oneOff) + ' + VAT ' + gbp(oneVat) + (anyNv ? ' (on ' + gbp(r2(oneVat / 0.2)) + ')' : '') + ' = <b>' + gbp(r2(oneOff + oneVat)) + '</b>' : '<b>' + gbp(oneOff) + '</b>' + (vr ? ' — no VAT' : ''))]);
     if (c.upfrontFee || oneOff) rows.push(['First month', (d.deposit_by === 'landlord' ? 'Rent + deposit ' : 'Rent ') + gbp(c.income) + ' − all fees ' + gbp(c.feeTotal) + (vr ? ' (inc. VAT)' : '') + ' → ' + (c.balance < 0 ? '<b style="color:var(--brick)">the landlord owes us ' + gbp(-c.balance) + '</b>' : '<b>' + gbp(c.balance) + '</b> to the landlord')]);
     if (c.monthlyFee || c.upfrontFee) rows.push(['In a year', 'Our fees: ' + wv(r2(c.monthlyFee * 12 + c.upfrontFee))]);
     // The landlord owes us (the fees are more than the first rent we hold): invoice it, or mark it paid.
@@ -9277,7 +9287,8 @@
           tcyRefresh(); $('tfFind').focus(); $('tfFind').select(); toast('Enter the Tenant Find % — it’s worked out on the annual rent'); return;
         }
         if (f && f.kind === 'manage') { if (!$('tfManage').value && num(f.amount) !== null) $('tfManage').value = f.amount; tcyRefresh(); $('tfManage').focus(); $('tfManage').select(); toast('Enter the management fee % — taken from the rent each month'); return; }
-        tcyDraft.fees.push({ label: f ? f.label : '', amount: f ? num(f.amount) : null });
+        // Council licence fees are passed on at cost, with no VAT.
+        tcyDraft.fees.push(Object.assign({ label: f ? f.label : '', amount: f ? num(f.amount) : null }, f && (f.novat || /licen[cs]e/i.test(f.label || '')) ? { novat: true } : {}));
         $('tfFees').innerHTML = tcyFeeRows(); tcyRefresh();
         var rows = $('tfFees').querySelectorAll('.tcy-fee'), last = rows[rows.length - 1];
         if (last) last.querySelector(f ? '[data-ff="amount"]' : '[data-ff="label"]').focus();
@@ -9401,9 +9412,11 @@
     [l.name].concat(tcyLandlordAddress(l)).filter(Boolean).forEach(function(line, i){ doc.text(line, X, y + i * 14); });
     doc.text('Date', R - 100, y + 14); doc.text(ukDay(d.statement_date || isoDay(new Date())), R, y + 14, { align: 'right' });
     y = 245; doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('STATEMENT OF ACCOUNT', W / 2, y, { align: 'center' });
-    var band = function(yy, title){
+    var VX = R - 95;
+    var band = function(yy, title, vatCol){
       doc.setFillColor(232, 205, 209); doc.rect(X - 4, yy - 11, R - X + 8, 16, 'F');
       doc.setTextColor(128, 20, 30); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text(title, X - 2, yy + 1); doc.text('NET', R - 2, yy + 1, { align: 'right' });
+      if (vatCol) doc.text('VAT', VX, yy + 1, { align: 'right' });
       doc.setTextColor(20); doc.setFontSize(9.5); doc.text(doc.splitTextToSize(d.address || '', R - X)[0], X - 2, yy + 15);
       doc.setDrawColor(128, 20, 30); doc.setLineWidth(0.8); doc.line(X - 4, yy + 18, R + 4, yy + 18); doc.setDrawColor(0);
       doc.setFont('helvetica', 'normal');
@@ -9412,9 +9425,10 @@
     y += 32; doc.text('Rent for period', X + 70, y); doc.text(ukDay(d.start_date) + '  -  ' + ukDay(c.periodEnd), X + 160, y); doc.text(pdfGbp(c.rent), R, y, { align: 'right' });
     if (d.deposit_by === 'landlord') { y += 15; doc.text('Deposit (to be registered by the landlord)', X + 70, y); doc.text(pdfGbp(c.deposit), R, y, { align: 'right' }); }
     y += 36; doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Total Income:', R - 150, y, { align: 'right' }); doc.text(pdfGbp(c.income), R, y, { align: 'right' });
-    y += 50; band(y, 'Expenditure');
+    // Each fee with its own VAT (£0.00 on fees with no VAT), like the office statements.
+    y += 50; band(y, 'Expenditure', c.vatOn);
     y += 32; doc.setFontSize(9.5);
-    c.fees.forEach(function(f){ doc.text(ukDay(d.start_date, true), X - 2, y); doc.text(doc.splitTextToSize(f.label, 300)[0], X + 48, y); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += 15; });
+    c.fees.forEach(function(f){ doc.text(ukDay(d.start_date, true), X - 2, y); doc.text(doc.splitTextToSize(f.label, c.vatOn ? 250 : 300)[0], X + 48, y); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += 15; });
     if (!c.fees.length) { doc.text('No fees', X + 48, y); y += 15; }
     y += 50; doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
     doc.text('Sub-Total:', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.sub), R, y, { align: 'right' });
