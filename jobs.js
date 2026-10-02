@@ -4141,6 +4141,18 @@ document.querySelectorAll('.ov').forEach(function(v){
     res.json({ ok: true, intention: it });
   }));
   // Something done with a tenancy (emails sent, documents made), for its history.
+  // A payment received from the tenants, added while the tenancy is locked
+  // (removing one still needs "Edit tenancy").
+  app.post('/api/admin/tenancies/:id/receipts', withDb(async function (p, req, res) {
+    const b = req.body || {}, amount = money(b.amount);
+    if (!amount) return res.status(400).json({ ok: false, error: 'amount' });
+    const rc = { desc: str(b.desc, 120) || 'Payment', date: isoDay(b.date) || new Date().toISOString().slice(0, 10), receipt: str(b.receipt, 40) || '', method: str(b.method, 12) || 'TRNF', amount: amount };
+    const r = await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{receipts}', coalesce(data->'receipts', '[]'::jsonb) || $2::jsonb),
+        log = log || $3::jsonb, updated_at = now() WHERE id = $1 RETURNING data`,
+      [jobId(req), JSON.stringify([rc]), JSON.stringify([{ at: new Date().toISOString(), text: 'Payment received: ' + gbp(amount) + ' — ' + rc.desc + ' (' + rc.date + ', ' + rc.method + ')' }])]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json({ ok: true, data: r.rows[0].data });
+  }));
   app.post('/api/admin/tenancies/:id/log', withDb(async function (p, req, res) {
     const text = str((req.body || {}).text, 500);
     if (!text) return res.status(400).json({ ok: false, error: 'empty' });

@@ -8536,7 +8536,39 @@
     var del = $('tfDelete'); if (del) del.closest('.card').hidden = true;
     var head = $('tcyDetail').querySelector('.prop-head');
     if (head && !$('tfEdit')) head.insertAdjacentHTML('beforeend', '<button type="button" class="btn primary" id="tfEdit">✎ Edit tenancy</button>');
-    if (!$('tfLockNote')) form.insertAdjacentHTML('afterbegin', '<div class="banner" id="tfLockNote" style="margin:0">🔒 This tenancy is saved and locked. Click <b>Edit tenancy</b> to change it.</div>');
+    if (!$('tfLockNote')) form.insertAdjacentHTML('afterbegin', '<div class="banner" id="tfLockNote" style="margin:0">🔒 This tenancy is saved and locked. Click <b>Edit tenancy</b> to change it. You can still add payments received.</div>');
+    // Payments received can be added while locked; removing one needs "Edit tenancy".
+    var addRc = $('tfAddReceipt');
+    if (addRc) {
+      addRc.insertAdjacentHTML('afterend', '<button type="button" class="btn small primary" id="tfAddRcLocked">+ Add payment received</button>' +
+        '<div class="tcy-rc" id="tfQuickRc" hidden style="margin-top:8px">' +
+          '<div><label class="lbl">Paid by / description</label><input class="inp" id="qrDesc" placeholder="e.g. October rent"></div>' +
+          '<div><label class="lbl">Date</label><input class="inp" type="date" id="qrDate"></div>' +
+          '<div><label class="lbl">Receipt no.</label><input class="inp" id="qrRec"></div>' +
+          '<div><label class="lbl">Method</label><input class="inp" id="qrMethod" list="tfMethods" value="TRNF"></div>' +
+          '<div><label class="lbl">Amount (£)</label><input class="inp" id="qrAmt" inputmode="decimal"></div>' +
+          '<button type="button" class="btn small primary" id="qrSave" style="align-self:end">Save</button></div>' +
+        '<p class="muted-note" style="margin:6px 0 0">To remove or change a payment, click <b>Edit tenancy</b>.</p>');
+      addRc.hidden = true;
+      $('tfAddRcLocked').addEventListener('click', function(){
+        $('tfQuickRc').hidden = false; $('qrDate').value = isoDay(new Date());
+        // Suggest what's still to pay of the move-in monies, else a month's rent.
+        var left = tcyCalc(tcyDraft).btLeft, rent = num(tcyDraft.rent_pcm);
+        if (!$('qrAmt').value) $('qrAmt').value = left > 0 ? left.toFixed(2) : rent ? rent.toFixed(2) : '';
+        $('qrDesc').focus();
+      });
+      $('qrSave').addEventListener('click', function(){
+        var amt = num($('qrAmt').value);
+        if (!amt || amt <= 0) { toast('Enter the amount received'); $('qrAmt').focus(); return; }
+        var b = $('qrSave'); busy(b, true, 'Saving…');
+        api('POST', '/api/admin/tenancies/' + openTcyId + '/receipts', { desc: $('qrDesc').value, date: $('qrDate').value, receipt: $('qrRec').value, method: $('qrMethod').value, amount: amt }).then(function(d){
+          busy(b, false);
+          if (!d.ok) { toast('Couldn’t save the payment'); return; }
+          var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0]; if (x) x.data = d.data;
+          toast('Payment of ' + gbp(amt) + ' added'); openTenancy(openTcyId);
+        });
+      });
+    }
     $('tfEdit').addEventListener('click', function(){
       tcyLocked = false; renderTcyForm();
       $('tfCancel').textContent = 'Cancel editing';
