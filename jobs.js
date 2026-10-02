@@ -243,6 +243,14 @@ CREATE TABLE IF NOT EXISTS property_certificates (
   UNIQUE (property_key, type)
 );
 ALTER TABLE property_certificates ADD COLUMN IF NOT EXISTS not_required BOOLEAN NOT NULL DEFAULT false;
+-- A property's licence document (the council's licence), when uploaded.
+CREATE TABLE IF NOT EXISTS licence_docs (
+  property_key TEXT PRIMARY KEY,
+  name         TEXT,
+  mime         TEXT,
+  data         BYTEA NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 -- Certificates a landlord uploads for a property of their own (not managed by us).
 CREATE TABLE IF NOT EXISTS landlord_property_docs (
   own_id     INTEGER NOT NULL,
@@ -1863,17 +1871,40 @@ module.exports = function mountJobs(app, opts) {
   // The property's licence (selective / additional / HMO), as checked on the
   // council's public register: whether it has one, its number and expiry.
   app.put('/api/admin/property-licence', withDb(async function (p, req, res) {
-    const b = req.body || {}, address = str(b.address, 500), key = propKey(address), l = b.licence || {};
-    if (!key) return res.status(400).json({ ok: false, error: 'address' });
+    const b = req.body || {}, out = await saveLicence(p, str(b.address, 500), b.licence || {}, b.doc);
+    res.status(out.status || 200).json(out.json);
+  }));
+  // Save a property's licence (from the register, the office, a landlord, or an
+  // uploaded licence document — kept so it can be opened).
+  async function saveLicence(p, address, l, docIn) {
+    const key = propKey(address);
+    if (!key) return { status: 400, json: { ok: false, error: 'address' } };
     const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null; };
     const lic = { status: ['licensed', 'none', 'not_needed', 'applied'].indexOf(l.status) !== -1 ? l.status : 'licensed', type: str(l.type, 60), number: str(l.number, 60), holder: str(l.holder, 200),
       starts: day(l.starts), expires: day(l.expires), notes: str(l.notes, 500), borough: str(l.borough, 80), url: /^https:\/\/\S+$/i.test(String(l.url || '')) ? str(l.url, 500) : null, checked_at: day(l.checked_at) || new Date().toISOString().slice(0, 10) };
     const cur = (await p.query('SELECT licence FROM property_info WHERE property_key = $1', [key])).rows[0];
     if (cur && cur.licence && cur.licence.expires === lic.expires) lic.alerted_for = cur.licence.alerted_for || null;   // same expiry: don't alert again
+    if (l.max_occupants) lic.max_occupants = parseInt(l.max_occupants, 10) || null;
+    const doc = docIn && typeof docIn.data === 'string' ? Buffer.from(docIn.data.replace(/^data:[^,]*,/, ''), 'base64') : null;
+    if (doc && doc.length && doc.length <= 15 * 1024 * 1024) {
+      const mime = /^(application\/pdf|image\/(jpeg|png|webp|heic|heif))$/.test(String(docIn.mime || '')) ? docIn.mime : 'application/pdf';
+      await p.query(`INSERT INTO licence_docs (property_key, name, mime, data) VALUES ($1, $2, $3, $4)
+        ON CONFLICT (property_key) DO UPDATE SET name = excluded.name, mime = excluded.mime, data = excluded.data, created_at = now()`, [key, str(docIn.name, 200) || 'licence.pdf', mime, doc]);
+      lic.has_doc = true;
+    } else if (cur && cur.licence && cur.licence.has_doc && (!cur.licence.expires || cur.licence.expires === lic.expires)) lic.has_doc = true;   // keep the document unless it's a new licence
+    else await p.query('DELETE FROM licence_docs WHERE property_key = $1', [key]);
     await p.query(`INSERT INTO property_info (property_key, address, licence) VALUES ($1, $2, $3)
       ON CONFLICT (property_key) DO UPDATE SET licence = excluded.licence, address = coalesce(property_info.address, excluded.address), updated_at = now()`, [key, address, JSON.stringify(lic)]);
-    res.json({ ok: true, licence: lic });
-  }));
+    return { json: { ok: true, licence: lic } };
+  }
+  async function sendLicenceDoc(p, key, res) {
+    const d = (await p.query('SELECT name, mime, data FROM licence_docs WHERE property_key = $1', [key])).rows[0];
+    if (!d) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', d.mime || 'application/pdf'); res.setHeader('X-Robots-Tag', 'noindex');
+    res.setHeader('Content-Disposition', 'inline; filename="' + String(d.name || 'licence.pdf').replace(/[^a-zA-Z0-9.\-_ ]+/g, '-') + '"');
+    res.send(d.data);
+  }
+  app.get('/api/admin/licence-doc', withDb(async function (p, req, res) { await sendLicenceDoc(p, String(req.query.key || ''), res); }));
 
   // Which council a postcode is in (postcodes.io, free and public), and each
   // council's licence register link (saved by staff; Southwark to start with).
@@ -2498,6 +2529,7 @@ module.exports = function mountJobs(app, opts) {
       'That is NOT a job (a job is when a check needs booking or doing, with no date it was done) — even when the expiry date given has already passed, record it as a certificate, not a job. ' +
       'Put each in "certificates" with: address (as said, or the exact one from their property list if it clearly matches), type ("Gas", "EICR" or "EPC"), issued_on (the date done / started / valid from, YYYY-MM-DD, UK dates are day/month/year, 2-digit years are 20xx; "" if only an expiry is given), ' +
       'expires_on (YYYY-MM-DD if an expiry is given, else ""), reference (certificate number if given, else ""), rating (EPC rating letter if given, else ""), document (the number of the attached document it was read from — 1 for the first attached, 2 for the second — or 0 if from the text).\n' +
+      'A council PROPERTY LICENCE (selective / additional HMO / mandatory HMO licence, e.g. "Property licence under section 64 of the Housing Act 2004") attached or described is recorded in "certificates" too, with type "Licence", issued_on = valid from, expires_on = expiry date, reference = licence reference, plus licence_type ("Selective", "Additional (HMO)" or "Mandatory HMO" — a House in Multiple Occupation licence is "Additional (HMO)" unless it says mandatory), holder (licence holder) and council. ' +
       'An ATTACHED CERTIFICATE (gas safety record / CP12 / LGSR, EICR, or EPC) is recorded the same way: address = the address of the property inspected (the installation / site / premises address — NOT the landlord\'s, agent\'s or engineer\'s company address), ' +
       'type, issued_on = the inspection / check date (or date of assessment for an EPC), expires_on = the date the next check is due if printed ("next inspection due", "recommended date for next inspection", "valid until"; else ""), reference = the certificate / report / serial number. Do not make a job for it.\n' +
       'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], ' +
@@ -2576,9 +2608,10 @@ module.exports = function mountJobs(app, opts) {
     }
     // Certificates the property already has (date done / expiry): saved after staff check them.
     const certificates = (Array.isArray(parsed.certificates) ? parsed.certificates : []).slice(0, 10).map(function (c) {
-      const type = c && CERT_TYPES[c.type] ? c.type : null;
+      const type = c && (CERT_TYPES[c.type] || c.type === 'Licence') ? c.type : null;
       const doc = parseInt(c && c.document, 10);
-      return { address: keepWrittenAddress(str(c && c.address, 500) || '', str(c && c.address_written, 500)), type: type, issued_on: isoDay(c && c.issued_on) || '', expires_on: isoDay(c && c.expires_on) || '', reference: str(c && c.reference, 100) || '', rating: str(c && c.rating, 5) || '',
+      return { licence_type: str(c && c.licence_type, 60) || '', holder: str(c && c.holder, 200) || '', council: str(c && c.council, 80) || '',
+        address: keepWrittenAddress(str(c && c.address, 500) || '', str(c && c.address_written, 500)), type: type, issued_on: isoDay(c && c.issued_on) || '', expires_on: isoDay(c && c.expires_on) || '', reference: str(c && c.reference, 100) || '', rating: str(c && c.rating, 5) || '',
         document: doc >= 1 && doc <= given.length ? doc : (given.length === 1 && !certLines(said).length ? 1 : 0) };
     }).filter(function (c) { return c.address && c.type && (c.issued_on || c.expires_on); });
     // Certificate lines read straight from the text, in case the reply missed one
@@ -3017,21 +3050,27 @@ module.exports = function mountJobs(app, opts) {
     const t = { address: expectAddress || '' };
     let got = {};
     if (opts.askAi && opts.canAi && opts.canAi()) {
-      const r = await opts.askAi('This is a UK property safety certificate: a gas safety record (CP12 / LGSR), an EICR (electrical installation condition report) or an EPC. Read it and reply with ONLY JSON: ' +
-        '{"type": "Gas" | "EICR" | "EPC" | "", "address": "the address of the property inspected (not the landlord\'s, agent\'s or engineer\'s company address)", "issued_on": "inspection / assessment date YYYY-MM-DD", ' +
-        '"expires_on": "next inspection due / recommended next inspection / valid until, YYYY-MM-DD, or \"\" if not printed", "reference": "certificate / report number", "rating": "EPC rating letter or \"\""}. UK dates are day/month/year.',
+      const r = await opts.askAi('This is a UK property document: a gas safety record (CP12 / LGSR), an EICR (electrical installation condition report), an EPC, or a council PROPERTY LICENCE (selective, additional HMO or mandatory HMO licence under the Housing Act 2004). Read it and reply with ONLY JSON: ' +
+        '{"type": "Gas" | "EICR" | "EPC" | "Licence" | "", "address": "the address of the property inspected / licensed (not the landlord\'s, agent\'s, licence holder\'s or engineer\'s address)", "issued_on": "inspection / assessment date, or for a licence the date it is valid from, YYYY-MM-DD", ' +
+        '"expires_on": "next inspection due / recommended next inspection / valid until / licence expiry date, YYYY-MM-DD, or \"\" if not printed", "reference": "certificate / report / licence reference number", "rating": "EPC rating letter or \"\"", ' +
+        '"licence_type": "for a licence: \"Selective\", \"Additional (HMO)\" or \"Mandatory HMO\" (a House in Multiple Occupation licence under section 64 is HMO: \"Additional (HMO)\" unless it says mandatory), else \"\"", "holder": "licence holder name or \"\"", "council": "the council that issued it, e.g. Southwark, or \"\"", "max_occupants": "licence maximum number of people as a number, or null"}. UK dates are day/month/year.',
         true, [{ mime: f.mime, data: f.buf.toString('base64') }]).catch(function () { return { ok: false }; });
       if (r && r.ok) { try { got = JSON.parse(String(r.text).replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()) || {}; } catch (e) { got = {}; } }
     }
-    const type = CERT_TYPES[got.type] ? got.type : '';
+    const type = CERT_TYPES[got.type] || got.type === 'Licence' ? got.type : '';
     let issued = isoDay(got.issued_on) || '', expires = isoDay(got.expires_on) || '';
-    if (!expires && issued && type) { const d = new Date(issued + 'T12:00:00Z'); d.setUTCFullYear(d.getUTCFullYear() + CERT_TYPES[type].years); expires = d.toISOString().slice(0, 10); }
+    if (!expires && issued && CERT_TYPES[type]) { const d = new Date(issued + 'T12:00:00Z'); d.setUTCFullYear(d.getUTCFullYear() + CERT_TYPES[type].years); expires = d.toISOString().slice(0, 10); }
     const addr = str(got.address, 300) || '';
     // A certificate that looks like it's for somewhere else: say so.
     const pc = function (a) { const m = POSTCODE_RE.exec(String(a || '')); return m ? (m[1] + m[2]).toUpperCase() : ''; };
     const other = addr && t.address && ((pc(addr) && pc(t.address) && pc(addr) !== pc(t.address)) || (doorNumKey(addr) && doorNumKey(t.address) && doorNumKey(addr) !== doorNumKey(t.address)));
     return { read: !!type, type: type, issued_on: issued, expires_on: expires, reference: str(got.reference, 100) || '', rating: str(got.rating, 5) || '', address: addr,
+      licence_type: str(got.licence_type, 60) || '', holder: str(got.holder, 200) || '', council: str(got.council, 80) || '', max_occupants: parseInt(got.max_occupants, 10) || null,
       warning: other ? 'This certificate seems to be for ' + addr + ', not ' + t.address + '. Please check it’s the right one.' : '' };
+  }
+  // A licence read from a document, as the property's licence.
+  function licenceFromRead(d) {
+    return { status: 'licensed', type: d.licence_type || '', number: d.reference || '', holder: d.holder || '', starts: d.issued_on || null, expires: d.expires_on || null, borough: d.council || '', max_occupants: d.max_occupants || null };
   }
   // The office drops a certificate on a property or tenancy: read it.
   app.post('/api/admin/certificates/read', withDb(async function (p, req, res) {
@@ -3052,15 +3091,23 @@ module.exports = function mountJobs(app, opts) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const who = await landlordByToken(p, req.params.token);
     if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
-    const b = req.body || {}, t = await landlordTarget(p, who, b), f = certFile(b.file), type = CERT_TYPES[b.type] ? b.type : null;
+    const b = req.body || {}, t = await landlordTarget(p, who, b), f = certFile(b.file), type = CERT_TYPES[b.type] || b.type === 'Licence' ? b.type : null;
     if (!t) return res.status(404).json({ ok: false, error: 'not-your-property' });
     if (!type) return res.status(400).json({ ok: false, error: 'Please choose which certificate it is.' });
     const issued = isoDay(b.issued_on) || '', expires = isoDay(b.expires_on) || '';
     if (!expires) return res.status(400).json({ ok: false, error: 'Please enter the expiry date.' });
+    if (type === 'Licence' && !t.own) {
+      const out = await saveLicence(p, t.address, { status: 'licensed', type: str(b.licence_type, 60) || '', number: str(b.reference, 60) || '', holder: str(b.holder, 200) || '', starts: issued || null, expires: expires, borough: str(b.council, 80) || '' },
+        f ? { data: f.buf.toString('base64'), name: f.name, mime: f.mime } : undefined);
+      if (!out.json.ok) return res.status(out.status || 400).json(out.json);
+      ntfy({ title: 'Landlord uploaded a property licence', message: (who.l.name || 'A landlord') + ' uploaded the licence for ' + t.address + ' — expires ' + certDay(expires) + '. Check it in Fixflow.', tags: ['page_facing_up'] }).catch(function () {});
+      return res.json({ ok: true });
+    }
     if (t.own) {
       // Their own property: gas and EICR dates go on its record (the EPC is looked up automatically).
       const d = Object.assign({}, t.own.data || {});
       if (type === 'Gas') d.gas = expires; else if (type === 'EICR') d.eicr = expires;
+      else if (type === 'Licence') d.licence = { status: 'licensed', number: str(b.reference, 80) || '', expires: expires };
       await p.query('UPDATE landlord_properties SET data = $2, updated_at = now()' + (type === 'EPC' ? ", epc = jsonb_build_object('expires_on', $3::text, 'rating', $4::text, 'reference', $5::text)" : '') + ' WHERE id = $1',
         type === 'EPC' ? [t.own.id, JSON.stringify(d), expires, str(b.rating, 5) || '', str(b.reference, 100) || ''] : [t.own.id, JSON.stringify(d)]);
       if (f) await p.query(`INSERT INTO landlord_property_docs (own_id, type, name, mime, data) VALUES ($1, $2, $3, $4, $5)
@@ -3081,6 +3128,12 @@ module.exports = function mountJobs(app, opts) {
     res.setHeader('Content-Type', d.mime || 'application/pdf'); res.setHeader('X-Robots-Tag', 'noindex');
     res.setHeader('Content-Disposition', 'inline; filename="' + String(d.name || 'certificate.pdf').replace(/[^a-zA-Z0-9.\-_ ]+/g, '-') + '"');
     res.send(d.data);
+  }));
+  // A property licence document for one of the landlord's properties.
+  app.get('/l/:token/licence/:key', withDb(async function (p, req, res) {
+    const who = await landlordByToken(p, req.params.token), k = String(req.params.key || '');
+    if (!who || who.keys[k] === undefined) return res.status(404).send('Not found');
+    await sendLicenceDoc(p, k, res);
   }));
   // A certificate document for one of the landlord's properties.
   app.get('/l/:token/cert/:id', withDb(async function (p, req, res) {
@@ -3353,9 +3406,9 @@ module.exports = function mountJobs(app, opts) {
         : l.expires < today ? { c: 'late', t: what + ' — expired ' + day(l.expires) }
         : l.expires <= soon ? { c: 'soon', t: what + ' — expires ' + day(l.expires) }
         : { c: 'ok', t: what + ' — valid until ' + day(l.expires) };
-      const href = l.status !== 'not_needed' ? licLink(l, licAddr[k] || keys[k]) : '';
+      const href = l.has_doc ? '/l/' + token + '/licence/' + encodeURIComponent(k) : l.status !== 'not_needed' ? licLink(l, licAddr[k] || keys[k]) : '';
       return '<div class="lic ' + st.c + '">📜 ' + htmlEsc(st.t) + (l.borough ? ' <span class="muted">· ' + htmlEsc(l.borough) + '</span>' : '') +
-        (l.number && l.status !== 'not_needed' && l.status !== 'none' ? '<div class="lic-ref">Licence reference: <b>' + htmlEsc(l.number) + '</b></div>' : '') + (href ? ' · <a href="' + htmlEsc(href) + '" target="_blank" rel="noopener">' + (l.url ? 'View licence' : 'View on the council register') + ' ↗</a>' : '') + '</div>';
+        (l.number && l.status !== 'not_needed' && l.status !== 'none' ? '<div class="lic-ref">Licence reference: <b>' + htmlEsc(l.number) + '</b></div>' : '') + (href ? ' · <a href="' + htmlEsc(href) + '" target="_blank" rel="noopener">' + (l.has_doc ? '📎 View licence' : l.url ? 'View licence' : 'View on the council register') + ' ↗</a>' : '') + '</div>';
     };
   const ownScript = String.raw`<script>(function(){
 var TOKEN = document.body.getAttribute('data-lt'), ME = document.body.getAttribute('data-me') || 'Your landlord';
@@ -3471,8 +3524,8 @@ document.querySelectorAll('.lb-f').forEach(function(f){
     if (owns.length) (await p.query('SELECT own_id, type FROM landlord_property_docs WHERE own_id = ANY($1::int[])', [owns.map(function (o) { return o.id; })])).rows.forEach(function (r) { ownDocs[r.own_id + '|' + r.type] = 1; });
     // Upload a certificate: read, checked by the landlord, then saved.
     const certUp = function (attr) {
-      return '<div class="lcu" ' + attr + '><button type="button" class="lcu-b">📎 Upload a certificate</button><span class="muted lcu-h">Gas safety, EICR or EPC — PDF or photo, or drag and drop it here. We’ll read the dates for you.</span>' +
-        '<form class="lcu-f" hidden><p class="lcu-w"></p><div class="lf-two"><label>Certificate<select name="type"><option value="Gas">Gas safety</option><option value="EICR">Electrical (EICR)</option><option value="EPC">EPC</option></select></label><label>Certificate no.<input name="reference" maxlength="100"></label></div>' +
+      return '<div class="lcu" ' + attr + '><button type="button" class="lcu-b">📎 Upload a certificate</button><span class="muted lcu-h">Gas safety, EICR, EPC or property licence — PDF or photo, or drag and drop it here. We’ll read the dates for you.</span>' +
+        '<form class="lcu-f" hidden><p class="lcu-w"></p><div class="lf-two"><label>Certificate<select name="type"><option value="Gas">Gas safety</option><option value="EICR">Electrical (EICR)</option><option value="EPC">EPC</option><option value="Licence">Property licence</option></select></label><label>Certificate no.<input name="reference" maxlength="100"></label></div>' +
         '<div class="lf-two"><label>Date done<input type="date" name="issued_on"></label><label>Expires<input type="date" name="expires_on" required></label></div>' +
         '<button type="submit">Save certificate</button> <button type="button" class="lcu-x sec2">Cancel</button><p class="lcu-m muted"></p></form></div>';
     };
@@ -3500,7 +3553,7 @@ document.querySelectorAll('.lb-f').forEach(function(f){
           row('EPC <small class="muted">(checked automatically)</small>', e && e.expires_on ? (e.rating ? 'Rating ' + htmlEsc(e.rating) + ' · ' : '') + exp(e.expires_on) + ' · <a href="' + htmlEsc(epcLink({ reference: e.reference, address: o.address }, o.address)) + '" target="_blank" rel="noopener">View ↗</a>' : '<span class="muted">None found on the register yet — we check daily</span>', e && expState(e.expires_on)) +
           row('Gas safety', exp(d.gas) + (ownDocs[o.id + '|Gas'] ? ' · <a href="/l/' + htmlEsc(token) + '/own/' + o.id + '/doc/Gas" target="_blank" rel="noopener">📎 View</a>' : ''), expState(d.gas)) +
           row('Electrical (EICR)', exp(d.eicr) + (ownDocs[o.id + '|EICR'] ? ' · <a href="/l/' + htmlEsc(token) + '/own/' + o.id + '/doc/EICR" target="_blank" rel="noopener">📎 View</a>' : ''), expState(d.eicr)) +
-          row('Property licence', licTxt + (lic.number ? '<div class="muted">Ref ' + htmlEsc(lic.number) + '</div>' : ''), lic.status === 'licensed' ? expState(lic.expires) : '') + certUp('data-own="' + o.id + '"') + '</div>' +
+          row('Property licence', licTxt + (lic.number ? '<div class="muted">Ref ' + htmlEsc(lic.number) + '</div>' : '') + (ownDocs[o.id + '|Licence'] ? '<div><a href="/l/' + htmlEsc(token) + '/own/' + o.id + '/doc/Licence" target="_blank" rel="noopener">📎 View</a></div>' : ''), lic.status === 'licensed' ? expState(lic.expires) : '') + certUp('data-own="' + o.id + '"') + '</div>' +
         '<div class="card"><h3 style="margin-top:0">Tenancy</h3>' +
           row('Rent', d.rent ? '£' + Number(d.rent).toFixed(2) + ' a month' : '<span class="muted">Not added</span>') + row('Tenancy started', d.tenancy_start ? htmlEsc(day(d.tenancy_start)) : '<span class="muted">Not added</span>') +
           (ten.length ? ten.map(function (t) {
@@ -3591,7 +3644,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
             if (!d.ok) { alert(d.error && d.error.length > 12 ? d.error : 'Couldn’t read that file — please try again.'); return; }
             if (d.type) f.elements.type.value = d.type;
             f.elements.issued_on.value = d.issued_on || ''; f.elements.expires_on.value = d.expires_on || ''; f.elements.reference.value = d.reference || '';
-            f.setAttribute('data-rating', d.rating || '');
+            f.setAttribute('data-rating', d.rating || ''); f.setAttribute('data-lic', JSON.stringify({ licence_type: d.licence_type || '', holder: d.holder || '', council: d.council || '' }));
             w.textContent = d.warning || (d.read ? '✓ Read ' + x.name + ' — please check the details, then save.' : 'We couldn’t read the details from ' + x.name + ' — please fill them in.');
             w.className = 'lcu-w' + (d.warning ? ' bad' : ''); f.hidden = false; m.textContent = '';
           }).catch(function(){ b.disabled = false; b.textContent = '📎 Upload a certificate'; alert('Couldn’t read that file — please try again.'); });
@@ -3612,7 +3665,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   box.querySelector('.lcu-x').addEventListener('click', function(){ f.hidden = true; file = null; b.textContent = '📎 Upload a certificate'; });
   f.addEventListener('submit', function(e){
     e.preventDefault(); var s = f.querySelector('button[type=submit]'); s.disabled = true; s.textContent = 'Saving…';
-    fetch('/l/' + TOKEN + '/cert-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ file: file, type: f.elements.type.value, issued_on: f.elements.issued_on.value, expires_on: f.elements.expires_on.value, reference: f.elements.reference.value, rating: f.getAttribute('data-rating') || '' }, where)) })
+    fetch('/l/' + TOKEN + '/cert-save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ file: file, type: f.elements.type.value, issued_on: f.elements.issued_on.value, expires_on: f.elements.expires_on.value, reference: f.elements.reference.value, rating: f.getAttribute('data-rating') || '' }, JSON.parse(f.getAttribute('data-lic') || '{}'), where)) })
       .then(function(res){ return res.json(); }).then(function(d){
         s.disabled = false; s.textContent = 'Save certificate';
         if (!d.ok) { m.textContent = d.error && d.error.length > 12 ? d.error : 'Couldn’t save — please try again.'; return; }

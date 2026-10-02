@@ -1234,7 +1234,7 @@
       </div>
 
       <div id="certsView" hidden>
-        <div class="cert-up" id="certUpload" role="button" tabindex="0">📎 <b>Upload a gas safety, EICR or EPC certificate</b><span>Fixflow reads which property it’s for and the dates — check them and save. Or drag &amp; drop it here.</span></div>
+        <div class="cert-up" id="certUpload" role="button" tabindex="0">📎 <b>Upload a gas safety, EICR, EPC or property licence</b><span>Fixflow reads which property it’s for and the dates — check them and save. Or drag &amp; drop it here.</span></div>
         <div class="tiles prop-tiles" id="certTiles"></div>
         <div class="card cert-who"><h3 style="margin-bottom:8px">Who renews each certificate</h3>
           <div class="grid3">
@@ -3554,7 +3554,8 @@
     var l = licenceOf(address) || {}, st = licenceState(licenceOf(address));
     return '<div class="tile' + (st.k === 'bad' ? ' alert has' : st.k === 'warn' ? ' warnish' : st.k === 'ok' ? ' good' : '') + '" id="propLicTile"><div class="k">📜 Property licence</div>' +
       '<div id="plView"><div class="v" style="font-size:1rem">' + esc(st.text) + '</div>' +
-        (l.type || l.number ? '<small style="display:block;font-size:.78rem;color:var(--ink-soft)">' + esc([l.type, l.number].filter(Boolean).join(' · ')) + '</small>' : '') +
+        (l.type || l.number ? '<small style="display:block;font-size:.78rem;color:var(--ink-soft)">' + esc([l.type, l.number, l.max_occupants ? 'max ' + l.max_occupants + ' people' : ''].filter(Boolean).join(' · ')) + '</small>' : '') +
+        (l.has_doc ? '<a class="linkish" style="font-size:.8rem" href="/api/admin/licence-doc?key=' + encodeURIComponent(propKey(address)) + '" target="_blank" rel="noopener">📎 View licence</a>' : '') +
         (l.checked_at ? '<small style="display:block;font-size:.72rem;color:var(--ink-soft)">Checked ' + esc(longDay(l.checked_at)) + (l.borough ? ' · ' + esc(l.borough) : '') + '</small>' : '') +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><button type="button" class="btn small" id="plCheck">🔎 Check register</button><button type="button" class="linkish" id="plEdit">' + (licenceOf(address) ? 'Edit' : '+ Add') + '</button>' +
           (l.status !== 'not_needed' ? '<button type="button" class="linkish" id="plNotNeeded">Not needed</button>' : '') + '</div></div>' +
@@ -7162,9 +7163,9 @@
       renderAskTenancies();
       askCerts = (d.certificates || []).map(function(c){
         var pr = matchProperty(c.address), addr = pr ? (knownFullAddress(pr.key) || pr.address) : c.address;
-        var iss = c.issued_on, exp = c.expires_on || (iss ? addYears(iss, certDef(c.type).years) : '');
+        var iss = c.issued_on, exp = c.expires_on || (iss && c.type !== 'Licence' ? addYears(iss, certDef(c.type).years) : '');
         var f = c.document ? sentFiles[c.document - 1] : null;   // the uploaded certificate, kept with it
-        return { type: c.type, address: addr, matched: !!pr, issued_on: iss, expires_on: exp, reference: c.reference, rating: c.rating, file: f && f.data ? { name: f.name, mime: f.mime, data: f.data } : null };
+        return { type: c.type, address: addr, matched: !!pr, issued_on: iss, expires_on: c.type === 'Licence' ? c.expires_on : exp, reference: c.reference, rating: c.rating, file: f && f.data ? { name: f.name, mime: f.mime, data: f.data } : null, licence_type: c.licence_type, holder: c.holder, council: c.council };
       });
       renderAskCerts();
       askProps = (d.properties || []).map(function(x){
@@ -7219,16 +7220,22 @@
   // A certificate the property already has (e.g. "gas safety for 134 Regina Road
   // starting on 22/5/26"): checked here, then saved to the property's certificates.
   var askCerts = [];
+  function saveAskCert(c){
+    if (c.type === 'Licence') return saveReadLicence(c.address, c, c.file);
+    return api('PUT', '/api/admin/certificates', { address: c.address, type: c.type, issued_on: c.issued_on, expires_on: c.expires_on, reference: c.reference, rating: c.rating || '', doc: c.file || undefined });
+  }
   function renderAskCerts(){
     $('askCerts').innerHTML = (askCerts.length > 1 ? '<div class="row-actions" style="margin:0"><span class="muted-note" style="flex:1;margin:0">' + askCerts.length + ' certificates — check the dates, then save them all at once.</span><button class="btn primary" type="button" data-cact="saveall">Save all ' + askCerts.length + ' certificates</button></div>' : '') + askCerts.map(function(c, i){
-      var def = certDef(c.type), cur = certFor(propKey(c.address), c.type);
+      var def = certDef(c.type), lic = c.type === 'Licence', cur = lic ? licenceOf(c.address) : certFor(propKey(c.address), c.type);
       return '<div class="draft cdraft" data-ci="' + i + '"><div style="display:flex;align-items:center;gap:8px"><strong>📄 ' + esc(def.long) + '</strong></div>' +
         '<div><label class="lbl">Property</label><input class="inp" data-c="address" list="askPropList2" value="' + esc(c.address) + '">' +
           '<div class="match ' + (c.matched && !(cur && c.expires_on && cur.expires_on > c.expires_on) ? 'ok' : 'warn') + '">' + (c.matched ? '✓ Property on file' + (cur && cur.expires_on ? ' — current ' + esc(def.name.toLowerCase()) + ' ' + (daysUntil(cur.expires_on) < 0 ? 'expired ' : 'until ') + esc(longDay(cur.expires_on)) + (c.expires_on && cur.expires_on > c.expires_on ? ' — <b>newer than the date here</b>; saving replaces it with this older one' : ' (this replaces it)') : '') : 'Not a property on file yet — saving adds it') + '</div></div>' +
-        '<div class="grid3"><div><label class="lbl">Date done / starts</label><input class="inp" type="date" data-c="issued_on" value="' + esc(c.issued_on || '') + '"></div>' +
+        '<div class="grid3"><div><label class="lbl">' + (lic ? 'Valid from' : 'Date done / starts') + '</label><input class="inp" type="date" data-c="issued_on" value="' + esc(c.issued_on || '') + '"></div>' +
           '<div><label class="lbl">Expires</label><input class="inp" type="date" data-c="expires_on" value="' + esc(c.expires_on || '') + '"></div>' +
-          '<div><label class="lbl">Certificate no. (optional)</label><input class="inp" data-c="reference" value="' + esc(c.reference || '') + '"></div></div>' +
-        '<p class="muted-note" style="margin:0">Lasts ' + (def.years === 1 ? '12 months' : def.years + ' years') + ' — change the start date and the expiry follows.' + (c.file ? ' 📎 <b>' + esc(c.file.name) + '</b> is kept with it (landlords can open it too).' : '') + '</p>' +
+          '<div><label class="lbl">' + (lic ? 'Licence reference' : 'Certificate no. (optional)') + '</label><input class="inp" data-c="reference" value="' + esc(c.reference || '') + '"></div></div>' +
+        (lic ? '<div class="grid3"><div><label class="lbl">Licence type</label><input class="inp" data-c="licence_type" list="lcTypes" value="' + esc(c.licence_type || '') + '" placeholder="e.g. Additional (HMO)"><datalist id="lcTypes"><option value="Selective"><option value="Additional (HMO)"><option value="Mandatory HMO"></datalist></div>' +
+          '<div><label class="lbl">Licence holder</label><input class="inp" data-c="holder" value="' + esc(c.holder || '') + '"></div><div><label class="lbl">Council</label><input class="inp" data-c="council" value="' + esc(c.council || '') + '"></div></div>' : '') +
+        '<p class="muted-note" style="margin:0">' + (lic ? 'Saved as the property’s licence — landlords see it on their page.' : 'Lasts ' + (def.years === 1 ? '12 months' : def.years + ' years') + ' — change the start date and the expiry follows.') + (c.file ? ' 📎 <b>' + esc(c.file.name) + '</b> is kept with it (landlords can open it too).' : '') + '</p>' +
         '<div class="row-actions" style="margin-top:0"><button class="btn" type="button" data-cact="skip">Skip</button><button class="btn primary" type="button" data-cact="save">Save certificate</button></div></div>';
     }).join('');
   }
@@ -7236,7 +7243,7 @@
     var box = e.target.closest('[data-ci]'); if (!box) return;
     var c = askCerts[Number(box.dataset.ci)], f = e.target.dataset.c; if (!c || !f) return;
     c[f] = e.target.value.trim();
-    if (f === 'issued_on' && c.issued_on) { c.expires_on = addYears(c.issued_on, certDef(c.type).years); box.querySelector('[data-c="expires_on"]').value = c.expires_on; }
+    if (f === 'issued_on' && c.issued_on && c.type !== 'Licence') { c.expires_on = addYears(c.issued_on, certDef(c.type).years); box.querySelector('[data-c="expires_on"]').value = c.expires_on; }
     if (f === 'address') { var pr = matchProperty(c.address); c.matched = !!pr; }
   });
   $('askCerts').addEventListener('click', function(e){
@@ -7246,12 +7253,12 @@
       if (bad.length) { toast('Enter the date done (or expiry) for every certificate first'); return; }
       busy(b, true, 'Saving…');
       var list = askCerts.slice();
-      Promise.all(list.map(function(c){ return api('PUT', '/api/admin/certificates', { address: c.address, type: c.type, issued_on: c.issued_on, expires_on: c.expires_on, reference: c.reference, rating: c.rating || '', doc: c.file || undefined }).then(function(d){ return d.ok ? c : null; }); })).then(function(res){
+      Promise.all(list.map(function(c){ return saveAskCert(c).then(function(d){ return d.ok ? c : null; }); })).then(function(res){
         busy(b, false);
         var ok = res.filter(Boolean);
         askCerts = askCerts.filter(function(c){ return ok.indexOf(c) === -1; }); renderAskCerts();
         toast(ok.length ? ok.map(function(c){ return certDef(c.type).name + ' ' + (daysUntil(c.expires_on) < 0 ? 'expired ' : 'to ') + longDay(c.expires_on); }).join(' · ') + ' — saved for ' + shortAddr(ok[0].address) : 'Couldn’t save the certificates');
-        loadCerts().then(function(){ if (view === 'certs') renderCerts(); renderCertAlerts(); if (view === 'props' && openPropKey) renderProperty(); });
+        loadPropInfo().then(loadCerts).then(function(){ if (view === 'certs') renderCerts(); renderCertAlerts(); if (view === 'props' && openPropKey) renderProperty(); });
       });
       return;
     }
@@ -7259,11 +7266,12 @@
     if (b.dataset.cact === 'skip') { askCerts.splice(i, 1); renderAskCerts(); return; }
     if (!c.expires_on) { toast('Enter the date it was done (or the expiry)'); return; }
     busy(b, true, 'Saving…');
-    api('PUT', '/api/admin/certificates', { address: c.address, type: c.type, issued_on: c.issued_on, expires_on: c.expires_on, reference: c.reference, rating: c.rating || '', doc: c.file || undefined }).then(function(d){
+    saveAskCert(c).then(function(d){
       busy(b, false);
       if (!d.ok) { toast('Couldn’t save (' + (d.error || 'error') + ')'); return; }
       toast(certDef(c.type).name + ' saved for ' + shortAddr(c.address) + ' — expires ' + longDay(c.expires_on));
       askCerts.splice(i, 1); renderAskCerts();
+      if (c.type === 'Licence') { loadPropInfo().then(function(){ if (view === 'props' && openPropKey) renderProperty(); }); return; }
       loadCerts().then(function(){ if (view === 'certs') renderCerts(); renderCertAlerts(); if (view === 'props' && openPropKey) renderProperty(); if (daysUntil(c.expires_on) > CERT_REMIND) offerRemoveCertJob(c.address, c.type, false); });
     });
   });
@@ -7752,7 +7760,12 @@
     return api('GET', '/api/admin/certificates').then(function(d){ if (d.ok) { certs = d.certificates; certWho = d.contractors || {}; certCost = d.costs || {}; CERT_REMIND = d.remind_days || 10; } });
   }
   function certDay(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
-  function certDef(t){ return CERTS.filter(function(c){ return c.type === t; })[0]; }
+  function certDef(t){ return t === 'Licence' ? { type: 'Licence', name: 'Property licence', long: 'Property licence', years: 5 } : CERTS.filter(function(c){ return c.type === t; })[0]; }
+  // Save a licence read from a document (with the document) to the property.
+  function saveReadLicence(address, d, file){
+    return api('PUT', '/api/admin/property-licence', { address: address, doc: file || undefined,
+      licence: { status: 'licensed', type: d.licence_type || '', number: d.reference || '', holder: d.holder || '', starts: d.issued_on || null, expires: d.expires_on || null, borough: d.council || '', max_occupants: d.max_occupants || null } });
+  }
   function certFor(key, type){ return certs.filter(function(c){ return c.property_key === key && c.type === type; })[0] || null; }
   function daysUntil(day){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || '')); if (!m) return null; var t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((new Date(+m[1], +m[2] - 1, +m[3]) - t) / 86400000); }
   // A gas safety, EICR or EPC job (same rule as the server).
@@ -7978,7 +7991,7 @@
       });
     }
     certDropZone($('propCerts'), function(){ var d = propertyJobs(); return d ? (knownFullAddress(d.property.key) || d.property.address) : ''; }, function(){ if (view === 'props' && openPropKey) renderProperty(); });
-    $('propCerts').innerHTML = '<h3>Certificates <span class="cert-drop-hint">📎 drop a certificate here</span><span style="flex:1"></span><button type="button" class="btn small ghost" id="propCertsAll">All certificates ›</button></h3>' + certChips(key) + '<div class="cert-grid">' +
+    $('propCerts').innerHTML = '<h3>Certificates <span class="cert-drop-hint">📎 drop a certificate or licence here</span><span style="flex:1"></span><button type="button" class="btn small ghost" id="propCertsAll">All certificates ›</button></h3>' + certChips(key) + '<div class="cert-grid">' +
       CERTS.map(function(def){ var c = certFor(key, def.type); return certCellHtml({ def: def, c: c, st: certState(c) }, address); }).join('') + '</div>';
     $('propCertsAll').addEventListener('click', function(){ certFilter = 'all'; showView('certs'); });
   }
@@ -8825,10 +8838,15 @@
             if (!d.ok) { toast(d.error || 'Couldn’t read that file'); return; }
             if (!d.read || !d.expires_on || d.warning) {
               // Check it first.
-              openAsk('say'); askCerts = [{ type: d.type || 'Gas', address: address, matched: true, issued_on: d.issued_on, expires_on: d.expires_on, reference: d.reference, rating: d.rating, file: file }]; renderAskCerts();
+              openAsk('say'); askCerts = [{ type: d.type || 'Gas', address: address, matched: true, issued_on: d.issued_on, expires_on: d.expires_on, reference: d.reference, rating: d.rating, file: file, licence_type: d.licence_type, holder: d.holder, council: d.council, max_occupants: d.max_occupants }]; renderAskCerts();
               $('askErr').textContent = d.warning || 'I couldn’t read all the details from ' + f.name + ' — please check them, then save.';
               return;
             }
+            if (d.type === 'Licence') return saveReadLicence(address, d, file).then(function(s){
+              if (!s.ok) { toast('Couldn’t save the licence'); return; }
+              toast('✓ Property licence saved for ' + shortAddr(address) + (d.reference ? ' — ' + d.reference : '') + ', expires ' + longDay(d.expires_on));
+              loadPropInfo().then(function(){ if (after) after(); });
+            });
             return api('PUT', '/api/admin/certificates', { address: address, type: d.type, issued_on: d.issued_on, expires_on: d.expires_on, reference: d.reference, rating: d.rating || '', doc: file }).then(function(s){
               if (!s.ok) { toast('Couldn’t save the certificate'); return; }
               if (tcyDraft && tcyDraft.certs) delete tcyDraft.certs[d.type];
@@ -8847,7 +8865,7 @@
     var address = tcyDraft.address, key = propKey(address);
     tcyCertKey = key;
     certDropZone($('tfCerts'), function(){ return tcyDraft && tcyDraft.address; }, function(){ renderTcyCerts(); if (tcyLocked) tcyLock(); });
-    $('tfCerts').innerHTML = '<h3>Certificates <span class="cert-drop-hint">📎 drop a certificate here</span></h3>' +
+    $('tfCerts').innerHTML = '<h3>Certificates <span class="cert-drop-hint">📎 drop a certificate or licence here</span></h3>' +
       (key && address ? '' : '<p class="muted-note" style="margin:0 0 8px">Enter the property address first — then the EPC can be found on the register.</p>') +
       CERTS.map(function(def){
         var v = tcyCertVal(def.type), c = key ? certFor(key, def.type) : null, st = certState(c);
