@@ -1737,8 +1737,9 @@
   <div class="card tn-card" role="dialog" aria-labelledby="stTitle">
     <h3 id="stTitle" style="margin:0">Landlord statements to send</h3>
     <p class="muted-note" style="margin:6px 0 10px">A statement for each rent date. Where the landlord owed us from an earlier statement (e.g. the move-in fees were more than the first rent), it is brought forward and taken from this month’s rent — the ones still owing are at the top.</p>
+    <div id="stShare" hidden style="margin:0 0 10px"></div>
     <div id="stList"></div>
-    <div class="row-actions" style="margin-top:12px"><button class="btn primary" type="button" id="stAllSent">✓ Mark all as sent</button><span style="flex:1"></span><button class="btn" type="button" id="stClose">Close</button></div>
+    <div class="row-actions" style="margin-top:12px"><button class="btn primary" type="button" id="stMailSel">✉ Email selected</button><button class="btn" type="button" id="stAllSent">✓ Mark all as sent</button><button class="btn ghost small" type="button" id="stPickAll">Select none</button><span style="flex:1"></span><button class="btn" type="button" id="stClose">Close</button></div>
   </div>
 </div>
 <div class="modal" id="rrModal" hidden>
@@ -7991,28 +7992,91 @@
       (m.bf ? ' − brought forward ' + gbp(m.bf) : '') + ' → ' + (stmtOwes(m) ? '<b style="color:var(--brick)">landlord still owes ' + gbp(-m.balance) + '</b>' : '<b>' + gbp(m.balance) + '</b> to pay the landlord' + (m.bf ? ' <span style="color:var(--green, #16a34a)">✓ cleared what they owed</span>' : ''));
   }
   function stmtTcy(id){ var t = tenancies.filter(function(x){ return x.id === Number(id); })[0]; return t ? t.data || {} : null; }
-  function stmtMail(x, m){
-    var d = stmtTcy(x.tenancy_id) || {}, cfg = meta.invoice || {}, fees = r2(m.sub + m.vat);
+  // The text for one statement in an email: its lines, closing balance and what happens next.
+  function stmtMailBlock(x, m, withAddr){
+    var cfg = meta.invoice || {};
     var lines = ['- Rent for ' + longDay(m.from) + ' to ' + longDay(m.to) + ': ' + gbp(m.rent)];
     if (m.deposit) lines.push('- Deposit: ' + gbp(m.deposit));
     (m.credits || []).forEach(function(c){ lines.push('- ' + c.label + ': ' + gbp(c.amount)); });
     m.fees.forEach(function(f){ lines.push('- ' + f.label + ': ' + gbp(f.amount) + (f.vat ? ' + VAT ' + gbp(f.vat) : m.vatOn ? ' (no VAT)' : '')); });
     if (m.bf) lines.push('- Balance brought forward from your ' + monthName(m.bf_from) + ' statement: ' + gbp(m.bf));
-    var body = llGreeting(x.landlord) + ',\n\nPlease find attached your statement for ' + shortAddr(x.address) + ' for ' + monthName(m.from) + ':\n\n' + lines.join('\n') +
-      '\n\nClosing balance: ' + (stmtOwes(m) ? '−' : '') + gbp(Math.abs(m.balance)) + '\n\n' +
+    return (withAddr ? shortAddr(x.address) + ' — ' : '') + monthName(m.from) + ':\n' + lines.join('\n') + '\nClosing balance: ' + (stmtOwes(m) ? '−' : '') + gbp(Math.abs(m.balance)) + '\n' +
       (stmtOwes(m) ? 'After this month’s rent there is still ' + gbp(-m.balance) + ' owed to us. Please pay it by bank transfer' + (cfg.payee && cfg.accountNumber ? ' to ' + cfg.payee + ', sort code ' + cfg.sortCode + ', account ' + cfg.accountNumber + ', reference ' + (payRef(x.address) || 'the property address') : '') + ' — otherwise it will be taken from next month’s rent.'
-        : 'We will pay ' + gbp(m.balance) + ' to you by BACS within 3 working days.') + '\n\nKind regards,\nResidential Realtors';
-    return 'mailto:' + encodeURIComponent(x.email || '') + '?subject=' + encodeURIComponent('Statement — ' + shortAddr(x.address) + ' — ' + monthName(m.from)) + '&body=' + encodeURIComponent(body);
+        : 'We will pay ' + gbp(m.balance) + ' to you by BACS within 3 working days.');
+  }
+  // One email to a landlord for one or more statements (any of their properties): who, subject, text.
+  function stmtEmail(list){
+    var x0 = list[0].x, props = list.map(function(o){ return o.x.address; }).filter(function(a, i, all){ return all.indexOf(a) === i; }), many = props.length > 1;
+    var months = list.map(function(o){ return monthName(o.m.from); }).filter(function(a, i, all){ return all.indexOf(a) === i; });
+    var subject = (list.length > 1 ? 'Statements — ' : 'Statement — ') + (many ? props.length + ' properties' : shortAddr(x0.address)) + ' — ' + months.join(', ');
+    var body = llGreeting(x0.landlord) + ',\n\nPlease find attached your ' + (list.length > 1 ? list.length + ' statements' : 'statement') + (many ? '' : ' for ' + shortAddr(x0.address)) + '.\n\n' +
+      list.map(function(o){ return stmtMailBlock(o.x, o.m, many); }).join('\n\n') + '\n\nKind regards,\nResidential Realtors';
+    return { to: x0.email || '', name: x0.landlord || '', subject: subject, body: body };
+  }
+  // An email draft file (.eml) with the statements attached: opens in Outlook, Windows Mail or
+  // Apple Mail ready to send — nothing is sent from Fixflow.
+  function emlFile(mail, files){
+    var b64 = function(str){ return btoa(unescape(encodeURIComponent(str))); };
+    var wrap = function(x){ return x.replace(/.{1,76}/g, '$&\r\n'); };
+    var ascii = function(n){ return String(n).replace(/[^\x20-\x7e]/g, '-').replace(/["\\]/g, ''); };
+    var hdr = function(v){ return /^[\x20-\x7e]*$/.test(v) ? v : '=?UTF-8?B?' + b64(v) + '?='; };
+    var bd = 'rr-' + Math.random().toString(36).slice(2);
+    var out = ['To: ' + (mail.name ? hdr('"' + mail.name.replace(/"/g, '') + '"') + ' ' : '') + '<' + mail.to + '>', 'Subject: ' + hdr(mail.subject), 'X-Unsent: 1', 'MIME-Version: 1.0',
+      'Content-Type: multipart/mixed; boundary="' + bd + '"', '', '--' + bd, 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', wrap(b64(mail.body))];
+    files.forEach(function(f){ out.push('--' + bd, 'Content-Type: application/pdf; name="' + ascii(f.name) + '"', 'Content-Disposition: attachment; filename="' + ascii(f.name) + '"', 'Content-Transfer-Encoding: base64', '', wrap(f.b64)); });
+    out.push('--' + bd + '--', '');
+    return new Blob([out.join('\r\n')], { type: 'message/rfc822' });
+  }
+  function stmtPdfFile(o){
+    var d = stmtTcy(o.x.tenancy_id) || {}, doc = statementPdf(d, o.m); if (!doc) return null;
+    var name = tcyFile(d, 'Landlord Statement - ' + monthName(o.m.from));
+    return { name: name, b64: doc.output('datauristring').split(',')[1], blob: doc.output('blob') };
+  }
+  var stmtUseShare = function(){ return !!(navigator.canShare && window.matchMedia && matchMedia('(pointer: coarse)').matches); };
+  // Email statements with the PDFs attached, one email per landlord. Computer: an email draft
+  // file each (downloaded, opens in the mail app). Phone: the share sheet, one landlord at a time.
+  function stmtEmailMany(list){
+    var noMail = list.filter(function(o){ return !o.x.email; }), groups = {}, order = [];
+    list.filter(function(o){ return o.x.email; }).forEach(function(o){ var k = o.x.email.toLowerCase(); if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(o); });
+    if (noMail.length) toast(noMail.length + ' statement' + (noMail.length === 1 ? ' has' : 's have') + ' no landlord email saved — skipped');
+    if (!order.length) return;
+    var mark = function(g){ return api('POST', '/api/admin/statements/sent', { items: g.map(function(o){ return { tenancy_id: o.x.tenancy_id, from: o.m.from, total: o.m.total, balance: o.m.balance }; }) }); };
+    if (stmtUseShare()) {
+      var shareOne = function(g){
+        var mail = stmtEmail(g), files = g.map(stmtPdfFile).filter(Boolean).map(function(f){ return new File([f.blob], f.name, { type: 'application/pdf' }); });
+        if (!navigator.canShare({ files: files })) { toast('This phone can’t attach files — use a computer'); return Promise.resolve(false); }
+        return navigator.share({ files: files, title: mail.subject, text: 'To: ' + mail.to + '\n\n' + mail.body }).then(function(){ return mark(g).then(function(){ return true; }); })['catch'](function(){ return false; });
+      };
+      if (order.length === 1) { shareOne(groups[order[0]]).then(function(ok){ if (ok) { toast('Statement shared — marked as sent'); loadStatements(); } }); return; }
+      // Several landlords: a share button for each (the phone needs a tap per share).
+      $('stShare').hidden = false;
+      $('stShare').innerHTML = '<p class="muted-note" style="margin:0 0 6px">Tap each landlord to share their email with the statements attached:</p>' + order.map(function(k){ var g = groups[k];
+        return '<button type="button" class="btn small primary" style="margin:0 6px 6px 0" data-st-share="' + esc(k) + '">✉ ' + esc(g[0].x.landlord || k) + ' · ' + g.length + '</button>'; }).join('');
+      $('stShare').onclick = function(e){ var bb = e.target.closest('[data-st-share]'); if (!bb) return; shareOne(groups[bb.dataset.stShare]).then(function(ok){ if (ok) { bb.disabled = true; bb.textContent = '✓ ' + bb.textContent.slice(2); loadStatements(); } }); };
+      $('stShare').scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    order.forEach(function(k, i){
+      setTimeout(function(){
+        var g = groups[k], mail = stmtEmail(g), files = g.map(stmtPdfFile).filter(Boolean);
+        var url = URL.createObjectURL(emlFile(mail, files)), a = document.createElement('a');
+        a.href = url; a.download = ('Email to ' + (g[0].x.landlord || 'landlord') + ' - ' + mail.subject).replace(/[—–]/g, '-').replace(/[^\x20-\x7e]/g, '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 110) + '.eml';
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); }, 20000);
+        mark(g).then(function(){ if (i === order.length - 1) loadStatements(); });
+      }, i * 450);
+    });
+    toast(order.length === 1 ? 'Email ready with the statement' + (groups[order[0]].length > 1 ? 's' : '') + ' attached — open the downloaded email to send it'
+      : order.length + ' emails ready (one per landlord) with the statements attached — open each downloaded email to send it');
   }
   function stmtRow(x, m, withAddr){
     var k = x.tenancy_id + '|' + m.from;
-    return '<div class="inv-prop"' + (stmtOwes(m) ? ' style="border-color:var(--brick)"' : '') + '><div class="inv-prop-h"><button type="button" class="linkish" style="font-weight:700;font-size:inherit;text-align:left" title="Open the statement" data-st-pdf="' + k + '">' + (withAddr ? esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') : esc(monthName(m.from)) + (m.n === 0 ? ' · move-in' : '')) + '</button>' +
+    return '<div class="inv-prop"' + (stmtOwes(m) ? ' style="border-color:var(--brick)"' : '') + '><div class="inv-prop-h">' + (withAddr ? '<input type="checkbox" class="st-pick" data-st-pick="' + k + '" checked title="Include in Email selected" style="margin:0 8px 0 0">' : '') + '<button type="button" class="linkish" style="font-weight:700;font-size:inherit;text-align:left;flex:1" title="Open the statement" data-st-pdf="' + k + '">' + (withAddr ? esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') : esc(monthName(m.from)) + (m.n === 0 ? ' · move-in' : '')) + '</button>' +
       '<span class="muted-note" style="margin:0">' + (withAddr ? esc(monthName(m.from)) + ' · ' : '') + esc(ukDay(m.from)) + ' – ' + esc(ukDay(m.to)) + '</span></div>' +
       '<div style="margin:3px 0 6px;font-size:.92rem">' + stmtSummary(m) + '</div>' +
       (m.changed ? '<div class="match warn" style="margin:0 0 6px">⚠ Changed since it was sent (closing balance was ' + esc(gbp(m.changed.was)) + ', now ' + esc(gbp(m.balance)) + ') — send the updated statement.</div>' : '') +
       stmtOwnCosts(x, m, withAddr) +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><button type="button" class="btn small" data-st-pdf="' + k + '">📄 Open statement</button><button type="button" class="btn small ghost" data-st-dl="' + k + '" title="Download the PDF">⬇</button>' +
-        (x.email ? '<a class="btn small primary" data-st-mail="' + k + '" href="' + esc(stmtMail(x, m)) + '">✉ Email landlord</a>' : '<span class="muted-note" style="margin:0">No landlord email saved.</span>') +
+        (x.email ? '<button type="button" class="btn small primary" data-st-mail="' + k + '" title="An email to ' + esc(x.email) + ' with the statement attached">✉ Email with PDF</button>' : '<span class="muted-note" style="margin:0">No landlord email saved.</span>') +
         (m.sent && !m.changed ? '<span class="muted-note" style="margin:0;color:var(--green, #16a34a)">✓ Sent ' + esc(fmtShort(m.sent.at || m.sent).split(',')[0]) + '</span> <button type="button" class="linkish" data-st-unsent="' + k + '">Undo</button>'
           : '<button type="button" class="btn small ghost" data-st-sent="' + k + '">' + (m.changed ? '✓ Sent again' : '✓ Sent') + '</button>') +
         (withAddr ? '' : '<button type="button" class="btn small ghost" data-st-addcost="' + k + '">+ Add cost or credit</button>') + '</div>' +
@@ -8032,13 +8096,15 @@
     if (!x || !x.months.length) return '<h3>Monthly statements</h3><p class="muted-note" style="margin:0">A statement appears here on each rent date' + (/tenant find/i.test(String((stmtTcy(id) || {}).service || '')) ? ' while the landlord owes us from the move-in statement (Tenant Find landlords collect the rent themselves otherwise)' : '') + '.</p>';
     var owe = x.months[x.months.length - 1];
     var unsent = x.months.filter(function(m){ return !m.sent || m.changed; }).length;
-    return '<h3 style="display:flex;align-items:center;gap:8px">Monthly statements<span style="flex:1"></span>' + (unsent > 1 ? '<button type="button" class="btn small" data-st-allsent="' + id + '">✓ Mark all ' + unsent + ' as sent</button>' : '') + '</h3>' + (stmtOwes(owe) ? '<div class="match warn" style="margin:0 0 8px">⚠ The landlord still owes us ' + esc(gbp(-owe.balance)) + ' — it’s brought forward to the next rent.</div>' : '') +
+    return '<h3 style="display:flex;align-items:center;gap:8px">Monthly statements<span style="flex:1"></span>' + (unsent > 1 && x.email ? '<button type="button" class="btn small primary" data-st-mailall="' + id + '" title="One email to ' + esc(x.email) + ' with every unsent statement attached">✉ Email ' + unsent + ' unsent with PDFs</button>' : '') + (unsent > 1 ? '<button type="button" class="btn small" data-st-allsent="' + id + '">✓ Mark all ' + unsent + ' as sent</button>' : '') + '</h3>' + (stmtOwes(owe) ? '<div class="match warn" style="margin:0 0 8px">⚠ The landlord still owes us ' + esc(gbp(-owe.balance)) + ' — it’s brought forward to the next rent.</div>' : '') +
       x.months.slice().reverse().map(function(m){ return stmtRow(x, m, false); }).join('');
   }
   function renderStmtList(){
     var due = stmtDue();
     $('stAllSent').hidden = !due.length; $('stAllSent').textContent = '✓ Mark all ' + due.length + ' as sent';
+    $('stMailSel').hidden = $('stPickAll').hidden = !due.length; $('stPickAll').textContent = 'Select none';
     $('stList').innerHTML = due.length ? due.map(function(o){ return stmtRow(o.x, o.m, true); }).join('') : '<p class="muted-note">All this month’s statements are sent.</p>';
+    stmtPickCount();
   }
   function stmtFind(k){ var a = String(k).split('|'), x = stmtsBy[a[0]]; return x ? { x: x, m: x.months.filter(function(m){ return m.from === a[1]; })[0] } : null; }
   function stmtSent(k, sent, how){
@@ -8047,6 +8113,8 @@
     return api('POST', '/api/admin/tenancies/' + f.x.tenancy_id + '/statement', { from: f.m.from, sent: sent, how: how, total: f.m.total, balance: f.m.balance }).then(function(){ return loadStatements(); });
   }
   function stmtClick(e){
+    var ma = e.target.closest('[data-st-mailall]');
+    if (ma) { var sxm = stmtsBy[ma.dataset.stMailall]; if (sxm) stmtEmailMany(sxm.months.filter(function(m){ return !m.sent || m.changed; }).map(function(m){ return { x: sxm, m: m }; })); return; }
     var as = e.target.closest('[data-st-allsent]');
     if (as) { var sxa = stmtsBy[as.dataset.stAllsent]; if (sxa) stmtAllSent(sxa.months.filter(function(m){ return !m.sent || m.changed; }).map(function(m){ return { x: sxa, m: m }; }), as); return; }
     var ac = e.target.closest('[data-st-addcost]');
@@ -8075,12 +8143,8 @@
     var k = b.dataset.stPdf || b.dataset.stDl || b.dataset.stMail || b.dataset.stSent || b.dataset.stUnsent, f = stmtFind(k); if (!f || !f.m) return;
     var d = stmtTcy(f.x.tenancy_id) || {}, fname = tcyFile(d, 'Landlord Statement - ' + monthName(f.m.from));
     if (b.dataset.stPdf) { openPdf(statementPdf(d, f.m), fname); return; }
-    if (b.dataset.stDl || b.dataset.stMail) {
-      var doc = statementPdf(d, f.m);
-      if (doc) deliverPdf(doc, fname, !!b.dataset.stDl);
-      if (b.dataset.stMail) { stmtSent(k, true, 'email'); toast('Statement downloaded — attach it to the email'); }
-      return;
-    }
+    if (b.dataset.stMail) { stmtEmailMany([f]); return; }
+    if (b.dataset.stDl) { deliverPdf(statementPdf(d, f.m), fname, true); return; }
     stmtSent(k, !!b.dataset.stSent);
   }
   $('stList').addEventListener('click', stmtClick);
@@ -8096,7 +8160,12 @@
     });
   }
   $('stAllSent').addEventListener('click', function(){ stmtAllSent(stmtDue(), this); });
-  $('stBannerGo').addEventListener('click', function(){ renderStmtList(); $('stModal').hidden = false; });
+  function stmtPicked(){ return [].slice.call(document.querySelectorAll('#stList [data-st-pick]:checked')).map(function(c){ return stmtFind(c.dataset.stPick); }).filter(function(f){ return f && f.m; }); }
+  function stmtPickCount(){ var n = stmtPicked().length; $('stMailSel').textContent = '✉ Email selected (' + n + ')'; $('stMailSel').disabled = !n; $('stPickAll').textContent = n ? 'Select none' : 'Select all'; }
+  $('stList').addEventListener('change', function(e){ if (e.target.closest('[data-st-pick]')) stmtPickCount(); });
+  $('stPickAll').addEventListener('click', function(){ var on = !stmtPicked().length; document.querySelectorAll('#stList [data-st-pick]').forEach(function(c){ c.checked = on; }); stmtPickCount(); });
+  $('stMailSel').addEventListener('click', function(){ var l = stmtPicked(); if (l.length) stmtEmailMany(l); });
+  $('stBannerGo').addEventListener('click', function(){ $('stShare').hidden = true; renderStmtList(); stmtPickCount(); $('stModal').hidden = false; });
   $('stClose').addEventListener('click', function(){ $('stModal').hidden = true; });
   $('stModal').addEventListener('mousedown', function(e){ if (e.target === $('stModal')) $('stClose').click(); });
 
@@ -9650,7 +9719,7 @@
     ['Residential Realtors'].concat(String(cfg.address || '28-30 Harper Road, London, SE1 6AD').split(/\s*,\s*/)).forEach(function(line, i){ doc.text(line, R, 60 + i * 14, { align: 'right' }); });
     var y = 150;
     [l.name].concat(tcyLandlordAddress(l)).filter(Boolean).forEach(function(line, i){ doc.text(line, X, y + i * 14); });
-    doc.text('Date', R - 100, y + 14); doc.text(ukDay(m.date || (m.n ? m.from : '') || isoDay(new Date())), R, y + 14, { align: 'right' });
+    doc.text('Date', R - 100, y + 14); doc.text(ukDay(m.date || (m.n ? m.from : d.statement_date) || isoDay(new Date())), R, y + 14, { align: 'right' });
     y = 245; doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('STATEMENT OF ACCOUNT', W / 2, y, { align: 'center' });
     var VX = R - 95;
     var band = function(yy, title, vatCol){
@@ -9661,29 +9730,41 @@
       doc.setDrawColor(128, 20, 30); doc.setLineWidth(0.8); doc.line(X - 4, yy + 18, R + 4, yy + 18); doc.setDrawColor(0);
       doc.setFont('helvetica', 'normal');
     };
-    y = 290; band(y, 'Income');
-    y += 32; doc.text('Rent for period', X + 70, y); doc.text(ukDay(m.from) + '  -  ' + ukDay(m.to), X + 160, y); doc.text(pdfGbp(c.rent), R, y, { align: 'right' });
-    if (c.deposit) { y += 15; doc.text('Deposit (to be registered by the landlord)', X + 70, y); doc.text(pdfGbp(c.deposit), R, y, { align: 'right' }); }
-    (m.credits || []).forEach(function(f){ y += 15; doc.text(doc.splitTextToSize(f.label, 260)[0], X + 70, y); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); });
-    y += 36; doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Total Income:', R - 150, y, { align: 'right' }); doc.text(pdfGbp(c.income), R, y, { align: 'right' });
+    // Always one page: the gaps (then the rows) shrink so everything ends above the footer.
+    var owes = c.balance < 0, bank = owes && cfg.payee && cfg.accountNumber;
+    var fy = doc.internal.pageSize.getHeight() - 90, limit = fy - 16;
+    var incRows = 1 + (c.deposit ? 1 : 0) + (m.credits || []).length, feeRows = Math.max(1, c.fees.length), smalls = (c.vat ? 1 : 0) + (m.bf ? 1 : 0);
+    // Each gap shrinks from its normal size towards a minimum that keeps headings and totals apart;
+    // after that, the rows get tighter.
+    var GAP = { band: [32, 30], inc: [36, 18], exp: [50, 24], fees: [50, 22], small: [18, 14], total: [38, 20], closing: [32, 18], amount: [24, 17] };
+    var used = function(k){ return k === 'band' ? 2 : k === 'small' ? smalls : 1; };
+    var sum = function(ix){ return Object.keys(GAP).reduce(function(t, k){ return t + GAP[k][ix] * used(k); }, 0); };
+    var maxG = sum(0), minG = sum(1), tail = bank ? 28 : 14, top = 290, rows = incRows - 1 + feeRows, rh = 15;
+    var room = limit - top - tail - rows * rh, g = Math.max(0, Math.min(1, (room - minG) / (maxG - minG)));
+    if (room < minG) rh = Math.max(7, (limit - top - tail - minG) / rows);
+    var rowFont = Math.min(9.5, Math.max(5.5, rh * 0.7));
+    var gk = function(k){ return GAP[k][1] + (GAP[k][0] - GAP[k][1]) * g; };
+    y = top; band(y, 'Income');
+    y += gk('band'); doc.setFontSize(rowFont); doc.text('Rent for period', X + 70, y); doc.text(ukDay(m.from) + '  -  ' + ukDay(m.to), X + 160, y); doc.text(pdfGbp(c.rent), R, y, { align: 'right' });
+    if (c.deposit) { y += rh; doc.text('Deposit (to be registered by the landlord)', X + 70, y); doc.text(pdfGbp(c.deposit), R, y, { align: 'right' }); }
+    (m.credits || []).forEach(function(f){ y += rh; doc.text(doc.splitTextToSize(f.label, 260)[0], X + 70, y); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); });
+    y += gk('inc'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Total Income:', R - 150, y, { align: 'right' }); doc.text(pdfGbp(c.income), R, y, { align: 'right' });
     // Each fee with its own VAT (£0.00 on fees with no VAT), like the office statements.
-    y += 50; band(y, 'Expenditure', c.vatOn);
-    y += 32; doc.setFontSize(9.5);
-    c.fees.forEach(function(f){ doc.text(ukDay(m.from, true), X - 2, y); doc.text(doc.splitTextToSize(f.label, c.vatOn ? 250 : 300)[0], X + 48, y); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += 15; });
-    if (!c.fees.length) { doc.text(m.bf ? 'No fees this month' : 'No fees', X + 48, y); y += 15; }
-    y += 50; doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    y += gk('exp'); band(y, 'Expenditure', c.vatOn);
+    y += gk('band'); doc.setFontSize(rowFont);
+    c.fees.forEach(function(f){ doc.text(ukDay(m.from, true), X - 2, y); doc.text(doc.splitTextToSize(f.label, c.vatOn ? 250 : 300)[0], X + 48, y); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += rh; });
+    if (!c.fees.length) { doc.text(m.bf ? 'No fees this month' : 'No fees', X + 48, y); y += rh; }
+    y += gk('fees') - rh; doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
     doc.text('Sub-Total:', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.sub), R, y, { align: 'right' });
-    if (c.vat) { y += 18; doc.text('VAT (20%)', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.vat), R, y, { align: 'right' }); }
+    if (c.vat) { y += gk('small'); doc.text('VAT (20%)', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.vat), R, y, { align: 'right' }); }
     // What the landlord still owed from the last statement (VAT was already on it).
-    if (m.bf) { y += 18; doc.text('Balance brought forward' + (m.bf_from ? ' (' + monthName(m.bf_from) + ' statement)' : '') + ':', R - 80, y, { align: 'right' }); doc.text(pdfGbp(m.bf), R, y, { align: 'right' }); }
-    y += 38; doc.setFontSize(11.5); doc.text('Total', X - 2, y); doc.text(pdfGbp(c.feeTotal), R, y, { align: 'right' });
-    y += 32; doc.text('Closing Balance', X - 2, y); doc.text(pdfGbp(c.balance), R, y, { align: 'right' });
+    if (m.bf) { y += gk('small'); doc.text('Balance brought forward' + (m.bf_from ? ' (' + monthName(m.bf_from) + ' statement)' : '') + ':', R - 80, y, { align: 'right' }); doc.text(pdfGbp(m.bf), R, y, { align: 'right' }); }
+    y += gk('total'); doc.setFontSize(11.5); doc.text('Total', X - 2, y); doc.text(pdfGbp(c.feeTotal), R, y, { align: 'right' });
+    y += gk('closing'); doc.text('Closing Balance', X - 2, y); doc.text(pdfGbp(c.balance), R, y, { align: 'right' });
     // Fees can be more than the rent received (e.g. a tenant find fee taken up front): the landlord owes the difference.
-    var owes = c.balance < 0;
-    y += 24; doc.text(owes ? 'AMOUNT DUE FROM LANDLORD' : 'PAYMENT AMOUNT', X - 2, y); doc.text(pdfGbp(Math.abs(c.balance)), R, y, { align: 'right' });
+    y += gk('amount'); doc.text(owes ? 'AMOUNT DUE FROM LANDLORD' : 'PAYMENT AMOUNT', X - 2, y); doc.text(pdfGbp(Math.abs(c.balance)), R, y, { align: 'right' });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(owes ? 'Please pay by bank transfer within 7 days, or it will be taken from next month\'s rent' : 'Paid by BACS within 3 working days', X - 2, y + 14);
-    if (owes && cfg.payee && cfg.accountNumber) doc.text(cfg.payee + ' · Sort code ' + cfg.sortCode + ' · Account ' + cfg.accountNumber + ' · Reference ' + (payRef(d.address) || ''), X - 2, y + 28);
-    var fy = doc.internal.pageSize.getHeight() - 90;
+    if (bank) doc.text('Bank: ' + cfg.payee + ', sort code ' + cfg.sortCode + ', account ' + cfg.accountNumber + ', reference ' + (payRef(d.address) || ''), X - 2, y + 28);
     doc.setFontSize(6.5); doc.setTextColor(200, 16, 30); doc.setFont('helvetica', 'bold'); doc.text('Residential Realtors', X - 2, fy);
     doc.setTextColor(40); doc.setFont('helvetica', 'normal');
     doc.text('Trading name of Estallion Investments Limited', X - 2, fy + 12);
