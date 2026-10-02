@@ -5929,7 +5929,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   async function statementsAll(p) {
     const today = londonDay();
-    const tcys = (await p.query('SELECT id, property_key, address, start_date, data, intention FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date')).rows;
+    const tcys = (await p.query('SELECT id, property_key, address, start_date, data, intention FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date, id')).rows;
     const paidInv = {};
     (await p.query('SELECT id, paid_at FROM invoices WHERE paid_at IS NOT NULL AND tenancy_id IS NOT NULL')).rows.forEach(function (r) { paidInv[r.id] = new Date(r.paid_at).toISOString().slice(0, 10); });
     const lls = {};
@@ -5959,6 +5959,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
       [jobId(req), from, sent ? JSON.stringify(snap) : 'null', JSON.stringify([{ at: new Date().toISOString(), text: sent ? 'Landlord statement for the month from ' + certDay(from) + ' sent' + (b.how ? ' (' + str(b.how, 40) + ')' : '') : 'Statement for the month from ' + certDay(from) + ' marked not sent' }])]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json({ ok: true });
+  }));
+  // Several statements marked sent at once: [{tenancy_id, from, total, balance}].
+  app.post('/api/admin/statements/sent', withDb(async function (p, req, res) {
+    const list = (Array.isArray((req.body || {}).items) ? req.body.items : []).slice(0, 500), by = {};
+    list.forEach(function (x) { const id = parseInt(x && x.tenancy_id, 10), from = isoDay(x && x.from); if (!id || !from) return; (by[id] = by[id] || {})[from] = { at: new Date().toISOString(), total: money(Math.abs(Number(x.total) || 0)) || 0, balance: Number(x.balance) || 0 }; });
+    let n = 0;
+    for (const id of Object.keys(by)) {
+      const months = Object.keys(by[id]).sort();
+      const r = await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{stmt_sent}', coalesce(data->'stmt_sent', '{}'::jsonb) || $2::jsonb), log = log || $3::jsonb, updated_at = now() WHERE id = $1 RETURNING id`,
+        [id, JSON.stringify(by[id]), JSON.stringify([{ at: new Date().toISOString(), text: 'Landlord statement' + (months.length === 1 ? '' : 's') + ' marked sent: ' + months.map(certDay).join(', ') }])]);
+      n += r.rowCount ? months.length : 0;
+    }
+    res.json({ ok: true, marked: n });
   }));
   // Phone alert on each rent date (from 8am): the statements to send, and any
   // landlord who still owes us after this month's rent.
