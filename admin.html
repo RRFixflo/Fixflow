@@ -8015,8 +8015,8 @@
         (x.email ? '<a class="btn small primary" data-st-mail="' + k + '" href="' + esc(stmtMail(x, m)) + '">✉ Email landlord</a>' : '<span class="muted-note" style="margin:0">No landlord email saved.</span>') +
         (m.sent && !m.changed ? '<span class="muted-note" style="margin:0;color:var(--green, #16a34a)">✓ Sent ' + esc(fmtShort(m.sent.at || m.sent).split(',')[0]) + '</span> <button type="button" class="linkish" data-st-unsent="' + k + '">Undo</button>'
           : '<button type="button" class="btn small ghost" data-st-sent="' + k + '">' + (m.changed ? '✓ Sent again' : '✓ Sent') + '</button>') +
-        (withAddr ? '' : '<button type="button" class="btn small ghost" data-st-addcost="' + k + '">+ Add cost</button>') + '</div>' +
-      (withAddr ? '' : '<div class="st-add" data-st-form="' + k + '" hidden style="margin-top:8px"><div class="tcy-fee nv4" style="grid-template-columns:minmax(0,1fr) 110px auto auto"><input class="inp" data-sc="label" placeholder="e.g. Plumber — leak repair"><input class="inp" data-sc="amount" inputmode="decimal" placeholder="£ before VAT"><label class="tcy-nv"><input type="checkbox" data-sc="novat"> No VAT</label><label class="tcy-nv"><input type="checkbox" data-sc="in"> Money in</label></div>' +
+        (withAddr ? '' : '<button type="button" class="btn small ghost" data-st-addcost="' + k + '">+ Add cost or credit</button>') + '</div>' +
+      (withAddr ? '' : '<div class="st-add" data-st-form="' + k + '" hidden style="margin-top:8px"><div class="tcy-fee nv4" style="grid-template-columns:minmax(0,1fr) 110px auto auto"><input class="inp" data-sc="label" placeholder="e.g. Plumber — leak repair"><input class="inp" data-sc="amount" inputmode="decimal" placeholder="£ before VAT"><label class="tcy-nv"><input type="checkbox" data-sc="novat"> No VAT</label><label class="tcy-nv" title="Money back to the landlord (a refund or discount): adds to what they get"><input type="checkbox" data-sc="in"> Credit to landlord</label></div>' +
         '<div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="btn small primary" data-st-savecost="' + k + '">Add to ' + esc(monthName(m.from)) + ' statement</button><button type="button" class="btn small ghost" data-st-addcost="' + k + '">Cancel</button></div></div>') + '</div>';
   }
   // Costs and money in added to this month only (removable), and invoices recovered from this rent.
@@ -8060,7 +8060,7 @@
       api('POST', '/api/admin/tenancies/' + fc.x.tenancy_id + '/month-cost', { from: fc.m.from, label: lab, amount: amt, novat: form.querySelector('[data-sc=novat]').checked, money_in: form.querySelector('[data-sc=in]').checked }).then(function(d){
         busy(sc, false);
         if (!d.ok) { toast('Couldn’t add that'); return; }
-        toast('Added to the ' + monthName(fc.m.from) + ' statement — it and the months after are updated'); loadTenancies().then(function(){ if (openTcyId) tcyRefresh(); });
+        toast((form.querySelector('[data-sc=in]').checked ? 'Credit added to the ' : 'Added to the ') + monthName(fc.m.from) + ' statement — it and the months after are updated'); loadTenancies().then(function(){ if (openTcyId) tcyRefresh(); });
       });
       return;
     }
@@ -8940,7 +8940,7 @@
   // Money in for the landlord on the move-in statement (e.g. a refund on materials): added to the income.
   function tcyCreditRows(){
     return (tcyDraft.credits || []).map(function(f, i){
-      return '<div class="tcy-fee" data-i="' + i + '"><input class="inp" data-cr="label" placeholder="e.g. B&Q refund" value="' + esc(f.label || '') + '"><input class="inp" data-cr="amount" inputmode="decimal" placeholder="£" value="' + esc(f.amount == null ? '' : f.amount) + '"><button type="button" class="tcy-x" data-del-cr="' + i + '" title="Remove">×</button></div>';
+      return '<div class="tcy-fee" data-i="' + i + '"><input class="inp" data-cr="label" placeholder="e.g. B&Q refund, discount" value="' + esc(f.label || '') + '"><input class="inp" data-cr="amount" inputmode="decimal" placeholder="£" value="' + esc(f.amount == null ? '' : f.amount) + '"><button type="button" class="tcy-x" data-del-cr="' + i + '" title="Remove">×</button></div>';
     }).join('');
   }
   function tcyFeeRows(){
@@ -9012,10 +9012,10 @@
             '<div class="seg" id="tfManageBasis" style="margin-top:6px;font-size:.82rem"><button type="button" data-v="monthly"' + (d.manage_basis !== 'upfront' ? ' class="on"' : '') + '>Taken from each month’s rent</button><button type="button" data-v="upfront"' + (d.manage_basis === 'upfront' ? ' class="on"' : '') + '>Paid up front for the year</button></div>' +
             '<p class="muted-note" id="tfManageNote" style="margin:4px 0 0"></p></div></div>' +
         '<label class="lbl" style="margin-top:12px">Other fees</label><div class="tcy-chips" id="tfFeeChips">' + tcyFeePresets().map(function(f, i){ return '<button type="button" class="btn small ghost" data-fee-chip="' + i + '"' + (f.kind === 'find' ? ' title="A % of the annual rent"' : f.kind === 'manage' ? ' title="A % of the rent each month"' : '') + '>+ ' + esc(f.label) + (f.kind === 'find' ? ' (% of annual rent)' : f.kind === 'manage' ? ' (% monthly)' : num(f.amount) !== null ? ' · ' + esc(gbp(f.amount)) : '') + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-fee-chip="-1">+ Other</button></div>' +
-        '<label class="lbl" style="margin-top:10px">Costs we paid for the landlord · no VAT</label><div class="tcy-chips" id="tfNvChips">' + TCY_NOVAT_COSTS.map(function(l){ return '<button type="button" class="btn small ghost" data-nv-chip="' + esc(l) + '" title="Added with No VAT ticked">+ ' + esc(l) + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-nv-chip="">+ Other cost (no VAT)</button></div>' +
+        '<label class="lbl" style="margin-top:10px">Costs we paid for the landlord · no VAT</label><div class="tcy-chips" id="tfNvChips">' + TCY_NOVAT_COSTS.map(function(l){ return '<button type="button" class="btn small ghost" data-nv-chip="' + esc(l) + '" title="Added with No VAT ticked">+ ' + esc(l) + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-nv-chip="">+ Other cost (no VAT)</button><button type="button" class="btn small ghost" id="tfCreditChip" style="color:var(--green, #16a34a)" title="Money back to the landlord, e.g. a refund or a discount — adds to what they get">+ Credit to landlord</button></div>' +
         '<div id="tfFees">' + tcyFeeRows() + '</div>' +
-        '<label class="lbl" style="margin-top:10px">Money in for the landlord · e.g. a refund</label><div id="tfCredits">' + tcyCreditRows() + '</div>' +
-        '<button type="button" class="btn small ghost" id="tfAddCredit">+ Add money in</button>' +
+        '<label class="lbl" style="margin-top:10px">Credits to the landlord · e.g. a refund or a discount (added to what they get)</label><div id="tfCredits">' + tcyCreditRows() + '</div>' +
+        '<button type="button" class="btn small ghost" id="tfAddCredit">+ Add credit</button>' +
         '<label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="tfVat"' + (d.vat === false ? '' : ' checked') + '> Add VAT (20%) to the fees</label>' +
         '<div id="tfFeeSum" style="margin-top:10px"></div>' +
       '</div>' +
@@ -9330,7 +9330,7 @@
     var oneVat = r2(c.fees.reduce(function(t, f){ return t + (f.extra ? f.vat : 0); }, 0)), anyNv = vr && (d.fees || []).some(function(f){ return f && f.novat && f.label && num(f.amount) !== null; });
     if (oneOff) rows.push(['One-off fees', (d.fees || []).filter(function(f){ return f && f.label && num(f.amount) !== null; }).map(function(f){ return esc(f.label) + ' ' + gbp(num(f.amount)) + (vr && f.novat ? ' (no VAT)' : ''); }).join(', ') + ' → ' +
       (oneVat ? gbp(oneOff) + ' + VAT ' + gbp(oneVat) + (anyNv ? ' (on ' + gbp(r2(oneVat / 0.2)) + ')' : '') + ' = <b>' + gbp(r2(oneOff + oneVat)) + '</b>' : '<b>' + gbp(oneOff) + '</b>' + (vr ? ' — no VAT' : ''))]);
-    if (c.upfrontFee || oneOff) rows.push(['First month', (d.deposit_by === 'landlord' ? 'Rent + deposit ' : 'Rent ') + (c.credits.length ? '+ money in ' : '') + gbp(c.income) + ' − all fees ' + gbp(c.feeTotal) + (vr ? ' (inc. VAT)' : '') + ' → ' + (c.balance < 0 ? '<b style="color:var(--brick)">the landlord owes us ' + gbp(-c.balance) + '</b>' : '<b>' + gbp(c.balance) + '</b> to the landlord')]);
+    if (c.upfrontFee || oneOff) rows.push(['First month', (d.deposit_by === 'landlord' ? 'Rent + deposit ' : 'Rent ') + (c.credits.length ? '+ credits ' : '') + gbp(c.income) + ' − all fees ' + gbp(c.feeTotal) + (vr ? ' (inc. VAT)' : '') + ' → ' + (c.balance < 0 ? '<b style="color:var(--brick)">the landlord owes us ' + gbp(-c.balance) + '</b>' : '<b>' + gbp(c.balance) + '</b> to the landlord')]);
     if (c.monthlyFee || c.upfrontFee) rows.push(['In a year', 'Our fees: ' + wv(r2(c.monthlyFee * 12 + c.upfrontFee))]);
     // The landlord owes us (the fees are more than the first rent we hold): invoice it, or mark it paid.
     var sv = openTcyId !== 'new' && tenancies.filter(function(t){ return t.id === openTcyId; })[0], svd = sv ? sv.data || {} : {};
@@ -9533,7 +9533,7 @@
         tcyRead(); tcyDraft.receipts.splice(Number(b.dataset.delRc), 1); $('tfReceipts').innerHTML = tcyReceiptRows(); tcyRefresh();
       } else if (b.dataset.delCr) {
         tcyRead(); tcyDraft.credits.splice(Number(b.dataset.delCr), 1); $('tfCredits').innerHTML = tcyCreditRows(); tcyRefresh();
-      } else if (b.id === 'tfAddCredit') {
+      } else if (b.id === 'tfAddCredit' || b.id === 'tfCreditChip') {
         tcyRead(); tcyDraft.credits.push({ label: '', amount: null }); $('tfCredits').innerHTML = tcyCreditRows();
         var cl = $('tfCredits').querySelectorAll('[data-cr="label"]'); cl[cl.length - 1].focus();
       } else if (b.dataset.delFee) {
