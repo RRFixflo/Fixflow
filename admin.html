@@ -1801,10 +1801,13 @@
     if (j.archived_at) return { cls: '', text: 'Archived ' + fmtShort(j.archived_at) };
     if (j.completed_at) return { cls: 'ok', text: 'Completed ' + fmtShort(j.completed_at) };
     if (!isOpen(j)) return { cls: '', text: j.status };
-    if (!j.due_at) return { cls: '', text: 'No deadline' };
+    // How long since the report was raised (in days); the colour still warns
+    // when the deadline is close (amber) or passed (red).
+    var days = Math.floor((Date.now() - new Date(j.created_at).getTime()) / 86400000);
+    var text = days < 1 ? 'Raised today' : 'Raised ' + days + ' day' + (days === 1 ? '' : 's') + ' ago';
+    if (!j.due_at) return { cls: '', text: text };
     var left = new Date(j.due_at).getTime() - Date.now();
-    if (left < 0) return { cls: 'over', text: 'Overdue by ' + dur(left) };
-    return { cls: left < 24 * 3600000 ? 'soon' : 'ok', text: dur(left) + ' left' };
+    return { cls: left < 0 ? 'over' : left < 24 * 3600000 ? 'soon' : 'ok', text: text };
   }
   var URG_RANK = { Emergency: 0, Urgent: 1, Routine: 2 };
   // Share of the time between receiving a job and its deadline that has gone.
@@ -2046,7 +2049,7 @@
       renderBulk();
       return;
     }
-    el.innerHTML = '<div class="list-head"><span>Job</span><span>Property &amp; issue</span><span>Deadline</span><span>Status &amp; contractor</span><span>Profit</span></div>' +
+    el.innerHTML = '<div class="list-head"><span>Job</span><span>Property &amp; issue</span><span>Raised</span><span>Status &amp; contractor</span><span>Profit</span></div>' +
       list.map(rowHtml).join('');
     renderBulk();
   }
@@ -5358,7 +5361,7 @@
 
       // At a glance
       '<div class="glance" data-pane="overview">' +
-        '<div><div class="k">' + (completed ? 'Completed' : 'Deadline') + '</div><div class="v"><span class="time ' + t.cls + '">' + esc(t.text) + '</span>' +
+        '<div><div class="k">' + (completed ? 'Completed' : 'Raised') + '</div><div class="v"><span class="time ' + t.cls + '">' + esc(completed ? t.text : t.text.replace(/^Raised t/, 'T').replace(/^Raised /, '')) + '</span>' +
           '<small>' + esc(completed && j.completed_at ? fmtDate(j.completed_at) : j.due_at ? 'Due ' + fmtDate(j.due_at) : 'No deadline set') + '</small></div></div>' +
         '<div><div class="k">Contractor' + (j.assigned_to_2 ? 's' : '') + '</div><div class="v"><div class="who-chip">' + avatar(j.assigned_to) + '<span class="nm">' + esc(j.assigned_to || 'Unassigned') + '</span></div>' +
           (j.assigned_to_2 ? '<div class="who-chip" style="margin-top:4px">' + avatar(j.assigned_to_2) + '<span class="nm">' + esc(j.assigned_to_2) + '</span></div>' + (j.task_2 ? '<small>' + esc(j.task_2) + '</small>' : '') : '') + '</div></div>' +
