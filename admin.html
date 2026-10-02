@@ -1727,6 +1727,10 @@
       <div class="tn-lbl" id="tnCount">Tenants</div>
       <div id="tnList"></div>
     </div>
+    <div class="tn-sec" style="padding-top:6px">
+      <div class="tn-lbl">Email all — how tenants are added</div>
+      <div class="seg" id="tnCcMode" style="font-size:.85rem"><button type="button" data-v="cc">Cc — they can see and reply to each other</button><button type="button" data-v="bcc">Bcc — private, they can’t see each other</button></div>
+    </div>
     <div class="row-actions tn-foot">
       <button class="btn ghost" type="button" id="tnClose">Close</button>
       <span style="flex:1"></span>
@@ -5024,7 +5028,7 @@
   }
   function openTenantBroadcast(address, everyone){
     var props = tnProperties();
-    tn = { keys: [], scope: 'one', baseKey: null, noticeId: null, sent: {}, recips: [], excluded: {} }; tnMail = null;
+    tn = { keys: [], scope: 'one', baseKey: null, noticeId: null, sent: {}, recips: [], excluded: {}, cc: null }; tnMail = null;
     if (address) { tn.baseKey = propKey(address); tn.keys = [tn.baseKey]; tn.scope = 'one'; }
     else { tn.scope = everyone ? 'all' : 'pick'; }
     $('tnSubject').value = TN_TEMPLATES[0][1]; $('tnBody').value = TN_TEMPLATES[0][2];
@@ -5077,6 +5081,9 @@
     var emails = reach.filter(function(r){ return r.email; }).length, was = reach.filter(function(r){ return waNumber(r.phone) && !tn.sent[r.key]; }).length;
     $('tnEmailAll').textContent = tnMail && tnMail.groups.length > 1 && tnMail.next > 0 ? (tnMail.next < tnMail.groups.length ? 'Open email ' + (tnMail.next + 1) + ' of ' + tnMail.groups.length : 'All ' + tnMail.groups.length + ' emails opened') : 'Email all (' + emails + ')';
     $('tnEmailAll').disabled = !emails; $('tnCopyEmails').hidden = !emails;
+    // Cc by default for one property or building (housemates), Bcc for several.
+    var ccOn = tn.cc === null ? tn.keys.length <= 1 || tn.scope === 'building' : tn.cc;
+    $('tnCcMode').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', (b.dataset.v === 'cc') === ccOn); });
     $('tnWaNext').textContent = 'WhatsApp next tenant' + (was ? ' (' + was + ' left)' : ''); $('tnWaNext').disabled = !was;
   }
   function tnDrawPicker(){
@@ -5136,10 +5143,11 @@
   $('tnEmailAll').addEventListener('click', function(){
     var list = tnMailList();
     if (!list.length) return;
+    if (tnCcOn() && tn.keys.length > 1 && tn.scope !== 'building' && !confirm('With Cc, every tenant at ' + tn.keys.length + ' properties will see each other’s email address. Send it that way?')) return;
     tnEnsureNotice().then(function(){
       var one = tn.keys.length === 1 ? shortAddr(list[0].address) : 'your home';
       var subj = $('tnSubject').value.replace(/\{address\}/g, one), body = $('tnBody').value.replace(/\{first_name\}/g, 'there').replace(/\{address\}/g, one);
-      var sig = list.map(function(r){ return r.email; }).join(',') + '|' + subj + '|' + body;
+      var sig = (tnCcOn() ? 'cc|' : 'bcc|') + list.map(function(r){ return r.email; }).join(',') + '|' + subj + '|' + body;
       if (!tnMail || tnMail.sig !== sig) {
         var groups = [], cur = [], room = Math.max(400, 1900 - encodeURIComponent(subj).length - encodeURIComponent(body).length);
         list.forEach(function(r){ if (cur.length && encodeURIComponent(cur.concat([r.email]).join(',')).length > room) { groups.push(cur); cur = []; } cur.push(r); });
@@ -5148,7 +5156,7 @@
       }
       var g = tnMail.groups[tnMail.next];
       if (!g) { tnMail.next = 0; g = tnMail.groups[0]; }
-      window.location.href = 'mailto:?bcc=' + encodeURIComponent(g.map(function(r){ return r.email; }).join(',')) + '&subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
+      window.location.href = 'mailto:?' + (tnCcOn() ? 'cc' : 'bcc') + '=' + encodeURIComponent(g.map(function(r){ return r.email; }).join(',')) + '&subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
       g.forEach(function(r){ tnMark(r, 'email'); });
       tnMail.next += 1;
       var n = tnMail.groups.length;
@@ -5160,10 +5168,15 @@
       }
     })['catch'](function(){});
   });
+  $('tnCcMode').addEventListener('click', function(e){
+    var b = e.target.closest('[data-v]'); if (!b) return;
+    tn.cc = b.dataset.v === 'cc'; tnMail = null; tnDraw();
+  });
+  function tnCcOn(){ return tn.cc === null ? tn.keys.length <= 1 || tn.scope === 'building' : tn.cc; }
   $('tnCopyEmails').addEventListener('click', function(){
     var t = tnMailList().map(function(r){ return r.email; }).join(', ');
     if (!t) { toast('No email addresses for these tenants'); return; }
-    var done = function(){ toast(tnMailList().length + ' email addresses copied — paste them into Bcc'); };
+    var done = function(){ toast(tnMailList().length + ' email addresses copied — paste them into ' + (tnCcOn() ? 'Cc' : 'Bcc')); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, function(){ window.prompt('Copy these addresses:', t); });
     else window.prompt('Copy these addresses:', t);
   });
