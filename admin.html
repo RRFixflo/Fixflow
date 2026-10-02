@@ -8091,13 +8091,17 @@
       return '<span class="chip" style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:var(--panel-2, #f6f7f9);font-size:.85rem">' + o[1] + ' ' + esc(f.label) + ' ' + esc(gbp(f.amount)) + (o[1] === '−' && f.vat ? ' + VAT' : o[1] === '−' && m.vatOn && !f.invoice_id ? ' (no VAT)' : '') +
         (withAddr ? '' : ' <button type="button" class="linkish" title="Remove from this statement" data-st-delcost="' + x.tenancy_id + '|' + esc(f.cost_id) + '">×</button>') + '</span>'; }).join('') + '</div>';
   }
+  function stmtMin(){ try { return localStorage.getItem('rr_stmts_min') === '1'; } catch (e) { return false; } }
   function stmtCard(id){
     var x = stmtsBy[id];
     if (!x || !x.months.length) return '<h3>Monthly statements</h3><p class="muted-note" style="margin:0">A statement appears here on each rent date' + (/tenant find/i.test(String((stmtTcy(id) || {}).service || '')) ? ' while the landlord owes us from the move-in statement (Tenant Find landlords collect the rent themselves otherwise)' : '') + '.</p>';
     var owe = x.months[x.months.length - 1];
     var unsent = x.months.filter(function(m){ return !m.sent || m.changed; }).length;
-    return '<h3 style="display:flex;align-items:center;gap:8px">Monthly statements<span style="flex:1"></span>' + (unsent > 1 && x.email ? '<button type="button" class="btn small primary" data-st-mailall="' + id + '" title="One email to ' + esc(x.email) + ' with every unsent statement attached">✉ Email ' + unsent + ' unsent with PDFs</button>' : '') + (unsent > 1 ? '<button type="button" class="btn small" data-st-allsent="' + id + '">✓ Mark all ' + unsent + ' as sent</button>' : '') + '</h3>' + (stmtOwes(owe) ? '<div class="match warn" style="margin:0 0 8px">⚠ The landlord still owes us ' + esc(gbp(-owe.balance)) + ' — it’s brought forward to the next rent.</div>' : '') +
-      x.months.slice().reverse().map(function(m){ return stmtRow(x, m, false); }).join('');
+    return '<h3 style="display:flex;align-items:center;gap:8px">Monthly statements<span style="flex:1"></span>' + (unsent > 1 && x.email ? '<button type="button" class="btn small primary" data-st-mailall="' + id + '" title="One email to ' + esc(x.email) + ' with every unsent statement attached">✉ Email ' + unsent + ' unsent with PDFs</button>' : '') + (unsent > 1 ? '<button type="button" class="btn small" data-st-allsent="' + id + '">✓ Mark all ' + unsent + ' as sent</button>' : '') + '<button type="button" class="btn small ghost" data-st-min title="Minimise or show the statements (remembered)">' + (stmtMin() ? 'Show' : 'Minimise') + '</button></h3>' +
+      (stmtOwes(owe) ? '<div class="match warn" style="margin:0 0 8px">⚠ The landlord still owes us ' + esc(gbp(-owe.balance)) + ' — it’s brought forward to the next rent.</div>' : '') +
+      // Minimised: one line instead of every month.
+      (stmtMin() ? '<p class="muted-note" style="margin:0">' + x.months.length + ' statement' + (x.months.length === 1 ? '' : 's') + ' · latest ' + esc(monthName(owe.from)) + ': ' + (stmtOwes(owe) ? 'landlord owes ' + esc(gbp(-owe.balance)) : esc(gbp(owe.balance)) + ' to the landlord') + (unsent ? ' · ' + unsent + ' not sent' : ' · all sent') + '</p>'
+        : x.months.slice().reverse().map(function(m){ return stmtRow(x, m, false); }).join(''));
   }
   function renderStmtList(){
     var due = stmtDue();
@@ -8113,6 +8117,7 @@
     return api('POST', '/api/admin/tenancies/' + f.x.tenancy_id + '/statement', { from: f.m.from, sent: sent, how: how, total: f.m.total, balance: f.m.balance }).then(function(){ return loadStatements(); });
   }
   function stmtClick(e){
+    if (e.target.closest('[data-st-min]')) { try { localStorage.setItem('rr_stmts_min', stmtMin() ? '0' : '1'); } catch (er) {} if ($('tfStmts') && openTcyId) $('tfStmts').innerHTML = stmtCard(openTcyId); return; }
     var ma = e.target.closest('[data-st-mailall]');
     if (ma) { var sxm = stmtsBy[ma.dataset.stMailall]; if (sxm) stmtEmailMany(sxm.months.filter(function(m){ return !m.sent || m.changed; }).map(function(m){ return { x: sxm, m: m }; })); return; }
     var as = e.target.closest('[data-st-allsent]');
