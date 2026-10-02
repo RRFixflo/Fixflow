@@ -3369,11 +3369,19 @@ module.exports = function mountJobs(app, opts) {
           return '<a class="bpr" href="#p-' + htmlEsc(k.replace(/[^a-z0-9]+/g, '-')) + '"><span>' + htmlEsc(addr) + '</span><span>' + money(sumOf(pj.filter(function (j) { return when(j).getFullYear() === yr; }))) + '</span><span><b>' + money(sumOf(pj)) + '</b></span><span' + (un ? ' class="due"' : '') + '>' + (un ? money(un) : '—') + '</span></a>';
         }).join('') + '</div>' : '') +
       '<p style="margin:12px 0 0"><a class="dl" href="/l/' + htmlEsc(token) + '/costs.csv">⬇ Download all costs (spreadsheet)</a></p></section>';
-    const invCard = invs.length ? '<section class="card"><h2>Invoices</h2>' + invs.slice().reverse().map(function (i) {
-        const j = all.filter(function (x) { return x.id === i.job_id; })[0] || {}, od = !i.paid_at && i.due && i.due < new Date().toISOString().slice(0, 10);
-        return '<a class="iv" href="/l/' + htmlEsc(token) + '/invoice/' + i.id + '"><div><b>' + htmlEsc(i.number || '') + '</b> · ' + htmlEsc(issue(j)) + '<div class="muted">' + htmlEsc(j.property_address || '') + ' · issued ' + htmlEsc(day(i.date || i.created_at)) + '</div></div>' +
-          '<div style="text-align:right"><b>' + money(i.total) + '</b><div>' + (i.paid_at ? '<span class="paid">Paid</span>' : od ? '<span class="late">Overdue</span>' : '<span class="due">Due ' + htmlEsc(i.due ? day(i.due) : '') + '</span>') + '</div></div></a>';
-      }).join('') + '</section>' : '';
+    // Every invoice across their properties: what's to pay first (overdue at the
+    // top), then the paid ones folded away.
+    const todayIso0 = new Date().toISOString().slice(0, 10);
+    const invRow = function (i) {
+      const j = all.filter(function (x) { return x.id === i.job_id; })[0] || {}, od = !i.paid_at && i.due && i.due < todayIso0, k = invKey(i);
+      return '<a class="iv" href="/l/' + htmlEsc(token) + '/invoice/' + i.id + '"><div><b>' + htmlEsc(i.number || '') + '</b> · ' + htmlEsc(j.id ? issue(j) : i.title || 'Invoice') + '<div class="muted">' + htmlEsc((j.property_address || keys[k] || '') ) + ' · issued ' + htmlEsc(day(i.date || i.created_at)) + '</div></div>' +
+        '<div style="text-align:right"><b>' + money(i.total) + '</b><div>' + (i.paid_at ? '<span class="paid">Paid ' + htmlEsc(day(i.paid_at)) + '</span>' : od ? '<span class="late">Overdue</span>' : '<span class="due">Due ' + htmlEsc(i.due ? day(i.due) : 'now') + '</span>') + '</div></div></a>';
+    };
+    const unpaidInv = invs.filter(function (i) { return !i.paid_at; }).sort(function (x, y) { return String(x.due || '9').localeCompare(String(y.due || '9')); }), paidInv = invs.filter(function (i) { return i.paid_at; }).reverse();
+    const toPay = unpaidInv.reduce(function (t, i) { return t + Number(i.total || 0); }, 0);
+    const invCard = invs.length ? '<section class="card" id="invoices"><h2>Invoices</h2>' +
+      (unpaidInv.length ? '<p class="muted" style="margin:-4px 0 6px"><b>' + money(toPay) + '</b> to pay across ' + unpaidInv.length + ' invoice' + (unpaidInv.length === 1 ? '' : 's') + ' — tap one to see it and how to pay.</p>' + unpaidInv.map(invRow).join('') : '<p class="muted" style="margin:-4px 0 6px">✓ All paid — nothing to pay.</p>') +
+      (paidInv.length ? '<details' + (unpaidInv.length ? '' : ' open') + '><summary>Paid invoices (' + paidInv.length + ')</summary>' + paidInv.map(invRow).join('') + '</details>' : '') + '</section>' : '';
     // The tenancy at each property: the tenants' names and phone numbers, when
     // it started and when the fixed term ends (it rolls on after that).
     const tcys = Object.keys(keys).length ? (await p.query("SELECT id, address, property_key, start_date, data, intention FROM tenancies WHERE property_key = ANY($1::text[]) AND start_date IS NOT NULL ORDER BY start_date DESC", [Object.keys(keys)])).rows : [];
@@ -3804,10 +3812,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
         (quick.length + owns.length > 4 ? '<input id="lfind" type="search" placeholder="Find a property…" autocomplete="off">' : '') + '<div class="qlist">' + quick.join('') + '</div></div>' : '') +
         '<div class="card"><h2>' + (quick.length ? 'Your other properties' : 'Your properties') + '</h2>' + (owns.length ? '<div class="qlist">' + ownRows.join('') + '</div>' : '<p class="muted" style="margin:-4px 0 6px">Keep all your properties in one place — even ones we don’t manage. We’ll find each EPC automatically.</p>') +
           '<a class="o-add" href="#add">＋ Add a property</a></div>' +
-        (quick.length ? '<a class="card qrow lspend" href="#spending"><span class="qa">💷 Spending &amp; invoices — all properties</span><span class="qgo">›</span></a>' : '') + '</section>' : '') +
+        (quick.length ? '<a class="card qrow lspend" href="#spending"><span class="qa">🧾 Invoices &amp; spending' + (unpaidInv.length ? ' · <span class="due">' + money(toPay) + ' to pay</span>' : invs.length ? ' · all paid' : '') + '</span><span class="qgo">›</span></a>' : '') + '</section>' : '') +
       propBlocks + ownViews + ownForm +
-      (!homeView ? '<div class="lone"><a class="card qrow lspend" href="#spending"><span class="qa">💷 Spending &amp; invoices</span><span class="qgo">›</span></a><a class="card qrow lspend" href="#add"><span class="qa">＋ Add a property we don’t manage</span><span class="qgo">›</span></a></div>' : '') +
-      '<section class="lview" id="spending" hidden><a class="lback" href="#">← Back</a>' + spendCard.replace(' id="spending"', '') + '</section>' +
+      (!homeView ? '<div class="lone"><a class="card qrow lspend" href="#spending"><span class="qa">🧾 Invoices &amp; spending' + (unpaidInv.length ? ' · <span class="due">' + money(toPay) + ' to pay</span>' : invs.length ? ' · all paid' : '') + '</span><span class="qgo">›</span></a><a class="card qrow lspend" href="#add"><span class="qa">＋ Add a property we don’t manage</span><span class="qgo">›</span></a></div>' : '') +
+      '<section class="lview" id="spending" hidden><a class="lback" href="#">← Back</a>' + invCard + spendCard.replace(' id="spending"', '') + '</section>' +
       ownScript + ownPropScript + certUpScript +
       '<script>(function(){var f=document.getElementById("lfind");if(f)f.addEventListener("input",function(){var q=f.value.trim().toLowerCase();document.querySelectorAll(".qrow[data-find]").forEach(function(el){el.style.display=!q||el.getAttribute("data-find").indexOf(q)!==-1?"":"none";});});' +
         // One view at a time, chosen by the address bar (so Back works).
