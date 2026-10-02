@@ -2407,7 +2407,7 @@ module.exports = function mountJobs(app, opts) {
     // its charges): Word files are read here; PDFs and photos go to the AI as
     // they are; Google Drive / Docs share links are fetched from Google first.
     const body = req.body || {};
-    const given = (Array.isArray(body.files) ? body.files : body.file ? [body.file] : []).slice(0, 4);
+    const given = (Array.isArray(body.files) ? body.files : body.file ? [body.file] : []).slice(0, 5);
     const files = [], names = [], txtNames = [];
     let fileNote = '';
     for (let fi = 0; fi < given.length; fi++) {
@@ -2441,6 +2441,8 @@ module.exports = function mountJobs(app, opts) {
       // Started from a property already on file: the tenancy is for that property.
       const forProp = str(body.for_property, 300);
       if (forProp) text += '\n\nThis tenancy is for the property already on file: ' + forProp + ' — use exactly this address for it.';
+      // Every document by name, in order, so each can be identified.
+      if (given.length > 1) fileNote += '\n\n(Attached documents, in order: ' + given.map(function (g, i) { return (i + 1) + '. "' + str(String((g && g.name) || (g && g.drive ? 'Google Drive file' : 'document')), 120) + '"'; }).join(', ') + '. Work out what each one is — the Terms of Let, a landlord statement, a tenant contact sheet, a certificate — and use them all together for the same tenancy.)';
       // A text file sent with a Terms of Let: the tenants for that same let.
       if (txtNames.length && given.length > txtNames.length) fileNote += '\n\n(The text file' + (txtNames.length > 1 ? 's' : '') + ' ' + txtNames.map(function (n) { return '"' + n + '"'; }).join(', ') + ' came with the other document' + (given.length - txtNames.length > 1 ? 's' : '') + ': unless it clearly says otherwise, the people in it are the TENANTS (and any guarantors) of the property in the Terms of Let — put them, with their phone numbers and emails, in that tenancy\'s tenants (merged with any already named there, no duplicates). Do not make contacts, a property or another tenancy from them.)';
       if (names.length) fileNote += '\n\n(' + (names.length > 1 ? 'The documents ' + names.map(function (n) { return '"' + n + '"'; }).join(', ') + ' are' : 'The document "' + names[0] + '" is') + ' attached; read ' + (names.length > 1 ? 'them' : 'it') + ' in full.)';
@@ -2484,6 +2486,8 @@ module.exports = function mountJobs(app, opts) {
       'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis and manage_basis ("upfront" or "monthly"). How fees work at this agency: Tenant Find — the letting fee (find_pct) is a % of the annual rent taken up front (find_basis "upfront"); Rent Collection — the same letting % split monthly (find_pct with find_basis "monthly"; collect_pct only if a separate extra collection fee is stated); Fully Managed — the management % (manage_pct) taken monthly or up front as agreed (manage_basis), sometimes with a letting fee as well (find_pct and find_basis, only if one is stated); Rent4Rent — the agency rents the property from the landlord and re-lets it, no VAT (vat false). ' +
       'tenants and guarantors (each [{"name": "", "email": "", "phone": ""}], names with titles as given), landlord ({"name": "", "email": "", "phone": "", "line1": "", "line2": "", "country": "", "postcode": ""} — their own address), ' +
       'fees (other fees charged to the landlord: [{"label": "", "amount": 0}]), notes (anything else useful).\n' +
+      'When SEVERAL DOCUMENTS come together, first work out what each one is: the TERMS OF LET (the tenancy details); a LANDLORD STATEMENT (statement of account / landlord statement / invoice or breakdown of what is deducted from the landlord — its charges go in that tenancy\'s fees as below); a TENANT CONTACT SHEET (names, phone numbers and emails of the tenants and any guarantors — they go in that tenancy\'s tenants / guarantors, merged with any already named, never in "contacts"); or a certificate. All of them are for the same tenancy unless they clearly show a different property. ' +
+      'Also return "documents": one entry per attached document, [{"name": "the file name", "kind": "terms_of_let" | "landlord_statement" | "tenant_contacts" | "certificate" | "other"}]. ' +
       'If a LANDLORD STATEMENT (statement of account to the landlord) is attached with it, add every charge or deduction made to the landlord for this let to that tenancy\'s fees, labelled as on the statement (e.g. "Inventory", "Tenancy agreement", "Deposit registration", "Referencing", "Gas safety certificate"), with the amount BEFORE VAT (if the statement shows VAT separately, use the net figure; if it says the amount includes VAT, divide by 1.2). ' +
       'Do not put in fees: rent received, deposits or holding deposits, money paid to the landlord, a VAT line on its own, or the main tenant find / letting / management commission — give that as find_pct / collect_pct / manage_pct (and find_basis) instead, unless only a £ amount is shown for it with no percentage, in which case put it in fees. Fill in any other tenancy details the statement gives that the Terms of Let leaves out.\n' +
       'The instruction may instead (or also) RECORD A CERTIFICATE the property already has — a gas safety certificate, EICR or EPC with a date it was done, starts, is valid from, issued or expires ' +
@@ -2495,7 +2499,7 @@ module.exports = function mountJobs(app, opts) {
       'type, issued_on = the inspection / check date (or date of assessment for an EPC), expires_on = the date the next check is due if printed ("next inspection due", "recommended date for next inspection", "valid until"; else ""), reference = the certificate / report / serial number. Do not make a job for it.\n' +
       'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], ' +
       '"certificates": [{"address": "", "type": "Gas", "issued_on": "", "expires_on": "", "reference": "", "rating": "", "document": 0}], ' +
-      '"contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "properties": [{"address": "", "tenants": [], "landlord": "", "key_number": "", "notes": ""}], "tenancies": [], "understood": true}. ' +
+      '"documents": [], "contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "properties": [{"address": "", "tenants": [], "landlord": "", "key_number": "", "notes": ""}], "tenancies": [], "understood": true}. ' +
       'Use [] for jobs, certificates, contacts, properties or tenancies when there are none. If the instruction is none of these, reply {"jobs": [], "certificates": [], "contacts": [], "properties": [], "tenancies": [], "understood": false}.';
     const result = await opts.askAi(prompt, true, files);
     if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
@@ -2546,7 +2550,18 @@ module.exports = function mountJobs(app, opts) {
     }).filter(function (x) { return x.address; });
     // People from a text file sent with a Terms of Let belong to that tenancy:
     // any the reply put in contacts as tenants are moved into its tenants.
-    if (txtNames.length && tenancies.length === 1) {
+    const docs = (Array.isArray(parsed.documents) ? parsed.documents : []).slice(0, 5).map(function (x) {
+      return { name: str(x && x.name, 120) || '', kind: ['terms_of_let', 'landlord_statement', 'tenant_contacts', 'certificate', 'other'].indexOf(x && x.kind) !== -1 ? x.kind : 'other' };
+    });
+    if (tenancies.length === 1 && docs.length) {
+      const tc = tenancies[0], fees = (tc.fees || []).filter(function (f) { return f && f.label; });
+      tc.docs_read = docs;
+      // A landlord statement came, but no charges were taken from it: say so on the card.
+      if (docs.some(function (x) { return x.kind === 'landlord_statement'; }) && !fees.length) tc.fees_check = 'A landlord statement was attached but no charges were read from it — please check the fees.';
+    } else if (tenancies.length === 1 && given.length > 1 && !(tenancies[0].fees || []).some(function (f) { return f && f.label; }) && given.some(function (g) { return /statement/i.test(String((g && g.name) || '')); })) {
+      tenancies[0].fees_check = 'A landlord statement seems to be attached but no charges were read from it — please check the fees.';
+    }
+    if ((txtNames.length || docs.some(function (x) { return x.kind === 'tenant_contacts'; })) && tenancies.length === 1) {
       const tc = tenancies[0], tail = function (v) { return String(v || '').replace(/\D/g, '').slice(-10); };
       for (let i = contacts.length - 1; i >= 0; i--) {
         const c = contacts[i]; if (c.type !== 'tenant') continue;

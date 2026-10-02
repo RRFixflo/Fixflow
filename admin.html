@@ -6886,13 +6886,13 @@
   // with the landlord statement for its charges). Up to 4 at a time.
   var askFiles = [], askForProp = '', askAutoGo = false, askPending = 0;
   function renderAskFiles(){
-    $('askFileName').innerHTML = askFiles.length ? askFiles.map(function(x, i){ return '<span class="ask-chip">' + (x.drive ? '🔗 ' : '📄 ') + esc(x.name.length > 32 ? x.name.slice(0, 30) + '…' : x.name) + ' <button type="button" data-rmf="' + i + '" title="Remove">✕</button></span>'; }).join(' ') + (askFiles.length === 1 ? ' <span class="drop-hint">— you can add the landlord statement too</span>' : '')
+    $('askFileName').innerHTML = askFiles.length ? askFiles.map(function(x, i){ return '<span class="ask-chip">' + (x.drive ? '🔗 ' : '📄 ') + esc(x.name.length > 32 ? x.name.slice(0, 30) + '…' : x.name) + ' <button type="button" data-rmf="' + i + '" title="Remove">✕</button></span>'; }).join(' ') + (askFiles.length && askFiles.length < 3 ? ' <span class="drop-hint">— you can add the landlord statement and tenant contact sheet too</span>' : '')
       : '<span class="drop-hint">or drag &amp; drop files here</span>';
     $('askFileX').hidden = askFiles.length < 2;
   }
   function setAskFile(f){
     if (!f) { askFiles = []; renderAskFiles(); return; }
-    if (askFiles.length >= 4) { $('askErr').textContent = 'Up to 4 documents at a time.'; return; }
+    if (askFiles.length >= 5) { $('askErr').textContent = 'Up to 5 documents at a time.'; return; }
     if (f.drive) { askFiles.push({ drive: f.drive, name: 'Google Drive file' }); $('askErr').textContent = ''; $('askDriveRow').hidden = true; renderAskFiles(); return; }
     if (f.size > 15 * 1024 * 1024) { $('askErr').textContent = f.name + ' is too big (15 MB max).'; return; }
     if (/\.doc$/i.test(f.name)) { $('askErr').textContent = 'Please save ' + f.name + ' as a PDF or .docx (Word) first — old .doc files can’t be read.'; return; }
@@ -6900,7 +6900,7 @@
     askPending++;
     r.onload = function(){
       askPending--;
-      if (askFiles.length >= 4) return;
+      if (askFiles.length >= 5) return;
       askFiles.push({ name: f.name, mime: f.type || (/\.pdf$/i.test(f.name) ? 'application/pdf' : /\.docx$/i.test(f.name) ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : /\.txt$/i.test(f.name) ? 'text/plain' : ''), data: String(r.result).replace(/^data:[^,]*,/, '') });
       $('askErr').textContent = ''; renderAskFiles();
       // From "Upload a certificate": read it straight away.
@@ -7410,6 +7410,12 @@
           l.name ? 'Landlord: ' + esc(l.name) : ''
         ].filter(Boolean).join(' · ') + '</div>' +
         (t.rent_text ? '<div class="prop-sub">Rent as written on the document: “' + esc(t.rent_text) + '”</div>' : '') +
+        ((t.docs_read || []).length ? '<div class="prop-sub">Read: ' + t.docs_read.map(function(x){
+          var kind = { terms_of_let: 'Terms of Let', landlord_statement: 'Landlord statement', tenant_contacts: 'Tenant contacts', certificate: 'Certificate', other: 'Other document' }[x.kind] || 'Document';
+          var extra = x.kind === 'landlord_statement' ? ' (' + (t.fees || []).filter(function(f){ return f && f.label; }).length + ' charge' + ((t.fees || []).filter(function(f){ return f && f.label; }).length === 1 ? '' : 's') + ')' : x.kind === 'tenant_contacts' ? ' (' + (t.tenants || []).length + ' tenant' + ((t.tenants || []).length === 1 ? '' : 's') + ')' : '';
+          return '✓ ' + esc(kind) + extra + (x.name ? ' <span class="muted-note" style="margin:0">— ' + esc(x.name) + '</span>' : '');
+        }).join(' · ') + '</div>' : '') +
+        (t.fees_check ? '<div class="match warn">⚠ ' + esc(t.fees_check) + '</div>' : '') +
         (t.rent_check ? '<div class="match warn">⚠ ' + esc(t.rent_check) + '</div>' : '') +
         ((t.fees || []).filter(function(f){ return f && f.label; }).length ? '<div class="prop-sub" style="line-height:1.5">Charges to add: ' + t.fees.filter(function(f){ return f && f.label; }).map(function(f){ return esc(f.label) + (num(f.amount) !== null ? ' ' + esc(gbp(num(f.amount))) : ''); }).join(', ') + ' <span class="muted-note" style="margin:0">(+ VAT)</span></div>' : '') +
         ((t.onFile || []).length || (t.filled || []).length || t.llOnFile ? '<div class="match ok">✓ ' + [
@@ -7427,7 +7433,7 @@
     var b = e.target.closest('[data-tact]'); if (!b) return;
     var i = Number(b.closest('[data-ti]').dataset.ti), t = askTenancies[i];
     askTenancies.splice(i, 1); renderAskTenancies();
-    if (b.dataset.tact === 'open') { closeAsk(); var clean = Object.assign({}, t); ['onFile', 'filled', 'extra', 'llOnFile', 'rent_text', 'rent_check'].forEach(function(k){ delete clean[k]; }); openTenancy('new', { data: clean }); toast(t.rent_check ? '⚠ ' + t.rent_check : 'Filled in from your message — check the details and press Save tenancy'); }
+    if (b.dataset.tact === 'open') { closeAsk(); var clean = Object.assign({}, t); ['onFile', 'filled', 'extra', 'llOnFile', 'rent_text', 'rent_check', 'docs_read', 'fees_check'].forEach(function(k){ delete clean[k]; }); openTenancy('new', { data: clean }); toast(t.rent_check ? '⚠ ' + t.rent_check : 'Filled in from your message — check the details and press Save tenancy'); }
   });
   function renderAskContacts(){
     var label = { contractor: 'contractor', landlord: 'landlord', tenant: 'tenant' };
