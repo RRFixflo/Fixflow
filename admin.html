@@ -964,6 +964,7 @@
       <div id="jobsView">
       <div class="note-banner" id="noteBanner" hidden></div>
       <div class="addr-warn tcy-warn" id="tcyEndBanner" hidden style="margin:0 0 12px"><span id="tcyEndBannerText"></span> <button type="button" class="btn small" id="tcyEndBannerGo">Ask the tenants</button></div>
+      <div class="addr-warn rent-warn" id="feeBanner" hidden style="margin:0 0 12px"><span id="feeBannerText"></span> <button type="button" class="btn small" id="feeBannerGo">Show</button></div>
       <div class="addr-warn rent-warn" id="rentBanner" hidden style="margin:0 0 12px"><span id="rentBannerText"></span> <button type="button" class="btn small" id="rentBannerGo">Show</button></div>
       <div class="addr-warn cert-warn" id="certBanner" hidden style="margin:0 0 12px"><span id="certBannerText"></span> <button type="button" class="btn small" id="certBannerGo">Book now</button></div>
       <div class="tiles">
@@ -1668,6 +1669,14 @@
     <div class="row-actions" style="margin-top:0"><button class="btn" type="button" id="ttLl" hidden>🏠 Tell the landlord too</button><button class="btn primary" type="button" id="ttDone">Done</button></div>
   </div>
 </div>
+<div class="modal" id="rfModal" hidden>
+  <div class="card tn-card" role="dialog" aria-labelledby="rfTitle">
+    <h3 id="rfTitle" style="margin:0">Renewal fees to charge</h3>
+    <p class="muted-note" style="margin:6px 0 10px">These tenancies pay the fee up front and are in month 12. Charge the landlord the fee for the next year (on the rent for that year), then mark it charged.</p>
+    <div id="rfList"></div>
+    <div class="row-actions" style="margin-top:12px"><span style="flex:1"></span><button class="btn" type="button" id="rfClose">Close</button></div>
+  </div>
+</div>
 <div class="modal" id="rrModal" hidden>
   <div class="card tn-card" role="dialog" aria-labelledby="rrTitle">
     <h3 id="rrTitle" style="margin:0">Recover from the rent</h3>
@@ -1940,7 +1949,7 @@
       renderCertAlerts();
       renderNoteAlerts();
       renderTcyEndAlerts();
-      loadRentRecoveries();
+      loadRentRecoveries(); loadRenewalFees();
       var owedN = jobs.filter(isOwed).length;
       $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
       return true;
@@ -7722,6 +7731,47 @@
     }).join('') + (list.length > 5 ? '<div class="muted" style="margin-top:6px">…and ' + (list.length - 5) + ' more jobs</div>' : '');
   }
   $('noteBanner').addEventListener('click', function(e){ var b = e.target.closest('[data-job]'); if (b) openJob(Number(b.dataset.job)); });
+  // Month 12 of a tenancy that pays its fee up front: charge the renewal fee.
+  var renewFees = [];
+  function loadRenewalFees(){
+    return api('GET', '/api/admin/renewal-fees').then(function(d){ if (!d.ok) return; renewFees = d.items; renderFeeBanner(); if (!$('rfModal').hidden) renderRenewFees(); })['catch'](function(){});
+  }
+  function renderFeeBanner(){
+    var n = renewFees.length, tot = renewFees.reduce(function(t, x){ return t + x.fee.total; }, 0);
+    $('feeBanner').hidden = !n;
+    $('feeBannerText').textContent = '🧾 ' + n + ' renewal fee' + (n === 1 ? '' : 's') + ' to charge (' + gbp(tot) + ') — tenanc' + (n === 1 ? 'y' : 'ies') + ' in month 12 that pay' + (n === 1 ? 's' : '') + ' the fee up front.';
+  }
+  function renewMail(x){
+    var lines = x.fee.lines.map(function(l){ return '- ' + l.label + ': ' + gbp(l.amount); }).join('\n') + (x.fee.vat ? '\n- VAT: ' + gbp(x.fee.vat) : '') + '\nTotal: ' + gbp(x.fee.total);
+    var body = llGreeting(x.landlord) + ',\n\nThe tenancy at ' + shortAddr(x.address) + ' reaches its anniversary on ' + longDay(x.anniv) + '. As the fee is paid up front, the renewal fee for the next year (on the rent of ' + gbp(x.fee.rent) + ' a month) is due:\n\n' + lines + '\n\nPlease let us know if you have any questions.\n\nKind regards,\nResidential Realtors';
+    return 'mailto:' + encodeURIComponent(x.landlord_email || '') + '?subject=' + encodeURIComponent('Renewal fee — ' + shortAddr(x.address)) + '&body=' + encodeURIComponent(body);
+  }
+  function renderRenewFees(){
+    $('rfList').innerHTML = renewFees.length ? renewFees.map(function(x){
+      return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') + '</b><span style="font-weight:800">' + gbp(x.fee.total) + '</span></div>' +
+        '<div class="muted-note" style="margin:2px 0 6px">' + esc(x.service || 'Up-front fee') + ' · anniversary ' + esc(longDay(x.anniv)) + ' (year ' + x.year + ') · rent ' + gbp(x.fee.rent) + ' a month<br>' +
+          x.fee.lines.map(function(l){ return esc(l.label) + ' ' + gbp(l.amount); }).join(' · ') + (x.fee.vat ? ' · VAT ' + gbp(x.fee.vat) : ' · no VAT') + '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><label class="muted-note" style="margin:0">Amount £<input class="inp" style="width:110px;display:inline-block;margin-left:4px" data-rf-amt="' + esc(x.key) + '" value="' + x.fee.total.toFixed(2) + '"></label>' +
+          '<button type="button" class="btn small primary" data-rf-done="' + esc(x.key) + '">✓ Charged</button>' +
+          (x.landlord_email ? '<a class="btn small" href="' + esc(renewMail(x)) + '">✉ Email landlord</a>' : '') +
+          '<button type="button" class="btn small ghost" data-rf-skip="' + esc(x.key) + '">Not charging</button></div></div>';
+    }).join('') : '<p class="muted-note">No renewal fees to charge right now.</p>';
+  }
+  $('feeBannerGo').addEventListener('click', function(){ renderRenewFees(); $('rfModal').hidden = false; });
+  $('rfClose').addEventListener('click', function(){ $('rfModal').hidden = true; });
+  $('rfModal').addEventListener('mousedown', function(e){ if (e.target === $('rfModal')) $('rfClose').click(); });
+  $('rfList').addEventListener('click', function(e){
+    var b = e.target.closest('[data-rf-done],[data-rf-skip]'); if (!b) return;
+    var done = !!b.dataset.rfDone, key = b.dataset.rfDone || b.dataset.rfSkip;
+    if (!done && !confirm('Don’t charge a renewal fee for this year?')) return;
+    var inp = document.querySelector('[data-rf-amt="' + key + '"]'), amt = inp ? num(inp.value) : null;
+    busy(b, true, '…');
+    api('POST', '/api/admin/renewal-fees', { key: key, action: done ? 'charged' : 'skip', amount: amt }).then(function(d){
+      if (!d.ok) { busy(b, false); toast('Couldn’t save that'); return; }
+      toast(done ? 'Renewal fee of ' + gbp(amt) + ' recorded on the tenancy' : 'Noted — no renewal fee this year');
+      renewFees = renewFees.filter(function(x){ return x.key !== key; }); renderRenewFees(); renderFeeBanner();
+    });
+  });
   // Rent day: landlord charges to take from the rent (unpaid invoices at the property).
   var rentRec = [];
   function loadRentRecoveries(){
