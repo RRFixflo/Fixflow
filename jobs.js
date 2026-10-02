@@ -137,6 +137,8 @@ CREATE TABLE IF NOT EXISTS landlords (
   notes      TEXT
 );
 ALTER TABLE landlords ADD COLUMN IF NOT EXISTS portal_token TEXT;
+-- When their page link was last sent, and how.
+ALTER TABLE landlords ADD COLUMN IF NOT EXISTS link_sent JSONB;
 CREATE TABLE IF NOT EXISTS property_landlords (
   property_key TEXT PRIMARY KEY,
   address      TEXT,
@@ -378,6 +380,7 @@ ALTER TABLE contractors ADD COLUMN IF NOT EXISTS escalation_email TEXT;
 ALTER TABLE contractors ADD COLUMN IF NOT EXISTS portal_token TEXT;
 ALTER TABLE contractors ADD COLUMN IF NOT EXISTS portal_on BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE contractors ADD COLUMN IF NOT EXISTS portal_seen_at TIMESTAMPTZ;
+ALTER TABLE contractors ADD COLUMN IF NOT EXISTS link_sent JSONB;
 CREATE INDEX IF NOT EXISTS job_updates_created_idx ON job_updates (created_at);
 `;
 
@@ -1552,7 +1555,7 @@ module.exports = function mountJobs(app, opts) {
     const k = str(req.query.property_key, 300);
     const r = k
       ? await p.query('SELECT id, created_at, subject, body, audience, property_keys, recipients, sent FROM tenant_notices WHERE $1 = ANY(property_keys) ORDER BY id DESC LIMIT 20', [k])
-      : await p.query('SELECT id, created_at, subject, body, audience, property_keys, recipients, sent FROM tenant_notices ORDER BY id DESC LIMIT 50');
+      : await p.query('SELECT id, created_at, subject, body, audience, property_keys, recipients, sent FROM tenant_notices ORDER BY id DESC LIMIT ' + (req.query.all ? 300 : 50));
     res.json({ ok: true, notices: r.rows });
   }));
 
@@ -1768,7 +1771,7 @@ module.exports = function mountJobs(app, opts) {
 
   // ---------- Landlords ----------
   app.get('/api/admin/landlords', withDb(async function (p, req, res) {
-    const l = await p.query('SELECT id, name, email, phone, address, notes, created_at, updated_at FROM landlords ORDER BY lower(name)');
+    const l = await p.query('SELECT id, name, email, phone, address, notes, created_at, updated_at, link_sent FROM landlords ORDER BY lower(name)');
     const links = await p.query('SELECT property_key, address, landlord_id FROM property_landlords ORDER BY address');
     const own = await p.query('SELECT id, landlord_id, address, data, epc, created_at FROM landlord_properties ORDER BY address');
     res.json({ ok: true, landlords: l.rows, links: links.rows, own: own.rows });
@@ -2815,6 +2818,13 @@ module.exports = function mountJobs(app, opts) {
   // Their properties, every repair (open and completed) with what it cost them,
   // invoices and certificates. Never shows our costs or profit, contractor
   // names or tenants' contact details.
+  // Their page / job link was sent (WhatsApp or email): remember when and how.
+  app.post('/api/admin/:who(landlords|contractors)/:id/link-sent', withDb(async function (p, req, res) {
+    const how = str((req.body || {}).how, 20) || 'message', table = req.params.who === 'landlords' ? 'landlords' : 'contractors';
+    const sent = { how: how, at: new Date().toISOString() };
+    const r = await p.query('UPDATE ' + table + ' SET link_sent = $2 WHERE id = $1 RETURNING id', [parseInt(req.params.id, 10) || 0, JSON.stringify(sent)]);
+    res.json({ ok: r.rowCount > 0, sent: sent });
+  }));
   app.post('/api/admin/landlords/:id/portal-link', withDb(async function (p, req, res) {
     const id = jobId(req), fresh = !!(req.body || {}).fresh;
     const l = (await p.query('SELECT id, portal_token FROM landlords WHERE id = $1', [id])).rows[0];
@@ -5175,7 +5185,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
 
   app.get('/api/admin/contractors', withDb(async function (p, req, res) {
-    const r = await p.query('SELECT id, name, trade, phone, email, escalation_email, notes, active, portal_on, portal_token FROM contractors ORDER BY active DESC, lower(name)');
+    const r = await p.query('SELECT id, name, trade, phone, email, escalation_email, notes, active, portal_on, portal_token, link_sent FROM contractors ORDER BY active DESC, lower(name)');
     res.json({ ok: true, contractors: r.rows });
   }));
 

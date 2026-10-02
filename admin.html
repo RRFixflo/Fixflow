@@ -1476,6 +1476,7 @@
     <h3 id="lpTitle">Send the landlord their page</h3>
     <p class="muted-note" style="margin:0 0 10px">A private page with all their properties and repairs — open and completed — what each has cost them, invoices and certificate dates. It never shows our costs, contractor names or tenants’ contact details.</p>
     <textarea class="inp" id="lpMsg" rows="8"></textarea>
+    <p class="muted-note" id="lpSent" style="margin:6px 0 0"></p>
     <div class="row-actions" style="margin-top:10px;flex-wrap:wrap">
       <button class="btn ghost" type="button" id="lpNew" title="The old link stops working">New link</button>
       <a class="btn" id="lpOpen" target="_blank" rel="noopener">Preview</a>
@@ -5028,7 +5029,13 @@
   }
   function openTenantBroadcast(address, everyone){
     var props = tnProperties();
-    tn = { keys: [], scope: 'one', baseKey: null, noticeId: null, sent: {}, recips: [], excluded: {}, cc: null }; tnMail = null;
+    tn = { keys: [], scope: 'one', baseKey: null, noticeId: null, sent: {}, recips: [], excluded: {}, cc: null, prev: {} }; tnMail = null;
+    // Who's been sent a message before (from the saved notices), shown on each row.
+    api('GET', '/api/admin/tenant-notices?all=1').then(function(d){
+      if (!d.ok) return;
+      d.notices.slice().reverse().forEach(function(n){ Object.keys(n.sent || {}).forEach(function(k){ tn.prev[k] = { how: n.sent[k], at: n.created_at, subject: n.subject }; }); });
+      if (!$('tnModal').hidden) tnDraw();
+    })['catch'](function(){});
     if (address) { tn.baseKey = propKey(address); tn.keys = [tn.baseKey]; tn.scope = 'one'; }
     else { tn.scope = everyone ? 'all' : 'pick'; }
     $('tnSubject').value = TN_TEMPLATES[0][1]; $('tnBody').value = TN_TEMPLATES[0][2];
@@ -5070,11 +5077,13 @@
     var multi = tn.keys.length > 1;
     $('tnList').innerHTML = tn.recips.length ? tn.recips.map(function(r, i){
       var wa = waNumber(r.phone), can = wa || r.email, done = tn.sent[r.key];
+      var pv = !done && tn.prev && tn.prev[r.key];
       return '<div class="tn-row' + (can ? '' : ' none') + '" data-i="' + i + '">' +
         '<input type="checkbox" data-tn-inc="' + i + '"' + (can && !tn.excluded[r.key] ? ' checked' : '') + (can ? '' : ' disabled') + ' aria-label="Include ' + esc(r.name || 'tenant') + '">' +
         avatar(r.name || '?') +
-        '<div style="min-width:0"><div class="nm">' + esc(r.name || 'Tenant') + '</div><div class="sub">' + esc([multi ? shortAddr(r.address) : '', r.phone, r.email].filter(Boolean).join(' · ') || 'No phone or email saved') + '</div></div>' +
-        '<div class="acts">' + (done ? '<span class="tn-done">✓ ' + esc(done) + '</span>' : '') +
+        '<div style="min-width:0"><div class="nm">' + esc(r.name || 'Tenant') + '</div><div class="sub">' + esc([multi ? shortAddr(r.address) : '', r.phone, r.email].filter(Boolean).join(' · ') || 'No phone or email saved') + '</div>' +
+          (pv ? '<div class="sub" style="color:var(--ink-soft)">Last messaged ' + esc(new Date(pv.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })) + ' by ' + esc(pv.how) + (pv.subject ? ' — “' + esc(String(pv.subject).slice(0, 50)) + '”' : '') + '</div>' : '') + '</div>' +
+      '<div class="acts">' + (done ? '<span class="tn-done">✓ Sent by ' + esc(done) + '</span>' : '') +
           (wa ? '<button type="button" class="btn small wa" data-tn-wa="' + i + '">WhatsApp</button>' : '') +
           (r.email ? '<button type="button" class="btn small" data-tn-mail="' + i + '">Email</button>' : '') + '</div></div>';
     }).join('') : '<p class="muted-note" style="margin:0">' + (tn.keys.length ? 'No tenants saved for ' + (tn.keys.length === 1 ? 'this property' : 'these properties') + ' yet — add them on the property page or in a tenancy.' : 'Choose which properties above.') + '</p>';
@@ -6583,6 +6592,7 @@
         '\n\nIt’s kept up to date, so you can check it any time.\n\nKind regards,\nResidential Realtors';
       $('lpOpen').href = d.url;
       $('lpWa').hidden = !waNumber(l.phone); $('lpEmail').hidden = !l.email;
+      lpSentText(l);
       $('lpModal').hidden = false;
       if (fresh) toast('New link made — the old one no longer works');
     });
@@ -6590,8 +6600,15 @@
   $('lpClose').addEventListener('click', function(){ $('lpModal').hidden = true; });
   $('lpNew').addEventListener('click', function(){ if (lpFor && confirm('Make a new link? The old one will stop working.')) openLlLink(lpFor, true); });
   $('lpCopy').addEventListener('click', function(){ copyText($('lpMsg').value).then(function(){ toast('Copied'); })['catch'](function(){ toast('Couldn’t copy'); }); });
-  $('lpWa').addEventListener('click', function(){ window.open('https://wa.me/' + waNumber(lpFor.phone) + '?text=' + encodeURIComponent($('lpMsg').value), '_blank', 'noopener'); });
-  $('lpEmail').addEventListener('click', function(){ window.location.href = 'mailto:' + encodeURIComponent(lpFor.email) + '?subject=' + encodeURIComponent('Your properties with Residential Realtors') + '&body=' + encodeURIComponent($('lpMsg').value); });
+  // A send is remembered: shown here and on the landlord's card.
+  function sentWhen(s){ return s && s.at ? '✓ Last sent ' + (s.how ? 'by ' + s.how + ' ' : '') + 'on ' + new Date(s.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
+  function lpSentText(l){ $('lpSent').textContent = sentWhen(l.link_sent) || 'Not sent yet.'; }
+  function lpMarkSent(how){
+    var l = lpFor; if (!l) return;
+    api('POST', '/api/admin/landlords/' + l.id + '/link-sent', { how: how }).then(function(d){ if (d.ok) { l.link_sent = d.sent; lpSentText(l); toast('Marked as sent to ' + (l.name || 'the landlord')); if (view === 'll' && openLlId === l.id) renderLandlord(); } });
+  }
+  $('lpWa').addEventListener('click', function(){ window.open('https://wa.me/' + waNumber(lpFor.phone) + '?text=' + encodeURIComponent($('lpMsg').value), '_blank', 'noopener'); lpMarkSent('WhatsApp'); });
+  $('lpEmail').addEventListener('click', function(){ lpMarkSent('email'); window.location.href = 'mailto:' + encodeURIComponent(lpFor.email) + '?subject=' + encodeURIComponent('Your properties with Residential Realtors') + '&body=' + encodeURIComponent($('lpMsg').value); });
   function renderLandlord(){
     var l = landlordById(openLlId);
     if (!l) { $('llBack').click(); return; }
@@ -6606,7 +6623,7 @@
     $('llActions').innerHTML = (l.phone ? '<a class="btn" href="tel:' + esc(l.phone.replace(/[^\d+]/g, '')) + '">Call</a>' : '') +
       (wa ? '<a class="btn wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
       (l.email ? '<a class="btn" href="mailto:' + esc(l.email) + '">Email</a>' : '') +
-      '<button class="btn" id="llLinkBtn" type="button">🔗 Send their page</button>' +
+      '<button class="btn" id="llLinkBtn" type="button" title="' + esc(sentWhen(l.link_sent) || 'Not sent yet') + '">🔗 Send their page' + (l.link_sent ? ' ✓' : '') + '</button>' +
       '<button class="btn primary" id="llEditBtn" type="button">Edit details</button>';
     $('llLinkBtn').addEventListener('click', function(){ openLlLink(l); });
     $('llCard').innerHTML = '<dl class="kv">' + [['Name', l.name], ['Phone', l.phone], ['Email', l.email], ['Address (for invoices)', l.address], ['Notes', l.notes]]
@@ -6852,6 +6869,7 @@
           (waNumber(c.phone) ? '<button class="btn small wa" type="button" data-ctr-link="wa">Send on WhatsApp</button>' : '') +
           (c.email ? '<button class="btn small" type="button" data-ctr-link="email">Email it</button>' : '') +
           '<button class="btn small ghost" type="button" data-ctr-link="new" title="The old link stops working">Make a new link</button></div>' +
+        '<p class="muted-note" style="margin:8px 0 0;font-weight:600">' + esc(sentWhen(c.link_sent) || 'Link not sent yet.') + '</p>' +
         '<p class="muted-note" style="margin:8px 0 0">They see the jobs given to them (address, the problem, access and tenant contact — no costs or landlord details) and can mark each one completed; you get a phone alert when they do.</p>'
         : '<p class="muted-note" style="margin:6px 0 0">Off — no link is active.</p>') + '</div>';
   }
@@ -6872,8 +6890,11 @@
       var c = contractorByName(openCtrName), url = $('ctrLinkUrl') ? $('ctrLinkUrl').value : '';
       var msg = 'Hi ' + (greetName(c.name) || 'there') + ', here is your link to see the jobs we’ve given you and mark them completed when done: ' + url + '\n\nThanks, Residential Realtors';
       if (lk.dataset.ctrLink === 'copy') { (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function(){ toast('Link copied'); }, function(){ $('ctrLinkUrl').select(); document.execCommand('copy'); toast('Link copied'); }); }
-      else if (lk.dataset.ctrLink === 'wa') window.open('https://wa.me/' + waNumber(c.phone) + '?text=' + encodeURIComponent(msg), '_blank');
-      else if (lk.dataset.ctrLink === 'email') window.location.href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent('Your jobs from Residential Realtors') + '&body=' + encodeURIComponent(msg);
+      else if (lk.dataset.ctrLink === 'wa' || lk.dataset.ctrLink === 'email') {
+        if (lk.dataset.ctrLink === 'wa') window.open('https://wa.me/' + waNumber(c.phone) + '?text=' + encodeURIComponent(msg), '_blank');
+        else window.location.href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent('Your jobs from Residential Realtors') + '&body=' + encodeURIComponent(msg);
+        api('POST', '/api/admin/contractors/' + c.id + '/link-sent', { how: lk.dataset.ctrLink === 'wa' ? 'WhatsApp' : 'email' }).then(function(d){ if (d.ok) { c.link_sent = d.sent; toast('Marked as sent to ' + c.name); renderContractorPage(); } });
+      }
       else if (lk.dataset.ctrLink === 'new' && confirm('Make a new link? The old link will stop working.')) ctrLink(c, { on: true, regenerate: true }).then(function(d){ if (d) toast('New link made — send it to ' + c.name); });
       return;
     }
@@ -7802,7 +7823,7 @@
       if (x.invoice) return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') + '</b><span style="font-weight:800">' + gbp(x.invoice.amount) + '</span></div>' +
         '<div class="match ok" style="margin:4px 0 6px">✓ Invoice ' + esc(x.invoice.number) + ' created — it’s on the landlord’s page and in their invoices.</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn small" href="/api/admin/invoices/' + x.invoice.id + '/view" target="_blank" rel="noopener">View invoice</a>' +
-          (x.landlord_email ? '<a class="btn small primary" href="' + esc(renewMail(x)) + '">✉ Email it to the landlord</a>' : '<span class="muted-note" style="margin:0">No landlord email saved — send it from their page.</span>') + '</div></div>';
+          (x.landlord_email ? '<a class="btn small primary" data-rf-mailed="' + esc(x.key) + '" href="' + esc(renewMail(x)) + '">' + (x.mailed ? '✓ Emailed — send again' : '✉ Email it to the landlord') + '</a>' : '<span class="muted-note" style="margin:0">No landlord email saved — send it from their page.</span>') + '</div></div>';
       return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') + '</b><span style="font-weight:800">' + gbp(x.fee.total) + '</span></div>' +
         '<div class="muted-note" style="margin:2px 0 6px">' + esc(x.service || 'Up-front fee') + ' · anniversary ' + esc(longDay(x.anniv)) + ' (year ' + x.year + ') · rent ' + gbp(x.fee.rent) + ' a month<br>' +
           x.fee.lines.map(function(l){ return esc(l.label) + ' ' + gbp(l.amount); }).join(' · ') + (x.fee.vat ? ' · VAT ' + gbp(x.fee.vat) : ' · no VAT') + '</div>' +
@@ -7816,6 +7837,8 @@
   $('rfClose').addEventListener('click', function(){ $('rfModal').hidden = true; });
   $('rfModal').addEventListener('mousedown', function(e){ if (e.target === $('rfModal')) $('rfClose').click(); });
   $('rfList').addEventListener('click', function(e){
+    var ml = e.target.closest('[data-rf-mailed]');
+    if (ml) { var mx = renewFees.filter(function(x){ return x.key === ml.dataset.rfMailed; })[0]; if (mx) { mx.mailed = true; api('POST', '/api/admin/tenancies/' + mx.tenancy_id + '/log', { text: 'Renewal fee invoice ' + (mx.invoice ? mx.invoice.number + ' ' : '') + 'emailed to the landlord' }); setTimeout(renderRenewFees, 300); } return; }
     var b = e.target.closest('[data-rf-done],[data-rf-skip]'); if (!b) return;
     var done = !!b.dataset.rfDone, key = b.dataset.rfDone || b.dataset.rfSkip;
     if (!done && !confirm('Don’t charge a renewal fee for this year?')) return;
