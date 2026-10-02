@@ -4373,8 +4373,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       credits: (Array.isArray(b.credits) ? b.credits : []).slice(0, 20).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount) }; }).filter(function (f) { return f.label && f.amount; }),
       fees: (Array.isArray(b.fees) ? b.fees : []).slice(0, 30).map(function (f) { const x = { label: s(f && f.label, 200), amount: amt(f && f.amount) }; if (f && f.novat === true) x.novat = true; return x; }).filter(function (f) { return f.label; }),
       vat: b.vat !== false, statement_date: day(b.statement_date), notes: s(b.notes, 4000),
-      // Banking trail: extra move-in charges and each payment received.
-      admin_fee: amt(b.admin_fee), card_fee: amt(b.card_fee), ll_charge: amt(b.ll_charge), other_costs: amt(b.other_costs),
+      // Banking trail: each payment received.
       receipts: (Array.isArray(b.receipts) ? b.receipts : []).slice(0, 40).map(function (r) {
         r = r || {}; return { desc: s(r.desc, 200), date: day(r.date), receipt: s(r.receipt, 60), method: s(r.method, 30), amount: amt(r.amount) };
       }).filter(function (r) { return r.desc || r.date || r.amount != null; })

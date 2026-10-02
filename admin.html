@@ -8505,9 +8505,8 @@
     var depAuto = Math.floor(weekly * 5 + 1e-9), holdAuto = Math.floor(weekly + 1e-9);
     var deposit = num(d.deposit) !== null ? num(d.deposit) : depAuto, holding = num(d.holding) !== null ? num(d.holding) : holdAuto;
     var total = r2(rent + deposit), remaining = r2(total - holding);
-    // Banking trail: everything due at move-in (rent, deposit and any extras) against money received.
-    var extras = r2((num(d.admin_fee) || 0) + (num(d.card_fee) || 0) + (num(d.ll_charge) || 0) + (num(d.other_costs) || 0));
-    var btDue = r2(total + extras), btIn = r2((d.receipts || []).reduce(function(a, x){ return a + (num(x.amount) || 0); }, 0));
+    // Banking trail: what is due at move-in (rent and deposit) against money received.
+    var btDue = total, btIn = r2((d.receipts || []).reduce(function(a, x){ return a + (num(x.amount) || 0); }, 0));
     var fees = [];
     // Each fee is a % of the rent or a set £ amount a month.
     var monthly = function(v, unit){ var x = num(v); return !x ? 0 : unit === 'gbp' ? r2(x) : r2(rent * x / 100); };
@@ -8928,10 +8927,8 @@
         '<div id="tfFeeSum" style="margin-top:10px"></div>' +
       '</div>' +
       // Check-in
-      '<div class="card"><h3>Banking trail — move-in monies received</h3>' +
-        '<div class="grid2">' + tcyInp('tfAdminFee', 'Admin fee + VAT (£)', d.admin_fee, ' inputmode="decimal"') + tcyInp('tfCardFee', 'Credit card fee @ 3% (£)', d.card_fee, ' inputmode="decimal"') + '</div>' +
-        '<div class="grid2" style="margin-top:10px">' + tcyInp('tfLlCharge', 'Charge from landlord or splitting agent (£)', d.ll_charge, ' inputmode="decimal"') + tcyInp('tfOther', 'Other costs (£)', d.other_costs, ' inputmode="decimal"') + '</div>' +
-        '<label class="lbl" style="margin-top:12px">Payments received</label><div id="tfReceipts">' + tcyReceiptRows() + '</div>' +
+      '<div class="card"><h3>Payments received from the tenants</h3>' +
+        '<div id="tfReceipts">' + tcyReceiptRows() + '</div>' +
         '<button type="button" class="btn small" id="tfAddReceipt">+ Add payment received</button>' +
         '<div class="tcy-sum" id="tfBtSum" style="margin-top:10px"></div>' +
       '</div>' +
@@ -9177,7 +9174,7 @@
         row.querySelectorAll('[data-f]').forEach(function(inp){ p[inp.dataset.f] = inp.value.trim(); });
       });
     });
-    d.admin_fee = n('tfAdminFee'); d.card_fee = n('tfCardFee'); d.ll_charge = n('tfLlCharge'); d.other_costs = n('tfOther');
+
     d.receipts = d.receipts || [];
     document.querySelectorAll('#tfReceipts .tcy-rc').forEach(function(row){
       var r = d.receipts[Number(row.dataset.i)]; if (!r) return;
@@ -9610,7 +9607,7 @@
     var y = 130; doc.setLineWidth(1.4); box(X, y, 430, 16, PINK); box(X + 430, y, 34, 16); doc.setLineWidth(0.7);
     doc.text('Weekly Rent', X + 3, y + 12); doc.text(pdfGbp(c.weekly).replace(/\.\d\d$/, ''), X + 461, y + 12, { align: 'right' });
     y = 162;
-    var rows = [['One Months rent in advance', c.rent], ['Tenants Deposit', c.deposit], ['Admin Fee + VAT', num(d.admin_fee)], ['Credit card fee @ 3%', num(d.card_fee), 1], ['Charge from LL or splitting agent', num(d.ll_charge), 1], ['Other Costs', num(d.other_costs), 1]];
+    var rows = [['One Months rent in advance', c.rent], ['Tenants Deposit', c.deposit]];
     doc.setLineWidth(1.4); box(X, y, W, rows.length * 15); doc.setLineWidth(0.7);
     rows.forEach(function(r, i){
       var yy = y + i * 15; box(X, yy, W - 90, 15, r[2] ? PINK : null); box(X + W - 90, yy, 90, 15);
