@@ -1690,6 +1690,25 @@
     <div class="row-actions" style="margin-top:0"><button class="btn" type="button" id="ttLl" hidden>🏠 Tell the landlord too</button><button class="btn primary" type="button" id="ttDone">Done</button></div>
   </div>
 </div>
+<div class="modal" id="niModal" hidden>
+  <div class="card tn-card" role="dialog" aria-labelledby="niTitle">
+    <h3 id="niTitle" style="margin:0">New invoice to the landlord</h3>
+    <div id="niForm">
+      <label class="lbl" style="margin-top:10px">Property</label><input class="inp" id="niAddr" list="niProps" autocomplete="off"><datalist id="niProps"></datalist>
+      <p class="muted-note" id="niLl" style="margin:4px 0 0"></p>
+      <label class="lbl" style="margin-top:10px">What it’s for (title)</label><input class="inp" id="niTitleIn" placeholder="e.g. Fees for the let, Inventory, Key cutting">
+      <label class="lbl" style="margin-top:10px">Lines (before VAT)</label><div id="niLines"></div>
+      <button type="button" class="btn small ghost" id="niAddLine">+ Another line</button>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px">
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="niVat" checked> Add VAT (20%)</label>
+        <label style="display:flex;gap:6px;align-items:center">Due <input class="inp" type="date" id="niDue" style="width:auto"></label>
+      </div>
+      <p id="niTotal" style="margin:10px 0 0;font-weight:700"></p>
+      <div class="row-actions" style="margin-top:12px"><button class="btn ghost" type="button" id="niCancel">Cancel</button><span style="flex:1"></span><button class="btn primary" type="button" id="niCreate">Create invoice</button></div>
+    </div>
+    <div id="niDone" hidden></div>
+  </div>
+</div>
 <div class="modal" id="rfModal" hidden>
   <div class="card tn-card" role="dialog" aria-labelledby="rfTitle">
     <h3 id="rfTitle" style="margin:0">Renewal fees to charge</h3>
@@ -6625,8 +6644,10 @@
       (wa ? '<a class="btn wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
       (l.email ? '<a class="btn" href="mailto:' + esc(l.email) + '">Email</a>' : '') +
       '<button class="btn" id="llLinkBtn" type="button" title="' + esc(sentWhen(l.link_sent) || 'Not sent yet') + '">🔗 Send their page' + (l.link_sent ? ' ✓' : '') + '</button>' +
+      '<button class="btn" id="llInvBtn" type="button">🧾 New invoice</button>' +
       '<button class="btn primary" id="llEditBtn" type="button">Edit details</button>';
     $('llLinkBtn').addEventListener('click', function(){ openLlLink(l); });
+    $('llInvBtn').addEventListener('click', function(){ var ps = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; }); openNewInvoice({ props: ps.length ? ps : null, address: ps.length === 1 ? ps[0] : '' }); });
     $('llCard').innerHTML = '<dl class="kv">' + [['Name', l.name], ['Phone', l.phone], ['Email', l.email], ['Address (for invoices)', l.address], ['Notes', l.notes]]
       .filter(function(r){ return r[1]; }).map(function(r){ return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
     $('llEditBtn').addEventListener('click', function(){ openLandlordForm(l); });
@@ -7825,6 +7846,59 @@
     }).join('') + (list.length > 5 ? '<div class="muted" style="margin-top:6px">…and ' + (list.length - 5) + ' more jobs</div>' : '');
   }
   $('noteBanner').addEventListener('click', function(e){ var b = e.target.closest('[data-job]'); if (b) openJob(Number(b.dataset.job)); });
+  // ---------- New invoice to a landlord (any charge, for a property) ----------
+  var ni = null;
+  function openNewInvoice(o){
+    ni = Object.assign({ address: '', title: '', lines: [{ desc: '', amount: '' }], vat: true, tenancy_id: null, kind: '', props: null, after: null }, o || {});
+    var props = ni.props || allPropsForList().map(function(p){ return p.address; });
+    $('niProps').innerHTML = props.map(function(a){ return '<option value="' + esc(a) + '">'; }).join('');
+    $('niAddr').value = ni.address || (ni.props && ni.props.length === 1 ? ni.props[0] : '');
+    $('niTitleIn').value = ni.title || ''; $('niVat').checked = ni.vat !== false; $('niDue').value = addDaysIso(isoDay(new Date()), 14);
+    $('niForm').hidden = false; $('niDone').hidden = true; $('niDone').innerHTML = '';
+    niDrawLines(); niUpdate(); $('niModal').hidden = false;
+    setTimeout(function(){ (ni.address ? $('niTitleIn') : $('niAddr')).focus(); }, 50);
+  }
+  function niDrawLines(){
+    $('niLines').innerHTML = ni.lines.map(function(l, i){
+      return '<div class="tcy-fee" data-i="' + i + '"><input class="inp" data-nl="desc" placeholder="Description" value="' + esc(l.desc || '') + '"><input class="inp" data-nl="amount" inputmode="decimal" placeholder="£" value="' + esc(l.amount == null ? '' : l.amount) + '"><button type="button" class="tcy-x" data-nl-del="' + i + '" title="Remove"' + (ni.lines.length === 1 ? ' disabled' : '') + '>×</button></div>';
+    }).join('');
+  }
+  function niRead(){ $('niLines').querySelectorAll('.tcy-fee').forEach(function(row){ var l = ni.lines[Number(row.dataset.i)]; l.desc = row.querySelector('[data-nl=desc]').value.trim(); l.amount = row.querySelector('[data-nl=amount]').value.replace(/[£,\s]/g, ''); }); }
+  function niUpdate(){
+    niRead();
+    var lr = landlordRecordAt($('niAddr').value);
+    $('niLl').textContent = $('niAddr').value.trim() ? (lr ? 'To ' + lr.name + (lr.email ? ' · ' + lr.email : ' · no email saved') : 'No landlord linked to this property yet') : '';
+    var sub = r2(ni.lines.reduce(function(t, l){ return t + (num(l.amount) || 0); }, 0)), vat = $('niVat').checked ? r2(sub * 0.2) : 0;
+    $('niTotal').textContent = sub ? 'Total ' + gbp(r2(sub + vat)) + (vat ? ' (' + gbp(sub) + ' + VAT ' + gbp(vat) + ')' : '') : '';
+  }
+  $('niLines').addEventListener('input', niUpdate);
+  $('niAddr').addEventListener('input', niUpdate); $('niVat').addEventListener('change', niUpdate);
+  $('niLines').addEventListener('click', function(e){ var b = e.target.closest('[data-nl-del]'); if (!b) return; niRead(); ni.lines.splice(Number(b.dataset.nlDel), 1); niDrawLines(); niUpdate(); });
+  $('niAddLine').addEventListener('click', function(){ niRead(); ni.lines.push({ desc: '', amount: '' }); niDrawLines(); var r = $('niLines').querySelectorAll('[data-nl=desc]'); r[r.length - 1].focus(); });
+  $('niCancel').addEventListener('click', function(){ $('niModal').hidden = true; });
+  $('niModal').addEventListener('mousedown', function(e){ if (e.target === $('niModal')) $('niModal').hidden = true; });
+  $('niCreate').addEventListener('click', function(){
+    niRead();
+    var addr = $('niAddr').value.trim(), lines = ni.lines.filter(function(l){ return l.desc && num(l.amount); });
+    if (!addr) { toast('Choose the property'); $('niAddr').focus(); return; }
+    if (!lines.length) { toast('Add a line with a description and an amount'); return; }
+    var b = $('niCreate'); busy(b, true, 'Creating…');
+    api('POST', '/api/admin/invoices', { address: addr, title: $('niTitleIn').value.trim() || lines[0].desc, lines: lines.map(function(l){ return { desc: l.desc, amount: num(l.amount) }; }), vat: $('niVat').checked, due: $('niDue').value, tenancy_id: ni.tenancy_id, kind: ni.kind }).then(function(d){
+      busy(b, false);
+      if (!d.ok) { toast('Couldn’t create the invoice (' + (d.error || 'error') + ')'); return; }
+      var body = llGreeting(d.landlord_name) + ',\n\nPlease find invoice ' + d.number + ' for ' + gbp(d.total) + ' — ' + ($('niTitleIn').value.trim() || lines[0].desc) + ' (' + shortAddr(addr) + ').' + (d.url ? '\n\nView the invoice and how to pay: ' + d.url : '') + '\n\nKind regards,\nResidential Realtors';
+      var mail = 'mailto:' + encodeURIComponent(d.landlord_email || '') + '?subject=' + encodeURIComponent('Invoice ' + d.number + ' — ' + shortAddr(addr)) + '&body=' + encodeURIComponent(body);
+      $('niForm').hidden = true; $('niDone').hidden = false;
+      $('niDone').innerHTML = '<div class="match ok" style="margin:10px 0">✓ Invoice <b>' + esc(d.number) + '</b> for <b>' + esc(gbp(d.total)) + '</b> created — it’s in the landlord’s invoices and on their page.</div>' +
+        '<div class="row-actions"><a class="btn" href="/api/admin/invoices/' + d.id + '/view" target="_blank" rel="noopener">View invoice</a>' +
+        (d.landlord_email ? '<a class="btn primary" href="' + esc(mail) + '" id="niMail">✉ Email it to the landlord</a>' : '<span class="muted-note" style="margin:0">No landlord email saved.</span>') +
+        '<span style="flex:1"></span><button class="btn ghost" type="button" id="niClose">Done</button></div>';
+      $('niClose').addEventListener('click', function(){ $('niModal').hidden = true; });
+      if ($('niMail')) $('niMail').addEventListener('click', function(){ if (ni.tenancy_id) api('POST', '/api/admin/tenancies/' + ni.tenancy_id + '/log', { text: 'Invoice ' + d.number + ' emailed to the landlord' }); });
+      toast('Invoice ' + d.number + ' created');
+      loadAllInvoices().then(function(){ if (view === 'll' && openLlId) renderLandlord(); if (ni.after) ni.after(d); });
+    });
+  });
   // Month 12 of a tenancy that pays its fee up front: charge the renewal fee.
   var renewFees = [];
   function loadRenewalFees(){
@@ -8670,8 +8744,9 @@
         // Straight to the property and the landlord.
         (x ? (function(){
           var pr = d.address && matchProperty(d.address), lr = findLandlordRec(d.landlord || {}, d.address);
-          return (pr || lr) ? '<div class="tcy-links">' + (pr ? '<button type="button" class="btn small" data-tcy-prop="' + esc(pr.key) + '">🏠 Property</button>' : '') +
-            (lr ? '<button type="button" class="btn small" data-tcy-ll="' + lr.id + '">👤 Landlord: ' + esc(lr.name) + '</button>' : '') + '</div>' : '';
+          return '<div class="tcy-links">' + (pr ? '<button type="button" class="btn small" data-tcy-prop="' + esc(pr.key) + '">🏠 Property</button>' : '') +
+            (lr ? '<button type="button" class="btn small" data-tcy-ll="' + lr.id + '">👤 Landlord: ' + esc(lr.name) + '</button>' : '') +
+            '<button type="button" class="btn small" data-tcy-inv="1">🧾 Invoice the landlord</button></div>';
         })() : '') + '</div></div>' +
       '<div class="tcy-form">' +
       // Property
@@ -8763,16 +8838,36 @@
     if (tcyLocked) tcyLock();
   }
   $('tcyDetail').addEventListener('click', function(e){
-    var b = e.target.closest('[data-tcy-prop],[data-tcy-ll]'); if (!b) return;
+    var b = e.target.closest('[data-tcy-prop],[data-tcy-ll],[data-tcy-inv],[data-owe]'); if (!b) return;
+    if (b.dataset.tcyInv) { var dd = tcySaved() || tcyDraft; openNewInvoice({ address: dd.address, props: [dd.address], tenancy_id: openTcyId === 'new' ? null : openTcyId, vat: dd.vat !== false && !/rent\s*4\s*rent/i.test(String(dd.service || '')) }); return; }
+    if (b.dataset.owe) { tcyOwe(b.dataset.owe, b); return; }
     if (b.dataset.tcyProp) openProperty(b.dataset.tcyProp); else openLandlord(Number(b.dataset.tcyLl));
   });
+  // What the landlord owes us on a tenancy: raise the invoice, or mark it paid / not paid.
+  function tcyOwe(what, b){
+    var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0]; if (!x) return;
+    var d = x.data || {}, c = tcyCalc(d), owe = r2(-c.balance), inv = d.fees_invoice_id;
+    var refresh = function(){ return Promise.all([loadTenancies(), loadAllInvoices()]).then(function(){ tcyRefresh(); }); };
+    if (what === 'invoice') {
+      var fees = c.fees.map(function(f){ return f.label + ' ' + gbp(f.amount); }).join(', ');
+      openNewInvoice({ address: d.address, props: [d.address], tenancy_id: x.id, kind: 'move_in', vat: false, title: 'Fees for the let — ' + shortAddr(d.address),
+        lines: [{ desc: 'Fees for the let (' + fees + (c.vat ? ', plus VAT ' + gbp(c.vat) : '') + ' = ' + gbp(c.feeTotal) + ') less the first rent we received (' + gbp(c.income) + ')', amount: owe.toFixed(2) }],
+        after: function(){ refresh(); } });
+      toast('VAT is already included in the amount owed');
+      return;
+    }
+    busy(b, true, '…');
+    var done = function(){ busy(b, false); refresh(); };
+    if (what === 'inv-paid' || what === 'inv-unpaid') api('POST', '/api/admin/invoices/' + inv + '/paid', { paid: what === 'inv-paid' }).then(function(){ toast(what === 'inv-paid' ? 'Marked as paid' : 'Marked as not paid'); done(); });
+    else api('POST', '/api/admin/tenancies/' + x.id + '/fees-paid', { paid: what === 'paid', amount: owe }).then(function(){ toast(what === 'paid' ? 'Marked as paid' : 'Marked as not paid'); done(); });
+  }
   // A saved tenancy is read-only until "Edit tenancy": every box and button is
   // locked except the documents and emails.
   var tcyLocked = false;
   function tcyLock(){
     var form = $('tcyDetail').querySelector('.tcy-form'); if (!form) return;
     form.classList.add('tcy-locked');
-    form.querySelectorAll('input, select, textarea, button').forEach(function(el){ if (!el.closest('.tcy-docs')) el.disabled = true; });
+    form.querySelectorAll('input, select, textarea, button').forEach(function(el){ if (!el.closest('.tcy-docs') && !el.dataset.owe) el.disabled = true; });
     var save = form.querySelector('.tcy-save'); if (save) save.hidden = true;
     var del = $('tfDelete'); if (del) del.closest('.card').hidden = true;
     var head = $('tcyDetail').querySelector('.prop-head');
@@ -9008,6 +9103,15 @@
     if (oneOff) rows.push(['One-off fees', (d.fees || []).filter(function(f){ return f && f.label && num(f.amount) !== null; }).map(function(f){ return esc(f.label) + ' ' + gbp(num(f.amount)); }).join(', ') + ' → ' + wv(oneOff)]);
     if (c.upfrontFee || oneOff) rows.push(['First month', (d.deposit_by === 'landlord' ? 'Rent + deposit ' : 'Rent ') + gbp(c.income) + ' − all fees ' + gbp(c.feeTotal) + (vr ? ' (inc. VAT)' : '') + ' → ' + (c.balance < 0 ? '<b style="color:var(--brick)">the landlord owes us ' + gbp(-c.balance) + '</b>' : '<b>' + gbp(c.balance) + '</b> to the landlord')]);
     if (c.monthlyFee || c.upfrontFee) rows.push(['In a year', 'Our fees: ' + wv(r2(c.monthlyFee * 12 + c.upfrontFee))]);
+    // The landlord owes us (the fees are more than the first rent we hold): invoice it, or mark it paid.
+    var sv = openTcyId !== 'new' && tenancies.filter(function(t){ return t.id === openTcyId; })[0], svd = sv ? sv.data || {} : {};
+    if (c.balance < -0.004 && sv) {
+      var owe = r2(-c.balance), inv = svd.fees_invoice_id && allInvoices.filter(function(i){ return i.id === svd.fees_invoice_id; })[0];
+      rows.push(['Landlord owes us', inv
+        ? 'Invoice <a href="/api/admin/invoices/' + inv.id + '/view" target="_blank" rel="noopener">' + esc(inv.number) + '</a> · ' + gbp(inv.total) + ' — ' + (inv.paid_at ? '<b style="color:var(--green, #16a34a)">✓ Paid ' + esc(fmtShort(inv.paid_at).split(',')[0]) + '</b> <button type="button" class="linkish" data-owe="inv-unpaid">Undo</button>' : '<b style="color:var(--brick)">not paid yet</b> <button type="button" class="btn small primary" data-owe="inv-paid">✓ Mark paid</button>')
+        : svd.fees_paid ? '<b style="color:var(--green, #16a34a)">✓ Paid ' + esc(gbp(svd.fees_paid.amount || owe)) + ' on ' + esc(fmtShort(svd.fees_paid.at).split(',')[0]) + '</b> <button type="button" class="linkish" data-owe="unpaid">Undo</button>'
+        : '<b style="color:var(--brick)">' + gbp(owe) + ' — not paid yet</b> <button type="button" class="btn small primary" data-owe="invoice">🧾 Raise invoice</button> <button type="button" class="btn small" data-owe="paid">✓ Mark paid</button>']);
+    }
     $('tfFeeSum').innerHTML = rows.length ? '<div class="fee-plain">' + rows.map(function(r){ return '<div><span>' + r[0] + '</span><p>' + r[1] + '</p></div>'; }).join('') + '</div>' : '<p class="muted-note" style="margin:0">' + (/rent\s*4\s*rent/i.test(String(d.service || '')) ? 'Rent4Rent — no fees charged to the landlord.' : 'Enter the rent and our fee to see what the landlord pays.') + '</p>';
   }
   var tcySvcApply = null;

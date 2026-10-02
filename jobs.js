@@ -2276,6 +2276,49 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true, invoices: r.rows.map(function (x) { x.ref = x.job_id ? refFor(x.job_id) : (x.title || 'Tenancy'); return x; }) });
   }));
 
+  // A new invoice to a landlord, not tied to a repair job: any charge for a
+  // property (e.g. the move-in fees a Tenant Find landlord owes us), optionally
+  // for a tenancy. Lines are before VAT; VAT added unless off.
+  app.post('/api/admin/invoices', withDb(async function (p, req, res) {
+    const b = req.body || {}, address = str(b.address, 500) || '', key = propKey(address);
+    if (!key) return res.status(400).json({ ok: false, error: 'address' });
+    const lines = (Array.isArray(b.lines) ? b.lines : []).slice(0, 30).map(function (l) { return { desc: str(l && l.desc, 300) || '', amount: money(l && l.amount) }; }).filter(function (l) { return l.desc && l.amount; });
+    if (!lines.length) return res.status(400).json({ ok: false, error: 'lines' });
+    const r2 = function (v) { return Math.round(v * 100) / 100; };
+    const sub = r2(lines.reduce(function (a, l) { return a + l.amount; }, 0)), vat = b.vat === false ? 0 : r2(sub * 0.2), total = r2(sub + vat);
+    const tid = parseInt(b.tenancy_id, 10) || null;
+    let ll = (await p.query('SELECT l.id, l.name, l.email, l.phone, l.address, l.portal_token FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [key])).rows[0] || {};
+    const name = str(b.landlord_name, 200) || ll.name || '', email = str(b.landlord_email, 200) || ll.email || '';
+    const today = new Date().toISOString().slice(0, 10), due = isoDay(b.due) || new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+    const ins = await p.query('INSERT INTO invoices (job_id, tenancy_id, address, property_key, total, landlord_name, landlord_email) VALUES (NULL, $1, $2, $3, $4, $5, $6) RETURNING id',
+      [tid, address, key, total, name || null, email || null]);
+    const id = ins.rows[0].id, number = 'INV-' + String(id).padStart(5, '0');
+    const data = { number: number, title: str(b.title, 120) || 'Invoice', date: today, due: due, ref: str(b.ref, 40) || number, landlord: name, landlordEmail: email, landlordPhone: str(b.landlord_phone, 50) || ll.phone || '',
+      landlordAddress: str(b.landlord_address, 500) || ll.address || '', lines: lines, sub: sub, vat: vat, total: total, kind: str(b.kind, 30) || '' };
+    await p.query('UPDATE invoices SET number = $2, data = $3 WHERE id = $1', [id, number, JSON.stringify(data)]);
+    if (tid) {
+      await p.query('UPDATE tenancies SET log = log || $2::jsonb' + (b.kind === 'move_in' ? ", data = data || jsonb_build_object('fees_invoice_id', $3::int)" : '') + ' WHERE id = $1',
+        b.kind === 'move_in' ? [tid, JSON.stringify([{ at: new Date().toISOString(), text: 'Invoice ' + number + ' raised to the landlord for ' + gbp(total) + ' — ' + data.title }]), id]
+          : [tid, JSON.stringify([{ at: new Date().toISOString(), text: 'Invoice ' + number + ' raised to the landlord for ' + gbp(total) + ' — ' + data.title }])]);
+    }
+    // A link the landlord can open, for the email.
+    let url = '';
+    if (ll.id) {
+      let token = ll.portal_token;
+      if (!token) { token = crypto.randomBytes(18).toString('base64url'); await p.query('UPDATE landlords SET portal_token = $2, updated_at = now() WHERE id = $1', [ll.id, token]); }
+      const siteUrl = process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : req.protocol + '://' + req.get('host'));
+      url = siteUrl + '/l/' + token + '/invoice/' + id;
+    }
+    res.json({ ok: true, id: id, number: number, total: total, url: url, landlord_email: email, landlord_name: name });
+  }));
+  // The landlord paid what a tenancy owed us without an invoice (or hasn't).
+  app.post('/api/admin/tenancies/:id/fees-paid', withDb(async function (p, req, res) {
+    const paid = (req.body || {}).paid !== false, amount = money((req.body || {}).amount);
+    const r = await p.query("UPDATE tenancies SET data = data || jsonb_build_object('fees_paid', $2::jsonb), log = log || $3::jsonb, updated_at = now() WHERE id = $1 RETURNING data",
+      [jobId(req), paid ? JSON.stringify({ at: new Date().toISOString(), amount: amount || null }) : 'null', JSON.stringify([{ at: new Date().toISOString(), text: paid ? 'Landlord paid what they owed us' + (amount ? ' (' + gbp(amount) + ')' : '') : 'Marked as not paid by the landlord' }])]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json({ ok: true, data: r.rows[0].data });
+  }));
   // Mark an invoice as paid by the landlord (or not paid).
   app.post('/api/admin/invoices/:id/paid', withDb(async function (p, req, res) {
     const paid = (req.body || {}).paid !== false;
@@ -4348,7 +4391,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.put('/api/admin/tenancies/:id', withDb(async function (p, req, res) {
     const d = cleanTenancy(req.body || {});
     if (!d.address) return res.status(400).json({ ok: false, error: 'address-required' });
-    const r = await p.query('UPDATE tenancies SET property_key = $2, address = $3, start_date = $4, data = $5, updated_at = now() WHERE id = $1 RETURNING id',
+    // Kept from the saved tenancy: its move-in fees invoice and whether the landlord paid.
+    const r = await p.query(`UPDATE tenancies SET property_key = $2, address = $3, start_date = $4,
+        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid')), updated_at = now() WHERE id = $1 RETURNING id`,
       [jobId(req), propKey(d.address), d.address, d.start_date, JSON.stringify(d)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await linkTenancyPeople(p, d);
