@@ -783,6 +783,31 @@ function certLines(text) {
   out.forEach(function (c) { if (!c.address) c.address = addr; });
   return out;
 }
+// "£1,650.00 per calendar month" → 1650; "£380 pw" → 1646.67; "£19,800 per annum" → 1650.
+function rentFromText(t) {
+  const m = /£\s*([\d,]+(?:\.\d{1,2})?)/.exec(String(t || '')) || /\b([\d,]{3,}(?:\.\d{1,2})?)\b/.exec(String(t || ''));
+  if (!m) return null;
+  const n = Number(m[1].replace(/,/g, '')); if (!isFinite(n) || n <= 0) return null;
+  const after = String(t).slice(m.index).toLowerCase();
+  const r = function (v) { return Math.round(v * 100) / 100; };
+  if (/\b(p\.?\s?w|per\s+week|a\s+week|weekly|\/\s*w(?:ee)?k)\b/.test(after)) return r(n * 52 / 12);
+  if (/\b(p\.?\s?a|per\s+(?:annum|year)|a\s+year|annual(?:ly)?|yearly|\/\s*y(?:ea)?r)\b/.test(after)) return r(n / 12);
+  return r(n);
+}
+// A quick sanity check: a holding deposit is usually 1 week's rent and the
+// deposit 5 (or 6) weeks'. Far off either suggests the rent was misread.
+function rentCheck(rent, deposit, holding) {
+  if (!rent) return '';
+  const week = rent * 12 / 52, off = function (v, w) { return Math.abs(v - w) > Math.max(2, w * 0.05); };
+  const depOk = deposit && (!off(deposit, week * 5) || !off(deposit, week * 6));
+  if (depOk) return '';   // the deposit fits the rent: it's right
+  const fromHold = holding ? Math.round(holding * 52 / 12 * 100) / 100 : 0, fromDep = deposit ? Math.round(deposit / 5 * 52 / 12 * 100) / 100 : 0;
+  if (fromHold && off(holding, week) && (!fromDep || Math.abs(fromHold - fromDep) <= fromDep * 0.05))
+    return 'The holding deposit (£' + holding.toFixed(2) + ') is usually one week’s rent, which would make the rent about £' + fromHold.toFixed(2) + ' a month' + (fromDep ? ' (the deposit agrees)' : '') + ' — please check the rent.';
+  if (fromDep && deposit >= 100 && (!holding || off(holding, week)))
+    return 'The deposit (£' + deposit.toFixed(2) + ') is usually five weeks’ rent, which would make the rent about £' + fromDep.toFixed(2) + ' a month — please check the rent.';
+  return '';
+}
 function money(v) {
   if (v === undefined || v === null || v === '') return null;
   const n = Number(String(v).replace(/[£,\s]/g, ''));
@@ -2426,7 +2451,8 @@ module.exports = function mountJobs(app, opts) {
       'tenants ([{"name": "", "phone": "", "email": ""}] exactly as given), landlord (name as given, else ""), key_number (the office key tag number if given, else ""), notes (anything else useful, else "").\n' +
       'The instruction may instead be the details of a NEW TENANCY (a new let: property, tenants, rent, start date, landlord, deposit, fees — e.g. a pasted offer, Terms of Let or notes). ' +
       'Do not make a job or contacts for that — its tenants, guarantors and landlord go inside the tenancy, never also in "contacts". Put it in "tenancies" with: address (full, keep flat/house number and postcode), start_date (the tenancy start date — on a Terms of Let often called the "move-in date" or "move in"; they are the same date), move_in_due (the deadline for paying the move-in monies / first rent and deposit — not the move-in date; "" if no separate deadline is given), date_taken (the date the holding deposit was paid — the same as holding_date), checkin_date (all YYYY-MM-DD; today is ' + new Date().toISOString().slice(0, 10) + '; "" if not given), ' +
-      'checkin_time ("HH:MM" or ""), checkin_type ("clerk" if an inventory clerk / check-in is booked, "diy" for a DIY check-in / tenant\'s own inventory, "" if not said), term_months, break_months, rent_pcm (monthly rent in pounds; convert weekly rent × 52 / 12), deposit, holding (holding deposit / reservation fee paid) — numbers or null if not given, holding_date (when the holding deposit was paid, YYYY-MM-DD or ""), ' +
+      'checkin_time ("HH:MM" or ""), checkin_type ("clerk" if an inventory clerk / check-in is booked, "diy" for a DIY check-in / tenant\'s own inventory, "" if not said), term_months, break_months, rent_pcm (the RENT for the property in pounds per calendar month — the agreed rent itself, NOT the first payment, balance due, move-in monies, total, rent less the holding deposit, deposit, or any fee; if the rent is given per week, rent_pcm = weekly × 52 / 12; if per year, ÷ 12), ' +
+      'rent_text (the rent copied EXACTLY as printed in the document, with its amount and period, e.g. "£1,650.00 per calendar month" or "£380 pw"; "" if none), deposit, holding (holding deposit / reservation fee paid) — numbers or null if not given, holding_date (when the holding deposit was paid, YYYY-MM-DD or ""), ' +
       'deposit_by ("agent" if we/the agent register it, "landlord" if the landlord does, "" if not said), deposit_scheme, negotiator, service ("Tenant Find", "Rent Collection", "Fully Managed" or "Rent4Rent" — rent-to-rent, where a company rents the property to sublet it), ' +
       'find_pct, collect_pct, manage_pct (percentages as numbers, or null), find_basis and manage_basis ("upfront" or "monthly"). How fees work at this agency: Tenant Find — the letting fee (find_pct) is a % of the annual rent taken up front (find_basis "upfront"); Rent Collection — the same letting % split monthly (find_pct with find_basis "monthly"; collect_pct only if a separate extra collection fee is stated); Fully Managed — the management % (manage_pct) taken monthly or up front as agreed (manage_basis), sometimes with a letting fee as well (find_pct and find_basis, only if one is stated); Rent4Rent — the agency rents the property from the landlord and re-lets it, no VAT (vat false). ' +
       'tenants and guarantors (each [{"name": "", "email": "", "phone": ""}], names with titles as given), landlord ({"name": "", "email": "", "phone": "", "line1": "", "line2": "", "country": "", "postcode": ""} — their own address), ' +
@@ -2475,6 +2501,12 @@ module.exports = function mountJobs(app, opts) {
       if (!(t && (t.find_basis === 'upfront' || t.find_basis === 'monthly'))) d.find_basis = null;
       if (!(t && (t.manage_basis === 'upfront' || t.manage_basis === 'monthly'))) d.manage_basis = null;
       if (t && (t.vat === false || /rent\s*4\s*rent/i.test(String(t.service || '')))) d.vat = false;
+      // The rent as printed decides: its amount and period (per month / week / year)
+      // give the monthly rent, in case the reply took the wrong figure or period.
+      const rt = str(t && t.rent_text, 120) || '', fromText = rentFromText(rt);
+      if (fromText && Math.abs(fromText - (Number(d.rent_pcm) || 0)) > 1) d.rent_pcm = fromText;
+      d.rent_text = rt;
+      d.rent_check = rentCheck(Number(d.rent_pcm) || 0, Number(d.deposit) || 0, Number(d.holding) || 0);
       return d;
     }).filter(function (d) { return d.address || d.tenants.length; });
     const properties = (Array.isArray(parsed.properties) ? parsed.properties : []).slice(0, 10).map(function (x) {
