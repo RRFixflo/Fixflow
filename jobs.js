@@ -824,6 +824,19 @@ function rentCheck(rent, deposit, holding) {
     return 'The deposit (£' + deposit.toFixed(2) + ') is usually five weeks’ rent, which would make the rent about £' + fromDep.toFixed(2) + ' a month — please check the rent.';
   return '';
 }
+// An address naming only a building (no flat / door number), e.g. a licence for
+// "Brunlees House, Rockingham Estate, SE1 6QF": the one property on file in that
+// building (same postcode, building name in its address), else as given.
+function oneInBuilding(address, known) {
+  const a = String(address || '');
+  if (!a || doorNumKey(a)) return a;
+  const pcOf = function (s) { const m = POSTCODE_RE.exec(String(s || '')); return m ? (m[1] + m[2]).toUpperCase() : ''; }, pc = pcOf(a);
+  const STOP = ['flat', 'house', 'road', 'street', 'court', 'london', 'the', 'and', 'apartment', 'estate', 'terrace', 'block', 'building', 'tower', 'mansions', 'lane', 'avenue', 'close', 'place', 'gardens', 'square'];
+  const lead = String(a.split(',')[0]).toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 4 && STOP.indexOf(w) === -1; });
+  if (!lead.length) return a;
+  const hits = (known || []).filter(function (k) { const kl = String(k).toLowerCase(), kpc = pcOf(k); return (!pc || !kpc || pc === kpc) && lead.every(function (w) { return kl.indexOf(w) !== -1; }); });
+  return hits.length === 1 ? hits[0] : a;
+}
 // The door / flat numbers in an address (not the postcode): "Flat 2, 23 John
 // Maurice Close, SE17 1PZ" → ["2", "23"].
 function doorNumKey(a) { return (String(a || '').replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/gi, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }).sort().join(','); }
@@ -2492,7 +2505,7 @@ module.exports = function mountJobs(app, opts) {
     const prompt = fromEmail ? emailPrompt(text, trades) : 'You turn instructions from a UK letting agent\'s maintenance manager into repair jobs for their job system.\n\n' +
       'Instruction (spoken via speech-to-text, so allow for mis-heard words, or a pasted message that may list several properties, each with its tasks and tenant contacts, or an attached document such as a Terms of Let), between the ---- lines:\n----\n' + text + '\n----\n\n' +
       'Their contractors: ' + (trades || 'none listed') + '.\n\n' +
-      (known.length ? 'Their properties (use the exact address from this list when the one said is clearly one of these, allowing for mis-heard or shortened names and a missing "Flat"; the door number and flat number must match EXACTLY — "23 John Maurice Close" is NOT "21 John Maurice Close", a different number on the same street or building is a different property, so then give the address as written): ' + known.join(' | ') + '\n\n' : '') +
+      (known.length ? 'Their properties (use the exact address from this list when the one said is clearly one of these, allowing for mis-heard or shortened names and a missing "Flat"; the door number and flat number must match EXACTLY — "23 John Maurice Close" is NOT "21 John Maurice Close", a different number on the same street or building is a different property, so then give the address as written; but when a document gives only a building name with no flat or door number — e.g. a licence for "Brunlees House, Rockingham Estate, SE1 6QF" — and exactly one of their properties is in that building, use that property): ' + known.join(' | ') + '\n\n' : '') +
       'For every job, property, tenancy and certificate also give "address_written": the address exactly as it appears in the instruction or document (before any matching to their list).\n\n' +
       'Make exactly one job per property address mentioned (a pasted message may contain several, often each followed by "for Jim" or similar). Put all the tasks for the same property into that one job. For each job give:\n' +
       '- address: the property as said, tidied up (e.g. "6 Whitworth House"); keep flat/house numbers exactly\n' +
@@ -2611,7 +2624,7 @@ module.exports = function mountJobs(app, opts) {
       const type = c && (CERT_TYPES[c.type] || c.type === 'Licence') ? c.type : null;
       const doc = parseInt(c && c.document, 10);
       return { licence_type: str(c && c.licence_type, 60) || '', holder: str(c && c.holder, 200) || '', council: str(c && c.council, 80) || '',
-        address: keepWrittenAddress(str(c && c.address, 500) || '', str(c && c.address_written, 500)), type: type, issued_on: isoDay(c && c.issued_on) || '', expires_on: isoDay(c && c.expires_on) || '', reference: str(c && c.reference, 100) || '', rating: str(c && c.rating, 5) || '',
+        address: oneInBuilding(keepWrittenAddress(str(c && c.address, 500) || '', str(c && c.address_written, 500)), known), type: type, issued_on: isoDay(c && c.issued_on) || '', expires_on: isoDay(c && c.expires_on) || '', reference: str(c && c.reference, 100) || '', rating: str(c && c.rating, 5) || '',
         document: doc >= 1 && doc <= given.length ? doc : (given.length === 1 && !certLines(said).length ? 1 : 0) };
     }).filter(function (c) { return c.address && c.type && (c.issued_on || c.expires_on); });
     // Certificate lines read straight from the text, in case the reply missed one
@@ -4765,6 +4778,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function epcBuildings(s) {
     const t = String(s).replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(Boolean), out = [];
     t.forEach(function (w, i) { if (EPC_BUILDING.indexOf(w) !== -1 && i > 0 && EPC_STOP.indexOf(t[i - 1]) === -1 && !/^\d/.test(t[i - 1])) out.push(t[i - 1] + ' ' + w); });
+    // Whatever the building is called ("Galleons View", "Baltic Quay"): the words
+    // between the flat number and the building's street number.
+    const m = /\b\d+[a-z]?\b[\s,]+([a-z][a-z' ]*?[a-z])[\s,]+\d+[a-z]?\b/i.exec(String(s).replace(POSTCODE_RE, ' '));
+    if (m) { const name = m[1].toLowerCase().replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim(); if (name.split(' ').some(function (w) { return w.length >= 4 && EPC_STOP.indexOf(w) === -1; })) out.push(name); }
     return out;
   }
   function epcCandidates(address, results) {
@@ -4992,7 +5009,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   // When the matching improves, look again at properties it couldn't place.
   // (5: every property takes the register's full address again, keeping any part it lacks.)
-  const EPC_MATCH_VERSION = '5';
+  // (6: building names not ending in House/Court… — e.g. "Galleons View" — are recognised.)
+  const EPC_MATCH_VERSION = '6';
   setTimeout(function () {
     db().then(async function (p) {
       if (!p) return;

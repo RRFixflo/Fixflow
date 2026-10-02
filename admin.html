@@ -7097,6 +7097,20 @@
       return edits + (a.length - i) + (b.length - j) <= 1;
     };
     var qn = nums(q), qw = words(q);
+    // Only a building or street, no flat or door number ("Brunlees House, Rockingham
+    // Estate, SE1 6QF"): the one property on file in that building (same postcode).
+    if (!qn.length && qw.length) {
+      var pcOf = function(s){ var m = POSTCODE_RE.exec(String(s || '')); return m ? (m[1] + m[2]).toUpperCase() : ''; }, qpc = pcOf(address);
+      var lead = words(propKey(String(address).split(',')[0])).filter(function(w){ return ['estate', 'terrace', 'block', 'building', 'tower', 'mansions'].indexOf(w) === -1; });
+      if (lead.length) {
+        var inBld = all.filter(function(pr){
+          var kw = words(propKey(pr.address) || pr.key), ppc = pcOf(pr.address);
+          return (!qpc || !ppc || qpc === ppc) && lead.every(function(w){ return kw.some(function(x){ return near(w, x); }); });
+        });
+        if (inBld.length === 1) return inBld[0];
+      }
+      return null;
+    }
     if (!qn.length || !qw.length) return null;
     // Every number and name in the shorter address is in the longer one — either
     // way round, so "Flat 404, Hurlock Heights, 7 Elephant Rd" finds a saved
