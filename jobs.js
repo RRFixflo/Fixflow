@@ -5922,7 +5922,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       out.push({ n: i, from: from, to: addDaysIso(addMonthsIso(start, i + 1), -1), rent: rent, deposit: deposit, credits: credits, income: income, fees: f.fees, sub: f.sub, vat: f.vat, vatOn: f.vatOn,
         bf: bf, bf_from: i > 0 && bf ? addMonthsIso(start, i - 1) : null, total: total, balance: balance, sent: sent[from] || null,
         // Changed since it was sent (a cost added, a fee edited, an earlier month amended): send it again.
-        changed: sent[from] && typeof sent[from] === 'object' && Math.abs((Number(sent[from].balance) || 0) - balance) > 0.004 ? { was: Number(sent[from].balance) || 0 } : null });
+        // (A record with no figures — marked from a page open before this was added — can't be compared.)
+        changed: sent[from] && typeof sent[from] === 'object' && (Number(sent[from].total) || Number(sent[from].balance)) && Math.abs((Number(sent[from].balance) || 0) - balance) > 0.004 ? { was: Number(sent[from].balance) || 0 } : null });
       carry = balance < -0.004 ? -balance : 0;
     }
     return out;
