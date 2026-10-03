@@ -398,6 +398,33 @@ CREATE TABLE IF NOT EXISTS tenant_notices (
 );
 -- 'offers' = a staff sign-in that can only use the Offers page; NULL = full access.
 ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS role TEXT;
+-- Staff users: each person signs in with their own name and password, so every
+-- change is recorded with who made it. role: 'admin' (everything, and manages
+-- users), 'full' (everything else) or 'offers' (the Offers page only).
+CREATE TABLE IF NOT EXISTS staff_users (
+  id          SERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  email       TEXT,
+  role        TEXT NOT NULL DEFAULT 'full',
+  salt        TEXT NOT NULL,
+  hash        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  disabled_at TIMESTAMPTZ,
+  last_seen   TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS staff_users_name_idx ON staff_users (lower(name));
+ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS user_id INTEGER;
+ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS user_name TEXT;
+-- Who did what: every change made in the portal, by whom.
+CREATE TABLE IF NOT EXISTS staff_activity (
+  id        BIGSERIAL PRIMARY KEY,
+  at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  user_id   INTEGER,
+  user_name TEXT,
+  action    TEXT NOT NULL,
+  ip        TEXT
+);
+CREATE INDEX IF NOT EXISTS staff_activity_at_idx ON staff_activity (at DESC);
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      JSONB,
@@ -1265,6 +1292,7 @@ module.exports = function mountJobs(app, opts) {
 
   let pool = null;
   let ready = Promise.resolve(false);
+  const actor = new (require('async_hooks').AsyncLocalStorage)();   // { id, name } of the signed-in person
   if (DATABASE_URL && Pool) {
     pool = new Pool({
       connectionString: DATABASE_URL,
@@ -1273,6 +1301,24 @@ module.exports = function mountJobs(app, opts) {
       max: 5
     });
     pool.on('error', function (err) { console.error('Postgres pool error:', err.message); });
+    // Who made a change: while a signed-in request is handled, job updates and the
+    // history logs written by it are tagged with that person's name (see actor below).
+    const rawQuery = pool.query.bind(pool);
+    pool.query = function (text, params) {
+      const who = actor.getStore();
+      if (who && who.name && typeof text === 'string' && Array.isArray(params)) {
+        if (/^\s*INSERT INTO job_updates \(job_id, kind, body\) VALUES \(/.test(text)) {
+          params = params.concat([who.name]);
+          text = text.replace(/INSERT INTO job_updates \(job_id, kind, body\) VALUES \(([^)]*)\)/, function (m, v) { return 'INSERT INTO job_updates (job_id, kind, body, author) VALUES (' + v + ', $' + params.length + ')'; });
+        } else if (/log = log \|\|/.test(text)) {
+          params = params.map(function (v) {
+            if (typeof v !== 'string' || v.slice(0, 8) !== '[{"at":"') return v;
+            try { const arr = JSON.parse(v); if (!Array.isArray(arr)) return v; arr.forEach(function (e) { if (e && typeof e === 'object' && e.text && !e.user) e.user = who.name; }); return JSON.stringify(arr); } catch (e) { return v; }
+          });
+        }
+      }
+      return rawQuery(text, params);
+    };
     ready = pool.query(SCHEMA)
       .then(function () { return seedContractors(pool).catch(function (err) { console.error('Contractor seed failed:', err.message); }); })
       .then(function () { return migrateLandlords(pool).catch(function (err) { console.error('Landlord migration failed:', err.message); }); })
@@ -1395,12 +1441,12 @@ module.exports = function mountJobs(app, opts) {
     return 'rr_admin=' + token + '; Path=/; HttpOnly; SameSite=Strict; Max-Age=' + Math.max(0, Math.round((exp - Date.now()) / 1000)) + (req.secure ? '; Secure' : '');
   }
   const sessionCache = new Map();   // sid -> { revoked, touched }
-  async function startSession(req, sid, role) {
+  async function startSession(req, sid, role, user) {
     const p = await db();
     if (!p) return;
-    await p.query('INSERT INTO admin_sessions (id, ip, user_agent, role) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING',
-      [sid, str(req.ip, 100), str(req.get('user-agent'), 400), role || null]);
-    sessionCache.set(sid, { revoked: false, touched: Date.now() });
+    await p.query('INSERT INTO admin_sessions (id, ip, user_agent, role, user_id, user_name) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING',
+      [sid, str(req.ip, 100), str(req.get('user-agent'), 400), role || null, user ? user.id : null, user ? user.name : null]);
+    sessionCache.set(sid, { revoked: false, touched: Date.now(), user_id: user ? user.id : null, user_name: user ? user.name : null, user_role: user ? user.role : null });
   }
   // Is this sign-in still allowed? Also notes when it was last used (every few minutes).
   async function sessionOk(req, sid, role) {
@@ -1408,9 +1454,9 @@ module.exports = function mountJobs(app, opts) {
     const p = await db();
     if (!p) return !role;   // staff sign-ins can't be checked without the database
     if (!c) {
-      const row = (await p.query('SELECT revoked_at FROM admin_sessions WHERE id = $1', [sid])).rows[0];
-      if (!row) { if (role) return false; await startSession(req, sid); return true; }
-      c = { revoked: !!row.revoked_at, touched: 0 };
+      const row = (await p.query('SELECT s.revoked_at, s.user_id, s.user_name, u.role AS user_role, u.disabled_at FROM admin_sessions s LEFT JOIN staff_users u ON u.id = s.user_id WHERE s.id = $1', [sid])).rows[0];
+      if (!row) { if (role) return false; await startSession(req, sid); return sessionCache.get(sid) || true; }
+      c = { revoked: !!row.revoked_at || !!row.disabled_at, touched: 0, user_id: row.user_id, user_name: row.user_name, user_role: row.user_role };
       sessionCache.set(sid, c);
     }
     if (c.revoked) return false;
@@ -1418,8 +1464,9 @@ module.exports = function mountJobs(app, opts) {
       c.touched = Date.now();
       p.query('UPDATE admin_sessions SET last_seen = now(), ip = $2, user_agent = coalesce($3, user_agent) WHERE id = $1',
         [sid, str(req.ip, 100), str(req.get('user-agent'), 400)]).catch(function () {});
+      if (c.user_id) p.query('UPDATE staff_users SET last_seen = now() WHERE id = $1', [c.user_id]).catch(function () {});
     }
-    return true;
+    return c;
   }
   function readCookie(req, name) {
     const m = (req.headers.cookie || '').match(new RegExp('(?:^|;\\s*)' + name + '=([^;]+)'));
@@ -1467,9 +1514,16 @@ module.exports = function mountJobs(app, opts) {
   app.post('/api/admin/login', async function (req, res) {
     if (!ADMIN_PASSWORD) return res.status(503).json({ ok: false, error: 'admin-not-configured' });
     if (!loginAllowed(req.ip)) return res.status(429).json({ ok: false, error: 'too-many-attempts' });
-    const given = (req.body || {}).password;
-    let role = null;
-    if (!passwordMatches(given)) {
+    const given = (req.body || {}).password, uname = str((req.body || {}).user, 120);
+    let role = null, user = null;
+    if (uname) {
+      // A named staff user.
+      const p = await db();
+      const u = p ? (await p.query('SELECT id, name, role, salt, hash FROM staff_users WHERE disabled_at IS NULL AND (lower(name) = lower($1) OR lower(email) = lower($1)) LIMIT 1', [uname])).rows[0] : null;
+      const ok = u && given && (function () { const a = Buffer.from(scryptHex(given, u.salt), 'hex'), b2 = Buffer.from(u.hash, 'hex'); return a.length === b2.length && crypto.timingSafeEqual(a, b2); })();
+      if (!ok) return res.status(401).json({ ok: false, error: 'wrong-password' });
+      user = { id: u.id, name: u.name, role: u.role }; role = u.role === 'offers' ? 'offers' : null;
+    } else if (!passwordMatches(given)) {
       let staff = false;
       try { staff = await staffPasswordMatches(given); } catch (err) { console.error('Staff sign-in check failed:', err.message); }
       if (!staff) return res.status(401).json({ ok: false, error: 'wrong-password' });
@@ -1477,7 +1531,8 @@ module.exports = function mountJobs(app, opts) {
     }
     loginAttempts.delete(req.ip); // only failed attempts count towards the limit
     const sid = crypto.randomBytes(16).toString('hex'), exp = Date.now() + SESSION_DAYS * 86400 * 1000;
-    try { await startSession(req, sid, role); } catch (err) { console.error('Sign-in record failed:', err.message); if (role) return res.status(503).json({ ok: false, error: 'db' }); }
+    try { await startSession(req, sid, role, user); } catch (err) { console.error('Sign-in record failed:', err.message); if (role || user) return res.status(503).json({ ok: false, error: 'db' }); }
+    if (user) db().then(function (p) { return p && Promise.all([p.query("INSERT INTO staff_activity (user_id, user_name, action, ip) VALUES ($1, $2, 'Signed in', $3)", [user.id, user.name, str(req.ip, 60)]), p.query('UPDATE staff_users SET last_seen = now() WHERE id = $1', [user.id])]); }).catch(function () {});
     res.setHeader('Set-Cookie', sessionCookie(req, makeToken(sid, exp, role), exp));
     res.json({ ok: true, role: role });
   });
@@ -1500,7 +1555,9 @@ module.exports = function mountJobs(app, opts) {
     if (!t) return res.status(401).json({ ok: false, error: 'signed-out' });
     try {
       if (t.sid) {
-        if (!(await sessionOk(req, t.sid, t.role))) {
+        const sess = await sessionOk(req, t.sid, t.role);
+        if (sess && typeof sess === 'object') req.user = { id: sess.user_id || null, name: sess.user_name || (t.role === 'offers' ? 'Offers staff' : 'Owner'), role: sess.user_id ? sess.user_role : (t.role === 'offers' ? 'offers' : 'owner') };
+        if (!sess) {
           res.setHeader('Set-Cookie', 'rr_admin=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
           return res.status(401).json({ ok: false, error: 'signed-out' });
         }
@@ -1514,10 +1571,32 @@ module.exports = function mountJobs(app, opts) {
       }
     } catch (err) { console.error('Sign-in check failed:', err.message); if (t.role) return res.status(503).json({ ok: false, error: 'db' }); }
     req.role = t.role || null;
+    if (!req.user) req.user = { id: null, name: req.role === 'offers' ? 'Offers staff' : 'Owner', role: req.role === 'offers' ? 'offers' : 'owner' };
     if (req.role === 'offers' && !staffAllowed(req.method, req.path)) return res.status(403).json({ ok: false, error: 'not-allowed' });
     if (req.method !== 'GET' && !req.is('application/json')) return res.status(415).json({ ok: false, error: 'json-only' });
-    next();
+    // Who did what: note each change once it has gone through.
+    const act0 = req.method !== 'GET' ? describeAction(req) : '';   // req.path is only relative to /api/admin here
+    if (act0) res.on('finish', function () {
+      const act = res.statusCode < 400 && act0; if (!act) return;
+      db().then(function (p) { return p && p.query('INSERT INTO staff_activity (user_id, user_name, action, ip) VALUES ($1, $2, $3, $4)', [req.user.id, req.user.name, act, str(req.ip, 60)]); }).catch(function () {});
+    });
+    actor.run({ id: req.user.id, name: req.user.name }, next);
   });
+  // A plain-English line for "who did what".
+  function describeAction(req) {
+    const b = req.body || {}, path = req.path, m = req.method;
+    if (/^\/sessions|^\/ask|^\/offers\/\d+$/.test(path) && Object.keys(b).length === 1 && b.seen === true) return '';
+    if (/^\/(sessions|visits|site-sessions)/.test(path)) return '';
+    const seg = path.split('/').filter(Boolean), id = seg[1] && /^\d+$/.test(seg[1]) ? Number(seg[1]) : null;
+    const NOUN = { jobs: 'repair job', offers: 'offer', tenancies: 'tenancy', landlords: 'landlord', tenants: 'tenant', contractors: 'contractor', invoices: 'invoice', certificates: 'certificate', certs: 'certificate',
+      statements: 'statements', properties: 'property', parts: 'part', 'offers-staff': 'offers staff access', users: 'staff user', notices: 'tenant notice', 'property-info': 'property details' };
+    const noun = NOUN[seg[0]] || seg[0] || 'something';
+    const refOf = function () { return seg[0] === 'jobs' && id ? ' ' + refFor(id) : seg[0] === 'offers' && id ? ' OF' + String(id).padStart(4, '0') : id ? ' #' + id : ''; };
+    const what = seg.slice(id ? 2 : 1).join(' ').replace(/-/g, ' ');
+    const extra = b.status ? ' — status: ' + String(b.status).slice(0, 40) : b.paid === true ? ' — deposit received' : b.paid === false ? ' — deposit not received' : '';
+    const verb = m === 'DELETE' ? 'Deleted' : !id && seg.length === 1 && m === 'POST' ? 'Added' : 'Updated';
+    return (verb + ' ' + noun + refOf() + (what ? ' (' + what + ')' : '') + extra).slice(0, 300);
+  }
 
   // The office sets (or turns off) the offers staff password. Changing it signs
   // staff out everywhere.
@@ -1545,6 +1624,61 @@ module.exports = function mountJobs(app, opts) {
     await p.query(`INSERT INTO app_settings (key, value) VALUES ('offers_staff', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(v)]);
     staffPwCache = v;
     res.json({ ok: true, signed_out: await signOutStaff(p) });
+  }));
+
+  // ---------- Staff users ----------
+  function canManageUsers(req) { return req.user && (req.user.role === 'owner' || req.user.role === 'admin'); }
+  async function revokeUser(p, uid) {
+    const r = await p.query('UPDATE admin_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL RETURNING id', [uid]);
+    r.rows.forEach(function (x) { sessionCache.set(x.id, { revoked: true, touched: Date.now() }); });
+  }
+  const USER_ROLES = ['admin', 'full', 'offers'];
+  app.get('/api/admin/users', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-allowed' });
+    const r = await p.query(`SELECT u.id, u.name, u.email, u.role, u.created_at, u.disabled_at, u.last_seen,
+        (SELECT count(*)::int FROM staff_activity a WHERE a.user_id = u.id AND a.at > now() - interval '7 days') AS week_actions
+      FROM staff_users u ORDER BY u.disabled_at IS NOT NULL, lower(u.name)`);
+    res.json({ ok: true, users: r.rows });
+  }));
+  app.post('/api/admin/users', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-allowed' });
+    const b = req.body || {}, name = str(b.name, 80), email = str(b.email, 200) || null, role = USER_ROLES.indexOf(b.role) !== -1 ? b.role : 'full', pw = String(b.password || '');
+    if (!name) return res.status(400).json({ ok: false, error: 'name' });
+    if (pw.length < 8 || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' });
+    if (role === 'admin' && req.user.role !== 'owner') return res.status(403).json({ ok: false, error: 'owner-only' });
+    const salt = crypto.randomBytes(16).toString('hex');
+    try {
+      const r = await p.query('INSERT INTO staff_users (name, email, role, salt, hash) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, role, salt, scryptHex(pw, salt)]);
+      res.json({ ok: true, id: r.rows[0].id });
+    } catch (e) { if (/unique/i.test(e.message)) return res.status(409).json({ ok: false, error: 'taken' }); throw e; }
+  }));
+  app.post('/api/admin/users/:id', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-allowed' });
+    const b = req.body || {}, id = parseInt(req.params.id, 10) || 0;
+    const u = (await p.query('SELECT id, role FROM staff_users WHERE id = $1', [id])).rows[0];
+    if (!u) return res.status(404).json({ ok: false, error: 'not-found' });
+    if ((u.role === 'admin' || b.role === 'admin') && req.user.role !== 'owner') return res.status(403).json({ ok: false, error: 'owner-only' });
+    const sets = [], vals = [id]; let signOut = false;
+    if (b.name != null) { const n = str(b.name, 80); if (!n) return res.status(400).json({ ok: false, error: 'name' }); vals.push(n); sets.push('name = $' + vals.length); }
+    if (b.email != null) { vals.push(str(b.email, 200) || null); sets.push('email = $' + vals.length); }
+    if (b.role != null) { if (USER_ROLES.indexOf(b.role) === -1) return res.status(400).json({ ok: false, error: 'role' }); vals.push(b.role); sets.push('role = $' + vals.length); signOut = signOut || b.role !== u.role; }
+    if (b.password != null) { const pw = String(b.password); if (pw.length < 8 || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' }); const salt = crypto.randomBytes(16).toString('hex'); vals.push(salt, scryptHex(pw, salt)); sets.push('salt = $' + (vals.length - 1), 'hash = $' + vals.length); signOut = true; }
+    if (typeof b.disabled === 'boolean') { sets.push('disabled_at = ' + (b.disabled ? 'now()' : 'NULL')); signOut = signOut || b.disabled; }
+    if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
+    try { await p.query('UPDATE staff_users SET ' + sets.join(', ') + ' WHERE id = $1', vals); } catch (e) { if (/unique/i.test(e.message)) return res.status(409).json({ ok: false, error: 'taken' }); throw e; }
+    if (signOut) await revokeUser(p, id);
+    if (b.name != null) await p.query('UPDATE admin_sessions SET user_name = $2 WHERE user_id = $1', [id, str(b.name, 80)]);
+    for (const [k, v] of sessionCache) if (v && v.user_id === id) sessionCache.delete(k);
+    res.json({ ok: true });
+  }));
+  // Who did what (newest first), optionally for one person.
+  app.get('/api/admin/staff-activity', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-allowed' });
+    const who = String(req.query.user || ''), vals = [];
+    let where = '';
+    if (/^\d+$/.test(who)) { vals.push(Number(who)); where = 'WHERE user_id = $1'; } else if (who === 'owner') where = "WHERE user_id IS NULL AND user_name = 'Owner'";
+    const r = await p.query('SELECT at, user_id, user_name, action FROM staff_activity ' + where + ' ORDER BY at DESC LIMIT 300', vals);
+    res.json({ ok: true, activity: r.rows });
   }));
 
   // ---------- Where staff are signed in ----------
@@ -1807,7 +1941,7 @@ module.exports = function mountJobs(app, opts) {
 
   app.get('/api/admin/me', async function (req, res) {
     let alerts = ''; try { alerts = (await db()) ? NTFY_SERVER + '/' + (await offersTopic()) : ''; } catch (e) {}
-    res.json({ ok: true, role: req.role || null, offerAlerts: alerts, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, offerOrigin: OFFER_ORIGIN, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
+    res.json({ ok: true, role: req.role || null, user: req.user || null, canManageUsers: canManageUsers(req), offerAlerts: alerts, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, offerOrigin: OFFER_ORIGIN, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
   });
 
   // Wraps a handler: no database -> 503; unexpected errors -> 500 (logged).
@@ -6392,7 +6526,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function docIdOf(fp) { return String(fp || '').slice(0, 24).toUpperCase().replace(/(.{4})(?!$)/g, '$1-'); }
   // Who did something on an offer, for the audit trail.
   function offerLog(req, text, by) {
-    return { at: new Date().toISOString(), text: text, by: by || (req.role === 'offers' ? 'staff' : 'office'), ip: String(req.ip || '').slice(0, 60), ua: str(req.get('user-agent'), 300) || '' };
+    return { at: new Date().toISOString(), text: text, by: by || (req.role === 'offers' ? 'staff' : 'office'), user: by === 'applicant' || !req.user ? undefined : req.user.name, ip: String(req.ip || '').slice(0, 60), ua: str(req.get('user-agent'), 300) || '' };
   }
   function deviceOf(ua) {
     ua = String(ua || ''); if (!ua) return '';
@@ -6661,7 +6795,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (/^Offer submitted online/.test(l.text)) return;
       if (opts.applicant && !(l.by === 'applicant' || PUBLIC.test(l.text))) return;
       const kind = /accepted|received|refund sent/i.test(l.text) ? 'ok' : /rejected|withdrawn/i.test(l.text) ? 'warn' : l.by === 'applicant' ? 'view' : 'note';
-      ev.push({ at: l.at, kind: kind, title: String(l.text).replace(/ \(offers staff\)$/, ''), lines: [(l.by ? 'By ' + who(l.by) : '') + (l.ip ? '   \xB7   IP address: ' + l.ip : '') + (l.ua ? '   \xB7   ' + deviceOf(l.ua) : '')].filter(function (s) { return s.trim(); }) });
+      ev.push({ at: l.at, kind: kind, title: String(l.text).replace(/ \(offers staff\)$/, ''), lines: [(l.by ? 'By ' + who(l.by) + (!opts.applicant && l.user && l.by !== 'applicant' ? ' - ' + l.user : '') : '') + (l.ip ? '   \xB7   IP address: ' + l.ip : '') + (l.ua ? '   \xB7   ' + deviceOf(l.ua) : '')].filter(function (s) { return s.trim(); }) });
     });
     if (o.status === 'accepted' && o.paid_at) ev.push({ at: [o.decided_at, o.paid_at].sort().pop(), kind: 'ok', title: 'Agreement completed', lines: ['Offer accepted and holding deposit received'] });
     ev.sort(function (a, b) { return new Date(a.at) - new Date(b.at); });
