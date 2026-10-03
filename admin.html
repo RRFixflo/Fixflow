@@ -413,6 +413,8 @@
   .oc-kv { background: var(--panel-2, #f6f7f9); border-radius: 12px; padding: 9px 12px; }
   .oc-kv span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); font-weight: 650; }
   .oc-kv b { font-size: .95rem; }
+  .inv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); } .inv-main { flex: 1; min-width: 200px; } .inv-main b { display: block; } .inv-main span { display: block; font-size: .8rem; color: var(--ink-soft); }
+  .inv-ev { flex-basis: 100%; background: #f7f8fa; border-radius: 10px; padding: 8px 12px; font-size: .84rem; } .inv-ev div { padding: 3px 0; } .inv-ev span { display: inline-block; min-width: 110px; color: var(--ink-soft); }
   .oc-credit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; padding: 8px 10px; border-radius: 10px; background: #fff8e6; border: 1px solid #f3d9a8; font-size: .88rem; } .oc-credit > span:first-child { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: #7a4d00; font-weight: 700; }
   .oc-credit select { width: auto; padding: 4px 8px; font-size: .85rem; } .oc-credit.unset { background: #f5f6f8; border-color: var(--line); }
   .om-tbl { width: 100%; border-collapse: collapse; font-size: .88rem; } .om-tbl th { text-align: left; font-size: .72rem; color: var(--ink-soft); padding: 6px; border-bottom: 1px solid var(--line); } .om-tbl td { padding: 7px 6px; border-bottom: 1px solid var(--line); } .om-tbl td.n { text-align: right; font-variant-numeric: tabular-nums; }
@@ -1476,8 +1478,9 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offLink" readonly style="flex:1;min-width:220px"><button class="btn primary" type="button" id="offCopy">Copy link</button><a class="btn" id="offOpen" target="_blank" rel="noopener">Open</a></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offProp" list="offProps" placeholder="Or a link for one property: type the address" style="flex:1;min-width:220px"><datalist id="offProps"></datalist><button class="btn" type="button" id="offPropCopy">Copy property link</button></div>
           <div class="off-send"><b>Send it to an applicant</b><span class="muted-note" style="margin:0">Uses the property link above if you’ve typed an address.</span>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><input class="inp" id="offTo" placeholder="Their mobile or email (optional)" style="flex:1;min-width:200px"><button class="btn small wa-btn" type="button" id="offSendWa">WhatsApp</button><button class="btn small" type="button" id="offSendMail">✉ Email</button></div></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><input class="inp" id="offToName" placeholder="Their name (optional)" style="flex:1;min-width:140px"><input class="inp" id="offTo" placeholder="Their mobile or email (optional)" style="flex:1;min-width:200px"><button class="btn small wa-btn" type="button" id="offSendWa">WhatsApp</button><button class="btn small" type="button" id="offSendMail">✉ Email</button></div></div>
         </details>
+        <details class="card" id="offInv" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📨 Offer forms sent <span class="muted-note" id="offInvSum" style="margin:0 0 0 6px;font-weight:400"></span></summary><div id="offInvList" style="margin-top:10px"></div></details>
         <div class="card" id="offRemind" style="margin-bottom:12px" hidden><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b>⏰ Automatic holding deposit reminders</b><div class="muted-note" id="offRemindNote" style="margin:2px 0 0"></div></div>
           <label class="switch-row"><input type="checkbox" id="offRemindOn"> <span id="offRemindLbl">On</span></label></div></div>
         <details class="card off-alerts-staff" id="offAlertStaff" hidden><summary style="cursor:pointer;font-weight:700">🔔 Get alerts on your phone <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">new offers, deposits, landlord forms</span></summary>
@@ -8356,17 +8359,41 @@
   $('offStaffOut').addEventListener('click', function(){ if (!confirm('Sign every staff member out of offers?')) return; api('POST', '/api/admin/offers-staff', { sign_out: true }).then(function(d){ toast(d.ok ? d.signed_out + ' signed out' : 'Couldn’t do that'); loadOffStaff(); }); });
   $('offStaffOff').addEventListener('click', function(){ if (!confirm('Turn off staff access? Staff are signed out and the password stops working.')) return; api('POST', '/api/admin/offers-staff', { off: true }).then(function(d){ toast(d.ok ? 'Staff access turned off' : 'Couldn’t do that'); loadOffStaff(); }); });
   // Send the applicant link by WhatsApp or email (to the number/address typed, or pick in the app).
-  function offSendLink(){ var a = $('offProp').value.trim(); return a ? offLinkBase() + '?p=' + encodeURIComponent(a) : offLinkBase(); }
-  function offSendText(){ var a = $('offProp').value.trim(); return 'Hi, thank you for your interest' + (a ? ' in ' + shortAddr(a) : '') + '. You can make your offer here — it takes about 5 minutes; have a photo of each tenant’s passport or visa ready: ' + offSendLink() + ' — Residential Realtors'; }
+  function offSendLink(tok){ var a = $('offProp').value.trim(), q = []; if (a) q.push('p=' + encodeURIComponent(a)); if (tok) q.push('i=' + tok); return offLinkBase() + (q.length ? '?' + q.join('&') : ''); }
+  function offSendText(tok){ var a = $('offProp').value.trim(), n = $('offToName').value.trim().split(/\s+/)[0]; return 'Hi' + (n ? ' ' + n : '') + ', thank you for your interest' + (a ? ' in ' + shortAddr(a) : '') + '. You can make your offer here — it takes about 5 minutes; have a photo of each tenant’s passport or visa ready: ' + offSendLink(tok) + ' — Residential Realtors'; }
+  // Each link we send gets its own code, so we can see if it was opened and an offer made.
+  function offInvite(via){ return api('POST', '/api/admin/offer-invites', { via: via, to: $('offTo').value.trim(), name: $('offToName').value.trim(), property: $('offProp').value.trim() }).then(function(d){ setTimeout(loadInvites, 600); return d && d.ok ? d.token : ''; })['catch'](function(){ return ''; }); }
   $('offSendWa').addEventListener('click', function(){
     var to = $('offTo').value.trim(), ph = /[@]/.test(to) ? '' : to.replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44');
-    window.open('https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent(offSendText()), '_blank', 'noopener');
+    var w = window.open('about:blank', '_blank');   // opened straight away so it isn't blocked, then pointed at WhatsApp
+    offInvite('whatsapp').then(function(tok){ var url = 'https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent(offSendText(tok)); if (w) w.location.href = url; else window.open(url, '_blank', 'noopener'); });
   });
   $('offSendMail').addEventListener('click', function(){
-    var to = $('offTo').value.trim(), a = $('offProp').value.trim();
-    var body = 'Hello,\n\nThank you for your interest' + (a ? ' in ' + shortAddr(a) : '') + '.\n\nYou can make your offer online here: ' + offSendLink() + '\n\nIt takes about 5 minutes. Please have a photo of each tenant’s passport or visa ready, plus your right to rent share code if you have one. Once you’ve sent the form, pay the 1 week holding deposit to secure your offer.' + mailSignoff();
-    openMailto('mailto:' + (/@/.test(to) ? encodeURIComponent(to) : '') + '?subject=' + encodeURIComponent('Make your offer' + (a ? ' — ' + shortAddr(a) : '')) + '&body=' + encodeURIComponent(body));
+    var to = $('offTo').value.trim(), a = $('offProp').value.trim(), n = $('offToName').value.trim().split(/\s+/)[0];
+    offInvite('email').then(function(tok){
+      var body = (n ? 'Dear ' + n + ',' : 'Hello,') + '\n\nThank you for your interest' + (a ? ' in ' + shortAddr(a) : '') + '.\n\nYou can make your offer online here: ' + offSendLink(tok) + '\n\nIt takes about 5 minutes. Please have a photo of each tenant’s passport or visa ready, plus your right to rent share code if you have one. Once you’ve sent the form, pay the 1 week holding deposit to secure your offer.' + mailSignoff();
+      openMailto('mailto:' + (/@/.test(to) ? encodeURIComponent(to) : '') + '?subject=' + encodeURIComponent('Make your offer' + (a ? ' — ' + shortAddr(a) : '')) + '&body=' + encodeURIComponent(body));
+    });
   });
+  // The offer forms we've sent and what each applicant did.
+  var invites = [];
+  function loadInvites(){ return api('GET', '/api/admin/offer-invites').then(function(d){ if (d && d.ok) { invites = d.invites || []; renderInvites(); } }); }
+  function renderInvites(){
+    var opened = invites.filter(function(x){ return x.opens > 0; }).length, made = invites.filter(function(x){ return x.offer_id; }).length;
+    $('offInvSum').textContent = invites.length ? invites.length + ' sent · ' + opened + ' opened · ' + made + ' made an offer' : 'none yet';
+    var shown = invites.slice(0, $('offInv').dataset.all ? 200 : 15);
+    $('offInvList').innerHTML = !invites.length ? '<p class="muted-note" style="margin:0">When you send the form by WhatsApp or email from here, it shows up with whether they opened it.</p>' : shown.map(function(x){
+      var st = x.offer_id ? ['ok', '✓ Made an offer · OF' + String(x.offer_id).padStart(4, '0')] : x.started_at ? ['wait', '✍ Started filling it in'] : x.opens ? ['wait', '👀 Opened' + (x.opens > 1 ? ' ×' + x.opens : '') + ' · ' + fmtShort(x.last_opened_at)] : ['muted', 'Not opened yet'];
+      return '<div class="inv-row" data-inv="' + x.id + '"><div class="inv-main"><b>' + esc(x.to_name || x.to_contact || 'Applicant') + '</b><span>' + esc([x.to_name && x.to_contact ? x.to_contact : '', x.property_address ? shortAddr(x.property_address) : 'Any property'].filter(Boolean).join(' · ')) + '</span><span>Sent ' + esc(fmtShort(x.created_at)) + ' by ' + esc(x.via === 'whatsapp' ? 'WhatsApp' : x.via) + ' · ' + esc(x.sent_by || 'Office') + '</span></div>' +
+        '<span class="oc-pill ' + st[0] + '">' + esc(st[1]) + '</span><button type="button" class="btn small ghost" data-inv-act>Activity</button>' +
+        '<div class="inv-ev" hidden>' + (x.events || []).slice().reverse().map(function(e){ return '<div><span>' + esc(fmtShort(e.at)) + '</span>' + esc(e.what) + (e.device ? ' <small>· ' + esc(e.device) + '</small>' : '') + '</div>'; }).join('') + '</div></div>';
+    }).join('') + (invites.length > shown.length ? '<button type="button" class="btn small ghost" id="offInvMore" style="margin-top:8px">Show all ' + invites.length + '</button>' : '');
+  }
+  $('offInv').addEventListener('click', function(e){
+    if (e.target.closest('#offInvMore')) { this.dataset.all = '1'; renderInvites(); return; }
+    var b = e.target.closest('[data-inv-act]'); if (!b) return; var ev = b.parentNode.querySelector('.inv-ev'); ev.hidden = !ev.hidden; b.textContent = ev.hidden ? 'Activity' : 'Hide';
+  });
+  $('offInv').addEventListener('toggle', function(){ if (this.open) loadInvites(); });
   function loadRemind(){
     if (staffMode) return;
     api('GET', '/api/admin/offer-reminders').then(function(d){
@@ -8379,7 +8406,7 @@
   try { if (localStorage.getItem('rr_offlink_open') === '1') $('offLinkCard').open = true; } catch (e) {}
   $('offLinkCard').addEventListener('toggle', function(){ try { localStorage.setItem('rr_offlink_open', this.open ? '1' : '0'); } catch (e) {} });
   function renderOffers(){
-    if (!renderOffers.staffLoaded) { renderOffers.staffLoaded = true; loadOffStaff(); loadRemind(); $('offSendWa').innerHTML = WA_ICON + 'WhatsApp'; }
+    if (!renderOffers.staffLoaded) { renderOffers.staffLoaded = true; loadOffStaff(); loadRemind(); loadInvites(); $('offSendWa').innerHTML = WA_ICON + 'WhatsApp'; }
     var al = meta.offerAlerts || '', hid = false; try { hid = localStorage.getItem('rr_alerts_hide') === '1'; } catch (e) {}
     $('offAlertLink').value = al;
     var mobile = /Android/i.test(navigator.userAgent);
