@@ -160,6 +160,7 @@ app.get('/', (req, res) => { sendPage(req, res, path.join(__dirname, 'index.html
 app.get('/admin', (req, res) => { sendPage(req, res, path.join(__dirname, 'admin.html')); });
 // Applicants' offer / holding deposit form (the link given to applicants).
 app.get('/offer', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer.html')); });
+app.get('/offer/track/:token', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer.html')); });
 
 const jobs = require('./jobs')(app, {
   sendEmail: function (opts) { return sendViaResend(opts); },

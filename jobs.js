@@ -270,6 +270,9 @@ CREATE TABLE IF NOT EXISTS offers (
   seen_at     TIMESTAMPTZ,
   log         JSONB NOT NULL DEFAULT '[]'::jsonb
 );
+-- A private link for the applicant to follow their offer.
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS track_token TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS offers_track_idx ON offers (track_token);
 CREATE TABLE IF NOT EXISTS offer_docs (
   id         SERIAL PRIMARY KEY,
   offer_id   INTEGER NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
@@ -5998,12 +6001,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!address || !lead || !(phone || email)) return res.status(400).json({ ok: false, error: 'details' });
     if (!amt) return res.status(400).json({ ok: false, error: 'offer' });
     if (!s(b.signature) || b.agree !== true) return res.status(400).json({ ok: false, error: 'sign' });
+    // The drawn signature (a small PNG), kept with the ID documents as "tenant 0".
+    const sm = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(b.signature_png || ''));
+    const sigBuf = sm ? Buffer.from(sm[1], 'base64') : null;
+    if (!sigBuf || sigBuf.length < 200 || sigBuf.length > 600 * 1024) return res.status(400).json({ ok: false, error: 'sign' });
     const pw = per === 'pcm' ? Math.round(amt * 12 / 52 * 100) / 100 : amt, maxPw = maxAmt ? (per === 'pcm' ? Math.round(maxAmt * 12 / 52 * 100) / 100 : maxAmt) : null;
     const FIELDS = ['name', 'phone', 'email', 'dob', 'income_type', 'employment_type', 'company', 'position', 'salary', 'start_date', 'other_income',
       'university', 'course', 'academic_year', 'current_address', 'residency_status', 'current_rent', 'landlord_name', 'landlord_email', 'landlord_phone', 'tenancy_start', 'tenancy_end',
-      'g_name', 'g_relation', 'g_email', 'g_phone', 'g_company', 'g_position', 'g_salary', 'g_homeowner', 'g_home_address', 'g_other'];
+      'g_name', 'g_relation', 'g_email', 'g_phone', 'g_company', 'g_position', 'g_salary', 'g_homeowner', 'g_home_address', 'g_other', 'uk_passport', 'share_code'];
     const tenants = (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 8).map(function (t) { const o = {}; FIELDS.forEach(function (f) { o[f] = s(t && t[f], f === 'current_address' || f === 'g_home_address' || f === 'other_income' || f === 'g_other' ? 500 : 200); }); o._ids = t && t.ids; return o; });
     if (!tenants.length || tenants.some(function (t) { return !t.name; })) return res.status(400).json({ ok: false, error: 'tenants' });
+    // No UK or Irish passport: a right to rent share code (9 letters/numbers) is needed.
+    for (const t of tenants) { t.share_code = String(t.share_code || '').toUpperCase().replace(/\s+/g, ''); if (t.uk_passport === 'No' && !/^[A-Z0-9]{9}$/.test(t.share_code)) return res.status(400).json({ ok: false, error: 'share_code' }); if (t.uk_passport !== 'No') t.share_code = ''; }
     // Each tenant's ID: required, photos or PDFs, up to 4 files of 12 MB each.
     const docs = [];
     for (let i = 0; i < tenants.length; i++) {
@@ -6022,24 +6031,45 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     const data = {
       per: per, offer_entered: amt, max_entered: maxAmt || null, max_pw: maxPw, tenants_count: parseInt(b.tenants_count, 10) || tenants.length, guarantors_count: parseInt(b.guarantors_count, 10) || 0,
-      move_in: isoDay(b.move_in) || null, stay: s(b.stay, 80), rent_frequency: s(b.rent_frequency, 40) || 'Monthly', negotiate: s(b.negotiate, 2000), about: s(b.about, 3000),
+      move_in: isoDay(b.move_in) || null, stay: s(b.stay, 80), rent_frequency: 'Monthly', negotiate: s(b.negotiate, 2000), about: s(b.about, 3000),
       tenants: tenants, signature: s(b.signature), signed_at: new Date().toISOString(), money: offerMoney(pw), ip: String(req.ip || '').slice(0, 60)
     };
-    const ins = await p.query('INSERT INTO offers (property_address, property_key, lead_name, lead_email, lead_phone, offer_pw, data, log) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-      [address, propKey(address), lead, email || null, phone || null, pw, JSON.stringify(data), JSON.stringify([{ at: new Date().toISOString(), text: 'Offer submitted online by ' + lead }])]);
+    const token = crypto.randomBytes(16).toString('base64url');
+    const ins = await p.query('INSERT INTO offers (property_address, property_key, lead_name, lead_email, lead_phone, offer_pw, data, log, track_token) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+      [address, propKey(address), lead, email || null, phone || null, pw, JSON.stringify(data), JSON.stringify([{ at: new Date().toISOString(), text: 'Offer submitted online by ' + lead }]), token]);
     const id = ins.rows[0].id;
     for (const d of docs) await p.query('INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, $2, $3, $4, $5)', [id, d.tenant_no, d.name, d.mime, d.data]);
+    await p.query("INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, 0, 'signature.png', 'image/png', $2)", [id, sigBuf]);
     const ref = 'OF' + String(id).padStart(4, '0');
     ntfy({ title: 'New offer: ' + gbp(pw) + ' pw — ' + shortAddrText(address), message: lead + ' · ' + tenants.length + ' tenant' + (tenants.length === 1 ? '' : 's') + (data.move_in ? ' · move in ' + certDay(data.move_in) : '') + (data.stay ? ' · stay ' + data.stay : '') + '. Open Offers in Fixflow.', tags: ['house'] }).catch(function () {});
     // How to pay the holding deposit (bank details from the settings, never in the code).
     const bank = INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber } : null;
-    res.json({ ok: true, ref: ref, money: data.money, bank: bank, reference: (lead.split(/\s+/).pop() || '').slice(0, 10).toUpperCase() + ' ' + ref });
+    res.json({ ok: true, ref: ref, money: data.money, bank: bank, reference: offerPayRef(lead, ref), track: '/offer/track/' + token });
+  }));
+  function offerPayRef(lead, ref) { return (String(lead || '').split(/\s+/).pop() || '').slice(0, 10).toUpperCase() + ' ' + ref; }
+  // The applicant's own view of their offer (by its private link): where it's up to.
+  app.get('/api/offers/track/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const t = String(req.params.token || '');
+    if (!/^[\w-]{16,40}$/.test(t)) return res.status(404).json({ ok: false, error: 'not-found' });
+    const o = (await p.query('SELECT id, created_at, property_address, lead_name, offer_pw, data, status, decided_at, paid_at FROM offers WHERE track_token = $1', [t])).rows[0];
+    if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
+    const d = o.data || {}, ref = 'OF' + String(o.id).padStart(4, '0');
+    const bank = !o.paid_at && o.status !== 'rejected' && INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber } : null;
+    res.json({ ok: true, ref: ref, property: o.property_address, name: String(o.lead_name || '').split(/\s+/)[0], created_at: o.created_at, status: o.status, decided_at: o.decided_at, paid_at: o.paid_at,
+      offer_pw: Number(o.offer_pw), money: d.money || {}, move_in: d.move_in || null, stay: d.stay || '', tenants: (d.tenants || []).length, bank: bank, reference: offerPayRef(o.lead_name, ref) });
   }));
   app.get('/api/admin/offers', withDb(async function (p, req, res) {
-    const r = await p.query(`SELECT o.id, o.created_at, o.property_address, o.property_key, o.lead_name, o.lead_email, o.lead_phone, o.offer_pw, o.data, o.status, o.decided_at, o.paid_at, o.seen_at, o.log,
+    const r = await p.query(`SELECT o.id, o.created_at, o.property_address, o.property_key, o.lead_name, o.lead_email, o.lead_phone, o.offer_pw, o.data, o.status, o.decided_at, o.paid_at, o.seen_at, o.log, o.track_token,
         coalesce((SELECT json_agg(json_build_object('id', d.id, 'tenant_no', d.tenant_no, 'name', d.name, 'mime', d.mime, 'size', length(d.data)) ORDER BY d.id) FROM offer_docs d WHERE d.offer_id = o.id), '[]') AS docs
       FROM offers o ORDER BY o.id DESC LIMIT 500`);
     res.json({ ok: true, offers: r.rows.map(function (o) { o.ref = 'OF' + String(o.id).padStart(4, '0'); if (o.data) delete o.data.ip; return o; }) });
+  }));
+  // A tracking link for an offer made before links existed (made on first ask).
+  app.post('/api/admin/offers/:id/track', withDb(async function (p, req, res) {
+    const r = await p.query('UPDATE offers SET track_token = coalesce(track_token, $2) WHERE id = $1 RETURNING track_token', [jobId(req), crypto.randomBytes(16).toString('base64url')]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json({ ok: true, track: '/offer/track/' + r.rows[0].track_token });
   }));
   app.get('/api/admin/offers/:id/doc/:doc', withDb(async function (p, req, res) {
     const r = await p.query('SELECT name, mime, data FROM offer_docs WHERE id = $2 AND offer_id = $1', [jobId(req), parseInt(req.params.doc, 10) || 0]);
