@@ -73,6 +73,7 @@
   @keyframes tickPop { from { transform:scale(.3); opacity:0; } } @keyframes tickDraw { to { stroke-dashoffset:0; } }
   .epc { display:flex; gap:14px; align-items:center; padding:12px 14px; border-radius:14px; margin:0 0 10px; border:1px solid var(--line); } .epc b { display:block; } .epc span:not(.epc-r) { font-size:.86rem; color:var(--soft); }
   .epc.ok { background:var(--ok-t); border-color:#b7e2c6; } .epc.bad { background:var(--brand-t); border-color:#f3c0c0; } .epc.warn { background:var(--warn-t); border-color:#f3d9a8; }
+  input[type=date] { -webkit-appearance:none; appearance:none; min-width:0; max-width:100%; display:block; }
   .known { background:#eef4ff; border:1px solid #c7d7fe; border-radius:14px; padding:12px 14px; margin:0 0 12px; font-size:.9rem; } .known b { display:block; color:#1d3fae; } .known span { color:var(--soft); font-size:.84rem; } .known ul { margin:8px 0 0; padding-left:18px; } .known li { margin:0 0 3px; }
   .epc { align-items:flex-start; } .epc-d { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; margin:10px 0 6px; font-size:.86rem; } .epc-d dt { color:var(--soft); } .epc-d dd { margin:0; font-weight:600; color:var(--ink); } @media (max-width:520px) { .epc-d { grid-template-columns:1fr; gap:0; } .epc-d dt { font-size:.76rem; margin-top:6px; } } .epc-l { font-size:.86rem; font-weight:700; color:var(--navy); }
   .epc-r { flex:0 0 46px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.4rem; color:#fff; background:#98a2b3; }
@@ -176,8 +177,8 @@
     var v = details.lic_status || '', sel = function(k, opts){ return '<select id="d_' + k + '" data-k="' + k + '"><option value="">Choose…</option>' + opts.map(function(o){ return '<option' + (details[k] === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>'; };
     return '<h3>Property licence</h3><p class="opt" style="font-size:.86rem;margin:-4px 0 10px">Many London councils need a selective, additional (HMO) or mandatory HMO licence to let a property. Letting without one when it’s needed is an offence.</p>' +
       '<div class="choice" id="licChoice">' + LIC.map(function(o){ return '<label><input type="radio" name="lic" value="' + o[0] + '"' + (v === o[0] ? ' checked' : '') + '><span>' + o[1] + '</span></label>'; }).join('') + '</div>' +
-      '<div id="licYes"' + (v === 'licensed' ? '' : ' hidden') + '><div class="g2"><div class="f"><label class="l" for="d_lic_type">Licence type</label>' + sel('lic_type', ['Selective', 'Additional (HMO)', 'Mandatory HMO']) + '</div>' + inp('lic_council', 'Council', { req: true }) + '</div>' +
-        '<div class="g2">' + inp('lic_number', 'Licence number', { req: true }) + inp('lic_expires', 'Expiry date', { type: 'date', req: true }) + '</div>' + attachBox('licence', 'Attach the licence', true) + '</div>' +
+      '<div id="licYes"' + (v === 'licensed' ? '' : ' hidden') + '><div class="g2"><div class="f"><label class="l" for="d_lic_type">Licence type <span class="opt">optional</span></label>' + sel('lic_type', ['Selective', 'Additional (HMO)', 'Mandatory HMO']) + '</div>' + inp('lic_council', 'Council') + '</div>' +
+        '<div class="g2">' + inp('lic_number', 'Licence number') + inp('lic_expires', 'Expiry date', { type: 'date' }) + '</div>' + attachBox('licence', 'Attach the licence', true) + '</div>' +
       '<div id="licApplied"' + (v === 'applied' ? '' : ' hidden') + '><div class="g2">' + inp('lic_council', 'Council').replace(/d_lic_council/g, 'd_lic_council2') + inp('lic_applied', 'Date applied', { type: 'date' }) + '</div></div>' +
       '<div class="note" id="licUnsure"' + (v === 'unsure' ? '' : ' hidden') + '>No problem — we’ll check the council’s licensing scheme for this address and let you know.</div>';
   }
@@ -254,7 +255,6 @@
       if (details.q_register_deposit === 'No' && !details.deposit_scheme) return err('Please tell us which deposit scheme you’ll use.', $('d_deposit_scheme'));
       if (details.deposit_scheme === 'Other' && !String(details.deposit_scheme_other || '').trim()) return err('Please give the name of your deposit scheme.', $('d_deposit_scheme_other'));
       if (!details.lic_status) return err('Please tell us whether the property has a licence.', $('licChoice'));
-      if (details.lic_status === 'licensed') { if (!details.lic_type) return err('Please choose the licence type.', $('d_lic_type')); var ln = [['lic_council', 'the council'], ['lic_number', 'the licence number'], ['lic_expires', 'the licence expiry date']]; for (var j = 0; j < ln.length; j++) if (!String(details[ln[j][0]] || '').trim()) return err('Please enter ' + ln[j][1] + '.', $('d_' + ln[j][0])); }
       if (details.optout && !String(details.emergency_phone || '').trim()) return err('Please give your 24-hour emergency contact number.', $('d_emergency_phone'));
       go(3);
     });

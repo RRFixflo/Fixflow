@@ -473,6 +473,9 @@
   .lt-fees { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; } .lt-box { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
   .lt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .lt-full { margin-bottom: 10px; }
   .lt-preview:empty { display: none; } .lt-preview { background: var(--blue-tint); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: .86rem; } .lt-preview div { display: flex; gap: 10px; padding: 3px 0; } .lt-preview span { min-width: 170px; color: var(--ink-soft); }
+  .lt-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
+  .lt-card { position: relative; } .lt-card .oc-minbtn { top: 10px; right: 10px; } .lt-card .lt-h { padding-right: 30px; }
+  .lt-card.oc-min > *:not(.oc-mini) { display: none !important; } .lt-card.oc-min { padding-top: 12px; padding-bottom: 12px; } .lt-card.oc-min .oc-mini { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; cursor: pointer; }
   .ltd { padding: 6px 14px 14px; } .ltd-sec { margin-top: 14px; } .ltd-sec h4 { margin: 0 0 8px; font-size: .74rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
   .ltd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 16px; } .ltd-grid div { border-bottom: 1px solid var(--line); padding: 0 0 6px; } .ltd-grid span { display: block; font-size: .74rem; color: var(--ink-soft); } .ltd-grid b { font-weight: 600; font-size: .9rem; word-break: break-word; }
   .ltd-y, .ltd-n { font-style: normal; font-weight: 700; padding: 1px 8px; border-radius: 999px; font-size: .78rem; } .ltd-y { background: #e8f6ee; color: #12924a; } .ltd-n { background: #f1f2f5; color: #5f6673; }
@@ -1476,6 +1479,7 @@
           <div class="lt-editing" id="ltEditing" hidden>✏️ Editing <b id="ltEditRef"></b> — the landlord’s link stays the same and shows the new details straight away.</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" id="ltCreate">Create agreement link</button><button class="btn ghost" type="button" id="ltEditCancel" hidden>Cancel editing</button></div>
         </details>
+        <div class="lt-bar"><label class="muted-note" style="margin:0;display:flex;gap:6px;align-items:center">Sort <select class="inp" id="ltSort" style="width:auto"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="signed">Recently signed</option><option value="waiting">Waiting for the landlord first</option><option value="addr">Property A–Z</option><option value="ll">Landlord A–Z</option></select></label><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="ltMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="ltMaxAll">▾ Expand all</button></span></div>
         <div id="ltList"></div>
       </div>
       <div id="offersView" hidden>
@@ -9039,11 +9043,23 @@
       sec('Signing', [['Signed by', d.signature], ['Signed at', t.signed_at ? fmtShort(t.signed_at) : ''], ['Start work', d.start_now ? 'Straight away (waived the 14 days)' : 'After the 14-day cancellation period'], ['IP address', au.ip], ['Device', au.ua ? (/iPhone|iPad/i.test(au.ua) ? 'iPhone / iPad' : /Android/i.test(au.ua) ? 'Android phone' : /Mac OS/i.test(au.ua) ? 'Mac' : /Windows/i.test(au.ua) ? 'Windows computer' : 'Computer') + (/Edg\//.test(au.ua) ? ' · Edge' : /Chrome\//.test(au.ua) ? ' · Chrome' : /Safari\//.test(au.ua) ? ' · Safari' : /Firefox\//.test(au.ua) ? ' · Firefox' : '') : ''], ['Fingerprint', d.fingerprint ? String(d.fingerprint).slice(0, 16) + '…' : '']]) +
       '</div>';
   }
+  var ltMin = {}; try { ltMin = JSON.parse(localStorage.getItem('rr_lt_min') || '{}') || {}; } catch (e) {}
+  function ltMinSave(){ try { localStorage.setItem('rr_lt_min', JSON.stringify(ltMin)); } catch (e) {} }
   function renderLt(){
-    $('ltList').innerHTML = ltItems.length ? ltItems.map(function(t){
+    var sortBy = $('ltSort').value, cmp = function(x, y){ return String(x || '').localeCompare(String(y || ''), 'en', { sensitivity: 'base' }); };
+    var list = ltItems.slice().sort(function(a, b){
+      if (sortBy === 'old') return a.id - b.id;
+      if (sortBy === 'signed') return (b.signed_at ? new Date(b.signed_at) : 0) - (a.signed_at ? new Date(a.signed_at) : 0) || b.id - a.id;
+      if (sortBy === 'waiting') return (a.status === 'sent' ? 0 : a.status === 'signed' ? 1 : 2) - (b.status === 'sent' ? 0 : b.status === 'signed' ? 1 : 2) || b.id - a.id;
+      if (sortBy === 'addr') return cmp(a.property_address, b.property_address);
+      if (sortBy === 'll') return cmp(a.landlord_name, b.landlord_name);
+      return b.id - a.id;
+    });
+    $('ltList').innerHTML = list.length ? list.map(function(t){
       var d = t.data || {}, st = t.status === 'signed' ? ['ok', '✓ Signed ' + fmtShort(t.signed_at).split(',')[0]] : t.status === 'cancelled' ? ['muted', 'Cancelled'] : d.viewed_at ? ['wait', 'Opened by the landlord — not signed yet'] : ['warn', 'Waiting for the landlord'];
       var dt = d.details || {};
-      return '<div class="card lt-card' + (t.status === 'signed' ? ' is-signed' : '') + '" data-lt="' + t.id + '"><div class="lt-h"><div><div class="oc-addr">' + esc(t.property_address) + '</div><div class="oc-meta">' + esc(t.landlord_name) + ' · ' + esc(t.ref) + ' · ' + esc(fmtShort(t.created_at)) + (t.created_by ? ' · by ' + esc(t.created_by) : '') + '</div></div>' +
+      var ltMiniRow = '<div class="oc-mini" data-lt-expand title="Show everything"><b>' + esc(shortAddr(t.property_address)) + '</b><span>' + esc(t.landlord_name || '') + '</span><span>' + (t.status === 'signed' ? '✓ Signed ' + esc(fmtShort(t.signed_at).split(',')[0]) : esc(st[1])) + '</span><span class="oc-pill ' + st[0] + '">' + esc(t.ref) + '</span><span class="oc-mini-go">▾</span></div>';
+      return '<div class="card lt-card' + (t.status === 'signed' ? ' is-signed' : '') + (ltMin[t.id] ? ' oc-min' : '') + '" data-lt="' + t.id + '">' + ltMiniRow + '<button type="button" class="oc-minbtn" data-lt-min title="Minimise">–</button><div class="lt-h"><div><div class="oc-addr">' + esc(t.property_address) + '</div><div class="oc-meta">' + esc(t.landlord_name) + ' · ' + esc(t.ref) + ' · ' + esc(fmtShort(t.created_at)) + (t.created_by ? ' · by ' + esc(t.created_by) : '') + '</div></div>' +
           '<span class="oc-pill ' + st[0] + '">' + esc(st[1]) + '</span></div>' +
         (t.status === 'signed' ? '<div class="lt-signed"><span class="lt-tick"><svg viewBox="0 0 52 52" fill="none"><path d="M14 27 l8 8 l16 -18" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div><b>Signed 🎉</b><span>' + esc(d.signature || t.landlord_name || 'The landlord') + ' signed on ' + esc(fmtShort(t.signed_at)) + (d.start_now ? ' · start work now' : ' · wait 14 days before starting') + '</span></div></div>' : '') +
         '<div class="lt-lines">' + (t.lines || []).map(function(l){ return '<div><span>' + esc(l.k) + '</span><b>' + esc(l.v) + '</b></div>'; }).join('') + '</div>' +
@@ -9095,7 +9111,7 @@
   }
   $('ltKnown').addEventListener('click', function(e){
     if (!e.target.closest('#ltUseFees')) return; var t = this.tc || {};
-    if (t.find_pct != null) { if ($('ltFind').value === 'none') $('ltFind').value = 'sole'; $('ltFindPct').value = t.find_pct; }
+    if (t.find_pct != null) { if ($('ltFind').value === 'none') $('ltFind').value = 'sole'; $('ltFindPct').value = t.find_pct; $('ltFindPct').dispatchEvent(new Event('input')); }
     var on = /manag/i.test(t.service || '') ? 'manage' : /collect/i.test(t.service || '') ? 'collect' : t.manage_pct != null ? 'manage' : t.collect_pct != null ? 'collect' : null;
     if (on) { $('ltOn').value = on; $('ltOnPct').value = on === 'manage' ? (t.manage_pct != null ? t.manage_pct : '') : (t.collect_pct != null ? t.collect_pct : ''); }
     ltShowRows(); ltPreview(); toast('Fees filled in from the current tenancy — please check them');
@@ -9136,6 +9152,10 @@
     ['ltName', 'ltAddr', 'ltEmail', 'ltPhone', 'ltOther'].forEach(function(id){ $(id).value = ''; }); $('ltEpc').hidden = true; ltEpcFor = ''; $('ltMonthly').checked = false; $('ltFind').value = 'sole'; $('ltOn').value = 'none'; $('ltRen').checked = true; $('ltVat').checked = true; ltDefaults(); ltPreview();
   }
   $('ltEditCancel').addEventListener('click', ltEditEnd);
+  try { var ls0 = localStorage.getItem('rr_lt_sort'); if (ls0) $('ltSort').value = ls0; } catch (e) {}
+  $('ltSort').addEventListener('change', function(){ try { localStorage.setItem('rr_lt_sort', this.value); } catch (e) {} renderLt(); });
+  $('ltMinAll').addEventListener('click', function(){ document.querySelectorAll('#ltList [data-lt]').forEach(function(x){ ltMin[x.dataset.lt] = 1; x.classList.add('oc-min'); }); ltMinSave(); });
+  $('ltMaxAll').addEventListener('click', function(){ document.querySelectorAll('#ltList [data-lt]').forEach(function(x){ delete ltMin[x.dataset.lt]; x.classList.remove('oc-min'); }); ltMinSave(); });
   $('ltCreate').addEventListener('click', function(){
     var b = this, body = { landlord_name: $('ltName').value.trim(), property_address: $('ltAddr').value.trim(), landlord_email: $('ltEmail').value.trim(), landlord_phone: $('ltPhone').value.trim(), landlord_id: ltLandlordId, fees: ltFees() };
     if (!body.landlord_name) { toast('Enter the landlord’s name'); $('ltName').focus(); return; }
@@ -9150,7 +9170,9 @@
     });
   });
   $('ltList').addEventListener('click', function(e){
-    var card = e.target.closest('[data-lt]'); if (!card) return; var t = ltItems.filter(function(x){ return x.id === Number(card.dataset.lt); })[0]; if (!t) return;
+    var card = e.target.closest('[data-lt]'); if (!card) return;
+    if (e.target.closest('[data-lt-min]')) { ltMin[card.dataset.lt] = 1; ltMinSave(); card.classList.add('oc-min'); return; }
+    if (e.target.closest('[data-lt-expand]')) { delete ltMin[card.dataset.lt]; ltMinSave(); card.classList.remove('oc-min'); return; } var t = ltItems.filter(function(x){ return x.id === Number(card.dataset.lt); })[0]; if (!t) return;
     if (e.target.closest('[data-lt-copy]')) { offCopyText(ltLink(t)); return; }
     if (e.target.closest('[data-lt-edit]')) { ltEditStart(t); return; }
     if (e.target.closest('[data-lt-wa]')) { var ph = String(t.landlord_phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'); window.open('https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent(ltMsg(t)), '_blank', 'noopener'); api('POST', '/api/admin/landlord-terms/' + t.id, { note: 'Link sent by WhatsApp' }); return; }
