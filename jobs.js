@@ -1648,7 +1648,7 @@ module.exports = function mountJobs(app, opts) {
     }
     if (b.sign_out === true) return res.json({ ok: true, signed_out: await signOutStaff(p) });
     const pw = String(b.password || '');
-    if (pw.length < 8 || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' });
+    if (!pw.trim() || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' });
     if (passwordMatches(pw)) return res.status(400).json({ ok: false, error: 'same' });
     const salt = crypto.randomBytes(16).toString('hex'), v = { salt: salt, hash: scryptHex(pw, salt) };
     await p.query(`INSERT INTO app_settings (key, value) VALUES ('offers_staff', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(v)]);
@@ -1677,7 +1677,7 @@ module.exports = function mountJobs(app, opts) {
     if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-allowed' });
     const b = req.body || {}, name = str(b.name, 80), email = str(b.email, 200) || null, role = USER_ROLES.indexOf(b.role) !== -1 ? b.role : 'full', pw = String(b.password || '');
     if (!name) return res.status(400).json({ ok: false, error: 'name' });
-    if (pw.length < 8 || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' });
+    if (!pw.trim() || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' });
     if (role === 'admin' && req.user.role !== 'owner') return res.status(403).json({ ok: false, error: 'owner-only' });
     if (!mayManageRole(req, role)) return res.status(403).json({ ok: false, error: 'offers-only' });
     const salt = crypto.randomBytes(16).toString('hex');
@@ -1697,7 +1697,7 @@ module.exports = function mountJobs(app, opts) {
     if (b.name != null) { const n = str(b.name, 80); if (!n) return res.status(400).json({ ok: false, error: 'name' }); vals.push(n); sets.push('name = $' + vals.length); }
     if (b.email != null) { vals.push(str(b.email, 200) || null); sets.push('email = $' + vals.length); }
     if (b.role != null) { if (USER_ROLES.indexOf(b.role) === -1) return res.status(400).json({ ok: false, error: 'role' }); vals.push(b.role); sets.push('role = $' + vals.length); signOut = signOut || b.role !== u.role; }
-    if (b.password != null) { const pw = String(b.password); if (pw.length < 8 || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' }); const salt = crypto.randomBytes(16).toString('hex'); vals.push(salt, scryptHex(pw, salt)); sets.push('salt = $' + (vals.length - 1), 'hash = $' + vals.length); signOut = true; }
+    if (b.password != null) { const pw = String(b.password); if (!pw.trim() || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' }); const salt = crypto.randomBytes(16).toString('hex'); vals.push(salt, scryptHex(pw, salt)); sets.push('salt = $' + (vals.length - 1), 'hash = $' + vals.length); signOut = true; }
     if (typeof b.disabled === 'boolean') { sets.push('disabled_at = ' + (b.disabled ? 'now()' : 'NULL')); signOut = signOut || b.disabled; }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
     try { await p.query('UPDATE staff_users SET ' + sets.join(', ') + ' WHERE id = $1', vals); } catch (e) { if (/unique/i.test(e.message)) return res.status(409).json({ ok: false, error: 'taken' }); throw e; }
@@ -7564,13 +7564,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query("INSERT INTO landlord_terms_docs (terms_id, kind, name, mime, data) VALUES ($1, 'signature', 'signature.png', 'image/png', $2)", [t.id, sigBuf]);
     // Their own gas safety certificate / EICR, if they're not asking us to arrange one.
     const attached = [];
-    for (const kind of ['gas', 'eicr', 'licence']) {
+    const KIND_NAME = { gas: 'gas safety certificate', eicr: 'EICR', licence: 'property licence', id1: 'photo ID', id2: 'photo ID (landlord 2)', poa: 'proof of address' };
+    for (const kind of Object.keys(KIND_NAME)) {
       const fl = (b.files || {})[kind], fm = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(String((fl && fl.dataUrl) || ''));
       if (!fm) continue;
       const mime = fm[1].toLowerCase(), buf = Buffer.from(fm[2], 'base64');
       if (['application/pdf', 'image/jpeg', 'image/png'].indexOf(mime) === -1 || !buf.length || buf.length > 12 * 1024 * 1024) continue;
       await p.query('INSERT INTO landlord_terms_docs (terms_id, kind, name, mime, data) VALUES ($1, $2, $3, $4, $5)', [t.id, kind, str(fl.name, 150) || kind, mime, buf]);
-      attached.push(kind === 'gas' ? 'gas safety certificate' : kind === 'eicr' ? 'EICR' : 'property licence');
+      attached.push(KIND_NAME[kind]);
     }
     if (attached.length) data.attached = attached;
     await p.query("UPDATE landlord_terms SET status = 'signed', signed_at = now(), data = $2, log = log || $3::jsonb WHERE id = $1",

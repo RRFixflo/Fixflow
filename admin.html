@@ -434,11 +434,15 @@
   .oc-refund span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
-  .staff-mode .side .nav:not(#logoutBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navTeam):not(#navWho), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
-  .staff-mode #teamSec.staff-team { display: block !important; margin-top: 16px; }
+  .side .nav.nav-team { background: linear-gradient(135deg, rgba(217,38,46,.22), rgba(255,180,183,.10)); border: 1px solid rgba(255,180,183,.45); color: #fff; margin: 4px 0 6px; font-weight: 700; }
+  .side #navWho { margin-bottom: 10px; }
+  .side .nav.nav-team span { display: flex; flex-direction: column; line-height: 1.15; } .side .nav.nav-team small { font-size: .68rem; font-weight: 600; color: #ffb4b7; letter-spacing: .04em; text-transform: uppercase; margin-top: 2px; }
+  .side .nav.nav-team.on, .side .nav.nav-team:hover { background: linear-gradient(135deg, rgba(217,38,46,.45), rgba(255,180,183,.18)); }
+  .staff-tabs button.st-team { color: #a3141b; } .staff-tabs button.st-team.on { background: #a3141b; color: #fff; }
   .staff-tabs { display: flex; gap: 6px; margin: 0 0 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; width: fit-content; }
   .staff-tabs button { border: 0; background: none; font: inherit; font-weight: 700; padding: 8px 14px; border-radius: 9px; cursor: pointer; color: var(--ink-soft); } .staff-tabs button.on { background: var(--primary, #0B1F3A); color: #fff; }
   .lt-card.lt-flash { box-shadow: 0 0 0 3px #12b76a; transition: box-shadow .3s; }
@@ -455,6 +459,10 @@
   .lt-fees { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; } .lt-box { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
   .lt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .lt-full { margin-bottom: 10px; }
   .lt-preview:empty { display: none; } .lt-preview { background: var(--blue-tint); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: .86rem; } .lt-preview div { display: flex; gap: 10px; padding: 3px 0; } .lt-preview span { min-width: 170px; color: var(--ink-soft); }
+  .ltd { padding: 6px 14px 14px; } .ltd-sec { margin-top: 14px; } .ltd-sec h4 { margin: 0 0 8px; font-size: .74rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
+  .ltd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 16px; } .ltd-grid div { border-bottom: 1px solid var(--line); padding: 0 0 6px; } .ltd-grid span { display: block; font-size: .74rem; color: var(--ink-soft); } .ltd-grid b { font-weight: 600; font-size: .9rem; word-break: break-word; }
+  .ltd-y, .ltd-n { font-style: normal; font-weight: 700; padding: 1px 8px; border-radius: 999px; font-size: .78rem; } .ltd-y { background: #e8f6ee; color: #12924a; } .ltd-n { background: #f1f2f5; color: #5f6673; }
+  .ltd-docs { display: flex; flex-wrap: wrap; gap: 6px; } .ltd-tbl { width: 100%; border-collapse: collapse; font-size: .84rem; } .ltd-tbl th { text-align: left; font-size: .72rem; color: var(--ink-soft); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--line); } .ltd-tbl td { padding: 6px; border-bottom: 1px solid var(--line); }
   .lt-signed { display: flex; gap: 14px; align-items: center; margin: 12px 0 4px; padding: 14px 16px; border-radius: 14px; background: linear-gradient(135deg, #e8f8ef, #d1f2e0); border: 1px solid #a7e3c1; }
   .lt-signed b { display: block; font-size: 1.35rem; color: #0b6b3a; } .lt-signed span:not(.lt-tick) { color: #2f6b4b; font-size: .88rem; }
   .lt-tick { flex: 0 0 72px; height: 72px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #34d399, #12b76a 60%, #0e9f5c); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 6px rgba(18,183,106,.15); }
@@ -1117,6 +1125,8 @@
   <aside class="side">
     <button type="button" class="side-brand" id="brandHome" title="Back to repair jobs"><span class="side-logo"><img src="/logo-white.png" alt="Residential Realtors"></span><span class="side-sub">Maintenance portal</span></button>
     <button class="side-search" type="button" id="sideSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<span class="kbd">Ctrl K</span></button>
+    <button class="nav nav-team" type="button" id="navTeam" hidden title="Managers only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Team &amp; access<small>Managers only</small></span></button>
+    <button class="nav nav-team" type="button" id="navWho" hidden title="Managers only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg><span>Who did what<small>Managers only</small></span></button>
     <button class="nav on" type="button" id="navJobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg> Repair jobs <span class="badge" id="sOpen">0</span></button>
     <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
     <button class="nav" type="button" id="navTenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg> Tenants</button>
@@ -1355,16 +1365,14 @@
 
       <!-- ACTIVITY: where staff are signed in, visits to the tenant pages -->
       <div id="actView" hidden>
-        <details class="card act-sec" data-sec="team" id="teamSec" hidden open>
+        <details class="card act-sec staff-team" data-sec="team" id="teamSec" hidden open>
           <summary><span class="act-sec-t">👥 Team — who’s doing what</span><span class="act-sum" id="sum_team"></span><span class="act-chev" aria-hidden="true"></span></summary>
           <div class="act-sec-b">
             <p class="muted-note" style="margin:0 0 10px">Give each person their own sign-in. Everything they change is recorded with their name — in job updates, offer and tenancy histories, and below.</p>
             <div id="teamList"></div>
             <div class="team-add"><b>Add a person</b>
-              <div class="team-grid"><input class="inp" id="tmName" placeholder="Name (they sign in with this)" maxlength="80"><input class="inp" id="tmEmail" type="email" placeholder="Email (optional)"><select class="inp" id="tmRole"><option value="full">Full access</option><option value="offers">Offers only</option><option value="admin">Full access + manage team</option></select><input class="inp" id="tmPw" type="text" autocomplete="off" placeholder="Password (8+ characters)"></div>
+              <div class="team-grid"><input class="inp" id="tmName" placeholder="Name (they sign in with this)" maxlength="80"><input class="inp" id="tmEmail" type="email" placeholder="Email (optional)"><select class="inp" id="tmRole"><option value="full">Full access</option><option value="offers">Offers only</option><option value="admin">Full access + manage team</option></select><input class="inp" id="tmPw" type="text" autocomplete="off" placeholder="Password"></div>
               <button class="btn primary small" type="button" id="tmAdd" style="margin-top:8px">Add person</button></div>
-            <div class="team-feed-h"><b>Who did what</b><select class="inp" id="tmFilter" style="width:auto"><option value="">Everyone</option></select></div>
-            <div id="teamFeed"></div>
           </div>
         </details>
         <div class="act-bar-top"><span class="muted-note" style="margin:0">Showing</span><select class="inp" id="actDays" style="width:auto" aria-label="Period"><option value="30">Last 30 days</option><option value="7">Last 7 days</option><option value="90">Last 90 days</option><option value="365">Last 12 months</option></select><span class="muted-note" id="actStamp" style="margin:0"></span><span style="flex:1"></span><button type="button" class="btn small ghost" id="actAll">Expand all</button></div>
@@ -1430,7 +1438,10 @@
         </details>
       </div>
 
-      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button></div>
+      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
+      <!-- TEAM: staff sign-ins and who did what (managers only) -->
+      <div id="teamView" hidden></div>
+      <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto"><option value="">Everyone</option></select></div><div id="teamFeed"></div></div></div>
       <div id="ltView" hidden>
         <details class="card" id="ltNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New landlord agreement</summary>
           <p class="muted-note" style="margin:8px 0 12px">Set the fees you agreed with the landlord. You’ll get a private link to send them: they check the fees, fill in the property details form, read the terms and sign. You get the signed PDF with an audit trail.</p>
@@ -1477,7 +1488,7 @@
         <details class="card" id="offStaff" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">👥 Staff access to offers <span class="muted-note" id="offStaffSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
           <p class="muted-note" style="margin:8px 0">Give staff this link and the staff password. They can only see and work on offers — accept or reject, mark deposits, right to rent checks, tracking links and the PDF. They can’t delete offers or see anything else in Fixflow. Everything they do is noted on the offer.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offStaffLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offStaffCopy">Copy link</button></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offStaffPw" type="text" autocomplete="off" placeholder="New staff password (at least 8 characters)" style="flex:1;min-width:220px"><button class="btn primary" type="button" id="offStaffSave">Set password</button></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offStaffPw" type="text" autocomplete="off" placeholder="New staff password" style="flex:1;min-width:220px"><button class="btn primary" type="button" id="offStaffSave">Set password</button></div>
           <div class="off-alerts"><b>🔔 Phone alerts for staff</b><p class="muted-note" style="margin:2px 0 8px">Staff get an alert when an offer comes in, is accepted or rejected, a holding deposit arrives, or an applicant says they’ve paid. They install the free <b>ntfy</b> app and subscribe to this channel (or open the link on their phone):</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offAlertLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offAlertCopy">Copy</button></div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small ghost" type="button" id="offStaffOut">Sign all staff out</button><button class="btn small ghost danger" type="button" id="offStaffOff">Turn off staff access</button></div>
@@ -2249,9 +2260,10 @@
         if (!history.state) history.replaceState({ v: 'offers', depth: 0 }, '', location.pathname);
         loadOffers().then(function(){ showView('offers'); });
         // An offers team manager also gets the Team section on the Offers page.
-        if (d.canManageUsers) { $('offersView').appendChild($('teamSec')); $('teamSec').classList.add('staff-team'); loadTeam(); }
+        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; $('stWho').hidden = false; $('navWho').hidden = false; }
         return;
       }
+      $('navTeam').hidden = !d.canManageUsers; $('navWho').hidden = !d.canManageUsers;
       // The date and time the latest version went live (UK time).
       if (d.deployedAt) {
         var dt = new Date(d.deployedAt), when = dt.toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -3343,7 +3355,8 @@
   $('brandHomeM').addEventListener('click', goHome);
 
   function showView(v){
-    if (staffMode && v !== 'lt') v = 'offers';
+    if ((v === 'team' || v === 'who') && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
+    if (staffMode && v !== 'lt' && v !== 'team' && v !== 'who') v = 'offers';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -3356,6 +3369,7 @@
     $('navOffersLink').classList.toggle('on', v === 'offers');
     $('tcyView').hidden = v !== 'tcy';
     $('actView').hidden = v !== 'act';
+    $('teamView').hidden = v !== 'team'; $('navTeam').classList.toggle('on', v === 'team'); $('whoView').hidden = v !== 'who'; $('navWho').classList.toggle('on', v === 'who');
     $('ctrView').hidden = v !== 'ctr';
     $('ctsView').hidden = v !== 'cts';
     $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
@@ -3369,10 +3383,12 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') loadLt();
+    if (v === 'team') { loadTeam(); $('teamSec').open = true; }
+    if (v === 'who') loadTeam();
     if (v === 'tcy' && !openTcyId) renderTenancies();
     if (v === 'act') loadActivity();
     if (v === 'ctr') renderContractorPage();
@@ -8322,7 +8338,7 @@
   }
   $('offStaffSave').addEventListener('click', function(){
     var pw = $('offStaffPw').value.trim();
-    if (pw.length < 8) { toast('Use at least 8 characters'); $('offStaffPw').focus(); return; }
+    if (!pw.trim()) { toast('Enter a password'); $('offStaffPw').focus(); return; }
     api('POST', '/api/admin/offers-staff', { password: pw }).then(function(d){
       if (!d.ok) { toast(d.error === 'same' ? 'Use a different password from your own' : 'Couldn’t save it'); return; }
       $('offStaffPw').value = ''; toast('Staff password saved' + (d.signed_out ? ' — ' + d.signed_out + ' staff signed out' : '')); loadOffStaff();
@@ -8835,6 +8851,28 @@
       '\n\nYou can download a signed copy straight away, and we’ll keep one on file for you. If anything doesn’t look right, just reply to this email or call us on 0207 096 8131 before signing.' + mailSignoff();
   }
   function ltMsg(t){ return 'Hi ' + (String(t.landlord_name || '').split(/\s+/)[0] || 'there') + ', here are our terms of business for ' + shortAddr(t.property_address) + ' with the fees we agreed. Please check them, fill in the property details and sign here: ' + ltLink(t) + ' — Residential Realtors'; }
+  var LT_Q = [['q_gas_appliances', 'Gas appliances in the property'], ['q_need_gas_cert', 'Wants us to arrange the gas safety certificate'], ['q_register_deposit', 'Wants us to register the deposit'], ['q_inventory', 'Wants an inventory in and out'], ['q_epc', 'Wants us to arrange an EPC'], ['q_eicr', 'Wants us to arrange an EICR'], ['q_pat', 'Wants a PAT test'], ['q_fire_furnishings', 'Wants a fire and furnishings test'], ['q_clean', 'Wants a professional clean'], ['q_fire_risk', 'Wants a fire risk assessment'], ['q_furnished', 'Let furnished'], ['q_uk_resident', 'UK resident for tax']];
+  var LT_DOC = { id1: '🪪 Photo ID', id2: '🪪 Photo ID (landlord 2)', poa: '🏠 Proof of address', gas: '🔥 Gas safety certificate', eicr: '⚡ EICR', licence: '📜 Property licence' };
+  function ltDetailsHtml(t){
+    var d = t.data || {}, dt = d.details || {}, e = d.epc, au = d.audit || {}, u = dt.util || {}, ap = dt.appl || {};
+    var sec = function(title, rows){ rows = rows.filter(function(r){ return r && r[1] != null && String(r[1]).trim() !== ''; }); return rows.length ? '<div class="ltd-sec"><h4>' + title + '</h4><div class="ltd-grid">' + rows.map(function(r){ return '<div><span>' + esc(r[0]) + '</span><b>' + (r[2] ? r[1] : esc(r[1])) + '</b></div>'; }).join('') + '</div></div>' : ''; };
+    var yn = function(v){ return v === 'Yes' ? '<em class="ltd-y">Yes</em>' : v === 'No' ? '<em class="ltd-n">No</em>' : esc(v || '—'); };
+    var LS = { licensed: 'Licensed', applied: 'Applied for', none: 'No licence needed', unsure: 'Not sure — asked us to check' };
+    var docs = (t.docs || []).map(function(x){ return '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/landlord-terms/' + t.id + '/doc/' + x.id + '">' + esc(LT_DOC[x.kind] || x.name) + '</a>'; }).join('');
+    var tbl = function(head, list, obj, cols){ var rows = list.filter(function(x){ var v = obj[x[0]] || {}; return cols.some(function(c){ return v[c]; }); }); return rows.length ? '<table class="ltd-tbl"><tr>' + head.map(function(h){ return '<th>' + h + '</th>'; }).join('') + '</tr>' + rows.map(function(x){ var v = obj[x[0]] || {}; return '<tr><td>' + x[1] + '</td>' + cols.map(function(c){ return '<td>' + esc(v[c] || '—') + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>' : ''; };
+    var utilT = tbl(['Service', 'Provider', 'Account', 'Meter / fusebox / stopcock'], [['gas', 'Gas'], ['electricity', 'Electricity'], ['water', 'Water'], ['council_tax', 'Council tax']], u, ['provider', 'account', 'location']);
+    var applT = tbl(['Appliance', 'Make and model', 'Age', 'Warranty / cover'], [['boiler', 'Boiler'], ['fridge', 'Fridge / freezer'], ['washer', 'Washing machine'], ['dryer', 'Tumble dryer'], ['dishwasher', 'Dishwasher'], ['alarm', 'Burglar alarm']], ap, ['make', 'age', 'cover']);
+    return '<div class="ltd">' +
+      (docs ? '<div class="ltd-sec"><h4>Documents they sent</h4><div class="ltd-docs">' + docs + '</div></div>' : '<div class="ltd-sec"><h4>Documents they sent</h4><p class="muted-note" style="margin:0">None attached — ask for their photo ID and proof of address.</p></div>') +
+      sec('Landlord', [['Landlord 1', dt.l1_name], ['Phone', dt.l1_phone ? '<a href="tel:' + esc(dt.l1_phone) + '">' + esc(dt.l1_phone) + '</a>' : '', true], ['Email', dt.l1_email ? '<a href="mailto:' + esc(dt.l1_email) + '">' + esc(dt.l1_email) + '</a>' : '', true], ['Landlord 2', [dt.l2_name, dt.l2_phone, dt.l2_email].filter(Boolean).join(' · ')], ['Legal owners on the tenancy', dt.legal_owners], ['Correspondence address', dt.corr_address], ['Company or trust', dt.company_details], ['Overseas address', dt.overseas_address]]) +
+      sec('Property', [['EPC', e ? (e.found ? 'Rating ' + (e.rating || '?') + (e.valid ? ', valid until ' : ', expired ') + certDay(e.expires_on) : 'None found on the register') : ''], ['Licence', dt.lic_status ? (LS[dt.lic_status] || dt.lic_status) + [dt.lic_type, dt.lic_council, dt.lic_number, dt.lic_expires ? 'expires ' + certDay(dt.lic_expires) : '', dt.lic_applied ? 'applied ' + certDay(dt.lic_applied) : ''].filter(Boolean).map(function(x){ return ' · ' + x; }).join('') : ''], ['Deposit scheme they use', dt.deposit_scheme]]) +
+      '<div class="ltd-sec"><h4>Their answers</h4><div class="ltd-grid">' + LT_Q.filter(function(q){ return dt[q[0]]; }).map(function(q){ return '<div><span>' + esc(q[1]) + '</span><b>' + yn(dt[q[0]]) + '</b></div>'; }).join('') + '</div></div>' +
+      sec('Bank — rent and deposit paid to', dt.bank_type === 'intl' ? [['Bank', dt.bank_other], ['Account holder', dt.bank_account_name], ['IBAN', dt.bank_iban], ['SWIFT / BIC', dt.bank_swift]] : [['Bank', dt.bank_name === 'Other' ? dt.bank_other : dt.bank_name], ['Account holder', dt.bank_account_name], ['Sort code', dt.bank_sort], ['Account number', dt.bank_account]]) +
+      (utilT ? '<div class="ltd-sec"><h4>Utilities</h4>' + utilT + '</div>' : '') + (applT ? '<div class="ltd-sec"><h4>Appliances under guarantee</h4>' + applT + '</div>' : '') +
+      sec('Other information', [['Special instructions', dt.special], ['Anything else', dt.other], ['Opted out of management', dt.optout ? 'Yes — 24-hour emergency number ' + (dt.emergency_phone || '—') + (dt.alt_name ? '; when unavailable: ' + dt.alt_name + ' ' + (dt.alt_phone || '') : '') : '']]) +
+      sec('Signing', [['Signed by', d.signature], ['Signed at', t.signed_at ? fmtShort(t.signed_at) : ''], ['Start work', d.start_now ? 'Straight away (waived the 14 days)' : 'After the 14-day cancellation period'], ['IP address', au.ip], ['Device', au.ua ? (/iPhone|iPad/i.test(au.ua) ? 'iPhone / iPad' : /Android/i.test(au.ua) ? 'Android phone' : /Mac OS/i.test(au.ua) ? 'Mac' : /Windows/i.test(au.ua) ? 'Windows computer' : 'Computer') + (/Edg\//.test(au.ua) ? ' · Edge' : /Chrome\//.test(au.ua) ? ' · Chrome' : /Safari\//.test(au.ua) ? ' · Safari' : /Firefox\//.test(au.ua) ? ' · Firefox' : '') : ''], ['Fingerprint', d.fingerprint ? String(d.fingerprint).slice(0, 16) + '…' : '']]) +
+      '</div>';
+  }
   function renderLt(){
     $('ltList').innerHTML = ltItems.length ? ltItems.map(function(t){
       var d = t.data || {}, st = t.status === 'signed' ? ['ok', '✓ Signed ' + fmtShort(t.signed_at).split(',')[0]] : t.status === 'cancelled' ? ['muted', 'Cancelled'] : d.viewed_at ? ['wait', 'Opened by the landlord — not signed yet'] : ['warn', 'Waiting for the landlord'];
@@ -8843,9 +8881,7 @@
           '<span class="oc-pill ' + st[0] + '">' + esc(st[1]) + '</span></div>' +
         (t.status === 'signed' ? '<div class="lt-signed"><span class="lt-tick"><svg viewBox="0 0 52 52" fill="none"><path d="M14 27 l8 8 l16 -18" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div><b>Signed 🎉</b><span>' + esc(d.signature || t.landlord_name || 'The landlord') + ' signed on ' + esc(fmtShort(t.signed_at)) + (d.start_now ? ' · start work now' : ' · wait 14 days before starting') + '</span></div></div>' : '') +
         '<div class="lt-lines">' + (t.lines || []).map(function(l){ return '<div><span>' + esc(l.k) + '</span><b>' + esc(l.v) + '</b></div>'; }).join('') + '</div>' +
-        (t.status === 'signed' ? '<details class="oc-more"><summary>Property details from the landlord</summary><div class="oc-rows" style="padding:10px 14px">' +
-          [['Landlord 1', [dt.l1_name, dt.l1_phone, dt.l1_email].filter(Boolean).join(' · ')], ['Landlord 2', [dt.l2_name, dt.l2_phone, dt.l2_email].filter(Boolean).join(' · ')], ['Legal owners', dt.legal_owners], ['Correspondence address', dt.corr_address], ['Bank', [dt.bank_name, dt.bank_account_name, dt.bank_sort, dt.bank_account].filter(Boolean).join(' · ')], ['EPC', d.epc ? (d.epc.found ? 'Rating ' + (d.epc.rating || '?') + (d.epc.valid ? ', valid until ' : ', expired ') + certDay(d.epc.expires_on) : 'None found on the register') : ''], ['Licence', dt.lic_status ? ({ licensed: 'Licensed', applied: 'Applied for', none: 'Not needed', unsure: 'Not sure — check the council' }[dt.lic_status] || dt.lic_status) + [dt.lic_type, dt.lic_council, dt.lic_number, dt.lic_expires ? 'expires ' + certDay(dt.lic_expires) : ''].filter(Boolean).map(function(x){ return ' · ' + x; }).join('') : ''], ['Attached', (d.attached || []).join(', ')], ['Start straight away', d.start_now ? 'Yes' : 'No — wait 14 days'], ['Opted out of management', dt.optout ? 'Yes — emergency ' + (dt.emergency_phone || '') : ''], ['Special instructions', dt.special], ['Other', dt.other]]
-            .filter(function(r){ return r[1]; }).map(function(r){ return '<div><span>' + esc(r[0]) + '</span>' + esc(r[1]) + '</div>'; }).join('') + '</div></details>' : '') +
+        (t.status === 'signed' ? '<details class="oc-more lt-det"><summary>📋 Everything the landlord told us</summary>' + ltDetailsHtml(t) + '</details>' : '') +
         '<footer class="oc-actions">' + (t.status !== 'signed' ? '<button type="button" class="btn small" data-lt-edit>✏️ Edit' + (t.status === 'cancelled' ? ' and turn back on' : '') + '</button>' : '') + (t.status === 'sent' ? '<button type="button" class="btn small primary" data-lt-copy>🔗 Copy link</button>' + (t.landlord_phone ? '<button type="button" class="btn small wa-btn" data-lt-wa>' + WA_ICON + 'WhatsApp</button>' : '<button type="button" class="btn small wa-btn" data-lt-wa>' + WA_ICON + 'WhatsApp</button>') + '<button type="button" class="btn small" data-lt-mail>✉ Email</button>' : '') +
           '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/landlord-terms/' + t.id + '/pdf">📄 ' + (t.status === 'signed' ? 'Signed PDF' : 'Preview PDF') + '</a><span class="oc-sp"></span>' +
           (t.status === 'sent' ? '<button type="button" class="btn small ghost" data-lt-cancel>Cancel link</button>' : '') + (staffMode ? '' : '<button type="button" class="btn small ghost danger" data-lt-del title="Delete">🗑</button>') + '</footer></div>';
@@ -11280,7 +11316,7 @@
   $('tmAdd').addEventListener('click', function(){
     var body = { name: $('tmName').value.trim(), email: $('tmEmail').value.trim(), role: $('tmRole').value, password: $('tmPw').value };
     if (!body.name) { toast('Enter their name'); $('tmName').focus(); return; }
-    if (body.password.length < 8) { toast('Use a password of at least 8 characters'); $('tmPw').focus(); return; }
+    if (!body.password.trim()) { toast('Enter a password for them'); $('tmPw').focus(); return; }
     api('POST', '/api/admin/users', body).then(function(d){
       if (!d.ok) { toast(d.error === 'taken' ? 'Someone already has that name' : d.error === 'owner-only' ? 'Only the owner can add people who manage the team' : d.error === 'offers-only' ? 'You can add offers team members only' : 'Couldn’t add them'); return; }
       toast(body.name + ' added — they sign in with their name and password'); $('tmName').value = $('tmEmail').value = $('tmPw').value = ''; loadTeam();
@@ -11303,9 +11339,9 @@
       api('POST', '/api/admin/users/' + uid, { name: nn, email: em }).then(function(d){ toast(d.ok ? 'Saved — ' + nn + ' now signs in with this name' : d.error === 'taken' ? 'Someone already has that name' : d.error === 'owner-only' ? 'Only the owner can change that' : 'Couldn’t save it'); if (d.ok) loadTeam(); });
       return;
     }
-    if (e.target.closest('[data-tm-pw]')) { var pw = window.prompt('New password for ' + name + ' (at least 8 characters):'); if (!pw) return; if (pw.length < 8) { toast('At least 8 characters'); return; }
+    if (e.target.closest('[data-tm-pw]')) { var pw = window.prompt('New password for ' + name + ':'); if (!pw) return; if (!pw.trim()) { toast('Enter a password'); return; }
       api('POST', '/api/admin/users/' + uid, { password: pw }).then(function(d){ toast(d.ok ? 'Password changed — ' + name + ' is signed out everywhere' : 'Couldn’t change it'); }); return; }
-    if (e.target.closest('[data-tm-feed]')) { $('tmFilter').value = uid; loadTeamFeed(); $('teamFeed').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    if (e.target.closest('[data-tm-feed]')) { showView('who'); $('tmFilter').value = uid; loadTeamFeed(); return; }
     if (e.target.closest('[data-tm-del]')) { if (!confirm('Remove ' + name + '? They’re signed out and can’t sign in again. Their past changes keep their name.')) return;
       api('DELETE', '/api/admin/users/' + uid, { confirm: true }).then(function(d){ toast(d.ok ? name + ' removed' : d.error === 'self' ? 'You can’t remove yourself' : d.error === 'owner-only' || d.error === 'offers-only' ? 'You can’t remove this person' : 'Couldn’t remove them'); loadTeam(); }); return; }
     var off = e.target.closest('[data-tm-off]');
@@ -11636,6 +11672,9 @@
     });
   })();
   $('navAct').addEventListener('click', function(){ showView('act'); });
+  $('teamView').appendChild($('teamSec'));
+  $('navTeam').addEventListener('click', function(){ showView('team'); });
+  $('navWho').addEventListener('click', function(){ showView('who'); });
 
   // Phones: a bottom tab bar standing in for the sidebar. The buttons reuse the
   // sidebar's icons and simply click the matching sidebar item.
