@@ -1563,7 +1563,8 @@ module.exports = function mountJobs(app, opts) {
   // What an offers-only sign-in may use (paths under /api/admin).
   function staffAllowed(method, path) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
-    if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;   // landlord terms tab
+    if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;
+    if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
@@ -5686,6 +5687,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
       [token, req.user ? req.user.name : 'Office', via, str(b.to, 200) || null, str(b.name, 120) || null, str(b.property, 400) || null, JSON.stringify([{ at: new Date().toISOString(), what: 'Sent by ' + (via === 'copy' ? 'link' : via === 'whatsapp' ? 'WhatsApp' : 'email') + (req.user ? ' (' + req.user.name + ')' : '') }])]);
     res.json({ ok: true, token: token });
   }));
+  app.delete('/api/admin/offer-invites/:id', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    await p.query('DELETE FROM offer_invites WHERE id = $1', [jobId(req)]);
+    res.json({ ok: true });
+  }));
   app.get('/api/admin/offer-invites', withDb(async function (p, req, res) {
     const r = await p.query(`SELECT i.*, o.status AS offer_status, o.lead_name AS offer_name FROM offer_invites i LEFT JOIN offers o ON o.id = i.offer_id ORDER BY i.id DESC LIMIT 200`);
     res.json({ ok: true, invites: r.rows });
@@ -7705,7 +7711,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query("INSERT INTO landlord_terms_docs (terms_id, kind, name, mime, data) VALUES ($1, 'signature', 'signature.png', 'image/png', $2)", [t.id, sigBuf]);
     // Their own gas safety certificate / EICR, if they're not asking us to arrange one.
     const attached = [];
-    const KIND_NAME = { gas: 'gas safety certificate', eicr: 'EICR', licence: 'property licence', id1: 'photo ID', id2: 'photo ID (landlord 2)', poa: 'proof of address' };
+    const KIND_NAME = { gas: 'gas safety certificate', eicr: 'Electrical Safety Certificate (EICR)', licence: 'property licence', id1: 'photo ID', id2: 'photo ID (landlord 2)', poa: 'proof of address' };
     for (const kind of Object.keys(KIND_NAME)) {
       const fl = (b.files || {})[kind], fm = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(String((fl && fl.dataUrl) || ''));
       if (!fm) continue;
@@ -7729,8 +7735,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.setHeader('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + '; filename="' + out.name.replace(/"/g, '') + '"');
     res.end(Buffer.from(out.bytes));
   }));
-  const LT_QUESTIONS = [['q_gas_appliances', 'Does the property have any gas appliances?'], ['q_need_gas_cert', 'Do you require a Gas Safety Certificate?'], ['q_register_deposit', 'Do you require the tenancy deposit to be registered on your behalf?'],
-    ['deposit_scheme', 'If not, which scheme are you registered with?'], ['q_inventory', 'Do you require an Inventory in and out?'], ['q_epc', 'Do you require an Energy Performance Certificate (EPC)?'], ['q_eicr', 'Do you require an Electrical Safety Test?'],
+  const LT_QUESTIONS = [['q_gas_appliances', 'Does the property have any gas appliances?'], ['q_need_gas_cert', 'Do you need us to arrange a Gas Safety Certificate?'], ['q_register_deposit', 'Do you require the tenancy deposit to be registered on your behalf?'],
+    ['deposit_scheme', 'If not, which scheme are you registered with?'], ['q_inventory', 'Do you require an Inventory in and out?'], ['q_epc', 'Do you require an Energy Performance Certificate (EPC)?'], ['q_eicr', 'Do you need us to arrange an Electrical Safety Certificate (EICR)?'],
     ['q_pat', 'Do you require a Portable Appliance Test?'], ['q_fire_furnishings', 'Do you require a Fire and Furnishings Test?'], ['q_clean', 'Do you require a Professional Clean?'], ['q_fire_risk', 'Do you require a Fire Risk Assessment?'],
     ['q_furnished', 'Is the property to be let furnished?'], ['q_uk_resident', 'Will you be resident in the UK for tax purposes during the letting?']];
   const LT_UTILS = [['gas', 'Gas'], ['electricity', 'Electricity'], ['water', 'Water'], ['council_tax', 'Council tax']];
