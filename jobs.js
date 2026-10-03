@@ -1460,7 +1460,7 @@ module.exports = function mountJobs(app, opts) {
   // What an offers-only sign-in may use (paths under /api/admin).
   function staffAllowed(method, path) {
     if (method === 'GET') return path === '/me' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
-    if (method === 'POST') return /^\/offers\/\d+(\/(track|rtr))?$/.test(path);
+    if (method === 'POST') return /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo))?$/.test(path);
     return false;
   }
 
@@ -6309,6 +6309,61 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query("UPDATE offers SET data = data || jsonb_build_object('rtr', $2::jsonb), log = log || $3::jsonb WHERE id = $1",
       [id, JSON.stringify(rtr), JSON.stringify([offerLog(req, note + (req.role === 'offers' ? ' (offers staff)' : ''))])]);
     res.json({ ok: true, rtr: rtr });
+  }));
+  // Right to rent, the automatic part: drop in the result saved from GOV.UK (PDF
+  // or screenshot) and Fixflow reads it - outcome, end date, name and date of
+  // birth - checks them against the applicant, and records the check with the
+  // file attached. The person checking still confirms the photo matches.
+  app.post('/api/admin/offers/:id/rtr/read', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req), n = parseInt(b.tenant, 10) || 0;
+    const o = (await p.query('SELECT data FROM offers WHERE id = $1', [id])).rows[0];
+    if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
+    const ts = (o.data || {}).tenants || [], t = ts[n - 1];
+    if (!t) return res.status(400).json({ ok: false, error: 'tenant' });
+    const m = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(String((b.file && b.file.dataUrl) || ''));
+    const mime = m ? m[1].toLowerCase() : '', buf = m ? Buffer.from(m[2], 'base64') : null;
+    if (!buf || ['application/pdf', 'image/jpeg', 'image/png'].indexOf(mime) === -1 || buf.length > 12 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'file' });
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    const r = await opts.askAi('This should be a result from the UK Home Office GOV.UK service "View a tenant\'s right to rent" (a right to rent check result, PDF or screenshot). Read it and reply with ONLY JSON: ' +
+      '{"is_result": true if it is a right to rent check result from GOV.UK else false, "name": "the person\'s full name as printed", "date_of_birth": "YYYY-MM-DD or \"\"", ' +
+      '"outcome": "unlimited" if it says they have an unlimited / no time limit right to rent, "limited" if a time-limited right to rent, "none" if they do not have a right to rent, else "", ' +
+      '"until": "for time-limited: the date their right to rent ends / follow-up check is needed, YYYY-MM-DD, else \"\"", "checked_on": "the date the check was made (often printed as the date of the result or when it was generated), YYYY-MM-DD or \"\"", ' +
+      '"reference": "the reference / check reference number printed, or \"\""}. UK dates are day/month/year.', true, [{ mime: mime, data: buf.toString('base64') }]).catch(function () { return { ok: false }; });
+    let got = {};
+    if (r && r.ok) { try { got = JSON.parse(String(r.text).replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()) || {}; } catch (e) { got = {}; } }
+    if (!got.is_result || ['unlimited', 'limited', 'none'].indexOf(got.outcome) === -1) return res.json({ ok: false, error: 'not-read' });
+    const until = got.outcome === 'limited' ? isoDay(got.until) || '' : '';
+    // Does it match the applicant? Every part of the shorter name appears in the other; same date of birth.
+    const words = function (x) { return String(x || '').toLowerCase().replace(/[^a-z\s'-]/g, ' ').split(/\s+/).filter(function (w) { return w.length > 1; }); };
+    const a = words(got.name), bb = words(t.name), short = a.length <= bb.length ? a : bb, long = a.length <= bb.length ? bb : a;
+    const nameOk = !!short.length && short.every(function (w) { return long.indexOf(w) !== -1; });
+    const dobRead = isoDay(got.date_of_birth) || '', dobOk = !dobRead || !t.dob ? null : dobRead === t.dob;
+    const problems = [];
+    if (!nameOk) problems.push('the name on the result (' + (str(got.name, 80) || 'not read') + ') doesn\'t match ' + t.name);
+    if (dobOk === false) problems.push('the date of birth on the result (' + dobRead.split('-').reverse().join('/') + ') doesn\'t match the one given (' + t.dob.split('-').reverse().join('/') + ')');
+    if (got.outcome === 'limited' && !until) problems.push('the end date couldn\'t be read - add it below');
+    const rtr = Object.assign({}, (o.data || {}).rtr || {});
+    await p.query('DELETE FROM offer_docs WHERE offer_id = $1 AND tenant_no = $2', [id, -n]);
+    const docId = (await p.query('INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [id, -n, str(b.file.name, 150) || 'GOV.UK right to rent result', mime, buf])).rows[0].id;
+    rtr[n] = { result: got.outcome, until: until, checked: isoDay(got.checked_on) || londonDay(), by: str(b.by, 80) || (req.role === 'offers' ? 'Offers staff' : 'Office'), doc: docId, auto: true,
+      reference: str(got.reference, 60) || '', read_name: str(got.name, 120) || '', name_ok: nameOk, dob_ok: dobOk, problems: problems, photo_at: null, at: new Date().toISOString(),
+      note: 'Read automatically from the GOV.UK result' + (problems.length ? ' - CHECK: ' + problems.join('; ') : ' - name' + (dobOk ? ' and date of birth' : '') + ' match the applicant') };
+    const RES = { unlimited: 'Unlimited right to rent', limited: 'Time-limited right to rent', none: 'No right to rent' };
+    await p.query("UPDATE offers SET data = data || jsonb_build_object('rtr', $2::jsonb), log = log || $3::jsonb WHERE id = $1",
+      [id, JSON.stringify(rtr), JSON.stringify([offerLog(req, 'Right to rent result read from GOV.UK for ' + t.name + ': ' + RES[got.outcome] + (until ? ' until ' + until.split('-').reverse().join('/') : '') + (problems.length ? ' (needs checking)' : '') + (req.role === 'offers' ? ' (offers staff)' : ''))])]);
+    res.json({ ok: true, rtr: rtr[n] });
+  }));
+  // The person checking confirms the photo on the GOV.UK result matches the tenant.
+  app.post('/api/admin/offers/:id/rtr/photo', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req), n = parseInt(b.tenant, 10) || 0;
+    const o = (await p.query('SELECT data FROM offers WHERE id = $1', [id])).rows[0];
+    const rtr = Object.assign({}, ((o || {}).data || {}).rtr || {}), t = (((o || {}).data || {}).tenants || [])[n - 1];
+    if (!rtr[n] || !t) return res.status(404).json({ ok: false, error: 'not-found' });
+    const by = str(b.by, 80) || (req.role === 'offers' ? 'Offers staff' : 'Office');
+    rtr[n] = Object.assign({}, rtr[n], { photo_at: new Date().toISOString(), photo_by: by, how: b.how === 'video' ? 'video' : 'person' });
+    await p.query("UPDATE offers SET data = data || jsonb_build_object('rtr', $2::jsonb), log = log || $3::jsonb WHERE id = $1",
+      [id, JSON.stringify(rtr), JSON.stringify([offerLog(req, 'Photo on the right to rent result checked against ' + t.name + ' (' + (b.how === 'video' ? 'video call' : 'in person') + ') by ' + by + (req.role === 'offers' ? ' (offers staff)' : ''))])]);
+    res.json({ ok: true, rtr: rtr[n] });
   }));
   app.delete('/api/admin/offers/:id', withDb(async function (p, req, res) {
     if ((req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });

@@ -68,7 +68,12 @@ const GETADDRESS_API_KEY = process.env.GETADDRESS_API_KEY || '';
 app.set('trust proxy', true);
 // Always use the secure address: Railway passes on how the visitor connected, so
 // plain http visits are sent to https and browsers are told to stick to https.
+// Browsers keep the security state of a saved copy, so copies saved while the
+// offers address was getting its certificate stayed "Not secure". On that address
+// always send fresh copies (the pages are small), so old saved copies are replaced.
+const OFFERS_HOSTNAME = (function () { try { return new URL(process.env.OFFER_ORIGIN || '').hostname; } catch (e) { return ''; } })();
 app.use(function (req, res, next) {
+  if (OFFERS_HOSTNAME && req.hostname === OFFERS_HOSTNAME) { delete req.headers['if-none-match']; delete req.headers['if-modified-since']; }
   if (req.get('x-forwarded-proto') === 'http' && req.method === 'GET') return res.redirect(301, 'https://' + req.get('host') + req.originalUrl);
   if (req.secure) { res.setHeader('Strict-Transport-Security', 'max-age=31536000'); res.setHeader('Content-Security-Policy', 'upgrade-insecure-requests'); }
   next();
