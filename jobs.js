@@ -441,6 +441,19 @@ CREATE TABLE IF NOT EXISTS shared_docs (
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_track_token_idx ON jobs (track_token);
 -- Landlord terms of business: the office sets the agreed fees, sends the landlord
 -- a private link, and the landlord fills in the property details form and signs.
+-- Viewings booked for a property, and the feedback (shown to the landlord on their page).
+CREATE TABLE IF NOT EXISTS viewings (
+  id           SERIAL PRIMARY KEY,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  property_address TEXT NOT NULL,
+  property_key TEXT,
+  at           TIMESTAMPTZ NOT NULL,
+  applicant    TEXT,
+  status       TEXT NOT NULL DEFAULT 'booked',
+  feedback     TEXT,
+  share        BOOLEAN NOT NULL DEFAULT true,
+  created_by   TEXT
+);
 -- Each offer-form link sent to an applicant from Fixflow: who, how, and what they did with it.
 CREATE TABLE IF NOT EXISTS offer_invites (
   id          SERIAL PRIMARY KEY,
@@ -1551,8 +1564,8 @@ module.exports = function mountJobs(app, opts) {
   function staffAllowed(method, path) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;   // landlord terms tab
-    if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
-    if (method === 'POST') return path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
+    if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'POST') return path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
 
@@ -4215,17 +4228,45 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '.o-add{display:block;margin-top:10px;padding:12px;border:1.5px dashed var(--line);border-radius:12px;text-align:center;color:var(--blue);font-weight:700;text-decoration:none}.ocr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:8px 0;border-bottom:1px solid #eef0f3;font-size:.92rem}.ocr b{text-align:right;font-weight:600}.ocr.bad b{color:var(--red)}.ocr.warn b{color:var(--amber)}.ocr a{color:var(--blue)}' +
       '#oForm{display:block;margin:0}#oForm [hidden]{display:none!important}#oForm h3{margin:22px 0 4px;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}#oForm .o-msg{margin:8px 0 0}#oForm textarea{resize:vertical;min-height:80px}#oPick{margin-top:6px}#oTen .o-t{margin-bottom:6px}' +
       '#oForm label{display:block;font-size:.85rem;color:var(--soft);margin-top:10px;font-weight:600}#oForm input,#oForm select,#oForm textarea{display:block;width:100%;margin:4px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}#oForm button{padding:10px 14px;border:0;border-radius:10px;background:var(--ink);color:#fff;font:inherit;font-weight:700;cursor:pointer}#oForm button[type=submit]{margin-top:14px;width:100%;padding:13px}.o-pc{display:flex;gap:6px}.o-pc input{flex:1}.o-t{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}#oTenAdd{color:var(--blue);font-weight:600;font-size:.9rem}.pacts button.sec2{background:#fff;color:var(--ink);border:1px solid var(--line)}.pacts button:disabled{opacity:.7;cursor:default}@media(max-width:520px){.o-t{grid-template-columns:1fr}.o-t input:first-child{margin-top:10px}}</style>';
+    // Letting progress: viewings (with our feedback) and offers on their properties — never applicants' contact details.
+    let letCard = '';
+    if (Object.keys(keys).length) {
+      const kList = Object.keys(keys), dayT = function (v) { return new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
+      const vs = (await p.query("SELECT property_key, property_address, at, applicant, status, feedback, share FROM viewings WHERE property_key = ANY($1::text[]) AND at > now() - interval '60 days' AND status <> 'cancelled' ORDER BY at", [kList])).rows;
+      const os = (await p.query("SELECT id, property_key, property_address, lead_name, offer_pw, status, paid_at, created_at, decided_at, data FROM offers WHERE property_key = ANY($1::text[]) AND created_at > now() - interval '90 days' AND status <> 'withdrawn' ORDER BY created_at DESC", [kList])).rows;
+      if (vs.length || os.length) {
+        const nm = function (n) { const w = String(n || '').trim().split(/\s+/); return w[0] ? w[0] + (w[1] ? ' ' + w[w.length - 1][0] + '.' : '') : 'An applicant'; };
+        const byProp = {};
+        vs.forEach(function (v) { (byProp[v.property_key] = byProp[v.property_key] || { addr: v.property_address, v: [], o: [] }).v.push(v); });
+        os.forEach(function (o) { (byProp[o.property_key] = byProp[o.property_key] || { addr: o.property_address, v: [], o: [] }).o.push(o); });
+        letCard = '<section class="card" id="letting"><h2>🏡 Letting progress</h2><p class="muted" style="margin:-4px 0 10px">Viewings, feedback and offers on your properties. We’ll keep this up to date.</p>' +
+          Object.keys(byProp).map(function (k) {
+            const g = byProp[k], up = g.v.filter(function (v) { return new Date(v.at) > new Date() && v.status === 'booked'; }), past = g.v.filter(function (v) { return !(new Date(v.at) > new Date() && v.status === 'booked'); }).reverse();
+            return '<div class="let-p"><h3>' + htmlEsc(keys[k] || g.addr) + '</h3>' +
+              (g.o.length ? '<div class="let-sub">Offers</div>' + g.o.map(function (o) { const m = (o.data || {}).money || {}, pcm = Number(m.pcm) || Number(o.offer_pw) * 52 / 12;
+                const st = o.status === 'accepted' ? ['ok', 'Accepted'] : o.status === 'rejected' ? ['no', 'Not accepted'] : ['new', 'Under review'];
+                const steps = o.status === 'accepted' ? [['Offer accepted', true], ['Holding deposit paid', !!o.paid_at], ['Right to rent checked', ((o.data || {}).tenants || []).length > 0 && ((o.data || {}).tenants || []).every(function (t, i) { const r = ((o.data || {}).rtr || {})[i + 1]; return r && r.result && r.result !== 'none'; })], ['Moving in' + ((o.data || {}).move_in ? ' ' + new Date((o.data || {}).move_in + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''), false]] : [];
+                return '<div class="let-o"><div class="let-oh"><b>£' + Number(pcm).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' pcm</b> <span class="muted">from ' + htmlEsc(nm(o.lead_name)) + ' · ' + new Date(o.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + '</span><span class="let-pill ' + st[0] + '">' + st[1] + '</span></div>' +
+                  (steps.length ? '<div class="let-steps">' + steps.map(function (s2) { return '<span class="' + (s2[1] ? 'y' : '') + '">' + (s2[1] ? '✓ ' : '○ ') + htmlEsc(s2[0]) + '</span>'; }).join('') + '</div>' : '') +
+                  ((o.data || {}).landlord_token ? '<a class="more" href="/offer/review/' + htmlEsc((o.data || {}).landlord_token) + '">View the offer details ›</a>' : '') + '</div>'; }).join('') : '') +
+              (up.length ? '<div class="let-sub">Upcoming viewings</div>' + up.map(function (v) { return '<div class="let-v">🗓 ' + htmlEsc(dayT(v.at)) + '</div>'; }).join('') : '') +
+              (past.length ? '<div class="let-sub">Recent viewings &amp; feedback</div>' + past.map(function (v) { return '<div class="let-v"><b>' + htmlEsc(dayT(v.at)) + '</b>' + (v.status === 'no_show' ? ' <span class="muted">· applicant didn’t attend</span>' : '') + (v.share && v.feedback ? '<div class="let-fb">“' + htmlEsc(v.feedback) + '”</div>' : v.status === 'done' ? '<div class="muted">Feedback to follow</div>' : '') + '</div>'; }).join('') : '') +
+              '</div>';
+          }).join('') + '</section>';
+      }
+    }
+    const letCss = '<style>.let-p{border-top:1px solid #eef0f3;padding:12px 0}.let-p:first-of-type{border-top:0}.let-p h3{margin:0 0 6px;font-size:1rem;text-transform:none;letter-spacing:0;color:#0b1f3a}.let-sub{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:#667085;font-weight:700;margin:10px 0 4px}.let-o{background:#f7f8fa;border-radius:12px;padding:10px 12px;margin:0 0 8px}.let-oh{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.let-pill{margin-left:auto;font-size:.76rem;font-weight:700;border-radius:999px;padding:2px 10px;background:#edf2ff;color:#1d3fae}.let-pill.ok{background:#e8f6ee;color:#12924a}.let-pill.no{background:#f1f2f5;color:#5f6673}.let-steps{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px;font-size:.84rem;color:#667085}.let-steps .y{color:#12924a;font-weight:600}.let-v{padding:6px 0;font-size:.9rem}.let-fb{margin-top:3px;font-style:italic;color:#344054}</style>';
     res.send(trackShell('Your properties', css + '<script>document.body.setAttribute("data-lt", ' + JSON.stringify(token).replace(/</g, '\\u003c') + ');document.body.setAttribute("data-me", ' + JSON.stringify(String(l.name || '').trim() || 'Your landlord').replace(/</g, '\\u003c') + ');</script><div id="top"></div><h1>Hi ' + htmlEsc(String(l.name || '').trim() || 'there') + '</h1><p class="sub">Your properties with Residential Realtors.</p>' +
       // Home: a few numbers, then every property — tap one to open it.
       (!Object.keys(keys).length ? '' : '<div class="tiles"><div class="tile"><b>' + open.length + '</b><span>Open repair' + (open.length === 1 ? '' : 's') + '</span></div>' +
         '<a class="tile" href="#spending"><b>' + money(unpaid.reduce(function (t, i) { return t + Number(i.total || 0); }, 0)) + '</b><span>To pay' + (unpaid.length ? ' (' + unpaid.length + ' invoice' + (unpaid.length === 1 ? '' : 's') + ')' : '') + '</span></a>' +
         '<a class="tile" href="#spending"><b>' + money(sumOf(thisYr)) + '</b><span>Spent on repairs in ' + yr + '</span></a></div>') +
-      (homeView ? '<section class="lview" id="home">' + (quick.length ? '<div class="card"><h2>' + (owns.length ? 'Managed by us' : 'Your properties') + '</h2><p class="muted" style="margin:-4px 0 6px">Tap a property to see its repairs, tenancy, certificates and costs.</p>' +
+      (homeView ? '<section class="lview" id="home">' + letCss + letCard + (quick.length ? '<div class="card"><h2>' + (owns.length ? 'Managed by us' : 'Your properties') + '</h2><p class="muted" style="margin:-4px 0 6px">Tap a property to see its repairs, tenancy, certificates and costs.</p>' +
         (quick.length + owns.length > 4 ? '<input id="lfind" type="search" placeholder="Find a property…" autocomplete="off">' : '') + '<div class="qlist">' + quick.join('') + '</div></div>' : '') +
         '<div class="card"><h2>' + (quick.length ? 'Your other properties' : 'Your properties') + '</h2>' + (owns.length ? '<div class="qlist">' + ownRows.join('') + '</div>' : '<p class="muted" style="margin:-4px 0 6px">Keep all your properties in one place — even ones we don’t manage. We’ll find each EPC automatically.</p>') +
           '<a class="o-add" href="#add">＋ Add a property</a></div>' +
         (quick.length ? '<a class="card qrow lspend" href="#spending"><span class="qa">🧾 Invoices &amp; spending' + (unpaidInv.length ? ' · <span class="due">' + money(toPay) + ' to pay</span>' : invs.length ? ' · all paid' : '') + '</span><span class="qgo">›</span></a>' : '') + '</section>' : '') +
-      propBlocks + ownViews + ownForm +
+      (!homeView ? letCss + letCard : '') + propBlocks + ownViews + ownForm +
       (!homeView ? '<div class="lone"><a class="card qrow lspend" href="#spending"><span class="qa">🧾 Invoices &amp; spending' + (unpaidInv.length ? ' · <span class="due">' + money(toPay) + ' to pay</span>' : invs.length ? ' · all paid' : '') + '</span><span class="qgo">›</span></a><a class="card qrow lspend" href="#add"><span class="qa">＋ Add a property we don’t manage</span><span class="qgo">›</span></a></div>' : '') +
       '<section class="lview" id="spending" hidden><a class="lback" href="#">← Back</a>' + invCard + spendCard.replace(' id="spending"', '') + '</section>' +
       ownScript + ownPropScript + certUpScript +
@@ -5616,6 +5657,27 @@ document.querySelectorAll('.lcu').forEach(function(box){
     try { const r = await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: topic, title: 'Fixflow alerts are working', message: 'Test sent by ' + who + '. You\u2019ll get alerts here for new offers, deposits and landlord forms.', tags: ['white_check_mark'] }), signal: AbortSignal.timeout(8000) }); res.json({ ok: r.ok }); }
     catch (err) { res.status(502).json({ ok: false }); }
   });
+  // Viewings: book them, mark them done (or cancelled / no-show) and add feedback.
+  app.get('/api/admin/viewings', withDb(async function (p, req, res) {
+    res.json({ ok: true, viewings: (await p.query("SELECT * FROM viewings WHERE at > now() - interval '120 days' ORDER BY at DESC LIMIT 300")).rows });
+  }));
+  app.post('/api/admin/viewings', withDb(async function (p, req, res) {
+    const b = req.body || {}, addr = str(b.property, 400), at = Date.parse(b.at);
+    if (!addr || !at) return res.status(400).json({ ok: false, error: 'details' });
+    const r = await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id', [addr, propKey(addr), new Date(at).toISOString(), str(b.applicant, 120) || null, req.user ? req.user.name : 'Office']);
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+  app.post('/api/admin/viewings/:id', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req), sets = [], vals = [id];
+    if (['booked', 'done', 'cancelled', 'no_show'].indexOf(b.status) !== -1) { vals.push(b.status); sets.push('status = $' + vals.length); }
+    if (b.feedback !== undefined) { vals.push(str(b.feedback, 2000) || null); sets.push('feedback = $' + vals.length); }
+    if (typeof b.share === 'boolean') { vals.push(b.share); sets.push('share = $' + vals.length); }
+    if (b.at && Date.parse(b.at)) { vals.push(new Date(Date.parse(b.at)).toISOString()); sets.push('at = $' + vals.length); }
+    if (b.delete === true) { await p.query('DELETE FROM viewings WHERE id = $1', [id]); return res.json({ ok: true }); }
+    if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
+    await p.query('UPDATE viewings SET ' + sets.join(', ') + ' WHERE id = $1', vals);
+    res.json({ ok: true });
+  }));
   // Offer-form links sent to applicants: one private link each, so we can see if it was opened.
   app.post('/api/admin/offer-invites', withDb(async function (p, req, res) {
     const b = req.body || {}, token = crypto.randomBytes(9).toString('base64url');
@@ -6693,6 +6755,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const o = await offerByLandlordToken(p, req.params.token), b = req.body || {};
     if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
     const ans = ['accept', 'decline', 'discuss'].indexOf(b.answer) !== -1 ? b.answer : null; if (!ans) return res.status(400).json({ ok: false, error: 'answer' });
+    // A decision (accept or decline) is final; only "discuss" can be followed by a decision. The office can reopen it.
+    const prev = (o.data || {}).landlord_response; if (prev && prev.answer !== 'discuss') return res.status(409).json({ ok: false, error: 'decided' });
     const resp = { answer: ans, note: str(b.note, 1000) || '', name: str(b.name, 120) || '', at: new Date().toISOString() };
     const said = { accept: 'accepts the offer', decline: 'declines the offer', discuss: 'would like to discuss the offer' }[ans];
     await p.query("UPDATE offers SET data = data || jsonb_build_object('landlord_response', $2::jsonb), log = log || $3::jsonb WHERE id = $1", [o.id, JSON.stringify(resp), JSON.stringify([offerLog(req, 'Landlord' + (resp.name ? ' (' + resp.name + ')' : '') + ' ' + said + (resp.note ? ': ' + resp.note : ''), 'landlord')])]);
@@ -6713,6 +6777,25 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   app.post('/api/admin/offers/:id', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req), sets = [], vals = [id], notes = [], dataSets = [];
+    // The agreed rent or move-in date changed (e.g. after negotiating) before it goes to the landlord.
+    if (b.rent != null || b.move_in !== undefined) {
+      const cur = (await p.query('SELECT offer_pw, data FROM offers WHERE id = $1', [id])).rows[0]; if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+      const cd = cur.data || {}, upd = {}, said = [];
+      if (b.rent != null) {
+        const amt = Math.round(parseFloat(String(b.rent.amount != null ? b.rent.amount : b.rent).replace(/[£,\s]/g, '')) * 100) / 100, per = (b.rent && b.rent.per) === 'pcm' ? 'pcm' : 'pw';
+        if (!(amt > 0 && amt < 100000)) return res.status(400).json({ ok: false, error: 'amount' });
+        const pw = per === 'pcm' ? Math.round(amt * 12 / 52 * 100) / 100 : amt, m = offerMoney(pw), old = cd.money || {};
+        if (old.holding != null) { m.holding = old.holding; m.balance = Math.round((m.pcm + m.deposit - m.holding) * 100) / 100; }
+        if (per === 'pcm') { m.pcm = amt; m.rent = amt; m.total = Math.round((amt + m.deposit) * 100) / 100; m.balance = Math.round((amt + m.deposit - m.holding) * 100) / 100; }
+        upd.money = m; if (!cd.original_money) upd.original_money = old;
+        await p.query('UPDATE offers SET offer_pw = $2 WHERE id = $1', [id, pw]);
+        said.push('Rent changed from ' + gbp(old.pcm || Number(cur.offer_pw) * 52 / 12) + ' to ' + gbp(m.pcm) + ' a month');
+      }
+      if (b.move_in !== undefined) { const mi = /^\d{4}-\d{2}-\d{2}$/.test(String(b.move_in)) ? b.move_in : null; upd.move_in = mi; said.push('Move-in date changed to ' + (mi ? certDay(mi) : 'to be agreed')); }
+      await p.query('UPDATE offers SET data = data || $2::jsonb, log = log || $3::jsonb WHERE id = $1', [id, JSON.stringify(upd), JSON.stringify(said.map(function (t) { return offerLog(req, t); }))]);
+      return res.json({ ok: true, money: upd.money || cd.money, move_in: upd.move_in !== undefined ? upd.move_in : cd.move_in });
+    }
+    if (b.landlord_reopen === true) { await p.query("UPDATE offers SET data = data - 'landlord_response', log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Landlord decision reopened - they can choose again')])]); return res.json({ ok: true }); }
     if (b.status === 'accepted' && !Array.isArray(b.credit) && req.user && req.user.id) { vals.push(JSON.stringify([{ id: req.user.id, name: req.user.name || '', share: 100 }])); sets.push("data = CASE WHEN data ? 'credit' THEN data ELSE data || jsonb_build_object('credit', $" + vals.length + "::jsonb) END"); }
     if (['new', 'accepted', 'rejected', 'withdrawn'].indexOf(b.status) !== -1) { vals.push(b.status); sets.push('status = $' + vals.length, "decided_at = CASE WHEN $" + vals.length + " = 'new' THEN NULL ELSE now() END"); notes.push(b.status === 'accepted' ? 'Offer accepted' : b.status === 'rejected' ? 'Offer rejected' : b.status === 'withdrawn' ? 'Marked as withdrawn' : 'Decision undone'); }
     if (typeof b.paid === 'boolean') { sets.push('paid_at = ' + (b.paid ? 'coalesce(paid_at, now())' : 'NULL')); notes.push(b.paid ? 'Holding deposit received' : 'Holding deposit marked not received'); if (!b.paid) sets.push("data = data - 'paid_amount'"); }
