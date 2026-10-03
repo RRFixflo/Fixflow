@@ -1534,7 +1534,7 @@ module.exports = function mountJobs(app, opts) {
   function staffAllowed(method, path) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;   // landlord terms tab
-    if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/offer-alerts/test' || path === '/email' || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
@@ -5599,6 +5599,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     try { const r = await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: topic, title: 'Fixflow alerts are working', message: 'Test sent by ' + who + '. You\u2019ll get alerts here for new offers, deposits and landlord forms.', tags: ['white_check_mark'] }), signal: AbortSignal.timeout(8000) }); res.json({ ok: r.ok }); }
     catch (err) { res.status(502).json({ ok: false }); }
   });
+  // The people an offer can be credited to (everyone with a sign-in who's turned on).
+  app.get('/api/admin/offers/people', withDb(async function (p, req, res) {
+    const r = await p.query('SELECT id, name FROM staff_users WHERE disabled_at IS NULL ORDER BY lower(name)');
+    res.json({ ok: true, people: r.rows });
+  }));
   // Same home? Same tidied address, or same postcode (or one missing) with the
   // same door number(s) and a building/street word in common.
   function sameProperty(a, b) {
@@ -6663,19 +6668,28 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, conditions: offerConds(Object.assign({}, o.data, { cond_decisions: dec })) });
   }));
   app.post('/api/admin/offers/:id', withDb(async function (p, req, res) {
-    const b = req.body || {}, id = jobId(req), sets = [], vals = [id], notes = [];
+    const b = req.body || {}, id = jobId(req), sets = [], vals = [id], notes = [], dataSets = [];
+    if (b.status === 'accepted' && !Array.isArray(b.credit) && req.user && req.user.id) { vals.push(JSON.stringify([{ id: req.user.id, name: req.user.name || '', share: 100 }])); sets.push("data = CASE WHEN data ? 'credit' THEN data ELSE data || jsonb_build_object('credit', $" + vals.length + "::jsonb) END"); }
     if (['new', 'accepted', 'rejected', 'withdrawn'].indexOf(b.status) !== -1) { vals.push(b.status); sets.push('status = $' + vals.length, "decided_at = CASE WHEN $" + vals.length + " = 'new' THEN NULL ELSE now() END"); notes.push(b.status === 'accepted' ? 'Offer accepted' : b.status === 'rejected' ? 'Offer rejected' : b.status === 'withdrawn' ? 'Marked as withdrawn' : 'Decision undone'); }
     if (typeof b.paid === 'boolean') { sets.push('paid_at = ' + (b.paid ? 'coalesce(paid_at, now())' : 'NULL')); notes.push(b.paid ? 'Holding deposit received' : 'Holding deposit marked not received'); if (!b.paid) sets.push("data = data - 'paid_amount'"); }
     // What actually arrived (people don't always pay the exact amount).
     const amt = b.paid_amount != null ? Math.round(parseFloat(String(b.paid_amount).replace(/[£,\s]/g, '')) * 100) / 100 : null;
     if (amt != null && b.paid !== false) {
       if (!(amt > 0 && amt < 100000)) return res.status(400).json({ ok: false, error: 'amount' });
-      vals.push(amt); sets.push("data = data || jsonb_build_object('paid_amount', $" + vals.length + "::numeric)");
+      vals.push(amt); dataSets.push("jsonb_build_object('paid_amount', $" + vals.length + "::numeric)");
       notes.push('Amount received: ' + gbp(amt));
     }
     if (b.seen === true) sets.push('seen_at = coalesce(seen_at, now())');
     if (str(b.note, 300)) notes.push(str(b.note, 300));
-    if (typeof b.refunded === 'boolean') { sets.push("data = data || jsonb_build_object('refunded_at', " + (b.refunded ? 'to_jsonb(now())' : "'null'::jsonb") + ')'); notes.push(b.refunded ? 'Holding deposit refund sent' : 'Refund marked as not sent'); }
+    // Whose offer it was: one person, or split (e.g. 50/50) between up to three.
+    if (Array.isArray(b.credit)) {
+      const cr = b.credit.slice(0, 3).map(function (c) { return { id: Number(c && c.id) || null, name: str(c && c.name, 80), share: Math.max(0, Math.min(100, Math.round(Number(c && c.share) || 0))) }; }).filter(function (c) { return c.name && c.share > 0; });
+      if (cr.length && cr.reduce(function (a, c) { return a + c.share; }, 0) !== 100) return res.status(400).json({ ok: false, error: 'share' });
+      vals.push(JSON.stringify(cr)); dataSets.push("jsonb_build_object('credit', $" + vals.length + "::jsonb)");
+      notes.push(cr.length ? 'Offer credited to ' + cr.map(function (c) { return c.name + (cr.length > 1 ? ' (' + c.share + '%)' : ''); }).join(' and ') : 'Offer credit cleared');
+    }
+    if (typeof b.refunded === 'boolean') { dataSets.push("jsonb_build_object('refunded_at', " + (b.refunded ? 'to_jsonb(now())' : "'null'::jsonb") + ')'); notes.push(b.refunded ? 'Holding deposit refund sent' : 'Refund marked as not sent'); }
+    if (dataSets.length) { if (sets.some(function (x) { return /^data = /.test(x); })) { const i = sets.findIndex(function (x) { return /^data = /.test(x); }); sets[i] = sets[i].replace(/^data = /, 'data = ').replace(/ END$/, ' END || ' + dataSets.join(' || ')); } else sets.push('data = data || ' + dataSets.join(' || ')); }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
     if (notes.length) { vals.push(JSON.stringify(notes.map(function (t) { return offerLog(req, t + (req.role === 'offers' ? ' (offers staff)' : '')); }))); sets.push('log = log || $' + vals.length + '::jsonb'); }
     const r = await p.query('UPDATE offers SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id, property_address, lead_name, offer_pw, data', vals);

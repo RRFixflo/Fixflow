@@ -413,6 +413,10 @@
   .oc-kv { background: var(--panel-2, #f6f7f9); border-radius: 12px; padding: 9px 12px; }
   .oc-kv span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); font-weight: 650; }
   .oc-kv b { font-size: .95rem; }
+  .oc-credit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; padding: 8px 10px; border-radius: 10px; background: #fff8e6; border: 1px solid #f3d9a8; font-size: .88rem; } .oc-credit > span:first-child { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: #7a4d00; font-weight: 700; }
+  .oc-credit select { width: auto; padding: 4px 8px; font-size: .85rem; } .oc-credit.unset { background: #f5f6f8; border-color: var(--line); }
+  .om-tbl { width: 100%; border-collapse: collapse; font-size: .88rem; } .om-tbl th { text-align: left; font-size: .72rem; color: var(--ink-soft); padding: 6px; border-bottom: 1px solid var(--line); } .om-tbl td { padding: 7px 6px; border-bottom: 1px solid var(--line); } .om-tbl td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .om-who { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin: 0 0 12px; } .om-who div { background: #f7f8fa; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; } .om-who b { display: block; font-size: 1.3rem; } .om-who span { font-size: .78rem; color: var(--ink-soft); }
   .oc-cond { font-size: .9rem; margin: 6px 0 0; } .oc-cond span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); font-weight: 650; margin-bottom: 2px; } .oc-cond em { color: var(--ink-soft); }
   .oc-more { margin-top: 12px; border: 1px solid var(--line, #e6e8ec); border-radius: 14px; }
   .oc-more summary { cursor: pointer; padding: 11px 14px; font-weight: 650; font-size: .92rem; list-style: none; display: flex; align-items: center; gap: 8px; }
@@ -1493,6 +1497,10 @@
             <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offAlertLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offAlertCopy">Copy</button></div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small ghost" type="button" id="offStaffOut">Sign all staff out</button><button class="btn small ghost danger" type="button" id="offStaffOff">Turn off staff access</button></div>
         </details>
+        <details class="card" id="offMonth" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📊 Accepted offers by month <span class="muted-note" id="offMonthSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0"><button class="btn small" type="button" id="offMonPrev">‹</button><input class="inp" type="month" id="offMon" style="width:auto"><button class="btn small" type="button" id="offMonNext">›</button></div>
+          <div id="offMonthBody"></div>
+        </details>
         <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div></div>
         <div id="offList"></div>
       </div>
@@ -2263,7 +2271,8 @@
         if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; $('stWho').hidden = false; $('navWho').hidden = false; }
         return;
       }
-      $('navTeam').hidden = !d.canManageUsers; $('navWho').hidden = !d.canManageUsers;
+      // Your own (full) page: Team and Who did what stay in Activity; the red manager buttons are for the staff page.
+      $('navTeam').hidden = true; $('navWho').hidden = true; $('actView').insertBefore($('whoView').firstElementChild, $('actView').firstChild); $('actView').insertBefore($('teamSec'), $('actView').firstChild);
       // The date and time the latest version went live (UK time).
       if (d.deployedAt) {
         var dt = new Date(d.deployedAt), when = dt.toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -3390,7 +3399,7 @@
     if (v === 'team') { loadTeam(); $('teamSec').open = true; }
     if (v === 'who') loadTeam();
     if (v === 'tcy' && !openTcyId) renderTenancies();
-    if (v === 'act') loadActivity();
+    if (v === 'act') { loadActivity(); if (!staffMode) loadTeam(); }
     if (v === 'ctr') renderContractorPage();
     if (v === 'cts') renderContractors();
     if (v === 'll') { openLlId ? renderLandlord() : renderLandlords(); }
@@ -8378,7 +8387,7 @@
     $('offAlertManual').innerHTML = al ? 'iPhone, or if the button doesn’t open the app: in ntfy tap <b>+</b>, then type the channel <code>' + esc(al.split('/').pop()) + '</code> and tap Subscribe.' : '';
     $('offAlertStaff').hidden = !al;
     if (!renderOffers.alertsInit) { renderOffers.alertsInit = true; var op = null; try { op = localStorage.getItem('rr_alerts_open'); } catch (e) {} if (op === '1' || (op == null && staffMode && !hid)) { $('offAlertStaff').open = true; offAlertQr(); } }
-    $('offLink').value = offLinkBase(); $('offOpen').href = offLinkBase();
+    $('offLink').value = offLinkBase(); $('offOpen').href = offLinkBase(); renderOffMonth();
     $('offProps').innerHTML = allPropsForList().map(function(p){ return '<option value="' + esc(p.address) + '">'; }).join('');
     var match = function(o){ return offTab === 'all' || (offTab === 'open' ? o.status === 'new' : o.status === offTab); };
     $('offTabs').innerHTML = OFF_TABS.map(function(t){ var n = offers.filter(function(o){ return t[0] === 'all' || (t[0] === 'open' ? o.status === 'new' : o.status === t[0]); }).length;
@@ -8617,6 +8626,41 @@
     return 'https://wa.me/' + ph + '?text=' + encodeURIComponent('Hi ' + (String(name || '').split(/\s+/)[0] || 'there') + ', it’s Residential Realtors about your offer on ' + shortAddr(o.property_address) + ' (' + o.ref + '). ');
   }
   // One offer, as a card: who, how much, where it's up to, and what to do next.
+  // Whose offer it was (credit), possibly split between people.
+  var offPeople = null;
+  function loadOffPeople(){ if (offPeople) return Promise.resolve(offPeople); return api('GET', '/api/admin/offers/people').then(function(d){ offPeople = (d && d.people) || []; return offPeople; }); }
+  function offCreditText(o){ var c = (o.data || {}).credit || []; return c.length ? c.map(function(x){ return esc(x.name) + (c.length > 1 ? ' <small>' + x.share + '%</small>' : ''); }).join(' + ') : ''; }
+  function offCreditHtml(o){
+    var t = offCreditText(o);
+    return '<div class="oc-credit' + (t ? '' : ' unset') + '" data-credit-row><span>🏅 Whose offer</span><b>' + (t || '<span class="muted-note" style="margin:0">Not set</span>') + '</b><button type="button" class="linkish" data-off-credit>' + (t ? 'Change' : 'Set') + '</button></div>';
+  }
+  function offCreditEdit(o, row){
+    loadOffPeople().then(function(ps){
+      var c = (o.data || {}).credit || [], opt = function(sel){ return '<option value="">Choose…</option>' + ps.map(function(x){ return '<option value="' + x.id + '"' + (sel && sel.id === x.id ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join(''); };
+      var split = c.length > 1, sh = split ? c[0].share : 50;
+      row.innerHTML = '<span>🏅 Whose offer</span><select class="inp" data-cr1>' + opt(c[0]) + '</select><label style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-crsplit' + (split ? ' checked' : '') + '> Split with</label>' +
+        '<select class="inp" data-cr2' + (split ? '' : ' hidden') + '>' + opt(c[1]) + '</select><select class="inp" data-crsh' + (split ? '' : ' hidden') + '>' + [50, 60, 70, 40, 30].map(function(v){ return '<option value="' + v + '"' + (v === sh ? ' selected' : '') + '>' + v + ' / ' + (100 - v) + '</option>'; }).join('') + '</select>' +
+        '<button type="button" class="btn small primary" data-crsave>Save</button><button type="button" class="linkish" data-crcancel>Cancel</button>';
+    });
+  }
+  // Accepted offers in a month, and each person's share.
+  function offMonthNow(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+  function renderOffMonth(){
+    if (!$('offMon').value) $('offMon').value = offMonthNow();
+    var mon = $('offMon').value, list = offers.filter(function(o){ return o.status === 'accepted' && o.decided_at && new Date(o.decided_at).toLocaleDateString('en-CA', { timeZone: 'Europe/London' }).slice(0, 7) === mon; })
+      .sort(function(a, b){ return new Date(a.decided_at) - new Date(b.decided_at); });
+    var pcmOf = function(o){ return Number(((o.data || {}).money || {}).pcm) || offPw(o) * 52 / 12; }, who = {};
+    list.forEach(function(o){ var c = (o.data || {}).credit || []; (c.length ? c : [{ name: 'Not set', share: 100 }]).forEach(function(x){ var w = who[x.name] = who[x.name] || { n: 0, rent: 0 }; w.n += x.share / 100; w.rent += pcmOf(o) * x.share / 100; }); });
+    var label = new Date(mon + '-15').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }), fmtN = function(n){ return Math.round(n * 10) / 10; };
+    $('offMonthSum').textContent = (mon === offMonthNow() ? 'this month: ' : label + ': ') + list.length + ' accepted';
+    $('offMonthBody').innerHTML = !list.length ? '<p class="muted-note" style="margin:0">No offers accepted in ' + esc(label) + '.</p>' :
+      '<div class="om-who">' + Object.keys(who).sort(function(a, b){ return who[b].n - who[a].n; }).map(function(k){ return '<div><span>' + esc(k) + '</span><b>' + fmtN(who[k].n) + '</b><span>offer' + (who[k].n === 1 ? '' : 's') + ' · ' + esc(gbp(who[k].rent)) + ' pcm</span></div>'; }).join('') + '</div>' +
+      '<table class="om-tbl"><tr><th>Accepted</th><th>Property</th><th>Applicant</th><th>Whose offer</th><th style="text-align:right">Rent pcm</th></tr>' + list.map(function(o){ return '<tr><td>' + esc(new Date(o.decided_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })) + '</td><td>' + esc(shortAddr(o.property_address)) + '</td><td>' + esc(o.lead_name || '') + '</td><td>' + (offCreditText(o) || '<span class="muted-note" style="margin:0">Not set</span>') + '</td><td class="n">' + esc(gbp(pcmOf(o))) + '</td></tr>'; }).join('') +
+      '<tr><td colspan="4"><b>Total ' + list.length + ' offer' + (list.length === 1 ? '' : 's') + '</b></td><td class="n"><b>' + esc(gbp(list.reduce(function(a, o){ return a + pcmOf(o); }, 0))) + '</b></td></tr></table>';
+  }
+  $('offMon').addEventListener('change', renderOffMonth);
+  $('offMonPrev').addEventListener('click', function(){ var d = new Date(($('offMon').value || offMonthNow()) + '-15'); d.setMonth(d.getMonth() - 1); $('offMon').value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderOffMonth(); });
+  $('offMonNext').addEventListener('click', function(){ var d = new Date(($('offMon').value || offMonthNow()) + '-15'); d.setMonth(d.getMonth() + 1); $('offMon').value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderOffMonth(); });
   function offerCard(o){
     var d = o.data || {}, m = d.money || {}, ts = d.tenants || [], docs = o.docs || [];
     var initials = String(o.lead_name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(function(w){ return w[0].toUpperCase(); }).join('');
@@ -8647,6 +8691,7 @@
         (d.refunded_at ? '<span class="oc-pill ok">✓ Refund sent ' + esc(fmtShort(d.refunded_at).split(',')[0]) + '</span> <button type="button" class="linkish" data-off-refunded="0">Undo</button>' : '<button type="button" class="btn small primary" data-off-refunded="1">✓ Refund sent</button>') + '</div>'
         : o.status === 'rejected' && o.paid_at ? '<div class="oc-refund"><div><span>Refund</span>Waiting for the applicant to give their account details (on their tracking page).</div></div>' : '') +
       (o.status === 'withdrawn' && d.withdraw_reason ? '<div class="oc-cond"><span>Why they withdrew</span>' + esc(d.withdraw_reason) + (d.withdraw_more ? ' — ' + esc(d.withdraw_more) : '') + '</div>' : '') +
+      offCreditHtml(o) +
       offCondsHtml(o) +
       (d.about ? '<div class="oc-cond"><span>About them</span>' + esc(d.about) + '</div>' : '') +
       '<details class="oc-more"><summary>Tenants, IDs and references <b>' + ts.length + '</b></summary>' + ts.map(function(t, i){
@@ -8705,6 +8750,24 @@
     if (e.target.matches('[data-rtr-k="result"]')) { var u = e.target.closest('[data-rtr]').querySelector('[data-rtr-until]'); u.hidden = e.target.value !== 'limited'; }
   });
   $('offList').addEventListener('click', function(e){
+    var crRow = e.target.closest('[data-credit-row]');
+    if (crRow) {
+      var oc = offers.filter(function(x){ return x.id === Number(e.target.closest('[data-off]') ? e.target.closest('[data-off]').dataset.off : 0); })[0];
+      if (!oc) return;
+      if (e.target.closest('[data-off-credit]')) { offCreditEdit(oc, crRow); return; }
+      if (e.target.closest('[data-crsplit]')) { var on = e.target.checked; crRow.querySelector('[data-cr2]').hidden = !on; crRow.querySelector('[data-crsh]').hidden = !on; return; }
+      if (e.target.closest('[data-crcancel]')) { crRow.outerHTML = offCreditHtml(oc); return; }
+      if (e.target.closest('[data-crsave]')) {
+        var pid = function(sel){ var v = Number(crRow.querySelector(sel).value); return offPeople.filter(function(x){ return x.id === v; })[0]; };
+        var p1 = pid('[data-cr1]'), sp = crRow.querySelector('[data-crsplit]').checked, p2 = sp ? pid('[data-cr2]') : null, s1 = sp ? Number(crRow.querySelector('[data-crsh]').value) : 100;
+        if (!p1) { toast('Choose who the offer is credited to'); return; }
+        if (sp && (!p2 || p2.id === p1.id)) { toast('Choose a different person to split with'); return; }
+        var credit = [{ id: p1.id, name: p1.name, share: s1 }].concat(p2 ? [{ id: p2.id, name: p2.name, share: 100 - s1 }] : []);
+        api('POST', '/api/admin/offers/' + oc.id, { credit: credit }).then(function(d){ if (!d.ok) { toast('Couldn’t save that'); return; } oc.data.credit = credit; crRow.outerHTML = offCreditHtml(oc); toast('Saved'); renderOffMonth(); });
+        return;
+      }
+      return;
+    }
     var card = e.target.closest('[data-off]'); if (!card) return;
     var o = offers.filter(function(x){ return x.id === Number(card.dataset.off); })[0]; if (!o) return;
     var rg = e.target.closest('[data-rtr-go]');
