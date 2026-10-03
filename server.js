@@ -520,8 +520,12 @@ async function sendViaResend(opts) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: REPORT_FROM_EMAIL,
+        // A person's name in front of our sending address, e.g. "Jo Smith - Residential Realtors <offers@...>".
+        from: opts.fromName ? String(opts.fromName).replace(/[<>"\r\n]/g, '').slice(0, 80) + ' <' + ((/<([^>]+)>/.exec(REPORT_FROM_EMAIL) || [])[1] || REPORT_FROM_EMAIL) + '>' : REPORT_FROM_EMAIL,
         to: opts.to,
+        cc: opts.cc && opts.cc.length ? opts.cc : undefined,
+        bcc: opts.bcc && opts.bcc.length ? opts.bcc : undefined,
+        reply_to: opts.replyTo || undefined,
         subject: opts.subject,
         text: opts.text,
         html: opts.html || undefined,
