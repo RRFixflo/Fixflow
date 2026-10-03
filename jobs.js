@@ -7564,13 +7564,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query("INSERT INTO landlord_terms_docs (terms_id, kind, name, mime, data) VALUES ($1, 'signature', 'signature.png', 'image/png', $2)", [t.id, sigBuf]);
     // Their own gas safety certificate / EICR, if they're not asking us to arrange one.
     const attached = [];
-    for (const kind of ['gas', 'eicr', 'licence']) {
+    const KIND_NAME = { gas: 'gas safety certificate', eicr: 'EICR', licence: 'property licence', id1: 'photo ID', id2: 'photo ID (landlord 2)', poa: 'proof of address' };
+    for (const kind of Object.keys(KIND_NAME)) {
       const fl = (b.files || {})[kind], fm = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(String((fl && fl.dataUrl) || ''));
       if (!fm) continue;
       const mime = fm[1].toLowerCase(), buf = Buffer.from(fm[2], 'base64');
       if (['application/pdf', 'image/jpeg', 'image/png'].indexOf(mime) === -1 || !buf.length || buf.length > 12 * 1024 * 1024) continue;
       await p.query('INSERT INTO landlord_terms_docs (terms_id, kind, name, mime, data) VALUES ($1, $2, $3, $4, $5)', [t.id, kind, str(fl.name, 150) || kind, mime, buf]);
-      attached.push(kind === 'gas' ? 'gas safety certificate' : kind === 'eicr' ? 'EICR' : 'property licence');
+      attached.push(KIND_NAME[kind]);
     }
     if (attached.length) data.attached = attached;
     await p.query("UPDATE landlord_terms SET status = 'signed', signed_at = now(), data = $2, log = log || $3::jsonb WHERE id = $1",
