@@ -7328,7 +7328,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const m = POSTCODE_RE.exec(address || ''); if (!m) return null;
     const r = await Promise.race([epcSearch((m[1] + ' ' + m[2]).toUpperCase()), new Promise(function (_, no) { setTimeout(function () { no(new Error('timeout')); }, 8000); })]);
     const hit = epcMatch(address, r.results);
-    return hit ? { found: true, rating: hit.rating || '', expires_on: hit.expires_on || null, address: hit.address || '', valid: !!hit.expires_on && hit.expires_on >= new Date().toISOString().slice(0, 10), url: r.url || '', checked_at: new Date().toISOString() }
+    // The register's full spelling of the address, tidied ("Flat 22, Selway House, London, SW8 1AB"), when it's clearly the same home.
+    let full = '';
+    if (hit) { const to = registerAddress(hit.address), first = function (v) { return ((String(v).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/i) || [''])[0]).toUpperCase(); };
+      if (to && !addressProblem(to) && first(to) === first(address)) full = mergeMissingParts(to, address) || to; }
+    return hit ? { found: true, rating: hit.rating || '', expires_on: hit.expires_on || null, address: hit.address || '', full_address: full, reference: hit.reference || '', link: hit.link || '', valid: !!hit.expires_on && hit.expires_on >= new Date().toISOString().slice(0, 10), url: r.url || '', checked_at: new Date().toISOString() }
       : { found: false, url: r.url || '', checked_at: new Date().toISOString() };
   }
   async function ltEpc(p, t) {

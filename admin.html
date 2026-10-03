@@ -8843,7 +8843,9 @@
         if (!d || !d.ok || !e) { box.className = 'lt-epc warn'; box.innerHTML = '<i>?</i><span>' + (d && d.ok && !e ? 'Add the full postcode to check the EPC.' : 'The EPC register didn’t answer just now — we’ll check again when the link is made.') + '</span>'; return; }
         var col = { A: '#008054', B: '#19b459', C: '#8dce46', D: '#ffd500', E: '#fcaa65', F: '#ef8023', G: '#e9153b' }[e.rating] || '#98a2b3';
         if (!e.found) { box.className = 'lt-epc warn'; box.innerHTML = '<i>?</i><span><b>No EPC found for this address</b>The landlord will be told a valid EPC is needed — we can arrange one.</span>'; return; }
-        box.className = 'lt-epc ' + (e.valid ? 'ok' : 'bad'); box.innerHTML = '<i style="background:' + col + (e.rating === 'D' ? ';color:#111' : '') + '">' + esc(e.rating || '?') + '</i><span><b>' + (e.valid ? 'EPC in place ✓' : 'EPC expired') + '</b>Rating ' + esc(e.rating || '?') + ', ' + (e.valid ? 'valid until ' : 'expired ') + esc(certDay(e.expires_on)) + (e.address ? ' · ' + esc(e.address) : '') + '. The landlord sees this on their link.</span>';
+        // The register's full address: put it in the box (staff can still edit it).
+        if (e.full_address && e.full_address !== $('ltAddr').value.trim()) { $('ltAddr').value = e.full_address; ltEpcFor = e.full_address; toast('Full address filled in from the EPC register'); ltPreview && ltPreview(); }
+        box.className = 'lt-epc ' + (e.valid ? 'ok' : 'bad'); box.innerHTML = '<i style="background:' + col + (e.rating === 'D' ? ';color:#111' : '') + '">' + esc(e.rating || '?') + '</i><span><b>' + (e.valid ? 'EPC in place ✓' : 'EPC expired') + '</b>Rating ' + esc(e.rating || '?') + ', ' + (e.valid ? 'valid until ' : 'expired ') + esc(certDay(e.expires_on)) + (e.reference ? ' · Certificate ' + esc(e.reference) : '') + '. The landlord sees this on their link.</span>';
       });
     }, 700);
   });
