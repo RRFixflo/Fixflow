@@ -181,6 +181,38 @@
   .trust div { display:flex; gap:10px; }
   .trust svg { width:18px; height:18px; color:var(--ok); flex:0 0 auto; margin-top:1px; }
 
+  /* Offer received */
+  .done-wrap { max-width:680px; margin:0 auto; padding:24px 16px 80px; display:grid; gap:16px; }
+  .done-wrap .card { margin:0; }
+  .dhero { position:relative; overflow:hidden; border-radius:24px; padding:30px 26px 24px; color:#fff; background:radial-gradient(120% 140% at 100% 0%, #2b3a55 0%, #0b1f3a 55%, #08162b 100%); box-shadow:0 20px 40px -20px rgba(11,31,58,.6); }
+  .dhero::after { content:""; position:absolute; right:-60px; top:-60px; width:220px; height:220px; border-radius:50%; background:radial-gradient(circle, rgba(217,38,46,.45), transparent 70%); }
+  .dtick { width:56px; height:56px; border-radius:50%; background:#12b76a; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 8px rgba(18,183,106,.18); margin-bottom:16px; animation:pop .5s cubic-bezier(.2,1.4,.4,1) both; }
+  .dtick svg { width:28px; height:28px; color:#fff; }
+  @keyframes pop { from { transform:scale(.4); opacity:0; } to { transform:scale(1); opacity:1; } }
+  .dref { display:inline-block; font-size:.74rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#cbd5e1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14); border-radius:999px; padding:4px 10px; }
+  .dhero h1 { font-size:2rem; letter-spacing:-.03em; margin:10px 0 6px; line-height:1.1; }
+  .dhero p { color:#cbd5e1; margin:0; position:relative; z-index:1; }
+  .dhero p b { color:#fff; }
+  .dstats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:20px; position:relative; z-index:1; }
+  .dstats div { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:10px 12px; }
+  .dstats span { display:block; font-size:.7rem; letter-spacing:.06em; text-transform:uppercase; color:#94a3b8; font-weight:600; }
+  .dstats b { font-size:1.02rem; } .dstats small { font-size:.75rem; color:#94a3b8; font-weight:500; }
+  .dpay-h { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+  .dpay-h h2 { margin:4px 0 0; font-size:1.3rem; letter-spacing:-.02em; }
+  .damt { font-size:1.9rem; font-weight:800; letter-spacing:-.03em; color:var(--ink,#101828); text-align:right; line-height:1.05; }
+  .damt small { display:block; font-size:.74rem; font-weight:600; color:var(--warn); letter-spacing:0; margin-top:4px; }
+  .paybox { margin-top:16px; border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+  .paybox .pr { display:grid; grid-template-columns:130px 1fr auto; align-items:center; gap:10px; padding:11px 14px; border-bottom:1px solid var(--line); }
+  .paybox .pr:last-child { border-bottom:0; }
+  .paybox .pr span { color:var(--soft); font-size:.88rem; }
+  .paybox .pr b { font-variant-numeric:tabular-nums; letter-spacing:.02em; word-break:break-all; }
+  .paybox .pr.strong { background:var(--brand-t); } .paybox .pr.strong b { color:var(--brand); font-size:1.05rem; }
+  .paybox .cp { border:1px solid var(--line); background:#fff; border-radius:999px; font:inherit; font-size:.76rem; font-weight:600; padding:5px 11px; cursor:pointer; color:var(--ink,#101828); }
+  .paybox .cp:hover { border-color:#c4c9d2; }
+  .dnote { display:flex; gap:10px; font-size:.86rem; color:var(--soft); margin:12px 0 0; }
+  .dnote svg { width:18px; height:18px; flex:0 0 auto; color:var(--blue); margin-top:2px; }
+  @media (max-width:560px) { .dhero { padding:24px 18px 18px; border-radius:20px; } .dhero h1 { font-size:1.6rem; } .dstats { grid-template-columns:1fr 1fr; } .dstats div:last-child { grid-column:1/-1; } .damt { text-align:left; } .paybox .pr { grid-template-columns:1fr auto; } .paybox .pr span { grid-column:1/-1; font-size:.78rem; margin-bottom:-6px; } }
+
   /* Done and tracking */
   .center { max-width:640px; margin:0 auto; padding:28px 16px 80px; }
   .tick { width:60px; height:60px; border-radius:50%; background:var(--ok-t); color:var(--ok); display:flex; align-items:center; justify-content:center; margin-bottom:14px; }
@@ -335,6 +367,8 @@
   var num = function(v){ var x = parseFloat(String(v || '').replace(/[£,\s]/g, '')); return isNaN(x) ? null : x; };
   var longDay = function(v){ return v ? new Date(v.length === 10 ? v + 'T12:00:00' : v).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
   var per = 'pw', stay = '', tenantsN = 1, guarantorsN = 0, step = 1, files = {};
+  // When they started filling in the form (for the signed agreement's audit trail).
+  var startedAt = null; document.addEventListener('input', function(){ if (!startedAt) startedAt = new Date().toISOString(); }, true);
   var STAYS = ['6 months', '1 year', '18 months', '2 years', '3 years or more', 'As long as possible'];
   var STEPS = ['Your offer', 'Tenants', 'Review & sign'];
 
@@ -638,7 +672,7 @@
         website: document.querySelector('[name=website]').value, property: $('property').value.trim(), per: per, offer: $('offer').value, max_offer: $('max_offer').value,
         move_in: $('move_in').value, stay: stay, tenants_count: tenantsN, guarantors_count: guarantorsN,
         negotiate: $('negotiate').value.trim(), about: $('about').value.trim(), lead_name: tenants[0].name, lead_phone: tenants[0].phone, lead_email: tenants[0].email,
-        tenants: tenants, agree: true, terms: Array.prototype.map.call(document.querySelectorAll('[data-term]'), function(c){ return c.checked; }), signature: $('signature').value.trim(), signature_png: sigImg }) });
+        tenants: tenants, started_at: startedAt, agree: true, terms: Array.prototype.map.call(document.querySelectorAll('[data-term]'), function(c){ return c.checked; }), signature: $('signature').value.trim(), signature_png: sigImg }) });
     }).then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) {
         busyBtns(false, 'Submit offer');
@@ -662,14 +696,25 @@
   document.addEventListener('click', function(e){ var c = e.target.closest('[data-copy]'); if (!c) return; (navigator.clipboard ? navigator.clipboard.writeText(c.dataset.copy) : Promise.reject()).then(function(){ c.textContent = '✓ Copied'; }, function(){ window.prompt('Copy this link:', c.dataset.copy); }); });
   function remember(o){ try { var l = JSON.parse(localStorage.getItem('rr_offers') || '[]').filter(function(x){ return x.track !== o.track; }); l.unshift(o); localStorage.setItem('rr_offers', JSON.stringify(l.slice(0, 5))); } catch (e) {} }
   function done(d){
-    var m = d.money || {};
+    var m = d.money || {}, f = figures() || {}, addr = $('property').value.trim(), tok = d.track ? d.track.split('/').pop() : '';
+    var due = new Date(Date.now() + 864e5).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+    var copyRow = function(label, val, strong){ return '<div class="pr' + (strong ? ' strong' : '') + '"><span>' + label + '</span><b>' + esc(val) + '</b><button type="button" class="cp" data-copy="' + esc(val) + '" aria-label="Copy ' + label + '">Copy</button></div>'; };
+    var steps = [['ok', 'Offer submitted & signed', 'Just now · reference ' + d.ref], ['now', 'Pay your holding deposit', gbp(m.holding || 0) + ' within 24 hours — by ' + due], ['', 'Landlord decides', 'We put your offer to the landlord and update your tracking page'], ['', 'References & tenancy agreement', 'Referencing forms within 24 hours, then sign and pay the balance of ' + gbp(m.balance || 0)], ['', 'Move in', $('move_in').value ? longDay($('move_in').value) : 'On the agreed date']];
     $('formView').hidden = true; $('doneView').hidden = false;
-    $('doneView').innerHTML = '<div class="card fade">' + TICK + '<h2 style="font-size:1.5rem;letter-spacing:-.02em">Offer received</h2><p class="lead">Thank you — your reference is <b>' + esc(d.ref) + '</b>. We’ll put your offer to the landlord.</p>' +
-      '<h2>Next: pay your holding deposit</h2><p style="margin:4px 0 0">To reserve the property, please pay <b>' + gbp(m.holding || 0) + '</b> (one week’s rent) by bank transfer within 24 hours.</p>' +
-      bankHtml(d.bank, m.holding, d.reference) +
-      '<p class="hint">Once your offer is accepted, the holding deposit goes towards your first month’s rent. The rest — ' + gbp(m.balance || 0) + ' — is due when you sign the tenancy agreement. If the landlord rejects your maximum offer or withdraws the property, it’s returned within 24 hours.</p>' +
-      (d.track ? trackBox(location.origin + d.track) : '') + '</div>';
-    if (d.track) remember({ ref: d.ref, track: d.track, property: $('property').value.trim(), at: Date.now() });
+    $('doneView').className = 'done-wrap';
+    $('doneView').innerHTML =
+      '<section class="dhero fade"><div class="dtick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>' +
+        '<span class="dref">Offer ' + esc(d.ref) + '</span><h1>Offer received</h1><p>Thank you' + (readTenants()[0] && readTenants()[0].name ? ', ' + esc(readTenants()[0].name.split(/\s+/)[0]) : '') + '. Your signed offer for <b>' + esc(addr) + '</b> is with us.</p>' +
+        '<div class="dstats"><div><span>Your offer</span><b>' + gbp(f.pw || 0) + '<small>/wk</small></b></div><div><span>Monthly rent</span><b>' + gbp(m.pcm || 0) + '</b></div><div><span>Move in</span><b>' + esc($('move_in').value ? longDay($('move_in').value) : 'To agree') + '</b></div></div></section>' +
+      '<section class="card dpay fade"><div class="dpay-h"><div><span class="eyebrow">Next step</span><h2>Pay your holding deposit</h2><p class="hint" style="margin:2px 0 0">One week’s rent, by bank transfer, within 24 hours to reserve the property.</p></div><div class="damt">' + gbp(m.holding || 0) + '<small>due by ' + esc(due) + '</small></div></div>' +
+        (d.bank ? '<div class="paybox">' + copyRow('Account name', d.bank.payee) + copyRow('Sort code', d.bank.sort_code) + copyRow('Account number', d.bank.account) + (d.bank.iban ? copyRow('IBAN', d.bank.iban) : '') + (d.bank.swift ? copyRow('SWIFT / BIC', d.bank.swift) : '') + copyRow('Reference', d.reference, true) + '</div>' +
+          '<p class="dnote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span>Use exactly this reference, <b>' + esc(d.reference) + '</b>, with no spaces, so we can match your payment. Paying from abroad? Use the IBAN and SWIFT.</span></p>'
+          : '<p>We’ll send you our bank details to pay it.</p>') +
+        (tok ? '<div class="btnrow" style="margin-top:14px"><a class="btn go" href="' + esc(d.track) + '">I’ve paid — tell us</a><a class="btn" target="_blank" rel="noopener" href="/api/offers/track/' + esc(tok) + '/offer.pdf">⬇ Signed agreement (PDF)</a></div>' : '') + '</section>' +
+      '<section class="card fade"><h2>What happens next</h2><ol class="timeline">' + steps.map(function(x, i){ return '<li class="' + x[0] + '"><div class="dot">' + (x[0] === 'ok' ? '✓' : i + 1) + '</div><div><b>' + esc(x[1]) + '</b><span>' + esc(x[2]) + '</span></div></li>'; }).join('') + '</ol>' +
+        '<p class="hint" style="margin:0">Once your offer is accepted, the holding deposit goes towards your first month’s rent. If the landlord rejects your maximum offer or withdraws the property, it’s returned within 24 hours. It isn’t refundable in the cases you ticked on the form.</p></section>' +
+      (d.track ? trackBox(location.origin + d.track) : '');
+    if (d.track) remember({ ref: d.ref, track: d.track, property: addr, at: Date.now() });
     window.scrollTo(0, 0);
   }
 
@@ -717,7 +762,7 @@
             : '<div class="card" style="box-shadow:none;margin:6px 0 0;padding:16px"><b>Made the payment?</b><p class="hint" style="margin:2px 0 10px">Let us know so we can check our account.</p>' +
               '<div class="g2"><div class="f"><label class="l" for="pcDate">Date paid</label><input id="pcDate" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></div><div class="f"><label class="l" for="pcFrom">Paid from (account name) <span class="opt">optional</span></label><input id="pcFrom"></div></div>' +
               '<button type="button" class="btn dark" id="pcGo">I’ve paid the holding deposit</button><div class="err" id="pcErr" hidden></div></div>') : '') +
-        (paid ? '<div class="btnrow" style="margin-top:6px"><a class="btn dark" target="_blank" rel="noopener" href="/api/offers/track/' + tm[1] + '/receipt.pdf">⬇ Download receipt</a></div>' : '') + '</div>' +
+        '<div class="btnrow" style="margin-top:10px"><a class="btn' + (paid ? '' : ' dark') + '" target="_blank" rel="noopener" href="/api/offers/track/' + tm[1] + '/offer.pdf">⬇ Signed agreement (PDF)</a>' + (paid ? '<a class="btn dark" target="_blank" rel="noopener" href="/api/offers/track/' + tm[1] + '/receipt.pdf">⬇ Download receipt</a>' : '') + '</div></div>' +
         // Not accepted after paying: where to send the refund (in the name of the applicant who paid).
         (rej && paid ? (d.refunded_at ? '<div class="card"><h2>Refund sent</h2><p class="lead" style="margin:0">We sent your holding deposit refund on ' + esc(longDay(d.refunded_at)) + '.</p></div>'
           : d.refund ? '<div class="card"><h2>Refund details received</h2><p class="lead" style="margin:0">Thank you — we’ll refund ' + gbp(m.holding || 0) + ' to ' + esc(d.refund.name) + ' within 24 hours.</p></div>'
