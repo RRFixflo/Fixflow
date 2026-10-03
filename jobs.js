@@ -1046,6 +1046,8 @@ const CONTRACTOR_PAGE_JS = `(function(){
         '<form class="stack" style="margin:10px 0 0" data-done="' + j.id + '">' +
           '<textarea name="notes" rows="3" placeholder="What did you do? (optional)" style="padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit"></textarea>' +
           '<input name="price" inputmode="decimal" placeholder="Your price £ (optional)">' +
+          '<div class="muted">Parts or materials you bought (optional)</div><div class="parts" data-parts="' + j.id + '">' + partRow() + '</div>' +
+          '<button type="button" class="linkbtn" data-addpart="' + j.id + '">+ Another part</button>' +
           (j.cert ? '<label class="muted" style="display:block">Date the ' + esc(j.cert) + ' was done<input type="date" name="cert_date" required value="' + new Date().toISOString().slice(0, 10) + '" style="display:block;width:100%;margin-top:4px"></label>' : '') +
           '<div class="muted">Photos of the finished work (optional, up to ' + MAXPH + ')</div><div class="phs" data-phs="' + j.id + '"></div>' +
           '<label class="phadd" data-phadd="' + j.id + '">📷 Add photo<input type="file" accept="image/*,.heic,.heif" multiple data-phin="' + j.id + '" style="display:none"></label>' +
@@ -1096,6 +1098,14 @@ const CONTRACTOR_PAGE_JS = `(function(){
         '<button type="submit">Send note</button>' +
       '</form></details>';
   }
+  // Parts or materials the contractor bought: what it was and what it cost (up to 5).
+  function partRow(){ return '<div class="prow"><input data-pd placeholder="e.g. Tap cartridge"><input data-pc inputmode="decimal" placeholder="£ cost"></div>'; }
+  list.addEventListener('click', function(e){
+    var a = e.target.closest('[data-addpart]'); if (!a) return;
+    var box = document.querySelector('[data-parts="' + a.dataset.addpart + '"]'); if (!box) return;
+    box.insertAdjacentHTML('beforeend', partRow()); if (box.children.length >= 5) a.style.display = 'none';
+    box.lastChild.querySelector('[data-pd]').focus();
+  });
   // Photos of the finished work: added one or several at a time (camera or library), up to
   // MAXPH, each shown as a thumbnail that can be removed before sending.
   var MAXPH = 5, picked = {};
@@ -1172,14 +1182,20 @@ const CONTRACTOR_PAGE_JS = `(function(){
     }
     var f = e.target.closest('[data-done]'); if (!f) return;
     e.preventDefault();
-    var btn = f.querySelector('button'); btn.disabled = true; btn.textContent = 'Saving…';
+    var btn = f.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Saving…';
     var price = f.price.value.replace(/[£,\\s]/g, '');
-    var files = (picked[f.dataset.done] || []).slice(0, MAXPH);
+    var files = (picked[f.dataset.done] || []).slice(0, MAXPH), badPart = false;
+    var parts = Array.prototype.slice.call(f.querySelectorAll('.prow')).map(function(r){
+      var d = r.querySelector('[data-pd]').value.trim(), c = r.querySelector('[data-pc]').value.replace(/[£,]/g, '').trim();
+      if (!d && !c) return null; if (!d || c === '' || isNaN(Number(c)) || Number(c) < 0) badPart = true;
+      return { description: d, cost: c };
+    }).filter(Boolean);
+    if (badPart) { btn.disabled = false; btn.textContent = 'Give each part a name and a £ cost'; return; }
     if (files.length) btn.textContent = 'Uploading ' + files.length + ' photo' + (files.length === 1 ? '' : 's') + '…';
     Promise.all(files.map(shrink)).then(function(ph){ return fetch('/api/c/' + TOKEN + '/jobs/' + f.dataset.done + '/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notes: f.notes.value.trim(), price: price === '' ? null : price, cert_date: f.cert_date ? f.cert_date.value : undefined, photos: ph.filter(Boolean) }) }); })
+      body: JSON.stringify({ notes: f.notes.value.trim(), price: price === '' ? null : price, cert_date: f.cert_date ? f.cert_date.value : undefined, photos: ph.filter(Boolean), parts: parts }) }); })
       .then(function(r){ return r.json(); }).then(function(d){
-        if (!d.ok) { btn.disabled = false; btn.textContent = d.error === 'bad-price' ? 'Check the price and try again' : 'Couldn’t save — try again'; return; }
+        if (!d.ok) { btn.disabled = false; btn.textContent = d.error === 'bad-price' ? 'Check the price and try again' : d.error === 'bad-part' ? 'Check the parts and try again' : 'Couldn’t save — try again'; return; }
         delete picked[f.dataset.done]; load();
       }).catch(function(){ btn.disabled = false; btn.textContent = 'Couldn’t save — try again'; });
   });
@@ -5444,6 +5460,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
     const b = req.body || {}, notes = str(b.notes, 3000), price = money(b.price), photos = decodePhotos(b.photos).slice(0, 5);
     if (price === undefined) return res.status(400).json({ ok: false, error: 'bad-price' });
+    // Parts the contractor bought: added to the job's parts (cost, and charged on to the landlord at cost
+    // unless the office changes it).
+    const parts = (Array.isArray(b.parts) ? b.parts : []).slice(0, 5).map(function (x) { return { description: str(x && x.description, 300), cost: money(x && x.cost) }; });
+    if (parts.some(function (x) { return !x.description || x.cost === undefined || x.cost === null; })) return res.status(400).json({ ok: false, error: 'bad-part' });
+    const addParts = async function (id) {
+      for (const x of parts) await p.query("INSERT INTO job_parts (job_id, description, supplier, cost, charge, status) VALUES ($1, $2, $3, $4, $4, 'Fitted')", [id, x.description, c.name, x.cost]);
+    };
+    const partsText = parts.length ? ' Parts: ' + parts.map(function (x) { return x.description + ' ' + gbp(x.cost); }).join(', ') + '.' : '';
     const mine = `archived_at IS NULL AND (lower(trim(assigned_to)) = lower(trim($2)) OR lower(trim(assigned_to_2)) = lower(trim($2))) AND status NOT IN ('Completed', 'Cancelled')`;
     const cur = (await p.query(`SELECT id, property_address, assigned_to, assigned_to_2, part_done_by FROM jobs WHERE id = $1 AND ` + mine, [jobId(req), c.name])).rows[0];
     if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
@@ -5458,8 +5482,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
           completion_notes = CASE WHEN $4::text IS NULL THEN completion_notes ELSE concat_ws(E'\n', completion_notes, $4::text) END WHERE id = $1`,
         [cur.id, c.name, price, note]);
       if (photos.length) await insertPhotos(p, cur.id, photos, 'contractor');
+      await addParts(cur.id);
       await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [cur.id, 'change',
-        c.name + ' finished their part (contractor job link) — waiting for ' + others[0].trim() + '.' + (notes ? ' Notes: ' + notes.replace(/[.\s]*$/, '') + '.' : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '') +
+        c.name + ' finished their part (contractor job link) — waiting for ' + others[0].trim() + '.' + (notes ? ' Notes: ' + notes.replace(/[.\s]*$/, '') + '.' : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '') + partsText +
         (photos.length ? ' ' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' added.' : '')]);
       ntfy({ title: 'Part done: ' + ref, message: c.name + ' finished their part of ' + ref + ' — ' + (cur.property_address || '') + '. Waiting for ' + others[0].trim() + '.', tags: ['hammer'] }).catch(function () {});
       return res.json({ ok: true, part: true });
@@ -5471,8 +5496,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
       WHERE id = $1 AND ` + mine + ` RETURNING id, property_address`, [cur.id, c.name, others.length ? note : notes, price]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     if (photos.length) await insertPhotos(p, r.rows[0].id, photos, 'contractor');
+    await addParts(r.rows[0].id);
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.rows[0].id, 'completed',
-      'Marked completed by ' + c.name + ' (contractor job link).' + (others.length ? ' Both contractors have now finished.' : '') + (notes ? ' Notes: ' + notes.replace(/[.\s]*$/, '') + '.' : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '') +
+      'Marked completed by ' + c.name + ' (contractor job link).' + (others.length ? ' Both contractors have now finished.' : '') + (notes ? ' Notes: ' + notes.replace(/[.\s]*$/, '') + '.' : '') + (price != null ? ' Their price: ' + gbp(price) + '.' : '') + partsText +
       (photos.length ? ' ' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' added.' : '')]);
     // A certificate job: the date the contractor gave (else today) renews the certificate.
     const cert = await recordCertFromJob(p, r.rows[0].id, isoDay(b.cert_date) || new Date().toISOString().slice(0, 10), c.name);
@@ -5580,6 +5606,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.send(trackShell('Your jobs', '<h1>Hi ' + htmlEsc(c.name) + '</h1><p class="sub">Jobs from Residential Realtors. Tap a job for the details, and mark it completed when it’s done.</p>' +
       '<style>' +
         '.phs{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.phs:empty{display:none}.ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#f1f2f4;display:flex;align-items:center;justify-content:center;font-size:.72rem;text-align:center;color:#666}.ph img{width:100%;height:100%;object-fit:cover}.ph button{position:absolute;top:3px;right:3px;width:24px;height:24px;padding:0;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:15px;line-height:24px;border:0}' +
+        '.prow{display:grid;grid-template-columns:1fr 110px;gap:6px;margin-bottom:6px}.linkbtn{background:none;border:0;color:#2563eb;font-weight:600;padding:2px 0;text-align:left;cursor:pointer;font:inherit;font-weight:600}' +
         '.phadd{display:block;text-align:center;padding:12px;border:1.5px dashed #c9ccd3;border-radius:12px;font-weight:600;cursor:pointer;color:#333}' +
         '.dt{margin-top:10px;border-top:1px solid #eee;padding-top:8px}.dt summary{cursor:pointer;font-weight:600;padding:6px 0;list-style:none}.dt summary::-webkit-details-marker{display:none}.dt summary:before{content:"▸ ";color:#888}.dt[open] summary:before{content:"▾ "}' +
         '.dbody{display:flex;flex-direction:column;gap:10px;margin-top:6px}.desc{white-space:pre-wrap;background:#f6f6f8;border-radius:12px;padding:10px 12px;font-size:.95rem}' +
