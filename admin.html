@@ -469,6 +469,10 @@
   .team-feed small { display: block; color: var(--ink-faint); font-size: .74rem; }
   .off-alerts { margin-top: 12px; padding: 12px; border-radius: 10px; background: #edf2ff; }
   .off-alerts-staff { margin-bottom: 12px; border-left: 4px solid #1d3fae; }
+  .ntfy-steps { margin: 12px 0 2px; padding-left: 22px; } .ntfy-steps li { margin: 0 0 14px; } .ntfy-steps li::marker { font-weight: 800; color: #1d3fae; }
+  .ntfy-stores { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .ntfy-sub { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; } .ntfy-sub > div:first-child { flex: 1; min-width: 220px; } .ntfy-qr { background: #fff; padding: 8px; border: 1px solid #e7e9ee; border-radius: 10px; line-height: 0; } .ntfy-qr:empty { display: none; }
+  @media (max-width: 760px) { .ntfy-qr { display: none; } }
   .oc-rtr { margin-top: 10px; padding: 10px 12px; border: 1px solid #e3e6ec; border-radius: 10px; background: #fafbfc; }
   .oc-rtr-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .oc-rtrq { margin: 10px 0 4px; border: 1px solid #f3d9a8; background: #fffaf0; border-radius: 12px; padding: 10px 12px; }
@@ -1101,7 +1105,7 @@
     <button class="nav" type="button" id="navPay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg> Payments <span class="badge" id="sOwed" hidden></span></button>
     <button class="nav" type="button" id="contractorsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg> Contractors</button>
     <button class="nav" type="button" id="navAct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Activity</button>
-    <button class="nav" type="button" id="navLt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg> Landlord terms <span class="count-chip" id="sLt" hidden></span></button>
+    <button class="nav" type="button" id="navLt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg> Landlord Terms <span class="count-chip" id="sLt" hidden></span></button>
     <button class="nav" type="button" id="navEmail" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
     <button class="nav" type="button" id="navNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <div class="side-sec">Links</div>
@@ -1404,7 +1408,7 @@
         </details>
       </div>
 
-      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord terms</button></div>
+      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button></div>
       <div id="ltView" hidden>
         <details class="card" id="ltNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New landlord agreement</summary>
           <p class="muted-note" style="margin:8px 0 12px">Set the fees you agreed with the landlord. You’ll get a private link to send them: they check the fees, fill in the property details form, read the terms and sign. You get the signed PDF with an audit trail.</p>
@@ -1413,8 +1417,8 @@
           <div class="lt-fees">
             <div class="lt-box"><b>Tenant find</b><select class="inp" id="ltFind"><option value="sole">Sole agency</option><option value="multi">Multi agency</option><option value="none">None</option></select>
               <div class="lt-row" data-find><label>Commission %<input class="inp" id="ltFindPct" inputmode="decimal"></label><label>Minimum fee £ (inc VAT)<input class="inp" id="ltFindMin" inputmode="decimal"></label></div>
-              <label class="switch-row" data-find style="margin-top:6px"><input type="checkbox" id="ltRen" checked> Renewal fee applies</label>
-              <div class="lt-row" data-find data-ren><label>Renewal %<input class="inp" id="ltRenPct" inputmode="decimal"></label></div></div>
+              <label class="switch-row" data-find style="margin-top:6px"><input type="checkbox" id="ltRen" checked> Anniversary fee (each 12 months the tenant stays)</label>
+              <div class="lt-row" data-find data-ren><label>Anniversary fee %<input class="inp" id="ltRenPct" inputmode="decimal"></label></div></div>
             <div class="lt-box"><b>Ongoing service</b><select class="inp" id="ltOn"><option value="none">None</option><option value="collect">Rent collection</option><option value="manage">Full management</option></select>
               <div class="lt-row" data-on><label>Fee %<input class="inp" id="ltOnPct" inputmode="decimal"></label><label>Minimum £ a month (inc VAT)<input class="inp" id="ltOnMin" inputmode="decimal"></label></div>
               <label class="switch-row" style="margin-top:6px"><input type="checkbox" id="ltVat" checked> Fees are + VAT</label></div>
@@ -1437,8 +1441,15 @@
         </details>
         <div class="card" id="offRemind" style="margin-bottom:12px" hidden><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b>⏰ Automatic holding deposit reminders</b><div class="muted-note" id="offRemindNote" style="margin:2px 0 0"></div></div>
           <label class="switch-row"><input type="checkbox" id="offRemindOn"> <span id="offRemindLbl">On</span></label></div></div>
-        <div class="card off-alerts-staff" id="offAlertStaff" hidden><b>🔔 Get offer alerts on your phone</b><p class="muted-note" style="margin:4px 0 10px">Be told straight away when an offer comes in, is accepted or rejected, or a holding deposit arrives. Install the free <b>ntfy</b> app (App Store / Google Play), then tap the button on your phone, or add this channel in the app.</p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary" id="offAlertOpen" target="_blank" rel="noopener">Subscribe on this phone</a><button class="btn" type="button" id="offAlertCopy2">Copy channel link</button><button class="btn ghost" type="button" id="offAlertHide">Hide</button></div></div>
+        <details class="card off-alerts-staff" id="offAlertStaff" hidden><summary style="cursor:pointer;font-weight:700">🔔 Get alerts on your phone <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">new offers, deposits, landlord forms</span></summary>
+          <ol class="ntfy-steps">
+            <li><b>Install the free ntfy app</b><div class="ntfy-stores"><a class="btn small" href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener"> iPhone – App Store</a><a class="btn small" href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">▶ Android – Google Play</a></div></li>
+            <li><b>Subscribe to our channel</b><span class="muted-note" style="display:block;margin:2px 0 6px">On your phone: tap the button. On a computer: scan the code with your phone’s camera.</span>
+              <div class="ntfy-sub"><div><a class="btn primary" id="offAlertOpen" target="_blank" rel="noopener">Subscribe on this phone</a><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" type="button" id="offAlertCopy2">Copy channel</button></div><div class="muted-note" id="offAlertManual" style="margin:6px 0 0;font-size:.78rem"></div></div><div id="offAlertQr" class="ntfy-qr"></div></div></li>
+            <li><b>Allow notifications</b><span class="muted-note" style="display:block;margin:2px 0 0">When the app asks, tap <b>Allow</b>. On iPhone, check Settings → ntfy → Notifications is on.</span></li>
+            <li><b>Check it works</b><div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" type="button" id="offAlertTest">Send me a test alert</button><span class="muted-note" id="offAlertTestMsg" style="margin:0"></span></div></li>
+          </ol>
+        </details>
         <details class="card" id="offStaff" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">👥 Staff access to offers <span class="muted-note" id="offStaffSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
           <p class="muted-note" style="margin:8px 0">Give staff this link and the staff password. They can only see and work on offers — accept or reject, mark deposits, right to rent checks, tracking links and the PDF. They can’t delete offers or see anything else in Fixflow. Everything they do is noted on the offer.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offStaffLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offStaffCopy">Copy link</button></div>
@@ -1929,7 +1940,7 @@
 </div>
 <div class="modal" id="rfModal" hidden>
   <div class="card tn-card" role="dialog" aria-labelledby="rfTitle">
-    <h3 id="rfTitle" style="margin:0">Renewal fees to charge</h3>
+    <h3 id="rfTitle" style="margin:0">Anniversary fees to charge</h3>
     <p class="muted-note" style="margin:6px 0 10px">These tenancies pay the fee up front and are in month 12. Charge the landlord the fee for the next year (on the rent for that year) — “Charged” creates the invoice for the landlord.</p>
     <div id="rfList"></div>
     <div class="row-actions" style="margin-top:12px"><span style="flex:1"></span><button class="btn" type="button" id="rfClose">Close</button></div>
@@ -3319,7 +3330,7 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord terms', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') loadLt();
@@ -8261,7 +8272,15 @@
   $('offStaffCopy').addEventListener('click', function(){ offCopyText($('offStaffLink').value); });
   $('offAlertCopy').addEventListener('click', function(){ offCopyText($('offAlertLink').value); });
   $('offAlertCopy2').addEventListener('click', function(){ offCopyText(meta.offerAlerts || ''); });
-  $('offAlertHide').addEventListener('click', function(){ try { localStorage.setItem('rr_alerts_hide', '1'); } catch (e) {} $('offAlertStaff').hidden = true; });
+  $('offAlertStaff').addEventListener('toggle', function(){ try { localStorage.setItem('rr_alerts_open', this.open ? '1' : '0'); } catch (e) {} if (this.open) offAlertQr(); });
+  $('offAlertTest').addEventListener('click', function(){ var b = this; b.disabled = true; $('offAlertTestMsg').textContent = 'Sending…';
+    api('POST', '/api/admin/offer-alerts/test', {}).then(function(x){ b.disabled = false; $('offAlertTestMsg').textContent = x && x.ok ? '✓ Sent — it should pop up on your phone within a few seconds. Nothing? Check step 2 and 3.' : 'Couldn’t send — try again.'; }).catch(function(){ b.disabled = false; $('offAlertTestMsg').textContent = 'Couldn’t send — try again.'; }); });
+  function offAlertQr(){
+    var al = meta.offerAlerts || '', box = $('offAlertQr'); if (!al || box.dataset.done === al) return;
+    var draw = function(){ box.innerHTML = ''; try { new QRCode(box, { text: al, width: 132, height: 132, correctLevel: QRCode.CorrectLevel.M }); box.dataset.done = al; } catch (e) {} };
+    if (window.QRCode) return draw();
+    var sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; sc.onload = draw; document.head.appendChild(sc);
+  }
   $('offStaffSave').addEventListener('click', function(){
     var pw = $('offStaffPw').value.trim();
     if (pw.length < 8) { toast('Use at least 8 characters'); $('offStaffPw').focus(); return; }
@@ -8297,8 +8316,12 @@
   function renderOffers(){
     if (!renderOffers.staffLoaded) { renderOffers.staffLoaded = true; loadOffStaff(); loadRemind(); $('offSendWa').innerHTML = WA_ICON + 'WhatsApp'; }
     var al = meta.offerAlerts || '', hid = false; try { hid = localStorage.getItem('rr_alerts_hide') === '1'; } catch (e) {}
-    $('offAlertLink').value = al; $('offAlertOpen').href = al;
-    $('offAlertStaff').hidden = !staffMode || !al || hid;
+    $('offAlertLink').value = al;
+    var mobile = /Android/i.test(navigator.userAgent);
+    $('offAlertOpen').href = al && mobile ? al.replace(/^https?:\/\//, 'ntfy://') : al;
+    $('offAlertManual').innerHTML = al ? 'iPhone, or if the button doesn’t open the app: in ntfy tap <b>+</b>, then type the channel <code>' + esc(al.split('/').pop()) + '</code> and tap Subscribe.' : '';
+    $('offAlertStaff').hidden = !al;
+    if (!renderOffers.alertsInit) { renderOffers.alertsInit = true; var op = null; try { op = localStorage.getItem('rr_alerts_open'); } catch (e) {} if (op === '1' || (op == null && staffMode && !hid)) { $('offAlertStaff').open = true; offAlertQr(); } }
     $('offLink').value = offLinkBase(); $('offOpen').href = offLinkBase();
     $('offProps').innerHTML = allPropsForList().map(function(p){ return '<option value="' + esc(p.address) + '">'; }).join('');
     var match = function(o){ return offTab === 'all' || (offTab === 'open' ? o.status === 'new' : o.status === offTab); };
@@ -8700,7 +8723,7 @@
   function ltFees(){ return { find: $('ltFind').value, find_pct: $('ltFindPct').value, find_min: $('ltFindMin').value, renewal: $('ltRen').checked, renewal_pct: $('ltRenPct').value, ongoing: $('ltOn').value, ongoing_pct: $('ltOnPct').value, ongoing_min: $('ltOnMin').value, vat: $('ltVat').checked, other: $('ltOther').value.trim() }; }
   function ltLines(f){
     var vat = f.vat !== false, inc = function(p){ p = Number(p); return vat ? p + '% + VAT (' + (Math.round(p * 120) / 100) + '% inc VAT)' : p + '%'; }, L = [];
-    if (f.find !== 'none' && f.find_pct !== '' && f.find_pct != null) { L.push([f.find === 'multi' ? 'Tenant find — multi agency' : 'Tenant find — sole agency', inc(f.find_pct) + ' of the rent for the term' + (Number(f.find_min) ? ', minimum ' + gbp(Number(f.find_min)) + (vat ? ' inc VAT' : '') : '')]); L.push(['Renewal fee', f.renewal && f.renewal_pct !== '' && f.renewal_pct != null ? inc(f.renewal_pct) : 'No renewal fee']); }
+    if (f.find !== 'none' && f.find_pct !== '' && f.find_pct != null) { L.push([f.find === 'multi' ? 'Tenant find — multi agency' : 'Tenant find — sole agency', inc(f.find_pct) + ' of the first 12 months’ rent' + (Number(f.find_min) ? ', minimum ' + gbp(Number(f.find_min)) + (vat ? ' inc VAT' : '') : '')]); L.push(['Anniversary fee', f.renewal && f.renewal_pct !== '' && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months’ rent, each anniversary' : 'No anniversary fee']); }
     if (f.ongoing !== 'none' && f.ongoing_pct !== '' && f.ongoing_pct != null) L.push([f.ongoing === 'manage' ? 'Full management' : 'Rent collection', inc(f.ongoing_pct) + ' of rent received' + (Number(f.ongoing_min) ? ', minimum ' + gbp(Number(f.ongoing_min)) + (vat ? ' inc VAT' : '') + ' a month' : '')]);
     if (f.other) L.push(['Other', f.other]);
     return L;
@@ -8710,8 +8733,9 @@
   $('ltRen').addEventListener('change', ltShowRows);
   $('ltNew').addEventListener('input', ltPreview); $('ltVat').addEventListener('change', ltPreview);
   ltDefaults();
-  function loadLt(){ return api('GET', '/api/admin/landlord-terms').then(function(d){ if (!d.ok) return; ltItems = d.items; renderLt(); var waiting = ltItems.filter(function(x){ return x.status === 'sent'; }).length; $('sLt').hidden = !waiting; $('sLt').textContent = waiting; }); }
-  function ltLink(t){ return (meta.offerOrigin || location.origin) + '/landlord/' + t.token; }
+  function loadLt(){ return api('GET', '/api/admin/landlord-terms').then(function(d){ if (!d.ok) return; ltItems = d.items; ltOrigin = d.origin || ''; renderLt(); var waiting = ltItems.filter(function(x){ return x.status === 'sent'; }).length; $('sLt').hidden = !waiting; $('sLt').textContent = waiting; }); }
+  var ltOrigin = '';
+  function ltLink(t){ return (ltOrigin || meta.offerOrigin || location.origin) + '/landlord/' + t.token; }
   function ltMsg(t){ return 'Hi ' + (String(t.landlord_name || '').split(/\s+/)[0] || 'there') + ', here are our terms of business for ' + shortAddr(t.property_address) + ' with the fees we agreed. Please check them, fill in the property details and sign here: ' + ltLink(t) + ' — Residential Realtors'; }
   function renderLt(){
     $('ltList').innerHTML = ltItems.length ? ltItems.map(function(t){
@@ -8977,17 +9001,17 @@
   function renderFeeBanner(){
     var todo = renewFees.filter(function(x){ return !x.invoice; }), n = todo.length, tot = todo.reduce(function(t, x){ return t + x.fee.total; }, 0);
     $('feeBanner').hidden = !n;
-    $('feeBannerText').textContent = '🧾 ' + n + ' renewal fee' + (n === 1 ? '' : 's') + ' to charge (' + gbp(tot) + ') — tenanc' + (n === 1 ? 'y' : 'ies') + ' in month 12 that pay' + (n === 1 ? 's' : '') + ' the fee up front.';
+    $('feeBannerText').textContent = '🧾 ' + n + ' anniversary fee' + (n === 1 ? '' : 's') + ' to charge (' + gbp(tot) + ') — tenanc' + (n === 1 ? 'y' : 'ies') + ' in month 12 that pay' + (n === 1 ? 's' : '') + ' the fee up front.';
   }
   function renewMail(x){
     if (x.invoice) {
-      var b2 = llGreeting(x.landlord) + ',\n\nThe tenancy at ' + shortAddr(x.address) + ' reaches its anniversary on ' + longDay(x.anniv) + '. As the fee is paid up front, please find the renewal fee for the next year (on the rent of ' + gbp(x.fee.rent) + ' a month): invoice ' + x.invoice.number + ' for ' + gbp(x.invoice.amount) + '.' +
+      var b2 = llGreeting(x.landlord) + ',\n\nThe tenancy at ' + shortAddr(x.address) + ' reaches its anniversary on ' + longDay(x.anniv) + '. As the fee is paid up front, please find the anniversary fee for the next year (on the rent of ' + gbp(x.fee.rent) + ' a month): invoice ' + x.invoice.number + ' for ' + gbp(x.invoice.amount) + '.' +
         (x.invoice.url ? '\n\nView the invoice and how to pay: ' + x.invoice.url : '') + '\n\nPlease let us know if you have any questions.\n\nKind regards,\nResidential Realtors';
-      return 'mailto:' + encodeURIComponent(x.landlord_email || '') + '?subject=' + encodeURIComponent('Invoice ' + x.invoice.number + ' — renewal fee, ' + shortAddr(x.address)) + '&body=' + encodeURIComponent(b2);
+      return 'mailto:' + encodeURIComponent(x.landlord_email || '') + '?subject=' + encodeURIComponent('Invoice ' + x.invoice.number + ' — anniversary fee, ' + shortAddr(x.address)) + '&body=' + encodeURIComponent(b2);
     }
     var lines = x.fee.lines.map(function(l){ return '- ' + l.label + ': ' + gbp(l.amount); }).join('\n') + (x.fee.vat ? '\n- VAT: ' + gbp(x.fee.vat) : '') + '\nTotal: ' + gbp(x.fee.total);
-    var body = llGreeting(x.landlord) + ',\n\nThe tenancy at ' + shortAddr(x.address) + ' reaches its anniversary on ' + longDay(x.anniv) + '. As the fee is paid up front, the renewal fee for the next year (on the rent of ' + gbp(x.fee.rent) + ' a month) is due:\n\n' + lines + '\n\nPlease let us know if you have any questions.\n\nKind regards,\nResidential Realtors';
-    return 'mailto:' + encodeURIComponent(x.landlord_email || '') + '?subject=' + encodeURIComponent('Renewal fee — ' + shortAddr(x.address)) + '&body=' + encodeURIComponent(body);
+    var body = llGreeting(x.landlord) + ',\n\nThe tenancy at ' + shortAddr(x.address) + ' reaches its anniversary on ' + longDay(x.anniv) + '. As the fee is paid up front, the anniversary fee for the next year (on the rent of ' + gbp(x.fee.rent) + ' a month) is due:\n\n' + lines + '\n\nPlease let us know if you have any questions.\n\nKind regards,\nResidential Realtors';
+    return 'mailto:' + encodeURIComponent(x.landlord_email || '') + '?subject=' + encodeURIComponent('Anniversary fee — ' + shortAddr(x.address)) + '&body=' + encodeURIComponent(body);
   }
   function renderRenewFees(){
     $('rfList').innerHTML = renewFees.length ? renewFees.map(function(x){
@@ -9004,14 +9028,14 @@
           '<button type="button" class="btn small" data-rf-done="' + esc(x.key) + '" data-rf-already="1" title="The landlord has already paid: records the invoice as paid">✓ Already paid</button>' +
           (x.landlord_email ? '<a class="btn small" href="' + esc(renewMail(x)) + '">✉ Email landlord</a>' : '') +
           '<button type="button" class="btn small ghost" data-rf-skip="' + esc(x.key) + '">Not charging</button></div></div>';
-    }).join('') : '<p class="muted-note">No renewal fees to charge right now.</p>';
+    }).join('') : '<p class="muted-note">No anniversary fees to charge right now.</p>';
   }
   $('feeBannerGo').addEventListener('click', function(){ renderRenewFees(); $('rfModal').hidden = false; });
   $('rfClose').addEventListener('click', function(){ $('rfModal').hidden = true; });
   $('rfModal').addEventListener('mousedown', function(e){ if (e.target === $('rfModal')) $('rfClose').click(); });
   $('rfList').addEventListener('click', function(e){
     var ml = e.target.closest('[data-rf-mailed]');
-    if (ml) { var mx = renewFees.filter(function(x){ return x.key === ml.dataset.rfMailed; })[0]; if (mx) { mx.mailed = true; api('POST', '/api/admin/tenancies/' + mx.tenancy_id + '/log', { text: 'Renewal fee invoice ' + (mx.invoice ? mx.invoice.number + ' ' : '') + 'emailed to the landlord' }); setTimeout(renderRenewFees, 300); } return; }
+    if (ml) { var mx = renewFees.filter(function(x){ return x.key === ml.dataset.rfMailed; })[0]; if (mx) { mx.mailed = true; api('POST', '/api/admin/tenancies/' + mx.tenancy_id + '/log', { text: 'Anniversary fee invoice ' + (mx.invoice ? mx.invoice.number + ' ' : '') + 'emailed to the landlord' }); setTimeout(renderRenewFees, 300); } return; }
     var pd = e.target.closest('[data-rf-paid],[data-rf-unpaid]');
     if (pd) {
       var pk = pd.dataset.rfPaid || pd.dataset.rfUnpaid, px = renewFees.filter(function(x){ return x.key === pk; })[0], on = !!pd.dataset.rfPaid; if (!px || !px.invoice) return;
@@ -9021,7 +9045,7 @@
     }
     var b = e.target.closest('[data-rf-done],[data-rf-skip]'); if (!b) return;
     var done = !!b.dataset.rfDone, key = b.dataset.rfDone || b.dataset.rfSkip;
-    if (!done && !confirm('Don’t charge a renewal fee for this year?')) return;
+    if (!done && !confirm('Don’t charge an anniversary fee for this year?')) return;
     var inp = document.querySelector('[data-rf-amt="' + key + '"]'), amt = inp ? num(inp.value) : null;
     busy(b, true, '…');
     var already = !!b.dataset.rfAlready;
@@ -9032,7 +9056,7 @@
         toast('Invoice ' + d.invoice.number + ' created for ' + gbp(amt) + (d.invoice.paid ? ' and marked paid' : ''));
         renderRenewFees(); renderFeeBanner(); loadAllInvoices(); return;
       }
-      toast('Noted — no renewal fee this year');
+      toast('Noted — no anniversary fee this year');
       renewFees = renewFees.filter(function(x){ return x.key !== key; }); renderRenewFees(); renderFeeBanner();
     });
   });
