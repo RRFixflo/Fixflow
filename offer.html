@@ -676,8 +676,18 @@
   // Offers made before on this device.
   try {
     var mine = JSON.parse(localStorage.getItem('rr_offers') || '[]');
-    if (mine.length) $('mine').innerHTML = '<div class="card"><h2>Your offers</h2>' + mine.map(function(o){ return '<div class="mine"><span><b>' + esc(o.ref) + '</b> · ' + esc(o.property || '') + '</span><a class="btn" href="' + esc(o.track) + '">See status</a></div>'; }).join('') + '</div>';
+    var drawMine = function(){ $('mine').innerHTML = mine.length ? '<div class="card"><h2>Your offers</h2>' + mine.map(function(o){ return '<div class="mine"><span><b>' + esc(o.ref) + '</b> · ' + esc(o.property || '') + (o.state ? ' <small style="color:#667085">· ' + esc(o.state) + '</small>' : '') + '</span><a class="btn" href="' + esc(o.track) + '">See status</a></div>'; }).join('') + '</div>' : ''; };
+    drawMine();
+    // Check each one: offers the office has deleted drop off the list.
+    mine.forEach(function(o){
+      var tok = String(o.track || '').split('/').pop();
+      fetch('/api/offers/track/' + encodeURIComponent(tok), { cache: 'no-store' }).then(function(r){
+        if (r.status === 404) { forgetOffer(o.track); mine = mine.filter(function(x){ return x.track !== o.track; }); drawMine(); return; }
+        return r.json().then(function(d){ if (d && d.ok) { o.state = { new: 'Waiting for a decision', accepted: 'Accepted', rejected: 'Not accepted', withdrawn: 'Withdrawn' }[d.status] || ''; drawMine(); } });
+      })['catch'](function(){});
+    });
   } catch (e) {}
+  function forgetOffer(track){ try { localStorage.setItem('rr_offers', JSON.stringify(JSON.parse(localStorage.getItem('rr_offers') || '[]').filter(function(x){ return x.track !== track; }))); } catch (e) {} }
 
   // ----- Tracking page (/offer/track/<code>) -----
   var tm = /^\/offer\/track\/([\w-]{16,40})\/?$/.exec(location.pathname);
@@ -691,7 +701,7 @@
       var key = JSON.stringify([d.status, d.paid_at, d.decided_at, d.paid_claim, d.refund, d.refunded_at]);
       if (key === lastSeen || ($('wdBox') && !$('wdBox').hidden)) return;
       lastSeen = key;
-      if (!d.ok) { $('trackView').innerHTML = '<div class="card"><h2>Offer not found</h2><p class="lead" style="margin:0">This link isn’t valid. Please check it, or contact Residential Realtors.</p></div>'; return; }
+      if (!d.ok) { forgetOffer(location.pathname); $('trackView').innerHTML = '<div class="card"><h2>Offer not found</h2><p class="lead" style="margin:0">This link isn’t valid. Please check it, or contact Residential Realtors.</p></div>'; return; }
       var m = d.money || {}, acc = d.status === 'accepted', rej = d.status === 'rejected', wd = d.status === 'withdrawn', paid = !!d.paid_at;
       var steps = [
         ['ok', 'Offer received', longDay(d.created_at) + ' · ' + gbp(d.offer_pw) + ' a week (' + gbp(m.pcm || 0) + ' a month)' + (d.move_in ? ' · move in ' + longDay(d.move_in) : '')],
