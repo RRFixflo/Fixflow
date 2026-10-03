@@ -1831,7 +1831,8 @@ module.exports = function mountJobs(app, opts) {
       const now = (await p.query('SELECT property_address, landlord_name, landlord_email, landlord_phone, landlord_address FROM jobs WHERE id = $1', [id])).rows[0];
       await ensureLandlord(p, Object.assign({}, now, { landlord_id: body.landlord_id }), now.property_address);
     }
-    res.json({ ok: true, changed: true });
+    const auto = await autoJobInvoice(p, id);
+    res.json({ ok: true, changed: true, invoice: auto });
   }));
 
   // ---------- Landlords ----------
@@ -2381,6 +2382,50 @@ module.exports = function mountJobs(app, opts) {
   }
   // Delete an invoice (e.g. raised by mistake). The job's "invoiced" details fall
   // back to its latest remaining invoice, or are cleared; noted in the history.
+  // A completed job with a landlord price gets its invoice automatically: the
+  // repair at the job's charge to the landlord plus each part's charge (as the
+  // invoice button would make it). When the price or parts change, that invoice
+  // follows — until it's paid, or if staff made or edited an invoice themselves
+  // (then it's theirs and is left alone).
+  async function autoJobInvoice(p, jid) {
+    try {
+      const j = (await p.query(`SELECT id, status, archived_at, category, affected, symptom, location, completion_notes, landlord_charge, property_address,
+          landlord_name, landlord_email, landlord_phone, landlord_address FROM jobs WHERE id = $1`, [jid])).rows[0];
+      if (!j || j.status !== 'Completed' || j.archived_at) return null;
+      const r2 = function (v) { return Math.round(v * 100) / 100; };
+      const issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') || 'Repair';
+      const lines = [];
+      if (Number(j.landlord_charge) > 0) lines.push({ desc: issue + (j.location ? ' (' + j.location + ')' : '') + (j.completion_notes ? '. Work carried out: ' + String(j.completion_notes).replace(/\s+/g, ' ').slice(0, 600) : ''), amount: r2(Number(j.landlord_charge)) });
+      (await p.query('SELECT description, charge FROM job_parts WHERE job_id = $1 ORDER BY id', [jid])).rows.forEach(function (x) { if (Number(x.charge) > 0) lines.push({ desc: 'Parts: ' + x.description, amount: r2(Number(x.charge)) }); });
+      const total = r2(lines.reduce(function (a, l) { return a + l.amount; }, 0));
+      const invs = (await p.query('SELECT id, number, total, paid_at, data FROM invoices WHERE job_id = $1 ORDER BY id', [jid])).rows;
+      const auto = invs.filter(function (i) { return i.data && i.data.auto; }).pop();
+      if (invs.length && !auto) return null;                    // staff's own invoice
+      if (!lines.length || total <= 0) return null;             // no price yet
+      const ref = refFor(jid);
+      if (auto) {
+        if (auto.paid_at) return null;
+        const same = Number(auto.total) === total && JSON.stringify((auto.data.lines || []).map(function (l) { return [l.desc, Number(l.amount)]; })) === JSON.stringify(lines.map(function (l) { return [l.desc, l.amount]; }));
+        if (same) return null;
+        const data = Object.assign({}, auto.data, { lines: lines, sub: total, vat: 0, total: total });
+        await p.query('UPDATE invoices SET total = $2, data = $3 WHERE id = $1', [auto.id, total, JSON.stringify(data)]);
+        await refreshJobInvoice(p, jid);
+        await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [jid, 'change', 'Invoice ' + auto.number + ' updated automatically: ' + gbp(auto.total) + ' → ' + gbp(total) + '.']);
+        return { id: auto.id, updated: true };
+      }
+      // The landlord: on the job, else the one linked to the property.
+      const ll = (await p.query('SELECT l.name, l.email, l.phone, l.address FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [propKey(j.property_address || '')])).rows[0] || {};
+      const today = londonDay(), number = 'INV-' + ref;
+      const data = { number: number, title: 'Repair ' + ref, date: today, due: addDaysIso(today, INVOICE.paymentDays || 14), ref: number,
+        landlord: j.landlord_name || ll.name || '', landlordEmail: j.landlord_email || ll.email || '', landlordPhone: j.landlord_phone || ll.phone || '', landlordAddress: j.landlord_address || ll.address || '',
+        lines: lines, sub: total, vat: 0, total: total, auto: true };
+      const id = (await p.query('INSERT INTO invoices (job_id, number, total, landlord_name, landlord_email, data) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+        [jid, number, total, data.landlord || null, data.landlordEmail || null, JSON.stringify(data)])).rows[0].id;
+      await refreshJobInvoice(p, jid);
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [jid, 'change', 'Invoice ' + number + ' created automatically for ' + gbp(total) + (data.landlord ? ' to ' + data.landlord : '') + ' — check it and send it from the Money tab.']);
+      return { id: id, created: true };
+    } catch (err) { console.error('Automatic invoice failed:', err.message); return null; }
+  }
   async function refreshJobInvoice(p, jid) {
     const last = (await p.query('SELECT number, total, created_at FROM invoices WHERE job_id = $1 ORDER BY id DESC LIMIT 1', [jid])).rows[0];
     await p.query('UPDATE jobs SET invoice_number = $2, invoice_total = $3, invoiced_at = $4, updated_at = now() WHERE id = $1',
@@ -4019,7 +4064,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       [id, description, str(b.supplier, 200), cost, charge, status]);
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', 'Part added: ' + partLine(r.rows[0])]);
     await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1', [id]);
-    res.json({ ok: true, part: r.rows[0] });
+    const auto = await autoJobInvoice(p, id);
+    res.json({ ok: true, part: r.rows[0], invoice: auto });
   }));
   app.patch('/api/admin/parts/:id', withDb(async function (p, req, res) {
     const id = jobId(req), b = req.body || {};
@@ -4038,13 +4084,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const note = next.status !== cur.status && Object.keys(b).length === 1 ? 'Part ' + next.status.toLowerCase() + ': ' + next.description : 'Part updated: ' + partLine(next);
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [cur.job_id, 'change', note]);
     await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1', [cur.job_id]);
-    res.json({ ok: true });
+    const auto = await autoJobInvoice(p, cur.job_id);
+    res.json({ ok: true, invoice: auto });
   }));
   app.delete('/api/admin/parts/:id', withDb(async function (p, req, res) {
     const r = await p.query('DELETE FROM job_parts WHERE id = $1 RETURNING *', [jobId(req)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [r.rows[0].job_id, 'change', 'Part removed: ' + r.rows[0].description]);
-    res.json({ ok: true });
+    const auto = await autoJobInvoice(p, r.rows[0].job_id);
+    res.json({ ok: true, invoice: auto });
   }));
 
   // One-line job summaries for contractor messages ("Kitchen sink overflowing –
@@ -5502,6 +5550,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       (photos.length ? ' ' + photos.length + ' photo' + (photos.length === 1 ? '' : 's') + ' added.' : '')]);
     // A certificate job: the date the contractor gave (else today) renews the certificate.
     const cert = await recordCertFromJob(p, r.rows[0].id, isoDay(b.cert_date) || new Date().toISOString().slice(0, 10), c.name);
+    await autoJobInvoice(p, r.rows[0].id);
     ntfy({ title: 'Job completed: ' + ref, message: c.name + ' marked ' + ref + ' completed — ' + (r.rows[0].property_address || '') + '.' + (cert ? ' ' + CERT_TYPES[cert.type].name + ' updated: expires ' + certDay(cert.expires) + '.' : '') + ' Open the job in Fixflow to tell the tenant and landlord.', tags: ['white_check_mark'] }).catch(function () {});
     res.json({ ok: true });
   }));
@@ -5696,7 +5745,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'completed', 'Job marked completed.' + (notes ? ' ' + notes : '')]);
     const cert = (req.body || {}).cert_date ? await recordCertFromJob(p, id, req.body.cert_date) : null;
-    res.json({ ok: true, cert: cert });
+    const auto = await autoJobInvoice(p, id);
+    res.json({ ok: true, cert: cert, invoice: auto });
   }));
 
   app.post('/api/admin/jobs/:id/reopen', withDb(async function (p, req, res) {
