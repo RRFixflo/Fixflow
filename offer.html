@@ -319,10 +319,18 @@
     .stepper .s:not(:last-child)::after { margin:0 8px; }
     .wrap { margin-top:-40px; }
   }
+
+  /* Logo: white on a navy bar, larger */
+  .top { background:rgba(11,31,58,.97) !important; border-bottom:1px solid rgba(255,255,255,.08) !important; }
+  .top .in { padding:12px 20px; }
+  .top img { height:46px !important; }
+  .top .secure { color:#c6d0de; } .top .secure svg { color:#4ade80; }
+  .top-logo { display:block; line-height:0; }
+  @media (max-width:560px) { .top img { height:38px !important; } .top .in { padding:10px 16px; } }
 </style>
 </head>
 <body>
-<div class="top"><div class="in"><img src="/logo-ink.png" alt="Residential Realtors" onerror="this.src='/logo.png'"><span class="secure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Secure &amp; private</span></div></div>
+<div class="top"><div class="in"><a class="top-logo" href="/offer" aria-label="Residential Realtors"><img src="/logo-white.png" alt="Residential Realtors" onerror="this.src='/logo.png'"></a><span class="secure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Secure &amp; private</span></div></div>
 
 <div id="formView">
   <div class="hero"><div class="in">
