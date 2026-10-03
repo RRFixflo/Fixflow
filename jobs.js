@@ -252,6 +252,34 @@ CREATE TABLE IF NOT EXISTS licence_docs (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- Certificates a landlord uploads for a property of their own (not managed by us).
+-- Offers from applicants (the online holding deposit / offer form), and each
+-- tenant's ID documents. IDs are only ever shown to staff.
+CREATE TABLE IF NOT EXISTS offers (
+  id          SERIAL PRIMARY KEY,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  property_address TEXT,
+  property_key TEXT,
+  lead_name   TEXT,
+  lead_email  TEXT,
+  lead_phone  TEXT,
+  offer_pw    NUMERIC(10,2),
+  data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status      TEXT NOT NULL DEFAULT 'new',
+  decided_at  TIMESTAMPTZ,
+  paid_at     TIMESTAMPTZ,
+  seen_at     TIMESTAMPTZ,
+  log         JSONB NOT NULL DEFAULT '[]'::jsonb
+);
+CREATE TABLE IF NOT EXISTS offer_docs (
+  id         SERIAL PRIMARY KEY,
+  offer_id   INTEGER NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
+  tenant_no  INTEGER NOT NULL,
+  name       TEXT,
+  mime       TEXT NOT NULL,
+  data       BYTEA NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS offer_docs_offer_idx ON offer_docs (offer_id, id);
 CREATE TABLE IF NOT EXISTS landlord_property_docs (
   own_id     INTEGER NOT NULL,
   type       TEXT NOT NULL,
@@ -5942,6 +5970,101 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   setTimeout(function () { alertRenewalFees().catch(function (err) { console.error('Renewal fee alert failed:', err.message); }); }, 100 * 1000);
   setInterval(function () { alertRenewalFees().catch(function (err) { console.error('Renewal fee alert failed:', err.message); }); }, 3600 * 1000).unref();
+
+  // ---------- Offers (applicants' online offer / holding deposit form) ----------
+  // The public form at /offer posts here: the offer, each tenant's details and
+  // their ID (photo or PDF). Staff get a phone alert; the applicant is told how
+  // to pay the holding deposit (one week's rent).
+  const OFFER_DOC_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
+  const offerHits = new Map();
+  function offerLimited(req) {
+    const now = Date.now(), e = offerHits.get(req.ip);
+    if (!e || now - e.start > 60 * 60 * 1000) { offerHits.set(req.ip, { start: now, n: 1 }); return false; }
+    if (offerHits.size > 5000) offerHits.clear();
+    return ++e.n > 12;
+  }
+  function offerMoney(pw) {
+    const r2 = function (v) { return Math.round(v * 100) / 100; };
+    const pcm = r2(pw * 52 / 12), holding = r2(pw), deposit = r2(pw * 5);
+    return { pw: r2(pw), pcm: pcm, holding: holding, deposit: deposit, rent: pcm, total: r2(pcm + deposit), balance: r2(pcm + deposit - holding) };
+  }
+  app.post('/api/offers', withDb(async function (p, req, res) {
+    if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const b = req.body || {};
+    if (b.website) return res.json({ ok: true });   // a robot filled the hidden box
+    const s = function (v, n) { return str(v, n || 200) || ''; };
+    const address = s(b.property, 400), lead = s(b.lead_name), phone = s(b.lead_phone, 40), email = s(b.lead_email);
+    const amt = money(b.offer), maxAmt = money(b.max_offer), per = b.per === 'pcm' ? 'pcm' : 'pw';
+    if (!address || !lead || !(phone || email)) return res.status(400).json({ ok: false, error: 'details' });
+    if (!amt) return res.status(400).json({ ok: false, error: 'offer' });
+    if (!s(b.signature) || b.agree !== true) return res.status(400).json({ ok: false, error: 'sign' });
+    const pw = per === 'pcm' ? Math.round(amt * 12 / 52 * 100) / 100 : amt, maxPw = maxAmt ? (per === 'pcm' ? Math.round(maxAmt * 12 / 52 * 100) / 100 : maxAmt) : null;
+    const FIELDS = ['name', 'phone', 'email', 'dob', 'income_type', 'employment_type', 'company', 'position', 'salary', 'start_date', 'other_income',
+      'university', 'course', 'academic_year', 'current_address', 'residency_status', 'current_rent', 'landlord_name', 'landlord_email', 'landlord_phone', 'tenancy_start', 'tenancy_end',
+      'g_name', 'g_relation', 'g_email', 'g_phone', 'g_company', 'g_position', 'g_salary', 'g_homeowner', 'g_home_address', 'g_other'];
+    const tenants = (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 8).map(function (t) { const o = {}; FIELDS.forEach(function (f) { o[f] = s(t && t[f], f === 'current_address' || f === 'g_home_address' || f === 'other_income' || f === 'g_other' ? 500 : 200); }); o._ids = t && t.ids; return o; });
+    if (!tenants.length || tenants.some(function (t) { return !t.name; })) return res.status(400).json({ ok: false, error: 'tenants' });
+    // Each tenant's ID: required, photos or PDFs, up to 4 files of 12 MB each.
+    const docs = [];
+    for (let i = 0; i < tenants.length; i++) {
+      const files = (Array.isArray(tenants[i]._ids) ? tenants[i]._ids : []).slice(0, 4);
+      let n = 0;
+      for (const f of files) {
+        const m = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(String((f && f.dataUrl) || ''));
+        if (!m) continue;
+        let mime = m[1].toLowerCase(); const buf = Buffer.from(m[2], 'base64');
+        if (OFFER_DOC_TYPES.indexOf(mime) === -1 && /\.hei[cf]$/i.test(String(f.name || ''))) mime = 'image/heic';
+        if (OFFER_DOC_TYPES.indexOf(mime) === -1 || !buf.length || buf.length > 12 * 1024 * 1024) continue;
+        docs.push({ tenant_no: i + 1, name: s(f.name, 150) || 'ID', mime: mime, data: buf }); n++;
+      }
+      if (!n) return res.status(400).json({ ok: false, error: 'ids', tenant: i + 1 });
+      delete tenants[i]._ids;
+    }
+    const data = {
+      per: per, offer_entered: amt, max_entered: maxAmt || null, max_pw: maxPw, tenants_count: parseInt(b.tenants_count, 10) || tenants.length, guarantors_count: parseInt(b.guarantors_count, 10) || 0,
+      move_in: isoDay(b.move_in) || null, stay: s(b.stay, 80), rent_frequency: s(b.rent_frequency, 40) || 'Monthly', negotiate: s(b.negotiate, 2000), about: s(b.about, 3000),
+      tenants: tenants, signature: s(b.signature), signed_at: new Date().toISOString(), money: offerMoney(pw), ip: String(req.ip || '').slice(0, 60)
+    };
+    const ins = await p.query('INSERT INTO offers (property_address, property_key, lead_name, lead_email, lead_phone, offer_pw, data, log) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+      [address, propKey(address), lead, email || null, phone || null, pw, JSON.stringify(data), JSON.stringify([{ at: new Date().toISOString(), text: 'Offer submitted online by ' + lead }])]);
+    const id = ins.rows[0].id;
+    for (const d of docs) await p.query('INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, $2, $3, $4, $5)', [id, d.tenant_no, d.name, d.mime, d.data]);
+    const ref = 'OF' + String(id).padStart(4, '0');
+    ntfy({ title: 'New offer: ' + gbp(pw) + ' pw — ' + shortAddrText(address), message: lead + ' · ' + tenants.length + ' tenant' + (tenants.length === 1 ? '' : 's') + (data.move_in ? ' · move in ' + certDay(data.move_in) : '') + (data.stay ? ' · stay ' + data.stay : '') + '. Open Offers in Fixflow.', tags: ['house'] }).catch(function () {});
+    // How to pay the holding deposit (bank details from the settings, never in the code).
+    const bank = INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber } : null;
+    res.json({ ok: true, ref: ref, money: data.money, bank: bank, reference: (lead.split(/\s+/).pop() || '').slice(0, 10).toUpperCase() + ' ' + ref });
+  }));
+  app.get('/api/admin/offers', withDb(async function (p, req, res) {
+    const r = await p.query(`SELECT o.id, o.created_at, o.property_address, o.property_key, o.lead_name, o.lead_email, o.lead_phone, o.offer_pw, o.data, o.status, o.decided_at, o.paid_at, o.seen_at, o.log,
+        coalesce((SELECT json_agg(json_build_object('id', d.id, 'tenant_no', d.tenant_no, 'name', d.name, 'mime', d.mime, 'size', length(d.data)) ORDER BY d.id) FROM offer_docs d WHERE d.offer_id = o.id), '[]') AS docs
+      FROM offers o ORDER BY o.id DESC LIMIT 500`);
+    res.json({ ok: true, offers: r.rows.map(function (o) { o.ref = 'OF' + String(o.id).padStart(4, '0'); if (o.data) delete o.data.ip; return o; }) });
+  }));
+  app.get('/api/admin/offers/:id/doc/:doc', withDb(async function (p, req, res) {
+    const r = await p.query('SELECT name, mime, data FROM offer_docs WHERE id = $2 AND offer_id = $1', [jobId(req), parseInt(req.params.doc, 10) || 0]);
+    if (!r.rows.length) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', r.rows[0].mime); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', 'inline; filename="' + String(r.rows[0].name || 'id').replace(/[^\w.\- ]+/g, '_') + '"');
+    res.end(r.rows[0].data);
+  }));
+  // Accept / reject (or back to new), payment received (or not), seen.
+  app.post('/api/admin/offers/:id', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req), sets = [], vals = [id], notes = [];
+    if (['new', 'accepted', 'rejected'].indexOf(b.status) !== -1) { vals.push(b.status); sets.push('status = $' + vals.length, "decided_at = CASE WHEN $" + vals.length + " = 'new' THEN NULL ELSE now() END"); notes.push(b.status === 'accepted' ? 'Offer accepted' : b.status === 'rejected' ? 'Offer rejected' : 'Decision undone'); }
+    if (typeof b.paid === 'boolean') { sets.push('paid_at = ' + (b.paid ? 'coalesce(paid_at, now())' : 'NULL')); notes.push(b.paid ? 'Holding deposit received' : 'Holding deposit marked not received'); }
+    if (b.seen === true) sets.push('seen_at = coalesce(seen_at, now())');
+    if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
+    if (notes.length) { vals.push(JSON.stringify(notes.map(function (t) { return { at: new Date().toISOString(), text: t }; }))); sets.push('log = log || $' + vals.length + '::jsonb'); }
+    const r = await p.query('UPDATE offers SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id', vals);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json({ ok: true });
+  }));
+  app.delete('/api/admin/offers/:id', withDb(async function (p, req, res) {
+    if ((req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
+    const r = await p.query('DELETE FROM offers WHERE id = $1 RETURNING id', [jobId(req)]);
+    res.json({ ok: !!r.rows.length });
+  }));
 
   // ---------- Costs added to one month's statement ----------
   // data.month_costs: [{id, from (that statement's first day), label, amount, novat, money_in, invoice_id}].
