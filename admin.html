@@ -1005,6 +1005,26 @@
   .more-item svg { width: 22px; height: 22px; color: var(--ink-soft); }
   .more-item:last-child { border-bottom: 0; }
 
+
+  /* ===== Modern navy look (light theme), matching the offer pages ===== */
+  :root { --bg: #F3F5F8; --line: #E7E9EE; --side: #0B1F3A; --side-hover: rgba(255,255,255,.08); --side-line: rgba(255,255,255,.09); --side-soft: #9DAABD;
+    --primary: #0B1F3A; --primary-hover: #13294B;
+    --side-bg: radial-gradient(420px 320px at 0% 100%, rgba(217,38,46,.30), transparent 70%), linear-gradient(180deg, #13294B 0%, #0B1F3A 55%, #08162B 100%);
+    --shadow-xs: 0 1px 2px rgba(15,23,42,.04), 0 10px 26px -18px rgba(15,23,42,.22); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --side-bg: var(--side); --primary: var(--ink); --primary-hover: var(--ink); } }
+  :root[data-theme="dark"] { --side-bg: var(--side); --primary: var(--ink); --primary-hover: var(--ink); }
+  .side { background: var(--side-bg); }
+  .side .nav.on { background: rgba(255,255,255,.1); color: #fff; box-shadow: inset 3px 0 0 var(--brick); }
+  .side .nav:hover { color: #fff; }
+  .side-search { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); }
+  .btn.primary:hover { background: var(--primary-hover); }
+  .tile, .card { border-color: rgba(15,23,42,.07); }
+  button.tile:hover { transform: translateY(-1px); }
+  @media not all and (prefers-color-scheme: dark) {
+    .login-wrap { background: radial-gradient(800px 400px at 90% -10%, rgba(217,38,46,.32), transparent 60%), radial-gradient(700px 400px at 0% 110%, rgba(36,83,232,.25), transparent 60%), linear-gradient(160deg, #13294B, #0B1F3A 55%, #08162B); }
+    .login-card { border: 0; box-shadow: 0 30px 60px -20px rgba(3,10,25,.6); }
+  }
 </style>
 </head>
 <body>
