@@ -128,7 +128,7 @@
   function drawFees(){
     var f = T.fees || {}, ex = [];
     if (f.find !== 'none' && f.find_pct != null) { var a = 12000 * f.find_pct / 100; ex.push('At £1,000 a month, the initial commission of ' + f.find_pct + '% would be ' + gbp(a) + (f.vat !== false ? ' + VAT (' + gbp(a * 1.2) + ' inc VAT)' : '') + '.'); }
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) { var b = 1000 * f.ongoing_pct / 100; ex.push('At £1,000 a month, the ' + (f.ongoing === 'manage' ? 'management' : 'rent collection') + ' fee of ' + f.ongoing_pct + '% would be ' + gbp(b) + (f.vat !== false ? ' + VAT (' + gbp(b * 1.2) + ' inc VAT)' : '') + ' a month.'); }
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) { var b = 1000 * f.ongoing_pct / 100; ex.push('At £1,000 a month, the ' + ({ manage: 'management', both: 'management and rent collection' }[f.ongoing] || 'rent collection') + ' fee of ' + f.ongoing_pct + '% would be ' + gbp(b) + (f.vat !== false ? ' + VAT (' + gbp(b * 1.2) + ' inc VAT)' : '') + ' a month.'); }
     $('app').innerHTML = '<div class="card"><h2>The fees we agreed</h2><p class="lead">For ' + esc(T.property) + '. These replace our standard scale of fees.</p>' +
       '<div class="fees">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (/^No (renewal|anniversary) fee$/.test(l.v) ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
       (ex.length ? '<div class="example"><b>Examples:</b> ' + ex.map(esc).join(' ') + '</div>' : '') +
@@ -160,7 +160,7 @@
   }
   function attachBox(k, label, show){ return '<div class="attach" data-attach="' + k + '"' + (show ? '' : ' hidden') + '><label class="l">' + label + ' <span class="opt">optional</span></label><label class="drop"><input type="file" data-file="' + k + '" accept="application/pdf,image/jpeg,image/png" hidden><span data-fname="' + k + '">' + (files[k] ? '✓ ' + esc(files[k].name) + ' attached' : '📎 Choose a PDF or photo') + '</span></label></div>'; }
   function drawDetails(){
-    var f = T.fees || {}, manage = f.ongoing === 'manage', u = details.util || {}, ap = details.appl || {};
+    var f = T.fees || {}, manage = f.ongoing === 'manage' || f.ongoing === 'both', u = details.util || {}, ap = details.appl || {};
     $('app').innerHTML = '<div class="card"><h2>Landlord and property details</h2><p class="lead">Please give as much detail as you can.</p>' +
       '<h3>Landlord 1</h3><div class="g2">' + inp('l1_name', 'Full name', { req: true }) + inp('l1_phone', 'Contact number', { type: 'tel', req: true }) + '</div>' + inp('l1_email', 'Email', { type: 'email', req: true }) +
       '<details class="more"' + (details.l2_name ? ' open' : '') + '><summary>Landlord 2 (if jointly owned)</summary><div class="g2">' + inp('l2_name', 'Full name') + inp('l2_phone', 'Contact number', { type: 'tel' }) + '</div>' + inp('l2_email', 'Email', { type: 'email' }) + '</details>' +
