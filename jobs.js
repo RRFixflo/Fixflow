@@ -441,6 +441,22 @@ CREATE TABLE IF NOT EXISTS shared_docs (
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_track_token_idx ON jobs (track_token);
 -- Landlord terms of business: the office sets the agreed fees, sends the landlord
 -- a private link, and the landlord fills in the property details form and signs.
+-- Asking a landlord for an updated certificate (gas, EICR, EPC): their private link and their answer.
+CREATE TABLE IF NOT EXISTS cert_requests (
+  id           SERIAL PRIMARY KEY,
+  token        TEXT NOT NULL UNIQUE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  property_key TEXT,
+  address      TEXT,
+  type         TEXT NOT NULL,
+  landlord_id  INTEGER,
+  created_by   TEXT,
+  via          TEXT,
+  expires_on   TEXT,
+  answer       TEXT,
+  answered_at  TIMESTAMPTZ,
+  opened_at    TIMESTAMPTZ
+);
 -- Viewings booked for a property, and the feedback (shown to the landlord on their page).
 CREATE TABLE IF NOT EXISTS viewings (
   id           SERIAL PRIMARY KEY,
@@ -5658,6 +5674,53 @@ document.querySelectorAll('.lcu').forEach(function(box){
     try { const r = await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: topic, title: 'Fixflow alerts are working', message: 'Test sent by ' + who + '. You\u2019ll get alerts here for new offers, deposits and landlord forms.', tags: ['white_check_mark'] }), signal: AbortSignal.timeout(8000) }); res.json({ ok: r.ok }); }
     catch (err) { res.status(502).json({ ok: false }); }
   });
+  // Ask a landlord to send us an updated certificate, or let us arrange it.
+  const CERT_ASK_NAME = { Gas: 'Gas Safety Certificate', EICR: 'Electrical Safety Certificate (EICR)', EPC: 'Energy Performance Certificate (EPC)' };
+  app.post('/api/admin/cert-requests', withDb(async function (p, req, res) {
+    const b = req.body || {}, address = str(b.address, 400), type = CERT_ASK_NAME[b.type] ? b.type : null;
+    if (!address || !type) return res.status(400).json({ ok: false, error: 'details' });
+    const key = propKey(address), siteUrl = process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : req.protocol + '://' + req.get('host'));
+    const ll = (await p.query('SELECT l.id, l.name, l.email, l.phone, l.portal_token FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [key])).rows[0] || null;
+    const cert = (await p.query('SELECT expires_on FROM property_certificates WHERE property_key = $1 AND type = $2', [key, type])).rows[0];
+    const token = crypto.randomBytes(12).toString('base64url');
+    await p.query('INSERT INTO cert_requests (token, property_key, address, type, landlord_id, created_by, via, expires_on) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [token, key, address, type, ll ? ll.id : null, req.user ? req.user.name : 'Office', str(b.via, 20) || null, cert ? cert.expires_on : null]);
+    res.json({ ok: true, link: siteUrl + '/c/' + token, landlord: ll ? { name: ll.name, email: ll.email, phone: ll.phone } : null, expires_on: cert ? cert.expires_on : null, name: CERT_ASK_NAME[type] });
+  }));
+  app.get('/api/admin/cert-requests', withDb(async function (p, req, res) {
+    res.json({ ok: true, requests: (await p.query("SELECT id, property_key, address, type, created_at, created_by, via, answer, answered_at, opened_at FROM cert_requests WHERE created_at > now() - interval '180 days' ORDER BY id DESC")).rows });
+  }));
+  async function certReqByToken(p, token) { return /^[\w-]{12,24}$/.test(String(token || '')) ? (await p.query('SELECT * FROM cert_requests WHERE token = $1', [token])).rows[0] || null : null; }
+  app.get('/c/:token', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const r = await certReqByToken(p, req.params.token);
+    if (!r) return res.status(404).send(trackShell('Link not available', '<h1>Link not available</h1><p class="sub">Please contact Residential Realtors on 0207 096 8131.</p>'));
+    if (!r.opened_at) await p.query('UPDATE cert_requests SET opened_at = now() WHERE id = $1', [r.id]);
+    let upload = '';
+    if (r.landlord_id) {
+      let tok = ((await p.query('SELECT portal_token FROM landlords WHERE id = $1', [r.landlord_id])).rows[0] || {}).portal_token;
+      if (!tok) { tok = crypto.randomBytes(18).toString('base64url'); await p.query('UPDATE landlords SET portal_token = $2 WHERE id = $1 AND portal_token IS NULL', [r.landlord_id, tok]); tok = ((await p.query('SELECT portal_token FROM landlords WHERE id = $1', [r.landlord_id])).rows[0] || {}).portal_token; }
+      upload = '/l/' + tok + '#p-' + String(r.property_key || '').replace(/[^a-z0-9]+/g, '-');
+    }
+    const name = CERT_ASK_NAME[r.type] || r.type, due = r.expires_on ? certDay(r.expires_on) : '', past = r.expires_on && r.expires_on < new Date().toISOString().slice(0, 10);
+    const done = r.answer === 'arrange' ? '<div class="cq-done">✓ Thank you — we’ll arrange the ' + htmlEsc(name) + ' and be in touch to book a time. The cost will be charged as usual.</div>'
+      : r.answer === 'sending' ? '<div class="cq-done">✓ Thank you — please send us the new certificate' + (upload ? ' using the button below' : ' by replying to our message') + '.</div>' : '';
+    res.send(trackShell(name + ' due', '<style>.cq-btn{display:block;width:100%;text-align:center;border:0;border-radius:14px;padding:16px;font:inherit;font-weight:700;font-size:1.02rem;cursor:pointer;margin:0 0 10px;text-decoration:none}.cq-a{background:#0b1f3a;color:#fff}.cq-b{background:#fff;color:#0b1f3a;border:1.5px solid #d0d5dd}.cq-done{background:#e8f6ee;color:#0d6b37;border-radius:12px;padding:12px 14px;font-weight:600;margin:0 0 14px}.cq-box{background:#fff8e6;border:1px solid #f3d9a8;border-radius:12px;padding:12px 14px;margin:0 0 16px}</style>' +
+      '<h1>' + htmlEsc(name) + '</h1><p class="sub">' + htmlEsc(r.address) + '</p>' +
+      '<div class="cq-box">' + (due ? 'The current certificate ' + (past ? '<b>expired on ' + htmlEsc(due) + '</b>' : 'expires on <b>' + htmlEsc(due) + '</b>') + '. ' : '') + 'A valid ' + htmlEsc(name) + ' is a legal requirement while the property is let.</div>' + done +
+      (upload ? '<a class="cq-btn cq-a" href="' + htmlEsc(upload) + '" data-ans="sending">📤 Upload the new certificate</a>' : '<button class="cq-btn cq-a" type="button" data-ans="sending">📤 I’ll send you the new certificate</button>') +
+      '<button class="cq-btn cq-b" type="button" data-ans="arrange">🛠 Please arrange it for me</button>' +
+      '<p class="muted" style="font-size:.86rem">Questions? Call us on 0207 096 8131.</p>' +
+      '<script>document.querySelectorAll("[data-ans]").forEach(function(b){b.addEventListener("click",function(e){var a=b.getAttribute("data-ans");if(a==="arrange"&&!confirm("Ask Residential Realtors to arrange the ' + htmlEsc(name).replace(/"/g, '') + '?"))return e.preventDefault();var href=b.getAttribute("href");if(href)e.preventDefault();fetch(location.pathname+"/answer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({answer:a})}).then(function(){if(href)location.href=href;else location.reload();}).catch(function(){if(href)location.href=href;});});});</script>'));
+  }));
+  app.post('/c/:token/answer', withDb(async function (p, req, res) {
+    if (offerLimited(req)) return res.status(429).json({ ok: false });
+    const r = await certReqByToken(p, req.params.token), ans = ['arrange', 'sending'].indexOf((req.body || {}).answer) !== -1 ? req.body.answer : null;
+    if (!r || !ans) return res.status(400).json({ ok: false });
+    await p.query('UPDATE cert_requests SET answer = $2, answered_at = now() WHERE id = $1', [r.id, ans]);
+    if (r.answer !== ans) ntfy({ title: (ans === 'arrange' ? 'Landlord wants us to arrange the ' : 'Landlord will send the ') + (CERT_ASK_NAME[r.type] || r.type), message: shortAddrText(r.address) + (ans === 'arrange' ? ' — book it from Certificates in Fixflow.' : ' — they’ll send the new certificate.'), tags: [ans === 'arrange' ? 'hammer_and_wrench' : 'page_facing_up'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#certs' : undefined }).catch(function () {});
+    res.json({ ok: true });
+  }));
   // Viewings: book them, mark them done (or cancelled / no-show) and add feedback.
   app.get('/api/admin/viewings', withDb(async function (p, req, res) {
     res.json({ ok: true, viewings: (await p.query("SELECT * FROM viewings WHERE at > now() - interval '120 days' ORDER BY at DESC LIMIT 300")).rows });
