@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Landlord terms — Residential Realtors</title>
+<title>Landlord Terms — Residential Realtors</title>
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" sizes="32x32" href="/icons/app-32.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -57,7 +57,7 @@
   .terms-box h4 { margin:16px 0 6px; color:var(--navy); font-size:.95rem; } .terms-box p { margin:0 0 8px; color:var(--ink2); } .terms-box .num { font-weight:700; color:var(--soft); margin-right:6px; }
   .na { display:inline-block; background:var(--ok-t); color:var(--ok); border-radius:999px; padding:1px 9px; font-size:.74rem; font-weight:700; margin-left:6px; }
   .check { display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid var(--line); border-radius:12px; margin:8px 0; cursor:pointer; font-size:.92rem; } .check input { width:20px; height:20px; flex:0 0 auto; margin-top:2px; accent-color:var(--navy); }
-  .choice { display:grid; gap:8px; margin:8px 0; } .choice label { display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid var(--line); border-radius:12px; cursor:pointer; font-size:.92rem; } .choice input { margin-top:3px; accent-color:var(--navy); }
+  .choice { display:grid; gap:8px; margin:8px 0; } .choice label { display:flex; gap:12px; align-items:flex-start; padding:14px 16px; border:1.5px solid var(--line); border-radius:14px; cursor:pointer; font-size:.92rem; text-align:left; } .choice label:has(input:checked) { border-color:var(--navy); background:#f0f3f8; } .choice input { width:20px; height:20px; flex:0 0 20px; margin:1px 0 0; padding:0; accent-color:var(--navy); } .choice span { flex:1; }
   .sigwrap { position:relative; border:1px solid var(--line2); border-radius:14px; background:#fff; height:180px; touch-action:none; scroll-margin:120px; }
   .sigwrap canvas { width:100%; height:100%; display:block; border-radius:14px; cursor:crosshair; }
   .sigwrap .line { position:absolute; left:20px; right:20px; bottom:42px; border-bottom:1px solid var(--line2); pointer-events:none; }
@@ -69,13 +69,23 @@
   .err { background:var(--brand-t); color:#a3141b; border-radius:12px; padding:11px 14px; font-weight:600; font-size:.9rem; margin:12px 0 0; }
   .note { background:var(--blue-t); color:#1d3fae; border-radius:12px; padding:11px 14px; font-size:.9rem; margin:0 0 14px; }
   .done { text-align:center; padding:32px 20px; } .done .tick { width:64px; height:64px; border-radius:50%; background:#12b76a; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:2rem; margin-bottom:12px; }
+  .epc { display:flex; gap:14px; align-items:center; padding:12px 14px; border-radius:14px; margin:0 0 10px; border:1px solid var(--line); } .epc b { display:block; } .epc span:not(.epc-r) { font-size:.86rem; color:var(--soft); }
+  .epc.ok { background:var(--ok-t); border-color:#b7e2c6; } .epc.bad { background:var(--brand-t); border-color:#f3c0c0; } .epc.warn { background:var(--warn-t); border-color:#f3d9a8; }
+  .epc-r { flex:0 0 46px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.4rem; color:#fff; background:#98a2b3; }
+  .epc-r.rA { background:#008054; } .epc-r.rB { background:#19b459; } .epc-r.rC { background:#8dce46; } .epc-r.rD { background:#ffd500; color:#111; } .epc-r.rE { background:#fcaa65; } .epc-r.rF { background:#ef8023; } .epc-r.rG { background:#e9153b; }
+  .attach { margin:8px 0 6px 0; padding:10px 12px; background:#f7f8fa; border-radius:12px; } .drop { display:block; border:1.5px dashed var(--line2); border-radius:10px; padding:12px; text-align:center; cursor:pointer; background:#fff; font-weight:600; color:var(--blue); }
+  .bankcard { border:1px solid var(--line); border-radius:16px; padding:16px; background:linear-gradient(180deg,#fff,#fafbfc); }
+  .bank-h { display:flex; gap:12px; align-items:center; margin-bottom:12px; } .bank-h b { display:block; } .bank-h span { font-size:.86rem; color:var(--soft); } .bank-ico { flex:0 0 42px; height:42px; border-radius:12px; background:var(--navy); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .seg2 { display:inline-flex; background:#f1f3f6; border-radius:10px; padding:3px; margin-bottom:12px; } .seg2 button { border:0; background:none; font:inherit; font-weight:600; font-size:.86rem; padding:7px 14px; border-radius:8px; cursor:pointer; color:var(--soft); } .seg2 button.on { background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+  #d_bank_sort, #d_bank_account { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:.08em; font-weight:600; }
+  .bank-note { font-size:.82rem; color:var(--soft); margin-top:4px; }
   @media (max-width:640px) { .top img { height:38px; } .hero .in { padding:24px 16px 62px; } .wrap { padding:0 12px 120px; margin-top:-40px; } .card { padding:18px; } .g2, .g3 { grid-template-columns:1fr; gap:0; } .fee { grid-template-columns:1fr; gap:4px; } .stepper .lb { display:none; } .stepper .s.on .lb { display:block; } .tbl { grid-template-columns:1fr; } .tbl .hd { display:none; } .tbl .rl { font-weight:700; margin-top:8px; } .yn { flex-direction:column; align-items:flex-start; } }
 </style>
 </head>
 <body>
 <div class="top"><div class="in"><img src="/logo-white.png" alt="Residential Realtors" onerror="this.src='/logo.png'"><span class="secure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Secure &amp; private</span></div></div>
 <div class="hero"><div class="in">
-  <span class="eyebrow">Landlord terms of business</span>
+  <span class="eyebrow">Landlord Terms of Business</span>
   <h1 id="hTitle">Your agreement with Residential Realtors</h1>
   <p id="hSub">Check the fees we agreed, tell us about the property, then read and sign the terms. It takes about 10 minutes.</p>
   <div class="prop" id="hProp" hidden></div>
@@ -89,7 +99,8 @@
   var $ = function(id){ return document.getElementById(id); };
   var esc = function(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var gbp = function(v){ return '£' + (Math.round(v * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
-  var token = (location.pathname.match(/^\/landlord\/([\w-]{16,40})/) || [])[1], T = null, step = 1, startedAt = null, details = {};
+  var token = (location.pathname.match(/^\/landlord\/([\w-]{16,40})/) || [])[1], T = null, step = 1, startedAt = null, details = { bank_type: 'uk' }, files = {};
+  var BANKS = ['Barclays', 'HSBC', 'Lloyds', 'NatWest', 'Santander', 'Halifax', 'Nationwide', 'TSB', 'Royal Bank of Scotland', 'Bank of Scotland', 'Metro Bank', 'Monzo', 'Starling', 'Revolut', 'The Co-operative Bank', 'Virgin Money', 'First Direct', 'Coutts', 'Other'];
   document.addEventListener('input', function(){ if (!startedAt) startedAt = new Date().toISOString(); }, true);
   var STEPS = ['Agreed fees', 'Property details', 'Terms & sign'];
   var QUESTIONS = [['q_gas_appliances', 'Does your property have any gas appliances?', 'If yes, a valid Gas Safety Certificate is needed for our records.'], ['q_need_gas_cert', 'Do you require a Gas Safety Certificate?'], ['q_register_deposit', 'Do you require the tenancy deposit to be registered on your behalf?'],
@@ -116,10 +127,10 @@
   // ----- Step 1: the agreed fees -----
   function drawFees(){
     var f = T.fees || {}, ex = [];
-    if (f.find !== 'none' && f.find_pct != null) { var a = 12000 * f.find_pct / 100; ex.push('On a 12 month tenancy at £1,000 a month, the initial commission of ' + f.find_pct + '% would be ' + gbp(a) + (f.vat !== false ? ' + VAT (' + gbp(a * 1.2) + ' inc VAT)' : '') + '.'); }
+    if (f.find !== 'none' && f.find_pct != null) { var a = 12000 * f.find_pct / 100; ex.push('At £1,000 a month, the initial commission of ' + f.find_pct + '% would be ' + gbp(a) + (f.vat !== false ? ' + VAT (' + gbp(a * 1.2) + ' inc VAT)' : '') + '.'); }
     if (f.ongoing !== 'none' && f.ongoing_pct != null) { var b = 1000 * f.ongoing_pct / 100; ex.push('At £1,000 a month, the ' + (f.ongoing === 'manage' ? 'management' : 'rent collection') + ' fee of ' + f.ongoing_pct + '% would be ' + gbp(b) + (f.vat !== false ? ' + VAT (' + gbp(b * 1.2) + ' inc VAT)' : '') + ' a month.'); }
     $('app').innerHTML = '<div class="card"><h2>The fees we agreed</h2><p class="lead">For ' + esc(T.property) + '. These replace our standard scale of fees.</p>' +
-      '<div class="fees">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (l.v === 'No renewal fee' ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
+      '<div class="fees">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (/^No (renewal|anniversary) fee$/.test(l.v) ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
       (ex.length ? '<div class="example"><b>Examples:</b> ' + ex.map(esc).join(' ') + '</div>' : '') +
       '<p class="example">Something not right? Please contact us before signing. Reference ' + esc(T.ref) + '.</p>' +
       '<div class="actions"><span></span><button class="btn dark" type="button" id="n1">Continue →</button></div></div>';
@@ -129,6 +140,25 @@
   // ----- Step 2: property details form -----
   function inp(k, label, o){ o = o || {}; return '<div class="f"><label class="l" for="d_' + k + '">' + label + (o.req ? '' : ' <span class="opt">optional</span>') + '</label>' + (o.area ? '<textarea id="d_' + k + '" data-k="' + k + '" rows="2">' + esc(details[k] || '') + '</textarea>' : '<input id="d_' + k + '" data-k="' + k + '"' + (o.type ? ' type="' + o.type + '"' : '') + (o.mode ? ' inputmode="' + o.mode + '"' : '') + ' value="' + esc(details[k] || '') + '">') + (o.hint ? '<div class="opt" style="font-size:.8rem;margin-top:4px">' + o.hint + '</div>' : '') + '</div>'; }
   function yn(k, label, hint){ var v = details[k]; return '<div class="yn" data-yn="' + k + '"><div>' + esc(label) + (hint ? '<div class="opt" style="font-size:.8rem">' + esc(hint) + '</div>' : '') + '</div><div class="seg"><button type="button" data-v="Yes"' + (v === 'Yes' ? ' class="on"' : '') + '>Yes</button><button type="button" data-v="No"' + (v === 'No' ? ' class="on"' : '') + '>No</button></div></div>'; }
+  function epcBox(){
+    var e = T.epc; if (!e) return '';
+    var day = function(v){ return v ? new Date(v + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
+    if (!e.found) return '<div class="epc warn"><span class="epc-r">?</span><div><b>We couldn’t find an EPC for this address</b><span>We checked the government register. A valid EPC is needed before the property is let — we can arrange one.</span></div></div>';
+    if (e.valid && details.q_epc == null) details.q_epc = 'No';
+    return '<div class="epc ' + (e.valid ? 'ok' : 'bad') + '"><span class="epc-r r' + esc(e.rating || '') + '">' + esc(e.rating || '?') + '</span><div><b>' + (e.valid ? 'Your EPC is valid' : 'Your EPC has expired') + '</b><span>We checked the government register: rating ' + esc(e.rating || '?') + ', ' + (e.valid ? 'valid until ' : 'expired on ') + day(e.expires_on) + (e.valid ? '. You don’t need a new one.' : '. A new EPC is needed before the property is let.') + '</span></div></div>';
+  }
+  // Property licence (selective / additional / mandatory HMO).
+  var LIC = [['licensed', 'Yes — it has a licence'], ['applied', 'Applied for — waiting for the council'], ['none', 'No — the council doesn’t require one'], ['unsure', 'Not sure — please check for me']];
+  function licBox(){
+    var v = details.lic_status || '', sel = function(k, opts){ return '<select id="d_' + k + '" data-k="' + k + '"><option value="">Choose…</option>' + opts.map(function(o){ return '<option' + (details[k] === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>'; };
+    return '<h3>Property licence</h3><p class="opt" style="font-size:.86rem;margin:-4px 0 10px">Many London councils need a selective, additional (HMO) or mandatory HMO licence to let a property. Letting without one when it’s needed is an offence.</p>' +
+      '<div class="choice" id="licChoice">' + LIC.map(function(o){ return '<label><input type="radio" name="lic" value="' + o[0] + '"' + (v === o[0] ? ' checked' : '') + '><span>' + o[1] + '</span></label>'; }).join('') + '</div>' +
+      '<div id="licYes"' + (v === 'licensed' ? '' : ' hidden') + '><div class="g2"><div class="f"><label class="l" for="d_lic_type">Licence type</label>' + sel('lic_type', ['Selective', 'Additional (HMO)', 'Mandatory HMO']) + '</div>' + inp('lic_council', 'Council', { req: true }) + '</div>' +
+        '<div class="g2">' + inp('lic_number', 'Licence number', { req: true }) + inp('lic_expires', 'Expiry date', { type: 'date', req: true }) + '</div>' + attachBox('licence', 'Attach the licence', true) + '</div>' +
+      '<div id="licApplied"' + (v === 'applied' ? '' : ' hidden') + '><div class="g2">' + inp('lic_council', 'Council').replace(/d_lic_council/g, 'd_lic_council2') + inp('lic_applied', 'Date applied', { type: 'date' }) + '</div></div>' +
+      '<div class="note" id="licUnsure"' + (v === 'unsure' ? '' : ' hidden') + '>No problem — we’ll check the council’s licensing scheme for this address and let you know.</div>';
+  }
+  function attachBox(k, label, show){ return '<div class="attach" data-attach="' + k + '"' + (show ? '' : ' hidden') + '><label class="l">' + label + ' <span class="opt">optional</span></label><label class="drop"><input type="file" data-file="' + k + '" accept="application/pdf,image/jpeg,image/png" hidden><span data-fname="' + k + '">' + (files[k] ? '✓ ' + esc(files[k].name) + ' attached' : '📎 Choose a PDF or photo') + '</span></label></div>'; }
   function drawDetails(){
     var f = T.fees || {}, manage = f.ongoing === 'manage', u = details.util || {}, ap = details.appl || {};
     $('app').innerHTML = '<div class="card"><h2>Landlord and property details</h2><p class="lead">Please give as much detail as you can.</p>' +
@@ -137,10 +167,19 @@
       inp('legal_owners', 'Legal owner(s) to appear on the tenancy agreement (if different)', { hint: 'If the property is jointly owned, list all owners. If owned by a company or trust, give its full name below.' }) +
       inp('corr_address', 'Address for correspondence', { area: true, req: true }) +
       inp('company_details', 'Company or trust: full name, registration number and registered office', { area: true }) +
-      '<h3>Property</h3>' + QUESTIONS.map(function(q){ return yn(q[0], q[1], q[2]); }).join('') +
+      '<h3>Property</h3>' + epcBox() + QUESTIONS.map(function(q){ return yn(q[0], q[1], q[2]) + (q[0] === 'q_need_gas_cert' ? attachBox('gas', 'Attach your current Gas Safety Certificate', details.q_need_gas_cert === 'No' && details.q_gas_appliances !== 'No') : q[0] === 'q_eicr' ? attachBox('eicr', 'Attach your current Electrical Installation Condition Report (EICR)', details.q_eicr === 'No') : ''); }).join('') +
       '<div class="f" id="schemeWrap" style="margin-top:12px"' + (details.q_register_deposit === 'No' ? '' : ' hidden') + '><label class="l" for="d_deposit_scheme">Which deposit scheme are you registered with?</label><select id="d_deposit_scheme" data-k="deposit_scheme"><option value="">Choose…</option>' + ['DPS', 'TDS', 'My Deposits'].map(function(x){ return '<option' + (details.deposit_scheme === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
+      licBox() +
       '<div id="overseasWrap" style="margin-top:12px"' + (details.q_uk_resident === 'No' ? '' : ' hidden') + '>' + inp('overseas_address', 'Overseas address for correspondence', { area: true, hint: 'If you live overseas and HMRC hasn’t approved you to receive rent gross, you’ll need form NRL1, NRL2 or NRL3.' }) + '</div>' +
-      '<h3>Bank details — where rent and deposit are paid</h3><div class="g2">' + inp('bank_name', 'Bank name', { req: true }) + inp('bank_account_name', 'Account name', { req: true }) + inp('bank_sort', 'Sort code', { mode: 'numeric', req: true }) + inp('bank_account', 'Account number', { mode: 'numeric', req: true }) + '</div>' +
+      '<h3>Bank details — where rent and deposit are paid</h3><div class="bankcard"><div class="bank-h"><span class="bank-ico">🏦</span><div><b>Your bank account</b><span>Rent and deposit monies are paid into this account by BACS.</span></div></div>' +
+        '<div class="seg2" id="bankType"><button type="button" data-bt="uk"' + (details.bank_type !== 'intl' ? ' class="on"' : '') + '>UK bank account</button><button type="button" data-bt="intl"' + (details.bank_type === 'intl' ? ' class="on"' : '') + '>Overseas account</button></div>' +
+        '<div class="g2"><div class="f"><label class="l" for="d_bank_name">Bank</label><select id="d_bank_name" data-k="bank_name"><option value="">Choose your bank…</option>' + BANKS.map(function(b){ return '<option' + (details.bank_name === b ? ' selected' : '') + '>' + b + '</option>'; }).join('') + '</select></div>' +
+        '<div id="bankOtherWrap"' + (details.bank_name === 'Other' || details.bank_type === 'intl' ? '' : ' hidden') + '>' + inp('bank_other', 'Bank name', { req: true }) + '</div></div>' +
+        inp('bank_account_name', 'Account holder name', { req: true, hint: 'Exactly as it appears on your bank account.' }) +
+        '<div id="ukBank"' + (details.bank_type === 'intl' ? ' hidden' : '') + '><div class="g2"><div class="f"><label class="l" for="d_bank_sort">Sort code</label><input id="d_bank_sort" data-k="bank_sort" inputmode="numeric" placeholder="00-00-00" maxlength="8" value="' + esc(details.bank_sort || '') + '"></div>' +
+          '<div class="f"><label class="l" for="d_bank_account">Account number</label><input id="d_bank_account" data-k="bank_account" inputmode="numeric" placeholder="8 digits" maxlength="8" value="' + esc(details.bank_account || '') + '"></div></div></div>' +
+        '<div id="intlBank"' + (details.bank_type === 'intl' ? '' : ' hidden') + '><div class="g2">' + inp('bank_iban', 'IBAN', { req: true }) + inp('bank_swift', 'SWIFT / BIC', { req: true }) + '</div></div>' +
+        '<div class="bank-note">🔒 Your bank details are only seen by Residential Realtors and never shown to tenants.</div></div>' +
       '<details class="more"><summary>Utility providers <span class="opt">— helps when a new tenant moves in</span></summary><div class="tbl"><span class="hd">Service</span><span class="hd">Provider</span><span class="hd">Account number</span><span class="hd">Meter / fusebox / stopcock</span>' +
         UTILS.map(function(x){ var v = u[x[0]] || {}; return '<span class="rl">' + x[1] + '</span><input data-u="' + x[0] + '|provider" placeholder="Provider" value="' + esc(v.provider || '') + '"><input data-u="' + x[0] + '|account" placeholder="Account number" value="' + esc(v.account || '') + '"><input data-u="' + x[0] + '|location" placeholder="Location" value="' + esc(v.location || '') + '">'; }).join('') + '</div></details>' +
       '<details class="more"><summary>Domestic appliances under guarantee <span class="opt">— optional</span></summary><p class="opt" style="font-size:.84rem;margin-top:0">Please leave instruction booklets in the property and send any policies/guarantees to us.</p><div class="tbl"><span class="hd">Appliance</span><span class="hd">Make and model</span><span class="hd">Age (approx)</span><span class="hd">Warranty / cover and expiry</span>' +
@@ -153,19 +192,35 @@
     app.addEventListener('input', function(e){ var k = e.target.dataset.k; if (k) details[k] = e.target.value; e.target.classList.remove('bad');
       var uu = e.target.dataset.u, aa = e.target.dataset.a; if (uu) { var p = uu.split('|'); details.util = details.util || {}; details.util[p[0]] = details.util[p[0]] || {}; details.util[p[0]][p[1]] = e.target.value; }
       if (aa) { var q = aa.split('|'); details.appl = details.appl || {}; details.appl[q[0]] = details.appl[q[0]] || {}; details.appl[q[0]][q[1]] = e.target.value; } });
-    app.addEventListener('change', function(e){ if (e.target.dataset.k) details[e.target.dataset.k] = e.target.value; if (e.target.id === 'd_optout') { details.optout = e.target.checked; $('optWrap').hidden = !e.target.checked; } });
+    app.addEventListener('change', function(e){ if (e.target.dataset.k) details[e.target.dataset.k] = e.target.value; if (e.target.name === 'lic') { details.lic_status = e.target.value; $('licYes').hidden = e.target.value !== 'licensed'; $('licApplied').hidden = e.target.value !== 'applied'; $('licUnsure').hidden = e.target.value !== 'unsure'; $('licChoice').classList.remove('bad'); } if (e.target.id === 'd_optout') { details.optout = e.target.checked; $('optWrap').hidden = !e.target.checked; }
+      if (e.target.id === 'd_bank_name') $('bankOtherWrap').hidden = !(e.target.value === 'Other' || details.bank_type === 'intl');
+      var fk = e.target.dataset.file; if (fk) { var fl = e.target.files[0], lab = document.querySelector('[data-fname="' + fk + '"]'); if (!fl) return; if (fl.size > 12 * 1024 * 1024) { lab.textContent = 'That file is too big (12 MB max)'; return; }
+        var fr = new FileReader(); fr.onload = function(){ files[fk] = { name: fl.name, dataUrl: fr.result }; lab.textContent = '✓ ' + fl.name + ' attached'; }; fr.readAsDataURL(fl); } });
+    app.addEventListener('input', function(e){
+      if (e.target.id === 'd_bank_sort') { var v = e.target.value.replace(/\D/g, '').slice(0, 6); e.target.value = v.replace(/^(\d{2})(\d{1,2})?(\d{1,2})?$/, function(m, a, b, c){ return [a, b, c].filter(Boolean).join('-'); }); details.bank_sort = e.target.value; }
+      if (e.target.id === 'd_bank_account') { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 8); details.bank_account = e.target.value; }
+    });
+    $('bankType').addEventListener('click', function(e){ var b = e.target.closest('[data-bt]'); if (!b) return; details.bank_type = b.dataset.bt; this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
+      $('ukBank').hidden = b.dataset.bt === 'intl'; $('intlBank').hidden = b.dataset.bt !== 'intl'; $('bankOtherWrap').hidden = !(b.dataset.bt === 'intl' || details.bank_name === 'Other'); });
     app.querySelectorAll('[data-yn]').forEach(function(row){ row.addEventListener('click', function(e){ var b = e.target.closest('button[data-v]'); if (!b) return; details[row.dataset.yn] = b.dataset.v; row.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); }); row.classList.remove('bad');
-      if (row.dataset.yn === 'q_register_deposit') $('schemeWrap').hidden = b.dataset.v !== 'No'; if (row.dataset.yn === 'q_uk_resident') $('overseasWrap').hidden = b.dataset.v !== 'No'; }); });
+      if (row.dataset.yn === 'q_register_deposit') $('schemeWrap').hidden = b.dataset.v !== 'No'; if (row.dataset.yn === 'q_uk_resident') $('overseasWrap').hidden = b.dataset.v !== 'No';
+      if (row.dataset.yn === 'q_need_gas_cert' || row.dataset.yn === 'q_gas_appliances') document.querySelector('[data-attach="gas"]').hidden = !(details.q_need_gas_cert === 'No' && details.q_gas_appliances !== 'No');
+      if (row.dataset.yn === 'q_eicr') document.querySelector('[data-attach="eicr"]').hidden = details.q_eicr !== 'No'; }); });
     $('b2').addEventListener('click', function(){ go(1); });
     $('n2').addEventListener('click', function(){
       document.querySelector('.err').hidden = true;
-      var need = [['l1_name', 'your full name'], ['l1_phone', 'your contact number'], ['l1_email', 'your email'], ['corr_address', 'your address for correspondence'], ['bank_name', 'your bank name'], ['bank_account_name', 'the account name'], ['bank_sort', 'the sort code'], ['bank_account', 'the account number']];
+      var intl = details.bank_type === 'intl', need = [['l1_name', 'your full name'], ['l1_phone', 'your contact number'], ['l1_email', 'your email'], ['corr_address', 'your address for correspondence'], ['bank_account_name', 'the account holder name']]
+        .concat(intl ? [['bank_other', 'the bank name'], ['bank_iban', 'the IBAN'], ['bank_swift', 'the SWIFT / BIC']] : [['bank_name', 'your bank'], ['bank_sort', 'the sort code'], ['bank_account', 'the account number']]).concat(!intl && details.bank_name === 'Other' ? [['bank_other', 'the bank name']] : []);
       for (var i = 0; i < need.length; i++) if (!String(details[need[i][0]] || '').trim()) return err('Please enter ' + need[i][1] + '.', $('d_' + need[i][0]));
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.l1_email)) return err('Please check your email address.', $('d_l1_email'));
-      if (String(details.bank_sort).replace(/\D/g, '').length !== 6) return err('The sort code should be 6 digits.', $('d_bank_sort'));
-      if (!/^\d{6,10}$/.test(String(details.bank_account).replace(/\s/g, ''))) return err('Please check the account number.', $('d_bank_account'));
+      if (!intl && String(details.bank_sort).replace(/\D/g, '').length !== 6) return err('The sort code should be 6 digits, like 20-00-00.', $('d_bank_sort'));
+      if (!intl && !/^\d{8}$/.test(String(details.bank_account).replace(/\s/g, ''))) return err('UK account numbers are 8 digits.', $('d_bank_account'));
+      if (intl && !/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(String(details.bank_iban).toUpperCase().replace(/\s/g, ''))) return err('Please check the IBAN.', $('d_bank_iban'));
+      if (intl && !/^[A-Z0-9]{8}([A-Z0-9]{3})?$/.test(String(details.bank_swift).toUpperCase().replace(/\s/g, ''))) return err('The SWIFT / BIC should be 8 or 11 letters and numbers.', $('d_bank_swift'));
       var miss = QUESTIONS.filter(function(q){ return !details[q[0]]; })[0];
       if (miss) return err('Please answer: ' + miss[1], document.querySelector('[data-yn="' + miss[0] + '"]'));
+      if (!details.lic_status) return err('Please tell us whether the property has a licence.', $('licChoice'));
+      if (details.lic_status === 'licensed') { if (!details.lic_type) return err('Please choose the licence type.', $('d_lic_type')); var ln = [['lic_council', 'the council'], ['lic_number', 'the licence number'], ['lic_expires', 'the licence expiry date']]; for (var j = 0; j < ln.length; j++) if (!String(details[ln[j][0]] || '').trim()) return err('Please enter ' + ln[j][1] + '.', $('d_' + ln[j][0])); }
       if (details.optout && !String(details.emergency_phone || '').trim()) return err('Please give your 24-hour emergency contact number.', $('d_emergency_phone'));
       go(3);
     });
@@ -174,10 +229,10 @@
   // ----- Step 3: terms and signature -----
   function drawTerms(){
     var f = T.fees || {}, tm = T.terms || {}, noRen = !(f.renewal && f.find !== 'none');
-    var intro = (tm.intro || []).map(function(s, i){ return i === 0 && noRen ? 'Under these terms you will be liable to pay Residential Realtors’ commission fees in respect of the initial period of the tenancy. No renewal fee has been agreed for this property.' : s; });
-    var body = (tm.clauses || []).map(function(c){ return c.h ? '<h4>' + esc(c.n) + ' ' + esc(c.h) + (c.n === '1.2' && noRen ? '<span class="na">Not applicable — no renewal fee agreed</span>' : '') + '</h4>' : '<p><span class="num">' + esc(c.n) + '</span>' + esc(c.t) + '</p>'; }).join('');
+    var intro = (tm.intro || []).map(function(s, i){ return i === 0 && noRen ? 'Under these terms you will be liable to pay Residential Realtors’ commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.' : s; });
+    var body = (tm.clauses || []).map(function(c){ return c.h ? '<h4>' + esc(c.n) + ' ' + esc(c.h) + (c.n === '1.2' && noRen ? '<span class="na">Not applicable — no anniversary fee agreed</span>' : '') + '</h4>' + (c.n === '1.2' && !noRen && tm.anniversary_note ? '<p style="color:#1d3fae">' + esc(tm.anniversary_note) + '</p>' : '') : '<p><span class="num">' + esc(c.n) + '</span>' + esc(c.t) + '</p>'; }).join('');
     $('app').innerHTML = '<div class="card"><h2>Terms of business</h2><p class="lead">Please read the terms carefully. Your agreed fees are shown first and take priority.</p>' +
-      '<div class="fees" style="margin-bottom:14px">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (l.v === 'No renewal fee' ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
+      '<div class="fees" style="margin-bottom:14px">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (/^No (renewal|anniversary) fee$/.test(l.v) ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
       '<h3>Key points</h3>' + intro.map(function(s){ return '<p style="font-size:.9rem;color:var(--ink2)">' + esc(s) + '</p>'; }).join('') +
       '<h3>Terms and conditions</h3><div class="terms-box" id="termsBox">' + body +
         '<h4>Price list</h4>' + (tm.prices || []).map(function(r){ return '<p>' + esc(r[0]) + ': ' + gbp(r[1]) + ' + VAT (' + gbp(r[1] * 1.2) + ' inc VAT)</p>'; }).join('') +
@@ -209,7 +264,7 @@
       if (!$('sigName').value.trim()) return err('Please type your full name.', $('sigName'));
       if (!inked) return err('Please sign in the box.', $('sigWrap'));
       var b = this; b.disabled = true; b.textContent = 'Signing…';
-      fetch('/api/landlord-terms/' + token + '/sign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ details: details, accept: true, declaration: true, start_now: st.value === 'now', signature: $('sigName').value.trim(), signature_png: png(), started_at: startedAt }) })
+      fetch('/api/landlord-terms/' + token + '/sign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ details: details, files: files, accept: true, declaration: true, start_now: st.value === 'now', signature: $('sigName').value.trim(), signature_png: png(), started_at: startedAt }) })
         .then(function(r){ return r.json(); }).then(function(d){
           if (!d.ok) { b.disabled = false; b.textContent = 'Sign the agreement'; return err(d.error === 'details' ? 'Some details are missing — please go back and check.' : d.error === 'signed' ? 'This agreement has already been signed.' : 'Couldn’t sign just now — please try again.'); }
           T.status = 'signed'; showDone();

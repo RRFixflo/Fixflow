@@ -1532,9 +1532,9 @@ module.exports = function mountJobs(app, opts) {
   }
   // What an offers-only sign-in may use (paths under /api/admin).
   function staffAllowed(method, path) {
-    if (/^\/landlord-terms(\/\d+(\/pdf)?)?$/.test(path) && method !== 'DELETE') return true;   // landlord terms tab
-    if (method === 'GET') return path === '/me' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
-    if (method === 'POST') return /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
+    if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;   // landlord terms tab
+    if (method === 'GET') return path === '/me' || path === '/epc-lookup' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'POST') return path === '/offer-alerts/test' || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
 
@@ -5507,6 +5507,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: topic, click: base ? base + '/staff' : undefined }, body)), signal: AbortSignal.timeout(8000) });
     } catch (err) { console.error('Staff offer alert failed:', err.message); }
   }
+  // A test alert so staff can check the ntfy app is set up on their phone.
+  app.post('/api/admin/offer-alerts/test', async function (req, res) {
+    const topic = await offersTopic().catch(function () { return ''; }); if (!topic || typeof fetch !== 'function') return res.status(503).json({ ok: false });
+    const who = req.user && req.user.name ? req.user.name : 'the team';
+    try { const r = await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: topic, title: 'Fixflow alerts are working', message: 'Test sent by ' + who + '. You\u2019ll get alerts here for new offers, deposits and landlord forms.', tags: ['white_check_mark'] }), signal: AbortSignal.timeout(8000) }); res.json({ ok: r.ok }); }
+    catch (err) { res.status(502).json({ ok: false }); }
+  });
   // Same home? Same tidied address, or same postcode (or one missing) with the
   // same door number(s) and a building/street word in common.
   function sameProperty(a, b) {
@@ -6255,7 +6262,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       }
     }
     await setIntention(p, item.tenancy_id, item.anniv, { renewal_fee: charged ? { amount: amount, at: new Date().toISOString(), invoice_id: inv.id, number: inv.number } : { skipped: true, at: new Date().toISOString() } },
-      charged ? 'Renewal fee charged for the year from ' + item.anniv + ': ' + gbp(amount) + (item.fee.vat ? ' (inc. VAT)' : '') + ' — invoice ' + inv.number + (inv.paid ? ' (paid)' : '') : 'No renewal fee charged for the year from ' + item.anniv);
+      charged ? 'Anniversary fee charged for the year from ' + item.anniv + ': ' + gbp(amount) + (item.fee.vat ? ' (inc. VAT)' : '') + ' — invoice ' + inv.number + (inv.paid ? ' (paid)' : '') : 'No anniversary fee charged for the year from ' + item.anniv);
     res.json({ ok: true, invoice: inv });
   }));
   async function alertRenewalFees() {
@@ -6263,7 +6270,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const hour = +new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false });
     if (hour < 8) return;
     for (const x of (await renewalFees(p)).items.filter(function (i) { return !i.alerted; })) {
-      await ntfy({ title: 'Renewal fee due: ' + gbp(x.fee.total) + ' — ' + shortAddrText(x.address), message: (x.landlord || 'The landlord') + ' — the tenancy reaches ' + certDay(x.anniv) + ' (start of year ' + x.year + '). The fee is paid up front: charge the renewal fee. Open Fixflow.', tags: ['receipt'] }).catch(function () {});
+      await ntfy({ title: 'Anniversary fee due: ' + gbp(x.fee.total) + ' — ' + shortAddrText(x.address), message: (x.landlord || 'The landlord') + ' — the tenancy reaches ' + certDay(x.anniv) + ' (start of year ' + x.year + '). The fee is paid up front: charge the anniversary fee. Open Fixflow.', tags: ['receipt'] }).catch(function () {});
       await setIntention(p, x.tenancy_id, x.anniv, { renewal_alerted: new Date().toISOString() });
     }
   }
@@ -6530,7 +6537,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // The landlord on our records for this property, and any terms of business link waiting for them.
     const ll = (await p.query('SELECT l.name, l.email, l.phone FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [o.property_key || propKey(o.property_address)])).rows[0] || null;
     const tr = (await p.query("SELECT token, status, property_address FROM landlord_terms WHERE status IN ('sent', 'signed') ORDER BY id DESC LIMIT 200")).rows.filter(function (t) { return sameProperty(t.property_address, o.property_address); })[0];
-    res.json({ ok: true, link: (OFFER_ORIGIN || PUBLIC_URL) + '/offer/review/' + tok, landlord: ll, terms: tr ? { link: (OFFER_ORIGIN || PUBLIC_URL) + '/landlord/' + tr.token, signed: tr.status === 'signed' } : null, report: PUBLIC_URL || '' });
+    res.json({ ok: true, link: (OFFER_ORIGIN || PUBLIC_URL) + '/offer/review/' + tok, landlord: ll, terms: tr ? { link: ltLink(tr), signed: tr.status === 'signed' } : null, report: PUBLIC_URL || '' });
   }));
   async function offerByLandlordToken(p, t) { return /^[\w-]{16,40}$/.test(String(t || '')) ? (await p.query("SELECT * FROM offers WHERE data->>'landlord_token' = $1", [String(t)])).rows[0] : null; }
   app.get('/api/offers/review/:token', withDb(async function (p, req, res) {
@@ -7273,6 +7280,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const ongoing = ['collect', 'manage', 'none'].indexOf(b.ongoing) !== -1 ? b.ongoing : 'none';
     return {
       find: find, find_pct: find === 'none' ? null : pctNum(b.find_pct), find_min: find === 'none' ? null : pctNum(b.find_min, 100000),
+      find_monthly: find !== 'none' && b.find_monthly === true,
       renewal: find !== 'none' && b.renewal !== false, renewal_pct: find !== 'none' && b.renewal !== false ? pctNum(b.renewal_pct) : null,
       ongoing: ongoing, ongoing_pct: ongoing === 'none' ? null : pctNum(b.ongoing_pct), ongoing_min: ongoing === 'none' ? null : pctNum(b.ongoing_min, 100000),
       vat: b.vat !== false, other: str(b.other, 2000) || ''
@@ -7284,20 +7292,53 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const vat = f.vat !== false, inc = function (p) { return vat ? p + '% + VAT (' + (Math.round(p * 120) / 100) + '% inc VAT)' : p + '%'; };
     const L = [];
     if (f.find !== 'none' && f.find_pct != null) {
-      L.push({ k: f.find === 'multi' ? 'Tenant Find - Multi Agency (initial commission)' : 'Tenant Find - Sole Agency (initial commission)', v: inc(f.find_pct) + ' of the total rent for the agreed term' + (f.find_min ? ', minimum fee ' + gbp(f.find_min) + (vat ? ' inc VAT' : '') : '') });
-      L.push({ k: 'Renewal fee', v: f.renewal && f.renewal_pct != null ? inc(f.renewal_pct) + ' of the total rent for any renewal or extension' : 'No renewal fee' });
+      L.push({ k: f.find === 'multi' ? 'Tenant Find - Multi Agency (initial commission)' : 'Tenant Find - Sole Agency (initial commission)', v: inc(f.find_pct) + ' of the first 12 months\' rent' + (f.find_min ? ', minimum fee ' + gbp(f.find_min) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? '. Paid monthly: collected in 12 equal monthly instalments over the first 12 months, instead of in advance' : ', payable in advance when the tenancy starts') });
+      L.push({ k: 'Anniversary fee', v: f.renewal && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months\' rent, on each 12-month anniversary while the tenant remains' + (f.find_monthly ? ', collected monthly in the same way' : '') : 'No anniversary fee' });
     }
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) L.push({ k: f.ongoing === 'manage' ? 'Full Management Service' : 'Rent Collection Service', v: inc(f.ongoing_pct) + ' of the rent received' + (f.ongoing_min ? ', minimum ' + gbp(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' a month' : '') });
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) L.push({ k: f.ongoing === 'manage' ? 'Full Management Service' : 'Rent Collection Service', v: inc(f.ongoing_pct) + ' of the rent received' + (f.ongoing_min ? ', minimum ' + gbp(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' a month' : '') + '. Collected monthly: deducted from each month\'s rent when we receive it, before the balance is paid to you' });
     if (f.other) L.push({ k: 'Other agreed fees', v: f.other });
     return L;
   }
   function ltRef(id) { return 'LT' + String(id).padStart(4, '0'); }
-  function ltLink(t) { return (OFFER_ORIGIN || PUBLIC_URL) + '/landlord/' + t.token; }
+  // The property's EPC from the government register (checked once a day at most).
+  // The EPC for an address from the government register (null: no postcode, or the register didn't answer).
+  async function epcForAddress(address) {
+    const m = POSTCODE_RE.exec(address || ''); if (!m) return null;
+    const r = await Promise.race([epcSearch((m[1] + ' ' + m[2]).toUpperCase()), new Promise(function (_, no) { setTimeout(function () { no(new Error('timeout')); }, 8000); })]);
+    const hit = epcMatch(address, r.results);
+    return hit ? { found: true, rating: hit.rating || '', expires_on: hit.expires_on || null, address: hit.address || '', valid: !!hit.expires_on && hit.expires_on >= new Date().toISOString().slice(0, 10), url: r.url || '', checked_at: new Date().toISOString() }
+      : { found: false, url: r.url || '', checked_at: new Date().toISOString() };
+  }
+  async function ltEpc(p, t) {
+    const d = t.data || {};
+    if (d.epc && Date.now() - new Date(d.epc.checked_at).getTime() < 86400000) return d.epc;
+    let epc;
+    try { epc = await epcForAddress(t.property_address); if (!epc) return null; }
+    catch (err) { console.error('Landlord EPC lookup failed:', err.message); return d.epc || null; }
+    await p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('epc', $2::jsonb) WHERE id = $1", [t.id, JSON.stringify(epc)]);
+    return epc;
+  }
+  // As staff type a property address: is there an EPC on the register?
+  app.get('/api/admin/epc-lookup', async function (req, res) {
+    const address = str(req.query.address, 400);
+    try { const epc = await epcForAddress(address); res.json({ ok: true, epc: epc }); }
+    catch (err) { res.json({ ok: false, error: 'register' }); }
+  });
+  // Landlord Terms links: their own address when set up (TERMS_ORIGIN), else the offers address.
+  const TERMS_ORIGIN = String(process.env.TERMS_ORIGIN || '').trim().replace(/\/+$/, '');
+  function ltLink(t) { return (TERMS_ORIGIN || OFFER_ORIGIN || PUBLIC_URL) + '/landlord/' + t.token; }
   function ltLog(req, text, by) { return { at: new Date().toISOString(), text: text, by: by || 'office', user: by === 'landlord' || !req.user ? undefined : req.user.name, ip: String(req.ip || '').slice(0, 60), ua: str(req.get('user-agent'), 300) || '' }; }
 
+  app.get('/api/admin/landlord-terms/:id/doc/:doc', withDb(async function (p, req, res) {
+    const r = (await p.query("SELECT name, mime, data FROM landlord_terms_docs WHERE terms_id = $1 AND id = $2 AND kind <> 'signature'", [jobId(req), parseInt(req.params.doc, 10) || 0])).rows[0];
+    if (!r) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', r.mime); res.setHeader('Cache-Control', 'private, no-store'); res.setHeader('Content-Disposition', 'inline; filename="' + String(r.name || 'document').replace(/[^\w .-]+/g, '') + '"'); res.end(r.data);
+  }));
   app.get('/api/admin/landlord-terms', withDb(async function (p, req, res) {
-    const r = await p.query('SELECT id, created_at, token, status, property_address, landlord_name, landlord_email, landlord_phone, fees, data, log, signed_at, created_by FROM landlord_terms ORDER BY id DESC LIMIT 300');
-    res.json({ ok: true, origin: OFFER_ORIGIN || PUBLIC_URL, items: r.rows.map(function (t) { t.ref = ltRef(t.id); t.lines = feeLines(t.fees || {}); return t; }) });
+    const r = await p.query(`SELECT t.id, t.created_at, t.token, t.status, t.property_address, t.landlord_name, t.landlord_email, t.landlord_phone, t.fees, t.data, t.log, t.signed_at, t.created_by,
+        coalesce((SELECT json_agg(json_build_object('id', d.id, 'kind', d.kind, 'name', d.name)) FROM landlord_terms_docs d WHERE d.terms_id = t.id AND d.kind <> 'signature'), '[]') AS docs
+      FROM landlord_terms t ORDER BY t.id DESC LIMIT 300`);
+    res.json({ ok: true, origin: TERMS_ORIGIN || OFFER_ORIGIN || PUBLIC_URL, items: r.rows.map(function (t) { t.ref = ltRef(t.id); t.lines = feeLines(t.fees || {}); return t; }) });
   }));
   app.post('/api/admin/landlord-terms', withDb(async function (p, req, res) {
     const b = req.body || {}, fees = cleanFees(b.fees);
@@ -7308,6 +7349,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const token = crypto.randomBytes(16).toString('base64url');
     const r = await p.query('INSERT INTO landlord_terms (token, property_address, landlord_name, landlord_email, landlord_phone, fees, log, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
       [token, address, name, str(b.landlord_email, 200) || null, str(b.landlord_phone, 40) || null, JSON.stringify(fees), JSON.stringify([ltLog(req, 'Agreement created with agreed fees')]), req.user ? req.user.name : null]);
+    ltEpc(p, { id: r.rows[0].id, property_address: address, data: {} }).catch(function () {});
     res.json({ ok: true, id: r.rows[0].id, link: ltLink({ token: token }) });
   }));
   app.post('/api/admin/landlord-terms/:id', withDb(async function (p, req, res) {
@@ -7344,7 +7386,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!t || t.status === 'cancelled') return res.status(404).json({ ok: false, error: 'not-found' });
     if (!(t.data || {}).viewed_at) p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'viewed_at')", [t.id, JSON.stringify([ltLog(req, 'Landlord opened the agreement link', 'landlord')])]).catch(function () {});
     res.json({ ok: true, ref: ltRef(t.id), status: t.status, property: t.property_address, landlord_name: t.landlord_name, landlord_email: t.landlord_email, landlord_phone: t.landlord_phone,
-      fees: t.fees, lines: feeLines(t.fees || {}), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS });
+      fees: t.fees, lines: feeLines(t.fees || {}), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
   }));
   app.post('/api/landlord-terms/:token/sign', withDb(async function (p, req, res) {
     if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -7363,9 +7405,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
       audit: { ip: String(req.ip || '').slice(0, 60), ua: str(req.get('user-agent'), 300) || '', started_at: Date.parse(b.started_at) > Date.now() - 7 * 864e5 ? new Date(Date.parse(b.started_at)).toISOString() : null }, terms_version: LT_TERMS.version });
     data.fingerprint = sha256(canonical({ property: t.property_address, landlord: t.landlord_name, fees: t.fees, details: details, signature: sig, signed_at: data.signed_at, start_now: data.start_now, terms: LT_TERMS.version }) + '|' + sha256(sigBuf));
     await p.query("INSERT INTO landlord_terms_docs (terms_id, kind, name, mime, data) VALUES ($1, 'signature', 'signature.png', 'image/png', $2)", [t.id, sigBuf]);
+    // Their own gas safety certificate / EICR, if they're not asking us to arrange one.
+    const attached = [];
+    for (const kind of ['gas', 'eicr', 'licence']) {
+      const fl = (b.files || {})[kind], fm = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(String((fl && fl.dataUrl) || ''));
+      if (!fm) continue;
+      const mime = fm[1].toLowerCase(), buf = Buffer.from(fm[2], 'base64');
+      if (['application/pdf', 'image/jpeg', 'image/png'].indexOf(mime) === -1 || !buf.length || buf.length > 12 * 1024 * 1024) continue;
+      await p.query('INSERT INTO landlord_terms_docs (terms_id, kind, name, mime, data) VALUES ($1, $2, $3, $4, $5)', [t.id, kind, str(fl.name, 150) || kind, mime, buf]);
+      attached.push(kind === 'gas' ? 'gas safety certificate' : kind === 'eicr' ? 'EICR' : 'property licence');
+    }
+    if (attached.length) data.attached = attached;
     await p.query("UPDATE landlord_terms SET status = 'signed', signed_at = now(), data = $2, log = log || $3::jsonb WHERE id = $1",
       [t.id, JSON.stringify(data), JSON.stringify([ltLog(req, 'Terms of business and property details signed by ' + sig + (data.start_now ? ' - asked us to start work straight away' : ''), 'landlord')])]);
-    offerAlert({ title: 'Landlord terms signed: ' + shortAddrText(t.property_address), message: (t.landlord_name || 'The landlord') + ' signed the terms of business (' + ltRef(t.id) + ').', tags: ['memo'] }, { office: true }).catch(function () {});
+    offerAlert({ title: 'Landlord Terms signed: ' + shortAddrText(t.property_address), message: (t.landlord_name || 'The landlord') + ' signed the terms of business (' + ltRef(t.id) + ').', tags: ['memo'] }, { office: true }).catch(function () {});
     res.json({ ok: true, pdf: '/api/landlord-terms/' + t.token + '/pdf' });
   }));
   app.get('/api/landlord-terms/:token/pdf', withDb(async function (p, req, res) {
@@ -7389,129 +7442,196 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     const pdf = await PDFDocument.create();
     const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold), MONO = await pdf.embedFont(StandardFonts.Courier);
-    const W = 595.28, H = 841.89, M = 50, CW = W - M * 2;
+    const W = 595.28, H = 841.89, M = 46, CW = W - M * 2;
     const hex = function (h) { return rgb(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255); };
-    const C = { navy: hex('0B1F3A'), red: hex('C8102E'), ink: hex('101828'), soft: hex('667085'), faint: hex('98A2B3'), line: hex('E4E7EC'), panel: hex('F7F8FA'), white: rgb(1, 1, 1), green: hex('067647'), greenBg: hex('ECFDF3'), amber: hex('B54708'), amberBg: hex('FFFAEB'), blue: hex('1D3FAE'), blueBg: hex('EEF2FF') };
-    const d = t.data || {}, f = t.fees || {}, dt = d.details || {}, ref = ltRef(t.id), signed = t.status === 'signed';
+    const C = { navy: hex('0B1F3A'), navy2: hex('13294B'), red: hex('C8102E'), ink: hex('101828'), soft: hex('667085'), faint: hex('98A2B3'), line: hex('E4E7EC'), panel: hex('F7F8FA'), white: rgb(1, 1, 1), green: hex('067647'), greenBg: hex('ECFDF3'), amber: hex('B54708'), amberBg: hex('FFFAEB'), blue: hex('1D3FAE'), blueBg: hex('EEF2FF'), slate: hex('C6D0DE') };
+    const d = t.data || {}, f = t.fees || {}, dt = d.details || {}, ref = ltRef(t.id), signed = t.status === 'signed', au = d.audit || {};
     const sig = docs.filter(function (x) { return x.kind === 'signature'; })[0];
     const fp = d.fingerprint || sha256(canonical({ property: t.property_address, landlord: t.landlord_name, fees: f })), docId = docIdOf(fp);
-    const TITLE = 'Landlord Terms of Business';
+    const money = function (v) { return '\xA3' + (Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
     const safe = function (x) { return String(x == null ? '' : x).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/·/g, '\xB7').replace(/[^\x20-\x7E\xA3\xA0-\xFF\n]/g, ''); };
     const stamp = function (v) { return v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '') : ''; };
-    const dayOf = function (v) { return v ? new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }) : ''; };
+    const dayOf = function (v) { return v ? new Date(String(v).length === 10 ? v + 'T12:00:00Z' : v).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }) : ''; };
     const wrap = function (text, font, size, width) { const out = []; safe(text).split('\n').forEach(function (para) { let cur = ''; para.split(/\s+/).forEach(function (w) { const tt = cur ? cur + ' ' + w : w; if (font.widthOfTextAtSize(tt, size) > width && cur) { out.push(cur); cur = w; } else cur = tt; }); out.push(cur); }); return out; };
-    let page, y; const pages = [];
+    let page, y, sect = '', secNo = 0; const pages = [];
     const text = function (s, x, yy, size, font, color) { page.drawText(safe(s), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
+    const right = function (s, xr, yy, size, font, color) { text(s, xr - (font || F).widthOfTextAtSize(safe(s), size), yy, size, font, color); };
     const rr = function (x, yTop, w, h, r, fill, border) { r = Math.min(r, h / 2, w / 2); page.drawSvgPath('M ' + r + ' 0 H ' + (w - r) + ' A ' + r + ' ' + r + ' 0 0 1 ' + w + ' ' + r + ' V ' + (h - r) + ' A ' + r + ' ' + r + ' 0 0 1 ' + (w - r) + ' ' + h + ' H ' + r + ' A ' + r + ' ' + r + ' 0 0 1 0 ' + (h - r) + ' V ' + r + ' A ' + r + ' ' + r + ' 0 0 1 ' + r + ' 0 Z', { x: x, y: yTop, color: fill || undefined, borderColor: border || undefined, borderWidth: border ? 0.8 : 0 }); };
-    const pill = function (label, x, yy, fg, bg) { const s = 7.5, w = B.widthOfTextAtSize(safe(label), s) + 14; rr(x, yy + 12, w, 16, 8, bg); text(label, x + 7, yy + 1, s, B, fg); return w; };
+    const pill = function (label, x, yy, fg, bg, size) { const s = size || 7.5, w = B.widthOfTextAtSize(safe(label), s) + 14; rr(x, yy + s + 4.5, w, s + 8.5, (s + 8.5) / 2, bg); text(label, x + 7, yy + 1, s, B, fg); return w; };
     let logo = null; try { logo = await pdf.embedPng(require('fs').readFileSync(require('path').join(__dirname, 'logo-ink.png'))); } catch (e) {}
-    const newPage = function (section) {
+    const newPage = function () {
       page = pdf.addPage([W, H]); pages.push(page);
       page.drawRectangle({ x: 0, y: H - 4, width: W, height: 4, color: C.red });
-      if (logo) { const h = 36, w = logo.width * h / logo.height; page.drawImage(logo, { x: M, y: H - 56, width: w, height: h }); }
-      const t1 = TITLE.toUpperCase(); text(t1, W - M - B.widthOfTextAtSize(t1, 7), H - 34, 7, B, C.soft);
-      const t2 = section + '  \xB7  ' + ref; text(t2, W - M - F.widthOfTextAtSize(safe(t2), 8.5), H - 48, 8.5, F, C.ink);
-      page.drawLine({ start: { x: M, y: H - 66 }, end: { x: W - M, y: H - 66 }, thickness: 0.6, color: C.line }); y = H - 92;
+      if (logo) { const h = 34, w = logo.width * h / logo.height; page.drawImage(logo, { x: M, y: H - 54, width: w, height: h }); }
+      right('LANDLORD TERMS OF BUSINESS', W - M, H - 32, 7, B, C.soft); right((sect ? sect + '  \xB7  ' : '') + ref, W - M, H - 46, 8.5, F, C.ink);
+      page.drawLine({ start: { x: M, y: H - 64 }, end: { x: W - M, y: H - 64 }, thickness: 0.6, color: C.line }); y = H - 88;
     };
-    let sect = '';
-    const ensure = function (need) { if (y - need < 78) newPage(sect); };
-    const heading = function (s, sub) { ensure(sub ? 56 : 42); y -= 6; text(s, M, y, 12.5, B, C.navy); page.drawRectangle({ x: M, y: y - 7, width: 22, height: 2, color: C.red }); y -= 22; if (sub) { wrap(sub, F, 8.5, CW).forEach(function (ln) { text(ln, M, y, 8.5, F, C.soft); y -= 12; }); y -= 4; } };
-    const para = function (s, o2) { o2 = o2 || {}; const size = o2.size || 9, font = o2.bold ? B : F, x = M + (o2.indent || 0), w = CW - (o2.indent || 0); wrap(s, font, size, w).forEach(function (ln) { ensure(size + 6); text(ln, x, y, size, font, o2.color || C.ink); y -= size + 4; }); y -= o2.after == null ? 5 : o2.after; };
-    const grid = function (cells) {
-      cells = cells.filter(function (c) { return c && c[1] != null && String(c[1]).trim() !== ''; }); const colW = (CW - 16) / 2; let i = 0;
-      while (i < cells.length) {
-        const row = cells[i][2] === 'full' ? [cells[i++]] : [cells[i++]].concat(i < cells.length && cells[i][2] !== 'full' ? [cells[i++]] : []);
-        const ws = row.map(function (c) { return row.length === 1 && c[2] === 'full' ? CW : colW; });
-        const lines = row.map(function (c, k) { return wrap(c[1], F, 9.6, ws[k] - 4); }); const h = 13 + Math.max.apply(null, lines.map(function (l) { return l.length; })) * 12.6;
-        ensure(h + 14);
-        row.forEach(function (c, k) { const x = M + (k ? colW + 16 : 0); text(String(c[0]).toUpperCase(), x, y, 6.6, B, C.soft); lines[k].forEach(function (ln, j) { text(ln, x, y - 13 - j * 12.6, 9.6, F, C.ink); }); });
-        y -= h; page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.5, color: C.line }); y -= 14;
-      }
-      y -= 2;
+    const ensure = function (need) { if (y - need < 76) newPage(); };
+    // A numbered section band.
+    const band = function (title, sub) {
+      ensure(sub ? 140 : 120); secNo++; y -= 4;
+      rr(M, y + 6, CW, 28, 8, C.navy);
+      page.drawCircle({ x: M + 17, y: y - 8, size: 9, color: C.red }); const n = String(secNo); text(n, M + 17 - B.widthOfTextAtSize(n, 9) / 2, y - 11.2, 9, B, C.white);
+      text(title, M + 34, y - 12, 11.5, B, C.white); y -= 34;
+      if (sub) { wrap(sub, F, 8.4, CW).forEach(function (ln) { text(ln, M, y, 8.4, F, C.soft); y -= 11.5; }); y -= 4; }
+    };
+    const sub = function (s) { ensure(28); y -= 4; text(s.toUpperCase(), M, y, 7.4, B, C.navy); page.drawRectangle({ x: M, y: y - 5, width: 18, height: 1.6, color: C.red }); y -= 16; };
+    const para = function (s, o2) { o2 = o2 || {}; const size = o2.size || 8.8, font = o2.bold ? B : F, x = M + (o2.indent || 0), w = (o2.width || CW) - (o2.indent || 0); wrap(s, font, size, w).forEach(function (ln) { ensure(size + 6); text(ln, x, y, size, font, o2.color || C.ink); y -= size + 4; }); y -= o2.after == null ? 5 : o2.after; };
+    // A card of label/value pairs in two columns.
+    const card = function (title, rows) {
+      rows = rows.filter(function (r) { return r && r[1] != null && String(r[1]).trim() !== ''; }); if (!rows.length) return;
+      const colW = (CW - 36) / 2, lay = []; let i = 0;
+      while (i < rows.length) { const full = rows[i][2] === 'full'; const pair = full ? [rows[i++]] : [rows[i++]].concat(i < rows.length && rows[i][2] !== 'full' ? [rows[i++]] : []); const ls = pair.map(function (r) { return wrap(r[1], r[3] === 'mono' ? MONO : F, 9.4, (pair.length === 1 && full ? CW - 28 : colW) - 4); }); lay.push({ pair: pair, ls: ls, h: 12 + Math.max.apply(null, ls.map(function (l) { return l.length; })) * 12.4 + 8 }); }
+      const total = lay.reduce(function (a, r) { return a + r.h; }, 0) + (title ? 26 : 12);
+      ensure(Math.min(total, 300));
+      let top = y; rr(M, top, CW, Math.min(total, y - 76), 10, C.white, C.line); let yy = top - 12;
+      if (title) { text(title, M + 14, yy - 6, 9.6, B, C.navy); yy -= 22; }
+      lay.forEach(function (r, k) {
+        if (yy - r.h < 76) { y = yy; newPage(); top = y; rr(M, top, CW, Math.min(lay.slice(k).reduce(function (a, q) { return a + q.h; }, 0) + 12, y - 76), 10, C.white, C.line); yy = top - 12; }
+        r.pair.forEach(function (c, j) { const x = M + 14 + (j ? colW + 8 : 0); text(String(c[0]).toUpperCase(), x, yy, 6.4, B, C.soft); r.ls[j].forEach(function (ln, q) { text(ln, x, yy - 12 - q * 12.4, 9.4, c[3] === 'mono' ? MONO : F, C.ink); }); });
+        yy -= r.h; if (k < lay.length - 1) page.drawLine({ start: { x: M + 14, y: yy + 5 }, end: { x: W - M - 14, y: yy + 5 }, thickness: 0.4, color: C.line });
+      });
+      y = yy - 10;
+    };
+    // A simple table.
+    const table = function (cols, rows, opt) {
+      opt = opt || {}; const widths = cols.map(function (c) { return c[1] * CW; }), xs = []; let acc = M; widths.forEach(function (w) { xs.push(acc); acc += w; });
+      ensure(40); rr(M, y + 4, CW, 22, 6, C.panel); cols.forEach(function (c, i) { text(c[0].toUpperCase(), xs[i] + 8, y - 10, 6.6, B, C.soft); }); y -= 26;
+      rows.forEach(function (r) {
+        const ls = r.map(function (v, i) { return wrap(v == null ? '' : v, i === 0 ? B : F, 8.8, widths[i] - 14); }), h = Math.max.apply(null, ls.map(function (l) { return l.length; })) * 12 + 10;
+        ensure(h); ls.forEach(function (l, i) { l.forEach(function (ln, q) { const isYes = opt.pills && i === r.length - 1 && (ln === 'Yes' || ln === 'No'); if (isYes) pill(ln, xs[i] + 8, y - 7 - q * 12, ln === 'Yes' ? C.green : C.soft, ln === 'Yes' ? C.greenBg : C.panel, 7.4); else text(ln, xs[i] + 8, y - 7 - q * 12, 8.8, i === 0 ? B : F, i === 0 ? C.ink : C.ink); }); });
+        y -= h; page.drawLine({ start: { x: M, y: y + 3 }, end: { x: W - M, y: y + 3 }, thickness: 0.4, color: C.line });
+      });
+      y -= 8;
     };
     const yn = function (v) { return v === true || v === 'Yes' ? 'Yes' : v === false || v === 'No' ? 'No' : (v || ''); };
-    // 1. Summary and agreed fees
-    sect = 'Summary'; newPage(sect);
-    text('Landlord Terms', M, y - 6, 24, B, C.navy); text('of Business', M, y - 34, 24, B, C.navy); y -= 58;
-    wrap(t.property_address, F, 12, CW).forEach(function (ln) { text(ln, M, y, 12, F, C.ink); y -= 16; }); y -= 6;
-    let px = M; px += pill(signed ? 'E-SIGNED' : t.status === 'cancelled' ? 'CANCELLED' : 'AWAITING SIGNATURE', px, y - 12, signed ? C.green : C.amber, signed ? C.greenBg : C.amberBg) + 6;
-    if (signed && d.start_now) pill('START WORK NOW REQUESTED', px, y - 12, C.blue, C.blueBg);
-    y -= 30; text('Reference ' + ref + '   \xB7   Document ID ' + docId + (signed ? '   \xB7   Signed ' + dayOf(t.signed_at) : ''), M, y, 8.2, F, C.soft); y -= 24;
-    heading('Parties');
-    grid([['Agent', 'Residential Realtors (trading name of Estallion Investments Limited), ' + safe(INVOICE.address || '28-30 Harper Road, London, SE1 6AD') + ', registered in England No. ' + (INVOICE.companyNo || '08760284'), 'full'], ['Landlord', t.landlord_name], ['Contact', [t.landlord_email, t.landlord_phone].filter(Boolean).join(' \xB7 ')], ['Property to be let', t.property_address, 'full']]);
-    heading('Your agreed fees', 'These are the fees agreed for this property. They replace our standard scale of fees.');
-    feeLines(f).forEach(function (l) {
-      const ls = wrap(l.v, F, 9.6, CW - 210), ks = wrap(l.k, B, 9, 170), hh = Math.max(ls.length, ks.length) * 13 + 14; ensure(hh + 4); rr(M, y + 4, CW, hh, 6, C.panel);
-      ks.forEach(function (ln, j) { text(ln, M + 10, y - 8 - j * 13, 9, B, C.navy); }); ls.forEach(function (ln, j) { text(ln, M + 196, y - 8 - j * 13, 9.6, l.v === 'No renewal fee' ? B : F, C.ink); }); y -= hh + 4;
+    const vat = f.vat !== false, incPct = function (p) { return vat ? p + '% + VAT (' + (Math.round(p * 120) / 100) + '% inc VAT)' : p + '%'; };
+
+    // ===== Cover / summary =====
+    sect = 'Summary'; newPage();
+    rr(M, y + 6, CW, 150, 14, C.navy);
+    text('LANDLORD TERMS OF BUSINESS', M + 22, y - 18, 8, B, hex('FFB4B7'));
+    text('Agreement for', M + 22, y - 44, 22, B, C.white);
+    wrap(t.property_address, B, 15, CW - 44).slice(0, 2).forEach(function (ln, i) { text(ln, M + 22, y - 66 - i * 18, 15, B, C.white); });
+    text('Reference ' + ref + '   \xB7   Document ID ' + docId, M + 22, y - 112, 8, F, C.slate);
+    let px = M + 22; px += pill(signed ? 'E-SIGNED ' + dayOf(t.signed_at).toUpperCase() : t.status === 'cancelled' ? 'CANCELLED' : 'AWAITING SIGNATURE', px, y - 136, signed ? C.green : C.amber, signed ? C.greenBg : C.amberBg) + 6;
+    if (signed) pill(d.start_now ? 'START WORK NOW' : 'WAIT 14 DAYS', px, y - 136, C.blue, C.blueBg);
+    y -= 166;
+    // Parties
+    const half = (CW - 12) / 2, ph = 92;
+    [['Agent', 'Residential Realtors', ['Trading name of Estallion Investments Limited', safe(INVOICE.address || '28-30 Harper Road, London, SE1 6AD'), 'Registered in England No. ' + (INVOICE.companyNo || '08760284'), 'T 0207 096 8131 \xB7 info@residentialrealtors.co.uk']],
+      ['Landlord', t.landlord_name || dt.l1_name || '', [dt.corr_address ? dt.corr_address.replace(/\n/g, ', ') : '', [t.landlord_email || dt.l1_email, t.landlord_phone || dt.l1_phone].filter(Boolean).join(' \xB7 '), dt.l2_name ? 'With ' + dt.l2_name : '']]].forEach(function (c, i) {
+      const x = M + i * (half + 12); rr(x, y, half, ph, 10, C.white, C.line); text(c[0].toUpperCase(), x + 14, y - 18, 6.6, B, C.soft); text(c[1], x + 14, y - 34, 11, B, C.ink);
+      c[2].filter(Boolean).slice(0, 4).forEach(function (l, j) { text(wrap(l, F, 8, half - 28)[0], x + 14, y - 50 - j * 11, 8, F, C.soft); });
     });
-    if (f.find !== 'none' && f.find_pct != null) { const ex = 12000 * f.find_pct / 100; para('Example: on a 12 month tenancy at \xA31,000 a month, the initial commission of ' + f.find_pct + '% would be ' + gbp(ex) + (f.vat !== false ? ' + VAT (' + gbp(ex * 1.2) + ' inc VAT)' : '') + '.', { size: 8.3, color: C.soft }); }
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) { const ex = 1000 * f.ongoing_pct / 100; para('Example: at \xA31,000 a month, the ' + (f.ongoing === 'manage' ? 'management' : 'rent collection') + ' fee of ' + f.ongoing_pct + '% would be ' + gbp(ex) + (f.vat !== false ? ' + VAT (' + gbp(ex * 1.2) + ' inc VAT)' : '') + ' a month.', { size: 8.3, color: C.soft }); }
-    heading('Key points');
-    (LT_TERMS.intro || []).forEach(function (s, i) { if (i === 0 && !(f.renewal && f.find !== 'none')) s = 'Under these terms you will be liable to pay Residential Realtors\' commission fees in respect of the initial period of the tenancy. No renewal fee has been agreed for this property.'; para(s, { size: 8.8 }); });
-    // 2. Landlord and property details
+    y -= ph + 20;
+    band('Agreed fees', 'The fees agreed for this property. They replace our standard scale of fees.');
+    const frows = [];
+    if (f.find !== 'none' && f.find_pct != null) { frows.push([f.find === 'multi' ? 'Tenant Find - Multi Agency' : 'Tenant Find - Sole Agency', incPct(f.find_pct) + ' of the first 12 months\' rent (initial commission)' + (f.find_monthly ? ' - paid monthly in 12 equal instalments' : ' - payable in advance'), f.find_min ? money(f.find_min) + (vat ? ' inc VAT' : '') : '-']); frows.push(['Anniversary fee', f.renewal && f.renewal_pct != null ? incPct(f.renewal_pct) + ' of 12 months\' rent, charged on each 12-month anniversary while the tenant introduced by us remains' : 'No anniversary fee', '-']); }
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) frows.push([f.ongoing === 'manage' ? 'Full Management Service' : 'Rent Collection Service', incPct(f.ongoing_pct) + ' of the rent received - deducted monthly from each month\'s rent', f.ongoing_min ? money(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' / month' : '-']);
+    if (f.other) frows.push(['Other agreed fees', f.other, '']);
+    table([['Service', 0.3], ['Fee', 0.48], ['Minimum', 0.22]], frows);
+    const ex = [];
+    if (f.find !== 'none' && f.find_pct != null) { const e = 12000 * f.find_pct / 100; ex.push('12 month tenancy at \xA31,000 a month: initial commission ' + money(e) + (vat ? ' + VAT (' + money(e * 1.2) + ' inc VAT)' : '') + (f.find_monthly ? ' - ' + money(e * (vat ? 1.2 : 1) / 12) + (vat ? ' inc VAT' : '') + ' a month for 12 months' : '')); }
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) { const e = 1000 * f.ongoing_pct / 100; ex.push('\xA31,000 a month: ' + (f.ongoing === 'manage' ? 'management' : 'rent collection') + ' fee ' + money(e) + (vat ? ' + VAT (' + money(e * 1.2) + ' inc VAT)' : '') + ' a month'); }
+    if (ex.length) { const exl = []; ex.forEach(function (e) { wrap('Example:  ' + e, F, 8.2, CW - 24).forEach(function (l) { exl.push(l); }); }); ensure(20 + exl.length * 12); rr(M, y + 4, CW, exl.length * 12 + 14, 8, C.blueBg); exl.forEach(function (e, i) { text(e, M + 12, y - 8 - i * 12, 8.2, F, C.blue); }); y -= exl.length * 12 + 22; }
+    band('Key points');
+    (LT_TERMS.intro || []).forEach(function (s, i) { if (i === 0 && !(f.renewal && f.find !== 'none')) s = 'Under these terms you will be liable to pay Residential Realtors\' commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.'; para(s, { size: 8.6 }); });
+
+    // ===== Property details =====
     if (signed) {
-      sect = 'Property details'; newPage(sect);
-      heading('Landlord details');
-      grid([['Landlord 1', dt.l1_name], ['Contact', [dt.l1_phone, dt.l1_email].filter(Boolean).join(' \xB7 ')], ['Landlord 2', dt.l2_name], ['Contact', [dt.l2_phone, dt.l2_email].filter(Boolean).join(' \xB7 ')],
-        ['Legal owner(s) for the tenancy agreement', dt.legal_owners, 'full'], ['Address for correspondence', dt.corr_address, 'full'], ['Company or trust details', dt.company_details, 'full']]);
-      heading('Property');
-      LT_QUESTIONS.forEach(function (q) { const v = yn(dt[q[0]]); if (!v) return; ensure(18); text(q[1], M, y, 9, F, C.ink); text(v, W - M - B.widthOfTextAtSize(safe(v), 9), y, 9, B, v === 'Yes' ? C.green : C.ink); y -= 6; page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.4, color: C.line }); y -= 11; });
-      y -= 6; grid([['Overseas address for correspondence', dt.overseas_address, 'full']]);
-      heading('Bank details', 'Where rent and deposit are to be paid.');
-      const acc = String(dt.bank_account || ''), mask = function (v) { v = String(v || ''); return opts.landlord && v.length > 4 ? '****' + v.slice(-4) : v; };
-      grid([['Bank name', dt.bank_name], ['Account name', dt.bank_account_name], ['Sort code', opts.landlord ? (dt.bank_sort ? '**-**-' + String(dt.bank_sort).replace(/\D/g, '').slice(-2) : '') : dt.bank_sort], ['Account number', mask(acc)]]);
+      sect = 'Property details'; if (y < 360) newPage(); else y -= 6;
+      band('Landlord details');
+      card('', [['Landlord 1', dt.l1_name], ['Contact', [dt.l1_phone, dt.l1_email].filter(Boolean).join(' \xB7 ')], ['Landlord 2', dt.l2_name], ['Contact', [dt.l2_phone, dt.l2_email].filter(Boolean).join(' \xB7 ')],
+        ['Legal owner(s) on the tenancy agreement', dt.legal_owners, 'full'], ['Address for correspondence', dt.corr_address, 'full'], ['Company or trust', dt.company_details, 'full'], ['UK resident for tax', yn(dt.q_uk_resident)], ['Overseas address', dt.overseas_address]]);
+      band('The property');
+      if (d.epc) {
+        ensure(56); const e = d.epc, ok = e.found && e.valid; rr(M, y + 2, CW, 44, 10, ok ? C.greenBg : e.found ? hex('FDECEC') : C.amberBg);
+        const rc = { A: '008054', B: '19B459', C: '8DCE46', D: 'FFD500', E: 'FCAA65', F: 'EF8023', G: 'E9153B' }[e.rating] || '98A2B3';
+        rr(M + 12, y - 6, 28, 28, 6, hex(rc)); const rl = e.rating || '?'; text(rl, M + 26 - B.widthOfTextAtSize(rl, 15) / 2, y - 25, 15, B, e.rating === 'D' ? C.ink : C.white);
+        text(e.found ? (ok ? 'EPC valid' : 'EPC expired') : 'No EPC found on the register', M + 52, y - 12, 10, B, ok ? C.green : e.found ? C.red : C.amber);
+        text(e.found ? 'Government register: rating ' + (e.rating || '?') + ', ' + (ok ? 'valid until ' : 'expired on ') + dayOf(e.expires_on) : 'Checked ' + dayOf(e.checked_at) + ' - a valid EPC is needed before letting', M + 52, y - 26, 8.4, F, C.soft); y -= 54;
+      }
+      table([['Question', 0.82], ['Answer', 0.18]], LT_QUESTIONS.filter(function (q) { return q[0] !== 'q_uk_resident' && q[0] !== 'deposit_scheme'; }).map(function (q) { return [q[1], yn(dt[q[0]]) || '-']; }).concat(dt.deposit_scheme ? [['Deposit scheme the landlord uses', dt.deposit_scheme]] : []), { pills: true });
+      if (dt.lic_status) { const LS = { licensed: 'Licensed', applied: 'Applied for - waiting for the council', none: 'No licence needed', unsure: 'Not sure - landlord asked us to check' };
+        card('Property licence', [['Licence', LS[dt.lic_status] || dt.lic_status], ['Type', dt.lic_type], ['Council', dt.lic_council], ['Licence number', dt.lic_number], ['Expires', dt.lic_expires ? dayOf(dt.lic_expires) : ''], ['Applied on', dt.lic_applied ? dayOf(dt.lic_applied) : '']]); }
+      if ((d.attached || []).length) para('Certificates attached by the landlord: ' + d.attached.join(', ') + '.', { size: 8.6, bold: true });
+      band('Bank details', 'Where rent and deposit monies are paid.');
+      const mask = function (v) { v = String(v || ''); return opts.landlord && v.length > 4 ? '••••' .replace(/./g, '*') + v.slice(-4) : v; };
+      ensure(96); rr(M, y + 2, CW, 86, 12, C.navy);
+      text('BANK', M + 18, y - 16, 6.6, B, C.slate); text(dt.bank_name === 'Other' || dt.bank_type === 'intl' ? (dt.bank_other || '') : (dt.bank_name || ''), M + 18, y - 30, 12, B, C.white);
+      text('ACCOUNT HOLDER', M + CW / 2, y - 16, 6.6, B, C.slate); text(dt.bank_account_name || '', M + CW / 2, y - 30, 11, B, C.white);
+      if (dt.bank_type === 'intl') { text('IBAN', M + 18, y - 52, 6.6, B, C.slate); text(mask(dt.bank_iban), M + 18, y - 68, 11, MONO, C.white); text('SWIFT / BIC', M + CW / 2, y - 52, 6.6, B, C.slate); text(dt.bank_swift || '', M + CW / 2, y - 68, 11, MONO, C.white); }
+      else { text('SORT CODE', M + 18, y - 52, 6.6, B, C.slate); text(opts.landlord ? '**-**-' + String(dt.bank_sort || '').replace(/\D/g, '').slice(-2) : (dt.bank_sort || ''), M + 18, y - 68, 12, MONO, C.white); text('ACCOUNT NUMBER', M + CW / 2, y - 52, 6.6, B, C.slate); text(mask(dt.bank_account), M + CW / 2, y - 68, 12, MONO, C.white); }
+      y -= 98;
       const u = dt.util || {};
-      if (LT_UTILS.some(function (x) { const v = u[x[0]] || {}; return v.provider || v.account || v.location; })) { heading('Utility providers'); grid(LT_UTILS.map(function (x) { const v = u[x[0]] || {}; return [x[1], [v.provider, v.account ? 'Account ' + v.account : '', v.location ? 'Meter: ' + v.location : ''].filter(Boolean).join(' \xB7 '), 'full']; })); }
+      if (LT_UTILS.some(function (x) { const v = u[x[0]] || {}; return v.provider || v.account || v.location; })) { band('Utilities'); table([['Service', 0.2], ['Provider', 0.27], ['Account number', 0.25], ['Meter / fusebox / stopcock', 0.28]], LT_UTILS.map(function (x) { const v = u[x[0]] || {}; return [x[1], v.provider || '-', v.account || '-', v.location || '-']; })); }
       const a = dt.appl || {};
-      if (LT_APPL.some(function (x) { const v = a[x[0]] || {}; return v.make || v.cover; })) { heading('Domestic appliances'); grid(LT_APPL.map(function (x) { const v = a[x[0]] || {}; return [x[1], [v.make, v.age ? 'age ' + v.age : '', v.cover ? 'cover: ' + v.cover : '', v.expiry ? 'expires ' + v.expiry : ''].filter(Boolean).join(' \xB7 '), 'full']; })); }
-      if (dt.special || dt.other) { heading('Other information'); grid([['Special instructions', dt.special, 'full'], ['Other', dt.other, 'full']]); }
-      if (dt.optout === true || dt.optout === 'Yes') { heading('Opting out of the management service'); para('I/we confirm that I/we will take full responsibility for all aspects of the management of the above property and will not receive the following services from Residential Realtors: transfer of utilities, key-holding service, one management inspection per year, payment of outgoings, arranging repairs and maintenance and a 24-hour call-out service.', { size: 8.8 }); grid([['24-hour emergency number', dt.emergency_phone], ['When unavailable, contact', [dt.alt_name, dt.alt_phone].filter(Boolean).join(' \xB7 ')]]); }
+      if (LT_APPL.some(function (x) { const v = a[x[0]] || {}; return v.make || v.cover; })) { band('Appliances under guarantee'); table([['Appliance', 0.26], ['Make and model', 0.3], ['Age', 0.12], ['Warranty / cover', 0.32]], LT_APPL.filter(function (x) { const v = a[x[0]] || {}; return v.make || v.cover || v.age; }).map(function (x) { const v = a[x[0]] || {}; return [x[1], v.make || '-', v.age || '-', v.cover || '-']; })); }
+      if (dt.special || dt.other) { band('Other information'); card('', [['Special instructions', dt.special, 'full'], ['Other', dt.other, 'full']]); }
+      if (dt.optout === true || dt.optout === 'Yes') { band('Opting out of the management service'); para('I/we confirm that I/we will take full responsibility for all aspects of the management of the above property and will not receive the following services from Residential Realtors: transfer of utilities, key-holding service, one management inspection per year, payment of outgoings, arranging repairs and maintenance and a 24-hour call-out service.', { size: 8.6 }); card('', [['24-hour emergency number', dt.emergency_phone], ['When unavailable, contact', [dt.alt_name, dt.alt_phone].filter(Boolean).join(' \xB7 ')]]); }
     }
-    // 3. Terms
-    sect = 'Terms and conditions'; newPage(sect);
-    heading('Lettings terms and conditions of business, fees and expenses');
+
+    // ===== Terms (two columns) =====
+    sect = 'Terms and conditions'; if (y < 420) newPage(); else y -= 8;
+    band('Lettings terms and conditions of business, fees and expenses');
+    const colGap = 16, colW = (CW - colGap) / 2; let col = 0, colTop = y;
+    const colX = function () { return M + col * (colW + colGap); };
+    const nextCol = function () { if (col === 0) { col = 1; y = colTop; } else { col = 0; newPage(); colTop = y; } };
+    const cEnsure = function (need) { if (y - need < 76) nextCol(); };
     (LT_TERMS.clauses || []).forEach(function (c) {
-      if (c.h) { ensure(30); y -= 4; const noRen = c.n === '1.2' && !(f.renewal && f.find !== 'none'); text(c.n + '  ' + c.h + (noRen ? '  (not applicable - no renewal fee agreed)' : ''), M, y, 9.6, B, C.navy); y -= 15; return; }
-      const ls = wrap(c.t, F, 8, CW - 34); ensure(Math.min(ls.length, 3) * 10.5 + 4);
-      text(c.n, M, y, 8, B, C.soft); ls.forEach(function (ln, j) { if (j) ensure(11); text(ln, M + 34, y, 8, F, C.ink); y -= 10.5; }); y -= 3;
+      if (c.h) { const noRen = c.n === '1.2' && !(f.renewal && f.find !== 'none'); const hl = wrap(c.n + '  ' + c.h, B, 8.6, colW); cEnsure(hl.length * 11 + 30); y -= 4; hl.forEach(function (ln) { text(ln, colX(), y, 8.6, B, C.navy); y -= 11; }); if (noRen) { pill('NOT APPLICABLE - NO ANNIVERSARY FEE AGREED', colX(), y - 8, C.green, C.greenBg, 6.4); y -= 16; } else if (c.n === '1.1' && f.find_monthly && f.find !== 'none') { wrap('Agreed for this property: the Initial Commission is paid monthly, in 12 equal instalments over the first 12 months of the tenancy, instead of in advance. Clauses 1.1.2 and 1.1.3 apply on that basis; if the tenancy ends early, any instalments still owing remain payable subject to clause 1.1.5.', F, 7.2, colW).forEach(function (ln) { text(ln, colX(), y, 7.2, F, C.blue); y -= 9.2; }); y -= 4; } else if (c.n === '1.2') { wrap(LT_TERMS.anniversary_note || '', F, 7.2, colW).forEach(function (ln) { text(ln, colX(), y, 7.2, F, C.blue); y -= 9.2; }); y -= 4; } y -= 2; return; }
+      const ls = wrap(c.t, F, 7.4, colW - 26); cEnsure(Math.min(ls.length, 4) * 9.4 + 2);
+      text(c.n, colX(), y, 7, B, C.soft);
+      ls.forEach(function (ln, j) { if (j && y - 10 < 76) { nextCol(); } text(ln, colX() + 26, y, 7.4, F, C.ink); y -= 9.4; }); y -= 3;
     });
-    heading('Price list');
-    (LT_TERMS.prices || []).forEach(function (r) { ensure(16); text(r[0], M, y, 9, F, C.ink); const v = gbp(r[1]) + ' + VAT (' + gbp(r[1] * 1.2) + ' inc VAT)'; text(v, W - M - F.widthOfTextAtSize(safe(v), 9), y, 9, F, C.ink); y -= 6; page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.4, color: C.line }); y -= 10; });
-    heading('Contractor rates (handyman, electrician, plumber)');
-    (LT_TERMS.contractor_rates || []).forEach(function (r) { ensure(16); text(r[0], M, y, 9, F, C.ink); text(r[1], W - M - F.widthOfTextAtSize(safe(r[1]), 9), y, 9, F, C.ink); y -= 16; });
-    heading('Your right to cancel'); (LT_TERMS.cancellation || []).forEach(function (s) { para(s, { size: 8.6 }); });
-    // 4. Declaration and signature
-    sect = 'Declaration & signature'; newPage(sect);
-    heading('Declaration'); (LT_TERMS.declaration || []).forEach(function (s) { para(s, { size: 9 }); });
+    col = 0; newPage();
+    band('Price list');
+    table([['Service', 0.56], ['Price', 0.22], ['Inc VAT', 0.22]], (LT_TERMS.prices || []).map(function (r) { return [r[0], money(r[1]) + ' + VAT', money(r[1] * 1.2)]; }));
+    sub('Contractor rates (handyman, electrician, plumber)');
+    table([['Time', 0.56], ['Rate', 0.44]], (LT_TERMS.contractor_rates || []).map(function (r) { return [r[0], r[1]]; }));
+    band('Your right to cancel'); (LT_TERMS.cancellation || []).forEach(function (s) { para(s, { size: 8.4 }); });
+
+    // ===== Declaration and signature =====
+    sect = 'Declaration & signature'; newPage();
+    band('Declaration');
+    const dls = (LT_TERMS.declaration || []).map(function (s) { return wrap(s, F, 8.8, CW - 36); }), dh = dls.reduce(function (a, l) { return a + l.length * 12.4 + 8; }, 0) + 16;
+    ensure(dh); rr(M, y + 2, CW, dh, 10, C.panel); let dy = y - 12;
+    dls.forEach(function (l) { page.drawCircle({ x: M + 16, y: dy + 3, size: 2.2, color: C.navy }); l.forEach(function (ln) { text(ln, M + 26, dy, 8.8, F, C.ink); dy -= 12.4; }); dy -= 8; }); y -= dh + 10;
     if (signed) {
-      para(d.start_now ? 'The landlord asked Residential Realtors to start work (including marketing) straight away, before the end of the 14-day cancellation period.' : 'The landlord did not ask for work to start before the end of the 14-day cancellation period.', { size: 9, bold: true });
-      ensure(130); y -= 6; const sh = 108; rr(M, y, CW, sh, 10, C.white, C.line); const sw = CW * 0.52;
-      if (sig) { try { const im = await pdf.embedPng(sig.data); const h = 58, w = Math.min(sw - 40, im.width * h / im.height); page.drawImage(im, { x: M + 10 + (sw - 20 - w) / 2, y: y - 22 - h, width: w, height: h }); } catch (e) {} }
-      page.drawLine({ start: { x: M + 22, y: y - 84 }, end: { x: M + sw - 22, y: y - 84 }, thickness: 0.6, color: C.faint }); text(d.signature || '', M + 22, y - 97, 8.5, B, C.ink);
-      const sx = M + sw + 6, au = d.audit || {};
-      [['Signed by', d.signature], ['Date and time', stamp(t.signed_at) + ' UK'], ['Method', 'Drawn on screen'], ['IP address', au.ip || '-'], ['Document ID', docId]].forEach(function (r, i) { text(String(r[0]).toUpperCase(), sx, y - 18 - i * 19, 6, B, C.soft); text(String(r[1] || '').slice(0, 40), sx, y - 27 - i * 19, 8.5, r[0] === 'Document ID' ? MONO : F, C.ink); });
-      y -= sh + 10;
-      text('Signed electronically - legally binding in England and Wales (Electronic Communications Act 2000). See the audit trail.', M, y, 7.4, F, C.soft); y -= 14;
+      band('14-day cancellation period');
+      ensure(40); rr(M, y + 2, CW, 32, 8, d.start_now ? C.blueBg : C.panel); wrap(d.start_now ? 'The landlord asked us to start work, including marketing, straight away - before the end of the 14-day cancellation period.' : 'The landlord asked us not to start work until the 14-day cancellation period has ended.', B, 8.6, CW - 24).slice(0, 2).forEach(function (ln, i) { text(ln, M + 12, y - 12 - i * 11, 8.6, B, d.start_now ? C.blue : C.ink); }); y -= 44;
+      band('Electronic signature');
+      ensure(130); const sh = 118; rr(M, y, CW, sh, 12, C.white, C.line); const sw = CW * 0.5;
+      rr(M + 10, y - 10, sw - 20, sh - 20, 8, C.panel);
+      if (sig) { try { const im = await pdf.embedPng(sig.data); const h = 56, w = Math.min(sw - 50, im.width * h / im.height); page.drawImage(im, { x: M + 10 + (sw - 20 - w) / 2, y: y - 24 - h, width: w, height: h }); } catch (e) {} }
+      page.drawLine({ start: { x: M + 24, y: y - 86 }, end: { x: M + sw - 24, y: y - 86 }, thickness: 0.6, color: C.faint }); text(d.signature || '', M + 24, y - 99, 8.6, B, C.ink);
+      const sx = M + sw + 8;
+      [['Signed by', d.signature], ['Date and time', stamp(t.signed_at) + ' UK'], ['Method', 'Drawn on screen'], ['IP address', au.ip || '-'], ['Document ID', docId]].forEach(function (r, i) { text(String(r[0]).toUpperCase(), sx, y - 18 - i * 20, 6.2, B, C.soft); text(String(r[1] || '').slice(0, 40), sx, y - 28 - i * 20, 8.8, r[0] === 'Document ID' ? MONO : F, C.ink); });
+      y -= sh + 10; text('Signed electronically - legally binding in England and Wales (Electronic Communications Act 2000). See the audit trail.', M, y, 7.4, F, C.soft); y -= 14;
     } else para('Not signed yet.', { color: C.amber, bold: true });
-    // 5. Audit trail
-    sect = 'Audit trail'; newPage(sect);
-    text('Audit trail', M, y - 4, 22, B, C.navy); y -= 30;
-    const au = d.audit || {};
-    grid([['Title', TITLE + ' - ' + (t.property_address || '')], ['Document ID', docId], ['Fingerprint (SHA-256)', fp, 'full'], ['Terms version', d.terms_version || LT_TERMS.version], ['Status', signed ? 'Signed' : t.status === 'cancelled' ? 'Cancelled' : 'Awaiting signature'], ['Date format', 'DD/MM/YYYY HH:MM:SS, UK time']]);
-    heading('Activity');
-    const ev = (t.log || []).filter(function (l) { return !opts.landlord || l.by === 'landlord' || /created|signed/i.test(l.text); });
-    ev.push({ at: new Date().toISOString(), text: 'This copy generated', by: opts.landlord ? 'landlord' : 'office' });
-    ev.forEach(function (l) {
-      const who = l.by === 'landlord' ? t.landlord_name : 'Residential Realtors' + (!opts.landlord && l.user ? ' - ' + l.user : '');
-      const lines = wrap(l.text, B, 9, CW - 120), sub = 'By ' + who + (l.ip ? '   \xB7   IP address: ' + l.ip : '') + (l.ua ? '   \xB7   ' + deviceOf(l.ua) : '');
-      ensure(lines.length * 12 + 26); const st = stamp(l.at).split(' ');
-      text(st[0] || '', M, y, 8, B, C.ink); text(st[1] || '', M, y - 11, 8, F, C.soft);
-      lines.forEach(function (ln, j) { text(ln, M + 110, y - j * 12, 9, B, C.ink); }); text(sub.slice(0, 110), M + 110, y - lines.length * 12, 7.8, F, C.soft);
-      y -= lines.length * 12 + 22;
+
+    // ===== Audit trail =====
+    sect = 'Audit trail'; newPage();
+    band('Audit trail', 'How and when this agreement was completed, recorded by Fixflow for Residential Realtors.');
+    card('', [['Document', 'Landlord Terms of Business - ' + (t.property_address || ''), 'full'], ['Document ID', docId, '', 'mono'], ['Status', signed ? 'Signed' : t.status === 'cancelled' ? 'Cancelled' : 'Awaiting signature'], ['Fingerprint (SHA-256)', fp, 'full', 'mono'], ['Terms version', d.terms_version || LT_TERMS.version], ['Date format', 'DD/MM/YYYY HH:MM:SS, UK time']]);
+    const ev = (t.log || []).filter(function (l) { return !opts.landlord || l.by === 'landlord' || /created|signed/i.test(l.text); }).concat([{ at: new Date().toISOString(), text: 'This copy generated', by: opts.landlord ? 'landlord' : 'office' }]);
+    ev.forEach(function (l, idx) {
+      const who = l.by === 'landlord' ? (t.landlord_name || 'Landlord') : 'Residential Realtors' + (!opts.landlord && l.user ? ' - ' + l.user : '');
+      const tl = wrap(l.text, B, 9, CW - 130), sl = wrap('By ' + who + (l.ip ? '  \xB7  IP ' + l.ip : '') + (l.ua ? '  \xB7  ' + deviceOf(l.ua) : ''), F, 7.8, CW - 130), hh = Math.max(34, tl.length * 12 + sl.length * 10 + 10);
+      ensure(hh + 4); const st = stamp(l.at).split(' ');
+      text(st[0] || '', M, y - 8, 8, B, C.ink); text(st[1] || '', M, y - 19, 8, F, C.soft);
+      const cx = M + 100, cy = y - 10, isL = l.by === 'landlord', isSign = /signed by/i.test(l.text);
+      if (idx < ev.length - 1) page.drawLine({ start: { x: cx, y: cy - 10 }, end: { x: cx, y: y - hh - 4 }, thickness: 0.8, color: C.line });
+      page.drawCircle({ x: cx, y: cy, size: 9, color: isSign ? C.navy : isL ? C.blueBg : C.panel, borderColor: isSign ? undefined : isL ? C.blue : C.soft, borderWidth: isSign ? 0 : 0.8 });
+      if (isSign) page.drawSvgPath('M -4 3 L 2.5 -3.5 L 4 -2 L -2.5 4.5 Z', { x: cx, y: cy, color: C.white }); else page.drawCircle({ x: cx, y: cy, size: 2.4, color: isL ? C.blue : C.soft });
+      let ty = y - 8; tl.forEach(function (ln) { text(ln, M + 120, ty, 9, B, C.ink); ty -= 12; }); sl.forEach(function (ln) { text(ln, M + 120, ty, 7.8, F, C.soft); ty -= 10; });
+      y -= hh + 4;
     });
+    // Footer
     const total = pdf.getPageCount();
-    pages.forEach(function (pg, i) { page = pg; pg.drawLine({ start: { x: M, y: 50 }, end: { x: W - M, y: 50 }, thickness: 0.5, color: C.line }); text('Residential Realtors \xB7 Trading name of Estallion Investments Limited \xB7 Registered in England No. ' + (INVOICE.companyNo || '08760284'), M, 37, 6.8, F, C.soft); text('Document ID ' + docId + '  \xB7  ' + (opts.landlord ? 'Landlord copy' : 'Office copy'), M, 27, 6.8, F, C.faint); const pn = 'Page ' + (i + 1) + ' of ' + total; text(pn, W - M - B.widthOfTextAtSize(pn, 7.5), 33, 7.5, B, C.ink); });
-    pdf.setTitle(TITLE + ' - ' + ref); pdf.setAuthor('Residential Realtors'); pdf.setCreator('Fixflow'); pdf.setProducer('Fixflow');
+    pages.forEach(function (pg, i) { page = pg; pg.drawLine({ start: { x: M, y: 50 }, end: { x: W - M, y: 50 }, thickness: 0.5, color: C.line }); text('Residential Realtors \xB7 Trading name of Estallion Investments Limited \xB7 Registered in England No. ' + (INVOICE.companyNo || '08760284'), M, 37, 6.8, F, C.soft); text('Document ID ' + docId + '  \xB7  ' + (opts.landlord ? 'Landlord copy' : 'Office copy') + (signed ? '  \xB7  Electronically signed' : ''), M, 27, 6.8, F, C.faint); right('Page ' + (i + 1) + ' of ' + total, W - M, 33, 7.5, B, C.ink); });
+    pdf.setTitle('Landlord Terms of Business - ' + ref); pdf.setAuthor('Residential Realtors'); pdf.setCreator('Fixflow'); pdf.setProducer('Fixflow');
     return { bytes: await pdf.save(), name: 'Landlord Terms - ' + ref + ' - ' + String(t.property_address || '').replace(/[^\w ,.-]+/g, ' ').slice(0, 60) + '.pdf' };
   }
   return { saveReport: saveReport, hasDb: async function () { return !!(await db()); } };

@@ -769,7 +769,7 @@
   "If you wish us to start work before the end of the cancellation period, you must expressly authorise us to do so. You will then have to pay for any service you have received. The fee charged will be based on the work we have done until the date we are notified of your decision to cancel the contract and will be proportionate to the work we have done in comparison with the full contracted service."
  ],
  "intro": [
-  "Under these terms you will be liable to pay Residential Realtors' commission fees in respect of the initial period of the tenancy and, where a renewal fee has been agreed, also in respect of periods after the end of that initial period where the original tenant introduced by Residential Realtors remains in occupation, whether under a new agreement or by the initial agreement being extended or the tenant being allowed to hold over (all of these being \"Renewals\"). Where there is more than one tenant, Renewal Commission will be payable in full where any or all of them remain in occupation. Renewal Commission will be charged in advance, whether or not any Renewal is negotiated by Residential Realtors.",
+  "Under these terms you will be liable to pay Residential Realtors' commission fees in respect of the first 12 months of the tenancy and, where an anniversary fee has been agreed, on each 12-month anniversary while the original tenant introduced by Residential Realtors remains in occupation. Where there is more than one tenant, the anniversary fee is payable in full where any or all of them remain in occupation. The anniversary fee is charged in advance, whether or not Residential Realtors negotiated any change to the tenancy.",
   "Once an offer has been accepted orally or in writing by the landlord, we will immediately take up the necessary administrative duties. If you subsequently tell Residential Realtors that you do not wish to proceed with the tenancy then commission becomes payable (see clauses 1.1 and 1.2).",
   "The responsibility for the payment of fees remains with the party(ies) named in this agreement and you confirm that you have obtained all necessary consents to allow you to instruct Residential Realtors to let the property. Residential Realtors will be entitled to a commission fee if you terminate this contract and go on to let the property to a renter that Residential Realtors has introduced within six months of the date Residential Realtors' instruction ended. Residential Realtors will give up its rights to any commission fee if a renter first introduced by Residential Realtors goes on to rent the property more than six months after the instruction ended."
  ],
@@ -828,5 +828,6 @@
    "Full day (up to 8 hours)",
    "£540.00 + VAT"
   ]
- ]
+ ],
+ "anniversary_note": "Tenancies are no longer renewed for a fixed term. In these terms, a \"Renewal\" means each 12-month anniversary of the tenancy (or of the previous anniversary) while the tenant introduced by Residential Realtors, or any of them, remains in occupation, and \"Renewal Commission\" means the anniversary fee shown in \"Your agreed fees\", charged in advance on each anniversary on 12 months' rent."
 }
