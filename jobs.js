@@ -1593,7 +1593,8 @@ module.exports = function mountJobs(app, opts) {
     const noun = NOUN[seg[0]] || seg[0] || 'something';
     const refOf = function () { return seg[0] === 'jobs' && id ? ' ' + refFor(id) : seg[0] === 'offers' && id ? ' OF' + String(id).padStart(4, '0') : id ? ' #' + id : ''; };
     const what = seg.slice(id ? 2 : 1).join(' ').replace(/-/g, ' ');
-    const extra = b.status ? ' — status: ' + String(b.status).slice(0, 40) : b.paid === true ? ' — deposit received' : b.paid === false ? ' — deposit not received' : '';
+    const extra = b.status ? ' — status: ' + String(b.status).slice(0, 40) : b.paid === true ? ' — deposit received' : b.paid === false ? ' — deposit not received'
+      : seg[0] === 'users' ? (b.name ? ' — ' + String(b.name).slice(0, 80) : '') + (b.email ? ' (' + String(b.email).slice(0, 80) + ')' : '') + (b.role ? ' — access: ' + b.role : '') + (b.password ? ' — new password' : '') + (b.disabled === true ? ' — turned off' : b.disabled === false ? ' — turned on' : '') : '';
     const verb = m === 'DELETE' ? 'Deleted' : !id && seg.length === 1 && m === 'POST' ? 'Added' : 'Updated';
     return (verb + ' ' + noun + refOf() + (what ? ' (' + what + ')' : '') + extra).slice(0, 300);
   }

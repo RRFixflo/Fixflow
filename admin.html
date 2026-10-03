@@ -444,6 +444,7 @@
   .team-av.sm { flex-basis: 26px; height: 26px; font-size: .66rem; }
   .team-who { flex: 1 1 220px; min-width: 0; } .team-who > span:last-child { display: block; font-size: .8rem; color: var(--ink-soft); }
   .team-act { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } .team-act select { width: auto; padding: 5px 8px; font-size: .8rem; }
+  .team-edit { flex: 1 1 320px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } .team-edit .inp { flex: 1 1 140px; width: auto; padding: 6px 9px; }
   .team-add { margin: 14px 0; padding: 12px; border-radius: 12px; background: var(--panel-2); }
   .team-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 8px; }
   .team-feed-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 16px 0 6px; }
@@ -10782,7 +10783,8 @@
       $('teamList').innerHTML = users.length ? users.map(function(u){
         return '<div class="team-row' + (u.disabled_at ? ' off' : '') + '" data-uid="' + u.id + '"><span class="team-av">' + esc((u.name || '?').split(/\s+/).map(function(w){ return w[0]; }).join('').slice(0, 2).toUpperCase()) + '</span>' +
           '<div class="team-who"><b>' + esc(u.name) + '</b>' + (u.disabled_at ? ' <span class="count-chip">Turned off</span>' : '') + '<span>' + esc(TEAM_ROLES[u.role] || u.role) + (u.email ? ' · ' + esc(u.email) : '') + ' · ' + (u.last_seen ? 'active ' + esc(ago(u.last_seen)) : 'not signed in yet') + (u.week_actions ? ' · ' + u.week_actions + ' change' + (u.week_actions === 1 ? '' : 's') + ' this week' : '') + '</span></div>' +
-          '<div class="team-act"><select class="inp" data-tm-role>' + Object.keys(TEAM_ROLES).map(function(k){ return '<option value="' + k + '"' + (u.role === k ? ' selected' : '') + '>' + TEAM_ROLES[k] + '</option>'; }).join('') + '</select>' +
+          '<div class="team-edit" hidden><input class="inp" data-tm-name value="' + esc(u.name) + '" maxlength="80" placeholder="Name"><input class="inp" data-tm-email type="email" value="' + esc(u.email || '') + '" placeholder="Email (optional)"><button class="btn small primary" type="button" data-tm-save>Save</button><button class="btn small ghost" type="button" data-tm-cancel>Cancel</button></div>' +
+          '<div class="team-act"><button class="btn small ghost" type="button" data-tm-edit>✏️ Edit</button><select class="inp" data-tm-role>' + Object.keys(TEAM_ROLES).map(function(k){ return '<option value="' + k + '"' + (u.role === k ? ' selected' : '') + '>' + TEAM_ROLES[k] + '</option>'; }).join('') + '</select>' +
           '<button class="btn small ghost" type="button" data-tm-pw>New password</button><button class="btn small ghost" type="button" data-tm-feed>Activity</button><button class="btn small ghost' + (u.disabled_at ? '' : ' danger') + '" type="button" data-tm-off="' + (u.disabled_at ? '0' : '1') + '">' + (u.disabled_at ? 'Turn on' : 'Turn off') + '</button></div></div>';
       }).join('') : '<p class="muted-note">No one added yet — you’re signing in with the main password.</p>';
       var cur = $('tmFilter').value;
@@ -10809,6 +10811,7 @@
       toast(body.name + ' added — they sign in with their name and password'); $('tmName').value = $('tmEmail').value = $('tmPw').value = ''; loadTeam();
     });
   });
+  $('teamList').addEventListener('keydown', function(e){ if (e.key === 'Enter' && e.target.closest('.team-edit')) { e.preventDefault(); e.target.closest('.team-edit').querySelector('[data-tm-save]').click(); } });
   $('teamList').addEventListener('change', function(e){
     var sel = e.target.closest('[data-tm-role]'); if (!sel) return;
     var uid = sel.closest('[data-uid]').dataset.uid;
@@ -10816,6 +10819,15 @@
   });
   $('teamList').addEventListener('click', function(e){
     var row = e.target.closest('[data-uid]'); if (!row) return; var uid = row.dataset.uid, name = row.querySelector('b').textContent;
+    var ed = row.querySelector('.team-edit');
+    if (e.target.closest('[data-tm-edit]')) { ed.hidden = false; row.querySelector('.team-who').hidden = true; row.querySelector('[data-tm-edit]').hidden = true; row.querySelector('[data-tm-name]').focus(); return; }
+    if (e.target.closest('[data-tm-cancel]')) { ed.hidden = true; row.querySelector('.team-who').hidden = false; row.querySelector('[data-tm-edit]').hidden = false; return; }
+    if (e.target.closest('[data-tm-save]')) {
+      var nn = row.querySelector('[data-tm-name]').value.trim(), em = row.querySelector('[data-tm-email]').value.trim();
+      if (!nn) { toast('Enter their name'); return; }
+      api('POST', '/api/admin/users/' + uid, { name: nn, email: em }).then(function(d){ toast(d.ok ? 'Saved — ' + nn + ' now signs in with this name' : d.error === 'taken' ? 'Someone already has that name' : d.error === 'owner-only' ? 'Only the owner can change that' : 'Couldn’t save it'); if (d.ok) loadTeam(); });
+      return;
+    }
     if (e.target.closest('[data-tm-pw]')) { var pw = window.prompt('New password for ' + name + ' (at least 8 characters):'); if (!pw) return; if (pw.length < 8) { toast('At least 8 characters'); return; }
       api('POST', '/api/admin/users/' + uid, { password: pw }).then(function(d){ toast(d.ok ? 'Password changed — ' + name + ' is signed out everywhere' : 'Couldn’t change it'); }); return; }
     if (e.target.closest('[data-tm-feed]')) { $('tmFilter').value = uid; loadTeamFeed(); $('teamFeed').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
