@@ -1532,7 +1532,8 @@ module.exports = function mountJobs(app, opts) {
   }
   // What an offers-only sign-in may use (paths under /api/admin).
   function staffAllowed(method, path) {
-    if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;   // landlord terms tab
+    if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
+    if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;   // landlord terms tab
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/offer-alerts/test' || path === '/email' || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
@@ -7451,6 +7452,44 @@ document.querySelectorAll('.lcu').forEach(function(box){
       FROM landlord_terms t ORDER BY t.id DESC LIMIT 300`);
     res.json({ ok: true, origin: TERMS_ORIGIN || OFFER_ORIGIN || PUBLIC_URL, items: r.rows.map(function (t) { t.ref = ltRef(t.id); t.lines = feeLines(t.fees || {}); return t; }) });
   }));
+  // What we already know about a property (and its landlord), to preload the agreement:
+  // the linked landlord, certificate dates, the licence and the current tenancy's fees.
+  async function ltKnown(p, address, landlordId) {
+    const key = propKey(address || ''), out = { property_key: key };
+    let lid = Number(landlordId) || null;
+    if (key) {
+      const link = (await p.query('SELECT landlord_id, address FROM property_landlords WHERE property_key = $1', [key])).rows[0];
+      if (link) { out.known_address = link.address; if (!lid) lid = link.landlord_id; }
+      const certs = (await p.query("SELECT type, expires_on, reference, rating, not_required FROM property_certificates WHERE property_key = $1", [key])).rows;
+      const today = new Date().toISOString().slice(0, 10);
+      certs.forEach(function (c) { const k = { Gas: 'gas', EICR: 'eicr', EPC: 'epc' }[c.type]; if (k) out[k] = { expires_on: c.expires_on || null, valid: !!c.expires_on && c.expires_on >= today, not_required: !!c.not_required, rating: c.rating || '', reference: c.reference || '' }; });
+      const info = (await p.query('SELECT licence FROM property_info WHERE property_key = $1', [key])).rows[0];
+      if (info && info.licence && info.licence.status) { const l = info.licence; out.licence = { status: l.status, type: l.type || '', number: l.number || '', expires: l.expires || '', council: l.council || '' }; }
+      const tc = (await p.query('SELECT data FROM tenancies WHERE property_key = $1 ORDER BY updated_at DESC LIMIT 1', [key])).rows[0];
+      if (tc) { const d = tc.data || {}, pct = function (u, v) { return (u || 'pct') === 'pct' && v != null && v !== '' && !isNaN(Number(v)) ? Number(v) : null; };
+        out.tenancy = { service: d.service || '', find_pct: pct(d.find_unit, d.find_pct), collect_pct: pct(d.collect_unit, d.collect_pct), manage_pct: pct(d.manage_unit, d.manage_pct), deposit_scheme: d.deposit_scheme || '' }; }
+    }
+    if (lid) {
+      const l = (await p.query('SELECT id, name, email, phone, address FROM landlords WHERE id = $1', [lid])).rows[0];
+      if (l) { out.landlord = l; out.landlord_properties = (await p.query('SELECT address FROM property_landlords WHERE landlord_id = $1 ORDER BY address', [lid])).rows.map(function (r) { return r.address; }); }
+    }
+    return out;
+  }
+  // What the landlord's page may show: their own details and the property's records (no fees or other properties).
+  function ltPublicKnown(k) { if (!k) return null; return { landlord: k.landlord ? { name: k.landlord.name, email: k.landlord.email, phone: k.landlord.phone, address: k.landlord.address } : null, gas: k.gas || null, eicr: k.eicr || null, licence: k.licence || null, deposit_scheme: (k.tenancy || {}).deposit_scheme || '' }; }
+  // Find registered landlords (name, email or phone) and properties (address) as staff type.
+  app.get('/api/admin/landlord-terms/lookup', withDb(async function (p, req, res) {
+    const q = str(req.query.q, 100); if (!q || q.length < 2) return res.json({ ok: true, landlords: [] });
+    const like = '%' + q.toLowerCase().replace(/[%_]/g, '') + '%', digits = q.replace(/\D/g, '');
+    const ls = (await p.query(`SELECT l.id, l.name, l.email, l.phone, l.address, coalesce(array_agg(pl.address ORDER BY pl.address) FILTER (WHERE pl.address IS NOT NULL), '{}') AS properties
+      FROM landlords l LEFT JOIN property_landlords pl ON pl.landlord_id = l.id
+      WHERE lower(l.name) LIKE $1 OR lower(coalesce(l.email, '')) LIKE $1 OR ($2 <> '' AND regexp_replace(coalesce(l.phone, ''), '\\D', '', 'g') LIKE '%' || $2 || '%') OR lower(coalesce(pl.address, '')) LIKE $1
+      GROUP BY l.id ORDER BY lower(l.name) LIMIT 8`, [like, digits.length >= 5 ? digits : ''])).rows;
+    res.json({ ok: true, landlords: ls });
+  }));
+  app.get('/api/admin/landlord-terms/known', withDb(async function (p, req, res) {
+    res.json(Object.assign({ ok: true }, await ltKnown(p, str(req.query.address, 400), req.query.landlord_id)));
+  }));
   app.post('/api/admin/landlord-terms', withDb(async function (p, req, res) {
     const b = req.body || {}, fees = cleanFees(b.fees);
     const address = str(b.property_address, 400), name = str(b.landlord_name, 200);
@@ -7461,6 +7500,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await p.query('INSERT INTO landlord_terms (token, property_address, landlord_name, landlord_email, landlord_phone, fees, log, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
       [token, address, name, str(b.landlord_email, 200) || null, str(b.landlord_phone, 40) || null, JSON.stringify(fees), JSON.stringify([ltLog(req, 'Agreement created with agreed fees')]), req.user ? req.user.name : null]);
     ltEpc(p, { id: r.rows[0].id, property_address: address, data: {} }).catch(function () {});
+    try { const k = await ltKnown(p, address, b.landlord_id); await p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('known', $2::jsonb) WHERE id = $1", [r.rows[0].id, JSON.stringify(k)]); } catch (e) { console.error('Landlord terms prefill failed:', e.message); }
     res.json({ ok: true, id: r.rows[0].id, link: ltLink({ token: token }) });
   }));
   app.post('/api/admin/landlord-terms/:id', withDb(async function (p, req, res) {
@@ -7476,6 +7516,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const was = (await p.query('SELECT property_address, status FROM landlord_terms WHERE id = $1', [id])).rows[0], newAddr = str(b.property_address, 400);
     await p.query("UPDATE landlord_terms SET status = 'sent', property_address = coalesce($2, property_address), landlord_name = coalesce($3, landlord_name), landlord_email = $4, landlord_phone = $5, fees = $6, log = log || $7::jsonb WHERE id = $1",
       [id, str(b.property_address, 400) || null, str(b.landlord_name, 200) || null, str(b.landlord_email, 200) || null, str(b.landlord_phone, 40) || null, JSON.stringify(fees), JSON.stringify([ltLog(req, 'Agreement edited (fees and details)' + (was.status === 'cancelled' ? ' - link turned back on' : ''))])]);
+    try { const k = await ltKnown(p, newAddr || was.property_address, b.landlord_id); await p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('known', $2::jsonb) WHERE id = $1", [id, JSON.stringify(k)]); } catch (e) {}
     // A new address: check its EPC again.
     if (newAddr && newAddr !== was.property_address) { await p.query("UPDATE landlord_terms SET data = data - 'epc' WHERE id = $1", [id]); ltEpc(p, { id: id, property_address: newAddr, data: {} }).catch(function () {}); }
     res.json({ ok: true });
@@ -7502,7 +7543,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!t || t.status === 'cancelled') return res.status(404).json({ ok: false, error: 'not-found' });
     if (!(t.data || {}).viewed_at) p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'viewed_at')", [t.id, JSON.stringify([ltLog(req, 'Landlord opened the agreement link', 'landlord')])]).catch(function () {});
     res.json({ ok: true, ref: ltRef(t.id), status: t.status, property: t.property_address, landlord_name: t.landlord_name, landlord_email: t.landlord_email, landlord_phone: t.landlord_phone,
-      fees: t.fees, lines: feeLines(t.fees || {}), examples: feeExamples(t.fees || {}), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
+      fees: t.fees, lines: feeLines(t.fees || {}), examples: feeExamples(t.fees || {}), known: t.status === 'signed' ? null : ltPublicKnown((t.data || {}).known), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
   }));
   app.post('/api/landlord-terms/:token/sign', withDb(async function (p, req, res) {
     if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -7695,7 +7736,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const cEnsure = function (need) { if (y - need < 76) nextCol(); };
     (LT_TERMS.clauses || []).forEach(function (c) {
       if (c.h) { const noRen = c.n === '1.2' && !(f.renewal && f.find !== 'none'); const hl = wrap(c.n + '  ' + c.h, B, 8.6, colW); cEnsure(hl.length * 11 + 30); y -= 4; hl.forEach(function (ln) { text(ln, colX(), y, 8.6, B, C.navy); y -= 11; }); if (noRen) { pill('NOT APPLICABLE - NO ANNIVERSARY FEE AGREED', colX(), y - 8, C.green, C.greenBg, 6.4); y -= 16; } else if (c.n === '1.1' && f.find_monthly && f.find !== 'none') { wrap('Agreed for this property: the Initial Commission is paid monthly, in 12 equal instalments over the first 12 months of the tenancy, instead of in advance. Clauses 1.1.2 and 1.1.3 apply on that basis; if the tenancy ends early, any instalments still owing remain payable subject to clause 1.1.5.', F, 7.2, colW).forEach(function (ln) { text(ln, colX(), y, 7.2, F, C.blue); y -= 9.2; }); y -= 4; } else if (c.n === '1.2') { wrap(LT_TERMS.anniversary_note || '', F, 7.2, colW).forEach(function (ln) { text(ln, colX(), y, 7.2, F, C.blue); y -= 9.2; }); y -= 4; } y -= 2; return; }
-      const ls = wrap(c.t, F, 7.4, colW - 26); cEnsure(Math.min(ls.length, 4) * 9.4 + 2);
+      const ls = wrap(c.t, F, 7.4, colW - 26); cEnsure(Math.min(ls.length, 2) * 9.4 + 2);
       text(c.n, colX(), y, 7, B, C.soft);
       ls.forEach(function (ln, j) { if (j && y - 10 < 76) { nextCol(); } text(ln, colX() + 26, y, 7.4, F, C.ink); y -= 9.4; }); y -= 3;
     });
