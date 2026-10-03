@@ -387,6 +387,11 @@
   .tcy-locked button:disabled { opacity: .45; cursor: default; }
   .cert-up { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin: 0 0 12px; padding: 14px 16px; border: 1.5px dashed var(--line); border-radius: 14px; background: var(--panel); cursor: pointer; }
   /* Home reminders: one box that can be minimised to a row of chips. */
+  .tile-sub { font-size: .74rem; color: var(--ink-soft); margin-top: 2px; line-height: 1.3; }
+  .mk { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 4px; font-size: .84rem; color: var(--ink-soft); }
+  .mk-b { border: 1px solid var(--line, #e5e7eb); background: var(--panel-2, #f6f7f9); color: inherit; border-radius: 999px; padding: 3px 10px; font: inherit; font-size: .84rem; cursor: pointer; }
+  .mk-b.on { border-color: var(--ink, #111); color: var(--ink, #111); font-weight: 650; }
+  .mk .mk-c { width: 70px; flex: 0 0 70px; padding: 4px 8px; font-size: .84rem; min-height: 0; }
   .todo-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
   .todo-head b { font-size: .9rem; }
   .todo-chips { display: none; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; min-width: 0; }
@@ -5581,7 +5586,7 @@
           '<div><label class="lbl" for="fEst">Estimated cost (£)</label><input class="inp" id="fEst" inputmode="decimal" value="' + esc(j.estimated_cost == null ? '' : j.estimated_cost) + '"></div>' +
           '<div><label class="lbl" for="fAct">Actual cost (£)</label><input class="inp" id="fAct" inputmode="decimal" value="' + esc(j.actual_cost == null ? '' : j.actual_cost) + '"></div>' +
           '<div><label class="lbl" for="fCharge">Charge to landlord (£)' + (jobParts.length ? ' <span style="font-weight:500;color:var(--ink-faint)">+ parts below</span>' : '') + '</label><input class="inp" id="fCharge" inputmode="decimal" value="' + esc(j.landlord_charge == null ? '' : j.landlord_charge) + '"></div>' +
-        '</div>' +
+        '</div>' + mkChips('data-mk-base="#fAct,#fEst" data-mk-target="#fCharge"', 'Our price = contractor’s price +') +
         '<div class="profit-box" id="profitBox"><div><div class="lbl2" id="profitLbl">Profit</div><div class="big" id="profitVal">—</div></div><div class="lbl2" id="profitMargin"></div></div>' +
         (j.assigned_to && j.actual_cost != null
           ? '<div class="nearby" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
@@ -5595,7 +5600,7 @@
         (jobParts.length ? '<div class="parts-list">' + jobParts.map(function(x){
           return '<div class="part-row" data-part="' + x.id + '"><div class="pd"><strong>' + esc(x.description) + '</strong>' + (x.supplier ? '<small>' + esc(x.supplier) + '</small>' : '') + '</div>' +
             '<select class="inp part-st" data-part-status="' + x.id + '" aria-label="Part status">' + ['Ordered', 'Arrived', 'Fitted'].map(function(s){ return '<option' + (s === x.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
-            '<div class="pm"><span>Cost ' + (x.cost == null ? '<em style="color:var(--red,#c00)">not set</em>' : esc(gbp(num(x.cost)))) + '</span><span class="pc">Landlord ' + (x.charge == null ? '<em style="color:var(--red,#c00)">not set</em>' : esc(gbp(num(x.charge)))) + '</span>' +
+            '<div class="pm"><span>Cost ' + (x.cost == null ? '<em style="color:var(--red,#c00)">not set</em>' : esc(gbp(num(x.cost)))) + '</span><span class="pc">Landlord ' + (x.charge == null ? '<em style="color:var(--red,#c00)">not set</em>' : esc(gbp(num(x.charge))) + mkPct(x.cost, x.charge)) + '</span>' +
               '<button type="button" class="linkish" data-part-edit="' + x.id + '">✎ Edit</button></div>' +
             '<button type="button" class="btn small ghost" data-part-del="' + x.id + '" aria-label="Remove part">✕</button>' +
             '<div class="part-edit" data-part-form="' + x.id + '" style="grid-column:1/-1;display:none;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;align-items:end">' +
@@ -5603,7 +5608,9 @@
               '<div><label class="lbl">Supplier</label><input class="inp" data-pe="supplier" value="' + esc(x.supplier || '') + '"></div>' +
               '<div><label class="lbl">What we paid (£)</label><input class="inp" data-pe="cost" inputmode="decimal" placeholder="0.00" value="' + esc(x.cost == null ? '' : x.cost) + '"></div>' +
               '<div><label class="lbl">Charge to landlord (£)</label><input class="inp" data-pe="charge" inputmode="decimal" placeholder="0.00" value="' + esc(x.charge == null ? '' : x.charge) + '"></div>' +
-              '<div><button type="button" class="btn small primary" data-part-save="' + x.id + '">Save part</button></div></div>' +
+              '<div><button type="button" class="btn small primary" data-part-save="' + x.id + '">Save part</button></div>' +
+              '<div style="grid-column:1/-1">' + mkChips('data-mk-scope="[data-part-form]" data-mk-base="[data-pe=cost]" data-mk-target="[data-pe=charge]"', 'Landlord price = what we paid +') + '</div></div>' +
+            (x.cost != null && num(x.cost) > 0 ? '<div style="grid-column:1/-1">' + mkChips('data-mk-part="' + x.id + '" data-mk-job="' + j.id + '" data-mk-cost="' + num(x.cost) + '"', num(x.charge) > num(x.cost) ? 'Change markup:' : 'Add our markup:') + '</div>' : '') +
             '<div class="part-tell' + (x.id === partJust ? ' just' : '') + '">' + (x.id === partJust ? '<span>Let them know it’s ' + esc(String(x.status).toLowerCase()) + ':</span>' : '') +
               '<button type="button" class="btn small" data-part-tell="tenant" data-pid="' + x.id + '">💬 Tell tenant</button>' +
               '<button type="button" class="btn small" data-part-tell="landlord" data-pid="' + x.id + '">🏠 Tell landlord</button></div></div>';
@@ -5617,7 +5624,7 @@
         '</div><div class="grid2" style="margin-top:10px">' +
           '<div><label class="lbl" for="ptCost">What we paid (£)</label><input class="inp" id="ptCost" inputmode="decimal" placeholder="0.00"></div>' +
           '<div><label class="lbl" for="ptCharge">Charge to landlord (£)</label><input class="inp" id="ptCharge" inputmode="decimal" placeholder="0.00"></div>' +
-        '</div><div class="row-actions"><button class="btn primary" id="ptAdd" type="button">+ Add part</button></div></div>' +
+        '</div>' + mkChips('data-mk-base="#ptCost" data-mk-target="#ptCharge"', 'Landlord price = what we paid +') + '<div class="row-actions"><button class="btn primary" id="ptAdd" type="button">+ Add part</button></div></div>' +
       '</div>' +
       '<div class="card" data-pane="money"><h3>Landlord invoices' + (jobInvoices.length ? ' <span class="count-chip">' + jobInvoices.length + '</span>' : '') + '</h3>' +
         (jobInvoices.length
@@ -6593,10 +6600,11 @@
     var monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
     var received = allInvoices.filter(function(i){ return i.paid_at && new Date(i.paid_at) >= monthStart; });
     $('llTiles').innerHTML =
-      '<div class="tile blue"><div class="k">Owed to us</div><div class="v">' + gbp(sumTotal(unpaid)) + '</div></div>' +
+      '<div class="tile blue" title="Landlord invoices not paid yet"><div class="k">Landlords owe us</div><div class="v">' + gbp(sumTotal(unpaid)) + '</div><div class="tile-sub">unpaid invoices</div></div>' +
       '<div class="tile"><div class="k">Unpaid invoices</div><div class="v">' + unpaid.length + '</div></div>' +
       '<div class="tile alert' + (overdue.length ? ' has' : '') + '"><div class="k">Overdue</div><div class="v">' + gbp(sumTotal(overdue)) + '</div></div>' +
-      '<div class="tile good"><div class="k">Received this month</div><div class="v">' + gbp(sumTotal(received)) + '</div></div>';
+      '<div class="tile good" title="' + esc(received.map(function(i){ return i.number + ' ' + gbp(i.total) + (i.property_address ? ' — ' + shortAddr(i.property_address) : ''); }).join('\n') || 'None yet') + '"><div class="k">Landlords paid us this month</div><div class="v">' + gbp(sumTotal(received)) + '</div>' +
+        '<div class="tile-sub">' + received.length + ' invoice' + (received.length === 1 ? '' : 's') + ' marked paid since 1 ' + MONTHS_EN[new Date().getMonth()].slice(0, 3) + (received.length && received.length <= 3 ? ': ' + esc(received.map(function(i){ return i.number; }).join(', ')) : '') + '</div></div>';
     var q = $('llSearch').value.trim().toLowerCase(), digits = q.replace(/\D/g, '');
     var list = landlords.filter(function(l){
       if (!q) return true;
@@ -7935,6 +7943,42 @@
       loadAllInvoices().then(function(){ if (view === 'll' && openLlId) renderLandlord(); if (ni.after) ni.after(d); });
     });
   });
+  // ---------- Markup: our price from a cost (contractor's price or a part) ----------
+  var MARKUPS = [10, 15, 20, 25, 30];
+  var mkR2 = function(v){ return Math.round((Number(v) || 0) * 100) / 100; };
+  function mkLast(){ try { return Number(localStorage.getItem('rr_markup')) || 0; } catch (e) { return 0; } }
+  function mkChips(attrs, label){
+    var last = mkLast();
+    return '<div class="mk" ' + attrs + '><span>' + esc(label) + '</span>' + MARKUPS.map(function(p){ return '<button type="button" class="mk-b' + (p === last ? ' on' : '') + '" data-mk="' + p + '">' + p + '%</button>'; }).join('') +
+      '<input class="inp mk-c" data-mk-custom inputmode="decimal" placeholder="%" aria-label="Other markup %"' + (last && MARKUPS.indexOf(last) === -1 ? ' value="' + last + '"' : '') + '></div>';
+  }
+  function mkPct(cost, charge){ var c = num(cost), ch = num(charge); return c > 0 && ch != null && Math.abs(ch - c) > 0.004 ? ' <small style="color:var(--ink-soft)">(' + (ch > c ? '+' : '') + Math.round((ch / c - 1) * 1000) / 10 + '%)</small>' : ''; }
+  function mkApply(box, pct){
+    if (!(pct >= 0)) return;
+    try { localStorage.setItem('rr_markup', String(pct)); } catch (e) {}
+    box.querySelectorAll('.mk-b').forEach(function(b){ b.classList.toggle('on', Number(b.dataset.mk) === pct); });
+    // A saved part: the landlord price is saved straight away.
+    if (box.dataset.mkPart) {
+      var cost = Number(box.dataset.mkCost), price = mkR2(cost * (1 + pct / 100));
+      api('PATCH', '/api/admin/parts/' + box.dataset.mkPart, { charge: price }).then(function(d){
+        if (!d.ok) { toast('Couldn’t save the price'); return; }
+        toast('Landlord price ' + gbp(price) + ' (' + gbp(cost) + ' + ' + pct + '%)');
+        // Re-open the job on its Money tab so the parts total and profit update.
+        drawerTab = 'money'; openJob(Number(box.dataset.mkJob)); loadJobs();
+      });
+      return;
+    }
+    var scope = (box.dataset.mkScope && box.closest(box.dataset.mkScope)) || document;
+    var base = null; box.dataset.mkBase.split(',').some(function(sel){ var el = scope.querySelector(sel); var v = el ? num(el.value) : null; if (v != null && v > 0) { base = v; return true; } return false; });
+    if (base == null) { toast('Enter the cost first'); return; }
+    var t = scope.querySelector(box.dataset.mkTarget); if (!t) return;
+    t.value = mkR2(base * (1 + pct / 100)).toFixed(2); t.dispatchEvent(new Event('input', { bubbles: true }));
+    toast(gbp(base) + ' + ' + pct + '% = ' + gbp(num(t.value)) + ' — remember to save');
+  }
+  document.addEventListener('click', function(e){ var b = e.target.closest('.mk [data-mk]'); if (b) { e.preventDefault(); e.stopPropagation(); mkApply(b.closest('.mk'), Number(b.dataset.mk)); } }, true);
+  document.addEventListener('keydown', function(e){ var c = e.target.closest && e.target.closest('.mk [data-mk-custom]'); if (c && e.key === 'Enter') { e.preventDefault(); mkApply(c.closest('.mk'), num(c.value)); } });
+  document.addEventListener('change', function(e){ var c = e.target.closest && e.target.closest('.mk [data-mk-custom]'); if (c && c.value.trim()) mkApply(c.closest('.mk'), num(c.value)); });
+
   // ---------- Home reminders box: minimise to chips (remembered) ----------
   (function(){
     var box = $('todoBox'), ids = ['tcyEndBanner', 'feeBanner', 'stBanner', 'rentBanner', 'certBanner'];
