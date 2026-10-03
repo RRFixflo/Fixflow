@@ -94,23 +94,70 @@ function allowedByRateLimit(ip, map, max) {
 // view them, which roughly doubles the size of a report with many photos.
 app.use(express.json({ limit: '60mb' }));
 
+// Smaller downloads: pages and data are sent compressed (brotli or gzip) when the
+// browser accepts it — the dashboard page is ~900 KB, a few hundred KB compressed.
+const zlib = require('zlib');
+const fs = require('fs');
+const crypto = require('crypto');
+function pickEncoding(req) {
+  const ae = String(req.headers['accept-encoding'] || '');
+  return /\bbr\b/.test(ae) ? 'br' : /\bgzip\b/.test(ae) ? 'gzip' : null;
+}
+// Text responses (JSON from the API, pages built on the server) over ~1.5 KB.
+app.use(function (req, res, next) {
+  const send = res.send;
+  res.send = function (body) {
+    try {
+      const enc = pickEncoding(req), type = String(res.get('Content-Type') || (typeof body === 'string' ? 'text/html' : ''));
+      const isText = typeof body === 'string' || (Buffer.isBuffer(body) && /json|text|javascript|xml|svg/.test(type));
+      if (enc && isText && req.method !== 'HEAD' && !res.get('Content-Encoding') && res.statusCode !== 204 && res.statusCode !== 304 && /json|text|javascript|xml|svg/.test(type || 'text/html')) {
+        const buf = Buffer.isBuffer(body) ? body : Buffer.from(body, 'utf8');
+        if (buf.length > 1500) {
+          const out = enc === 'br' ? zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } }) : zlib.gzipSync(buf, { level: 6 });
+          if (!res.get('Content-Type')) res.type(typeof body === 'string' ? 'html' : 'bin');
+          res.setHeader('Content-Encoding', enc); res.setHeader('Vary', 'Accept-Encoding'); res.setHeader('Content-Length', out.length);
+          return res.end(out);
+        }
+      }
+    } catch (err) { console.error('Compression failed:', err.message); }
+    return send.call(this, body);
+  };
+  next();
+});
+// The HTML pages: compressed once per version of the file, with an ETag so an
+// unchanged page is a quick "not modified".
+const pageCache = {};
+function sendPage(req, res, file) {
+  let st; try { st = fs.statSync(file); } catch (e) { return false; }
+  let c = pageCache[file];
+  if (!c || c.mtime !== st.mtimeMs) {
+    const raw = fs.readFileSync(file);
+    c = pageCache[file] = { mtime: st.mtimeMs, raw: raw, gzip: zlib.gzipSync(raw, { level: 9 }), br: null, etag: '"' + crypto.createHash('sha1').update(raw).digest('base64').slice(0, 27) + '"' };
+    zlib.brotliCompress(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 10 } }, function (err, out) { if (!err && pageCache[file] === c) c.br = out; });
+  }
+  res.setHeader('Cache-Control', 'no-cache'); res.setHeader('ETag', c.etag); res.setHeader('Vary', 'Accept-Encoding');
+  res.type('html');
+  if (req.headers['if-none-match'] === c.etag) { res.status(304).end(); return true; }
+  let enc = pickEncoding(req); if (enc === 'br' && !c.br) enc = 'gzip';
+  const body = enc ? c[enc] : c.raw;
+  if (enc) res.setHeader('Content-Encoding', enc);
+  res.setHeader('Content-Length', body.length);
+  res.end(req.method === 'HEAD' ? undefined : body);
+  return true;
+}
+app.get(/^\/[\w-]+\.html$/, function (req, res, next) { if (!sendPage(req, res, path.join(__dirname, path.basename(req.path)))) next(); });
+
 // Serve the report tool as a static file — Railway sets PORT itself, so we read it
 // from the environment rather than hardcoding it.
 // Pages are always re-checked, so phones pick up a new version straight away
 // (images and icons can still be cached).
 const noCache = function (res, p) { if (/\.html$/.test(p)) res.setHeader('Cache-Control', 'no-cache'); };
-app.use(express.static(__dirname, { setHeaders: noCache }));
+app.use(express.static(__dirname, { setHeaders: noCache, index: false }));
 
-app.get('/', (req, res) => {
-  res.setHeader('Cache-Control', 'no-cache');
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+app.get('/', (req, res) => { sendPage(req, res, path.join(__dirname, 'index.html')); });
 
 // Staff dashboard for managing jobs (see jobs.js); its API needs ADMIN_PASSWORD.
-app.get('/admin', (req, res) => {
-  res.setHeader('Cache-Control', 'no-cache');
-  res.sendFile(path.join(__dirname, 'admin.html'));
-});
+app.get('/admin', (req, res) => { sendPage(req, res, path.join(__dirname, 'admin.html')); });
 
 const jobs = require('./jobs')(app, {
   sendEmail: function (opts) { return sendViaResend(opts); },
