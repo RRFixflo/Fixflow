@@ -68,7 +68,9 @@
   .actions { display:flex; gap:10px; justify-content:space-between; margin-top:8px; }
   .err { background:var(--brand-t); color:#a3141b; border-radius:12px; padding:11px 14px; font-weight:600; font-size:.9rem; margin:12px 0 0; }
   .note { background:var(--blue-t); color:#1d3fae; border-radius:12px; padding:11px 14px; font-size:.9rem; margin:0 0 14px; }
-  .done { text-align:center; padding:32px 20px; } .done .tick { width:64px; height:64px; border-radius:50%; background:#12b76a; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:2rem; margin-bottom:12px; }
+  .done { text-align:center; padding:32px 20px; } .done .tick { width:120px; height:120px; border-radius:50%; background:radial-gradient(circle at 30% 30%, #34d399, #12b76a 60%, #0e9f5c); display:inline-flex; align-items:center; justify-content:center; margin-bottom:16px; box-shadow:0 0 0 12px rgba(18,183,106,.14), 0 18px 40px -12px rgba(18,183,106,.6); animation:tickPop .6s cubic-bezier(.2,1.4,.4,1) both; }
+  .done .tick svg { width:64px; height:64px; } .done .tick path { stroke-dasharray:60; stroke-dashoffset:60; animation:tickDraw .5s .35s ease-out forwards; }
+  @keyframes tickPop { from { transform:scale(.3); opacity:0; } } @keyframes tickDraw { to { stroke-dashoffset:0; } }
   .epc { display:flex; gap:14px; align-items:center; padding:12px 14px; border-radius:14px; margin:0 0 10px; border:1px solid var(--line); } .epc b { display:block; } .epc span:not(.epc-r) { font-size:.86rem; color:var(--soft); }
   .epc.ok { background:var(--ok-t); border-color:#b7e2c6; } .epc.bad { background:var(--brand-t); border-color:#f3c0c0; } .epc.warn { background:var(--warn-t); border-color:#f3d9a8; }
   .epc { align-items:flex-start; } .epc-d { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; margin:10px 0 6px; font-size:.86rem; } .epc-d dt { color:var(--soft); } .epc-d dd { margin:0; font-weight:600; color:var(--ink); } @media (max-width:520px) { .epc-d { grid-template-columns:1fr; gap:0; } .epc-d dt { font-size:.76rem; margin-top:6px; } } .epc-l { font-size:.86rem; font-weight:700; color:var(--navy); }
@@ -127,12 +129,10 @@
 
   // ----- Step 1: the agreed fees -----
   function drawFees(){
-    var f = T.fees || {}, ex = [];
-    if (f.find !== 'none' && f.find_pct != null) { var a = 12000 * f.find_pct / 100; ex.push('At £1,000 a month, the initial commission of ' + f.find_pct + '% would be ' + gbp(a) + (f.vat !== false ? ' + VAT (' + gbp(a * 1.2) + ' inc VAT)' : '') + '.'); }
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) { var b = 1000 * f.ongoing_pct / 100; ex.push('At £1,000 a month, the ' + ({ manage: 'management', both: 'management and rent collection' }[f.ongoing] || 'rent collection') + ' fee of ' + f.ongoing_pct + '% would be ' + gbp(b) + (f.vat !== false ? ' + VAT (' + gbp(b * 1.2) + ' inc VAT)' : '') + ' a month.'); }
+    var f = T.fees || {}, ex = T.examples || [];
     $('app').innerHTML = '<div class="card"><h2>The fees we agreed</h2><p class="lead">For ' + esc(T.property) + '. These replace our standard scale of fees.</p>' +
       '<div class="fees">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (/^No (renewal|anniversary) fee$/.test(l.v) ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
-      (ex.length ? '<div class="example"><b>Examples:</b> ' + ex.map(esc).join(' ') + '</div>' : '') +
+      (ex.length ? '<div class="example"><b>Worked examples at £1,000 a month</b><ul style="margin:6px 0 0;padding-left:18px">' + ex.map(function(x){ return '<li style="margin:0 0 4px">' + esc(x) + '</li>'; }).join('') + '</ul></div>' : '') +
       '<p class="example">Something not right? Please contact us before signing. Reference ' + esc(T.ref) + '.</p>' +
       (T.epc ? '<h3 style="margin-top:18px">Your property’s EPC</h3>' + epcBox() : '') +
       '<div class="actions"><span></span><button class="btn dark" type="button" id="n1">Continue →</button></div></div>';
@@ -278,7 +278,7 @@
   }
   function showDone(){
     step = 4; drawStepper();
-    $('app').innerHTML = '<div class="card done"><div class="tick">✓</div><h2 style="font-size:1.5rem">Thank you — your agreement is signed</h2><p class="lead">We have your signed terms of business and property details for ' + esc(T.property) + '. A copy is below for your records.</p>' +
+    $('app').innerHTML = '<div class="card done"><div class="tick"><svg viewBox="0 0 52 52" fill="none"><path d="M14 27 l8 8 l16 -18" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h2 style="font-size:1.5rem">Thank you — your agreement is signed</h2><p class="lead">We have your signed terms of business and property details for ' + esc(T.property) + '. A copy is below for your records.</p>' +
       '<a class="btn dark" target="_blank" rel="noopener" href="/api/landlord-terms/' + token + '/pdf">⬇ Download your signed copy (PDF)</a><p class="opt" style="font-size:.84rem;margin-top:14px">Questions? Email info@residentialrealtors.co.uk or call 0207 096 8131.</p></div>';
   }
 })();
