@@ -8982,7 +8982,7 @@
   var ltItems = [], LT_DEF = { sole: [10, 1500, 9], multi: [12, 1700, 11], collect: [3, 40], manage: [6, 80], both: [9, 120] };
   function ltDefaults(e){
     var only = e && e.target ? e.target.id : '', fd = only === 'ltOn' ? null : LT_DEF[$('ltFind').value], od = only === 'ltFind' ? null : LT_DEF[$('ltOn').value];
-    if (fd) { $('ltFindPct').value = fd[0]; $('ltFindMin').value = fd[1]; $('ltRenPct').value = fd[2]; }
+    if (fd) { $('ltFindPct').value = fd[0]; $('ltFindMin').value = fd[1]; $('ltRenPct').value = fd[2]; delete $('ltRenPct').dataset.manual; }
     if (od) { $('ltOnPct').value = od[0]; $('ltOnMin').value = od[1]; }
     ltShowRows();
   }
@@ -9002,7 +9002,10 @@
   }
   function ltPreview(){ var L = ltLines(ltFees()); $('ltPreview').innerHTML = L.length ? '<b>The landlord will see:</b>' + L.map(function(l){ return '<div><span>' + esc(l[0]) + '</span>' + esc(l[1]) + '</div>'; }).join('') : ''; }
   ['ltFind', 'ltOn'].forEach(function(id){ $(id).addEventListener('change', ltDefaults); });
-  $('ltRen').addEventListener('change', ltShowRows); $('ltMonthly').addEventListener('change', ltPreview);
+  $('ltRen').addEventListener('change', ltShowRows);
+  // The anniversary fee follows the commission, 1% less, unless someone has typed their own.
+  $('ltRenPct').addEventListener('input', function(){ this.dataset.manual = '1'; });
+  $('ltFindPct').addEventListener('input', function(){ var v = parseFloat(this.value); if (!$('ltRenPct').dataset.manual && !isNaN(v)) { $('ltRenPct').value = Math.max(0, Math.round((v - 1) * 100) / 100); ltPreview(); } }); $('ltMonthly').addEventListener('change', ltPreview);
   $('ltNew').addEventListener('input', ltPreview); $('ltVat').addEventListener('change', ltPreview);
   ltDefaults();
   function loadLt(){ return api('GET', '/api/admin/landlord-terms').then(function(d){ if (!d.ok) return; ltItems = d.items; ltOrigin = d.origin || ''; renderLt(); var waiting = ltItems.filter(function(x){ return x.status === 'sent'; }).length; $('sLt').hidden = !waiting; $('sLt').textContent = waiting; }); }
@@ -9028,7 +9031,7 @@
     return '<div class="ltd">' +
       (docs ? '<div class="ltd-sec"><h4>Documents they sent</h4><div class="ltd-docs">' + docs + '</div></div>' : '<div class="ltd-sec"><h4>Documents they sent</h4><p class="muted-note" style="margin:0">None attached — ask for their photo ID and proof of address.</p></div>') +
       sec('Landlord', [['Landlord 1', dt.l1_name], ['Phone', dt.l1_phone ? '<a href="tel:' + esc(dt.l1_phone) + '">' + esc(dt.l1_phone) + '</a>' : '', true], ['Email', dt.l1_email ? '<a href="mailto:' + esc(dt.l1_email) + '">' + esc(dt.l1_email) + '</a>' : '', true], ['Landlord 2', [dt.l2_name, dt.l2_phone, dt.l2_email].filter(Boolean).join(' · ')], ['Legal owners on the tenancy', dt.legal_owners], ['Correspondence address', dt.corr_address], ['Company or trust', dt.company_details], ['Overseas address', dt.overseas_address]]) +
-      sec('Property', [['EPC', e ? (e.found ? 'Rating ' + (e.rating || '?') + (e.valid ? ', valid until ' : ', expired ') + certDay(e.expires_on) : 'None found on the register') : ''], ['Licence', dt.lic_status ? (LS[dt.lic_status] || dt.lic_status) + [dt.lic_type, dt.lic_council, dt.lic_number, dt.lic_expires ? 'expires ' + certDay(dt.lic_expires) : '', dt.lic_applied ? 'applied ' + certDay(dt.lic_applied) : ''].filter(Boolean).map(function(x){ return ' · ' + x; }).join('') : ''], ['Deposit scheme they use', dt.deposit_scheme]]) +
+      sec('Property', [['EPC', e ? (e.found ? 'Rating ' + (e.rating || '?') + (e.valid ? ', valid until ' : ', expired ') + certDay(e.expires_on) : 'None found on the register') : ''], ['Licence', dt.lic_status ? (LS[dt.lic_status] || dt.lic_status) + [dt.lic_type, dt.lic_council, dt.lic_number, dt.lic_expires ? 'expires ' + certDay(dt.lic_expires) : '', dt.lic_applied ? 'applied ' + certDay(dt.lic_applied) : ''].filter(Boolean).map(function(x){ return ' · ' + x; }).join('') : ''], ['Deposit scheme they’ll use', dt.deposit_scheme === 'Other' ? (dt.deposit_scheme_other || 'Other') : dt.deposit_scheme]]) +
       '<div class="ltd-sec"><h4>Their answers</h4><div class="ltd-grid">' + LT_Q.filter(function(q){ return dt[q[0]]; }).map(function(q){ return '<div><span>' + esc(q[1]) + '</span><b>' + yn(dt[q[0]]) + '</b></div>'; }).join('') + '</div></div>' +
       sec('Bank — rent and deposit paid to', dt.bank_type === 'intl' ? [['Bank', dt.bank_other], ['Account holder', dt.bank_account_name], ['IBAN', dt.bank_iban], ['SWIFT / BIC', dt.bank_swift]] : [['Bank', dt.bank_name === 'Other' ? dt.bank_other : dt.bank_name], ['Account holder', dt.bank_account_name], ['Sort code', dt.bank_sort], ['Account number', dt.bank_account]]) +
       (utilT ? '<div class="ltd-sec"><h4>Utilities</h4>' + utilT + '</div>' : '') + (applT ? '<div class="ltd-sec"><h4>Appliances under guarantee</h4>' + applT + '</div>' : '') +
@@ -9121,7 +9124,7 @@
     var f = t.fees || {}, set = function(id, v){ $(id).value = v == null ? '' : v; };
     ltEditId = t.id; set('ltName', t.landlord_name); set('ltAddr', t.property_address); set('ltEmail', t.landlord_email); set('ltPhone', t.landlord_phone);
     $('ltFind').value = f.find || 'sole'; set('ltFindPct', f.find_pct); set('ltFindMin', f.find_min); $('ltMonthly').checked = !!f.find_monthly;
-    $('ltRen').checked = !!f.renewal; set('ltRenPct', f.renewal_pct); $('ltOn').value = f.ongoing || 'none'; set('ltOnPct', f.ongoing_pct); set('ltOnMin', f.ongoing_min);
+    $('ltRen').checked = !!f.renewal; set('ltRenPct', f.renewal_pct); if (f.renewal_pct != null && f.find_pct != null && Number(f.renewal_pct) !== Number(f.find_pct) - 1) $('ltRenPct').dataset.manual = '1'; else delete $('ltRenPct').dataset.manual; $('ltOn').value = f.ongoing || 'none'; set('ltOnPct', f.ongoing_pct); set('ltOnMin', f.ongoing_min);
     $('ltVat').checked = f.vat !== false; set('ltOther', f.other);
     ltShowRows(); ltPreview(); $('ltEpc').hidden = true; ltEpcFor = t.property_address;
     $('ltEditRef').textContent = t.ref + ' · ' + shortAddr(t.property_address); $('ltEditing').hidden = false; $('ltEditCancel').hidden = false; $('ltCreate').textContent = 'Save changes';
