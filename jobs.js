@@ -1010,6 +1010,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
         (done.length ? '<h2 style="font-size:1.05rem;margin:22px 0 8px">Completed in the last 30 days</h2>' + done.map(function(j){
           return '<div class="card"><div style="opacity:.75"><div class="ref">' + esc(j.ref) + ' · ✓ Completed ' + esc(day(j.completed_at)) + '</div><div>' + esc(j.property_address || '') + '</div><div class="muted">' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div></div>' + noteBox(j) + '</div>';
         }).join('') : '');
+      Object.keys(picked).forEach(drawPicked);
     }).catch(function(){ list.innerHTML = '<p class="muted">Couldn’t load your jobs — please check your connection and refresh.</p>'; });
   }
   function card(j){
@@ -1046,7 +1047,8 @@ const CONTRACTOR_PAGE_JS = `(function(){
           '<textarea name="notes" rows="3" placeholder="What did you do? (optional)" style="padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit"></textarea>' +
           '<input name="price" inputmode="decimal" placeholder="Your price £ (optional)">' +
           (j.cert ? '<label class="muted" style="display:block">Date the ' + esc(j.cert) + ' was done<input type="date" name="cert_date" required value="' + new Date().toISOString().slice(0, 10) + '" style="display:block;width:100%;margin-top:4px"></label>' : '') +
-          '<label class="muted" style="display:block">Photos of the finished work (optional)<input type="file" name="photos" accept="image/*,.heic,.heif" multiple style="display:block;margin-top:6px;padding:10px;background:#fff"></label>' +
+          '<div class="muted">Photos of the finished work (optional, up to ' + MAXPH + ')</div><div class="phs" data-phs="' + j.id + '"></div>' +
+          '<label class="phadd" data-phadd="' + j.id + '">📷 Add photo<input type="file" accept="image/*,.heic,.heif" multiple data-phin="' + j.id + '" style="display:none"></label>' +
           '<button type="submit" style="background:#139A4B">Mark ' + esc(j.ref) + ' completed</button>' +
         '</form></details>' +
     '</div>';
@@ -1094,6 +1096,32 @@ const CONTRACTOR_PAGE_JS = `(function(){
         '<button type="submit">Send note</button>' +
       '</form></details>';
   }
+  // Photos of the finished work: added one or several at a time (camera or library), up to
+  // MAXPH, each shown as a thumbnail that can be removed before sending.
+  var MAXPH = 5, picked = {};
+  function drawPicked(id){
+    var box = document.querySelector('[data-phs="' + id + '"]'), add = document.querySelector('[data-phadd="' + id + '"]'), list2 = picked[id] || [];
+    if (!box) return;
+    box.innerHTML = list2.map(function(f, i){
+      var ok = /^image.(jpe?g|png|gif|webp)$/i.test(f.type || '');
+      if (ok && !f._url) f._url = URL.createObjectURL(f);
+      return '<div class="ph">' + (ok ? '<img src="' + f._url + '" alt="">' : '<span>📷<br>' + esc((f.name || 'photo').slice(0, 14)) + '</span>') + '<button type="button" data-phdel="' + id + '|' + i + '" aria-label="Remove">×</button></div>';
+    }).join('');
+    if (add) { add.style.display = list2.length >= MAXPH ? 'none' : ''; add.firstChild.nodeValue = list2.length ? '📷 Add another (' + list2.length + ' of ' + MAXPH + ')' : '📷 Add photo'; }
+  }
+  list.addEventListener('change', function(e){
+    var inp = e.target.closest('[data-phin]'); if (!inp) return;
+    var id = inp.dataset.phin, cur = picked[id] = picked[id] || [], added = Array.prototype.slice.call(inp.files || []);
+    var room = MAXPH - cur.length; if (added.length > room) alert('Up to ' + MAXPH + ' photos — the first ' + room + ' were added.');
+    added.slice(0, Math.max(0, room)).forEach(function(f){ cur.push(f); });
+    inp.value = ''; drawPicked(id);
+  });
+  list.addEventListener('click', function(e){
+    var d = e.target.closest('[data-phdel]'); if (!d) return;
+    var a = d.dataset.phdel.split('|'), l2 = picked[a[0]] || [], gone = l2.splice(Number(a[1]), 1)[0];
+    if (gone && gone._url) URL.revokeObjectURL(gone._url);
+    drawPicked(a[0]);
+  });
   // Photos are made smaller on the phone before sending (max 1600px, JPEG).
   function shrink(file){
     return new Promise(function(resolve){
@@ -1146,13 +1174,13 @@ const CONTRACTOR_PAGE_JS = `(function(){
     e.preventDefault();
     var btn = f.querySelector('button'); btn.disabled = true; btn.textContent = 'Saving…';
     var price = f.price.value.replace(/[£,\\s]/g, '');
-    var files = Array.prototype.slice.call(f.photos.files || [], 0, 10);
+    var files = (picked[f.dataset.done] || []).slice(0, MAXPH);
     if (files.length) btn.textContent = 'Uploading ' + files.length + ' photo' + (files.length === 1 ? '' : 's') + '…';
     Promise.all(files.map(shrink)).then(function(ph){ return fetch('/api/c/' + TOKEN + '/jobs/' + f.dataset.done + '/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ notes: f.notes.value.trim(), price: price === '' ? null : price, cert_date: f.cert_date ? f.cert_date.value : undefined, photos: ph.filter(Boolean) }) }); })
       .then(function(r){ return r.json(); }).then(function(d){
         if (!d.ok) { btn.disabled = false; btn.textContent = d.error === 'bad-price' ? 'Check the price and try again' : 'Couldn’t save — try again'; return; }
-        load();
+        delete picked[f.dataset.done]; load();
       }).catch(function(){ btn.disabled = false; btn.textContent = 'Couldn’t save — try again'; });
   });
   load();
@@ -5414,7 +5442,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const c = await portalContractor(p, req.params.token);
     if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
-    const b = req.body || {}, notes = str(b.notes, 3000), price = money(b.price), photos = decodePhotos(b.photos);
+    const b = req.body || {}, notes = str(b.notes, 3000), price = money(b.price), photos = decodePhotos(b.photos).slice(0, 5);
     if (price === undefined) return res.status(400).json({ ok: false, error: 'bad-price' });
     const mine = `archived_at IS NULL AND (lower(trim(assigned_to)) = lower(trim($2)) OR lower(trim(assigned_to_2)) = lower(trim($2))) AND status NOT IN ('Completed', 'Cancelled')`;
     const cur = (await p.query(`SELECT id, property_address, assigned_to, assigned_to_2, part_done_by FROM jobs WHERE id = $1 AND ` + mine, [jobId(req), c.name])).rows[0];
@@ -5551,6 +5579,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!c) return res.status(404).send(trackShell('Link not available', '<h1>Link not available</h1><p class="sub">This job link is no longer active. Please contact Residential Realtors.</p>', true));
     res.send(trackShell('Your jobs', '<h1>Hi ' + htmlEsc(c.name) + '</h1><p class="sub">Jobs from Residential Realtors. Tap a job for the details, and mark it completed when it’s done.</p>' +
       '<style>' +
+        '.phs{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.phs:empty{display:none}.ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#f1f2f4;display:flex;align-items:center;justify-content:center;font-size:.72rem;text-align:center;color:#666}.ph img{width:100%;height:100%;object-fit:cover}.ph button{position:absolute;top:3px;right:3px;width:24px;height:24px;padding:0;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:15px;line-height:24px;border:0}' +
+        '.phadd{display:block;text-align:center;padding:12px;border:1.5px dashed #c9ccd3;border-radius:12px;font-weight:600;cursor:pointer;color:#333}' +
         '.dt{margin-top:10px;border-top:1px solid #eee;padding-top:8px}.dt summary{cursor:pointer;font-weight:600;padding:6px 0;list-style:none}.dt summary::-webkit-details-marker{display:none}.dt summary:before{content:"▸ ";color:#888}.dt[open] summary:before{content:"▾ "}' +
         '.dbody{display:flex;flex-direction:column;gap:10px;margin-top:6px}.desc{white-space:pre-wrap;background:#f6f6f8;border-radius:12px;padding:10px 12px;font-size:.95rem}' +
         '.it{display:flex;gap:10px;align-items:flex-start}.it .ic{width:28px;text-align:center;font-size:1.1rem;flex:none}.lb{font-size:.78rem;color:#5b616e;text-transform:uppercase;letter-spacing:.03em}.vl{font-size:.98rem;word-break:break-word}' +
