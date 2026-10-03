@@ -1159,9 +1159,11 @@ const CONTRACTOR_PAGE_JS = `(function(){
       if (!d.ok) { list.innerHTML = '<p class="muted">This link is no longer active. Please contact Residential Realtors.</p>'; return; }
       var open = d.jobs.filter(function(j){ return j.status !== 'Completed'; }), done = d.jobs.filter(function(j){ return j.status === 'Completed'; });
       var booked = d.jobs.filter(function(j){ return j.appointment_date && j.status !== 'Completed'; }).length;
-      list.innerHTML = calBar(booked) + '<h2 style="font-size:1.05rem;margin:18px 0 8px">To do (' + open.length + ')</h2>' +
+      var urgentN = open.filter(function(j){ return j.urgency === 'Emergency' || j.urgency === 'Urgent'; }).length, st = document.getElementById('cStats');
+      if (st) st.innerHTML = '<div><b>' + open.length + '</b><span>To do</span></div><div><b>' + booked + '</b><span>Booked</span></div><div class="' + (urgentN ? 'hot' : '') + '"><b>' + urgentN + '</b><span>Urgent</span></div><div><b>' + done.length + '</b><span>Done · 30 days</span></div>';
+      list.innerHTML = calBar(booked) + '<h2 class="c-sec">To do (' + open.length + ')</h2>' +
         (open.length ? open.map(card).join('') : '<p class="muted">No jobs waiting — thank you!</p>') +
-        (done.length ? '<h2 style="font-size:1.05rem;margin:22px 0 8px">Completed in the last 30 days</h2>' + done.map(function(j){
+        (done.length ? '<h2 class="c-sec">Completed in the last 30 days</h2>' + done.map(function(j){
           return '<div class="card"><div style="opacity:.75"><div class="ref">' + esc(j.ref) + ' · ✓ Completed ' + esc(day(j.completed_at)) + '</div><div>' + esc(j.property_address || '') + '</div><div class="muted">' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div></div>' + noteBox(j) + '</div>';
         }).join('') : '');
       Object.keys(picked).forEach(drawPicked);
@@ -1171,7 +1173,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
     var urgent = j.urgency === 'Emergency' || j.urgency === 'Urgent';
     var access = j.direct_contact === 'No' ? 'Residential Realtors will arrange access with the tenant.' : 'Please contact the tenant directly to arrange a time.';
     var keys = j.key_permission ? j.key_permission + (j.key_instructions ? ' — ' + j.key_instructions : '') : '';
-    return '<div class="card" data-id="' + j.id + '">' +
+    return '<div class="card' + (urgent ? ' urg' : '') + '" data-id="' + j.id + '">' +
       '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><div class="ref">' + esc(j.ref) + '</div>' +
         (urgent ? '<span style="color:#D9262E;font-weight:700;font-size:.85rem">' + esc(j.urgency) + '</span>' : '<span class="muted">' + esc(j.status) + '</span>') + '</div>' +
       '<div style="font-weight:600;margin:4px 0">' + esc(j.property_address || '') + '</div>' +
@@ -3210,7 +3212,7 @@ module.exports = function mountJobs(app, opts) {
   const TARGET = { Emergency: 'within 48 hours', Urgent: 'within 5 days', Routine: 'within 14 days' };
   function whenUk(d) { return d ? new Date(d).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }) : ''; }
   // bare: no Back link or link to the tenant pages (the contractor's job page).
-  function trackShell(title, inner, bare) {
+  function trackShell(title, inner, bare, tag) {
     return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">' +
       '<link rel="icon" type="image/png" sizes="32x32" href="/icons/app-32.png"><link rel="apple-touch-icon" sizes="180x180" href="/icons/app-180.png">' +
       '<title>' + htmlEsc(title) + ' — Residential Realtors</title><style>' +
@@ -3239,8 +3241,16 @@ module.exports = function mountJobs(app, opts) {
       '.facts{display:grid;grid-template-columns:1fr 1fr;gap:10px}.fact{background:#f7f8fa;border-radius:12px;padding:10px 12px}.fact .k{font-size:.72rem;color:var(--faint);font-weight:600;text-transform:uppercase;letter-spacing:.05em}.fact .v{font-weight:600;font-size:.92rem;margin-top:2px}' +
       '.msg{border-top:1px solid var(--line);padding:14px 0 0;margin-top:14px}.sec+.msg{border-top:0;margin-top:0;padding-top:0}.msg .d{font-size:.78rem;color:var(--faint);font-weight:600;margin-bottom:4px}.msg .h{font-weight:650;font-size:.94rem;margin-bottom:4px}.msg .b{white-space:pre-line;font-size:.92rem;color:#2b2e36}' +
       '.help{display:flex;flex-direction:column;gap:10px}.help p{margin:0;color:var(--soft);font-size:.9rem}.btns{display:flex;flex-wrap:wrap;gap:8px}.btn2{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 16px;border-radius:12px;font-weight:600;font-size:.9rem;text-decoration:none;background:var(--ink);color:#fff}.btn2.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}' +
-      '@media (max-width:420px){.facts{grid-template-columns:1fr 1fr}.hero h1{font-size:1.18rem}}</style></head><body>' +
-      '<header><div class="in">' + (bare ? '<span class="logo"><img src="/logo-white.png" alt="Residential Realtors"></span>' : '<a class="logo" href="/"><img src="/logo-white.png" alt="Residential Realtors"></a>') + '<span class="tag">Maintenance</span></div></header><main>' + (bare ? '' : '<a class="back" href="/" onclick="if(history.length>1){history.back();return false}">&larr; Back</a>') + inner + '</main><footer>Residential Realtors · Property maintenance</footer><script src="/rrt.js" defer></script></body></html>';
+      '@media (max-width:420px){.facts{grid-template-columns:1fr 1fr}.hero h1{font-size:1.18rem}}' +
+      /* The navy Residential Realtors look, shared with the offer form, landlord terms and portal */
+      ':root{--navy:#0b1f3a;--bg:#f3f5f8;--shadow:0 1px 2px rgba(15,23,42,.04),0 18px 40px -22px rgba(15,23,42,.24)}body{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}' +
+      'header{background:radial-gradient(700px 260px at 92% -60%,rgba(217,38,46,.38),transparent 60%),linear-gradient(160deg,#13294b,#0b1f3a 55%,#08162b);padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08)}header .in{max-width:720px}' +
+      'header .logo img{height:44px;width:auto;display:block}header .tag{color:#ffb4b7;background:rgba(217,38,46,.16);border:1px solid rgba(255,180,183,.28);border-radius:999px;padding:5px 11px;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}' +
+      'main{max-width:720px}h1{letter-spacing:-.03em}.card{border-radius:20px;border:1px solid rgba(15,23,42,.06)}footer{max-width:720px}' +
+      '.btn2{border-radius:12px}a.more{color:#1d3fae}' +
+      '@media (max-width:520px){header .logo img{height:36px}}</style>' +
+      '<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></head><body>' +
+      '<header><div class="in">' + (bare ? '<span class="logo"><img src="/logo-white.png" alt="Residential Realtors"></span>' : '<a class="logo" href="/"><img src="/logo-white.png" alt="Residential Realtors"></a>') + '<span class="tag">' + htmlEsc(tag || 'Maintenance') + '</span></div></header><main>' + (bare ? '' : '<a class="back" href="/" onclick="if(history.length>1){history.back();return false}">&larr; Back</a>') + inner + '</main><footer>Residential Realtors · 0207 096 8131 · residentialrealtors.co.uk</footer><script src="/rrt.js" defer></script></body></html>';
   }
   function progressHtml(j) {
     const st = stageOf(j.status), cancelled = j.status === 'Cancelled';
@@ -4297,7 +4307,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           'var r=pv.querySelector(".go-rep");if(r)r.addEventListener("click",function(){pick(pv,"rep");var d=pv.querySelector(".lr");if(d){d.open=true;d.scrollIntoView({behavior:"smooth",block:"start"});var i=d.querySelector("input");if(i)setTimeout(function(){i.focus();},300);}});' +
           'var m=pv.querySelector(".go-msg");if(m)m.addEventListener("click",function(){pick(pv,"tcy");var d=pv.querySelector(".lt-msg");if(d){d.open=true;d.scrollIntoView({behavior:"smooth",block:"start"});}});});' +
       '})();</script>' +
-      '<p class="muted" style="text-align:center;margin-top:18px">Questions? Reply to our message or call the office.</p>', true));
+      '<p class="muted" style="text-align:center;margin-top:18px">Questions? Reply to our message or call the office.</p>', true, 'Landlord portal'));
   }));
 
   // The tenant page sends its photos here one at a time, straight after the
@@ -6249,7 +6259,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     const c = await portalContractor(p, req.params.token);
     if (!c) return res.status(404).send(trackShell('Link not available', '<h1>Link not available</h1><p class="sub">This job link is no longer active. Please contact Residential Realtors.</p>', true));
-    res.send(trackShell('Your jobs', '<h1>Hi ' + htmlEsc(c.name) + '</h1><p class="sub">Jobs from Residential Realtors. Tap a job for the details, and mark it completed when it’s done.</p>' +
+    res.send(trackShell('Your jobs', '<section class="c-hero"><div class="c-eye">Your jobs</div><h1>Hi ' + htmlEsc(c.name) + '</h1><p>Jobs from Residential Realtors. Tap a job for the details, and mark it completed when it’s done.</p><div class="c-stats" id="cStats"></div></section>' +
+      '<style>main{padding-top:0}.c-hero{margin:0 -16px 16px;padding:22px 20px 26px;color:#fff;background:radial-gradient(700px 300px at 95% -30%,rgba(217,38,46,.32),transparent 60%),linear-gradient(160deg,#13294b,#0b1f3a 60%,#08162b);border-radius:0 0 24px 24px}' +
+        '.c-hero h1{color:#fff;font-size:1.7rem;margin:6px 0 4px}.c-hero p{color:#c6d0de;margin:0}.c-eye{display:inline-block;color:#ffb4b7;background:rgba(217,38,46,.16);border:1px solid rgba(255,180,183,.28);border-radius:999px;padding:4px 10px;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}' +
+        '.c-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px}.c-stats:empty{display:none}.c-stats div{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px}.c-stats b{display:block;font-size:1.35rem;line-height:1.1}.c-stats span{font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;color:#a9b6c8;font-weight:600}.c-stats .hot b{color:#ffb4b7}' +
+        '.c-sec{font-size:.74rem!important;letter-spacing:.09em;text-transform:uppercase;color:#8b919c;margin:22px 0 10px!important;font-weight:700}.card[data-id]{position:relative;overflow:hidden}.card[data-id].urg{border-left:4px solid #D9262E}' +
+        '@media (max-width:520px){.c-stats{grid-template-columns:repeat(2,1fr)}.c-hero h1{font-size:1.45rem}}@media (min-width:720px){.c-hero{margin:16px 0;border-radius:24px}}</style>' +
       '<style>' +
         '.phs{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.phs:empty{display:none}.ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#f1f2f4;display:flex;align-items:center;justify-content:center;font-size:.72rem;text-align:center;color:#666}.ph img{width:100%;height:100%;object-fit:cover}.ph button{position:absolute;top:3px;right:3px;width:24px;height:24px;padding:0;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:15px;line-height:24px;border:0}' +
         '.prow{display:grid;grid-template-columns:1fr 110px;gap:6px;margin-bottom:6px}.linkbtn{background:none;border:0;color:#2563eb;font-weight:600;padding:2px 0;text-align:left;cursor:pointer;font:inherit;font-weight:600}' +
@@ -6262,7 +6277,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         '.cal-add{display:inline-block;margin-left:6px;font-size:.85rem;font-weight:600;color:#2F5BEA;text-decoration:none;white-space:nowrap}.calbar{background:#fff;border:1px solid #e6e7eb;border-radius:14px;padding:10px 14px;margin-top:10px}.calbar .acts{grid-template-columns:1fr 1fr}' +
       '</style>' +
       '<div id="list"><p class="muted">Loading…</p></div>' +
-      '<script>' + CONTRACTOR_PAGE_JS.replace('__TOKEN__', JSON.stringify(String(req.params.token))) + '</script>', true));
+      '<script>' + CONTRACTOR_PAGE_JS.replace('__TOKEN__', JSON.stringify(String(req.params.token))) + '</script>', true, 'Contractor portal'));
   }));
 
   // A job added by hand (phone call, email, inspection…). Uses the same cleaning
