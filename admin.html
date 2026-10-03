@@ -448,6 +448,11 @@
   .lt-card { margin-bottom: 12px; } .lt-h { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
   .lt-lines { margin: 10px 0; border-radius: 12px; background: var(--panel-2); padding: 8px 12px; } .lt-lines div { display: flex; gap: 12px; padding: 4px 0; font-size: .88rem; flex-wrap: wrap; } .lt-lines span { min-width: 200px; color: var(--ink-soft); }
   @media (max-width: 700px) { .lt-grid, .lt-fees { grid-template-columns: 1fr; } }
+  .oc-ll { margin: 10px 0; padding: 12px; border-radius: 12px; background: #eef2ff; display: flex; flex-direction: column; gap: 4px; } .oc-ll-b { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .cl { display: grid; gap: 6px; margin-top: 6px; } .cl-row { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 7px 10px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); flex-wrap: wrap; }
+  .cl-row.yes { background: #e8f6ee; border-color: #b7e2c6; } .cl-row.no { background: #fdecec; border-color: #f3c0c0; } .cl-t { font-size: .9rem; color: var(--ink); text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .cl-b { display: inline-flex; gap: 6px; } .cl-b button { border: 1px solid var(--line); background: #fff; border-radius: 999px; font: inherit; font-size: .76rem; font-weight: 700; padding: 3px 10px; cursor: pointer; color: var(--ink-soft); }
+  .cl-b button.on { background: #0d7a3d; border-color: #0d7a3d; color: #fff; } .cl-b button.no.on { background: #b42318; border-color: #b42318; }
   .off-send { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
   .switch-row { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; } .switch-row input { width: 18px; height: 18px; }
   .team-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -1098,7 +1103,7 @@
     <button class="nav" type="button" id="navAct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Activity</button>
     <button class="nav" type="button" id="navLt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg> Landlord terms <span class="count-chip" id="sLt" hidden></span></button>
     <button class="nav" type="button" id="navEmail" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
-    <button class="nav" type="button" id="navNew"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
+    <button class="nav" type="button" id="navNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <div class="side-sec">Links</div>
     <a class="nav" href="/" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Tenant report page</a>
     <a class="nav" href="/offer" target="_blank" rel="noopener" style="text-decoration:none" title="The form applicants fill in to make an offer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offer form (applicants)</a>
@@ -8395,6 +8400,84 @@
     if (!(n > 0)) { toast('Enter the amount received, e.g. ' + due); return null; }
     return n;
   }
+  // Their conditions, one per line: tick which ones the landlord agreed to.
+  function offConds(o){ var d = o.data || {}, list = d.conditions && d.conditions.length ? d.conditions : String(d.negotiate || '').split(/\n+/).map(function(x){ return x.trim(); }).filter(Boolean), dec = d.cond_decisions || {}; return list.map(function(t, i){ return { text: t, status: dec[i] || '' }; }); }
+  function offCondsHtml(o){
+    var cs = offConds(o);
+    if (!cs.length) return '<div class="oc-cond"><span>Their conditions</span><em>None given</em></div>';
+    return '<div class="oc-cond"><span>Their conditions — tick what the landlord agreed</span><div class="cl">' + cs.map(function(c, i){
+      return '<div class="cl-row ' + c.status + '"><span class="cl-t">' + esc(c.text) + '</span><span class="cl-b"><button type="button" data-cond="' + i + '" data-v="yes" class="' + (c.status === 'yes' ? 'on' : '') + '">✓ Agreed</button><button type="button" data-cond="' + i + '" data-v="no" class="no' + (c.status === 'no' ? ' on' : '') + '">✕ Not agreed</button></span></div>';
+    }).join('') + '</div></div>';
+  }
+  // Emails prepared in the office's own words. On a computer they download as an
+  // email draft (opens in Outlook/Mail, ready to send); on a phone the mail app opens.
+  var MAIL_FOOT = '\n\nThis e-mail message may contain confidential or legally privileged information and is intended only for the use of the intended recipient(s). Any unauthorised disclosure, dissemination, distribution, copying or the taking of any action in reliance on the information herein is prohibited. E-mails are not secure and cannot be guaranteed to be error free as they can be intercepted, amended, or contain viruses. Anyone who communicates with us by e-mail is deemed to have accepted these risks. Residential Realtors is not responsible for errors or omissions in this message and denies any responsibility for any damage arising from the use of e-mail. Any opinion and other statement contained in this message and any attachment are solely those of the author and do not necessarily represent those of the company. ©' + new Date().getFullYear() + ' Estallion Investments Limited. All rights reserved. Registered in England and Wales with company No. 08760284. VAT No. 178090487';
+  function mailSignoff(){
+    var who = meta.user && meta.user.name && meta.user.name !== 'Owner' && meta.user.name !== 'Offers staff' ? meta.user.name : 'Residential Realtors';
+    return '\n\nRegards,\n\n' + who + (who !== 'Residential Realtors' ? '\nResidential Realtors' : '') + '\n\nT: 0207 096 8131\nW: www.residentialrealtors.co.uk\nA: Residential Realtors, 28-30 Harper Road, London, SE1 6AD' + MAIL_FOOT;
+  }
+  function offSendMail(mail){
+    var coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
+    if (coarse) { location.href = 'mailto:' + mail.to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(mail.subject) + '&body=' + encodeURIComponent(mail.body); return; }
+    var blob = emlFile({ to: mail.to.join(', '), subject: mail.subject, body: mail.body }, []), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = mail.file + '.eml'; document.body.appendChild(a); a.click(); a.remove();
+    toast('Email draft downloaded — open it to check and send');
+  }
+  function ukDay(v){ return v ? String(v).slice(0, 10).split('-').reverse().join('/') : 'To be agreed'; }
+  // Offer accepted: the confirmation the office sends to all applicants.
+  function offConfirmMail(o){
+    var d = o.data || {}, ts = d.tenants || [], cs = offConds(o), yes = cs.filter(function(c){ return c.status === 'yes'; }), no = cs.filter(function(c){ return c.status === 'no'; }), open = cs.filter(function(c){ return !c.status; });
+    var emails = ts.map(function(t){ return t.email; }).filter(Boolean); if (!emails.length && o.lead_email) emails = [o.lead_email];
+    var pcm = Number((d.money || {}).pcm) || 0, pw = offPw(o), office = (meta.user && meta.user.email) || 'info@residentialrealtors.co.uk';
+    var hi = ts.length > 1 ? 'Hi all,' : 'Hi ' + (String(o.lead_name || '').split(/\s+/)[0] || 'there') + ',';
+    var body = hi + '\n\nWITHOUT PREJUDICE, SUBJECT TO CONTRACT, SUBJECT TO SATISFACTORY REFERENCES.\n\nRE: ' + o.property_address +
+      '\n\nOffer Details:\nPrice: £' + Math.round(pcm) + ' pcm / £' + Math.round(pw) + ' pw\nMove Date: ' + ukDay(d.move_in) + (d.stay ? '\nTerm: ' + d.stay : '') +
+      (yes.length || open.length ? '\nAdditional Details:\n' + yes.concat(open).map(function(c){ return '- ' + c.text; }).join('\n') : '') +
+      (no.length ? '\n\nPlease note the following were not agreed by the landlord:\n' + no.map(function(c){ return '- ' + c.text; }).join('\n') : '') +
+      '\n\nFurther to your application for the above mentioned property, I am delighted to confirm your offer has been accepted. Please send a copy of your ID and visa (if required) to info@residentialrealtors.co.uk.' +
+      '\n\nFrequently Asked Questions' +
+      '\n\nHow to satisfy Right to Rent requirements?\nPassport/Visa – We are required by law to see your passport in person before your tenancy can begin. If you are unable to attend the office promptly please email a scanned colour copy of your passport to ' + office + ' – we can only complete the tenancy once we have seen a physical passport/visa confirming your Right to Rent in the UK.' +
+      '\n\nWhat references do I need?\nEmployment – Confirmation of your employment and your salary; you will be required to provide your employer’s contact details. (Please remember to authorise your HR department in advance to provide a reference to Rent4Sure/Residential Realtors to support your application.)\nUniversity – Enrolment certificate confirming your studies.\nPrevious Landlord – Contact information for your landlord.\nBank Statement confirming Savings – A bank statement dated within the last 7 days showing a balance of a minimum of 3x the annual rent.' +
+      '\n\nWhen will I receive the tenancy agreement?\nOnce your references have been completed and have passed all the necessary checks, your tenancy agreement will be emailed to all tenants and guarantors via our electronic signature partner. Please ensure that you have read and understood all the terms in the agreement, and if you have any questions please get in touch as soon as possible by email. You are expected to return a completed copy of the tenancy agreement signed by all parties within 48 hours of receiving it. If you need more time to review it, please let the Property Management Team know as soon as possible.' +
+      '\n\nHow much do I have to pay?\nYour first rental instalment – multiply the weekly rent by 52 and divide the total by 12 (for this property: £' + pcm.toFixed(2) + ').\n5 weeks dilapidation deposit – the agreed weekly rent multiplied by 5 (£' + (pw * 5).toFixed(2) + ').\nMinus the holding fee already paid' + (o.paid_at ? ' (£' + Number(d.paid_amount != null ? d.paid_amount : (d.money || {}).holding || 0).toFixed(2) + ')' : '') + '.\nFunds must be cleared within 48 hours of signing the tenancy agreement, irrespective of the move-in date.' +
+      '\n\nWhen will I receive the keys?\nOn the day of your move in, an inventory clerk (if applicable) will meet you at the property to hand over the keys. The clerk will have compiled an Inventory and Schedule of Condition report before your arrival, which will be emailed to you within five working days of the start of your tenancy. It is your responsibility to return the signed copy within seven days of receiving it, with any written amendments or notes.' +
+      '\n\nWho is responsible for contacting the utility companies after I move in?\nYou as the tenant are responsible for setting up accounts with the utility companies directly when you move in and when you leave, providing meter readings at the beginning and end of the tenancy. Please contact the relevant Council Tax department and have your account set up before your tenancy starts. Confirmation that utility accounts have been set up will be needed once formal documents are received.' +
+      '\n\nHow do I pay rent?\nYou will need to set up a monthly standing order with your bank to the account details in your tenancy agreement. If it is agreed to pay a portion of your rent in advance, this must be paid by bank transfer on the dates in your tenancy agreement. Rent must be paid from one account only; we recommend all tenants set up a joint account.' +
+      '\n\nWhen will the rent leave my account?\nRent is paid by standing order and will leave your account 3 days before the rent due date so that it is in the recipient’s account on the due date (the due date is the date on which you moved in).' +
+      '\n\nWhat is the Tenant Deposit Protection Scheme?\nYour deposit will be protected by a tenancy deposit protection scheme. All deposits paid by a tenant for an Assured Shorthold Tenancy must be registered with a recognised deposit protection scheme within 30 days. Where appropriate, Residential Realtors will register the deposit on your behalf; more information can be found in your tenancy agreement.' +
+      '\n\nWhat is the ‘How to Rent’ guide?\nThe How to Rent guide helps you understand what questions to ask, what your rights are, and what responsibilities you have: https://www.gov.uk/government/publications/how-to-rent' +
+      '\n\nHow do I renew my contract?\nPlease tell Residential Realtors your intentions 2 months before the end of your tenancy to allow enough time to arrange the related administration. If you have any questions, please get in touch with the Property Management Team – ' + office + '.' +
+      (o.track_token ? '\n\nYou can follow your offer here: ' + offOrigin() + '/offer/track/' + o.track_token : '') + mailSignoff();
+    return { to: emails, subject: 'Offer accepted – ' + o.property_address + ' (' + o.ref + ')', body: body, file: 'Offer confirmation - ' + o.ref };
+  }
+  // The landlord's view of the offer, and their answer.
+  function offLlPill(o){
+    var r = (o.data || {}).landlord_response, v = (o.data || {}).landlord_viewed_at;
+    if (r) return '<span class="oc-pill ' + (r.answer === 'accept' ? 'ok' : r.answer === 'decline' ? 'no' : 'wait') + '" title="' + esc(r.note || '') + '">🏠 Landlord ' + (r.answer === 'accept' ? 'accepts' : r.answer === 'decline' ? 'declines' : 'wants to discuss') + (r.note ? ' — “' + esc(r.note.slice(0, 50)) + (r.note.length > 50 ? '…' : '') + '”' : '') + '</span>';
+    return (o.data || {}).landlord_token ? '<span class="oc-pill muted">🏠 ' + (v ? 'Landlord has seen the offer' : 'Sent to landlord') + '</span>' : '';
+  }
+  // The email to the landlord about a new offer, in the office's words.
+  function offLandlordMail(o, info){
+    var d = o.data || {}, pcm = Number((d.money || {}).pcm) || 0, ll = info.landlord || {}, first = String(ll.name || '').trim().split(/\s+/)[0];
+    var body = 'Dear ' + (first || 'Landlord') + ',\n\nRE: ' + o.property_address + '\n\nI am delighted to inform you we have received a formal offer on your property.\n\nOffer Details:\nPrice: £' + Math.round(pcm) + ' pcm\nMove Date: ' + ukDay(d.move_in) + (d.stay ? '\nTerm: ' + d.stay : '') +
+      '\n\nYou can see the full offer details here — the applicants, their work and income, guarantors and any conditions — and tell us whether you accept: ' + info.link +
+      '\n\nShould you wish to accept the applicants’ offer, please sign and return our Terms and Conditions of Business along with a copy of your passport' + (info.terms ? (info.terms.signed ? ' (we already have your signed terms — thank you).' : '. You can review and e-sign them here: ' + info.terms.link) : ' (an electronic copy will follow this email which will allow you to e-sign and return our terms and conditions).') +
+      '\n\nResidential Realtors are currently offering new landlords six months free management on all properties. No more nagging tenants, no more hassle — just sit back, put your feet up and let us handle the rest! Residential Realtors offers industry-leading software which makes reporting repairs easy for both landlords and tenants. Tenants can send simple and accurate reports through a picture-based system, with translation into English from over 40 languages — no more lengthy, confusing phone calls. Tenants can report repairs 24 hours a day, 7 days a week using their PC, mobile or tablet, and can easily report their issues or receive online guidance to solve problems themselves, saving time for everyone involved.' + (info.report ? ' Try it yourself: ' + info.report : '') +
+      '\n\nShould you wish to take advantage of this offer, or would like further details about our fully managed service, feel free to call me. I would be happy to go through the full service details and what else you can expect from your dedicated property manager.\n\nLook forward to hearing from you.' + mailSignoff().replace('\n\nRegards,', '');
+    return { to: ll.email ? [ll.email] : [], subject: 'Offer received – ' + o.property_address, body: body, file: 'Offer for landlord - ' + o.ref };
+  }
+  function offLlPanel(card, o, info){
+    var old = card.querySelector('.oc-ll'); if (old) old.remove();
+    var ll = info.landlord || {}, el = document.createElement('div'); el.className = 'oc-ll';
+    el.innerHTML = '<b>🏠 Send the offer to the landlord</b><span class="muted-note" style="margin:0">' + (ll.name ? 'Landlord on file: ' + esc(ll.name) + (ll.email ? ' · ' + esc(ll.email) : '') : 'No landlord on file for this property — add their email in the draft.') + ' Their page shows the offer without the applicants’ phone numbers, emails, dates of birth or IDs.</span>' +
+      '<div class="oc-ll-b"><button type="button" class="btn small primary" data-ll-mail>✉ Email the landlord</button><button type="button" class="btn small wa-btn" data-ll-wa>' + WA_ICON + 'WhatsApp</button><button type="button" class="btn small" data-ll-copy>🔗 Copy link</button><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(info.link) + '">Preview ↗</a></div>';
+    card.querySelector('.oc-actions').before(el);
+    el.addEventListener('click', function(e){
+      if (e.target.closest('[data-ll-copy]')) { offCopyText(info.link); return; }
+      if (e.target.closest('[data-ll-mail]')) { offSendMail(offLandlordMail(o, info)); api('POST', '/api/admin/offers/' + o.id, { note: 'Offer email prepared for the landlord' }); return; }
+      if (e.target.closest('[data-ll-wa]')) { var ph = String(ll.phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'); window.open('https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent('Hi ' + (String(ll.name || '').split(/\s+/)[0] || 'there') + ', we’ve received a formal offer on ' + shortAddr(o.property_address) + ' — £' + Math.round(Number(((o.data || {}).money || {}).pcm) || 0) + ' pcm. You can see the details and let us know if you accept here: ' + info.link + ' — Residential Realtors'), '_blank', 'noopener'); api('POST', '/api/admin/offers/' + o.id, { note: 'Offer sent to the landlord by WhatsApp' }); }
+    });
+  }
   // A WhatsApp chat with an applicant (UK numbers turned into +44), opened with a short hello.
   var WA_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.6-.3Z"/></svg>';
   function offWa(phone, name, o){
@@ -8416,14 +8499,6 @@
           : 'You have not paid a holding deposit, so there is nothing further you need to do.\n\n') + 'Kind regards,\nResidential Realtors';
       return 'mailto:' + encodeURIComponent(o.lead_email || '') + '?subject=' + encodeURIComponent((o.paid_at ? 'Holding deposit refund — ' : 'Your offer — ') + shortAddr(o.property_address) + ' (' + o.ref + ')') + '&body=' + encodeURIComponent(body);
     };
-    var acceptEmail = function(){
-      var first = String(o.lead_name || '').split(/\s+/)[0] || 'there', track = o.track_token ? offOrigin() + '/offer/track/' + o.track_token : '';
-      var body = 'Dear ' + first + ',\n\nGood news — the landlord has accepted your offer of ' + gbp(offPw(o)) + ' a week (' + gbp(m.pcm || 0) + ' a month) for ' + shortAddr(o.property_address) + ' (' + o.ref + ').\n\n' +
-        (o.paid_at ? 'We have received your holding deposit of ' + gbp(m.holding || 0) + ', which goes towards your first month’s rent.\n\n' : 'Please pay your holding deposit of ' + gbp(m.holding || 0) + ' now to secure the property, using the payment reference on your offer.\n\n') +
-        'Next steps:\n1. We will send the referencing forms for each tenant' + (d.guarantors_count ? ' and guarantor' : '') + ' — please complete them within 24 hours.\n2. Once references are back, we will send the tenancy agreement to sign.\n3. The rest of the move-in money (' + gbp(m.balance || 0) + ') is due when you sign.\n\n' +
-        (track ? 'You can follow your offer here: ' + track + '\n\n' : '') + 'Kind regards,\nResidential Realtors';
-      return 'mailto:' + encodeURIComponent(o.lead_email || '') + '?subject=' + encodeURIComponent('Your offer has been accepted — ' + shortAddr(o.property_address) + ' (' + o.ref + ')') + '&body=' + encodeURIComponent(body);
-    };
     return '<article class="oc oc-' + st[0] + '" data-off="' + o.id + '">' +
       '<header class="oc-head"><div class="oc-av">' + esc(initials || '?') + '</div>' +
         '<div class="oc-who"><div class="oc-addr">' + esc(o.property_address || '') + '</div>' +
@@ -8432,7 +8507,7 @@
         '<div class="oc-price"><div class="oc-pw">' + esc(gbp(offPw(o))) + '<small> /week</small></div><div class="oc-pcm">' + esc(gbp(m.pcm || 0)) + ' /month' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' /wk' : '') + '</div></div></header>' +
       '<div class="oc-status"><span class="oc-pill ' + st[0] + '">' + st[1] + '</span>' +
         (o.paid_at ? offPaidPill(o) : (o.status === 'rejected' || o.status === 'withdrawn' ? '' : d.paid_claim ? '<span class="oc-pill wait">💬 Says paid ' + esc(longDay(d.paid_claim.date)) + (d.paid_claim.from ? ' from ' + esc(d.paid_claim.from) : '') + ' — check the bank</span>' : '<span class="oc-pill warn">Deposit ' + esc(gbp(m.holding || 0)) + ' not received</span>')) +
-        (o.status === 'withdrawn' && o.paid_at ? '<span class="oc-pill muted">Deposit not refundable (their terms)</span>' : '') + rtrSummary(o) + '</div>' + rtrQuick(o) +
+        (o.status === 'withdrawn' && o.paid_at ? '<span class="oc-pill muted">Deposit not refundable (their terms)</span>' : '') + rtrSummary(o) + offLlPill(o) + '</div>' + rtrQuick(o) +
       '<div class="oc-grid">' + kv('Move in', d.move_in ? esc(longDay(d.move_in)) : '') + kv('Stay', esc(d.stay || '')) + kv('Tenants', String(ts.length)) + kv('Guarantors', d.guarantors_count ? String(d.guarantors_count) : '') +
         kv('Holding deposit', esc(gbp(m.holding || 0))) + kv('Due at signing', esc(gbp((m.balance || 0) - (o.paid_at && d.paid_amount != null ? Number(d.paid_amount) - (m.holding || 0) : 0)))) + '</div>' +
       (d.refund ? '<div class="oc-refund"><div><span>Refund to (given by the applicant)</span><b>' + esc(d.refund.name) + '</b> · ' + (d.refund.sort_code ? 'Sort code <b>' + esc(d.refund.sort_code) + '</b> · Account <b>' + esc(d.refund.account) + '</b>' : '') + (d.refund.iban ? ' · IBAN <b>' + esc(d.refund.iban) + '</b>' : '') +
@@ -8440,7 +8515,7 @@
         (d.refunded_at ? '<span class="oc-pill ok">✓ Refund sent ' + esc(fmtShort(d.refunded_at).split(',')[0]) + '</span> <button type="button" class="linkish" data-off-refunded="0">Undo</button>' : '<button type="button" class="btn small primary" data-off-refunded="1">✓ Refund sent</button>') + '</div>'
         : o.status === 'rejected' && o.paid_at ? '<div class="oc-refund"><div><span>Refund</span>Waiting for the applicant to give their account details (on their tracking page).</div></div>' : '') +
       (o.status === 'withdrawn' && d.withdraw_reason ? '<div class="oc-cond"><span>Why they withdrew</span>' + esc(d.withdraw_reason) + (d.withdraw_more ? ' — ' + esc(d.withdraw_more) : '') + '</div>' : '') +
-      '<div class="oc-cond"><span>Their conditions</span>' + (d.negotiate ? esc(d.negotiate) : '<em>None given</em>') + '</div>' +
+      offCondsHtml(o) +
       (d.about ? '<div class="oc-cond"><span>About them</span>' + esc(d.about) + '</div>' : '') +
       '<details class="oc-more"><summary>Tenants, IDs and references <b>' + ts.length + '</b></summary>' + ts.map(function(t, i){
         var mine = docs.filter(function(x){ return x.tenant_no === i + 1; });
@@ -8465,8 +8540,9 @@
           : '<button type="button" class="btn small ghost" data-off-act="new">Undo ' + ({ accepted: 'accept', rejected: 'reject', withdrawn: 'withdrawal' }[o.status] || '') + '</button>') +
         (o.status === 'withdrawn' ? '' : o.paid_at ? '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/receipt.pdf">🧾 Receipt</a><button type="button" class="btn small ghost" data-off-amount>Amount received</button><button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Deposit received</button>') +
         (o.status === 'rejected' && o.lead_email ? '<a class="btn small primary" data-off-refund href="' + esc(refundEmail()) + '">✉ ' + (o.paid_at ? 'Email for refund details' : 'Email them') + '</a>' : '') +
-        (o.status === 'accepted' && o.lead_email ? '<a class="btn small primary" data-off-accmail href="' + esc(acceptEmail()) + '">✉ Email: offer accepted</a>' : '') +
+        (o.status === 'accepted' && o.lead_email ? '<button type="button" class="btn small primary" data-off-accmail>✉ Offer confirmation</button>' : '') +
         (o.status === 'accepted' && !staffMode ? '<button type="button" class="btn small" data-off-tenants title="Save every applicant in your Tenants list at this property">👥 ' + (d.tenants_added_at ? 'Added as tenants ✓' : 'Add as tenants') + '</button><button type="button" class="btn small" data-off-tcy>🏠 Start tenancy</button>' : '') +
+        (o.status === 'rejected' || o.status === 'withdrawn' ? '' : '<button type="button" class="btn small" data-off-ll title="Send the landlord the offer to review (no applicant contact details)">🏠 Send to landlord</button>') +
         '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/pdf" title="The signed offer as a PDF, like the holding deposit form">📄 Offer form (PDF)</a>' +
         '<span class="oc-sp"></span>' +
         '<button type="button" class="btn small ghost" data-off-track title="The applicant’s private link to follow their offer">🔗 Tracking link</button>' +
@@ -8535,6 +8611,11 @@
         .then(function(d2){ busy(rs, false); if (!d2.ok) { toast(d2.error === 'file' ? 'Use a PDF, JPG or PNG' : 'Couldn’t save the check'); return; } toast('Right to rent check saved'); loadOffers(); }, function(){ busy(rs, false); toast('Couldn’t read that file'); });
       return;
     }
+    var llb = e.target.closest('[data-off-ll]');
+    if (llb) { busy(llb, true, '…'); api('POST', '/api/admin/offers/' + o.id + '/landlord-link', {}).then(function(d2){ busy(llb, false); if (!d2.ok) { toast('Couldn’t make the link'); return; } o.data.landlord_token = o.data.landlord_token || d2.link.split('/').pop(); offLlPanel(card, o, d2); }); return; }
+    var cb = e.target.closest('[data-cond]');
+    if (cb) { var cur = (offConds(o)[Number(cb.dataset.cond)] || {}).status, v = cur === cb.dataset.v ? '' : cb.dataset.v;
+      api('POST', '/api/admin/offers/' + o.id + '/conditions', { i: Number(cb.dataset.cond), v: v }).then(function(d2){ if (!d2.ok) { toast('Couldn’t save that'); return; } o.data.cond_decisions = {}; d2.conditions.forEach(function(c, i){ if (c.status) o.data.cond_decisions[i] = c.status; }); var tmp = document.createElement('div'); tmp.innerHTML = offCondsHtml(o); cb.closest('.oc-cond').replaceWith(tmp.firstChild); }); return; }
     var am = e.target.closest('[data-off-amount]');
     if (am) { var nv = offAskAmount(o); if (nv == null) return; api('POST', '/api/admin/offers/' + o.id, { paid_amount: nv }).then(function(d2){ toast(d2.ok ? 'Amount received saved: ' + gbp(nv) : 'Couldn’t save that'); loadOffers(); }); return; }
     var a = e.target.closest('[data-off-act]'), pd = e.target.closest('[data-off-paid]');
@@ -8552,7 +8633,7 @@
     }
     var rfb = e.target.closest('[data-off-refunded]');
     if (rfb) { api('POST', '/api/admin/offers/' + o.id, { refunded: rfb.dataset.offRefunded === '1' }).then(function(d2){ if (!d2.ok) { toast('Couldn’t save that'); return; } toast(rfb.dataset.offRefunded === '1' ? 'Refund marked as sent' : 'Undone'); loadOffers(); }); return; }
-    if (e.target.closest('[data-off-accmail]')) { api('POST', '/api/admin/offers/' + o.id, { note: 'Emailed to say the offer was accepted' }); return; }
+    if (e.target.closest('[data-off-accmail]')) { offSendMail(offConfirmMail(o)); api('POST', '/api/admin/offers/' + o.id, { note: 'Offer confirmation email prepared for the applicants' }); return; }
     var tb = e.target.closest('[data-off-tenants]');
     if (tb) {
       busy(tb, true, 'Adding…');

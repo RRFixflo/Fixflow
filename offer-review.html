@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Offer for your property — Residential Realtors</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/app-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --navy:#0b1f3a; --ink:#0f1115; --ink2:#2a2e37; --soft:#5f6673; --faint:#9aa0ab; --line:#e7e9ee; --bg:#f3f5f8; --brand:#D9262E; --ok:#12924a; --ok-t:#e8f6ee; --blue:#2453e8; --blue-t:#edf2ff; }
+  * { box-sizing:border-box; } body { margin:0; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); line-height:1.5; -webkit-font-smoothing:antialiased; }
+  [hidden] { display:none !important; }
+  .top { background:rgba(11,31,58,.97); border-bottom:1px solid rgba(255,255,255,.08); } .top .in { max-width:860px; margin:0 auto; padding:12px 20px; display:flex; justify-content:space-between; align-items:center; } .top img { height:46px; display:block; }
+  .secure { color:#c6d0de; font-size:.8rem; }
+  .hero { color:#fff; background:radial-gradient(900px 420px at 92% -20%, rgba(217,38,46,.38), transparent 60%), linear-gradient(160deg, #13294b, #0b1f3a 55%, #08162b); }
+  .hero .in { max-width:860px; margin:0 auto; padding:32px 20px 74px; }
+  .eyebrow { display:inline-block; color:#ffb4b7; background:rgba(217,38,46,.16); border:1px solid rgba(255,180,183,.28); border-radius:999px; padding:5px 11px; font-size:.72rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+  h1 { font-size:clamp(1.6rem, 3.4vw, 2.3rem); letter-spacing:-.03em; margin:12px 0 6px; line-height:1.15; } .hero p { color:#c6d0de; margin:0; }
+  .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-top:20px; } .stats div { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:10px 12px; }
+  .stats span { display:block; font-size:.7rem; letter-spacing:.06em; text-transform:uppercase; color:#94a3b8; font-weight:600; } .stats b { font-size:1.05rem; }
+  .wrap { max-width:860px; margin:-46px auto 0; padding:0 20px 80px; position:relative; }
+  .card { background:#fff; border:1px solid rgba(15,23,42,.06); border-radius:20px; padding:22px; margin-bottom:16px; box-shadow:0 1px 2px rgba(15,23,42,.04), 0 18px 40px -22px rgba(15,23,42,.22); }
+  .card h2 { margin:0 0 12px; font-size:1.2rem; letter-spacing:-.02em; }
+  .ten { border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:10px; } .ten b.n { font-size:1.02rem; }
+  .row { display:flex; gap:12px; padding:5px 0; font-size:.92rem; border-top:1px solid #f1f2f5; } .row:first-of-type { border-top:0; } .row span { flex:0 0 150px; color:var(--soft); }
+  .pill { display:inline-block; border-radius:999px; padding:2px 10px; font-size:.76rem; font-weight:700; background:var(--blue-t); color:#1d3fae; margin-left:6px; } .pill.ok { background:var(--ok-t); color:var(--ok); }
+  .cond { display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-top:1px solid var(--line); } .cond:first-of-type { border-top:0; } .cond em { font-style:normal; font-weight:700; font-size:.82rem; color:var(--soft); white-space:nowrap; } .cond.yes em { color:var(--ok); } .cond.no em { color:#a3141b; }
+  .ans { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin:12px 0; } .ans label { border:1.5px solid var(--line); border-radius:14px; padding:14px; cursor:pointer; font-weight:700; text-align:center; } .ans input { display:none; } .ans label:has(input:checked) { border-color:var(--navy); background:#f0f3f8; }
+  textarea, input[type=text] { width:100%; padding:12px 14px; border:1px solid #dce0e7; border-radius:12px; font:inherit; font-size:16px; margin-top:8px; }
+  .btn { border:0; background:var(--navy); color:#fff; font:inherit; font-weight:700; padding:13px 20px; border-radius:12px; cursor:pointer; margin-top:12px; } .btn:disabled { opacity:.6; }
+  .note { background:var(--ok-t); color:#0d6b37; border-radius:12px; padding:12px 14px; font-weight:600; }
+  .muted { color:var(--soft); font-size:.86rem; }
+  @media (max-width:640px) { .top img { height:38px; } .stats { grid-template-columns:1fr 1fr; } .wrap { padding:0 12px 80px; } .row { flex-direction:column; gap:0; } .row span { flex:none; font-size:.78rem; } .ans { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="top"><div class="in"><img src="/logo-white.png" alt="Residential Realtors" onerror="this.src='/logo.png'"><span class="secure">🔒 Private link</span></div></div>
+<div class="hero"><div class="in" id="hero"><span class="eyebrow">Offer for your property</span><h1>Loading…</h1></div></div>
+<div class="wrap" id="app"></div>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var gbp = function(v){ return '£' + (Math.round(v * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  var day = function(v){ return v ? new Date(v + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'To be agreed'; };
+  var token = (location.pathname.match(/\/offer\/review\/([\w-]{16,40})/) || [])[1];
+  fetch('/api/offers/review/' + token, { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+    if (!d.ok) { $('hero').innerHTML = '<span class="eyebrow">Offer</span><h1>Link not found</h1><p>Please contact Residential Realtors.</p>'; return; }
+    $('hero').innerHTML = '<span class="eyebrow">Offer ' + esc(d.ref) + '</span><h1>' + esc(d.property) + '</h1><p>We’ve received a formal offer on your property. Here are the details for you to review.</p>' +
+      '<div class="stats"><div><span>Rent</span><b>' + gbp(d.pcm) + '</b> <small style="color:#94a3b8">/month</small></div><div><span>Weekly</span><b>' + gbp(d.offer_pw) + '</b></div><div><span>Move in</span><b>' + esc(day(d.move_in)) + '</b></div><div><span>Term</span><b>' + esc(d.stay || '—') + '</b></div></div>';
+    var ten = d.tenants.map(function(t, i){
+      var rows = [['Income', [t.income, t.employment].filter(Boolean).join(', ')], ['Work', t.work], ['Gross salary', t.salary ? gbp(t.salary) + ' a year' : ''], ['Studying', t.study], ['Living now', t.status],
+        ['Guarantor', t.guarantor ? [t.guarantor.relation, t.guarantor.income ? gbp(t.guarantor.income) + ' a year' : '', t.guarantor.homeowner === 'Yes' ? 'UK home owner' : ''].filter(Boolean).join(' · ') || 'Yes' : '']];
+      return '<div class="ten"><b class="n">' + esc(t.name || 'Tenant ' + (i + 1)) + '</b>' + (i === 0 ? '<span class="pill">Lead</span>' : '') + '<span class="pill' + (t.right_to_rent === 'Checked' ? ' ok' : '') + '">Right to rent: ' + esc(t.right_to_rent) + '</span>' +
+        rows.filter(function(r){ return r[1]; }).map(function(r){ return '<div class="row"><span>' + r[0] + '</span><b>' + esc(r[1]) + '</b></div>'; }).join('') + '</div>';
+    }).join('');
+    var conds = d.conditions.length ? d.conditions.map(function(c){ return '<div class="cond ' + c.status + '"><span>' + esc(c.text) + '</span><em>' + (c.status === 'yes' ? '✓ Agreed' : c.status === 'no' ? '✕ Not agreed' : 'Asked for') + '</em></div>'; }).join('') : '<p class="muted" style="margin:0">None — they haven’t asked for anything extra.</p>';
+    var resp = d.response;
+    $('app').innerHTML = '<div class="card"><h2>The applicants</h2>' + ten + (d.about ? '<p class="muted" style="margin:6px 0 0"><b>About them:</b> ' + esc(d.about) + '</p>' : '') + '<p class="muted" style="margin:10px 0 0">Holding deposit: ' + (d.holding_paid ? '<b style="color:var(--ok)">received ✓</b>' : 'not received yet') + ' · Contact details and ID are kept by Residential Realtors. All offers are subject to references and right to rent checks.</p></div>' +
+      '<div class="card"><h2>Their conditions</h2>' + conds + '</div>' +
+      '<div class="card" id="respCard"><h2>Your decision</h2>' + (resp ? '<div class="note">Thank you — you told us you ' + ({ accept: 'accept the offer', decline: 'decline the offer', discuss: 'would like to discuss the offer' }[resp.answer]) + '. We’ll be in touch.</div><p class="muted">Changed your mind? Choose again below.</p>' : '<p class="muted" style="margin:0">Let us know what you’d like to do — we’ll take it from here.</p>') +
+        '<div class="ans"><label><input type="radio" name="ans" value="accept">✓ Accept</label><label><input type="radio" name="ans" value="discuss">💬 Discuss</label><label><input type="radio" name="ans" value="decline">✕ Decline</label></div>' +
+        '<input type="text" id="who" placeholder="Your name"><textarea id="note" rows="3" placeholder="Anything you’d like to add (optional)"></textarea><button class="btn" id="send">Send my decision</button><div id="msg" class="muted"></div></div>';
+    $('send').addEventListener('click', function(){
+      var a = document.querySelector('input[name=ans]:checked'); if (!a) { $('msg').textContent = 'Please choose Accept, Discuss or Decline.'; return; }
+      var b = this; b.disabled = true;
+      fetch('/api/offers/review/' + token + '/respond', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answer: a.value, name: $('who').value.trim(), note: $('note').value.trim() }) }).then(function(r){ return r.json(); }).then(function(x){
+        b.disabled = false; if (!x.ok) { $('msg').textContent = 'Couldn’t send — please try again.'; return; }
+        $('respCard').innerHTML = '<h2>Your decision</h2><div class="note">Thank you — we’ve let the team know you ' + ({ accept: 'accept the offer', decline: 'decline the offer', discuss: 'would like to discuss it' }[a.value]) + '. We’ll be in touch shortly.</div>';
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

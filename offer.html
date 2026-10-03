@@ -200,6 +200,13 @@
   .dwarn { margin-top:16px; position:relative; z-index:1; background:rgba(245,158,11,.16); border:1px solid rgba(245,158,11,.45); color:#fde7b0; border-radius:14px; padding:12px 14px; font-size:.95rem; line-height:1.45; }
   .dwarn b { color:#fff; }
   .dwarn.light { background:#fffaeb; border-color:#f3d9a8; color:#7a4d00; margin:14px 0 0; } .dwarn.light b { color:#5c3a00; }
+  .tconds { margin:4px 0 16px; padding:12px 14px; border:1px solid var(--line); border-radius:14px; } .tconds > b { display:block; margin-bottom:6px; }
+  .tc { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-top:1px solid var(--line); font-size:.92rem; } .tc:first-of-type { border-top:0; }
+  .tc em { font-style:normal; font-weight:700; color:var(--soft); white-space:nowrap; font-size:.82rem; } .tc.yes em { color:var(--ok); } .tc.no em { color:#a3141b; }
+  .cond-list { display:grid; gap:8px; } .cond { display:flex; align-items:center; gap:8px; }
+  .cond-n { flex:0 0 26px; height:26px; border-radius:50%; background:var(--blue-t); color:var(--blue); font-weight:700; font-size:.8rem; display:flex; align-items:center; justify-content:center; }
+  .cond button { flex:0 0 auto; border:0; background:none; font-size:1.3rem; color:var(--faint); cursor:pointer; padding:0 6px; }
+  .cond-add { border:1px dashed var(--line2); background:#fff; border-radius:12px; padding:10px 14px; font:inherit; font-weight:600; color:var(--blue); cursor:pointer; margin:8px 0 10px; width:100%; }
   .paid-big { display:flex; align-items:center; gap:14px; width:100%; text-align:left; border:0; cursor:pointer; font:inherit; color:#fff; background:linear-gradient(135deg, #12b76a, #0e9f5c); border-radius:18px; padding:16px 18px; box-shadow:0 12px 26px -12px rgba(18,183,106,.75), inset 0 1px 0 rgba(255,255,255,.25); transition:transform .15s, box-shadow .15s; animation:pbpulse 2.4s ease-in-out 1s 3; }
   .paid-big:hover { transform:translateY(-1px); box-shadow:0 16px 30px -12px rgba(18,183,106,.85); }
   .paid-big .pb-ico { flex:0 0 42px; height:42px; border-radius:50%; background:rgba(255,255,255,.22); display:flex; align-items:center; justify-content:center; } .paid-big .pb-ico svg { width:22px; height:22px; }
@@ -373,8 +380,8 @@
         </div>
         <div class="card">
           <h2>Your conditions</h2>
-          <p class="lead">Anything you’d like agreed before you move in.</p>
-          <div class="f"><textarea id="negotiate" rows="3" placeholder="e.g. furnished or unfurnished, pets, parking, anything to be fixed or cleaned first"></textarea>
+          <p class="lead">Anything you’d like agreed before you move in — <b>one condition per line</b>, so the landlord can agree to each one.</p>
+          <div class="f"><div id="condList" class="cond-list"></div><button type="button" class="cond-add" id="condAdd">+ Add another condition</button>
             <div class="note-warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>Please put <b>all</b> your conditions here. Anything asked for after your offer is submitted will not be considered.</span></div></div>
           <div class="f" style="margin-top:16px"><label class="l" for="about">About you <span class="opt">optional</span></label><textarea id="about" rows="3" placeholder="Who you are and what you do — anything that may interest the landlord"></textarea></div>
         </div>
@@ -461,11 +468,23 @@
   var per = 'pw', stay = '', tenantsN = 1, guarantorsN = 0, step = 1, files = {};
   // When they started filling in the form (for the signed agreement's audit trail).
   var startedAt = null; document.addEventListener('input', function(){ if (!startedAt) startedAt = new Date().toISOString(); }, true);
-  var STAYS = ['6 months', '9 months', '1 year', '18 months', '2 years', '3 years', '4 years', '5 years or more', 'As long as possible'];
+  var STAYS = ['1 year', '18 months', '2 years', '3 years', '4 years', '5 years or more', 'As long as possible'];
   var STEPS = ['Your offer', 'Tenants', 'Review & sign'];
 
   // ----- Property from the link (?p=...) -----
   try { var pq = new URLSearchParams(location.search).get('p'); if (pq) $('property').value = pq; } catch (e) {}
+
+  // ----- Conditions: one per line -----
+  var conds = [''], CEX = ['e.g. Furnished', 'e.g. A cat', 'e.g. New carpet in bedroom 2', 'e.g. Parking space included'];
+  function drawConds(){
+    $('condList').innerHTML = conds.map(function(c, i){ return '<div class="cond"><span class="cond-n">' + (i + 1) + '</span><input data-cond="' + i + '" maxlength="300" placeholder="' + CEX[i % CEX.length] + '" value="' + esc(c) + '">' + (conds.length > 1 ? '<button type="button" data-cdel="' + i + '" aria-label="Remove">×</button>' : '') + '</div>'; }).join('');
+  }
+  function getConds(){ return conds.map(function(c){ return c.trim(); }).filter(Boolean); }
+  $('condList').addEventListener('input', function(e){ var i = e.target.dataset.cond; if (i != null) conds[Number(i)] = e.target.value; });
+  $('condList').addEventListener('keydown', function(e){ if (e.key === 'Enter' && e.target.dataset.cond != null) { e.preventDefault(); $('condAdd').click(); } });
+  $('condList').addEventListener('click', function(e){ var d = e.target.closest('[data-cdel]'); if (!d) return; conds.splice(Number(d.dataset.cdel), 1); drawConds(); });
+  $('condAdd').addEventListener('click', function(){ if (conds.length >= 15) return; conds.push(''); drawConds(); var ins = $('condList').querySelectorAll('input'); ins[ins.length - 1].focus(); });
+  drawConds();
 
   // ----- Money -----
   function figures(){
@@ -748,7 +767,7 @@
       (num($('max_offer').value) ? row('Maximum offer', gbp(num($('max_offer').value)) + (per === 'pw' ? ' a week' : ' a month')) : '') +
       row('Move in', esc(longDay($('move_in').value))) + row('Would like to stay', esc(stay)) +
       row('Tenants', esc(ts.map(function(t){ return t.name; }).join(', '))) + (guarantorsN ? row('Guarantors', String(guarantorsN)) : '') +
-      row('Conditions', $('negotiate').value.trim() ? esc($('negotiate').value.trim()) : '<span style="color:var(--faint);font-weight:500">None</span>');
+      row('Conditions', getConds().length ? getConds().map(function(c){ return '• ' + esc(c); }).join('<br>') : '<span style="color:var(--faint);font-weight:500">None</span>');
     $('payNote').innerHTML = '<b>Submitting this form alone isn’t an offer.</b> Your offer is only made once you pay the <b>one week holding deposit of ' + gbp(f.hold || 0) + '</b> — straight away after submitting. We’ll show you the bank details next.';
     $('moneyBox').innerHTML = row('Holding deposit — pay now', '<span style="color:var(--brand)">' + gbp(f.hold || 0) + '</span>') + row('Rent in advance (one month)', gbp(f.pcm || 0)) + row('Deposit (five weeks)', gbp(f.dep || 0)) +
       row('Move-in total', gbp(f.total || 0)) + row('Due when you sign the tenancy', gbp(f.after || 0));
@@ -799,7 +818,7 @@
       return fetch('/api/offers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         website: document.querySelector('[name=website]').value, property: $('property').value.trim(), per: per, offer: $('offer').value, max_offer: $('max_offer').value,
         move_in: $('move_in').value, stay: stay, tenants_count: tenantsN, guarantors_count: guarantorsN,
-        negotiate: $('negotiate').value.trim(), about: $('about').value.trim(), lead_name: tenants[0].name, lead_phone: tenants[0].phone, lead_email: tenants[0].email,
+        conditions: getConds(), negotiate: getConds().join('\n'), about: $('about').value.trim(), lead_name: tenants[0].name, lead_phone: tenants[0].phone, lead_email: tenants[0].email,
         tenants: tenants, started_at: startedAt, agree: true, terms: Array.prototype.map.call(document.querySelectorAll('[data-term]'), function(c){ return c.checked; }), signature: $('signature').value.trim(), signature_png: sigImg }) });
     }).then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) {
@@ -901,6 +920,7 @@
         (canClaim ? '<div class="paid-top">' + '<button type="button" class="paid-big" id="pcGo"><span class="pb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="pb-t"><b>I’ve paid the holding deposit</b><small>Tap here once you’ve made the bank transfer</small></span></button>' + '<details class="paidmore"><summary>Paid on another day, or from someone else’s account?</summary><div class="g2" style="margin-top:10px"><div class="f"><label class="l" for="pcDate">Date paid</label><input id="pcDate" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></div><div class="f"><label class="l" for="pcFrom">Paid from (account name)</label><input id="pcFrom"></div></div></details><div class="err" id="pcErr" hidden></div></div>' +
           '<div class="paid-sticky">' + '<button type="button" class="paid-big" data-pc-sticky><span class="pb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="pb-t"><b>I’ve paid the holding deposit</b><small>Tap here once you’ve made the bank transfer</small></span></button>' + '</div>' : '') +
         '<ol class="timeline">' + steps.map(function(s, i){ return '<li class="' + s[0] + '"><div class="dot">' + (s[0] === 'ok' ? '✓' : s[0] === 'no' ? '✕' : i + 1) + '</div><div><b>' + s[1] + '</b><span>' + esc(s[2]) + '</span></div></li>'; }).join('') + '</ol>' +
+        ((d.conditions || []).length ? '<div class="tconds"><b>Your conditions</b>' + d.conditions.map(function(c){ return '<div class="tc ' + c.status + '"><span>' + esc(c.text) + '</span><em>' + (c.status === 'yes' ? '✓ Agreed' : c.status === 'no' ? '✕ Not agreed' : 'Awaiting the landlord') + '</em></div>'; }).join('') + '</div>' : '') +
         (paid && d.short > 0 && d.bank ? '<div class="dwarn light"><b>We received ' + gbp(d.paid_amount) + ' — ' + gbp(d.short) + ' of your holding deposit is still to pay.</b> Please send the rest using the details below.</div><h2>Pay the rest of the holding deposit</h2>' + bankHtml(d.bank, d.short, d.reference) : '') +
         (d.bank && !paid ? '<h2>Pay the holding deposit</h2>' + bankHtml(d.bank, m.holding, d.reference) +
           (d.paid_claim ? '<div class="note-warn" style="background:var(--ok-t);color:#0d6b37"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Thanks — you told us you paid on ' + esc(longDay(d.paid_claim.date)) + '. We’ll confirm here once it arrives in our account.</span></div>'
