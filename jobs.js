@@ -6755,6 +6755,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const o = await offerByLandlordToken(p, req.params.token), b = req.body || {};
     if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
     const ans = ['accept', 'decline', 'discuss'].indexOf(b.answer) !== -1 ? b.answer : null; if (!ans) return res.status(400).json({ ok: false, error: 'answer' });
+    // A decision (accept or decline) is final; only "discuss" can be followed by a decision. The office can reopen it.
+    const prev = (o.data || {}).landlord_response; if (prev && prev.answer !== 'discuss') return res.status(409).json({ ok: false, error: 'decided' });
     const resp = { answer: ans, note: str(b.note, 1000) || '', name: str(b.name, 120) || '', at: new Date().toISOString() };
     const said = { accept: 'accepts the offer', decline: 'declines the offer', discuss: 'would like to discuss the offer' }[ans];
     await p.query("UPDATE offers SET data = data || jsonb_build_object('landlord_response', $2::jsonb), log = log || $3::jsonb WHERE id = $1", [o.id, JSON.stringify(resp), JSON.stringify([offerLog(req, 'Landlord' + (resp.name ? ' (' + resp.name + ')' : '') + ' ' + said + (resp.note ? ': ' + resp.note : ''), 'landlord')])]);
@@ -6775,6 +6777,25 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   app.post('/api/admin/offers/:id', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req), sets = [], vals = [id], notes = [], dataSets = [];
+    // The agreed rent or move-in date changed (e.g. after negotiating) before it goes to the landlord.
+    if (b.rent != null || b.move_in !== undefined) {
+      const cur = (await p.query('SELECT offer_pw, data FROM offers WHERE id = $1', [id])).rows[0]; if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+      const cd = cur.data || {}, upd = {}, said = [];
+      if (b.rent != null) {
+        const amt = Math.round(parseFloat(String(b.rent.amount != null ? b.rent.amount : b.rent).replace(/[£,\s]/g, '')) * 100) / 100, per = (b.rent && b.rent.per) === 'pcm' ? 'pcm' : 'pw';
+        if (!(amt > 0 && amt < 100000)) return res.status(400).json({ ok: false, error: 'amount' });
+        const pw = per === 'pcm' ? Math.round(amt * 12 / 52 * 100) / 100 : amt, m = offerMoney(pw), old = cd.money || {};
+        if (old.holding != null) { m.holding = old.holding; m.balance = Math.round((m.pcm + m.deposit - m.holding) * 100) / 100; }
+        if (per === 'pcm') { m.pcm = amt; m.rent = amt; m.total = Math.round((amt + m.deposit) * 100) / 100; m.balance = Math.round((amt + m.deposit - m.holding) * 100) / 100; }
+        upd.money = m; if (!cd.original_money) upd.original_money = old;
+        await p.query('UPDATE offers SET offer_pw = $2 WHERE id = $1', [id, pw]);
+        said.push('Rent changed from ' + gbp(old.pcm || Number(cur.offer_pw) * 52 / 12) + ' to ' + gbp(m.pcm) + ' a month');
+      }
+      if (b.move_in !== undefined) { const mi = /^\d{4}-\d{2}-\d{2}$/.test(String(b.move_in)) ? b.move_in : null; upd.move_in = mi; said.push('Move-in date changed to ' + (mi ? certDay(mi) : 'to be agreed')); }
+      await p.query('UPDATE offers SET data = data || $2::jsonb, log = log || $3::jsonb WHERE id = $1', [id, JSON.stringify(upd), JSON.stringify(said.map(function (t) { return offerLog(req, t); }))]);
+      return res.json({ ok: true, money: upd.money || cd.money, move_in: upd.move_in !== undefined ? upd.move_in : cd.move_in });
+    }
+    if (b.landlord_reopen === true) { await p.query("UPDATE offers SET data = data - 'landlord_response', log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([offerLog(req, 'Landlord decision reopened - they can choose again')])]); return res.json({ ok: true }); }
     if (b.status === 'accepted' && !Array.isArray(b.credit) && req.user && req.user.id) { vals.push(JSON.stringify([{ id: req.user.id, name: req.user.name || '', share: 100 }])); sets.push("data = CASE WHEN data ? 'credit' THEN data ELSE data || jsonb_build_object('credit', $" + vals.length + "::jsonb) END"); }
     if (['new', 'accepted', 'rejected', 'withdrawn'].indexOf(b.status) !== -1) { vals.push(b.status); sets.push('status = $' + vals.length, "decided_at = CASE WHEN $" + vals.length + " = 'new' THEN NULL ELSE now() END"); notes.push(b.status === 'accepted' ? 'Offer accepted' : b.status === 'rejected' ? 'Offer rejected' : b.status === 'withdrawn' ? 'Marked as withdrawn' : 'Decision undone'); }
     if (typeof b.paid === 'boolean') { sets.push('paid_at = ' + (b.paid ? 'coalesce(paid_at, now())' : 'NULL')); notes.push(b.paid ? 'Holding deposit received' : 'Holding deposit marked not received'); if (!b.paid) sets.push("data = data - 'paid_amount'"); }

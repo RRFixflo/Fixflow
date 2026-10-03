@@ -128,7 +128,7 @@
     .mainhead { padding: 12px 16px; gap: 6px; }
     .mainhead h1 { font-size: 1.05rem; }
     .mainhead .btn.small { padding: 6px 8px; }
-    #refreshBtn { display: none; }
+    body:not(.staff-mode) #refreshBtn { display: none; }
     .mainhead .date { display: none; }
     .wrap { padding: 16px 16px 60px; }
   }
@@ -419,6 +419,10 @@
   .vw-fb { flex-basis: 100%; display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; } .vw-fb textarea { flex: 1; min-width: 220px; min-height: 54px; }
   .inv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); } .inv-main { flex: 1; min-width: 200px; } .inv-main b { display: block; } .inv-main span { display: block; font-size: .8rem; color: var(--ink-soft); }
   .inv-ev { flex-basis: 100%; background: #f7f8fa; border-radius: 10px; padding: 8px 12px; font-size: .84rem; } .inv-ev div { padding: 3px 0; } .inv-ev span { display: inline-block; min-width: 110px; color: var(--ink-soft); }
+  .oc { position: relative; } .oc-minbtn { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-weight: 800; color: var(--ink-soft); line-height: 1; z-index: 2; }
+  .oc .oc-price { margin-right: 26px; } .oc-mini { display: none; } .oc.oc-min > *:not(.oc-mini) { display: none !important; } .oc.oc-min { padding-top: 12px; padding-bottom: 12px; }
+  .oc.oc-min .oc-mini { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; cursor: pointer; } .oc-mini b { flex: 1 1 220px; } .oc-mini span { font-size: .88rem; color: var(--ink-soft); } .oc-mini span:nth-child(3) { color: var(--ink); font-weight: 700; } .oc-mini-go { margin-left: auto; }
+  .oc-edit { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: #eef4ff; border: 1px solid #c7d7fe; } .oc-edit label { display: flex; flex-direction: column; gap: 3px; font-size: .74rem; font-weight: 600; color: var(--ink-soft); } .oc-edit .inp { width: auto; }
   .oc-credit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; padding: 8px 10px; border-radius: 10px; background: #fff8e6; border: 1px solid #f3d9a8; font-size: .88rem; } .oc-credit > span:first-child { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: #7a4d00; font-weight: 700; }
   .oc-credit select { width: auto; padding: 4px 8px; font-size: .85rem; } .oc-credit.unset { background: #f5f6f8; border-color: var(--line); }
   .om-tbl { width: 100%; border-collapse: collapse; font-size: .88rem; } .om-tbl th { text-align: left; font-size: .72rem; color: var(--ink-soft); padding: 6px; border-bottom: 1px solid var(--line); } .om-tbl td { padding: 7px 6px; border-bottom: 1px solid var(--line); } .om-tbl td.n { text-align: right; font-variant-numeric: tabular-nums; }
@@ -1513,7 +1517,7 @@
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0"><button class="btn small" type="button" id="offMonPrev">‹</button><input class="inp" type="month" id="offMon" style="width:auto"><button class="btn small" type="button" id="offMonNext">›</button></div>
           <div id="offMonthBody"></div>
         </details>
-        <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div></div>
+        <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="offMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="offMaxAll">▾ Expand all</button></span></div>
         <div id="offList"></div>
       </div>
 
@@ -2523,7 +2527,12 @@
   // Refresh: fetch everything again, redraw the page you're on, and say so.
   $('refreshBtn').addEventListener('click', function(){
     var btn = $('refreshBtn');
-    if (staffMode) { loadOffers().then(function(){ toast('Offers refreshed'); }); return; }
+    if (staffMode) {
+      if (btn.classList.contains('spinning')) return; btn.classList.add('spinning');
+      Promise.all([loadOffers(), loadInvites(), loadViewings(), view === 'lt' ? loadLt() : null, view === 'team' || view === 'who' ? loadTeam() : null]).then(function(){ if (view === 'offers') renderOffers(); toast('Up to date · ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })); })
+        .catch(function(){ toast('Couldn’t refresh — check your connection'); }).then(function(){ setTimeout(function(){ btn.classList.remove('spinning'); }, 400); });
+      return;
+    }
     if (btn.classList.contains('spinning')) return;
     btn.classList.add('spinning');
     var t0 = Date.now();
@@ -8672,8 +8681,10 @@
     var ll = info.landlord || {}, el = document.createElement('div'); el.className = 'oc-ll';
     el.innerHTML = '<b>🏠 Send the offer to the landlord</b><span class="muted-note" style="margin:0">' + (ll.name ? 'Landlord on file: ' + esc(ll.name) + (ll.email ? ' · ' + esc(ll.email) : '') : 'No landlord on file for this property — add their email in the draft.') + ' Their page shows the offer without the applicants’ phone numbers, emails, dates of birth or IDs.</span>' +
       '<div class="oc-ll-b"><button type="button" class="btn small primary" data-ll-mail>✉ Email the landlord</button><button type="button" class="btn small wa-btn" data-ll-wa>' + WA_ICON + 'WhatsApp</button><button type="button" class="btn small" data-ll-copy>🔗 Copy link</button><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(info.link) + '">Preview ↗</a></div>';
+    var lr = (o.data || {}).landlord_response; if (lr && lr.answer !== 'discuss') el.insertAdjacentHTML('beforeend', '<div style="margin-top:6px;font-size:.84rem">The landlord ' + (lr.answer === 'accept' ? 'accepted' : 'declined') + ' — their decision is locked. <button type="button" class="linkish" data-ll-reopen>Let them choose again</button></div>');
     card.querySelector('.oc-actions').before(el);
     el.addEventListener('click', function(e){
+      if (e.target.closest('[data-ll-reopen]')) { if (!confirm('Let the landlord choose again on their link?')) return; api('POST', '/api/admin/offers/' + o.id, { landlord_reopen: true }).then(function(d){ if (d.ok) { delete o.data.landlord_response; toast('Reopened — the landlord can choose again'); renderOffers(); } }); return; }
       if (e.target.closest('[data-ll-copy]')) { offCopyText(info.link); return; }
       if (e.target.closest('[data-ll-mail]')) { offSendMail(offLandlordMail(o, info)); api('POST', '/api/admin/offers/' + o.id, { note: 'Offer email prepared for the landlord' }); return; }
       if (e.target.closest('[data-ll-wa]')) { var ph = String(ll.phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'); window.open('https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent('Hi ' + (String(ll.name || '').split(/\s+/)[0] || 'there') + ', we’ve received a formal offer on ' + shortAddr(o.property_address) + ' — £' + Math.round(Number(((o.data || {}).money || {}).pcm) || 0) + ' pcm. You can see the details and let us know if you accept here: ' + info.link + ' — Residential Realtors'), '_blank', 'noopener'); api('POST', '/api/admin/offers/' + o.id, { note: 'Offer sent to the landlord by WhatsApp' }); }
@@ -8719,8 +8730,12 @@
       '<tr><td colspan="4"><b>Total ' + list.length + ' offer' + (list.length === 1 ? '' : 's') + '</b></td><td class="n"><b>' + esc(gbp(list.reduce(function(a, o){ return a + pcmOf(o); }, 0))) + '</b></td></tr></table>';
   }
   $('offMon').addEventListener('change', renderOffMonth);
+  $('offMinAll').addEventListener('click', function(){ document.querySelectorAll('#offList [data-off]').forEach(function(x){ offMin[x.dataset.off] = 1; x.classList.add('oc-min'); }); offMinSave(); });
+  $('offMaxAll').addEventListener('click', function(){ document.querySelectorAll('#offList [data-off]').forEach(function(x){ delete offMin[x.dataset.off]; x.classList.remove('oc-min'); }); offMinSave(); });
   $('offMonPrev').addEventListener('click', function(){ var d = new Date(($('offMon').value || offMonthNow()) + '-15'); d.setMonth(d.getMonth() - 1); $('offMon').value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderOffMonth(); });
   $('offMonNext').addEventListener('click', function(){ var d = new Date(($('offMon').value || offMonthNow()) + '-15'); d.setMonth(d.getMonth() + 1); $('offMon').value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderOffMonth(); });
+  var offMin = {}; try { offMin = JSON.parse(localStorage.getItem('rr_off_min') || '{}') || {}; } catch (e) {}
+  function offMinSave(){ try { localStorage.setItem('rr_off_min', JSON.stringify(offMin)); } catch (e) {} }
   function offerCard(o){
     var d = o.data || {}, m = d.money || {}, ts = d.tenants || [], docs = o.docs || [];
     var initials = String(o.lead_name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(function(w){ return w[0].toUpperCase(); }).join('');
@@ -8735,7 +8750,8 @@
           : 'You have not paid a holding deposit, so there is nothing further you need to do.\n\n') + 'Kind regards,\nResidential Realtors';
       return 'mailto:' + encodeURIComponent(o.lead_email || '') + '?subject=' + encodeURIComponent((o.paid_at ? 'Holding deposit refund — ' : 'Your offer — ') + shortAddr(o.property_address) + ' (' + o.ref + ')') + '&body=' + encodeURIComponent(body);
     };
-    return '<article class="oc oc-' + st[0] + '" data-off="' + o.id + '">' +
+    var mini = '<div class="oc-mini" data-oc-expand title="Show everything"><b>' + esc(shortAddr(o.property_address || '')) + '</b><span>' + (offCreditText(o) || 'Not credited') + '</span><span>' + esc(gbp(m.pcm || 0)) + ' pcm</span><span>' + (d.move_in ? 'Move in ' + esc(longDay(d.move_in)) : 'Move in TBC') + '</span><span class="oc-pill ' + st[0] + '">' + st[1] + '</span><span class="oc-mini-go">▾</span></div>';
+    return '<article class="oc oc-' + st[0] + (offMin[o.id] ? ' oc-min' : '') + '" data-off="' + o.id + '">' + mini + '<button type="button" class="oc-minbtn" data-oc-min title="Minimise">–</button>' +
       '<header class="oc-head"><div class="oc-av">' + esc(initials || '?') + '</div>' +
         '<div class="oc-who"><div class="oc-addr">' + esc(o.property_address || '') + '</div>' +
           '<div class="oc-meta">' + esc(o.lead_name || '') + ' · ' + esc(o.ref) + ' · ' + esc(fmtShort(o.created_at)) + '</div>' +
@@ -8772,7 +8788,7 @@
       }).join('') +
         '<div class="oc-sign"><div><span>Signed by</span>' + esc(d.signature || '') + ' · ' + esc(fmtShort(d.signed_at)) + (d.terms_ticked ? ' · all 6 holding deposit points ticked' : '') + '</div>' +
         (sg ? '<img src="/api/admin/offers/' + o.id + '/doc/' + sg.id + '" alt="Signature">' : '') + '</div></details>' +
-      '<footer class="oc-actions">' +
+      '<footer class="oc-actions">' + (o.status !== 'rejected' && o.status !== 'withdrawn' ? '<button type="button" class="btn small" data-off-edit>✏️ Rent &amp; move-in</button>' : '') +
         (o.status === 'new' ? '<button type="button" class="btn small primary" data-off-act="accepted">✓ Accept</button><button type="button" class="btn small" data-off-act="rejected">✕ Reject</button>'
           : '<button type="button" class="btn small ghost" data-off-act="new">Undo ' + ({ accepted: 'accept', rejected: 'reject', withdrawn: 'withdrawal' }[o.status] || '') + '</button>') +
         (o.status === 'withdrawn' ? '' : o.paid_at ? '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/receipt.pdf">🧾 Receipt</a><button type="button" class="btn small ghost" data-off-amount>Amount received</button><button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Deposit received</button>') +
@@ -8810,6 +8826,29 @@
     if (e.target.matches('[data-rtr-k="result"]')) { var u = e.target.closest('[data-rtr]').querySelector('[data-rtr-until]'); u.hidden = e.target.value !== 'limited'; }
   });
   $('offList').addEventListener('click', function(e){
+    var artM = e.target.closest('[data-off]');
+    if (artM && e.target.closest('[data-oc-min]')) { offMin[artM.dataset.off] = 1; offMinSave(); artM.classList.add('oc-min'); return; }
+    if (artM && e.target.closest('[data-oc-expand]')) { delete offMin[artM.dataset.off]; offMinSave(); artM.classList.remove('oc-min'); return; }
+    if (artM && e.target.closest('[data-off-edit]')) {
+      var oe = offers.filter(function(x){ return x.id === Number(artM.dataset.off); })[0]; if (!oe) return;
+      var ex = artM.querySelector('.oc-edit'); if (ex) { ex.remove(); return; }
+      var md = (oe.data || {}), mm = md.money || {}, ed = document.createElement('div'); ed.className = 'oc-edit';
+      ed.innerHTML = '<label>Rent<input class="inp" data-ed-amt inputmode="decimal" value="' + esc(String(mm.pcm || '')) + '" style="width:120px"></label><label>&nbsp;<select class="inp" data-ed-per><option value="pcm">a month</option><option value="pw">a week</option></select></label>' +
+        '<label>Move-in date<input class="inp" type="date" data-ed-mi value="' + esc(md.move_in || '') + '"></label><button type="button" class="btn small primary" data-ed-save>Save</button><button type="button" class="linkish" data-ed-x>Cancel</button>' +
+        '<span class="muted-note" style="margin:0;flex-basis:100%">Changes show on the landlord’s offer page, the confirmation email and the applicant’s tracking page. ' + (oe.paid_at ? 'The holding deposit already paid stays the same.' : '') + '</span>';
+      artM.querySelector('.oc-actions').before(ed);
+      ed.querySelector('[data-ed-per]').addEventListener('change', function(){ var a2 = ed.querySelector('[data-ed-amt]'), v = parseFloat(a2.value); if (v) a2.value = this.value === 'pw' ? (Math.round(v * 12 / 52 * 100) / 100) : (Math.round(v * 52 / 12 * 100) / 100); });
+      ed.addEventListener('click', function(ev){
+        if (ev.target.closest('[data-ed-x]')) { ed.remove(); return; }
+        if (!ev.target.closest('[data-ed-save]')) return;
+        var amt = ed.querySelector('[data-ed-amt]').value.trim(), per = ed.querySelector('[data-ed-per]').value, mi = ed.querySelector('[data-ed-mi]').value, body = {};
+        if (amt && Math.abs(parseFloat(amt) - (per === 'pcm' ? Number(mm.pcm) : offPw(oe))) > 0.004) body.rent = { amount: amt, per: per };
+        if (mi !== (md.move_in || '')) body.move_in = mi || null;
+        if (!Object.keys(body).length) { ed.remove(); return; }
+        api('POST', '/api/admin/offers/' + oe.id, body).then(function(d){ if (!d.ok) { toast(d.error === 'amount' ? 'Check the rent amount' : 'Couldn’t save'); return; } toast('Saved'); loadOffers(); });
+      });
+      return;
+    }
     var crRow = e.target.closest('[data-credit-row]');
     if (crRow) {
       var oc = offers.filter(function(x){ return x.id === Number(e.target.closest('[data-off]') ? e.target.closest('[data-off]').dataset.off : 0); })[0];
