@@ -722,6 +722,13 @@
   .modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: rgba(8,9,12,.45); backdrop-filter: blur(3px); animation: fade .2s; }
   .modal .card { width: min(560px, 100%); max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lift); border-radius: 16px; padding: 20px; animation: pop .25s var(--ease); }
   @keyframes pop { from { transform: translateY(8px) scale(.98); opacity: 0; } }
+  .modal .card.ml-card { width: min(720px, 100%); display: flex; flex-direction: column; gap: 10px; }
+  .ml-from { font-size: .82rem; color: var(--ink-soft); background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 8px 10px; }
+  .ml-f { display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 8px; font-size: .84rem; font-weight: 600; color: var(--ink-soft); }
+  #mlBody { min-height: 260px; font: inherit; font-size: .92rem; line-height: 1.5; resize: vertical; }
+  .ml-err { background: #fdecec; color: #a3141b; border-radius: 10px; padding: 8px 10px; font-size: .86rem; font-weight: 600; }
+  .ml-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  @media (max-width: 640px) { .ml-f { grid-template-columns: 1fr; gap: 4px; } }
   .modal .card.jf { width: min(760px, 100%); display: flex; flex-direction: column; gap: 12px; }
   .modal .card.jf h3 { margin-bottom: 0; font-size: 1.05rem; }
   .jf-sec { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint); margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
@@ -1722,6 +1729,21 @@
 </div>
 
 <!-- TENANCY ANNIVERSARY: RENT REVIEW AND THE TENANTS' PLANS -->
+<div class="modal" id="mlModal" hidden>
+  <div class="card ml-card" role="dialog" aria-labelledby="mlTitle">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3 id="mlTitle" style="margin:0">✉ Send email</h3><button class="btn small ghost" type="button" id="mlX" aria-label="Close">✕</button></div>
+    <div class="ml-from" id="mlFrom"></div>
+    <label class="ml-f"><span>To</span><input class="inp" id="mlTo" placeholder="name@example.com, another@example.com" autocomplete="off"></label>
+    <label class="ml-f" id="mlCcRow" hidden><span>Cc</span><input class="inp" id="mlCc" autocomplete="off"></label>
+    <label class="ml-f" id="mlBccRow" hidden><span>Bcc</span><input class="inp" id="mlBcc" autocomplete="off"></label>
+    <button class="btn small ghost" type="button" id="mlAddCc" style="align-self:flex-start">+ Cc</button>
+    <label class="ml-f"><span>Subject</span><input class="inp" id="mlSubj"></label>
+    <textarea class="inp" id="mlBody" rows="14"></textarea>
+    <label class="switch-row" style="margin:0"><input type="checkbox" id="mlCopy" checked> Send me a copy</label>
+    <div class="ml-err" id="mlErr" hidden></div>
+    <div class="ml-actions"><button class="btn primary" type="button" id="mlSend">Send now</button><button class="btn" type="button" id="mlNative">Open in my mail app instead</button></div>
+  </div>
+</div>
 <div class="modal" id="tiModal" hidden>
   <div class="card" role="dialog" aria-labelledby="tiTitle">
     <h3 id="tiTitle">Anniversary — rent review</h3>
@@ -2924,7 +2946,7 @@
     var subject = (list.length === 1 ? 'Repair job' : list.length + ' repair jobs') + (addrs.length === 1 ? ' – ' + addrs[0] : '');
     var body = 'Hello,\n\nPlease could you carry out the following:\n\n' + $('waText').textContent +
       '\n\nPlease let us know when you can attend.\n\nKind regards,\nResidential Realtors';
-    window.location.href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    openMailto('mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body));
     var willAssign = !$('waAssignWrap').hidden && $('waAssign').checked;
     var assign = (willAssign ? assignTo(list, c.name) : Promise.resolve()).then(saveSecondTask);
     setTimeout(function(){ openTenantNotice(list, c.name); }, 400);
@@ -3574,7 +3596,7 @@
     var b = e.target.closest('[data-ti-ll]'); if (!b) return;
     var l = tiCur.d.landlord || {}, msg = tiLlText();
     if (b.dataset.tiLl === 'wa') window.open('https://wa.me/' + waNumber(l.phone) + '?text=' + encodeURIComponent(msg), '_blank', 'noopener');
-    else window.location.href = 'mailto:' + encodeURIComponent(l.email) + '?subject=' + encodeURIComponent('Rent review — ' + shortAddr(tiCur.d.address || tiCur.t.address)) + '&body=' + encodeURIComponent(msg);
+    else openMailto('mailto:' + encodeURIComponent(l.email) + '?subject=' + encodeURIComponent('Rent review — ' + shortAddr(tiCur.d.address || tiCur.t.address)) + '&body=' + encodeURIComponent(msg));
     tiSave({ asked_landlord: b.dataset.tiLl === 'wa' ? 'WhatsApp' : 'email' });
   });
   $('tiClose').addEventListener('click', function(){ var note = $('tiNote').value.trim(); if (tiCur && note !== (tiCur.it.note || '')) tiSave({ note: note }); $('tiModal').hidden = true; });
@@ -3590,7 +3612,7 @@
       });
       return;
     }
-    window.location.href = 'mailto:' + to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent($('tiSubj').value) + '&body=' + encodeURIComponent($('tiMsg').value);
+    openMailto('mailto:' + to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent($('tiSubj').value) + '&body=' + encodeURIComponent($('tiMsg').value));
     tiSave(mark);
   });
   $('tiTo').addEventListener('click', function(e){
@@ -4624,7 +4646,7 @@
         return;
       }
       shDownload(doc);
-      window.location.href = 'mailto:' + encodeURIComponent(l.landlord_email) + '?subject=' + encodeURIComponent(shCtx.subject) + '&body=' + encodeURIComponent(msg);
+      openMailto('mailto:' + encodeURIComponent(l.landlord_email) + '?subject=' + encodeURIComponent(shCtx.subject) + '&body=' + encodeURIComponent(msg));
       $('shModal').hidden = true;
       toast('PDF downloaded — attach it to the email that’s opening');
       shLog('email');
@@ -5006,8 +5028,8 @@
       ' (job ' + invJob.ref + ').\n\nAmount due: ' + gbp(r.v.total) + (r.v.due ? ' by ' + ukDate(r.v.due) : '') + '\n\n' +
       (cfg.payee ? 'Payment details:\nAccount name: ' + cfg.payee + '\nSort code: ' + cfg.sortCode + '\nAccount number: ' + cfg.accountNumber + '\nReference: ' + r.v.ref + '\n\n' : '') +
       'Kind regards,\n' + (cfg.from || 'Residential Realtors');
-    window.location.href = 'mailto:' + encodeURIComponent($('invLlEmail').value.trim()) +
-      '?subject=' + encodeURIComponent('Invoice ' + r.v.number + ' — ' + (invJob.property_address || '')) + '&body=' + encodeURIComponent(body);
+    openMailto('mailto:' + encodeURIComponent($('invLlEmail').value.trim()) +
+      '?subject=' + encodeURIComponent('Invoice ' + r.v.number + ' — ' + (invJob.property_address || '')) + '&body=' + encodeURIComponent(body));
     $('invModal').hidden = true;
     toast('Invoice downloaded — attach it to the email that’s opening');
   });
@@ -5252,7 +5274,7 @@
           card.querySelector('.tt-done').hidden = false; toast('Email sent to ' + (g.name || 'the landlord'));
           g.jobs.slice(1).forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'landlord_message', body: 'Sent the landlord an update (email to ' + g.email + '):\n\n' + msg }); });
         });
-      } else { window.location.href = 'mailto:' + encodeURIComponent(g.email) + '?subject=' + encodeURIComponent(llSubject) + '&body=' + encodeURIComponent(msg); log('email'); }
+      } else { openMailto('mailto:' + encodeURIComponent(g.email) + '?subject=' + encodeURIComponent(llSubject) + '&body=' + encodeURIComponent(msg)); log('email'); }
       return;
     }
     if (b.dataset.tt === 'wa') { window.open('https://wa.me/' + waNumber(g.phone) + '?text=' + encodeURIComponent(msg), '_blank', 'noopener'); log('WhatsApp'); }
@@ -5262,7 +5284,7 @@
       if (meta.canEmail) {
         busy(b, true, 'Sending…');
         api('POST', '/api/admin/jobs/' + g.jobs[0].id + '/email-tenant', { subject: subject, body: msg }).then(function(d){ busy(b, false); if (d.ok) { card.querySelector('.tt-done').hidden = false; toast('Email sent'); } else toast('Couldn’t send the email'); });
-      } else { window.location.href = 'mailto:' + encodeURIComponent(g.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(msg); log('email'); }
+      } else { openMailto('mailto:' + encodeURIComponent(g.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(msg)); log('email'); }
     }
   });
   $('ttDone').addEventListener('click', function(){ $('ttModal').hidden = true; if (openJobId) openJob(openJobId); });
@@ -5431,7 +5453,7 @@
     if ((b = e.target.closest('[data-tn-mail]'))) {
       var r = tn.recips[Number(b.dataset.tnMail)];
       tnEnsureNotice().then(function(id){
-        window.location.href = 'mailto:' + encodeURIComponent(r.email) + '?subject=' + encodeURIComponent(tnFill($('tnSubject').value, r)) + '&body=' + encodeURIComponent(tnFill($('tnBody').value, r));
+        openMailto('mailto:' + encodeURIComponent(r.email) + '?subject=' + encodeURIComponent(tnFill($('tnSubject').value, r)) + '&body=' + encodeURIComponent(tnFill($('tnBody').value, r)));
         tnMark(r, 'email');
       })['catch'](function(){});
     }
@@ -5468,7 +5490,7 @@
       }
       var g = tnMail.groups[tnMail.next];
       if (!g) { tnMail.next = 0; g = tnMail.groups[0]; }
-      window.location.href = 'mailto:?' + (tnCcOn() ? 'cc' : 'bcc') + '=' + encodeURIComponent(g.map(function(r){ return r.email; }).join(',')) + '&subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
+      openMailto('mailto:?' + (tnCcOn() ? 'cc' : 'bcc') + '=' + encodeURIComponent(g.map(function(r){ return r.email; }).join(',')) + '&subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body));
       g.forEach(function(r){ tnMark(r, 'email'); });
       tnMail.next += 1;
       var n = tnMail.groups.length;
@@ -6133,8 +6155,8 @@
       })['catch'](function(){ toast('Couldn’t copy — select the text and copy it instead'); });
     });
     $('aiMail').addEventListener('click', function(){
-      window.location.href = 'mailto:' + encodeURIComponent($('aiAddr').value.trim()) +
-        '?subject=' + encodeURIComponent($('aiSubj').value) + '&body=' + encodeURIComponent($('aiBody').value);
+      openMailto('mailto:' + encodeURIComponent($('aiAddr').value.trim()) +
+        '?subject=' + encodeURIComponent($('aiSubj').value) + '&body=' + encodeURIComponent($('aiBody').value));
       logEmail('Email opened in email app').then(function(){ openJob(j.id); });
     });
     // WhatsApp: the message only (no subject line). With no number, WhatsApp
@@ -6734,8 +6756,8 @@
       })['catch'](function(){ toast('Couldn’t copy — select the text and copy it instead'); });
     });
     if ($('mailMsg')) $('mailMsg').addEventListener('click', function(){
-      window.location.href = 'mailto:' + encodeURIComponent(msgWho().email) +
-        '?subject=' + encodeURIComponent($('fSubj').value) + '&body=' + encodeURIComponent($('fMsg').value);
+      openMailto('mailto:' + encodeURIComponent(msgWho().email) +
+        '?subject=' + encodeURIComponent($('fSubj').value) + '&body=' + encodeURIComponent($('fMsg').value));
       logMessage('Opened in email app').then(function(){ openJob(j.id); });
     });
     if ($('sendMsg')) $('sendMsg').addEventListener('click', function(){
@@ -6914,7 +6936,7 @@
     api('POST', '/api/admin/landlords/' + l.id + '/link-sent', { how: how }).then(function(d){ if (d.ok) { l.link_sent = d.sent; lpSentText(l); toast('Marked as sent to ' + (l.name || 'the landlord')); if (view === 'll' && openLlId === l.id) renderLandlord(); } });
   }
   $('lpWa').addEventListener('click', function(){ window.open('https://wa.me/' + waNumber(lpFor.phone) + '?text=' + encodeURIComponent($('lpMsg').value), '_blank', 'noopener'); lpMarkSent('WhatsApp'); });
-  $('lpEmail').addEventListener('click', function(){ lpMarkSent('email'); window.location.href = 'mailto:' + encodeURIComponent(lpFor.email) + '?subject=' + encodeURIComponent('Your properties with Residential Realtors') + '&body=' + encodeURIComponent($('lpMsg').value); });
+  $('lpEmail').addEventListener('click', function(){ lpMarkSent('email'); openMailto('mailto:' + encodeURIComponent(lpFor.email) + '?subject=' + encodeURIComponent('Your properties with Residential Realtors') + '&body=' + encodeURIComponent($('lpMsg').value)); });
   function renderLandlord(){
     var l = landlordById(openLlId);
     if (!l) { $('llBack').click(); return; }
@@ -7200,7 +7222,7 @@
       if (lk.dataset.ctrLink === 'copy') { (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function(){ toast('Link copied'); }, function(){ $('ctrLinkUrl').select(); document.execCommand('copy'); toast('Link copied'); }); }
       else if (lk.dataset.ctrLink === 'wa' || lk.dataset.ctrLink === 'email') {
         if (lk.dataset.ctrLink === 'wa') window.open('https://wa.me/' + waNumber(c.phone) + '?text=' + encodeURIComponent(msg), '_blank');
-        else window.location.href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent('Your jobs from Residential Realtors') + '&body=' + encodeURIComponent(msg);
+        else openMailto('mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent('Your jobs from Residential Realtors') + '&body=' + encodeURIComponent(msg));
         api('POST', '/api/admin/contractors/' + c.id + '/link-sent', { how: lk.dataset.ctrLink === 'wa' ? 'WhatsApp' : 'email' }).then(function(d){ if (d.ok) { c.link_sent = d.sent; toast('Marked as sent to ' + c.name); renderContractorPage(); } });
       }
       else if (lk.dataset.ctrLink === 'new' && confirm('Make a new link? The old link will stop working.')) ctrLink(c, { on: true, regenerate: true }).then(function(d){ if (d) toast('New link made — send it to ' + c.name); });
@@ -8304,7 +8326,7 @@
   });
   $('offSendMail').addEventListener('click', function(){
     var to = $('offTo').value.trim(), a = $('offProp').value.trim();
-    location.href = 'mailto:' + (/@/.test(to) ? encodeURIComponent(to) : '') + '?subject=' + encodeURIComponent('Make your offer' + (a ? ' — ' + shortAddr(a) : '') + ' — Residential Realtors') + '&body=' + encodeURIComponent(offSendText().replace(' — Residential Realtors', '\n\nResidential Realtors'));
+    openMailto('mailto:' + (/@/.test(to) ? encodeURIComponent(to) : '') + '?subject=' + encodeURIComponent('Make your offer' + (a ? ' — ' + shortAddr(a) : '') + ' — Residential Realtors') + '&body=' + encodeURIComponent(offSendText().replace(' — Residential Realtors', '\n\nResidential Realtors')));
   });
   function loadRemind(){
     if (staffMode) return;
@@ -8443,9 +8465,62 @@
     var who = meta.user && meta.user.name && meta.user.name !== 'Owner' && meta.user.name !== 'Offers staff' ? meta.user.name : 'Residential Realtors';
     return '\n\nRegards,\n\n' + who + (who !== 'Residential Realtors' ? '\nResidential Realtors' : '') + '\n\nT: 0207 096 8131\nW: www.residentialrealtors.co.uk\nA: Residential Realtors, 28-30 Harper Road, London, SE1 6AD' + MAIL_FOOT;
   }
+  // ----- Sending email from Fixflow (Resend) -----
+  // openMailto(url): our "Send email" window when email is set up, otherwise the mail app.
+  function openMailto(url){
+    if (!meta.canEmail) { location.href = url; return; }
+    var m = /^mailto:([^?]*)\??(.*)$/i.exec(String(url)), q = {}, split = function(v){ return String(v || '').split(/[,;]/).map(function(x){ return x.trim(); }).filter(Boolean); };
+    if (!m) { location.href = url; return; }
+    (m[2] || '').split('&').forEach(function(kv){ var i = kv.indexOf('='); if (i > 0) { try { q[kv.slice(0, i).toLowerCase()] = decodeURIComponent(kv.slice(i + 1).replace(/\+/g, '%20')); } catch (e) {} } });
+    var to = []; try { to = split(decodeURIComponent(m[1])); } catch (e) {}
+    composeMail({ to: to, cc: split(q.cc), bcc: split(q.bcc), subject: q.subject || '', body: q.body || '', url: url });
+  }
+  var mlCur = null;
+  function composeMail(o){
+    mlCur = o; var me = (meta.user && meta.user.email) || '';
+    $('mlTo').value = (o.to || []).join(', '); $('mlCc').value = (o.cc || []).join(', '); $('mlBcc').value = (o.bcc || []).join(', ');
+    $('mlCcRow').hidden = !(o.cc || []).length; $('mlBccRow').hidden = !(o.bcc || []).length; $('mlAddCc').hidden = !$('mlCcRow').hidden;
+    $('mlSubj').value = o.subject || ''; $('mlBody').value = o.body || ''; $('mlErr').hidden = true; busy($('mlSend'), false);
+    $('mlCopy').parentNode.hidden = !me;
+    $('mlFrom').innerHTML = 'From <b>' + esc(meta.user && meta.user.id && meta.user.name ? meta.user.name + ' - Residential Realtors' : 'Residential Realtors') + '</b> · replies go to <b>' + esc(me || 'info@residentialrealtors.co.uk') + '</b>';
+    $('mlModal').hidden = false; setTimeout(function(){ ($('mlTo').value ? $('mlBody') : $('mlTo')).focus(); if ($('mlBody') === document.activeElement) $('mlBody').setSelectionRange(0, 0); $('mlBody').scrollTop = 0; }, 30);
+  }
+  function mlClose(){ $('mlModal').hidden = true; mlCur = null; }
+  $('mlX').addEventListener('click', mlClose);
+  $('mlModal').addEventListener('click', function(e){ if (e.target === this) mlClose(); });
+  $('mlAddCc').addEventListener('click', function(){ $('mlCcRow').hidden = false; this.hidden = true; $('mlCc').focus(); });
+  $('mlNative').addEventListener('click', function(){
+    var enc = function(v){ return encodeURIComponent(v); }, parts = [];
+    if ($('mlCc').value.trim()) parts.push('cc=' + enc($('mlCc').value.trim())); if ($('mlBcc').value.trim()) parts.push('bcc=' + enc($('mlBcc').value.trim()));
+    parts.push('subject=' + enc($('mlSubj').value)); parts.push('body=' + enc($('mlBody').value));
+    location.href = 'mailto:' + $('mlTo').value.split(/[,;]/).map(function(x){ return enc(x.trim()); }).filter(Boolean).join(',') + '?' + parts.join('&'); mlClose();
+  });
+  $('mlSend').addEventListener('click', function(){
+    var b = this, err = function(t){ $('mlErr').textContent = t; $('mlErr').hidden = false; busy(b, false); };
+    var to = $('mlTo').value.trim(), bcc = $('mlBcc').value.trim();
+    if (!to && !bcc) return err('Add who it’s to.');
+    if (!$('mlSubj').value.trim()) return err('Add a subject.');
+    busy(b, true, 'Sending…'); $('mlErr').hidden = true;
+    var send = function(toList, cc){ return api('POST', '/api/admin/email', { to: toList, cc: cc, subject: $('mlSubj').value.trim(), text: $('mlBody').value, copy: $('mlCopy').checked }); };
+    // Bcc (e.g. a notice to many tenants): one email each, so nobody sees the others' addresses.
+    var bccs = bcc ? bcc.split(/[,;]/).map(function(x){ return x.trim(); }).filter(Boolean) : [];
+    var jobs = bccs.length ? bccs.map(function(x){ return function(){ return send([x], ''); }; }) : [function(){ return send(to, $('mlCc').value.trim()); }];
+    if (bccs.length && to) jobs.unshift(function(){ return send(to, $('mlCc').value.trim()); });
+    var fails = 0, run = function(i){ if (i >= jobs.length) return Promise.resolve(); return jobs[i]().then(function(d){ if (!d || !d.ok) { fails++; if (d && d.error === 'address') throw new Error('address'); } return run(i + 1); }); };
+    run(0).then(function(){
+      if (fails) return err(fails === jobs.length ? 'Couldn’t send — please try again, or use “Open in my mail app instead”.' : fails + ' of ' + jobs.length + ' emails didn’t send — please check.');
+      toast('✓ Email sent'); var cb = mlCur && mlCur.onSent; mlClose(); if (cb) cb();
+    })['catch'](function(e){ err(e && e.message === 'address' ? 'Please check the email address(es).' : 'Couldn’t send — please try again.'); });
+  });
+  // Plain email links (a contact's address) open the same window.
+  document.addEventListener('click', function(e){
+    var a = e.target.closest && e.target.closest('a[href^="mailto:"]'); if (!a || !meta.canEmail || e.metaKey || e.ctrlKey) return;
+    e.preventDefault(); openMailto(a.getAttribute('href'));
+  });
   function offSendMail(mail){
+    if (meta.canEmail) { composeMail({ to: mail.to, subject: mail.subject, body: mail.body }); return; }
     var coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
-    if (coarse) { location.href = 'mailto:' + mail.to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(mail.subject) + '&body=' + encodeURIComponent(mail.body); return; }
+    if (coarse) { openMailto('mailto:' + mail.to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(mail.subject) + '&body=' + encodeURIComponent(mail.body)); return; }
     var blob = emlFile({ to: mail.to.join(', '), subject: mail.subject, body: mail.body }, []), a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = mail.file + '.eml'; document.body.appendChild(a); a.click(); a.remove();
     toast('Email draft downloaded — open it to check and send');
@@ -8763,9 +8838,9 @@
     if (!pc) { box.hidden = true; ltEpcFor = ''; return; }
     ltEpcT = setTimeout(function(){
       if (v === ltEpcFor) return; ltEpcFor = v; box.hidden = false; box.className = 'lt-epc'; box.innerHTML = '<i>…</i><span>Checking the EPC register…</span>';
-      api('GET', '/api/admin/epc-lookup?address=' + encodeURIComponent(v)).then(function(d){
+      api('GET', '/api/admin/epc-check?address=' + encodeURIComponent(v)).then(function(d){
         if (ltEpcFor !== v) return; var e = d && d.epc;
-        if (!d || !d.ok || !e) { box.className = 'lt-epc warn'; box.innerHTML = '<i>?</i><span>Couldn’t reach the EPC register — we’ll try again when the link is made.</span>'; return; }
+        if (!d || !d.ok || !e) { box.className = 'lt-epc warn'; box.innerHTML = '<i>?</i><span>' + (d && d.ok && !e ? 'Add the full postcode to check the EPC.' : 'The EPC register didn’t answer just now — we’ll check again when the link is made.') + '</span>'; return; }
         var col = { A: '#008054', B: '#19b459', C: '#8dce46', D: '#ffd500', E: '#fcaa65', F: '#ef8023', G: '#e9153b' }[e.rating] || '#98a2b3';
         if (!e.found) { box.className = 'lt-epc warn'; box.innerHTML = '<i>?</i><span><b>No EPC found for this address</b>The landlord will be told a valid EPC is needed — we can arrange one.</span>'; return; }
         box.className = 'lt-epc ' + (e.valid ? 'ok' : 'bad'); box.innerHTML = '<i style="background:' + col + (e.rating === 'D' ? ';color:#111' : '') + '">' + esc(e.rating || '?') + '</i><span><b>' + (e.valid ? 'EPC in place ✓' : 'EPC expired') + '</b>Rating ' + esc(e.rating || '?') + ', ' + (e.valid ? 'valid until ' : 'expired ') + esc(certDay(e.expires_on)) + (e.address ? ' · ' + esc(e.address) : '') + '. The landlord sees this on their link.</span>';
@@ -8787,7 +8862,7 @@
     var card = e.target.closest('[data-lt]'); if (!card) return; var t = ltItems.filter(function(x){ return x.id === Number(card.dataset.lt); })[0]; if (!t) return;
     if (e.target.closest('[data-lt-copy]')) { offCopyText(ltLink(t)); return; }
     if (e.target.closest('[data-lt-wa]')) { var ph = String(t.landlord_phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'); window.open('https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent(ltMsg(t)), '_blank', 'noopener'); api('POST', '/api/admin/landlord-terms/' + t.id, { note: 'Link sent by WhatsApp' }); return; }
-    if (e.target.closest('[data-lt-mail]')) { location.href = 'mailto:' + encodeURIComponent(t.landlord_email || '') + '?subject=' + encodeURIComponent('Terms of business — ' + shortAddr(t.property_address) + ' — Residential Realtors') + '&body=' + encodeURIComponent(ltMsg(t).replace(' — Residential Realtors', '\n\nKind regards\nResidential Realtors')); api('POST', '/api/admin/landlord-terms/' + t.id, { note: 'Link sent by email' }); return; }
+    if (e.target.closest('[data-lt-mail]')) { openMailto('mailto:' + encodeURIComponent(t.landlord_email || '') + '?subject=' + encodeURIComponent('Terms of business — ' + shortAddr(t.property_address) + ' — Residential Realtors') + '&body=' + encodeURIComponent(ltMsg(t).replace(' — Residential Realtors', '\n\nKind regards\nResidential Realtors'))); api('POST', '/api/admin/landlord-terms/' + t.id, { note: 'Link sent by email' }); return; }
     if (e.target.closest('[data-lt-cancel]')) { if (!confirm('Cancel this link? The landlord won’t be able to open it.')) return; api('POST', '/api/admin/landlord-terms/' + t.id, { cancel: true }).then(function(){ toast('Link cancelled'); loadLt(); }); return; }
     if (e.target.closest('[data-lt-del]')) { if (!confirm('Delete this landlord agreement?')) return; api('DELETE', '/api/admin/landlord-terms/' + t.id, { confirm: true }).then(function(){ toast('Deleted'); loadLt(); }); }
   });
@@ -11000,7 +11075,7 @@
       busy($('tmSend'), false);
       files.forEach(function(f, i){ setTimeout(function(){ saveBlob(f.blob, f.name); }, i * 400); });
       copied.then(function(){
-        window.location.href = 'mailto:' + to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(subject);
+        location.href = 'mailto:' + to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(subject);
       });
       $('tmModal').hidden = true;
       toast('Email copied — paste it into the message that’s opening' + (files.length ? ', then attach the downloaded documents' : ''));

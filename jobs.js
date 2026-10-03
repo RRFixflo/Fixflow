@@ -1533,8 +1533,8 @@ module.exports = function mountJobs(app, opts) {
   // What an offers-only sign-in may use (paths under /api/admin).
   function staffAllowed(method, path) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;   // landlord terms tab
-    if (method === 'GET') return path === '/me' || path === '/epc-lookup' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
-    if (method === 'POST') return path === '/offer-alerts/test' || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
+    if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'POST') return path === '/offer-alerts/test' || path === '/email' || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
 
@@ -1614,6 +1614,7 @@ module.exports = function mountJobs(app, opts) {
     const b = req.body || {}, path = req.path, m = req.method;
     if (/^\/sessions|^\/ask|^\/offers\/\d+$/.test(path) && Object.keys(b).length === 1 && b.seen === true) return '';
     if (/^\/(sessions|visits|site-sessions)/.test(path)) return '';
+    if (path === '/email') return ('Sent email "' + String(b.subject || '').slice(0, 120) + '" to ' + [].concat(b.to || []).join(', ').slice(0, 120)).slice(0, 300);
     const seg = path.split('/').filter(Boolean), id = seg[1] && /^\d+$/.test(seg[1]) ? Number(seg[1]) : null;
     const NOUN = { jobs: 'repair job', offers: 'offer', tenancies: 'tenancy', landlords: 'landlord', tenants: 'tenant', contractors: 'contractor', invoices: 'invoice', certificates: 'certificate', certs: 'certificate',
       statements: 'statements', properties: 'property', parts: 'part', 'offers-staff': 'offers staff access', users: 'staff user', notices: 'tenant notice', 'property-info': 'property details' };
@@ -5507,6 +5508,26 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: topic, click: base ? base + '/staff' : undefined }, body)), signal: AbortSignal.timeout(8000) });
     } catch (err) { console.error('Staff offer alert failed:', err.message); }
   }
+  // Send an email written in Fixflow straight away (Resend), from the signed-in person:
+  // their name on our sending address, replies to their own email, a copy to them.
+  const mailSent = new Map();
+  app.post('/api/admin/email', async function (req, res) {
+    if (!canEmail() || !sendEmail) return res.status(503).json({ ok: false, error: 'email-not-configured' });
+    const b = req.body || {}, isEmail = function (v) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(v); };
+    const list = function (v) { return (Array.isArray(v) ? v : String(v || '').split(/[,;\s]+/)).map(function (x) { return String(x).trim(); }).filter(Boolean); };
+    const to = list(b.to), cc = list(b.cc), subject = str(b.subject, 300), text = String(b.text || '').slice(0, 60000);
+    if (!to.length || to.length + cc.length > 15 || !to.concat(cc).every(isEmail)) return res.status(400).json({ ok: false, error: 'address' });
+    if (!subject || !text.trim()) return res.status(400).json({ ok: false, error: 'empty' });
+    const who = (req.user && req.user.id) || req.sessionId || req.ip, now = Date.now(), hist = (mailSent.get(who) || []).filter(function (t) { return now - t < 3600000; });
+    if (hist.length >= 80) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    hist.push(now); mailSent.set(who, hist);
+    let me = ''; try { if (req.user && req.user.id) me = ((await (await db()).query('SELECT email FROM staff_users WHERE id = $1', [req.user.id])).rows[0] || {}).email || ''; } catch (e) {}
+    const replyTo = isEmail(me) ? me : 'info@residentialrealtors.co.uk';
+    const name = req.user && req.user.id && req.user.name ? req.user.name + ' - Residential Realtors' : 'Residential Realtors';
+    const r = await sendEmail({ to: to, cc: cc, bcc: b.copy !== false && isEmail(me) && to.concat(cc).indexOf(me) === -1 ? [me] : undefined, replyTo: replyTo, fromName: name, subject: subject, text: text }).catch(function (err) { return { ok: false, error: err.message }; });
+    if (!r.ok) { console.error('Send email failed:', r.error); return res.status(502).json({ ok: false, error: 'send-failed', detail: String(r.error || '').slice(0, 200) }); }
+    res.json({ ok: true, replyTo: replyTo });
+  });
   // A test alert so staff can check the ntfy app is set up on their phone.
   app.post('/api/admin/offer-alerts/test', async function (req, res) {
     const topic = await offersTopic().catch(function () { return ''; }); if (!topic || typeof fetch !== 'function') return res.status(503).json({ ok: false });
@@ -7319,10 +7340,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return epc;
   }
   // As staff type a property address: is there an EPC on the register?
-  app.get('/api/admin/epc-lookup', async function (req, res) {
+  app.get('/api/admin/epc-check', async function (req, res) {
     const address = str(req.query.address, 400);
     try { const epc = await epcForAddress(address); res.json({ ok: true, epc: epc }); }
-    catch (err) { res.json({ ok: false, error: 'register' }); }
+    catch (err) { console.error('EPC lookup failed:', err.message); res.json({ ok: false, error: 'register' }); }
   });
   // Landlord Terms links: their own address when set up (TERMS_ORIGIN), else the offers address.
   const TERMS_ORIGIN = String(process.env.TERMS_ORIGIN || '').trim().replace(/\/+$/, '');
