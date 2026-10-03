@@ -8126,6 +8126,7 @@
         (o.status === 'withdrawn' && o.paid_at ? '<span class="oc-pill muted">Deposit not refundable (their terms)</span>' : '') + '</div>' +
       '<div class="oc-grid">' + kv('Move in', d.move_in ? esc(longDay(d.move_in)) : '') + kv('Stay', esc(d.stay || '')) + kv('Tenants', String(ts.length)) + kv('Guarantors', d.guarantors_count ? String(d.guarantors_count) : '') +
         kv('Holding deposit', esc(gbp(m.holding || 0))) + kv('Due at signing', esc(gbp(m.balance || 0))) + '</div>' +
+      (o.status === 'withdrawn' && d.withdraw_reason ? '<div class="oc-cond"><span>Why they withdrew</span>' + esc(d.withdraw_reason) + (d.withdraw_more ? ' — ' + esc(d.withdraw_more) : '') + '</div>' : '') +
       '<div class="oc-cond"><span>Their conditions</span>' + (d.negotiate ? esc(d.negotiate) : '<em>None given</em>') + '</div>' +
       (d.about ? '<div class="oc-cond"><span>About them</span>' + esc(d.about) + '</div>' : '') +
       '<details class="oc-more"><summary>Tenants, IDs and references <b>' + ts.length + '</b></summary>' + ts.map(function(t, i){
@@ -8151,6 +8152,7 @@
         (o.status === 'withdrawn' ? '' : o.paid_at ? '<button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Deposit received</button>') +
         (o.status === 'rejected' && o.lead_email ? '<a class="btn small primary" data-off-refund href="' + esc(refundEmail()) + '">✉ ' + (o.paid_at ? 'Email for refund details' : 'Email them') + '</a>' : '') +
         (o.status === 'accepted' ? '<button type="button" class="btn small" data-off-tcy>🏠 Start tenancy</button>' : '') +
+        '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/pdf" title="The signed offer as a PDF, like the holding deposit form">📄 Offer form (PDF)</a>' +
         '<span class="oc-sp"></span>' +
         '<button type="button" class="btn small ghost" data-off-track title="The applicant’s private link to follow their offer">🔗 Tracking link</button>' +
         (o.lead_phone ? '<button type="button" class="btn small ghost" data-off-wa title="Send the lead tenant their tracking link on WhatsApp">💬 WhatsApp</button>' : '') +
