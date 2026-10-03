@@ -73,6 +73,7 @@
   @keyframes tickPop { from { transform:scale(.3); opacity:0; } } @keyframes tickDraw { to { stroke-dashoffset:0; } }
   .epc { display:flex; gap:14px; align-items:center; padding:12px 14px; border-radius:14px; margin:0 0 10px; border:1px solid var(--line); } .epc b { display:block; } .epc span:not(.epc-r) { font-size:.86rem; color:var(--soft); }
   .epc.ok { background:var(--ok-t); border-color:#b7e2c6; } .epc.bad { background:var(--brand-t); border-color:#f3c0c0; } .epc.warn { background:var(--warn-t); border-color:#f3d9a8; }
+  .known { background:#eef4ff; border:1px solid #c7d7fe; border-radius:14px; padding:12px 14px; margin:0 0 12px; font-size:.9rem; } .known b { display:block; color:#1d3fae; } .known span { color:var(--soft); font-size:.84rem; } .known ul { margin:8px 0 0; padding-left:18px; } .known li { margin:0 0 3px; }
   .epc { align-items:flex-start; } .epc-d { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; margin:10px 0 6px; font-size:.86rem; } .epc-d dt { color:var(--soft); } .epc-d dd { margin:0; font-weight:600; color:var(--ink); } @media (max-width:520px) { .epc-d { grid-template-columns:1fr; gap:0; } .epc-d dt { font-size:.76rem; margin-top:6px; } } .epc-l { font-size:.86rem; font-weight:700; color:var(--navy); }
   .epc-r { flex:0 0 46px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.4rem; color:#fff; background:#98a2b3; }
   .epc-r.rA { background:#008054; } .epc-r.rB { background:#19b459; } .epc-r.rC { background:#8dce46; } .epc-r.rD { background:#ffd500; color:#111; } .epc-r.rE { background:#fcaa65; } .epc-r.rF { background:#ef8023; } .epc-r.rG { background:#e9153b; }
@@ -122,6 +123,15 @@
     $('hTitle').textContent = 'Your agreement for ' + d.property.split(',').slice(0, 2).join(',');
     if (d.status === 'signed') return showDone();
     details.l1_name = d.landlord_name || ''; details.l1_email = d.landlord_email || ''; details.l1_phone = d.landlord_phone || '';
+    // What we already hold: their details, certificates on file and the licence.
+    var k = d.known || {}, L = k.landlord || {};
+    if (L.email && !details.l1_email) details.l1_email = L.email; if (L.phone && !details.l1_phone) details.l1_phone = L.phone; if (L.address) details.corr_address = L.address;
+    if (k.gas && k.gas.valid) { details.q_gas_appliances = 'Yes'; details.q_need_gas_cert = 'No'; }
+    if (k.eicr && k.eicr.valid) details.q_eicr = 'No';
+    if (k.licence && k.licence.status === 'licensed') { details.lic_status = 'licensed'; details.lic_type = ({ selective: 'Selective', additional: 'Additional (HMO)', 'additional (hmo)': 'Additional (HMO)', 'mandatory hmo': 'Mandatory HMO', mandatory: 'Mandatory HMO' }[String(k.licence.type || '').toLowerCase()]) || k.licence.type || ''; details.lic_number = k.licence.number || ''; details.lic_expires = k.licence.expires || ''; details.lic_council = k.licence.council || ''; }
+    else if (k.licence && k.licence.status === 'applied') details.lic_status = 'applied';
+    else if (k.licence && (k.licence.status === 'not_needed' || k.licence.status === 'none')) details.lic_status = 'none';
+    if (k.deposit_scheme) { var ds = { dps: 'DPS', tds: 'TDS', mydeposits: 'My Deposits', 'my deposits': 'My Deposits' }[String(k.deposit_scheme).toLowerCase()]; if (ds) details.deposit_scheme = ds; }
     go(1);
   })['catch'](function(){ $('app').innerHTML = '<div class="card"><h2>Couldn’t load</h2><p class="lead" style="margin:0">Please check your connection and refresh.</p></div>'; });
 
@@ -142,6 +152,14 @@
   // ----- Step 2: property details form -----
   function inp(k, label, o){ o = o || {}; return '<div class="f"><label class="l" for="d_' + k + '">' + label + (o.req ? '' : ' <span class="opt">optional</span>') + '</label>' + (o.area ? '<textarea id="d_' + k + '" data-k="' + k + '" rows="2">' + esc(details[k] || '') + '</textarea>' : '<input id="d_' + k + '" data-k="' + k + '"' + (o.type ? ' type="' + o.type + '"' : '') + (o.mode ? ' inputmode="' + o.mode + '"' : '') + ' value="' + esc(details[k] || '') + '">') + (o.hint ? '<div class="opt" style="font-size:.8rem;margin-top:4px">' + o.hint + '</div>' : '') + '</div>'; }
   function yn(k, label, hint){ var v = details[k]; return '<div class="yn" data-yn="' + k + '"><div>' + esc(label) + (hint ? '<div class="opt" style="font-size:.8rem">' + esc(hint) + '</div>' : '') + '</div><div class="seg"><button type="button" data-v="Yes"' + (v === 'Yes' ? ' class="on"' : '') + '>Yes</button><button type="button" data-v="No"' + (v === 'No' ? ' class="on"' : '') + '>No</button></div></div>'; }
+  function knownBox(){
+    var k = T.known || {}, day = function(v){ return v ? new Date(v + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; }, rows = [];
+    if (k.gas && k.gas.expires_on) rows.push((k.gas.valid ? '✓ ' : '⚠ ') + 'Gas safety certificate ' + (k.gas.valid ? 'valid until ' : 'expired on ') + day(k.gas.expires_on));
+    if (k.eicr && k.eicr.expires_on) rows.push((k.eicr.valid ? '✓ ' : '⚠ ') + 'Electrical safety report (EICR) ' + (k.eicr.valid ? 'valid until ' : 'expired on ') + day(k.eicr.expires_on));
+    if (k.licence && k.licence.status === 'licensed') rows.push('✓ ' + (k.licence.type ? k.licence.type + ' licence' : 'Property licence') + (k.licence.number ? ' ' + k.licence.number : '') + (k.licence.expires ? ', expires ' + day(k.licence.expires) : ''));
+    if (!rows.length && !(k.landlord && (k.landlord.email || k.landlord.address))) return '';
+    return '<div class="known"><b>📁 We’ve filled in what we already hold</b><span>Please check it’s still correct and change anything that isn’t.</span>' + (rows.length ? '<ul>' + rows.map(function(r){ return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' : '') + '</div>';
+  }
   function epcBox(){
     var e = T.epc; if (!e) return '';
     var day = function(v){ return v ? new Date(v + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
@@ -172,7 +190,7 @@
       inp('legal_owners', 'Legal owner(s) to appear on the tenancy agreement (if different)', { hint: 'If the property is jointly owned, list all owners. If owned by a company or trust, give its full name below.' }) +
       inp('corr_address', 'Address for correspondence', { area: true, req: true }) +
       inp('company_details', 'Company or trust: full name, registration number and registered office', { area: true }) +
-      '<h3>Property</h3>' + epcBox() + QUESTIONS.map(function(q){ return yn(q[0], q[1], q[2]) + (q[0] === 'q_need_gas_cert' ? attachBox('gas', 'Attach your current Gas Safety Certificate', details.q_need_gas_cert === 'No' && details.q_gas_appliances !== 'No') : q[0] === 'q_eicr' ? attachBox('eicr', 'Attach your current Electrical Installation Condition Report (EICR)', details.q_eicr === 'No') : ''); }).join('') +
+      '<h3>Property</h3>' + knownBox() + epcBox() + QUESTIONS.map(function(q){ return yn(q[0], q[1], q[2]) + (q[0] === 'q_need_gas_cert' ? attachBox('gas', 'Attach your current Gas Safety Certificate', details.q_need_gas_cert === 'No' && details.q_gas_appliances !== 'No') : q[0] === 'q_eicr' ? attachBox('eicr', 'Attach your current Electrical Installation Condition Report (EICR)', details.q_eicr === 'No') : ''); }).join('') +
       '<div class="f" id="schemeWrap" style="margin-top:12px"' + (details.q_register_deposit === 'No' ? '' : ' hidden') + '><label class="l" for="d_deposit_scheme">Which deposit scheme are you registered with?</label><select id="d_deposit_scheme" data-k="deposit_scheme"><option value="">Choose…</option>' + ['DPS', 'TDS', 'My Deposits'].map(function(x){ return '<option' + (details.deposit_scheme === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
       licBox() +
       '<div id="overseasWrap" style="margin-top:12px"' + (details.q_uk_resident === 'No' ? '' : ' hidden') + '>' + inp('overseas_address', 'Overseas address for correspondence', { area: true, hint: 'If you live overseas and HMRC hasn’t approved you to receive rent gross, you’ll need form NRL1, NRL2 or NRL3.' }) + '</div>' +

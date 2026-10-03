@@ -443,6 +443,11 @@
   .staff-tabs button { border: 0; background: none; font: inherit; font-weight: 700; padding: 8px 14px; border-radius: 9px; cursor: pointer; color: var(--ink-soft); } .staff-tabs button.on { background: var(--primary, #0B1F3A); color: #fff; }
   .lt-card.lt-flash { box-shadow: 0 0 0 3px #12b76a; transition: box-shadow .3s; }
   .lt-editing { background: #fff6e5; border: 1px solid #f3d9a8; color: #7a4d00; border-radius: 10px; padding: 10px 12px; font-size: .88rem; margin: 0 0 10px; }
+  .lt-sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; background: var(--panel, #fff); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 40px -18px rgba(15,23,42,.35); margin-top: 4px; overflow: hidden; }
+  .lt-sugg button { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 10px 12px; font: inherit; cursor: pointer; color: var(--ink); } .lt-sugg button:last-child { border-bottom: 0; } .lt-sugg button:hover { background: #f3f5f8; }
+  .lt-sugg b { display: block; font-size: .9rem; } .lt-sugg span { font-size: .78rem; color: var(--ink-soft); font-weight: 500; }
+  .lt-props { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-weight: 500; } .lt-props button { border: 1px solid #c7d7fe; background: #eef4ff; color: #1d3fae; border-radius: 999px; padding: 4px 10px; font: inherit; font-size: .78rem; cursor: pointer; }
+  .lt-known { margin-top: 6px; padding: 10px 12px; border-radius: 10px; background: #eef4ff; border: 1px solid #c7d7fe; font-size: .82rem; font-weight: 500; color: var(--ink); } .lt-known b { color: #1d3fae; } .lt-known ul { margin: 4px 0 0; padding-left: 16px; } .lt-known .btn { margin-top: 6px; }
   .lt-epc { display: flex; gap: 10px; align-items: center; margin-top: 4px; padding: 8px 10px; border-radius: 10px; font-weight: 500; color: var(--ink); background: #f5f6f8; font-size: .82rem; } .lt-epc b { display: block; font-size: .86rem; }
   .lt-epc.ok { background: #e8f6ee; } .lt-epc.bad { background: #fdecec; } .lt-epc.warn { background: #fff6e5; }
   .lt-epc i { flex: 0 0 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-style: normal; font-weight: 800; color: #fff; background: #98a2b3; }
@@ -1429,7 +1434,7 @@
       <div id="ltView" hidden>
         <details class="card" id="ltNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New landlord agreement</summary>
           <p class="muted-note" style="margin:8px 0 12px">Set the fees you agreed with the landlord. You’ll get a private link to send them: they check the fees, fill in the property details form, read the terms and sign. You get the signed PDF with an audit trail.</p>
-          <div class="lt-grid"><label>Landlord name<input class="inp" id="ltName" maxlength="200"></label><label>Property address<input class="inp" id="ltAddr" list="offProps" maxlength="400" placeholder="Include the postcode — we’ll check the EPC"><span id="ltEpc" class="lt-epc" hidden></span></label>
+          <div class="lt-grid"><label style="position:relative">Landlord name<input class="inp" id="ltName" maxlength="200" autocomplete="off" placeholder="Start typing — we’ll find registered landlords"><div class="lt-sugg" id="ltSugg" hidden></div><div class="lt-props" id="ltProps" hidden></div></label><label>Property address<input class="inp" id="ltAddr" list="offProps" maxlength="400" placeholder="Include the postcode — we’ll check the EPC"><span id="ltEpc" class="lt-epc" hidden></span><div id="ltKnown" class="lt-known" hidden></div></label>
             <label>Landlord email <span class="muted-note" style="margin:0">optional</span><input class="inp" id="ltEmail" type="email"></label><label>Landlord mobile <span class="muted-note" style="margin:0">optional</span><input class="inp" id="ltPhone" type="tel"></label></div>
           <div class="lt-fees">
             <div class="lt-box"><b>Tenant find</b><select class="inp" id="ltFind"><option value="sole">Sole agency</option><option value="multi">Multi agency</option><option value="none">None</option></select>
@@ -8846,6 +8851,53 @@
           (t.status === 'sent' ? '<button type="button" class="btn small ghost" data-lt-cancel>Cancel link</button>' : '') + (staffMode ? '' : '<button type="button" class="btn small ghost danger" data-lt-del title="Delete">🗑</button>') + '</footer></div>';
     }).join('') : '<p class="muted-note">No landlord agreements yet — create one above.</p>';
   }
+  // Registered landlords as staff type the name; what we hold about the property once the address is in.
+  var ltLandlordId = null, ltSuggT = null, ltKnownT = null, ltKnownFor = '';
+  $('ltName').addEventListener('input', function(){
+    ltLandlordId = null; $('ltProps').hidden = true; clearTimeout(ltSuggT); var q = this.value.trim();
+    if (q.length < 2) { $('ltSugg').hidden = true; return; }
+    ltSuggT = setTimeout(function(){
+      api('GET', '/api/admin/landlord-terms/lookup?q=' + encodeURIComponent(q)).then(function(d){
+        var ls = (d && d.landlords) || []; if ($('ltName').value.trim() !== q) return;
+        $('ltSugg').innerHTML = ls.map(function(l, i){ return '<button type="button" data-ll="' + i + '"><b>' + esc(l.name) + '</b><span>' + esc([l.phone, l.email].filter(Boolean).join(' · ') || 'No contact details saved') + (l.properties.length ? ' · ' + l.properties.length + ' propert' + (l.properties.length === 1 ? 'y' : 'ies') : '') + '</span></button>'; }).join('');
+        $('ltSugg').hidden = !ls.length; $('ltSugg').ls = ls;
+      });
+    }, 250);
+  });
+  $('ltName').addEventListener('blur', function(){ setTimeout(function(){ $('ltSugg').hidden = true; }, 200); });
+  $('ltSugg').addEventListener('mousedown', function(e){
+    var b = e.target.closest('[data-ll]'); if (!b) return; e.preventDefault(); var l = this.ls[Number(b.dataset.ll)];
+    ltPickLandlord(l, true); $('ltSugg').hidden = true;
+  });
+  function ltPickLandlord(l, showProps){
+    ltLandlordId = l.id; $('ltName').value = l.name || ''; if (l.email) $('ltEmail').value = l.email; if (l.phone) $('ltPhone').value = l.phone;
+    var props = l.properties || [];
+    $('ltProps').innerHTML = showProps && props.length ? '<span class="muted-note" style="margin:0;align-self:center">Their properties:</span>' + props.map(function(a){ return '<button type="button" data-lp="' + esc(a) + '">' + esc(shortAddr(a)) + '</button>'; }).join('') : '';
+    $('ltProps').hidden = !(showProps && props.length);
+    if (props.length === 1 && !$('ltAddr').value.trim()) { $('ltAddr').value = props[0]; ltLoadKnown(); }
+  }
+  $('ltProps').addEventListener('click', function(e){ var b = e.target.closest('[data-lp]'); if (!b) return; $('ltAddr').value = b.dataset.lp; $('ltAddr').dispatchEvent(new Event('input')); ltLoadKnown(); });
+  $('ltAddr').addEventListener('input', function(){ clearTimeout(ltKnownT); ltKnownT = setTimeout(ltLoadKnown, 900); });
+  function ltLoadKnown(){
+    var a = $('ltAddr').value.trim(); if (!a || !/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(a)) { $('ltKnown').hidden = true; return; }
+    var want = a + '|' + (ltLandlordId || ''); if (want === ltKnownFor) return; ltKnownFor = want;
+    api('GET', '/api/admin/landlord-terms/known?address=' + encodeURIComponent(a) + (ltLandlordId ? '&landlord_id=' + ltLandlordId : '')).then(function(k){
+      if (!k || !k.ok) return; var rows = [], cd = function(c, n){ return c && c.expires_on ? (c.valid ? '✓ ' : '⚠ ') + n + (c.valid ? ' valid until ' : ' expired ') + certDay(c.expires_on) : ''; };
+      if (k.landlord && !ltLandlordId) { ltPickLandlord(k.landlord, false); rows.push('✓ Landlord on file: ' + k.landlord.name + ' (filled in)'); }
+      [cd(k.gas, 'Gas safety'), cd(k.eicr, 'EICR'), k.licence && k.licence.status === 'licensed' ? '✓ Licence ' + [k.licence.type, k.licence.number].filter(Boolean).join(' ') + (k.licence.expires ? ', expires ' + certDay(k.licence.expires) : '') : k.licence && k.licence.status === 'applied' ? 'Licence applied for' : ''].filter(Boolean).forEach(function(r){ rows.push(r); });
+      var t = k.tenancy, fees = t && (t.find_pct != null || t.collect_pct != null || t.manage_pct != null);
+      if (t && t.service) rows.push('Current tenancy: ' + t.service + [t.find_pct != null ? 'find ' + t.find_pct + '%' : '', t.manage_pct != null ? 'management ' + t.manage_pct + '%' : '', t.collect_pct != null ? 'collection ' + t.collect_pct + '%' : ''].filter(Boolean).map(function(x){ return ' · ' + x; }).join(''));
+      $('ltKnown').innerHTML = rows.length ? '<b>📁 We already hold this — the landlord’s form will be filled in with it</b><ul>' + rows.map(function(r){ return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' + (fees ? '<button type="button" class="btn small" id="ltUseFees">Use the current tenancy’s fees</button>' : '') : '';
+      $('ltKnown').hidden = !rows.length; $('ltKnown').tc = t;
+    });
+  }
+  $('ltKnown').addEventListener('click', function(e){
+    if (!e.target.closest('#ltUseFees')) return; var t = this.tc || {};
+    if (t.find_pct != null) { if ($('ltFind').value === 'none') $('ltFind').value = 'sole'; $('ltFindPct').value = t.find_pct; }
+    var on = /manag/i.test(t.service || '') ? 'manage' : /collect/i.test(t.service || '') ? 'collect' : t.manage_pct != null ? 'manage' : t.collect_pct != null ? 'collect' : null;
+    if (on) { $('ltOn').value = on; $('ltOnPct').value = on === 'manage' ? (t.manage_pct != null ? t.manage_pct : '') : (t.collect_pct != null ? t.collect_pct : ''); }
+    ltShowRows(); ltPreview(); toast('Fees filled in from the current tenancy — please check them');
+  });
   // EPC as staff type the address (once a full postcode is in).
   var ltEpcT = null, ltEpcFor = '';
   $('ltAddr').addEventListener('input', function(){
@@ -8878,11 +8930,12 @@
   }
   function ltEditEnd(){
     ltEditId = null; $('ltEditing').hidden = true; $('ltEditCancel').hidden = true; $('ltCreate').textContent = 'Create agreement link';
+    ltLandlordId = null; ltKnownFor = ''; $('ltKnown').hidden = true; $('ltProps').hidden = true;
     ['ltName', 'ltAddr', 'ltEmail', 'ltPhone', 'ltOther'].forEach(function(id){ $(id).value = ''; }); $('ltEpc').hidden = true; ltEpcFor = ''; $('ltMonthly').checked = false; $('ltFind').value = 'sole'; $('ltOn').value = 'none'; $('ltRen').checked = true; $('ltVat').checked = true; ltDefaults(); ltPreview();
   }
   $('ltEditCancel').addEventListener('click', ltEditEnd);
   $('ltCreate').addEventListener('click', function(){
-    var b = this, body = { landlord_name: $('ltName').value.trim(), property_address: $('ltAddr').value.trim(), landlord_email: $('ltEmail').value.trim(), landlord_phone: $('ltPhone').value.trim(), fees: ltFees() };
+    var b = this, body = { landlord_name: $('ltName').value.trim(), property_address: $('ltAddr').value.trim(), landlord_email: $('ltEmail').value.trim(), landlord_phone: $('ltPhone').value.trim(), landlord_id: ltLandlordId, fees: ltFees() };
     if (!body.landlord_name) { toast('Enter the landlord’s name'); $('ltName').focus(); return; }
     if (!body.property_address) { toast('Enter the property address'); $('ltAddr').focus(); return; }
     var editing = ltEditId;
@@ -8890,7 +8943,7 @@
     api('POST', '/api/admin/landlord-terms' + (editing ? '/' + editing : ''), body).then(function(d){
       busy(b, false); if (!d.ok) { toast(d.error === 'pct' ? 'Enter the percentages for the services chosen' : d.error === 'fees' ? 'Choose at least one service or add other fees' : d.error === 'signed' ? 'Already signed — it can’t be changed' : 'Couldn’t save it'); return; }
       if (editing) { ltEditEnd(); toast('✓ Saved — the same link now shows the new details. Send it again below.'); setTimeout(function(){ var c = document.querySelector('[data-lt="' + editing + '"]'); if (c) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.add('lt-flash'); setTimeout(function(){ c.classList.remove('lt-flash'); }, 2500); } }, 900); loadLt(); return; }
-      ['ltName', 'ltAddr', 'ltEmail', 'ltPhone', 'ltOther'].forEach(function(id){ $(id).value = ''; }); $('ltEpc').hidden = true; ltEpcFor = ''; $('ltMonthly').checked = false;
+      ['ltName', 'ltAddr', 'ltEmail', 'ltPhone', 'ltOther'].forEach(function(id){ $(id).value = ''; }); $('ltEpc').hidden = true; ltEpcFor = ''; $('ltMonthly').checked = false; ltLandlordId = null; ltKnownFor = ''; $('ltKnown').hidden = true; $('ltProps').hidden = true;
       offCopyText(d.link); toast('Agreement created — link copied. Send it by WhatsApp or email below.'); loadLt();
     });
   });
