@@ -434,6 +434,17 @@
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
+  .team-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .team-row.off { opacity: .55; }
+  .team-av { flex: 0 0 34px; height: 34px; border-radius: 50%; background: var(--primary, #0B1F3A); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: .78rem; }
+  .team-av.sm { flex-basis: 26px; height: 26px; font-size: .66rem; }
+  .team-who { flex: 1 1 220px; min-width: 0; } .team-who > span:last-child { display: block; font-size: .8rem; color: var(--ink-soft); }
+  .team-act { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } .team-act select { width: auto; padding: 5px 8px; font-size: .8rem; }
+  .team-add { margin: 14px 0; padding: 12px; border-radius: 12px; background: var(--panel-2); }
+  .team-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 8px; }
+  .team-feed-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 16px 0 6px; }
+  .team-feed { list-style: none; margin: 0; padding: 0; } .team-feed li { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: .88rem; }
+  .team-feed small { display: block; color: var(--ink-faint); font-size: .74rem; }
   .off-alerts { margin-top: 12px; padding: 12px; border-radius: 10px; background: #edf2ff; }
   .off-alerts-staff { margin-bottom: 12px; border-left: 4px solid #1d3fae; }
   .oc-rtr { margin-top: 10px; padding: 10px 12px; border: 1px solid #e3e6ec; border-radius: 10px; background: #fafbfc; }
@@ -1035,6 +1046,8 @@
     <span class="login-logo"><img class="lg-l" src="/logo-ink.png" alt="Residential Realtors"><img class="lg-d" src="/logo-white.png" alt=""></span>
     <h1>Repair jobs</h1>
     <p>Residential Realtors staff sign-in.</p>
+    <label class="lbl" for="loginUser">Your name or email</label>
+    <input class="inp" type="text" id="loginUser" autocomplete="username" placeholder="Leave blank for the main password" style="margin-bottom:10px">
     <label class="lbl" for="pw">Password</label>
     <input class="inp" type="password" id="pw" autocomplete="current-password" required>
     <div class="err-msg" id="loginErr"></div>
@@ -1064,7 +1077,7 @@
     <a class="nav" href="/offer" target="_blank" rel="noopener" style="text-decoration:none" title="The form applicants fill in to make an offer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offer form (applicants)</a>
     <a class="nav" href="/admin#offers" id="navOffersLink" style="text-decoration:none" title="Where the offer forms are collected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offers collected <span class="badge hot" id="sOffers2" hidden>0</span></a>
     <div class="grow"></div>
-    <div class="side-foot"><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
+    <div class="side-foot"><div class="deployed" id="whoAmI" hidden></div><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
   </aside>
 
   <main class="main">
@@ -1284,6 +1297,18 @@
 
       <!-- ACTIVITY: where staff are signed in, visits to the tenant pages -->
       <div id="actView" hidden>
+        <details class="card act-sec" data-sec="team" id="teamSec" hidden open>
+          <summary><span class="act-sec-t">👥 Team — who’s doing what</span><span class="act-sum" id="sum_team"></span><span class="act-chev" aria-hidden="true"></span></summary>
+          <div class="act-sec-b">
+            <p class="muted-note" style="margin:0 0 10px">Give each person their own sign-in. Everything they change is recorded with their name — in job updates, offer and tenancy histories, and below.</p>
+            <div id="teamList"></div>
+            <div class="team-add"><b>Add a person</b>
+              <div class="team-grid"><input class="inp" id="tmName" placeholder="Name (they sign in with this)" maxlength="80"><input class="inp" id="tmEmail" type="email" placeholder="Email (optional)"><select class="inp" id="tmRole"><option value="full">Full access</option><option value="offers">Offers only</option><option value="admin">Full access + manage team</option></select><input class="inp" id="tmPw" type="text" autocomplete="off" placeholder="Password (8+ characters)"></div>
+              <button class="btn primary small" type="button" id="tmAdd" style="margin-top:8px">Add person</button></div>
+            <div class="team-feed-h"><b>Who did what</b><select class="inp" id="tmFilter" style="width:auto"><option value="">Everyone</option></select></div>
+            <div id="teamFeed"></div>
+          </div>
+        </details>
         <div class="act-bar-top"><span class="muted-note" style="margin:0">Showing</span><select class="inp" id="actDays" style="width:auto" aria-label="Period"><option value="30">Last 30 days</option><option value="7">Last 7 days</option><option value="90">Last 90 days</option><option value="365">Last 12 months</option></select><span class="muted-note" id="actStamp" style="margin:0"></span><span style="flex:1"></span><button type="button" class="btn small ghost" id="actAll">Expand all</button></div>
         <details class="card act-sec" data-sec="repairs">
           <summary><span class="act-sec-t">Repairs</span><span class="act-sum" id="sum_repairs"></span><span class="act-chev" aria-hidden="true"></span></summary>
@@ -2082,6 +2107,7 @@
   try { var savedSort = localStorage.getItem('rrJobsSort'); if (savedSort) $('sort').value = savedSort; } catch (e) {}
 
   // ---------- Sign in ----------
+  try { if ($('loginUser')) $('loginUser').value = localStorage.getItem('rr_login_user') || ''; } catch (e) {}
   function showLogin(){
     if (location.pathname === '/staff') { var lh = document.querySelector('#loginForm h1'), lp = document.querySelector('#loginForm h1 + p'); if (lh) lh.textContent = 'Offers'; if (lp) lp.textContent = 'Residential Realtors staff sign-in for offers.'; document.title = 'Offers — Residential Realtors'; }
     $('appView').hidden = true; closeDrawer(); $('loginView').hidden = false;
@@ -2090,9 +2116,10 @@
   $('loginForm').addEventListener('submit', function(e){
     e.preventDefault();
     $('loginErr').textContent = '';
-    api('POST', '/api/admin/login', { password: $('pw').value }).then(function(d){
-      if (d.ok) { $('pw').value = ''; start(); return; }
-      $('loginErr').textContent = d.error === 'wrong-password' ? 'That password isn’t right.'
+    var lu = $('loginUser').value.trim();
+    api('POST', '/api/admin/login', { password: $('pw').value, user: lu }).then(function(d){
+      if (d.ok) { $('pw').value = ''; try { localStorage.setItem('rr_login_user', lu); } catch (e) {} start(); return; }
+      $('loginErr').textContent = d.error === 'wrong-password' ? (lu ? 'That name and password don’t match.' : 'That password isn’t right.')
         : d.error === 'too-many-attempts' ? 'Too many attempts — please wait 15 minutes.'
         : d.error === 'admin-not-configured' ? 'Admin sign-in isn’t set up yet (ADMIN_PASSWORD is missing on the server).'
         : 'Couldn’t sign in just now.';
@@ -2104,6 +2131,7 @@
     api('GET', '/api/admin/me').then(function(d){
       if (!d.ok) { if (d.status !== 401) showLogin(); return; }
       meta = d;
+      if (d.user) { $('whoAmI').innerHTML = 'Signed in as<br><b>' + esc(d.user.name) + '</b>'; $('whoAmI').hidden = false; }
       $('loginView').hidden = true;
       $('appView').hidden = false;
       $('dbBanner').hidden = !!d.db;
@@ -5933,7 +5961,7 @@
         '<ul class="timeline">' + updates.map(function(u){
           var label = { created: 'Job created', change: 'Change', note: 'Update', tenant_message: 'Message to tenant', landlord_message: 'Message to landlord', contractor_message: 'Sent to contractor', contractor_note: 'Note from contractor', email: 'Email', completed: 'Completed' }[u.kind] || 'Update';
           var sendable = ['note', 'contractor_note', 'completed'].indexOf(u.kind) !== -1 || (u.kind === 'change' && /^Status: /.test(u.body));
-          return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + '</span>' + esc(u.body) +
+          return '<li class="k-' + esc(u.kind) + '"><span class="when">' + esc(label) + ' · ' + esc(fmtDate(u.created_at)) + (u.author && u.kind !== 'contractor_note' ? ' · ' + esc(u.author) : '') + '</span>' + esc(u.body) +
             (sendable ? '<div class="u-send"><button type="button" class="linkish" data-u-send="tenant" data-uid="' + u.id + '">💬 Send to tenant</button><button type="button" class="linkish" data-u-send="landlord" data-uid="' + u.id + '">🏠 Send to landlord</button></div>' : '') + '</li>';
         }).join('') + '</ul>' +
       '</div>' +
@@ -8251,6 +8279,11 @@
         '<label class="wide">Notes<input data-rtr-k="note" maxlength="300" value="' + esc(r && r.note || '') + '" placeholder="e.g. Checked on video call, photo matches"></label></div>' +
         '<div class="oc-rtr-act"><button type="button" class="btn small primary" data-rtr-save>Save check</button>' + (r ? '<button type="button" class="btn small ghost danger" data-rtr-clear>Remove</button>' : '') + '</div></details></div>';
   }
+  // A WhatsApp chat with an applicant (UK numbers turned into +44), opened with a short hello.
+  function offWa(phone, name, o){
+    var ph = String(phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44');
+    return 'https://wa.me/' + ph + '?text=' + encodeURIComponent('Hi ' + (String(name || '').split(/\s+/)[0] || 'there') + ', it’s Residential Realtors about your offer on ' + shortAddr(o.property_address) + ' (' + o.ref + '). ');
+  }
   // One offer, as a card: who, how much, where it's up to, and what to do next.
   function offerCard(o){
     var d = o.data || {}, m = d.money || {}, ts = d.tenants || [], docs = o.docs || [];
@@ -8278,7 +8311,7 @@
       '<header class="oc-head"><div class="oc-av">' + esc(initials || '?') + '</div>' +
         '<div class="oc-who"><div class="oc-addr">' + esc(o.property_address || '') + '</div>' +
           '<div class="oc-meta">' + esc(o.lead_name || '') + ' · ' + esc(o.ref) + ' · ' + esc(fmtShort(o.created_at)) + '</div>' +
-          '<div class="oc-contact">' + (o.lead_phone ? '<a href="tel:' + esc(o.lead_phone) + '">📞 ' + esc(o.lead_phone) + '</a>' : '') + (o.lead_email ? '<a href="mailto:' + esc(o.lead_email) + '">✉ ' + esc(o.lead_email) + '</a>' : '') + '</div></div>' +
+          '<div class="oc-contact">' + (o.lead_phone ? '<a href="tel:' + esc(o.lead_phone) + '">📞 ' + esc(o.lead_phone) + '</a><a target="_blank" rel="noopener" href="' + esc(offWa(o.lead_phone, o.lead_name, o)) + '">💬 WhatsApp</a>' : '') + (o.lead_email ? '<a href="mailto:' + esc(o.lead_email) + '">✉ ' + esc(o.lead_email) + '</a>' : '') + '</div></div>' +
         '<div class="oc-price"><div class="oc-pw">' + esc(gbp(offPw(o))) + '<small> /week</small></div><div class="oc-pcm">' + esc(gbp(m.pcm || 0)) + ' /month' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' /wk' : '') + '</div></div></header>' +
       '<div class="oc-status"><span class="oc-pill ' + st[0] + '">' + st[1] + '</span>' +
         (o.paid_at ? '<span class="oc-pill ok">💷 Deposit received ' + esc(fmtShort(o.paid_at).split(',')[0]) + '</span>' : (o.status === 'rejected' || o.status === 'withdrawn' ? '' : d.paid_claim ? '<span class="oc-pill wait">💬 Says paid ' + esc(longDay(d.paid_claim.date)) + (d.paid_claim.from ? ' from ' + esc(d.paid_claim.from) : '') + ' — check the bank</span>' : '<span class="oc-pill warn">Deposit ' + esc(gbp(m.holding || 0)) + ' not received</span>')) +
@@ -8297,7 +8330,7 @@
         var row = function(k, v){ return v ? '<div><span>' + esc(k) + '</span>' + esc(v) + '</div>' : ''; };
         return '<div class="oc-ten"><div class="oc-ten-h"><span class="oc-num">' + (i + 1) + '</span><b>' + esc(t.name) + '</b>' + (i === 0 ? '<span class="oc-pill muted">Lead</span>' : '') +
             (t.income_type === 'Student' ? '<span class="oc-pill warn">Student</span>' : '') + rtrPill((d.rtr || {})[i + 1]) + '</div><div class="oc-rows">' +
-          row('Date of birth', t.dob ? longDay(t.dob) : '') + row('Phone', t.phone) + row('Email', t.email) + row('Income', [t.income_type, t.employment_type].filter(Boolean).join(', ')) +
+          row('Date of birth', t.dob ? longDay(t.dob) : '') + (t.phone ? '<div><span>Phone</span>' + esc(t.phone) + ' · <a href="tel:' + esc(t.phone) + '">Call</a> · <a target="_blank" rel="noopener" href="' + esc(offWa(t.phone, t.name, o)) + '">💬 WhatsApp</a></div>' : '') + row('Email', t.email) + row('Income', [t.income_type, t.employment_type].filter(Boolean).join(', ')) +
           row('Work', [t.position, t.company].filter(Boolean).join(' at ')) + row('Salary', t.salary ? '£' + t.salary : '') + row('Started', t.start_date ? longDay(t.start_date) : '') + row('Other income', t.other_income) +
           row('Study', [t.university, t.course, t.academic_year].filter(Boolean).join(', ')) + row('Lives at', t.current_address) + row('Status', t.residency_status) + row('Rent now', t.current_rent ? '£' + t.current_rent + ' a month' : '') +
           row('Landlord', [t.landlord_name, t.landlord_phone, t.landlord_email].filter(Boolean).join(' · ')) + row('Tenancy', [t.tenancy_start ? longDay(t.tenancy_start) : '', t.tenancy_end ? longDay(t.tenancy_end) : ''].filter(Boolean).join(' – ')) +
@@ -10732,7 +10765,61 @@
     var s = Math.max(0, (Date.now() - new Date(t).getTime()) / 1000);
     return s < 90 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' day' + (Math.round(s / 86400) === 1 ? '' : 's') + ' ago';
   }
+  // ---------- Team: staff users and who did what ----------
+  var TEAM_ROLES = { admin: 'Full access + manage team', full: 'Full access', offers: 'Offers only' };
+  function loadTeam(){
+    if (!meta.canManageUsers) { $('teamSec').hidden = true; return; }
+    $('teamSec').hidden = false;
+    api('GET', '/api/admin/users').then(function(d){
+      if (!d.ok) return;
+      var users = d.users || [];
+      actSum('team', users.filter(function(u){ return !u.disabled_at; }).length + ' people');
+      $('teamList').innerHTML = users.length ? users.map(function(u){
+        return '<div class="team-row' + (u.disabled_at ? ' off' : '') + '" data-uid="' + u.id + '"><span class="team-av">' + esc((u.name || '?').split(/\s+/).map(function(w){ return w[0]; }).join('').slice(0, 2).toUpperCase()) + '</span>' +
+          '<div class="team-who"><b>' + esc(u.name) + '</b>' + (u.disabled_at ? ' <span class="count-chip">Turned off</span>' : '') + '<span>' + esc(TEAM_ROLES[u.role] || u.role) + (u.email ? ' · ' + esc(u.email) : '') + ' · ' + (u.last_seen ? 'active ' + esc(ago(u.last_seen)) : 'not signed in yet') + (u.week_actions ? ' · ' + u.week_actions + ' change' + (u.week_actions === 1 ? '' : 's') + ' this week' : '') + '</span></div>' +
+          '<div class="team-act"><select class="inp" data-tm-role>' + Object.keys(TEAM_ROLES).map(function(k){ return '<option value="' + k + '"' + (u.role === k ? ' selected' : '') + '>' + TEAM_ROLES[k] + '</option>'; }).join('') + '</select>' +
+          '<button class="btn small ghost" type="button" data-tm-pw>New password</button><button class="btn small ghost" type="button" data-tm-feed>Activity</button><button class="btn small ghost' + (u.disabled_at ? '' : ' danger') + '" type="button" data-tm-off="' + (u.disabled_at ? '0' : '1') + '">' + (u.disabled_at ? 'Turn on' : 'Turn off') + '</button></div></div>';
+      }).join('') : '<p class="muted-note">No one added yet — you’re signing in with the main password.</p>';
+      var cur = $('tmFilter').value;
+      $('tmFilter').innerHTML = '<option value="">Everyone</option><option value="owner">Main password (Owner)</option>' + users.map(function(u){ return '<option value="' + u.id + '">' + esc(u.name) + '</option>'; }).join('');
+      $('tmFilter').value = cur;
+      loadTeamFeed();
+    });
+  }
+  function loadTeamFeed(){
+    var f = $('tmFilter').value;
+    api('GET', '/api/admin/staff-activity' + (f ? '?user=' + encodeURIComponent(f) : '')).then(function(d){
+      if (!d.ok) return;
+      var list = d.activity || [];
+      $('teamFeed').innerHTML = list.length ? '<ul class="team-feed">' + list.slice(0, 150).map(function(a){ return '<li><span class="team-av sm">' + esc((a.user_name || '?').split(/\s+/).map(function(w){ return w[0]; }).join('').slice(0, 2).toUpperCase()) + '</span><div><b>' + esc(a.user_name || 'Someone') + '</b> ' + esc(a.action.charAt(0).toLowerCase() + a.action.slice(1)) + '<small>' + esc(fmtShort(a.at)) + '</small></div></li>'; }).join('') + '</ul>' : '<p class="muted-note">Nothing recorded yet.</p>';
+    });
+  }
+  $('tmFilter').addEventListener('change', loadTeamFeed);
+  $('tmAdd').addEventListener('click', function(){
+    var body = { name: $('tmName').value.trim(), email: $('tmEmail').value.trim(), role: $('tmRole').value, password: $('tmPw').value };
+    if (!body.name) { toast('Enter their name'); $('tmName').focus(); return; }
+    if (body.password.length < 8) { toast('Use a password of at least 8 characters'); $('tmPw').focus(); return; }
+    api('POST', '/api/admin/users', body).then(function(d){
+      if (!d.ok) { toast(d.error === 'taken' ? 'Someone already has that name' : d.error === 'owner-only' ? 'Only the owner can add people who manage the team' : 'Couldn’t add them'); return; }
+      toast(body.name + ' added — they sign in with their name and password'); $('tmName').value = $('tmEmail').value = $('tmPw').value = ''; loadTeam();
+    });
+  });
+  $('teamList').addEventListener('change', function(e){
+    var sel = e.target.closest('[data-tm-role]'); if (!sel) return;
+    var uid = sel.closest('[data-uid]').dataset.uid;
+    api('POST', '/api/admin/users/' + uid, { role: sel.value }).then(function(d){ toast(d.ok ? 'Access changed — they’ll sign in again' : d.error === 'owner-only' ? 'Only the owner can change that' : 'Couldn’t change it'); loadTeam(); });
+  });
+  $('teamList').addEventListener('click', function(e){
+    var row = e.target.closest('[data-uid]'); if (!row) return; var uid = row.dataset.uid, name = row.querySelector('b').textContent;
+    if (e.target.closest('[data-tm-pw]')) { var pw = window.prompt('New password for ' + name + ' (at least 8 characters):'); if (!pw) return; if (pw.length < 8) { toast('At least 8 characters'); return; }
+      api('POST', '/api/admin/users/' + uid, { password: pw }).then(function(d){ toast(d.ok ? 'Password changed — ' + name + ' is signed out everywhere' : 'Couldn’t change it'); }); return; }
+    if (e.target.closest('[data-tm-feed]')) { $('tmFilter').value = uid; loadTeamFeed(); $('teamFeed').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    var off = e.target.closest('[data-tm-off]');
+    if (off) { var turnOff = off.dataset.tmOff === '1'; if (turnOff && !confirm('Turn off ' + name + '’s sign-in? They’re signed out straight away.')) return;
+      api('POST', '/api/admin/users/' + uid, { disabled: turnOff }).then(function(d){ toast(d.ok ? (turnOff ? name + ' turned off' : name + ' turned back on') : 'Couldn’t do that'); loadTeam(); }); }
+  });
   function loadActivity(){
+    loadTeam();
     api('GET', '/api/admin/sessions').then(function(d){
       if (!d.ok) return;
       var list = d.sessions;
