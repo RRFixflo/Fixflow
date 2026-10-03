@@ -6459,10 +6459,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // The first time the applicant opens their tracking page goes in the audit trail.
     if (!d.track_viewed_at) p.query("UPDATE offers SET data = data || jsonb_build_object('track_viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'track_viewed_at')",
       [o.id, JSON.stringify([offerLog(req, 'Applicant opened their offer tracking page', 'applicant')])]).catch(function () {});
-    const bank = !o.paid_at && o.status !== 'rejected' && INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null;
+    // Paid less than the holding deposit: they still see the bank details and what's left.
+    const dueHold = Number((d.money || {}).holding) || 0, got = o.paid_at ? (d.paid_amount != null ? Number(d.paid_amount) : dueHold) : 0, short = o.paid_at ? Math.max(0, Math.round((dueHold - got) * 100) / 100) : 0;
+    const bank = (!o.paid_at || short > 0) && o.status !== 'rejected' && o.status !== 'withdrawn' && INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null;
     res.json({ ok: true, ref: ref, property: o.property_address, name: String(o.lead_name || '').split(/\s+/)[0], created_at: o.created_at, status: o.status, decided_at: o.decided_at, paid_at: o.paid_at,
       offer_pw: Number(o.offer_pw), money: d.money || {}, move_in: d.move_in || null, stay: d.stay || '', tenants: (d.tenants || []).length, bank: bank, reference: offerPayRef(o.property_address, ref),
-      refund: d.refund ? { given_at: d.refund.at, name: d.refund.name } : null, refunded_at: d.refunded_at || null, paid_claim: d.paid_claim || null });
+      refund: d.refund ? { given_at: d.refund.at, name: d.refund.name } : null, refunded_at: d.refunded_at || null, paid_claim: d.paid_claim || null, paid_amount: o.paid_at ? got : null, short: short });
   }));
   app.get('/api/admin/offers', withDb(async function (p, req, res) {
     const r = await p.query(`SELECT o.id, o.created_at, o.property_address, o.property_key, o.lead_name, o.lead_email, o.lead_phone, o.offer_pw, o.data, o.status, o.decided_at, o.paid_at, o.seen_at, o.log, o.track_token,
@@ -6487,7 +6489,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.post('/api/admin/offers/:id', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req), sets = [], vals = [id], notes = [];
     if (['new', 'accepted', 'rejected', 'withdrawn'].indexOf(b.status) !== -1) { vals.push(b.status); sets.push('status = $' + vals.length, "decided_at = CASE WHEN $" + vals.length + " = 'new' THEN NULL ELSE now() END"); notes.push(b.status === 'accepted' ? 'Offer accepted' : b.status === 'rejected' ? 'Offer rejected' : b.status === 'withdrawn' ? 'Marked as withdrawn' : 'Decision undone'); }
-    if (typeof b.paid === 'boolean') { sets.push('paid_at = ' + (b.paid ? 'coalesce(paid_at, now())' : 'NULL')); notes.push(b.paid ? 'Holding deposit received' : 'Holding deposit marked not received'); }
+    if (typeof b.paid === 'boolean') { sets.push('paid_at = ' + (b.paid ? 'coalesce(paid_at, now())' : 'NULL')); notes.push(b.paid ? 'Holding deposit received' : 'Holding deposit marked not received'); if (!b.paid) sets.push("data = data - 'paid_amount'"); }
+    // What actually arrived (people don't always pay the exact amount).
+    const amt = b.paid_amount != null ? Math.round(parseFloat(String(b.paid_amount).replace(/[£,\s]/g, '')) * 100) / 100 : null;
+    if (amt != null && b.paid !== false) {
+      if (!(amt > 0 && amt < 100000)) return res.status(400).json({ ok: false, error: 'amount' });
+      vals.push(amt); sets.push("data = data || jsonb_build_object('paid_amount', $" + vals.length + "::numeric)");
+      notes.push('Amount received: ' + gbp(amt));
+    }
     if (b.seen === true) sets.push('seen_at = coalesce(seen_at, now())');
     if (str(b.note, 300)) notes.push(str(b.note, 300));
     if (typeof b.refunded === 'boolean') { sets.push("data = data || jsonb_build_object('refunded_at', " + (b.refunded ? 'to_jsonb(now())' : "'null'::jsonb") + ')'); notes.push(b.refunded ? 'Holding deposit refund sent' : 'Refund marked as not sent'); }
@@ -6498,7 +6507,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Tell staff (and the office, when staff did it) about decisions and deposits.
     const ro = r.rows[0], oref = 'OF' + String(ro.id).padStart(4, '0'), byStaff = req.role === 'offers', tag = byStaff ? ' (by offers staff)' : '';
     const said = b.status === 'accepted' ? ['Offer accepted: ', ['white_check_mark']] : b.status === 'rejected' ? ['Offer rejected: ', ['x']] : b.paid === true ? ['Holding deposit in: ', ['moneybag']] : null;
-    if (said) offerAlert({ title: said[0] + shortAddrText(ro.property_address), message: (ro.lead_name || 'Applicant') + ' · ' + gbp(ro.offer_pw) + ' pw · ' + oref + (b.paid === true ? ' · ' + gbp(((ro.data || {}).money || {}).holding) + ' received' : '') + tag, tags: said[1] }, { office: byStaff });
+    if (said) offerAlert({ title: said[0] + shortAddrText(ro.property_address), message: (ro.lead_name || 'Applicant') + ' · ' + gbp(ro.offer_pw) + ' pw · ' + oref + (b.paid === true ? ' · ' + gbp(amt != null ? amt : ((ro.data || {}).money || {}).holding) + ' received' + (amt != null && Math.abs(amt - Number(((ro.data || {}).money || {}).holding || 0)) > 0.009 ? ' (holding deposit ' + gbp(((ro.data || {}).money || {}).holding) + ')' : '') : '') + tag, tags: said[1] }, { office: byStaff });
     res.json({ ok: true });
   }));
   // Right to rent: the office runs the check on GOV.UK (it needs their sign-in and
@@ -6948,18 +6957,35 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.end(Buffer.from(out.bytes));
   }));
   // The applicant's receipt for their holding deposit (once we've marked it received).
+  // The holding deposit receipt (once it's marked received): for the applicant's
+  // tracking page and the office. Shows what actually arrived.
   app.get('/api/offers/track/:token/receipt.pdf', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).send('Too many requests');
     const t = String(req.params.token || '');
     const o = /^[\w-]{16,40}$/.test(t) ? (await p.query('SELECT * FROM offers WHERE track_token = $1 AND paid_at IS NOT NULL', [t])).rows[0] : null;
     if (!o) return res.status(404).send('No receipt yet');
+    sendReceipt(res, await receiptPdf(o), o, req.query.dl);
+  }));
+  app.get('/api/admin/offers/:id/receipt.pdf', withDb(async function (p, req, res) {
+    const o = (await p.query('SELECT * FROM offers WHERE id = $1 AND paid_at IS NOT NULL', [jobId(req)])).rows[0];
+    if (!o) return res.status(404).send('No receipt yet - mark the holding deposit received first');
+    sendReceipt(res, await receiptPdf(o), o, req.query.dl);
+  }));
+  function sendReceipt(res, bytes, o, dl) {
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', (dl ? 'attachment' : 'inline') + '; filename="Holding deposit receipt - OF' + String(o.id).padStart(4, '0') + '.pdf"');
+    res.end(Buffer.from(bytes));
+  }
+  async function receiptPdf(o) {
     const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     const pdf = await PDFDocument.create(), page = pdf.addPage([595.28, 841.89]);
     const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
     const ink = rgb(0.06, 0.07, 0.09), soft = rgb(0.38, 0.4, 0.45), line = rgb(0.86, 0.87, 0.9), red = rgb(0.85, 0.15, 0.18), okc = rgb(0.07, 0.57, 0.29);
     const safe = function (x) { return String(x == null ? '' : x).replace(/[\u2018\u2019]/g, "'").replace(/[\u2013\u2014]/g, '-').replace(/[^\x20-\x7E\xA3\xA0-\xFF]/g, ''); };
     const d = o.data || {}, m = d.money || {}, ref = 'OF' + String(o.id).padStart(4, '0'), M = 56;
-    const amount = '\xA3' + (Number(m.holding) || Number(o.offer_pw) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const due = Number(m.holding) || Number(o.offer_pw) || 0, got = d.paid_amount != null ? Number(d.paid_amount) : due, diff = Math.round((got - due) * 100) / 100;
+    const fmtM = function (v) { return '\xA3' + Number(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    const amount = fmtM(got);
     const when = function (v) { return new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }); };
     try { const logo = await pdf.embedPng(require('fs').readFileSync(require('path').join(__dirname, 'logo-ink.png'))); page.drawImage(logo, { x: M, y: 760, width: logo.width * 40 / logo.height, height: 40 }); } catch (e) {}
     page.drawText('RECEIPT', { x: 595.28 - M - B.widthOfTextAtSize('RECEIPT', 22), y: 772, size: 22, font: B, color: ink });
@@ -6969,18 +6995,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
     page.drawText(safe('Thank you - we have received your holding deposit for the property below.'), { x: M, y: y, size: 10.5, font: F, color: soft }); y -= 40;
     page.drawText(amount, { x: M, y: y, size: 30, font: B, color: okc }); y -= 34;
     const rows = [['Receipt for', 'Holding deposit (one week\'s rent)'], ['Offer reference', ref], ['Property', o.property_address], ['Received from', o.lead_name + (d.tenants && d.tenants.length > 1 ? ' (on behalf of ' + d.tenants.length + ' tenants)' : '')],
-      ['Date received', when(o.paid_at)], ['Payment reference', (addrPayRef(o.property_address) || ref)], ['Offer', '\xA3' + Number(o.offer_pw).toFixed(2) + ' a week (\xA3' + Number(m.pcm || 0).toFixed(2) + ' a month)'], ['Move-in date', d.move_in ? when(d.move_in + 'T12:00:00Z') : '-']];
+      ['Date received', when(o.paid_at)]].concat(diff ? [['Holding deposit due', fmtM(due)], [diff < 0 ? 'Still to pay' : 'Paid over', fmtM(Math.abs(diff)) + (diff < 0 ? ' - please pay the rest' : ' - taken off what\'s due at signing')]] : [], [['Payment reference', (addrPayRef(o.property_address) || ref)], ['Offer', '\xA3' + Number(o.offer_pw).toFixed(2) + ' a week (\xA3' + Number(m.pcm || 0).toFixed(2) + ' a month)'], ['Move-in date', d.move_in ? when(d.move_in + 'T12:00:00Z') : '-']]);
     rows.forEach(function (r) { page.drawText(safe(r[0]), { x: M, y: y, size: 9.5, font: B, color: soft }); page.drawText(safe(r[1]).slice(0, 80), { x: M + 150, y: y, size: 10.5, font: F, color: ink }); y -= 10; page.drawLine({ start: { x: M, y: y }, end: { x: 595.28 - M, y: y }, thickness: 0.5, color: line }); y -= 16; });
     y -= 10;
     ['This holding deposit reserves the property while references and the tenancy agreement are prepared. It does not create a tenancy.', 'Once your offer is accepted it goes towards your first month\'s rent. The rest of the move-in money is due when you sign the tenancy agreement.',
       'It is returned within 24 hours if the landlord rejects your maximum offer or withdraws the property, and is not refundable in the cases set out in the information sheet you agreed to.']
       .forEach(function (tx) { const words = tx.split(' '); let cur = ''; words.forEach(function (w) { const tt = cur ? cur + ' ' + w : w; if (F.widthOfTextAtSize(tt, 9.5) > 595.28 - M * 2) { page.drawText(safe(cur), { x: M, y: y, size: 9.5, font: F, color: soft }); y -= 14; cur = w; } else cur = tt; }); page.drawText(safe(cur), { x: M, y: y, size: 9.5, font: F, color: soft }); y -= 20; });
     page.drawText(safe('Residential Realtors - Trading name of Estallion Investments Limited - Registered in England No. ' + (INVOICE.companyNo || '') + ' - ' + (INVOICE.address || '')), { x: M, y: 40, size: 7.5, font: F, color: soft });
-    const bytes = await pdf.save();
-    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store');
-    res.setHeader('Content-Disposition', 'inline; filename="Holding deposit receipt - ' + ref + '.pdf"');
-    res.end(Buffer.from(bytes));
-  }));
+    return await pdf.save();
+  }
   app.get('/api/admin/offers/:id/pdf', withDb(async function (p, req, res) {
     const out = await offerPdf(p, jobId(req));
     if (!out) return res.status(404).send('Not found');

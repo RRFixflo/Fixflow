@@ -8313,6 +8313,21 @@
         '<label class="wide">Notes<input data-rtr-k="note" maxlength="300" value="' + esc(r && r.note || '') + '" placeholder="e.g. Checked on video call, photo matches"></label></div>' +
         '<div class="oc-rtr-act"><button type="button" class="btn small primary" data-rtr-save>Save check</button>' + (r ? '<button type="button" class="btn small ghost danger" data-rtr-clear>Remove</button>' : '') + '</div></details></div>';
   }
+  // Deposit received: what arrived, and whether it was short or over.
+  function offPaidPill(o){
+    var d = o.data || {}, due = Number((d.money || {}).holding) || 0, got = d.paid_amount != null ? Number(d.paid_amount) : due, diff = Math.round((got - due) * 100) / 100, day = esc(fmtShort(o.paid_at).split(',')[0]);
+    return diff < 0 ? '<span class="oc-pill warn">💷 ' + esc(gbp(got)) + ' received ' + day + ' — ' + esc(gbp(-diff)) + ' short</span>'
+      : diff > 0 ? '<span class="oc-pill ok">💷 ' + esc(gbp(got)) + ' received ' + day + ' — ' + esc(gbp(diff)) + ' over</span>'
+      : '<span class="oc-pill ok">💷 Deposit received ' + day + (d.paid_amount != null ? ' · ' + esc(gbp(got)) : '') + '</span>';
+  }
+  function offAskAmount(o){
+    var d = o.data || {}, due = Number((d.money || {}).holding) || 0;
+    var v = window.prompt('How much arrived in the bank? (holding deposit due: ' + gbp(due) + ')', String(d.paid_amount != null ? d.paid_amount : due));
+    if (v == null) return null;
+    var n = Math.round(parseFloat(String(v).replace(/[£,\s]/g, '')) * 100) / 100;
+    if (!(n > 0)) { toast('Enter the amount received, e.g. ' + due); return null; }
+    return n;
+  }
   // A WhatsApp chat with an applicant (UK numbers turned into +44), opened with a short hello.
   var WA_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.6-.3Z"/></svg>';
   function offWa(phone, name, o){
@@ -8349,10 +8364,10 @@
           '<div class="oc-contact">' + (o.lead_phone ? '<a href="tel:' + esc(o.lead_phone) + '">📞 ' + esc(o.lead_phone) + '</a><a class="wa-btn" target="_blank" rel="noopener" href="' + esc(offWa(o.lead_phone, o.lead_name, o)) + '">' + WA_ICON + 'WhatsApp</a>' : '') + (o.lead_email ? '<a href="mailto:' + esc(o.lead_email) + '">✉ ' + esc(o.lead_email) + '</a>' : '') + '</div></div>' +
         '<div class="oc-price"><div class="oc-pw">' + esc(gbp(offPw(o))) + '<small> /week</small></div><div class="oc-pcm">' + esc(gbp(m.pcm || 0)) + ' /month' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' /wk' : '') + '</div></div></header>' +
       '<div class="oc-status"><span class="oc-pill ' + st[0] + '">' + st[1] + '</span>' +
-        (o.paid_at ? '<span class="oc-pill ok">💷 Deposit received ' + esc(fmtShort(o.paid_at).split(',')[0]) + '</span>' : (o.status === 'rejected' || o.status === 'withdrawn' ? '' : d.paid_claim ? '<span class="oc-pill wait">💬 Says paid ' + esc(longDay(d.paid_claim.date)) + (d.paid_claim.from ? ' from ' + esc(d.paid_claim.from) : '') + ' — check the bank</span>' : '<span class="oc-pill warn">Deposit ' + esc(gbp(m.holding || 0)) + ' not received</span>')) +
+        (o.paid_at ? offPaidPill(o) : (o.status === 'rejected' || o.status === 'withdrawn' ? '' : d.paid_claim ? '<span class="oc-pill wait">💬 Says paid ' + esc(longDay(d.paid_claim.date)) + (d.paid_claim.from ? ' from ' + esc(d.paid_claim.from) : '') + ' — check the bank</span>' : '<span class="oc-pill warn">Deposit ' + esc(gbp(m.holding || 0)) + ' not received</span>')) +
         (o.status === 'withdrawn' && o.paid_at ? '<span class="oc-pill muted">Deposit not refundable (their terms)</span>' : '') + rtrSummary(o) + '</div>' +
       '<div class="oc-grid">' + kv('Move in', d.move_in ? esc(longDay(d.move_in)) : '') + kv('Stay', esc(d.stay || '')) + kv('Tenants', String(ts.length)) + kv('Guarantors', d.guarantors_count ? String(d.guarantors_count) : '') +
-        kv('Holding deposit', esc(gbp(m.holding || 0))) + kv('Due at signing', esc(gbp(m.balance || 0))) + '</div>' +
+        kv('Holding deposit', esc(gbp(m.holding || 0))) + kv('Due at signing', esc(gbp((m.balance || 0) - (o.paid_at && d.paid_amount != null ? Number(d.paid_amount) - (m.holding || 0) : 0)))) + '</div>' +
       (d.refund ? '<div class="oc-refund"><div><span>Refund to (given by the applicant)</span><b>' + esc(d.refund.name) + '</b> · ' + (d.refund.sort_code ? 'Sort code <b>' + esc(d.refund.sort_code) + '</b> · Account <b>' + esc(d.refund.account) + '</b>' : '') + (d.refund.iban ? ' · IBAN <b>' + esc(d.refund.iban) + '</b>' : '') +
         ' · amount <b>' + esc(gbp(m.holding || 0)) + '</b>' + (d.refund.name && o.lead_name && d.refund.name.toLowerCase().indexOf(String(o.lead_name).split(/\s+/).pop().toLowerCase()) === -1 ? '<div class="oc-warn">⚠ The account name doesn’t match the lead applicant (' + esc(o.lead_name) + ') — check it before paying.</div>' : '') + '</div>' +
         (d.refunded_at ? '<span class="oc-pill ok">✓ Refund sent ' + esc(fmtShort(d.refunded_at).split(',')[0]) + '</span> <button type="button" class="linkish" data-off-refunded="0">Undo</button>' : '<button type="button" class="btn small primary" data-off-refunded="1">✓ Refund sent</button>') + '</div>'
@@ -8381,7 +8396,7 @@
       '<footer class="oc-actions">' +
         (o.status === 'new' ? '<button type="button" class="btn small primary" data-off-act="accepted">✓ Accept</button><button type="button" class="btn small" data-off-act="rejected">✕ Reject</button>'
           : '<button type="button" class="btn small ghost" data-off-act="new">Undo ' + ({ accepted: 'accept', rejected: 'reject', withdrawn: 'withdrawal' }[o.status] || '') + '</button>') +
-        (o.status === 'withdrawn' ? '' : o.paid_at ? '<button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Deposit received</button>') +
+        (o.status === 'withdrawn' ? '' : o.paid_at ? '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/receipt.pdf">🧾 Receipt</a><button type="button" class="btn small ghost" data-off-amount>Amount received</button><button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Deposit received</button>') +
         (o.status === 'rejected' && o.lead_email ? '<a class="btn small primary" data-off-refund href="' + esc(refundEmail()) + '">✉ ' + (o.paid_at ? 'Email for refund details' : 'Email them') + '</a>' : '') +
         (o.status === 'accepted' && o.lead_email ? '<a class="btn small primary" data-off-accmail href="' + esc(acceptEmail()) + '">✉ Email: offer accepted</a>' : '') +
         (o.status === 'accepted' && !staffMode ? '<button type="button" class="btn small" data-off-tenants title="Save every applicant in your Tenants list at this property">👥 ' + (d.tenants_added_at ? 'Added as tenants ✓' : 'Add as tenants') + '</button><button type="button" class="btn small" data-off-tcy>🏠 Start tenancy</button>' : '') +
@@ -8453,9 +8468,12 @@
         .then(function(d2){ busy(rs, false); if (!d2.ok) { toast(d2.error === 'file' ? 'Use a PDF, JPG or PNG' : 'Couldn’t save the check'); return; } toast('Right to rent check saved'); loadOffers(); }, function(){ busy(rs, false); toast('Couldn’t read that file'); });
       return;
     }
+    var am = e.target.closest('[data-off-amount]');
+    if (am) { var nv = offAskAmount(o); if (nv == null) return; api('POST', '/api/admin/offers/' + o.id, { paid_amount: nv }).then(function(d2){ toast(d2.ok ? 'Amount received saved: ' + gbp(nv) : 'Couldn’t save that'); loadOffers(); }); return; }
     var a = e.target.closest('[data-off-act]'), pd = e.target.closest('[data-off-paid]');
     if (a || pd) {
       var body = a ? { status: a.dataset.offAct } : { paid: pd.dataset.offPaid === '1' };
+      if (pd && body.paid) { var got = offAskAmount(o); if (got == null) return; body.paid_amount = got; }
       if (a && a.dataset.offAct === 'rejected' && !confirm('Reject this offer?')) return;
       busy(a || pd, true, '…');
       api('POST', '/api/admin/offers/' + o.id, body).then(function(d){
