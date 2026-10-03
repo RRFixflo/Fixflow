@@ -6051,6 +6051,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, ref: ref, money: data.money, bank: bank, reference: offerPayRef(lead, ref), track: '/offer/track/' + token });
   }));
   function offerPayRef(lead, ref) { return (String(lead || '').split(/\s+/).pop() || '').slice(0, 10).toUpperCase() + ' ' + ref; }
+  // The applicant withdraws their offer (only once we've confirmed their holding
+  // deposit arrived). As the terms say, the holding deposit isn't refunded.
+  app.post('/api/offers/track/:token/withdraw', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const t = String(req.params.token || '');
+    if (!/^[\w-]{16,40}$/.test(t) || (req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
+    const r = await p.query(`UPDATE offers SET status = 'withdrawn', decided_at = now(), log = log || $2::jsonb
+      WHERE track_token = $1 AND paid_at IS NOT NULL AND status IN ('new', 'accepted') RETURNING id, property_address, lead_name, offer_pw`,
+      [t, JSON.stringify([{ at: new Date().toISOString(), text: 'Offer withdrawn by the applicant online — told the holding deposit is not refundable, as per the terms' }])]);
+    if (!r.rows.length) return res.status(409).json({ ok: false, error: 'not-allowed' });
+    const o = r.rows[0];
+    ntfy({ title: 'Offer withdrawn: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' withdrew their offer (OF' + String(o.id).padStart(4, '0') + '). Holding deposit not refundable as per the terms.', tags: ['x'] }).catch(function () {});
+    res.json({ ok: true });
+  }));
   // The applicant's own view of their offer (by its private link): where it's up to.
   app.get('/api/offers/track/:token', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -6085,9 +6099,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // Accept / reject (or back to new), payment received (or not), seen.
   app.post('/api/admin/offers/:id', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req), sets = [], vals = [id], notes = [];
-    if (['new', 'accepted', 'rejected'].indexOf(b.status) !== -1) { vals.push(b.status); sets.push('status = $' + vals.length, "decided_at = CASE WHEN $" + vals.length + " = 'new' THEN NULL ELSE now() END"); notes.push(b.status === 'accepted' ? 'Offer accepted' : b.status === 'rejected' ? 'Offer rejected' : 'Decision undone'); }
+    if (['new', 'accepted', 'rejected', 'withdrawn'].indexOf(b.status) !== -1) { vals.push(b.status); sets.push('status = $' + vals.length, "decided_at = CASE WHEN $" + vals.length + " = 'new' THEN NULL ELSE now() END"); notes.push(b.status === 'accepted' ? 'Offer accepted' : b.status === 'rejected' ? 'Offer rejected' : b.status === 'withdrawn' ? 'Marked as withdrawn' : 'Decision undone'); }
     if (typeof b.paid === 'boolean') { sets.push('paid_at = ' + (b.paid ? 'coalesce(paid_at, now())' : 'NULL')); notes.push(b.paid ? 'Holding deposit received' : 'Holding deposit marked not received'); }
     if (b.seen === true) sets.push('seen_at = coalesce(seen_at, now())');
+    if (str(b.note, 300)) notes.push(str(b.note, 300));
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
     if (notes.length) { vals.push(JSON.stringify(notes.map(function (t) { return { at: new Date().toISOString(), text: t }; }))); sets.push('log = log || $' + vals.length + '::jsonb'); }
     const r = await p.query('UPDATE offers SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id', vals);

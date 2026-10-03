@@ -646,16 +646,35 @@
     $('trackView').innerHTML = '<div class="card"><p class="lead" style="margin:0">Loading your offer…</p></div>';
     fetch('/api/offers/track/' + tm[1]).then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) { $('trackView').innerHTML = '<div class="card"><h2>Offer not found</h2><p class="lead" style="margin:0">This link isn’t valid. Please check it, or contact Residential Realtors.</p></div>'; return; }
-      var m = d.money || {}, acc = d.status === 'accepted', rej = d.status === 'rejected', paid = !!d.paid_at;
+      var m = d.money || {}, acc = d.status === 'accepted', rej = d.status === 'rejected', wd = d.status === 'withdrawn', paid = !!d.paid_at;
       var steps = [
         ['ok', 'Offer received', longDay(d.created_at) + ' · ' + gbp(d.offer_pw) + ' a week (' + gbp(m.pcm || 0) + ' a month)' + (d.move_in ? ' · move in ' + longDay(d.move_in) : '')],
         [paid ? 'ok' : rej ? '' : 'now', paid ? 'Holding deposit received' : 'Holding deposit', paid ? longDay(d.paid_at) + ' · ' + gbp(m.holding || 0) : rej ? 'Not needed' : 'Please pay ' + gbp(m.holding || 0) + ' to reserve the property — details below'],
-        [acc ? 'ok' : rej ? 'no' : (paid ? 'now' : ''), acc ? 'Offer accepted 🎉' : rej ? 'Offer not accepted' : 'Landlord’s decision', acc ? longDay(d.decided_at) : rej ? longDay(d.decided_at) + (paid ? ' · your holding deposit will be returned within 24 hours' : '') : 'We’ll update this page as soon as the landlord decides'],
-        [acc ? 'now' : '', 'References and tenancy agreement', acc ? 'We’ll send the referencing forms — please complete them within 24 hours. Then the tenancy agreement to sign and the rest of the move-in money (' + gbp(m.balance || 0) + ').' : 'Once the offer is accepted']
+        wd ? ['no', 'You withdrew your offer', longDay(d.decided_at) + ' · as per the terms, the holding deposit is not refunded']
+          : [acc ? 'ok' : rej ? 'no' : (paid ? 'now' : ''), acc ? 'Offer accepted 🎉' : rej ? 'Offer not accepted' : 'Landlord’s decision', acc ? longDay(d.decided_at) : rej ? longDay(d.decided_at) + (paid ? ' · we’ll email you to ask where to send your holding deposit refund' : '') : 'We’ll update this page as soon as the landlord decides'],
+        [acc ? 'now' : '', 'References and tenancy agreement', acc ? 'We’ll send the referencing forms — please complete them within 24 hours. Then the tenancy agreement to sign and the rest of the move-in money (' + gbp(m.balance || 0) + ').' : wd || rej ? 'Not going ahead' : 'Once the offer is accepted']
       ];
       $('trackView').innerHTML = '<div class="card fade"><span class="eyebrow">Offer ' + esc(d.ref) + '</span><h2 style="font-size:1.4rem;letter-spacing:-.02em;margin-top:6px">' + esc(d.property || '') + '</h2>' +
         '<ol class="timeline">' + steps.map(function(s, i){ return '<li class="' + s[0] + '"><div class="dot">' + (s[0] === 'ok' ? '✓' : s[0] === 'no' ? '✕' : i + 1) + '</div><div><b>' + s[1] + '</b><span>' + esc(s[2]) + '</span></div></li>'; }).join('') + '</ol>' +
-        (d.bank && !paid ? '<h2>Pay the holding deposit</h2>' + bankHtml(d.bank, m.holding, d.reference) + '<p class="hint">Already paid? It shows here once we’ve seen it arrive.</p>' : '') + '</div>';
+        (d.bank && !paid ? '<h2>Pay the holding deposit</h2>' + bankHtml(d.bank, m.holding, d.reference) + '<p class="hint">Already paid? It shows here once we’ve seen it arrive.</p>' : '') + '</div>' +
+        // Withdraw: only once the holding deposit is confirmed, and they're told it isn't refunded.
+        (paid && (d.status === 'new' || acc) ? '<div class="card"><h2>Changed your mind?</h2><p class="lead" style="margin:0 0 10px">You can withdraw your offer here.</p>' +
+          '<div id="wdBox" hidden><div class="note-warn" style="background:var(--brand-t);color:#a3141b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg><span>As per our terms, if you withdraw your offer your holding deposit of <b>' + gbp(m.holding || 0) + '</b> will <b>not be refunded</b>.</span></div>' +
+            '<label class="check" style="margin-top:10px"><input type="checkbox" id="wdOk"><span>I understand I won’t get my holding deposit back.</span></label>' +
+            '<div class="btnrow" style="margin-top:10px"><button type="button" class="btn" id="wdCancel">Keep my offer</button><button type="button" class="btn go" id="wdGo">Withdraw my offer</button></div><div class="err" id="wdErr" hidden></div></div>' +
+          '<button type="button" class="btn" id="wdOpen">Withdraw my offer</button></div>' : '');
+      if ($('wdOpen')) {
+        $('wdOpen').addEventListener('click', function(){ $('wdBox').hidden = false; this.hidden = true; });
+        $('wdCancel').addEventListener('click', function(){ $('wdBox').hidden = true; $('wdOpen').hidden = false; });
+        $('wdGo').addEventListener('click', function(){
+          if (!$('wdOk').checked) { $('wdErr').textContent = 'Please tick to confirm you understand the holding deposit isn’t refunded.'; $('wdErr').hidden = false; return; }
+          var b = this; b.disabled = true; b.textContent = 'Withdrawing…';
+          fetch('/api/offers/track/' + tm[1] + '/withdraw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: true }) }).then(function(r){ return r.json(); }).then(function(x){
+            if (!x.ok) { b.disabled = false; b.textContent = 'Withdraw my offer'; $('wdErr').textContent = 'Couldn’t withdraw — please contact Residential Realtors.'; $('wdErr').hidden = false; return; }
+            location.reload();
+          });
+        });
+      }
       remember({ ref: d.ref, track: location.pathname, property: d.property, at: Date.now() });
     }).catch(function(){ $('trackView').innerHTML = '<div class="card"><p class="lead" style="margin:0">Couldn’t load — please check your connection and refresh.</p></div>'; });
   }
