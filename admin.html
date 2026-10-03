@@ -434,11 +434,14 @@
   .oc-refund span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
-  .staff-mode .side .nav:not(#logoutBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navTeam), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
-  .staff-mode #teamSec.staff-team { display: block !important; margin-top: 16px; }
+  .side .nav.nav-team { background: linear-gradient(135deg, rgba(217,38,46,.22), rgba(255,180,183,.10)); border: 1px solid rgba(255,180,183,.45); color: #fff; margin: 4px 0 10px; font-weight: 700; }
+  .side .nav.nav-team span { display: flex; flex-direction: column; line-height: 1.15; } .side .nav.nav-team small { font-size: .68rem; font-weight: 600; color: #ffb4b7; letter-spacing: .04em; text-transform: uppercase; margin-top: 2px; }
+  .side .nav.nav-team.on, .side .nav.nav-team:hover { background: linear-gradient(135deg, rgba(217,38,46,.45), rgba(255,180,183,.18)); }
+  .staff-tabs button.st-team { color: #a3141b; } .staff-tabs button.st-team.on { background: #a3141b; color: #fff; }
   .staff-tabs { display: flex; gap: 6px; margin: 0 0 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; width: fit-content; }
   .staff-tabs button { border: 0; background: none; font: inherit; font-weight: 700; padding: 8px 14px; border-radius: 9px; cursor: pointer; color: var(--ink-soft); } .staff-tabs button.on { background: var(--primary, #0B1F3A); color: #fff; }
   .lt-card.lt-flash { box-shadow: 0 0 0 3px #12b76a; transition: box-shadow .3s; }
@@ -1121,6 +1124,7 @@
   <aside class="side">
     <button type="button" class="side-brand" id="brandHome" title="Back to repair jobs"><span class="side-logo"><img src="/logo-white.png" alt="Residential Realtors"></span><span class="side-sub">Maintenance portal</span></button>
     <button class="side-search" type="button" id="sideSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<span class="kbd">Ctrl K</span></button>
+    <button class="nav nav-team" type="button" id="navTeam" hidden title="Managers only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Team &amp; access<small>Managers only</small></span></button>
     <button class="nav on" type="button" id="navJobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg> Repair jobs <span class="badge" id="sOpen">0</span></button>
     <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
     <button class="nav" type="button" id="navTenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg> Tenants</button>
@@ -1359,7 +1363,7 @@
 
       <!-- ACTIVITY: where staff are signed in, visits to the tenant pages -->
       <div id="actView" hidden>
-        <details class="card act-sec" data-sec="team" id="teamSec" hidden open>
+        <details class="card act-sec staff-team" data-sec="team" id="teamSec" hidden open>
           <summary><span class="act-sec-t">👥 Team — who’s doing what</span><span class="act-sum" id="sum_team"></span><span class="act-chev" aria-hidden="true"></span></summary>
           <div class="act-sec-b">
             <p class="muted-note" style="margin:0 0 10px">Give each person their own sign-in. Everything they change is recorded with their name — in job updates, offer and tenancy histories, and below.</p>
@@ -1434,7 +1438,9 @@
         </details>
       </div>
 
-      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button></div>
+      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button></div>
+      <!-- TEAM: staff sign-ins and who did what (managers only) -->
+      <div id="teamView" hidden></div>
       <div id="ltView" hidden>
         <details class="card" id="ltNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New landlord agreement</summary>
           <p class="muted-note" style="margin:8px 0 12px">Set the fees you agreed with the landlord. You’ll get a private link to send them: they check the fees, fill in the property details form, read the terms and sign. You get the signed PDF with an audit trail.</p>
@@ -2253,9 +2259,10 @@
         if (!history.state) history.replaceState({ v: 'offers', depth: 0 }, '', location.pathname);
         loadOffers().then(function(){ showView('offers'); });
         // An offers team manager also gets the Team section on the Offers page.
-        if (d.canManageUsers) { $('offersView').appendChild($('teamSec')); $('teamSec').classList.add('staff-team'); loadTeam(); }
+        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; }
         return;
       }
+      $('navTeam').hidden = !d.canManageUsers;
       // The date and time the latest version went live (UK time).
       if (d.deployedAt) {
         var dt = new Date(d.deployedAt), when = dt.toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -3347,7 +3354,8 @@
   $('brandHomeM').addEventListener('click', goHome);
 
   function showView(v){
-    if (staffMode && v !== 'lt') v = 'offers';
+    if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
+    if (staffMode && v !== 'lt' && v !== 'team') v = 'offers';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -3360,6 +3368,7 @@
     $('navOffersLink').classList.toggle('on', v === 'offers');
     $('tcyView').hidden = v !== 'tcy';
     $('actView').hidden = v !== 'act';
+    $('teamView').hidden = v !== 'team'; $('navTeam').classList.toggle('on', v === 'team');
     $('ctrView').hidden = v !== 'ctr';
     $('ctsView').hidden = v !== 'cts';
     $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
@@ -3373,10 +3382,11 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', team: 'Team & access', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') loadLt();
+    if (v === 'team') { loadTeam(); $('teamSec').open = true; }
     if (v === 'tcy' && !openTcyId) renderTenancies();
     if (v === 'act') loadActivity();
     if (v === 'ctr') renderContractorPage();
@@ -11660,6 +11670,8 @@
     });
   })();
   $('navAct').addEventListener('click', function(){ showView('act'); });
+  $('teamView').appendChild($('teamSec'));
+  $('navTeam').addEventListener('click', function(){ showView('team'); });
 
   // Phones: a bottom tab bar standing in for the sidebar. The buttons reuse the
   // sidebar's icons and simply click the matching sidebar item.
