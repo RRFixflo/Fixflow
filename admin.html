@@ -438,6 +438,12 @@
   .off-alerts-staff { margin-bottom: 12px; border-left: 4px solid #1d3fae; }
   .oc-rtr { margin-top: 10px; padding: 10px 12px; border: 1px solid #e3e6ec; border-radius: 10px; background: #fafbfc; }
   .oc-rtr-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .oc-rtr-drop { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; padding: 12px; border: 1.5px dashed #b8c2d6; border-radius: 10px; background: #fff; cursor: pointer; font-size: .86rem; }
+  .oc-rtr-drop span { color: #5f6673; font-size: .8rem; } .oc-rtr-drop.over { border-color: #1d3fae; background: #edf2ff; } .oc-rtr-drop.busy { opacity: .7; pointer-events: none; }
+  .oc-rtr-prob { margin-top: 6px; color: #b42318; font-weight: 600; font-size: .84rem; }
+  .oc-rtr-okline { margin-top: 6px; color: #0d7a3d; font-size: .84rem; }
+  .oc-rtr-photo { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px; border-radius: 10px; background: #fff5e6; }
+  .oc-rtr-photo span { flex: 1 1 100%; font-size: .84rem; color: #8a5200; }
   .oc-rtr-btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .oc-rtr-help { font-size: .84rem; color: #5f6673; margin: 6px 0 0; }
   .oc-rtr-done { margin-top: 8px; font-size: .86rem; }
@@ -8182,6 +8188,8 @@
   function rtrDaysLeft(r){ return r && r.result === 'limited' && r.until ? Math.round((new Date(r.until + 'T12:00:00') - new Date(isoDay(new Date()) + 'T12:00:00')) / 864e5) : null; }
   function rtrPill(r){
     if (!r) return '<span class="oc-pill warn">Right to rent not checked</span>';
+    if (r.auto && r.problems && r.problems.length) return '<span class="oc-pill no">⚠ Right to rent result needs checking</span>';
+    if (r.auto && !r.photo_at && r.result !== 'none') return '<span class="oc-pill warn">📷 Right to rent: confirm the photo</span>';
     if (r.result === 'none') return '<span class="oc-pill no">✕ No right to rent</span>';
     if (r.result === 'limited') { var dl = rtrDaysLeft(r); return '<span class="oc-pill ' + (dl < 0 ? 'bad' : dl <= 30 ? 'warn' : 'ok') + '">' + (dl < 0 ? '⚠ Right to rent ended ' : '✓ Right to rent until ') + esc(longDay(r.until)) + '</span>'; }
     return '<span class="oc-pill ok">✓ ' + esc(RTR_RES[r.result]) + '</span>';
@@ -8189,7 +8197,7 @@
   // Tenants still to check, and time-limited permissions due a follow-up check.
   function rtrTodo(o){
     var ts = (o.data || {}).tenants || [], rtr = (o.data || {}).rtr || {}, out = { todo: 0, due: 0, none: 0 };
-    ts.forEach(function(t, i){ var r = rtr[i + 1], dl = rtrDaysLeft(r); if (!r) out.todo++; else if (r.result === 'none') out.none++; else if (dl !== null && dl <= 30) out.due++; });
+    ts.forEach(function(t, i){ var r = rtr[i + 1], dl = rtrDaysLeft(r); if (!r || (r.auto && ((r.problems && r.problems.length) || (!r.photo_at && r.result !== 'none')))) out.todo++; else if (r.result === 'none') out.none++; else if (dl !== null && dl <= 30) out.due++; });
     return out;
   }
   function rtrSummary(o){
@@ -8207,10 +8215,13 @@
     return '<div class="oc-rtr" data-rtr="' + n + '"><div class="oc-rtr-h"><b>🛂 Right to rent check</b>' +
         (code ? '<span class="oc-rtr-btns">' + (t.dob ? '<button type="button" class="btn small" data-rtr-copy="' + esc(t.dob.split('-').reverse().join('/')) + '" title="Copy the date of birth">Copy DOB ' + esc(t.dob.split('-').reverse().join('/')) + '</button>' : '') + '<button type="button" class="btn small primary" data-rtr-go="' + esc(t.share_code) + '" title="Copies the share code and opens the GOV.UK checker">Copy code &amp; check on GOV.UK ↗</button></span>'
           : '<a class="btn small" href="' + RTR_URL + '" target="_blank" rel="noopener" title="UK or Irish passport: check the original (or a video call with it) and keep a copy">GOV.UK guidance ↗</a>') + '</div>' +
+      (code ? '<label class="oc-rtr-drop" data-rtr-drop title="Fixflow reads the result and records the check"><input type="file" data-rtr-read accept="application/pdf,image/jpeg,image/png" hidden>📄 <b>' + (r && r.auto ? 'Replace the GOV.UK result' : 'Drop or choose the GOV.UK result') + '</b><span>PDF or screenshot — Fixflow reads the outcome, end date, name and date of birth, checks them against the applicant and records the check.</span></label>' : '') +
       (code ? '<div class="oc-rtr-help">On GOV.UK enter share code <b>' + esc(code) + '</b> and date of birth <b>' + esc(t.dob ? t.dob.split('-').reverse().join('/') : '—') + '</b>. Check the photo matches ' + esc(String(t.name || '').split(/\s+/)[0] || 'them') + ' (in person or on a video call), save the result as a PDF, then record it below.</div>'
         : '<div class="oc-rtr-help">UK or Irish passport: see the original passport with ' + esc(String(t.name || '').split(/\s+/)[0] || 'them') + ' (in person or on a video call), check the photo, then record it below — their uploaded ID is kept on this offer.</div>') +
       (r ? '<div class="oc-rtr-done">' + rtrPill(r) + ' <span>checked ' + esc(longDay(r.checked)) + (r.by ? ' by ' + esc(r.by) : '') + '</span>' + (r.doc ? ' · <a target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/doc/' + r.doc + '">📄 GOV.UK result</a>' : ' · <span class="oc-warn" style="display:inline">no result file saved</span>') +
-          (r.note ? '<div class="muted-note" style="margin:4px 0 0">' + esc(r.note) + '</div>' : '') + (dl !== null && dl <= 30 ? '<div class="oc-warn">' + (dl < 0 ? 'Their permission has ended — do a follow-up check now (they may have a new share code).' : 'Follow-up check due before ' + esc(longDay(r.until)) + ' — ask for a new share code.') + '</div>' : '') + '</div>' : '') +
+          (r.auto && r.problems && r.problems.length ? '<div class="oc-rtr-prob">⚠ Please check: ' + r.problems.map(esc).join('; ') + '</div>' : r.auto ? '<div class="oc-rtr-okline">✓ Read from the GOV.UK result — name' + (r.dob_ok ? ' and date of birth' : '') + ' match' + (r.reference ? ' · ref ' + esc(r.reference) : '') + '</div>' : (r.note ? '<div class="muted-note" style="margin:4px 0 0">' + esc(r.note) + '</div>' : '')) +
+          (r.auto && r.result !== 'none' ? (r.photo_at ? '<div class="oc-rtr-okline">📷 Photo checked ' + (r.how === 'video' ? 'on a video call' : 'in person') + ' by ' + esc(r.photo_by || '') + ', ' + esc(longDay(r.photo_at)) + '</div>'
+            : '<div class="oc-rtr-photo"><span>Does the photo on the result match ' + esc(String(t.name || '').split(/\s+/)[0]) + '? (Required — in person or on a video call.)</span><button type="button" class="btn small primary" data-rtr-photo="person">✓ Yes — in person</button><button type="button" class="btn small" data-rtr-photo="video">✓ Yes — video call</button></div>') : '') + (dl !== null && dl <= 30 ? '<div class="oc-warn">' + (dl < 0 ? 'Their permission has ended — do a follow-up check now (they may have a new share code).' : 'Follow-up check due before ' + esc(longDay(r.until)) + ' — ask for a new share code.') + '</div>' : '') + '</div>' : '') +
       '<details class="oc-rtr-form"' + (r ? '' : '') + '><summary>' + (r ? 'Update the check' : 'Record the result') + '</summary><div class="oc-rtr-grid">' +
         '<label>Result<select data-rtr-k="result"><option value="">Choose…</option>' + Object.keys(RTR_RES).map(function(k){ return '<option value="' + k + '"' + (r && r.result === k ? ' selected' : (!r && k === (code ? '' : 'passport') ? ' selected' : '')) + '>' + (k === 'limited' ? 'Time-limited right to rent' : RTR_RES[k]) + '</option>'; }).join('') + '</select></label>' +
         '<label data-rtr-until' + (r && r.result === 'limited' ? '' : ' hidden') + '>Allowed to rent until<input type="date" data-rtr-k="until" value="' + esc(r && r.until || '') + '"></label>' +
@@ -8294,7 +8305,25 @@
     '</article>';
   }
   $('offTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-otab]'); if (!b) return; offTab = b.dataset.otab; renderOffers(); });
+  // Read a GOV.UK right to rent result and record the check.
+  function rtrRead(box, f){
+    var o = offers.filter(function(x){ return x.id === Number(box.closest('[data-off]').dataset.off); })[0], n = Number(box.dataset.rtr); if (!o || !f) return;
+    if (!/^(application\/pdf|image\/(jpeg|png))$/.test(f.type)) { toast('Use the PDF or a screenshot (JPG or PNG)'); return; }
+    if (f.size > 12 * 1024 * 1024) { toast('That file is too big (12 MB max)'); return; }
+    var dz = box.querySelector('[data-rtr-drop]'); if (dz) { dz.classList.add('busy'); dz.querySelector('b').textContent = 'Reading the result…'; }
+    var by = ''; try { by = localStorage.getItem('rr_rtr_by') || ''; } catch (e) {}
+    new Promise(function(ok, no){ var fr = new FileReader(); fr.onload = function(){ ok(fr.result); }; fr.onerror = no; fr.readAsDataURL(f); })
+      .then(function(url){ return api('POST', '/api/admin/offers/' + o.id + '/rtr/read', { tenant: n, by: by, file: { name: f.name, dataUrl: url } }); })
+      .then(function(d){
+        if (!d.ok) { toast(d.error === 'not-read' ? 'That doesn’t look like a GOV.UK right to rent result — record it by hand below' : d.error === 'ai-not-configured' ? 'Reading needs the AI key — record it by hand below' : 'Couldn’t read it — record it by hand below'); loadOffers(); return; }
+        toast(d.rtr.problems && d.rtr.problems.length ? '⚠ Recorded, but please check: ' + d.rtr.problems[0] : '✓ Right to rent recorded — now confirm the photo'); loadOffers();
+      }, function(){ toast('Couldn’t read that file'); loadOffers(); });
+  }
+  $('offList').addEventListener('dragover', function(e){ var dz = e.target.closest('[data-rtr-drop]'); if (dz) { e.preventDefault(); dz.classList.add('over'); } });
+  $('offList').addEventListener('dragleave', function(e){ var dz = e.target.closest('[data-rtr-drop]'); if (dz) dz.classList.remove('over'); });
+  $('offList').addEventListener('drop', function(e){ var dz = e.target.closest('[data-rtr-drop]'); if (!dz) return; e.preventDefault(); dz.classList.remove('over'); rtrRead(dz.closest('[data-rtr]'), e.dataTransfer.files[0]); });
   $('offList').addEventListener('change', function(e){
+    if (e.target.matches('[data-rtr-read]')) { rtrRead(e.target.closest('[data-rtr]'), e.target.files[0]); return; }
     if (e.target.matches('[data-rtr-k="result"]')) { var u = e.target.closest('[data-rtr]').querySelector('[data-rtr-until]'); u.hidden = e.target.value !== 'limited'; }
   });
   $('offList').addEventListener('click', function(e){
@@ -8305,6 +8334,13 @@
       // Open straight from the tap (pop-up blockers), then copy the code.
       window.open(RTR_URL, '_blank', 'noopener');
       var c = rg.dataset.rtrGo; (navigator.clipboard ? navigator.clipboard.writeText(c) : Promise.reject()).then(function(){ toast('Share code ' + c + ' copied — paste it on GOV.UK'); }, function(){ window.prompt('Share code:', c); });
+      return;
+    }
+    var rp = e.target.closest('[data-rtr-photo]');
+    if (rp) {
+      var pb = ''; try { pb = localStorage.getItem('rr_rtr_by') || ''; } catch (er) {}
+      if (!pb) { pb = (window.prompt('Your name (for the record):') || '').trim(); if (!pb) return; try { localStorage.setItem('rr_rtr_by', pb); } catch (er) {} }
+      api('POST', '/api/admin/offers/' + o.id + '/rtr/photo', { tenant: Number(rp.closest('[data-rtr]').dataset.rtr), how: rp.dataset.rtrPhoto, by: pb }).then(function(d){ toast(d.ok ? '✓ Photo check recorded' : 'Couldn’t save that'); loadOffers(); });
       return;
     }
     var rc = e.target.closest('[data-rtr-copy]');

@@ -181,6 +181,7 @@
   .trust div { display:flex; gap:10px; }
   .trust svg { width:18px; height:18px; color:var(--ok); flex:0 0 auto; margin-top:1px; }
 
+  .hint.sc-ok { color:var(--ok); font-weight:600; } .hint.sc-bad { color:#a3141b; }
   .paidbox { display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--ok-t); border-radius:16px; padding:14px 16px; margin-top:8px; }
   .paidbox b { display:block; } .paidbox span { font-size:.86rem; color:var(--soft); }
   .paidbox .btn { flex:0 0 auto; background:var(--ok); border-color:var(--ok); color:#fff; }
@@ -438,7 +439,7 @@
       '<div class="g2">' + field(n, 'uk_passport', 'UK or Irish passport?', { select: ['', 'Yes', 'No'], req: true }) + '</div>' +
       // The Home Office check needs the share code and the date of birth together.
       '<div class="g2 sharebox" data-share="' + n + '" hidden>' +
-        '<div class="f"><label class="l" for="t' + n + '_share_code">Right to rent share code</label><input id="t' + n + '_share_code" data-k="share_code" placeholder="R12 345 678" maxlength="12" style="text-transform:uppercase;letter-spacing:.06em"><div class="hint">Get one at <a href="https://www.gov.uk/prove-right-to-rent" target="_blank" rel="noopener">gov.uk/prove-right-to-rent</a></div></div>' +
+        '<div class="f"><label class="l" for="t' + n + '_share_code">Right to rent share code</label><input id="t' + n + '_share_code" data-k="share_code" placeholder="R12 345 678" maxlength="12" style="text-transform:uppercase;letter-spacing:.06em"><div class="hint" data-schint="' + n + '">Get one at <a href="https://www.gov.uk/prove-right-to-rent" target="_blank" rel="noopener">gov.uk/prove-right-to-rent</a></div></div>' +
         '<div class="f"><label class="l" for="t' + n + '_dob2">Date of birth</label><input id="t' + n + '_dob2" type="date" data-dob2="' + n + '"><div class="hint">Needed with the share code for the Home Office check — as on their passport.</div></div></div>' +
       '<div class="f"><label class="l">Passport and/or visa</label><div class="drop" data-ids="' + n + '" tabindex="0" role="button">' +
         '<div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg></div>' +
@@ -510,6 +511,23 @@
   $('tenants').addEventListener('keydown', function(e){ var dz = e.target.closest('[data-ids]'); if (dz && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); dz.querySelector('input').click(); } });
   ['dragenter', 'dragover'].forEach(function(ev){ $('tenants').addEventListener(ev, function(e){ var dz = e.target.closest('[data-ids]'); if (!dz) return; e.preventDefault(); dz.classList.add('over'); }); });
   ['dragleave', 'drop'].forEach(function(ev){ $('tenants').addEventListener(ev, function(e){ var dz = e.target.closest('[data-ids]'); if (!dz) return; e.preventDefault(); dz.classList.remove('over'); if (ev === 'drop') addFiles(dz.dataset.ids, e.dataTransfer.files); }); });
+  // Share code: tidied as they type (R12 345 678) and checked straight away.
+  // Right to rent codes start with R; W is a right to work code, S an immigration status code.
+  var SC_HELP = 'Get one at <a href="https://www.gov.uk/prove-right-to-rent" target="_blank" rel="noopener">gov.uk/prove-right-to-rent</a>';
+  $('tenants').addEventListener('input', function(e){
+    if (!(e.target.dataset && e.target.dataset.k === 'share_code')) return;
+    var n = e.target.closest('.ten').dataset.t, raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 9);
+    var fmt = raw.replace(/^(.{3})(.{1,3})?(.{1,3})?$/, function(m, a, b, c){ return [a, b, c].filter(Boolean).join(' '); });
+    if (e.target.value !== fmt) e.target.value = fmt;
+    var h = document.querySelector('[data-schint="' + n + '"]'), cls = '', msg = SC_HELP;
+    if (raw && raw[0] === 'W') { cls = 'bad'; msg = 'This looks like a <b>right to work</b> code. We need a <b>right to rent</b> code (it starts with R) — ' + SC_HELP; }
+    else if (raw && raw[0] === 'S') { cls = 'bad'; msg = 'This looks like an <b>immigration status</b> code. We need a <b>right to rent</b> code (it starts with R) — ' + SC_HELP; }
+    else if (raw.length === 9 && /^R[A-Z0-9]{8}$/.test(raw)) { cls = 'ok'; msg = '✓ That looks right — we’ll check it with the Home Office.'; }
+    else if (raw.length === 9) { cls = 'bad'; msg = 'Right to rent codes start with R — please check it. ' + SC_HELP; }
+    else if (raw) msg = (9 - raw.length) + ' more character' + (9 - raw.length === 1 ? '' : 's') + ' · ' + SC_HELP;
+    h.className = 'hint' + (cls ? ' sc-' + cls : ''); h.innerHTML = msg;
+    e.target.classList.toggle('bad', cls === 'bad');
+  });
   // Date of birth also sits next to the share code; keep the two in step.
   $('tenants').addEventListener('input', function(e){
     var d2 = e.target.dataset && e.target.dataset.dob2;
@@ -604,6 +622,7 @@
       if (!t.current_address) return showErr('Please enter tenant ' + i + '’s current address.', $('t' + i + '_current_address'));
       if (!t.uk_passport) return showErr('Please tell us whether tenant ' + i + ' has a UK or Irish passport.', $('t' + i + '_uk_passport'));
       if (t.uk_passport === 'No' && !/^[A-Z0-9]{9}$/.test((t.share_code || '').toUpperCase().replace(/\s+/g, ''))) return showErr('Please enter tenant ' + i + '’s 9-character right to rent share code.', $('t' + i + '_share_code'));
+      if (t.uk_passport === 'No' && /^[WS]/i.test(t.share_code || '')) return showErr('Tenant ' + i + '’s code isn’t a right to rent code (those start with R). Please get one at gov.uk/prove-right-to-rent.', $('t' + i + '_share_code'));
       if (!(files[i] || []).length) return showErr('Please add tenant ' + i + '’s passport or visa.', document.querySelector('[data-ids="' + i + '"]'));
       // Students always need a guarantor; anyone whose guarantor section is started must finish it.
       if (t.income_type === 'Student' || ((guarantorsN > 0 || t.income_type === 'Student') && (guaStarted(t) || guarantorsN >= ts.length))) { var gm = guaMissing(t, i); if (gm !== true) return gm; }
