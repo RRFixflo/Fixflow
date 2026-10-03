@@ -2,157 +2,327 @@
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
+<meta name="theme-color" content="#ffffff">
 <title>Make an offer — Residential Realtors</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/icons/app-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/icons/app-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root { --ink:#0b0c0f; --soft:#5b616e; --faint:#8b919c; --line:#e3e5ea; --red:#D9262E; --ok:#139A4B; --okt:#e9f7ef; --blue:#2F5BEA; --bg:#f4f5f7; --card:#fff; --shadow:0 1px 2px rgba(16,18,24,.04),0 8px 24px -12px rgba(16,18,24,.12); }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Inter,Roboto,sans-serif; background:var(--bg); color:var(--ink); line-height:1.5; -webkit-font-smoothing:antialiased; }
-  header { background:linear-gradient(180deg,#0e0f13,#16181e); color:#fff; padding:16px; }
-  header .in { max-width:720px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:10px; }
-  header img { height:34px; width:auto; display:block; }
-  header .tag { font-size:.8rem; color:#c9ccd3; }
-  main { max-width:720px; margin:0 auto; padding:18px 16px 60px; }
-  h1 { font-size:1.5rem; margin:0 0 4px; letter-spacing:-.02em; }
-  h2 { font-size:1.08rem; margin:0 0 10px; }
-  .sub { color:var(--soft); margin:0 0 16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:18px; margin-bottom:14px; box-shadow:var(--shadow); }
-  label { display:block; font-size:.86rem; font-weight:600; margin:0 0 4px; }
-  label .opt { font-weight:400; color:var(--faint); }
-  input, select, textarea { width:100%; padding:11px 12px; border:1px solid #d5d7dd; border-radius:12px; font:inherit; background:#fff; color:inherit; }
-  input:focus, select:focus, textarea:focus { outline:2px solid var(--blue); outline-offset:0; border-color:transparent; }
-  textarea { resize:vertical; }
-  .g2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-  .g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
-  .f { margin-bottom:12px; }
-  @media (max-width:560px) { .g2, .g3 { grid-template-columns:1fr; } }
-  .seg { display:inline-flex; background:#e9eaee; border-radius:12px; padding:3px; }
-  .seg button { border:0; background:none; padding:8px 14px; border-radius:9px; font:inherit; font-weight:600; color:var(--soft); cursor:pointer; }
-  .seg button.on { background:#fff; color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.08); }
-  .money { display:grid; gap:6px; }
-  .money div { display:flex; justify-content:space-between; gap:10px; padding:8px 12px; background:#f6f7f9; border-radius:10px; font-size:.95rem; }
-  .money div.big { background:var(--okt); font-weight:700; }
-  details.sec { border-top:1px solid var(--line); margin-top:12px; padding-top:10px; }
-  details.sec summary { cursor:pointer; font-weight:650; padding:4px 0; }
-  .ten h2 { display:flex; justify-content:space-between; align-items:center; }
-  .ids { border:1.5px dashed #c9ccd3; border-radius:14px; padding:14px; text-align:center; background:#fafbfc; }
-  .ids.bad { border-color:var(--red); background:#fff5f5; }
-  .ids .list { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:8px; }
-  .ids .list span { background:#fff; border:1px solid var(--line); border-radius:999px; padding:3px 10px; font-size:.82rem; }
-  .ids .list button { border:0; background:none; color:var(--red); font-weight:700; cursor:pointer; padding:0 0 0 4px; }
-  .pick { display:inline-block; background:var(--ink); color:#fff; border-radius:12px; padding:10px 16px; font-weight:650; cursor:pointer; }
-  .info { max-height:260px; overflow:auto; font-size:.88rem; color:#2b2f38; background:#f8f9fb; border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  :root {
+    --ink:#0f1115; --ink2:#2a2e37; --soft:#5f6673; --faint:#9aa0ab; --line:#e6e8ec; --line2:#d8dbe1;
+    --bg:#f6f7f9; --card:#ffffff; --brand:#D9262E; --brand-t:#fdecec; --ok:#12924a; --ok-t:#e8f6ee; --blue:#2453e8; --blue-t:#edf2ff; --warn:#8a5200; --warn-t:#fff5e6;
+    --r:18px; --shadow:0 1px 2px rgba(15,17,21,.04), 0 12px 32px -16px rgba(15,17,21,.16);
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); line-height:1.5; -webkit-font-smoothing:antialiased; font-feature-settings:"cv11","ss01"; }
+  a { color:var(--blue); }
+  [hidden] { display:none !important; }
+
+  /* Top bar and hero */
+  .top { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .top .in { max-width:1120px; margin:0 auto; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .top img { height:30px; width:auto; display:block; }
+  .secure { display:inline-flex; align-items:center; gap:6px; font-size:.8rem; color:var(--soft); font-weight:500; }
+  .secure svg { width:15px; height:15px; color:var(--ok); }
+  .hero { background:radial-gradient(1200px 300px at 10% -40%, #ffe9ea 0%, transparent 60%), radial-gradient(900px 300px at 100% -60%, #e9efff 0%, transparent 60%), #fff; border-bottom:1px solid var(--line); }
+  .hero .in { max-width:1120px; margin:0 auto; padding:34px 20px 26px; }
+  .eyebrow { display:inline-flex; align-items:center; gap:8px; font-size:.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--brand); }
+  .hero h1 { font-size:clamp(1.7rem, 3.4vw, 2.4rem); line-height:1.12; letter-spacing:-.03em; margin:8px 0 8px; font-weight:800; }
+  .hero p { color:var(--soft); margin:0; max-width:620px; font-size:1.02rem; }
+  .prop-pill { display:inline-flex; align-items:center; gap:8px; margin-top:16px; background:#fff; border:1px solid var(--line); border-radius:999px; padding:8px 14px 8px 10px; font-weight:600; box-shadow:var(--shadow); max-width:100%; }
+  .prop-pill svg { width:18px; height:18px; color:var(--brand); flex:0 0 auto; }
+  .prop-pill span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* Steps */
+  .hold-note { display:inline-flex; gap:10px; align-items:flex-start; margin-top:14px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:10px 14px; font-size:.92rem; color:var(--ink2); max-width:620px; }
+  .hold-note svg { width:20px; height:20px; color:var(--brand); flex:0 0 auto; margin-top:1px; }
+  .stepper { display:flex; gap:8px; margin:22px 0 0; max-width:560px; }
+  .stepper .s { flex:1; }
+  .stepper .bar { height:5px; border-radius:5px; background:var(--line); overflow:hidden; }
+  .stepper .bar i { display:block; height:100%; width:0; background:var(--ink); border-radius:5px; transition:width .35s ease; }
+  .stepper .s.done .bar i, .stepper .s.on .bar i { width:100%; }
+  .stepper .s.on .bar i { background:var(--brand); }
+  .stepper .lb { font-size:.78rem; font-weight:600; color:var(--faint); margin-top:7px; }
+  .stepper .s.on .lb, .stepper .s.done .lb { color:var(--ink); }
+
+  /* Layout */
+  .wrap { max-width:1120px; margin:0 auto; padding:24px 20px 120px; display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:28px; align-items:start; }
+  @media (max-width:960px) { .wrap { grid-template-columns:1fr; } .side { display:none; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:24px; margin-bottom:16px; box-shadow:var(--shadow); }
+  @media (max-width:560px) { .card { padding:18px; border-radius:16px; } .hero .in { padding:24px 18px 20px; } .wrap { padding:18px 14px 120px; } }
+  .card h2 { font-size:1.12rem; letter-spacing:-.015em; margin:0 0 4px; font-weight:700; }
+  .card .lead { color:var(--soft); margin:0 0 18px; font-size:.94rem; }
+  .sec-title { font-size:.78rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); margin:22px 0 10px; }
+
+  /* Fields */
+  .f { margin-bottom:14px; }
+  label.l { display:block; font-size:.86rem; font-weight:600; margin:0 0 6px; color:var(--ink2); }
+  label.l .opt { font-weight:400; color:var(--faint); }
+  input, select, textarea { width:100%; padding:12px 14px; border:1px solid var(--line2); border-radius:12px; font:inherit; font-size:16px; background:#fff; color:inherit; transition:border-color .15s, box-shadow .15s; appearance:none; -webkit-appearance:none; }
+  select { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f6673' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; background-size:18px; padding-right:40px; }
+  input:hover, select:hover, textarea:hover { border-color:#c3c7cf; }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--ink); box-shadow:0 0 0 4px rgba(15,17,21,.08); }
+  input.bad, select.bad, textarea.bad { border-color:var(--brand); box-shadow:0 0 0 4px rgba(217,38,46,.1); }
+  textarea { resize:vertical; min-height:84px; }
+  .g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .g3 { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  @media (max-width:640px) { .g2, .g3 { grid-template-columns:1fr; gap:0; } }
+  .money-in { position:relative; }
+  .money-in::before { content:"£"; position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--soft); font-weight:600; }
+  .money-in input { padding-left:30px; font-weight:600; }
+  .hint { font-size:.82rem; color:var(--soft); margin-top:6px; }
+
+  /* Choice chips, segmented control, stepper counters */
+  .seg { display:inline-flex; background:#eef0f3; border-radius:12px; padding:4px; }
+  .seg button { border:0; background:none; padding:8px 16px; border-radius:9px; font:inherit; font-size:.92rem; font-weight:600; color:var(--soft); cursor:pointer; }
+  .seg button.on { background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.1); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chips button { border:1px solid var(--line2); background:#fff; border-radius:999px; padding:9px 15px; font:inherit; font-size:.92rem; font-weight:500; color:var(--ink2); cursor:pointer; transition:all .15s; }
+  .chips button:hover { border-color:var(--ink); }
+  .chips button.on { background:var(--ink); border-color:var(--ink); color:#fff; }
+  .chips.bad button { border-color:var(--brand); }
+  .count { display:flex; align-items:center; justify-content:space-between; border:1px solid var(--line2); border-radius:12px; padding:6px 6px 6px 14px; }
+  .count b { font-size:1.05rem; }
+  .count .btns { display:flex; gap:6px; }
+  .count button { width:38px; height:38px; border-radius:10px; border:1px solid var(--line2); background:#fff; font:inherit; font-size:1.25rem; line-height:1; cursor:pointer; color:var(--ink); }
+  .count button:disabled { opacity:.35; cursor:default; }
+  .note-warn { display:flex; gap:10px; background:var(--warn-t); color:var(--warn); border-radius:12px; padding:11px 14px; font-size:.88rem; margin-top:8px; }
+  .note-warn svg { width:18px; height:18px; flex:0 0 auto; margin-top:1px; }
+
+  /* Tenant blocks */
+  .ten { position:relative; }
+  .ten-head { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .avatar { width:40px; height:40px; border-radius:12px; background:var(--ink); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; flex:0 0 auto; }
+  .ten-head h2 { margin:0; }
+  .ten-head .tag { font-size:.76rem; font-weight:600; color:var(--brand); background:var(--brand-t); border-radius:999px; padding:2px 9px; margin-left:6px; vertical-align:2px; }
+  details.more { border:1px solid var(--line); border-radius:14px; margin-top:12px; background:#fcfcfd; }
+  details.more summary { list-style:none; cursor:pointer; padding:13px 16px; font-weight:600; font-size:.94rem; display:flex; align-items:center; justify-content:space-between; }
+  details.more summary::-webkit-details-marker { display:none; }
+  details.more summary::after { content:""; width:18px; height:18px; background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f6673' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/18px no-repeat; transition:transform .2s; }
+  details.more[open] summary::after { transform:rotate(180deg); }
+  details.more .body { padding:4px 16px 6px; }
+  details.more summary small { font-weight:400; color:var(--faint); margin-left:6px; }
+
+  /* ID upload */
+  .drop { border:1.5px dashed var(--line2); border-radius:16px; padding:20px; text-align:center; background:#fafbfc; transition:all .15s; cursor:pointer; }
+  .drop:hover, .drop.over { border-color:var(--ink); background:#f3f4f6; }
+  .drop.bad { border-color:var(--brand); background:#fff6f6; }
+  .drop .ic { width:42px; height:42px; border-radius:12px; background:#fff; border:1px solid var(--line); display:inline-flex; align-items:center; justify-content:center; margin-bottom:8px; }
+  .drop .ic svg { width:22px; height:22px; color:var(--ink); }
+  .drop b { display:block; }
+  .drop span { font-size:.84rem; color:var(--soft); }
+  .thumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); gap:10px; margin-top:12px; }
+  .thumb { position:relative; aspect-ratio:1; border-radius:12px; overflow:hidden; border:1px solid var(--line); background:#f1f2f4; display:flex; align-items:center; justify-content:center; font-size:.75rem; color:var(--soft); text-align:center; padding:6px; }
+  .thumb img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .thumb button { position:absolute; top:5px; right:5px; width:24px; height:24px; border-radius:50%; border:0; background:rgba(15,17,21,.7); color:#fff; font-size:15px; line-height:24px; cursor:pointer; padding:0; }
+
+  /* Review and signing */
+  .review { display:grid; gap:0; border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  .review div { display:flex; justify-content:space-between; gap:14px; padding:12px 16px; border-bottom:1px solid var(--line); font-size:.94rem; }
+  .review div:last-child { border-bottom:0; }
+  .review span { color:var(--soft); }
+  .review b { text-align:right; font-weight:600; }
+  .info { max-height:240px; overflow:auto; font-size:.88rem; color:var(--ink2); background:#fafbfc; border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
   .info ul { padding-left:18px; margin:6px 0; }
-  .check { display:flex; gap:10px; align-items:flex-start; font-weight:500; font-size:.92rem; }
-  .check input { width:auto; margin-top:4px; }
-  button.submit { width:100%; border:0; border-radius:14px; background:var(--ok); color:#fff; font:inherit; font-weight:700; font-size:1.05rem; padding:15px; cursor:pointer; }
-  button.submit:disabled { opacity:.6; cursor:default; }
-  .err { color:var(--red); font-weight:600; margin:10px 0 0; }
-  .hp { position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
-  .done h1 { color:var(--ok); }
-  .bank { display:grid; gap:6px; margin:10px 0; }
-  .bank div { display:flex; justify-content:space-between; gap:10px; padding:10px 12px; background:#f6f7f9; border-radius:10px; }
-  .bank b { font-variant-numeric:tabular-nums; }
-  .sigwrap { position:relative; border:1.5px solid #c9ccd3; border-radius:14px; background:#fff; height:170px; touch-action:none; }
-  .sigwrap.bad { border-color:var(--red); }
+  .info p { margin:0 0 10px; }
+  .check { display:flex; gap:12px; align-items:flex-start; font-size:.93rem; cursor:pointer; padding:14px; border:1px solid var(--line); border-radius:14px; }
+  .check input { width:20px; height:20px; margin:1px 0 0; flex:0 0 auto; accent-color:var(--ink); -webkit-appearance:checkbox; appearance:auto; }
+  .terms { display:grid; gap:8px; }
+  .terms .check { padding:12px 14px; }
+  .terms .check.bad { border-color:var(--brand); background:#fff6f6; }
+  .sigwrap { scroll-margin:120px; position:relative; border:1px solid var(--line2); border-radius:14px; background:#fff; height:180px; touch-action:none; }
+  .sigwrap.bad { border-color:var(--brand); box-shadow:0 0 0 4px rgba(217,38,46,.1); }
   .sigwrap canvas { width:100%; height:100%; display:block; border-radius:14px; cursor:crosshair; }
-  .sighint { position:absolute; left:16px; bottom:14px; color:#c3c6ce; pointer-events:none; font-size:.9rem; }
-  .sigwrap::after { content:""; position:absolute; left:16px; right:16px; bottom:38px; border-bottom:1px dashed #d5d7dd; pointer-events:none; }
-  .warn { background:#fff4e5; color:#7a4a00; border-radius:10px; padding:8px 12px; font-size:.86rem; margin-top:6px; }
-  .trackbox { background:#eef2fe; border-radius:14px; padding:14px; margin:14px 0; }
-  .trackbox input { margin:6px 0; font-size:.9rem; }
-  .btns { display:flex; gap:8px; flex-wrap:wrap; }
-  .btn { display:inline-block; border:1px solid #d5d7dd; background:#fff; color:var(--ink); border-radius:12px; padding:9px 14px; font:inherit; font-weight:650; text-decoration:none; cursor:pointer; }
-  .btn.dark { background:var(--ink); color:#fff; border-color:var(--ink); }
-  .steps { list-style:none; padding:0; margin:14px 0; }
-  .steps li { display:flex; gap:12px; padding:0 0 18px; position:relative; }
-  .steps li:not(:last-child)::before { content:""; position:absolute; left:15px; top:32px; bottom:2px; width:2px; background:var(--line); }
-  .steps .dot { flex:0 0 32px; height:32px; border-radius:50%; background:#e7e8ec; color:var(--soft); display:flex; align-items:center; justify-content:center; font-weight:700; }
-  .steps li.ok .dot { background:var(--ok); color:#fff; }
-  .steps li.now .dot { background:var(--blue); color:#fff; }
-  .steps li.no .dot { background:var(--red); color:#fff; }
-  .steps b { display:block; }
-  .steps span { color:var(--soft); font-size:.92rem; }
-  footer { max-width:720px; margin:0 auto; padding:0 16px 32px; color:var(--faint); font-size:.78rem; text-align:center; }
+  .sigwrap .line { position:absolute; left:20px; right:20px; bottom:42px; border-bottom:1px solid var(--line2); pointer-events:none; }
+  .sigwrap .x { position:absolute; left:20px; bottom:48px; color:var(--faint); font-weight:600; pointer-events:none; }
+  .sigwrap .ph { position:absolute; left:0; right:0; top:42%; text-align:center; color:#c4c8cf; pointer-events:none; font-size:.95rem; }
+  .linkbtn { border:0; background:none; color:var(--soft); font:inherit; font-size:.86rem; font-weight:600; cursor:pointer; padding:6px 0; text-decoration:underline; }
+
+  /* Buttons and the action bar */
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--line2); background:#fff; color:var(--ink); border-radius:12px; padding:12px 18px; font:inherit; font-weight:600; text-decoration:none; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:var(--ink); }
+  .btn.dark { background:var(--ink); border-color:var(--ink); color:#fff; }
+  .btn.dark:hover { background:#000; }
+  .btn.go { background:var(--brand); border-color:var(--brand); color:#fff; }
+  .btn.go:hover { filter:brightness(.95); }
+  .btn:disabled { opacity:.6; cursor:default; }
+  .actions { display:flex; gap:10px; justify-content:space-between; align-items:center; margin-top:8px; }
+  .actions .spacer { flex:1; }
+  .err { background:var(--brand-t); color:#a3141b; border-radius:12px; padding:11px 14px; font-weight:600; font-size:.9rem; margin:12px 0 0; }
+  .mbar { display:none; }
+  @media (max-width:960px) {
+    .actions.desk { display:none; }
+    .mbar { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:30; background:rgba(255,255,255,.96); backdrop-filter:saturate(1.4) blur(10px); border-top:1px solid var(--line); padding:10px 14px calc(10px + env(safe-area-inset-bottom)); gap:10px; align-items:center; }
+    .mbar .sum { flex:1; min-width:0; font-size:.8rem; color:var(--soft); line-height:1.3; }
+    .mbar .sum b { display:block; color:var(--ink); font-size:1rem; }
+    .mbar .btn { padding:12px 16px; }
+  }
+
+  /* Summary side panel */
+  .side { position:sticky; top:84px; }
+  .side .card { padding:20px; }
+  .side h3 { margin:0 0 2px; font-size:.78rem; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); }
+  .side .addr { font-weight:700; margin:0 0 14px; letter-spacing:-.01em; }
+  .big-offer { font-size:2rem; font-weight:800; letter-spacing:-.03em; line-height:1; }
+  .big-offer small { font-size:.9rem; font-weight:600; color:var(--soft); letter-spacing:0; }
+  .rows { margin-top:14px; border-top:1px solid var(--line); }
+  .rows div { display:flex; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); font-size:.9rem; }
+  .rows span { color:var(--soft); }
+  .rows .hl { font-weight:700; }
+  .rows .hl b { color:var(--brand); }
+  .trust { display:grid; gap:10px; font-size:.85rem; color:var(--soft); }
+  .trust div { display:flex; gap:10px; }
+  .trust svg { width:18px; height:18px; color:var(--ok); flex:0 0 auto; margin-top:1px; }
+
+  /* Done and tracking */
+  .center { max-width:640px; margin:0 auto; padding:28px 16px 80px; }
+  .tick { width:60px; height:60px; border-radius:50%; background:var(--ok-t); color:var(--ok); display:flex; align-items:center; justify-content:center; margin-bottom:14px; }
+  .tick svg { width:30px; height:30px; }
+  .bank { border:1px solid var(--line); border-radius:14px; overflow:hidden; margin:14px 0; }
+  .bank div { display:flex; justify-content:space-between; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .bank div:last-child { border-bottom:0; }
+  .bank span { color:var(--soft); }
+  .bank b { font-variant-numeric:tabular-nums; letter-spacing:.01em; }
+  .trackbox { background:var(--blue-t); border-radius:16px; padding:16px; margin-top:18px; }
+  .trackbox input { margin:10px 0; font-size:.9rem; background:#fff; }
+  .btnrow { display:flex; gap:8px; flex-wrap:wrap; }
+  .timeline { list-style:none; padding:0; margin:18px 0 6px; }
+  .timeline li { display:flex; gap:14px; padding:0 0 22px; position:relative; }
+  .timeline li:not(:last-child)::before { content:""; position:absolute; left:17px; top:38px; bottom:4px; width:2px; background:var(--line); }
+  .timeline li.ok:not(:last-child)::before { background:var(--ok); }
+  .timeline .dot { flex:0 0 36px; height:36px; border-radius:50%; background:#eef0f3; color:var(--soft); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.9rem; }
+  .timeline li.ok .dot { background:var(--ok); color:#fff; }
+  .timeline li.now .dot { background:var(--ink); color:#fff; box-shadow:0 0 0 5px rgba(15,17,21,.08); }
+  .timeline li.no .dot { background:var(--brand); color:#fff; }
+  .timeline b { display:block; font-weight:650; }
+  .timeline span { color:var(--soft); font-size:.92rem; }
+  .mine { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 0; border-top:1px solid var(--line); }
+  .hp { position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
+  footer { max-width:1120px; margin:0 auto; padding:0 20px 34px; color:var(--faint); font-size:.78rem; text-align:center; }
+  .fade { animation:fade .3s ease; }
+  @keyframes fade { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 </style>
 </head>
 <body>
-<header><div class="in"><img src="/logo-white.png" alt="Residential Realtors"><span class="tag">Offer &amp; holding deposit form</span></div></header>
-<main>
-  <div id="formView">
-    <h1>Make an offer</h1>
-    <p class="sub">Tell us about your offer and everyone who will live in the property. It takes about 10 minutes — please have a photo or scan of each tenant’s passport or visa ready.</p>
+<div class="top"><div class="in"><img src="/logo-ink.png" alt="Residential Realtors" onerror="this.src='/logo.png'"><span class="secure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Secure &amp; private</span></div></div>
 
-    <div id="mine"></div>
+<div id="formView">
+  <div class="hero"><div class="in">
+    <span class="eyebrow">Offer form</span>
+    <h1>Make an offer on your next home</h1>
+    <p>Three quick steps: your offer, the people who’ll live there, then review and sign. Have a photo of each tenant’s passport or visa ready.</p>
+    <div class="hold-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/></svg><span>After submitting, you’ll need to pay a <b>one week holding deposit</b> to reserve the property.</span></div>
+    <div class="prop-pill" id="propPill" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg><span id="propPillTxt"></span></div>
+    <div class="stepper" id="stepper"></div>
+  </div></div>
+
+  <div class="wrap">
     <form id="offerForm" novalidate>
       <div class="hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+      <div id="mine"></div>
 
-      <div class="card">
-        <h2>The property and your offer</h2>
-        <div class="f"><label for="property">Property address</label><input id="property" name="property" required autocomplete="off" placeholder="e.g. Flat 3, Chilham House, London SE1 4AA"></div>
-        <div class="f"><label>Your offer is</label><div class="seg" id="perSeg"><button type="button" data-per="pw" class="on">Per week</button><button type="button" data-per="pcm">Per month</button></div></div>
-        <div class="g2">
-          <div class="f"><label for="offer">Offer rent (£ <span class="perTxt">per week</span>)</label><input id="offer" name="offer" inputmode="decimal" required placeholder="e.g. 500"></div>
-          <div class="f"><label for="max_offer">Maximum offer (£ <span class="perTxt">per week</span>) <span class="opt">optional</span></label><input id="max_offer" name="max_offer" inputmode="decimal"></div>
+      <!-- Step 1: the offer -->
+      <section class="step" data-step="1">
+        <div class="card">
+          <h2>Your offer</h2>
+          <p class="lead">Which property, how much, and when you’d like to move in.</p>
+          <div class="f"><label class="l" for="property">Property address</label><input id="property" autocomplete="off" placeholder="e.g. Flat 3, Chilham House, London SE1 4AA"></div>
+          <div class="f"><label class="l">I’m offering</label><div class="seg" id="perSeg"><button type="button" data-per="pw" class="on">Per week</button><button type="button" data-per="pcm">Per month</button></div></div>
+          <div class="g2">
+            <div class="f"><label class="l" for="offer">Offer rent <span class="opt perTxt">per week</span></label><div class="money-in"><input id="offer" inputmode="decimal" placeholder="500"></div></div>
+            <div class="f"><label class="l" for="max_offer">Maximum offer <span class="opt">optional</span></label><div class="money-in"><input id="max_offer" inputmode="decimal" placeholder="520"></div></div>
+          </div>
+          <p class="hint" style="margin:-6px 0 14px">Your maximum offer is binding subject to contract, references and the terms in the information sheet. Rent is paid monthly.</p>
+          <div class="f"><label class="l" for="move_in">Move-in date</label><input id="move_in" type="date"></div>
+          <div class="f"><label class="l">How long would you like to stay?</label><div class="chips" id="stayChips"></div></div>
+          <div class="g2">
+            <div class="f"><label class="l">Tenants</label><div class="count" data-count="tenants"><b id="tenantsN">1</b><div class="btns"><button type="button" data-dec aria-label="Fewer">−</button><button type="button" data-inc aria-label="More">+</button></div></div></div>
+            <div class="f"><label class="l">Guarantors</label><div class="count" data-count="guarantors"><b id="guarantorsN">0</b><div class="btns"><button type="button" data-dec aria-label="Fewer">−</button><button type="button" data-inc aria-label="More">+</button></div></div></div>
+          </div>
         </div>
-        <p class="sub" style="margin:-4px 0 12px;font-size:.85rem">Your maximum offer is binding subject to contract, references and the terms in the information sheet below.</p>
-        <div class="g2">
-          <div class="f"><label for="move_in">Move-in date</label><input id="move_in" name="move_in" type="date" required></div>
-          <div class="f"><label for="stay">How long would you like to stay?</label>
-            <select id="stay" name="stay" required><option value="">Choose…</option><option>6 months</option><option>1 year</option><option>18 months</option><option>2 years</option><option>3 years or more</option><option>As long as possible</option></select></div>
+        <div class="card">
+          <h2>Your conditions</h2>
+          <p class="lead">Anything you’d like agreed before you move in.</p>
+          <div class="f"><textarea id="negotiate" rows="3" placeholder="e.g. furnished or unfurnished, pets, parking, anything to be fixed or cleaned first"></textarea>
+            <div class="note-warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>Please put <b>all</b> your conditions here. Anything asked for after your offer is submitted will not be considered.</span></div></div>
+          <div class="f" style="margin-top:16px"><label class="l" for="about">About you <span class="opt">optional</span></label><textarea id="about" rows="3" placeholder="Who you are and what you do — anything that may interest the landlord"></textarea></div>
         </div>
-        <p class="sub" style="margin:-4px 0 12px;font-size:.85rem">Rent is paid monthly.</p>
-        <div class="g2">
-          <div class="f"><label for="tenants_count">Number of tenants</label><select id="tenants_count" name="tenants_count"></select></div>
-          <div class="f"><label for="guarantors_count">Number of guarantors</label><select id="guarantors_count" name="guarantors_count"></select></div>
-        </div>
-        <div class="f"><label for="negotiate">Your conditions for the landlord</label><textarea id="negotiate" name="negotiate" rows="3" placeholder="e.g. furnished / unfurnished, pets, parking, anything to be fixed or cleaned before you move in"></textarea>
-          <div class="warn">⚠ Please put <b>all</b> your conditions here. Anything asked for after your offer is submitted will not be considered.</div></div>
-        <div class="f"><label for="about">A little about you as tenants <span class="opt">optional</span></label><textarea id="about" name="about" rows="3" placeholder="Who you are, what you do — anything that may interest the landlord"></textarea></div>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>Money needed before moving in</h2>
-        <div class="money" id="money"><div><span>Enter your offer above to see the amounts.</span></div></div>
-      </div>
+      <!-- Step 2: tenants -->
+      <section class="step" data-step="2" hidden>
+        <div id="tenants"></div>
+      </section>
 
-      <div id="tenants"></div>
-
-      <div class="card">
-        <h2>Holding deposit — information sheet</h2>
-        <div class="info">
-          <p>Residential Realtors take a one week’s rent holding deposit from the tenant(s) to reserve a property while reference checks and preparation for a tenancy agreement are carried out. Your holding deposit does not create a tenancy; this is only created once all parties have signed the tenancy agreement.</p>
-          <p>If the landlord formally rejects your maximum offer or withdraws the property from the market for any reason other than those below, your holding deposit will be returned to you within 24 hours. Your holding deposit confirms your commitment to rent the property. It is accepted that your holding deposit will be non-refundable should at least one of the following happen:</p>
-          <ul>
-            <li>Withdrawal of your offer from the property (whether the offer has been made to the landlord or not).</li>
-            <li>Failure to submit completed referencing application forms by all tenants/guarantors within 24 hours of receiving the application form.</li>
-            <li>Failure to satisfy the right to rent check.</li>
-            <li>Providing false, inaccurate or misleading references.</li>
-            <li>Failure to submit signed tenancy agreements and pay the remaining balance within 48 hours of receiving the documents.</li>
-            <li>Failure to take all reasonable steps to enter into a tenancy agreement.</li>
-          </ul>
-          <p>Once your offer is accepted, your holding deposit will be used as the first payment towards your first month’s rent.</p>
-          <p><b>References.</b> Before the tenancy is offered you must satisfy our minimum creditworthiness requirements: we verify credit, income, previous landlord and bank statements. Applicants’ and/or guarantors’ income must be at least three times the annual rent over the tenancy, with no county court judgements. Any offer of a tenancy is subject to satisfactory references. You must supply proof/visa confirming your right to rent in the UK.</p>
-          <p><b>Deadline for agreement.</b> Most tenancies are concluded within 5–14 days of your holding deposit being received. Because of circumstances outside our control (for example reference response times or international transfers), you agree the deadline for agreement can be up to 28 days.</p>
+      <!-- Step 3: review and sign -->
+      <section class="step" data-step="3" hidden>
+        <div class="card">
+          <h2>Review your offer</h2>
+          <p class="lead">Check everything is right before you sign.</p>
+          <div class="review" id="review"></div>
         </div>
-        <div class="warn" style="margin-top:12px">Reminder: your offer is made on the conditions you’ve written above only — requests made later will not be considered.</div>
-        <div class="f" style="margin-top:12px"><label class="check"><input type="checkbox" id="agree"> I confirm the information I have given is accurate, that I have read and understood the holding deposit information sheet, and that I am authorised to make decisions and sign on behalf of all tenants.</label></div>
-        <div class="f"><label for="signature">Your full name</label><input id="signature" name="signature" required autocomplete="name"></div>
-        <div class="f"><label>Sign here <span class="opt">with your finger or mouse</span></label>
-          <div class="sigwrap" id="sigWrap"><canvas id="sig" aria-label="Signature box"></canvas><span class="sighint" id="sigHint">Sign here</span></div>
-          <button type="button" class="btn" id="sigClear" style="margin-top:6px">Clear signature</button></div>
-        <button type="submit" class="submit" id="submitBtn">Submit offer</button>
-        <p class="err" id="err" hidden></p>
-      </div>
+        <div class="card">
+          <h2>Money needed before moving in</h2>
+          <p class="lead">Only the holding deposit is paid now.</p>
+          <div class="review" id="moneyBox"></div>
+        </div>
+        <div class="card">
+          <h2>Holding deposit terms</h2>
+          <p class="lead">Please read before you sign.</p>
+          <div class="info">
+            <p>Residential Realtors take a one week’s rent holding deposit from the tenant(s) to reserve a property while reference checks and preparation for a tenancy agreement are carried out. Your holding deposit does not create a tenancy; this is only created once all parties have signed the tenancy agreement.</p>
+            <p>If the landlord formally rejects your maximum offer or withdraws the property from the market for any reason other than those below, your holding deposit will be returned to you within 24 hours. Your holding deposit confirms your commitment to rent the property. It is accepted that your holding deposit will be non-refundable should at least one of the following happen:</p>
+            <p>(Tick each point below to confirm.)</p>
+            <p>Once your offer is accepted, your holding deposit will be used as the first payment towards your first month’s rent.</p>
+            <p><b>References.</b> Before the tenancy is offered you must satisfy our minimum creditworthiness requirements: we verify credit, income, previous landlord and bank statements. Applicants’ and/or guarantors’ income must be at least three times the annual rent over the tenancy, with no county court judgements. Any offer of a tenancy is subject to satisfactory references. You must supply proof/visa confirming your right to rent in the UK.</p>
+            <p><b>Deadline for agreement.</b> Most tenancies are concluded within 5–14 days of your holding deposit being received. Because of circumstances outside our control (for example reference response times or international transfers), you agree the deadline for agreement can be up to 28 days.</p>
+          </div>
+          <div class="sec-title">I understand my holding deposit will <span style="color:var(--brand)">not be refunded</span> if any of these happen — tick each one</div>
+          <div class="terms" id="terms"><label class="check"><input type="checkbox" data-term="1"><span>Withdrawal of your offer from the property (whether the offer has been made to the landlord or not).</span></label><label class="check"><input type="checkbox" data-term="2"><span>Failure to submit completed referencing application forms by all tenants/guarantors within 24 hours of receiving the application form.</span></label><label class="check"><input type="checkbox" data-term="3"><span>Failure to satisfy the right to rent check.</span></label><label class="check"><input type="checkbox" data-term="4"><span>Providing false, inaccurate or misleading references.</span></label><label class="check"><input type="checkbox" data-term="5"><span>Failure to submit signed tenancy agreements and pay the remaining balance within 48 hours of receiving the documents.</span></label><label class="check"><input type="checkbox" data-term="6"><span>Failure to take all reasonable steps to enter into a tenancy agreement.</span></label></div>
+          <div class="note-warn" style="margin-top:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>Your offer is made on the conditions you’ve written only — requests made later will not be considered.</span></div>
+        </div>
+        <div class="card">
+          <h2>Sign your offer</h2>
+          <p class="lead">You’re signing on behalf of all tenants.</p>
+          <label class="check f"><input type="checkbox" id="agree"><span>I confirm the information I have given is accurate, that I have read and understood the holding deposit terms, and that I am authorised to make decisions and sign on behalf of all tenants.</span></label>
+          <div class="f"><label class="l" for="signature">Full name</label><input id="signature" autocomplete="name"></div>
+          <div class="f"><label class="l">Signature</label>
+            <div class="sigwrap" id="sigWrap"><canvas id="sig" aria-label="Signature box"></canvas><span class="line"></span><span class="x">✕</span><span class="ph" id="sigHint">Sign here with your finger or mouse</span></div>
+            <button type="button" class="linkbtn" id="sigClear">Clear signature</button></div>
+          <div class="note-warn" style="background:var(--blue-t);color:#1d3fae"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/></svg><span id="payNote">Once you submit, please pay the one week holding deposit within 24 hours to reserve the property — we’ll show you how.</span></div>
+        </div>
+      </section>
+
+      <div class="err" id="err" hidden></div>
+      <div class="actions desk"><button type="button" class="btn" data-back hidden>← Back</button><span class="spacer"></span><button type="button" class="btn dark" data-next>Continue →</button></div>
     </form>
+
+    <aside class="side">
+      <div class="card">
+        <h3>Your offer</h3>
+        <p class="addr" id="sAddr">Property not chosen yet</p>
+        <div class="big-offer" id="sOffer">—</div>
+        <div class="rows" id="sRows"></div>
+      </div>
+      <div class="card trust">
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Only the holding deposit is paid now — it goes towards your first month’s rent.</span></div>
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Returned within 24 hours if the landlord rejects your maximum offer.</span></div>
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Your ID is only seen by Residential Realtors.</span></div>
+      </div>
+    </aside>
   </div>
 
-  <div id="doneView" class="done" hidden></div>
-  <div id="trackView" hidden></div>
-</main>
+  <div class="mbar"><div class="sum" id="mSum">Holding deposit<b>—</b></div><button type="button" class="btn" data-back hidden>Back</button><button type="button" class="btn dark" data-next>Continue</button></div>
+</div>
+
+<div id="doneView" class="center" hidden></div>
+<div id="trackView" class="center" hidden></div>
+
 <footer>Residential Realtors · Trading name of Estallion Investments Limited · Registered in England No. 08760284</footer>
 
 <script>
@@ -161,119 +331,148 @@
   var esc = function(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var gbp = function(v){ return '£' + (Math.round(v * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
   var num = function(v){ var x = parseFloat(String(v || '').replace(/[£,\s]/g, '')); return isNaN(x) ? null : x; };
-  var per = 'pw', files = {};   // files[tenant number] = [File]
+  var longDay = function(v){ return v ? new Date(v.length === 10 ? v + 'T12:00:00' : v).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
+  var per = 'pw', stay = '', tenantsN = 1, guarantorsN = 0, step = 1, files = {};
+  var STAYS = ['6 months', '1 year', '18 months', '2 years', '3 years or more', 'As long as possible'];
+  var STEPS = ['Your offer', 'Tenants', 'Review & sign'];
 
-  // The property, from the link (?p=...).
+  // ----- Property from the link (?p=...) -----
   try { var pq = new URLSearchParams(location.search).get('p'); if (pq) $('property').value = pq; } catch (e) {}
 
-  $('tenants_count').innerHTML = [1, 2, 3, 4, 5, 6].map(function(n){ return '<option>' + n + '</option>'; }).join('');
-  $('guarantors_count').innerHTML = [0, 1, 2, 3, 4].map(function(n){ return '<option>' + n + '</option>'; }).join('');
-
+  // ----- Money -----
+  function figures(){
+    var v = num($('offer').value); if (!v) return null;
+    var pw = per === 'pw' ? v : v * 12 / 52, pcm = per === 'pw' ? v * 52 / 12 : v;
+    return { pw: pw, pcm: pcm, hold: pw, dep: pw * 5, total: pcm + pw * 5, after: pcm + pw * 5 - pw };
+  }
+  function drawSummary(){
+    var f = figures(), a = $('property').value.trim();
+    $('sAddr').textContent = a || 'Property not chosen yet';
+    $('propPill').hidden = !a; $('propPillTxt').textContent = a;
+    $('sOffer').innerHTML = f ? gbp(per === 'pw' ? f.pw : f.pcm) + ' <small>' + (per === 'pw' ? 'a week' : 'a month') + '</small>' : '—';
+    $('sRows').innerHTML = f ? '<div><span>' + (per === 'pw' ? 'A month' : 'A week') + '</span><b>' + gbp(per === 'pw' ? f.pcm : f.pw) + '</b></div>' +
+      ($('move_in').value ? '<div><span>Move in</span><b>' + esc(longDay($('move_in').value)) + '</b></div>' : '') + (stay ? '<div><span>Stay</span><b>' + esc(stay) + '</b></div>' : '') +
+      '<div><span>Tenants</span><b>' + tenantsN + '</b></div><div class="hl"><span>Holding deposit — pay after submitting</span><b>' + gbp(f.hold) + '</b></div><div><span>Due when you sign</span><b>' + gbp(f.after) + '</b></div>' : '<div><span>Enter your offer to see the amounts</span></div>';
+    $('mSum').innerHTML = f ? 'Holding deposit<b>' + gbp(f.hold) + '</b>' : 'Your offer<b>—</b>';
+  }
+  ['property', 'offer', 'move_in'].forEach(function(id){ $(id).addEventListener('input', drawSummary); });
   $('perSeg').addEventListener('click', function(e){
     var b = e.target.closest('[data-per]'); if (!b) return; per = b.dataset.per;
     this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
     document.querySelectorAll('.perTxt').forEach(function(s){ s.textContent = per === 'pw' ? 'per week' : 'per month'; });
-    drawMoney();
+    drawSummary();
   });
-  function drawMoney(){
-    var v = num($('offer').value);
-    if (!v) { $('money').innerHTML = '<div><span>Enter your offer above to see the amounts.</span></div>'; return; }
-    var pw = per === 'pw' ? v : v * 12 / 52, pcm = per === 'pw' ? v * 52 / 12 : v;
-    var hold = pw, dep = pw * 5, total = pcm + dep;
-    $('money').innerHTML = '<div><span>Holding deposit (one week’s rent)</span><b>' + gbp(hold) + '</b></div>' +
-      '<div><span>Rent in advance (one month)</span><b>' + gbp(pcm) + '</b></div>' +
-      '<div><span>Deposit (five weeks’ rent)</span><b>' + gbp(dep) + '</b></div>' +
-      '<div><span>Move-in balance</span><b>' + gbp(total) + '</b></div>' +
-      '<div class="big"><span>Still to pay after the holding deposit</span><b>' + gbp(total - hold) + '</b></div>';
-  }
-  $('offer').addEventListener('input', drawMoney);
+  $('stayChips').innerHTML = STAYS.map(function(s){ return '<button type="button" data-stay="' + esc(s) + '">' + esc(s) + '</button>'; }).join('');
+  $('stayChips').addEventListener('click', function(e){ var b = e.target.closest('[data-stay]'); if (!b) return; stay = b.dataset.stay; this.classList.remove('bad'); this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); }); drawSummary(); });
+  document.querySelectorAll('[data-count]').forEach(function(box){
+    var k = box.dataset.count, min = k === 'tenants' ? 1 : 0, max = k === 'tenants' ? 6 : 4;
+    var draw = function(){ var v = k === 'tenants' ? tenantsN : guarantorsN; $(k + 'N').textContent = v; box.querySelector('[data-dec]').disabled = v <= min; box.querySelector('[data-inc]').disabled = v >= max; };
+    box.addEventListener('click', function(e){
+      var d = e.target.closest('[data-dec]') ? -1 : e.target.closest('[data-inc]') ? 1 : 0; if (!d) return;
+      if (k === 'tenants') tenantsN = Math.min(max, Math.max(min, tenantsN + d)); else guarantorsN = Math.min(max, Math.max(min, guarantorsN + d));
+      draw(); if (k === 'tenants') drawTenants(); drawSummary();
+    });
+    draw();
+  });
 
-  // One section per tenant (tenant 1 is the lead), each with their ID.
-  function field(n, key, label, opts){
-    opts = opts || {};
+  // ----- Tenants: one block each (tenant 1 is the lead) -----
+  function field(n, key, label, o){
+    o = o || {};
     var id = 't' + n + '_' + key;
-    var input = opts.select ? '<select id="' + id + '" data-k="' + key + '">' + opts.select.map(function(o){ return '<option>' + esc(o) + '</option>'; }).join('') + '</select>'
-      : opts.area ? '<textarea id="' + id + '" data-k="' + key + '" rows="2"></textarea>'
-      : '<input id="' + id + '" data-k="' + key + '"' + (opts.type ? ' type="' + opts.type + '"' : '') + (opts.mode ? ' inputmode="' + opts.mode + '"' : '') + (opts.auto ? ' autocomplete="' + opts.auto + '"' : '') + '>';
-    return '<div class="f"><label for="' + id + '">' + label + (opts.req ? '' : ' <span class="opt">optional</span>') + '</label>' + input + '</div>';
+    var input = o.select ? '<select id="' + id + '" data-k="' + key + '">' + o.select.map(function(x){ return '<option value="' + esc(x) + '">' + esc(x || 'Choose…') + '</option>'; }).join('') + '</select>'
+      : o.area ? '<textarea id="' + id + '" data-k="' + key + '" rows="2"></textarea>'
+      : (o.money ? '<div class="money-in">' : '') + '<input id="' + id + '" data-k="' + key + '"' + (o.type ? ' type="' + o.type + '"' : '') + (o.mode ? ' inputmode="' + o.mode + '"' : '') + (o.auto ? ' autocomplete="' + o.auto + '"' : '') + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : '') + '>' + (o.money ? '</div>' : '');
+    return '<div class="f"' + (o.wrap ? ' ' + o.wrap : '') + '><label class="l" for="' + id + '">' + label + (o.req ? '' : ' <span class="opt">optional</span>') + '</label>' + input + (o.hint ? '<div class="hint">' + o.hint + '</div>' : '') + '</div>';
   }
   function tenantHtml(n){
     var lead = n === 1;
-    return '<div class="card ten" data-t="' + n + '"><h2>Tenant ' + n + (lead ? ' <span style="font-size:.8rem;color:var(--soft);font-weight:500">lead tenant</span>' : '') + '</h2>' +
-      '<div class="g2">' + field(n, 'name', 'Full name', { req: true, auto: lead ? 'name' : 'off' }) + field(n, 'dob', 'Date of birth', { type: 'date', req: true }) + '</div>' +
+    return '<div class="card ten fade" data-t="' + n + '">' +
+      '<div class="ten-head"><div class="avatar">' + n + '</div><div><h2>Tenant ' + n + (lead ? '<span class="tag">Lead tenant</span>' : '') + '</h2><div class="hint" style="margin:0">' + (lead ? 'The main contact for this offer.' : 'Everyone aged 18+ who will live there.') + '</div></div></div>' +
+      '<div class="g2">' + field(n, 'name', 'Full name', { req: true, auto: lead ? 'name' : 'off', ph: 'As on their passport' }) + field(n, 'dob', 'Date of birth', { type: 'date', req: true }) + '</div>' +
       '<div class="g2">' + field(n, 'phone', 'Mobile', { type: 'tel', req: lead, auto: lead ? 'tel' : 'off' }) + field(n, 'email', 'Email', { type: 'email', req: lead, auto: lead ? 'email' : 'off' }) + '</div>' +
-      '<details class="sec" open><summary>Work and income</summary>' +
-        '<div class="g2">' + field(n, 'income_type', 'Income source', { select: ['Employed', 'Self-employed', 'Student', 'Retired', 'Benefits', 'Other'], req: true }) + field(n, 'employment_type', 'Employment type', { select: ['', 'Full time', 'Part time', 'Contract', 'Zero hours'] }) + '</div>' +
-        '<div class="g2">' + field(n, 'company', 'Company name') + field(n, 'position', 'Current position') + '</div>' +
-        '<div class="g2">' + field(n, 'salary', 'Gross annual salary (£)', { mode: 'decimal' }) + field(n, 'start_date', 'Start date', { type: 'date' }) + '</div>' +
-        field(n, 'other_income', 'Any additional income', { area: true }) +
-      '</details>' +
-      '<details class="sec"><summary>Studying? Course details</summary>' +
-        '<div class="g3">' + field(n, 'university', 'University') + field(n, 'course', 'Full course name') + field(n, 'academic_year', 'Academic year') + '</div>' +
-      '</details>' +
-      '<details class="sec" open><summary>Where they live now</summary>' +
-        field(n, 'current_address', 'Current address', { area: true, req: true }) +
-        '<div class="g2">' + field(n, 'residency_status', 'Status', { select: ['Tenant', 'Living with family', 'Homeowner', 'Student accommodation', 'Other'] }) + field(n, 'current_rent', 'Rent paid (£ a month)', { mode: 'decimal' }) + '</div>' +
-        '<div class="g3">' + field(n, 'landlord_name', 'Landlord / agent name') + field(n, 'landlord_email', 'Landlord email', { type: 'email' }) + field(n, 'landlord_phone', 'Landlord phone', { type: 'tel' }) + '</div>' +
-        '<div class="g2">' + field(n, 'tenancy_start', 'Tenancy start', { type: 'date' }) + field(n, 'tenancy_end', 'Tenancy end', { type: 'date' }) + '</div>' +
-      '</details>' +
-      '<details class="sec"><summary>Guarantor (if they have one)</summary>' +
+      '<div class="g2">' + field(n, 'income_type', 'Main income', { select: ['Employed', 'Self-employed', 'Student', 'Retired', 'Benefits', 'Other'], req: true }) + field(n, 'salary', 'Gross annual salary', { mode: 'decimal', money: true }) + '</div>' +
+      field(n, 'current_address', 'Current address', { area: true, req: true }) +
+      '<div class="sec-title">Right to rent</div>' +
+      '<div class="g2">' + field(n, 'uk_passport', 'UK or Irish passport?', { select: ['', 'Yes', 'No'], req: true }) +
+        '<div class="f" data-share="' + n + '" hidden><label class="l" for="t' + n + '_share_code">Right to rent share code</label><input id="t' + n + '_share_code" data-k="share_code" placeholder="R12 345 678" maxlength="12" style="text-transform:uppercase;letter-spacing:.06em"><div class="hint">Get one at <a href="https://www.gov.uk/prove-right-to-rent" target="_blank" rel="noopener">gov.uk/prove-right-to-rent</a></div></div></div>' +
+      '<div class="f"><label class="l">Passport and/or visa</label><div class="drop" data-ids="' + n + '" tabindex="0" role="button">' +
+        '<div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg></div>' +
+        '<b>Upload this tenant’s ID</b><span>Tap to take a photo or choose a file · photo or PDF, up to 4 · no ID needed for guarantors</span>' +
+        '<input type="file" accept="image/*,.heic,.heif,application/pdf" multiple hidden data-idin="' + n + '"></div><div class="thumbs" data-idlist="' + n + '"></div></div>' +
+      '<details class="more"><summary>Work details <small>company, role, start date</small></summary><div class="body">' +
+        '<div class="g2">' + field(n, 'employment_type', 'Employment type', { select: ['', 'Full time', 'Part time', 'Contract', 'Zero hours'] }) + field(n, 'company', 'Company name') + '</div>' +
+        '<div class="g2">' + field(n, 'position', 'Current position') + field(n, 'start_date', 'Start date', { type: 'date' }) + '</div>' +
+        field(n, 'other_income', 'Any additional income', { area: true }) + '</div></details>' +
+      '<details class="more"><summary>Current home <small>rent and landlord</small></summary><div class="body">' +
+        '<div class="g2">' + field(n, 'residency_status', 'Status', { select: ['', 'Tenant', 'Living with family', 'Homeowner', 'Student accommodation', 'Other'] }) + field(n, 'current_rent', 'Rent paid a month', { mode: 'decimal', money: true }) + '</div>' +
+        '<div class="g3">' + field(n, 'landlord_name', 'Landlord / agent') + field(n, 'landlord_email', 'Their email', { type: 'email' }) + field(n, 'landlord_phone', 'Their phone', { type: 'tel' }) + '</div>' +
+        '<div class="g2">' + field(n, 'tenancy_start', 'Tenancy start', { type: 'date' }) + field(n, 'tenancy_end', 'Tenancy end', { type: 'date' }) + '</div></div></details>' +
+      '<details class="more"><summary>Studying <small>if a student</small></summary><div class="body">' +
+        '<div class="g3">' + field(n, 'university', 'University') + field(n, 'course', 'Course') + field(n, 'academic_year', 'Year') + '</div></div></details>' +
+      '<div class="note-warn" data-stu="' + n + '" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg><span>Students who aren’t working need a <b>guarantor</b> — please fill in the guarantor details below.</span></div>' +
+      '<details class="more" data-gua="' + n + '"><summary>Guarantor <small data-guasub="' + n + '">if they have one</small></summary><div class="body">' +
         '<div class="g2">' + field(n, 'g_name', 'Full name') + field(n, 'g_relation', 'Relation') + '</div>' +
         '<div class="g2">' + field(n, 'g_email', 'Email', { type: 'email' }) + field(n, 'g_phone', 'Phone', { type: 'tel' }) + '</div>' +
-        '<div class="g3">' + field(n, 'g_company', 'Company') + field(n, 'g_position', 'Position') + field(n, 'g_salary', 'Gross annual salary (£)', { mode: 'decimal' }) + '</div>' +
+        '<div class="g3">' + field(n, 'g_company', 'Company') + field(n, 'g_position', 'Position') + field(n, 'g_salary', 'Gross annual salary', { mode: 'decimal', money: true }) + '</div>' +
         '<div class="g2">' + field(n, 'g_homeowner', 'UK home owner?', { select: ['', 'Yes', 'No'] }) + field(n, 'g_home_address', 'If yes, home address') + '</div>' +
-        field(n, 'g_other', 'Any additional income / savings', { area: true }) +
-      '</details>' +
-      '<div class="g2" style="margin-top:12px">' + field(n, 'uk_passport', 'Do they have a UK or Irish passport?', { select: ['', 'Yes', 'No'], req: true }) +
-        '<div class="f" data-share="' + n + '" hidden><label for="t' + n + '_share_code">Right to rent share code</label><input id="t' + n + '_share_code" data-k="share_code" placeholder="e.g. R12 345 678" maxlength="12" style="text-transform:uppercase">' +
-        '<div style="font-size:.8rem;color:var(--soft);margin-top:4px">No UK or Irish passport? Get a share code at <a href="https://www.gov.uk/prove-right-to-rent" target="_blank" rel="noopener">gov.uk/prove-right-to-rent</a></div></div></div>' +
-      '<div class="f" style="margin-top:4px"><label>Passport and/or visa / proof of residency</label><div class="ids" data-ids="' + n + '">' +
-        '<label class="pick">📎 Add ID photo or scan<input type="file" accept="image/*,.heic,.heif,application/pdf" multiple hidden data-idin="' + n + '"></label>' +
-        '<div class="list" data-idlist="' + n + '"></div><div style="font-size:.8rem;color:var(--soft);margin-top:6px">Required — a clear photo or PDF (up to 4 files)</div></div></div>' +
+        field(n, 'g_other', 'Additional income or savings', { area: true }) + '</div></details>' +
     '</div>';
   }
   function drawTenants(){
-    var n = parseInt($('tenants_count').value, 10) || 1, box = $('tenants'), have = box.querySelectorAll('.ten').length;
-    for (var i = have + 1; i <= n; i++) box.insertAdjacentHTML('beforeend', tenantHtml(i));
-    box.querySelectorAll('.ten').forEach(function(el){ el.hidden = Number(el.dataset.t) > n; });
+    var box = $('tenants'), have = box.querySelectorAll('.ten').length;
+    for (var i = have + 1; i <= tenantsN; i++) box.insertAdjacentHTML('beforeend', tenantHtml(i));
+    box.querySelectorAll('.ten').forEach(function(el){ el.hidden = Number(el.dataset.t) > tenantsN; });
   }
-  $('tenants_count').addEventListener('change', drawTenants);
   drawTenants();
 
+  // ----- ID files: tap or drag and drop, with previews -----
   function drawFiles(n){
     var list = files[n] || [];
-    document.querySelector('[data-idlist="' + n + '"]').innerHTML = list.map(function(f, i){ return '<span>' + esc(f.name || 'file') + '<button type="button" data-iddel="' + n + '|' + i + '" aria-label="Remove">×</button></span>'; }).join('');
-    document.querySelector('[data-ids="' + n + '"]').classList.toggle('bad', false);
+    document.querySelector('[data-idlist="' + n + '"]').innerHTML = list.map(function(f, i){
+      var img = /^image\/(jpe?g|png|webp|gif)$/i.test(f.type || '');
+      if (img && !f._url) f._url = URL.createObjectURL(f);
+      return '<div class="thumb">' + (img ? '<img src="' + f._url + '" alt="">' : '📄<br>' + esc((f.name || 'file').slice(0, 18))) + '<button type="button" data-iddel="' + n + '|' + i + '" aria-label="Remove">×</button></div>';
+    }).join('');
+    document.querySelector('[data-ids="' + n + '"]').classList.remove('bad');
   }
+  function addFiles(n, list){ var cur = files[n] = files[n] || []; Array.prototype.slice.call(list || []).forEach(function(f){ if (cur.length < 4) cur.push(f); }); drawFiles(n); }
+  $('tenants').addEventListener('click', function(e){
+    var d = e.target.closest('[data-iddel]');
+    if (d) { var a = d.dataset.iddel.split('|'), g = (files[a[0]] || []).splice(Number(a[1]), 1)[0]; if (g && g._url) URL.revokeObjectURL(g._url); drawFiles(a[0]); return; }
+    var dz = e.target.closest('[data-ids]'); if (dz && !e.target.closest('input')) dz.querySelector('input').click();
+  });
+  $('tenants').addEventListener('keydown', function(e){ var dz = e.target.closest('[data-ids]'); if (dz && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); dz.querySelector('input').click(); } });
+  ['dragenter', 'dragover'].forEach(function(ev){ $('tenants').addEventListener(ev, function(e){ var dz = e.target.closest('[data-ids]'); if (!dz) return; e.preventDefault(); dz.classList.add('over'); }); });
+  ['dragleave', 'drop'].forEach(function(ev){ $('tenants').addEventListener(ev, function(e){ var dz = e.target.closest('[data-ids]'); if (!dz) return; e.preventDefault(); dz.classList.remove('over'); if (ev === 'drop') addFiles(dz.dataset.ids, e.dataTransfer.files); }); });
   $('tenants').addEventListener('change', function(e){
-    // No UK or Irish passport: ask for their right to rent share code.
+    // A student who doesn't work needs a guarantor: open and require that section.
+    if (e.target.dataset && e.target.dataset.k === 'income_type') { var sn = e.target.closest('.ten').dataset.t, stu = e.target.value === 'Student';
+      document.querySelector('[data-stu="' + sn + '"]').hidden = !stu; if (stu) document.querySelector('[data-gua="' + sn + '"]').open = true;
+      document.querySelector('[data-guasub="' + sn + '"]').textContent = stu ? 'required for students' : 'if they have one'; return; }
     if (e.target.dataset && e.target.dataset.k === 'uk_passport') { var tn = e.target.closest('.ten').dataset.t; document.querySelector('[data-share="' + tn + '"]').hidden = e.target.value !== 'No'; return; }
     var inp = e.target.closest('[data-idin]'); if (!inp) return;
-    var n = inp.dataset.idin, cur = files[n] = files[n] || [];
-    Array.prototype.slice.call(inp.files || []).forEach(function(f){ if (cur.length < 4) cur.push(f); });
-    inp.value = ''; drawFiles(n);
+    addFiles(inp.dataset.idin, inp.files); inp.value = '';
   });
-  $('tenants').addEventListener('click', function(e){
-    var d = e.target.closest('[data-iddel]'); if (!d) return;
-    var a = d.dataset.iddel.split('|'); (files[a[0]] || []).splice(Number(a[1]), 1); drawFiles(a[0]);
-  });
+  $('tenants').addEventListener('input', function(e){ if (e.target.classList) e.target.classList.remove('bad'); });
+  ['input', 'change', 'blur'].forEach(function(ev){ $('offerForm').addEventListener(ev, function(e){ if (e.target.classList && String(e.target.value || '').trim()) e.target.classList.remove('bad'); }, true); });
+  $('terms').addEventListener('change', function(e){ var c = e.target.closest('.check'); if (c && e.target.checked) c.classList.remove('bad'); });
 
-  // Signature pad: drawn with a finger or mouse.
+  // ----- Signature pad -----
   var sig = $('sig'), sctx = sig.getContext('2d'), inked = false, drawing = false, lastPt = null;
   function sizeSig(){
-    var r = sig.getBoundingClientRect(), k = window.devicePixelRatio || 1, keep = inked ? sig.toDataURL() : null;
+    var r = sig.getBoundingClientRect(); if (!r.width) return;
+    var k = window.devicePixelRatio || 1, keep = inked ? sig.toDataURL() : null;
     sig.width = Math.round(r.width * k); sig.height = Math.round(r.height * k); sctx.setTransform(k, 0, 0, k, 0, 0);
-    sctx.lineWidth = 2.4; sctx.lineCap = 'round'; sctx.lineJoin = 'round'; sctx.strokeStyle = '#0b0c0f';
+    sctx.lineWidth = 2.4; sctx.lineCap = 'round'; sctx.lineJoin = 'round'; sctx.strokeStyle = '#0f1115';
     if (keep) { var im = new Image(); im.onload = function(){ sctx.drawImage(im, 0, 0, r.width, r.height); }; im.src = keep; }
   }
-  sizeSig(); window.addEventListener('resize', sizeSig);
+  window.addEventListener('resize', sizeSig);
   var pt = function(e){ var r = sig.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
-  sig.addEventListener('pointerdown', function(e){ e.preventDefault(); drawing = true; lastPt = pt(e); sig.setPointerCapture(e.pointerId); sctx.beginPath(); sctx.arc(lastPt.x, lastPt.y, 1.1, 0, Math.PI * 2); sctx.fillStyle = '#0b0c0f'; sctx.fill(); });
+  sig.addEventListener('pointerdown', function(e){ e.preventDefault(); drawing = true; lastPt = pt(e); sig.setPointerCapture(e.pointerId); sctx.beginPath(); sctx.arc(lastPt.x, lastPt.y, 1.1, 0, Math.PI * 2); sctx.fillStyle = '#0f1115'; sctx.fill(); });
   sig.addEventListener('pointermove', function(e){ if (!drawing) return; var q = pt(e); sctx.beginPath(); sctx.moveTo(lastPt.x, lastPt.y); sctx.lineTo(q.x, q.y); sctx.stroke(); lastPt = q;
     if (!inked) { inked = true; $('sigHint').hidden = true; $('sigWrap').classList.remove('bad'); } });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(ev){ sig.addEventListener(ev, function(){ drawing = false; }); });
   $('sigClear').addEventListener('click', function(){ sctx.clearRect(0, 0, sig.width, sig.height); inked = false; $('sigHint').hidden = false; });
-  // The signature as a small PNG (trimmed to what was drawn, white background).
   function sigPng(){
     var w = sig.width, h = sig.height, px = sctx.getImageData(0, 0, w, h).data, x0 = w, y0 = h, x1 = 0, y1 = 0;
     for (var y = 0; y < h; y += 2) for (var x = 0; x < w; x += 2) if (px[(y * w + x) * 4 + 3] > 20) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
@@ -285,7 +484,82 @@
     return out.toDataURL('image/png');
   }
 
-  // Photos are made smaller before sending; PDFs go as they are.
+  // ----- Steps -----
+  function drawStepper(){
+    $('stepper').innerHTML = STEPS.map(function(s, i){ return '<div class="s' + (i + 1 < step ? ' done' : i + 1 === step ? ' on' : '') + '"><div class="bar"><i></i></div><div class="lb">' + (i + 1) + '. ' + s + '</div></div>'; }).join('');
+  }
+  function go(n, quiet){
+    step = n; $('err').hidden = true;
+    document.querySelectorAll('.step').forEach(function(s){ s.hidden = Number(s.dataset.step) !== n; if (!s.hidden) s.classList.add('fade'); });
+    document.querySelectorAll('[data-back]').forEach(function(b){ b.hidden = n === 1; });
+    document.querySelectorAll('[data-next]').forEach(function(b){ b.textContent = n === 3 ? 'Submit offer' : (window.innerWidth > 960 ? 'Continue →' : 'Continue'); b.classList.toggle('go', n === 3); b.classList.toggle('dark', n !== 3); });
+    if (n === 3) { drawReview(); setTimeout(sizeSig, 30); }
+    drawStepper();
+    if (!quiet) { var top = document.querySelector('.hero').offsetHeight - 20; window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' }); }
+  }
+  function showErr(msg, el){
+    $('err').textContent = msg; $('err').hidden = false;
+    if (el) { if (el.classList) el.classList.add('bad'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); try { if (el.focus) el.focus({ preventScroll: true }); } catch (x) {} }
+    return false;
+  }
+  function checkStep1(){
+    if (!$('property').value.trim()) return showErr('Please enter the property address.', $('property'));
+    if (!num($('offer').value)) return showErr('Please enter your offer.', $('offer'));
+    if (!$('move_in').value) return showErr('Please choose your move-in date.', $('move_in'));
+    if (!stay) return showErr('Please choose how long you would like to stay.', $('stayChips'));
+    return true;
+  }
+  function readTenants(){
+    var out = [];
+    for (var i = 1; i <= tenantsN; i++) {
+      var el = document.querySelector('.ten[data-t="' + i + '"]'), t = {};
+      el.querySelectorAll('[data-k]').forEach(function(x){ t[x.dataset.k] = x.value.trim(); });
+      out.push(t);
+    }
+    return out;
+  }
+  function checkStep2(){
+    var ts = readTenants();
+    for (var i = 1; i <= ts.length; i++) {
+      var t = ts[i - 1];
+      if (!t.name) return showErr('Please enter tenant ' + i + '’s full name.', $('t' + i + '_name'));
+      if (!t.dob) return showErr('Please enter tenant ' + i + '’s date of birth.', $('t' + i + '_dob'));
+      if (i === 1 && !t.phone && !t.email) return showErr('Please give the lead tenant’s mobile or email.', $('t1_phone'));
+      if (!t.current_address) return showErr('Please enter tenant ' + i + '’s current address.', $('t' + i + '_current_address'));
+      if (!t.uk_passport) return showErr('Please tell us whether tenant ' + i + ' has a UK or Irish passport.', $('t' + i + '_uk_passport'));
+      if (t.uk_passport === 'No' && !/^[A-Z0-9]{9}$/.test((t.share_code || '').toUpperCase().replace(/\s+/g, ''))) return showErr('Please enter tenant ' + i + '’s 9-character right to rent share code.', $('t' + i + '_share_code'));
+      if (!(files[i] || []).length) return showErr('Please add tenant ' + i + '’s passport or visa.', document.querySelector('[data-ids="' + i + '"]'));
+      if (t.income_type === 'Student') {
+        document.querySelector('[data-gua="' + i + '"]').open = true;
+        if (!t.g_name) return showErr('Tenant ' + i + ' is a student — please add their guarantor’s full name.', $('t' + i + '_g_name'));
+        if (!t.g_relation) return showErr('Please add how the guarantor is related to tenant ' + i + '.', $('t' + i + '_g_relation'));
+        if (!t.g_phone && !t.g_email) return showErr('Please add the guarantor’s phone or email for tenant ' + i + '.', $('t' + i + '_g_phone'));
+      }
+    }
+    return true;
+  }
+  function drawReview(){
+    var f = figures() || {}, ts = readTenants();
+    var row = function(a, b){ return '<div><span>' + a + '</span><b>' + b + '</b></div>'; };
+    $('review').innerHTML = row('Property', esc($('property').value.trim())) +
+      row('Offer', gbp(f.pw || 0) + ' a week · ' + gbp(f.pcm || 0) + ' a month') +
+      (num($('max_offer').value) ? row('Maximum offer', gbp(num($('max_offer').value)) + (per === 'pw' ? ' a week' : ' a month')) : '') +
+      row('Move in', esc(longDay($('move_in').value))) + row('Would like to stay', esc(stay)) +
+      row('Tenants', esc(ts.map(function(t){ return t.name; }).join(', '))) + (guarantorsN ? row('Guarantors', String(guarantorsN)) : '') +
+      row('Conditions', $('negotiate').value.trim() ? esc($('negotiate').value.trim()) : '<span style="color:var(--faint);font-weight:500">None</span>');
+    $('payNote').innerHTML = 'Once you submit, please pay the <b>one week holding deposit of ' + gbp(f.hold || 0) + '</b> within 24 hours to reserve the property — we’ll show you the bank details next.';
+    $('moneyBox').innerHTML = row('Holding deposit — pay now', '<span style="color:var(--brand)">' + gbp(f.hold || 0) + '</span>') + row('Rent in advance (one month)', gbp(f.pcm || 0)) + row('Deposit (five weeks)', gbp(f.dep || 0)) +
+      row('Move-in total', gbp(f.total || 0)) + row('Due when you sign the tenancy', gbp(f.after || 0));
+  }
+  document.querySelectorAll('[data-next]').forEach(function(b){ b.addEventListener('click', function(){
+    if (step === 1) { if (checkStep1()) go(2); return; }
+    if (step === 2) { if (checkStep2()) go(3); return; }
+    submit();
+  }); });
+  document.querySelectorAll('[data-back]').forEach(function(b){ b.addEventListener('click', function(){ go(Math.max(1, step - 1)); }); });
+  $('offerForm').addEventListener('submit', function(e){ e.preventDefault(); });
+
+  // ----- Submit -----
   function readFile(file){
     return new Promise(function(resolve){
       var fr = new FileReader();
@@ -305,99 +579,88 @@
       fr.readAsDataURL(file);
     });
   }
-
-  function showErr(msg, el){ $('err').textContent = msg; $('err').hidden = false; if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (el.focus) try { el.focus({ preventScroll: true }); } catch (x) {} } }
-  $('offerForm').addEventListener('submit', function(e){
-    e.preventDefault(); $('err').hidden = true;
-    var n = parseInt($('tenants_count').value, 10) || 1;
-    if (!$('property').value.trim()) return showErr('Please enter the property address.', $('property'));
-    if (!num($('offer').value)) return showErr('Please enter your offer.', $('offer'));
-    if (!$('move_in').value) return showErr('Please choose your move-in date.', $('move_in'));
-    if (!$('stay').value) return showErr('Please tell us how long you would like to stay.', $('stay'));
-    var tenants = [];
-    for (var i = 1; i <= n; i++) {
-      var el = document.querySelector('.ten[data-t="' + i + '"]'), t = {};
-      el.querySelectorAll('[data-k]').forEach(function(x){ t[x.dataset.k] = x.value.trim(); });
-      if (!t.name) return showErr('Please enter tenant ' + i + '’s full name.', $('t' + i + '_name'));
-      if (!t.dob) return showErr('Please enter tenant ' + i + '’s date of birth.', $('t' + i + '_dob'));
-      if (i === 1 && !t.phone && !t.email) return showErr('Please give the lead tenant’s mobile or email.', $('t1_phone'));
-      if (!t.uk_passport) return showErr('Please tell us whether tenant ' + i + ' has a UK or Irish passport.', $('t' + i + '_uk_passport'));
-      if (t.uk_passport === 'No') { t.share_code = (t.share_code || '').toUpperCase().replace(/\s+/g, ''); if (!/^[A-Z0-9]{9}$/.test(t.share_code)) return showErr('Please enter tenant ' + i + '’s 9-character right to rent share code.', $('t' + i + '_share_code')); } else t.share_code = '';
-      if (!t.current_address) return showErr('Please enter tenant ' + i + '’s current address.', $('t' + i + '_current_address'));
-      if (!(files[i] || []).length) { var box = document.querySelector('[data-ids="' + i + '"]'); box.classList.add('bad'); return showErr('Please add tenant ' + i + '’s passport or visa.', box); }
-      tenants.push(t);
-    }
-    if (!$('agree').checked) return showErr('Please tick to confirm you have read the information sheet.', $('agree'));
+  var busyBtns = function(on, text){ document.querySelectorAll('[data-next]').forEach(function(b){ b.disabled = on; if (text) b.textContent = text; }); document.querySelectorAll('[data-back]').forEach(function(b){ b.disabled = on; }); };
+  function submit(){
+    $('err').hidden = true;
+    if (!checkStep1()) return go(1);
+    if (!checkStep2()) { go(2); return checkStep2(); }
+    var unticked = Array.prototype.filter.call(document.querySelectorAll('[data-term]'), function(c){ return !c.checked; });
+    document.querySelectorAll('[data-term]').forEach(function(c){ c.closest('.check').classList.toggle('bad', !c.checked); });
+    if (unticked.length) return showErr('Please tick each point to confirm you understand when the holding deposit is not refunded (' + unticked.length + ' left).', unticked[0].closest('.check'));
+    if (!$('agree').checked) return showErr('Please tick to confirm you’ve read the holding deposit terms.', $('agree').closest('.check'));
     if (!$('signature').value.trim()) return showErr('Please type your full name.', $('signature'));
-    if (!inked) { $('sigWrap').classList.add('bad'); return showErr('Please sign in the box.', $('sigWrap')); }
-    var sigImg = sigPng();
-    var btn = $('submitBtn'); btn.disabled = true; btn.textContent = 'Uploading IDs…';
+    if (!inked) return showErr('Please sign in the box.', $('sigWrap'));
+    var tenants = readTenants().map(function(t){ t.share_code = t.uk_passport === 'No' ? (t.share_code || '').toUpperCase().replace(/\s+/g, '') : ''; return t; }), sigImg = sigPng();
+    busyBtns(true, 'Uploading IDs…');
     Promise.all(tenants.map(function(t, i){ return Promise.all((files[i + 1] || []).map(readFile)).then(function(list){ t.ids = list.filter(Boolean); }); })).then(function(){
-      btn.textContent = 'Sending your offer…';
+      busyBtns(true, 'Sending…');
       return fetch('/api/offers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         website: document.querySelector('[name=website]').value, property: $('property').value.trim(), per: per, offer: $('offer').value, max_offer: $('max_offer').value,
-        move_in: $('move_in').value, stay: $('stay').value, tenants_count: n, guarantors_count: $('guarantors_count').value,
+        move_in: $('move_in').value, stay: stay, tenants_count: tenantsN, guarantors_count: guarantorsN,
         negotiate: $('negotiate').value.trim(), about: $('about').value.trim(), lead_name: tenants[0].name, lead_phone: tenants[0].phone, lead_email: tenants[0].email,
-        tenants: tenants, agree: true, signature: $('signature').value.trim(), signature_png: sigImg }) });
+        tenants: tenants, agree: true, terms: Array.prototype.map.call(document.querySelectorAll('[data-term]'), function(c){ return c.checked; }), signature: $('signature').value.trim(), signature_png: sigImg }) });
     }).then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) {
-        btn.disabled = false; btn.textContent = 'Submit offer';
-        return showErr(d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'share_code' ? 'Please check each right to rent share code (9 letters and numbers).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
+        busyBtns(false, 'Submit offer');
+        return showErr(d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'terms' ? 'Please tick each holding deposit point.' : d.error === 'guarantor' ? 'Students need a guarantor — please add their name, relation and phone or email.' : d.error === 'share_code' ? 'Please check each right to rent share code (9 letters and numbers).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
       }
       done(d);
-    }).catch(function(){ btn.disabled = false; btn.textContent = 'Submit offer'; showErr('Couldn’t send — please check your connection and try again.'); });
-  });
+    }).catch(function(){ busyBtns(false, 'Submit offer'); showErr('Couldn’t send — please check your connection and try again.'); });
+  }
 
-  // The private link to follow the offer: shown after submitting, kept on this device.
+  // ----- After submitting: pay the holding deposit, track the offer -----
+  var TICK = '<div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>';
+  function bankHtml(bank, amount, ref){
+    return bank ? '<div class="bank"><div><span>Account name</span><b>' + esc(bank.payee) + '</b></div><div><span>Sort code</span><b>' + esc(bank.sort_code) + '</b></div><div><span>Account number</span><b>' + esc(bank.account) + '</b></div><div><span>Amount</span><b>' + gbp(amount || 0) + '</b></div><div><span>Reference</span><b>' + esc(ref) + '</b></div></div>'
+      : '<p>We’ll send you our bank details to pay it.</p>';
+  }
   function trackBox(url){
     var wa = 'https://wa.me/?text=' + encodeURIComponent('My offer with Residential Realtors — track it here: ' + url);
-    return '<div class="trackbox"><b>Track your offer</b><div style="font-size:.9rem;color:var(--soft)">Save this link — it shows when your holding deposit is received and when the landlord decides.</div>' +
-      '<input readonly value="' + esc(url) + '" onclick="this.select()"><div class="btns"><a class="btn dark" href="' + esc(url) + '">Track my offer</a><button type="button" class="btn" data-copy="' + esc(url) + '">Copy link</button><a class="btn" target="_blank" rel="noopener" href="' + esc(wa) + '">Send to WhatsApp</a></div></div>';
+    return '<div class="trackbox"><b>Track your offer</b><div class="hint" style="margin:2px 0 0">Save this link — it shows when your holding deposit arrives and when the landlord decides.</div>' +
+      '<input readonly value="' + esc(url) + '" onclick="this.select()"><div class="btnrow"><a class="btn dark" href="' + esc(url) + '">Track my offer</a><button type="button" class="btn" data-copy="' + esc(url) + '">Copy link</button><a class="btn" target="_blank" rel="noopener" href="' + esc(wa) + '">WhatsApp</a></div></div>';
   }
   document.addEventListener('click', function(e){ var c = e.target.closest('[data-copy]'); if (!c) return; (navigator.clipboard ? navigator.clipboard.writeText(c.dataset.copy) : Promise.reject()).then(function(){ c.textContent = '✓ Copied'; }, function(){ window.prompt('Copy this link:', c.dataset.copy); }); });
   function remember(o){ try { var l = JSON.parse(localStorage.getItem('rr_offers') || '[]').filter(function(x){ return x.track !== o.track; }); l.unshift(o); localStorage.setItem('rr_offers', JSON.stringify(l.slice(0, 5))); } catch (e) {} }
-  try {
-    var mine = JSON.parse(localStorage.getItem('rr_offers') || '[]');
-    if (mine.length) $('mine').innerHTML = '<div class="card"><b>Your offer' + (mine.length === 1 ? '' : 's') + '</b>' + mine.map(function(o){ return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:8px"><span>' + esc(o.ref) + ' · ' + esc(o.property || '') + '</span><a class="btn" href="' + esc(o.track) + '">See status</a></div>'; }).join('') + '</div>';
-  } catch (e) {}
-
-  // Tracking page (/offer/track/<token>): where the offer is up to.
-  var tm = /^\/offer\/track\/([\w-]{16,40})\/?$/.exec(location.pathname);
-  if (tm) {
-    $('formView').hidden = true; $('trackView').hidden = false;
-    $('trackView').innerHTML = '<div class="card"><p class="sub">Loading your offer…</p></div>';
-    fetch('/api/offers/track/' + tm[1]).then(function(r){ return r.json(); }).then(function(d){
-      if (!d.ok) { $('trackView').innerHTML = '<div class="card"><h1>Offer not found</h1><p class="sub">This link isn’t valid. Please check it, or contact Residential Realtors.</p></div>'; return; }
-      var m = d.money || {}, when = function(v){ return v ? new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
-      var acc = d.status === 'accepted', rej = d.status === 'rejected', paid = !!d.paid_at;
-      var steps = [
-        ['ok', 'Offer received', when(d.created_at) + ' · ' + gbp(d.offer_pw) + ' a week (' + gbp(m.pcm || 0) + ' a month)' + (d.move_in ? ' · move in ' + when(d.move_in) : '')],
-        [paid ? 'ok' : rej ? '' : 'now', paid ? 'Holding deposit received' : 'Holding deposit', paid ? when(d.paid_at) + ' · ' + gbp(m.holding || 0) : rej ? 'Not needed' : 'Please pay ' + gbp(m.holding || 0) + ' to reserve the property — details below'],
-        [acc ? 'ok' : rej ? 'no' : (paid ? 'now' : ''), acc ? 'Offer accepted 🎉' : rej ? 'Offer not accepted' : 'Landlord’s decision', acc ? when(d.decided_at) : rej ? when(d.decided_at) + (paid ? ' · your holding deposit will be returned within 24 hours' : '') : 'We’ll update this page as soon as the landlord decides'],
-        [acc ? 'now' : '', 'References and tenancy agreement', acc ? 'We’ll send the referencing forms — please complete them within 24 hours. Then the tenancy agreement to sign and the rest of the move-in money (' + gbp(m.balance || 0) + ').' : 'Once the offer is accepted']
-      ];
-      $('trackView').innerHTML = '<div class="card"><h1>Your offer ' + esc(d.ref) + '</h1><p class="sub">' + esc(d.property || '') + '</p>' +
-        '<ol class="steps">' + steps.map(function(s, i){ return '<li class="' + s[0] + '"><div class="dot">' + (s[0] === 'ok' ? '✓' : s[0] === 'no' ? '✗' : i + 1) + '</div><div><b>' + s[1] + '</b><span>' + esc(s[2]) + '</span></div></li>'; }).join('') + '</ol>' +
-        (d.bank && !paid ? '<h2>Pay the holding deposit</h2><div class="bank"><div><span>Account name</span><b>' + esc(d.bank.payee) + '</b></div><div><span>Sort code</span><b>' + esc(d.bank.sort_code) + '</b></div><div><span>Account number</span><b>' + esc(d.bank.account) + '</b></div><div><span>Amount</span><b>' + gbp(m.holding || 0) + '</b></div><div><span>Reference</span><b>' + esc(d.reference) + '</b></div></div><p class="sub" style="font-size:.85rem">Already paid? It shows here once we’ve seen it arrive.</p>' : '') +
-        '</div>';
-      remember({ ref: d.ref, track: location.pathname, property: d.property, at: Date.now() });
-    }).catch(function(){ $('trackView').innerHTML = '<div class="card"><p class="sub">Couldn’t load — please check your connection and refresh.</p></div>'; });
-  }
-
-  // Submitted: now pay the holding deposit.
   function done(d){
     var m = d.money || {};
     $('formView').hidden = true; $('doneView').hidden = false;
-    $('doneView').innerHTML = '<div class="card"><h1>✓ Offer received</h1><p class="sub">Thank you — your reference is <b>' + esc(d.ref) + '</b>. We’ll put your offer to the landlord.</p>' +
-      '<h2>Next: pay your holding deposit</h2><p>To reserve the property, please pay the holding deposit of <b>' + gbp(m.holding || 0) + '</b> (one week’s rent) by bank transfer within 24 hours.</p>' +
-      (d.bank ? '<div class="bank"><div><span>Account name</span><b>' + esc(d.bank.payee) + '</b></div><div><span>Sort code</span><b>' + esc(d.bank.sort_code) + '</b></div><div><span>Account number</span><b>' + esc(d.bank.account) + '</b></div><div><span>Amount</span><b>' + gbp(m.holding || 0) + '</b></div><div><span>Reference</span><b>' + esc(d.reference) + '</b></div></div>'
-        : '<p>We will send you our bank details to pay it.</p>') +
-      '<p class="sub" style="margin-top:12px">Once your offer is accepted, the holding deposit goes towards your first month’s rent. The rest — ' + gbp(m.balance || 0) + ' — is due when you sign the tenancy agreement.</p>' +
-      '<p class="sub">If the landlord rejects your maximum offer or withdraws the property, your holding deposit is returned within 24 hours (see the information sheet).</p>' +
+    $('doneView').innerHTML = '<div class="card fade">' + TICK + '<h2 style="font-size:1.5rem;letter-spacing:-.02em">Offer received</h2><p class="lead">Thank you — your reference is <b>' + esc(d.ref) + '</b>. We’ll put your offer to the landlord.</p>' +
+      '<h2>Next: pay your holding deposit</h2><p style="margin:4px 0 0">To reserve the property, please pay <b>' + gbp(m.holding || 0) + '</b> (one week’s rent) by bank transfer within 24 hours.</p>' +
+      bankHtml(d.bank, m.holding, d.reference) +
+      '<p class="hint">Once your offer is accepted, the holding deposit goes towards your first month’s rent. The rest — ' + gbp(m.balance || 0) + ' — is due when you sign the tenancy agreement. If the landlord rejects your maximum offer or withdraws the property, it’s returned within 24 hours.</p>' +
       (d.track ? trackBox(location.origin + d.track) : '') + '</div>';
     if (d.track) remember({ ref: d.ref, track: d.track, property: $('property').value.trim(), at: Date.now() });
     window.scrollTo(0, 0);
   }
+
+  // Offers made before on this device.
+  try {
+    var mine = JSON.parse(localStorage.getItem('rr_offers') || '[]');
+    if (mine.length) $('mine').innerHTML = '<div class="card"><h2>Your offers</h2>' + mine.map(function(o){ return '<div class="mine"><span><b>' + esc(o.ref) + '</b> · ' + esc(o.property || '') + '</span><a class="btn" href="' + esc(o.track) + '">See status</a></div>'; }).join('') + '</div>';
+  } catch (e) {}
+
+  // ----- Tracking page (/offer/track/<code>) -----
+  var tm = /^\/offer\/track\/([\w-]{16,40})\/?$/.exec(location.pathname);
+  if (tm) {
+    $('formView').hidden = true; $('trackView').hidden = false;
+    $('trackView').innerHTML = '<div class="card"><p class="lead" style="margin:0">Loading your offer…</p></div>';
+    fetch('/api/offers/track/' + tm[1]).then(function(r){ return r.json(); }).then(function(d){
+      if (!d.ok) { $('trackView').innerHTML = '<div class="card"><h2>Offer not found</h2><p class="lead" style="margin:0">This link isn’t valid. Please check it, or contact Residential Realtors.</p></div>'; return; }
+      var m = d.money || {}, acc = d.status === 'accepted', rej = d.status === 'rejected', paid = !!d.paid_at;
+      var steps = [
+        ['ok', 'Offer received', longDay(d.created_at) + ' · ' + gbp(d.offer_pw) + ' a week (' + gbp(m.pcm || 0) + ' a month)' + (d.move_in ? ' · move in ' + longDay(d.move_in) : '')],
+        [paid ? 'ok' : rej ? '' : 'now', paid ? 'Holding deposit received' : 'Holding deposit', paid ? longDay(d.paid_at) + ' · ' + gbp(m.holding || 0) : rej ? 'Not needed' : 'Please pay ' + gbp(m.holding || 0) + ' to reserve the property — details below'],
+        [acc ? 'ok' : rej ? 'no' : (paid ? 'now' : ''), acc ? 'Offer accepted 🎉' : rej ? 'Offer not accepted' : 'Landlord’s decision', acc ? longDay(d.decided_at) : rej ? longDay(d.decided_at) + (paid ? ' · your holding deposit will be returned within 24 hours' : '') : 'We’ll update this page as soon as the landlord decides'],
+        [acc ? 'now' : '', 'References and tenancy agreement', acc ? 'We’ll send the referencing forms — please complete them within 24 hours. Then the tenancy agreement to sign and the rest of the move-in money (' + gbp(m.balance || 0) + ').' : 'Once the offer is accepted']
+      ];
+      $('trackView').innerHTML = '<div class="card fade"><span class="eyebrow">Offer ' + esc(d.ref) + '</span><h2 style="font-size:1.4rem;letter-spacing:-.02em;margin-top:6px">' + esc(d.property || '') + '</h2>' +
+        '<ol class="timeline">' + steps.map(function(s, i){ return '<li class="' + s[0] + '"><div class="dot">' + (s[0] === 'ok' ? '✓' : s[0] === 'no' ? '✕' : i + 1) + '</div><div><b>' + s[1] + '</b><span>' + esc(s[2]) + '</span></div></li>'; }).join('') + '</ol>' +
+        (d.bank && !paid ? '<h2>Pay the holding deposit</h2>' + bankHtml(d.bank, m.holding, d.reference) + '<p class="hint">Already paid? It shows here once we’ve seen it arrive.</p>' : '') + '</div>';
+      remember({ ref: d.ref, track: location.pathname, property: d.property, at: Date.now() });
+    }).catch(function(){ $('trackView').innerHTML = '<div class="card"><p class="lead" style="margin:0">Couldn’t load — please check your connection and refresh.</p></div>'; });
+  }
+
+  drawStepper(); drawSummary(); go(1, true);
 })();
 </script>
 </body>

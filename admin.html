@@ -970,7 +970,7 @@
     <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
     <button class="nav" type="button" id="navTenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg> Tenants</button>
     <button class="nav" type="button" id="navTcy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/></svg> Tenancies</button>
-    <button class="nav" type="button" id="navOffers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg> Offers <span class="badge hot" id="sOffers" hidden>0</span></button>
+    <button class="nav" type="button" id="navOffers" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg> Offers <span class="badge hot" id="sOffers" hidden>0</span></button>
     <button class="nav" type="button" id="navLandlords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg> Landlords</button>
     <button class="nav" type="button" id="navCerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/></svg> Certificates <span class="badge hot" id="sCerts" hidden></span></button>
     <button class="nav" type="button" id="navPay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg> Payments <span class="badge" id="sOwed" hidden></span></button>
@@ -981,7 +981,7 @@
     <div class="side-sec">Links</div>
     <a class="nav" href="/" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Tenant report page</a>
     <a class="nav" href="/offer" target="_blank" rel="noopener" style="text-decoration:none" title="The form applicants fill in to make an offer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offer form (applicants)</a>
-    <a class="nav" href="/admin#offers" id="navOffersLink" style="text-decoration:none" title="Where the offer forms are collected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offers collected</a>
+    <a class="nav" href="/admin#offers" id="navOffersLink" style="text-decoration:none" title="Where the offer forms are collected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offers collected <span class="badge hot" id="sOffers2" hidden>0</span></a>
     <div class="grow"></div>
     <div class="side-foot"><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
   </aside>
@@ -3112,6 +3112,7 @@
     $('certsView').hidden = v !== 'certs';
     $('offersView').hidden = v !== 'offers';
     $('navOffers').classList.toggle('on', v === 'offers');
+    $('navOffersLink').classList.toggle('on', v === 'offers');
     $('tcyView').hidden = v !== 'tcy';
     $('actView').hidden = v !== 'act';
     $('ctrView').hidden = v !== 'ctr';
@@ -8044,6 +8045,7 @@
     var fresh = offers.filter(function(o){ return o.status === 'new'; }), unseen = fresh.filter(function(o){ return !o.seen_at; }).length;
     var unpaid = offers.filter(function(o){ return o.status === 'accepted' && !o.paid_at; }).length;
     $('sOffers').hidden = !fresh.length; $('sOffers').textContent = fresh.length;
+    $('sOffers2').hidden = !fresh.length; $('sOffers2').textContent = fresh.length;
     $('offerBanner').hidden = !fresh.length && !unpaid;
     $('offerBannerText').textContent = '📝 ' + (fresh.length ? fresh.length + ' offer' + (fresh.length === 1 ? '' : 's') + ' to decide' + (unseen ? ' (' + unseen + ' new)' : '') : '') +
       (fresh.length && unpaid ? ' · ' : '') + (unpaid ? unpaid + ' accepted, holding deposit not received yet' : '') + (fresh.length ? ' — ' + fresh.slice(0, 2).map(function(o){ return shortAddr(o.property_address) + ' ' + gbp(offPw(o)) + ' pw'; }).join(', ') : '');
@@ -8074,7 +8076,7 @@
         '<div style="text-align:right"><div style="font-size:1.15rem;font-weight:800">' + esc(gbp(offPw(o))) + ' pw</div><div class="muted-note" style="margin:0">' + esc(gbp(m.pcm || 0)) + ' pcm' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' pw' : '') + '</div></div></div>' +
       '<div style="margin:8px 0;display:flex;gap:6px;flex-wrap:wrap">' + st + paid + '</div>' +
       '<div class="off-grid">' + offRow('Move in', d.move_in ? longDay(d.move_in) : '') + offRow('Would like to stay', d.stay) + offRow('Tenants', String(ts.length)) + offRow('Guarantors', d.guarantors_count ? String(d.guarantors_count) : '') +
-        offRow('Holding deposit', gbp(m.holding || 0)) + offRow('Move-in balance after it', gbp(m.balance || 0)) + offRow('Signed by', d.signature ? d.signature + ' · ' + fmtShort(d.signed_at) : '') + '</div>' +
+        offRow('Holding deposit', gbp(m.holding || 0)) + offRow('Move-in balance after it', gbp(m.balance || 0)) + offRow('Signed by', d.signature ? d.signature + ' · ' + fmtShort(d.signed_at) : '') + (d.terms_ticked ? offRow('Holding deposit terms', 'All 6 non-refundable points ticked') : '') + '</div>' +
       (function(){ var sg = docs.filter(function(x){ return x.tenant_no === 0; })[0]; return sg ? '<div style="margin:8px 0 0"><span class="muted-note" style="margin:0">Signature</span><br><img src="/api/admin/offers/' + o.id + '/doc/' + sg.id + '" alt="Signature" style="max-height:70px;max-width:260px;border:1px solid var(--line,#eee);border-radius:8px;background:#fff;padding:4px"></div>' : ''; })() +
       (d.about ? '<p style="margin:8px 0 0"><b>About them:</b> ' + esc(d.about) + '</p>' : '') + '<p style="margin:4px 0 0"><b>Their conditions:</b> ' + (d.negotiate ? esc(d.negotiate) : '<span class="muted-note" style="margin:0">none given</span>') + '</p>' +
       '<details class="off-tens"><summary>Tenants, IDs and references (' + ts.length + ')</summary>' + ts.map(function(t, i){
