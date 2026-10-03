@@ -8099,7 +8099,9 @@
     $('offerBannerText').textContent = '📝 ' + (fresh.length ? fresh.length + ' offer' + (fresh.length === 1 ? '' : 's') + ' to decide' + (unseen ? ' (' + unseen + ' new)' : '') : '') +
       (fresh.length && unpaid ? ' · ' : '') + (unpaid ? unpaid + ' accepted, holding deposit not received yet' : '') + (claims ? ' · ' + claims + ' say they’ve paid — check the bank' : '') + (rtrT ? ' · 🛂 ' + rtrT + ' accepted applicant' + (rtrT === 1 ? '' : 's') + ' need a right to rent check' : '') + (rtrD ? ' · ⏳ ' + rtrD + ' right to rent follow-up check' + (rtrD === 1 ? '' : 's') + ' due' : '') + (fresh.length ? ' — ' + fresh.slice(0, 2).map(function(o){ return shortAddr(o.property_address) + ' ' + gbp(offPw(o)) + ' pw'; }).join(', ') : '');
   }
-  function offLinkBase(){ return location.origin + '/offer'; }
+  // The offer pages on their own web address when one is set up (OFFER_ORIGIN).
+  function offOrigin(){ return meta.offerOrigin || location.origin; }
+  function offLinkBase(){ return offOrigin() + '/offer'; }
   function renderOffers(){
     $('offLink').value = offLinkBase(); $('offOpen').href = offLinkBase();
     $('offProps').innerHTML = allPropsForList().map(function(p){ return '<option value="' + esc(p.address) + '">'; }).join('');
@@ -8177,7 +8179,7 @@
       return 'mailto:' + encodeURIComponent(o.lead_email || '') + '?subject=' + encodeURIComponent((o.paid_at ? 'Holding deposit refund — ' : 'Your offer — ') + shortAddr(o.property_address) + ' (' + o.ref + ')') + '&body=' + encodeURIComponent(body);
     };
     var acceptEmail = function(){
-      var first = String(o.lead_name || '').split(/\s+/)[0] || 'there', track = o.track_token ? location.origin + '/offer/track/' + o.track_token : '';
+      var first = String(o.lead_name || '').split(/\s+/)[0] || 'there', track = o.track_token ? offOrigin() + '/offer/track/' + o.track_token : '';
       var body = 'Dear ' + first + ',\n\nGood news — the landlord has accepted your offer of ' + gbp(offPw(o)) + ' a week (' + gbp(m.pcm || 0) + ' a month) for ' + shortAddr(o.property_address) + ' (' + o.ref + ').\n\n' +
         (o.paid_at ? 'We have received your holding deposit of ' + gbp(m.holding || 0) + ', which goes towards your first month’s rent.\n\n' : 'Please pay your holding deposit of ' + gbp(m.holding || 0) + ' now to secure the property, using the payment reference on your offer.\n\n') +
         'Next steps:\n1. We will send the referencing forms for each tenant' + (d.guarantors_count ? ' and guarantor' : '') + ' — please complete them within 24 hours.\n2. Once references are back, we will send the tenancy agreement to sign.\n3. The rest of the move-in money (' + gbp(m.balance || 0) + ') is due when you sign.\n\n' +
@@ -8304,7 +8306,7 @@
       (o.track_token ? Promise.resolve({ ok: true, track: '/offer/track/' + o.track_token }) : api('POST', '/api/admin/offers/' + o.id + '/track', {})).then(function(d){
         if (!d.ok) { if (w) w.close(); toast('Couldn’t make the link'); return; }
         o.track_token = d.track.split('/').pop();
-        var url = location.origin + d.track;
+        var url = offOrigin() + d.track;
         if (!wa) { offCopyText(url); return; }
         var ph = String(o.lead_phone || '').replace(/\D/g, '').replace(/^0/, '44');
         var msg = 'Hi ' + (String(o.lead_name || '').split(/\s+/)[0] || 'there') + ', thank you for your offer on ' + shortAddr(o.property_address) + ' (' + o.ref + '). You can follow it here: ' + url + ' — Residential Realtors';

@@ -154,7 +154,9 @@ app.get(/^\/[\w-]+\.html$/, function (req, res, next) { if (!sendPage(req, res, 
 const noCache = function (res, p) { if (/\.html$/.test(p)) res.setHeader('Cache-Control', 'no-cache'); };
 app.use(express.static(__dirname, { setHeaders: noCache, index: false }));
 
-app.get('/', (req, res) => { sendPage(req, res, path.join(__dirname, 'index.html')); });
+// On the offers address (e.g. offers.residentialrealtors.co.uk) the home page is the offer form.
+const OFFER_HOST = (function () { try { return new URL(process.env.OFFER_ORIGIN || '').hostname; } catch (e) { return ''; } })();
+app.get('/', (req, res) => { if (OFFER_HOST && req.hostname === OFFER_HOST) return res.redirect(302, '/offer' + (req.originalUrl.indexOf('?') !== -1 ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '')); sendPage(req, res, path.join(__dirname, 'index.html')); });
 
 // Staff dashboard for managing jobs (see jobs.js); its API needs ADMIN_PASSWORD.
 app.get('/admin', (req, res) => { sendPage(req, res, path.join(__dirname, 'admin.html')); });

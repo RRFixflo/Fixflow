@@ -27,6 +27,8 @@ const URGENCIES = ['Emergency', 'Urgent', 'Routine'];
 //   INVOICE_PAYEE, INVOICE_SORT_CODE, INVOICE_ACCOUNT_NUMBER,
 //   INVOICE_PAYMENT_DAYS (optional, default 14), INVOICE_FROM (optional),
 //   INVOICE_ADDRESS, INVOICE_COMPANY_NO, INVOICE_VAT_NO (optional; default to the registered details below)
+// The applicants' offer link, e.g. https://offers.residentialrealtors.co.uk (OFFER_ORIGIN setting).
+const OFFER_ORIGIN = String(process.env.OFFER_ORIGIN || '').trim().replace(/\/+$/, '');
 const INVOICE = {
   payee: process.env.INVOICE_PAYEE || '',
   sortCode: process.env.INVOICE_SORT_CODE || '',
@@ -1738,7 +1740,7 @@ module.exports = function mountJobs(app, opts) {
   }, 24 * 3600 * 1000).unref();
 
   app.get('/api/admin/me', async function (req, res) {
-    res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
+    res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, offerOrigin: OFFER_ORIGIN, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
   });
 
   // Wraps a handler: no database -> 503; unexpected errors -> 500 (logged).
