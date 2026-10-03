@@ -5685,13 +5685,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const token = crypto.randomBytes(12).toString('base64url');
     await p.query('INSERT INTO cert_requests (token, property_key, address, type, landlord_id, created_by, via, expires_on) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
       [token, key, address, type, ll ? ll.id : null, req.user ? req.user.name : 'Office', str(b.via, 20) || null, cert ? cert.expires_on : null]);
-    res.json({ ok: true, link: siteUrl + '/c/' + token, landlord: ll ? { name: ll.name, email: ll.email, phone: ll.phone } : null, expires_on: cert ? cert.expires_on : null, name: CERT_ASK_NAME[type] });
+    res.json({ ok: true, link: siteUrl + '/cert/' + token, landlord: ll ? { name: ll.name, email: ll.email, phone: ll.phone } : null, expires_on: cert ? cert.expires_on : null, name: CERT_ASK_NAME[type] });
   }));
   app.get('/api/admin/cert-requests', withDb(async function (p, req, res) {
     res.json({ ok: true, requests: (await p.query("SELECT id, property_key, address, type, created_at, created_by, via, answer, answered_at, opened_at FROM cert_requests WHERE created_at > now() - interval '180 days' ORDER BY id DESC")).rows });
   }));
   async function certReqByToken(p, token) { return /^[\w-]{12,24}$/.test(String(token || '')) ? (await p.query('SELECT * FROM cert_requests WHERE token = $1', [token])).rows[0] || null : null; }
-  app.get('/c/:token', withDb(async function (p, req, res) {
+  // Certificate request links live at /cert/<token> (/c/ is the contractors' job page). Early
+  // links were sent as /c/<16 characters>: send those on, and leave every other /c/ link alone.
+  app.get('/c/:token', async function (req, res, next) {
+    try { const p = /^[\w-]{16}$/.test(req.params.token) ? await db() : null; if (p && await certReqByToken(p, req.params.token)) return res.redirect(302, '/cert/' + req.params.token); } catch (e) {}
+    next();
+  });
+  app.get('/cert/:token', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Content-Type', 'text/html; charset=utf-8');
     const r = await certReqByToken(p, req.params.token);
     if (!r) return res.status(404).send(trackShell('Link not available', '<h1>Link not available</h1><p class="sub">Please contact Residential Realtors on 0207 096 8131.</p>'));
@@ -5713,7 +5719,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '<p class="muted" style="font-size:.86rem">Questions? Call us on 0207 096 8131.</p>' +
       '<script>document.querySelectorAll("[data-ans]").forEach(function(b){b.addEventListener("click",function(e){var a=b.getAttribute("data-ans");if(a==="arrange"&&!confirm("Ask Residential Realtors to arrange the ' + htmlEsc(name).replace(/"/g, '') + '?"))return e.preventDefault();var href=b.getAttribute("href");if(href)e.preventDefault();fetch(location.pathname+"/answer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({answer:a})}).then(function(){if(href)location.href=href;else location.reload();}).catch(function(){if(href)location.href=href;});});});</script>'));
   }));
-  app.post('/c/:token/answer', withDb(async function (p, req, res) {
+  app.post('/cert/:token/answer', withDb(async function (p, req, res) {
     if (offerLimited(req)) return res.status(429).json({ ok: false });
     const r = await certReqByToken(p, req.params.token), ans = ['arrange', 'sending'].indexOf((req.body || {}).answer) !== -1 ? req.body.answer : null;
     if (!r || !ans) return res.status(400).json({ ok: false });
