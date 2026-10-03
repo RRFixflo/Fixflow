@@ -389,11 +389,46 @@
   /* Home reminders: one box that can be minimised to a row of chips. */
   small.fee-vat { font-size: .78rem; color: var(--ink-soft); }
   small.fee-vat b { color: var(--ink); font-weight: 650; }
-  .off-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 14px; font-size: .9rem; }
-  .off-grid div { display: flex; flex-direction: column; padding: 4px 0; border-bottom: 1px solid var(--line, #eee); }
-  .off-grid span { font-size: .74rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; }
-  .off-tens { margin-top: 10px; border-top: 1px solid var(--line, #eee); padding-top: 8px; }
-  .off-tens summary { cursor: pointer; font-weight: 650; }
+  /* Offers page cards */
+  .oc { background: var(--surface, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 18px; padding: 18px 20px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(15,17,21,.04), 0 12px 32px -18px rgba(15,17,21,.18); position: relative; overflow: hidden; }
+  .oc::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #c9ccd3; }
+  .oc-wait::before { background: #2453e8; } .oc-ok::before { background: #12924a; } .oc-no::before { background: #D9262E; } .oc-muted::before { background: #9aa0ab; }
+  .oc-head { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 14px; align-items: start; }
+  .oc-av { width: 44px; height: 44px; border-radius: 14px; background: linear-gradient(135deg, #1b1e25, #3a3f4b); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; letter-spacing: .02em; }
+  .oc-addr { font-weight: 700; font-size: 1.02rem; letter-spacing: -.01em; }
+  .oc-meta { color: var(--ink-soft); font-size: .86rem; margin-top: 1px; }
+  .oc-contact { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; font-size: .86rem; }
+  .oc-contact a { color: var(--ink, #111); text-decoration: none; opacity: .85; } .oc-contact a:hover { text-decoration: underline; }
+  .oc-price { text-align: right; }
+  .oc-pw { font-size: 1.45rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; } .oc-pw small { font-size: .8rem; font-weight: 600; color: var(--ink-soft); letter-spacing: 0; }
+  .oc-pcm { color: var(--ink-soft); font-size: .84rem; margin-top: 2px; }
+  .oc-status { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 4px; }
+  .oc-pill { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 3px 10px; font-size: .78rem; font-weight: 650; background: #eef0f3; color: #3a3f4b; }
+  .oc-pill.ok { background: #e8f6ee; color: #0d7a3d; } .oc-pill.no { background: #fdecec; color: #b42318; } .oc-pill.wait { background: #edf2ff; color: #1d3fae; } .oc-pill.warn { background: #fff5e6; color: #8a5200; } .oc-pill.muted { background: #f1f2f4; color: #5f6673; }
+  .oc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 12px 0; }
+  .oc-kv { background: var(--panel-2, #f6f7f9); border-radius: 12px; padding: 9px 12px; }
+  .oc-kv span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); font-weight: 650; }
+  .oc-kv b { font-size: .95rem; }
+  .oc-cond { font-size: .9rem; margin: 6px 0 0; } .oc-cond span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); font-weight: 650; margin-bottom: 2px; } .oc-cond em { color: var(--ink-soft); }
+  .oc-more { margin-top: 12px; border: 1px solid var(--line, #e6e8ec); border-radius: 14px; }
+  .oc-more summary { cursor: pointer; padding: 11px 14px; font-weight: 650; font-size: .92rem; list-style: none; display: flex; align-items: center; gap: 8px; }
+  .oc-more summary::-webkit-details-marker { display: none; }
+  .oc-more summary b { background: #eef0f3; border-radius: 999px; padding: 0 8px; font-size: .78rem; }
+  .oc-more summary::after { content: '▾'; margin-left: auto; color: var(--ink-soft); } .oc-more[open] summary::after { content: '▴'; }
+  .oc-ten { border-top: 1px solid var(--line, #e6e8ec); padding: 12px 14px; }
+  .oc-ten-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .oc-num { width: 24px; height: 24px; border-radius: 8px; background: #1b1e25; color: #fff; font-size: .78rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+  .oc-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 16px; font-size: .88rem; }
+  .oc-rows span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
+  .oc-ids { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .oc-id { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line, #e6e8ec); border-radius: 10px; padding: 6px 10px; font-size: .84rem; font-weight: 600; color: var(--ink, #111); text-decoration: none; background: #fff; }
+  .oc-id:hover { border-color: var(--ink, #111); }
+  .oc-sign { border-top: 1px solid var(--line, #e6e8ec); padding: 12px 14px; display: flex; justify-content: space-between; gap: 14px; align-items: center; flex-wrap: wrap; font-size: .88rem; }
+  .oc-sign span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
+  .oc-sign img { max-height: 64px; max-width: 240px; background: #fff; border: 1px solid var(--line, #e6e8ec); border-radius: 10px; padding: 4px; }
+  .oc-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line, #e6e8ec); }
+  .oc-sp { flex: 1; }
+  @media (max-width: 640px) { .oc { padding: 16px; } .oc-head { grid-template-columns: auto minmax(0,1fr); } .oc-price { grid-column: 1 / -1; text-align: left; } }
   .tile-sub { font-size: .74rem; color: var(--ink-soft); margin-top: 2px; line-height: 1.3; }
   .mk { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 4px; font-size: .84rem; color: var(--ink-soft); }
   .mk-b { border: 1px solid var(--line, #e5e7eb); background: var(--panel-2, #f6f7f9); color: inherit; border-radius: 999px; padding: 3px 10px; font: inherit; font-size: .84rem; cursor: pointer; }
@@ -8034,7 +8069,7 @@
 
   // ---------- Offers from applicants (the /offer link) ----------
   var offers = [], offTab = 'open';
-  var OFF_TABS = [['open', 'To decide'], ['accepted', 'Accepted'], ['rejected', 'Rejected'], ['all', 'All']];
+  var OFF_TABS = [['open', 'To decide'], ['accepted', 'Accepted'], ['rejected', 'Rejected'], ['withdrawn', 'Withdrawn'], ['all', 'All']];
   function loadOffers(){
     if (!meta.db) return Promise.resolve();
     return api('GET', '/api/admin/offers').then(function(d){ if (!d.ok) return; offers = d.offers; renderOfferBanner(); if (view === 'offers') renderOffers(); })['catch'](function(){});
@@ -8065,41 +8100,62 @@
     if (unseen.length) renderOfferBanner();
   }
   function offRow(label, v){ return v ? '<div><span>' + esc(label) + '</span><b>' + esc(v) + '</b></div>' : ''; }
+  // One offer, as a card: who, how much, where it's up to, and what to do next.
   function offerCard(o){
-    var d = o.data || {}, m = d.money || {}, ts = d.tenants || [];
-    var st = o.status === 'accepted' ? '<span class="svc-chip managed">✓ Accepted</span>' : o.status === 'rejected' ? '<span class="svc-chip" style="background:#fdecec;color:#b42318">✗ Rejected</span>' : '<span class="svc-chip collect">To decide</span>';
-    var paid = o.paid_at ? '<span class="svc-chip managed">💷 Holding deposit received ' + esc(fmtShort(o.paid_at).split(',')[0]) + '</span>' : '<span class="svc-chip" style="background:#fff4e5;color:#9a5b00">Holding deposit not received</span>';
-    var docs = o.docs || [];
-    return '<div class="card off-card" data-off="' + o.id + '">' +
-      '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><div style="font-weight:700">' + esc(o.property_address || '') + '</div>' +
-        '<div class="muted-note" style="margin:2px 0 0">' + esc(o.ref) + ' · ' + esc(fmtShort(o.created_at)) + ' · ' + esc(o.lead_name || '') + (o.lead_phone ? ' · <a href="tel:' + esc(o.lead_phone) + '">' + esc(o.lead_phone) + '</a>' : '') + (o.lead_email ? ' · <a href="mailto:' + esc(o.lead_email) + '">' + esc(o.lead_email) + '</a>' : '') + '</div></div>' +
-        '<div style="text-align:right"><div style="font-size:1.15rem;font-weight:800">' + esc(gbp(offPw(o))) + ' pw</div><div class="muted-note" style="margin:0">' + esc(gbp(m.pcm || 0)) + ' pcm' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' pw' : '') + '</div></div></div>' +
-      '<div style="margin:8px 0;display:flex;gap:6px;flex-wrap:wrap">' + st + paid + '</div>' +
-      '<div class="off-grid">' + offRow('Move in', d.move_in ? longDay(d.move_in) : '') + offRow('Would like to stay', d.stay) + offRow('Tenants', String(ts.length)) + offRow('Guarantors', d.guarantors_count ? String(d.guarantors_count) : '') +
-        offRow('Holding deposit', gbp(m.holding || 0)) + offRow('Move-in balance after it', gbp(m.balance || 0)) + offRow('Signed by', d.signature ? d.signature + ' · ' + fmtShort(d.signed_at) : '') + (d.terms_ticked ? offRow('Holding deposit terms', 'All 6 non-refundable points ticked') : '') + '</div>' +
-      (function(){ var sg = docs.filter(function(x){ return x.tenant_no === 0; })[0]; return sg ? '<div style="margin:8px 0 0"><span class="muted-note" style="margin:0">Signature</span><br><img src="/api/admin/offers/' + o.id + '/doc/' + sg.id + '" alt="Signature" style="max-height:70px;max-width:260px;border:1px solid var(--line,#eee);border-radius:8px;background:#fff;padding:4px"></div>' : ''; })() +
-      (d.about ? '<p style="margin:8px 0 0"><b>About them:</b> ' + esc(d.about) + '</p>' : '') + '<p style="margin:4px 0 0"><b>Their conditions:</b> ' + (d.negotiate ? esc(d.negotiate) : '<span class="muted-note" style="margin:0">none given</span>') + '</p>' +
-      '<details class="off-tens"><summary>Tenants, IDs and references (' + ts.length + ')</summary>' + ts.map(function(t, i){
+    var d = o.data || {}, m = d.money || {}, ts = d.tenants || [], docs = o.docs || [];
+    var initials = String(o.lead_name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(function(w){ return w[0].toUpperCase(); }).join('');
+    var stMap = { accepted: ['ok', '✓ Accepted'], rejected: ['no', '✕ Rejected'], withdrawn: ['muted', '↩ Withdrawn by applicant'], new: ['wait', '● To decide'] };
+    var st = stMap[o.status] || stMap['new'];
+    var sg = docs.filter(function(x){ return x.tenant_no === 0; })[0];
+    var kv = function(k, v){ return v ? '<div class="oc-kv"><span>' + esc(k) + '</span><b>' + v + '</b></div>' : ''; };
+    var refundEmail = function(){
+      var first = String(o.lead_name || '').split(/\s+/)[0] || 'there';
+      var body = 'Dear ' + first + ',\n\nThank you for your offer on ' + shortAddr(o.property_address) + ' (' + o.ref + '). Unfortunately the landlord has decided not to accept it.\n\n' +
+        (o.paid_at ? 'As per our terms, we will refund your holding deposit of ' + gbp(m.holding || 0) + '. Please reply with the account details to send it to:\n\n- Account name:\n- Sort code:\n- Account number:\n\nWe will make the refund within 24 hours of receiving your details.\n\n'
+          : 'You have not paid a holding deposit, so there is nothing further you need to do.\n\n') + 'Kind regards,\nResidential Realtors';
+      return 'mailto:' + encodeURIComponent(o.lead_email || '') + '?subject=' + encodeURIComponent((o.paid_at ? 'Holding deposit refund — ' : 'Your offer — ') + shortAddr(o.property_address) + ' (' + o.ref + ')') + '&body=' + encodeURIComponent(body);
+    };
+    return '<article class="oc oc-' + st[0] + '" data-off="' + o.id + '">' +
+      '<header class="oc-head"><div class="oc-av">' + esc(initials || '?') + '</div>' +
+        '<div class="oc-who"><div class="oc-addr">' + esc(o.property_address || '') + '</div>' +
+          '<div class="oc-meta">' + esc(o.lead_name || '') + ' · ' + esc(o.ref) + ' · ' + esc(fmtShort(o.created_at)) + '</div>' +
+          '<div class="oc-contact">' + (o.lead_phone ? '<a href="tel:' + esc(o.lead_phone) + '">📞 ' + esc(o.lead_phone) + '</a>' : '') + (o.lead_email ? '<a href="mailto:' + esc(o.lead_email) + '">✉ ' + esc(o.lead_email) + '</a>' : '') + '</div></div>' +
+        '<div class="oc-price"><div class="oc-pw">' + esc(gbp(offPw(o))) + '<small> /week</small></div><div class="oc-pcm">' + esc(gbp(m.pcm || 0)) + ' /month' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' /wk' : '') + '</div></div></header>' +
+      '<div class="oc-status"><span class="oc-pill ' + st[0] + '">' + st[1] + '</span>' +
+        (o.paid_at ? '<span class="oc-pill ok">💷 Deposit received ' + esc(fmtShort(o.paid_at).split(',')[0]) + '</span>' : (o.status === 'rejected' || o.status === 'withdrawn' ? '' : '<span class="oc-pill warn">Deposit ' + esc(gbp(m.holding || 0)) + ' not received</span>')) +
+        (o.status === 'withdrawn' && o.paid_at ? '<span class="oc-pill muted">Deposit not refundable (their terms)</span>' : '') + '</div>' +
+      '<div class="oc-grid">' + kv('Move in', d.move_in ? esc(longDay(d.move_in)) : '') + kv('Stay', esc(d.stay || '')) + kv('Tenants', String(ts.length)) + kv('Guarantors', d.guarantors_count ? String(d.guarantors_count) : '') +
+        kv('Holding deposit', esc(gbp(m.holding || 0))) + kv('Due at signing', esc(gbp(m.balance || 0))) + '</div>' +
+      '<div class="oc-cond"><span>Their conditions</span>' + (d.negotiate ? esc(d.negotiate) : '<em>None given</em>') + '</div>' +
+      (d.about ? '<div class="oc-cond"><span>About them</span>' + esc(d.about) + '</div>' : '') +
+      '<details class="oc-more"><summary>Tenants, IDs and references <b>' + ts.length + '</b></summary>' + ts.map(function(t, i){
         var mine = docs.filter(function(x){ return x.tenant_no === i + 1; });
-        return '<div class="off-ten"><div style="font-weight:700;margin:8px 0 4px">Tenant ' + (i + 1) + (i === 0 ? ' (lead)' : '') + ': ' + esc(t.name) + '</div><div class="off-grid">' +
-          offRow('UK or Irish passport', t.uk_passport) +
-          (t.share_code ? '<div><span>Right to rent share code</span><b>' + esc(t.share_code.replace(/^(.{3})(.{3})(.{3})$/, '$1 $2 $3')) + ' · <a href="https://www.gov.uk/view-right-to-rent" target="_blank" rel="noopener">Check on GOV.UK</a></b></div>' : '') +
-          offRow('Date of birth', t.dob ? longDay(t.dob) : '') + offRow('Phone', t.phone) + offRow('Email', t.email) + offRow('Income', [t.income_type, t.employment_type].filter(Boolean).join(', ')) + offRow('Company', t.company) + offRow('Position', t.position) +
-          offRow('Salary', t.salary ? '£' + t.salary : '') + offRow('Started', t.start_date ? longDay(t.start_date) : '') + offRow('Other income', t.other_income) + offRow('University', t.university) + offRow('Course', [t.course, t.academic_year].filter(Boolean).join(', ')) +
-          offRow('Lives at', t.current_address) + offRow('Status', t.residency_status) + offRow('Rent now', t.current_rent ? '£' + t.current_rent + ' a month' : '') + offRow('Landlord', [t.landlord_name, t.landlord_phone, t.landlord_email].filter(Boolean).join(' · ')) +
-          offRow('Tenancy', [t.tenancy_start ? longDay(t.tenancy_start) : '', t.tenancy_end ? longDay(t.tenancy_end) : ''].filter(Boolean).join(' – ')) +
-          offRow('Guarantor', [t.g_name, t.g_relation].filter(Boolean).join(', ')) + offRow('Guarantor contact', [t.g_phone, t.g_email].filter(Boolean).join(' · ')) + offRow('Guarantor work', [t.g_company, t.g_position, t.g_salary ? '£' + t.g_salary : ''].filter(Boolean).join(', ')) +
-          offRow('Guarantor home owner', t.g_homeowner ? t.g_homeowner + (t.g_home_address ? ' — ' + t.g_home_address : '') : '') + offRow('Guarantor other income', t.g_other) + '</div>' +
-          '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + (mine.length ? mine.map(function(x){ return '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/doc/' + x.id + '">🪪 ' + esc(x.name || 'ID') + '</a>'; }).join('') : '<span class="muted-note" style="margin:0">No ID</span>') + '</div></div>';
-      }).join('') + '</details>' +
-      '<div class="row-actions" style="margin-top:10px;flex-wrap:wrap">' +
-        (o.status === 'new' ? '<button type="button" class="btn small primary" data-off-act="accepted">✓ Accept offer</button><button type="button" class="btn small" data-off-act="rejected">✗ Reject</button>' : '<button type="button" class="btn small ghost" data-off-act="new">Undo ' + (o.status === 'accepted' ? 'accept' : 'reject') + '</button>') +
-        (o.paid_at ? '<button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Holding deposit received</button>') +
-        (o.status === 'accepted' ? '<button type="button" class="btn small" data-off-tcy>🏠 Start tenancy from this offer</button>' : '') +
-        '<button type="button" class="btn small" data-off-track title="The applicant’s private link to follow their offer">🔗 Copy tracking link</button>' +
-        (o.lead_phone ? '<button type="button" class="btn small" data-off-wa title="Send the lead tenant their tracking link on WhatsApp">💬 WhatsApp</button>' : '') +
-        '<span style="flex:1"></span><button type="button" class="btn small ghost danger" data-off-del>Delete</button></div>' +
-    '</div>';
+        var row = function(k, v){ return v ? '<div><span>' + esc(k) + '</span>' + esc(v) + '</div>' : ''; };
+        return '<div class="oc-ten"><div class="oc-ten-h"><span class="oc-num">' + (i + 1) + '</span><b>' + esc(t.name) + '</b>' + (i === 0 ? '<span class="oc-pill muted">Lead</span>' : '') +
+            (t.income_type === 'Student' ? '<span class="oc-pill warn">Student</span>' : '') + '</div><div class="oc-rows">' +
+          row('Date of birth', t.dob ? longDay(t.dob) : '') + row('Phone', t.phone) + row('Email', t.email) + row('Income', [t.income_type, t.employment_type].filter(Boolean).join(', ')) +
+          row('Work', [t.position, t.company].filter(Boolean).join(' at ')) + row('Salary', t.salary ? '£' + t.salary : '') + row('Started', t.start_date ? longDay(t.start_date) : '') + row('Other income', t.other_income) +
+          row('Study', [t.university, t.course, t.academic_year].filter(Boolean).join(', ')) + row('Lives at', t.current_address) + row('Status', t.residency_status) + row('Rent now', t.current_rent ? '£' + t.current_rent + ' a month' : '') +
+          row('Landlord', [t.landlord_name, t.landlord_phone, t.landlord_email].filter(Boolean).join(' · ')) + row('Tenancy', [t.tenancy_start ? longDay(t.tenancy_start) : '', t.tenancy_end ? longDay(t.tenancy_end) : ''].filter(Boolean).join(' – ')) +
+          row('UK or Irish passport', t.uk_passport) +
+          (t.share_code ? '<div><span>Share code</span><b>' + esc(t.share_code.replace(/^(.{3})(.{3})(.{3})$/, '$1 $2 $3')) + '</b> · <a href="https://www.gov.uk/view-right-to-rent" target="_blank" rel="noopener">Check on GOV.UK</a></div>' : '') +
+          row('Guarantor', [t.g_name, t.g_relation].filter(Boolean).join(', ')) + row('Guarantor contact', [t.g_phone, t.g_email].filter(Boolean).join(' · ')) +
+          row('Guarantor work', [t.g_position, t.g_company, t.g_salary ? '£' + t.g_salary : ''].filter(Boolean).join(', ')) + row('Guarantor home owner', t.g_homeowner ? t.g_homeowner + (t.g_home_address ? ' — ' + t.g_home_address : '') : '') + row('Guarantor other income', t.g_other) + '</div>' +
+          '<div class="oc-ids">' + (mine.length ? mine.map(function(x){ return '<a class="oc-id" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/doc/' + x.id + '">🪪 ' + esc(x.name || 'ID') + '</a>'; }).join('') : '<span class="muted-note" style="margin:0">No ID</span>') + '</div></div>';
+      }).join('') +
+        '<div class="oc-sign"><div><span>Signed by</span>' + esc(d.signature || '') + ' · ' + esc(fmtShort(d.signed_at)) + (d.terms_ticked ? ' · all 6 holding deposit points ticked' : '') + '</div>' +
+        (sg ? '<img src="/api/admin/offers/' + o.id + '/doc/' + sg.id + '" alt="Signature">' : '') + '</div></details>' +
+      '<footer class="oc-actions">' +
+        (o.status === 'new' ? '<button type="button" class="btn small primary" data-off-act="accepted">✓ Accept</button><button type="button" class="btn small" data-off-act="rejected">✕ Reject</button>'
+          : '<button type="button" class="btn small ghost" data-off-act="new">Undo ' + ({ accepted: 'accept', rejected: 'reject', withdrawn: 'withdrawal' }[o.status] || '') + '</button>') +
+        (o.status === 'withdrawn' ? '' : o.paid_at ? '<button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Deposit received</button>') +
+        (o.status === 'rejected' && o.lead_email ? '<a class="btn small primary" data-off-refund href="' + esc(refundEmail()) + '">✉ ' + (o.paid_at ? 'Email for refund details' : 'Email them') + '</a>' : '') +
+        (o.status === 'accepted' ? '<button type="button" class="btn small" data-off-tcy>🏠 Start tenancy</button>' : '') +
+        '<span class="oc-sp"></span>' +
+        '<button type="button" class="btn small ghost" data-off-track title="The applicant’s private link to follow their offer">🔗 Tracking link</button>' +
+        (o.lead_phone ? '<button type="button" class="btn small ghost" data-off-wa title="Send the lead tenant their tracking link on WhatsApp">💬 WhatsApp</button>' : '') +
+        '<button type="button" class="btn small ghost danger" data-off-del title="Delete this offer and its IDs">🗑</button></footer>' +
+    '</article>';
   }
   $('offTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-otab]'); if (!b) return; offTab = b.dataset.otab; renderOffers(); });
   $('offList').addEventListener('click', function(e){
@@ -8117,6 +8173,7 @@
       });
       return;
     }
+    if (e.target.closest('[data-off-refund]')) { api('POST', '/api/admin/offers/' + o.id, { note: o.paid_at ? 'Emailed asking for account details for the holding deposit refund' : 'Emailed to say the offer was not accepted' }); return; }
     var tr = e.target.closest('[data-off-track],[data-off-wa]');
     if (tr) {
       var wa = tr.hasAttribute("data-off-wa");
