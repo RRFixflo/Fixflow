@@ -9348,7 +9348,7 @@
     // The same with VAT (none on tenancies without VAT, e.g. Rent4Rent).
     var vatYear = r2(current.reduce(function(t, x){ var cc = calc[x.id]; return t + (cc.vatOn ? ((cc.monthlyFee || 0) * 12 + (cc.upfrontFee || 0)) * 0.2 : 0); }, 0));
     var vatMonth = r2(current.reduce(function(t, x){ var cc = calc[x.id]; return t + (cc.vatOn ? (cc.monthlyFee || 0) * 0.2 : 0); }, 0)), upVat = r2(vatYear - vatMonth * 12);
-    var vatLine = function(v, base){ return '<small class="tcy-vat">Total: <b>' + esc(gbp(base)) + '</b></small>' + (v ? '<small class="tcy-vat">Total including VAT: <b>' + esc(gbp(r2(base + v))) + '</b></small>' : ''); };
+    var vatLine = function(v, base){ return v ? '<small class="tcy-vat">Total including VAT: <b>' + esc(gbp(r2(base + v))) + '</b></small>' : ''; };
     $('tcySum').innerHTML = list.length ? '<div class="tcy-tiles">' +
       '<div><b>' + current.length + '</b><span>current tenanc' + (current.length === 1 ? 'y' : 'ies') + (older ? ' <small>(+' + older + ' older)</small>' : '') + '</span></div>' +
       '<div><b>' + esc(gbp(sum('rent'))) + '</b><span>rent a month</span></div>' +
