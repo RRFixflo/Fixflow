@@ -387,6 +387,8 @@
   .tcy-locked button:disabled { opacity: .45; cursor: default; }
   .cert-up { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin: 0 0 12px; padding: 14px 16px; border: 1.5px dashed var(--line); border-radius: 14px; background: var(--panel); cursor: pointer; }
   /* Home reminders: one box that can be minimised to a row of chips. */
+  small.fee-vat { font-size: .78rem; color: var(--ink-soft); }
+  small.fee-vat b { color: var(--ink); font-weight: 650; }
   .tile-sub { font-size: .74rem; color: var(--ink-soft); margin-top: 2px; line-height: 1.3; }
   .mk { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 4px; font-size: .84rem; color: var(--ink-soft); }
   .mk-b { border: 1px solid var(--line, #e5e7eb); background: var(--panel-2, #f6f7f9); color: inherit; border-radius: 999px; padding: 3px 10px; font: inherit; font-size: .84rem; cursor: pointer; }
@@ -1945,6 +1947,11 @@
       return r.json()['catch'](function(){ return { ok: false, error: 'bad-response' }; }).then(function(data){
         if (r.status === 401) { showLogin(); }
         data.status = r.status;
+        // A job's invoice was made or brought up to date automatically: say so and refresh invoices.
+        if (data && data.invoice && (data.invoice.created || data.invoice.updated)) {
+          var made = data.invoice.created;
+          setTimeout(function(){ toast(made ? '🧾 Invoice created automatically — check it and send it from the Money tab' : '🧾 Invoice updated to the new price'); if (typeof loadAllInvoices === 'function') loadAllInvoices(); }, 1400);
+        }
         return data;
       });
     });
@@ -9141,7 +9148,7 @@
             '<p class="muted-note" id="tfManageNote" style="margin:4px 0 0"></p></div></div>' +
         '<label class="lbl" style="margin-top:12px">Other fees</label><div class="tcy-chips" id="tfFeeChips">' + tcyFeePresets().map(function(f, i){ return '<button type="button" class="btn small ghost" data-fee-chip="' + i + '"' + (f.kind === 'find' ? ' title="A % of the annual rent"' : f.kind === 'manage' ? ' title="A % of the rent each month"' : '') + '>+ ' + esc(f.label) + (f.kind === 'find' ? ' (% of annual rent)' : f.kind === 'manage' ? ' (% monthly)' : num(f.amount) !== null ? ' · ' + esc(gbp(f.amount)) : '') + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-fee-chip="-1">+ Other</button></div>' +
         '<label class="lbl" style="margin-top:10px">Costs we paid for the landlord · no VAT</label><div class="tcy-chips" id="tfNvChips">' + TCY_NOVAT_COSTS.map(function(l){ return '<button type="button" class="btn small ghost" data-nv-chip="' + esc(l) + '" title="Added with No VAT ticked">+ ' + esc(l) + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-nv-chip="">+ Other cost (no VAT)</button><button type="button" class="btn small ghost" id="tfCreditChip" style="color:var(--green, #16a34a)" title="Money back to the landlord, e.g. a refund or a discount — adds to what they get">+ Credit to landlord</button></div>' +
-        '<div id="tfFees">' + tcyFeeRows() + '</div>' +
+        '<div id="tfFees">' + tcyFeeRows() + '</div><p class="muted-note fee-vat" id="tfFeesVat" style="margin:0 0 6px"></p>' +
         '<label class="lbl" style="margin-top:10px">Credits to the landlord · e.g. a refund or a discount (added to what they get)</label><div id="tfCredits">' + tcyCreditRows() + '</div>' +
         '<button type="button" class="btn small ghost" id="tfAddCredit">+ Add credit</button>' +
         '<label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="tfVat"' + (d.vat === false ? '' : ' checked') + '> Add VAT (20%) to the fees</label>' +
@@ -9440,6 +9447,15 @@
       var el = $(w === 'collect' ? 'tfCollectNote' : 'tfManageNote'), v = num(d[w + '_pct']); if (!el) return;
       el.textContent = !v ? '' : d[w + '_unit'] === 'gbp' ? gbp(v) + ' a month' + pctOf(v) : c.rent ? v + '% = ' + gbp(r2(c.rent * v / 100)) + ' a month' + looksGbp(v) : looksGbp(v);
     });
+    // Each fee with VAT, in small under it (none on Rent4Rent or when VAT is off).
+    var withVat = function(f, per){ return f && c.vatOn && f.vat ? '<small class="fee-vat">' + gbp(f.amount) + ' + VAT ' + gbp(f.vat) + ' = <b>' + gbp(r2(f.amount + f.vat)) + '</b> inc. VAT' + (per ? ' ' + per : '') + '</small>' : ''; };
+    var feeOf = function(re){ return c.fees.filter(function(f){ return !f.extra && re.test(f.label); })[0]; };
+    [['tfFindNote', /^Tenant Find/, d.find_basis === 'upfront' ? 'for the year' : 'a month'], ['tfCollectNote', /^Rent Collection/, 'a month'], ['tfManageNote', /^Management Fee/, d.manage_basis === 'upfront' ? 'for the year' : 'a month']].forEach(function(a){
+      var el = $(a[0]), f = feeOf(a[1]), extra = withVat(f, a[2]); if (!el) return;
+      el.innerHTML = esc(el.textContent) + (extra ? (el.textContent ? '<br>' : '') + extra : '');
+    });
+    var ex = c.fees.filter(function(f){ return f.extra; });
+    if ($('tfFeesVat')) $('tfFeesVat').innerHTML = c.vatOn && ex.length ? '<small class="fee-vat">With VAT: ' + ex.map(function(f){ return esc(f.label) + ' <b>' + gbp(r2(f.amount + f.vat)) + '</b>' + (f.novat ? ' (no VAT)' : ''); }).join(' · ') + '</small>' : '';
     ['find', 'collect', 'manage'].forEach(function(w){ var el = $({ find: 'tfFind', collect: 'tfCollect', manage: 'tfManage' }[w]); if (el) el.placeholder = d[w + '_unit'] === 'gbp' ? '£ a month, e.g. 150' : '%, e.g. 8'; });
     $('tfDepByNote').textContent = d.deposit_by === 'landlord' ? 'The deposit goes to the landlord and shows on their statement.' : 'We hold and register the deposit. It is not on the landlord statement.';
     $('tfSum').innerHTML = '<div><span>Weekly rent</span><b>' + esc(gbp(c.weekly)) + '</b></div><div><span>First month + deposit</span><b>' + esc(gbp(c.total)) + '</b></div>' +
