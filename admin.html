@@ -429,6 +429,9 @@
   .oc-refund { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; background: #f6fbf8; border: 1px solid #cfe6d8; border-radius: 12px; padding: 10px 12px; margin-top: 10px; font-size: .9rem; }
   .oc-refund span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
+  /* Offers staff sign-in: the Offers page only. */
+  .staff-mode .side .nav:not(#logoutBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode #logoutBtnM { display: inline-flex !important; }
   .oc-rtr { margin-top: 10px; padding: 10px 12px; border: 1px solid #e3e6ec; border-radius: 10px; background: #fafbfc; }
   .oc-rtr-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .oc-rtr-btns { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -1321,6 +1324,12 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offLink" readonly style="flex:1;min-width:220px"><button class="btn primary" type="button" id="offCopy">Copy link</button><a class="btn" id="offOpen" target="_blank" rel="noopener">Open</a></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offProp" list="offProps" placeholder="Or a link for one property: type the address" style="flex:1;min-width:220px"><datalist id="offProps"></datalist><button class="btn" type="button" id="offPropCopy">Copy property link</button></div>
         </div>
+        <details class="card" id="offStaff" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">👥 Staff access to offers <span class="muted-note" id="offStaffSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
+          <p class="muted-note" style="margin:8px 0">Give staff this link and the staff password. They can only see and work on offers — accept or reject, mark deposits, right to rent checks, tracking links and the PDF. They can’t delete offers or see anything else in Fixflow. Everything they do is noted on the offer.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offStaffLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offStaffCopy">Copy link</button></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offStaffPw" type="text" autocomplete="off" placeholder="New staff password (at least 8 characters)" style="flex:1;min-width:220px"><button class="btn primary" type="button" id="offStaffSave">Set password</button></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small ghost" type="button" id="offStaffOut">Sign all staff out</button><button class="btn small ghost danger" type="button" id="offStaffOff">Turn off staff access</button></div>
+        </details>
         <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div></div>
         <div id="offList"></div>
       </div>
@@ -2029,6 +2038,7 @@
   // ---------- State ----------
   var jobs = [];
   var meta = { statuses: [], urgencies: ['Emergency', 'Urgent', 'Routine'], canEmail: false, db: false };
+  var staffMode = false;   // signed in with the offers staff password
   var filter = 'open';
   var openJobId = null;
   var selected = new Set();   // job ids ticked in the list, to send to a contractor together
@@ -2039,6 +2049,7 @@
 
   // ---------- Sign in ----------
   function showLogin(){
+    if (location.pathname === '/staff') { var lh = document.querySelector('#loginForm h1'), lp = document.querySelector('#loginForm h1 + p'); if (lh) lh.textContent = 'Offers'; if (lp) lp.textContent = 'Residential Realtors staff sign-in for offers.'; document.title = 'Offers — Residential Realtors'; }
     $('appView').hidden = true; closeDrawer(); $('loginView').hidden = false;
     setTimeout(function(){ $('pw').focus(); }, 50);
   }
@@ -2062,6 +2073,13 @@
       $('loginView').hidden = true;
       $('appView').hidden = false;
       $('dbBanner').hidden = !!d.db;
+      // Offers staff: only the Offers page (the server refuses everything else).
+      if (d.role === 'offers') {
+        staffMode = true; document.body.classList.add('staff-mode');
+        if (!history.state) history.replaceState({ v: 'offers', depth: 0 }, '', location.pathname);
+        loadOffers().then(function(){ showView('offers'); });
+        return;
+      }
       // The date and time the latest version went live (UK time).
       if (d.deployedAt) {
         var dt = new Date(d.deployedAt), when = dt.toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -2300,6 +2318,7 @@
   // Refresh: fetch everything again, redraw the page you're on, and say so.
   $('refreshBtn').addEventListener('click', function(){
     var btn = $('refreshBtn');
+    if (staffMode) { loadOffers().then(function(){ toast('Offers refreshed'); }); return; }
     if (btn.classList.contains('spinning')) return;
     btn.classList.add('spinning');
     var t0 = Date.now();
@@ -3121,6 +3140,7 @@
     }, 0);
   }
   function applyNav(st){
+    if (staffMode) st = { v: 'offers' };
     navRestoring = true;
     openPropKey = st.prop || null; openTenantKey = st.ten || null; openLlId = st.ll || null;
     $('propDetail').hidden = !openPropKey; $('propsListView').hidden = !!openPropKey;
@@ -3151,6 +3171,7 @@
   $('brandHomeM').addEventListener('click', goHome);
 
   function showView(v){
+    if (staffMode) v = 'offers';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -8102,7 +8123,29 @@
   // The offer pages on their own web address when one is set up (OFFER_ORIGIN).
   function offOrigin(){ return meta.offerOrigin || location.origin; }
   function offLinkBase(){ return offOrigin() + '/offer'; }
+  function loadOffStaff(){
+    if (staffMode) return;
+    $('offStaffLink').value = offOrigin() + '/staff';
+    api('GET', '/api/admin/offers-staff').then(function(d){
+      if (!d.ok) return;
+      $('offStaffSum').textContent = d.set ? '· on · ' + d.signed_in + ' signed in' : '· off — set a password to turn it on';
+      $('offStaffOut').hidden = $('offStaffOff').hidden = !d.set;
+      $('offStaffSave').textContent = d.set ? 'Change password' : 'Set password';
+    });
+  }
+  $('offStaffCopy').addEventListener('click', function(){ offCopyText($('offStaffLink').value); });
+  $('offStaffSave').addEventListener('click', function(){
+    var pw = $('offStaffPw').value.trim();
+    if (pw.length < 8) { toast('Use at least 8 characters'); $('offStaffPw').focus(); return; }
+    api('POST', '/api/admin/offers-staff', { password: pw }).then(function(d){
+      if (!d.ok) { toast(d.error === 'same' ? 'Use a different password from your own' : 'Couldn’t save it'); return; }
+      $('offStaffPw').value = ''; toast('Staff password saved' + (d.signed_out ? ' — ' + d.signed_out + ' staff signed out' : '')); loadOffStaff();
+    });
+  });
+  $('offStaffOut').addEventListener('click', function(){ if (!confirm('Sign every staff member out of offers?')) return; api('POST', '/api/admin/offers-staff', { sign_out: true }).then(function(d){ toast(d.ok ? d.signed_out + ' signed out' : 'Couldn’t do that'); loadOffStaff(); }); });
+  $('offStaffOff').addEventListener('click', function(){ if (!confirm('Turn off staff access? Staff are signed out and the password stops working.')) return; api('POST', '/api/admin/offers-staff', { off: true }).then(function(d){ toast(d.ok ? 'Staff access turned off' : 'Couldn’t do that'); loadOffStaff(); }); });
   function renderOffers(){
+    if (!renderOffers.staffLoaded) { renderOffers.staffLoaded = true; loadOffStaff(); }
     $('offLink').value = offLinkBase(); $('offOpen').href = offLinkBase();
     $('offProps').innerHTML = allPropsForList().map(function(p){ return '<option value="' + esc(p.address) + '">'; }).join('');
     var match = function(o){ return offTab === 'all' || (offTab === 'open' ? o.status === 'new' : o.status === offTab); };
@@ -8228,12 +8271,12 @@
         (o.status === 'withdrawn' ? '' : o.paid_at ? '<button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Deposit received</button>') +
         (o.status === 'rejected' && o.lead_email ? '<a class="btn small primary" data-off-refund href="' + esc(refundEmail()) + '">✉ ' + (o.paid_at ? 'Email for refund details' : 'Email them') + '</a>' : '') +
         (o.status === 'accepted' && o.lead_email ? '<a class="btn small primary" data-off-accmail href="' + esc(acceptEmail()) + '">✉ Email: offer accepted</a>' : '') +
-        (o.status === 'accepted' ? '<button type="button" class="btn small" data-off-tenants title="Save every applicant in your Tenants list at this property">👥 ' + (d.tenants_added_at ? 'Added as tenants ✓' : 'Add as tenants') + '</button><button type="button" class="btn small" data-off-tcy>🏠 Start tenancy</button>' : '') +
+        (o.status === 'accepted' && !staffMode ? '<button type="button" class="btn small" data-off-tenants title="Save every applicant in your Tenants list at this property">👥 ' + (d.tenants_added_at ? 'Added as tenants ✓' : 'Add as tenants') + '</button><button type="button" class="btn small" data-off-tcy>🏠 Start tenancy</button>' : '') +
         '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/pdf" title="The signed offer as a PDF, like the holding deposit form">📄 Offer form (PDF)</a>' +
         '<span class="oc-sp"></span>' +
         '<button type="button" class="btn small ghost" data-off-track title="The applicant’s private link to follow their offer">🔗 Tracking link</button>' +
         (o.lead_phone ? '<button type="button" class="btn small ghost" data-off-wa title="Send the lead tenant their tracking link on WhatsApp">💬 WhatsApp</button>' : '') +
-        '<button type="button" class="btn small ghost danger" data-off-del title="Delete this offer and its IDs">🗑</button></footer>' +
+        (staffMode ? '' : '<button type="button" class="btn small ghost danger" data-off-del title="Delete this offer and its IDs">🗑</button>') + '</footer>' +
     '</article>';
   }
   $('offTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-otab]'); if (!b) return; offTab = b.dataset.otab; renderOffers(); });
@@ -10628,7 +10671,7 @@
       var showAllSess = $('actSessions').dataset.all === '1';
       $('actSessions').innerHTML = list.slice(0, showAllSess ? list.length : 5).map(function(x){
         var dv = deviceOf(x.user_agent);
-        return '<div class="sess-row"><span class="sess-ico">' + dv.icon + '</span><div><div class="t">' + esc(dv.label) + (x.current ? ' <span class="count-chip">This device</span>' : '') + '</div>' +
+        return '<div class="sess-row"><span class="sess-ico">' + dv.icon + '</span><div><div class="t">' + esc(dv.label) + (x.current ? ' <span class="count-chip">This device</span>' : '') + (x.role === 'offers' ? ' <span class="count-chip">Offers staff</span>' : '') + '</div>' +
           '<div class="s">Last active ' + esc(ago(x.last_seen)) + ' · signed in ' + esc(fmtDate(x.created_at)) + (x.ip ? ' · IP ' + esc(x.ip) : '') + '</div></div>' +
           (x.current ? '<span></span>' : '<button type="button" class="btn small ghost" data-sess-out="' + esc(x.id) + '">Sign out</button>') + '</div>';
       }).join('') + (list.length > 5 && !showAllSess ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn small" id="actSessAll">Show all ' + list.length + ' devices</button></div>' : '') || '<p class="muted-note">No sign-ins recorded yet.</p>';

@@ -66,6 +66,13 @@ const GETADDRESS_API_KEY = process.env.GETADDRESS_API_KEY || '';
 // actor (or a stuck retry loop) from running up a bill; it does not affect normal
 // tenant use, which is at most a handful of AI calls per report.
 app.set('trust proxy', true);
+// Always use the secure address: Railway passes on how the visitor connected, so
+// plain http visits are sent to https and browsers are told to stick to https.
+app.use(function (req, res, next) {
+  if (req.get('x-forwarded-proto') === 'http' && req.method === 'GET') return res.redirect(301, 'https://' + req.get('host') + req.originalUrl);
+  if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+  next();
+});
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 const RATE_LIMIT_MAX_PER_IP = 40;
 const rateLimitMap = new Map();
@@ -160,6 +167,8 @@ app.get('/', (req, res) => { if (OFFER_HOST && req.hostname === OFFER_HOST) retu
 
 // Staff dashboard for managing jobs (see jobs.js); its API needs ADMIN_PASSWORD.
 app.get('/admin', (req, res) => { sendPage(req, res, path.join(__dirname, 'admin.html')); });
+// Staff who only handle offers sign in here (with the offers staff password).
+app.get('/staff', (req, res) => { sendPage(req, res, path.join(__dirname, 'admin.html')); });
 // Applicants' offer / holding deposit form (the link given to applicants).
 app.get('/offer', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer.html')); });
 app.get('/offer/track/:token', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer.html')); });

@@ -396,6 +396,8 @@ CREATE TABLE IF NOT EXISTS tenant_notices (
   recipients    JSONB NOT NULL DEFAULT '[]'::jsonb,
   sent          JSONB NOT NULL DEFAULT '{}'::jsonb
 );
+-- 'offers' = a staff sign-in that can only use the Offers page; NULL = full access.
+ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS role TEXT;
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      JSONB,
@@ -1369,42 +1371,45 @@ module.exports = function mountJobs(app, opts) {
   // recorded in admin_sessions so staff can see where they're signed in and sign
   // a device out. Older tokens (expiry.signature) are still accepted and are
   // upgraded to a recorded sign-in on their next visit.
-  function makeToken(sid, exp) {
+  // Offers-only staff sign-ins carry '.o' in the signed part: exp.sid.o.signature.
+  function makeToken(sid, exp, role) {
     exp = exp || Date.now() + SESSION_DAYS * 86400 * 1000;
-    return exp + '.' + sid + '.' + sign(exp + '.' + sid);
+    const signed = exp + '.' + sid + (role === 'offers' ? '.o' : '');
+    return signed + '.' + sign(signed);
   }
   function parseToken(tok) {
     if (!ADMIN_PASSWORD || !tok) return null;
     const parts = String(tok).split('.');
     if (!(Number(parts[0]) > Date.now())) return null;
-    let signed, sig, sid = null;
+    let signed, sig, sid = null, role = null;
     if (parts.length === 2) { signed = parts[0]; sig = parts[1]; }
     else if (parts.length === 3 && /^[a-f0-9]{16,64}$/.test(parts[1])) { signed = parts[0] + '.' + parts[1]; sig = parts[2]; sid = parts[1]; }
+    else if (parts.length === 4 && /^[a-f0-9]{16,64}$/.test(parts[1]) && parts[2] === 'o') { signed = parts.slice(0, 3).join('.'); sig = parts[3]; sid = parts[1]; role = 'offers'; }
     else return null;
     const a = Buffer.from(sig), b = Buffer.from(sign(signed));
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
-    return { exp: Number(parts[0]), sid: sid };
+    return { exp: Number(parts[0]), sid: sid, role: role };
   }
   function validToken(tok) { return !!parseToken(tok); }
   function sessionCookie(req, token, exp) {
     return 'rr_admin=' + token + '; Path=/; HttpOnly; SameSite=Strict; Max-Age=' + Math.max(0, Math.round((exp - Date.now()) / 1000)) + (req.secure ? '; Secure' : '');
   }
   const sessionCache = new Map();   // sid -> { revoked, touched }
-  async function startSession(req, sid) {
+  async function startSession(req, sid, role) {
     const p = await db();
     if (!p) return;
-    await p.query('INSERT INTO admin_sessions (id, ip, user_agent) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING',
-      [sid, str(req.ip, 100), str(req.get('user-agent'), 400)]);
+    await p.query('INSERT INTO admin_sessions (id, ip, user_agent, role) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING',
+      [sid, str(req.ip, 100), str(req.get('user-agent'), 400), role || null]);
     sessionCache.set(sid, { revoked: false, touched: Date.now() });
   }
   // Is this sign-in still allowed? Also notes when it was last used (every few minutes).
-  async function sessionOk(req, sid) {
+  async function sessionOk(req, sid, role) {
     let c = sessionCache.get(sid);
     const p = await db();
-    if (!p) return true;
+    if (!p) return !role;   // staff sign-ins can't be checked without the database
     if (!c) {
       const row = (await p.query('SELECT revoked_at FROM admin_sessions WHERE id = $1', [sid])).rows[0];
-      if (!row) { await startSession(req, sid); return true; }
+      if (!row) { if (role) return false; await startSession(req, sid); return true; }
       c = { revoked: !!row.revoked_at, touched: 0 };
       sessionCache.set(sid, c);
     }
@@ -1435,15 +1440,46 @@ module.exports = function mountJobs(app, opts) {
     return e.n <= 10;
   }
 
-  app.post('/api/admin/login', function (req, res) {
+  // ---------- Offers-only staff sign-in ----------
+  // A second password, set by the office on the Offers page, that signs staff in
+  // to the Offers page only. Stored as a salted scrypt hash in app_settings.
+  let staffPwCache = null;   // { salt, hash } | false (none set) | null (not loaded)
+  async function staffPw() {
+    if (staffPwCache !== null) return staffPwCache;
+    const p = await db(); if (!p) return false;
+    const row = (await p.query("SELECT value FROM app_settings WHERE key = 'offers_staff'")).rows[0];
+    staffPwCache = row && row.value && row.value.hash ? row.value : false;
+    return staffPwCache;
+  }
+  function scryptHex(pw, salt) { return crypto.scryptSync(String(pw || ''), salt, 32).toString('hex'); }
+  async function staffPasswordMatches(given) {
+    const s = await staffPw(); if (!s || !given) return false;
+    const a = Buffer.from(scryptHex(given, s.salt), 'hex'), b = Buffer.from(s.hash, 'hex');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+  // What an offers-only sign-in may use (paths under /api/admin).
+  function staffAllowed(method, path) {
+    if (method === 'GET') return path === '/me' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'POST') return /^\/offers\/\d+(\/(track|rtr))?$/.test(path);
+    return false;
+  }
+
+  app.post('/api/admin/login', async function (req, res) {
     if (!ADMIN_PASSWORD) return res.status(503).json({ ok: false, error: 'admin-not-configured' });
     if (!loginAllowed(req.ip)) return res.status(429).json({ ok: false, error: 'too-many-attempts' });
-    if (!passwordMatches((req.body || {}).password)) return res.status(401).json({ ok: false, error: 'wrong-password' });
+    const given = (req.body || {}).password;
+    let role = null;
+    if (!passwordMatches(given)) {
+      let staff = false;
+      try { staff = await staffPasswordMatches(given); } catch (err) { console.error('Staff sign-in check failed:', err.message); }
+      if (!staff) return res.status(401).json({ ok: false, error: 'wrong-password' });
+      role = 'offers';
+    }
     loginAttempts.delete(req.ip); // only failed attempts count towards the limit
     const sid = crypto.randomBytes(16).toString('hex'), exp = Date.now() + SESSION_DAYS * 86400 * 1000;
-    startSession(req, sid).catch(function (err) { console.error('Sign-in record failed:', err.message); });
-    res.setHeader('Set-Cookie', sessionCookie(req, makeToken(sid, exp), exp));
-    res.json({ ok: true });
+    try { await startSession(req, sid, role); } catch (err) { console.error('Sign-in record failed:', err.message); if (role) return res.status(503).json({ ok: false, error: 'db' }); }
+    res.setHeader('Set-Cookie', sessionCookie(req, makeToken(sid, exp, role), exp));
+    res.json({ ok: true, role: role });
   });
 
   app.post('/api/admin/logout', function (req, res) {
@@ -1464,7 +1500,7 @@ module.exports = function mountJobs(app, opts) {
     if (!t) return res.status(401).json({ ok: false, error: 'signed-out' });
     try {
       if (t.sid) {
-        if (!(await sessionOk(req, t.sid))) {
+        if (!(await sessionOk(req, t.sid, t.role))) {
           res.setHeader('Set-Cookie', 'rr_admin=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
           return res.status(401).json({ ok: false, error: 'signed-out' });
         }
@@ -1476,16 +1512,46 @@ module.exports = function mountJobs(app, opts) {
         res.setHeader('Set-Cookie', sessionCookie(req, makeToken(sid, t.exp), t.exp));
         req.sessionId = sid;
       }
-    } catch (err) { console.error('Sign-in check failed:', err.message); }
+    } catch (err) { console.error('Sign-in check failed:', err.message); if (t.role) return res.status(503).json({ ok: false, error: 'db' }); }
+    req.role = t.role || null;
+    if (req.role === 'offers' && !staffAllowed(req.method, req.path)) return res.status(403).json({ ok: false, error: 'not-allowed' });
     if (req.method !== 'GET' && !req.is('application/json')) return res.status(415).json({ ok: false, error: 'json-only' });
     next();
   });
 
+  // The office sets (or turns off) the offers staff password. Changing it signs
+  // staff out everywhere.
+  async function signOutStaff(p) {
+    const r = await p.query("UPDATE admin_sessions SET revoked_at = now() WHERE role = 'offers' AND revoked_at IS NULL RETURNING id");
+    r.rows.forEach(function (x) { sessionCache.set(x.id, { revoked: true, touched: Date.now() }); });
+    return r.rows.length;
+  }
+  app.get('/api/admin/offers-staff', withDb(async function (p, req, res) {
+    const row = (await p.query("SELECT updated_at FROM app_settings WHERE key = 'offers_staff'")).rows[0];
+    const n = (await p.query(`SELECT count(*)::int AS n FROM admin_sessions WHERE role = 'offers' AND revoked_at IS NULL AND created_at > now() - interval '${SESSION_DAYS} days'`)).rows[0].n;
+    res.json({ ok: true, set: !!(await staffPw()), updated_at: row ? row.updated_at : null, signed_in: n });
+  }));
+  app.post('/api/admin/offers-staff', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    if (b.off === true) {
+      await p.query("DELETE FROM app_settings WHERE key = 'offers_staff'"); staffPwCache = false;
+      return res.json({ ok: true, signed_out: await signOutStaff(p) });
+    }
+    if (b.sign_out === true) return res.json({ ok: true, signed_out: await signOutStaff(p) });
+    const pw = String(b.password || '');
+    if (pw.length < 8 || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' });
+    if (passwordMatches(pw)) return res.status(400).json({ ok: false, error: 'same' });
+    const salt = crypto.randomBytes(16).toString('hex'), v = { salt: salt, hash: scryptHex(pw, salt) };
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('offers_staff', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [JSON.stringify(v)]);
+    staffPwCache = v;
+    res.json({ ok: true, signed_out: await signOutStaff(p) });
+  }));
+
   // ---------- Where staff are signed in ----------
   app.get('/api/admin/sessions', withDb(async function (p, req, res) {
-    const r = await p.query(`SELECT id, created_at, last_seen, ip, user_agent FROM admin_sessions
+    const r = await p.query(`SELECT id, created_at, last_seen, ip, user_agent, role FROM admin_sessions
       WHERE revoked_at IS NULL AND created_at > now() - interval '${SESSION_DAYS} days' ORDER BY last_seen DESC LIMIT 200`);
-    res.json({ ok: true, sessions: r.rows.map(function (x) { return { id: x.id, created_at: x.created_at, last_seen: x.last_seen, ip: x.ip, user_agent: x.user_agent, current: x.id === req.sessionId }; }) });
+    res.json({ ok: true, sessions: r.rows.map(function (x) { return { id: x.id, created_at: x.created_at, last_seen: x.last_seen, ip: x.ip, user_agent: x.user_agent, role: x.role, current: x.id === req.sessionId }; }) });
   }));
   app.post('/api/admin/sessions/:sid/revoke', withDb(async function (p, req, res) {
     const sid = String(req.params.sid || '');
@@ -1740,7 +1806,7 @@ module.exports = function mountJobs(app, opts) {
   }, 24 * 3600 * 1000).unref();
 
   app.get('/api/admin/me', async function (req, res) {
-    res.json({ ok: true, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, offerOrigin: OFFER_ORIGIN, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
+    res.json({ ok: true, role: req.role || null, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, offerOrigin: OFFER_ORIGIN, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
   });
 
   // Wraps a handler: no database -> 503; unexpected errors -> 500 (logged).
@@ -6168,7 +6234,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (str(b.note, 300)) notes.push(str(b.note, 300));
     if (typeof b.refunded === 'boolean') { sets.push("data = data || jsonb_build_object('refunded_at', " + (b.refunded ? 'to_jsonb(now())' : "'null'::jsonb") + ')'); notes.push(b.refunded ? 'Holding deposit refund sent' : 'Refund marked as not sent'); }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
-    if (notes.length) { vals.push(JSON.stringify(notes.map(function (t) { return { at: new Date().toISOString(), text: t }; }))); sets.push('log = log || $' + vals.length + '::jsonb'); }
+    if (notes.length) { vals.push(JSON.stringify(notes.map(function (t) { return { at: new Date().toISOString(), text: t + (req.role === 'offers' ? ' (offers staff)' : '') }; }))); sets.push('log = log || $' + vals.length + '::jsonb'); }
     const r = await p.query('UPDATE offers SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id', vals);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json({ ok: true });
@@ -6205,7 +6271,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     if (!rtr[n]) await p.query('DELETE FROM offer_docs WHERE offer_id = $1 AND tenant_no = $2', [id, -n]);
     await p.query("UPDATE offers SET data = data || jsonb_build_object('rtr', $2::jsonb), log = log || $3::jsonb WHERE id = $1",
-      [id, JSON.stringify(rtr), JSON.stringify([{ at: new Date().toISOString(), text: note }])]);
+      [id, JSON.stringify(rtr), JSON.stringify([{ at: new Date().toISOString(), text: note + (req.role === 'offers' ? ' (offers staff)' : '') }])]);
     res.json({ ok: true, rtr: rtr });
   }));
   app.delete('/api/admin/offers/:id', withDb(async function (p, req, res) {
