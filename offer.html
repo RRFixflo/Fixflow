@@ -396,8 +396,11 @@
       '<div class="g2">' + field(n, 'company', 'Company name', { req: true, hint: 'Who they work for — or their business name if self-employed' }) + field(n, 'position', 'Job title') + '</div>' +
       field(n, 'current_address', 'Current address', { area: true, req: true }) +
       '<div class="sec-title">Right to rent</div>' +
-      '<div class="g2">' + field(n, 'uk_passport', 'UK or Irish passport?', { select: ['', 'Yes', 'No'], req: true }) +
-        '<div class="f" data-share="' + n + '" hidden><label class="l" for="t' + n + '_share_code">Right to rent share code</label><input id="t' + n + '_share_code" data-k="share_code" placeholder="R12 345 678" maxlength="12" style="text-transform:uppercase;letter-spacing:.06em"><div class="hint">Get one at <a href="https://www.gov.uk/prove-right-to-rent" target="_blank" rel="noopener">gov.uk/prove-right-to-rent</a></div></div></div>' +
+      '<div class="g2">' + field(n, 'uk_passport', 'UK or Irish passport?', { select: ['', 'Yes', 'No'], req: true }) + '</div>' +
+      // The Home Office check needs the share code and the date of birth together.
+      '<div class="g2 sharebox" data-share="' + n + '" hidden>' +
+        '<div class="f"><label class="l" for="t' + n + '_share_code">Right to rent share code</label><input id="t' + n + '_share_code" data-k="share_code" placeholder="R12 345 678" maxlength="12" style="text-transform:uppercase;letter-spacing:.06em"><div class="hint">Get one at <a href="https://www.gov.uk/prove-right-to-rent" target="_blank" rel="noopener">gov.uk/prove-right-to-rent</a></div></div>' +
+        '<div class="f"><label class="l" for="t' + n + '_dob2">Date of birth</label><input id="t' + n + '_dob2" type="date" data-dob2="' + n + '"><div class="hint">Needed with the share code for the Home Office check — as on their passport.</div></div></div>' +
       '<div class="f"><label class="l">Passport and/or visa</label><div class="drop" data-ids="' + n + '" tabindex="0" role="button">' +
         '<div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg></div>' +
         '<b>Upload this tenant’s ID</b><span>Tap to take a photo or choose a file · photo or PDF, up to 4 · no ID needed for guarantors</span>' +
@@ -414,10 +417,10 @@
         '<div class="g3">' + field(n, 'university', 'University') + field(n, 'course', 'Course') + field(n, 'academic_year', 'Year') + '</div></div></details>' +
       '<div class="note-warn" data-stu="' + n + '" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg><span>Students who aren’t working need a <b>guarantor</b> — please fill in the guarantor details below.</span></div>' +
       '<details class="more" data-gua="' + n + '"><summary>Guarantor <small data-guasub="' + n + '">if they have one</small></summary><div class="body">' +
-        '<div class="g2">' + field(n, 'g_name', 'Full name') + field(n, 'g_relation', 'Relation') + '</div>' +
-        '<div class="g2">' + field(n, 'g_email', 'Email', { type: 'email' }) + field(n, 'g_phone', 'Phone', { type: 'tel' }) + '</div>' +
-        '<div class="g3">' + field(n, 'g_company', 'Company') + field(n, 'g_position', 'Position') + field(n, 'g_salary', 'Gross annual salary', { mode: 'decimal', money: true }) + '</div>' +
-        '<div class="g2">' + field(n, 'g_homeowner', 'UK home owner?', { select: ['', 'Yes', 'No'] }) + field(n, 'g_home_address', 'If yes, home address') + '</div>' +
+        '<div class="g2">' + field(n, 'g_name', 'Full name', { req: true }) + field(n, 'g_relation', 'Relation', { req: true, ph: 'e.g. Parent' }) + '</div>' +
+        '<div class="g2">' + field(n, 'g_email', 'Email', { type: 'email', req: true }) + field(n, 'g_phone', 'Phone', { type: 'tel', req: true }) + '</div>' +
+        '<div class="g3">' + field(n, 'g_company', 'Company') + field(n, 'g_position', 'Position') + field(n, 'g_salary', 'Gross annual income', { mode: 'decimal', money: true, req: true, hint: 'Salary, pension or other income before tax.' }) + '</div>' +
+        '<div class="g2">' + field(n, 'g_homeowner', 'UK home owner?', { select: ['', 'Yes', 'No'], req: true }) + field(n, 'g_home_address', 'If yes, home address', { req: true }) + '</div>' +
         field(n, 'g_other', 'Additional income or savings', { area: true }) + '</div></details>' +
     '</div>';
   }
@@ -433,7 +436,18 @@
       var n = el.dataset.t, it = el.querySelector('[data-k="income_type"]'), stu = it && it.value === 'Student', g = el.querySelector('[data-gua="' + n + '"]');
       g.hidden = !(guarantorsN > 0 || stu);
       if (!g.hidden && (stu || guarantorsN > 0) && !g.dataset.seen) { g.open = true; g.dataset.seen = '1'; }
+      el.querySelector('[data-guasub="' + n + '"]').textContent = stu ? 'required for students' : guarantorsN >= tenantsN ? 'required' : 'required for each tenant with a guarantor';
     });
+  }
+  // Guarantor details: all of name, relation, email, phone, income and home owner (address if yes).
+  function guaDone(t){ return !!(t.g_name && t.g_relation && t.g_email && t.g_phone && num(t.g_salary) > 0 && t.g_homeowner && (t.g_homeowner !== 'Yes' || t.g_home_address)); }
+  function guaStarted(t){ return ['g_name', 'g_relation', 'g_email', 'g_phone', 'g_company', 'g_position', 'g_salary', 'g_homeowner', 'g_home_address', 'g_other'].some(function(k){ return t[k]; }); }
+  function guaMissing(t, i){
+    var f = !t.g_name ? ['g_name', 'full name'] : !t.g_relation ? ['g_relation', 'relation to the tenant'] : !t.g_email ? ['g_email', 'email'] : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t.g_email) ? ['g_email', 'email (it doesn’t look right)'] : !t.g_phone ? ['g_phone', 'phone number']
+      : !(num(t.g_salary) > 0) ? ['g_salary', 'gross annual income'] : !t.g_homeowner ? ['g_homeowner', 'answer to “UK home owner?”'] : t.g_homeowner === 'Yes' && !t.g_home_address ? ['g_home_address', 'home address'] : null;
+    if (!f) return true;
+    document.querySelector('[data-gua="' + i + '"]').open = true;
+    return showErr('Please add the guarantor’s ' + f[1] + ' for tenant ' + i + '.', $('t' + i + '_' + f[0]));
   }
   function setGuarantors(v){ guarantorsN = v; var box = document.querySelector('[data-count="guarantors"]'); $('guarantorsN').textContent = v; box.querySelector('[data-dec]').disabled = v <= 0; box.querySelector('[data-inc]').disabled = v >= 4; }
   drawTenants();
@@ -457,15 +471,20 @@
   $('tenants').addEventListener('keydown', function(e){ var dz = e.target.closest('[data-ids]'); if (dz && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); dz.querySelector('input').click(); } });
   ['dragenter', 'dragover'].forEach(function(ev){ $('tenants').addEventListener(ev, function(e){ var dz = e.target.closest('[data-ids]'); if (!dz) return; e.preventDefault(); dz.classList.add('over'); }); });
   ['dragleave', 'drop'].forEach(function(ev){ $('tenants').addEventListener(ev, function(e){ var dz = e.target.closest('[data-ids]'); if (!dz) return; e.preventDefault(); dz.classList.remove('over'); if (ev === 'drop') addFiles(dz.dataset.ids, e.dataTransfer.files); }); });
+  // Date of birth also sits next to the share code; keep the two in step.
+  $('tenants').addEventListener('input', function(e){
+    var d2 = e.target.dataset && e.target.dataset.dob2;
+    if (d2) { $('t' + d2 + '_dob').value = e.target.value; return; }
+    if (e.target.dataset && e.target.dataset.k === 'dob') { var m = $('t' + e.target.closest('.ten').dataset.t + '_dob2'); if (m) m.value = e.target.value; }
+  });
   $('tenants').addEventListener('change', function(e){
     // A student who doesn't work needs a guarantor: open and require that section.
     if (e.target.dataset && e.target.dataset.k === 'income_type') { var sn = e.target.closest('.ten').dataset.t, stu = e.target.value === 'Student';
       document.querySelector('[data-stu="' + sn + '"]').hidden = !stu; if (stu) document.querySelector('[data-gua="' + sn + '"]').open = true;
-      document.querySelector('[data-guasub="' + sn + '"]').textContent = stu ? 'required for students' : 'if they have one';
       // A student needs a guarantor: count at least one.
       if (stu && guarantorsN < 1) { setGuarantors(1); drawSummary(); }
       drawGuarantors(); return; }
-    if (e.target.dataset && e.target.dataset.k === 'uk_passport') { var tn = e.target.closest('.ten').dataset.t; document.querySelector('[data-share="' + tn + '"]').hidden = e.target.value !== 'No'; return; }
+    if (e.target.dataset && e.target.dataset.k === 'uk_passport') { var tn = e.target.closest('.ten').dataset.t; document.querySelector('[data-share="' + tn + '"]').hidden = e.target.value !== 'No'; $('t' + tn + '_dob2').value = $('t' + tn + '_dob').value; return; }
     var inp = e.target.closest('[data-idin]'); if (!inp) return;
     addFiles(inp.dataset.idin, inp.files); inp.value = '';
   });
@@ -547,12 +566,15 @@
       if (!t.uk_passport) return showErr('Please tell us whether tenant ' + i + ' has a UK or Irish passport.', $('t' + i + '_uk_passport'));
       if (t.uk_passport === 'No' && !/^[A-Z0-9]{9}$/.test((t.share_code || '').toUpperCase().replace(/\s+/g, ''))) return showErr('Please enter tenant ' + i + '’s 9-character right to rent share code.', $('t' + i + '_share_code'));
       if (!(files[i] || []).length) return showErr('Please add tenant ' + i + '’s passport or visa.', document.querySelector('[data-ids="' + i + '"]'));
-      if (t.income_type === 'Student') {
-        document.querySelector('[data-gua="' + i + '"]').open = true;
-        if (!t.g_name) return showErr('Tenant ' + i + ' is a student — please add their guarantor’s full name.', $('t' + i + '_g_name'));
-        if (!t.g_relation) return showErr('Please add how the guarantor is related to tenant ' + i + '.', $('t' + i + '_g_relation'));
-        if (!t.g_phone && !t.g_email) return showErr('Please add the guarantor’s phone or email for tenant ' + i + '.', $('t' + i + '_g_phone'));
-      }
+      // Students always need a guarantor; anyone whose guarantor section is started must finish it.
+      if (t.income_type === 'Student' || ((guarantorsN > 0 || t.income_type === 'Student') && (guaStarted(t) || guarantorsN >= ts.length))) { var gm = guaMissing(t, i); if (gm !== true) return gm; }
+    }
+    // As many complete guarantors as they said they have.
+    var done = ts.filter(guaDone).length;
+    if (done < Math.min(guarantorsN, ts.length)) {
+      var first = ts.findIndex(function(t){ return !guaDone(t); }) + 1;
+      document.querySelector('[data-gua="' + first + '"]').open = true;
+      return showErr('You said ' + guarantorsN + ' guarantor' + (guarantorsN === 1 ? '' : 's') + ' — please fill in the guarantor details under the tenant' + (guarantorsN === 1 ? '' : 's') + ' they guarantee (or set Guarantors to ' + done + ').', $('t' + first + '_g_name'));
     }
     return true;
   }
@@ -608,7 +630,7 @@
     if (!$('agree').checked) return showErr('Please tick to confirm you’ve read the holding deposit terms.', $('agree').closest('.check'));
     if (!$('signature').value.trim()) return showErr('Please type your full name.', $('signature'));
     if (!inked) return showErr('Please sign in the box.', $('sigWrap'));
-    var tenants = readTenants().map(function(t){ t.share_code = t.uk_passport === 'No' ? (t.share_code || '').toUpperCase().replace(/\s+/g, '') : ''; return t; }), sigImg = sigPng();
+    var tenants = readTenants().map(function(t, i){ t.share_code = t.uk_passport === 'No' ? (t.share_code || '').toUpperCase().replace(/\s+/g, '') : ''; if (document.querySelector('[data-gua="' + (i + 1) + '"]').hidden) Object.keys(t).forEach(function(k){ if (/^g_/.test(k)) t[k] = ''; }); return t; }), sigImg = sigPng();
     busyBtns(true, 'Uploading IDs…');
     Promise.all(tenants.map(function(t, i){ return Promise.all((files[i + 1] || []).map(readFile)).then(function(list){ t.ids = list.filter(Boolean); }); })).then(function(){
       busyBtns(true, 'Sending…');
@@ -620,7 +642,7 @@
     }).then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) {
         busyBtns(false, 'Submit offer');
-        return showErr(d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'company' ? 'Please enter each working tenant’s company name.' : d.error === 'salary' ? 'Please enter each tenant’s gross annual salary.' : d.error === 'terms' ? 'Please tick each holding deposit point.' : d.error === 'guarantor' ? 'Students need a guarantor — please add their name, relation and phone or email.' : d.error === 'share_code' ? 'Please check each right to rent share code (9 letters and numbers).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
+        return showErr(d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'company' ? 'Please enter each working tenant’s company name.' : d.error === 'salary' ? 'Please enter each tenant’s gross annual salary.' : d.error === 'terms' ? 'Please tick each holding deposit point.' : d.error === 'guarantor' ? 'Please complete the guarantor details (name, relation, email, phone, income and home owner).' : d.error === 'share_code' ? 'Please check each right to rent share code (9 letters and numbers).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
       }
       done(d);
     }).catch(function(){ busyBtns(false, 'Submit offer'); showErr('Couldn’t send — please check your connection and try again.'); });

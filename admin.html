@@ -429,6 +429,16 @@
   .oc-refund { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; background: #f6fbf8; border: 1px solid #cfe6d8; border-radius: 12px; padding: 10px 12px; margin-top: 10px; font-size: .9rem; }
   .oc-refund span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
+  .oc-rtr { margin-top: 10px; padding: 10px 12px; border: 1px solid #e3e6ec; border-radius: 10px; background: #fafbfc; }
+  .oc-rtr-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .oc-rtr-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .oc-rtr-help { font-size: .84rem; color: #5f6673; margin: 6px 0 0; }
+  .oc-rtr-done { margin-top: 8px; font-size: .86rem; }
+  .oc-rtr-form { margin-top: 8px; } .oc-rtr-form summary { cursor: pointer; font-weight: 600; font-size: .86rem; color: #1d3fae; }
+  .oc-rtr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-top: 8px; }
+  .oc-rtr-grid label { display: flex; flex-direction: column; gap: 3px; font-size: .8rem; color: #5f6673; } .oc-rtr-grid .wide { grid-column: 1 / -1; }
+  .oc-rtr-grid [hidden] { display: none !important; }
+  .oc-rtr-act { display: flex; gap: 8px; margin-top: 8px; }
   .oc-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line, #e6e8ec); }
   .oc-sp { flex: 1; }
   @media (max-width: 640px) { .oc { padding: 16px; } .oc-head { grid-template-columns: auto minmax(0,1fr); } .oc-price { grid-column: 1 / -1; text-align: left; } }
@@ -8084,9 +8094,10 @@
     var unpaid = offers.filter(function(o){ return o.status === 'accepted' && !o.paid_at; }).length, claims = offers.filter(function(o){ return !o.paid_at && (o.data || {}).paid_claim && (o.status === 'new' || o.status === 'accepted'); }).length;
     $('sOffers').hidden = !fresh.length; $('sOffers').textContent = fresh.length;
     $('sOffers2').hidden = !fresh.length; $('sOffers2').textContent = fresh.length;
-    $('offerBanner').hidden = !fresh.length && !unpaid && !claims;
+    var rtrT = 0, rtrD = 0; offers.forEach(function(o){ if (o.status !== 'accepted') return; var x = rtrTodo(o); rtrT += x.todo; rtrD += x.due; });
+    $('offerBanner').hidden = !fresh.length && !unpaid && !claims && !rtrT && !rtrD;
     $('offerBannerText').textContent = '📝 ' + (fresh.length ? fresh.length + ' offer' + (fresh.length === 1 ? '' : 's') + ' to decide' + (unseen ? ' (' + unseen + ' new)' : '') : '') +
-      (fresh.length && unpaid ? ' · ' : '') + (unpaid ? unpaid + ' accepted, holding deposit not received yet' : '') + (claims ? ' · ' + claims + ' say they’ve paid — check the bank' : '') + (fresh.length ? ' — ' + fresh.slice(0, 2).map(function(o){ return shortAddr(o.property_address) + ' ' + gbp(offPw(o)) + ' pw'; }).join(', ') : '');
+      (fresh.length && unpaid ? ' · ' : '') + (unpaid ? unpaid + ' accepted, holding deposit not received yet' : '') + (claims ? ' · ' + claims + ' say they’ve paid — check the bank' : '') + (rtrT ? ' · 🛂 ' + rtrT + ' accepted applicant' + (rtrT === 1 ? '' : 's') + ' need a right to rent check' : '') + (rtrD ? ' · ⏳ ' + rtrD + ' right to rent follow-up check' + (rtrD === 1 ? '' : 's') + ' due' : '') + (fresh.length ? ' — ' + fresh.slice(0, 2).map(function(o){ return shortAddr(o.property_address) + ' ' + gbp(offPw(o)) + ' pw'; }).join(', ') : '');
   }
   function offLinkBase(){ return location.origin + '/offer'; }
   function renderOffers(){
@@ -8103,6 +8114,53 @@
     if (unseen.length) renderOfferBanner();
   }
   function offRow(label, v){ return v ? '<div><span>' + esc(label) + '</span><b>' + esc(v) + '</b></div>' : ''; }
+  // ---------- Right to rent checks ----------
+  // GOV.UK's checker needs the office's own sign-in and a person to compare the
+  // photo with the tenant, so it can't run on its own: we copy the share code,
+  // open the checker, and keep a record of each outcome (with follow-up dates).
+  var RTR_URL = 'https://www.gov.uk/view-right-to-rent';
+  var RTR_RES = { passport: 'UK or Irish passport seen', unlimited: 'Unlimited right to rent', limited: 'Time-limited', none: 'No right to rent' };
+  function rtrDaysLeft(r){ return r && r.result === 'limited' && r.until ? Math.round((new Date(r.until + 'T12:00:00') - new Date(isoDay(new Date()) + 'T12:00:00')) / 864e5) : null; }
+  function rtrPill(r){
+    if (!r) return '<span class="oc-pill warn">Right to rent not checked</span>';
+    if (r.result === 'none') return '<span class="oc-pill no">✕ No right to rent</span>';
+    if (r.result === 'limited') { var dl = rtrDaysLeft(r); return '<span class="oc-pill ' + (dl < 0 ? 'bad' : dl <= 30 ? 'warn' : 'ok') + '">' + (dl < 0 ? '⚠ Right to rent ended ' : '✓ Right to rent until ') + esc(longDay(r.until)) + '</span>'; }
+    return '<span class="oc-pill ok">✓ ' + esc(RTR_RES[r.result]) + '</span>';
+  }
+  // Tenants still to check, and time-limited permissions due a follow-up check.
+  function rtrTodo(o){
+    var ts = (o.data || {}).tenants || [], rtr = (o.data || {}).rtr || {}, out = { todo: 0, due: 0, none: 0 };
+    ts.forEach(function(t, i){ var r = rtr[i + 1], dl = rtrDaysLeft(r); if (!r) out.todo++; else if (r.result === 'none') out.none++; else if (dl !== null && dl <= 30) out.due++; });
+    return out;
+  }
+  function rtrSummary(o){
+    if (o.status === 'rejected' || o.status === 'withdrawn') return '';
+    var ts = (o.data || {}).tenants || [], x = rtrTodo(o);
+    if (x.none) return '<span class="oc-pill no">✕ ' + x.none + ' with no right to rent</span>';
+    if (x.due) return '<span class="oc-pill warn">⏳ Right to rent follow-up check due</span>';
+    if (x.todo) return '<span class="oc-pill ' + (o.status === 'accepted' ? 'warn' : 'muted') + '">🛂 Right to rent: ' + x.todo + ' of ' + ts.length + ' to check</span>';
+    return '<span class="oc-pill ok">🛂 Right to rent checked</span>';
+  }
+  function rtrBox(o, t, n, r){
+    var code = t.share_code ? t.share_code.replace(/^(.{3})(.{3})(.{3})$/, '$1 $2 $3') : '', today = isoDay(new Date()), by = '';
+    try { by = localStorage.getItem('rr_rtr_by') || ''; } catch (e) {}
+    var dl = rtrDaysLeft(r);
+    return '<div class="oc-rtr" data-rtr="' + n + '"><div class="oc-rtr-h"><b>🛂 Right to rent check</b>' +
+        (code ? '<span class="oc-rtr-btns">' + (t.dob ? '<button type="button" class="btn small" data-rtr-copy="' + esc(t.dob.split('-').reverse().join('/')) + '" title="Copy the date of birth">Copy DOB ' + esc(t.dob.split('-').reverse().join('/')) + '</button>' : '') + '<button type="button" class="btn small primary" data-rtr-go="' + esc(t.share_code) + '" title="Copies the share code and opens the GOV.UK checker">Copy code &amp; check on GOV.UK ↗</button></span>'
+          : '<a class="btn small" href="' + RTR_URL + '" target="_blank" rel="noopener" title="UK or Irish passport: check the original (or a video call with it) and keep a copy">GOV.UK guidance ↗</a>') + '</div>' +
+      (code ? '<div class="oc-rtr-help">On GOV.UK enter share code <b>' + esc(code) + '</b> and date of birth <b>' + esc(t.dob ? t.dob.split('-').reverse().join('/') : '—') + '</b>. Check the photo matches ' + esc(String(t.name || '').split(/\s+/)[0] || 'them') + ' (in person or on a video call), save the result as a PDF, then record it below.</div>'
+        : '<div class="oc-rtr-help">UK or Irish passport: see the original passport with ' + esc(String(t.name || '').split(/\s+/)[0] || 'them') + ' (in person or on a video call), check the photo, then record it below — their uploaded ID is kept on this offer.</div>') +
+      (r ? '<div class="oc-rtr-done">' + rtrPill(r) + ' <span>checked ' + esc(longDay(r.checked)) + (r.by ? ' by ' + esc(r.by) : '') + '</span>' + (r.doc ? ' · <a target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/doc/' + r.doc + '">📄 GOV.UK result</a>' : ' · <span class="oc-warn" style="display:inline">no result file saved</span>') +
+          (r.note ? '<div class="muted-note" style="margin:4px 0 0">' + esc(r.note) + '</div>' : '') + (dl !== null && dl <= 30 ? '<div class="oc-warn">' + (dl < 0 ? 'Their permission has ended — do a follow-up check now (they may have a new share code).' : 'Follow-up check due before ' + esc(longDay(r.until)) + ' — ask for a new share code.') + '</div>' : '') + '</div>' : '') +
+      '<details class="oc-rtr-form"' + (r ? '' : '') + '><summary>' + (r ? 'Update the check' : 'Record the result') + '</summary><div class="oc-rtr-grid">' +
+        '<label>Result<select data-rtr-k="result"><option value="">Choose…</option>' + Object.keys(RTR_RES).map(function(k){ return '<option value="' + k + '"' + (r && r.result === k ? ' selected' : (!r && k === (code ? '' : 'passport') ? ' selected' : '')) + '>' + (k === 'limited' ? 'Time-limited right to rent' : RTR_RES[k]) + '</option>'; }).join('') + '</select></label>' +
+        '<label data-rtr-until' + (r && r.result === 'limited' ? '' : ' hidden') + '>Allowed to rent until<input type="date" data-rtr-k="until" value="' + esc(r && r.until || '') + '"></label>' +
+        '<label>Checked on<input type="date" data-rtr-k="checked" max="' + today + '" value="' + esc(r && r.checked || today) + '"></label>' +
+        '<label>Checked by<input data-rtr-k="by" maxlength="80" value="' + esc(r && r.by || by) + '" placeholder="Your name"></label>' +
+        '<label class="wide">GOV.UK result (PDF or photo)<input type="file" data-rtr-k="file" accept="application/pdf,image/jpeg,image/png"></label>' +
+        '<label class="wide">Notes<input data-rtr-k="note" maxlength="300" value="' + esc(r && r.note || '') + '" placeholder="e.g. Checked on video call, photo matches"></label></div>' +
+        '<div class="oc-rtr-act"><button type="button" class="btn small primary" data-rtr-save>Save check</button>' + (r ? '<button type="button" class="btn small ghost danger" data-rtr-clear>Remove</button>' : '') + '</div></details></div>';
+  }
   // One offer, as a card: who, how much, where it's up to, and what to do next.
   function offerCard(o){
     var d = o.data || {}, m = d.money || {}, ts = d.tenants || [], docs = o.docs || [];
@@ -8134,7 +8192,7 @@
         '<div class="oc-price"><div class="oc-pw">' + esc(gbp(offPw(o))) + '<small> /week</small></div><div class="oc-pcm">' + esc(gbp(m.pcm || 0)) + ' /month' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' /wk' : '') + '</div></div></header>' +
       '<div class="oc-status"><span class="oc-pill ' + st[0] + '">' + st[1] + '</span>' +
         (o.paid_at ? '<span class="oc-pill ok">💷 Deposit received ' + esc(fmtShort(o.paid_at).split(',')[0]) + '</span>' : (o.status === 'rejected' || o.status === 'withdrawn' ? '' : d.paid_claim ? '<span class="oc-pill wait">💬 Says paid ' + esc(longDay(d.paid_claim.date)) + (d.paid_claim.from ? ' from ' + esc(d.paid_claim.from) : '') + ' — check the bank</span>' : '<span class="oc-pill warn">Deposit ' + esc(gbp(m.holding || 0)) + ' not received</span>')) +
-        (o.status === 'withdrawn' && o.paid_at ? '<span class="oc-pill muted">Deposit not refundable (their terms)</span>' : '') + '</div>' +
+        (o.status === 'withdrawn' && o.paid_at ? '<span class="oc-pill muted">Deposit not refundable (their terms)</span>' : '') + rtrSummary(o) + '</div>' +
       '<div class="oc-grid">' + kv('Move in', d.move_in ? esc(longDay(d.move_in)) : '') + kv('Stay', esc(d.stay || '')) + kv('Tenants', String(ts.length)) + kv('Guarantors', d.guarantors_count ? String(d.guarantors_count) : '') +
         kv('Holding deposit', esc(gbp(m.holding || 0))) + kv('Due at signing', esc(gbp(m.balance || 0))) + '</div>' +
       (d.refund ? '<div class="oc-refund"><div><span>Refund to (given by the applicant)</span><b>' + esc(d.refund.name) + '</b> · ' + (d.refund.sort_code ? 'Sort code <b>' + esc(d.refund.sort_code) + '</b> · Account <b>' + esc(d.refund.account) + '</b>' : '') + (d.refund.iban ? ' · IBAN <b>' + esc(d.refund.iban) + '</b>' : '') +
@@ -8148,16 +8206,17 @@
         var mine = docs.filter(function(x){ return x.tenant_no === i + 1; });
         var row = function(k, v){ return v ? '<div><span>' + esc(k) + '</span>' + esc(v) + '</div>' : ''; };
         return '<div class="oc-ten"><div class="oc-ten-h"><span class="oc-num">' + (i + 1) + '</span><b>' + esc(t.name) + '</b>' + (i === 0 ? '<span class="oc-pill muted">Lead</span>' : '') +
-            (t.income_type === 'Student' ? '<span class="oc-pill warn">Student</span>' : '') + '</div><div class="oc-rows">' +
+            (t.income_type === 'Student' ? '<span class="oc-pill warn">Student</span>' : '') + rtrPill((d.rtr || {})[i + 1]) + '</div><div class="oc-rows">' +
           row('Date of birth', t.dob ? longDay(t.dob) : '') + row('Phone', t.phone) + row('Email', t.email) + row('Income', [t.income_type, t.employment_type].filter(Boolean).join(', ')) +
           row('Work', [t.position, t.company].filter(Boolean).join(' at ')) + row('Salary', t.salary ? '£' + t.salary : '') + row('Started', t.start_date ? longDay(t.start_date) : '') + row('Other income', t.other_income) +
           row('Study', [t.university, t.course, t.academic_year].filter(Boolean).join(', ')) + row('Lives at', t.current_address) + row('Status', t.residency_status) + row('Rent now', t.current_rent ? '£' + t.current_rent + ' a month' : '') +
           row('Landlord', [t.landlord_name, t.landlord_phone, t.landlord_email].filter(Boolean).join(' · ')) + row('Tenancy', [t.tenancy_start ? longDay(t.tenancy_start) : '', t.tenancy_end ? longDay(t.tenancy_end) : ''].filter(Boolean).join(' – ')) +
           row('UK or Irish passport', t.uk_passport) +
-          (t.share_code ? '<div><span>Share code</span><b>' + esc(t.share_code.replace(/^(.{3})(.{3})(.{3})$/, '$1 $2 $3')) + '</b> · <a href="https://www.gov.uk/view-right-to-rent" target="_blank" rel="noopener">Check on GOV.UK</a></div>' : '') +
+          (t.share_code ? '<div><span>Share code</span><b>' + esc(t.share_code.replace(/^(.{3})(.{3})(.{3})$/, '$1 $2 $3')) + '</b></div>' : '') +
           row('Guarantor', [t.g_name, t.g_relation].filter(Boolean).join(', ')) + row('Guarantor contact', [t.g_phone, t.g_email].filter(Boolean).join(' · ')) +
           row('Guarantor work', [t.g_position, t.g_company, t.g_salary ? '£' + t.g_salary : ''].filter(Boolean).join(', ')) + row('Guarantor home owner', t.g_homeowner ? t.g_homeowner + (t.g_home_address ? ' — ' + t.g_home_address : '') : '') + row('Guarantor other income', t.g_other) + '</div>' +
-          '<div class="oc-ids">' + (mine.length ? mine.map(function(x){ return '<a class="oc-id" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/doc/' + x.id + '">🪪 ' + esc(x.name || 'ID') + '</a>'; }).join('') : '<span class="muted-note" style="margin:0">No ID</span>') + '</div></div>';
+          '<div class="oc-ids">' + (mine.length ? mine.map(function(x){ return '<a class="oc-id" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/doc/' + x.id + '">🪪 ' + esc(x.name || 'ID') + '</a>'; }).join('') : '<span class="muted-note" style="margin:0">No ID</span>') + '</div>' +
+          rtrBox(o, t, i + 1, (d.rtr || {})[i + 1]) + '</div>';
       }).join('') +
         '<div class="oc-sign"><div><span>Signed by</span>' + esc(d.signature || '') + ' · ' + esc(fmtShort(d.signed_at)) + (d.terms_ticked ? ' · all 6 holding deposit points ticked' : '') + '</div>' +
         (sg ? '<img src="/api/admin/offers/' + o.id + '/doc/' + sg.id + '" alt="Signature">' : '') + '</div></details>' +
@@ -8176,9 +8235,41 @@
     '</article>';
   }
   $('offTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-otab]'); if (!b) return; offTab = b.dataset.otab; renderOffers(); });
+  $('offList').addEventListener('change', function(e){
+    if (e.target.matches('[data-rtr-k="result"]')) { var u = e.target.closest('[data-rtr]').querySelector('[data-rtr-until]'); u.hidden = e.target.value !== 'limited'; }
+  });
   $('offList').addEventListener('click', function(e){
     var card = e.target.closest('[data-off]'); if (!card) return;
     var o = offers.filter(function(x){ return x.id === Number(card.dataset.off); })[0]; if (!o) return;
+    var rg = e.target.closest('[data-rtr-go]');
+    if (rg) {
+      // Open straight from the tap (pop-up blockers), then copy the code.
+      window.open(RTR_URL, '_blank', 'noopener');
+      var c = rg.dataset.rtrGo; (navigator.clipboard ? navigator.clipboard.writeText(c) : Promise.reject()).then(function(){ toast('Share code ' + c + ' copied — paste it on GOV.UK'); }, function(){ window.prompt('Share code:', c); });
+      return;
+    }
+    var rc = e.target.closest('[data-rtr-copy]');
+    if (rc) { var dv = rc.dataset.rtrCopy; (navigator.clipboard ? navigator.clipboard.writeText(dv) : Promise.reject()).then(function(){ toast('Date of birth ' + dv + ' copied'); }, function(){ window.prompt('Date of birth:', dv); }); return; }
+    var rs = e.target.closest('[data-rtr-save],[data-rtr-clear]');
+    if (rs) {
+      var box = rs.closest('[data-rtr]'), n = Number(box.dataset.rtr), v = function(k){ return box.querySelector('[data-rtr-k="' + k + '"]'); };
+      if (rs.hasAttribute('data-rtr-clear')) {
+        if (!confirm('Remove this right to rent check (and its saved result)?')) return;
+        api('POST', '/api/admin/offers/' + o.id + '/rtr', { tenant: n, clear: true }).then(function(d2){ if (!d2.ok) { toast('Couldn’t remove it'); return; } toast('Check removed'); loadOffers(); });
+        return;
+      }
+      var body = { tenant: n, result: v('result').value, until: v('until').value, checked: v('checked').value, by: v('by').value.trim(), note: v('note').value.trim() };
+      if (!body.result) { toast('Choose the result'); v('result').focus(); return; }
+      if (body.result === 'limited' && !body.until) { toast('Enter the date their right to rent ends'); v('until').focus(); return; }
+      try { if (body.by) localStorage.setItem('rr_rtr_by', body.by); } catch (er) {}
+      var f = v('file').files[0];
+      if (f && f.size > 12 * 1024 * 1024) { toast('That file is too big (12 MB max)'); return; }
+      busy(rs, true, 'Saving…');
+      (f ? new Promise(function(ok, no){ var fr = new FileReader(); fr.onload = function(){ ok(fr.result); }; fr.onerror = no; fr.readAsDataURL(f); }) : Promise.resolve(''))
+        .then(function(url){ if (url) body.file = { name: f.name, dataUrl: url }; return api('POST', '/api/admin/offers/' + o.id + '/rtr', body); })
+        .then(function(d2){ busy(rs, false); if (!d2.ok) { toast(d2.error === 'file' ? 'Use a PDF, JPG or PNG' : 'Couldn’t save the check'); return; } toast('Right to rent check saved'); loadOffers(); }, function(){ busy(rs, false); toast('Couldn’t read that file'); });
+      return;
+    }
     var a = e.target.closest('[data-off-act]'), pd = e.target.closest('[data-off-paid]');
     if (a || pd) {
       var body = a ? { status: a.dataset.offAct } : { paid: pd.dataset.offPaid === '1' };

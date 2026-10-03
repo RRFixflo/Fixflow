@@ -6038,8 +6038,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (tenants.some(function (t) { return (t.income_type === 'Employed' || t.income_type === 'Self-employed') && !t.company; })) return res.status(400).json({ ok: false, error: 'company' });
     // Gross annual salary: required (students who don't work have a guarantor instead).
     if (tenants.some(function (t) { return t.income_type !== 'Student' && !(parseFloat(String(t.salary || '').replace(/[£,\s]/g, '')) > 0); })) return res.status(400).json({ ok: false, error: 'salary' });
-    // A student who isn't working needs a guarantor (name, relation and a phone or email).
-    if (tenants.some(function (t) { return t.income_type === 'Student' && !(t.g_name && t.g_relation && (t.g_phone || t.g_email)); })) return res.status(400).json({ ok: false, error: 'guarantor' });
+    // Guarantors: students always need one, and there must be as many complete
+    // guarantors as the applicant said. A started guarantor section must be complete.
+    const guaDone = function (t) { return !!(t.g_name && t.g_relation && t.g_email && t.g_phone && parseFloat(String(t.g_salary || '').replace(/[£,\s]/g, '')) > 0 && t.g_homeowner && (t.g_homeowner !== 'Yes' || t.g_home_address)); };
+    const guaStarted = function (t) { return ['g_name', 'g_relation', 'g_email', 'g_phone', 'g_company', 'g_position', 'g_salary', 'g_homeowner', 'g_home_address', 'g_other'].some(function (k) { return t[k]; }); };
+    const guaN = Math.max(0, Math.min(parseInt(b.guarantors_count, 10) || 0, tenants.length));
+    if (tenants.some(function (t) { return (t.income_type === 'Student' || guaStarted(t)) && !guaDone(t); }) || tenants.filter(guaDone).length < guaN) return res.status(400).json({ ok: false, error: 'guarantor' });
     // No UK or Irish passport: a right to rent share code (9 letters/numbers) is needed.
     for (const t of tenants) { t.share_code = String(t.share_code || '').toUpperCase().replace(/\s+/g, ''); if (t.uk_passport === 'No' && !/^[A-Z0-9]{9}$/.test(t.share_code)) return res.status(400).json({ ok: false, error: 'share_code' }); if (t.uk_passport !== 'No') t.share_code = ''; }
     // Each tenant's ID: required, photos or PDFs, up to 4 files of 12 MB each.
@@ -6167,6 +6171,41 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json({ ok: true });
   }));
+  // Right to rent: the office runs the check on GOV.UK (it needs their sign-in and
+  // a person to match the photo to the tenant), then records the outcome here,
+  // optionally with the result saved from GOV.UK. Result files are kept with
+  // tenant_no = -(tenant number) so they don't count as the applicant's IDs.
+  app.post('/api/admin/offers/:id/rtr', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req), n = parseInt(b.tenant, 10) || 0;
+    const o = (await p.query('SELECT data FROM offers WHERE id = $1', [id])).rows[0];
+    if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
+    const ts = (o.data || {}).tenants || [];
+    if (n < 1 || n > ts.length) return res.status(400).json({ ok: false, error: 'tenant' });
+    const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : ''; };
+    const rtr = Object.assign({}, (o.data || {}).rtr || {});
+    let note;
+    if (b.clear === true) { delete rtr[n]; note = 'Right to rent check removed for ' + ts[n - 1].name; }
+    else {
+      const RES = { passport: 'UK or Irish passport seen', unlimited: 'Unlimited right to rent', limited: 'Time-limited right to rent', none: 'No right to rent' };
+      if (!RES[b.result]) return res.status(400).json({ ok: false, error: 'result' });
+      const until = b.result === 'limited' ? day(b.until) : '';
+      if (b.result === 'limited' && !until) return res.status(400).json({ ok: false, error: 'until' });
+      const rec = { result: b.result, until: until, checked: day(b.checked) || new Date().toISOString().slice(0, 10), by: str(b.by, 80), note: str(b.note, 300), at: new Date().toISOString() };
+      const m = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(String((b.file && b.file.dataUrl) || ''));
+      if (m) {
+        const mime = m[1].toLowerCase(), buf = Buffer.from(m[2], 'base64');
+        if (['application/pdf', 'image/jpeg', 'image/png'].indexOf(mime) === -1 || !buf.length || buf.length > 12 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'file' });
+        await p.query('DELETE FROM offer_docs WHERE offer_id = $1 AND tenant_no = $2', [id, -n]);
+        rec.doc = (await p.query('INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [id, -n, str(b.file.name, 150) || 'right-to-rent-check', mime, buf])).rows[0].id;
+      } else if (rtr[n] && rtr[n].doc) rec.doc = rtr[n].doc;
+      rtr[n] = rec;
+      note = 'Right to rent checked for ' + ts[n - 1].name + ': ' + RES[b.result] + (until ? ' until ' + until.split('-').reverse().join('/') : '');
+    }
+    if (!rtr[n]) await p.query('DELETE FROM offer_docs WHERE offer_id = $1 AND tenant_no = $2', [id, -n]);
+    await p.query("UPDATE offers SET data = data || jsonb_build_object('rtr', $2::jsonb), log = log || $3::jsonb WHERE id = $1",
+      [id, JSON.stringify(rtr), JSON.stringify([{ at: new Date().toISOString(), text: note }])]);
+    res.json({ ok: true, rtr: rtr });
+  }));
   app.delete('/api/admin/offers/:id', withDb(async function (p, req, res) {
     if ((req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
     const r = await p.query('DELETE FROM offers WHERE id = $1 RETURNING id', [jobId(req)]);
@@ -6277,13 +6316,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
       row('Landlord/Agent Name', t.landlord_name, TT); row('Landlord E-mail Address', t.landlord_email, TT); row('Landlord Contact Number', t.landlord_phone, TT); row('Tenancy Start Date', dayOf(t.tenancy_start), TT); row('Tenancy End Date', dayOf(t.tenancy_end), TT);
       heading('Right to Rent', TT); row('UK or Irish passport', t.uk_passport, TT); if (t.share_code) row('Right to rent share code', t.share_code.replace(/^(.{3})(.{3})(.{3})$/, '$1 $2 $3'), TT);
       row('Passport / visa / proof of residency', docs.filter(function (x) { return x.tenant_no === i + 1; }).length + ' file(s) attached at the end of this document', TT);
+      const rc = (d.rtr || {})[i + 1];
+      if (rc) { row('Right to rent check', { passport: 'UK or Irish passport seen', unlimited: 'Unlimited right to rent', limited: 'Time-limited right to rent until ' + dayOf(rc.until), none: 'No right to rent' }[rc.result] || rc.result, TT);
+        row('Checked on', dayOf(rc.checked) + (rc.by ? ' by ' + rc.by : '') + (rc.doc ? ' - GOV.UK result attached' : ''), TT); if (rc.note) row('Check notes', rc.note, TT); }
+      else row('Right to rent check', 'Not recorded yet', TT);
       if (t.g_name) { heading('Guarantor Details', TT); row('Full Name', t.g_name, TT); row('Relation', t.g_relation, TT); row('Email Address', t.g_email, TT); row('Contact Number', t.g_phone, TT); row('Company', t.g_company, TT);
         row('Current Position', t.g_position, TT); row('Gross Annual Salary', t.g_salary ? '\xA3' + t.g_salary : '', TT); row('UK home owner', t.g_homeowner + (t.g_home_address ? ' - ' + t.g_home_address : ''), TT); row('Additional Income / Savings', t.g_other, TT); }
     }
 
     // 4. ID documents (photos on a page each; PDFs added as they are)
-    for (const x of docs.filter(function (q) { return q.tenant_no > 0; })) {
-      const label = 'Tenant ' + x.tenant_no + ' (' + (ts[x.tenant_no - 1] || {}).name + ') - ' + (x.name || 'ID');
+    for (const x of docs.filter(function (q) { return q.tenant_no !== 0; }).sort(function (a, b) { return Math.abs(a.tenant_no) - Math.abs(b.tenant_no) || b.tenant_no - a.tenant_no; })) {
+      const tn = Math.abs(x.tenant_no), label = 'Tenant ' + tn + ' (' + (ts[tn - 1] || {}).name + ') - ' + (x.tenant_no < 0 ? 'Right to rent check result: ' : '') + (x.name || 'ID');
       try {
         if (x.mime === 'application/pdf') {
           const src = await PDFDocument.load(x.data, { ignoreEncryption: true });
