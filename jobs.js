@@ -1522,7 +1522,7 @@ module.exports = function mountJobs(app, opts) {
       const u = p ? (await p.query('SELECT id, name, role, salt, hash FROM staff_users WHERE disabled_at IS NULL AND (lower(name) = lower($1) OR lower(email) = lower($1)) LIMIT 1', [uname])).rows[0] : null;
       const ok = u && given && (function () { const a = Buffer.from(scryptHex(given, u.salt), 'hex'), b2 = Buffer.from(u.hash, 'hex'); return a.length === b2.length && crypto.timingSafeEqual(a, b2); })();
       if (!ok) return res.status(401).json({ ok: false, error: 'wrong-password' });
-      user = { id: u.id, name: u.name, role: u.role }; role = u.role === 'offers' ? 'offers' : null;
+      user = { id: u.id, name: u.name, role: u.role }; role = u.role === 'offers' || u.role === 'offers_admin' ? 'offers' : null;
     } else if (!passwordMatches(given)) {
       let staff = false;
       try { staff = await staffPasswordMatches(given); } catch (err) { console.error('Staff sign-in check failed:', err.message); }
@@ -1572,7 +1572,7 @@ module.exports = function mountJobs(app, opts) {
     } catch (err) { console.error('Sign-in check failed:', err.message); if (t.role) return res.status(503).json({ ok: false, error: 'db' }); }
     req.role = t.role || null;
     if (!req.user) req.user = { id: null, name: req.role === 'offers' ? 'Offers staff' : 'Owner', role: req.role === 'offers' ? 'offers' : 'owner' };
-    if (req.role === 'offers' && !staffAllowed(req.method, req.path)) return res.status(403).json({ ok: false, error: 'not-allowed' });
+    if (req.role === 'offers' && !staffAllowed(req.method, req.path) && !(req.user.role === 'offers_admin' && /^\/(users(\/\d+)?|staff-activity)$/.test(req.path))) return res.status(403).json({ ok: false, error: 'not-allowed' });
     if (req.method !== 'GET' && !req.is('application/json')) return res.status(415).json({ ok: false, error: 'json-only' });
     // Who did what: note each change once it has gone through.
     const act0 = req.method !== 'GET' ? describeAction(req) : '';   // req.path is only relative to /api/admin here
@@ -1594,7 +1594,7 @@ module.exports = function mountJobs(app, opts) {
     const refOf = function () { return seg[0] === 'jobs' && id ? ' ' + refFor(id) : seg[0] === 'offers' && id ? ' OF' + String(id).padStart(4, '0') : id ? ' #' + id : ''; };
     const what = seg.slice(id ? 2 : 1).join(' ').replace(/-/g, ' ');
     const extra = b.status ? ' — status: ' + String(b.status).slice(0, 40) : b.paid === true ? ' — deposit received' : b.paid === false ? ' — deposit not received'
-      : seg[0] === 'users' ? (b.name ? ' — ' + String(b.name).slice(0, 80) : '') + (b.email ? ' (' + String(b.email).slice(0, 80) + ')' : '') + (b.role ? ' — access: ' + b.role : '') + (b.password ? ' — new password' : '') + (b.disabled === true ? ' — turned off' : b.disabled === false ? ' — turned on' : '') : '';
+      : seg[0] === 'users' ? (b.name ? ' — ' + String(b.name).slice(0, 80) : '') + (b.email ? ' (' + String(b.email).slice(0, 80) + ')' : '') + (b.role ? ' — access: ' + b.role : '') + (b.password && id ? ' — new password' : '') + (b.disabled === true ? ' — turned off' : b.disabled === false ? ' — turned on' : '') : '';
     const verb = m === 'DELETE' ? 'Deleted' : !id && seg.length === 1 && m === 'POST' ? 'Added' : 'Updated';
     return (verb + ' ' + noun + refOf() + (what ? ' (' + what + ')' : '') + extra).slice(0, 300);
   }
@@ -1628,17 +1628,20 @@ module.exports = function mountJobs(app, opts) {
   }));
 
   // ---------- Staff users ----------
-  function canManageUsers(req) { return req.user && (req.user.role === 'owner' || req.user.role === 'admin'); }
+  function canManageUsers(req) { return req.user && (req.user.role === 'owner' || req.user.role === 'admin' || req.user.role === 'offers_admin'); }
+  // An offers team manager only manages the offers team (offers-only and offers manager roles).
+  const OFFER_ROLES = ['offers', 'offers_admin'];
+  function mayManageRole(req, role) { return req.user.role !== 'offers_admin' || OFFER_ROLES.indexOf(role) !== -1; }
   async function revokeUser(p, uid) {
     const r = await p.query('UPDATE admin_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL RETURNING id', [uid]);
     r.rows.forEach(function (x) { sessionCache.set(x.id, { revoked: true, touched: Date.now() }); });
   }
-  const USER_ROLES = ['admin', 'full', 'offers'];
+  const USER_ROLES = ['admin', 'full', 'offers', 'offers_admin'];
   app.get('/api/admin/users', withDb(async function (p, req, res) {
     if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-allowed' });
     const r = await p.query(`SELECT u.id, u.name, u.email, u.role, u.created_at, u.disabled_at, u.last_seen,
         (SELECT count(*)::int FROM staff_activity a WHERE a.user_id = u.id AND a.at > now() - interval '7 days') AS week_actions
-      FROM staff_users u ORDER BY u.disabled_at IS NOT NULL, lower(u.name)`);
+      FROM staff_users u ` + (req.user.role === 'offers_admin' ? "WHERE u.role IN ('offers', 'offers_admin') " : '') + `ORDER BY u.disabled_at IS NOT NULL, lower(u.name)`);
     res.json({ ok: true, users: r.rows });
   }));
   app.post('/api/admin/users', withDb(async function (p, req, res) {
@@ -1647,6 +1650,7 @@ module.exports = function mountJobs(app, opts) {
     if (!name) return res.status(400).json({ ok: false, error: 'name' });
     if (pw.length < 8 || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' });
     if (role === 'admin' && req.user.role !== 'owner') return res.status(403).json({ ok: false, error: 'owner-only' });
+    if (!mayManageRole(req, role)) return res.status(403).json({ ok: false, error: 'offers-only' });
     const salt = crypto.randomBytes(16).toString('hex');
     try {
       const r = await p.query('INSERT INTO staff_users (name, email, role, salt, hash) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, role, salt, scryptHex(pw, salt)]);
@@ -1659,6 +1663,7 @@ module.exports = function mountJobs(app, opts) {
     const u = (await p.query('SELECT id, role FROM staff_users WHERE id = $1', [id])).rows[0];
     if (!u) return res.status(404).json({ ok: false, error: 'not-found' });
     if ((u.role === 'admin' || b.role === 'admin') && req.user.role !== 'owner') return res.status(403).json({ ok: false, error: 'owner-only' });
+    if (!mayManageRole(req, u.role) || (b.role != null && !mayManageRole(req, b.role))) return res.status(403).json({ ok: false, error: 'offers-only' });
     const sets = [], vals = [id]; let signOut = false;
     if (b.name != null) { const n = str(b.name, 80); if (!n) return res.status(400).json({ ok: false, error: 'name' }); vals.push(n); sets.push('name = $' + vals.length); }
     if (b.email != null) { vals.push(str(b.email, 200) || null); sets.push('email = $' + vals.length); }
@@ -1672,12 +1677,26 @@ module.exports = function mountJobs(app, opts) {
     for (const [k, v] of sessionCache) if (v && v.user_id === id) sessionCache.delete(k);
     res.json({ ok: true });
   }));
+  // Remove a person (their past changes keep their name).
+  app.delete('/api/admin/users/:id', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-allowed' });
+    if ((req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
+    const id = parseInt(req.params.id, 10) || 0, u = (await p.query('SELECT id, role FROM staff_users WHERE id = $1', [id])).rows[0];
+    if (!u) return res.status(404).json({ ok: false, error: 'not-found' });
+    if (u.role === 'admin' && req.user.role !== 'owner') return res.status(403).json({ ok: false, error: 'owner-only' });
+    if (!mayManageRole(req, u.role)) return res.status(403).json({ ok: false, error: 'offers-only' });
+    if (req.user.id === id) return res.status(400).json({ ok: false, error: 'self' });
+    await revokeUser(p, id);
+    await p.query('DELETE FROM staff_users WHERE id = $1', [id]);
+    res.json({ ok: true });
+  }));
   // Who did what (newest first), optionally for one person.
   app.get('/api/admin/staff-activity', withDb(async function (p, req, res) {
     if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-allowed' });
     const who = String(req.query.user || ''), vals = [];
     let where = '';
     if (/^\d+$/.test(who)) { vals.push(Number(who)); where = 'WHERE user_id = $1'; } else if (who === 'owner') where = "WHERE user_id IS NULL AND user_name = 'Owner'";
+    if (req.user.role === 'offers_admin') where += (where ? ' AND ' : 'WHERE ') + "user_id IN (SELECT id FROM staff_users WHERE role IN ('offers', 'offers_admin'))";
     const r = await p.query('SELECT at, user_id, user_name, action FROM staff_activity ' + where + ' ORDER BY at DESC LIMIT 300', vals);
     res.json({ ok: true, activity: r.rows });
   }));
@@ -6312,6 +6331,79 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, ref: ref, money: data.money, bank: bank, reference: offerPayRef(address, ref), track: '/offer/track/' + token });
   }));
   function offerPayRef(address, ref) { return (addrPayRef(address) || ref).slice(0, 18); }
+  // ---------- Automatic holding deposit reminders (email) ----------
+  // The applicant is emailed if the holding deposit hasn't been marked received
+  // (and they haven't said they've paid): a reminder about 12 hours after the
+  // offer, and a last one at about 22 hours (it's due within 24). Only offers made
+  // after reminders were first switched on; each one goes once, and is noted on
+  // the offer. The office can turn this off on the Offers page.
+  const REMIND_STAGES = [{ key: 'r12', hours: 12 }, { key: 'r22', hours: 22 }];
+  async function remindSettings(p) {
+    const row = (await p.query("SELECT value FROM app_settings WHERE key = 'offer_reminders'")).rows[0];
+    if (row && row.value) return row.value;
+    const v = { on: true, since: new Date().toISOString() };
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('offer_reminders', $1) ON CONFLICT (key) DO NOTHING`, [JSON.stringify(v)]);
+    return v;
+  }
+  function reminderEmail(o, stage) {
+    const d = o.data || {}, m = d.money || {}, ref = 'OF' + String(o.id).padStart(4, '0'), first = String(o.lead_name || '').split(/\s+/)[0] || 'there';
+    const base = OFFER_ORIGIN || PUBLIC_URL, track = base + '/offer/track/' + o.track_token, payRef = offerPayRef(o.property_address, ref);
+    const due = new Date(new Date(o.created_at).getTime() + 24 * 3600 * 1000).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+    const last = stage === 'r22';
+    const bank = [['Account name', INVOICE.payee], ['Sort code', INVOICE.sortCode], ['Account number', INVOICE.accountNumber], ['IBAN', INVOICE.iban], ['SWIFT / BIC', INVOICE.swift], ['Amount', gbp(m.holding)], ['Reference', payRef]].filter(function (r) { return r[1]; });
+    const subject = (last ? 'Last reminder: ' : 'Reminder: ') + 'holding deposit for ' + shortAddrText(o.property_address) + ' (' + ref + ')';
+    const text = 'Hi ' + first + ',\n\n' + (last ? 'This is a last reminder: to reserve the property' : 'Thank you for your offer on ' + o.property_address + '. To reserve the property') +
+      ', please pay the holding deposit of ' + gbp(m.holding) + ' by ' + due + '.\n\n' + bank.map(function (r) { return r[0] + ': ' + r[1]; }).join('\n') +
+      '\n\nPlease use exactly this payment reference (no spaces) so we can match your payment.\n\nAlready paid? Tap "I\'ve paid" on your tracking page so we can check: ' + track +
+      '\n\nThe holding deposit goes towards your first month\'s rent once your offer is accepted.\n\nResidential Realtors';
+    const esc2 = function (x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    const html = '<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;color:#101828">' +
+      '<div style="background:#0b1f3a;color:#fff;border-radius:16px 16px 0 0;padding:22px 24px"><div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#ffb4b7;font-weight:700">' + (last ? 'Last reminder' : 'Reminder') + ' · Offer ' + ref + '</div>' +
+      '<div style="font-size:22px;font-weight:800;margin-top:6px">Pay your holding deposit</div><div style="color:#c6d0de;margin-top:4px">' + esc2(o.property_address) + '</div></div>' +
+      '<div style="border:1px solid #e7e9ee;border-top:0;border-radius:0 0 16px 16px;padding:22px 24px">' +
+      '<p style="margin:0 0 12px">Hi ' + esc2(first) + ', ' + (last ? 'this is a last reminder: to reserve the property' : 'thank you for your offer. To reserve the property') + ', please pay <b>' + esc2(gbp(m.holding)) + '</b> by <b>' + esc2(due) + '</b>.</p>' +
+      '<table style="width:100%;border-collapse:collapse;margin:12px 0">' + bank.map(function (r) { return '<tr><td style="padding:8px 0;border-bottom:1px solid #eef0f3;color:#667085">' + esc2(r[0]) + '</td><td style="padding:8px 0;border-bottom:1px solid #eef0f3;text-align:right;font-weight:' + (r[0] === 'Reference' ? '800;color:#c8102e' : '600') + '">' + esc2(r[1]) + '</td></tr>'; }).join('') + '</table>' +
+      '<p style="margin:0 0 16px;color:#667085;font-size:14px">Please use exactly this payment reference (no spaces) so we can match your payment.</p>' +
+      '<a href="' + esc2(track) + '" style="display:block;text-align:center;background:#12b76a;color:#fff;text-decoration:none;font-weight:700;border-radius:12px;padding:14px">Already paid? Tell us here</a>' +
+      '<p style="margin:16px 0 0;color:#667085;font-size:13px">The holding deposit goes towards your first month\'s rent once your offer is accepted.<br>Residential Realtors</p></div></div>';
+    return { subject: subject, text: text, html: html };
+  }
+  async function offerReminders() {
+    const p = await db(); if (!p || !canEmail() || !sendEmail) return;
+    const st = await remindSettings(p); if (!st.on) return;
+    const rows = (await p.query(`SELECT id, created_at, property_address, lead_name, lead_email, data, track_token FROM offers
+      WHERE status IN ('new', 'accepted') AND paid_at IS NULL AND lead_email IS NOT NULL AND track_token IS NOT NULL AND NOT (data ? 'paid_claim')
+        AND created_at > $1 AND created_at > now() - interval '3 days' ORDER BY id`, [st.since])).rows;
+    for (const o of rows) {
+      const age = (Date.now() - new Date(o.created_at).getTime()) / 3600000, done = (o.data || {}).reminders || {};
+      const stage = REMIND_STAGES.filter(function (x) { return age >= x.hours && !done[x.key]; }).pop();
+      if (!stage) continue;
+      // Claim the stage first (and any earlier one), so a reminder never goes twice.
+      const mark = {}; REMIND_STAGES.forEach(function (x) { if (x.hours <= stage.hours && !done[x.key]) mark[x.key] = new Date().toISOString(); });
+      const claimed = await p.query("UPDATE offers SET data = jsonb_set(data, '{reminders}', coalesce(data->'reminders', '{}'::jsonb) || $2::jsonb) WHERE id = $1 AND NOT coalesce(data->'reminders', '{}'::jsonb) ? $3 RETURNING id", [o.id, JSON.stringify(mark), stage.key]);
+      if (!claimed.rows.length) continue;
+      const e = reminderEmail(o, stage.key);
+      const r = await sendEmail({ to: o.lead_email, subject: e.subject, text: e.text, html: e.html }).catch(function (err) { return { ok: false, error: err.message }; });
+      await p.query('UPDATE offers SET log = log || $2::jsonb WHERE id = $1', [o.id, JSON.stringify([{ at: new Date().toISOString(), by: 'system', text: r && r.ok ? (stage.key === 'r22' ? 'Last holding deposit reminder emailed to ' : 'Holding deposit reminder emailed to ') + o.lead_email + ' (automatic)' : 'Automatic holding deposit reminder could not be emailed to ' + o.lead_email + (r && r.error ? ' — ' + String(r.error).slice(0, 160) : '') }])]);
+    }
+  }
+  setInterval(function () { offerReminders().catch(function (err) { console.error('Offer reminders failed:', err.message); }); }, 10 * 60 * 1000).unref();
+  setTimeout(function () { offerReminders().catch(function () {}); }, 60 * 1000).unref();
+  app.get('/api/admin/offer-reminders', withDb(async function (p, req, res) {
+    const st = await remindSettings(p);
+    res.json({ ok: true, on: !!st.on, canEmail: canEmail(), stages: REMIND_STAGES.map(function (x) { return x.hours; }) });
+  }));
+  app.post('/api/admin/offer-reminders', withDb(async function (p, req, res) {
+    const st = await remindSettings(p); st.on = (req.body || {}).on === true;
+    await p.query(`UPDATE app_settings SET value = $1, updated_at = now() WHERE key = 'offer_reminders'`, [JSON.stringify(st)]);
+    res.json({ ok: true, on: st.on });
+  }));
+  // Test hook for the office: preview the reminder email for an offer.
+  app.get('/api/admin/offers/:id/reminder-preview', withDb(async function (p, req, res) {
+    const o = (await p.query('SELECT id, created_at, property_address, lead_name, lead_email, data, track_token FROM offers WHERE id = $1', [jobId(req)])).rows[0];
+    if (!o || !o.track_token) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(reminderEmail(o, req.query.last ? 'r22' : 'r12').html);
+  }));
   // The applicant withdraws their offer (only once we've confirmed their holding
   // deposit arrived). As the terms say, the holding deposit isn't refunded.
   app.post('/api/offers/track/:token/withdraw', withDb(async function (p, req, res) {
