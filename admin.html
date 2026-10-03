@@ -457,6 +457,15 @@
   .off-alerts-staff { margin-bottom: 12px; border-left: 4px solid #1d3fae; }
   .oc-rtr { margin-top: 10px; padding: 10px 12px; border: 1px solid #e3e6ec; border-radius: 10px; background: #fafbfc; }
   .oc-rtr-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .oc-rtrq { margin: 10px 0 4px; border: 1px solid #f3d9a8; background: #fffaf0; border-radius: 12px; padding: 10px 12px; }
+  .rq-h { font-weight: 700; font-size: .86rem; margin-bottom: 4px; }
+  .rq { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 7px 0; border-top: 1px dashed #f0d6a6; font-size: .86rem; } .rq:first-of-type { border-top: 0; }
+  .rq > b { min-width: 120px; }
+  .rq-f { display: inline-flex; align-items: center; gap: 6px; } .rq-f small { color: #8a5200; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+  .rq-f code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .95rem; font-weight: 700; background: #fff; border: 1px solid #f0d6a6; border-radius: 6px; padding: 2px 7px; letter-spacing: .03em; }
+  .rq-c { border: 1px solid var(--line); background: #fff; border-radius: 999px; font: inherit; font-size: .72rem; font-weight: 600; padding: 2px 8px; cursor: pointer; }
+  .rq-a { display: inline-flex; gap: 6px; margin-left: auto; } .rq-a label.btn { cursor: pointer; } .rq-a label.btn b { font-weight: 600; }
+  .rq-note { color: #8a5200; }
   .oc-rtr-drop { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; padding: 12px; border: 1.5px dashed #b8c2d6; border-radius: 10px; background: #fff; cursor: pointer; font-size: .86rem; }
   .oc-rtr-drop span { color: #5f6673; font-size: .8rem; } .oc-rtr-drop.over { border-color: #1d3fae; background: #edf2ff; } .oc-rtr-drop.busy { opacity: .7; pointer-events: none; }
   .oc-rtr-prob { margin-top: 6px; color: #b42318; font-weight: 600; font-size: .84rem; }
@@ -8290,6 +8299,27 @@
     if (x.todo) return '<span class="oc-pill ' + (o.status === 'accepted' ? 'warn' : 'muted') + '">🛂 Right to rent: ' + x.todo + ' of ' + ts.length + ' to check</span>';
     return '<span class="oc-pill ok">🛂 Right to rent checked</span>';
   }
+  // Right to rent at a glance on the card: share code and date of birth for each
+  // applicant still to check, ready to copy into GOV.UK, and the result to drop in.
+  function rtrQuick(o){
+    if (o.status === 'rejected' || o.status === 'withdrawn') return '';
+    var d = o.data || {}, rtr = d.rtr || {};
+    var rows = (d.tenants || []).map(function(t, i){
+      var r = rtr[i + 1], n = i + 1, first = esc(String(t.name || '').split(/\s+/)[0] || 'Tenant ' + n);
+      if (r && !(r.auto && ((r.problems && r.problems.length) || (!r.photo_at && r.result !== 'none')))) return '';
+      if (r && r.problems && r.problems.length) return '<div class="rq" data-rtr="' + n + '"><b>' + esc(t.name) + '</b><span class="rq-note">⚠ Result needs checking: ' + r.problems.map(esc).join('; ') + '</span></div>';
+      if (r) return '<div class="rq" data-rtr="' + n + '"><b>' + esc(t.name) + '</b><span class="rq-note">✓ ' + esc({ unlimited: 'Unlimited right to rent', limited: 'Right to rent until ' + longDay(r.until), none: 'No right to rent' }[r.result] || '') + ' — does the photo on the result match ' + first + '?</span>' +
+        '<span class="rq-a"><button type="button" class="btn small primary" data-rtr-photo="person">✓ Yes — in person</button><button type="button" class="btn small" data-rtr-photo="video">✓ Yes — video call</button></span></div>';
+      if (!t.share_code) return '<div class="rq" data-rtr="' + n + '"><b>' + esc(t.name) + '</b><span class="rq-note">UK or Irish passport — see the original with ' + first + ' (in person or video call), then record it below</span></div>';
+      var code = t.share_code.replace(/^(.{3})(.{3})(.{3})$/, '$1 $2 $3'), dob = t.dob ? t.dob.split('-').reverse().join('/') : '';
+      return '<div class="rq" data-rtr="' + n + '"><b>' + esc(t.name) + '</b>' +
+        '<span class="rq-f"><small>Share code</small><code>' + esc(code) + '</code><button type="button" class="rq-c" data-rtr-copy="' + esc(t.share_code) + '">Copy</button></span>' +
+        (dob ? '<span class="rq-f"><small>Date of birth</small><code>' + esc(dob) + '</code><button type="button" class="rq-c" data-rtr-copy="' + esc(dob) + '">Copy</button></span>' : '') +
+        '<span class="rq-a"><button type="button" class="btn small primary" data-rtr-go="' + esc(t.share_code) + '">Check on GOV.UK ↗</button>' +
+        '<label class="btn small" data-rtr-drop><input type="file" data-rtr-read accept="application/pdf,image/jpeg,image/png" hidden>📄 <b>Add the result</b></label></span></div>';
+    }).filter(Boolean);
+    return rows.length ? '<div class="oc-rtrq"><div class="rq-h">🛂 Right to rent to check</div>' + rows.join('') + '</div>' : '';
+  }
   function rtrBox(o, t, n, r){
     var code = t.share_code ? t.share_code.replace(/^(.{3})(.{3})(.{3})$/, '$1 $2 $3') : '', today = isoDay(new Date()), by = '';
     try { by = localStorage.getItem('rr_rtr_by') || ''; } catch (e) {}
@@ -8365,7 +8395,7 @@
         '<div class="oc-price"><div class="oc-pw">' + esc(gbp(offPw(o))) + '<small> /week</small></div><div class="oc-pcm">' + esc(gbp(m.pcm || 0)) + ' /month' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' /wk' : '') + '</div></div></header>' +
       '<div class="oc-status"><span class="oc-pill ' + st[0] + '">' + st[1] + '</span>' +
         (o.paid_at ? offPaidPill(o) : (o.status === 'rejected' || o.status === 'withdrawn' ? '' : d.paid_claim ? '<span class="oc-pill wait">💬 Says paid ' + esc(longDay(d.paid_claim.date)) + (d.paid_claim.from ? ' from ' + esc(d.paid_claim.from) : '') + ' — check the bank</span>' : '<span class="oc-pill warn">Deposit ' + esc(gbp(m.holding || 0)) + ' not received</span>')) +
-        (o.status === 'withdrawn' && o.paid_at ? '<span class="oc-pill muted">Deposit not refundable (their terms)</span>' : '') + rtrSummary(o) + '</div>' +
+        (o.status === 'withdrawn' && o.paid_at ? '<span class="oc-pill muted">Deposit not refundable (their terms)</span>' : '') + rtrSummary(o) + '</div>' + rtrQuick(o) +
       '<div class="oc-grid">' + kv('Move in', d.move_in ? esc(longDay(d.move_in)) : '') + kv('Stay', esc(d.stay || '')) + kv('Tenants', String(ts.length)) + kv('Guarantors', d.guarantors_count ? String(d.guarantors_count) : '') +
         kv('Holding deposit', esc(gbp(m.holding || 0))) + kv('Due at signing', esc(gbp((m.balance || 0) - (o.paid_at && d.paid_amount != null ? Number(d.paid_amount) - (m.holding || 0) : 0)))) + '</div>' +
       (d.refund ? '<div class="oc-refund"><div><span>Refund to (given by the applicant)</span><b>' + esc(d.refund.name) + '</b> · ' + (d.refund.sort_code ? 'Sort code <b>' + esc(d.refund.sort_code) + '</b> · Account <b>' + esc(d.refund.account) + '</b>' : '') + (d.refund.iban ? ' · IBAN <b>' + esc(d.refund.iban) + '</b>' : '') +
@@ -8447,7 +8477,7 @@
       return;
     }
     var rc = e.target.closest('[data-rtr-copy]');
-    if (rc) { var dv = rc.dataset.rtrCopy; (navigator.clipboard ? navigator.clipboard.writeText(dv) : Promise.reject()).then(function(){ toast('Date of birth ' + dv + ' copied'); }, function(){ window.prompt('Date of birth:', dv); }); return; }
+    if (rc) { var dv = rc.dataset.rtrCopy; (navigator.clipboard ? navigator.clipboard.writeText(dv) : Promise.reject()).then(function(){ toast('Copied ' + dv); }, function(){ window.prompt('Copy:', dv); }); return; }
     var rs = e.target.closest('[data-rtr-save],[data-rtr-clear]');
     if (rs) {
       var box = rs.closest('[data-rtr]'), n = Number(box.dataset.rtr), v = function(k){ return box.querySelector('[data-rtr-k="' + k + '"]'); };
