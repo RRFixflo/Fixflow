@@ -1127,6 +1127,25 @@
       scroll-behavior: auto !important;
     }
   }
+
+  /* ===== Modern navy look (light theme), matching the offer form ===== */
+  @media not all and (prefers-color-scheme: dark) {
+    body { background:
+      radial-gradient(800px 360px at 88% -60px, rgba(217,38,46,.34), transparent 65%),
+      radial-gradient(560px 200px at 0% 40px, rgba(36,83,232,.22), transparent 70%),
+      linear-gradient(180deg, #13294b 0, #0b1f3a 200px, #08162b 290px, transparent 290px),
+      #f3f5f8; background-repeat: no-repeat; }
+    header.brand { background: rgba(255,255,255,.96); border-color: rgba(255,255,255,.6); box-shadow: 0 10px 30px -12px rgba(3,10,25,.55); }
+    .step-labels { color: #94a3b8; }
+    .step-labels span::before { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.3); color: #c6d0de; }
+    .step-labels span::after { background: rgba(255,255,255,.18); }
+    .step-labels span.done { color: #cbd5e1; }
+    .step-labels span.done::before { background: #12b76a; border-color: #12b76a; }
+    .step-labels span.done::after { background: #12b76a; }
+    .step-labels .active { color: #fff; }
+    .step-labels span.active::before { background: #fff; border-color: #fff; color: #0b1f3a; box-shadow: 0 0 0 5px rgba(255,255,255,.14); }
+    .panel.active { border-color: rgba(15,23,42,.06); box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 24px 48px -24px rgba(15,23,42,.28); }
+  }
 </style>
 </head>
 <body>
