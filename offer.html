@@ -107,6 +107,8 @@
   details.more[open] summary::after { transform:rotate(180deg); }
   details.more .body { padding:4px 16px 6px; }
   details.more summary small { font-weight:400; color:var(--faint); margin-left:6px; }
+  details.more.boost { border-color:#cfe6d8; background:#f6fbf8; }
+  .speed { font-size:.75rem; font-weight:700; color:var(--ok); background:var(--ok-t); border-radius:999px; padding:2px 9px; margin-left:8px; }
 
   /* ID upload */
   .drop { border:1.5px dashed var(--line2); border-radius:16px; padding:20px; text-align:center; background:#fafbfc; transition:all .15s; cursor:pointer; }
@@ -370,7 +372,7 @@
     box.addEventListener('click', function(e){
       var d = e.target.closest('[data-dec]') ? -1 : e.target.closest('[data-inc]') ? 1 : 0; if (!d) return;
       if (k === 'tenants') tenantsN = Math.min(max, Math.max(min, tenantsN + d)); else guarantorsN = Math.min(max, Math.max(min, guarantorsN + d));
-      draw(); if (k === 'tenants') drawTenants(); drawSummary();
+      draw(); if (k === 'tenants') drawTenants(); else drawGuarantors(); drawSummary();
     });
     draw();
   });
@@ -390,7 +392,8 @@
       '<div class="ten-head"><div class="avatar">' + n + '</div><div><h2>Tenant ' + n + (lead ? '<span class="tag">Lead tenant</span>' : '') + '</h2><div class="hint" style="margin:0">' + (lead ? 'The main contact for this offer.' : 'Everyone aged 18+ who will live there.') + '</div></div></div>' +
       '<div class="g2">' + field(n, 'name', 'Full name', { req: true, auto: lead ? 'name' : 'off', ph: 'As on their passport' }) + field(n, 'dob', 'Date of birth', { type: 'date', req: true }) + '</div>' +
       '<div class="g2">' + field(n, 'phone', 'Mobile', { type: 'tel', req: lead, auto: lead ? 'tel' : 'off' }) + field(n, 'email', 'Email', { type: 'email', req: lead, auto: lead ? 'email' : 'off' }) + '</div>' +
-      '<div class="g2">' + field(n, 'income_type', 'Main income', { select: ['Employed', 'Self-employed', 'Student', 'Retired', 'Benefits', 'Other'], req: true }) + field(n, 'salary', 'Gross annual salary', { mode: 'decimal', money: true }) + '</div>' +
+      '<div class="g2">' + field(n, 'income_type', 'Main income', { select: ['Employed', 'Self-employed', 'Student', 'Retired', 'Benefits', 'Other'], req: true }) + field(n, 'salary', 'Gross annual salary', { mode: 'decimal', money: true, req: true, hint: 'Before tax. Students who don’t work can leave it blank (a guarantor is needed).' }) + '</div>' +
+      '<div class="g2">' + field(n, 'company', 'Company name', { req: true, hint: 'Who they work for — or their business name if self-employed' }) + field(n, 'position', 'Job title') + '</div>' +
       field(n, 'current_address', 'Current address', { area: true, req: true }) +
       '<div class="sec-title">Right to rent</div>' +
       '<div class="g2">' + field(n, 'uk_passport', 'UK or Irish passport?', { select: ['', 'Yes', 'No'], req: true }) +
@@ -399,11 +402,11 @@
         '<div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg></div>' +
         '<b>Upload this tenant’s ID</b><span>Tap to take a photo or choose a file · photo or PDF, up to 4 · no ID needed for guarantors</span>' +
         '<input type="file" accept="image/*,.heic,.heif,application/pdf" multiple hidden data-idin="' + n + '"></div><div class="thumbs" data-idlist="' + n + '"></div></div>' +
-      '<details class="more"><summary>Work details <small>company, role, start date</small></summary><div class="body">' +
-        '<div class="g2">' + field(n, 'employment_type', 'Employment type', { select: ['', 'Full time', 'Part time', 'Contract', 'Zero hours'] }) + field(n, 'company', 'Company name') + '</div>' +
-        '<div class="g2">' + field(n, 'position', 'Current position') + field(n, 'start_date', 'Start date', { type: 'date' }) + '</div>' +
+      '<details class="more"><summary>More about work <small>type, start date, other income</small></summary><div class="body">' +
+        '<div class="g2">' + field(n, 'employment_type', 'Employment type', { select: ['', 'Full time', 'Part time', 'Contract', 'Zero hours'] }) + field(n, 'start_date', 'Start date', { type: 'date' }) + '</div>' +
         field(n, 'other_income', 'Any additional income', { area: true }) + '</div></details>' +
-      '<details class="more"><summary>Current home <small>rent and landlord</small></summary><div class="body">' +
+      '<details class="more boost" open><summary>Current home and landlord <span class="speed">⚡ Speeds up your offer</span></summary><div class="body">' +
+        '<p class="hint" style="margin:0 0 10px">Giving their current home and landlord details now lets us start references straight away — offers with these filled in move much faster.</p>' +
         '<div class="g2">' + field(n, 'residency_status', 'Status', { select: ['', 'Tenant', 'Living with family', 'Homeowner', 'Student accommodation', 'Other'] }) + field(n, 'current_rent', 'Rent paid a month', { mode: 'decimal', money: true }) + '</div>' +
         '<div class="g3">' + field(n, 'landlord_name', 'Landlord / agent') + field(n, 'landlord_email', 'Their email', { type: 'email' }) + field(n, 'landlord_phone', 'Their phone', { type: 'tel' }) + '</div>' +
         '<div class="g2">' + field(n, 'tenancy_start', 'Tenancy start', { type: 'date' }) + field(n, 'tenancy_end', 'Tenancy end', { type: 'date' }) + '</div></div></details>' +
@@ -422,7 +425,17 @@
     var box = $('tenants'), have = box.querySelectorAll('.ten').length;
     for (var i = have + 1; i <= tenantsN; i++) box.insertAdjacentHTML('beforeend', tenantHtml(i));
     box.querySelectorAll('.ten').forEach(function(el){ el.hidden = Number(el.dataset.t) > tenantsN; });
+    drawGuarantors();
   }
+  // Guarantor details only when there are guarantors (or the tenant is a student, who needs one).
+  function drawGuarantors(){
+    document.querySelectorAll('.ten').forEach(function(el){
+      var n = el.dataset.t, it = el.querySelector('[data-k="income_type"]'), stu = it && it.value === 'Student', g = el.querySelector('[data-gua="' + n + '"]');
+      g.hidden = !(guarantorsN > 0 || stu);
+      if (!g.hidden && (stu || guarantorsN > 0) && !g.dataset.seen) { g.open = true; g.dataset.seen = '1'; }
+    });
+  }
+  function setGuarantors(v){ guarantorsN = v; var box = document.querySelector('[data-count="guarantors"]'); $('guarantorsN').textContent = v; box.querySelector('[data-dec]').disabled = v <= 0; box.querySelector('[data-inc]').disabled = v >= 4; }
   drawTenants();
 
   // ----- ID files: tap or drag and drop, with previews -----
@@ -448,7 +461,10 @@
     // A student who doesn't work needs a guarantor: open and require that section.
     if (e.target.dataset && e.target.dataset.k === 'income_type') { var sn = e.target.closest('.ten').dataset.t, stu = e.target.value === 'Student';
       document.querySelector('[data-stu="' + sn + '"]').hidden = !stu; if (stu) document.querySelector('[data-gua="' + sn + '"]').open = true;
-      document.querySelector('[data-guasub="' + sn + '"]').textContent = stu ? 'required for students' : 'if they have one'; return; }
+      document.querySelector('[data-guasub="' + sn + '"]').textContent = stu ? 'required for students' : 'if they have one';
+      // A student needs a guarantor: count at least one.
+      if (stu && guarantorsN < 1) { setGuarantors(1); drawSummary(); }
+      drawGuarantors(); return; }
     if (e.target.dataset && e.target.dataset.k === 'uk_passport') { var tn = e.target.closest('.ten').dataset.t; document.querySelector('[data-share="' + tn + '"]').hidden = e.target.value !== 'No'; return; }
     var inp = e.target.closest('[data-idin]'); if (!inp) return;
     addFiles(inp.dataset.idin, inp.files); inp.value = '';
@@ -525,6 +541,8 @@
       if (!t.name) return showErr('Please enter tenant ' + i + '’s full name.', $('t' + i + '_name'));
       if (!t.dob) return showErr('Please enter tenant ' + i + '’s date of birth.', $('t' + i + '_dob'));
       if (i === 1 && !t.phone && !t.email) return showErr('Please give the lead tenant’s mobile or email.', $('t1_phone'));
+      if ((t.income_type === 'Employed' || t.income_type === 'Self-employed') && !t.company) return showErr('Please enter tenant ' + i + '’s company name (or business name if self-employed).', $('t' + i + '_company'));
+      if (t.income_type !== 'Student' && !(num(t.salary) > 0)) return showErr('Please enter tenant ' + i + '’s gross annual salary.', $('t' + i + '_salary'));
       if (!t.current_address) return showErr('Please enter tenant ' + i + '’s current address.', $('t' + i + '_current_address'));
       if (!t.uk_passport) return showErr('Please tell us whether tenant ' + i + ' has a UK or Irish passport.', $('t' + i + '_uk_passport'));
       if (t.uk_passport === 'No' && !/^[A-Z0-9]{9}$/.test((t.share_code || '').toUpperCase().replace(/\s+/g, ''))) return showErr('Please enter tenant ' + i + '’s 9-character right to rent share code.', $('t' + i + '_share_code'));
@@ -602,7 +620,7 @@
     }).then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) {
         busyBtns(false, 'Submit offer');
-        return showErr(d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'terms' ? 'Please tick each holding deposit point.' : d.error === 'guarantor' ? 'Students need a guarantor — please add their name, relation and phone or email.' : d.error === 'share_code' ? 'Please check each right to rent share code (9 letters and numbers).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
+        return showErr(d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'company' ? 'Please enter each working tenant’s company name.' : d.error === 'salary' ? 'Please enter each tenant’s gross annual salary.' : d.error === 'terms' ? 'Please tick each holding deposit point.' : d.error === 'guarantor' ? 'Students need a guarantor — please add their name, relation and phone or email.' : d.error === 'share_code' ? 'Please check each right to rent share code (9 letters and numbers).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
       }
       done(d);
     }).catch(function(){ busyBtns(false, 'Submit offer'); showErr('Couldn’t send — please check your connection and try again.'); });
@@ -611,7 +629,7 @@
   // ----- After submitting: pay the holding deposit, track the offer -----
   var TICK = '<div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>';
   function bankHtml(bank, amount, ref){
-    return bank ? '<div class="bank"><div><span>Account name</span><b>' + esc(bank.payee) + '</b></div><div><span>Sort code</span><b>' + esc(bank.sort_code) + '</b></div><div><span>Account number</span><b>' + esc(bank.account) + '</b></div><div><span>Amount</span><b>' + gbp(amount || 0) + '</b></div><div><span>Reference</span><b>' + esc(ref) + '</b></div></div>'
+    return bank ? '<div class="bank"><div><span>Account name</span><b>' + esc(bank.payee) + '</b></div><div><span>Sort code</span><b>' + esc(bank.sort_code) + '</b></div><div><span>Account number</span><b>' + esc(bank.account) + '</b></div><div><span>Amount</span><b>' + gbp(amount || 0) + '</b></div><div><span>Reference</span><b>' + esc(ref) + '</b></div></div><p class="hint" style="margin:-6px 0 12px">Please use exactly this payment reference (no spaces) so we can match your payment to your offer.</p>'
       : '<p>We’ll send you our bank details to pay it.</p>';
   }
   function trackBox(url){
@@ -644,7 +662,13 @@
   if (tm) {
     $('formView').hidden = true; $('trackView').hidden = false;
     $('trackView').innerHTML = '<div class="card"><p class="lead" style="margin:0">Loading your offer…</p></div>';
-    fetch('/api/offers/track/' + tm[1]).then(function(r){ return r.json(); }).then(function(d){
+    var lastSeen = '';
+    var loadTrack = function(){
+    fetch('/api/offers/track/' + tm[1], { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+      // Unchanged (or they're in the middle of withdrawing): leave the page as it is.
+      var key = JSON.stringify([d.status, d.paid_at, d.decided_at]);
+      if (key === lastSeen || ($('wdBox') && !$('wdBox').hidden)) return;
+      lastSeen = key;
       if (!d.ok) { $('trackView').innerHTML = '<div class="card"><h2>Offer not found</h2><p class="lead" style="margin:0">This link isn’t valid. Please check it, or contact Residential Realtors.</p></div>'; return; }
       var m = d.money || {}, acc = d.status === 'accepted', rej = d.status === 'rejected', wd = d.status === 'withdrawn', paid = !!d.paid_at;
       var steps = [
@@ -660,23 +684,33 @@
         // Withdraw: only once the holding deposit is confirmed, and they're told it isn't refunded.
         (paid && (d.status === 'new' || acc) ? '<div class="card"><h2>Changed your mind?</h2><p class="lead" style="margin:0 0 10px">You can withdraw your offer here.</p>' +
           '<div id="wdBox" hidden><div class="note-warn" style="background:var(--brand-t);color:#a3141b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg><span>As per our terms, if you withdraw your offer your holding deposit of <b>' + gbp(m.holding || 0) + '</b> will <b>not be refunded</b>.</span></div>' +
+            '<label class="l" style="margin-top:12px">Why are you withdrawing?</label><div class="chips" id="wdWhy">' + ['Found another property', 'My circumstances changed', 'The move-in date doesn’t work', 'It’s more than I can afford', 'Worried about passing references', 'Changed my mind about the property', 'Other'].map(function(r){ return '<button type="button" data-why="' + esc(r) + '">' + esc(r) + '</button>'; }).join('') + '</div>' +
+            '<textarea id="wdMore" rows="2" placeholder="Anything else you’d like to tell us (optional)" style="margin-top:8px"></textarea>' +
             '<label class="check" style="margin-top:10px"><input type="checkbox" id="wdOk"><span>I understand I won’t get my holding deposit back.</span></label>' +
             '<div class="btnrow" style="margin-top:10px"><button type="button" class="btn" id="wdCancel">Keep my offer</button><button type="button" class="btn go" id="wdGo">Withdraw my offer</button></div><div class="err" id="wdErr" hidden></div></div>' +
           '<button type="button" class="btn" id="wdOpen">Withdraw my offer</button></div>' : '');
       if ($('wdOpen')) {
         $('wdOpen').addEventListener('click', function(){ $('wdBox').hidden = false; this.hidden = true; });
         $('wdCancel').addEventListener('click', function(){ $('wdBox').hidden = true; $('wdOpen').hidden = false; });
+        var why = '';
+        $('wdWhy').addEventListener('click', function(e){ var b = e.target.closest('[data-why]'); if (!b) return; why = b.dataset.why; this.classList.remove('bad'); this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); }); });
         $('wdGo').addEventListener('click', function(){
+          if (!why) { $('wdWhy').classList.add('bad'); $('wdErr').textContent = 'Please choose why you’re withdrawing.'; $('wdErr').hidden = false; return; }
           if (!$('wdOk').checked) { $('wdErr').textContent = 'Please tick to confirm you understand the holding deposit isn’t refunded.'; $('wdErr').hidden = false; return; }
           var b = this; b.disabled = true; b.textContent = 'Withdrawing…';
-          fetch('/api/offers/track/' + tm[1] + '/withdraw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: true }) }).then(function(r){ return r.json(); }).then(function(x){
+          fetch('/api/offers/track/' + tm[1] + '/withdraw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: true, reason: why, more: $('wdMore').value.trim() }) }).then(function(r){ return r.json(); }).then(function(x){
             if (!x.ok) { b.disabled = false; b.textContent = 'Withdraw my offer'; $('wdErr').textContent = 'Couldn’t withdraw — please contact Residential Realtors.'; $('wdErr').hidden = false; return; }
             location.reload();
           });
         });
       }
       remember({ ref: d.ref, track: location.pathname, property: d.property, at: Date.now() });
-    }).catch(function(){ $('trackView').innerHTML = '<div class="card"><p class="lead" style="margin:0">Couldn’t load — please check your connection and refresh.</p></div>'; });
+    }).catch(function(){ if (!lastSeen) $('trackView').innerHTML = '<div class="card"><p class="lead" style="margin:0">Couldn’t load — please check your connection and refresh.</p></div>'; });
+    };
+    loadTrack();
+    // Updates by itself: when we mark the holding deposit received or the landlord decides.
+    setInterval(function(){ if (document.visibilityState === 'visible') loadTrack(); }, 30000);
+    document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') loadTrack(); });
   }
 
   drawStepper(); drawSummary(); go(1, true);
