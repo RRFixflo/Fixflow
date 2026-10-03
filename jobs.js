@@ -6333,11 +6333,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function offerPayRef(address, ref) { return (addrPayRef(address) || ref).slice(0, 18); }
   // ---------- Automatic holding deposit reminders (email) ----------
   // The applicant is emailed if the holding deposit hasn't been marked received
-  // (and they haven't said they've paid): a reminder about 12 hours after the
-  // offer, and a last one at about 22 hours (it's due within 24). Only offers made
+  // (and they haven't said they've paid): it's due as soon as the offer is in, so
+  // a reminder about 1 hour after the offer and a last one at about 4 hours. Only offers made
   // after reminders were first switched on; each one goes once, and is noted on
   // the offer. The office can turn this off on the Offers page.
-  const REMIND_STAGES = [{ key: 'r12', hours: 12 }, { key: 'r22', hours: 22 }];
+  const REMIND_STAGES = [{ key: 'r12', hours: 1 }, { key: 'r22', hours: 4 }];
   async function remindSettings(p) {
     const row = (await p.query("SELECT value FROM app_settings WHERE key = 'offer_reminders'")).rows[0];
     if (row && row.value) return row.value;
@@ -6348,12 +6348,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function reminderEmail(o, stage) {
     const d = o.data || {}, m = d.money || {}, ref = 'OF' + String(o.id).padStart(4, '0'), first = String(o.lead_name || '').split(/\s+/)[0] || 'there';
     const base = OFFER_ORIGIN || PUBLIC_URL, track = base + '/offer/track/' + o.track_token, payRef = offerPayRef(o.property_address, ref);
-    const due = new Date(new Date(o.created_at).getTime() + 24 * 3600 * 1000).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
     const last = stage === 'r22';
     const bank = [['Account name', INVOICE.payee], ['Sort code', INVOICE.sortCode], ['Account number', INVOICE.accountNumber], ['IBAN', INVOICE.iban], ['SWIFT / BIC', INVOICE.swift], ['Amount', gbp(m.holding)], ['Reference', payRef]].filter(function (r) { return r[1]; });
     const subject = (last ? 'Last reminder: ' : 'Reminder: ') + 'holding deposit for ' + shortAddrText(o.property_address) + ' (' + ref + ')';
     const text = 'Hi ' + first + ',\n\n' + (last ? 'This is a last reminder: to reserve the property' : 'Thank you for your offer on ' + o.property_address + '. To reserve the property') +
-      ', please pay the holding deposit of ' + gbp(m.holding) + ' by ' + due + '.\n\n' + bank.map(function (r) { return r[0] + ': ' + r[1]; }).join('\n') +
+      ', please pay the holding deposit of ' + gbp(m.holding) + ' now — it was due when you sent your offer. Your form alone isn\'t an offer: your offer is only made once the holding deposit is paid.\n\n' + bank.map(function (r) { return r[0] + ': ' + r[1]; }).join('\n') +
       '\n\nPlease use exactly this payment reference (no spaces) so we can match your payment.\n\nAlready paid? Tap "I\'ve paid" on your tracking page so we can check: ' + track +
       '\n\nThe holding deposit goes towards your first month\'s rent once your offer is accepted.\n\nResidential Realtors';
     const esc2 = function (x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
@@ -6361,7 +6360,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '<div style="background:#0b1f3a;color:#fff;border-radius:16px 16px 0 0;padding:22px 24px">' + (base ? '<img src="' + esc2(base) + '/logo-white.png" alt="Residential Realtors" height="40" style="display:block;height:40px;width:auto;margin:0 0 16px">' : '') + '<div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#ffb4b7;font-weight:700">' + (last ? 'Last reminder' : 'Reminder') + ' · Offer ' + ref + '</div>' +
       '<div style="font-size:22px;font-weight:800;margin-top:6px">Pay your holding deposit</div><div style="color:#c6d0de;margin-top:4px">' + esc2(o.property_address) + '</div></div>' +
       '<div style="border:1px solid #e7e9ee;border-top:0;border-radius:0 0 16px 16px;padding:22px 24px">' +
-      '<p style="margin:0 0 12px">Hi ' + esc2(first) + ', ' + (last ? 'this is a last reminder: to reserve the property' : 'thank you for your offer. To reserve the property') + ', please pay <b>' + esc2(gbp(m.holding)) + '</b> by <b>' + esc2(due) + '</b>.</p>' +
+      '<p style="margin:0 0 12px">Hi ' + esc2(first) + ', ' + (last ? 'this is a last reminder: to reserve the property' : 'thank you for your offer. To reserve the property') + ', please pay <b>' + esc2(gbp(m.holding)) + '</b> now — it was due when you sent your offer.</p><p style="margin:0 0 12px;background:#fffaeb;border:1px solid #f3d9a8;border-radius:10px;padding:10px 12px;color:#7a4d00"><b>Your form alone isn\'t an offer.</b> Your offer is only made once the 1 week holding deposit is paid.</p>' +
       '<table style="width:100%;border-collapse:collapse;margin:12px 0">' + bank.map(function (r) { return '<tr><td style="padding:8px 0;border-bottom:1px solid #eef0f3;color:#667085">' + esc2(r[0]) + '</td><td style="padding:8px 0;border-bottom:1px solid #eef0f3;text-align:right;font-weight:' + (r[0] === 'Reference' ? '800;color:#c8102e' : '600') + '">' + esc2(r[1]) + '</td></tr>'; }).join('') + '</table>' +
       '<p style="margin:0 0 16px;color:#667085;font-size:14px">Please use exactly this payment reference (no spaces) so we can match your payment.</p>' +
       '<a href="' + esc2(track) + '" style="display:block;text-align:center;background:#12b76a;color:#fff;text-decoration:none;font-weight:700;border-radius:12px;padding:14px">Already paid? Tell us here</a>' +

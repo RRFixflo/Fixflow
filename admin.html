@@ -8238,7 +8238,7 @@
     if (staffMode) return;
     api('GET', '/api/admin/offer-reminders').then(function(d){
       if (!d.ok) return; $('offRemind').hidden = false; $('offRemindOn').checked = d.on; $('offRemindLbl').textContent = d.on ? 'On' : 'Off';
-      $('offRemindNote').innerHTML = d.canEmail ? 'Applicants who haven’t paid (or said they’ve paid) are emailed with the bank details and their “I’ve paid” link about ' + d.stages[0] + ' hours after their offer, and a last reminder at ' + d.stages[1] + ' hours. Each one is noted on the offer.'
+      $('offRemindNote').innerHTML = d.canEmail ? 'The holding deposit is due as soon as the offer is in. Applicants who haven’t paid (or said they’ve paid) are emailed the bank details and their “I’ve paid” link ' + d.stages[0] + ' hour' + (d.stages[0] === 1 ? '' : 's') + ' after their offer, and a last reminder at ' + d.stages[1] + ' hours. Each one is noted on the offer.'
         : '<span style="color:#b42318">Email sending isn’t set up yet (RESEND_API_KEY in Railway), so reminders can’t go out.</span>';
     });
   }
