@@ -5508,6 +5508,65 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: topic, click: base ? base + '/staff' : undefined }, body)), signal: AbortSignal.timeout(8000) });
     } catch (err) { console.error('Staff offer alert failed:', err.message); }
   }
+  // Our emails as a modern branded page: navy header with the logo, the message,
+  // a big button for our main link (terms, offer, tracking page), a signature card
+  // and the company footer. Built from the plain text, which is sent alongside it.
+  function brandEmail(text, subject) {
+    const base = OFFER_ORIGIN || PUBLIC_URL, e = function (x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    let body = String(text || '').replace(/\r/g, '');
+    // The disclaimer and the sign-off become their own parts.
+    let disclaimer = ''; const di = body.search(/\n*This e-?mail message may contain confidential/i);
+    if (di !== -1) { disclaimer = body.slice(di).trim(); body = body.slice(0, di); }
+    let sig = []; const sm = /\n\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Thanks,?|Yours sincerely,?)\s*\n([\s\S]*)$/i.exec(body);
+    if (sm) { sig = sm[2].split('\n').map(function (l) { return l.trim(); }).filter(Boolean); body = body.slice(0, sm.index); }
+    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer']];
+    const buttons = [];
+    const btnOf = function (b) { return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 22px"><tr><td style="background:#0b1f3a;border-radius:12px"><a href="' + e(b.url) + '" style="display:inline-block;padding:15px 26px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">' + e(b.label) + ' &rarr;</a></td></tr></table><p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3">Or copy this link: <a href="' + e(b.url) + '" style="color:#98a2b3;word-break:break-all">' + e(b.url) + '</a></p>'; };
+    const linkify = function (t) { return e(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, function (u) { return '<a href="' + u + '" style="color:#1d3fae;text-decoration:underline">' + u + '</a>'; }); };
+    const paras = body.trim().split(/\n{2,}/).map(function (p) {
+      p = p.trim(); if (!p) return ''; const nb = buttons.length;
+      const after = function () { return buttons.slice(nb).map(btnOf).join(''); };
+      // Our own main link: a button instead of the bare address.
+      p = p.replace(/\s*(?:—|-)?\s*(https?:\/\/[^\s]+)/g, function (all, u) { const b = BTN.filter(function (x) { return x[0].test(u.replace(/[).,]+$/, '')); })[0]; if (!b || buttons.some(function (x) { return x.url === u; })) return all; buttons.push({ url: u.replace(/[).,]+$/, ''), label: b[1] }); return ' '; }).replace(/\s+(here|below)?:\s*$/i, function (m, w) { return w ? ' using the button below.' : '.'; }).replace(/\s+—\s*Residential Realtors\s*$/i, '').trim();
+      const lines = p.split('\n');
+      if (lines.every(function (l) { return /^\s*[-•]\s+/.test(l); })) return '<ul style="margin:0 0 16px;padding-left:20px">' + lines.map(function (l) { return '<li style="margin:0 0 6px">' + linkify(l.replace(/^\s*[-•]\s+/, '')) + '</li>'; }).join('') + '</ul>' + after();
+      // A block of "Label: value" lines (offer details, bank details): a tidy panel.
+      const kvRe = /^([A-Za-z][^:]{1,38}):\s*(.*)$/;
+      if (lines.length >= 2 && lines.filter(function (l) { return kvRe.test(l) && !/https?:$/i.test(l.split(':')[0]); }).length >= 2 && lines.every(function (l) { return kvRe.test(l) || /^\s*[-•]\s+/.test(l); })) {
+        let rows = '', bul = [];
+        const flush = function () { if (bul.length) { rows += '<tr><td colspan="2" style="padding:2px 0 8px"><ul style="margin:0;padding-left:18px">' + bul.map(function (x) { return '<li style="margin:0 0 4px">' + linkify(x) + '</li>'; }).join('') + '</ul></td></tr>'; bul = []; } };
+        lines.forEach(function (l) {
+          if (/^\s*[-•]\s+/.test(l)) { bul.push(l.replace(/^\s*[-•]\s+/, '')); return; }
+          flush(); const m = kvRe.exec(l);
+          rows += m[2].trim() ? '<tr><td style="padding:7px 12px 7px 0;color:#667085;vertical-align:top;white-space:nowrap;border-bottom:1px solid #eef0f3">' + e(m[1]) + '</td><td style="padding:7px 0;font-weight:600;border-bottom:1px solid #eef0f3">' + linkify(m[2]) + '</td></tr>'
+            : '<tr><td colspan="2" style="padding:12px 0 4px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:#0b1f3a">' + e(m[1]) + '</td></tr>';
+        });
+        flush();
+        return '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f7f8fa;border:1px solid #eef0f3;border-radius:12px;margin:0 0 18px"><tr><td style="padding:10px 16px"><table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;font-size:14px">' + rows + '</table></td></tr></table>' + after();
+      }
+      // A short title line on its own ("Frequently Asked Questions").
+      if (lines.length === 1 && p.length <= 40 && /^[A-Z][A-Za-z ]+$/.test(p) && p.split(' ').filter(function (w) { return /^[A-Z]/.test(w); }).length >= Math.max(2, p.split(' ').length - 1)) return '<h2 style="margin:26px 0 4px;font-size:18px;color:#0b1f3a;border-top:1px solid #eef0f3;padding-top:18px">' + e(p) + '</h2>';
+      if (lines.length === 1 && /^[A-Z0-9 ,.'’&:-]{12,}$/.test(p)) return '<p style="margin:0 0 16px;font-size:12px;letter-spacing:.06em;font-weight:700;color:#475467">' + e(p) + '</p>';
+      return lines.map(function (l, i) {
+        if (i === 0 && lines.length > 1 && /\?\s*$/.test(l) && l.length <= 120) return '<h3 style="margin:22px 0 6px;font-size:16px;color:#0b1f3a">' + e(l) + '</h3>';
+        return null;
+      }).filter(Boolean).join('') + '<p style="margin:0 0 16px">' + lines.filter(function (l, i) { return !(i === 0 && lines.length > 1 && /\?\s*$/.test(l) && l.length <= 120); }).map(linkify).join('<br>') + '</p>' + after();
+    }).join('');
+    const btnHtml = '';
+    const title = String(subject || '').replace(/\s*[—-]\s*Residential Realtors\s*$/i, '');
+    const sigHtml = sig.length ? '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:8px 0 0;border-top:1px solid #eef0f3"><tr><td style="padding:18px 0 0"><div style="font-size:13px;color:#667085;margin:0 0 4px">Kind regards,</div>' +
+      sig.map(function (l, i) { const kv = /^([TWAEM]):\s*(.+)$/.exec(l); if (kv) { const v = kv[2]; return '<div style="font-size:13px;color:#475467;margin-top:' + (i && !/^[TWAEM]:/.test(sig[i - 1]) ? '10px' : '2px') + '">' + ({ T: 'Tel', W: 'Web', A: 'Office', E: 'Email', M: 'Mobile' }[kv[1]]) + ': ' + (kv[1] === 'T' || kv[1] === 'M' ? '<a href="tel:' + e(v.replace(/\s/g, '')) + '" style="color:#475467">' + e(v) + '</a>' : kv[1] === 'W' ? '<a href="https://' + e(v.replace(/^https?:\/\//, '')) + '" style="color:#475467">' + e(v) + '</a>' : e(v)) + '</div>'; }
+        return '<div style="font-size:' + (i === 0 ? '16px;font-weight:700;color:#0b1f3a' : '14px;color:#475467') + '">' + e(l) + '</div>'; }).join('') + '</td></tr></table>' : '';
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + e(title) + '</title></head>' +
+      '<body style="margin:0;padding:0;background:#f3f5f8"><div style="display:none;max-height:0;overflow:hidden">' + e(String(body).replace(/\s+/g, ' ').slice(0, 140)) + '</div>' +
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f5f8"><tr><td align="center" style="padding:24px 12px">' +
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;color:#101828;font-size:15px;line-height:1.6">' +
+      '<tr><td style="background:#0b1f3a;border-radius:18px 18px 0 0;padding:26px 30px 24px">' + (base ? '<img src="' + e(base) + '/logo-white.png" alt="Residential Realtors" height="44" style="display:block;height:44px;width:auto;border:0;margin:0 0 18px">' : '<div style="color:#fff;font-weight:800;font-size:18px;margin:0 0 14px">Residential Realtors</div>') +
+        '<div style="height:3px;width:44px;background:#D9262E;border-radius:2px;margin:0 0 14px"></div><div style="color:#ffffff;font-size:21px;font-weight:800;line-height:1.3">' + e(title) + '</div></td></tr>' +
+      '<tr><td style="background:#ffffff;padding:28px 30px 26px;border-radius:0 0 18px 18px;border:1px solid #e7e9ee;border-top:0">' + paras + btnHtml + sigHtml + '</td></tr>' +
+      '<tr><td style="padding:18px 8px 0;font-size:12px;color:#98a2b3;line-height:1.55;text-align:center"><b style="color:#667085">Residential Realtors</b> &middot; ' + e(INVOICE.address || '28-30 Harper Road, London, SE1 6AD') + '<br><a href="tel:02070968131" style="color:#98a2b3">0207 096 8131</a> &middot; <a href="mailto:info@residentialrealtors.co.uk" style="color:#98a2b3">info@residentialrealtors.co.uk</a> &middot; <a href="https://www.residentialrealtors.co.uk" style="color:#98a2b3">residentialrealtors.co.uk</a><br>Trading name of Estallion Investments Limited &middot; Registered in England No. ' + e(INVOICE.companyNo || '08760284') +
+        (disclaimer ? '<div style="margin-top:12px;font-size:11px;color:#b0b6c0;text-align:left">' + e(disclaimer) + '</div>' : '') + '</td></tr></table></td></tr></table></body></html>';
+  }
   // Send an email written in Fixflow straight away (Resend), from the signed-in person:
   // their name on our sending address, replies to their own email, a copy to them.
   const mailSent = new Map();
@@ -5524,7 +5583,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let me = ''; try { if (req.user && req.user.id) me = ((await (await db()).query('SELECT email FROM staff_users WHERE id = $1', [req.user.id])).rows[0] || {}).email || ''; } catch (e) {}
     const replyTo = isEmail(me) ? me : 'info@residentialrealtors.co.uk';
     const name = req.user && req.user.id && req.user.name ? req.user.name + ' - Residential Realtors' : 'Residential Realtors';
-    const r = await sendEmail({ to: to, cc: cc, bcc: b.copy !== false && isEmail(me) && to.concat(cc).indexOf(me) === -1 ? [me] : undefined, replyTo: replyTo, fromName: name, subject: subject, text: text }).catch(function (err) { return { ok: false, error: err.message }; });
+    const r = await sendEmail({ to: to, cc: cc, bcc: b.copy !== false && isEmail(me) && to.concat(cc).indexOf(me) === -1 ? [me] : undefined, replyTo: replyTo, fromName: name, subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
     if (!r.ok) { console.error('Send email failed:', r.error); return res.status(502).json({ ok: false, error: 'send-failed', detail: String(r.error || '').slice(0, 200) }); }
     res.json({ ok: true, replyTo: replyTo });
   });
@@ -7386,8 +7445,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (t.status === 'signed') return res.status(409).json({ ok: false, error: 'signed' });
     if (b.cancel === true) { await p.query("UPDATE landlord_terms SET status = 'cancelled', log = log || $2::jsonb WHERE id = $1", [id, JSON.stringify([ltLog(req, 'Agreement cancelled - the link no longer works')])]); return res.json({ ok: true }); }
     const fees = cleanFees(b.fees);
+    if (fees.find === 'none' && fees.ongoing === 'none' && !fees.other) return res.status(400).json({ ok: false, error: 'fees' });
+    if ((fees.find !== 'none' && fees.find_pct == null) || (fees.ongoing !== 'none' && fees.ongoing_pct == null) || (fees.renewal && fees.renewal_pct == null)) return res.status(400).json({ ok: false, error: 'pct' });
+    const was = (await p.query('SELECT property_address, status FROM landlord_terms WHERE id = $1', [id])).rows[0], newAddr = str(b.property_address, 400);
     await p.query("UPDATE landlord_terms SET status = 'sent', property_address = coalesce($2, property_address), landlord_name = coalesce($3, landlord_name), landlord_email = $4, landlord_phone = $5, fees = $6, log = log || $7::jsonb WHERE id = $1",
-      [id, str(b.property_address, 400) || null, str(b.landlord_name, 200) || null, str(b.landlord_email, 200) || null, str(b.landlord_phone, 40) || null, JSON.stringify(fees), JSON.stringify([ltLog(req, 'Agreed fees updated')])]);
+      [id, str(b.property_address, 400) || null, str(b.landlord_name, 200) || null, str(b.landlord_email, 200) || null, str(b.landlord_phone, 40) || null, JSON.stringify(fees), JSON.stringify([ltLog(req, 'Agreement edited (fees and details)' + (was.status === 'cancelled' ? ' - link turned back on' : ''))])]);
+    // A new address: check its EPC again.
+    if (newAddr && newAddr !== was.property_address) { await p.query("UPDATE landlord_terms SET data = data - 'epc' WHERE id = $1", [id]); ltEpc(p, { id: id, property_address: newAddr, data: {} }).catch(function () {}); }
     res.json({ ok: true });
   }));
   app.delete('/api/admin/landlord-terms/:id', withDb(async function (p, req, res) {
