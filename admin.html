@@ -434,11 +434,12 @@
   .oc-refund span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
-  .staff-mode .side .nav:not(#logoutBtn):not(#navTeam), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navTeam):not(#navWho), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
-  .side .nav.nav-team { background: linear-gradient(135deg, rgba(217,38,46,.22), rgba(255,180,183,.10)); border: 1px solid rgba(255,180,183,.45); color: #fff; margin: 4px 0 10px; font-weight: 700; }
+  .side .nav.nav-team { background: linear-gradient(135deg, rgba(217,38,46,.22), rgba(255,180,183,.10)); border: 1px solid rgba(255,180,183,.45); color: #fff; margin: 4px 0 6px; font-weight: 700; }
+  .side #navWho { margin-bottom: 10px; }
   .side .nav.nav-team span { display: flex; flex-direction: column; line-height: 1.15; } .side .nav.nav-team small { font-size: .68rem; font-weight: 600; color: #ffb4b7; letter-spacing: .04em; text-transform: uppercase; margin-top: 2px; }
   .side .nav.nav-team.on, .side .nav.nav-team:hover { background: linear-gradient(135deg, rgba(217,38,46,.45), rgba(255,180,183,.18)); }
   .staff-tabs button.st-team { color: #a3141b; } .staff-tabs button.st-team.on { background: #a3141b; color: #fff; }
@@ -1125,6 +1126,7 @@
     <button type="button" class="side-brand" id="brandHome" title="Back to repair jobs"><span class="side-logo"><img src="/logo-white.png" alt="Residential Realtors"></span><span class="side-sub">Maintenance portal</span></button>
     <button class="side-search" type="button" id="sideSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<span class="kbd">Ctrl K</span></button>
     <button class="nav nav-team" type="button" id="navTeam" hidden title="Managers only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Team &amp; access<small>Managers only</small></span></button>
+    <button class="nav nav-team" type="button" id="navWho" hidden title="Managers only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg><span>Who did what<small>Managers only</small></span></button>
     <button class="nav on" type="button" id="navJobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg> Repair jobs <span class="badge" id="sOpen">0</span></button>
     <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
     <button class="nav" type="button" id="navTenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg> Tenants</button>
@@ -1369,10 +1371,8 @@
             <p class="muted-note" style="margin:0 0 10px">Give each person their own sign-in. Everything they change is recorded with their name — in job updates, offer and tenancy histories, and below.</p>
             <div id="teamList"></div>
             <div class="team-add"><b>Add a person</b>
-              <div class="team-grid"><input class="inp" id="tmName" placeholder="Name (they sign in with this)" maxlength="80"><input class="inp" id="tmEmail" type="email" placeholder="Email (optional)"><select class="inp" id="tmRole"><option value="full">Full access</option><option value="offers">Offers only</option><option value="admin">Full access + manage team</option></select><input class="inp" id="tmPw" type="text" autocomplete="off" placeholder="Password (8+ characters)"></div>
+              <div class="team-grid"><input class="inp" id="tmName" placeholder="Name (they sign in with this)" maxlength="80"><input class="inp" id="tmEmail" type="email" placeholder="Email (optional)"><select class="inp" id="tmRole"><option value="full">Full access</option><option value="offers">Offers only</option><option value="admin">Full access + manage team</option></select><input class="inp" id="tmPw" type="text" autocomplete="off" placeholder="Password"></div>
               <button class="btn primary small" type="button" id="tmAdd" style="margin-top:8px">Add person</button></div>
-            <div class="team-feed-h"><b>Who did what</b><select class="inp" id="tmFilter" style="width:auto"><option value="">Everyone</option></select></div>
-            <div id="teamFeed"></div>
           </div>
         </details>
         <div class="act-bar-top"><span class="muted-note" style="margin:0">Showing</span><select class="inp" id="actDays" style="width:auto" aria-label="Period"><option value="30">Last 30 days</option><option value="7">Last 7 days</option><option value="90">Last 90 days</option><option value="365">Last 12 months</option></select><span class="muted-note" id="actStamp" style="margin:0"></span><span style="flex:1"></span><button type="button" class="btn small ghost" id="actAll">Expand all</button></div>
@@ -1438,9 +1438,10 @@
         </details>
       </div>
 
-      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button></div>
+      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
+      <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto"><option value="">Everyone</option></select></div><div id="teamFeed"></div></div></div>
       <div id="ltView" hidden>
         <details class="card" id="ltNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New landlord agreement</summary>
           <p class="muted-note" style="margin:8px 0 12px">Set the fees you agreed with the landlord. You’ll get a private link to send them: they check the fees, fill in the property details form, read the terms and sign. You get the signed PDF with an audit trail.</p>
@@ -1487,7 +1488,7 @@
         <details class="card" id="offStaff" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">👥 Staff access to offers <span class="muted-note" id="offStaffSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
           <p class="muted-note" style="margin:8px 0">Give staff this link and the staff password. They can only see and work on offers — accept or reject, mark deposits, right to rent checks, tracking links and the PDF. They can’t delete offers or see anything else in Fixflow. Everything they do is noted on the offer.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offStaffLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offStaffCopy">Copy link</button></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offStaffPw" type="text" autocomplete="off" placeholder="New staff password (at least 8 characters)" style="flex:1;min-width:220px"><button class="btn primary" type="button" id="offStaffSave">Set password</button></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offStaffPw" type="text" autocomplete="off" placeholder="New staff password" style="flex:1;min-width:220px"><button class="btn primary" type="button" id="offStaffSave">Set password</button></div>
           <div class="off-alerts"><b>🔔 Phone alerts for staff</b><p class="muted-note" style="margin:2px 0 8px">Staff get an alert when an offer comes in, is accepted or rejected, a holding deposit arrives, or an applicant says they’ve paid. They install the free <b>ntfy</b> app and subscribe to this channel (or open the link on their phone):</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offAlertLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offAlertCopy">Copy</button></div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small ghost" type="button" id="offStaffOut">Sign all staff out</button><button class="btn small ghost danger" type="button" id="offStaffOff">Turn off staff access</button></div>
@@ -2259,10 +2260,10 @@
         if (!history.state) history.replaceState({ v: 'offers', depth: 0 }, '', location.pathname);
         loadOffers().then(function(){ showView('offers'); });
         // An offers team manager also gets the Team section on the Offers page.
-        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; }
+        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; $('stWho').hidden = false; $('navWho').hidden = false; }
         return;
       }
-      $('navTeam').hidden = !d.canManageUsers;
+      $('navTeam').hidden = !d.canManageUsers; $('navWho').hidden = !d.canManageUsers;
       // The date and time the latest version went live (UK time).
       if (d.deployedAt) {
         var dt = new Date(d.deployedAt), when = dt.toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -3354,8 +3355,8 @@
   $('brandHomeM').addEventListener('click', goHome);
 
   function showView(v){
-    if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
-    if (staffMode && v !== 'lt' && v !== 'team') v = 'offers';
+    if ((v === 'team' || v === 'who') && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
+    if (staffMode && v !== 'lt' && v !== 'team' && v !== 'who') v = 'offers';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -3368,7 +3369,7 @@
     $('navOffersLink').classList.toggle('on', v === 'offers');
     $('tcyView').hidden = v !== 'tcy';
     $('actView').hidden = v !== 'act';
-    $('teamView').hidden = v !== 'team'; $('navTeam').classList.toggle('on', v === 'team');
+    $('teamView').hidden = v !== 'team'; $('navTeam').classList.toggle('on', v === 'team'); $('whoView').hidden = v !== 'who'; $('navWho').classList.toggle('on', v === 'who');
     $('ctrView').hidden = v !== 'ctr';
     $('ctsView').hidden = v !== 'cts';
     $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
@@ -3382,11 +3383,12 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', team: 'Team & access', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') loadLt();
     if (v === 'team') { loadTeam(); $('teamSec').open = true; }
+    if (v === 'who') loadTeam();
     if (v === 'tcy' && !openTcyId) renderTenancies();
     if (v === 'act') loadActivity();
     if (v === 'ctr') renderContractorPage();
@@ -8336,7 +8338,7 @@
   }
   $('offStaffSave').addEventListener('click', function(){
     var pw = $('offStaffPw').value.trim();
-    if (pw.length < 8) { toast('Use at least 8 characters'); $('offStaffPw').focus(); return; }
+    if (!pw.trim()) { toast('Enter a password'); $('offStaffPw').focus(); return; }
     api('POST', '/api/admin/offers-staff', { password: pw }).then(function(d){
       if (!d.ok) { toast(d.error === 'same' ? 'Use a different password from your own' : 'Couldn’t save it'); return; }
       $('offStaffPw').value = ''; toast('Staff password saved' + (d.signed_out ? ' — ' + d.signed_out + ' staff signed out' : '')); loadOffStaff();
@@ -11314,7 +11316,7 @@
   $('tmAdd').addEventListener('click', function(){
     var body = { name: $('tmName').value.trim(), email: $('tmEmail').value.trim(), role: $('tmRole').value, password: $('tmPw').value };
     if (!body.name) { toast('Enter their name'); $('tmName').focus(); return; }
-    if (body.password.length < 8) { toast('Use a password of at least 8 characters'); $('tmPw').focus(); return; }
+    if (!body.password.trim()) { toast('Enter a password for them'); $('tmPw').focus(); return; }
     api('POST', '/api/admin/users', body).then(function(d){
       if (!d.ok) { toast(d.error === 'taken' ? 'Someone already has that name' : d.error === 'owner-only' ? 'Only the owner can add people who manage the team' : d.error === 'offers-only' ? 'You can add offers team members only' : 'Couldn’t add them'); return; }
       toast(body.name + ' added — they sign in with their name and password'); $('tmName').value = $('tmEmail').value = $('tmPw').value = ''; loadTeam();
@@ -11337,9 +11339,9 @@
       api('POST', '/api/admin/users/' + uid, { name: nn, email: em }).then(function(d){ toast(d.ok ? 'Saved — ' + nn + ' now signs in with this name' : d.error === 'taken' ? 'Someone already has that name' : d.error === 'owner-only' ? 'Only the owner can change that' : 'Couldn’t save it'); if (d.ok) loadTeam(); });
       return;
     }
-    if (e.target.closest('[data-tm-pw]')) { var pw = window.prompt('New password for ' + name + ' (at least 8 characters):'); if (!pw) return; if (pw.length < 8) { toast('At least 8 characters'); return; }
+    if (e.target.closest('[data-tm-pw]')) { var pw = window.prompt('New password for ' + name + ':'); if (!pw) return; if (!pw.trim()) { toast('Enter a password'); return; }
       api('POST', '/api/admin/users/' + uid, { password: pw }).then(function(d){ toast(d.ok ? 'Password changed — ' + name + ' is signed out everywhere' : 'Couldn’t change it'); }); return; }
-    if (e.target.closest('[data-tm-feed]')) { $('tmFilter').value = uid; loadTeamFeed(); $('teamFeed').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    if (e.target.closest('[data-tm-feed]')) { showView('who'); $('tmFilter').value = uid; loadTeamFeed(); return; }
     if (e.target.closest('[data-tm-del]')) { if (!confirm('Remove ' + name + '? They’re signed out and can’t sign in again. Their past changes keep their name.')) return;
       api('DELETE', '/api/admin/users/' + uid, { confirm: true }).then(function(d){ toast(d.ok ? name + ' removed' : d.error === 'self' ? 'You can’t remove yourself' : d.error === 'owner-only' || d.error === 'offers-only' ? 'You can’t remove this person' : 'Couldn’t remove them'); loadTeam(); }); return; }
     var off = e.target.closest('[data-tm-off]');
@@ -11672,6 +11674,7 @@
   $('navAct').addEventListener('click', function(){ showView('act'); });
   $('teamView').appendChild($('teamSec'));
   $('navTeam').addEventListener('click', function(){ showView('team'); });
+  $('navWho').addEventListener('click', function(){ showView('who'); });
 
   // Phones: a bottom tab bar standing in for the sidebar. The buttons reuse the
   // sidebar's icons and simply click the matching sidebar item.
