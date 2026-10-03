@@ -1534,7 +1534,7 @@ module.exports = function mountJobs(app, opts) {
   function staffAllowed(method, path) {
     if (/^\/landlord-terms(\/\d+(\/pdf)?)?$/.test(path) && method !== 'DELETE') return true;   // landlord terms tab
     if (method === 'GET') return path === '/me' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
-    if (method === 'POST') return /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo))?$/.test(path);
+    if (method === 'POST') return /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
 
@@ -1988,7 +1988,8 @@ module.exports = function mountJobs(app, opts) {
 
   app.get('/api/admin/me', async function (req, res) {
     let alerts = ''; try { alerts = (await db()) ? NTFY_SERVER + '/' + (await offersTopic()) : ''; } catch (e) {}
-    res.json({ ok: true, role: req.role || null, user: req.user || null, canManageUsers: canManageUsers(req), offerAlerts: alerts, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, offerOrigin: OFFER_ORIGIN, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
+    let uemail = ''; try { if (req.user && req.user.id) uemail = ((await (await db()).query('SELECT email FROM staff_users WHERE id = $1', [req.user.id])).rows[0] || {}).email || ''; } catch (e) {}
+    res.json({ ok: true, role: req.role || null, user: req.user ? Object.assign({}, req.user, { email: uemail }) : null, canManageUsers: canManageUsers(req), offerAlerts: alerts, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, offerOrigin: OFFER_ORIGIN, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
   });
 
   // Wraps a handler: no database -> 503; unexpected errors -> 500 (logged).
@@ -6338,9 +6339,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     const data = {
       per: per, offer_entered: amt, max_entered: maxAmt || null, max_pw: maxPw, tenants_count: parseInt(b.tenants_count, 10) || tenants.length, guarantors_count: parseInt(b.guarantors_count, 10) || 0,
-      move_in: isoDay(b.move_in) || null, stay: s(b.stay, 80), rent_frequency: 'Monthly', negotiate: s(b.negotiate, 2000), about: s(b.about, 3000),
+      move_in: isoDay(b.move_in) || null, stay: s(b.stay, 80), rent_frequency: 'Monthly', about: s(b.about, 3000),
+      conditions: (Array.isArray(b.conditions) ? b.conditions : []).slice(0, 15).map(function (c) { return s(c, 300); }).filter(Boolean),
       tenants: tenants, signature: s(b.signature), signed_at: new Date().toISOString(), terms_ticked: 6, money: offerMoney(pw), ip: String(req.ip || '').slice(0, 60)
     };
+    data.negotiate = data.conditions.length ? data.conditions.join('\n') : s(b.negotiate, 2000);
+    if (!data.conditions.length && data.negotiate) data.conditions = data.negotiate.split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 15);
     // Signing evidence for the audit trail: where and how it was signed, and a fingerprint of what was signed.
     const started = Date.parse(b.started_at);
     data.audit = { ip: data.ip, ua: str(req.get('user-agent'), 300) || '', started_at: started && started < Date.now() && started > Date.now() - 7 * 864e5 ? new Date(started).toISOString() : null };
@@ -6491,7 +6495,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const bank = (!o.paid_at || short > 0) && o.status !== 'rejected' && o.status !== 'withdrawn' && INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null;
     res.json({ ok: true, ref: ref, property: o.property_address, name: String(o.lead_name || '').split(/\s+/)[0], created_at: o.created_at, status: o.status, decided_at: o.decided_at, paid_at: o.paid_at,
       offer_pw: Number(o.offer_pw), money: d.money || {}, move_in: d.move_in || null, stay: d.stay || '', tenants: (d.tenants || []).length, bank: bank, reference: offerPayRef(o.property_address, ref),
-      refund: d.refund ? { given_at: d.refund.at, name: d.refund.name } : null, refunded_at: d.refunded_at || null, paid_claim: d.paid_claim || null, paid_amount: o.paid_at ? got : null, short: short });
+      refund: d.refund ? { given_at: d.refund.at, name: d.refund.name } : null, refunded_at: d.refunded_at || null, paid_claim: d.paid_claim || null, paid_amount: o.paid_at ? got : null, short: short, conditions: offerConds(d) });
   }));
   app.get('/api/admin/offers', withDb(async function (p, req, res) {
     const r = await p.query(`SELECT o.id, o.created_at, o.property_address, o.property_key, o.lead_name, o.lead_email, o.lead_phone, o.offer_pw, o.data, o.status, o.decided_at, o.paid_at, o.seen_at, o.log, o.track_token,
@@ -6513,6 +6517,59 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.end(r.rows[0].data);
   }));
   // Accept / reject (or back to new), payment received (or not), seen.
+  // ---------- The offer for the landlord to review ----------
+  // A private link showing the offer without the applicants' contact details
+  // (no phone numbers, emails, dates of birth, addresses or ID documents), where
+  // the landlord can accept, decline or ask to discuss.
+  app.post('/api/admin/offers/:id/landlord-link', withDb(async function (p, req, res) {
+    const id = jobId(req);
+    const o = (await p.query('SELECT id, property_address, property_key, data FROM offers WHERE id = $1', [id])).rows[0];
+    if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
+    let tok = (o.data || {}).landlord_token;
+    if (!tok) { tok = crypto.randomBytes(16).toString('base64url'); await p.query("UPDATE offers SET data = data || jsonb_build_object('landlord_token', $2::text), log = log || $3::jsonb WHERE id = $1", [id, tok, JSON.stringify([offerLog(req, 'Landlord review link created')])]); }
+    // The landlord on our records for this property, and any terms of business link waiting for them.
+    const ll = (await p.query('SELECT l.name, l.email, l.phone FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [o.property_key || propKey(o.property_address)])).rows[0] || null;
+    const tr = (await p.query("SELECT token, status, property_address FROM landlord_terms WHERE status IN ('sent', 'signed') ORDER BY id DESC LIMIT 200")).rows.filter(function (t) { return sameProperty(t.property_address, o.property_address); })[0];
+    res.json({ ok: true, link: (OFFER_ORIGIN || PUBLIC_URL) + '/offer/review/' + tok, landlord: ll, terms: tr ? { link: (OFFER_ORIGIN || PUBLIC_URL) + '/landlord/' + tr.token, signed: tr.status === 'signed' } : null, report: PUBLIC_URL || '' });
+  }));
+  async function offerByLandlordToken(p, t) { return /^[\w-]{16,40}$/.test(String(t || '')) ? (await p.query("SELECT * FROM offers WHERE data->>'landlord_token' = $1", [String(t)])).rows[0] : null; }
+  app.get('/api/offers/review/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const o = await offerByLandlordToken(p, req.params.token);
+    if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
+    const d = o.data || {}, m = d.money || {}, rtr = d.rtr || {};
+    if (!d.landlord_viewed_at) p.query("UPDATE offers SET data = data || jsonb_build_object('landlord_viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'landlord_viewed_at')", [o.id, JSON.stringify([offerLog(req, 'Landlord opened the offer review link', 'landlord')])]).catch(function () {});
+    const first = function (n) { const w = String(n || '').trim().split(/\s+/); return w.length > 1 ? w[0] + ' ' + w[w.length - 1].charAt(0) + '.' : w[0] || ''; };
+    res.json({ ok: true, ref: 'OF' + String(o.id).padStart(4, '0'), property: o.property_address, created_at: o.created_at, status: o.status,
+      offer_pw: Number(o.offer_pw), pcm: m.pcm || 0, move_in: d.move_in || null, stay: d.stay || '', holding_paid: !!o.paid_at,
+      tenants: (d.tenants || []).map(function (t, i) { const r = rtr[i + 1]; return { name: first(t.name), income: t.income_type || '', work: [t.position, t.company].filter(Boolean).join(' at '), employment: t.employment_type || '', salary: t.salary ? Number(String(t.salary).replace(/[£,\s]/g, '')) || null : null,
+        study: [t.course, t.university].filter(Boolean).join(', '), status: t.residency_status || '', guarantor: t.g_name ? { relation: t.g_relation || '', homeowner: t.g_homeowner || '', income: t.g_salary ? Number(String(t.g_salary).replace(/[£,\s]/g, '')) || null : null } : null,
+        right_to_rent: r ? (r.result === 'none' ? 'No right to rent' : 'Checked') : 'To be checked' }; }),
+      conditions: offerConds(d), about: d.about || '', response: d.landlord_response || null });
+  }));
+  app.post('/api/offers/review/:token/respond', withDb(async function (p, req, res) {
+    if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const o = await offerByLandlordToken(p, req.params.token), b = req.body || {};
+    if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
+    const ans = ['accept', 'decline', 'discuss'].indexOf(b.answer) !== -1 ? b.answer : null; if (!ans) return res.status(400).json({ ok: false, error: 'answer' });
+    const resp = { answer: ans, note: str(b.note, 1000) || '', name: str(b.name, 120) || '', at: new Date().toISOString() };
+    const said = { accept: 'accepts the offer', decline: 'declines the offer', discuss: 'would like to discuss the offer' }[ans];
+    await p.query("UPDATE offers SET data = data || jsonb_build_object('landlord_response', $2::jsonb), log = log || $3::jsonb WHERE id = $1", [o.id, JSON.stringify(resp), JSON.stringify([offerLog(req, 'Landlord' + (resp.name ? ' (' + resp.name + ')' : '') + ' ' + said + (resp.note ? ': ' + resp.note : ''), 'landlord')])]);
+    offerAlert({ title: 'Landlord ' + (ans === 'accept' ? 'accepts' : ans === 'decline' ? 'declines' : 'wants to discuss') + ': ' + shortAddrText(o.property_address), message: 'OF' + String(o.id).padStart(4, '0') + ' · ' + gbp(o.offer_pw) + ' pw' + (resp.note ? ' — ' + resp.note.slice(0, 120) : ''), tags: [ans === 'accept' ? 'white_check_mark' : ans === 'decline' ? 'x' : 'speech_balloon'] }).catch(function () {});
+    res.json({ ok: true });
+  }));
+
+  // The applicant's conditions, one per line: which ones the landlord agreed to.
+  function offerConds(d) { d = d || {}; const list = Array.isArray(d.conditions) && d.conditions.length ? d.conditions : String(d.negotiate || '').split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean); const dec = d.cond_decisions || {}; return list.map(function (t, i) { return { text: t, status: dec[i] || '' }; }); }
+  app.post('/api/admin/offers/:id/conditions', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req), i = parseInt(b.i, 10), v = ['yes', 'no', ''].indexOf(b.v) !== -1 ? b.v : null;
+    const o = (await p.query('SELECT data FROM offers WHERE id = $1', [id])).rows[0];
+    if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
+    const list = offerConds(o.data); if (!(i >= 0 && i < list.length) || v === null) return res.status(400).json({ ok: false, error: 'bad' });
+    const dec = Object.assign({}, (o.data || {}).cond_decisions || {}); if (v) dec[i] = v; else delete dec[i];
+    await p.query("UPDATE offers SET data = data || jsonb_build_object('cond_decisions', $2::jsonb), log = log || $3::jsonb WHERE id = $1", [id, JSON.stringify(dec), JSON.stringify([offerLog(req, 'Condition "' + list[i].text.slice(0, 80) + '" ' + (v === 'yes' ? 'accepted' : v === 'no' ? 'not accepted' : 'set back to undecided'))])]);
+    res.json({ ok: true, conditions: offerConds(Object.assign({}, o.data, { cond_decisions: dec })) });
+  }));
   app.post('/api/admin/offers/:id', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req), sets = [], vals = [id], notes = [];
     if (['new', 'accepted', 'rejected', 'withdrawn'].indexOf(b.status) !== -1) { vals.push(b.status); sets.push('status = $' + vals.length, "decided_at = CASE WHEN $" + vals.length + " = 'new' THEN NULL ELSE now() END"); notes.push(b.status === 'accepted' ? 'Offer accepted' : b.status === 'rejected' ? 'Offer rejected' : b.status === 'withdrawn' ? 'Marked as withdrawn' : 'Decision undone'); }
