@@ -441,6 +441,9 @@
   .staff-mode #teamSec.staff-team { display: block !important; margin-top: 16px; }
   .staff-tabs { display: flex; gap: 6px; margin: 0 0 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; width: fit-content; }
   .staff-tabs button { border: 0; background: none; font: inherit; font-weight: 700; padding: 8px 14px; border-radius: 9px; cursor: pointer; color: var(--ink-soft); } .staff-tabs button.on { background: var(--primary, #0B1F3A); color: #fff; }
+  .lt-epc { display: flex; gap: 10px; align-items: center; margin-top: 4px; padding: 8px 10px; border-radius: 10px; font-weight: 500; color: var(--ink); background: #f5f6f8; font-size: .82rem; } .lt-epc b { display: block; font-size: .86rem; }
+  .lt-epc.ok { background: #e8f6ee; } .lt-epc.bad { background: #fdecec; } .lt-epc.warn { background: #fff6e5; }
+  .lt-epc i { flex: 0 0 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-style: normal; font-weight: 800; color: #fff; background: #98a2b3; }
   .lt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .lt-grid label, .lt-row label, .lt-full { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: var(--ink-soft); font-weight: 600; }
   .lt-fees { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; } .lt-box { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
   .lt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .lt-full { margin-bottom: 10px; }
@@ -1412,11 +1415,12 @@
       <div id="ltView" hidden>
         <details class="card" id="ltNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New landlord agreement</summary>
           <p class="muted-note" style="margin:8px 0 12px">Set the fees you agreed with the landlord. You’ll get a private link to send them: they check the fees, fill in the property details form, read the terms and sign. You get the signed PDF with an audit trail.</p>
-          <div class="lt-grid"><label>Landlord name<input class="inp" id="ltName" maxlength="200"></label><label>Property address<input class="inp" id="ltAddr" list="offProps" maxlength="400"></label>
+          <div class="lt-grid"><label>Landlord name<input class="inp" id="ltName" maxlength="200"></label><label>Property address<input class="inp" id="ltAddr" list="offProps" maxlength="400" placeholder="Include the postcode — we’ll check the EPC"><span id="ltEpc" class="lt-epc" hidden></span></label>
             <label>Landlord email <span class="muted-note" style="margin:0">optional</span><input class="inp" id="ltEmail" type="email"></label><label>Landlord mobile <span class="muted-note" style="margin:0">optional</span><input class="inp" id="ltPhone" type="tel"></label></div>
           <div class="lt-fees">
             <div class="lt-box"><b>Tenant find</b><select class="inp" id="ltFind"><option value="sole">Sole agency</option><option value="multi">Multi agency</option><option value="none">None</option></select>
               <div class="lt-row" data-find><label>Commission %<input class="inp" id="ltFindPct" inputmode="decimal"></label><label>Minimum fee £ (inc VAT)<input class="inp" id="ltFindMin" inputmode="decimal"></label></div>
+              <label class="switch-row" data-find style="margin-top:6px"><input type="checkbox" id="ltMonthly"> Collect this fee monthly (12 instalments) instead of up front</label>
               <label class="switch-row" data-find style="margin-top:6px"><input type="checkbox" id="ltRen" checked> Anniversary fee (each 12 months the tenant stays)</label>
               <div class="lt-row" data-find data-ren><label>Anniversary fee %<input class="inp" id="ltRenPct" inputmode="decimal"></label></div></div>
             <div class="lt-box"><b>Ongoing service</b><select class="inp" id="ltOn"><option value="none">None</option><option value="collect">Rent collection</option><option value="manage">Full management</option></select>
@@ -8720,17 +8724,17 @@
     document.querySelectorAll('#ltNew [data-on]').forEach(function(el){ el.hidden = !on; });
     ltPreview();
   }
-  function ltFees(){ return { find: $('ltFind').value, find_pct: $('ltFindPct').value, find_min: $('ltFindMin').value, renewal: $('ltRen').checked, renewal_pct: $('ltRenPct').value, ongoing: $('ltOn').value, ongoing_pct: $('ltOnPct').value, ongoing_min: $('ltOnMin').value, vat: $('ltVat').checked, other: $('ltOther').value.trim() }; }
+  function ltFees(){ return { find: $('ltFind').value, find_pct: $('ltFindPct').value, find_min: $('ltFindMin').value, find_monthly: $('ltMonthly').checked, renewal: $('ltRen').checked, renewal_pct: $('ltRenPct').value, ongoing: $('ltOn').value, ongoing_pct: $('ltOnPct').value, ongoing_min: $('ltOnMin').value, vat: $('ltVat').checked, other: $('ltOther').value.trim() }; }
   function ltLines(f){
     var vat = f.vat !== false, inc = function(p){ p = Number(p); return vat ? p + '% + VAT (' + (Math.round(p * 120) / 100) + '% inc VAT)' : p + '%'; }, L = [];
-    if (f.find !== 'none' && f.find_pct !== '' && f.find_pct != null) { L.push([f.find === 'multi' ? 'Tenant find — multi agency' : 'Tenant find — sole agency', inc(f.find_pct) + ' of the first 12 months’ rent' + (Number(f.find_min) ? ', minimum ' + gbp(Number(f.find_min)) + (vat ? ' inc VAT' : '') : '')]); L.push(['Anniversary fee', f.renewal && f.renewal_pct !== '' && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months’ rent, each anniversary' : 'No anniversary fee']); }
-    if (f.ongoing !== 'none' && f.ongoing_pct !== '' && f.ongoing_pct != null) L.push([f.ongoing === 'manage' ? 'Full management' : 'Rent collection', inc(f.ongoing_pct) + ' of rent received' + (Number(f.ongoing_min) ? ', minimum ' + gbp(Number(f.ongoing_min)) + (vat ? ' inc VAT' : '') + ' a month' : '')]);
+    if (f.find !== 'none' && f.find_pct !== '' && f.find_pct != null) { L.push([f.find === 'multi' ? 'Tenant find — multi agency' : 'Tenant find — sole agency', inc(f.find_pct) + ' of the first 12 months’ rent' + (Number(f.find_min) ? ', minimum ' + gbp(Number(f.find_min)) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? ', paid monthly over 12 months' : ', paid up front')]); L.push(['Anniversary fee', f.renewal && f.renewal_pct !== '' && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months’ rent, each anniversary' : 'No anniversary fee']); }
+    if (f.ongoing !== 'none' && f.ongoing_pct !== '' && f.ongoing_pct != null) L.push([f.ongoing === 'manage' ? 'Full management' : 'Rent collection', inc(f.ongoing_pct) + ' of rent received' + (Number(f.ongoing_min) ? ', minimum ' + gbp(Number(f.ongoing_min)) + (vat ? ' inc VAT' : '') + ' a month' : '') + ', taken monthly from the rent']);
     if (f.other) L.push(['Other', f.other]);
     return L;
   }
   function ltPreview(){ var L = ltLines(ltFees()); $('ltPreview').innerHTML = L.length ? '<b>The landlord will see:</b>' + L.map(function(l){ return '<div><span>' + esc(l[0]) + '</span>' + esc(l[1]) + '</div>'; }).join('') : ''; }
   ['ltFind', 'ltOn'].forEach(function(id){ $(id).addEventListener('change', ltDefaults); });
-  $('ltRen').addEventListener('change', ltShowRows);
+  $('ltRen').addEventListener('change', ltShowRows); $('ltMonthly').addEventListener('change', ltPreview);
   $('ltNew').addEventListener('input', ltPreview); $('ltVat').addEventListener('change', ltPreview);
   ltDefaults();
   function loadLt(){ return api('GET', '/api/admin/landlord-terms').then(function(d){ if (!d.ok) return; ltItems = d.items; ltOrigin = d.origin || ''; renderLt(); var waiting = ltItems.filter(function(x){ return x.status === 'sent'; }).length; $('sLt').hidden = !waiting; $('sLt').textContent = waiting; }); }
@@ -8745,13 +8749,29 @@
           '<span class="oc-pill ' + st[0] + '">' + esc(st[1]) + '</span></div>' +
         '<div class="lt-lines">' + (t.lines || []).map(function(l){ return '<div><span>' + esc(l.k) + '</span><b>' + esc(l.v) + '</b></div>'; }).join('') + '</div>' +
         (t.status === 'signed' ? '<details class="oc-more"><summary>Property details from the landlord</summary><div class="oc-rows" style="padding:10px 14px">' +
-          [['Landlord 1', [dt.l1_name, dt.l1_phone, dt.l1_email].filter(Boolean).join(' · ')], ['Landlord 2', [dt.l2_name, dt.l2_phone, dt.l2_email].filter(Boolean).join(' · ')], ['Legal owners', dt.legal_owners], ['Correspondence address', dt.corr_address], ['Bank', [dt.bank_name, dt.bank_account_name, dt.bank_sort, dt.bank_account].filter(Boolean).join(' · ')], ['Start straight away', d.start_now ? 'Yes' : 'No — wait 14 days'], ['Opted out of management', dt.optout ? 'Yes — emergency ' + (dt.emergency_phone || '') : ''], ['Special instructions', dt.special], ['Other', dt.other]]
+          [['Landlord 1', [dt.l1_name, dt.l1_phone, dt.l1_email].filter(Boolean).join(' · ')], ['Landlord 2', [dt.l2_name, dt.l2_phone, dt.l2_email].filter(Boolean).join(' · ')], ['Legal owners', dt.legal_owners], ['Correspondence address', dt.corr_address], ['Bank', [dt.bank_name, dt.bank_account_name, dt.bank_sort, dt.bank_account].filter(Boolean).join(' · ')], ['EPC', d.epc ? (d.epc.found ? 'Rating ' + (d.epc.rating || '?') + (d.epc.valid ? ', valid until ' : ', expired ') + certDay(d.epc.expires_on) : 'None found on the register') : ''], ['Licence', dt.lic_status ? ({ licensed: 'Licensed', applied: 'Applied for', none: 'Not needed', unsure: 'Not sure — check the council' }[dt.lic_status] || dt.lic_status) + [dt.lic_type, dt.lic_council, dt.lic_number, dt.lic_expires ? 'expires ' + certDay(dt.lic_expires) : ''].filter(Boolean).map(function(x){ return ' · ' + x; }).join('') : ''], ['Attached', (d.attached || []).join(', ')], ['Start straight away', d.start_now ? 'Yes' : 'No — wait 14 days'], ['Opted out of management', dt.optout ? 'Yes — emergency ' + (dt.emergency_phone || '') : ''], ['Special instructions', dt.special], ['Other', dt.other]]
             .filter(function(r){ return r[1]; }).map(function(r){ return '<div><span>' + esc(r[0]) + '</span>' + esc(r[1]) + '</div>'; }).join('') + '</div></details>' : '') +
         '<footer class="oc-actions">' + (t.status === 'sent' ? '<button type="button" class="btn small primary" data-lt-copy>🔗 Copy link</button>' + (t.landlord_phone ? '<button type="button" class="btn small wa-btn" data-lt-wa>' + WA_ICON + 'WhatsApp</button>' : '<button type="button" class="btn small wa-btn" data-lt-wa>' + WA_ICON + 'WhatsApp</button>') + '<button type="button" class="btn small" data-lt-mail>✉ Email</button>' : '') +
           '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/landlord-terms/' + t.id + '/pdf">📄 ' + (t.status === 'signed' ? 'Signed PDF' : 'Preview PDF') + '</a><span class="oc-sp"></span>' +
           (t.status === 'sent' ? '<button type="button" class="btn small ghost" data-lt-cancel>Cancel link</button>' : '') + (staffMode ? '' : '<button type="button" class="btn small ghost danger" data-lt-del title="Delete">🗑</button>') + '</footer></div>';
     }).join('') : '<p class="muted-note">No landlord agreements yet — create one above.</p>';
   }
+  // EPC as staff type the address (once a full postcode is in).
+  var ltEpcT = null, ltEpcFor = '';
+  $('ltAddr').addEventListener('input', function(){
+    clearTimeout(ltEpcT); var v = this.value.trim(), box = $('ltEpc'), pc = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(v);
+    if (!pc) { box.hidden = true; ltEpcFor = ''; return; }
+    ltEpcT = setTimeout(function(){
+      if (v === ltEpcFor) return; ltEpcFor = v; box.hidden = false; box.className = 'lt-epc'; box.innerHTML = '<i>…</i><span>Checking the EPC register…</span>';
+      api('GET', '/api/admin/epc-lookup?address=' + encodeURIComponent(v)).then(function(d){
+        if (ltEpcFor !== v) return; var e = d && d.epc;
+        if (!d || !d.ok || !e) { box.className = 'lt-epc warn'; box.innerHTML = '<i>?</i><span>Couldn’t reach the EPC register — we’ll try again when the link is made.</span>'; return; }
+        var col = { A: '#008054', B: '#19b459', C: '#8dce46', D: '#ffd500', E: '#fcaa65', F: '#ef8023', G: '#e9153b' }[e.rating] || '#98a2b3';
+        if (!e.found) { box.className = 'lt-epc warn'; box.innerHTML = '<i>?</i><span><b>No EPC found for this address</b>The landlord will be told a valid EPC is needed — we can arrange one.</span>'; return; }
+        box.className = 'lt-epc ' + (e.valid ? 'ok' : 'bad'); box.innerHTML = '<i style="background:' + col + (e.rating === 'D' ? ';color:#111' : '') + '">' + esc(e.rating || '?') + '</i><span><b>' + (e.valid ? 'EPC in place ✓' : 'EPC expired') + '</b>Rating ' + esc(e.rating || '?') + ', ' + (e.valid ? 'valid until ' : 'expired ') + esc(certDay(e.expires_on)) + (e.address ? ' · ' + esc(e.address) : '') + '. The landlord sees this on their link.</span>';
+      });
+    }, 700);
+  });
   $('ltCreate').addEventListener('click', function(){
     var b = this, body = { landlord_name: $('ltName').value.trim(), property_address: $('ltAddr').value.trim(), landlord_email: $('ltEmail').value.trim(), landlord_phone: $('ltPhone').value.trim(), fees: ltFees() };
     if (!body.landlord_name) { toast('Enter the landlord’s name'); $('ltName').focus(); return; }
@@ -8759,7 +8779,7 @@
     busy(b, true, 'Creating…');
     api('POST', '/api/admin/landlord-terms', body).then(function(d){
       busy(b, false); if (!d.ok) { toast(d.error === 'pct' ? 'Enter the percentages for the services chosen' : d.error === 'fees' ? 'Choose at least one service or add other fees' : 'Couldn’t create it'); return; }
-      ['ltName', 'ltAddr', 'ltEmail', 'ltPhone', 'ltOther'].forEach(function(id){ $(id).value = ''; });
+      ['ltName', 'ltAddr', 'ltEmail', 'ltPhone', 'ltOther'].forEach(function(id){ $(id).value = ''; }); $('ltEpc').hidden = true; ltEpcFor = ''; $('ltMonthly').checked = false;
       offCopyText(d.link); toast('Agreement created — link copied. Send it by WhatsApp or email below.'); loadLt();
     });
   });

@@ -1533,7 +1533,7 @@ module.exports = function mountJobs(app, opts) {
   // What an offers-only sign-in may use (paths under /api/admin).
   function staffAllowed(method, path) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;   // landlord terms tab
-    if (method === 'GET') return path === '/me' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'GET') return path === '/me' || path === '/epc-lookup' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/offer-alerts/test' || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
@@ -7280,6 +7280,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const ongoing = ['collect', 'manage', 'none'].indexOf(b.ongoing) !== -1 ? b.ongoing : 'none';
     return {
       find: find, find_pct: find === 'none' ? null : pctNum(b.find_pct), find_min: find === 'none' ? null : pctNum(b.find_min, 100000),
+      find_monthly: find !== 'none' && b.find_monthly === true,
       renewal: find !== 'none' && b.renewal !== false, renewal_pct: find !== 'none' && b.renewal !== false ? pctNum(b.renewal_pct) : null,
       ongoing: ongoing, ongoing_pct: ongoing === 'none' ? null : pctNum(b.ongoing_pct), ongoing_min: ongoing === 'none' ? null : pctNum(b.ongoing_min, 100000),
       vat: b.vat !== false, other: str(b.other, 2000) || ''
@@ -7291,29 +7292,38 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const vat = f.vat !== false, inc = function (p) { return vat ? p + '% + VAT (' + (Math.round(p * 120) / 100) + '% inc VAT)' : p + '%'; };
     const L = [];
     if (f.find !== 'none' && f.find_pct != null) {
-      L.push({ k: f.find === 'multi' ? 'Tenant Find - Multi Agency (initial commission)' : 'Tenant Find - Sole Agency (initial commission)', v: inc(f.find_pct) + ' of the first 12 months\' rent' + (f.find_min ? ', minimum fee ' + gbp(f.find_min) + (vat ? ' inc VAT' : '') : '') });
-      L.push({ k: 'Anniversary fee', v: f.renewal && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months\' rent, on each 12-month anniversary while the tenant remains' : 'No anniversary fee' });
+      L.push({ k: f.find === 'multi' ? 'Tenant Find - Multi Agency (initial commission)' : 'Tenant Find - Sole Agency (initial commission)', v: inc(f.find_pct) + ' of the first 12 months\' rent' + (f.find_min ? ', minimum fee ' + gbp(f.find_min) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? '. Paid monthly: collected in 12 equal monthly instalments over the first 12 months, instead of in advance' : ', payable in advance when the tenancy starts') });
+      L.push({ k: 'Anniversary fee', v: f.renewal && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months\' rent, on each 12-month anniversary while the tenant remains' + (f.find_monthly ? ', collected monthly in the same way' : '') : 'No anniversary fee' });
     }
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) L.push({ k: f.ongoing === 'manage' ? 'Full Management Service' : 'Rent Collection Service', v: inc(f.ongoing_pct) + ' of the rent received' + (f.ongoing_min ? ', minimum ' + gbp(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' a month' : '') });
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) L.push({ k: f.ongoing === 'manage' ? 'Full Management Service' : 'Rent Collection Service', v: inc(f.ongoing_pct) + ' of the rent received' + (f.ongoing_min ? ', minimum ' + gbp(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' a month' : '') + '. Collected monthly: deducted from each month\'s rent when we receive it, before the balance is paid to you' });
     if (f.other) L.push({ k: 'Other agreed fees', v: f.other });
     return L;
   }
   function ltRef(id) { return 'LT' + String(id).padStart(4, '0'); }
   // The property's EPC from the government register (checked once a day at most).
+  // The EPC for an address from the government register (null: no postcode, or the register didn't answer).
+  async function epcForAddress(address) {
+    const m = POSTCODE_RE.exec(address || ''); if (!m) return null;
+    const r = await Promise.race([epcSearch((m[1] + ' ' + m[2]).toUpperCase()), new Promise(function (_, no) { setTimeout(function () { no(new Error('timeout')); }, 8000); })]);
+    const hit = epcMatch(address, r.results);
+    return hit ? { found: true, rating: hit.rating || '', expires_on: hit.expires_on || null, address: hit.address || '', valid: !!hit.expires_on && hit.expires_on >= new Date().toISOString().slice(0, 10), url: r.url || '', checked_at: new Date().toISOString() }
+      : { found: false, url: r.url || '', checked_at: new Date().toISOString() };
+  }
   async function ltEpc(p, t) {
     const d = t.data || {};
     if (d.epc && Date.now() - new Date(d.epc.checked_at).getTime() < 86400000) return d.epc;
-    const m = POSTCODE_RE.exec(t.property_address || ''); if (!m) return null;
     let epc;
-    try {
-      const r = await Promise.race([epcSearch((m[1] + ' ' + m[2]).toUpperCase()), new Promise(function (_, no) { setTimeout(function () { no(new Error('timeout')); }, 8000); })]);
-      const hit = epcMatch(t.property_address, r.results);
-      epc = hit ? { found: true, rating: hit.rating || '', expires_on: hit.expires_on || null, address: hit.address || '', valid: !!hit.expires_on && hit.expires_on >= new Date().toISOString().slice(0, 10), url: r.url || '', checked_at: new Date().toISOString() }
-        : { found: false, url: r.url || '', checked_at: new Date().toISOString() };
-    } catch (err) { console.error('Landlord EPC lookup failed:', err.message); return d.epc || null; }
+    try { epc = await epcForAddress(t.property_address); if (!epc) return null; }
+    catch (err) { console.error('Landlord EPC lookup failed:', err.message); return d.epc || null; }
     await p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('epc', $2::jsonb) WHERE id = $1", [t.id, JSON.stringify(epc)]);
     return epc;
   }
+  // As staff type a property address: is there an EPC on the register?
+  app.get('/api/admin/epc-lookup', async function (req, res) {
+    const address = str(req.query.address, 400);
+    try { const epc = await epcForAddress(address); res.json({ ok: true, epc: epc }); }
+    catch (err) { res.json({ ok: false, error: 'register' }); }
+  });
   // Landlord Terms links: their own address when set up (TERMS_ORIGIN), else the offers address.
   const TERMS_ORIGIN = String(process.env.TERMS_ORIGIN || '').trim().replace(/\/+$/, '');
   function ltLink(t) { return (TERMS_ORIGIN || OFFER_ORIGIN || PUBLIC_URL) + '/landlord/' + t.token; }
@@ -7397,13 +7407,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query("INSERT INTO landlord_terms_docs (terms_id, kind, name, mime, data) VALUES ($1, 'signature', 'signature.png', 'image/png', $2)", [t.id, sigBuf]);
     // Their own gas safety certificate / EICR, if they're not asking us to arrange one.
     const attached = [];
-    for (const kind of ['gas', 'eicr']) {
+    for (const kind of ['gas', 'eicr', 'licence']) {
       const fl = (b.files || {})[kind], fm = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(String((fl && fl.dataUrl) || ''));
       if (!fm) continue;
       const mime = fm[1].toLowerCase(), buf = Buffer.from(fm[2], 'base64');
       if (['application/pdf', 'image/jpeg', 'image/png'].indexOf(mime) === -1 || !buf.length || buf.length > 12 * 1024 * 1024) continue;
       await p.query('INSERT INTO landlord_terms_docs (terms_id, kind, name, mime, data) VALUES ($1, $2, $3, $4, $5)', [t.id, kind, str(fl.name, 150) || kind, mime, buf]);
-      attached.push(kind === 'gas' ? 'gas safety certificate' : 'EICR');
+      attached.push(kind === 'gas' ? 'gas safety certificate' : kind === 'eicr' ? 'EICR' : 'property licence');
     }
     if (attached.length) data.attached = attached;
     await p.query("UPDATE landlord_terms SET status = 'signed', signed_at = now(), data = $2, log = log || $3::jsonb WHERE id = $1",
@@ -7517,14 +7527,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     y -= ph + 20;
     band('Agreed fees', 'The fees agreed for this property. They replace our standard scale of fees.');
     const frows = [];
-    if (f.find !== 'none' && f.find_pct != null) { frows.push([f.find === 'multi' ? 'Tenant Find - Multi Agency' : 'Tenant Find - Sole Agency', incPct(f.find_pct) + ' of the first 12 months\' rent (initial commission)', f.find_min ? money(f.find_min) + (vat ? ' inc VAT' : '') : '-']); frows.push(['Anniversary fee', f.renewal && f.renewal_pct != null ? incPct(f.renewal_pct) + ' of 12 months\' rent, charged on each 12-month anniversary while the tenant introduced by us remains' : 'No anniversary fee', '-']); }
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) frows.push([f.ongoing === 'manage' ? 'Full Management Service' : 'Rent Collection Service', incPct(f.ongoing_pct) + ' of the rent received', f.ongoing_min ? money(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' / month' : '-']);
+    if (f.find !== 'none' && f.find_pct != null) { frows.push([f.find === 'multi' ? 'Tenant Find - Multi Agency' : 'Tenant Find - Sole Agency', incPct(f.find_pct) + ' of the first 12 months\' rent (initial commission)' + (f.find_monthly ? ' - paid monthly in 12 equal instalments' : ' - payable in advance'), f.find_min ? money(f.find_min) + (vat ? ' inc VAT' : '') : '-']); frows.push(['Anniversary fee', f.renewal && f.renewal_pct != null ? incPct(f.renewal_pct) + ' of 12 months\' rent, charged on each 12-month anniversary while the tenant introduced by us remains' : 'No anniversary fee', '-']); }
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) frows.push([f.ongoing === 'manage' ? 'Full Management Service' : 'Rent Collection Service', incPct(f.ongoing_pct) + ' of the rent received - deducted monthly from each month\'s rent', f.ongoing_min ? money(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' / month' : '-']);
     if (f.other) frows.push(['Other agreed fees', f.other, '']);
     table([['Service', 0.3], ['Fee', 0.48], ['Minimum', 0.22]], frows);
     const ex = [];
-    if (f.find !== 'none' && f.find_pct != null) { const e = 12000 * f.find_pct / 100; ex.push('12 month tenancy at \xA31,000 a month: initial commission ' + money(e) + (vat ? ' + VAT (' + money(e * 1.2) + ' inc VAT)' : '')); }
+    if (f.find !== 'none' && f.find_pct != null) { const e = 12000 * f.find_pct / 100; ex.push('12 month tenancy at \xA31,000 a month: initial commission ' + money(e) + (vat ? ' + VAT (' + money(e * 1.2) + ' inc VAT)' : '') + (f.find_monthly ? ' - ' + money(e * (vat ? 1.2 : 1) / 12) + (vat ? ' inc VAT' : '') + ' a month for 12 months' : '')); }
     if (f.ongoing !== 'none' && f.ongoing_pct != null) { const e = 1000 * f.ongoing_pct / 100; ex.push('\xA31,000 a month: ' + (f.ongoing === 'manage' ? 'management' : 'rent collection') + ' fee ' + money(e) + (vat ? ' + VAT (' + money(e * 1.2) + ' inc VAT)' : '') + ' a month'); }
-    if (ex.length) { ensure(20 + ex.length * 12); rr(M, y + 4, CW, ex.length * 12 + 14, 8, C.blueBg); ex.forEach(function (e, i) { text('Example:  ' + e, M + 12, y - 8 - i * 12, 8.2, F, C.blue); }); y -= ex.length * 12 + 22; }
+    if (ex.length) { const exl = []; ex.forEach(function (e) { wrap('Example:  ' + e, F, 8.2, CW - 24).forEach(function (l) { exl.push(l); }); }); ensure(20 + exl.length * 12); rr(M, y + 4, CW, exl.length * 12 + 14, 8, C.blueBg); exl.forEach(function (e, i) { text(e, M + 12, y - 8 - i * 12, 8.2, F, C.blue); }); y -= exl.length * 12 + 22; }
     band('Key points');
     (LT_TERMS.intro || []).forEach(function (s, i) { if (i === 0 && !(f.renewal && f.find !== 'none')) s = 'Under these terms you will be liable to pay Residential Realtors\' commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.'; para(s, { size: 8.6 }); });
 
@@ -7543,6 +7553,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
         text(e.found ? 'Government register: rating ' + (e.rating || '?') + ', ' + (ok ? 'valid until ' : 'expired on ') + dayOf(e.expires_on) : 'Checked ' + dayOf(e.checked_at) + ' - a valid EPC is needed before letting', M + 52, y - 26, 8.4, F, C.soft); y -= 54;
       }
       table([['Question', 0.82], ['Answer', 0.18]], LT_QUESTIONS.filter(function (q) { return q[0] !== 'q_uk_resident' && q[0] !== 'deposit_scheme'; }).map(function (q) { return [q[1], yn(dt[q[0]]) || '-']; }).concat(dt.deposit_scheme ? [['Deposit scheme the landlord uses', dt.deposit_scheme]] : []), { pills: true });
+      if (dt.lic_status) { const LS = { licensed: 'Licensed', applied: 'Applied for - waiting for the council', none: 'No licence needed', unsure: 'Not sure - landlord asked us to check' };
+        card('Property licence', [['Licence', LS[dt.lic_status] || dt.lic_status], ['Type', dt.lic_type], ['Council', dt.lic_council], ['Licence number', dt.lic_number], ['Expires', dt.lic_expires ? dayOf(dt.lic_expires) : ''], ['Applied on', dt.lic_applied ? dayOf(dt.lic_applied) : '']]); }
       if ((d.attached || []).length) para('Certificates attached by the landlord: ' + d.attached.join(', ') + '.', { size: 8.6, bold: true });
       band('Bank details', 'Where rent and deposit monies are paid.');
       const mask = function (v) { v = String(v || ''); return opts.landlord && v.length > 4 ? '••••' .replace(/./g, '*') + v.slice(-4) : v; };
@@ -7568,7 +7580,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const nextCol = function () { if (col === 0) { col = 1; y = colTop; } else { col = 0; newPage(); colTop = y; } };
     const cEnsure = function (need) { if (y - need < 76) nextCol(); };
     (LT_TERMS.clauses || []).forEach(function (c) {
-      if (c.h) { const noRen = c.n === '1.2' && !(f.renewal && f.find !== 'none'); const hl = wrap(c.n + '  ' + c.h, B, 8.6, colW); cEnsure(hl.length * 11 + 30); y -= 4; hl.forEach(function (ln) { text(ln, colX(), y, 8.6, B, C.navy); y -= 11; }); if (noRen) { pill('NOT APPLICABLE - NO ANNIVERSARY FEE AGREED', colX(), y - 8, C.green, C.greenBg, 6.4); y -= 16; } else if (c.n === '1.2') { wrap(LT_TERMS.anniversary_note || '', F, 7.2, colW).forEach(function (ln) { text(ln, colX(), y, 7.2, F, C.blue); y -= 9.2; }); y -= 4; } y -= 2; return; }
+      if (c.h) { const noRen = c.n === '1.2' && !(f.renewal && f.find !== 'none'); const hl = wrap(c.n + '  ' + c.h, B, 8.6, colW); cEnsure(hl.length * 11 + 30); y -= 4; hl.forEach(function (ln) { text(ln, colX(), y, 8.6, B, C.navy); y -= 11; }); if (noRen) { pill('NOT APPLICABLE - NO ANNIVERSARY FEE AGREED', colX(), y - 8, C.green, C.greenBg, 6.4); y -= 16; } else if (c.n === '1.1' && f.find_monthly && f.find !== 'none') { wrap('Agreed for this property: the Initial Commission is paid monthly, in 12 equal instalments over the first 12 months of the tenancy, instead of in advance. Clauses 1.1.2 and 1.1.3 apply on that basis; if the tenancy ends early, any instalments still owing remain payable subject to clause 1.1.5.', F, 7.2, colW).forEach(function (ln) { text(ln, colX(), y, 7.2, F, C.blue); y -= 9.2; }); y -= 4; } else if (c.n === '1.2') { wrap(LT_TERMS.anniversary_note || '', F, 7.2, colW).forEach(function (ln) { text(ln, colX(), y, 7.2, F, C.blue); y -= 9.2; }); y -= 4; } y -= 2; return; }
       const ls = wrap(c.t, F, 7.4, colW - 26); cEnsure(Math.min(ls.length, 4) * 9.4 + 2);
       text(c.n, colX(), y, 7, B, C.soft);
       ls.forEach(function (ln, j) { if (j && y - 10 < 76) { nextCol(); } text(ln, colX() + 26, y, 7.4, F, C.ink); y -= 9.4; }); y -= 3;
