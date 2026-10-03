@@ -5272,7 +5272,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (!aw.length || g.words.indexOf(aw[0]) === -1) return;
       if (inside(g.words, top.words) || (building && inside(top.words, g.words))) pool.push.apply(pool, g.list);
     });
-    return pool.filter(function (c) { return c.expires_on; }).sort(function (x, y) { return y.expires_on.localeCompare(x.expires_on); })[0] || null;
+    // Never a different door number: every number on the certificate must be one of ours
+    // (so 35 is never taken for 37; "Flat 5, Windsor Court" can still match "Flat 5, Windsor Court, 23 Coopers Road").
+    const nums = function (v) { return (String(v).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }); }, ours = nums(address);
+    const sameDoor = function (c) { const n = nums(c.address); return n.length && n.every(function (x) { return ours.indexOf(x) !== -1; }); };
+    return pool.filter(function (c) { return c.expires_on && sameDoor(c); }).sort(function (x, y) { return y.expires_on.localeCompare(x.expires_on); })[0] || null;
   }
   // The register writes addresses in capitals ("6 WHITWORTH HOUSE, FALMOUTH ROAD,
   // LONDON, SE1 6RW"); tidy them to "6 Whitworth House, Falmouth Road, London, SE1 6RW".
@@ -7380,6 +7384,28 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (f.other) L.push({ k: 'Other agreed fees', v: f.other });
     return L;
   }
+  // Worked examples at £1,000 a month, with the minimum fees applied, the monthly
+  // instalments when the fee is collected monthly, and what the landlord receives.
+  function feeExamples(f) {
+    const gbp = function (v) { return '\xA3' + (Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    const vat = f.vat !== false, out = [], tag = vat ? ' inc VAT' : '';
+    // pct of base, against a minimum that's quoted inc VAT when fees are + VAT.
+    const fee = function (base, pct, min) { const calc = base * pct / 100 * (vat ? 1.2 : 1), m = Number(min) || 0; return { amt: Math.max(calc, m), calc: calc, minApplies: m > calc }; };
+    if (f.find !== 'none' && f.find_pct != null) {
+      const x = fee(12000, f.find_pct, f.find_min);
+      out.push('Tenant find: at \xA31,000 a month (\xA312,000 for the first 12 months), the initial commission is ' + gbp(x.amt) + tag +
+        (x.minApplies ? ' - the minimum fee, as ' + f.find_pct + '% would be ' + gbp(x.calc) + tag : '') +
+        (f.find_monthly ? ', collected as ' + gbp(x.amt / 12) + tag + ' a month for 12 months.' : ', payable when the tenancy starts.'));
+      if (f.renewal && f.renewal_pct != null) { const r = fee(12000, f.renewal_pct, 0); out.push('Anniversary fee: if the tenant stays past 12 months at \xA31,000 a month, ' + gbp(r.amt) + tag + ' on each anniversary' + (f.find_monthly ? ' (' + gbp(r.amt / 12) + tag + ' a month).' : '.')); }
+    }
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) {
+      const x = fee(1000, f.ongoing_pct, f.ongoing_min), name = { manage: 'management', both: 'management and rent collection' }[f.ongoing] || 'rent collection';
+      const findMonthly = f.find !== 'none' && f.find_pct != null && f.find_monthly ? fee(12000, f.find_pct, f.find_min).amt / 12 : 0;
+      out.push('Each month: from \xA31,000 rent we deduct the ' + name + ' fee of ' + gbp(x.amt) + tag + (x.minApplies ? ' (the minimum, as ' + f.ongoing_pct + '% would be ' + gbp(x.calc) + ')' : '') +
+        (findMonthly ? ' and the tenant find instalment of ' + gbp(findMonthly) : '') + ', so you receive ' + gbp(1000 - x.amt - findMonthly) + (findMonthly ? ' a month for the first 12 months, then ' + gbp(1000 - x.amt) + ' a month.' : ' a month.'));
+    }
+    return out;
+  }
   function ltRef(id) { return 'LT' + String(id).padStart(4, '0'); }
   // The property's EPC from the government register (checked once a day at most).
   // The EPC for an address from the government register (null: no postcode, or the register didn't answer).
@@ -7391,12 +7417,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let full = '';
     if (hit) { const to = registerAddress(hit.address), first = function (v) { return ((String(v).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/i) || [''])[0]).toUpperCase(); };
       if (to && !addressProblem(to) && first(to) === first(address)) full = mergeMissingParts(to, address) || to; }
-    return hit ? { found: true, rating: hit.rating || '', expires_on: hit.expires_on || null, address: hit.address || '', full_address: full, reference: hit.reference || '', link: hit.link || '', valid: !!hit.expires_on && hit.expires_on >= new Date().toISOString().slice(0, 10), url: r.url || '', checked_at: new Date().toISOString() }
-      : { found: false, url: r.url || '', checked_at: new Date().toISOString() };
+    return hit ? { found: true, rating: hit.rating || '', expires_on: hit.expires_on || null, address: hit.address || '', full_address: full, reference: hit.reference || '', v: 2, link: hit.link || '', valid: !!hit.expires_on && hit.expires_on >= new Date().toISOString().slice(0, 10), url: r.url || '', checked_at: new Date().toISOString() }
+      : { found: false, v: 2, url: r.url || '', checked_at: new Date().toISOString() };
   }
   async function ltEpc(p, t) {
     const d = t.data || {};
-    if (d.epc && Date.now() - new Date(d.epc.checked_at).getTime() < 86400000) return d.epc;
+    if (d.epc && d.epc.v === 2 && Date.now() - new Date(d.epc.checked_at).getTime() < 86400000) return d.epc;
     let epc;
     try { epc = await epcForAddress(t.property_address); if (!epc) return null; }
     catch (err) { console.error('Landlord EPC lookup failed:', err.message); return d.epc || null; }
@@ -7476,7 +7502,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!t || t.status === 'cancelled') return res.status(404).json({ ok: false, error: 'not-found' });
     if (!(t.data || {}).viewed_at) p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'viewed_at')", [t.id, JSON.stringify([ltLog(req, 'Landlord opened the agreement link', 'landlord')])]).catch(function () {});
     res.json({ ok: true, ref: ltRef(t.id), status: t.status, property: t.property_address, landlord_name: t.landlord_name, landlord_email: t.landlord_email, landlord_phone: t.landlord_phone,
-      fees: t.fees, lines: feeLines(t.fees || {}), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
+      fees: t.fees, lines: feeLines(t.fees || {}), examples: feeExamples(t.fees || {}), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
   }));
   app.post('/api/landlord-terms/:token/sign', withDb(async function (p, req, res) {
     if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -7621,10 +7647,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (f.ongoing !== 'none' && f.ongoing_pct != null) frows.push([ONGOING_NAME[f.ongoing] || 'Rent Collection Service', incPct(f.ongoing_pct) + ' of the rent received - deducted monthly from each month\'s rent', f.ongoing_min ? money(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' / month' : '-']);
     if (f.other) frows.push(['Other agreed fees', f.other, '']);
     table([['Service', 0.3], ['Fee', 0.48], ['Minimum', 0.22]], frows);
-    const ex = [];
-    if (f.find !== 'none' && f.find_pct != null) { const e = 12000 * f.find_pct / 100; ex.push('12 month tenancy at \xA31,000 a month: initial commission ' + money(e) + (vat ? ' + VAT (' + money(e * 1.2) + ' inc VAT)' : '') + (f.find_monthly ? ' - ' + money(e * (vat ? 1.2 : 1) / 12) + (vat ? ' inc VAT' : '') + ' a month for 12 months' : '')); }
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) { const e = 1000 * f.ongoing_pct / 100; ex.push('\xA31,000 a month: ' + ({ manage: 'management', both: 'management and rent collection' }[f.ongoing] || 'rent collection') + ' fee ' + money(e) + (vat ? ' + VAT (' + money(e * 1.2) + ' inc VAT)' : '') + ' a month'); }
-    if (ex.length) { const exl = []; ex.forEach(function (e) { wrap('Example:  ' + e, F, 8.2, CW - 24).forEach(function (l) { exl.push(l); }); }); ensure(20 + exl.length * 12); rr(M, y + 4, CW, exl.length * 12 + 14, 8, C.blueBg); exl.forEach(function (e, i) { text(e, M + 12, y - 8 - i * 12, 8.2, F, C.blue); }); y -= exl.length * 12 + 22; }
+    const ex = feeExamples(f);
+    if (ex.length) { const exl = []; ex.forEach(function (e) { wrap(e, F, 8.2, CW - 24).forEach(function (l) { exl.push(l); }); }); ensure(20 + exl.length * 12); rr(M, y + 4, CW, exl.length * 12 + 14, 8, C.blueBg); exl.forEach(function (e, i) { text(e, M + 12, y - 8 - i * 12, 8.2, F, C.blue); }); y -= exl.length * 12 + 22; }
     band('Key points');
     (LT_TERMS.intro || []).forEach(function (s, i) { if (i === 0 && !(f.renewal && f.find !== 'none')) s = 'Under these terms you will be liable to pay Residential Realtors\' commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.'; para(s, { size: 8.6 }); });
 
