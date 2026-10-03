@@ -75,6 +75,21 @@
   .money-in { position:relative; }
   .money-in::before { content:"£"; position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--soft); font-weight:600; }
   .money-in input { padding-left:30px; font-weight:600; }
+  .money-in.unit::after { content:attr(data-unit); position:absolute; right:14px; top:50%; transform:translateY(-50%); color:var(--soft); font-weight:600; font-size:.9rem; pointer-events:none; }
+  .money-in.unit input { padding-right:70px; }
+  .conv:empty { display:none; }
+  .conv { margin:-4px 0 0; padding:12px 14px; border-radius:14px; background:var(--blue-t); }
+  .conv-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .conv-row > div:not(.eq) { flex:1 1 140px; } .conv-row span { display:block; font-size:.76rem; color:var(--soft); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  .conv-row b { font-size:1.15rem; letter-spacing:-.01em; } .conv-row .hl b { color:var(--navy, #0b1f3a); }
+  .conv-row .eq { font-weight:800; color:var(--soft); }
+  @media (max-width:560px) { .conv-row .eq { display:none; } }
+  .conv-max { font-size:.86rem; margin-top:6px; color:var(--ink2); } .conv-note { font-size:.76rem; color:var(--soft); margin-top:4px; }
+  .hold-explain { border:1px solid #f3d9a8; background:#fffaf0; border-radius:16px; padding:14px 16px; margin:0 0 18px; }
+  .he-h { display:flex; gap:12px; align-items:center; } .he-h b { display:block; } .he-h span { color:var(--ink2); font-size:.92rem; }
+  .he-ico { flex:0 0 38px; height:38px; border-radius:50%; background:#f59e0b; color:#fff !important; display:flex !important; align-items:center; justify-content:center; font-weight:800; font-size:1.05rem !important; }
+  .he-amt { display:inline !important; color:#b54708; font-size:1.05rem; }
+  .hold-explain ul { margin:10px 0 0; padding-left:18px; font-size:.88rem; color:var(--ink2); } .hold-explain li { margin:4px 0; }
   .hint { font-size:.82rem; color:var(--soft); margin-top:6px; }
 
   /* Choice chips, segmented control, stepper counters */
@@ -330,14 +345,16 @@
           <h2>Your offer</h2>
           <p class="lead">Which property, how much, and when you’d like to move in.</p>
           <div class="f"><label class="l" for="property">Property address</label><input id="property" autocomplete="off" placeholder="e.g. Flat 3, Chilham House, London SE1 4AA"></div>
-          <div class="f"><label class="l">I’m offering</label><div class="seg" id="perSeg"><button type="button" data-per="pw" class="on">Per week</button><button type="button" data-per="pcm">Per month</button></div></div>
+          <div class="f"><label class="l">I’m offering</label><div class="seg" id="perSeg"><button type="button" data-per="pw" class="on">£ per week</button><button type="button" data-per="pcm">£ per month</button></div><div class="hint" style="margin-top:6px">Choose how you’d like to enter your offer — rent is always <b>paid monthly</b>.</div></div>
           <div class="g2">
-            <div class="f"><label class="l" for="offer">Offer rent <span class="opt perTxt">per week</span></label><div class="money-in"><input id="offer" inputmode="decimal" placeholder="500"></div></div>
-            <div class="f"><label class="l" for="max_offer">Maximum offer <span class="opt">optional</span></label><div class="money-in"><input id="max_offer" inputmode="decimal" placeholder="520"></div></div>
+            <div class="f"><label class="l" for="offer">Your offer <span class="opt perTxt">per week</span></label><div class="money-in unit" data-unit="/ week"><input id="offer" inputmode="decimal" placeholder="500"></div></div>
+            <div class="f"><label class="l" for="max_offer">Maximum offer <span class="opt"><span class="perTxt">per week</span> · optional</span></label><div class="money-in unit" data-unit="/ week"><input id="max_offer" inputmode="decimal" placeholder="520"></div></div>
           </div>
-          <p class="hint" style="margin:-6px 0 14px">Your maximum offer is binding subject to contract, references and the terms in the information sheet. Rent is paid monthly.</p>
+          <div class="conv" id="perConv"></div>
+          <p class="hint" style="margin:6px 0 14px">Your maximum offer is binding subject to contract, references and the terms in the information sheet.</p>
+          <div class="hold-explain" id="holdExplain"></div>
           <div class="f"><label class="l" for="move_in">Move-in date</label><input id="move_in" type="date"></div>
-          <div class="f"><label class="l">How long would you like to stay?</label><div class="chips" id="stayChips"></div></div>
+          <div class="f"><label class="l">How long would you like to stay?</label><div class="chips" id="stayChips"></div><input id="stayOther" maxlength="60" placeholder="e.g. 14 months, or until July 2028" style="margin-top:8px" hidden></div>
           <div class="g2">
             <div class="f"><label class="l">Tenants</label><div class="count" data-count="tenants"><b id="tenantsN">1</b><div class="btns"><button type="button" data-dec aria-label="Fewer">−</button><button type="button" data-inc aria-label="More">+</button></div></div></div>
             <div class="f"><label class="l">Guarantors</label><div class="count" data-count="guarantors"><b id="guarantorsN">0</b><div class="btns"><button type="button" data-dec aria-label="Fewer">−</button><button type="button" data-inc aria-label="More">+</button></div></div></div>
@@ -433,7 +450,7 @@
   var per = 'pw', stay = '', tenantsN = 1, guarantorsN = 0, step = 1, files = {};
   // When they started filling in the form (for the signed agreement's audit trail).
   var startedAt = null; document.addEventListener('input', function(){ if (!startedAt) startedAt = new Date().toISOString(); }, true);
-  var STAYS = ['6 months', '1 year', '18 months', '2 years', '3 years or more', 'As long as possible'];
+  var STAYS = ['6 months', '9 months', '1 year', '18 months', '2 years', '3 years', '4 years', '5 years or more', 'As long as possible'];
   var STEPS = ['Your offer', 'Tenants', 'Review & sign'];
 
   // ----- Property from the link (?p=...) -----
@@ -452,18 +469,36 @@
     $('sOffer').innerHTML = f ? gbp(per === 'pw' ? f.pw : f.pcm) + ' <small>' + (per === 'pw' ? 'a week' : 'a month') + '</small>' : '—';
     $('sRows').innerHTML = f ? '<div><span>' + (per === 'pw' ? 'A month' : 'A week') + '</span><b>' + gbp(per === 'pw' ? f.pcm : f.pw) + '</b></div>' +
       ($('move_in').value ? '<div><span>Move in</span><b>' + esc(longDay($('move_in').value)) + '</b></div>' : '') + (stay ? '<div><span>Stay</span><b>' + esc(stay) + '</b></div>' : '') +
-      '<div><span>Tenants</span><b>' + tenantsN + '</b></div><div class="hl"><span>Holding deposit — pay after submitting</span><b>' + gbp(f.hold) + '</b></div><div><span>Due when you sign</span><b>' + gbp(f.after) + '</b></div>' : '<div><span>Enter your offer to see the amounts</span></div>';
+      '<div><span>Tenants</span><b>' + tenantsN + '</b></div><div class="hl"><span>Holding deposit (1 week’s rent) — pay after submitting</span><b>' + gbp(f.hold) + '</b></div><div><span>Due when you sign</span><b>' + gbp(f.after) + '</b></div>' : '<div><span>Enter your offer to see the amounts</span></div>';
     $('mSum').innerHTML = f ? 'Holding deposit<b>' + gbp(f.hold) + '</b>' : 'Your offer<b>—</b>';
+    // Weekly and monthly side by side, so there's no mix-up.
+    var mx = num($('max_offer').value), mxw = mx ? (per === 'pw' ? mx : mx * 12 / 52) : 0;
+    $('perConv').innerHTML = f ? '<div class="conv-row"><div><span>A week</span><b>' + gbp(f.pw) + '</b></div><div class="eq">=</div><div class="hl"><span>A month (what you’ll pay)</span><b>' + gbp(f.pcm) + '</b></div></div>' +
+      (mxw ? '<div class="conv-max">Maximum: ' + gbp(mxw) + ' a week = ' + gbp(mxw * 52 / 12) + ' a month</div>' : '') + '<div class="conv-note">Monthly = weekly × 52 ÷ 12</div>' : '';
+    $('holdExplain').innerHTML = '<div class="he-h"><span class="he-ico">£</span><div><b>What is the holding deposit?</b><span>' + (f ? '<b class="he-amt">' + gbp(f.hold) + '</b> — one week’s rent at your offer' : 'One week’s rent at your offer') + '</span></div></div>' +
+      '<ul><li><b>When:</b> paid by bank transfer within 24 hours of sending this form. It takes the property off the market while we do references.</li>' +
+      '<li><b>Not an extra cost:</b> once your offer is accepted it goes towards your first month’s rent' + (f ? ', so you’d then pay ' + gbp(f.pcm - f.hold) + ' for the rest of the first month' : '') + '.</li>' +
+      '<li><b>Returned within 24 hours</b> if the landlord rejects your maximum offer or takes the property off the market.</li>' +
+      '<li><b>Not returned</b> if you withdraw, don’t pass referencing or the right to rent check, give false information, or don’t sign and pay on time — you’ll tick each of these before you sign.</li></ul>';
   }
-  ['property', 'offer', 'move_in'].forEach(function(id){ $(id).addEventListener('input', drawSummary); });
+  ['property', 'offer', 'move_in', 'max_offer'].forEach(function(id){ $(id).addEventListener('input', drawSummary); });
   $('perSeg').addEventListener('click', function(e){
     var b = e.target.closest('[data-per]'); if (!b) return; per = b.dataset.per;
     this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
     document.querySelectorAll('.perTxt').forEach(function(s){ s.textContent = per === 'pw' ? 'per week' : 'per month'; });
+    document.querySelectorAll('.money-in.unit').forEach(function(m){ m.dataset.unit = per === 'pw' ? '/ week' : '/ month'; });
+    $('offer').placeholder = per === 'pw' ? '500' : '2,170'; $('max_offer').placeholder = per === 'pw' ? '520' : '2,250';
     drawSummary();
   });
-  $('stayChips').innerHTML = STAYS.map(function(s){ return '<button type="button" data-stay="' + esc(s) + '">' + esc(s) + '</button>'; }).join('');
-  $('stayChips').addEventListener('click', function(e){ var b = e.target.closest('[data-stay]'); if (!b) return; stay = b.dataset.stay; this.classList.remove('bad'); this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); }); drawSummary(); });
+  $('stayChips').innerHTML = STAYS.map(function(s){ return '<button type="button" data-stay="' + esc(s) + '">' + esc(s) + '</button>'; }).join('') + '<button type="button" data-stay="" data-other>✏️ Other…</button>';
+  $('stayChips').addEventListener('click', function(e){
+    var b = e.target.closest('[data-stay]'); if (!b) return; this.classList.remove('bad'); this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
+    var other = b.hasAttribute('data-other'); $('stayOther').hidden = !other;
+    stay = other ? $('stayOther').value.trim() : b.dataset.stay; if (other) $('stayOther').focus();
+    drawSummary();
+  });
+  // Their own length of stay, typed in.
+  $('stayOther').addEventListener('input', function(){ stay = this.value.trim(); this.classList.remove('bad'); drawSummary(); });
   document.querySelectorAll('[data-count]').forEach(function(box){
     var k = box.dataset.count, min = k === 'tenants' ? 1 : 0, max = k === 'tenants' ? 6 : 4;
     var draw = function(){ var v = k === 'tenants' ? tenantsN : guarantorsN; $(k + 'N').textContent = v; box.querySelector('[data-dec]').disabled = v <= min; box.querySelector('[data-inc]').disabled = v >= max; };
@@ -656,7 +691,7 @@
     if (!$('property').value.trim()) return showErr('Please enter the property address.', $('property'));
     if (!num($('offer').value)) return showErr('Please enter your offer.', $('offer'));
     if (!$('move_in').value) return showErr('Please choose your move-in date.', $('move_in'));
-    if (!stay) return showErr('Please choose how long you would like to stay.', $('stayChips'));
+    if (!stay) return showErr($('stayOther').hidden ? 'Please choose how long you would like to stay.' : 'Please type how long you would like to stay.', $('stayOther').hidden ? $('stayChips') : $('stayOther'));
     return true;
   }
   function readTenants(){
