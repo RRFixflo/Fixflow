@@ -6135,9 +6135,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
       move_in: isoDay(b.move_in) || null, stay: s(b.stay, 80), rent_frequency: 'Monthly', negotiate: s(b.negotiate, 2000), about: s(b.about, 3000),
       tenants: tenants, signature: s(b.signature), signed_at: new Date().toISOString(), terms_ticked: 6, money: offerMoney(pw), ip: String(req.ip || '').slice(0, 60)
     };
+    // Signing evidence for the audit trail: where and how it was signed, and a fingerprint of what was signed.
+    const started = Date.parse(b.started_at);
+    data.audit = { ip: data.ip, ua: str(req.get('user-agent'), 300) || '', started_at: started && started < Date.now() && started > Date.now() - 7 * 864e5 ? new Date(started).toISOString() : null };
+    data.fingerprint = offerFingerprint({ property_address: address, lead_name: lead, lead_email: email || null, lead_phone: phone || null }, data, docs.concat([{ tenant_no: 0, data: sigBuf }]));
     const token = crypto.randomBytes(16).toString('base64url');
     const ins = await p.query('INSERT INTO offers (property_address, property_key, lead_name, lead_email, lead_phone, offer_pw, data, log, track_token) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
-      [address, propKey(address), lead, email || null, phone || null, pw, JSON.stringify(data), JSON.stringify([{ at: new Date().toISOString(), text: 'Offer submitted online by ' + lead }]), token]);
+      [address, propKey(address), lead, email || null, phone || null, pw, JSON.stringify(data), JSON.stringify([offerLog(req, 'Offer submitted online by ' + lead, 'applicant')]), token]);
     const id = ins.rows[0].id;
     for (const d of docs) await p.query('INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, $2, $3, $4, $5)', [id, d.tenant_no, d.name, d.mime, d.data]);
     await p.query("INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, 0, 'signature.png', 'image/png', $2)", [id, sigBuf]);
@@ -6158,7 +6162,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await p.query(`UPDATE offers SET status = 'withdrawn', decided_at = now(), log = log || $2::jsonb,
         data = data || jsonb_build_object('withdraw_reason', $3::text, 'withdraw_more', $4::text)
       WHERE track_token = $1 AND paid_at IS NOT NULL AND status IN ('new', 'accepted') RETURNING id, property_address, lead_name, offer_pw`,
-      [t, JSON.stringify([{ at: new Date().toISOString(), text: 'Offer withdrawn by the applicant online (reason: ' + reason + (more ? ' — ' + more : '') + ') — told the holding deposit is not refundable, as per the terms' }]), reason, more]);
+      [t, JSON.stringify([offerLog(req, 'Offer withdrawn by the applicant online (reason: ' + reason + (more ? ' — ' + more : '') + ') — told the holding deposit is not refundable, as per the terms', 'applicant')]), reason, more]);
     if (!r.rows.length) return res.status(409).json({ ok: false, error: 'not-allowed' });
     const o = r.rows[0];
     ntfy({ title: 'Offer withdrawn: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' withdrew their offer (OF' + String(o.id).padStart(4, '0') + ') — ' + reason + '. Holding deposit not refundable as per the terms.', tags: ['x'] }).catch(function () {});
@@ -6170,7 +6174,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const t = String(req.params.token || ''), b = req.body || {}, when = isoDay(b.date) || londonDay(), from = str(b.from, 120) || '';
     const r = await p.query(`UPDATE offers SET data = data || jsonb_build_object('paid_claim', $2::jsonb), log = log || $3::jsonb
       WHERE track_token = $1 AND paid_at IS NULL AND status IN ('new', 'accepted') RETURNING id, property_address, lead_name, data`,
-      [t, JSON.stringify({ at: new Date().toISOString(), date: when, from: from }), JSON.stringify([{ at: new Date().toISOString(), text: 'Applicant says they paid the holding deposit on ' + certDay(when) + (from ? ' from ' + from : '') }])]);
+      [t, JSON.stringify({ at: new Date().toISOString(), date: when, from: from }), JSON.stringify([offerLog(req, 'Applicant says they paid the holding deposit on ' + certDay(when) + (from ? ' from ' + from : ''), 'applicant')])]);
     if (!r.rows.length) return res.status(409).json({ ok: false, error: 'not-allowed' });
     const o = r.rows[0];
     ntfy({ title: 'Holding deposit paid? ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' says they paid ' + gbp((o.data.money || {}).holding) + ' on ' + certDay(when) + (from ? ' from ' + from : '') + ' (ref ' + offerPayRef(o.property_address, 'OF' + String(o.id).padStart(4, '0')) + '). Check the bank, then mark it received in Fixflow.', tags: ['moneybag'] }).catch(function () {});
@@ -6187,7 +6191,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const refund = { name: name, sort_code: sort ? sort.replace(/^(\d\d)(\d\d)(\d\d)$/, '$1-$2-$3') : '', account: account, iban: iban, at: new Date().toISOString() };
     const r = await p.query(`UPDATE offers SET data = data || jsonb_build_object('refund', $2::jsonb), log = log || $3::jsonb
       WHERE track_token = $1 AND status = 'rejected' AND paid_at IS NOT NULL RETURNING id, property_address, lead_name, data`,
-      [t, JSON.stringify(refund), JSON.stringify([{ at: new Date().toISOString(), text: 'Refund account details given by the applicant (' + name + ')' }])]);
+      [t, JSON.stringify(refund), JSON.stringify([offerLog(req, 'Refund account details given by the applicant (' + name + ')', 'applicant')])]);
     if (!r.rows.length) return res.status(409).json({ ok: false, error: 'not-allowed' });
     const o = r.rows[0];
     ntfy({ title: 'Refund details in: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' gave their account for the holding deposit refund (' + gbp((o.data.money || {}).holding) + '). Open Offers in Fixflow.', tags: ['moneybag'] }).catch(function () {});
@@ -6201,6 +6205,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const o = (await p.query('SELECT id, created_at, property_address, lead_name, offer_pw, data, status, decided_at, paid_at FROM offers WHERE track_token = $1', [t])).rows[0];
     if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
     const d = o.data || {}, ref = 'OF' + String(o.id).padStart(4, '0');
+    // The first time the applicant opens their tracking page goes in the audit trail.
+    if (!d.track_viewed_at) p.query("UPDATE offers SET data = data || jsonb_build_object('track_viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'track_viewed_at')",
+      [o.id, JSON.stringify([offerLog(req, 'Applicant opened their offer tracking page', 'applicant')])]).catch(function () {});
     const bank = !o.paid_at && o.status !== 'rejected' && INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null;
     res.json({ ok: true, ref: ref, property: o.property_address, name: String(o.lead_name || '').split(/\s+/)[0], created_at: o.created_at, status: o.status, decided_at: o.decided_at, paid_at: o.paid_at,
       offer_pw: Number(o.offer_pw), money: d.money || {}, move_in: d.move_in || null, stay: d.stay || '', tenants: (d.tenants || []).length, bank: bank, reference: offerPayRef(o.property_address, ref),
@@ -6234,7 +6241,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (str(b.note, 300)) notes.push(str(b.note, 300));
     if (typeof b.refunded === 'boolean') { sets.push("data = data || jsonb_build_object('refunded_at', " + (b.refunded ? 'to_jsonb(now())' : "'null'::jsonb") + ')'); notes.push(b.refunded ? 'Holding deposit refund sent' : 'Refund marked as not sent'); }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
-    if (notes.length) { vals.push(JSON.stringify(notes.map(function (t) { return { at: new Date().toISOString(), text: t + (req.role === 'offers' ? ' (offers staff)' : '') }; }))); sets.push('log = log || $' + vals.length + '::jsonb'); }
+    if (notes.length) { vals.push(JSON.stringify(notes.map(function (t) { return offerLog(req, t + (req.role === 'offers' ? ' (offers staff)' : '')); }))); sets.push('log = log || $' + vals.length + '::jsonb'); }
     const r = await p.query('UPDATE offers SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id', vals);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json({ ok: true });
@@ -6271,7 +6278,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     if (!rtr[n]) await p.query('DELETE FROM offer_docs WHERE offer_id = $1 AND tenant_no = $2', [id, -n]);
     await p.query("UPDATE offers SET data = data || jsonb_build_object('rtr', $2::jsonb), log = log || $3::jsonb WHERE id = $1",
-      [id, JSON.stringify(rtr), JSON.stringify([{ at: new Date().toISOString(), text: note + (req.role === 'offers' ? ' (offers staff)' : '') }])]);
+      [id, JSON.stringify(rtr), JSON.stringify([offerLog(req, note + (req.role === 'offers' ? ' (offers staff)' : ''))])]);
     res.json({ ok: true, rtr: rtr });
   }));
   app.delete('/api/admin/offers/:id', withDb(async function (p, req, res) {
@@ -6280,146 +6287,334 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: !!r.rows.length });
   }));
 
-  // ---------- The offer as a PDF, laid out like the office's holding deposit form ----------
-  // Information sheet, offer receipt (money and bank details, declaration and
-  // signature), a page per tenant, their ID copies, and a signing record.
-  async function offerPdf(p, id) {
+  // ---------- Signing evidence ----------
+  // A fingerprint of what was signed: the offer's content (keys sorted, so it can
+  // be recomputed exactly) plus a SHA-256 of the signature and each ID file. It is
+  // stored when the offer is signed and printed on the PDF, so any later change
+  // to the offer or its files shows up as a mismatch.
+  function canonical(v) {
+    if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
+    if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter(function (k) { return v[k] !== undefined; }).map(function (k) { return JSON.stringify(k) + ':' + canonical(v[k]); }).join(',') + '}';
+    return JSON.stringify(v === undefined ? null : v);
+  }
+  function sha256(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }
+  function offerFingerprint(o, d, files) {
+    const core = { property: o.property_address, lead_name: o.lead_name, lead_email: o.lead_email || null, lead_phone: o.lead_phone || null,
+      per: d.per, offer_entered: d.offer_entered, max_entered: d.max_entered, move_in: d.move_in, stay: d.stay, negotiate: d.negotiate, about: d.about,
+      guarantors_count: d.guarantors_count, tenants: d.tenants, signature: d.signature, signed_at: d.signed_at, terms_ticked: d.terms_ticked, money: d.money };
+    const fileHashes = files.filter(function (f) { return f.tenant_no >= 0; }).map(function (f) { return f.tenant_no + ':' + sha256(f.data); }).sort();
+    return sha256(canonical(core) + '|' + fileHashes.join(','));
+  }
+  function docIdOf(fp) { return String(fp || '').slice(0, 24).toUpperCase().replace(/(.{4})(?!$)/g, '$1-'); }
+  // Who did something on an offer, for the audit trail.
+  function offerLog(req, text, by) {
+    return { at: new Date().toISOString(), text: text, by: by || (req.role === 'offers' ? 'staff' : 'office'), ip: String(req.ip || '').slice(0, 60), ua: str(req.get('user-agent'), 300) || '' };
+  }
+  function deviceOf(ua) {
+    ua = String(ua || ''); if (!ua) return '';
+    const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Unknown device';
+    const br = /Edg\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'browser';
+    return os + ' · ' + br;
+  }
+
+  // ---------- The offer as a PDF ----------
+  // A modern, formal version of the office's holding deposit form: summary,
+  // terms and e-signature, a page per tenant, (office copy) ID documents, and an
+  // audit trail like an e-signing certificate. opts.applicant = the applicant's
+  // own copy (no ID documents, no office notes).
+  async function offerPdf(p, id, opts) {
+    opts = opts || {};
     const o = (await p.query('SELECT * FROM offers WHERE id = $1', [id])).rows[0]; if (!o) return null;
     const docs = (await p.query('SELECT id, tenant_no, name, mime, data FROM offer_docs WHERE offer_id = $1 ORDER BY tenant_no, id', [id])).rows;
     const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     const pdf = await PDFDocument.create();
-    const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
-    const W = 595.28, H = 841.89, M = 48, ink = rgb(0.06, 0.07, 0.09), soft = rgb(0.38, 0.4, 0.45), line = rgb(0.86, 0.87, 0.9), red = rgb(0.85, 0.15, 0.18), band = rgb(0.96, 0.96, 0.97);
+    const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold), MONO = await pdf.embedFont(StandardFonts.Courier);
+    const W = 595.28, H = 841.89, M = 50, CW = W - M * 2;
+    const hex = function (h) { return rgb(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255); };
+    const C = { navy: hex('0B1F3A'), red: hex('C8102E'), ink: hex('101828'), soft: hex('667085'), faint: hex('98A2B3'), line: hex('E4E7EC'), panel: hex('F7F8FA'), white: rgb(1, 1, 1),
+      green: hex('067647'), greenBg: hex('ECFDF3'), amber: hex('B54708'), amberBg: hex('FFFAEB'), blue: hex('1D3FAE'), blueBg: hex('EEF2FF') };
     const d = o.data || {}, m = d.money || {}, ts = d.tenants || [], ref = 'OF' + String(o.id).padStart(4, '0');
-    // Only characters the standard PDF font has.
-    const safe = function (t) { return String(t == null ? '' : t).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/[^\x20-\x7E\xA3\xA0-\xFF\n]/g, ''); };
+    const sig = docs.filter(function (x) { return x.tenant_no === 0; })[0];
+    const fp = d.fingerprint || offerFingerprint(o, d, docs), fpNow = offerFingerprint(o, d, docs), intact = !!d.fingerprint && d.fingerprint === fpNow;
+    const docId = docIdOf(fp), audit = d.audit || {};
+    const TITLE = 'Holding Deposit & Offer Agreement';
+    const safe = function (t) { return String(t == null ? '' : t).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/·/g, '\xB7').replace(/[^\x20-\x7E\xA3\xA0-\xFF\n]/g, ''); };
     const money = function (v) { return '\xA3' + (Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
-    const dayOf = function (v) { return v ? new Date(String(v).length === 10 ? v + 'T12:00:00Z' : v).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/London' }) : ''; };
-    const stamp = function (v) { return v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''; };
+    const dayOf = function (v) { return v ? new Date(String(v).length === 10 ? v + 'T12:00:00Z' : v).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }) : ''; };
+    const stamp = function (v) { return v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '') : ''; };
     const wrap = function (text, font, size, width) {
       const out = [];
       safe(text).split('\n').forEach(function (para) {
         let cur = '';
-        para.split(/\s+/).forEach(function (w) { const t = cur ? cur + ' ' + w : w; if (font.widthOfTextAtSize(t, size) > width && cur) { out.push(cur); cur = w; } else cur = t; });
+        para.split(/\s+/).forEach(function (w) {
+          while (font.widthOfTextAtSize(w, size) > width && w.length > 1) { let k = w.length; while (k > 1 && font.widthOfTextAtSize(w.slice(0, k), size) > width) k--; if (cur) { out.push(cur); cur = ''; } out.push(w.slice(0, k)); w = w.slice(k); }
+          const t = cur ? cur + ' ' + w : w; if (font.widthOfTextAtSize(t, size) > width && cur) { out.push(cur); cur = w; } else cur = t;
+        });
         out.push(cur);
       });
       return out;
     };
+    const text = function (t, x, yy, size, font, color) { page.drawText(safe(t), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
+    const spaced = function (t, x, yy, size, font, color, gap) { let cx = x; safe(t).split('').forEach(function (ch) { page.drawText(ch, { x: cx, y: yy, size: size, font: font, color: color }); cx += font.widthOfTextAtSize(ch, size) + (gap || 0.8); }); return cx - x; };
+    const spacedW = function (t, size, font, gap) { return safe(t).split('').reduce(function (a, ch) { return a + font.widthOfTextAtSize(ch, size) + (gap || 0.8); }, 0); };
+    const rr = function (x, yTop, w, h, r, fill, border) {
+      r = Math.min(r, h / 2, w / 2);
+      const path = 'M ' + r + ' 0 H ' + (w - r) + ' A ' + r + ' ' + r + ' 0 0 1 ' + w + ' ' + r + ' V ' + (h - r) + ' A ' + r + ' ' + r + ' 0 0 1 ' + (w - r) + ' ' + h + ' H ' + r + ' A ' + r + ' ' + r + ' 0 0 1 0 ' + (h - r) + ' V ' + r + ' A ' + r + ' ' + r + ' 0 0 1 ' + r + ' 0 Z';
+      page.drawSvgPath(path, { x: x, y: yTop, color: fill || undefined, borderColor: border || undefined, borderWidth: border ? 0.8 : 0 });
+    };
+    const pill = function (label, x, yy, fg, bg) { const s = 7.5, w = B.widthOfTextAtSize(safe(label), s) + 14; rr(x, yy + 12, w, 16, 8, bg); text(label, x + 7, yy + 1, s, B, fg); return w; };
+    const tick = function (x, yTop, size, bg) { rr(x, yTop, size, size, 3, bg || C.green); page.drawSvgPath('M ' + size * 0.24 + ' ' + size * 0.52 + ' L ' + size * 0.43 + ' ' + size * 0.72 + ' L ' + size * 0.78 + ' ' + size * 0.3, { x: x, y: yTop, borderColor: C.white, borderWidth: 1.6 }); };
     let logo = null;
     try { logo = await pdf.embedPng(require('fs').readFileSync(require('path').join(__dirname, 'logo-ink.png'))); } catch (e) {}
+
     let page, y;
-    const footer = function () {
-      page.drawLine({ start: { x: M, y: 46 }, end: { x: W - M, y: 46 }, thickness: 0.6, color: line });
-      page.drawText(safe('Residential Realtors - Trading name of Estallion Investments Limited - Registered in England No. ' + (INVOICE.companyNo || '08760284') + ' - ' + (INVOICE.address || '28-30 Harper Road, London, SE1 6AD')), { x: M, y: 32, size: 7, font: F, color: soft });
-      page.drawText(safe(ref), { x: W - M - F.widthOfTextAtSize(ref, 7), y: 32, size: 7, font: B, color: soft });
+    const pages = [];
+    const newPage = function (section) {
+      page = pdf.addPage([W, H]); pages.push({ page: page, section: section });
+      page.drawRectangle({ x: 0, y: H - 4, width: W, height: 4, color: C.red });
+      if (logo) { const h = 26, w = logo.width * h / logo.height; page.drawImage(logo, { x: M, y: H - 52, width: w, height: h }); }
+      const t1 = TITLE.toUpperCase(); spaced(t1, W - M - spacedW(t1, 7, B, 0.9), H - 34, 7, B, C.soft, 0.9);
+      const t2 = section ? section + '  \xB7  ' + ref : ref; text(t2, W - M - F.widthOfTextAtSize(safe(t2), 8.5), H - 48, 8.5, F, C.ink);
+      page.drawLine({ start: { x: M, y: H - 66 }, end: { x: W - M, y: H - 66 }, thickness: 0.6, color: C.line });
+      y = H - 92;
     };
-    const newPage = function (title) {
-      page = pdf.addPage([W, H]); y = H - M;
-      if (logo) { const h = 34, w = logo.width * h / logo.height; page.drawImage(logo, { x: M, y: y - h + 6, width: w, height: h }); }
-      page.drawText(safe(title), { x: W - M - B.widthOfTextAtSize(safe(title), 15), y: y - 18, size: 15, font: B, color: ink });
-      y -= 52; page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 1.2, color: red }); y -= 22;
-      footer();
+    const ensure = function (need, section) { if (y - need < 78) newPage(section); };
+    const heading = function (t, section, sub) {
+      ensure(sub ? 58 : 44, section); y -= 6;
+      text(t, M, y, 12.5, B, C.navy); page.drawRectangle({ x: M, y: y - 7, width: 22, height: 2, color: C.red });
+      y -= 22; if (sub) { wrap(sub, F, 8.5, CW).forEach(function (ln) { text(ln, M, y, 8.5, F, C.soft); y -= 12; }); y -= 4; }
     };
-    const ensure = function (need, title) { if (y - need < 70) newPage(title); };
-    const para = function (text, opts) {
-      opts = opts || {}; const size = opts.size || 9.5, font = opts.bold ? B : F, x = M + (opts.indent || 0), width = W - M * 2 - (opts.indent || 0);
-      wrap(text, font, size, width).forEach(function (ln) { ensure(size + 6, opts.title || ''); page.drawText(ln, { x: x, y: y, size: size, font: font, color: opts.color || ink }); y -= size + 4; });
-      y -= opts.after == null ? 6 : opts.after;
+    const para = function (t, o2) {
+      o2 = o2 || {}; const size = o2.size || (o2.section === 'Terms & signature' ? 8.8 : 9.2), font = o2.bold ? B : F, x = M + (o2.indent || 0), w = CW - (o2.indent || 0);
+      wrap(t, font, size, w).forEach(function (ln) { ensure(size + 6, o2.section); text(ln, x, y, size, font, o2.color || C.ink); y -= size + 4.2; });
+      y -= o2.after == null ? 6 : o2.after;
     };
-    const heading = function (text, title) { ensure(40, title); y -= 4; page.drawRectangle({ x: M, y: y - 6, width: W - M * 2, height: 20, color: band }); page.drawText(safe(text), { x: M + 8, y: y, size: 10.5, font: B, color: ink }); y -= 26; };
-    // A label / value row (value wraps), like the form's boxes.
-    const row = function (label, value, title) {
-      const lw = 190, vx = M + lw, vw = W - M - vx, vs = wrap(value || '', F, 9.5, vw - 6);
-      const h = Math.max(1, vs.length) * 13.5 + 8; ensure(h + 2, title);
-      page.drawText(safe(label), { x: M + 2, y: y - 2, size: 8.5, font: B, color: soft });
-      vs.forEach(function (ln, i) { page.drawText(ln, { x: vx, y: y - 2 - i * 13.5, size: 9.5, font: F, color: ink }); });
-      y -= h; page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.5, color: line });
+    // Label/value cells, two to a row (full = one cell across the page).
+    const grid = function (cells, section) {
+      cells = cells.filter(function (c) { return c && c[1] != null && String(c[1]).trim() !== ''; });
+      const colW = (CW - 16) / 2;
+      let i = 0;
+      while (i < cells.length) {
+        const row = cells[i][2] === 'full' ? [cells[i++]] : [cells[i++]].concat(i < cells.length && cells[i][2] !== 'full' ? [cells[i++]] : []);
+        const ws = row.map(function (c) { return row.length === 1 && c[2] === 'full' ? CW : colW; });
+        const lines = row.map(function (c, k) { return wrap(c[1], c[3] === 'mono' ? MONO : F, 9.8, ws[k] - 4); });
+        const h = 13 + Math.max.apply(null, lines.map(function (l) { return l.length; })) * 13;
+        ensure(h + 14, section);
+        row.forEach(function (c, k) {
+          const x = M + (k ? colW + 16 : 0);
+          spaced(String(c[0]).toUpperCase(), x, y, 6.6, B, C.soft, 0.6);
+          lines[k].forEach(function (ln, j) { text(ln, x, y - 13 - j * 13, 9.8, c[3] === 'mono' ? MONO : F, C.ink); });
+        });
+        y -= h; page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.5, color: C.line }); y -= 14;
+      }
+      y -= 2;
     };
+    const STATUS = { new: ['Awaiting decision', C.blue, C.blueBg], accepted: ['Accepted', C.green, C.greenBg], rejected: ['Not accepted', C.amber, C.amberBg], withdrawn: ['Withdrawn', C.soft, C.panel] }[o.status] || ['', C.soft, C.panel];
 
-    // 1. Information sheet
-    newPage('Offer Form: Information Sheet');
-    para('Residential Realtors take a one week\'s rent holding deposit from the tenant(s) to reserve a property while reference checks and preparation for a tenancy agreement are carried out. Your holding deposit does not imply tenancy; this will only be created once all parties have signed the tenancy agreement.');
-    para('If the landlord formally rejects your maximum offer or withdraws the property from the market for any reason other than the reasons mentioned below, your holding deposit will be returned to you within 24 hours. Your holding deposit confirms your commitment to rent the property. It is accepted that your holding deposit will be non-refundable should at least one of the following points occur:');
-    ['Withdrawal of offer from the property (whether the offer has been made to the landlord or not).', 'Failure to submit completed referencing application forms by all tenants/guarantors within 24 hours of receiving the application form.', 'Failure to satisfy the right to rent check.', 'Providing false, inaccurate or misleading references.', 'Failure to submit signed tenancy agreements and pay the remaining balance within 48 hours of receiving the documents.', 'Failure to take all reasonable steps to enter into a tenancy agreement.']
-      .forEach(function (t) { para('[x]  ' + t + (d.terms_ticked ? '   (ticked by the applicant)' : ''), { indent: 10, after: 2 }); });
-    y -= 6; para('Once your offer is accepted, your holding deposit will be used as the initial payment of your first month\'s rent.');
-    heading('References'); para('Prior to the tenancy being offered, you must satisfy our minimum creditworthiness requirements; to satisfy this we will verify credit, income, previous landlord and bank statements. Applicants\' and/or guarantors\' income must be at least three times the annual rent over the duration of the tenancy, with no county court judgements against their names. Any offer of a tenancy is subject to satisfactory references being passed. You must supply proof/visa confirming your right to rent in the UK.');
-    heading('Deadline for Agreement'); para('Residential Realtors are committed to providing a fast and efficient service; in the majority of tenancies we conclude within 5-14 days from the date your holding deposit has been received. However, due to circumstances beyond our control (e.g. landlord/employer reference response times, international bank transfers), you agree the deadline for agreement can take up to 28 days.');
+    // ===== 1. Summary =====
+    const S1 = 'Summary'; newPage(S1);
+    text('Holding Deposit &', M, y - 6, 24, B, C.navy); text('Offer Agreement', M, y - 34, 24, B, C.navy); y -= 58;
+    wrap(o.property_address, F, 12, CW).forEach(function (ln) { text(ln, M, y, 12, F, C.ink); y -= 16; });
+    y -= 6;
+    let px = M;
+    px += pill(sig ? 'E-SIGNED' : 'SUBMITTED', px, y - 12, C.green, C.greenBg) + 6;
+    px += pill(STATUS[0].toUpperCase(), px, y - 12, STATUS[1], STATUS[2]) + 6;
+    px += pill(o.paid_at ? 'HOLDING DEPOSIT RECEIVED' : 'HOLDING DEPOSIT DUE', px, y - 12, o.paid_at ? C.green : C.amber, o.paid_at ? C.greenBg : C.amberBg) + 6;
+    y -= 30;
+    text('Reference ' + ref + '   \xB7   Document ID ' + docId + '   \xB7   Signed ' + dayOf(d.signed_at || o.created_at), M, y, 8.2, F, C.soft); y -= 22;
+    // Key figures
+    const tiles = [['Offer', money(d.offer_entered && d.per === 'pcm' ? m.pcm : o.offer_pw), d.per === 'pcm' ? 'per month' : 'per week'], ['Monthly rent', money(m.pcm), 'paid monthly'], ['Holding deposit', money(m.holding), "one week's rent"],
+      ['Move-in date', d.move_in ? dayOf(d.move_in) : 'To be agreed', ''], ['Length of stay', d.stay || 'Not given', 'how long they would like to stay'], ['Occupants', ts.length + ' tenant' + (ts.length === 1 ? '' : 's'), (d.guarantors_count || 0) + ' guarantor' + (d.guarantors_count === 1 ? '' : 's')]];
+    const tw = (CW - 20) / 3, th = 58;
+    tiles.forEach(function (t, i) {
+      const x = M + (i % 3) * (tw + 10), top = y - Math.floor(i / 3) * (th + 10);
+      rr(x, top, tw, th, 8, C.panel, C.line);
+      spaced(t[0].toUpperCase(), x + 12, top - 17, 6.6, B, C.soft, 0.6);
+      text(t[1], x + 12, top - 35, t[1].length > 16 ? 11 : 14, B, C.ink);
+      if (t[2]) text(t[2], x + 12, top - 48, 7.5, F, C.soft);
+    });
+    y -= th * 2 + 10 + 24;
+    if (d.max_pw) { para('Maximum offer: ' + money(d.max_pw) + ' per week. The maximum offer is binding subject to contract, references and the terms in this agreement.', { size: 8.5, color: C.soft, section: S1 }); }
+    // Parties
+    heading('Parties', S1);
+    ensure(96, S1);
+    const pw2 = (CW - 12) / 2, ph = 86;
+    [['Letting agent', 'Residential Realtors', ['Estallion Investments Limited', safe(INVOICE.address || '28-30 Harper Road, London, SE1 6AD'), 'Registered in England No. ' + (INVOICE.companyNo || '08760284')]],
+      ['Lead applicant', o.lead_name, [o.lead_email || '', o.lead_phone || '', 'Signing for ' + ts.length + ' tenant' + (ts.length === 1 ? '' : 's')]]].forEach(function (c, i) {
+      const x = M + i * (pw2 + 12); rr(x, y, pw2, ph, 8, C.white, C.line);
+      spaced(c[0].toUpperCase(), x + 12, y - 17, 6.6, B, C.soft, 0.6); text(c[1], x + 12, y - 33, 11, B, C.ink);
+      c[2].filter(Boolean).forEach(function (l, j) { text(String(l).slice(0, 52), x + 12, y - 48 - j * 11.5, 8.5, F, C.soft); });
+    });
+    y -= ph + 18;
+    // Conditions
+    heading('Conditions requested', S1, 'Anything the applicant asked to be agreed with the landlord. Conditions not written here will not be considered later.');
+    ensure(40, S1);
+    const cond = wrap(d.negotiate || 'None given.', F, 9.5, CW - 24), chh = cond.length * 13 + 18;
+    ensure(chh + 6, S1); rr(M, y, CW, chh, 8, C.panel); cond.forEach(function (ln, i) { text(ln, M + 12, y - 16 - i * 13, 9.5, d.negotiate ? F : F, d.negotiate ? C.ink : C.soft); }); y -= chh + 12;
+    if (d.about) { heading('About the applicants', S1); para(d.about, { section: S1 }); }
+    // Money
+    ensure(190, S1); heading('Monies required before moving in', S1);
+    const mrow = function (label, val, strong) {
+      ensure(24, S1);
+      if (strong) rr(M, y + 6, CW, 24, 6, C.navy);
+      text(label, M + 10, y - 9, 9.8, strong ? B : F, strong ? C.white : C.ink);
+      const v = money(val); text(v, W - M - 10 - (strong ? B : F).widthOfTextAtSize(v, 10), y - 9, 10, strong ? B : F, strong ? C.white : C.ink);
+      if (!strong) page.drawLine({ start: { x: M, y: y - 17 }, end: { x: W - M, y: y - 17 }, thickness: 0.5, color: C.line });
+      y -= 24;
+    };
+    mrow("Holding deposit (one week's rent)", m.holding); mrow('First month\'s rent in advance', m.rent || m.pcm); mrow("Tenancy deposit (five weeks' rent)", m.deposit); mrow('Total move-in monies', m.total); mrow('Balance due at signing (after holding deposit)', m.balance, true);
+    y -= 4; para('The holding deposit goes towards the first month\'s rent once the offer is accepted. It is held as a holding deposit and only becomes part of the deposit once the tenancy has started.', { size: 8.2, color: C.soft, section: S1 });
+    // Bank details
+    heading('How to pay', S1);
+    const bankRows = [['Account name', INVOICE.payee || '-'], ['Sort code', INVOICE.sortCode || '-'], ['Account number', INVOICE.accountNumber || '-']].concat(INVOICE.iban ? [['IBAN', INVOICE.iban]] : [], INVOICE.swift ? [['SWIFT / BIC', INVOICE.swift]] : [], [['Payment reference', offerPayRef(o.property_address, ref)]]);
+    const bh = bankRows.length * 17 + 16; ensure(bh + 6, S1);
+    rr(M, y, CW, bh, 8, C.white, C.line);
+    bankRows.forEach(function (r, i) { const yy = y - 18 - i * 17; text(r[0], M + 14, yy, 8.8, F, C.soft); text(r[1], M + 150, yy, 9.8, r[0] === 'Payment reference' ? B : F, r[0] === 'Payment reference' ? C.red : C.ink); });
+    y -= bh + 14;
+    if (d.refund) {
+      heading('Refund account', S1, 'Given by the applicant after the offer was not accepted. It must be in the name of the applicant who paid.');
+      grid([['Account name', d.refund.name], ['Sort code', d.refund.sort_code], ['Account number', d.refund.account], ['IBAN', d.refund.iban], ['Given', stamp(d.refund.at)], ['Refund sent', d.refunded_at ? stamp(d.refunded_at) : 'Not yet']], S1);
+    }
 
-    // 2. Receipt
-    const T2 = 'Offer Form: Receipt';
-    newPage(T2);
-    row('Full Name', o.lead_name, T2); row('Property Address', o.property_address, T2); row('Mobile', o.lead_phone || '', T2); row('E-mail', o.lead_email || '', T2);
-    row('Number of Tenants', String(ts.length), T2); row('Number of Guarantors', String(d.guarantors_count || 0), T2);
-    row('Offer rental price (PW)', money(o.offer_pw) + '   (' + money(m.pcm) + ' PCM)', T2); row('Maximum offer rental price (PW)', d.max_pw ? money(d.max_pw) : '-', T2);
-    y -= 4; para('Your maximum offer is binding subject to contract, references and the terms stipulated in the Offer Form: Information Sheet above.', { size: 8.5, color: soft });
-    row('Move In Date', dayOf(d.move_in), T2); row('How long they would like to stay', d.stay || '', T2); row('Rent Frequency', 'Monthly', T2);
-    row('Conditions to be agreed with the landlord', d.negotiate || 'None given', T2); row('About the tenants', d.about || '-', T2);
-    heading('Breakdown of total monies required before moving in', T2);
-    row('One week\'s holding deposit', money(m.holding), T2); row('Rent in advance', money(m.rent || m.pcm), T2); row('Five weeks\' deposit', money(m.deposit), T2);
-    row('Move-in balance', money(m.total), T2); row('Move-in balance minus holding deposit', money(m.balance), T2);
-    heading('Bank Transfer Details', T2);
-    row('Account Name', INVOICE.payee || '-', T2); row('Sort Code', INVOICE.sortCode || '-', T2); row('Account Number', INVOICE.accountNumber || '-', T2);
-    if (INVOICE.iban) row('IBAN', INVOICE.iban, T2); if (INVOICE.swift) row('SWIFT / BIC', INVOICE.swift, T2);
-    if (d.refund) { heading('Refund account (given by the applicant)', T2); row('Account name', d.refund.name, T2); row('Sort code', d.refund.sort_code || '-', T2); row('Account number', d.refund.account || '-', T2); if (d.refund.iban) row('IBAN', d.refund.iban, T2); row('Refund sent', d.refunded_at ? stamp(d.refunded_at) : 'Not yet', T2); }
-    row('Payment reference', offerPayRef(o.property_address, ref), T2);
-    y -= 4; para('Please note the move-in monies are a holding deposit and will only be considered as part of the deposit once the tenancy has commenced.', { size: 8.5, color: soft });
-    para('I confirm that the information provided is fully accurate, that I have read and understood the Holding Deposit: Information Sheet, and I am authorised to make decisions and sign on behalf of all tenants.', { size: 9 });
-    ensure(110, T2);
-    page.drawText('Signed on behalf of the tenant:', { x: M, y: y, size: 9.5, font: B, color: ink }); y -= 10;
-    const sig = docs.filter(function (x) { return x.tenant_no === 0; })[0];
-    if (sig) { try { const im = await pdf.embedPng(sig.data); const h = 56, w = Math.min(230, im.width * h / im.height); page.drawImage(im, { x: M, y: y - h, width: w, height: h }); } catch (e) {} }
-    y -= 62; page.drawLine({ start: { x: M, y: y }, end: { x: M + 250, y: y }, thickness: 0.7, color: ink }); y -= 12;
-    page.drawText(safe((d.signature || o.lead_name || '') + '  (' + stamp(d.signed_at || o.created_at) + ' UK time)'), { x: M, y: y, size: 9, font: F, color: ink }); y -= 20;
+    // ===== 2. Terms and signature =====
+    const S2 = 'Terms & signature'; newPage(S2);
+    heading('Holding deposit terms', S2);
+    para('Residential Realtors take a holding deposit of one week\'s rent from the tenant(s) to reserve the property while reference checks and the tenancy agreement are prepared. The holding deposit does not create a tenancy; a tenancy only exists once all parties have signed the tenancy agreement.', { section: S2 });
+    para('If the landlord formally rejects the maximum offer, or withdraws the property for any reason other than those below, the holding deposit is returned within 24 hours. The holding deposit confirms the applicant\'s commitment to rent the property and is non-refundable if any of the following occur. Each point was ticked individually by the applicant:', { section: S2 });
+    ['Withdrawal of the offer from the property (whether the offer has been made to the landlord or not).', 'Failure to submit completed referencing application forms by all tenants/guarantors within 24 hours of receiving the application form.', 'Failure to satisfy the right to rent check.', 'Providing false, inaccurate or misleading references.', 'Failure to submit signed tenancy agreements and pay the remaining balance within 48 hours of receiving the documents.', 'Failure to take all reasonable steps to enter into a tenancy agreement.']
+      .forEach(function (t, i) {
+        const ls = wrap(t, F, 9, CW - 110), hh = ls.length * 12.5 + 9; ensure(hh, S2);
+        rr(M, y + 4, CW, hh, 6, C.panel);
+        if (d.terms_ticked) tick(M + 9, y - 0.5, 10); text(String(i + 1) + '.', M + 26, y - 8, 9, B, C.navy);
+        ls.forEach(function (ln, j) { text(ln, M + 40, y - 8 - j * 12.5, 9, F, C.ink); });
+        if (d.terms_ticked) text('Accepted', W - M - 10 - B.widthOfTextAtSize('Accepted', 7.5), y - 8, 7.5, B, C.green);
+        y -= hh + 3;
+      });
+    y -= 6;
+    heading('References', S2); para('Before a tenancy is offered the applicants must satisfy minimum creditworthiness requirements: credit, income, previous landlord and bank statements are verified. The applicants\' and/or guarantors\' income must be at least three times the annual rent over the tenancy, with no county court judgements. Any offer of a tenancy is subject to satisfactory references. Proof of the right to rent in the UK must be supplied.', { section: S2 });
+    heading('Deadline for agreement', S2); para('Most tenancies conclude within 5-14 days of the holding deposit being received. Because of circumstances outside our control (for example reference response times or international transfers), the applicant agrees the deadline for agreement may be up to 28 days.', { section: S2 });
+    ensure(190, S2); heading('Declaration and signature', S2);
+    tick(M, y + 2, 12); wrap('I confirm the information provided is fully accurate, that I have read and understood the holding deposit information above, and that I am authorised to make decisions and sign on behalf of all tenants.', F, 9.2, CW - 22).forEach(function (ln) { text(ln, M + 20, y - 7, 9.2, F, C.ink); y -= 13; }); y -= 12;
+    // Signature block
+    ensure(128, S2);
+    const sh = 108; rr(M, y, CW, sh, 10, C.white, C.line);
+    const sw = CW * 0.52;
+    rr(M + 10, y - 10, sw - 20, sh - 20, 6, C.white);
+    if (sig) { try { const im = await pdf.embedPng(sig.data); const h = 58, w = Math.min(sw - 40, im.width * h / im.height); page.drawImage(im, { x: M + 10 + (sw - 20 - w) / 2, y: y - 22 - h, width: w, height: h }); } catch (e) {} }
+    page.drawLine({ start: { x: M + 22, y: y - 86 }, end: { x: M + sw - 22, y: y - 86 }, thickness: 0.6, color: C.faint });
+    text(safe(d.signature || o.lead_name || ''), M + 22, y - 99, 8.5, B, C.ink);
+    const sx = M + sw + 6;
+    [['Signed by', (d.signature || o.lead_name || '')], ['Date and time', stamp(d.signed_at || o.created_at) + ' UK'], ['Method', sig ? 'Drawn on screen' : 'Typed name'], ['IP address', audit.ip || d.ip || '-'], ['Document ID', docId]].forEach(function (r, i) {
+      spaced(r[0].toUpperCase(), sx, y - 18 - i * 19, 6, B, C.soft, 0.5); text(String(r[1]).slice(0, 40), sx, y - 27 - i * 19, 8.5, r[0] === 'Document ID' ? MONO : F, C.ink);
+    });
+    y -= sh + 10;
+    text('Signed electronically - legally binding in England and Wales (Electronic Communications Act 2000). See the audit trail at the end.', M, y, 7.4, F, C.soft); y -= 14;
 
-    // 3. A page per tenant
+    // ===== 3. Tenants =====
     for (let i = 0; i < ts.length; i++) {
-      const t = ts[i], TT = 'Offer Form: Tenant Details'; newPage(TT);
-      page.drawText(safe('Tenant ' + (i + 1) + (i === 0 ? ' (Lead Tenant)' : '')), { x: M, y: y, size: 12.5, font: B, color: ink }); y -= 22;
-      heading('Tenant Details', TT); row('Full Name', t.name, TT); row('Contact Number', t.phone, TT); row('Email Address', t.email, TT); row('Date of Birth', dayOf(t.dob), TT);
-      heading('Type of Employment / Income Source', TT); row('Income source', t.income_type, TT); row('Employment Type', t.employment_type, TT); row('Company Name', t.company, TT); row('Current Position', t.position, TT);
-      row('Gross Annual Salary', t.salary ? '\xA3' + t.salary : '', TT); row('Start Date', dayOf(t.start_date), TT); row('Any Additional Income', t.other_income, TT);
-      if (t.university || t.course || t.academic_year) { heading('Study Details', TT); row('University Name', t.university, TT); row('Full Course Name', t.course, TT); row('Academic Year', t.academic_year, TT); }
-      heading('Residency Details', TT); row('Current Address', t.current_address, TT); row('Status', t.residency_status, TT); row('Rental Amount', t.current_rent ? '\xA3' + t.current_rent + ' a month' : '', TT);
-      row('Landlord/Agent Name', t.landlord_name, TT); row('Landlord E-mail Address', t.landlord_email, TT); row('Landlord Contact Number', t.landlord_phone, TT); row('Tenancy Start Date', dayOf(t.tenancy_start), TT); row('Tenancy End Date', dayOf(t.tenancy_end), TT);
-      heading('Right to Rent', TT); row('UK or Irish passport', t.uk_passport, TT); if (t.share_code) row('Right to rent share code', t.share_code.replace(/^(.{3})(.{3})(.{3})$/, '$1 $2 $3'), TT);
-      row('Passport / visa / proof of residency', docs.filter(function (x) { return x.tenant_no === i + 1; }).length + ' file(s) attached at the end of this document', TT);
-      const rc = (d.rtr || {})[i + 1];
-      if (rc) { row('Right to rent check', { passport: 'UK or Irish passport seen', unlimited: 'Unlimited right to rent', limited: 'Time-limited right to rent until ' + dayOf(rc.until), none: 'No right to rent' }[rc.result] || rc.result, TT);
-        row('Checked on', dayOf(rc.checked) + (rc.by ? ' by ' + rc.by : '') + (rc.doc ? ' - GOV.UK result attached' : ''), TT); if (rc.note) row('Check notes', rc.note, TT); }
-      else row('Right to rent check', 'Not recorded yet', TT);
-      if (t.g_name) { heading('Guarantor Details', TT); row('Full Name', t.g_name, TT); row('Relation', t.g_relation, TT); row('Email Address', t.g_email, TT); row('Contact Number', t.g_phone, TT); row('Company', t.g_company, TT);
-        row('Current Position', t.g_position, TT); row('Gross Annual Salary', t.g_salary ? '\xA3' + t.g_salary : '', TT); row('UK home owner', t.g_homeowner + (t.g_home_address ? ' - ' + t.g_home_address : ''), TT); row('Additional Income / Savings', t.g_other, TT); }
+      const t = ts[i], S3 = 'Tenant ' + (i + 1) + ' of ' + ts.length; newPage(S3);
+      spaced((i === 0 ? 'LEAD TENANT' : 'TENANT ' + (i + 1)), M, y, 7, B, C.red, 0.9); y -= 22;
+      text(t.name, M, y, 20, B, C.navy); y -= 26;
+      heading('Personal details', S3); grid([['Full name', t.name], ['Date of birth', dayOf(t.dob)], ['Phone', t.phone], ['Email', t.email]], S3);
+      heading('Employment and income', S3); grid([['Main income', t.income_type], ['Employment type', t.employment_type], ['Company', t.company], ['Position', t.position], ['Gross annual salary', t.salary ? '\xA3' + t.salary : ''], ['Start date', dayOf(t.start_date)], ['Additional income', t.other_income, 'full']], S3);
+      if (t.university || t.course || t.academic_year) { heading('Study', S3); grid([['University', t.university], ['Course', t.course], ['Academic year', t.academic_year]], S3); }
+      heading('Current home', S3); grid([['Current address', t.current_address, 'full'], ['Status', t.residency_status], ['Rent', t.current_rent ? '\xA3' + t.current_rent + ' a month' : ''], ['Landlord / agent', t.landlord_name], ['Landlord phone', t.landlord_phone], ['Landlord email', t.landlord_email], ['Tenancy', [dayOf(t.tenancy_start), dayOf(t.tenancy_end)].filter(Boolean).join(' - ')]], S3);
+      const idn = docs.filter(function (x) { return x.tenant_no === i + 1; }).length, rc = (d.rtr || {})[i + 1];
+      heading('Right to rent', S3);
+      grid([['UK or Irish passport', t.uk_passport], ['Share code', t.share_code ? t.share_code.replace(/^(.{3})(.{3})(.{3})$/, '$1 $2 $3') : ''], ['Identity documents', idn + ' file' + (idn === 1 ? '' : 's') + ' uploaded' + (opts.applicant ? '' : ' (attached)')],
+        !opts.applicant && rc ? ['Check', ({ passport: 'UK or Irish passport seen', unlimited: 'Unlimited right to rent', limited: 'Time-limited until ' + dayOf(rc.until), none: 'No right to rent' }[rc.result] || rc.result) + ' - checked ' + dayOf(rc.checked) + (rc.by ? ' by ' + rc.by : '')] : null], S3);
+      if (t.g_name) { heading('Guarantor', S3); grid([['Full name', t.g_name], ['Relation', t.g_relation], ['Email', t.g_email], ['Phone', t.g_phone], ['Company', t.g_company], ['Position', t.g_position], ['Gross annual income', t.g_salary ? '\xA3' + t.g_salary : ''], ['UK home owner', t.g_homeowner], ['Home address', t.g_home_address, 'full'], ['Additional income / savings', t.g_other, 'full']], S3); }
     }
 
-    // 4. ID documents (photos on a page each; PDFs added as they are)
-    for (const x of docs.filter(function (q) { return q.tenant_no !== 0; }).sort(function (a, b) { return Math.abs(a.tenant_no) - Math.abs(b.tenant_no) || b.tenant_no - a.tenant_no; })) {
-      const tn = Math.abs(x.tenant_no), label = 'Tenant ' + tn + ' (' + (ts[tn - 1] || {}).name + ') - ' + (x.tenant_no < 0 ? 'Right to rent check result: ' : '') + (x.name || 'ID');
-      try {
-        if (x.mime === 'application/pdf') {
-          const src = await PDFDocument.load(x.data, { ignoreEncryption: true });
-          (await pdf.copyPages(src, src.getPageIndices())).forEach(function (pg) { pdf.addPage(pg); });
-          continue;
-        }
-        if (!/jpe?g|png/.test(x.mime)) continue;
-        const im = /png/.test(x.mime) ? await pdf.embedPng(x.data) : await pdf.embedJpg(x.data);
-        newPage('Supporting document'); page.drawText(safe(label), { x: M, y: y, size: 10, font: B, color: ink }); y -= 16;
-        const maxW = W - M * 2, maxH = y - 70, k = Math.min(maxW / im.width, maxH / im.height, 1);
-        page.drawImage(im, { x: M + (maxW - im.width * k) / 2, y: y - im.height * k, width: im.width * k, height: im.height * k });
-      } catch (e) { console.error('Offer PDF: could not add', x.name, e.message); }
+    // ===== 4. Identity documents (office copy) =====
+    if (!opts.applicant) {
+      for (const x of docs.filter(function (q) { return q.tenant_no !== 0; }).sort(function (a, b) { return Math.abs(a.tenant_no) - Math.abs(b.tenant_no) || b.tenant_no - a.tenant_no; })) {
+        const tn = Math.abs(x.tenant_no), label = (x.tenant_no < 0 ? 'Right to rent check result' : 'Identity document') + ' \xB7 Tenant ' + tn + ' (' + ((ts[tn - 1] || {}).name || '') + ') \xB7 ' + (x.name || 'file');
+        try {
+          if (x.mime === 'application/pdf') {
+            const src = await PDFDocument.load(x.data, { ignoreEncryption: true });
+            (await pdf.copyPages(src, src.getPageIndices())).forEach(function (pg) { pdf.addPage(pg); pages.push({ page: pg, external: true }); });
+            continue;
+          }
+          if (!/jpe?g|png/.test(x.mime)) continue;
+          const im = /png/.test(x.mime) ? await pdf.embedPng(x.data) : await pdf.embedJpg(x.data);
+          newPage('Supporting document'); text(label, M, y, 9.5, B, C.ink); y -= 10; text('SHA-256 ' + sha256(x.data), M, y - 4, 6.5, MONO, C.soft); y -= 18;
+          const maxW = CW, maxH = y - 90, k = Math.min(maxW / im.width, maxH / im.height, 1);
+          rr(M, y, CW, im.height * k + 16, 8, C.panel);
+          page.drawImage(im, { x: M + (maxW - im.width * k) / 2, y: y - 8 - im.height * k, width: im.width * k, height: im.height * k });
+        } catch (e) { console.error('Offer PDF: could not add', x.name, e.message); }
+      }
     }
 
-    // 5. Signing record
-    const TA = 'Signing Record'; newPage(TA);
-    row('Document', 'Holding Deposit / Offer Form - ' + ref, TA); row('Property', o.property_address, TA);
-    row('Submitted online', stamp(o.created_at) + ' UK time', TA); row('Signed by', (d.signature || '') + ' (' + (o.lead_email || o.lead_phone || '') + ')', TA);
-    row('Signature', sig ? 'Drawn by the applicant on screen' : 'Typed name', TA); row('Holding deposit terms', d.terms_ticked ? 'All 6 non-refundable points ticked individually' : '-', TA);
-    row('Declaration', 'Ticked: information accurate, information sheet read, authorised to sign for all tenants', TA);
-    row('IDs uploaded', String(docs.filter(function (q) { return q.tenant_no > 0; }).length) + ' file(s)', TA);
-    row('Holding deposit', o.paid_at ? 'Received ' + stamp(o.paid_at) : 'Not received yet', TA);
-    row('Status', { new: 'Awaiting decision', accepted: 'Accepted', rejected: 'Not accepted', withdrawn: 'Withdrawn by the applicant' }[o.status] + (o.decided_at ? ' (' + stamp(o.decided_at) + ')' : ''), TA);
-    (o.log || []).forEach(function (l) { row(stamp(l.at), l.text, TA); });
-    return { bytes: await pdf.save(), name: 'Holding Deposit Form - ' + ref + ' - ' + String(o.property_address || '').replace(/[^\w ,.-]+/g, ' ').slice(0, 60) + '.pdf' };
+    // ===== 5. Audit trail =====
+    const S5 = 'Audit trail'; newPage(S5);
+    text('Audit trail', M, y - 4, 22, B, C.navy); y -= 26;
+    text('How and when this agreement was completed, recorded by Fixflow for Residential Realtors.', M, y, 9, F, C.soft); y -= 22;
+    const fname = 'Holding Deposit Agreement - ' + ref + '.pdf';
+    const sumRows = [['Title', TITLE], ['File name', fname], ['Document ID', docId], ['Fingerprint (SHA-256)', fp.slice(0, 32) + '\n' + fp.slice(32)], ['Integrity', intact ? 'Verified - the content and files match the fingerprint recorded at signing' : d.fingerprint ? 'WARNING - the content has changed since it was signed' : 'Fingerprint created when this copy was made (offer signed before fingerprints were recorded)'],
+      ['Date format', 'DD/MM/YYYY HH:MM:SS, UK time'], ['Status', sig ? 'Signed' : 'Submitted']];
+    const sumH = sumRows.reduce(function (a, r) { return a + (String(r[1]).split('\n').length > 1 ? 30 : wrap(r[1], F, 9, CW - 170).length * 12 + 6); }, 0) + 20;
+    rr(M, y, CW, sumH, 10, C.panel, C.line);
+    let sy = y - 18;
+    sumRows.forEach(function (r) {
+      text(r[0], M + 14, sy, 8.5, B, C.soft);
+      if (r[0] === 'Fingerprint (SHA-256)' || r[0] === 'Document ID') { String(r[1]).split('\n').forEach(function (l, j) { text(l, M + 160, sy - j * 12, 8.5, MONO, C.ink); }); sy -= String(r[1]).split('\n').length * 12 + 6; return; }
+      if (r[0] === 'Status') { text('●'.replace(/./, ''), 0, 0, 1); page.drawCircle({ x: M + 164, y: sy + 3, size: 3.5, color: sig ? C.green : C.amber }); text(r[1], M + 172, sy, 9, B, sig ? C.green : C.amber); sy -= 18; return; }
+      const ls = wrap(r[1], r[0] === 'Integrity' ? B : F, 9, CW - 180); ls.forEach(function (l, j) { text(l, M + 160, sy - j * 12, 9, r[0] === 'Integrity' ? B : F, r[0] === 'Integrity' ? (intact ? C.green : d.fingerprint ? C.red : C.amber) : C.ink); }); sy -= ls.length * 12 + 6;
+    });
+    y -= sumH + 22;
+    heading('Activity', S5);
+    // Events: signing evidence first, then the offer's history.
+    const who = function (by) { return by === 'applicant' ? o.lead_name : by === 'staff' ? 'Residential Realtors (offers staff)' : by === 'system' ? 'Fixflow' : 'Residential Realtors'; };
+    const PUBLIC = /^(Offer submitted|Offer accepted|Offer rejected|Holding deposit received|Holding deposit refund sent|Offer withdrawn|Applicant|Refund account|Decision undone|Holding deposit marked not received|Refund marked)/;
+    const ev = [];
+    if (audit.started_at) ev.push({ at: audit.started_at, kind: 'view', title: 'Offer form opened by ' + o.lead_name, lines: [] });
+    ev.push({ at: d.signed_at || o.created_at, kind: 'tick', title: 'Holding deposit terms accepted', lines: ['All 6 non-refundable points ticked one by one, and the declaration agreed'] });
+    ev.push({ at: d.signed_at || o.created_at, kind: 'sign', title: 'Document e-signed by ' + (d.signature || o.lead_name), lines: [[o.lead_email, o.lead_phone].filter(Boolean).join(' \xB7 '), 'Signature drawn on screen, on behalf of ' + ts.length + ' tenant' + (ts.length === 1 ? '' : 's'), 'IP address: ' + (audit.ip || d.ip || 'not recorded') + (audit.ua ? '   \xB7   ' + deviceOf(audit.ua) : '')] });
+    const idsN = docs.filter(function (q) { return q.tenant_no > 0; }).length;
+    ev.push({ at: o.created_at, kind: 'doc', title: 'Offer submitted - document created', lines: [idsN + ' identity document' + (idsN === 1 ? '' : 's') + ' uploaded with the offer', 'Fingerprint ' + fp.slice(0, 16) + '...'] });
+    (o.log || []).forEach(function (l) {
+      if (/^Offer submitted online/.test(l.text)) return;
+      if (opts.applicant && !(l.by === 'applicant' || PUBLIC.test(l.text))) return;
+      const kind = /accepted|received|refund sent/i.test(l.text) ? 'ok' : /rejected|withdrawn/i.test(l.text) ? 'warn' : l.by === 'applicant' ? 'view' : 'note';
+      ev.push({ at: l.at, kind: kind, title: String(l.text).replace(/ \(offers staff\)$/, ''), lines: [(l.by ? 'By ' + who(l.by) : '') + (l.ip ? '   \xB7   IP address: ' + l.ip : '') + (l.ua ? '   \xB7   ' + deviceOf(l.ua) : '')].filter(function (s) { return s.trim(); }) });
+    });
+    if (o.status === 'accepted' && o.paid_at) ev.push({ at: [o.decided_at, o.paid_at].sort().pop(), kind: 'ok', title: 'Agreement completed', lines: ['Offer accepted and holding deposit received'] });
+    ev.sort(function (a, b) { return new Date(a.at) - new Date(b.at); });
+    ev.push({ at: new Date().toISOString(), kind: 'doc', title: 'This copy generated', lines: [opts.applicant ? 'Downloaded by the applicant from their tracking page' : 'Office copy, by Residential Realtors'] });
+    const ICON = { view: [C.blue, C.blueBg], tick: [C.green, C.greenBg], sign: [C.white, C.navy], doc: [C.soft, C.panel], ok: [C.green, C.greenBg], warn: [C.amber, C.amberBg], note: [C.soft, C.panel] };
+    ev.forEach(function (e, idx) {
+      const lines = e.lines.filter(Boolean).reduce(function (a, l) { return a.concat(wrap(l, F, 8, CW - 150)); }, []), tl = wrap(e.title, B, 9.3, CW - 150);
+      const hh = Math.max(34, tl.length * 12.5 + lines.length * 11 + 12);
+      ensure(hh + 4, S5);
+      const st = stamp(e.at).split(' ');
+      text(st[0] || '', M, y - 8, 8, B, C.ink); text(st[1] || '', M, y - 19, 8, F, C.soft);
+      const cx = M + 96, cy = y - 10, ic = ICON[e.kind] || ICON.note;
+      if (idx < ev.length - 1) page.drawLine({ start: { x: cx, y: cy - 10 }, end: { x: cx, y: y - hh - 4 }, thickness: 0.8, color: C.line });
+      page.drawCircle({ x: cx, y: cy, size: 9, color: ic[1], borderColor: e.kind === 'sign' ? undefined : ic[0], borderWidth: e.kind === 'sign' ? 0 : 0.8 });
+      if (e.kind === 'tick' || e.kind === 'ok') page.drawSvgPath('M -3.5 0 L -1 2.5 L 3.8 -2.6', { x: cx, y: cy, borderColor: ic[0], borderWidth: 1.4 });
+      else if (e.kind === 'sign') page.drawSvgPath('M -4 3 L 2.5 -3.5 L 4 -2 L -2.5 4.5 Z', { x: cx, y: cy, color: C.white });
+      else if (e.kind === 'warn') { text('!', cx - 1.3, cy - 3.2, 9, B, ic[0]); }
+      else if (e.kind === 'view') page.drawCircle({ x: cx, y: cy, size: 2.6, color: ic[0] });
+      else page.drawRectangle({ x: cx - 3, y: cy - 3.8, width: 6, height: 7.6, borderColor: ic[0], borderWidth: 0.9 });
+      let ty = y - 8; tl.forEach(function (l) { text(l, M + 116, ty, 9.3, B, C.ink); ty -= 12.5; });
+      lines.forEach(function (l) { text(l, M + 116, ty, 8, F, C.soft); ty -= 11; });
+      y -= hh + 4;
+    });
+
+    // Footer on every page of ours: company, document ID, page numbers.
+    const own = pages.filter(function (x) { return !x.external; }), total = pdf.getPageCount();
+    pdf.getPages().forEach(function (pg, i) {
+      if (!own.some(function (x) { return x.page === pg; })) return;
+      page = pg;
+      pg.drawLine({ start: { x: M, y: 50 }, end: { x: W - M, y: 50 }, thickness: 0.5, color: C.line });
+      text('Residential Realtors \xB7 Trading name of Estallion Investments Limited \xB7 Registered in England No. ' + (INVOICE.companyNo || '08760284'), M, 37, 6.8, F, C.soft);
+      text('Document ID ' + docId + '  \xB7  Electronically signed  \xB7  ' + (opts.applicant ? 'Applicant copy' : 'Office copy'), M, 27, 6.8, F, C.faint);
+      const pn = 'Page ' + (i + 1) + ' of ' + total; text(pn, W - M - B.widthOfTextAtSize(pn, 7.5), 33, 7.5, B, C.ink);
+    });
+    pdf.setTitle(TITLE + ' - ' + ref); pdf.setAuthor('Residential Realtors'); pdf.setSubject(o.property_address || ''); pdf.setCreator('Fixflow'); pdf.setProducer('Fixflow');
+    pdf.setKeywords(['Document ID ' + docId, 'SHA-256 ' + fp]);
+    return { bytes: await pdf.save(), name: 'Holding Deposit Agreement - ' + ref + ' - ' + String(o.property_address || '').replace(/[^\w ,.-]+/g, ' ').slice(0, 60) + '.pdf' };
   }
   // Accepted offer: every applicant saved as a tenant at the property.
   app.post('/api/admin/offers/:id/tenants', withDb(async function (p, req, res) {
@@ -6430,6 +6625,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query('UPDATE offers SET data = data || jsonb_build_object(\'tenants_added_at\', $2::text), log = log || $3::jsonb WHERE id = $1',
       [o.id, new Date().toISOString(), JSON.stringify([{ at: new Date().toISOString(), text: n + ' applicant' + (n === 1 ? '' : 's') + ' added as tenants at the property' }])]);
     res.json({ ok: true, added: n });
+  }));
+  // The applicant's own copy of the signed agreement (with its audit trail).
+  app.get('/api/offers/track/:token/offer.pdf', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests');
+    const t = String(req.params.token || '');
+    const o = /^[\w-]{16,40}$/.test(t) ? (await p.query('SELECT id FROM offers WHERE track_token = $1', [t])).rows[0] : null;
+    if (!o) return res.status(404).send('Not found');
+    const out = await offerPdf(p, o.id, { applicant: true });
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + '; filename="' + out.name.replace(/"/g, '') + '"');
+    res.end(Buffer.from(out.bytes));
   }));
   // The applicant's receipt for their holding deposit (once we've marked it received).
   app.get('/api/offers/track/:token/receipt.pdf', withDb(async function (p, req, res) {
