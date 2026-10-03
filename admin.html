@@ -413,6 +413,10 @@
   .oc-kv { background: var(--panel-2, #f6f7f9); border-radius: 12px; padding: 9px 12px; }
   .oc-kv span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); font-weight: 650; }
   .oc-kv b { font-size: .95rem; }
+  .vw-add { display: grid; grid-template-columns: 2fr 1.2fr 1.4fr auto; gap: 8px; margin: 0 0 10px; } @media (max-width: 760px) { .vw-add { grid-template-columns: 1fr; } }
+  .vw-h { font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); font-weight: 700; margin: 12px 0 4px; }
+  .vw-row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); } .vw-row .vw-m { flex: 1; min-width: 220px; } .vw-row .vw-m b { display: block; } .vw-row .vw-m span { font-size: .8rem; color: var(--ink-soft); }
+  .vw-fb { flex-basis: 100%; display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; } .vw-fb textarea { flex: 1; min-width: 220px; min-height: 54px; }
   .inv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); } .inv-main { flex: 1; min-width: 200px; } .inv-main b { display: block; } .inv-main span { display: block; font-size: .8rem; color: var(--ink-soft); }
   .inv-ev { flex-basis: 100%; background: #f7f8fa; border-radius: 10px; padding: 8px 12px; font-size: .84rem; } .inv-ev div { padding: 3px 0; } .inv-ev span { display: inline-block; min-width: 110px; color: var(--ink-soft); }
   .oc-credit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; padding: 8px 10px; border-radius: 10px; background: #fff8e6; border: 1px solid #f3d9a8; font-size: .88rem; } .oc-credit > span:first-child { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: #7a4d00; font-weight: 700; }
@@ -1479,6 +1483,11 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offProp" list="offProps" placeholder="Or a link for one property: type the address" style="flex:1;min-width:220px"><datalist id="offProps"></datalist><button class="btn" type="button" id="offPropCopy">Copy property link</button></div>
           <div class="off-send"><b>Send it to an applicant</b><span class="muted-note" style="margin:0">Uses the property link above if you’ve typed an address.</span>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><input class="inp" id="offToName" placeholder="Their name (optional)" style="flex:1;min-width:140px"><input class="inp" id="offTo" placeholder="Their mobile or email (optional)" style="flex:1;min-width:200px"><button class="btn small wa-btn" type="button" id="offSendWa">WhatsApp</button><button class="btn small" type="button" id="offSendMail">✉ Email</button></div></div>
+        </details>
+        <details class="card" id="vwCard" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">🗓 Viewings &amp; feedback <span class="muted-note" id="vwSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
+          <p class="muted-note" style="margin:8px 0">Book viewings and add feedback afterwards. The landlord sees upcoming viewings, feedback and offer progress on their page.</p>
+          <div class="vw-add"><input class="inp" id="vwProp" list="offProps" placeholder="Property address"><input class="inp" id="vwAt" type="datetime-local"><input class="inp" id="vwWho" placeholder="Applicant (not shown to the landlord)"><button class="btn primary small" type="button" id="vwAdd">Book viewing</button></div>
+          <div id="vwList"></div>
         </details>
         <details class="card" id="offInv" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📨 Offer forms sent <span class="muted-note" id="offInvSum" style="margin:0 0 0 6px;font-weight:400"></span></summary><div id="offInvList" style="margin-top:10px"></div></details>
         <div class="card" id="offRemind" style="margin-bottom:12px" hidden><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b>⏰ Automatic holding deposit reminders</b><div class="muted-note" id="offRemindNote" style="margin:2px 0 0"></div></div>
@@ -8375,6 +8384,30 @@
       openMailto('mailto:' + (/@/.test(to) ? encodeURIComponent(to) : '') + '?subject=' + encodeURIComponent('Make your offer' + (a ? ' — ' + shortAddr(a) : '')) + '&body=' + encodeURIComponent(body));
     });
   });
+  // Viewings and feedback (the landlord sees these on their page).
+  var viewings = [];
+  function loadViewings(){ return api('GET', '/api/admin/viewings').then(function(d){ if (d && d.ok) { viewings = d.viewings || []; renderViewings(); } }); }
+  function renderViewings(){
+    var now = Date.now(), up = viewings.filter(function(v){ return v.status === 'booked' && new Date(v.at) > now - 3600000; }).sort(function(a, b){ return new Date(a.at) - new Date(b.at); }),
+      past = viewings.filter(function(v){ return up.indexOf(v) === -1 && v.status !== 'cancelled'; }), needFb = past.filter(function(v){ return !v.feedback && v.status !== 'no_show'; }).length;
+    var when = function(v){ return new Date(v.at).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
+    $('vwSum').textContent = up.length + ' upcoming' + (needFb ? ' · ' + needFb + ' need feedback' : '');
+    $('vwList').innerHTML = (up.length ? '<div class="vw-h">Upcoming</div>' + up.map(function(v){ return '<div class="vw-row" data-vw="' + v.id + '"><div class="vw-m"><b>' + esc(when(v)) + ' · ' + esc(shortAddr(v.property_address)) + '</b><span>' + esc([v.applicant, 'booked by ' + (v.created_by || 'Office')].filter(Boolean).join(' · ')) + '</span></div><button type="button" class="btn small" data-vw-st="done">✓ Done</button><button type="button" class="btn small ghost" data-vw-st="no_show">No-show</button><button type="button" class="btn small ghost" data-vw-st="cancelled">Cancel</button></div>'; }).join('') : '') +
+      (past.length ? '<div class="vw-h">Recent — add feedback for the landlord</div>' + past.slice(0, 25).map(function(v){ return '<div class="vw-row" data-vw="' + v.id + '"><div class="vw-m"><b>' + esc(when(v)) + ' · ' + esc(shortAddr(v.property_address)) + '</b><span>' + esc([v.applicant, v.status === 'no_show' ? 'didn’t attend' : v.status === 'booked' ? 'not marked yet' : ''].filter(Boolean).join(' · ')) + '</span></div>' +
+        (v.status === 'no_show' ? '<span class="oc-pill muted">No-show</span>' : '<div class="vw-fb"><textarea class="inp" data-vw-fb placeholder="Feedback, e.g. Liked the layout, thought the kitchen was small">' + esc(v.feedback || '') + '</textarea><div style="display:flex;flex-direction:column;gap:6px"><label class="switch-row" style="margin:0;font-size:.82rem"><input type="checkbox" data-vw-share' + (v.share !== false ? ' checked' : '') + '> Show to landlord</label><button type="button" class="btn small primary" data-vw-save>Save</button></div></div>') + '</div>'; }).join('') : '') ||
+      '<p class="muted-note" style="margin:0">No viewings yet.</p>';
+  }
+  $('vwAdd').addEventListener('click', function(){
+    var b = this, prop = $('vwProp').value.trim(), at = $('vwAt').value;
+    if (!prop) { toast('Enter the property'); $('vwProp').focus(); return; } if (!at) { toast('Choose the date and time'); $('vwAt').focus(); return; }
+    busy(b, true, 'Booking…');
+    api('POST', '/api/admin/viewings', { property: prop, at: new Date(at).toISOString(), applicant: $('vwWho').value.trim() }).then(function(d){ busy(b, false); if (!d.ok) { toast('Couldn’t book it'); return; } $('vwAt').value = ''; $('vwWho').value = ''; toast('Viewing booked — the landlord can see it on their page'); loadViewings(); });
+  });
+  $('vwList').addEventListener('click', function(e){
+    var row = e.target.closest('[data-vw]'); if (!row) return; var id = row.dataset.vw, st = e.target.closest('[data-vw-st]');
+    if (st) { api('POST', '/api/admin/viewings/' + id, { status: st.dataset.vwSt }).then(function(){ toast(st.dataset.vwSt === 'done' ? 'Marked done — add the feedback below' : 'Updated'); loadViewings(); }); return; }
+    if (e.target.closest('[data-vw-save]')) { api('POST', '/api/admin/viewings/' + id, { feedback: row.querySelector('[data-vw-fb]').value.trim(), share: row.querySelector('[data-vw-share]').checked, status: 'done' }).then(function(d){ toast(d.ok ? 'Feedback saved' + (row.querySelector('[data-vw-share]').checked ? ' — the landlord can see it' : '') : 'Couldn’t save'); loadViewings(); }); }
+  });
   // The offer forms we've sent and what each applicant did.
   var invites = [];
   function loadInvites(){ return api('GET', '/api/admin/offer-invites').then(function(d){ if (d && d.ok) { invites = d.invites || []; renderInvites(); } }); }
@@ -8406,7 +8439,7 @@
   try { if (localStorage.getItem('rr_offlink_open') === '1') $('offLinkCard').open = true; } catch (e) {}
   $('offLinkCard').addEventListener('toggle', function(){ try { localStorage.setItem('rr_offlink_open', this.open ? '1' : '0'); } catch (e) {} });
   function renderOffers(){
-    if (!renderOffers.staffLoaded) { renderOffers.staffLoaded = true; loadOffStaff(); loadRemind(); loadInvites(); $('offSendWa').innerHTML = WA_ICON + 'WhatsApp'; }
+    if (!renderOffers.staffLoaded) { renderOffers.staffLoaded = true; loadOffStaff(); loadRemind(); loadInvites(); loadViewings(); $('offSendWa').innerHTML = WA_ICON + 'WhatsApp'; }
     var al = meta.offerAlerts || '', hid = false; try { hid = localStorage.getItem('rr_alerts_hide') === '1'; } catch (e) {}
     $('offAlertLink').value = al;
     var mobile = /Android/i.test(navigator.userAgent);
