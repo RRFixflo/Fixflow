@@ -246,6 +246,54 @@
   footer { max-width:1120px; margin:0 auto; padding:0 20px 34px; color:var(--faint); font-size:.78rem; text-align:center; }
   .fade { animation:fade .3s ease; }
   @keyframes fade { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+  /* ===== Refreshed look: navy header, numbered steps, raised cards ===== */
+  :root { --navy:#0b1f3a; --navy2:#13294b; --line:#e7e9ee; --line2:#dce0e7; --bg:#f3f5f8; }
+  .top { background:rgba(255,255,255,.92); backdrop-filter:saturate(1.6) blur(12px); -webkit-backdrop-filter:saturate(1.6) blur(12px); }
+  .hero { position:relative; overflow:hidden; color:#fff; border-bottom:0; background:radial-gradient(900px 420px at 92% -20%, rgba(217,38,46,.38), transparent 60%), radial-gradient(700px 380px at -10% 120%, rgba(36,83,232,.28), transparent 60%), linear-gradient(160deg, #13294b 0%, #0b1f3a 55%, #08162b 100%); }
+  .hero::before { content:""; position:absolute; inset:0; background-image:linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px); background-size:44px 44px; -webkit-mask-image:linear-gradient(180deg, #000 0%, transparent 85%); mask-image:linear-gradient(180deg, #000 0%, transparent 85%); pointer-events:none; }
+  .hero .in { position:relative; padding:40px 20px 74px; }
+  .hero .eyebrow { color:#ffb4b7; background:rgba(217,38,46,.16); border:1px solid rgba(255,180,183,.28); border-radius:999px; padding:5px 11px; font-size:.72rem; }
+  .hero h1 { color:#fff; font-size:clamp(1.8rem, 3.6vw, 2.7rem); margin:14px 0 10px; }
+  .hero p { color:#c6d0de; }
+  .hero .hold-note { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14); color:#e5ebf3; backdrop-filter:blur(6px); }
+  .hero .hold-note b { color:#fff; } .hero .hold-note svg { color:#ff9ea2; }
+  .hero .prop-pill { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:#fff; box-shadow:none; margin-left:0; }
+  .hero .prop-pill svg { color:#ff9ea2; }
+  .hero-row { display:flex; flex-wrap:wrap; gap:10px 12px; align-items:flex-start; }
+  .stepper { gap:0; margin:26px 0 0; max-width:620px; counter-reset:none; }
+  .stepper .s { flex:1; display:flex; align-items:center; gap:10px; position:relative; }
+  .stepper .s:not(:last-child)::after { content:""; flex:1; height:2px; background:rgba(255,255,255,.18); margin:0 12px 0 2px; border-radius:2px; }
+  .stepper .s.done:not(:last-child)::after { background:#12b76a; }
+  .stepper .n { flex:0 0 30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.82rem; font-weight:700; background:rgba(255,255,255,.08); border:1.5px solid rgba(255,255,255,.28); color:#c6d0de; transition:all .25s; }
+  .stepper .s.on .n { background:#fff; border-color:#fff; color:var(--navy); box-shadow:0 0 0 5px rgba(255,255,255,.14); }
+  .stepper .s.done .n { background:#12b76a; border-color:#12b76a; color:#fff; }
+  .stepper .lb { margin:0; font-size:.82rem; font-weight:600; color:#94a3b8; white-space:nowrap; }
+  .stepper .s.on .lb, .stepper .s.done .lb { color:#fff; }
+  .wrap { margin-top:-46px; position:relative; z-index:2; }
+  .card { border:1px solid rgba(15,23,42,.06); border-radius:20px; box-shadow:0 1px 2px rgba(15,23,42,.04), 0 18px 40px -22px rgba(15,23,42,.22); }
+  .card h2 { font-size:1.22rem; letter-spacing:-.02em; }
+  .card .lead { margin-bottom:20px; }
+  input, select, textarea { background:#fbfcfd; border-color:var(--line2); border-radius:12px; }
+  input:hover, select:hover, textarea:hover { border-color:#c9ced8; }
+  input:focus, select:focus, textarea:focus { outline:none; background:#fff; border-color:var(--navy); box-shadow:0 0 0 4px rgba(11,31,58,.1); }
+  .btn.dark { background:var(--navy); border-color:var(--navy); }
+  .btn.dark:hover { background:#13294b; }
+  .side { top:88px; }
+  .side .card:first-child { background:radial-gradient(400px 200px at 110% -10%, rgba(217,38,46,.35), transparent 60%), linear-gradient(160deg, #13294b, #0b1f3a); color:#fff; border:0; }
+  .side .card:first-child h3 { color:#94a3b8; }
+  .side .card:first-child .addr { color:#fff; }
+  .side .card:first-child .big-offer small { color:#94a3b8; }
+  .side .card:first-child .rows, .side .card:first-child .rows div { border-color:rgba(255,255,255,.1); }
+  .side .card:first-child .rows span { color:#aab6c6; }
+  .side .card:first-child .rows .hl b { color:#ff9ea2; }
+  .side .card:first-child .muted, .side .card:first-child p { color:#c6d0de; }
+  @media (max-width:640px) {
+    .hero .in { padding:24px 16px 62px; }
+    .stepper .lb { display:none; } .stepper .s.on .lb { display:block; }
+    .stepper .s:not(:last-child)::after { margin:0 8px; }
+    .wrap { margin-top:-40px; }
+  }
 </style>
 </head>
 <body>
@@ -256,8 +304,8 @@
     <span class="eyebrow">Offer form</span>
     <h1>Make an offer on your next home</h1>
     <p>Three quick steps: your offer, the people who’ll live there, then review and sign. Have a photo of each tenant’s passport or visa ready.</p>
-    <div class="hold-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/></svg><span>After submitting, you’ll need to pay a <b>one week holding deposit</b> to reserve the property.</span></div>
-    <div class="prop-pill" id="propPill" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg><span id="propPillTxt"></span></div>
+    <div class="hero-row"><div class="hold-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/></svg><span>After submitting, you’ll need to pay a <b>one week holding deposit</b> to reserve the property.</span></div>
+    <div class="prop-pill" id="propPill" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg><span id="propPillTxt"></span></div></div>
     <div class="stepper" id="stepper"></div>
   </div></div>
 
@@ -578,7 +626,7 @@
 
   // ----- Steps -----
   function drawStepper(){
-    $('stepper').innerHTML = STEPS.map(function(s, i){ return '<div class="s' + (i + 1 < step ? ' done' : i + 1 === step ? ' on' : '') + '"><div class="bar"><i></i></div><div class="lb">' + (i + 1) + '. ' + s + '</div></div>'; }).join('');
+    $('stepper').innerHTML = STEPS.map(function(s, i){ var done = i + 1 < step; return '<div class="s' + (done ? ' done' : i + 1 === step ? ' on' : '') + '"><span class="n">' + (done ? '✓' : i + 1) + '</span><span class="lb">' + s + '</span></div>'; }).join('');
   }
   function go(n, quiet){
     step = n; $('err').hidden = true;
