@@ -70,7 +70,7 @@ app.set('trust proxy', true);
 // plain http visits are sent to https and browsers are told to stick to https.
 app.use(function (req, res, next) {
   if (req.get('x-forwarded-proto') === 'http' && req.method === 'GET') return res.redirect(301, 'https://' + req.get('host') + req.originalUrl);
-  if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+  if (req.secure) { res.setHeader('Strict-Transport-Security', 'max-age=31536000'); res.setHeader('Content-Security-Policy', 'upgrade-insecure-requests'); }
   next();
 });
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;

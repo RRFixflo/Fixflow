@@ -1806,7 +1806,8 @@ module.exports = function mountJobs(app, opts) {
   }, 24 * 3600 * 1000).unref();
 
   app.get('/api/admin/me', async function (req, res) {
-    res.json({ ok: true, role: req.role || null, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, offerOrigin: OFFER_ORIGIN, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
+    let alerts = ''; try { alerts = (await db()) ? NTFY_SERVER + '/' + (await offersTopic()) : ''; } catch (e) {}
+    res.json({ ok: true, role: req.role || null, offerAlerts: alerts, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, offerOrigin: OFFER_ORIGIN, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
   });
 
   // Wraps a handler: no database -> 503; unexpected errors -> 500 (logged).
@@ -5300,6 +5301,30 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: NTFY_TOPIC }, body)), signal: AbortSignal.timeout(8000) })
       .then(function (r) { return r.ok; }).catch(function (err) { console.error('Phone alert failed:', err.message); return false; });
   }
+  // Offers alerts for staff: their own private ntfy channel (made on first use and
+  // kept in app_settings), so staff hear about offers without the office's other alerts.
+  let offersTopicCache = null;
+  async function offersTopic() {
+    if (offersTopicCache) return offersTopicCache;
+    const p = await db(); if (!p) return '';
+    const row = (await p.query("SELECT value FROM app_settings WHERE key = 'offers_alerts'")).rows[0];
+    if (row && row.value && row.value.topic) return (offersTopicCache = row.value.topic);
+    const topic = 'rr-offers-' + crypto.randomBytes(12).toString('hex');
+    await p.query(`INSERT INTO app_settings (key, value) VALUES ('offers_alerts', $1) ON CONFLICT (key) DO NOTHING`, [JSON.stringify({ topic: topic })]);
+    offersTopicCache = (await p.query("SELECT value FROM app_settings WHERE key = 'offers_alerts'")).rows[0].value.topic;
+    return offersTopicCache;
+  }
+  // An offer event: to the staff channel, and to the office's channel unless the
+  // office did it themselves (office: false).
+  async function offerAlert(body, o2) {
+    o2 = o2 || {};
+    const base = OFFER_ORIGIN || PUBLIC_URL;
+    if (o2.office !== false) ntfy(Object.assign({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#offers' : undefined }, body)).catch(function () {});
+    try {
+      const topic = await offersTopic(); if (!topic || typeof fetch !== 'function') return;
+      await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: topic, click: base ? base + '/staff' : undefined }, body)), signal: AbortSignal.timeout(8000) });
+    } catch (err) { console.error('Staff offer alert failed:', err.message); }
+  }
   // Same home? Same tidied address, or same postcode (or one missing) with the
   // same door number(s) and a building/street word in common.
   function sameProperty(a, b) {
@@ -6146,7 +6171,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     for (const d of docs) await p.query('INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, $2, $3, $4, $5)', [id, d.tenant_no, d.name, d.mime, d.data]);
     await p.query("INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, 0, 'signature.png', 'image/png', $2)", [id, sigBuf]);
     const ref = 'OF' + String(id).padStart(4, '0');
-    ntfy({ title: 'New offer: ' + gbp(pw) + ' pw — ' + shortAddrText(address), message: lead + ' · ' + tenants.length + ' tenant' + (tenants.length === 1 ? '' : 's') + (data.move_in ? ' · move in ' + certDay(data.move_in) : '') + (data.stay ? ' · stay ' + data.stay : '') + '. Open Offers in Fixflow.', tags: ['house'] }).catch(function () {});
+    offerAlert({ title: 'New offer: ' + gbp(pw) + ' pw — ' + shortAddrText(address), message: lead + ' · ' + tenants.length + ' tenant' + (tenants.length === 1 ? '' : 's') + (data.move_in ? ' · move in ' + certDay(data.move_in) : '') + (data.stay ? ' · stay ' + data.stay : '') + '. Open Offers in Fixflow.', tags: ['house'] }).catch(function () {});
     // How to pay the holding deposit (bank details from the settings, never in the code).
     const bank = INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null;
     res.json({ ok: true, ref: ref, money: data.money, bank: bank, reference: offerPayRef(address, ref), track: '/offer/track/' + token });
@@ -6165,7 +6190,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       [t, JSON.stringify([offerLog(req, 'Offer withdrawn by the applicant online (reason: ' + reason + (more ? ' — ' + more : '') + ') — told the holding deposit is not refundable, as per the terms', 'applicant')]), reason, more]);
     if (!r.rows.length) return res.status(409).json({ ok: false, error: 'not-allowed' });
     const o = r.rows[0];
-    ntfy({ title: 'Offer withdrawn: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' withdrew their offer (OF' + String(o.id).padStart(4, '0') + ') — ' + reason + '. Holding deposit not refundable as per the terms.', tags: ['x'] }).catch(function () {});
+    offerAlert({ title: 'Offer withdrawn: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' withdrew their offer (OF' + String(o.id).padStart(4, '0') + ') — ' + reason + '. Holding deposit not refundable as per the terms.', tags: ['x'] }).catch(function () {});
     res.json({ ok: true });
   }));
   // The applicant says they've paid the holding deposit, so we can check the bank.
@@ -6177,7 +6202,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       [t, JSON.stringify({ at: new Date().toISOString(), date: when, from: from }), JSON.stringify([offerLog(req, 'Applicant says they paid the holding deposit on ' + certDay(when) + (from ? ' from ' + from : ''), 'applicant')])]);
     if (!r.rows.length) return res.status(409).json({ ok: false, error: 'not-allowed' });
     const o = r.rows[0];
-    ntfy({ title: 'Holding deposit paid? ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' says they paid ' + gbp((o.data.money || {}).holding) + ' on ' + certDay(when) + (from ? ' from ' + from : '') + ' (ref ' + offerPayRef(o.property_address, 'OF' + String(o.id).padStart(4, '0')) + '). Check the bank, then mark it received in Fixflow.', tags: ['moneybag'] }).catch(function () {});
+    offerAlert({ title: 'Holding deposit paid? ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' says they paid ' + gbp((o.data.money || {}).holding) + ' on ' + certDay(when) + (from ? ' from ' + from : '') + ' (ref ' + offerPayRef(o.property_address, 'OF' + String(o.id).padStart(4, '0')) + '). Check the bank, then mark it received in Fixflow.', tags: ['moneybag'] }).catch(function () {});
     res.json({ ok: true });
   }));
   // Rejected after paying: the applicant gives the account for their refund. It must
@@ -6194,7 +6219,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       [t, JSON.stringify(refund), JSON.stringify([offerLog(req, 'Refund account details given by the applicant (' + name + ')', 'applicant')])]);
     if (!r.rows.length) return res.status(409).json({ ok: false, error: 'not-allowed' });
     const o = r.rows[0];
-    ntfy({ title: 'Refund details in: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' gave their account for the holding deposit refund (' + gbp((o.data.money || {}).holding) + '). Open Offers in Fixflow.', tags: ['moneybag'] }).catch(function () {});
+    offerAlert({ title: 'Refund details in: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' gave their account for the holding deposit refund (' + gbp((o.data.money || {}).holding) + '). Open Offers in Fixflow.', tags: ['moneybag'] }).catch(function () {});
     res.json({ ok: true });
   }));
   // The applicant's own view of their offer (by its private link): where it's up to.
@@ -6242,8 +6267,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (typeof b.refunded === 'boolean') { sets.push("data = data || jsonb_build_object('refunded_at', " + (b.refunded ? 'to_jsonb(now())' : "'null'::jsonb") + ')'); notes.push(b.refunded ? 'Holding deposit refund sent' : 'Refund marked as not sent'); }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
     if (notes.length) { vals.push(JSON.stringify(notes.map(function (t) { return offerLog(req, t + (req.role === 'offers' ? ' (offers staff)' : '')); }))); sets.push('log = log || $' + vals.length + '::jsonb'); }
-    const r = await p.query('UPDATE offers SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id', vals);
+    const r = await p.query('UPDATE offers SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id, property_address, lead_name, offer_pw, data', vals);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    // Tell staff (and the office, when staff did it) about decisions and deposits.
+    const ro = r.rows[0], oref = 'OF' + String(ro.id).padStart(4, '0'), byStaff = req.role === 'offers', tag = byStaff ? ' (by offers staff)' : '';
+    const said = b.status === 'accepted' ? ['Offer accepted: ', ['white_check_mark']] : b.status === 'rejected' ? ['Offer rejected: ', ['x']] : b.paid === true ? ['Holding deposit in: ', ['moneybag']] : null;
+    if (said) offerAlert({ title: said[0] + shortAddrText(ro.property_address), message: (ro.lead_name || 'Applicant') + ' · ' + gbp(ro.offer_pw) + ' pw · ' + oref + (b.paid === true ? ' · ' + gbp(((ro.data || {}).money || {}).holding) + ' received' : '') + tag, tags: said[1] }, { office: byStaff });
     res.json({ ok: true });
   }));
   // Right to rent: the office runs the check on GOV.UK (it needs their sign-in and

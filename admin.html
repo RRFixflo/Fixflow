@@ -432,6 +432,10 @@
   /* Offers staff sign-in: the Offers page only. */
   .staff-mode .side .nav:not(#logoutBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
+  .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
+  .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
+  .off-alerts { margin-top: 12px; padding: 12px; border-radius: 10px; background: #edf2ff; }
+  .off-alerts-staff { margin-bottom: 12px; border-left: 4px solid #1d3fae; }
   .oc-rtr { margin-top: 10px; padding: 10px 12px; border: 1px solid #e3e6ec; border-radius: 10px; background: #fafbfc; }
   .oc-rtr-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .oc-rtr-btns { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -1324,10 +1328,14 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offLink" readonly style="flex:1;min-width:220px"><button class="btn primary" type="button" id="offCopy">Copy link</button><a class="btn" id="offOpen" target="_blank" rel="noopener">Open</a></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offProp" list="offProps" placeholder="Or a link for one property: type the address" style="flex:1;min-width:220px"><datalist id="offProps"></datalist><button class="btn" type="button" id="offPropCopy">Copy property link</button></div>
         </div>
+        <div class="card off-alerts-staff" id="offAlertStaff" hidden><b>🔔 Get offer alerts on your phone</b><p class="muted-note" style="margin:4px 0 10px">Be told straight away when an offer comes in, is accepted or rejected, or a holding deposit arrives. Install the free <b>ntfy</b> app (App Store / Google Play), then tap the button on your phone, or add this channel in the app.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary" id="offAlertOpen" target="_blank" rel="noopener">Subscribe on this phone</a><button class="btn" type="button" id="offAlertCopy2">Copy channel link</button><button class="btn ghost" type="button" id="offAlertHide">Hide</button></div></div>
         <details class="card" id="offStaff" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">👥 Staff access to offers <span class="muted-note" id="offStaffSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
           <p class="muted-note" style="margin:8px 0">Give staff this link and the staff password. They can only see and work on offers — accept or reject, mark deposits, right to rent checks, tracking links and the PDF. They can’t delete offers or see anything else in Fixflow. Everything they do is noted on the offer.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offStaffLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offStaffCopy">Copy link</button></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offStaffPw" type="text" autocomplete="off" placeholder="New staff password (at least 8 characters)" style="flex:1;min-width:220px"><button class="btn primary" type="button" id="offStaffSave">Set password</button></div>
+          <div class="off-alerts"><b>🔔 Phone alerts for staff</b><p class="muted-note" style="margin:2px 0 8px">Staff get an alert when an offer comes in, is accepted or rejected, a holding deposit arrives, or an applicant says they’ve paid. They install the free <b>ntfy</b> app and subscribe to this channel (or open the link on their phone):</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offAlertLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offAlertCopy">Copy</button></div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small ghost" type="button" id="offStaffOut">Sign all staff out</button><button class="btn small ghost danger" type="button" id="offStaffOff">Turn off staff access</button></div>
         </details>
         <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div></div>
@@ -8134,6 +8142,9 @@
     });
   }
   $('offStaffCopy').addEventListener('click', function(){ offCopyText($('offStaffLink').value); });
+  $('offAlertCopy').addEventListener('click', function(){ offCopyText($('offAlertLink').value); });
+  $('offAlertCopy2').addEventListener('click', function(){ offCopyText(meta.offerAlerts || ''); });
+  $('offAlertHide').addEventListener('click', function(){ try { localStorage.setItem('rr_alerts_hide', '1'); } catch (e) {} $('offAlertStaff').hidden = true; });
   $('offStaffSave').addEventListener('click', function(){
     var pw = $('offStaffPw').value.trim();
     if (pw.length < 8) { toast('Use at least 8 characters'); $('offStaffPw').focus(); return; }
@@ -8146,6 +8157,9 @@
   $('offStaffOff').addEventListener('click', function(){ if (!confirm('Turn off staff access? Staff are signed out and the password stops working.')) return; api('POST', '/api/admin/offers-staff', { off: true }).then(function(d){ toast(d.ok ? 'Staff access turned off' : 'Couldn’t do that'); loadOffStaff(); }); });
   function renderOffers(){
     if (!renderOffers.staffLoaded) { renderOffers.staffLoaded = true; loadOffStaff(); }
+    var al = meta.offerAlerts || '', hid = false; try { hid = localStorage.getItem('rr_alerts_hide') === '1'; } catch (e) {}
+    $('offAlertLink').value = al; $('offAlertOpen').href = al;
+    $('offAlertStaff').hidden = !staffMode || !al || hid;
     $('offLink').value = offLinkBase(); $('offOpen').href = offLinkBase();
     $('offProps').innerHTML = allPropsForList().map(function(p){ return '<option value="' + esc(p.address) + '">'; }).join('');
     var match = function(o){ return offTab === 'all' || (offTab === 'open' ? o.status === 'new' : o.status === offTab); };
@@ -9297,13 +9311,14 @@
     var older = list.length - current.length, mFee = sum('monthlyFee'), upFee = sum('upfrontFee');
     // The same with VAT (none on tenancies without VAT, e.g. Rent4Rent).
     var vatYear = r2(current.reduce(function(t, x){ var cc = calc[x.id]; return t + (cc.vatOn ? ((cc.monthlyFee || 0) * 12 + (cc.upfrontFee || 0)) * 0.2 : 0); }, 0));
+    var vatMonth = r2(current.reduce(function(t, x){ var cc = calc[x.id]; return t + (cc.vatOn ? (cc.monthlyFee || 0) * 0.2 : 0); }, 0)), upVat = r2(vatYear - vatMonth * 12);
+    var vatLine = function(v, base){ return '<small class="tcy-vat">Total: <b>' + esc(gbp(base)) + '</b></small>' + (v ? '<small class="tcy-vat">Total including VAT: <b>' + esc(gbp(r2(base + v))) + '</b></small>' : ''); };
     $('tcySum').innerHTML = list.length ? '<div class="tcy-tiles">' +
       '<div><b>' + current.length + '</b><span>current tenanc' + (current.length === 1 ? 'y' : 'ies') + (older ? ' <small>(+' + older + ' older)</small>' : '') + '</span></div>' +
       '<div><b>' + esc(gbp(sum('rent'))) + '</b><span>rent a month</span></div>' +
-      '<div><b>' + esc(gbp(mFee)) + '</b><span>our fees a month, taken from the rent</span></div>' +
-      (upFee ? '<div><b>' + esc(gbp(upFee)) + '</b><span>our up-front fees a year</span></div>' : '') +
-      '<div><b>' + esc(gbp(mFee * 12 + upFee)) + '</b><span>our fees a year in total</span></div>' +
-      (vatYear ? '<div><b>' + esc(gbp(r2(mFee * 12 + upFee + vatYear))) + '</b><span>our fees a year including VAT (VAT ' + esc(gbp(vatYear)) + ')</span></div>' : '') +
+      '<div><b>' + esc(gbp(mFee)) + '</b><span>our fees a month, taken from the rent</span>' + vatLine(vatMonth, mFee) + '</div>' +
+      (upFee ? '<div><b>' + esc(gbp(upFee)) + '</b><span>our up-front fees a year</span>' + vatLine(upVat, upFee) + '</div>' : '') +
+      '<div><b>' + esc(gbp(mFee * 12 + upFee)) + '</b><span>our fees a year in total</span>' + vatLine(vatYear, mFee * 12 + upFee) + '</div>' +
       '</div><div style="margin-top:4px">Fees are before VAT unless it says including VAT. Totals count the current tenancy at each property' + (older ? '; older tenancies stay in the list below' : '') + '.</div>' : '';
     $('tcyList').innerHTML = list.length ? list.map(function(x){
       var d = x.data || {}, c = calc[x.id];
