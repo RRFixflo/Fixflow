@@ -31,6 +31,9 @@ const INVOICE = {
   payee: process.env.INVOICE_PAYEE || '',
   sortCode: process.env.INVOICE_SORT_CODE || '',
   accountNumber: process.env.INVOICE_ACCOUNT_NUMBER || '',
+  // For payments from abroad (optional).
+  iban: process.env.INVOICE_IBAN || '',
+  swift: process.env.INVOICE_SWIFT || '',
   paymentDays: parseInt(process.env.INVOICE_PAYMENT_DAYS, 10) || 14,
   from: process.env.INVOICE_FROM || 'Residential Realtors',
   address: process.env.INVOICE_ADDRESS || '28-30 Harper Road, London, SE1 6AD',
@@ -6069,7 +6072,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const ref = 'OF' + String(id).padStart(4, '0');
     ntfy({ title: 'New offer: ' + gbp(pw) + ' pw — ' + shortAddrText(address), message: lead + ' · ' + tenants.length + ' tenant' + (tenants.length === 1 ? '' : 's') + (data.move_in ? ' · move in ' + certDay(data.move_in) : '') + (data.stay ? ' · stay ' + data.stay : '') + '. Open Offers in Fixflow.', tags: ['house'] }).catch(function () {});
     // How to pay the holding deposit (bank details from the settings, never in the code).
-    const bank = INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber } : null;
+    const bank = INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null;
     res.json({ ok: true, ref: ref, money: data.money, bank: bank, reference: offerPayRef(address, ref), track: '/offer/track/' + token });
   }));
   function offerPayRef(address, ref) { return (addrPayRef(address) || ref).slice(0, 18); }
@@ -6089,6 +6092,35 @@ document.querySelectorAll('.lcu').forEach(function(box){
     ntfy({ title: 'Offer withdrawn: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' withdrew their offer (OF' + String(o.id).padStart(4, '0') + ') — ' + reason + '. Holding deposit not refundable as per the terms.', tags: ['x'] }).catch(function () {});
     res.json({ ok: true });
   }));
+  // The applicant says they've paid the holding deposit, so we can check the bank.
+  app.post('/api/offers/track/:token/paid', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const t = String(req.params.token || ''), b = req.body || {}, when = isoDay(b.date) || londonDay(), from = str(b.from, 120) || '';
+    const r = await p.query(`UPDATE offers SET data = data || jsonb_build_object('paid_claim', $2::jsonb), log = log || $3::jsonb
+      WHERE track_token = $1 AND paid_at IS NULL AND status IN ('new', 'accepted') RETURNING id, property_address, lead_name, data`,
+      [t, JSON.stringify({ at: new Date().toISOString(), date: when, from: from }), JSON.stringify([{ at: new Date().toISOString(), text: 'Applicant says they paid the holding deposit on ' + certDay(when) + (from ? ' from ' + from : '') }])]);
+    if (!r.rows.length) return res.status(409).json({ ok: false, error: 'not-allowed' });
+    const o = r.rows[0];
+    ntfy({ title: 'Holding deposit paid? ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' says they paid ' + gbp((o.data.money || {}).holding) + ' on ' + certDay(when) + (from ? ' from ' + from : '') + ' (ref ' + offerPayRef(o.property_address, 'OF' + String(o.id).padStart(4, '0')) + '). Check the bank, then mark it received in Fixflow.', tags: ['moneybag'] }).catch(function () {});
+    res.json({ ok: true });
+  }));
+  // Rejected after paying: the applicant gives the account for their refund. It must
+  // be in the name of the applicant who paid.
+  app.post('/api/offers/track/:token/refund', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const t = String(req.params.token || ''), b = req.body || {};
+    const name = str(b.name, 120), sort = String(b.sort_code || '').replace(/\D/g, ''), account = String(b.account || '').replace(/\D/g, ''), iban = String(b.iban || '').toUpperCase().replace(/\s+/g, '');
+    if (!name || !((sort.length === 6 && account.length === 8) || /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(iban))) return res.status(400).json({ ok: false, error: 'details' });
+    if (b.confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
+    const refund = { name: name, sort_code: sort ? sort.replace(/^(\d\d)(\d\d)(\d\d)$/, '$1-$2-$3') : '', account: account, iban: iban, at: new Date().toISOString() };
+    const r = await p.query(`UPDATE offers SET data = data || jsonb_build_object('refund', $2::jsonb), log = log || $3::jsonb
+      WHERE track_token = $1 AND status = 'rejected' AND paid_at IS NOT NULL RETURNING id, property_address, lead_name, data`,
+      [t, JSON.stringify(refund), JSON.stringify([{ at: new Date().toISOString(), text: 'Refund account details given by the applicant (' + name + ')' }])]);
+    if (!r.rows.length) return res.status(409).json({ ok: false, error: 'not-allowed' });
+    const o = r.rows[0];
+    ntfy({ title: 'Refund details in: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' gave their account for the holding deposit refund (' + gbp((o.data.money || {}).holding) + '). Open Offers in Fixflow.', tags: ['moneybag'] }).catch(function () {});
+    res.json({ ok: true });
+  }));
   // The applicant's own view of their offer (by its private link): where it's up to.
   app.get('/api/offers/track/:token', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -6097,9 +6129,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const o = (await p.query('SELECT id, created_at, property_address, lead_name, offer_pw, data, status, decided_at, paid_at FROM offers WHERE track_token = $1', [t])).rows[0];
     if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
     const d = o.data || {}, ref = 'OF' + String(o.id).padStart(4, '0');
-    const bank = !o.paid_at && o.status !== 'rejected' && INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber } : null;
+    const bank = !o.paid_at && o.status !== 'rejected' && INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null;
     res.json({ ok: true, ref: ref, property: o.property_address, name: String(o.lead_name || '').split(/\s+/)[0], created_at: o.created_at, status: o.status, decided_at: o.decided_at, paid_at: o.paid_at,
-      offer_pw: Number(o.offer_pw), money: d.money || {}, move_in: d.move_in || null, stay: d.stay || '', tenants: (d.tenants || []).length, bank: bank, reference: offerPayRef(o.property_address, ref) });
+      offer_pw: Number(o.offer_pw), money: d.money || {}, move_in: d.move_in || null, stay: d.stay || '', tenants: (d.tenants || []).length, bank: bank, reference: offerPayRef(o.property_address, ref),
+      refund: d.refund ? { given_at: d.refund.at, name: d.refund.name } : null, refunded_at: d.refunded_at || null, paid_claim: d.paid_claim || null });
   }));
   app.get('/api/admin/offers', withDb(async function (p, req, res) {
     const r = await p.query(`SELECT o.id, o.created_at, o.property_address, o.property_key, o.lead_name, o.lead_email, o.lead_phone, o.offer_pw, o.data, o.status, o.decided_at, o.paid_at, o.seen_at, o.log, o.track_token,
@@ -6127,6 +6160,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (typeof b.paid === 'boolean') { sets.push('paid_at = ' + (b.paid ? 'coalesce(paid_at, now())' : 'NULL')); notes.push(b.paid ? 'Holding deposit received' : 'Holding deposit marked not received'); }
     if (b.seen === true) sets.push('seen_at = coalesce(seen_at, now())');
     if (str(b.note, 300)) notes.push(str(b.note, 300));
+    if (typeof b.refunded === 'boolean') { sets.push("data = data || jsonb_build_object('refunded_at', " + (b.refunded ? 'to_jsonb(now())' : "'null'::jsonb") + ')'); notes.push(b.refunded ? 'Holding deposit refund sent' : 'Refund marked as not sent'); }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
     if (notes.length) { vals.push(JSON.stringify(notes.map(function (t) { return { at: new Date().toISOString(), text: t }; }))); sets.push('log = log || $' + vals.length + '::jsonb'); }
     const r = await p.query('UPDATE offers SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id', vals);
@@ -6219,6 +6253,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     row('Move-in balance', money(m.total), T2); row('Move-in balance minus holding deposit', money(m.balance), T2);
     heading('Bank Transfer Details', T2);
     row('Account Name', INVOICE.payee || '-', T2); row('Sort Code', INVOICE.sortCode || '-', T2); row('Account Number', INVOICE.accountNumber || '-', T2);
+    if (INVOICE.iban) row('IBAN', INVOICE.iban, T2); if (INVOICE.swift) row('SWIFT / BIC', INVOICE.swift, T2);
+    if (d.refund) { heading('Refund account (given by the applicant)', T2); row('Account name', d.refund.name, T2); row('Sort code', d.refund.sort_code || '-', T2); row('Account number', d.refund.account || '-', T2); if (d.refund.iban) row('IBAN', d.refund.iban, T2); row('Refund sent', d.refunded_at ? stamp(d.refunded_at) : 'Not yet', T2); }
     row('Payment reference', offerPayRef(o.property_address, ref), T2);
     y -= 4; para('Please note the move-in monies are a holding deposit and will only be considered as part of the deposit once the tenancy has commenced.', { size: 8.5, color: soft });
     para('I confirm that the information provided is fully accurate, that I have read and understood the Holding Deposit: Information Sheet, and I am authorised to make decisions and sign on behalf of all tenants.', { size: 9 });
@@ -6274,6 +6310,50 @@ document.querySelectorAll('.lcu').forEach(function(box){
     (o.log || []).forEach(function (l) { row(stamp(l.at), l.text, TA); });
     return { bytes: await pdf.save(), name: 'Holding Deposit Form - ' + ref + ' - ' + String(o.property_address || '').replace(/[^\w ,.-]+/g, ' ').slice(0, 60) + '.pdf' };
   }
+  // Accepted offer: every applicant saved as a tenant at the property.
+  app.post('/api/admin/offers/:id/tenants', withDb(async function (p, req, res) {
+    const o = (await p.query('SELECT id, property_address, data FROM offers WHERE id = $1', [jobId(req)])).rows[0];
+    if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
+    let n = 0;
+    for (const t of ((o.data || {}).tenants || [])) { if (await ensureTenant(p, { name: t.name, phone: t.phone, email: t.email }, o.property_address)) n++; }
+    await p.query('UPDATE offers SET data = data || jsonb_build_object(\'tenants_added_at\', $2::text), log = log || $3::jsonb WHERE id = $1',
+      [o.id, new Date().toISOString(), JSON.stringify([{ at: new Date().toISOString(), text: n + ' applicant' + (n === 1 ? '' : 's') + ' added as tenants at the property' }])]);
+    res.json({ ok: true, added: n });
+  }));
+  // The applicant's receipt for their holding deposit (once we've marked it received).
+  app.get('/api/offers/track/:token/receipt.pdf', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests');
+    const t = String(req.params.token || '');
+    const o = /^[\w-]{16,40}$/.test(t) ? (await p.query('SELECT * FROM offers WHERE track_token = $1 AND paid_at IS NOT NULL', [t])).rows[0] : null;
+    if (!o) return res.status(404).send('No receipt yet');
+    const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+    const pdf = await PDFDocument.create(), page = pdf.addPage([595.28, 841.89]);
+    const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const ink = rgb(0.06, 0.07, 0.09), soft = rgb(0.38, 0.4, 0.45), line = rgb(0.86, 0.87, 0.9), red = rgb(0.85, 0.15, 0.18), okc = rgb(0.07, 0.57, 0.29);
+    const safe = function (x) { return String(x == null ? '' : x).replace(/[\u2018\u2019]/g, "'").replace(/[\u2013\u2014]/g, '-').replace(/[^\x20-\x7E\xA3\xA0-\xFF]/g, ''); };
+    const d = o.data || {}, m = d.money || {}, ref = 'OF' + String(o.id).padStart(4, '0'), M = 56;
+    const amount = '\xA3' + (Number(m.holding) || Number(o.offer_pw) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const when = function (v) { return new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }); };
+    try { const logo = await pdf.embedPng(require('fs').readFileSync(require('path').join(__dirname, 'logo-ink.png'))); page.drawImage(logo, { x: M, y: 760, width: logo.width * 40 / logo.height, height: 40 }); } catch (e) {}
+    page.drawText('RECEIPT', { x: 595.28 - M - B.widthOfTextAtSize('RECEIPT', 22), y: 772, size: 22, font: B, color: ink });
+    page.drawLine({ start: { x: M, y: 742 }, end: { x: 595.28 - M, y: 742 }, thickness: 1.2, color: red });
+    let y = 708;
+    page.drawText('Holding deposit received', { x: M, y: y, size: 16, font: B, color: ink }); y -= 22;
+    page.drawText(safe('Thank you - we have received your holding deposit for the property below.'), { x: M, y: y, size: 10.5, font: F, color: soft }); y -= 40;
+    page.drawText(amount, { x: M, y: y, size: 30, font: B, color: okc }); y -= 34;
+    const rows = [['Receipt for', 'Holding deposit (one week\'s rent)'], ['Offer reference', ref], ['Property', o.property_address], ['Received from', o.lead_name + (d.tenants && d.tenants.length > 1 ? ' (on behalf of ' + d.tenants.length + ' tenants)' : '')],
+      ['Date received', when(o.paid_at)], ['Payment reference', (addrPayRef(o.property_address) || ref)], ['Offer', '\xA3' + Number(o.offer_pw).toFixed(2) + ' a week (\xA3' + Number(m.pcm || 0).toFixed(2) + ' a month)'], ['Move-in date', d.move_in ? when(d.move_in + 'T12:00:00Z') : '-']];
+    rows.forEach(function (r) { page.drawText(safe(r[0]), { x: M, y: y, size: 9.5, font: B, color: soft }); page.drawText(safe(r[1]).slice(0, 80), { x: M + 150, y: y, size: 10.5, font: F, color: ink }); y -= 10; page.drawLine({ start: { x: M, y: y }, end: { x: 595.28 - M, y: y }, thickness: 0.5, color: line }); y -= 16; });
+    y -= 10;
+    ['This holding deposit reserves the property while references and the tenancy agreement are prepared. It does not create a tenancy.', 'Once your offer is accepted it goes towards your first month\'s rent. The rest of the move-in money is due when you sign the tenancy agreement.',
+      'It is returned within 24 hours if the landlord rejects your maximum offer or withdraws the property, and is not refundable in the cases set out in the information sheet you agreed to.']
+      .forEach(function (tx) { const words = tx.split(' '); let cur = ''; words.forEach(function (w) { const tt = cur ? cur + ' ' + w : w; if (F.widthOfTextAtSize(tt, 9.5) > 595.28 - M * 2) { page.drawText(safe(cur), { x: M, y: y, size: 9.5, font: F, color: soft }); y -= 14; cur = w; } else cur = tt; }); page.drawText(safe(cur), { x: M, y: y, size: 9.5, font: F, color: soft }); y -= 20; });
+    page.drawText(safe('Residential Realtors - Trading name of Estallion Investments Limited - Registered in England No. ' + (INVOICE.companyNo || '') + ' - ' + (INVOICE.address || '')), { x: M, y: 40, size: 7.5, font: F, color: soft });
+    const bytes = await pdf.save();
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', 'inline; filename="Holding deposit receipt - ' + ref + '.pdf"');
+    res.end(Buffer.from(bytes));
+  }));
   app.get('/api/admin/offers/:id/pdf', withDb(async function (p, req, res) {
     const out = await offerPdf(p, jobId(req));
     if (!out) return res.status(404).send('Not found');

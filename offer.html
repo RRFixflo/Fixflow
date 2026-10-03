@@ -629,7 +629,7 @@
   // ----- After submitting: pay the holding deposit, track the offer -----
   var TICK = '<div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>';
   function bankHtml(bank, amount, ref){
-    return bank ? '<div class="bank"><div><span>Account name</span><b>' + esc(bank.payee) + '</b></div><div><span>Sort code</span><b>' + esc(bank.sort_code) + '</b></div><div><span>Account number</span><b>' + esc(bank.account) + '</b></div><div><span>Amount</span><b>' + gbp(amount || 0) + '</b></div><div><span>Reference</span><b>' + esc(ref) + '</b></div></div><p class="hint" style="margin:-6px 0 12px">Please use exactly this payment reference (no spaces) so we can match your payment to your offer.</p>'
+    return bank ? '<div class="bank"><div><span>Account name</span><b>' + esc(bank.payee) + '</b></div><div><span>Sort code</span><b>' + esc(bank.sort_code) + '</b></div><div><span>Account number</span><b>' + esc(bank.account) + '</b></div>' + (bank.iban ? '<div><span>IBAN <small style="color:var(--faint)">(paying from abroad)</small></span><b>' + esc(bank.iban) + '</b></div>' : '') + (bank.swift ? '<div><span>SWIFT / BIC</span><b>' + esc(bank.swift) + '</b></div>' : '') + '<div><span>Amount</span><b>' + gbp(amount || 0) + '</b></div><div><span>Reference</span><b>' + esc(ref) + '</b></div></div><p class="hint" style="margin:-6px 0 12px">Please use exactly this payment reference (no spaces) so we can match your payment to your offer.</p>'
       : '<p>We’ll send you our bank details to pay it.</p>';
   }
   function trackBox(url){
@@ -666,7 +666,7 @@
     var loadTrack = function(){
     fetch('/api/offers/track/' + tm[1], { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
       // Unchanged (or they're in the middle of withdrawing): leave the page as it is.
-      var key = JSON.stringify([d.status, d.paid_at, d.decided_at]);
+      var key = JSON.stringify([d.status, d.paid_at, d.decided_at, d.paid_claim, d.refund, d.refunded_at]);
       if (key === lastSeen || ($('wdBox') && !$('wdBox').hidden)) return;
       lastSeen = key;
       if (!d.ok) { $('trackView').innerHTML = '<div class="card"><h2>Offer not found</h2><p class="lead" style="margin:0">This link isn’t valid. Please check it, or contact Residential Realtors.</p></div>'; return; }
@@ -680,7 +680,42 @@
       ];
       $('trackView').innerHTML = '<div class="card fade"><span class="eyebrow">Offer ' + esc(d.ref) + '</span><h2 style="font-size:1.4rem;letter-spacing:-.02em;margin-top:6px">' + esc(d.property || '') + '</h2>' +
         '<ol class="timeline">' + steps.map(function(s, i){ return '<li class="' + s[0] + '"><div class="dot">' + (s[0] === 'ok' ? '✓' : s[0] === 'no' ? '✕' : i + 1) + '</div><div><b>' + s[1] + '</b><span>' + esc(s[2]) + '</span></div></li>'; }).join('') + '</ol>' +
-        (d.bank && !paid ? '<h2>Pay the holding deposit</h2>' + bankHtml(d.bank, m.holding, d.reference) + '<p class="hint">Already paid? It shows here once we’ve seen it arrive.</p>' : '') + '</div>' +
+        (d.bank && !paid ? '<h2>Pay the holding deposit</h2>' + bankHtml(d.bank, m.holding, d.reference) +
+          (d.paid_claim ? '<div class="note-warn" style="background:var(--ok-t);color:#0d6b37"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Thanks — you told us you paid on ' + esc(longDay(d.paid_claim.date)) + '. We’ll confirm here once it arrives in our account.</span></div>'
+            : '<div class="card" style="box-shadow:none;margin:6px 0 0;padding:16px"><b>Made the payment?</b><p class="hint" style="margin:2px 0 10px">Let us know so we can check our account.</p>' +
+              '<div class="g2"><div class="f"><label class="l" for="pcDate">Date paid</label><input id="pcDate" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></div><div class="f"><label class="l" for="pcFrom">Paid from (account name) <span class="opt">optional</span></label><input id="pcFrom"></div></div>' +
+              '<button type="button" class="btn dark" id="pcGo">I’ve paid the holding deposit</button><div class="err" id="pcErr" hidden></div></div>') : '') +
+        (paid ? '<div class="btnrow" style="margin-top:6px"><a class="btn dark" target="_blank" rel="noopener" href="/api/offers/track/' + tm[1] + '/receipt.pdf">⬇ Download receipt</a></div>' : '') + '</div>' +
+        // Not accepted after paying: where to send the refund (in the name of the applicant who paid).
+        (rej && paid ? (d.refunded_at ? '<div class="card"><h2>Refund sent</h2><p class="lead" style="margin:0">We sent your holding deposit refund on ' + esc(longDay(d.refunded_at)) + '.</p></div>'
+          : d.refund ? '<div class="card"><h2>Refund details received</h2><p class="lead" style="margin:0">Thank you — we’ll refund ' + gbp(m.holding || 0) + ' to ' + esc(d.refund.name) + ' within 24 hours.</p></div>'
+          : '<div class="card" id="rfCard"><h2>Your refund</h2><p class="lead">Tell us where to send your holding deposit of <b>' + gbp(m.holding || 0) + '</b>.</p>' +
+            '<div class="note-warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg><span>The account must be in the name of the applicant who made the payment.</span></div>' +
+            '<div class="f" style="margin-top:12px"><label class="l" for="rfName">Account name</label><input id="rfName" autocomplete="name"></div>' +
+            '<div class="g2"><div class="f"><label class="l" for="rfSort">Sort code</label><input id="rfSort" inputmode="numeric" placeholder="12-34-56" maxlength="8"></div><div class="f"><label class="l" for="rfAcc">Account number</label><input id="rfAcc" inputmode="numeric" placeholder="12345678" maxlength="8"></div></div>' +
+            '<div class="f"><label class="l" for="rfIban">IBAN <span class="opt">only for an account outside the UK</span></label><input id="rfIban" placeholder="GB00 ABCD 1234 5612 3456 78" style="text-transform:uppercase"></div>' +
+            '<label class="check f"><input type="checkbox" id="rfOk"><span>I confirm this account is in the name of the applicant who paid the holding deposit.</span></label>' +
+            '<button type="button" class="btn dark" id="rfGo">Send refund details</button><div class="err" id="rfErr" hidden></div></div>') : '');
+      if ($('pcGo')) $('pcGo').addEventListener('click', function(){
+        var b = this; b.disabled = true; b.textContent = 'Sending…';
+        fetch('/api/offers/track/' + tm[1] + '/paid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: $('pcDate').value, from: $('pcFrom').value.trim() }) }).then(function(r){ return r.json(); }).then(function(x){
+          if (!x.ok) { b.disabled = false; b.textContent = 'I’ve paid the holding deposit'; $('pcErr').textContent = 'Couldn’t send — please try again.'; $('pcErr').hidden = false; return; }
+          lastSeen = ''; loadTrack();
+        });
+      });
+      if ($('rfGo')) $('rfGo').addEventListener('click', function(){
+        var name = $('rfName').value.trim(), sort = $('rfSort').value.replace(/\D/g, ''), acc = $('rfAcc').value.replace(/\D/g, ''), iban = $('rfIban').value.toUpperCase().replace(/\s+/g, '');
+        var err = function(t){ $('rfErr').textContent = t; $('rfErr').hidden = false; };
+        if (!name) return err('Please enter the account name.');
+        if (!((sort.length === 6 && acc.length === 8) || /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(iban))) return err('Please enter a 6-digit sort code and 8-digit account number (or an IBAN for an account abroad).');
+        if (!$('rfOk').checked) return err('Please tick to confirm the account is in the name of the applicant who paid.');
+        var b = this; b.disabled = true; b.textContent = 'Sending…';
+        fetch('/api/offers/track/' + tm[1] + '/refund', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, sort_code: sort, account: acc, iban: iban, confirm: true }) }).then(function(r){ return r.json(); }).then(function(x){
+          if (!x.ok) { b.disabled = false; b.textContent = 'Send refund details'; return err(x.error === 'details' ? 'Please check the account details.' : 'Couldn’t send — please contact Residential Realtors.'); }
+          lastSeen = ''; loadTrack();
+        });
+      });
+      $('trackView').insertAdjacentHTML('beforeend',
         // Withdraw: only once the holding deposit is confirmed, and they're told it isn't refunded.
         (paid && (d.status === 'new' || acc) ? '<div class="card"><h2>Changed your mind?</h2><p class="lead" style="margin:0 0 10px">You can withdraw your offer here.</p>' +
           '<div id="wdBox" hidden><div class="note-warn" style="background:var(--brand-t);color:#a3141b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg><span>As per our terms, if you withdraw your offer your holding deposit of <b>' + gbp(m.holding || 0) + '</b> will <b>not be refunded</b>.</span></div>' +
@@ -688,7 +723,7 @@
             '<textarea id="wdMore" rows="2" placeholder="Anything else you’d like to tell us (optional)" style="margin-top:8px"></textarea>' +
             '<label class="check" style="margin-top:10px"><input type="checkbox" id="wdOk"><span>I understand I won’t get my holding deposit back.</span></label>' +
             '<div class="btnrow" style="margin-top:10px"><button type="button" class="btn" id="wdCancel">Keep my offer</button><button type="button" class="btn go" id="wdGo">Withdraw my offer</button></div><div class="err" id="wdErr" hidden></div></div>' +
-          '<button type="button" class="btn" id="wdOpen">Withdraw my offer</button></div>' : '');
+          '<button type="button" class="btn" id="wdOpen">Withdraw my offer</button></div>' : ''));
       if ($('wdOpen')) {
         $('wdOpen').addEventListener('click', function(){ $('wdBox').hidden = false; this.hidden = true; });
         $('wdCancel').addEventListener('click', function(){ $('wdBox').hidden = true; $('wdOpen').hidden = false; });

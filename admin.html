@@ -426,6 +426,9 @@
   .oc-sign { border-top: 1px solid var(--line, #e6e8ec); padding: 12px 14px; display: flex; justify-content: space-between; gap: 14px; align-items: center; flex-wrap: wrap; font-size: .88rem; }
   .oc-sign span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
   .oc-sign img { max-height: 64px; max-width: 240px; background: #fff; border: 1px solid var(--line, #e6e8ec); border-radius: 10px; padding: 4px; }
+  .oc-refund { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; background: #f6fbf8; border: 1px solid #cfe6d8; border-radius: 12px; padding: 10px 12px; margin-top: 10px; font-size: .9rem; }
+  .oc-refund span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
+  .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   .oc-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line, #e6e8ec); }
   .oc-sp { flex: 1; }
   @media (max-width: 640px) { .oc { padding: 16px; } .oc-head { grid-template-columns: auto minmax(0,1fr); } .oc-price { grid-column: 1 / -1; text-align: left; } }
@@ -8078,12 +8081,12 @@
   function offPw(o){ return Number(o.offer_pw) || 0; }
   function renderOfferBanner(){
     var fresh = offers.filter(function(o){ return o.status === 'new'; }), unseen = fresh.filter(function(o){ return !o.seen_at; }).length;
-    var unpaid = offers.filter(function(o){ return o.status === 'accepted' && !o.paid_at; }).length;
+    var unpaid = offers.filter(function(o){ return o.status === 'accepted' && !o.paid_at; }).length, claims = offers.filter(function(o){ return !o.paid_at && (o.data || {}).paid_claim && (o.status === 'new' || o.status === 'accepted'); }).length;
     $('sOffers').hidden = !fresh.length; $('sOffers').textContent = fresh.length;
     $('sOffers2').hidden = !fresh.length; $('sOffers2').textContent = fresh.length;
-    $('offerBanner').hidden = !fresh.length && !unpaid;
+    $('offerBanner').hidden = !fresh.length && !unpaid && !claims;
     $('offerBannerText').textContent = '📝 ' + (fresh.length ? fresh.length + ' offer' + (fresh.length === 1 ? '' : 's') + ' to decide' + (unseen ? ' (' + unseen + ' new)' : '') : '') +
-      (fresh.length && unpaid ? ' · ' : '') + (unpaid ? unpaid + ' accepted, holding deposit not received yet' : '') + (fresh.length ? ' — ' + fresh.slice(0, 2).map(function(o){ return shortAddr(o.property_address) + ' ' + gbp(offPw(o)) + ' pw'; }).join(', ') : '');
+      (fresh.length && unpaid ? ' · ' : '') + (unpaid ? unpaid + ' accepted, holding deposit not received yet' : '') + (claims ? ' · ' + claims + ' say they’ve paid — check the bank' : '') + (fresh.length ? ' — ' + fresh.slice(0, 2).map(function(o){ return shortAddr(o.property_address) + ' ' + gbp(offPw(o)) + ' pw'; }).join(', ') : '');
   }
   function offLinkBase(){ return location.origin + '/offer'; }
   function renderOffers(){
@@ -8115,6 +8118,14 @@
           : 'You have not paid a holding deposit, so there is nothing further you need to do.\n\n') + 'Kind regards,\nResidential Realtors';
       return 'mailto:' + encodeURIComponent(o.lead_email || '') + '?subject=' + encodeURIComponent((o.paid_at ? 'Holding deposit refund — ' : 'Your offer — ') + shortAddr(o.property_address) + ' (' + o.ref + ')') + '&body=' + encodeURIComponent(body);
     };
+    var acceptEmail = function(){
+      var first = String(o.lead_name || '').split(/\s+/)[0] || 'there', track = o.track_token ? location.origin + '/offer/track/' + o.track_token : '';
+      var body = 'Dear ' + first + ',\n\nGood news — the landlord has accepted your offer of ' + gbp(offPw(o)) + ' a week (' + gbp(m.pcm || 0) + ' a month) for ' + shortAddr(o.property_address) + ' (' + o.ref + ').\n\n' +
+        (o.paid_at ? 'We have received your holding deposit of ' + gbp(m.holding || 0) + ', which goes towards your first month’s rent.\n\n' : 'Please pay your holding deposit of ' + gbp(m.holding || 0) + ' now to secure the property, using the payment reference on your offer.\n\n') +
+        'Next steps:\n1. We will send the referencing forms for each tenant' + (d.guarantors_count ? ' and guarantor' : '') + ' — please complete them within 24 hours.\n2. Once references are back, we will send the tenancy agreement to sign.\n3. The rest of the move-in money (' + gbp(m.balance || 0) + ') is due when you sign.\n\n' +
+        (track ? 'You can follow your offer here: ' + track + '\n\n' : '') + 'Kind regards,\nResidential Realtors';
+      return 'mailto:' + encodeURIComponent(o.lead_email || '') + '?subject=' + encodeURIComponent('Your offer has been accepted — ' + shortAddr(o.property_address) + ' (' + o.ref + ')') + '&body=' + encodeURIComponent(body);
+    };
     return '<article class="oc oc-' + st[0] + '" data-off="' + o.id + '">' +
       '<header class="oc-head"><div class="oc-av">' + esc(initials || '?') + '</div>' +
         '<div class="oc-who"><div class="oc-addr">' + esc(o.property_address || '') + '</div>' +
@@ -8122,10 +8133,14 @@
           '<div class="oc-contact">' + (o.lead_phone ? '<a href="tel:' + esc(o.lead_phone) + '">📞 ' + esc(o.lead_phone) + '</a>' : '') + (o.lead_email ? '<a href="mailto:' + esc(o.lead_email) + '">✉ ' + esc(o.lead_email) + '</a>' : '') + '</div></div>' +
         '<div class="oc-price"><div class="oc-pw">' + esc(gbp(offPw(o))) + '<small> /week</small></div><div class="oc-pcm">' + esc(gbp(m.pcm || 0)) + ' /month' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' /wk' : '') + '</div></div></header>' +
       '<div class="oc-status"><span class="oc-pill ' + st[0] + '">' + st[1] + '</span>' +
-        (o.paid_at ? '<span class="oc-pill ok">💷 Deposit received ' + esc(fmtShort(o.paid_at).split(',')[0]) + '</span>' : (o.status === 'rejected' || o.status === 'withdrawn' ? '' : '<span class="oc-pill warn">Deposit ' + esc(gbp(m.holding || 0)) + ' not received</span>')) +
+        (o.paid_at ? '<span class="oc-pill ok">💷 Deposit received ' + esc(fmtShort(o.paid_at).split(',')[0]) + '</span>' : (o.status === 'rejected' || o.status === 'withdrawn' ? '' : d.paid_claim ? '<span class="oc-pill wait">💬 Says paid ' + esc(longDay(d.paid_claim.date)) + (d.paid_claim.from ? ' from ' + esc(d.paid_claim.from) : '') + ' — check the bank</span>' : '<span class="oc-pill warn">Deposit ' + esc(gbp(m.holding || 0)) + ' not received</span>')) +
         (o.status === 'withdrawn' && o.paid_at ? '<span class="oc-pill muted">Deposit not refundable (their terms)</span>' : '') + '</div>' +
       '<div class="oc-grid">' + kv('Move in', d.move_in ? esc(longDay(d.move_in)) : '') + kv('Stay', esc(d.stay || '')) + kv('Tenants', String(ts.length)) + kv('Guarantors', d.guarantors_count ? String(d.guarantors_count) : '') +
         kv('Holding deposit', esc(gbp(m.holding || 0))) + kv('Due at signing', esc(gbp(m.balance || 0))) + '</div>' +
+      (d.refund ? '<div class="oc-refund"><div><span>Refund to (given by the applicant)</span><b>' + esc(d.refund.name) + '</b> · ' + (d.refund.sort_code ? 'Sort code <b>' + esc(d.refund.sort_code) + '</b> · Account <b>' + esc(d.refund.account) + '</b>' : '') + (d.refund.iban ? ' · IBAN <b>' + esc(d.refund.iban) + '</b>' : '') +
+        ' · amount <b>' + esc(gbp(m.holding || 0)) + '</b>' + (d.refund.name && o.lead_name && d.refund.name.toLowerCase().indexOf(String(o.lead_name).split(/\s+/).pop().toLowerCase()) === -1 ? '<div class="oc-warn">⚠ The account name doesn’t match the lead applicant (' + esc(o.lead_name) + ') — check it before paying.</div>' : '') + '</div>' +
+        (d.refunded_at ? '<span class="oc-pill ok">✓ Refund sent ' + esc(fmtShort(d.refunded_at).split(',')[0]) + '</span> <button type="button" class="linkish" data-off-refunded="0">Undo</button>' : '<button type="button" class="btn small primary" data-off-refunded="1">✓ Refund sent</button>') + '</div>'
+        : o.status === 'rejected' && o.paid_at ? '<div class="oc-refund"><div><span>Refund</span>Waiting for the applicant to give their account details (on their tracking page).</div></div>' : '') +
       (o.status === 'withdrawn' && d.withdraw_reason ? '<div class="oc-cond"><span>Why they withdrew</span>' + esc(d.withdraw_reason) + (d.withdraw_more ? ' — ' + esc(d.withdraw_more) : '') + '</div>' : '') +
       '<div class="oc-cond"><span>Their conditions</span>' + (d.negotiate ? esc(d.negotiate) : '<em>None given</em>') + '</div>' +
       (d.about ? '<div class="oc-cond"><span>About them</span>' + esc(d.about) + '</div>' : '') +
@@ -8151,7 +8166,8 @@
           : '<button type="button" class="btn small ghost" data-off-act="new">Undo ' + ({ accepted: 'accept', rejected: 'reject', withdrawn: 'withdrawal' }[o.status] || '') + '</button>') +
         (o.status === 'withdrawn' ? '' : o.paid_at ? '<button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Deposit received</button>') +
         (o.status === 'rejected' && o.lead_email ? '<a class="btn small primary" data-off-refund href="' + esc(refundEmail()) + '">✉ ' + (o.paid_at ? 'Email for refund details' : 'Email them') + '</a>' : '') +
-        (o.status === 'accepted' ? '<button type="button" class="btn small" data-off-tcy>🏠 Start tenancy</button>' : '') +
+        (o.status === 'accepted' && o.lead_email ? '<a class="btn small primary" data-off-accmail href="' + esc(acceptEmail()) + '">✉ Email: offer accepted</a>' : '') +
+        (o.status === 'accepted' ? '<button type="button" class="btn small" data-off-tenants title="Save every applicant in your Tenants list at this property">👥 ' + (d.tenants_added_at ? 'Added as tenants ✓' : 'Add as tenants') + '</button><button type="button" class="btn small" data-off-tcy>🏠 Start tenancy</button>' : '') +
         '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/offers/' + o.id + '/pdf" title="The signed offer as a PDF, like the holding deposit form">📄 Offer form (PDF)</a>' +
         '<span class="oc-sp"></span>' +
         '<button type="button" class="btn small ghost" data-off-track title="The applicant’s private link to follow their offer">🔗 Tracking link</button>' +
@@ -8172,6 +8188,19 @@
         if (!d.ok) { busy(a || pd, false); toast('Couldn’t save that'); return; }
         toast(a ? (a.dataset.offAct === 'accepted' ? 'Offer accepted' : a.dataset.offAct === 'rejected' ? 'Offer rejected' : 'Undone') : (body.paid ? 'Holding deposit received' : 'Payment undone'));
         loadOffers();
+      });
+      return;
+    }
+    var rfb = e.target.closest('[data-off-refunded]');
+    if (rfb) { api('POST', '/api/admin/offers/' + o.id, { refunded: rfb.dataset.offRefunded === '1' }).then(function(d2){ if (!d2.ok) { toast('Couldn’t save that'); return; } toast(rfb.dataset.offRefunded === '1' ? 'Refund marked as sent' : 'Undone'); loadOffers(); }); return; }
+    if (e.target.closest('[data-off-accmail]')) { api('POST', '/api/admin/offers/' + o.id, { note: 'Emailed to say the offer was accepted' }); return; }
+    var tb = e.target.closest('[data-off-tenants]');
+    if (tb) {
+      busy(tb, true, 'Adding…');
+      api('POST', '/api/admin/offers/' + o.id + '/tenants', {}).then(function(d2){
+        busy(tb, false); if (!d2.ok) { toast('Couldn’t add them'); return; }
+        toast(d2.added + ' applicant' + (d2.added === 1 ? '' : 's') + ' saved as tenants at ' + shortAddr(o.property_address));
+        if (typeof loadTenantRecs === 'function') loadTenantRecs(); loadOffers();
       });
       return;
     }
