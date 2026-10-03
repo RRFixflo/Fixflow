@@ -439,6 +439,15 @@
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
   .staff-mode #teamSec.staff-team { display: block !important; margin-top: 16px; }
+  .staff-tabs { display: flex; gap: 6px; margin: 0 0 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; width: fit-content; }
+  .staff-tabs button { border: 0; background: none; font: inherit; font-weight: 700; padding: 8px 14px; border-radius: 9px; cursor: pointer; color: var(--ink-soft); } .staff-tabs button.on { background: var(--primary, #0B1F3A); color: #fff; }
+  .lt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .lt-grid label, .lt-row label, .lt-full { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: var(--ink-soft); font-weight: 600; }
+  .lt-fees { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; } .lt-box { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .lt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .lt-full { margin-bottom: 10px; }
+  .lt-preview:empty { display: none; } .lt-preview { background: var(--blue-tint); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: .86rem; } .lt-preview div { display: flex; gap: 10px; padding: 3px 0; } .lt-preview span { min-width: 170px; color: var(--ink-soft); }
+  .lt-card { margin-bottom: 12px; } .lt-h { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+  .lt-lines { margin: 10px 0; border-radius: 12px; background: var(--panel-2); padding: 8px 12px; } .lt-lines div { display: flex; gap: 12px; padding: 4px 0; font-size: .88rem; flex-wrap: wrap; } .lt-lines span { min-width: 200px; color: var(--ink-soft); }
+  @media (max-width: 700px) { .lt-grid, .lt-fees { grid-template-columns: 1fr; } }
   .off-send { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
   .switch-row { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; } .switch-row input { width: 18px; height: 18px; }
   .team-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -1087,7 +1096,8 @@
     <button class="nav" type="button" id="navPay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg> Payments <span class="badge" id="sOwed" hidden></span></button>
     <button class="nav" type="button" id="contractorsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg> Contractors</button>
     <button class="nav" type="button" id="navAct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Activity</button>
-    <button class="nav" type="button" id="navEmail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
+    <button class="nav" type="button" id="navLt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg> Landlord terms <span class="count-chip" id="sLt" hidden></span></button>
+    <button class="nav" type="button" id="navEmail" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
     <button class="nav" type="button" id="navNew"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <div class="side-sec">Links</div>
     <a class="nav" href="/" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Tenant report page</a>
@@ -1389,15 +1399,37 @@
         </details>
       </div>
 
+      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord terms</button></div>
+      <div id="ltView" hidden>
+        <details class="card" id="ltNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New landlord agreement</summary>
+          <p class="muted-note" style="margin:8px 0 12px">Set the fees you agreed with the landlord. You’ll get a private link to send them: they check the fees, fill in the property details form, read the terms and sign. You get the signed PDF with an audit trail.</p>
+          <div class="lt-grid"><label>Landlord name<input class="inp" id="ltName" maxlength="200"></label><label>Property address<input class="inp" id="ltAddr" list="offProps" maxlength="400"></label>
+            <label>Landlord email <span class="muted-note" style="margin:0">optional</span><input class="inp" id="ltEmail" type="email"></label><label>Landlord mobile <span class="muted-note" style="margin:0">optional</span><input class="inp" id="ltPhone" type="tel"></label></div>
+          <div class="lt-fees">
+            <div class="lt-box"><b>Tenant find</b><select class="inp" id="ltFind"><option value="sole">Sole agency</option><option value="multi">Multi agency</option><option value="none">None</option></select>
+              <div class="lt-row" data-find><label>Commission %<input class="inp" id="ltFindPct" inputmode="decimal"></label><label>Minimum fee £ (inc VAT)<input class="inp" id="ltFindMin" inputmode="decimal"></label></div>
+              <label class="switch-row" data-find style="margin-top:6px"><input type="checkbox" id="ltRen" checked> Renewal fee applies</label>
+              <div class="lt-row" data-find data-ren><label>Renewal %<input class="inp" id="ltRenPct" inputmode="decimal"></label></div></div>
+            <div class="lt-box"><b>Ongoing service</b><select class="inp" id="ltOn"><option value="none">None</option><option value="collect">Rent collection</option><option value="manage">Full management</option></select>
+              <div class="lt-row" data-on><label>Fee %<input class="inp" id="ltOnPct" inputmode="decimal"></label><label>Minimum £ a month (inc VAT)<input class="inp" id="ltOnMin" inputmode="decimal"></label></div>
+              <label class="switch-row" style="margin-top:6px"><input type="checkbox" id="ltVat" checked> Fees are + VAT</label></div>
+          </div>
+          <label class="lt-full">Other agreed fees or notes <span class="muted-note" style="margin:0">optional</span><textarea class="inp" id="ltOther" rows="2" maxlength="2000"></textarea></label>
+          <div class="lt-preview" id="ltPreview"></div>
+          <button class="btn primary" type="button" id="ltCreate">Create agreement link</button>
+        </details>
+        <div id="ltList"></div>
+      </div>
       <div id="offersView" hidden>
-        <div class="card" style="margin-bottom:12px">
-          <h3 style="margin:0 0 6px">Link for applicants</h3>
+        <details class="card" id="offLinkCard" style="margin-bottom:12px">
+          <summary style="cursor:pointer;font-weight:700;font-size:1.02rem">🔗 Link for applicants <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">copy or send the offer form</span></summary>
+          <div style="margin-top:8px"></div>
           <p class="muted-note" style="margin:0 0 8px">Send this to anyone who wants to make an offer. They fill in the offer and each tenant’s details, attach their IDs and sign; then they’re told how to pay the holding deposit.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offLink" readonly style="flex:1;min-width:220px"><button class="btn primary" type="button" id="offCopy">Copy link</button><a class="btn" id="offOpen" target="_blank" rel="noopener">Open</a></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offProp" list="offProps" placeholder="Or a link for one property: type the address" style="flex:1;min-width:220px"><datalist id="offProps"></datalist><button class="btn" type="button" id="offPropCopy">Copy property link</button></div>
           <div class="off-send"><b>Send it to an applicant</b><span class="muted-note" style="margin:0">Uses the property link above if you’ve typed an address.</span>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><input class="inp" id="offTo" placeholder="Their mobile or email (optional)" style="flex:1;min-width:200px"><button class="btn small wa-btn" type="button" id="offSendWa">WhatsApp</button><button class="btn small" type="button" id="offSendMail">✉ Email</button></div></div>
-        </div>
+        </details>
         <div class="card" id="offRemind" style="margin-bottom:12px" hidden><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b>⏰ Automatic holding deposit reminders</b><div class="muted-note" id="offRemindNote" style="margin:2px 0 0"></div></div>
           <label class="switch-row"><input type="checkbox" id="offRemindOn"> <span id="offRemindLbl">On</span></label></div></div>
         <div class="card off-alerts-staff" id="offAlertStaff" hidden><b>🔔 Get offer alerts on your phone</b><p class="muted-note" style="margin:4px 0 10px">Be told straight away when an offer comes in, is accepted or rejected, or a holding deposit arrives. Install the free <b>ntfy</b> app (App Store / Google Play), then tap the button on your phone, or add this channel in the app.</p>
@@ -2158,7 +2190,7 @@
       $('dbBanner').hidden = !!d.db;
       // Offers staff: only the Offers page (the server refuses everything else).
       if (d.role === 'offers') {
-        staffMode = true; document.body.classList.add('staff-mode');
+        staffMode = true; document.body.classList.add('staff-mode'); $('staffTabs').hidden = false;
         if (!history.state) history.replaceState({ v: 'offers', depth: 0 }, '', location.pathname);
         loadOffers().then(function(){ showView('offers'); });
         // An offers team manager also gets the Team section on the Offers page.
@@ -3225,7 +3257,7 @@
     }, 0);
   }
   function applyNav(st){
-    if (staffMode) st = { v: 'offers' };
+    if (staffMode && (!st || st.v !== 'lt')) st = { v: 'offers' };
     navRestoring = true;
     openPropKey = st.prop || null; openTenantKey = st.ten || null; openLlId = st.ll || null;
     $('propDetail').hidden = !openPropKey; $('propsListView').hidden = !!openPropKey;
@@ -3256,7 +3288,7 @@
   $('brandHomeM').addEventListener('click', goHome);
 
   function showView(v){
-    if (staffMode) v = 'offers';
+    if (staffMode && v !== 'lt') v = 'offers';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -3271,6 +3303,8 @@
     $('actView').hidden = v !== 'act';
     $('ctrView').hidden = v !== 'ctr';
     $('ctsView').hidden = v !== 'cts';
+    $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
+    document.querySelectorAll('[data-stab]').forEach(function(b){ b.classList.toggle('on', b.dataset.stab === v); });
     $('contractorsBtn').classList.toggle('on', v === 'cts' || v === 'ctr');
     $('navAct').classList.toggle('on', v === 'act');
     $('navTcy').classList.toggle('on', v === 'tcy');
@@ -3280,9 +3314,10 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord terms', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
+    if (v === 'lt') loadLt();
     if (v === 'tcy' && !openTcyId) renderTenancies();
     if (v === 'act') loadActivity();
     if (v === 'ctr') renderContractorPage();
@@ -8252,6 +8287,8 @@
     });
   }
   $('offRemindOn').addEventListener('change', function(){ var on = this.checked; api('POST', '/api/admin/offer-reminders', { on: on }).then(function(d){ toast(d.ok ? (on ? 'Automatic reminders on' : 'Automatic reminders off') : 'Couldn’t save that'); loadRemind(); }); });
+  try { if (localStorage.getItem('rr_offlink_open') === '1') $('offLinkCard').open = true; } catch (e) {}
+  $('offLinkCard').addEventListener('toggle', function(){ try { localStorage.setItem('rr_offlink_open', this.open ? '1' : '0'); } catch (e) {} });
   function renderOffers(){
     if (!renderOffers.staffLoaded) { renderOffers.staffLoaded = true; loadOffStaff(); loadRemind(); $('offSendWa').innerHTML = WA_ICON + 'WhatsApp'; }
     var al = meta.offerAlerts || '', hid = false; try { hid = localStorage.getItem('rr_alerts_hide') === '1'; } catch (e) {}
@@ -8562,6 +8599,75 @@
   $('navOffers').addEventListener('click', function(){ showView('offers'); });
   $('navOffersLink').addEventListener('click', function(e){ e.preventDefault(); showView('offers'); });
   $('offerBannerGo').addEventListener('click', function(){ offTab = offers.some(function(o){ return o.status === 'new'; }) ? 'open' : 'accepted'; showView('offers'); });
+
+  // ---------- Landlord terms of business ----------
+  // The office sets the agreed fees and sends the landlord a private link to
+  // check them, fill in the property details form and sign the terms.
+  var ltItems = [], LT_DEF = { sole: [10, 1500, 9], multi: [12, 1700, 11], collect: [3, 40], manage: [6, 80] };
+  function ltDefaults(){
+    var fd = LT_DEF[$('ltFind').value], od = LT_DEF[$('ltOn').value];
+    if (fd) { $('ltFindPct').value = fd[0]; $('ltFindMin').value = fd[1]; $('ltRenPct').value = fd[2]; }
+    if (od) { $('ltOnPct').value = od[0]; $('ltOnMin').value = od[1]; }
+    ltShowRows();
+  }
+  function ltShowRows(){
+    var find = $('ltFind').value !== 'none', on = $('ltOn').value !== 'none';
+    document.querySelectorAll('#ltNew [data-find]').forEach(function(el){ el.hidden = !find || (el.hasAttribute('data-ren') && !$('ltRen').checked); });
+    document.querySelectorAll('#ltNew [data-on]').forEach(function(el){ el.hidden = !on; });
+    ltPreview();
+  }
+  function ltFees(){ return { find: $('ltFind').value, find_pct: $('ltFindPct').value, find_min: $('ltFindMin').value, renewal: $('ltRen').checked, renewal_pct: $('ltRenPct').value, ongoing: $('ltOn').value, ongoing_pct: $('ltOnPct').value, ongoing_min: $('ltOnMin').value, vat: $('ltVat').checked, other: $('ltOther').value.trim() }; }
+  function ltLines(f){
+    var vat = f.vat !== false, inc = function(p){ p = Number(p); return vat ? p + '% + VAT (' + (Math.round(p * 120) / 100) + '% inc VAT)' : p + '%'; }, L = [];
+    if (f.find !== 'none' && f.find_pct !== '' && f.find_pct != null) { L.push([f.find === 'multi' ? 'Tenant find — multi agency' : 'Tenant find — sole agency', inc(f.find_pct) + ' of the rent for the term' + (Number(f.find_min) ? ', minimum ' + gbp(Number(f.find_min)) + (vat ? ' inc VAT' : '') : '')]); L.push(['Renewal fee', f.renewal && f.renewal_pct !== '' && f.renewal_pct != null ? inc(f.renewal_pct) : 'No renewal fee']); }
+    if (f.ongoing !== 'none' && f.ongoing_pct !== '' && f.ongoing_pct != null) L.push([f.ongoing === 'manage' ? 'Full management' : 'Rent collection', inc(f.ongoing_pct) + ' of rent received' + (Number(f.ongoing_min) ? ', minimum ' + gbp(Number(f.ongoing_min)) + (vat ? ' inc VAT' : '') + ' a month' : '')]);
+    if (f.other) L.push(['Other', f.other]);
+    return L;
+  }
+  function ltPreview(){ var L = ltLines(ltFees()); $('ltPreview').innerHTML = L.length ? '<b>The landlord will see:</b>' + L.map(function(l){ return '<div><span>' + esc(l[0]) + '</span>' + esc(l[1]) + '</div>'; }).join('') : ''; }
+  ['ltFind', 'ltOn'].forEach(function(id){ $(id).addEventListener('change', ltDefaults); });
+  $('ltRen').addEventListener('change', ltShowRows);
+  $('ltNew').addEventListener('input', ltPreview); $('ltVat').addEventListener('change', ltPreview);
+  ltDefaults();
+  function loadLt(){ return api('GET', '/api/admin/landlord-terms').then(function(d){ if (!d.ok) return; ltItems = d.items; renderLt(); var waiting = ltItems.filter(function(x){ return x.status === 'sent'; }).length; $('sLt').hidden = !waiting; $('sLt').textContent = waiting; }); }
+  function ltLink(t){ return (meta.offerOrigin || location.origin) + '/landlord/' + t.token; }
+  function ltMsg(t){ return 'Hi ' + (String(t.landlord_name || '').split(/\s+/)[0] || 'there') + ', here are our terms of business for ' + shortAddr(t.property_address) + ' with the fees we agreed. Please check them, fill in the property details and sign here: ' + ltLink(t) + ' — Residential Realtors'; }
+  function renderLt(){
+    $('ltList').innerHTML = ltItems.length ? ltItems.map(function(t){
+      var d = t.data || {}, st = t.status === 'signed' ? ['ok', '✓ Signed ' + fmtShort(t.signed_at).split(',')[0]] : t.status === 'cancelled' ? ['muted', 'Cancelled'] : d.viewed_at ? ['wait', 'Opened by the landlord — not signed yet'] : ['warn', 'Waiting for the landlord'];
+      var dt = d.details || {};
+      return '<div class="card lt-card" data-lt="' + t.id + '"><div class="lt-h"><div><div class="oc-addr">' + esc(t.property_address) + '</div><div class="oc-meta">' + esc(t.landlord_name) + ' · ' + esc(t.ref) + ' · ' + esc(fmtShort(t.created_at)) + (t.created_by ? ' · by ' + esc(t.created_by) : '') + '</div></div>' +
+          '<span class="oc-pill ' + st[0] + '">' + esc(st[1]) + '</span></div>' +
+        '<div class="lt-lines">' + (t.lines || []).map(function(l){ return '<div><span>' + esc(l.k) + '</span><b>' + esc(l.v) + '</b></div>'; }).join('') + '</div>' +
+        (t.status === 'signed' ? '<details class="oc-more"><summary>Property details from the landlord</summary><div class="oc-rows" style="padding:10px 14px">' +
+          [['Landlord 1', [dt.l1_name, dt.l1_phone, dt.l1_email].filter(Boolean).join(' · ')], ['Landlord 2', [dt.l2_name, dt.l2_phone, dt.l2_email].filter(Boolean).join(' · ')], ['Legal owners', dt.legal_owners], ['Correspondence address', dt.corr_address], ['Bank', [dt.bank_name, dt.bank_account_name, dt.bank_sort, dt.bank_account].filter(Boolean).join(' · ')], ['Start straight away', d.start_now ? 'Yes' : 'No — wait 14 days'], ['Opted out of management', dt.optout ? 'Yes — emergency ' + (dt.emergency_phone || '') : ''], ['Special instructions', dt.special], ['Other', dt.other]]
+            .filter(function(r){ return r[1]; }).map(function(r){ return '<div><span>' + esc(r[0]) + '</span>' + esc(r[1]) + '</div>'; }).join('') + '</div></details>' : '') +
+        '<footer class="oc-actions">' + (t.status === 'sent' ? '<button type="button" class="btn small primary" data-lt-copy>🔗 Copy link</button>' + (t.landlord_phone ? '<button type="button" class="btn small wa-btn" data-lt-wa>' + WA_ICON + 'WhatsApp</button>' : '<button type="button" class="btn small wa-btn" data-lt-wa>' + WA_ICON + 'WhatsApp</button>') + '<button type="button" class="btn small" data-lt-mail>✉ Email</button>' : '') +
+          '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/landlord-terms/' + t.id + '/pdf">📄 ' + (t.status === 'signed' ? 'Signed PDF' : 'Preview PDF') + '</a><span class="oc-sp"></span>' +
+          (t.status === 'sent' ? '<button type="button" class="btn small ghost" data-lt-cancel>Cancel link</button>' : '') + (staffMode ? '' : '<button type="button" class="btn small ghost danger" data-lt-del title="Delete">🗑</button>') + '</footer></div>';
+    }).join('') : '<p class="muted-note">No landlord agreements yet — create one above.</p>';
+  }
+  $('ltCreate').addEventListener('click', function(){
+    var b = this, body = { landlord_name: $('ltName').value.trim(), property_address: $('ltAddr').value.trim(), landlord_email: $('ltEmail').value.trim(), landlord_phone: $('ltPhone').value.trim(), fees: ltFees() };
+    if (!body.landlord_name) { toast('Enter the landlord’s name'); $('ltName').focus(); return; }
+    if (!body.property_address) { toast('Enter the property address'); $('ltAddr').focus(); return; }
+    busy(b, true, 'Creating…');
+    api('POST', '/api/admin/landlord-terms', body).then(function(d){
+      busy(b, false); if (!d.ok) { toast(d.error === 'pct' ? 'Enter the percentages for the services chosen' : d.error === 'fees' ? 'Choose at least one service or add other fees' : 'Couldn’t create it'); return; }
+      ['ltName', 'ltAddr', 'ltEmail', 'ltPhone', 'ltOther'].forEach(function(id){ $(id).value = ''; });
+      offCopyText(d.link); toast('Agreement created — link copied. Send it by WhatsApp or email below.'); loadLt();
+    });
+  });
+  $('ltList').addEventListener('click', function(e){
+    var card = e.target.closest('[data-lt]'); if (!card) return; var t = ltItems.filter(function(x){ return x.id === Number(card.dataset.lt); })[0]; if (!t) return;
+    if (e.target.closest('[data-lt-copy]')) { offCopyText(ltLink(t)); return; }
+    if (e.target.closest('[data-lt-wa]')) { var ph = String(t.landlord_phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'); window.open('https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent(ltMsg(t)), '_blank', 'noopener'); api('POST', '/api/admin/landlord-terms/' + t.id, { note: 'Link sent by WhatsApp' }); return; }
+    if (e.target.closest('[data-lt-mail]')) { location.href = 'mailto:' + encodeURIComponent(t.landlord_email || '') + '?subject=' + encodeURIComponent('Terms of business — ' + shortAddr(t.property_address) + ' — Residential Realtors') + '&body=' + encodeURIComponent(ltMsg(t).replace(' — Residential Realtors', '\n\nKind regards\nResidential Realtors')); api('POST', '/api/admin/landlord-terms/' + t.id, { note: 'Link sent by email' }); return; }
+    if (e.target.closest('[data-lt-cancel]')) { if (!confirm('Cancel this link? The landlord won’t be able to open it.')) return; api('POST', '/api/admin/landlord-terms/' + t.id, { cancel: true }).then(function(){ toast('Link cancelled'); loadLt(); }); return; }
+    if (e.target.closest('[data-lt-del]')) { if (!confirm('Delete this landlord agreement?')) return; api('DELETE', '/api/admin/landlord-terms/' + t.id, { confirm: true }).then(function(){ toast('Deleted'); loadLt(); }); }
+  });
+  $('navLt').addEventListener('click', function(){ showView('lt'); });
+  $('staffTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-stab]'); if (b) showView(b.dataset.stab); });
 
   // ---------- Monthly landlord statements ----------
   // Worked out on the server (statementChain in jobs.js): one per rent date,

@@ -1,0 +1,832 @@
+{
+ "version": "V100719",
+ "clauses": [
+  {
+   "n": "1.0",
+   "h": "Tenant Find Service"
+  },
+  {
+   "n": "1.1",
+   "h": "Initial Commission"
+  },
+  {
+   "n": "1.1.1",
+   "t": "In the event that Residential Realtors introduces a tenant who enters into an agreement to rent the landlord's property (the \"Initial Agreement\"), commission becomes payable to Residential Realtors (\"Initial Commission\"). See clause 3.4 regarding outstanding fees."
+  },
+  {
+   "n": "1.1.2",
+   "t": "The Initial Commission fee is payable on the commencement of the tenancy."
+  },
+  {
+   "n": "1.1.3",
+   "t": "The Initial Commission fee is charged as a percentage of the total rental value of the agreed term as specified in the tenancy agreement, subject to clause 1.1.5 below. The scale of Initial Commission fees charged is set out in \"Your agreed fees\" at the start of this agreement."
+  },
+  {
+   "n": "1.1.4",
+   "t": "The Initial Commission fee is payable for any tenant introduced to the property by Residential Realtors, whether or not the tenancy is finalised by Residential Realtors."
+  },
+  {
+   "n": "1.1.5",
+   "t": "If the tenancy agreement is terminated in accordance with a break clause, Residential Realtors will refund any commission already received for the remaining period of the tenancy. The commission will be refunded within 14 days of the tenant vacating the property. The refund will be calculated on a pro rata basis from the expiry of the notice or the date of vacation of the Tenant, whichever is the later. However, please note that our minimum Commission (as set out in \"Your agreed fees\") will still apply."
+  },
+  {
+   "n": "1.1.6",
+   "t": "If the tenant terminates the tenancy agreement prior to the end of the tenancy term and the tenant vacates the property, Residential Realtors will refund the commission for the remaining period of the tenancy to the landlord to the extent that this is not recoverable from the tenant's deposit."
+  },
+  {
+   "n": "1.1.7",
+   "t": "The refund provisions are made subject to the payment having been received in full within 14 days of commencement of the tenancy. Should payment not have been received in full within 14 days, the client shall not be entitled to any refund."
+  },
+  {
+   "n": "1.1.8",
+   "t": "Where Residential Realtors act on your behalf as your sole agent, we will reduce our commission to the percentage shown under the heading “Tenant Find - Sole Agency” in \"Your agreed fees\". The landlord will be liable to pay remuneration to us, in addition to any other costs or charges agreed, if at any time a tenant enters into an agreement to rent the landlord's property introduced by us during the period of our sole agency or with whom we had negotiations about the property during that period; or with a tenant introduced by another agent during that period. Sole agency instructions are subject to a minimum contract period of four weeks from the signing of this agreement. Either party may terminate such a contract by giving two weeks’ notice in writing. Such notice cannot be served prior to the second week of instruction due to this minimum period."
+  },
+  {
+   "n": "1.2",
+   "h": "Renewal Commission"
+  },
+  {
+   "n": "1.2.1",
+   "t": "Residential Realtors will endeavour to contact both the landlord and tenant before the end of the Initial Agreement to negotiate an extension of the tenancy, if so required."
+  },
+  {
+   "n": "1.2.2",
+   "t": "In the event that the tenant renews, extends, holds-over and/or enters into a new agreement for which rental income is received, commission becomes payable to Residential Realtors (\"Renewal Commission\")."
+  },
+  {
+   "n": "1.2.3",
+   "t": "The Renewal Commission fee is due and payable on the commencement of each Renewal taking place."
+  },
+  {
+   "n": "1.2.4",
+   "t": "Where a Renewal is for an agreed term, the Renewal Commission fee is charged as a percentage of the total rental value of that agreed term."
+  },
+  {
+   "n": "1.2.5",
+   "t": "Where there is no agreed term for a Renewal, the Renewal Commission fee is charged as a percentage of the total rental value as if the Renewal would be for the same duration as the Initial Agreement. See also clause 1.2.6 in respect of rebates once the tenant vacates the property."
+  },
+  {
+   "n": "1.2.6",
+   "t": "If the tenant vacates the property prior to the end of the period for which Renewal Commission has been paid in accordance with clauses 1.2.5 above, Residential Realtors will refund the commission for the remaining period. The commission will be refunded within 14 days of the tenant vacating the property."
+  },
+  {
+   "n": "1.2.7",
+   "t": "Renewal Commission will be due in respect of Renewals where the original tenant remains in occupation. Where there is more than one tenant, Renewal Commission will be payable in full where any or all of them remain in occupation."
+  },
+  {
+   "n": "1.2.8",
+   "t": "Renewal Commission will be due whether or not the renewal, extension, hold-over or new agreement with the tenant is negotiated by Residential Realtors."
+  },
+  {
+   "n": "1.2.9",
+   "t": "The refund provisions are made subject to the payment having been received in full within 14 days of commencement of the tenancy. Should payment not have been received in full within 14 days, the client shall not be entitled to any refund."
+  },
+  {
+   "n": "1.3",
+   "h": "Payment of Initial and Renewal Commission"
+  },
+  {
+   "n": "1.3.1",
+   "t": "Where Residential Realtors collects the rent, we will deduct the commission fee as follows: - (a) we will deduct the Initial Commission fee from the first rental payment of the initial tenancy agreement; and (b) we will deduct the Renewal Commission fee from the first rental payment of any renewal, extension, hold-over or new agreement. If the fee exceeds the first rental payment, the balance will be deducted from subsequent rental payment(s)."
+  },
+  {
+   "n": "1.3.2",
+   "t": "Where Residential Realtors does not collect the rent the commission must be paid in accordance with clause 1.1.2 and clause 1.2.4."
+  },
+  {
+   "n": "1.4",
+   "h": "Tenancy agreement"
+  },
+  {
+   "n": "1.4.1",
+   "t": "The charge to the landlord for a long let tenancy agreement is £295 + VAT (£354 inc VAT)"
+  },
+  {
+   "n": "1.4.2",
+   "t": "We will not offer advice on tenancy agreements which we do not prepare. You should seek independent legal advice if You wish to use Your own tenancy agreement, or agree to a Tenant or any third party using their own tenancy agreement."
+  },
+  {
+   "n": "1.4.3",
+   "t": "We cannot manage, hold or protect Deposits for assured shorthold tenancies where you wish to use Your own tenancy agreement or that of a third-party. See clause 8.4 below"
+  },
+  {
+   "n": "1.5",
+   "h": "Rent Collection Service"
+  },
+  {
+   "n": "1.5.1",
+   "t": "The Rent Collection Service is a separate service to the Tenant Find and can be taken by itself or in conjunction with the Tenant Find Service."
+  },
+  {
+   "n": "1.5.2",
+   "t": "The fee for the Rent Collection Service is 3% + VAT of the total Rent payable for the entire length of the Tenancy including any extension or continuation. Fees are payable from and at the same frequency as Rents are received. The minimum period of our appointment to collection of your rent is three months."
+  },
+  {
+   "n": "1.5.3",
+   "t": "Residential Realtors will collect rent in accordance with the terms of the tenancy agreement."
+  },
+  {
+   "n": "1.5.5",
+   "t": "Where Residential Realtors collects the rent, if the rent has not been paid five days after it falls due, Residential Realtors will endeavour to notify the landlord at the earliest possible opportunity, and will attempt to obtain payment from the tenant by means of telephone calls and a series of written notices."
+  },
+  {
+   "n": "1.5.6",
+   "t": "We cannot be held responsible if the Tenant fails to pay their contractual Rent or for any late payment of Rent. We will however issue up to four written communications to the Tenant, copies of which will be forwarded to You upon Your request. The final communication informs the Tenant that We are advising You to take legal advice to recover the outstanding Rent; We will not actively chase Your Tenant for outstanding Rent after this time. It remains Your responsibility to instruct solicitors and/or notify the provider of any Rent and/or legal insurance policy You may hold. We will not do this on Your behalf. Please note such policies have a time limit in which to activate a claim and should be reviewed as soon as arrears occur."
+  },
+  {
+   "n": "1.5.8",
+   "t": "Should a payment be made towards any Rent arrears then We will allocate part payments of the Rent received to Your account on the basis of the earliest outstanding period first."
+  },
+  {
+   "n": "1.5.7",
+   "t": "The Rent Collection Service agreement can be terminated after the minimum period by either party giving one month's notice to the other, such notice not to expire before the end of the first three months. On the expiry of such notice, we will revert to the Tenant Find Service and the commission fees payable will revert to those payable for the Tenant Find Service or those payable during the Renewal or Continuation Period, as appropriate."
+  },
+  {
+   "n": "1.6",
+   "h": "Transfer of money to the landlord"
+  },
+  {
+   "n": "1.6.1",
+   "t": "Once the tenancy has started and we are in receipt of cleared funds from the tenant, we aim to transfer any money due to you within three working days."
+  },
+  {
+   "n": "1.6.2",
+   "t": "In some cases it may take up to ten working days to process the payment. If we exceed this, we will pay you interest (at the annual rate of 2% above the Bank of England's base rate) from the tenth day, until payment is made to you. We are not responsible for any bank charges that you incur as a result of delays in payment."
+  },
+  {
+   "n": "1.6.3",
+   "t": "Where you provide us with UK bank details, we use the BACS system to make payments to your account and do not charge for this service. Where we are required to make payment by alternative methods (Telegraphic Transfer, CHAPS, or cheque) we will pass on any costs incurred in doing this to you."
+  },
+  {
+   "n": "1.7",
+   "h": "Electronic documentation"
+  },
+  {
+   "n": "1.7.1",
+   "t": "Contracts which have been signed electronically (whether by fax, email or website authentication) are binding and admissible in evidence. For convenience, we may ask you or any prospective tenants to sign documents electronically."
+  },
+  {
+   "n": "1.8",
+   "h": "Inventory and check-in"
+  },
+  {
+   "n": "1.8.1",
+   "t": "Where instructed, Residential Realtors will arrange for an independent contractor to draw up an inventory of your property's fixtures, fittings and contents, and compile a check-in report at the start of each tenancy. The cost of these will normally be the responsibility of the landlord or as stipulated in the Tenancy Agreement."
+  },
+  {
+   "n": "1.8.2",
+   "t": "Residential Realtors does not accept liability for losses resulting from any errors or omissions within any inventory, check-in or check-out documents that are produced by a third party."
+  },
+  {
+   "n": "1.8.3",
+   "t": "Where instructed, you agree to inform us within seven days if you dispute the accuracy of an Inventory Check-In report supplied. Residential Realtors does not accept liability for losses resulting from any errors or omissions within any inventory, check-in or check-out documents that are produced by a third party."
+  },
+  {
+   "n": "1.9",
+   "h": "Inventory Check-in and Check-out"
+  },
+  {
+   "n": "1.9.1",
+   "t": "Where instructed, Residential Realtors will arrange for an independent contractor to draw up an inventory Check-In of your property's fixtures, fittings and contents, and compile a comprehensive report. The cost of these will normally be the responsibility of the tenant or as stipulated in the Tenancy Agreement."
+  },
+  {
+   "n": "1.9.2",
+   "t": "Where instructed, we will arrange for the tenant to be checked-out against the initial inventory report at the end of the tenancy and send you a copy of the report. The cost of this is borne by the tenant unless the tenancy agreement states otherwise."
+  },
+  {
+   "n": "1.9.3",
+   "t": "Where instructed, you agree to inform us within seven days if you dispute the accuracy of an Inventory Check-Out report supplied. Residential Realtors does not accept liability for losses resulting from any errors or omissions within any inventory, check-in or check-out documents that are produced by a third party."
+  },
+  {
+   "n": "1.10",
+   "h": "Deposit"
+  },
+  {
+   "n": "1.10.1",
+   "t": "The deposit will be held in accordance with the terms of the tenancy agreement."
+  },
+  {
+   "n": "1.10.2",
+   "t": "Under the terms of our Assured Shorthold Tenancy agreement, the deposit will be held by Residential Realtors in accordance with the Housing Act 2004 and the provisions of the deposit protection scheme operated by The Dispute Service Limited (trading as The Dispute Service). Under this scheme, undisputed deposits must be released to the tenant within ten days of termination of the tenancy. Residential Realtors’ administration fee for registration under the scheme is £145 + VAT. Full details of the scheme may be found at www.tenancydepositscheme.com. Residential Realtors takes no responsibility for the failure of a deposit being registered where held by the landlord or an alternative appointed agent."
+  },
+  {
+   "n": "1.10.3",
+   "t": "For all non-Assured Shorthold Tenancies, Residential Realtors will obtain and hold as stakeholder a deposit from the tenant against unpaid rent or bills, dilapidations and any other costs or losses incurred as a result of any breach of the terms of the tenancy agreement by the tenant. Residential Realtors excludes liability in relation to loss caused by the insolvency of a financial institution which holds deposits in its contracts with landlords and tenants."
+  },
+  {
+   "n": "1.10.4",
+   "t": "After the termination of the Tenancy, if there is no dispute We will repay either the whole of the Deposit to the Tenant in line with the tenancy agreement, or such amount that has been agreed between You and the Tenant in writing. You are required to use all reasonable efforts to reach a sensible resolution to any dispute as soon as practicable after the Tenancy ends. Payment will be made within 10 days of a written settlement being reached."
+  },
+  {
+   "n": "1.10.5",
+   "t": "In the event of settlement of Deposit not being reached, You must agree to Us releasing any undisputed amount of Deposit to the Tenant otherwise the Tenant can notify the Dispute Service and We will be directed to release the undisputed amount and pay the remaining balance to the Scheme within 10 days; We will not seek Your consent to do this."
+  },
+  {
+   "n": "1.10.6",
+   "t": "If the Tenant makes a claim to The Dispute Service for alternative dispute resolution (ADR) You will be invited to accept or contest the claim. You must notify the Scheme that You agree to the ADR within 10 working days; if You fail to respond then the Scheme will consider Your acceptance to the adjudication. If both parties agree to adjudication then the adjudicator’s decision is final and there is no right of appeal. The Dispute Service will pay the disputed amount to the person(s) entitled (Landlord via Ourselves, or the Tenant direct) within 10 days of (a) their decision, (b) a court order, or (c) an agreement reached between You and the Tenant. If the Tenant (or all joint tenants) does not agree to ADR and Your claim, You will need to pursue Your claim by other methods (e.g. County Court)."
+  },
+  {
+   "n": "1.10.8",
+   "t": "We can prepare Your case to be presented to The Dispute Service for adjudication for a charge of £340.00 + VAT (£408.00 inc VAT) subject to, You providing all the necessary documentary evidence. We will not become involved in agreeing or negotiating charges from the Deposit and You must agree this directly with the Tenant."
+  },
+  {
+   "n": "1.10.7",
+   "t": "If you instruct our Management Service (and upon your written instructions) We will refer any dispute to The Dispute Service and present the case on Your behalf at a charge of £95 + VAT"
+  },
+  {
+   "n": "1.10.9",
+   "t": "The statutory rights of both You and Your Tenant to take legal action against the other party remain unaffected. However if You choose to seek the decision of the Court, this process may take longer and may incur further costs. The judge may refer the dispute back to the Scheme for adjudication."
+  },
+  {
+   "n": "1.10.4",
+   "t": "If Residential Realtors are not to hold the Deposit on the landlords behalf during the Tenancy it will be the responsibility of the landlord to protect the deposit with one of the tenancy deposit protection schemes (insured or custodial) and provide the Tenant (and Relevant Person) with the relevant scheme’s ‘prescribed information’ (and any other required documentation) within the Statutory Time Limit (being within 30 days from the date the Tenant pays the Deposit to us on the landlords behalf, whether or not the Tenancy has started). This is a legal requirement. Date of when the deposit was received is available upon request. We will also require You to provide with a copy of these documents before we can release the Deposit to You or the scheme. If You are holding the Deposit and protecting it with one of the insured schemes, then We will pass the Deposit to You once the tenancy starts and once We have copies of the above documents. If you elect to protect the Deposit with one of the custodial schemes then We will transfer the Deposit directly to the scheme once You have supplied us with the payment details/reference and the above documents. You will not be able to serve a valid Notice under Section 21 of the Housing Act 1988 on a Tenant whose Deposit has not been correctly protected. A Tenant or any Relevant Person may apply through the courts for compensation of at least the amount of the Deposit and up to three times the Deposit if You (or someone acting on Your behalf): 1. Fails to give the prescribed information within the Statutory Time Limit; or 2. Fails to comply with the initial requirements of an authorised scheme within the Statutory Time limit; or 3. Notifies the Tenant or Relevant Person that the Deposit has been protected in a scheme, but the Tenant or Relevant Person cannot obtain the scheme’s confirmation that the Deposit is protected Tenants can make an application to a County Court for a penalty award up to six years after the Tenancy has ended. We shall not be responsible for any loss suffered or cost incurred if You fail to comply with these obligations and You agree to reimburse Us for any loss or inconvenience suffered, or cost incurred by Us, due to Your failure to do so, so long as We have transferred the Deposit to You within a reasonable time."
+  },
+  {
+   "n": "1.10.5",
+   "t": "Any interest earned on the deposit will be retained by Residential Realtors."
+  },
+  {
+   "n": "1.11",
+   "h": "The Gas Safety (Installation & Use) Regulations 1998"
+  },
+  {
+   "n": "1.11.1",
+   "t": "Under the above regulations, it is the landlord's responsibility to ensure that all gas appliances and the fixed installation are maintained in good order and checked for safety at least every 12 months by a Gas Safe registered engineer."
+  },
+  {
+   "n": "1.11.2",
+   "t": "If Residential Realtors is not provided with a valid certificate prior to the commencement of the tenancy, we reserve the right to appoint a Gas Safe registered engineer to inspect all gas appliances and their installations and carry out any remedial works where necessary. The cost incurred, together with Residential Realtors’ administration charge of £95.00 + VAT, will be debited from the landlord's account."
+  },
+  {
+   "n": "1.11.3",
+   "t": "If the tenant is remaining in occupation beyond the expiry of the original certificate and Residential Realtors has not received a replacement valid certificate 14 days before the expiry of that original certificate, we reserve the right to appoint a Gas Safe registered engineer to inspect all gas appliances and their installations and carry out any remedial works where necessary. The cost incurred, together with Residential Realtors’ administration charge of £95 + VAT, will be debited from the landlord's account."
+  },
+  {
+   "n": "1.12",
+   "h": "The Electrical Equipment (Safety) Regulations 1994"
+  },
+  {
+   "n": "1.12.1",
+   "t": "The landlord is legally responsible for ensuring that the electrical installation and all appliances within the property are maintained in good order and regularly checked for safety by an appropriate registered engineer."
+  },
+  {
+   "n": "1.12.2",
+   "t": "If it comes to our attention during the course of the letting that the electrics in the Property may not be safe or require attention, then unless you provide us with a current, valid, satisfactory copy, we reserve the right to instruct an Electrical Installation Condition Report (EICR) and any necessary remedial works on your behalf and your expense."
+  },
+  {
+   "n": "1.12.3",
+   "t": "Unless you instruct Our Management Service We will not undertake the renewal of any electrical safety record and this will remain your sole responsibility."
+  },
+  {
+   "n": "1.13",
+   "h": "Furniture and Furnishings (Fire) (Safety) Regulations 1988 and (Amendment) 1993"
+  },
+  {
+   "n": "1.13.1",
+   "t": "The landlord warrants that he/she is fully aware of the terms and conditions of the above Regulations including any subsequent amendments or replacement Regulations (hereafter referred to as the Regulations). The landlord declares that all furniture presently in the property or to be included in a property to which this agreement applies, complies in all respects with the Regulations."
+  },
+  {
+   "n": "1.13.2",
+   "t": "The landlord further warrants that any furniture purchased for the property after the date of this agreement will also comply with the Regulations for the duration of the tenancy and any Renewals."
+  },
+  {
+   "n": "1.14",
+   "h": "Energy Performance Certificate (EPC)"
+  },
+  {
+   "n": "1.14.1",
+   "t": "All buildings in the private rented sector require an EPC. This certificate will remain valid for ten years. Landlords are required by law to obtain and make available a copy of the EPC, free of charge, to prospective tenants at the earliest opportunity and must provide the person who takes up the tenancy with a copy. Residential Realtors can organise an EPC from an approved supplier at the rate of £95.00 excl VAT."
+  },
+  {
+   "n": "1.15",
+   "h": "Indemnity"
+  },
+  {
+   "n": "1.15.1",
+   "t": "The landlord undertakes to keep Residential Realtors fully and effectively indemnified in respect of any claim, demand, liability, cost, expense or prosecution which may arise due to the failure of the landlord to comply fully with the terms of all the above Regulations, including any subsequent amendments thereto or replacement Regulations."
+  },
+  {
+   "n": "1.15.2",
+   "t": "The landlord agrees to indemnify Residential Realtors as agent against any costs, expenses or liabilities incurred or imposed on us, provided they were incurred on the landlord's behalf in pursuit of our normal duties."
+  },
+  {
+   "n": "1.16",
+   "h": "Landlords resident outside the UK"
+  },
+  {
+   "n": "1.16.1",
+   "t": "The Non-Resident Landlords Scheme is a scheme operated by HM Revenue & Customs (HMRC) for taxing the UK rental income of non-resident landlords. The scheme requires UK lettings agents to deduct basic rate tax from any rent collected. You are considered to be non-resident if your usual place of abode is outside the UK, or you are absent from the UK for a period of more than six months."
+  },
+  {
+   "n": "1.16.2",
+   "t": "You can apply to HMRC for approval to receive rents without tax being deducted. If your application is successful then once we have received written confirmation of their decision we will pay you the rent without deducting tax. Even though the rent may be paid to you without tax being deducted, it remains liable to UK tax and you must include it on your tax return."
+  },
+  {
+   "n": "1.16.3",
+   "t": "Where a non-resident landlord does not have approval from HMRC, we charge £190 + VAT for submitting quarterly returns and an annual return. We complete the annual return and send you a certificate showing the amount of tax that we have paid on your behalf. No interest is paid to landlords on tax retentions held by Residential Realtors."
+  },
+  {
+   "n": "1.16.4",
+   "t": "Residential Realtors must be provided with a UK residential address for service. If we are not provided with a UK residential address then we are obliged to assume that a landlord is non-resident and we will operate the provisions of the scheme. Residential Realtors will also be obliged to state the landlord's correspondence address on the tenancy agreement as c/o Residential Realtors registered head office address."
+  },
+  {
+   "n": "1.16.5",
+   "t": "Where we do not deduct tax which should have been deducted under the scheme we are entitled to recover this money from you at a later date, along with any other costs that are imposed on us by HMRC."
+  },
+  {
+   "n": "1.16.6",
+   "t": "Landlords who are resident outside the UK are not entitled to hold the deposit for the duration of the tenancy."
+  },
+  {
+   "n": "1.17",
+   "h": "Right to Rent"
+  },
+  {
+   "n": "1.17.1",
+   "t": "The Landlord is legally responsible for ensuring that all adult occupants of the Property have valid leave to remain in the UK, and thus the ‘Right to Rent’ a property in England. The Landlord must satisfy himself of all occupant(s) Right to Rent i) before the commencement of the tenancy ii) upon any renewal and iii) before expiry of the relevant occupant(s) leave to remain in the UK."
+  },
+  {
+   "n": "1.17.2",
+   "t": "The Landlord must maintain a record of all documents and relevant expiry dates, and ensure that occupant(s) without valid leave to remain in the UK are reported to the Home Office as soon as reasonably practical. The Landlord must update Residential Realtors as to any Home Office reports."
+  },
+  {
+   "n": "1.18",
+   "h": "Agency"
+  },
+  {
+   "n": "1.18.1",
+   "t": "We will ask you for written confirmation of your instructions to proceed with a letting. Upon receipt of such confirmation, we will sign the tenancy agreement and exchange contracts on your behalf."
+  },
+  {
+   "n": "1.18.2",
+   "t": "However, by instructing Residential Realtors as your agent, in circumstances where you have confirmed verbally that you wish to proceed with a letting, and for example we cannot obtain written confirmation or need to proceed quickly, you authorise Residential Realtors to sign any of the necessary documentation on your behalf."
+  },
+  {
+   "n": "1.19",
+   "h": "Rent"
+  },
+  {
+   "n": "1.19.1",
+   "t": "Unless otherwise agreed the Rent quoted by Us to a Tenant, on Your behalf, will be inclusive of all outgoings for which You are liable as Landlord, such as service charges, building and contents insurance etc, but will exclude telephone, gas, electricity, water and sewerage rates and council tax (or any charge that may replace it) which are the payments for which the Tenant is, in most circumstances, responsible. In the event that the Tenant receives housing benefit, We will not receive the Rent directly from local authority but only from the Tenant."
+  },
+  {
+   "n": "1.19.2",
+   "t": "Wherever possible we will collect Rent by direct debit/standing order and on the due date. Our system pays the cleared Rent by BACS to Your nominated UK bank account, or where practicably possible, by bank transfer. A BACS payment can take a further three to four working days to clear through the internal banking system before it reaches Your account. If Your Tenant is paying by any other method it can take up to ten working days from Residential Realtors receiving the money and it entering Your account."
+  },
+  {
+   "n": "1.20",
+   "h": "Early departure of the Tenant"
+  },
+  {
+   "n": "1.20.1",
+   "t": "You will need to serve a Section 21 Notice to regain possession, even at the end of the fixed term of the Tenancy. This is a prescribed form and cannot be served before the end of the initial four months of the Tenancy and You will need to allow at least two months’ notice, plus time for service. For all other types of Tenancies there is no notice to be served at the end of the fixed term, although it is wise for You to inform the Tenant that You will require vacant possession at that time. If such a Tenancy becomes periodic then it will be necessary to serve the Tenant with a valid Notice to Quit. Upon Your written instruction We can serve these notices for You, but We cannot be held responsible for any delay in regaining possession if You fail to give Us sufficient written warning that You require possession. Sometimes a Tenant will fail to comply with the notice and You will need to commence County Court proceedings to obtain a possession order. We can put You in contact with solicitors who are specialists in this field."
+  },
+  {
+   "n": "1.20.2",
+   "t": "Should the Tenant leave the Property of their own accord, before the end of the Tenancy, it is Your responsibility to take the appropriate legal action to recover any outstanding Rent or compensation from the Tenant. You should also take your own legal advice before instructing the locks of the Property to be changed and/or remarketing the Property for letting."
+  },
+  {
+   "n": "2.0",
+   "h": "Management Service"
+  },
+  {
+   "n": "2.1",
+   "h": "Management Service"
+  },
+  {
+   "n": "2.1.1",
+   "t": "The Management Service is a separate service to the Letting Service and can be taken by itself or in conjunction with the Tenant Find Service and Rent Collection Service."
+  },
+  {
+   "n": "2.1.2",
+   "t": "Our fee for the Management Service during the period of the initial tenancy agreement is 6% + VAT."
+  },
+  {
+   "n": "2.1.3",
+   "t": "The fee for the Management Service is 6% + VAT of the total Rent payable for the entire length of the Tenancy including any extension or continuation. Fees are payable from and at the same frequency as Rents are received. The minimum period of our appointment for Management Service is three months."
+  },
+  {
+   "n": "2.1.4",
+   "t": "Unless otherwise agreed in writing in advance, our appointment as Managing Agents is for the duration of the Tenancy as defined in this Agreement, is subject to three months’ written notice to terminate on either side. In the event such termination takes place, Residential Realtors remain entitled to commission under the Tenant Find Service. In the event that we are not authorised to carry out the necessary safety checks, Residential Realtors can terminate this agreement with immediate effect."
+  },
+  {
+   "n": "2.1.5",
+   "t": "The management agreement can be terminated after this minimum period by either party giving one month's notice to the other, such notice not to expire before the end of the first three months. On the expiry of such notice, we will revert to the Tenant Find Service and the commission fees payable will revert to those payable for the Tenant Find Service or those payable during the Renewal or Continuation Period, as appropriate."
+  },
+  {
+   "n": "2.2",
+   "h": "Transfer of utilities"
+  },
+  {
+   "n": "2.1.1",
+   "t": "Where provided with the necessary information, such as names of suppliers and utility account numbers, Residential Realtors will notify existing service providers and the local authority of the tenant's liability (if appropriate) for payment of the services and council tax during the tenancy."
+  },
+  {
+   "n": "2.2.2",
+   "t": "The utility companies and the local authority should send the relevant forms to the new occupier(s) to be completed and signed and it remains the tenants' responsibility to ensure that a new account is opened in their name. Residential Realtors cannot be held liable if services are disconnected or are not transferred by the utility companies."
+  },
+  {
+   "n": "2.2.3",
+   "t": "At the end of the tenancy, we will contact the service companies and request transfer of responsibility for the service accounts. We will pay bills received from monies held on the landlord's behalf until the property is re-let. Residential Realtors cannot be held liable should the service companies cut off the services for whatever reason."
+  },
+  {
+   "n": "2.3",
+   "h": "Key-holding service"
+  },
+  {
+   "n": "2.3.1",
+   "t": "We require a set of keys in order to be able to manage your property effectively. These will be held locally in our secure system and made available to our approved suppliers or any other party authorised by you."
+  },
+  {
+   "n": "2.4",
+   "h": "Repairs and maintenance"
+  },
+  {
+   "n": "2.4.1",
+   "t": "We will attend to the day-to-day minor repairs and maintenance of the property and its contents."
+  },
+  {
+   "n": "2.4.2",
+   "t": "Residential Realtors handyman, electrician and plumbing contractors’ charges are set out in the price list which we will instruct when required without any prior notice."
+  },
+  {
+   "n": "2.4.3",
+   "t": "Our panel of appointed contractors is monitored to ensure that all members comply with Our high standards of quality, cost and reliability. We will endeavour to use any contractor specified by You, but cannot guarantee to do so, particularly in an emergency. Whilst exercising all due care and attention in Our choice and administration of any contractors We accept no responsibility for any loss or damage caused by the neglect or default of any contractor. We will always ensure any contractor used (including those specified by You) carries Public Liability insurance and We will, in the case of any loss or damage caused, liaise with the contractor and use Our best endeavours to have the situation resolved."
+  },
+  {
+   "n": "2.4.4",
+   "t": "We will contact you for permission to proceed only if the cost of the work exceeds £540.00 + VAT as (or other amount to be agreed in writing)."
+  },
+  {
+   "n": "2.4.5",
+   "t": "If requested, we can obtain up to three estimates for consideration by the landlord for any major repairs or maintenance over £550 + VAT and submit them for approval prior to the commencement of the work."
+  },
+  {
+   "n": "2.4.6",
+   "t": "However, in emergencies and where we consider it necessary, we will act to protect the landlord's interests without consultation."
+  },
+  {
+   "n": "2.4.7",
+   "t": "Residential Realtors cannot support the use of British Gas Home Care (formerly 3 Star Cover) and Homeserve as restrictions included in the British Gas Service and Homeserve Contracts prevent Residential Realtors from liaising with them regarding access to properties. Should the Landlord elect to retain such cover during a Tenancy, details should be passed to the Tenant by the Landlord at the commencement of the Tenancy and the Landlord should direct the Tenant to report any defects direct to British Gas. If your contract with British Gas includes carrying out the annual gas safety check, then you agree to forward a copy of the new record to us at least five working days before the expiry date of the current one. Should we not be in possession of a copy of the new record by that time we will instruct a test on your behalf with one of our recommended contractors without further reference to you and make any necessary deductions from your account."
+  },
+  {
+   "n": "2.5",
+   "h": "Payment of outgoings"
+  },
+  {
+   "n": "2.5.1",
+   "t": "A float of £150 (or other amount to be agreed in writing) is required at the commencement and during the term of the management, to enable us to meet any expenditure on the landlord's behalf."
+  },
+  {
+   "n": "2.5.2",
+   "t": "We cannot undertake to meet any outgoings beyond the funds we hold. If we do not hold funds to settle an invoice, we may deduct the costs from any monies we hold on your behalf or provide your contact details to the supplier so that they can apply to you for payment."
+  },
+  {
+   "n": "2.5.3",
+   "t": "Where instructed by the landlord and where we hold sufficient funds, Residential Realtors will pay ground rents, service charges, council tax, gas and electricity bills, water rates and any regular outgoings out of the rental income, as and when demands are received by the Property Management department at Residential Realtors’ head office. We will endeavour to query any obvious discrepancies, however, it must be understood that we are entitled to accept and pay, without question, demands and accounts that we believe to be in order."
+  },
+  {
+   "n": "2.6",
+   "h": "Management inspections"
+  },
+  {
+   "n": "2.6.1",
+   "t": "We will undertake at least one inspections of the property each year. It must be understood that this inspection can only provide a superficial examination and is not intended to be a structural survey or inventory check. We cannot accept responsibility for hidden or latent defects. A fee of £120 + VAT will be charged for any additional visits or inspections requested."
+  },
+  {
+   "n": "2.7",
+   "h": "Check-out and deposit"
+  },
+  {
+   "n": "2.7.1",
+   "t": "We will send you a copy of the check-out report together with recommendations for deductions that should be made from the deposit. In respect of deposits held for ASTs, you must finalise any further deductions with us within seven days of termination of the tenancy so that we can meet our obligations under the Housing Act 2004 and the provisions of the deposit protection scheme operated by mydeposits.co.uk which require you and us as your agent to return any undisputed deposit amount to the tenant within ten days of termination of the tenancy. Should you fail to finalise deductions with us within seven days, we reserve the right to release some or all of the deposit to the tenant. In the event of a formal dispute being raised by the tenant with mydeposits.co.uk regarding deductions made from the deposit, you agree to transfer the disputed funds to mydeposits.co.uk within ten days of being asked to do so."
+  },
+  {
+   "n": "2.7.2",
+   "t": "Residential Realtors will not accept responsibility for the failure of any item of claim which is a result of your failure to provide the necessary information to us within the requisite time."
+  },
+  {
+   "n": "2.8",
+   "h": "Management while the property is vacant"
+  },
+  {
+   "n": "2.8.1",
+   "t": "During void periods, we will continue to manage the property, however, cannot be held liable for any loss and/or damage arising from fire, flood or theft. If the landlord requires supplies to be turned off or disconnected during this period, Residential Realtors must receive instructions in writing and will arrange for the required contractor to attend at the landlord's expense. The landlord is also advised to contact his/her insurance company should the property be empty for longer than 30 days."
+  },
+  {
+   "n": "2.9",
+   "h": "Dealing with third parties"
+  },
+  {
+   "n": "2.9.1",
+   "t": "Residential Realtors will liaise where necessary with the landlord's accountants, solicitors, superior landlords, managing agents and mortgagees."
+  },
+  {
+   "n": "2.10",
+   "h": "Insurance"
+  },
+  {
+   "n": "2.10.1",
+   "t": "Activities relating to the arrangement and administration of insurance are governed by The Financial Services and Markets Act 2000. As a result, we are unable to arrange insurance on your behalf, to notify your insurer of claims or to complete documentation relating to those claims."
+  },
+  {
+   "n": "2.10.2",
+   "t": "We will notify you when we believe that damage to your property has resulted from an insured risk, and will provide you with the information that you need in order to make a claim. We will also obtain estimates for repairing the damage which can be supplied to the insurers, and arrange for the repairs to be carried out upon your instruction."
+  },
+  {
+   "n": "2.11",
+   "h": "Miscellaneous and Sundry Charges"
+  },
+  {
+   "n": "2.11.1",
+   "t": "If Residential Realtors or You need to instruct a contractor to attend the Property who is unable to collect keys from our office, or give a specific date and time of call, we will charge waiting time at the Property £25 per hour + VAT, but subject to a minimum charge of £50 + VAT."
+  },
+  {
+   "n": "2.11.2",
+   "t": "If we are required to attend court on your behalf there is a charge of £450 + VAT per half day or any part thereof."
+  },
+  {
+   "n": "2.12",
+   "h": "The Smoke and Carbon Monoxide Alarm (England) Regulations 2015"
+  },
+  {
+   "n": "2.12.1",
+   "t": "Under the above regulations, it is the landlord's responsibility to ensure that all smoke alarm on each floor of the property and a carbon monoxide detector in rooms containing an appliance that burns solid fuel gas are maintained in good order and checked for safety regularly."
+  },
+  {
+   "n": "2.12.2",
+   "t": "Unless you instruct Our Management Service We will not undertake the renewal of any Smoke and Carbon Monoxide Alarm record and this will remain your sole responsibility."
+  },
+  {
+   "n": "2.13",
+   "h": "Local Licensing"
+  },
+  {
+   "n": "2.13.1",
+   "t": "You agree to comply with landlord licensing schemes operated by the local authority and to pay all fees and complete all documentation required. The landlord license must be applied for by the landlord."
+  },
+  {
+   "n": "2.14",
+   "h": "Instruction Manuals"
+  },
+  {
+   "n": "2.14.1",
+   "t": "You agree to provide instruction manuals for all appliances at the property together with details of manufacturer's guarantees, extended warranties, and any service contracts."
+  },
+  {
+   "n": "2.15",
+   "h": "Vacant periods during the Tenancy"
+  },
+  {
+   "n": "2.15.1",
+   "t": "Our standard tenancy agreement requires the Tenant to take sensible precautions to protect the Property against frost damage. If Your insurer has specified requirements regarding Your Property during a vacant period You must ensure that the Tenant is made fully aware and also if We are managing Your Property that You have also advised Your property manager. A Tenant cannot be held liable for any loss suffered if he is not made aware of these restrictions."
+  },
+  {
+   "n": "3.0",
+   "h": "General Notices"
+  },
+  {
+   "n": "3.1",
+   "h": "Permissions and consents"
+  },
+  {
+   "n": "3.1.1",
+   "t": "The landlord warrants that consent to let from his/her mortgagees has been obtained, and"
+  },
+  {
+   "n": "3.1.2",
+   "t": "Where he/she is a lessee, the lease extends beyond the term that he/she proposes to let and that any necessary consents have been obtained, and"
+  },
+  {
+   "n": "3.1.3",
+   "t": "He/she has notified his/her insurance company of his/her intention to let and has obtained their agreement to extend the insurance cover on the property and its contents to cover the changed circumstances, and"
+  },
+  {
+   "n": "3.1.4",
+   "t": "Where he/she is a joint owner, he/she has ensured that all the owners are named in the tenancy agreement and that he/she is authorised to give instructions on their behalf."
+  },
+  {
+   "n": "3.2",
+   "h": "Connected persons"
+  },
+  {
+   "n": "3.2.1",
+   "t": "As required by Section 21 of the Estate Agents Act 1979, unless specifically stated otherwise, we are not aware of any personal interest existing between ourselves or anyone in we employ or any connected person(s) and yourself(s). If you are or become aware of such an interest you should notify Residential Realtors immediately."
+  },
+  {
+   "n": "3.3",
+   "h": "Commission and interest"
+  },
+  {
+   "n": "3.3.1",
+   "t": "Any commission, interest or other income earned by Residential Realtors while carrying out our duties as agent for the letting and/or management of the property, for example by referrals to solicitors, tenant fees, EPC providers, contractors or inventory clerks, will be retained by Residential Realtors."
+  },
+  {
+   "n": "3.4",
+   "h": "Outstanding fees"
+  },
+  {
+   "n": "3.4.1",
+   "t": "The landlord agrees that, where any of Residential Realtors’ fees and/or commission charges remain outstanding for more than seven days, Residential Realtors may use any sums obtained or held on the landlord's behalf to pay the outstanding sums, including rental payments and/or deposits on this or any other property on which Residential Realtors is instructed. Any deductions made from the tenants deduction would be the responsibility of the landlord to return back to the tenant within the legal statutory times outlined clause 1.10."
+  },
+  {
+   "n": "3.5",
+   "h": "Interest"
+  },
+  {
+   "n": "3.5.1",
+   "t": "Residential Realtors’ fees are payable on demand, as and when they fall due. Residential Realtors reserves the right to charge interest on any amounts outstanding 14 days after the fees are first demanded. Interest will be charged from the date the fees become due at the annual rate of 2% above the Bank of England's base rate."
+  },
+  {
+   "n": "3.6",
+   "h": "VAT"
+  },
+  {
+   "n": "3.6.1",
+   "t": "All Residential Realtors’ commission fees and any other charges are subject to VAT at the prevailing rate of 20%."
+  },
+  {
+   "n": "3.7",
+   "h": "Keys"
+  },
+  {
+   "n": "3.7.1",
+   "t": "Where you provide us with a set of keys (or authorise us to use keys held by another agent) we may make further copies to facilitate viewings by the instructed office and other offices where appropriate. We will not charge you for this service."
+  },
+  {
+   "n": "3.7.2",
+   "t": "Tenants normally require one set of keys for each occupant of the property (with a minimum of two sets). Where we are managing the property, we will hold a set of keys at the local office. Where we are not provided with sufficient sets to allow us to do this, we may cut additional sets and will make a charge for this service based on the type of keys required."
+  },
+  {
+   "n": "3.7.3",
+   "t": "Residential Realtors’ secure key tag system ensures that third parties cannot identify which property a set of keys belongs to. Therefore, in the event that keys are lost or unaccounted for, Residential Realtors’ liability in respect of such keys and/or any locks is strictly limited to the cost of cutting a new set of keys."
+  },
+  {
+   "n": "3.8",
+   "h": "Legal proceedings"
+  },
+  {
+   "n": "3.8.1",
+   "t": "Residential Realtors is not responsible for any legal steps for the recovery of rent or repossession of the property. Appearances before any Court or Tribunal will be by special arrangement and the fee for any such attendance will be £450 + VAT per half day. Residential Realtors will not accept service of legal proceedings on the landlord's behalf."
+  },
+  {
+   "n": "3.9",
+   "h": "Disclaimer"
+  },
+  {
+   "n": "3.9.1",
+   "t": "Residential Realtors will carry out all services with reasonable care and skill. However, we are unable to guarantee the suitability of tenants, timely rental payments or vacant possession at the end of a tenancy and cannot be held liable by the landlord for such events."
+  },
+  {
+   "n": "3.10",
+   "h": "Jurisdiction"
+  },
+  {
+   "n": "3.10.1",
+   "t": "The High Court and the County Courts of England and Wales shall have jurisdiction to hear and determine any action or proceedings in respect of this agreement."
+  },
+  {
+   "n": "3.11",
+   "h": "Data protection and privacy policy"
+  },
+  {
+   "n": "3.11.1",
+   "t": "Residential Realtors is registered under the Data Protection Act 1998 and we undertake to comply with the Act in all our dealings with your personal data. We will keep your personal information secure. Occasionally, we may contact you by letter, telephone, email or otherwise to inform you about other products and services we offer. We try to limit this contact to acceptable levels, but if you wish to exercise your right to opt out, simply write to: Residential Realtors, 30 Harper Road, London, SE1 6AD"
+  },
+  {
+   "n": "3.12",
+   "h": "Anti-Money Laundering Regulations"
+  },
+  {
+   "n": "3.12.1",
+   "t": "Residential Realtors is subject to the Money Laundering Regulations 2017. As a result we will need to obtain and hold evidence confirming your identity, proof of your address and source/destination of funds. We will be unable to proceed with any instruction until we are in receipt of this information and have completed a satisfactory AML check. Your identity may be subject to an electronic identity check, which may leave a soft footprint on your credit report. Where appropriate, proof of ownership of the property may also be requested."
+  },
+  {
+   "n": "3.12.2",
+   "t": "Upon successful completion of a transaction, an Anti-Money Laundering and Identification Checking Fee of £30.00 (inc VAT) will be payable."
+  },
+  {
+   "n": "3.13",
+   "h": "Amendments"
+  },
+  {
+   "n": "3.13.1",
+   "t": "Residential Realtors may change or add to the terms of this agreement (except in relation to the level of any fees due under this agreement) for legal or regulatory reasons. We will notify you if any such change will affect the service that we offer you."
+  },
+  {
+   "n": "3.14",
+   "h": "Entire agreement and variations"
+  },
+  {
+   "n": "3.14.1",
+   "t": "Residential Realtors intends to rely upon the written terms set out in these terms and conditions. You are reminded again to read them very carefully. If you require any changes, please make sure you ask for these to be put in writing below. In that way, we can avoid any problems surrounding what Residential Realtors and the landlord are each expected to do. If you want to make any changes to this agreement, please discuss them with the manager of the branch you are dealing with and make sure that they are put in writing and agreed in writing."
+  },
+  {
+   "n": "4.0",
+   "h": "Complaints Procedure"
+  },
+  {
+   "n": "4.1",
+   "h": "Complaints procedure"
+  },
+  {
+   "n": "4.1.1",
+   "t": "If you are dissatisfied with Residential Realtors' service and you are unable to resolve with the Negotiator involved or the branch/department Manager, you should write to the Director for the area/department in question. This complaint will be acknowledged within three working days of receipt and an investigation undertaken. A formal written response will be sent to you within 15 working days. If you remain dissatisfied, you should write to the Director of Customer Services and Compliance (DCSC). The same time limits will apply. Following the DCSC's investigation, a written statement expressing Residential Realtors' final view will be sent to you and will include any offer made. This letter will confirm that you are entitled, if dissatisfied, to refer the matter to The Property Ombudsman (TPO) within 12 months for a review. For the avoidance of doubt, TPO will only review complaints made by consumers."
+  },
+  {
+   "n": "5.0",
+   "h": "Miscellaneous"
+  },
+  {
+   "n": "5.1",
+   "h": "Headings"
+  },
+  {
+   "n": "5.1.1",
+   "t": "The headings in this document do not form part of these Terms and Conditions and shall not be taken into consideration in the interpretation or construction of these Terms and Conditions."
+  },
+  {
+   "n": "6.0",
+   "h": "Termination"
+  },
+  {
+   "n": "6.1",
+   "h": "Termination Procedure"
+  },
+  {
+   "n": "6.1.1",
+   "t": "Residential Realtors may terminate this agreement with one month's advance written notice where you fail to co-operate with us or provide timely instructions or where we have asked you to obtain/provide a statutorily required licence or permission to let the property and you have failed to do so, or where we have asked you to agree to works which we reasonably believe are required in order to comply with a statutory obligation and you have failed/refused to do so. Where we terminate the agreement under this clause you will remain liable to pay Residential Realtors fees under the terms of this agreement."
+  }
+ ],
+ "declaration": [
+  "I/we declare that I am/we are the sole/joint owner(s) of the Freehold/Leasehold property as stated above and that prior to the commencement of the tenancy all furniture and upholstered furniture, soft furnishings, beds, mattresses, pillows and cushions (if any) supplied to the property, comply (if appropriate) with the provisions of the Furniture and Furnishings (Fire) (Safety) Regulations 1988 and (Amendment) 1993, and warrant that the property complies with the Gas Safety (Installation and Use) Regulations 1998 and the Electrical Equipment (Safety) Regulations 1994.",
+  "The fees set out in \"Your agreed fees\" are the fees agreed between the parties and are the prevailing rate for the purpose of this Agreement. In the event of any conflict with our standard fees, the agreed fees prevail. I hereby instruct Residential Realtors to act as agents on my behalf.",
+  "Where I am a joint owner of the property, I warrant that I am authorised to instruct Residential Realtors on behalf of all joint owners (see clause 3.1.4)."
+ ],
+ "cancellation": [
+  "You may have the right to cancel this contract under the Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013 within 14 calendar days from the date upon which it was signed. Notice of Cancellation MUST BE IN WRITING and should be delivered or sent by post to the Cancellations Department, Residential Realtors, 28-30 Harper Road, London, SE1 6AD; or by email to cancellations@residentialrealtors.co.uk. Any Notice of Cancellation is deemed served on the day that it is delivered, posted or sent.",
+  "If you have given us your consent to market your property within the cancellation period you may be required to pay our commission fees if we have introduced a tenant to your property prior to your serving a Notice of Cancellation.",
+  "If you wish us to start work before the end of the cancellation period, you must expressly authorise us to do so. You will then have to pay for any service you have received. The fee charged will be based on the work we have done until the date we are notified of your decision to cancel the contract and will be proportionate to the work we have done in comparison with the full contracted service."
+ ],
+ "intro": [
+  "Under these terms you will be liable to pay Residential Realtors' commission fees in respect of the initial period of the tenancy and, where a renewal fee has been agreed, also in respect of periods after the end of that initial period where the original tenant introduced by Residential Realtors remains in occupation, whether under a new agreement or by the initial agreement being extended or the tenant being allowed to hold over (all of these being \"Renewals\"). Where there is more than one tenant, Renewal Commission will be payable in full where any or all of them remain in occupation. Renewal Commission will be charged in advance, whether or not any Renewal is negotiated by Residential Realtors.",
+  "Once an offer has been accepted orally or in writing by the landlord, we will immediately take up the necessary administrative duties. If you subsequently tell Residential Realtors that you do not wish to proceed with the tenancy then commission becomes payable (see clauses 1.1 and 1.2).",
+  "The responsibility for the payment of fees remains with the party(ies) named in this agreement and you confirm that you have obtained all necessary consents to allow you to instruct Residential Realtors to let the property. Residential Realtors will be entitled to a commission fee if you terminate this contract and go on to let the property to a renter that Residential Realtors has introduced within six months of the date Residential Realtors' instruction ended. Residential Realtors will give up its rights to any commission fee if a renter first introduced by Residential Realtors goes on to rent the property more than six months after the instruction ended."
+ ],
+ "prices": [
+  [
+   "Tenancy Agreement",
+   295
+  ],
+  [
+   "Check-In, Inventory and Schedule of Conditions Report",
+   220
+  ],
+  [
+   "Security Deposit Registration",
+   145
+  ],
+  [
+   "Energy Performance Certificate (EPC)",
+   145
+  ],
+  [
+   "Gas Safety Certification",
+   95
+  ],
+  [
+   "Fire & Furnishings Test",
+   95
+  ],
+  [
+   "Fire Risk Assessment",
+   145
+  ],
+  [
+   "Portable Appliance Tests",
+   145
+  ],
+  [
+   "Electrical Safety Test",
+   195
+  ]
+ ],
+ "contractor_rates": [
+  [
+   "First hour",
+   "£95.00 + VAT"
+  ],
+  [
+   "Each further half hour",
+   "£47.50 + VAT"
+  ],
+  [
+   "Half day (up to 4 hours)",
+   "£340.00 + VAT"
+  ],
+  [
+   "Full day (up to 8 hours)",
+   "£540.00 + VAT"
+  ]
+ ]
+}

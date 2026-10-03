@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Landlord terms — Residential Realtors</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/app-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --navy:#0b1f3a; --ink:#0f1115; --ink2:#2a2e37; --soft:#5f6673; --faint:#9aa0ab; --line:#e7e9ee; --line2:#dce0e7; --bg:#f3f5f8; --brand:#D9262E; --brand-t:#fdecec; --ok:#12924a; --ok-t:#e8f6ee; --blue:#2453e8; --blue-t:#edf2ff; --warn:#8a5200; --warn-t:#fff5e6; }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); line-height:1.5; -webkit-font-smoothing:antialiased; }
+  a { color:var(--blue); }
+  [hidden] { display:none !important; }
+  .top { background:rgba(11,31,58,.97); position:sticky; top:0; z-index:20; border-bottom:1px solid rgba(255,255,255,.08); }
+  .top .in { max-width:980px; margin:0 auto; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .top img { height:46px; width:auto; display:block; }
+  .secure { display:inline-flex; align-items:center; gap:6px; font-size:.8rem; color:#c6d0de; font-weight:500; } .secure svg { width:15px; height:15px; color:#4ade80; }
+  .hero { position:relative; overflow:hidden; color:#fff; background:radial-gradient(900px 420px at 92% -20%, rgba(217,38,46,.38), transparent 60%), radial-gradient(700px 380px at -10% 120%, rgba(36,83,232,.28), transparent 60%), linear-gradient(160deg, #13294b 0%, #0b1f3a 55%, #08162b 100%); }
+  .hero .in { max-width:980px; margin:0 auto; padding:36px 20px 74px; position:relative; }
+  .eyebrow { display:inline-block; color:#ffb4b7; background:rgba(217,38,46,.16); border:1px solid rgba(255,180,183,.28); border-radius:999px; padding:5px 11px; font-size:.72rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+  .hero h1 { font-size:clamp(1.7rem, 3.4vw, 2.5rem); line-height:1.12; letter-spacing:-.03em; margin:14px 0 8px; font-weight:800; }
+  .hero p { color:#c6d0de; margin:0; max-width:640px; }
+  .prop { display:inline-flex; gap:8px; align-items:center; margin-top:14px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); border-radius:999px; padding:8px 14px; font-weight:600; }
+  .stepper { display:flex; margin:24px 0 0; max-width:620px; }
+  .stepper .s { flex:1; display:flex; align-items:center; gap:10px; }
+  .stepper .s:not(:last-child)::after { content:""; flex:1; height:2px; background:rgba(255,255,255,.18); margin:0 12px 0 2px; }
+  .stepper .s.done:not(:last-child)::after { background:#12b76a; }
+  .stepper .n { flex:0 0 30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.82rem; font-weight:700; background:rgba(255,255,255,.08); border:1.5px solid rgba(255,255,255,.28); color:#c6d0de; }
+  .stepper .s.on .n { background:#fff; border-color:#fff; color:var(--navy); box-shadow:0 0 0 5px rgba(255,255,255,.14); }
+  .stepper .s.done .n { background:#12b76a; border-color:#12b76a; color:#fff; }
+  .stepper .lb { font-size:.82rem; font-weight:600; color:#94a3b8; white-space:nowrap; } .stepper .s.on .lb, .stepper .s.done .lb { color:#fff; }
+  .wrap { max-width:980px; margin:-46px auto 0; padding:0 20px 120px; position:relative; z-index:2; }
+  .card { background:#fff; border:1px solid rgba(15,23,42,.06); border-radius:20px; padding:24px; margin-bottom:16px; box-shadow:0 1px 2px rgba(15,23,42,.04), 0 18px 40px -22px rgba(15,23,42,.22); }
+  .card h2 { font-size:1.22rem; letter-spacing:-.02em; margin:0 0 4px; } .lead { color:var(--soft); margin:0 0 18px; font-size:.94rem; }
+  h3 { font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin:22px 0 10px; }
+  .fees { display:grid; gap:10px; }
+  .fee { display:grid; grid-template-columns:240px 1fr; gap:12px; padding:14px 16px; border-radius:14px; background:#f7f8fa; border:1px solid var(--line); }
+  .fee b { color:var(--navy); } .fee .none { font-weight:700; }
+  .example { font-size:.86rem; color:var(--soft); margin-top:10px; }
+  .f { margin-bottom:14px; } .l { display:block; font-weight:600; font-size:.88rem; margin-bottom:6px; } .opt { color:var(--faint); font-weight:500; }
+  .g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; } .g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  input, select, textarea { width:100%; padding:12px 14px; border:1px solid var(--line2); border-radius:12px; font:inherit; font-size:16px; background:#fbfcfd; color:inherit; }
+  input:focus, select:focus, textarea:focus { outline:none; background:#fff; border-color:var(--navy); box-shadow:0 0 0 4px rgba(11,31,58,.1); }
+  .bad { border-color:var(--brand) !important; box-shadow:0 0 0 4px rgba(217,38,46,.1) !important; }
+  .yn { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line); font-size:.92rem; }
+  .yn .seg { display:inline-flex; background:#f1f3f6; border-radius:10px; padding:3px; flex:0 0 auto; }
+  .yn .seg button { border:0; background:none; font:inherit; font-weight:600; font-size:.85rem; padding:6px 14px; border-radius:8px; cursor:pointer; color:var(--soft); }
+  .yn .seg button.on { background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+  details.more { border:1px solid var(--line); border-radius:14px; padding:4px 14px; margin:10px 0; } details.more summary { cursor:pointer; padding:10px 0; font-weight:700; } details.more[open] summary { border-bottom:1px solid var(--line); margin-bottom:12px; }
+  .tbl { display:grid; grid-template-columns:130px 1fr 1fr 1fr; gap:8px; align-items:center; font-size:.86rem; } .tbl .hd { color:var(--faint); font-weight:700; font-size:.74rem; text-transform:uppercase; }
+  .terms-box { max-height:460px; overflow:auto; border:1px solid var(--line); border-radius:14px; padding:6px 16px; background:#fbfcfd; font-size:.86rem; }
+  .terms-box h4 { margin:16px 0 6px; color:var(--navy); font-size:.95rem; } .terms-box p { margin:0 0 8px; color:var(--ink2); } .terms-box .num { font-weight:700; color:var(--soft); margin-right:6px; }
+  .na { display:inline-block; background:var(--ok-t); color:var(--ok); border-radius:999px; padding:1px 9px; font-size:.74rem; font-weight:700; margin-left:6px; }
+  .check { display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid var(--line); border-radius:12px; margin:8px 0; cursor:pointer; font-size:.92rem; } .check input { width:20px; height:20px; flex:0 0 auto; margin-top:2px; accent-color:var(--navy); }
+  .choice { display:grid; gap:8px; margin:8px 0; } .choice label { display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid var(--line); border-radius:12px; cursor:pointer; font-size:.92rem; } .choice input { margin-top:3px; accent-color:var(--navy); }
+  .sigwrap { position:relative; border:1px solid var(--line2); border-radius:14px; background:#fff; height:180px; touch-action:none; scroll-margin:120px; }
+  .sigwrap canvas { width:100%; height:100%; display:block; border-radius:14px; cursor:crosshair; }
+  .sigwrap .line { position:absolute; left:20px; right:20px; bottom:42px; border-bottom:1px solid var(--line2); pointer-events:none; }
+  .sigwrap .ph { position:absolute; left:0; right:0; top:44%; text-align:center; color:var(--faint); pointer-events:none; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--line2); background:#fff; color:var(--ink); font:inherit; font-weight:700; padding:12px 18px; border-radius:12px; cursor:pointer; text-decoration:none; }
+  .btn.dark { background:var(--navy); border-color:var(--navy); color:#fff; } .btn.go { background:var(--brand); border-color:var(--brand); color:#fff; } .btn:disabled { opacity:.6; cursor:default; }
+  .linkbtn { border:0; background:none; color:var(--blue); font:inherit; font-size:.86rem; cursor:pointer; padding:0; }
+  .actions { display:flex; gap:10px; justify-content:space-between; margin-top:8px; }
+  .err { background:var(--brand-t); color:#a3141b; border-radius:12px; padding:11px 14px; font-weight:600; font-size:.9rem; margin:12px 0 0; }
+  .note { background:var(--blue-t); color:#1d3fae; border-radius:12px; padding:11px 14px; font-size:.9rem; margin:0 0 14px; }
+  .done { text-align:center; padding:32px 20px; } .done .tick { width:64px; height:64px; border-radius:50%; background:#12b76a; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:2rem; margin-bottom:12px; }
+  @media (max-width:640px) { .top img { height:38px; } .hero .in { padding:24px 16px 62px; } .wrap { padding:0 12px 120px; margin-top:-40px; } .card { padding:18px; } .g2, .g3 { grid-template-columns:1fr; gap:0; } .fee { grid-template-columns:1fr; gap:4px; } .stepper .lb { display:none; } .stepper .s.on .lb { display:block; } .tbl { grid-template-columns:1fr; } .tbl .hd { display:none; } .tbl .rl { font-weight:700; margin-top:8px; } .yn { flex-direction:column; align-items:flex-start; } }
+</style>
+</head>
+<body>
+<div class="top"><div class="in"><img src="/logo-white.png" alt="Residential Realtors" onerror="this.src='/logo.png'"><span class="secure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Secure &amp; private</span></div></div>
+<div class="hero"><div class="in">
+  <span class="eyebrow">Landlord terms of business</span>
+  <h1 id="hTitle">Your agreement with Residential Realtors</h1>
+  <p id="hSub">Check the fees we agreed, tell us about the property, then read and sign the terms. It takes about 10 minutes.</p>
+  <div class="prop" id="hProp" hidden></div>
+  <div class="stepper" id="stepper"></div>
+</div></div>
+
+<div class="wrap" id="app"><div class="card"><p class="lead" style="margin:0">Loading your agreement…</p></div></div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var gbp = function(v){ return '£' + (Math.round(v * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  var token = (location.pathname.match(/^\/landlord\/([\w-]{16,40})/) || [])[1], T = null, step = 1, startedAt = null, details = {};
+  document.addEventListener('input', function(){ if (!startedAt) startedAt = new Date().toISOString(); }, true);
+  var STEPS = ['Agreed fees', 'Property details', 'Terms & sign'];
+  var QUESTIONS = [['q_gas_appliances', 'Does your property have any gas appliances?', 'If yes, a valid Gas Safety Certificate is needed for our records.'], ['q_need_gas_cert', 'Do you require a Gas Safety Certificate?'], ['q_register_deposit', 'Do you require the tenancy deposit to be registered on your behalf?'],
+    ['q_inventory', 'Do you require an Inventory in and out?', 'Essential for the Full Management Service.'], ['q_epc', 'Do you require an Energy Performance Certificate (EPC)?'], ['q_eicr', 'Do you require an Electrical Safety Test?', 'Required for licensed properties.'],
+    ['q_pat', 'Do you require a Portable Appliance Test?'], ['q_fire_furnishings', 'Do you require a Fire and Furnishings Test?'], ['q_clean', 'Do you require a Professional Clean?'], ['q_fire_risk', 'Do you require a Fire Risk Assessment?'],
+    ['q_furnished', 'Is your property to be let furnished?'], ['q_uk_resident', 'Will you be resident in the UK for tax purposes during the letting?', 'If your circumstances change, please tell us straight away.']];
+  var UTILS = [['gas', 'Gas'], ['electricity', 'Electricity'], ['water', 'Water'], ['council_tax', 'Council tax']];
+  var APPL = [['boiler', 'Boiler / central heating'], ['fridge', 'Fridge / freezer'], ['washer', 'Washing machine'], ['dryer', 'Tumble dryer'], ['dishwasher', 'Dishwasher'], ['alarm', 'Burglar alarm']];
+
+  function drawStepper(){ $('stepper').innerHTML = STEPS.map(function(s, i){ var dn = i + 1 < step; return '<div class="s' + (dn ? ' done' : i + 1 === step ? ' on' : '') + '"><span class="n">' + (dn ? '✓' : i + 1) + '</span><span class="lb">' + s + '</span></div>'; }).join(''); }
+  function err(msg, el){ var e = document.querySelector('.err'); if (e) { e.textContent = msg; e.hidden = false; } if (el) { el.classList.add('bad'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (el.focus) el.focus(); } return false; }
+
+  fetch('/api/landlord-terms/' + token, { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+    if (!d.ok) { $('app').innerHTML = '<div class="card"><h2>Link not found</h2><p class="lead" style="margin:0">This link isn’t valid any more. Please contact Residential Realtors.</p></div>'; $('stepper').hidden = true; return; }
+    T = d; $('hProp').hidden = false; $('hProp').textContent = '🏠 ' + d.property;
+    $('hTitle').textContent = 'Your agreement for ' + d.property.split(',').slice(0, 2).join(',');
+    if (d.status === 'signed') return showDone();
+    details.l1_name = d.landlord_name || ''; details.l1_email = d.landlord_email || ''; details.l1_phone = d.landlord_phone || '';
+    go(1);
+  })['catch'](function(){ $('app').innerHTML = '<div class="card"><h2>Couldn’t load</h2><p class="lead" style="margin:0">Please check your connection and refresh.</p></div>'; });
+
+  function go(n){ step = n; drawStepper(); ({ 1: drawFees, 2: drawDetails, 3: drawTerms })[n](); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+  // ----- Step 1: the agreed fees -----
+  function drawFees(){
+    var f = T.fees || {}, ex = [];
+    if (f.find !== 'none' && f.find_pct != null) { var a = 12000 * f.find_pct / 100; ex.push('On a 12 month tenancy at £1,000 a month, the initial commission of ' + f.find_pct + '% would be ' + gbp(a) + (f.vat !== false ? ' + VAT (' + gbp(a * 1.2) + ' inc VAT)' : '') + '.'); }
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) { var b = 1000 * f.ongoing_pct / 100; ex.push('At £1,000 a month, the ' + (f.ongoing === 'manage' ? 'management' : 'rent collection') + ' fee of ' + f.ongoing_pct + '% would be ' + gbp(b) + (f.vat !== false ? ' + VAT (' + gbp(b * 1.2) + ' inc VAT)' : '') + ' a month.'); }
+    $('app').innerHTML = '<div class="card"><h2>The fees we agreed</h2><p class="lead">For ' + esc(T.property) + '. These replace our standard scale of fees.</p>' +
+      '<div class="fees">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (l.v === 'No renewal fee' ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
+      (ex.length ? '<div class="example"><b>Examples:</b> ' + ex.map(esc).join(' ') + '</div>' : '') +
+      '<p class="example">Something not right? Please contact us before signing. Reference ' + esc(T.ref) + '.</p>' +
+      '<div class="actions"><span></span><button class="btn dark" type="button" id="n1">Continue →</button></div></div>';
+    $('n1').addEventListener('click', function(){ go(2); });
+  }
+
+  // ----- Step 2: property details form -----
+  function inp(k, label, o){ o = o || {}; return '<div class="f"><label class="l" for="d_' + k + '">' + label + (o.req ? '' : ' <span class="opt">optional</span>') + '</label>' + (o.area ? '<textarea id="d_' + k + '" data-k="' + k + '" rows="2">' + esc(details[k] || '') + '</textarea>' : '<input id="d_' + k + '" data-k="' + k + '"' + (o.type ? ' type="' + o.type + '"' : '') + (o.mode ? ' inputmode="' + o.mode + '"' : '') + ' value="' + esc(details[k] || '') + '">') + (o.hint ? '<div class="opt" style="font-size:.8rem;margin-top:4px">' + o.hint + '</div>' : '') + '</div>'; }
+  function yn(k, label, hint){ var v = details[k]; return '<div class="yn" data-yn="' + k + '"><div>' + esc(label) + (hint ? '<div class="opt" style="font-size:.8rem">' + esc(hint) + '</div>' : '') + '</div><div class="seg"><button type="button" data-v="Yes"' + (v === 'Yes' ? ' class="on"' : '') + '>Yes</button><button type="button" data-v="No"' + (v === 'No' ? ' class="on"' : '') + '>No</button></div></div>'; }
+  function drawDetails(){
+    var f = T.fees || {}, manage = f.ongoing === 'manage', u = details.util || {}, ap = details.appl || {};
+    $('app').innerHTML = '<div class="card"><h2>Landlord and property details</h2><p class="lead">Please give as much detail as you can.</p>' +
+      '<h3>Landlord 1</h3><div class="g2">' + inp('l1_name', 'Full name', { req: true }) + inp('l1_phone', 'Contact number', { type: 'tel', req: true }) + '</div>' + inp('l1_email', 'Email', { type: 'email', req: true }) +
+      '<details class="more"' + (details.l2_name ? ' open' : '') + '><summary>Landlord 2 (if jointly owned)</summary><div class="g2">' + inp('l2_name', 'Full name') + inp('l2_phone', 'Contact number', { type: 'tel' }) + '</div>' + inp('l2_email', 'Email', { type: 'email' }) + '</details>' +
+      inp('legal_owners', 'Legal owner(s) to appear on the tenancy agreement (if different)', { hint: 'If the property is jointly owned, list all owners. If owned by a company or trust, give its full name below.' }) +
+      inp('corr_address', 'Address for correspondence', { area: true, req: true }) +
+      inp('company_details', 'Company or trust: full name, registration number and registered office', { area: true }) +
+      '<h3>Property</h3>' + QUESTIONS.map(function(q){ return yn(q[0], q[1], q[2]); }).join('') +
+      '<div class="f" id="schemeWrap" style="margin-top:12px"' + (details.q_register_deposit === 'No' ? '' : ' hidden') + '><label class="l" for="d_deposit_scheme">Which deposit scheme are you registered with?</label><select id="d_deposit_scheme" data-k="deposit_scheme"><option value="">Choose…</option>' + ['DPS', 'TDS', 'My Deposits'].map(function(x){ return '<option' + (details.deposit_scheme === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
+      '<div id="overseasWrap" style="margin-top:12px"' + (details.q_uk_resident === 'No' ? '' : ' hidden') + '>' + inp('overseas_address', 'Overseas address for correspondence', { area: true, hint: 'If you live overseas and HMRC hasn’t approved you to receive rent gross, you’ll need form NRL1, NRL2 or NRL3.' }) + '</div>' +
+      '<h3>Bank details — where rent and deposit are paid</h3><div class="g2">' + inp('bank_name', 'Bank name', { req: true }) + inp('bank_account_name', 'Account name', { req: true }) + inp('bank_sort', 'Sort code', { mode: 'numeric', req: true }) + inp('bank_account', 'Account number', { mode: 'numeric', req: true }) + '</div>' +
+      '<details class="more"><summary>Utility providers <span class="opt">— helps when a new tenant moves in</span></summary><div class="tbl"><span class="hd">Service</span><span class="hd">Provider</span><span class="hd">Account number</span><span class="hd">Meter / fusebox / stopcock</span>' +
+        UTILS.map(function(x){ var v = u[x[0]] || {}; return '<span class="rl">' + x[1] + '</span><input data-u="' + x[0] + '|provider" placeholder="Provider" value="' + esc(v.provider || '') + '"><input data-u="' + x[0] + '|account" placeholder="Account number" value="' + esc(v.account || '') + '"><input data-u="' + x[0] + '|location" placeholder="Location" value="' + esc(v.location || '') + '">'; }).join('') + '</div></details>' +
+      '<details class="more"><summary>Domestic appliances under guarantee <span class="opt">— optional</span></summary><p class="opt" style="font-size:.84rem;margin-top:0">Please leave instruction booklets in the property and send any policies/guarantees to us.</p><div class="tbl"><span class="hd">Appliance</span><span class="hd">Make and model</span><span class="hd">Age (approx)</span><span class="hd">Warranty / cover and expiry</span>' +
+        APPL.map(function(x){ var v = ap[x[0]] || {}; return '<span class="rl">' + x[1] + '</span><input data-a="' + x[0] + '|make" placeholder="Make and model" value="' + esc(v.make || '') + '"><input data-a="' + x[0] + '|age" placeholder="Age" value="' + esc(v.age || '') + '"><input data-a="' + x[0] + '|cover" placeholder="Cover and expiry date" value="' + esc(v.cover || '') + '">'; }).join('') + '</div></details>' +
+      inp('special', 'Special instructions (e.g. antiques, wood floors)', { area: true }) + inp('other', 'Anything else we should know about the property', { area: true }) +
+      (manage ? '' : '<h3>Opting out of the management service</h3><label class="check"><input type="checkbox" id="d_optout"' + (details.optout ? ' checked' : '') + '><span>I/we will take full responsibility for managing the property and won’t receive these services from Residential Realtors: transfer of utilities, key-holding, a yearly management inspection, payment of outgoings, arranging repairs and maintenance, and a 24-hour call-out service.</span></label>' +
+        '<div id="optWrap"' + (details.optout ? '' : ' hidden') + '><div class="note">We have to give this information to your tenant.</div>' + inp('emergency_phone', 'My 24-hour emergency contact number', { type: 'tel', req: true }) + '<div class="g2">' + inp('alt_name', 'When I’m unavailable, contact: name') + inp('alt_phone', 'Their 24-hour number', { type: 'tel' }) + '</div></div>') +
+      '<div class="err" hidden></div><div class="actions"><button class="btn" type="button" id="b2">← Back</button><button class="btn dark" type="button" id="n2">Continue →</button></div></div>';
+    var app = $('app');
+    app.addEventListener('input', function(e){ var k = e.target.dataset.k; if (k) details[k] = e.target.value; e.target.classList.remove('bad');
+      var uu = e.target.dataset.u, aa = e.target.dataset.a; if (uu) { var p = uu.split('|'); details.util = details.util || {}; details.util[p[0]] = details.util[p[0]] || {}; details.util[p[0]][p[1]] = e.target.value; }
+      if (aa) { var q = aa.split('|'); details.appl = details.appl || {}; details.appl[q[0]] = details.appl[q[0]] || {}; details.appl[q[0]][q[1]] = e.target.value; } });
+    app.addEventListener('change', function(e){ if (e.target.dataset.k) details[e.target.dataset.k] = e.target.value; if (e.target.id === 'd_optout') { details.optout = e.target.checked; $('optWrap').hidden = !e.target.checked; } });
+    app.querySelectorAll('[data-yn]').forEach(function(row){ row.addEventListener('click', function(e){ var b = e.target.closest('button[data-v]'); if (!b) return; details[row.dataset.yn] = b.dataset.v; row.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); }); row.classList.remove('bad');
+      if (row.dataset.yn === 'q_register_deposit') $('schemeWrap').hidden = b.dataset.v !== 'No'; if (row.dataset.yn === 'q_uk_resident') $('overseasWrap').hidden = b.dataset.v !== 'No'; }); });
+    $('b2').addEventListener('click', function(){ go(1); });
+    $('n2').addEventListener('click', function(){
+      document.querySelector('.err').hidden = true;
+      var need = [['l1_name', 'your full name'], ['l1_phone', 'your contact number'], ['l1_email', 'your email'], ['corr_address', 'your address for correspondence'], ['bank_name', 'your bank name'], ['bank_account_name', 'the account name'], ['bank_sort', 'the sort code'], ['bank_account', 'the account number']];
+      for (var i = 0; i < need.length; i++) if (!String(details[need[i][0]] || '').trim()) return err('Please enter ' + need[i][1] + '.', $('d_' + need[i][0]));
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.l1_email)) return err('Please check your email address.', $('d_l1_email'));
+      if (String(details.bank_sort).replace(/\D/g, '').length !== 6) return err('The sort code should be 6 digits.', $('d_bank_sort'));
+      if (!/^\d{6,10}$/.test(String(details.bank_account).replace(/\s/g, ''))) return err('Please check the account number.', $('d_bank_account'));
+      var miss = QUESTIONS.filter(function(q){ return !details[q[0]]; })[0];
+      if (miss) return err('Please answer: ' + miss[1], document.querySelector('[data-yn="' + miss[0] + '"]'));
+      if (details.optout && !String(details.emergency_phone || '').trim()) return err('Please give your 24-hour emergency contact number.', $('d_emergency_phone'));
+      go(3);
+    });
+  }
+
+  // ----- Step 3: terms and signature -----
+  function drawTerms(){
+    var f = T.fees || {}, tm = T.terms || {}, noRen = !(f.renewal && f.find !== 'none');
+    var intro = (tm.intro || []).map(function(s, i){ return i === 0 && noRen ? 'Under these terms you will be liable to pay Residential Realtors’ commission fees in respect of the initial period of the tenancy. No renewal fee has been agreed for this property.' : s; });
+    var body = (tm.clauses || []).map(function(c){ return c.h ? '<h4>' + esc(c.n) + ' ' + esc(c.h) + (c.n === '1.2' && noRen ? '<span class="na">Not applicable — no renewal fee agreed</span>' : '') + '</h4>' : '<p><span class="num">' + esc(c.n) + '</span>' + esc(c.t) + '</p>'; }).join('');
+    $('app').innerHTML = '<div class="card"><h2>Terms of business</h2><p class="lead">Please read the terms carefully. Your agreed fees are shown first and take priority.</p>' +
+      '<div class="fees" style="margin-bottom:14px">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (l.v === 'No renewal fee' ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
+      '<h3>Key points</h3>' + intro.map(function(s){ return '<p style="font-size:.9rem;color:var(--ink2)">' + esc(s) + '</p>'; }).join('') +
+      '<h3>Terms and conditions</h3><div class="terms-box" id="termsBox">' + body +
+        '<h4>Price list</h4>' + (tm.prices || []).map(function(r){ return '<p>' + esc(r[0]) + ': ' + gbp(r[1]) + ' + VAT (' + gbp(r[1] * 1.2) + ' inc VAT)</p>'; }).join('') +
+        '<h4>Contractor rates (handyman, electrician, plumber)</h4>' + (tm.contractor_rates || []).map(function(r){ return '<p>' + esc(r[0]) + ': ' + esc(r[1]) + '</p>'; }).join('') +
+        '<h4>Your right to cancel</h4>' + (tm.cancellation || []).map(function(s){ return '<p>' + esc(s) + '</p>'; }).join('') + '</div>' +
+      '<h3>Declaration</h3>' + (tm.declaration || []).map(function(s){ return '<p style="font-size:.9rem;color:var(--ink2)">' + esc(s) + '</p>'; }).join('') +
+      '<label class="check"><input type="checkbox" id="acc"><span>I have read and accept the terms of business and the agreed fees above.</span></label>' +
+      '<label class="check"><input type="checkbox" id="dec"><span>I confirm the declaration above, and that the details I’ve given are accurate.</span></label>' +
+      '<h3>The 14-day cancellation period</h3><div class="choice"><label><input type="radio" name="start" value="now"><span><b>Start straight away</b> — I’d like Residential Realtors to start work, including marketing, before the end of the 14-day cancellation period.</span></label><label><input type="radio" name="start" value="wait"><span><b>Wait 14 days</b> — don’t start work until the cancellation period has ended.</span></label></div>' +
+      '<h3>Sign</h3><div class="f"><label class="l" for="sigName">Your full name</label><input id="sigName" autocomplete="name" value="' + esc(details.l1_name || '') + '"></div>' +
+      '<div class="sigwrap" id="sigWrap"><canvas id="sig" aria-label="Signature box"></canvas><span class="line"></span><span class="ph" id="sigHint">Sign here with your finger or mouse</span></div><button type="button" class="linkbtn" id="sigClear" style="margin-top:6px">Clear signature</button>' +
+      '<div class="err" hidden></div><div class="actions"><button class="btn" type="button" id="b3">← Back</button><button class="btn go" type="button" id="sub">Sign the agreement</button></div></div>';
+    $('b3').addEventListener('click', function(){ go(2); });
+    // Signature pad
+    var sig = $('sig'), sctx = sig.getContext('2d'), inked = false, drawing = false, last = null;
+    var size = function(){ var r = sig.getBoundingClientRect(); if (!r.width) return; var k = window.devicePixelRatio || 1; sig.width = Math.round(r.width * k); sig.height = Math.round(r.height * k); sctx.setTransform(k, 0, 0, k, 0, 0); sctx.lineWidth = 2.4; sctx.lineCap = 'round'; sctx.lineJoin = 'round'; sctx.strokeStyle = '#0f1115'; };
+    setTimeout(size, 50); window.addEventListener('resize', size);
+    var pt = function(e){ var r = sig.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    sig.addEventListener('pointerdown', function(e){ e.preventDefault(); drawing = true; last = pt(e); sig.setPointerCapture(e.pointerId); });
+    sig.addEventListener('pointermove', function(e){ if (!drawing) return; var q = pt(e); sctx.beginPath(); sctx.moveTo(last.x, last.y); sctx.lineTo(q.x, q.y); sctx.stroke(); last = q; if (!inked) { inked = true; $('sigHint').hidden = true; $('sigWrap').classList.remove('bad'); } });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(ev){ sig.addEventListener(ev, function(){ drawing = false; }); });
+    $('sigClear').addEventListener('click', function(){ sctx.clearRect(0, 0, sig.width, sig.height); inked = false; $('sigHint').hidden = false; });
+    var png = function(){ var out = document.createElement('canvas'), k = Math.min(1, 900 / sig.width); out.width = Math.round(sig.width * k); out.height = Math.round(sig.height * k); var o = out.getContext('2d'); o.fillStyle = '#fff'; o.fillRect(0, 0, out.width, out.height); o.drawImage(sig, 0, 0, out.width, out.height); return out.toDataURL('image/png'); };
+    $('sub').addEventListener('click', function(){
+      document.querySelector('.err').hidden = true;
+      if (!$('acc').checked) return err('Please tick to accept the terms of business.', $('acc').closest('.check'));
+      if (!$('dec').checked) return err('Please tick to confirm the declaration.', $('dec').closest('.check'));
+      var st = document.querySelector('input[name=start]:checked'); if (!st) return err('Please choose whether we can start straight away.', document.querySelector('.choice'));
+      if (!$('sigName').value.trim()) return err('Please type your full name.', $('sigName'));
+      if (!inked) return err('Please sign in the box.', $('sigWrap'));
+      var b = this; b.disabled = true; b.textContent = 'Signing…';
+      fetch('/api/landlord-terms/' + token + '/sign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ details: details, accept: true, declaration: true, start_now: st.value === 'now', signature: $('sigName').value.trim(), signature_png: png(), started_at: startedAt }) })
+        .then(function(r){ return r.json(); }).then(function(d){
+          if (!d.ok) { b.disabled = false; b.textContent = 'Sign the agreement'; return err(d.error === 'details' ? 'Some details are missing — please go back and check.' : d.error === 'signed' ? 'This agreement has already been signed.' : 'Couldn’t sign just now — please try again.'); }
+          T.status = 'signed'; showDone();
+        })['catch'](function(){ b.disabled = false; b.textContent = 'Sign the agreement'; err('Couldn’t send — please check your connection.'); });
+    });
+  }
+  function showDone(){
+    step = 4; drawStepper();
+    $('app').innerHTML = '<div class="card done"><div class="tick">✓</div><h2 style="font-size:1.5rem">Thank you — your agreement is signed</h2><p class="lead">We have your signed terms of business and property details for ' + esc(T.property) + '. A copy is below for your records.</p>' +
+      '<a class="btn dark" target="_blank" rel="noopener" href="/api/landlord-terms/' + token + '/pdf">⬇ Download your signed copy (PDF)</a><p class="opt" style="font-size:.84rem;margin-top:14px">Questions? Email info@residentialrealtors.co.uk or call 0207 096 8131.</p></div>';
+  }
+})();
+</script>
+</body>
+</html>

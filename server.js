@@ -177,6 +177,8 @@ app.get('/staff', (req, res) => { sendPage(req, res, path.join(__dirname, 'admin
 // Applicants' offer / holding deposit form (the link given to applicants).
 app.get('/offer', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer.html')); });
 app.get('/offer/track/:token', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer.html')); });
+// A landlord's private link to review the agreed fees and terms, fill in the property details and sign.
+app.get('/landlord/:token', (req, res) => { sendPage(req, res, path.join(__dirname, 'landlord.html')); });
 
 const jobs = require('./jobs')(app, {
   sendEmail: function (opts) { return sendViaResend(opts); },
