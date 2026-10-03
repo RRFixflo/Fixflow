@@ -75,7 +75,7 @@
   .login-card p { color: var(--ink-soft); margin: 0 0 22px; }
   .login-mark { width: 42px; height: 42px; border-radius: 11px; background: var(--side); display: flex; align-items: center; justify-content: center; white-space: nowrap; color: #fff; font-family: var(--display); font-weight: 800; font-size: .95rem; letter-spacing: -.02em; }
   .login-mark b { color: var(--brick); }
-  .login-logo { display: block; margin: 0 0 18px; } .login-logo img { height: 48px; width: auto; display: block; }
+  .login-logo { display: block; margin: 0 0 18px; } .login-logo img { height: 64px; width: auto; display: block; }
   .err-msg { color: var(--brick); font-size: .82rem; font-weight: 500; margin-top: 8px; min-height: 1.2em; }
 
   /* ---------- App shell: sidebar + main ---------- */
@@ -86,8 +86,8 @@
   button.side-brand:hover { background: var(--side-hover); }
   .brand-m { border: 0; width: 32px; height: 32px; border-radius: 9px; background: var(--side); color: #fff; font-family: var(--display); font-weight: 800; font-size: .72rem; letter-spacing: -.04em; cursor: pointer; flex-shrink: 0; }
   .brand-m b { color: #D9262E; }
-  .brand-m:has(img) { width: auto; height: 36px; padding: 0 4px; background: none; border-radius: 8px; display: flex; align-items: center; }
-  .brand-m img { height: 28px; width: auto; display: block; }
+  .brand-m:has(img) { width: auto; height: 42px; padding: 0 4px; background: none; border-radius: 8px; display: flex; align-items: center; }
+  .brand-m img { height: 36px; width: auto; display: block; }
   /* Black logo on light backgrounds, white logo in dark mode. */
   .lg-d { display: none !important; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lg-l { display: none !important; } :root:not([data-theme="light"]) .lg-d { display: block !important; } }
@@ -97,7 +97,7 @@
   .side-brand .mark b { color: #D9262E; }
   .side-brand:has(.side-logo) { flex-direction: column; align-items: flex-start; gap: 10px; padding: 10px 10px 16px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.08); border-radius: 10px 10px 0 0; }
   .side-logo { display: block; }
-  .side-logo img { height: 44px; width: auto; max-width: 100%; display: block; }
+  .side-logo img { height: 56px; width: auto; max-width: 100%; display: block; }
   .side-sub { font-size: .66rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--side-soft); padding-left: 2px; }
   .side-brand .t { font-family: var(--display); font-weight: 700; font-size: .92rem; line-height: 1.15; letter-spacing: -.01em; }
   .side-brand .t span { display: block; font-family: var(--sans); font-weight: 500; font-size: .74rem; color: var(--side-soft); }

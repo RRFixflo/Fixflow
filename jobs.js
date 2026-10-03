@@ -6358,7 +6358,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '\n\nThe holding deposit goes towards your first month\'s rent once your offer is accepted.\n\nResidential Realtors';
     const esc2 = function (x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
     const html = '<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;color:#101828">' +
-      '<div style="background:#0b1f3a;color:#fff;border-radius:16px 16px 0 0;padding:22px 24px"><div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#ffb4b7;font-weight:700">' + (last ? 'Last reminder' : 'Reminder') + ' · Offer ' + ref + '</div>' +
+      '<div style="background:#0b1f3a;color:#fff;border-radius:16px 16px 0 0;padding:22px 24px">' + (base ? '<img src="' + esc2(base) + '/logo-white.png" alt="Residential Realtors" height="40" style="display:block;height:40px;width:auto;margin:0 0 16px">' : '') + '<div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#ffb4b7;font-weight:700">' + (last ? 'Last reminder' : 'Reminder') + ' · Offer ' + ref + '</div>' +
       '<div style="font-size:22px;font-weight:800;margin-top:6px">Pay your holding deposit</div><div style="color:#c6d0de;margin-top:4px">' + esc2(o.property_address) + '</div></div>' +
       '<div style="border:1px solid #e7e9ee;border-top:0;border-radius:0 0 16px 16px;padding:22px 24px">' +
       '<p style="margin:0 0 12px">Hi ' + esc2(first) + ', ' + (last ? 'this is a last reminder: to reserve the property' : 'thank you for your offer. To reserve the property') + ', please pay <b>' + esc2(gbp(m.holding)) + '</b> by <b>' + esc2(due) + '</b>.</p>' +
@@ -6683,7 +6683,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const newPage = function (section) {
       page = pdf.addPage([W, H]); pages.push({ page: page, section: section });
       page.drawRectangle({ x: 0, y: H - 4, width: W, height: 4, color: C.red });
-      if (logo) { const h = 26, w = logo.width * h / logo.height; page.drawImage(logo, { x: M, y: H - 52, width: w, height: h }); }
+      if (logo) { const h = 36, w = logo.width * h / logo.height; page.drawImage(logo, { x: M, y: H - 56, width: w, height: h }); }
       const t1 = TITLE.toUpperCase(); spaced(t1, W - M - spacedW(t1, 7, B, 0.9), H - 34, 7, B, C.soft, 0.9);
       const t2 = section ? section + '  \xB7  ' + ref : ref; text(t2, W - M - F.widthOfTextAtSize(safe(t2), 8.5), H - 48, 8.5, F, C.ink);
       page.drawLine({ start: { x: M, y: H - 66 }, end: { x: W - M, y: H - 66 }, thickness: 0.6, color: C.line });
