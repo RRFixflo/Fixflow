@@ -1044,6 +1044,7 @@
   .appt-row #fApptTime { flex: 1 1 180px; width: auto; }
   .appt-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .appt-chip { display: inline-block; margin: 0 0 6px 6px; font-size: .72rem; font-weight: 650; color: var(--ok); background: var(--ok-tint); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+  .tt-inform { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: #fff8e6; border: 1px solid #f3d9a8; font-size: .88rem; cursor: pointer; } .tt-inform input { margin-top: 3px; }
   .tt-card { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 10px; }
   .tt-who { display: flex; gap: 10px; align-items: center; }
   .tt-msg { min-height: 130px; }
@@ -2001,6 +2002,7 @@
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <h3 style="margin:0" id="ttTitle">Let the tenant know</h3>
     <p class="muted-note" style="margin:0" id="ttIntro"></p>
+    <label class="tt-inform" id="ttInformRow" hidden><input type="checkbox" id="ttInform"> <span><b>Just let them know it’s been reported</b> — don’t say we’re arranging a contractor</span></label>
     <div id="ttList"></div>
     <div class="row-actions" style="margin-top:0"><button class="btn" type="button" id="ttLl" hidden>🏠 Tell the landlord too</button><button class="btn primary" type="button" id="ttDone">Done</button></div>
   </div>
@@ -5279,7 +5281,7 @@
       g.jobs.push(j);
     });
     if (!groups.length) { if (custom) { toast('No phone or email for the tenant on this job'); return; } if (list.some(function(j){ return j.assigned_to && llContact(j); })) openLandlordNotice(list); return; }
-    ttGroups = groups; ttMode = 'tenant'; ttJobs = list; ttCustom = custom || null;
+    ttGroups = groups; ttMode = 'tenant'; ttJobs = list; ttCustom = custom || null; $('ttInformRow').hidden = true;
     $('ttTitle').textContent = custom ? custom.title || 'Send the tenant an update' : 'Let the tenant know';
     $('ttLl').hidden = !list.some(function(j){ return (custom || j.assigned_to) && llContact(j); });
     $('ttLl').textContent = '🏠 Tell the landlord too'; $('ttLl').dataset.to = 'landlord';
@@ -5642,6 +5644,7 @@
     if (['Online report', 'Phone call', 'Text / WhatsApp', 'In person'].indexOf(j.source) !== -1) return 'tenant';
     return /certificate|cp12|eicr|\bepc\b/i.test(cat) ? 'cert' : 'other';
   }
+  var llInform = false;   // "just let them know it's been reported" (no promise to arrange anyone)
   function landlordMessage(g, links){
     var jobs = g.jobs.slice().sort(function(a, b){ return a.id - b.id; });
     var oneHome = jobs.every(function(j){ return propKey(j.property_address) === propKey(jobs[0].property_address); });
@@ -5677,7 +5680,7 @@
       } else if (!j.assigned_to) {
         var rep = new Date(j.created_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
         var urg = j.urgency === 'Emergency' ? ' as an emergency' : j.urgency === 'Urgent' ? ' as urgent' : '';
-        status = (origin === 'tenant' ? 'Reported by the tenant on ' + rep + urg : origin === 'cert' ? 'Due for renewal' : origin === 'landlord' ? 'You asked us on ' + rep : origin === 'inspection' ? 'Found at our inspection on ' + rep : 'Raised on ' + rep + urg) + '. We’re arranging a contractor and will keep you posted.';
+        status = (origin === 'tenant' ? 'Reported by the tenant on ' + rep + urg : origin === 'cert' ? 'Due for renewal' : origin === 'landlord' ? 'You asked us on ' + rep : origin === 'inspection' ? 'Found at our inspection on ' + rep : 'Raised on ' + rep + urg) + (llInform ? '. We’ll be in touch about the next steps.' : '. We’re arranging a contractor and will keep you posted.');
       } else {
         status = (who ? 'We’ve instructed ' + who + '.' : 'We’ve reported it to the council, who handle this repair.') +
           (appt ? ' The visit is booked for ' + appt + '.' : who ? ' They’re arranging a time to attend with the tenant.' : '');
@@ -5688,7 +5691,7 @@
     var body = jobs.length === 1
       ? (allDone ? 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : jobs[0].landlord_handles ? 'Here are the details of the repair at ' + shortAddr(jobs[0].property_address) + ' that you’re arranging.\n\n' : !jobs[0].assigned_to ? 'Just to let you know, a repair has been reported at ' + shortAddr(jobs[0].property_address) + '.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
       : 'Here’s an update on the work at ' + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j, i){ return (i + 1) + '. ' + line(j); }).join('\n\n');
-    return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone || jobs.every(function(j){ return j.landlord_handles || isDone(j); }) ? 'Thank you — please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.') + '\n\nKind regards,\nResidential Realtors';
+    return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone || jobs.every(function(j){ return j.landlord_handles || isDone(j); }) ? 'Thank you — please get in touch if you have any questions.' : (llInform && jobs.every(function(j){ return isDone(j) || j.landlord_handles || !j.assigned_to; }) ? 'Please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.')) + '\n\nKind regards,\nResidential Realtors';
   }
   function llPhotoIds(g){ return [].concat.apply([], g.jobs.map(function(j){ var lj = jobs.filter(function(x){ return x.id === j.id; })[0] || j; return lj.photo_ids || []; })).slice(0, 30); }
   function openLandlordNotice(list, custom){
@@ -5711,6 +5714,9 @@
     $('ttIntro').textContent = (groups.length === 1 ? 'Send ' + (groups[0].name || 'the landlord') + ' an update' : 'Send each landlord an update') + ' with ' + (list.every(function(j){ return j.status === 'Completed'; }) ? 'the news that it’s done' : 'the progress link') + ' — check the message, then send.' +
       (skipped ? ' ' + skipped + ' job' + (skipped === 1 ? ' was' : 's were') + ' left out (no landlord phone or email saved).' : '');
     if (custom) $('ttIntro').textContent = 'Check the message, then send it to ' + (groups.length === 1 ? (groups[0].name || 'the landlord') : 'each landlord') + '.';
+    llInform = false; $('ttInform').checked = false;
+    $('ttInformRow').hidden = !!custom || !list.some(function(j){ return !j.assigned_to && !j.landlord_handles && j.status !== 'Completed'; });
+    $('ttInform').onchange = function(){ llInform = this.checked; $('ttList').querySelectorAll('.tt-card').forEach(function(card){ var ta = card.querySelector('.tt-msg'); if (!ta.dataset.edited) ta.value = lMsg(groups[Number(card.dataset.i)]); }); };
     var links = {};
     var lMsg = function(g){ return custom ? custom.text(g, links, 'landlord') : landlordMessage(g, links); };
     var draw = function(){
