@@ -158,6 +158,8 @@ app.get('/', (req, res) => { sendPage(req, res, path.join(__dirname, 'index.html
 
 // Staff dashboard for managing jobs (see jobs.js); its API needs ADMIN_PASSWORD.
 app.get('/admin', (req, res) => { sendPage(req, res, path.join(__dirname, 'admin.html')); });
+// Applicants' offer / holding deposit form (the link given to applicants).
+app.get('/offer', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer.html')); });
 
 const jobs = require('./jobs')(app, {
   sendEmail: function (opts) { return sendViaResend(opts); },
