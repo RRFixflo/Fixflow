@@ -54,7 +54,7 @@
   .wrap { max-width:1120px; margin:0 auto; padding:24px 20px 120px; display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:28px; align-items:start; }
   @media (max-width:960px) { .wrap { grid-template-columns:1fr; } .side { display:none; } }
   .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:24px; margin-bottom:16px; box-shadow:var(--shadow); }
-  @media (max-width:560px) { .card { padding:18px; border-radius:16px; } .hero .in { padding:24px 18px 20px; } .wrap { padding:18px 14px 120px; } }
+  @media (max-width:560px) { .card { padding:18px; border-radius:16px; } .hero .in { padding:20px 16px 16px; } .hero h1 { font-size:1.6rem; } .hero p { font-size:.95rem; } .hold-note { padding:10px 12px; font-size:.88rem; } .prop-pill { max-width:100%; } .wrap { padding:16px 12px 120px; } .ten-head h2 { font-size:1.1rem; } .count { padding:6px 6px 6px 14px; } }
   .card h2 { font-size:1.12rem; letter-spacing:-.015em; margin:0 0 4px; font-weight:700; }
   .card .lead { color:var(--soft); margin:0 0 18px; font-size:.94rem; }
   .sec-title { font-size:.78rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); margin:22px 0 10px; }
@@ -181,6 +181,11 @@
   .trust div { display:flex; gap:10px; }
   .trust svg { width:18px; height:18px; color:var(--ok); flex:0 0 auto; margin-top:1px; }
 
+  .paidbox { display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--ok-t); border-radius:16px; padding:14px 16px; margin-top:8px; }
+  .paidbox b { display:block; } .paidbox span { font-size:.86rem; color:var(--soft); }
+  .paidbox .btn { flex:0 0 auto; background:var(--ok); border-color:var(--ok); color:#fff; }
+  .paidmore { margin:8px 2px 0; font-size:.86rem; } .paidmore summary { cursor:pointer; color:var(--soft); }
+  .paid-ok { display:inline-flex; align-items:center; background:var(--ok-t); color:#0d6b37; font-weight:600; border-radius:12px; padding:10px 14px; font-size:.9rem; }
   /* Offer received */
   .done-wrap { max-width:680px; margin:0 auto; padding:24px 16px 80px; display:grid; gap:16px; }
   .done-wrap .card { margin:0; }
@@ -693,6 +698,15 @@
     return '<div class="trackbox"><b>Track your offer</b><div class="hint" style="margin:2px 0 0">Save this link — it shows when your holding deposit arrives and when the landlord decides.</div>' +
       '<input readonly value="' + esc(url) + '" onclick="this.select()"><div class="btnrow"><a class="btn dark" href="' + esc(url) + '">Track my offer</a><button type="button" class="btn" data-copy="' + esc(url) + '">Copy link</button><a class="btn" target="_blank" rel="noopener" href="' + esc(wa) + '">WhatsApp</a></div></div>';
   }
+  // One tap: tell us the holding deposit has been paid (today, from their own account).
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-paid-now]'); if (!b) return;
+    b.disabled = true; b.textContent = 'Sending…';
+    fetch('/api/offers/track/' + b.dataset.paidNow + '/paid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: new Date().toISOString().slice(0, 10) }) }).then(function(r){ return r.json(); }).then(function(x){
+      if (!x.ok) { b.disabled = false; b.textContent = '✓ I’ve paid'; return; }
+      b.outerHTML = '<span class="paid-ok">✓ Thanks — we’ll confirm on your tracking page once it arrives</span>';
+    })['catch'](function(){ b.disabled = false; b.textContent = '✓ I’ve paid'; });
+  });
   document.addEventListener('click', function(e){ var c = e.target.closest('[data-copy]'); if (!c) return; (navigator.clipboard ? navigator.clipboard.writeText(c.dataset.copy) : Promise.reject()).then(function(){ c.textContent = '✓ Copied'; }, function(){ window.prompt('Copy this link:', c.dataset.copy); }); });
   function remember(o){ try { var l = JSON.parse(localStorage.getItem('rr_offers') || '[]').filter(function(x){ return x.track !== o.track; }); l.unshift(o); localStorage.setItem('rr_offers', JSON.stringify(l.slice(0, 5))); } catch (e) {} }
   function done(d){
@@ -710,7 +724,7 @@
         (d.bank ? '<div class="paybox">' + copyRow('Account name', d.bank.payee) + copyRow('Sort code', d.bank.sort_code) + copyRow('Account number', d.bank.account) + (d.bank.iban ? copyRow('IBAN', d.bank.iban) : '') + (d.bank.swift ? copyRow('SWIFT / BIC', d.bank.swift) : '') + copyRow('Reference', d.reference, true) + '</div>' +
           '<p class="dnote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><span>Use exactly this reference, <b>' + esc(d.reference) + '</b>, with no spaces, so we can match your payment. Paying from abroad? Use the IBAN and SWIFT.</span></p>'
           : '<p>We’ll send you our bank details to pay it.</p>') +
-        (tok ? '<div class="btnrow" style="margin-top:14px"><a class="btn go" href="' + esc(d.track) + '">I’ve paid — tell us</a><a class="btn" target="_blank" rel="noopener" href="/api/offers/track/' + esc(tok) + '/offer.pdf">⬇ Signed agreement (PDF)</a></div>' : '') + '</section>' +
+        (tok ? '<div class="btnrow" style="margin-top:14px" id="paidRow"><button type="button" class="btn go" data-paid-now="' + esc(tok) + '">✓ I’ve paid</button><a class="btn" target="_blank" rel="noopener" href="/api/offers/track/' + esc(tok) + '/offer.pdf">⬇ Signed agreement (PDF)</a></div>' : '') + '</section>' +
       '<section class="card fade"><h2>What happens next</h2><ol class="timeline">' + steps.map(function(x, i){ return '<li class="' + x[0] + '"><div class="dot">' + (x[0] === 'ok' ? '✓' : i + 1) + '</div><div><b>' + esc(x[1]) + '</b><span>' + esc(x[2]) + '</span></div></li>'; }).join('') + '</ol>' +
         '<p class="hint" style="margin:0">Once your offer is accepted, the holding deposit goes towards your first month’s rent. If the landlord rejects your maximum offer or withdraws the property, it’s returned within 24 hours. It isn’t refundable in the cases you ticked on the form.</p></section>' +
       (d.track ? trackBox(location.origin + d.track) : '');
@@ -759,9 +773,8 @@
         '<ol class="timeline">' + steps.map(function(s, i){ return '<li class="' + s[0] + '"><div class="dot">' + (s[0] === 'ok' ? '✓' : s[0] === 'no' ? '✕' : i + 1) + '</div><div><b>' + s[1] + '</b><span>' + esc(s[2]) + '</span></div></li>'; }).join('') + '</ol>' +
         (d.bank && !paid ? '<h2>Pay the holding deposit</h2>' + bankHtml(d.bank, m.holding, d.reference) +
           (d.paid_claim ? '<div class="note-warn" style="background:var(--ok-t);color:#0d6b37"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span>Thanks — you told us you paid on ' + esc(longDay(d.paid_claim.date)) + '. We’ll confirm here once it arrives in our account.</span></div>'
-            : '<div class="card" style="box-shadow:none;margin:6px 0 0;padding:16px"><b>Made the payment?</b><p class="hint" style="margin:2px 0 10px">Let us know so we can check our account.</p>' +
-              '<div class="g2"><div class="f"><label class="l" for="pcDate">Date paid</label><input id="pcDate" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></div><div class="f"><label class="l" for="pcFrom">Paid from (account name) <span class="opt">optional</span></label><input id="pcFrom"></div></div>' +
-              '<button type="button" class="btn dark" id="pcGo">I’ve paid the holding deposit</button><div class="err" id="pcErr" hidden></div></div>') : '') +
+            : '<div class="paidbox"><div><b>Made the payment?</b><span>One tap to let us know — we’ll check our account.</span></div><button type="button" class="btn go" id="pcGo">✓ I’ve paid</button></div>' +
+              '<details class="paidmore"><summary>Paid on another day, or from someone else’s account?</summary><div class="g2" style="margin-top:10px"><div class="f"><label class="l" for="pcDate">Date paid</label><input id="pcDate" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></div><div class="f"><label class="l" for="pcFrom">Paid from (account name)</label><input id="pcFrom"></div></div></details><div class="err" id="pcErr" hidden></div>') : '') +
         '<div class="btnrow" style="margin-top:10px"><a class="btn' + (paid ? '' : ' dark') + '" target="_blank" rel="noopener" href="/api/offers/track/' + tm[1] + '/offer.pdf">⬇ Signed agreement (PDF)</a>' + (paid ? '<a class="btn dark" target="_blank" rel="noopener" href="/api/offers/track/' + tm[1] + '/receipt.pdf">⬇ Download receipt</a>' : '') + '</div></div>' +
         // Not accepted after paying: where to send the refund (in the name of the applicant who paid).
         (rej && paid ? (d.refunded_at ? '<div class="card"><h2>Refund sent</h2><p class="lead" style="margin:0">We sent your holding deposit refund on ' + esc(longDay(d.refunded_at)) + '.</p></div>'
@@ -776,7 +789,7 @@
       if ($('pcGo')) $('pcGo').addEventListener('click', function(){
         var b = this; b.disabled = true; b.textContent = 'Sending…';
         fetch('/api/offers/track/' + tm[1] + '/paid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: $('pcDate').value, from: $('pcFrom').value.trim() }) }).then(function(r){ return r.json(); }).then(function(x){
-          if (!x.ok) { b.disabled = false; b.textContent = 'I’ve paid the holding deposit'; $('pcErr').textContent = 'Couldn’t send — please try again.'; $('pcErr').hidden = false; return; }
+          if (!x.ok) { b.disabled = false; b.textContent = '✓ I’ve paid'; $('pcErr').textContent = 'Couldn’t send — please try again.'; $('pcErr').hidden = false; return; }
           lastSeen = ''; loadTrack();
         });
       });
