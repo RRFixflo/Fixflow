@@ -473,6 +473,12 @@
 
   // ----- Property from the link (?p=...) -----
   try { var pq = new URLSearchParams(location.search).get('p'); if (pq) $('property').value = pq; } catch (e) {}
+  // A link we sent this applicant: tell the office it was opened, and when they start.
+  var invite = ''; try { invite = new URLSearchParams(location.search).get('i') || ''; } catch (e) {}
+  if (/^[\w-]{8,20}$/.test(invite) && !location.pathname.match(/\/track\//)) {
+    fetch('/api/offers/invite/' + invite + '/open', { method: 'POST' }).catch(function(){});
+    document.addEventListener('input', function once(){ document.removeEventListener('input', once, true); fetch('/api/offers/invite/' + invite + '/start', { method: 'POST' }).catch(function(){}); }, true);
+  }
 
   // ----- Conditions: one per line -----
   var conds = [''], CEX = ['e.g. Furnished', 'e.g. A cat', 'e.g. New carpet in bedroom 2', 'e.g. Parking space included'];
@@ -816,7 +822,7 @@
     Promise.all(tenants.map(function(t, i){ return Promise.all((files[i + 1] || []).map(readFile)).then(function(list){ t.ids = list.filter(Boolean); }); })).then(function(){
       busyBtns(true, 'Sending…');
       return fetch('/api/offers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        website: document.querySelector('[name=website]').value, property: $('property').value.trim(), per: per, offer: $('offer').value, max_offer: $('max_offer').value,
+        website: document.querySelector('[name=website]').value, invite: invite, property: $('property').value.trim(), per: per, offer: $('offer').value, max_offer: $('max_offer').value,
         move_in: $('move_in').value, stay: stay, tenants_count: tenantsN, guarantors_count: guarantorsN,
         conditions: getConds(), negotiate: getConds().join('\n'), about: $('about').value.trim(), lead_name: tenants[0].name, lead_phone: tenants[0].phone, lead_email: tenants[0].email,
         tenants: tenants, started_at: startedAt, agree: true, terms: Array.prototype.map.call(document.querySelectorAll('[data-term]'), function(c){ return c.checked; }), signature: $('signature').value.trim(), signature_png: sigImg }) });

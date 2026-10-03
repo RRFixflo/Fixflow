@@ -441,6 +441,23 @@ CREATE TABLE IF NOT EXISTS shared_docs (
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_track_token_idx ON jobs (track_token);
 -- Landlord terms of business: the office sets the agreed fees, sends the landlord
 -- a private link, and the landlord fills in the property details form and signs.
+-- Each offer-form link sent to an applicant from Fixflow: who, how, and what they did with it.
+CREATE TABLE IF NOT EXISTS offer_invites (
+  id          SERIAL PRIMARY KEY,
+  token       TEXT NOT NULL UNIQUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  sent_by     TEXT,
+  via         TEXT,
+  to_contact  TEXT,
+  to_name     TEXT,
+  property_address TEXT,
+  opens       INTEGER NOT NULL DEFAULT 0,
+  opened_at   TIMESTAMPTZ,
+  last_opened_at TIMESTAMPTZ,
+  started_at  TIMESTAMPTZ,
+  offer_id    INTEGER,
+  events      JSONB NOT NULL DEFAULT '[]'::jsonb
+);
 CREATE TABLE IF NOT EXISTS landlord_terms (
   id               SERIAL PRIMARY KEY,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1534,8 +1551,8 @@ module.exports = function mountJobs(app, opts) {
   function staffAllowed(method, path) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;   // landlord terms tab
-    if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
-    if (method === 'POST') return path === '/offer-alerts/test' || path === '/email' || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
+    if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'POST') return path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
 
@@ -5599,6 +5616,25 @@ document.querySelectorAll('.lcu').forEach(function(box){
     try { const r = await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: topic, title: 'Fixflow alerts are working', message: 'Test sent by ' + who + '. You\u2019ll get alerts here for new offers, deposits and landlord forms.', tags: ['white_check_mark'] }), signal: AbortSignal.timeout(8000) }); res.json({ ok: r.ok }); }
     catch (err) { res.status(502).json({ ok: false }); }
   });
+  // Offer-form links sent to applicants: one private link each, so we can see if it was opened.
+  app.post('/api/admin/offer-invites', withDb(async function (p, req, res) {
+    const b = req.body || {}, token = crypto.randomBytes(9).toString('base64url');
+    const via = ['whatsapp', 'email', 'copy'].indexOf(b.via) !== -1 ? b.via : 'copy';
+    await p.query('INSERT INTO offer_invites (token, sent_by, via, to_contact, to_name, property_address, events) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [token, req.user ? req.user.name : 'Office', via, str(b.to, 200) || null, str(b.name, 120) || null, str(b.property, 400) || null, JSON.stringify([{ at: new Date().toISOString(), what: 'Sent by ' + (via === 'copy' ? 'link' : via === 'whatsapp' ? 'WhatsApp' : 'email') + (req.user ? ' (' + req.user.name + ')' : '') }])]);
+    res.json({ ok: true, token: token });
+  }));
+  app.get('/api/admin/offer-invites', withDb(async function (p, req, res) {
+    const r = await p.query(`SELECT i.*, o.status AS offer_status, o.lead_name AS offer_name FROM offer_invites i LEFT JOIN offers o ON o.id = i.offer_id ORDER BY i.id DESC LIMIT 200`);
+    res.json({ ok: true, invites: r.rows });
+  }));
+  app.post('/api/offers/invite/:token/:what', withDb(async function (p, req, res) {
+    const what = req.params.what; if (['open', 'start'].indexOf(what) === -1 || !/^[\w-]{8,20}$/.test(req.params.token)) return res.status(404).json({ ok: false });
+    const ev = JSON.stringify([{ at: new Date().toISOString(), what: what === 'open' ? 'Opened the form' : 'Started filling it in', device: deviceOf(req.get('user-agent') || '') }]);
+    if (what === 'open') await p.query("UPDATE offer_invites SET opens = opens + 1, opened_at = coalesce(opened_at, now()), last_opened_at = now(), events = CASE WHEN jsonb_array_length(events) < 60 THEN events || $2::jsonb ELSE events END WHERE token = $1", [req.params.token, ev]);
+    else await p.query("UPDATE offer_invites SET started_at = now(), events = events || $2::jsonb WHERE token = $1 AND started_at IS NULL", [req.params.token, ev]);
+    res.json({ ok: true });
+  }));
   // The people an offer can be credited to (everyone with a sign-in who's turned on).
   app.get('/api/admin/offers/people', withDb(async function (p, req, res) {
     const r = await p.query('SELECT id, name FROM staff_users WHERE disabled_at IS NULL ORDER BY lower(name)');
@@ -6452,6 +6488,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const id = ins.rows[0].id;
     for (const d of docs) await p.query('INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, $2, $3, $4, $5)', [id, d.tenant_no, d.name, d.mime, d.data]);
     await p.query("INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, 0, 'signature.png', 'image/png', $2)", [id, sigBuf]);
+    // Came from a link we sent: link them up, and credit the offer to whoever sent it.
+    if (/^[\w-]{8,20}$/.test(String(b.invite || ''))) {
+      try {
+        const inv = (await p.query("UPDATE offer_invites SET offer_id = $2, events = events || $3::jsonb WHERE token = $1 AND offer_id IS NULL RETURNING sent_by", [b.invite, id, JSON.stringify([{ at: new Date().toISOString(), what: 'Made an offer: OF' + String(id).padStart(4, '0') }])])).rows[0];
+        const su = inv && inv.sent_by ? (await p.query('SELECT id, name FROM staff_users WHERE lower(name) = lower($1) AND disabled_at IS NULL', [inv.sent_by])).rows[0] : null;
+        if (inv) await p.query("UPDATE offers SET data = data || jsonb_build_object('invite', $2::text)" + (su ? " || jsonb_build_object('credit', $3::jsonb)" : '') + " WHERE id = $1", su ? [id, b.invite, JSON.stringify([{ id: su.id, name: su.name, share: 100 }])] : [id, b.invite]);
+      } catch (e) { console.error('Offer invite link failed:', e.message); }
+    }
     const ref = 'OF' + String(id).padStart(4, '0');
     offerAlert({ title: 'New offer: ' + gbp(pw) + ' pw — ' + shortAddrText(address), message: lead + ' · ' + tenants.length + ' tenant' + (tenants.length === 1 ? '' : 's') + (data.move_in ? ' · move in ' + certDay(data.move_in) : '') + (data.stay ? ' · stay ' + data.stay : '') + '. Open Offers in Fixflow.', tags: ['house'] }).catch(function () {});
     // How to pay the holding deposit (bank details from the settings, never in the code).
