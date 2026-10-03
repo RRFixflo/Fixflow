@@ -1781,6 +1781,14 @@
 </div>
 
 <!-- TENANCY ANNIVERSARY: RENT REVIEW AND THE TENANTS' PLANS -->
+<div class="modal" id="caModal" hidden>
+  <div class="card" role="dialog" aria-labelledby="caTitle">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><h3 id="caTitle" style="margin:0">Ask the landlord</h3><button class="btn small ghost" type="button" id="caX">✕</button></div>
+    <p class="muted-note" id="caSub" style="margin:4px 0 10px"></p>
+    <p style="margin:0 0 12px;font-size:.92rem">Sends the landlord a private link where they can <b>upload the new certificate</b> or tap <b>“Please arrange it for me”</b>. You’ll get an alert when they answer.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn wa-btn" type="button" id="caWa">WhatsApp</button><button class="btn primary" type="button" id="caMail">✉ Email</button><button class="btn ghost" type="button" id="caTpl">Formal email (your template)</button></div>
+  </div>
+</div>
 <div class="modal" id="mlModal" hidden>
   <div class="card ml-card" role="dialog" aria-labelledby="mlTitle">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3 id="mlTitle" style="margin:0">✉ Send email</h3><button class="btn small ghost" type="button" id="mlX" aria-label="Close">✕</button></div>
@@ -8163,6 +8171,7 @@
   }
   function loadCerts(){
     if (!meta.db) return Promise.resolve();
+    loadCertReqs();
     return api('GET', '/api/admin/certificates').then(function(d){ if (d.ok) { certs = d.certificates; certWho = d.contractors || {}; certCost = d.costs || {}; CERT_REMIND = d.remind_days || 10; } });
   }
   function certDay(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
@@ -9569,11 +9578,11 @@
     return '<div class="cert-cell c-' + st.k + (st.booked ? ' booked' : '') + '">' +
       '<div class="ct">' + certTick(st) + ' ' + esc(x.def.name) + (x.c && x.c.rating ? ' <span class="count-chip">' + esc(x.c.rating) + '</span>' : '') + '</div>' +
       '<div class="cs">' + esc(st.text) + '</div>' + (status ? '<div class="cb">' + status + '</div>' : '') +
-      (x.c && x.c.reference ? '<div class="cs" style="font-size:.74rem">No. ' + esc(x.c.reference) + '</div>' : '') +
+      (x.c && x.c.reference ? '<div class="cs" style="font-size:.74rem">No. ' + esc(x.c.reference) + '</div>' : '') + certAskLine(propKey(address), x.def.type) +
       '<div class="ca">' + (st.k === 'missing' ? '<button type="button" class="btn small primary" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">+ Add certificate</button>' : '') +
         (book ? '<button type="button" class="btn small ' + (st.k === 'expired' || st.k === 'due' ? 'primary' : st.k === 'missing' ? 'ghost' : '') + '" data-cert-book="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">' + (st.k === 'missing' ? 'Book new' : 'Book ' + esc(certContractorName(x.def.type) || 'contractor')) + '</button>' : '') +
         (st.booked ? '<button type="button" class="btn small" data-open-job="' + jb.id + '">Open job</button>' : '') +
-        (st.k === 'expired' || st.k === 'due' || st.k === 'soon' ? '<button type="button" class="btn small ghost" data-cert-mail="' + esc(x.def.type) + '" data-addr="' + esc(address) + '" title="Ask the landlord if we should book it">✉ Email landlord</button>' : '') +
+        (st.k === 'expired' || st.k === 'due' || st.k === 'soon' || st.k === 'missing' ? '<button type="button" class="btn small" data-cert-ask="' + esc(x.def.type) + '" data-addr="' + esc(address) + '" title="Ask the landlord for the new certificate, or if we should arrange it">💬 Ask landlord</button>' : '') +
         (x.c && x.c.has_doc ? '<a class="btn small ghost" target="_blank" rel="noopener" href="/api/admin/certificates/' + x.c.id + '/doc">📎 View certificate</a>' : '') +
         (x.def.type === 'EPC' ? '<a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(epcUrl(x.c, address)) + '">' + (x.c && x.c.reference ? 'View EPC ↗' : 'Find EPC ↗') + '</a>' : '') +
         (st.k === 'missing' ? '' : '<button type="button" class="btn small ghost" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">Update</button>') + '</div></div>';
@@ -9646,12 +9655,45 @@
     })();
   });
   $('certTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-cf]'); if (b) { certFilter = b.dataset.cf; renderCerts(); } });
+  // Asking the landlord for the new certificate (or whether we should arrange it).
+  var certReqs = [];
+  function loadCertReqs(){ return api('GET', '/api/admin/cert-requests').then(function(d){ if (d && d.ok) certReqs = d.requests || []; }); }
+  function certAskLine(key, type){
+    var r = certReqs.filter(function(x){ return x.property_key === key && x.type === type; })[0]; if (!r) return '';
+    var ans = r.answer === 'arrange' ? '<b style="color:#a3141b">🛠 Landlord asked us to arrange it</b>' : r.answer === 'sending' ? '<b style="color:#12924a">📤 Landlord is sending the new one</b>' : r.opened_at ? '👀 Landlord opened the message' : 'No reply yet';
+    return '<div class="cs" style="font-size:.78rem;margin-top:3px">💬 Asked ' + esc(fmtShort(r.created_at).split(',')[0]) + (r.via ? ' by ' + esc(r.via) : '') + ' · ' + ans + '</div>';
+  }
+  function openCertAsk(address, type){
+    var NAME = { Gas: 'Gas Safety Certificate', EICR: 'Electrical Safety Certificate (EICR)', EPC: 'Energy Performance Certificate (EPC)' }[type] || type;
+    var m = $('caModal'); $('caTitle').textContent = 'Ask the landlord · ' + NAME; $('caSub').textContent = shortAddr(address);
+    m.hidden = false; m.dataset.addr = address; m.dataset.type = type;
+  }
+  function certAskSend(via){
+    var m = $('caModal'), address = m.dataset.addr, type = m.dataset.type, w = via === 'whatsapp' ? window.open('about:blank', '_blank') : null;
+    api('POST', '/api/admin/cert-requests', { address: address, type: type, via: via === 'whatsapp' ? 'WhatsApp' : 'email' }).then(function(d){
+      if (!d || !d.ok) { if (w) w.close(); toast('Couldn’t create the link'); return; }
+      m.hidden = true; var l = d.landlord || {}, nm = String(l.name || '').trim(), first = /^(mr|mrs|ms|miss|dr|mx)\.?$/i.test(nm.split(/\s+/)[0] || '') ? nm : nm.split(/\s+/)[0], due = d.expires_on ? (d.expires_on < new Date().toISOString().slice(0, 10) ? 'expired on ' : 'is due to expire on ') + longDay(d.expires_on) : 'is due';
+      var text = 'Hi' + (first ? ' ' + first : '') + ', the ' + d.name + ' for ' + shortAddr(address) + ' ' + due + '. It’s a legal requirement while the property is let. Please send us the updated certificate — or if you’d like us to arrange it, just tap the link and choose “Please arrange it for me”: ' + d.link + ' — Residential Realtors';
+      if (via === 'whatsapp') { var ph = String(l.phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'), url = 'https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent(text); if (w) w.location.href = url; else window.open(url, '_blank', 'noopener'); }
+      else {
+        var body = 'Dear ' + (first || 'Sir or Madam') + ',\n\nThe ' + d.name + ' for ' + address + ' ' + due + '. A valid certificate is a legal requirement while the property is let.\n\nPlease send us the updated certificate, or if you’d like us to arrange it for you, let us know here: ' + d.link + '\n\nOn that page you can upload the new certificate or ask us to arrange it with one tap.' + mailSignoff();
+        openMailto('mailto:' + encodeURIComponent(l.email || '') + '?subject=' + encodeURIComponent(d.name + ' due — ' + shortAddr(address)) + '&body=' + encodeURIComponent(body));
+      }
+      loadCertReqs().then(function(){ if (view === 'certs') renderCerts(); });
+    });
+  }
+  $('caX').addEventListener('click', function(){ $('caModal').hidden = true; });
+  $('caModal').addEventListener('click', function(e){ if (e.target === this) this.hidden = true; });
+  $('caWa').addEventListener('click', function(){ certAskSend('whatsapp'); });
+  $('caMail').addEventListener('click', function(){ certAskSend('email'); });
+  $('caTpl').addEventListener('click', function(){ var m = $('caModal'); m.hidden = true; openCertMail(m.dataset.addr, m.dataset.type); });
   function certClick(e){
     var b = e.target.closest('button'); if (!b || b.id === 'propCertsAll') return;
     if (b.dataset.addrEdit) openAddressEdit(b.dataset.addrEdit, null);
     else if (b.dataset.certEdit) openCertEdit(b.dataset.addr, b.dataset.certEdit);
     else if (b.dataset.certBook) bookCert(b.dataset.addr, b.dataset.certBook, b);
     else if (b.dataset.certMail) openCertMail(b.dataset.addr, b.dataset.certMail);
+    else if (b.dataset.certAsk) openCertAsk(b.dataset.addr, b.dataset.certAsk);
     else if (b.dataset.openJob) openJob(Number(b.dataset.openJob));
     else if (b.dataset.certProp) openProperty(b.dataset.certProp);
   }
