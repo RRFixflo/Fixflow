@@ -7298,7 +7298,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function cleanFees(b) {
     b = b || {};
     const find = ['sole', 'multi', 'none'].indexOf(b.find) !== -1 ? b.find : 'sole';
-    const ongoing = ['collect', 'manage', 'none'].indexOf(b.ongoing) !== -1 ? b.ongoing : 'none';
+    const ongoing = ['collect', 'manage', 'both', 'none'].indexOf(b.ongoing) !== -1 ? b.ongoing : 'none';
     return {
       find: find, find_pct: find === 'none' ? null : pctNum(b.find_pct), find_min: find === 'none' ? null : pctNum(b.find_min, 100000),
       find_monthly: find !== 'none' && b.find_monthly === true,
@@ -7307,6 +7307,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       vat: b.vat !== false, other: str(b.other, 2000) || ''
     };
   }
+  const ONGOING_NAME = { collect: 'Rent Collection Service', manage: 'Full Management Service', both: 'Full Management & Rent Collection Service' };
   // The fees in plain words (the same wording on the landlord's page and the PDF).
   function feeLines(f) {
     const gbp = function (v) { return '\xA3' + (Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
@@ -7316,7 +7317,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       L.push({ k: f.find === 'multi' ? 'Tenant Find - Multi Agency (initial commission)' : 'Tenant Find - Sole Agency (initial commission)', v: inc(f.find_pct) + ' of the first 12 months\' rent' + (f.find_min ? ', minimum fee ' + gbp(f.find_min) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? '. Paid monthly: collected in 12 equal monthly instalments over the first 12 months, instead of in advance' : ', payable in advance when the tenancy starts') });
       L.push({ k: 'Anniversary fee', v: f.renewal && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months\' rent, on each 12-month anniversary while the tenant remains' + (f.find_monthly ? ', collected monthly in the same way' : '') : 'No anniversary fee' });
     }
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) L.push({ k: f.ongoing === 'manage' ? 'Full Management Service' : 'Rent Collection Service', v: inc(f.ongoing_pct) + ' of the rent received' + (f.ongoing_min ? ', minimum ' + gbp(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' a month' : '') + '. Collected monthly: deducted from each month\'s rent when we receive it, before the balance is paid to you' });
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) L.push({ k: ONGOING_NAME[f.ongoing] || 'Rent Collection Service', v: inc(f.ongoing_pct) + ' of the rent received' + (f.ongoing_min ? ', minimum ' + gbp(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' a month' : '') + '. Collected monthly: deducted from each month\'s rent when we receive it, before the balance is paid to you' });
     if (f.other) L.push({ k: 'Other agreed fees', v: f.other });
     return L;
   }
@@ -7549,12 +7550,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     band('Agreed fees', 'The fees agreed for this property. They replace our standard scale of fees.');
     const frows = [];
     if (f.find !== 'none' && f.find_pct != null) { frows.push([f.find === 'multi' ? 'Tenant Find - Multi Agency' : 'Tenant Find - Sole Agency', incPct(f.find_pct) + ' of the first 12 months\' rent (initial commission)' + (f.find_monthly ? ' - paid monthly in 12 equal instalments' : ' - payable in advance'), f.find_min ? money(f.find_min) + (vat ? ' inc VAT' : '') : '-']); frows.push(['Anniversary fee', f.renewal && f.renewal_pct != null ? incPct(f.renewal_pct) + ' of 12 months\' rent, charged on each 12-month anniversary while the tenant introduced by us remains' : 'No anniversary fee', '-']); }
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) frows.push([f.ongoing === 'manage' ? 'Full Management Service' : 'Rent Collection Service', incPct(f.ongoing_pct) + ' of the rent received - deducted monthly from each month\'s rent', f.ongoing_min ? money(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' / month' : '-']);
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) frows.push([ONGOING_NAME[f.ongoing] || 'Rent Collection Service', incPct(f.ongoing_pct) + ' of the rent received - deducted monthly from each month\'s rent', f.ongoing_min ? money(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' / month' : '-']);
     if (f.other) frows.push(['Other agreed fees', f.other, '']);
     table([['Service', 0.3], ['Fee', 0.48], ['Minimum', 0.22]], frows);
     const ex = [];
     if (f.find !== 'none' && f.find_pct != null) { const e = 12000 * f.find_pct / 100; ex.push('12 month tenancy at \xA31,000 a month: initial commission ' + money(e) + (vat ? ' + VAT (' + money(e * 1.2) + ' inc VAT)' : '') + (f.find_monthly ? ' - ' + money(e * (vat ? 1.2 : 1) / 12) + (vat ? ' inc VAT' : '') + ' a month for 12 months' : '')); }
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) { const e = 1000 * f.ongoing_pct / 100; ex.push('\xA31,000 a month: ' + (f.ongoing === 'manage' ? 'management' : 'rent collection') + ' fee ' + money(e) + (vat ? ' + VAT (' + money(e * 1.2) + ' inc VAT)' : '') + ' a month'); }
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) { const e = 1000 * f.ongoing_pct / 100; ex.push('\xA31,000 a month: ' + ({ manage: 'management', both: 'management and rent collection' }[f.ongoing] || 'rent collection') + ' fee ' + money(e) + (vat ? ' + VAT (' + money(e * 1.2) + ' inc VAT)' : '') + ' a month'); }
     if (ex.length) { const exl = []; ex.forEach(function (e) { wrap('Example:  ' + e, F, 8.2, CW - 24).forEach(function (l) { exl.push(l); }); }); ensure(20 + exl.length * 12); rr(M, y + 4, CW, exl.length * 12 + 14, 8, C.blueBg); exl.forEach(function (e, i) { text(e, M + 12, y - 8 - i * 12, 8.2, F, C.blue); }); y -= exl.length * 12 + 22; }
     band('Key points');
     (LT_TERMS.intro || []).forEach(function (s, i) { if (i === 0 && !(f.renewal && f.find !== 'none')) s = 'Under these terms you will be liable to pay Residential Realtors\' commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.'; para(s, { size: 8.6 }); });

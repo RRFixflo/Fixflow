@@ -1430,7 +1430,7 @@
               <label class="switch-row" data-find style="margin-top:6px"><input type="checkbox" id="ltMonthly"> Collect this fee monthly (12 instalments) instead of up front</label>
               <label class="switch-row" data-find style="margin-top:6px"><input type="checkbox" id="ltRen" checked> Anniversary fee (each 12 months the tenant stays)</label>
               <div class="lt-row" data-find data-ren><label>Anniversary fee %<input class="inp" id="ltRenPct" inputmode="decimal"></label></div></div>
-            <div class="lt-box"><b>Ongoing service</b><select class="inp" id="ltOn"><option value="none">None</option><option value="collect">Rent collection</option><option value="manage">Full management</option></select>
+            <div class="lt-box"><b>Ongoing service</b><select class="inp" id="ltOn"><option value="none">None</option><option value="collect">Rent collection</option><option value="manage">Full management</option><option value="both">Full management + rent collection</option></select>
               <div class="lt-row" data-on><label>Fee %<input class="inp" id="ltOnPct" inputmode="decimal"></label><label>Minimum £ a month (inc VAT)<input class="inp" id="ltOnMin" inputmode="decimal"></label></div>
               <label class="switch-row" style="margin-top:6px"><input type="checkbox" id="ltVat" checked> Fees are + VAT</label></div>
           </div>
@@ -8786,7 +8786,7 @@
   // ---------- Landlord terms of business ----------
   // The office sets the agreed fees and sends the landlord a private link to
   // check them, fill in the property details form and sign the terms.
-  var ltItems = [], LT_DEF = { sole: [10, 1500, 9], multi: [12, 1700, 11], collect: [3, 40], manage: [6, 80] };
+  var ltItems = [], LT_DEF = { sole: [10, 1500, 9], multi: [12, 1700, 11], collect: [3, 40], manage: [6, 80], both: [9, 120] };
   function ltDefaults(){
     var fd = LT_DEF[$('ltFind').value], od = LT_DEF[$('ltOn').value];
     if (fd) { $('ltFindPct').value = fd[0]; $('ltFindMin').value = fd[1]; $('ltRenPct').value = fd[2]; }
@@ -8803,7 +8803,7 @@
   function ltLines(f){
     var vat = f.vat !== false, inc = function(p){ p = Number(p); return vat ? p + '% + VAT (' + (Math.round(p * 120) / 100) + '% inc VAT)' : p + '%'; }, L = [];
     if (f.find !== 'none' && f.find_pct !== '' && f.find_pct != null) { L.push([f.find === 'multi' ? 'Tenant find — multi agency' : 'Tenant find — sole agency', inc(f.find_pct) + ' of the first 12 months’ rent' + (Number(f.find_min) ? ', minimum ' + gbp(Number(f.find_min)) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? ', paid monthly over 12 months' : ', paid up front')]); L.push(['Anniversary fee', f.renewal && f.renewal_pct !== '' && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months’ rent, each anniversary' : 'No anniversary fee']); }
-    if (f.ongoing !== 'none' && f.ongoing_pct !== '' && f.ongoing_pct != null) L.push([f.ongoing === 'manage' ? 'Full management' : 'Rent collection', inc(f.ongoing_pct) + ' of rent received' + (Number(f.ongoing_min) ? ', minimum ' + gbp(Number(f.ongoing_min)) + (vat ? ' inc VAT' : '') + ' a month' : '') + ', taken monthly from the rent']);
+    if (f.ongoing !== 'none' && f.ongoing_pct !== '' && f.ongoing_pct != null) L.push([{ manage: 'Full management', both: 'Full management + rent collection' }[f.ongoing] || 'Rent collection', inc(f.ongoing_pct) + ' of rent received' + (Number(f.ongoing_min) ? ', minimum ' + gbp(Number(f.ongoing_min)) + (vat ? ' inc VAT' : '') + ' a month' : '') + ', taken monthly from the rent']);
     if (f.other) L.push(['Other', f.other]);
     return L;
   }
