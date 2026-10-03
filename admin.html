@@ -8073,12 +8073,15 @@
         '<div class="muted-note" style="margin:2px 0 0">' + esc(o.ref) + ' · ' + esc(fmtShort(o.created_at)) + ' · ' + esc(o.lead_name || '') + (o.lead_phone ? ' · <a href="tel:' + esc(o.lead_phone) + '">' + esc(o.lead_phone) + '</a>' : '') + (o.lead_email ? ' · <a href="mailto:' + esc(o.lead_email) + '">' + esc(o.lead_email) + '</a>' : '') + '</div></div>' +
         '<div style="text-align:right"><div style="font-size:1.15rem;font-weight:800">' + esc(gbp(offPw(o))) + ' pw</div><div class="muted-note" style="margin:0">' + esc(gbp(m.pcm || 0)) + ' pcm' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' pw' : '') + '</div></div></div>' +
       '<div style="margin:8px 0;display:flex;gap:6px;flex-wrap:wrap">' + st + paid + '</div>' +
-      '<div class="off-grid">' + offRow('Move in', d.move_in ? longDay(d.move_in) : '') + offRow('Would like to stay', d.stay) + offRow('Paying rent', d.rent_frequency) + offRow('Tenants', String(ts.length)) + offRow('Guarantors', d.guarantors_count ? String(d.guarantors_count) : '') +
+      '<div class="off-grid">' + offRow('Move in', d.move_in ? longDay(d.move_in) : '') + offRow('Would like to stay', d.stay) + offRow('Tenants', String(ts.length)) + offRow('Guarantors', d.guarantors_count ? String(d.guarantors_count) : '') +
         offRow('Holding deposit', gbp(m.holding || 0)) + offRow('Move-in balance after it', gbp(m.balance || 0)) + offRow('Signed by', d.signature ? d.signature + ' · ' + fmtShort(d.signed_at) : '') + '</div>' +
-      (d.about ? '<p style="margin:8px 0 0"><b>About them:</b> ' + esc(d.about) + '</p>' : '') + (d.negotiate ? '<p style="margin:4px 0 0"><b>To discuss:</b> ' + esc(d.negotiate) + '</p>' : '') +
+      (function(){ var sg = docs.filter(function(x){ return x.tenant_no === 0; })[0]; return sg ? '<div style="margin:8px 0 0"><span class="muted-note" style="margin:0">Signature</span><br><img src="/api/admin/offers/' + o.id + '/doc/' + sg.id + '" alt="Signature" style="max-height:70px;max-width:260px;border:1px solid var(--line,#eee);border-radius:8px;background:#fff;padding:4px"></div>' : ''; })() +
+      (d.about ? '<p style="margin:8px 0 0"><b>About them:</b> ' + esc(d.about) + '</p>' : '') + '<p style="margin:4px 0 0"><b>Their conditions:</b> ' + (d.negotiate ? esc(d.negotiate) : '<span class="muted-note" style="margin:0">none given</span>') + '</p>' +
       '<details class="off-tens"><summary>Tenants, IDs and references (' + ts.length + ')</summary>' + ts.map(function(t, i){
         var mine = docs.filter(function(x){ return x.tenant_no === i + 1; });
         return '<div class="off-ten"><div style="font-weight:700;margin:8px 0 4px">Tenant ' + (i + 1) + (i === 0 ? ' (lead)' : '') + ': ' + esc(t.name) + '</div><div class="off-grid">' +
+          offRow('UK or Irish passport', t.uk_passport) +
+          (t.share_code ? '<div><span>Right to rent share code</span><b>' + esc(t.share_code.replace(/^(.{3})(.{3})(.{3})$/, '$1 $2 $3')) + ' · <a href="https://www.gov.uk/view-right-to-rent" target="_blank" rel="noopener">Check on GOV.UK</a></b></div>' : '') +
           offRow('Date of birth', t.dob ? longDay(t.dob) : '') + offRow('Phone', t.phone) + offRow('Email', t.email) + offRow('Income', [t.income_type, t.employment_type].filter(Boolean).join(', ')) + offRow('Company', t.company) + offRow('Position', t.position) +
           offRow('Salary', t.salary ? '£' + t.salary : '') + offRow('Started', t.start_date ? longDay(t.start_date) : '') + offRow('Other income', t.other_income) + offRow('University', t.university) + offRow('Course', [t.course, t.academic_year].filter(Boolean).join(', ')) +
           offRow('Lives at', t.current_address) + offRow('Status', t.residency_status) + offRow('Rent now', t.current_rent ? '£' + t.current_rent + ' a month' : '') + offRow('Landlord', [t.landlord_name, t.landlord_phone, t.landlord_email].filter(Boolean).join(' · ')) +
@@ -8091,6 +8094,8 @@
         (o.status === 'new' ? '<button type="button" class="btn small primary" data-off-act="accepted">✓ Accept offer</button><button type="button" class="btn small" data-off-act="rejected">✗ Reject</button>' : '<button type="button" class="btn small ghost" data-off-act="new">Undo ' + (o.status === 'accepted' ? 'accept' : 'reject') + '</button>') +
         (o.paid_at ? '<button type="button" class="btn small ghost" data-off-paid="0">Undo payment</button>' : '<button type="button" class="btn small" data-off-paid="1">💷 Holding deposit received</button>') +
         (o.status === 'accepted' ? '<button type="button" class="btn small" data-off-tcy>🏠 Start tenancy from this offer</button>' : '') +
+        '<button type="button" class="btn small" data-off-track title="The applicant’s private link to follow their offer">🔗 Copy tracking link</button>' +
+        (o.lead_phone ? '<button type="button" class="btn small" data-off-wa title="Send the lead tenant their tracking link on WhatsApp">💬 WhatsApp</button>' : '') +
         '<span style="flex:1"></span><button type="button" class="btn small ghost danger" data-off-del>Delete</button></div>' +
     '</div>';
   }
@@ -8107,6 +8112,22 @@
         if (!d.ok) { busy(a || pd, false); toast('Couldn’t save that'); return; }
         toast(a ? (a.dataset.offAct === 'accepted' ? 'Offer accepted' : a.dataset.offAct === 'rejected' ? 'Offer rejected' : 'Undone') : (body.paid ? 'Holding deposit received' : 'Payment undone'));
         loadOffers();
+      });
+      return;
+    }
+    var tr = e.target.closest('[data-off-track],[data-off-wa]');
+    if (tr) {
+      var wa = tr.hasAttribute("data-off-wa");
+      // WhatsApp needs a window opened straight from the tap.
+      var w = wa ? window.open('', '_blank') : null;
+      (o.track_token ? Promise.resolve({ ok: true, track: '/offer/track/' + o.track_token }) : api('POST', '/api/admin/offers/' + o.id + '/track', {})).then(function(d){
+        if (!d.ok) { if (w) w.close(); toast('Couldn’t make the link'); return; }
+        o.track_token = d.track.split('/').pop();
+        var url = location.origin + d.track;
+        if (!wa) { offCopyText(url); return; }
+        var ph = String(o.lead_phone || '').replace(/\D/g, '').replace(/^0/, '44');
+        var msg = 'Hi ' + (String(o.lead_name || '').split(/\s+/)[0] || 'there') + ', thank you for your offer on ' + shortAddr(o.property_address) + ' (' + o.ref + '). You can follow it here: ' + url + ' — Residential Realtors';
+        w.location = 'https://wa.me/' + ph + '?text=' + encodeURIComponent(msg);
       });
       return;
     }

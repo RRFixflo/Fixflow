@@ -56,6 +56,26 @@
   .bank { display:grid; gap:6px; margin:10px 0; }
   .bank div { display:flex; justify-content:space-between; gap:10px; padding:10px 12px; background:#f6f7f9; border-radius:10px; }
   .bank b { font-variant-numeric:tabular-nums; }
+  .sigwrap { position:relative; border:1.5px solid #c9ccd3; border-radius:14px; background:#fff; height:170px; touch-action:none; }
+  .sigwrap.bad { border-color:var(--red); }
+  .sigwrap canvas { width:100%; height:100%; display:block; border-radius:14px; cursor:crosshair; }
+  .sighint { position:absolute; left:16px; bottom:14px; color:#c3c6ce; pointer-events:none; font-size:.9rem; }
+  .sigwrap::after { content:""; position:absolute; left:16px; right:16px; bottom:38px; border-bottom:1px dashed #d5d7dd; pointer-events:none; }
+  .warn { background:#fff4e5; color:#7a4a00; border-radius:10px; padding:8px 12px; font-size:.86rem; margin-top:6px; }
+  .trackbox { background:#eef2fe; border-radius:14px; padding:14px; margin:14px 0; }
+  .trackbox input { margin:6px 0; font-size:.9rem; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; }
+  .btn { display:inline-block; border:1px solid #d5d7dd; background:#fff; color:var(--ink); border-radius:12px; padding:9px 14px; font:inherit; font-weight:650; text-decoration:none; cursor:pointer; }
+  .btn.dark { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .steps { list-style:none; padding:0; margin:14px 0; }
+  .steps li { display:flex; gap:12px; padding:0 0 18px; position:relative; }
+  .steps li:not(:last-child)::before { content:""; position:absolute; left:15px; top:32px; bottom:2px; width:2px; background:var(--line); }
+  .steps .dot { flex:0 0 32px; height:32px; border-radius:50%; background:#e7e8ec; color:var(--soft); display:flex; align-items:center; justify-content:center; font-weight:700; }
+  .steps li.ok .dot { background:var(--ok); color:#fff; }
+  .steps li.now .dot { background:var(--blue); color:#fff; }
+  .steps li.no .dot { background:var(--red); color:#fff; }
+  .steps b { display:block; }
+  .steps span { color:var(--soft); font-size:.92rem; }
   footer { max-width:720px; margin:0 auto; padding:0 16px 32px; color:var(--faint); font-size:.78rem; text-align:center; }
 </style>
 </head>
@@ -66,6 +86,7 @@
     <h1>Make an offer</h1>
     <p class="sub">Tell us about your offer and everyone who will live in the property. It takes about 10 minutes — please have a photo or scan of each tenant’s passport or visa ready.</p>
 
+    <div id="mine"></div>
     <form id="offerForm" novalidate>
       <div class="hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
 
@@ -78,17 +99,18 @@
           <div class="f"><label for="max_offer">Maximum offer (£ <span class="perTxt">per week</span>) <span class="opt">optional</span></label><input id="max_offer" name="max_offer" inputmode="decimal"></div>
         </div>
         <p class="sub" style="margin:-4px 0 12px;font-size:.85rem">Your maximum offer is binding subject to contract, references and the terms in the information sheet below.</p>
-        <div class="g3">
+        <div class="g2">
           <div class="f"><label for="move_in">Move-in date</label><input id="move_in" name="move_in" type="date" required></div>
           <div class="f"><label for="stay">How long would you like to stay?</label>
             <select id="stay" name="stay" required><option value="">Choose…</option><option>6 months</option><option>1 year</option><option>18 months</option><option>2 years</option><option>3 years or more</option><option>As long as possible</option></select></div>
-          <div class="f"><label for="rent_frequency">Paying rent</label><select id="rent_frequency" name="rent_frequency"><option>Monthly</option><option>Quarterly in advance</option><option>6 months in advance</option><option>12 months in advance</option></select></div>
         </div>
+        <p class="sub" style="margin:-4px 0 12px;font-size:.85rem">Rent is paid monthly.</p>
         <div class="g2">
           <div class="f"><label for="tenants_count">Number of tenants</label><select id="tenants_count" name="tenants_count"></select></div>
           <div class="f"><label for="guarantors_count">Number of guarantors</label><select id="guarantors_count" name="guarantors_count"></select></div>
         </div>
-        <div class="f"><label for="negotiate">Anything to discuss with the landlord <span class="opt">optional</span></label><textarea id="negotiate" name="negotiate" rows="2" placeholder="e.g. furniture, pets, parking"></textarea></div>
+        <div class="f"><label for="negotiate">Your conditions for the landlord</label><textarea id="negotiate" name="negotiate" rows="3" placeholder="e.g. furnished / unfurnished, pets, parking, anything to be fixed or cleaned before you move in"></textarea>
+          <div class="warn">⚠ Please put <b>all</b> your conditions here. Anything asked for after your offer is submitted will not be considered.</div></div>
         <div class="f"><label for="about">A little about you as tenants <span class="opt">optional</span></label><textarea id="about" name="about" rows="3" placeholder="Who you are, what you do — anything that may interest the landlord"></textarea></div>
       </div>
 
@@ -116,8 +138,12 @@
           <p><b>References.</b> Before the tenancy is offered you must satisfy our minimum creditworthiness requirements: we verify credit, income, previous landlord and bank statements. Applicants’ and/or guarantors’ income must be at least three times the annual rent over the tenancy, with no county court judgements. Any offer of a tenancy is subject to satisfactory references. You must supply proof/visa confirming your right to rent in the UK.</p>
           <p><b>Deadline for agreement.</b> Most tenancies are concluded within 5–14 days of your holding deposit being received. Because of circumstances outside our control (for example reference response times or international transfers), you agree the deadline for agreement can be up to 28 days.</p>
         </div>
+        <div class="warn" style="margin-top:12px">Reminder: your offer is made on the conditions you’ve written above only — requests made later will not be considered.</div>
         <div class="f" style="margin-top:12px"><label class="check"><input type="checkbox" id="agree"> I confirm the information I have given is accurate, that I have read and understood the holding deposit information sheet, and that I am authorised to make decisions and sign on behalf of all tenants.</label></div>
-        <div class="f"><label for="signature">Sign by typing your full name</label><input id="signature" name="signature" required autocomplete="name"></div>
+        <div class="f"><label for="signature">Your full name</label><input id="signature" name="signature" required autocomplete="name"></div>
+        <div class="f"><label>Sign here <span class="opt">with your finger or mouse</span></label>
+          <div class="sigwrap" id="sigWrap"><canvas id="sig" aria-label="Signature box"></canvas><span class="sighint" id="sigHint">Sign here</span></div>
+          <button type="button" class="btn" id="sigClear" style="margin-top:6px">Clear signature</button></div>
         <button type="submit" class="submit" id="submitBtn">Submit offer</button>
         <p class="err" id="err" hidden></p>
       </div>
@@ -125,6 +151,7 @@
   </div>
 
   <div id="doneView" class="done" hidden></div>
+  <div id="trackView" hidden></div>
 </main>
 <footer>Residential Realtors · Trading name of Estallion Investments Limited · Registered in England No. 08760284</footer>
 
@@ -197,7 +224,10 @@
         '<div class="g2">' + field(n, 'g_homeowner', 'UK home owner?', { select: ['', 'Yes', 'No'] }) + field(n, 'g_home_address', 'If yes, home address') + '</div>' +
         field(n, 'g_other', 'Any additional income / savings', { area: true }) +
       '</details>' +
-      '<div class="f" style="margin-top:12px"><label>Passport and/or visa / proof of residency</label><div class="ids" data-ids="' + n + '">' +
+      '<div class="g2" style="margin-top:12px">' + field(n, 'uk_passport', 'Do they have a UK or Irish passport?', { select: ['', 'Yes', 'No'], req: true }) +
+        '<div class="f" data-share="' + n + '" hidden><label for="t' + n + '_share_code">Right to rent share code</label><input id="t' + n + '_share_code" data-k="share_code" placeholder="e.g. R12 345 678" maxlength="12" style="text-transform:uppercase">' +
+        '<div style="font-size:.8rem;color:var(--soft);margin-top:4px">No UK or Irish passport? Get a share code at <a href="https://www.gov.uk/prove-right-to-rent" target="_blank" rel="noopener">gov.uk/prove-right-to-rent</a></div></div></div>' +
+      '<div class="f" style="margin-top:4px"><label>Passport and/or visa / proof of residency</label><div class="ids" data-ids="' + n + '">' +
         '<label class="pick">📎 Add ID photo or scan<input type="file" accept="image/*,.heic,.heif,application/pdf" multiple hidden data-idin="' + n + '"></label>' +
         '<div class="list" data-idlist="' + n + '"></div><div style="font-size:.8rem;color:var(--soft);margin-top:6px">Required — a clear photo or PDF (up to 4 files)</div></div></div>' +
     '</div>';
@@ -216,6 +246,8 @@
     document.querySelector('[data-ids="' + n + '"]').classList.toggle('bad', false);
   }
   $('tenants').addEventListener('change', function(e){
+    // No UK or Irish passport: ask for their right to rent share code.
+    if (e.target.dataset && e.target.dataset.k === 'uk_passport') { var tn = e.target.closest('.ten').dataset.t; document.querySelector('[data-share="' + tn + '"]').hidden = e.target.value !== 'No'; return; }
     var inp = e.target.closest('[data-idin]'); if (!inp) return;
     var n = inp.dataset.idin, cur = files[n] = files[n] || [];
     Array.prototype.slice.call(inp.files || []).forEach(function(f){ if (cur.length < 4) cur.push(f); });
@@ -225,6 +257,33 @@
     var d = e.target.closest('[data-iddel]'); if (!d) return;
     var a = d.dataset.iddel.split('|'); (files[a[0]] || []).splice(Number(a[1]), 1); drawFiles(a[0]);
   });
+
+  // Signature pad: drawn with a finger or mouse.
+  var sig = $('sig'), sctx = sig.getContext('2d'), inked = false, drawing = false, lastPt = null;
+  function sizeSig(){
+    var r = sig.getBoundingClientRect(), k = window.devicePixelRatio || 1, keep = inked ? sig.toDataURL() : null;
+    sig.width = Math.round(r.width * k); sig.height = Math.round(r.height * k); sctx.setTransform(k, 0, 0, k, 0, 0);
+    sctx.lineWidth = 2.4; sctx.lineCap = 'round'; sctx.lineJoin = 'round'; sctx.strokeStyle = '#0b0c0f';
+    if (keep) { var im = new Image(); im.onload = function(){ sctx.drawImage(im, 0, 0, r.width, r.height); }; im.src = keep; }
+  }
+  sizeSig(); window.addEventListener('resize', sizeSig);
+  var pt = function(e){ var r = sig.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  sig.addEventListener('pointerdown', function(e){ e.preventDefault(); drawing = true; lastPt = pt(e); sig.setPointerCapture(e.pointerId); sctx.beginPath(); sctx.arc(lastPt.x, lastPt.y, 1.1, 0, Math.PI * 2); sctx.fillStyle = '#0b0c0f'; sctx.fill(); });
+  sig.addEventListener('pointermove', function(e){ if (!drawing) return; var q = pt(e); sctx.beginPath(); sctx.moveTo(lastPt.x, lastPt.y); sctx.lineTo(q.x, q.y); sctx.stroke(); lastPt = q;
+    if (!inked) { inked = true; $('sigHint').hidden = true; $('sigWrap').classList.remove('bad'); } });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(ev){ sig.addEventListener(ev, function(){ drawing = false; }); });
+  $('sigClear').addEventListener('click', function(){ sctx.clearRect(0, 0, sig.width, sig.height); inked = false; $('sigHint').hidden = false; });
+  // The signature as a small PNG (trimmed to what was drawn, white background).
+  function sigPng(){
+    var w = sig.width, h = sig.height, px = sctx.getImageData(0, 0, w, h).data, x0 = w, y0 = h, x1 = 0, y1 = 0;
+    for (var y = 0; y < h; y += 2) for (var x = 0; x < w; x += 2) if (px[(y * w + x) * 4 + 3] > 20) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 <= x0) return null;
+    var pad = 10, cw = Math.min(w, x1 - x0 + pad * 2), ch = Math.min(h, y1 - y0 + pad * 2), out = document.createElement('canvas'), k = Math.min(1, 900 / cw);
+    out.width = Math.round(cw * k); out.height = Math.round(ch * k);
+    var o = out.getContext('2d'); o.fillStyle = '#fff'; o.fillRect(0, 0, out.width, out.height);
+    o.drawImage(sig, Math.max(0, x0 - pad), Math.max(0, y0 - pad), cw, ch, 0, 0, out.width, out.height);
+    return out.toDataURL('image/png');
+  }
 
   // Photos are made smaller before sending; PDFs go as they are.
   function readFile(file){
@@ -262,28 +321,68 @@
       if (!t.name) return showErr('Please enter tenant ' + i + '’s full name.', $('t' + i + '_name'));
       if (!t.dob) return showErr('Please enter tenant ' + i + '’s date of birth.', $('t' + i + '_dob'));
       if (i === 1 && !t.phone && !t.email) return showErr('Please give the lead tenant’s mobile or email.', $('t1_phone'));
+      if (!t.uk_passport) return showErr('Please tell us whether tenant ' + i + ' has a UK or Irish passport.', $('t' + i + '_uk_passport'));
+      if (t.uk_passport === 'No') { t.share_code = (t.share_code || '').toUpperCase().replace(/\s+/g, ''); if (!/^[A-Z0-9]{9}$/.test(t.share_code)) return showErr('Please enter tenant ' + i + '’s 9-character right to rent share code.', $('t' + i + '_share_code')); } else t.share_code = '';
       if (!t.current_address) return showErr('Please enter tenant ' + i + '’s current address.', $('t' + i + '_current_address'));
       if (!(files[i] || []).length) { var box = document.querySelector('[data-ids="' + i + '"]'); box.classList.add('bad'); return showErr('Please add tenant ' + i + '’s passport or visa.', box); }
       tenants.push(t);
     }
     if (!$('agree').checked) return showErr('Please tick to confirm you have read the information sheet.', $('agree'));
-    if (!$('signature').value.trim()) return showErr('Please sign by typing your full name.', $('signature'));
+    if (!$('signature').value.trim()) return showErr('Please type your full name.', $('signature'));
+    if (!inked) { $('sigWrap').classList.add('bad'); return showErr('Please sign in the box.', $('sigWrap')); }
+    var sigImg = sigPng();
     var btn = $('submitBtn'); btn.disabled = true; btn.textContent = 'Uploading IDs…';
     Promise.all(tenants.map(function(t, i){ return Promise.all((files[i + 1] || []).map(readFile)).then(function(list){ t.ids = list.filter(Boolean); }); })).then(function(){
       btn.textContent = 'Sending your offer…';
       return fetch('/api/offers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         website: document.querySelector('[name=website]').value, property: $('property').value.trim(), per: per, offer: $('offer').value, max_offer: $('max_offer').value,
-        move_in: $('move_in').value, stay: $('stay').value, rent_frequency: $('rent_frequency').value, tenants_count: n, guarantors_count: $('guarantors_count').value,
+        move_in: $('move_in').value, stay: $('stay').value, tenants_count: n, guarantors_count: $('guarantors_count').value,
         negotiate: $('negotiate').value.trim(), about: $('about').value.trim(), lead_name: tenants[0].name, lead_phone: tenants[0].phone, lead_email: tenants[0].email,
-        tenants: tenants, agree: true, signature: $('signature').value.trim() }) });
+        tenants: tenants, agree: true, signature: $('signature').value.trim(), signature_png: sigImg }) });
     }).then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) {
         btn.disabled = false; btn.textContent = 'Submit offer';
-        return showErr(d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
+        return showErr(d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'share_code' ? 'Please check each right to rent share code (9 letters and numbers).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
       }
       done(d);
     }).catch(function(){ btn.disabled = false; btn.textContent = 'Submit offer'; showErr('Couldn’t send — please check your connection and try again.'); });
   });
+
+  // The private link to follow the offer: shown after submitting, kept on this device.
+  function trackBox(url){
+    var wa = 'https://wa.me/?text=' + encodeURIComponent('My offer with Residential Realtors — track it here: ' + url);
+    return '<div class="trackbox"><b>Track your offer</b><div style="font-size:.9rem;color:var(--soft)">Save this link — it shows when your holding deposit is received and when the landlord decides.</div>' +
+      '<input readonly value="' + esc(url) + '" onclick="this.select()"><div class="btns"><a class="btn dark" href="' + esc(url) + '">Track my offer</a><button type="button" class="btn" data-copy="' + esc(url) + '">Copy link</button><a class="btn" target="_blank" rel="noopener" href="' + esc(wa) + '">Send to WhatsApp</a></div></div>';
+  }
+  document.addEventListener('click', function(e){ var c = e.target.closest('[data-copy]'); if (!c) return; (navigator.clipboard ? navigator.clipboard.writeText(c.dataset.copy) : Promise.reject()).then(function(){ c.textContent = '✓ Copied'; }, function(){ window.prompt('Copy this link:', c.dataset.copy); }); });
+  function remember(o){ try { var l = JSON.parse(localStorage.getItem('rr_offers') || '[]').filter(function(x){ return x.track !== o.track; }); l.unshift(o); localStorage.setItem('rr_offers', JSON.stringify(l.slice(0, 5))); } catch (e) {} }
+  try {
+    var mine = JSON.parse(localStorage.getItem('rr_offers') || '[]');
+    if (mine.length) $('mine').innerHTML = '<div class="card"><b>Your offer' + (mine.length === 1 ? '' : 's') + '</b>' + mine.map(function(o){ return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:8px"><span>' + esc(o.ref) + ' · ' + esc(o.property || '') + '</span><a class="btn" href="' + esc(o.track) + '">See status</a></div>'; }).join('') + '</div>';
+  } catch (e) {}
+
+  // Tracking page (/offer/track/<token>): where the offer is up to.
+  var tm = /^\/offer\/track\/([\w-]{16,40})\/?$/.exec(location.pathname);
+  if (tm) {
+    $('formView').hidden = true; $('trackView').hidden = false;
+    $('trackView').innerHTML = '<div class="card"><p class="sub">Loading your offer…</p></div>';
+    fetch('/api/offers/track/' + tm[1]).then(function(r){ return r.json(); }).then(function(d){
+      if (!d.ok) { $('trackView').innerHTML = '<div class="card"><h1>Offer not found</h1><p class="sub">This link isn’t valid. Please check it, or contact Residential Realtors.</p></div>'; return; }
+      var m = d.money || {}, when = function(v){ return v ? new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
+      var acc = d.status === 'accepted', rej = d.status === 'rejected', paid = !!d.paid_at;
+      var steps = [
+        ['ok', 'Offer received', when(d.created_at) + ' · ' + gbp(d.offer_pw) + ' a week (' + gbp(m.pcm || 0) + ' a month)' + (d.move_in ? ' · move in ' + when(d.move_in) : '')],
+        [paid ? 'ok' : rej ? '' : 'now', paid ? 'Holding deposit received' : 'Holding deposit', paid ? when(d.paid_at) + ' · ' + gbp(m.holding || 0) : rej ? 'Not needed' : 'Please pay ' + gbp(m.holding || 0) + ' to reserve the property — details below'],
+        [acc ? 'ok' : rej ? 'no' : (paid ? 'now' : ''), acc ? 'Offer accepted 🎉' : rej ? 'Offer not accepted' : 'Landlord’s decision', acc ? when(d.decided_at) : rej ? when(d.decided_at) + (paid ? ' · your holding deposit will be returned within 24 hours' : '') : 'We’ll update this page as soon as the landlord decides'],
+        [acc ? 'now' : '', 'References and tenancy agreement', acc ? 'We’ll send the referencing forms — please complete them within 24 hours. Then the tenancy agreement to sign and the rest of the move-in money (' + gbp(m.balance || 0) + ').' : 'Once the offer is accepted']
+      ];
+      $('trackView').innerHTML = '<div class="card"><h1>Your offer ' + esc(d.ref) + '</h1><p class="sub">' + esc(d.property || '') + '</p>' +
+        '<ol class="steps">' + steps.map(function(s, i){ return '<li class="' + s[0] + '"><div class="dot">' + (s[0] === 'ok' ? '✓' : s[0] === 'no' ? '✗' : i + 1) + '</div><div><b>' + s[1] + '</b><span>' + esc(s[2]) + '</span></div></li>'; }).join('') + '</ol>' +
+        (d.bank && !paid ? '<h2>Pay the holding deposit</h2><div class="bank"><div><span>Account name</span><b>' + esc(d.bank.payee) + '</b></div><div><span>Sort code</span><b>' + esc(d.bank.sort_code) + '</b></div><div><span>Account number</span><b>' + esc(d.bank.account) + '</b></div><div><span>Amount</span><b>' + gbp(m.holding || 0) + '</b></div><div><span>Reference</span><b>' + esc(d.reference) + '</b></div></div><p class="sub" style="font-size:.85rem">Already paid? It shows here once we’ve seen it arrive.</p>' : '') +
+        '</div>';
+      remember({ ref: d.ref, track: location.pathname, property: d.property, at: Date.now() });
+    }).catch(function(){ $('trackView').innerHTML = '<div class="card"><p class="sub">Couldn’t load — please check your connection and refresh.</p></div>'; });
+  }
 
   // Submitted: now pay the holding deposit.
   function done(d){
@@ -294,7 +393,9 @@
       (d.bank ? '<div class="bank"><div><span>Account name</span><b>' + esc(d.bank.payee) + '</b></div><div><span>Sort code</span><b>' + esc(d.bank.sort_code) + '</b></div><div><span>Account number</span><b>' + esc(d.bank.account) + '</b></div><div><span>Amount</span><b>' + gbp(m.holding || 0) + '</b></div><div><span>Reference</span><b>' + esc(d.reference) + '</b></div></div>'
         : '<p>We will send you our bank details to pay it.</p>') +
       '<p class="sub" style="margin-top:12px">Once your offer is accepted, the holding deposit goes towards your first month’s rent. The rest — ' + gbp(m.balance || 0) + ' — is due when you sign the tenancy agreement.</p>' +
-      '<p class="sub">If the landlord rejects your maximum offer or withdraws the property, your holding deposit is returned within 24 hours (see the information sheet).</p></div>';
+      '<p class="sub">If the landlord rejects your maximum offer or withdraws the property, your holding deposit is returned within 24 hours (see the information sheet).</p>' +
+      (d.track ? trackBox(location.origin + d.track) : '') + '</div>';
+    if (d.track) remember({ ref: d.ref, track: d.track, property: $('property').value.trim(), at: Date.now() });
     window.scrollTo(0, 0);
   }
 })();
