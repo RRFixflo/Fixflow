@@ -6001,6 +6001,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!address || !lead || !(phone || email)) return res.status(400).json({ ok: false, error: 'details' });
     if (!amt) return res.status(400).json({ ok: false, error: 'offer' });
     if (!s(b.signature) || b.agree !== true) return res.status(400).json({ ok: false, error: 'sign' });
+    // Each of the six non-refundable points ticked.
+    if (!Array.isArray(b.terms) || b.terms.length !== 6 || b.terms.some(function (x) { return x !== true; })) return res.status(400).json({ ok: false, error: 'terms' });
     // The drawn signature (a small PNG), kept with the ID documents as "tenant 0".
     const sm = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(b.signature_png || ''));
     const sigBuf = sm ? Buffer.from(sm[1], 'base64') : null;
@@ -6011,6 +6013,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       'g_name', 'g_relation', 'g_email', 'g_phone', 'g_company', 'g_position', 'g_salary', 'g_homeowner', 'g_home_address', 'g_other', 'uk_passport', 'share_code'];
     const tenants = (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 8).map(function (t) { const o = {}; FIELDS.forEach(function (f) { o[f] = s(t && t[f], f === 'current_address' || f === 'g_home_address' || f === 'other_income' || f === 'g_other' ? 500 : 200); }); o._ids = t && t.ids; return o; });
     if (!tenants.length || tenants.some(function (t) { return !t.name; })) return res.status(400).json({ ok: false, error: 'tenants' });
+    // A student who isn't working needs a guarantor (name, relation and a phone or email).
+    if (tenants.some(function (t) { return t.income_type === 'Student' && !(t.g_name && t.g_relation && (t.g_phone || t.g_email)); })) return res.status(400).json({ ok: false, error: 'guarantor' });
     // No UK or Irish passport: a right to rent share code (9 letters/numbers) is needed.
     for (const t of tenants) { t.share_code = String(t.share_code || '').toUpperCase().replace(/\s+/g, ''); if (t.uk_passport === 'No' && !/^[A-Z0-9]{9}$/.test(t.share_code)) return res.status(400).json({ ok: false, error: 'share_code' }); if (t.uk_passport !== 'No') t.share_code = ''; }
     // Each tenant's ID: required, photos or PDFs, up to 4 files of 12 MB each.
@@ -6032,7 +6036,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const data = {
       per: per, offer_entered: amt, max_entered: maxAmt || null, max_pw: maxPw, tenants_count: parseInt(b.tenants_count, 10) || tenants.length, guarantors_count: parseInt(b.guarantors_count, 10) || 0,
       move_in: isoDay(b.move_in) || null, stay: s(b.stay, 80), rent_frequency: 'Monthly', negotiate: s(b.negotiate, 2000), about: s(b.about, 3000),
-      tenants: tenants, signature: s(b.signature), signed_at: new Date().toISOString(), money: offerMoney(pw), ip: String(req.ip || '').slice(0, 60)
+      tenants: tenants, signature: s(b.signature), signed_at: new Date().toISOString(), terms_ticked: 6, money: offerMoney(pw), ip: String(req.ip || '').slice(0, 60)
     };
     const token = crypto.randomBytes(16).toString('base64url');
     const ins = await p.query('INSERT INTO offers (property_address, property_key, lead_name, lead_email, lead_phone, offer_pw, data, log, track_token) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
