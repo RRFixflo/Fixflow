@@ -473,6 +473,7 @@
   .lt-fees { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; } .lt-box { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
   .lt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .lt-full { margin-bottom: 10px; }
   .lt-preview:empty { display: none; } .lt-preview { background: var(--blue-tint); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; font-size: .86rem; } .lt-preview div { display: flex; gap: 10px; padding: 3px 0; } .lt-preview span { min-width: 170px; color: var(--ink-soft); }
+  .lt-rem { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: #fff8e6; border: 1px solid #f3d9a8; font-size: .86rem; color: #7a4d00; }
   .lt-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
   .lt-card { position: relative; } .lt-card .oc-minbtn { top: 10px; right: 10px; } .lt-card .lt-h { padding-right: 30px; }
   .lt-card.oc-min > *:not(.oc-mini) { display: none !important; } .lt-card.oc-min { padding-top: 12px; padding-bottom: 12px; } .lt-card.oc-min .oc-mini { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; cursor: pointer; }
@@ -1480,7 +1481,7 @@
           <div class="lt-editing" id="ltEditing" hidden>✏️ Editing <b id="ltEditRef"></b> — the landlord’s link stays the same and shows the new details straight away.</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" id="ltCreate">Create agreement link</button><button class="btn ghost" type="button" id="ltEditCancel" hidden>Cancel editing</button></div>
         </details>
-        <div class="lt-bar"><label class="muted-note" style="margin:0;display:flex;gap:6px;align-items:center">Sort <select class="inp" id="ltSort" style="width:auto"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="signed">Recently signed</option><option value="waiting">Waiting for the landlord first</option><option value="addr">Property A–Z</option><option value="ll">Landlord A–Z</option></select></label><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="ltMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="ltMaxAll">▾ Expand all</button></span></div>
+        <div class="lt-bar"><label class="muted-note" style="margin:0;display:flex;gap:6px;align-items:center">Sort <select class="inp" id="ltSort" style="width:auto"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="signed">Recently signed</option><option value="waiting">Waiting for the landlord first</option><option value="addr">Property A–Z</option><option value="ll">Landlord A–Z</option><option value="feehi">Highest fees</option><option value="feelo">Lowest fees</option></select></label><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="ltMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="ltMaxAll">▾ Expand all</button></span></div>
         <div id="ltList"></div>
       </div>
       <div id="offersView" hidden>
@@ -9062,6 +9063,17 @@
   }
   var ltMin = {}; try { ltMin = JSON.parse(localStorage.getItem('rr_lt_min') || '{}') || {}; } catch (e) {}
   function ltMinSave(){ try { localStorage.setItem('rr_lt_min', JSON.stringify(ltMin)); } catch (e) {} }
+  // A rough first-year value of the agreed fees at £1,000 a month (for sorting): tenant find (with its minimum) + 12 months of management.
+  function ltFeeScore(t){
+    var f = t.fees || {}, v = f.vat !== false ? 1.2 : 1, find = f.find !== 'none' && f.find_pct != null ? Math.max(12000 * f.find_pct / 100 * v, Number(f.find_min) || 0) : 0,
+      ong = f.ongoing !== 'none' && f.ongoing_pct != null ? Math.max(1000 * f.ongoing_pct / 100 * v, Number(f.ongoing_min) || 0) * 12 : 0;
+    return find + ong;
+  }
+  function ltReminders(t){ return (t.log || []).filter(function(l){ return /^Reminder sent/.test(l.text || ''); }); }
+  function ltRemindBody(t){
+    var first = String(t.landlord_name || '').trim(), w = first.split(/\s+/)[0]; first = /^(mr|mrs|ms|miss|dr|mx)\.?$/i.test(w) ? first : w;
+    return 'Dear ' + (first || 'Sir or Madam') + ',\n\nJust a friendly reminder that your terms of business for ' + shortAddr(t.property_address) + ' are ready to sign. It only takes a few minutes to check the fees, complete the property details and sign online here: ' + ltLink(t) + '\n\nWe can’t start marketing or move a tenant in until it’s signed. If you have any questions, just reply to this email or call us on 0207 096 8131.' + mailSignoff();
+  }
   function renderLt(){
     var sortBy = $('ltSort').value, cmp = function(x, y){ return String(x || '').localeCompare(String(y || ''), 'en', { sensitivity: 'base' }); };
     var list = ltItems.slice().sort(function(a, b){
@@ -9070,6 +9082,8 @@
       if (sortBy === 'waiting') return (a.status === 'sent' ? 0 : a.status === 'signed' ? 1 : 2) - (b.status === 'sent' ? 0 : b.status === 'signed' ? 1 : 2) || b.id - a.id;
       if (sortBy === 'addr') return cmp(a.property_address, b.property_address);
       if (sortBy === 'll') return cmp(a.landlord_name, b.landlord_name);
+      if (sortBy === 'feehi') return ltFeeScore(b) - ltFeeScore(a) || b.id - a.id;
+      if (sortBy === 'feelo') return ltFeeScore(a) - ltFeeScore(b) || b.id - a.id;
       return b.id - a.id;
     });
     $('ltList').innerHTML = list.length ? list.map(function(t){
@@ -9081,6 +9095,7 @@
         (t.status === 'signed' ? '<div class="lt-signed"><span class="lt-tick"><svg viewBox="0 0 52 52" fill="none"><path d="M14 27 l8 8 l16 -18" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div><b>Signed 🎉</b><span>' + esc(d.signature || t.landlord_name || 'The landlord') + ' signed on ' + esc(fmtShort(t.signed_at)) + (d.start_now ? ' · start work now' : ' · wait 14 days before starting') + '</span></div></div>' : '') +
         '<div class="lt-lines">' + (t.lines || []).map(function(l){ return '<div><span>' + esc(l.k) + '</span><b>' + esc(l.v) + '</b></div>'; }).join('') + '</div>' +
         (t.status === 'signed' ? '<details class="oc-more lt-det"><summary>📋 Everything the landlord told us</summary>' + ltDetailsHtml(t) + '</details>' : '') +
+        (t.status === 'sent' ? (function(){ var rm = ltReminders(t), last = rm[rm.length - 1]; return '<div class="lt-rem"><span>' + (d.viewed_at ? '👀 Opened ' + esc(fmtShort(d.viewed_at)) : 'Not opened yet') + (rm.length ? ' · 🔔 Reminded ' + rm.length + '× (last ' + esc(fmtShort(last.at).split(',')[0]) + (last.user ? ' by ' + esc(last.user) : '') + ')' : '') + '</span><button type="button" class="btn small primary" data-lt-remind>🔔 Send a reminder</button></div>'; })() : '') +
         '<footer class="oc-actions">' + (t.status !== 'signed' ? '<button type="button" class="btn small" data-lt-edit>✏️ Edit' + (t.status === 'cancelled' ? ' and turn back on' : '') + '</button>' : '') + (t.status === 'sent' ? '<button type="button" class="btn small primary" data-lt-copy>🔗 Copy link</button>' + (t.landlord_phone ? '<button type="button" class="btn small wa-btn" data-lt-wa>' + WA_ICON + 'WhatsApp</button>' : '<button type="button" class="btn small wa-btn" data-lt-wa>' + WA_ICON + 'WhatsApp</button>') + '<button type="button" class="btn small" data-lt-mail>✉ Email</button>' : '') +
           '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/landlord-terms/' + t.id + '/pdf">📄 ' + (t.status === 'signed' ? 'Signed PDF' : 'Preview PDF') + '</a><span class="oc-sp"></span>' +
           (t.status === 'sent' ? '<button type="button" class="btn small ghost" data-lt-cancel>Cancel link</button>' : '') + (staffMode ? '' : '<button type="button" class="btn small ghost danger" data-lt-del title="Delete">🗑</button>') + '</footer></div>';
@@ -9193,6 +9208,20 @@
     if (e.target.closest('[data-lt-copy]')) { offCopyText(ltLink(t)); return; }
     if (e.target.closest('[data-lt-edit]')) { ltEditStart(t); return; }
     if (e.target.closest('[data-lt-wa]')) { var ph = String(t.landlord_phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'); window.open('https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent(ltMsg(t)), '_blank', 'noopener'); api('POST', '/api/admin/landlord-terms/' + t.id, { note: 'Link sent by WhatsApp' }); return; }
+    if (e.target.closest('[data-lt-remind]')) {
+      var rb = e.target.closest('[data-lt-remind]'), box = rb.parentNode.querySelector('.lt-rem-ch');
+      if (box) { box.remove(); return; }
+      rb.insertAdjacentHTML('afterend', '<div class="lt-rem-ch" style="display:flex;gap:6px;flex-basis:100%;flex-wrap:wrap"><button type="button" class="btn small wa-btn" data-lr="wa">' + WA_ICON + 'WhatsApp</button><button type="button" class="btn small" data-lr="email">✉ Email</button></div>');
+      return;
+    }
+    var lr = e.target.closest('[data-lr]');
+    if (lr) {
+      var how = lr.dataset.lr, first0 = String(t.landlord_name || '').split(/\s+/)[0];
+      if (how === 'wa') { var ph1 = String(t.landlord_phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'); window.open('https://wa.me/' + (ph1.length >= 10 ? ph1 : '') + '?text=' + encodeURIComponent('Hi' + (first0 ? ' ' + first0 : '') + ', just a reminder that your terms of business for ' + shortAddr(t.property_address) + ' are ready to sign — it only takes a few minutes: ' + ltLink(t) + ' — Residential Realtors'), '_blank', 'noopener'); }
+      else openMailto('mailto:' + encodeURIComponent(t.landlord_email || '') + '?subject=' + encodeURIComponent('Reminder: your terms of business — ' + shortAddr(t.property_address)) + '&body=' + encodeURIComponent(ltRemindBody(t)));
+      api('POST', '/api/admin/landlord-terms/' + t.id, { note: 'Reminder sent by ' + (how === 'wa' ? 'WhatsApp' : 'email') }).then(function(){ loadLt(); });
+      return;
+    }
     if (e.target.closest('[data-lt-mail]')) { openMailto('mailto:' + encodeURIComponent(t.landlord_email || '') + '?subject=' + encodeURIComponent('Your terms of business — ' + shortAddr(t.property_address)) + '&body=' + encodeURIComponent(ltMailBody(t))); api('POST', '/api/admin/landlord-terms/' + t.id, { note: 'Link sent by email' }); return; }
     if (e.target.closest('[data-lt-cancel]')) { if (!confirm('Cancel this link? The landlord won’t be able to open it.')) return; api('POST', '/api/admin/landlord-terms/' + t.id, { cancel: true }).then(function(){ toast('Link cancelled'); loadLt(); }); return; }
     if (e.target.closest('[data-lt-del]')) { if (!confirm('Delete this landlord agreement?')) return; api('DELETE', '/api/admin/landlord-terms/' + t.id, { confirm: true }).then(function(){ toast('Deleted'); loadLt(); }); }
