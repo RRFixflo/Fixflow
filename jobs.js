@@ -1689,7 +1689,7 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/available-dedupe' || path === '/available-lookup' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path) || /^\/dreams\/\d+$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
-    if (method === 'GET') return path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'GET') return path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
@@ -5768,6 +5768,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
     });
     return Object.keys(map).map(function (k) { return { key: k, address: map[k] }; });
   }
+  // Is this address a property we already have, however it's written ("Flat 18, Bardell House, SE1 2Dh"
+  // and "18 Bardell House, London SE1 2DH")? Looks everywhere a property can be: repairs, certificates,
+  // landlords, tenants, tenancies, property details and the available list.
+  app.get('/api/admin/property-match', withDb(async function (p, req, res) {
+    const a = str(req.query.address, 500); if (!a || a.length < 5) return res.json({ ok: true, known: false });
+    const all = await allProperties(p), have = {}; all.forEach(function (x) { have[x.key] = 1; });
+    const more = (await p.query(`SELECT address AS a FROM tenancies WHERE address IS NOT NULL UNION SELECT address FROM landlord_properties WHERE address IS NOT NULL
+      UNION SELECT address FROM available_props WHERE status = 'available'`)).rows;
+    more.forEach(function (r) { const k = propKey(r.a); if (k && !have[k]) { have[k] = 1; all.push({ key: k, address: r.a }); } });
+    const key = propKey(a), sig = addrSig(a), ap = addrParts(a);
+    let hit = all.filter(function (x) { return x.key === key; })[0] || (sig && all.filter(function (x) { return addrSig(x.address) === sig; })[0]);
+    if (!hit) { const hs = all.filter(function (x) { return (ap.pc && addrLoose(ap, addrParts(x.address))) || (POSTCODE_RE.test(x.address) && POSTCODE_RE.test(a) && sameHome(a, x.address) && (POSTCODE_RE.exec(a)[1] + POSTCODE_RE.exec(a)[2]).toUpperCase() === (POSTCODE_RE.exec(x.address)[1] + POSTCODE_RE.exec(x.address)[2]).toUpperCase()); }); if (hs.length === 1) hit = hs[0]; }
+    // No postcode typed: the one property with the same numbers and a street / building name in common.
+    if (!hit && !ap.pc && ap.nums.length && ap.words.length) { const hs = all.filter(function (x) { const xp = addrParts(x.address); return addrLoose(Object.assign({}, ap, { pc: xp.pc }), xp); }); if (hs.length === 1) hit = hs[0]; }
+    res.json({ ok: true, known: !!hit, address: hit ? hit.address : null, key: hit ? hit.key : null });
+  }));
   // Fill in EPCs from the register. Properties without one are re-checked every
   // 30 days; ones expiring within 60 days (or expired) weekly, to catch a renewal.
   async function autoEpc(p, onlyAddress, limit) {
@@ -8882,7 +8898,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // One check at a time; a "soft" check (sign-in, Refresh) reuses one made in the last 2 minutes.
   let rmBusy = null, ytBusy = null;
   async function softRefresh(p, key, run, busyGet, busySet, soft) {
-    if (soft) { const c = (await p.query("SELECT value FROM app_settings WHERE key = $1", [key])).rows[0], v = c && listFresh(key, c.value); if (v && Date.now() - Date.parse(v.at) < 2 * 60000) return Object.assign({ cached: true }, v); }
+    if (soft) { const c = (await p.query("SELECT value FROM app_settings WHERE key = $1", [key])).rows[0], v = c && listFresh(key, c.value); if (v && Date.now() - Date.parse(v.at) < 10 * 60000) return Object.assign({ cached: true }, v); }
     if (busyGet()) return busyGet();
     const pr = run(p).finally(function () { busySet(null); }); busySet(pr); return pr;
   }

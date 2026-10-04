@@ -551,6 +551,7 @@
   .av-vac { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 4px 11px; font-weight: 800; font-size: .9rem; white-space: nowrap; background: #f4f3ff; color: #5925dc; border: 1px solid #d9d6fe; }
   .av-vac.now { background: #ecfdf3; color: #067647; border-color: #abefc6; } .av-vac.soon { background: #fffaeb; color: #b54708; border-color: #fedf89; } .av-vac.none { background: #f9fafb; color: var(--ink-soft); border-color: #eaecf0; font-weight: 600; } .av-vac.sm { padding: 1px 7px; font-size: .76rem; font-weight: 700; }
   .av-nofee { background: #fffaeb; border: 1px solid #fedf89; color: #93370d; border-radius: 10px; padding: 7px 10px; font-size: .84rem; margin: 8px 0 2px; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; } .av-nofee-t { flex: 1 1 220px; } .av-nofee-f { display: flex; gap: 6px; margin-left: auto; } .av-nofee .inp { width: 150px; padding: 5px 8px; min-height: 0; }
+  .num.fee small.fee-vat { color: var(--green, #067647); font-size: .82rem; } .num.fee small.fee-vat b { font-size: .95rem; }
   .av-meta { font-size: .84rem; color: var(--ink-soft); } .av-meta b { color: var(--ink); }
   .av-contact { font-size: .84rem; border: 1px dashed var(--line, #e6e8ec); border-radius: 10px; padding: 6px 8px; } .av-contact summary { cursor: pointer; font-weight: 600; } .av-contact pre { white-space: pre-wrap; font: inherit; margin: 6px 0; }
   .av-person { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid #f2f4f7; } .av-person:first-of-type { border-top: 0; margin-top: 4px; }
@@ -2432,7 +2433,16 @@
     setTimeout(function(){ t.remove(); }, 2600);
   }
 
-  function api(method, url, body){
+  // AI requests: if the AI or the connection fails (e.g. while the app restarts after an update),
+  // quietly try again a couple of times instead of showing an error.
+  var AI_URL = /\/(assistant|ai-invoice|ai-email|licence-read|summaries|rtr\/read)$/;
+  function api(method, url, body, tries){
+    if (AI_URL.test(url) && tries === undefined) {
+      var again = function(n){ return api(method, url, body, n)['catch'](function(){ return { ok: false, error: 'network', status: 0 }; }).then(function(d){
+        var failed = !d.ok && (d.error === 'ai-failed' || d.error === 'network' || d.error === 'bad-response' || d.status === 0 || d.status >= 502);
+        return failed && n < 3 ? new Promise(function(ok){ setTimeout(ok, n === 0 ? 2500 : 6000); }).then(function(){ return again(n + 1); }) : d; }); };
+      return again(0);
+    }
     return fetch(url, {
       method: method,
       credentials: 'same-origin',
@@ -4409,12 +4419,12 @@
     $('propTenants').innerHTML = '<h3>Tenants <span class="count-chip">' + cur.length + '</span><span style="flex:1"></span><button class="btn small ghost" id="ptPaste" type="button" title="Paste names, numbers and emails in any layout">📋 Paste details</button> <button class="btn small" id="ptAdd" type="button">+ Add tenant</button></h3>' +
       '<div id="ptPasteBox" hidden></div>' +
       (cur.length ? cur.map(function(t){
-        return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1;min-width:0"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
+        return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 auto;min-width:120px;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
           '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
           ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Moved out</button></div>';
       }).join('') : '<p class="muted-note">No tenants saved for this property yet.</p>') +
       (guar.length ? '<div class="pt-guar-h">Guarantors <span class="count-chip">' + guar.length + '</span></div>' + guar.map(function(t){
-        return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1;min-width:0"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Guarantor') + '</button> <span class="pt-badge guar">Guarantor' + (t.guarantorFor ? ' for ' + esc(t.guarantorFor) : '') + '</span>' +
+        return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 auto;min-width:120px;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Guarantor') + '</button> <span class="pt-badge guar">Guarantor' + (t.guarantorFor ? ' for ' + esc(t.guarantorFor) : '') + '</span>' +
           '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
           ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Remove</button></div>';
       }).join('') : '') +
@@ -4436,7 +4446,7 @@
   // Copied tenancy pages (name line, then "Lead Tenant" / "Tenant" / "Guarantor", then "Phone07…", "Emailx@y"…).
   var PT_ROLE = /^(lead tenant|main tenant|joint tenant|tenant|guarantor|permitted occupier|occupant)$/i;
   var PT_SKIP = /^(share of rent|account creation|pending|completed|verified|active|status|rent share|deposit share|referencing|right to rent)\b/i;
-  function ptRoleSel(t){ return '<select class="inp pt-role" data-pt-role="' + t.id + '" title="Their role at this property"><option value="lead"' + (t.role === 'lead' ? ' selected' : '') + '>Lead tenant</option><option value="tenant"' + (!t.role || t.role === 'tenant' ? ' selected' : '') + '>Tenant</option><option value="guarantor"' + (t.role === 'guarantor' ? ' selected' : '') + '>Guarantor</option></select>'; }
+  function ptRoleSel(t){ return '<select class="inp pt-role" data-pt-role="' + t.id + '" title="Their role at this property" style="width:auto;max-width:130px;min-width:0;height:30px;min-height:30px;flex:0 0 auto;padding:2px 24px 2px 8px;font-size:.78rem"><option value="lead"' + (t.role === 'lead' ? ' selected' : '') + '>Lead tenant</option><option value="tenant"' + (!t.role || t.role === 'tenant' ? ' selected' : '') + '>Tenant</option><option value="guarantor"' + (t.role === 'guarantor' ? ' selected' : '') + '>Guarantor</option></select>'; }
   function ptStructured(text){
     var out = [], cur = null;
     String(text || '').replace(/\r/g, '').split('\n').forEach(function(raw){
@@ -5257,7 +5267,7 @@
     busy($('invAi'), true, 'Breaking down…');
     api('POST', '/api/admin/jobs/' + invJob.id + '/ai-invoice', { total: total }).then(function(d){
       busy($('invAi'), false);
-      if (!d.ok) { toast('The AI is busy — please try again in a moment'); return; }
+      if (!d.ok) { toast('That didn’t go through — please try once more'); return; }
       $('invLines').innerHTML = d.lines.map(function(l){ return invLineHtml(l.desc, l.amount.toFixed(2)); }).join('');
       $('invAiNote').hidden = false;
       updateInvTotals();
@@ -6497,7 +6507,7 @@
       }).then(function(d){
         btn.disabled = false; btn.textContent = label;
         if (!d.ok) {
-          toast(d.error === 'ai-not-configured' ? 'AI isn’t set up' : 'The AI is busy — please try again in a moment');
+          toast(d.error === 'ai-not-configured' ? 'AI isn’t set up' : 'That didn’t go through — please try once more');
           return;
         }
         $('aiSubj').value = d.subject;
@@ -7892,7 +7902,7 @@
     api('POST', '/api/admin/assistant', { text: text, mode: askMode, files: askFiles.length ? askFiles : undefined, for_property: askForProp || undefined }).then(function(d){
       busy($('askGo'), false);
       if (!d.ok && typeof d.file_index === 'number' && askFiles[d.file_index]) { askFiles.splice(d.file_index, 1); renderAskFiles(); }   // drop the link that failed
-      if (!d.ok) { $('askErr').textContent = { 'file-type': 'I can read PDFs, Word (.docx) and text (.txt) files, and photos.', 'file-unreadable': 'I couldn’t read the words in that Word file — try saving it as a PDF.', 'file-too-big': 'That file is too big (15 MB max).', 'drive-link': 'That doesn’t look like a link to a Google Drive file — use Share → Copy link on the file.', 'drive-type': 'Google Sheets and Slides can’t be read — download it as a PDF, or use a Google Doc, PDF, Word file or photo.', 'drive-private': 'Google wouldn’t let me open that file. In Drive, open Share and set General access to “Anyone with the link”, then try again (you can switch it back afterwards).', 'drive-fetch': 'I couldn’t reach Google Drive just now — please try again.' }[d.error] || 'Google’s AI is overloaded right now — please try again in a minute.'; return; }
+      if (!d.ok) { $('askErr').textContent = { 'file-type': 'I can read PDFs, Word (.docx) and text (.txt) files, and photos.', 'file-unreadable': 'I couldn’t read the words in that Word file — try saving it as a PDF.', 'file-too-big': 'That file is too big (15 MB max).', 'drive-link': 'That doesn’t look like a link to a Google Drive file — use Share → Copy link on the file.', 'drive-type': 'Google Sheets and Slides can’t be read — download it as a PDF, or use a Google Doc, PDF, Word file or photo.', 'drive-private': 'Google wouldn’t let me open that file. In Drive, open Share and set General access to “Anyone with the link”, then try again (you can switch it back afterwards).', 'drive-fetch': 'I couldn’t reach Google Drive just now — please try again.' }[d.error] || 'That didn’t go through — please press Go again.'; return; }
       var sentFiles = askFiles.slice();   // kept for certificates read from them
       if (d.understood) setAskFile(null);
       if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs, properties, contacts and tenancies — try “add a gas safety for 6 Whitworth House”, “add 36 Balin House with tenants Sarah Jones 07700 900123 and Tom Lee”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; askProps = []; askCerts = []; renderAskContacts(); renderAskTenancies(); renderAskProps(); renderAskCerts(); $('askAllRow').hidden = true; return; }
@@ -7982,16 +7992,30 @@
   // A certificate the property already has (e.g. "gas safety for 134 Regina Road
   // starting on 22/5/26"): checked here, then saved to the property's certificates.
   var askCerts = [];
+  // Ask the server whether a certificate's property is already on file (it looks at repairs, certificates,
+  // landlords, tenants, tenancies and the available list), and use the address we have for it.
+  function certLookup(c, adopt){
+    var a = c.address; if (!a || a.length < 5) return;
+    api('GET', '/api/admin/property-match?address=' + encodeURIComponent(a)).then(function(d){
+      if (!d || !d.ok || c.address !== a || askCerts.indexOf(c) === -1) return;
+      c.checked = true; c.matched = d.known || !!matchProperty(a); c.onfile = d.known ? d.address : '';
+      if (d.known && adopt && d.address && propKey(d.address) !== propKey(a)) c.address = d.address;
+      var el = document.activeElement, i = askCerts.indexOf(c), pos = el && el.dataset && el.dataset.c === 'address' ? el.selectionStart : null, focused = pos !== null && el.closest('[data-ci]') && Number(el.closest('[data-ci]').dataset.ci) === i;
+      renderAskCerts();
+      if (focused) { var inp = document.querySelector('#askCerts [data-ci="' + i + '"] [data-c="address"]'); if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch (er) {} } }
+    });
+  }
   function saveAskCert(c){
     if (c.type === 'Licence') return saveReadLicence(c.address, c, c.file);
     return api('PUT', '/api/admin/certificates', { address: c.address, type: c.type, issued_on: c.issued_on, expires_on: c.expires_on, reference: c.reference, rating: c.rating || '', doc: c.file || undefined });
   }
   function renderAskCerts(){
+    askCerts.forEach(function(c){ if (!c.checked && !c.looking) { c.looking = true; setTimeout(function(){ certLookup(c, true); }, 0); } });
     $('askCerts').innerHTML = (askCerts.length > 1 ? '<div class="row-actions" style="margin:0"><span class="muted-note" style="flex:1;margin:0">' + askCerts.length + ' certificates — check the dates, then save them all at once.</span><button class="btn primary" type="button" data-cact="saveall">Save all ' + askCerts.length + ' certificates</button></div>' : '') + askCerts.map(function(c, i){
       var def = certDef(c.type), lic = c.type === 'Licence', cur = lic ? licenceOf(c.address) : certFor(propKey(c.address), c.type);
       return '<div class="draft cdraft" data-ci="' + i + '"><div style="display:flex;align-items:center;gap:8px"><strong>📄 ' + esc(def.long) + '</strong></div>' +
         '<div><label class="lbl">Property</label><input class="inp" data-c="address" list="askPropList2" value="' + esc(c.address) + '">' +
-          '<div class="match ' + (c.matched && !(cur && c.expires_on && cur.expires_on > c.expires_on) ? 'ok' : 'warn') + '">' + (c.matched ? '✓ Property on file' + (cur && cur.expires_on ? ' — current ' + esc(def.name.toLowerCase()) + ' ' + (daysUntil(cur.expires_on) < 0 ? 'expired ' : 'until ') + esc(longDay(cur.expires_on)) + (c.expires_on && cur.expires_on > c.expires_on ? ' — <b>newer than the date here</b>; saving replaces it with this older one' : ' (this replaces it)') : '') : 'Not a property on file yet — saving adds it') + '</div></div>' +
+          '<div class="match ' + (c.matched && !(cur && c.expires_on && cur.expires_on > c.expires_on) ? 'ok' : 'warn') + '">' + (c.matched ? '✓ Property on file' + (c.onfile && propKey(c.onfile) !== propKey(c.address) ? ': ' + esc(c.onfile) + ' <small>(saved to this one)</small>' : '') + (cur && cur.expires_on ? ' — current ' + esc(def.name.toLowerCase()) + ' ' + (daysUntil(cur.expires_on) < 0 ? 'expired ' : 'until ') + esc(longDay(cur.expires_on)) + (c.expires_on && cur.expires_on > c.expires_on ? ' — <b>newer than the date here</b>; saving replaces it with this older one' : ' (this replaces it)') : '') : 'Not a property on file yet — saving adds it') + '</div></div>' +
         '<div class="grid3"><div><label class="lbl">' + (lic ? 'Valid from' : 'Date done / starts') + '</label><input class="inp" type="date" data-c="issued_on" value="' + esc(c.issued_on || '') + '"></div>' +
           '<div><label class="lbl">Expires</label><input class="inp" type="date" data-c="expires_on" value="' + esc(c.expires_on || '') + '"></div>' +
           '<div><label class="lbl">' + (lic ? 'Licence reference' : 'Certificate no. (optional)') + '</label><input class="inp" data-c="reference" value="' + esc(c.reference || '') + '"></div></div>' +
@@ -8006,7 +8030,13 @@
     var c = askCerts[Number(box.dataset.ci)], f = e.target.dataset.c; if (!c || !f) return;
     c[f] = e.target.value.trim();
     if (f === 'issued_on' && c.issued_on && c.type !== 'Licence') { c.expires_on = addYears(c.issued_on, certDef(c.type).years); box.querySelector('[data-c="expires_on"]').value = c.expires_on; }
-    if (f === 'address') { var pr = matchProperty(c.address); c.matched = !!pr; }
+    if (f === 'address') { var pr = matchProperty(c.address); c.matched = !!pr; certLookup(c, true); }
+  });
+  // Typing a property: keep checking whether it's one we have (however it's written).
+  var certLT = 0;
+  $('askCerts').addEventListener('input', function(e){
+    if (e.target.dataset.c !== 'address') return; var box = e.target.closest('[data-ci]'), c = box && askCerts[Number(box.dataset.ci)]; if (!c) return;
+    c.address = e.target.value.trim(); clearTimeout(certLT); certLT = setTimeout(function(){ certLookup(c, false); }, 350);
   });
   $('askCerts').addEventListener('click', function(e){
     var b = e.target.closest('[data-cact]'); if (!b) return;
@@ -9975,7 +10005,7 @@
           (!off ? '<button type="button" class="btn small ghost" data-ava="rm" title="Link to a Rightmove listing">🔗 Rightmove</button>' : '') + ((ytM[x.id] || []).length && !off ? '<button type="button" class="btn small ghost" data-ava="ytshare" title="Send the video">📤 Video</button>' : '') + (ytData && ytData.at && !off ? '<button type="button" class="btn small ghost" data-ava="yt" title="Choose the video">🎬</button>' : '') + '<button type="button" class="btn small ghost" data-ava="edit">✏️</button>' + (off ? '' : '<button type="button" class="btn small ghost" data-avs="let" title="Mark as let">✓ Let</button>') + (canDel ? '<button type="button" class="btn small ghost danger" data-ava="del" title="Delete">🗑</button>' : '') + '</div></div>';
     }).join('') + (avMore ? '<div style="grid-column:1/-1;text-align:center"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more (' + avMore + ' not shown — or search above)</button></div>' : '') : '<div class="card"><p class="muted-note" style="margin:0">' + (avItems.length ? 'Nothing matches — try another filter.' : 'No properties yet — add one, or paste your list from the spreadsheet.') + '</p></div>';
   }
-  $('avQ').addEventListener('input', function(){ avLimit = 200; renderAvail(); }); $('avSort').addEventListener('change', renderAvail);
+  $('avQ').addEventListener('input', function(){ avLimit = 200; clearTimeout(avQT); avQT = setTimeout(renderAvail, 180); }); var avQT = 0; $('avSort').addEventListener('change', renderAvail);
   function avSetMode(m){ avMode = m; try { localStorage.setItem('rr_av_mode', m); } catch (e) {} document.querySelectorAll('#avModes [data-avm]').forEach(function(b){ b.classList.toggle('on', b.dataset.avm === m); }); }
   avSetMode(avMode);
   $('avModes').addEventListener('click', function(e){ var b = e.target.closest('[data-avm]'); if (!b) return; avSetMode(b.dataset.avm); renderAvail(); });
@@ -11447,8 +11477,8 @@
         '<div class="num">' + esc(gbp(c.rent)) + '<small>per month</small>' + (function(){ var r = tcyRentDay(d); return r ? '<small title="Next rent ' + esc(longDay(isoDay(r.next))) + '">rent on the ' + ordinal(r.day) + ' · ' + (r.days === 0 ? 'today' : r.days === 1 ? 'tomorrow' : 'in ' + r.days + ' days') + '</small>' : ''; })() + '</div>' +
         '<div class="num fee">' +
           // Our fee in plain words: how much, and when it's taken.
-          (c.monthlyFee ? esc(gbp(c.monthlyFee)) + '<small>a month, from the rent</small>' : '') +
-          (c.upfrontFee ? (c.monthlyFee ? '<small style="color:var(--ink)"><b>+ ' + esc(gbp(c.upfrontFee)) + '</b> a year, up front</small>' : esc(gbp(c.upfrontFee)) + '<small>a year, paid up front</small>') : '') +
+          (c.monthlyFee ? esc(gbp(c.monthlyFee)) + '<small>a month, from the rent</small>' + (c.vatOn ? '<small class="fee-vat"><b>' + esc(gbp(r2(c.monthlyFee * 1.2))) + '</b> a month inc. VAT</small>' : '') : '') +
+          (c.upfrontFee ? (c.monthlyFee ? '<small style="color:var(--ink)"><b>+ ' + esc(gbp(c.upfrontFee)) + '</b> a year, up front</small>' : esc(gbp(c.upfrontFee)) + '<small>a year, paid up front</small>' + '<small class="fee-vat"><b>' + esc(gbp(r2(c.upfrontFee * (c.vatOn ? 1.2 : 1) / 12))) + '</b> a month' + (c.vatOn ? ' inc. VAT' : '') + ' over the year</small>') : '') +
           (!c.monthlyFee && !c.upfrontFee ? '—<small>' + (/rent\s*4\s*rent/i.test(String(d.service || '')) ? 'Rent4Rent — no fee' : 'no fee set') + '</small>' : '<small>' + esc(gbp(c.monthlyFee * 12 + c.upfrontFee)) + ' a year' + (c.vatOn ? ' · <b>' + esc(gbp(r2((c.monthlyFee * 12 + c.upfrontFee) * 1.2))) + '</b> inc. VAT' : '') + '</small>') +
           '</div><div class="when">' + esc(tcyStatus(d)) +
           '<small style="color:' + (c.btLeft > 0.004 ? 'var(--red, #c00)' : 'var(--green, #16a34a)') + '">' + (c.btLeft > 0.004 ? esc(gbp(c.btLeft)) + ' still to pay' : 'Move-in monies paid ✓') + '</small></div><span class="chev">›</span></button>';
