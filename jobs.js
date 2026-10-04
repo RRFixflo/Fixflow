@@ -8141,21 +8141,41 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   // Worked examples at £1,000 a month, with the minimum fees applied, the monthly
   // instalments when the fee is collected monthly, and what the landlord receives.
-  function feeExamples(f) {
-    // A short example at £1,000 a month: [what, amount] pairs.
+  function feeExamples(f, rentIn) {
+    // A worked example at the property's rent (when we know it, else £2,000 a month): what we take, when,
+    // and what the landlord receives — the first month, each month after, and over the first year.
     const gbp = function (v) { const r = Math.round(v * 100) / 100; return '\xA3' + r.toLocaleString('en-GB', { minimumFractionDigits: r % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
+    const rent = Number(rentIn) > 0 ? Math.round(Number(rentIn)) : 2000;
     const vat = f.vat !== false, out = [];
-    const fee = function (base, pct, min) { const calc = base * pct / 100 * (vat ? 1.2 : 1), m = Number(min) || 0; return Math.max(calc, m); };
+    let minUsed = false;
+    const fee = function (base, pct, min) { const calc = base * pct / 100 * (vat ? 1.2 : 1), m = Number(min) || 0; if (m > calc) minUsed = true; return Math.max(calc, m); };
     const hasFind = f.find !== 'none' && f.find_pct != null, hasOng = f.ongoing !== 'none' && f.ongoing_pct != null;
-    const find = hasFind ? fee(12000, f.find_pct, f.find_min) : 0, ong = hasOng ? fee(1000, f.ongoing_pct, f.ongoing_min) : 0;
-    // Collected monthly: just what we take each month and what they receive.
-    if ((hasFind && f.find_monthly) || hasOng) {
-      const monthly = ong + (hasFind && f.find_monthly ? find / 12 : 0);
-      if (hasFind && !f.find_monthly) out.push(['Tenant find (once)', gbp(find)]);
-      out.push(['Our fee each month', gbp(monthly)]);
-      out.push(['You receive each month', gbp(1000 - monthly)]);
-    } else if (hasFind) out.push(['Tenant find fee', gbp(find)]);
+    const find = hasFind ? fee(rent * 12, f.find_pct, f.find_min) : 0, ong = hasOng ? fee(rent, f.ongoing_pct, f.ongoing_min) : 0;
+    if (!hasFind && !hasOng) return out;
+    out.push(['Rent', gbp(rent) + ' a month']);
+    if (hasFind && !f.find_monthly) {
+      out.push(['Tenant find (12 months, taken once at the start)', gbp(find)]);
+      if (hasOng) out.push([(ONGOING_NAME[f.ongoing] || 'Rent collection') + ' each month', gbp(ong)]);
+      const first = rent - find - ong;
+      out.push(['You receive in the first month', first >= 0 ? gbp(first) : '\xA30 (the remaining ' + gbp(-first) + ' comes from the next rent)']);
+      out.push(['You receive each month after that', gbp(rent - ong)]);
+    } else {
+      const monthly = ong + (hasFind ? find / 12 : 0);
+      out.push(['Our fee each month' + (hasFind && hasOng ? ' (tenant find ' + gbp(find / 12) + ' + ' + (ONGOING_NAME[f.ongoing] || 'rent collection').toLowerCase() + ' ' + gbp(ong) + ')' : ''), gbp(monthly)]);
+      out.push(['You receive each month', gbp(rent - monthly)]);
+    }
+    out.push(['You receive over the first 12 months', gbp(rent * 12 - find - ong * 12)]);
+    if (minUsed) out.push(['A minimum fee applies at this rent', '']);
     return out;
+  }
+  // The rent to use in a fee example: the property's rent from the available list or its latest tenancy.
+  async function ltExampleRent(p, address) {
+    const key = propKey(address || ''); if (!key) return null;
+    const rows = (await p.query("SELECT address, rent_pcm FROM available_props WHERE rent_pcm IS NOT NULL ORDER BY (status = 'available') DESC, id DESC")).rows, ap = addrParts(address);
+    const av = rows.filter(function (r) { return propKey(r.address) === key; })[0] || rows.filter(function (r) { return addrLoose(ap, addrParts(r.address)); })[0];
+    if (av) return Number(av.rent_pcm);
+    const t = (await p.query("SELECT data->>'rent_pcm' AS r FROM tenancies WHERE property_key = $1 ORDER BY start_date DESC NULLS LAST, id DESC LIMIT 1", [key])).rows[0];
+    return t && Number(t.r) > 0 ? Number(t.r) : null;
   }
   function ltRef(id) { return 'LT' + String(id).padStart(4, '0'); }
   // The property's EPC from the government register (checked once a day at most).
@@ -8248,7 +8268,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, landlords: ls });
   }));
   app.get('/api/admin/landlord-terms/known', withDb(async function (p, req, res) {
-    res.json(Object.assign({ ok: true }, await ltKnown(p, str(req.query.address, 400), req.query.landlord_id)));
+    const a = str(req.query.address, 400), k = await ltKnown(p, a, req.query.landlord_id);
+    // No EPC on file: look the property up on the government EPC register.
+    if (!k.epc && a) { try { const e = await epcForAddress(a); if (e && e.found) k.epc = { expires_on: e.expires_on, valid: !!e.valid, rating: e.rating || '', reference: e.reference || '', register: true }; else if (e) k.epc_none = true; } catch (err) { /* register didn't answer */ } }
+    res.json(Object.assign({ ok: true }, k));
   }));
   app.post('/api/admin/landlord-terms', withDb(async function (p, req, res) {
     const b = req.body || {}, fees = cleanFees(b.fees);
@@ -8301,9 +8324,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const t = await ltByToken(p, req.params.token);
     if (!t || t.status === 'cancelled') return res.status(404).json({ ok: false, error: 'not-found' });
+    const exRent = await ltExampleRent(p, t.property_address).catch(function () { return null; });
     if (!(t.data || {}).viewed_at) p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'viewed_at')", [t.id, JSON.stringify([ltLog(req, 'Landlord opened the agreement link', 'landlord')])]).catch(function () {});
     res.json({ ok: true, ref: ltRef(t.id), status: t.status, property: t.property_address, landlord_name: t.landlord_name, landlord_email: t.landlord_email, landlord_phone: t.landlord_phone,
-      fees: t.fees, lines: feeLines(t.fees || {}), examples: feeExamples(t.fees || {}), examples_vat: (t.fees || {}).vat !== false, known: t.status === 'signed' ? null : ltPublicKnown((t.data || {}).known), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
+      fees: t.fees, lines: feeLines(t.fees || {}), examples: feeExamples(t.fees || {}, exRent), example_rent: exRent || 2000, examples_vat: (t.fees || {}).vat !== false, known: t.status === 'signed' ? null : ltPublicKnown((t.data || {}).known), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
   }));
   app.post('/api/landlord-terms/:token/sign', withDb(async function (p, req, res) {
     if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -8454,8 +8478,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (f.ongoing !== 'none' && f.ongoing_pct != null) frows.push([ONGOING_NAME[f.ongoing] || 'Rent Collection Service', incPct(f.ongoing_pct) + ' of the rent received - deducted monthly from each month\'s rent', f.ongoing_min ? money(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' / month' : '-']);
     if (f.other) frows.push(['Other agreed fees', f.other, '']);
     table([['Service', 0.3], ['Fee', 0.48], ['Minimum', 0.22]], frows);
-    const ex = feeExamples(f);
-    if (ex.length) { ensure(34 + ex.length * 13); rr(M, y + 4, CW, ex.length * 13 + 26, 8, C.blueBg); text('Example at \xA31,000 a month rent' + (f.vat !== false ? ' (fees include VAT)' : ''), M + 12, y - 8, 8.2, B, C.blue); ex.forEach(function (e, i) { text(e[0], M + 12, y - 22 - i * 13, 8.2, F, C.blue); text(e[1], M + 170, y - 22 - i * 13, 8.2, /^You receive/.test(e[0]) ? B : F, C.blue); }); y -= ex.length * 13 + 34; }
+    const exRent = await ltExampleRent(p, t.property_address).catch(function () { return null; });
+    const ex = feeExamples(f, exRent);
+    if (ex.length) { ensure(34 + ex.length * 13); rr(M, y + 4, CW, ex.length * 13 + 26, 8, C.blueBg); text('Worked example' + (exRent ? ' at this property\'s rent' : ' at \xA32,000 a month rent') + (f.vat !== false ? ' (fees include VAT)' : ''), M + 12, y - 8, 8.2, B, C.blue); ex.forEach(function (e, i) { text(e[0], M + 12, y - 22 - i * 13, 8.2, F, /^A minimum/.test(e[0]) ? C.soft : C.blue); if (e[1]) right(e[1], M + CW - 12, y - 22 - i * 13, 8.2, /^You receive/.test(e[0]) ? B : F, C.blue); }); y -= ex.length * 13 + 34; }
     band('Key points');
     (LT_TERMS.intro || []).forEach(function (s, i) { if (i === 0 && !(f.renewal && f.find !== 'none')) s = 'Under these terms you will be liable to pay Residential Realtors\' commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.'; para(s, { size: 8.6 }); });
 
