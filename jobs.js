@@ -8500,6 +8500,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!pc[0]) return ''; const rest = a.replace(pc[0], ' '), nums = rest.match(/\d+[a-z]?\b/gi) || [];
     return (pc[1] + pc[2]).toUpperCase() + '|' + nums.map(function (n) { return n.toLowerCase(); }).sort().join('|');
   }
+  // A looser "same property": same postcode, the numbers in one address all in the other (e.g. "Flat 1, South
+  // Lambeth Road" and "Flat 1, 123 South Lambeth Road"), and a street / building word in common.
+  const ADDR_STOP = ['flat', 'apartment', 'road', 'street', 'avenue', 'lane', 'london', 'house', 'court', 'close', 'way', 'gardens', 'place', 'the'];
+  function addrParts(a) {
+    a = String(a || ''); const pc = (/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i.exec(a) || []);
+    const rest = pc[0] ? a.replace(pc[0], ' ') : a;
+    return { pc: pc[0] ? (pc[1] + pc[2]).toUpperCase() : '', nums: (rest.match(/\d+[a-z]?\b/gi) || []).map(function (n) { return n.toLowerCase(); }),
+      words: rest.toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 4 && ADDR_STOP.indexOf(w) === -1; }) };
+  }
+  function addrLoose(a, b) {
+    const x = typeof a === 'object' ? a : addrParts(a), y = typeof b === 'object' ? b : addrParts(b);
+    if (!x.pc || x.pc !== y.pc || !x.nums.length || !y.nums.length) return false;
+    const small = x.nums.length <= y.nums.length ? x.nums : y.nums, big = small === x.nums ? y.nums : x.nums;
+    if (!small.every(function (n) { return big.indexOf(n) !== -1; })) return false;
+    return x.words.some(function (w) { return y.words.indexOf(w) !== -1; });
+  }
   async function landlordIndex(p) {
     const list = [], byId = {};
     (await p.query('SELECT id, name, email, phone FROM landlords')).rows.forEach(function (l) { const e = { id: l.id, name: l.name, phone: l.phone || '', email: l.email || '', addrs: [], src: 'landlord' }; byId[l.id] = e; list.push(e); });
@@ -8513,15 +8529,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
     };
     (await p.query('SELECT property_address, landlord_name, landlord_email, landlord_phone FROM landlord_terms ORDER BY id DESC')).rows.forEach(function (t) { addOther(t.landlord_name, t.landlord_phone, t.landlord_email, t.property_address, 'terms'); });
     (await p.query("SELECT address, data->'landlord' AS l FROM tenancies ORDER BY id DESC")).rows.forEach(function (t) { const l = t.l || {}; addOther(l.name, l.phone, l.email, t.address || (t.data && t.data.address), 'tenancy'); });
-    const bySig = {}, byKey = {}, byPhone = {}, byMail = {}, byName = {};
+    const bySig = {}, byKey = {}, byPhone = {}, byMail = {}, byName = {}, byPc = {};
     list.forEach(function (e) {
-      e.addrs.forEach(function (x) { const sg = addrSig(x.a); if (sg && !bySig[sg]) bySig[sg] = e; if (x.k && !byKey[x.k]) byKey[x.k] = e; });
+      e.addrs.forEach(function (x) { const sg = addrSig(x.a); if (sg && !bySig[sg]) bySig[sg] = e; if (x.k && !byKey[x.k]) byKey[x.k] = e; const pp = addrParts(x.a); if (pp.pc) (byPc[pp.pc] = byPc[pp.pc] || []).push({ e: e, parts: pp }); });
       String(e.phone || '').split(/[,;\/]+/).forEach(function (x) { const k = llPh(x); if (k && !byPhone[k]) byPhone[k] = e; });
       if (e.email && !byMail[String(e.email).toLowerCase().trim()]) byMail[String(e.email).toLowerCase().trim()] = e;
       const n = llNm(e.name); if (n.split(' ').length >= 2 && !byName[n]) byName[n] = e;
     });
     return function find(address, contact, landlordName) {
       let e = bySig[addrSig(address)] || byKey[propKey(address)];
+      if (!e && address) { const ap = addrParts(address), cand = byPc[ap.pc] || []; const hits = []; cand.forEach(function (c) { if (hits.indexOf(c.e) === -1 && addrLoose(ap, c.parts)) hits.push(c.e); }); if (hits.length === 1) e = hits[0]; }
       if (!e) { const txt = String(contact || '') + ' ' + String(landlordName || ''); (txt.match(/(\+44|0)[\d\s()\-]{9,14}\d/g) || []).some(function (m) { return (e = byPhone[llPh(m)]); }); }
       if (!e) (String(contact || '') + ' ' + String(landlordName || '')).replace(/[^\s@<>,;()]+@[^\s@<>,;()]+\.[a-z]{2,}/gi, function (m) { if (!e) e = byMail[m.toLowerCase()]; return m; });
       if (!e && landlordName) e = byName[llNm(landlordName)];
@@ -8540,13 +8557,28 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   async function availLinks(p, items, owner) {
     const out = {}, find = await landlordIndex(p);
+    // Current tenants we hold for each property (saved at the property, or on its latest tenancy) — never guarantors.
+    const tenRows = (await p.query(`SELECT pt.property_key, pt.address, t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id
+      WHERE pt.moved_out_at IS NULL AND pt.role IS DISTINCT FROM 'guarantor' AND t.deleted_at IS NULL ORDER BY pt.role = 'lead' DESC NULLS LAST, pt.created_at`)).rows;
+    const latestTcy = {}; (await p.query('SELECT property_key, address, data FROM tenancies ORDER BY start_date DESC NULLS LAST, id DESC')).rows.forEach(function (t) { if (t.property_key && !latestTcy[t.property_key]) latestTcy[t.property_key] = t; });
+    tenRows.forEach(function (r) { r.parts = addrParts(r.address); });
+    const tcyParts = {}; Object.keys(latestTcy).forEach(function (k2) { const t = latestTcy[k2]; tcyParts[k2] = addrParts(t.address || (t.data || {}).address); });
+    const tenantsFor = function (address) {
+      const key = propKey(address), sig = addrSig(address), ap = addrParts(address), got = [], seen = {};
+      const add = function (t) { if (!t || !(t.name || t.phone || t.email)) return; const k = (String(t.phone || '').replace(/\D/g, '').slice(-10)) || String(t.email || '').toLowerCase() || String(t.name || '').toLowerCase(); if (seen[k]) return; seen[k] = 1; got.push({ name: t.name || '', phone: t.phone || '', email: t.email || '' }); };
+      const here = function (k2, a2, parts) { return k2 === key || (ap.pc && parts.pc === ap.pc && ((sig && addrSig(a2) === sig) || addrLoose(ap, parts))); };
+      tenRows.forEach(function (r) { if (here(r.property_key, r.address, r.parts)) add(r); });
+      Object.keys(latestTcy).forEach(function (k2) { const t = latestTcy[k2]; if (here(k2, t.address || (t.data || {}).address, tcyParts[k2])) ((t.data || {}).tenants || []).forEach(add); });
+      return got.slice(0, 12);
+    };
     const tens = {}, tenSig = {};
     if (owner) (await p.query('SELECT id, property_key, address, start_date FROM tenancies ORDER BY id')).rows.forEach(function (t) { const v = { id: t.id, address: t.address, start: t.start_date }, k = t.property_key || propKey(t.address); if (k) tens[k] = v; const sg = addrSig(t.address); if (sg) tenSig[sg] = v; });
     items.forEach(function (x) {
       const o = {}, l = find(x.address, x.contact, x.landlord);
       if (l) o.landlord = l;
+      if (x.status === 'available') { const ts = tenantsFor(x.address); if (ts.length) o.tenants = ts; }
       if (owner) { const t = tenSig[addrSig(x.address)] || tens[propKey(x.address)]; if (t) o.tenancy = t; }
-      if (o.landlord || o.tenancy) out[x.id] = o;
+      if (o.landlord || o.tenancy || o.tenants) out[x.id] = o;
     });
     return out;
   }

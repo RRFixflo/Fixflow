@@ -9749,6 +9749,7 @@
       if (label.test(l)) return;
       var ph = avPhones(l), ml = avEmails(l), rest = l; ph.forEach(function(p){ rest = rest.replace(p, ' '); }); ml.forEach(function(m){ rest = rest.replace(m, ' '); });
       rest = rest.replace(/\b(e-?mail|tel|telephone|phone|mobile|mob)\b\s*[:\-]?/ig, ' ').replace(/[\s,;:\-–]+/g, ' ').trim();
+      rest = rest.replace(/^((lead|main|joint)\s+)?(tenants?|occupants?)\s*\d*\s+/i, '').trim();
       var isName = rest && rest.length < 60 && !/\d/.test(rest) && /^((mr|mrs|ms|miss|dr|mx)\.?\s+)?[A-Z][A-Za-z'’\-]*(\s+(&|and|[A-Z][A-Za-z'’\-]*)){0,5}$/.test(rest);
       if (isName && (!cur || cur.name || cur.phones.length || cur.mails.length)) fresh();
       if (!cur) fresh();
@@ -9757,8 +9758,16 @@
     });
     return out.filter(function(p){ return p.name || p.phones.length || p.mails.length || p.notes.length; });
   }
-  function avContactHtml(t){
-    var ppl = avPeople(t); if (!ppl.length) return '';
+  function avContactHtml(t, saved){
+    var ppl = avPeople(t);
+    // Add every current tenant we hold for the property (saved records / tenancy) not already in the pasted contact.
+    (saved || []).forEach(function(s2){
+      var tail = String(s2.phone || '').replace(/\D/g, '').slice(-10), em = String(s2.email || '').toLowerCase(), nm = String(s2.name || '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr)\b\.?\s*/g, '').trim();
+      var hit = ppl.filter(function(p2){ return (tail && p2.phones.some(function(x){ return x.replace(/\D/g, '').slice(-10) === tail; })) || (em && p2.mails.some(function(x){ return x.toLowerCase() === em; })) || (nm && String(p2.name || '').toLowerCase().indexOf(nm) !== -1); })[0];
+      if (hit) { if (s2.phone && !hit.phones.length) hit.phones.push(s2.phone); if (s2.email && !hit.mails.length) hit.mails.push(s2.email); if (!hit.name && s2.name) hit.name = s2.name; return; }
+      ppl.push({ name: s2.name || '', phones: s2.phone ? [s2.phone] : [], mails: s2.email ? [s2.email] : [], notes: [] });
+    });
+    if (!ppl.length) return '';
     return '<details class="av-contact"><summary>👤 Current tenant / viewings contact' + (ppl.length > 1 ? ' (' + ppl.length + ')' : '') + '</summary>' + ppl.map(function(p){
       var ph = p.phones[0], w = ph ? waNumber(ph) : '', ml = p.mails[0];
       return '<div class="av-person"><div class="av-pwho"><b>' + esc(p.name || (ph ? 'Phone' : 'Contact')) + '</b><small>' + [p.phones.join(' / '), p.mails.join(' / '), p.notes.join(' · ')].filter(Boolean).map(esc).join(' · ') + '</small></div><div class="av-pacts">' +
@@ -9929,7 +9938,7 @@
           return h; })() +
         ((x.landlord || x.commission) ? '<div class="av-meta">Landlord <b>' + esc(x.landlord || '—') + '</b>' + (x.commission ? ' · Commission <b>' + esc(x.commission) + '</b>' : '') + '</div>' : '') +
         (x.notes ? '<div class="av-note">📝 ' + esc(x.notes) + '</div>' : '') +
-        (x.contact ? avContactHtml(x.contact) : '') +
+        ((x.contact || ((avLinkData || {})[x.id] || {}).tenants) ? avContactHtml(x.contact, ((avLinkData || {})[x.id] || {}).tenants) : '') +
         '<div class="av-acts">' + (off ? '<button type="button" class="btn small" data-avs="available">↩ Back on the list</button>' : '<button type="button" class="btn small primary" data-ava="offer">📝 Offer form</button><button type="button" class="btn small" data-ava="pvr">🗓 PVR</button><button type="button" class="btn small" data-ava="view">👀 Book viewing</button><button type="button" class="btn small" data-ava="send" title="Send the property or its video by WhatsApp or email">📤 Send</button><button type="button" class="btn small ghost" data-ava="copy">📋 Copy</button>') +
           (!off ? '<button type="button" class="btn small ghost" data-ava="rm" title="Link to a Rightmove listing">🔗 Rightmove</button>' : '') + ((ytM[x.id] || []).length && !off ? '<button type="button" class="btn small ghost" data-ava="ytshare" title="Send the video">📤 Video</button>' : '') + (ytData && ytData.at && !off ? '<button type="button" class="btn small ghost" data-ava="yt" title="Choose the video">🎬</button>' : '') + '<button type="button" class="btn small ghost" data-ava="edit">✏️</button>' + (off ? '' : '<button type="button" class="btn small ghost" data-avs="let" title="Mark as let">✓ Let</button>') + (canDel ? '<button type="button" class="btn small ghost danger" data-ava="del" title="Delete">🗑</button>' : '') + '</div></div>';
     }).join('') + (avMore ? '<div style="grid-column:1/-1;text-align:center"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more (' + avMore + ' not shown — or search above)</button></div>' : '') : '<div class="card"><p class="muted-note" style="margin:0">' + (avItems.length ? 'Nothing matches — try another filter.' : 'No properties yet — add one, or paste your list from the spreadsheet.') + '</p></div>';
