@@ -547,6 +547,7 @@
   .av-pacts { display: flex; gap: 4px; flex-shrink: 0; } .av-pbtn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 30px; padding: 0 8px; border: 1px solid var(--line, #e6e8ec); border-radius: 8px; background: #fff; text-decoration: none; font-size: .8rem; font-weight: 600; color: inherit; } .av-pbtn.wa { background: #25d366; border-color: #25d366; color: #fff; } .av-phones { display: flex; gap: 6px; flex-wrap: wrap; }
   .av-note { font-size: .84rem; background: #fffaeb; border-radius: 10px; padding: 6px 8px; color: #7a4d00; }
   .av-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line, #e6e8ec); }
+  .av-missed { margin-top: 10px; font-size: .84rem; } .av-missed { background: #fffaeb; border: 1px solid #fedf89; border-radius: 10px; padding: 8px 10px; } .av-missed summary { cursor: pointer; font-weight: 600; color: #b54708; } .av-missed ol { max-height: 220px; overflow: auto; margin: 4px 0; padding-left: 22px; color: var(--ink-soft); }
   .av-prev-wrap { max-height: 420px; overflow: auto; border: 1px solid var(--line, #e6e8ec); border-radius: 10px; margin-top: 6px; } .av-prev-wrap .av-prev { margin-top: 0; } .av-prev { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: 10px; } .av-prev th, .av-prev td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line, #e6e8ec); vertical-align: top; } .av-prev td small { color: var(--ink-soft); }
   @media (max-width: 640px) { .av-list { grid-template-columns: 1fr; } .av-grid { grid-template-columns: 1fr; } .av-prev { display: block; overflow-x: auto; } }
   .av-rm-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: .84rem; padding: 8px 10px; border-radius: 12px; background: #f2fbf9; border: 1px solid #c8ece4; margin: 0 0 10px; }
@@ -562,6 +563,7 @@
   .av-rmlink { display: flex; gap: 10px; align-items: center; text-decoration: none; color: inherit; border: 1px solid #c8ece4; background: #f2fbf9; border-radius: 12px; padding: 6px; } .av-rmlink img { width: 72px; height: 50px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; } .av-rmlink span { font-size: .8rem; color: var(--ink-soft); min-width: 0; } .av-rmlink b { display: block; color: #0b6b5a; font-size: .84rem; }
   .av-dream { font-size: .82rem; font-weight: 600; color: #6941c6; background: #f4f0ff; border-radius: 10px; padding: 6px 8px; }
   .av-dreams { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; } .av-dlink { display: inline-flex; gap: 2px; align-items: center; background: #fff; border: 1px solid #ddd2fe; border-radius: 999px; padding: 1px 4px 1px 8px; } .av-dlink a { color: #6941c6; text-decoration: none; } .av-dlink .linkish { color: #98a2b3; font-size: 1rem; padding: 0 4px; }
+  .av-wd { display: inline-block; background: #f2f4f7; color: #475467; border-radius: 999px; padding: 1px 8px; font-size: .74rem; font-weight: 700; }
   .av-lt-wrap { grid-column: 1 / -1; overflow-x: auto; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #fff; }
   .av-lt { width: 100%; border-collapse: collapse; font-size: .85rem; } .av-lt th { position: sticky; top: 0; background: #f9fafb; text-align: left; padding: 8px 10px; font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-soft); cursor: pointer; user-select: none; white-space: nowrap; border-bottom: 1px solid var(--line, #e6e8ec); } .av-lt th.on { color: var(--ink, #101828); }
   .av-lt td { padding: 7px 10px; border-bottom: 1px solid #f2f4f7; vertical-align: middle; } .av-lt tr:hover td { background: #f9fafb; } .av-lt td.nw { white-space: nowrap; } .av-lt td.ad { min-width: 260px; } .av-lt td.ad .linkish { opacity: .5; } .av-lt tr:hover td.ad .linkish { opacity: 1; } .av-lt td.nt { max-width: 260px; color: var(--ink-soft); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1617,7 +1619,7 @@
           </div>
           <div class="av-form" id="avPaste" hidden>
             <p class="muted-note" style="margin:0 0 8px">Copy the rows from your spreadsheet (Excel or Google Sheets) and paste them here. We’ll find the address, bedrooms, date, rent, landlord, commission, contact and notes — you can check them before adding.</p>
-            <div class="av-chips" id="avPasteAs" style="margin:0 0 8px"><span class="muted-note" style="margin:0">Add these as:</span><button type="button" class="on" data-pas="available">Available</button><button type="button" data-pas="let">✓ Already let</button></div><textarea class="inp" id="avPasteTxt" rows="7" placeholder="Paste rows here…"></textarea>
+            <div class="av-chips" id="avPasteAs" style="margin:0 0 8px"><span class="muted-note" style="margin:0">Add these as:</span><button type="button" class="on" data-pas="available">Available</button><button type="button" data-pas="let">✓ Already let</button></div><textarea class="inp" id="avPasteTxt" rows="7" placeholder="Paste rows here…"></textarea><div class="muted-note" id="avPasteCount" style="margin:4px 0 0"></div>
             <div style="display:flex;gap:8px;margin-top:8px"><button type="button" class="btn" id="avPasteRead">Read the rows</button><button type="button" class="btn ghost" id="avPasteX">Cancel</button></div>
             <div id="avPastePrev"></div>
           </div>
@@ -9646,7 +9648,8 @@
   function renderAvail(){
     var q = $('avQ').value.trim().toLowerCase(), sort = $('avSort').value;
     var list = avItems.filter(function(x){
-      if (avFlag === 'let' || avFlag === 'withdrawn') { if (x.status !== avFlag) return false; } else if (x.status !== 'available') return false;
+      // Been let holds both let and withdrawn properties; Withdrawn shows only those.
+      if (avFlag === 'let') { if (x.status !== 'let' && x.status !== 'withdrawn') return false; } else if (avFlag === 'withdrawn') { if (x.status !== 'withdrawn') return false; } else if (x.status !== 'available') return false;
       if (avFlag === 'now' && !avNow(x)) return false; if (avFlag === 'novideo' && (!ytData || !ytData.at || ((ytData.matches || {})[x.id] || []).length)) return false; if (avFlag === 'urgent' && !x.urgent) return false;
       if (avBeds) { var bd = x.beds == null ? -1 : x.beds; if (avBeds === '1' ? !(bd === 0 || bd === 1) : avBeds === '4' ? bd < 4 : bd !== Number(avBeds)) return false; }
       return !q || [x.address, x.landlord, x.notes, x.tags, x.contact].join(' ').toLowerCase().indexOf(q) !== -1;
@@ -9654,11 +9657,11 @@
     var dkey = function(x){ return x.vacant ? '0000' : x.available_from ? String(x.available_from).slice(0, 10) : '9999'; };
     var lk = function(x){ return x.let_on ? String(x.let_on).slice(0, 10) : String(x.updated_at || '').slice(0, 10); };
     list.sort(function(a, b){ if (avFlag === 'let' && sort === 'date') return lk(b).localeCompare(lk(a)); return sort === 'lo' ? (a.rent_pcm || 1e9) - (b.rent_pcm || 1e9) : sort === 'hi' ? (b.rent_pcm || 0) - (a.rent_pcm || 0) : sort === 'beds' ? (a.beds == null ? 99 : a.beds) - (b.beds == null ? 99 : b.beds) : sort === 'new' ? b.id - a.id : (b.urgent - a.urgent) || dkey(a).localeCompare(dkey(b)); });
-    if (avFlag === 'let' && avLs.k) list.sort(function(a, b){ var k = avLs.k, va = a[k], vb = b[k]; if (k === 'let_on') { va = lk(a); vb = lk(b); }
+    if ((avFlag === 'let' || avFlag === 'withdrawn') && avLs.k) list.sort(function(a, b){ var k = avLs.k, va = a[k], vb = b[k]; if (k === 'let_on') { va = lk(a); vb = lk(b); }
       var na = va == null || va === '', nb = vb == null || vb === ''; if (na !== nb) return na ? 1 : -1;
       var c = ['beds', 'rent_pcm', 'rent_pw'].indexOf(k) !== -1 ? Number(va) - Number(vb) : String(va || '').localeCompare(String(vb || ''), 'en', { numeric: true, sensitivity: 'base' }); return c * avLs.d; });
     var live = avItems.filter(function(x){ return x.status === 'available'; });
-    $('avSum').innerHTML = '<b>' + live.length + '</b> available · <b>' + live.filter(avNow).length + '</b> available now · <b>' + live.filter(function(x){ return x.urgent; }).length + '</b> urgent · ' + (function(){ if (!ytData || !ytData.at) return ''; var n = live.filter(function(x){ return !((ytData.matches || {})[x.id] || []).length; }).length; return n ? '<b style="color:#b54708">' + n + '</b> need a video · ' : ''; })() + '<b>' + avItems.filter(function(x){ return x.status === 'let'; }).length + '</b> been let' + (list.length !== live.length ? ' · showing ' + list.length : '') + ((!staffMode || meta.canManageUsers) && avItems.length > 1 ? ' <button type="button" class="linkish" id="avDedupe" title="Puts every address on one tidy line (capital postcodes, no line breaks) and removes repeats of the same address, keeping the latest">🧹 Tidy addresses &amp; remove duplicates</button>' : '');
+    $('avSum').innerHTML = '<b>' + live.length + '</b> available · <b>' + live.filter(avNow).length + '</b> available now · <b>' + live.filter(function(x){ return x.urgent; }).length + '</b> urgent · ' + (function(){ if (!ytData || !ytData.at) return ''; var n = live.filter(function(x){ return !((ytData.matches || {})[x.id] || []).length; }).length; return n ? '<b style="color:#b54708">' + n + '</b> need a video · ' : ''; })() + '<b>' + avItems.filter(function(x){ return x.status === 'let'; }).length + '</b> been let · <b>' + avItems.filter(function(x){ return x.status === 'withdrawn'; }).length + '</b> withdrawn' + (list.length !== live.length ? ' · showing ' + list.length : '') + (!staffMode && avItems.length > 1 ? ' <button type="button" class="linkish" id="avDedupe" title="Puts every address on one tidy line (capital postcodes, no line breaks) and removes repeats of the same address, keeping the latest">🧹 Tidy addresses &amp; remove duplicates</button>' : '');
     var rmList = (rmData && rmData.items) || [], rmBy = {}; rmList.forEach(function(r){ rmBy[r.id] = r; });
     var linkedIds = {}; avItems.forEach(function(x){ if (x.status !== 'available') return; if (x.rm_id && rmBy[x.rm_id]) linkedIds[x.rm_id] = 1; (x.dream_rm || []).forEach(function(d){ linkedIds[d] = 1; }); });
     var liveSorted = live.slice().sort(function(a, b){ return String(a.address).localeCompare(String(b.address)); });
@@ -9680,12 +9683,12 @@
             (of ? '' : '<button type="button" class="btn small" data-rmadd="' + esc(r.id) + '" title="Adds it to our available list, linked to this listing">➕ Add to available list</button>') + '</span></div>'; }).join('') + '</details>' : '');
     var ytM = (ytData && ytData.matches) || {}, withV = live.filter(function(x){ return (ytM[x.id] || []).length; }).length;
     $('avYt').innerHTML = !ytData ? '' : '<div class="av-rm-bar av-yt-bar"><span class="av-yt-logo">▶ YouTube</span><span>' + (ytData.at ? '<b>' + (ytData.items || []).length + '</b> videos on our channel · <b>' + withV + '</b> of ' + live.length + ' properties have a video · checked ' + esc(fmtShort(ytData.at)) : 'Not checked yet') + (ytData.error ? ' · <span style="color:#b42318">couldn’t reach YouTube last time</span>' : '') + ' <button type="button" class="linkish" id="avYtWhy">details</button></span><span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small" id="avYtCheck">🔄 Check now</button><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(ytData.channel_url) + '">Our channel ↗</a>' + (canSet ? '<button type="button" class="btn small ghost" id="avYtSet" title="Change the YouTube channel">⚙︎</button>' : '') + '</span></div>';
-    var canDel = !staffMode || meta.canManageUsers;
+    var canDel = !staffMode;   // only the owner deletes properties
     var avMore = list.length > avLimit ? list.length - avLimit : 0; list = list.slice(0, avLimit);
-    if (avFlag === 'let' && list.length) {
+    if ((avFlag === 'let' || avFlag === 'withdrawn') && list.length) {
       var th = function(k, t){ return '<th data-lsort="' + k + '"' + (avLs.k === k ? ' class="on"' : '') + '>' + t + (avLs.k === k ? (avLs.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; };
       $('avList').innerHTML = '<div class="av-lt-wrap"><table class="av-lt"><thead><tr>' + th('let_on', 'Let on') + th('address', 'Address') + th('beds', 'Beds') + th('rent_pcm', 'pcm') + th('rent_pw', 'pw') + th('landlord', 'Landlord') + th('commission', 'Fee') + th('notes', 'Notes') + '<th></th></tr></thead><tbody>' + list.map(function(x){
-        return '<tr data-av="' + x.id + '"><td class="nw">' + esc(x.let_on ? avDay(x.let_on) : '—') + '</td><td class="ad"><span>' + esc(x.address) + '</span> <button type="button" class="linkish" data-ava="addr" title="Correct the address">✎</button></td><td>' + (x.beds == null ? '—' : x.beds === 0 ? 'Studio' : x.beds) + '</td><td class="nw">' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</td><td class="nw">' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</td><td>' + esc(x.landlord || '') + '</td><td>' + esc(x.commission || '') + '</td><td class="nt" title="' + esc([x.contact, x.notes].filter(Boolean).join(' · ')) + '">' + esc([x.notes, x.tags].filter(Boolean).join(' · ').slice(0, 80)) + '</td><td class="nw"><button type="button" class="btn small" data-avs="available" title="Put it back on the available list">↩ Available</button> <button type="button" class="btn small ghost" data-ava="edit">Edit</button></td></tr>';
+        return '<tr data-av="' + x.id + '"><td class="nw">' + (x.status === 'withdrawn' ? '<span class="av-wd">Withdrawn</span>' + (x.let_on ? '<br><small>' + esc(avDay(x.let_on)) + '</small>' : '') : esc(x.let_on ? avDay(x.let_on) : '—')) + '</td><td class="ad"><span>' + esc(x.address) + '</span> <button type="button" class="linkish" data-ava="addr" title="Correct the address">✎</button></td><td>' + (x.beds == null ? '—' : x.beds === 0 ? 'Studio' : x.beds) + '</td><td class="nw">' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</td><td class="nw">' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</td><td>' + (function(){ var LL = (avLinkData[x.id] || {}).landlord; return LL ? '<b title="Landlord on file' + (LL.phone ? ' · ' + esc(LL.phone) : '') + (LL.email ? ' · ' + esc(LL.email) : '') + '">' + esc(LL.name || 'Landlord') + '</b>' + (LL.phone ? '<br><small><a href="tel:' + esc(String(LL.phone).replace(/[^\d+]/g, '')) + '">' + esc(LL.phone) + '</a></small>' : '') : esc(x.landlord || ''); })() + '</td><td>' + esc(x.commission || '') + '</td><td class="nt" title="' + esc([x.contact, x.notes].filter(Boolean).join(' · ')) + '">' + esc([x.notes, x.tags].filter(Boolean).join(' · ').slice(0, 80)) + '</td><td class="nw"><button type="button" class="btn small" data-avs="available" title="Put it back on the available list">↩ Available</button> <button type="button" class="btn small ghost" data-ava="edit">Edit</button></td></tr>';
       }).join('') + '</tbody></table></div>' + (avMore ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more (' + avMore + ' not shown — or search above)</button></div>' : '');
       return;
     }
@@ -9712,7 +9715,7 @@
         '<div class="av-row">' + (x.status === 'let' ? '<div class="now"><span>Let</span><b>' + esc(avDay(x.let_on) || avDay(x.updated_at) || '✓') + '</b></div>' : '<div class="' + (avNow(x) ? 'now' : '') + '"><span>Available</span><b>' + (x.vacant ? 'Vacant now' : avNow(x) ? 'Now' : esc(avDay(x.available_from) || 'TBC')) + '</b></div>') + '<div><span>Per week</span><b>' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</b></div><div><span>Per month</span><b>' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</b></div></div>' +
         (function(){ var L = (avLinkData || {})[x.id] || {}, h = '';
           h += avAccessHtml(x, L);
-          if (L.landlord) h += '<div class="av-llink">👤 Landlord on file: ' + (!staffMode ? '<button type="button" class="linkish" data-ava="ll"><b>' + esc(L.landlord.name) + '</b></button>' : '<b>' + esc(L.landlord.name) + '</b>') + (L.landlord.phone ? ' · <a href="tel:' + esc(String(L.landlord.phone).replace(/[^\d+]/g, '')) + '">' + esc(L.landlord.phone) + '</a>' : '') + (L.landlord.email ? ' · <a href="mailto:' + esc(L.landlord.email) + '">' + esc(L.landlord.email) + '</a>' : '') + '</div>';
+          if (L.landlord) h += '<div class="av-llink">👤 Landlord on file: ' + (!staffMode && L.landlord.id ? '<button type="button" class="linkish" data-ava="ll"><b>' + esc(L.landlord.name) + '</b></button>' : '<b>' + esc(L.landlord.name || 'Landlord') + '</b>') + (L.landlord.src === 'terms' ? ' <small>(from their landlord terms)</small>' : L.landlord.src === 'tenancy' ? ' <small>(from the tenancy)</small>' : '') + (L.landlord.phone ? ' · <a href="tel:' + esc(String(L.landlord.phone).replace(/[^\d+]/g, '')) + '">' + esc(L.landlord.phone) + '</a>' : '') + (L.landlord.email ? ' · <a href="mailto:' + esc(L.landlord.email) + '">' + esc(L.landlord.email) + '</a>' : '') + '</div>';
           if (L.tenancy && !staffMode) h += '<div class="av-llink">🏠 One of our tenancies' + (L.tenancy.start ? ' (from ' + esc(avDay(L.tenancy.start)) + ')' : '') + ' · <button type="button" class="linkish" data-ava="tcy">Open the tenancy</button></div>';
           return h; })() +
         ((x.landlord || x.commission) ? '<div class="av-meta">Landlord <b>' + esc(x.landlord || '—') + '</b>' + (x.commission ? ' · Commission <b>' + esc(x.commission) + '</b>' : '') + '</div>' : '') +
@@ -9795,10 +9798,16 @@
   });
   // Paste rows from the spreadsheet (tab-separated, cells with line breaks come in quotes).
   function avTsv(t){
-    var rows = [], row = [], cell = '', q = false; t = String(t || '').replace(/\r\n?/g, '\n');
-    for (var i = 0; i < t.length; i++) { var c = t[i];
-      if (q) { if (c === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; continue; }
-      if (c === '"' && cell.trim() === '') { q = true; cell = ''; } else if (c === '\t') { row.push(cell); cell = ''; } else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; } else cell += c; }
+    // A cell is only "quoted" when its closing quote is followed by a tab, a new line or the end, with no tab
+    // inside — so a cell that merely starts with a quote mark can't swallow the rest of the paste.
+    var rows = [], row = [], cell = '', i = 0; t = String(t || '').replace(/\r\n?/g, '\n');
+    var closeAt = function(from){ for (var j = from; j < t.length; j++) { var c = t[j]; if (c === '\t') return -1; if (c === '"') { if (t[j + 1] === '"') { j++; continue; } var nx = t[j + 1]; return nx === undefined || nx === '\t' || nx === '\n' ? j : -1; } } return -1; };
+    while (i < t.length) {
+      var c = t[i];
+      if (c === '"' && cell === '') { var e = closeAt(i + 1); if (e !== -1) { cell = t.slice(i + 1, e).replace(/""/g, '"'); i = e + 1; continue; } }
+      if (c === '\t') { row.push(cell); cell = ''; } else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; } else cell += c;
+      i++;
+    }
     row.push(cell); rows.push(row); return rows;
   }
   // Let dates: only the last 16 years (or up to a year ahead) — anything else is a misread cell.
@@ -9834,12 +9843,14 @@
     if (!/£/.test(s) && !unit && v < 50) return null;
     return { v: v, unit: /w/.test(unit) ? 'pw' : unit ? 'pcm' : '' };
   }
-  function avRow(cells){
+  function avRow(cells, force){
     cells = cells.map(function(c){ return String(c == null ? '' : c).replace(/ /g, ' ').trim(); }).map(function(c){ return avJunk(c) ? '' : c; });
     // The address: the cell with a postcode whose address line is shortest (call notes can mention postcodes too).
     var ai = -1, addr = '';
     cells.forEach(function(c, i){ var a = avAddrOf(c); if (a && a.length < 160 && (ai === -1 || a.length < addr.length) && !/^\s*(called|spoke|rang|left|emailed|sent|txt|text|vm)\b/i.test(a)) { ai = i; addr = a; } });
     if (ai === -1) cells.forEach(function(c, i){ if (ai === -1 && c.length < 120 && c.indexOf('\n') === -1 && /^(flat|apt|apartment|unit|room)?\s*\d+[a-z]?\b/i.test(c) && AV_ST.test(c)) { ai = i; addr = c.replace(/\s+/g, ' '); } });
+    // Asked to add it anyway: the first text cell that isn't a date, amount, phone or email is the address.
+    if (ai === -1 && force) cells.forEach(function(c, i){ if (ai === -1 && c && c.length < 200 && /[a-z]{3}/i.test(c) && !avDate(c) && !avMoney(c) && !/@/.test(c) && !/^[\d\s+()\-]{9,}$/.test(c)) { ai = i; addr = c.split('\n')[0].replace(/\s+/g, ' ').trim(); } });
     if (ai === -1) return null;
     // Only the town and postcode in this cell: the street is in the cell before it.
     var used = {}; used[ai] = 1;
@@ -9863,7 +9874,7 @@
     if (nums.length) beds = nums.length >= 2 ? nums[nums.length - 2] : nums[0];
     // After the address.
     cells.slice(ai + 1).forEach(function(c){
-      if (!c) return;
+      if (!c || /^(withdr(awn|ew)|w\/d|let|let agreed)$/i.test(c)) return;
       if (/^urgent$/i.test(c)) { urgent = true; return; }
       if (/^vacant$/i.test(c)) { vac = true; return; }
       var d = avDate(c); if (d) { if (!date) date = d; return; }
@@ -9883,26 +9894,34 @@
     var contactTxt = contact.join(' · '), landlord = '';
     if (contact.length) { var first = contact[0].split(/\s+\/\s+|\s{2,}/)[0].replace(/\S+@\S+/g, '').replace(/(\+44|\b0)[\d\s()\-]{8,}.*$/, '').replace(/[\s,:;\-–]+$/, '').trim(); if (first && /[a-z]{2}/i.test(first) && first.length < 60 && !/^\d/.test(first)) landlord = first; }
     if (contactTxt === landlord) contactTxt = '';
-    return { address: addr, beds: beds, tags: tags.join(', ').slice(0, 200), vacant: vac, available_from: vac ? '' : date, rent_pw: pw === '' ? '' : String(pw), rent_pcm: pcm === '' ? '' : String(pcm), landlord: landlord, commission: com, contact: contactTxt, notes: notes.join(' · '), urgent: urgent, nopc: !AV_PC.test(addr) };
+    return { address: addr, beds: beds, tags: tags.join(', ').slice(0, 200), vacant: vac, available_from: vac ? '' : date, rent_pw: pw === '' ? '' : String(pw), rent_pcm: pcm === '' ? '' : String(pcm), landlord: landlord, commission: com, contact: contactTxt, notes: notes.join(' · '), urgent: urgent, nopc: !AV_PC.test(addr), withdrawn: cells.some(function(c){ return /\bwithdr(awn|ew)\b|^w\/d$/i.test(c); }) };
   }
-  var avParsed = [], avPasteAs = 'available';
+  var avParsed = [], avMissed = [], avPasteAs = 'available';
+  function avAs(r){ if (avPasteAs === 'let') { r.status = r.withdrawn ? 'withdrawn' : 'let'; r.let_on = avLetOk(r.available_from) ? r.available_from : ''; r.available_from = ''; r.vacant = false; } return r; }
+  var avCountT = null;
+  $('avPasteTxt').addEventListener('input', function(){ var el = this; clearTimeout(avCountT); avCountT = setTimeout(function(){ avCountNow(el); }, 300); });
+  function avCountNow(el){ var n = avTsv(el.value).filter(function(r){ return r.join('').trim(); }).length; $('avPasteCount').textContent = n ? '📋 ' + n.toLocaleString('en-GB') + ' row' + (n === 1 ? '' : 's') + ' pasted' : ''; }
   $('avPasteAs').addEventListener('click', function(e){ var b = e.target.closest('[data-pas]'); if (!b) return; avPasteAs = b.dataset.pas; this.querySelectorAll('[data-pas]').forEach(function(x){ x.classList.toggle('on', x === b); }); if (avParsed.length) $('avPasteRead').click(); });
   $('avPasteBtn').addEventListener('click', function(){ $('avForm').hidden = true; $('avPaste').hidden = false; $('avPastePrev').innerHTML = ''; $('avPasteTxt').focus(); });
   $('avPasteX').addEventListener('click', function(){ $('avPaste').hidden = true; $('avPasteTxt').value = ''; $('avPastePrev').innerHTML = ''; });
   $('avPasteRead').addEventListener('click', function(){
-    avParsed = avTsv($('avPasteTxt').value).map(avRow).filter(Boolean).map(function(r){ if (avPasteAs === 'let') { r.status = 'let'; r.let_on = avLetOk(r.available_from) ? r.available_from : ''; r.available_from = ''; r.vacant = false; } return r; });
-    var avRows = avTsv($('avPasteTxt').value).filter(function(r){ return r.join('').trim(); }), avMiss = avRows.length - avParsed.length;
+    var avRows = avTsv($('avPasteTxt').value).filter(function(r){ return r.join('').trim(); });
+    avMissed = []; avParsed = [];
+    avRows.forEach(function(r){ var x = avRow(r); if (x) avParsed.push(avAs(x)); else if (/[a-z]{3}/i.test(r.join(' '))) avMissed.push(r); });
+    var avMiss = avMissed.length;
     if (!avParsed.length) { $('avPastePrev').innerHTML = '<p class="muted-note">No rows with an address found — please paste straight from the spreadsheet.</p>'; return; }
     var avShow = avParsed.slice(0, 300);
-    $('avPastePrev').innerHTML = '<p class="muted-note" style="margin:8px 0">Found <b>' + avParsed.length + '</b> propert' + (avParsed.length === 1 ? 'y' : 'ies') + (avMiss > 0 ? ' · ' + avMiss + ' row' + (avMiss === 1 ? '' : 's') + ' without an address left out (headings, blank or notes-only rows)' : '') + (avParsed.length > avShow.length ? ' · showing the first ' + avShow.length + ' below, all ' + avParsed.length + ' will be added' : '') + '. Anything already on the list is updated with these details, not added twice.</p><div class="av-prev-wrap"><table class="av-prev"><tr><th></th><th>Address</th><th>Beds</th><th>' + (avPasteAs === 'let' ? 'Let on' : 'Available') + '</th><th>pw / pcm</th><th>Landlord</th><th>Contact &amp; notes</th></tr>' + avShow.map(function(r, i){ return '<tr><td><input type="checkbox" data-avp="' + i + '" checked></td><td>' + esc(r.address) + (r.nopc ? ' <small style="color:#b54708">(no postcode)</small>' : '') + (r.tags ? '<br><small>' + esc(r.tags) + '</small>' : '') + (r.urgent ? ' <b style="color:#b42318">URGENT</b>' : '') + '</td><td>' + (r.beds == null ? '—' : r.beds) + '</td><td>' + (r.status === 'let' ? esc(avDay(r.let_on) || 'today') : r.vacant ? 'Vacant' : esc(avDay(r.available_from) || '—')) + '</td><td>' + esc([r.rent_pw, r.rent_pcm].filter(Boolean).join(' / ') || '—') + '</td><td>' + esc(r.landlord || '—') + (r.commission ? '<br><small>' + esc(r.commission) + '</small>' : '') + '</td><td><small>' + esc((r.contact || '').slice(0, 90)) + (r.contact && r.contact.length > 90 ? '…' : '') + (r.notes ? '<br>' + esc(r.notes) : '') + '</small></td></tr>'; }).join('') + '</table></div>' +
-      (avPasteAs === 'let' && (!staffMode || meta.canManageUsers) && avItems.some(function(x){ return x.status === 'let'; }) ? '<label class="muted-note" style="display:flex;gap:6px;align-items:center;margin:10px 0 0"><input type="checkbox" id="avPasteRepl"> Replace the whole Been let list with these (removes the ' + avItems.filter(function(x){ return x.status === 'let'; }).length + ' already there — use this to fix wrong addresses from an earlier paste)</label>' : '') +
+    $('avPastePrev').innerHTML = '<p class="muted-note" style="margin:8px 0">Found <b>' + avParsed.length + '</b> propert' + (avParsed.length === 1 ? 'y' : 'ies') + (avMiss > 0 ? ' · ' + avMiss + ' row' + (avMiss === 1 ? '' : 's') + ' with no address we could recognise (see below)' : '') + (avParsed.length > avShow.length ? ' · showing the first ' + avShow.length + ' below, all ' + avParsed.length + ' will be added' : '') + '. Anything already on the list is updated with these details, not added twice.</p><div class="av-prev-wrap"><table class="av-prev"><tr><th></th><th>Address</th><th>Beds</th><th>' + (avPasteAs === 'let' ? 'Let on' : 'Available') + '</th><th>pw / pcm</th><th>Landlord</th><th>Contact &amp; notes</th></tr>' + avShow.map(function(r, i){ return '<tr><td><input type="checkbox" data-avp="' + i + '" checked></td><td>' + esc(r.address) + (r.nopc ? ' <small style="color:#b54708">(no postcode)</small>' : '') + (r.tags ? '<br><small>' + esc(r.tags) + '</small>' : '') + (r.urgent ? ' <b style="color:#b42318">URGENT</b>' : '') + '</td><td>' + (r.beds == null ? '—' : r.beds) + '</td><td>' + (r.status === 'let' ? esc(avDay(r.let_on) || 'today') : r.vacant ? 'Vacant' : esc(avDay(r.available_from) || '—')) + '</td><td>' + esc([r.rent_pw, r.rent_pcm].filter(Boolean).join(' / ') || '—') + '</td><td>' + esc(r.landlord || '—') + (r.commission ? '<br><small>' + esc(r.commission) + '</small>' : '') + '</td><td><small>' + esc((r.contact || '').slice(0, 90)) + (r.contact && r.contact.length > 90 ? '…' : '') + (r.notes ? '<br>' + esc(r.notes) : '') + '</small></td></tr>'; }).join('') + '</table></div>' +
+      (avPasteAs === 'let' && !staffMode && avItems.some(function(x){ return x.status === 'let' || x.status === 'withdrawn'; }) ? '<label class="muted-note" style="display:flex;gap:6px;align-items:center;margin:10px 0 0"><input type="checkbox" id="avPasteRepl"> Replace the whole Been let list with these (removes the ' + avItems.filter(function(x){ return x.status === 'let' || x.status === 'withdrawn'; }).length + ' let and withdrawn ones already there — use this to fix wrong addresses from an earlier paste)</label>' : '') +
+      (avMiss ? '<div class="av-missed"><label style="display:flex;gap:6px;align-items:center;margin:0 0 4px"><input type="checkbox" id="avPasteMissed"> Also add the ' + avMiss + ' row' + (avMiss === 1 ? '' : 's') + ' with no postcode or street address, using the first text in each row as the address (correct them later with ✎)</label><details><summary>See ' + (avMiss === 1 ? 'it' : 'them') + '</summary><ol>' + avMissed.slice(0, 200).map(function(r){ return '<li>' + esc(r.filter(Boolean).join(' | ').replace(/\s+/g, ' ').slice(0, 160)) + '</li>'; }).join('') + '</ol>' + (avMiss > 200 ? '<p class="muted-note">…and ' + (avMiss - 200) + ' more</p>' : '') + '</details></div>' : '') +
       '<div style="margin-top:10px"><button type="button" class="btn primary" id="avPasteGo">Add ' + avParsed.length + ' propert' + (avParsed.length === 1 ? 'y' : 'ies') + (avPasteAs === 'let' ? ' to Been let' : '') + '</button></div>';
   });
   $('avPastePrev').addEventListener('click', function(e){
     if (!e.target.closest('#avPasteGo')) return;
-    var pick = avParsed.filter(function(r, i){ var c = document.querySelector('[data-avp="' + i + '"]'); return !c || c.checked; }); if (!pick.length) { toast('Tick at least one row'); return; }
+    var pick = avParsed.filter(function(r, i){ var c = document.querySelector('[data-avp="' + i + '"]'); return !c || c.checked; });
+    if ($('avPasteMissed') && $('avPasteMissed').checked) pick = pick.concat(avMissed.map(function(r){ return avRow(r, true); }).filter(Boolean).map(avAs)); if (!pick.length) { toast('Tick at least one row'); return; }
     var repl = $('avPasteRepl') && $('avPasteRepl').checked;
-    if (repl && !confirm('Remove all ' + avItems.filter(function(x){ return x.status === 'let'; }).length + ' properties on the Been let list and add these ' + pick.length + ' instead?')) return;
+    if (repl && !confirm('Remove all ' + avItems.filter(function(x){ return x.status === 'let' || x.status === 'withdrawn'; }).length + ' properties on the Been let list and add these ' + pick.length + ' instead?')) return;
     var b = e.target, added = 0, skipped = 0, failed = 0, fails = [], i = 0, N = 250;
     busy(b, true, 'Adding…');
     var done = function(){
@@ -9963,7 +9982,7 @@
     if (act === 'tcontact') { var tc = prompt('Tenants’ contact (names, mobiles, emails):', x.contact || ''); if (tc === null) return; avPatch(x, { contact: tc.trim() }, tc.trim() ? '✓ Tenants’ contact saved' : 'Contact removed'); return; }
     if (act === 'accnote') { var an = prompt('Access note (e.g. call 1 hour before, concierge, lockbox code with the office):', x.access_note || ''); if (an === null) return; avPatch(x, { access_note: an.trim() }, '✓ Access note saved'); return; }
     if (act === 'key') { var kn = prompt('Key number for ' + shortAddr(x.address) + ':', x.key_no || ''); if (kn === null) return; api('POST', '/api/admin/available/' + x.id, { key_no: kn.trim() }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save the key number'); return; } x.key_no = kn.trim() || null; toast(kn.trim() ? '✓ Key number saved' : 'Key number removed'); renderAvail(); }); return; }
-    if (act === 'll') { var LL = (avLinkData[x.id] || {}).landlord; if (LL) openLandlord(LL.id); return; }
+    if (act === 'll') { var LL = (avLinkData[x.id] || {}).landlord; if (LL && LL.id) openLandlord(LL.id); return; }
     if (act === 'tcy') { var TT = (avLinkData[x.id] || {}).tenancy; if (!TT) return; (tenancies.some(function(t){ return t.id === TT.id; }) ? Promise.resolve() : loadTenancies()).then(function(){ openTenancy(TT.id); }); return; }
     if (act === 'addr') { var na = prompt('Correct address (one line, with the postcode):', x.address); if (!na || na.trim() === x.address) return; api('POST', '/api/admin/available/' + x.id, { address: na.trim() }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save the address'); return; } x.address = d.address; toast('✓ Address saved'); renderAvail(); }); return; }
     if (act === 'send' || act === 'ytshare') { avSendPanel(card, x, act === 'ytshare'); return; }
