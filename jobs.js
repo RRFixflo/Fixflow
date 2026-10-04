@@ -8276,13 +8276,23 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   // ---------- Available properties (the lettings list staff work from) ----------
   // Kept in the database only: current tenants' contact details never go in the code.
+  // One tidy line: no line breaks or doubled commas, postcode in capitals with its space, and
+  // ALL-CAPS / all-lowercase addresses put in normal case.
+  function availAddr(a) {
+    let s = String(a == null ? '' : a).replace(/\r?\n+/g, ', ').replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').replace(/(,\s*)+/g, ', ').replace(/^[,\s]+|[,\s.]+$/g, '').trim();
+    const letters = s.replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/gi, '').replace(/[^a-z]/gi, '');
+    if (letters && (letters === letters.toUpperCase() || letters === letters.toLowerCase())) s = s.toLowerCase().replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); }).replace(/\b(\d+)([A-Z])\b/g, function (m, d, l) { return d + l.toLowerCase(); });
+    s = s.replace(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/gi, function (m, o, i) { return o.toUpperCase() + ' ' + i.toUpperCase(); });
+    const parts = s.split(', '), out = []; parts.forEach(function (x) { if (!out.length || out[out.length - 1].toLowerCase() !== x.toLowerCase()) out.push(x); });
+    return out.join(', ');
+  }
   function availClean(b) {
     const n = function (v) { const x = parseFloat(String(v == null ? '' : v).replace(/[£,\s]/g, '')); return isFinite(x) && x > 0 ? Math.round(x * 100) / 100 : null; };
     let pw = n(b.rent_pw), pcm = n(b.rent_pcm);
     if (pw && pw > 20000) pw = null; if (pcm && pcm > 200000) pcm = null;   // not a rent (e.g. a phone number in the wrong column)
     if (pw && !pcm) pcm = Math.round(pw * 52 / 12 * 100) / 100; if (pcm && !pw) pw = Math.round(pcm * 12 / 52 * 100) / 100;
     const beds = parseInt(b.beds, 10);
-    return { address: str(b.address, 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
+    return { address: str(availAddr(b.address), 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
       rent_pw: pw, rent_pcm: pcm, landlord: str(b.landlord, 120) || null, commission: str(b.commission, 40) || null, contact: str(b.contact, 2000) || null, notes: str(b.notes, 2000) || null,
       tags: str(b.tags, 200) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: isoDay(b.let_on) || null };
   }
@@ -8315,6 +8325,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (['available', 'let', 'withdrawn'].indexOf(b.status) === -1) return res.status(400).json({ ok: false, error: 'status' });
       await p.query("UPDATE available_props SET status = $2, let_on = CASE WHEN $2 = 'let' THEN coalesce(let_on, (now() AT TIME ZONE 'Europe/London')::date) ELSE let_on END, updated_at = now() WHERE id = $1", [id, b.status]); return res.json({ ok: true });
     }
+    if (b.address && Object.keys(b).length === 1) {
+      const ad = str(availAddr(b.address), 400); if (!ad) return res.status(400).json({ ok: false, error: 'address' });
+      await p.query('UPDATE available_props SET address = $2, updated_at = now() WHERE id = $1', [id, ad]); return res.json({ ok: true, address: ad });
+    }
     const x = availClean(b); if (!x.address) return res.status(400).json({ ok: false, error: 'address' });
     const r = await p.query('UPDATE available_props SET ' + AVAIL_COLS.map(function (c, i) { return c + ' = $' + (i + 2); }).join(', ') + ', updated_at = now() WHERE id = $1', [id].concat(AVAIL_COLS.map(function (c) { return x[c]; })));
     if (!r.rowCount) return res.status(404).json({ ok: false, error: 'not-found' });
@@ -8324,8 +8338,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // Remove duplicates (same address and status), keeping the first one added.
   app.post('/api/admin/available-dedupe', withDb(async function (p, req, res) {
     if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    // Tidy every address first, so the same place written two ways counts as a duplicate.
+    let tidied = 0;
+    for (const row of (await p.query('SELECT id, address FROM available_props')).rows) { const t = str(availAddr(row.address), 400); if (t && t !== row.address) { await p.query('UPDATE available_props SET address = $2 WHERE id = $1', [row.id, t]); tidied++; } }
     const r = await p.query("DELETE FROM available_props a USING available_props b WHERE a.id > b.id AND a.status = b.status AND regexp_replace(lower(a.address), '[^a-z0-9]', '', 'g') = regexp_replace(lower(b.address), '[^a-z0-9]', '', 'g')");
-    res.json({ ok: true, removed: r.rowCount });
+    res.json({ ok: true, removed: r.rowCount, tidied: tidied });
   }));
   // Empty the Been let list before pasting a corrected copy (managers only).
   app.post('/api/admin/available-clear-let', withDb(async function (p, req, res) {
