@@ -380,6 +380,12 @@ ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS vid TEXT;
 ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS ip TEXT;
 ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS who TEXT;
 ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS who_kind TEXT;
+-- Where they are now and how far the form has got (box labels only, never what was typed).
+ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS cur_page TEXT;
+ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS form_filled INTEGER;
+ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS form_total INTEGER;
+ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS last_field TEXT;
+ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS cur_section TEXT;
 CREATE TABLE IF NOT EXISTS known_visitors (
   vid        TEXT PRIMARY KEY,
   kind       TEXT NOT NULL,
@@ -1979,7 +1985,7 @@ module.exports = function mountJobs(app, opts) {
     return { source: src, host: host };
   }
   const visitEvents = new Map();
-  const VISIT_EVENTS = ['view', 'step', 'cat', 'lang', 'submit', 'hide', 'ping'];
+  const VISIT_EVENTS = ['view', 'step', 'cat', 'lang', 'submit', 'hide', 'ping', 'form'];
   app.post('/api/visit/e', express.text({ type: function () { return true; }, limit: '8kb' }), function (req, res) {
     res.status(204).end();
     (async function () {
@@ -1990,7 +1996,7 @@ module.exports = function mountJobs(app, opts) {
       else if (++e.n > 400) return;
       if (visitEvents.size > 20000) visitEvents.clear();
       let b; try { b = JSON.parse(typeof req.body === 'string' ? req.body : '{}'); } catch (err) { return; }
-      const sid = String(b.sid || ''), ev = String(b.ev || ''), page = ['report', 'track', 'portal', 'landlord'].indexOf(b.page) !== -1 ? b.page : null;
+      const sid = String(b.sid || ''), ev = String(b.ev || ''), page = ['report', 'track', 'portal', 'landlord', 'offer', 'offer-track', 'terms', 'pvr', 'review'].indexOf(b.page) !== -1 ? b.page : null;
       const vid = /^[a-z0-9]{8,40}$/i.test(String(b.vid || '')) ? String(b.vid) : null;
       if (!/^[a-z0-9]{8,40}$/i.test(sid) || VISIT_EVENTS.indexOf(ev) === -1 || !page) return;
       const v = b.v == null ? null : String(b.v).slice(0, 120);
@@ -2028,13 +2034,23 @@ module.exports = function mountJobs(app, opts) {
         else if (cm) { const c = (await p.query('SELECT name FROM contractors WHERE portal_token = $1', [cm[1]])).rows[0]; if (c) { subject = c.name + '’s job link'; who = { kind: 'contractor', name: c.name }; } }
         else if (lm) { const l = (await p.query('SELECT name FROM landlords WHERE portal_token = $1', [lm[1]])).rows[0]; if (l) { subject = l.name + '’s landlord page'; who = { kind: 'landlord', name: l.name }; } }
         else if (page === 'track') subject = 'Repair look-up page';
+        else if (page === 'offer' || page === 'offer-track') {
+          const im = /[?&]i=([\w-]{8,20})/.exec(String(b.search || '')), pm = /[?&]pvr=([\w-]{16,40})/.exec(String(b.search || ''));
+          const inv = im ? (await p.query('SELECT to_name, property_address FROM offer_invites WHERE token = $1', [im[1]])).rows[0] : null;
+          const pv = !inv && pm ? (await p.query('SELECT name, property_address FROM pvr_reservations WHERE token = $1', [pm[1]])).rows[0] : null;
+          const x = inv || pv; subject = page === 'offer-track' ? 'Offer tracking page' : 'Offer form' + (x && x.property_address ? ' — ' + shortAddrText(x.property_address) : '');
+          if (x && (x.to_name || x.name)) who = { kind: 'applicant', name: x.to_name || x.name, detail: shortAddrText(x.property_address) };
+        }
+        else if (page === 'terms') { const m2 = /^\/landlord\/([\w-]{16,40})/.exec(path), t = m2 && (await p.query('SELECT landlord_name, property_address FROM landlord_terms WHERE token = $1', [m2[1]])).rows[0]; subject = 'Landlord terms' + (t && t.property_address ? ' — ' + shortAddrText(t.property_address) : ''); if (t && t.landlord_name) who = { kind: 'landlord', name: t.landlord_name, detail: shortAddrText(t.property_address) }; }
+        else if (page === 'pvr') { const m2 = /^\/reserve\/([\w-]{16,40})/.exec(path), r = m2 && (await p.query('SELECT name, property_address FROM pvr_reservations WHERE token = $1', [m2[1]])).rows[0]; subject = 'Pre-viewing reservation' + (r && r.property_address ? ' — ' + shortAddrText(r.property_address) : ''); if (r && r.name) who = { kind: 'applicant', name: r.name, detail: shortAddrText(r.property_address) }; }
+        else if (page === 'review') subject = 'Landlord offer review';
         // The first view sets where they came from; later pages add to the list.
         await p.query(`UPDATE site_sessions SET last_at = now(), views = views + 1, events = events + 1,
             pages = CASE WHEN $2 = ANY(pages) THEN pages ELSE array_append(pages, $2) END,
             device = coalesce(device, $3), browser = coalesce(browser, $4), os = coalesce(os, $5),
             source = coalesce(source, $6), ref_host = coalesce(ref_host, nullif($7, '')), screen = coalesce(screen, $8),
             lang = coalesce(lang, nullif($9, '')), tz = coalesce(tz, nullif($10, '')),
-            subject = coalesce($11, subject), job_id = coalesce(job_id, $12)
+            subject = coalesce($11, subject), job_id = coalesce(job_id, $12), cur_page = $2
           WHERE sid = $1`, [sid, page, u.device, u.browser, u.os, src.source, src.host, (parseInt(b.w, 10) || 0) + '×' + (parseInt(b.h, 10) || 0),
           String(b.lang || '').slice(0, 20), String(b.tz || '').slice(0, 60), subject, jobIdV]);
         await recognise(who);
@@ -2045,6 +2061,11 @@ module.exports = function mountJobs(app, opts) {
       if (ev === 'step' && v) { args.push(v); sets.push('steps = CASE WHEN steps[array_length(steps, 1)] = $2 THEN steps ELSE array_append(steps, $2) END'); }
       if (ev === 'cat' && v) { args.push(v); sets.push('categories = CASE WHEN $2 = ANY(categories) THEN categories ELSE array_append(categories, $2) END'); }
       if (ev === 'lang' && v) { args.push(v); sets.push('chosen_lang = $2'); }
+      if (ev === 'form') {
+        const n = function (x) { const y = parseInt(x, 10); return isFinite(y) && y >= 0 && y < 1000 ? y : null; };
+        args.push(n(b.filled), n(b.total), String(b.field || '').slice(0, 60) || null, String(b.section || '').slice(0, 60) || null);
+        const i = args.length; sets.push('form_filled = $' + (i - 3), 'form_total = $' + (i - 2), 'last_field = coalesce($' + (i - 1) + ', last_field)', 'cur_section = coalesce($' + i + ', cur_section)');
+      }
       if (ev === 'submit' && v) {
         const m = /^RR-0*(\d+)$/.exec(v);
         args.push(v); sets.push('submitted_ref = $2');
@@ -2112,7 +2133,7 @@ module.exports = function mountJobs(app, opts) {
   app.get('/api/admin/site-sessions', withDb(async function (p, req, res) {
     const days = String(Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30)));
     const rows = (await p.query(`SELECT sid, started_at, last_at, landing, pages, device, browser, os, source, ref_host, screen, lang, tz, chosen_lang, steps, categories,
-        subject, job_id, submitted_ref, views, events, ip, extract(epoch FROM last_at - started_at)::int AS secs,
+        subject, job_id, submitted_ref, views, events, ip, cur_page, form_filled, form_total, last_field, cur_section, extract(epoch FROM last_at - started_at)::int AS secs,
         coalesce(who, (SELECT j.tenant_name || ' (' || split_part(coalesce(j.property_address, ''), ',', 1) || ')' FROM jobs j WHERE j.id = site_sessions.job_id AND site_sessions.submitted_ref IS NOT NULL)) AS who,
         coalesce(who_kind, CASE WHEN submitted_ref IS NOT NULL THEN 'tenant' END) AS who_kind,
         extract(hour FROM started_at AT TIME ZONE 'Europe/London')::int AS hour, extract(isodow FROM started_at AT TIME ZONE 'Europe/London')::int AS dow

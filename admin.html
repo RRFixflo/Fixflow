@@ -577,6 +577,9 @@
   .av-lt td { padding: 7px 10px; border-bottom: 1px solid #f2f4f7; vertical-align: middle; } .av-lt tr:hover td { background: #f9fafb; } .av-lt td.nw { white-space: nowrap; } .av-lt td.ad { min-width: 260px; } .av-lt td.ad .linkish { opacity: .5; } .av-lt tr:hover td.ad .linkish { opacity: 1; } .av-lt td.nt { max-width: 200px; color: var(--ink-soft); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ll-find { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
   .ll-find-list { display: grid; gap: 6px; margin-top: 8px; max-height: 320px; overflow: auto; } .ll-find-hit { display: flex; align-items: center; gap: 10px; text-align: left; border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 10px; padding: 8px 10px; cursor: pointer; font: inherit; color: inherit; } .ll-find-hit:hover { border-color: #101828; } .ll-find-hit b { flex: 1; font-size: .88rem; } .ll-find-hit span { color: var(--ink-soft); font-size: .78rem; } .ll-find-hit i { font-style: normal; font-weight: 700; color: #155eef; }
+  .sv-now { font-size: .8rem; color: var(--ink-soft); margin-top: 4px; } .sv-now.live { color: #067647; font-weight: 600; } .sv-now b { color: inherit; }
+  .sv-prog { font-size: .8rem; color: var(--ink-soft); margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .sv-bar { display: inline-block; width: 90px; height: 6px; background: #eaecf0; border-radius: 6px; overflow: hidden; } .sv-bar i { display: block; height: 100%; background: #155eef; }
+  .sv-pages { font-size: .76rem; color: var(--ink-soft); margin-top: 2px; }
   .pt-paste { border: 1px solid var(--line, #e6e8ec); border-radius: 12px; padding: 10px; margin: 8px 0; background: #f9fafb; }
   .pt-row { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line, #e6e8ec); } .pt-row [data-ptuse] { grid-row: span 2; } .pt-row .inp { min-width: 0; } .pt-dup { grid-column: 2 / -1; color: #b54708; font-size: .76rem; }
   .pt-badge { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: .72rem; font-weight: 700; margin-left: 4px; } .pt-badge.lead { background: #ecfdf3; color: #067647; border: 1px solid #abefc6; } .pt-badge.guar { background: #fffaeb; color: #b54708; border: 1px solid #fedf89; }
@@ -12808,6 +12811,8 @@
   var svRows = [], svFilter = 'all', svShown = 10;
   var SV_STEP = { '1': 'The problem', '2': 'Quick check', '3': 'Tell us more', '4': 'Your details', done: 'Sent', resolved: 'Fixed it themselves' };
   function svMax(r){ var m = 1; (r.steps || []).forEach(function(x){ var n = x === 'done' ? 5 : parseInt(x, 10); if (n > m) m = n; }); if (r.submitted_ref) m = 5; return m; }
+  var SV_PAGE = { report: 'Repair report page', track: 'Repair tracker', portal: 'Contractor job link', landlord: 'Landlord page', offer: 'Offer form', 'offer-track': 'Offer tracking page', terms: 'Landlord terms form', pvr: 'Pre-viewing reservation', review: 'Landlord offer review' };
+  function svLive(r){ return r.last_at && Date.now() - new Date(r.last_at).getTime() < 5 * 60000; }
   function svOutcome(r){
     var onReport = (r.pages || []).indexOf('report') !== -1;
     if (r.submitted_ref || (r.steps || []).indexOf('done') !== -1) return { k: 'sent', t: 'Sent a report' + (r.submitted_ref && r.submitted_ref !== 'sent' ? ' · ' + r.submitted_ref : ''), c: 'good' };
@@ -12817,6 +12822,7 @@
       if (!(r.categories || []).length && mx < 2) return { k: 'bounce', t: r.subject ? r.subject : 'Left without choosing a problem', c: '' };
       return { k: 'left', t: 'Left at “' + (SV_STEP[String(mx)] || 'the form') + '”', c: 'warn' };
     }
+    if (['offer', 'offer-track', 'terms', 'pvr', 'review'].indexOf(r.landing) !== -1) return { k: 'forms', t: r.subject || SV_PAGE[r.landing], c: '' };
     if (r.landing === 'portal' || /job link/.test(r.subject || '')) return { k: 'portal', t: r.subject || 'Contractor job link', c: '' };
     if (r.landing === 'landlord' || /landlord page/.test(r.subject || '')) return { k: 'landlord', t: r.subject || 'Landlord page', c: '' };
     return { k: 'track', t: r.subject || 'Repair tracker', c: '' };
@@ -12828,7 +12834,7 @@
     api('GET', '/api/admin/site-sessions?days=' + days).then(function(d){
       if (!d.ok) return;
       svRows = d.sessions; svShown = 10;
-      $('svNote').textContent = 'Every visit to the tenant repair page, the repair tracker, contractor job links and landlord pages — who it was (once they’ve sent a report or opened a link we sent them, on that phone or computer), what device, its IP address, where they came from and what they did. Tap an IP address to see every visit from it.' +
+      $('svNote').textContent = 'Every visit to the tenant repair page, the repair tracker, contractor job links, landlord pages, the offer form, landlord terms, pre-viewing reservations and landlord offer reviews — which page they’re on now, how many boxes of the form they’ve filled (never what they typed) — who it was (once they’ve sent a report or opened a link we sent them, on that phone or computer), what device, its IP address, where they came from and what they did. Tap an IP address to see every visit from it.' +
         (d.since ? ' Recording since ' + fmtDate(d.since) + '.' : ' Recording starts now.');
       var rep = svRows.filter(function(r){ return (r.pages || []).indexOf('report') !== -1; });
       var out = svRows.map(svOutcome), cnt = function(k){ return out.filter(function(o){ return o.k === k; }).length; };
@@ -12871,7 +12877,7 @@
       // Breakdowns.
       var tally = function(f){ var m = {}; svRows.forEach(function(r){ [].concat(f(r) || []).forEach(function(k){ if (k) m[k] = (m[k] || 0) + 1; }); });
         return Object.keys(m).map(function(k){ return { k: k, n: m[k] }; }).sort(function(a, b){ return b.n - a.n; }).slice(0, 7); };
-      var PAGE = { report: 'Repair report page', track: 'Repair tracker', portal: 'Contractor job link', landlord: 'Landlord page' };
+      var PAGE = SV_PAGE;
       var hb = function(title, arr){
         if (!arr.length) return '';
         var max = Math.max.apply(null, arr.map(function(x){ return x.n; }));
@@ -12881,7 +12887,7 @@
       };
       $('svBreak').innerHTML =
         hb('Where they came from', tally(function(r){ return r.source || 'Unknown'; })) +
-        hb('Who visited', tally(function(r){ return r.who_kind ? { tenant: 'Tenants', landlord: 'Landlords', contractor: 'Contractors' }[r.who_kind] : 'Not known yet'; })) +
+        hb('Who visited', tally(function(r){ return r.who_kind ? { tenant: 'Tenants', landlord: 'Landlords', contractor: 'Contractors', applicant: 'Applicants' }[r.who_kind] : 'Not known yet'; })) +
         hb('Device', tally(function(r){ return r.device; })) +
         hb('IP addresses with the most visits', tally(function(r){ return r.ip; })) +
         hb('Phone / computer system', tally(function(r){ return r.os; })) +
@@ -12895,17 +12901,17 @@
     });
   }
   function drawSvList(){
-    var F = [['all', 'All'], ['known', 'Recognised'], ['sent', 'Sent a report'], ['left', 'Left part-way'], ['diy', 'Fixed it themselves'], ['bounce', 'Left straight away'], ['track', 'Tracker'], ['portal', 'Contractor links'], ['landlord', 'Landlord pages']];
+    var F = [['all', 'All'], ['live', '● Live now'], ['forms', 'Offer / terms / PVR forms'], ['known', 'Recognised'], ['sent', 'Sent a report'], ['left', 'Left part-way'], ['diy', 'Fixed it themselves'], ['bounce', 'Left straight away'], ['track', 'Tracker'], ['portal', 'Contractor links'], ['landlord', 'Landlord pages']];
     var out = svRows.map(svOutcome), counts = {};
     out.forEach(function(o){ counts[o.k] = (counts[o.k] || 0) + 1; });
-    counts.known = svRows.filter(function(r){ return r.who; }).length;
+    counts.known = svRows.filter(function(r){ return r.who; }).length; counts.live = svRows.filter(svLive).length;
     $('svChips').innerHTML = F.filter(function(f){ return f[0] === 'all' || counts[f[0]]; }).map(function(f){
       return '<button type="button" role="tab" data-sv="' + f[0] + '"' + (f[0] === svFilter ? ' class="on" aria-selected="true"' : '') + '>' + f[1] + '<span class="n">' + (f[0] === 'all' ? svRows.length : counts[f[0]]) + '</span></button>';
     }).join('');
     var ipCount = {}; svRows.forEach(function(r){ if (r.ip) ipCount[r.ip] = (ipCount[r.ip] || 0) + 1; });
-    var list = svRows.map(function(r, i){ return { r: r, o: out[i] }; }).filter(function(x){ return svFilter === 'all' || (/^ip:/.test(svFilter) ? x.r.ip === svFilter.slice(3) : svFilter === 'known' ? !!x.r.who : x.o.k === svFilter); });
+    var list = svRows.map(function(r, i){ return { r: r, o: out[i] }; }).filter(function(x){ return svFilter === 'all' || (/^ip:/.test(svFilter) ? x.r.ip === svFilter.slice(3) : svFilter === 'known' ? !!x.r.who : svFilter === 'live' ? svLive(x.r) : x.o.k === svFilter); });
     if (/^ip:/.test(svFilter)) $('svChips').insertAdjacentHTML('beforeend', '<button type="button" role="tab" class="on" data-sv="all">IP ' + esc(svFilter.slice(3)) + ' ✕<span class="n">' + list.length + '</span></button>');
-    var WHO = { tenant: ['🏠', 'Tenant'], landlord: ['🔑', 'Landlord'], contractor: ['🔧', 'Contractor'] };
+    var WHO = { tenant: ['🏠', 'Tenant'], landlord: ['🔑', 'Landlord'], contractor: ['🔧', 'Contractor'], applicant: ['📝', 'Applicant'] };
     $('svList').innerHTML = list.slice(0, svShown).map(function(x){
       var r = x.r, o = x.o, dt = new Date(r.started_at);
       var path = (r.categories || []).map(function(c){ return '<span>' + esc(c) + '</span>'; }).join('') +
@@ -12918,11 +12924,18 @@
           '<div class="t">' + esc(o.t) + '</div>' +
           '<div class="s">' + esc([r.device, r.os, r.browser].filter(Boolean).join(' · ') + ' · from ' + (r.source || 'unknown') + (r.views > 1 ? ' · ' + r.views + ' page views' : '')) +
             (r.ip ? ' · <span class="sv-ip" role="button" tabindex="0" data-sv-ip="' + esc(r.ip) + '" title="Show every visit from this IP address">IP ' + esc(r.ip) + (ipCount[r.ip] > 1 ? ' (' + ipCount[r.ip] + ' visits)' : '') + '</span>' : '') + '</div>' +
-          (path ? '<div class="sv-path">' + path + '</div>' : '') + '</div>' +
-        '<div class="w">' + esc(dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ', ' + dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })) + '<br>' + esc(svDur(r.secs)) + '</div></div>';
+          (path ? '<div class="sv-path">' + path + '</div>' : '') +
+          // Where they are and how far the form has got.
+          (r.cur_page ? '<div class="sv-now' + (svLive(r) ? ' live' : '') + '">' + (svLive(r) ? '● Live now on ' : 'Last on ') + '<b>' + esc(SV_PAGE[r.cur_page] || r.cur_page) + '</b>' + (r.cur_section ? ' · ' + esc(r.cur_section) : '') + '</div>' : '') +
+          (r.form_total ? '<div class="sv-prog"><span class="sv-bar"><i style="width:' + Math.round(Math.min(1, (r.form_filled || 0) / r.form_total) * 100) + '%"></i></span>Filled <b>' + (r.form_filled || 0) + ' of ' + r.form_total + '</b> boxes (' + Math.round(Math.min(1, (r.form_filled || 0) / r.form_total) * 100) + '%)' + (r.last_field ? ' · last: <b>' + esc(r.last_field) + '</b>' : '') + '</div>' : '') +
+          (r.pages && r.pages.length > 1 ? '<div class="sv-pages">Pages: ' + r.pages.map(function(pg){ return esc(SV_PAGE[pg] || pg); }).join(' → ') + '</div>' : '') +
+          '</div>' +
+        '<div class="w">' + esc(dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ', ' + dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })) + '<br>' + esc(svDur(r.secs)) + (r.last_at && !svLive(r) ? '<br><small>last seen ' + esc(new Date(r.last_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })) + '</small>' : '') + '</div></div>';
     }).join('') + (list.length > svShown ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn small" id="svMore">Show more (' + (list.length - svShown) + ')</button></div>' : '') ||
       '<p class="muted-note">No visits ' + (svRows.length ? 'of this kind ' : '') + 'in this period.</p>';
   }
+  // While Activity is open, keep the visits up to date (who's live, how far they've got).
+  setInterval(function(){ if (typeof view !== 'undefined' && view === 'act' && document.visibilityState === 'visible' && svRows && svRows.length) loadSiteSessions(); }, 30000);
   $('svChips').addEventListener('click', function(e){ var b = e.target.closest('[data-sv]'); if (!b) return; svFilter = b.dataset.sv; svShown = 10; drawSvList(); });
   $('svList').addEventListener('click', function(e){
     if (e.target.closest('#svMore')) { svShown += 20; drawSvList(); return; }
