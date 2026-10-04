@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pre-Viewing Reservation — Residential Realtors</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/app-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --navy:#0b1f3a; --ink:#0f1115; --ink2:#2a2e37; --soft:#5f6673; --faint:#9aa0ab; --line:#e7e9ee; --line2:#dce0e7; --bg:#f3f5f8; --brand:#D9262E; --brand-t:#fdecec; --ok:#12924a; --ok-t:#e8f6ee; --blue:#2453e8; --blue-t:#edf2ff; --warn:#8a5200; --warn-t:#fff5e6; }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); line-height:1.5; -webkit-font-smoothing:antialiased; }
+  a { color:var(--blue); }
+  [hidden] { display:none !important; }
+  .top { background:rgba(11,31,58,.97); position:sticky; top:0; z-index:20; border-bottom:1px solid rgba(255,255,255,.08); }
+  .top .in { max-width:860px; margin:0 auto; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .top img { height:46px; width:auto; display:block; }
+  .secure { display:inline-flex; align-items:center; gap:6px; font-size:.8rem; color:#c6d0de; font-weight:500; } .secure svg { width:15px; height:15px; color:#4ade80; }
+  .hero { position:relative; overflow:hidden; color:#fff; background:radial-gradient(900px 420px at 92% -20%, rgba(217,38,46,.38), transparent 60%), radial-gradient(700px 380px at -10% 120%, rgba(36,83,232,.28), transparent 60%), linear-gradient(160deg, #13294b 0%, #0b1f3a 55%, #08162b 100%); }
+  .hero .in { max-width:860px; margin:0 auto; padding:34px 20px 74px; position:relative; }
+  .eyebrow { display:inline-block; color:#ffb4b7; background:rgba(217,38,46,.16); border:1px solid rgba(255,180,183,.28); border-radius:999px; padding:5px 11px; font-size:.72rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+  .hero h1 { font-size:clamp(1.6rem, 3.4vw, 2.4rem); line-height:1.12; letter-spacing:-.03em; margin:14px 0 8px; font-weight:800; }
+  .hero p { color:#c6d0de; margin:0; max-width:620px; }
+  .prop { display:inline-flex; gap:8px; align-items:center; margin-top:14px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); border-radius:999px; padding:8px 14px; font-weight:600; }
+  .stepper { display:flex; margin:24px 0 0; max-width:640px; }
+  .stepper .s { flex:1; display:flex; align-items:center; gap:10px; }
+  .stepper .s:not(:last-child)::after { content:""; flex:1; height:2px; background:rgba(255,255,255,.18); margin:0 12px 0 2px; }
+  .stepper .s.done:not(:last-child)::after { background:#12b76a; }
+  .stepper .n { flex:0 0 30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.82rem; font-weight:700; background:rgba(255,255,255,.08); border:1.5px solid rgba(255,255,255,.28); color:#c6d0de; }
+  .stepper .s.on .n { background:#fff; border-color:#fff; color:var(--navy); box-shadow:0 0 0 5px rgba(255,255,255,.14); }
+  .stepper .s.done .n { background:#12b76a; border-color:#12b76a; color:#fff; }
+  .stepper .lb { font-size:.82rem; font-weight:600; color:#94a3b8; white-space:nowrap; } .stepper .s.on .lb, .stepper .s.done .lb { color:#fff; }
+  .wrap { max-width:860px; margin:-46px auto 0; padding:0 20px 120px; position:relative; z-index:2; }
+  .card { background:#fff; border:1px solid rgba(15,23,42,.06); border-radius:20px; padding:24px; margin-bottom:16px; box-shadow:0 1px 2px rgba(15,23,42,.04), 0 18px 40px -22px rgba(15,23,42,.22); }
+  .card h2 { font-size:1.22rem; letter-spacing:-.02em; margin:0 0 4px; } .lead { color:var(--soft); margin:0 0 18px; font-size:.94rem; }
+  h3 { font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin:22px 0 10px; }
+  .facts { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin:0 0 6px; }
+  .facts div { background:#f7f8fa; border:1px solid var(--line); border-radius:14px; padding:12px 14px; } .facts span { display:block; font-size:.74rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--soft); } .facts b { display:block; font-size:1.05rem; color:var(--navy); margin-top:2px; }
+  .how { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; counter-reset:h; }
+  .how div { position:relative; padding:16px 16px 14px 16px; border:1px solid var(--line); border-radius:16px; background:linear-gradient(180deg,#fff,#fafbfc); font-size:.9rem; color:var(--ink2); }
+  .how div::before { counter-increment:h; content:counter(h); display:flex; width:30px; height:30px; border-radius:50%; background:var(--navy); color:#fff; font-weight:800; align-items:center; justify-content:center; margin-bottom:8px; }
+  .callout { background:var(--warn-t); border:1px solid #f3d9a8; color:#7a4d00; border-radius:14px; padding:12px 14px; font-size:.92rem; margin:14px 0 0; }
+  .terms-box { max-height:380px; overflow:auto; border:1px solid var(--line); border-radius:14px; padding:6px 16px; background:#fbfcfd; font-size:.88rem; }
+  .terms-box h4 { margin:16px 0 6px; color:var(--navy); font-size:.95rem; } .terms-box p, .terms-box li { margin:0 0 8px; color:var(--ink2); } .terms-box ul { padding-left:18px; margin:0 0 8px; }
+  .f { margin-bottom:14px; } .l { display:block; font-weight:600; font-size:.88rem; margin-bottom:6px; } .opt { color:var(--faint); font-weight:500; }
+  .g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  input, select, textarea { width:100%; padding:12px 14px; border:1px solid var(--line2); border-radius:12px; font:inherit; font-size:16px; background:#fbfcfd; color:inherit; }
+  input:focus, select:focus, textarea:focus { outline:none; background:#fff; border-color:var(--navy); box-shadow:0 0 0 4px rgba(11,31,58,.1); }
+  .bad { border-color:var(--brand) !important; box-shadow:0 0 0 4px rgba(217,38,46,.1) !important; }
+  .check { display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid var(--line); border-radius:12px; margin:8px 0; cursor:pointer; font-size:.92rem; } .check input { width:20px; height:20px; flex:0 0 auto; margin-top:2px; accent-color:var(--navy); padding:0; }
+  .sigwrap { position:relative; border:1px solid var(--line2); border-radius:14px; background:#fff; height:170px; touch-action:none; scroll-margin:120px; }
+  .sigwrap canvas { width:100%; height:100%; display:block; border-radius:14px; cursor:crosshair; }
+  .sigwrap .line { position:absolute; left:20px; right:20px; bottom:42px; border-bottom:1px solid var(--line2); pointer-events:none; }
+  .sigwrap .ph { position:absolute; left:0; right:0; top:44%; text-align:center; color:var(--faint); pointer-events:none; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--line2); background:#fff; color:var(--ink); font:inherit; font-weight:700; padding:12px 18px; border-radius:12px; cursor:pointer; text-decoration:none; }
+  .btn.dark { background:var(--navy); border-color:var(--navy); color:#fff; } .btn.go { background:var(--brand); border-color:var(--brand); color:#fff; } .btn.ok { background:#12b76a; border-color:#12b76a; color:#fff; } .btn:disabled { opacity:.6; cursor:default; } .btn.wide { width:100%; padding:15px 18px; font-size:1.02rem; }
+  .linkbtn { border:0; background:none; color:var(--blue); font:inherit; font-size:.86rem; cursor:pointer; padding:0; }
+  .err { background:var(--brand-t); color:#a3141b; border-radius:12px; padding:11px 14px; font-weight:600; font-size:.9rem; margin:12px 0 0; }
+  .okbox { background:var(--ok-t); color:#0b6b36; border:1px solid #b7e2c6; border-radius:14px; padding:12px 14px; font-weight:600; font-size:.94rem; }
+  .paybox { border:1px solid var(--line); border-radius:16px; overflow:hidden; margin:6px 0 4px; }
+  .pr { display:flex; align-items:center; gap:10px; padding:12px 14px; border-top:1px solid var(--line); } .pr:first-child { border-top:0; } .pr span { color:var(--soft); flex:0 0 130px; font-size:.9rem; } .pr b { flex:1; font-weight:700; word-break:break-all; } .pr.strong b { color:#c8102e; font-size:1.05rem; }
+  .cp { border:1px solid var(--line2); background:#fff; border-radius:9px; padding:6px 10px; font:inherit; font-size:.8rem; font-weight:700; cursor:pointer; color:var(--ink2); }
+  .amt { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:0 0 14px; } .amt b { font-size:1.9rem; letter-spacing:-.02em; color:var(--navy); } .amt small { display:block; color:var(--soft); font-size:.8rem; font-weight:600; text-align:right; }
+  .paid-big { width:100%; display:flex; align-items:center; gap:14px; padding:14px 16px; border:0; border-radius:16px; background:linear-gradient(135deg,#12b76a,#0e9f5c); color:#fff; font:inherit; text-align:left; cursor:pointer; margin-top:14px; box-shadow:0 12px 26px -14px rgba(18,183,106,.8); }
+  .paid-big .ico { flex:0 0 40px; height:40px; border-radius:50%; background:rgba(255,255,255,.2); display:flex; align-items:center; justify-content:center; } .paid-big .ico svg { width:22px; height:22px; } .paid-big b { display:block; font-size:1.02rem; } .paid-big small { opacity:.9; }
+  .decide { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:6px; }
+  .dbtn { display:flex; flex-direction:column; gap:4px; align-items:flex-start; text-align:left; padding:18px; border-radius:18px; border:2px solid var(--line); background:#fff; font:inherit; cursor:pointer; transition:.15s; }
+  .dbtn .e { font-size:1.6rem; } .dbtn b { font-size:1.05rem; } .dbtn span { color:var(--soft); font-size:.86rem; }
+  .dbtn.yes:hover, .dbtn.yes.on { border-color:#12b76a; background:#f0fbf5; } .dbtn.no:hover, .dbtn.no.on { border-color:var(--brand); background:#fff6f6; }
+  .due { display:flex; gap:10px; align-items:center; background:var(--blue-t); color:#1d3fae; border-radius:14px; padding:12px 14px; font-size:.92rem; margin:0 0 14px; } .due.late { background:var(--brand-t); color:#a3141b; } .due b { font-weight:800; }
+  .done { text-align:center; padding:30px 20px; } .tick { width:110px; height:110px; border-radius:50%; background:radial-gradient(circle at 30% 30%, #34d399, #12b76a 60%, #0e9f5c); display:inline-flex; align-items:center; justify-content:center; margin-bottom:14px; box-shadow:0 0 0 12px rgba(18,183,106,.14), 0 18px 40px -12px rgba(18,183,106,.6); animation:tickPop .6s cubic-bezier(.2,1.4,.4,1) both; }
+  .tick svg { width:58px; height:58px; } .tick path { stroke-dasharray:60; stroke-dashoffset:60; animation:tickDraw .5s .35s ease-out forwards; }
+  .tick.grey { background:radial-gradient(circle at 30% 30%, #94a3b8, #64748b 70%); box-shadow:0 0 0 12px rgba(100,116,139,.12); }
+  @keyframes tickPop { from { transform:scale(.3); opacity:0; } } @keyframes tickDraw { to { stroke-dashoffset:0; } }
+  .mini { display:flex; justify-content:space-between; gap:10px; padding:10px 0; border-top:1px solid var(--line); font-size:.92rem; } .mini:first-of-type { border-top:0; } .mini span { color:var(--soft); } .mini b { text-align:right; }
+  .seg2 { display:inline-flex; background:#f1f3f6; border-radius:10px; padding:3px; margin-bottom:12px; } .seg2 button { border:0; background:none; font:inherit; font-weight:600; font-size:.86rem; padding:7px 14px; border-radius:8px; cursor:pointer; color:var(--soft); } .seg2 button.on { background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+  .foot { text-align:center; color:var(--faint); font-size:.84rem; margin-top:10px; }
+  @media (max-width:640px) { .top img { height:38px; } .hero .in { padding:24px 16px 62px; } .wrap { padding:0 12px 120px; margin-top:-40px; } .card { padding:18px; } .g2, .facts, .how, .decide { grid-template-columns:1fr; gap:10px; } .g2 { gap:0; } .stepper .lb { display:none; } .stepper .s.on .lb { display:block; } .pr span { flex-basis:104px; } }
+</style>
+</head>
+<body>
+<div class="top"><div class="in"><img src="/logo-white.png" alt="Residential Realtors" onerror="this.src='/logo.png'"><span class="secure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Secure &amp; private</span></div></div>
+<div class="hero"><div class="in">
+  <span class="eyebrow">Pre-Viewing Reservation</span>
+  <h1 id="hTitle">Reserve the property before you view it</h1>
+  <p id="hSub">Sign the reservation form and pay one week’s rent. If it’s not for you after the viewing, we refund you within 24 hours of your request.</p>
+  <div class="prop" id="hProp" hidden></div>
+  <div class="stepper" id="stepper"></div>
+</div></div>
+
+<div class="wrap" id="app"><div class="card"><p class="lead" style="margin:0">Loading your reservation…</p></div></div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var gbp = function(v){ return '£' + (Math.round((Number(v) || 0) * 100) / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  var when = function(v){ return v ? new Date(v).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''; };
+  var token = (location.pathname.match(/^\/reserve\/([\w-]{16,40})/) || [])[1], R = null, startedAt = null;
+  var TICK = '<svg viewBox="0 0 52 52" fill="none"><path d="M14 27 l8 8 l16 -18" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  document.addEventListener('input', function(){ if (!startedAt) startedAt = new Date().toISOString(); }, true);
+  function stepNo(){ if (!R.signed_at) return 1; if (R.decision) return 5; if (!R.paid && !R.paid_claim) return 2; return R.viewing_at && new Date(R.viewing_at) < new Date() ? 4 : 3; }
+  function drawStepper(){ var st = stepNo(); $('stepper').innerHTML = ['Sign', 'Pay', 'View', 'Decide'].map(function(s, i){ var dn = i + 1 < st; return '<div class="s' + (dn ? ' done' : i + 1 === st ? ' on' : '') + '"><span class="n">' + (dn ? '✓' : i + 1) + '</span><span class="lb">' + s + '</span></div>'; }).join(''); }
+  function err(msg, el){ var e = document.querySelector('.err'); if (e) { e.textContent = msg; e.hidden = false; } if (el) { el.classList.add('bad'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (el.focus) el.focus(); } return false; }
+  function load(){
+    fetch('/api/pvr/' + token, { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+      if (!d.ok) { $('app').innerHTML = '<div class="card"><h2>Link not found</h2><p class="lead" style="margin:0">This link isn’t valid any more. Please contact Residential Realtors on 0207 096 8131.</p></div>'; $('stepper').hidden = true; return; }
+      show(d);
+    })['catch'](function(){ $('app').innerHTML = '<div class="card"><h2>Couldn’t load</h2><p class="lead" style="margin:0">Please check your connection and refresh the page.</p></div>'; });
+  }
+  function show(d){
+    R = d; $('hProp').hidden = false; $('hProp').textContent = '🏠 ' + d.property;
+    $('hTitle').textContent = d.signed_at ? (d.decision === 'yes' ? 'Great — you’re going ahead' : d.decision === 'no' ? 'Thanks for letting us know' : 'Your reservation is signed') : 'Reserve ' + d.property.split(',').slice(0, 2).join(',') + ' before you view it';
+    if (d.signed_at) $('hSub').textContent = d.decision ? 'Reference ' + d.ref + '.' : 'Reference ' + d.ref + '. Pay your reservation, view the property, then tell us within 24 hours if you’d like to go ahead.';
+    drawStepper();
+    if (!d.signed_at) return signView();
+    signedView();
+  }
+  function factsHtml(){
+    return '<div class="facts"><div><span>Reservation</span><b>' + gbp(R.amount) + '</b></div><div><span>Viewing</span><b>' + esc(R.viewing_at ? when(R.viewing_at) : 'To be arranged') + '</b></div><div><span>Decide by</span><b>' + esc(R.deadline ? when(R.deadline) : '24 hours after viewing') + '</b></div></div>';
+  }
+  function termsHtml(){
+    var t = R.terms;
+    return '<div class="terms-box"><h4>Formal holding deposit</h4>' + t.holding.map(function(s){ return '<p>' + esc(s) + '</p>'; }).join('') + '<p>' + esc(t.nonrefundable_intro) + '</p><ul>' + t.nonrefundable.map(function(s){ return '<li>' + esc(s) + '</li>'; }).join('') + '</ul><p>' + esc(t.after) + '</p>' +
+      '<h4>References</h4><p>' + esc(t.references) + '</p><h4>Deadline for agreement</h4><p>' + esc(t.deadline) + '</p></div>';
+  }
+  function signView(){
+    var t = R.terms;
+    $('app').innerHTML =
+      '<div class="card"><h2>How it works</h2><p class="lead">Reserve the property now so nobody else can, then view it.</p>' + factsHtml() +
+        '<h3>Three simple steps</h3><div class="how">' + t.how.map(function(s){ return '<div>' + esc(s) + '</div>'; }).join('') + '</div>' +
+        '<div class="callout"><b>Important:</b> ' + esc(t.decide) + '</div></div>' +
+      '<div class="card"><h2>Information sheet</h2><p class="lead">If you go ahead, your reservation becomes your formal holding deposit on these terms.</p>' + termsHtml() + '</div>' +
+      '<div class="card"><h2>Your details &amp; signature</h2><p class="lead">Check your details, then sign to reserve.</p>' +
+        '<div class="f"><label class="l" for="nm">Full name</label><input id="nm" autocomplete="name" value="' + esc(R.name || '') + '"></div>' +
+        '<div class="g2"><div class="f"><label class="l" for="ph">Mobile</label><input id="ph" type="tel" autocomplete="tel" value="' + esc(R.phone || '') + '"></div><div class="f"><label class="l" for="em">Email</label><input id="em" type="email" autocomplete="email" value="' + esc(R.email || '') + '"></div></div>' +
+        '<div class="f"><label class="l" for="tn">Number of tenants</label><select id="tn">' + [1, 2, 3, 4, 5, 6].map(function(n){ return '<option>' + n + '</option>'; }).join('') + '</select></div>' +
+        '<label class="check"><input type="checkbox" id="acc"><span>I have read and understood the Pre-Viewing Reservation information sheet, and I’ll let you know within 24 hours of my viewing whether I’d like to go ahead.</span></label>' +
+        '<label class="check"><input type="checkbox" id="dec"><span>' + esc(t.declaration) + '</span></label>' +
+        '<h3>Sign</h3><div class="f"><label class="l" for="sigName">Type your full name</label><input id="sigName" autocomplete="name" value="' + esc(R.name || '') + '"></div>' +
+        '<div class="sigwrap" id="sigWrap"><canvas id="sig" aria-label="Signature box"></canvas><span class="line"></span><span class="ph" id="sigHint">Sign here with your finger or mouse</span></div><button type="button" class="linkbtn" id="sigClear" style="margin-top:6px">Clear signature</button>' +
+        '<div class="err" hidden></div><div style="margin-top:14px"><button class="btn go wide" type="button" id="sub">Sign &amp; reserve</button></div></div>' + footHtml();
+    document.querySelectorAll('input').forEach(function(i){ i.addEventListener('input', function(){ i.classList.remove('bad'); }); });
+    var sig = $('sig'), sctx = sig.getContext('2d'), inked = false, drawing = false, last = null;
+    var size = function(){ var r = sig.getBoundingClientRect(); if (!r.width) return; var k = window.devicePixelRatio || 1; sig.width = Math.round(r.width * k); sig.height = Math.round(r.height * k); sctx.setTransform(k, 0, 0, k, 0, 0); sctx.lineWidth = 2.4; sctx.lineCap = 'round'; sctx.lineJoin = 'round'; sctx.strokeStyle = '#0f1115'; };
+    setTimeout(size, 50); window.addEventListener('resize', size);
+    var pt = function(e){ var r = sig.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    sig.addEventListener('pointerdown', function(e){ e.preventDefault(); drawing = true; last = pt(e); sig.setPointerCapture(e.pointerId); });
+    sig.addEventListener('pointermove', function(e){ if (!drawing) return; var q = pt(e); sctx.beginPath(); sctx.moveTo(last.x, last.y); sctx.lineTo(q.x, q.y); sctx.stroke(); last = q; if (!inked) { inked = true; $('sigHint').hidden = true; $('sigWrap').classList.remove('bad'); } });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(ev){ sig.addEventListener(ev, function(){ drawing = false; }); });
+    $('sigClear').addEventListener('click', function(){ sctx.clearRect(0, 0, sig.width, sig.height); inked = false; $('sigHint').hidden = false; });
+    var png = function(){ var out = document.createElement('canvas'), k = Math.min(1, 900 / sig.width); out.width = Math.round(sig.width * k); out.height = Math.round(sig.height * k); var o = out.getContext('2d'); o.fillStyle = '#fff'; o.fillRect(0, 0, out.width, out.height); o.drawImage(sig, 0, 0, out.width, out.height); return out.toDataURL('image/png'); };
+    $('sub').addEventListener('click', function(){
+      document.querySelector('.err').hidden = true;
+      if (!$('nm').value.trim()) return err('Please enter your full name.', $('nm'));
+      if (!$('ph').value.trim() && !$('em').value.trim()) return err('Please give your mobile or email so we can contact you.', $('ph'));
+      if (!$('acc').checked) return err('Please tick to confirm you’ve read the information sheet.', $('acc').closest('.check'));
+      if (!$('dec').checked) return err('Please tick to confirm the declaration.', $('dec').closest('.check'));
+      if (!$('sigName').value.trim()) return err('Please type your full name.', $('sigName'));
+      if (!inked) return err('Please sign in the box.', $('sigWrap'));
+      var b = this; b.disabled = true; b.textContent = 'Signing…';
+      fetch('/api/pvr/' + token + '/sign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('nm').value.trim(), phone: $('ph').value.trim(), email: $('em').value.trim(), tenants: $('tn').value, accept: true, declaration: true, signature: $('sigName').value.trim(), signature_png: png(), started_at: startedAt }) })
+        .then(function(r){ return r.json(); }).then(function(d){
+          if (!d.ok) { b.disabled = false; b.textContent = 'Sign & reserve'; return err(d.error === 'signed' ? 'This reservation has already been signed — refresh the page.' : d.error === 'rate-limited' ? 'Too many tries — please wait a little.' : 'Couldn’t sign just now — please try again.'); }
+          show(d); window.scrollTo(0, 0);
+        })['catch'](function(){ b.disabled = false; b.textContent = 'Sign & reserve'; err('Couldn’t send — please check your connection.'); });
+    });
+  }
+  function footHtml(){ return '<p class="foot">Questions? Call 0207 096 8131 or email info@residentialrealtors.co.uk</p>'; }
+  function copyRow(label, val, strong){ return '<div class="pr' + (strong ? ' strong' : '') + '"><span>' + label + '</span><b>' + esc(val) + '</b><button type="button" class="cp" data-copy="' + esc(val) + '">Copy</button></div>'; }
+  function payHtml(){
+    if (R.decision === 'no') return '';
+    if (R.paid) return '<div class="card"><div class="okbox">✓ Payment received — ' + gbp(R.amount) + '. The property is reserved for you.</div></div>';
+    if (R.paid_claim) return '<div class="card"><div class="okbox">✓ Thanks — you’ve told us you’ve paid ' + gbp(R.amount) + '. We’ll confirm here once it arrives.</div></div>';
+    var b = R.bank;
+    return '<div class="card"><div class="amt"><div><h2>Pay your reservation</h2><p class="lead" style="margin:0">One week’s rent, by bank transfer, phone or in store.</p></div><div><b>' + gbp(R.amount) + '</b><small>due now</small></div></div>' +
+      (b ? '<div class="paybox">' + copyRow('Account name', b.payee) + copyRow('Sort code', b.sort_code) + copyRow('Account number', b.account) + (b.iban ? copyRow('IBAN', b.iban) : '') + (b.swift ? copyRow('SWIFT / BIC', b.swift) : '') + copyRow('Reference', R.reference, true) + '</div><p class="lead" style="font-size:.86rem;margin:8px 0 0">Please use exactly this reference, with no spaces, so we can match your payment.</p>'
+        : '<p>Please call us on 0207 096 8131 to pay by card, or ask us for our bank details.</p>') +
+      '<button type="button" class="paid-big" id="paidNow"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span><b>I’ve paid the reservation</b><small>Tap once you’ve made the transfer</small></span></button></div>';
+  }
+  function refundFields(required){
+    return '<div id="rfBox"><h3>Where should we send your refund?</h3>' + (required ? '' : '<p class="lead" style="margin:-4px 0 10px;font-size:.88rem">If you’ve paid the reservation, add your account so we can refund you. Leave blank if you haven’t paid.</p>') +
+      '<div class="seg2" id="rfSeg"><button type="button" class="on" data-rf="uk">UK account</button><button type="button" data-rf="intl">Account abroad</button></div>' +
+      '<div class="f"><label class="l" for="rfName">Name on the account</label><input id="rfName" autocomplete="name" value="' + esc(R.name || '') + '"></div>' +
+      '<div class="g2" id="rfUk"><div class="f"><label class="l" for="rfSort">Sort code</label><input id="rfSort" inputmode="numeric" placeholder="12-34-56" maxlength="8"></div><div class="f"><label class="l" for="rfAcc">Account number</label><input id="rfAcc" inputmode="numeric" placeholder="12345678" maxlength="8"></div></div>' +
+      '<div class="f" id="rfIntl" hidden><label class="l" for="rfIban">IBAN</label><input id="rfIban" autocapitalize="characters" placeholder="e.g. DE89 3704 0044 0532 0130 00"></div></div>';
+  }
+  function decideHtml(){
+    var late = R.deadline && new Date(R.deadline) < new Date(), refundReq = R.paid || !!R.paid_claim;
+    return '<div class="card" id="decideCard"><h2>After your viewing: would you like to go ahead?</h2><p class="lead">Let us know as soon as you’ve seen the property.</p>' +
+      (R.deadline ? '<div class="due' + (late ? ' late' : '') + '">⏰ <span>' + (late ? 'Your 24 hours ended <b>' + esc(when(R.deadline)) + '</b> — please let us know now.' : 'Please let us know by <b>' + esc(when(R.deadline)) + '</b> (24 hours after your viewing on ' + esc(when(R.viewing_at)) + ').') + '</span></div>' : '<div class="due">⏰ <span>Please let us know <b>within 24 hours of your viewing</b>.</span></div>') +
+      '<div class="decide"><button type="button" class="dbtn yes" data-dec="yes"><span class="e">✅</span><b>Yes, I’d like to go ahead</b><span>Make your formal offer — your reservation becomes your holding deposit.</span></button><button type="button" class="dbtn no" data-dec="no"><span class="e">✋</span><b>No, it’s not for me</b><span>' + (refundReq ? 'We’ll refund your ' + gbp(R.amount) + ' within 24 hours.' : 'Let us know and we’ll release the property.') + '</span></button></div>' +
+      '<div id="decYes" hidden style="margin-top:16px"><p style="margin:0 0 12px">Great! Next, fill in the formal offer form for each tenant. ' + (refundReq ? 'Your reservation payment of ' + gbp(R.amount) + ' will be converted into your holding deposit.' : '') + '</p><button type="button" class="btn ok wide" id="goYes">Yes, go ahead — make my offer →</button></div>' +
+      '<div id="decNo" hidden style="margin-top:16px"><div class="f"><label class="l" for="why">Anything you’d like to tell us? <span class="opt">optional</span></label><textarea id="why" rows="2" maxlength="1000" placeholder="e.g. The bedrooms were smaller than expected"></textarea></div>' + refundFields(refundReq) +
+        '<button type="button" class="btn go wide" id="goNo">Confirm I’m not going ahead</button></div>' +
+      '<div class="err" hidden></div></div>';
+  }
+  function signedView(){
+    var html = '';
+    if (R.decision === 'yes') {
+      html += '<div class="card done"><div class="tick">' + TICK + '</div><h2 style="font-size:1.45rem">You’re going ahead 🎉</h2>' +
+        (R.offer ? '<p class="lead">We’ve received your formal offer (' + esc(R.offer) + '). We’ll keep you updated on your offer tracking page.</p>'
+          : '<p class="lead">The next step is your formal offer: fill in the details for each tenant and attach your ID. ' + (R.paid || R.paid_claim ? 'Your reservation becomes your holding deposit.' : '') + '</p>' + (R.offer_link ? '<a class="btn ok wide" href="' + esc(R.offer_link) + '">Make my formal offer →</a>' : '')) + '</div>';
+    } else if (R.decision === 'no') {
+      var rf = R.refunded ? '<div class="okbox">✓ Your refund has been sent.</div>' : R.refund_given ? '<div class="okbox">✓ We have your account details. Your refund will be sent within 24 hours.</div>' : '';
+      html += '<div class="card done"><div class="tick grey">' + TICK + '</div><h2 style="font-size:1.45rem">Thanks for letting us know</h2><p class="lead">We’ve released the property. ' + (R.refund_due || R.refund_given ? 'We’ll refund your reservation within 24 hours of your request.' : '') + '</p>' + rf + '</div>';
+    } else {
+      html += '<div class="card done" style="padding:22px 20px"><div class="tick">' + TICK + '</div><h2 style="font-size:1.4rem">Signed — thank you</h2><p class="lead" style="margin:0">' + esc(R.signed_by || R.name) + ' signed on ' + esc(when(R.signed_at)) + '.</p></div>';
+      html += '<div class="card"><h2>Your reservation</h2>' + factsHtml() + '</div>';
+      html += payHtml() + decideHtml();
+    }
+    html += '<div class="card"><div class="mini"><span>Reference</span><b>' + esc(R.ref) + '</b></div><div class="mini"><span>Property</span><b>' + esc(R.property) + '</b></div><div class="mini"><span>Reservation</span><b>' + gbp(R.amount) + (R.paid ? ' · paid ✓' : '') + '</b></div>' +
+      '<div style="margin-top:12px"><a class="btn" target="_blank" rel="noopener" href="/api/pvr/' + token + '/pdf">⬇ Your signed form (PDF)</a></div></div>' + footHtml();
+    $('app').innerHTML = html;
+    if ($('paidNow')) $('paidNow').addEventListener('click', function(){
+      var b = this; b.disabled = true;
+      fetch('/api/pvr/' + token + '/paid', { method: 'POST' }).then(function(r){ return r.json(); }).then(function(x){ if (x.ok) { R.paid_claim = new Date().toISOString(); show(R); } else b.disabled = false; })['catch'](function(){ b.disabled = false; });
+    });
+    var dc = $('decideCard'); if (!dc) return;
+    dc.addEventListener('click', function(e){
+      var d = e.target.closest('[data-dec]'); if (d) { dc.querySelectorAll('[data-dec]').forEach(function(x){ x.classList.toggle('on', x === d); }); $('decYes').hidden = d.dataset.dec !== 'yes'; $('decNo').hidden = d.dataset.dec !== 'no'; dc.querySelector('.err').hidden = true; ($(d.dataset.dec === 'yes' ? 'decYes' : 'decNo')).scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
+      var s = e.target.closest('[data-rf]'); if (s) { $('rfSeg').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === s); }); $('rfUk').hidden = s.dataset.rf !== 'uk'; $('rfIntl').hidden = s.dataset.rf !== 'intl'; }
+    });
+    $('goYes').addEventListener('click', function(){ send('yes', null, this); });
+    $('goNo').addEventListener('click', function(){
+      var intl = !$('rfIntl').hidden, nm = $('rfName').value.trim(), sort = $('rfSort').value.replace(/\D/g, ''), acc = $('rfAcc').value.replace(/\D/g, ''), iban = $('rfIban').value.toUpperCase().replace(/\s+/g, '');
+      var given = intl ? !!iban : !!(sort || acc), need = R.paid || !!R.paid_claim;
+      if (need || given) {
+        if (!nm) return err('Please enter the name on the account.', $('rfName'));
+        if (intl ? !/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(iban) : !(sort.length === 6 && acc.length === 8)) return err(intl ? 'Please check the IBAN.' : 'Please enter a 6-digit sort code and an 8-digit account number.', intl ? $('rfIban') : sort.length !== 6 ? $('rfSort') : $('rfAcc'));
+      }
+      send('no', { reason: $('why').value.trim(), refund: need || given ? { name: nm, sort_code: intl ? '' : sort, account: intl ? '' : acc, iban: intl ? iban : '' } : null }, this);
+    });
+  }
+  function send(decision, extra, b){
+    var label = b.textContent; b.disabled = true; b.textContent = 'Sending…';
+    fetch('/api/pvr/' + token + '/decide', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ decision: decision }, extra || {})) }).then(function(r){ return r.json(); }).then(function(d){
+      if (!d.ok) { b.disabled = false; b.textContent = label; return err(d.error === 'refund' ? 'Please check your refund account details.' : d.error === 'decided' ? 'You’ve already told us — refresh the page.' : 'Couldn’t send just now — please try again.'); }
+      if (decision === 'yes' && d.offer_link) { location.href = d.offer_link; return; }
+      show(d); window.scrollTo(0, 0);
+    })['catch'](function(){ b.disabled = false; b.textContent = label; err('Couldn’t send — please check your connection.'); });
+  }
+  document.addEventListener('click', function(e){ var c = e.target.closest('[data-copy]'); if (!c) return; (navigator.clipboard ? navigator.clipboard.writeText(c.dataset.copy) : Promise.reject()).then(function(){ c.textContent = '✓ Copied'; setTimeout(function(){ c.textContent = 'Copy'; }, 1500); }, function(){ window.prompt('Copy:', c.dataset.copy); }); });
+  if (!token) { $('app').innerHTML = '<div class="card"><h2>Link not found</h2></div>'; return; }
+  load();
+})();
+</script>
+</body>
+</html>

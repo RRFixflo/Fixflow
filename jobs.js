@@ -502,6 +502,28 @@ CREATE TABLE IF NOT EXISTS landlord_terms (
   signed_at        TIMESTAMPTZ,
   created_by       TEXT
 );
+CREATE TABLE IF NOT EXISTS pvr_reservations (
+  id               SERIAL PRIMARY KEY,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  token            TEXT NOT NULL UNIQUE,
+  status           TEXT NOT NULL DEFAULT 'sent',
+  property_address TEXT NOT NULL,
+  rent             NUMERIC(10,2),
+  per              TEXT NOT NULL DEFAULT 'pw',
+  amount           NUMERIC(10,2) NOT NULL,
+  viewing_at       TIMESTAMPTZ,
+  name             TEXT,
+  email            TEXT,
+  phone            TEXT,
+  signature        BYTEA,
+  data             JSONB NOT NULL DEFAULT '{}'::jsonb,
+  log              JSONB NOT NULL DEFAULT '[]'::jsonb,
+  signed_at        TIMESTAMPTZ,
+  paid_at          TIMESTAMPTZ,
+  decision         TEXT,
+  decided_at       TIMESTAMPTZ,
+  created_by       TEXT
+);
 CREATE TABLE IF NOT EXISTS landlord_terms_docs (
   id         SERIAL PRIMARY KEY,
   terms_id   INTEGER NOT NULL REFERENCES landlord_terms(id) ON DELETE CASCADE,
@@ -1582,6 +1604,7 @@ module.exports = function mountJobs(app, opts) {
   function staffAllowed(method, path) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;
+    if (/^\/pvr(\/\d+(\/pdf)?)?$/.test(path)) return true;   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
@@ -5651,7 +5674,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (di !== -1) { disclaimer = body.slice(di).trim(); body = body.slice(0, di); }
     let sig = []; const sm = /\n\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Thanks,?|Yours sincerely,?)\s*\n([\s\S]*)$/i.exec(body);
     if (sm) { sig = sm[2].split('\n').map(function (l) { return l.trim(); }).filter(Boolean); body = body.slice(0, sm.index); }
-    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer']];
+    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer']];
     const buttons = [];
     const btnOf = function (b) { return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 22px"><tr><td style="background:#0b1f3a;border-radius:12px"><a href="' + e(b.url) + '" style="display:inline-block;padding:15px 26px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">' + e(b.label) + ' &rarr;</a></td></tr></table><p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3">Or copy this link: <a href="' + e(b.url) + '" style="color:#98a2b3;word-break:break-all">' + e(b.url) + '</a></p>'; };
     const linkify = function (t) { return e(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, function (u) { return '<a href="' + u + '" style="color:#1d3fae;text-decoration:underline">' + u + '</a>'; }); };
@@ -6699,10 +6722,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
       } catch (e) { console.error('Offer invite link failed:', e.message); }
     }
     const ref = 'OF' + String(id).padStart(4, '0');
+    // Came from a pre-viewing reservation: link them, and a paid PVR becomes the holding deposit.
+    let pvr = null;
+    if (/^[\w-]{16,40}$/.test(String(b.pvr || ''))) {
+      try {
+        pvr = await pvrToOffer(p, b.pvr, id, ref);
+        const su = pvr && pvr.created_by && !(await p.query("SELECT 1 FROM offers WHERE id = $1 AND data ? 'credit'", [id])).rows.length ? (await p.query('SELECT id, name FROM staff_users WHERE lower(name) = lower($1) AND disabled_at IS NULL', [pvr.created_by])).rows[0] : null;
+        if (su) await p.query("UPDATE offers SET data = data || jsonb_build_object('credit', $2::jsonb) WHERE id = $1", [id, JSON.stringify([{ id: su.id, name: su.name, share: 100 }])]);
+      } catch (e) { console.error('PVR offer link failed:', e.message); }
+    }
     offerAlert({ title: 'New offer: ' + gbp(pw) + ' pw — ' + shortAddrText(address), message: lead + ' · ' + tenants.length + ' tenant' + (tenants.length === 1 ? '' : 's') + (data.move_in ? ' · move in ' + certDay(data.move_in) : '') + (data.stay ? ' · stay ' + data.stay : '') + '. Open Offers in Fixflow.', tags: ['house'] }).catch(function () {});
     // How to pay the holding deposit (bank details from the settings, never in the code).
     const bank = INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null;
-    res.json({ ok: true, ref: ref, money: data.money, bank: bank, reference: offerPayRef(address, ref), track: '/offer/track/' + token });
+    res.json({ ok: true, ref: ref, money: data.money, bank: bank, reference: offerPayRef(address, ref), track: '/offer/track/' + token, pvr: pvr ? { ref: pvr.ref, paid: pvr.paid } : null });
   }));
   function offerPayRef(address, ref) { return (addrPayRef(address) || ref).slice(0, 18); }
   // ---------- Automatic holding deposit reminders (email) ----------
@@ -8067,6 +8099,252 @@ document.querySelectorAll('.lcu').forEach(function(box){
     pages.forEach(function (pg, i) { page = pg; pg.drawLine({ start: { x: M, y: 50 }, end: { x: W - M, y: 50 }, thickness: 0.5, color: C.line }); text('Residential Realtors \xB7 Trading name of Estallion Investments Limited \xB7 Registered in England No. ' + (INVOICE.companyNo || '08760284'), M, 37, 6.8, F, C.soft); text('Document ID ' + docId + '  \xB7  ' + (opts.landlord ? 'Landlord copy' : 'Office copy') + (signed ? '  \xB7  Electronically signed' : ''), M, 27, 6.8, F, C.faint); right('Page ' + (i + 1) + ' of ' + total, W - M, 33, 7.5, B, C.ink); });
     pdf.setTitle('Landlord Terms of Business - ' + ref); pdf.setAuthor('Residential Realtors'); pdf.setCreator('Fixflow'); pdf.setProducer('Fixflow');
     return { bytes: await pdf.save(), name: 'Landlord Terms - ' + ref + ' - ' + String(t.property_address || '').replace(/[^\w ,.-]+/g, ' ').slice(0, 60) + '.pdf' };
+  }
+
+  // ---------- Pre-viewing reservations (PVR) ----------
+  // An applicant reserves a property before viewing it: they sign the PVR form
+  // (by private link) and pay one week's rent. After the viewing they tell us
+  // within 24 hours whether they're going ahead: yes, and it becomes the holding
+  // deposit on their formal offer; no, and they give their account for the refund.
+  const PVR_TERMS = {
+    version: 'PVR-2026-10',
+    how: ['Pay one week’s rent to secure your PVR (payments can be made by phone, in store or by bank transfer).', 'If the property does not live up to your expectation, a refund will be issued within 24 hours of your request.', 'If you decide to proceed with a formal offer, your PVR will be converted into a formal Holding Deposit.'],
+    decide: 'Please let us know within 24 hours of your viewing whether you would like to go ahead.',
+    holding: ['Your holding deposit reserves the property whilst reference checks and preparation for a tenancy agreement are undertaken. Your holding deposit does not imply tenancy; this will only be created once all parties have signed the tenancy agreement.', 'If the landlord formally rejects your offer or withdraws the property from the market for any reason other than the reasons below, your holding deposit will be returned to you within 24 hours.'],
+    nonrefundable_intro: 'Once converted into a formal holding deposit, it is accepted that your holding deposit will be non-refundable should at least one of the following occur:',
+    nonrefundable: ['Withdrawal of offer from the property (whether the offer has been made to the landlord or not).', 'Failure to submit completed referencing application forms by all tenants/guarantors within 24 hours of receiving the application form.', 'Failure to satisfy the right to rent check.', 'Providing false, inaccurate or misleading references.', 'Failure to submit signed tenancy agreements and pay the remaining balance within 48 hours of receiving the documents.', 'Failure to take all reasonable steps to enter into a tenancy agreement.'],
+    after: 'Once your offer is accepted, your holding deposit will be used as the initial payment of your first month’s rent.',
+    references: 'Prior to the tenancy being offered, you must satisfy our minimum credit worthiness requirements. To satisfy this we will verify credit, income, previous landlord and bank statements. Applicants’ and/or guarantors’ income must be at least three times the annual rent over the duration of the tenancy, and they must not have any county court judgements against their names. Any offer of a tenancy is subject to satisfactory references being passed. You must supply proof/visa confirming your right to rent in the UK.',
+    deadline: 'Residential Realtors are committed to providing a fast and efficient service: in the majority of tenancies we conclude within 5-14 days from the date your holding deposit has been received. However, due to circumstances beyond our control (e.g. landlord/employer reference response times, international bank transfers), you agree the deadline for agreement can take up to 28 days.',
+    declaration: 'I confirm that the information provided is accurate, that I have read and understood the Pre-Viewing Reservation information sheet, and that I am authorised to make decisions and sign on behalf of all tenants.'
+  };
+  function pvrRef(id) { return 'PV' + String(id).padStart(4, '0'); }
+  function pvrLink(t) { return (OFFER_ORIGIN || PUBLIC_URL) + '/reserve/' + t.token; }
+  function pvrLog(req, text, by) { return { at: new Date().toISOString(), text: text, by: by || 'office', user: by === 'applicant' || !req.user ? undefined : req.user.name, ip: String(req.ip || '').slice(0, 60), ua: str(req.get('user-agent'), 300) || '' }; }
+  function pvrDeadline(t) { return t.viewing_at ? new Date(new Date(t.viewing_at).getTime() + 24 * 3600000).toISOString() : null; }
+  function pvrBank() { return INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null; }
+  function pvrAmount(b) {
+    const rent = money(b.rent), per = b.per === 'pcm' ? 'pcm' : 'pw', typed = money(b.amount);
+    return { rent: rent || null, per: per, amount: typed || (rent ? Math.round((per === 'pcm' ? rent * 12 / 52 : rent) * 100) / 100 : null) };
+  }
+  const pvrWhen = function (v) { return v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''; };
+
+  app.get('/api/admin/pvr', withDb(async function (p, req, res) {
+    const r = await p.query(`SELECT id, created_at, token, status, property_address, rent, per, amount, viewing_at, name, email, phone, data, log, signed_at, paid_at, decision, decided_at, created_by FROM pvr_reservations ORDER BY id DESC LIMIT 300`);
+    res.json({ ok: true, origin: OFFER_ORIGIN || PUBLIC_URL, items: r.rows.map(function (t) { t.ref = pvrRef(t.id); t.deadline = pvrDeadline(t); t.reference = offerPayRef(t.property_address, t.ref); return t; }) });
+  }));
+  app.post('/api/admin/pvr', withDb(async function (p, req, res) {
+    const b = req.body || {}, address = str(b.property_address, 400), name = str(b.name, 200), a = pvrAmount(b);
+    if (!address || !name) return res.status(400).json({ ok: false, error: 'details' });
+    if (!a.amount) return res.status(400).json({ ok: false, error: 'amount' });
+    const at = Date.parse(b.viewing_at), viewing = at ? new Date(at).toISOString() : null;
+    const token = crypto.randomBytes(16).toString('base64url');
+    const r = await p.query('INSERT INTO pvr_reservations (token, property_address, rent, per, amount, viewing_at, name, email, phone, log, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id',
+      [token, address, a.rent, a.per, a.amount, viewing, name, str(b.email, 200) || null, str(b.phone, 40) || null, JSON.stringify([pvrLog(req, 'Reservation created: ' + gbp(a.amount) + (viewing ? ', viewing ' + pvrWhen(viewing) : ''))]), req.user ? req.user.name : null]);
+    const id = r.rows[0].id;
+    // Put the viewing in the viewings list too (the landlord sees it on their page, without the applicant's name).
+    if (viewing && b.add_viewing !== false) {
+      try { const v = await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id', [address, propKey(address), viewing, name + ' (' + pvrRef(id) + ')', req.user ? req.user.name : 'Office']);
+        await p.query("UPDATE pvr_reservations SET data = data || jsonb_build_object('viewing_id', $2::int) WHERE id = $1", [id, v.rows[0].id]); } catch (e) { console.error('PVR viewing failed:', e.message); }
+    }
+    res.json({ ok: true, id: id, ref: pvrRef(id), link: pvrLink({ token: token }) });
+  }));
+  app.post('/api/admin/pvr/:id', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req);
+    const t = (await p.query('SELECT * FROM pvr_reservations WHERE id = $1', [id])).rows[0];
+    if (!t) return res.status(404).json({ ok: false, error: 'not-found' });
+    const log = function (text) { return p.query('UPDATE pvr_reservations SET log = log || $2::jsonb WHERE id = $1', [id, JSON.stringify([pvrLog(req, text + (req.role === 'offers' ? ' (offers staff)' : ''))])]); };
+    if (b.note) { await log(str(b.note, 300)); return res.json({ ok: true }); }
+    if (b.cancel === true) { await p.query("UPDATE pvr_reservations SET status = 'cancelled' WHERE id = $1", [id]); await log('Reservation cancelled - the link no longer works'); return res.json({ ok: true }); }
+    if (b.uncancel === true) { await p.query("UPDATE pvr_reservations SET status = CASE WHEN signed_at IS NULL THEN 'sent' ELSE 'signed' END WHERE id = $1", [id]); await log('Reservation turned back on'); return res.json({ ok: true }); }
+    if (typeof b.paid === 'boolean') {
+      const amt = b.paid ? money(b.paid_amount) : null;
+      await p.query('UPDATE pvr_reservations SET paid_at = ' + (b.paid ? 'coalesce(paid_at, now())' : 'NULL') + ", data = CASE WHEN $2::numeric IS NULL THEN data - 'paid_amount' ELSE data || jsonb_build_object('paid_amount', $2::numeric) END WHERE id = $1", [id, amt]);
+      await log(b.paid ? 'Reservation payment received' + (amt ? ': ' + gbp(amt) : '') : 'Reservation payment marked not received');
+      if (b.paid && !t.paid_at) offerAlert({ title: 'PVR payment received: ' + shortAddrText(t.property_address), message: (t.name || 'Applicant') + ' · ' + gbp(amt || t.amount) + ' (' + pvrRef(id) + ')', tags: ['moneybag'] }, { office: false }).catch(function () {});
+      return res.json({ ok: true });
+    }
+    if (typeof b.refunded === 'boolean') {
+      await p.query("UPDATE pvr_reservations SET data = " + (b.refunded ? "data || jsonb_build_object('refunded_at', to_jsonb(now()))" : "data - 'refunded_at'") + ' WHERE id = $1', [id]);
+      await log(b.refunded ? 'Refund sent' : 'Refund marked not sent'); return res.json({ ok: true });
+    }
+    if (b.viewing_at !== undefined) {
+      const at = Date.parse(b.viewing_at), v = at ? new Date(at).toISOString() : null;
+      await p.query('UPDATE pvr_reservations SET viewing_at = $2 WHERE id = $1', [id, v]);
+      const vid = (t.data || {}).viewing_id;
+      if (vid && v) await p.query('UPDATE viewings SET at = $2 WHERE id = $1', [vid, v]).catch(function () {});
+      else if (v) { try { const vr = await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id', [t.property_address, propKey(t.property_address), v, (t.name || 'Applicant') + ' (' + pvrRef(id) + ')', req.user ? req.user.name : 'Office']); await p.query("UPDATE pvr_reservations SET data = data || jsonb_build_object('viewing_id', $2::int) WHERE id = $1", [id, vr.rows[0].id]); } catch (e) {} }
+      await log(v ? 'Viewing set for ' + pvrWhen(v) : 'Viewing time cleared'); return res.json({ ok: true });
+    }
+    if (b.decision === 'clear') { await p.query('UPDATE pvr_reservations SET decision = NULL, decided_at = NULL WHERE id = $1', [id]); await log('Decision reopened - the applicant can answer again'); return res.json({ ok: true }); }
+    if (b.decision === 'yes' || b.decision === 'no') {
+      await p.query('UPDATE pvr_reservations SET decision = $2, decided_at = now() WHERE id = $1', [id, b.decision]);
+      await log(b.decision === 'yes' ? 'Recorded: the applicant is going ahead' : 'Recorded: the applicant is not going ahead'); return res.json({ ok: true });
+    }
+    // Edit the details (until it's signed).
+    if (t.signed_at) return res.status(409).json({ ok: false, error: 'signed' });
+    const address = str(b.property_address, 400), name = str(b.name, 200), a = pvrAmount(b);
+    if (!address || !name) return res.status(400).json({ ok: false, error: 'details' });
+    if (!a.amount) return res.status(400).json({ ok: false, error: 'amount' });
+    await p.query('UPDATE pvr_reservations SET property_address = $2, name = $3, email = $4, phone = $5, rent = $6, per = $7, amount = $8 WHERE id = $1', [id, address, name, str(b.email, 200) || null, str(b.phone, 40) || null, a.rent, a.per, a.amount]);
+    await log('Details edited (' + gbp(a.amount) + ')'); res.json({ ok: true });
+  }));
+  app.delete('/api/admin/pvr/:id', withDb(async function (p, req, res) {
+    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    if ((req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
+    await p.query('DELETE FROM pvr_reservations WHERE id = $1', [jobId(req)]);
+    res.json({ ok: true });
+  }));
+  app.get('/api/admin/pvr/:id/pdf', withDb(async function (p, req, res) {
+    const t = (await p.query('SELECT * FROM pvr_reservations WHERE id = $1', [jobId(req)])).rows[0];
+    if (!t) return res.status(404).send('Not found');
+    const out = await pvrPdf(t, {});
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + '; filename="' + out.name.replace(/"/g, '') + '"');
+    res.end(Buffer.from(out.bytes));
+  }));
+
+  // The applicant's side (by private link).
+  async function pvrByToken(p, token) { return /^[\w-]{16,40}$/.test(String(token || '')) ? (await p.query('SELECT * FROM pvr_reservations WHERE token = $1', [String(token)])).rows[0] : null; }
+  function pvrPublic(t) {
+    const d = t.data || {}, ref = pvrRef(t.id), refundDue = t.decision === 'no' && (t.paid_at || d.paid_claim);
+    return { ok: true, ref: ref, status: t.status, property: t.property_address, name: t.name, email: t.email, phone: t.phone, rent: t.rent != null ? Number(t.rent) : null, per: t.per, amount: Number(t.amount),
+      viewing_at: t.viewing_at, deadline: pvrDeadline(t), signed_at: t.signed_at, signed_by: d.signature || null, paid: !!t.paid_at, paid_claim: d.paid_claim || null,
+      decision: t.decision, decided_at: t.decided_at, reason: d.reason || '', refund_given: !!d.refund, refund_due: !!refundDue, refunded: !!d.refunded_at,
+      bank: t.status === 'signed' && !t.paid_at && t.decision !== 'no' ? pvrBank() : null, reference: offerPayRef(t.property_address, ref),
+      offer: d.offer_ref || null, offer_link: t.decision === 'yes' && !d.offer_id ? '/offer?pvr=' + t.token : null, terms: PVR_TERMS };
+  }
+  app.get('/api/pvr/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const t = await pvrByToken(p, req.params.token);
+    if (!t || t.status === 'cancelled') return res.status(404).json({ ok: false, error: 'not-found' });
+    if (!(t.data || {}).viewed_at) p.query("UPDATE pvr_reservations SET data = data || jsonb_build_object('viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'viewed_at')", [t.id, JSON.stringify([pvrLog(req, 'Applicant opened the reservation link', 'applicant')])]).catch(function () {});
+    res.json(pvrPublic(t));
+  }));
+  app.post('/api/pvr/:token/sign', withDb(async function (p, req, res) {
+    if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const t = await pvrByToken(p, req.params.token), b = req.body || {};
+    if (!t || t.status === 'cancelled') return res.status(404).json({ ok: false, error: 'not-found' });
+    if (t.signed_at) return res.status(409).json({ ok: false, error: 'signed' });
+    if (b.accept !== true || b.declaration !== true) return res.status(400).json({ ok: false, error: 'accept' });
+    const name = str(b.name, 200), phone = str(b.phone, 40), email = str(b.email, 200);
+    if (!name || !(phone || email)) return res.status(400).json({ ok: false, error: 'details' });
+    const sig = str(b.signature, 120); if (!sig) return res.status(400).json({ ok: false, error: 'sign' });
+    const sm = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(b.signature_png || '')), sigBuf = sm ? Buffer.from(sm[1], 'base64') : null;
+    if (!sigBuf || sigBuf.length < 200 || sigBuf.length > 600 * 1024) return res.status(400).json({ ok: false, error: 'sign' });
+    const started = Date.parse(b.started_at), signedAt = new Date().toISOString();
+    const data = Object.assign({}, t.data || {}, { signature: sig, terms_version: PVR_TERMS.version, tenants: Math.max(1, Math.min(parseInt(b.tenants, 10) || 1, 8)),
+      audit: { ip: String(req.ip || '').slice(0, 60), ua: str(req.get('user-agent'), 300) || '', started_at: started && started < Date.now() && started > Date.now() - 7 * 864e5 ? new Date(started).toISOString() : null } });
+    data.fingerprint = sha256(canonical({ property: t.property_address, name: name, email: email, phone: phone, amount: Number(t.amount), signature: sig, signed_at: signedAt, terms: PVR_TERMS.version }) + '|' + sha256(sigBuf));
+    await p.query("UPDATE pvr_reservations SET status = 'signed', signed_at = $2, name = $3, phone = $4, email = $5, signature = $6, data = $7, log = log || $8::jsonb WHERE id = $1",
+      [t.id, signedAt, name, phone || null, email || null, sigBuf, JSON.stringify(data), JSON.stringify([pvrLog(req, 'Reservation form signed by ' + sig, 'applicant')])]);
+    offerAlert({ title: 'PVR signed: ' + shortAddrText(t.property_address), message: name + ' signed the pre-viewing reservation (' + pvrRef(t.id) + ') · ' + gbp(t.amount) + ' to pay' + (t.viewing_at ? ' · viewing ' + pvrWhen(t.viewing_at) : '') + '.', tags: ['key'] }).catch(function () {});
+    res.json(pvrPublic(Object.assign({}, t, { status: 'signed', signed_at: signedAt, name: name, phone: phone, email: email, data: data })));
+  }));
+  app.post('/api/pvr/:token/paid', withDb(async function (p, req, res) {
+    if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const t = await pvrByToken(p, req.params.token);
+    if (!t || t.status !== 'signed') return res.status(404).json({ ok: false, error: 'not-found' });
+    if (t.paid_at || (t.data || {}).paid_claim) return res.json({ ok: true });
+    await p.query("UPDATE pvr_reservations SET data = data || jsonb_build_object('paid_claim', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1", [t.id, JSON.stringify([pvrLog(req, 'Applicant says they have paid the reservation', 'applicant')])]);
+    offerAlert({ title: 'PVR: applicant says they’ve paid', message: (t.name || 'Applicant') + ' · ' + shortAddrText(t.property_address) + ' · ' + gbp(t.amount) + ' (' + pvrRef(t.id) + '). Please check the bank.', tags: ['moneybag'] }).catch(function () {});
+    res.json({ ok: true });
+  }));
+  app.post('/api/pvr/:token/decide', withDb(async function (p, req, res) {
+    if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const t = await pvrByToken(p, req.params.token), b = req.body || {};
+    if (!t || t.status !== 'signed') return res.status(404).json({ ok: false, error: 'not-found' });
+    if (t.decision) return res.status(409).json({ ok: false, error: 'decided' });
+    if (b.decision !== 'yes' && b.decision !== 'no') return res.status(400).json({ ok: false, error: 'decision' });
+    const d = t.data || {}, set = { reason: str(b.reason, 1000) || '' };
+    if (b.decision === 'no') {
+      const r = b.refund || {}, sort = String(r.sort_code || '').replace(/\D/g, ''), acc = String(r.account || '').replace(/\D/g, ''), iban = String(r.iban || '').toUpperCase().replace(/\s+/g, ''), nm = str(r.name, 120);
+      const given = !!(nm || sort || acc || iban), valid = nm && ((sort.length === 6 && acc.length === 8) || /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(iban));
+      if ((t.paid_at || d.paid_claim || given) && !valid) return res.status(400).json({ ok: false, error: 'refund' });
+      if (valid) set.refund = { name: nm, sort_code: sort ? sort.replace(/(\d\d)(\d\d)(\d\d)/, '$1-$2-$3') : '', account: acc, iban: iban, at: new Date().toISOString() };
+    }
+    await p.query('UPDATE pvr_reservations SET decision = $2, decided_at = now(), data = data || $3::jsonb, log = log || $4::jsonb WHERE id = $1 AND decision IS NULL',
+      [t.id, b.decision, JSON.stringify(set), JSON.stringify([pvrLog(req, b.decision === 'yes' ? 'Applicant is going ahead after the viewing' : 'Applicant is not going ahead' + (set.refund ? ' - refund account details given' : ''), 'applicant')])]);
+    offerAlert({ title: (b.decision === 'yes' ? '✅ PVR going ahead: ' : '❌ PVR not going ahead: ') + shortAddrText(t.property_address), message: (t.name || 'Applicant') + ' (' + pvrRef(t.id) + ')' + (b.decision === 'yes' ? ' wants to go ahead - they’ve been sent to the offer form.' : set.refund ? ' - refund ' + gbp((d.paid_amount != null ? d.paid_amount : t.amount)) + ' to the account they gave.' : '.') + (set.reason ? ' "' + set.reason.slice(0, 120) + '"' : ''), tags: [b.decision === 'yes' ? 'tada' : 'leftwards_arrow_with_hook'] }).catch(function () {});
+    const nt = await pvrByToken(p, req.params.token);
+    res.json(pvrPublic(nt));
+  }));
+  app.get('/api/pvr/:token/pdf', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests');
+    const t = await pvrByToken(p, req.params.token);
+    if (!t || !t.signed_at) return res.status(404).send('Not signed yet');
+    const out = await pvrPdf(t, { applicant: true });
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + '; filename="' + out.name.replace(/"/g, '') + '"');
+    res.end(Buffer.from(out.bytes));
+  }));
+  // Going ahead: the offer form links back to the reservation, and a paid PVR becomes the holding deposit.
+  async function pvrToOffer(p, token, offerId, offerRef) {
+    const t = (await p.query("SELECT * FROM pvr_reservations WHERE token = $1 AND signed_at IS NOT NULL AND status = 'signed' AND coalesce(decision, '') <> 'no' AND NOT (data ? 'offer_id')", [String(token)])).rows[0];
+    if (!t) return null;
+    const paidAmt = t.paid_at ? Number((t.data || {}).paid_amount != null ? t.data.paid_amount : t.amount) : null;
+    await p.query("UPDATE pvr_reservations SET decision = coalesce(decision, 'yes'), decided_at = coalesce(decided_at, now()), data = data || jsonb_build_object('offer_id', $2::int, 'offer_ref', $3::text), log = log || $4::jsonb WHERE id = $1",
+      [t.id, offerId, offerRef, JSON.stringify([{ at: new Date().toISOString(), by: 'applicant', text: 'Formal offer made: ' + offerRef + (t.paid_at ? ' - the PVR becomes the holding deposit' : '') }])]);
+    const pv = JSON.stringify({ ref: pvrRef(t.id), amount: Number(t.amount), paid: !!t.paid_at });
+    const note = JSON.stringify([{ at: new Date().toISOString(), by: 'system', text: 'From pre-viewing reservation ' + pvrRef(t.id) + (t.paid_at ? ': ' + gbp(paidAmt) + ' already paid, converted into the holding deposit' : ' (reservation not paid yet)') }]);
+    if (t.paid_at) await p.query("UPDATE offers SET paid_at = $3, data = data || jsonb_build_object('pvr', $2::jsonb, 'paid_amount', $4::numeric), log = log || $5::jsonb WHERE id = $1", [offerId, pv, t.paid_at, paidAmt, note]);
+    else await p.query("UPDATE offers SET data = data || jsonb_build_object('pvr', $2::jsonb), log = log || $3::jsonb WHERE id = $1", [offerId, pv, note]);
+    return { ref: pvrRef(t.id), amount: Number(t.amount), paid: paidAmt, created_by: t.created_by };
+  }
+  async function pvrPdf(t, opts) {
+    opts = opts || {};
+    const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+    const pdf = await PDFDocument.create();
+    const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const W = 595.28, H = 841.89, M = 46, CW = W - M * 2;
+    const hex = function (h) { return rgb(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255); };
+    const C = { navy: hex('0B1F3A'), red: hex('C8102E'), ink: hex('101828'), soft: hex('667085'), faint: hex('98A2B3'), line: hex('E4E7EC'), panel: hex('F7F8FA'), white: rgb(1, 1, 1), green: hex('067647'), greenBg: hex('ECFDF3'), amber: hex('B54708'), amberBg: hex('FFFAEB'), slate: hex('C6D0DE') };
+    const d = t.data || {}, ref = pvrRef(t.id), au = d.audit || {}, docId = docIdOf(d.fingerprint || sha256(canonical({ id: t.id, property: t.property_address, amount: Number(t.amount) })));
+    const safe = function (x) { return String(x == null ? '' : x).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/·/g, '\xB7').replace(/[^\x20-\x7E\xA3\xA0-\xFF\n]/g, ''); };
+    const cash = function (v) { return '\xA3' + (Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    const stamp = function (v) { return v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '') : ''; };
+    const wrap = function (s, font, size, width) { const out = []; safe(s).split('\n').forEach(function (para) { let cur = ''; para.split(/\s+/).forEach(function (w) { const tt = cur ? cur + ' ' + w : w; if (font.widthOfTextAtSize(tt, size) > width && cur) { out.push(cur); cur = w; } else cur = tt; }); out.push(cur); }); return out; };
+    let page, y; const pages = [];
+    const text = function (s, x, yy, size, font, color) { page.drawText(safe(s), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
+    const newPage = function () { page = pdf.addPage([W, H]); pages.push(page); y = H - 50; };
+    const ensure = function (h) { if (y - h < 70) newPage(); };
+    const para = function (s, size, font, color, indent) { wrap(s, font || F, size || 9.4, CW - (indent || 0)).forEach(function (ln) { ensure(14); text(ln, M + (indent || 0), y, size || 9.4, font || F, color || C.ink); y -= (size || 9.4) + 4; }); };
+    const head = function (s) { ensure(34); y -= 8; text(s.toUpperCase(), M, y, 8.5, B, C.red); y -= 6; page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.6, color: C.line }); y -= 14; };
+    const grid = function (rows) { rows = rows.filter(function (r) { return r[1]; }); for (let i = 0; i < rows.length; i += 2) { ensure(30); [rows[i], rows[i + 1]].forEach(function (r, k) { if (!r) return; const x = M + k * CW / 2; text(r[0].toUpperCase(), x, y, 6.8, B, C.soft); wrap(r[1], B, 10, CW / 2 - 14).slice(0, 2).forEach(function (ln, j) { text(ln, x, y - 13 - j * 12, 10, B, C.ink); }); }); y -= 34; } };
+    newPage();
+    // Navy header band.
+    page.drawRectangle({ x: 0, y: H - 128, width: W, height: 128, color: C.navy });
+    text('RESIDENTIAL REALTORS', M, H - 44, 9, B, C.slate);
+    text('Pre-Viewing Reservation (PVR)', M, H - 74, 22, B, C.white);
+    text(safe(t.property_address).slice(0, 90), M, H - 96, 10.5, F, C.slate);
+    const pill = t.signed_at ? 'SIGNED' : 'NOT SIGNED YET', pw = B.widthOfTextAtSize(pill, 8) + 18;
+    page.drawRectangle({ x: W - M - pw, y: H - 52, width: pw, height: 18, color: t.signed_at ? C.greenBg : C.amberBg });
+    text(pill, W - M - pw + 9, H - 46, 8, B, t.signed_at ? C.green : C.amber);
+    text('Ref ' + ref, W - M - B.widthOfTextAtSize('Ref ' + ref, 9), H - 74, 9, B, C.white);
+    y = H - 158;
+    head('Reservation');
+    grid([['Applicant', t.name], ['Property', t.property_address], ['Mobile', t.phone], ['Email', t.email], ['Rent', t.rent ? cash(t.rent) + (t.per === 'pcm' ? ' per month' : ' per week') : ''], ['PVR (one week’s rent)', cash(t.amount)], ['Viewing', t.viewing_at ? pvrWhen(t.viewing_at) : 'To be arranged'], ['Decision due', pvrDeadline(t) ? pvrWhen(pvrDeadline(t)) + ' (24 hours after the viewing)' : 'Within 24 hours of the viewing'], ['Payment reference', offerPayRef(t.property_address, ref)], ['Number of tenants', d.tenants ? String(d.tenants) : '']]);
+    head('How does it work?'); PVR_TERMS.how.forEach(function (s, i) { para((i + 1) + '.  ' + s); y -= 2; }); para(PVR_TERMS.decide, 9.4, B);
+    head('Formal holding deposit'); PVR_TERMS.holding.forEach(function (s) { para(s); y -= 4; }); para(PVR_TERMS.nonrefundable_intro); PVR_TERMS.nonrefundable.forEach(function (s) { para('-  ' + s, 9.2, F, C.ink, 10); }); y -= 4; para(PVR_TERMS.after);
+    head('References'); para(PVR_TERMS.references);
+    head('Deadline for agreement'); para(PVR_TERMS.deadline);
+    head('Declaration'); para(PVR_TERMS.declaration);
+    // Signature.
+    ensure(120); y -= 6;
+    page.drawRectangle({ x: M, y: y - 96, width: CW, height: 96, color: C.panel, borderColor: C.line, borderWidth: 0.6 });
+    if (t.signature) { try { const img = await pdf.embedPng(t.signature), k = Math.min(200 / img.width, 60 / img.height); page.drawImage(img, { x: M + 14, y: y - 76, width: img.width * k, height: img.height * k }); } catch (e) {} }
+    text('SIGNED BY', M + CW / 2, y - 22, 6.8, B, C.soft); text(d.signature || (t.signed_at ? t.name : 'Not signed yet'), M + CW / 2, y - 36, 11, B, C.ink);
+    text('DATE AND TIME (UK)', M + CW / 2, y - 56, 6.8, B, C.soft); text(t.signed_at ? stamp(t.signed_at) : '-', M + CW / 2, y - 70, 10, B, C.ink);
+    y -= 112;
+    head('Status');
+    grid([['Payment', t.paid_at ? 'Received ' + stamp(t.paid_at) + (d.paid_amount != null ? ' (' + cash(d.paid_amount) + ')' : '') : d.paid_claim ? 'Applicant says paid ' + stamp(d.paid_claim) : 'Not received yet'], ['After the viewing', t.decision === 'yes' ? 'Going ahead (' + stamp(t.decided_at) + ')' : t.decision === 'no' ? 'Not going ahead (' + stamp(t.decided_at) + ')' : 'Waiting for their answer'],
+      ['Formal offer', d.offer_ref || ''], ['Refund', t.decision === 'no' ? (d.refunded_at ? 'Sent ' + stamp(d.refunded_at) : d.refund ? 'Account details given' : 'Not due / not requested') : ''],
+      !opts.applicant && d.refund ? ['Refund to', d.refund.name + ' \xB7 ' + (d.refund.iban || d.refund.sort_code + ' ' + d.refund.account)] : null, d.reason ? ['Their comments', d.reason] : null].filter(Boolean));
+    if (t.signed_at) { head('Signing evidence'); grid([['IP address', au.ip], ['Device', au.ua ? deviceOf(au.ua) : ''], ['Started', au.started_at ? stamp(au.started_at) : ''], ['Fingerprint', d.fingerprint ? String(d.fingerprint).slice(0, 32) : '']]); }
+    const total = pages.length;
+    pages.forEach(function (pg, i) { page = pg; pg.drawLine({ start: { x: M, y: 50 }, end: { x: W - M, y: 50 }, thickness: 0.5, color: C.line }); text('Residential Realtors \xB7 Trading name of Estallion Investments Limited \xB7 Registered in England No. ' + (INVOICE.companyNo || '08760284') + ' \xB7 0207 096 8131 \xB7 info@residentialrealtors.co.uk', M, 37, 6.6, F, C.soft); text('Document ID ' + docId + '  \xB7  ' + (opts.applicant ? 'Applicant copy' : 'Office copy'), M, 27, 6.6, F, C.faint); const pgT = 'Page ' + (i + 1) + ' of ' + total; text(pgT, W - M - B.widthOfTextAtSize(pgT, 7.5), 33, 7.5, B, C.ink); });
+    pdf.setTitle('Pre-Viewing Reservation - ' + ref); pdf.setAuthor('Residential Realtors'); pdf.setCreator('Fixflow'); pdf.setProducer('Fixflow');
+    return { bytes: await pdf.save(), name: 'Pre-Viewing Reservation - ' + ref + ' - ' + String(t.property_address || '').replace(/[^\w ,.-]+/g, ' ').slice(0, 60) + '.pdf' };
   }
   return { saveReport: saveReport, hasDb: async function () { return !!(await db()); } };
 };

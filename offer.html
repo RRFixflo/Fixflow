@@ -620,6 +620,20 @@
   }
   function setGuarantors(v){ guarantorsN = v; var box = document.querySelector('[data-count="guarantors"]'); $('guarantorsN').textContent = v; box.querySelector('[data-dec]').disabled = v <= 0; box.querySelector('[data-inc]').disabled = v >= 4; }
   drawTenants();
+  // ----- From a pre-viewing reservation (?pvr=...): fill in what we know -----
+  var pvrTok = ''; try { pvrTok = new URLSearchParams(location.search).get('pvr') || ''; } catch (e) {}
+  if (/^[\w-]{16,40}$/.test(pvrTok) && !location.pathname.match(/\/track\//)) {
+    fetch('/api/pvr/' + pvrTok, { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+      if (!d || !d.ok) { pvrTok = ''; return; }
+      if (!$('property').value) $('property').value = d.property || '';
+      if (d.rent && !$('offer').value) { var pb = document.querySelector('[data-per="' + (d.per === 'pcm' ? 'pcm' : 'pw') + '"]'); if (pb) pb.click(); $('offer').value = d.rent; $('offer').dispatchEvent(new Event('input', { bubbles: true })); }
+      var t1 = document.querySelector('.ten[data-t="1"]'), set = function(k, v){ var el = t1 && t1.querySelector('[data-k="' + k + '"]'); if (el && !el.value && v) el.value = v; };
+      set('name', d.name); set('phone', d.phone); set('email', d.email);
+      var box = document.createElement('div'); box.className = 'card'; box.style.cssText = 'background:#ecfdf3;border-color:#abefc6;margin-bottom:14px';
+      box.innerHTML = '<b style="color:#067647">✓ From your pre-viewing reservation ' + esc(d.ref) + '</b><div class="hint" style="margin:2px 0 0">' + (d.paid ? 'Your reservation payment of ' + gbp(d.amount) + ' will be converted into your holding deposit.' : 'Once paid, your reservation of ' + gbp(d.amount) + ' becomes your holding deposit.') + ' We’ve filled in what we already know.</div>';
+      var fv = $('formView'); if (fv) fv.insertBefore(box, fv.firstChild);
+    })['catch'](function(){});
+  }
 
   // ----- ID files: tap or drag and drop, with previews -----
   function drawFiles(n){
@@ -822,7 +836,7 @@
     Promise.all(tenants.map(function(t, i){ return Promise.all((files[i + 1] || []).map(readFile)).then(function(list){ t.ids = list.filter(Boolean); }); })).then(function(){
       busyBtns(true, 'Sending…');
       return fetch('/api/offers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        website: document.querySelector('[name=website]').value, invite: invite, property: $('property').value.trim(), per: per, offer: $('offer').value, max_offer: $('max_offer').value,
+        website: document.querySelector('[name=website]').value, invite: invite, pvr: pvrTok, property: $('property').value.trim(), per: per, offer: $('offer').value, max_offer: $('max_offer').value,
         move_in: $('move_in').value, stay: stay, tenants_count: tenantsN, guarantors_count: guarantorsN,
         conditions: getConds(), negotiate: getConds().join('\n'), about: $('about').value.trim(), lead_name: tenants[0].name, lead_phone: tenants[0].phone, lead_email: tenants[0].email,
         tenants: tenants, started_at: startedAt, agree: true, terms: Array.prototype.map.call(document.querySelectorAll('[data-term]'), function(c){ return c.checked; }), signature: $('signature').value.trim(), signature_png: sigImg }) });
@@ -868,7 +882,8 @@
     $('doneView').innerHTML =
       '<section class="dhero fade"><div class="dtick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>' +
         '<span class="dref">Offer ' + esc(d.ref) + '</span><h1>Form received — one step left</h1><p>Thank you' + (readTenants()[0] && readTenants()[0].name ? ', ' + esc(readTenants()[0].name.split(/\s+/)[0]) : '') + '. We have your signed form for <b>' + esc(addr) + '</b>.</p>' +
-        '<div class="dwarn"><b>This form alone isn’t an offer yet.</b> Your offer is only made once you’ve paid the <b>1 week holding deposit of ' + gbp(m.holding || 0) + '</b>. Please pay it now.</div>' +
+        (d.pvr && d.pvr.paid ? '<div class="dwarn" style="background:#ecfdf3;border-color:#abefc6;color:#067647"><b>Your reservation ' + esc(d.pvr.ref) + ' has been converted into your holding deposit (' + gbp(d.pvr.paid) + ' paid).</b>' + (d.pvr.paid + 0.005 < (m.holding || 0) ? ' Please pay the difference of ' + gbp((m.holding || 0) - d.pvr.paid) + '.' : ' Nothing more to pay now.') + '</div>'
+          : '<div class="dwarn"><b>This form alone isn’t an offer yet.</b> Your offer is only made once you’ve paid the <b>1 week holding deposit of ' + gbp(m.holding || 0) + '</b>. Please pay it now.</div>') +
         '<div class="dstats"><div><span>Your offer</span><b>' + gbp(f.pw || 0) + '<small>/wk</small></b></div><div><span>Monthly rent</span><b>' + gbp(m.pcm || 0) + '</b></div><div><span>Move in</span><b>' + esc($('move_in').value ? longDay($('move_in').value) : 'To agree') + '</b></div></div></section>' +
       '<section class="card dpay fade"><div class="dpay-h"><div><span class="eyebrow">Next step</span><h2>Pay your holding deposit</h2><p class="hint" style="margin:2px 0 0">One week’s rent, by bank transfer — please pay it <b>now</b> to reserve the property.</p></div><div class="damt">' + gbp(m.holding || 0) + '<small>due now</small></div></div>' +
         (d.bank ? '<div class="paybox">' + copyRow('Account name', d.bank.payee) + copyRow('Sort code', d.bank.sort_code) + copyRow('Account number', d.bank.account) + (d.bank.iban ? copyRow('IBAN', d.bank.iban) : '') + (d.bank.swift ? copyRow('SWIFT / BIC', d.bank.swift) : '') + copyRow('Reference', d.reference, true) + '</div>' +
@@ -879,6 +894,7 @@
       '<section class="card fade"><h2>What happens next</h2><ol class="timeline">' + steps.map(function(x, i){ return '<li class="' + x[0] + '"><div class="dot">' + (x[0] === 'ok' ? '✓' : i + 1) + '</div><div><b>' + esc(x[1]) + '</b><span>' + esc(x[2]) + '</span></div></li>'; }).join('') + '</ol>' +
         '<p class="hint" style="margin:0">Once your offer is accepted, the holding deposit goes towards your first month’s rent. If the landlord rejects your maximum offer or withdraws the property, it’s returned within 24 hours. It isn’t refundable in the cases you ticked on the form.</p></section>' +
       (d.track ? trackBox(location.origin + d.track) : '');
+    if (d.pvr && d.pvr.paid && d.pvr.paid + 0.005 >= (m.holding || 0)) { var dp = document.querySelector('.dpay'); if (dp) dp.remove(); if ($('paidSticky')) $('paidSticky').remove(); var tl = document.querySelector('.timeline li.now'); if (tl) { tl.className = 'ok'; tl.querySelector('.dot').textContent = '✓'; tl.querySelector('span').textContent = 'Paid with your pre-viewing reservation ' + d.pvr.ref; } }
     if (d.track) remember({ ref: d.ref, track: d.track, property: addr, at: Date.now() });
     window.scrollTo(0, 0);
   }

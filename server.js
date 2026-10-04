@@ -179,6 +179,7 @@ app.get('/offer', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer
 app.get('/offer/track/:token', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer.html')); });
 // A landlord's private link to review the agreed fees and terms, fill in the property details and sign.
 app.get('/landlord/:token', (req, res) => { sendPage(req, res, path.join(__dirname, 'landlord.html')); });
+app.get('/reserve/:token', (req, res) => { sendPage(req, res, path.join(__dirname, 'reserve.html')); });
 // The offer for the landlord to review (no applicant contact details).
 app.get('/offer/review/:token', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer-review.html')); });
 
