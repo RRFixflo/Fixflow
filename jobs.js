@@ -528,6 +528,8 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_url TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS let_on DATE;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS dream_rm JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS key_no TEXT;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS access TEXT;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS access_note TEXT;
 -- Let dates outside the last 16 years (or over a year ahead) are misread cells.
 UPDATE available_props SET let_on = NULL WHERE let_on IS NOT NULL AND (let_on < current_date - interval '16 years 2 months' OR let_on > current_date + interval '1 year');
 CREATE TABLE IF NOT EXISTS rm_dreams (
@@ -8293,6 +8295,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return part.toLowerCase().replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); }).replace(/\b(\d+)([A-Z])\b/g, function (m, d, l) { return d + l.toLowerCase(); });
     }).join(', ');
     s = s.replace(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/gi, function (m, o, i) { return o.toUpperCase() + ' ' + i.toUpperCase(); });
+    s = s.replace(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*$/i, function (m, o) { return /\d/.test(o) ? o.toUpperCase() : m; });
     const parts = s.split(', '), out = []; parts.forEach(function (x) { if (!out.length || out[out.length - 1].toLowerCase() !== x.toLowerCase()) out.push(x); });
     return out.join(', ');
   }
@@ -8357,9 +8360,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const beds = parseInt(b.beds, 10);
     return availFix({ address: str(availAddr(b.address), 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
       rent_pw: pw, rent_pcm: pcm, landlord: str(b.landlord, 120) || null, commission: fee, contact: str(b.contact, 2000) || null, notes: notes,
-      tags: str(b.tags, 200) || null, key_no: str(b.key_no, 40) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: letDayOk(isoDay(b.let_on)) });
+      tags: str(b.tags, 200) || null, key_no: str(b.key_no, 40) || null, access: ['landlord', 'tenants', 'keys'].indexOf(b.access) !== -1 ? b.access : null, access_note: str(b.access_note, 300) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: letDayOk(isoDay(b.let_on)) });
   }
-  const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'urgent', 'status', 'let_on'];
+  const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
     const items = (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 20000')).rows;
     res.json({ ok: true, items: items, links: await availLinks(p, items, req.role !== 'offers') });
@@ -8418,6 +8421,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.status && Object.keys(b).length === 1) {
       if (['available', 'let', 'withdrawn'].indexOf(b.status) === -1) return res.status(400).json({ ok: false, error: 'status' });
       await p.query("UPDATE available_props SET status = $2, let_on = CASE WHEN $2 = 'let' THEN coalesce(let_on, (now() AT TIME ZONE 'Europe/London')::date) ELSE let_on END, updated_at = now() WHERE id = $1", [id, b.status]); return res.json({ ok: true });
+    }
+    // A few fields at once from the card (access, key number, tenants' contact).
+    if (b.patch === true) {
+      const lim = { key_no: 40, access: 20, access_note: 300, contact: 2000 }, sets = [], vals = [id];
+      Object.keys(lim).forEach(function (k) { if (!(k in b)) return; let v = str(b[k], lim[k]) || null; if (k === 'access' && ['landlord', 'tenants', 'keys'].indexOf(v) === -1) v = null; vals.push(v); sets.push(k + ' = $' + vals.length); });
+      if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
+      await p.query('UPDATE available_props SET ' + sets.join(', ') + ', updated_at = now() WHERE id = $1', vals); return res.json({ ok: true });
     }
     if ('key_no' in b && Object.keys(b).length === 1) {
       await p.query('UPDATE available_props SET key_no = $2, updated_at = now() WHERE id = $1', [id, str(b.key_no, 40) || null]); return res.json({ ok: true });
