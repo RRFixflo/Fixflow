@@ -9579,7 +9579,7 @@
     var d = ((rmData && rmData.dreams) || {})[id] || {}, today = (rmData && rmData.today) || new Date().toISOString().slice(0, 10);
     var first = d.first_seen ? new Date(d.first_seen) : null, days = first ? Math.max(0, Math.floor((Date.now() - first.getTime()) / 86400000)) : 0;
     var review = d.review_at ? String(d.review_at).slice(0, 10) : '', takedown = d.takedown_at ? new Date(d.takedown_at) : null, stale = !!(takedown && Date.now() - takedown.getTime() > 2 * 86400000);
-    return { first: first, days: days, review: review, extended: d.extended || 0, takedown: takedown, stale: stale, by: d.by_name || '', due: !!((!takedown && review && review <= today) || stale) };
+    return { first: first, days: days, review: review, extended: d.extended || 0, takedown: takedown, stale: stale, by: d.by_name || '', change: d.change_note || '', changedAt: d.changed_at ? new Date(d.changed_at) : null, due: !!((!takedown && review && review <= today) || stale) };
   }
   function dreamTimeline(d){
     if (!d.first) return '<span class="av-dtl">Timeline starts at the next Rightmove check</span>';
@@ -9588,6 +9588,7 @@
     var since = d.first.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), rv = d.review ? avDay(d.review) : '';
     var txt = d.takedown ? (d.stale ? '⚠️ Marked to take down ' + fmtShort(d.takedown.toISOString()) + (d.by ? ' by ' + d.by : '') + ' — still on Rightmove' : '🗑 Marked to take down' + (d.by ? ' by ' + d.by : '') + ' · ' + fmtShort(d.takedown.toISOString()))
       : d.due ? '⏰ Review was due ' + rv + ' — keep, change or take down' : 'Review by ' + rv + (d.extended ? ' · kept ' + d.extended + '× already' : '');
+    if (d.change && d.changedAt && Date.now() - d.changedAt.getTime() < 8 * 86400000 && !d.takedown) txt += ' · 🔄 Changed on Rightmove ' + d.changedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' (' + d.change + ') — kept 7 more days automatically';
     return '<span class="av-dtl' + (d.due ? ' due' : '') + '"><span class="av-dtl-bar"><i style="width:' + (d.takedown ? 100 : pct.toFixed(0)) + '%"></i></span>Up <b>' + d.days + ' day' + (d.days === 1 ? '' : 's') + '</b> (since ' + esc(since) + ') · ' + esc(txt) + '</span>';
   }
   // Send a property (details, Rightmove link, video) to someone by WhatsApp or email.
