@@ -1329,7 +1329,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
     return '<details class="dt"><summary>💬 Send a note to the office' + ((j.notes || []).length ? ' (' + j.notes.length + ' sent)' : '') + '</summary>' +
       '<form class="stack" style="margin:10px 0 0" data-note="' + j.id + '">' + sent +
         '<textarea name="note" rows="3" placeholder="e.g. Need a part, back on Friday · Tenant not home · Found another problem" style="padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit"></textarea>' +
-        '<label class="muted" style="display:block">Photos (optional)<input type="file" name="photos" accept="image/*,.heic,.heif" multiple style="display:block;margin-top:6px;padding:10px;background:#fff"></label>' +
+        '<label class="muted" style="display:block">Photos (optional, up to 30)<input type="file" name="photos" accept="image/*,.heic,.heif" multiple style="display:block;margin-top:6px;padding:10px;background:#fff"></label>' +
         '<button type="submit">Send note</button>' +
       '</form></details>';
   }
@@ -1343,7 +1343,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
   });
   // Photos of the finished work: added one or several at a time (camera or library), up to
   // MAXPH, each shown as a thumbnail that can be removed before sending.
-  var MAXPH = 5, picked = {};
+  var MAXPH = 30, picked = {};
   function drawPicked(id){
     var box = document.querySelector('[data-phs="' + id + '"]'), add = document.querySelector('[data-phadd="' + id + '"]'), list2 = picked[id] || [];
     if (!box) return;
@@ -1367,17 +1367,17 @@ const CONTRACTOR_PAGE_JS = `(function(){
     if (gone && gone._url) URL.revokeObjectURL(gone._url);
     drawPicked(a[0]);
   });
-  // Photos are made smaller on the phone before sending (max 1600px, JPEG).
+  // Photos are made smaller on the phone before sending (max 1400px, JPEG) — up to 30 at a time.
   function shrink(file){
     return new Promise(function(resolve){
       var fr = new FileReader();
       fr.onload = function(){
         var img = new Image();
         img.onload = function(){
-          var k = Math.min(1, 1600 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+          var k = Math.min(1, 1400 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
           cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
           cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-          resolve({ name: file.name, dataUrl: cv.toDataURL('image/jpeg', 0.82) });
+          resolve({ name: file.name, dataUrl: cv.toDataURL('image/jpeg', 0.78) });
         };
         // A photo this browser can't open (an iPhone HEIC, say) goes as it is; our server converts it.
         img.onerror = function(){ resolve(/hei[cf]$/i.test(file.name || '') || /hei[cf]/i.test(file.type || '') ? { name: file.name, dataUrl: String(fr.result).replace(/^data:[^;,]*;base64,/, 'data:image/heic;base64,') } : null); };
@@ -1392,7 +1392,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
     var nf = e.target.closest('[data-note]');
     if (nf) {
       e.preventDefault();
-      var nb = nf.querySelector('button[type=submit]'), nfiles = Array.prototype.slice.call(nf.photos.files || [], 0, 10);
+      var nb = nf.querySelector('button[type=submit]'), nfiles = Array.prototype.slice.call(nf.photos.files || [], 0, 30);
       if (!nf.note.value.trim() && !nfiles.length) { nf.note.focus(); return; }
       nb.disabled = true; nb.textContent = nfiles.length ? 'Uploading ' + nfiles.length + ' photo' + (nfiles.length === 1 ? '' : 's') + '…' : 'Sending…';
       Promise.all(nfiles.map(shrink)).then(function(ph){ return fetch('/api/c/' + TOKEN + '/jobs/' + nf.dataset.note + '/note', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -6346,7 +6346,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const c = await portalContractor(p, req.params.token);
     if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
-    const b = req.body || {}, notes = str(b.notes, 3000), price = money(b.price), photos = decodePhotos(b.photos).slice(0, 5);
+    const b = req.body || {}, notes = str(b.notes, 3000), price = money(b.price), photos = decodePhotos(b.photos).slice(0, 30);
     if (price === undefined) return res.status(400).json({ ok: false, error: 'bad-price' });
     // Parts the contractor bought: added to the job's parts (cost, and charged on to the landlord at cost
     // unless the office changes it).
@@ -6400,7 +6400,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const c = await portalContractor(p, req.params.token);
     if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
-    const b = req.body || {}, note = str(b.note, 3000), photos = decodePhotos(b.photos).slice(0, 10);
+    const b = req.body || {}, note = str(b.note, 3000), photos = decodePhotos(b.photos).slice(0, 30);
     if (!note && !photos.length) return res.status(400).json({ ok: false, error: 'empty' });
     const j = (await p.query(`SELECT id, property_address FROM jobs WHERE id = $1 AND archived_at IS NULL
         AND (lower(trim(assigned_to)) = lower(trim($2)) OR lower(trim(assigned_to_2)) = lower(trim($2)))
