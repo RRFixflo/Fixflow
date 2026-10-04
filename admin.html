@@ -9111,7 +9111,7 @@
   function offCreditText(o){ var c = (o.data || {}).credit || []; return c.length ? c.map(function(x){ return esc(x.name) + (c.length > 1 ? ' <small>' + x.share + '%</small>' : ''); }).join(' + ') : ''; }
   function offCreditHtml(o){
     var t = offCreditText(o);
-    return '<div class="oc-credit' + (t ? '' : ' unset') + '" data-credit-row><span>🏅 Whose offer</span><b>' + (t || '<span class="muted-note" style="margin:0">Not set</span>') + '</b><button type="button" class="linkish" data-off-credit>' + (t ? 'Change' : 'Set') + '</button></div>';
+    return '<div class="oc-credit' + (t ? '' : ' unset') + '" data-credit-row><span>🏅 Whose offer</span><b>' + (t || '<span class="muted-note" style="margin:0">Not set</span>') + '</b>' + (!staffMode || meta.canManageUsers ? '<button type="button" class="linkish" data-off-credit>' + (t ? 'Change' : 'Set') + '</button>' : '') + '</div>';
   }
   function offCreditEdit(o, row){
     loadOffPeople().then(function(ps){
