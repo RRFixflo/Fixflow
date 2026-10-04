@@ -1629,7 +1629,7 @@
               <div class="lt-row" data-find><label>Commission %<input class="inp" id="ltFindPct" inputmode="decimal"></label><label>Minimum fee £ (inc VAT)<input class="inp" id="ltFindMin" inputmode="decimal"></label></div>
               <label class="switch-row" data-find style="margin-top:6px"><input type="checkbox" id="ltMonthly"> Collect this fee monthly (12 instalments) instead of up front</label>
               <label class="switch-row" data-find style="margin-top:6px"><input type="checkbox" id="ltSplit"> Let the landlord choose to split it into 12 monthly payments (no extra cost)</label>
-              <label class="switch-row" data-find style="margin-top:6px"><input type="checkbox" id="ltRen" checked> Anniversary fee (each 12 months the tenant stays)</label>
+              <label class="switch-row" data-find style="margin-top:6px"><input type="checkbox" id="ltRen" checked> Anniversary fee (each 12 months the tenant stays — replaces renewal fees, as tenancies no longer renew)</label>
               <div class="lt-row" data-find data-ren><label>Anniversary fee %<input class="inp" id="ltRenPct" inputmode="decimal"></label></div></div>
             <div class="lt-box"><b>Ongoing service</b><select class="inp" id="ltOn"><option value="none">None</option><option value="collect">Rent collection</option><option value="manage">Full management</option><option value="both">Full management + rent collection</option></select>
               <div class="lt-row" data-on><label>Fee %<input class="inp" id="ltOnPct" inputmode="decimal"></label><label>Minimum £ a month (inc VAT)<input class="inp" id="ltOnMin" inputmode="decimal"></label></div>
@@ -1644,6 +1644,7 @@
         </details>
         <div class="lt-bar"><label class="muted-note" style="margin:0;display:flex;gap:6px;align-items:center">Sort <select class="inp" id="ltSort" style="width:auto"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="signed">Recently signed</option><option value="waiting">Waiting for the landlord first</option><option value="addr">Property A–Z</option><option value="ll">Landlord A–Z</option><option value="feehi">Highest fees</option><option value="feelo">Lowest fees</option></select></label><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="ltMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="ltMaxAll">▾ Expand all</button></span></div>
         <div id="ltList"></div>
+        <div id="ltDeleted" style="margin-top:12px"></div>
       </div>
       <div id="sentView" hidden>
         <div class="card" style="margin-bottom:12px"><div class="sent-bar"><input class="inp" id="sentQ" placeholder="Search who it went to, subject or text" style="flex:1;min-width:200px"><select class="inp" id="sentWho" hidden style="width:auto"><option value="">Everyone</option></select></div>
@@ -9561,7 +9562,7 @@
   function ltFees(){ return { allow_split: $('ltSplit').checked, choose: $('ltChoose').checked, opt_collect_pct: $('ltOptCollect').value, opt_both_pct: $('ltOptBoth').value, find: $('ltFind').value, find_pct: $('ltFindPct').value, find_min: $('ltFindMin').value, find_monthly: $('ltMonthly').checked, renewal: $('ltRen').checked, renewal_pct: $('ltRenPct').value, ongoing: $('ltOn').value, ongoing_pct: $('ltOnPct').value, ongoing_min: $('ltOnMin').value, vat: $('ltVat').checked, other: $('ltOther').value.trim() }; }
   function ltLines(f){
     var vat = f.vat !== false, inc = function(p){ p = Number(p); return vat ? p + '% + VAT (' + (Math.round(p * 120) / 100) + '% inc VAT)' : p + '%'; }, L = [];
-    if (f.find !== 'none' && f.find_pct !== '' && f.find_pct != null) { L.push([f.find === 'multi' ? 'Tenant find — multi agency' : 'Tenant find — sole agency', inc(f.find_pct) + ' of the first 12 months’ rent' + (Number(f.find_min) ? ', minimum ' + gbp(Number(f.find_min)) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? ', paid monthly over 12 months' : ', paid up front')]); L.push(['Anniversary fee', f.renewal && f.renewal_pct !== '' && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months’ rent, each anniversary' : 'No anniversary fee']); }
+    if (f.find !== 'none' && f.find_pct !== '' && f.find_pct != null) { L.push([f.find === 'multi' ? 'Tenant find — multi agency' : 'Tenant find — sole agency', inc(f.find_pct) + ' of the first 12 months’ rent' + (Number(f.find_min) ? ', minimum ' + gbp(Number(f.find_min)) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? ', paid monthly over 12 months' : ', paid up front')]); L.push(['Anniversary fee (replaces renewal fees)', f.renewal && f.renewal_pct !== '' && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months’ rent, each anniversary' : 'No anniversary fee']); }
     if (f.ongoing !== 'none' && f.ongoing_pct !== '' && f.ongoing_pct != null) L.push([{ manage: 'Full management', both: 'Full management + rent collection' }[f.ongoing] || 'Rent collection', inc(f.ongoing_pct) + ' of rent received' + (Number(f.ongoing_min) ? ', minimum ' + gbp(Number(f.ongoing_min)) + (vat ? ' inc VAT' : '') + ' a month' : '') + ', taken monthly from the rent']);
     if (f.other) L.push(['Other', f.other]);
     return L;
@@ -9582,7 +9583,7 @@
   $('ltFindPct').addEventListener('input', function(){ var v = parseFloat(this.value); if (!$('ltRenPct').dataset.manual && !isNaN(v)) { $('ltRenPct').value = Math.max(0, Math.round((v - 1) * 100) / 100); ltPreview(); } }); $('ltMonthly').addEventListener('change', ltPreview);
   $('ltNew').addEventListener('input', ltPreview); $('ltVat').addEventListener('change', ltPreview);
   ltDefaults();
-  function loadLt(){ return api('GET', '/api/admin/landlord-terms').then(function(d){ if (!d.ok) return; ltItems = d.items; ltOrigin = d.origin || ''; renderLt(); var waiting = ltItems.filter(function(x){ return x.status === 'sent'; }).length; $('sLt').hidden = !waiting; $('sLt').textContent = waiting; }); }
+  function loadLt(){ return api('GET', '/api/admin/landlord-terms').then(function(d){ if (!d.ok) return; ltItems = d.items; ltDeleted = d.deleted || []; renderLtDeleted(); ltOrigin = d.origin || ''; renderLt(); var waiting = ltItems.filter(function(x){ return x.status === 'sent'; }).length; $('sLt').hidden = !waiting; $('sLt').textContent = waiting; }); }
   var ltOrigin = '';
   function ltLink(t){ return (ltOrigin || meta.offerOrigin || location.origin) + '/landlord/' + t.token; }
   function ltMailBody(t){
@@ -9626,6 +9627,37 @@
     var first = String(t.landlord_name || '').trim(), w = first.split(/\s+/)[0]; first = /^(mr|mrs|ms|miss|dr|mx)\.?$/i.test(w) ? first : w;
     return 'Dear ' + (first || 'Sir or Madam') + ',\n\nJust a friendly reminder that your terms of business for ' + shortAddr(t.property_address) + ' are ready to sign. It only takes a few minutes to check the fees, complete the property details and sign online here: ' + ltLink(t) + '\n\nWe can’t start marketing or move a tenant in until it’s signed. If you have any questions, just reply to this email or call us on 0207 096 8131.' + mailSignoff();
   }
+  // Recently deleted agreements (restorable for 30 days), and recovering ones deleted before that existed.
+  var ltDeleted = [], ltReuseToken = null;
+  function renderLtDeleted(){
+    var h = '';
+    if (ltDeleted.length) h += '<details class="card"><summary style="cursor:pointer;font-weight:700">🗑 Recently deleted (' + ltDeleted.length + ') <span class="muted-note" style="margin:0;font-weight:500">— kept for 30 days</span></summary>' + ltDeleted.map(function(t){
+      return '<div class="val-row"><div><b>' + esc(t.ref) + ' · ' + esc(shortAddr(t.property_address || '')) + '</b><span class="muted-note" style="margin:0;display:block">' + esc(t.landlord_name || '') + ' · deleted ' + esc(new Date(t.deleted_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + (t.deleted_by ? ' by ' + esc(t.deleted_by) : '') + '</span></div><button type="button" class="btn small primary" data-lt-restore="' + t.id + '">↩ Restore</button></div>'; }).join('') + '</details>';
+    h += '<p class="muted-note" style="margin:8px 0 0">Deleted one by mistake before? <button type="button" class="linkish" id="ltLostBtn">Recover a deleted agreement</button></p><div id="ltLost"></div>';
+    $('ltDeleted').innerHTML = h;
+  }
+  $('ltDeleted').addEventListener('click', function(e){
+    var r = e.target.closest('[data-lt-restore]');
+    if (r) { busy(r, true, '…'); api('POST', '/api/admin/landlord-terms/' + r.dataset.ltRestore + '/restore', {}).then(function(d){ busy(r, false); toast(d && d.ok ? '✓ Restored — the landlord’s link works again' : 'Couldn’t restore it'); loadLt(); }); return; }
+    if (e.target.closest('#ltLostBtn')) {
+      $('ltLost').innerHTML = '<p class="muted-note">Looking for links we sent…</p>';
+      api('GET', '/api/admin/landlord-terms-lost').then(function(d){
+        var items = (d && d.items) || [];
+        $('ltLost').innerHTML = items.length ? '<div class="card" style="margin-top:8px"><b>Links sent or opened whose agreement is gone</b><p class="muted-note" style="margin:4px 0 8px">Recreate it with the <b>same link</b>, so the link the landlord already has works again. The fees weren’t kept, so enter them again.</p>' + items.map(function(x){
+          var em = x.emails[0] || {};
+          return '<div class="val-row"><div><b>' + esc(em.about || 'Terms link ' + x.token.slice(0, 6) + '…') + '</b><span class="muted-note" style="margin:0;display:block">' + [em.to && em.to.length ? 'emailed to ' + esc(em.to.join(', ')) + ' on ' + esc(new Date(em.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })) + (em.by ? ' by ' + esc(em.by) : '') : '', x.visits ? 'opened ' + x.visits + ' time' + (x.visits === 1 ? '' : 's') + (x.last_visit ? ', last ' + esc(new Date(x.last_visit).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) : '') : 'not opened yet'].filter(Boolean).join(' · ') + '</span></div>' +
+            '<button type="button" class="btn small primary" data-lt-reuse="' + esc(x.token) + '" data-about="' + esc(em.about || '') + '" data-to="' + esc((em.to || [])[0] || '') + '">Recreate with the same link</button></div>'; }).join('') + '</div>'
+          : '<p class="muted-note">No lost links found — only links that were emailed through Fixflow or opened by the landlord can be recovered. If it was sent by WhatsApp and never opened, create it again and send the new link.</p>';
+      });
+      return;
+    }
+    var u = e.target.closest('[data-lt-reuse]');
+    if (u) {
+      ltReuseToken = u.dataset.ltReuse; if (u.dataset.about) $('ltAddr').value = u.dataset.about; if (u.dataset.to) $('ltEmail').value = u.dataset.to;
+      $('ltNew').open = true; $('ltCreate').textContent = 'Recreate agreement (same link)'; $('ltNew').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast('Fill in the landlord and fees, then press “Recreate agreement” — it will use the link they already have');
+    }
+  });
   function renderLt(){
     var sortBy = $('ltSort').value, cmp = function(x, y){ return String(x || '').localeCompare(String(y || ''), 'en', { sensitivity: 'base' }); };
     var list = ltItems.slice().sort(function(a, b){
@@ -9743,7 +9775,7 @@
   $('ltMinAll').addEventListener('click', function(){ document.querySelectorAll('#ltList [data-lt]').forEach(function(x){ ltMin[x.dataset.lt] = 1; x.classList.add('oc-min'); }); ltMinSave(); });
   $('ltMaxAll').addEventListener('click', function(){ document.querySelectorAll('#ltList [data-lt]').forEach(function(x){ delete ltMin[x.dataset.lt]; x.classList.remove('oc-min'); }); ltMinSave(); });
   $('ltCreate').addEventListener('click', function(){
-    var b = this, body = { landlord_name: $('ltName').value.trim(), property_address: $('ltAddr').value.trim(), landlord_email: $('ltEmail').value.trim(), landlord_phone: $('ltPhone').value.trim(), landlord_id: ltLandlordId, fees: ltFees() };
+    var b = this, body = { landlord_name: $('ltName').value.trim(), property_address: $('ltAddr').value.trim(), landlord_email: $('ltEmail').value.trim(), landlord_phone: $('ltPhone').value.trim(), landlord_id: ltLandlordId, fees: ltFees(), reuse_token: ltEditId ? undefined : ltReuseToken || undefined };
     if (!body.landlord_name) { toast('Enter the landlord’s name'); $('ltName').focus(); return; }
     if (!body.property_address) { toast('Enter the property address'); $('ltAddr').focus(); return; }
     var editing = ltEditId;
@@ -9752,7 +9784,8 @@
       busy(b, false); if (!d.ok) { toast(d.error === 'pct' ? 'Enter the percentages for the services chosen' : d.error === 'fees' ? 'Choose at least one service or add other fees' : d.error === 'signed' ? 'Already signed — it can’t be changed' : 'Couldn’t save it'); return; }
       if (editing) { ltEditEnd(); toast('✓ Saved — the same link now shows the new details. Send it again below.'); setTimeout(function(){ var c = document.querySelector('[data-lt="' + editing + '"]'); if (c) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.add('lt-flash'); setTimeout(function(){ c.classList.remove('lt-flash'); }, 2500); } }, 900); loadLt(); return; }
       ['ltName', 'ltAddr', 'ltEmail', 'ltPhone', 'ltOther'].forEach(function(id){ $(id).value = ''; }); $('ltEpc').hidden = true; ltEpcFor = ''; $('ltMonthly').checked = false; ltLandlordId = null; ltKnownFor = ''; $('ltKnown').hidden = true; $('ltProps').hidden = true;
-      offCopyText(d.link); toast('Agreement created — link copied. Send it by WhatsApp or email below.'); loadLt();
+      var reused = !!ltReuseToken; ltReuseToken = null; $('ltCreate').textContent = 'Create agreement link'; $('ltLost') && ($('ltLost').innerHTML = '');
+      offCopyText(d.link); toast(reused ? '✓ Agreement recreated — the landlord’s original link works again' : 'Agreement created — link copied. Send it by WhatsApp or email below.'); loadLt();
     });
   });
   $('ltList').addEventListener('click', function(e){
@@ -9778,7 +9811,7 @@
     }
     if (e.target.closest('[data-lt-mail]')) { openMailto('mailto:' + encodeURIComponent(t.landlord_email || '') + '?subject=' + encodeURIComponent('Your terms of business — ' + shortAddr(t.property_address)) + '&body=' + encodeURIComponent(ltMailBody(t))); api('POST', '/api/admin/landlord-terms/' + t.id, { note: 'Link sent by email' }); return; }
     if (e.target.closest('[data-lt-cancel]')) { if (!confirm('Cancel this link? The landlord won’t be able to open it.')) return; api('POST', '/api/admin/landlord-terms/' + t.id, { cancel: true }).then(function(){ toast('Link cancelled'); loadLt(); }); return; }
-    if (e.target.closest('[data-lt-del]')) { if (!confirm('Delete this landlord agreement?')) return; api('DELETE', '/api/admin/landlord-terms/' + t.id, { confirm: true }).then(function(){ toast('Deleted'); loadLt(); }); }
+    if (e.target.closest('[data-lt-del]')) { if (!confirm('Delete this landlord agreement? Its link stops working. You can restore it from “Recently deleted” for 30 days.')) return; api('DELETE', '/api/admin/landlord-terms/' + t.id, { confirm: true }).then(function(){ toast('Deleted — you can restore it from Recently deleted below'); loadLt(); }); }
   });
   $('navLt').addEventListener('click', function(){ showView('lt'); });
   $('staffTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-stab]'); if (b) showView(b.dataset.stab); });
