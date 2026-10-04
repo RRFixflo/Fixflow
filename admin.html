@@ -553,6 +553,7 @@
   .av-nofee { background: #fffaeb; border: 1px solid #fedf89; color: #93370d; border-radius: 10px; padding: 7px 10px; font-size: .84rem; margin: 8px 0 2px; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; } .av-nofee-t { flex: 1 1 220px; } .av-nofee-f { display: flex; gap: 6px; margin-left: auto; } .av-nofee .inp { width: 150px; padding: 5px 8px; min-height: 0; }
   .num.fee small.fee-vat { color: var(--green, #067647); font-size: .82rem; } .num.fee small.fee-vat b { font-size: .95rem; }
   .lt-disc { display: inline-block; margin-left: 6px; font-size: .74rem; font-weight: 700; color: #067647; background: #ecfdf3; border-radius: 999px; padding: 1px 8px; }
+  .val-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line, #e6e8ec); } .val-row:first-of-type { border-top: 0; }
   .av-meta { font-size: .84rem; color: var(--ink-soft); } .av-meta b { color: var(--ink); }
   .av-contact { font-size: .84rem; border: 1px dashed var(--line, #e6e8ec); border-radius: 10px; padding: 6px 8px; } .av-contact summary { cursor: pointer; font-weight: 600; } .av-contact pre { white-space: pre-wrap; font: inherit; margin: 6px 0; }
   .av-person { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid #f2f4f7; } .av-person:first-of-type { border-top: 0; margin-top: 4px; }
@@ -1428,6 +1429,7 @@
           <div class="card" id="llCard"></div>
           <div class="card" id="llMails" style="margin-top:12px"></div>
           <div class="card" id="llOwed" style="margin-top:12px"></div>
+          <div class="card" id="llVals" style="margin-top:12px" hidden></div>
           <div class="card" style="margin-top:12px"><h3>Properties</h3>
             <div class="list" id="llProps"></div>
             <div class="tenant-find" style="margin-top:12px"><label class="lbl" for="llAddProp">Add a property to this landlord</label>
@@ -7343,6 +7345,81 @@
   }
   $('lpWa').addEventListener('click', function(){ window.open('https://wa.me/' + waNumber(lpFor.phone) + '?text=' + encodeURIComponent($('lpMsg').value), '_blank', 'noopener'); lpMarkSent('WhatsApp'); });
   $('lpEmail').addEventListener('click', function(){ lpMarkSent('email'); openMailto('mailto:' + encodeURIComponent(lpFor.email) + '?subject=' + encodeURIComponent('Your properties with Residential Realtors') + '&body=' + encodeURIComponent($('lpMsg').value)); });
+  // ----- Valuation letters (sales and / or lettings), a PDF to download and send -----
+  function loadValuations(l){
+    api('GET', '/api/admin/valuations?landlord_id=' + l.id).then(function(d){
+      if (!d || !d.ok || openLlId !== l.id) return; var items = d.items || [];
+      $('llVals').hidden = !items.length;
+      $('llVals').innerHTML = '<h3>Valuation letters <span class="count-chip">' + items.length + '</span></h3>' + items.map(function(x){
+        var v = x.data || {}, r = function(lo, hi){ return lo && hi && lo !== hi ? gbp0(lo) + '–' + gbp0(hi) : gbp0(lo || hi); };
+        return '<div class="val-row"><div><b>' + esc(shortAddr(x.address)) + '</b><span class="muted-note" style="margin:0;display:block">' + [v.sales ? 'Sale ' + r(v.sales_low, v.sales_high) : '', v.lettings ? 'Let ' + r(v.let_low, v.let_high) + ' pcm' : ''].filter(Boolean).join(' · ') + ' · ' + esc(new Date(x.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) + (x.created_by ? ' · ' + esc(x.created_by) : '') + '</span></div>' +
+          '<span style="display:flex;gap:6px"><a class="btn small" target="_blank" rel="noopener" href="/api/admin/valuations/' + x.id + '/pdf">View</a><a class="btn small ghost" href="/api/admin/valuations/' + x.id + '/pdf?dl=1">⬇ PDF</a></span></div>';
+      }).join('');
+    });
+  }
+  function gbp0(n){ return '£' + Math.round(Number(n) || 0).toLocaleString('en-GB'); }
+  function openValuation(l){
+    var m = $('valModal');
+    if (!m) {
+      document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="valModal" hidden><div class="card" style="width:min(640px,100%);max-height:92vh;overflow:auto;display:flex;flex-direction:column;gap:10px">' +
+        '<h3 style="margin:0">📄 Valuation letter</h3><p class="muted-note" style="margin:0">A branded PDF with our estimated sales and / or lettings valuation, ready to download and send.</p>' +
+        '<label class="lbl">Property<input class="inp" id="valAddr" list="valProps" placeholder="Full address with postcode"><datalist id="valProps"></datalist></label>' +
+        '<div class="grid2"><label class="lbl">Addressed to<input class="inp" id="valTo"></label><label class="lbl">Dear …<input class="inp" id="valSal" placeholder="e.g. Ms George"></label></div>' +
+        '<label class="lbl">Their address<textarea class="inp" id="valToAddr" rows="2"></textarea></label>' +
+        '<div class="seg" id="valType" style="flex-shrink:0;align-self:flex-start"><button type="button" data-v="sales">Sales</button><button type="button" data-v="lettings" class="on">Lettings</button><button type="button" data-v="both">Both</button></div>' +
+        '<div id="valSales" hidden><b style="font-size:.86rem">Sales valuation</b><div class="grid2"><label class="lbl">Asking price £ (or from)<input class="inp" id="valSLo" inputmode="numeric" placeholder="e.g. 495000"></label><label class="lbl">To £ <span class="muted-note" style="margin:0">optional, for a range</span><input class="inp" id="valSHi" inputmode="numeric"></label></div>' +
+          '<label class="lbl">Our sales fee <span class="muted-note" style="margin:0">optional</span><input class="inp" id="valSFee" placeholder="e.g. 1.2% + VAT"></label></div>' +
+        '<div id="valLet"><b style="font-size:.86rem">Lettings valuation</b><div class="grid2"><label class="lbl">Rent £ pcm (or from)<input class="inp" id="valLLo" inputmode="numeric" placeholder="e.g. 2250"></label><label class="lbl">To £ pcm <span class="muted-note" style="margin:0">optional</span><input class="inp" id="valLHi" inputmode="numeric"></label></div><div class="muted-note" id="valPw" style="margin:0"></div>' +
+          '<label class="switch-row" style="margin-top:6px"><input type="checkbox" id="valFees" checked> Include our lettings services and fees</label>' +
+          '<div class="grid3" id="valFeeRow"><label class="lbl">Let only %<input class="inp" id="valFind" inputmode="decimal" value="10"></label><label class="lbl">Rent collection %<input class="inp" id="valCol" inputmode="decimal" value="3"></label><label class="lbl">Fully managed %<input class="inp" id="valBoth" inputmode="decimal" value="6"></label></div>' +
+          '<div class="muted-note" style="margin:0">Lower than our standard 10% / 3% / 6% shows as a discount.</div></div>' +
+        '<label class="lbl">What stood out <span class="muted-note" style="margin:0">optional — one per line</span><textarea class="inp" id="valHi" rows="3" placeholder="e.g. Private garden&#10;Recently refurbished kitchen&#10;5 minutes from the station"></textarea></label>' +
+        '<label class="lbl">Anything else to say <span class="muted-note" style="margin:0">optional</span><textarea class="inp" id="valNote" rows="2"></textarea></label>' +
+        '<div class="grid3"><label class="lbl">Letter date<input class="inp" id="valDate" type="date"></label><label class="lbl">Visited on <span class="muted-note" style="margin:0">optional</span><input class="inp" id="valVisit" type="date"></label><label class="lbl">Signed by<input class="inp" id="valSigner"></label></div>' +
+        '<label class="lbl">Their job title<input class="inp" id="valTitle" placeholder="e.g. Lettings Manager"></label>' +
+        '<p class="muted-note" id="valErr" style="color:var(--red,#c00);margin:0" hidden></p>' +
+        '<div class="row-actions" style="margin-top:0"><button class="btn ghost" type="button" id="valCancel">Cancel</button><button class="btn" type="button" id="valView">👁 Preview</button><button class="btn primary" type="button" id="valMake">⬇ Download PDF</button></div></div></div>');
+      m = $('valModal');
+      var type = 'lettings';
+      var setType = function(t){ type = t; $('valType').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.dataset.v === t); }); $('valSales').hidden = t === 'lettings'; $('valLet').hidden = t === 'sales'; };
+      $('valType').addEventListener('click', function(e){ var b = e.target.closest('[data-v]'); if (b) setType(b.dataset.v); });
+      var pw = function(){ var lo = parseFloat($('valLLo').value.replace(/[£,\s]/g, '')), hi = parseFloat($('valLHi').value.replace(/[£,\s]/g, '')); $('valPw').textContent = lo ? '= ' + gbp0(lo * 12 / 52) + (hi ? '–' + gbp0(hi * 12 / 52) : '') + ' a week' : ''; };
+      $('valLLo').addEventListener('input', pw); $('valLHi').addEventListener('input', pw);
+      $('valFees').addEventListener('change', function(){ $('valFeeRow').hidden = !this.checked; });
+      $('valCancel').addEventListener('click', function(){ m.hidden = true; });
+      m.addEventListener('mousedown', function(e){ if (e.target === m) m.hidden = true; });
+      var body = function(){ return { landlord_id: m.dataset.ll ? Number(m.dataset.ll) : null, address: $('valAddr').value.trim(), to_name: $('valTo').value.trim(), salutation: $('valSal').value.trim(), to_address: $('valToAddr').value.trim(),
+        sales: type !== 'lettings', lettings: type !== 'sales', sales_low: $('valSLo').value, sales_high: $('valSHi').value, sales_fee: $('valSFee').value.trim(), let_low: $('valLLo').value, let_high: $('valLHi').value,
+        include_fees: $('valFees').checked, find_pct: $('valFind').value, collect_pct: $('valCol').value, both_pct: $('valBoth').value, highlights: $('valHi').value, note: $('valNote').value,
+        date: $('valDate').value, visited: $('valVisit').value, signer: $('valSigner').value.trim(), signer_title: $('valTitle').value.trim() }; };
+      var make = function(btn, dl){
+        var b = body(); $('valErr').hidden = true;
+        if (!b.address) { $('valErr').textContent = 'Add the property address.'; $('valErr').hidden = false; return; }
+        if ((b.sales && !b.sales_low && !b.sales_high) || (b.lettings && !b.let_low && !b.let_high)) { $('valErr').textContent = 'Add the ' + (b.sales && !b.sales_low ? 'asking price' : 'rent') + '.'; $('valErr').hidden = false; return; }
+        var win = dl ? null : window.open('', '_blank');
+        busy(btn, true, 'Making…');
+        api('POST', '/api/admin/valuations', b).then(function(d){
+          busy(btn, false);
+          if (!d || !d.ok) { if (win) win.close(); $('valErr').textContent = 'Couldn’t make the letter (' + ((d && d.error) || 'error') + ').'; $('valErr').hidden = false; return; }
+          if (dl) { var a = document.createElement('a'); a.href = d.pdf + '?dl=1'; document.body.appendChild(a); a.click(); a.remove(); m.hidden = true; toast('Valuation letter downloaded — it’s saved on the landlord’s page too'); }
+          else if (win) win.location = d.pdf;
+          var ll = landlordById(Number(m.dataset.ll)); if (ll) loadValuations(ll);
+        });
+      };
+      $('valMake').addEventListener('click', function(){ make(this, true); });
+      $('valView').addEventListener('click', function(){ make(this, false); });
+      m.setType = setType;
+    }
+    var props = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; });
+    m.dataset.ll = l.id;
+    $('valProps').innerHTML = props.map(function(a){ return '<option value="' + esc(a) + '">'; }).join('');
+    $('valAddr').value = props.length === 1 ? props[0] : '';
+    $('valTo').value = l.name || ''; $('valSal').value = (l.name || '').trim(); $('valToAddr').value = l.address || '';
+    ['valSLo', 'valSHi', 'valSFee', 'valLLo', 'valLHi', 'valHi', 'valNote', 'valVisit'].forEach(function(id){ $(id).value = ''; }); $('valPw').textContent = '';
+    $('valDate').value = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+    $('valSigner').value = meta.user && meta.user.id && meta.user.name ? meta.user.name : '';
+    $('valErr').hidden = true; m.setType('lettings'); m.hidden = false; setTimeout(function(){ ($('valAddr').value ? $('valLLo') : $('valAddr')).focus(); }, 30);
+  }
   function renderLandlord(){
     var l = landlordById(openLlId);
     if (!l) { $('llBack').click(); return; }
@@ -7360,9 +7437,12 @@
       (l.email ? '<a class="btn" href="mailto:' + esc(l.email) + '">Email</a>' : '') +
       '<button class="btn" id="llLinkBtn" type="button" title="' + esc(sentWhen(l.link_sent) || 'Not sent yet') + '">🔗 Send their page' + (l.link_sent ? ' ✓' : '') + '</button>' +
       '<button class="btn" id="llInvBtn" type="button">🧾 New invoice</button>' +
+      '<button class="btn" id="llValBtn" type="button">📄 Valuation letter</button>' +
       '<button class="btn primary" id="llEditBtn" type="button">Edit details</button>';
     $('llLinkBtn').addEventListener('click', function(){ openLlLink(l); });
     $('llInvBtn').addEventListener('click', function(){ var ps = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; }); openNewInvoice({ props: ps.length ? ps : null, address: ps.length === 1 ? ps[0] : '' }); });
+    $('llValBtn').addEventListener('click', function(){ openValuation(l); });
+    loadValuations(l);
     $('llCard').innerHTML = '<dl class="kv">' + [['Name', l.name], ['Phone', l.phone], ['Email', l.email], ['Address (for invoices)', l.address], ['Notes', l.notes]]
       .filter(function(r){ return r[1]; }).map(function(r){ return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
     $('llEditBtn').addEventListener('click', function(){ openLandlordForm(l); });
