@@ -417,6 +417,7 @@
   .vw-h { font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); font-weight: 700; margin: 12px 0 4px; }
   .vw-row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); } .vw-row .vw-m { flex: 1; min-width: 220px; } .vw-row .vw-m b { display: block; } .vw-row .vw-m span { font-size: .8rem; color: var(--ink-soft); }
   .vw-fb { flex-basis: 100%; display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; } .vw-fb textarea { flex: 1; min-width: 220px; min-height: 54px; }
+  .inv-cm { display: block; font-size: .76rem; color: var(--ink-soft); margin-top: 3px; } .inv-cm select, .inv-cm-sel { font: inherit; font-size: .76rem; border: 1px solid var(--line); border-radius: 6px; padding: 1px 4px; background: #fff; }
   .inv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); } .inv-main { flex: 1; min-width: 200px; } .inv-main b { display: block; } .inv-main span { display: block; font-size: .8rem; color: var(--ink-soft); }
   .inv-ev { flex-basis: 100%; background: #f7f8fa; border-radius: 10px; padding: 8px 12px; font-size: .84rem; } .inv-ev div { padding: 3px 0; } .inv-ev span { display: inline-block; min-width: 110px; color: var(--ink-soft); }
   .oc { position: relative; } .oc-minbtn { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-weight: 800; color: var(--ink-soft); line-height: 1; z-index: 2; }
@@ -7196,12 +7197,21 @@
       loadJobs().then(function(){ if (openJobId) openJob(openJobId); if (view === 'll' && openLlId) renderLandlord(); });
     });
   }
+  // Which month's rent an unpaid invoice comes out of: the next rent day, or a month you choose.
+  function invMonthOpts(cur){
+    var d = new Date(), out = '<option value="">next rent</option>';
+    for (var k = 0; k < 7; k++) { var x = new Date(d.getFullYear(), d.getMonth() + k, 15), v = x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2); out += '<option value="' + v + '"' + (cur === v ? ' selected' : '') + '>' + x.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) + ' rent</option>'; }
+    if (cur && out.indexOf('value="' + cur + '"') === -1) out += '<option value="' + cur + '" selected>' + cur + ' rent</option>';
+    return out;
+  }
+  function invSetMonth(id, m){ return api('POST', '/api/admin/invoices/' + id + '/collect', { month: m }).then(function(d){ toast(d && d.ok ? (m ? '✓ Will be taken from that month’s rent' : '✓ Will be taken from the next rent') : 'Couldn’t save that'); return Promise.all([loadJobs(), loadRentRecoveries()]); }); }
   function invRowHtml(i, showAddress){
     var od = invOverdue(i);
     return '<div class="pay-row" style="grid-template-columns:minmax(0,1fr) 120px 96px auto">' +
       '<div class="addr">' + (i.job_id ? '<button type="button" class="link ref" data-open="' + i.job_id + '" style="border:0;background:none;padding:0;color:var(--blue);font-weight:650;cursor:pointer">' + esc(i.number || 'Invoice') + '</button>'
           : '<a class="link ref" href="/api/admin/invoices/' + i.id + '/view" target="_blank" rel="noopener" style="color:var(--blue);font-weight:650">' + esc(i.number || 'Invoice') + '</a>') +
-        '<small>' + esc([showAddress ? i.property_address : '', i.job_id ? '' : (i.title || 'Tenancy'), 'Issued ' + fmtShort(i.created_at)].filter(Boolean).join(' · ')) + '</small></div>' +
+        '<small>' + esc([showAddress ? i.property_address : '', i.job_id ? '' : (i.title || 'Tenancy'), 'Issued ' + fmtShort(i.created_at)].filter(Boolean).join(' · ')) + '</small>' +
+        (!i.paid_at ? '<label class="inv-cm">Take from: <select data-inv-cm="' + i.id + '">' + invMonthOpts(i.collect_month) + '</select></label>' : '') + '</div>' +
       '<div class="when">' + (i.paid_at ? '<span class="pill status Completed">Paid ' + esc(fmtShort(i.paid_at).split(',')[0]) + '</span>'
         : i.due ? '<span style="' + (od ? 'color:var(--brick);font-weight:650' : '') + '">' + (od ? 'Overdue · ' : 'Due ') + esc(ukDate(i.due)) + '</span>' : '<span class="muted-note">No due date</span>') + '</div>' +
       '<div class="amt">' + esc(gbp(i.total)) + '</div>' +
@@ -7213,6 +7223,7 @@
   }
   // Clicks inside any list of invoices.
   function wireInvList(el){
+    el.addEventListener('change', function(e){ var s2 = e.target.closest('[data-inv-cm]'); if (s2) invSetMonth(Number(s2.dataset.invCm), s2.value); });
     el.addEventListener('click', function(e){
       var b = e.target.closest('button'); if (!b) return;
       if (b.dataset.invPaid) { var inv = allInvoices.filter(function(x){ return x.id === Number(b.dataset.invPaid); })[0];
@@ -10699,19 +10710,19 @@
     return api('GET', '/api/admin/rent-recoveries').then(function(d){ if (!d.ok) return; rentRec = d.items; renderRentBanner(); if (!$('rrModal').hidden) renderRentRec(); })['catch'](function(){});
   }
   function renderRentBanner(){
-    var n = rentRec.length, tot = rentRec.reduce(function(t, x){ return t + x.total; }, 0), today = rentRec.filter(function(x){ return x.today; }).length;
+    var n = rentRec.length, tot = rentRec.reduce(function(t, x){ return t + x.total; }, 0), today = rentRec.filter(function(x){ return x.today; }).length, soon = rentRec.filter(function(x){ return x.soon; });
     $('rentBanner').hidden = !n;
-    $('rentBannerText').textContent = '💷 ' + (today ? 'Rent day today' + (n > today ? ' (and ' + (n - today) + ' earlier this week)' : '') : 'Rent was due this week') + ': recover ' + gbp(tot) + ' of landlord charges from the rent — ' + n + ' propert' + (n === 1 ? 'y' : 'ies') + '.';
+    $('rentBannerText').textContent = '💷 ' + (today ? 'Rent day today' + (n > today ? ' (and ' + (n - today) + ' more)' : '') : soon.length === n ? 'Rent due in ' + Math.min.apply(null, soon.map(function(x){ return x.soon; })) + ' day' + (Math.min.apply(null, soon.map(function(x){ return x.soon; })) === 1 ? '' : 's') : 'Rent was due this week') + ': recover ' + gbp(tot) + ' of landlord charges from the rent — ' + n + ' propert' + (n === 1 ? 'y' : 'ies') + '.';
   }
   function renderRentRec(){
     var day = function(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : v; };
     $('rrList').innerHTML = rentRec.length ? rentRec.map(function(x){
       return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(x.landlord || 'Landlord') + ' · ' + esc(shortAddr(x.address)) + '</b><span style="font-weight:800">' + gbp(x.total) + '</span></div>' +
-        '<div class="muted-note" style="margin:2px 0 6px">Rent ' + (x.rent ? gbp(x.rent) + ' ' : '') + (x.today ? 'due <b>today</b>' : 'was due ' + esc(day(x.rent_day))) +
+        '<div class="muted-note" style="margin:2px 0 6px">Rent ' + (x.rent ? gbp(x.rent) + ' ' : '') + (x.today ? 'due <b>today</b>' : x.soon ? 'due in <b>' + x.soon + ' day' + (x.soon === 1 ? '' : 's') + '</b> (' + esc(day(x.rent_day)) + ') — collect these from it' : 'was due ' + esc(day(x.rent_day))) +
           (x.rent && x.total > x.rent ? ' · <b style="color:var(--brick)">more than one month’s rent — tick what to take now; the rest comes back next rent day</b>' : '') + '</div>' +
         '<div class="rr-invs" data-key="' + esc(x.key) + '">' + (function(){ var run = 0; return x.invoices.map(function(i){
           run += i.total; var on = !x.rent || run <= x.rent + 0.005 || run === i.total;
-          return '<label style="display:flex;gap:8px;align-items:center;font-size:.9rem;margin:2px 0"><input type="checkbox" data-inv="' + i.id + '" data-amt="' + i.total + '"' + (on ? ' checked' : '') + '> ' + esc(i.number) + ' · ' + gbp(i.total) + '</label>';
+          return '<label style="display:flex;gap:8px;align-items:center;font-size:.9rem;margin:2px 0"><input type="checkbox" data-inv="' + i.id + '" data-amt="' + i.total + '"' + (on ? ' checked' : '') + '> ' + esc(i.number) + ' · ' + gbp(i.total) + ' <select class="inv-cm-sel" data-inv-cm="' + i.id + '" title="Which month’s rent to take it from">' + invMonthOpts(i.cm) + '</select></label>';
         }).join(''); })() + '</div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" data-rr-done="' + esc(x.key) + '">✓ Recovered from rent</button><button type="button" class="btn small ghost" data-rr-skip="' + esc(x.key) + '">Not this time</button></div></div>';
     }).join('') : '<p class="muted-note">Nothing to recover right now.</p>';
@@ -10719,6 +10730,7 @@
   $('rentBannerGo').addEventListener('click', function(){ renderRentRec(); $('rrModal').hidden = false; });
   $('rrClose').addEventListener('click', function(){ $('rrModal').hidden = true; });
   $('rrModal').addEventListener('mousedown', function(e){ if (e.target === $('rrModal')) $('rrClose').click(); });
+  $('rrList').addEventListener('change', function(e){ var s2 = e.target.closest('[data-inv-cm]'); if (s2) invSetMonth(Number(s2.dataset.invCm), s2.value).then(function(){ renderRentRec(); }); });
   $('rrList').addEventListener('click', function(e){
     var b = e.target.closest('[data-rr-done],[data-rr-skip]'); if (!b) return;
     var done = !!b.dataset.rrDone, key = b.dataset.rrDone || b.dataset.rrSkip;
