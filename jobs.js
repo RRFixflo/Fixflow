@@ -8471,16 +8471,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return out;
     }
     const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'Accept-Language': 'en-GB,en;q=0.9', 'Cookie': 'CONSENT=YES+1; SOCS=CAI' };
+    let visitor = '';
     const note = function (x) { if (diag && diag.length < 40) diag.push(x); };
     const initial = function (html) { const m = /ytInitialData\s*=\s*(\{[\s\S]*?\});\s*<\/script>/.exec(html), v = []; if (m) { try { ytDig(JSON.parse(m[1]), v, 0); } catch (e) {} } return v; };
     // Follow "load more" pages, as YouTube's own site does.
     const more = async function (list, key, ver, what) {
       let token = list.token, pg = 0;
-      for (; token && key && pg < 40; pg++) {
+      for (; token && pg < 40; pg++) {
         let got = [];
         try {
-          const rr = await fetch('https://www.youtube.com/youtubei/v1/browse?key=' + key + '&prettyPrint=false', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json', 'X-YouTube-Client-Name': '1', 'X-YouTube-Client-Version': ver }, headers), body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: ver, hl: 'en', gl: 'GB' } }, continuation: token }), signal: AbortSignal.timeout(15000) });
-          if (!rr.ok) { note({ what: what + ' more', status: rr.status }); break; }
+          const rr = await fetch('https://www.youtube.com/youtubei/v1/browse?' + (key ? 'key=' + key + '&' : '') + 'prettyPrint=false', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json', 'X-YouTube-Client-Name': '1', 'X-YouTube-Client-Version': ver, 'Origin': 'https://www.youtube.com', 'Referer': 'https://www.youtube.com/' + h + '/videos' }, visitor ? { 'X-Goog-Visitor-Id': visitor } : {}, headers), body: JSON.stringify({ context: { client: Object.assign({ clientName: 'WEB', clientVersion: ver, hl: 'en', gl: 'GB' }, visitor ? { visitorData: visitor } : {}) }, continuation: token }), signal: AbortSignal.timeout(15000) });
+          if (!rr.ok) { const tx = await rr.text().catch(function () { return ''; }); note({ what: what + ' more', status: rr.status, body: tx.slice(0, 160) }); break; }
           ytDig(await rr.json(), got, 0);
         } catch (e) { note({ what: what + ' more', error: String(e.message || e).slice(0, 100) }); break; }
         got.forEach(function (v) { list.push(v); });
@@ -8493,6 +8494,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!r.ok) throw new Error('YouTube answered ' + r.status);
     const html = await r.text(), vids = initial(html);
     const key = (/"INNERTUBE_API_KEY":"([\w-]+)"/.exec(html) || [])[1], ver = (/"INNERTUBE_CLIENT_VERSION":"([\d.]+)"/.exec(html) || [])[1] || '2.20240101.00.00';
+    visitor = (/"VISITOR_DATA":"([^"]+)"/.exec(html) || [])[1] || '';
     await more(vids, key, ver, 'channel videos');
     const cid = (/"(?:channelId|externalId|browseId)":"(UC[\w-]{20,})"/.exec(html) || [])[1];
     // The channel's full uploads playlist (100 a page) — newest first, like the videos tab.
@@ -8538,6 +8540,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const st = await ytSettings(p); let items = [], error = null;
     const diag = [];
     try { items = await ytFetch(st.handle, diag); } catch (e) { error = String(e.message || e).slice(0, 200); }
+    console.log('YouTube check: ' + items.length + ' videos' + (error ? ' (error: ' + error + ')' : '') + ' | ' + diag.map(function (d) { return JSON.stringify(d); }).join(' | ').slice(0, 900));
     const prev = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0];
     const val = { at: new Date().toISOString(), items: error && prev && prev.value && prev.value.items ? prev.value.items : items, error: error, via: YT_KEY ? 'api' : 'page', diag: diag };
     await p.query("INSERT INTO app_settings (key, value) VALUES ('youtube_list', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(val)]);
@@ -8551,7 +8554,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (a.yt_id === 'none') { matches[a.id] = []; return; }
       let list = vids.map(function (x) { const sc = ytScore(a, x); return { x: x, s: sc, long: !!x._long }; }).filter(function (o) { return o.s >= 3 || (o.s >= 2 && o.long); }).map(function (o) { return o.x; }).sort(ytNewest);
       if (a.yt_id) { const pick = vids.filter(function (x) { return x.id === a.yt_id; })[0] || { id: a.yt_id, title: 'Chosen video' }; list = [pick].concat(list.filter(function (x) { return x.id !== a.yt_id; })); }
-      matches[a.id] = list.slice(0, 4).map(function (x) { return x.id; });
+      matches[a.id] = list.slice(0, 1).map(function (x) { return x.id; });   // one video per property: the latest
       suggest[a.id] = vids.map(function (x) { return { id: x.id, s: ytScore(a, x) }; }).filter(function (o) { return o.s > 0; }).sort(function (x, y) { return y.s - x.s; }).slice(0, 6).map(function (o) { return o.id; });
     });
     res.json(Object.assign({ ok: true, handle: st.handle, channel_url: 'https://www.youtube.com/' + st.handle, matches: matches, suggest: suggest, has_key: !!YT_KEY }, v, { items: vids }));
