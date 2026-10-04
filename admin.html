@@ -555,6 +555,7 @@
   .num.fee small.fee-vat { color: var(--green, #067647); font-size: .82rem; } .num.fee small.fee-vat b { font-size: .95rem; }
   .lt-disc { display: inline-block; margin-left: 6px; font-size: .74rem; font-weight: 700; color: #067647; background: #ecfdf3; border-radius: 999px; padding: 1px 8px; }
   .val-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line, #e6e8ec); } .val-row:first-of-type { border-top: 0; }
+  .ct-grid { display: grid; grid-template-columns: minmax(130px, auto) 1fr; gap: 6px 10px; align-items: center; max-height: 320px; overflow: auto; } .ct-b { font-size: .84rem; font-weight: 600; } .ct-grid .inp { min-height: 32px; padding: 5px 9px; font-size: .82rem; }
   .av-meta { font-size: .84rem; color: var(--ink-soft); } .av-meta b { color: var(--ink); }
   .av-contact { font-size: .84rem; border: 1px dashed var(--line, #e6e8ec); border-radius: 10px; padding: 6px 8px; } .av-contact summary { cursor: pointer; font-weight: 600; } .av-contact pre { white-space: pre-wrap; font: inherit; margin: 6px 0; }
   .av-person { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid #f2f4f7; } .av-person:first-of-type { border-top: 0; margin-top: 4px; }
@@ -1483,7 +1484,8 @@
                 <p class="muted-note" style="margin:6px 0 0">These appear as quick-add buttons on each tenancy. Leave the amount empty to type it in each time. Press Save templates to keep changes.</p>
               </div>
               <div class="grid2">
-                <div><label class="lbl" for="tsBank">Bank details (move-in monies)</label><textarea class="inp" id="tsBank" rows="6"></textarea></div>
+                <div><label class="lbl" for="tsBank">Bank details (move-in monies)</label><textarea class="inp" id="tsBank" rows="6"></textarea>
+                  <details class="ct-links" id="ctLinks" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-size:.86rem">🏛 Council tax links by borough</summary><p class="muted-note" style="margin:6px 0">The welcome email works out the property’s borough from its postcode and links to that council’s council tax registration. Each link is checked before it’s used; type your own to replace any.</p><div id="ctList"></div><button type="button" class="btn small primary" id="ctSave" style="margin-top:8px">Save council tax links</button></details></div>
                 <div><label class="lbl" for="tsSigT">Signature — tenants' email</label><textarea class="inp" id="tsSigT" rows="6"></textarea></div>
               </div>
               <div><label class="lbl" for="tsSigL">Signature — landlord's email</label><textarea class="inp" id="tsSigL" rows="5"></textarea></div>
@@ -1494,7 +1496,7 @@
               <div><label class="lbl" for="tsLSub">Landlord's welcome email — subject</label><input class="inp" id="tsLSub"></div>
               <div><label class="lbl" for="tsLBody">Landlord's welcome email</label><textarea class="inp" id="tsLBody" rows="10"></textarea></div>
               <p class="muted-note" style="margin:0">Formatting: [b]bold[/b], [u]underline[/u], [red]red and bold[/red], [small]small print[/small]. [clerk]…[/clerk] only when an inventory clerk is booked; [diy]…[/diy] only for a DIY check-in.</p>
-              <p class="muted-note" style="margin:0">Filled in automatically: {{address}}, {{payment_reference}}, {{landlord_name}}, {{tenant_names}}, {{start_date}}, {{move_in_due}}, {{standing_order_start}}, {{standing_order_payments}}, {{first_rent}}, {{deposit}}, {{move_in_total}}, {{holding_deposit}}, {{move_in_remaining}}, {{checkin_date}}, {{checkin_time}}, {{diy_link}}, {{bank_details}}, {{signature}}, {{year}}.</p>
+              <p class="muted-note" style="margin:0">Filled in automatically: {{address}}, {{payment_reference}}, {{council_tax}} (the borough's council tax registration, worked out from the postcode), {{landlord_name}}, {{tenant_names}}, {{start_date}}, {{move_in_due}}, {{standing_order_start}}, {{standing_order_payments}}, {{first_rent}}, {{deposit}}, {{move_in_total}}, {{holding_deposit}}, {{move_in_remaining}}, {{checkin_date}}, {{checkin_time}}, {{diy_link}}, {{bank_details}}, {{signature}}, {{year}}.</p>
               <div class="row-actions" style="margin-top:0"><button class="btn ghost" id="tsReset" type="button">Restore the original emails</button><button class="btn primary" id="tsSave" type="button">Save templates</button></div>
             </div>
           </details>
@@ -12732,7 +12734,24 @@
 
   // ----- Welcome emails -----
   var tmCtx = null;
+  // The council tax paragraph for the borough the property is in: register there first, then apply for any
+  // student exemption with the account number. Replaces a fixed one in the template (e.g. the Southwark link).
+  function councilTaxBlock(ct){
+    var b = ct && ct.borough, council = b ? (/^(city of|royal borough)/i.test(b) ? b : b + ' Council') : 'the local council';
+    var link = ct && ct.url ? ct.url : 'https://www.gov.uk/find-local-council';
+    return '[b]Council tax' + (b ? ' — ' + b : '') + '[/b]\n' + (b ? 'The property is in ' + b + '. ' : '') + 'Please first open a council tax account with ' + council + ' as soon as you move in: ' + link + '\n' +
+      'Once you have your council tax account number, you can then apply for any student exemption or discount you may be entitled to (students need to apply to ' + council + ' with their account number and proof of study).';
+  }
+  function withCouncilTax(tpl, ct){
+    tpl = String(tpl || ''); var block = councilTaxBlock(ct);
+    if (/\{\{\s*council_tax\s*\}\}/.test(tpl)) return tpl.replace(/\{\{\s*council_tax\s*\}\}/g, block);
+    var re = /^.*(student resident|council tax exemption|apply for (your|a) council tax).*$(\n[ \t]*(\[[a-z]+\])*https?:\/\/\S+[ \t]*$)?/im;   // the link may be on the next line
+    if (re.test(tpl)) return tpl.replace(re, block);
+    var at = tpl.search(/^.*register with the relevant local authority for council tax.*$/im);
+    return at === -1 ? tpl : tpl.slice(0, at) + block + '\n\n' + tpl.slice(at);
+  }
   function openTcyMail(who, d){
+    var ct = null;
     var go = function(){
       var t = tcySet.templates, vals = tcyValues(d);
       vals.signature = sigMarkup(who === 'tenants' ? t.signature_tenant : t.signature_landlord);
@@ -12747,15 +12766,30 @@
         who: who, d: d, atts: atts, sendUrl: '/api/admin/tenancies/' + openTcyId + '/email',
         title: who === 'tenants' ? 'Welcome email to the tenants' : 'Welcome email to ' + ((d.landlord || {}).name || 'the landlord'),
         to: to, subject: fillTpl(who === 'tenants' ? t.tenant_subject : t.landlord_subject, vals),
-        bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? t.tenant_body : t.landlord_body, d.checkin_type === 'clerk' && !d.checkin_date ? 'none' : d.checkin_type || 'clerk'), vals), vals)),
+        bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? withCouncilTax(t.tenant_body, ct) : t.landlord_body, d.checkin_type === 'clerk' && !d.checkin_date ? 'none' : d.checkin_type || 'clerk'), vals), vals)),
         attNote: who === 'landlord' ? 'Add the signed agreement, tenant ID and deposit certificate yourself.' : '',
         warn: !t.bank_details && who === 'tenants' ? '⚠ No bank details saved yet — add them under Templates. ' : '',
         fileName: tcyFile(d, label, 'eml'),
         log: function(how){ tcyLog(label + ' ' + how); }
       });
     };
-    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook()]).then(go);
+    var ctReq = who === 'tenants' ? api('GET', '/api/admin/council-tax?address=' + encodeURIComponent(d.address || '')).then(function(r){ if (r && r.ok) ct = r; })['catch'](function(){}) : null;
+    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq]).then(go);
   }
+  // Templates: the council tax link for each borough (ours, or the office's own).
+  var ctLinksData = null;
+  if ($('ctLinks')) $('ctLinks').addEventListener('toggle', function(){
+    if (!this.open || ctLinksData) return;
+    api('GET', '/api/admin/council-tax/links').then(function(d){
+      if (!d || !d.ok) return; ctLinksData = d;
+      $('ctList').innerHTML = '<div class="ct-grid">' + Object.keys(d.defaults).sort().map(function(b){ var ck = (d.checked || {})[b];
+        return '<label class="ct-b">' + esc(b) + '</label><input class="inp" data-ct="' + esc(b) + '" placeholder="' + esc(ck ? ck.url : d.defaults[b]) + '" value="' + esc((d.custom || {})[b] || '') + '" title="' + (ck ? 'Checked and working: ' + esc(ck.url) : 'Our link (checked when first used)') + '">'; }).join('') + '</div>';
+    });
+  });
+  if ($('ctSave')) $('ctSave').addEventListener('click', function(){
+    var custom = {}; document.querySelectorAll('#ctList [data-ct]').forEach(function(i){ if (i.value.trim()) custom[i.dataset.ct] = i.value.trim(); });
+    var b = this; busy(b, true, 'Saving…'); api('PUT', '/api/admin/council-tax/links', { custom: custom }).then(function(d){ busy(b, false); toast(d && d.ok ? '✓ Council tax links saved' : 'Couldn’t save — links must start with https://'); });
+  });
   // Certificate reminder to the landlord: "your EPC is about to expire — shall we book one in?"
   var CERT_LONG = { EPC: 'Energy Performance Certificate (EPC)', Gas: 'Gas Safety Certificate (CP12)', EICR: 'Electrical Installation Condition Report (EICR)' };
   function openCertMail(address, type){

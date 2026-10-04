@@ -41,7 +41,7 @@ I can confirm that we have received [red]{{holding_deposit}}[/red] as your reser
 {{bank_details}}
 [b]Reference: [red]{{payment_reference}}[/red][/b]
 
-[b]If you are a Southwark Student Resident, please apply for your council tax exemption using the link:[/b] https://coa.myforms.southwark.gov.uk/CoaPlus/launch
+{{council_tax}}
 
 Please register with the relevant local authority for council tax purposes within 14 days of your tenancy commencement date, and register for all applicable utilities (gas, electricity, and water) in your name immediately upon moving in. The local authority, not the landlord or agent, is responsible for assessing and billing your council tax liability. Once billed, it is your responsibility to apply directly to the local authority for any exemption, discount, or reduction you may be entitled to (for example, single person discount or student exemption). We take no responsibility for any issues, delays, disruption, charges, or backdated liability relating to utility accounts, supply, or council tax, any such matters should be raised directly with the relevant provider or local authority.
 

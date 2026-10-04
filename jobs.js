@@ -8141,6 +8141,51 @@ document.querySelectorAll('.lcu').forEach(function(box){
       choose: b.choose !== false, opt_collect_pct: b.opt_collect_pct == null || b.opt_collect_pct === '' ? LT_STD.collect : pctNum(b.opt_collect_pct), opt_both_pct: b.opt_both_pct == null || b.opt_both_pct === '' ? LT_STD.both : pctNum(b.opt_both_pct)
     };
   }
+  // ---------- Council tax: which borough a property is in, and where its tenants register ----------
+  // The council's page for registering when you move in (best known address); each is checked live before it's
+  // used, falling back to the council's council tax page, then its home page. The office can set any of them.
+  const COUNCIL_TAX = { "Barking and Dagenham": "https://www.lbbd.gov.uk/council-tax/your-council-tax-account/register-council-tax-or-tell-us-youve-moved", "Barnet": "https://www.barnet.gov.uk/council-tax/council-tax-tell-us-about-change-circumstances", "Bexley": "https://www.bexley.gov.uk/services/council-tax/moving-home/let-us-know-your-new-address", "Brent": "https://www.brent.gov.uk/council-tax/register-or-tell-us-you-are-moving", "Bromley": "https://www.bromley.gov.uk/council-tax/council-tax-moving-house", "Camden": "https://www.camden.gov.uk/council-tax-moving", "City of London": "https://www.cityoflondon.gov.uk/services/council-tax/moving-into-or-out-of-a-property", "Croydon": "https://www.croydon.gov.uk/council-tax/circumstances-change/moving/moving-into-croydon", "Ealing": "https://www.ealing.gov.uk/a_to_z/service/489/register_for_council_tax", "Enfield": "https://www.enfield.gov.uk/services/council-tax/new-to-enfield-moving-house", "Greenwich": "https://www.royalgreenwich.gov.uk/forms/form/82/en/council_tax_notification_-_moving_into_royal_greenwich", "Hackney": "https://hackney.gov.uk/report-a-council-tax-change/", "Hammersmith and Fulham": "https://www.lbhf.gov.uk/council-tax/moving-or-out-borough", "Haringey": "https://www.haringey.gov.uk/council-tax/tell-us-about-a-council-tax-change/tell-us-youre-moving-home", "Harrow": "https://www.harrow.gov.uk/council-tax/register-council-tax", "Havering": "https://www.havering.gov.uk/council-tax/moving-home", "Hillingdon": "https://www.hillingdon.gov.uk/counciltax", "Hounslow": "https://www.hounslow.gov.uk/council-tax/moving-home-council-tax", "Islington": "https://www.islington.gov.uk/council-tax/tell-us-youre-moving/moving-in-to-islington", "Kensington and Chelsea": "https://www.rbkc.gov.uk/council-tax/tell-us-about-any-changes/register-council-tax", "Kingston upon Thames": "https://www.kingston.gov.uk/council-tax/moving-in", "Lambeth": "https://www.lambeth.gov.uk/council-tax/register", "Lewisham": "https://lewisham.gov.uk/myservices/counciltax/council-tax---tell-us-you-ve-moved", "Merton": "https://www.merton.gov.uk/council-tax-benefits-and-housing/council-tax/your-council-tax/moving-home-and-registering", "Newham": "https://www.newham.gov.uk/council-tax/moving-newham", "Redbridge": "https://www.redbridge.gov.uk/council-tax/council-tax-moving-into-redbridge", "Richmond upon Thames": "https://www.richmond.gov.uk/services/council_tax/tell_us_you_are_moving/moving_in_to_the_borough", "Southwark": "https://coa.myforms.southwark.gov.uk/CoaPlus/launch", "Sutton": "https://www.sutton.gov.uk/w/moving-into-or-out-of-the-area", "Tower Hamlets": "https://www.towerhamlets.gov.uk/lgnl/council_and_democracy/council_tax/Moving_in_or_out.aspx", "Waltham Forest": "https://www.walthamforest.gov.uk/council-tax", "Wandsworth": "https://www.wandsworth.gov.uk/council-tax/change-of-circumstances-for-council-tax/tell-us-youre-moving/moving-in-to-the-borough/", "Westminster": "https://www.westminster.gov.uk/council-tax/register-council-tax", "Thurrock": "https://www.thurrock.gov.uk/changes-to-your-circumstances-affecting-council-tax", "Dartford": "https://www.dartford.gov.uk/council-tax/change-address", "Epping Forest": "https://www.eppingforestdc.gov.uk/council-tax/report-a-change-of-address/", "Elmbridge": "https://www.elmbridge.gov.uk/council-tax/moving-in-and-out/", "Spelthorne": "https://www.spelthorne.gov.uk/counciltax" };
+  const ctBoroughCache = new Map();
+  async function boroughOf(address) {
+    const m = POSTCODE_RE.exec(address || ''); if (!m) return null;
+    const pc = (m[1] + m[2]).toUpperCase(); if (ctBoroughCache.has(pc)) return ctBoroughCache.get(pc);
+    try {
+      const r = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc), { signal: AbortSignal.timeout(6000) });
+      const j = r.ok ? await r.json() : null, d = j && j.result ? j.result.admin_district : null;
+      if (d) ctBoroughCache.set(pc, d); return d;
+    } catch (e) { return null; }
+  }
+  async function urlWorks(u) {
+    try { const r = await fetch(u, { redirect: 'follow', signal: AbortSignal.timeout(7000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Fixflow link check)' } });
+      if (!r.ok) return false; const t = (await r.text()).slice(0, 60000); return !/page (not|cannot be) found|404 not found|we can.t find (that|the) page/i.test(t); } catch (e) { return false; }
+  }
+  async function councilTaxLink(p, borough) {
+    if (!borough) return null;
+    const own = ((await p.query("SELECT value FROM app_settings WHERE key = 'council_tax_links'")).rows[0] || {}).value || {};
+    if (own.custom && own.custom[borough]) return { url: own.custom[borough], borough: borough, set_by_office: true };
+    const c = (own.checked || {})[borough]; if (c && c.url && Date.now() - Date.parse(c.at) < 30 * 864e5) return { url: c.url, borough: borough };
+    const best = COUNCIL_TAX[borough]; if (!best) return { url: null, borough: borough };
+    const host = (function () { try { return new URL(best).origin; } catch (e) { return ''; } })();
+    const tries = [best, host + '/council-tax', host + '/counciltax', host + '/'];
+    let url = null; for (const u of tries) { if (await urlWorks(u)) { url = u; break; } }
+    if (url) { own.checked = own.checked || {}; own.checked[borough] = { url: url, at: new Date().toISOString() }; await p.query("INSERT INTO app_settings (key, value) VALUES ('council_tax_links', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(own)]); }
+    return { url: url || best, borough: borough, unchecked: !url };
+  }
+  app.get('/api/admin/council-tax', withDb(async function (p, req, res) {
+    const address = str(req.query.address, 400), borough = await boroughOf(address);
+    res.json(Object.assign({ ok: true, borough: borough }, borough ? await councilTaxLink(p, borough) : {}));
+  }));
+  app.get('/api/admin/council-tax/links', withDb(async function (p, req, res) {
+    const own = ((await p.query("SELECT value FROM app_settings WHERE key = 'council_tax_links'")).rows[0] || {}).value || {};
+    res.json({ ok: true, defaults: COUNCIL_TAX, custom: own.custom || {}, checked: own.checked || {} });
+  }));
+  app.put('/api/admin/council-tax/links', withDb(async function (p, req, res) {
+    const b = req.body || {}, custom = {};
+    Object.keys(b.custom || {}).slice(0, 200).forEach(function (k) { const u = str((b.custom || {})[k], 500); if (u && /^https?:\/\//i.test(u)) custom[str(k, 80)] = u; });
+    const own = ((await p.query("SELECT value FROM app_settings WHERE key = 'council_tax_links'")).rows[0] || {}).value || {};
+    own.custom = custom; await p.query("INSERT INTO app_settings (key, value) VALUES ('council_tax_links', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(own)]);
+    res.json({ ok: true, custom: custom });
+  }));
   // ---------- Valuation letters ----------
   function cleanValuation(b) {
     const num = function (v) { const n = Math.round(parseFloat(String(v == null ? '' : v).replace(/[£,\s]/g, ''))); return n > 0 && n < 100000000 ? n : null; };
@@ -8290,8 +8335,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
     text('Yours sincerely,', M, y, 10, F, C.ink); y -= 30;
     text(v.signer || 'Residential Realtors', M, y, 11, B, C.ink); y -= 14;
     if (v.signer_title) { text(v.signer_title, M, y, 9.2, F, C.soft); y -= 13; }
-    if (v.signer) text('Residential Realtors', M, y, 9.2, F, C.soft); y -= 22;
-    ensure(40);
+    if (v.signer) text('Residential Realtors', M, y, 9.2, F, C.soft); y -= 16;
+    // The bodies we belong to (redress, client money protection, deposit protection).
+    const assoc = [];
+    for (const nm of ['assoc-tpo.png', 'assoc-propertymark.png', 'assoc-tds.png']) { try { assoc.push(await pdf.embedPng(require('fs').readFileSync(require('path').join(__dirname, 'icons', nm)))); } catch (e) {} }
+    if (assoc.length) {
+      ensure(60); rr(M, y, CW, 48, 10, C.white, C.line);
+      text('PROUD MEMBERS OF', M + 14, y - 27, 6.6, B, C.soft);
+      let ax = M + 100; assoc.forEach(function (img) { const h = 26, w = img.width * h / img.height; page.drawImage(img, { x: ax, y: y - 37, width: w, height: h }); ax += w + 14; });
+      wrap('Independent redress, client money protection and deposit protection.', F, 6.8, W - M - 14 - ax - 4).slice(0, 3).forEach(function (ln, i, all) { text(ln, ax + 4, y - 24 - (i - (all.length - 1) / 2) * 9 - 3, 6.8, F, C.soft); });
+      y -= 64;
+    }
+    if (y - 22 < 64) newPage(false);   // the small print may sit just above the footer
     wrap('This is a market appraisal to help you decide how to market your property. It is not a formal valuation for mortgage, tax or legal purposes (such as a RICS Red Book valuation). The figures reflect market conditions on the date above and may change; we suggest reviewing them after three months.', F, 7.2, CW).forEach(function (ln) { text(ln, M, y, 7.2, F, C.faint); y -= 9.6; });
     const name = ((v.sales && v.lettings ? 'Sales and Lettings' : v.sales ? 'Sales' : 'Lettings') + ' Valuation - ' + address).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').slice(0, 120) + '.pdf';
     return { bytes: await pdf.save(), name: name };
