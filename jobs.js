@@ -5195,6 +5195,45 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (l.name) { const id = await ensureLandlord(p, { name: l.name, email: l.email, phone: l.phone, address: [l.line1, l.line2, l.country, l.postcode].filter(Boolean).join(', ') || null }, d.address); if (id) await syncLandlordTenancies(p, id); }
     for (const t of d.tenants) await ensureTenant(p, { name: t.name, email: t.email, phone: t.phone }, d.address, true);
   }
+  // An inventory clerk booked for a tenancy (not a DIY check-in): a job for the clerk, kept in step with the
+  // check-in date and time. Assigned to the contractor whose trade or name says inventory / check-in / clerk.
+  async function syncInventoryJob(p, tcyId, d) {
+    const cur = (await p.query("SELECT data->>'inventory_job_id' AS jid FROM tenancies WHERE id = $1", [tcyId])).rows[0];
+    const jid = cur && parseInt(cur.jid, 10) || null;
+    const job = jid ? (await p.query("SELECT id, status, appointment_date, appointment_time, archived_at FROM jobs WHERE id = $1", [jid])).rows[0] : null;
+    const open = job && !job.archived_at && ['Completed', 'Cancelled'].indexOf(job.status) === -1;
+    const booked = d.checkin_type === 'clerk' && d.checkin_date;
+    const when = booked ? certDay(d.checkin_date) + (d.checkin_tbc ? ' — time to be agreed with the tenants' : d.checkin_time ? ' at ' + d.checkin_time : '') : '';
+    if (!booked) {
+      if (open) { await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [job.id, 'note', 'The tenancy no longer has an inventory clerk booked' + (d.checkin_type === 'diy' ? ' (DIY check-in instead)' : '') + ' — cancel this job if it isn’t needed.']);
+        await p.query("UPDATE tenancies SET data = data - 'inventory_job_id' WHERE id = $1", [tcyId]); }
+      return null;
+    }
+    const time = d.checkin_tbc ? null : (d.checkin_time || null);
+    if (open) {
+      if (job.appointment_date !== d.checkin_date || (job.appointment_time || null) !== time) {
+        await p.query('UPDATE jobs SET appointment_date = $2, appointment_time = $3, due_at = $4, updated_at = now() WHERE id = $1', [job.id, d.checkin_date, time, new Date(d.checkin_date + 'T18:00:00Z')]);
+        await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [job.id, 'change', 'Check-in moved to ' + when + '.']);
+      }
+      return job.id;
+    }
+    const address = tidyAddress(d.address);
+    const clerk = (await p.query("SELECT name FROM contractors WHERE active AND (coalesce(trade, '') || ' ' || name) ~* '(inventor|check.?in|clerk)' ORDER BY id LIMIT 1")).rows[0];
+    const ts = (d.tenants || []).filter(function (t) { return t && (t.name || t.phone || t.email); }), lead = ts[0] || {}, l = d.landlord || {};
+    const desc = 'Inventory and check-in for the new tenancy' + (d.start_date ? ' starting ' + certDay(d.start_date) : '') + ': ' + when + '.\n' +
+      'Please prepare the inventory and schedule of condition, hand the keys to the tenants at check-in, and email the report to us.' +
+      (ts.length > 1 ? '\nTenants: ' + ts.map(function (t) { return [t.name, t.phone, t.email].filter(Boolean).join(' · '); }).join('; ') : '');
+    const r = await p.query(`INSERT INTO jobs (status, urgency, due_at, source, property_address, category, affected, description, assigned_to, appointment_date, appointment_time,
+        tenant_name, tenant_phone, tenant_email, landlord_name, landlord_email, landlord_phone, landlord_address)
+      VALUES ($1, 'Routine', $2, 'Other', $3, 'Inventory', 'Inventory / check-in', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+      [clerk ? 'Assigned' : 'New', new Date(d.checkin_date + 'T18:00:00Z'), address, desc, clerk ? clerk.name : null, d.checkin_date, time,
+        lead.name || null, lead.phone || null, lead.email || null, l.name || null, l.email || null, l.phone || null, [l.line1, l.line2, l.country, l.postcode].filter(Boolean).join(', ') || null]);
+    const id = r.rows[0].id;
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'created', 'Job raised from the tenancy: inventory clerk booked for ' + when + '.' + (clerk ? ' Assigned to ' + clerk.name + '.' : ' No inventory clerk in Contractors yet — add one (trade “Inventory”) or assign it.')]);
+    await p.query("UPDATE tenancies SET data = jsonb_set(data, '{inventory_job_id}', to_jsonb($2::int)) WHERE id = $1", [tcyId, id]);
+    ntfy({ title: refFor(id) + ' raised: inventory / check-in', message: String(address).replace(/\s+/g, ' ') + '\n' + when + '\n' + (clerk ? 'Assigned to ' + clerk.name + ' — open it to send them the job.' : 'No inventory clerk chosen yet — open it to assign one.'), priority: 3, tags: ['clipboard'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#job=' + id : undefined }).catch(function () {});
+    return id;
+  }
   app.get('/api/admin/tenancies', withDb(async function (p, req, res) {
     const r = await p.query('SELECT id, property_key, address, start_date, data, log, intention, created_at, updated_at FROM tenancies ORDER BY start_date DESC NULLS LAST, id DESC');
     res.json({ ok: true, tenancies: r.rows });
@@ -5205,18 +5244,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await p.query(`INSERT INTO tenancies (property_key, address, start_date, data, log) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [propKey(d.address), d.address, d.start_date, JSON.stringify(d), JSON.stringify([{ at: new Date().toISOString(), text: 'Tenancy created' }])]);
     await linkTenancyPeople(p, d);
-    res.json({ ok: true, id: r.rows[0].id });
+    const invJob = await syncInventoryJob(p, r.rows[0].id, d).catch(function (e) { console.error('Inventory job failed:', e.message); return null; });
+    res.json({ ok: true, id: r.rows[0].id, inventory_job: invJob });
   }));
   app.put('/api/admin/tenancies/:id', withDb(async function (p, req, res) {
     const d = cleanTenancy(req.body || {});
     if (!d.address) return res.status(400).json({ ok: false, error: 'address-required' });
     // Kept from the saved tenancy: its move-in fees invoice and whether the landlord paid.
     const r = await p.query(`UPDATE tenancies SET property_key = $2, address = $3, start_date = $4,
-        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid', 'stmt_sent', data->'stmt_sent', 'month_costs', data->'month_costs')), updated_at = now() WHERE id = $1 RETURNING id`,
+        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid', 'stmt_sent', data->'stmt_sent', 'month_costs', data->'month_costs', 'inventory_job_id', data->'inventory_job_id')), updated_at = now() WHERE id = $1 RETURNING id`,
       [jobId(req), propKey(d.address), d.address, d.start_date, JSON.stringify(d)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await linkTenancyPeople(p, d);
-    res.json({ ok: true, id: r.rows[0].id });
+    const invJob = await syncInventoryJob(p, r.rows[0].id, d).catch(function (e) { console.error('Inventory job failed:', e.message); return null; });
+    res.json({ ok: true, id: r.rows[0].id, inventory_job: invJob });
   }));
   app.delete('/api/admin/tenancies/:id', withDb(async function (p, req, res) {
     const r = await p.query('DELETE FROM tenancies WHERE id = $1 RETURNING id', [jobId(req)]);

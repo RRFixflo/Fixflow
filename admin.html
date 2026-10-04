@@ -12320,7 +12320,9 @@
     api(isNew ? 'POST' : 'PUT', '/api/admin/tenancies' + (isNew ? '' : '/' + openTcyId), d).then(function(r){
       busy($('tfSave'), false);
       if (!r.ok) { toast(r.error === 'address-required' ? 'Please add the property address' : 'Couldn’t save the tenancy'); return; }
-      toast(isNew ? 'Tenancy saved — documents and emails are ready below' : 'Saved');
+      var hadJob = !isNew && (tenancies.filter(function(t){ return t.id === openTcyId; })[0] || {}).data && (tenancies.filter(function(t){ return t.id === openTcyId; })[0].data || {}).inventory_job_id;
+      toast((isNew ? 'Tenancy saved — documents and emails are ready below' : 'Saved') + (r.inventory_job && r.inventory_job !== hadJob ? ' · 🧾 job RR-' + String(r.inventory_job).padStart(5, '0') + ' raised for the inventory clerk' : ''));
+      if (r.inventory_job) loadJobs();
       Promise.all([loadTenancies(), loadLandlords(), loadTenantRecs(), tcySaveCerts(d.address)]).then(function(){
         // The "new tenancy" page becomes this tenancy's page (so Back goes to the list).
         if (isNew) { openTcyId = r.id; history.replaceState(Object.assign(navState(), { depth: (history.state || {}).depth || 0 }), ''); }
