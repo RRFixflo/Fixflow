@@ -8500,6 +8500,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return null;
   }
   function availFix(x) {
+    // Stray spreadsheet quotes around a cell ("Vanessa, "Vanessa - 07… / …").
+    ['landlord', 'contact', 'notes', 'commission'].forEach(function (k) { if (x[k]) x[k] = String(x[k]).replace(/^[\s"“”]+|[\s"“”]+$/g, '') || null; });
     const join = function (a, b, cap) { a = String(a || '').trim(); b = String(b || '').trim(); if (!b) return a || null; if (a.toLowerCase().indexOf(b.toLowerCase()) !== -1) return a; return str(a ? a + ' · ' + b : b, cap); };
     const sp = availSplitAddr(x.address); if (sp.note) { x.address = str(availAddr(sp.address), 400); x.notes = join(sp.note, x.notes, 2000); }
     let ll = x.landlord ? String(x.landlord).trim() : '', fee = x.commission ? String(x.commission).trim() : '';
@@ -8617,11 +8619,24 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const n = llNm(e.name); if (n.split(' ').length >= 2 && !byName[n]) byName[n] = e;
     });
     return function find(address, contact, landlordName) {
-      let e = bySig[addrSig(address)] || byKey[propKey(address)];
+      const txt = String(contact || '') + ' ' + String(landlordName || ''), phones = txt.match(/(\+44|0)[\d\s()\-]{9,14}\d/g) || [], mails = txt.match(/[^\s@<>,;()"']+@[^\s@<>,;()"']+\.[a-z]{2,}/gi) || [];
+      // 1. A phone or email written on this property that belongs to a landlord we know.
+      let e = null;
+      phones.some(function (m) { return (e = byPhone[llPh(m)]); });
+      if (!e) mails.some(function (m) { return (e = byMail[m.toLowerCase()]); });
+      // 2. The property's own address.
+      if (!e) e = bySig[addrSig(address)] || byKey[propKey(address)];
       if (!e && address) { const ap = addrParts(address), cand = byPc[ap.pc] || []; const hits = []; cand.forEach(function (c) { if (hits.indexOf(c.e) === -1 && addrLoose(ap, c.parts)) hits.push(c.e); }); if (hits.length === 1) e = hits[0]; }
-      if (!e) { const txt = String(contact || '') + ' ' + String(landlordName || ''); (txt.match(/(\+44|0)[\d\s()\-]{9,14}\d/g) || []).some(function (m) { return (e = byPhone[llPh(m)]); }); }
-      if (!e) (String(contact || '') + ' ' + String(landlordName || '')).replace(/[^\s@<>,;()]+@[^\s@<>,;()]+\.[a-z]{2,}/gi, function (m) { if (!e) e = byMail[m.toLowerCase()]; return m; });
-      if (!e && landlordName) e = byName[llNm(landlordName)];
+      if (e) return { id: e.id, name: e.name, phone: e.phone, email: e.email, src: e.src };
+      // 3. The landlord's own details are written on the property (their name with a phone / email, e.g.
+      //    "Vanessa - 07… / …@…") but they aren't a landlord we hold: use those details, never another
+      //    landlord who just shares the first name.
+      const lname = String(landlordName || '').replace(/["“”]/g, '').trim(), first = llNm(lname).split(' ')[0];
+      const cName = llNm(String(contact || '').split(/(\+44|\b0\d|[^\s@<>,;()"']+@)/)[0]);
+      if ((phones.length || mails.length) && first && (cName.split(' ')[0] === first || /\d|@/.test(lname))) {
+        return { id: null, name: lname.replace(/[\d+@].*$/, '').replace(/[\s\-–,\/·:]+$/, '').trim() || 'Landlord', phone: phones[0] ? phones[0].trim() : '', email: mails[0] || '', src: 'row' };
+      }
+      if (landlordName) e = byName[llNm(landlordName)];
       // Just a first name ("Deirdre"): the one landlord with that first name — or, if several, the one
       // with a property in the same postcode area.
       if (!e && landlordName) {
@@ -8656,6 +8671,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     items.forEach(function (x) {
       const o = {}, l = find(x.address, x.contact, x.landlord);
       if (l) o.landlord = l;
+      if (l && l.src === 'row' && !/\d|@/.test(String(x.landlord || '')) && (String(x.contact || '').match(/(\+44|0)[\d\s()\-]{9,14}\d/g) || []).length <= 1 && (String(x.contact || '').match(/@/g) || []).length <= 1) o.contactIsLandlord = true;   // the "tenant / viewing contact" is really the landlord
       if (x.status === 'available') { const ts = tenantsFor(x.address); if (ts.length) o.tenants = ts; }
       if (owner) { const t = tenSig[addrSig(x.address)] || tens[propKey(x.address)]; if (t) o.tenancy = t; }
       if (o.landlord || o.tenancy || o.tenants) out[x.id] = o;
@@ -8749,7 +8765,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   setTimeout(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function (e) { console.error('DB space check failed:', e.message); }); }, 5000).unref();
   setInterval(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function () {}); }, 24 * 3600000).unref();
   // Once: put the values already on the list in their places (version bump re-runs it).
-  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 3) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 3, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
+  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 4) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 4, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
   // Empty the Been let list before pasting a corrected copy (managers only).
   app.post('/api/admin/available-clear-let', withDb(async function (p, req, res) {
     if (req.role === 'offers') return res.status(403).json({ ok: false, error: 'owner-only' });   // only the owner deletes properties
