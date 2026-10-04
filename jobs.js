@@ -8424,7 +8424,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     out.push(['You receive over the first 12 months', gbp(rent * 12 - find - ong * 12)]);
     if (minUsed) out.push(['A minimum fee applies at this rent', '']);
-    out.push(['Figures exclude the tenant\'s deposit (held separately in a government-approved scheme)', '']);
+    out.push(['Figures exclude the tenant\'s deposit', '']);
     return out;
   }
   // The rent to use in a fee example: the property's rent from the available list or its latest tenancy.
