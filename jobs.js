@@ -8385,7 +8385,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const gbp = function (v) { return '\xA3' + (Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
     const vat = f.vat !== false, inc = function (p) { return vat ? p + '% + VAT (' + (Math.round(p * 120) / 100) + '% inc VAT)' : p + '%'; };
     const L = [];
-    const stdOf = function (std, pct) { return std != null && pct != null && pct < std ? { std: inc(std), save: Math.round((std - pct) * 100) / 100 } : {}; };
+    // Our standard rate is always shown; a lower agreed rate also shows the saving.
+    const stdOf = function (std, pct) { return std != null && pct != null ? { std: inc(std), save: pct < std ? Math.round((std - pct) * 100) / 100 : 0 } : {}; };
     if (f.find !== 'none' && f.find_pct != null) {
       L.push(Object.assign(stdOf(LT_STD[f.find], f.find_pct), { k: f.find === 'multi' ? 'Tenant Find - Multi Agency (initial commission)' : 'Tenant Find - Sole Agency (initial commission)', v: inc(f.find_pct) + ' of the first 12 months\' rent' + (f.find_min ? ', minimum fee ' + gbp(f.find_min) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? '. Paid monthly at no extra cost: collected in 12 equal monthly instalments over the first 12 months, instead of in advance' : ', payable in advance when the tenancy starts') }));
       L.push({ k: 'Anniversary fee', v: f.renewal && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months\' rent, on each 12-month anniversary while the tenant remains' + (f.find_monthly ? ', collected monthly in the same way' : '') : 'No anniversary fee' });
@@ -8736,7 +8737,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     y -= ph + 20;
     band('Agreed fees', 'The fees agreed for this property. They replace our standard scale of fees.');
     const frows = [];
-    const stdNote = function (std, pct) { return std != null && pct != null && pct < std ? ' - discounted from our standard ' + std + '%' + (vat ? ' + VAT' : '') : ''; };
+    const stdNote = function (std, pct) { return std == null || pct == null ? '' : pct < std ? ' - discounted from our standard ' + std + '%' + (vat ? ' + VAT' : '') : pct === std ? ' (our standard fee)' : ''; };
     if (f.find !== 'none' && f.find_pct != null) { frows.push([f.find === 'multi' ? 'Tenant Find - Multi Agency' : 'Tenant Find - Sole Agency', incPct(f.find_pct) + ' of the first 12 months\' rent (initial commission)' + stdNote(LT_STD[f.find], f.find_pct) + (f.find_monthly ? ' - paid monthly in 12 equal instalments' : ' - payable in advance'), f.find_min ? money(f.find_min) + (vat ? ' inc VAT' : '') : '-']); frows.push(['Anniversary fee', f.renewal && f.renewal_pct != null ? incPct(f.renewal_pct) + ' of 12 months\' rent, charged on each 12-month anniversary while the tenant introduced by us remains' : 'No anniversary fee', '-']); }
     if (f.ongoing !== 'none' && f.ongoing_pct != null) frows.push([ONGOING_NAME[f.ongoing] || 'Rent Collection Service', incPct(f.ongoing_pct) + ' of the rent received - deducted monthly from each month\'s rent' + stdNote(LT_STD[f.ongoing], f.ongoing_pct) + (d.service_chosen && d.service_offered && d.service_chosen !== d.service_offered ? ' (chosen by the landlord)' : ''), f.ongoing_min ? money(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' / month' : '-']);
     if (f.other) frows.push(['Other agreed fees', f.other, '']);

@@ -102,7 +102,7 @@
   .fb-p { font-weight:800; font-size:1.35rem; color:var(--navy); margin-top:6px; } .fb-p s { color:var(--faint); font-weight:600; font-size:.95rem; margin-left:8px; }
   .fb-s { font-size:.86rem; color:var(--soft); } .fb-b { font-size:.86rem; color:var(--ink2); margin-top:8px; }
   .findbox .tag { font-size:.68rem; font-weight:800; letter-spacing:.05em; text-transform:uppercase; border-radius:999px; padding:2px 8px; } .findbox .tag.save { background:#ecfdf3; color:#067647; }
-  .tag.inc { background:#0b1f3a; color:#fff; } .split.in { margin:12px 0 0; }
+  .tag.inc { background:#0b1f3a; color:#fff; } .findbox .tag.std { background:#f2f4f7; color:#475467; } .svc .tags { display:flex; gap:6px; flex-wrap:wrap; } .svc .tags:empty { display:none; } .split.in { margin:12px 0 0; }
   .split { display:flex; gap:12px; align-items:flex-start; border:1.5px solid var(--line); border-radius:14px; padding:12px 14px; margin:-6px 0 18px; cursor:pointer; background:#fff; } .split.on { border-color:#abefc6; background:#f6fef9; }
   .split input { position:absolute; opacity:0; pointer-events:none; } .split .sw { flex:0 0 38px; height:22px; border-radius:999px; background:#d0d5dd; position:relative; margin-top:1px; transition:background .15s; }
   .split .sw::after { content:''; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:left .15s; } .split.on .sw { background:#12b76a; } .split.on .sw::after { left:19px; }
@@ -165,28 +165,28 @@
     go(1);
   })['catch'](function(){ $('app').innerHTML = '<div class="card"><h2>Couldn’t load</h2><p class="lead" style="margin:0">Please check your connection and refresh.</p></div>'; });
 
-  function feeRows(){ return T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (/^No (renewal|anniversary) fee$/.test(l.v) ? ' class="none"' : '') + '>' + esc(l.v) + (l.std ? '<span class="std">Our standard rate: <s>' + esc(l.std) + '</s><span class="sv">You save ' + l.save + '%</span></span>' : '') + '</span></div>'; }).join(''); }
+  function feeRows(){ return T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (/^No (renewal|anniversary) fee$/.test(l.v) ? ' class="none"' : '') + '>' + esc(l.v) + (l.std ? (l.save ? '<span class="std">Our standard fee: <s>' + esc(l.std) + '</s><span class="sv">Discounted · you save ' + l.save + '%</span></span>' : '<span class="std">Our standard fee</span>') : '') + '</span></div>'; }).join(''); }
   // Choosing a service: the fees and worked example are worked out again for that service (nothing is saved until signing).
   function svcHtml(){
     var S = T.services; if (!S) return '';
     var vat = T.examples_vat ? ' + VAT' : '', F = S.filter(function(x){ return x.id === 'none'; })[0] || {};
     var findTxt = F.pct != null ? F.pct + '%' + vat : '';
     // 1) The tenant find fee: always part of the agreement, whichever option they choose.
-    var find = F.pct == null ? '' : '<div class="findbox"><div class="fb-h"><span class="fb-k">Tenant find fee</span><span class="tag inc">Included with every option</span>' + (F.save ? '<span class="tag save">Discounted</span>' : '') + '</div>' +
-      '<div class="fb-p">' + findTxt + (F.save ? '<s>' + F.std + '%</s>' : '') + '</div><div class="fb-s">of the first 12 months’ rent, ' + (T.split ? 'paid in 12 monthly payments' : 'paid once when the tenancy starts') + (F.save ? ' · our standard fee is ' + F.std + '%' + vat : '') + '</div>' +
+    var find = F.pct == null ? '' : '<div class="findbox"><div class="fb-h"><span class="fb-k">Tenant find fee</span><span class="tag inc">Included with every option</span>' + (F.save ? '<span class="tag save">Discounted</span>' : '<span class="tag std">Standard fee</span>') + '</div>' +
+      '<div class="fb-p">' + findTxt + (F.save ? '<s>' + F.std + '%</s>' : '') + '</div><div class="fb-s">of the first 12 months’ rent, ' + (T.split ? 'paid in 12 monthly payments' : 'paid once when the tenancy starts') + (F.save ? ' · our standard fee is ' + F.std + '%' + vat + ', you save ' + F.save + '%' : ' · our standard fee') + '</div>' +
       '<div class="fb-b">We advertise the property, arrange viewings, reference the tenant and do the right to rent checks, and prepare the tenancy agreement and move-in.</div>' + splitHtml() + '</div>';
     // 2) What happens after move-in: nothing more (Let only), rent collection, or full management — each on top of the tenant find fee.
     return '<h3>Your agreement</h3>' + find +
       '<h3>Then choose what we do after the tenant moves in</h3><div class="svc" id="svc">' +
       S.map(function(x){ var on = (T.service || 'none') === x.id, none = x.id === 'none';
         return '<label class="' + (on ? 'on' : '') + '"><input type="radio" name="svc" value="' + x.id + '"' + (on ? ' checked' : '') + '><span class="tick">✓</span>' +
-          (x.id === 'both' ? '<span class="tag pop">Most popular</span>' : !none && x.save ? '<span class="tag save">Discounted</span>' : '') +
+          '<span class="tags">' + (x.id === 'both' ? '<span class="tag pop">Most popular</span>' : '') + (!none && x.save ? '<span class="tag save">Discounted</span>' : '') + '</span>' +
           '<span class="nm">' + esc(x.name) + '</span>' +
           (none ? '<span class="pr">No extra fee</span><span class="sub">Just the tenant find fee' + (findTxt ? ' (' + findTxt + ')' : '') + '</span>'
-            : '<span class="pr">+ ' + x.pct + '%' + vat + ' a month' + (x.save ? '<s>' + x.std + '%</s>' : '') + '</span><span class="sub">of the rent collected, on top of the tenant find fee</span>') +
+            : '<span class="pr">+ ' + x.pct + '%' + vat + ' a month' + (x.save ? '<s>' + x.std + '%</s>' : '') + '</span><span class="sub">of the rent collected, on top of the tenant find fee · ' + (x.save ? 'our standard fee is ' + x.std + '%' + vat + ', you save ' + x.save + '%' : 'our standard fee') + '</span>') +
           '<span class="bl">' + esc(none ? 'We hand the tenancy over to you once the tenant has moved in.' : x.blurb.replace('Everything in Let only, and', 'After move-in')) + '</span>' +
           (none ? '' : '<ul>' + x.perks.map(function(p){ return '<li>' + esc(p) + '</li>'; }).join('') + '</ul>') +
-          (findTxt ? '<span class="tot">You pay: ' + findTxt + ' tenant find' + (none ? '' : ' + ' + x.pct + '%' + vat + ' a month') + '</span>' : '') + '</label>'; }).join('') + '</div>';
+          (findTxt ? '<span class="tot">You pay: ' + findTxt + ' tenant find ' + (T.split ? '(spread over 12 monthly payments)' : '(up front)') + (none ? '' : ' + ' + x.pct + '%' + vat + ' a month of the rent collected') + '</span>' : '') + '</label>'; }).join('') + '</div>';
   }
   // Splitting the tenant find fee into 12 monthly payments at no extra cost, when we've offered it.
   function splitHtml(){
