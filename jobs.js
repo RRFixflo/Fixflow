@@ -2667,6 +2667,11 @@ module.exports = function mountJobs(app, opts) {
     if (!key) return res.status(400).json({ ok: false, error: 'address-required' });
     if (!(await p.query('SELECT id FROM tenants WHERE id = $1', [id])).rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     if (b.remove) { await p.query('DELETE FROM property_tenants WHERE tenant_id = $1 AND property_key = $2', [id, key]); return res.json({ ok: true }); }
+    // Just their role at the property: lead tenant, tenant or guarantor (and whose).
+    if ('role' in b && !('moved_out' in b)) {
+      await p.query('UPDATE property_tenants SET role = $3, guarantor_for = $4 WHERE tenant_id = $1 AND property_key = $2', [id, key, ['lead', 'guarantor'].indexOf(b.role) !== -1 ? b.role : null, b.role === 'guarantor' ? str(b.guarantor_for, 200) || null : null]);
+      return res.json({ ok: true });
+    }
     await p.query(`INSERT INTO property_tenants (tenant_id, property_key, address, moved_out_at) VALUES ($1, $2, $3, $4)
       ON CONFLICT (tenant_id, property_key) DO UPDATE SET moved_out_at = excluded.moved_out_at, address = coalesce(excluded.address, property_tenants.address)`,
       [id, key, str(b.address, 500), b.moved_out ? new Date() : null]);
