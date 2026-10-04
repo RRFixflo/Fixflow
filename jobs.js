@@ -5761,14 +5761,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, replyTo: replyTo });
   });
   // Emails sent through Fixflow: your own, or (managers) everyone's.
-  function sentScope(req, vals) {
-    const all = canManageUsers(req);   // owner, admins and managers; everyone else sees their own
+  function sentScope(req, vals, person) {
+    // Owner, admins and managers see everyone's; everyone else sees their own. On a tenant's or
+    // landlord's page (full sign-ins only) the history shows every email sent to that person.
+    const all = canManageUsers(req) || (person && req.role !== 'offers');
     if (all) return { all: true, where: '' };
     if (req.user && req.user.id) { vals.push(req.user.id); return { all: false, where: ' AND user_id = $' + vals.length }; }
     vals.push(req.user ? req.user.name : ''); return { all: false, where: ' AND user_id IS NULL AND user_name = $' + vals.length };
   }
   app.get('/api/admin/sent-emails', withDb(async function (p, req, res) {
-    const vals = [], sc = sentScope(req, vals); let where = 'WHERE true' + sc.where;
+    const to = String(req.query.to || '').trim().toLowerCase().slice(0, 200), vals = [], sc = sentScope(req, vals, !!to); let where = 'WHERE true' + sc.where;
+    if (to) { vals.push(to); where += ' AND $' + vals.length + ' = ANY (SELECT lower(x) FROM unnest(to_list || cc_list) x)'; }
     const q = str(req.query.q, 100); if (q) { vals.push('%' + q.toLowerCase().replace(/[%_]/g, '') + '%'); where += ' AND (lower(coalesce(subject, \'\')) LIKE $' + vals.length + ' OR lower(array_to_string(to_list || cc_list, \' \')) LIKE $' + vals.length + ' OR lower(coalesce(body, \'\')) LIKE $' + vals.length + ')'; }
     if (sc.all && req.query.who) { vals.push(String(req.query.who).slice(0, 120)); where += ' AND user_name = $' + vals.length; }
     const r = await p.query('SELECT id, created_at, user_id, user_name, to_list, cc_list, reply_to, subject, left(body, 240) AS preview, ok, error FROM sent_emails ' + where + ' ORDER BY id DESC LIMIT 300', vals);
@@ -5776,7 +5779,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, all: sc.all, emails: r.rows, people: people });
   }));
   app.get('/api/admin/sent-emails/:id', withDb(async function (p, req, res) {
-    const vals = [jobId(req)], sc = sentScope(req, vals);
+    const vals = [jobId(req)], sc = sentScope(req, vals, req.query.person === '1');
     const e = (await p.query('SELECT * FROM sent_emails WHERE id = $1' + sc.where, vals)).rows[0];
     if (!e) return res.status(404).json({ ok: false, error: 'not-found' });
     if (req.query.html) { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'private, no-store'); return res.send(brandEmail(e.body || '', e.subject || '')); }
