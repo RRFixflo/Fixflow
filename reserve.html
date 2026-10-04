@@ -40,6 +40,7 @@
   h3 { font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin:22px 0 10px; }
   .facts { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin:0 0 6px; }
   .facts div { background:#f7f8fa; border:1px solid var(--line); border-radius:14px; padding:12px 14px; } .facts span { display:block; font-size:.74rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--soft); } .facts b { display:block; font-size:1.05rem; color:var(--navy); margin-top:2px; }
+  .facts.four { grid-template-columns:repeat(2, 1fr); }
   .how { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; counter-reset:h; }
   .how div { position:relative; padding:16px 16px 14px 16px; border:1px solid var(--line); border-radius:16px; background:linear-gradient(180deg,#fff,#fafbfc); font-size:.9rem; color:var(--ink2); }
   .how div::before { counter-increment:h; content:counter(h); display:flex; width:30px; height:30px; border-radius:50%; background:var(--navy); color:#fff; font-weight:800; align-items:center; justify-content:center; margin-bottom:8px; }
@@ -128,7 +129,8 @@
     signedView();
   }
   function factsHtml(){
-    return '<div class="facts"><div><span>Reservation</span><b>' + gbp(R.amount) + '</b></div><div><span>Viewing</span><b>' + esc(R.viewing_at ? when(R.viewing_at) : 'To be arranged') + '</b></div><div><span>Decide by</span><b>' + esc(R.deadline ? when(R.deadline) : '24 hours after viewing') + '</b></div></div>';
+    var mi = R.move_in ? new Date(R.move_in + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+    return '<div class="facts' + (mi ? ' four' : '') + '"><div><span>Reservation</span><b>' + gbp(R.amount) + '</b></div>' + (mi ? '<div><span>Move in</span><b>' + esc(mi) + '</b></div>' : '') + '<div><span>Viewing</span><b>' + esc(R.viewing_at ? when(R.viewing_at) : 'To be arranged') + '</b></div><div><span>Decide by</span><b>' + esc(R.deadline ? when(R.deadline) : '24 hours after viewing') + '</b></div></div>';
   }
   function termsHtml(){
     var t = R.terms;
@@ -145,7 +147,8 @@
       '<div class="card"><h2>Your details &amp; signature</h2><p class="lead">Check your details, then sign to reserve.</p>' +
         '<div class="f"><label class="l" for="nm">Full name</label><input id="nm" autocomplete="name" value="' + esc(R.name || '') + '"></div>' +
         '<div class="g2"><div class="f"><label class="l" for="ph">Mobile</label><input id="ph" type="tel" autocomplete="tel" value="' + esc(R.phone || '') + '"></div><div class="f"><label class="l" for="em">Email</label><input id="em" type="email" autocomplete="email" value="' + esc(R.email || '') + '"></div></div>' +
-        '<div class="f"><label class="l" for="tn">Number of tenants</label><select id="tn">' + [1, 2, 3, 4, 5, 6].map(function(n){ return '<option>' + n + '</option>'; }).join('') + '</select></div>' +
+        '<div class="g2"><div class="f"><label class="l" for="tn">Number of tenants</label><select id="tn">' + [1, 2, 3, 4, 5, 6].map(function(n){ return '<option>' + n + '</option>'; }).join('') + '</select></div>' +
+        '<div class="f"><label class="l" for="mi">When would you like to move in?</label><input id="mi" type="date" min="' + new Date().toISOString().slice(0, 10) + '"></div></div>' +
         '<label class="check"><input type="checkbox" id="acc"><span>I have read and understood the Pre-Viewing Reservation information sheet, and I’ll let you know within 24 hours of my viewing whether I’d like to go ahead.</span></label>' +
         '<label class="check"><input type="checkbox" id="dec"><span>' + esc(t.declaration) + '</span></label>' +
         '<h3>Sign</h3><div class="f"><label class="l" for="sigName">Type your full name</label><input id="sigName" autocomplete="name" value="' + esc(R.name || '') + '"></div>' +
@@ -165,12 +168,13 @@
       document.querySelector('.err').hidden = true;
       if (!$('nm').value.trim()) return err('Please enter your full name.', $('nm'));
       if (!$('ph').value.trim() && !$('em').value.trim()) return err('Please give your mobile or email so we can contact you.', $('ph'));
+      if (!$('mi').value) return err('Please choose when you’d like to move in.', $('mi'));
       if (!$('acc').checked) return err('Please tick to confirm you’ve read the information sheet.', $('acc').closest('.check'));
       if (!$('dec').checked) return err('Please tick to confirm the declaration.', $('dec').closest('.check'));
       if (!$('sigName').value.trim()) return err('Please type your full name.', $('sigName'));
       if (!inked) return err('Please sign in the box.', $('sigWrap'));
       var b = this; b.disabled = true; b.textContent = 'Signing…';
-      fetch('/api/pvr/' + token + '/sign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('nm').value.trim(), phone: $('ph').value.trim(), email: $('em').value.trim(), tenants: $('tn').value, accept: true, declaration: true, signature: $('sigName').value.trim(), signature_png: png(), started_at: startedAt }) })
+      fetch('/api/pvr/' + token + '/sign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('nm').value.trim(), phone: $('ph').value.trim(), email: $('em').value.trim(), tenants: $('tn').value, move_in: $('mi').value, accept: true, declaration: true, signature: $('sigName').value.trim(), signature_png: png(), started_at: startedAt }) })
         .then(function(r){ return r.json(); }).then(function(d){
           if (!d.ok) { b.disabled = false; b.textContent = 'Sign & reserve'; return err(d.error === 'signed' ? 'This reservation has already been signed — refresh the page.' : d.error === 'rate-limited' ? 'Too many tries — please wait a little.' : 'Couldn’t sign just now — please try again.'); }
           show(d); window.scrollTo(0, 0);

@@ -2634,7 +2634,7 @@
       if (ok === false) throw new Error('refresh');
       if (view === 'cts') renderContractors();
       if (view === 'act') loadActivity();
-      if (view === 'pvr') loadPvr();
+      if (view === 'offers') { loadOffers().then(function(){ renderOffers(); }); loadInvites(); loadViewings(); loadPvr(); }
       if (openJobId) openJob(openJobId);
       toast('Up to date · ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
     }).catch(function(){ toast('Couldn’t refresh — check your connection'); }).then(function(){
@@ -9504,13 +9504,14 @@
         if (t.signed_at && !t.decision) acts += '<button type="button" class="btn small" data-pv-dec="yes">They’re going ahead</button><button type="button" class="btn small" data-pv-dec="no">Not going ahead</button>';
         if (t.decision && !d.offer_ref) acts += '<button type="button" class="btn small ghost" data-pv-dec="clear">Reopen answer</button>';
         acts += '<button type="button" class="btn small" data-pv-view>🗓 ' + (t.viewing_at ? 'Change viewing' : 'Set viewing') + '</button>';
+        acts += '<button type="button" class="btn small" data-pv-mi>🏠 ' + (d.move_in ? 'Change move-in' : 'Set move-in') + '</button>';
         if (!t.signed_at) acts += '<button type="button" class="btn small" data-pv-edit>✏️ Edit</button>';
       }
       acts += '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/pvr/' + t.id + '/pdf">📄 ' + (t.signed_at ? 'Signed PDF' : 'Preview PDF') + '</a><span class="oc-sp"></span>' +
         (t.status === 'cancelled' ? '<button type="button" class="btn small ghost" data-pv-uncancel>Turn back on</button>' : (!t.decision ? '<button type="button" class="btn small ghost" data-pv-cancel>Cancel</button>' : '')) + (canDel ? '<button type="button" class="btn small ghost danger" data-pv-del title="Delete">🗑</button>' : '');
       var logHtml = (t.log || []).slice().reverse().map(function(l){ return '<div><span>' + esc(fmtShort(l.at)) + '</span>' + esc(l.text) + (l.user ? ' · ' + esc(l.user) : l.by === 'applicant' ? ' · applicant' : '') + '</div>'; }).join('');
       return '<div class="card lt-card pv-card' + (late || s === 'refund' ? ' is-late' : s === 'yes' ? ' is-yes' : '') + '" data-pv="' + t.id + '"><div class="lt-h"><div><div class="oc-addr">' + esc(t.property_address) + '</div><div class="oc-meta">' + esc(t.name || '') + ' · ' + esc(t.ref) + ' · ' + pvGbp(t.amount) + (t.rent ? ' (' + pvGbp(t.rent) + (t.per === 'pcm' ? ' pcm' : ' pw') + ')' : '') + ' · ' + esc(fmtShort(t.created_at)) + (t.created_by ? ' · by ' + esc(t.created_by) : '') + '</div>' +
-          '<div class="oc-meta">' + (t.phone ? '<a href="tel:' + esc(t.phone) + '">' + esc(t.phone) + '</a>' : '') + (t.phone && t.email ? ' · ' : '') + (t.email ? '<a href="mailto:' + esc(t.email) + '">' + esc(t.email) + '</a>' : '') + ' · Ref to pay: <b>' + esc(t.reference) + '</b></div></div><span class="oc-pill ' + pill[0] + '">' + esc(pill[1]) + '</span></div>' +
+          '<div class="oc-meta">' + (t.phone ? '<a href="tel:' + esc(t.phone) + '">' + esc(t.phone) + '</a>' : '') + (t.phone && t.email ? ' · ' : '') + (t.email ? '<a href="mailto:' + esc(t.email) + '">' + esc(t.email) + '</a>' : '') + ' · Ref to pay: <b>' + esc(t.reference) + '</b>' + (d.move_in ? ' · 🏠 Move in <b>' + esc(certDay(d.move_in)) + '</b>' : '') + '</div></div><span class="oc-pill ' + pill[0] + '">' + esc(pill[1]) + '</span></div>' +
         steps + boxes + '<footer class="oc-actions">' + acts + '</footer>' + (logHtml ? '<details class="oc-more"><summary>🕘 Activity (' + (t.log || []).length + ')</summary><div class="pv-log">' + logHtml + '</div></details>' : '') + '</div>';
     }).join('') : '<p class="muted-note">' + (pvItems.length ? 'Nothing matches.' : 'No pre-viewing reservations yet — create one above.') + '</p>';
   }
@@ -9580,6 +9581,12 @@
       hit('[data-pv-view]').insertAdjacentHTML('afterend', '<div class="pv-vedit" style="display:flex;gap:6px;flex-basis:100%;flex-wrap:wrap;align-items:center"><input class="inp" type="datetime-local" value="' + cur + '" style="width:auto"><button type="button" class="btn small primary" data-pv-vsave>Save viewing</button>' + (t.viewing_at ? '<button type="button" class="btn small ghost" data-pv-vclear>Clear</button>' : '') + '</div>');
       card.querySelector('.pv-vedit input').focus(); return;
     }
+    if (hit('[data-pv-mi]')) {
+      var mb = card.querySelector('.pv-miedit'); if (mb) { mb.remove(); return; }
+      hit('[data-pv-mi]').insertAdjacentHTML('afterend', '<div class="pv-miedit" style="display:flex;gap:6px;flex-basis:100%;flex-wrap:wrap;align-items:center"><input class="inp" type="date" value="' + esc((t.data || {}).move_in || '') + '" style="width:auto"><button type="button" class="btn small primary" data-pv-misave>Save move-in date</button></div>');
+      card.querySelector('.pv-miedit input').focus(); return;
+    }
+    if (hit('[data-pv-misave]')) { pvPost(t, { move_in: card.querySelector('.pv-miedit input').value || '' }, '✓ Move-in date saved'); return; }
     if (hit('[data-pv-vsave]')) { var vv = card.querySelector('.pv-vedit input').value; if (!vv) { toast('Pick the date and time'); return; } pvPost(t, { viewing_at: new Date(vv).toISOString() }, '✓ Viewing saved — the 24 hours start from it'); return; }
     if (hit('[data-pv-vclear]')) { pvPost(t, { viewing_at: '' }, 'Viewing cleared'); return; }
     if (hit('[data-pv-edit]')) { pvEditId = t.id; $('pvName').value = t.name || ''; $('pvAddr').value = t.property_address || ''; $('pvPhone').value = t.phone || ''; $('pvEmail').value = t.email || ''; $('pvRent').value = t.rent != null ? Number(t.rent) : ''; $('pvPer').value = t.per || 'pw'; $('pvAmt').value = Number(t.amount).toFixed(2); $('pvAmt').dataset.manual = '1'; $('pvEditCancel').hidden = false; $('pvEditing').hidden = false; $('pvEditing').textContent = '✏️ Editing ' + t.ref + ' — use “Change viewing” on its card for the viewing time'; $('pvNew').hidden = false; $('pvNew').open = true; $('pvNew').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
