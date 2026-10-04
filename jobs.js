@@ -801,10 +801,13 @@ async function syncLandlordTenancies(p, id) {
   const keys = (await p.query('SELECT property_key FROM property_landlords WHERE landlord_id = $1', [id])).rows.map(function (r) { return r.property_key; });
   const ph = function (v) { const d = String(v || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : ''; }, em = String(l.email || '').trim().toLowerCase(), lp = ph(l.phone);
   const norm = function (v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
+  // The same name counts too, when no other landlord record has that name (titles ignored).
+  const nm = function (v) { return String(v || '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr|mx)\b\.?/g, ' ').replace(/[^a-z]+/g, ' ').trim(); };
+  const sameName = nm(l.name) && (await p.query('SELECT name FROM landlords')).rows.filter(function (x) { return nm(x.name) === nm(l.name); }).length === 1 ? nm(l.name) : '';
   let n = 0;
   for (const t of (await p.query('SELECT id, property_key, data FROM tenancies')).rows) {
     const d = t.data || {}, tl = d.landlord || {};
-    const mine = keys.indexOf(t.property_key) !== -1 || (em && String(tl.email || '').trim().toLowerCase() === em) || (lp && ph(tl.phone) === lp);
+    const mine = keys.indexOf(t.property_key) !== -1 || (em && String(tl.email || '').trim().toLowerCase() === em) || (lp && ph(tl.phone) === lp) || (sameName && nm(tl.name) === sameName);
     if (!mine) continue;
     const next = Object.assign({}, tl);
     if (l.address && norm([tl.line1, tl.line2, tl.country, tl.postcode].filter(Boolean).join(',')) !== norm(l.address)) Object.assign(next, llAddrLines(l.address));
@@ -6016,17 +6019,21 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // and the company footer. Built from the plain text, which is sent alongside it.
   function brandEmail(text, subject) {
     const base = OFFER_ORIGIN || PUBLIC_URL, e = function (x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
-    let body = String(text || '').replace(/\r/g, '');
+    let body = String(text || '').replace(/\r/g, '').replace(/\[logo\]\n?/g, '');
+    // Formatting written as [b]bold[/b], [u]underline[/u], [red]red[/red], [small]small print[/small] (welcome emails).
+    const unmark = function (t) { return String(t).replace(/\[\/?(b|u|red|r|small)\]/g, ''); };
     // The disclaimer and the sign-off become their own parts.
     let disclaimer = ''; const di = body.search(/\n*This e-?mail message may contain confidential/i);
-    if (di !== -1) { disclaimer = body.slice(di).trim(); body = body.slice(0, di); }
+    if (di === -1) { const dj = body.search(/\n*(\[small\])?\s*This e-?mail message may contain confidential/i); if (dj !== -1) { disclaimer = unmark(body.slice(dj)).trim(); body = body.slice(0, dj); } }
+    if (di !== -1) { disclaimer = unmark(body.slice(di)).trim(); body = body.slice(0, di); }
     let sig = []; const sm = /\n\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Thanks,?|Yours sincerely,?)\s*\n([\s\S]*)$/i.exec(body);
-    if (sm) { sig = sm[2].split('\n').map(function (l) { return l.trim(); }).filter(Boolean); body = body.slice(0, sm.index); }
+    if (sm) { sig = sm[2].split('\n').map(function (l) { return unmark(l).trim(); }).filter(Boolean); body = body.slice(0, sm.index); }
+    if (!sm) { const sm2 = /\n\s*(\[[a-z]+\])*\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Yours sincerely,?)\s*(\[\/[a-z]+\])*\s*\n([\s\S]*)$/i.exec(body); if (sm2) { sig = sm2[4].split('\n').map(function (l) { return unmark(l).trim(); }).filter(Boolean); body = body.slice(0, sm2.index); } }
     const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer']];
     const buttons = [];
     const btnOf = function (b) { return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 22px"><tr><td style="background:#0b1f3a;border-radius:12px"><a href="' + e(b.url) + '" style="display:inline-block;padding:15px 26px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">' + e(b.label) + ' &rarr;</a></td></tr></table><p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3">Or copy this link: <a href="' + e(b.url) + '" style="color:#98a2b3;word-break:break-all">' + e(b.url) + '</a></p>'; };
     const linkify = function (t) { return e(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, function (u) { return '<a href="' + u + '" style="color:#1d3fae;text-decoration:underline">' + u + '</a>'; }); };
-    const paras = body.trim().split(/\n{2,}/).map(function (p) {
+    let paras = body.trim().split(/\n{2,}/).map(function (p) {
       p = p.trim(); if (!p) return ''; const nb = buttons.length;
       const after = function () { return buttons.slice(nb).map(btnOf).join(''); };
       // Our own main link: a button instead of the bare address.
@@ -6049,6 +6056,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
       }
       // A short title line on its own ("Frequently Asked Questions").
       if (lines.length === 1 && p.length <= 40 && /^[A-Z][A-Za-z ]+$/.test(p) && p.split(' ').filter(function (w) { return /^[A-Z]/.test(w); }).length >= Math.max(2, p.split(' ').length - 1)) return '<h2 style="margin:26px 0 4px;font-size:18px;color:#0b1f3a;border-top:1px solid #eef0f3;padding-top:18px">' + e(p) + '</h2>';
+      // A heading: a line that is all bold / underlined, or a short title line above a longer paragraph ("Move-in monies").
+      const headRe = /^\s*(\[(b|u)\]\s*)+([^\[\]\n]{2,70}?)\s*(\[\/(b|u)\]\s*)+$/, h3 = function (t) { return '<h3 style="margin:22px 0 6px;font-size:16px;color:#0b1f3a">' + e(unmark(t).trim()) + '</h3>'; };
+      const plainHead = lines.length > 1 && lines[0].length <= 40 && /^[A-Z][A-Za-z' &/-]+$/.test(lines[0].trim()) && lines[1].length >= 60;
+      if ((headRe.test(lines[0]) && !/^\s*(\[(b|u)\]\s*)+(re|dear)\b/i.test(lines[0])) || plainHead) { const rest = lines.slice(1); return h3(lines[0]) + (rest.length ? '<p style="margin:0 0 16px">' + rest.map(linkify).join('<br>') + '</p>' : '') + after(); }
       if (lines.length === 1 && /^[A-Z0-9 ,.'’&:-]{12,}$/.test(p)) return '<p style="margin:0 0 16px;font-size:12px;letter-spacing:.06em;font-weight:700;color:#475467">' + e(p) + '</p>';
       return lines.map(function (l, i) {
         if (i === 0 && lines.length > 1 && /\?\s*$/.test(l) && l.length <= 120) return '<h3 style="margin:22px 0 6px;font-size:16px;color:#0b1f3a">' + e(l) + '</h3>';
@@ -6056,12 +6067,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
       }).filter(Boolean).join('') + '<p style="margin:0 0 16px">' + lines.filter(function (l, i) { return !(i === 0 && lines.length > 1 && /\?\s*$/.test(l) && l.length <= 120); }).map(linkify).join('<br>') + '</p>' + after();
     }).join('');
     const btnHtml = '';
+    const RED = '#b42318';
+    paras = paras.replace(/\[b\]([\s\S]*?)\[\/b\]/g, '<b>$1</b>').replace(/\[u\]([\s\S]*?)\[\/u\]/g, '<u>$1</u>')
+      .replace(/\[red\]([\s\S]*?)\[\/red\]/g, '<b style="color:' + RED + '">$1</b>').replace(/\[r\]([\s\S]*?)\[\/r\]/g, '<span style="color:' + RED + '">$1</span>')
+      .replace(/\[small\]([\s\S]*?)\[\/small\]/g, '<span style="font-size:12px;color:#98a2b3">$1</span>').replace(/\[\/?(b|u|red|r|small)\]/g, '');
     const title = String(subject || '').replace(/\s*[—-]\s*Residential Realtors\s*$/i, '');
     const sigHtml = sig.length ? '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:8px 0 0;border-top:1px solid #eef0f3"><tr><td style="padding:18px 0 0"><div style="font-size:13px;color:#667085;margin:0 0 4px">Kind regards,</div>' +
       sig.map(function (l, i) { const kv = /^([TWAEM]):\s*(.+)$/.exec(l); if (kv) { const v = kv[2]; return '<div style="font-size:13px;color:#475467;margin-top:' + (i && !/^[TWAEM]:/.test(sig[i - 1]) ? '10px' : '2px') + '">' + ({ T: 'Tel', W: 'Web', A: 'Office', E: 'Email', M: 'Mobile' }[kv[1]]) + ': ' + (kv[1] === 'T' || kv[1] === 'M' ? '<a href="tel:' + e(v.replace(/\s/g, '')) + '" style="color:#475467">' + e(v) + '</a>' : kv[1] === 'W' ? '<a href="https://' + e(v.replace(/^https?:\/\//, '')) + '" style="color:#475467">' + e(v) + '</a>' : e(v)) + '</div>'; }
         return '<div style="font-size:' + (i === 0 ? '16px;font-weight:700;color:#0b1f3a' : '14px;color:#475467') + '">' + e(l) + '</div>'; }).join('') + '</td></tr></table>' : '';
     return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + e(title) + '</title></head>' +
-      '<body style="margin:0;padding:0;background:#f3f5f8"><div style="display:none;max-height:0;overflow:hidden">' + e(String(body).replace(/\s+/g, ' ').slice(0, 140)) + '</div>' +
+      '<body style="margin:0;padding:0;background:#f3f5f8"><div style="display:none;max-height:0;overflow:hidden">' + e(unmark(body).replace(/\s+/g, ' ').slice(0, 140)) + '</div>' +
       '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f5f8"><tr><td align="center" style="padding:24px 12px">' +
       '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Arial,sans-serif;color:#101828;font-size:15px;line-height:1.6">' +
       '<tr><td style="background:#0b1f3a;border-radius:18px 18px 0 0;padding:26px 30px 24px">' + (base ? '<img src="' + e(base) + '/logo-white.png" alt="Residential Realtors" height="44" style="display:block;height:44px;width:auto;border:0;margin:0 0 18px">' : '<div style="color:#fff;font-weight:800;font-size:18px;margin:0 0 14px">Residential Realtors</div>') +
@@ -8853,9 +8868,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
   setInterval(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function () {}); }, 24 * 3600000).unref();
   // Once: put the values already on the list in their places (version bump re-runs it).
   // Once: bring every tenancy's landlord address up to date with the landlord records.
-  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k) return; let n = 0;
+  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k && k.value && k.value.v >= 2) return; let n = 0;
     for (const r of (await p.query('SELECT id FROM landlords')).rows) n += await syncLandlordTenancies(p, r.id);
-    await p.query("INSERT INTO app_settings (key, value) VALUES ('ll_tcy_sync', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 1, at: new Date().toISOString(), updated: n })]); console.log('Tenancy landlord details synced:', n); }).catch(function (e) { console.error('Landlord sync failed:', e.message); }); }, 20000).unref();
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('ll_tcy_sync', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 2, at: new Date().toISOString(), updated: n })]); console.log('Tenancy landlord details synced:', n); }).catch(function (e) { console.error('Landlord sync failed:', e.message); }); }, 20000).unref();
   setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 4) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 4, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
   // Empty the Been let list before pasting a corrected copy (managers only).
   app.post('/api/admin/available-clear-let', withDb(async function (p, req, res) {
