@@ -8391,6 +8391,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     pairs.forEach(function (x) { if (got[x.a] || taken[x.r]) return; got[x.a] = x.r; taken[x.r] = 1; });
     for (const a of av.filter(function (a) { return !a.rm_manual; })) { const nid = got[a.id] || null; if (nid !== a.rm_id) await p.query('UPDATE available_props SET rm_id = $2 WHERE id = $1', [a.id, nid]); }
   }
+  // One check at a time; a "soft" check (sign-in, Refresh) reuses one made in the last 2 minutes.
+  let rmBusy = null, ytBusy = null;
+  async function softRefresh(p, key, run, busyGet, busySet, soft) {
+    if (soft) { const c = (await p.query("SELECT value FROM app_settings WHERE key = $1", [key])).rows[0]; if (c && c.value && Date.now() - Date.parse(c.value.at) < 2 * 60000) return Object.assign({ cached: true }, c.value); }
+    if (busyGet()) return busyGet();
+    const pr = run(p).finally(function () { busySet(null); }); busySet(pr); return pr;
+  }
   async function rmRefresh(p) {
     const st = await rmSettings(p); let items = [], error = null;
     const diag = [];
@@ -8407,7 +8414,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json(Object.assign({ ok: true, branch: st.branch, branch_url: RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + st.branch, items: [] }, (c && c.value) || {}));
   }));
   app.post('/api/admin/rightmove/refresh', withDb(async function (p, req, res) {
-    const v = await rmRefresh(p); res.json(Object.assign({ ok: !v.error }, v));
+    const v = await softRefresh(p, 'rightmove_list', rmRefresh, function () { return rmBusy; }, function (x) { rmBusy = x; }, (req.body || {}).soft === true); res.json(Object.assign({ ok: !v.error }, v));
   }));
   app.post('/api/admin/rightmove/settings', withDb(async function (p, req, res) {
     if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
@@ -8427,7 +8434,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query('UPDATE available_props SET rm_id = $2, rm_manual = true, rm_url = $3 WHERE id = $1', [id, rid, rid === 'none' ? null : RM_BASE + '/properties/' + rid]);
     res.json({ ok: true });
   }));
-  setInterval(function () { db().then(async function (p) { if (!p) return; const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0]; if (!c || !c.value || Date.now() - Date.parse(c.value.at) > 6 * 3600000) await rmRefresh(p); }).catch(function (e) { console.error('Rightmove check failed:', e.message); }); }, 30 * 60 * 1000).unref();
+  setInterval(function () { db().then(async function (p) { if (!p) return; const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0]; if (!c || !c.value || Date.now() - Date.parse(c.value.at) > 55 * 60000) await softRefresh(p, 'rightmove_list', rmRefresh, function () { return rmBusy; }, function (x) { rmBusy = x; }, false); }).catch(function (e) { console.error('Rightmove check failed:', e.message); }); }, 10 * 60 * 1000).unref();
 
   // ---------- YouTube: property videos from our channel ----------
   // The channel's uploads are read (YouTube Data API when YOUTUBE_API_KEY is set, otherwise
@@ -8528,7 +8535,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     });
     res.json(Object.assign({ ok: true, handle: st.handle, channel_url: 'https://www.youtube.com/' + st.handle, matches: matches, suggest: suggest, has_key: !!YT_KEY }, v, { items: vids }));
   }));
-  app.post('/api/admin/youtube/refresh', withDb(async function (p, req, res) { const v = await ytRefresh(p); res.json(Object.assign({ ok: !v.error }, v)); }));
+  app.post('/api/admin/youtube/refresh', withDb(async function (p, req, res) { const v = await softRefresh(p, 'youtube_list', ytRefresh, function () { return ytBusy; }, function (x) { ytBusy = x; }, (req.body || {}).soft === true); res.json(Object.assign({ ok: !v.error }, v)); }));
   app.post('/api/admin/youtube/settings', withDb(async function (p, req, res) {
     if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
     const h = String((req.body || {}).handle || '').trim().replace(/^.*youtube\.com\//i, '').replace(/[/?#].*$/, '').replace(/^@?/, '@');
@@ -8540,7 +8547,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const b = req.body || {}, v = b.yt_id === 'none' ? 'none' : b.yt_id ? String(b.yt_id).replace(/[^\w-]/g, '').slice(0, 20) : null;
     await p.query('UPDATE available_props SET yt_id = $2 WHERE id = $1', [jobId(req), v]); res.json({ ok: true });
   }));
-  setInterval(function () { db().then(async function (p) { if (!p) return; const c = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0]; if (!c || !c.value || Date.now() - Date.parse(c.value.at) > 6 * 3600000) await ytRefresh(p); }).catch(function (e) { console.error('YouTube check failed:', e.message); }); }, 30 * 60 * 1000).unref();
+  setInterval(function () { db().then(async function (p) { if (!p) return; const c = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0]; if (!c || !c.value || Date.now() - Date.parse(c.value.at) > 55 * 60000) await softRefresh(p, 'youtube_list', ytRefresh, function () { return ytBusy; }, function (x) { ytBusy = x; }, false); }).catch(function (e) { console.error('YouTube check failed:', e.message); }); }, 10 * 60 * 1000).unref();
 
   // ---------- Pre-viewing reservations (PVR) ----------
   // An applicant reserves a property before viewing it: they sign the PVR form
