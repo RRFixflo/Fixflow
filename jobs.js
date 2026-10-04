@@ -180,6 +180,9 @@ CREATE TABLE IF NOT EXISTS property_tenants (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_id, property_key)
 );
+-- Who they are at the property: NULL (tenant), 'lead' (lead tenant) or 'guarantor' (with whose guarantor).
+ALTER TABLE property_tenants ADD COLUMN IF NOT EXISTS role TEXT;
+ALTER TABLE property_tenants ADD COLUMN IF NOT EXISTS guarantor_for TEXT;
 CREATE TABLE IF NOT EXISTS invoices (
   id             SERIAL PRIMARY KEY,
   job_id         INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
@@ -2579,7 +2582,7 @@ module.exports = function mountJobs(app, opts) {
   // ---------- Tenant records ----------
   app.get('/api/admin/tenant-records', withDb(async function (p, req, res) {
     const t = await p.query('SELECT id, name, phone, email, notes, created_at, updated_at FROM tenants WHERE deleted_at IS NULL ORDER BY lower(name)');
-    const links = await p.query('SELECT pt.tenant_id, pt.property_key, pt.address, pt.moved_out_at, pt.created_at FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE t.deleted_at IS NULL ORDER BY pt.created_at');
+    const links = await p.query('SELECT pt.tenant_id, pt.property_key, pt.address, pt.moved_out_at, pt.created_at, pt.role, pt.guarantor_for FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE t.deleted_at IS NULL ORDER BY pt.created_at');
     res.json({ ok: true, tenants: t.rows, links: links.rows });
   }));
 
@@ -2588,6 +2591,8 @@ module.exports = function mountJobs(app, opts) {
     if (!str(b.name) && !str(b.phone) && !str(b.email)) return res.status(400).json({ ok: false, error: 'details-required' });
     const id = await ensureTenant(p, { name: b.name, phone: b.phone, email: b.email }, b.property_address, true);
     if ('notes' in b) await p.query('UPDATE tenants SET notes = $2 WHERE id = $1', [id, str(b.notes, 2000)]);
+    if (id && b.property_address && ('role' in b)) await p.query('UPDATE property_tenants SET role = $3, guarantor_for = $4 WHERE tenant_id = $1 AND property_key = $2',
+      [id, propKey(b.property_address), ['lead', 'guarantor'].indexOf(b.role) !== -1 ? b.role : null, b.role === 'guarantor' ? str(b.guarantor_for, 200) || null : null]);
     res.json({ ok: true, id: id });
   }));
 
@@ -3443,7 +3448,7 @@ module.exports = function mountJobs(app, opts) {
             const open = (await p.query('SELECT ' + COLS + ", tenant_name, tenant_phone FROM jobs WHERE archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled') ORDER BY created_at DESC LIMIT 3000")).rows;
             const mine = open.filter(function (j) { return phoneTail(j.tenant_phone) === tail && nameOk(j.tenant_name); });
             const t = (await p.query(`SELECT t.name, pt.property_key FROM tenants t JOIN property_tenants pt ON pt.tenant_id = t.id
-              WHERE pt.moved_out_at IS NULL AND right(regexp_replace(coalesce(t.phone, ''), '\\D', '', 'g'), 10) = $1`, [tail])).rows.filter(function (x) { return nameOk(x.name); });
+              WHERE pt.moved_out_at IS NULL AND pt.role IS DISTINCT FROM 'guarantor' AND right(regexp_replace(coalesce(t.phone, ''), '\\D', '', 'g'), 10) = $1`, [tail])).rows.filter(function (x) { return nameOk(x.name); });
             const keys = t.map(function (x) { return x.property_key; });
             const seen = {};
             rows = mine.concat(open.filter(function (j) { return keys.indexOf(propKey(j.property_address)) !== -1; }))
@@ -3557,7 +3562,7 @@ module.exports = function mountJobs(app, opts) {
     if (!title) return res.status(400).json({ ok: false, error: 'title-required' });
     const l = who.l, self = b.who === 'self', urgency = URGENCIES.indexOf(b.urgency) !== -1 ? b.urgency : 'Routine';
     const address = (await allProperties(p)).filter(function (x) { return x.key === k; }).map(function (x) { return x.address; })[0] || who.keys[k] || k;
-    const t = (await p.query(`SELECT t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY t.updated_at DESC LIMIT 1`, [k])).rows[0] || {};
+    const t = (await p.query(`SELECT t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND pt.role IS DISTINCT FROM 'guarantor' AND t.deleted_at IS NULL ORDER BY t.updated_at DESC LIMIT 1`, [k])).rows[0] || {};
     const due = new Date(Date.now() + DUE_HOURS[urgency] * 3600 * 1000);
     const r = await p.query(`INSERT INTO jobs (property_address, category, summary, description, urgency, source, status, due_at, tenant_name, tenant_phone, tenant_email, landlord_name, landlord_email, landlord_phone, landlord_handles)
       VALUES ($1, $2, $3, $4, $5, 'Landlord request', 'New', $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
@@ -3970,7 +3975,7 @@ module.exports = function mountJobs(app, opts) {
     const tcys = Object.keys(keys).length ? (await p.query("SELECT id, address, property_key, start_date, data, intention FROM tenancies WHERE property_key = ANY($1::text[]) AND start_date IS NOT NULL ORDER BY start_date DESC", [Object.keys(keys)])).rows : [];
     // Everyone living at each property (the tenancy's tenants and those saved there), for the landlord to contact.
     const saved = Object.keys(keys).length ? (await p.query(`SELECT pt.property_key, t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id
-      WHERE pt.property_key = ANY($1::text[]) AND pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY t.updated_at DESC`, [Object.keys(keys)])).rows : [];
+      WHERE pt.property_key = ANY($1::text[]) AND pt.moved_out_at IS NULL AND pt.role IS DISTINCT FROM 'guarantor' AND t.deleted_at IS NULL ORDER BY t.updated_at DESC`, [Object.keys(keys)])).rows : [];
     const peopleAt = function (k) {
       const t = tcys.filter(function (x) { return x.property_key === k; })[0], out = [];
       const tail = function (v) { return String(v || '').replace(/\D/g, '').slice(-10); };
@@ -6141,7 +6146,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         }
         const assigned = who[c.type] || (contractorsList.filter(function (x) { return def.trade.test((x.trade || '') + ' ' + x.name); })[0] || {}).name || null;
         const tenant = (await p.query(`SELECT t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id
-          WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY pt.created_at DESC LIMIT 1`, [c.property_key])).rows[0] || null;
+          WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND pt.role IS DISTINCT FROM 'guarantor' AND t.deleted_at IS NULL ORDER BY pt.created_at DESC LIMIT 1`, [c.property_key])).rows[0] || null;
         const last = recent.filter(function (x) { return x.tenant_name || x.tenant_phone; })[0] || {};
         const ll = (await p.query(`SELECT l.name, l.email, l.phone, l.address FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1`, [c.property_key])).rows[0] || null;
         const expiryAt = new Date(c.expires_on + 'T17:00:00Z');
@@ -6330,7 +6335,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // is missing and to show anyone else at the property.
     const living = {};
     if (r.rows.length) (await p.query(`SELECT pt.property_key, t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id
-        WHERE pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY t.updated_at DESC`)).rows
+        WHERE pt.moved_out_at IS NULL AND pt.role IS DISTINCT FROM 'guarantor' AND t.deleted_at IS NULL ORDER BY t.updated_at DESC`)).rows
       .forEach(function (t) { (living[t.property_key] = living[t.property_key] || []).push({ name: t.name || '', phone: t.phone || '', email: t.email || '' }); });
     r.rows.forEach(function (j) {
       const here = living[propKey(j.property_address)] || [];
@@ -8408,7 +8413,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!key) return res.json({ ok: true, known: false });
     const norm = String(address).toLowerCase().replace(/[^a-z0-9]/g, '');
     const ll = (await p.query('SELECT l.id, l.name, l.phone, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [key])).rows[0] || (await landlordIndex(p))(address, '', '');
-    const tenants = (await p.query('SELECT t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY pt.created_at', [key])).rows;
+    const tenants = (await p.query('SELECT t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND pt.role IS DISTINCT FROM \'guarantor\' AND t.deleted_at IS NULL ORDER BY pt.created_at', [key])).rows;
     const info = (await p.query('SELECT address, key_number FROM property_info WHERE property_key = $1', [key])).rows[0] || null;
     const prev = (await p.query('SELECT id, address, status, let_on, available_from, rent_pcm, landlord, commission, contact, key_no, access, access_note, updated_at FROM available_props ORDER BY id DESC LIMIT 20000')).rows
       .filter(function (r) { return propKey(r.address) === key || String(r.address).toLowerCase().replace(/[^a-z0-9]/g, '') === norm; }).slice(0, 5);
