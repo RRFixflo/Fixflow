@@ -8496,6 +8496,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const html = await r.text(), vids = initial(html);
     const key = (/"INNERTUBE_API_KEY":"([\w-]+)"/.exec(html) || [])[1], ver = (/"INNERTUBE_CLIENT_VERSION":"([\d.]+)"/.exec(html) || [])[1] || '2.20240101.00.00';
     visitor = (/"VISITOR_DATA":"([^"]+)"/.exec(html) || [])[1] || '';
+    { const ci = html.indexOf('continuationItemRenderer'); note({ what: 'channel page', bytes: html.length, token: !!vids.token, cir: (html.match(/continuationItemRenderer/g) || []).length, cc: (html.match(/continuationCommand/g) || []).length, near: ci > -1 ? html.slice(ci, ci + 260).replace(/[^\x20-\x7e]/g, '') : '' }); }
     await more(vids, key, ver, 'channel videos');
     const cid = (/"(?:channelId|externalId|browseId)":"(UC[\w-]{20,})"/.exec(html) || [])[1];
     // The channel's full uploads playlist (100 a page) — newest first, like the videos tab.
