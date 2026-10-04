@@ -8448,13 +8448,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (typeof v !== 'object') return;
     const r = v.videoRenderer || v.gridVideoRenderer || v.reelItemRenderer;
     if (r && r.videoId) { const t = (r.title && (r.title.simpleText || (r.title.runs || []).map(function (x) { return x.text; }).join(''))) || (r.headline && r.headline.simpleText) || ''; out.push({ id: r.videoId, title: t, ago: (r.publishedTimeText && r.publishedTimeText.simpleText) || '' }); return; }
-    if (v.continuationCommand && v.continuationCommand.token) { out.token = v.continuationCommand.token; return; }
+    // "Load more" at the end of the list (not the sort buttons, which have their own continuations).
+    if (v.continuationItemRenderer) { const ce = v.continuationItemRenderer.continuationEndpoint || {}; const tk = (ce.continuationCommand || {}).token || (((ce.commandExecutorCommand || {}).commands || []).map(function (c) { return (c.continuationCommand || {}).token; }).filter(Boolean)[0]); if (tk) out.token = tk; return; }
+    const pv = v.playlistVideoRenderer; if (pv && pv.videoId) { out.push({ id: pv.videoId, title: (pv.title && (pv.title.simpleText || (pv.title.runs || []).map(function (x) { return x.text; }).join(''))) || '', ago: '' }); return; }
     const lv = v.lockupViewModel; if (lv && lv.contentId && lv.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO') { const md = ((lv.metadata || {}).lockupMetadataViewModel || {}); out.push({ id: lv.contentId, title: ((md.title || {}).content) || '', ago: '' }); return; }
     Object.keys(v).forEach(function (k) { ytDig(v[k], out, depth + 1); });
   }
   // "3 weeks ago" -> an approximate date (only used when the exact date isn't known).
   function ytAgo(t) { const m = /(\d+)\s*(minute|hour|day|week|month|year)/i.exec(String(t || '')); if (!m) return null; const ms = { minute: 6e4, hour: 36e5, day: 864e5, week: 6048e5, month: 2592e6, year: 31536e6 }[m[2].toLowerCase()]; return new Date(Date.now() - Number(m[1]) * ms).toISOString(); }
-  async function ytFetch(handle) {
+  async function ytFetch(handle, diag) {
     const h = '@' + String(handle || '').replace(/^.*youtube\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '');
     const out = [], seen = {}; const add = function (x) { if (!x.id || seen[x.id]) return; seen[x.id] = 1; out.push(x); };
     if (YT_KEY) {
@@ -8469,24 +8471,42 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return out;
     }
     const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'Accept-Language': 'en-GB,en;q=0.9', 'Cookie': 'CONSENT=YES+1; SOCS=CAI' };
+    const note = function (x) { if (diag && diag.length < 40) diag.push(x); };
+    const initial = function (html) { const m = /ytInitialData\s*=\s*(\{[\s\S]*?\});\s*<\/script>/.exec(html), v = []; if (m) { try { ytDig(JSON.parse(m[1]), v, 0); } catch (e) {} } return v; };
+    // Follow "load more" pages, as YouTube's own site does.
+    const more = async function (list, key, ver, what) {
+      let token = list.token, pg = 0;
+      for (; token && key && pg < 40; pg++) {
+        let got = [];
+        try {
+          const rr = await fetch('https://www.youtube.com/youtubei/v1/browse?key=' + key + '&prettyPrint=false', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json', 'X-YouTube-Client-Name': '1', 'X-YouTube-Client-Version': ver }, headers), body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: ver, hl: 'en', gl: 'GB' } }, continuation: token }), signal: AbortSignal.timeout(15000) });
+          if (!rr.ok) { note({ what: what + ' more', status: rr.status }); break; }
+          ytDig(await rr.json(), got, 0);
+        } catch (e) { note({ what: what + ' more', error: String(e.message || e).slice(0, 100) }); break; }
+        got.forEach(function (v) { list.push(v); });
+        if (!got.length || !got.token || got.token === token) { token = null; break; }
+        token = got.token;
+      }
+      note({ what: what, pages: pg + 1, videos: list.length, key: !!key });
+    };
     const r = await fetch('https://www.youtube.com/' + encodeURIComponent(h) + '/videos', { headers: headers, signal: AbortSignal.timeout(20000) });
     if (!r.ok) throw new Error('YouTube answered ' + r.status);
-    const html = await r.text(), m = /ytInitialData\s*=\s*(\{[\s\S]*?\});\s*<\/script>/.exec(html);
-    const vids = []; if (m) { try { ytDig(JSON.parse(m[1]), vids, 0); } catch (e) {} }
-    // The channel page shows ~30 videos; the rest come page by page, as on YouTube itself.
+    const html = await r.text(), vids = initial(html);
     const key = (/"INNERTUBE_API_KEY":"([\w-]+)"/.exec(html) || [])[1], ver = (/"INNERTUBE_CLIENT_VERSION":"([\d.]+)"/.exec(html) || [])[1] || '2.20240101.00.00';
-    let token = vids.token;
-    for (let pg = 0; token && key && pg < 30; pg++) {
+    await more(vids, key, ver, 'channel videos');
+    const cid = (/"(?:channelId|externalId|browseId)":"(UC[\w-]{20,})"/.exec(html) || [])[1];
+    // The channel's full uploads playlist (100 a page) — newest first, like the videos tab.
+    let pl = [];
+    if (cid) {
       try {
-        const rr = await fetch('https://www.youtube.com/youtubei/v1/browse?key=' + key + '&prettyPrint=false', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, headers), body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: ver, hl: 'en', gl: 'GB' } }, continuation: token }), signal: AbortSignal.timeout(15000) });
-        if (!rr.ok) break;
-        const more = []; ytDig(await rr.json(), more, 0); more.forEach(function (v) { vids.push(v); });
-        if (!more.length || more.token === token) break; token = more.token;
-      } catch (e) { break; }
+        const pr = await fetch('https://www.youtube.com/playlist?list=UU' + cid.slice(2), { headers: headers, signal: AbortSignal.timeout(20000) });
+        if (pr.ok) { const ph = await pr.text(); pl = initial(ph); const k2 = (/"INNERTUBE_API_KEY":"([\w-]+)"/.exec(ph) || [])[1] || key; await more(pl, k2, ver, 'uploads playlist'); } else note({ what: 'uploads playlist', status: pr.status });
+      } catch (e) { note({ what: 'uploads playlist', error: String(e.message || e).slice(0, 100) }); }
     }
-    vids.forEach(function (v, i) { add({ id: v.id, title: v.title, published: ytAgo(v.ago), rank: i }); });
+    const order = pl.length > vids.length ? pl : vids, ago = {}; vids.forEach(function (v) { if (v.ago) ago[v.id] = v.ago; });
+    order.forEach(function (v, i) { add({ id: v.id, title: v.title, published: ytAgo(v.ago || ago[v.id]), rank: i }); });
+    (order === pl ? vids : pl).forEach(function (v) { add({ id: v.id, title: v.title, published: ytAgo(v.ago || ago[v.id]), rank: 100000 }); });
     // Exact dates for the newest uploads from the channel's feed.
-    const cid = (/"(?:channelId|externalId)":"(UC[\w-]{20,})"/.exec(html) || [])[1];
     if (cid) { try { const x = await (await fetch('https://www.youtube.com/feeds/videos.xml?channel_id=' + cid, { headers: headers, signal: AbortSignal.timeout(15000) })).text();
       x.split('<entry>').slice(1).forEach(function (e) { const id = (/<yt:videoId>([^<]+)</.exec(e) || [])[1], t = (/<title>([^<]*)</.exec(e) || [])[1], pub = (/<published>([^<]+)</.exec(e) || [])[1]; if (!id) return; const f = out.filter(function (o) { return o.id === id; })[0]; if (f) f.published = pub; else add({ id: id, title: (t || '').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"'), published: pub }); }); } catch (e) {} }
     if (!out.length) throw new Error('no videos found on the channel page');
@@ -8516,9 +8536,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function ytNewest(a, b) { return (Date.parse(b.published || '') || 0) - (Date.parse(a.published || '') || 0) || (a.rank == null ? 1e9 : a.rank) - (b.rank == null ? 1e9 : b.rank); }
   async function ytRefresh(p) {
     const st = await ytSettings(p); let items = [], error = null;
-    try { items = await ytFetch(st.handle); } catch (e) { error = String(e.message || e).slice(0, 200); }
+    const diag = [];
+    try { items = await ytFetch(st.handle, diag); } catch (e) { error = String(e.message || e).slice(0, 200); }
     const prev = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0];
-    const val = { at: new Date().toISOString(), items: error && prev && prev.value && prev.value.items ? prev.value.items : items, error: error, via: YT_KEY ? 'api' : 'page' };
+    const val = { at: new Date().toISOString(), items: error && prev && prev.value && prev.value.items ? prev.value.items : items, error: error, via: YT_KEY ? 'api' : 'page', diag: diag };
     await p.query("INSERT INTO app_settings (key, value) VALUES ('youtube_list', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(val)]);
     return val;
   }
