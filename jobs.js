@@ -506,6 +506,16 @@ CREATE TABLE IF NOT EXISTS offer_invites (
   offer_id    INTEGER,
   events      JSONB NOT NULL DEFAULT '[]'::jsonb
 );
+-- Valuation letters (sales and / or lettings) sent to landlords, kept so they can be downloaded again.
+CREATE TABLE IF NOT EXISTS valuations (
+  id          SERIAL PRIMARY KEY,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  landlord_id INTEGER,
+  address     TEXT NOT NULL,
+  data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_by  TEXT
+);
+CREATE INDEX IF NOT EXISTS valuations_landlord ON valuations (landlord_id);
 CREATE TABLE IF NOT EXISTS landlord_terms (
   id               SERIAL PRIMARY KEY,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -8126,6 +8136,161 @@ document.querySelectorAll('.lcu').forEach(function(box){
       // The landlord may pick (or upgrade to) a service on their page, at these rates.
       choose: b.choose !== false, opt_collect_pct: b.opt_collect_pct == null || b.opt_collect_pct === '' ? LT_STD.collect : pctNum(b.opt_collect_pct), opt_both_pct: b.opt_both_pct == null || b.opt_both_pct === '' ? LT_STD.both : pctNum(b.opt_both_pct)
     };
+  }
+  // ---------- Valuation letters ----------
+  function cleanValuation(b) {
+    const num = function (v) { const n = Math.round(parseFloat(String(v == null ? '' : v).replace(/[£,\s]/g, ''))); return n > 0 && n < 100000000 ? n : null; };
+    const v = { sales: b.sales === true, lettings: b.lettings === true, sales_low: num(b.sales_low), sales_high: num(b.sales_high), let_low: num(b.let_low), let_high: num(b.let_high),
+      date: /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) ? b.date : new Date().toISOString().slice(0, 10), visited: /^\d{4}-\d{2}-\d{2}$/.test(String(b.visited || '')) ? b.visited : null,
+      to_name: str(b.to_name, 200) || '', salutation: str(b.salutation, 200) || '', to_address: str(b.to_address, 500) || '', highlights: str(b.highlights, 2000) || '', note: str(b.note, 2000) || '',
+      signer: str(b.signer, 120) || '', signer_title: str(b.signer_title, 120) || '', include_fees: b.include_fees !== false,
+      find_pct: pctNum(b.find_pct), collect_pct: pctNum(b.collect_pct), both_pct: pctNum(b.both_pct), sales_fee: str(b.sales_fee, 120) || '' };
+    if (v.sales_high && v.sales_low && v.sales_high < v.sales_low) { const x = v.sales_low; v.sales_low = v.sales_high; v.sales_high = x; }
+    if (v.let_high && v.let_low && v.let_high < v.let_low) { const x = v.let_low; v.let_low = v.let_high; v.let_high = x; }
+    return v;
+  }
+  app.post('/api/admin/valuations', withDb(async function (p, req, res) {
+    const b = req.body || {}, address = str(b.address, 400), v = cleanValuation(b);
+    if (!address) return res.status(400).json({ ok: false, error: 'address' });
+    if (!v.sales && !v.lettings) return res.status(400).json({ ok: false, error: 'type' });
+    if ((v.sales && !v.sales_low && !v.sales_high) || (v.lettings && !v.let_low && !v.let_high)) return res.status(400).json({ ok: false, error: 'figure' });
+    const r = await p.query('INSERT INTO valuations (landlord_id, address, data, created_by) VALUES ($1, $2, $3, $4) RETURNING id', [parseInt(b.landlord_id, 10) || null, address, JSON.stringify(v), req.user ? req.user.name : null]);
+    res.json({ ok: true, id: r.rows[0].id, pdf: '/api/admin/valuations/' + r.rows[0].id + '/pdf' });
+  }));
+  app.get('/api/admin/valuations', withDb(async function (p, req, res) {
+    const lid = parseInt(req.query.landlord_id, 10) || null;
+    const r = await p.query('SELECT id, created_at, landlord_id, address, data, created_by FROM valuations' + (lid ? ' WHERE landlord_id = $1' : '') + ' ORDER BY id DESC LIMIT 200', lid ? [lid] : []);
+    res.json({ ok: true, items: r.rows });
+  }));
+  app.delete('/api/admin/valuations/:id', withDb(async function (p, req, res) {
+    await p.query('DELETE FROM valuations WHERE id = $1', [jobId(req)]); res.json({ ok: true });
+  }));
+  app.get('/api/admin/valuations/:id/pdf', withDb(async function (p, req, res) {
+    const r = (await p.query('SELECT * FROM valuations WHERE id = $1', [jobId(req)])).rows[0];
+    if (!r) return res.status(404).send('Not found');
+    const out = await valuationPdf(p, r);
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + '; filename="' + out.name.replace(/"/g, '') + '"');
+    res.send(Buffer.from(out.bytes));
+  }));
+  // The letter: a modern one-page (two at most) PDF in our colours.
+  async function valuationPdf(p, row) {
+    const v = row.data || {}, address = row.address;
+    const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+    const pdf = await PDFDocument.create();
+    const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const W = 595.28, H = 841.89, M = 50, CW = W - M * 2;
+    const hex = function (h) { return rgb(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255); };
+    const C = { navy: hex('0B1F3A'), navy2: hex('16305A'), red: hex('D9262E'), ink: hex('101828'), ink2: hex('344054'), soft: hex('667085'), faint: hex('98A2B3'), line: hex('E4E7EC'), panel: hex('F5F7FA'), white: rgb(1, 1, 1), green: hex('067647'), greenBg: hex('ECFDF3'), blueBg: hex('EEF4FF'), blue: hex('1D3FAE') };
+    const safe = function (x) { return String(x == null ? '' : x).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/·/g, '\xB7').replace(/[^\x20-\x7E\xA3\xA0-\xFF\n]/g, ''); };
+    const gbp0 = function (n) { return '\xA3' + Math.round(Number(n) || 0).toLocaleString('en-GB'); };
+    const dayOf = function (d) { return d ? new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''; };
+    const wrap = function (t, font, size, width) { const out = []; safe(t).split('\n').forEach(function (para) { let cur = ''; para.split(/\s+/).forEach(function (w) { const tt = cur ? cur + ' ' + w : w; if (font.widthOfTextAtSize(tt, size) > width && cur) { out.push(cur); cur = w; } else cur = tt; }); out.push(cur); }); return out; };
+    let page, y;
+    const text = function (s, x, yy, size, font, color) { page.drawText(safe(s), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
+    const right = function (s, xr, yy, size, font, color) { text(s, xr - (font || F).widthOfTextAtSize(safe(s), size), yy, size, font, color); };
+    const rr = function (x, yTop, w, h, r, fill, border) { r = Math.min(r, h / 2, w / 2); page.drawSvgPath('M ' + r + ' 0 H ' + (w - r) + ' A ' + r + ' ' + r + ' 0 0 1 ' + w + ' ' + r + ' V ' + (h - r) + ' A ' + r + ' ' + r + ' 0 0 1 ' + (w - r) + ' ' + h + ' H ' + r + ' A ' + r + ' ' + r + ' 0 0 1 0 ' + (h - r) + ' V ' + r + ' A ' + r + ' ' + r + ' 0 0 1 ' + r + ' 0 Z', { x: x, y: yTop, color: fill, borderColor: border, borderWidth: border ? 0.8 : 0 }); };
+    let logoW = null, logoI = null; try { logoW = await pdf.embedPng(require('fs').readFileSync(require('path').join(__dirname, 'logo-white.png'))); } catch (e) {} try { logoI = await pdf.embedPng(require('fs').readFileSync(require('path').join(__dirname, 'logo-ink.png'))); } catch (e) {}
+    const ref = 'RV' + String(row.id).padStart(4, '0');
+    const footer = function () {
+      page.drawLine({ start: { x: M, y: 58 }, end: { x: W - M, y: 58 }, thickness: 0.6, color: C.line });
+      text('Residential Realtors', M, 44, 7.6, B, C.ink2); text('Trading name of Estallion Investments Limited \xB7 Registered in England No. ' + (INVOICE.companyNo || '08760284'), M, 33, 6.8, F, C.soft);
+      right(safe(INVOICE.address || '28-30 Harper Road, London, SE1 6AD'), W - M, 44, 7, F, C.soft); right('0207 096 8131 \xB7 info@residentialrealtors.co.uk \xB7 residentialrealtors.co.uk', W - M, 33, 6.8, F, C.soft);
+    };
+    const newPage = function (first) {
+      page = pdf.addPage([W, H]);
+      if (first) {
+        page.drawRectangle({ x: 0, y: H - 210, width: W, height: 210, color: C.navy });
+        page.drawRectangle({ x: 0, y: H - 210, width: W, height: 3, color: C.red });
+        if (logoW) { const h = 38, w = logoW.width * h / logoW.height; page.drawImage(logoW, { x: M, y: H - 72, width: w, height: h }); } else text('RESIDENTIAL REALTORS', M, H - 56, 14, B, C.white);
+        right((v.sales && v.lettings ? 'SALES & LETTINGS' : v.sales ? 'SALES' : 'LETTINGS') + ' VALUATION', W - M, H - 46, 7.4, B, hex('C7D2E4'));
+        right(dayOf(v.date) + '  \xB7  ' + ref, W - M, H - 60, 8.4, F, C.white);
+        page.drawRectangle({ x: M, y: H - 112, width: 34, height: 3, color: C.red });
+        text('Your property valuation', M, H - 138, 24, B, C.white);
+        wrap(address, F, 12, CW).slice(0, 2).forEach(function (ln, i) { text(ln, M, H - 162 - i * 15, 12, F, hex('DCE3EE')); });
+        y = H - 246;
+      } else {
+        page.drawRectangle({ x: 0, y: H - 4, width: W, height: 4, color: C.red });
+        if (logoI) { const h = 26, w = logoI.width * h / logoI.height; page.drawImage(logoI, { x: M, y: H - 46, width: w, height: h }); }
+        right(ref + '  \xB7  ' + safe(address).slice(0, 60), W - M, H - 36, 8, F, C.soft);
+        y = H - 80;
+      }
+      footer();
+    };
+    const ensure = function (need) { if (y - need < 80) newPage(false); };
+    const para = function (s, size, color, font, width, x) { size = size || 10; wrap(s, font || F, size, width || CW).forEach(function (ln) { ensure(size + 6); text(ln, x || M, y, size, font || F, color || C.ink2); y -= size * 1.45; }); };
+    const heading = function (s) { ensure(40); y -= 8; text(safe(s).toUpperCase(), M, y, 8, B, C.navy); page.drawRectangle({ x: M, y: y - 6, width: 20, height: 1.8, color: C.red }); y -= 22; };
+    newPage(true);
+    // Recipient and date
+    const to = [v.to_name].concat(String(v.to_address || '').split(/\s*[,\n]\s*/)).filter(Boolean).slice(0, 6);
+    to.forEach(function (ln, i) { text(ln, M, y - i * 13, 9.6, i ? F : B, i ? C.ink2 : C.ink); });
+    right('Date', W - M - 110, y, 8, B, C.soft); right(dayOf(v.date), W - M, y, 9.2, F, C.ink);
+    if (v.visited) { right('Visited', W - M - 110, y - 14, 8, B, C.soft); right(dayOf(v.visited), W - M, y - 14, 9.2, F, C.ink); }
+    right('Reference', W - M - 110, y - (v.visited ? 28 : 14), 8, B, C.soft); right(ref, W - M, y - (v.visited ? 28 : 14), 9.2, F, C.ink);
+    y -= Math.max(to.length * 13, 44) + 18;
+    const short = safe(address).split(',').slice(0, 2).join(',');
+    text('Dear ' + (v.salutation || v.to_name || 'Sir or Madam') + ',', M, y, 10.4, F, C.ink); y -= 20;
+    para('Thank you for asking us to value ' + short + (v.visited ? ' and for showing us around' : '') + '. Based on our knowledge of the local market, recent comparable ' + (v.sales && v.lettings ? 'sales and lettings' : v.sales ? 'sales' : 'lettings') + ', current demand and the property itself, here is our recommendation.', 10.2);
+    y -= 8;
+    // The figures: one card per valuation, side by side when there are two.
+    const cards = [];
+    const range = function (lo, hi, unit) { return lo && hi && lo !== hi ? gbp0(lo) + ' - ' + gbp0(hi) : gbp0(lo || hi); };
+    if (v.sales) cards.push({ k: 'SALES VALUATION', big: range(v.sales_low, v.sales_high), unit: '', cap: 'Recommended asking price' + (v.sales_low && v.sales_high && v.sales_low !== v.sales_high ? ' range' : '') });
+    if (v.lettings) { const lo = v.let_low || v.let_high, hi = v.let_high || v.let_low, mid = (lo + hi) / 2;
+      cards.push({ k: 'LETTINGS VALUATION', big: range(v.let_low, v.let_high), unit: ' pcm', cap: (lo !== hi ? gbp0(lo * 12 / 52) + ' - ' + gbp0(hi * 12 / 52) : gbp0(mid * 12 / 52)) + ' a week  \xB7  ' + (lo !== hi ? gbp0(lo * 12) + ' - ' + gbp0(hi * 12) : gbp0(mid * 12)) + ' a year' }); }
+    const gap = 14, cw = cards.length === 2 ? (CW - gap) / 2 : CW, ch = 96;
+    ensure(ch + 10);
+    cards.forEach(function (c, i) {
+      const x = M + i * (cw + gap);
+      rr(x, y, cw, ch, 14, C.panel, C.line);
+      page.drawRectangle({ x: x, y: y - ch, width: 4, height: ch, color: i ? C.navy2 : C.red });
+      text(c.k, x + 18, y - 22, 7.4, B, C.soft);
+      let size = 26; while (B.widthOfTextAtSize(safe(c.big + c.unit), size) > cw - 36 && size > 15) size -= 1;
+      text(c.big, x + 18, y - 54, size, B, C.navy); if (c.unit) text(c.unit, x + 18 + B.widthOfTextAtSize(safe(c.big), size) + 3, y - 54, 11, B, C.soft);
+      wrap(c.cap, F, 8.6, cw - 36).slice(0, 2).forEach(function (ln, j) { text(ln, x + 18, y - 74 - j * 11, 8.6, F, C.ink2); });
+    });
+    y -= ch + 18;
+    // What stood out
+    if (v.highlights) { ensure(70); heading('What stood out'); String(v.highlights).split('\n').map(function (l) { return l.replace(/^\s*[-•*]\s*/, '').trim(); }).filter(Boolean).slice(0, 10).forEach(function (l) {
+      const ls = wrap(l, F, 9.8, CW - 16); ensure(ls.length * 14 + 4); page.drawCircle({ x: M + 4, y: y + 3.2, size: 2.2, color: C.red }); ls.forEach(function (ln) { text(ln, M + 14, y, 9.8, F, C.ink2); y -= 14; }); y -= 2; }); }
+    // How we arrived at it
+    ensure(80); heading('How we arrived at our figures');
+    ['Recent ' + (v.sales && v.lettings ? 'sales and lettings' : v.sales ? 'sales' : 'lettings') + ' of similar homes nearby, and what is on the market now.', 'The size, layout, condition and features of the property, and its outside space and transport links.', 'Current demand from ' + (v.sales && v.lettings ? 'buyers and tenants' : v.sales ? 'buyers' : 'tenants') + ' registered with us in the area.'].forEach(function (l) {
+      const ls = wrap(l, F, 9.6, CW - 16); ensure(ls.length * 13.5 + 2); page.drawCircle({ x: M + 4, y: y + 3.2, size: 2.2, color: C.navy2 }); ls.forEach(function (ln) { text(ln, M + 14, y, 9.6, F, C.ink2); y -= 13.5; }); y -= 1; });
+    if (v.note) { y -= 4; para(v.note, 9.8); }
+    // Our lettings services (with any discount on our standard fees)
+    if (v.lettings && v.include_fees) {
+      ensure(3 * 34 + 80); heading('Letting with Residential Realtors');
+      const rent = ((v.let_low || v.let_high) + (v.let_high || v.let_low)) / 2;
+      const rows = [['Let only', v.find_pct != null ? v.find_pct : LT_STD.sole, LT_STD.sole, 'Tenant find: % of the first 12 months\' rent, taken once'], ['Let + rent collection', v.collect_pct != null ? v.collect_pct : LT_STD.collect, LT_STD.collect, 'Plus % of the rent each month'], ['Fully managed', v.both_pct != null ? v.both_pct : LT_STD.both, LT_STD.both, 'Plus % of the rent each month - we look after everything']];
+      ensure(rows.length * 34 + 30);
+      rows.forEach(function (r) {
+        rr(M, y, CW, 28, 8, C.white, C.line);
+        text(r[0], M + 14, y - 17.5, 9.8, B, C.ink);
+        text(safe(r[3].replace('%', r[1] + '%')), M + 150, y - 17.5, 8.6, F, C.soft);
+        right(r[1] + '% + VAT', W - M - 14, y - 17.5, 10, B, C.navy);
+        if (r[1] < r[2]) { const tw = F.widthOfTextAtSize(r[2] + '%', 8); const xr = W - M - 14 - B.widthOfTextAtSize(r[1] + '% + VAT', 10) - 10; text(r[2] + '%', xr - tw, y - 17.5, 8, F, C.faint); page.drawLine({ start: { x: xr - tw - 1, y: y - 14.8 }, end: { x: xr + 1, y: y - 14.8 }, thickness: 0.7, color: C.faint }); }
+        y -= 34;
+      });
+      const mgd = rent - rent * (v.both_pct != null ? v.both_pct : LT_STD.both) / 100 * 1.2;
+      rr(M, y, CW, 30, 8, C.greenBg); text('Fully managed at ' + gbp0(rent) + ' pcm, you would receive about ' + gbp0(mgd) + ' a month after our fee (inc VAT).', M + 14, y - 19, 9.2, B, C.green); y -= 40;
+    }
+    if (v.sales && v.sales_fee) { ensure(60); heading('Selling with Residential Realtors'); para('Our sales fee: ' + v.sales_fee + '.', 9.8); }
+    // EPC we hold
+    const epc = (await p.query("SELECT rating, expires_on FROM property_certificates WHERE property_key = $1 AND type = 'EPC'", [propKey(address)])).rows[0];
+    if (epc && epc.expires_on) { ensure(34); rr(M, y, CW, 26, 8, C.blueBg); text('EPC rating ' + (epc.rating || '?') + (epc.expires_on >= new Date().toISOString().slice(0, 10) ? ', valid until ' + dayOf(epc.expires_on) : ' - expired ' + dayOf(epc.expires_on) + ' (a new one is needed before marketing)') + (v.lettings ? '. Rented homes need a rating of E or above.' : '.'), M + 14, y - 16.5, 8.8, F, C.blue); y -= 36; }
+    // Next steps and sign-off
+    ensure(110); heading('Next steps');
+    para('If you would like to go ahead, reply to this letter or call us on 0207 096 8131. We will arrange photographs and a floor plan, ' + (v.lettings ? 'check the safety certificates' : 'check the EPC') + ', and have the property advertised on Rightmove and our website straight away.', 9.8);
+    y -= 10; ensure(70);
+    text('Yours sincerely,', M, y, 10, F, C.ink); y -= 30;
+    text(v.signer || 'Residential Realtors', M, y, 11, B, C.ink); y -= 14;
+    if (v.signer_title) { text(v.signer_title, M, y, 9.2, F, C.soft); y -= 13; }
+    if (v.signer) text('Residential Realtors', M, y, 9.2, F, C.soft); y -= 22;
+    ensure(40);
+    wrap('This is a market appraisal to help you decide how to market your property. It is not a formal valuation for mortgage, tax or legal purposes (such as a RICS Red Book valuation). The figures reflect market conditions on the date above and may change; we suggest reviewing them after three months.', F, 7.2, CW).forEach(function (ln) { text(ln, M, y, 7.2, F, C.faint); y -= 9.6; });
+    const name = ((v.sales && v.lettings ? 'Sales and Lettings' : v.sales ? 'Sales' : 'Lettings') + ' Valuation - ' + address).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').slice(0, 120) + '.pdf';
+    return { bytes: await pdf.save(), name: name };
   }
   // Our standard scale of fees (% of the rent, + VAT): tenant find 10% (12% multi agency), rent collection 3%,
   // full management 3% on top of rent collection (6% in all). Lower agreed rates show as a discount.
