@@ -524,6 +524,7 @@ CREATE TABLE IF NOT EXISTS available_props (
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_id TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_manual BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS yt_id TEXT;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_url TEXT;
 CREATE TABLE IF NOT EXISTS sent_emails (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -8330,25 +8331,40 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (Array.isArray(v)) { if (v.length && v.every(function (o) { return o && typeof o === 'object' && o.id != null && (o.displayAddress || o.propertyUrl); })) v.forEach(function (o) { out.push(o); }); else v.forEach(function (o) { rmDig(o, out, depth + 1); }); return; }
     if (typeof v === 'object') Object.keys(v).forEach(function (k) { rmDig(v[k], out, depth + 1); });
   }
-  async function rmFetchBranch(branch) {
-    const headers = { 'User-Agent': 'Mozilla/5.0 (compatible; Fixflow; Residential Realtors listings check)', 'Accept': 'application/json, text/html' };
-    const seen = {}, items = [];
-    const add = function (list) { list.map(rmNorm).filter(Boolean).forEach(function (x) { if (!seen[x.id]) { seen[x.id] = 1; items.push(x); } }); };
+  async function rmFetchBranch(branch, diag) {
+    const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'Accept': 'application/json, text/html;q=0.9, */*;q=0.8', 'Accept-Language': 'en-GB,en;q=0.9' };
+    const seen = {}, items = [], loc = 'BRANCH%5E' + encodeURIComponent(branch);
+    const add = function (list) { const before = items.length; list.map(rmNorm).filter(Boolean).forEach(function (x) { if (!seen[x.id]) { seen[x.id] = 1; items.push(x); } }); return items.length - before; };
+    // Rightmove's newer search data, the older one, then the page itself (its embedded data).
+    const sources = [
+      function (i) { return RM_BASE + '/api/property-search/listing/search?searchLocation=&useLocationIdentifier=true&locationIdentifier=' + loc + '&channel=RENT&index=' + i + '&sortType=6&includeLetAgreed=true&_includeLetAgreed=on'; },
+      function (i) { return RM_BASE + '/api/_search?locationIdentifier=' + loc + '&numberOfPropertiesPerPage=24&radius=0.0&sortType=6&index=' + i + '&includeLetAgreed=true&viewType=LIST&channel=RENT&areaSizeUnit=sqft&currencyCode=GBP&isFetching=false'; },
+      function (i) { return RM_BASE + '/property-to-rent/find.html?locationIdentifier=' + loc + '&includeLetAgreed=true&index=' + i; }
+    ];
+    let src = -1;
     for (let index = 0; index < 240; index += 24) {
-      let got = 0;
-      try {
-        const r = await fetch(RM_BASE + '/api/_search?locationIdentifier=BRANCH%5E' + encodeURIComponent(branch) + '&numberOfPropertiesPerPage=24&radius=0.0&sortType=6&index=' + index + '&includeLetAgreed=true&viewType=LIST&channel=RENT&areaSizeUnit=sqft&currencyCode=GBP&isFetching=false', { headers: headers, signal: AbortSignal.timeout(15000) });
-        if (r.ok && /json/.test(r.headers.get('content-type') || '')) { const j = await r.json(); const before = items.length; add(j.properties || []); got = items.length - before; if (!got && index === 0) throw new Error('empty'); if ((j.properties || []).length < 24) return items; continue; }
-      } catch (e) { /* fall back to the page itself */ }
-      const r2 = await fetch(RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + encodeURIComponent(branch) + '&includeLetAgreed=true&index=' + index, { headers: headers, signal: AbortSignal.timeout(15000) });
-      if (!r2.ok) { if (index === 0) throw new Error('Rightmove answered ' + r2.status); break; }
-      const html = await r2.text(), blobs = [];
-      const nd = /<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(html); if (nd) blobs.push(nd[1]);
-      const jm = /window\.jsonModel\s*=\s*(\{[\s\S]*?\})\s*<\/script>/.exec(html); if (jm) blobs.push(jm[1]);
-      const found = []; blobs.forEach(function (b) { try { rmDig(JSON.parse(b), found, 0); } catch (e) {} });
-      const before = items.length; add(found); got = items.length - before;
-      if (!got || found.length < 24) break;
+      let got = 0, raw = 0;
+      for (let k = src === -1 ? 0 : src; k < sources.length; k++) {
+        const url = sources[k](index), step = { source: ['search', 'api', 'page'][k], index: index };
+        try {
+          const r = await fetch(url, { headers: headers, signal: AbortSignal.timeout(15000) });
+          step.status = r.status; step.type = (r.headers.get('content-type') || '').split(';')[0];
+          const body = await r.text(); step.bytes = body.length;
+          const found = [];
+          if (/json/.test(step.type) || /^\s*[{[]/.test(body)) { try { rmDig(JSON.parse(body), found, 0); } catch (e) { step.error = 'bad json'; } }
+          else {
+            const nd = /<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(body), jm = /window\.jsonModel\s*=\s*(\{[\s\S]*?\})\s*<\/script>/.exec(body);
+            [nd && nd[1], jm && jm[1]].filter(Boolean).forEach(function (bl) { try { rmDig(JSON.parse(bl), found, 0); } catch (e) {} });
+            step.page = nd ? 'next-data' : jm ? 'json-model' : /captcha|access denied|unusual traffic/i.test(body) ? 'blocked' : 'no data';
+          }
+          raw = found.length; got = add(found); step.found = raw;
+        } catch (e) { step.error = String(e.message || e).slice(0, 120); }
+        if (diag && diag.length < 12) diag.push(step);
+        if (raw) { src = k; break; }
+      }
+      if (!raw || raw < 20) break;
     }
+    if (!items.length) throw new Error('Rightmove returned no listings');
     return items;
   }
   const RM_STOP = { flat: 1, apartment: 1, london: 1, road: 1, street: 1, lane: 1, avenue: 1, court: 1, house: 1, the: 1, and: 1, rd: 1, st: 1, ave: 1 };
@@ -8377,10 +8393,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   async function rmRefresh(p) {
     const st = await rmSettings(p); let items = [], error = null;
-    try { items = await rmFetchBranch(st.branch); } catch (e) { error = String(e.message || e).slice(0, 200); }
+    const diag = [];
+    try { items = await rmFetchBranch(st.branch, diag); } catch (e) { error = String(e.message || e).slice(0, 200); }
     const prev = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0];
     const keep = error && prev && prev.value && prev.value.items ? prev.value.items : items;
-    const val = { at: new Date().toISOString(), items: keep, error: error, ok_at: error ? (prev && prev.value && prev.value.ok_at) || null : new Date().toISOString() };
+    const val = { at: new Date().toISOString(), items: keep, error: error, diag: diag, ok_at: error ? (prev && prev.value && prev.value.ok_at) || null : new Date().toISOString() };
     await p.query("INSERT INTO app_settings (key, value) VALUES ('rightmove_list', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(val)]);
     if (!error) await rmAutoLink(p, items);
     return val;
@@ -8402,9 +8419,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.post('/api/admin/available/:id/rightmove', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req);
     if (b.auto === true) { await p.query('UPDATE available_props SET rm_manual = false WHERE id = $1', [id]); await rmAutoLink(p); return res.json({ ok: true }); }
-    const rid = b.rm_id == null || b.rm_id === '' ? 'none' : String(b.rm_id).replace(/\D/g, '').slice(0, 20) || 'none';
+    // A pasted link (rightmove.co.uk/properties/12345678) or a listing from the list.
+    const fromUrl = /rightmove\.co\.uk\/properties\/(\d{5,12})/i.exec(String(b.url || ''));
+    if (b.url && !fromUrl) return res.status(400).json({ ok: false, error: 'link' });
+    const rid = fromUrl ? fromUrl[1] : b.rm_id == null || b.rm_id === '' ? 'none' : String(b.rm_id).replace(/\D/g, '').slice(0, 20) || 'none';
     if (rid !== 'none') await p.query("UPDATE available_props SET rm_id = NULL WHERE rm_id = $1 AND id <> $2 AND NOT rm_manual", [rid, id]);
-    await p.query('UPDATE available_props SET rm_id = $2, rm_manual = true WHERE id = $1', [id, rid]);
+    await p.query('UPDATE available_props SET rm_id = $2, rm_manual = true, rm_url = $3 WHERE id = $1', [id, rid, rid === 'none' ? null : RM_BASE + '/properties/' + rid]);
     res.json({ ok: true });
   }));
   setInterval(function () { db().then(async function (p) { if (!p) return; const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0]; if (!c || !c.value || Date.now() - Date.parse(c.value.at) > 6 * 3600000) await rmRefresh(p); }).catch(function (e) { console.error('Rightmove check failed:', e.message); }); }, 30 * 60 * 1000).unref();
