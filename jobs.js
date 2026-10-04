@@ -523,6 +523,7 @@ CREATE TABLE IF NOT EXISTS available_props (
 );
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_id TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_manual BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS yt_id TEXT;
 CREATE TABLE IF NOT EXISTS sent_emails (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1642,7 +1643,7 @@ module.exports = function mountJobs(app, opts) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;
     if (/^\/pvr(\/\d+(\/pdf)?)?$/.test(path)) return true;
-    if (/^\/available(\/\d+(\/rightmove)?)?$/.test(path) || /^\/rightmove(\/(refresh|settings))?$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
+    if (/^\/available(\/\d+(\/(rightmove|youtube))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
@@ -8407,6 +8408,96 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true });
   }));
   setInterval(function () { db().then(async function (p) { if (!p) return; const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0]; if (!c || !c.value || Date.now() - Date.parse(c.value.at) > 6 * 3600000) await rmRefresh(p); }).catch(function (e) { console.error('Rightmove check failed:', e.message); }); }, 30 * 60 * 1000).unref();
+
+  // ---------- YouTube: property videos from our channel ----------
+  // The channel's uploads are read (YouTube Data API when YOUTUBE_API_KEY is set, otherwise
+  // the public channel page and feed) and matched to the available list by title. With two
+  // videos for one property the newest is shown first (it's usually the update).
+  const YT_KEY = process.env.YOUTUBE_API_KEY || '';
+  async function ytSettings(p) { const r = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube'")).rows[0]; return Object.assign({ handle: '@ResidentialRealtors' }, (r && r.value) || {}); }
+  function ytDig(v, out, depth) {
+    if (!v || depth > 40 || out.length > 1500) return;
+    if (Array.isArray(v)) { v.forEach(function (o) { ytDig(o, out, depth + 1); }); return; }
+    if (typeof v !== 'object') return;
+    const r = v.videoRenderer || v.gridVideoRenderer || v.reelItemRenderer;
+    if (r && r.videoId) { const t = (r.title && (r.title.simpleText || (r.title.runs || []).map(function (x) { return x.text; }).join(''))) || (r.headline && r.headline.simpleText) || ''; out.push({ id: r.videoId, title: t, ago: (r.publishedTimeText && r.publishedTimeText.simpleText) || '' }); return; }
+    const lv = v.lockupViewModel; if (lv && lv.contentId && lv.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO') { const md = ((lv.metadata || {}).lockupMetadataViewModel || {}); out.push({ id: lv.contentId, title: ((md.title || {}).content) || '', ago: '' }); return; }
+    Object.keys(v).forEach(function (k) { ytDig(v[k], out, depth + 1); });
+  }
+  // "3 weeks ago" -> an approximate date (only used when the exact date isn't known).
+  function ytAgo(t) { const m = /(\d+)\s*(minute|hour|day|week|month|year)/i.exec(String(t || '')); if (!m) return null; const ms = { minute: 6e4, hour: 36e5, day: 864e5, week: 6048e5, month: 2592e6, year: 31536e6 }[m[2].toLowerCase()]; return new Date(Date.now() - Number(m[1]) * ms).toISOString(); }
+  async function ytFetch(handle) {
+    const h = '@' + String(handle || '').replace(/^.*youtube\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '');
+    const out = [], seen = {}; const add = function (x) { if (!x.id || seen[x.id]) return; seen[x.id] = 1; out.push(x); };
+    if (YT_KEY) {
+      const ch = await (await fetch('https://www.googleapis.com/youtube/v3/channels?part=contentDetails&forHandle=' + encodeURIComponent(h) + '&key=' + YT_KEY, { signal: AbortSignal.timeout(15000) })).json();
+      const up = ch && ch.items && ch.items[0] && ch.items[0].contentDetails.relatedPlaylists.uploads; if (!up) throw new Error('channel not found');
+      let token = '';
+      for (let i = 0; i < 10; i++) {
+        const pl = await (await fetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=' + up + (token ? '&pageToken=' + token : '') + '&key=' + YT_KEY, { signal: AbortSignal.timeout(15000) })).json();
+        (pl.items || []).forEach(function (it) { const sn = it.snippet || {}; add({ id: (sn.resourceId || {}).videoId, title: sn.title || '', published: sn.publishedAt || null }); });
+        token = pl.nextPageToken; if (!token) break;
+      }
+      return out;
+    }
+    const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'Accept-Language': 'en-GB,en;q=0.9', 'Cookie': 'CONSENT=YES+1; SOCS=CAI' };
+    const r = await fetch('https://www.youtube.com/' + encodeURIComponent(h) + '/videos', { headers: headers, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error('YouTube answered ' + r.status);
+    const html = await r.text(), m = /ytInitialData\s*=\s*(\{[\s\S]*?\});\s*<\/script>/.exec(html);
+    const vids = []; if (m) { try { ytDig(JSON.parse(m[1]), vids, 0); } catch (e) {} }
+    vids.forEach(function (v, i) { add({ id: v.id, title: v.title, published: ytAgo(v.ago), rank: i }); });
+    // Exact dates for the newest uploads from the channel's feed.
+    const cid = (/"(?:channelId|externalId)":"(UC[\w-]{20,})"/.exec(html) || [])[1];
+    if (cid) { try { const x = await (await fetch('https://www.youtube.com/feeds/videos.xml?channel_id=' + cid, { headers: headers, signal: AbortSignal.timeout(15000) })).text();
+      x.split('<entry>').slice(1).forEach(function (e) { const id = (/<yt:videoId>([^<]+)</.exec(e) || [])[1], t = (/<title>([^<]*)</.exec(e) || [])[1], pub = (/<published>([^<]+)</.exec(e) || [])[1]; if (!id) return; const f = out.filter(function (o) { return o.id === id; })[0]; if (f) f.published = pub; else add({ id: id, title: (t || '').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"'), published: pub }); }); } catch (e) {} }
+    if (!out.length) throw new Error('no videos found on the channel page');
+    return out;
+  }
+  function ytScore(av, v) {
+    const t = String(v.title || ''), oa = rmOutcode(av.address), pcs = t.toUpperCase().match(/\b[A-Z]{1,2}\d[A-Z\d]?\b(?=\s*\d[A-Z]{2}\b|\s*[,)\-|]|\s*$)/g) || [];
+    let sc = 0;
+    if (oa && pcs.length) { if (pcs.indexOf(oa) === -1) return -1; sc += 3; }
+    const wa = rmWords(av.address), wt = rmWords(t), hits = wa.filter(function (w) { return wt.indexOf(w) !== -1; }).length;
+    if (!hits) return -1; sc += Math.min(4.5, hits * 1.5);
+    const door = (/^(?:flat|apartment|unit)?\s*(\d+[a-z]?)\b/i.exec(String(av.address).trim()) || [])[1], td = t.match(/\b\d+[a-z]?\b/gi) || [];
+    if (door && td.indexOf(door) !== -1) sc += 1;
+    const bm = /(\d+)\s*(?:bed|bedroom)/i.exec(t); if (bm && av.beds != null) sc += Number(bm[1]) === av.beds ? 1 : -1.5; if (/studio/i.test(t) && av.beds === 0) sc += 1;
+    return sc;
+  }
+  function ytNewest(a, b) { return (Date.parse(b.published || '') || 0) - (Date.parse(a.published || '') || 0) || (a.rank == null ? 1e9 : a.rank) - (b.rank == null ? 1e9 : b.rank); }
+  async function ytRefresh(p) {
+    const st = await ytSettings(p); let items = [], error = null;
+    try { items = await ytFetch(st.handle); } catch (e) { error = String(e.message || e).slice(0, 200); }
+    const prev = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0];
+    const val = { at: new Date().toISOString(), items: error && prev && prev.value && prev.value.items ? prev.value.items : items, error: error, via: YT_KEY ? 'api' : 'page' };
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('youtube_list', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(val)]);
+    return val;
+  }
+  app.get('/api/admin/youtube', withDb(async function (p, req, res) {
+    const c = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0], st = await ytSettings(p), v = (c && c.value) || {}, vids = v.items || [];
+    // For each available property: its videos, newest first (a hand-picked video always comes first).
+    const av = (await p.query("SELECT id, address, beds, yt_id FROM available_props WHERE status = 'available'")).rows, matches = {};
+    av.forEach(function (a) {
+      if (a.yt_id === 'none') { matches[a.id] = []; return; }
+      let list = vids.map(function (x) { return { x: x, s: ytScore(a, x) }; }).filter(function (o) { return o.s >= 3; }).map(function (o) { return o.x; }).sort(ytNewest);
+      if (a.yt_id) { const pick = vids.filter(function (x) { return x.id === a.yt_id; })[0] || { id: a.yt_id, title: 'Chosen video' }; list = [pick].concat(list.filter(function (x) { return x.id !== a.yt_id; })); }
+      matches[a.id] = list.slice(0, 4).map(function (x) { return x.id; });
+    });
+    res.json(Object.assign({ ok: true, handle: st.handle, channel_url: 'https://www.youtube.com/' + st.handle, matches: matches }, v, { items: vids }));
+  }));
+  app.post('/api/admin/youtube/refresh', withDb(async function (p, req, res) { const v = await ytRefresh(p); res.json(Object.assign({ ok: !v.error }, v)); }));
+  app.post('/api/admin/youtube/settings', withDb(async function (p, req, res) {
+    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    const h = String((req.body || {}).handle || '').trim().replace(/^.*youtube\.com\//i, '').replace(/[/?#].*$/, '').replace(/^@?/, '@');
+    if (!/^@[\w.-]{3,60}$/.test(h)) return res.status(400).json({ ok: false, error: 'handle' });
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('youtube', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ handle: h })]);
+    res.json(Object.assign({ ok: true }, await ytRefresh(p)));
+  }));
+  app.post('/api/admin/available/:id/youtube', withDb(async function (p, req, res) {
+    const b = req.body || {}, v = b.yt_id === 'none' ? 'none' : b.yt_id ? String(b.yt_id).replace(/[^\w-]/g, '').slice(0, 20) : null;
+    await p.query('UPDATE available_props SET yt_id = $2 WHERE id = $1', [jobId(req), v]); res.json({ ok: true });
+  }));
+  setInterval(function () { db().then(async function (p) { if (!p) return; const c = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0]; if (!c || !c.value || Date.now() - Date.parse(c.value.at) > 6 * 3600000) await ytRefresh(p); }).catch(function (e) { console.error('YouTube check failed:', e.message); }); }, 30 * 60 * 1000).unref();
 
   // ---------- Pre-viewing reservations (PVR) ----------
   // An applicant reserves a property before viewing it: they sign the PVR form
