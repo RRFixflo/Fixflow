@@ -1169,14 +1169,14 @@ const CONTRACTOR_PAGE_JS = `(function(){
       Object.keys(picked).forEach(drawPicked);
     }).catch(function(){ list.innerHTML = '<p class="muted">Couldn’t load your jobs — please check your connection and refresh.</p>'; });
   }
-  function card(j){
+  function card(j, n, all){
     var urgent = j.urgency === 'Emergency' || j.urgency === 'Urgent';
     var access = j.direct_contact === 'No' ? 'Residential Realtors will arrange access with the tenant.' : 'Please contact the tenant directly to arrange a time.';
     var keys = j.key_permission ? j.key_permission + (j.key_instructions ? ' — ' + j.key_instructions : '') : '';
-    return '<div class="card' + (urgent ? ' urg' : '') + '" data-id="' + j.id + '">' +
-      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><div class="ref">' + esc(j.ref) + '</div>' +
-        (urgent ? '<span style="color:#D9262E;font-weight:700;font-size:.85rem">' + esc(j.urgency) + '</span>' : '<span class="muted">' + esc(j.status) + '</span>') + '</div>' +
-      '<div style="font-weight:600;margin:4px 0">' + esc(j.property_address || '') + '</div>' +
+    return '<div class="card jc' + (urgent ? ' urg' : '') + '" data-id="' + j.id + '">' +
+      '<div class="jh"><div><span class="jn">' + (all && all.length > 1 ? 'Job ' + (n + 1) + ' of ' + all.length : 'Job') + '</span><b>' + esc(j.ref) + '</b></div>' +
+        '<span class="jst">' + esc(urgent ? '⚡ ' + j.urgency : j.status) + '</span></div>' +
+      '<div class="jaddr">📍 ' + esc(j.property_address || '') + '</div>' +
       (j.my_task ? '<div style="font-weight:700">Your task: ' + esc(j.my_task) + '</div><div class="muted">Related to: ' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div>'
         : '<div>' + esc(j.summary || [j.category, j.affected, j.symptom].filter(Boolean).join(' · ')) + '</div>') +
       (j.with ? '<div class="muted" style="margin-top:4px">👷 ' + (j.other_task ? esc(j.with) + ' is also doing: ' + esc(j.other_task) : 'Working alongside ' + esc(j.with)) + ' — mark it completed when your part is done</div>' : '') +
@@ -6275,6 +6275,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '<style>main{padding-top:0}.c-hero{margin:0 -16px 16px;padding:22px 20px 26px;color:#fff;background:radial-gradient(700px 300px at 95% -30%,rgba(217,38,46,.32),transparent 60%),linear-gradient(160deg,#13294b,#0b1f3a 60%,#08162b);border-radius:0 0 24px 24px}' +
         '.c-hero h1{color:#fff;font-size:1.7rem;margin:6px 0 4px}.c-hero p{color:#c6d0de;margin:0}.c-eye{display:inline-block;color:#ffb4b7;background:rgba(217,38,46,.16);border:1px solid rgba(255,180,183,.28);border-radius:999px;padding:4px 10px;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}' +
         '.c-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px}.c-stats:empty{display:none}.c-stats div{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px}.c-stats b{display:block;font-size:1.35rem;line-height:1.1}.c-stats span{font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;color:#a9b6c8;font-weight:600}.c-stats .hot b{color:#ffb4b7}' +
+        '.card.jc{padding:0 18px 16px;margin-bottom:22px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 22px 44px -24px rgba(15,23,42,.35)}.card.jc.urg,.card.jc{border-left:1px solid rgba(15,23,42,.06)!important}' +
+        '.jh{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 -18px 14px;padding:12px 18px;background:linear-gradient(135deg,#13294b,#0b1f3a);color:#fff}.jc.urg .jh{background:linear-gradient(135deg,#e2343c,#a3141b)}' +
+        '.jh .jn{display:block;font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;color:#a9b6c8;font-weight:700}.jc.urg .jh .jn{color:#ffd5d7}.jh b{font-size:1.05rem}.jst{font-size:.74rem;font-weight:700;border-radius:999px;padding:4px 10px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);white-space:nowrap}' +
+        '.jaddr{font-weight:700;font-size:1.05rem;line-height:1.35;color:#0b1f3a;margin:0 0 6px}' +
+        '.tn .acts{display:grid!important;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px}.tn .acts .abtn{margin:0!important;white-space:nowrap;display:flex;align-items:center;justify-content:center;min-height:46px;border-radius:12px}' +
         '.c-sec{font-size:.74rem!important;letter-spacing:.09em;text-transform:uppercase;color:#8b919c;margin:22px 0 10px!important;font-weight:700}.card[data-id]{position:relative;overflow:hidden}.card[data-id].urg{border-left:4px solid #D9262E}' +
         '@media (max-width:520px){.c-stats{grid-template-columns:repeat(2,1fr)}.c-hero h1{font-size:1.45rem}}@media (min-width:720px){.c-hero{margin:16px 0;border-radius:24px}}</style>' +
       '<style>' +
