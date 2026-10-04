@@ -8308,11 +8308,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const b = req.body || {}, list = (Array.isArray(b.items) ? b.items : [b]).slice(0, 2000).map(availClean).filter(function (x) { return x.address; });
     if (!list.length) return res.status(400).json({ ok: false, error: 'address' });
     const ids = [], skipped = [], failed = [];
-    // Already on the list (same address and status): skip, so pasting twice doesn't duplicate.
+    // Already on the list (same address and status): update it with the newer details instead of adding it twice.
     const norm = function (a) { return String(a || '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
-    const have = {}; (await p.query('SELECT address, status FROM available_props')).rows.forEach(function (r) { have[norm(r.address) + '|' + r.status] = 1; });
+    const have = {}; (await p.query('SELECT id, address, status FROM available_props ORDER BY id')).rows.forEach(function (r) { have[norm(r.address) + '|' + r.status] = r.id; });
+    const UPD = AVAIL_COLS.filter(function (c) { return c !== 'status' && c !== 'address'; });
     for (const x of list) {
-      const k = norm(x.address) + '|' + x.status; if (have[k]) { skipped.push(x.address); continue; }
+      const k = norm(x.address) + '|' + x.status;
+      if (have[k]) {
+        try { await p.query('UPDATE available_props SET ' + UPD.map(function (c, i) { return c + ' = coalesce($' + (i + 2) + ', ' + c + ')'; }).join(', ') + ', updated_at = now() WHERE id = $1', [have[k]].concat(UPD.map(function (c) { return typeof x[c] === 'boolean' ? (x[c] || null) : x[c]; }))); skipped.push(x.address); }
+        catch (e) { failed.push({ address: x.address, error: String(e.message).slice(0, 80) }); }
+        continue;
+      }
       try {
         const r = await p.query('INSERT INTO available_props (' + AVAIL_COLS.join(', ') + ', created_by) VALUES (' + AVAIL_COLS.map(function (c, i) { return '$' + (i + 1); }).join(', ') + ', $' + (AVAIL_COLS.length + 1) + ') RETURNING id',
           AVAIL_COLS.map(function (c) { return x[c]; }).concat([req.user ? req.user.name : 'Office']));
@@ -8339,13 +8345,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     rmAutoLink(p).catch(function () {});
     res.json({ ok: true });
   }));
-  // Remove duplicates (same address and status), keeping the first one added.
+  // Remove duplicates (same address and status), keeping the latest one added.
   app.post('/api/admin/available-dedupe', withDb(async function (p, req, res) {
     if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
     // Tidy every address first, so the same place written two ways counts as a duplicate.
     let tidied = 0;
     for (const row of (await p.query('SELECT id, address FROM available_props')).rows) { const t = str(availAddr(row.address), 400); if (t && t !== row.address) { await p.query('UPDATE available_props SET address = $2 WHERE id = $1', [row.id, t]); tidied++; } }
-    const r = await p.query("DELETE FROM available_props a USING available_props b WHERE a.id > b.id AND a.status = b.status AND regexp_replace(lower(a.address), '[^a-z0-9]', '', 'g') = regexp_replace(lower(b.address), '[^a-z0-9]', '', 'g')");
+    const r = await p.query("DELETE FROM available_props a USING available_props b WHERE a.id < b.id AND a.status = b.status AND regexp_replace(lower(a.address), '[^a-z0-9]', '', 'g') = regexp_replace(lower(b.address), '[^a-z0-9]', '', 'g')");
     res.json({ ok: true, removed: r.rowCount, tidied: tidied });
   }));
   // Empty the Been let list before pasting a corrected copy (managers only).
