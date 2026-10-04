@@ -504,6 +504,24 @@
   .sent-frame { width: 100%; height: 560px; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #f3f5f8; }
   .sent-text { white-space: pre-wrap; font-size: .86rem; background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 10px 12px; margin: 0; max-height: 420px; overflow: auto; }
   @media (max-width: 640px) { .sent-row > summary { grid-template-columns: 1fr auto; } .sent-when { grid-column: 1 / -1; display: flex; gap: 8px; } .sent-when b { display: inline; } .sent-frame { height: 480px; } }
+  .om-nav { display: flex; align-items: center; gap: 10px; margin: 12px 0 8px; }
+  .om-arrow { flex: 0 0 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); font-size: 1.5rem; line-height: 1; cursor: pointer; color: var(--ink); }
+  .om-arrow:disabled { opacity: .35; cursor: default; }
+  .om-cur { flex: 1; text-align: center; } .om-cur b { display: block; font-size: 1.25rem; letter-spacing: -.01em; }
+  .om-strip { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: thin; }
+  .om-strip button { flex: 0 0 auto; min-width: 62px; border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 12px; padding: 6px 8px; cursor: pointer; font: inherit; color: inherit; text-align: center; }
+  .om-strip button span { display: block; font-size: .72rem; color: var(--ink-soft); font-weight: 600; } .om-strip button b { display: block; font-size: 1.05rem; }
+  .om-strip button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; } .om-strip button.on span { color: #c6d0de; }
+  .om-strip button.zero b { color: var(--ink-soft); font-weight: 500; }
+  .om-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 2px 0 10px; } .om-tiles div { background: var(--panel-2, #f5f6f8); border-radius: 12px; padding: 10px 12px; } .om-tiles span { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 700; } .om-tiles b { display: block; font-size: 1.15rem; margin-top: 2px; }
+  .om-list { display: none; }
+  @media (max-width: 640px) { .om-tbl { display: none; } .om-list { display: block; } .om-list > div { border: 1px solid var(--line, #e6e8ec); border-radius: 12px; padding: 10px 12px; margin-bottom: 6px; } .om-list b { display: block; } .om-list span { display: block; font-size: .84rem; color: var(--ink-soft); } .om-tiles b { font-size: 1rem; } }
+  .mypw-back { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .mypw { background: var(--panel, #fff); color: var(--ink); border-radius: 18px; padding: 20px; width: 100%; max-width: 400px; box-shadow: 0 24px 60px -20px rgba(15,23,42,.5); }
+  .mypw h3 { margin: 0 0 4px; } .mypw label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: .88rem; margin-bottom: 10px; }
+  .mypw .mypw-show { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; margin: 2px 0 0; } .mypw-show input { width: 18px; height: 18px; margin: 0; }
+  .mypw-err { background: #fdecec; color: #b42318; border-radius: 10px; padding: 8px 10px; font-size: .86rem; font-weight: 600; margin: 6px 0 0; }
+  .mypw-act { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   .pv-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0 10px; }
   .pv-steps div { border-radius: 12px; padding: 8px 10px; background: var(--panel-2, #f5f6f8); border: 1px solid var(--line, #e6e8ec); font-size: .8rem; min-width: 0; }
   .pv-steps b { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); } .pv-steps span { display: block; font-weight: 650; overflow-wrap: anywhere; }
@@ -1193,7 +1211,7 @@
     <a class="nav" href="/offer" target="_blank" rel="noopener" style="text-decoration:none" title="The form applicants fill in to make an offer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offer form (applicants)</a>
     <a class="nav" href="/admin#offers" id="navOffersLink" style="text-decoration:none" title="Where the offer forms are collected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offers collected <span class="badge hot" id="sOffers2" hidden>0</span></a>
     <div class="grow"></div>
-    <div class="side-foot"><div class="deployed" id="whoAmI" hidden></div><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
+    <div class="side-foot"><div class="deployed" id="whoAmI" hidden></div><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="myPwBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg> My password</button><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
   </aside>
 
   <main class="main">
@@ -1209,6 +1227,7 @@
       <button class="btn small" hidden id="tenantsBtnM" type="button" title="Tenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg></button>
       <button class="btn small" hidden id="contractorsBtnM" type="button" title="Contractors"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg></button>
       <button class="btn small primary" id="newJobBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span class="mobile-hide">New job</span></button>
+      <button class="btn small ghost" hidden id="myPwBtnM" type="button" title="Change my password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg></button>
       <button class="btn small ghost" hidden id="logoutBtnM" type="button" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg></button>
     </header>
 
@@ -1533,6 +1552,11 @@
             <div class="off-pvr" id="offPvr" hidden><label>Rent<span style="display:flex;gap:6px"><input class="inp" id="pvRent2" inputmode="decimal" placeholder="e.g. 450"><select class="inp" id="pvPer2" style="width:auto"><option value="pw">per week</option><option value="pcm">per month</option></select></span></label><label>PVR amount £ <span class="muted-note" style="margin:0">one week’s rent</span><input class="inp" id="pvAmt2" inputmode="decimal"></label><label>Viewing <span class="muted-note" style="margin:0">optional — starts the 24 hours</span><input class="inp" id="pvAt2" type="datetime-local"></label><label class="switch-row" style="align-self:end"><input type="checkbox" id="pvAddV2" checked> Also add it to Viewings</label></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><input class="inp" id="offToName" placeholder="Their name" style="flex:1;min-width:140px"><input class="inp" id="offTo" placeholder="Their mobile or email (optional)" style="flex:1;min-width:200px"><button class="btn small wa-btn" type="button" id="offSendWa">WhatsApp</button><button class="btn small" type="button" id="offSendMail">✉ Email</button></div></div>
         </details>
+        <details class="card" id="offMonth" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📊 Accepted offers by month <span class="muted-note" id="offMonthSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
+          <div class="om-nav"><button class="om-arrow" type="button" id="offMonPrev" aria-label="Previous month">‹</button><div class="om-cur"><b id="offMonLbl"></b><button type="button" class="linkish" id="offMonNow" hidden>Back to this month</button></div><button class="om-arrow" type="button" id="offMonNext" aria-label="Next month">›</button><input type="month" id="offMon" hidden></div>
+          <div class="om-strip" id="offMonStrip"></div>
+          <div id="offMonthBody"></div>
+        </details>
         <details class="card" id="pvCard" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">🗓 Pre-viewing reservations (PVR) <span class="muted-note" id="pvSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
           <p class="muted-note" style="margin:8px 0">Send a PVR from “Send a form to an applicant” above. They sign and pay one week’s rent to reserve before viewing, then tell us within 24 hours if they’re going ahead — yes takes them to the offer form (the PVR becomes their holding deposit), no asks for their account for the refund.</p>
         <details class="pv-editbox" id="pvNew" hidden open><summary style="cursor:pointer;font-weight:700">✏️ Edit reservation</summary>
@@ -1568,10 +1592,6 @@
           <div class="off-alerts"><b>🔔 Phone alerts for staff</b><p class="muted-note" style="margin:2px 0 8px">Staff get an alert when an offer comes in, is accepted or rejected, a holding deposit arrives, or an applicant says they’ve paid. They install the free <b>ntfy</b> app and subscribe to this channel (or open the link on their phone):</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offAlertLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offAlertCopy">Copy</button></div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small ghost" type="button" id="offStaffOut">Sign all staff out</button><button class="btn small ghost danger" type="button" id="offStaffOff">Turn off staff access</button></div>
-        </details>
-        <details class="card" id="offMonth" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📊 Accepted offers by month <span class="muted-note" id="offMonthSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0"><button class="btn small" type="button" id="offMonPrev">‹</button><input class="inp" type="month" id="offMon" style="width:auto"><button class="btn small" type="button" id="offMonNext">›</button></div>
-          <div id="offMonthBody"></div>
         </details>
         <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="offMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="offMaxAll">▾ Expand all</button></span></div>
         <div id="offList"></div>
@@ -2339,6 +2359,7 @@
       if (!d.ok) { if (d.status !== 401) showLogin(); return; }
       meta = d;
       if (d.user) { $('whoAmI').innerHTML = 'Signed in as<br><b>' + esc(d.user.name) + '</b>'; $('whoAmI').hidden = false; }
+      $('myPwBtn').hidden = $('myPwBtnM').hidden = !(d.user && d.user.id);
       $('loginView').hidden = true;
       $('appView').hidden = false;
       $('dbBanner').hidden = !!d.db;
@@ -8804,24 +8825,39 @@
   }
   // Accepted offers in a month, and each person's share.
   function offMonthNow(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+  function offMonOf(o){ return new Date(o.decided_at).toLocaleDateString('en-CA', { timeZone: 'Europe/London' }).slice(0, 7); }
+  function offMonShift(mon, k){ var d = new Date(mon + '-15'); d.setMonth(d.getMonth() + k); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
   function renderOffMonth(){
     if (!$('offMon').value) $('offMon').value = offMonthNow();
-    var mon = $('offMon').value, list = offers.filter(function(o){ return o.status === 'accepted' && o.decided_at && new Date(o.decided_at).toLocaleDateString('en-CA', { timeZone: 'Europe/London' }).slice(0, 7) === mon; })
-      .sort(function(a, b){ return new Date(a.decided_at) - new Date(b.decided_at); });
+    var now = offMonthNow(), mon = $('offMon').value; if (mon > now) mon = $('offMon').value = now;
+    var acc = offers.filter(function(o){ return o.status === 'accepted' && o.decided_at; }), byMon = {};
+    acc.forEach(function(o){ var k = offMonOf(o); byMon[k] = (byMon[k] || 0) + 1; });
+    var list = acc.filter(function(o){ return offMonOf(o) === mon; }).sort(function(a, b){ return new Date(a.decided_at) - new Date(b.decided_at); });
     var pcmOf = function(o){ return Number(((o.data || {}).money || {}).pcm) || offPw(o) * 52 / 12; }, who = {};
     list.forEach(function(o){ var c = (o.data || {}).credit || []; (c.length ? c : [{ name: 'Not set', share: 100 }]).forEach(function(x){ var w = who[x.name] = who[x.name] || { n: 0, rent: 0 }; w.n += x.share / 100; w.rent += pcmOf(o) * x.share / 100; }); });
     var label = new Date(mon + '-15').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }), fmtN = function(n){ return Math.round(n * 10) / 10; };
-    $('offMonthSum').textContent = (mon === offMonthNow() ? 'this month: ' : label + ': ') + list.length + ' accepted';
-    $('offMonthBody').innerHTML = !list.length ? '<p class="muted-note" style="margin:0">No offers accepted in ' + esc(label) + '.</p>' :
+    var total = list.reduce(function(a, o){ return a + pcmOf(o); }, 0), ranked = Object.keys(who).filter(function(k){ return k !== 'Not set'; }).sort(function(a, b){ return who[b].n - who[a].n; });
+    $('offMonLbl').textContent = label; $('offMonNow').hidden = mon === now; $('offMonNext').disabled = mon >= now;
+    $('offMonthSum').textContent = (mon === now ? 'this month: ' : label + ': ') + list.length + ' accepted';
+    // The last 12 months (and the one picked, if older), newest first, each with its count.
+    var months = []; for (var i = 0; i < 12; i++) months.push(offMonShift(now, -i)); if (months.indexOf(mon) === -1) months.push(mon);
+    $('offMonStrip').innerHTML = months.map(function(m){ var n = byMon[m] || 0, d = new Date(m + '-15'); return '<button type="button" data-om="' + m + '" class="' + (m === mon ? 'on' : '') + (n ? '' : ' zero') + '" title="' + esc(d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })) + '"><span>' + esc(d.toLocaleDateString('en-GB', { month: 'short' }) + (d.getFullYear() !== new Date().getFullYear() ? ' ’' + String(d.getFullYear()).slice(2) : '')) + '</span><b>' + n + '</b></button>'; }).join('');
+    var on = $('offMonStrip').querySelector('.on'); if (on && on.scrollIntoView && $('offMonth').open) { var st = $('offMonStrip'); st.scrollLeft = Math.max(0, on.offsetLeft - st.clientWidth / 2); }
+    $('offMonthBody').innerHTML = !list.length ? '<p class="muted-note" style="margin:4px 0 0">No offers accepted in ' + esc(label) + '.</p>' :
+      '<div class="om-tiles"><div><span>Accepted</span><b>' + list.length + '</b></div><div><span>Rent pcm</span><b>' + esc(gbp(total)) + '</b></div><div><span>Top</span><b>' + esc(ranked[0] ? ranked[0] + ' (' + fmtN(who[ranked[0]].n) + ')' : '—') + '</b></div></div>' +
       '<div class="om-who">' + Object.keys(who).sort(function(a, b){ return who[b].n - who[a].n; }).map(function(k){ return '<div><span>' + esc(k) + '</span><b>' + fmtN(who[k].n) + '</b><span>offer' + (who[k].n === 1 ? '' : 's') + ' · ' + esc(gbp(who[k].rent)) + ' pcm</span></div>'; }).join('') + '</div>' +
       '<table class="om-tbl"><tr><th>Accepted</th><th>Property</th><th>Applicant</th><th>Whose offer</th><th style="text-align:right">Rent pcm</th></tr>' + list.map(function(o){ return '<tr><td>' + esc(new Date(o.decided_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })) + '</td><td>' + esc(shortAddr(o.property_address)) + '</td><td>' + esc(o.lead_name || '') + '</td><td>' + (offCreditText(o) || '<span class="muted-note" style="margin:0">Not set</span>') + '</td><td class="n">' + esc(gbp(pcmOf(o))) + '</td></tr>'; }).join('') +
-      '<tr><td colspan="4"><b>Total ' + list.length + ' offer' + (list.length === 1 ? '' : 's') + '</b></td><td class="n"><b>' + esc(gbp(list.reduce(function(a, o){ return a + pcmOf(o); }, 0))) + '</b></td></tr></table>';
+      '<tr><td colspan="4"><b>Total ' + list.length + ' offer' + (list.length === 1 ? '' : 's') + '</b></td><td class="n"><b>' + esc(gbp(total)) + '</b></td></tr></table>' +
+      '<div class="om-list">' + list.map(function(o){ return '<div><b>' + esc(shortAddr(o.property_address)) + ' · ' + esc(gbp(pcmOf(o))) + ' pcm</b><span>' + esc(new Date(o.decided_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })) + ' · ' + esc(o.lead_name || '') + '</span><span>🏅 ' + (offCreditText(o) || 'Not set') + '</span></div>'; }).join('') + '</div>';
   }
+  $('offMonStrip').addEventListener('click', function(e){ var b = e.target.closest('[data-om]'); if (!b) return; $('offMon').value = b.dataset.om; renderOffMonth(); });
+  $('offMonNow').addEventListener('click', function(){ $('offMon').value = offMonthNow(); renderOffMonth(); });
+  $('offMonth').addEventListener('toggle', function(){ if (this.open) renderOffMonth(); });
   $('offMon').addEventListener('change', renderOffMonth);
   $('offMinAll').addEventListener('click', function(){ document.querySelectorAll('#offList [data-off]').forEach(function(x){ offMin[x.dataset.off] = 1; x.classList.add('oc-min'); }); offMinSave(); });
   $('offMaxAll').addEventListener('click', function(){ document.querySelectorAll('#offList [data-off]').forEach(function(x){ delete offMin[x.dataset.off]; x.classList.remove('oc-min'); }); offMinSave(); });
-  $('offMonPrev').addEventListener('click', function(){ var d = new Date(($('offMon').value || offMonthNow()) + '-15'); d.setMonth(d.getMonth() - 1); $('offMon').value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderOffMonth(); });
-  $('offMonNext').addEventListener('click', function(){ var d = new Date(($('offMon').value || offMonthNow()) + '-15'); d.setMonth(d.getMonth() + 1); $('offMon').value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); renderOffMonth(); });
+  $('offMonPrev').addEventListener('click', function(){ $('offMon').value = offMonShift($('offMon').value || offMonthNow(), -1); renderOffMonth(); });
+  $('offMonNext').addEventListener('click', function(){ $('offMon').value = offMonShift($('offMon').value || offMonthNow(), 1); renderOffMonth(); });
   var offMin = {}; try { offMin = JSON.parse(localStorage.getItem('rr_off_min') || '{}') || {}; } catch (e) {}
   function offMinSave(){ try { localStorage.setItem('rr_off_min', JSON.stringify(offMin)); } catch (e) {} }
   function offerCard(o){
@@ -9307,6 +9343,33 @@
   });
   $('navLt').addEventListener('click', function(){ showView('lt'); });
   $('staffTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-stab]'); if (b) showView(b.dataset.stab); });
+
+  // ---------- Change my own password ----------
+  function openMyPw(){
+    var old = $('myPwBox'); if (old) old.remove();
+    document.body.insertAdjacentHTML('beforeend', '<div class="mypw-back" id="myPwBox"><form class="mypw" autocomplete="off"><h3>🔑 Change your password</h3><p class="muted-note" style="margin:0 0 12px">Signed in as <b>' + esc((meta.user || {}).name || '') + '</b>. Use anything you’ll remember — just don’t share it.</p>' +
+      '<label>Current password<input class="inp" type="password" id="myPwCur" autocomplete="current-password"></label><label>New password<input class="inp" type="password" id="myPwNew" autocomplete="new-password"></label><label>New password again<input class="inp" type="password" id="myPwNew2" autocomplete="new-password"></label>' +
+      '<label class="mypw-show"><input type="checkbox" id="myPwShow"> Show passwords</label><p class="mypw-err" id="myPwErr" hidden></p><div class="mypw-act"><button type="button" class="btn ghost" id="myPwX">Cancel</button><button type="submit" class="btn primary" id="myPwGo">Change password</button></div></form></div>');
+    var box = $('myPwBox'), err = function(m, el){ $('myPwErr').textContent = m; $('myPwErr').hidden = false; if (el) el.focus(); };
+    $('myPwCur').focus();
+    $('myPwShow').addEventListener('change', function(){ ['myPwCur', 'myPwNew', 'myPwNew2'].forEach(function(id){ $(id).type = $('myPwShow').checked ? 'text' : 'password'; }); });
+    $('myPwX').addEventListener('click', function(){ box.remove(); });
+    box.addEventListener('click', function(e){ if (e.target === box) box.remove(); });
+    box.querySelector('form').addEventListener('submit', function(e){
+      e.preventDefault(); $('myPwErr').hidden = true;
+      var cur = $('myPwCur').value, nw = $('myPwNew').value, nw2 = $('myPwNew2').value;
+      if (!cur) return err('Enter your current password.', $('myPwCur'));
+      if (!nw.trim()) return err('Enter a new password.', $('myPwNew'));
+      if (nw !== nw2) return err('The new passwords don’t match.', $('myPwNew2'));
+      var b = $('myPwGo'); busy(b, true, 'Saving…');
+      api('POST', '/api/admin/me/password', { current: cur, password: nw }).then(function(d){
+        busy(b, false);
+        if (!d || !d.ok) return err(d && d.error === 'wrong-current' ? 'Your current password isn’t right.' : d && d.error === 'shared-sign-in' ? 'You’re signed in with the shared password — ask the owner to give you your own sign-in.' : 'Couldn’t change it — please try again.', d && d.error === 'wrong-current' ? $('myPwCur') : null);
+        box.remove(); toast('✓ Password changed — use it next time you sign in');
+      });
+    });
+  }
+  $('myPwBtn').addEventListener('click', openMyPw); $('myPwBtnM').addEventListener('click', openMyPw);
 
   // ---------- Sent emails: everything sent through Fixflow's email box ----------
   // Staff see their own; managers can see everyone's and filter by person. The same
