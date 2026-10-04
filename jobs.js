@@ -8698,7 +8698,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     // A few fields at once from the card (access, key number, tenants' contact).
     if (b.patch === true) {
-      const lim = { key_no: 40, access: 20, access_note: 300, contact: 2000 }, sets = [], vals = [id];
+      const lim = { key_no: 40, access: 20, access_note: 300, contact: 2000, commission: 40 }, sets = [], vals = [id];
+      // A commission is a figure or a percentage (e.g. 8%, £1,000, 1 month + VAT).
+      if ('commission' in b && b.commission && (!/\d/.test(String(b.commission)) || /@|\d{7,}/.test(String(b.commission)))) return res.status(400).json({ ok: false, error: 'fee' });
       Object.keys(lim).forEach(function (k) { if (!(k in b)) return; let v = str(b[k], lim[k]) || null; if (k === 'access' && ['landlord', 'tenants', 'keys'].indexOf(v) === -1) v = null; vals.push(v); sets.push(k + ' = $' + vals.length); });
       if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
       await p.query('UPDATE available_props SET ' + sets.join(', ') + ', updated_at = now() WHERE id = $1', vals); return res.json({ ok: true });
