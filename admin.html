@@ -541,7 +541,10 @@
   .av-tags { display: flex; gap: 4px; flex-wrap: wrap; } .av-tag { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: #eef2ff; color: #1d3fae; } .av-tag.urgent { background: #fdecec; color: #b42318; } .av-tag.let { background: #f1f2f4; color: #5f6673; }
   .av-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; } .av-row div { background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 6px 8px; } .av-row span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 700; } .av-row b { font-size: .92rem; } .av-row .now b { color: #0d7a3d; }
   .av-meta { font-size: .84rem; color: var(--ink-soft); } .av-meta b { color: var(--ink); }
-  .av-contact { font-size: .84rem; border: 1px dashed var(--line, #e6e8ec); border-radius: 10px; padding: 6px 8px; } .av-contact summary { cursor: pointer; font-weight: 600; } .av-contact pre { white-space: pre-wrap; font: inherit; margin: 6px 0; } .av-phones { display: flex; gap: 6px; flex-wrap: wrap; }
+  .av-contact { font-size: .84rem; border: 1px dashed var(--line, #e6e8ec); border-radius: 10px; padding: 6px 8px; } .av-contact summary { cursor: pointer; font-weight: 600; } .av-contact pre { white-space: pre-wrap; font: inherit; margin: 6px 0; }
+  .av-person { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid #f2f4f7; } .av-person:first-of-type { border-top: 0; margin-top: 4px; }
+  .av-pwho { flex: 1; min-width: 0; } .av-pwho b { display: block; font-size: .86rem; } .av-pwho small { display: block; color: var(--ink-soft); font-size: .76rem; overflow-wrap: anywhere; }
+  .av-pacts { display: flex; gap: 4px; flex-shrink: 0; } .av-pbtn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 30px; padding: 0 8px; border: 1px solid var(--line, #e6e8ec); border-radius: 8px; background: #fff; text-decoration: none; font-size: .8rem; font-weight: 600; color: inherit; } .av-pbtn.wa { background: #25d366; border-color: #25d366; color: #fff; } .av-phones { display: flex; gap: 6px; flex-wrap: wrap; }
   .av-note { font-size: .84rem; background: #fffaeb; border-radius: 10px; padding: 6px 8px; color: #7a4d00; }
   .av-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line, #e6e8ec); }
   .av-prev-wrap { max-height: 420px; overflow: auto; border: 1px solid var(--line, #e6e8ec); border-radius: 10px; margin-top: 6px; } .av-prev-wrap .av-prev { margin-top: 0; } .av-prev { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: 10px; } .av-prev th, .av-prev td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line, #e6e8ec); vertical-align: top; } .av-prev td small { color: var(--ink-soft); }
@@ -9544,6 +9547,32 @@
   function avDay(v){ return v ? certDay(String(v).slice(0, 10)) : ''; }
   function avNow(x){ return x.vacant || (x.available_from && String(x.available_from).slice(0, 10) <= new Date().toISOString().slice(0, 10)); }
   function avPhones(t){ var out = [], seen = {}; String(t || '').replace(/(\+?44\s?7\d{3}|\b07\d{3})[\s-]?\d{3}[\s-]?\d{3}\b/g, function(m){ var d = m.replace(/[^\d+]/g, ''); if (!seen[d]) { seen[d] = 1; out.push(m.trim()); } }); return out; }
+  // The contact text as people: each name with its own numbers and emails ("Email", "Tel" labels dropped).
+  function avPeople(t){
+    var lines = String(t || '').replace(/\s+·\s+|\s+\/\s+/g, '\n').split(/\n/).map(function(l){ return l.trim(); }), out = [], cur = null;
+    var label = /^(e-?mail|tel|telephone|phone|mobile|mob|number|no\.?|contact|tenants?|name)\s*[:\-]?$/i;
+    var fresh = function(){ cur = { name: '', phones: [], mails: [], notes: [] }; out.push(cur); };
+    lines.forEach(function(l){
+      if (!l) { if (cur && (cur.name || cur.phones.length || cur.mails.length)) cur = null; return; }
+      if (label.test(l)) return;
+      var ph = avPhones(l), ml = avEmails(l), rest = l; ph.forEach(function(p){ rest = rest.replace(p, ' '); }); ml.forEach(function(m){ rest = rest.replace(m, ' '); });
+      rest = rest.replace(/\b(e-?mail|tel|telephone|phone|mobile|mob)\b\s*[:\-]?/ig, ' ').replace(/[\s,;:\-–]+/g, ' ').trim();
+      var isName = rest && rest.length < 60 && !/\d/.test(rest) && /^((mr|mrs|ms|miss|dr|mx)\.?\s+)?[A-Z][A-Za-z'’\-]*(\s+(&|and|[A-Z][A-Za-z'’\-]*)){0,5}$/.test(rest);
+      if (isName && (!cur || cur.name || cur.phones.length || cur.mails.length)) fresh();
+      if (!cur) fresh();
+      if (isName && !cur.name) cur.name = rest; else if (rest) cur.notes.push(rest);
+      ph.forEach(function(p){ if (cur.phones.indexOf(p) === -1) cur.phones.push(p); }); ml.forEach(function(m){ if (cur.mails.indexOf(m) === -1) cur.mails.push(m); });
+    });
+    return out.filter(function(p){ return p.name || p.phones.length || p.mails.length || p.notes.length; });
+  }
+  function avContactHtml(t){
+    var ppl = avPeople(t); if (!ppl.length) return '';
+    return '<details class="av-contact"><summary>👤 Current tenant / viewings contact' + (ppl.length > 1 ? ' (' + ppl.length + ')' : '') + '</summary>' + ppl.map(function(p){
+      var ph = p.phones[0], w = ph ? waNumber(ph) : '', ml = p.mails[0];
+      return '<div class="av-person"><div class="av-pwho"><b>' + esc(p.name || (ph ? 'Phone' : 'Contact')) + '</b><small>' + [p.phones.join(' / '), p.mails.join(' / '), p.notes.join(' · ')].filter(Boolean).map(esc).join(' · ') + '</small></div><div class="av-pacts">' +
+        (ph ? '<a class="av-pbtn" href="tel:' + esc(ph.replace(/[^\d+]/g, '')) + '" title="Call ' + esc(ph) + '">📞</a>' : '') + (w ? '<a class="av-pbtn wa" target="_blank" rel="noopener" href="https://wa.me/' + w + '" title="WhatsApp ' + esc(ph) + '">WhatsApp</a>' : '') + (ml ? '<a class="av-pbtn" href="mailto:' + esc(ml) + '" title="Email ' + esc(ml) + '">✉</a>' : '') + '</div></div>';
+    }).join('') + '</details>';
+  }
   function avEmails(t){ return (String(t || '').match(/[^\s@<>,;"]+@[^\s@<>,;"]+\.[a-z]{2,}/gi) || []).filter(function(v, i, a){ return a.indexOf(v) === i; }); }
   var avDreamOpen = false;
   function dreamInfo(id){
@@ -9668,7 +9697,7 @@
           return h; })() +
         ((x.landlord || x.commission) ? '<div class="av-meta">Landlord <b>' + esc(x.landlord || '—') + '</b>' + (x.commission ? ' · Commission <b>' + esc(x.commission) + '</b>' : '') + '</div>' : '') +
         (x.notes ? '<div class="av-note">📝 ' + esc(x.notes) + '</div>' : '') +
-        (x.contact ? '<details class="av-contact"><summary>👤 Current tenant / viewings contact</summary><pre>' + esc(x.contact) + '</pre><div class="av-phones">' + phones.map(function(ph){ var w = waNumber(ph); return '<a class="btn small" href="tel:' + esc(ph.replace(/[^\d+]/g, '')) + '">📞 ' + esc(ph) + '</a>' + (w ? '<a class="btn small wa" target="_blank" rel="noopener" href="https://wa.me/' + w + '">WhatsApp</a>' : ''); }).join('') + mails.map(function(m){ return '<a class="btn small" href="mailto:' + esc(m) + '">✉ ' + esc(m) + '</a>'; }).join('') + '</div></details>' : '') +
+        (x.contact ? avContactHtml(x.contact) : '') +
         '<div class="av-acts">' + (off ? '<button type="button" class="btn small" data-avs="available">↩ Back on the list</button>' : '<button type="button" class="btn small primary" data-ava="offer">📝 Offer form</button><button type="button" class="btn small" data-ava="pvr">🗓 PVR</button><button type="button" class="btn small" data-ava="view">👀 Book viewing</button><button type="button" class="btn small" data-ava="send" title="Send the property or its video by WhatsApp or email">📤 Send</button><button type="button" class="btn small ghost" data-ava="copy">📋 Copy</button>') +
           (!off ? '<button type="button" class="btn small ghost" data-ava="rm" title="Link to a Rightmove listing">🔗 Rightmove</button>' : '') + ((ytM[x.id] || []).length && !off ? '<button type="button" class="btn small ghost" data-ava="ytshare" title="Send the video">📤 Video</button>' : '') + (ytData && ytData.at && !off ? '<button type="button" class="btn small ghost" data-ava="yt" title="Choose the video">🎬</button>' : '') + '<button type="button" class="btn small ghost" data-ava="edit">✏️</button>' + (off ? '' : '<button type="button" class="btn small ghost" data-avs="let" title="Mark as let">✓ Let</button>') + (canDel ? '<button type="button" class="btn small ghost danger" data-ava="del" title="Delete">🗑</button>' : '') + '</div></div>';
     }).join('') + (avMore ? '<div style="grid-column:1/-1;text-align:center"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more (' + avMore + ' not shown — or search above)</button></div>' : '') : '<div class="card"><p class="muted-note" style="margin:0">' + (avItems.length ? 'Nothing matches — try another filter.' : 'No properties yet — add one, or paste your list from the spreadsheet.') + '</p></div>';
