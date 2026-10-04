@@ -568,6 +568,8 @@
   .av-lt-wrap { grid-column: 1 / -1; overflow-x: auto; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #fff; }
   .av-lt { width: 100%; border-collapse: collapse; font-size: .85rem; } .av-lt th { position: sticky; top: 0; background: #f9fafb; text-align: left; padding: 8px 10px; font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-soft); cursor: pointer; user-select: none; white-space: nowrap; border-bottom: 1px solid var(--line, #e6e8ec); } .av-lt th.on { color: var(--ink, #101828); }
   .av-lt td { padding: 7px 10px; border-bottom: 1px solid #f2f4f7; vertical-align: middle; } .av-lt tr:hover td { background: #f9fafb; } .av-lt td.nw { white-space: nowrap; } .av-lt td.ad { min-width: 260px; } .av-lt td.ad .linkish { opacity: .5; } .av-lt tr:hover td.ad .linkish { opacity: 1; } .av-lt td.nt { max-width: 200px; color: var(--ink-soft); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ll-find { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+  .ll-find-list { display: grid; gap: 6px; margin-top: 8px; max-height: 320px; overflow: auto; } .ll-find-hit { display: flex; align-items: center; gap: 10px; text-align: left; border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 10px; padding: 8px 10px; cursor: pointer; font: inherit; color: inherit; } .ll-find-hit:hover { border-color: #101828; } .ll-find-hit b { flex: 1; font-size: .88rem; } .ll-find-hit span { color: var(--ink-soft); font-size: .78rem; } .ll-find-hit i { font-style: normal; font-weight: 700; color: #155eef; }
   .av-known { background: #ecfdf3; border: 1px solid #abefc6; border-radius: 10px; padding: 8px 10px; font-size: .84rem; display: grid; gap: 3px; } .av-known.new { background: #f9fafb; border-color: var(--line, #e6e8ec); color: var(--ink-soft); }
   .av-access { border: 1px solid var(--line, #e6e8ec); border-radius: 10px; padding: 6px 8px; margin: 6px 0; font-size: .84rem; } .av-acc-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; } .av-acc-lbl { font-weight: 700; margin-right: 4px; }
   .av-acc-chip { border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 999px; padding: 2px 9px; font-size: .78rem; cursor: pointer; color: inherit; } .av-acc-chip.on { background: #101828; border-color: #101828; color: #fff; }
@@ -1396,7 +1398,9 @@
             <div class="list" id="llProps"></div>
             <div class="tenant-find" style="margin-top:12px"><label class="lbl" for="llAddProp">Add a property to this landlord</label>
               <div style="display:flex;gap:8px"><input class="inp" id="llAddProp" list="llPropList" placeholder="Start typing an address from your jobs"><button class="btn" id="llAddPropBtn" type="button">Add</button></div>
-              <datalist id="llPropList"></datalist></div>
+              <datalist id="llPropList"></datalist>
+              <div class="ll-find"><span class="muted-note" style="margin:0">Or find it on the EPC register:</span><input class="inp" id="llDoor" placeholder="Door / flat no." style="width:130px"><input class="inp" id="llPc" placeholder="Postcode" style="width:120px;text-transform:uppercase"><button class="btn" id="llFindBtn" type="button">🔎 Find address</button></div>
+              <div id="llFindRes"></div></div>
           </div>
           <div class="card" id="llOwn" style="margin-top:12px" hidden></div>
           <h3 style="font-family:var(--display);margin:18px 0 10px">Repairs across their properties</h3>
@@ -7271,6 +7275,32 @@
     if (cur && cur.id !== openLlId && !confirm(a + ' is currently ' + cur.name + '’s property. Move it to this landlord?')) return;
     $('llAddProp').value = '';
     linkProperty(a, openLlId);
+  });
+  // Postcode + door number → the full address from the EPC register; adding it also files its EPC.
+  function llFind(){
+    var pc = $('llPc').value.trim(), door = $('llDoor').value.trim();
+    if (!/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(pc)) { toast('Enter the full postcode'); $('llPc').focus(); return; }
+    var b = $('llFindBtn'); busy(b, true, 'Searching…'); $('llFindRes').innerHTML = '';
+    api('GET', '/api/admin/epc-addresses?postcode=' + encodeURIComponent(pc) + '&door=' + encodeURIComponent(door)).then(function(d){
+      busy(b, false);
+      if (!d || !d.ok) { $('llFindRes').innerHTML = '<p class="muted-note">' + (d && d.error === 'register-unreachable' ? 'The EPC register isn’t answering just now — try again, or type the address above.' : 'Couldn’t search that postcode.') + '</p>'; return; }
+      if (!d.results.length) { $('llFindRes').innerHTML = '<p class="muted-note">No address' + (door ? ' with number ' + esc(door) : '') + ' at ' + esc(d.postcode) + ' on the EPC register' + (door ? ' — check the number, or leave it empty to see every address there' : '') + '. You can still type the address above.</p>'; return; }
+      $('llFindRes').innerHTML = '<div class="ll-find-list">' + d.results.map(function(r){ return '<button type="button" class="ll-find-hit" data-epcaddr="' + esc(r.address) + '"><b>' + esc(r.address) + '</b><span>' + (r.rating ? 'EPC ' + esc(r.rating) : 'EPC') + (r.expires_on ? (r.expired ? ' · expired ' : ' · valid until ') + esc(certDay(r.expires_on)) : '') + '</span><i>Add</i></button>'; }).join('') + '</div>';
+    });
+  }
+  $('llFindBtn').addEventListener('click', llFind);
+  ['llPc', 'llDoor'].forEach(function(id){ $(id).addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); llFind(); } }); });
+  $('llFindRes').addEventListener('click', function(e){
+    var h = e.target.closest('[data-epcaddr]'); if (!h) return;
+    var a = h.dataset.epcaddr, cur = landlordRecordAt(a);
+    if (cur && cur.id !== openLlId && !confirm(a + ' is currently ' + cur.name + '’s property. Move it to this landlord?')) return;
+    busy(h, true, 'Adding…');
+    Promise.resolve(linkProperty(a, openLlId)).then(function(){ return api('POST', '/api/admin/epc-auto', { address: a }); }).then(function(r){
+      $('llFindRes').innerHTML = ''; $('llDoor').value = ''; $('llPc').value = '';
+      toast(r && r.found ? '✓ Added, with its EPC from the register' : '✓ Added — no current EPC found on the register for it');
+      if (typeof loadCerts === 'function') loadCerts();
+      if (view === 'll' && openLlId) renderLandlord();
+    });
   });
   $('llJobs').addEventListener('click', function(e){ var b = e.target.closest('.job'); if (b) openJob(Number(b.dataset.id)); });
 
