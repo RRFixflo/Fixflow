@@ -8280,8 +8280,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // ALL-CAPS / all-lowercase addresses put in normal case.
   function availAddr(a) {
     let s = String(a == null ? '' : a).replace(/\r?\n+/g, ', ').replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').replace(/(,\s*)+/g, ', ').replace(/^[,\s]+|[,\s.]+$/g, '').trim();
-    const letters = s.replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/gi, '').replace(/[^a-z]/gi, '');
-    if (letters && (letters === letters.toUpperCase() || letters === letters.toLowerCase())) s = s.toLowerCase().replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); }).replace(/\b(\d+)([A-Z])\b/g, function (m, d, l) { return d + l.toLowerCase(); });
+    const PC = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/gi;
+    s = s.split(', ').map(function (part) {
+      const letters = part.replace(PC, '').replace(/[^a-z]/gi, '');
+      if (!letters || (letters !== letters.toUpperCase() && letters !== letters.toLowerCase())) return part;
+      return part.toLowerCase().replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); }).replace(/\b(\d+)([A-Z])\b/g, function (m, d, l) { return d + l.toLowerCase(); });
+    }).join(', ');
     s = s.replace(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/gi, function (m, o, i) { return o.toUpperCase() + ' ' + i.toUpperCase(); });
     const parts = s.split(', '), out = []; parts.forEach(function (x) { if (!out.length || out[out.length - 1].toLowerCase() !== x.toLowerCase()) out.push(x); });
     return out.join(', ');
