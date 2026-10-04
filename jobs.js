@@ -7410,6 +7410,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       lines.forEach(function (l) { text(l, M + 116, ty, 8, F, C.soft); ty -= 11; });
       y -= hh + 4;
     });
+    ensure(62); await pdfAssoc(pdf, page, M, y - 14, 30, B, C.soft); y -= 60;
 
     // Footer on every page of ours: company, document ID, page numbers.
     const own = pages.filter(function (x) { return !x.external; }), total = pdf.getPageCount();
@@ -8094,6 +8095,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       let ty = y - 8; tl.forEach(function (ln) { text(ln, M + 120, ty, 9, B, C.ink); ty -= 12; }); sl.forEach(function (ln) { text(ln, M + 120, ty, 7.8, F, C.soft); ty -= 10; });
       y -= hh + 4;
     });
+    ensure(62); await pdfAssoc(pdf, page, M, y - 14, 30, B, C.soft); y -= 60;
     // Footer
     const total = pdf.getPageCount();
     pages.forEach(function (pg, i) { page = pg; pg.drawLine({ start: { x: M, y: 50 }, end: { x: W - M, y: 50 }, thickness: 0.5, color: C.line }); text('Residential Realtors \xB7 Trading name of Estallion Investments Limited \xB7 Registered in England No. ' + (INVOICE.companyNo || '08760284'), M, 37, 6.8, F, C.soft); text('Document ID ' + docId + '  \xB7  ' + (opts.landlord ? 'Landlord copy' : 'Office copy') + (signed ? '  \xB7  Electronically signed' : ''), M, 27, 6.8, F, C.faint); right('Page ' + (i + 1) + ' of ' + total, W - M, 33, 7.5, B, C.ink); });
@@ -8101,6 +8103,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return { bytes: await pdf.save(), name: 'Landlord Terms - ' + ref + ' - ' + String(t.property_address || '').replace(/[^\w ,.-]+/g, ' ').slice(0, 60) + '.pdf' };
   }
 
+  // The associations we belong to (The Property Ombudsman, NAEA Propertymark, TDS), as a row of logos on our signed PDFs.
+  const ASSOC_IMGS = (function () { try { return ['assoc-tpo.png', 'assoc-propertymark.png', 'assoc-tds.png'].map(function (f) { return require('fs').readFileSync(require('path').join(__dirname, 'icons', f)); }); } catch (e) { return []; } })();
+  async function pdfAssoc(pdf, page, x, yTop, h, font, color) {
+    if (!ASSOC_IMGS.length) return;
+    page.drawText('PROUD MEMBERS OF', { x: x, y: yTop, size: 6.8, font: font, color: color });
+    let cx = x;
+    for (const buf of ASSOC_IMGS) { const img = await pdf.embedPng(buf), w = img.width * h / img.height; page.drawImage(img, { x: cx, y: yTop - 8 - h, width: w, height: h }); cx += w + 12; }
+  }
   // ---------- Pre-viewing reservations (PVR) ----------
   // An applicant reserves a property before viewing it: they sign the PVR form
   // (by private link) and pay one week's rent. After the viewing they tell us
@@ -8341,6 +8351,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       ['Formal offer', d.offer_ref || ''], ['Refund', t.decision === 'no' ? (d.refunded_at ? 'Sent ' + stamp(d.refunded_at) : d.refund ? 'Account details given' : 'Not due / not requested') : ''],
       !opts.applicant && d.refund ? ['Refund to', d.refund.name + ' \xB7 ' + (d.refund.iban || d.refund.sort_code + ' ' + d.refund.account)] : null, d.reason ? ['Their comments', d.reason] : null].filter(Boolean));
     if (t.signed_at) { head('Signing evidence'); grid([['IP address', au.ip], ['Device', au.ua ? deviceOf(au.ua) : ''], ['Started', au.started_at ? stamp(au.started_at) : ''], ['Fingerprint', d.fingerprint ? String(d.fingerprint).slice(0, 32) : '']]); }
+    ensure(62); await pdfAssoc(pdf, page, M, y - 14, 30, B, C.soft); y -= 60;
     const total = pages.length;
     pages.forEach(function (pg, i) { page = pg; pg.drawLine({ start: { x: M, y: 50 }, end: { x: W - M, y: 50 }, thickness: 0.5, color: C.line }); text('Residential Realtors \xB7 Trading name of Estallion Investments Limited \xB7 Registered in England No. ' + (INVOICE.companyNo || '08760284') + ' \xB7 0207 096 8131 \xB7 info@residentialrealtors.co.uk', M, 37, 6.6, F, C.soft); text('Document ID ' + docId + '  \xB7  ' + (opts.applicant ? 'Applicant copy' : 'Office copy'), M, 27, 6.6, F, C.faint); const pgT = 'Page ' + (i + 1) + ' of ' + total; text(pgT, W - M - B.widthOfTextAtSize(pgT, 7.5), 33, 7.5, B, C.ink); });
     pdf.setTitle('Pre-Viewing Reservation - ' + ref); pdf.setAuthor('Residential Realtors'); pdf.setCreator('Fixflow'); pdf.setProducer('Fixflow');
