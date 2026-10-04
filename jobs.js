@@ -526,6 +526,7 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_manual BOOLEAN NOT NULL 
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS yt_id TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_url TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS let_on DATE;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS dream_rm JSONB NOT NULL DEFAULT '[]'::jsonb;
 CREATE TABLE IF NOT EXISTS sent_emails (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1645,7 +1646,7 @@ module.exports = function mountJobs(app, opts) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;
     if (/^\/pvr(\/\d+(\/pdf)?)?$/.test(path)) return true;
-    if (/^\/available(\/\d+(\/(rightmove|youtube))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
+    if (/^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
@@ -8383,8 +8384,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   async function rmAutoLink(p, list) {
     if (!list) { const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0]; list = c && c.value && c.value.items || []; }
     if (!list.length) return;
-    const av = (await p.query("SELECT id, address, beds, rent_pcm, rm_id, rm_manual FROM available_props WHERE status = 'available'")).rows;
-    const taken = {}; av.forEach(function (a) { if (a.rm_manual && a.rm_id && a.rm_id !== 'none') taken[a.rm_id] = 1; });
+    const av = (await p.query("SELECT id, address, beds, rent_pcm, rm_id, rm_manual, dream_rm FROM available_props WHERE status = 'available'")).rows;
+    const taken = {}; av.forEach(function (a) { if (a.rm_manual && a.rm_id && a.rm_id !== 'none') taken[a.rm_id] = 1; (a.dream_rm || []).forEach(function (d) { taken[d] = 1; }); });
     const pairs = [];
     av.filter(function (a) { return !a.rm_manual; }).forEach(function (a) { list.forEach(function (r) { const s = rmScore(a, r); if (s >= 5) pairs.push({ a: a.id, r: r.id, s: s }); }); });
     pairs.sort(function (x, y) { return y.s - x.s; });
@@ -8435,6 +8436,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query('UPDATE available_props SET rm_id = $2, rm_manual = true, rm_url = $3 WHERE id = $1', [id, rid, rid === 'none' ? null : RM_BASE + '/properties/' + rid]);
     res.json({ ok: true });
   }));
+  // A Rightmove listing that's a "Dream" advert for one of our properties (a property can have several).
+  app.post('/api/admin/available/:id/dream', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req), fromUrl = /rightmove\.co\.uk\/properties\/(\d{5,12})/i.exec(String(b.url || '')), rid = fromUrl ? fromUrl[1] : String(b.rm_id || '').replace(/\D/g, '').slice(0, 20);
+    if (!rid) return res.status(400).json({ ok: false, error: 'listing' });
+    if (b.remove === true) { await p.query("UPDATE available_props SET dream_rm = coalesce((SELECT jsonb_agg(x) FROM jsonb_array_elements_text(dream_rm) x WHERE x <> $2), '[]'::jsonb) WHERE id = $1", [id, rid]); return res.json({ ok: true }); }
+    // One home per listing: take it off any other property first (as a Dream or an auto match).
+    await p.query("UPDATE available_props SET dream_rm = coalesce((SELECT jsonb_agg(x) FROM jsonb_array_elements_text(dream_rm) x WHERE x <> $1), '[]'::jsonb) WHERE dream_rm ? $1", [rid]);
+    await p.query("UPDATE available_props SET rm_id = NULL WHERE rm_id = $1 AND NOT rm_manual", [rid]);
+    await p.query("UPDATE available_props SET dream_rm = dream_rm || to_jsonb($2::text) WHERE id = $1 AND NOT dream_rm ? $2", [id, rid]);
+    res.json({ ok: true });
+  }));
   setInterval(function () { db().then(async function (p) { if (!p) return; const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0]; if (!c || !c.value || Date.now() - Date.parse(c.value.at) > 55 * 60000) await softRefresh(p, 'rightmove_list', rmRefresh, function () { return rmBusy; }, function (x) { rmBusy = x; }, false); }).catch(function (e) { console.error('Rightmove check failed:', e.message); }); }, 10 * 60 * 1000).unref();
 
   // ---------- YouTube: property videos from our channel ----------
@@ -8466,7 +8478,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       let token = '';
       for (let i = 0; i < 10; i++) {
         const pl = await (await fetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=' + up + (token ? '&pageToken=' + token : '') + '&key=' + YT_KEY, { signal: AbortSignal.timeout(15000) })).json();
-        (pl.items || []).forEach(function (it) { const sn = it.snippet || {}; add({ id: (sn.resourceId || {}).videoId, title: sn.title || '', published: sn.publishedAt || null }); });
+        (pl.items || []).forEach(function (it) { const sn = it.snippet || {}; add({ id: (sn.resourceId || {}).videoId, title: sn.title || '', desc: String(sn.description || '').slice(0, 400), published: sn.publishedAt || null }); });
         token = pl.nextPageToken; if (!token) break;
       }
       return out;
@@ -8527,10 +8539,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const t = String(v.title || '') + ' ' + String(v.desc || ''), oa = rmOutcode(av.address), pcs = t.toUpperCase().match(/\b[A-Z]{1,2}\d[A-Z\d]?\b(?=\s*\d[A-Z]{2}\b|\s*[,)\-|]|\s*$)/g) || [];
     let sc = 0;
     if (oa && pcs.length) { if (pcs.indexOf(oa) === -1) return -1; sc += 3; }
-    const wa = rmWords(av.address), wt = rmWords(t);
-    const hit = wa.filter(function (w, i) { return wa.indexOf(w) === i && wt.some(function (x) { return ytSameWord(w, x); }); });
+    const wa = rmWords(av.address), wt = rmWords(v.title), wd = rmWords(v.desc);
+    const inT = function (w) { return wt.some(function (x) { return ytSameWord(w, x); }); }, inD = function (w) { return wd.some(function (x) { return ytSameWord(w, x); }); };
+    const hit = wa.filter(function (w, i) { return wa.indexOf(w) === i && (inT(w) || inD(w)); });
     if (!hit.length) return -1;
-    sc += Math.min(5, hit.reduce(function (n, w) { return n + (w.length >= 6 ? 2 : 1.5); }, 0));
+    sc += Math.min(5, hit.reduce(function (n, w) { return n + (inT(w) ? (w.length >= 6 ? 2 : 1.5) : 1); }, 0));
     if (hit.some(function (w) { return w.length >= 8; })) v._long = true; else delete v._long;
     const door = (/^(?:flat|apartment|unit)?\s*(\d+[a-z]?)\b/i.exec(String(av.address).trim()) || [])[1], td = t.match(/\b\d+[a-z]?\b/gi) || [];
     if (door && td.indexOf(door) !== -1) sc += 1;
@@ -8554,7 +8567,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const av = (await p.query("SELECT id, address, beds, yt_id FROM available_props WHERE status = 'available'")).rows, matches = {}, suggest = {};
     av.forEach(function (a) {
       if (a.yt_id === 'none') { matches[a.id] = []; return; }
-      let list = vids.map(function (x) { const sc = ytScore(a, x); return { x: x, s: sc, long: !!x._long }; }).filter(function (o) { return o.s >= 3 || (o.s >= 2 && o.long); }).map(function (o) { return o.x; }).sort(ytNewest);
+      let list = vids.map(function (x) { const sc = ytScore(a, x); return { x: x, s: sc, long: !!x._long }; }).filter(function (o) { return o.s >= 3; }).map(function (o) { return o.x; }).sort(ytNewest);
       if (a.yt_id) { const pick = vids.filter(function (x) { return x.id === a.yt_id; })[0] || { id: a.yt_id, title: 'Chosen video' }; list = [pick].concat(list.filter(function (x) { return x.id !== a.yt_id; })); }
       matches[a.id] = list.slice(0, 1).map(function (x) { return x.id; });   // one video per property: the latest
       suggest[a.id] = vids.map(function (x) { return { id: x.id, s: ytScore(a, x) }; }).filter(function (o) { return o.s > 0; }).sort(function (x, y) { return y.s - x.s; }).slice(0, 6).map(function (o) { return o.id; });
