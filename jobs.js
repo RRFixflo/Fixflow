@@ -5476,6 +5476,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
     try { const s = await epcSearch(pc); res.json({ ok: true, postcode: pc, url: s.url, results: s.results }); }
     catch (err) { res.json({ ok: false, error: 'register-unreachable', url: 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?lang=en&property_type=domestic&postcode=' + encodeURIComponent(pc) }); }
   });
+  // Find a property's full address from its postcode and door / flat number, using the EPC register:
+  // one entry per address (its latest certificate), those with that number first.
+  app.get('/api/admin/epc-addresses', async function (req, res) {
+    const m = POSTCODE_RE.exec(String(req.query.postcode || '')); if (!m) return res.status(400).json({ ok: false, error: 'postcode-required' });
+    const pc = (m[1] + ' ' + m[2]).toUpperCase(), door = String(req.query.door || '').trim().toUpperCase().replace(/^(FLAT|APARTMENT|APT|UNIT|NO\.?)\s*/, '');
+    let s; try { s = await epcSearch(pc); } catch (e) { return res.json({ ok: false, error: 'register-unreachable' }); }
+    const by = {};
+    s.results.forEach(function (r) {
+      const full = tidyAddress(POSTCODE_RE.test(r.address) ? r.address : r.address + ', ' + pc), k = full.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!by[k] || String(r.expires_on || '') > String(by[k].expires_on || '')) by[k] = { address: full, rating: r.rating, expires_on: r.expires_on, expired: r.expired, link: r.link };
+    });
+    let list = Object.keys(by).map(function (k) { return by[k]; });
+    if (door) { const hit = list.filter(function (x) { return epcNums(x.address).indexOf(door) !== -1; }); list = hit.length ? hit : []; }
+    list.sort(function (a, b) { return a.address.localeCompare(b.address, 'en', { numeric: true }); });
+    res.json({ ok: true, postcode: pc, door: door, results: list.slice(0, 60), total: s.results.length, url: s.url });
+  });
   // The register entry for one of our properties: same door/flat number (first
   // number matching, all of ours present) and a street or building word in common.
   // The same flat is often written several ways over the years ("FLAT 52 ROWLAND
