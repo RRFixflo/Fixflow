@@ -1804,7 +1804,8 @@ module.exports = function mountJobs(app, opts) {
     req.role = t.role || null;
     if (!req.user) req.user = { id: null, name: req.role === 'offers' ? 'Offers staff' : 'Owner', role: req.role === 'offers' ? 'offers' : 'owner' };
     if (req.role === 'offers' && !staffAllowed(req.method, req.path) && !(req.user.role === 'offers_admin' && /^\/(users(\/\d+(\/send-login)?)?|staff-activity)$/.test(req.path))) return res.status(403).json({ ok: false, error: 'not-allowed' });
-    if (req.method !== 'GET' && !req.is('application/json')) return res.status(415).json({ ok: false, error: 'json-only' });
+    // (A whole licence register can also come as the file itself — types a cross-site form can't send.)
+    if (req.method !== 'GET' && !req.is('application/json') && !(req.method === 'POST' && req.path === '/licence-register-scan' && req.is(['application/pdf', 'text/csv']))) return res.status(415).json({ ok: false, error: 'json-only' });
     // Who did what: note each change once it has gone through.
     const act0 = req.method !== 'GET' ? describeAction(req) : '';   // req.path is only relative to /api/admin here
     if (act0) res.on('finish', function () {
@@ -2663,6 +2664,203 @@ module.exports = function mountJobs(app, opts) {
         status: l && l.status === 'applied' ? 'applied' : 'licensed', holder: str(l && l.holder, 200) || '', starts: day(l && l.starts), expires: day(l && l.expires) };
     }).filter(function (l) { return l.address; });
     res.json({ ok: true, licences: licences });
+  }));
+
+  // A whole council licence register (a PDF of hundreds or thousands of pages, a
+  // CSV, or the council page that links to one) checked against every property
+  // we have. Runs in the background; nothing from the register is kept except
+  // the licences the office then saves for its own properties.
+  const regScans = {};
+  function regScanPublic(s) { return { ok: true, id: s.id, state: s.status, step: s.step, pages: s.pages, page: s.page, error: s.error || null, result: s.status === 'done' ? s.result : null }; }
+  async function regFetch(url, depth) {
+    const r = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(180000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Fixflow licence check)', Accept: '*/*' } });
+    if (!r.ok) throw new Error('fetch-' + r.status);
+    const type = String(r.headers.get('content-type') || '').toLowerCase(), buf = Buffer.from(await r.arrayBuffer());
+    if (buf.slice(0, 5).toString() === '%PDF-') return { kind: 'pdf', buf: buf, url: r.url || url };
+    if (/csv|text\/plain/.test(type) || /\.csv(\?|$)/i.test(url)) return { kind: 'text', text: buf.toString('utf8'), url: r.url || url };
+    if (/sheet|excel/.test(type) || /\.xlsx?(\?|$)/i.test(url)) throw new Error('excel');
+    if (/html/.test(type) && depth < 2) {
+      // The council's page: follow its link to the register (a PDF or CSV, "register" in the link if there's a choice).
+      const html = buf.toString('utf8'), links = [];
+      html.replace(/<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi, function (m, href, label) {
+        try { links.push({ url: new URL(href.replace(/&amp;/g, '&'), r.url || url).href, label: label.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() }); } catch (e) {}
+        return m;
+      });
+      const isFile = function (l) { return /\.(pdf|csv)(\?|$)/i.test(l.url) || /\/(download|media|documents?|file)s?\//i.test(l.url); };
+      const score = function (l) { const t = (l.label + ' ' + l.url).toLowerCase(); return (/register/.test(t) ? 4 : 0) + (/licen[cs]/.test(t) ? 2 : 0) + (/\.pdf|\.csv/.test(l.url.toLowerCase()) ? 1 : 0) - (/application|form|guid|fee|condition|policy|map/.test(t) ? 3 : 0); };
+      const pick = links.filter(isFile).sort(function (a, b) { return score(b) - score(a); })[0];
+      if (!pick || score(pick) < 2) throw new Error('no-register-link');
+      return regFetch(pick.url, depth + 1);
+    }
+    throw new Error('not-a-register');
+  }
+  // The PDF's text as lines, in reading order (cells on one line joined with " | ").
+  async function regPdfLines(buf, onPage) {
+    const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
+    pdfjs.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/legacy/build/pdf.worker.js');
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(buf), disableFontFace: true, isEvalSupported: false, verbosity: 0 }).promise;
+    const lines = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      const page = await doc.getPage(n), tc = await page.getTextContent(), rows = [];
+      tc.items.forEach(function (it) {
+        const s = String(it.str || ''); if (!s.trim()) return;
+        const x = it.transform[4], y = it.transform[5], h = Math.abs(it.transform[3]) || 8;
+        let row = rows.filter(function (r) { return Math.abs(r.y - y) <= h * 0.45; })[0];
+        if (!row) { row = { y: y, items: [] }; rows.push(row); }
+        row.items.push({ x: x, w: it.width || s.length * h * 0.5, s: s, h: h });
+      });
+      rows.sort(function (a, b) { return b.y - a.y; }).forEach(function (r) {
+        r.items.sort(function (a, b) { return a.x - b.x; });
+        let out = '', end = null;
+        r.items.forEach(function (it) { out += end == null ? it.s : (it.x - end > it.h * 1.2 ? ' | ' : (it.x - end > it.h * 0.15 ? ' ' : '')) + it.s; end = it.x + it.w; });
+        lines.push({ page: n, text: out.replace(/\s+/g, ' ').trim() });
+      });
+      page.cleanup();
+      if (onPage) onPage(n, doc.numPages);
+    }
+    await doc.destroy();
+    return lines;
+  }
+  function pcNorm(s) { const m = POSTCODE_RE.exec(String(s || '')); return m ? String(m[0]).replace(/\s+/g, '').toUpperCase() : ''; }
+  async function regScanRun(p, s, src) {
+    s.step = 'Downloading the register';
+    const got = src.buf ? { kind: 'pdf', buf: src.buf } : src.text != null ? { kind: 'text', text: src.text } : await regFetch(src.url, 0);
+    let lines;
+    if (got.kind === 'pdf') {
+      s.step = 'Reading the register';
+      lines = await regPdfLines(got.buf, function (n, of) { s.page = n; s.pages = of; });
+    } else lines = got.text.split(/\r?\n/).map(function (t) { return { page: 1, text: t.replace(/\t/g, ' | ').replace(/","/g, '" | "').replace(/\s+/g, ' ').trim() }; });
+    got.buf = null; got.text = null; src.buf = null; src.text = null;
+    s.step = 'Matching your properties';
+    // Every property we have (repairs, certificates, landlords, tenants, tenancies, details, the available list).
+    const all = await allProperties(p), have = {}; all.forEach(function (x) { have[x.key] = 1; });
+    (await p.query(`SELECT address AS a FROM tenancies WHERE address IS NOT NULL UNION SELECT address FROM landlord_properties WHERE address IS NOT NULL
+      UNION SELECT address FROM available_props WHERE status = 'available'`)).rows.forEach(function (r) { const k = propKey(r.a); if (k && !have[k]) { have[k] = 1; all.push({ key: k, address: r.a }); } });
+    const byPc = {};
+    all.forEach(function (x) { const pc = pcNorm(x.address); if (pc) (byPc[pc] = byPc[pc] || []).push(x); });
+    // The lines of the register around each of our postcodes (the rest is never looked at).
+    const snips = {}, PCG = new RegExp(POSTCODE_RE.source, 'gi');
+    let pcsSeen = 0;
+    lines.forEach(function (l, i) {
+      const found = l.text.match(PCG); if (!found) return;
+      pcsSeen += found.length;
+      found.forEach(function (m) {
+        const pc = m.replace(/\s+/g, '').toUpperCase(); if (!byPc[pc]) return;
+        const sn = snips[pc] = snips[pc] || { idx: {} };
+        for (let j = Math.max(0, i - 4); j <= Math.min(lines.length - 1, i + 4); j++) if (lines[j].page === l.page) sn.idx[j] = 1;
+      });
+    });
+    s.register_postcodes = pcsSeen;
+    const pcs = Object.keys(snips);
+    s.step = 'Reading the entries for your properties';
+    const licences = {};
+    const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : ''; };
+    let next = 0;
+    const worker = async function () {
+      while (next < pcs.length) {
+        const pc = pcs[next++];
+        let text = '', prev = -2;
+        Object.keys(snips[pc].idx).map(Number).sort(function (a, b) { return a - b; }).forEach(function (j) { text += (j !== prev + 1 ? '\n…\n' : '\n') + lines[j].text; prev = j; });
+        const prompt = 'Below are extracts from a UK council\'s public register of property licences (selective, additional HMO or mandatory HMO licensing). The text came from a PDF table, so cells are separated by " | " and an entry can run over more than one line.\n----\n' + text.slice(0, 20000) + '\n----\n' +
+          'List every licence (or licence application) in these extracts whose address is in postcode ' + pc.replace(/(\d[A-Z]{2})$/, ' $1') + '. Reply with ONLY JSON: {"licences": [{"address": "", "type": "", "number": "", "status": "", "holder": "", "starts": "", "expires": ""}]}. ' +
+          'address: the licensed property address as shown (keep flat/house numbers exactly). type: "Selective", "Additional (HMO)" or "Mandatory HMO" (as shown, else ""). number: the licence/reference number. status: "licensed" if granted/issued, "applied" if applied for but not yet issued, "" if unclear. holder: the licence holder if shown. starts and expires: YYYY-MM-DD ("" if not shown; UK dates are day/month/year). Never invent anything.';
+        let list = [];
+        for (let tries = 0; tries < 2 && !list.length; tries++) {
+          const r = await opts.askAi(prompt, true, []).catch(function () { return { ok: false }; });
+          if (!r || !r.ok) continue;
+          try { const d = JSON.parse(String(r.text).replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()); list = Array.isArray(d.licences) ? d.licences : []; } catch (e) { list = []; }
+          if (list.length || tries) break;
+        }
+        licences[pc] = list.slice(0, 200).map(function (l) {
+          return { address: str(l && l.address, 300) || '', type: str(l && l.type, 60) || '', number: str(l && l.number, 60) || '', status: l && l.status === 'applied' ? 'applied' : 'licensed',
+            holder: str(l && l.holder, 200) || '', starts: day(l && l.starts), expires: day(l && l.expires) };
+        }).filter(function (l) { return l.address; });
+        s.done_pcs = (s.done_pcs || 0) + 1; s.step = 'Reading the entries for your properties (' + s.done_pcs + ' of ' + pcs.length + ' postcodes)';
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    // Each of our properties: its licence in the register, if any.
+    const info = {};
+    (await p.query('SELECT property_key, licence FROM property_info WHERE licence IS NOT NULL')).rows.forEach(function (r) { info[r.property_key] = r.licence; });
+    const matched = [], possible = [], used = {};
+    pcs.forEach(function (pc) {
+      (licences[pc] || []).forEach(function (l) {
+        const full = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(l.address) ? l.address : l.address + ' ' + pc;
+        const hits = byPc[pc].filter(function (x) { return sameAddr(x.address, full); });
+        if (hits.length === 1 && !used[hits[0].key + '|' + l.number]) {
+          used[hits[0].key + '|' + l.number] = 1;
+          const cur = info[hits[0].key];
+          matched.push({ key: hits[0].key, address: hits[0].address, register_address: l.address, licence: l, current: cur ? { status: cur.status, number: cur.number || '', expires: cur.expires || null } : null,
+            same: !!(cur && cur.number && l.number && cur.number.replace(/\s+/g, '') === l.number.replace(/\s+/g, '') && (cur.expires || '') === (l.expires || '')) });
+        } else if (!hits.length) {
+          // Same house/flat number in one of our postcodes, but the street or building doesn't quite match: for the office to check.
+          const nums = (propKey(l.address).match(/\b\d+[a-z]?\b/g) || []);
+          const near = byPc[pc].filter(function (x) { const xn = propKey(x.address).match(/\b\d+[a-z]?\b/g) || []; return nums.length && nums.every(function (n) { return xn.indexOf(n) !== -1; }); });
+          if (near.length) possible.push({ register_address: l.address, licence: l, maybe: near.map(function (x) { return { key: x.key, address: x.address }; }) });
+        }
+      });
+    });
+    // Our properties the register doesn't list: only those in the register's own council.
+    const councilOf = async function (pc) {
+      if (boroughCache[pc] !== undefined) return boroughCache[pc];
+      try { const r = await fetch('https://api.postcodes.io/postcodes/' + pc, { signal: AbortSignal.timeout(8000) }); const d = await r.json(); boroughCache[pc] = r.ok && d.result ? d.result.admin_district || '' : ''; } catch (e) { return ''; }
+      return boroughCache[pc];
+    };
+    s.step = 'Checking which of your properties are in this council';
+    const votes = {};
+    for (const pc of pcs) { const c = await councilOf(pc); if (c) votes[c] = (votes[c] || 0) + 1; }
+    const council = src.borough || Object.keys(votes).sort(function (a, b) { return votes[b] - votes[a]; })[0] || '';
+    const found = {}; matched.forEach(function (m) { found[m.key] = 1; });
+    const missing = [];
+    if (council) {
+      const ourPcs = Object.keys(byPc);
+      for (let i = 0; i < ourPcs.length; i++) {
+        const pc = ourPcs[i];
+        if (await councilOf(pc) !== council) continue;
+        byPc[pc].forEach(function (x) { if (!found[x.key]) { const cur = info[x.key]; missing.push({ key: x.key, address: x.address, current: cur ? { status: cur.status, number: cur.number || '', expires: cur.expires || null } : null }); } });
+      }
+    }
+    s.result = { council: council, lines: lines.length, register_postcodes: pcsSeen, checked_postcodes: pcs.length, matched: matched, possible: possible.slice(0, 200), missing: missing };
+    s.status = 'done'; s.step = 'Done';
+    console.log('Licence register checked (' + (council || 'unknown council') + '): ' + (s.pages || 0) + ' pages, ' + matched.length + ' of our properties found, ' + missing.length + ' not listed');
+  }
+  function regScanStart(p, src) {
+    Object.keys(regScans).forEach(function (k) { if (Date.now() - regScans[k].started > 6 * 3600 * 1000) delete regScans[k]; });
+    const id = crypto.randomBytes(8).toString('hex'), s = { id: id, status: 'running', step: 'Starting', started: Date.now(), pages: 0, page: 0 };
+    regScans[id] = s;
+    regScanRun(p, s, src).catch(function (err) {
+      s.status = 'failed'; s.error = String(err && err.message || 'failed').slice(0, 60); s.step = 'Failed';
+      console.error('Licence register check failed:', err && err.message);
+    });
+    return s;
+  }
+  app.post('/api/admin/licence-register-scan', withDb(async function (p, req, res) {
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    const borough = str(req.query.borough || (req.body && req.body.borough), 80) || '';
+    const ctype = String(req.headers['content-type'] || '');
+    if (/application\/pdf|text\/csv/i.test(ctype)) {
+      // The PDF itself, sent as it is (it can be far too big to go as JSON).
+      const chunks = []; let size = 0, tooBig = false;
+      await new Promise(function (resolve, reject) {
+        req.on('data', function (c) { size += c.length; if (size > 250 * 1024 * 1024) { tooBig = true; return; } chunks.push(c); });
+        req.on('end', resolve); req.on('error', reject);
+      });
+      if (tooBig) return res.status(413).json({ ok: false, error: 'file-too-big' });
+      const buf = Buffer.concat(chunks);
+      if (buf.slice(0, 5).toString() !== '%PDF-') {
+        if (/csv/i.test(ctype) && !/^PK/.test(buf.slice(0, 2).toString())) return res.json(regScanPublic(regScanStart(p, { text: buf.toString('utf8'), borough: borough })));
+        return res.status(400).json({ ok: false, error: 'not-pdf' });
+      }
+      return res.json(regScanPublic(regScanStart(p, { buf: buf, borough: borough })));
+    }
+    const url = str((req.body || {}).url, 1000);
+    if (!/^https?:\/\/[^\s]+$/i.test(url || '')) return res.status(400).json({ ok: false, error: 'url' });
+    res.json(regScanPublic(regScanStart(p, { url: url, borough: borough })));
+  }));
+  app.get('/api/admin/licence-register-scan/:id', withDb(async function (p, req, res) {
+    const s = regScans[String(req.params.id)];
+    if (!s) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json(regScanPublic(s));
   }));
 
   // Licences from the register for properties not on Fixflow yet: kept here and
