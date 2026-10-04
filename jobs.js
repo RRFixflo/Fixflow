@@ -386,6 +386,9 @@ ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS form_filled INTEGER;
 ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS form_total INTEGER;
 ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS last_field TEXT;
 ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS cur_section TEXT;
+-- The link the visit came from (landlord terms, offer form invite, pre-viewing reservation), for that person's activity.
+ALTER TABLE site_sessions ADD COLUMN IF NOT EXISTS link_token TEXT;
+CREATE INDEX IF NOT EXISTS site_sessions_link_idx ON site_sessions (link_token);
 CREATE TABLE IF NOT EXISTS known_visitors (
   vid        TEXT PRIMARY KEY,
   kind       TEXT NOT NULL,
@@ -2018,7 +2021,9 @@ module.exports = function mountJobs(app, opts) {
         const path = String(b.path || '');
         const tm = /^\/t\/([A-Za-z0-9_-]{10,})/.exec(path), cm = /^\/c\/([A-Za-z0-9_-]{20,})/.exec(path);
         const lm = /^\/l\/([A-Za-z0-9_-]{20,})/.exec(path), w = String(b.to || '');
-        let who = null;
+        let who = null, linkTok = null;
+        { const im = /[?&]i=([\w-]{8,20})/.exec(String(b.search || '')), pm = /[?&]pvr=([\w-]{16,40})/.exec(String(b.search || '')), lt2 = /^\/landlord\/([\w-]{16,40})/.exec(path), rv = /^\/reserve\/([\w-]{16,40})/.exec(path);
+          linkTok = (lt2 && lt2[1]) || (rv && rv[1]) || (im && im[1]) || (pm && pm[1]) || null; }
         if (tm) {
           const j = (await p.query('SELECT id, tenant_name, landlord_name, property_address FROM jobs WHERE track_token = $1', [tm[1]])).rows[0];
           if (j) {
@@ -2050,9 +2055,9 @@ module.exports = function mountJobs(app, opts) {
             device = coalesce(device, $3), browser = coalesce(browser, $4), os = coalesce(os, $5),
             source = coalesce(source, $6), ref_host = coalesce(ref_host, nullif($7, '')), screen = coalesce(screen, $8),
             lang = coalesce(lang, nullif($9, '')), tz = coalesce(tz, nullif($10, '')),
-            subject = coalesce($11, subject), job_id = coalesce(job_id, $12), cur_page = $2
+            subject = coalesce($11, subject), job_id = coalesce(job_id, $12), cur_page = $2, link_token = coalesce(link_token, $13)
           WHERE sid = $1`, [sid, page, u.device, u.browser, u.os, src.source, src.host, (parseInt(b.w, 10) || 0) + '×' + (parseInt(b.h, 10) || 0),
-          String(b.lang || '').slice(0, 20), String(b.tz || '').slice(0, 60), subject, jobIdV]);
+          String(b.lang || '').slice(0, 20), String(b.tz || '').slice(0, 60), subject, jobIdV, linkTok]);
         await recognise(who);
         if (page === 'report') countVisit(req, 'report').catch(function () {});
         return;
@@ -6053,6 +6058,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   app.get('/api/admin/offer-invites', withDb(async function (p, req, res) {
     const r = await p.query(`SELECT i.*, o.status AS offer_status, o.lead_name AS offer_name FROM offer_invites i LEFT JOIN offers o ON o.id = i.offer_id ORDER BY i.id DESC LIMIT 200`);
+    const vis = await linkVisits(p, r.rows.map(function (x) { return x.token; }));
+    r.rows.forEach(function (x) { x.visits = vis[x.token] || []; });
     res.json({ ok: true, invites: r.rows });
   }));
   app.post('/api/offers/invite/:token/:what', withDb(async function (p, req, res) {
@@ -7973,11 +7980,21 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!r) return res.status(404).send('Not found');
     res.setHeader('Content-Type', r.mime); res.setHeader('Cache-Control', 'private, no-store'); res.setHeader('Content-Disposition', 'inline; filename="' + String(r.name || 'document').replace(/[^\w .-]+/g, '') + '"'); res.end(r.data);
   }));
+  // Every visit made from a link we sent (newest first, up to 20 per link): when, device, how long,
+  // where they got to and how much of the form was filled.
+  async function linkVisits(p, tokens) {
+    const out = {}; tokens = tokens.filter(Boolean); if (!tokens.length) return out;
+    (await p.query(`SELECT link_token, started_at, last_at, device, os, browser, ip, pages, steps, views, form_filled, form_total, last_field, cur_section, cur_page,
+        extract(epoch FROM last_at - started_at)::int AS secs FROM site_sessions WHERE link_token = ANY($1::text[]) ORDER BY started_at DESC LIMIT 3000`, [tokens])).rows
+      .forEach(function (r) { const k = r.link_token; delete r.link_token; (out[k] = out[k] || []); if (out[k].length < 20) out[k].push(r); });
+    return out;
+  }
   app.get('/api/admin/landlord-terms', withDb(async function (p, req, res) {
     const r = await p.query(`SELECT t.id, t.created_at, t.token, t.status, t.property_address, t.landlord_name, t.landlord_email, t.landlord_phone, t.fees, t.data, t.log, t.signed_at, t.created_by,
         coalesce((SELECT json_agg(json_build_object('id', d.id, 'kind', d.kind, 'name', d.name)) FROM landlord_terms_docs d WHERE d.terms_id = t.id AND d.kind <> 'signature'), '[]') AS docs
       FROM landlord_terms t ORDER BY t.id DESC LIMIT 300`);
-    res.json({ ok: true, origin: TERMS_ORIGIN || OFFER_ORIGIN || PUBLIC_URL, items: r.rows.map(function (t) { t.ref = ltRef(t.id); t.lines = feeLines(t.fees || {}); return t; }) });
+    const vis = await linkVisits(p, r.rows.map(function (t) { return t.token; }));
+    res.json({ ok: true, origin: TERMS_ORIGIN || OFFER_ORIGIN || PUBLIC_URL, items: r.rows.map(function (t) { t.ref = ltRef(t.id); t.lines = feeLines(t.fees || {}); t.visits = vis[t.token] || []; return t; }) });
   }));
   // What we already know about a property (and its landlord), to preload the agreement:
   // the linked landlord, certificate dates, the licence and the current tenancy's fees.

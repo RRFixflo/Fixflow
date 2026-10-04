@@ -578,6 +578,8 @@
   .av-lt td { padding: 7px 10px; border-bottom: 1px solid #f2f4f7; vertical-align: middle; } .av-lt tr:hover td { background: #f9fafb; } .av-lt td.nw { white-space: nowrap; } .av-lt td.ad { min-width: 260px; } .av-lt td.ad .linkish { opacity: .5; } .av-lt tr:hover td.ad .linkish { opacity: 1; } .av-lt td.nt { max-width: 200px; color: var(--ink-soft); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ll-find { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
   .ll-find-list { display: grid; gap: 6px; margin-top: 8px; max-height: 320px; overflow: auto; } .ll-find-hit { display: flex; align-items: center; gap: 10px; text-align: left; border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 10px; padding: 8px 10px; cursor: pointer; font: inherit; color: inherit; } .ll-find-hit:hover { border-color: #101828; } .ll-find-hit b { flex: 1; font-size: .88rem; } .ll-find-hit span { color: var(--ink-soft); font-size: .78rem; } .ll-find-hit i { font-style: normal; font-weight: 700; color: #155eef; }
+  .la { margin: 10px 0 4px; border: 1px solid var(--line, #e6e8ec); border-radius: 10px; padding: 6px 10px; font-size: .84rem; } .la summary { cursor: pointer; font-weight: 600; } .la-live { color: #067647; }
+  .la-list { display: grid; gap: 8px; margin-top: 8px; max-height: 360px; overflow: auto; } .la-ev, .la-vis { display: grid; grid-template-columns: 110px 1fr; gap: 8px; } .la-t { color: var(--ink-soft); font-size: .78rem; } .la-vis small { color: var(--ink-soft); } .la-vis.live b { color: #067647; } .la-s { color: var(--ink-soft); font-size: .8rem; margin-top: 2px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; } .la-s b { color: var(--ink, #101828); }
   .sv-now { font-size: .8rem; color: var(--ink-soft); margin-top: 4px; } .sv-now.live { color: #067647; font-weight: 600; } .sv-now b { color: inherit; }
   .sv-prog { font-size: .8rem; color: var(--ink-soft); margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .sv-bar { display: inline-block; width: 90px; height: 6px; background: #eaecf0; border-radius: 6px; overflow: hidden; } .sv-bar i { display: block; height: 100%; background: #155eef; }
   .sv-pages { font-size: .76rem; color: var(--ink-soft); margin-top: 2px; }
@@ -8764,6 +8766,27 @@
   // The offer forms we've sent and what each applicant did.
   var invites = [];
   function loadInvites(){ return api('GET', '/api/admin/offer-invites').then(function(d){ if (d && d.ok) { invites = d.invites || []; renderInvites(); } }); }
+  // Full activity from a link we sent: our own events (sent, reminders, signed…) and every visit —
+  // device, how long, where they got to, how much of the form was filled, live now.
+  function linkActivityHtml(visits, events, title){
+    visits = visits || []; events = events || [];
+    var live = visits.some(function(v){ return v.last_at && Date.now() - new Date(v.last_at).getTime() < 5 * 60000; });
+    var best = visits.reduce(function(m, v){ return v.form_total && (!m || (v.form_filled / v.form_total) > (m.form_filled / m.form_total)) ? v : m; }, null);
+    var items = visits.map(function(v){ return { at: v.started_at, v: v }; }).concat(events.map(function(e){ return { at: e.at, e: e }; })).sort(function(a, b){ return new Date(b.at) - new Date(a.at); });
+    var pct = function(v){ return Math.round(Math.min(1, (v.form_filled || 0) / v.form_total) * 100); };
+    return '<details class="la"' + (live ? ' open' : '') + '><summary>📊 ' + esc(title || 'Activity') + ' · ' + (visits.length ? visits.length + ' visit' + (visits.length === 1 ? '' : 's') : 'not opened yet') + (best ? ' · furthest: ' + pct(best) + '% filled' : '') + (live ? ' · <span class="la-live">● on it now</span>' : '') + '</summary><div class="la-list">' +
+      (items.length ? items.map(function(it){
+        if (it.e) return '<div class="la-ev"><span class="la-t">' + esc(fmtShort(it.at)) + '</span><span>' + esc(it.e.what) + (it.e.device ? ' <small>· ' + esc(it.e.device) + '</small>' : '') + '</span></div>';
+        var v = it.v, isLive = v.last_at && Date.now() - new Date(v.last_at).getTime() < 5 * 60000;
+        return '<div class="la-vis' + (isLive ? ' live' : '') + '"><span class="la-t">' + esc(fmtShort(v.started_at)) + '</span><div>' +
+          '<b>' + (isLive ? '● Live now' : 'Opened the link') + '</b> <small>' + esc([v.device, v.os, v.browser].filter(Boolean).join(' · ')) + ' · ' + esc(svDur(v.secs)) + (v.views > 1 ? ' · ' + v.views + ' page views' : '') + '</small>' +
+          (v.cur_section ? '<div class="la-s">Got to: <b>' + esc(v.cur_section) + '</b></div>' : '') +
+          (v.form_total ? '<div class="la-s"><span class="sv-bar"><i style="width:' + pct(v) + '%"></i></span> Filled <b>' + (v.form_filled || 0) + ' of ' + v.form_total + '</b> boxes (' + pct(v) + '%)' + (v.last_field ? ' · last: <b>' + esc(v.last_field) + '</b>' : '') + '</div>' : '') +
+          ((v.steps || []).length ? '<div class="la-s">Steps: ' + v.steps.map(esc).join(' → ') + '</div>' : '') +
+          (!isLive && v.last_at ? '<div class="la-s">Left at ' + esc(new Date(v.last_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })) + '</div>' : '') +
+          '</div></div>';
+      }).join('') : '<p class="muted-note" style="margin:6px 0">Nothing yet.</p>') + '</div></details>';
+  }
   function renderInvites(){
     var opened = invites.filter(function(x){ return x.opens > 0; }).length, made = invites.filter(function(x){ return x.offer_id; }).length;
     $('offInvSum').textContent = invites.length ? invites.length + ' sent · ' + opened + ' opened · ' + made + ' made an offer' : 'none yet';
@@ -8772,7 +8795,7 @@
       var st = x.offer_id ? ['ok', '✓ Made an offer · OF' + String(x.offer_id).padStart(4, '0')] : x.started_at ? ['wait', '✍ Started filling it in'] : x.opens ? ['wait', '👀 Opened' + (x.opens > 1 ? ' ×' + x.opens : '') + ' · ' + fmtShort(x.last_opened_at)] : ['muted', 'Not opened yet'];
       return '<div class="inv-row" data-inv="' + x.id + '"><div class="inv-main"><b>' + esc(x.to_name || x.to_contact || 'Applicant') + '</b><span>' + esc([x.to_name && x.to_contact ? x.to_contact : '', x.property_address ? shortAddr(x.property_address) : 'Any property'].filter(Boolean).join(' · ')) + '</span><span>Sent ' + esc(fmtShort(x.created_at)) + ' by ' + esc(x.via === 'whatsapp' ? 'WhatsApp' : x.via) + ' · ' + esc(x.sent_by || 'Office') + '</span></div>' +
         '<span class="oc-pill ' + st[0] + '">' + esc(st[1]) + '</span><button type="button" class="btn small ghost" data-inv-act>Activity</button>' + (meta.canManageUsers ? '<button type="button" class="btn small ghost danger" data-inv-del title="Delete">🗑</button>' : '') +
-        '<div class="inv-ev" hidden>' + (x.events || []).slice().reverse().map(function(e){ return '<div><span>' + esc(fmtShort(e.at)) + '</span>' + esc(e.what) + (e.device ? ' <small>· ' + esc(e.device) + '</small>' : '') + '</div>'; }).join('') + '</div></div>';
+        '<div class="inv-ev" hidden>' + linkActivityHtml(x.visits, [].concat(x.events || []).concat(x.offer_id ? [{ at: x.offer_at || x.started_at || x.created_at, what: '✓ Sent their offer (OF' + String(x.offer_id).padStart(4, '0') + ')' }] : []), 'Full activity') + '</div></div>';
     }).join('') + (invites.length > shown.length ? '<button type="button" class="btn small ghost" id="offInvMore" style="margin-top:8px">Show all ' + invites.length + '</button>' : '');
   }
   $('offInv').addEventListener('click', function(e){
@@ -9472,6 +9495,7 @@
         '<div class="lt-lines">' + (t.lines || []).map(function(l){ return '<div><span>' + esc(l.k) + '</span><b>' + esc(l.v) + '</b></div>'; }).join('') + '</div>' +
         (t.status === 'signed' ? '<details class="oc-more lt-det"><summary>📋 Everything the landlord told us</summary>' + ltDetailsHtml(t) + '</details>' : '') +
         (t.status === 'sent' ? (function(){ var rm = ltReminders(t), last = rm[rm.length - 1]; return '<div class="lt-rem"><span>' + (d.viewed_at ? '👀 Opened ' + esc(fmtShort(d.viewed_at)) : 'Not opened yet') + (rm.length ? ' · 🔔 Reminded ' + rm.length + '× (last ' + esc(fmtShort(last.at).split(',')[0]) + (last.user ? ' by ' + esc(last.user) : '') + ')' : '') + '</span><button type="button" class="btn small primary" data-lt-remind>🔔 Send a reminder</button></div>'; })() : '') +
+        linkActivityHtml(t.visits, [].concat((t.log || []).map(function(l){ return { at: l.at, what: (l.what || l.event || l.text || '') + (l.user ? ' — ' + l.user : l.by === 'landlord' ? ' — landlord' : '') }; }).filter(function(l){ return l.at && l.what; })).concat(t.signed_at ? [{ at: t.signed_at, what: '✓ Signed' }] : []), 'Landlord’s activity') +
         '<footer class="oc-actions">' + (t.status !== 'signed' ? '<button type="button" class="btn small" data-lt-edit>✏️ Edit' + (t.status === 'cancelled' ? ' and turn back on' : '') + '</button>' : '') + (t.status === 'sent' ? '<button type="button" class="btn small primary" data-lt-copy>🔗 Copy link</button>' + (t.landlord_phone ? '<button type="button" class="btn small wa-btn" data-lt-wa>' + WA_ICON + 'WhatsApp</button>' : '<button type="button" class="btn small wa-btn" data-lt-wa>' + WA_ICON + 'WhatsApp</button>') + '<button type="button" class="btn small" data-lt-mail>✉ Email</button>' : '') +
           '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/landlord-terms/' + t.id + '/pdf">📄 ' + (t.status === 'signed' ? 'Signed PDF' : 'Preview PDF') + '</a><span class="oc-sp"></span>' +
           (t.status === 'sent' ? '<button type="button" class="btn small ghost" data-lt-cancel>Cancel link</button>' : '') + (staffMode ? '' : '<button type="button" class="btn small ghost danger" data-lt-del title="Delete">🗑</button>') + '</footer></div>';
