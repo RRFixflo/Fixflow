@@ -785,6 +785,35 @@ async function findLandlord(p, name, email, phone, address) {
   const close = all.filter(function (x) { return llNameMatch(x.name, name) === 1; });
   return close.length === 1 ? close[0].id : null;
 }
+// A landlord's details changed: put them on every tenancy of theirs (linked by property, email or phone),
+// so their statements and documents always show the current name and address.
+function llAddrLines(a) {
+  let parts = String(a || '').split(/\s*[,\n]+\s*/).map(function (x) { return x.trim(); }).filter(Boolean), postcode = '', country = '';
+  const pcRe = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
+  for (let i = parts.length - 1; i >= 0 && !postcode; i--) { const m = pcRe.exec(parts[i]); if (m) { postcode = (m[1] + ' ' + m[2]).toUpperCase(); parts[i] = parts[i].replace(m[0], '').trim(); } }
+  parts = parts.filter(Boolean);
+  if (parts.length > 1 && /^(united kingdom|uk|england|scotland|wales|northern ireland|great britain|gb)$/i.test(parts[parts.length - 1])) country = parts.pop();
+  if (parts.length > 2 && /^(flat|apartment|apt|unit|room|suite|studio)\b/i.test(parts[0])) parts.splice(0, 2, parts[0] + ', ' + parts[1]);   // "Flat 3, 22 New Road" stays one line
+  return { line1: parts[0] || '', line2: parts.slice(1).join(', '), country: country, postcode: postcode };
+}
+async function syncLandlordTenancies(p, id) {
+  const l = (await p.query('SELECT id, name, email, phone, address FROM landlords WHERE id = $1', [id])).rows[0]; if (!l) return 0;
+  const keys = (await p.query('SELECT property_key FROM property_landlords WHERE landlord_id = $1', [id])).rows.map(function (r) { return r.property_key; });
+  const ph = function (v) { const d = String(v || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : ''; }, em = String(l.email || '').trim().toLowerCase(), lp = ph(l.phone);
+  const norm = function (v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
+  let n = 0;
+  for (const t of (await p.query('SELECT id, property_key, data FROM tenancies')).rows) {
+    const d = t.data || {}, tl = d.landlord || {};
+    const mine = keys.indexOf(t.property_key) !== -1 || (em && String(tl.email || '').trim().toLowerCase() === em) || (lp && ph(tl.phone) === lp);
+    if (!mine) continue;
+    const next = Object.assign({}, tl);
+    if (l.address && norm([tl.line1, tl.line2, tl.country, tl.postcode].filter(Boolean).join(',')) !== norm(l.address)) Object.assign(next, llAddrLines(l.address));
+    if (l.email && !tl.email) next.email = l.email; if (l.phone && !tl.phone) next.phone = l.phone; if (l.name && !tl.name) next.name = l.name;
+    if (JSON.stringify(next) === JSON.stringify(tl)) continue;
+    await p.query("UPDATE tenancies SET data = jsonb_set(data, '{landlord}', $2::jsonb), updated_at = now() WHERE id = $1", [t.id, JSON.stringify(next)]); n++;
+  }
+  return n;
+}
 async function ensureLandlord(p, l, address) {
   const name = str(l.landlord_name || l.name, 200);
   if (!name) return null;
@@ -2467,7 +2496,8 @@ module.exports = function mountJobs(app, opts) {
     const r = await p.query('UPDATE landlords SET ' + keys.map(function (k, i) { return k + ' = $' + (i + 1); }).join(', ') +
       ', updated_at = now() WHERE id = $' + vals.length + ' RETURNING id', vals);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
-    res.json({ ok: true });
+    const synced = ('address' in c || 'email' in c || 'phone' in c || 'name' in c) ? await syncLandlordTenancies(p, r.rows[0].id) : 0;
+    res.json({ ok: true, tenancies_updated: synced });
   }));
 
   // Set (or clear, with landlord_id null) whose property an address is.
@@ -5144,7 +5174,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       start_date: day(b.start_date), term_months: parseInt(b.term_months, 10) || null, break_months: parseInt(b.break_months, 10) || 0,
       rent_pcm: amt(b.rent_pcm), deposit: amt(b.deposit), holding: amt(b.holding), holding_date: day(b.holding_date), deposit_by: b.deposit_by === 'landlord' ? 'landlord' : 'agent', deposit_scheme: s(b.deposit_scheme), pay_ref: s(b.pay_ref, 40),
       move_in_due: day(b.move_in_due), so_start: day(b.so_start), so_payments: parseInt(b.so_payments, 10) || null,
-      checkin_date: day(b.checkin_date), checkin_time: s(b.checkin_time, 20), checkin_type: b.checkin_type === 'diy' ? 'diy' : b.checkin_type === 'clerk' ? 'clerk' : null,
+      checkin_date: day(b.checkin_date), checkin_time: s(b.checkin_time, 20), checkin_type: b.checkin_type === 'diy' ? 'diy' : b.checkin_type === 'clerk' ? 'clerk' : b.checkin_type === 'none' ? 'none' : null, checkin_tbc: !!b.checkin_tbc,
       tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       guarantors: (Array.isArray(b.guarantors) ? b.guarantors : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       landlord: { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(l.postcode, 20) },
@@ -5162,7 +5192,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   async function linkTenancyPeople(p, d) {
     if (!d.address) return;
     const l = d.landlord;
-    if (l.name) await ensureLandlord(p, { name: l.name, email: l.email, phone: l.phone, address: [l.line1, l.line2, l.country, l.postcode].filter(Boolean).join(', ') || null }, d.address);
+    if (l.name) { const id = await ensureLandlord(p, { name: l.name, email: l.email, phone: l.phone, address: [l.line1, l.line2, l.country, l.postcode].filter(Boolean).join(', ') || null }, d.address); if (id) await syncLandlordTenancies(p, id); }
     for (const t of d.tenants) await ensureTenant(p, { name: t.name, email: t.email, phone: t.phone }, d.address, true);
   }
   app.get('/api/admin/tenancies', withDb(async function (p, req, res) {
@@ -8781,6 +8811,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
   setTimeout(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function (e) { console.error('DB space check failed:', e.message); }); }, 5000).unref();
   setInterval(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function () {}); }, 24 * 3600000).unref();
   // Once: put the values already on the list in their places (version bump re-runs it).
+  // Once: bring every tenancy's landlord address up to date with the landlord records.
+  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k) return; let n = 0;
+    for (const r of (await p.query('SELECT id FROM landlords')).rows) n += await syncLandlordTenancies(p, r.id);
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('ll_tcy_sync', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 1, at: new Date().toISOString(), updated: n })]); console.log('Tenancy landlord details synced:', n); }).catch(function (e) { console.error('Landlord sync failed:', e.message); }); }, 20000).unref();
   setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 4) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 4, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
   // Empty the Been let list before pasting a corrected copy (managers only).
   app.post('/api/admin/available-clear-let', withDb(async function (p, req, res) {
