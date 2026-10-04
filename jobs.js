@@ -8134,6 +8134,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       ongoing: ongoing, ongoing_pct: ongoing === 'none' ? null : pctNum(b.ongoing_pct), ongoing_min: ongoing === 'none' ? null : pctNum(b.ongoing_min, 100000),
       vat: b.vat !== false, other: str(b.other, 2000) || '',
       // The landlord may pick (or upgrade to) a service on their page, at these rates.
+      allow_split: find !== 'none' && b.allow_split === true,
       choose: b.choose !== false, opt_collect_pct: b.opt_collect_pct == null || b.opt_collect_pct === '' ? LT_STD.collect : pctNum(b.opt_collect_pct), opt_both_pct: b.opt_both_pct == null || b.opt_both_pct === '' ? LT_STD.both : pctNum(b.opt_both_pct)
     };
   }
@@ -8300,8 +8301,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     { id: 'collect', name: 'Let + rent collection', blurb: 'Everything in Let only, and we collect the rent for you each month.', perks: ['Rent collected and paid to you each month', 'Monthly statements', 'Chasing late or missed rent'] },
     { id: 'both', name: 'Fully managed', blurb: 'Hands-off letting: we look after the property and your tenants day to day.', perks: ['Everything in rent collection', 'Repairs and maintenance arranged with our contractors', 'Safety certificates and renewals tracked', 'Inspections and 24/7 tenant reporting', 'Deposit registration and check-out'] }];
   // The fees with the landlord's chosen service in place of the ongoing service agreed (or none).
-  function ltApplyService(f, svc) {
-    if (!f || f.choose === false || ['none', 'collect', 'both'].indexOf(svc) === -1) return f;
+  function ltApplyService(f, svc, split) {
+    if (!f) return f;
+    // Splitting the tenant find fee into 12 monthly payments (no extra cost), when we've offered it.
+    if (f.allow_split && f.find !== 'none' && (split === true || split === false) && split !== !!f.find_monthly) f = Object.assign({}, f, { find_monthly: split });
+    if (f.choose === false || ['none', 'collect', 'both'].indexOf(svc) === -1) return f;
     if (svc === f.ongoing || (svc === 'both' && f.ongoing === 'manage')) return f;
     const o = Object.assign({}, f, { ongoing: svc });
     o.ongoing_pct = svc === 'none' ? null : svc === 'collect' ? (f.opt_collect_pct != null ? f.opt_collect_pct : LT_STD.collect) : (f.opt_both_pct != null ? f.opt_both_pct : LT_STD.both);
@@ -8312,7 +8316,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function ltServiceOptions(f) {
     if (!f || f.choose === false) return null;
     const pctOf = function (id) { return id === 'none' ? null : (id === f.ongoing || (id === 'both' && f.ongoing === 'manage')) && f.ongoing_pct != null ? f.ongoing_pct : id === 'collect' ? (f.opt_collect_pct != null ? f.opt_collect_pct : LT_STD.collect) : (f.opt_both_pct != null ? f.opt_both_pct : LT_STD.both); };
-    return LT_SERVICES.map(function (x) { const pct = pctOf(x.id), std = LT_STD[x.id]; return Object.assign({}, x, { pct: pct, std: x.id === 'none' ? null : std, save: pct != null && std != null && pct < std ? Math.round((std - pct) * 100) / 100 : 0, agreed: (f.ongoing === 'manage' ? 'both' : f.ongoing) === x.id }); });
+    return LT_SERVICES.map(function (x) {
+      // Let only: its price is the tenant find fee (once, on the first 12 months' rent).
+      if (x.id === 'none') { const fp = f.find !== 'none' ? f.find_pct : null, fs = LT_STD[f.find] != null ? LT_STD[f.find] : LT_STD.sole; return Object.assign({}, x, { pct: fp, std: fp != null ? fs : null, save: fp != null && fp < fs ? Math.round((fs - fp) * 100) / 100 : 0, find: true, agreed: (f.ongoing === 'manage' ? 'both' : f.ongoing) === 'none' }); }
+      const pct = pctOf(x.id), std = LT_STD[x.id]; return Object.assign({}, x, { pct: pct, std: x.id === 'none' ? null : std, save: pct != null && std != null && pct < std ? Math.round((std - pct) * 100) / 100 : 0, agreed: (f.ongoing === 'manage' ? 'both' : f.ongoing) === x.id }); });
   }
   const ONGOING_NAME = { collect: 'Rent Collection Service', manage: 'Full Management Service', both: 'Full Management & Rent Collection Service' };
   // The fees in plain words (the same wording on the landlord's page and the PDF).
@@ -8322,7 +8329,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const L = [];
     const stdOf = function (std, pct) { return std != null && pct != null && pct < std ? { std: inc(std), save: Math.round((std - pct) * 100) / 100 } : {}; };
     if (f.find !== 'none' && f.find_pct != null) {
-      L.push(Object.assign(stdOf(LT_STD[f.find], f.find_pct), { k: f.find === 'multi' ? 'Tenant Find - Multi Agency (initial commission)' : 'Tenant Find - Sole Agency (initial commission)', v: inc(f.find_pct) + ' of the first 12 months\' rent' + (f.find_min ? ', minimum fee ' + gbp(f.find_min) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? '. Paid monthly: collected in 12 equal monthly instalments over the first 12 months, instead of in advance' : ', payable in advance when the tenancy starts') }));
+      L.push(Object.assign(stdOf(LT_STD[f.find], f.find_pct), { k: f.find === 'multi' ? 'Tenant Find - Multi Agency (initial commission)' : 'Tenant Find - Sole Agency (initial commission)', v: inc(f.find_pct) + ' of the first 12 months\' rent' + (f.find_min ? ', minimum fee ' + gbp(f.find_min) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? '. Paid monthly at no extra cost: collected in 12 equal monthly instalments over the first 12 months, instead of in advance' : ', payable in advance when the tenancy starts') }));
       L.push({ k: 'Anniversary fee', v: f.renewal && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months\' rent, on each 12-month anniversary while the tenant remains' + (f.find_monthly ? ', collected monthly in the same way' : '') : 'No anniversary fee' });
     }
     if (f.ongoing !== 'none' && f.ongoing_pct != null) L.push(Object.assign(stdOf(LT_STD[f.ongoing], f.ongoing_pct), { k: ONGOING_NAME[f.ongoing] || 'Rent Collection Service', v: inc(f.ongoing_pct) + ' of the rent received' + (f.ongoing_min ? ', minimum ' + gbp(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' a month' : '') + '. Collected monthly: deducted from each month\'s rent when we receive it, before the balance is paid to you' }));
@@ -8516,10 +8523,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!t || t.status === 'cancelled') return res.status(404).json({ ok: false, error: 'not-found' });
     const exRent = await ltExampleRent(p, t.property_address).catch(function () { return null; });
     // Previewing another service on the landlord's page (nothing is saved until they sign).
-    const shown = t.status === 'signed' ? t.fees : ltApplyService(t.fees || {}, String(req.query.service || ''));
+    const shown = t.status === 'signed' ? t.fees : ltApplyService(t.fees || {}, String(req.query.service || ''), req.query.split === '1' ? true : req.query.split === '0' ? false : undefined);
     if (!(t.data || {}).viewed_at) p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'viewed_at')", [t.id, JSON.stringify([ltLog(req, 'Landlord opened the agreement link', 'landlord')])]).catch(function () {});
     res.json({ ok: true, ref: ltRef(t.id), status: t.status, property: t.property_address, landlord_name: t.landlord_name, landlord_email: t.landlord_email, landlord_phone: t.landlord_phone,
-      fees: shown, lines: feeLines(shown || {}), examples: feeExamples(shown || {}, exRent), example_rent: exRent || 2000, services: t.status === 'signed' ? null : ltServiceOptions(t.fees || {}), service: (shown || {}).ongoing === 'manage' ? 'both' : (shown || {}).ongoing || 'none', examples_vat: (t.fees || {}).vat !== false, known: t.status === 'signed' ? null : ltPublicKnown((t.data || {}).known), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
+      fees: shown, lines: feeLines(shown || {}), examples: feeExamples(shown || {}, exRent), example_rent: exRent || 2000, services: t.status === 'signed' ? null : ltServiceOptions(t.fees || {}), allow_split: t.status !== 'signed' && !!(t.fees || {}).allow_split && (t.fees || {}).find !== 'none', split: !!(shown || {}).find_monthly, service: (shown || {}).ongoing === 'manage' ? 'both' : (shown || {}).ongoing || 'none', examples_vat: (t.fees || {}).vat !== false, known: t.status === 'signed' ? null : ltPublicKnown((t.data || {}).known), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
   }));
   app.post('/api/landlord-terms/:token/sign', withDb(async function (p, req, res) {
     if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -8535,7 +8542,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const details = clean(b.details || {}, 0);
     if (!details.l1_name || !(details.l1_phone || details.l1_email)) return res.status(400).json({ ok: false, error: 'details' });
     // The service the landlord chose on their page (when they were given the choice).
-    const offered = (t.fees || {}).ongoing || 'none', chosenFees = ltApplyService(t.fees || {}, String(b.service || ''));
+    const offeredSplit = !!(t.fees || {}).find_monthly, offered = (t.fees || {}).ongoing || 'none', chosenFees = ltApplyService(t.fees || {}, String(b.service || ''), b.split === true ? true : b.split === false ? false : undefined);
     const changed = chosenFees !== t.fees;
     if (changed) { t.fees = chosenFees; await p.query('UPDATE landlord_terms SET fees = $2 WHERE id = $1', [t.id, JSON.stringify(chosenFees)]); }
     const data = Object.assign({}, t.data || {}, { details: details, signature: sig, signed_at: new Date().toISOString(), start_now: b.start_now === true,
@@ -8556,8 +8563,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     if (attached.length) data.attached = attached;
     await p.query("UPDATE landlord_terms SET status = 'signed', signed_at = now(), data = $2, log = log || $3::jsonb WHERE id = $1",
-      [t.id, JSON.stringify(data), JSON.stringify((changed ? [ltLog(req, 'Landlord chose ' + (LT_SERVICES.filter(function (x) { return x.id === (data.service_chosen === 'manage' ? 'both' : data.service_chosen); })[0] || {}).name + (t.fees.ongoing_pct != null ? ' (' + t.fees.ongoing_pct + '%' + (t.fees.vat !== false ? ' + VAT' : '') + ')' : '') + ' instead of ' + ((LT_SERVICES.filter(function (x) { return x.id === (offered === 'manage' ? 'both' : offered); })[0] || {}).name || offered), 'landlord')] : []).concat([ltLog(req, 'Terms of business and property details signed by ' + sig + (data.start_now ? ' - asked us to start work straight away' : ''), 'landlord')]))]);
-    offerAlert({ title: '\u2705 Landlord Terms signed: ' + shortAddrText(t.property_address), message: (t.landlord_name || 'The landlord') + ' signed the terms of business (' + ltRef(t.id) + ')' + (data.start_now ? ' - start work straight away.' : '.') + (changed ? ' They chose ' + ((LT_SERVICES.filter(function (x) { return x.id === (data.service_chosen === 'manage' ? 'both' : data.service_chosen); })[0] || {}).name || data.service_chosen) + '.' : ''), tags: ['tada'] }, { office: true }).catch(function () {});
+      [t.id, JSON.stringify(data), JSON.stringify(((!!t.fees.find_monthly !== offeredSplit ? [ltLog(req, t.fees.find_monthly ? 'Landlord chose to split the tenant find fee into 12 monthly payments (no extra cost)' : 'Landlord chose to pay the tenant find fee up front', 'landlord')] : []).concat(changed && (data.service_chosen || 'none') !== offered ? [ltLog(req, 'Landlord chose ' + (LT_SERVICES.filter(function (x) { return x.id === (data.service_chosen === 'manage' ? 'both' : data.service_chosen); })[0] || {}).name + (t.fees.ongoing_pct != null ? ' (' + t.fees.ongoing_pct + '%' + (t.fees.vat !== false ? ' + VAT' : '') + ')' : '') + ' instead of ' + ((LT_SERVICES.filter(function (x) { return x.id === (offered === 'manage' ? 'both' : offered); })[0] || {}).name || offered), 'landlord')] : [])).concat([ltLog(req, 'Terms of business and property details signed by ' + sig + (data.start_now ? ' - asked us to start work straight away' : ''), 'landlord')]))]);
+    offerAlert({ title: '\u2705 Landlord Terms signed: ' + shortAddrText(t.property_address), message: (t.landlord_name || 'The landlord') + ' signed the terms of business (' + ltRef(t.id) + ')' + (data.start_now ? ' - start work straight away.' : '.') + (changed && (data.service_chosen || 'none') !== offered ? ' They chose ' + ((LT_SERVICES.filter(function (x) { return x.id === (data.service_chosen === 'manage' ? 'both' : data.service_chosen); })[0] || {}).name || data.service_chosen) + '.' : ''), tags: ['tada'] }, { office: true }).catch(function () {});
     staffEmailAll('\u2705 Landlord terms signed - ' + shortAddrText(t.property_address), function (link) {
       return 'Good news - ' + (t.landlord_name || 'the landlord') + ' has signed the terms of business for ' + t.property_address + ' (' + ltRef(t.id) + ').\n\n' +
         feeLines(t.fees || {}).map(function (l) { return l.k + ': ' + l.v; }).join('\n\n') + '\n\nStart work: ' + (data.start_now ? 'straight away (they waived the 14-day cancellation period)' : 'after the 14-day cancellation period') + (attached.length ? '\nThey attached: ' + attached.join(', ') : '') +
