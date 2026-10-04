@@ -527,6 +527,7 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS yt_id TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_url TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS let_on DATE;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS dream_rm JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS key_no TEXT;
 CREATE TABLE IF NOT EXISTS rm_dreams (
   rm_id       TEXT PRIMARY KEY,
   first_seen  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -8298,12 +8299,37 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const beds = parseInt(b.beds, 10);
     return { address: str(availAddr(b.address), 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
       rent_pw: pw, rent_pcm: pcm, landlord: str(b.landlord, 120) || null, commission: str(b.commission, 40) || null, contact: str(b.contact, 2000) || null, notes: str(b.notes, 2000) || null,
-      tags: str(b.tags, 200) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: isoDay(b.let_on) || null };
+      tags: str(b.tags, 200) || null, key_no: str(b.key_no, 40) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: isoDay(b.let_on) || null };
   }
-  const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'urgent', 'status', 'let_on'];
+  const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
-    res.json({ ok: true, items: (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 20000')).rows });
+    const items = (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 20000')).rows;
+    res.json({ ok: true, items: items, links: await availLinks(p, items, req.role !== 'offers') });
   }));
+  // Which landlord each property belongs to (by the property itself, or the phone, email or name in its
+  // details), and — for the owner only — which of our tenancies it is.
+  async function availLinks(p, items, owner) {
+    const out = {};
+    const lls = (await p.query('SELECT id, name, email, phone FROM landlords')).rows;
+    const byKey = {}; (await p.query('SELECT property_key, landlord_id FROM property_landlords')).rows.forEach(function (r) { byKey[r.property_key] = r.landlord_id; });
+    const llById = {}, byPhone = {}, byMail = {}, byName = {};
+    const ph = function (v) { const d = String(v || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : ''; };
+    const nm = function (v) { return String(v || '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr)\b\.?/g, ' ').replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim(); };
+    lls.forEach(function (l) { llById[l.id] = l; String(l.phone || '').split(/[,;\/]+/).forEach(function (x) { const k = ph(x); if (k) byPhone[k] = l.id; }); if (l.email) byMail[String(l.email).toLowerCase().trim()] = l.id; const n = nm(l.name); if (n.split(' ').length >= 2) byName[n] = l.id; });
+    let tens = {};
+    if (owner) (await p.query('SELECT id, property_key, address, start_date FROM tenancies ORDER BY id')).rows.forEach(function (t) { const k = t.property_key || propKey(t.address); if (k) tens[k] = { id: t.id, address: t.address, start: t.start_date }; });
+    items.forEach(function (x) {
+      const key = propKey(x.address), o = {};
+      let lid = byKey[key];
+      if (!lid) { const txt = String(x.contact || '') + ' ' + String(x.landlord || ''); (txt.match(/(\+44|0)[\d\s()\-]{9,14}\d/g) || []).some(function (m) { return (lid = byPhone[ph(m)]); }); }
+      if (!lid) (String(x.contact || '').match(/[^\s@<>,;()]+@[^\s@<>,;()]+\.[a-z]{2,}/gi) || []).some(function (m) { return (lid = byMail[m.toLowerCase()]); });
+      if (!lid && x.landlord) lid = byName[nm(x.landlord)];
+      if (lid && llById[lid]) { const l = llById[lid]; o.landlord = { id: l.id, name: l.name, phone: l.phone || '', email: l.email || '' }; }
+      if (owner && tens[key]) o.tenancy = tens[key];
+      if (o.landlord || o.tenancy) out[x.id] = o;
+    });
+    return out;
+  }
   app.post('/api/admin/available', withDb(async function (p, req, res) {
     const b = req.body || {}, list = (Array.isArray(b.items) ? b.items : [b]).slice(0, 2000).map(availClean).filter(function (x) { return x.address; });
     if (!list.length) return res.status(400).json({ ok: false, error: 'address' });
@@ -8334,6 +8360,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.status && Object.keys(b).length === 1) {
       if (['available', 'let', 'withdrawn'].indexOf(b.status) === -1) return res.status(400).json({ ok: false, error: 'status' });
       await p.query("UPDATE available_props SET status = $2, let_on = CASE WHEN $2 = 'let' THEN coalesce(let_on, (now() AT TIME ZONE 'Europe/London')::date) ELSE let_on END, updated_at = now() WHERE id = $1", [id, b.status]); return res.json({ ok: true });
+    }
+    if ('key_no' in b && Object.keys(b).length === 1) {
+      await p.query('UPDATE available_props SET key_no = $2, updated_at = now() WHERE id = $1', [id, str(b.key_no, 40) || null]); return res.json({ ok: true });
     }
     if (b.address && Object.keys(b).length === 1) {
       const ad = str(availAddr(b.address), 400); if (!ad) return res.status(400).json({ ok: false, error: 'address' });
@@ -8473,7 +8502,27 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const val = { at: new Date().toISOString(), items: keep, error: error, diag: diag, ok_at: error ? (prev && prev.value && prev.value.ok_at) || null : new Date().toISOString() };
     await p.query("INSERT INTO app_settings (key, value) VALUES ('rightmove_list', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(val)]);
     if (!error) { await rmAutoLink(p, items); await rmDreamTrack(p, items); }
+    rmVideos(p).catch(function (e) { console.error('Rightmove videos:', e.message); });
     return val;
+  }
+  // The video on each linked Rightmove listing (a YouTube link in its virtual tours) — usually the right one.
+  async function rmVideos(p, only) {
+    const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_videos'")).rows[0], v = (c && c.value) || {};
+    const ids = only ? [only] : (await p.query("SELECT DISTINCT rm_id FROM available_props WHERE status = 'available' AND rm_id IS NOT NULL AND rm_id <> 'none'")).rows.map(function (r) { return r.rm_id; });
+    const due = ids.filter(function (id) { return only || !v[id] || Date.now() - Date.parse(v[id].at) > 24 * 3600000; }).slice(0, 20);
+    if (!due.length) return v;
+    for (const id of due) {
+      try {
+        const r = await fetch(RM_BASE + '/properties/' + id, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'Accept-Language': 'en-GB,en;q=0.9' }, signal: AbortSignal.timeout(15000) });
+        if (!r.ok) { v[id] = { at: new Date().toISOString(), ids: (v[id] && v[id].ids) || [], status: r.status }; continue; }
+        const body = (await r.text()).replace(/\\u002F/gi, '/').replace(/\\\//g, '/'), found = [];
+        const re = /(?:youtube(?:-nocookie)?\.com\/(?:watch\?(?:[^"'\s]*&)?v=|embed\/|shorts\/|v\/)|youtu\.be\/)([\w-]{11})/g; let m;
+        while ((m = re.exec(body))) if (found.indexOf(m[1]) === -1) found.push(m[1]);
+        v[id] = { at: new Date().toISOString(), ids: found.slice(0, 3) };
+      } catch (e) { v[id] = { at: new Date().toISOString(), ids: (v[id] && v[id].ids) || [], error: String(e.message).slice(0, 80) }; }
+    }
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('rightmove_videos', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(v)]);
+    return v;
   }
   // Dreams: adverts on Rightmove that aren't one of our available properties. Each has a 7-day review —
   // keep it up 7 more days, link it to a different property, or take it down.
@@ -8523,6 +8572,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const rid = fromUrl ? fromUrl[1] : b.rm_id == null || b.rm_id === '' ? 'none' : String(b.rm_id).replace(/\D/g, '').slice(0, 20) || 'none';
     if (rid !== 'none') await p.query("UPDATE available_props SET rm_id = NULL WHERE rm_id = $1 AND id <> $2 AND NOT rm_manual", [rid, id]);
     await p.query('UPDATE available_props SET rm_id = $2, rm_manual = true, rm_url = $3 WHERE id = $1', [id, rid, rid === 'none' ? null : RM_BASE + '/properties/' + rid]);
+    if (rid !== 'none') await rmVideos(p, rid).catch(function () {});
     res.json({ ok: true });
   }));
   // A Rightmove listing that's a "Dream" advert for one of our properties (a property can have several).
@@ -8653,15 +8703,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.get('/api/admin/youtube', withDb(async function (p, req, res) {
     const c = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0], st = await ytSettings(p), v = (c && c.value) || {}, vids = v.items || [];
     // For each available property: its videos, newest first (a hand-picked video always comes first).
-    const av = (await p.query("SELECT id, address, beds, yt_id FROM available_props WHERE status = 'available'")).rows, matches = {}, suggest = {};
+    const av = (await p.query("SELECT id, address, beds, yt_id, rm_id FROM available_props WHERE status = 'available'")).rows, matches = {}, suggest = {}, fromRm = {};
+    const rv = ((await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_videos'")).rows[0] || {}).value || {};
     av.forEach(function (a) {
       if (a.yt_id === 'none') { matches[a.id] = []; return; }
       let list = vids.map(function (x) { const sc = ytScore(a, x); return { x: x, s: sc, long: !!x._long }; }).filter(function (o) { return o.s >= 3; }).map(function (o) { return o.x; }).sort(ytNewest);
+      // The video on its Rightmove listing beats a title match (a hand-picked one still comes first).
+      const rmv = a.rm_id && rv[a.rm_id] && (rv[a.rm_id].ids || [])[0];
+      if (rmv && !a.yt_id) { fromRm[a.id] = rmv; list = [vids.filter(function (x) { return x.id === rmv; })[0] || { id: rmv, title: 'Video on the Rightmove listing' }].concat(list.filter(function (x) { return x.id !== rmv; })); }
       if (a.yt_id) { const pick = vids.filter(function (x) { return x.id === a.yt_id; })[0] || { id: a.yt_id, title: 'Chosen video' }; list = [pick].concat(list.filter(function (x) { return x.id !== a.yt_id; })); }
       matches[a.id] = list.slice(0, 1).map(function (x) { return x.id; });   // one video per property: the latest
       suggest[a.id] = vids.map(function (x) { return { id: x.id, s: ytScore(a, x) }; }).filter(function (o) { return o.s > 0; }).sort(function (x, y) { return y.s - x.s; }).slice(0, 6).map(function (o) { return o.id; });
     });
-    res.json(Object.assign({ ok: true, handle: st.handle, channel_url: 'https://www.youtube.com/' + st.handle, matches: matches, suggest: suggest, has_key: !!YT_KEY }, v, { items: vids }));
+    res.json(Object.assign({ ok: true, handle: st.handle, channel_url: 'https://www.youtube.com/' + st.handle, matches: matches, suggest: suggest, from_rm: fromRm, has_key: !!YT_KEY }, v, { items: vids }));
   }));
   app.post('/api/admin/youtube/refresh', withDb(async function (p, req, res) { const v = await softRefresh(p, 'youtube_list', ytRefresh, function () { return ytBusy; }, function (x) { ytBusy = x; }, (req.body || {}).soft === true); res.json(Object.assign({ ok: !v.error }, v)); }));
   app.post('/api/admin/youtube/settings', withDb(async function (p, req, res) {
