@@ -80,7 +80,8 @@
 
   /* ---------- App shell: sidebar + main ---------- */
   .app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
-  .side { position: sticky; top: 0; height: 100vh; background: var(--side); color: var(--side-ink); display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; }
+  .side { position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; background: var(--side); color: var(--side-ink); display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; }
+  .side > * { flex-shrink: 0; }   /* a short window: the sidebar scrolls rather than spilling its last items onto the page */
   .side-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
   button.side-brand { border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 10px; width: 100%; }
   button.side-brand:hover { background: var(--side-hover); }
@@ -11428,6 +11429,22 @@
   function tcyNames(list){ return (list || []).map(function(p){ return p.name; }).filter(Boolean); }
   function joinAnd(list){ return list.length <= 1 ? (list[0] || '') : list.slice(0, -1).join(', ') + ' & ' + list[list.length - 1]; }
   function tcyLandlordAddress(l){ return [l.line1, l.line2, l.country, l.postcode].filter(Boolean); }
+  // A landlord record's address with its postcode: the record's own when it has one, else the same address with a
+  // postcode from one of their tenancies.
+  function tcyBestLlAddress(rec){
+    var a = String(rec && rec.address || ''); if (!rec || POSTCODE_RE.test(a)) return a;
+    var nm = function(v){ return String(v || '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr|mx)\b\.?/g, ' ').replace(/[^a-z]+/g, ' ').trim(); };
+    var fn = function(v){ return ((String(v || '').replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/i) || [''])[0]).toLowerCase(); };
+    var hit = (tenancies || []).map(function(t){ return (t.data || {}).landlord || {}; }).filter(function(l){ return l.postcode && ((rec.email && l.email && l.email.toLowerCase() === rec.email.toLowerCase()) || (nm(l.name) && nm(l.name) === nm(rec.name))) && (!fn(a) || fn(l.line1 || l.line2) === fn(a)); })[0];
+    return hit ? [hit.line1, hit.line2, hit.country, hit.postcode].filter(Boolean).join(', ') : a;
+  }
+  // The landlord record behind this tenancy, to open from the tenancy.
+  function tcyLlRecord(){
+    var name = ($('tfLlName') || {}).value || '', email = (($('tfLlEmail') || {}).value || '').toLowerCase().trim(), nm = function(v){ return String(v || '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr|mx)\b\.?/g, ' ').replace(/[^a-z]+/g, ' ').trim(); };
+    var pick = $('tfLlPick') && $('tfLlPick').value ? landlordById(Number($('tfLlPick').value)) : null;
+    return pick || (email && landlords.filter(function(l){ return (l.email || '').toLowerCase() === email; })[0]) || (function(){ var same = nm(name) ? landlords.filter(function(l){ return nm(l.name) === nm(name); }) : []; return same.length === 1 ? same[0] : null; })() || (tcyDraft && tcyDraft.address ? landlordRecordAt(tcyDraft.address) : null);
+  }
+  function tcyLlOpenBtn(){ var b = $('tfLlOpen'); if (!b) return; var r = tcyLlRecord(); b.hidden = !r || staffMode; b.dataset.id = r ? r.id : ''; }
   // An address in any shape ("23 Stonehall Avenue London IG1 3SH", or split over lines) → first line, second line,
   // country and postcode, each in its own place.
   var ADDR_TOWNS = /^(london|ilford|croydon|romford|bromley|barking|dagenham|harrow|wembley|enfield|sutton|kingston|richmond|hounslow|uxbridge|watford|luton|slough|reading|dartford|basildon|chelmsford|brentwood|grays|stratford|woolwich|greenwich|lewisham|hackney|islington|camden|westminster|southwark|lambeth|wandsworth|birmingham|manchester|leeds|liverpool|bristol|leicester|northampton|nottingham|sheffield|coventry|oxford|cambridge|brighton|essex|kent|surrey|middlesex|hertfordshire)$/i;
@@ -11459,8 +11476,9 @@
     var rec = (d.address && landlordRecordAt(d.address)) ||
       all.filter(function(r){ return (l.email && r.email && r.email.toLowerCase().trim() === String(l.email).toLowerCase().trim()) || (ph(l.phone) && ph(r.phone) === ph(l.phone)); })[0] ||
       (function(){ var same = nm(l.name) ? all.filter(function(r){ return nm(r.name) === nm(l.name); }) : []; return same.length === 1 ? same[0] : null; })();
-    if (!rec || !rec.address) return { name: l.name || (rec && rec.name) || '', lines: tcyLandlordAddress(l) };
-    var parts = String(rec.address).split(/\s*[,\n]+\s*/).filter(Boolean), pc = '';
+    var recAddr = rec ? tcyBestLlAddress(rec) : '';
+    if (!rec || !recAddr || (!POSTCODE_RE.test(recAddr) && l.postcode)) return { name: l.name || (rec && rec.name) || '', lines: tcyLandlordAddress(l) };
+    var parts = String(recAddr).split(/\s*[,\n]+\s*/).filter(Boolean), pc = '';
     parts = parts.map(function(x){ var m = POSTCODE_RE.exec(x); if (m && !pc) { pc = (m[1] + ' ' + m[2]).toUpperCase(); x = x.replace(m[0], '').trim(); } return x; }).filter(Boolean);
     if (parts.length > 2 && /^(flat|apartment|apt|unit|room|suite|studio)\b/i.test(parts[0])) parts.splice(0, 2, parts[0] + ', ' + parts[1]);
     return { name: rec.name || l.name || '', lines: parts.concat(pc ? [pc] : []) };
@@ -11849,7 +11867,7 @@
         '<datalist id="tfTenantNames">' + Array.from(new Set(tenantRecs.map(function(r){ return r.name; }).filter(Boolean))).sort().map(function(n){ return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
         '<p class="muted-note" style="margin:6px 0 0">Start typing a saved tenant’s name, phone or email and the rest fills in.</p></div>' +
       '<div class="card"><h3>Guarantors<span style="flex:1"></span><button type="button" class="btn small" id="tfAddGua">+ Add guarantor</button></h3><div id="tfGuarantors">' + (d.guarantors.length ? tcyPersonRows('guarantors') : '<p class="muted-note" style="margin:0">No guarantors. The agreement leaves the guarantor sections out.</p>') + '</div></div>' +
-      '<div class="card"><h3>Landlord</h3>' +
+      '<div class="card"><h3 style="display:flex;align-items:center;gap:8px">Landlord<span style="flex:1"></span><button type="button" class="btn small ghost" id="tfLlOpen" data-keep hidden>Open landlord ›</button></h3>' +
         (landlords.length ? '<div style="margin:-2px 0 12px"><label class="lbl" for="tfLlPick">Choose a landlord on file</label><select class="inp" id="tfLlPick">' +
           '<option value="">— Pick a landlord to fill in their details —</option>' +
           landlords.slice().sort(function(a, b){ return String(a.name).localeCompare(String(b.name), 'en', { sensitivity: 'base' }); }).map(function(x){
@@ -11946,7 +11964,7 @@
   function tcyLock(){
     var form = $('tcyDetail').querySelector('.tcy-form'); if (!form) return;
     form.classList.add('tcy-locked');
-    form.querySelectorAll('input, select, textarea, button').forEach(function(el){ if (!el.closest('.tcy-docs') && !el.closest('.tcy-stmts') && !el.dataset.owe) el.disabled = true; });
+    form.querySelectorAll('input, select, textarea, button').forEach(function(el){ if (!el.closest('.tcy-docs') && !el.closest('.tcy-stmts') && !el.dataset.owe && !el.hasAttribute('data-keep')) el.disabled = true; });
     var save = form.querySelector('.tcy-save'); if (save) save.hidden = true;
     var del = $('tfDelete'); if (del) del.closest('.card').hidden = true;
     var head = $('tcyDetail').querySelector('.prop-head');
@@ -12298,14 +12316,18 @@
     // Picking a landlord on file fills their details in place (nothing else on the form changes).
     if ($('tfLlPick')) $('tfLlPick').addEventListener('change', function(){
       var x = landlordById(Number($('tfLlPick').value)); if (!x) return;
-      var a = addrLines(x.address);
+      var a = addrLines(tcyBestLlAddress(x));
       var set = function(id, v){ if ($(id)) $(id).value = v || ''; };
       set('tfLlName', x.name); set('tfLlEmail', x.email); set('tfLlPhone', x.phone);
-      set('tfLl1', a.line1); set('tfLl2', a.line2); set('tfLlCountry', a.country); set('tfLlPc', a.postcode);
+      // The record's address — but never blank a postcode we already have when the record doesn't give one.
+      if (a.postcode || !$('tfLlPc').value.trim()) { set('tfLl1', a.line1); set('tfLl2', a.line2); set('tfLlCountry', a.country); set('tfLlPc', a.postcode); }
+      tcyLlOpenBtn();
       tcyRead();
       toast('Filled in ' + x.name + '’s details');
     });
     ['tfLl1', 'tfLl2', 'tfLlCountry', 'tfLlPc'].forEach(function(id){ if ($(id)) $(id).addEventListener('blur', function(){ tcyArrangeLlAddr(); tcyRead(); }); });
+    if ($('tfLlOpen')) { tcyLlOpenBtn(); $('tfLlOpen').disabled = false; $('tfLlOpen').addEventListener('click', function(){ var id = Number(this.dataset.id); if (id) openLandlord(id); });
+      ['tfLlName', 'tfLlEmail'].forEach(function(id){ if ($(id)) $(id).addEventListener('change', tcyLlOpenBtn); }); }
     // Address boxes empty (or muddled) but the landlord's page has their address: take it from there.
     (function(){
       if (!$('tfLlPc')) return;
