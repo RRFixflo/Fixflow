@@ -522,6 +522,10 @@
   .mypw .mypw-show { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; margin: 2px 0 0; } .mypw-show input { width: 18px; height: 18px; margin: 0; }
   .mypw-err { background: #fdecec; color: #b42318; border-radius: 10px; padding: 8px 10px; font-size: .86rem; font-weight: 600; margin: 6px 0 0; }
   .mypw-act { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  #mlModal { z-index: 60; }   /* the email window opens on top of other windows (e.g. Tell landlord) */
+  .ml-tabs { display: flex; gap: 6px; } .ml-tabs button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 10px; padding: 6px 10px; font: inherit; font-size: .84rem; font-weight: 600; cursor: pointer; color: var(--ink-soft); } .ml-tabs button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; }
+  .ml-look { width: 100%; height: 420px; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #f3f5f8; }
+  .ml-att { font-size: .86rem; font-weight: 600; background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 8px 10px; }
   .pv-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0 10px; }
   .pv-steps div { border-radius: 12px; padding: 8px 10px; background: var(--panel-2, #f5f6f8); border: 1px solid var(--line, #e6e8ec); font-size: .8rem; min-width: 0; }
   .pv-steps b { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); } .pv-steps span { display: block; font-weight: 650; overflow-wrap: anywhere; }
@@ -1870,7 +1874,10 @@
     <label class="ml-f" id="mlBccRow" hidden><span>Bcc</span><input class="inp" id="mlBcc" autocomplete="off"></label>
     <button class="btn small ghost" type="button" id="mlAddCc" style="align-self:flex-start">+ Cc</button>
     <label class="ml-f"><span>Subject</span><input class="inp" id="mlSubj"></label>
+    <div class="ml-tabs"><button type="button" class="on" data-mlv="edit">✏️ Write</button><button type="button" data-mlv="look">👁 Preview — how they’ll see it</button></div>
     <textarea class="inp" id="mlBody" rows="14"></textarea>
+    <iframe id="mlLook" class="ml-look" sandbox="" title="How the email will look" hidden></iframe>
+    <div class="ml-att" id="mlAtt" hidden></div>
     <label class="switch-row" style="margin:0"><input type="checkbox" id="mlCopy" checked> Send me a copy</label>
     <div class="ml-err" id="mlErr" hidden></div>
     <div class="ml-actions"><button class="btn primary" type="button" id="mlSend">Send now</button><button class="btn" type="button" id="mlNative">Open in my mail app instead</button></div>
@@ -4763,7 +4770,7 @@
     $('shMsg').value = 'Dear ' + first + ',\n\n' + o.intro + '\n\nKind regards,\nResidential Realtors Maintenance Team';
     var email = l && l.landlord_email, wa = l && waNumber(l.landlord_phone);
     $('shEmail').hidden = !email; $('shWa').hidden = !wa;
-    if (email) $('shEmail').textContent = (meta.canEmail ? 'Send email to ' : 'Email ') + l.landlord_name.split(' ').slice(0, 3).join(' ');
+    if (email) $('shEmail').textContent = (meta.canEmail ? '✉ Check & email ' : 'Email ') + l.landlord_name.split(' ').slice(0, 3).join(' ');
     if (wa) $('shWa').textContent = 'WhatsApp ' + l.landlord_name.split(' ').slice(0, 3).join(' ');
     $('shNote').textContent = email && !meta.canEmail ? 'Email opens your email app with the message ready and downloads the PDF for you to attach.' :
       wa ? 'WhatsApp opens your chat with ' + (greetName(l.landlord_name) || 'the landlord') + ' with the message and a private link to the PDF, ready to send.' : '';
@@ -4791,14 +4798,11 @@
     var l = shCtx.landlord, msg = $('shMsg').value;
     shWithDoc($('shEmail'), function(doc){
       if (meta.canEmail && shCtx.jobId) {
-        var b64 = doc.output('datauristring').split(',')[1];
-        busy($('shEmail'), true, 'Sending…');
-        api('POST', '/api/admin/jobs/' + shCtx.jobId + '/email', { to: l.landlord_email, subject: shCtx.subject, body: msg, attachment_base64: b64, attachment_name: shCtx.name }).then(function(d){
-          busy($('shEmail'), false);
-          if (!d.ok) { toast('Couldn’t send — try again, or use Share another way'); return; }
-          $('shModal').hidden = true; toast('Sent to ' + l.landlord_email + ' with the PDF attached');
-          if (openJobId === shCtx.jobId) openJob(shCtx.jobId);
-        });
+        var b64 = doc.output('datauristring').split(',')[1], jid = shCtx.jobId, nm = shCtx.name;
+        $('shModal').hidden = true;
+        composeMail({ title: '✉ Email the landlord — check before sending', to: [l.landlord_email], subject: shCtx.subject, body: msg, attachment: nm,
+          sendFn: function(to, subj, body){ return api('POST', '/api/admin/jobs/' + jid + '/email', { to: to, subject: subj, body: body, attachment_base64: b64, attachment_name: nm }); },
+          onSent: function(){ if (openJobId === jid) openJob(jid); } });
         return;
       }
       shDownload(doc);
@@ -5378,7 +5382,7 @@
         return '<div class="tt-card" data-i="' + i + '"><div class="tt-who">' + avatar(g.name || '?') + '<div><strong>' + esc(g.name || 'Tenant') + '</strong><div class="prop-sub" style="margin:0">' + esc([g.phone, g.email].filter(Boolean).join(' · ')) + '</div></div></div>' +
           '<textarea class="inp tt-msg" rows="' + (custom ? 9 : 6) + '">' + esc(tMsg(g)) + '</textarea>' +
           '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(greetName(g.name) || 'tenant') + '</button>' : '') +
-            (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? 'Send email' : 'Email') + '</button>' : '') +
+            (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? '✉ Check &amp; send email' : 'Email') + '</button>' : '') +
             '<button type="button" class="btn ghost" data-tt="copy">Copy</button><span class="tt-done" hidden>✓ Sent</span></div></div>';
       }).join('');
     };
@@ -5422,14 +5426,10 @@
     if (ll && b.dataset.tt === 'email') {
       var llSubject = (g.jobs.every(function(j){ return j.status === 'Completed'; }) ? 'Repair completed — ' : 'Repair update — ') + (g.jobs.length === 1 ? shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + ' repairs at your properties');
       if (meta.canEmail) {
-        busy(b, true, 'Sending…');
-        // Sent once, logged on the first job; the others get a note.
-        api('POST', '/api/admin/jobs/' + g.jobs[0].id + '/email', { to: g.email, subject: llSubject, body: msg }).then(function(d){
-          busy(b, false);
-          if (!d.ok) { toast('Couldn’t send the email'); return; }
-          card.querySelector('.tt-done').hidden = false; toast('Email sent to ' + (g.name || 'the landlord'));
-          g.jobs.slice(1).forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'landlord_message', body: 'Sent the landlord an update (email to ' + g.email + '):\n\n' + msg }); });
-        });
+        // Check the email first; sent once, logged on the first job, and the others get a note.
+        composeMail({ title: '✉ Email the landlord — check before sending', to: [g.email], subject: llSubject, body: msg,
+          sendFn: function(to, subj, body){ msg = body; return api('POST', '/api/admin/jobs/' + g.jobs[0].id + '/email', { to: to, subject: subj, body: body }); },
+          onSent: function(){ card.querySelector('.tt-done').hidden = false; g.jobs.slice(1).forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'landlord_message', body: 'Sent the landlord an update (email to ' + g.email + '):\n\n' + msg }); }); } });
       } else { openMailto('mailto:' + encodeURIComponent(g.email) + '?subject=' + encodeURIComponent(llSubject) + '&body=' + encodeURIComponent(msg)); log('email'); }
       return;
     }
@@ -5438,8 +5438,9 @@
     else if (b.dataset.tt === 'email') {
       var subject = 'Your repair at ' + shortAddr(g.address) + ' — contractor booked';
       if (meta.canEmail) {
-        busy(b, true, 'Sending…');
-        api('POST', '/api/admin/jobs/' + g.jobs[0].id + '/email-tenant', { subject: subject, body: msg }).then(function(d){ busy(b, false); if (d.ok) { card.querySelector('.tt-done').hidden = false; toast('Email sent'); } else toast('Couldn’t send the email'); });
+        composeMail({ title: '✉ Email the tenant — check before sending', to: [g.email || ''], subject: subject, body: msg,
+          sendFn: function(to, subj, body){ return api('POST', '/api/admin/jobs/' + g.jobs[0].id + '/email-tenant', { subject: subj, body: body }); },
+          onSent: function(){ card.querySelector('.tt-done').hidden = false; } });
       } else { openMailto('mailto:' + encodeURIComponent(g.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(msg)); log('email'); }
     }
   });
@@ -5808,7 +5809,7 @@
         return '<div class="tt-card" data-i="' + i + '"><div class="tt-who">' + avatar(g.name || '?') + '<div><strong>' + esc(g.name || 'Landlord') + '</strong><div class="prop-sub" style="margin:0">' + esc([g.phone, g.email].filter(Boolean).join(' · ')) + (g.jobs.length > 1 ? ' · ' + g.jobs.length + ' jobs' : '') + '</div></div></div>' +
           '<textarea class="inp tt-msg" rows="' + (custom ? 9 : 12) + '">' + esc(lMsg(g)) + '</textarea>' +
           '<div class="tt-acts">' + (wa ? '<button type="button" class="btn wa" data-tt="wa">WhatsApp ' + esc(greetName(g.name) || 'landlord') + '</button>' : '') +
-            (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? 'Send email' : 'Email') + '</button>' : '') +
+            (g.email ? '<button type="button" class="btn" data-tt="email">' + (meta.canEmail ? '✉ Check &amp; send email' : 'Email') + '</button>' : '') +
             (llPhotoIds(g).length && canShareFiles() ? '<button type="button" class="btn" data-tt="photos">📷 Send photos (' + llPhotoIds(g).length + ')</button>' : '') +
             '<button type="button" class="btn ghost" data-tt="copy">Copy</button><span class="tt-done" hidden>✓ Sent</span></div></div>';
       }).join('');
@@ -8700,11 +8701,20 @@
     $('mlTo').value = (o.to || []).join(', '); $('mlCc').value = (o.cc || []).join(', '); $('mlBcc').value = (o.bcc || []).join(', ');
     $('mlCcRow').hidden = !(o.cc || []).length; $('mlBccRow').hidden = !(o.bcc || []).length; $('mlAddCc').hidden = !$('mlCcRow').hidden;
     $('mlSubj').value = o.subject || ''; $('mlBody').value = o.body || ''; $('mlErr').hidden = true; busy($('mlSend'), false);
+    mlView('edit'); $('mlAtt').hidden = !o.attachment; $('mlAtt').textContent = o.attachment ? '📎 Attached: ' + o.attachment : ''; $('mlTitle').textContent = o.title || '✉ Send email';
+    $('mlCcRow').parentNode.querySelector('#mlAddCc').hidden = !!o.sendFn || !$('mlCcRow').hidden; $('mlCopy').parentNode.hidden = !me || !!o.sendFn; $('mlNative').hidden = !!o.sendFn;
     $('mlCopy').parentNode.hidden = !me;
     $('mlFrom').innerHTML = 'From <b>' + esc(meta.user && meta.user.id && meta.user.name ? meta.user.name + ' - Residential Realtors' : 'Residential Realtors') + '</b> · replies go to <b>' + esc(me || 'info@residentialrealtors.co.uk') + '</b>';
     $('mlModal').hidden = false; setTimeout(function(){ ($('mlTo').value ? $('mlBody') : $('mlTo')).focus(); if ($('mlBody') === document.activeElement) $('mlBody').setSelectionRange(0, 0); $('mlBody').scrollTop = 0; }, 30);
   }
   function mlClose(){ $('mlModal').hidden = true; mlCur = null; }
+  // Write ↔ preview: the preview is exactly what the server will send (logo, layout, buttons).
+  function mlView(v){
+    document.querySelectorAll('[data-mlv]').forEach(function(b){ b.classList.toggle('on', b.dataset.mlv === v); });
+    $('mlBody').hidden = v !== 'edit'; $('mlLook').hidden = v !== 'look';
+    if (v === 'look') { $('mlLook').srcdoc = '<p style="font-family:sans-serif;color:#667085;padding:20px">Loading the preview…</p>'; api('POST', '/api/admin/email/preview', { subject: $('mlSubj').value, text: $('mlBody').value }).then(function(d){ if (d && d.ok) $('mlLook').srcdoc = d.html; }); }
+  }
+  document.querySelectorAll('[data-mlv]').forEach(function(b){ b.addEventListener('click', function(){ mlView(b.dataset.mlv); }); });
   $('mlX').addEventListener('click', mlClose);
   $('mlModal').addEventListener('click', function(e){ if (e.target === this) mlClose(); });
   $('mlAddCc').addEventListener('click', function(){ $('mlCcRow').hidden = false; this.hidden = true; $('mlCc').focus(); });
@@ -8720,6 +8730,14 @@
     if (!to && !bcc) return err('Add who it’s to.');
     if (!$('mlSubj').value.trim()) return err('Add a subject.');
     busy(b, true, 'Sending…'); $('mlErr').hidden = true;
+    // Some emails go through their own route (e.g. a repair update to the landlord, logged on the job, with a PDF).
+    if (mlCur && mlCur.sendFn) {
+      var addr = to.split(/[,;]/).map(function(x){ return x.trim(); }).filter(Boolean)[0] || '';
+      return mlCur.sendFn(addr, $('mlSubj').value.trim(), $('mlBody').value).then(function(d){
+        if (!d || !d.ok) return err(d && d.error === 'bad-address' ? 'Please check the email address.' : 'Couldn’t send — please try again.');
+        toast('✓ Email sent to ' + addr); var cb = mlCur && mlCur.onSent; mlClose(); if (cb) cb(d);
+      }, function(){ err('Couldn’t send — please try again.'); });
+    }
     var send = function(toList, cc){ return api('POST', '/api/admin/email', { to: toList, cc: cc, subject: $('mlSubj').value.trim(), text: $('mlBody').value, copy: $('mlCopy').checked }); };
     // Bcc (e.g. a notice to many tenants): one email each, so nobody sees the others' addresses.
     var bccs = bcc ? bcc.split(/[,;]/).map(function(x){ return x.trim(); }).filter(Boolean) : [];

@@ -1624,7 +1624,7 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
-    if (method === 'POST') return path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
+    if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
 
@@ -2732,7 +2732,9 @@ module.exports = function mountJobs(app, opts) {
     // Optional PDF attachment (e.g. a landlord report made in the browser).
     const att = typeof b.attachment_base64 === 'string' && b.attachment_base64.length < 30 * 1024 * 1024 ? b.attachment_base64.replace(/^data:[^,]*,/, '') : null;
     const attName = (str(b.attachment_name, 150) || 'Report.pdf').replace(/[^a-zA-Z0-9.\-_]+/g, '-');
-    const sent = await sendEmail({ to: [to], subject: subject, text: text, attachmentBase64: att || undefined, attachmentFilename: att ? attName : undefined });
+    const who = await senderOf(req);
+    const sent = await sendEmail({ to: [to], replyTo: who.replyTo, fromName: who.fromName, subject: subject, text: text, html: brandEmail(text, subject), attachmentBase64: att || undefined, attachmentFilename: att ? attName : undefined }).catch(function (err) { return { ok: false, error: err.message }; });
+    logSent(req, [to], [], who.replyTo, subject, text + (att ? '\n\n[Attached: ' + attName + ']' : ''), sent);
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'email', 'Emailed ' + to + (att ? ' (with ' + attName + ')' : '') + ' — ' + subject + '\n\n' + text]);
@@ -5818,6 +5820,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!r.ok) { console.error('Send email failed:', r.error); return res.status(502).json({ ok: false, error: 'send-failed', detail: String(r.error || '').slice(0, 200) }); }
     res.json({ ok: true, replyTo: replyTo });
   });
+  // Keep a copy of an email we sent for someone (Sent emails, and the person's history).
+  function logSent(req, to, cc, replyTo, subject, text, r) {
+    return db().then(function (p) { return p && p.query('INSERT INTO sent_emails (user_id, user_name, to_list, cc_list, reply_to, subject, body, ok, error) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+      [req.user && req.user.id ? req.user.id : null, req.user ? req.user.name : 'Office', [].concat(to || []), [].concat(cc || []), replyTo || null, subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]); }).catch(function (e) { console.error('Sent email log failed:', e.message); });
+  }
+  async function senderOf(req) {
+    let me = ''; try { if (req.user && req.user.id) me = ((await (await db()).query('SELECT email FROM staff_users WHERE id = $1', [req.user.id])).rows[0] || {}).email || ''; } catch (e) {}
+    const ok = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(me);
+    return { replyTo: ok ? me : 'info@residentialrealtors.co.uk', fromName: req.user && req.user.id && req.user.name ? req.user.name + ' - Residential Realtors' : 'Residential Realtors' };
+  }
+  // Exactly how an email will look, before it's sent.
+  app.post('/api/admin/email/preview', function (req, res) {
+    const b = req.body || {};
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: true, html: brandEmail(String(b.text || '').slice(0, 60000), str(b.subject, 300) || '') });
+  });
   // Emails sent through Fixflow: your own, or (managers) everyone's.
   function sentScope(req, vals, person) {
     // Owner, admins and managers see everyone's; everyone else sees their own. On a tenant's or
@@ -6554,7 +6572,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     const to = r.rows[0].tenant_email;
     if (!to) return res.status(400).json({ ok: false, error: 'no-tenant-email' });
-    const sent = await sendEmail({ to: [to], subject: subject, text: text });
+    const who = await senderOf(req);
+    const sent = await sendEmail({ to: [to], replyTo: who.replyTo, fromName: who.fromName, subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
+    logSent(req, [to], [], who.replyTo, subject, text, sent);
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'tenant_message', 'Emailed tenant — ' + subject + '\n\n' + text]);
