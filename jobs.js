@@ -6032,14 +6032,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer']];
     const buttons = [];
     const btnOf = function (b) { return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 22px"><tr><td style="background:#0b1f3a;border-radius:12px"><a href="' + e(b.url) + '" style="display:inline-block;padding:15px 26px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">' + e(b.label) + ' &rarr;</a></td></tr></table><p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3">Or copy this link: <a href="' + e(b.url) + '" style="color:#98a2b3;word-break:break-all">' + e(b.url) + '</a></p>'; };
-    const linkify = function (t) { return e(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, function (u) { return '<a href="' + u + '" style="color:#1d3fae;text-decoration:underline">' + u + '</a>'; }); };
+    // Long web addresses show as their site (e.g. "google.co.uk/…") — the link itself is unchanged.
+    const linkify = function (t) { return e(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, function (u) { const shown = u.length > 55 ? u.replace(/^https?:\/\/(www\.)?/, '').split(/[/?#]/)[0] + '/…' : u; return '<a href="' + u + '" style="color:#1d3fae;text-decoration:underline">' + shown + '</a>'; }); };
     let paras = body.trim().split(/\n{2,}/).map(function (p) {
       p = p.trim(); if (!p) return ''; const nb = buttons.length;
       const after = function () { return buttons.slice(nb).map(btnOf).join(''); };
       // Our own main link: a button instead of the bare address.
       p = p.replace(/\s*(?:—|-)?\s*(https?:\/\/[^\s]+)/g, function (all, u) { const b = BTN.filter(function (x) { return x[0].test(u.replace(/[).,]+$/, '')); })[0]; if (!b || buttons.some(function (x) { return x.url === u; })) return all; buttons.push({ url: u.replace(/[).,]+$/, ''), label: b[1] }); return ' '; }).replace(/\s+(here|below)?:\s*$/i, function (m, w) { return w ? ' using the button below.' : '.'; }).replace(/\s+—\s*Residential Realtors\s*$/i, '').trim();
       const lines = p.split('\n');
-      if (lines.every(function (l) { return /^\s*[-•]\s+/.test(l); })) return '<ul style="margin:0 0 16px;padding-left:20px">' + lines.map(function (l) { return '<li style="margin:0 0 6px">' + linkify(l.replace(/^\s*[-•]\s+/, '')) + '</li>'; }).join('') + '</ul>' + after();
+      if (lines.every(function (l) { return /^\s*[-•*]\s+/.test(l); })) return '<ul style="margin:0 0 16px;padding-left:20px">' + lines.map(function (l) { return '<li style="margin:0 0 6px">' + linkify(l.replace(/^\s*[-•*]\s+/, '')) + '</li>'; }).join('') + '</ul>' + after();
+      // A lead-in line followed by bullet points ("…the following items:" then "* item").
+      if (lines.length > 2 && !/^\s*[-•*]\s+/.test(lines[0]) && lines.slice(1).every(function (l) { return /^\s*[-•*]\s+/.test(l); })) return '<p style="margin:0 0 8px">' + linkify(lines[0]) + '</p><ul style="margin:0 0 16px;padding-left:20px">' + lines.slice(1).map(function (l) { return '<li style="margin:0 0 6px">' + linkify(l.replace(/^\s*[-•*]\s+/, '')) + '</li>'; }).join('') + '</ul>' + after();
       // A block of "Label: value" lines (offer details, bank details): a tidy panel.
       const kvRe = /^([A-Za-z][^:]{1,38}):\s*(.*)$/;
       if (lines.length >= 2 && lines.filter(function (l) { return kvRe.test(l) && !/https?:$/i.test(l.split(':')[0]); }).length >= 2 && lines.every(function (l) { return kvRe.test(l) || /^\s*[-•]\s+/.test(l); })) {
@@ -6055,10 +6058,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
         return '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f7f8fa;border:1px solid #eef0f3;border-radius:12px;margin:0 0 18px"><tr><td style="padding:10px 16px"><table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;font-size:14px">' + rows + '</table></td></tr></table>' + after();
       }
       // A short title line on its own ("Frequently Asked Questions").
-      if (lines.length === 1 && p.length <= 40 && /^[A-Z][A-Za-z ]+$/.test(p) && p.split(' ').filter(function (w) { return /^[A-Z]/.test(w); }).length >= Math.max(2, p.split(' ').length - 1)) return '<h2 style="margin:26px 0 4px;font-size:18px;color:#0b1f3a;border-top:1px solid #eef0f3;padding-top:18px">' + e(p) + '</h2>';
+      if (lines.length === 1 && p.length <= 40 && !/^dear\b/i.test(p) && /^[A-Z][A-Za-z ]+$/.test(p) && p.split(' ').filter(function (w) { return /^[A-Z]/.test(w); }).length >= Math.max(2, p.split(' ').length - 1)) return '<h2 style="margin:26px 0 4px;font-size:18px;color:#0b1f3a;border-top:1px solid #eef0f3;padding-top:18px">' + e(p) + '</h2>';
       // A heading: a line that is all bold / underlined, or a short title line above a longer paragraph ("Move-in monies").
       const headRe = /^\s*(\[(b|u)\]\s*)+([^\[\]\n]{2,70}?)\s*(\[\/(b|u)\]\s*)+$/, h3 = function (t) { return '<h3 style="margin:22px 0 6px;font-size:16px;color:#0b1f3a">' + e(unmark(t).trim()) + '</h3>'; };
-      const plainHead = lines.length > 1 && lines[0].length <= 40 && /^[A-Z][A-Za-z' &/-]+$/.test(lines[0].trim()) && lines[1].length >= 60;
+      const plainHead = lines.length > 1 && lines[0].length <= 40 && !/^dear\b/i.test(lines[0]) && /^[A-Z][A-Za-z' &/-]+$/.test(lines[0].trim()) && lines[1].length >= 60;
       if ((headRe.test(lines[0]) && !/^\s*(\[(b|u)\]\s*)+(re|dear)\b/i.test(lines[0])) || plainHead) { const rest = lines.slice(1); return h3(lines[0]) + (rest.length ? '<p style="margin:0 0 16px">' + rest.map(linkify).join('<br>') + '</p>' : '') + after(); }
       if (lines.length === 1 && /^[A-Z0-9 ,.'’&:-]{12,}$/.test(p)) return '<p style="margin:0 0 16px;font-size:12px;letter-spacing:.06em;font-weight:700;color:#475467">' + e(p) + '</p>';
       return lines.map(function (l, i) {
