@@ -1588,13 +1588,15 @@ module.exports = function mountJobs(app, opts) {
     return crypto.timingSafeEqual(a, b);
   }
 
+  // Wrong passwords never lock anyone out (staff share the office connection): after a
+  // few misses from one connection each try just waits a moment longer, up to 3 seconds,
+  // which keeps password guessing slow.
   const loginAttempts = new Map();
-  function loginAllowed(ip) {
-    const now = Date.now();
-    const e = loginAttempts.get(ip);
-    if (!e || now - e.start > 15 * 60 * 1000) { loginAttempts.set(ip, { start: now, n: 1 }); return true; }
+  function loginDelay(ip) {
+    const now = Date.now(), e = loginAttempts.get(ip);
+    if (!e || now - e.start > 15 * 60 * 1000) { loginAttempts.set(ip, { start: now, n: 1 }); return 0; }
     e.n += 1;
-    return e.n <= 10;
+    return e.n <= 5 ? 0 : Math.min(3000, (e.n - 5) * 500);
   }
 
   // ---------- Offers-only staff sign-in ----------
@@ -1628,7 +1630,7 @@ module.exports = function mountJobs(app, opts) {
 
   app.post('/api/admin/login', async function (req, res) {
     if (!ADMIN_PASSWORD) return res.status(503).json({ ok: false, error: 'admin-not-configured' });
-    if (!loginAllowed(req.ip)) return res.status(429).json({ ok: false, error: 'too-many-attempts' });
+    const wait = loginDelay(req.ip); if (wait) await new Promise(function (r) { setTimeout(r, wait); });
     const given = (req.body || {}).password, uname = str((req.body || {}).user, 120);
     let role = null, user = null;
     if (uname) {
@@ -1687,7 +1689,7 @@ module.exports = function mountJobs(app, opts) {
     } catch (err) { console.error('Sign-in check failed:', err.message); if (t.role) return res.status(503).json({ ok: false, error: 'db' }); }
     req.role = t.role || null;
     if (!req.user) req.user = { id: null, name: req.role === 'offers' ? 'Offers staff' : 'Owner', role: req.role === 'offers' ? 'offers' : 'owner' };
-    if (req.role === 'offers' && !staffAllowed(req.method, req.path) && !(req.user.role === 'offers_admin' && /^\/(users(\/\d+)?|staff-activity)$/.test(req.path))) return res.status(403).json({ ok: false, error: 'not-allowed' });
+    if (req.role === 'offers' && !staffAllowed(req.method, req.path) && !(req.user.role === 'offers_admin' && /^\/(users(\/\d+(\/send-login)?)?|staff-activity)$/.test(req.path))) return res.status(403).json({ ok: false, error: 'not-allowed' });
     if (req.method !== 'GET' && !req.is('application/json')) return res.status(415).json({ ok: false, error: 'json-only' });
     // Who did what: note each change once it has gone through.
     const act0 = req.method !== 'GET' ? describeAction(req) : '';   // req.path is only relative to /api/admin here
@@ -1792,6 +1794,36 @@ module.exports = function mountJobs(app, opts) {
     if (b.name != null) await p.query('UPDATE admin_sessions SET user_name = $2 WHERE user_id = $1', [id, str(b.name, 80)]);
     for (const [k, v] of sessionCache) if (v && v.user_id === id) sessionCache.delete(k);
     res.json({ ok: true });
+  }));
+  // Email someone their sign-in details. Passwords are only kept scrambled, so this sets the
+  // password given (the manager chooses or accepts a suggested one) and sends it to them.
+  // The copy kept in Sent emails has the password blanked out.
+  app.post('/api/admin/users/:id/send-login', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-allowed' });
+    if (!canEmail() || !sendEmail) return res.status(503).json({ ok: false, error: 'email-not-configured' });
+    const id = parseInt(req.params.id, 10) || 0, b = req.body || {}, pw = String(b.password || '');
+    const u = (await p.query('SELECT id, name, email, role, disabled_at FROM staff_users WHERE id = $1', [id])).rows[0];
+    if (!u) return res.status(404).json({ ok: false, error: 'not-found' });
+    if (u.disabled_at) return res.status(409).json({ ok: false, error: 'off' });
+    if (u.role === 'admin' && req.user.role !== 'owner') return res.status(403).json({ ok: false, error: 'owner-only' });
+    if (!mayManageRole(req, u.role)) return res.status(403).json({ ok: false, error: 'offers-only' });
+    const to = String(u.email || '').trim();
+    if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(to)) return res.status(400).json({ ok: false, error: 'no-email' });
+    if (!pw.trim() || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' });
+    const salt = crypto.randomBytes(16).toString('hex');
+    await p.query('UPDATE staff_users SET salt = $2, hash = $3 WHERE id = $1', [id, salt, scryptHex(pw, salt)]);
+    await revokeUser(p, id); for (const [k, v] of sessionCache) if (v && v.user_id === id) sessionCache.delete(k);
+    const offersOnly = u.role === 'offers' || u.role === 'offers_admin';
+    const link = offersOnly ? (OFFER_ORIGIN || PUBLIC_URL) + '/staff' : PUBLIC_URL + '/admin';
+    const first = String(u.name || '').split(/\s+/)[0] || 'there', from = req.user && req.user.name && req.user.id ? req.user.name : 'Residential Realtors';
+    const subject = 'Your Fixflow sign-in details';
+    const body = function (shown) { return 'Hi ' + first + ',\n\nHere are your sign-in details for Fixflow, the Residential Realtors staff system' + (offersOnly ? ' (offers, pre-viewing reservations and landlord terms)' : '') + '.\n\nSign in here: ' + link + '\nName: ' + u.name + '\nPassword: ' + shown +
+      '\n\nYou can also sign in with your email address instead of your name. Please keep these details private and don\u2019t share your password with anyone. If you forget it, just ask your manager for a new one.\n\nKind regards,\n' + (from === 'Residential Realtors' ? from : from + '\nResidential Realtors'); };
+    const r = await sendEmail({ to: [to], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: body(pw), html: brandEmail(body(pw), subject) }).catch(function (err) { return { ok: false, error: err.message }; });
+    try { await p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [req.user && req.user.id ? req.user.id : null, req.user ? req.user.name : 'Office', [to], 'info@residentialrealtors.co.uk', subject, body('•••••••• (hidden)'), !!r.ok, r.ok ? null : String(r.error || '').slice(0, 300)]); } catch (e) {}
+    if (!r.ok) return res.status(502).json({ ok: false, error: 'send-failed', detail: String(r.error || '').slice(0, 200) });
+    res.json({ ok: true, to: to });
   }));
   // Remove a person (their past changes keep their name).
   app.delete('/api/admin/users/:id', withDb(async function (p, req, res) {
@@ -5689,7 +5721,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (di !== -1) { disclaimer = body.slice(di).trim(); body = body.slice(0, di); }
     let sig = []; const sm = /\n\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Thanks,?|Yours sincerely,?)\s*\n([\s\S]*)$/i.exec(body);
     if (sm) { sig = sm[2].split('\n').map(function (l) { return l.trim(); }).filter(Boolean); body = body.slice(0, sm.index); }
-    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer']];
+    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer']];
     const buttons = [];
     const btnOf = function (b) { return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 22px"><tr><td style="background:#0b1f3a;border-radius:12px"><a href="' + e(b.url) + '" style="display:inline-block;padding:15px 26px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">' + e(b.label) + ' &rarr;</a></td></tr></table><p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3">Or copy this link: <a href="' + e(b.url) + '" style="color:#98a2b3;word-break:break-all">' + e(b.url) + '</a></p>'; };
     const linkify = function (t) { return e(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, function (u) { return '<a href="' + u + '" style="color:#1d3fae;text-decoration:underline">' + u + '</a>'; }); };
