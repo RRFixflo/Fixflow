@@ -492,6 +492,18 @@
   .off-pvr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 8px 0 2px; padding: 10px 12px; border-radius: 12px; background: #f5f7fb; border: 1px solid #e3e8f1; font-size: .86rem; } .off-pvr label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
   .pv-editbox { margin: 8px 0 12px; padding: 12px; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; }
   @media (max-width: 640px) { .off-kind, .off-pvr { grid-template-columns: 1fr; } }
+  .sent-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sent-row { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 14px; margin-bottom: 8px; overflow: hidden; }
+  .sent-row > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 118px 1fr auto; gap: 4px 14px; align-items: center; padding: 12px 14px; }
+  .sent-row > summary::-webkit-details-marker { display: none; }
+  .sent-when { font-size: .8rem; color: var(--ink-soft); line-height: 1.3; } .sent-when b { display: block; color: var(--ink); font-size: .86rem; }
+  .sent-main { min-width: 0; } .sent-main b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .sent-main span { display: block; font-size: .82rem; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sent-by { font-size: .78rem; color: var(--ink-soft); text-align: right; } .sent-fail { color: #b42318; font-weight: 700; }
+  .sent-body { border-top: 1px solid var(--line, #e6e8ec); padding: 12px 14px; }
+  .sent-meta { display: grid; grid-template-columns: 90px 1fr; gap: 3px 10px; font-size: .84rem; margin-bottom: 10px; } .sent-meta span { color: var(--ink-soft); }
+  .sent-frame { width: 100%; height: 560px; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #f3f5f8; }
+  .sent-text { white-space: pre-wrap; font-size: .86rem; background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 10px 12px; margin: 0; max-height: 420px; overflow: auto; }
+  @media (max-width: 640px) { .sent-row > summary { grid-template-columns: 1fr auto; } .sent-when { grid-column: 1 / -1; display: flex; gap: 8px; } .sent-when b { display: inline; } .sent-frame { height: 480px; } }
   .pv-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0 10px; }
   .pv-steps div { border-radius: 12px; padding: 8px 10px; background: var(--panel-2, #f5f6f8); border: 1px solid var(--line, #e6e8ec); font-size: .8rem; min-width: 0; }
   .pv-steps b { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); } .pv-steps span { display: block; font-weight: 650; overflow-wrap: anywhere; }
@@ -1174,6 +1186,7 @@
     <button class="nav" type="button" id="contractorsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg> Contractors</button>
     <button class="nav" type="button" id="navAct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Activity</button>
     <button class="nav" type="button" id="navLt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg> Landlord Terms <span class="count-chip" id="sLt" hidden></span></button>
+    <button class="nav" type="button" id="navSent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg> Sent emails</button>
     <button class="nav" type="button" id="navEmail" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
     <button class="nav" type="button" id="navNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <div class="side-sec">Links</div>
@@ -1474,7 +1487,7 @@
         </details>
       </div>
 
-      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
+      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
       <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto"><option value="">Everyone</option></select></div><div id="teamFeed"></div></div></div>
@@ -1500,6 +1513,11 @@
         </details>
         <div class="lt-bar"><label class="muted-note" style="margin:0;display:flex;gap:6px;align-items:center">Sort <select class="inp" id="ltSort" style="width:auto"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="signed">Recently signed</option><option value="waiting">Waiting for the landlord first</option><option value="addr">Property A–Z</option><option value="ll">Landlord A–Z</option><option value="feehi">Highest fees</option><option value="feelo">Lowest fees</option></select></label><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="ltMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="ltMaxAll">▾ Expand all</button></span></div>
         <div id="ltList"></div>
+      </div>
+      <div id="sentView" hidden>
+        <div class="card" style="margin-bottom:12px"><div class="sent-bar"><input class="inp" id="sentQ" placeholder="Search who it went to, subject or text" style="flex:1;min-width:200px"><select class="inp" id="sentWho" hidden style="width:auto"><option value="">Everyone</option></select></div>
+          <p class="muted-note" id="sentNote" style="margin:8px 0 0"></p></div>
+        <div id="sentList"></div>
       </div>
       <div id="offersView" hidden>
         <details class="card" id="offLinkCard" style="margin-bottom:12px">
@@ -3433,7 +3451,7 @@
   function showView(v){
     if ((v === 'team' || v === 'who') && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
-    if (staffMode && v !== 'lt' && v !== 'team' && v !== 'who') v = 'offers';
+    if (staffMode && v !== 'lt' && v !== 'sent' && v !== 'team' && v !== 'who') v = 'offers';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -3450,6 +3468,7 @@
     $('ctrView').hidden = v !== 'ctr';
     $('ctsView').hidden = v !== 'cts';
     $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
+    $('sentView').hidden = v !== 'sent'; $('navSent').classList.toggle('on', v === 'sent');
     document.querySelectorAll('[data-stab]').forEach(function(b){ b.classList.toggle('on', b.dataset.stab === v); });
     $('contractorsBtn').classList.toggle('on', v === 'cts' || v === 'ctr');
     $('navAct').classList.toggle('on', v === 'act');
@@ -3460,10 +3479,11 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') loadLt();
+    if (v === 'sent') loadSent();
     if (v === 'team') { loadTeam(); $('teamSec').open = true; }
     if (v === 'who') loadTeam();
     if (v === 'tcy' && !openTcyId) renderTenancies();
@@ -9282,6 +9302,44 @@
   $('navLt').addEventListener('click', function(){ showView('lt'); });
   $('staffTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-stab]'); if (b) showView(b.dataset.stab); });
 
+  // ---------- Sent emails: everything sent through Fixflow's email box ----------
+  // Staff see their own; managers can see everyone's and filter by person.
+  var sentT = null, sentWhoSet = false;
+  function loadSent(){
+    var q = $('sentQ').value.trim(), who = $('sentWho').value;
+    return api('GET', '/api/admin/sent-emails?q=' + encodeURIComponent(q) + (who ? '&who=' + encodeURIComponent(who) : '')).then(function(d){
+      if (!d || !d.ok) { $('sentList').innerHTML = '<p class="muted-note">Couldn’t load your sent emails.</p>'; return; }
+      if (d.all && !sentWhoSet) { sentWhoSet = true; $('sentWho').hidden = false; $('sentWho').innerHTML = '<option value="">Everyone</option>' + d.people.map(function(p){ return '<option value="' + esc(p.user_name || '') + '">' + esc(p.user_name || 'Office') + ' (' + p.n + ')</option>'; }).join(''); }
+      $('sentNote').textContent = (d.all ? 'Every email sent through Fixflow by the team' : 'Emails you’ve sent through Fixflow') + ' — newest first' + (d.emails.length >= 300 ? ' (latest 300)' : '') + '. Tap one to see exactly what was sent.';
+      $('sentList').innerHTML = d.emails.length ? d.emails.map(function(e){
+        var dt = new Date(e.created_at), day = dt.toLocaleDateString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', year: dt.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined }), tm = dt.toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+        return '<details class="sent-row" data-sent="' + e.id + '"><summary><div class="sent-when"><b>' + esc(day) + '</b>' + esc(tm) + '</div><div class="sent-main"><b>' + esc(e.subject || '(no subject)') + '</b><span>To ' + esc((e.to_list || []).join(', ')) + (e.cc_list && e.cc_list.length ? ' · cc ' + esc(e.cc_list.join(', ')) : '') + '</span><span>' + esc(String(e.preview || '').replace(/\s+/g, ' ')) + '</span></div>' +
+          '<div class="sent-by">' + (e.ok ? '✓ Sent' : '<span class="sent-fail">✕ Not sent</span>') + (d.all ? '<br>by ' + esc(e.user_name || 'Office') : '') + '</div></summary><div class="sent-body"></div></details>';
+      }).join('') : '<div class="card"><p class="muted-note" style="margin:0">' + (q || who ? 'No emails match.' : 'No emails sent through Fixflow yet. Emails you send with the ✉ Email buttons will appear here.') + '</p></div>';
+    });
+  }
+  $('sentQ').addEventListener('input', function(){ clearTimeout(sentT); sentT = setTimeout(loadSent, 350); });
+  $('sentWho').addEventListener('change', loadSent);
+  $('sentList').addEventListener('toggle', function(e){
+    var row = e.target; if (!row.matches || !row.matches('.sent-row') || !row.open || row.dataset.loaded) return; row.dataset.loaded = '1';
+    var box = row.querySelector('.sent-body'); box.innerHTML = '<p class="muted-note">Loading…</p>';
+    api('GET', '/api/admin/sent-emails/' + row.dataset.sent).then(function(d){
+      if (!d || !d.ok) { box.innerHTML = '<p class="muted-note">Couldn’t load this email.</p>'; return; }
+      var m = d.email;
+      box.innerHTML = '<div class="sent-meta"><span>Sent</span><b>' + esc(new Date(m.created_at).toLocaleString('en-GB', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })) + '</b><span>From</span><b>' + esc((m.user_name || 'Office') + ' — Residential Realtors') + '</b><span>To</span><b>' + esc((m.to_list || []).join(', ')) + '</b>' + (m.cc_list && m.cc_list.length ? '<span>Cc</span><b>' + esc(m.cc_list.join(', ')) + '</b>' : '') + '<span>Replies to</span><b>' + esc(m.reply_to || '') + '</b><span>Subject</span><b>' + esc(m.subject || '') + '</b>' + (m.ok ? '' : '<span>Problem</span><b class="sent-fail">' + esc(m.error || 'It wasn’t sent') + '</b>') + '</div>' +
+        '<div style="display:flex;gap:6px;margin:0 0 8px;flex-wrap:wrap"><button type="button" class="btn small on" data-sv="look">As they saw it</button><button type="button" class="btn small" data-sv="text">Plain text</button><button type="button" class="btn small" data-sv="again">↻ Send again</button></div>' +
+        '<iframe class="sent-frame" sandbox="" src="/api/admin/sent-emails/' + m.id + '?html=1" title="The email as sent"></iframe><pre class="sent-text" hidden>' + esc(m.body || '') + '</pre>';
+      box.em = m;
+    });
+  }, true);
+  $('sentList').addEventListener('click', function(e){
+    var b = e.target.closest('[data-sv]'); if (!b) return; var box = b.closest('.sent-body'), m = box.em; if (!m) return;
+    if (b.dataset.sv === 'again') { openMailto('mailto:' + encodeURIComponent((m.to_list || []).join(',')) + '?subject=' + encodeURIComponent(m.subject || '') + (m.cc_list && m.cc_list.length ? '&cc=' + encodeURIComponent(m.cc_list.join(',')) : '') + '&body=' + encodeURIComponent(m.body || '')); return; }
+    box.querySelectorAll('[data-sv="look"],[data-sv="text"]').forEach(function(x){ x.classList.toggle('on', x === b); });
+    box.querySelector('.sent-frame').hidden = b.dataset.sv !== 'look'; box.querySelector('.sent-text').hidden = b.dataset.sv !== 'text';
+  });
+  $('navSent').addEventListener('click', function(){ showView('sent'); });
+
   // ---------- Pre-viewing reservations (PVR) ----------
   // The applicant signs and pays a week's rent before viewing; after the viewing
   // they answer within 24 hours: going ahead (offer form) or not (refund details).
@@ -12154,7 +12212,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navLt', 'Landlord Terms'], ['navSent', 'Sent emails'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';

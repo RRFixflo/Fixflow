@@ -502,6 +502,20 @@ CREATE TABLE IF NOT EXISTS landlord_terms (
   signed_at        TIMESTAMPTZ,
   created_by       TEXT
 );
+CREATE TABLE IF NOT EXISTS sent_emails (
+  id          SERIAL PRIMARY KEY,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  user_id     INTEGER,
+  user_name   TEXT,
+  to_list     TEXT[] NOT NULL DEFAULT '{}',
+  cc_list     TEXT[] NOT NULL DEFAULT '{}',
+  reply_to    TEXT,
+  subject     TEXT,
+  body        TEXT,
+  ok          BOOLEAN NOT NULL DEFAULT true,
+  error       TEXT
+);
+CREATE INDEX IF NOT EXISTS sent_emails_user ON sent_emails (user_id, created_at DESC);
 CREATE TABLE IF NOT EXISTS pvr_reservations (
   id               SERIAL PRIMARY KEY,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1606,6 +1620,7 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;
     if (/^\/pvr(\/\d+(\/pdf)?)?$/.test(path)) return true;   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
+    if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
@@ -5739,9 +5754,34 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const replyTo = isEmail(me) ? me : 'info@residentialrealtors.co.uk';
     const name = req.user && req.user.id && req.user.name ? req.user.name + ' - Residential Realtors' : 'Residential Realtors';
     const r = await sendEmail({ to: to, cc: cc, bcc: b.copy !== false && isEmail(me) && to.concat(cc).indexOf(me) === -1 ? [me] : undefined, replyTo: replyTo, fromName: name, subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
+    // Kept so each person can look back at what they sent, and when.
+    try { await (await db()).query('INSERT INTO sent_emails (user_id, user_name, to_list, cc_list, reply_to, subject, body, ok, error) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+      [req.user && req.user.id ? req.user.id : null, req.user ? req.user.name : 'Office', to, cc, replyTo, subject, text, !!r.ok, r.ok ? null : String(r.error || '').slice(0, 300)]); } catch (e) { console.error('Sent email log failed:', e.message); }
     if (!r.ok) { console.error('Send email failed:', r.error); return res.status(502).json({ ok: false, error: 'send-failed', detail: String(r.error || '').slice(0, 200) }); }
     res.json({ ok: true, replyTo: replyTo });
   });
+  // Emails sent through Fixflow: your own, or (managers) everyone's.
+  function sentScope(req, vals) {
+    const all = canManageUsers(req);   // owner, admins and managers; everyone else sees their own
+    if (all) return { all: true, where: '' };
+    if (req.user && req.user.id) { vals.push(req.user.id); return { all: false, where: ' AND user_id = $' + vals.length }; }
+    vals.push(req.user ? req.user.name : ''); return { all: false, where: ' AND user_id IS NULL AND user_name = $' + vals.length };
+  }
+  app.get('/api/admin/sent-emails', withDb(async function (p, req, res) {
+    const vals = [], sc = sentScope(req, vals); let where = 'WHERE true' + sc.where;
+    const q = str(req.query.q, 100); if (q) { vals.push('%' + q.toLowerCase().replace(/[%_]/g, '') + '%'); where += ' AND (lower(coalesce(subject, \'\')) LIKE $' + vals.length + ' OR lower(array_to_string(to_list || cc_list, \' \')) LIKE $' + vals.length + ' OR lower(coalesce(body, \'\')) LIKE $' + vals.length + ')'; }
+    if (sc.all && req.query.who) { vals.push(String(req.query.who).slice(0, 120)); where += ' AND user_name = $' + vals.length; }
+    const r = await p.query('SELECT id, created_at, user_id, user_name, to_list, cc_list, reply_to, subject, left(body, 240) AS preview, ok, error FROM sent_emails ' + where + ' ORDER BY id DESC LIMIT 300', vals);
+    const people = sc.all ? (await p.query('SELECT user_name, count(*)::int AS n FROM sent_emails GROUP BY user_name ORDER BY lower(user_name)')).rows : [];
+    res.json({ ok: true, all: sc.all, emails: r.rows, people: people });
+  }));
+  app.get('/api/admin/sent-emails/:id', withDb(async function (p, req, res) {
+    const vals = [jobId(req)], sc = sentScope(req, vals);
+    const e = (await p.query('SELECT * FROM sent_emails WHERE id = $1' + sc.where, vals)).rows[0];
+    if (!e) return res.status(404).json({ ok: false, error: 'not-found' });
+    if (req.query.html) { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'private, no-store'); return res.send(brandEmail(e.body || '', e.subject || '')); }
+    res.json({ ok: true, email: e });
+  }));
   // A test alert so staff can check the ntfy app is set up on their phone.
   app.post('/api/admin/offer-alerts/test', async function (req, res) {
     const topic = await offersTopic().catch(function () { return ''; }); if (!topic || typeof fetch !== 'function') return res.status(503).json({ ok: false });
