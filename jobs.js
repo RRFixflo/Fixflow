@@ -2180,7 +2180,7 @@ module.exports = function mountJobs(app, opts) {
       if (!p) return res.status(503).json({ ok: false, error: 'no-database' });
       try { await handler(p, req, res); } catch (err) {
         console.error('admin api error:', req.method, req.path, err.message);
-        res.status(500).json({ ok: false, error: 'server-error' });
+        res.status(500).json({ ok: false, error: /no space left on device|disk full/i.test(err.message) ? 'db-full' : 'server-error' });
       }
     };
   }
@@ -8520,6 +8520,21 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await p.query('DELETE FROM available_props a USING available_props b WHERE ' + same + " AND ((a.status = 'available' AND a.id > b.id) OR (a.status <> 'available' AND a.id < b.id))");
     res.json({ ok: true, removed: r.rowCount, tidied: tidied });
   }));
+  // Database space: keep Postgres's change log small (it can otherwise outgrow a small volume), give back
+  // space left by big updates, and log what takes the room.
+  async function dbRoom(p) {
+    const tryQ = async function (q) { try { return await p.query(q); } catch (e) { console.error('DB space step failed (' + q.slice(0, 40) + '):', e.message); return null; } };
+    await tryQ("ALTER SYSTEM SET max_wal_size = '96MB'"); await tryQ("ALTER SYSTEM SET min_wal_size = '32MB'"); await tryQ('SELECT pg_reload_conf()'); await tryQ('CHECKPOINT');
+    for (const t of ['app_settings', 'rm_dreams', 'staff_activity', 'sent_emails']) await tryQ('VACUUM FULL ' + t);
+    for (const t of ['available_props', 'site_visits', 'site_sessions', 'site_visitors', 'offers', 'tenancies']) await tryQ('VACUUM ' + t);
+    await tryQ('CHECKPOINT');
+    const db = await tryQ('SELECT pg_database_size(current_database()) AS b'), wal = await tryQ('SELECT coalesce(sum(size), 0) AS b FROM pg_ls_waldir()');
+    const top = await tryQ('SELECT relname, pg_total_relation_size(relid) AS b FROM pg_catalog.pg_statio_user_tables ORDER BY 2 DESC LIMIT 8');
+    const mb = function (b) { return (Number(b) / 1048576).toFixed(1) + 'MB'; };
+    console.log('DB space: data ' + (db ? mb(db.rows[0].b) : '?') + ', change log ' + (wal ? mb(wal.rows[0].b) : '?') + ' | ' + (top ? top.rows.map(function (r) { return r.relname + ' ' + mb(r.b); }).join(', ') : ''));
+  }
+  setTimeout(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function (e) { console.error('DB space check failed:', e.message); }); }, 5000).unref();
+  setInterval(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function () {}); }, 24 * 3600000).unref();
   // Once: put the values already on the list in their places (version bump re-runs it).
   setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 3) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 3, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
   // Empty the Been let list before pasting a corrected copy (managers only).
@@ -8625,10 +8640,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
     pairs.forEach(function (x) { if (got[x.a] || taken[x.r]) return; got[x.a] = x.r; taken[x.r] = 1; });
     for (const a of av.filter(function (a) { return !a.rm_manual; })) { const nid = got[a.id] || null; if (nid !== a.rm_id) await p.query('UPDATE available_props SET rm_id = $2 WHERE id = $1', [a.id, nid]); }
   }
+  // The Rightmove and YouTube lists are big: rewrite them only when they've changed (or every 6 hours),
+  // otherwise just remember the time of the check — every rewrite costs database space until it's cleaned up.
+  const listAt = {};
+  async function saveList(p, key, val, prev) {
+    const pv = prev && prev.value;
+    if (pv && JSON.stringify(pv.items || []) === JSON.stringify(val.items || []) && (pv.error || null) === (val.error || null) && Date.now() - Date.parse(pv.at) < 6 * 3600000) { listAt[key] = val.at; return; }
+    delete listAt[key];
+    await p.query("INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2", [key, JSON.stringify(val)]);
+  }
+  function listFresh(key, v) { return v && listAt[key] && Date.parse(listAt[key]) > Date.parse(v.at || 0) ? Object.assign({}, v, { at: listAt[key] }) : v; }
   // One check at a time; a "soft" check (sign-in, Refresh) reuses one made in the last 2 minutes.
   let rmBusy = null, ytBusy = null;
   async function softRefresh(p, key, run, busyGet, busySet, soft) {
-    if (soft) { const c = (await p.query("SELECT value FROM app_settings WHERE key = $1", [key])).rows[0]; if (c && c.value && Date.now() - Date.parse(c.value.at) < 2 * 60000) return Object.assign({ cached: true }, c.value); }
+    if (soft) { const c = (await p.query("SELECT value FROM app_settings WHERE key = $1", [key])).rows[0], v = c && listFresh(key, c.value); if (v && Date.now() - Date.parse(v.at) < 2 * 60000) return Object.assign({ cached: true }, v); }
     if (busyGet()) return busyGet();
     const pr = run(p).finally(function () { busySet(null); }); busySet(pr); return pr;
   }
@@ -8639,7 +8664,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const prev = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0];
     const keep = error && prev && prev.value && prev.value.items ? prev.value.items : items;
     const val = { at: new Date().toISOString(), items: keep, error: error, diag: diag, ok_at: error ? (prev && prev.value && prev.value.ok_at) || null : new Date().toISOString() };
-    await p.query("INSERT INTO app_settings (key, value) VALUES ('rightmove_list', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(val)]);
+    await saveList(p, 'rightmove_list', val, prev);
     if (!error) { await rmAutoLink(p, items); await rmDreamTrack(p, items); }
     rmVideos(p).then(function () { return error ? null : rmSync(p, items); }).catch(function (e) { console.error('Rightmove details:', e.message); });
     return val;
@@ -8717,7 +8742,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   app.get('/api/admin/rightmove', withDb(async function (p, req, res) {
     const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], st = await rmSettings(p);
-    res.json(Object.assign({ ok: true, branch: st.branch, branch_url: RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + st.branch, items: [] }, (c && c.value) || {}, { dreams: await rmDreams(p), today: londonDay() }));
+    res.json(Object.assign({ ok: true, branch: st.branch, branch_url: RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + st.branch, items: [] }, listFresh('rightmove_list', (c && c.value) || {}), { dreams: await rmDreams(p), today: londonDay() }));
   }));
   app.post('/api/admin/dreams/:rmid', withDb(async function (p, req, res) {
     const rid = String(req.params.rmid || '').replace(/\D/g, '').slice(0, 20), act = (req.body || {}).action, who = req.user ? req.user.name : 'Office';
@@ -8762,7 +8787,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query("UPDATE available_props SET dream_rm = dream_rm || to_jsonb($2::text) WHERE id = $1 AND NOT dream_rm ? $2", [id, rid]);
     res.json({ ok: true });
   }));
-  setInterval(function () { db().then(async function (p) { if (!p) return; const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0]; if (!c || !c.value || Date.now() - Date.parse(c.value.at) > 55 * 60000) await softRefresh(p, 'rightmove_list', rmRefresh, function () { return rmBusy; }, function (x) { rmBusy = x; }, false); }).catch(function (e) { console.error('Rightmove check failed:', e.message); }); }, 10 * 60 * 1000).unref();
+  setInterval(function () { db().then(async function (p) { if (!p) return; const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], cv = c && listFresh('rightmove_list', c.value); if (!cv || Date.now() - Date.parse(cv.at) > 55 * 60000) await softRefresh(p, 'rightmove_list', rmRefresh, function () { return rmBusy; }, function (x) { rmBusy = x; }, false); }).catch(function (e) { console.error('Rightmove check failed:', e.message); }); }, 10 * 60 * 1000).unref();
 
   // ---------- YouTube: property videos from our channel ----------
   // The channel's uploads are read (YouTube Data API when YOUTUBE_API_KEY is set, otherwise
@@ -8873,11 +8898,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     console.log('YouTube check: ' + items.length + ' videos' + (error ? ' (error: ' + error + ')' : '') + ' | ' + diag.map(function (d) { return JSON.stringify(d); }).join(' | ').slice(0, 900));
     const prev = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0];
     const val = { at: new Date().toISOString(), items: error && prev && prev.value && prev.value.items ? prev.value.items : items, error: error, via: YT_KEY ? 'api' : 'page', diag: diag };
-    await p.query("INSERT INTO app_settings (key, value) VALUES ('youtube_list', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(val)]);
+    await saveList(p, 'youtube_list', val, prev);
     return val;
   }
   app.get('/api/admin/youtube', withDb(async function (p, req, res) {
-    const c = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0], st = await ytSettings(p), v = (c && c.value) || {}, vids = v.items || [];
+    const c = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0], st = await ytSettings(p), v = listFresh('youtube_list', (c && c.value) || {}), vids = v.items || [];
     // For each available property: its videos, newest first (a hand-picked video always comes first).
     const av = (await p.query("SELECT id, address, beds, yt_id, rm_id FROM available_props WHERE status = 'available'")).rows, matches = {}, suggest = {}, fromRm = {};
     const rv = ((await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_videos'")).rows[0] || {}).value || {};
