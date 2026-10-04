@@ -529,6 +529,7 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS let_on DATE;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS dream_rm JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS key_no TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS access TEXT;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_synced_at TIMESTAMPTZ;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS access_note TEXT;
 -- Let dates outside the last 16 years (or over a year ahead) are misread cells.
 UPDATE available_props SET let_on = NULL WHERE let_on IS NOT NULL AND (let_on < current_date - interval '16 years 2 months' OR let_on > current_date + interval '1 year');
@@ -8461,7 +8462,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     for (const x of list) {
       const k = norm(x.address) + '|' + x.status;
       if (have[k]) {
-        try { await p.query('UPDATE available_props SET ' + UPD.map(function (c, i) { return c + ' = coalesce($' + (i + 2) + ', ' + c + ')'; }).join(', ') + ', updated_at = now() WHERE id = $1', [have[k]].concat(UPD.map(function (c) { return typeof x[c] === 'boolean' ? (x[c] || null) : x[c]; }))); skipped.push(x.address); }
+        // A live (available) property is never changed by a paste; let / withdrawn rows take the latest details.
+        const live = x.status === 'available';
+        if (live) { skipped.push(x.address); continue; }
+        try { await p.query('UPDATE available_props SET ' + UPD.map(function (c, i) { return live ? c + ' = coalesce(' + c + ', $' + (i + 2) + ')' : c + ' = coalesce($' + (i + 2) + ', ' + c + ')'; }).join(', ') + ', updated_at = now() WHERE id = $1', [have[k]].concat(UPD.map(function (c) { return typeof x[c] === 'boolean' ? (x[c] || null) : x[c]; }))); skipped.push(x.address); }
         catch (e) { failed.push({ address: x.address, error: String(e.message).slice(0, 80) }); }
         continue;
       }
@@ -8501,12 +8505,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
     rmAutoLink(p).catch(function () {});
     res.json({ ok: true });
   }));
-  // Remove duplicates (same address and status), keeping the latest one added.
+  // Remove duplicates (same address and status), merging them into one.
   app.post('/api/admin/available-dedupe', withDb(async function (p, req, res) {
     if (req.role === 'offers') return res.status(403).json({ ok: false, error: 'owner-only' });   // only the owner deletes properties
     // Tidy every address first, so the same place written two ways counts as a duplicate.
     const tidied = await availTidyAll(p);
-    const r = await p.query("DELETE FROM available_props a USING available_props b WHERE a.id < b.id AND a.status = b.status AND regexp_replace(lower(a.address), '[^a-z0-9]', '', 'g') = regexp_replace(lower(b.address), '[^a-z0-9]', '', 'g')");
+    // Merge each set of duplicates into one: the kept copy picks up anything only the others had
+    // (Rightmove link, key, access, Dreams, contacts…). Been let / withdrawn keep the latest copy;
+    // a live (available) property keeps the original one staff have been working on.
+    const same = "a.status = b.status AND regexp_replace(lower(a.address), '[^a-z0-9]', '', 'g') = regexp_replace(lower(b.address), '[^a-z0-9]', '', 'g')";
+    const FILL = ['beds', 'available_from', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'let_on', 'rm_id', 'rm_url', 'yt_id'];
+    const fillSql = FILL.map(function (c) { return c + ' = coalesce(k.' + c + ', d.' + c + ')'; }).join(', ') + ", rm_manual = k.rm_manual OR d.rm_manual, dream_rm = CASE WHEN k.dream_rm = '[]'::jsonb THEN d.dream_rm ELSE k.dream_rm END";
+    await p.query('UPDATE available_props k SET ' + fillSql + ' FROM available_props d WHERE ' + same.replace(/\ba\./g, 'k.').replace(/\bb\./g, 'd.') + " AND k.id <> d.id AND ((k.status = 'available' AND k.id < d.id) OR (k.status <> 'available' AND k.id > d.id))");
+    const r = await p.query('DELETE FROM available_props a USING available_props b WHERE ' + same + " AND ((a.status = 'available' AND a.id > b.id) OR (a.status <> 'available' AND a.id < b.id))");
     res.json({ ok: true, removed: r.rowCount, tidied: tidied });
   }));
   // Once: put the values already on the list in their places (version bump re-runs it).
@@ -8630,7 +8641,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const val = { at: new Date().toISOString(), items: keep, error: error, diag: diag, ok_at: error ? (prev && prev.value && prev.value.ok_at) || null : new Date().toISOString() };
     await p.query("INSERT INTO app_settings (key, value) VALUES ('rightmove_list', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(val)]);
     if (!error) { await rmAutoLink(p, items); await rmDreamTrack(p, items); }
-    rmVideos(p).catch(function (e) { console.error('Rightmove videos:', e.message); });
+    rmVideos(p).then(function () { return error ? null : rmSync(p, items); }).catch(function (e) { console.error('Rightmove details:', e.message); });
     return val;
   }
   // The video on each linked Rightmove listing (a YouTube link in its virtual tours) — usually the right one.
@@ -8646,11 +8657,36 @@ document.querySelectorAll('.lcu').forEach(function(box){
         const body = (await r.text()).replace(/\\u002F/gi, '/').replace(/\\\//g, '/'), found = [];
         const re = /(?:youtube(?:-nocookie)?\.com\/(?:watch\?(?:[^"'\s]*&)?v=|embed\/|shorts\/|v\/)|youtu\.be\/)([\w-]{11})/g; let m;
         while ((m = re.exec(body))) if (found.indexOf(m[1]) === -1) found.push(m[1]);
-        v[id] = { at: new Date().toISOString(), ids: found.slice(0, 3) };
+        // "Let available date": Now, or a date.
+        const av = /"letAvailableDate"\s*:\s*"([^"]*)"/i.exec(body) || /Let available date:?\s*(?:<[^>]+>\s*)*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}|Now|Ask agent)/i.exec(body);
+        v[id] = { at: new Date().toISOString(), ids: found.slice(0, 3), avail: av ? av[1].trim().slice(0, 20) : null };
       } catch (e) { v[id] = { at: new Date().toISOString(), ids: (v[id] && v[id].ids) || [], error: String(e.message).slice(0, 80) }; }
     }
     await p.query("INSERT INTO app_settings (key, value) VALUES ('rightmove_videos', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(v)]);
     return v;
+  }
+  // A property linked to its Rightmove advert takes the advert's rent, bedrooms and available date.
+  // (An automatic match only updates the rent and date when the bedrooms agree, in case it's the wrong advert.)
+  async function rmSync(p, items) {
+    if (!items || !items.length) return 0;
+    const byId = {}; items.forEach(function (r) { byId[r.id] = r; });
+    const det = ((await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_videos'")).rows[0] || {}).value || {};
+    let n = 0;
+    for (const a of (await p.query("SELECT id, rm_id, rm_manual, beds, rent_pcm, rent_pw, available_from::text AS available_from, vacant FROM available_props WHERE status = 'available' AND rm_id IS NOT NULL AND rm_id <> 'none'")).rows) {
+      const r = byId[a.rm_id]; if (!r) continue;
+      const trust = a.rm_manual || r.beds == null || a.beds == null || Number(a.beds) === Number(r.beds);
+      if (!trust) continue;
+      const set = {};
+      if (r.pcm && Math.abs(Number(a.rent_pcm || 0) - r.pcm) >= 1) { set.rent_pcm = r.pcm; set.rent_pw = Math.round(r.pcm * 12 / 52 * 100) / 100; }
+      if (r.beds != null && Number(a.beds) !== Number(r.beds)) set.beds = r.beds;
+      const d = (det[a.rm_id] || {}).avail;
+      if (d && /^now$/i.test(d)) { if (!a.vacant || a.available_from) { set.vacant = true; set.available_from = null; } }
+      else if (d) { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(d); if (m) { const iso = m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2); if (iso !== a.available_from || a.vacant) { set.available_from = iso; set.vacant = false; } } }
+      const keys = Object.keys(set); if (!keys.length) continue;
+      await p.query('UPDATE available_props SET ' + keys.map(function (k, i) { return k + ' = $' + (i + 2); }).join(', ') + ', rm_synced_at = now(), updated_at = now() WHERE id = $1', [a.id].concat(keys.map(function (k) { return set[k]; })));
+      n++;
+    }
+    return n;
   }
   // Dreams: adverts on Rightmove that aren't one of our available properties. Each has a 7-day review —
   // keep it up 7 more days, link it to a different property, or take it down.
@@ -8712,7 +8748,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const rid = fromUrl ? fromUrl[1] : b.rm_id == null || b.rm_id === '' ? 'none' : String(b.rm_id).replace(/\D/g, '').slice(0, 20) || 'none';
     if (rid !== 'none') await p.query("UPDATE available_props SET rm_id = NULL WHERE rm_id = $1 AND id <> $2 AND NOT rm_manual", [rid, id]);
     await p.query('UPDATE available_props SET rm_id = $2, rm_manual = true, rm_url = $3 WHERE id = $1', [id, rid, rid === 'none' ? null : RM_BASE + '/properties/' + rid]);
-    if (rid !== 'none') await rmVideos(p, rid).catch(function () {});
+    if (rid !== 'none') { await rmVideos(p, rid).catch(function () {}); const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0]; await rmSync(p, (c && c.value && c.value.items) || []).catch(function () {}); }
     res.json({ ok: true });
   }));
   // A Rightmove listing that's a "Dream" advert for one of our properties (a property can have several).
