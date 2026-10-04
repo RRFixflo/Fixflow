@@ -8323,6 +8323,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
   const moneyLike = function (v) { return /^\s*£\s?\d[\d,]*(\.\d+)?\s*$/.test(String(v || '')); };
   const hasContact = function (v) { return /(\+44|\b0)\d[\d\s]{8,12}\d|@/.test(String(v || '')); };
   const nameOf = function (v) { const n = String(v || '').replace(/[^\s@<>,;()]+@[^\s@<>,;()]+/g, ' ').replace(/(\+44|\b0)\d[\d\s]{8,12}\d/g, ' ').replace(/\b(e-?mail|tel|mob(ile)?|phone)\b\s*:?/ig, ' ').replace(/[\s,;:\-–\/·]+/g, ' ').trim(); return n && n.length < 60 && /[a-z]{2}/i.test(n) && !/\d/.test(n) ? n : ''; };
+  // The first real date in some text (dd/mm/yy, dd.mm.yyyy …) as YYYY-MM-DD, if it's a possible let date.
+  function letDateIn(t) {
+    const re = /\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})\b/g; let m;
+    while ((m = re.exec(String(t || '')))) { const y = m[3].length === 2 ? '20' + m[3] : m[3], d = Number(m[1]), mo = Number(m[2]); if (mo < 1 || mo > 12 || d < 1 || d > 31) continue; const iso = y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2); if (letDayOk(iso)) return iso; }
+    return null;
+  }
   function availFix(x) {
     const join = function (a, b, cap) { a = String(a || '').trim(); b = String(b || '').trim(); if (!b) return a || null; if (a.toLowerCase().indexOf(b.toLowerCase()) !== -1) return a; return str(a ? a + ' · ' + b : b, cap); };
     const sp = availSplitAddr(x.address); if (sp.note) { x.address = str(availAddr(sp.address), 400); x.notes = join(sp.note, x.notes, 2000); }
@@ -8334,6 +8340,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       else if (!/[a-z]{2}/i.test(ll) || /\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4}|£/.test(ll)) { x.notes = join(x.notes, ll, 2000); ll = ''; }
     }
     x.landlord = str(ll, 120) || null; x.commission = str(fee, 40) || null;
+    // A let or withdrawn property without a let date: use its available date, else a date in its notes.
+    if ((x.status === 'let' || x.status === 'withdrawn') && !x.let_on) x.let_on = letDayOk(x.available_from ? String(x.available_from).slice(0, 10) : null) || letDateIn(x.notes) || letDateIn(x.tags) || null;
     // Rents too small to be real (a misread cell): blank both, unless the other one is sensible.
     const pw = Number(x.rent_pw) || 0, pcm = Number(x.rent_pcm) || 0;
     if ((pcm && pcm < 150) || (pw && pw < 35)) { x.rent_pw = null; x.rent_pcm = null; }
@@ -8341,11 +8349,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   async function availTidyAll(p) {
     let tidied = 0;
-    for (const row of (await p.query('SELECT id, address, landlord, commission, contact, notes, rent_pw, rent_pcm FROM available_props')).rows) {
-      const before = JSON.stringify([row.address, row.landlord, row.commission, row.contact, row.notes, row.rent_pw == null ? null : Number(row.rent_pw), row.rent_pcm == null ? null : Number(row.rent_pcm)]);
+    // Rows that aren't properties at all — stray lines of a contact cell pasted as their own rows ("Email",
+    // "Phone 07…", a lone name): no number in the address (or just a label and a phone), no rent, no date, no fee.
+    const junk = await p.query(`DELETE FROM available_props WHERE status IN ('let', 'withdrawn') AND rent_pcm IS NULL AND rent_pw IS NULL AND let_on IS NULL AND commission IS NULL
+      AND (address !~ '[0-9]' OR address ~* '^\\s*(phone|tel|telephone|mobile|mob|email|e-mail|contact( number)?)\\M' OR address ~ '^[0-9+()\\s-]{9,}$' OR address ~ '@')
+      AND address !~* '\\m[A-Z]{1,2}[0-9][A-Z0-9]?\\s*[0-9][A-Z]{2}\\M'`);
+    tidied += junk.rowCount;
+    for (const row of (await p.query('SELECT id, address, landlord, commission, contact, notes, tags, rent_pw, rent_pcm, status, let_on::text AS let_on, available_from::text AS available_from FROM available_props')).rows) {
+      const before = JSON.stringify([row.address, row.landlord, row.commission, row.contact, row.notes, row.rent_pw == null ? null : Number(row.rent_pw), row.rent_pcm == null ? null : Number(row.rent_pcm), row.let_on]);
       const x = availFix(Object.assign({}, row, { address: str(availAddr(row.address), 400) || row.address }));
-      const after = JSON.stringify([x.address, x.landlord, x.commission, x.contact, x.notes, x.rent_pw == null ? null : Number(x.rent_pw), x.rent_pcm == null ? null : Number(x.rent_pcm)]);
-      if (before !== after && x.address) { await p.query('UPDATE available_props SET address = $2, landlord = $3, commission = $4, contact = $5, notes = $6, rent_pw = $7, rent_pcm = $8 WHERE id = $1', [row.id, x.address, x.landlord, x.commission, x.contact, x.notes, x.rent_pw, x.rent_pcm]); tidied++; }
+      const after = JSON.stringify([x.address, x.landlord, x.commission, x.contact, x.notes, x.rent_pw == null ? null : Number(x.rent_pw), x.rent_pcm == null ? null : Number(x.rent_pcm), x.let_on]);
+      if (before !== after && x.address) { await p.query('UPDATE available_props SET address = $2, landlord = $3, commission = $4, contact = $5, notes = $6, rent_pw = $7, rent_pcm = $8, let_on = $9 WHERE id = $1', [row.id, x.address, x.landlord, x.commission, x.contact, x.notes, x.rent_pw, x.rent_pcm, x.let_on || null]); tidied++; }
     }
     return tidied;
   }
@@ -8496,7 +8510,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, removed: r.rowCount, tidied: tidied });
   }));
   // Once: put the values already on the list in their places (version bump re-runs it).
-  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 1) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 1, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
+  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 3) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 3, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
   // Empty the Been let list before pasting a corrected copy (managers only).
   app.post('/api/admin/available-clear-let', withDb(async function (p, req, res) {
     if (req.role === 'offers') return res.status(403).json({ ok: false, error: 'owner-only' });   // only the owner deletes properties

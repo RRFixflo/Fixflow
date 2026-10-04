@@ -564,9 +564,10 @@
   .av-dream { font-size: .82rem; font-weight: 600; color: #6941c6; background: #f4f0ff; border-radius: 10px; padding: 6px 8px; }
   .av-dreams { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; } .av-dlink { display: inline-flex; gap: 2px; align-items: center; background: #fff; border: 1px solid #ddd2fe; border-radius: 999px; padding: 1px 4px 1px 8px; } .av-dlink a { color: #6941c6; text-decoration: none; } .av-dlink .linkish { color: #98a2b3; font-size: 1rem; padding: 0 4px; }
   .av-wd { display: inline-block; background: #f2f4f7; color: #475467; border-radius: 999px; padding: 1px 8px; font-size: .74rem; font-weight: 700; }
+  .av-lt th.av-lt-act, .av-lt td.av-lt-act { position: sticky; right: 0; background: #fff; box-shadow: -8px 0 8px -8px rgba(16,24,40,.18); z-index: 1; } .av-lt th.av-lt-act { background: #f9fafb; } .av-lt tr:hover td.av-lt-act { background: #f9fafb; }
   .av-lt-wrap { grid-column: 1 / -1; overflow-x: auto; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #fff; }
   .av-lt { width: 100%; border-collapse: collapse; font-size: .85rem; } .av-lt th { position: sticky; top: 0; background: #f9fafb; text-align: left; padding: 8px 10px; font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-soft); cursor: pointer; user-select: none; white-space: nowrap; border-bottom: 1px solid var(--line, #e6e8ec); } .av-lt th.on { color: var(--ink, #101828); }
-  .av-lt td { padding: 7px 10px; border-bottom: 1px solid #f2f4f7; vertical-align: middle; } .av-lt tr:hover td { background: #f9fafb; } .av-lt td.nw { white-space: nowrap; } .av-lt td.ad { min-width: 260px; } .av-lt td.ad .linkish { opacity: .5; } .av-lt tr:hover td.ad .linkish { opacity: 1; } .av-lt td.nt { max-width: 260px; color: var(--ink-soft); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .av-lt td { padding: 7px 10px; border-bottom: 1px solid #f2f4f7; vertical-align: middle; } .av-lt tr:hover td { background: #f9fafb; } .av-lt td.nw { white-space: nowrap; } .av-lt td.ad { min-width: 260px; } .av-lt td.ad .linkish { opacity: .5; } .av-lt tr:hover td.ad .linkish { opacity: 1; } .av-lt td.nt { max-width: 200px; color: var(--ink-soft); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .av-known { background: #ecfdf3; border: 1px solid #abefc6; border-radius: 10px; padding: 8px 10px; font-size: .84rem; display: grid; gap: 3px; } .av-known.new { background: #f9fafb; border-color: var(--line, #e6e8ec); color: var(--ink-soft); }
   .av-access { border: 1px solid var(--line, #e6e8ec); border-radius: 10px; padding: 6px 8px; margin: 6px 0; font-size: .84rem; } .av-acc-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; } .av-acc-lbl { font-weight: 700; margin-right: 4px; }
   .av-acc-chip { border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 999px; padding: 2px 9px; font-size: .78rem; cursor: pointer; color: inherit; } .av-acc-chip.on { background: #101828; border-color: #101828; color: #fff; }
@@ -9656,9 +9657,11 @@
       return !q || [x.address, x.landlord, x.notes, x.tags, x.contact].join(' ').toLowerCase().indexOf(q) !== -1;
     });
     var dkey = function(x){ return x.vacant ? '0000' : x.available_from ? String(x.available_from).slice(0, 10) : '9999'; };
-    var lk = function(x){ return x.let_on ? String(x.let_on).slice(0, 10) : String(x.updated_at || '').slice(0, 10); };
+    var lk = function(x){ return x.let_on ? String(x.let_on).slice(0, 10) : ''; };   // no let date: sorts after the dated ones
     list.sort(function(a, b){ if (avFlag === 'let' && sort === 'date') return lk(b).localeCompare(lk(a)); return sort === 'lo' ? (a.rent_pcm || 1e9) - (b.rent_pcm || 1e9) : sort === 'hi' ? (b.rent_pcm || 0) - (a.rent_pcm || 0) : sort === 'beds' ? (a.beds == null ? 99 : a.beds) - (b.beds == null ? 99 : b.beds) : sort === 'new' ? b.id - a.id : (b.urgent - a.urgent) || dkey(a).localeCompare(dkey(b)); });
     if ((avFlag === 'let' || avFlag === 'withdrawn') && avLs.k) list.sort(function(a, b){ var k = avLs.k, va = a[k], vb = b[k]; if (k === 'let_on') { va = lk(a); vb = lk(b); }
+      // Whatever the sort, properties with a let date come first.
+      var da = !!lk(a), db = !!lk(b); if (da !== db) return da ? -1 : 1;
       var na = va == null || va === '', nb = vb == null || vb === ''; if (na !== nb) return na ? 1 : -1;
       var c = ['beds', 'rent_pcm', 'rent_pw'].indexOf(k) !== -1 ? Number(va) - Number(vb) : String(va || '').localeCompare(String(vb || ''), 'en', { numeric: true, sensitivity: 'base' }); return c * avLs.d; });
     var live = avItems.filter(function(x){ return x.status === 'available'; });
@@ -9688,8 +9691,8 @@
     var avMore = list.length > avLimit ? list.length - avLimit : 0; list = list.slice(0, avLimit);
     if ((avFlag === 'let' || avFlag === 'withdrawn') && list.length) {
       var th = function(k, t){ return '<th data-lsort="' + k + '"' + (avLs.k === k ? ' class="on"' : '') + '>' + t + (avLs.k === k ? (avLs.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; };
-      $('avList').innerHTML = '<div class="av-lt-wrap"><table class="av-lt"><thead><tr>' + th('let_on', 'Let on') + th('address', 'Address') + th('beds', 'Beds') + th('rent_pcm', 'pcm') + th('rent_pw', 'pw') + th('landlord', 'Landlord') + th('commission', 'Fee') + th('notes', 'Notes') + '<th></th></tr></thead><tbody>' + list.map(function(x){
-        return '<tr data-av="' + x.id + '"><td class="nw">' + (x.status === 'withdrawn' ? '<span class="av-wd">Withdrawn</span>' + (x.let_on ? '<br><small>' + esc(avDay(x.let_on)) + '</small>' : '') : esc(x.let_on ? avDay(x.let_on) : '—')) + '</td><td class="ad"><span>' + esc(x.address) + '</span> <button type="button" class="linkish" data-ava="addr" title="Correct the address">✎</button></td><td>' + (x.beds == null ? '—' : x.beds === 0 ? 'Studio' : x.beds) + '</td><td class="nw">' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</td><td class="nw">' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</td><td>' + (function(){ var LL = (avLinkData[x.id] || {}).landlord; return LL ? '<b title="Landlord on file' + (LL.phone ? ' · ' + esc(LL.phone) : '') + (LL.email ? ' · ' + esc(LL.email) : '') + '">' + esc(LL.name || 'Landlord') + '</b>' + (LL.phone ? '<br><small><a href="tel:' + esc(String(LL.phone).replace(/[^\d+]/g, '')) + '">' + esc(LL.phone) + '</a></small>' : '') : esc(x.landlord || ''); })() + '</td><td>' + esc(x.commission || '') + '</td><td class="nt" title="' + esc([x.contact, x.notes].filter(Boolean).join(' · ')) + '">' + esc([x.notes, x.tags].filter(Boolean).join(' · ').slice(0, 80)) + '</td><td class="nw"><button type="button" class="btn small" data-avs="available" title="Put it back on the available list">↩ Available</button> <button type="button" class="btn small ghost" data-ava="edit">Edit</button></td></tr>';
+      $('avList').innerHTML = '<div class="av-lt-wrap"><table class="av-lt"><thead><tr>' + th('let_on', 'Let on') + th('address', 'Address') + th('beds', 'Beds') + th('rent_pcm', 'pcm') + th('rent_pw', 'pw') + th('landlord', 'Landlord') + th('commission', 'Fee') + th('notes', 'Notes') + '<th class="av-lt-act"></th></tr></thead><tbody>' + list.map(function(x){
+        return '<tr data-av="' + x.id + '"><td class="nw">' + (x.status === 'withdrawn' ? '<span class="av-wd">Withdrawn</span>' + (x.let_on ? '<br><small>' + esc(avDay(x.let_on)) + '</small>' : '') : esc(x.let_on ? avDay(x.let_on) : '—')) + '</td><td class="ad"><span>' + esc(x.address) + '</span> <button type="button" class="linkish" data-ava="addr" title="Correct the address">✎</button></td><td>' + (x.beds == null ? '—' : x.beds === 0 ? 'Studio' : x.beds) + '</td><td class="nw">' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</td><td class="nw">' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</td><td>' + (function(){ var LL = (avLinkData[x.id] || {}).landlord; return LL ? '<b title="Landlord on file' + (LL.phone ? ' · ' + esc(LL.phone) : '') + (LL.email ? ' · ' + esc(LL.email) : '') + '">' + esc(LL.name || 'Landlord') + '</b>' + (LL.phone ? '<br><small><a href="tel:' + esc(String(LL.phone).replace(/[^\d+]/g, '')) + '">' + esc(LL.phone) + '</a></small>' : '') : esc(x.landlord || ''); })() + '</td><td>' + esc(x.commission || '') + '</td><td class="nt" title="' + esc([x.contact, x.notes].filter(Boolean).join(' · ')) + '">' + esc([x.notes, x.tags].filter(Boolean).join(' · ').slice(0, 80)) + '</td><td class="nw av-lt-act"><button type="button" class="btn small primary" data-ava="edit" title="Edit this property">✏️ Edit</button> <button type="button" class="btn small" data-avs="available" title="Put it back on the available list">↩ Available</button></td></tr>';
       }).join('') + '</tbody></table></div>' + (avMore ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more (' + avMore + ' not shown — or search above)</button></div>' : '');
       return;
     }
@@ -9734,7 +9737,7 @@
   $('avSum').addEventListener('click', function(e){
     if (!e.target.closest('#avDedupe')) return;
     var b = e.target; busy(b, true, 'Tidying…');
-    api('POST', '/api/admin/available-dedupe', {}).then(function(d){ busy(b, false); if (!d || !d.ok) { toast('Couldn’t remove duplicates'); return; } toast('✓ ' + (d.tidied ? d.tidied + ' address' + (d.tidied === 1 ? '' : 'es') + ' tidied · ' : 'Addresses already tidy · ') + (d.removed ? d.removed + ' duplicate' + (d.removed === 1 ? '' : 's') + ' removed' : 'no duplicates')); loadAvail(); });
+    api('POST', '/api/admin/available-dedupe', {}).then(function(d){ busy(b, false); if (!d || !d.ok) { toast('Couldn’t remove duplicates'); return; } toast('✓ ' + (d.tidied ? d.tidied + ' propert' + (d.tidied === 1 ? 'y' : 'ies') + ' tidied (stray contact lines removed) · ' : 'Already tidy · ') + (d.removed ? d.removed + ' duplicate' + (d.removed === 1 ? '' : 's') + ' removed' : 'no duplicates')); loadAvail(); });
   });
   $('avBeds').addEventListener('click', function(e){ avLimit = 200;
     var b = e.target.closest('[data-avb]'), f = e.target.closest('[data-avf]');
@@ -9851,7 +9854,11 @@
     cells.forEach(function(c, i){ var a = avAddrOf(c); if (a && a.length < 160 && (ai === -1 || a.length < addr.length) && !/^\s*(called|spoke|rang|left|emailed|sent|txt|text|vm)\b/i.test(a)) { ai = i; addr = a; } });
     if (ai === -1) cells.forEach(function(c, i){ if (ai === -1 && c.length < 120 && c.indexOf('\n') === -1 && /^(flat|apt|apartment|unit|room)?\s*\d+[a-z]?\b/i.test(c) && AV_ST.test(c)) { ai = i; addr = c.replace(/\s+/g, ' '); } });
     // Asked to add it anyway: the first text cell that isn't a date, amount, phone or email is the address.
-    if (ai === -1 && force) cells.forEach(function(c, i){ if (ai === -1 && c && c.length < 200 && /[a-z]{3}/i.test(c) && !avDate(c) && !avMoney(c) && !/@/.test(c) && !/^[\d\s+()\-]{9,}$/.test(c)) { ai = i; addr = c.split('\n')[0].replace(/\s+/g, ' ').trim(); } });
+    if (ai === -1 && force) {
+      // Only when the row looks like a property: a number in the text, or a rent or date somewhere in it.
+      if (!cells.some(function(c){ return avMoney(c) || avDate(c); }) && !cells.some(function(c){ return /\d/.test(c) && /[a-z]{3}/i.test(c) && !/@|(\+44|\b0)\d[\d\s]{8,}/.test(c); })) return null;
+      cells.forEach(function(c, i){ if (ai === -1 && c && c.length < 200 && /[a-z]{3}/i.test(c) && !avDate(c) && !avMoney(c) && !/@/.test(c) && !/^[\d\s+()\-]{9,}$/.test(c) && !/^(e-?mail|phone|tel|mobile|contact)\b/i.test(c)) { ai = i; addr = c.split('\n')[0].replace(/\s+/g, ' ').trim(); } });
+    }
     if (ai === -1) return null;
     // Only the town and postcode in this cell: the street is in the cell before it.
     var used = {}; used[ai] = 1;
@@ -9908,7 +9915,20 @@
   $('avPasteRead').addEventListener('click', function(){
     var avRows = avTsv($('avPasteTxt').value).filter(function(r){ return r.join('').trim(); });
     avMissed = []; avParsed = [];
-    avRows.forEach(function(r){ var x = avRow(r); if (x) avParsed.push(avAs(x)); else if (/[a-z]{3}/i.test(r.join(' '))) avMissed.push(r); });
+    var lastX = null;
+    avRows.forEach(function(r){
+      var x = avRow(r); if (x) { avParsed.push(lastX = avAs(x)); return; }
+      // A line or two on its own (no postcode): the rest of a multi-line cell from the row above — keep it with that property.
+      var bits = r.map(function(c){ return String(c || '').trim(); }).filter(Boolean);
+      if (lastX && bits.length <= 2 && !/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(bits.join(' '))) {
+        var line = bits.join(' ').replace(/\s+/g, ' ');
+        if (/^(e-?mail|phone|tel|mobile|contact( number)?)\s*:?$/i.test(line)) return;
+        if (avPhones(line).length || avEmails(line).length || /^((mr|mrs|ms|miss|dr)\.?\s+)?[A-Z][A-Za-z'’\-]*(\s+[A-Z][A-Za-z'’\-]*){0,4}$/.test(line)) lastX.contact = [lastX.contact, line].filter(Boolean).join(' / ');
+        else lastX.notes = [lastX.notes, line].filter(Boolean).join(' · ');
+        return;
+      }
+      if (/[a-z]{3}/i.test(r.join(' '))) avMissed.push(r);
+    });
     var avMiss = avMissed.length;
     if (!avParsed.length) { $('avPastePrev').innerHTML = '<p class="muted-note">No rows with an address found — please paste straight from the spreadsheet.</p>'; return; }
     var avShow = avParsed.slice(0, 300);
