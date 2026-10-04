@@ -74,6 +74,7 @@
   .epc { display:flex; gap:14px; align-items:center; padding:12px 14px; border-radius:14px; margin:0 0 10px; border:1px solid var(--line); } .epc b { display:block; } .epc span:not(.epc-r) { font-size:.86rem; color:var(--soft); }
   .epc.ok { background:var(--ok-t); border-color:#b7e2c6; } .epc.bad { background:var(--brand-t); border-color:#f3c0c0; } .epc.warn { background:var(--warn-t); border-color:#f3d9a8; }
   input[type=date] { -webkit-appearance:none; appearance:none; min-width:0; max-width:100%; display:block; }
+  .exbox { background:#f5f7fb; border:1px solid #e3e8f1; border-radius:14px; padding:12px 14px; margin:12px 0 4px; } .exh { font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--soft); margin:0 0 6px; } .exr { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-top:1px solid #e9edf3; font-size:.9rem; } .exr:first-of-type { border-top:0; } .exr span { color:var(--soft); flex:0 0 auto; } .exr b { text-align:right; font-weight:600; } .exr.tot b { color:var(--navy); font-weight:800; }
   .known { background:#eef4ff; border:1px solid #c7d7fe; border-radius:14px; padding:12px 14px; margin:0 0 12px; font-size:.9rem; } .known b { display:block; color:#1d3fae; } .known span { color:var(--soft); font-size:.84rem; } .known ul { margin:8px 0 0; padding-left:18px; } .known li { margin:0 0 3px; }
   .epc { align-items:flex-start; } .epc-d { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; margin:10px 0 6px; font-size:.86rem; } .epc-d dt { color:var(--soft); } .epc-d dd { margin:0; font-weight:600; color:var(--ink); } @media (max-width:520px) { .epc-d { grid-template-columns:1fr; gap:0; } .epc-d dt { font-size:.76rem; margin-top:6px; } } .epc-l { font-size:.86rem; font-weight:700; color:var(--navy); }
   .epc-r { flex:0 0 46px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.4rem; color:#fff; background:#98a2b3; }
@@ -143,7 +144,7 @@
     var f = T.fees || {}, ex = T.examples || [];
     $('app').innerHTML = '<div class="card"><h2>The fees we agreed</h2><p class="lead">For ' + esc(T.property) + '. These replace our standard scale of fees.</p>' +
       '<div class="fees">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (/^No (renewal|anniversary) fee$/.test(l.v) ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
-      (ex.length ? '<div class="example"><b>Worked examples at £1,000 a month</b><ul style="margin:6px 0 0;padding-left:18px">' + ex.map(function(x){ return '<li style="margin:0 0 4px">' + esc(x) + '</li>'; }).join('') + '</ul></div>' : '') +
+      (ex.length ? '<div class="exbox"><div class="exh">Example at £1,000 a month rent' + (T.examples_vat ? ' · fees inc VAT' : '') + '</div>' + ex.map(function(x){ return '<div class="exr' + (x[0] === 'You receive' ? ' tot' : '') + '"><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b></div>'; }).join('') + '</div>' : '') +
       '<p class="example">Something not right? Please contact us before signing. Reference ' + esc(T.ref) + '.</p>' +
       (T.epc ? '<h3 style="margin-top:18px">Your property’s EPC</h3>' + epcBox() : '') +
       '<div class="actions"><span></span><button class="btn dark" type="button" id="n1">Continue →</button></div></div>';

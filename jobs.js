@@ -7669,23 +7669,25 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // Worked examples at £1,000 a month, with the minimum fees applied, the monthly
   // instalments when the fee is collected monthly, and what the landlord receives.
   function feeExamples(f) {
-    const gbp = function (v) { return '\xA3' + (Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
-    const vat = f.vat !== false, out = [], tag = vat ? ' inc VAT' : '';
-    // pct of base, against a minimum that's quoted inc VAT when fees are + VAT.
-    const fee = function (base, pct, min) { const calc = base * pct / 100 * (vat ? 1.2 : 1), m = Number(min) || 0; return { amt: Math.max(calc, m), calc: calc, minApplies: m > calc }; };
-    if (f.find !== 'none' && f.find_pct != null) {
+    // Short worked example at £1,000 a month: [what, amount] pairs.
+    const gbp = function (v) { const r = Math.round(v * 100) / 100; return '\xA3' + r.toLocaleString('en-GB', { minimumFractionDigits: r % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
+    const vat = f.vat !== false, out = [];
+    const fee = function (base, pct, min) { const calc = base * pct / 100 * (vat ? 1.2 : 1), m = Number(min) || 0; return { amt: Math.max(calc, m), minApplies: m > calc }; };
+    const hasFind = f.find !== 'none' && f.find_pct != null;
+    let findMonthly = 0;
+    if (hasFind) {
       const x = fee(12000, f.find_pct, f.find_min);
-      out.push('Tenant find: at \xA31,000 a month (\xA312,000 for the first 12 months), the initial commission is ' + gbp(x.amt) + tag +
-        (x.minApplies ? ' - the minimum fee, as ' + f.find_pct + '% would be ' + gbp(x.calc) + tag : '') +
-        (f.find_monthly ? ', collected as ' + gbp(x.amt / 12) + tag + ' a month for 12 months.' : ', payable when the tenancy starts.'));
-      if (f.renewal && f.renewal_pct != null) { const r = fee(12000, f.renewal_pct, 0); out.push('Anniversary fee: if the tenant stays past 12 months at \xA31,000 a month, ' + gbp(r.amt) + tag + ' on each anniversary' + (f.find_monthly ? ' (' + gbp(r.amt / 12) + tag + ' a month).' : '.')); }
+      if (f.find_monthly) findMonthly = x.amt / 12;
+      out.push(['Tenant find' + (x.minApplies ? ' (minimum)' : ''), f.find_monthly ? gbp(x.amt / 12) + '/month × 12' : gbp(x.amt)]);
+      if (f.renewal && f.renewal_pct != null) out.push(['Anniversary', gbp(fee(12000, f.renewal_pct, 0).amt) + ' a year']);
     }
+    let ong = 0;
     if (f.ongoing !== 'none' && f.ongoing_pct != null) {
-      const x = fee(1000, f.ongoing_pct, f.ongoing_min), name = { manage: 'management', both: 'management and rent collection' }[f.ongoing] || 'rent collection';
-      const findMonthly = f.find !== 'none' && f.find_pct != null && f.find_monthly ? fee(12000, f.find_pct, f.find_min).amt / 12 : 0;
-      out.push('Each month: from \xA31,000 rent we deduct the ' + name + ' fee of ' + gbp(x.amt) + tag + (x.minApplies ? ' (the minimum, as ' + f.ongoing_pct + '% would be ' + gbp(x.calc) + ')' : '') +
-        (findMonthly ? ' and the tenant find instalment of ' + gbp(findMonthly) : '') + ', so you receive ' + gbp(1000 - x.amt - findMonthly) + (findMonthly ? ' a month for the first 12 months, then ' + gbp(1000 - x.amt) + ' a month.' : ' a month.'));
+      const x = fee(1000, f.ongoing_pct, f.ongoing_min); ong = x.amt;
+      out.push([({ manage: 'Management', both: 'Management' }[f.ongoing] || 'Rent collection') + (x.minApplies ? ' (minimum)' : ''), gbp(x.amt) + '/month']);
     }
+    if (ong || findMonthly) out.push(['You receive', gbp(1000 - ong - findMonthly) + '/month' + (findMonthly ? ', then ' + gbp(1000 - ong) : '')]);
+    out.vat = vat;
     return out;
   }
   function ltRef(id) { return 'LT' + String(id).padStart(4, '0'); }
@@ -7824,7 +7826,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!t || t.status === 'cancelled') return res.status(404).json({ ok: false, error: 'not-found' });
     if (!(t.data || {}).viewed_at) p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'viewed_at')", [t.id, JSON.stringify([ltLog(req, 'Landlord opened the agreement link', 'landlord')])]).catch(function () {});
     res.json({ ok: true, ref: ltRef(t.id), status: t.status, property: t.property_address, landlord_name: t.landlord_name, landlord_email: t.landlord_email, landlord_phone: t.landlord_phone,
-      fees: t.fees, lines: feeLines(t.fees || {}), examples: feeExamples(t.fees || {}), known: t.status === 'signed' ? null : ltPublicKnown((t.data || {}).known), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
+      fees: t.fees, lines: feeLines(t.fees || {}), examples: feeExamples(t.fees || {}), examples_vat: (t.fees || {}).vat !== false, known: t.status === 'signed' ? null : ltPublicKnown((t.data || {}).known), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
   }));
   app.post('/api/landlord-terms/:token/sign', withDb(async function (p, req, res) {
     if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -7971,7 +7973,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (f.other) frows.push(['Other agreed fees', f.other, '']);
     table([['Service', 0.3], ['Fee', 0.48], ['Minimum', 0.22]], frows);
     const ex = feeExamples(f);
-    if (ex.length) { const exl = []; ex.forEach(function (e) { wrap(e, F, 8.2, CW - 24).forEach(function (l) { exl.push(l); }); }); ensure(20 + exl.length * 12); rr(M, y + 4, CW, exl.length * 12 + 14, 8, C.blueBg); exl.forEach(function (e, i) { text(e, M + 12, y - 8 - i * 12, 8.2, F, C.blue); }); y -= exl.length * 12 + 22; }
+    if (ex.length) { ensure(34 + ex.length * 13); rr(M, y + 4, CW, ex.length * 13 + 26, 8, C.blueBg); text('Example at \xA31,000 a month rent' + (f.vat !== false ? ' (fees include VAT)' : ''), M + 12, y - 8, 8.2, B, C.blue); ex.forEach(function (e, i) { text(e[0], M + 12, y - 22 - i * 13, 8.2, F, C.blue); text(e[1], M + 170, y - 22 - i * 13, 8.2, e[0] === 'You receive' ? B : F, C.blue); }); y -= ex.length * 13 + 34; }
     band('Key points');
     (LT_TERMS.intro || []).forEach(function (s, i) { if (i === 0 && !(f.renewal && f.find !== 'none')) s = 'Under these terms you will be liable to pay Residential Realtors\' commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.'; para(s, { size: 8.6 }); });
 
