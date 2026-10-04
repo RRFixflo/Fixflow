@@ -950,6 +950,7 @@
           lastSeen = ''; loadTrack();
         });
       });
+      if ($('rfCard') && location.hash === '#refund' && !window.__rfScrolled) { window.__rfScrolled = true; setTimeout(function(){ $('rfCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); var fi = $('rfCard').querySelector('input'); if (fi) fi.focus({ preventScroll: true }); }, 200); }
       if ($('rfGo')) $('rfGo').addEventListener('click', function(){
         var name = $('rfName').value.trim(), sort = $('rfSort').value.replace(/\D/g, ''), acc = $('rfAcc').value.replace(/\D/g, ''), iban = $('rfIban').value.toUpperCase().replace(/\s+/g, '');
         var err = function(t){ $('rfErr').textContent = t; $('rfErr').hidden = false; };

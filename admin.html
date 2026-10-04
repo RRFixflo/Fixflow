@@ -8788,7 +8788,7 @@
       (d.refund ? '<div class="oc-refund"><div><span>Refund to (given by the applicant)</span><b>' + esc(d.refund.name) + '</b> · ' + (d.refund.sort_code ? 'Sort code <b>' + esc(d.refund.sort_code) + '</b> · Account <b>' + esc(d.refund.account) + '</b>' : '') + (d.refund.iban ? ' · IBAN <b>' + esc(d.refund.iban) + '</b>' : '') +
         ' · amount <b>' + esc(gbp(m.holding || 0)) + '</b>' + (d.refund.name && o.lead_name && d.refund.name.toLowerCase().indexOf(String(o.lead_name).split(/\s+/).pop().toLowerCase()) === -1 ? '<div class="oc-warn">⚠ The account name doesn’t match the lead applicant (' + esc(o.lead_name) + ') — check it before paying.</div>' : '') + '</div>' +
         (d.refunded_at ? '<span class="oc-pill ok">✓ Refund sent ' + esc(fmtShort(d.refunded_at).split(',')[0]) + '</span> <button type="button" class="linkish" data-off-refunded="0">Undo</button>' : '<button type="button" class="btn small primary" data-off-refunded="1">✓ Refund sent</button>') + '</div>'
-        : o.status === 'rejected' && o.paid_at ? '<div class="oc-refund"><div><span>Refund</span>Waiting for the applicant to give their account details (on their tracking page).</div></div>' : '') +
+        : o.status === 'rejected' && o.paid_at ? '<div class="oc-refund"><div><span>Refund</span>Waiting for the applicant to give their account details.' + ((o.data || {}).refund_asked ? ' <small>Link sent ' + esc(fmtShort(o.data.refund_asked).split(',')[0]) + '</small>' : '') + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button type="button" class="btn small wa-btn" data-off-rfask="wa">' + WA_ICON + 'WhatsApp refund link</button><button type="button" class="btn small" data-off-rfask="email">✉ Email refund link</button></div></div></div>' : '') +
       (o.status === 'withdrawn' && d.withdraw_reason ? '<div class="oc-cond"><span>Why they withdrew</span>' + esc(d.withdraw_reason) + (d.withdraw_more ? ' — ' + esc(d.withdraw_more) : '') + '</div>' : '') +
       offCreditHtml(o) +
       offCondsHtml(o) +
@@ -8962,6 +8962,20 @@
       return;
     }
     if (e.target.closest('[data-off-refund]')) { api('POST', '/api/admin/offers/' + o.id, { note: o.paid_at ? 'Emailed asking for account details for the holding deposit refund' : 'Emailed to say the offer was not accepted' }); return; }
+    var rfa = e.target.closest('[data-off-rfask]');
+    if (rfa) {
+      var viaWa = rfa.dataset.offRfask === 'wa', w2 = viaWa ? window.open('', '_blank') : null;
+      (o.track_token ? Promise.resolve({ ok: true, track: '/offer/track/' + o.track_token }) : api('POST', '/api/admin/offers/' + o.id + '/track', {})).then(function(d){
+        if (!d.ok) { if (w2) w2.close(); toast('Couldn’t make the link'); return; }
+        o.track_token = d.track.split('/').pop();
+        var url = offOrigin() + d.track + '#refund', first = String(o.lead_name || '').split(/\s+/)[0] || 'there', amt = gbp(Number(((o.data || {}).money || {}).holding) || 0);
+        if (viaWa) { var ph = String(o.lead_phone || '').replace(/\D/g, '').replace(/^0/, '44'); w2.location = 'https://wa.me/' + ph + '?text=' + encodeURIComponent('Hi ' + first + ', unfortunately your offer on ' + shortAddr(o.property_address) + ' (' + o.ref + ') wasn’t accepted. We’ll refund your holding deposit of ' + amt + ' — please tell us which account to send it to here: ' + url + ' — Residential Realtors'); }
+        else openMailto('mailto:' + encodeURIComponent(o.lead_email || '') + '?subject=' + encodeURIComponent('Your holding deposit refund — ' + shortAddr(o.property_address)) + '&body=' + encodeURIComponent('Dear ' + first + ',\n\nThank you for your offer on ' + o.property_address + ' (' + o.ref + '). Unfortunately the offer wasn’t accepted on this occasion.\n\nWe’ll refund your holding deposit of ' + amt + '. Please tell us which account to send it to here: ' + url + '\n\nThe account should be in the name of the person who paid. We’ll send the refund within 7 days of receiving your details.' + mailSignoff()));
+        api('POST', '/api/admin/offers/' + o.id, { refund_asked: true, note: 'Refund details link sent by ' + (viaWa ? 'WhatsApp' : 'email') });
+        o.data = o.data || {}; o.data.refund_asked = new Date().toISOString();
+      });
+      return;
+    }
     var tr = e.target.closest('[data-off-track],[data-off-wa]');
     if (tr) {
       var wa = tr.hasAttribute("data-off-wa");

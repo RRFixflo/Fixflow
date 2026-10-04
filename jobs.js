@@ -6955,6 +6955,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       vals.push(JSON.stringify(cr)); dataSets.push("jsonb_build_object('credit', $" + vals.length + "::jsonb)");
       notes.push(cr.length ? 'Offer credited to ' + cr.map(function (c) { return c.name + (cr.length > 1 ? ' (' + c.share + '%)' : ''); }).join(' and ') : 'Offer credit cleared');
     }
+    if (b.refund_asked === true) dataSets.push("jsonb_build_object('refund_asked', to_jsonb(now()))");
     if (typeof b.refunded === 'boolean') { dataSets.push("jsonb_build_object('refunded_at', " + (b.refunded ? 'to_jsonb(now())' : "'null'::jsonb") + ')'); notes.push(b.refunded ? 'Holding deposit refund sent' : 'Refund marked as not sent'); }
     if (dataSets.length) { if (sets.some(function (x) { return /^data = /.test(x); })) { const i = sets.findIndex(function (x) { return /^data = /.test(x); }); sets[i] = sets[i].replace(/^data = /, 'data = ').replace(/ END$/, ' END || ' + dataSets.join(' || ')); } else sets.push('data = data || ' + dataSets.join(' || ')); }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
