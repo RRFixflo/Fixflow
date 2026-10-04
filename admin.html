@@ -2328,7 +2328,6 @@
     api('POST', '/api/admin/login', { password: $('pw').value, user: lu }).then(function(d){
       if (d.ok) { $('pw').value = ''; try { localStorage.setItem('rr_login_user', lu); } catch (e) {} start(); return; }
       $('loginErr').textContent = d.error === 'wrong-password' ? (lu ? 'That name and password don’t match.' : 'That password isn’t right.')
-        : d.error === 'too-many-attempts' ? 'Too many attempts — please wait 15 minutes.'
         : d.error === 'admin-not-configured' ? 'Admin sign-in isn’t set up yet (ADMIN_PASSWORD is missing on the server).'
         : 'Couldn’t sign in just now.';
     });
@@ -11837,20 +11836,21 @@
   // ---------- Team: staff users and who did what ----------
   var TEAM_ROLES = { full: 'Full access', offers: 'Offers only', offers_admin: 'Offers + manage team', admin: 'Full access + manage team' };
   function teamRoles(){ return meta.user && meta.user.role === 'offers_admin' ? ['offers', 'offers_admin'] : Object.keys(TEAM_ROLES); }
+  var teamUsers = [];
   function loadTeam(){
     if (!meta.canManageUsers) { $('teamSec').hidden = true; return; }
     $('teamSec').hidden = false;
     var rs = $('tmRole'), keep = rs.value; rs.innerHTML = teamRoles().map(function(k){ return '<option value="' + k + '">' + TEAM_ROLES[k] + '</option>'; }).join(''); if (teamRoles().indexOf(keep) !== -1) rs.value = keep;
     api('GET', '/api/admin/users').then(function(d){
       if (!d.ok) return;
-      var users = d.users || [];
+      var users = d.users || []; teamUsers = users;
       actSum('team', users.filter(function(u){ return !u.disabled_at; }).length + ' people');
       $('teamList').innerHTML = users.length ? users.map(function(u){
         return '<div class="team-row' + (u.disabled_at ? ' off' : '') + '" data-uid="' + u.id + '"><span class="team-av">' + esc((u.name || '?').split(/\s+/).map(function(w){ return w[0]; }).join('').slice(0, 2).toUpperCase()) + '</span>' +
           '<div class="team-who"><b>' + esc(u.name) + '</b>' + (u.disabled_at ? ' <span class="count-chip">Turned off</span>' : '') + '<span>' + esc(TEAM_ROLES[u.role] || u.role) + (u.email ? ' · ' + esc(u.email) : '') + ' · ' + (u.last_seen ? 'active ' + esc(ago(u.last_seen)) : 'not signed in yet') + (u.week_actions ? ' · ' + u.week_actions + ' change' + (u.week_actions === 1 ? '' : 's') + ' this week' : '') + '</span></div>' +
           '<div class="team-edit" hidden><input class="inp" data-tm-name value="' + esc(u.name) + '" maxlength="80" placeholder="Name"><input class="inp" data-tm-email type="email" value="' + esc(u.email || '') + '" placeholder="Email (optional)"><button class="btn small primary" type="button" data-tm-save>Save</button><button class="btn small ghost" type="button" data-tm-cancel>Cancel</button></div>' +
           '<div class="team-act"><button class="btn small ghost" type="button" data-tm-edit>✏️ Edit</button><select class="inp" data-tm-role>' + teamRoles().map(function(k){ return '<option value="' + k + '"' + (u.role === k ? ' selected' : '') + '>' + TEAM_ROLES[k] + '</option>'; }).join('') + '</select>' +
-          '<button class="btn small ghost" type="button" data-tm-pw>New password</button><button class="btn small ghost" type="button" data-tm-feed>Activity</button><button class="btn small ghost' + (u.disabled_at ? '' : ' danger') + '" type="button" data-tm-off="' + (u.disabled_at ? '0' : '1') + '">' + (u.disabled_at ? 'Turn on' : 'Turn off') + '</button><button class="btn small ghost danger" type="button" data-tm-del title="Remove this person">🗑 Remove</button></div></div>';
+          '<button class="btn small ghost" type="button" data-tm-pw>New password</button><button class="btn small ghost" type="button" data-tm-mail' + (u.disabled_at ? ' disabled' : '') + '>✉ Email login</button><button class="btn small ghost" type="button" data-tm-feed>Activity</button><button class="btn small ghost' + (u.disabled_at ? '' : ' danger') + '" type="button" data-tm-off="' + (u.disabled_at ? '0' : '1') + '">' + (u.disabled_at ? 'Turn on' : 'Turn off') + '</button><button class="btn small ghost danger" type="button" data-tm-del title="Remove this person">🗑 Remove</button></div></div>';
       }).join('') : '<p class="muted-note">No one added yet — you’re signing in with the main password.</p>';
       var cur = $('tmFilter').value;
       $('tmFilter').innerHTML = '<option value="">Everyone</option>' + (meta.user && meta.user.role === 'offers_admin' ? '' : '<option value="owner">Main password (Owner)</option>') + users.map(function(u){ return '<option value="' + u.id + '">' + esc(u.name) + '</option>'; }).join('');
@@ -11873,9 +11873,19 @@
     if (!body.password.trim()) { toast('Enter a password for them'); $('tmPw').focus(); return; }
     api('POST', '/api/admin/users', body).then(function(d){
       if (!d.ok) { toast(d.error === 'taken' ? 'Someone already has that name' : d.error === 'owner-only' ? 'Only the owner can add people who manage the team' : d.error === 'offers-only' ? 'You can add offers team members only' : 'Couldn’t add them'); return; }
-      toast(body.name + ' added — they sign in with their name and password'); $('tmName').value = $('tmEmail').value = $('tmPw').value = ''; loadTeam();
+      var pw0 = body.password; $('tmName').value = $('tmEmail').value = $('tmPw').value = ''; loadTeam();
+      if (body.email && confirm(body.name + ' added.\n\nEmail them their sign-in details now (link, name and password) at ' + body.email + '?')) tmSendLogin(d.id, body.name, pw0);
+      else toast(body.name + ' added — they sign in with their name and password');
     });
   });
+  // Email someone their sign-in details: sets the password chosen here (we can't read their old one) and sends it.
+  function tmSuggestPw(){ var w = ['Maple', 'River', 'Harbour', 'Willow', 'Cedar', 'Summit', 'Meadow', 'Falcon', 'Orchard', 'Beacon'], a = new Uint32Array(2); (window.crypto || {}).getRandomValues ? window.crypto.getRandomValues(a) : (a[0] = Math.random() * 1e9, a[1] = Math.random() * 1e9); return w[a[0] % w.length] + '-' + String(1000 + a[1] % 9000) + '!'; }
+  function tmSendLogin(id, name, pw){
+    api('POST', '/api/admin/users/' + id + '/send-login', { password: pw }).then(function(d){
+      if (d && d.ok) { toast('✓ Sign-in details emailed to ' + d.to); return; }
+      toast(d && d.error === 'no-email' ? 'Add their email address first (✏️ Edit)' : d && d.error === 'email-not-configured' ? 'Email isn’t set up yet' : d && d.error === 'off' ? 'Turn them on first' : d && d.error === 'owner-only' ? 'Only the owner can do this for managers' : 'Couldn’t send it — please try again');
+    });
+  }
   $('teamList').addEventListener('keydown', function(e){ if (e.key === 'Enter' && e.target.closest('.team-edit')) { e.preventDefault(); e.target.closest('.team-edit').querySelector('[data-tm-save]').click(); } });
   $('teamList').addEventListener('change', function(e){
     var sel = e.target.closest('[data-tm-role]'); if (!sel) return;
@@ -11892,6 +11902,13 @@
       if (!nn) { toast('Enter their name'); return; }
       api('POST', '/api/admin/users/' + uid, { name: nn, email: em }).then(function(d){ toast(d.ok ? 'Saved — ' + nn + ' now signs in with this name' : d.error === 'taken' ? 'Someone already has that name' : d.error === 'owner-only' ? 'Only the owner can change that' : 'Couldn’t save it'); if (d.ok) loadTeam(); });
       return;
+    }
+    if (e.target.closest('[data-tm-mail]')) {
+      var tu = (teamUsers || []).filter(function(x){ return String(x.id) === String(uid); })[0] || {};
+      if (!tu.email) { toast('Add ' + name + '’s email address first (✏️ Edit)'); return; }
+      var npw = window.prompt('Email ' + name + ' their sign-in details at ' + tu.email + '.\n\nThis sets their password to the one below (their old password stops working). Keep it, or type your own:', tmSuggestPw());
+      if (npw === null) return; if (!npw.trim()) { toast('Enter a password'); return; }
+      tmSendLogin(uid, name, npw); return;
     }
     if (e.target.closest('[data-tm-pw]')) { var pw = window.prompt('New password for ' + name + ':'); if (!pw) return; if (!pw.trim()) { toast('Enter a password'); return; }
       api('POST', '/api/admin/users/' + uid, { password: pw }).then(function(d){ toast(d.ok ? 'Password changed — ' + name + ' is signed out everywhere' : 'Couldn’t change it'); }); return; }
