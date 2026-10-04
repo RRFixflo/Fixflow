@@ -1663,7 +1663,7 @@ module.exports = function mountJobs(app, opts) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;
     if (/^\/pvr(\/\d+(\/pdf)?)?$/.test(path)) return true;
-    if (path === '/available-dedupe' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path) || /^\/dreams\/\d+$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
+    if (path === '/available-dedupe' || path === '/available-lookup' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path) || /^\/dreams\/\d+$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
@@ -8366,6 +8366,21 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.get('/api/admin/available', withDb(async function (p, req, res) {
     const items = (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 20000')).rows;
     res.json({ ok: true, items: items, links: await availLinks(p, items, req.role !== 'offers') });
+  }));
+  // What we already know about an address being added: its landlord, current tenants, key number
+  // and earlier entries on the list (nothing when it's a property we don't have yet).
+  app.get('/api/admin/available-lookup', withDb(async function (p, req, res) {
+    const address = str(req.query.address, 400); if (!address || address.length < 6) return res.json({ ok: true, known: false });
+    let key = propKey(address); try { key = propKey(await canonicalAddress(p, address)) || key; } catch (e) {}
+    if (!key) return res.json({ ok: true, known: false });
+    const norm = String(address).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const ll = (await p.query('SELECT l.id, l.name, l.phone, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [key])).rows[0] || null;
+    const tenants = (await p.query('SELECT t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY pt.created_at', [key])).rows;
+    const info = (await p.query('SELECT address, key_number FROM property_info WHERE property_key = $1', [key])).rows[0] || null;
+    const prev = (await p.query('SELECT id, address, status, let_on, available_from, rent_pcm, landlord, commission, contact, key_no, access, access_note, updated_at FROM available_props ORDER BY id DESC LIMIT 20000')).rows
+      .filter(function (r) { return propKey(r.address) === key || String(r.address).toLowerCase().replace(/[^a-z0-9]/g, '') === norm; }).slice(0, 5);
+    const known = !!(ll || tenants.length || info || prev.length);
+    res.json({ ok: true, known: known, address: info && info.address || (prev[0] && prev[0].address) || null, landlord: ll, tenants: tenants, key_number: info && info.key_number || (prev.filter(function (r) { return r.key_no; })[0] || {}).key_no || null, previous: prev });
   }));
   // Which landlord each property belongs to (by the property itself, or the phone, email or name in its
   // details), and — for the owner only — which of our tenancies it is.
