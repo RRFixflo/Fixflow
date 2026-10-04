@@ -527,7 +527,8 @@
   .mypw-act { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   #mlModal { z-index: 60; }   /* the email window opens on top of other windows (e.g. Tell landlord) */
   .ml-tabs { display: flex; gap: 6px; } .ml-tabs button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 10px; padding: 6px 10px; font: inherit; font-size: .84rem; font-weight: 600; cursor: pointer; color: var(--ink-soft); } .ml-tabs button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; }
-  .ml-look { width: 100%; height: 420px; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #f3f5f8; }
+  .ml-look[hidden] { display: none; }
+  .ml-look { width: 100%; height: 420px; overflow: auto; display: block; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #f3f5f8; }
   .ml-att { font-size: .86rem; font-weight: 600; background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 8px 10px; }
   .av-top { margin-bottom: 12px; } .av-search { display: flex; gap: 8px; flex-wrap: wrap; } .av-search .inp:first-child { flex: 1; min-width: 200px; }
   .av-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; align-items: center; } .av-chips button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: var(--ink-soft); } .av-chips button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; } .av-sep { width: 1px; height: 22px; background: var(--line, #e6e8ec); margin: 0 4px; }
@@ -1270,7 +1271,7 @@
     <button type="button" class="side-brand" id="brandHome" title="Back to repair jobs"><span class="side-logo"><img src="/logo-white.png" alt="Residential Realtors"></span><span class="side-sub">Maintenance portal</span></button>
     <button class="side-search" type="button" id="sideSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<span class="kbd">Ctrl K</span></button>
     <button class="nav nav-team" type="button" id="navTeam" hidden title="Managers only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Team &amp; access<small>Managers only</small></span></button>
-    <button class="nav nav-team" type="button" id="navWho" hidden title="Who did what"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg><span>Who did what<small>Managers only</small></span></button>
+    <button class="nav nav-team" type="button" id="navWho" hidden title="Who did what"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg><span>Who did what<small>Everyone’s actions</small></span></button>
     <button class="nav on" type="button" id="navJobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg> Repair jobs <span class="badge" id="sOpen">0</span></button>
     <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
     <button class="nav" type="button" id="navTenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg> Tenants</button>
@@ -1980,7 +1981,7 @@
     <label class="ml-f"><span>Subject</span><input class="inp" id="mlSubj"></label>
     <div class="ml-tabs"><button type="button" class="on" data-mlv="edit">✏️ Write</button><button type="button" data-mlv="look">👁 Preview — how they’ll see it</button></div>
     <textarea class="inp" id="mlBody" rows="14"></textarea>
-    <iframe id="mlLook" class="ml-look" sandbox="" title="How the email will look" hidden></iframe>
+    <div id="mlLook" class="ml-look" role="document" aria-label="How the email will look" hidden></div>
     <div class="ml-att" id="mlAtt" hidden></div>
     <label class="switch-row" style="margin:0"><input type="checkbox" id="mlCopy" checked> Send me a copy</label>
     <div class="ml-err" id="mlErr" hidden></div>
@@ -8934,7 +8935,15 @@
   function mlView(v){
     document.querySelectorAll('[data-mlv]').forEach(function(b){ b.classList.toggle('on', b.dataset.mlv === v); });
     $('mlBody').hidden = v !== 'edit'; $('mlLook').hidden = v !== 'look';
-    if (v === 'look') { $('mlLook').srcdoc = '<p style="font-family:sans-serif;color:#667085;padding:20px">Loading the preview…</p>'; api('POST', '/api/admin/email/preview', { subject: $('mlSubj').value, text: $('mlBody').value }).then(function(d){ if (d && d.ok) $('mlLook').srcdoc = d.html; }); }
+    if (v === 'look') {
+      // Drawn in the page (in its own shadow root, so its styles stay separate) — a sandboxed frame shows blank in some browsers.
+      var box = $('mlLook'), root = box.shadowRoot || box.attachShadow({ mode: 'open' });
+      var put = function(html){ root.innerHTML = String(html).replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, ''); };
+      put('<p style="font-family:sans-serif;color:#667085;padding:20px;margin:0">Loading the preview…</p>');
+      api('POST', '/api/admin/email/preview', { subject: $('mlSubj').value, text: $('mlBody').value }).then(function(d){
+        put(d && d.ok ? d.html : '<p style="font-family:sans-serif;color:#b42318;padding:20px;margin:0">Couldn’t show the preview just now — the email itself is fine; try again or press Send.</p>');
+      });
+    }
   }
   document.querySelectorAll('[data-mlv]').forEach(function(b){ b.addEventListener('click', function(){ mlView(b.dataset.mlv); }); });
   $('mlX').addEventListener('click', mlClose);
