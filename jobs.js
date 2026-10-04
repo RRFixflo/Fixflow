@@ -550,6 +550,9 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS key_no TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS access TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_synced_at TIMESTAMPTZ;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS access_note TEXT;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS online_since TIMESTAMPTZ;
+ALTER TABLE available_props ALTER COLUMN online_since SET DEFAULT now();
+UPDATE available_props SET online_since = created_at WHERE online_since IS NULL;
 -- Let dates outside the last 16 years (or over a year ahead) are misread cells.
 UPDATE available_props SET let_on = NULL WHERE let_on IS NOT NULL AND (let_on < current_date - interval '16 years 2 months' OR let_on > current_date + interval '1 year');
 CREATE TABLE IF NOT EXISTS rm_dreams (
@@ -1810,6 +1813,9 @@ module.exports = function mountJobs(app, opts) {
   }));
 
   // ---------- Staff users ----------
+  // The staff roles someone may watch: the owner sees everyone (null); offers staff and their managers see the offers team;
+  // office staff and their managers see the office team. Nobody but the owner sees the owner's own sign-ins or actions.
+  function teamRoles(req) { const r = req.user && req.user.role; if (r === 'owner') return null; return (req.role === 'offers' || r === 'offers' || r === 'offers_admin') ? ['offers', 'offers_admin'] : ['full', 'admin']; }
   function canManageUsers(req) { return req.user && (req.user.role === 'owner' || req.user.role === 'admin' || req.user.role === 'offers_admin'); }
   // An offers team manager only manages the offers team (offers-only and offers manager roles).
   const OFFER_ROLES = ['offers', 'offers_admin'];
@@ -1936,10 +1942,10 @@ module.exports = function mountJobs(app, opts) {
   }
   // Staff sign-ins: who, when, from which IP (and roughly where), on what device, last active, still signed in.
   app.get('/api/admin/staff-signins', withDb(async function (p, req, res) {
-    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
-    const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30)), teamOnly = req.role === 'offers' || req.user.role === 'offers_admin';
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30)), team = teamRoles(req);
     const r = (await p.query(`SELECT s.created_at, s.last_seen, s.ip, s.user_agent, s.role, s.user_id, coalesce(s.user_name, CASE WHEN s.role = 'offers' THEN 'Staff password' ELSE 'Main password (Owner)' END) AS user_name, s.revoked_at
-      FROM admin_sessions s WHERE s.created_at > now() - ($1 || ' days')::interval` + (teamOnly ? " AND s.user_id IN (SELECT id FROM staff_users WHERE role IN ('offers', 'offers_admin'))" : '') + ' ORDER BY s.created_at DESC LIMIT 500', [String(days)])).rows;
+      FROM admin_sessions s WHERE s.created_at > now() - ($1 || ' days')::interval` + (team ? ' AND s.user_id IN (SELECT id FROM staff_users WHERE role = ANY($2))' : '') + ' ORDER BY s.created_at DESC LIMIT 500', team ? [String(days), team] : [String(days)])).rows;
     const places = await ipPlaces(p, r.map(function (x) { return String(x.ip || '').replace(/^::ffff:/, ''); }));
     res.json({ ok: true, signins: r.map(function (x) { const ip = String(x.ip || '').replace(/^::ffff:/, ''), u = uaInfo(String(x.user_agent || '')), g = places[ip] || {};
       return { at: x.created_at, last: x.last_seen, ip: ip, place: g.place || '', isp: g.isp || '', device: [u.device, u.os, u.browser].filter(Boolean).join(' · '), who: x.user_name, user_id: x.user_id, live: !x.revoked_at && Date.now() - new Date(x.last_seen).getTime() < 10 * 60000, ended: !!x.revoked_at }; }) });
@@ -1987,11 +1993,11 @@ module.exports = function mountJobs(app, opts) {
     const who = String(req.query.user || ''), vals = [];
     let where = '';
     if (/^\d+$/.test(who)) { vals.push(Number(who)); where = 'WHERE user_id = $1'; } else if (who === 'owner') where = "WHERE user_id IS NULL AND user_name = 'Owner'";
-    const teamOnly = req.role === 'offers' || req.user.role === 'offers_admin';
-    if (teamOnly) where += (where ? ' AND ' : 'WHERE ') + "user_id IN (SELECT id FROM staff_users WHERE role IN ('offers', 'offers_admin'))";
+    const team = teamRoles(req);
+    if (team) { vals.push(team); where += (where ? ' AND ' : 'WHERE ') + 'user_id IN (SELECT id FROM staff_users WHERE role = ANY($' + vals.length + '))'; }
     const r = await p.query('SELECT at, user_id, user_name, action, ip FROM staff_activity ' + where + ' ORDER BY at DESC LIMIT 300', vals);
-    const people = (await p.query('SELECT id, name FROM staff_users WHERE disabled_at IS NULL' + (teamOnly ? " AND role IN ('offers', 'offers_admin')" : '') + ' ORDER BY name')).rows;
-    res.json({ ok: true, activity: r.rows, people: people, owner: !teamOnly });
+    const people = (await p.query('SELECT id, name FROM staff_users WHERE disabled_at IS NULL' + (team ? ' AND role = ANY($1)' : '') + ' ORDER BY name', team ? [team] : [])).rows;
+    res.json({ ok: true, activity: r.rows, people: people, owner: !team });
   }));
 
   // ---------- Where staff are signed in ----------
@@ -8688,7 +8694,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const b = req.body || {}, id = jobId(req);
     if (b.status && Object.keys(b).length === 1) {
       if (['available', 'let', 'withdrawn'].indexOf(b.status) === -1) return res.status(400).json({ ok: false, error: 'status' });
-      await p.query("UPDATE available_props SET status = $2, let_on = CASE WHEN $2 = 'let' THEN coalesce(let_on, (now() AT TIME ZONE 'Europe/London')::date) ELSE let_on END, updated_at = now() WHERE id = $1", [id, b.status]); return res.json({ ok: true });
+      await p.query("UPDATE available_props SET status = $2, let_on = CASE WHEN $2 = 'let' THEN coalesce(let_on, (now() AT TIME ZONE 'Europe/London')::date) ELSE let_on END, online_since = CASE WHEN $2 = 'available' AND status <> 'available' THEN now() ELSE online_since END, updated_at = now() WHERE id = $1", [id, b.status]); return res.json({ ok: true });
     }
     // A few fields at once from the card (access, key number, tenants' contact).
     if (b.patch === true) {
