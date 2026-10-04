@@ -527,6 +527,15 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS yt_id TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_url TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS let_on DATE;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS dream_rm JSONB NOT NULL DEFAULT '[]'::jsonb;
+CREATE TABLE IF NOT EXISTS rm_dreams (
+  rm_id       TEXT PRIMARY KEY,
+  first_seen  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  review_at   DATE,
+  extended    INTEGER NOT NULL DEFAULT 0,
+  takedown_at TIMESTAMPTZ,
+  by_name     TEXT
+);
 CREATE TABLE IF NOT EXISTS sent_emails (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1646,7 +1655,7 @@ module.exports = function mountJobs(app, opts) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;
     if (/^\/pvr(\/\d+(\/pdf)?)?$/.test(path)) return true;
-    if (path === '/available-dedupe' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
+    if (path === '/available-dedupe' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path) || /^\/dreams\/\d+$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
@@ -8346,7 +8355,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const img = (x.propertyImages && (x.propertyImages.mainImageSrc || ((x.propertyImages.images || [])[0] || {}).srcUrl)) || x.mainImageSrc || '';
     const url = String(x.propertyUrl || '/properties/' + x.id).replace(/#.*$/, '');
     return { id: String(x.id), address: String(x.displayAddress || x.address).replace(/\s+/g, ' ').trim(), beds: x.bedrooms != null ? Number(x.bedrooms) : null, pcm: pcm || null,
-      url: /^https?:/.test(url) ? url : RM_BASE + url, image: img, status: String(x.displayStatus || ((x.listingUpdate || {}).listingUpdateReason) || x.addedOrReduced || '').slice(0, 60), type: String(x.propertySubType || x.propertyTypeFullDescription || '').slice(0, 60) };
+      url: /^https?:/.test(url) ? url : RM_BASE + url, image: img, added: rmAdded(x), status: String(x.displayStatus || ((x.listingUpdate || {}).listingUpdateReason) || x.addedOrReduced || '').slice(0, 60), type: String(x.propertySubType || x.propertyTypeFullDescription || '').slice(0, 60) };
+  }
+  // When the advert first went up, if Rightmove says (an ISO date, or "Added on 12/09/2026").
+  function rmAdded(x) {
+    const iso = x.firstVisibleDate || (x.listingUpdate && /new/i.test(x.listingUpdate.listingUpdateReason || '') && x.listingUpdate.listingUpdateDate);
+    if (iso && isFinite(Date.parse(iso))) return new Date(iso).toISOString();
+    const m = /added on (\d{1,2})\/(\d{1,2})\/(\d{4})/i.exec(String(x.addedOrReduced || ''));
+    return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) + 'T12:00:00Z' : null;
   }
   // Any list of property-like objects inside the page's data.
   function rmDig(v, out, depth) {
@@ -8429,12 +8445,37 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const keep = error && prev && prev.value && prev.value.items ? prev.value.items : items;
     const val = { at: new Date().toISOString(), items: keep, error: error, diag: diag, ok_at: error ? (prev && prev.value && prev.value.ok_at) || null : new Date().toISOString() };
     await p.query("INSERT INTO app_settings (key, value) VALUES ('rightmove_list', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(val)]);
-    if (!error) await rmAutoLink(p, items);
+    if (!error) { await rmAutoLink(p, items); await rmDreamTrack(p, items); }
     return val;
+  }
+  // Dreams: adverts on Rightmove that aren't one of our available properties. Each has a 7-day review —
+  // keep it up 7 more days, link it to a different property, or take it down.
+  async function rmDreamTrack(p, items) {
+    const matched = {}; (await p.query("SELECT rm_id FROM available_props WHERE status = 'available' AND rm_id IS NOT NULL")).rows.forEach(function (r) { matched[r.rm_id] = 1; });
+    for (const r of items) {
+      if (matched[r.id]) continue;
+      const first = r.added && Date.parse(r.added) < Date.now() ? r.added : new Date().toISOString();
+      await p.query("INSERT INTO rm_dreams (rm_id, first_seen, review_at) VALUES ($1, $2, ($2::timestamptz AT TIME ZONE 'Europe/London')::date + 7) ON CONFLICT (rm_id) DO UPDATE SET last_seen = now(), first_seen = LEAST(rm_dreams.first_seen, EXCLUDED.first_seen), review_at = CASE WHEN rm_dreams.extended = 0 AND EXCLUDED.first_seen < rm_dreams.first_seen THEN EXCLUDED.review_at ELSE rm_dreams.review_at END", [r.id, first]);
+    }
+    // Gone from Rightmove for 3 days: forget it (a new advert later starts a fresh timeline).
+    await p.query("DELETE FROM rm_dreams WHERE last_seen < now() - interval '3 days'");
+  }
+  async function rmDreams(p) {
+    const out = {}; (await p.query("SELECT rm_id, first_seen, review_at::text AS review_at, extended, takedown_at, by_name FROM rm_dreams")).rows.forEach(function (r) { out[r.rm_id] = r; }); return out;
   }
   app.get('/api/admin/rightmove', withDb(async function (p, req, res) {
     const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], st = await rmSettings(p);
-    res.json(Object.assign({ ok: true, branch: st.branch, branch_url: RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + st.branch, items: [] }, (c && c.value) || {}));
+    res.json(Object.assign({ ok: true, branch: st.branch, branch_url: RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + st.branch, items: [] }, (c && c.value) || {}, { dreams: await rmDreams(p), today: londonDay() }));
+  }));
+  app.post('/api/admin/dreams/:rmid', withDb(async function (p, req, res) {
+    const rid = String(req.params.rmid || '').replace(/\D/g, '').slice(0, 20), act = (req.body || {}).action, who = req.user ? req.user.name : 'Office';
+    if (!rid) return res.status(400).json({ ok: false, error: 'listing' });
+    await p.query("INSERT INTO rm_dreams (rm_id, review_at) VALUES ($1, (now() AT TIME ZONE 'Europe/London')::date + 7) ON CONFLICT (rm_id) DO NOTHING", [rid]);
+    if (act === 'extend') await p.query("UPDATE rm_dreams SET review_at = GREATEST(coalesce(review_at, (now() AT TIME ZONE 'Europe/London')::date), (now() AT TIME ZONE 'Europe/London')::date) + 7, extended = extended + 1, takedown_at = NULL, by_name = $2 WHERE rm_id = $1", [rid, who]);
+    else if (act === 'takedown') await p.query("UPDATE rm_dreams SET takedown_at = now(), by_name = $2 WHERE rm_id = $1", [rid, who]);
+    else if (act === 'undo') await p.query("UPDATE rm_dreams SET takedown_at = NULL, by_name = $2 WHERE rm_id = $1", [rid, who]);
+    else return res.status(400).json({ ok: false, error: 'action' });
+    res.json({ ok: true });
   }));
   app.post('/api/admin/rightmove/refresh', withDb(async function (p, req, res) {
     const v = await softRefresh(p, 'rightmove_list', rmRefresh, function () { return rmBusy; }, function (x) { rmBusy = x; }, (req.body || {}).soft === true); res.json(Object.assign({ ok: !v.error }, v));
