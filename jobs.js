@@ -5747,7 +5747,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (o2.office !== false) ntfy(Object.assign({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#offers' : undefined }, body)).catch(function () {});
     try {
       const topic = await offersTopic(); if (!topic || typeof fetch !== 'function') return;
-      await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: topic, click: base ? base + '/staff' : undefined }, body)), signal: AbortSignal.timeout(8000) });
+      await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: topic, click: base ? base + '/staff#offers' : undefined }, body)), signal: AbortSignal.timeout(8000) });
     } catch (err) { console.error('Staff offer alert failed:', err.message); }
   }
   // Email every active staff member who has an email address (each with the sign-in link that
