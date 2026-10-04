@@ -592,6 +592,7 @@
   .av-acc-chip { border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 999px; padding: 2px 9px; font-size: .78rem; cursor: pointer; color: inherit; } .av-acc-chip.on { background: #101828; border-color: #101828; color: #fff; }
   .av-acc-det { margin-top: 4px; color: var(--ink-soft); } .av-acc-det b { color: var(--ink, #101828); } .av-acc-warn { color: #b54708; font-weight: 600; } .av-acc-det .linkish { padding: 0; min-height: 0; line-height: inherit; vertical-align: baseline; }
   .av-fromrm { font-style: normal; color: #00a88f; text-transform: none; letter-spacing: 0; }
+  .av-llpick { width: auto; max-width: 220px; min-height: 30px; padding: 2px 6px; font-size: .8rem; }
   .av-key { font-size: .84rem; margin: 6px 0 2px; } .av-llink { font-size: .84rem; margin: 2px 0; color: var(--ink-soft); } .av-llink b { color: var(--ink, #101828); }
   .av-key .linkish, .av-llink .linkish, .av-novid .linkish { padding: 0; min-height: 0; line-height: inherit; vertical-align: baseline; }
   .av-novid { background: #fffaeb; border: 1px solid #fedf89; color: #93370d; border-radius: 10px; padding: 6px 10px; font-size: .84rem; margin: 6px 0; }
@@ -9888,6 +9889,7 @@
         (function(){ var L = (avLinkData || {})[x.id] || {}, h = '';
           h += avAccessHtml(x, L);
           if (L.landlord) h += '<div class="av-llink">👤 Landlord on file: ' + (!staffMode && L.landlord.id ? '<button type="button" class="linkish" data-ava="ll"><b>' + esc(L.landlord.name) + '</b></button>' : '<b>' + esc(L.landlord.name || 'Landlord') + '</b>') + (L.landlord.src === 'terms' ? ' <small>(from their landlord terms)</small>' : L.landlord.src === 'tenancy' ? ' <small>(from the tenancy)</small>' : '') + (L.landlord.phone ? ' · <a href="tel:' + esc(String(L.landlord.phone).replace(/[^\d+]/g, '')) + '">' + esc(L.landlord.phone) + '</a>' : '') + (L.landlord.email ? ' · <a href="mailto:' + esc(L.landlord.email) + '">' + esc(L.landlord.email) + '</a>' : '') + '</div>';
+          if (!L.landlord && !staffMode && x.status === 'available' && typeof landlords !== 'undefined' && landlords.length) h += '<div class="av-llink">👤 No landlord on file · <select class="inp av-llpick" data-avll="' + x.id + '"><option value="">🔗 Link a landlord…</option>' + landlords.slice().sort(function(p, q){ return String(p.name).localeCompare(String(q.name)); }).map(function(l){ return '<option value="' + l.id + '"' + (x.landlord && String(l.name).toLowerCase().indexOf(String(x.landlord).toLowerCase().split(' ')[0]) !== -1 ? ' style="font-weight:700"' : '') + '>' + esc(l.name) + '</option>'; }).join('') + '</select></div>';
           if (L.tenancy && !staffMode) h += '<div class="av-llink">🏠 One of our tenancies' + (L.tenancy.start ? ' (from ' + esc(avDay(L.tenancy.start)) + ')' : '') + ' · <button type="button" class="linkish" data-ava="tcy">Open the tenancy</button></div>';
           return h; })() +
         ((x.landlord || x.commission) ? '<div class="av-meta">Landlord <b>' + esc(x.landlord || '—') + '</b>' + (x.commission ? ' · Commission <b>' + esc(x.commission) + '</b>' : '') + '</div>' : '') +
@@ -9901,6 +9903,12 @@
   function avSetMode(m){ avMode = m; try { localStorage.setItem('rr_av_mode', m); } catch (e) {} document.querySelectorAll('#avModes [data-avm]').forEach(function(b){ b.classList.toggle('on', b.dataset.avm === m); }); }
   avSetMode(avMode);
   $('avModes').addEventListener('click', function(e){ var b = e.target.closest('[data-avm]'); if (!b) return; avSetMode(b.dataset.avm); renderAvail(); });
+  // Owner: link a property on the list to a landlord record (remembered for the property).
+  $('avList').addEventListener('change', function(e){
+    var sel = e.target.closest('[data-avll]'); if (!sel || !sel.value) return;
+    var x = avItems.filter(function(i){ return i.id === Number(sel.dataset.avll); })[0]; if (!x) return;
+    api('PUT', '/api/admin/property-landlord', { address: x.address, landlord_id: Number(sel.value) }).then(function(d){ toast(d && d.ok ? '✓ Landlord linked' : 'Couldn’t link the landlord'); loadAvail(); });
+  });
   $('avList').addEventListener('click', function(e){
     if (e.target.closest('#avMoreBtn')) { avLimit += 200; renderAvail(); return; }
     // From List / Compact: open that property's full card.
