@@ -821,7 +821,10 @@ async function syncLandlordTenancies(p, id) {
     const mine = keys.indexOf(t.property_key) !== -1 || (em && String(tl.email || '').trim().toLowerCase() === em) || (lp && ph(tl.phone) === lp) || (sameName && nm(tl.name) === sameName);
     if (!mine) continue;
     const next = Object.assign({}, tl);
-    if (l.address && norm([tl.line1, tl.line2, tl.country, tl.postcode].filter(Boolean).join(',')) !== norm(l.address)) Object.assign(next, llAddrLines(l.address));
+    // Never swap a full address (with a postcode) for one without — e.g. a record that only says "23 … Avenue".
+    const recHasPc = POSTCODE_RE.test(String(l.address || '')), tcyHasPc = !!(tl.postcode && POSTCODE_RE.test(tl.postcode));
+    if (l.address && (recHasPc || !tcyHasPc) && norm([tl.line1, tl.line2, tl.country, tl.postcode].filter(Boolean).join(',')) !== norm(l.address)) Object.assign(next, llAddrLines(l.address));
+    else if (!recHasPc && tcyHasPc && tl.line1) { const full = [tl.line1, tl.line2, tl.country, tl.postcode].filter(Boolean).join(', '); await p.query('UPDATE landlords SET address = $2, updated_at = now() WHERE id = $1', [id, full]); l.address = full; }
     if (l.email && !tl.email) next.email = l.email; if (l.phone && !tl.phone) next.phone = l.phone; if (l.name && !tl.name) next.name = l.name;
     if (JSON.stringify(next) === JSON.stringify(tl)) continue;
     await p.query("UPDATE tenancies SET data = jsonb_set(data, '{landlord}', $2::jsonb), updated_at = now() WHERE id = $1", [t.id, JSON.stringify(next)]); n++;
@@ -9107,7 +9110,23 @@ document.querySelectorAll('.lcu').forEach(function(box){
   setInterval(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function () {}); }, 24 * 3600000).unref();
   // Once: put the values already on the list in their places (version bump re-runs it).
   // Once: bring every tenancy's landlord address up to date with the landlord records.
-  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k && k.value && k.value.v >= 3) return; let n = 0;
+  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k && k.value && k.value.v >= 4) return; let n = 0;
+    // A landlord address left without its postcode: recover it from another place the same address was written
+    // (their landlord record, the correspondence address on their signed terms, or another of their tenancies).
+    const pcRe = POSTCODE_RE, firstNo = function (a) { return ((String(a || '').replace(pcRe, ' ').match(/\b\d+[a-z]?\b/i) || [''])[0]).toLowerCase(); };
+    const nmK = function (v) { return String(v || '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr|mx)\b\.?/g, ' ').replace(/[^a-z]+/g, ' ').trim(); };
+    const cands = [];
+    (await p.query('SELECT name, email, address FROM landlords WHERE address IS NOT NULL')).rows.forEach(function (r) { cands.push({ n: nmK(r.name), e: String(r.email || '').toLowerCase(), a: r.address }); });
+    (await p.query("SELECT landlord_name AS name, landlord_email AS email, data->'details'->>'corr_address' AS a FROM landlord_terms WHERE data->'details'->>'corr_address' IS NOT NULL")).rows.forEach(function (r) { cands.push({ n: nmK(r.name), e: String(r.email || '').toLowerCase(), a: r.a }); });
+    const tAll = (await p.query("SELECT id, data->'landlord' AS l FROM tenancies WHERE data ? 'landlord'")).rows;
+    tAll.forEach(function (t) { const l = t.l || {}; if (l.postcode) cands.push({ n: nmK(l.name), e: String(l.email || '').toLowerCase(), a: [l.line1, l.line2, l.country, l.postcode].filter(Boolean).join(', ') }); });
+    for (const t of tAll) {
+      const l = t.l || {}; if (l.postcode || !(l.line1 || l.line2) || !(l.name || l.email)) continue;
+      const fn = firstNo(l.line1 || l.line2), mine = cands.filter(function (c) { return pcRe.test(c.a) && ((l.email && c.e === String(l.email).toLowerCase()) || (nmK(l.name) && c.n === nmK(l.name))) && (!fn || firstNo(c.a) === fn); });
+      if (!mine.length) continue;
+      const next = Object.assign({}, l, llAddrLines(String(mine[0].a).replace(/\n/g, ', ')));
+      await p.query("UPDATE tenancies SET data = jsonb_set(data, '{landlord}', $2::jsonb) WHERE id = $1", [t.id, JSON.stringify(next)]); n++;
+    }
     // Landlord addresses typed into the wrong boxes (e.g. the whole address in Postcode): each part put in its place.
     const pcOnly = /^\s*[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\s*$/i;
     for (const t of (await p.query("SELECT id, data->'landlord' AS l FROM tenancies WHERE data ? 'landlord'")).rows) {
@@ -9116,7 +9135,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await p.query("UPDATE tenancies SET data = jsonb_set(data, '{landlord}', $2::jsonb) WHERE id = $1", [t.id, JSON.stringify(next)]); n++;
     }
     for (const r of (await p.query('SELECT id FROM landlords')).rows) n += await syncLandlordTenancies(p, r.id);
-    await p.query("INSERT INTO app_settings (key, value) VALUES ('ll_tcy_sync', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 3, at: new Date().toISOString(), updated: n })]); console.log('Tenancy landlord details synced:', n); }).catch(function (e) { console.error('Landlord sync failed:', e.message); }); }, 20000).unref();
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('ll_tcy_sync', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 4, at: new Date().toISOString(), updated: n })]); console.log('Tenancy landlord details synced:', n); }).catch(function (e) { console.error('Landlord sync failed:', e.message); }); }, 20000).unref();
   setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 4) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 4, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
   // Empty the Been let list before pasting a corrected copy (managers only).
   app.post('/api/admin/available-clear-let', withDb(async function (p, req, res) {
