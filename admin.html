@@ -7081,6 +7081,8 @@
     }
     var msgTo = msgRecipients(j);
     var msgWho = function(){ return msgTo[$('fTo') ? Number($('fTo').value) : 0] || {}; };
+    // Every tenant at the property with an email (the job's tenant and the others living there).
+    var allMails = function(){ var seen = {}; return msgTo.filter(function(t){ var e = String(t.email || '').trim().toLowerCase(); if (!e || seen[e]) return false; seen[e] = 1; return true; }); };
     function drawMsgActs(){
       var r = msgWho(), wa = waNumber(r.phone), nm = String(r.name || '').trim();
       var first = greetName(nm) || 'tenant';
@@ -7088,7 +7090,8 @@
         (wa ? '<button class="btn wa" id="waMsg" type="button">WhatsApp ' + esc(first) + '</button>' : '') +
         '<button class="btn" id="copyMsg" type="button">Copy</button>' +
         (r.email ? '<button class="btn" id="mailMsg" type="button">Open in my email</button>' : '') +
-        (meta.canEmail && r.email && r.email === j.tenant_email ? '<button class="btn primary" id="sendMsg" type="button">Send email to tenant</button>' : '');
+        (meta.canEmail && r.email && r.email === j.tenant_email ? '<button class="btn primary" id="sendMsg" type="button">Send email to tenant</button>' : '') +
+        (meta.canEmail && allMails().length > 1 ? '<button class="btn" id="sendAllMsg" type="button" title="One email to every tenant at the property">✉ Email all ' + allMails().length + ' tenants</button>' : '');
       wireMsgActs();
     }
     if ($('fTo')) $('fTo').addEventListener('change', function(){
@@ -7114,6 +7117,12 @@
       openMailto('mailto:' + encodeURIComponent(msgWho().email) +
         '?subject=' + encodeURIComponent($('fSubj').value) + '&body=' + encodeURIComponent($('fMsg').value));
       logMessage('Opened in email app').then(function(){ openJob(j.id); });
+    });
+    if ($('sendAllMsg')) $('sendAllMsg').addEventListener('click', function(){
+      var list = allMails(), names = list.map(function(t){ return greetName(t.name) || t.name; }).filter(Boolean);
+      var body = $('fMsg').value.replace(/^(Dear|Hi|Hello)\s+[^,\n]*,/, '$1 ' + (names.length > 1 && names.length <= 4 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : 'all') + ',');
+      composeMail({ title: '✉ Email all tenants — check before sending', to: list.map(function(t){ return t.email; }), subject: $('fSubj').value, body: body,
+        onSent: function(){ logMessage('Emailed all tenants (' + list.map(function(t){ return t.name || t.email; }).join(', ') + ')').then(function(){ openJob(j.id); }); } });
     });
     if ($('sendMsg')) $('sendMsg').addEventListener('click', function(){
       if (!confirm('Send this email to ' + j.tenant_email + '?')) return;
