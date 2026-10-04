@@ -793,6 +793,7 @@ function llAddrLines(a) {
   for (let i = parts.length - 1; i >= 0 && !postcode; i--) { const m = pcRe.exec(parts[i]); if (m) { postcode = (m[1] + ' ' + m[2]).toUpperCase(); parts[i] = parts[i].replace(m[0], '').trim(); } }
   parts = parts.filter(Boolean);
   if (parts.length > 1 && /^(united kingdom|uk|england|scotland|wales|northern ireland|great britain|gb)$/i.test(parts[parts.length - 1])) country = parts.pop();
+  if (parts.length === 1) { const w = parts[0].split(/\s+/); if (w.length > 2 && /^(london|ilford|croydon|romford|bromley|barking|dagenham|harrow|wembley|enfield|sutton|kingston|richmond|hounslow|uxbridge|watford|luton|slough|reading|dartford|basildon|chelmsford|brentwood|grays|birmingham|manchester|leeds|liverpool|bristol|leicester|northampton|nottingham|sheffield|coventry|oxford|cambridge|brighton)$/i.test(w[w.length - 1])) parts = [w.slice(0, -1).join(' '), w[w.length - 1]]; }
   if (parts.length > 2 && /^(flat|apartment|apt|unit|room|suite|studio)\b/i.test(parts[0])) parts.splice(0, 2, parts[0] + ', ' + parts[1]);   // "Flat 3, 22 New Road" stays one line
   return { line1: parts[0] || '', line2: parts.slice(1).join(', '), country: country, postcode: postcode };
 }
@@ -5180,7 +5181,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
       checkin_date: day(b.checkin_date), checkin_time: s(b.checkin_time, 20), checkin_type: b.checkin_type === 'diy' ? 'diy' : b.checkin_type === 'clerk' ? 'clerk' : b.checkin_type === 'none' ? 'none' : null, checkin_tbc: !!b.checkin_tbc,
       tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       guarantors: (Array.isArray(b.guarantors) ? b.guarantors : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
-      landlord: { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(l.postcode, 20) },
+      landlord: (function () { const o = { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(String(l.postcode || '').trim(), 300) };
+        // A whole address typed in one box (often the postcode box): put each part in its place.
+        const pcOnly = /^\s*[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\s*$/i;
+        if ((o.postcode && !pcOnly.test(o.postcode)) || [o.line1, o.line2, o.country].some(function (x) { return x && POSTCODE_RE.test(x); })) Object.assign(o, llAddrLines([o.line1, o.line2, o.postcode, o.country].filter(Boolean).join(', ')));
+        else if (o.postcode) o.postcode = o.postcode.toUpperCase().replace(/^([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})$/, '$1 $2');
+        o.postcode = String(o.postcode || '').slice(0, 20) || null; return o; })(),
       service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), find_basis: b.find_basis === 'upfront' ? 'upfront' : 'monthly',
       manage_basis: b.manage_basis === 'upfront' ? 'upfront' : 'monthly', find_unit: b.find_unit === 'gbp' ? 'gbp' : 'pct', collect_unit: b.collect_unit === 'gbp' ? 'gbp' : 'pct', manage_unit: b.manage_unit === 'gbp' ? 'gbp' : 'pct', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
       credits: (Array.isArray(b.credits) ? b.credits : []).slice(0, 20).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount), vat: !!(f && f.vat) }; }).filter(function (f) { return f.label && f.amount; }),
@@ -8871,9 +8877,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
   setInterval(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function () {}); }, 24 * 3600000).unref();
   // Once: put the values already on the list in their places (version bump re-runs it).
   // Once: bring every tenancy's landlord address up to date with the landlord records.
-  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k && k.value && k.value.v >= 2) return; let n = 0;
+  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k && k.value && k.value.v >= 3) return; let n = 0;
+    // Landlord addresses typed into the wrong boxes (e.g. the whole address in Postcode): each part put in its place.
+    const pcOnly = /^\s*[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\s*$/i;
+    for (const t of (await p.query("SELECT id, data->'landlord' AS l FROM tenancies WHERE data ? 'landlord'")).rows) {
+      const l = t.l || {}; if (!((l.postcode && !pcOnly.test(l.postcode)) || [l.line1, l.line2, l.country].some(function (x) { return x && POSTCODE_RE.test(x); }))) continue;
+      const next = Object.assign({}, l, llAddrLines([l.line1, l.line2, l.postcode, l.country].filter(Boolean).join(', ')));
+      await p.query("UPDATE tenancies SET data = jsonb_set(data, '{landlord}', $2::jsonb) WHERE id = $1", [t.id, JSON.stringify(next)]); n++;
+    }
     for (const r of (await p.query('SELECT id FROM landlords')).rows) n += await syncLandlordTenancies(p, r.id);
-    await p.query("INSERT INTO app_settings (key, value) VALUES ('ll_tcy_sync', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 2, at: new Date().toISOString(), updated: n })]); console.log('Tenancy landlord details synced:', n); }).catch(function (e) { console.error('Landlord sync failed:', e.message); }); }, 20000).unref();
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('ll_tcy_sync', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 3, at: new Date().toISOString(), updated: n })]); console.log('Tenancy landlord details synced:', n); }).catch(function (e) { console.error('Landlord sync failed:', e.message); }); }, 20000).unref();
   setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 4) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 4, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
   // Empty the Been let list before pasting a corrected copy (managers only).
   app.post('/api/admin/available-clear-let', withDb(async function (p, req, res) {
