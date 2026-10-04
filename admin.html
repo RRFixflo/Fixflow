@@ -485,6 +485,13 @@
   .lt-signed b { display: block; font-size: 1.35rem; color: #0b6b3a; } .lt-signed span:not(.lt-tick) { color: #2f6b4b; font-size: .88rem; }
   .lt-tick { flex: 0 0 72px; height: 72px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #34d399, #12b76a 60%, #0e9f5c); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 6px rgba(18,183,106,.15); }
   .lt-tick svg { width: 42px; height: 42px; }
+  .off-kind { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 4px; }
+  .off-kind button { text-align: left; border: 2px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 12px; padding: 10px 12px; cursor: pointer; font: inherit; color: inherit; }
+  .off-kind button b { display: block; font-size: .92rem; } .off-kind button span { display: block; font-size: .78rem; color: var(--ink-soft); margin-top: 2px; }
+  .off-kind button.on { border-color: var(--navy, #0b1f3a); background: #f0f3f8; box-shadow: 0 0 0 3px rgba(11,31,58,.08); }
+  .off-pvr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 8px 0 2px; padding: 10px 12px; border-radius: 12px; background: #f5f7fb; border: 1px solid #e3e8f1; font-size: .86rem; } .off-pvr label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+  .pv-editbox { margin: 8px 0 12px; padding: 12px; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; }
+  @media (max-width: 640px) { .off-kind, .off-pvr { grid-template-columns: 1fr; } }
   .pv-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0 10px; }
   .pv-steps div { border-radius: 12px; padding: 8px 10px; background: var(--panel-2, #f5f6f8); border: 1px solid var(--line, #e6e8ec); font-size: .8rem; min-width: 0; }
   .pv-steps b { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); } .pv-steps span { display: block; font-weight: 650; overflow-wrap: anywhere; }
@@ -1173,7 +1180,6 @@
     <a class="nav" href="/" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Tenant report page</a>
     <a class="nav" href="/offer" target="_blank" rel="noopener" style="text-decoration:none" title="The form applicants fill in to make an offer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offer form (applicants)</a>
     <a class="nav" href="/admin#offers" id="navOffersLink" style="text-decoration:none" title="Where the offer forms are collected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offers collected <span class="badge hot" id="sOffers2" hidden>0</span></a>
-    <button class="nav" type="button" id="navPvr" title="Applicants reserve a property before viewing it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="m9 15 2 2 4-4"/></svg> Pre-viewing (applicants) <span class="count-chip" id="sPvr" hidden></span></button>
     <div class="grow"></div>
     <div class="side-foot"><div class="deployed" id="whoAmI" hidden></div><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
   </aside>
@@ -1468,7 +1474,7 @@
         </details>
       </div>
 
-      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="pvr">🗓 Pre-viewing (applicants)</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
+      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
       <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto"><option value="">Everyone</option></select></div><div id="teamFeed"></div></div></div>
@@ -1495,27 +1501,28 @@
         <div class="lt-bar"><label class="muted-note" style="margin:0;display:flex;gap:6px;align-items:center">Sort <select class="inp" id="ltSort" style="width:auto"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="signed">Recently signed</option><option value="waiting">Waiting for the landlord first</option><option value="addr">Property A–Z</option><option value="ll">Landlord A–Z</option><option value="feehi">Highest fees</option><option value="feelo">Lowest fees</option></select></label><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="ltMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="ltMaxAll">▾ Expand all</button></span></div>
         <div id="ltList"></div>
       </div>
-      <div id="pvrView" hidden>
-        <details class="card" id="pvNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New pre-viewing reservation <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">for an applicant (tenant) — not for landlords</span></summary>
-          <p class="muted-note" style="margin:8px 0 12px">The applicant gets a private link: they sign the reservation form and pay one week’s rent to reserve the property before viewing. After the viewing they tell us within 24 hours if they’re going ahead — yes takes them to the offer form (the PVR becomes their holding deposit), no asks for their account for the refund.</p>
-          <div class="lt-grid"><label>Applicant name<input class="inp" id="pvName" maxlength="200" autocomplete="off"></label><label>Property address<input class="inp" id="pvAddr" list="offProps" maxlength="400" placeholder="Include the postcode"></label>
-            <label>Mobile <span class="muted-note" style="margin:0">for WhatsApp</span><input class="inp" id="pvPhone" type="tel"></label><label>Email <span class="muted-note" style="margin:0">optional</span><input class="inp" id="pvEmail" type="email"></label>
-            <label>Rent<span style="display:flex;gap:6px"><input class="inp" id="pvRent" inputmode="decimal" placeholder="e.g. 450"><select class="inp" id="pvPer" style="width:auto"><option value="pw">per week</option><option value="pcm">per month</option></select></span></label><label>PVR amount £ <span class="muted-note" style="margin:0">one week’s rent</span><input class="inp" id="pvAmt" inputmode="decimal"></label>
-            <label>Viewing <span class="muted-note" style="margin:0">optional — sets the 24-hour deadline</span><input class="inp" id="pvAt" type="datetime-local"></label><label class="switch-row" style="align-self:end"><input type="checkbox" id="pvAddV" checked> Also add it to Viewings</label></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn primary" type="button" id="pvCreate">Create reservation link</button><button class="btn ghost" type="button" id="pvEditCancel" hidden>Cancel editing</button><span class="muted-note" id="pvEditing" hidden style="align-self:center;margin:0"></span></div>
-        </details>
-        <div class="lt-bar"><label class="muted-note" style="margin:0;display:flex;gap:6px;align-items:center">Show <select class="inp" id="pvFilter" style="width:auto"><option value="">All</option><option value="sign">Waiting to sign</option><option value="pay">Waiting for payment</option><option value="decide">Waiting for their answer</option><option value="late">Answer overdue</option><option value="yes">Going ahead</option><option value="no">Not going ahead</option><option value="refund">Refund to send</option><option value="cancelled">Cancelled</option></select></label><input class="inp" id="pvSearch" placeholder="Search name or address" style="width:auto;flex:1;min-width:160px;max-width:280px"></div>
-        <div id="pvList"></div>
-      </div>
       <div id="offersView" hidden>
         <details class="card" id="offLinkCard" style="margin-bottom:12px">
-          <summary style="cursor:pointer;font-weight:700;font-size:1.02rem">🔗 Link for applicants <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">copy or send the offer form</span></summary>
+          <summary style="cursor:pointer;font-weight:700;font-size:1.02rem">🔗 Send a form to an applicant <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">offer form or pre-viewing reservation</span></summary>
           <div style="margin-top:8px"></div>
           <p class="muted-note" style="margin:0 0 8px">Send this to anyone who wants to make an offer. They fill in the offer and each tenant’s details, attach their IDs and sign; then they’re told how to pay the holding deposit.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offLink" readonly style="flex:1;min-width:220px"><button class="btn primary" type="button" id="offCopy">Copy link</button><a class="btn" id="offOpen" target="_blank" rel="noopener">Open</a></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="offProp" list="offProps" placeholder="Or a link for one property: type the address" style="flex:1;min-width:220px"><datalist id="offProps"></datalist><button class="btn" type="button" id="offPropCopy">Copy property link</button></div>
-          <div class="off-send"><b>Send it to an applicant</b><span class="muted-note" style="margin:0">Uses the property link above if you’ve typed an address.</span>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><input class="inp" id="offToName" placeholder="Their name (optional)" style="flex:1;min-width:140px"><input class="inp" id="offTo" placeholder="Their mobile or email (optional)" style="flex:1;min-width:200px"><button class="btn small wa-btn" type="button" id="offSendWa">WhatsApp</button><button class="btn small" type="button" id="offSendMail">✉ Email</button></div></div>
+          <div class="off-send"><b>Which form?</b><span class="muted-note" style="margin:0">Uses the property address above.</span>
+            <div class="off-kind" id="offKind" role="radiogroup"><button type="button" class="on" data-kind="offer"><b>📝 Holding deposit offer form</b><span>They make a formal offer and pay the 1 week holding deposit</span></button><button type="button" data-kind="pvr"><b>🗓 Pre-viewing reservation (PVR)</b><span>They reserve before viewing; refunded if they don’t go ahead</span></button></div>
+            <div class="off-pvr" id="offPvr" hidden><label>Rent<span style="display:flex;gap:6px"><input class="inp" id="pvRent2" inputmode="decimal" placeholder="e.g. 450"><select class="inp" id="pvPer2" style="width:auto"><option value="pw">per week</option><option value="pcm">per month</option></select></span></label><label>PVR amount £ <span class="muted-note" style="margin:0">one week’s rent</span><input class="inp" id="pvAmt2" inputmode="decimal"></label><label>Viewing <span class="muted-note" style="margin:0">optional — starts the 24 hours</span><input class="inp" id="pvAt2" type="datetime-local"></label><label class="switch-row" style="align-self:end"><input type="checkbox" id="pvAddV2" checked> Also add it to Viewings</label></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><input class="inp" id="offToName" placeholder="Their name" style="flex:1;min-width:140px"><input class="inp" id="offTo" placeholder="Their mobile or email (optional)" style="flex:1;min-width:200px"><button class="btn small wa-btn" type="button" id="offSendWa">WhatsApp</button><button class="btn small" type="button" id="offSendMail">✉ Email</button></div></div>
+        </details>
+        <details class="card" id="pvCard" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">🗓 Pre-viewing reservations (PVR) <span class="muted-note" id="pvSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
+          <p class="muted-note" style="margin:8px 0">Send a PVR from “Send a form to an applicant” above. They sign and pay one week’s rent to reserve before viewing, then tell us within 24 hours if they’re going ahead — yes takes them to the offer form (the PVR becomes their holding deposit), no asks for their account for the refund.</p>
+        <details class="pv-editbox" id="pvNew" hidden open><summary style="cursor:pointer;font-weight:700">✏️ Edit reservation</summary>
+          <div class="lt-grid"><label>Applicant name<input class="inp" id="pvName" maxlength="200" autocomplete="off"></label><label>Property address<input class="inp" id="pvAddr" list="offProps" maxlength="400" placeholder="Include the postcode"></label>
+            <label>Mobile <span class="muted-note" style="margin:0">for WhatsApp</span><input class="inp" id="pvPhone" type="tel"></label><label>Email <span class="muted-note" style="margin:0">optional</span><input class="inp" id="pvEmail" type="email"></label>
+            <label>Rent<span style="display:flex;gap:6px"><input class="inp" id="pvRent" inputmode="decimal" placeholder="e.g. 450"><select class="inp" id="pvPer" style="width:auto"><option value="pw">per week</option><option value="pcm">per month</option></select></span></label><label>PVR amount £ <span class="muted-note" style="margin:0">one week’s rent</span><input class="inp" id="pvAmt" inputmode="decimal"></label></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn primary" type="button" id="pvCreate">Save changes</button><button class="btn ghost" type="button" id="pvEditCancel" hidden>Cancel editing</button><span class="muted-note" id="pvEditing" hidden style="align-self:center;margin:0"></span></div>
+        </details>
+        <div class="lt-bar"><label class="muted-note" style="margin:0;display:flex;gap:6px;align-items:center">Show <select class="inp" id="pvFilter" style="width:auto"><option value="">All</option><option value="sign">Waiting to sign</option><option value="pay">Waiting for payment</option><option value="decide">Waiting for their answer</option><option value="late">Answer overdue</option><option value="yes">Going ahead</option><option value="no">Not going ahead</option><option value="refund">Refund to send</option><option value="cancelled">Cancelled</option></select></label><input class="inp" id="pvSearch" placeholder="Search name or address" style="width:auto;flex:1;min-width:160px;max-width:280px"></div>
+        <div id="pvList"></div>
         </details>
         <details class="card" id="vwCard" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">🗓 Viewings &amp; feedback <span class="muted-note" id="vwSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
           <p class="muted-note" style="margin:8px 0">Book viewings and add feedback afterwards. The landlord sees upcoming viewings, feedback and offer progress on their page.</p>
@@ -3425,7 +3432,8 @@
 
   function showView(v){
     if ((v === 'team' || v === 'who') && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
-    if (staffMode && v !== 'lt' && v !== 'pvr' && v !== 'team' && v !== 'who') v = 'offers';
+    if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
+    if (staffMode && v !== 'lt' && v !== 'team' && v !== 'who') v = 'offers';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -3442,7 +3450,6 @@
     $('ctrView').hidden = v !== 'ctr';
     $('ctsView').hidden = v !== 'cts';
     $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
-    $('pvrView').hidden = v !== 'pvr'; $('navPvr').classList.toggle('on', v === 'pvr');
     document.querySelectorAll('[data-stab]').forEach(function(b){ b.classList.toggle('on', b.dataset.stab === v); });
     $('contractorsBtn').classList.toggle('on', v === 'cts' || v === 'ctr');
     $('navAct').classList.toggle('on', v === 'act');
@@ -3453,11 +3460,10 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', pvr: 'Pre-viewing reservations — applicants', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') loadLt();
-    if (v === 'pvr') loadPvr();
     if (v === 'team') { loadTeam(); $('teamSec').open = true; }
     if (v === 'who') loadTeam();
     if (v === 'tcy' && !openTcyId) renderTenancies();
@@ -8431,11 +8437,18 @@
   function offInvite(via){ return api('POST', '/api/admin/offer-invites', { via: via, to: $('offTo').value.trim(), name: $('offToName').value.trim(), property: $('offProp').value.trim() }).then(function(d){ setTimeout(loadInvites, 600); return d && d.ok ? d.token : ''; })['catch'](function(){ return ''; }); }
   $('offSendWa').addEventListener('click', function(){
     var to = $('offTo').value.trim(), ph = /[@]/.test(to) ? '' : to.replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44');
+    if (offKind === 'pvr') {
+      var made = pvSendCreate('whatsapp'); if (!made) return;
+      var w0 = window.open('about:blank', '_blank');
+      made.then(function(t){ if (!t) { if (w0) w0.close(); return; } var url = pvWa(t) + encodeURIComponent(pvMsg(t)); if (w0) w0.location.href = url; else window.open(url, '_blank', 'noopener'); });
+      return;
+    }
     var w = window.open('about:blank', '_blank');   // opened straight away so it isn't blocked, then pointed at WhatsApp
     offInvite('whatsapp').then(function(tok){ var url = 'https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent(offSendText(tok)); if (w) w.location.href = url; else window.open(url, '_blank', 'noopener'); });
   });
   $('offSendMail').addEventListener('click', function(){
     var to = $('offTo').value.trim(), a = $('offProp').value.trim(), n = $('offToName').value.trim().split(/\s+/)[0];
+    if (offKind === 'pvr') { var made = pvSendCreate('email'); if (made) made.then(function(t){ if (t) openMailto('mailto:' + encodeURIComponent(t.email || '') + '?subject=' + encodeURIComponent('Reserve ' + shortAddr(t.property_address) + ' before your viewing') + '&body=' + encodeURIComponent(pvMailBody(t))); }); return; }
     offInvite('email').then(function(tok){
       var body = (n ? 'Dear ' + n + ',' : 'Hello,') + '\n\nThank you for your interest' + (a ? ' in ' + shortAddr(a) : '') + '.\n\nYou can make your offer online here: ' + offSendLink(tok) + '\n\nIt takes about 5 minutes. Please have a photo of each tenant’s passport or visa ready, plus your right to rent share code if you have one. Once you’ve sent the form, pay the 1 week holding deposit to secure your offer.' + mailSignoff();
       openMailto('mailto:' + (/@/.test(to) ? encodeURIComponent(to) : '') + '?subject=' + encodeURIComponent('Make your offer' + (a ? ' — ' + shortAddr(a) : '')) + '&body=' + encodeURIComponent(body));
@@ -9274,7 +9287,7 @@
   // they answer within 24 hours: going ahead (offer form) or not (refund details).
   var pvItems = [], pvOrigin = '', pvEditId = null;
   function loadPvr(){ return api('GET', '/api/admin/pvr').then(function(d){ if (!d.ok) return; pvItems = d.items; pvOrigin = d.origin || ''; renderPvr(); pvCount(); }); }
-  function pvCount(){ var n = pvItems.filter(function(t){ var s = pvState(t); return s === 'late' || s === 'refund' || s === 'claim'; }).length; $('sPvr').hidden = !n; $('sPvr').textContent = n; }
+  function pvCount(){ var n = pvItems.filter(function(t){ var s = pvState(t); return s === 'late' || s === 'refund' || s === 'claim'; }).length, open = pvItems.filter(function(t){ return ['sign', 'pay', 'claim', 'decide', 'late', 'refund'].indexOf(pvState(t)) !== -1; }).length; $('pvSum').innerHTML = pvItems.length ? open + ' in progress' + (n ? ' · <b style="color:#b42318">' + n + ' need' + (n === 1 ? 's' : '') + ' action</b>' : '') : 'none yet'; }
   function pvLink(t){ return (pvOrigin || meta.offerOrigin || location.origin) + '/reserve/' + t.token; }
   function pvFirst(t){ return String(t.name || '').trim().split(/\s+/)[0] || 'there'; }
   function pvWa(t){ var ph = String(t.phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'); return 'https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text='; }
@@ -9344,22 +9357,41 @@
   function pvAuto(){ if ($('pvAmt').dataset.manual) return; var r = parseFloat(String($('pvRent').value).replace(/[£,\s]/g, '')); $('pvAmt').value = r > 0 ? (Math.round(($('pvPer').value === 'pcm' ? r * 12 / 52 : r) * 100) / 100).toFixed(2) : ''; }
   $('pvRent').addEventListener('input', pvAuto); $('pvPer').addEventListener('change', pvAuto);
   $('pvAmt').addEventListener('input', function(){ if (this.value.trim()) this.dataset.manual = '1'; else delete this.dataset.manual; });
-  function pvClear(){ ['pvName', 'pvAddr', 'pvPhone', 'pvEmail', 'pvRent', 'pvAmt', 'pvAt'].forEach(function(id){ $(id).value = ''; }); delete $('pvAmt').dataset.manual; $('pvPer').value = 'pw'; pvEditId = null; $('pvEditCancel').hidden = true; $('pvEditing').hidden = true; $('pvCreate').textContent = 'Create reservation link'; $('pvAt').disabled = false; $('pvAddV').disabled = false; }
+  function pvClear(){ ['pvName', 'pvAddr', 'pvPhone', 'pvEmail', 'pvRent', 'pvAmt'].forEach(function(id){ $(id).value = ''; }); delete $('pvAmt').dataset.manual; $('pvPer').value = 'pw'; pvEditId = null; $('pvNew').hidden = true; }
   $('pvEditCancel').addEventListener('click', pvClear);
   $('pvCreate').addEventListener('click', function(){
-    var b = this, at = $('pvAt').value, body = { name: $('pvName').value.trim(), property_address: $('pvAddr').value.trim(), phone: $('pvPhone').value.trim(), email: $('pvEmail').value.trim(), rent: $('pvRent').value, per: $('pvPer').value, amount: $('pvAmt').value, viewing_at: at ? new Date(at).toISOString() : '', add_viewing: $('pvAddV').checked };
+    var b = this, editing = pvEditId, body = { name: $('pvName').value.trim(), property_address: $('pvAddr').value.trim(), phone: $('pvPhone').value.trim(), email: $('pvEmail').value.trim(), rent: $('pvRent').value, per: $('pvPer').value, amount: $('pvAmt').value };
+    if (!editing) return;
     if (!body.name) { toast('Enter the applicant’s name'); $('pvName').focus(); return; }
     if (!body.property_address) { toast('Enter the property address'); $('pvAddr').focus(); return; }
     if (!(parseFloat(String(body.amount).replace(/[£,\s]/g, '')) > 0)) { toast('Enter the rent or the PVR amount'); $('pvRent').focus(); return; }
-    var editing = pvEditId; busy(b, true, editing ? 'Saving…' : 'Creating…');
-    api('POST', '/api/admin/pvr' + (editing ? '/' + editing : ''), body).then(function(d){
-      busy(b, false); if (!d.ok) { toast(d.error === 'signed' ? 'Already signed — it can’t be changed' : d.error === 'amount' ? 'Enter the PVR amount' : 'Couldn’t save it'); return; }
-      pvClear();
-      if (editing) { toast('✓ Saved — the same link shows the new details'); loadPvr(); return; }
-      offCopyText(d.link); toast('Reservation created — link copied. Send it by WhatsApp or email below.');
-      loadPvr().then(function(){ var c = document.querySelector('[data-pv="' + d.id + '"]'); if (c) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.add('lt-flash'); setTimeout(function(){ c.classList.remove('lt-flash'); }, 2500); } });
+    busy(b, true, 'Saving…');
+    api('POST', '/api/admin/pvr/' + editing, body).then(function(d){
+      busy(b, false); if (!d.ok) { toast(d.error === 'signed' ? 'Already signed — it can’t be changed' : 'Couldn’t save it'); return; }
+      pvClear(); toast('✓ Saved — the same link shows the new details'); loadPvr();
     });
   });
+  // Sending a form from the Offers page: the regular offer form, or a pre-viewing reservation.
+  var offKind = 'offer';
+  $('offKind').addEventListener('click', function(e){ var k = e.target.closest('[data-kind]'); if (!k) return; offKind = k.dataset.kind; this.querySelectorAll('[data-kind]').forEach(function(x){ x.classList.toggle('on', x === k); }); $('offPvr').hidden = offKind !== 'pvr'; if (offKind === 'pvr' && !$('offProp').value.trim()) $('offProp').focus(); });
+  function pvAuto2(){ if ($('pvAmt2').dataset.manual) return; var r = parseFloat(String($('pvRent2').value).replace(/[£,\s]/g, '')); $('pvAmt2').value = r > 0 ? (Math.round(($('pvPer2').value === 'pcm' ? r * 12 / 52 : r) * 100) / 100).toFixed(2) : ''; }
+  $('pvRent2').addEventListener('input', pvAuto2); $('pvPer2').addEventListener('change', pvAuto2);
+  $('pvAmt2').addEventListener('input', function(){ if (this.value.trim()) this.dataset.manual = '1'; else delete this.dataset.manual; });
+  // Make the reservation, then hand back what's needed to send it (or null if something's missing).
+  function pvSendCreate(via){
+    var to = $('offTo').value.trim(), at = $('pvAt2').value, body = { name: $('offToName').value.trim(), property_address: $('offProp').value.trim(), phone: /@/.test(to) ? '' : to, email: /@/.test(to) ? to : '', rent: $('pvRent2').value, per: $('pvPer2').value, amount: $('pvAmt2').value, viewing_at: at ? new Date(at).toISOString() : '', add_viewing: $('pvAddV2').checked };
+    if (!body.property_address) { toast('Type the property address above'); $('offProp').focus(); return null; }
+    if (!body.name) { toast('Enter the applicant’s name'); $('offToName').focus(); return null; }
+    if (!(parseFloat(String(body.amount).replace(/[£,\s]/g, '')) > 0)) { toast('Enter the rent or the PVR amount'); $('pvRent2').focus(); return null; }
+    return api('POST', '/api/admin/pvr', body).then(function(d){
+      if (!d || !d.ok) { toast('Couldn’t create the reservation'); return null; }
+      var t = { id: d.id, token: d.link.split('/').pop(), name: body.name, property_address: body.property_address, amount: parseFloat(String(body.amount).replace(/[£,\s]/g, '')), viewing_at: body.viewing_at || null, phone: body.phone, email: body.email };
+      api('POST', '/api/admin/pvr/' + d.id, { note: 'Link sent by ' + (via === 'whatsapp' ? 'WhatsApp' : 'email') });
+      ['offToName', 'offTo', 'pvRent2', 'pvAmt2', 'pvAt2'].forEach(function(id){ $(id).value = ''; }); delete $('pvAmt2').dataset.manual;
+      loadPvr().then(function(){ $('pvCard').open = true; }); toast('✓ Reservation ' + d.ref + ' created — see Pre-viewing reservations below');
+      return t;
+    });
+  }
   function pvPost(t, body, msg){ return api('POST', '/api/admin/pvr/' + t.id, body).then(function(d){ if (!d.ok) { toast('Couldn’t save it'); return; } if (msg) toast(msg); return loadPvr(); }); }
   $('pvList').addEventListener('click', function(e){
     var card = e.target.closest('[data-pv]'); if (!card) return; var t = pvItems.filter(function(x){ return x.id === Number(card.dataset.pv); })[0]; if (!t) return;
@@ -9388,12 +9420,11 @@
     }
     if (hit('[data-pv-vsave]')) { var vv = card.querySelector('.pv-vedit input').value; if (!vv) { toast('Pick the date and time'); return; } pvPost(t, { viewing_at: new Date(vv).toISOString() }, '✓ Viewing saved — the 24 hours start from it'); return; }
     if (hit('[data-pv-vclear]')) { pvPost(t, { viewing_at: '' }, 'Viewing cleared'); return; }
-    if (hit('[data-pv-edit]')) { pvEditId = t.id; $('pvName').value = t.name || ''; $('pvAddr').value = t.property_address || ''; $('pvPhone').value = t.phone || ''; $('pvEmail').value = t.email || ''; $('pvRent').value = t.rent != null ? Number(t.rent) : ''; $('pvPer').value = t.per || 'pw'; $('pvAmt').value = Number(t.amount).toFixed(2); $('pvAmt').dataset.manual = '1'; $('pvAt').value = ''; $('pvAt').disabled = true; $('pvAddV').disabled = true; $('pvEditCancel').hidden = false; $('pvEditing').hidden = false; $('pvEditing').textContent = '✏️ Editing ' + t.ref + ' — use “Change viewing” on the card for the viewing time'; $('pvCreate').textContent = 'Save changes'; $('pvNew').open = true; $('pvNew').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    if (hit('[data-pv-edit]')) { pvEditId = t.id; $('pvName').value = t.name || ''; $('pvAddr').value = t.property_address || ''; $('pvPhone').value = t.phone || ''; $('pvEmail').value = t.email || ''; $('pvRent').value = t.rent != null ? Number(t.rent) : ''; $('pvPer').value = t.per || 'pw'; $('pvAmt').value = Number(t.amount).toFixed(2); $('pvAmt').dataset.manual = '1'; $('pvEditCancel').hidden = false; $('pvEditing').hidden = false; $('pvEditing').textContent = '✏️ Editing ' + t.ref + ' — use “Change viewing” on its card for the viewing time'; $('pvNew').hidden = false; $('pvNew').open = true; $('pvNew').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     if (hit('[data-pv-cancel]')) { if (confirm('Cancel this reservation? The applicant’s link will stop working.')) pvPost(t, { cancel: true }, 'Cancelled'); return; }
     if (hit('[data-pv-uncancel]')) { pvPost(t, { uncancel: true }, 'Turned back on'); return; }
     if (hit('[data-pv-del]')) { if (!confirm('Delete this reservation and its signed form?')) return; api('DELETE', '/api/admin/pvr/' + t.id, { confirm: true }).then(function(d){ toast(d.ok ? 'Deleted' : 'Only managers can delete'); loadPvr(); }); }
   });
-  $('navPvr').addEventListener('click', function(){ showView('pvr'); });
 
   // ---------- Monthly landlord statements ----------
   // Worked out on the server (statementChain in jobs.js): one per rent date,
@@ -12123,7 +12154,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navPvr', 'Pre-viewing (applicants)'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
