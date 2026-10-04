@@ -636,6 +636,7 @@
       if (d.rent && !$('offer').value) { var pb = document.querySelector('[data-per="' + (d.per === 'pcm' ? 'pcm' : 'pw') + '"]'); if (pb) pb.click(); $('offer').value = d.rent; $('offer').dispatchEvent(new Event('input', { bubbles: true })); }
       var t1 = document.querySelector('.ten[data-t="1"]'), set = function(k, v){ var el = t1 && t1.querySelector('[data-k="' + k + '"]'); if (el && !el.value && v) el.value = v; };
       set('name', d.name); set('phone', d.phone); set('email', d.email);
+      if (d.move_in && !$('move_in').value) $('move_in').value = d.move_in;
       var box = document.createElement('div'); box.className = 'card'; box.style.cssText = 'background:#ecfdf3;border-color:#abefc6;margin-bottom:14px';
       box.innerHTML = '<b style="color:#067647">✓ From your pre-viewing reservation ' + esc(d.ref) + '</b><div class="hint" style="margin:2px 0 0">' + (d.paid ? 'Your reservation payment of ' + gbp(d.amount) + ' will be converted into your holding deposit.' : 'Once paid, your reservation of ' + gbp(d.amount) + ' becomes your holding deposit.') + ' We’ve filled in what we already know.</div>';
       var fv = $('formView'); if (fv) fv.insertBefore(box, fv.firstChild);
