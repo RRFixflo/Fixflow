@@ -8441,6 +8441,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (typeof v !== 'object') return;
     const r = v.videoRenderer || v.gridVideoRenderer || v.reelItemRenderer;
     if (r && r.videoId) { const t = (r.title && (r.title.simpleText || (r.title.runs || []).map(function (x) { return x.text; }).join(''))) || (r.headline && r.headline.simpleText) || ''; out.push({ id: r.videoId, title: t, ago: (r.publishedTimeText && r.publishedTimeText.simpleText) || '' }); return; }
+    if (v.continuationCommand && v.continuationCommand.token) { out.token = v.continuationCommand.token; return; }
     const lv = v.lockupViewModel; if (lv && lv.contentId && lv.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO') { const md = ((lv.metadata || {}).lockupMetadataViewModel || {}); out.push({ id: lv.contentId, title: ((md.title || {}).content) || '', ago: '' }); return; }
     Object.keys(v).forEach(function (k) { ytDig(v[k], out, depth + 1); });
   }
@@ -8465,6 +8466,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!r.ok) throw new Error('YouTube answered ' + r.status);
     const html = await r.text(), m = /ytInitialData\s*=\s*(\{[\s\S]*?\});\s*<\/script>/.exec(html);
     const vids = []; if (m) { try { ytDig(JSON.parse(m[1]), vids, 0); } catch (e) {} }
+    // The channel page shows ~30 videos; the rest come page by page, as on YouTube itself.
+    const key = (/"INNERTUBE_API_KEY":"([\w-]+)"/.exec(html) || [])[1], ver = (/"INNERTUBE_CLIENT_VERSION":"([\d.]+)"/.exec(html) || [])[1] || '2.20240101.00.00';
+    let token = vids.token;
+    for (let pg = 0; token && key && pg < 30; pg++) {
+      try {
+        const rr = await fetch('https://www.youtube.com/youtubei/v1/browse?key=' + key + '&prettyPrint=false', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, headers), body: JSON.stringify({ context: { client: { clientName: 'WEB', clientVersion: ver, hl: 'en', gl: 'GB' } }, continuation: token }), signal: AbortSignal.timeout(15000) });
+        if (!rr.ok) break;
+        const more = []; ytDig(await rr.json(), more, 0); more.forEach(function (v) { vids.push(v); });
+        if (!more.length || more.token === token) break; token = more.token;
+      } catch (e) { break; }
+    }
     vids.forEach(function (v, i) { add({ id: v.id, title: v.title, published: ytAgo(v.ago), rank: i }); });
     // Exact dates for the newest uploads from the channel's feed.
     const cid = (/"(?:channelId|externalId)":"(UC[\w-]{20,})"/.exec(html) || [])[1];
@@ -8473,12 +8485,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!out.length) throw new Error('no videos found on the channel page');
     return out;
   }
+  // Two words are the same allowing a small slip (Glasworthy / Galsworthy, Grosvenor / Grosvener).
+  function ytSameWord(a, b) {
+    if (a === b) return true; if (a.length < 5 || b.length < 5 || Math.abs(a.length - b.length) > 2) return false;
+    const m = a.length, n = b.length, d = []; for (let i = 0; i <= m; i++) { d[i] = [i]; } for (let j = 0; j <= n; j++) d[0][j] = j;
+    for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) { d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1); }
+    return d[m][n] <= (Math.max(m, n) >= 8 ? 2 : 1);
+  }
   function ytScore(av, v) {
-    const t = String(v.title || ''), oa = rmOutcode(av.address), pcs = t.toUpperCase().match(/\b[A-Z]{1,2}\d[A-Z\d]?\b(?=\s*\d[A-Z]{2}\b|\s*[,)\-|]|\s*$)/g) || [];
+    const t = String(v.title || '') + ' ' + String(v.desc || ''), oa = rmOutcode(av.address), pcs = t.toUpperCase().match(/\b[A-Z]{1,2}\d[A-Z\d]?\b(?=\s*\d[A-Z]{2}\b|\s*[,)\-|]|\s*$)/g) || [];
     let sc = 0;
     if (oa && pcs.length) { if (pcs.indexOf(oa) === -1) return -1; sc += 3; }
-    const wa = rmWords(av.address), wt = rmWords(t), hits = wa.filter(function (w) { return wt.indexOf(w) !== -1; }).length;
-    if (!hits) return -1; sc += Math.min(4.5, hits * 1.5);
+    const wa = rmWords(av.address), wt = rmWords(t);
+    const hit = wa.filter(function (w, i) { return wa.indexOf(w) === i && wt.some(function (x) { return ytSameWord(w, x); }); });
+    if (!hit.length) return -1;
+    sc += Math.min(5, hit.reduce(function (n, w) { return n + (w.length >= 6 ? 2 : 1.5); }, 0));
+    if (hit.some(function (w) { return w.length >= 8; })) v._long = true; else delete v._long;
     const door = (/^(?:flat|apartment|unit)?\s*(\d+[a-z]?)\b/i.exec(String(av.address).trim()) || [])[1], td = t.match(/\b\d+[a-z]?\b/gi) || [];
     if (door && td.indexOf(door) !== -1) sc += 1;
     const bm = /(\d+)\s*(?:bed|bedroom)/i.exec(t); if (bm && av.beds != null) sc += Number(bm[1]) === av.beds ? 1 : -1.5; if (/studio/i.test(t) && av.beds === 0) sc += 1;
@@ -8496,14 +8518,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.get('/api/admin/youtube', withDb(async function (p, req, res) {
     const c = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0], st = await ytSettings(p), v = (c && c.value) || {}, vids = v.items || [];
     // For each available property: its videos, newest first (a hand-picked video always comes first).
-    const av = (await p.query("SELECT id, address, beds, yt_id FROM available_props WHERE status = 'available'")).rows, matches = {};
+    const av = (await p.query("SELECT id, address, beds, yt_id FROM available_props WHERE status = 'available'")).rows, matches = {}, suggest = {};
     av.forEach(function (a) {
       if (a.yt_id === 'none') { matches[a.id] = []; return; }
-      let list = vids.map(function (x) { return { x: x, s: ytScore(a, x) }; }).filter(function (o) { return o.s >= 3; }).map(function (o) { return o.x; }).sort(ytNewest);
+      let list = vids.map(function (x) { const sc = ytScore(a, x); return { x: x, s: sc, long: !!x._long }; }).filter(function (o) { return o.s >= 3 || (o.s >= 2 && o.long); }).map(function (o) { return o.x; }).sort(ytNewest);
       if (a.yt_id) { const pick = vids.filter(function (x) { return x.id === a.yt_id; })[0] || { id: a.yt_id, title: 'Chosen video' }; list = [pick].concat(list.filter(function (x) { return x.id !== a.yt_id; })); }
       matches[a.id] = list.slice(0, 4).map(function (x) { return x.id; });
+      suggest[a.id] = vids.map(function (x) { return { id: x.id, s: ytScore(a, x) }; }).filter(function (o) { return o.s > 0; }).sort(function (x, y) { return y.s - x.s; }).slice(0, 6).map(function (o) { return o.id; });
     });
-    res.json(Object.assign({ ok: true, handle: st.handle, channel_url: 'https://www.youtube.com/' + st.handle, matches: matches }, v, { items: vids }));
+    res.json(Object.assign({ ok: true, handle: st.handle, channel_url: 'https://www.youtube.com/' + st.handle, matches: matches, suggest: suggest, has_key: !!YT_KEY }, v, { items: vids }));
   }));
   app.post('/api/admin/youtube/refresh', withDb(async function (p, req, res) { const v = await ytRefresh(p); res.json(Object.assign({ ok: !v.error }, v)); }));
   app.post('/api/admin/youtube/settings', withDb(async function (p, req, res) {
