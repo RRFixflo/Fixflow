@@ -5150,7 +5150,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       landlord: { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(l.postcode, 20) },
       service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), find_basis: b.find_basis === 'upfront' ? 'upfront' : 'monthly',
       manage_basis: b.manage_basis === 'upfront' ? 'upfront' : 'monthly', find_unit: b.find_unit === 'gbp' ? 'gbp' : 'pct', collect_unit: b.collect_unit === 'gbp' ? 'gbp' : 'pct', manage_unit: b.manage_unit === 'gbp' ? 'gbp' : 'pct', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
-      credits: (Array.isArray(b.credits) ? b.credits : []).slice(0, 20).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount) }; }).filter(function (f) { return f.label && f.amount; }),
+      credits: (Array.isArray(b.credits) ? b.credits : []).slice(0, 20).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount), vat: !!(f && f.vat) }; }).filter(function (f) { return f.label && f.amount; }),
       fees: (Array.isArray(b.fees) ? b.fees : []).slice(0, 30).map(function (f) { const x = { label: s(f && f.label, 200), amount: amt(f && f.amount) }; if (f && f.novat === true) x.novat = true; return x; }).filter(function (f) { return f.label; }),
       vat: b.vat !== false, statement_date: day(b.statement_date), notes: s(b.notes, 4000),
       // Banking trail: each payment received.
@@ -7929,7 +7929,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const rent = i === 0 ? Number(d.rent_pcm) || 0 : rentAt(from);
       let deposit = 0;
       if (i === 0 && d.deposit_by === 'landlord') deposit = d.deposit != null && d.deposit !== '' ? Number(d.deposit) || 0 : Math.floor(rent * 12 / 52 * 5 + 1e-9);
-      const credits = (i === 0 ? (d.credits || []).filter(function (c) { return c && c.label && Number(c.amount); }).map(function (c) { return { label: c.label, amount: r2(Number(c.amount)) }; }) : [])
+      const credits = (i === 0 ? (d.credits || []).filter(function (c) { return c && c.label && Number(c.amount); }).map(function (c) { return c.vat ? { label: c.label + ' (' + gbp(Number(c.amount)) + ' + VAT ' + gbp(r2(Number(c.amount) * 0.2)) + ')', amount: r2(Number(c.amount) * 1.2), net: r2(Number(c.amount)), vat: r2(Number(c.amount) * 0.2) } : { label: c.label, amount: r2(Number(c.amount)) }; }) : [])
         .concat((d.month_costs || []).filter(function (c) { return c && c.from === from && c.money_in && Number(c.amount); }).map(function (c) { return { label: c.label, amount: r2(Number(c.amount)), cost_id: c.id }; }));
       const f = stmtFees(d, rent, i === 0, from), income = r2(rent + deposit + credits.reduce(function (a, c) { return a + c.amount; }, 0)), bf = r2(carry), total = r2(f.sub + f.vat + bf), balance = r2(income - total);
       out.push({ n: i, from: from, to: addDaysIso(addMonthsIso(start, i + 1), -1), rent: rent, deposit: deposit, credits: credits, income: income, fees: f.fees, sub: f.sub, vat: f.vat, vatOn: f.vatOn,

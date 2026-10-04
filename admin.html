@@ -11284,7 +11284,8 @@
     var vatOn = !(d.vat === false || /rent\s*4\s*rent/i.test(String(d.service || '')));
     fees.forEach(function(f){ f.vat = vatOn && !f.novat ? r2(f.amount * 0.2) : 0; });
     var sub = r2(fees.reduce(function(a, f){ return a + f.amount; }, 0)), vat = r2(fees.reduce(function(a, f){ return a + f.vat; }, 0)), feeTotal = r2(sub + vat);
-    var credits = (d.credits || []).filter(function(f){ return f && f.label && num(f.amount); }).map(function(f){ return { label: f.label, amount: r2(num(f.amount)) }; });
+    // A credit with VAT (e.g. part of a fee refunded): the landlord gets the amount plus its 20% VAT back.
+    var credits = (d.credits || []).filter(function(f){ return f && f.label && num(f.amount); }).map(function(f){ var a = r2(num(f.amount)); return f.vat ? { label: f.label + ' (' + gbp(a) + ' + VAT ' + gbp(r2(a * 0.2)) + ')', amount: r2(a * 1.2), net: a, vat: r2(a * 0.2) } : { label: f.label, amount: a }; });
     var income = r2(rent + (d.deposit_by === 'landlord' ? deposit : 0) + credits.reduce(function(a, f){ return a + f.amount; }, 0));
     var term = parseInt(d.term_months, 10) || 12;
     var soStart = d.so_start || addMonthsIso(d.start_date, 1);
@@ -11646,7 +11647,7 @@
   // Money in for the landlord on the move-in statement (e.g. a refund on materials): added to the income.
   function tcyCreditRows(){
     return (tcyDraft.credits || []).map(function(f, i){
-      return '<div class="tcy-fee" data-i="' + i + '"><input class="inp" data-cr="label" placeholder="e.g. B&Q refund, discount" value="' + esc(f.label || '') + '"><input class="inp" data-cr="amount" inputmode="decimal" placeholder="£" value="' + esc(f.amount == null ? '' : f.amount) + '"><button type="button" class="tcy-x" data-del-cr="' + i + '" title="Remove">×</button></div>';
+      return '<div class="tcy-fee nv4" data-i="' + i + '"><input class="inp" data-cr="label" placeholder="e.g. B&Q refund, discount" value="' + esc(f.label || '') + '"><input class="inp" data-cr="amount" inputmode="decimal" placeholder="£ before VAT" value="' + esc(f.amount == null ? '' : f.amount) + '"><label class="tcy-nv" title="Tick when this is a refund of something that had VAT on it (e.g. part of a fee given back) — the landlord gets the VAT back too"><input type="checkbox" data-cr="vat"' + (f.vat ? ' checked' : '') + '> + VAT</label><button type="button" class="tcy-x" data-del-cr="' + i + '" title="Remove">×</button></div>';
     }).join('');
   }
   function tcyFeeRows(){
@@ -11988,6 +11989,7 @@
       var f = d.credits[Number(row.dataset.i)]; if (!f) return;
       f.label = row.querySelector('[data-cr="label"]').value.trim();
       var a = row.querySelector('[data-cr="amount"]').value.replace(/[£,\s]/g, ''); f.amount = a === '' ? null : Number(a);
+      f.vat = !!row.querySelector('[data-cr="vat"]').checked;
     });
     document.querySelectorAll('#tfFees .tcy-fee').forEach(function(row){
       var f = d.fees[Number(row.dataset.i)]; if (!f) return;
@@ -12369,6 +12371,14 @@
     doc.text('Date', R - 100, y + 14); doc.text(ukDay(m.date || (m.n ? m.from : d.statement_date) || isoDay(new Date())), R, y + 14, { align: 'right' });
     y = 245; doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('STATEMENT OF ACCOUNT', W / 2, y, { align: 'center' });
     var VX = R - 95;
+    // Text that must fit a column on one line: shrink the type a little, and only if it still won't fit,
+    // end it at a whole word with "…" — never chopped mid-phrase.
+    var fit = function(text, x, yy, w, size){
+      text = String(text || ''); var fs = size; doc.setFontSize(fs);
+      while (doc.getTextWidth(text) > w && fs > Math.max(6, size - 2.5)) { fs -= 0.25; doc.setFontSize(fs); }
+      if (doc.getTextWidth(text) > w) { var words = text.split(' '); while (words.length > 1 && doc.getTextWidth(words.join(' ') + '…') > w) words.pop(); text = words.join(' ').replace(/[\s,(]+$/, '') + '…'; }
+      doc.text(text, x, yy); doc.setFontSize(size);
+    };
     var band = function(yy, title, vatCol){
       doc.setFillColor(232, 205, 209); doc.rect(X - 4, yy - 11, R - X + 8, 16, 'F');
       doc.setTextColor(128, 20, 30); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text(title, X - 2, yy + 1); doc.text('NET', R - 2, yy + 1, { align: 'right' });
@@ -12394,12 +12404,12 @@
     y = top; band(y, 'Income');
     y += gk('band'); doc.setFontSize(rowFont); doc.text('Rent for period', X + 70, y); doc.text(ukDay(m.from) + '  -  ' + ukDay(m.to), X + 160, y); doc.text(pdfGbp(c.rent), R, y, { align: 'right' });
     if (c.deposit) { y += rh; doc.text('Deposit (to be registered by the landlord)', X + 70, y); doc.text(pdfGbp(c.deposit), R, y, { align: 'right' }); }
-    (m.credits || []).forEach(function(f){ y += rh; doc.text(doc.splitTextToSize(f.label, 260)[0], X + 70, y); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); });
+    (m.credits || []).forEach(function(f){ y += rh; fit(f.label, X + 70, y, 300, rowFont); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); });
     y += gk('inc'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Total Income:', R - 150, y, { align: 'right' }); doc.text(pdfGbp(c.income), R, y, { align: 'right' });
     // Each fee with its own VAT (£0.00 on fees with no VAT), like the office statements.
     y += gk('exp'); band(y, 'Expenditure', c.vatOn);
     y += gk('band'); doc.setFontSize(rowFont);
-    c.fees.forEach(function(f){ doc.text(ukDay(m.from, true), X - 2, y); doc.text(doc.splitTextToSize(f.label, c.vatOn ? 250 : 300)[0], X + 48, y); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += rh; });
+    c.fees.forEach(function(f){ doc.text(ukDay(m.from, true), X - 2, y); fit(f.label, X + 48, y, c.vatOn ? (VX - 48) - (X + 48) : (R - 80) - (X + 48), rowFont); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += rh; });
     if (!c.fees.length) { doc.text(m.bf ? 'No fees this month' : 'No fees', X + 48, y); y += rh; }
     y += gk('fees') - rh; doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
     doc.text('Sub-Total:', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.sub), R, y, { align: 'right' });
