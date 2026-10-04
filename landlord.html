@@ -95,6 +95,10 @@
   .svc .tick { position:absolute; top:12px; right:12px; width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line2); display:flex; align-items:center; justify-content:center; font-size:.72rem; color:#fff; }
   .svc label.on .tick { background:var(--navy); border-color:var(--navy); } .svc .tag { align-self:flex-start; font-size:.68rem; font-weight:800; letter-spacing:.05em; text-transform:uppercase; border-radius:999px; padding:2px 8px; }
   .svc .tag.pop { background:#eef4ff; color:#1d3fae; } .svc .tag.save { background:#ecfdf3; color:#067647; }
+  .svc .sub { font-size:.8rem; color:var(--soft); margin-top:-4px; }
+  .split { display:flex; gap:12px; align-items:flex-start; border:1.5px solid var(--line); border-radius:14px; padding:12px 14px; margin:-6px 0 18px; cursor:pointer; background:#fff; } .split.on { border-color:#abefc6; background:#f6fef9; }
+  .split input { position:absolute; opacity:0; pointer-events:none; } .split .sw { flex:0 0 38px; height:22px; border-radius:999px; background:#d0d5dd; position:relative; margin-top:1px; transition:background .15s; }
+  .split .sw::after { content:''; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:left .15s; } .split.on .sw { background:#12b76a; } .split.on .sw::after { left:19px; }
   .fee .std { display:block; margin-top:3px; font-size:.8rem; color:var(--faint); } .fee .std s { color:var(--faint); } .fee .sv { display:inline-block; margin-left:6px; font-size:.72rem; font-weight:800; color:#067647; background:#ecfdf3; border-radius:999px; padding:1px 8px; }
   .assoc { max-width:980px; margin:-96px auto 40px; padding:0 20px; position:relative; z-index:2; text-align:center; }
   .assoc-in { background:#fff; border:1px solid rgba(15,23,42,.06); border-radius:18px; padding:16px 18px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
@@ -164,15 +168,26 @@
         return '<label class="' + (on ? 'on' : '') + '"><input type="radio" name="svc" value="' + x.id + '"' + (on ? ' checked' : '') + '><span class="tick">✓</span>' +
           (x.id === 'both' ? '<span class="tag pop">Most popular</span>' : x.save ? '<span class="tag save">Discounted</span>' : '') +
           '<span class="nm">' + esc(x.name) + '</span>' +
-          '<span class="pr">' + (x.pct == null ? 'No monthly fee' : x.pct + '%' + vat + ' a month' + (x.save ? '<s>' + x.std + '%</s>' : '')) + '</span>' +
-          '<span class="bl">' + esc(x.blurb) + '</span><ul>' + x.perks.map(function(p){ return '<li>' + esc(p) + '</li>'; }).join('') + '</ul></label>'; }).join('') + '</div>';
+          (x.find ? '<span class="pr">' + (x.pct == null ? 'No fee' : x.pct + '%' + vat + (x.save ? '<s>' + x.std + '%</s>' : '')) + '</span><span class="sub">' + (x.pct == null ? '' : 'of the first 12 months’ rent' + (T.split ? ', in 12 monthly payments' : ', once') + (x.save ? ' · our standard is ' + x.std + '%' : '')) + '</span>'
+            : '<span class="pr">' + x.pct + '%' + vat + ' a month' + (x.save ? '<s>' + x.std + '%</s>' : '') + '</span><span class="sub">of the rent collected, plus the tenant find fee</span>') +
+          '<span class="bl">' + esc(x.blurb) + '</span><ul>' + x.perks.map(function(p){ return '<li>' + esc(p) + '</li>'; }).join('') + '</ul></label>'; }).join('') + '</div>' + splitHtml();
+  }
+  // Splitting the tenant find fee into 12 monthly payments at no extra cost, when we've offered it.
+  function splitHtml(){
+    if (!T.allow_split) return '';
+    return '<label class="split' + (T.split ? ' on' : '') + '"><input type="checkbox" id="splitFee"' + (T.split ? ' checked' : '') + '><span class="sw"></span><span><b>Spread the tenant find fee over 12 months — no extra cost</b><span class="opt" style="display:block;font-size:.84rem">Pay it in 12 equal monthly payments taken from the rent, instead of all at the start.</span></span></label>';
+  }
+  function refetch(svc, split){
+    fetch('/api/landlord-terms/' + token + '?service=' + encodeURIComponent(svc || 'none') + (T.allow_split ? '&split=' + (split ? '1' : '0') : ''), { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+      if (!d.ok) return; T.fees = d.fees; T.lines = d.lines; T.examples = d.examples; T.service = d.service; T.split = d.split; T.services = d.services || T.services; var y = window.scrollY; drawFees(); window.scrollTo(0, y);
+    });
   }
   function go(n){ step = n; drawStepper(); ({ 1: drawFees, 2: drawDetails, 3: drawTerms })[n](); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 
   // ----- Step 1: the agreed fees -----
   function drawFees(){
     var f = T.fees || {}, ex = T.examples || [];
-    $('app').innerHTML = '<div class="card"><h2>Your fees</h2><p class="lead">For ' + esc(T.property) + '. These replace our standard scale of fees.</p>' + svcHtml() +
+    $('app').innerHTML = '<div class="card"><h2>Your fees</h2><p class="lead">For ' + esc(T.property) + '. These replace our standard scale of fees.</p>' + svcHtml() + (T.services ? '' : splitHtml()) +
       '<h3>' + (T.services ? 'What you’ll pay' : 'The fees we agreed') + '</h3><div class="fees">' + feeRows() + '</div>' +
       (ex.length ? '<div class="exbox"><div class="exh">Worked example at £' + Number(T.example_rent || 2000).toLocaleString('en-GB') + ' a month rent' + (T.examples_vat ? ' · fees inc VAT' : '') + '</div>' + ex.map(function(x){ return '<div class="exr' + (/^You receive/.test(x[0]) ? ' tot' : '') + '"><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b></div>'; }).join('') + '</div>' : '') +
       '<p class="example">Something not right? Please contact us before signing. Reference ' + esc(T.ref) + '.</p>' +
@@ -182,10 +197,9 @@
     if ($('svc')) $('svc').addEventListener('change', function(e){
       var v = e.target.value; if (!v || v === T.service) return;
       this.querySelectorAll('label').forEach(function(l){ l.classList.toggle('on', l.querySelector('input').value === v); });
-      fetch('/api/landlord-terms/' + token + '?service=' + encodeURIComponent(v), { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
-        if (!d.ok) return; T.fees = d.fees; T.lines = d.lines; T.examples = d.examples; T.service = d.service; var y = window.scrollY; drawFees(); window.scrollTo(0, y);
-      });
+      refetch(v, T.split);
     });
+    if ($('splitFee')) $('splitFee').addEventListener('change', function(){ refetch(T.service, this.checked); });
   }
 
   // ----- Step 2: property details form -----
@@ -336,7 +350,7 @@
       if (!$('sigName').value.trim()) return err('Please type your full name.', $('sigName'));
       if (!inked) return err('Please sign in the box.', $('sigWrap'));
       var b = this; b.disabled = true; b.textContent = 'Signing…';
-      fetch('/api/landlord-terms/' + token + '/sign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ service: T.services ? T.service : undefined, details: details, files: files, accept: true, declaration: true, start_now: st.value === 'now', signature: $('sigName').value.trim(), signature_png: png(), started_at: startedAt }) })
+      fetch('/api/landlord-terms/' + token + '/sign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ service: T.services ? T.service : undefined, split: T.allow_split ? !!T.split : undefined, details: details, files: files, accept: true, declaration: true, start_now: st.value === 'now', signature: $('sigName').value.trim(), signature_png: png(), started_at: startedAt }) })
         .then(function(r){ return r.json(); }).then(function(d){
           if (!d.ok) { b.disabled = false; b.textContent = 'Sign the agreement'; return err(d.error === 'details' ? 'Some details are missing — please go back and check.' : d.error === 'signed' ? 'This agreement has already been signed.' : 'Couldn’t sign just now — please try again.'); }
           T.status = 'signed'; showDone();
