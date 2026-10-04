@@ -11334,6 +11334,21 @@
   function tcyNames(list){ return (list || []).map(function(p){ return p.name; }).filter(Boolean); }
   function joinAnd(list){ return list.length <= 1 ? (list[0] || '') : list.slice(0, -1).join(', ') + ' & ' + list[list.length - 1]; }
   function tcyLandlordAddress(l){ return [l.line1, l.line2, l.country, l.postcode].filter(Boolean); }
+  // The landlord as they are on their record now (linked by the property, email, phone or a unique name),
+  // so statements always carry the current name and address; the tenancy's own copy otherwise.
+  function tcyLandlordNow(d){
+    var l = d.landlord || {}, nm = function(v){ return String(v || '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr|mx)\b\.?/g, ' ').replace(/[^a-z]+/g, ' ').trim(); };
+    var ph = function(v){ var x = String(v || '').replace(/\D/g, ''); return x.length >= 10 ? x.slice(-10) : ''; };
+    var all = typeof landlords !== 'undefined' ? landlords : [];
+    var rec = (d.address && landlordRecordAt(d.address)) ||
+      all.filter(function(r){ return (l.email && r.email && r.email.toLowerCase().trim() === String(l.email).toLowerCase().trim()) || (ph(l.phone) && ph(r.phone) === ph(l.phone)); })[0] ||
+      (function(){ var same = nm(l.name) ? all.filter(function(r){ return nm(r.name) === nm(l.name); }) : []; return same.length === 1 ? same[0] : null; })();
+    if (!rec || !rec.address) return { name: l.name || (rec && rec.name) || '', lines: tcyLandlordAddress(l) };
+    var parts = String(rec.address).split(/\s*[,\n]+\s*/).filter(Boolean), pc = '';
+    parts = parts.map(function(x){ var m = POSTCODE_RE.exec(x); if (m && !pc) { pc = (m[1] + ' ' + m[2]).toUpperCase(); x = x.replace(m[0], '').trim(); } return x; }).filter(Boolean);
+    if (parts.length > 2 && /^(flat|apartment|apt|unit|room|suite|studio)\b/i.test(parts[0])) parts.splice(0, 2, parts[0] + ', ' + parts[1]);
+    return { name: rec.name || l.name || '', lines: parts.concat(pc ? [pc] : []) };
+  }
   function tcyValues(d){
     var c = tcyCalc(d), t = (tcySet && tcySet.templates) || {};
     return {
@@ -12383,7 +12398,7 @@
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
     ['Residential Realtors'].concat(String(cfg.address || '28-30 Harper Road, London, SE1 6AD').split(/\s*,\s*/)).forEach(function(line, i){ doc.text(line, R, 60 + i * 14, { align: 'right' }); });
     var y = 150;
-    [l.name].concat(tcyLandlordAddress(l)).filter(Boolean).forEach(function(line, i){ doc.text(line, X, y + i * 14); });
+    var lNow = tcyLandlordNow(d); [lNow.name].concat(lNow.lines).filter(Boolean).forEach(function(line, i){ doc.text(line, X, y + i * 14); });
     doc.text('Date', R - 100, y + 14); doc.text(ukDay(m.date || (m.n ? m.from : d.statement_date) || isoDay(new Date())), R, y + 14, { align: 'right' });
     y = 245; doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('STATEMENT OF ACCOUNT', W / 2, y, { align: 'center' });
     var VX = R - 95;
@@ -12628,7 +12643,7 @@
     $('tmFromRow').hidden = !hasOl; $('tmDraft').hidden = !hasOl;
     $('tmOutlook').classList.toggle('primary', !hasOl);
     if (hasOl) { $('tmFrom').innerHTML = outlook.accounts.map(function(a){ return '<option value="' + esc(a.email) + '">' + esc(a.name ? a.name + ' — ' + a.email : a.email) + '</option>'; }).join(''); $('tmFrom').value = olFrom(); }
-    tmView('edit'); $('tmModal').hidden = false;
+    tmBrand = ''; tmBrandKey = ''; tmView('edit'); $('tmModal').hidden = false; tmRefreshBrand();
   }
   function tmAttachments(){
     var d = tmCtx.d, list = (tmCtx.atts || []).filter(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); return cb && cb.checked; });
@@ -12647,19 +12662,54 @@
     var hasOl = outlook.configured && outlook.accounts.length, from = hasOl && $('tmFrom').value ? $('tmFrom').value : 'Residential Realtors';
     var atts = (tmCtx && tmCtx.atts || []).filter(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); return cb && cb.checked; });
     var row = function(k, v){ return '<div style="display:flex;gap:10px;padding:3px 0"><span style="color:#667085;min-width:58px">' + k + '</span><span style="color:#101828;word-break:break-word">' + v + '</span></div>'; };
-    root.innerHTML = '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:13px;background:#fff;margin:12px;border:1px solid #e4e7ec;border-radius:10px;overflow:hidden">' +
-      '<div style="padding:12px 16px;border-bottom:1px solid #eaecf0;background:#fcfcfd"><div style="font-size:16px;font-weight:600;color:#101828;margin-bottom:6px">' + esc($('tmSubject').value || '(no subject)') + '</div>' +
+    root.innerHTML = '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:13px;background:#f3f5f8;margin:12px;border:1px solid #e4e7ec;border-radius:10px;overflow:hidden">' +
+      '<div style="padding:12px 16px;border-bottom:1px solid #eaecf0;background:#fff"><div style="font-size:16px;font-weight:600;color:#101828;margin-bottom:6px">' + esc($('tmSubject').value || '(no subject)') + '</div>' +
       row('From', esc(from)) + row('To', esc($('tmTo').value || '—')) +
       (atts.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' + atts.map(function(a){ return '<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid #d0d5dd;border-radius:8px;padding:5px 9px;background:#fff;font-size:12px">📄 ' + esc(a.name) + '</span>'; }).join('') + '</div>' : '') + '</div>' +
-      '<div style="padding:16px 18px">' + tmHtml().replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, '').replace(/contenteditable="[^"]*"/gi, '') + '</div></div>';
+      '<div id="tmBrandBox"><p style="font-family:sans-serif;color:#667085;padding:20px;margin:0">Loading the preview…</p></div></div>';
+    tmRefreshBrand().then(function(html){
+      var bx = root.getElementById('tmBrandBox'); if (!bx) return;
+      bx.innerHTML = html ? String(html).replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, '') : '<p style="font-family:sans-serif;color:#b42318;padding:20px;margin:0">Couldn’t show the preview just now.</p>';
+    });
   }
   document.querySelectorAll('[data-tmv]').forEach(function(b){ b.addEventListener('click', function(){ tmView(b.dataset.tmv); }); });
   $('tmCancel').addEventListener('click', function(){ $('tmModal').hidden = true; });
   $('tmModal').addEventListener('mousedown', function(e){ if (e.target === $('tmModal')) $('tmModal').hidden = true; });
   // Copy the email with its formatting (bold, underline, red) for pasting into Outlook, Gmail etc.
-  function tmHtml(){ return '<div style="font-family:Tahoma,Verdana,sans-serif;font-size:10pt;color:#000">' + $('tmBody').innerHTML + '</div>'; }
+  // The message as text with its formatting kept as [b]…[/b], [u]…[/u], [red]…[/red], [small]…[/small] — which the server
+  // lays out in our branded email design (the same as every email Fixflow sends).
+  function tmMarked(){
+    var walk = function(node){
+      var out = '';
+      node.childNodes.forEach(function(n){
+        if (n.nodeType === 3) { out += n.nodeValue.replace(/\u00a0/g, ' '); return; }
+        if (n.nodeType !== 1) return;
+        var t = n.tagName, st = (n.getAttribute('style') || '').toLowerCase().replace(/\s+/g, '');
+        if (t === 'BR') { out += '\n'; return; }
+        if (t === 'IMG') return;
+        var inner = walk(n);
+        if (/font-size:7pt/.test(st)) inner = '[small]' + inner + '[/small]';
+        else if (/(^|;)color:/.test(st) && !/#808080|gr[ae]y/.test(st)) inner = (/font-weight:(bold|[6-9]00)/.test(st) ? '[red]' : '[r]') + inner + (/font-weight:(bold|[6-9]00)/.test(st) ? '[/red]' : '[/r]');
+        else if (t === 'B' || t === 'STRONG' || /font-weight:(bold|[6-9]00)/.test(st)) inner = '[b]' + inner + '[/b]';
+        if (t === 'U') inner = '[u]' + inner + '[/u]';
+        if (t === 'DIV' || t === 'P') out += (out && !/\n$/.test(out) ? '\n' : '') + inner + '\n'; else out += inner;
+      });
+      return out;
+    };
+    return walk($('tmBody')).replace(/\[(b|u)\]\s*\[\/\1\]/g, '').replace(/\n{3,}/g, '\n\n').trim();
+  }
+  var tmBrand = '', tmBrandKey = '', tmBrandT = 0;
+  function tmRefreshBrand(){
+    var text = tmMarked(), subject = $('tmSubject').value, key = subject + '\u0001' + text;
+    if (key === tmBrandKey && tmBrand) return Promise.resolve(tmBrand);
+    return api('POST', '/api/admin/email/preview', { subject: subject, text: text }).then(function(d){ if (d && d.ok) { tmBrand = d.html; tmBrandKey = key; } return tmBrand; });
+  }
+  $('tmBody').addEventListener('input', function(){ clearTimeout(tmBrandT); tmBrandT = setTimeout(tmRefreshBrand, 700); });
+  $('tmSubject').addEventListener('input', function(){ clearTimeout(tmBrandT); tmBrandT = setTimeout(tmRefreshBrand, 700); });
+  function tmText(){ return mailPlain(tmMarked()); }
+  function tmHtml(){ return tmBrand && tmBrandKey === $('tmSubject').value + '\u0001' + tmMarked() ? tmBrand : '<div style="font-family:Tahoma,Verdana,sans-serif;font-size:10pt;color:#000">' + $('tmBody').innerHTML + '</div>'; }
   function copyMail(){
-    var html = tmHtml(), text = $('tmBody').innerText;
+    var html = tmHtml(), text = tmText();
     if (navigator.clipboard && window.ClipboardItem) {
       return navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })])['catch'](selectCopy);
     }
@@ -12702,9 +12752,9 @@
     var to = $('tmTo').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean), subject = $('tmSubject').value, ctx = tmCtx, from = $('tmFrom').value;
     if (!to.length) { toast('Add an email address'); return; }
     try { localStorage.setItem('rr_outlook_from', from); } catch (e) {}
-    var html = tmHtml();
+    var html;
     busy($('tmDraft'), true, 'Preparing…');
-    tmAttachments().then(function(files){
+    tmRefreshBrand().then(function(){ html = tmHtml(); return tmAttachments(); }).then(function(files){
       return Promise.all(files.map(function(f){ return blobB64(f.blob).then(function(b){ return { name: f.name, data: b }; }); }));
     }).then(function(atts){
       busy($('tmDraft'), true, 'Adding to Outlook…');
@@ -12739,7 +12789,8 @@
     // The logo travels inside the email (so it shows even when pictures from the web are blocked).
     function htmlPart(h){
       var logo = logoB64();
-      var doc = wrap76(b64utf8('<html><head><meta charset="utf-8"></head><body>' + (logo ? h.split(MAIL_LOGO).join('cid:rrlogo') : h) + '</body></html>'));
+      var body = logo ? h.split(MAIL_LOGO).join('cid:rrlogo') : h;
+      var doc = wrap76(b64utf8(/^\s*<!doctype/i.test(body) ? body : '<html><head><meta charset="utf-8"></head><body>' + body + '</body></html>'));
       var part = 'Content-Type: text/html; charset=UTF-8' + L + 'Content-Transfer-Encoding: base64' + L + L + doc;
       if (!logo || h.indexOf(MAIL_LOGO) === -1) return '--' + alt + L + part;
       var rel = 'rel_' + Math.random().toString(36).slice(2);
@@ -12757,9 +12808,9 @@
   $('tmOutlook').addEventListener('click', function(){
     var to = $('tmTo').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean), subject = $('tmSubject').value, ctx = tmCtx;
     if (!to.length) { toast('Add an email address'); return; }
-    var text = $('tmBody').innerText, html = tmHtml();
+    var text = tmText(), html;
     busy($('tmOutlook'), true, 'Preparing…');
-    tmAttachments().then(function(files){
+    tmRefreshBrand().then(function(){ html = tmHtml(); return tmAttachments(); }).then(function(files){
       return Promise.all(files.map(function(f){ return blobB64(f.blob).then(function(b){ return { name: f.name, b64: b }; }); }));
     }).then(function(files){
       busy($('tmOutlook'), false);
@@ -12772,13 +12823,13 @@
   });
   $('tmCopy').addEventListener('click', function(){ copyMail().then(function(){ toast('Email copied with its formatting — paste it into your email'); }); });
   $('tmSend').addEventListener('click', function(){
-    var to = $('tmTo').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean), subject = $('tmSubject').value, text = $('tmBody').innerText, html = tmHtml(), ctx = tmCtx;
+    var to = $('tmTo').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean), subject = $('tmSubject').value, text = tmText(), html = tmHtml(), ctx = tmCtx;
     // Copy now, while the tap still counts (browsers only allow copying straight after a tap).
     var direct = meta.canEmail && ctx.sendUrl;
     var copied = direct ? Promise.resolve() : copyMail();
     if (!to.length) { toast('Add an email address'); return; }
     busy($('tmSend'), true, 'Preparing…');
-    tmAttachments().then(function(files){
+    tmRefreshBrand().then(function(){ html = tmHtml(); return tmAttachments(); }).then(function(files){
       if (direct) {
         return Promise.all(files.map(function(f){ return blobB64(f.blob).then(function(b){ return { name: f.name, data: b }; }); })).then(function(atts){
           busy($('tmSend'), true, 'Sending…');
