@@ -1679,7 +1679,7 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/available-dedupe' || path === '/available-lookup' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path) || /^\/dreams\/\d+$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
-    if (method === 'GET') return path === '/me' || path === '/staff-activity' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'GET') return path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
@@ -1907,6 +1907,38 @@ module.exports = function mountJobs(app, opts) {
     await revokeUser(p, id);
     await p.query('DELETE FROM staff_users WHERE id = $1', [id]);
     res.json({ ok: true });
+  }));
+  // Staff progress: per person, offer forms, landlord terms and pre-viewing reservations sent in a period —
+  // each counted once per person sent to (by email, else phone, else name) — and how many got somewhere.
+  app.get('/api/admin/staff-progress', withDb(async function (p, req, res) {
+    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null; };
+    const to = day(req.query.to) || londonDay(), from = day(req.query.from) || to.slice(0, 8) + '01';
+    const range = [from + ' 00:00 Europe/London', to + ' 23:59:59 Europe/London'];
+    const rk = function (email, phone, name, prop, uniq) {
+      const e = String(email || '').trim().toLowerCase(); if (/@/.test(e)) return 'e:' + e;
+      const ph = String(phone || '').replace(/\D/g, ''); if (ph.length >= 10) return 'p:' + ph.slice(-10);
+      const n = String(name || '').trim().toLowerCase().replace(/\b(mr|mrs|ms|miss|dr)\b\.?/g, '').replace(/\s+/g, ' ').trim(); if (n) return 'n:' + n;
+      return 'u:' + uniq;
+    };
+    const people = {}, row = function (who) { const k = String(who || '').trim() || 'Not recorded'; return (people[k] = people[k] || { name: k, forms: {}, terms: {}, pvr: {} }); };
+    const mark = function (bucket, key, flags) { const b = bucket[key] = bucket[key] || { n: 0 }; b.n++; Object.keys(flags).forEach(function (f) { if (flags[f]) b[f] = true; }); };
+    (await p.query('SELECT id, sent_by, to_contact, to_name, property_address, opens, offer_id, started_at FROM offer_invites WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz', range)).rows.forEach(function (x) {
+      const c = String(x.to_contact || ''); mark(row(x.sent_by).forms, rk(/@/.test(c) ? c : '', /@/.test(c) ? '' : c, x.to_name, x.property_address, 'i' + x.id), { opened: x.opens > 0, started: !!x.started_at, offer: !!x.offer_id });
+    });
+    (await p.query("SELECT id, created_by, landlord_email, landlord_phone, landlord_name, property_address, status, signed_at, data->>'viewed_at' AS viewed FROM landlord_terms WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz", range)).rows.forEach(function (x) {
+      mark(row(x.created_by).terms, rk(x.landlord_email, x.landlord_phone, x.landlord_name, x.property_address, 't' + x.id), { opened: !!x.viewed || !!x.signed_at, signed: !!x.signed_at });
+    });
+    (await p.query('SELECT id, created_by, email, phone, name, property_address, signed_at, paid_at FROM pvr_reservations WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz', range)).rows.forEach(function (x) {
+      mark(row(x.created_by).pvr, rk(x.email, x.phone, x.name, x.property_address, 'v' + x.id), { signed: !!x.signed_at, paid: !!x.paid_at });
+    });
+    const sum = function (b, f) { return Object.keys(b).filter(function (k) { return !f || b[k][f]; }).length; }, sends = function (b) { return Object.keys(b).reduce(function (a, k) { return a + b[k].n; }, 0); };
+    const list = Object.keys(people).map(function (k) { const x = people[k]; return { name: x.name,
+      forms: { people: sum(x.forms), sends: sends(x.forms), opened: sum(x.forms, 'opened'), started: sum(x.forms, 'started'), offers: sum(x.forms, 'offer') },
+      terms: { people: sum(x.terms), sends: sends(x.terms), opened: sum(x.terms, 'opened'), signed: sum(x.terms, 'signed') },
+      pvr: { people: sum(x.pvr), sends: sends(x.pvr), signed: sum(x.pvr, 'signed'), paid: sum(x.pvr, 'paid') } }; })
+      .sort(function (a, b) { return (b.forms.people + b.terms.people + b.pvr.people) - (a.forms.people + a.terms.people + a.pvr.people); });
+    res.json({ ok: true, from: from, to: to, people: list });
   }));
   // Who did what (newest first), optionally for one person.
   app.get('/api/admin/staff-activity', withDb(async function (p, req, res) {
