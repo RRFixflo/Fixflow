@@ -8374,7 +8374,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let key = propKey(address); try { key = propKey(await canonicalAddress(p, address)) || key; } catch (e) {}
     if (!key) return res.json({ ok: true, known: false });
     const norm = String(address).toLowerCase().replace(/[^a-z0-9]/g, '');
-    const ll = (await p.query('SELECT l.id, l.name, l.phone, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [key])).rows[0] || null;
+    const ll = (await p.query('SELECT l.id, l.name, l.phone, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [key])).rows[0] || (await landlordIndex(p))(address, '', '');
     const tenants = (await p.query('SELECT t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY pt.created_at', [key])).rows;
     const info = (await p.query('SELECT address, key_number FROM property_info WHERE property_key = $1', [key])).rows[0] || null;
     const prev = (await p.query('SELECT id, address, status, let_on, available_from, rent_pcm, landlord, commission, contact, key_no, access, access_note, updated_at FROM available_props ORDER BY id DESC LIMIT 20000')).rows
@@ -8384,24 +8384,52 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   // Which landlord each property belongs to (by the property itself, or the phone, email or name in its
   // details), and — for the owner only — which of our tenancies it is.
+  // Every landlord we know of, from the landlord records, signed (or sent) landlord terms and tenancies,
+  // with the addresses they're linked to — so a property can be matched however its address is written.
+  const llPh = function (v) { const d = String(v || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : ''; };
+  const llNm = function (v) { return String(v || '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr|mx)\b\.?/g, ' ').replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim(); };
+  // Postcode plus the door / flat numbers: "Flat 3, 12 Test Road, London E1 1AA" → "E11AA|3|12".
+  function addrSig(a) {
+    a = String(a || ''); const pc = (/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i.exec(a) || []);
+    if (!pc[0]) return ''; const rest = a.replace(pc[0], ' '), nums = rest.match(/\d+[a-z]?\b/gi) || [];
+    return (pc[1] + pc[2]).toUpperCase() + '|' + nums.map(function (n) { return n.toLowerCase(); }).sort().join('|');
+  }
+  async function landlordIndex(p) {
+    const list = [], byId = {};
+    (await p.query('SELECT id, name, email, phone FROM landlords')).rows.forEach(function (l) { const e = { id: l.id, name: l.name, phone: l.phone || '', email: l.email || '', addrs: [], src: 'landlord' }; byId[l.id] = e; list.push(e); });
+    (await p.query('SELECT landlord_id, address, property_key FROM property_landlords')).rows.forEach(function (r) { if (byId[r.landlord_id]) byId[r.landlord_id].addrs.push({ a: r.address || '', k: r.property_key }); });
+    (await p.query('SELECT landlord_id, address FROM landlord_properties')).rows.forEach(function (r) { if (byId[r.landlord_id]) byId[r.landlord_id].addrs.push({ a: r.address, k: propKey(r.address) }); });
+    const same = function (n, ph, em) { em = String(em || '').toLowerCase().trim(); const k = llPh(ph); return list.filter(function (e) { return (em && String(e.email).toLowerCase().trim() === em) || (k && String(e.phone).split(/[,;\/]+/).some(function (x) { return llPh(x) === k; })); })[0]; };
+    const addOther = function (n, ph, em, addr, src) {
+      if (!n && !ph && !em) return; const hit = same(n, ph, em);
+      if (hit) { if (addr) hit.addrs.push({ a: addr, k: propKey(addr) }); if (!hit.phone && ph) hit.phone = ph; if (!hit.email && em) hit.email = em; return; }
+      list.push({ id: null, name: n || '', phone: ph || '', email: em || '', addrs: addr ? [{ a: addr, k: propKey(addr) }] : [], src: src });
+    };
+    (await p.query('SELECT property_address, landlord_name, landlord_email, landlord_phone FROM landlord_terms ORDER BY id DESC')).rows.forEach(function (t) { addOther(t.landlord_name, t.landlord_phone, t.landlord_email, t.property_address, 'terms'); });
+    (await p.query("SELECT address, data->'landlord' AS l FROM tenancies ORDER BY id DESC")).rows.forEach(function (t) { const l = t.l || {}; addOther(l.name, l.phone, l.email, t.address || (t.data && t.data.address), 'tenancy'); });
+    const bySig = {}, byKey = {}, byPhone = {}, byMail = {}, byName = {};
+    list.forEach(function (e) {
+      e.addrs.forEach(function (x) { const sg = addrSig(x.a); if (sg && !bySig[sg]) bySig[sg] = e; if (x.k && !byKey[x.k]) byKey[x.k] = e; });
+      String(e.phone || '').split(/[,;\/]+/).forEach(function (x) { const k = llPh(x); if (k && !byPhone[k]) byPhone[k] = e; });
+      if (e.email && !byMail[String(e.email).toLowerCase().trim()]) byMail[String(e.email).toLowerCase().trim()] = e;
+      const n = llNm(e.name); if (n.split(' ').length >= 2 && !byName[n]) byName[n] = e;
+    });
+    return function find(address, contact, landlordName) {
+      let e = bySig[addrSig(address)] || byKey[propKey(address)];
+      if (!e) { const txt = String(contact || '') + ' ' + String(landlordName || ''); (txt.match(/(\+44|0)[\d\s()\-]{9,14}\d/g) || []).some(function (m) { return (e = byPhone[llPh(m)]); }); }
+      if (!e) (String(contact || '') + ' ' + String(landlordName || '')).replace(/[^\s@<>,;()]+@[^\s@<>,;()]+\.[a-z]{2,}/gi, function (m) { if (!e) e = byMail[m.toLowerCase()]; return m; });
+      if (!e && landlordName) e = byName[llNm(landlordName)];
+      return e ? { id: e.id, name: e.name, phone: e.phone, email: e.email, src: e.src } : null;
+    };
+  }
   async function availLinks(p, items, owner) {
-    const out = {};
-    const lls = (await p.query('SELECT id, name, email, phone FROM landlords')).rows;
-    const byKey = {}; (await p.query('SELECT property_key, landlord_id FROM property_landlords')).rows.forEach(function (r) { byKey[r.property_key] = r.landlord_id; });
-    const llById = {}, byPhone = {}, byMail = {}, byName = {};
-    const ph = function (v) { const d = String(v || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) : ''; };
-    const nm = function (v) { return String(v || '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr)\b\.?/g, ' ').replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim(); };
-    lls.forEach(function (l) { llById[l.id] = l; String(l.phone || '').split(/[,;\/]+/).forEach(function (x) { const k = ph(x); if (k) byPhone[k] = l.id; }); if (l.email) byMail[String(l.email).toLowerCase().trim()] = l.id; const n = nm(l.name); if (n.split(' ').length >= 2) byName[n] = l.id; });
-    let tens = {};
-    if (owner) (await p.query('SELECT id, property_key, address, start_date FROM tenancies ORDER BY id')).rows.forEach(function (t) { const k = t.property_key || propKey(t.address); if (k) tens[k] = { id: t.id, address: t.address, start: t.start_date }; });
+    const out = {}, find = await landlordIndex(p);
+    const tens = {}, tenSig = {};
+    if (owner) (await p.query('SELECT id, property_key, address, start_date FROM tenancies ORDER BY id')).rows.forEach(function (t) { const v = { id: t.id, address: t.address, start: t.start_date }, k = t.property_key || propKey(t.address); if (k) tens[k] = v; const sg = addrSig(t.address); if (sg) tenSig[sg] = v; });
     items.forEach(function (x) {
-      const key = propKey(x.address), o = {};
-      let lid = byKey[key];
-      if (!lid) { const txt = String(x.contact || '') + ' ' + String(x.landlord || ''); (txt.match(/(\+44|0)[\d\s()\-]{9,14}\d/g) || []).some(function (m) { return (lid = byPhone[ph(m)]); }); }
-      if (!lid) (String(x.contact || '').match(/[^\s@<>,;()]+@[^\s@<>,;()]+\.[a-z]{2,}/gi) || []).some(function (m) { return (lid = byMail[m.toLowerCase()]); });
-      if (!lid && x.landlord) lid = byName[nm(x.landlord)];
-      if (lid && llById[lid]) { const l = llById[lid]; o.landlord = { id: l.id, name: l.name, phone: l.phone || '', email: l.email || '' }; }
-      if (owner && tens[key]) o.tenancy = tens[key];
+      const o = {}, l = find(x.address, x.contact, x.landlord);
+      if (l) o.landlord = l;
+      if (owner) { const t = tenSig[addrSig(x.address)] || tens[propKey(x.address)]; if (t) o.tenancy = t; }
       if (o.landlord || o.tenancy) out[x.id] = o;
     });
     return out;
@@ -8459,7 +8487,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   // Remove duplicates (same address and status), keeping the latest one added.
   app.post('/api/admin/available-dedupe', withDb(async function (p, req, res) {
-    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    if (req.role === 'offers') return res.status(403).json({ ok: false, error: 'owner-only' });   // only the owner deletes properties
     // Tidy every address first, so the same place written two ways counts as a duplicate.
     const tidied = await availTidyAll(p);
     const r = await p.query("DELETE FROM available_props a USING available_props b WHERE a.id < b.id AND a.status = b.status AND regexp_replace(lower(a.address), '[^a-z0-9]', '', 'g') = regexp_replace(lower(b.address), '[^a-z0-9]', '', 'g')");
@@ -8469,13 +8497,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
   setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 1) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 1, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
   // Empty the Been let list before pasting a corrected copy (managers only).
   app.post('/api/admin/available-clear-let', withDb(async function (p, req, res) {
-    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    if (req.role === 'offers') return res.status(403).json({ ok: false, error: 'owner-only' });   // only the owner deletes properties
     if ((req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
-    const r = await p.query("DELETE FROM available_props WHERE status = 'let'");
+    const r = await p.query("DELETE FROM available_props WHERE status IN ('let', 'withdrawn')");
     res.json({ ok: true, removed: r.rowCount });
   }));
   app.delete('/api/admin/available/:id', withDb(async function (p, req, res) {
-    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    if (req.role === 'offers') return res.status(403).json({ ok: false, error: 'owner-only' });   // only the owner deletes properties
     if ((req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
     await p.query('DELETE FROM available_props WHERE id = $1', [jobId(req)]);
     res.json({ ok: true });
