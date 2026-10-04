@@ -437,6 +437,13 @@ CREATE TABLE IF NOT EXISTS staff_activity (
   ip        TEXT
 );
 CREATE INDEX IF NOT EXISTS staff_activity_at_idx ON staff_activity (at DESC);
+-- Rough location of an IP address (city / area / country / provider), looked up once.
+CREATE TABLE IF NOT EXISTS ip_geo (
+  ip      TEXT PRIMARY KEY,
+  place   TEXT,
+  isp     TEXT,
+  at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS app_settings (
   key        TEXT PRIMARY KEY,
   value      JSONB,
@@ -1679,7 +1686,7 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/available-dedupe' || path === '/available-lookup' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path) || /^\/dreams\/\d+$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
-    if (method === 'GET') return path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'GET') return path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
@@ -1908,6 +1915,35 @@ module.exports = function mountJobs(app, opts) {
     await p.query('DELETE FROM staff_users WHERE id = $1', [id]);
     res.json({ ok: true });
   }));
+  // Where an IP address roughly is (looked up once from ip-api.com, then kept). Private / internal ones are skipped.
+  async function ipPlaces(p, ips) {
+    const out = {}, want = ips.filter(function (ip, i, a) { return ip && a.indexOf(ip) === i && !/^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|::1|fc|fd|fe80)/i.test(ip); });
+    if (!want.length) return out;
+    (await p.query('SELECT ip, place, isp FROM ip_geo WHERE ip = ANY($1::text[])', [want])).rows.forEach(function (r) { out[r.ip] = { place: r.place, isp: r.isp }; });
+    const missing = want.filter(function (ip) { return !out[ip]; }).slice(0, 15);
+    for (const ip of missing) {
+      try {
+        const r = await fetch('http://ip-api.com/json/' + encodeURIComponent(ip) + '?fields=status,city,regionName,country,isp', { signal: AbortSignal.timeout(3000) });
+        const j = await r.json();
+        if (j && j.status === 'success') {
+          const place = [j.city, j.regionName && j.regionName !== j.city ? j.regionName : '', j.country].filter(Boolean).join(', ').slice(0, 120), isp = String(j.isp || '').slice(0, 80);
+          out[ip] = { place: place, isp: isp };
+          await p.query('INSERT INTO ip_geo (ip, place, isp) VALUES ($1, $2, $3) ON CONFLICT (ip) DO UPDATE SET place = excluded.place, isp = excluded.isp, at = now()', [ip, place, isp]);
+        }
+      } catch (e) { break; }
+    }
+    return out;
+  }
+  // Staff sign-ins: who, when, from which IP (and roughly where), on what device, last active, still signed in.
+  app.get('/api/admin/staff-signins', withDb(async function (p, req, res) {
+    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30)), teamOnly = req.role === 'offers' || req.user.role === 'offers_admin';
+    const r = (await p.query(`SELECT s.created_at, s.last_seen, s.ip, s.user_agent, s.role, s.user_id, coalesce(s.user_name, CASE WHEN s.role = 'offers' THEN 'Staff password' ELSE 'Main password (Owner)' END) AS user_name, s.revoked_at
+      FROM admin_sessions s WHERE s.created_at > now() - ($1 || ' days')::interval` + (teamOnly ? " AND s.user_id IN (SELECT id FROM staff_users WHERE role IN ('offers', 'offers_admin'))" : '') + ' ORDER BY s.created_at DESC LIMIT 500', [String(days)])).rows;
+    const places = await ipPlaces(p, r.map(function (x) { return String(x.ip || '').replace(/^::ffff:/, ''); }));
+    res.json({ ok: true, signins: r.map(function (x) { const ip = String(x.ip || '').replace(/^::ffff:/, ''), u = uaInfo(String(x.user_agent || '')), g = places[ip] || {};
+      return { at: x.created_at, last: x.last_seen, ip: ip, place: g.place || '', isp: g.isp || '', device: [u.device, u.os, u.browser].filter(Boolean).join(' · '), who: x.user_name, user_id: x.user_id, live: !x.revoked_at && Date.now() - new Date(x.last_seen).getTime() < 10 * 60000, ended: !!x.revoked_at }; }) });
+  }));
   // Staff progress: per person, offer forms, landlord terms and pre-viewing reservations sent in a period —
   // each counted once per person sent to (by email, else phone, else name) — and how many got somewhere.
   app.get('/api/admin/staff-progress', withDb(async function (p, req, res) {
@@ -1953,7 +1989,7 @@ module.exports = function mountJobs(app, opts) {
     if (/^\d+$/.test(who)) { vals.push(Number(who)); where = 'WHERE user_id = $1'; } else if (who === 'owner') where = "WHERE user_id IS NULL AND user_name = 'Owner'";
     const teamOnly = req.role === 'offers' || req.user.role === 'offers_admin';
     if (teamOnly) where += (where ? ' AND ' : 'WHERE ') + "user_id IN (SELECT id FROM staff_users WHERE role IN ('offers', 'offers_admin'))";
-    const r = await p.query('SELECT at, user_id, user_name, action FROM staff_activity ' + where + ' ORDER BY at DESC LIMIT 300', vals);
+    const r = await p.query('SELECT at, user_id, user_name, action, ip FROM staff_activity ' + where + ' ORDER BY at DESC LIMIT 300', vals);
     const people = (await p.query('SELECT id, name FROM staff_users WHERE disabled_at IS NULL' + (teamOnly ? " AND role IN ('offers', 'offers_admin')" : '') + ' ORDER BY name')).rows;
     res.json({ ok: true, activity: r.rows, people: people, owner: !teamOnly });
   }));
