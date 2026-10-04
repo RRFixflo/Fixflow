@@ -1186,7 +1186,6 @@
     <button class="nav" type="button" id="contractorsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg> Contractors</button>
     <button class="nav" type="button" id="navAct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Activity</button>
     <button class="nav" type="button" id="navLt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg> Landlord Terms <span class="count-chip" id="sLt" hidden></span></button>
-    <button class="nav" type="button" id="navSent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg> Sent emails</button>
     <button class="nav" type="button" id="navEmail" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
     <button class="nav" type="button" id="navNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <div class="side-sec">Links</div>
@@ -1288,6 +1287,7 @@
             </div>
           </div>
           <div class="card tenant-card" id="tenantCard"></div>
+          <div class="card" id="tenantMails" style="margin-top:12px"></div>
           <div class="list" id="tenantJobs" style="margin-top:12px"></div>
         </div>
       </div>
@@ -1310,6 +1310,7 @@
             <div class="prop-actions" id="llActions"></div>
           </div>
           <div class="card" id="llCard"></div>
+          <div class="card" id="llMails" style="margin-top:12px"></div>
           <div class="card" id="llOwed" style="margin-top:12px"></div>
           <div class="card" style="margin-top:12px"><h3>Properties</h3>
             <div class="list" id="llProps"></div>
@@ -1414,6 +1415,7 @@
 
       <!-- ACTIVITY: where staff are signed in, visits to the tenant pages -->
       <div id="actView" hidden>
+        <details class="card act-sec" data-sec="sent" id="actSentSec"><summary><span class="act-sec-t">✉ Sent emails</span><span class="act-sum" id="sum_sent"></span><span class="act-chev" aria-hidden="true"></span></summary><div class="act-sec-b" id="actSentSlot"></div></details>
         <details class="card act-sec staff-team" data-sec="team" id="teamSec" hidden open>
           <summary><span class="act-sec-t">👥 Team — who’s doing what</span><span class="act-sum" id="sum_team"></span><span class="act-chev" aria-hidden="true"></span></summary>
           <div class="act-sec-b">
@@ -3450,6 +3452,7 @@
 
   function showView(v){
     if ((v === 'team' || v === 'who') && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
+    if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
     if (staffMode && v !== 'lt' && v !== 'sent' && v !== 'team' && v !== 'who') v = 'offers';
     view = v;
@@ -3468,7 +3471,9 @@
     $('ctrView').hidden = v !== 'ctr';
     $('ctsView').hidden = v !== 'cts';
     $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
-    $('sentView').hidden = v !== 'sent'; $('navSent').classList.toggle('on', v === 'sent');
+    // Sent emails: its own tab for staff; inside the Activity page for the owner.
+    if (!staffMode && $('sentView').parentNode !== $('actSentSlot')) $('actSentSlot').appendChild($('sentView'));
+    $('sentView').hidden = staffMode ? v !== 'sent' : false;
     document.querySelectorAll('[data-stab]').forEach(function(b){ b.classList.toggle('on', b.dataset.stab === v); });
     $('contractorsBtn').classList.toggle('on', v === 'cts' || v === 'ctr');
     $('navAct').classList.toggle('on', v === 'act');
@@ -3483,7 +3488,7 @@
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') loadLt();
-    if (v === 'sent') loadSent();
+    if (v === 'sent' || (v === 'act' && !staffMode)) loadSent();
     if (v === 'team') { loadTeam(); $('teamSec').open = true; }
     if (v === 'who') loadTeam();
     if (v === 'tcy' && !openTcyId) renderTenancies();
@@ -4452,6 +4457,7 @@
     var props = tenantProps(t), open = js.filter(isOpen).length, last = js[0] || {};
     $('tenantAvatar').innerHTML = avatar(t.name || '?');
     $('tenantTitle').textContent = t.name || 'No name';
+    personMails($('tenantMails'), t.email);
     $('tenantSub').textContent = js.length + ' repair' + (js.length === 1 ? '' : 's') + ' · ' + open + ' open';
     var wa = waNumber(t.phone);
     $('tenantCall').hidden = !t.phone; $('tenantCall').href = 'tel:' + String(t.phone || '').replace(/\s/g, '');
@@ -7078,6 +7084,7 @@
     var open = all.filter(isOpen).length;
     $('llAvatar').innerHTML = avatar(l.name);
     $('llTitle').textContent = l.name;
+    personMails($('llMails'), l.email);
     $('llSub').textContent = props.length + ' propert' + (props.length === 1 ? 'y' : 'ies') + ' · ' + all.length + ' repair' + (all.length === 1 ? '' : 's') + ' · ' + open + ' open · ' + gbp(chargedTotal(all)) + ' charged';
     var wa = waNumber(l.phone);
     $('llActions').innerHTML = (l.phone ? '<a class="btn" href="tel:' + esc(l.phone.replace(/[^\d+]/g, '')) + '">Call</a>' : '') +
@@ -9303,42 +9310,57 @@
   $('staffTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-stab]'); if (b) showView(b.dataset.stab); });
 
   // ---------- Sent emails: everything sent through Fixflow's email box ----------
-  // Staff see their own; managers can see everyone's and filter by person.
+  // Staff see their own; managers can see everyone's and filter by person. The same
+  // list shows on a tenant's or landlord's page: every email sent to them.
   var sentT = null, sentWhoSet = false;
+  function sentRows(list, showBy, person){
+    return list.map(function(e){
+      var dt = new Date(e.created_at), day = dt.toLocaleDateString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', year: dt.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined }), tm = dt.toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+      return '<details class="sent-row" data-sent="' + e.id + '"' + (person ? ' data-person="1"' : '') + '><summary><div class="sent-when"><b>' + esc(day) + '</b>' + esc(tm) + '</div><div class="sent-main"><b>' + esc(e.subject || '(no subject)') + '</b><span>To ' + esc((e.to_list || []).join(', ')) + (e.cc_list && e.cc_list.length ? ' · cc ' + esc(e.cc_list.join(', ')) : '') + '</span><span>' + esc(String(e.preview || '').replace(/\s+/g, ' ')) + '</span></div>' +
+        '<div class="sent-by">' + (e.ok ? '✓ Sent' : '<span class="sent-fail">✕ Not sent</span>') + (showBy ? '<br>by ' + esc(e.user_name || 'Office') : '') + '</div></summary><div class="sent-body"></div></details>';
+    }).join('');
+  }
   function loadSent(){
     var q = $('sentQ').value.trim(), who = $('sentWho').value;
     return api('GET', '/api/admin/sent-emails?q=' + encodeURIComponent(q) + (who ? '&who=' + encodeURIComponent(who) : '')).then(function(d){
-      if (!d || !d.ok) { $('sentList').innerHTML = '<p class="muted-note">Couldn’t load your sent emails.</p>'; return; }
+      if (!d || !d.ok) { $('sentList').innerHTML = '<p class="muted-note">Couldn’t load the sent emails.</p>'; return; }
       if (d.all && !sentWhoSet) { sentWhoSet = true; $('sentWho').hidden = false; $('sentWho').innerHTML = '<option value="">Everyone</option>' + d.people.map(function(p){ return '<option value="' + esc(p.user_name || '') + '">' + esc(p.user_name || 'Office') + ' (' + p.n + ')</option>'; }).join(''); }
       $('sentNote').textContent = (d.all ? 'Every email sent through Fixflow by the team' : 'Emails you’ve sent through Fixflow') + ' — newest first' + (d.emails.length >= 300 ? ' (latest 300)' : '') + '. Tap one to see exactly what was sent.';
-      $('sentList').innerHTML = d.emails.length ? d.emails.map(function(e){
-        var dt = new Date(e.created_at), day = dt.toLocaleDateString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', year: dt.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined }), tm = dt.toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
-        return '<details class="sent-row" data-sent="' + e.id + '"><summary><div class="sent-when"><b>' + esc(day) + '</b>' + esc(tm) + '</div><div class="sent-main"><b>' + esc(e.subject || '(no subject)') + '</b><span>To ' + esc((e.to_list || []).join(', ')) + (e.cc_list && e.cc_list.length ? ' · cc ' + esc(e.cc_list.join(', ')) : '') + '</span><span>' + esc(String(e.preview || '').replace(/\s+/g, ' ')) + '</span></div>' +
-          '<div class="sent-by">' + (e.ok ? '✓ Sent' : '<span class="sent-fail">✕ Not sent</span>') + (d.all ? '<br>by ' + esc(e.user_name || 'Office') : '') + '</div></summary><div class="sent-body"></div></details>';
-      }).join('') : '<div class="card"><p class="muted-note" style="margin:0">' + (q || who ? 'No emails match.' : 'No emails sent through Fixflow yet. Emails you send with the ✉ Email buttons will appear here.') + '</p></div>';
+      if ($('sum_sent')) $('sum_sent').textContent = d.emails.length ? d.emails.length + (d.emails.length >= 300 ? '+' : '') + ' email' + (d.emails.length === 1 ? '' : 's') : '';
+      $('sentList').innerHTML = d.emails.length ? sentRows(d.emails, d.all) : '<div class="card"><p class="muted-note" style="margin:0">' + (q || who ? 'No emails match.' : 'No emails sent through Fixflow yet. Emails sent with the ✉ Email buttons will appear here.') + '</p></div>';
+    });
+  }
+  // Emails sent to one person (tenant or landlord page).
+  function personMails(box, email){
+    if (!box) return; email = String(email || '').trim();
+    if (!email) { box.innerHTML = '<h3>✉ Emails sent</h3><p class="muted-note" style="margin:0">No email address saved for them yet.</p>'; return; }
+    box.innerHTML = '<h3>✉ Emails sent</h3><p class="muted-note" style="margin:0">Loading…</p>'; box.dataset.for = email;
+    api('GET', '/api/admin/sent-emails?to=' + encodeURIComponent(email)).then(function(d){
+      if (box.dataset.for !== email) return;
+      var list = (d && d.ok && d.emails) || [];
+      box.innerHTML = '<h3>✉ Emails sent <span class="count-chip">' + list.length + '</span></h3>' + (list.length ? '<p class="muted-note" style="margin:0 0 8px">Everything the team has emailed to ' + esc(email) + ' through Fixflow, newest first.</p>' + sentRows(list, true, true) : '<p class="muted-note" style="margin:0">Nothing emailed to ' + esc(email) + ' through Fixflow yet.</p>');
     });
   }
   $('sentQ').addEventListener('input', function(){ clearTimeout(sentT); sentT = setTimeout(loadSent, 350); });
   $('sentWho').addEventListener('change', loadSent);
-  $('sentList').addEventListener('toggle', function(e){
+  document.addEventListener('toggle', function(e){
     var row = e.target; if (!row.matches || !row.matches('.sent-row') || !row.open || row.dataset.loaded) return; row.dataset.loaded = '1';
-    var box = row.querySelector('.sent-body'); box.innerHTML = '<p class="muted-note">Loading…</p>';
-    api('GET', '/api/admin/sent-emails/' + row.dataset.sent).then(function(d){
+    var box = row.querySelector('.sent-body'), pq = row.dataset.person ? '?person=1' : ''; box.innerHTML = '<p class="muted-note">Loading…</p>';
+    api('GET', '/api/admin/sent-emails/' + row.dataset.sent + pq).then(function(d){
       if (!d || !d.ok) { box.innerHTML = '<p class="muted-note">Couldn’t load this email.</p>'; return; }
       var m = d.email;
       box.innerHTML = '<div class="sent-meta"><span>Sent</span><b>' + esc(new Date(m.created_at).toLocaleString('en-GB', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })) + '</b><span>From</span><b>' + esc((m.user_name || 'Office') + ' — Residential Realtors') + '</b><span>To</span><b>' + esc((m.to_list || []).join(', ')) + '</b>' + (m.cc_list && m.cc_list.length ? '<span>Cc</span><b>' + esc(m.cc_list.join(', ')) + '</b>' : '') + '<span>Replies to</span><b>' + esc(m.reply_to || '') + '</b><span>Subject</span><b>' + esc(m.subject || '') + '</b>' + (m.ok ? '' : '<span>Problem</span><b class="sent-fail">' + esc(m.error || 'It wasn’t sent') + '</b>') + '</div>' +
         '<div style="display:flex;gap:6px;margin:0 0 8px;flex-wrap:wrap"><button type="button" class="btn small on" data-sv="look">As they saw it</button><button type="button" class="btn small" data-sv="text">Plain text</button><button type="button" class="btn small" data-sv="again">↻ Send again</button></div>' +
-        '<iframe class="sent-frame" sandbox="" src="/api/admin/sent-emails/' + m.id + '?html=1" title="The email as sent"></iframe><pre class="sent-text" hidden>' + esc(m.body || '') + '</pre>';
+        '<iframe class="sent-frame" sandbox="" src="/api/admin/sent-emails/' + m.id + (pq ? pq + '&' : '?') + 'html=1" title="The email as sent"></iframe><pre class="sent-text" hidden>' + esc(m.body || '') + '</pre>';
       box.em = m;
     });
   }, true);
-  $('sentList').addEventListener('click', function(e){
-    var b = e.target.closest('[data-sv]'); if (!b) return; var box = b.closest('.sent-body'), m = box.em; if (!m) return;
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-sv]'); if (!b) return; var box = b.closest('.sent-body'), m = box && box.em; if (!m) return;
     if (b.dataset.sv === 'again') { openMailto('mailto:' + encodeURIComponent((m.to_list || []).join(',')) + '?subject=' + encodeURIComponent(m.subject || '') + (m.cc_list && m.cc_list.length ? '&cc=' + encodeURIComponent(m.cc_list.join(',')) : '') + '&body=' + encodeURIComponent(m.body || '')); return; }
     box.querySelectorAll('[data-sv="look"],[data-sv="text"]').forEach(function(x){ x.classList.toggle('on', x === b); });
     box.querySelector('.sent-frame').hidden = b.dataset.sv !== 'look'; box.querySelector('.sent-text').hidden = b.dataset.sv !== 'text';
   });
-  $('navSent').addEventListener('click', function(){ showView('sent'); });
 
   // ---------- Pre-viewing reservations (PVR) ----------
   // The applicant signs and pays a week's rent before viewing; after the viewing
@@ -12212,7 +12234,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navLt', 'Landlord Terms'], ['navSent', 'Sent emails'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
