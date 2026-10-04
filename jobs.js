@@ -539,6 +539,9 @@ CREATE TABLE IF NOT EXISTS rm_dreams (
   takedown_at TIMESTAMPTZ,
   by_name     TEXT
 );
+ALTER TABLE rm_dreams ADD COLUMN IF NOT EXISTS snap JSONB;
+ALTER TABLE rm_dreams ADD COLUMN IF NOT EXISTS change_note TEXT;
+ALTER TABLE rm_dreams ADD COLUMN IF NOT EXISTS changed_at TIMESTAMPTZ;
 CREATE TABLE IF NOT EXISTS sent_emails (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -8293,6 +8296,54 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const parts = s.split(', '), out = []; parts.forEach(function (x) { if (!out.length || out[out.length - 1].toLowerCase() !== x.toLowerCase()) out.push(x); });
     return out.join(', ');
   }
+  // Put each value in its place: notes typed before the address, a phone number in the landlord
+  // column, contact details in the fee column, a fee in the landlord column, impossible rents.
+  const FIX_NOTE = /\d{1,2}[\/.]\d{1,2}|@|\b(waiting|heating|hot water|called|call|left|lv|vm|photos?|keys?|tenants?|viewings?|tbc|notes?|dk|fr|available|urgent|managed|vacant|asap|ring|spoke)\b/i;
+  const FIX_ST = /\b(road|rd|street|st|avenue|ave|lane|close|court|gardens|gdns|way|drive|place|crescent|grove|terrace|hill|park|rise|walk|square|mews|house|row|parade|green|view|lodge|mansions|heights|wharf|gate|vale|chase|building|apartments|quarter|inn)\b/i;
+  function availSplitAddr(a) {
+    a = String(a || ''); const re = /(?:^|[\s,;:\-–(])((?:[Ff][Ll][Aa][Tt]|[Rr][Oo][Oo][Mm]|[Aa]partment|APARTMENT|[Aa]pt|APT|[Uu]nit|UNIT|[Ss]tudio|STUDIO|[Mm]aisonette|[Pp]enthouse)\s+[A-Za-z]?\.?\d+[A-Za-z]?\b|[A-Z]\.\d+[A-Za-z]?\s+[A-Z][a-z]|\d+[A-Za-z]?(?:-\d+)?,?\s+[A-Z][a-z])/g; let m;
+    while ((m = re.exec(a))) {
+      const i = m.index + m[0].indexOf(m[1]); if (i === 0) return { address: a, note: '' };
+      if (/[\/:]$/.test(a.slice(0, i).trim())) continue;
+      const rest = a.slice(i), pre = a.slice(0, i).replace(/[\s,;:\-–(]+$/, '').trim();
+      if (!(AV_PC_RE.test(rest) || FIX_ST.test(rest))) continue;
+      const caps = pre.replace(/[^A-Za-z ]/g, '').trim(); const shouting = caps.split(/\s+/).length >= 2 && caps === caps.toUpperCase();
+      if (pre && (FIX_NOTE.test(pre) || shouting)) return { address: rest.trim(), note: pre };
+      return { address: a, note: '' };
+    }
+    return { address: a, note: '' };
+  }
+  const AV_PC_RE = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
+  const feeLike = function (v) { return /^\s*(£\s?\d[\d,]*(\.\d+)?|\d[\d,]*(\.\d+)?\s?%|\d[\d,]*(\.\d+)?)\s*(\+\s*vat|inc\.?\s*vat|ex\.?\s*vat|fee|pcm|of (the )?(annual )?rent|of rent|1st month|first month)?\s*$/i.test(String(v || '')) || (/\d\s?%/.test(String(v || '')) && String(v).length < 30 && !/@|\d{6,}/.test(String(v))); };
+  const moneyLike = function (v) { return /^\s*£\s?\d[\d,]*(\.\d+)?\s*$/.test(String(v || '')); };
+  const hasContact = function (v) { return /(\+44|\b0)\d[\d\s]{8,12}\d|@/.test(String(v || '')); };
+  const nameOf = function (v) { const n = String(v || '').replace(/[^\s@<>,;()]+@[^\s@<>,;()]+/g, ' ').replace(/(\+44|\b0)\d[\d\s]{8,12}\d/g, ' ').replace(/\b(e-?mail|tel|mob(ile)?|phone)\b\s*:?/ig, ' ').replace(/[\s,;:\-–\/·]+/g, ' ').trim(); return n && n.length < 60 && /[a-z]{2}/i.test(n) && !/\d/.test(n) ? n : ''; };
+  function availFix(x) {
+    const join = function (a, b, cap) { a = String(a || '').trim(); b = String(b || '').trim(); if (!b) return a || null; if (a.toLowerCase().indexOf(b.toLowerCase()) !== -1) return a; return str(a ? a + ' · ' + b : b, cap); };
+    const sp = availSplitAddr(x.address); if (sp.note) { x.address = str(availAddr(sp.address), 400); x.notes = join(sp.note, x.notes, 2000); }
+    let ll = x.landlord ? String(x.landlord).trim() : '', fee = x.commission ? String(x.commission).trim() : '';
+    if (ll && moneyLike(ll) && !feeLike(fee)) { if (fee) { if (hasContact(fee) || nameOf(fee)) { x.contact = join(x.contact, fee, 2000); } else x.notes = join(x.notes, fee, 2000); } fee = ll; ll = ''; }
+    if (fee && !feeLike(fee)) { if (hasContact(fee) || nameOf(fee)) { x.contact = join(x.contact, fee, 2000); if (!ll && nameOf(fee)) ll = nameOf(fee); } else x.notes = join(x.notes, fee, 2000); fee = ''; }
+    if (ll) {
+      if (hasContact(ll)) { x.contact = join(x.contact, ll, 2000); ll = nameOf(ll); }
+      else if (!/[a-z]{2}/i.test(ll) || /\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4}|£/.test(ll)) { x.notes = join(x.notes, ll, 2000); ll = ''; }
+    }
+    x.landlord = str(ll, 120) || null; x.commission = str(fee, 40) || null;
+    // Rents too small to be real (a misread cell): blank both, unless the other one is sensible.
+    const pw = Number(x.rent_pw) || 0, pcm = Number(x.rent_pcm) || 0;
+    if ((pcm && pcm < 150) || (pw && pw < 35)) { x.rent_pw = null; x.rent_pcm = null; }
+    return x;
+  }
+  async function availTidyAll(p) {
+    let tidied = 0;
+    for (const row of (await p.query('SELECT id, address, landlord, commission, contact, notes, rent_pw, rent_pcm FROM available_props')).rows) {
+      const before = JSON.stringify([row.address, row.landlord, row.commission, row.contact, row.notes, row.rent_pw == null ? null : Number(row.rent_pw), row.rent_pcm == null ? null : Number(row.rent_pcm)]);
+      const x = availFix(Object.assign({}, row, { address: str(availAddr(row.address), 400) || row.address }));
+      const after = JSON.stringify([x.address, x.landlord, x.commission, x.contact, x.notes, x.rent_pw == null ? null : Number(x.rent_pw), x.rent_pcm == null ? null : Number(x.rent_pcm)]);
+      if (before !== after && x.address) { await p.query('UPDATE available_props SET address = $2, landlord = $3, commission = $4, contact = $5, notes = $6, rent_pw = $7, rent_pcm = $8 WHERE id = $1', [row.id, x.address, x.landlord, x.commission, x.contact, x.notes, x.rent_pw, x.rent_pcm]); tidied++; }
+    }
+    return tidied;
+  }
   // A let date only counts within the last 16 years (or up to a year ahead).
   function letDayOk(d) { if (!d) return null; const t = Date.parse(d + 'T12:00:00Z'), now = Date.now(); return t > now - 16.2 * 365.25 * 86400000 && t < now + 366 * 86400000 ? d : null; }
   function availClean(b) {
@@ -8304,9 +8355,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let fee = str(b.commission, 40) || null, notes = str(b.notes, 2000) || null;
     if (fee && !/\d/.test(fee)) { notes = str([fee, notes].filter(Boolean).join(' · '), 2000); fee = null; }
     const beds = parseInt(b.beds, 10);
-    return { address: str(availAddr(b.address), 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
+    return availFix({ address: str(availAddr(b.address), 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
       rent_pw: pw, rent_pcm: pcm, landlord: str(b.landlord, 120) || null, commission: fee, contact: str(b.contact, 2000) || null, notes: notes,
-      tags: str(b.tags, 200) || null, key_no: str(b.key_no, 40) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: letDayOk(isoDay(b.let_on)) };
+      tags: str(b.tags, 200) || null, key_no: str(b.key_no, 40) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: letDayOk(isoDay(b.let_on)) });
   }
   const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
@@ -8385,11 +8436,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.post('/api/admin/available-dedupe', withDb(async function (p, req, res) {
     if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
     // Tidy every address first, so the same place written two ways counts as a duplicate.
-    let tidied = 0;
-    for (const row of (await p.query('SELECT id, address FROM available_props')).rows) { const t = str(availAddr(row.address), 400); if (t && t !== row.address) { await p.query('UPDATE available_props SET address = $2 WHERE id = $1', [row.id, t]); tidied++; } }
+    const tidied = await availTidyAll(p);
     const r = await p.query("DELETE FROM available_props a USING available_props b WHERE a.id < b.id AND a.status = b.status AND regexp_replace(lower(a.address), '[^a-z0-9]', '', 'g') = regexp_replace(lower(b.address), '[^a-z0-9]', '', 'g')");
     res.json({ ok: true, removed: r.rowCount, tidied: tidied });
   }));
+  // Once: put the values already on the list in their places (version bump re-runs it).
+  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 1) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 1, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
   // Empty the Been let list before pasting a corrected copy (managers only).
   app.post('/api/admin/available-clear-let', withDb(async function (p, req, res) {
     if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
@@ -8535,16 +8587,28 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // keep it up 7 more days, link it to a different property, or take it down.
   async function rmDreamTrack(p, items) {
     const matched = {}; (await p.query("SELECT rm_id FROM available_props WHERE status = 'available' AND rm_id IS NOT NULL")).rows.forEach(function (r) { matched[r.rm_id] = 1; });
+    const old = {}; (await p.query('SELECT rm_id, snap FROM rm_dreams')).rows.forEach(function (r) { old[r.rm_id] = r.snap; });
     for (const r of items) {
       if (matched[r.id]) continue;
+      // Any change to the advert (price, status, beds, title) keeps it up 7 more days automatically.
+      const snap = { pcm: r.pcm || null, status: r.status || '', beds: r.beds == null ? null : r.beds, address: r.address || '' }, was = old[r.id];
+      if (was) {
+        const ch = [];
+        if (was.pcm !== snap.pcm) ch.push('price ' + (was.pcm ? '£' + Number(was.pcm).toLocaleString('en-GB') : '—') + ' → ' + (snap.pcm ? '£' + Number(snap.pcm).toLocaleString('en-GB') : '—'));
+        if ((was.status || '') !== snap.status) ch.push(snap.status ? 'now “' + snap.status + '”' : 'status cleared');
+        if (was.beds !== snap.beds) ch.push('beds ' + (was.beds == null ? '—' : was.beds) + ' → ' + (snap.beds == null ? '—' : snap.beds));
+        if ((was.address || '') !== snap.address) ch.push('title changed');
+        if (ch.length) await p.query("UPDATE rm_dreams SET review_at = GREATEST(coalesce(review_at, (now() AT TIME ZONE 'Europe/London')::date), (now() AT TIME ZONE 'Europe/London')::date + 7), extended = extended + 1, change_note = $2, changed_at = now(), by_name = 'Rightmove change' WHERE rm_id = $1", [r.id, ch.join(', ').slice(0, 200)]);
+      }
       const first = r.added && Date.parse(r.added) < Date.now() ? r.added : new Date().toISOString();
       await p.query("INSERT INTO rm_dreams (rm_id, first_seen, review_at) VALUES ($1, $2, ($2::timestamptz AT TIME ZONE 'Europe/London')::date + 7) ON CONFLICT (rm_id) DO UPDATE SET last_seen = now(), first_seen = LEAST(rm_dreams.first_seen, EXCLUDED.first_seen), review_at = CASE WHEN rm_dreams.extended = 0 AND EXCLUDED.first_seen < rm_dreams.first_seen THEN EXCLUDED.review_at ELSE rm_dreams.review_at END", [r.id, first]);
+      await p.query('UPDATE rm_dreams SET snap = $2 WHERE rm_id = $1', [r.id, JSON.stringify(snap)]);
     }
     // Gone from Rightmove for 3 days: forget it (a new advert later starts a fresh timeline).
     await p.query("DELETE FROM rm_dreams WHERE last_seen < now() - interval '3 days'");
   }
   async function rmDreams(p) {
-    const out = {}; (await p.query("SELECT rm_id, first_seen, review_at::text AS review_at, extended, takedown_at, by_name FROM rm_dreams")).rows.forEach(function (r) { out[r.rm_id] = r; }); return out;
+    const out = {}; (await p.query("SELECT rm_id, first_seen, review_at::text AS review_at, extended, takedown_at, by_name, change_note, changed_at FROM rm_dreams")).rows.forEach(function (r) { out[r.rm_id] = r; }); return out;
   }
   app.get('/api/admin/rightmove', withDb(async function (p, req, res) {
     const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], st = await rmSettings(p);
