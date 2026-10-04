@@ -86,6 +86,16 @@
   #d_bank_sort, #d_bank_account { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:.08em; font-weight:600; }
   .bank-note { font-size:.82rem; color:var(--soft); margin-top:4px; }
   @media (max-width:640px) { .top img { height:38px; } .hero .in { padding:24px 16px 62px; } .wrap { padding:0 12px 120px; margin-top:-40px; } .card { padding:18px; } .g2, .g3 { grid-template-columns:1fr; gap:0; } .fee { grid-template-columns:1fr; gap:4px; } .stepper .lb { display:none; } .stepper .s.on .lb { display:block; } .tbl { grid-template-columns:1fr; } .tbl .hd { display:none; } .tbl .rl { font-weight:700; margin-top:8px; } .yn { flex-direction:column; align-items:flex-start; } }
+  .svc { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin:6px 0 18px; } @media (max-width:760px) { .svc { grid-template-columns:1fr; } }
+  .svc label { position:relative; display:flex; flex-direction:column; gap:6px; border:1.5px solid var(--line); border-radius:16px; padding:14px 14px 12px; cursor:pointer; background:#fff; transition:border-color .15s, box-shadow .15s; }
+  .svc label:hover { border-color:#c7d7fe; } .svc input { position:absolute; opacity:0; pointer-events:none; }
+  .svc label.on { border-color:var(--navy); box-shadow:0 0 0 3px rgba(11,31,58,.08); background:linear-gradient(180deg,#fff,#f7f9fc); }
+  .svc .nm { font-weight:800; font-size:1rem; color:var(--ink); padding-right:22px; } .svc .pr { font-weight:800; color:var(--navy); font-size:1.05rem; } .svc .pr s { color:var(--faint); font-weight:600; font-size:.86rem; margin-left:6px; }
+  .svc .bl { font-size:.84rem; color:var(--soft); } .svc ul { margin:2px 0 0; padding-left:18px; font-size:.82rem; color:var(--ink2); } .svc li { margin:2px 0; }
+  .svc .tick { position:absolute; top:12px; right:12px; width:20px; height:20px; border-radius:50%; border:1.5px solid var(--line2); display:flex; align-items:center; justify-content:center; font-size:.72rem; color:#fff; }
+  .svc label.on .tick { background:var(--navy); border-color:var(--navy); } .svc .tag { align-self:flex-start; font-size:.68rem; font-weight:800; letter-spacing:.05em; text-transform:uppercase; border-radius:999px; padding:2px 8px; }
+  .svc .tag.pop { background:#eef4ff; color:#1d3fae; } .svc .tag.save { background:#ecfdf3; color:#067647; }
+  .fee .std { display:block; margin-top:3px; font-size:.8rem; color:var(--faint); } .fee .std s { color:var(--faint); } .fee .sv { display:inline-block; margin-left:6px; font-size:.72rem; font-weight:800; color:#067647; background:#ecfdf3; border-radius:999px; padding:1px 8px; }
   .assoc { max-width:980px; margin:-96px auto 40px; padding:0 20px; position:relative; z-index:2; text-align:center; }
   .assoc-in { background:#fff; border:1px solid rgba(15,23,42,.06); border-radius:18px; padding:16px 18px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
   .assoc-t { font-size:.74rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#98a2b3; margin:0 0 10px; }
@@ -115,7 +125,7 @@
   var token = (location.pathname.match(/^\/landlord\/([\w-]{16,40})/) || [])[1], T = null, step = 1, startedAt = null, details = { bank_type: 'uk' }, files = {};
   var BANKS = ['Barclays', 'HSBC', 'Lloyds', 'NatWest', 'Santander', 'Halifax', 'Nationwide', 'TSB', 'Royal Bank of Scotland', 'Bank of Scotland', 'Metro Bank', 'Monzo', 'Starling', 'Revolut', 'The Co-operative Bank', 'Virgin Money', 'First Direct', 'Coutts', 'Other'];
   document.addEventListener('input', function(){ if (!startedAt) startedAt = new Date().toISOString(); }, true);
-  var STEPS = ['Agreed fees', 'Property details', 'Terms & sign'];
+  var STEPS = ['Your fees', 'Property details', 'Terms & sign'];
   var QUESTIONS = [['q_gas_appliances', 'Does your property have any gas appliances?', 'If yes, a Gas Safety Certificate is a legal requirement before the property can be let.'], ['q_need_gas_cert', 'Do you need us to arrange a Gas Safety Certificate?', 'A legal requirement for every rented property with gas, renewed every 12 months. If you already have a valid one, choose No and attach it.'], ['q_register_deposit', 'Do you require the tenancy deposit to be registered on your behalf?'],
     ['q_inventory', 'Do you require an Inventory in and out?', 'Essential for the Full Management Service.'], ['q_epc', 'Do you require an Energy Performance Certificate (EPC)?'], ['q_eicr', 'Do you need us to arrange an Electrical Safety Certificate (EICR)?', 'A legal requirement for every rented property, renewed at least every 5 years. If you already have a valid one, choose No and attach it.'],
     ['q_pat', 'Do you require a Portable Appliance Test?'], ['q_fire_furnishings', 'Do you require a Fire and Furnishings Test?'], ['q_clean', 'Do you require a Professional Clean?'], ['q_fire_risk', 'Do you require a Fire Risk Assessment?'],
@@ -144,18 +154,38 @@
     go(1);
   })['catch'](function(){ $('app').innerHTML = '<div class="card"><h2>Couldn’t load</h2><p class="lead" style="margin:0">Please check your connection and refresh.</p></div>'; });
 
+  function feeRows(){ return T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (/^No (renewal|anniversary) fee$/.test(l.v) ? ' class="none"' : '') + '>' + esc(l.v) + (l.std ? '<span class="std">Our standard rate: <s>' + esc(l.std) + '</s><span class="sv">You save ' + l.save + '%</span></span>' : '') + '</span></div>'; }).join(''); }
+  // Choosing a service: the fees and worked example are worked out again for that service (nothing is saved until signing).
+  function svcHtml(){
+    var S = T.services; if (!S) return '';
+    var vat = T.examples_vat ? ' + VAT' : '';
+    return '<h3>Choose your service</h3><p class="opt" style="font-size:.88rem;margin:-4px 0 10px">The tenant find fee below applies to every option. Pick how much you’d like us to do once the tenant has moved in — you can change your mind any time before signing.</p><div class="svc" id="svc">' +
+      S.map(function(x){ var on = (T.service || 'none') === x.id;
+        return '<label class="' + (on ? 'on' : '') + '"><input type="radio" name="svc" value="' + x.id + '"' + (on ? ' checked' : '') + '><span class="tick">✓</span>' +
+          (x.id === 'both' ? '<span class="tag pop">Most popular</span>' : x.save ? '<span class="tag save">Discounted</span>' : '') +
+          '<span class="nm">' + esc(x.name) + '</span>' +
+          '<span class="pr">' + (x.pct == null ? 'No monthly fee' : x.pct + '%' + vat + ' a month' + (x.save ? '<s>' + x.std + '%</s>' : '')) + '</span>' +
+          '<span class="bl">' + esc(x.blurb) + '</span><ul>' + x.perks.map(function(p){ return '<li>' + esc(p) + '</li>'; }).join('') + '</ul></label>'; }).join('') + '</div>';
+  }
   function go(n){ step = n; drawStepper(); ({ 1: drawFees, 2: drawDetails, 3: drawTerms })[n](); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 
   // ----- Step 1: the agreed fees -----
   function drawFees(){
     var f = T.fees || {}, ex = T.examples || [];
-    $('app').innerHTML = '<div class="card"><h2>The fees we agreed</h2><p class="lead">For ' + esc(T.property) + '. These replace our standard scale of fees.</p>' +
-      '<div class="fees">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (/^No (renewal|anniversary) fee$/.test(l.v) ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
+    $('app').innerHTML = '<div class="card"><h2>Your fees</h2><p class="lead">For ' + esc(T.property) + '. These replace our standard scale of fees.</p>' + svcHtml() +
+      '<h3>' + (T.services ? 'What you’ll pay' : 'The fees we agreed') + '</h3><div class="fees">' + feeRows() + '</div>' +
       (ex.length ? '<div class="exbox"><div class="exh">Worked example at £' + Number(T.example_rent || 2000).toLocaleString('en-GB') + ' a month rent' + (T.examples_vat ? ' · fees inc VAT' : '') + '</div>' + ex.map(function(x){ return '<div class="exr' + (/^You receive/.test(x[0]) ? ' tot' : '') + '"><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b></div>'; }).join('') + '</div>' : '') +
       '<p class="example">Something not right? Please contact us before signing. Reference ' + esc(T.ref) + '.</p>' +
       (T.epc ? '<h3 style="margin-top:18px">Your property’s EPC</h3>' + epcBox() : '') +
       '<div class="actions"><span></span><button class="btn dark" type="button" id="n1">Continue →</button></div></div>';
     $('n1').addEventListener('click', function(){ go(2); });
+    if ($('svc')) $('svc').addEventListener('change', function(e){
+      var v = e.target.value; if (!v || v === T.service) return;
+      this.querySelectorAll('label').forEach(function(l){ l.classList.toggle('on', l.querySelector('input').value === v); });
+      fetch('/api/landlord-terms/' + token + '?service=' + encodeURIComponent(v), { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+        if (!d.ok) return; T.fees = d.fees; T.lines = d.lines; T.examples = d.examples; T.service = d.service; var y = window.scrollY; drawFees(); window.scrollTo(0, y);
+      });
+    });
   }
 
   // ----- Step 2: property details form -----
@@ -274,7 +304,7 @@
     var intro = (tm.intro || []).map(function(s, i){ return i === 0 && noRen ? 'Under these terms you will be liable to pay Residential Realtors’ commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.' : s; });
     var body = (tm.clauses || []).map(function(c){ return c.h ? '<h4>' + esc(c.n) + ' ' + esc(c.h) + (c.n === '1.2' && noRen ? '<span class="na">Not applicable — no anniversary fee agreed</span>' : '') + '</h4>' + (c.n === '1.2' && !noRen && tm.anniversary_note ? '<p style="color:#1d3fae">' + esc(tm.anniversary_note) + '</p>' : '') : '<p><span class="num">' + esc(c.n) + '</span>' + esc(c.t) + '</p>'; }).join('');
     $('app').innerHTML = '<div class="card"><h2>Terms of business</h2><p class="lead">Please read the terms carefully. Your agreed fees are shown first and take priority.</p>' +
-      '<div class="fees" style="margin-bottom:14px">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (/^No (renewal|anniversary) fee$/.test(l.v) ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
+      '<div class="fees" style="margin-bottom:14px">' + feeRows() + '</div>' +
       '<h3>Key points</h3>' + intro.map(function(s){ return '<p style="font-size:.9rem;color:var(--ink2)">' + esc(s) + '</p>'; }).join('') +
       '<h3>Terms and conditions</h3><div class="terms-box" id="termsBox">' + body +
         '<h4>Price list</h4>' + (tm.prices || []).map(function(r){ return '<p>' + esc(r[0]) + ': ' + gbp(r[1]) + ' + VAT (' + gbp(r[1] * 1.2) + ' inc VAT)</p>'; }).join('') +
@@ -306,7 +336,7 @@
       if (!$('sigName').value.trim()) return err('Please type your full name.', $('sigName'));
       if (!inked) return err('Please sign in the box.', $('sigWrap'));
       var b = this; b.disabled = true; b.textContent = 'Signing…';
-      fetch('/api/landlord-terms/' + token + '/sign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ details: details, files: files, accept: true, declaration: true, start_now: st.value === 'now', signature: $('sigName').value.trim(), signature_png: png(), started_at: startedAt }) })
+      fetch('/api/landlord-terms/' + token + '/sign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ service: T.services ? T.service : undefined, details: details, files: files, accept: true, declaration: true, start_now: st.value === 'now', signature: $('sigName').value.trim(), signature_png: png(), started_at: startedAt }) })
         .then(function(r){ return r.json(); }).then(function(d){
           if (!d.ok) { b.disabled = false; b.textContent = 'Sign the agreement'; return err(d.error === 'details' ? 'Some details are missing — please go back and check.' : d.error === 'signed' ? 'This agreement has already been signed.' : 'Couldn’t sign just now — please try again.'); }
           T.status = 'signed'; showDone();

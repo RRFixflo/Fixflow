@@ -552,6 +552,7 @@
   .av-vac.now { background: #ecfdf3; color: #067647; border-color: #abefc6; } .av-vac.soon { background: #fffaeb; color: #b54708; border-color: #fedf89; } .av-vac.none { background: #f9fafb; color: var(--ink-soft); border-color: #eaecf0; font-weight: 600; } .av-vac.sm { padding: 1px 7px; font-size: .76rem; font-weight: 700; }
   .av-nofee { background: #fffaeb; border: 1px solid #fedf89; color: #93370d; border-radius: 10px; padding: 7px 10px; font-size: .84rem; margin: 8px 0 2px; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; } .av-nofee-t { flex: 1 1 220px; } .av-nofee-f { display: flex; gap: 6px; margin-left: auto; } .av-nofee .inp { width: 150px; padding: 5px 8px; min-height: 0; }
   .num.fee small.fee-vat { color: var(--green, #067647); font-size: .82rem; } .num.fee small.fee-vat b { font-size: .95rem; }
+  .lt-disc { display: inline-block; margin-left: 6px; font-size: .74rem; font-weight: 700; color: #067647; background: #ecfdf3; border-radius: 999px; padding: 1px 8px; }
   .av-meta { font-size: .84rem; color: var(--ink-soft); } .av-meta b { color: var(--ink); }
   .av-contact { font-size: .84rem; border: 1px dashed var(--line, #e6e8ec); border-radius: 10px; padding: 6px 8px; } .av-contact summary { cursor: pointer; font-weight: 600; } .av-contact pre { white-space: pre-wrap; font: inherit; margin: 6px 0; }
   .av-person { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid #f2f4f7; } .av-person:first-of-type { border-top: 0; margin-top: 4px; }
@@ -1626,7 +1627,9 @@
               <div class="lt-row" data-find data-ren><label>Anniversary fee %<input class="inp" id="ltRenPct" inputmode="decimal"></label></div></div>
             <div class="lt-box"><b>Ongoing service</b><select class="inp" id="ltOn"><option value="none">None</option><option value="collect">Rent collection</option><option value="manage">Full management</option><option value="both">Full management + rent collection</option></select>
               <div class="lt-row" data-on><label>Fee %<input class="inp" id="ltOnPct" inputmode="decimal"></label><label>Minimum £ a month (inc VAT)<input class="inp" id="ltOnMin" inputmode="decimal"></label></div>
-              <label class="switch-row" style="margin-top:6px"><input type="checkbox" id="ltVat" checked> Fees are + VAT</label></div>
+              <label class="switch-row" style="margin-top:6px"><input type="checkbox" id="ltVat" checked> Fees are + VAT</label>
+              <label class="switch-row" style="margin-top:10px"><input type="checkbox" id="ltChoose" checked> Let the landlord choose a service on their page (to encourage rent collection or management)</label>
+              <div class="lt-row" data-choose><label>Rent collection %<input class="inp" id="ltOptCollect" inputmode="decimal" value="3"></label><label>Fully managed %<input class="inp" id="ltOptBoth" inputmode="decimal" value="6"></label></div></div>
           </div>
           <label class="lt-full">Other agreed fees or notes <span class="muted-note" style="margin:0">optional</span><textarea class="inp" id="ltOther" rows="2" maxlength="2000"></textarea></label>
           <div class="lt-preview" id="ltPreview"></div>
@@ -9457,7 +9460,7 @@
   // ---------- Landlord terms of business ----------
   // The office sets the agreed fees and sends the landlord a private link to
   // check them, fill in the property details form and sign the terms.
-  var ltItems = [], LT_DEF = { sole: [10, 1500, 9], multi: [12, 1700, 11], collect: [3, 40], manage: [6, 80], both: [9, 120] };
+  var ltItems = [], LT_DEF = { sole: [10, 1500, 9], multi: [12, 1700, 11], collect: [3, 40], manage: [6, 80], both: [6, 80] };
   function ltDefaults(e){
     var only = e && e.target ? e.target.id : '', fd = only === 'ltOn' ? null : LT_DEF[$('ltFind').value], od = only === 'ltFind' ? null : LT_DEF[$('ltOn').value];
     if (fd) { $('ltFindPct').value = fd[0]; $('ltFindMin').value = fd[1]; $('ltRenPct').value = fd[2]; delete $('ltRenPct').dataset.manual; }
@@ -9468,9 +9471,10 @@
     var find = $('ltFind').value !== 'none', on = $('ltOn').value !== 'none';
     document.querySelectorAll('#ltNew [data-find]').forEach(function(el){ el.hidden = !find || (el.hasAttribute('data-ren') && !$('ltRen').checked); });
     document.querySelectorAll('#ltNew [data-on]').forEach(function(el){ el.hidden = !on; });
+    document.querySelectorAll('#ltNew [data-choose]').forEach(function(el){ el.hidden = !$('ltChoose').checked; });
     ltPreview();
   }
-  function ltFees(){ return { find: $('ltFind').value, find_pct: $('ltFindPct').value, find_min: $('ltFindMin').value, find_monthly: $('ltMonthly').checked, renewal: $('ltRen').checked, renewal_pct: $('ltRenPct').value, ongoing: $('ltOn').value, ongoing_pct: $('ltOnPct').value, ongoing_min: $('ltOnMin').value, vat: $('ltVat').checked, other: $('ltOther').value.trim() }; }
+  function ltFees(){ return { choose: $('ltChoose').checked, opt_collect_pct: $('ltOptCollect').value, opt_both_pct: $('ltOptBoth').value, find: $('ltFind').value, find_pct: $('ltFindPct').value, find_min: $('ltFindMin').value, find_monthly: $('ltMonthly').checked, renewal: $('ltRen').checked, renewal_pct: $('ltRenPct').value, ongoing: $('ltOn').value, ongoing_pct: $('ltOnPct').value, ongoing_min: $('ltOnMin').value, vat: $('ltVat').checked, other: $('ltOther').value.trim() }; }
   function ltLines(f){
     var vat = f.vat !== false, inc = function(p){ p = Number(p); return vat ? p + '% + VAT (' + (Math.round(p * 120) / 100) + '% inc VAT)' : p + '%'; }, L = [];
     if (f.find !== 'none' && f.find_pct !== '' && f.find_pct != null) { L.push([f.find === 'multi' ? 'Tenant find — multi agency' : 'Tenant find — sole agency', inc(f.find_pct) + ' of the first 12 months’ rent' + (Number(f.find_min) ? ', minimum ' + gbp(Number(f.find_min)) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? ', paid monthly over 12 months' : ', paid up front')]); L.push(['Anniversary fee', f.renewal && f.renewal_pct !== '' && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months’ rent, each anniversary' : 'No anniversary fee']); }
@@ -9478,9 +9482,16 @@
     if (f.other) L.push(['Other', f.other]);
     return L;
   }
-  function ltPreview(){ var L = ltLines(ltFees()); $('ltPreview').innerHTML = L.length ? '<b>The landlord will see:</b>' + L.map(function(l){ return '<div><span>' + esc(l[0]) + '</span>' + esc(l[1]) + '</div>'; }).join('') : ''; }
+  var LT_STD = { sole: 10, multi: 12, collect: 3, manage: 6, both: 6 };   // our standard scale (% + VAT)
+  function ltPreview(){
+    var f = ltFees(), L = ltLines(f), off = function(std, v){ v = parseFloat(v); return std != null && !isNaN(v) && v < std ? ' <span class="lt-disc">discount — standard ' + std + '%</span>' : ''; };
+    var notes = [];
+    if (f.find !== 'none') notes.push(off(LT_STD[f.find], f.find_pct)); if (f.ongoing !== 'none') notes.push(off(LT_STD[f.ongoing], f.ongoing_pct));
+    $('ltPreview').innerHTML = L.length ? '<b>The landlord will see:</b>' + L.map(function(l, i){ return '<div><span>' + esc(l[0]) + '</span>' + esc(l[1]) + (i === 0 && f.find !== 'none' ? notes[0] || '' : /rent collection|management/i.test(l[0]) ? notes[f.find !== 'none' ? 1 : 0] || '' : '') + '</div>'; }).join('') +
+      (f.choose ? '<div><span>They can choose</span>Let only · Let + rent collection ' + esc(f.opt_collect_pct || '3') + '% · Fully managed ' + esc(f.opt_both_pct || '6') + '%' + (f.vat ? ' (+ VAT)' : '') + '</div>' : '') : '';
+  }
   ['ltFind', 'ltOn'].forEach(function(id){ $(id).addEventListener('change', ltDefaults); });
-  $('ltRen').addEventListener('change', ltShowRows);
+  $('ltRen').addEventListener('change', ltShowRows); $('ltChoose').addEventListener('change', ltShowRows);
   // The anniversary fee follows the commission, 1% less, unless someone has typed their own.
   $('ltRenPct').addEventListener('input', function(){ this.dataset.manual = '1'; });
   $('ltFindPct').addEventListener('input', function(){ var v = parseFloat(this.value); if (!$('ltRenPct').dataset.manual && !isNaN(v)) { $('ltRenPct').value = Math.max(0, Math.round((v - 1) * 100) / 100); ltPreview(); } }); $('ltMonthly').addEventListener('change', ltPreview);
@@ -9631,6 +9642,7 @@
     $('ltFind').value = f.find || 'sole'; set('ltFindPct', f.find_pct); set('ltFindMin', f.find_min); $('ltMonthly').checked = !!f.find_monthly;
     $('ltRen').checked = !!f.renewal; set('ltRenPct', f.renewal_pct); if (f.renewal_pct != null && f.find_pct != null && Number(f.renewal_pct) !== Number(f.find_pct) - 1) $('ltRenPct').dataset.manual = '1'; else delete $('ltRenPct').dataset.manual; $('ltOn').value = f.ongoing || 'none'; set('ltOnPct', f.ongoing_pct); set('ltOnMin', f.ongoing_min);
     $('ltVat').checked = f.vat !== false; set('ltOther', f.other);
+    $('ltChoose').checked = f.choose !== false; set('ltOptCollect', f.opt_collect_pct != null ? f.opt_collect_pct : 3); set('ltOptBoth', f.opt_both_pct != null ? f.opt_both_pct : 6);
     ltShowRows(); ltPreview(); $('ltEpc').hidden = true; ltEpcFor = t.property_address;
     $('ltEditRef').textContent = t.ref + ' · ' + shortAddr(t.property_address); $('ltEditing').hidden = false; $('ltEditCancel').hidden = false; $('ltCreate').textContent = 'Save changes';
     $('ltNew').open = true; $('ltNew').scrollIntoView({ behavior: 'smooth', block: 'start' });
