@@ -9636,7 +9636,7 @@
     if (avFlag === 'let' && list.length) {
       var th = function(k, t){ return '<th data-lsort="' + k + '"' + (avLs.k === k ? ' class="on"' : '') + '>' + t + (avLs.k === k ? (avLs.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; };
       $('avList').innerHTML = '<div class="av-lt-wrap"><table class="av-lt"><thead><tr>' + th('let_on', 'Let on') + th('address', 'Address') + th('beds', 'Beds') + th('rent_pcm', 'pcm') + th('rent_pw', 'pw') + th('landlord', 'Landlord') + th('commission', 'Fee') + th('notes', 'Notes') + '<th></th></tr></thead><tbody>' + list.map(function(x){
-        return '<tr data-av="' + x.id + '"><td class="nw">' + esc(x.let_on ? avDay(x.let_on) : '—') + '</td><td class="ad"><span>' + esc(x.address) + '</span> <button type="button" class="linkish" data-ava="addr" title="Correct the address">✎</button></td><td>' + (x.beds == null ? '—' : x.beds === 0 ? 'Studio' : x.beds) + '</td><td class="nw">' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</td><td class="nw">' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</td><td>' + esc(x.landlord || '') + '</td><td>' + esc(x.commission || '') + '</td><td class="nt" title="' + esc([x.contact, x.notes].filter(Boolean).join(' · ')) + '">' + esc([x.notes, x.tags].filter(Boolean).join(' · ').slice(0, 80)) + '</td><td class="nw"><button type="button" class="btn small ghost" data-ava="edit">Edit</button></td></tr>';
+        return '<tr data-av="' + x.id + '"><td class="nw">' + esc(x.let_on ? avDay(x.let_on) : '—') + '</td><td class="ad"><span>' + esc(x.address) + '</span> <button type="button" class="linkish" data-ava="addr" title="Correct the address">✎</button></td><td>' + (x.beds == null ? '—' : x.beds === 0 ? 'Studio' : x.beds) + '</td><td class="nw">' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</td><td class="nw">' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</td><td>' + esc(x.landlord || '') + '</td><td>' + esc(x.commission || '') + '</td><td class="nt" title="' + esc([x.contact, x.notes].filter(Boolean).join(' · ')) + '">' + esc([x.notes, x.tags].filter(Boolean).join(' · ').slice(0, 80)) + '</td><td class="nw"><button type="button" class="btn small" data-avs="available" title="Put it back on the available list">↩ Available</button> <button type="button" class="btn small ghost" data-ava="edit">Edit</button></td></tr>';
       }).join('') + '</tbody></table></div>' + (avMore ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more (' + avMore + ' not shown — or search above)</button></div>' : '');
       return;
     }
@@ -9716,6 +9716,8 @@
       if (c === '"' && cell.trim() === '') { q = true; cell = ''; } else if (c === '\t') { row.push(cell); cell = ''; } else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; } else cell += c; }
     row.push(cell); rows.push(row); return rows;
   }
+  // Let dates: only the last 16 years (or up to a year ahead) — anything else is a misread cell.
+  function avLetOk(d){ if (!d) return false; var t = Date.parse(d + 'T12:00:00Z'), now = Date.now(); return t > now - 16.2 * 365.25 * 86400000 && t < now + 366 * 86400000; }
   var AV_MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
   function avDate(v){
     v = String(v || '').trim(); var m, d, mo, y;
@@ -9780,6 +9782,7 @@
       if (/^urgent$/i.test(c)) { urgent = true; return; }
       if (/^vacant$/i.test(c)) { vac = true; return; }
       var d = avDate(c); if (d) { if (!date) date = d; return; }
+      if (!com && c.length < 40 && /\d/.test(c) && /\bfee\b|\+\s*vat|\binc\.?\s*vat|\bex\.?\s*vat/i.test(c)) { com = c.replace(/\s+/g, ' '); return; }
       if (/^\d{1,2}(\.\d+)?\s?%$/.test(c) || /^\d{1,2}(\.\d+)?\s?%\s*(\+\s*vat|inc|ex)/i.test(c)) { if (!com) com = c; return; }
       var mo = avMoney(c); if (mo) { if (mo.v <= 20000) money.push(mo); return; }
       if (/^[\d\s+()\-]{10,}$/.test(c) || /@/.test(c) || !contact.length) { contact.push(c.replace(/\s*\n\s*/g, ' / ')); return; }
@@ -9790,6 +9793,8 @@
     var plain = money.filter(function(m){ return !m.unit; }).map(function(m){ return m.v; });
     if (plain.length >= 2 && !pw && !pcm) { var lo = Math.min(plain[0], plain[1]), hi = Math.max(plain[0], plain[1]); if (hi > lo * 3) { pw = lo; pcm = hi; } else pcm = hi; }
     else if (plain.length) { var v = plain[0]; if (!pw && !pcm) { if (v >= 1000) pcm = v; else pw = v; } else if (!pcm && pw && v > pw * 3) pcm = v; else if (!pw && pcm && v * 3 < pcm) pw = v; }
+    // A further £ figure after the rents is the fee (a fee is a figure or a percentage).
+    if (!com) { var used = [pw, pcm].map(Number), extra = plain.filter(function(v){ return used.indexOf(v) === -1; }); if (extra.length && (pw || pcm)) com = gbp(extra[extra.length - 1]).replace(/\.00$/, ''); }
     var contactTxt = contact.join(' · '), landlord = '';
     if (contact.length) { var first = contact[0].split(/\s+\/\s+|\s{2,}/)[0].replace(/\S+@\S+/g, '').replace(/(\+44|\b0)[\d\s()\-]{8,}.*$/, '').replace(/[\s,:;\-–]+$/, '').trim(); if (first && /[a-z]{2}/i.test(first) && first.length < 60 && !/^\d/.test(first)) landlord = first; }
     if (contactTxt === landlord) contactTxt = '';
@@ -9800,7 +9805,7 @@
   $('avPasteBtn').addEventListener('click', function(){ $('avForm').hidden = true; $('avPaste').hidden = false; $('avPastePrev').innerHTML = ''; $('avPasteTxt').focus(); });
   $('avPasteX').addEventListener('click', function(){ $('avPaste').hidden = true; $('avPasteTxt').value = ''; $('avPastePrev').innerHTML = ''; });
   $('avPasteRead').addEventListener('click', function(){
-    avParsed = avTsv($('avPasteTxt').value).map(avRow).filter(Boolean).map(function(r){ if (avPasteAs === 'let') { r.status = 'let'; r.let_on = r.available_from || ''; r.available_from = ''; r.vacant = false; } return r; });
+    avParsed = avTsv($('avPasteTxt').value).map(avRow).filter(Boolean).map(function(r){ if (avPasteAs === 'let') { r.status = 'let'; r.let_on = avLetOk(r.available_from) ? r.available_from : ''; r.available_from = ''; r.vacant = false; } return r; });
     var avRows = avTsv($('avPasteTxt').value).filter(function(r){ return r.join('').trim(); }), avMiss = avRows.length - avParsed.length;
     if (!avParsed.length) { $('avPastePrev').innerHTML = '<p class="muted-note">No rows with an address found — please paste straight from the spreadsheet.</p>'; return; }
     var avShow = avParsed.slice(0, 300);

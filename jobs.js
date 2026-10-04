@@ -528,6 +528,8 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_url TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS let_on DATE;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS dream_rm JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS key_no TEXT;
+-- Let dates outside the last 16 years (or over a year ahead) are misread cells.
+UPDATE available_props SET let_on = NULL WHERE let_on IS NOT NULL AND (let_on < current_date - interval '16 years 2 months' OR let_on > current_date + interval '1 year');
 CREATE TABLE IF NOT EXISTS rm_dreams (
   rm_id       TEXT PRIMARY KEY,
   first_seen  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -8291,15 +8293,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const parts = s.split(', '), out = []; parts.forEach(function (x) { if (!out.length || out[out.length - 1].toLowerCase() !== x.toLowerCase()) out.push(x); });
     return out.join(', ');
   }
+  // A let date only counts within the last 16 years (or up to a year ahead).
+  function letDayOk(d) { if (!d) return null; const t = Date.parse(d + 'T12:00:00Z'), now = Date.now(); return t > now - 16.2 * 365.25 * 86400000 && t < now + 366 * 86400000 ? d : null; }
   function availClean(b) {
     const n = function (v) { const x = parseFloat(String(v == null ? '' : v).replace(/[£,\s]/g, '')); return isFinite(x) && x > 0 ? Math.round(x * 100) / 100 : null; };
     let pw = n(b.rent_pw), pcm = n(b.rent_pcm);
     if (pw && pw > 20000) pw = null; if (pcm && pcm > 200000) pcm = null;   // not a rent (e.g. a phone number in the wrong column)
     if (pw && !pcm) pcm = Math.round(pw * 52 / 12 * 100) / 100; if (pcm && !pw) pw = Math.round(pcm * 12 / 52 * 100) / 100;
+    // A fee is a figure or a percentage; other text in the fee cell goes with the notes.
+    let fee = str(b.commission, 40) || null, notes = str(b.notes, 2000) || null;
+    if (fee && !/\d/.test(fee)) { notes = str([fee, notes].filter(Boolean).join(' · '), 2000); fee = null; }
     const beds = parseInt(b.beds, 10);
     return { address: str(availAddr(b.address), 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
-      rent_pw: pw, rent_pcm: pcm, landlord: str(b.landlord, 120) || null, commission: str(b.commission, 40) || null, contact: str(b.contact, 2000) || null, notes: str(b.notes, 2000) || null,
-      tags: str(b.tags, 200) || null, key_no: str(b.key_no, 40) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: isoDay(b.let_on) || null };
+      rent_pw: pw, rent_pcm: pcm, landlord: str(b.landlord, 120) || null, commission: fee, contact: str(b.contact, 2000) || null, notes: notes,
+      tags: str(b.tags, 200) || null, key_no: str(b.key_no, 40) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: letDayOk(isoDay(b.let_on)) };
   }
   const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
