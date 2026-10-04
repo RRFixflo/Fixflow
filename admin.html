@@ -2067,6 +2067,9 @@
   <div class="card kr-card lc-card" role="dialog" aria-labelledby="lcTitle">
     <h3 id="lcTitle">📜 Property licences</h3>
     <p class="muted-note" style="margin:0 0 10px">1. Search the council’s register by postcode (Fixflow works out the council). 2. On the results page select everything (Ctrl/⌘+A), copy, and paste it below — or paste/drop a screenshot. 3. Check the matches and save.</p>
+    <details id="lrBox" style="margin:0 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel)"><summary style="cursor:pointer"><b>📚 Check a whole register</b> <span class="muted-note" style="margin:0">— a council’s full list (a link or a PDF, any number of pages) against all your properties</span></summary>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input class="inp" id="lrUrl" placeholder="Link to the register, or the council page that links to it" style="flex:1;min-width:220px"><button class="btn primary" type="button" id="lrGo">Check</button><button class="btn" type="button" id="lrPick">📎 Upload the PDF</button><input type="file" id="lrFile" accept=".pdf,application/pdf,.csv,text/csv" hidden></div>
+      <div id="lrProg" class="muted-note" style="margin:8px 0 0"></div><div id="lrRes"></div></details>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="lcPc" placeholder="Postcode, e.g. SE1 6PG" style="max-width:200px;text-transform:uppercase"><button class="btn" type="button" id="lcOpen">🔎 Search the register</button></div>
     <div id="lcQueue" style="margin:8px 0 0"></div>
     <div id="lcPool" style="margin:6px 0 0"></div>
@@ -4406,6 +4409,58 @@
       var next = lcQueue()[0];
       $('lcMatches').innerHTML = ''; $('lcSave').hidden = true; $('lcText').value = '';
       toast((n ? n + ' licence' + (n === 1 ? '' : 's') + ' saved' : 'Saved') + (pr.saved ? ' · ' + pr.saved + ' kept for later' : '') + (next ? ' — next postcode: ' + next.pc : ' — all checked'));
+      if (view === 'props') { openPropKey ? renderProperty() : renderProps(); }
+    });
+  });
+  // A whole council register (a link, or the PDF itself) checked against every property in the background.
+  var lrRes = null, lrPoll = null;
+  var lrDesc = function(l){ return [l.type || 'Licence', l.number, l.status === 'applied' ? 'applied for, not yet issued' : 'issued', l.starts ? 'from ' + longDay(l.starts) : '', l.expires ? 'expires ' + longDay(l.expires) : '', l.holder ? 'holder ' + l.holder : ''].filter(Boolean).join(' · '); };
+  var lrCur = function(c){ return !c ? 'Nothing recorded yet' : c.status === 'licensed' ? 'Recorded: licence ' + (c.number || '') + (c.expires ? ', expires ' + longDay(c.expires) : '') : c.status === 'not_needed' ? 'Recorded: not needed' : c.status === 'applied' ? 'Recorded: applied for' : c.status === 'none' ? 'Recorded: no licence' : ''; };
+  var LR_ERR = { 'no-register-link': 'Couldn’t find the register on that page — open it, copy the link of the register file itself and paste that, or upload the PDF.', 'excel': 'That register is an Excel file — open it, save it as CSV, and upload that.', 'not-a-register': 'That link isn’t a PDF or CSV register — paste the link of the register file, or upload it.', 'not-pdf': 'That file isn’t a PDF or CSV.', 'file-too-big': 'That file is too big.', 'url': 'Paste the full link (starting https://).', 'ai-not-configured': 'AI isn’t switched on.' };
+  function lrError(e){ return LR_ERR[e] || (/^fetch-/.test(e || '') ? 'The council’s website wouldn’t let Fixflow download it (' + e.replace('fetch-', 'error ') + '). Download the PDF yourself and upload it here.' : 'Something went wrong reading the register (' + (e || 'unknown') + '). Try uploading the PDF.'); }
+  function lrWatch(d){
+    clearTimeout(lrPoll); $('lrRes').innerHTML = '';
+    if (!d.ok) { $('lrProg').innerHTML = '<span class="err" style="margin:0">' + esc(lrError(d.error)) + '</span>'; $('lrGo').disabled = $('lrPick').disabled = false; return; }
+    var show = function(s){
+      $('lrProg').textContent = s.state === 'running' ? '⏳ ' + s.step + (s.pages && s.page < s.pages ? ' — page ' + s.page.toLocaleString('en-GB') + ' of ' + s.pages.toLocaleString('en-GB') : '') + '… (you can keep working — leave this open)' : '';
+      if (s.state === 'running') { lrPoll = setTimeout(function(){ api('GET', '/api/admin/licence-register-scan/' + s.id).then(show).catch(function(){ lrPoll = setTimeout(function(){ show(s); }, 5000); }); }, 2500); return; }
+      $('lrGo').disabled = $('lrPick').disabled = false;
+      if (s.state === 'failed' || !s.ok) { $('lrProg').innerHTML = '<span class="err" style="margin:0">' + esc(lrError(s.error)) + '</span>'; return; }
+      lrRes = s.result; lrRender(s.pages);
+    };
+    show(d);
+  }
+  function lrRender(pages){
+    var r = lrRes, c = r.council || 'the council';
+    var mOpts = '<option value="">Leave as it is</option><option value="none">No licence</option><option value="applied">Applied for</option><option value="not_needed">Not needed</option>';
+    $('lrRes').innerHTML = '<p class="muted-note" style="margin:8px 0">' + (pages ? pages.toLocaleString('en-GB') + ' pages read' : r.lines.toLocaleString('en-GB') + ' lines read') + (r.council ? ' · ' + esc(r.council) + ' register' : '') + ' · <b>' + r.matched.length + '</b> of your properties found' + (r.missing.length ? ' · <b>' + r.missing.length + '</b> of your ' + esc(c) + ' properties not listed' : '') + '.</p>' +
+      (r.matched.length ? '<h4 style="margin:10px 0 4px">✅ In the register</h4>' + r.matched.map(function(m, i){ return '<label class="kr-row" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" ' + (m.same ? '' : 'checked') + ' data-lr-m="' + i + '"><span><b>' + esc(m.address) + '</b><br><span class="muted-note" style="margin:0">' + esc(lrDesc(m.licence)) + '</span><br><span class="muted-note" style="margin:0;font-size:.78rem">Register: ' + esc(m.register_address) + ' · ' + esc(m.same ? 'already up to date' : lrCur(m.current)) + '</span></span></label>'; }).join('') : '') +
+      (r.possible.length ? '<h4 style="margin:12px 0 4px">❓ Might be yours — please check</h4>' + r.possible.map(function(x, i){ return '<div class="kr-row"><div><b>' + esc(x.register_address) + '</b> <span class="muted-note" style="margin:0">' + esc(lrDesc(x.licence)) + '</span></div><select class="inp" style="width:auto;margin-top:4px" data-lr-p="' + i + '"><option value="">Not one of ours</option>' + x.maybe.map(function(o){ return '<option value="' + esc(o.key) + '">It’s ' + esc(o.address) + '</option>'; }).join('') + '</select></div>'; }).join('') : '') +
+      (r.missing.length ? '<h4 style="margin:12px 0 4px">❌ Your ' + esc(c) + ' properties not in the register</h4><p class="muted-note" style="margin:0 0 4px">Not found doesn’t always mean unlicensed — the council may write the address differently. Check any that should have a licence.</p>' + r.missing.map(function(o, i){ return '<div class="kr-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="flex:1;min-width:180px">' + esc(o.address) + '<br><span class="muted-note" style="margin:0;font-size:.78rem">' + esc(lrCur(o.current)) + '</span></span><select class="inp" style="width:auto" data-lr-x="' + i + '">' + mOpts + '</select></div>'; }).join('') : '') +
+      (!r.matched.length && !r.missing.length && !r.possible.length ? '<p class="muted-note">None of your properties are in this register.</p>' : '<div class="row-actions" style="margin-top:10px"><button class="btn primary" type="button" id="lrSave">Save to the properties</button></div>');
+  }
+  function lrStart(body, file){
+    $('lrGo').disabled = $('lrPick').disabled = true; $('lrRes').innerHTML = ''; $('lrProg').textContent = file ? '⏳ Uploading ' + (file.name || 'the PDF') + '…' : '⏳ Starting…';
+    var req = file ? fetch('/api/admin/licence-register-scan', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': /\.csv$/i.test(file.name || '') ? 'text/csv' : 'application/pdf' }, body: file }).then(function(r){ return r.json()['catch'](function(){ return { ok: false, error: r.status === 413 ? 'file-too-big' : 'upload-' + r.status }; }); })
+      : api('POST', '/api/admin/licence-register-scan', body);
+    req.then(lrWatch)['catch'](function(e){  lrWatch({ ok: false, error: 'network' }); });
+  }
+  $('lrGo').addEventListener('click', function(){ var u = $('lrUrl').value.trim(); if (!u) { $('lrUrl').focus(); return; } lrStart({ url: u }); });
+  $('lrPick').addEventListener('click', function(){ $('lrFile').value = ''; $('lrFile').click(); });
+  $('lrFile').addEventListener('change', function(){ var f = this.files && this.files[0]; if (f) lrStart(null, f); });
+  $('lrRes').addEventListener('click', function(e){
+    if (!e.target.closest('#lrSave')) return;
+    var r = lrRes, todo = [], b = r.council || '';
+    $('lrRes').querySelectorAll('[data-lr-m]:checked').forEach(function(cb){ var m = r.matched[Number(cb.dataset.lrM)], l = m.licence; todo.push({ address: m.address, licence: { status: l.status, type: l.type, number: l.number, holder: l.holder, starts: l.starts, expires: l.expires, borough: b } }); });
+    $('lrRes').querySelectorAll('[data-lr-p]').forEach(function(sel){ if (!sel.value) return; var x = r.possible[Number(sel.dataset.lrP)], o = x.maybe.filter(function(o){ return o.key === sel.value; })[0], l = x.licence; if (o) todo.push({ address: o.address, licence: { status: l.status, type: l.type, number: l.number, holder: l.holder, starts: l.starts, expires: l.expires, borough: b } }); });
+    $('lrRes').querySelectorAll('[data-lr-x]').forEach(function(sel){ if (sel.value) todo.push({ address: r.missing[Number(sel.dataset.lrX)].address, licence: { status: sel.value, borough: b } }); });
+    if (!todo.length) { toast('Nothing ticked'); return; }
+    var btn = $('lrSave'); busy(btn, true, 'Saving…');
+    Promise.all(todo.map(function(j){ return api('PUT', '/api/admin/property-licence', j).then(function(d){ if (d.ok) { var k = propKey(j.address); propInfo[k] = Object.assign({}, propInfo[k], { property_key: k, address: j.address, licence: d.licence }); } return d.ok; })['catch'](function(){ return false; }); })).then(function(res){
+      var n = res.filter(Boolean).length; busy(btn, false);
+      toast(n + ' propert' + (n === 1 ? 'y' : 'ies') + ' updated' + (n < res.length ? ' — ' + (res.length - n) + ' couldn’t be saved' : ''));
+      if (n === res.length) { $('lrRes').innerHTML = '<p class="muted-note" style="margin:8px 0">✅ ' + n + ' propert' + (n === 1 ? 'y' : 'ies') + ' updated from the ' + esc(b || 'council') + ' register.</p>'; lrRes = null; }
+      lcShowProps(); lcRenderQueue();
       if (view === 'props') { openPropKey ? renderProperty() : renderProps(); }
     });
   });
