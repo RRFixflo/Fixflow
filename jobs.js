@@ -1666,7 +1666,7 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/available-dedupe' || path === '/available-lookup' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path) || /^\/dreams\/\d+$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
-    if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'GET') return path === '/me' || path === '/staff-activity' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
@@ -1897,13 +1897,15 @@ module.exports = function mountJobs(app, opts) {
   }));
   // Who did what (newest first), optionally for one person.
   app.get('/api/admin/staff-activity', withDb(async function (p, req, res) {
-    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-allowed' });
+    // Everyone signed in sees it; staff see the team's actions (the owner sees everything).
     const who = String(req.query.user || ''), vals = [];
     let where = '';
     if (/^\d+$/.test(who)) { vals.push(Number(who)); where = 'WHERE user_id = $1'; } else if (who === 'owner') where = "WHERE user_id IS NULL AND user_name = 'Owner'";
-    if (req.user.role === 'offers_admin') where += (where ? ' AND ' : 'WHERE ') + "user_id IN (SELECT id FROM staff_users WHERE role IN ('offers', 'offers_admin'))";
+    const teamOnly = req.role === 'offers' || req.user.role === 'offers_admin';
+    if (teamOnly) where += (where ? ' AND ' : 'WHERE ') + "user_id IN (SELECT id FROM staff_users WHERE role IN ('offers', 'offers_admin'))";
     const r = await p.query('SELECT at, user_id, user_name, action FROM staff_activity ' + where + ' ORDER BY at DESC LIMIT 300', vals);
-    res.json({ ok: true, activity: r.rows });
+    const people = (await p.query('SELECT id, name FROM staff_users WHERE disabled_at IS NULL' + (teamOnly ? " AND role IN ('offers', 'offers_admin')" : '') + ' ORDER BY name')).rows;
+    res.json({ ok: true, activity: r.rows, people: people, owner: !teamOnly });
   }));
 
   // ---------- Where staff are signed in ----------

@@ -1250,7 +1250,7 @@
     <button type="button" class="side-brand" id="brandHome" title="Back to repair jobs"><span class="side-logo"><img src="/logo-white.png" alt="Residential Realtors"></span><span class="side-sub">Maintenance portal</span></button>
     <button class="side-search" type="button" id="sideSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<span class="kbd">Ctrl K</span></button>
     <button class="nav nav-team" type="button" id="navTeam" hidden title="Managers only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Team &amp; access<small>Managers only</small></span></button>
-    <button class="nav nav-team" type="button" id="navWho" hidden title="Managers only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg><span>Who did what<small>Managers only</small></span></button>
+    <button class="nav nav-team" type="button" id="navWho" hidden title="Who did what"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg><span>Who did what<small>Managers only</small></span></button>
     <button class="nav on" type="button" id="navJobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg> Repair jobs <span class="badge" id="sOpen">0</span></button>
     <button class="nav" type="button" id="navProps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg> Properties</button>
     <button class="nav" type="button" id="navTenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg> Tenants</button>
@@ -2469,7 +2469,8 @@
         // Staff start on the Available list (links from alerts and emails open their own page).
         loadOffers().then(function(){ showView(wantLt ? 'lt' : wantOffers ? 'offers' : 'avail'); }); loadPvr(); refreshListings(true);
         // An offers team manager also gets the Team section on the Offers page.
-        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; $('stWho').hidden = false; $('navWho').hidden = false; showDeployed(d); }
+        $('stWho').hidden = false; $('navWho').hidden = false;   // everyone sees who did what
+        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; showDeployed(d); }
         return;
       }
       // Your own (full) page: Team and Who did what stay in Activity; the red manager buttons are for the staff page.
@@ -3568,7 +3569,7 @@
   $('brandHomeM').addEventListener('click', goHome);
 
   function showView(v){
-    if ((v === 'team' || v === 'who') && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
+    if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
     if (staffMode && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
@@ -12513,7 +12514,7 @@
   function teamRoles(){ return meta.user && meta.user.role === 'offers_admin' ? ['offers', 'offers_admin'] : Object.keys(TEAM_ROLES); }
   var teamUsers = [];
   function loadTeam(){
-    if (!meta.canManageUsers) { $('teamSec').hidden = true; return; }
+    if (!meta.canManageUsers) { $('teamSec').hidden = true; if (view === 'who') loadTeamFeed(); return; }
     $('teamSec').hidden = false;
     var rs = $('tmRole'), keep = rs.value; rs.innerHTML = teamRoles().map(function(k){ return '<option value="' + k + '">' + TEAM_ROLES[k] + '</option>'; }).join(''); if (teamRoles().indexOf(keep) !== -1) rs.value = keep;
     api('GET', '/api/admin/users').then(function(d){
@@ -12538,6 +12539,8 @@
     api('GET', '/api/admin/staff-activity' + (f ? '?user=' + encodeURIComponent(f) : '')).then(function(d){
       if (!d.ok) return;
       var list = d.activity || [];
+      // Without the team list (not a manager): the people to filter by come with the feed.
+      if (!meta.canManageUsers && d.people) { var sel = $('tmFilter'), cur = sel.value; sel.innerHTML = '<option value="">Everyone</option>' + (d.owner ? '<option value="owner">Main password (Owner)</option>' : '') + d.people.map(function(u){ return '<option value="' + u.id + '">' + esc(u.name) + '</option>'; }).join(''); sel.value = cur; }
       $('teamFeed').innerHTML = list.length ? '<ul class="team-feed">' + list.slice(0, 150).map(function(a){ return '<li><span class="team-av sm">' + esc((a.user_name || '?').split(/\s+/).map(function(w){ return w[0]; }).join('').slice(0, 2).toUpperCase()) + '</span><div><b>' + esc(a.user_name || 'Someone') + '</b> ' + esc(a.action.charAt(0).toLowerCase() + a.action.slice(1)) + '<small>' + esc(fmtShort(a.at)) + '</small></div></li>'; }).join('') + '</ul>' : '<p class="muted-note">Nothing recorded yet.</p>';
     });
   }
