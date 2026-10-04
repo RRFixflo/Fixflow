@@ -502,6 +502,25 @@ CREATE TABLE IF NOT EXISTS landlord_terms (
   signed_at        TIMESTAMPTZ,
   created_by       TEXT
 );
+CREATE TABLE IF NOT EXISTS available_props (
+  id             SERIAL PRIMARY KEY,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  address        TEXT NOT NULL,
+  beds           INTEGER,
+  available_from DATE,
+  vacant         BOOLEAN NOT NULL DEFAULT false,
+  rent_pw        NUMERIC(10,2),
+  rent_pcm       NUMERIC(10,2),
+  landlord       TEXT,
+  commission     TEXT,
+  contact        TEXT,
+  notes          TEXT,
+  tags           TEXT,
+  urgent         BOOLEAN NOT NULL DEFAULT false,
+  status         TEXT NOT NULL DEFAULT 'available',
+  created_by     TEXT
+);
 CREATE TABLE IF NOT EXISTS sent_emails (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1620,7 +1639,8 @@ module.exports = function mountJobs(app, opts) {
   function staffAllowed(method, path) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;
-    if (/^\/pvr(\/\d+(\/pdf)?)?$/.test(path)) return true;   // pre-viewing reservations (delete: managers only, checked in the route)
+    if (/^\/pvr(\/\d+(\/pdf)?)?$/.test(path)) return true;
+    if (/^\/available(\/\d+)?$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
@@ -1708,7 +1728,7 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/email') return ('Sent email "' + String(b.subject || '').slice(0, 120) + '" to ' + [].concat(b.to || []).join(', ').slice(0, 120)).slice(0, 300);
     const seg = path.split('/').filter(Boolean), id = seg[1] && /^\d+$/.test(seg[1]) ? Number(seg[1]) : null;
     const NOUN = { jobs: 'repair job', offers: 'offer', tenancies: 'tenancy', landlords: 'landlord', tenants: 'tenant', contractors: 'contractor', invoices: 'invoice', certificates: 'certificate', certs: 'certificate',
-      statements: 'statements', properties: 'property', parts: 'part', 'offers-staff': 'offers staff access', users: 'staff user', notices: 'tenant notice', 'property-info': 'property details' };
+      statements: 'statements', properties: 'property', parts: 'part', 'offers-staff': 'offers staff access', users: 'staff user', notices: 'tenant notice', 'property-info': 'property details', available: 'available property' };
     const noun = NOUN[seg[0]] || seg[0] || 'something';
     const refOf = function () { return seg[0] === 'jobs' && id ? ' ' + refFor(id) : seg[0] === 'offers' && id ? ' OF' + String(id).padStart(4, '0') : id ? ' #' + id : ''; };
     const what = seg.slice(id ? 2 : 1).join(' ').replace(/-/g, ' ');
@@ -6790,6 +6810,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!tenants.length || tenants.some(function (t) { return !t.name; })) return res.status(400).json({ ok: false, error: 'tenants' });
     // Company name: required for anyone employed or self-employed.
     if (tenants.some(function (t) { return (t.income_type === 'Employed' || t.income_type === 'Self-employed') && !t.company; })) return res.status(400).json({ ok: false, error: 'company' });
+    // Job title: required for anyone employed or self-employed.
+    if (tenants.some(function (t) { return (t.income_type === 'Employed' || t.income_type === 'Self-employed') && !t.position; })) return res.status(400).json({ ok: false, error: 'position' });
     // Gross annual salary: required (students who don't work have a guarantor instead).
     if (tenants.some(function (t) { return t.income_type !== 'Student' && !(parseFloat(String(t.salary || '').replace(/[£,\s]/g, '')) > 0); })) return res.status(400).json({ ok: false, error: 'salary' });
     // Guarantors: students always need one, and there must be as many complete
@@ -8237,6 +8259,50 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let cx = x;
     for (const buf of ASSOC_IMGS) { const img = await pdf.embedPng(buf), w = img.width * h / img.height; page.drawImage(img, { x: cx, y: yTop - 8 - h, width: w, height: h }); cx += w + 12; }
   }
+  // ---------- Available properties (the lettings list staff work from) ----------
+  // Kept in the database only: current tenants' contact details never go in the code.
+  function availClean(b) {
+    const n = function (v) { const x = parseFloat(String(v == null ? '' : v).replace(/[£,\s]/g, '')); return isFinite(x) && x > 0 ? Math.round(x * 100) / 100 : null; };
+    let pw = n(b.rent_pw), pcm = n(b.rent_pcm);
+    if (pw && !pcm) pcm = Math.round(pw * 52 / 12 * 100) / 100; if (pcm && !pw) pw = Math.round(pcm * 12 / 52 * 100) / 100;
+    const beds = parseInt(b.beds, 10);
+    return { address: str(b.address, 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
+      rent_pw: pw, rent_pcm: pcm, landlord: str(b.landlord, 120) || null, commission: str(b.commission, 40) || null, contact: str(b.contact, 2000) || null, notes: str(b.notes, 2000) || null,
+      tags: str(b.tags, 200) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available' };
+  }
+  const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'urgent', 'status'];
+  app.get('/api/admin/available', withDb(async function (p, req, res) {
+    res.json({ ok: true, items: (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 1000')).rows });
+  }));
+  app.post('/api/admin/available', withDb(async function (p, req, res) {
+    const b = req.body || {}, list = (Array.isArray(b.items) ? b.items : [b]).slice(0, 300).map(availClean).filter(function (x) { return x.address; });
+    if (!list.length) return res.status(400).json({ ok: false, error: 'address' });
+    const ids = [];
+    for (const x of list) {
+      const r = await p.query('INSERT INTO available_props (' + AVAIL_COLS.join(', ') + ', created_by) VALUES (' + AVAIL_COLS.map(function (c, i) { return '$' + (i + 1); }).join(', ') + ', $' + (AVAIL_COLS.length + 1) + ') RETURNING id',
+        AVAIL_COLS.map(function (c) { return x[c]; }).concat([req.user ? req.user.name : 'Office']));
+      ids.push(r.rows[0].id);
+    }
+    res.json({ ok: true, ids: ids });
+  }));
+  app.post('/api/admin/available/:id', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req);
+    if (b.status && Object.keys(b).length === 1) {
+      if (['available', 'let', 'withdrawn'].indexOf(b.status) === -1) return res.status(400).json({ ok: false, error: 'status' });
+      await p.query('UPDATE available_props SET status = $2, updated_at = now() WHERE id = $1', [id, b.status]); return res.json({ ok: true });
+    }
+    const x = availClean(b); if (!x.address) return res.status(400).json({ ok: false, error: 'address' });
+    const r = await p.query('UPDATE available_props SET ' + AVAIL_COLS.map(function (c, i) { return c + ' = $' + (i + 2); }).join(', ') + ', updated_at = now() WHERE id = $1', [id].concat(AVAIL_COLS.map(function (c) { return x[c]; })));
+    if (!r.rowCount) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json({ ok: true });
+  }));
+  app.delete('/api/admin/available/:id', withDb(async function (p, req, res) {
+    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    if ((req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
+    await p.query('DELETE FROM available_props WHERE id = $1', [jobId(req)]);
+    res.json({ ok: true });
+  }));
+
   // ---------- Pre-viewing reservations (PVR) ----------
   // An applicant reserves a property before viewing it: they sign the PVR form
   // (by private link) and pay one week's rent. After the viewing they tell us
