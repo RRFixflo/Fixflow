@@ -189,15 +189,7 @@ const jobs = require('./jobs')(app, {
   // The same AI provider the tenant page uses, for drafting emails from a job.
   canAi: function () { return !!(GEMINI_API_KEY || ANTHROPIC_API_KEY); },
   // files: optional [{ mime, data (base64) }] — PDFs and photos the AI reads directly.
-  askAi: function (prompt, wantJson, files) {
-    // Gemini first (free); if Google is overloaded and a Claude key is set, use Claude.
-    if (!GEMINI_API_KEY) return askAnthropic(prompt, wantJson, files);
-    return askGemini(prompt, wantJson, !!ANTHROPIC_API_KEY, files).then(function (r) {
-      if (r.ok || !ANTHROPIC_API_KEY) return r;
-      console.log('Gemini unavailable, using Claude');
-      return askAnthropic(prompt, wantJson, files);
-    });
-  }
+  askAi: function (prompt, wantJson, files) { return askAiSafe(prompt, wantJson, files); }
 });
 
 // Simple existence check the frontend can use to confirm a real backend is present
@@ -288,14 +280,41 @@ app.get('/api/address/get/:id', async (req, res) => {
 // a 600-token cap cut them off mid-array and they failed to parse.
 function maxOutputTokens(wantJson) { return wantJson ? 8000 : 1000; }
 
+// Ask the AI so that a busy or slow provider never reaches the person waiting:
+// Gemini first (free); if it fails, or hasn't answered after a few seconds, Claude is asked too and
+// whichever answers first is used; if both fail, Gemini gets a longer go and then Claude once more.
+function askAiSafe(prompt, wantJson, files) {
+  if (!GEMINI_API_KEY) return askAnthropic(prompt, wantJson, files).then(function (r) { return r.ok ? r : askAnthropic(prompt, wantJson, files); });
+  if (!ANTHROPIC_API_KEY) return askGemini(prompt, wantJson, false, files);
+  return new Promise(function (resolve) {
+    let done = false, left = 2, claudeOn = false;
+    const last = async function () {
+      const g = await askGemini(prompt, wantJson, false, files); if (g.ok) return resolve(g);
+      resolve(await askAnthropic(prompt, wantJson, files));
+    };
+    const finish = function (r) { if (done) return; if (r && r.ok) { done = true; return resolve(r); } if (--left === 0) { done = true; last().catch(function () { resolve({ ok: false }); }); } };
+    const claude = function (why) { if (claudeOn || done) return; claudeOn = true; console.log('Gemini ' + why + ', asking Claude too'); askAnthropic(prompt, wantJson, files).then(finish, function () { finish({ ok: false }); }); };
+    askGemini(prompt, wantJson, true, files).then(function (r) { if (!r.ok) claude('unavailable'); finish(r); }, function () { claude('failed'); finish({ ok: false }); });
+    setTimeout(function () { claude('slow'); }, (files && files.length) || wantJson ? 12000 : 6000).unref();
+  });
+}
+
+// Claude, with one retry if it's busy (429 / 5xx / 529) or the connection drops.
 async function askAnthropic(prompt, wantJson, files) {
+  let r = await askAnthropicOnce(prompt, wantJson, files);
+  if (!r.ok && r.retryable) { await new Promise(function (ok) { setTimeout(ok, 1500); }); r = await askAnthropicOnce(prompt, wantJson, files); }
+  return r;
+}
+async function askAnthropicOnce(prompt, wantJson, files) {
   const content = (files && files.length) ? files.map(function (f) {
     return f.mime === 'application/pdf'
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } }
       : { type: 'image', source: { type: 'base64', media_type: f.mime, data: f.data } };
   }).concat([{ type: 'text', text: prompt }]) : prompt;
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+  let resp;
+  try { resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
+    signal: AbortSignal.timeout(90000),
     headers: {
       'x-api-key': ANTHROPIC_API_KEY,
       'anthropic-version': '2023-06-01',
@@ -307,11 +326,11 @@ async function askAnthropic(prompt, wantJson, files) {
       max_tokens: maxOutputTokens(wantJson),
       messages: [{ role: 'user', content: content }]
     })
-  });
+  }); } catch (err) { console.error('Anthropic request failed:', (err && err.name) || err); return { ok: false, retryable: true }; }
   if (!resp.ok) {
     const errText = await resp.text().catch(function () { return ''; });
     console.error('Anthropic API error:', resp.status, errText.slice(0, 300));
-    return { ok: false };
+    return { ok: false, retryable: resp.status === 429 || resp.status >= 500 };
   }
   const data = await resp.json();
   return { ok: true, text: String((data.content && data.content[0] && data.content[0].text) || '').trim() };
@@ -413,9 +432,7 @@ app.post('/api/ai', async (req, res) => {
     const cacheKey = (wantJson ? 'json:' : 'text:') + prompt;
     let text = aiCacheGet(cacheKey);
     if (text === undefined) {
-      const result = GEMINI_API_KEY
-        ? await askGemini(prompt, wantJson)
-        : await askAnthropic(prompt, wantJson);
+      const result = await askAiSafe(prompt, wantJson);
       if (!result.ok) {
         return res.status(502).json({ ok: false, error: 'ai-provider-error' });
       }
@@ -545,6 +562,12 @@ async function sendViaResend(opts) {
   }
 }
 
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`Report tool running on port ${PORT}`);
+});
+// On a redeploy, finish the requests already running (e.g. an AI answer being written) before stopping.
+process.on('SIGTERM', function () {
+  console.log('Stopping: finishing requests in progress');
+  httpServer.close(function () { process.exit(0); });
+  setTimeout(function () { process.exit(0); }, 60000).unref();
 });
