@@ -144,7 +144,7 @@
     var f = T.fees || {}, ex = T.examples || [];
     $('app').innerHTML = '<div class="card"><h2>The fees we agreed</h2><p class="lead">For ' + esc(T.property) + '. These replace our standard scale of fees.</p>' +
       '<div class="fees">' + T.lines.map(function(l){ return '<div class="fee"><b>' + esc(l.k) + '</b><span' + (/^No (renewal|anniversary) fee$/.test(l.v) ? ' class="none"' : '') + '>' + esc(l.v) + '</span></div>'; }).join('') + '</div>' +
-      (ex.length ? '<div class="exbox"><div class="exh">Example at £1,000 a month rent' + (T.examples_vat ? ' · fees inc VAT' : '') + '</div>' + ex.map(function(x){ return '<div class="exr' + (x[0] === 'You receive' ? ' tot' : '') + '"><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b></div>'; }).join('') + '</div>' : '') +
+      (ex.length ? '<div class="exbox"><div class="exh">Example at £1,000 a month rent' + (T.examples_vat ? ' · fees inc VAT' : '') + '</div>' + ex.map(function(x){ return '<div class="exr' + (/^You receive/.test(x[0]) ? ' tot' : '') + '"><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b></div>'; }).join('') + '</div>' : '') +
       '<p class="example">Something not right? Please contact us before signing. Reference ' + esc(T.ref) + '.</p>' +
       (T.epc ? '<h3 style="margin-top:18px">Your property’s EPC</h3>' + epcBox() : '') +
       '<div class="actions"><span></span><button class="btn dark" type="button" id="n1">Continue →</button></div></div>';

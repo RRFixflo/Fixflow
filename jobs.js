@@ -7669,25 +7669,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // Worked examples at £1,000 a month, with the minimum fees applied, the monthly
   // instalments when the fee is collected monthly, and what the landlord receives.
   function feeExamples(f) {
-    // Short worked example at £1,000 a month: [what, amount] pairs.
+    // A short example at £1,000 a month: [what, amount] pairs.
     const gbp = function (v) { const r = Math.round(v * 100) / 100; return '\xA3' + r.toLocaleString('en-GB', { minimumFractionDigits: r % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
     const vat = f.vat !== false, out = [];
-    const fee = function (base, pct, min) { const calc = base * pct / 100 * (vat ? 1.2 : 1), m = Number(min) || 0; return { amt: Math.max(calc, m), minApplies: m > calc }; };
-    const hasFind = f.find !== 'none' && f.find_pct != null;
-    let findMonthly = 0;
-    if (hasFind) {
-      const x = fee(12000, f.find_pct, f.find_min);
-      if (f.find_monthly) findMonthly = x.amt / 12;
-      out.push(['Tenant find' + (x.minApplies ? ' (minimum)' : ''), f.find_monthly ? gbp(x.amt / 12) + '/month × 12' : gbp(x.amt)]);
-      if (f.renewal && f.renewal_pct != null) out.push(['Anniversary', gbp(fee(12000, f.renewal_pct, 0).amt) + ' a year']);
-    }
-    let ong = 0;
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) {
-      const x = fee(1000, f.ongoing_pct, f.ongoing_min); ong = x.amt;
-      out.push([({ manage: 'Management', both: 'Management' }[f.ongoing] || 'Rent collection') + (x.minApplies ? ' (minimum)' : ''), gbp(x.amt) + '/month']);
-    }
-    if (ong || findMonthly) out.push(['You receive', gbp(1000 - ong - findMonthly) + '/month' + (findMonthly ? ', then ' + gbp(1000 - ong) : '')]);
-    out.vat = vat;
+    const fee = function (base, pct, min) { const calc = base * pct / 100 * (vat ? 1.2 : 1), m = Number(min) || 0; return Math.max(calc, m); };
+    const hasFind = f.find !== 'none' && f.find_pct != null, hasOng = f.ongoing !== 'none' && f.ongoing_pct != null;
+    const find = hasFind ? fee(12000, f.find_pct, f.find_min) : 0, ong = hasOng ? fee(1000, f.ongoing_pct, f.ongoing_min) : 0;
+    // Collected monthly: just what we take each month and what they receive.
+    if ((hasFind && f.find_monthly) || hasOng) {
+      const monthly = ong + (hasFind && f.find_monthly ? find / 12 : 0);
+      if (hasFind && !f.find_monthly) out.push(['Tenant find (once)', gbp(find)]);
+      out.push(['Our fee each month', gbp(monthly)]);
+      out.push(['You receive each month', gbp(1000 - monthly)]);
+    } else if (hasFind) out.push(['Tenant find fee', gbp(find)]);
     return out;
   }
   function ltRef(id) { return 'LT' + String(id).padStart(4, '0'); }
@@ -7973,7 +7967,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (f.other) frows.push(['Other agreed fees', f.other, '']);
     table([['Service', 0.3], ['Fee', 0.48], ['Minimum', 0.22]], frows);
     const ex = feeExamples(f);
-    if (ex.length) { ensure(34 + ex.length * 13); rr(M, y + 4, CW, ex.length * 13 + 26, 8, C.blueBg); text('Example at \xA31,000 a month rent' + (f.vat !== false ? ' (fees include VAT)' : ''), M + 12, y - 8, 8.2, B, C.blue); ex.forEach(function (e, i) { text(e[0], M + 12, y - 22 - i * 13, 8.2, F, C.blue); text(e[1], M + 170, y - 22 - i * 13, 8.2, e[0] === 'You receive' ? B : F, C.blue); }); y -= ex.length * 13 + 34; }
+    if (ex.length) { ensure(34 + ex.length * 13); rr(M, y + 4, CW, ex.length * 13 + 26, 8, C.blueBg); text('Example at \xA31,000 a month rent' + (f.vat !== false ? ' (fees include VAT)' : ''), M + 12, y - 8, 8.2, B, C.blue); ex.forEach(function (e, i) { text(e[0], M + 12, y - 22 - i * 13, 8.2, F, C.blue); text(e[1], M + 170, y - 22 - i * 13, 8.2, /^You receive/.test(e[0]) ? B : F, C.blue); }); y -= ex.length * 13 + 34; }
     band('Key points');
     (LT_TERMS.intro || []).forEach(function (s, i) { if (i === 0 && !(f.renewal && f.find !== 'none')) s = 'Under these terms you will be liable to pay Residential Realtors\' commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.'; para(s, { size: 8.6 }); });
 
