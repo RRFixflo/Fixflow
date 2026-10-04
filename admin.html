@@ -583,6 +583,7 @@
   .pt-paste { border: 1px solid var(--line, #e6e8ec); border-radius: 12px; padding: 10px; margin: 8px 0; background: #f9fafb; }
   .pt-row { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line, #e6e8ec); } .pt-row [data-ptuse] { grid-row: span 2; } .pt-row .inp { min-width: 0; } .pt-dup { grid-column: 2 / -1; color: #b54708; font-size: .76rem; }
   .pt-badge { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: .72rem; font-weight: 700; margin-left: 4px; } .pt-badge.lead { background: #ecfdf3; color: #067647; border: 1px solid #abefc6; } .pt-badge.guar { background: #fffaeb; color: #b54708; border: 1px solid #fedf89; }
+  .pt-role { width: auto; min-height: 30px; padding: 2px 6px; font-size: .78rem; margin-right: 6px; }
   .pt-guar-h { font-weight: 700; margin: 12px 0 2px; font-size: .9rem; }
   @media (max-width: 520px) { .pt-row { grid-template-columns: auto 1fr; } .pt-row [data-ptuse] { grid-row: span 4; } }
   .av-known { background: #ecfdf3; border: 1px solid #abefc6; border-radius: 10px; padding: 8px 10px; font-size: .84rem; display: grid; gap: 3px; } .av-known.new { background: #f9fafb; border-color: var(--line, #e6e8ec); color: var(--ink-soft); }
@@ -4391,16 +4392,21 @@
       (cur.length ? cur.map(function(t){
         return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1;min-width:0"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
           '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
-          '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Moved out</button></div>';
+          ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Moved out</button></div>';
       }).join('') : '<p class="muted-note">No tenants saved for this property yet.</p>') +
       (guar.length ? '<div class="pt-guar-h">Guarantors <span class="count-chip">' + guar.length + '</span></div>' + guar.map(function(t){
         return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1;min-width:0"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Guarantor') + '</button> <span class="pt-badge guar">Guarantor' + (t.guarantorFor ? ' for ' + esc(t.guarantorFor) : '') + '</span>' +
           '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
-          '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Remove</button></div>';
+          ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Remove</button></div>';
       }).join('') : '') +
       (past.length ? '<div class="prop-sub" style="margin-top:8px">Moved out: ' + past.map(function(t){ return '<button type="button" class="btn ghost small" style="padding:0" data-pt-open="' + t.id + '">' + esc(t.name) + '</button>'; }).join(', ') + '</div>' : '');
     $('ptAdd').addEventListener('click', function(){ openTenantForm(null, pr.address); });
     $('ptPaste').addEventListener('click', function(){ ptPasteOpen(pr); });
+    $('propTenants').querySelectorAll('[data-pt-role]').forEach(function(sel){ sel.addEventListener('change', function(){
+      var id = Number(sel.dataset.ptRole), role = sel.value, body = { address: pr.address, role: role };
+      if (role === 'guarantor') { var opts = cur.filter(function(x){ return x.id !== id; }).map(function(x){ return x.name; }); var who = prompt('Whose guarantor are they?' + (opts.length ? ' (e.g. ' + opts.slice(0, 3).join(', ') + ')' : ''), opts[0] || ''); if (who === null) { renderPropTenants(pr); return; } body.guarantor_for = who.trim(); }
+      tenantPropertyUpdate(id, body, role === 'guarantor' ? 'Marked as a guarantor' : role === 'lead' ? 'Marked as the lead tenant' : 'Marked as a tenant').then(function(){ if (openPropKey) openProperty(openPropKey); });
+    }); });
     $('propTenants').querySelectorAll('[data-pt-open]').forEach(function(b){ b.addEventListener('click', function(){ openTenant(Number(b.dataset.ptOpen)); }); });
     $('propTenants').querySelectorAll('[data-pt-out]').forEach(function(b){ b.addEventListener('click', function(){
       var t = tenantRecById(Number(b.dataset.ptOut));
@@ -4411,6 +4417,7 @@
   // Copied tenancy pages (name line, then "Lead Tenant" / "Tenant" / "Guarantor", then "Phone07…", "Emailx@y"…).
   var PT_ROLE = /^(lead tenant|main tenant|joint tenant|tenant|guarantor|permitted occupier|occupant)$/i;
   var PT_SKIP = /^(share of rent|account creation|pending|completed|verified|active|status|rent share|deposit share|referencing|right to rent)\b/i;
+  function ptRoleSel(t){ return '<select class="inp pt-role" data-pt-role="' + t.id + '" title="Their role at this property"><option value="lead"' + (t.role === 'lead' ? ' selected' : '') + '>Lead tenant</option><option value="tenant"' + (!t.role || t.role === 'tenant' ? ' selected' : '') + '>Tenant</option><option value="guarantor"' + (t.role === 'guarantor' ? ' selected' : '') + '>Guarantor</option></select>'; }
   function ptStructured(text){
     var out = [], cur = null;
     String(text || '').replace(/\r/g, '').split('\n').forEach(function(raw){
@@ -4457,7 +4464,7 @@
       var have = tenantsAtProperty(pr.address).concat(tenantsAtProperty(pr.address, false, true)).map(function(t){ return [String(t.phone || '').replace(/\D/g, '').slice(-10), String(t.email || '').toLowerCase()]; });
       $('ptPrev').innerHTML = '<p class="muted-note" style="margin:8px 0 4px">Found ' + ppl.length + ' ' + (ppl.length === 1 ? 'person' : 'people') + ' — check the details, then save.</p>' + ppl.map(function(p, i){
         var dup = have.some(function(h){ return (h[0] && h[0] === p.phone.replace(/\D/g, '').slice(-10)) || (h[1] && h[1] === p.email.toLowerCase()); });
-        return '<div class="pt-row" data-pt="' + i + '"><input type="checkbox" data-ptuse' + (dup ? '' : ' checked') + ' title="Save this person"><input class="inp" data-ptf="name" placeholder="Name" value="' + esc(p.name) + '"><input class="inp" data-ptf="phone" placeholder="Mobile" value="' + esc(p.phone) + '"><input class="inp" data-ptf="email" placeholder="Email" value="' + esc(p.email) + '"><select class="inp" data-ptf="role"><option value="lead"' + (p.role === 'lead' ? ' selected' : '') + '>Lead tenant</option><option value="tenant"' + (p.role === 'tenant' ? ' selected' : '') + '>Tenant</option><option value="guarantor"' + (p.role === 'guarantor' ? ' selected' : '') + '>Guarantor' + (p.guarantor_for ? ' for ' + esc(p.guarantor_for) : '') + '</option></select><input type="hidden" data-ptf="guarantor_for" value="' + esc(p.guarantor_for || '') + '"><input type="hidden" data-ptf="notes" value="' + esc(p.notes || '') + '">' + (dup ? '<small class="pt-dup">already saved here</small>' : '') + '</div>';
+        return '<div class="pt-row" data-pt="' + i + '"><input type="checkbox" data-ptuse checked title="Save this person"><input class="inp" data-ptf="name" placeholder="Name" value="' + esc(p.name) + '"><input class="inp" data-ptf="phone" placeholder="Mobile" value="' + esc(p.phone) + '"><input class="inp" data-ptf="email" placeholder="Email" value="' + esc(p.email) + '"><select class="inp" data-ptf="role"><option value="lead"' + (p.role === 'lead' ? ' selected' : '') + '>Lead tenant</option><option value="tenant"' + (p.role === 'tenant' ? ' selected' : '') + '>Tenant</option><option value="guarantor"' + (p.role === 'guarantor' ? ' selected' : '') + '>Guarantor' + (p.guarantor_for ? ' for ' + esc(p.guarantor_for) : '') + '</option></select><input type="hidden" data-ptf="guarantor_for" value="' + esc(p.guarantor_for || '') + '"><input type="hidden" data-ptf="notes" value="' + esc(p.notes || '') + '">' + (dup ? '<small class="pt-dup">already saved here — saving updates their details and role</small>' : '') + '</div>';
       }).join('') + '<div style="margin-top:8px"><button type="button" class="btn small primary" id="ptSave">Save tenants</button></div>';
       $('ptSave').addEventListener('click', function(){
         var rows = Array.prototype.slice.call($('ptPrev').querySelectorAll('.pt-row')).filter(function(r){ return r.querySelector('[data-ptuse]').checked; }).map(function(r){ var o = { property_address: pr.address }; r.querySelectorAll('[data-ptf]').forEach(function(f){ o[f.dataset.ptf] = f.value.trim(); }); return o; });
@@ -8085,10 +8092,13 @@
     var src = '', add = function(x){ x = { name: x.name || '', email: x.email || '', phone: x.phone || '' }; if ((tNameKey(x.name) || x.phone || x.email) && !seen(x)) { Object.defineProperty(x, 'src', { value: src, enumerable: false }); out.push(x); } };
     var here = function(a){ return a && (propKey(a) === pr.key || addrSame(a, pr.address)); };
     src = 'saved';
-    (tenantLinks || []).forEach(function(l){
+    // Lead tenant first; guarantors aren't tenants (they go in the tenancy's Guarantors).
+    (tenantLinks || []).filter(function(l){ return l.role !== 'guarantor'; }).sort(function(a, b){ return (b.role === 'lead') - (a.role === 'lead'); }).forEach(function(l){
       if (l.moved_out_at || !(l.property_key === pr.key || here(l.address))) return;
       var r = tenantRecById(l.tenant_id); if (r) add(r);
     });
+    var guarNames = {}; (tenantLinks || []).forEach(function(l){ if (l.role === 'guarantor' && (l.property_key === pr.key || here(l.address))) { var r = tenantRecById(l.tenant_id); if (r) guarNames[tNameKey(r.name)] = 1; } });
+    var add0 = add; add = function(x){ if (x && guarNames[tNameKey(x.name)]) return; add0(x); };
     src = 'jobs';
     var from = since || addMonthsIso(isoDay(new Date()), -18);
     jobs.filter(function(j){ return here(j.property_address) && String(j.created_at || '').slice(0, 10) >= from; })
@@ -11436,8 +11446,16 @@
 
   // The tenants saved at the property: fill an empty tenant list with them, or
   // add missing phone numbers / emails to the tenants already typed in.
+  // Guarantors saved at the property (from a paste or the property page) fill an empty Guarantors list.
+  function tcyFillGuarantors(d, pr){
+    if ((d.guarantors || []).some(function(x){ return x && (x.name || x.phone || x.email); })) return 0;
+    var g = (tenantLinks || []).filter(function(l){ return l.role === 'guarantor' && !l.moved_out_at && l.property_key === pr.key; }).map(function(l){ var r = tenantRecById(l.tenant_id); return r ? { name: r.name || '', email: r.email || '', phone: r.phone || '' } : null; }).filter(Boolean);
+    if (g.length) d.guarantors = g;
+    return g.length;
+  }
   function tcyFillTenants(d){
     var pr = d.address && matchProperty(d.address); if (!pr) return 0;
+    tcyFillGuarantors(d, pr);
     var onFile = tcyOnFileTenants(pr, d.start_date && d.start_date <= isoDay(new Date()) ? d.start_date : ''); if (!onFile.length) return 0;
     var list = (d.tenants || []).filter(function(x){ return x && (x.name || x.phone || x.email); });
     if (!list.length) { d.tenants = onFile.map(function(x){ return Object.assign({}, x); }); return d.tenants.length; }
