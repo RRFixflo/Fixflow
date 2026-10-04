@@ -11537,7 +11537,7 @@
         '<div class="num fee">' +
           // Our fee in plain words: how much, and when it's taken.
           (c.monthlyFee ? esc(gbp(c.monthlyFee)) + '<small>a month, from the rent</small>' + (c.vatOn ? '<small class="fee-vat"><b>' + esc(gbp(r2(c.monthlyFee * 1.2))) + '</b> a month inc. VAT</small>' : '') : '') +
-          (c.upfrontFee ? (c.monthlyFee ? '<small style="color:var(--ink)"><b>+ ' + esc(gbp(c.upfrontFee)) + '</b> a year, up front</small>' : esc(gbp(c.upfrontFee)) + '<small>a year, paid up front</small>' + '<small class="fee-vat"><b>' + esc(gbp(r2(c.upfrontFee * (c.vatOn ? 1.2 : 1) / 12))) + '</b> a month' + (c.vatOn ? ' inc. VAT' : '') + ' over the year</small>') : '') +
+          (c.upfrontFee ? (c.monthlyFee ? '<small style="color:var(--ink)"><b>+ ' + esc(gbp(c.upfrontFee)) + '</b> a year, up front</small>' : esc(gbp(c.upfrontFee)) + '<small>a year, paid up front</small>') : '') +
           (!c.monthlyFee && !c.upfrontFee ? '—<small>' + (/rent\s*4\s*rent/i.test(String(d.service || '')) ? 'Rent4Rent — no fee' : 'no fee set') + '</small>' : '<small>' + esc(gbp(c.monthlyFee * 12 + c.upfrontFee)) + ' a year' + (c.vatOn ? ' · <b>' + esc(gbp(r2((c.monthlyFee * 12 + c.upfrontFee) * 1.2))) + '</b> inc. VAT' : '') + '</small>') +
           '</div><div class="when">' + esc(tcyStatus(d)) +
           '<small style="color:' + (c.btLeft > 0.004 ? 'var(--red, #c00)' : 'var(--green, #16a34a)') + '">' + (c.btLeft > 0.004 ? esc(gbp(c.btLeft)) + ' still to pay' : 'Move-in monies paid ✓') + '</small></div><span class="chev">›</span></button>';
