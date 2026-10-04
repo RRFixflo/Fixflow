@@ -2355,6 +2355,7 @@
   $('logoutBtn').addEventListener('click', function(){ api('POST', '/api/admin/logout', {}).then(showLogin); });
 
   function start(){
+    var wantLt = location.hash === '#lt';   // a link from the "landlord signed" email
     api('GET', '/api/admin/me').then(function(d){
       if (!d.ok) { if (d.status !== 401) showLogin(); return; }
       meta = d;
@@ -2367,7 +2368,7 @@
       if (d.role === 'offers') {
         staffMode = true; document.body.classList.add('staff-mode'); $('staffTabs').hidden = false;
         if (!history.state) history.replaceState({ v: 'offers', depth: 0 }, '', location.pathname);
-        loadOffers().then(function(){ showView('offers'); }); loadPvr();
+        loadOffers().then(function(){ showView(wantLt ? 'lt' : 'offers'); }); loadPvr();
         // An offers team manager also gets the Team section on the Offers page.
         if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; $('stWho').hidden = false; $('navWho').hidden = false; }
         return;
@@ -2388,6 +2389,7 @@
   // Links from phone alerts land on /admin#job=123 and open that job.
   function openJobFromLink(){
     if (location.hash === '#offers') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('offers'); return; }
+    if (location.hash === '#lt') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('lt'); return; }
     if (location.hash === '#certs') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('certs'); return; }
     var m = /^#job=(\d+)$/.exec(location.hash);
     if (!m) return;

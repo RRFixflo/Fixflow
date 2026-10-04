@@ -5724,6 +5724,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: topic, click: base ? base + '/staff' : undefined }, body)), signal: AbortSignal.timeout(8000) });
     } catch (err) { console.error('Staff offer alert failed:', err.message); }
   }
+  // Email every active staff member who has an email address (each with the sign-in link that
+  // suits their access). Kept in Sent emails as sent automatically.
+  async function staffEmailAll(subject, textFor, hash) {
+    const p = await db(); if (!p || !canEmail() || !sendEmail) return;
+    const users = (await p.query("SELECT id, name, email, role FROM staff_users WHERE disabled_at IS NULL AND coalesce(email, '') <> ''")).rows.filter(function (u) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(u.email).trim()); });
+    for (const u of users) {
+      const offersOnly = u.role === 'offers' || u.role === 'offers_admin', link = (offersOnly ? (OFFER_ORIGIN || PUBLIC_URL) + '/staff' : (PUBLIC_URL || OFFER_ORIGIN) + '/admin') + (hash || '');
+      const text = 'Hi ' + (String(u.name || '').split(/\s+/)[0] || 'there') + ',\n\n' + textFor(link);
+      const r = await sendEmail({ to: [String(u.email).trim()], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
+      p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', ['Fixflow (automatic)', [String(u.email).trim()], 'info@residentialrealtors.co.uk', subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
+    }
+  }
   // Our emails as a modern branded page: navy header with the logo, the message,
   // a big button for our main link (terms, offer, tracking page), a signature card
   // and the company footer. Built from the plain text, which is sent alongside it.
@@ -5735,7 +5747,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (di !== -1) { disclaimer = body.slice(di).trim(); body = body.slice(0, di); }
     let sig = []; const sm = /\n\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Thanks,?|Yours sincerely,?)\s*\n([\s\S]*)$/i.exec(body);
     if (sm) { sig = sm[2].split('\n').map(function (l) { return l.trim(); }).filter(Boolean); body = body.slice(0, sm.index); }
-    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer']];
+    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer']];
     const buttons = [];
     const btnOf = function (b) { return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 22px"><tr><td style="background:#0b1f3a;border-radius:12px"><a href="' + e(b.url) + '" style="display:inline-block;padding:15px 26px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">' + e(b.label) + ' &rarr;</a></td></tr></table><p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3">Or copy this link: <a href="' + e(b.url) + '" style="color:#98a2b3;word-break:break-all">' + e(b.url) + '</a></p>'; };
     const linkify = function (t) { return e(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, function (u) { return '<a href="' + u + '" style="color:#1d3fae;text-decoration:underline">' + u + '</a>'; }); };
@@ -7976,7 +7988,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (attached.length) data.attached = attached;
     await p.query("UPDATE landlord_terms SET status = 'signed', signed_at = now(), data = $2, log = log || $3::jsonb WHERE id = $1",
       [t.id, JSON.stringify(data), JSON.stringify([ltLog(req, 'Terms of business and property details signed by ' + sig + (data.start_now ? ' - asked us to start work straight away' : ''), 'landlord')])]);
-    offerAlert({ title: 'Landlord Terms signed: ' + shortAddrText(t.property_address), message: (t.landlord_name || 'The landlord') + ' signed the terms of business (' + ltRef(t.id) + ').', tags: ['memo'] }, { office: true }).catch(function () {});
+    offerAlert({ title: '\u2705 Landlord Terms signed: ' + shortAddrText(t.property_address), message: (t.landlord_name || 'The landlord') + ' signed the terms of business (' + ltRef(t.id) + ')' + (data.start_now ? ' - start work straight away.' : '.'), tags: ['tada'] }, { office: true }).catch(function () {});
+    staffEmailAll('\u2705 Landlord terms signed - ' + shortAddrText(t.property_address), function (link) {
+      return 'Good news - ' + (t.landlord_name || 'the landlord') + ' has signed the terms of business for ' + t.property_address + ' (' + ltRef(t.id) + ').\n\n' +
+        feeLines(t.fees || {}).map(function (l) { return l.k + ': ' + l.v; }).join('\n\n') + '\n\nStart work: ' + (data.start_now ? 'straight away (they waived the 14-day cancellation period)' : 'after the 14-day cancellation period') + (attached.length ? '\nThey attached: ' + attached.join(', ') : '') +
+        '\n\nSee everything they told us and the signed PDF in Landlord Terms: ' + link + '\n\nFixflow';
+    }, '#lt').catch(function (e) { console.error('Staff email failed:', e.message); });
     res.json({ ok: true, pdf: '/api/landlord-terms/' + t.token + '/pdf' });
   }));
   app.get('/api/landlord-terms/:token/pdf', withDb(async function (p, req, res) {
