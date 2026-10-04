@@ -1552,6 +1552,8 @@
             <div class="off-pvr" id="offPvr" hidden><label>Rent<span style="display:flex;gap:6px"><input class="inp" id="pvRent2" inputmode="decimal" placeholder="e.g. 450"><select class="inp" id="pvPer2" style="width:auto"><option value="pw">per week</option><option value="pcm">per month</option></select></span></label><label>PVR amount £ <span class="muted-note" style="margin:0">one week’s rent</span><input class="inp" id="pvAmt2" inputmode="decimal"></label><label>Viewing <span class="muted-note" style="margin:0">optional — starts the 24 hours</span><input class="inp" id="pvAt2" type="datetime-local"></label><label class="switch-row" style="align-self:end"><input type="checkbox" id="pvAddV2" checked> Also add it to Viewings</label></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><input class="inp" id="offToName" placeholder="Their name" style="flex:1;min-width:140px"><input class="inp" id="offTo" placeholder="Their mobile or email (optional)" style="flex:1;min-width:200px"><button class="btn small wa-btn" type="button" id="offSendWa">WhatsApp</button><button class="btn small" type="button" id="offSendMail">✉ Email</button></div></div>
         </details>
+        <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="offMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="offMaxAll">▾ Expand all</button></span></div>
+        <div id="offList" style="margin-bottom:14px"></div>
         <details class="card" id="offMonth" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📊 Accepted offers by month <span class="muted-note" id="offMonthSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
           <div class="om-nav"><button class="om-arrow" type="button" id="offMonPrev" aria-label="Previous month">‹</button><div class="om-cur"><b id="offMonLbl"></b><button type="button" class="linkish" id="offMonNow" hidden>Back to this month</button></div><button class="om-arrow" type="button" id="offMonNext" aria-label="Next month">›</button><input type="month" id="offMon" hidden></div>
           <div class="om-strip" id="offMonStrip"></div>
@@ -1593,8 +1595,6 @@
             <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offAlertLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offAlertCopy">Copy</button></div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small ghost" type="button" id="offStaffOut">Sign all staff out</button><button class="btn small ghost danger" type="button" id="offStaffOff">Turn off staff access</button></div>
         </details>
-        <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="offMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="offMaxAll">▾ Expand all</button></span></div>
-        <div id="offList"></div>
       </div>
 
       <div id="certsView" hidden>
