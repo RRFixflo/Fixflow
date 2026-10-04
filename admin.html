@@ -579,6 +579,8 @@
   .ll-find-list { display: grid; gap: 6px; margin-top: 8px; max-height: 320px; overflow: auto; } .ll-find-hit { display: flex; align-items: center; gap: 10px; text-align: left; border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 10px; padding: 8px 10px; cursor: pointer; font: inherit; color: inherit; } .ll-find-hit:hover { border-color: #101828; } .ll-find-hit b { flex: 1; font-size: .88rem; } .ll-find-hit span { color: var(--ink-soft); font-size: .78rem; } .ll-find-hit i { font-style: normal; font-weight: 700; color: #155eef; }
   .pt-paste { border: 1px solid var(--line, #e6e8ec); border-radius: 12px; padding: 10px; margin: 8px 0; background: #f9fafb; }
   .pt-row { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line, #e6e8ec); } .pt-row [data-ptuse] { grid-row: span 2; } .pt-row .inp { min-width: 0; } .pt-dup { grid-column: 2 / -1; color: #b54708; font-size: .76rem; }
+  .pt-badge { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: .72rem; font-weight: 700; margin-left: 4px; } .pt-badge.lead { background: #ecfdf3; color: #067647; border: 1px solid #abefc6; } .pt-badge.guar { background: #fffaeb; color: #b54708; border: 1px solid #fedf89; }
+  .pt-guar-h { font-weight: 700; margin: 12px 0 2px; font-size: .9rem; }
   @media (max-width: 520px) { .pt-row { grid-template-columns: auto 1fr; } .pt-row [data-ptuse] { grid-row: span 4; } }
   .av-known { background: #ecfdf3; border: 1px solid #abefc6; border-radius: 10px; padding: 8px 10px; font-size: .84rem; display: grid; gap: 3px; } .av-known.new { background: #f9fafb; border-color: var(--line, #e6e8ec); color: var(--ink-soft); }
   .av-access { border: 1px solid var(--line, #e6e8ec); border-radius: 10px; padding: 6px 8px; margin: 6px 0; font-size: .84rem; } .av-acc-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; } .av-acc-lbl { font-weight: 700; margin-right: 4px; }
@@ -4380,14 +4382,19 @@
     });
   });
   function renderPropTenants(pr){
-    var cur = tenantsAtProperty(pr.address), past = tenantsAtProperty(pr.address, true).filter(function(t){ return t.movedOut; });
+    var cur = tenantsAtProperty(pr.address), past = tenantsAtProperty(pr.address, true).filter(function(t){ return t.movedOut; }), guar = tenantsAtProperty(pr.address, false, true);
     $('propTenants').innerHTML = '<h3>Tenants <span class="count-chip">' + cur.length + '</span><span style="flex:1"></span><button class="btn small ghost" id="ptPaste" type="button" title="Paste names, numbers and emails in any layout">📋 Paste details</button> <button class="btn small" id="ptAdd" type="button">+ Add tenant</button></h3>' +
       '<div id="ptPasteBox" hidden></div>' +
       (cur.length ? cur.map(function(t){
-        return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1;min-width:0"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' +
+        return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1;min-width:0"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
           '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
           '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Moved out</button></div>';
       }).join('') : '<p class="muted-note">No tenants saved for this property yet.</p>') +
+      (guar.length ? '<div class="pt-guar-h">Guarantors <span class="count-chip">' + guar.length + '</span></div>' + guar.map(function(t){
+        return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1;min-width:0"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Guarantor') + '</button> <span class="pt-badge guar">Guarantor' + (t.guarantorFor ? ' for ' + esc(t.guarantorFor) : '') + '</span>' +
+          '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
+          '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Remove</button></div>';
+      }).join('') : '') +
       (past.length ? '<div class="prop-sub" style="margin-top:8px">Moved out: ' + past.map(function(t){ return '<button type="button" class="btn ghost small" style="padding:0" data-pt-open="' + t.id + '">' + esc(t.name) + '</button>'; }).join(', ') + '</div>' : '');
     $('ptAdd').addEventListener('click', function(){ openTenantForm(null, pr.address); });
     $('ptPaste').addEventListener('click', function(){ ptPasteOpen(pr); });
@@ -4398,7 +4405,28 @@
     }); });
   }
   // Paste a bunch of tenant details (an email, a form, WhatsApp, a spreadsheet…): sorted into people to check and save.
+  // Copied tenancy pages (name line, then "Lead Tenant" / "Tenant" / "Guarantor", then "Phone07…", "Emailx@y"…).
+  var PT_ROLE = /^(lead tenant|main tenant|joint tenant|tenant|guarantor|permitted occupier|occupant)$/i;
+  var PT_SKIP = /^(share of rent|account creation|pending|completed|verified|active|status|rent share|deposit share|referencing|right to rent)\b/i;
+  function ptStructured(text){
+    var out = [], cur = null;
+    String(text || '').replace(/\r/g, '').split('\n').forEach(function(raw){
+      var l = raw.replace(/^\s*([*•\-–]|\d+[.)])\s*/, '').trim(); if (!l) return;
+      var m;
+      if (PT_ROLE.test(l)) { if (cur) cur.role = /lead|main/i.test(l) ? 'lead' : /guarantor/i.test(l) ? 'guarantor' : 'tenant'; return; }
+      if ((m = /^(phone|mobile|mob|tel|telephone|contact number)\s*:?\s*(.*)$/i.exec(l))) { if (cur && !cur.phone) cur.phone = m[2].trim(); return; }
+      if ((m = /^(e-?mail(?: address)?)\s*:?\s*(.*)$/i.exec(l))) { if (cur && !cur.email) cur.email = m[2].trim(); return; }
+      if ((m = /^guarantor (?:to|for)\s*:?\s*(.*)$/i.exec(l))) { if (cur) { cur.role = 'guarantor'; cur.guarantor_for = m[1].trim(); } return; }
+      if (/^guaranteed by/i.test(l) || PT_SKIP.test(l) || /^£/.test(l)) return;
+      if (/^((mr|mrs|ms|miss|dr|mx)\.?\s+)?[A-Z][A-Za-z'’\-]*(\s+[A-Za-z'’\-]+){0,5}$/.test(l) && !avPhones(l).length && !avEmails(l).length) { cur = { name: l, phone: '', email: '', notes: '', role: 'tenant', guarantor_for: '' }; out.push(cur); return; }
+      // Anything else with a number or email belongs to the person above.
+      if (cur) { var ph = avPhones(l), em = avEmails(l); if (ph.length && !cur.phone) cur.phone = ph[0]; if (em.length && !cur.email) cur.email = em[0]; }
+    });
+    return out.filter(function(p){ return p.phone || p.email; });
+  }
   function ptPeople(text){
+    var st = ptStructured(text);
+    if (st.length && st.some(function(p){ return p.role !== 'tenant' || /\b(phone|e-?mail)/i.test(text); })) return st;
     var t = String(text || '').replace(/\r/g, '').split('\n').map(function(l){
       return l.replace(/^\s*(\d+[.)]|[-•*])\s+/, '').replace(/^\s*((lead |main |joint )?tenant\s*\d*|full name|name|applicant\s*\d*|occupant\s*\d*)\s*[:\-–]\s*/i, '').replace(/\t+/g, ' / ');
     }).join('\n');
@@ -4411,7 +4439,7 @@
       if (!names.length) return line;
       return names.map(function(n, i){ var part = line.slice(n.at + n.name.length, i + 1 < names.length ? names[i + 1].at : line.length); return [n.name].concat(avPhones(part), avEmails(part)).join('\n'); }).join('\n\n');
     }).join('\n');
-    return avPeople(t).map(function(p){ return { name: p.name || '', phone: p.phones[0] || '', email: p.mails[0] || '', notes: [p.phones.slice(1).join(' / '), p.mails.slice(1).join(' / '), p.notes.join(' · ')].filter(Boolean).join(' · ') }; })
+    return avPeople(t).map(function(p){ return { role: 'tenant', guarantor_for: '', name: p.name || '', phone: p.phones[0] || '', email: p.mails[0] || '', notes: [p.phones.slice(1).join(' / '), p.mails.slice(1).join(' / '), p.notes.join(' · ')].filter(Boolean).join(' · ') }; })
       .filter(function(p){ return p.name || p.phone || p.email; });
   }
   function ptPasteOpen(pr){
@@ -4423,10 +4451,10 @@
     $('ptRead').addEventListener('click', function(){
       var ppl = ptPeople($('ptTxt').value);
       if (!ppl.length) { $('ptPrev').innerHTML = '<p class="muted-note">I couldn’t find a name, mobile or email in that.</p>'; return; }
-      var have = tenantsAtProperty(pr.address).map(function(t){ return [String(t.phone || '').replace(/\D/g, '').slice(-10), String(t.email || '').toLowerCase()]; });
+      var have = tenantsAtProperty(pr.address).concat(tenantsAtProperty(pr.address, false, true)).map(function(t){ return [String(t.phone || '').replace(/\D/g, '').slice(-10), String(t.email || '').toLowerCase()]; });
       $('ptPrev').innerHTML = '<p class="muted-note" style="margin:8px 0 4px">Found ' + ppl.length + ' ' + (ppl.length === 1 ? 'person' : 'people') + ' — check the details, then save.</p>' + ppl.map(function(p, i){
         var dup = have.some(function(h){ return (h[0] && h[0] === p.phone.replace(/\D/g, '').slice(-10)) || (h[1] && h[1] === p.email.toLowerCase()); });
-        return '<div class="pt-row" data-pt="' + i + '"><input type="checkbox" data-ptuse' + (dup ? '' : ' checked') + ' title="Save this person"><input class="inp" data-ptf="name" placeholder="Name" value="' + esc(p.name) + '"><input class="inp" data-ptf="phone" placeholder="Mobile" value="' + esc(p.phone) + '"><input class="inp" data-ptf="email" placeholder="Email" value="' + esc(p.email) + '"><input class="inp" data-ptf="notes" placeholder="Notes" value="' + esc(p.notes) + '">' + (dup ? '<small class="pt-dup">already saved here</small>' : '') + '</div>';
+        return '<div class="pt-row" data-pt="' + i + '"><input type="checkbox" data-ptuse' + (dup ? '' : ' checked') + ' title="Save this person"><input class="inp" data-ptf="name" placeholder="Name" value="' + esc(p.name) + '"><input class="inp" data-ptf="phone" placeholder="Mobile" value="' + esc(p.phone) + '"><input class="inp" data-ptf="email" placeholder="Email" value="' + esc(p.email) + '"><select class="inp" data-ptf="role"><option value="lead"' + (p.role === 'lead' ? ' selected' : '') + '>Lead tenant</option><option value="tenant"' + (p.role === 'tenant' ? ' selected' : '') + '>Tenant</option><option value="guarantor"' + (p.role === 'guarantor' ? ' selected' : '') + '>Guarantor' + (p.guarantor_for ? ' for ' + esc(p.guarantor_for) : '') + '</option></select><input type="hidden" data-ptf="guarantor_for" value="' + esc(p.guarantor_for || '') + '"><input type="hidden" data-ptf="notes" value="' + esc(p.notes || '') + '">' + (dup ? '<small class="pt-dup">already saved here</small>' : '') + '</div>';
       }).join('') + '<div style="margin-top:8px"><button type="button" class="btn small primary" id="ptSave">Save tenants</button></div>';
       $('ptSave').addEventListener('click', function(){
         var rows = Array.prototype.slice.call($('ptPrev').querySelectorAll('.pt-row')).filter(function(r){ return r.querySelector('[data-ptuse]').checked; }).map(function(r){ var o = { property_address: pr.address }; r.querySelectorAll('[data-ptf]').forEach(function(f){ o[f.dataset.ptf] = f.value.trim(); }); return o; });
@@ -4538,10 +4566,11 @@
     });
   }
   // Tenants at a property (current ones first; moved-out only if asked).
-  function tenantsAtProperty(address, withMoved){
+  // Tenants at a property (guarantors only when asked — they're not who contractors call).
+  function tenantsAtProperty(address, withMoved, guarantors){
     var k = propKey(address);
-    return tenantLinks.filter(function(l){ return l.property_key === k && (withMoved || !l.moved_out_at); })
-      .map(function(l){ var t = tenantRecById(l.tenant_id); return t ? Object.assign({ movedOut: l.moved_out_at }, t) : null; }).filter(Boolean);
+    return tenantLinks.filter(function(l){ return l.property_key === k && (withMoved || !l.moved_out_at) && (guarantors ? l.role === 'guarantor' : l.role !== 'guarantor'); })
+      .map(function(l){ var t = tenantRecById(l.tenant_id); return t ? Object.assign({ movedOut: l.moved_out_at, role: l.role || '', guarantorFor: l.guarantor_for || '' }, t) : null; }).filter(Boolean);
   }
   function jobsForTenant(t){
     var tail = phoneTail(t.phone), keys = tenantProps(t).map(function(x){ return x.key; }), nm = String(t.name || '').trim().toLowerCase();
