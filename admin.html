@@ -1849,7 +1849,8 @@
     <div id="tmFromRow" hidden><label class="lbl" for="tmFrom">From (your Outlook)</label><select class="inp" id="tmFrom"></select></div>
     <div><label class="lbl" for="tmTo">To</label><input class="inp" id="tmTo" placeholder="name@example.com, …"></div>
     <div><label class="lbl" for="tmSubject">Subject</label><input class="inp" id="tmSubject"></div>
-    <div><label class="lbl" for="tmBody">Message <span class="muted-note" style="margin:0;font-weight:500">— you can edit it here</span></label><div class="mail-preview" id="tmBody" contenteditable="true" spellcheck="true"></div></div>
+    <div><div class="ml-tabs" style="margin-bottom:6px"><button type="button" class="on" data-tmv="edit">✏️ Write</button><button type="button" data-tmv="look">👁 Preview — how they’ll see it</button></div>
+      <div class="mail-preview" id="tmBody" contenteditable="true" spellcheck="true" aria-label="Message — you can edit it here"></div><div id="tmLook" class="ml-look" role="document" aria-label="How the email will look" hidden></div></div>
     <div><label class="lbl">Attach</label><div id="tmAtt" style="display:flex;flex-direction:column;gap:6px"></div></div>
     <p class="muted-note" id="tmNote" style="font-size:.8rem;margin:0"></p>
     <details class="muted-note" style="font-size:.8rem;margin:0">
@@ -7468,7 +7469,8 @@
     req.then(function(d){
       if (!d.ok) { $('llfErr').textContent = 'Couldn’t save (' + (d.error || 'error') + ')'; return; }
       $('llfModal').hidden = true;
-      toast(llEditing ? 'Landlord updated' : 'Landlord saved' + (llForAddress ? ' and linked to this property' : ''));
+      toast(llEditing ? 'Landlord updated' + (d.tenancies_updated ? ' — and on ' + d.tenancies_updated + ' tenanc' + (d.tenancies_updated === 1 ? 'y' : 'ies') + ' (statements use it)' : '') : 'Landlord saved' + (llForAddress ? ' and linked to this property' : ''));
+      if (d.tenancies_updated) loadTenancies();
       var newId = llEditing ? llEditing.id : d.id;
       loadJobs().then(function(){ if (view === 'll' && !llForAddress) openLandlord(newId); });
     });
@@ -11338,7 +11340,7 @@
       address: d.address || '', landlord_name: (d.landlord && d.landlord.name) || '', tenant_names: joinAnd(tcyNames(d.tenants)), start_date: longDay(d.start_date),
       payment_reference: d.pay_ref || payRef(d.address), move_in_due: weekdayDay(c.moveInDue), standing_order_start: ordDay(c.soStart), standing_order_payments: String(c.soPayments),
       first_rent: gbp(c.rent), deposit: gbp(c.deposit), move_in_total: gbp(c.total), holding_deposit: gbp(c.holding), move_in_remaining: gbp(c.remaining),
-      diy_link: DIY_LINK, checkin_date: ukDay(d.checkin_date || d.start_date), checkin_time: d.checkin_time || '12:00', bank_details: bankMarkup(t.bank_details), year: String(new Date().getFullYear())
+      diy_link: DIY_LINK, checkin_date: ukDay(d.checkin_date || d.start_date), checkin_time: d.checkin_tbc ? 'a time the inventory clerk will contact you to confirm' : (d.checkin_time || '12:00'), bank_details: bankMarkup(t.bank_details), year: String(new Date().getFullYear())
     };
   }
   // Email formatting marks → HTML (for pasting into Outlook or sending), or plain text.
@@ -11364,12 +11366,22 @@
   }
   var DIY_LINK = 'https://diy-check-in-production-6024.up.railway.app/';
   // Keep the check-in section that fits this tenancy: [clerk]…[/clerk] or [diy]…[/diy].
+  // The inventory clerk section only when a clerk is booked with a date; nothing for "No inventory".
+  function tcyCiNote(t){ return t === 'diy' ? 'The welcome email gives the tenants the link to the DIY check-in.' : t === 'none' ? 'No inventory — the welcome email leaves the check-in section out.' : 'The welcome email gives the inventory date and time and the clerk’s details — only once a date is filled in. Tick the box if the clerk will ring them to agree the time.'; }
   function checkinBlocks(text, type){
-    var keep = type === 'diy' ? 'diy' : 'clerk', drop = keep === 'diy' ? 'clerk' : 'diy';
-    return String(text || '').replace(new RegExp('\\[' + drop + '\\][\\s\\S]*?\\[\\/' + drop + '\\]\\n*', 'g'), '')
-      .replace(new RegExp('\\[\\/?' + keep + '\\]', 'g'), '').replace(/\n{3,}/g, '\n\n');
+    var keep = type === 'diy' ? 'diy' : type === 'clerk' ? 'clerk' : '';
+    text = String(text || '');
+    ['clerk', 'diy'].forEach(function(t){ if (t !== keep) text = text.replace(new RegExp('\\[' + t + '\\][\\s\\S]*?\\[\\/' + t + '\\]\\n*', 'g'), ''); });
+    return (keep ? text.replace(new RegExp('\\[\\/?' + keep + '\\]', 'g'), '') : text).replace(/\n{3,}/g, '\n\n');
   }
-  function fillTpl(text, vals){ return String(text || '').replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, function(m, k){ k = k.toLowerCase(); return Object.prototype.hasOwnProperty.call(vals, k) ? vals[k] : m; }); }
+  function fillTpl(text, vals){
+    text = String(text || '');
+    // A payment "Reference" is the short reference (e.g. 6FallowCourt), never the whole address.
+    if (vals.payment_reference) text = text.replace(/(\breference\b[^\n{]{0,14})\{\{\s*address\s*\}\}/gi, '$1{{payment_reference}}');
+    var out = text.replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, function(m, k){ k = k.toLowerCase(); return Object.prototype.hasOwnProperty.call(vals, k) ? vals[k] : m; });
+    if (vals.payment_reference && vals.address) { var ea = String(vals.address).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); out = out.replace(new RegExp('(\\breference\\b[^\\n]{0,14}?)' + ea, 'gi'), '$1' + vals.payment_reference); }
+    return out;
+  }
   function tcyFile(d, what, ext){ return (what + ' - ' + (d.address || 'Tenancy')).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) + '.' + (ext || 'pdf'); }
 
   // ----- List -----
@@ -11733,9 +11745,10 @@
         '<div class="tcy-sum" id="tfBtSum" style="margin-top:10px"></div>' +
       '</div>' +
       '<div class="card"><h3>Check-in</h3>' +
-        '<div class="seg" id="tfCiType" style="margin-bottom:10px"><button type="button" data-v="clerk"' + (d.checkin_type !== 'diy' ? ' class="on"' : '') + '>Inventory clerk</button><button type="button" data-v="diy"' + (d.checkin_type === 'diy' ? ' class="on"' : '') + '>DIY check-in</button></div>' +
-        '<div class="grid2" id="tfCiWhen"' + (d.checkin_type === 'diy' ? ' hidden' : '') + '>' + tcyInp('tfCiDate', 'Inventory / check-in date', d.checkin_date, ' type="date"') + tcyInp('tfCiTime', 'Time', d.checkin_time || '12:00', ' type="time"') + '</div>' +
-        '<p class="muted-note" id="tfCiNote" style="margin:8px 0 0">' + (d.checkin_type === 'diy' ? 'The welcome email gives the tenants the link to the DIY check-in.' : 'The welcome email gives the check-in date and time and the inventory clerk’s details.') + '</p></div>' +
+        '<div class="seg" id="tfCiType" style="margin-bottom:10px"><button type="button" data-v="clerk"' + (d.checkin_type !== 'diy' ? ' class="on"' : '') + '>Inventory clerk</button><button type="button" data-v="diy"' + (d.checkin_type === 'diy' ? ' class="on"' : '') + '>DIY check-in</button><button type="button" data-v="none"' + (d.checkin_type === 'none' ? ' class="on"' : '') + '>No inventory</button></div>' +
+        '<div id="tfCiWhen"' + (d.checkin_type === 'diy' || d.checkin_type === 'none' ? ' hidden' : '') + '><div class="grid2">' + tcyInp('tfCiDate', 'Inventory / check-in date', d.checkin_date, ' type="date"') + tcyInp('tfCiTime', 'Time', d.checkin_time || '12:00', ' type="time"' + (d.checkin_tbc ? ' disabled' : '')) + '</div>' +
+          '<label class="tcy-nv" style="margin-top:8px"><input type="checkbox" id="tfCiTbc"' + (d.checkin_tbc ? ' checked' : '') + '> The clerk will contact them to confirm the time</label></div>' +
+        '<p class="muted-note" id="tfCiNote" style="margin:8px 0 0">' + esc(tcyCiNote(d.checkin_type)) + '</p></div>' +
       // Certificates
       '<div class="card" id="tfCerts"></div>' +
       '<div class="card"><h3>Notes</h3><textarea class="inp" id="tfNotes" rows="3">' + esc(d.notes || '') + '</textarea></div>' +
@@ -11968,7 +11981,7 @@
     d.move_in_due = v('tfDue'); d.so_start = v('tfSo'); d.pay_ref = v('tfPayRef').replace(/\s+/g, ''); d.so_payments = n('tfSoN');
     d.landlord = { name: v('tfLlName'), email: v('tfLlEmail'), phone: v('tfLlPhone'), line1: v('tfLl1'), line2: v('tfLl2'), country: v('tfLlCountry'), postcode: v('tfLlPc') };
     d.find_pct = n('tfFind'); d.collect_pct = n('tfCollect'); d.manage_pct = n('tfManage'); d.vat = $('tfVat').checked; d.manage_basis = d.manage_basis === 'upfront' ? 'upfront' : 'monthly';
-    d.checkin_date = v('tfCiDate'); d.checkin_time = v('tfCiTime'); d.notes = v('tfNotes');
+    d.checkin_date = v('tfCiDate'); d.checkin_time = v('tfCiTime'); d.checkin_tbc = !!($('tfCiTbc') && $('tfCiTbc').checked); d.notes = v('tfNotes');
     ['tenants', 'guarantors'].forEach(function(kind){
       document.querySelectorAll('.tcy-person[data-kind="' + kind + '"]').forEach(function(row){
         var p = d[kind][Number(row.dataset.i)]; if (!p) return;
@@ -12075,9 +12088,10 @@
       var b = e.target.closest('[data-v]'); if (!b) return;
       tcyDraft.checkin_type = b.dataset.v;
       $('tfCiType').querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
-      $('tfCiWhen').hidden = b.dataset.v === 'diy';
-      $('tfCiNote').textContent = b.dataset.v === 'diy' ? 'The welcome email gives the tenants the link to the DIY check-in.' : 'The welcome email gives the check-in date and time and the inventory clerk’s details.';
+      $('tfCiWhen').hidden = b.dataset.v !== 'clerk';
+      $('tfCiNote').textContent = tcyCiNote(b.dataset.v);
     });
+    if ($('tfCiTbc')) $('tfCiTbc').addEventListener('change', function(){ $('tfCiTime').disabled = this.checked; });
     document.querySelectorAll('[data-unit-for]').forEach(function(seg){
       seg.addEventListener('click', function(e){
         var b = e.target.closest('[data-u]'); if (!b) return;
@@ -12558,7 +12572,7 @@
         who: who, d: d, atts: atts, sendUrl: '/api/admin/tenancies/' + openTcyId + '/email',
         title: who === 'tenants' ? 'Welcome email to the tenants' : 'Welcome email to ' + ((d.landlord || {}).name || 'the landlord'),
         to: to, subject: fillTpl(who === 'tenants' ? t.tenant_subject : t.landlord_subject, vals),
-        bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? t.tenant_body : t.landlord_body, d.checkin_type), vals), vals)),
+        bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? t.tenant_body : t.landlord_body, d.checkin_type === 'clerk' && !d.checkin_date ? 'none' : d.checkin_type || 'clerk'), vals), vals)),
         attNote: who === 'landlord' ? 'Add the signed agreement, tenant ID and deposit certificate yourself.' : '',
         warn: !t.bank_details && who === 'tenants' ? '⚠ No bank details saved yet — add them under Templates. ' : '',
         fileName: tcyFile(d, label, 'eml'),
@@ -12612,7 +12626,7 @@
     $('tmFromRow').hidden = !hasOl; $('tmDraft').hidden = !hasOl;
     $('tmOutlook').classList.toggle('primary', !hasOl);
     if (hasOl) { $('tmFrom').innerHTML = outlook.accounts.map(function(a){ return '<option value="' + esc(a.email) + '">' + esc(a.name ? a.name + ' — ' + a.email : a.email) + '</option>'; }).join(''); $('tmFrom').value = olFrom(); }
-    $('tmModal').hidden = false;
+    tmView('edit'); $('tmModal').hidden = false;
   }
   function tmAttachments(){
     var d = tmCtx.d, list = (tmCtx.atts || []).filter(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); return cb && cb.checked; });
@@ -12622,6 +12636,22 @@
       return Promise.resolve(doc ? { name: a.name, blob: doc.output('blob') } : null);
     })).then(function(r){ return r.filter(Boolean); });
   }
+  // Write ↔ preview: the email as the recipient will see it — sender, recipients, subject, attachments and the formatted message.
+  function tmView(v){
+    document.querySelectorAll('[data-tmv]').forEach(function(b){ b.classList.toggle('on', b.dataset.tmv === v); });
+    $('tmBody').hidden = v !== 'edit'; $('tmLook').hidden = v !== 'look';
+    if (v !== 'look') return;
+    var box = $('tmLook'), root = box.shadowRoot || box.attachShadow({ mode: 'open' });
+    var hasOl = outlook.configured && outlook.accounts.length, from = hasOl && $('tmFrom').value ? $('tmFrom').value : 'Residential Realtors';
+    var atts = (tmCtx && tmCtx.atts || []).filter(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); return cb && cb.checked; });
+    var row = function(k, v){ return '<div style="display:flex;gap:10px;padding:3px 0"><span style="color:#667085;min-width:58px">' + k + '</span><span style="color:#101828;word-break:break-word">' + v + '</span></div>'; };
+    root.innerHTML = '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:13px;background:#fff;margin:12px;border:1px solid #e4e7ec;border-radius:10px;overflow:hidden">' +
+      '<div style="padding:12px 16px;border-bottom:1px solid #eaecf0;background:#fcfcfd"><div style="font-size:16px;font-weight:600;color:#101828;margin-bottom:6px">' + esc($('tmSubject').value || '(no subject)') + '</div>' +
+      row('From', esc(from)) + row('To', esc($('tmTo').value || '—')) +
+      (atts.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' + atts.map(function(a){ return '<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid #d0d5dd;border-radius:8px;padding:5px 9px;background:#fff;font-size:12px">📄 ' + esc(a.name) + '</span>'; }).join('') + '</div>' : '') + '</div>' +
+      '<div style="padding:16px 18px">' + tmHtml().replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, '').replace(/contenteditable="[^"]*"/gi, '') + '</div></div>';
+  }
+  document.querySelectorAll('[data-tmv]').forEach(function(b){ b.addEventListener('click', function(){ tmView(b.dataset.tmv); }); });
   $('tmCancel').addEventListener('click', function(){ $('tmModal').hidden = true; });
   $('tmModal').addEventListener('mousedown', function(e){ if (e.target === $('tmModal')) $('tmModal').hidden = true; });
   // Copy the email with its formatting (bold, underline, red) for pasting into Outlook, Gmail etc.
