@@ -544,7 +544,7 @@
   .av-contact { font-size: .84rem; border: 1px dashed var(--line, #e6e8ec); border-radius: 10px; padding: 6px 8px; } .av-contact summary { cursor: pointer; font-weight: 600; } .av-contact pre { white-space: pre-wrap; font: inherit; margin: 6px 0; } .av-phones { display: flex; gap: 6px; flex-wrap: wrap; }
   .av-note { font-size: .84rem; background: #fffaeb; border-radius: 10px; padding: 6px 8px; color: #7a4d00; }
   .av-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line, #e6e8ec); }
-  .av-prev { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: 10px; } .av-prev th, .av-prev td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line, #e6e8ec); vertical-align: top; } .av-prev td small { color: var(--ink-soft); }
+  .av-prev-wrap { max-height: 420px; overflow: auto; border: 1px solid var(--line, #e6e8ec); border-radius: 10px; margin-top: 6px; } .av-prev-wrap .av-prev { margin-top: 0; } .av-prev { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: 10px; } .av-prev th, .av-prev td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line, #e6e8ec); vertical-align: top; } .av-prev td small { color: var(--ink-soft); }
   @media (max-width: 640px) { .av-list { grid-template-columns: 1fr; } .av-grid { grid-template-columns: 1fr; } .av-prev { display: block; overflow-x: auto; } }
   .av-rm-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: .84rem; padding: 8px 10px; border-radius: 12px; background: #f2fbf9; border: 1px solid #c8ece4; margin: 0 0 10px; }
   .av-rm-logo { font-weight: 800; color: #00deb6; background: #262637; border-radius: 6px; padding: 2px 7px; letter-spacing: -.02em; }
@@ -9519,7 +9519,7 @@
       .then(function(){ if (view === 'avail') loadAvail(); });
   }
   // ---------- Available properties: the lettings list staff work from ----------
-  var avItems = [], avBeds = '', avFlag = '', avEdit = null;
+  var avItems = [], avBeds = '', avFlag = '', avEdit = null, avLimit = 200;
   var rmData = null;
   function loadRm(){ return api('GET', '/api/admin/rightmove').then(function(d){ if (d && d.ok) { rmData = d; renderAvail(); } }); }
   var ytData = null;
@@ -9544,7 +9544,7 @@
     var lk = function(x){ return x.let_on ? String(x.let_on).slice(0, 10) : String(x.updated_at || '').slice(0, 10); };
     list.sort(function(a, b){ if (avFlag === 'let' && sort === 'date') return lk(b).localeCompare(lk(a)); return sort === 'lo' ? (a.rent_pcm || 1e9) - (b.rent_pcm || 1e9) : sort === 'hi' ? (b.rent_pcm || 0) - (a.rent_pcm || 0) : sort === 'beds' ? (a.beds == null ? 99 : a.beds) - (b.beds == null ? 99 : b.beds) : sort === 'new' ? b.id - a.id : (b.urgent - a.urgent) || dkey(a).localeCompare(dkey(b)); });
     var live = avItems.filter(function(x){ return x.status === 'available'; });
-    $('avSum').innerHTML = '<b>' + live.length + '</b> available · <b>' + live.filter(avNow).length + '</b> available now · <b>' + live.filter(function(x){ return x.urgent; }).length + '</b> urgent · <b>' + avItems.filter(function(x){ return x.status === 'let'; }).length + '</b> been let' + (list.length !== live.length ? ' · showing ' + list.length : '');
+    $('avSum').innerHTML = '<b>' + live.length + '</b> available · <b>' + live.filter(avNow).length + '</b> available now · <b>' + live.filter(function(x){ return x.urgent; }).length + '</b> urgent · <b>' + avItems.filter(function(x){ return x.status === 'let'; }).length + '</b> been let' + (list.length !== live.length ? ' · showing ' + list.length : '') + ((!staffMode || meta.canManageUsers) && avItems.length > 1 ? ' <button type="button" class="linkish" id="avDedupe" title="Removes repeats of the same address (keeps the first one added)">🧹 Remove duplicates</button>' : '');
     var rmList = (rmData && rmData.items) || [], rmBy = {}; rmList.forEach(function(r){ rmBy[r.id] = r; });
     var linkedIds = {}; avItems.forEach(function(x){ if (x.status !== 'available') return; if (x.rm_id && rmBy[x.rm_id]) linkedIds[x.rm_id] = 1; (x.dream_rm || []).forEach(function(d){ linkedIds[d] = 1; }); });
     var liveSorted = live.slice().sort(function(a, b){ return String(a.address).localeCompare(String(b.address)); });
@@ -9554,6 +9554,7 @@
     var ytM = (ytData && ytData.matches) || {}, withV = live.filter(function(x){ return (ytM[x.id] || []).length; }).length;
     $('avYt').innerHTML = !ytData ? '' : '<div class="av-rm-bar av-yt-bar"><span class="av-yt-logo">▶ YouTube</span><span>' + (ytData.at ? '<b>' + (ytData.items || []).length + '</b> videos on our channel · <b>' + withV + '</b> of ' + live.length + ' properties have a video · checked ' + esc(fmtShort(ytData.at)) : 'Not checked yet') + (ytData.error ? ' · <span style="color:#b42318">couldn’t reach YouTube last time</span>' : '') + ' <button type="button" class="linkish" id="avYtWhy">details</button></span><span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small" id="avYtCheck">🔄 Check now</button><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(ytData.channel_url) + '">Our channel ↗</a>' + (canSet ? '<button type="button" class="btn small ghost" id="avYtSet" title="Change the YouTube channel">⚙︎</button>' : '') + '</span></div>';
     var canDel = !staffMode || meta.canManageUsers;
+    var avMore = list.length > avLimit ? list.length - avLimit : 0; list = list.slice(0, avLimit);
     $('avList').innerHTML = list.length ? list.map(function(x){
       var pc = (String(x.address).match(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i) || [''])[0].toUpperCase(), phones = avPhones(x.contact), mails = avEmails(x.contact), off = x.status !== 'available';
       var tags = (x.tags ? x.tags.split(/\s*,\s*/).filter(Boolean).map(function(t){ return '<span class="av-tag">' + esc(t) + '</span>'; }).join('') : '') + (x.urgent ? '<span class="av-tag urgent">🔥 URGENT</span>' : '') + (off ? '<span class="av-tag let">' + (x.status === 'let' ? '✓ Let' : 'Withdrawn') + '</span>' : '');
@@ -9580,10 +9581,16 @@
         (x.contact ? '<details class="av-contact"><summary>👤 Current tenant / viewings contact</summary><pre>' + esc(x.contact) + '</pre><div class="av-phones">' + phones.map(function(ph){ var w = waNumber(ph); return '<a class="btn small" href="tel:' + esc(ph.replace(/[^\d+]/g, '')) + '">📞 ' + esc(ph) + '</a>' + (w ? '<a class="btn small wa" target="_blank" rel="noopener" href="https://wa.me/' + w + '">WhatsApp</a>' : ''); }).join('') + mails.map(function(m){ return '<a class="btn small" href="mailto:' + esc(m) + '">✉ ' + esc(m) + '</a>'; }).join('') + '</div></details>' : '') +
         '<div class="av-acts">' + (off ? '<button type="button" class="btn small" data-avs="available">↩ Back on the list</button>' : '<button type="button" class="btn small primary" data-ava="offer">📝 Offer form</button><button type="button" class="btn small" data-ava="pvr">🗓 PVR</button><button type="button" class="btn small" data-ava="view">👀 Book viewing</button><button type="button" class="btn small ghost" data-ava="copy">📋 Copy</button>') +
           (!off ? '<button type="button" class="btn small ghost" data-ava="rm" title="Link to a Rightmove listing">🔗 Rightmove</button>' : '') + ((ytM[x.id] || []).length && !off ? '<button type="button" class="btn small ghost" data-ava="ytshare" title="Send the video">📤 Video</button>' : '') + (ytData && ytData.at && !off ? '<button type="button" class="btn small ghost" data-ava="yt" title="Choose the video">🎬</button>' : '') + '<button type="button" class="btn small ghost" data-ava="edit">✏️</button>' + (off ? '' : '<button type="button" class="btn small ghost" data-avs="let" title="Mark as let">✓ Let</button>') + (canDel ? '<button type="button" class="btn small ghost danger" data-ava="del" title="Delete">🗑</button>' : '') + '</div></div>';
-    }).join('') : '<div class="card"><p class="muted-note" style="margin:0">' + (avItems.length ? 'Nothing matches — try another filter.' : 'No properties yet — add one, or paste your list from the spreadsheet.') + '</p></div>';
+    }).join('') + (avMore ? '<div style="grid-column:1/-1;text-align:center"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more (' + avMore + ' not shown — or search above)</button></div>' : '') : '<div class="card"><p class="muted-note" style="margin:0">' + (avItems.length ? 'Nothing matches — try another filter.' : 'No properties yet — add one, or paste your list from the spreadsheet.') + '</p></div>';
   }
-  $('avQ').addEventListener('input', renderAvail); $('avSort').addEventListener('change', renderAvail);
-  $('avBeds').addEventListener('click', function(e){
+  $('avQ').addEventListener('input', function(){ avLimit = 200; renderAvail(); }); $('avSort').addEventListener('change', renderAvail);
+  $('avList').addEventListener('click', function(e){ if (e.target.closest('#avMoreBtn')) { avLimit += 200; renderAvail(); } });
+  $('avSum').addEventListener('click', function(e){
+    if (!e.target.closest('#avDedupe')) return;
+    var b = e.target; busy(b, true, 'Tidying…');
+    api('POST', '/api/admin/available-dedupe', {}).then(function(d){ busy(b, false); if (!d || !d.ok) { toast('Couldn’t remove duplicates'); return; } toast(d.removed ? '✓ Removed ' + d.removed + ' duplicate' + (d.removed === 1 ? '' : 's') : 'No duplicates found'); loadAvail(); });
+  });
+  $('avBeds').addEventListener('click', function(e){ avLimit = 200;
     var b = e.target.closest('[data-avb]'), f = e.target.closest('[data-avf]');
     if (b) { avBeds = b.dataset.avb; this.querySelectorAll('[data-avb]').forEach(function(x){ x.classList.toggle('on', x === b); }); }
     if (f) { avFlag = avFlag === f.dataset.avf ? '' : f.dataset.avf; this.querySelectorAll('[data-avf]').forEach(function(x){ x.classList.toggle('on', x.dataset.avf === avFlag); }); }
@@ -9616,16 +9623,84 @@
       if (c === '"' && cell.trim() === '') { q = true; cell = ''; } else if (c === '\t') { row.push(cell); cell = ''; } else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; } else cell += c; }
     row.push(cell); rows.push(row); return rows;
   }
-  function avDate(v){ var m = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/.exec(String(v || '').trim()); if (!m) return ''; var y = m[3].length === 2 ? '20' + m[3] : m[3]; return y + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2); }
+  var AV_MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  function avDate(v){
+    v = String(v || '').trim(); var m, d, mo, y;
+    if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(v))) { y = m[1]; mo = m[2]; d = m[3]; }
+    else if ((m = /^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/.exec(v))) { d = m[1]; mo = m[2]; y = m[3]; }
+    else if ((m = /^(\d{1,2})(?:st|nd|rd|th)?[\s\-\/]+([a-z]{3})[a-z]*\.?[\s\-\/,]+(\d{2,4})$/i.exec(v)) && AV_MON[m[2].toLowerCase()]) { d = m[1]; mo = AV_MON[m[2].toLowerCase()]; y = m[3]; }
+    else if ((m = /^([a-z]{3})[a-z]*\.?[\s\-\/,]+(\d{2,4})$/i.exec(v)) && AV_MON[m[1].toLowerCase()]) { d = 1; mo = AV_MON[m[1].toLowerCase()]; y = m[2]; }
+    else return '';
+    y = String(y).length === 2 ? '20' + y : String(y); d = Number(d); mo = Number(mo);
+    if (y < 1990 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+    return y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2);
+  }
+  // One spreadsheet row → a property. Layouts differ from row to row, so each cell is recognised by what it holds:
+  // the cell with a postcode is the address, small numbers just before it are beds (then baths), "Dream…" text is tags,
+  // dates, % (commission), £ amounts (smaller = pw, larger = pcm); other text is the contact first, then notes.
+  var AV_PC = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i, AV_ST = /\b(road|rd|street|st|avenue|ave|lane|close|court|gardens|gdns|way|drive|place|crescent|grove|terrace|hill|park|rise|walk|square|mews|house|row|parade|green|view|lodge|mansions|heights|wharf|gate|vale|chase)\b/i;
+  function avJunk(c){ return !c || /^(#\w+[!?]?|#N\/A|`+|-+|\.|n\/?a|none|tbc|\?+|x)$/i.test(c); }
+  function avAddrOf(c){
+    var lines = c.split('\n').map(function(x){ return x.trim(); }).filter(Boolean), j = lines.findIndex(function(x){ return AV_PC.test(x); });
+    if (j === -1) return '';
+    var ln = lines[j];
+    // Postcode alone on its line (or only "London POSTCODE"): the street is on the line above.
+    if (j > 0 && ln.replace(AV_PC, '').replace(/london|,/ig, '').trim().length < 4) ln = lines[j - 1] + ', ' + ln;
+    return ln.replace(/\s+/g, ' ').replace(/\s*,\s*,/g, ',').trim();
+  }
+  function avMoney(c){
+    var s = c.replace(/\s+/g, ' ').trim(), m = /^£?\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?\s?(pw|p\/w|pcm|p\/m|pm|per week|per month)?$/i.exec(s);
+    if (!m) return null; var v = Number(m[1].replace(/,/g, '')), unit = (m[2] || '').toLowerCase();
+    if (!/£/.test(s) && !unit && v < 50) return null;
+    return { v: v, unit: /w/.test(unit) ? 'pw' : unit ? 'pcm' : '' };
+  }
   function avRow(cells){
-    cells = cells.map(function(c){ return String(c || '').trim(); });
-    var ai = cells.findIndex(function(c){ return /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(c); }); if (ai === -1) return null;
-    var before = cells.slice(0, ai).filter(Boolean), beds = null, tags = [];
-    before.forEach(function(c){ if (/^\d{1,2}$/.test(c)) beds = Number(c); else if (/^studio$/i.test(c)) beds = 0; else tags = tags.concat(c.split(/\s{2,}/).map(function(x){ return x.trim(); }).filter(Boolean)); });
-    var after = cells.slice(ai + 1), urgent = false;
-    after = after.map(function(c){ if (/^urgent$/i.test(c)) { urgent = true; return ''; } return c; });
-    var dateCell = after[0] || '', vac = /vacant/i.test(dateCell);
-    return { address: cells[ai].replace(/\s+/g, ' '), beds: beds, tags: tags.join(', '), vacant: vac, available_from: vac ? '' : avDate(dateCell), rent_pw: after[1] || '', rent_pcm: after[2] || '', landlord: after[3] || '', commission: after[4] || '', contact: after[5] || '', notes: after.slice(6).filter(Boolean).join(' · '), urgent: urgent };
+    cells = cells.map(function(c){ return String(c == null ? '' : c).replace(/ /g, ' ').trim(); }).map(function(c){ return avJunk(c) ? '' : c; });
+    // The address: the cell with a postcode whose address line is shortest (call notes can mention postcodes too).
+    var ai = -1, addr = '';
+    cells.forEach(function(c, i){ var a = avAddrOf(c); if (a && a.length < 160 && (ai === -1 || a.length < addr.length) && !/^\s*(called|spoke|rang|left|emailed|sent|txt|text|vm)\b/i.test(a)) { ai = i; addr = a; } });
+    if (ai === -1) cells.forEach(function(c, i){ if (ai === -1 && c.length < 120 && c.indexOf('\n') === -1 && /^(flat|apt|apartment|unit|room)?\s*\d+[a-z]?\b/i.test(c) && AV_ST.test(c)) { ai = i; addr = c.replace(/\s+/g, ' '); } });
+    if (ai === -1) return null;
+    // Only the town and postcode in this cell: the street is in the cell before it.
+    var used = {}; used[ai] = 1;
+    if (addr.replace(AV_PC, '').replace(/\b(london|essex|middlesex|kent|surrey|herts|hertfordshire)\b|[,.]/ig, '').trim().split(/\s+/).filter(Boolean).length <= 2 && !/\d/.test(addr.replace(AV_PC, ''))) {
+      for (var pi = ai - 1; pi >= 0; pi--) { var pv = cells[pi]; if (!pv) continue; if (pv.length < 120 && pv.indexOf('\n') === -1 && (AV_ST.test(pv) || /^(flat|apt|apartment|unit|room)?\s*\d+[a-z]?\b/i.test(pv)) && !/^\d{1,2}$/.test(pv)) { addr = pv.replace(/\s+/g, ' ').replace(/,\s*$/, '') + ', ' + addr; used[pi] = 1; cells[pi] = ''; } break; }
+    }
+    var extraAddr = cells[ai].split('\n').map(function(x){ return x.trim(); }).filter(function(x){ return x && addr.indexOf(x) === -1; }).join(' ');
+    var beds = null, tags = [], notes = [], contact = [], urgent = false, date = '', vac = false, money = [], com = '';
+    if (extraAddr) notes.push(extraAddr);
+    // Before the address: beds/baths, Dream tags, call notes.
+    var nums = [];
+    cells.slice(0, ai).forEach(function(c){
+      if (!c) return;
+      var bm = /^(\d{1,2})\s*(b(ed)?s?|bedrooms?)?$/i.exec(c);
+      if (bm && Number(bm[1]) < 15) { nums.push(Number(bm[1])); return; }
+      if (/^studio$/i.test(c)) { nums.push(0); return; }
+      if (/^urgent$/i.test(c)) { urgent = true; return; }
+      if (/dream|^\d\s*[-–]/i.test(c) && c.length < 300) { tags = tags.concat(c.split(/\n|\s{2,}/).map(function(x){ return x.trim(); }).filter(Boolean)); return; }
+      notes.push(c.replace(/\s*\n\s*/g, ' / '));
+    });
+    if (nums.length) beds = nums.length >= 2 ? nums[nums.length - 2] : nums[0];
+    // After the address.
+    cells.slice(ai + 1).forEach(function(c){
+      if (!c) return;
+      if (/^urgent$/i.test(c)) { urgent = true; return; }
+      if (/^vacant$/i.test(c)) { vac = true; return; }
+      var d = avDate(c); if (d) { if (!date) date = d; return; }
+      if (/^\d{1,2}(\.\d+)?\s?%$/.test(c) || /^\d{1,2}(\.\d+)?\s?%\s*(\+\s*vat|inc|ex)/i.test(c)) { if (!com) com = c; return; }
+      var mo = avMoney(c); if (mo) { if (mo.v <= 20000) money.push(mo); return; }
+      if (/^[\d\s+()\-]{10,}$/.test(c) || /@/.test(c) || !contact.length) { contact.push(c.replace(/\s*\n\s*/g, ' / ')); return; }
+      notes.push(c.replace(/\s*\n\s*/g, ' / '));
+    });
+    var pw = '', pcm = '';
+    money.forEach(function(m){ if (m.unit === 'pw' && !pw) pw = m.v; else if (m.unit === 'pcm' && !pcm) pcm = m.v; });
+    var plain = money.filter(function(m){ return !m.unit; }).map(function(m){ return m.v; });
+    if (plain.length >= 2 && !pw && !pcm) { var lo = Math.min(plain[0], plain[1]), hi = Math.max(plain[0], plain[1]); if (hi > lo * 3) { pw = lo; pcm = hi; } else pcm = hi; }
+    else if (plain.length) { var v = plain[0]; if (!pw && !pcm) { if (v >= 1000) pcm = v; else pw = v; } else if (!pcm && pw && v > pw * 3) pcm = v; else if (!pw && pcm && v * 3 < pcm) pw = v; }
+    var contactTxt = contact.join(' · '), landlord = '';
+    if (contact.length) { var first = contact[0].split(/\s+\/\s+|\s{2,}/)[0].replace(/\S+@\S+/g, '').replace(/(\+44|\b0)[\d\s()\-]{8,}.*$/, '').replace(/[\s,:;\-–]+$/, '').trim(); if (first && /[a-z]{2}/i.test(first) && first.length < 60 && !/^\d/.test(first)) landlord = first; }
+    if (contactTxt === landlord) contactTxt = '';
+    return { address: addr, beds: beds, tags: tags.join(', ').slice(0, 200), vacant: vac, available_from: vac ? '' : date, rent_pw: pw === '' ? '' : String(pw), rent_pcm: pcm === '' ? '' : String(pcm), landlord: landlord, commission: com, contact: contactTxt, notes: notes.join(' · '), urgent: urgent, nopc: !AV_PC.test(addr) };
   }
   var avParsed = [], avPasteAs = 'available';
   $('avPasteAs').addEventListener('click', function(e){ var b = e.target.closest('[data-pas]'); if (!b) return; avPasteAs = b.dataset.pas; this.querySelectorAll('[data-pas]').forEach(function(x){ x.classList.toggle('on', x === b); }); if (avParsed.length) $('avPasteRead').click(); });
@@ -9633,15 +9708,39 @@
   $('avPasteX').addEventListener('click', function(){ $('avPaste').hidden = true; $('avPasteTxt').value = ''; $('avPastePrev').innerHTML = ''; });
   $('avPasteRead').addEventListener('click', function(){
     avParsed = avTsv($('avPasteTxt').value).map(avRow).filter(Boolean).map(function(r){ if (avPasteAs === 'let') { r.status = 'let'; r.let_on = r.available_from || ''; r.available_from = ''; r.vacant = false; } return r; });
-    if (!avParsed.length) { $('avPastePrev').innerHTML = '<p class="muted-note">No rows with an address and postcode found — please paste straight from the spreadsheet.</p>'; return; }
-    $('avPastePrev').innerHTML = '<table class="av-prev"><tr><th></th><th>Address</th><th>Beds</th><th>' + (avPasteAs === 'let' ? 'Let on' : 'Available') + '</th><th>pw / pcm</th><th>Landlord</th><th>Contact &amp; notes</th></tr>' + avParsed.map(function(r, i){ return '<tr><td><input type="checkbox" data-avp="' + i + '" checked></td><td>' + esc(r.address) + (r.tags ? '<br><small>' + esc(r.tags) + '</small>' : '') + (r.urgent ? ' <b style="color:#b42318">URGENT</b>' : '') + '</td><td>' + (r.beds == null ? '—' : r.beds) + '</td><td>' + (r.status === 'let' ? esc(avDay(r.let_on) || 'today') : r.vacant ? 'Vacant' : esc(avDay(r.available_from) || '—')) + '</td><td>' + esc([r.rent_pw, r.rent_pcm].filter(Boolean).join(' / ') || '—') + '</td><td>' + esc(r.landlord || '—') + (r.commission ? '<br><small>' + esc(r.commission) + '</small>' : '') + '</td><td><small>' + esc((r.contact || '').slice(0, 90)) + (r.contact && r.contact.length > 90 ? '…' : '') + (r.notes ? '<br>' + esc(r.notes) : '') + '</small></td></tr>'; }).join('') + '</table>' +
+    var avRows = avTsv($('avPasteTxt').value).filter(function(r){ return r.join('').trim(); }), avMiss = avRows.length - avParsed.length;
+    if (!avParsed.length) { $('avPastePrev').innerHTML = '<p class="muted-note">No rows with an address found — please paste straight from the spreadsheet.</p>'; return; }
+    var avShow = avParsed.slice(0, 300);
+    $('avPastePrev').innerHTML = '<p class="muted-note" style="margin:8px 0">Found <b>' + avParsed.length + '</b> propert' + (avParsed.length === 1 ? 'y' : 'ies') + (avMiss > 0 ? ' · ' + avMiss + ' row' + (avMiss === 1 ? '' : 's') + ' without an address left out (headings, blank or notes-only rows)' : '') + (avParsed.length > avShow.length ? ' · showing the first ' + avShow.length + ' below, all ' + avParsed.length + ' will be added' : '') + '. Anything already on the list is skipped.</p><div class="av-prev-wrap"><table class="av-prev"><tr><th></th><th>Address</th><th>Beds</th><th>' + (avPasteAs === 'let' ? 'Let on' : 'Available') + '</th><th>pw / pcm</th><th>Landlord</th><th>Contact &amp; notes</th></tr>' + avShow.map(function(r, i){ return '<tr><td><input type="checkbox" data-avp="' + i + '" checked></td><td>' + esc(r.address) + (r.nopc ? ' <small style="color:#b54708">(no postcode)</small>' : '') + (r.tags ? '<br><small>' + esc(r.tags) + '</small>' : '') + (r.urgent ? ' <b style="color:#b42318">URGENT</b>' : '') + '</td><td>' + (r.beds == null ? '—' : r.beds) + '</td><td>' + (r.status === 'let' ? esc(avDay(r.let_on) || 'today') : r.vacant ? 'Vacant' : esc(avDay(r.available_from) || '—')) + '</td><td>' + esc([r.rent_pw, r.rent_pcm].filter(Boolean).join(' / ') || '—') + '</td><td>' + esc(r.landlord || '—') + (r.commission ? '<br><small>' + esc(r.commission) + '</small>' : '') + '</td><td><small>' + esc((r.contact || '').slice(0, 90)) + (r.contact && r.contact.length > 90 ? '…' : '') + (r.notes ? '<br>' + esc(r.notes) : '') + '</small></td></tr>'; }).join('') + '</table></div>' +
+      (avPasteAs === 'let' && (!staffMode || meta.canManageUsers) && avItems.some(function(x){ return x.status === 'let'; }) ? '<label class="muted-note" style="display:flex;gap:6px;align-items:center;margin:10px 0 0"><input type="checkbox" id="avPasteRepl"> Replace the whole Been let list with these (removes the ' + avItems.filter(function(x){ return x.status === 'let'; }).length + ' already there — use this to fix wrong addresses from an earlier paste)</label>' : '') +
       '<div style="margin-top:10px"><button type="button" class="btn primary" id="avPasteGo">Add ' + avParsed.length + ' propert' + (avParsed.length === 1 ? 'y' : 'ies') + (avPasteAs === 'let' ? ' to Been let' : '') + '</button></div>';
   });
   $('avPastePrev').addEventListener('click', function(e){
     if (!e.target.closest('#avPasteGo')) return;
-    var pick = avParsed.filter(function(r, i){ var c = document.querySelector('[data-avp="' + i + '"]'); return c && c.checked; }); if (!pick.length) { toast('Tick at least one row'); return; }
-    var b = e.target; busy(b, true, 'Adding…');
-    api('POST', '/api/admin/available', { items: pick }).then(function(d){ busy(b, false); if (!d || !d.ok) { toast('Couldn’t add them'); return; } toast('✓ ' + d.ids.length + ' propert' + (d.ids.length === 1 ? 'y' : 'ies') + ' added' + (avPasteAs === 'let' ? ' to Been let' : '')); if (avPasteAs === 'let') { avFlag = 'let'; document.querySelectorAll('#avBeds [data-avf]').forEach(function(x){ x.classList.toggle('on', x.dataset.avf === 'let'); }); } $('avPaste').hidden = true; $('avPasteTxt').value = ''; $('avPastePrev').innerHTML = ''; loadAvail(); });
+    var pick = avParsed.filter(function(r, i){ var c = document.querySelector('[data-avp="' + i + '"]'); return !c || c.checked; }); if (!pick.length) { toast('Tick at least one row'); return; }
+    var repl = $('avPasteRepl') && $('avPasteRepl').checked;
+    if (repl && !confirm('Remove all ' + avItems.filter(function(x){ return x.status === 'let'; }).length + ' properties on the Been let list and add these ' + pick.length + ' instead?')) return;
+    var b = e.target, added = 0, skipped = 0, failed = 0, fails = [], i = 0, N = 250;
+    busy(b, true, 'Adding…');
+    var done = function(){
+      busy(b, false);
+      if (!added && !skipped) { toast('Couldn’t add them' + (fails[0] ? ' — ' + fails[0].address + ': ' + fails[0].error : '')); return; }
+      toast('✓ ' + added + ' added' + (avPasteAs === 'let' ? ' to Been let' : '') + (skipped ? ' · ' + skipped + ' already there' : '') + (failed ? ' · ' + failed + ' couldn’t be added' : ''), 6000);
+      if (avPasteAs === 'let') { avFlag = 'let'; document.querySelectorAll('#avBeds [data-avf]').forEach(function(x){ x.classList.toggle('on', x.dataset.avf === 'let'); }); } $('avPaste').hidden = true; $('avPasteTxt').value = ''; $('avPastePrev').innerHTML = ''; loadAvail();
+    };
+    // Send in batches so a big database goes through, showing progress.
+    var next = function(){
+      if (i >= pick.length) return done();
+      var part = pick.slice(i, i + N); i += N; b.textContent = 'Adding… ' + Math.min(i, pick.length) + ' of ' + pick.length;
+      api('POST', '/api/admin/available', { items: part }).then(function(d){
+        if (d && d.ids) { added += d.ids.length; skipped += d.skipped || 0; failed += d.failed || 0; fails = fails.concat(d.failures || []); }
+        else if (d && d.failed) { failed += part.length; fails = fails.concat(d.failed); }
+        else failed += part.length;
+        next();
+      });
+    };
+    if (repl) api('POST', '/api/admin/available-clear-let', { confirm: true }).then(function(d){ if (!d || !d.ok) { busy(b, false); toast('Couldn’t clear the Been let list'); return; } next(); });
+    else next();
   });
   // Card actions: send a form or book a viewing for this property, copy, edit, let.
   $('avList').addEventListener('click', function(e){
