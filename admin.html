@@ -2402,6 +2402,7 @@
     }).then(function(r){
       return r.json()['catch'](function(){ return { ok: false, error: 'bad-response' }; }).then(function(data){
         if (r.status === 401) { showLogin(); }
+        if (data && data.error === 'db-full' && !api.fullShown) { api.fullShown = true; setTimeout(function(){ api.fullShown = false; }, 60000); toast('⚠️ Our database is full — changes can’t be saved until more storage is added in Railway'); }
         data.status = r.status;
         // A job's invoice was made or brought up to date automatically: say so and refresh invoices.
         if (data && data.invoice && (data.invoice.created || data.invoice.updated)) {
@@ -10028,7 +10029,7 @@
   });
   $('avRm').addEventListener('click', function(e){
     if (e.target.closest('#avRmWhy')) { var dg = (rmData && rmData.diag) || []; alert('Rightmove check — what came back:\n\n' + (dg.length ? dg.map(function(d){ return d.source + ' (page ' + (d.index / 24 + 1) + '): ' + (d.error ? d.error : 'HTTP ' + d.status + ' · ' + (d.type || '?') + ' · ' + d.bytes + ' bytes' + (d.page ? ' · ' + d.page : '') + ' · ' + (d.found || 0) + ' listings'); }).join('\n') : (rmData.error || 'No details')) + '\n\nYou can still link each property by pasting its Rightmove link (🔗 Rightmove on the card).'); return; }
-    if (e.target.closest('#avRmCheck')) { var b = e.target.closest('#avRmCheck'); busy(b, true, 'Checking…'); api('POST', '/api/admin/rightmove/refresh', {}).then(function(d){ busy(b, false); toast(d && d.ok ? '✓ Checked — ' + (d.items || []).length + ' listings on Rightmove' : 'Couldn’t reach Rightmove just now'); loadAvail(); }); return; }
+    if (e.target.closest('#avRmCheck')) { var b = e.target.closest('#avRmCheck'); busy(b, true, 'Checking…'); api('POST', '/api/admin/rightmove/refresh', {}).then(function(d){ busy(b, false); toast(d && d.ok ? '✓ Checked — ' + (d.items || []).length + ' listings on Rightmove' : d && d.error === 'db-full' ? 'Rightmove checked, but our database is full — it couldn’t be saved' : 'Couldn’t reach Rightmove just now'); loadAvail(); }); return; }
     if (e.target.closest('#avRmSet')) { var v = prompt('Our Rightmove branch (paste the branch page link or its number):', rmData ? rmData.branch : ''); if (!v) return; api('POST', '/api/admin/rightmove/settings', { branch: v }).then(function(d){ toast(d && d.ok ? '✓ Saved and checked' : d && d.error === 'branch' ? 'That doesn’t look like a branch link' : 'Saved — but couldn’t reach Rightmove'); loadAvail(); }); return; }
     if (e.target.closest('#avDreamReview')) { avDreamOpen = true; var dd = $('avDreams'); if (dd) { dd.open = true; dd.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
     if (e.target.closest('#avDreams > summary')) { setTimeout(function(){ var dd = $('avDreams'); avDreamOpen = !!(dd && dd.open); }, 0); }
