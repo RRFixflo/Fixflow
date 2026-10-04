@@ -8483,6 +8483,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (!e) { const txt = String(contact || '') + ' ' + String(landlordName || ''); (txt.match(/(\+44|0)[\d\s()\-]{9,14}\d/g) || []).some(function (m) { return (e = byPhone[llPh(m)]); }); }
       if (!e) (String(contact || '') + ' ' + String(landlordName || '')).replace(/[^\s@<>,;()]+@[^\s@<>,;()]+\.[a-z]{2,}/gi, function (m) { if (!e) e = byMail[m.toLowerCase()]; return m; });
       if (!e && landlordName) e = byName[llNm(landlordName)];
+      // Just a first name ("Deirdre"): the one landlord with that first name — or, if several, the one
+      // with a property in the same postcode area.
+      if (!e && landlordName) {
+        const first = llNm(landlordName).split(' ')[0];
+        if (first && first.length >= 3) {
+          const hits = list.filter(function (x) { return llNm(x.name).split(' ')[0] === first; });
+          if (hits.length === 1) e = hits[0];
+          else if (hits.length > 1) { const oc = (rmOutcode(address) || '').toUpperCase(); const near = oc ? hits.filter(function (x) { return x.addrs.some(function (a) { return (rmOutcode(a.a) || '').toUpperCase() === oc; }); }) : []; if (near.length === 1) e = near[0]; }
+        }
+      }
       return e ? { id: e.id, name: e.name, phone: e.phone, email: e.email, src: e.src } : null;
     };
   }
