@@ -7265,7 +7265,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     if (b.seen === true) sets.push('seen_at = coalesce(seen_at, now())');
     if (str(b.note, 300)) notes.push(str(b.note, 300));
-    // Whose offer it was: one person, or split (e.g. 50/50) between up to three.
+    // Whose offer it was: one person, or split (e.g. 50/50) between up to three. Owner and managers only.
+    if (Array.isArray(b.credit) && req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
     if (Array.isArray(b.credit)) {
       const cr = b.credit.slice(0, 3).map(function (c) { return { id: Number(c && c.id) || null, name: str(c && c.name, 80), share: Math.max(0, Math.min(100, Math.round(Number(c && c.share) || 0))) }; }).filter(function (c) { return c.name && c.share > 0; });
       if (cr.length && cr.reduce(function (a, c) { return a + c.share; }, 0) !== 100) return res.status(400).json({ ok: false, error: 'share' });
