@@ -448,12 +448,14 @@
   .oc-refund span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
-  .staff-mode .side .nav:not(#logoutBtn):not(#navTeam):not(#navWho), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navTeam):not(#navWho):not(#navAvail):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
   .side .nav.nav-team { background: linear-gradient(135deg, rgba(217,38,46,.22), rgba(255,180,183,.10)); border: 1px solid rgba(255,180,183,.45); color: #fff; margin: 4px 0 6px; font-weight: 700; }
   .side #navWho { margin-bottom: 10px; }
+  .staff-mode .side #navAvail { font-weight: 700; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); margin: 6px 0; }
+  .staff-mode .side #navAvail.on { background: rgba(255,255,255,.18); }
   .side .nav.nav-team span { display: flex; flex-direction: column; line-height: 1.15; } .side .nav.nav-team small { font-size: .68rem; font-weight: 600; color: #ffb4b7; letter-spacing: .04em; text-transform: uppercase; margin-top: 2px; }
   .side .nav.nav-team.on, .side .nav.nav-team:hover { background: linear-gradient(135deg, rgba(217,38,46,.45), rgba(255,180,183,.18)); }
   .staff-tabs button.st-team { color: #a3141b; } .staff-tabs button.st-team.on { background: #a3141b; color: #fff; }
@@ -543,6 +545,13 @@
   .av-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line, #e6e8ec); }
   .av-prev { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: 10px; } .av-prev th, .av-prev td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line, #e6e8ec); vertical-align: top; } .av-prev td small { color: var(--ink-soft); }
   @media (max-width: 640px) { .av-list { grid-template-columns: 1fr; } .av-grid { grid-template-columns: 1fr; } .av-prev { display: block; overflow-x: auto; } }
+  .av-rm-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: .84rem; padding: 8px 10px; border-radius: 12px; background: #f2fbf9; border: 1px solid #c8ece4; margin: 0 0 10px; }
+  .av-rm-logo { font-weight: 800; color: #00deb6; background: #262637; border-radius: 6px; padding: 2px 7px; letter-spacing: -.02em; }
+  .av-rm-unl { margin: 0 0 10px; font-size: .86rem; } .av-rm-unl summary { cursor: pointer; font-weight: 700; }
+  .av-rm-item { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line, #e6e8ec); flex-wrap: wrap; } .av-rm-item img { width: 64px; height: 44px; object-fit: cover; border-radius: 8px; } .av-rm-item span { display: block; color: var(--ink-soft); font-size: .8rem; }
+  .av-rmlink { display: flex; gap: 10px; align-items: center; text-decoration: none; color: inherit; border: 1px solid #c8ece4; background: #f2fbf9; border-radius: 12px; padding: 6px; } .av-rmlink img { width: 72px; height: 50px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; } .av-rmlink span { font-size: .8rem; color: var(--ink-soft); min-width: 0; } .av-rmlink b { display: block; color: #0b6b5a; font-size: .84rem; }
+  .av-dream { font-size: .82rem; font-weight: 600; color: #6941c6; background: #f4f0ff; border-radius: 10px; padding: 6px 8px; }
+  .av-rmpick { display: flex; gap: 6px; align-items: center; } .av-rmpick select { flex: 1; min-width: 0; }
   .pv-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0 10px; }
   .pv-steps div { border-radius: 12px; padding: 8px 10px; background: var(--panel-2, #f5f6f8); border: 1px solid var(--line, #e6e8ec); font-size: .8rem; min-width: 0; }
   .pv-steps b { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); } .pv-steps span { display: block; font-weight: 650; overflow-wrap: anywhere; }
@@ -1219,6 +1228,7 @@
     <button class="nav" type="button" id="navTenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg> Tenants</button>
     <button class="nav" type="button" id="navTcy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/></svg> Tenancies</button>
     <button class="nav" type="button" id="navOffers" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg> Offers <span class="badge hot" id="sOffers" hidden>0</span></button>
+    <button class="nav" type="button" id="navAvail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg> Available properties <span class="count-chip" id="sAvail" hidden></span></button>
     <button class="nav" type="button" id="navLandlords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg> Landlords</button>
     <button class="nav" type="button" id="navCerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/></svg> Certificates <span class="badge hot" id="sCerts" hidden></span></button>
     <button class="nav" type="button" id="navPay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg> Payments <span class="badge" id="sOwed" hidden></span></button>
@@ -1231,7 +1241,6 @@
     <a class="nav" href="/" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Tenant report page</a>
     <a class="nav" href="/offer" target="_blank" rel="noopener" style="text-decoration:none" title="The form applicants fill in to make an offer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offer form (applicants)</a>
     <a class="nav" href="/admin#offers" id="navOffersLink" style="text-decoration:none" title="Where the offer forms are collected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offers collected <span class="badge hot" id="sOffers2" hidden>0</span></a>
-    <button class="nav" type="button" id="navAvail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg> Available properties <span class="count-chip" id="sAvail" hidden></span></button>
     <div class="grow"></div>
     <div class="side-foot"><div class="deployed" id="whoAmI" hidden></div><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="myPwBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg> My password</button><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
   </aside>
@@ -1567,6 +1576,7 @@
           <div class="av-search"><input class="inp" id="avQ" placeholder="Search address, landlord, postcode, notes…"><select class="inp" id="avSort" style="width:auto"><option value="date">Available soonest</option><option value="lo">Rent: low to high</option><option value="hi">Rent: high to low</option><option value="beds">Bedrooms</option><option value="new">Newest added</option></select></div>
           <div class="av-chips" id="avBeds"><button type="button" class="on" data-avb="">All</button><button type="button" data-avb="1">Studio / 1 bed</button><button type="button" data-avb="2">2 bed</button><button type="button" data-avb="3">3 bed</button><button type="button" data-avb="4">4+ bed</button><span class="av-sep"></span><button type="button" data-avf="now">Available now</button><button type="button" data-avf="urgent">🔥 Urgent</button><button type="button" data-avf="let">Let / withdrawn</button></div>
           <div class="av-sum" id="avSum"></div>
+          <div class="av-rm" id="avRm"></div>
           <div class="av-add-btns"><button type="button" class="btn small primary" id="avAddBtn">➕ Add a property</button><button type="button" class="btn small" id="avPasteBtn">📋 Paste from your spreadsheet</button></div>
           <div class="av-form" id="avForm" hidden>
             <div class="av-grid"><label class="av-wide">Address<input class="inp" id="avAddr" list="offProps" placeholder="Include the postcode"></label><label>Bedrooms<select class="inp" id="avBedsIn"><option value="">—</option><option value="0">Studio</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
@@ -9491,7 +9501,9 @@
 
   // ---------- Available properties: the lettings list staff work from ----------
   var avItems = [], avBeds = '', avFlag = '', avEdit = null;
-  function loadAvail(){ return api('GET', '/api/admin/available').then(function(d){ if (!d || !d.ok) return; avItems = d.items || []; renderAvail(); var n = avItems.filter(function(x){ return x.status === 'available'; }).length; $('sAvail').hidden = !n; $('sAvail').textContent = n; }); }
+  var rmData = null;
+  function loadRm(){ return api('GET', '/api/admin/rightmove').then(function(d){ if (d && d.ok) { rmData = d; renderAvail(); } }); }
+  function loadAvail(){ loadRm(); return api('GET', '/api/admin/available').then(function(d){ if (!d || !d.ok) return; avItems = d.items || []; renderAvail(); var n = avItems.filter(function(x){ return x.status === 'available'; }).length; $('sAvail').hidden = !n; $('sAvail').textContent = n; }); }
   function avDay(v){ return v ? certDay(String(v).slice(0, 10)) : ''; }
   function avNow(x){ return x.vacant || (x.available_from && String(x.available_from).slice(0, 10) <= new Date().toISOString().slice(0, 10)); }
   function avPhones(t){ var out = [], seen = {}; String(t || '').replace(/(\+?44\s?7\d{3}|\b07\d{3})[\s-]?\d{3}[\s-]?\d{3}\b/g, function(m){ var d = m.replace(/[^\d+]/g, ''); if (!seen[d]) { seen[d] = 1; out.push(m.trim()); } }); return out; }
@@ -9508,6 +9520,11 @@
     list.sort(function(a, b){ return sort === 'lo' ? (a.rent_pcm || 1e9) - (b.rent_pcm || 1e9) : sort === 'hi' ? (b.rent_pcm || 0) - (a.rent_pcm || 0) : sort === 'beds' ? (a.beds == null ? 99 : a.beds) - (b.beds == null ? 99 : b.beds) : sort === 'new' ? b.id - a.id : (b.urgent - a.urgent) || dkey(a).localeCompare(dkey(b)); });
     var live = avItems.filter(function(x){ return x.status === 'available'; });
     $('avSum').innerHTML = '<b>' + live.length + '</b> available · <b>' + live.filter(avNow).length + '</b> available now · <b>' + live.filter(function(x){ return x.urgent; }).length + '</b> urgent' + (list.length !== live.length ? ' · showing ' + list.length : '');
+    var rmList = (rmData && rmData.items) || [], rmBy = {}; rmList.forEach(function(r){ rmBy[r.id] = r; });
+    var linkedIds = {}; avItems.forEach(function(x){ if (x.rm_id && rmBy[x.rm_id] && x.status === 'available') linkedIds[x.rm_id] = 1; });
+    var unl = rmList.filter(function(r){ return !linkedIds[r.id]; }), canSet = !staffMode || meta.canManageUsers;
+    $('avRm').innerHTML = !rmData ? '' : '<div class="av-rm-bar"><span class="av-rm-logo">rightmove</span><span>' + (rmData.at ? '<b>' + rmList.length + '</b> listing' + (rmList.length === 1 ? '' : 's') + ' on our page · <b>' + Object.keys(linkedIds).length + '</b> linked · checked ' + esc(fmtShort(rmData.at)) : 'Not checked yet') + (rmData.error ? ' · <span style="color:#b42318">couldn’t reach Rightmove last time</span>' : '') + '</span><span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small" id="avRmCheck">🔄 Check now</button><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(rmData.branch_url) + '">Our Rightmove page ↗</a>' + (canSet ? '<button type="button" class="btn small ghost" id="avRmSet" title="Change the Rightmove branch">⚙︎</button>' : '') + '</span></div>' +
+      (unl.length ? '<details class="av-rm-unl"><summary>On Rightmove but not on our list (' + unl.length + ')</summary>' + unl.map(function(r){ return '<div class="av-rm-item">' + (r.image ? '<img src="' + esc(r.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<div><b>' + esc(r.address) + '</b><span>' + [r.beds != null ? (r.beds === 0 ? 'Studio' : r.beds + ' bed') : '', r.pcm ? gbp(r.pcm) + ' pcm' : '', r.status].filter(Boolean).map(esc).join(' · ') + '</span></div><span style="margin-left:auto;display:flex;gap:6px"><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(r.url) + '">View ↗</a><button type="button" class="btn small" data-rmadd="' + esc(r.id) + '">➕ Add to list</button></span></div>'; }).join('') + '</details>' : '');
     var canDel = !staffMode || meta.canManageUsers;
     $('avList').innerHTML = list.length ? list.map(function(x){
       var pc = (String(x.address).match(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i) || [''])[0].toUpperCase(), phones = avPhones(x.contact), mails = avEmails(x.contact), off = x.status !== 'available';
@@ -9515,12 +9532,15 @@
       return '<div class="av-card' + (x.urgent ? ' is-urgent' : '') + (off ? ' is-off' : '') + '" data-av="' + x.id + '">' +
         '<div class="av-h"><div class="av-beds"><b>' + (x.beds == null ? '–' : x.beds === 0 ? 'S' : x.beds) + '</b><span>' + (x.beds === 0 ? 'studio' : 'bed') + '</span></div><div style="min-width:0"><div class="av-addr">' + esc(x.address.replace(pc, '').replace(/[,\s]+$/, '')) + '</div><div class="av-pc">' + esc(pc) + '</div></div></div>' +
         (tags ? '<div class="av-tags">' + tags + '</div>' : '') +
+        (function(){ if (!rmData || !rmData.at || off) return ''; var r = x.rm_id && rmBy[x.rm_id];
+          if (r) return '<a class="av-rmlink" target="_blank" rel="noopener" href="' + esc(r.url) + '">' + (r.image ? '<img src="' + esc(r.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<span><b>On Rightmove ↗</b>' + esc(r.address) + (r.pcm ? ' · ' + esc(gbp(r.pcm)) + ' pcm' : '') + (r.status ? ' · ' + esc(r.status) : '') + '</span></a>';
+          return '<div class="av-dream" title="We couldn’t find it on our Rightmove page">💭 Not on Rightmove — probably a Dream' + (x.rm_id === 'none' ? '' : '') + '</div>'; })() +
         '<div class="av-row"><div class="' + (avNow(x) ? 'now' : '') + '"><span>Available</span><b>' + (x.vacant ? 'Vacant now' : avNow(x) ? 'Now' : esc(avDay(x.available_from) || 'TBC')) + '</b></div><div><span>Per week</span><b>' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</b></div><div><span>Per month</span><b>' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</b></div></div>' +
         ((x.landlord || x.commission) ? '<div class="av-meta">Landlord <b>' + esc(x.landlord || '—') + '</b>' + (x.commission ? ' · Commission <b>' + esc(x.commission) + '</b>' : '') + '</div>' : '') +
         (x.notes ? '<div class="av-note">📝 ' + esc(x.notes) + '</div>' : '') +
         (x.contact ? '<details class="av-contact"><summary>👤 Current tenant / viewings contact</summary><pre>' + esc(x.contact) + '</pre><div class="av-phones">' + phones.map(function(ph){ var w = waNumber(ph); return '<a class="btn small" href="tel:' + esc(ph.replace(/[^\d+]/g, '')) + '">📞 ' + esc(ph) + '</a>' + (w ? '<a class="btn small wa" target="_blank" rel="noopener" href="https://wa.me/' + w + '">WhatsApp</a>' : ''); }).join('') + mails.map(function(m){ return '<a class="btn small" href="mailto:' + esc(m) + '">✉ ' + esc(m) + '</a>'; }).join('') + '</div></details>' : '') +
         '<div class="av-acts">' + (off ? '<button type="button" class="btn small" data-avs="available">↩ Back on the list</button>' : '<button type="button" class="btn small primary" data-ava="offer">📝 Offer form</button><button type="button" class="btn small" data-ava="pvr">🗓 PVR</button><button type="button" class="btn small" data-ava="view">👀 Book viewing</button><button type="button" class="btn small ghost" data-ava="copy">📋 Copy</button>') +
-          '<button type="button" class="btn small ghost" data-ava="edit">✏️</button>' + (off ? '' : '<button type="button" class="btn small ghost" data-avs="let" title="Mark as let">✓ Let</button>') + (canDel ? '<button type="button" class="btn small ghost danger" data-ava="del" title="Delete">🗑</button>' : '') + '</div></div>';
+          (rmData && rmData.at && !off ? '<button type="button" class="btn small ghost" data-ava="rm" title="Link to a Rightmove listing">🔗 Rightmove</button>' : '') + '<button type="button" class="btn small ghost" data-ava="edit">✏️</button>' + (off ? '' : '<button type="button" class="btn small ghost" data-avs="let" title="Mark as let">✓ Let</button>') + (canDel ? '<button type="button" class="btn small ghost danger" data-ava="del" title="Delete">🗑</button>' : '') + '</div></div>';
     }).join('') : '<div class="card"><p class="muted-note" style="margin:0">' + (avItems.length ? 'Nothing matches — try another filter.' : 'No properties yet — add one, or paste your list from the spreadsheet.') + '</p></div>';
   }
   $('avQ').addEventListener('input', renderAvail); $('avSort').addEventListener('change', renderAvail);
@@ -9588,7 +9608,15 @@
     var card = e.target.closest('[data-av]'); if (!card) return; var x = avItems.filter(function(i){ return i.id === Number(card.dataset.av); })[0]; if (!x) return;
     var a = e.target.closest('[data-ava]'), st = e.target.closest('[data-avs]');
     if (st) { api('POST', '/api/admin/available/' + x.id, { status: st.dataset.avs }).then(function(){ toast(st.dataset.avs === 'let' ? '✓ Marked as let' : 'Back on the list'); loadAvail(); }); return; }
+    var rs = e.target.closest('[data-rmsave]');
+    if (rs) { var v = card.querySelector('.av-rmpick select').value; api('POST', '/api/admin/available/' + x.id + '/rightmove', v === 'auto' ? { auto: true } : { rm_id: v === 'none' ? null : v }).then(function(){ toast(v === 'none' ? 'Marked as not on Rightmove' : v === 'auto' ? 'Linking automatically' : '✓ Linked to Rightmove'); loadAvail(); }); return; }
     if (!a) return; var act = a.dataset.ava;
+    if (act === 'rm') {
+      var pk = card.querySelector('.av-rmpick'); if (pk) { pk.remove(); return; }
+      var opts = ((rmData && rmData.items) || []).map(function(r){ return '<option value="' + esc(r.id) + '"' + (x.rm_id === r.id ? ' selected' : '') + '>' + esc(r.address + (r.beds != null ? ' · ' + r.beds + ' bed' : '') + (r.pcm ? ' · ' + gbp(r.pcm) + ' pcm' : '')) + '</option>'; }).join('');
+      a.closest('.av-acts').insertAdjacentHTML('beforebegin', '<div class="av-rmpick"><select class="inp"><option value="auto">Match automatically</option><option value="none"' + (x.rm_id === 'none' ? ' selected' : '') + '>Not on Rightmove (a Dream)</option>' + opts + '</select><button type="button" class="btn small primary" data-rmsave>Save</button></div>');
+      return;
+    }
     if (act === 'edit') { avOpenForm(x); return; }
     if (act === 'del') { if (!confirm('Delete ' + shortAddr(x.address) + ' from the available list?')) return; api('DELETE', '/api/admin/available/' + x.id, { confirm: true }).then(function(d){ toast(d && d.ok ? 'Deleted' : 'Only managers can delete'); loadAvail(); }); return; }
     if (act === 'copy') { copyText((x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : '') + ' — ' + x.address + '\n' + (x.vacant ? 'Available now' : x.available_from ? 'Available from ' + avDay(x.available_from) : '') + '\n' + (x.rent_pcm ? gbp(Number(x.rent_pcm)) + ' pcm' : '') + (x.rent_pw ? ' (' + gbp(Number(x.rent_pw)) + ' pw)' : '') + '\nResidential Realtors · 0207 096 8131').then(function(){ toast('Details copied'); }); return; }
@@ -9600,6 +9628,12 @@
       if (act === 'pvr' && x.rent_pw) { $('pvPer2').value = 'pw'; $('pvRent2').value = Number(x.rent_pw); delete $('pvAmt2').dataset.manual; $('pvRent2').dispatchEvent(new Event('input')); }
       $('offLinkCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); $('offToName').focus();
     }, 250);
+  });
+  $('avRm').addEventListener('click', function(e){
+    if (e.target.closest('#avRmCheck')) { var b = e.target.closest('#avRmCheck'); busy(b, true, 'Checking…'); api('POST', '/api/admin/rightmove/refresh', {}).then(function(d){ busy(b, false); toast(d && d.ok ? '✓ Checked — ' + (d.items || []).length + ' listings on Rightmove' : 'Couldn’t reach Rightmove just now'); loadAvail(); }); return; }
+    if (e.target.closest('#avRmSet')) { var v = prompt('Our Rightmove branch (paste the branch page link or its number):', rmData ? rmData.branch : ''); if (!v) return; api('POST', '/api/admin/rightmove/settings', { branch: v }).then(function(d){ toast(d && d.ok ? '✓ Saved and checked' : d && d.error === 'branch' ? 'That doesn’t look like a branch link' : 'Saved — but couldn’t reach Rightmove'); loadAvail(); }); return; }
+    var ad = e.target.closest('[data-rmadd]');
+    if (ad) { var r = ((rmData && rmData.items) || []).filter(function(i){ return i.id === ad.dataset.rmadd; })[0]; if (!r) return; avOpenForm(null); $('avAddr').value = r.address; if (r.beds != null) $('avBedsIn').value = String(r.beds); if (r.pcm) { $('avPcm').value = r.pcm; $('avPcm').dispatchEvent(new Event('input')); } toast('Check the full address (Rightmove hides the door number), then save'); }
   });
   $('navAvail').addEventListener('click', function(){ showView('avail'); });
 

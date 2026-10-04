@@ -521,6 +521,8 @@ CREATE TABLE IF NOT EXISTS available_props (
   status         TEXT NOT NULL DEFAULT 'available',
   created_by     TEXT
 );
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_id TEXT;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_manual BOOLEAN NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS sent_emails (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1640,7 +1642,7 @@ module.exports = function mountJobs(app, opts) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;
     if (/^\/pvr(\/\d+(\/pdf)?)?$/.test(path)) return true;
-    if (/^\/available(\/\d+)?$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
+    if (/^\/available(\/\d+(\/rightmove)?)?$/.test(path) || /^\/rightmove(\/(refresh|settings))?$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
@@ -8283,6 +8285,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         AVAIL_COLS.map(function (c) { return x[c]; }).concat([req.user ? req.user.name : 'Office']));
       ids.push(r.rows[0].id);
     }
+    rmAutoLink(p).catch(function () {});
     res.json({ ok: true, ids: ids });
   }));
   app.post('/api/admin/available/:id', withDb(async function (p, req, res) {
@@ -8294,6 +8297,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const x = availClean(b); if (!x.address) return res.status(400).json({ ok: false, error: 'address' });
     const r = await p.query('UPDATE available_props SET ' + AVAIL_COLS.map(function (c, i) { return c + ' = $' + (i + 2); }).join(', ') + ', updated_at = now() WHERE id = $1', [id].concat(AVAIL_COLS.map(function (c) { return x[c]; })));
     if (!r.rowCount) return res.status(404).json({ ok: false, error: 'not-found' });
+    rmAutoLink(p).catch(function () {});
     res.json({ ok: true });
   }));
   app.delete('/api/admin/available/:id', withDb(async function (p, req, res) {
@@ -8302,6 +8306,107 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query('DELETE FROM available_props WHERE id = $1', [jobId(req)]);
     res.json({ ok: true });
   }));
+
+  // ---------- Rightmove: link our branch's listings to the available list ----------
+  // The branch's own public listings are read a few times a day (and when staff tap
+  // "Check now"), then matched to the available list by postcode area, bedrooms, rent
+  // and street/building name. A property that can't be matched is most likely a "Dream".
+  const RM_BASE = 'https://www.rightmove.co.uk';
+  async function rmSettings(p) { const r = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove'")).rows[0]; return Object.assign({ branch: '105856' }, (r && r.value) || {}); }
+  function rmNorm(x) {
+    if (!x || x.id == null || !(x.displayAddress || x.address)) return null;
+    const pr = x.price || {}, freq = String(pr.frequency || '').toLowerCase(), amt = Number(pr.amount) || 0;
+    let pcm = freq === 'weekly' ? Math.round(amt * 52 / 12) : freq === 'monthly' || freq === '' ? amt : 0;
+    if (!pcm) { const dp = (pr.displayPrices || x.displayPrices || []).map(function (d) { return d.displayPrice || ''; }).join(' '), m = /£([\d,]+)\s*pcm/i.exec(dp); if (m) pcm = Number(m[1].replace(/,/g, '')); }
+    const img = (x.propertyImages && (x.propertyImages.mainImageSrc || ((x.propertyImages.images || [])[0] || {}).srcUrl)) || x.mainImageSrc || '';
+    const url = String(x.propertyUrl || '/properties/' + x.id).replace(/#.*$/, '');
+    return { id: String(x.id), address: String(x.displayAddress || x.address).replace(/\s+/g, ' ').trim(), beds: x.bedrooms != null ? Number(x.bedrooms) : null, pcm: pcm || null,
+      url: /^https?:/.test(url) ? url : RM_BASE + url, image: img, status: String(x.displayStatus || ((x.listingUpdate || {}).listingUpdateReason) || x.addedOrReduced || '').slice(0, 60), type: String(x.propertySubType || x.propertyTypeFullDescription || '').slice(0, 60) };
+  }
+  // Any list of property-like objects inside the page's data.
+  function rmDig(v, out, depth) {
+    if (!v || depth > 9 || out.length > 400) return;
+    if (Array.isArray(v)) { if (v.length && v.every(function (o) { return o && typeof o === 'object' && o.id != null && (o.displayAddress || o.propertyUrl); })) v.forEach(function (o) { out.push(o); }); else v.forEach(function (o) { rmDig(o, out, depth + 1); }); return; }
+    if (typeof v === 'object') Object.keys(v).forEach(function (k) { rmDig(v[k], out, depth + 1); });
+  }
+  async function rmFetchBranch(branch) {
+    const headers = { 'User-Agent': 'Mozilla/5.0 (compatible; Fixflow; Residential Realtors listings check)', 'Accept': 'application/json, text/html' };
+    const seen = {}, items = [];
+    const add = function (list) { list.map(rmNorm).filter(Boolean).forEach(function (x) { if (!seen[x.id]) { seen[x.id] = 1; items.push(x); } }); };
+    for (let index = 0; index < 240; index += 24) {
+      let got = 0;
+      try {
+        const r = await fetch(RM_BASE + '/api/_search?locationIdentifier=BRANCH%5E' + encodeURIComponent(branch) + '&numberOfPropertiesPerPage=24&radius=0.0&sortType=6&index=' + index + '&includeLetAgreed=true&viewType=LIST&channel=RENT&areaSizeUnit=sqft&currencyCode=GBP&isFetching=false', { headers: headers, signal: AbortSignal.timeout(15000) });
+        if (r.ok && /json/.test(r.headers.get('content-type') || '')) { const j = await r.json(); const before = items.length; add(j.properties || []); got = items.length - before; if (!got && index === 0) throw new Error('empty'); if ((j.properties || []).length < 24) return items; continue; }
+      } catch (e) { /* fall back to the page itself */ }
+      const r2 = await fetch(RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + encodeURIComponent(branch) + '&includeLetAgreed=true&index=' + index, { headers: headers, signal: AbortSignal.timeout(15000) });
+      if (!r2.ok) { if (index === 0) throw new Error('Rightmove answered ' + r2.status); break; }
+      const html = await r2.text(), blobs = [];
+      const nd = /<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(html); if (nd) blobs.push(nd[1]);
+      const jm = /window\.jsonModel\s*=\s*(\{[\s\S]*?\})\s*<\/script>/.exec(html); if (jm) blobs.push(jm[1]);
+      const found = []; blobs.forEach(function (b) { try { rmDig(JSON.parse(b), found, 0); } catch (e) {} });
+      const before = items.length; add(found); got = items.length - before;
+      if (!got || found.length < 24) break;
+    }
+    return items;
+  }
+  const RM_STOP = { flat: 1, apartment: 1, london: 1, road: 1, street: 1, lane: 1, avenue: 1, court: 1, house: 1, the: 1, and: 1, rd: 1, st: 1, ave: 1 };
+  function rmWords(a) { return String(a || '').toLowerCase().replace(/\b[a-z]{1,2}\d[a-z\d]?\s*\d[a-z]{2}\b/g, ' ').replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(function (w) { return w.length > 2 && !RM_STOP[w]; }); }
+  function rmOutcode(a) { const m = /\b([A-Z]{1,2}\d[A-Z\d]?)(?:\s*\d[A-Z]{2})?\s*$/i.exec(String(a || '').replace(/[,\s]+$/, '')); return m ? m[1].toUpperCase() : ((/\b([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}\b/i.exec(String(a || '')) || [])[1] || '').toUpperCase(); }
+  function rmScore(av, rm) {
+    let sc = 0; const oa = rmOutcode(av.address), orm = rmOutcode(rm.address);
+    if (oa && orm) { if (oa !== orm) return -1; sc += 3; }
+    if (av.beds != null && rm.beds != null) sc += av.beds === rm.beds ? 2 : -2;
+    const pa = Number(av.rent_pcm) || 0; if (pa && rm.pcm) { const d = Math.abs(pa - rm.pcm) / pa; sc += d <= 0.02 ? 3 : d <= 0.08 ? 1 : -1; }
+    const wa = rmWords(av.address), wr = rmWords(rm.address); sc += Math.min(3, wa.filter(function (w) { return wr.indexOf(w) !== -1; }).length * 1.5);
+    return sc;
+  }
+  // Link each available property to its best Rightmove listing (one each); staff choices are kept.
+  async function rmAutoLink(p, list) {
+    if (!list) { const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0]; list = c && c.value && c.value.items || []; }
+    if (!list.length) return;
+    const av = (await p.query("SELECT id, address, beds, rent_pcm, rm_id, rm_manual FROM available_props WHERE status = 'available'")).rows;
+    const taken = {}; av.forEach(function (a) { if (a.rm_manual && a.rm_id && a.rm_id !== 'none') taken[a.rm_id] = 1; });
+    const pairs = [];
+    av.filter(function (a) { return !a.rm_manual; }).forEach(function (a) { list.forEach(function (r) { const s = rmScore(a, r); if (s >= 5) pairs.push({ a: a.id, r: r.id, s: s }); }); });
+    pairs.sort(function (x, y) { return y.s - x.s; });
+    const got = {};
+    pairs.forEach(function (x) { if (got[x.a] || taken[x.r]) return; got[x.a] = x.r; taken[x.r] = 1; });
+    for (const a of av.filter(function (a) { return !a.rm_manual; })) { const nid = got[a.id] || null; if (nid !== a.rm_id) await p.query('UPDATE available_props SET rm_id = $2 WHERE id = $1', [a.id, nid]); }
+  }
+  async function rmRefresh(p) {
+    const st = await rmSettings(p); let items = [], error = null;
+    try { items = await rmFetchBranch(st.branch); } catch (e) { error = String(e.message || e).slice(0, 200); }
+    const prev = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0];
+    const keep = error && prev && prev.value && prev.value.items ? prev.value.items : items;
+    const val = { at: new Date().toISOString(), items: keep, error: error, ok_at: error ? (prev && prev.value && prev.value.ok_at) || null : new Date().toISOString() };
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('rightmove_list', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(val)]);
+    if (!error) await rmAutoLink(p, items);
+    return val;
+  }
+  app.get('/api/admin/rightmove', withDb(async function (p, req, res) {
+    const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], st = await rmSettings(p);
+    res.json(Object.assign({ ok: true, branch: st.branch, branch_url: RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + st.branch, items: [] }, (c && c.value) || {}));
+  }));
+  app.post('/api/admin/rightmove/refresh', withDb(async function (p, req, res) {
+    const v = await rmRefresh(p); res.json(Object.assign({ ok: !v.error }, v));
+  }));
+  app.post('/api/admin/rightmove/settings', withDb(async function (p, req, res) {
+    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    const m = /(?:BRANCH(?:\^|%5E))?(\d{3,9})/i.exec(String((req.body || {}).branch || '')); if (!m) return res.status(400).json({ ok: false, error: 'branch' });
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('rightmove', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ branch: m[1] })]);
+    res.json(Object.assign({ ok: true }, await rmRefresh(p)));
+  }));
+  // Staff link (or unlink) a listing by hand; that choice is kept on later checks.
+  app.post('/api/admin/available/:id/rightmove', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req);
+    if (b.auto === true) { await p.query('UPDATE available_props SET rm_manual = false WHERE id = $1', [id]); await rmAutoLink(p); return res.json({ ok: true }); }
+    const rid = b.rm_id == null || b.rm_id === '' ? 'none' : String(b.rm_id).replace(/\D/g, '').slice(0, 20) || 'none';
+    if (rid !== 'none') await p.query("UPDATE available_props SET rm_id = NULL WHERE rm_id = $1 AND id <> $2 AND NOT rm_manual", [rid, id]);
+    await p.query('UPDATE available_props SET rm_id = $2, rm_manual = true WHERE id = $1', [id, rid]);
+    res.json({ ok: true });
+  }));
+  setInterval(function () { db().then(async function (p) { if (!p) return; const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0]; if (!c || !c.value || Date.now() - Date.parse(c.value.at) > 6 * 3600000) await rmRefresh(p); }).catch(function (e) { console.error('Rightmove check failed:', e.message); }); }, 30 * 60 * 1000).unref();
 
   // ---------- Pre-viewing reservations (PVR) ----------
   // An applicant reserves a property before viewing it: they sign the PVR form
