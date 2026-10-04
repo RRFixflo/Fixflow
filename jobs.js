@@ -1624,7 +1624,7 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
-    if (method === 'POST') return path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
+    if (method === 'POST') return path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
 
@@ -1704,6 +1704,7 @@ module.exports = function mountJobs(app, opts) {
     const b = req.body || {}, path = req.path, m = req.method;
     if (/^\/sessions|^\/ask|^\/offers\/\d+$/.test(path) && Object.keys(b).length === 1 && b.seen === true) return '';
     if (/^\/(sessions|visits|site-sessions)/.test(path)) return '';
+    if (path === '/me/password') return 'Changed their own password';
     if (path === '/email') return ('Sent email "' + String(b.subject || '').slice(0, 120) + '" to ' + [].concat(b.to || []).join(', ').slice(0, 120)).slice(0, 300);
     const seg = path.split('/').filter(Boolean), id = seg[1] && /^\d+$/.test(seg[1]) ? Number(seg[1]) : null;
     const NOUN = { jobs: 'repair job', offers: 'offer', tenancies: 'tenancy', landlords: 'landlord', tenants: 'tenant', contractors: 'contractor', invoices: 'invoice', certificates: 'certificate', certs: 'certificate',
@@ -1793,6 +1794,19 @@ module.exports = function mountJobs(app, opts) {
     if (signOut) await revokeUser(p, id);
     if (b.name != null) await p.query('UPDATE admin_sessions SET user_name = $2 WHERE user_id = $1', [id, str(b.name, 80)]);
     for (const [k, v] of sessionCache) if (v && v.user_id === id) sessionCache.delete(k);
+    res.json({ ok: true });
+  }));
+  // Anyone with their own sign-in can change their own password (they confirm the current one).
+  app.post('/api/admin/me/password', withDb(async function (p, req, res) {
+    if (!req.user || !req.user.id) return res.status(400).json({ ok: false, error: 'shared-sign-in' });
+    const b = req.body || {}, cur = String(b.current || ''), pw = String(b.password || '');
+    if (!pw.trim() || pw.length > 200) return res.status(400).json({ ok: false, error: 'short' });
+    const u = (await p.query('SELECT id, salt, hash FROM staff_users WHERE id = $1 AND disabled_at IS NULL', [req.user.id])).rows[0];
+    if (!u) return res.status(404).json({ ok: false, error: 'not-found' });
+    const a = Buffer.from(scryptHex(cur, u.salt), 'hex'), h = Buffer.from(u.hash, 'hex');
+    if (!(a.length === h.length && crypto.timingSafeEqual(a, h))) return res.status(401).json({ ok: false, error: 'wrong-current' });
+    const salt = crypto.randomBytes(16).toString('hex');
+    await p.query('UPDATE staff_users SET salt = $2, hash = $3 WHERE id = $1', [u.id, salt, scryptHex(pw, salt)]);
     res.json({ ok: true });
   }));
   // Email someone their sign-in details. Passwords are only kept scrambled, so this sets the
