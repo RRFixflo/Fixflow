@@ -793,6 +793,7 @@ function llAddrLines(a) {
   for (let i = parts.length - 1; i >= 0 && !postcode; i--) { const m = pcRe.exec(parts[i]); if (m) { postcode = (m[1] + ' ' + m[2]).toUpperCase(); parts[i] = parts[i].replace(m[0], '').trim(); } }
   parts = parts.filter(Boolean);
   if (parts.length > 1 && /^(united kingdom|uk|england|scotland|wales|northern ireland|great britain|gb)$/i.test(parts[parts.length - 1])) country = parts.pop();
+  if (parts.length === 1) { const w = parts[0].split(/\s+/); if (w.length > 2 && /^(london|ilford|croydon|romford|bromley|barking|dagenham|harrow|wembley|enfield|sutton|kingston|richmond|hounslow|uxbridge|watford|luton|slough|reading|dartford|basildon|chelmsford|brentwood|grays|birmingham|manchester|leeds|liverpool|bristol|leicester|northampton|nottingham|sheffield|coventry|oxford|cambridge|brighton)$/i.test(w[w.length - 1])) parts = [w.slice(0, -1).join(' '), w[w.length - 1]]; }
   if (parts.length > 2 && /^(flat|apartment|apt|unit|room|suite|studio)\b/i.test(parts[0])) parts.splice(0, 2, parts[0] + ', ' + parts[1]);   // "Flat 3, 22 New Road" stays one line
   return { line1: parts[0] || '', line2: parts.slice(1).join(', '), country: country, postcode: postcode };
 }
@@ -5180,7 +5181,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
       checkin_date: day(b.checkin_date), checkin_time: s(b.checkin_time, 20), checkin_type: b.checkin_type === 'diy' ? 'diy' : b.checkin_type === 'clerk' ? 'clerk' : b.checkin_type === 'none' ? 'none' : null, checkin_tbc: !!b.checkin_tbc,
       tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       guarantors: (Array.isArray(b.guarantors) ? b.guarantors : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
-      landlord: { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(l.postcode, 20) },
+      landlord: (function () { const o = { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(String(l.postcode || '').trim(), 300) };
+        // A whole address typed in one box (often the postcode box): put each part in its place.
+        const pcOnly = /^\s*[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\s*$/i;
+        if ((o.postcode && !pcOnly.test(o.postcode)) || [o.line1, o.line2, o.country].some(function (x) { return x && POSTCODE_RE.test(x); })) Object.assign(o, llAddrLines([o.line1, o.line2, o.postcode, o.country].filter(Boolean).join(', ')));
+        else if (o.postcode) o.postcode = o.postcode.toUpperCase().replace(/^([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})$/, '$1 $2');
+        o.postcode = String(o.postcode || '').slice(0, 20) || null; return o; })(),
       service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), find_basis: b.find_basis === 'upfront' ? 'upfront' : 'monthly',
       manage_basis: b.manage_basis === 'upfront' ? 'upfront' : 'monthly', find_unit: b.find_unit === 'gbp' ? 'gbp' : 'pct', collect_unit: b.collect_unit === 'gbp' ? 'gbp' : 'pct', manage_unit: b.manage_unit === 'gbp' ? 'gbp' : 'pct', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
       credits: (Array.isArray(b.credits) ? b.credits : []).slice(0, 20).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount), vat: !!(f && f.vat) }; }).filter(function (f) { return f.label && f.amount; }),
@@ -6032,14 +6038,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer']];
     const buttons = [];
     const btnOf = function (b) { return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 22px"><tr><td style="background:#0b1f3a;border-radius:12px"><a href="' + e(b.url) + '" style="display:inline-block;padding:15px 26px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">' + e(b.label) + ' &rarr;</a></td></tr></table><p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3">Or copy this link: <a href="' + e(b.url) + '" style="color:#98a2b3;word-break:break-all">' + e(b.url) + '</a></p>'; };
-    const linkify = function (t) { return e(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, function (u) { return '<a href="' + u + '" style="color:#1d3fae;text-decoration:underline">' + u + '</a>'; }); };
+    // Long web addresses show as their site (e.g. "google.co.uk/…") — the link itself is unchanged.
+    const linkify = function (t) { return e(t).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, function (u) { const shown = u.length > 55 ? u.replace(/^https?:\/\/(www\.)?/, '').split(/[/?#]/)[0] + '/…' : u; return '<a href="' + u + '" style="color:#1d3fae;text-decoration:underline">' + shown + '</a>'; }); };
     let paras = body.trim().split(/\n{2,}/).map(function (p) {
       p = p.trim(); if (!p) return ''; const nb = buttons.length;
       const after = function () { return buttons.slice(nb).map(btnOf).join(''); };
       // Our own main link: a button instead of the bare address.
       p = p.replace(/\s*(?:—|-)?\s*(https?:\/\/[^\s]+)/g, function (all, u) { const b = BTN.filter(function (x) { return x[0].test(u.replace(/[).,]+$/, '')); })[0]; if (!b || buttons.some(function (x) { return x.url === u; })) return all; buttons.push({ url: u.replace(/[).,]+$/, ''), label: b[1] }); return ' '; }).replace(/\s+(here|below)?:\s*$/i, function (m, w) { return w ? ' using the button below.' : '.'; }).replace(/\s+—\s*Residential Realtors\s*$/i, '').trim();
       const lines = p.split('\n');
-      if (lines.every(function (l) { return /^\s*[-•]\s+/.test(l); })) return '<ul style="margin:0 0 16px;padding-left:20px">' + lines.map(function (l) { return '<li style="margin:0 0 6px">' + linkify(l.replace(/^\s*[-•]\s+/, '')) + '</li>'; }).join('') + '</ul>' + after();
+      if (lines.every(function (l) { return /^\s*[-•*]\s+/.test(l); })) return '<ul style="margin:0 0 16px;padding-left:20px">' + lines.map(function (l) { return '<li style="margin:0 0 6px">' + linkify(l.replace(/^\s*[-•*]\s+/, '')) + '</li>'; }).join('') + '</ul>' + after();
+      // A lead-in line followed by bullet points ("…the following items:" then "* item").
+      if (lines.length > 2 && !/^\s*[-•*]\s+/.test(lines[0]) && lines.slice(1).every(function (l) { return /^\s*[-•*]\s+/.test(l); })) return '<p style="margin:0 0 8px">' + linkify(lines[0]) + '</p><ul style="margin:0 0 16px;padding-left:20px">' + lines.slice(1).map(function (l) { return '<li style="margin:0 0 6px">' + linkify(l.replace(/^\s*[-•*]\s+/, '')) + '</li>'; }).join('') + '</ul>' + after();
       // A block of "Label: value" lines (offer details, bank details): a tidy panel.
       const kvRe = /^([A-Za-z][^:]{1,38}):\s*(.*)$/;
       if (lines.length >= 2 && lines.filter(function (l) { return kvRe.test(l) && !/https?:$/i.test(l.split(':')[0]); }).length >= 2 && lines.every(function (l) { return kvRe.test(l) || /^\s*[-•]\s+/.test(l); })) {
@@ -6055,10 +6064,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
         return '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f7f8fa;border:1px solid #eef0f3;border-radius:12px;margin:0 0 18px"><tr><td style="padding:10px 16px"><table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;font-size:14px">' + rows + '</table></td></tr></table>' + after();
       }
       // A short title line on its own ("Frequently Asked Questions").
-      if (lines.length === 1 && p.length <= 40 && /^[A-Z][A-Za-z ]+$/.test(p) && p.split(' ').filter(function (w) { return /^[A-Z]/.test(w); }).length >= Math.max(2, p.split(' ').length - 1)) return '<h2 style="margin:26px 0 4px;font-size:18px;color:#0b1f3a;border-top:1px solid #eef0f3;padding-top:18px">' + e(p) + '</h2>';
+      if (lines.length === 1 && p.length <= 40 && !/^dear\b/i.test(p) && /^[A-Z][A-Za-z ]+$/.test(p) && p.split(' ').filter(function (w) { return /^[A-Z]/.test(w); }).length >= Math.max(2, p.split(' ').length - 1)) return '<h2 style="margin:26px 0 4px;font-size:18px;color:#0b1f3a;border-top:1px solid #eef0f3;padding-top:18px">' + e(p) + '</h2>';
       // A heading: a line that is all bold / underlined, or a short title line above a longer paragraph ("Move-in monies").
       const headRe = /^\s*(\[(b|u)\]\s*)+([^\[\]\n]{2,70}?)\s*(\[\/(b|u)\]\s*)+$/, h3 = function (t) { return '<h3 style="margin:22px 0 6px;font-size:16px;color:#0b1f3a">' + e(unmark(t).trim()) + '</h3>'; };
-      const plainHead = lines.length > 1 && lines[0].length <= 40 && /^[A-Z][A-Za-z' &/-]+$/.test(lines[0].trim()) && lines[1].length >= 60;
+      const plainHead = lines.length > 1 && lines[0].length <= 40 && !/^dear\b/i.test(lines[0]) && /^[A-Z][A-Za-z' &/-]+$/.test(lines[0].trim()) && lines[1].length >= 60;
       if ((headRe.test(lines[0]) && !/^\s*(\[(b|u)\]\s*)+(re|dear)\b/i.test(lines[0])) || plainHead) { const rest = lines.slice(1); return h3(lines[0]) + (rest.length ? '<p style="margin:0 0 16px">' + rest.map(linkify).join('<br>') + '</p>' : '') + after(); }
       if (lines.length === 1 && /^[A-Z0-9 ,.'’&:-]{12,}$/.test(p)) return '<p style="margin:0 0 16px;font-size:12px;letter-spacing:.06em;font-weight:700;color:#475467">' + e(p) + '</p>';
       return lines.map(function (l, i) {
@@ -8868,9 +8877,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
   setInterval(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function () {}); }, 24 * 3600000).unref();
   // Once: put the values already on the list in their places (version bump re-runs it).
   // Once: bring every tenancy's landlord address up to date with the landlord records.
-  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k && k.value && k.value.v >= 2) return; let n = 0;
+  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k && k.value && k.value.v >= 3) return; let n = 0;
+    // Landlord addresses typed into the wrong boxes (e.g. the whole address in Postcode): each part put in its place.
+    const pcOnly = /^\s*[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\s*$/i;
+    for (const t of (await p.query("SELECT id, data->'landlord' AS l FROM tenancies WHERE data ? 'landlord'")).rows) {
+      const l = t.l || {}; if (!((l.postcode && !pcOnly.test(l.postcode)) || [l.line1, l.line2, l.country].some(function (x) { return x && POSTCODE_RE.test(x); }))) continue;
+      const next = Object.assign({}, l, llAddrLines([l.line1, l.line2, l.postcode, l.country].filter(Boolean).join(', ')));
+      await p.query("UPDATE tenancies SET data = jsonb_set(data, '{landlord}', $2::jsonb) WHERE id = $1", [t.id, JSON.stringify(next)]); n++;
+    }
     for (const r of (await p.query('SELECT id FROM landlords')).rows) n += await syncLandlordTenancies(p, r.id);
-    await p.query("INSERT INTO app_settings (key, value) VALUES ('ll_tcy_sync', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 2, at: new Date().toISOString(), updated: n })]); console.log('Tenancy landlord details synced:', n); }).catch(function (e) { console.error('Landlord sync failed:', e.message); }); }, 20000).unref();
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('ll_tcy_sync', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 3, at: new Date().toISOString(), updated: n })]); console.log('Tenancy landlord details synced:', n); }).catch(function (e) { console.error('Landlord sync failed:', e.message); }); }, 20000).unref();
   setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 4) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 4, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
   // Empty the Been let list before pasting a corrected copy (managers only).
   app.post('/api/admin/available-clear-let', withDb(async function (p, req, res) {
