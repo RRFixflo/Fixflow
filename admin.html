@@ -1786,7 +1786,7 @@
   <div class="card" role="dialog" aria-labelledby="caTitle">
     <div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><h3 id="caTitle" style="margin:0">Ask the landlord</h3><button class="btn small ghost" type="button" id="caX">✕</button></div>
     <p class="muted-note" id="caSub" style="margin:4px 0 10px"></p>
-    <p style="margin:0 0 12px;font-size:.92rem">Sends the landlord a private link where they can <b>upload the new certificate</b> or tap <b>“Please arrange it for me”</b>. You’ll get an alert when they answer.</p>
+    <p id="caIntro" style="margin:0 0 12px;font-size:.92rem">Sends the landlord a private link where they can <b>upload the new certificate</b> or tap <b>“Please arrange it for me”</b>. You’ll get an alert when they answer.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn wa-btn" type="button" id="caWa">WhatsApp</button><button class="btn primary" type="button" id="caMail">✉ Email</button><button class="btn ghost" type="button" id="caTpl">Formal email (your template)</button></div>
   </div>
 </div>
@@ -3947,7 +3947,8 @@
         (l.has_doc ? '<a class="linkish" style="font-size:.8rem" href="/api/admin/licence-doc?key=' + encodeURIComponent(propKey(address)) + '" target="_blank" rel="noopener">📎 View licence</a>' : '') +
         (l.checked_at ? '<small style="display:block;font-size:.72rem;color:var(--ink-soft)">Checked ' + esc(longDay(l.checked_at)) + (l.borough ? ' · ' + esc(l.borough) : '') + '</small>' : '') +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><button type="button" class="btn small" id="plCheck">🔎 Check register</button><button type="button" class="linkish" id="plEdit">' + (licenceOf(address) ? 'Edit' : '+ Add') + '</button>' +
-          (l.status !== 'not_needed' ? '<button type="button" class="linkish" id="plNotNeeded">Not needed</button>' : '') + '</div></div>' +
+          (l.status !== 'not_needed' ? '<button type="button" class="linkish" id="plNotNeeded">Not needed</button>' : '') + '</div>' +
+        (st.k === 'bad' || st.k === 'warn' ? '<button type="button" class="btn small primary" id="plAsk" style="margin-top:6px">💬 Ask landlord to get one</button>' : '') + certAskLine(propKey(address), 'Licence') + '</div>' +
       '<div id="plForm" hidden style="display:grid;gap:6px">' +
         '<select class="inp" id="plStatus">' + [['licensed', 'Licensed (issued)'], ['applied', 'Submitted — not yet issued'], ['none', 'No licence found'], ['not_needed', 'Not needed']].map(function(o){ return '<option value="' + o[0] + '"' + ((l.status || 'licensed') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
         '<select class="inp" id="plType"><option value="">Licence type…</option>' + LICENCE_TYPES.map(function(t){ return '<option' + (l.type === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
@@ -3958,6 +3959,7 @@
         '<button type="button" class="btn small primary" id="plSave">Save</button></div></div>';
   }
   function bindLicenceTile(address){
+    if ($('plAsk')) $('plAsk').addEventListener('click', function(){ openCertAsk(address, 'Licence'); });
     $('plCheck').addEventListener('click', function(){
       var pc = pcOf(knownFullAddress(propKey(address)) || address);
       if (!pc) { openLicences(''); toast('This address has no postcode — type it in the Licences window'); return; }
@@ -9670,7 +9672,9 @@
     return '<div class="cs" style="font-size:.78rem;margin-top:3px">💬 Asked ' + esc(fmtShort(r.created_at).split(',')[0]) + (r.via ? ' by ' + esc(r.via) : '') + ' · ' + ans + '</div>';
   }
   function openCertAsk(address, type){
-    var NAME = { Gas: 'Gas Safety Certificate', EICR: 'Electrical Safety Certificate (EICR)', EPC: 'Energy Performance Certificate (EPC)' }[type] || type;
+    var NAME = { Gas: 'Gas Safety Certificate', EICR: 'Electrical Safety Certificate (EICR)', EPC: 'Energy Performance Certificate (EPC)', Licence: 'Property licence' }[type] || type;
+    $('caTpl').hidden = type === 'Licence';
+    $('caIntro').innerHTML = type === 'Licence' ? 'Tells the landlord the property needs a licence and sends a private link where they can tap <b>“Please apply on my behalf”</b> — or say they’ll apply themselves. You’ll get an alert when they answer.' : 'Sends the landlord a private link where they can <b>upload the new certificate</b> or tap <b>“Please arrange it for me”</b>. You’ll get an alert when they answer.';
     var m = $('caModal'); $('caTitle').textContent = 'Ask the landlord · ' + NAME; $('caSub').textContent = shortAddr(address);
     m.hidden = false; m.dataset.addr = address; m.dataset.type = type;
   }
@@ -9679,6 +9683,14 @@
     api('POST', '/api/admin/cert-requests', { address: address, type: type, via: via === 'whatsapp' ? 'WhatsApp' : 'email' }).then(function(d){
       if (!d || !d.ok) { if (w) w.close(); toast('Couldn’t create the link'); return; }
       m.hidden = true; var l = d.landlord || {}, nm = String(l.name || '').trim(), first = /^(mr|mrs|ms|miss|dr|mx)\.?$/i.test(nm.split(/\s+/)[0] || '') ? nm : nm.split(/\s+/)[0], due = d.expires_on ? (d.expires_on < new Date().toISOString().slice(0, 10) ? 'expired on ' : 'is due to expire on ') + longDay(d.expires_on) : 'is due';
+      var lic = type === 'Licence', lst = lic ? licenceState(licenceOf(address)) : null, licWhy = lic ? (d.expires_on ? 'the property licence for ' + shortAddr(address) + ' ' + due : 'our records show the property at ' + shortAddr(address) + ' doesn’t have a property licence') : '';
+      if (lic) {
+        var lt = 'Hi' + (first ? ' ' + first : '') + ', ' + licWhy + '. The council requires a licence to let the property — letting without one can lead to fines. We can apply to the council on your behalf if you’d like: just tap the link and choose “Please apply on my behalf”: ' + d.link + ' — Residential Realtors';
+        if (via === 'whatsapp') { var ph0 = String(l.phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'), u0 = 'https://wa.me/' + (ph0.length >= 10 ? ph0 : '') + '?text=' + encodeURIComponent(lt); if (w) w.location.href = u0; else window.open(u0, '_blank', 'noopener'); }
+        else openMailto('mailto:' + encodeURIComponent(l.email || '') + '?subject=' + encodeURIComponent('Property licence needed — ' + shortAddr(address)) + '&body=' + encodeURIComponent('Dear ' + (first || 'Sir or Madam') + ',\n\n' + licWhy.charAt(0).toUpperCase() + licWhy.slice(1) + '. The council requires a selective, additional or HMO licence to let the property, and letting without one can lead to fines and rent repayment orders.\n\nWe can apply to the council on your behalf if you’d like — we’ll handle the application and let you know what we need from you. Just let us know here: ' + d.link + '\n\nIf you’d rather apply yourself, or already have a licence, you can upload a copy on the same page.' + mailSignoff()));
+        loadCertReqs().then(function(){ if (view === 'certs') renderCerts(); if (typeof renderProperty === 'function' && $('propLicTile')) renderProperty(); });
+        return;
+      }
       var text = 'Hi' + (first ? ' ' + first : '') + ', the ' + d.name + ' for ' + shortAddr(address) + ' ' + due + '. It’s a legal requirement while the property is let. Please send us the updated certificate — or if you’d like us to arrange it, just tap the link and choose “Please arrange it for me”: ' + d.link + ' — Residential Realtors';
       if (via === 'whatsapp') { var ph = String(l.phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '').replace(/^00/, '').replace(/^0/, '44'), url = 'https://wa.me/' + (ph.length >= 10 ? ph : '') + '?text=' + encodeURIComponent(text); if (w) w.location.href = url; else window.open(url, '_blank', 'noopener'); }
       else {
