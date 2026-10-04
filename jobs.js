@@ -1646,7 +1646,7 @@ module.exports = function mountJobs(app, opts) {
     if (/^\/landlord-terms(\/\d+(\/(pdf|doc\/\d+))?)?$/.test(path) && method !== 'DELETE') return true;
     if (method === 'GET' && /^\/landlord-terms\/(lookup|known)$/.test(path)) return true;
     if (/^\/pvr(\/\d+(\/pdf)?)?$/.test(path)) return true;
-    if (/^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
+    if (path === '/available-dedupe' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (method === 'GET') return path === '/me' || path === '/epc-check' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
@@ -8270,6 +8270,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function availClean(b) {
     const n = function (v) { const x = parseFloat(String(v == null ? '' : v).replace(/[£,\s]/g, '')); return isFinite(x) && x > 0 ? Math.round(x * 100) / 100 : null; };
     let pw = n(b.rent_pw), pcm = n(b.rent_pcm);
+    if (pw && pw > 20000) pw = null; if (pcm && pcm > 200000) pcm = null;   // not a rent (e.g. a phone number in the wrong column)
     if (pw && !pcm) pcm = Math.round(pw * 52 / 12 * 100) / 100; if (pcm && !pw) pw = Math.round(pcm * 12 / 52 * 100) / 100;
     const beds = parseInt(b.beds, 10);
     return { address: str(b.address, 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
@@ -8278,19 +8279,26 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
-    res.json({ ok: true, items: (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 1000')).rows });
+    res.json({ ok: true, items: (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 20000')).rows });
   }));
   app.post('/api/admin/available', withDb(async function (p, req, res) {
     const b = req.body || {}, list = (Array.isArray(b.items) ? b.items : [b]).slice(0, 2000).map(availClean).filter(function (x) { return x.address; });
     if (!list.length) return res.status(400).json({ ok: false, error: 'address' });
-    const ids = [];
+    const ids = [], skipped = [], failed = [];
+    // Already on the list (same address and status): skip, so pasting twice doesn't duplicate.
+    const norm = function (a) { return String(a || '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
+    const have = {}; (await p.query('SELECT address, status FROM available_props')).rows.forEach(function (r) { have[norm(r.address) + '|' + r.status] = 1; });
     for (const x of list) {
-      const r = await p.query('INSERT INTO available_props (' + AVAIL_COLS.join(', ') + ', created_by) VALUES (' + AVAIL_COLS.map(function (c, i) { return '$' + (i + 1); }).join(', ') + ', $' + (AVAIL_COLS.length + 1) + ') RETURNING id',
-        AVAIL_COLS.map(function (c) { return x[c]; }).concat([req.user ? req.user.name : 'Office']));
-      ids.push(r.rows[0].id);
+      const k = norm(x.address) + '|' + x.status; if (have[k]) { skipped.push(x.address); continue; }
+      try {
+        const r = await p.query('INSERT INTO available_props (' + AVAIL_COLS.join(', ') + ', created_by) VALUES (' + AVAIL_COLS.map(function (c, i) { return '$' + (i + 1); }).join(', ') + ', $' + (AVAIL_COLS.length + 1) + ') RETURNING id',
+          AVAIL_COLS.map(function (c) { return x[c]; }).concat([req.user ? req.user.name : 'Office']));
+        ids.push(r.rows[0].id); have[k] = 1;
+      } catch (e) { failed.push({ address: x.address, error: String(e.message).slice(0, 80) }); }
     }
+    if (!ids.length && !skipped.length) return res.status(400).json({ ok: false, error: 'none', failed: failed.slice(0, 5) });
     rmAutoLink(p).catch(function () {});
-    res.json({ ok: true, ids: ids });
+    res.json({ ok: true, ids: ids, skipped: skipped.length, failed: failed.length, failures: failed.slice(0, 5) });
   }));
   app.post('/api/admin/available/:id', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req);
@@ -8303,6 +8311,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!r.rowCount) return res.status(404).json({ ok: false, error: 'not-found' });
     rmAutoLink(p).catch(function () {});
     res.json({ ok: true });
+  }));
+  // Remove duplicates (same address and status), keeping the first one added.
+  app.post('/api/admin/available-dedupe', withDb(async function (p, req, res) {
+    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    const r = await p.query("DELETE FROM available_props a USING available_props b WHERE a.id > b.id AND a.status = b.status AND regexp_replace(lower(a.address), '[^a-z0-9]', '', 'g') = regexp_replace(lower(b.address), '[^a-z0-9]', '', 'g')");
+    res.json({ ok: true, removed: r.rowCount });
+  }));
+  // Empty the Been let list before pasting a corrected copy (managers only).
+  app.post('/api/admin/available-clear-let', withDb(async function (p, req, res) {
+    if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    if ((req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
+    const r = await p.query("DELETE FROM available_props WHERE status = 'let'");
+    res.json({ ok: true, removed: r.rowCount });
   }));
   app.delete('/api/admin/available/:id', withDb(async function (p, req, res) {
     if (req.role === 'offers' && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
