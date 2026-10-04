@@ -569,7 +569,7 @@
       '<div class="g2">' + field(n, 'name', 'Full name', { req: true, auto: lead ? 'name' : 'off', ph: 'As on their passport' }) + field(n, 'dob', 'Date of birth', { type: 'date', req: true }) + '</div>' +
       '<div class="g2">' + field(n, 'phone', 'Mobile', { type: 'tel', req: lead, auto: lead ? 'tel' : 'off' }) + field(n, 'email', 'Email', { type: 'email', req: lead, auto: lead ? 'email' : 'off' }) + '</div>' +
       '<div class="g2">' + field(n, 'income_type', 'Main income', { select: ['Employed', 'Self-employed', 'Student', 'Retired', 'Benefits', 'Other'], req: true }) + field(n, 'salary', 'Gross annual salary', { mode: 'decimal', money: true, req: true, hint: 'Before tax. Students who don’t work can leave it blank (a guarantor is needed).' }) + '</div>' +
-      '<div class="g2">' + field(n, 'company', 'Company name', { req: true, hint: 'Who they work for — or their business name if self-employed' }) + field(n, 'position', 'Job title') + '</div>' +
+      '<div class="g2">' + field(n, 'company', 'Company name', { req: true, hint: 'Who they work for — or their business name if self-employed' }) + field(n, 'position', 'Job title', { req: true, hint: 'Their role, e.g. Nurse, Software engineer, Director' }) + '</div>' +
       field(n, 'current_address', 'Current address', { area: true, req: true }) +
       '<div class="sec-title">Right to rent</div>' +
       '<div class="g2">' + field(n, 'uk_passport', 'UK or Irish passport?', { select: ['', 'Yes', 'No'], req: true }) + '</div>' +
@@ -769,6 +769,7 @@
       if (!t.dob) return showErr('Please enter tenant ' + i + '’s date of birth.', $('t' + i + '_dob'));
       if (i === 1 && !t.phone && !t.email) return showErr('Please give the lead tenant’s mobile or email.', $('t1_phone'));
       if ((t.income_type === 'Employed' || t.income_type === 'Self-employed') && !t.company) return showErr('Please enter tenant ' + i + '’s company name (or business name if self-employed).', $('t' + i + '_company'));
+      if ((t.income_type === 'Employed' || t.income_type === 'Self-employed') && !t.position) return showErr('Please enter tenant ' + i + '’s job title.', $('t' + i + '_position'));
       if (t.income_type !== 'Student' && !(num(t.salary) > 0)) return showErr('Please enter tenant ' + i + '’s gross annual salary.', $('t' + i + '_salary'));
       if (!t.current_address) return showErr('Please enter tenant ' + i + '’s current address.', $('t' + i + '_current_address'));
       if (!t.uk_passport) return showErr('Please tell us whether tenant ' + i + ' has a UK or Irish passport.', $('t' + i + '_uk_passport'));
@@ -851,7 +852,7 @@
     }).then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) {
         busyBtns(false, 'Submit offer');
-        return showErr(d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'company' ? 'Please enter each working tenant’s company name.' : d.error === 'salary' ? 'Please enter each tenant’s gross annual salary.' : d.error === 'terms' ? 'Please tick each holding deposit point.' : d.error === 'guarantor' ? 'Please complete the guarantor details (name, relation, email, phone, income and home owner).' : d.error === 'share_code' ? 'Please check each right to rent share code (9 letters and numbers).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
+        return showErr(d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'company' ? 'Please enter each working tenant’s company name.' : d.error === 'position' ? 'Please enter each working tenant’s job title.' : d.error === 'salary' ? 'Please enter each tenant’s gross annual salary.' : d.error === 'terms' ? 'Please tick each holding deposit point.' : d.error === 'guarantor' ? 'Please complete the guarantor details (name, relation, email, phone, income and home owner).' : d.error === 'share_code' ? 'Please check each right to rent share code (9 letters and numbers).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
       }
       done(d);
     }).catch(function(){ busyBtns(false, 'Submit offer'); showErr('Couldn’t send — please check your connection and try again.'); });

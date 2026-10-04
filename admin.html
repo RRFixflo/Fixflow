@@ -526,6 +526,23 @@
   .ml-tabs { display: flex; gap: 6px; } .ml-tabs button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 10px; padding: 6px 10px; font: inherit; font-size: .84rem; font-weight: 600; cursor: pointer; color: var(--ink-soft); } .ml-tabs button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; }
   .ml-look { width: 100%; height: 420px; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #f3f5f8; }
   .ml-att { font-size: .86rem; font-weight: 600; background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 8px 10px; }
+  .av-top { margin-bottom: 12px; } .av-search { display: flex; gap: 8px; flex-wrap: wrap; } .av-search .inp:first-child { flex: 1; min-width: 200px; }
+  .av-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; align-items: center; } .av-chips button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: var(--ink-soft); } .av-chips button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; } .av-sep { width: 1px; height: 22px; background: var(--line, #e6e8ec); margin: 0 4px; }
+  .av-sum { font-size: .86rem; color: var(--ink-soft); margin: 6px 0 8px; } .av-add-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .av-form { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--panel-2, #f5f6f8); } .av-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; } .av-grid label { display: flex; flex-direction: column; gap: 4px; font-size: .84rem; font-weight: 600; } .av-wide { grid-column: 1 / -1; }
+  .av-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+  .av-card { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px; position: relative; }
+  .av-card.is-urgent { border-color: #f3a7a7; box-shadow: 0 0 0 2px #fdecec; } .av-card.is-off { opacity: .6; }
+  .av-h { display: flex; gap: 10px; align-items: flex-start; } .av-beds { flex: 0 0 auto; min-width: 46px; text-align: center; border-radius: 12px; background: var(--navy, #0b1f3a); color: #fff; padding: 6px 4px; line-height: 1.1; } .av-beds b { display: block; font-size: 1.2rem; } .av-beds span { font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; opacity: .8; }
+  .av-addr { font-weight: 700; line-height: 1.3; } .av-pc { font-size: .8rem; color: var(--ink-soft); }
+  .av-tags { display: flex; gap: 4px; flex-wrap: wrap; } .av-tag { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: #eef2ff; color: #1d3fae; } .av-tag.urgent { background: #fdecec; color: #b42318; } .av-tag.let { background: #f1f2f4; color: #5f6673; }
+  .av-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; } .av-row div { background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 6px 8px; } .av-row span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 700; } .av-row b { font-size: .92rem; } .av-row .now b { color: #0d7a3d; }
+  .av-meta { font-size: .84rem; color: var(--ink-soft); } .av-meta b { color: var(--ink); }
+  .av-contact { font-size: .84rem; border: 1px dashed var(--line, #e6e8ec); border-radius: 10px; padding: 6px 8px; } .av-contact summary { cursor: pointer; font-weight: 600; } .av-contact pre { white-space: pre-wrap; font: inherit; margin: 6px 0; } .av-phones { display: flex; gap: 6px; flex-wrap: wrap; }
+  .av-note { font-size: .84rem; background: #fffaeb; border-radius: 10px; padding: 6px 8px; color: #7a4d00; }
+  .av-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line, #e6e8ec); }
+  .av-prev { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: 10px; } .av-prev th, .av-prev td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line, #e6e8ec); vertical-align: top; } .av-prev td small { color: var(--ink-soft); }
+  @media (max-width: 640px) { .av-list { grid-template-columns: 1fr; } .av-grid { grid-template-columns: 1fr; } .av-prev { display: block; overflow-x: auto; } }
   .pv-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0 10px; }
   .pv-steps div { border-radius: 12px; padding: 8px 10px; background: var(--panel-2, #f5f6f8); border: 1px solid var(--line, #e6e8ec); font-size: .8rem; min-width: 0; }
   .pv-steps b { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); } .pv-steps span { display: block; font-weight: 650; overflow-wrap: anywhere; }
@@ -1214,6 +1231,7 @@
     <a class="nav" href="/" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Tenant report page</a>
     <a class="nav" href="/offer" target="_blank" rel="noopener" style="text-decoration:none" title="The form applicants fill in to make an offer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offer form (applicants)</a>
     <a class="nav" href="/admin#offers" id="navOffersLink" style="text-decoration:none" title="Where the offer forms are collected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offers collected <span class="badge hot" id="sOffers2" hidden>0</span></a>
+    <button class="nav" type="button" id="navAvail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg> Available properties <span class="count-chip" id="sAvail" hidden></span></button>
     <div class="grow"></div>
     <div class="side-foot"><div class="deployed" id="whoAmI" hidden></div><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="myPwBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg> My password</button><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
   </aside>
@@ -1512,7 +1530,7 @@
         </details>
       </div>
 
-      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
+      <div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="offers" class="on">📝 Offers</button><button type="button" data-stab="avail">🏡 Available</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
       <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto"><option value="">Everyone</option></select></div><div id="teamFeed"></div></div></div>
@@ -1543,6 +1561,31 @@
         <div class="card" style="margin-bottom:12px"><div class="sent-bar"><input class="inp" id="sentQ" placeholder="Search who it went to, subject or text" style="flex:1;min-width:200px"><select class="inp" id="sentWho" hidden style="width:auto"><option value="">Everyone</option></select></div>
           <p class="muted-note" id="sentNote" style="margin:8px 0 0"></p></div>
         <div id="sentList"></div>
+      </div>
+      <div id="availView" hidden>
+        <div class="card av-top">
+          <div class="av-search"><input class="inp" id="avQ" placeholder="Search address, landlord, postcode, notes…"><select class="inp" id="avSort" style="width:auto"><option value="date">Available soonest</option><option value="lo">Rent: low to high</option><option value="hi">Rent: high to low</option><option value="beds">Bedrooms</option><option value="new">Newest added</option></select></div>
+          <div class="av-chips" id="avBeds"><button type="button" class="on" data-avb="">All</button><button type="button" data-avb="1">Studio / 1 bed</button><button type="button" data-avb="2">2 bed</button><button type="button" data-avb="3">3 bed</button><button type="button" data-avb="4">4+ bed</button><span class="av-sep"></span><button type="button" data-avf="now">Available now</button><button type="button" data-avf="urgent">🔥 Urgent</button><button type="button" data-avf="let">Let / withdrawn</button></div>
+          <div class="av-sum" id="avSum"></div>
+          <div class="av-add-btns"><button type="button" class="btn small primary" id="avAddBtn">➕ Add a property</button><button type="button" class="btn small" id="avPasteBtn">📋 Paste from your spreadsheet</button></div>
+          <div class="av-form" id="avForm" hidden>
+            <div class="av-grid"><label class="av-wide">Address<input class="inp" id="avAddr" list="offProps" placeholder="Include the postcode"></label><label>Bedrooms<select class="inp" id="avBedsIn"><option value="">—</option><option value="0">Studio</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+              <label>Available from<input class="inp" id="avFrom" type="date"></label><label class="switch-row" style="align-self:end"><input type="checkbox" id="avVacant"> Vacant now</label>
+              <label>Rent £ pw<input class="inp" id="avPw" inputmode="decimal"></label><label>Rent £ pcm<input class="inp" id="avPcm" inputmode="decimal"></label>
+              <label>Landlord<input class="inp" id="avLl"></label><label>Commission<input class="inp" id="avCom" placeholder="e.g. 8%"></label>
+              <label class="av-wide">Current tenant / viewing contact<textarea class="inp" id="avContact" rows="2" placeholder="Name and number — tap-to-call and WhatsApp buttons appear on the card"></textarea></label>
+              <label class="av-wide">Notes<textarea class="inp" id="avNotes" rows="2" placeholder="e.g. Prefers WhatsApp messages"></textarea></label>
+              <label>Tags<input class="inp" id="avTags" placeholder="e.g. Dream 1, Dream 2"></label><label class="switch-row" style="align-self:end"><input type="checkbox" id="avUrgent"> 🔥 Urgent</label></div>
+            <div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="btn primary" id="avSave">Save property</button><button type="button" class="btn ghost" id="avCancel">Cancel</button></div>
+          </div>
+          <div class="av-form" id="avPaste" hidden>
+            <p class="muted-note" style="margin:0 0 8px">Copy the rows from your spreadsheet (Excel or Google Sheets) and paste them here. We’ll find the address, bedrooms, date, rent, landlord, commission, contact and notes — you can check them before adding.</p>
+            <textarea class="inp" id="avPasteTxt" rows="7" placeholder="Paste rows here…"></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px"><button type="button" class="btn" id="avPasteRead">Read the rows</button><button type="button" class="btn ghost" id="avPasteX">Cancel</button></div>
+            <div id="avPastePrev"></div>
+          </div>
+        </div>
+        <div class="av-list" id="avList"></div>
       </div>
       <div id="offersView" hidden>
         <details class="card" id="offLinkCard" style="margin-bottom:12px">
@@ -3483,7 +3526,7 @@
     if ((v === 'team' || v === 'who') && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
-    if (staffMode && v !== 'lt' && v !== 'sent' && v !== 'team' && v !== 'who') v = 'offers';
+    if (staffMode && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'offers';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -3500,6 +3543,7 @@
     $('ctrView').hidden = v !== 'ctr';
     $('ctsView').hidden = v !== 'cts';
     $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
+    $('availView').hidden = v !== 'avail'; $('navAvail').classList.toggle('on', v === 'avail');
     // Sent emails: its own tab for staff; inside the Activity page for the owner.
     if (!staffMode && $('sentView').parentNode !== $('actSentSlot')) $('actSentSlot').appendChild($('sentView'));
     $('sentView').hidden = staffMode ? v !== 'sent' : false;
@@ -3513,10 +3557,11 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', avail: 'Available properties', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') loadLt();
+    if (v === 'avail') loadAvail();
     if (v === 'sent' || (v === 'act' && !staffMode)) loadSent();
     if (v === 'team') { loadTeam(); $('teamSec').open = true; }
     if (v === 'who') loadTeam();
@@ -9444,6 +9489,120 @@
     box.querySelector('.sent-frame').hidden = b.dataset.sv !== 'look'; box.querySelector('.sent-text').hidden = b.dataset.sv !== 'text';
   });
 
+  // ---------- Available properties: the lettings list staff work from ----------
+  var avItems = [], avBeds = '', avFlag = '', avEdit = null;
+  function loadAvail(){ return api('GET', '/api/admin/available').then(function(d){ if (!d || !d.ok) return; avItems = d.items || []; renderAvail(); var n = avItems.filter(function(x){ return x.status === 'available'; }).length; $('sAvail').hidden = !n; $('sAvail').textContent = n; }); }
+  function avDay(v){ return v ? certDay(String(v).slice(0, 10)) : ''; }
+  function avNow(x){ return x.vacant || (x.available_from && String(x.available_from).slice(0, 10) <= new Date().toISOString().slice(0, 10)); }
+  function avPhones(t){ var out = [], seen = {}; String(t || '').replace(/(\+?44\s?7\d{3}|\b07\d{3})[\s-]?\d{3}[\s-]?\d{3}\b/g, function(m){ var d = m.replace(/[^\d+]/g, ''); if (!seen[d]) { seen[d] = 1; out.push(m.trim()); } }); return out; }
+  function avEmails(t){ return (String(t || '').match(/[^\s@<>,;"]+@[^\s@<>,;"]+\.[a-z]{2,}/gi) || []).filter(function(v, i, a){ return a.indexOf(v) === i; }); }
+  function renderAvail(){
+    var q = $('avQ').value.trim().toLowerCase(), sort = $('avSort').value;
+    var list = avItems.filter(function(x){
+      if (avFlag === 'let') { if (x.status === 'available') return false; } else if (x.status !== 'available') return false;
+      if (avFlag === 'now' && !avNow(x)) return false; if (avFlag === 'urgent' && !x.urgent) return false;
+      if (avBeds) { var bd = x.beds == null ? -1 : x.beds; if (avBeds === '1' ? !(bd === 0 || bd === 1) : avBeds === '4' ? bd < 4 : bd !== Number(avBeds)) return false; }
+      return !q || [x.address, x.landlord, x.notes, x.tags, x.contact].join(' ').toLowerCase().indexOf(q) !== -1;
+    });
+    var dkey = function(x){ return x.vacant ? '0000' : x.available_from ? String(x.available_from).slice(0, 10) : '9999'; };
+    list.sort(function(a, b){ return sort === 'lo' ? (a.rent_pcm || 1e9) - (b.rent_pcm || 1e9) : sort === 'hi' ? (b.rent_pcm || 0) - (a.rent_pcm || 0) : sort === 'beds' ? (a.beds == null ? 99 : a.beds) - (b.beds == null ? 99 : b.beds) : sort === 'new' ? b.id - a.id : (b.urgent - a.urgent) || dkey(a).localeCompare(dkey(b)); });
+    var live = avItems.filter(function(x){ return x.status === 'available'; });
+    $('avSum').innerHTML = '<b>' + live.length + '</b> available · <b>' + live.filter(avNow).length + '</b> available now · <b>' + live.filter(function(x){ return x.urgent; }).length + '</b> urgent' + (list.length !== live.length ? ' · showing ' + list.length : '');
+    var canDel = !staffMode || meta.canManageUsers;
+    $('avList').innerHTML = list.length ? list.map(function(x){
+      var pc = (String(x.address).match(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i) || [''])[0].toUpperCase(), phones = avPhones(x.contact), mails = avEmails(x.contact), off = x.status !== 'available';
+      var tags = (x.tags ? x.tags.split(/\s*,\s*/).filter(Boolean).map(function(t){ return '<span class="av-tag">' + esc(t) + '</span>'; }).join('') : '') + (x.urgent ? '<span class="av-tag urgent">🔥 URGENT</span>' : '') + (off ? '<span class="av-tag let">' + (x.status === 'let' ? '✓ Let' : 'Withdrawn') + '</span>' : '');
+      return '<div class="av-card' + (x.urgent ? ' is-urgent' : '') + (off ? ' is-off' : '') + '" data-av="' + x.id + '">' +
+        '<div class="av-h"><div class="av-beds"><b>' + (x.beds == null ? '–' : x.beds === 0 ? 'S' : x.beds) + '</b><span>' + (x.beds === 0 ? 'studio' : 'bed') + '</span></div><div style="min-width:0"><div class="av-addr">' + esc(x.address.replace(pc, '').replace(/[,\s]+$/, '')) + '</div><div class="av-pc">' + esc(pc) + '</div></div></div>' +
+        (tags ? '<div class="av-tags">' + tags + '</div>' : '') +
+        '<div class="av-row"><div class="' + (avNow(x) ? 'now' : '') + '"><span>Available</span><b>' + (x.vacant ? 'Vacant now' : avNow(x) ? 'Now' : esc(avDay(x.available_from) || 'TBC')) + '</b></div><div><span>Per week</span><b>' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</b></div><div><span>Per month</span><b>' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</b></div></div>' +
+        ((x.landlord || x.commission) ? '<div class="av-meta">Landlord <b>' + esc(x.landlord || '—') + '</b>' + (x.commission ? ' · Commission <b>' + esc(x.commission) + '</b>' : '') + '</div>' : '') +
+        (x.notes ? '<div class="av-note">📝 ' + esc(x.notes) + '</div>' : '') +
+        (x.contact ? '<details class="av-contact"><summary>👤 Current tenant / viewings contact</summary><pre>' + esc(x.contact) + '</pre><div class="av-phones">' + phones.map(function(ph){ var w = waNumber(ph); return '<a class="btn small" href="tel:' + esc(ph.replace(/[^\d+]/g, '')) + '">📞 ' + esc(ph) + '</a>' + (w ? '<a class="btn small wa" target="_blank" rel="noopener" href="https://wa.me/' + w + '">WhatsApp</a>' : ''); }).join('') + mails.map(function(m){ return '<a class="btn small" href="mailto:' + esc(m) + '">✉ ' + esc(m) + '</a>'; }).join('') + '</div></details>' : '') +
+        '<div class="av-acts">' + (off ? '<button type="button" class="btn small" data-avs="available">↩ Back on the list</button>' : '<button type="button" class="btn small primary" data-ava="offer">📝 Offer form</button><button type="button" class="btn small" data-ava="pvr">🗓 PVR</button><button type="button" class="btn small" data-ava="view">👀 Book viewing</button><button type="button" class="btn small ghost" data-ava="copy">📋 Copy</button>') +
+          '<button type="button" class="btn small ghost" data-ava="edit">✏️</button>' + (off ? '' : '<button type="button" class="btn small ghost" data-avs="let" title="Mark as let">✓ Let</button>') + (canDel ? '<button type="button" class="btn small ghost danger" data-ava="del" title="Delete">🗑</button>' : '') + '</div></div>';
+    }).join('') : '<div class="card"><p class="muted-note" style="margin:0">' + (avItems.length ? 'Nothing matches — try another filter.' : 'No properties yet — add one, or paste your list from the spreadsheet.') + '</p></div>';
+  }
+  $('avQ').addEventListener('input', renderAvail); $('avSort').addEventListener('change', renderAvail);
+  $('avBeds').addEventListener('click', function(e){
+    var b = e.target.closest('[data-avb]'), f = e.target.closest('[data-avf]');
+    if (b) { avBeds = b.dataset.avb; this.querySelectorAll('[data-avb]').forEach(function(x){ x.classList.toggle('on', x === b); }); }
+    if (f) { avFlag = avFlag === f.dataset.avf ? '' : f.dataset.avf; this.querySelectorAll('[data-avf]').forEach(function(x){ x.classList.toggle('on', x.dataset.avf === avFlag); }); }
+    renderAvail();
+  });
+  // Add / edit
+  var AVF = { avAddr: 'address', avBedsIn: 'beds', avFrom: 'available_from', avPw: 'rent_pw', avPcm: 'rent_pcm', avLl: 'landlord', avCom: 'commission', avContact: 'contact', avNotes: 'notes', avTags: 'tags' };
+  function avOpenForm(x){
+    avEdit = x ? x.id : null; $('avPaste').hidden = true; $('avForm').hidden = false;
+    Object.keys(AVF).forEach(function(id){ var v = x ? x[AVF[id]] : ''; $(id).value = v == null ? '' : (id === 'avFrom' ? String(v).slice(0, 10) : v); });
+    $('avVacant').checked = !!(x && x.vacant); $('avUrgent').checked = !!(x && x.urgent); $('avSave').textContent = x ? 'Save changes' : 'Save property';
+    $('avForm').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('avAddr').focus();
+  }
+  $('avAddBtn').addEventListener('click', function(){ avOpenForm(null); });
+  $('avCancel').addEventListener('click', function(){ $('avForm').hidden = true; avEdit = null; });
+  $('avPw').addEventListener('input', function(){ var v = parseFloat(this.value.replace(/[£,\s]/g, '')); if (v > 0) $('avPcm').value = (Math.round(v * 52 / 12 * 100) / 100).toFixed(2); });
+  $('avPcm').addEventListener('input', function(){ var v = parseFloat(this.value.replace(/[£,\s]/g, '')); if (v > 0) $('avPw').value = (Math.round(v * 12 / 52 * 100) / 100).toFixed(2); });
+  $('avSave').addEventListener('click', function(){
+    var body = { vacant: $('avVacant').checked, urgent: $('avUrgent').checked }; Object.keys(AVF).forEach(function(id){ body[AVF[id]] = $(id).value.trim(); });
+    if (!body.address) { toast('Enter the address'); $('avAddr').focus(); return; }
+    var x = avEdit && avItems.filter(function(i){ return i.id === avEdit; })[0]; if (x) body.status = x.status;
+    var b = this; busy(b, true, 'Saving…');
+    api('POST', '/api/admin/available' + (avEdit ? '/' + avEdit : ''), body).then(function(d){ busy(b, false); if (!d || !d.ok) { toast('Couldn’t save it'); return; } $('avForm').hidden = true; avEdit = null; toast('✓ Saved'); loadAvail(); });
+  });
+  // Paste rows from the spreadsheet (tab-separated, cells with line breaks come in quotes).
+  function avTsv(t){
+    var rows = [], row = [], cell = '', q = false; t = String(t || '').replace(/\r\n?/g, '\n');
+    for (var i = 0; i < t.length; i++) { var c = t[i];
+      if (q) { if (c === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; continue; }
+      if (c === '"' && cell.trim() === '') { q = true; cell = ''; } else if (c === '\t') { row.push(cell); cell = ''; } else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; } else cell += c; }
+    row.push(cell); rows.push(row); return rows;
+  }
+  function avDate(v){ var m = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/.exec(String(v || '').trim()); if (!m) return ''; var y = m[3].length === 2 ? '20' + m[3] : m[3]; return y + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2); }
+  function avRow(cells){
+    cells = cells.map(function(c){ return String(c || '').trim(); });
+    var ai = cells.findIndex(function(c){ return /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(c); }); if (ai === -1) return null;
+    var before = cells.slice(0, ai).filter(Boolean), beds = null, tags = [];
+    before.forEach(function(c){ if (/^\d{1,2}$/.test(c)) beds = Number(c); else if (/^studio$/i.test(c)) beds = 0; else tags = tags.concat(c.split(/\s{2,}/).map(function(x){ return x.trim(); }).filter(Boolean)); });
+    var after = cells.slice(ai + 1), urgent = false;
+    after = after.map(function(c){ if (/^urgent$/i.test(c)) { urgent = true; return ''; } return c; });
+    var dateCell = after[0] || '', vac = /vacant/i.test(dateCell);
+    return { address: cells[ai].replace(/\s+/g, ' '), beds: beds, tags: tags.join(', '), vacant: vac, available_from: vac ? '' : avDate(dateCell), rent_pw: after[1] || '', rent_pcm: after[2] || '', landlord: after[3] || '', commission: after[4] || '', contact: after[5] || '', notes: after.slice(6).filter(Boolean).join(' · '), urgent: urgent };
+  }
+  var avParsed = [];
+  $('avPasteBtn').addEventListener('click', function(){ $('avForm').hidden = true; $('avPaste').hidden = false; $('avPastePrev').innerHTML = ''; $('avPasteTxt').focus(); });
+  $('avPasteX').addEventListener('click', function(){ $('avPaste').hidden = true; $('avPasteTxt').value = ''; $('avPastePrev').innerHTML = ''; });
+  $('avPasteRead').addEventListener('click', function(){
+    avParsed = avTsv($('avPasteTxt').value).map(avRow).filter(Boolean);
+    if (!avParsed.length) { $('avPastePrev').innerHTML = '<p class="muted-note">No rows with an address and postcode found — please paste straight from the spreadsheet.</p>'; return; }
+    $('avPastePrev').innerHTML = '<table class="av-prev"><tr><th></th><th>Address</th><th>Beds</th><th>Available</th><th>pw / pcm</th><th>Landlord</th><th>Contact &amp; notes</th></tr>' + avParsed.map(function(r, i){ return '<tr><td><input type="checkbox" data-avp="' + i + '" checked></td><td>' + esc(r.address) + (r.tags ? '<br><small>' + esc(r.tags) + '</small>' : '') + (r.urgent ? ' <b style="color:#b42318">URGENT</b>' : '') + '</td><td>' + (r.beds == null ? '—' : r.beds) + '</td><td>' + (r.vacant ? 'Vacant' : esc(avDay(r.available_from) || '—')) + '</td><td>' + esc([r.rent_pw, r.rent_pcm].filter(Boolean).join(' / ') || '—') + '</td><td>' + esc(r.landlord || '—') + (r.commission ? '<br><small>' + esc(r.commission) + '</small>' : '') + '</td><td><small>' + esc((r.contact || '').slice(0, 90)) + (r.contact && r.contact.length > 90 ? '…' : '') + (r.notes ? '<br>' + esc(r.notes) : '') + '</small></td></tr>'; }).join('') + '</table>' +
+      '<div style="margin-top:10px"><button type="button" class="btn primary" id="avPasteGo">Add ' + avParsed.length + ' propert' + (avParsed.length === 1 ? 'y' : 'ies') + '</button></div>';
+  });
+  $('avPastePrev').addEventListener('click', function(e){
+    if (!e.target.closest('#avPasteGo')) return;
+    var pick = avParsed.filter(function(r, i){ var c = document.querySelector('[data-avp="' + i + '"]'); return c && c.checked; }); if (!pick.length) { toast('Tick at least one row'); return; }
+    var b = e.target; busy(b, true, 'Adding…');
+    api('POST', '/api/admin/available', { items: pick }).then(function(d){ busy(b, false); if (!d || !d.ok) { toast('Couldn’t add them'); return; } toast('✓ ' + d.ids.length + ' propert' + (d.ids.length === 1 ? 'y' : 'ies') + ' added'); $('avPaste').hidden = true; $('avPasteTxt').value = ''; $('avPastePrev').innerHTML = ''; loadAvail(); });
+  });
+  // Card actions: send a form or book a viewing for this property, copy, edit, let.
+  $('avList').addEventListener('click', function(e){
+    var card = e.target.closest('[data-av]'); if (!card) return; var x = avItems.filter(function(i){ return i.id === Number(card.dataset.av); })[0]; if (!x) return;
+    var a = e.target.closest('[data-ava]'), st = e.target.closest('[data-avs]');
+    if (st) { api('POST', '/api/admin/available/' + x.id, { status: st.dataset.avs }).then(function(){ toast(st.dataset.avs === 'let' ? '✓ Marked as let' : 'Back on the list'); loadAvail(); }); return; }
+    if (!a) return; var act = a.dataset.ava;
+    if (act === 'edit') { avOpenForm(x); return; }
+    if (act === 'del') { if (!confirm('Delete ' + shortAddr(x.address) + ' from the available list?')) return; api('DELETE', '/api/admin/available/' + x.id, { confirm: true }).then(function(d){ toast(d && d.ok ? 'Deleted' : 'Only managers can delete'); loadAvail(); }); return; }
+    if (act === 'copy') { copyText((x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : '') + ' — ' + x.address + '\n' + (x.vacant ? 'Available now' : x.available_from ? 'Available from ' + avDay(x.available_from) : '') + '\n' + (x.rent_pcm ? gbp(Number(x.rent_pcm)) + ' pcm' : '') + (x.rent_pw ? ' (' + gbp(Number(x.rent_pw)) + ' pw)' : '') + '\nResidential Realtors · 0207 096 8131').then(function(){ toast('Details copied'); }); return; }
+    showView('offers');
+    setTimeout(function(){
+      if (act === 'view') { $('vwCard').open = true; $('vwProp').value = x.address; $('vwCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); $('vwAt').focus(); return; }
+      $('offLinkCard').open = true; $('offProp').value = x.address; $('offProp').dispatchEvent(new Event('input'));
+      var k = document.querySelector('#offKind [data-kind="' + (act === 'pvr' ? 'pvr' : 'offer') + '"]'); if (k) k.click();
+      if (act === 'pvr' && x.rent_pw) { $('pvPer2').value = 'pw'; $('pvRent2').value = Number(x.rent_pw); delete $('pvAmt2').dataset.manual; $('pvRent2').dispatchEvent(new Event('input')); }
+      $('offLinkCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); $('offToName').focus();
+    }, 250);
+  });
+  $('navAvail').addEventListener('click', function(){ showView('avail'); });
+
   // ---------- Pre-viewing reservations (PVR) ----------
   // The applicant signs and pays a week's rent before viewing; after the viewing
   // they answer within 24 hours: going ahead (offer form) or not (refund details).
@@ -12341,7 +12500,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navAvail', 'Available properties'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
