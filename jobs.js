@@ -1921,10 +1921,15 @@ module.exports = function mountJobs(app, opts) {
       const n = String(name || '').trim().toLowerCase().replace(/\b(mr|mrs|ms|miss|dr)\b\.?/g, '').replace(/\s+/g, ' ').trim(); if (n) return 'n:' + n;
       return 'u:' + uniq;
     };
-    const people = {}, row = function (who) { const k = String(who || '').trim() || 'Not recorded'; return (people[k] = people[k] || { name: k, forms: {}, terms: {}, pvr: {} }); };
+    const people = {}, row = function (who) { const k = String(who || '').trim() || 'Not recorded'; return (people[k] = people[k] || { name: k, forms: {}, terms: {}, pvr: {}, signed: {} }); };
     const mark = function (bucket, key, flags) { const b = bucket[key] = bucket[key] || { n: 0 }; b.n++; Object.keys(flags).forEach(function (f) { if (flags[f]) b[f] = true; }); };
     (await p.query('SELECT id, sent_by, to_contact, to_name, property_address, opens, offer_id, started_at FROM offer_invites WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz', range)).rows.forEach(function (x) {
       const c = String(x.to_contact || ''); mark(row(x.sent_by).forms, rk(/@/.test(c) ? c : '', /@/.test(c) ? '' : c, x.to_name, x.property_address, 'i' + x.id), { opened: x.opens > 0, started: !!x.started_at, offer: !!x.offer_id });
+    });
+    // Signed offer forms: offers sent in the period, credited to whoever they're credited to (once per applicant).
+    (await p.query("SELECT id, lead_name, lead_email, lead_phone, property_address, data->'credit' AS credit FROM offers WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz", range)).rows.forEach(function (o) {
+      const cr = Array.isArray(o.credit) ? o.credit.filter(function (c) { return c && c.name && (c.share == null || Number(c.share) > 0); }) : [];
+      (cr.length ? cr.map(function (c) { return c.name; }) : ['Not credited']).forEach(function (nm) { mark(row(nm).signed, rk(o.lead_email, o.lead_phone, o.lead_name, o.property_address, 'o' + o.id), {}); });
     });
     (await p.query("SELECT id, created_by, landlord_email, landlord_phone, landlord_name, property_address, status, signed_at, data->>'viewed_at' AS viewed FROM landlord_terms WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz", range)).rows.forEach(function (x) {
       mark(row(x.created_by).terms, rk(x.landlord_email, x.landlord_phone, x.landlord_name, x.property_address, 't' + x.id), { opened: !!x.viewed || !!x.signed_at, signed: !!x.signed_at });
@@ -1934,10 +1939,10 @@ module.exports = function mountJobs(app, opts) {
     });
     const sum = function (b, f) { return Object.keys(b).filter(function (k) { return !f || b[k][f]; }).length; }, sends = function (b) { return Object.keys(b).reduce(function (a, k) { return a + b[k].n; }, 0); };
     const list = Object.keys(people).map(function (k) { const x = people[k]; return { name: x.name,
-      forms: { people: sum(x.forms), sends: sends(x.forms), opened: sum(x.forms, 'opened'), started: sum(x.forms, 'started'), offers: sum(x.forms, 'offer') },
+      forms: { people: sum(x.forms), sends: sends(x.forms), opened: sum(x.forms, 'opened'), started: sum(x.forms, 'started'), offers: Math.max(sum(x.forms, 'offer'), sum(x.signed)) },
       terms: { people: sum(x.terms), sends: sends(x.terms), opened: sum(x.terms, 'opened'), signed: sum(x.terms, 'signed') },
       pvr: { people: sum(x.pvr), sends: sends(x.pvr), signed: sum(x.pvr, 'signed'), paid: sum(x.pvr, 'paid') } }; })
-      .sort(function (a, b) { return (b.forms.people + b.terms.people + b.pvr.people) - (a.forms.people + a.terms.people + a.pvr.people); });
+      .sort(function (a, b) { return (b.forms.people + b.forms.offers + b.terms.people + b.terms.signed + b.pvr.people) - (a.forms.people + a.forms.offers + a.terms.people + a.terms.signed + a.pvr.people); });
     res.json({ ok: true, from: from, to: to, people: list });
   }));
   // Who did what (newest first), optionally for one person.
