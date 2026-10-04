@@ -525,6 +525,7 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_id TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_manual BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS yt_id TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_url TEXT;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS let_on DATE;
 CREATE TABLE IF NOT EXISTS sent_emails (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -8272,14 +8273,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const beds = parseInt(b.beds, 10);
     return { address: str(b.address, 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
       rent_pw: pw, rent_pcm: pcm, landlord: str(b.landlord, 120) || null, commission: str(b.commission, 40) || null, contact: str(b.contact, 2000) || null, notes: str(b.notes, 2000) || null,
-      tags: str(b.tags, 200) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available' };
+      tags: str(b.tags, 200) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: isoDay(b.let_on) || null };
   }
-  const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'urgent', 'status'];
+  const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
     res.json({ ok: true, items: (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 1000')).rows });
   }));
   app.post('/api/admin/available', withDb(async function (p, req, res) {
-    const b = req.body || {}, list = (Array.isArray(b.items) ? b.items : [b]).slice(0, 300).map(availClean).filter(function (x) { return x.address; });
+    const b = req.body || {}, list = (Array.isArray(b.items) ? b.items : [b]).slice(0, 2000).map(availClean).filter(function (x) { return x.address; });
     if (!list.length) return res.status(400).json({ ok: false, error: 'address' });
     const ids = [];
     for (const x of list) {
@@ -8294,7 +8295,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const b = req.body || {}, id = jobId(req);
     if (b.status && Object.keys(b).length === 1) {
       if (['available', 'let', 'withdrawn'].indexOf(b.status) === -1) return res.status(400).json({ ok: false, error: 'status' });
-      await p.query('UPDATE available_props SET status = $2, updated_at = now() WHERE id = $1', [id, b.status]); return res.json({ ok: true });
+      await p.query("UPDATE available_props SET status = $2, let_on = CASE WHEN $2 = 'let' THEN coalesce(let_on, (now() AT TIME ZONE 'Europe/London')::date) ELSE let_on END, updated_at = now() WHERE id = $1", [id, b.status]); return res.json({ ok: true });
     }
     const x = availClean(b); if (!x.address) return res.status(400).json({ ok: false, error: 'address' });
     const r = await p.query('UPDATE available_props SET ' + AVAIL_COLS.map(function (c, i) { return c + ' = $' + (i + 2); }).join(', ') + ', updated_at = now() WHERE id = $1', [id].concat(AVAIL_COLS.map(function (c) { return x[c]; })));
