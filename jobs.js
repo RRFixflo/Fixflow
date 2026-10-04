@@ -613,6 +613,8 @@ CREATE TABLE IF NOT EXISTS pvr_reservations (
   decided_at       TIMESTAMPTZ,
   created_by       TEXT
 );
+ALTER TABLE landlord_terms ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE landlord_terms ADD COLUMN IF NOT EXISTS deleted_by TEXT;
 CREATE TABLE IF NOT EXISTS landlord_terms_docs (
   id         SERIAL PRIMARY KEY,
   terms_id   INTEGER NOT NULL REFERENCES landlord_terms(id) ON DELETE CASCADE,
@@ -8389,7 +8391,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const stdOf = function (std, pct) { return std != null && pct != null ? { std: inc(std), save: pct < std ? Math.round((std - pct) * 100) / 100 : 0 } : {}; };
     if (f.find !== 'none' && f.find_pct != null) {
       L.push(Object.assign(stdOf(LT_STD[f.find], f.find_pct), { k: f.find === 'multi' ? 'Tenant Find - Multi Agency (initial commission)' : 'Tenant Find - Sole Agency (initial commission)', v: inc(f.find_pct) + ' of the first 12 months\' rent' + (f.find_min ? ', minimum fee ' + gbp(f.find_min) + (vat ? ' inc VAT' : '') : '') + (f.find_monthly ? '. Paid monthly at no extra cost: collected in 12 equal monthly instalments over the first 12 months, instead of in advance' : ', payable in advance when the tenancy starts') }));
-      L.push({ k: 'Anniversary fee', v: f.renewal && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months\' rent, on each 12-month anniversary while the tenant remains' + (f.find_monthly ? ', collected monthly in the same way' : '') : 'No anniversary fee' });
+      L.push({ k: 'Anniversary fee (replaces renewal fees)', v: f.renewal && f.renewal_pct != null ? inc(f.renewal_pct) + ' of 12 months\' rent, on each 12-month anniversary while the tenant remains' + (f.find_monthly ? ', collected monthly in the same way' : '') + '. Under the new rules tenancies no longer renew — they simply roll on — so there are no renewal fees. This anniversary fee takes the place of the old renewal fee.' : 'No anniversary fee' });
     }
     if (f.ongoing !== 'none' && f.ongoing_pct != null) L.push(Object.assign(stdOf(LT_STD[f.ongoing], f.ongoing_pct), { k: ONGOING_NAME[f.ongoing] || 'Rent Collection Service', v: inc(f.ongoing_pct) + ' of the rent received' + (f.ongoing_min ? ', minimum ' + gbp(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' a month' : '') + '. Collected monthly: deducted from each month\'s rent when we receive it, before the balance is paid to you' }));
     if (f.other) L.push({ k: 'Other agreed fees', v: f.other });
@@ -8422,6 +8424,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     out.push(['You receive over the first 12 months', gbp(rent * 12 - find - ong * 12)]);
     if (minUsed) out.push(['A minimum fee applies at this rent', '']);
+    out.push(['Figures exclude the tenant\'s deposit (held separately in a government-approved scheme)', '']);
     return out;
   }
   // The rent to use in a fee example: the property's rent from the available list or its latest tenancy.
@@ -8484,9 +8487,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.get('/api/admin/landlord-terms', withDb(async function (p, req, res) {
     const r = await p.query(`SELECT t.id, t.created_at, t.token, t.status, t.property_address, t.landlord_name, t.landlord_email, t.landlord_phone, t.fees, t.data, t.log, t.signed_at, t.created_by,
         coalesce((SELECT json_agg(json_build_object('id', d.id, 'kind', d.kind, 'name', d.name)) FROM landlord_terms_docs d WHERE d.terms_id = t.id AND d.kind <> 'signature'), '[]') AS docs
-      FROM landlord_terms t ORDER BY t.id DESC LIMIT 300`);
+      FROM landlord_terms t WHERE t.deleted_at IS NULL ORDER BY t.id DESC LIMIT 300`);
     const vis = await linkVisits(p, r.rows.map(function (t) { return t.token; }));
-    res.json({ ok: true, origin: TERMS_ORIGIN || OFFER_ORIGIN || PUBLIC_URL, items: r.rows.map(function (t) { t.ref = ltRef(t.id); t.lines = feeLines(t.fees || {}); t.visits = vis[t.token] || []; return t; }) });
+    const del = (await p.query("SELECT id, property_address, landlord_name, status, deleted_at, deleted_by FROM landlord_terms WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 50")).rows.map(function (t) { t.ref = ltRef(t.id); return t; });
+    res.json({ ok: true, origin: TERMS_ORIGIN || OFFER_ORIGIN || PUBLIC_URL, deleted: del, items: r.rows.map(function (t) { t.ref = ltRef(t.id); t.lines = feeLines(t.fees || {}); t.visits = vis[t.token] || []; return t; }) });
   }));
   // What we already know about a property (and its landlord), to preload the agreement:
   // the linked landlord, certificate dates, the licence and the current tenancy's fees.
@@ -8535,7 +8539,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!address || !name) return res.status(400).json({ ok: false, error: 'details' });
     if (fees.find === 'none' && fees.ongoing === 'none' && !fees.other) return res.status(400).json({ ok: false, error: 'fees' });
     if ((fees.find !== 'none' && fees.find_pct == null) || (fees.ongoing !== 'none' && fees.ongoing_pct == null) || (fees.renewal && fees.renewal_pct == null)) return res.status(400).json({ ok: false, error: 'pct' });
-    const token = crypto.randomBytes(16).toString('base64url');
+    // Making a deleted agreement again under the same link (so the link the landlord already has works).
+    const want = /^[\w-]{16,40}$/.test(String(b.reuse_token || '')) ? String(b.reuse_token) : null;
+    if (want && (await p.query('SELECT 1 FROM landlord_terms WHERE token = $1', [want])).rows.length) return res.status(409).json({ ok: false, error: 'token-in-use' });
+    const token = want || crypto.randomBytes(16).toString('base64url');
     const r = await p.query('INSERT INTO landlord_terms (token, property_address, landlord_name, landlord_email, landlord_phone, fees, log, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
       [token, address, name, str(b.landlord_email, 200) || null, str(b.landlord_phone, 40) || null, JSON.stringify(fees), JSON.stringify([ltLog(req, 'Agreement created with agreed fees')]), req.user ? req.user.name : null]);
     ltEpc(p, { id: r.rows[0].id, property_address: address, data: {} }).catch(function () {});
@@ -8562,8 +8569,26 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   app.delete('/api/admin/landlord-terms/:id', withDb(async function (p, req, res) {
     if ((req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
-    await p.query('DELETE FROM landlord_terms WHERE id = $1', [jobId(req)]);
+    // Kept for 30 days in 'Recently deleted' (the landlord's link stops working), so a mistake can be undone.
+    await p.query("UPDATE landlord_terms SET deleted_at = now(), deleted_by = $2, log = log || $3::jsonb WHERE id = $1", [jobId(req), req.user ? req.user.name : null, JSON.stringify([ltLog(req, 'Agreement deleted')])]);
     res.json({ ok: true });
+  }));
+  app.post('/api/admin/landlord-terms/:id/restore', withDb(async function (p, req, res) {
+    const r = await p.query("UPDATE landlord_terms SET deleted_at = NULL, deleted_by = NULL, log = log || $2::jsonb WHERE id = $1 AND deleted_at IS NOT NULL RETURNING id", [jobId(req), JSON.stringify([ltLog(req, 'Agreement restored - the landlord\'s link works again')])]);
+    res.json({ ok: !!r.rows.length });
+  }));
+  // Agreements deleted before 'Recently deleted' existed: their links (and who was sent them) are still known from
+  // the emails we sent and the landlord's visits, so the agreement can be made again under the very same link.
+  app.get('/api/admin/landlord-terms-lost', withDb(async function (p, req, res) {
+    const known = {}; (await p.query('SELECT token FROM landlord_terms')).rows.forEach(function (r) { known[r.token] = 1; });
+    const other = {}; for (const q of ['SELECT token FROM offer_invites', 'SELECT token FROM pvr_reservations']) { try { (await p.query(q)).rows.forEach(function (r) { other[r.token] = 1; }); } catch (e) {} }
+    const lost = {};
+    const add = function (tok) { if (!tok || known[tok] || other[tok]) return null; return (lost[tok] = lost[tok] || { token: tok, visits: 0, emails: [] }); };
+    (await p.query("SELECT link_token, min(started_at) AS first, max(last_at) AS last, count(*)::int AS n, max(device) AS device FROM site_sessions WHERE link_token IS NOT NULL AND (cur_page = 'terms' OR pages::text ILIKE '%terms%') GROUP BY link_token ORDER BY max(last_at) DESC LIMIT 200")).rows.forEach(function (r) { const x = add(r.link_token); if (x) { x.visits = r.n; x.first_visit = r.first; x.last_visit = r.last; } });
+    (await p.query("SELECT created_at, user_name, to_list, subject, body FROM sent_emails WHERE body ILIKE '%/landlord/%' ORDER BY id DESC LIMIT 500")).rows.forEach(function (r) {
+      (String(r.body || '').match(/\/landlord\/([\w-]{16,40})/g) || []).forEach(function (m) { const x = add(m.split('/').pop()); if (x && x.emails.length < 5) x.emails.push({ at: r.created_at, by: r.user_name, to: r.to_list, subject: r.subject, about: (String(r.body || '').match(/terms of business for ([^.\n]{3,120})/i) || [])[1] || '' }); });
+    });
+    res.json({ ok: true, items: Object.keys(lost).map(function (k) { return lost[k]; }) });
   }));
   app.get('/api/admin/landlord-terms/:id/pdf', withDb(async function (p, req, res) {
     const t = (await p.query('SELECT * FROM landlord_terms WHERE id = $1', [jobId(req)])).rows[0];
@@ -8575,7 +8600,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
 
   // The landlord's side (by private link).
-  async function ltByToken(p, token) { return /^[\w-]{16,40}$/.test(String(token || '')) ? (await p.query('SELECT * FROM landlord_terms WHERE token = $1', [String(token)])).rows[0] : null; }
+  async function ltByToken(p, token) { return /^[\w-]{16,40}$/.test(String(token || '')) ? (await p.query('SELECT * FROM landlord_terms WHERE token = $1 AND deleted_at IS NULL', [String(token)])).rows[0] : null; }
   app.get('/api/landlord-terms/:token', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const t = await ltByToken(p, req.params.token);
@@ -8736,15 +8761,33 @@ document.querySelectorAll('.lcu').forEach(function(box){
     });
     y -= ph + 20;
     band('Agreed fees', 'The fees agreed for this property. They replace our standard scale of fees.');
-    const frows = [];
-    const stdNote = function (std, pct) { return std == null || pct == null ? '' : pct < std ? ' - discounted from our standard ' + std + '%' + (vat ? ' + VAT' : '') : pct === std ? ' (our standard fee)' : ''; };
-    if (f.find !== 'none' && f.find_pct != null) { frows.push([f.find === 'multi' ? 'Tenant Find - Multi Agency' : 'Tenant Find - Sole Agency', incPct(f.find_pct) + ' of the first 12 months\' rent (initial commission)' + stdNote(LT_STD[f.find], f.find_pct) + (f.find_monthly ? ' - paid monthly in 12 equal instalments' : ' - payable in advance'), f.find_min ? money(f.find_min) + (vat ? ' inc VAT' : '') : '-']); frows.push(['Anniversary fee', f.renewal && f.renewal_pct != null ? incPct(f.renewal_pct) + ' of 12 months\' rent, charged on each 12-month anniversary while the tenant introduced by us remains' : 'No anniversary fee', '-']); }
-    if (f.ongoing !== 'none' && f.ongoing_pct != null) frows.push([ONGOING_NAME[f.ongoing] || 'Rent Collection Service', incPct(f.ongoing_pct) + ' of the rent received - deducted monthly from each month\'s rent' + stdNote(LT_STD[f.ongoing], f.ongoing_pct) + (d.service_chosen && d.service_offered && d.service_chosen !== d.service_offered ? ' (chosen by the landlord)' : ''), f.ongoing_min ? money(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' / month' : '-']);
-    if (f.other) frows.push(['Other agreed fees', f.other, '']);
-    table([['Service', 0.3], ['Fee', 0.48], ['Minimum', 0.22]], frows);
+    // Each fee as a panel, laid out like the landlord's page: the agreed rate, how it's paid, and our standard
+    // fee alongside — struck through with the saving when it's discounted.
+    const pctTxt = function (p) { return p + '%' + (vat ? ' + VAT' : ''); };
+    const feePanel = function (o) {
+      const subLs = wrap(o.sub, F, 8.2, CW - 28), h = 46 + subLs.length * 10.5 + (o.std != null ? 18 : 0);
+      ensure(h + 8); rr(M, y, CW, h, 10, C.white, o.chosen ? C.navy : C.line);
+      let yy = y - 17; text(o.name, M + 14, yy, 9.4, B, C.ink);
+      let tx = M + 14 + B.widthOfTextAtSize(safe(o.name), 9.4) + 8; (o.tags || []).forEach(function (tg) { tx += pill(tg[0], tx, yy - 1, tg[1], tg[2], 6.4) + 5; });
+      yy -= 18; text(o.rate, M + 14, yy, 12.5, B, C.navy);
+      if (o.std != null && o.save) { const sx = M + 14 + B.widthOfTextAtSize(safe(o.rate), 12.5) + 16, st = pctTxt(o.std), sw = F.widthOfTextAtSize(safe(st), 9); text(st, sx, yy + 1, 9, F, C.faint); page.drawLine({ start: { x: sx - 1, y: yy + 4 }, end: { x: sx + sw + 1, y: yy + 4 }, thickness: 0.8, color: C.faint }); }
+      yy -= 13; subLs.forEach(function (ln) { text(ln, M + 14, yy, 8.2, F, C.soft); yy -= 10.5; });
+      if (o.std != null) { yy -= 3; if (o.save) { text('Our standard fee: ' + pctTxt(o.std), M + 14, yy, 7.8, F, C.soft); pill('DISCOUNTED \xB7 YOU SAVE ' + o.save + '%', M + 14 + F.widthOfTextAtSize(safe('Our standard fee: ' + pctTxt(o.std)), 7.8) + 8, yy - 1, C.green, C.greenBg, 6.4); } else pill('OUR STANDARD FEE', M + 14, yy - 1, C.soft, C.panel, 6.4); }
+      y -= h + 8;
+    };
+    const saveOf = function (std, p) { return std != null && p != null && p < std ? Math.round((std - p) * 100) / 100 : 0; };
+    if (f.find !== 'none' && f.find_pct != null) {
+      feePanel({ name: f.find === 'multi' ? 'Tenant Find - Multi Agency' : 'Tenant Find - Sole Agency', tags: [['INCLUDED WITH EVERY OPTION', C.white, C.navy]], rate: pctTxt(f.find_pct) + (vat ? '  (' + (Math.round(f.find_pct * 120) / 100) + '% inc VAT)' : ''),
+        sub: 'Of the first 12 months\' rent (initial commission), ' + (f.find_monthly ? 'paid in 12 equal monthly instalments at no extra cost' : 'payable up front when the tenancy starts') + (f.find_min ? '. Minimum fee ' + money(f.find_min) + (vat ? ' inc VAT' : '') : '') + '.', std: LT_STD[f.find], save: saveOf(LT_STD[f.find], f.find_pct) });
+      feePanel({ name: 'Anniversary fee (replaces renewal fees)', rate: f.renewal && f.renewal_pct != null ? pctTxt(f.renewal_pct) + (vat ? '  (' + (Math.round(f.renewal_pct * 120) / 100) + '% inc VAT)' : '') : 'No anniversary fee', sub: f.renewal && f.renewal_pct != null ? 'Of 12 months\' rent, charged on each 12-month anniversary while the tenant we introduced remains' + (f.find_monthly ? ', collected monthly in the same way' : '') + '. Under the new rules tenancies no longer renew - they simply roll on - so there are no renewal fees. This anniversary fee takes the place of the old renewal fee.' : 'No fee is payable on anniversaries of the tenancy. Under the new rules tenancies no longer renew, so there are no renewal fees either.' });
+    }
+    if (f.ongoing !== 'none' && f.ongoing_pct != null) feePanel({ name: ONGOING_NAME[f.ongoing] || 'Rent Collection Service', chosen: !!(d.service_chosen && d.service_offered && d.service_chosen !== d.service_offered), tags: d.service_chosen && d.service_offered && d.service_chosen !== d.service_offered ? [['CHOSEN BY THE LANDLORD', C.blue, C.blueBg]] : [], rate: pctTxt(f.ongoing_pct) + ' a month' + (vat ? '  (' + (Math.round(f.ongoing_pct * 120) / 100) + '% inc VAT)' : ''),
+      sub: 'Of the rent received, deducted monthly from each month\'s rent before the balance is paid to you, on top of the tenant find fee' + (f.ongoing_min ? '. Minimum ' + money(f.ongoing_min) + (vat ? ' inc VAT' : '') + ' a month' : '') + '.', std: LT_STD[f.ongoing], save: saveOf(LT_STD[f.ongoing], f.ongoing_pct) });
+    else if (f.find !== 'none') feePanel({ name: 'After the tenant moves in', rate: 'Let only - no monthly fee', sub: 'We hand the tenancy over to you once the tenant has moved in. Rent collection and full management are available at any time.' });
+    if (f.other) feePanel({ name: 'Other agreed fees', rate: '', sub: f.other });
     const exRent = await ltExampleRent(p, t.property_address).catch(function () { return null; });
     const ex = feeExamples(f, exRent);
-    if (ex.length) { ensure(34 + ex.length * 13); rr(M, y + 4, CW, ex.length * 13 + 26, 8, C.blueBg); text('Worked example' + (exRent ? ' at this property\'s rent' : ' at \xA32,000 a month rent') + (f.vat !== false ? ' (fees include VAT)' : ''), M + 12, y - 8, 8.2, B, C.blue); ex.forEach(function (e, i) { text(e[0], M + 12, y - 22 - i * 13, 8.2, F, /^A minimum/.test(e[0]) ? C.soft : C.blue); if (e[1]) right(e[1], M + CW - 12, y - 22 - i * 13, 8.2, /^You receive/.test(e[0]) ? B : F, C.blue); }); y -= ex.length * 13 + 34; }
+    if (ex.length) { ensure(34 + ex.length * 13); rr(M, y + 4, CW, ex.length * 13 + 26, 8, C.blueBg); text('Worked example' + (exRent ? ' at this property\'s rent' : ' at \xA32,000 a month rent') + (f.vat !== false ? ' (fees include VAT)' : ''), M + 12, y - 8, 8.2, B, C.blue); ex.forEach(function (e, i) { text(e[0], M + 12, y - 22 - i * 13, 8.2, F, /^(A minimum|Figures exclude)/.test(e[0]) ? C.soft : C.blue); if (e[1]) right(e[1], M + CW - 12, y - 22 - i * 13, 8.2, /^You receive/.test(e[0]) ? B : F, C.blue); }); y -= ex.length * 13 + 34; }
     band('Key points');
     (LT_TERMS.intro || []).forEach(function (s, i) { if (i === 0 && !(f.renewal && f.find !== 'none')) s = 'Under these terms you will be liable to pay Residential Realtors\' commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.'; para(s, { size: 8.6 }); });
 
@@ -9165,6 +9208,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   setTimeout(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function (e) { console.error('DB space check failed:', e.message); }); }, 5000).unref();
   setInterval(function () { db().then(function (p) { if (p) return dbRoom(p); }).catch(function () {}); }, 24 * 3600000).unref();
   // Once: put the values already on the list in their places (version bump re-runs it).
+  // Deleted landlord agreements are kept 30 days (Landlord Terms → Recently deleted), then removed.
+  setInterval(function () { db().then(function (p) { return p && p.query("DELETE FROM landlord_terms WHERE deleted_at < now() - interval '30 days'"); }).catch(function () {}); }, 12 * 3600 * 1000).unref();
   // Once: bring every tenancy's landlord address up to date with the landlord records.
   setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k && k.value && k.value.v >= 4) return; let n = 0;
     // A landlord address left without its postcode: recover it from another place the same address was written
