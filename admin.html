@@ -474,6 +474,14 @@
   .staff-tabs button { border: 0; background: none; font: inherit; font-weight: 700; padding: 8px 14px; border-radius: 9px; cursor: pointer; color: var(--ink-soft); } .staff-tabs button.on { background: var(--primary, #0B1F3A); color: #fff; }
   .lt-card.lt-flash { box-shadow: 0 0 0 3px #12b76a; transition: box-shadow .3s; }
   .lt-editing { background: #fff6e5; border: 1px solid #f3d9a8; color: #7a4d00; border-radius: 10px; padding: 10px 12px; font-size: .88rem; margin: 0 0 10px; }
+  /* Quick property suggestions (postcode, door number or street). */
+  .psug { position: fixed; z-index: 400; background: var(--panel, #fff); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 40px -16px rgba(15,23,42,.35); overflow: auto; max-height: min(340px, 50vh); -webkit-overflow-scrolling: touch; }
+  .psug button { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 9px 12px; font: inherit; font-size: .9rem; cursor: pointer; color: var(--ink); }
+  .psug button:last-child { border-bottom: 0; }
+  .psug button.on, .psug button:hover { background: var(--panel-2, #f2f4f7); }
+  .psug mark { background: #fff3c4; color: inherit; border-radius: 3px; padding: 0 1px; }
+  .psug small { display: block; color: var(--ink-soft); font-size: .76rem; margin-top: 1px; }
+  .psug .psug-av { color: #067647; font-weight: 600; }
   .lt-sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; background: var(--panel, #fff); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 40px -18px rgba(15,23,42,.35); margin-top: 4px; overflow: hidden; }
   .lt-sugg button { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 10px 12px; font: inherit; cursor: pointer; color: var(--ink); } .lt-sugg button:last-child { border-bottom: 0; } .lt-sugg button:hover { background: #f3f5f8; }
   .lt-sugg b { display: block; font-size: .9rem; } .lt-sugg span { font-size: .78rem; color: var(--ink-soft); font-weight: 500; }
@@ -3745,6 +3753,81 @@
 
   // Every property: those with repairs, plus ones known from a tenancy,
   // landlord or certificate (with no repairs yet).
+  // ---------- Quick property suggestions ----------
+  // Address boxes for our properties: type a postcode (or part of one), a door or
+  // flat number, or a street, and matching properties appear straight away —
+  // available ones first. Arrow keys / Enter / tap to pick.
+  var psAvail = null, psBox = null, psFor = null, psList = [], psOn = -1;
+  function psLoadAvail(){
+    if (psAvail || !meta.db) return; psAvail = [];
+    if (avItems && avItems.length) { psAvail = avItems; return; }
+    api('GET', '/api/admin/available').then(function(d){ if (d && d.ok) psAvail = d.items || []; });
+  }
+  function psNorm(v){ return String(v || '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function psSources(){
+    var out = [], seen = {};
+    var add = function(addr, extra, rank){ var k = propKey(addr); if (!k) return; if (seen[k]) { if (extra && !seen[k].extra) { seen[k].extra = extra; seen[k].rank = rank; } return; } var o = { address: addr, extra: extra || '', rank: rank || 0, n: psNorm(addr), pc: (pcOf(addr) || '').replace(/\s+/g, '').toUpperCase() }; seen[k] = o; out.push(o); };
+    (avItems && avItems.length ? avItems : psAvail || []).filter(function(x){ return x.status === 'available'; }).forEach(function(x){ add(x.address, 'Available' + (x.rent_pcm ? ' · ' + gbp(Number(x.rent_pcm)).replace(/\.00$/, '') + ' pcm' : '') + (x.beds != null ? ' · ' + (Number(x.beds) === 0 ? 'Studio' : x.beds + ' bed') : ''), 2); });
+    allPropsForList().forEach(function(p){ add(knownFullAddress(p.key) || p.address, '', 1); });
+    return out;
+  }
+  function psMatch(q){
+    var qn = psNorm(q); if (qn.length < 1) return [];
+    var toks = qn.split(' '), qpc = qn.replace(/\s+/g, '');
+    var pcLike = /^[A-Z]{1,2}\d/.test(qpc) && qpc.length >= 2;
+    return psSources().map(function(o){
+      var words = o.n.split(' '), score = 0;
+      // The postcode typed (all or the start of it, with or without the space).
+      if (pcLike && o.pc && o.pc.indexOf(qpc) === 0) score += 40 + qpc.length;
+      if (pcLike && o.pc && o.pc.slice(0, -3) === qpc) score += 15;   // the whole postcode area typed (SE1, not SE16)
+      var all = toks.every(function(t){
+        if (pcLike && o.pc && (o.pc.indexOf(t) === 0 || o.pc.indexOf(qpc) === 0)) return true;
+        if (/^\d+[A-Z]?$/.test(t)) { if (words.indexOf(t) !== -1) { score += 12; return true; } if (words.some(function(w){ return w.indexOf(t) === 0 && /^\d/.test(w); })) { score += 6; return true; } return false; }
+        if (words.some(function(w){ return w.indexOf(t) === 0; })) { score += 4 + Math.min(t.length, 6); return true; }
+        if (t.length >= 3 && o.n.indexOf(t) !== -1) { score += 2; return true; }
+        return false;
+      });
+      return all || score >= 40 ? { o: o, score: score + o.rank * 3 } : null;
+    }).filter(Boolean).sort(function(a, b){ return b.score - a.score || a.o.address.length - b.o.address.length; }).slice(0, 8).map(function(x){ return x.o; });
+  }
+  function psHi(addr, q){
+    var toks = psNorm(q).split(' ').filter(function(t){ return t.length; }), out = esc(addr);
+    toks.sort(function(a, b){ return b.length - a.length; }).forEach(function(t){ out = out.replace(new RegExp('(^|[^A-Za-z0-9>])(' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'i'), '$1<mark>$2</mark>'); });
+    return out;
+  }
+  function psHide(){ if (psBox) psBox.hidden = true; psFor = null; psOn = -1; }
+  function psPlace(){ if (!psBox || !psFor) return; var r = psFor.getBoundingClientRect(); psBox.style.left = Math.max(8, r.left) + 'px'; psBox.style.width = Math.min(r.width, window.innerWidth - 16) + 'px'; var below = window.innerHeight - r.bottom; if (below < 180 && r.top > below) { psBox.style.top = ''; psBox.style.bottom = (window.innerHeight - r.top + 4) + 'px'; } else { psBox.style.bottom = ''; psBox.style.top = (r.bottom + 4) + 'px'; } }
+  function psShow(inp){
+    psFor = inp; psList = psMatch(inp.value); psOn = -1;
+    if (!psBox) { psBox = document.createElement('div'); psBox.className = 'psug'; psBox.setAttribute('role', 'listbox'); document.body.appendChild(psBox);
+      psBox.addEventListener('mousedown', function(e){ e.preventDefault(); });
+      psBox.addEventListener('click', function(e){ var b = e.target.closest('[data-ps]'); if (b) psPick(Number(b.dataset.ps)); }); }
+    if (!psList.length || (psList.length === 1 && psList[0].address === inp.value.trim())) { psBox.hidden = true; return; }
+    psBox.innerHTML = psList.map(function(o, i){ return '<button type="button" role="option" data-ps="' + i + '">' + psHi(o.address, inp.value) + (o.extra ? '<small class="psug-av">' + esc(o.extra) + '</small>' : '') + '</button>'; }).join('');
+    psBox.hidden = false; psPlace();
+  }
+  function psPick(i){
+    var o = psList[i], inp = psFor; if (!o || !inp) return;
+    inp.value = o.address; psHide();
+    inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true }));
+    psHide();
+  }
+  var PS_LISTS = { offProps: 1, tfProps: 1 };
+  document.addEventListener('focusin', function(e){
+    var inp = e.target; if (!inp || inp.tagName !== 'INPUT') return;
+    var l = inp.getAttribute('list'); if (l && PS_LISTS[l]) { inp.removeAttribute('list'); inp.dataset.psug = '1'; inp.setAttribute('autocomplete', 'off'); }
+    if (inp.dataset.psug) { psLoadAvail(); if (inp.value.trim()) psShow(inp); }
+  });
+  document.addEventListener('input', function(e){ var inp = e.target; if (inp && inp.dataset && inp.dataset.psug && e.isTrusted !== false) { if (document.activeElement === inp) psShow(inp); } });
+  document.addEventListener('keydown', function(e){
+    if (!psBox || psBox.hidden || e.target !== psFor) return;
+    var n = psList.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); psOn = e.key === 'ArrowDown' ? (psOn < n - 1 ? psOn + 1 : 0) : (psOn > 0 ? psOn - 1 : n - 1); psBox.querySelectorAll('[data-ps]').forEach(function(b, i){ b.classList.toggle('on', i === psOn); if (i === psOn) b.scrollIntoView({ block: 'nearest' }); }); }
+    else if (e.key === 'Enter' && psOn >= 0) { e.preventDefault(); psPick(psOn); }
+    else if (e.key === 'Escape') psHide();
+  });
+  document.addEventListener('focusout', function(e){ if (e.target === psFor) setTimeout(function(){ if (document.activeElement !== psFor) psHide(); }, 150); });
+  window.addEventListener('resize', psPlace); document.addEventListener('scroll', function(){ if (psBox && !psBox.hidden) psPlace(); }, true);
   function allPropsForList(){
     var list = propertiesFromJobs(), have = {};
     list.forEach(function(p){ have[p.key] = true; });
@@ -5647,6 +5730,19 @@
     return t ? 'your repair (' + t.charAt(0).toLowerCase() + t.slice(1) + ')' : 'your repair';
   }
   function shortAddr(a){ return String(a || '').split(',').slice(0, 2).join(',').trim() || 'your home'; }
+  // The address as we give it to people enquiring about a property: no flat or door number,
+  // and just the postcode area ("Dudley Court, Upper Berkeley Street, London W1H").
+  function publicAddr(a){
+    var pcM = String(a || '').match(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}\b/i), area = pcM ? pcM[1].toUpperCase() : '';
+    var parts = String(a || '').replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i, '').split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+    parts = parts.map(function(x){
+      return x.replace(/^(flat|apartment|apt|unit|room|studio|maisonette|suite)\s*[\w\/-]+\b[,\s]*/i, '')   // "Flat 5", "Apartment 12B"
+        .replace(/^(\d+[A-Z]?(\s*[-\/]\s*\d+[A-Z]?)?|[A-Z]\d*)\s+(?=[A-Za-z])/i, '')                           // "12", "12a", "5-7", "B2"
+        .replace(/^(\d+[A-Z]?(\s*[-\/]\s*\d+[A-Z]?)?|[A-Z]\d*)\s+(?=[A-Za-z])/i, '').trim();                   // "3 21 Probe Street"
+    }).filter(function(x){ return x && !/^\d+[A-Z]?$/i.test(x); });
+    var out = parts.slice(0, 3).join(', ');
+    return (out + (area ? (out ? ' ' : '') + area : '')).trim() || shortAddr(a);
+  }
   // How to greet a tenant: title and first name ("Miss Adeife"), title and
   // surname when there's no first name ("Mrs Patel", "Mr A Khan" → "Mr Khan"),
   // otherwise the first name. Empty when there's no real name.
@@ -10148,8 +10244,8 @@
   }
   function avMsg(x, inc){
     var L = avLinks(x), lines = [];
-    if (inc.details) { lines.push((x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : 'Property') + ' — ' + shortAddr(x.address)); if (x.vacant) lines.push('Available now'); else if (x.available_from) lines.push('Available from ' + avDay(x.available_from)); if (x.rent_pcm) lines.push(gbp(Number(x.rent_pcm)) + ' pcm' + (x.rent_pw ? ' (' + gbp(Number(x.rent_pw)) + ' pw)' : '')); }
-    else lines.push('Here’s ' + shortAddr(x.address) + ':');
+    if (inc.details) { lines.push((x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : 'Property') + ' — ' + publicAddr(x.address)); if (x.vacant) lines.push('Available now'); else if (x.available_from) lines.push('Available from ' + avDay(x.available_from)); if (x.rent_pcm) lines.push(gbp(Number(x.rent_pcm)) + ' pcm' + (x.rent_pw ? ' (' + gbp(Number(x.rent_pw)) + ' pw)' : '')); }
+    else lines.push('Here’s ' + publicAddr(x.address) + ':');
     if (inc.video && L.video) lines.push('', '▶ Video: ' + L.video);
     if (inc.rightmove && L.rightmove) lines.push('', 'Photos and details: ' + L.rightmove);
     lines.push('', 'Any questions or to book a viewing, just reply or call 0207 096 8131.', 'Residential Realtors');
@@ -10170,7 +10266,7 @@
       if (via === 'x') { p.remove(); return; }
       if (via === 'copy') { copyText(txt).then(function(){ toast('Copied — paste it anywhere'); })['catch'](function(){ window.prompt('Copy this:', txt); }); return; }
       if (via === 'wa') { var n = /@/.test(to) ? '' : waNumber(to); if (to && !/@/.test(to) && !n) { toast('That mobile number doesn’t look right'); return; } window.open('https://wa.me/' + n + '?text=' + encodeURIComponent(txt), '_blank', 'noopener'); return; }
-      if (via === 'email') { if (to && !/@/.test(to)) { toast('Enter their email address to send by email'); return; } composeMail({ to: to ? [to] : [], subject: (x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : 'Property') + ' — ' + shortAddr(x.address), body: txt, title: '✉ Send the property' }); }
+      if (via === 'email') { if (to && !/@/.test(to)) { toast('Enter their email address to send by email'); return; } composeMail({ to: to ? [to] : [], subject: (x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : 'Property') + ' — ' + publicAddr(x.address), body: txt, title: '✉ Send the property' }); }
     });
     p.querySelector('[data-sendto]').focus();
   }
@@ -10589,10 +10685,10 @@
     if (act === 'tcy') { var TT = (avLinkData[x.id] || {}).tenancy; if (!TT) return; (tenancies.some(function(t){ return t.id === TT.id; }) ? Promise.resolve() : loadTenancies()).then(function(){ openTenancy(TT.id); }); return; }
     if (act === 'addr') { var na = prompt('Correct address (one line, with the postcode):', x.address); if (!na || na.trim() === x.address) return; api('POST', '/api/admin/available/' + x.id, { address: na.trim() }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save the address'); return; } x.address = d.address; toast('✓ Address saved'); renderAvail(); }); return; }
     if (act === 'send' || act === 'ytshare') { avSendPanel(card, x, act === 'ytshare'); return; }
-    if (act === 'ytshare-old') { var vid = ytVid((ytM[x.id] || [])[0]), txt = 'Here’s a video of ' + shortAddr(x.address) + ': ' + ytUrl(vid.id); if (navigator.share && matchMedia('(pointer: coarse)').matches) navigator.share({ text: txt })['catch'](function(){}); else copyText(txt).then(function(){ toast('Video link copied — paste it into WhatsApp or an email'); })['catch'](function(){ window.prompt('Copy the video link:', txt); }); return; }
+    if (act === 'ytshare-old') { var vid = ytVid((ytM[x.id] || [])[0]), txt = 'Here’s a video of ' + publicAddr(x.address) + ': ' + ytUrl(vid.id); if (navigator.share && matchMedia('(pointer: coarse)').matches) navigator.share({ text: txt })['catch'](function(){}); else copyText(txt).then(function(){ toast('Video link copied — paste it into WhatsApp or an email'); })['catch'](function(){ window.prompt('Copy the video link:', txt); }); return; }
     if (act === 'edit') { avOpenForm(x); return; }
     if (act === 'del') { if (!confirm('Delete ' + shortAddr(x.address) + ' from the available list?')) return; api('DELETE', '/api/admin/available/' + x.id, { confirm: true }).then(function(d){ toast(d && d.ok ? 'Deleted' : 'Only managers can delete'); loadAvail(); }); return; }
-    if (act === 'copy') { copyText((x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : '') + ' — ' + x.address + '\n' + (x.vacant ? 'Available now' : x.available_from ? 'Available from ' + avDay(x.available_from) : '') + '\n' + (x.rent_pcm ? gbp(Number(x.rent_pcm)) + ' pcm' : '') + (x.rent_pw ? ' (' + gbp(Number(x.rent_pw)) + ' pw)' : '') + (((ytData && ytData.matches) || {})[x.id] && ytData.matches[x.id][0] ? '\nVideo: ' + ytUrl(ytData.matches[x.id][0]) : '') + (x.rm_id && rmData && (rmData.items || []).some(function(r){ return r.id === x.rm_id; }) ? '\nRightmove: ' + (rmData.items.filter(function(r){ return r.id === x.rm_id; })[0].url) : '') + '\nResidential Realtors · 0207 096 8131').then(function(){ toast('Details copied'); })['catch'](function(){ toast('Couldn’t copy — please try again'); }); return; }
+    if (act === 'copy') { copyText((x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : '') + ' — ' + publicAddr(x.address) + '\n' + (x.vacant ? 'Available now' : x.available_from ? 'Available from ' + avDay(x.available_from) : '') + '\n' + (x.rent_pcm ? gbp(Number(x.rent_pcm)) + ' pcm' : '') + (x.rent_pw ? ' (' + gbp(Number(x.rent_pw)) + ' pw)' : '') + (((ytData && ytData.matches) || {})[x.id] && ytData.matches[x.id][0] ? '\nVideo: ' + ytUrl(ytData.matches[x.id][0]) : '') + (x.rm_id && rmData && (rmData.items || []).some(function(r){ return r.id === x.rm_id; }) ? '\nRightmove: ' + (rmData.items.filter(function(r){ return r.id === x.rm_id; })[0].url) : '') + '\nResidential Realtors · 0207 096 8131').then(function(){ toast('Details copied'); })['catch'](function(){ toast('Couldn’t copy — please try again'); }); return; }
     showView('offers');
     setTimeout(function(){
       if (act === 'view') { $('vwCard').open = true; $('vwProp').value = x.address; $('vwCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); $('vwAt').focus(); return; }
