@@ -3731,7 +3731,7 @@ module.exports = function mountJobs(app, opts) {
   function whenUk(d) { return d ? new Date(d).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }) : ''; }
   // bare: no Back link or link to the tenant pages (the contractor's job page).
   function trackShell(title, inner, bare, tag) {
-    return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">' +
+    return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style id="mobile-fit">html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}@media (max-width:900px){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}</style><script>(function(){var ua=navigator.userAgent;if(/iP(hone|ad|od)/.test(ua)||(navigator.platform===\'MacIntel\'&&navigator.maxTouchPoints>1)){var m=document.querySelector(\'meta[name=viewport]\');if(m&&!/maximum-scale/.test(m.content))m.content+=\', maximum-scale=1\';}})();</script><meta name="robots" content="noindex">' +
       '<link rel="icon" type="image/png" sizes="32x32" href="/icons/app-32.png"><link rel="apple-touch-icon" sizes="180x180" href="/icons/app-180.png">' +
       '<title>' + htmlEsc(title) + ' — Residential Realtors</title><style>' +
       ':root{--ink:#0b0c0f;--soft:#5b616e;--faint:#8b919c;--line:#e8e9ed;--red:#D9262E;--ok:#139A4B;--okt:#e9f7ef;--blue:#2F5BEA;--bluet:#eef2fe;--amber:#c26a00;--ambert:#fef4e6;--bg:#f4f5f7;--card:#fff;--shadow:0 1px 2px rgba(16,18,24,.04),0 8px 24px -12px rgba(16,18,24,.12)}' +
@@ -5157,7 +5157,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       }).join('') + '</main>';
     }).join('');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">' +
+    res.send('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style id="mobile-fit">html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}@media (max-width:900px){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}</style><script>(function(){var ua=navigator.userAgent;if(/iP(hone|ad|od)/.test(ua)||(navigator.platform===\'MacIntel\'&&navigator.maxTouchPoints>1)){var m=document.querySelector(\'meta[name=viewport]\');if(m&&!/maximum-scale/.test(m.content))m.content+=\', maximum-scale=1\';}})();</script><meta name="robots" content="noindex">' +
       '<title>Job photos ' + refFor(j.id) + '</title><style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f4f4f6;color:#0b0c0f}' +
       'header{padding:16px;background:#0e0f13;color:#fff}header .logo{display:inline-flex;margin-bottom:6px}header .logo img{height:32px;width:auto;display:block}h1{font-size:1rem;margin:6px 0 2px}p{margin:0;color:#b9bcc4;font-size:.85rem}' +
       'main{padding:12px;display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}a{display:block;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1)}' +
@@ -7581,7 +7581,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const all = toks.every(function (t) { if (pcLike && pc && pc.indexOf(qpc) === 0) return true; if (words.some(function (w) { return w.indexOf(t) === 0; })) { score += 4; return true; } if (t.length >= 3 && n.indexOf(t) !== -1) { score += 2; return true; } return false; });
       return all || score >= 40 ? { r: r, score: score } : null;
     }).filter(Boolean).sort(function (a, b) { return b.score - a.score; }).slice(0, 8).map(function (x) {
-      const r = x.r; return { id: r.id, label: publicAddrS(r.address) || 'Property', beds: r.beds, rent_pcm: r.rent_pcm != null ? Number(r.rent_pcm) : null, available: r.vacant ? 'now' : (r.available_from ? String(r.available_from).slice(0, 10) : '') };
+      const r = x.r; return { id: r.id, label: publicAddrS(r.address) || 'Property', beds: r.beds, rent_pcm: r.rent_pcm != null ? Number(r.rent_pcm) : null, available: r.vacant ? 'now' : (r.available_from instanceof Date ? new Date(r.available_from.getTime() - r.available_from.getTimezoneOffset() * 60000).toISOString().slice(0, 10) : r.available_from ? String(r.available_from).slice(0, 10) : '') };
     });
     res.json({ ok: true, items: items });
   }));
