@@ -1842,7 +1842,7 @@
       <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
-      <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto;max-width:100%;min-width:0"><option value="">Everyone</option></select></div><div id="teamFeed"></div></div>
+      <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto;max-width:100%;min-width:0"><option value="">Everyone</option></select><button type="button" class="btn small ghost" id="teamFeedMin">Minimise</button></div><div id="teamFeed"></div></div>
         <div class="card" id="signinCard" hidden><div class="team-feed-h" style="margin-top:0"><b>🔐 Sign-ins — who signed in, from where and on what</b><select class="inp" id="siDays" style="width:auto"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select></div><p class="muted-note" style="margin:0 0 8px">Location is approximate, worked out from the internet (IP) address. Tap an IP to see everything done from it.</p><div id="signinList"></div></div></div>
       <div id="ltView" hidden>
         <details class="card" id="ltNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New landlord agreement</summary>
@@ -14365,6 +14365,13 @@
     if (e.target.closest('[data-ipclear]')) { ipFilter = ''; loadSignins(); loadTeamFeed(true); }
   };
   $('signinCard').addEventListener('click', ipClick); $('teamFeed').addEventListener('click', ipClick);
+  // "Everything the team has done": minimise / show (remembered on this device).
+  (function(){
+    var min = false; try { min = localStorage.getItem('rr_feed_min') === '1'; } catch (e) {}
+    var draw = function(){ $('teamFeed').hidden = min; $('tmFilter').hidden = min; $('teamFeedMin').textContent = min ? 'Show' : 'Minimise'; };
+    $('teamFeedMin').addEventListener('click', function(){ min = !min; try { localStorage.setItem('rr_feed_min', min ? '1' : '0'); } catch (e) {} draw(); });
+    draw();
+  })();
   function loadTeamFeed(noSignins){
     if (!noSignins) loadSignins();
     var f = $('tmFilter').value;
