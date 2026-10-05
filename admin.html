@@ -4256,7 +4256,7 @@
     $('tiF4Make').disabled = false;
     api('GET', '/api/admin/tenancies/' + t.id + '/form4a-plan').then(function(pl){ if (!pl.ok || !tiCur || tiCur.t.id !== t.id) return; tiCur.f4 = pl; $('tiF4Start').min = pl.earliest; if (!$('tiF4Start').value || $('tiF4Start').value < pl.earliest) $('tiF4Start').value = pl.earliest;
       $('tiF4Make').disabled = !pl.open; tiSyncPct();
-      $('tiF4Earliest').textContent = pl.open ? 'earliest ' + longDay(pl.earliest) : 'the notice can be prepared from ' + longDay(pl.opensOn) + ' (month 10 — rent goes up once a year, with 2 months’ notice)'; });
+      $('tiF4Earliest').textContent = 'earliest ' + longDay(pl.earliest) + ' (12 months after ' + (pl.lastIncrease ? 'the last increase' : 'the tenancy began') + ', with 2 months’ notice)'; });
     $('tiNotice').hidden = !!tiCur.it.no_increase;
     $('tiNoInc').checked = !!tiCur.it.no_increase;
     var l = d.landlord || {};
@@ -4276,7 +4276,7 @@
   function tiSave(body){
     body.period_end = tiCur.n.end;
     return api('POST', '/api/admin/tenancies/' + tiCur.t.id + '/intention', body).then(function(d){
-      if (!d.ok) { toast('Couldn’t save'); return; }
+      if (!d.ok) { toast(d.message || 'Couldn’t save'); return false; }
       tiCur.t.intention = tiCur.t.intention || {}; tiCur.t.intention[tiCur.n.end] = d.intention; tiCur.it = d.intention;
       renderTcyEndAlerts();
     });
@@ -4343,7 +4343,7 @@
   $('tiSaveRent').addEventListener('click', function(){
     var v = num($('tiNewRent').value.replace(/[£,\s]/g, '')), no = $('tiNoInc').checked;
     if (!no && !(v > 0)) { toast('Enter the new monthly rent'); $('tiNewRent').focus(); return; }
-    tiSave(no ? { no_increase: true } : { new_rent: v, rent_from: tiCur.n.end }).then(function(){ toast(no ? 'Saved: no increase this year' : 'Saved: rent ' + gbp(v) + ' from ' + longDay(tiCur.n.end)); tiTpl = 'rent'; tiFill(); });
+    tiSave(no ? { no_increase: true } : { new_rent: v, rent_from: tiCur.n.end }).then(function(r){ if (r === false) return; toast(no ? 'Saved: no increase this year' : 'Saved: rent ' + gbp(v) + ' from ' + longDay(tiCur.n.end)); tiTpl = 'rent'; tiFill(); });
   });
   $('tiLl').addEventListener('click', function(e){
     var b = e.target.closest('[data-ti-ll]'); if (!b) return;
