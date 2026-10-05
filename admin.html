@@ -1384,6 +1384,13 @@
   .rb-ll { border: 1px solid var(--line); border-radius: 14px; padding: 4px 12px; margin-top: 10px; }
   .pay-to-line { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--line, #e5e7eb); border-radius: 12px; font-size: .9rem; }
   .rb-payto { display: block; font-weight: 500; font-size: .8rem; color: var(--ink-soft); margin-top: 1px; }
+  .rb-feesbtn { text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; }
+  .rb-feesbtn em { font-style: normal; opacity: .6; }
+  .rb-feesbtn:hover { box-shadow: 0 0 0 2px #12b76a33; }
+  .rb-feebar { display: block; height: 6px; border-radius: 4px; background: #d1fadf; overflow: hidden; margin: 8px 0 4px; }
+  .rb-feebar i { display: block; height: 100%; background: #12b76a; border-radius: 4px; }
+  .fee-prop { margin: 12px 0 4px; display: flex; gap: 8px; align-items: baseline; font-weight: 700; font-size: .9rem; } .fee-prop span { flex: 1; min-width: 0; } 
+  .fee-row { display: flex; gap: 8px; font-size: .85rem; padding: 4px 0 4px 10px; border-left: 2px solid #d1fadf; } .fee-row span { flex: 1; min-width: 0; color: var(--ink-soft); }
   .rb-llh { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; flex-wrap: wrap; } .rb-llh b { font-size: .95rem; } .rb-llh span { display: block; font-size: .82rem; color: var(--ink-soft); }
   .rb-ch { display: flex; align-items: center; gap: 8px; }
   button.rb-gh { width: 100%; border: 0; background: none; padding: 4px 0; cursor: pointer; text-align: left; font: inherit; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); display: flex; gap: 8px; align-items: center; }
@@ -12816,7 +12823,13 @@
       '<div class="rb-big">' +
         '<div class="rb-bigc' + (now.length ? ' hot' : '') + '"><span>To collect ' + (isNow ? 'today' : '') + '</span><b>' + gbp(sum(now, 'rent')) + '</b><small>' + now.length + ' rent' + (now.length === 1 ? '' : 's') + (isNow && tmw.length ? ' · ' + gbp(sum(tmw, 'rent')) + ' tomorrow' : '') + '</small></div>' +
         '<div class="rb-bigc' + (toPay.length ? ' warm' : '') + '"><span>To pay landlords</span><b>' + gbp(sum(toPay, 'to_landlord')) + '</b><small>' + toPay.length + ' payment' + (toPay.length === 1 ? '' : 's') + '</small></div>' +
-        '<div class="rb-bigc good"><span>Fees collected so far</span><b>' + gbp(isNow ? d.fees_all : feesMonth) + '</b><small>' + (isNow ? gbp(feesMonth) + ' this month · since ' + esc(rbDay(d.since)) : 'in ' + esc(mLabel)) + '</small></div>' +
+        (function(){
+          // This month's fees: collected vs still to come (rents not collected yet).
+          var left = (d.items || []).filter(function(x){ return !x.collected && x.from.slice(0, 7) === d.month; }).reduce(function(a, x){ return a + (x.fees || 0); }, 0);
+          var all = feesMonth + left, pct = all > 0 ? Math.round(feesMonth / all * 100) : 100;
+          return '<button type="button" class="rb-bigc good rb-feesbtn" data-rb-fees title="See which fees, from which property"><span>Fees collected so far <em>›</em></span><b>' + gbp(isNow ? d.fees_all : feesMonth) + '</b><small>' + (isNow ? gbp(feesMonth) + ' this month · since ' + esc(rbDay(d.since)) : 'in ' + esc(mLabel)) + '</small>' +
+            (all > 0 ? '<span class="rb-feebar"><i style="width:' + pct + '%"></i></span><small>' + pct + '% of ' + (isNow ? 'this month' : esc(mLabel)) + '’s fees collected' + (left > 0 ? ' · <span style="font-weight:700">' + gbp(left) + '</span> (' + (100 - pct) + '%) still to come' : '') + '</small>' : '') + '</button>';
+        })() +
       '</div>' +
       '<div class="rb-search"><input class="inp search" id="rbSearch" type="search" placeholder="Search a property, tenant or landlord" value="' + esc(rbQ) + '" autocomplete="off">' + (rbQ ? '<span>' + items.length + ' found</span>' : '') + '</div>' +
       '<div class="rb-tabs">' + tab('collect', 'Collect rent', due.length) + tab('pay', 'Pay landlords', toPay.length) + tab('done', 'Done', got.length) + '</div>' +
@@ -12938,6 +12951,7 @@
     if (u) { var xu = rbFind(u.dataset.rbUncollect); if (!xu || !confirm('The rent for ' + shortAddr(xu.address) + ' (due ' + longDay(xu.from) + ') wasn’t paid?\n\nIt goes back into Collect rent' + (xu.paid ? ', and the payment to the landlord is undone too' : '') + '. Any landlord invoices taken off it go back to unpaid.')) return;
       if (xu.paid) api('POST', '/api/admin/tenancies/' + xu.tenancy_id + '/landlord-paid', { from: xu.from, undo: true });
       api('POST', '/api/admin/tenancies/' + xu.tenancy_id + '/rent-collected', { from: xu.from, undo: true }).then(function(){ loadStatements(); loadRentBoard(true); }); return; }
+    if (e.target.closest('[data-rb-fees]')) { rbFeesPopup(); return; }
     var pt = e.target.closest('[data-rb-payto]');
     if (pt) { var nm = prompt('Who do you pay ' + (pt.dataset.ll || 'this landlord') + '’s money to?\n\nType their company / account name — or leave it empty to pay the landlord personally. It’s remembered for all their properties.', pt.dataset.cur || ''); if (nm === null) return;
       api('POST', '/api/admin/tenancies/' + pt.dataset.rbPayto + '/pay-to', { pay_to: nm.trim() }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save that'); return; } toast(nm.trim() ? '✓ Pay to ' + nm.trim() + ' — remembered' : '✓ Paid to the landlord personally'); loadLandlords(); loadRentBoard(true); }); return; }
@@ -12951,6 +12965,27 @@
     if (up) { var xq = rbFind(up.dataset.rbUnpay); if (!xq || !confirm('Mark the payment to the landlord as not sent?')) return;
       api('POST', '/api/admin/tenancies/' + xq.tenancy_id + '/landlord-paid', { from: xq.from, undo: true }).then(function(){ loadRentBoard(true); }); return; }
   });
+  // "Fees collected so far" → which fees, from which property (newest first, grouped by property).
+  function rbFeesPopup(){
+    var d = rbData || {}, list = d.fee_list || [];
+    var m = $('rbFeesModal');
+    if (!m) {
+      document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="rbFeesModal" hidden><div class="card" style="width:min(560px,100%);max-height:88vh;overflow:auto">' +
+        '<div style="display:flex;align-items:center;gap:8px"><h3 style="margin:0;flex:1">💷 Fees collected</h3><button class="btn small" type="button" data-rbf-close>Close</button></div><div id="rbFeesList"></div></div></div>');
+      m = $('rbFeesModal');
+      m.addEventListener('click', function(e){ if (e.target === m || e.target.closest('[data-rbf-close]')) m.hidden = true; });
+    }
+    var groups = {}, order = [];
+    list.forEach(function(x){ var k = x.tenancy_id; if (!groups[k]) { groups[k] = { address: x.address, service: x.service, total: 0, rows: [] }; order.push(k); } groups[k].total += x.amount; groups[k].rows.push(x); });
+    order.sort(function(a, b){ return groups[b].total - groups[a].total; });
+    var total = list.reduce(function(a, x){ return a + x.amount; }, 0);
+    $('rbFeesList').innerHTML = '<p class="muted-note" style="margin:6px 0 0">' + gbp(total) + ' in fees from ' + order.length + ' propert' + (order.length === 1 ? 'y' : 'ies') + ' since ' + esc(longDay(d.since)) + ' (fees include VAT).</p>' +
+      (order.length ? order.map(function(k){ var g = groups[k];
+        return '<div class="fee-prop"><span>' + esc(shortAddr(g.address)) + ' ' + svcTag(g.service) + '</span>' + gbp(g.total) + '</div>' + g.rows.map(function(x){
+          return '<div class="fee-row"><span>Rent ' + esc(rbDay(x.from)) + ' — ' + esc((x.lines || []).map(function(l){ return l.label; }).join(', ') || 'Our fee') + '</span>' + gbp(x.amount) + '</div>'; }).join(''); }).join('')
+      : '<p class="muted-note" style="margin:16px 0">No fees collected yet.</p>');
+    m.hidden = false;
+  }
   function addMonthsYm(ym, n){ var a = String(ym).split('-'), d = new Date(Date.UTC(Number(a[0]), Number(a[1]) - 1 + n, 1)); return d.toISOString().slice(0, 7); }
   function tcyShowList(){ openTcyId = null; tcyDraft = null; $('tcyDetail').hidden = true; $('tcyModes').hidden = false; if (tcyMode === 'rent') { $('tcyListView').hidden = true; $('rentBoard').hidden = false; loadRentBoard(); } else { $('rentBoard').hidden = true; $('tcyListView').hidden = false; renderTenancies(); } }
   function openTenancy(id, preset){
