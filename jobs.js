@@ -5527,78 +5527,138 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // tenancy and at the property (the outgoing one kept as a previous tenant).
   async function changeOfTenancyPdf(v) {
     const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
-    const pdf = await PDFDocument.create(), F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold), I = await pdf.embedFont(StandardFonts.HelveticaOblique);
-    const W = 595.28, H = 841.89, M = 70, CW = W - 2 * M;
-    const C = { navy: rgb(0.13, 0.23, 0.40), ink: rgb(0.08, 0.09, 0.11), soft: rgb(0.40, 0.42, 0.46), line: rgb(0.80, 0.81, 0.83), label: rgb(0.95, 0.95, 0.95), blue: rgb(0.10, 0.36, 0.75) };
-    const safe = function (t) { return String(t == null ? '' : t).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/[^\x20-\x7E\xA3\xA0-\xFF]/g, ''); };
-    let page = pdf.addPage([W, H]), y = H - 70;
-    const text = function (t, x, yy, size, font, color) { page.drawText(safe(t), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
-    const center = function (t, yy, size, font, color) { const w = (font || F).widthOfTextAtSize(safe(t), size); text(t, (W - w) / 2, yy, size, font, color); };
-    const wrap = function (t, font, size, width) { const out = []; String(safe(t)).split('\n').forEach(function (para) { let line = ''; para.split(/\s+/).forEach(function (w) { const tryL = line ? line + ' ' + w : w; if (font.widthOfTextAtSize(tryL, size) > width && line) { out.push(line); line = w; } else line = tryL; }); out.push(line); }); return out; };
-    const ensure = function (h) { if (y - h < 70) { page = pdf.addPage([W, H]); y = H - 70; } };
-    const section = function (t) { ensure(60); y -= 22; text(t, M, y, 12.5, B, C.navy); y -= 6; page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.8, color: C.navy }); y -= 16; };
-    const sub = function (t, rows) { ensure(26 + (rows || 1) * 31); y -= 10; text(t, M, y, 9.5, B, C.navy); y -= 8; };
-    const row = function (label, value, faint) {
-      const lw = 140, vw = CW - lw, lines = wrap(value || '', F, 9.5, vw - 14), h = Math.max(22, lines.length * 12 + 10);
-      ensure(h + 8);
-      page.drawRectangle({ x: M, y: y - h, width: lw, height: h, color: C.label, borderColor: C.line, borderWidth: 0.6 });
-      page.drawRectangle({ x: M + lw, y: y - h, width: vw, height: h, borderColor: C.line, borderWidth: 0.6 });
-      text(label, M + 7, y - 15, 9.5, B, C.ink);
-      lines.forEach(function (ln, i) { text(ln, M + lw + 7, y - 15 - i * 12, 9.5, F, faint ? C.soft : C.ink); });
-      y -= h + 9;
+    const pdf = await PDFDocument.create();
+    const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold), I = await pdf.embedFont(StandardFonts.HelveticaOblique);
+    const W = 595.28, H = 841.89, M = 46, CW = W - M * 2;
+    const hex = function (h) { return rgb(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255); };
+    const C = { navy: hex('0B1F3A'), navy2: hex('16305A'), red: hex('D9262E'), ink: hex('101828'), ink2: hex('344054'), soft: hex('667085'), faint: hex('98A2B3'), line: hex('E4E7EC'), panel: hex('F5F7FA'), white: rgb(1, 1, 1), green: hex('067647'), greenBg: hex('ECFDF3'), blueBg: hex('EEF4FF'), blue: hex('1D3FAE'), amberBg: hex('FFFAEB'), amber: hex('B54708') };
+    const safe = function (x) { return String(x == null ? '' : x).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/→/g, '->').replace(/[^\x20-\x7E\xA3\xA0-\xFF\n]/g, ''); };
+    const wrap = function (t, font, size, width) { const out = []; safe(t).split('\n').forEach(function (para) { let cur = ''; para.split(/\s+/).forEach(function (w) { const tt = cur ? cur + ' ' + w : w; if (font.widthOfTextAtSize(tt, size) > width && cur) { out.push(cur); cur = w; } else cur = tt; }); out.push(cur); }); return out; };
+    let page, y;
+    const pages = [];
+    const text = function (s, x, yy, size, font, color) { page.drawText(safe(s), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
+    const right = function (s, xr, yy, size, font, color) { text(s, xr - (font || F).widthOfTextAtSize(safe(s), size), yy, size, font, color); };
+    const rr = function (x, yTop, w, h, r, fill, border) { r = Math.min(r, h / 2, w / 2); page.drawSvgPath('M ' + r + ' 0 H ' + (w - r) + ' A ' + r + ' ' + r + ' 0 0 1 ' + w + ' ' + r + ' V ' + (h - r) + ' A ' + r + ' ' + r + ' 0 0 1 ' + (w - r) + ' ' + h + ' H ' + r + ' A ' + r + ' ' + r + ' 0 0 1 0 ' + (h - r) + ' V ' + r + ' A ' + r + ' ' + r + ' 0 0 1 ' + r + ' 0 Z', { x: x, y: yTop, color: fill || undefined, borderColor: border || undefined, borderWidth: border ? 0.7 : 0 }); };
+    const pill = function (s, x, yy, fg, bg) { const w = B.widthOfTextAtSize(safe(s), 6.6) + 12; rr(x, yy + 9, w, 13, 6.5, bg); text(s, x + 6, yy, 6.6, B, fg); return w; };
+    let logoW = null, logoI = null;
+    try { logoW = await pdf.embedPng(require('fs').readFileSync(require('path').join(__dirname, 'logo-white.png'))); } catch (e) {}
+    try { logoI = await pdf.embedPng(require('fs').readFileSync(require('path').join(__dirname, 'logo-ink.png'))); } catch (e) {}
+    const newPage = function (first) {
+      page = pdf.addPage([W, H]); pages.push(page);
+      if (first) {
+        page.drawRectangle({ x: 0, y: H - 196, width: W, height: 196, color: C.navy });
+        page.drawRectangle({ x: 0, y: H - 196, width: W, height: 3, color: C.red });
+        if (logoW) { const h = 36, w = logoW.width * h / logoW.height; page.drawImage(logoW, { x: M, y: H - 70, width: w, height: h }); } else text('RESIDENTIAL REALTORS', M, H - 56, 14, B, C.white);
+        right('CHANGE OF TENANCY', W - M, H - 46, 7.4, B, hex('C7D2E4'));
+        right(v.made + '  \xB7  Ref ' + v.ref, W - M, H - 60, 8.4, F, C.white);
+        page.drawRectangle({ x: M, y: H - 106, width: 34, height: 3, color: C.red });
+        text('Change of Tenancy Agreement', M, H - 132, 23, B, C.white);
+        text('Assignment and substitution of a tenant', M, H - 150, 10.5, F, hex('C7D2E4'));
+        wrap(v.address, B, 11, CW).slice(0, 2).forEach(function (ln, i) { text(ln, M, H - 172 - i * 14, 11, B, hex('DCE3EE')); });
+        y = H - 222;
+      } else {
+        page.drawRectangle({ x: 0, y: H - 4, width: W, height: 4, color: C.red });
+        if (logoI) { const h = 24, w = logoI.width * h / logoI.height; page.drawImage(logoI, { x: M, y: H - 44, width: w, height: h }); }
+        right('Change of Tenancy  \xB7  Ref ' + v.ref, W - M, H - 30, 8, B, C.ink2); right(safe(v.address).slice(0, 70), W - M, H - 42, 7.6, F, C.soft);
+        y = H - 74;
+      }
     };
-    // Letterhead.
-    center('RESIDENTIAL REALTORS', y, 18, B, C.navy); y -= 18;
-    center('28-30 Harper Road, London SE1 6AD', y, 8.5, F, C.soft); y -= 12;
-    center('T: 0207 096 8131  |  E: info@residentialrealtors.co.uk', y, 8.5, F, C.soft); y -= 14;
-    page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 1.4, color: C.navy }); y -= 30;
-    center('CHANGE OF TENANCY AGREEMENT', y, 15, B, C.navy); y -= 16;
-    center('Assignment & Substitution of Tenant', y, 10, F, C.soft); y -= 6;
-    section('1. Property Details');
-    row('Property Address', v.address);
-    row('Effective Date', v.effective);
-    row('Original Tenancy Start', v.original_start);
-    row('Tenancy End Date', v.end_date || 'n/a');
-    row('Monthly Rent (Total)', v.rent_total);
-    row('Outgoing Tenant\'s Share', v.out_share);
-    row('Incoming Tenant\'s Share', v.in_share);
-    section('2. Parties');
-    sub('Outgoing Tenant', 2); row('Full Name', v.out_name); row('Current Address', v.out_address);
-    sub('Incoming Tenant', 2); row('Full Name', v.in_name); row('Current Address', v.in_address);
-    if (v.remaining.length) { sub('Remaining Tenant(s)', v.remaining.length); v.remaining.forEach(function (n, i) { row('Tenant ' + (i + 1) + ' Full Name', n); }); }
-    sub('Managing Agent', 2); row('Company Name', 'Residential Realtors (Estallion Investments Limited)'); row('Address', '28-30 Harper Road, London SE1 6AD');
-    section('3. Deposit');
-    row('Total Deposit Held', v.deposit_total);
-    row('Outgoing Tenant\'s Share', v.out_deposit);
-    row('Incoming Tenant\'s Share', v.in_deposit ? v.in_deposit + ' (payable prior to occupation)' : '');
-    row('Protection Scheme', v.scheme);
-    row('Scheme Reference', v.scheme_ref);
-    section('4. Terms & Conditions');
+    const ensure = function (need) { if (y - need < 74) newPage(false); };
+    const heading = function (n, s, need) { ensure(need || 70); y -= 6; page.drawCircle({ x: M + 9, y: y + 3, size: 9, color: C.red }); const nw = B.widthOfTextAtSize(String(n), 8.5); text(String(n), M + 9 - nw / 2, y, 8.5, B, C.white); text(s, M + 26, y - 1, 13, B, C.navy); y -= 22; };
+    const para = function (s, size, color, font, width, x) { size = size || 9.4; wrap(s, font || F, size, width || CW).forEach(function (ln) { ensure(size + 6); text(ln, x || M, y, size, font || F, color || C.ink2); y -= size + 4.2; }); };
+    // A card of label / value rows, in one or two columns.
+    const facts = function (rows, cols) {
+      rows = rows.filter(function (r) { return r && r[1]; }); if (!rows.length) return;
+      cols = cols || 2; const gap = 12, cw = (CW - gap * (cols - 1)) / cols, per = Math.ceil(rows.length / cols);
+      const cell = function (r) { return 12 + wrap(r[1], B, 9.6, cw - 28).length * 12.5 + 10; };
+      const colsRows = []; for (let c = 0; c < cols; c++) colsRows.push(rows.slice(c * per, c * per + per));
+      const h = Math.max.apply(null, colsRows.map(function (cr) { return cr.reduce(function (a, r) { return a + cell(r); }, 0); })) + 12;
+      ensure(h + 6);
+      colsRows.forEach(function (cr, c) {
+        const x = M + c * (cw + gap); rr(x, y, cw, h, 12, C.panel, C.line); let yy = y - 18;
+        cr.forEach(function (r) { text(String(r[0]).toUpperCase(), x + 14, yy, 6.8, B, C.soft); yy -= 12.5; wrap(r[1], B, 9.6, cw - 28).forEach(function (ln) { text(ln, x + 14, yy, 9.6, B, C.ink); yy -= 12.5; }); yy -= 9; });
+      });
+      y -= h + 14;
+    };
+    // A person card (outgoing / incoming), side by side.
+    const people = function (cards) {
+      const gap = 12, cw = (CW - gap) / 2;
+      const rowsH = function (c) { return c.rows.filter(function (r) { return r[1]; }).reduce(function (a, r) { return a + 12 + wrap(r[1], F, 9, cw - 28).length * 11.5 + 5; }, 0); };
+      const h = Math.max.apply(null, cards.map(function (c) { return 58 + wrap(c.name, B, 12, cw - 28).length * 15 + rowsH(c); })) + 6;
+      ensure(h + 6);
+      cards.forEach(function (c, i) {
+        const x = M + i * (cw + gap); rr(x, y, cw, h, 14, C.white, C.line); page.drawRectangle({ x: x, y: y - h, width: 4, height: h, color: c.bar });
+        pill(c.tag, x + 16, y - 22, c.tagFg, c.tagBg);
+        let yy = y - 44; wrap(c.name, B, 12, cw - 28).forEach(function (ln) { text(ln, x + 16, yy, 12, B, C.ink); yy -= 15; }); yy -= 4;
+        c.rows.filter(function (r) { return r[1]; }).forEach(function (r) { text(String(r[0]).toUpperCase(), x + 16, yy, 6.6, B, C.soft); yy -= 11.5; wrap(r[1], F, 9, cw - 28).forEach(function (ln) { text(ln, x + 16, yy, 9, F, C.ink2); yy -= 11.5; }); yy -= 5; });
+      });
+      y -= h + 14;
+    };
+    newPage(true);
+    // At a glance.
+    const glance = [['EFFECTIVE DATE', v.effective], ['TENANT CHANGE', v.in_name + ' replaces ' + v.out_name], ['MONTHLY RENT', v.rent_total || '-']];
+    const gw = (CW - 20) / 3; ensure(64);
+    glance.forEach(function (g, i) { const x = M + i * (gw + 10); rr(x, y, gw, 56, 12, i === 1 ? C.blueBg : C.panel, C.line); text(g[0], x + 12, y - 18, 6.8, B, C.soft); wrap(g[1], B, 10.5, gw - 24).slice(0, 2).forEach(function (ln, k) { text(ln, x + 12, y - 33 - k * 12.5, 10.5, B, i === 1 ? C.blue : C.ink); }); });
+    y -= 72;
+    heading(1, 'The change of tenant', 300);
+    people([
+      { tag: 'OUTGOING TENANT', tagFg: C.amber, tagBg: C.amberBg, bar: C.amber, name: v.out_name, rows: [['Moves out / liable until', v.last_day], ['Share of rent', v.out_share], ['Share of deposit', v.out_deposit], ['Forwarding address', v.out_address], ['Email', v.out_email], ['Mobile', v.out_phone]] },
+      { tag: 'INCOMING TENANT', tagFg: C.green, tagBg: C.greenBg, bar: C.green, name: v.in_name, rows: [['Takes over from', v.effective], ['Share of rent', v.in_share], ['Share of deposit', v.in_deposit], ['Current address', v.in_address], ['Email', v.in_email], ['Mobile', v.in_phone], ['Guarantor', v.in_guarantor], ['Right to Rent check', v.rtr]] }
+    ]);
+    if (v.remaining.length) {
+      ensure(40); text('REMAINING TENANTS', M, y, 7, B, C.soft); y -= 16;
+      let x = M; v.remaining.forEach(function (n) { const w = B.widthOfTextAtSize(safe(n), 9) + 22; if (x + w > W - M) { x = M; y -= 24; ensure(30); } rr(x, y + 12, w, 20, 10, C.panel, C.line); text(n, x + 11, y - 1, 9, B, C.ink); x += w + 8; });
+      y -= 26; para('The remaining tenants stay on the tenancy on the same terms and consent to this change by signing below.', 8.6, C.soft); y -= 6;
+    }
+    heading(2, 'The property and tenancy', 150);
+    facts([['Property', v.address], ['Landlord', v.landlord], ['Original tenancy start', v.original_start], ['Tenancy', v.tenancy_kind], ['Monthly rent (total)', v.rent_total], ['Rent due', v.rent_day], ['Payment reference', v.pay_ref], ['Managing agent', 'Residential Realtors (Estallion Investments Limited), 28-30 Harper Road, London SE1 6AD']]);
+    heading(3, 'Money and deposit', 170);
+    // What the incoming tenant pays before moving in.
+    const due = [['Deposit share', v.in_deposit_n], ['First rent payment' + (v.first_rent ? ' (due ' + v.first_rent + ')' : ''), v.in_share_n], ['Change of tenant fee', v.fee_n]].filter(function (r) { return r[1]; });
+    if (due.length) {
+      const bh = 34 + due.length * 18 + 26; ensure(bh + 8);
+      rr(M, y, CW, bh, 14, C.white, C.line); page.drawRectangle({ x: M, y: y - bh, width: 4, height: bh, color: C.navy });
+      text('DUE FROM THE INCOMING TENANT BEFORE THE EFFECTIVE DATE', M + 16, y - 20, 7, B, C.soft);
+      let yy = y - 40; due.forEach(function (r) { text(r[0], M + 16, yy, 9.6, F, C.ink2); right(v.cash(r[1]), W - M - 16, yy, 9.6, B, C.ink); yy -= 18; });
+      page.drawLine({ start: { x: M + 16, y: yy + 10 }, end: { x: W - M - 16, y: yy + 10 }, thickness: 0.6, color: C.line });
+      text('Total', M + 16, yy - 6, 10.5, B, C.navy); right(v.cash(due.reduce(function (a, r) { return a + r[1]; }, 0)), W - M - 16, yy - 6, 12, B, C.navy);
+      y -= bh + 12;
+    }
+    facts([['Total deposit held', v.deposit_total], ['Protection scheme', v.scheme], ['Scheme reference', v.scheme_ref], ['Pay to', v.pay_ref ? 'Residential Realtors, quoting ' + v.pay_ref : 'Residential Realtors']]);
+    if (v.deposit_how) { ensure(40); rr(M, y, CW, 14 + wrap(v.deposit_how, F, 9, CW - 30).length * 12 + 12, 12, C.blueBg); let yy = y - 18; wrap(v.deposit_how, F, 9, CW - 30).forEach(function (ln) { text(ln, M + 15, yy, 9, F, C.blue); yy -= 12; }); y = yy - 14; }
+    heading(4, 'Terms');
     [
-      'The Outgoing Tenant agrees to relinquish all rights and obligations under the original tenancy agreement with effect from the Effective Date stated above.',
-      'The Incoming Tenant agrees to assume all rights and obligations under the original tenancy agreement from the Effective Date, including all terms and conditions therein.',
-      'The Incoming Tenant acknowledges that they are taking over the room in its current condition. It is the responsibility of the Incoming Tenant to inspect the room and report any pre-existing damages or defects to the Managing Agent in writing within 48 hours of the Effective Date.',
-      'The Incoming Tenant\'s share of rent and deposit must be received by the Managing Agent prior to or on the Effective Date. This agreement will not take effect until payment has been confirmed.',
-      'The Outgoing Tenant remains jointly and severally liable for all rental arrears and obligations accrued prior to the Effective Date.',
-      'The Remaining Tenant(s) consent to this change of tenancy by signing below and agree to continue to be bound by all terms of the original tenancy agreement.',
-      'All other terms of the original tenancy agreement dated ' + (v.original_start || 'as stated above') + ' shall remain in full force and effect.'
-    ].forEach(function (t) { const lines = wrap(t, F, 9.5, CW - 30); ensure(lines.length * 12 + 6); page.drawCircle({ x: M + 16, y: y + 3, size: 1.7, color: C.ink }); lines.forEach(function (ln, i) { text(ln, M + 30, y - i * 12, 9.5, F, C.ink); }); y -= lines.length * 12 + 6; });
-    section('5. Signatures');
-    text('By signing below, all parties agree to the terms of this Change of Tenancy Agreement.', M, y, 9.5, I, C.ink); y -= 22;
-    const sig = function (who, name) {
-      ensure(92);
-      text(who, M + 6, y, 9.5, B, C.ink); if (name) text(name, M + 6, y - 13, 8.5, F, C.soft);
-      y -= 62; page.drawLine({ start: { x: M + 4, y: y }, end: { x: M + 230, y: y }, thickness: 0.8, color: C.ink });
-      text('Signature', M + 6, y - 11, 8, F, C.soft); text('Date', M + 260, y - 11, 8, F, C.soft);
-      page.drawLine({ start: { x: M + 258, y: y }, end: { x: M + 380, y: y }, thickness: 0.8, color: C.ink });
-      y -= 30;
-    };
-    sig('Outgoing Tenant', v.out_name);
-    sig('Incoming Tenant', v.in_name);
-    v.remaining.forEach(function (n, i) { sig('Remaining Tenant ' + (i + 1), n); });
-    sig('Managing Agent (on behalf of Landlord)', 'Residential Realtors');
-    ensure(40); y -= 4; page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.6, color: C.navy }); y -= 12;
-    wrap('Residential Realtors is a trading name of Estallion Investments Limited. This document is produced for the purposes of recording a change of tenancy and does not constitute a new tenancy agreement.', I, 7.8, CW).forEach(function (ln) { center(ln, y, 7.8, I, C.soft); y -= 10; });
+      'The Outgoing Tenant gives up all rights and obligations under the original tenancy agreement with effect from the Effective Date.',
+      'The Incoming Tenant takes on all rights and obligations under the original tenancy agreement from the Effective Date, including all of its terms and conditions.',
+      'The Incoming Tenant takes the room or property in its current condition. They should inspect it and report any existing damage or defects to the Managing Agent in writing within 48 hours of the Effective Date.',
+      'The Incoming Tenant\'s share of the deposit and first rent (and any agreed change of tenant fee) must be received by the Managing Agent on or before the Effective Date. This agreement takes effect only once payment is confirmed.',
+      'The Outgoing Tenant remains jointly and severally liable for any rent arrears and obligations that arose before the Effective Date.',
+      'The Managing Agent will update the deposit protection and give the Incoming Tenant the deposit prescribed information within 30 days of receiving their deposit share.',
+      'The Remaining Tenant(s) consent to this change by signing below and continue to be bound by all the terms of the original tenancy agreement.',
+      'All other terms of the original tenancy agreement' + (v.original_start ? ' that began on ' + v.original_start : '') + ' remain in full force and effect. This document records a change of tenant and is not a new tenancy agreement.'
+    ].forEach(function (t, i) { const ls = wrap(t, F, 9.2, CW - 26); ensure(ls.length * 12.4 + 6); text((i + 1) + '.', M + 2, y, 9.2, B, C.navy); ls.forEach(function (ln) { text(ln, M + 22, y, 9.2, F, C.ink2); y -= 12.4; }); y -= 5; });
+    heading(5, 'Signatures', 150);
+    para('By signing, each party agrees to this Change of Tenancy Agreement.', 9, C.soft, I); y -= 4;
+    const signers = [['OUTGOING TENANT', v.out_name], ['INCOMING TENANT', v.in_name]].concat(v.remaining.map(function (n, i) { return ['REMAINING TENANT ' + (i + 1), n]; })).concat([['FOR THE LANDLORD', 'Residential Realtors, Managing Agent']]);
+    const sw = (CW - 12) / 2, sh = 84;
+    for (let i = 0; i < signers.length; i += 2) {
+      ensure(sh + 10);
+      signers.slice(i, i + 2).forEach(function (s, k) {
+        const x = M + k * (sw + 12); rr(x, y, sw, sh, 12, C.panel, C.line);
+        text(s[0], x + 14, y - 18, 6.8, B, C.soft); text(s[1], x + 14, y - 31, 9.6, B, C.ink);
+        page.drawLine({ start: { x: x + 14, y: y - 58 }, end: { x: x + sw - 14, y: y - 58 }, thickness: 0.7, color: C.faint });
+        text('Signature', x + 14, y - 69, 7, F, C.soft); text('Date', x + sw - 80, y - 69, 7, F, C.soft);
+      });
+      y -= sh + 10;
+    }
+    // Footer and page numbers on every page.
+    pages.forEach(function (pg, i) {
+      page = pg;
+      pg.drawLine({ start: { x: M, y: 50 }, end: { x: W - M, y: 50 }, thickness: 0.6, color: C.line });
+      text('Residential Realtors \xB7 Trading name of Estallion Investments Limited \xB7 Registered in England No. 08760284', M, 37, 6.8, F, C.soft);
+      text('28-30 Harper Road, London SE1 6AD \xB7 0207 096 8131 \xB7 info@residentialrealtors.co.uk', M, 27, 6.8, F, C.soft);
+      right('Page ' + (i + 1) + ' of ' + pages.length, W - M, 37, 7.4, B, C.ink2); right('Ref ' + v.ref, W - M, 27, 6.8, F, C.soft);
+    });
     pdf.setTitle('Change of Tenancy Agreement - ' + safe(v.address)); pdf.setAuthor('Residential Realtors'); pdf.setCreator('Fixflow');
     return pdf;
   }
@@ -5619,13 +5679,29 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const cash = function (v2) { const n = money(v2); return n == null || n === undefined ? '' : '\xA3' + n.toLocaleString('en-GB', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
     const pcm = function (v2) { const c = cash(v2); return c ? c + ' per calendar month' : ''; };
     const start = String(d.start_date || t.start_date || '').slice(0, 10);
+    const num = function (v2) { const n = money(v2); return n == null || n === undefined ? 0 : n; };
+    const lastDay = (function () { const x = new Date(eff + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() - 1); return x.toISOString().slice(0, 10); })();
+    const so = /^\d{4}-\d{2}-\d{2}$/.test(String(d.so_start || '')) ? d.so_start : start;
+    const endTxt = str(b.end_date, 60), periodic = !endTxt || /^n\/?a$/i.test(endTxt);
+    const firstRent = /^\d{4}-\d{2}-\d{2}$/.test(String(b.first_rent || '')) ? b.first_rent : eff;
+    const rtrDay = /^\d{4}-\d{2}-\d{2}$/.test(String(b.rtr_date || '')) ? b.rtr_date : '';
+    const outDep = cash(b.out_deposit), how = b.deposit_how === 'direct' ? 'direct' : b.deposit_how === 'end' ? 'end' : 'replace';
+    const depositHow = how === 'direct' ? 'How the deposit is handled: the Incoming Tenant pays the Outgoing Tenant\'s deposit share' + (outDep ? ' (' + outDep + ')' : '') + ' directly to the Outgoing Tenant. The total deposit held stays the same, and the deposit protection is updated to name the Incoming Tenant in the Outgoing Tenant\'s place.'
+      : how === 'end' ? 'How the deposit is handled: the Outgoing Tenant\'s deposit share' + (outDep ? ' (' + outDep + ')' : '') + ' stays protected until the end of the tenancy and is returned then, less any agreed deductions. The Incoming Tenant\'s share is protected alongside it.'
+      : 'How the deposit is handled: the Incoming Tenant pays their deposit share to Residential Realtors. Once it has cleared, the Outgoing Tenant\'s share' + (outDep ? ' (' + outDep + ')' : '') + ' is returned to them, less any agreed deductions, and the deposit protection is updated to name the Incoming Tenant.';
     const info = {
-      address: addr, effective: ukLong(eff), original_start: ukLong(start), end_date: str(b.end_date, 60) || 'n/a',
+      ref: 'COT' + String(id).padStart(4, '0') + '-' + (((Array.isArray(d.tenant_changes) ? d.tenant_changes.length : 0) + 1)), made: ukLong(new Date().toISOString().slice(0, 10)),
+      address: addr, landlord: (d.landlord || {}).name || '', effective: ukLong(eff), last_day: ukLong(lastDay), original_start: ukLong(start),
+      tenancy_kind: periodic ? 'Assured periodic tenancy (rolls on monthly)' : 'Fixed term, ending ' + endTxt,
       rent_total: pcm(b.rent_total != null ? b.rent_total : d.rent_pcm), out_share: pcm(b.out_share), in_share: pcm(b.in_share),
-      out_name: out.name || '', out_address: str(b.out_address, 500) || addr, in_name: inc.name, in_address: inc.address,
+      rent_day: /^\d{4}-\d{2}-\d{2}$/.test(so) ? 'On the ' + ord(+so.slice(8, 10)) + ' of each month' : '', pay_ref: str(b.pay_ref, 40) || d.pay_ref || '',
+      out_name: out.name || '', out_address: str(b.out_address, 500), out_email: out.email || '', out_phone: out.phone || '',
+      in_name: inc.name, in_address: inc.address, in_email: inc.email, in_phone: inc.phone, in_guarantor: str(b.in_guarantor, 200),
+      rtr: rtrDay ? 'Checked on ' + ukLong(rtrDay) : '', first_rent: ukLong(firstRent),
       remaining: tenants.filter(function (x, i) { return i !== oi && x && x.name; }).map(function (x) { return x.name; }),
-      deposit_total: cash(b.deposit_total != null ? b.deposit_total : d.deposit), out_deposit: cash(b.out_deposit), in_deposit: cash(b.in_deposit),
-      scheme: str(b.scheme, 80) || d.deposit_scheme || '', scheme_ref: str(b.scheme_ref, 60) || d.deposit_ref || ''
+      deposit_total: cash(b.deposit_total != null ? b.deposit_total : d.deposit), out_deposit: outDep, in_deposit: cash(b.in_deposit),
+      in_deposit_n: num(b.in_deposit), in_share_n: num(b.in_share), fee_n: num(b.fee), cash: cash,
+      scheme: str(b.scheme, 80) || d.deposit_scheme || '', scheme_ref: str(b.scheme_ref, 60) || d.deposit_ref || '', deposit_how: depositHow
     };
     const pdf = await changeOfTenancyPdf(info);
     // The original tenancy agreement behind it, from the office's template (as it was, before the change).
