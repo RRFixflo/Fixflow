@@ -389,7 +389,7 @@
   .side-search svg { width: 15px; height: 15px; }
   .side-search .kbd { margin-left: auto; color: #6F7480; border-color: #2C2F37; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: var(--shadow-xs); }
-  .card h3 { font-family: var(--display); font-size: .92rem; font-weight: 700; margin: 0 0 12px; letter-spacing: -.015em; display: flex; align-items: center; gap: 8px; }
+  .card h3 { font-family: var(--display); font-size: .92rem; font-weight: 700; margin: 0 0 12px; letter-spacing: -.015em; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 6px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .tcy-row { display: grid; grid-template-columns: minmax(0,1fr) 110px 170px 130px 20px; gap: 14px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 13px 16px; cursor: pointer; color: inherit; font: inherit; }
   .tcy-locked input:disabled, .tcy-locked select:disabled, .tcy-locked textarea:disabled { background: var(--hover, #F5F6F8); color: var(--ink); opacity: 1; -webkit-text-fill-color: var(--ink); cursor: default; }
@@ -528,7 +528,9 @@
   .om-strip button.zero b { color: var(--ink-soft); font-weight: 500; }
   .om-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 2px 0 10px; } .om-tiles div { background: var(--panel-2, #f5f6f8); border-radius: 12px; padding: 10px 12px; } .om-tiles span { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 700; } .om-tiles b { display: block; font-size: 1.15rem; margin-top: 2px; }
   .om-list { display: none; }
-  @media (max-width: 640px) { .om-tbl { display: none; } .om-list { display: block; } .om-list > div { border: 1px solid var(--line, #e6e8ec); border-radius: 12px; padding: 10px 12px; margin-bottom: 6px; } .om-list b { display: block; } .om-list span { display: block; font-size: .84rem; color: var(--ink-soft); } .om-tiles b { font-size: 1rem; } }
+  @media (max-width: 640px) { .om-tbl { display: none; } .om-list { display: block; } .om-list > div { border: 1px solid var(--line, #e6e8ec); border-radius: 12px; padding: 10px 12px; margin-bottom: 6px; } .om-list b { display: block; } .om-list span { display: block; font-size: .84rem; color: var(--ink-soft); } .om-tiles b { font-size: 1rem; }
+  .om-tiles div { min-width: 0; } .om-tiles b { overflow-wrap: anywhere; }
+  @media (max-width: 380px) { .om-tiles { grid-template-columns: 1fr 1fr; } .om-tiles div:last-child { grid-column: 1 / -1; } } }
   .mypw-back { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
   .mypw { background: var(--panel, #fff); color: var(--ink); border-radius: 18px; padding: 20px; width: 100%; max-width: 400px; box-shadow: 0 24px 60px -20px rgba(15,23,42,.5); }
   .mypw h3 { margin: 0 0 4px; } .mypw label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: .88rem; margin-bottom: 10px; }
@@ -659,7 +661,7 @@
   .team-edit { flex: 1 1 320px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } .team-edit .inp { flex: 1 1 140px; width: auto; padding: 6px 9px; }
   .team-add { margin: 14px 0; padding: 12px; border-radius: 12px; background: var(--panel-2); }
   .team-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 8px; }
-  .team-feed-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 16px 0 6px; }
+  .team-feed-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 16px 0 6px; }
   .team-feed { list-style: none; margin: 0; padding: 0; } .team-feed li { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: .88rem; }
   .team-feed small { display: block; color: var(--ink-faint); font-size: .74rem; }
   .off-alerts { margin-top: 12px; padding: 12px; border-radius: 10px; background: #edf2ff; }
@@ -1038,7 +1040,8 @@
   .sv-ip:hover { text-decoration: underline; }
   .tcy-warn { background: #FFF7E6; color: #8A4B00; }
   .tcy-end { border-color: #F5D39A; background: #FFFCF5; }
-  .te-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
+  .te-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
+  .te-row > div:first-child { min-width: 0; flex: 1 1 200px; overflow-wrap: anywhere; }
   .te-st { display: inline-block; margin-top: 4px; font-size: .75rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
   .te-st.todo { background: #FDECEC; color: #C0262D; } .te-st.wait { background: #EEF2FE; color: #2F5BEA; } .te-st.ok { background: #DDF3E6; color: #0F7A3B; } .te-st.bad { background: #FFF1DB; color: #A15C00; }
   .te-head { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); margin: 12px 0 2px; } .te-head.late { color: #A15C00; }
@@ -1626,7 +1629,7 @@
       <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
-      <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto"><option value="">Everyone</option></select></div><div id="teamFeed"></div></div>
+      <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto;max-width:100%;min-width:0"><option value="">Everyone</option></select></div><div id="teamFeed"></div></div>
         <div class="card" id="signinCard" hidden><div class="team-feed-h" style="margin-top:0"><b>🔐 Sign-ins — who signed in, from where and on what</b><select class="inp" id="siDays" style="width:auto"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select></div><p class="muted-note" style="margin:0 0 8px">Location is approximate, worked out from the internet (IP) address. Tap an IP to see everything done from it.</p><div id="signinList"></div></div></div>
       <div id="ltView" hidden>
         <details class="card" id="ltNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New landlord agreement</summary>
@@ -13049,8 +13052,8 @@
     api('GET', '/api/admin/licensing-schemes').then(function(d){
       if (!d || !d.ok) return; lsData = d;
       var sel = function(b, k, cur){ return '<select class="inp" data-ls="' + esc(b) + '" data-k="' + k + '" style="min-width:0">' + LS_OPTS.map(function(o){ return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'; };
-      $('lsList').innerHTML = '<div class="ls-grid" style="display:grid;grid-template-columns:minmax(110px,1.1fr) 1fr 1fr 1.4fr;gap:6px;align-items:center;font-size:.84rem"><b>Borough</b><b>Selective</b><b>Additional HMO</b><b>Council licensing page</b>' +
-        Object.keys(d.schemes).sort().map(function(b){ var x = d.schemes[b] || {}; return '<span>' + esc(b) + '</span>' + sel(b, 'sel', x.sel) + sel(b, 'add', x.add) + '<input class="inp" data-ls="' + esc(b) + '" data-k="link" placeholder="https://…" value="' + esc((d.custom[b] || {}).link || '') + '">'; }).join('') + '</div>';
+      $('lsList').innerHTML = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div class="ls-grid" style="display:grid;grid-template-columns:minmax(110px,1.1fr) 1fr 1fr 1.4fr;gap:6px;align-items:center;font-size:.84rem;min-width:520px"><b>Borough</b><b>Selective</b><b>Additional HMO</b><b>Council licensing page</b>' +
+        Object.keys(d.schemes).sort().map(function(b){ var x = d.schemes[b] || {}; return '<span>' + esc(b) + '</span>' + sel(b, 'sel', x.sel) + sel(b, 'add', x.add) + '<input class="inp" data-ls="' + esc(b) + '" data-k="link" placeholder="https://…" value="' + esc((d.custom[b] || {}).link || '') + '">'; }).join('') + '</div></div>';
     });
   });
   if ($('lsSave')) $('lsSave').addEventListener('click', function(){
