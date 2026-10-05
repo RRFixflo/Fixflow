@@ -1361,8 +1361,9 @@
   .tcy-modes button.on { background: var(--panel, #fff); color: var(--ink); box-shadow: 0 1px 3px rgba(16,24,40,.12); }
   .rb-badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--brick, #b42318); color: #fff; font-size: .7rem; line-height: 18px; text-align: center; margin-left: 4px; }
   .rb-head { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; } .rb-head h3 { margin: 0; min-width: 140px; text-align: center; }
-  .rb-tiles { grid-template-columns: repeat(6, 1fr); } .rb-tiles .tile small { display: block; color: var(--ink-faint); font-size: .74rem; margin-top: 4px; }
-  @media (max-width: 1100px) { .rb-tiles { grid-template-columns: repeat(3, 1fr); } }
+  .rb-tiles { grid-template-columns: repeat(4, 1fr); }
+  .rb-tomorrow .rb-day { background: #eff8ff; color: #175cd3; } .rb-g-tmw .rb-gh { color: #175cd3; } .rb-tiles .tile small { display: block; color: var(--ink-faint); font-size: .74rem; margin-top: 4px; }
+  @media (max-width: 1100px) { .rb-tiles { grid-template-columns: repeat(4, 1fr); } }
   .rb-card { margin-bottom: 12px; } .rb-card h3 { margin: 0 0 8px; }
   .rb-group { margin-top: 10px; } .rb-gh { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); margin: 0 0 4px; display: flex; gap: 8px; } .rb-gh span { font-weight: 600; text-transform: none; letter-spacing: 0; }
   .rb-g-over .rb-gh { color: var(--brick, #b42318); }
@@ -1983,6 +1984,7 @@
             </div>
           </div>
           <div id="propAvBanner"></div>
+          <div class="card" id="propRent" hidden style="margin-bottom:12px"></div>
           <div class="tiles prop-tiles" id="propTiles"></div>
           <div class="card" id="propCerts" style="margin-bottom:12px"></div>
           <div class="card" id="propInv" style="margin-bottom:12px" hidden></div>
@@ -4513,6 +4515,35 @@
     closeDrawer(); showView('avail'); avFlag = ''; document.querySelectorAll('#avBeds [data-avf]').forEach(function(f){ f.classList.toggle('on', f.dataset.avf === ''); });
     $('avQ').value = x.address; avOpenCards[x.id] = 1; renderAvail();
   });
+  // The property's rent: each rent date since collection started — collected or not, landlord paid or not.
+  var propRentFor = '';
+  function propRentLoad(address){
+    var box = $('propRent'); if (!meta.db || staffMode) { box.hidden = true; return; }
+    propRentFor = address;
+    api('GET', '/api/admin/rent-board?property=' + encodeURIComponent(address)).then(function(d){
+      if (propRentFor !== address) return;
+      var list = (d && d.ok && d.items) || [];
+      if (!list.length) { box.hidden = true; return; }
+      var got = list.filter(function(x){ return x.collected; });
+      box.hidden = false;
+      box.innerHTML = '<h3 style="display:flex;align-items:center;gap:8px">💷 Rent<span style="flex:1"></span><button type="button" class="btn small ghost" data-prop-rentboard>Rent &amp; landlords ›</button></h3>' +
+        '<p class="muted-note" style="margin:0 0 6px">' + got.length + ' of ' + list.length + ' rent' + (list.length === 1 ? '' : 's') + ' collected since ' + esc(longDay(d.since)) + ' · our fees ' + gbp(got.reduce(function(a, x){ return a + x.fees; }, 0)) + '</p>' +
+        list.slice().reverse().map(function(x){
+          var k = x.tenancy_id + '|' + x.from;
+          return '<div class="rb-row rb-' + x.status + '" style="padding:8px 0"><div class="rb-day"><b>' + esc(rbDay(x.from).split(' ')[0]) + '</b><span>' + esc(rbDay(x.from).split(' ')[1] || '') + '</span></div>' +
+            '<div class="rb-main"><div class="rb-money"><span>Rent <b>' + gbp(x.rent) + '</b></span><span class="rb-arrow">→</span><span>' + (x.to_landlord < 0 ? '<span class="rb-owes">landlord owes ' + gbp(-x.to_landlord) + '</span>' : 'landlord ' + gbp(x.paid ? x.paid.amount : x.to_landlord)) + '</span></div>' +
+            '<div class="rb-sub">' + (x.collected ? '✓ Collected ' + esc(fmtShort(x.collected.at).split(',')[0]) : x.status === 'overdue' ? '⚠️ Not collected yet' : x.status === 'today' ? 'Due today' : 'Not due yet') + ' · ' + (x.paid ? '✓ Landlord paid ' + esc(fmtShort(x.paid.at).split(',')[0]) + (x.paid.ref ? ' (' + esc(x.paid.ref) + ')' : '') : x.collected ? 'Landlord not paid yet' : '') + '</div></div>' +
+            '<div class="rb-act">' + (x.collected ? '' : x.status !== 'upcoming' && x.status !== 'tomorrow' ? '<button type="button" class="btn small primary" data-prop-collect="' + k + '" data-amt="' + x.rent + '">✓ Rent collected</button>' : '') + '</div></div>';
+        }).join('');
+    });
+  }
+  $('propRent').addEventListener('click', function(e){
+    if (e.target.closest('[data-prop-rentboard]')) { tcyMode = 'rent'; try { localStorage.setItem('rr_tcy_mode', 'rent'); } catch (er) {} $('tcyModes').querySelectorAll('[data-tmode]').forEach(function(x){ x.classList.toggle('on', x.dataset.tmode === 'rent'); }); openTcyId = null; tcyDraft = null; showView('tcy'); tcyShowList(); return; }
+    var c = e.target.closest('[data-prop-collect]'); if (!c) return;
+    var a = c.dataset.propCollect.split('|'), amt = prompt('Rent collected (due ' + longDay(a[1]) + '). Amount received:', c.dataset.amt); if (amt === null) return;
+    busy(c, true, 'Saving…');
+    api('POST', '/api/admin/tenancies/' + a[0] + '/rent-collected', { from: a[1], amount: amt }).then(function(d){ busy(c, false); if (!d || !d.ok) { toast('Couldn’t save that'); return; } toast('✓ Rent collected' + (d.invoices ? ' · ' + d.invoices + ' invoice' + (d.invoices === 1 ? '' : 's') + ' taken off it' : '')); loadStatements(); propRentLoad(propRentFor); });
+  });
   function renderProperty(){
     var d = propertyJobs();
     if (!d) { $('propBack').click(); return; }
@@ -4529,6 +4560,7 @@
       (function(){ var t = propTenancy(d.property.key); return '<div class="tile' + (t.k === 'none' ? ' alert has' : t.k === 'ending' ? ' warnish' : ' good') + '"><div class="k">Tenancy</div><div class="v" style="font-size:1rem">' + (t.k === 'none' ? 'None on file' : esc(t.text)) + '</div>' + (t.k === 'none' ? '<button type="button" class="btn small primary" id="propAddTerms" style="margin-top:6px">📄 Add Terms of Let</button><div class="drop-hint" style="margin-top:4px">or drag &amp; drop it onto this page</div>' : '') + '</div>'; })();
     bindKeyTile(d.property.address); bindLicenceTile(d.property.address);
     $('propAvBanner').innerHTML = avBannerHtml([d.property.address]);
+    propRentLoad(d.property.address);
     // This property's invoices: what it has cost the landlord, and what's still owed.
     (function(){
       var pi = allInvoices.filter(function(i){ return propKey(i.property_address) === d.property.key || addrSame(i.property_address, d.property.address); })
@@ -12466,7 +12498,8 @@
   function renderRentBoard(){
     var d = rbData, items = d.items, today = d.today, isNow = d.month === today.slice(0, 7);
     var due = items.filter(function(x){ return !x.collected; }), got = items.filter(function(x){ return x.collected; });
-    var over = due.filter(function(x){ return x.status === 'overdue'; }), tod = due.filter(function(x){ return x.status === 'today'; }), up = due.filter(function(x){ return x.status === 'upcoming'; });
+    var over = due.filter(function(x){ return x.status === 'overdue'; }), tod = due.filter(function(x){ return x.status === 'today'; }), tmw = due.filter(function(x){ return x.status === 'tomorrow'; }), up = due.filter(function(x){ return x.status === 'upcoming'; });
+    var feesMonth = got.filter(function(x){ return x.from.slice(0, 7) === d.month; }).reduce(function(a, x){ return a + x.fees; }, 0);
     var toSend = got.filter(function(x){ return !x.paid && x.to_landlord > 0; }), sent = items.filter(function(x){ return x.paid; });
     var sum = function(l, k){ return l.reduce(function(a, x){ return a + (Number(k === 'paid' ? x.paid.amount : x[k]) || 0); }, 0); };
     var ym = d.month.split('-'), mLabel = MONTHS_EN[Number(ym[1]) - 1] + ' ' + ym[0];
@@ -12513,13 +12546,15 @@
       '<div class="tiles rb-tiles">' +
         '<div class="tile' + (over.length ? ' alert has' : '') + '"><div class="k">Overdue</div><div class="v">' + gbp(sum(over, 'rent')) + '</div><small>' + over.length + ' rent' + (over.length === 1 ? '' : 's') + '</small></div>' +
         '<div class="tile' + (tod.length ? ' warnish has' : '') + '"><div class="k">Due today</div><div class="v">' + gbp(sum(tod, 'rent')) + '</div><small>' + tod.length + '</small></div>' +
+        (isNow ? '<div class="tile"><div class="k">Due tomorrow</div><div class="v">' + gbp(sum(tmw, 'rent')) + '</div><small>' + tmw.length + (tmw.length ? ' · ' + esc(rbDay(d.tomorrow)) : '') + '</small></div>' : '') +
         '<div class="tile"><div class="k">Still to collect</div><div class="v">' + gbp(sum(due, 'rent')) + '</div><small>' + due.length + ' this month</small></div>' +
         '<div class="tile good"><div class="k">Collected</div><div class="v">' + gbp(sum(got, 'rent')) + '</div><small>' + got.length + '</small></div>' +
         '<div class="tile' + (toSend.length ? ' warnish has' : '') + '"><div class="k">To send landlords</div><div class="v">' + gbp(sum(toSend, 'to_landlord')) + '</div><small>' + toSend.length + '</small></div>' +
         '<div class="tile good"><div class="k">Sent to landlords</div><div class="v">' + gbp(sum(sent, 'paid')) + '</div><small>' + sent.length + '</small></div>' +
+        '<div class="tile good"><div class="k">Our fees collected</div><div class="v">' + gbp(feesMonth) + '</div><small>' + (isNow ? gbp(d.fees_all) + ' since ' + esc(rbDay(d.since)) : 'in ' + esc(mLabel)) + '</small></div>' +
       '</div>' +
       '<div class="card rb-card"><h3>💷 Collect rent</h3>' +
-        (items.length ? group('⚠️ Overdue', over, 'rb-g-over') + group('Due today', tod, 'rb-g-today') + group('Coming up', up) + group('✓ Collected', got, 'rb-g-done')
+        (items.length ? group('⚠️ Overdue', over, 'rb-g-over') + group('Due today', tod, 'rb-g-today') + group('Due tomorrow — ' + esc(longDay(d.tomorrow || '')), tmw, 'rb-g-tmw') + group('Coming up', up) + group('✓ Collected', got, 'rb-g-done')
           : '<p class="muted-note" style="margin:0">No rents due in ' + esc(mLabel) + ' for tenancies where we collect the rent.</p>') +
         '<p class="muted-note" style="margin:10px 0 0">Only tenancies where <b>we</b> collect the rent' + (d.not_ours ? ' — ' + d.not_ours + ' where the landlord collects it aren’t shown (set “Who collects the rent?” on the tenancy)' : '') + '. Tracking started ' + esc(longDay(d.since)) + '.</p></div>' +
       '<div class="card rb-card"><h3>🏦 Pay landlords</h3>' + (llHtml || '<p class="muted-note" style="margin:0">Once a rent is collected, what to send its landlord shows here — with their statement.</p>') + '</div>';

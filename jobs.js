@@ -8700,30 +8700,37 @@ document.querySelectorAll('.lcu').forEach(function(box){
       .filter(function (i) { return i.cm ? i.cm <= ym : new Date(i.created_at).toISOString().slice(0, 10) <= from; })
       .map(function (i) { return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.title, job_id: i.job_id }; });
   }
-  async function rentBoard(p, month) {
+  // Rent collection starts from this day (earlier rent dates count as already dealt with).
+  const RENT_START = '2026-10-05';
+  async function rentBoard(p, month, onlyKey) {
     const today = londonDay(), r2 = function (v) { return Math.round(v * 100) / 100; };
     let since = (await p.query("SELECT value FROM app_settings WHERE key = 'rent_board_since'")).rows[0];
     if (!since) { since = { value: { from: today.slice(0, 7) + '-01' } }; await p.query("INSERT INTO app_settings (key, value) VALUES ('rent_board_since', $1) ON CONFLICT (key) DO NOTHING", [JSON.stringify(since.value)]); }
-    const sinceDay = since.value.from, thisMonth = today.slice(0, 7);
+    const sinceDay = since.value.from > RENT_START ? since.value.from : RENT_START, thisMonth = today.slice(0, 7), tomorrow = addDaysIso(today, 1);
     month = /^\d{4}-\d{2}$/.test(String(month || '')) ? month : thisMonth;
     const mStart = month + '-01', mEnd = addDaysIso(addMonthsIso(mStart, 1), -1);
     const st = await statementsAll(p), stBy = {}; st.items.forEach(function (x) { stBy[x.tenancy_id] = x; });
     const tcys = (await p.query('SELECT id, property_key, address, start_date, data, intention FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date, id')).rows;
     const lls = {}; (await p.query('SELECT pl.property_key, l.id, l.name, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r; });
-    const items = []; let notOurs = 0;
+    const items = []; let notOurs = 0, feesAll = 0, feesN = 0;
+    // On this month's page, tomorrow's rents too (even when tomorrow is next month).
+    const until = month === thisMonth && tomorrow > mEnd ? tomorrow : mEnd;
     for (let i = 0; i < tcys.length; i++) {
       const t = tcys[i], d = t.data || {}, start = String(d.start_date || t.start_date || '').slice(0, 10);
+      if (onlyKey && t.property_key !== onlyKey) continue;
       const next = tcys.slice(i + 1).filter(function (x) { return x.property_key && x.property_key === t.property_key; })[0];
       if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) continue;
       if (!rentByUs(d)) { if (!next) notOurs++; continue; }
       const rcvd = d.rent_rcvd || {}, paid = d.ll_paid || {}, ll = lls[t.property_key] || {};
       for (let n = 0; n < 120; n++) {
         const from = addMonthsIso(start, n);
-        if (from > mEnd) break;
+        if (from > (onlyKey ? tomorrow > until ? tomorrow : until : until)) break;
         if (next && from >= String(next.start_date).slice(0, 10)) break;
         if (from < sinceDay) continue;
-        // Earlier months only on this month's page, and only while something's still to do.
-        if (from < mStart && (month !== thisMonth || (rcvd[from] && paid[from]))) continue;
+        // Our fees on every rent collected so far (all months).
+        if (rcvd[from] && !onlyKey) { feesAll += 1; }
+        // Earlier months only on this month's page, and only while something's still to do (a property's page shows them all).
+        if (!onlyKey && from < mStart && (month !== thisMonth || (rcvd[from] && paid[from]))) { if (rcvd[from]) { const stm0 = stBy[t.id] && stBy[t.id].months.filter(function (m) { return m.from === from; })[0]; const f0 = stm0 ? stm0.fees : stmtFees(d, Number(d.rent_pcm) || 0, n === 0, from).fees; feesN = r2(feesN + (f0 || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount + (x.vat || 0); }, 0)); } continue; }
         let rent = Number(d.rent_pcm) || 0;
         if (n > 0) Object.keys(t.intention || {}).sort().forEach(function (k) { const it = t.intention[k] || {}; const nr = Number(it.new_rent); if (nr && !it.no_increase && (it.rent_from || k) <= from) rent = nr; });
         if (!(rent > 0)) continue;   // no rent amount on the tenancy
@@ -8744,15 +8751,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
           pending: pend, pending_total: pendTotal, to_landlord: toLl,
           collected: rcvd[from] || null, paid: paid[from] || null,
           stmt: stm ? { sent: stm.sent || null, changed: stm.changed || null } : null,
-          status: rcvd[from] ? 'collected' : from < today ? 'overdue' : from === today ? 'today' : 'upcoming'
+          status: rcvd[from] ? 'collected' : from < today ? 'overdue' : from === today ? 'today' : from === tomorrow ? 'tomorrow' : 'upcoming'
         });
       }
     }
     items.sort(function (a, b) { return a.from < b.from ? -1 : a.from > b.from ? 1 : String(a.address).localeCompare(String(b.address)); });
-    return { today: today, month: month, since: sinceDay, items: items, not_ours: notOurs };
+    // Fees collected since the start: earlier months (worked out above) + the ones on this page.
+    const feesShown = items.filter(function (x) { return x.collected; }).reduce(function (a, x) { return a + x.fees; }, 0);
+    return { today: today, tomorrow: tomorrow, month: month, since: sinceDay, items: items, not_ours: notOurs, fees_before: feesN, fees_all: r2(feesN + (month <= thisMonth ? feesShown : 0)) };
   }
   app.get('/api/admin/rent-board', withDb(async function (p, req, res) {
-    res.json(Object.assign({ ok: true }, await rentBoard(p, req.query.month)));
+    const key = req.query.property ? propKey(str(req.query.property, 400)) : null;
+    res.json(Object.assign({ ok: true }, await rentBoard(p, req.query.month, key)));
   }));
   // Rent collected for one rent date (or undone). Landlord invoices due from this rent are taken
   // off it then — they go on that month's statement — and put back if it's undone.
