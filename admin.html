@@ -1382,6 +1382,8 @@
   .rb-act { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; } .rb-act .linkish { padding: 0; min-height: 0; font-size: .78rem; }
   .rb-ok { color: #067647; font-weight: 600; font-size: .82rem; } .rb-late { color: var(--brick, #b42318); font-size: .74rem; font-weight: 600; }
   .rb-ll { border: 1px solid var(--line); border-radius: 14px; padding: 4px 12px; margin-top: 10px; }
+  .pay-to-line { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--line, #e5e7eb); border-radius: 12px; font-size: .9rem; }
+  .rb-payto { display: block; font-weight: 500; font-size: .8rem; color: var(--ink-soft); margin-top: 1px; }
   .rb-llh { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; flex-wrap: wrap; } .rb-llh b { font-size: .95rem; } .rb-llh span { display: block; font-size: .82rem; color: var(--ink-soft); }
   .rb-ch { display: flex; align-items: center; gap: 8px; }
   button.rb-gh { width: 100%; border: 0; background: none; padding: 4px 0; cursor: pointer; text-align: left; font: inherit; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); display: flex; gap: 8px; align-items: center; }
@@ -1664,6 +1666,7 @@
             <div class="prop-actions" id="llActions"></div>
           </div>
           <div id="llAvBanner"></div>
+          <div id="llPayTo"></div>
           <div class="card" id="llCard"></div>
           <div class="card" id="llMails" style="margin-top:12px"></div>
           <div class="card" id="llOwed" style="margin-top:12px"></div>
@@ -4603,7 +4606,8 @@
   });
   function avBannersRefresh(){
     if ($('propDetail') && !$('propDetail').hidden) { var d = propertyJobs(); $('propAvBanner').innerHTML = d ? avBannerHtml([d.property.address]) : ''; propTwinRefresh(d && d.property.address); propChargeNote(); }
-    if ($('llDetail') && !$('llDetail').hidden) { var l = landlordById(openLlId); $('llAvBanner').innerHTML = l ? avBannerHtml(llProperties(l).map(function(x){ return x.address; })) : ''; }
+    if ($('llDetail') && !$('llDetail').hidden) { var l = landlordById(openLlId); $('llAvBanner').innerHTML = l ? avBannerHtml(llProperties(l).map(function(x){ return x.address; })) : '';
+      $('llPayTo').innerHTML = l && !staffMode ? '<div class="pay-to-line">💷 Their rent money is paid to <b>' + esc(l.pay_to || l.name) + '</b>' + (l.pay_to ? ' <span class="muted">(' + esc(l.name) + '’s company / account)</span>' : '') + ' <button type="button" class="linkish" data-ll-payto="' + l.id + '">' + (l.pay_to ? 'Change' : 'Pay into a company instead?') + '</button></div>' : ''; }
     if ($('tcyAvBanner')) { var t = tcyDraft; $('tcyAvBanner').innerHTML = t && t.address && openTcyId !== 'new' ? avBannerHtml([t.address]) : ''; }
     var rc = $('tcyRentCard'); if (rc && !rc.dataset.wired) { rc.dataset.wired = 1; rc.addEventListener('click', rentCardClick); }
     if (rc && tcyDraft && openTcyId !== 'new') { var tx = tenancies.filter(function(z){ return z.id === openTcyId; })[0]; rentCardLoad(rc, (tx && tx.address) || tcyDraft.address, openTcyId); }
@@ -8134,6 +8138,7 @@
     var open = all.filter(isOpen).length;
     $('llAvatar').innerHTML = avatar(l.name);
     $('llAvBanner').innerHTML = avBannerHtml(props.map(function(x){ return x.address; }));
+    setTimeout(avBannersRefresh, 0);   // "paid to" line
     $('llTitle').textContent = l.name;
     personMails($('llMails'), l.email);
     $('llSub').textContent = props.length + ' propert' + (props.length === 1 ? 'y' : 'ies') + ' · ' + all.length + ' repair' + (all.length === 1 ? '' : 's') + ' · ' + open + ' open · ' + gbp(chargedTotal(all)) + ' charged';
@@ -9525,6 +9530,10 @@
           '<button type="button" class="btn small primary" data-charge-job="' + j.id + '">Open job ›</button><button type="button" class="btn small ghost" data-charge-none="' + j.id + '">No charge needed</button></div>';
       }).join(''); }).join('') : '<p class="muted-note" style="margin:16px 0">✓ Nothing missing — every repair has a charge or is marked as not needing one.</p>';
   }
+  document.addEventListener('click', function(e){ var b = e.target.closest('[data-ll-payto]'); if (!b) return; var l = landlordById(Number(b.dataset.llPayto)); if (!l) return;
+    var nm = prompt('Who do you pay ' + l.name + '’s rent money to?\n\nType their company / account name — or leave it empty to pay them personally.', l.pay_to || ''); if (nm === null) return;
+    api('POST', '/api/admin/landlords/' + l.id + '/pay-to', { pay_to: nm.trim() }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save that'); return; } l.pay_to = nm.trim() || null; toast('✓ Saved — remembered'); avBannersRefresh(); });
+  });
   document.addEventListener('click', function(e){ var b = e.target.closest('[data-tcy-open]'); if (b) openTenancy(Number(b.dataset.tcyOpen)); });
   document.addEventListener('click', function(e){ var b = e.target.closest('[data-charge-open]'); if (b) chargeOpen(b.dataset.chargeOpen || ''); });
   // On the property page: this property's repairs that may be missing a charge.
@@ -12778,13 +12787,13 @@
     var prow = function(x){
       var k = x.tenancy_id + '|' + x.from, st = x.stmt;
       return '<div class="rb-line"><input type="checkbox" class="rb-pick" data-rb-ppick="' + k + '"' + (rbSelP[k] ? ' checked' : '') + ' aria-label="Select">' + day(x) +
-        '<div class="rb-main"><div class="rb-addr">' + esc(shortAddr(x.address)) + '</div><div class="rb-sub">' + more(k, '🔍 See the charges') + ' · ' + (x.from > today ? '<span class="rb-earlytag">Paid early · rent due ' + esc(rbDay(x.from)) + '</span> · ' : '') +
+        '<div class="rb-main"><div class="rb-addr">' + esc(shortAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + 'Landlord: <b>' + esc(x.landlord || 'not saved') + '</b>' + (x.pay_to ? ' · Pay to: <b>' + esc(x.pay_to) + '</b>' : '') + (x.landlord ? '' : ' · <button type="button" class="linkish" data-rb-payto="' + x.tenancy_id + '" data-cur="' + esc(x.pay_to || '') + '" data-ll="the landlord of ' + esc(shortAddr(x.address)) + '">' + (x.pay_to ? 'Change' : 'Pay into a company?') + '</button>') + '</div><div class="rb-sub">' + more(k, '🔍 See the charges') + ' · ' + (x.from > today ? '<span class="rb-earlytag">Paid early · rent due ' + esc(rbDay(x.from)) + '</span> · ' : '') +
           (x.collected && !x.collected.auto ? '<button type="button" class="linkish rb-notpaid" data-rb-uncollect="' + k + '">Rent not paid? Undo</button> · ' : '') +
           (st ? (st.sent && !st.changed ? '✓ Statement sent' : '<button type="button" class="linkish" data-st-pdf="' + k + '">Statement</button>' + (x.landlord_email ? ' · <button type="button" class="linkish" data-st-mail="' + k + '">Email it</button>' : '') + ' · <button type="button" class="linkish" data-st-sent="' + k + '">Mark sent</button>') : 'No statement') + '</div>' + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(x.to_landlord) + '</div><div class="rb-btn"><button type="button" class="btn small primary" data-rb-pay="' + k + '">Paid</button></div></div>';
     };
     var payHtml = Object.keys(byLl).sort().map(function(n){ var l = byLl[n];
-      return '<div class="rb-sect"><div class="rb-sh">' + (l.length > 1 ? '<label class="rb-sall" title="Select all for this landlord"><input type="checkbox" data-rb-sall="p"> All</label>' : '') + esc(n) + '<span>' + l.length + ' · ' + gbp(sum(l, 'to_landlord')) + '</span></div>' + l.map(prow).join('') + '</div>'; }).join('');
+      return '<div class="rb-sect"><div class="rb-sh">' + (l.length > 1 ? '<label class="rb-sall" title="Select all for this landlord"><input type="checkbox" data-rb-sall="p"> All</label>' : '') + '<span style="flex:1;min-width:0">' + esc(n) + (n === 'No landlord saved' ? '' : '<span class="rb-payto">' + (l[0].pay_to ? 'Pay to: <b>' + esc(l[0].pay_to) + '</b> · ' : 'Paid to the landlord · ') + '<button type="button" class="linkish" data-rb-payto="' + l[0].tenancy_id + '" data-cur="' + esc(l[0].pay_to || '') + '" data-ll="' + esc(n) + '">' + (l[0].pay_to ? 'Change' : 'Pay into a company?') + '</button></span>') + '</span><span>' + l.length + ' · ' + gbp(sum(l, 'to_landlord')) + '</span></div>' + l.map(prow).join('') + '</div>'; }).join('');
     // Done: rents collected and landlords paid, with undo.
     var drow = function(x){
       var k = x.tenancy_id + '|' + x.from;
@@ -12929,9 +12938,12 @@
     if (u) { var xu = rbFind(u.dataset.rbUncollect); if (!xu || !confirm('The rent for ' + shortAddr(xu.address) + ' (due ' + longDay(xu.from) + ') wasn’t paid?\n\nIt goes back into Collect rent' + (xu.paid ? ', and the payment to the landlord is undone too' : '') + '. Any landlord invoices taken off it go back to unpaid.')) return;
       if (xu.paid) api('POST', '/api/admin/tenancies/' + xu.tenancy_id + '/landlord-paid', { from: xu.from, undo: true });
       api('POST', '/api/admin/tenancies/' + xu.tenancy_id + '/rent-collected', { from: xu.from, undo: true }).then(function(){ loadStatements(); loadRentBoard(true); }); return; }
+    var pt = e.target.closest('[data-rb-payto]');
+    if (pt) { var nm = prompt('Who do you pay ' + (pt.dataset.ll || 'this landlord') + '’s money to?\n\nType their company / account name — or leave it empty to pay the landlord personally. It’s remembered for all their properties.', pt.dataset.cur || ''); if (nm === null) return;
+      api('POST', '/api/admin/tenancies/' + pt.dataset.rbPayto + '/pay-to', { pay_to: nm.trim() }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save that'); return; } toast(nm.trim() ? '✓ Pay to ' + nm.trim() + ' — remembered' : '✓ Paid to the landlord personally'); loadLandlords(); loadRentBoard(true); }); return; }
     var pb = e.target.closest('[data-rb-pay]');
     if (pb) { var xp = rbFind(pb.dataset.rbPay); if (!xp) return;
-      var ref = prompt('Sent ' + gbp(xp.to_landlord) + ' to ' + (xp.landlord || 'the landlord') + ' for ' + shortAddr(xp.address) + '?\n\nPayment reference (optional):', ''); if (ref === null) return;
+      var ref = prompt('Sent ' + gbp(xp.to_landlord) + ' to ' + (xp.pay_to ? xp.pay_to + ' (' + (xp.landlord || 'landlord') + ')' : (xp.landlord || 'the landlord')) + ' for ' + shortAddr(xp.address) + '?\n\nPayment reference (optional):', ''); if (ref === null) return;
       busy(pb, true, 'Saving…');
       api('POST', '/api/admin/tenancies/' + xp.tenancy_id + '/landlord-paid', { from: xp.from, amount: xp.to_landlord, ref: ref }).then(function(d){ busy(pb, false); if (!d || !d.ok) { toast('Couldn’t save that'); return; } toast('✓ Marked as paid to the landlord'); loadRentBoard(true); });
       return; }

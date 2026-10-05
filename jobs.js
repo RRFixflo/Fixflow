@@ -144,6 +144,8 @@ CREATE TABLE IF NOT EXISTS landlords (
 ALTER TABLE landlords ADD COLUMN IF NOT EXISTS portal_token TEXT;
 -- When their page link was last sent, and how.
 ALTER TABLE landlords ADD COLUMN IF NOT EXISTS link_sent JSONB;
+-- Who the rent money is paid to, when it isn't the landlord personally (e.g. their company).
+ALTER TABLE landlords ADD COLUMN IF NOT EXISTS pay_to TEXT;
 CREATE TABLE IF NOT EXISTS property_landlords (
   property_key TEXT PRIMARY KEY,
   address      TEXT,
@@ -2577,7 +2579,7 @@ module.exports = function mountJobs(app, opts) {
 
   // ---------- Landlords ----------
   app.get('/api/admin/landlords', withDb(async function (p, req, res) {
-    const l = await p.query('SELECT id, name, email, phone, address, notes, created_at, updated_at, link_sent FROM landlords ORDER BY lower(name)');
+    const l = await p.query('SELECT id, name, email, phone, address, notes, created_at, updated_at, link_sent, pay_to FROM landlords ORDER BY lower(name)');
     const links = await p.query('SELECT property_key, address, landlord_id FROM property_landlords ORDER BY address');
     const own = await p.query('SELECT id, landlord_id, address, data, epc, created_at FROM landlord_properties ORDER BY address');
     res.json({ ok: true, landlords: l.rows, links: links.rows, own: own.rows });
@@ -8863,7 +8865,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const mStart = month + '-01', mEnd = addDaysIso(addMonthsIso(mStart, 1), -1);
     const st = await statementsAll(p), stBy = {}; st.items.forEach(function (x) { stBy[x.tenancy_id] = x; });
     const tcys = (await p.query('SELECT id, property_key, address, start_date, data, intention FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date, id')).rows;
-    const lls = {}; (await p.query('SELECT pl.property_key, l.id, l.name, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r; });
+    const lls = {}; (await p.query('SELECT pl.property_key, l.id, l.name, l.email, l.pay_to FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r; });
     const items = []; let notOurs = 0, feesAll = 0, feesN = 0;
     // On this month's page, tomorrow's rents too (even when tomorrow is next month).
     // On this month's page, the next 7 days' rents too (even into next month) — for tenants who pay early.
@@ -8912,7 +8914,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           tenancy_id: t.id, address: d.address || t.address, from: from, n: n, rent: rent,
           tenants: (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean),
           landlord: (d.landlord && d.landlord.name) || ll.name || '', landlord_id: ll.id || null, landlord_email: (d.landlord && d.landlord.email) || ll.email || '',
-          service: d.service || '', pay_ref: d.pay_ref || '',
+          service: d.service || '', pay_ref: d.pay_ref || '', pay_to: ll.pay_to || d.pay_to || '',
           fees: r2((f.fees || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount + (x.vat || 0); }, 0)), fee_lines: (f.fees || []).filter(function (x) { return !x.invoice_id; }).map(function (x) { return { label: x.label, amount: r2(x.amount + (x.vat || 0)) }; }),
           recovered: (f.fees || []).filter(function (x) { return x.invoice_id; }).map(function (x) { return { label: x.label, amount: x.amount }; }),
           bf: stm ? stm.bf : 0, income: stm ? stm.income : rent,
@@ -8963,6 +8965,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_rcvd}', coalesce(data->'rent_rcvd', '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
       [id, from, JSON.stringify(row), JSON.stringify([{ at: row.marked_at, text: 'Rent due ' + certDay(from) + ' collected' + (amount ? ' (' + gbp(amount) + ')' : '') + (rd ? ' — received ' + certDay(rd) : '') + (ids.length ? ' — ' + ids.length + ' landlord invoice' + (ids.length === 1 ? '' : 's') + ' taken off it' : '') + ' (' + who + ')' }])]);
     res.json({ ok: true, invoices: ids.length });
+  }));
+  // Who the landlord's money is paid to (e.g. their company) — kept on the landlord, so it's remembered
+  // for every property of theirs; on the tenancy when no landlord record is linked.
+  app.post('/api/admin/landlords/:id/pay-to', withDb(async function (p, req, res) {
+    const r = await p.query('UPDATE landlords SET pay_to = $2, updated_at = now() WHERE id = $1 RETURNING id', [jobId(req), str((req.body || {}).pay_to, 200) || null]);
+    res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
+  }));
+  app.post('/api/admin/tenancies/:id/pay-to', withDb(async function (p, req, res) {
+    const id = jobId(req), name = str((req.body || {}).pay_to, 200) || null, who = req.user ? req.user.name : 'Office';
+    const t = (await p.query('SELECT id, property_key FROM tenancies WHERE id = $1', [id])).rows[0];
+    if (!t) return res.status(404).json({ ok: false, error: 'not-found' });
+    const ll = t.property_key ? (await p.query('SELECT landlord_id FROM property_landlords WHERE property_key = $1', [t.property_key])).rows[0] : null;
+    if (ll) await p.query('UPDATE landlords SET pay_to = $2, updated_at = now() WHERE id = $1', [ll.landlord_id, name]);
+    await p.query(`UPDATE tenancies SET data = CASE WHEN $2::text IS NULL THEN data - 'pay_to' ELSE jsonb_set(data, '{pay_to}', to_jsonb($2::text)) END, log = log || $3::jsonb, updated_at = now() WHERE id = $1`,
+      [id, name, JSON.stringify([{ at: new Date().toISOString(), text: (name ? 'Landlord’s money now paid to ' + name : 'Landlord’s money paid to the landlord personally') + ' (' + who + ')' }])]);
+    res.json({ ok: true, landlord: !!ll });
   }));
   // Who collects the rent on a tenancy (from the rent page: "we don't collect this any more").
   app.post('/api/admin/tenancies/:id/rent-by', withDb(async function (p, req, res) {
