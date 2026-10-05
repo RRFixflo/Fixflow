@@ -12514,6 +12514,14 @@
   }
   // The landlord as they are on their record now (linked by the property, email, phone or a unique name),
   // so statements always carry the current name and address; the tenancy's own copy otherwise.
+  // The landlord's full name: the landlord record's name when it's the same person written out more
+  // fully ("Sadia" on the tenancy, "Mrs Sadia Example" on the record), otherwise the record's name.
+  function llFullName(a, b){
+    a = String(a || '').trim(); b = String(b || '').trim(); if (!a) return b; if (!b) return a;
+    var w = function(v){ return v.toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function(x){ return x.length > 1 && !/^(mr|mrs|ms|miss|dr|mx)$/.test(x); }); };
+    var wa = w(a), wb = w(b), share = wa.some(function(x){ return wb.indexOf(x) !== -1; });
+    return share ? (wb.length > wa.length ? b : a) : b;
+  }
   function tcyLandlordNow(d){
     var l = d.landlord || {}, nm = function(v){ return String(v || '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr|mx)\b\.?/g, ' ').replace(/[^a-z]+/g, ' ').trim(); };
     var ph = function(v){ var x = String(v || '').replace(/\D/g, ''); return x.length >= 10 ? x.slice(-10) : ''; };
@@ -12522,11 +12530,11 @@
       all.filter(function(r){ return (l.email && r.email && r.email.toLowerCase().trim() === String(l.email).toLowerCase().trim()) || (ph(l.phone) && ph(r.phone) === ph(l.phone)); })[0] ||
       (function(){ var same = nm(l.name) ? all.filter(function(r){ return nm(r.name) === nm(l.name); }) : []; return same.length === 1 ? same[0] : null; })();
     var recAddr = rec ? tcyBestLlAddress(rec) : '';
-    if (!rec || !recAddr || (!POSTCODE_RE.test(recAddr) && l.postcode)) return { name: l.name || (rec && rec.name) || '', lines: tcyLandlordAddress(l) };
+    if (!rec || !recAddr || (!POSTCODE_RE.test(recAddr) && l.postcode)) return { name: llFullName(l.name, rec && rec.name), lines: tcyLandlordAddress(l) };
     var parts = String(recAddr).split(/\s*[,\n]+\s*/).filter(Boolean), pc = '';
     parts = parts.map(function(x){ var m = POSTCODE_RE.exec(x); if (m && !pc) { pc = (m[1] + ' ' + m[2]).toUpperCase(); x = x.replace(m[0], '').trim(); } return x; }).filter(Boolean);
     if (parts.length > 2 && /^(flat|apartment|apt|unit|room|suite|studio)\b/i.test(parts[0])) parts.splice(0, 2, parts[0] + ', ' + parts[1]);
-    return { name: rec.name || l.name || '', lines: parts.concat(pc ? [pc] : []) };
+    return { name: llFullName(l.name, rec.name), lines: parts.concat(pc ? [pc] : []) };
   }
   function tcyValues(d){
     var c = tcyCalc(d), t = (tcySet && tcySet.templates) || {};
