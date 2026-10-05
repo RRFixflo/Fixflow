@@ -10425,7 +10425,7 @@
     if (e.target.closest('[data-off-tcy]')) {
       var d = o.data || {}, m = d.money || {};
       showView('tcy');
-      openTenancy('new', { data: { address: o.property_address, start_date: d.move_in || '', rent_pcm: m.pcm || null, holding: m.holding || null, holding_date: o.paid_at ? isoDay(new Date(o.paid_at)) : '',
+      openTenancy('new', { data: { offer_id: o.id, address: o.property_address, start_date: d.move_in || '', rent_pcm: m.pcm || null, holding: m.holding || null, holding_date: o.paid_at ? isoDay(new Date(o.paid_at)) : '',
         tenants: (d.tenants || []).map(function(t){ return { name: t.name, email: t.email, phone: t.phone }; }), notes: 'From online offer ' + o.ref + (d.stay ? ' — would like to stay ' + d.stay : '') } });
       toast('Tenancy filled in from the offer — check the details and save');
     }
@@ -12826,7 +12826,7 @@
         '<div class="rb-btn">' + (x.collected.auto ? '<button type="button" class="btn small ghost" data-rb-open="' + x.tenancy_id + '" title="Move-in money is worked out from the payments on the tenancy — change them there">Open tenancy</button>' : '<button type="button" class="btn small ghost" data-rb-uncollect="' + k + '" title="The rent wasn’t actually paid — put it back in Collect rent">↩ Not paid — undo</button>') + '</div></div>';
     };
     var tab = function(id, label, n){ return '<button type="button" data-rb-tab="' + id + '" class="' + (rbTab === id ? 'on' : '') + '">' + label + (n ? ' <span class="rb-count">' + n + '</span>' : '') + '</button>'; };
-    var body = rbTab === 'pay'
+    var body = rbTab === 'hold' ? rbHoldHtml(d, qt) : rbTab === 'pay'
       ? '<div class="rb-bulk"><span id="rbBulkP"></span></div>' + (payHtml || '<p class="rb-empty">Nothing to pay. When a rent is collected, the landlord’s money shows here.</p>')
       : rbTab === 'done'
       ? (got.length ? got.slice().reverse().map(drow).join('') : '<p class="rb-empty">Nothing collected yet in ' + esc(mLabel) + '.</p>')
@@ -12848,7 +12848,7 @@
         })() +
       '</div>' +
       '<div class="rb-search"><input class="inp search" id="rbSearch" type="search" placeholder="Search a property, tenant or landlord" value="' + esc(rbQ) + '" autocomplete="off">' + (rbQ ? '<span>' + items.length + ' found</span>' : '') + '</div>' +
-      '<div class="rb-tabs">' + tab('collect', 'Collect rent', due.length) + tab('pay', 'Pay landlords', toPay.length) + tab('done', 'Done', got.length) + '</div>' +
+      '<div class="rb-tabs">' + tab('collect', 'Collect rent', due.length) + tab('pay', 'Pay landlords', toPay.length) + tab('done', 'Done', got.length) + tab('hold', 'Holding deposits', (d.holding || []).filter(function(h){ return h.kind === 'refund'; }).length) + '</div>' +
       '<div class="card rb-body">' + body + '</div>' +
       '<p class="rb-foot">Only tenancies where we collect the rent' + (d.not_ours ? ' (' + d.not_ours + ' where the landlord collects aren’t shown)' : '') + '. Started ' + esc(longDay(d.since)) + '.</p>';
   }
@@ -12968,6 +12968,11 @@
       if (xu.paid) api('POST', '/api/admin/tenancies/' + xu.tenancy_id + '/landlord-paid', { from: xu.from, undo: true });
       api('POST', '/api/admin/tenancies/' + xu.tenancy_id + '/rent-collected', { from: xu.from, undo: true }).then(function(){ loadStatements(); loadRentBoard(true); }); return; }
     if (e.target.closest('[data-rb-fees]')) { rbFeesPopup(); return; }
+    var rf = e.target.closest('[data-rb-refunded]');
+    if (rf) { if (!confirm('Holding deposit refunded to the applicant?')) return; busy(rf, true, 'Saving…');
+      api('POST', '/api/admin/offers/' + rf.dataset.rbRefunded, { refunded: true }).then(function(d2){ busy(rf, false); if (!d2 || !d2.ok) { toast('Couldn’t save that'); return; } toast('✓ Refund marked as sent'); loadRentBoard(true); if (typeof loadOffers === 'function') loadOffers(); }); return; }
+    var of = e.target.closest('[data-rb-offer]');
+    if (of) { var oid = Number(of.dataset.rbOffer); offTab = 'all'; offFocus = oid; showView('offers'); setTimeout(function(){ var c = document.querySelector('#offList [data-off="' + oid + '"]'); if (c) { c.querySelectorAll('details').forEach(function(dd, i){ if (!i) dd.open = true; }); c.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }, 350); return; }
     var lk = e.target.closest('[data-rb-ll]'); if (lk) { openLandlord(Number(lk.dataset.rbLl)); return; }
     var bc = e.target.closest('[data-rb-early]');
     if (bc) { var ea = bc.dataset.rbEarly.split('|'); rentAsk({ title: 'Rent collected', sub: 'Rent due ' + longDay(ea[1]), amount: bc.dataset.amt }).then(function(r){ if (!r) return; busy(bc, true, 'Saving…');
@@ -13004,6 +13009,23 @@
   document.addEventListener('toggle', function(e){ if (e.target && e.target.matches && e.target.matches('[data-rb-skipbox]')) { try { localStorage.setItem('rr_rb_skip', e.target.open ? '1' : '0'); } catch (x) {} } }, true);
   // The landlord's name as a link to their page (when there's a landlord record).
   function rbLl(x, bold){ var n = esc(x.landlord || ''); if (!n) return ''; n = bold ? '<b>' + n + '</b>' : n; return x.landlord_id ? '<button type="button" class="linkish rb-lllink" data-rb-ll="' + x.landlord_id + '">' + n + ' ›</button>' : n; }
+  // Holding deposits: to refund (the default), or going towards rent + deposit once the offer is accepted.
+  function rbHoldHtml(d, qt){
+    var list = (d.holding || []).filter(function(h){ if (!qt.length) return true; var x = psNorm([h.address, h.name, h.ref].join(' ')); return qt.every(function(t){ return x.indexOf(t) !== -1; }); });
+    var st = { new: 'Offer still to decide', accepted: 'Offer accepted', rejected: 'Offer rejected', withdrawn: 'Offer withdrawn' };
+    var row = function(h){
+      var acc = h.refund_to ? (h.refund_to.iban || [h.refund_to.sort_code, h.refund_to.account].filter(Boolean).join('  ')) : '';
+      return '<div class="rb-line"><span class="rb-pickpad"></span><div class="rb-day"><b>' + esc(rbDay(isoDay(new Date(h.paid_at))).split(' ')[0]) + '</b><span>' + esc(rbDay(isoDay(new Date(h.paid_at))).split(' ')[1] || '') + '</span></div>' +
+        '<div class="rb-main"><div class="rb-addr">' + esc(h.name || 'Applicant') + ' · ' + esc(rbAddr(h.address)) + '</div><div class="rb-sub">' + esc(h.ref) + ' · ' + esc(st[h.status] || h.status) + ' · paid ' + esc(longDay(isoDay(new Date(h.paid_at)))) +
+          (h.kind === 'refund' ? (h.refund_to ? '<span class="rb-sknote">Refund to ' + esc(h.refund_to.name) + ' · ' + esc(acc) + '</span>' : '<span class="rb-sknote">No refund account given yet</span>') : '<span class="rb-sknote" style="color:#05603a">Goes towards their rent + deposit — make the tenancy from the offer and it counts as paid</span>') + '</div></div>' +
+        '<div class="rb-amt">' + gbp(h.amount) + '</div><div class="rb-btn">' + (h.kind === 'refund' ? '<button type="button" class="btn small primary" data-rb-refunded="' + h.offer_id + '">Refunded</button>' : '') + '<button type="button" class="btn small ghost" data-rb-offer="' + h.offer_id + '">Open offer</button></div></div>';
+    };
+    var ref = list.filter(function(h){ return h.kind === 'refund'; }), tw = list.filter(function(h){ return h.kind === 'towards'; });
+    var sum = function(l){ return l.reduce(function(a, h){ return a + h.amount; }, 0); };
+    return (ref.length ? '<div class="rb-sect"><div class="rb-sh">To refund<span>' + ref.length + ' · ' + gbp(sum(ref)) + '</span></div><p class="rb-note">Holding deposits we’ve received. They stay here to refund unless the offer is accepted.</p>' + ref.map(row).join('') + '</div>' : '') +
+      (tw.length ? '<div class="rb-sect"><div class="rb-sh">Going towards rent &amp; deposit<span>' + tw.length + ' · ' + gbp(sum(tw)) + '</span></div>' + tw.map(row).join('') + '</div>' : '') +
+      (list.length ? '' : '<p class="rb-empty">No holding deposits to deal with.</p>');
+  }
   function rbSkippedHtml(d, qt){
     var list = (d.skipped || []).filter(function(x){ if (!qt.length) return true; var h = psNorm([x.address, (x.tenants || []).join(' ')].join(' ')); return qt.every(function(t){ return h.indexOf(t) !== -1; }); });
     if (!list.length) return '';

@@ -5629,6 +5629,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         if ((o.postcode && !pcOnly.test(o.postcode)) || [o.line1, o.line2, o.country].some(function (x) { return x && POSTCODE_RE.test(x); })) Object.assign(o, llAddrLines([o.line1, o.line2, o.postcode, o.country].filter(Boolean).join(', ')));
         else if (o.postcode) o.postcode = o.postcode.toUpperCase().replace(/^([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})$/, '$1 $2');
         o.postcode = String(o.postcode || '').slice(0, 20) || null; return o; })(),
+      offer_id: parseInt(b.offer_id, 10) || undefined,   // made from this online offer (its holding deposit counts)
       service: s(b.service, 60) || 'Tenant Find', find_pct: amt(b.find_pct), find_basis: b.find_basis === 'upfront' ? 'upfront' : 'monthly',
       manage_basis: b.manage_basis === 'upfront' ? 'upfront' : 'monthly', find_unit: b.find_unit === 'gbp' ? 'gbp' : 'pct', collect_unit: b.collect_unit === 'gbp' ? 'gbp' : 'pct', manage_unit: b.manage_unit === 'gbp' ? 'gbp' : 'pct', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
       credits: (Array.isArray(b.credits) ? b.credits : []).slice(0, 20).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount), vat: !!(f && f.vat) }; }).filter(function (f) { return f.label && f.amount; }),
@@ -8961,10 +8962,25 @@ document.querySelectorAll('.lcu').forEach(function(box){
       (await p.query('SELECT DISTINCT ON (pt.property_key) pt.property_key, pt.address, t.name FROM property_tenants pt LEFT JOIN tenants t ON t.id = pt.tenant_id WHERE pt.moved_out_at IS NULL AND pt.property_key IS NOT NULL ORDER BY pt.property_key')).rows
         .forEach(function (r) { if (!haveT[r.property_key]) skipped.push({ tenancy_id: null, address: r.address, property_key: r.property_key, tenants: r.name ? [r.name] : [], why: 'no-tenancy' }); });
     }
+    // Holding deposits received on offers: to refund by default; once the offer is accepted they go
+    // towards the rent + deposit (and leave this list when the tenancy is made from the offer).
+    const holding = [];
+    if (!onlyKey) {
+      const tl = (await p.query("SELECT property_key, created_at, data->>'offer_id' AS oid, (data->>'holding') IS NOT NULL AS has_hold FROM tenancies")).rows;
+      (await p.query("SELECT id, created_at, property_address, property_key, lead_name, status, paid_at, data FROM offers WHERE paid_at IS NOT NULL AND paid_at > now() - interval '120 days' ORDER BY paid_at DESC")).rows.forEach(function (o) {
+        const od = o.data || {};
+        if (od.refunded_at) return;
+        const made = tl.some(function (t) { return String(t.oid || '') === String(o.id) || (o.status === 'accepted' && t.has_hold && t.property_key && t.property_key === o.property_key && new Date(t.created_at) >= new Date(o.created_at)); });
+        if (made) return;
+        const amt = od.paid_amount != null ? Number(od.paid_amount) : Number((od.money || {}).holding) || 0;
+        holding.push({ offer_id: o.id, ref: 'OF' + String(o.id).padStart(4, '0'), address: o.property_address, name: o.lead_name || '', status: o.status, amount: amt, paid_at: o.paid_at,
+          kind: o.status === 'accepted' ? 'towards' : 'refund', refund_to: od.refund ? { name: od.refund.name || '', sort_code: od.refund.sort_code || '', account: od.refund.account || '', iban: od.refund.iban || '' } : null });
+      });
+    }
     // Each fee collected, by property (for "Fees collected so far" → the breakdown).
     if (month <= thisMonth) items.filter(function (x) { return x.collected && x.fees; }).forEach(function (x) { feeList.push({ tenancy_id: x.tenancy_id, address: x.address, from: x.from, service: x.service, amount: x.fees, net: x.fees_net, lines: x.fee_lines }); });
     feeList.sort(function (a, b) { return a.from < b.from ? 1 : a.from > b.from ? -1 : String(a.address).localeCompare(String(b.address)); });
-    return { skipped: skipped, fee_list: feeList, today: today, tomorrow: tomorrow, month: month, since: sinceDay, items: items, not_ours: notOurs, fees_before: feesN, fees_all: r2(feesN + (month <= thisMonth ? feesShown : 0)), fees_all_net: r2(feesNnet + (month <= thisMonth ? feesShownNet : 0)) };
+    return { holding: holding, skipped: skipped, fee_list: feeList, today: today, tomorrow: tomorrow, month: month, since: sinceDay, items: items, not_ours: notOurs, fees_before: feesN, fees_all: r2(feesN + (month <= thisMonth ? feesShown : 0)), fees_all_net: r2(feesNnet + (month <= thisMonth ? feesShownNet : 0)) };
   }
   app.get('/api/admin/rent-board', withDb(async function (p, req, res) {
     const key = req.query.property ? propKey(str(req.query.property, 400)) : null;
