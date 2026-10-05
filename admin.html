@@ -459,7 +459,7 @@
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
   body:not(.staff-mode) #navAlerts { display: none !important; }
-  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
@@ -1410,6 +1410,7 @@
   .rb-amt { flex: none; text-align: right; font-weight: 700; font-size: 1.02rem; min-width: 92px; } .rb-amt small { display: block; font-weight: 500; font-size: .7rem; color: var(--ink-faint); }
   .rb-btn { flex: none; min-width: 112px; display: flex; justify-content: flex-end; } .rb-btn .btn { min-width: 100px; justify-content: center; }
   .rb-more { font-size: .78rem; padding: 0; min-height: 0; }
+  .rent-top { gap: 6px; position: relative; } .rent-top .rt-ic { font-size: 1rem; line-height: 1; } .rent-top .rb-badge { margin-left: 2px; }
   .rb-earlytag { color: #175cd3; font-weight: 600; }
   .rb-movein .rb-day { background: #f4f3ff; color: #5925dc; }
   .rb-details { margin: 8px 0 2px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; font-size: .84rem; max-width: 460px; }
@@ -1534,6 +1535,7 @@
       <button type="button" class="btn small ghost back-btn" id="backBtn" title="Back" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span class="mobile-hide">Back</span></button>
       <h1 id="mainTitle">Repair jobs</h1><span class="date" id="todayLbl"></span>
       <div class="grow"></div>
+      <button class="btn small rent-top" id="rentTopBtn" type="button" title="Collect rent and pay landlords"><span class="rt-ic">💷</span><span class="mobile-hide">Rent</span><span class="rb-badge" id="rentTopBadge" hidden></span></button>
       <button class="btn small ask" id="askBtn" type="button" title="Tell Fixflow what to do (speak or type)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg><span class="mobile-hide">Ask Fixflow</span></button>
       <button class="btn small ghost mobile-only" id="searchBtnM" type="button" title="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
       <button class="btn small ghost" id="refreshBtn" type="button" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg><span class="mobile-hide">Refresh</span></button>
@@ -2860,7 +2862,7 @@
       renderCertAlerts();
       renderNoteAlerts();
       renderTcyEndAlerts();
-      loadRentRecoveries(); loadRenewalFees(); loadOffers(); loadPvr();
+      loadRentRecoveries(); loadRenewalFees(); loadOffers(); loadPvr(); rbTopCount();
       var owedN = jobs.filter(isOwed).length;
       $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
       return true;
@@ -12529,7 +12531,16 @@
     if (!rbData || rbData.month !== (rbData.today || '').slice(0, 7)) return;
     var n = rbData.items.filter(function(x){ return x.status === 'overdue' || x.status === 'today'; }).length;
     $('rbBadge').hidden = !n; $('rbBadge').textContent = n;
+    $('rentTopBadge').hidden = !n; $('rentTopBadge').textContent = n;
   }
+  // Top-right "Rent" button: straight to Rent & landlords (with today's count).
+  $('rentTopBtn').addEventListener('click', function(){
+    tcyMode = 'rent'; try { localStorage.setItem('rr_tcy_mode', 'rent'); } catch (e) {}
+    $('tcyModes').querySelectorAll('[data-tmode]').forEach(function(x){ x.classList.toggle('on', x.dataset.tmode === 'rent'); });
+    closeDrawer(); openTcyId = null; tcyDraft = null; showView('tcy'); tcyShowList();
+  });
+  // Today's count on the button from the start, without opening the page.
+  function rbTopCount(){ if (!meta.db || staffMode) return; api('GET', '/api/admin/rent-board').then(function(d){ if (d && d.ok) { if (!rbData) { rbData = d; rbMonth = rbMonth || d.month; } var n = d.items.filter(function(x){ return x.status === 'overdue' || x.status === 'today'; }).length; $('rentTopBadge').hidden = !n; $('rentTopBadge').textContent = n; $('rbBadge').hidden = !n; $('rbBadge').textContent = n; } }); }
   function rbDay(iso){ var d = parseDay(iso); return d ? d.getDate() + ' ' + MONTHS_EN[d.getMonth()].slice(0, 3) : iso; }
   var rbTab = (function(){ try { return localStorage.getItem('rr_rb_tab') || 'collect'; } catch (e) { return 'collect'; } })(), rbOpen = {};
   function renderRentBoard(){
