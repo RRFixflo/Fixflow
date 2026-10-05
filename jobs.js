@@ -4561,7 +4561,6 @@ module.exports = function mountJobs(app, opts) {
       if (start > today) return '';
       const plan = form4aPlan(t); if (!plan.ok) return '';
       const svc = String((t.data || {}).service || ''), agentOn = !/tenant find/i.test(svc) || !svc;
-      if (!plan.open) return '<p class="muted" style="margin:8px 0 0">📝 You can propose a rent increase (Form 4A) from <b>' + htmlEsc(day(plan.opensOn)) + '</b> — rent can go up once every 12 months, with 2 months’ notice.</p>';
       return '<details class="lf"><summary>📝 Propose a rent increase (Form 4A)</summary><form class="lf-f" data-id="' + t.id + '" data-k="' + htmlEsc(t.property_key) + '">' +
         '<p class="muted" style="margin:6px 0">Current rent <b>£' + plan.rent.toFixed(2) + '</b> a month. The earliest the new rent can start is <b>' + htmlEsc(day(plan.earliest)) + '</b> — the notice must be served at least 2 months before, the first increase can’t start until 52 weeks after the tenancy began (or the last increase), and it starts on a rent day.</p>' +
         '<div class="lf-two"><label>Increase by (%)<input name="pct" inputmode="decimal" placeholder="e.g. 5"></label><label>or new rent (£ a month)<input name="new_rent" inputmode="decimal" required data-base="' + plan.rent + '" placeholder="e.g. ' + Math.round(plan.rent * 1.05) + '"></label></div><p class="muted lf-calc" style="margin:2px 0 0"></p>' +
@@ -5966,16 +5965,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const last = done.length ? done[done.length - 1] : null, firstInc = incs.length ? incs[0].from : '';
     const rent = last ? last.rent : Number(d.rent_pcm) || 0;
     if (!start) return { ok: false, error: 'no-start-date' };
-    const earliest = rentDayOnOrAfter([addMonthsIso(today, 2), addDaysIso(last ? last.from : start, 364)].sort().pop(), start);
-    // Rent goes up at most every 12 months, with 2 months' notice: the notice can be
-    // prepared from month 10 (10 months after the tenancy began, or the last increase).
-    const opensOn = addMonthsIso(last ? last.from : start, 10);
-    return { ok: true, start: start, rent: rent, lastIncrease: last ? last.from : '', firstIncrease: firstInc && firstInc <= today ? firstInc : '', earliest: earliest, served: today, rentDay: +start.slice(8, 10), opensOn: opensOn, open: today >= opensOn };
+    // An increase can be proposed (and the notice prepared) at any time, but the new rent only starts
+    // 12 months after the tenancy began (or the last increase), with at least 2 months' notice.
+    const twelve = addMonthsIso(last ? last.from : start, 12);
+    const earliest = rentDayOnOrAfter([addMonthsIso(today, 2), twelve].sort().pop(), start);
+    return { ok: true, start: start, rent: rent, lastIncrease: last ? last.from : '', firstIncrease: firstInc && firstInc <= today ? firstInc : '', earliest: earliest, served: today, rentDay: +start.slice(8, 10), twelve: twelve, opensOn: today, open: true };
   }
   function f4aCheck(plan, newStart) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newStart || '')) return 'Choose the date the new rent starts.';
     if (newStart < addMonthsIso(plan.served, 2)) return 'The notice must be served at least 2 months before the new rent starts — the earliest is ' + certDay(plan.earliest) + '.';
-    if (newStart < addDaysIso(plan.lastIncrease || plan.start, 364)) return 'The new rent can’t start until 52 weeks after ' + (plan.lastIncrease ? 'the last increase' : 'the tenancy began') + ' — the earliest is ' + certDay(plan.earliest) + '.';
+    if (newStart < addMonthsIso(plan.lastIncrease || plan.start, 12)) return 'The new rent can only start 12 months after ' + (plan.lastIncrease ? 'the last increase' : 'the tenancy began') + ' — the earliest is ' + certDay(plan.earliest) + '.';
     if (+newStart.slice(8, 10) !== plan.rentDay && !(plan.rentDay > 28 && newStart === rentDayOnOrAfter(newStart.slice(0, 8) + '01', plan.start))) return 'The new rent must start on a rent day (the ' + plan.rentDay + (plan.rentDay % 10 === 1 && plan.rentDay !== 11 ? 'st' : plan.rentDay % 10 === 2 && plan.rentDay !== 12 ? 'nd' : plan.rentDay % 10 === 3 && plan.rentDay !== 13 ? 'rd' : 'th') + ' of the month).';
     return null;
   }
@@ -6017,7 +6016,6 @@ document.querySelectorAll('.lcu').forEach(function(box){
   async function form4aFor(p, t, b, who) {
     const plan = form4aPlan(t, isoDay(b.served) || null);
     if (!plan.ok) return { error: 'This tenancy has no start date.' };
-    if (!plan.open) return { error: 'A rent increase notice can be prepared from ' + certDay(plan.opensOn) + ' — 10 months after ' + (plan.lastIncrease ? 'the last increase' : 'the tenancy began') + ', so the new rent starts 12 months on with 2 months’ notice.' };
     const pct = b.pct === undefined || b.pct === '' ? null : Number(String(b.pct).replace(/[%\s]/g, ''));
     const newRent = money(b.new_rent) || (pct && isFinite(pct) && pct > 0 ? Math.round(plan.rent * (1 + pct / 100) * 100) / 100 : null);
     if (!newRent) return { error: 'Enter the new rent.' };
@@ -6117,7 +6115,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.note !== undefined) it.note = str(b.note, 1000);
     if (b.new_rent !== undefined) {
       const v = money(b.new_rent);
-      if (v) { it.new_rent = v; it.no_increase = false; it.rent_from = /^\d{4}-\d{2}-\d{2}$/.test(String(b.rent_from || '')) ? b.rent_from : end; notes.push('Rent review: ' + gbp(v) + ' a month from ' + it.rent_from); }
+      if (v) {
+        // Proposed any time, but it can only start 12 months after the tenancy began (or the last increase).
+        const tq = (await p.query('SELECT id, start_date, data, intention FROM tenancies WHERE id = $1', [jobId(req)])).rows[0], pl = tq ? form4aPlan(tq, null) : null;
+        let from = /^\d{4}-\d{2}-\d{2}$/.test(String(b.rent_from || '')) ? b.rent_from : end;
+        if (pl && pl.ok && from < pl.twelve) return res.status(400).json({ ok: false, error: 'too-early', earliest: pl.twelve, message: 'The new rent can only start 12 months after ' + (pl.lastIncrease ? 'the last increase' : 'the tenancy began') + ' — from ' + certDay(pl.twelve) + '.' });
+        it.new_rent = v; it.no_increase = false; it.rent_from = from; notes.push('Rent review: ' + gbp(v) + ' a month from ' + it.rent_from);
+      }
     }
     if (b.no_increase) { it.no_increase = true; it.new_rent = null; notes.push('Rent review for ' + end + ': no increase'); }
     if (b.asked_landlord) { it.ll_asked_at = new Date().toISOString(); it.ll_how = str(b.asked_landlord, 40); notes.push('Asked the landlord about a rent increase (' + it.ll_how + ')'); }
