@@ -8881,7 +8881,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         const from = addMonthsIso(start, n);
         if (from > (onlyKey ? tomorrow > until ? tomorrow : until : until)) break;
         if (next && from >= String(next.start_date).slice(0, 10)) break;
-        if (from < sinceDay) continue;
+        if (from < sinceDay && !rcvd[from]) continue;   // before collection started — unless it was marked collected
         // Our fees on every rent collected so far (all months).
         if (rcvd[from] && !onlyKey) { feesAll += 1; }
         // Earlier months only on this month's page, and only while something's still to do (a property's page shows them all).
@@ -8931,10 +8931,36 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Fees collected since the start: earlier months (worked out above) + the ones on this page.
     const feesShown = items.filter(function (x) { return x.collected; }).reduce(function (a, x) { return a + x.fees; }, 0);
     const feesShownNet = items.filter(function (x) { return x.collected; }).reduce(function (a, x) { return a + x.fees_net; }, 0);
+    // Every tenancy that isn't on this month's list, and why — so no rent goes missing unseen.
+    const skipped = [];
+    if (!onlyKey) {
+      const shown = {}; items.forEach(function (x) { shown[x.tenancy_id] = 1; });
+      for (let i = 0; i < tcys.length; i++) {
+        const t = tcys[i], d = t.data || {}, start = String(d.start_date || t.start_date || '').slice(0, 10);
+        if (shown[t.id]) continue;
+        const next = tcys.slice(i + 1).filter(function (x) { return x.property_key && x.property_key === t.property_key; })[0];
+        if (next && String(next.start_date).slice(0, 10) <= mEnd) continue;   // replaced by a newer tenancy at the same property
+        const base = { tenancy_id: t.id, address: d.address || t.address, service: d.service || '', rent: Number(d.rent_pcm) || 0, start: start, tenants: (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean) };
+        let rd = null; for (let n = 0; n < 240; n++) { const f = addMonthsIso(start, n); if (f > mEnd) break; if (f >= mStart) { rd = f; break; } }
+        const rcvd = d.rent_rcvd || {}, paid = d.ll_paid || {};
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) skipped.push(Object.assign(base, { why: 'no-start' }));
+        else if (!rentByUs(d)) skipped.push(Object.assign(base, { why: d.rent_by === 'landlord' ? 'landlord' : 'tenant-find' }));
+        else if (start > until) skipped.push(Object.assign(base, { why: 'later' }));
+        else if (!(base.rent > 0)) skipped.push(Object.assign(base, { why: 'no-rent' }));
+        else if (rd && rd < sinceDay) skipped.push(Object.assign(base, { why: 'before-start', due: rd }));
+        else if (rd && rcvd[rd] && paid[rd]) continue;   // all done (shows on Done only while on the page)
+        else skipped.push(Object.assign(base, { why: 'other', due: rd }));
+      }
+      // Drafts (no move-in date) and homes with tenants but no tenancy recorded.
+      (await p.query('SELECT id, address, data FROM tenancies WHERE start_date IS NULL')).rows.forEach(function (t) { const d = t.data || {}; skipped.push({ tenancy_id: t.id, address: d.address || t.address, service: d.service || '', rent: Number(d.rent_pcm) || 0, tenants: (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean), why: 'no-start' }); });
+      const haveT = {}; tcys.forEach(function (t) { if (t.property_key) haveT[t.property_key] = 1; });
+      (await p.query('SELECT DISTINCT ON (pt.property_key) pt.property_key, pt.address, t.name FROM property_tenants pt LEFT JOIN tenants t ON t.id = pt.tenant_id WHERE pt.moved_out_at IS NULL AND pt.property_key IS NOT NULL ORDER BY pt.property_key')).rows
+        .forEach(function (r) { if (!haveT[r.property_key]) skipped.push({ tenancy_id: null, address: r.address, property_key: r.property_key, tenants: r.name ? [r.name] : [], why: 'no-tenancy' }); });
+    }
     // Each fee collected, by property (for "Fees collected so far" → the breakdown).
     if (month <= thisMonth) items.filter(function (x) { return x.collected && x.fees; }).forEach(function (x) { feeList.push({ tenancy_id: x.tenancy_id, address: x.address, from: x.from, service: x.service, amount: x.fees, net: x.fees_net, lines: x.fee_lines }); });
     feeList.sort(function (a, b) { return a.from < b.from ? 1 : a.from > b.from ? -1 : String(a.address).localeCompare(String(b.address)); });
-    return { fee_list: feeList, today: today, tomorrow: tomorrow, month: month, since: sinceDay, items: items, not_ours: notOurs, fees_before: feesN, fees_all: r2(feesN + (month <= thisMonth ? feesShown : 0)), fees_all_net: r2(feesNnet + (month <= thisMonth ? feesShownNet : 0)) };
+    return { skipped: skipped, fee_list: feeList, today: today, tomorrow: tomorrow, month: month, since: sinceDay, items: items, not_ours: notOurs, fees_before: feesN, fees_all: r2(feesN + (month <= thisMonth ? feesShown : 0)), fees_all_net: r2(feesNnet + (month <= thisMonth ? feesShownNet : 0)) };
   }
   app.get('/api/admin/rent-board', withDb(async function (p, req, res) {
     const key = req.query.property ? propKey(str(req.query.property, 400)) : null;
