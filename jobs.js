@@ -563,6 +563,31 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS access_note TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS online_since TIMESTAMPTZ;
 ALTER TABLE available_props ALTER COLUMN online_since SET DEFAULT now();
 UPDATE available_props SET online_since = created_at WHERE online_since IS NULL;
+-- Every change to (or removal of) a property on the available list keeps the version before it,
+-- so nothing typed in is ever lost: History on a card, and Recently removed, restore it.
+CREATE TABLE IF NOT EXISTS available_history (
+  id       SERIAL PRIMARY KEY,
+  prop_id  INTEGER NOT NULL,
+  action   TEXT NOT NULL,
+  row      JSONB NOT NULL,
+  at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS available_history_prop ON available_history (prop_id, at DESC);
+CREATE OR REPLACE FUNCTION available_keep() RETURNS trigger AS $fn$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    INSERT INTO available_history (prop_id, action, row) VALUES (OLD.id, 'removed', to_jsonb(OLD));
+    RETURN OLD;
+  END IF;
+  -- Only real changes (not the Rightmove sync time ticking over).
+  IF (to_jsonb(OLD) - 'updated_at' - 'rm_synced_at') IS DISTINCT FROM (to_jsonb(NEW) - 'updated_at' - 'rm_synced_at') THEN
+    INSERT INTO available_history (prop_id, action, row) VALUES (OLD.id, 'changed', to_jsonb(OLD));
+  END IF;
+  RETURN NEW;
+END $fn$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS available_keep_t ON available_props;
+CREATE TRIGGER available_keep_t BEFORE UPDATE OR DELETE ON available_props FOR EACH ROW EXECUTE FUNCTION available_keep();
+DELETE FROM available_history WHERE at < now() - interval '180 days';
 -- Let dates outside the last 16 years (or over a year ahead) are misread cells.
 UPDATE available_props SET let_on = NULL WHERE let_on IS NOT NULL AND (let_on < current_date - interval '16 years 2 months' OR let_on > current_date + interval '1 year');
 CREATE TABLE IF NOT EXISTS rm_dreams (
@@ -1737,7 +1762,8 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/available-dedupe' || path === '/available-lookup' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path) || /^\/dreams\/\d+$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
-    if (method === 'GET') return path === '/tenant-suggest' || path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (path === '/available-history' || /^\/available-history\/\d+\/restore$/.test(path)) return true;
+    if (method === 'GET') return path === '/tenant-suggest' || path === '/landlord-suggest' || path === '/our-props' || path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
@@ -2542,11 +2568,29 @@ module.exports = function mountJobs(app, opts) {
       await ensureLandlord(p, { landlord_name: str(b.landlord_name, 200), landlord_phone: str(b.landlord_phone, 50), landlord_email: str(b.landlord_email, 200) }, address);
       landlord = str(b.landlord_name, 200);
     }
+    if (str(b.key_number, 40)) await keyToAvail(p, key, str(b.key_number, 40)).catch(function () {});
     const licence = await applyLicencePool(p).catch(function () { return 0; });   // a licence saved for it earlier
     res.json({ ok: true, address: address, key: key, tenants: tenants, landlord: landlord, licence: licence });
   }));
 
   // ---------- Key numbers ----------
+  // One key number per property, wherever it's typed: the property's record (Properties / Keys)
+  // and its entry on the available list are kept the same, both ways.
+  async function keyToAvail(p, key, num) {
+    if (!key) return 0;
+    const rows = (await p.query("SELECT id, address, key_no FROM available_props WHERE status = 'available'")).rows.filter(function (r) { return propKey(r.address) === key && (r.key_no || null) !== (num || null); });
+    for (const r of rows) await p.query('UPDATE available_props SET key_no = $2, updated_at = now() WHERE id = $1', [r.id, num || null]);
+    return rows.length;
+  }
+  async function availToKey(p, address, num) {
+    num = str(num, 40); const key = propKey(address);
+    // Only a full address (door number + postcode) — not a Rightmove "Street, SW9" with no number.
+    if (!num || !key || !POSTCODE_RE.test(address) || !addrParts(address).nums.length) return;
+    const cur = (await p.query('SELECT key_number FROM property_info WHERE property_key = $1', [key])).rows[0];
+    if (cur && (cur.key_number || '') === num) return;
+    await p.query(`INSERT INTO property_info (property_key, address, key_number) VALUES ($1, $2, $3)
+      ON CONFLICT (property_key) DO UPDATE SET key_number = excluded.key_number, updated_at = now()`, [key, address, num]);
+  }
   app.get('/api/admin/property-info', withDb(async function (p, req, res) {
     res.json({ ok: true, info: (await p.query('SELECT property_key, address, key_number, key_notes, licence, updated_at FROM property_info')).rows });
   }));
@@ -2564,6 +2608,7 @@ module.exports = function mountJobs(app, opts) {
       const ids = (await p.query("SELECT id, property_address FROM jobs WHERE archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled')")).rows.filter(function (r) { return propKey(r.property_address) === key; });
       for (const r of ids) await p.query("INSERT INTO job_updates (job_id, kind, body) VALUES ($1, 'change', $2)", [r.id, 'Key number: ' + (before.key_number || 'none') + ' → ' + (num || 'none')]);
     }
+    await keyToAvail(p, key, num).catch(function (e) { console.error('Key to available list:', e.message); });
     res.json({ ok: true, clash: clash ? clash.address : null });
   }));
 
@@ -6327,6 +6372,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // Is this address a property we already have, however it's written ("Flat 18, Bardell House, SE1 2Dh"
   // and "18 Bardell House, London SE1 2DH")? Looks everywhere a property can be: repairs, certificates,
   // landlords, tenants, tenancies, property details and the available list.
+  // Every property we know (managed, tenancies, landlords' records, earlier listings) for the
+  // address box on the available list: suggested as you type, before anything else.
+  app.get('/api/admin/our-props', withDb(async function (p, req, res) {
+    const out = [], have = {};
+    const add = function (a, kind) { const k = propKey(a); if (!k) return; if (have[k]) { if (POSTCODE_RE.test(a) && !POSTCODE_RE.test(have[k].address)) have[k].address = a; return; } have[k] = { address: a, kind: kind }; out.push(have[k]); };
+    (await allProperties(p)).forEach(function (x) { add(x.address, 'ours'); });
+    (await p.query('SELECT address FROM tenancies WHERE address IS NOT NULL UNION SELECT address FROM landlord_properties WHERE address IS NOT NULL UNION SELECT address FROM property_landlords WHERE address IS NOT NULL')).rows.forEach(function (r) { add(r.address, 'ours'); });
+    (await p.query("SELECT DISTINCT ON (lower(address)) address, status FROM available_props ORDER BY lower(address), updated_at DESC")).rows.forEach(function (r) { add(r.address, r.status === 'available' ? 'listed' : 'before'); });
+    res.json({ ok: true, items: out.slice(0, 8000) });
+  }));
   app.get('/api/admin/property-match', withDb(async function (p, req, res) {
     const a = str(req.query.address, 500); if (!a || a.length < 5) return res.json({ ok: true, known: false });
     const all = await allProperties(p), have = {}; all.forEach(function (x) { have[x.key] = 1; });
@@ -9728,6 +9783,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
         catch (e) { failed.push({ address: x.address, error: String(e.message).slice(0, 80) }); }
         continue;
       }
+      // A property whose key number we already hold gets it straight away.
+      if (!x.key_no && x.status === 'available' && propKey(x.address)) { const ki = (await p.query('SELECT key_number FROM property_info WHERE property_key = $1', [propKey(x.address)])).rows[0]; if (ki && ki.key_number) x.key_no = ki.key_number; }
       try {
         const r = await p.query('INSERT INTO available_props (' + AVAIL_COLS.join(', ') + ', created_by) VALUES (' + AVAIL_COLS.map(function (c, i) { return '$' + (i + 1); }).join(', ') + ', $' + (AVAIL_COLS.length + 1) + ') RETURNING id',
           AVAIL_COLS.map(function (c) { return x[c]; }).concat([req.user ? req.user.name : 'Office']));
@@ -9735,6 +9792,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       } catch (e) { failed.push({ address: x.address, error: String(e.message).slice(0, 80) }); }
     }
     if (!ids.length && !skipped.length) return res.status(400).json({ ok: false, error: 'none', failed: failed.slice(0, 5) });
+    for (const x of list) if (x.key_no && x.status === 'available') await availToKey(p, x.address, x.key_no).catch(function () {});
     rmAutoLink(p).catch(function () {});
     res.json({ ok: true, ids: ids, skipped: skipped.length, failed: failed.length, failures: failed.slice(0, 5) });
   }));
@@ -9751,18 +9809,32 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if ('commission' in b && b.commission && (!/\d/.test(String(b.commission)) || /@|\d{7,}/.test(String(b.commission)))) return res.status(400).json({ ok: false, error: 'fee' });
       Object.keys(lim).forEach(function (k) { if (!(k in b)) return; let v = str(b[k], lim[k]) || null; if (k === 'access' && ['landlord', 'tenants', 'keys'].indexOf(v) === -1) v = null; vals.push(v); sets.push(k + ' = $' + vals.length); });
       if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
-      await p.query('UPDATE available_props SET ' + sets.join(', ') + ', updated_at = now() WHERE id = $1', vals); return res.json({ ok: true });
+      await p.query('UPDATE available_props SET ' + sets.join(', ') + ', updated_at = now() WHERE id = $1', vals);
+      if ('key_no' in b) { const a = (await p.query('SELECT address, key_no FROM available_props WHERE id = $1', [id])).rows[0]; if (a) await availToKey(p, a.address, a.key_no).catch(function () {}); }
+      return res.json({ ok: true });
     }
     if ('key_no' in b && Object.keys(b).length === 1) {
-      await p.query('UPDATE available_props SET key_no = $2, updated_at = now() WHERE id = $1', [id, str(b.key_no, 40) || null]); return res.json({ ok: true });
+      await p.query('UPDATE available_props SET key_no = $2, updated_at = now() WHERE id = $1', [id, str(b.key_no, 40) || null]);
+      const a = (await p.query('SELECT address, key_no FROM available_props WHERE id = $1', [id])).rows[0]; if (a) await availToKey(p, a.address, a.key_no).catch(function () {});
+      return res.json({ ok: true });
     }
     if (b.address && Object.keys(b).length === 1) {
       const ad = str(availAddr(b.address), 400); if (!ad) return res.status(400).json({ ok: false, error: 'address' });
-      await p.query('UPDATE available_props SET address = $2, updated_at = now() WHERE id = $1', [id, ad]); return res.json({ ok: true, address: ad });
+      await p.query('UPDATE available_props SET address = $2, updated_at = now() WHERE id = $1', [id, ad]);
+      // With the full address known: its key number from our records (or ours from it).
+      const a = (await p.query('SELECT key_no FROM available_props WHERE id = $1', [id])).rows[0];
+      if (a && !a.key_no) { const ki = (await p.query('SELECT key_number FROM property_info WHERE property_key = $1', [propKey(ad)])).rows[0]; if (ki && ki.key_number) await p.query('UPDATE available_props SET key_no = $2 WHERE id = $1', [id, ki.key_number]); }
+      else if (a && a.key_no) await availToKey(p, ad, a.key_no).catch(function () {});
+      return res.json({ ok: true, address: ad });
     }
     const x = availClean(b); if (!x.address) return res.status(400).json({ ok: false, error: 'address' });
-    const r = await p.query('UPDATE available_props SET ' + AVAIL_COLS.map(function (c, i) { return c + ' = $' + (i + 2); }).join(', ') + ', updated_at = now() WHERE id = $1', [id].concat(AVAIL_COLS.map(function (c) { return x[c]; })));
+    // A box left blank keeps what's saved (key number, landlord, contact…) — only a box the person
+    // emptied on purpose (sent in "clear") is wiped. So a half-filled form can never lose details.
+    const clear = Array.isArray(b.clear) ? b.clear : [];
+    const KEEP = ['landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'beds', 'rent_pw', 'rent_pcm'];
+    const r = await p.query('UPDATE available_props SET ' + AVAIL_COLS.map(function (c, i) { return KEEP.indexOf(c) !== -1 && clear.indexOf(c) === -1 ? c + ' = coalesce($' + (i + 2) + ', ' + c + ')' : c + ' = $' + (i + 2); }).join(', ') + ', updated_at = now() WHERE id = $1', [id].concat(AVAIL_COLS.map(function (c) { return x[c] === '' ? null : x[c]; })));
     if (!r.rowCount) return res.status(404).json({ ok: false, error: 'not-found' });
+    { const a = (await p.query('SELECT address, key_no, status FROM available_props WHERE id = $1', [id])).rows[0]; if (a && a.status === 'available') await availToKey(p, a.address, a.key_no).catch(function () {}); }
     rmAutoLink(p).catch(function () {});
     res.json({ ok: true });
   }));
@@ -9774,7 +9846,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Merge each set of duplicates into one: the kept copy picks up anything only the others had
     // (Rightmove link, key, access, Dreams, contacts…). Been let / withdrawn keep the latest copy;
     // a live (available) property keeps the original one staff have been working on.
-    const same = "a.status = b.status AND regexp_replace(lower(a.address), '[^a-z0-9]', '', 'g') = regexp_replace(lower(b.address), '[^a-z0-9]', '', 'g')";
+    const same = "a.status = b.status AND regexp_replace(lower(a.address), '[^a-z0-9]', '', 'g') = regexp_replace(lower(b.address), '[^a-z0-9]', '', 'g')" +
+      // Two entries with different key numbers or landlords aren't the same listing — leave both.
+      " AND NOT (a.key_no IS NOT NULL AND b.key_no IS NOT NULL AND lower(trim(a.key_no)) <> lower(trim(b.key_no)))" +
+      " AND NOT (a.landlord IS NOT NULL AND b.landlord IS NOT NULL AND lower(trim(a.landlord)) <> lower(trim(b.landlord)))";
     const FILL = ['beds', 'available_from', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'let_on', 'rm_id', 'rm_url', 'yt_id'];
     const fillSql = FILL.map(function (c) { return c + ' = coalesce(k.' + c + ', d.' + c + ')'; }).join(', ') + ", rm_manual = k.rm_manual OR d.rm_manual, dream_rm = CASE WHEN k.dream_rm = '[]'::jsonb THEN d.dream_rm ELSE k.dream_rm END";
     await p.query('UPDATE available_props k SET ' + fillSql + ' FROM available_props d WHERE ' + same.replace(/\ba\./g, 'k.').replace(/\bb\./g, 'd.') + " AND k.id <> d.id AND ((k.status = 'available' AND k.id < d.id) OR (k.status <> 'available' AND k.id > d.id))");
@@ -9833,6 +9908,45 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if ((req.body || {}).confirm !== true) return res.status(400).json({ ok: false, error: 'confirm' });
     const r = await p.query("DELETE FROM available_props WHERE status IN ('let', 'withdrawn')");
     res.json({ ok: true, removed: r.rowCount });
+  }));
+  // History of one property on the list (each earlier version), or — with no id — what was removed lately.
+  app.get('/api/admin/available-history', withDb(async function (p, req, res) {
+    const id = Number(req.query.id) || 0;
+    const r = id ? await p.query('SELECT id, prop_id, action, row, at FROM available_history WHERE prop_id = $1 ORDER BY at DESC LIMIT 60', [id])
+      : await p.query("SELECT h.id, h.prop_id, h.action, h.row, h.at FROM available_history h WHERE h.action = 'removed' AND NOT EXISTS (SELECT 1 FROM available_props a WHERE a.id = h.prop_id) AND h.at > now() - interval '60 days' ORDER BY h.at DESC LIMIT 100");
+    res.json({ ok: true, items: r.rows });
+  }));
+  // Put a property back as it was in that version (brings it back if it was removed).
+  app.post('/api/admin/available-history/:hid/restore', withDb(async function (p, req, res) {
+    const h = (await p.query('SELECT prop_id, row FROM available_history WHERE id = $1', [Number(req.params.hid) || 0])).rows[0];
+    if (!h) return res.status(404).json({ ok: false, error: 'not-found' });
+    const COLS = AVAIL_COLS.concat(['rm_id', 'rm_manual', 'rm_url', 'yt_id', 'dream_rm', 'online_since']), row = h.row || {};
+    const val = function (c) { const v = row[c]; return c === 'dream_rm' ? JSON.stringify(Array.isArray(v) ? v : []) : (v === undefined ? null : v); };
+    const has = (await p.query('SELECT 1 FROM available_props WHERE id = $1', [h.prop_id])).rows.length;
+    if (has) await p.query('UPDATE available_props SET ' + COLS.map(function (c, i) { return c + ' = $' + (i + 2); }).join(', ') + ', updated_at = now() WHERE id = $1', [h.prop_id].concat(COLS.map(val)));
+    else await p.query('INSERT INTO available_props (id, created_at, created_by, ' + COLS.join(', ') + ') VALUES ($1, $2, $3, ' + COLS.map(function (c, i) { return '$' + (i + 4); }).join(', ') + ')', [h.prop_id, row.created_at || new Date(), row.created_by || null].concat(COLS.map(val)));
+    // A Rightmove link moved back here comes off any other entry it was given to.
+    if (row.rm_id && row.rm_id !== 'none') await p.query('UPDATE available_props SET rm_id = NULL WHERE rm_id = $1 AND id <> $2 AND NOT rm_manual', [row.rm_id, h.prop_id]);
+    res.json({ ok: true, id: h.prop_id, restored: !has });
+  }));
+  // Landlords we already have, for the Landlord box on the available list: name, phone, email,
+  // their properties, and the fee / contact used on their earlier listings.
+  app.get('/api/admin/landlord-suggest', withDb(async function (p, req, res) {
+    const q = String(req.query.q || '').trim().slice(0, 80);
+    if (q.length < 2) return res.json({ ok: true, landlords: [] });
+    const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%', digits = q.replace(/\D/g, '');
+    const ll = (await p.query(`SELECT l.id, l.name, l.phone, l.email,
+        coalesce((SELECT array_agg(pl.address ORDER BY pl.updated_at DESC) FROM property_landlords pl WHERE pl.landlord_id = l.id AND pl.address IS NOT NULL), '{}') AS props
+      FROM landlords l WHERE l.name ILIKE $1 OR l.email ILIKE $1 OR ($2 <> '' AND length($2) >= 4 AND regexp_replace(coalesce(l.phone, ''), '\\D', '', 'g') LIKE '%' || $2 || '%')
+      ORDER BY (l.name ILIKE $3) DESC, l.updated_at DESC LIMIT 8`, [like, digits, q.replace(/[\\%_]/g, '\\$&') + '%'])).rows;
+    const seen = {}, out = [];
+    ll.forEach(function (l) { seen[String(l.name).trim().toLowerCase()] = 1; out.push({ id: l.id, name: l.name, phone: l.phone || '', email: l.email || '', props: (l.props || []).slice(0, 3) }); });
+    // Names only written on earlier listings (not saved as a landlord yet).
+    const av = (await p.query(`SELECT DISTINCT ON (lower(trim(landlord))) landlord, commission, address FROM available_props WHERE landlord ILIKE $1 ORDER BY lower(trim(landlord)), updated_at DESC LIMIT 8`, [like])).rows;
+    av.forEach(function (a) { const k = String(a.landlord).trim().toLowerCase(); if (seen[k] || out.length >= 10) return; seen[k] = 1; out.push({ id: null, name: a.landlord, phone: '', email: '', props: [a.address] }); });
+    // The fee used last time for each.
+    for (const o of out) { const c = (await p.query("SELECT commission FROM available_props WHERE lower(trim(landlord)) = lower(trim($1)) AND commission IS NOT NULL ORDER BY updated_at DESC LIMIT 1", [o.name])).rows[0]; o.commission = c ? c.commission : ''; }
+    res.json({ ok: true, landlords: out });
   }));
   app.delete('/api/admin/available/:id', withDb(async function (p, req, res) {
     if (req.role === 'offers') return res.status(403).json({ ok: false, error: 'owner-only' });   // only the owner deletes properties

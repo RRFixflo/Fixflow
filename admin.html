@@ -483,6 +483,7 @@
   .psug mark { background: #fff3c4; color: inherit; border-radius: 3px; padding: 0 1px; }
   .psug small { display: block; color: var(--ink-soft); font-size: .76rem; margin-top: 1px; }
   .psug .psug-av { color: #067647; font-weight: 600; }
+  .psug .psug-h { padding: 7px 12px 4px; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint); }
   .lt-sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; background: var(--panel, #fff); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 40px -18px rgba(15,23,42,.35); margin-top: 4px; overflow: hidden; }
   .lt-sugg button { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 10px 12px; font: inherit; cursor: pointer; color: var(--ink); } .lt-sugg button:last-child { border-bottom: 0; } .lt-sugg button:hover { background: #f3f5f8; }
   .lt-sugg b { display: block; font-size: .9rem; } .lt-sugg span { font-size: .78rem; color: var(--ink-soft); font-weight: 500; }
@@ -1289,6 +1290,13 @@
   /* Phones: the available list, its cards and the staff tabs, compact (staff use these on the go). */
   .av-tools > summary { display: none; }
   .av-more-btn { display: none; }
+  .av-fix { border: 1px solid #fedf89; background: #fffaeb; color: #93370d; border-radius: 12px; padding: 8px 10px; font-size: .82rem; margin: 6px 0; line-height: 1.4; }
+  .av-fix .linkish { color: #b54708; font-weight: 600; padding: 0; min-height: 0; }
+  .av-fix-sug { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; color: var(--ink-soft); }
+  .av-fix-sug .btn { white-space: normal; text-align: left; height: auto; min-height: 30px; padding: 4px 10px; }
+  .av-rmwrap { position: relative; } .av-rmwrap .av-rmlink { padding-right: 34px; }
+  .av-rmx { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 50%; border: 1px solid #c8ece4; background: #fff; color: #475467; font-size: .8rem; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0; }
+  .av-rmx:hover { color: #b42318; border-color: #fecdca; }
   @media (max-width: 640px) {
     .av-tools > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 700; font-size: .86rem; padding: 8px 10px; border: 1px solid var(--line, #e6e8ec); border-radius: 10px; background: var(--panel-2, #f5f6f8); margin: 4px 0 8px; list-style: none; }
     .av-tools > summary::-webkit-details-marker { display: none; }
@@ -1333,7 +1341,7 @@
     .av-acts .btn.small.ghost { padding: 4px 7px; font-size: .74rem; min-height: 30px; }
     /* Cards open and close on phones: the essentials and the main actions, with More for the rest. */
     .av-more-btn { display: inline-flex; margin-left: auto; order: 99; }
-    #avList .av-card:not(.av-open) .av-rmlink, #avList .av-card:not(.av-open) .av-yt, #avList .av-card:not(.av-open) .av-access, #avList .av-card:not(.av-open) .av-llink, #avList .av-card:not(.av-open) .av-acts .btn.ghost, #avList .av-card:not(.av-open) .av-rmpick { display: none !important; }
+    #avList .av-card:not(.av-open) .av-rmlink, #avList .av-card:not(.av-open) .av-rmwrap, #avList .av-card:not(.av-open) .av-yt, #avList .av-card:not(.av-open) .av-access, #avList .av-card:not(.av-open) .av-llink, #avList .av-card:not(.av-open) .av-acts .btn.ghost, #avList .av-card:not(.av-open) .av-rmpick { display: none !important; }
     #avList .av-card.av-open .av-more-btn::after { content: ''; }
     .staff-tabs { width: auto; max-width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; margin: 0 0 10px; }
     .staff-tabs::-webkit-scrollbar { display: none; }
@@ -2091,7 +2099,7 @@
 <div class="modal cmdk" id="cmdk" hidden>
   <div class="cmdk-box" role="dialog" aria-label="Quick search">
     <div class="cmdk-in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="cmdkInput" type="text" autocomplete="off" spellcheck="false" placeholder="Search jobs, tenants, properties, contractors…"><kbd>Esc</kbd></div>
+      <input id="cmdkInput" type="text" autocomplete="off" spellcheck="false" placeholder="Search anything — address, door number, postcode, name, phone, ref, key…"><kbd>Esc</kbd></div>
     <div class="cmdk-list" id="cmdkList"></div>
     <div class="cmdk-foot"><span><span class="kbd">↑</span> <span class="kbd">↓</span> move</span><span><span class="kbd">Enter</span> open</span><span><span class="kbd">Ctrl K</span> anywhere</span></div>
   </div>
@@ -3958,8 +3966,15 @@
   }
   function psHide(){ if (psBox) psBox.hidden = true; psFor = null; psOn = -1; }
   function psPlace(){ if (!psBox || !psFor) return; var r = psFor.getBoundingClientRect(); psBox.style.left = Math.max(8, r.left) + 'px'; psBox.style.width = Math.min(r.width, window.innerWidth - 16) + 'px'; var below = window.innerHeight - r.bottom; if (below < 180 && r.top > below) { psBox.style.top = ''; psBox.style.bottom = (window.innerHeight - r.top + 4) + 'px'; } else { psBox.style.bottom = ''; psBox.style.top = (r.bottom + 4) + 'px'; } }
+  // The available list's address box: our own properties first (managed, tenancies, landlords),
+  // then ones listed before — loaded from the server, so offers staff get them too.
+  var psOur = null, psOurAsk = false;
+  function psOurList(){
+    if (!psOur) { if (!psOurAsk) { psOurAsk = true; api('GET', '/api/admin/our-props').then(function(d){ psOur = (d && d.ok && d.items || []).map(function(x){ return psItem(x.address, x.kind === 'ours' ? 'Our property' : x.kind === 'listed' ? 'Already on the available list' : 'Listed before', x.kind === 'ours' ? 2 : x.kind === 'listed' ? 1 : 0); }); if (psFor && document.activeElement === psFor) psShow(psFor); if (view === 'avail' && avItems.length) renderAvail(); }); } return []; }
+    return psOur;
+  }
   function psShow(inp){
-    psFor = inp; psList = psMatch(inp.value); psOn = -1;
+    psFor = inp; psList = psMatch(inp.value, inp.dataset.psug === 'our' ? psOurList() : undefined); psOn = -1;
     if (!psBox) { psBox = document.createElement('div'); psBox.className = 'psug'; psBox.setAttribute('role', 'listbox'); document.body.appendChild(psBox);
       psBox.addEventListener('mousedown', function(e){ e.preventDefault(); });
       psBox.addEventListener('click', function(e){ var b = e.target.closest('[data-ps]'); if (b) psPick(Number(b.dataset.ps)); }); }
@@ -3976,7 +3991,8 @@
   var PS_LISTS = { offProps: 1, tfProps: 1, tenantPropList: 1 };
   document.addEventListener('focusin', function(e){
     var inp = e.target; if (!inp || inp.tagName !== 'INPUT') return;
-    var l = inp.getAttribute('list'); if (l && PS_LISTS[l]) { inp.removeAttribute('list'); inp.dataset.psug = '1'; inp.setAttribute('autocomplete', 'off'); }
+    var l = inp.getAttribute('list'); if (l && PS_LISTS[l]) { inp.removeAttribute('list'); inp.dataset.psug = inp.id === 'avAddr' ? 'our' : '1'; inp.setAttribute('autocomplete', 'off'); }
+    if (inp.dataset.psug === 'our') psOurList();
     if (inp.dataset.psug) { psLoadAvail(); if (inp.value.trim()) psShow(inp); }
   });
   document.addEventListener('input', function(e){ var inp = e.target; if (inp && inp.dataset && inp.dataset.psug && e.isTrusted !== false) { if (document.activeElement === inp) psShow(inp); } });
@@ -8968,7 +8984,10 @@
   function closeCmdk(){ $('cmdk').hidden = true; }
   function renderCmdk(){
     var raw = $('cmdkInput').value.trim().toLowerCase(), digits = raw.replace(/\D/g, ''), pk = propKey(raw);
-    var hit = function(hay){ return hay.toLowerCase().indexOf(raw) !== -1; };
+    // Every word typed, anywhere, ignoring commas and capitals: "56 moorland" finds "56, Moorland Road".
+    var toks = psNorm(raw).split(' ').filter(Boolean);
+    var hit = function(hay){ var h = psNorm(hay); return toks.length > 0 && toks.every(function(t){ return h.indexOf(t) !== -1; }); };
+    var phoneHit = function(ph){ return digits.length >= 4 && String(ph || '').replace(/\D/g, '').indexOf(digits) !== -1; };
     var sections = [];
     var actions = [
       { t: 'New job', s: 'Add a repair by hand', ic: IC.go, run: function(){ $('newJobBtn').click(); } },
@@ -8998,16 +9017,38 @@
       if (ts.length) sections.push({ h: 'Tenants', items: ts.map(function(t){
         return { t: t.tenant_name || 'No name', s: [t.tenant_phone, t.property_address].filter(Boolean).join(' · '), av: t.tenant_name || '?', run: function(){ closeDrawer(); openTenant(t.key); } };
       }) });
-      var ps = propertiesFromJobs().filter(function(pr){ return hit(pr.address) || (pk && pr.key.indexOf(pk) !== -1); }).slice(0, 5);
-      if (ps.length) sections.push({ h: 'Properties', items: ps.map(function(pr){
-        return { t: pr.address, s: pr.jobs.length + ' repair' + (pr.jobs.length === 1 ? '' : 's') + ' · ' + pr.jobs.filter(isOpen).length + ' open', ic: IC.home, run: function(){ closeDrawer(); openProperty(pr.key); } };
+      // Every property we know (jobs, tenancies, tenants, landlords, certificates), by door number, street or postcode.
+      var ps = psMatch(raw, allPropsForList().map(function(pr){ var o = psItem(pr.jobs.length ? pr.address : (knownFullAddress(pr.key) || pr.address), '', 0); o.pr = pr; return o; })).slice(0, 6);
+      if (ps.length) sections.push({ h: 'Properties', items: ps.map(function(o){
+        var pr = o.pr, tn = tenantsAtProperty(o.address).map(function(t){ return t.name; }).filter(Boolean).slice(0, 2).join(', ');
+        return { t: o.address, s: [tn, pr.jobs.length ? pr.jobs.length + ' repair' + (pr.jobs.length === 1 ? '' : 's') + ' · ' + pr.jobs.filter(isOpen).length + ' open' : 'no repairs yet'].filter(Boolean).join(' · '), ic: IC.home, run: function(){ closeDrawer(); openProperty(pr.key); } };
       }) });
-      var lls = landlords.filter(function(l){ return hit([l.name, l.email, l.phone].join(' | ')); }).slice(0, 4);
+      var tcs = tenancies.filter(function(t){ var d = t.data || {}; return hit([d.address || t.address, joinAnd(tcyNames(d.tenants)), (d.landlord || {}).name].join(' | ')); }).slice(0, 4);
+      if (tcs.length) sections.push({ h: 'Tenancies', items: tcs.map(function(t){ var d = t.data || {};
+        return { t: (d.address || t.address || 'Tenancy'), s: [joinAnd(tcyNames(d.tenants)), tcyStatus(d)].filter(Boolean).join(' · '), ic: IC.home, run: function(){ closeDrawer(); openTenancy(t.id); } };
+      }) });
+      var avs = (avItems || []).filter(function(x){ return hit([x.address, x.landlord, x.tags, x.key_no ? 'key ' + x.key_no : ''].join(' | ')); }).sort(function(a, b){ return (b.status === 'available') - (a.status === 'available'); }).slice(0, 4);
+      if (avs.length) sections.push({ h: 'Available list', items: avs.map(function(x){
+        return { t: x.address, s: [x.status === 'available' ? 'Available' : x.status === 'let' ? 'Let' : 'Withdrawn', x.rent_pcm ? gbp(Number(x.rent_pcm)).replace(/\.00$/, '') + ' pcm' : '', x.key_no ? 'key ' + x.key_no : '', x.landlord].filter(Boolean).join(' · '), ic: IC.home, run: function(){ closeDrawer(); showView('avail'); avFlag = x.status === 'available' ? '' : 'let'; document.querySelectorAll('#avBeds [data-avf]').forEach(function(f){ f.classList.toggle('on', f.dataset.avf === avFlag); }); $('avQ').value = x.address; renderAvail(); } };
+      }) });
+      var ofs = (offers || []).filter(function(o){ return hit([o.lead_name, o.property_address].join(' | ')); }).slice(0, 4);
+      if (ofs.length) sections.push({ h: 'Offers', items: ofs.map(function(o){
+        return { t: (o.lead_name || 'Offer') + ' · ' + (o.property_address || ''), s: [({ new: 'To decide', accepted: 'Accepted', rejected: 'Rejected', withdrawn: 'Withdrawn' })[o.status] || o.status, o.offer_pw ? gbp(Number(o.offer_pw)) + ' pw' : '', fmtShort(o.created_at)].filter(Boolean).join(' · '), av: o.lead_name || '?', run: function(){ closeDrawer(); offTab = 'all'; offFocus = o.id; showView('offers'); setTimeout(function(){ var c = document.querySelector('#offList [data-off="' + o.id + '"]'); if (c) { c.querySelectorAll('details').forEach(function(d, i){ if (!i) d.open = true; }); c.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }, 350); } };
+      }) });
+      var ivs = (allInvoices || []).filter(function(i){ return hit([i.number, i.property_address, i.title].join(' | ')); }).slice(0, 4);
+      if (ivs.length) sections.push({ h: 'Invoices', items: ivs.map(function(i){
+        return { t: (i.number || 'Invoice') + ' · ' + (i.property_address || ''), s: [i.title, i.paid_at ? 'Paid' : 'Unpaid', fmtShort(i.created_at)].filter(Boolean).join(' · '), ic: IC.go, run: function(){ if (i.job_id) openJob(i.job_id); else window.open('/api/admin/invoices/' + i.id + '/view', '_blank', 'noopener'); } };
+      }) });
+      var crs = (certs || []).filter(function(c){ return hit([c.address, c.type].join(' | ')); }).slice(0, 4);
+      if (crs.length) sections.push({ h: 'Certificates', items: crs.map(function(c){
+        return { t: (c.type || 'Certificate') + ' · ' + (c.address || ''), s: c.expires_on ? 'Expires ' + longDay(String(c.expires_on).slice(0, 10)) : '', ic: IC.go, run: function(){ closeDrawer(); showView('certs'); $('certSearch').value = c.address || ''; $('certSearch').dispatchEvent(new Event('input', { bubbles: true })); } };
+      }) });
+      var lls = landlords.filter(function(l){ return hit([l.name, l.email, l.phone].concat(llProperties(l).map(function(x){ return x.address; })).join(' | ')) || phoneHit(l.phone); }).slice(0, 4);
       if (lls.length) sections.push({ h: 'Landlords', items: lls.map(function(l){
         var n = llProperties(l).length;
         return { t: l.name, s: [l.phone, n + ' propert' + (n === 1 ? 'y' : 'ies')].filter(Boolean).join(' · '), av: l.name, run: function(){ closeDrawer(); openLandlord(l.id); } };
       }) });
-      var cs = contractors.filter(function(c){ return hit([c.name, c.trade, c.phone].join(' | ')); }).slice(0, 4);
+      var cs = contractors.filter(function(c){ return hit([c.name, c.trade, c.phone].join(' | ')) || phoneHit(c.phone); }).slice(0, 4);
       if (cs.length) sections.push({ h: 'Contractors', items: cs.map(function(c){
         return { t: c.name, s: [c.trade, c.phone].filter(Boolean).join(' · '), av: c.name, run: function(){ openContractor(c.name); } };
       }) });
@@ -10369,7 +10410,7 @@
   function loadYt(){ return api('GET', '/api/admin/youtube').then(function(d){ if (d && d.ok) { ytData = d; renderAvail(); } }); }
   function ytVid(id){ return ((ytData && ytData.items) || []).filter(function(v){ return v.id === id; })[0] || { id: id, title: 'Video' }; }
   function ytUrl(id){ return 'https://www.youtube.com/watch?v=' + encodeURIComponent(id); }
-  function loadAvail(){ loadRm(); loadYt(); return api('GET', '/api/admin/available').then(function(d){ if (!d || !d.ok) return; avItems = d.items || []; avLinkData = d.links || {}; renderAvail(); var n = avItems.filter(function(x){ return x.status === 'available'; }).length; $('sAvail').hidden = !n; $('sAvail').textContent = n; }); }
+  function loadAvail(){ loadRm(); loadYt(); psOurList(); return api('GET', '/api/admin/available').then(function(d){ if (!d || !d.ok) return; avItems = d.items || []; avLinkData = d.links || {}; renderAvail(); var n = avItems.filter(function(x){ return x.status === 'available'; }).length; $('sAvail').hidden = !n; $('sAvail').textContent = n; }); }
   function avOutcode(a){ var t = String(a || '').replace(/[,\s]+$/, ''), m = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}\b/i.exec(t) || /\b([A-Z]{1,2}\d[A-Z\d]?)\s*$/i.exec(t); return m ? m[1].toUpperCase() : ''; }
   function avDay(v){ return v ? certDay(String(v).slice(0, 10)) : ''; }
   // How long an available property has been online: from its Rightmove advert when linked, else since it went on our list.
@@ -10508,7 +10549,7 @@
       var na = va == null || va === '', nb = vb == null || vb === ''; if (na !== nb) return na ? 1 : -1;
       var c = ['beds', 'rent_pcm', 'rent_pw'].indexOf(k) !== -1 ? Number(va) - Number(vb) : String(va || '').localeCompare(String(vb || ''), 'en', { numeric: true, sensitivity: 'base' }); return c * avLs.d; });
     var live = avItems.filter(function(x){ return x.status === 'available'; });
-    $('avSum').innerHTML = '<b>' + live.length + '</b> available · <b>' + live.filter(avNow).length + '</b> available now · <b>' + live.filter(function(x){ return x.urgent; }).length + '</b> urgent · ' + (function(){ if (!ytData || !ytData.at) return ''; var n = live.filter(function(x){ return !((ytData.matches || {})[x.id] || []).length; }).length; return n ? '<b style="color:#b54708">' + n + '</b> need a video · ' : ''; })() + (function(){ var n = live.filter(function(x){ return !x.commission; }).length; return n ? '<button type="button" class="linkish" data-avfee="1" style="color:#b54708"><b>' + n + '</b> need a commission</button> · ' : ''; })() + '<b>' + avItems.filter(function(x){ return x.status === 'let'; }).length + '</b> been let · <b>' + avItems.filter(function(x){ return x.status === 'withdrawn'; }).length + '</b> withdrawn' + (list.length !== live.length ? ' · showing ' + list.length : '') + (!staffMode && avItems.length > 1 ? ' <button type="button" class="linkish" id="avDedupe" title="Puts every address on one tidy line (capital postcodes, no line breaks) and removes repeats of the same address, keeping the latest">🧹 Tidy addresses &amp; remove duplicates</button>' : '');
+    $('avSum').innerHTML = '<b>' + live.length + '</b> available · <b>' + live.filter(avNow).length + '</b> available now · <b>' + live.filter(function(x){ return x.urgent; }).length + '</b> urgent · ' + (function(){ if (!ytData || !ytData.at) return ''; var n = live.filter(function(x){ return !((ytData.matches || {})[x.id] || []).length; }).length; return n ? '<b style="color:#b54708">' + n + '</b> need a video · ' : ''; })() + (function(){ var n = live.filter(function(x){ return !x.commission; }).length; return n ? '<button type="button" class="linkish" data-avfee="1" style="color:#b54708"><b>' + n + '</b> need a commission</button> · ' : ''; })() + '<b>' + avItems.filter(function(x){ return x.status === 'let'; }).length + '</b> been let · <b>' + avItems.filter(function(x){ return x.status === 'withdrawn'; }).length + '</b> withdrawn' + (list.length !== live.length ? ' · showing ' + list.length : '') + (!staffMode && avItems.length > 1 ? ' <button type="button" class="linkish" id="avDedupe" title="Puts every address on one tidy line (capital postcodes, no line breaks) and removes repeats of the same address, keeping the latest">🧹 Tidy addresses &amp; remove duplicates</button> <button type="button" class="linkish" data-avremoved="1" title="Properties removed from the list in the last 60 days — put any back">↩ Recently removed</button>' : '');
     var rmList = (rmData && rmData.items) || [], rmBy = {}; rmList.forEach(function(r){ rmBy[r.id] = r; });
     var linkedIds = {}; avItems.forEach(function(x){ if (x.status !== 'available') return; if (x.rm_id && rmBy[x.rm_id]) linkedIds[x.rm_id] = 1; (x.dream_rm || []).forEach(function(d){ linkedIds[d] = 1; }); });
     var liveSorted = live.slice().sort(function(a, b){ return String(a.address).localeCompare(String(b.address)); });
@@ -10564,12 +10605,12 @@
       var tags = (x.tags ? x.tags.split(/\s*,\s*/).filter(Boolean).map(function(t){ return '<span class="av-tag">' + esc(t) + '</span>'; }).join('') : '') + (x.urgent ? '<span class="av-tag urgent">🔥 URGENT</span>' : '') + (off ? '<span class="av-tag let">' + (x.status === 'let' ? '✓ Let' : 'Withdrawn') + '</span>' : '');
       return '<div class="av-card' + (x.urgent ? ' is-urgent' : '') + (off ? ' is-off' : '') + (avOpenCards[x.id] ? ' av-open' : '') + '" data-av="' + x.id + '">' +
         '<div class="av-h"><div class="av-beds"><b>' + (x.beds == null ? '–' : x.beds === 0 ? 'S' : x.beds) + '</b><span>' + (x.beds === 0 ? 'studio' : 'bed') + '</span></div><div style="min-width:0"><div class="av-addr">' + esc(x.address.replace(pc, '').replace(/[,\s]+$/, '')) + '</div><div class="av-pc">' + esc(pc) + '</div></div></div>' +
-        (tags ? '<div class="av-tags">' + tags + '</div>' : '') +
+        (tags ? '<div class="av-tags">' + tags + '</div>' : '') + (off ? '' : avFixHtml(x)) +
         (function(){ if (off) return ''; var r = x.rm_id && rmBy[x.rm_id];
-          if (!r && x.rm_id && x.rm_id !== 'none' && x.rm_url) return '<a class="av-rmlink" target="_blank" rel="noopener" href="' + esc(x.rm_url) + '"><span><b>On Rightmove ↗</b>Linked by hand · listing ' + esc(x.rm_id) + '</span></a>';
+          if (!r && x.rm_id && x.rm_id !== 'none' && x.rm_url) return '<div class="av-rmwrap"><a class="av-rmlink" target="_blank" rel="noopener" href="' + esc(x.rm_url) + '"><span><b>On Rightmove ↗</b>Linked by hand · listing ' + esc(x.rm_id) + '</span></a>' + '<button type="button" class="av-rmx" data-ava="rmx" title="Not this property — unlink the advert so it goes back in Dreams" aria-label="Unlink from Rightmove">✕</button></div>';
           var dreams = (x.dream_rm || []).map(function(id){ var d = rmBy[id]; return '<span class="av-dlink"><a target="_blank" rel="noopener" href="' + esc(d ? d.url : 'https://www.rightmove.co.uk/properties/' + id) + '">' + esc(d ? d.address : 'Listing ' + id) + (d && d.pcm ? ' · ' + gbp(d.pcm) : '') + ' ↗</a>' + (function(){ var i = dreamInfo(id); return i.first ? '<small class="av-dd' + (i.due ? ' due' : '') + '" title="' + (i.due ? 'Up 7+ days — review it in the Dreams list above' : 'Review by ' + esc(avDay(i.review))) + '">' + i.days + 'd' + (i.due ? ' ⏰' : '') + '</small>' : ''; })() + '<button type="button" class="linkish" data-dreamrm="' + esc(id) + '" title="Unlink">×</button></span>'; }).join('');
           var dreamHtml = dreams ? '<div class="av-dream av-dreams">💭 Dream advert' + ((x.dream_rm || []).length === 1 ? '' : 's') + ' on Rightmove: ' + dreams + '</div>' : '';
-          if (r) return '<a class="av-rmlink" target="_blank" rel="noopener" href="' + esc(r.url) + '">' + (r.image ? '<img src="' + esc(r.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<span><b>On Rightmove ↗</b>' + esc(r.address) + (r.pcm ? ' · ' + esc(gbp(r.pcm)) + ' pcm' : '') + (r.status ? ' · ' + esc(r.status) : '') + '</span></a>' + dreamHtml;
+          if (r) return '<div class="av-rmwrap"><a class="av-rmlink" target="_blank" rel="noopener" href="' + esc(r.url) + '">' + (r.image ? '<img src="' + esc(r.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<span><b>On Rightmove ↗</b>' + esc(r.address) + (r.pcm ? ' · ' + esc(gbp(r.pcm)) + ' pcm' : '') + (r.status ? ' · ' + esc(r.status) : '') + '</span></a>' + '<button type="button" class="av-rmx" data-ava="rmx" title="Not this property — unlink the advert so it goes back in Dreams" aria-label="Unlink from Rightmove">✕</button></div>' + dreamHtml;
           if (dreamHtml) return dreamHtml;
           if (x.rm_id === 'none') return '<div class="av-dream">💭 Not on Rightmove — a Dream</div>';
           if (!rmList.length) return '';
@@ -10593,7 +10634,7 @@
         (function(){ var L = (avLinkData || {})[x.id] || {}, ct = L.contactIsLandlord ? '' : x.contact;   // the landlord's own details aren't a tenant contact
           return (ct || L.tenants) ? avContactHtml(ct, L.tenants) : ''; })() +
         '<div class="av-acts"><button type="button" class="btn small av-more-btn" data-av-more>' + (avOpenCards[x.id] ? 'Less ▴' : 'More ▾') + '</button>' + (off ? '<button type="button" class="btn small" data-avs="available">↩ Back on the list</button>' : '<button type="button" class="btn small primary" data-ava="offer">📝 Offer form</button><button type="button" class="btn small" data-ava="pvr">🗓 PVR</button><button type="button" class="btn small" data-ava="view">👀 Book viewing</button><button type="button" class="btn small" data-ava="send" title="Send the property or its video by WhatsApp or email">📤 Send</button><button type="button" class="btn small ghost" data-ava="copy">📋 Copy</button>') +
-          (!off ? '<button type="button" class="btn small ghost" data-ava="rm" title="Link to a Rightmove listing">🔗 Rightmove</button>' : '') + ((ytM[x.id] || []).length && !off ? '<button type="button" class="btn small ghost" data-ava="ytshare" title="Send the video">📤 Video</button>' : '') + (ytData && ytData.at && !off ? '<button type="button" class="btn small ghost" data-ava="yt" title="Choose the video">🎬</button>' : '') + '<button type="button" class="btn small ghost" data-ava="edit">✏️</button>' + (off ? '' : '<button type="button" class="btn small ghost" data-avs="let" title="Mark as let">✓ Let</button>') + (canDel ? '<button type="button" class="btn small ghost danger" data-ava="del" title="Delete">🗑</button>' : '') + '</div></div>';
+          (!off ? '<button type="button" class="btn small ghost" data-ava="rm" title="Link to a Rightmove listing">🔗 Rightmove</button>' : '') + ((ytM[x.id] || []).length && !off ? '<button type="button" class="btn small ghost" data-ava="ytshare" title="Send the video">📤 Video</button>' : '') + (ytData && ytData.at && !off ? '<button type="button" class="btn small ghost" data-ava="yt" title="Choose the video">🎬</button>' : '') + '<button type="button" class="btn small ghost" data-ava="edit">✏️</button>' + (off ? '' : '<button type="button" class="btn small ghost" data-avs="let" title="Mark as let">✓ Let</button>') + (canDel ? '<button type="button" class="btn small ghost danger" data-ava="del" title="Delete">🗑</button><button type="button" class="btn small ghost" data-ava="hist" title="Earlier versions — put back anything changed or lost">🕘 History</button>' : '') + '</div></div>';
     }).join('') + (avMore ? '<div style="grid-column:1/-1;text-align:center"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more (' + avMore + ' not shown — or search above)</button></div>' : '') : '<div class="card"><p class="muted-note" style="margin:0">' + (avItems.length ? 'Nothing matches — try another filter.' : 'No properties yet — add one, or paste your list from the spreadsheet.') + '</p></div>';
   }
   $('avQ').addEventListener('input', function(){ avLimit = 200; clearTimeout(avQT); avQT = setTimeout(renderAvail, 180); }); var avQT = 0; $('avSort').addEventListener('change', renderAvail);
@@ -10616,7 +10657,9 @@
   });
   $('avSum').addEventListener('click', function(e){
     if (e.target.closest('[data-avfee]')) { avFlag = avFlag === 'nofee' ? '' : 'nofee'; document.querySelectorAll('#avBeds [data-avf]').forEach(function(x){ x.classList.toggle('on', x.dataset.avf === avFlag); }); renderAvail(); return; }
+    if (e.target.closest('[data-avremoved]')) { avHistory(null); return; }
     if (!e.target.closest('#avDedupe')) return;
+    if (!confirm('Tidy the addresses and merge exact repeats of the same address?\n\nEntries with different key numbers or landlords are left alone, and anything merged can be put back from ↩ Recently removed.')) return;
     var b = e.target; busy(b, true, 'Tidying…');
     api('POST', '/api/admin/available-dedupe', {}).then(function(d){ busy(b, false); if (!d || !d.ok) { toast('Couldn’t remove duplicates'); return; } toast('✓ ' + (d.tidied ? d.tidied + ' propert' + (d.tidied === 1 ? 'y' : 'ies') + ' tidied (stray contact lines removed) · ' : 'Already tidy · ') + (d.removed ? d.removed + ' duplicate' + (d.removed === 1 ? '' : 's') + ' removed' : 'no duplicates')); loadAvail(); });
   });
@@ -10650,6 +10693,36 @@
     }, 450);
   }
   $('avAddr').addEventListener('input', avLookup);
+  // Landlord box: landlords we already have come up as you type (name, phone, email or one of
+  // their properties); picking one fills their name and the fee from their last listing.
+  (function(){
+    var inp = $('avLl'), box = null, list = [], on = -1, t = null, seq = 0;
+    inp.setAttribute('autocomplete', 'off');
+    var hide = function(){ if (box) box.hidden = true; on = -1; };
+    var place = function(){ var r = inp.getBoundingClientRect(); box.style.left = Math.max(8, r.left) + 'px'; box.style.width = Math.min(Math.max(r.width, 260), window.innerWidth - 16) + 'px'; var below = window.innerHeight - r.bottom; if (below < 180 && r.top > below) { box.style.top = ''; box.style.bottom = (window.innerHeight - r.top + 4) + 'px'; } else { box.style.bottom = ''; box.style.top = (r.bottom + 4) + 'px'; } };
+    var pick = function(i){ var l = list[i]; if (!l) return; inp.value = l.name; if (!$('avCom').value.trim() && l.commission) $('avCom').value = l.commission; hide(); toast('✓ ' + l.name + (l.phone ? ' · ' + l.phone : '')); };
+    var show = function(){
+      if (!box) { box = document.createElement('div'); box.className = 'psug'; box.setAttribute('role', 'listbox'); document.body.appendChild(box);
+        box.addEventListener('mousedown', function(e){ e.preventDefault(); });
+        box.addEventListener('click', function(e){ var b = e.target.closest('[data-lls]'); if (b) pick(Number(b.dataset.lls)); }); }
+      if (!list.length || document.activeElement !== inp) { hide(); return; }
+      box.innerHTML = '<div class="psug-h">Our landlords</div>' + list.map(function(l, i){ return '<button type="button" role="option" data-lls="' + i + '">' + psHi(l.name, inp.value) +
+        '<small>' + esc([l.phone, l.email, l.props && l.props.length ? l.props[0] + (l.props.length > 1 ? ' +' + (l.props.length - 1) : '') : '', l.commission ? 'fee ' + l.commission : ''].filter(Boolean).join(' · ') || (l.id ? 'Saved landlord' : 'From an earlier listing')) + '</small></button>'; }).join('');
+      box.hidden = false; on = -1; place();
+    };
+    inp.addEventListener('input', function(){
+      clearTimeout(t); var q = inp.value.trim(); if (q.length < 2) { list = []; hide(); return; }
+      t = setTimeout(function(){ var mine = ++seq; api('GET', '/api/admin/landlord-suggest?q=' + encodeURIComponent(q)).then(function(d){ if (mine !== seq) return; list = (d && d.ok && d.landlords) || []; if (list.length === 1 && list[0].name.toLowerCase() === q.toLowerCase()) list = []; show(); }); }, 160);
+    });
+    inp.addEventListener('blur', function(){ setTimeout(hide, 150); });
+    inp.addEventListener('keydown', function(e){
+      if (!box || box.hidden) return; var n = list.length;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); on = e.key === 'ArrowDown' ? (on < n - 1 ? on + 1 : 0) : (on > 0 ? on - 1 : n - 1); box.querySelectorAll('[data-lls]').forEach(function(b, i){ b.classList.toggle('on', i === on); }); }
+      else if (e.key === 'Enter' && on >= 0) { e.preventDefault(); pick(on); }
+      else if (e.key === 'Escape') { e.stopPropagation(); hide(); }
+    });
+    window.addEventListener('scroll', function(){ if (box && !box.hidden) place(); }, true);
+  })();
   $('avForm').addEventListener('click', function(e){
     if (!e.target.closest('#avKnownUse') || !avKnownData) return;
     var d = avKnownData, L = d.landlord, T = d.tenants || [], P = d.previous || [], last = P.filter(function(r){ return r.status === 'let'; })[0] || P[0] || {};
@@ -10663,6 +10736,55 @@
     if (!$('avLl').value && L) $('avLl').value = L.name;
     toast('✓ Filled in what we know — check and save');
   });
+  // History: every earlier version of a property (or, with none given, what was removed lately),
+  // each with what was different, and "Put back".
+  function avHistory(x){
+    var m = $('avHistModal');
+    if (!m) {
+      document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="avHistModal" hidden><div class="card" style="width:min(640px,100%);max-height:90vh;overflow:auto;display:flex;flex-direction:column;gap:10px">' +
+        '<h3 style="margin:0" id="avHistT"></h3><p class="muted-note" style="margin:0" id="avHistS"></p><div id="avHistL"></div><div class="row-actions"><button class="btn" type="button" id="avHistClose">Close</button></div></div></div>');
+      m = $('avHistModal');
+      $('avHistClose').addEventListener('click', function(){ m.hidden = true; });
+      m.addEventListener('click', function(e){ if (e.target === m) m.hidden = true;
+        var b = e.target.closest('[data-avrestore]'); if (!b) return;
+        if (!confirm('Put this version back?')) return;
+        busy(b, true, 'Putting back…');
+        api('POST', '/api/admin/available-history/' + b.dataset.avrestore + '/restore', {}).then(function(d){ busy(b, false); if (!d || !d.ok) { toast('Couldn’t put it back'); return; } toast(d.restored ? '✓ Back on the list' : '✓ Put back as it was'); m.hidden = true; psOur = null; psOurAsk = false; loadAvail(); });
+      });
+    }
+    var F = [['address', 'Address'], ['status', 'Status'], ['landlord', 'Landlord'], ['key_no', 'Key'], ['commission', 'Fee'], ['rent_pcm', 'Rent pcm'], ['beds', 'Beds'], ['contact', 'Contact'], ['access', 'Access'], ['access_note', 'Access note'], ['notes', 'Notes'], ['tags', 'Tags'], ['rm_id', 'Rightmove']];
+    var show = function(v){ if (v == null || v === '') return '—'; v = String(v).replace(/T00:00:00.*$/, ''); return /^-?\d+(\.\d+)?$/.test(v) ? String(Number(v)) : v; };
+    $('avHistT').textContent = x ? '🕘 History — ' + shortAddr(x.address) : '↩ Recently removed';
+    $('avHistS').textContent = x ? 'Each earlier version, newest first. What was different from now is shown; Put back restores that version.' : 'Removed from the available list in the last 60 days (by Delete, Remove duplicates or a replaced list).';
+    $('avHistL').innerHTML = '<p class="muted-note">Loading…</p>'; m.hidden = false;
+    api('GET', '/api/admin/available-history' + (x ? '?id=' + x.id : '')).then(function(d){
+      var items = (d && d.ok && d.items) || [];
+      if (!items.length) { $('avHistL').innerHTML = '<p class="muted-note">' + (x ? 'No earlier versions — it hasn’t been changed since history started being kept.' : 'Nothing removed lately.') + '</p>'; return; }
+      $('avHistL').innerHTML = items.map(function(h){
+        var r = h.row || {}, cur = x || {};
+        var diff = F.filter(function(f){ return x ? show(r[f[0]]) !== show(cur[f[0]]) : r[f[0]] != null && r[f[0]] !== ''; })
+          .map(function(f){ return '<div><span class="muted-note" style="margin:0">' + esc(f[1]) + ':</span> ' + esc(show(r[f[0]])) + (x ? ' <span class="muted-note" style="margin:0">(now ' + esc(show(cur[f[0]])) + ')</span>' : '') + '</div>'; }).join('');
+        return '<div style="border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px"><div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><b style="flex:1">' + esc(x ? fmtShort(h.at) + (h.action === 'removed' ? ' · removed' : '') : shortAddr(r.address || '') + ' · removed ' + fmtShort(h.at)) + '</b>' +
+          '<button type="button" class="btn small" data-avrestore="' + h.id + '">↩ Put back</button></div><div style="font-size:.84rem;line-height:1.45">' + (diff || '<span class="muted-note" style="margin:0">Same as now (only a background detail changed)</span>') + '</div></div>';
+      }).join('');
+    });
+  }
+  // Every property on the list needs its full address (door number + postcode) and its landlord.
+  // When one is missing: our own properties that match, to pick in one tap — or add it.
+  function avFixHtml(x){
+    var ap = addressProblem(x.address), LL = (avLinkData[x.id] || {}).landlord, noLl = !x.landlord && !(LL && LL.name);
+    if (!ap && !noLl) return '';
+    var h = '<div class="av-fix">';
+    if (ap) {
+      var q = String(x.address || '').replace(/\b(london|greater london|uk)\b/gi, ' ');
+      var sug = (psOur ? psMatch(q, psOur) : []).filter(function(o){ return !addressProblem(o.address); }).slice(0, 3);
+      h += '<div><b>⚠️ No full address</b> — it needs the door or flat number and the full postcode.</div>' +
+        (sug.length ? '<div class="av-fix-sug">Ours: ' + sug.map(function(o){ return '<button type="button" class="btn small" data-avfixaddr="' + esc(o.address) + '">' + esc(o.address) + '</button>'; }).join('') + '</div>' : '') +
+        '<button type="button" class="linkish" data-ava="edit">✎ Add the full address</button>';
+    }
+    if (noLl) h += '<div' + (ap ? ' style="margin-top:6px"' : '') + '><b>⚠️ No landlord</b> — <button type="button" class="linkish" data-avfixll="1">＋ Add the landlord</button> <span class="muted-note" style="margin:0">(our landlords come up as you type)</span></div>';
+    return h + '</div>';
+  }
   function avOpenForm(x){
     avEdit = x ? x.id : null; $('avPaste').hidden = true; $('avForm').hidden = false;
     Object.keys(AVF).forEach(function(id){ var v = x ? x[AVF[id]] : null; $(id).value = v == null || v === '' ? (id === 'avStatus' ? (avFlag === 'let' ? 'let' : 'available') : '') : (id === 'avFrom' || id === 'avLetOn' ? String(v).slice(0, 10) : v); });
@@ -10676,7 +10798,13 @@
   $('avPcm').addEventListener('input', function(){ var v = parseFloat(this.value.replace(/[£,\s]/g, '')); if (v > 0) $('avPw').value = (Math.round(v * 12 / 52 * 100) / 100).toFixed(2); });
   $('avSave').addEventListener('click', function(){
     var body = { vacant: $('avVacant').checked, urgent: $('avUrgent').checked }; Object.keys(AVF).forEach(function(id){ body[AVF[id]] = $(id).value.trim(); });
+    // Boxes the person emptied on purpose (a blank box otherwise keeps what's saved).
+    var was = avEdit ? avItems.filter(function(i){ return i.id === avEdit; })[0] : null;
+    if (was) body.clear = Object.keys(AVF).filter(function(id){ var o = was[AVF[id]]; return (o != null && String(o) !== '') && !$(id).value.trim(); }).map(function(id){ return AVF[id]; });
     if (!body.address) { toast('Enter the address'); $('avAddr').focus(); return; }
+    // Always the full address and the landlord — ask before saving without them.
+    var miss = [addressProblem(body.address) ? 'the full address (door number and postcode)' : '', body.status !== 'let' && body.status !== 'withdrawn' && !body.landlord ? 'the landlord' : ''].filter(Boolean);
+    if (miss.length && !confirm('This is missing ' + miss.join(' and ') + '.\n\nOK — save it anyway (it will be flagged on the card).\nCancel — go back and add ' + (miss.length > 1 ? 'them' : 'it') + '.')) { (addressProblem(body.address) ? $('avAddr') : $('avLl')).focus(); return; }
     if (body.status === 'let' && !body.let_on) body.let_on = new Date().toISOString().slice(0, 10);
     var b = this; busy(b, true, 'Saving…');
     api('POST', '/api/admin/available' + (avEdit ? '/' + avEdit : ''), body).then(function(d){ busy(b, false); if (!d || !d.ok) { toast('Couldn’t save it'); return; } $('avForm').hidden = true; avEdit = null; toast('✓ Saved'); loadAvail(); });
@@ -10850,6 +10978,10 @@
   $('avList').addEventListener('click', function(e){
     var card = e.target.closest('[data-av]'); if (!card) return; var x = avItems.filter(function(i){ return i.id === Number(card.dataset.av); })[0]; if (!x) return;
     var a = e.target.closest('[data-ava]'), st = e.target.closest('[data-avs]'), ac = e.target.closest('[data-acc]');
+    var fa = e.target.closest('[data-avfixaddr]');
+    if (fa) { var na = fa.dataset.avfixaddr; if (!confirm('Use “' + na + '” as the address for this listing?')) return;
+      api('POST', '/api/admin/available/' + x.id, { address: na }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save the address'); return; } toast('✓ Full address saved — filling in what we know'); loadAvail().then(function(){ var nx = avItems.filter(function(i){ return i.id === x.id; })[0]; if (nx && (!nx.landlord || !nx.key_no)) { avOpenForm(nx); avLookup(); } }); }); return; }
+    if (e.target.closest('[data-avfixll]')) { avOpenForm(x); setTimeout(function(){ $('avLl').focus(); $('avLl').scrollIntoView({ block: 'center' }); }, 300); return; }
     if (ac) {
       var mode = ac.dataset.acc === x.access ? '' : ac.dataset.acc, body = { access: mode };
       if (mode === 'keys' && !x.key_no) { var k2 = prompt('Key number for ' + shortAddr(x.address) + ':', ''); if (k2 === null) return; if (k2.trim()) body.key_no = k2.trim(); }
@@ -10892,6 +11024,12 @@
     if (act === 'send' || act === 'ytshare') { avSendPanel(card, x, act === 'ytshare'); return; }
     if (act === 'ytshare-old') { var vid = ytVid((ytM[x.id] || [])[0]), txt = 'Here’s a video of ' + publicAddr(x.address) + ': ' + ytUrl(vid.id); if (navigator.share && matchMedia('(pointer: coarse)').matches) navigator.share({ text: txt })['catch'](function(){}); else copyText(txt).then(function(){ toast('Video link copied — paste it into WhatsApp or an email'); })['catch'](function(){ window.prompt('Copy the video link:', txt); }); return; }
     if (act === 'edit') { avOpenForm(x); return; }
+    if (act === 'hist') { avHistory(x); return; }
+    if (act === 'rmx') {
+      if (!confirm('Unlink the Rightmove advert from ' + shortAddr(x.address) + '?\n\nThe advert goes back in 💭 Dreams, where you can link it to the right property, keep it as a Dream or add it. ' + shortAddr(x.address) + ' stays on the list with its details.')) return;
+      api('POST', '/api/admin/available/' + x.id + '/rightmove', { rm_id: null }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t unlink it'); return; } toast('✓ Unlinked — the advert is back in Dreams'); avDreamOpen = true; loadAvail(); });
+      return;
+    }
     if (act === 'del') { if (!confirm('Delete ' + shortAddr(x.address) + ' from the available list?')) return; api('DELETE', '/api/admin/available/' + x.id, { confirm: true }).then(function(d){ toast(d && d.ok ? 'Deleted' : 'Only managers can delete'); loadAvail(); }); return; }
     if (act === 'copy') { copyText((x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : '') + ' — ' + publicAddr(x.address) + '\n' + (x.vacant ? 'Available now' : x.available_from ? 'Available from ' + avDay(x.available_from) : '') + '\n' + (x.rent_pcm ? gbp(Number(x.rent_pcm)) + ' pcm' : '') + (x.rent_pw ? ' (' + gbp(Number(x.rent_pw)) + ' pw)' : '') + (((ytData && ytData.matches) || {})[x.id] && ytData.matches[x.id][0] ? '\nVideo: ' + ytUrl(ytData.matches[x.id][0]) : '') + (x.rm_id && rmData && (rmData.items || []).some(function(r){ return r.id === x.rm_id; }) ? '\nRightmove: ' + (rmData.items.filter(function(r){ return r.id === x.rm_id; })[0].url) : '') + '\nResidential Realtors · 0207 096 8131').then(function(){ toast('Details copied'); })['catch'](function(){ toast('Couldn’t copy — please try again'); }); return; }
     showView('offers');
@@ -10920,6 +11058,18 @@
     if (dg) { var sel = document.querySelector('[data-dreamfor="' + dg.dataset.dreamgo + '"]'); if (!sel || !sel.value) { toast('Choose which of our properties it’s a Dream of'); if (sel) sel.focus(); return; } avDreamOpen = true; busy(dg, true, 'Linking…'); api('POST', '/api/admin/available/' + sel.value + '/dream', { rm_id: dg.dataset.dreamgo }).then(function(d){ busy(dg, false); toast(d && d.ok ? '✓ Linked as a Dream advert' : 'Couldn’t link it'); loadAvail(); }); return; }
     var ad = e.target.closest('[data-rmadd]');
     if (ad) { var r = ((rmData && rmData.items) || []).filter(function(i){ return i.id === ad.dataset.rmadd; })[0]; if (!r) return;
+      // Rightmove hides door numbers, so the advert may be a property already on our list:
+      // offer to link it to that one rather than add a second, empty copy.
+      var same = psMatch(String(r.address || '').replace(/\b(london|greater london|uk|united kingdom)\b/gi, ' '), avItems.filter(function(i){ return i.status === 'available'; }).map(function(i){ var o = psItem(i.address, '', 0); o.av = i; return o; }))
+        .filter(function(o){ return !o.av.rm_id || o.av.rm_id === 'none' || o.av.rm_id === r.id; });
+      if (same.length) {
+        var tgt = same[0].av;
+        if (confirm('“' + r.address + '” looks like ' + tgt.address + ', already on the list.\n\nOK — link the Rightmove advert to it (keeps its key, landlord and details).\nCancel — add it as a new property instead.')) {
+          busy(ad, true, 'Linking…');
+          api('POST', '/api/admin/available/' + tgt.id + '/rightmove', { rm_id: r.id }).then(function(d){ busy(ad, false); toast(d && d.ok ? '✓ Linked to ' + shortAddr(tgt.address) : 'Couldn’t link it'); loadAvail(); });
+          return;
+        }
+      }
       busy(ad, true, 'Adding…');
       api('POST', '/api/admin/available', { address: r.address, beds: r.beds, rent_pcm: r.pcm || '', status: 'available' }).then(function(d){
         if (!d || !d.ok || !(d.ids || []).length) { busy(ad, false); toast(d && d.ok ? 'Already on the available list' : 'Couldn’t add it'); return; }
