@@ -10145,7 +10145,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       try {
         const r = await fetch(u, { redirect: 'follow', signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', Accept: 'text/html,*/*' } });
         if (r.status === 403 || r.status === 429) blocked.push(r.status + ' ' + u); else if (!r.ok) bad.push(r.status + ' ' + u);
-        r.body && r.body.cancel && r.body.cancel().catch(function () {});
+        await r.arrayBuffer().catch(function () {});   // read it through (cancelling part-way crashes Node 18)
       } catch (e) { bad.push('no answer ' + u); }
     }
     console.log('Link check: ' + (LINKS_USED.length - bad.length - blocked.length) + ' of ' + LINKS_USED.length + ' links open' + (bad.length ? ' | NOT WORKING: ' + bad.join(' ; ') : '') + (blocked.length ? ' | site refused an automatic check: ' + blocked.join(' ; ') : ''));
