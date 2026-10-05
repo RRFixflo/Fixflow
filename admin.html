@@ -1348,6 +1348,7 @@
     .staff-tabs button { flex: none; white-space: nowrap; padding: 7px 11px; font-size: .84rem; }
   }
   /* Tenant page: the property address wraps instead of running off the edge. */
+  .prop-added { font-size: .74rem; color: var(--ink-faint); margin-top: 2px; }
   .tn-paddr { padding: 0 !important; font-weight: 600; white-space: normal; text-align: left; justify-content: flex-start; height: auto; min-height: 0; line-height: 1.35; }
   .tn-pacts { display: flex; gap: 6px; align-items: center; }
   /* ---------- Jobs and tenants on phones: compact ---------- */
@@ -4313,15 +4314,30 @@
   function isNew(t){ var d = t ? new Date(t).getTime() : 0; return d && Date.now() - d < 7 * 86400000; }
   function newChip(t){ return isNew(t) ? ' <span class="new-chip">New</span>' : ''; }
   // When a property first appeared: its first job, tenancy, tenant, landlord link or certificate.
-  function propAddedAt(p){
-    var ts = p.jobs.map(function(j){ return new Date(j.created_at).getTime(); });
-    tenancies.forEach(function(t){ if (t.property_key === p.key) ts.push(new Date(t.created_at || t.updated_at).getTime()); });
-    tenantLinks.forEach(function(l){ if (l.property_key === p.key && l.created_at) ts.push(new Date(l.created_at).getTime()); });
-    if (llByKey[p.key] && llByKey[p.key].updated_at) ts.push(new Date(llByKey[p.key].updated_at).getTime());
-    certs.forEach(function(c){ if (c.property_key === p.key && c.updated_at) ts.push(new Date(c.updated_at).getTime()); });
-    ts = ts.filter(function(x){ return x > 0; });
-    return ts.length ? Math.min.apply(null, ts) : 0;
+  function propAddedAt(p){ return propOrigin(p).at; }
+  // When and how a property first came in: its record (added by hand, Ask Fixflow, a key number,
+  // the available list…) or else its first job, tenancy, tenant, landlord link or certificate.
+  function propOrigin(p){
+    var c = [], add = function(t, how, by){ t = t ? new Date(t).getTime() : 0; if (t > 0) c.push({ at: t, how: how, by: by || '' }); };
+    var pi = propInfo[p.key];
+    if (pi && pi.created_at) add(pi.created_at, pi.added_how || 'Property record', pi.added_by);
+    p.jobs.forEach(function(j){ add(j.created_at, 'Repair job ' + j.ref + (j.source && j.source !== 'Online report' ? ' (' + j.source.toLowerCase() + ')' : j.source === 'Online report' ? ' (tenant’s online report)' : '')); });
+    tenancies.forEach(function(t){ if (t.property_key === p.key) add(t.created_at || t.updated_at, 'Tenancy'); });
+    tenantLinks.forEach(function(l){ if (l.property_key === p.key) add(l.created_at, 'Tenant added'); });
+    if (llByKey[p.key]) add(llByKey[p.key].updated_at, 'Landlord linked');
+    certs.forEach(function(x){ if (x.property_key === p.key) add(x.created_at || x.updated_at, (x.type || 'Certificate') + ' certificate'); });
+    var av = propAvFirst()[p.key]; if (av) add(av, 'Available list');
+    if (!c.length && pi) add(pi.updated_at, pi.key_number ? 'Key number recorded' : 'Property record');
+    c.sort(function(a, b){ return a.at - b.at; });
+    return c[0] || { at: 0, how: '', by: '' };
   }
+  // Earliest available-list entry per property (worked out once per list load).
+  var propAvMemo = { src: null, map: {} };
+  function propAvFirst(){
+    if (propAvMemo.src !== avItems) { var m = {}; (avItems || []).forEach(function(x){ var k = propKey(x.address); if (k && x.created_at && (!m[k] || x.created_at < m[k])) m[k] = x.created_at; }); propAvMemo = { src: avItems, map: m }; }
+    return propAvMemo.map;
+  }
+  function propOriginTxt(p){ var o = propOrigin(p); return o.at ? 'Added ' + new Date(o.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ' · ' + o.how + (o.by ? ' · by ' + o.by : '') : 'Date added not recorded'; }
   var propTcyF = 'all';
   try { propTcyF = localStorage.getItem('rr_prop_tcy') || 'all'; } catch (e) {}
   function tcyMatch(t, f){ return f === 'all' || (f === 'two' ? !!t.two : (f === 'with' ? ['active', 'ending', 'upcoming', 'rolling'].indexOf(t.k) !== -1 : f === 'none' ? t.k === 'none' || t.k === 'draft' : t.k === f)); }
@@ -4376,7 +4392,7 @@
       var open = p.jobs.filter(isOpen).length;
       return '<button type="button" class="prop-row" data-key="' + esc(p.key) + '">' +
         '<div><div class="addr">' + esc(p.address) + newChip(key[p.key].added) + (key[p.key].kn ? ' <span class="key-chip">🔑 ' + esc(key[p.key].kn) + '</span>' : '') + '</div><div class="prop-sub" style="margin-top:2px">' +
-          esc([propTenantNames(p) || 'No tenant name', by === 'landlord' ? (key[p.key].ll ? 'Landlord: ' + key[p.key].ll : 'No landlord') : ''].filter(Boolean).join(' · ')) + '</div>' + '<div class="tcy-line">' + tcyChip(tcyOf[p.key]) + (function(){ var st = licenceState(licenceOf(p.address)); return st.k === 'bad' || st.k === 'warn' ? ' <span class="tcy-chip ' + (st.k === 'bad' ? 'none' : 'warn') + '">📜 Licence: ' + esc(st.text) + '</span>' : ''; })() + '</div>' + certChips(p.key) + '</div>' +
+          esc([propTenantNames(p) || 'No tenant name', by === 'landlord' ? (key[p.key].ll ? 'Landlord: ' + key[p.key].ll : 'No landlord') : ''].filter(Boolean).join(' · ')) + '</div>' + '<div class="prop-added">' + esc(propOriginTxt(p)) + '</div>' + '<div class="tcy-line">' + tcyChip(tcyOf[p.key]) + (function(){ var st = licenceState(licenceOf(p.address)); return st.k === 'bad' || st.k === 'warn' ? ' <span class="tcy-chip ' + (st.k === 'bad' ? 'none' : 'warn') + '">📜 Licence: ' + esc(st.text) + '</span>' : ''; })() + '</div>' + certChips(p.key) + '</div>' +
         '<div class="num">' + p.jobs.length + '<small>repair' + (p.jobs.length === 1 ? '' : 's') + '</small></div>' +
         '<div class="num' + (open ? ' hot' : '') + '">' + open + '<small>open</small></div>' +
         '<div class="last">' + (p.jobs.length ? esc(fmtShort(p.latest)) + '<small>last reported</small>' : '—<small>no repairs yet</small>') + '</div>' +
@@ -4429,7 +4445,7 @@
     var open = d.jobs.filter(isOpen).length, done = d.jobs.filter(function(j){ return j.status === 'Completed'; }).length;
     $('propTitle').innerHTML = '<button type="button" class="title-edit" id="propTitleEdit" title="Edit address">' + esc(d.property.address) + ' <span class="pen">✎</span></button>' + (addressProblem(d.property.address) ? ' <span class="pill warn-pill" title="' + esc(addressProblem(d.property.address)) + '">Address incomplete</span>' : '');
     $('propSub').textContent = d.property.jobs.length + ' repair' + (d.property.jobs.length === 1 ? '' : 's') + ' on record' +
-      (postcodeArea(d.property.address) ? ' · ' + postcodeArea(d.property.address) : '');
+      (postcodeArea(d.property.address) ? ' · ' + postcodeArea(d.property.address) : '') + ' · ' + propOriginTxt(d.property);
     $('propTiles').innerHTML =
       '<div class="tile blue"><div class="k">Repairs (' + esc(d.periodLabel.toLowerCase()) + ')</div><div class="v">' + d.jobs.length + '</div></div>' +
       '<div class="tile alert' + (open ? ' has' : '') + '"><div class="k">Open</div><div class="v">' + open + '</div></div>' +
@@ -8667,9 +8683,9 @@
     readAskProp(box, dr);
     if (!dr.address) { toast('Which property?'); box.querySelector('[data-p=address]').focus(); return; }
     busy(b, true, 'Saving…');
-    api('POST', '/api/admin/properties', { address: dr.address, tenants: dr.tenants.filter(function(t){ return t.name || t.phone || t.email; }), landlord_name: dr.ai.landlord, key_number: dr.ai.key_number, notes: dr.ai.notes }).then(function(d){
+    api('POST', '/api/admin/properties', { added_how: 'Ask Fixflow', address: dr.address, tenants: dr.tenants.filter(function(t){ return t.name || t.phone || t.email; }), landlord_name: dr.ai.landlord, key_number: dr.ai.key_number, notes: dr.ai.notes }).then(function(d){
       busy(b, false);
-      if (!d.ok) { toast('Couldn’t save the property'); return; }
+      if (!d.ok) { if (keyTaken(d)) return; toast('Couldn’t save the property'); return; }
       askProps.splice(i, 1); renderAskProps();
       toast((dr.property ? 'Saved to ' : 'Added ') + d.address + (d.tenants ? ' — ' + d.tenants + ' tenant' + (d.tenants === 1 ? '' : 's') : '') + (d.landlord ? ', landlord ' + d.landlord : ''));
       return Promise.all([loadTenantRecs(), loadLandlords(), loadPropInfo()]).then(function(){ loadJobs(); });
@@ -9109,12 +9125,14 @@
     return api('GET', '/api/admin/licence-pool').then(function(d){ if (d.ok) licencePool = d.pool; }).catch(function(){})
       .then(function(){ return api('GET', '/api/admin/property-info'); }).then(function(d){ if (d.ok) { propInfo = {}; d.info.forEach(function(r){ propInfo[r.property_key] = r; }); } });
   }
+  // A key number another property already has: say which (each key belongs to one property).
+  function keyTaken(d){ if (!d || d.error !== 'key-taken') return false; alert('That key number is already used for ' + (d.address || 'another property') + '.\n\nEach key number can only belong to one property — check the key, or change it on ' + (d.address || 'the other property') + ' first.'); return true; }
   function keyNo(address){ var r = propInfo[propKey(address)]; return r && r.key_number ? r.key_number : ''; }
   function saveKey(address, num, notes){
     return api('PUT', '/api/admin/property-info', { address: address, key_number: num, key_notes: notes }).then(function(d){
-      if (!d.ok) { toast('Couldn’t save the key number'); return false; }
+      if (!d.ok) { if (!keyTaken(d)) toast('Couldn’t save the key number'); return false; }
       propInfo[propKey(address)] = Object.assign({}, propInfo[propKey(address)], { property_key: propKey(address), address: address, key_number: String(num || '').trim() || null, key_notes: String(notes || '').trim() || null });
-      toast(d.clash ? 'Saved — note: key ' + num + ' is also on ' + d.clash : num ? 'Key number saved' : 'Key number removed');
+      toast(num ? 'Key number saved' : 'Key number removed');
       return true;
     });
   }
@@ -10530,7 +10548,7 @@
     h += '<div class="av-acc-det">' + det + ' · ' + (x.access_note ? '📝 ' + esc(x.access_note) + ' <button type="button" class="linkish" data-ava="accnote">edit</button>' : '<button type="button" class="linkish" data-ava="accnote">add a note</button>') + '</div></div>';
     return h;
   }
-  function avPatch(x, body, msg){ return api('POST', '/api/admin/available/' + x.id, Object.assign({ patch: true }, body)).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save that'); return false; } Object.keys(body).forEach(function(k){ x[k] = body[k] || null; }); if (msg) toast(msg); renderAvail(); return true; }); }
+  function avPatch(x, body, msg){ return api('POST', '/api/admin/available/' + x.id, Object.assign({ patch: true }, body)).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save that'); return false; } Object.keys(body).forEach(function(k){ x[k] = body[k] || null; }); if (msg) toast(msg); renderAvail(); return true; }); }
   function renderAvail(){
     var q = $('avQ').value.trim().toLowerCase(), sort = $('avSort').value;
     var list = avItems.filter(function(x){
@@ -10807,7 +10825,7 @@
     if (miss.length && !confirm('This is missing ' + miss.join(' and ') + '.\n\nOK — save it anyway (it will be flagged on the card).\nCancel — go back and add ' + (miss.length > 1 ? 'them' : 'it') + '.')) { (addressProblem(body.address) ? $('avAddr') : $('avLl')).focus(); return; }
     if (body.status === 'let' && !body.let_on) body.let_on = new Date().toISOString().slice(0, 10);
     var b = this; busy(b, true, 'Saving…');
-    api('POST', '/api/admin/available' + (avEdit ? '/' + avEdit : ''), body).then(function(d){ busy(b, false); if (!d || !d.ok) { toast('Couldn’t save it'); return; } $('avForm').hidden = true; avEdit = null; toast('✓ Saved'); loadAvail(); });
+    api('POST', '/api/admin/available' + (avEdit ? '/' + avEdit : ''), body).then(function(d){ busy(b, false); if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save it'); return; } if (d.failures && d.failures[0] && /^Key /.test(d.failures[0].error)) alert(d.failures[0].error); $('avForm').hidden = true; avEdit = null; toast('✓ Saved'); loadAvail(); });
   });
   // Paste rows from the spreadsheet (tab-separated, cells with line breaks come in quotes).
   function avTsv(t){
@@ -11017,7 +11035,7 @@
     if (act === 'fee') { var nf = prompt('Commission / fee for ' + shortAddr(x.address) + ' (a figure or %):', x.commission || ''); if (nf === null) return; nf = nf.trim(); if (nf && !/\d/.test(nf)) { toast('Type the fee as a figure or %, e.g. 8% or £1,000'); return; } avPatch(x, { commission: nf }, nf ? '✓ Commission saved' : 'Commission removed'); return; }
     if (act === 'tcontact') { var tc = prompt('Tenants’ contact (names, mobiles, emails):', x.contact || ''); if (tc === null) return; avPatch(x, { contact: tc.trim() }, tc.trim() ? '✓ Tenants’ contact saved' : 'Contact removed'); return; }
     if (act === 'accnote') { var an = prompt('Access note (e.g. call 1 hour before, concierge, lockbox code with the office):', x.access_note || ''); if (an === null) return; avPatch(x, { access_note: an.trim() }, '✓ Access note saved'); return; }
-    if (act === 'key') { var kn = prompt('Key number for ' + shortAddr(x.address) + ':', x.key_no || ''); if (kn === null) return; api('POST', '/api/admin/available/' + x.id, { key_no: kn.trim() }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save the key number'); return; } x.key_no = kn.trim() || null; toast(kn.trim() ? '✓ Key number saved' : 'Key number removed'); renderAvail(); }); return; }
+    if (act === 'key') { var kn = prompt('Key number for ' + shortAddr(x.address) + ':', x.key_no || ''); if (kn === null) return; api('POST', '/api/admin/available/' + x.id, { key_no: kn.trim() }).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save the key number'); return; } x.key_no = kn.trim() || null; toast(kn.trim() ? '✓ Key number saved' : 'Key number removed'); renderAvail(); }); return; }
     if (act === 'll') { var LL = (avLinkData[x.id] || {}).landlord; if (LL && LL.id) openLandlord(LL.id); return; }
     if (act === 'tcy') { var TT = (avLinkData[x.id] || {}).tenancy; if (!TT) return; (tenancies.some(function(t){ return t.id === TT.id; }) ? Promise.resolve() : loadTenancies()).then(function(){ openTenancy(TT.id); }); return; }
     if (act === 'addr') { var na = prompt('Correct address (one line, with the postcode):', x.address); if (!na || na.trim() === x.address) return; api('POST', '/api/admin/available/' + x.id, { address: na.trim() }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save the address'); return; } x.address = d.address; toast('✓ Address saved'); renderAvail(); }); return; }
