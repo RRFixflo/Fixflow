@@ -8756,7 +8756,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const lls = {}; (await p.query('SELECT pl.property_key, l.id, l.name, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r; });
     const items = []; let notOurs = 0, feesAll = 0, feesN = 0;
     // On this month's page, tomorrow's rents too (even when tomorrow is next month).
-    const until = month === thisMonth && tomorrow > mEnd ? tomorrow : mEnd;
+    // On this month's page, the next 7 days' rents too (even into next month) — for tenants who pay early.
+    const week = addDaysIso(today, 7), until = month === thisMonth && week > mEnd ? week : mEnd;
     for (let i = 0; i < tcys.length; i++) {
       const t = tcys[i], d = t.data || {}, start = String(d.start_date || t.start_date || '').slice(0, 10);
       if (onlyKey && t.property_key !== onlyKey) continue;
