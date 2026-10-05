@@ -2,7 +2,7 @@
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style id="mobile-fit">html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}@media (max-width:900px){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}</style><script>(function(){var ua=navigator.userAgent;if(/iP(hone|ad|od)/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)){var m=document.querySelector('meta[name=viewport]');if(m&&!/maximum-scale/.test(m.content))m.content+=', maximum-scale=1';}})();</script>
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#ffffff">
 <title>Make an offer — Residential Realtors</title>
@@ -263,6 +263,12 @@
   .bank div:last-child { border-bottom:0; }
   .bank span { color:var(--soft); }
   .bank b { font-variant-numeric:tabular-nums; letter-spacing:.01em; }
+  .psugg { position:absolute; left:0; right:0; top:100%; z-index:30; margin-top:4px; background:#fff; border:1px solid var(--line2); border-radius:14px; box-shadow:0 18px 40px -16px rgba(15,23,42,.35); overflow:hidden; }
+  .psugg button { display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid var(--line2); padding:11px 14px; font:inherit; font-size:15px; color:inherit; cursor:pointer; }
+  .psugg button:last-child { border-bottom:0; }
+  .psugg button:hover, .psugg button.on { background:#f2f5fb; }
+  .psugg small { display:block; color:var(--soft); font-size:12.5px; margin-top:2px; }
+  .psugg .ps-h { padding:8px 14px 6px; font-size:11.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--soft); background:#f8f9fb; border-bottom:1px solid var(--line2); }
   .trackbox { background:var(--blue-t); border-radius:16px; padding:16px; margin-top:18px; }
   .trackbox input { margin:10px 0; font-size:.9rem; background:#fff; }
   .btnrow { display:flex; gap:8px; flex-wrap:wrap; }
@@ -368,7 +374,7 @@
         <div class="card">
           <h2>Your offer</h2>
           <p class="lead">Which property, how much, and when you’d like to move in.</p>
-          <div class="f"><label class="l" for="property">Property address</label><input id="property" autocomplete="off" placeholder="e.g. Flat 3, Chilham House, London SE1 4AA"></div>
+          <div class="f" style="position:relative"><label class="l" for="property">Property address</label><input id="property" autocomplete="off" placeholder="Start typing the street, building or postcode"><div class="psugg" id="propSugg" hidden></div></div>
           <div class="f"><label class="l">I’m offering</label><div class="seg" id="perSeg"><button type="button" data-per="pw" class="on">£ per week</button><button type="button" data-per="pcm">£ per month</button></div><div class="hint" style="margin-top:6px">Choose how you’d like to enter your offer — rent is always <b>paid monthly</b>.</div></div>
           <div class="g2">
             <div class="f"><label class="l" for="offer">Your offer <span class="opt perTxt">per week</span></label><div class="money-in unit" data-unit="/ week"><input id="offer" inputmode="decimal" placeholder="500"></div></div>
@@ -524,6 +530,37 @@
       '<li><b>Returned within 24 hours</b> if the landlord rejects your maximum offer or takes the property off the market.</li>' +
       '<li><b>Not returned</b> if you withdraw, don’t pass referencing or the right to rent check, give false information, or don’t sign and pay on time — you’ll tick each of these before you sign.</li></ul>';
   }
+  // Property suggestions from our available list (the property they're offering on is almost always one of them).
+  var propRef = null, propHits = [], propT = 0, propOn = -1;
+  var gbp0 = function(v){ return '£' + Math.round(Number(v) || 0).toLocaleString('en-GB'); };
+  function propSuggest(){
+    var q = $('property').value.trim(); clearTimeout(propT);
+    if (propRef && q !== propRef.label) propRef = null;
+    if (q.length < 2) { $('propSugg').hidden = true; return; }
+    propT = setTimeout(function(){
+      fetch('/api/offer-props?q=' + encodeURIComponent(q)).then(function(r){ return r.json(); }).then(function(d){
+        if ($('property').value.trim() !== q || document.activeElement !== $('property')) return;
+        propHits = (d && d.ok && d.items) || []; propOn = -1;
+        if (!propHits.length || (propRef && propHits.length === 1)) { $('propSugg').hidden = true; return; }
+        $('propSugg').innerHTML = '<div class="ps-h">Our available properties</div>' + propHits.map(function(h, i){
+          var sub = [h.beds == null ? '' : Number(h.beds) === 0 ? 'Studio' : h.beds + ' bed', h.rent_pcm ? gbp0(h.rent_pcm) + ' pcm' : '', h.available === 'now' ? 'Available now' : h.available ? 'Available from ' + new Date(h.available + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''].filter(Boolean).join(' · ');
+          return '<button type="button" data-ph="' + i + '">' + esc(h.label) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</button>'; }).join('');
+        $('propSugg').hidden = false;
+      })['catch'](function(){});
+    }, 160);
+  }
+  function propPick(i){ var h = propHits[i]; if (!h) return; propRef = h; $('property').value = h.label; $('propSugg').hidden = true; $('property').dispatchEvent(new Event('input')); }
+  $('property').addEventListener('input', function(e){ if (e.isTrusted) propSuggest(); });
+  $('property').addEventListener('focus', function(){ if (this.value.trim().length >= 2 && !propRef) propSuggest(); });
+  $('property').addEventListener('blur', function(){ setTimeout(function(){ $('propSugg').hidden = true; }, 160); });
+  $('property').addEventListener('keydown', function(e){
+    if ($('propSugg').hidden || !propHits.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); var n = propHits.length; propOn = e.key === 'ArrowDown' ? (propOn < n - 1 ? propOn + 1 : 0) : (propOn > 0 ? propOn - 1 : n - 1); $('propSugg').querySelectorAll('[data-ph]').forEach(function(b, i){ b.classList.toggle('on', i === propOn); }); }
+    else if (e.key === 'Enter' && propOn >= 0) { e.preventDefault(); propPick(propOn); }
+    else if (e.key === 'Escape') $('propSugg').hidden = true;
+  });
+  $('propSugg').addEventListener('mousedown', function(e){ e.preventDefault(); });
+  $('propSugg').addEventListener('click', function(e){ var b = e.target.closest('[data-ph]'); if (b) propPick(Number(b.dataset.ph)); });
   ['property', 'offer', 'move_in', 'max_offer'].forEach(function(id){ $(id).addEventListener('input', drawSummary); });
   $('perSeg').addEventListener('click', function(e){
     var b = e.target.closest('[data-per]'); if (!b) return; per = b.dataset.per;
@@ -845,7 +882,7 @@
     Promise.all(tenants.map(function(t, i){ return Promise.all((files[i + 1] || []).map(readFile)).then(function(list){ t.ids = list.filter(Boolean); }); })).then(function(){
       busyBtns(true, 'Sending…');
       return fetch('/api/offers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        website: document.querySelector('[name=website]').value, invite: invite, pvr: pvrTok, property: $('property').value.trim(), per: per, offer: $('offer').value, max_offer: $('max_offer').value,
+        website: document.querySelector('[name=website]').value, invite: invite, pvr: pvrTok, property: $('property').value.trim(), property_ref: propRef && $('property').value.trim() === propRef.label ? propRef.id : null, per: per, offer: $('offer').value, max_offer: $('max_offer').value,
         move_in: $('move_in').value, stay: stay, tenants_count: tenantsN, guarantors_count: guarantorsN,
         conditions: getConds(), negotiate: getConds().join('\n'), about: $('about').value.trim(), lead_name: tenants[0].name, lead_phone: tenants[0].phone, lead_email: tenants[0].email,
         tenants: tenants, started_at: startedAt, agree: true, terms: Array.prototype.map.call(document.querySelectorAll('[data-term]'), function(c){ return c.checked; }), signature: $('signature').value.trim(), signature_png: sigImg }) });
