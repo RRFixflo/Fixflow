@@ -4482,7 +4482,7 @@
   });
   function renderPropTenants(pr){
     var cur = tenantsAtProperty(pr.address), past = tenantsAtProperty(pr.address, true).filter(function(t){ return t.movedOut; }), guar = tenantsAtProperty(pr.address, false, true);
-    $('propTenants').innerHTML = '<h3>Tenants <span class="count-chip">' + cur.length + '</span><span style="flex:1"></span><button class="btn small ghost" id="ptPaste" type="button" title="Paste names, numbers and emails in any layout">📋 Paste details</button> <button class="btn small" id="ptAdd" type="button">+ Add tenant</button></h3>' +
+    $('propTenants').innerHTML = '<h3>Tenants <span class="count-chip">' + cur.length + '</span><span style="flex:1"></span><button class="btn small ghost" id="ptPaste" type="button" title="Paste names, numbers and emails in any layout">📋 Paste details</button> <button class="btn small" id="ptTenAdd" type="button">+ Add tenant</button></h3>' +
       '<div id="ptPasteBox" hidden></div>' +
       (cur.length ? cur.map(function(t){
         return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 auto;min-width:120px;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
@@ -4495,7 +4495,7 @@
           ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Remove</button></div>';
       }).join('') : '') +
       (past.length ? '<div class="prop-sub" style="margin-top:8px">Moved out: ' + past.map(function(t){ return '<button type="button" class="btn ghost small" style="padding:0" data-pt-open="' + t.id + '">' + esc(t.name) + '</button>'; }).join(', ') + '</div>' : '');
-    $('ptAdd').addEventListener('click', function(){ openTenantForm(null, pr.address); });
+    $('ptTenAdd').addEventListener('click', function(){ openTenantForm(null, pr.address); });
     $('ptPaste').addEventListener('click', function(){ ptPasteOpen(pr); });
     $('propTenants').querySelectorAll('[data-pt-role]').forEach(function(sel){ sel.addEventListener('change', function(){
       var id = Number(sel.dataset.ptRole), role = sel.value, body = { address: pr.address, role: role };
