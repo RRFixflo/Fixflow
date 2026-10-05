@@ -151,6 +151,10 @@
   .btn.ghost:hover { background: var(--panel-2); }
   input.inp, select.inp, textarea.inp { width: 100%; min-height: 38px; padding: 8px 11px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--panel); transition: border-color .15s, box-shadow .15s; box-shadow: var(--shadow-xs); }
   textarea.inp { min-height: 86px; resize: vertical; line-height: 1.5; }
+  /* Date and time boxes have a built-in minimum width on phones: let them fit their column instead of sticking out. */
+  input.inp[type=date], input.inp[type=time], input.inp[type=datetime-local], input.inp[type=month] { min-width: 0; max-width: 100%; }
+  @media (max-width: 640px) { input.inp[type=date], input.inp[type=time], input.inp[type=datetime-local], input.inp[type=month] { -webkit-appearance: none; appearance: none; text-align: left; } }
+  .tcy-cert-f > div, .grid2 > *, .grid3 > * { min-width: 0; }
   .inp::placeholder { color: var(--ink-faint); }
   .inp:focus { outline: none; border-color: var(--brick); box-shadow: var(--focus-ring); }
   label.lbl { display: block; font-size: .76rem; font-weight: 600; color: var(--ink-soft); margin: 0 0 5px; }
@@ -268,9 +272,13 @@
     .job .c-ref .sub { margin-top: 0; }
     .job .money { grid-column: 2; grid-row: 1; }
     .job .c-issue { grid-column: 1 / -1; grid-row: 2; }
-    .job .c-time { grid-column: 1; grid-row: 3; }
-    .job .c-status { grid-column: 2; grid-row: 3; text-align: right; }
-    .job .c-status .who-chip { justify-content: flex-end; }
+    .job .c-ref .ref { white-space: nowrap; }
+    .job .c-time { grid-column: 1 / -1; grid-row: 3; }
+    /* Status, booking and contractor on their own line, so a long name or time never squeezes the rest. */
+    .job .c-status { grid-column: 1 / -1; grid-row: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+    .job .c-status > * { margin: 0 !important; max-width: 100%; }
+    .job .c-status .pill { white-space: normal; }
+    .job .c-status .who-chip { justify-content: flex-start; min-width: 0; }
   }
 
   /* ---------- Job drawer ---------- */
@@ -1485,7 +1493,7 @@
               </div>
               <div class="grid2">
                 <div><label class="lbl" for="tsBank">Bank details (move-in monies)</label><textarea class="inp" id="tsBank" rows="6"></textarea>
-                  <details class="ct-links" id="ctLinks" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-size:.86rem">🏛 Council tax links by borough</summary><p class="muted-note" style="margin:6px 0">The welcome email works out the property’s borough from its postcode and links to that council’s council tax registration. Each link is checked before it’s used; type your own to replace any.</p><div id="ctList"></div><button type="button" class="btn small primary" id="ctSave" style="margin-top:8px">Save council tax links</button></details></div>
+                  <details class="ct-links" id="ctLinks" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-size:.86rem">🏛 Council tax links by borough</summary><p class="muted-note" style="margin:6px 0">The welcome email works out the property’s borough from its postcode and links to that council’s council tax registration. Each link is checked before it’s used; type your own to replace any.</p><div id="ctxList"></div><button type="button" class="btn small primary" id="ctxSave" style="margin-top:8px">Save council tax links</button></details></div>
                 <div><label class="lbl" for="tsSigT">Signature — tenants' email</label><textarea class="inp" id="tsSigT" rows="6"></textarea></div>
               </div>
               <div><label class="lbl" for="tsSigL">Signature — landlord's email</label><textarea class="inp" id="tsSigL" rows="5"></textarea></div>
@@ -4485,14 +4493,14 @@
     $('propTenants').innerHTML = '<h3>Tenants <span class="count-chip">' + cur.length + '</span><span style="flex:1"></span><button class="btn small ghost" id="ptPaste" type="button" title="Paste names, numbers and emails in any layout">📋 Paste details</button> <button class="btn small" id="ptTenAdd" type="button">+ Add tenant</button></h3>' +
       '<div id="ptPasteBox" hidden></div>' +
       (cur.length ? cur.map(function(t){
-        return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 auto;min-width:120px;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
+        return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 auto;min-width:120px;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
           '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
-          ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Moved out</button></div>';
+          '<span style="display:flex;gap:8px;align-items:center;margin-left:auto">' + ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Moved out</button></span></div>';
       }).join('') : '<p class="muted-note">No tenants saved for this property yet.</p>') +
       (guar.length ? '<div class="pt-guar-h">Guarantors <span class="count-chip">' + guar.length + '</span></div>' + guar.map(function(t){
-        return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 auto;min-width:120px;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Guarantor') + '</button> <span class="pt-badge guar">Guarantor' + (t.guarantorFor ? ' for ' + esc(t.guarantorFor) : '') + '</span>' +
+        return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 auto;min-width:120px;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Guarantor') + '</button> <span class="pt-badge guar">Guarantor' + (t.guarantorFor ? ' for ' + esc(t.guarantorFor) : '') + '</span>' +
           '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
-          ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Remove</button></div>';
+          '<span style="display:flex;gap:8px;align-items:center;margin-left:auto">' + ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Remove</button></span></div>';
       }).join('') : '') +
       (past.length ? '<div class="prop-sub" style="margin-top:8px">Moved out: ' + past.map(function(t){ return '<button type="button" class="btn ghost small" style="padding:0" data-pt-open="' + t.id + '">' + esc(t.name) + '</button>'; }).join(', ') + '</div>' : '');
     $('ptTenAdd').addEventListener('click', function(){ openTenantForm(null, pr.address); });
@@ -12870,12 +12878,12 @@
     if (!this.open || ctLinksData) return;
     api('GET', '/api/admin/council-tax/links').then(function(d){
       if (!d || !d.ok) return; ctLinksData = d;
-      $('ctList').innerHTML = '<div class="ct-grid">' + Object.keys(d.defaults).sort().map(function(b){ var ck = (d.checked || {})[b];
+      $('ctxList').innerHTML = '<div class="ct-grid">' + Object.keys(d.defaults).sort().map(function(b){ var ck = (d.checked || {})[b];
         return '<label class="ct-b">' + esc(b) + '</label><input class="inp" data-ct="' + esc(b) + '" placeholder="' + esc(ck ? ck.url : d.defaults[b]) + '" value="' + esc((d.custom || {})[b] || '') + '" title="' + (ck ? 'Checked and working: ' + esc(ck.url) : 'Our link (checked when first used)') + '">'; }).join('') + '</div>';
     });
   });
-  if ($('ctSave')) $('ctSave').addEventListener('click', function(){
-    var custom = {}; document.querySelectorAll('#ctList [data-ct]').forEach(function(i){ if (i.value.trim()) custom[i.dataset.ct] = i.value.trim(); });
+  if ($('ctxSave')) $('ctxSave').addEventListener('click', function(){
+    var custom = {}; document.querySelectorAll('#ctxList [data-ct]').forEach(function(i){ if (i.value.trim()) custom[i.dataset.ct] = i.value.trim(); });
     var b = this; busy(b, true, 'Saving…'); api('PUT', '/api/admin/council-tax/links', { custom: custom }).then(function(d){ busy(b, false); toast(d && d.ok ? '✓ Council tax links saved' : 'Couldn’t save — links must start with https://'); });
   });
   // Certificate reminder to the landlord: "your EPC is about to expire — shall we book one in?"
