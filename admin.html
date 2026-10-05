@@ -458,6 +458,7 @@
   .oc-refund span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
+  body:not(.staff-mode) #navAlerts { display: none !important; }
   .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
@@ -1133,6 +1134,9 @@
   .inv-items-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .ai-btn { color: #7C3AED; border-color: color-mix(in srgb, #7C3AED 35%, var(--line-strong)); }
   .ai-btn:hover { background: color-mix(in srgb, #7C3AED 8%, var(--panel)); }
+  .vat-tick { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: .82rem; color: var(--ink-soft); font-weight: 500; cursor: pointer; }
+  .vat-tick input { width: 16px; height: 16px; flex: none; margin: 0; }
+  .vat-tick span { color: var(--ink); font-weight: 600; }
   .inv-vat-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .inv-lines { display: flex; flex-direction: column; gap: 8px; margin-bottom: 6px; }
   .inv-line { display: grid; grid-template-columns: 1fr 120px 34px; gap: 8px; align-items: start; }
@@ -1352,6 +1356,33 @@
   .av-on-banner .av-on-ic { font-size: 1.1rem; line-height: 1.3; }
   .av-on-banner .av-on-row { color: #1d2939; }
   .av-on-banner .linkish { color: #067647; font-weight: 600; padding: 0; min-height: 0; }
+  .tcy-modes { display: inline-flex; gap: 4px; background: var(--panel-2, #f2f4f7); border-radius: 12px; padding: 4px; margin: 0 0 12px; max-width: 100%; overflow-x: auto; }
+  .tcy-modes button { border: 0; background: none; padding: 8px 14px; border-radius: 9px; font: inherit; font-weight: 600; font-size: .9rem; color: var(--ink-soft); cursor: pointer; white-space: nowrap; }
+  .tcy-modes button.on { background: var(--panel, #fff); color: var(--ink); box-shadow: 0 1px 3px rgba(16,24,40,.12); }
+  .rb-badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--brick, #b42318); color: #fff; font-size: .7rem; line-height: 18px; text-align: center; margin-left: 4px; }
+  .rb-head { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; } .rb-head h3 { margin: 0; min-width: 140px; text-align: center; }
+  .rb-tiles { grid-template-columns: repeat(6, 1fr); } .rb-tiles .tile small { display: block; color: var(--ink-faint); font-size: .74rem; margin-top: 4px; }
+  @media (max-width: 1100px) { .rb-tiles { grid-template-columns: repeat(3, 1fr); } }
+  .rb-card { margin-bottom: 12px; } .rb-card h3 { margin: 0 0 8px; }
+  .rb-group { margin-top: 10px; } .rb-gh { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); margin: 0 0 4px; display: flex; gap: 8px; } .rb-gh span { font-weight: 600; text-transform: none; letter-spacing: 0; }
+  .rb-g-over .rb-gh { color: var(--brick, #b42318); }
+  .rb-row, .rb-pay { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  .rb-day { flex: none; width: 46px; text-align: center; border-radius: 10px; background: var(--panel-2, #f2f4f7); padding: 4px 0; } .rb-day b { display: block; font-size: 1.1rem; line-height: 1.1; } .rb-day span { font-size: .68rem; text-transform: uppercase; color: var(--ink-soft); }
+  .rb-overdue .rb-day { background: #fef3f2; color: #b42318; } .rb-today .rb-day { background: #fffaeb; color: #b54708; } .rb-collected .rb-day { background: #ecfdf3; color: #067647; }
+  .rb-main { flex: 1; min-width: 0; } .rb-addr { font-weight: 650; font-size: .92rem; } .rb-addr .linkish { padding: 0; min-height: 0; font-weight: 650; color: inherit; text-align: left; white-space: normal; }
+  .rb-sub, .rb-keep, .rb-inv { font-size: .78rem; color: var(--ink-soft); margin-top: 2px; } .rb-inv { color: #b54708; }
+  .rb-money { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: .88rem; margin-top: 3px; } .rb-arrow { color: var(--ink-faint); } .rb-owes { color: var(--brick, #b42318); }
+  .rb-act { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; } .rb-act .linkish { padding: 0; min-height: 0; font-size: .78rem; }
+  .rb-ok { color: #067647; font-weight: 600; font-size: .82rem; } .rb-late { color: var(--brick, #b42318); font-size: .74rem; font-weight: 600; }
+  .rb-ll { border: 1px solid var(--line); border-radius: 14px; padding: 4px 12px; margin-top: 10px; }
+  .rb-llh { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; flex-wrap: wrap; } .rb-llh b { font-size: .95rem; } .rb-llh span { display: block; font-size: .82rem; color: var(--ink-soft); }
+  .rb-stmt { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+  @media (max-width: 640px) {
+    #rentBoard .rb-tiles { grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px; } .rb-tiles .tile { padding: 6px 7px; } .rb-tiles .tile .k { font-size: .62rem; } .rb-tiles .tile .v { font-size: .95rem; margin-top: 2px; } .rb-tiles .tile small { font-size: .62rem; margin-top: 2px; }
+    .rb-row, .rb-pay { flex-wrap: wrap; gap: 8px 10px; } .rb-act { flex-direction: row; align-items: center; width: 100%; justify-content: flex-end; }
+    .rb-pay .rb-act { justify-content: flex-start; }
+  }
+  .act-links { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin-bottom: 12px; } .act-links-b { display: flex; gap: 8px; flex-wrap: wrap; }
   .prop-added { font-size: .74rem; color: var(--ink-faint); margin-top: 2px; }
   .tn-paddr { padding: 0 !important; font-weight: 600; white-space: normal; text-align: left; justify-content: flex-start; height: auto; min-height: 0; line-height: 1.35; }
   .tn-pacts { display: flex; gap: 6px; align-items: center; }
@@ -1455,8 +1486,6 @@
     <button class="nav" type="button" id="navRepLink" title="Send the report-a-repair link to anyone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg><span>Send repair link</span></button>
     <button class="nav" type="button" id="navAlerts" title="Get alerts on your phone: new offers, deposits, landlord forms"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>Phone alerts</span></button>
     <div class="side-sec">Links</div>
-    <a class="nav" href="/" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Tenant report page</a>
-    <a class="nav" href="/offer" target="_blank" rel="noopener" style="text-decoration:none" title="The form applicants fill in to make an offer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offer form (applicants)</a>
     <a class="nav" href="/admin#offers" id="navOffersLink" style="text-decoration:none" title="Where the offer forms are collected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offers collected <span class="badge hot" id="sOffers2" hidden>0</span></a>
     <div class="grow"></div>
     <div class="side-foot"><div class="deployed" id="whoAmI" hidden></div><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="myPwBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg> My password</button><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
@@ -1600,6 +1629,8 @@
       <!-- CONTRACTOR PAYMENTS: what's owed for each contractor's jobs -->
       <!-- TENANCIES: new lets, their documents and welcome emails -->
       <div id="tcyView" hidden>
+        <div class="tcy-modes" id="tcyModes" role="tablist"><button type="button" data-tmode="list" class="on">📋 Tenancies</button><button type="button" data-tmode="rent">💷 Rent &amp; landlords <span class="rb-badge" id="rbBadge" hidden></span></button></div>
+        <div id="rentBoard" hidden></div>
         <div id="tcyListView">
           <div class="toolbar">
             <input class="inp search" id="tcySearch" type="search" placeholder="Search by address, tenant or landlord">
@@ -1688,6 +1719,11 @@
 
       <!-- ACTIVITY: where staff are signed in, visits to the tenant pages -->
       <div id="actView" hidden>
+        <div class="card act-links"><b>🔗 Links &amp; alerts</b><div class="act-links-b">
+          <button type="button" class="btn small" data-act-alerts>🔔 Phone alerts</button>
+          <a class="btn small" href="/" target="_blank" rel="noopener">🛠 Tenant report page ↗</a>
+          <a class="btn small" href="/offer" target="_blank" rel="noopener">📝 Offer form (applicants) ↗</a>
+        </div></div>
         <details class="card act-sec" data-sec="sent" id="actSentSec"><summary><span class="act-sec-t">✉ Sent emails</span><span class="act-sum" id="sum_sent"></span><span class="act-chev" aria-hidden="true"></span></summary><div class="act-sec-b" id="actSentSlot"></div></details>
         <details class="card act-sec staff-team" data-sec="team" id="teamSec" hidden open>
           <summary><span class="act-sec-t">👥 Team — who’s doing what</span><span class="act-sum" id="sum_team"></span><span class="act-chev" aria-hidden="true"></span></summary>
@@ -3900,7 +3936,7 @@
     if (v === 'sent' || (v === 'act' && !staffMode)) loadSent();
     if (v === 'team') { loadTeam(); $('teamSec').open = true; }
     if (v === 'who') loadTeam();
-    if (v === 'tcy' && !openTcyId) renderTenancies();
+    if (v === 'tcy' && !openTcyId) tcyShowList();
     if (v === 'act') { loadActivity(); if (!staffMode) loadTeam(); }
     if (v === 'ctr') renderContractorPage();
     if (v === 'cts') renderContractors();
@@ -5692,7 +5728,7 @@
     var desc = issue + (j.location ? ' (' + j.location + ')' : '') + (j.completion_notes ? '. Work carried out: ' + j.completion_notes : '');
     $('invLines').innerHTML = invLineHtml(desc, j.landlord_charge != null ? Number(j.landlord_charge).toFixed(2) : '') +
       (j.id === openJobId ? jobParts : []).filter(function(x){ return num(x.charge); }).map(function(x){ return invLineHtml('Parts: ' + x.description, Number(x.charge).toFixed(2)); }).join('');
-    setVat(false);
+    setVat(!!(j && j.charge_vat));   // the charge to the landlord was set as + VAT
     $('invAiNote').hidden = true;
     $('invAi').hidden = !meta.canAi;
     $('invRef').value = invPayRef(j.property_address);
@@ -6711,8 +6747,8 @@
       '<div class="card" data-pane="money"><h3>Costs &amp; profit</h3>' +
         '<div class="grid3">' +
           '<div><label class="lbl" for="fEst">Estimated cost (£)</label><input class="inp" id="fEst" inputmode="decimal" value="' + esc(j.estimated_cost == null ? '' : j.estimated_cost) + '"></div>' +
-          '<div><label class="lbl" for="fAct">Actual cost (£)</label><input class="inp" id="fAct" inputmode="decimal" value="' + esc(j.actual_cost == null ? '' : j.actual_cost) + '"></div>' +
-          '<div><label class="lbl" for="fCharge">Charge to landlord (£)' + (jobParts.length ? ' <span style="font-weight:500;color:var(--ink-faint)">+ parts below</span>' : '') + '</label><input class="inp" id="fCharge" inputmode="decimal" value="' + esc(j.landlord_charge == null ? '' : j.landlord_charge) + '"></div>' +
+          '<div><label class="lbl" for="fAct">Actual cost (£)</label><input class="inp" id="fAct" inputmode="decimal" value="' + esc(j.actual_cost == null ? '' : j.actual_cost) + '"><label class="vat-tick"><input type="checkbox" id="fActVat"' + (j.cost_vat ? ' checked' : '') + '> + VAT (20%) <span id="fActGross"></span></label></div>' +
+          '<div><label class="lbl" for="fCharge">Charge to landlord (£)' + (jobParts.length ? ' <span style="font-weight:500;color:var(--ink-faint)">+ parts below</span>' : '') + '</label><input class="inp" id="fCharge" inputmode="decimal" value="' + esc(j.landlord_charge == null ? '' : j.landlord_charge) + '"><label class="vat-tick"><input type="checkbox" id="fChargeVat"' + (j.charge_vat ? ' checked' : '') + '> + VAT (20%) <span id="fChargeGross"></span></label></div>' +
         '</div>' + mkChips('data-mk-base="#fAct,#fEst" data-mk-target="#fCharge"', 'Our price = contractor’s price +') +
         '<div class="profit-box" id="profitBox"><div><div class="lbl2" id="profitLbl">Profit</div><div class="big" id="profitVal">—</div></div><div class="lbl2" id="profitMargin"></div></div>' +
         (j.assigned_to && j.actual_cost != null
@@ -7407,10 +7443,13 @@
       box.classList.toggle('neg', !!p && p.value < 0);
       $('profitLbl').textContent = p && p.estimated ? 'Estimated profit (from estimated cost)' : 'Profit';
       $('profitVal').textContent = p ? gbp(p.value) : '—';
-      $('profitMargin').textContent = p && p.margin !== null ? Math.round(p.margin * 100) + '% margin'
+      $('profitMargin').textContent = p && p.margin !== null ? Math.round(p.margin * 100) + '% margin' + ($('fActVat').checked || $('fChargeVat').checked ? ' · before VAT' : '')
         : 'Enter the charge to the landlord and a cost to see the profit';
+      // With VAT: the total including VAT next to each figure (the figures themselves are before VAT).
+      [['fAct', 'fActVat', 'fActGross'], ['fCharge', 'fChargeVat', 'fChargeGross']].forEach(function(f){ var v = readMoney(f[0]); $(f[2]).textContent = $(f[1]).checked && v ? '= ' + gbp(Math.round(v * 120) / 100) + ' with VAT' : ''; });
     }
     ['fEst', 'fAct', 'fCharge'].forEach(function(id){ $(id).addEventListener('input', updateProfit); });
+    ['fActVat', 'fChargeVat'].forEach(function(id){ $(id).addEventListener('change', updateProfit); });
     updateProfit();
 
     $('saveBtn').addEventListener('click', function(){
@@ -7443,6 +7482,8 @@
         if (v !== num(j[pair[1]])) body[pair[1]] = v;
       });
       if (body.__bad) { toast('Please enter costs as numbers, e.g. 125.50'); $(body.__bad).focus(); return; }
+      if ($('fActVat').checked !== !!j.cost_vat) body.cost_vat = $('fActVat').checked;
+      if ($('fChargeVat').checked !== !!j.charge_vat) body.charge_vat = $('fChargeVat').checked;
       if (!Object.keys(body).length) { toast('Nothing has changed'); return; }
       $('saveBtn').disabled = true;
       api('PATCH', '/api/admin/jobs/' + j.id, body).then(function(d){
@@ -8079,7 +8120,9 @@
   var payTab = 'owed';
   function isOwed(j){ return j.assigned_to && num(j.actual_cost) > 0 && !j.contractor_paid_at && j.status !== 'Cancelled'; }
   function needsCost(j){ return j.assigned_to && j.status === 'Completed' && j.actual_cost == null; }
-  function owedTotal(){ return jobs.filter(isOwed).reduce(function(a, j){ return a + num(j.actual_cost); }, 0); }
+  // What we actually pay the contractor: their price, plus VAT when they charge it.
+  function costToPay(j){ var c = num(j.actual_cost) || 0; return j.cost_vat ? Math.round(c * 120) / 100 : c; }
+  function owedTotal(){ return jobs.filter(isOwed).reduce(function(a, j){ return a + costToPay(j); }, 0); }
   function markPaid(ids, paid){
     return api('POST', '/api/admin/contractor-payments', { job_ids: ids, paid: paid }).then(function(d){
       if (!d.ok) { toast('Couldn’t update the payment'); return; }
@@ -8098,7 +8141,7 @@
       '<div class="tile alert' + (owed.length ? ' has' : '') + '"><div class="k">Owed to contractors</div><div class="v">' + gbp(owedTotal()) + '</div></div>' +
       '<div class="tile"><div class="k">Jobs to pay</div><div class="v">' + owed.length + '</div></div>' +
       '<div class="tile warnish' + (nocost.length ? ' has' : '') + '"><div class="k">Completed, no cost yet</div><div class="v">' + nocost.length + '</div></div>' +
-      '<div class="tile good"><div class="k">Paid this month</div><div class="v">' + gbp(paidMonth.reduce(function(a, j){ return a + num(j.actual_cost); }, 0)) + '</div></div>';
+      '<div class="tile good"><div class="k">Paid this month</div><div class="v">' + gbp(paidMonth.reduce(function(a, j){ return a + costToPay(j); }, 0)) + '</div></div>';
     $('payNoCostN').textContent = nocost.length || '';
     $('payTabs').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.dataset.pay === payTab); });
     var list = (payTab === 'owed' ? owed : payTab === 'nocost' ? nocost : jobs.filter(function(j){ return j.contractor_paid_at; }))
@@ -8112,7 +8155,7 @@
     order.sort(function(a, b){ return a.localeCompare(b); });
     $('payList').innerHTML = order.map(function(name){
       var g = groups[name].sort(function(a, b){ return new Date(payTab === 'paid' ? b.contractor_paid_at : (a.completed_at || a.created_at)) - new Date(payTab === 'paid' ? a.contractor_paid_at : (b.completed_at || b.created_at)); });
-      var total = g.reduce(function(a, j){ return a + (num(j.actual_cost) || 0); }, 0);
+      var total = g.reduce(function(a, j){ return a + costToPay(j); }, 0);
       var c = contractorByName(name) || {};
       return '<div class="list pay-group" data-who="' + esc(name) + '"><div class="pay-head"><div class="who" data-ct-open="' + esc(name) + '" style="cursor:pointer" title="See all of ' + esc(name) + '’s jobs">' + avatar(name) + '<div><strong>' + esc(name) + ' ›</strong><span>' +
           esc([c.trade, g.length + ' job' + (g.length === 1 ? '' : 's')].filter(Boolean).join(' · ')) + '</span></div></div>' +
@@ -8125,7 +8168,7 @@
             '<div class="addr" role="button" tabindex="0" data-open="' + j.id + '" title="Open ' + esc(j.ref) + '">' + esc(j.property_address || 'No address') + '<small>' + esc(j.ref + ' · ' + issueOf(j)) + '</small></div>' +
             '<div class="when">' + esc(payTab === 'paid' ? 'Paid ' + fmtShort(j.contractor_paid_at) : j.completed_at ? 'Done ' + fmtShort(j.completed_at) : j.status) + '</div>' +
             '<div class="amt">' + (payTab === 'nocost' ? '<button type="button" class="link" data-open-money="' + j.id + '">Add cost</button>'
-              : gbp(j.actual_cost) + (payTab === 'paid' ? ' <button type="button" class="link" style="font-size:.76rem" data-unpay="' + j.id + '">Undo</button>' : '')) + '</div>' +
+              : gbp(costToPay(j)) + (j.cost_vat ? '<small style="display:block;font-weight:500;color:var(--ink-faint)">inc VAT</small>' : '') + (payTab === 'paid' ? ' <button type="button" class="link" style="font-size:.76rem" data-unpay="' + j.id + '">Undo</button>' : '')) + '</div>' +
           '</div>';
         }).join('') + '</div>';
     }).join('');
@@ -9384,6 +9427,7 @@
     renderOffers(); $('offAlertStaff').hidden = false; $('offAlertStaff').open = true; $('alertsModal').hidden = false; offAlertQr();
   });
   $('alertsClose').addEventListener('click', function(){ $('alertsModal').hidden = true; });
+  document.addEventListener('click', function(e){ if (e.target.closest('[data-act-alerts]')) $('navAlerts').click(); });
   $('alertsModal').addEventListener('click', function(e){ if (e.target === this) this.hidden = true; });
   $('offAlertStaff').addEventListener('toggle', function(){ try { localStorage.setItem('rr_alerts_open', this.open ? '1' : '0'); } catch (e) {} if (this.open) offAlertQr(); });
   $('offAlertTest').addEventListener('click', function(){ var b = this; b.disabled = true; $('offAlertTestMsg').textContent = 'Sending…';
@@ -11309,6 +11353,7 @@
       if (!d.ok) return; stmtsBy = {}; stmtToday = d.today; d.items.forEach(function(x){ stmtsBy[x.tenancy_id] = x; });
       renderStmtBanner(); if (!$('stModal').hidden) renderStmtList();
       if ($('tfStmts') && openTcyId && openTcyId !== 'new') $('tfStmts').innerHTML = stmtCard(openTcyId);
+      if (rbShown()) loadRentBoard(true);   // a statement sent from the rent board
     })['catch'](function(){});
   }
   function monthName(iso){ var d = parseDay(iso); return d ? MONTHS_EN[d.getMonth()] + ' ' + d.getFullYear() : ''; }
@@ -12397,7 +12442,124 @@
     renderTenancies();
   });
   $('tcyFromTerms').addEventListener('click', askFromTerms);
-  function tcyShowList(){ openTcyId = null; tcyDraft = null; $('tcyDetail').hidden = true; $('tcyListView').hidden = false; renderTenancies(); }
+  // ---------- Rent & landlords ----------
+  // Each rent date for tenancies where we collect the rent: collect it (landlord invoices due from it
+  // come off), then send the landlord what's theirs and their statement. Same figures as the statements.
+  var tcyMode = (function(){ try { return localStorage.getItem('rr_tcy_mode') === 'rent' ? 'rent' : 'list'; } catch (e) { return 'list'; } })();
+  var rbData = null, rbMonth = '', rbBusy = false;
+  function rbShown(){ return view === 'tcy' && !openTcyId && tcyMode === 'rent' && $('rentBoard') && !$('rentBoard').hidden; }
+  function loadRentBoard(quiet){
+    if (!meta.db || rbBusy) return Promise.resolve(); rbBusy = true;
+    if (!quiet && !rbData) $('rentBoard').innerHTML = '<div class="card"><p class="muted-note" style="margin:0">Loading the rents…</p></div>';
+    var stmts = Object.keys(stmtsBy).length ? Promise.resolve() : loadStatements();
+    return Promise.all([api('GET', '/api/admin/rent-board' + (rbMonth ? '?month=' + rbMonth : '')), stmts]).then(function(r){
+      rbBusy = false; var d = r[0]; if (!d || !d.ok) { $('rentBoard').innerHTML = '<div class="card"><p class="err">Couldn’t load the rents.</p></div>'; return; }
+      rbData = d; if (!rbMonth) rbMonth = d.month; renderRentBoard(); rbBadge();
+    }, function(){ rbBusy = false; });
+  }
+  function rbBadge(){
+    if (!rbData || rbData.month !== (rbData.today || '').slice(0, 7)) return;
+    var n = rbData.items.filter(function(x){ return x.status === 'overdue' || x.status === 'today'; }).length;
+    $('rbBadge').hidden = !n; $('rbBadge').textContent = n;
+  }
+  function rbDay(iso){ var d = parseDay(iso); return d ? d.getDate() + ' ' + MONTHS_EN[d.getMonth()].slice(0, 3) : iso; }
+  function renderRentBoard(){
+    var d = rbData, items = d.items, today = d.today, isNow = d.month === today.slice(0, 7);
+    var due = items.filter(function(x){ return !x.collected; }), got = items.filter(function(x){ return x.collected; });
+    var over = due.filter(function(x){ return x.status === 'overdue'; }), tod = due.filter(function(x){ return x.status === 'today'; }), up = due.filter(function(x){ return x.status === 'upcoming'; });
+    var toSend = got.filter(function(x){ return !x.paid && x.to_landlord > 0; }), sent = items.filter(function(x){ return x.paid; });
+    var sum = function(l, k){ return l.reduce(function(a, x){ return a + (Number(k === 'paid' ? x.paid.amount : x[k]) || 0); }, 0); };
+    var ym = d.month.split('-'), mLabel = MONTHS_EN[Number(ym[1]) - 1] + ' ' + ym[0];
+    var keepTxt = function(x){
+      var bits = [];
+      if (x.fees) bits.push('our fees ' + gbp(x.fees));
+      x.recovered.forEach(function(r){ bits.push(r.label.replace(/ \(repairs, inc\. VAT\)/, '') + ' ' + gbp(r.amount)); });
+      x.pending.forEach(function(i){ bits.push('invoice ' + (i.number || '') + ' ' + gbp(i.total)); });
+      if (x.bf) bits.push('owed from before ' + gbp(x.bf));
+      return bits.join(' · ');
+    };
+    var row = function(x){
+      var k = x.tenancy_id + '|' + x.from, owes = x.to_landlord < 0;
+      return '<div class="rb-row rb-' + x.status + '"><div class="rb-day"><b>' + esc(rbDay(x.from).split(' ')[0]) + '</b><span>' + esc(rbDay(x.from).split(' ')[1] || '') + '</span></div>' +
+        '<div class="rb-main"><div class="rb-addr"><button type="button" class="linkish" data-rb-open="' + x.tenancy_id + '">' + esc(x.address) + '</button></div>' +
+        '<div class="rb-sub">' + esc([x.tenants.join(', '), x.landlord ? 'Landlord: ' + x.landlord : '', x.pay_ref ? 'Ref ' + x.pay_ref : ''].filter(Boolean).join(' · ')) + '</div>' +
+        '<div class="rb-money"><span>Collect <b>' + gbp(x.rent) + '</b></span><span class="rb-arrow">→</span>' + (owes ? '<span class="rb-owes">Landlord owes us <b>' + gbp(-x.to_landlord) + '</b></span>' : '<span>Send landlord <b>' + gbp(x.to_landlord) + '</b></span>') + '</div>' +
+        (keepTxt(x) ? '<div class="rb-keep">We keep: ' + esc(keepTxt(x)) + '</div>' : '') +
+        (x.pending.length ? '<div class="rb-inv">🧾 ' + x.pending.length + ' landlord invoice' + (x.pending.length === 1 ? '' : 's') + ' come' + (x.pending.length === 1 ? 's' : '') + ' off this rent when you mark it collected</div>' : '') +
+        '</div><div class="rb-act">' + (x.collected ? '<span class="rb-ok">✓ Collected ' + esc(fmtShort(x.collected.at).split(',')[0]) + (x.collected.amount ? ' · ' + esc(gbp(x.collected.amount)) : '') + '</span><button type="button" class="linkish" data-rb-uncollect="' + k + '">Undo</button>'
+          : '<button type="button" class="btn small' + (x.status !== 'upcoming' ? ' primary' : '') + '" data-rb-collect="' + k + '">✓ Rent collected</button>' + (x.status === 'overdue' ? '<span class="rb-late">' + Math.round((parseDay(today) - parseDay(x.from)) / 86400000) + ' days late</span>' : '')) + '</div></div>';
+    };
+    var group = function(title, list, cls){ return list.length ? '<div class="rb-group ' + (cls || '') + '"><div class="rb-gh">' + title + ' <span>' + list.length + ' · ' + gbp(sum(list, 'rent')) + '</span></div>' + list.map(row).join('') + '</div>' : ''; };
+    // Landlords: what to send each one, property by property, with the statement and "paid".
+    var byLl = {};
+    items.filter(function(x){ return x.collected || x.paid; }).forEach(function(x){ var key = x.landlord || 'No landlord saved'; (byLl[key] = byLl[key] || []).push(x); });
+    var llHtml = Object.keys(byLl).sort().map(function(name){
+      var list = byLl[name], left = list.filter(function(x){ return !x.paid && x.to_landlord > 0; });
+      var unsent = list.filter(function(x){ return x.stmt && (!x.stmt.sent || x.stmt.changed); });
+      return '<div class="rb-ll"><div class="rb-llh"><div><b>' + esc(name) + '</b><span>' + (left.length ? 'To send: <b>' + gbp(sum(left, 'to_landlord')) + '</b>' : '✓ All sent') + '</span></div>' +
+        (unsent.length > 1 && list[0].landlord_email ? '<button type="button" class="btn small" data-rb-mailall="' + esc(name) + '">✉ Email ' + unsent.length + ' statements</button>' : '') + '</div>' +
+        list.map(function(x){
+          var k = x.tenancy_id + '|' + x.from, st = x.stmt;
+          return '<div class="rb-pay"><div class="rb-main"><div class="rb-addr">' + esc(shortAddr(x.address)) + ' <span class="muted-note" style="margin:0">· rent ' + esc(rbDay(x.from)) + '</span></div>' +
+            '<div class="rb-money"><span>' + (x.to_landlord < 0 ? '<span class="rb-owes">Landlord owes us ' + gbp(-x.to_landlord) + '</span>' : 'Send <b>' + gbp(x.paid ? x.paid.amount : x.to_landlord) + '</b>') + '</span></div>' +
+            '<div class="rb-stmt">' + (st ? '<button type="button" class="btn small ghost" data-st-pdf="' + k + '">📄 Statement</button>' + (x.landlord_email ? '<button type="button" class="btn small ghost" data-st-mail="' + k + '">✉ Email statement</button>' : '') +
+              (st.sent && !st.changed ? '<span class="rb-ok">✓ Statement sent</span>' : '<button type="button" class="btn small ghost" data-st-sent="' + k + '">✓ Statement sent</button>') : '<span class="muted-note" style="margin:0">No statement for this month</span>') + '</div></div>' +
+            '<div class="rb-act">' + (x.paid ? '<span class="rb-ok">✓ Paid ' + esc(fmtShort(x.paid.at).split(',')[0]) + (x.paid.ref ? ' · ' + esc(x.paid.ref) : '') + '</span><button type="button" class="linkish" data-rb-unpay="' + k + '">Undo</button>'
+              : x.to_landlord > 0 ? '<button type="button" class="btn small primary" data-rb-pay="' + k + '">✓ Paid landlord</button>' : '') + '</div></div>';
+        }).join('') + '</div>';
+    }).join('');
+    $('rentBoard').innerHTML =
+      '<div class="rb-head"><button type="button" class="btn small ghost" data-rb-month="-1" aria-label="Previous month">‹</button><h3>' + esc(mLabel) + '</h3><button type="button" class="btn small ghost" data-rb-month="1" aria-label="Next month">›</button>' + (isNow ? '' : '<button type="button" class="linkish" data-rb-month="0">This month</button>') + '</div>' +
+      '<div class="tiles rb-tiles">' +
+        '<div class="tile' + (over.length ? ' alert has' : '') + '"><div class="k">Overdue</div><div class="v">' + gbp(sum(over, 'rent')) + '</div><small>' + over.length + ' rent' + (over.length === 1 ? '' : 's') + '</small></div>' +
+        '<div class="tile' + (tod.length ? ' warnish has' : '') + '"><div class="k">Due today</div><div class="v">' + gbp(sum(tod, 'rent')) + '</div><small>' + tod.length + '</small></div>' +
+        '<div class="tile"><div class="k">Still to collect</div><div class="v">' + gbp(sum(due, 'rent')) + '</div><small>' + due.length + ' this month</small></div>' +
+        '<div class="tile good"><div class="k">Collected</div><div class="v">' + gbp(sum(got, 'rent')) + '</div><small>' + got.length + '</small></div>' +
+        '<div class="tile' + (toSend.length ? ' warnish has' : '') + '"><div class="k">To send landlords</div><div class="v">' + gbp(sum(toSend, 'to_landlord')) + '</div><small>' + toSend.length + '</small></div>' +
+        '<div class="tile good"><div class="k">Sent to landlords</div><div class="v">' + gbp(sum(sent, 'paid')) + '</div><small>' + sent.length + '</small></div>' +
+      '</div>' +
+      '<div class="card rb-card"><h3>💷 Collect rent</h3>' +
+        (items.length ? group('⚠️ Overdue', over, 'rb-g-over') + group('Due today', tod, 'rb-g-today') + group('Coming up', up) + group('✓ Collected', got, 'rb-g-done')
+          : '<p class="muted-note" style="margin:0">No rents due in ' + esc(mLabel) + ' for tenancies where we collect the rent.</p>') +
+        '<p class="muted-note" style="margin:10px 0 0">Only tenancies where <b>we</b> collect the rent' + (d.not_ours ? ' — ' + d.not_ours + ' where the landlord collects it aren’t shown (set “Who collects the rent?” on the tenancy)' : '') + '. Tracking started ' + esc(longDay(d.since)) + '.</p></div>' +
+      '<div class="card rb-card"><h3>🏦 Pay landlords</h3>' + (llHtml || '<p class="muted-note" style="margin:0">Once a rent is collected, what to send its landlord shows here — with their statement.</p>') + '</div>';
+  }
+  function rbFind(k){ var a = String(k).split('|'); return (rbData && rbData.items || []).filter(function(x){ return x.tenancy_id === Number(a[0]) && x.from === a[1]; })[0]; }
+  $('tcyModes').addEventListener('click', function(e){
+    var b = e.target.closest('[data-tmode]'); if (!b) return;
+    tcyMode = b.dataset.tmode; try { localStorage.setItem('rr_tcy_mode', tcyMode); } catch (er) {}
+    $('tcyModes').querySelectorAll('[data-tmode]').forEach(function(x){ x.classList.toggle('on', x === b); });
+    tcyShowList();
+  });
+  $('tcyModes').querySelectorAll('[data-tmode]').forEach(function(x){ x.classList.toggle('on', x.dataset.tmode === tcyMode); });
+  $('rentBoard').addEventListener('click', function(e){
+    if (e.target.closest('[data-st-pdf],[data-st-mail],[data-st-sent],[data-st-dl],[data-st-unsent]')) { stmtClick(e); return; }
+    var mo = e.target.closest('[data-rb-month]');
+    if (mo) { var n = Number(mo.dataset.rbMonth); rbMonth = n === 0 ? '' : addMonthsYm(rbMonth || rbData.month, n); rbData = null; loadRentBoard(); return; }
+    var op = e.target.closest('[data-rb-open]'); if (op) { openTenancy(Number(op.dataset.rbOpen)); return; }
+    var ma = e.target.closest('[data-rb-mailall]');
+    if (ma) { var lst = rbData.items.filter(function(x){ return (x.landlord || 'No landlord saved') === ma.dataset.rbMailall && x.stmt && (!x.stmt.sent || x.stmt.changed); }).map(function(x){ var f = stmtFind(x.tenancy_id + '|' + x.from); return f && f.m ? f : null; }).filter(Boolean); if (lst.length) stmtEmailMany(lst); return; }
+    var c = e.target.closest('[data-rb-collect]');
+    if (c) { var x = rbFind(c.dataset.rbCollect); if (!x) return;
+      var amt = prompt('Rent collected for ' + shortAddr(x.address) + ' (due ' + longDay(x.from) + ')' + (x.pending.length ? '\n\n' + x.pending.length + ' landlord invoice' + (x.pending.length === 1 ? '' : 's') + ' (' + gbp(x.pending_total) + ') will be taken off it.' : '') + '\n\nAmount received:', String(x.rent));
+      if (amt === null) return; busy(c, true, 'Saving…');
+      api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-collected', { from: x.from, amount: amt }).then(function(d){ busy(c, false); if (!d || !d.ok) { toast('Couldn’t save that'); return; } toast('✓ Rent collected' + (d.invoices ? ' · ' + d.invoices + ' invoice' + (d.invoices === 1 ? '' : 's') + ' taken off it' : '')); loadAllInvoices && loadAllInvoices(); loadStatements(); loadRentBoard(true); });
+      return; }
+    var u = e.target.closest('[data-rb-uncollect]');
+    if (u) { var xu = rbFind(u.dataset.rbUncollect); if (!xu || !confirm('Mark the rent due ' + longDay(xu.from) + ' as not collected? Any landlord invoices taken off it go back to unpaid.')) return;
+      api('POST', '/api/admin/tenancies/' + xu.tenancy_id + '/rent-collected', { from: xu.from, undo: true }).then(function(){ loadStatements(); loadRentBoard(true); }); return; }
+    var pb = e.target.closest('[data-rb-pay]');
+    if (pb) { var xp = rbFind(pb.dataset.rbPay); if (!xp) return;
+      var ref = prompt('Sent ' + gbp(xp.to_landlord) + ' to ' + (xp.landlord || 'the landlord') + ' for ' + shortAddr(xp.address) + '?\n\nPayment reference (optional):', ''); if (ref === null) return;
+      busy(pb, true, 'Saving…');
+      api('POST', '/api/admin/tenancies/' + xp.tenancy_id + '/landlord-paid', { from: xp.from, amount: xp.to_landlord, ref: ref }).then(function(d){ busy(pb, false); if (!d || !d.ok) { toast('Couldn’t save that'); return; } toast('✓ Marked as paid to the landlord'); loadRentBoard(true); });
+      return; }
+    var up = e.target.closest('[data-rb-unpay]');
+    if (up) { var xq = rbFind(up.dataset.rbUnpay); if (!xq || !confirm('Mark the payment to the landlord as not sent?')) return;
+      api('POST', '/api/admin/tenancies/' + xq.tenancy_id + '/landlord-paid', { from: xq.from, undo: true }).then(function(){ loadRentBoard(true); }); return; }
+  });
+  function addMonthsYm(ym, n){ var a = String(ym).split('-'), d = new Date(Date.UTC(Number(a[0]), Number(a[1]) - 1 + n, 1)); return d.toISOString().slice(0, 7); }
+  function tcyShowList(){ openTcyId = null; tcyDraft = null; $('tcyDetail').hidden = true; $('tcyModes').hidden = false; if (tcyMode === 'rent') { $('tcyListView').hidden = true; $('rentBoard').hidden = false; loadRentBoard(); } else { $('rentBoard').hidden = true; $('tcyListView').hidden = false; renderTenancies(); } }
   function openTenancy(id, preset){
     var x = id === 'new' ? null : tenancies.filter(function(t){ return t.id === id; })[0];
     if (id !== 'new' && !x) { tcyShowList(); return; }
@@ -12416,7 +12578,7 @@
     // Blank tenant details filled from the property are saved straight away.
     if (filledN) api('PUT', '/api/admin/tenancies/' + x.id, tcyDraft).then(function(r){ if (r.ok) { x.data = JSON.parse(JSON.stringify(tcyDraft)); tcyLog('Tenants filled in from those saved at the property'); } });
     if (view !== 'tcy') showView('tcy'); else pushNav();
-    $('tcyListView').hidden = true; $('tcyDetail').hidden = false;
+    $('tcyListView').hidden = true; $('rentBoard').hidden = true; $('tcyModes').hidden = true; $('tcyDetail').hidden = false;
     var go = function(){ renderTcyForm(); scrollTop(); if (filledN) toast('Tenants filled in from those saved at the property'); };
     tcySet ? go() : loadTcySettings().then(go);
   }
@@ -14461,13 +14623,11 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navRepLink', 'Send repair link'], ['navAlerts', 'Phone alerts'], ['navAvail', 'Available properties'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
-    $('moreList').innerHTML = MORE.map(function(t){ return '<button type="button" class="more-item" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
-      '<a class="more-item" href="/" target="_blank" rel="noopener">' + ($('navEmail').parentNode.querySelector('a.nav svg') || { outerHTML: '' }).outerHTML + '<span>Tenant report page</span></a>' +
-      '<a class="more-item" href="/offer" target="_blank" rel="noopener">' + ($('navEmail').parentNode.querySelector('a.nav svg') || { outerHTML: '' }).outerHTML + '<span>Offer form (applicants)</span></a>';
+    $('moreList').innerHTML = MORE.map(function(t){ return '<button type="button" class="more-item" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('');
     var closeMore = function(){ $('moreSheet').hidden = true; };
     $('tabbar').addEventListener('click', function(e){
       var b = e.target.closest('[data-go]');
