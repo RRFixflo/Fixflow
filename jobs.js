@@ -4998,8 +4998,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
         '.lc-res h3{margin:0 0 4px;font-size:1.1rem;text-transform:none;letter-spacing:0}.lc-res.yes h3{color:#b42318}.lc-res.maybe h3{color:#b54708}.lc-res.no h3{color:#067647}.lc-res ul{margin:8px 0 0;padding-left:18px}.lc-res li{margin:4px 0;font-size:.92rem}.lc-res .lc-a{display:inline-block;margin-top:10px;font-weight:700}.lc-file{margin-top:10px;padding:10px 12px;border-radius:12px;background:#fff;font-size:.9rem}</style>' +
       '<div class="card"><h2>📜 Does my property need a licence?</h2><p class="muted" style="margin:-2px 0 0">Answer a few questions and we’ll tell you whether the council needs the property to be licensed.</p>' +
         '<form id="lcForm" novalidate>' +
-          '<div class="lc-q"><b>Property postcode</b><input class="lc-in" id="lcPc" autocomplete="postal-code" placeholder="e.g. E13 9AB" style="text-transform:uppercase"></div>' +
-          '<div class="lc-q"><b>First line of the address <span class="muted" style="font-weight:400">(optional)</span></b><input class="lc-in" id="lcAddr" placeholder="e.g. Flat 2, 14 Sample Road"></div>' +
+          '<div class="lc-q"><b>Property postcode</b><div style="display:flex;gap:8px"><input class="lc-in" id="lcPc" autocomplete="postal-code" placeholder="e.g. E13 9AB" style="text-transform:uppercase;flex:1;min-width:0"><button type="button" id="lcFind" style="flex:none;padding:0 14px;border:1px solid #0b1f3a;border-radius:12px;background:#fff;color:#0b1f3a;font:inherit;font-weight:700;cursor:pointer">Find address</button></div></div>' +
+          '<div class="lc-q" id="lcSelQ" hidden><b>Pick the address</b><select class="lc-in" id="lcSel"></select><div class="muted" id="lcSelNote" style="font-size:.8rem;margin-top:4px"></div></div>' +
+          '<div class="lc-q"><b>Address <span class="muted" style="font-weight:400" id="lcAddrHint">(or type it)</span></b><input class="lc-in" id="lcAddr" placeholder="e.g. Flat 2, 14 Sample Road"></div>' +
           '<div class="lc-q"><b>Who will live there?</b><div class="lc-opts"><label><input type="radio" name="lcHh" value="single" checked> One household (a person, couple or family)</label><label><input type="radio" name="lcHh" value="shared"> Sharers from different households</label></div></div>' +
           '<div class="lc-q"><b>How many people in total?</b><input class="lc-in" id="lcPeople" inputmode="numeric" value="2" style="max-width:120px"></div>' +
           '<div class="lc-shared" hidden><div class="lc-q"><b>How many separate households?</b><input class="lc-in" id="lcHhN" inputmode="numeric" value="2" style="max-width:120px"><div class="muted" style="font-size:.8rem;margin-top:4px">A couple or a family counts as one household; each unrelated person is their own.</div></div>' +
@@ -5012,13 +5013,21 @@ document.querySelectorAll('.lcu').forEach(function(box){
         'var e=function(v){return String(v==null?"":v).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c];});};' +
         'var v=function(n){var x=f.querySelector("input[name="+n+"]:checked");return x?x.value:"";};' +
         'var sync=function(){f.querySelector(".lc-shared").hidden=v("lcHh")!=="shared";};f.addEventListener("change",sync);sync();' +
+        // Find the actual addresses at the postcode (energy certificate register) to pick from.
+        'var pcIn=document.getElementById("lcPc"),sel=document.getElementById("lcSel"),selQ=document.getElementById("lcSelQ"),selN=document.getElementById("lcSelNote"),ad=document.getElementById("lcAddr"),lastPc="";' +
+        'var find=function(){var pc=pcIn.value.trim();if(!pc||pc.replace(/\\s/g,"").toUpperCase()===lastPc)return;lastPc=pc.replace(/\\s/g,"").toUpperCase();er.textContent="";selQ.hidden=false;sel.innerHTML="<option>Looking up addresses…</option>";selN.textContent="";' +
+          'fetch("/l/"+T+"/addresses?postcode="+encodeURIComponent(pc)).then(function(r){return r.json();}).then(function(d){if(!d.ok){selQ.hidden=true;er.textContent="That doesn’t look like a UK postcode.";return;}' +
+            'if(!d.addresses.length){sel.innerHTML="<option value=\\"\\">No addresses found — type it below</option>";selN.textContent=d.unavailable?"The address list isn’t available right now — please type the address.":"";return;}' +
+            'sel.innerHTML="<option value=\\"\\">Choose the address ("+d.addresses.length+" found)</option>"+d.addresses.map(function(a){return"<option>"+e(a)+"</option>";}).join("")+"<option value=\\"\\">It’s not listed — I’ll type it</option>";selN.textContent="Addresses from the government’s energy certificate register.";}).catch(function(){selQ.hidden=true;});};' +
+        'document.getElementById("lcFind").addEventListener("click",function(){lastPc="";find();});pcIn.addEventListener("blur",find);' +
+        'sel.addEventListener("change",function(){if(sel.value)ad.value=sel.value;});' +
         'f.addEventListener("submit",function(ev){ev.preventDefault();er.textContent="";var pc=document.getElementById("lcPc").value.trim();if(!pc){er.textContent="Please enter the postcode.";return;}' +
           'var b=f.querySelector(".lc-go");b.disabled=true;b.textContent="Checking…";' +
           'fetch("/l/"+T+"/licence-check",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({postcode:pc,address:document.getElementById("lcAddr").value.trim(),household:v("lcHh"),people:document.getElementById("lcPeople").value,households:document.getElementById("lcHhN").value,share:v("lcShare"),type:v("lcType")})}).then(function(r){return r.json();}).then(function(d){' +
             'b.disabled=false;b.textContent="Check again";' +
             'if(!d.ok){er.textContent=d.error==="postcode"?"That doesn’t look like a UK postcode.":d.error==="postcode-unknown"?"We couldn’t find that postcode — please check it.":"Sorry, something went wrong. Please try again.";return;}' +
             'var fl=d.on_file?"<div class=\\"lc-file\\">📎 We have "+(d.on_file.status==="not_needed"?"this property recorded as <b>not needing a licence</b>":d.on_file.status==="applied"?"a licence application on file"+(d.on_file.number?" ("+e(d.on_file.number)+")":""):"a <b>"+e(d.on_file.type||"property")+" licence</b> on file"+(d.on_file.number?" — "+e(d.on_file.number):"")+(d.on_file.expires?", valid until "+e(new Date(d.on_file.expires+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})):""))+".</div>":"";' +
-            'o.innerHTML="<div class=\\"lc-res "+d.verdict+"\\"><h3>"+(d.verdict==="yes"?"📜 ":d.verdict==="maybe"?"⚠️ ":"👍 ")+e(d.title)+"</h3><div class=\\"muted\\">"+e(d.postcode)+" · "+e(d.borough)+" council"+(d.licence?" · "+e(d.licence):"")+"</div><ul>"+d.why.map(function(w){return"<li>"+e(w)+"</li>";}).join("")+"</ul>"+fl+' +
+            'o.innerHTML="<div class=\\"lc-res "+d.verdict+"\\"><h3>"+(d.verdict==="yes"?"📜 ":d.verdict==="maybe"?"⚠️ ":"👍 ")+e(d.title)+"</h3><div class=\\"muted\\">"+(d.address?e(d.address)+" · ":"")+e(d.postcode)+(d.ward?" · "+e(d.ward)+" ward":"")+" · "+e(d.borough)+" council"+(d.licence?" · "+e(d.licence):"")+"</div><ul>"+d.why.map(function(w){return"<li>"+e(w)+"</li>";}).join("")+"</ul>"+fl+' +
               '"<a class=\\"lc-a\\" href=\\""+e(d.link)+"\\" target=\\"_blank\\" rel=\\"noopener\\">"+e(d.borough)+" council’s licensing page ›</a></div>";o.scrollIntoView({behavior:"smooth",block:"start"});' +
           '}).catch(function(){b.disabled=false;b.textContent="Check now";er.textContent="Couldn’t connect — please try again.";});});})();</script>' +
       '</section>';
@@ -9189,6 +9198,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // used, falling back to the council's council tax page, then its home page. The office can set any of them.
   const COUNCIL_TAX = { "Barking and Dagenham": "https://www.lbbd.gov.uk/council-tax/your-council-tax-account/register-council-tax-or-tell-us-youve-moved", "Barnet": "https://www.barnet.gov.uk/council-tax/council-tax-tell-us-about-change-circumstances", "Bexley": "https://www.bexley.gov.uk/services/council-tax/moving-home/let-us-know-your-new-address", "Brent": "https://www.brent.gov.uk/council-tax/register-or-tell-us-you-are-moving", "Bromley": "https://www.bromley.gov.uk/council-tax/council-tax-moving-house", "Camden": "https://www.camden.gov.uk/council-tax-moving", "City of London": "https://www.cityoflondon.gov.uk/services/council-tax/moving-into-or-out-of-a-property", "Croydon": "https://www.croydon.gov.uk/council-tax/circumstances-change/moving/moving-into-croydon", "Ealing": "https://www.ealing.gov.uk/a_to_z/service/489/register_for_council_tax", "Enfield": "https://www.enfield.gov.uk/services/council-tax/new-to-enfield-moving-house", "Greenwich": "https://www.royalgreenwich.gov.uk/forms/form/82/en/council_tax_notification_-_moving_into_royal_greenwich", "Hackney": "https://hackney.gov.uk/report-a-council-tax-change/", "Hammersmith and Fulham": "https://www.lbhf.gov.uk/council-tax/moving-or-out-borough", "Haringey": "https://www.haringey.gov.uk/council-tax/tell-us-about-a-council-tax-change/tell-us-youre-moving-home", "Harrow": "https://www.harrow.gov.uk/council-tax/register-council-tax", "Havering": "https://www.havering.gov.uk/council-tax/moving-home", "Hillingdon": "https://www.hillingdon.gov.uk/counciltax", "Hounslow": "https://www.hounslow.gov.uk/council-tax/moving-home-council-tax", "Islington": "https://www.islington.gov.uk/council-tax/tell-us-youre-moving/moving-in-to-islington", "Kensington and Chelsea": "https://www.rbkc.gov.uk/council-tax/tell-us-about-any-changes/register-council-tax", "Kingston upon Thames": "https://www.kingston.gov.uk/council-tax/moving-in", "Lambeth": "https://www.lambeth.gov.uk/council-tax/register", "Lewisham": "https://lewisham.gov.uk/myservices/counciltax/council-tax---tell-us-you-ve-moved", "Merton": "https://www.merton.gov.uk/council-tax-benefits-and-housing/council-tax/your-council-tax/moving-home-and-registering", "Newham": "https://www.newham.gov.uk/council-tax/moving-newham", "Redbridge": "https://www.redbridge.gov.uk/council-tax/council-tax-moving-into-redbridge", "Richmond upon Thames": "https://www.richmond.gov.uk/services/council_tax/tell_us_you_are_moving/moving_in_to_the_borough", "Southwark": "https://coa.myforms.southwark.gov.uk/CoaPlus/launch", "Sutton": "https://www.sutton.gov.uk/w/moving-into-or-out-of-the-area", "Tower Hamlets": "https://www.towerhamlets.gov.uk/lgnl/council_and_democracy/council_tax/Moving_in_or_out.aspx", "Waltham Forest": "https://www.walthamforest.gov.uk/council-tax", "Wandsworth": "https://www.wandsworth.gov.uk/council-tax/change-of-circumstances-for-council-tax/tell-us-youre-moving/moving-in-to-the-borough/", "Westminster": "https://www.westminster.gov.uk/council-tax/register-council-tax", "Thurrock": "https://www.thurrock.gov.uk/changes-to-your-circumstances-affecting-council-tax", "Dartford": "https://www.dartford.gov.uk/council-tax/change-address", "Epping Forest": "https://www.eppingforestdc.gov.uk/council-tax/report-a-change-of-address/", "Elmbridge": "https://www.elmbridge.gov.uk/council-tax/moving-in-and-out/", "Spelthorne": "https://www.spelthorne.gov.uk/counciltax" };
   const ctBoroughCache = new Map();
+  // The council and ward for a postcode (postcodes.io).
+  const pcInfoCache = new Map();
+  async function postcodeInfo(postcode) {
+    const m = POSTCODE_RE.exec(postcode || ''); if (!m) return null;
+    const pc = (m[1] + m[2]).toUpperCase(); if (pcInfoCache.has(pc)) return pcInfoCache.get(pc);
+    try {
+      const r = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc), { signal: AbortSignal.timeout(6000) });
+      const j = r.ok ? await r.json() : null, x = j && j.result;
+      const out = x ? { district: x.admin_district || null, ward: x.admin_ward || null } : null;
+      if (out) pcInfoCache.set(pc, out); return out;
+    } catch (e) { return null; }
+  }
   async function boroughOf(address) {
     const m = POSTCODE_RE.exec(address || ''); if (!m) return null;
     const pc = (m[1] + m[2]).toUpperCase(); if (ctBoroughCache.has(pc)) return ctBoroughCache.get(pc);
@@ -9242,7 +9263,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
     'Hammersmith and Fulham': { sel: 'some', add: 'all' }, 'Haringey': { sel: 'some', add: 'all' }, 'Harrow': { sel: 'none', add: 'all' }, 'Havering': { sel: 'some', add: 'some' },
     'Hillingdon': { sel: 'none', add: 'some' }, 'Hounslow': { sel: 'some', add: 'all' }, 'Islington': { sel: 'some', add: 'all' }, 'Kensington and Chelsea': { sel: 'none', add: 'check' },
     'Kingston upon Thames': { sel: 'none', add: 'none' }, 'Lambeth': { sel: 'none', add: 'all' }, 'Lewisham': { sel: 'check', add: 'all' }, 'Merton': { sel: 'none', add: 'check' },
-    'Newham': { sel: 'all', add: 'all' }, 'Redbridge': { sel: 'some', add: 'all' }, 'Richmond upon Thames': { sel: 'none', add: 'none' }, 'Southwark': { sel: 'some', add: 'all' },
+    'Newham': { sel: 'all', add: 'all' }, 'Redbridge': { sel: 'some', add: 'all' }, 'Richmond upon Thames': { sel: 'none', add: 'none' },
+    // Southwark selective licensing — designation 1 (1 Mar 2022 – 28 Feb 2027) and designation 2
+    // (1 Nov 2023 – 31 Oct 2028): 19 of the 23 wards. Not covered: Borough & Bankside, Dulwich Village,
+    // North Bermondsey, St George's.
+    'Southwark': { sel: 'some', add: 'all', link: 'https://www.southwark.gov.uk/housing/private-tenants-and-landlords/private-rented-property-licensing/property-licensing-3',
+      sel_wards: { 'Newington': 'designation 1, until 28 February 2027', 'Champion Hill': 'designation 1, until 28 February 2027', 'Faraday': 'designation 1, until 28 February 2027', 'St Giles': 'designation 1, until 28 February 2027', 'Goose Green': 'designation 1, until 28 February 2027',
+        'North Walworth': 'designation 2, until 31 October 2028', 'Nunhead & Queen\'s Road': 'designation 2, until 31 October 2028', 'Old Kent Road': 'designation 2, until 31 October 2028', 'Peckham': 'designation 2, until 31 October 2028', 'Camberwell Green': 'designation 2, until 31 October 2028',
+        'Chaucer': 'designation 2, until 31 October 2028', 'Dulwich Hill': 'designation 2, until 31 October 2028', 'Dulwich Wood': 'designation 2, until 31 October 2028', 'London Bridge & West Bermondsey': 'designation 2, until 31 October 2028', 'Peckham Rye': 'designation 2, until 31 October 2028',
+        'Rotherhithe': 'designation 2, until 31 October 2028', 'Rye Lane': 'designation 2, until 31 October 2028', 'South Bermondsey': 'designation 2, until 31 October 2028', 'Surrey Docks': 'designation 2, until 31 October 2028' } },
     'Sutton': { sel: 'none', add: 'none' }, 'Tower Hamlets': { sel: 'some', add: 'all' }, 'Waltham Forest': { sel: 'all', add: 'all' }, 'Wandsworth': { sel: 'none', add: 'all' },
     'Westminster': { sel: 'none', add: 'check' }
   };
@@ -9254,19 +9283,24 @@ document.querySelectorAll('.lcu').forEach(function(box){
     Object.keys(own.custom || {}).forEach(function (b) { out[b] = Object.assign({}, out[b] || {}, own.custom[b]); });
     return { schemes: out, custom: own.custom || {}, updated_at: own.updated_at || null };
   }
+  function st0(sc) { return sc && (sc.sel === 'some' || sc.add === 'some') ? 'some' : ''; }
   async function licenceCheck(p, b, keys) {
     const pcM = POSTCODE_RE.exec(String(b.postcode || '') + ' ' + String(b.address || ''));
     if (!pcM) return { ok: false, error: 'postcode' };
     const postcode = (pcM[1] + ' ' + pcM[2]).toUpperCase();
-    const borough = await boroughOf(postcode);
+    const info = await postcodeInfo(postcode), borough = (info && info.district) || await boroughOf(postcode);
     if (!borough) return { ok: false, error: 'postcode-unknown' };
+    const ward = info && info.ward || null;
+    // A council scheme that covers some wards: the ward this address is in decides it — when we know the wards.
+    const wardKey = function (w) { return String(w || '').toLowerCase().replace(/&/g, ' and ').replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim(); };
+    const inWards = function (list) { if (!list || !ward) return null; const keys = Array.isArray(list) ? list : Object.keys(list); const hit = keys.filter(function (k) { return wardKey(k) === wardKey(ward); })[0]; return hit ? { name: hit, note: Array.isArray(list) ? '' : list[hit] } : false; };
     const people = Math.max(1, Math.min(50, parseInt(b.people, 10) || 1));
     const shared = b.household === 'shared';
     const households = shared ? Math.max(2, Math.min(50, parseInt(b.households, 10) || 2)) : 1;
     const amenities = b.share !== 'no';
     const type = ['house', 'converted', 'purpose', 'block'].indexOf(b.type) !== -1 ? b.type : 'house';
     const all = await licensingSchemes(p), sc = all.schemes[borough] || null, custom = all.custom[borough] || {};
-    const link = (custom.link && /^https?:\/\//i.test(custom.link)) ? custom.link : 'https://www.google.com/search?q=' + encodeURIComponent(borough + ' council property licensing scheme');
+    const link = (custom.link && /^https?:\/\//i.test(custom.link)) ? custom.link : (sc && sc.link) ? sc.link : 'https://www.google.com/search?q=' + encodeURIComponent(borough + ' council property licensing scheme');
     const isHmo = shared && people >= 3 && amenities;
     let verdict, title, licence = '', why = [];
     const area = function (st) { return st === 'all' ? 'across the whole of ' + borough : st === 'some' ? 'in parts of ' + borough : ''; };
@@ -9278,6 +9312,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (type === 'purpose' && people >= 5) why.push('A flat in a purpose-built block of three or more flats doesn’t need a mandatory HMO licence, but it can still need an additional HMO licence.');
       else why.push(people + ' people from ' + households + ' households sharing facilities makes this an HMO (house in multiple occupation).');
       if (st === 'all') { verdict = 'yes'; licence = 'Additional HMO licence'; title = 'Yes — this property needs an additional HMO licence'; why.push(borough + ' runs an additional HMO licensing scheme ' + area(st) + ', which covers HMOs like this one.'); }
+      else if (st === 'some' && inWards(sc.add_wards)) { const w = inWards(sc.add_wards); verdict = 'yes'; licence = 'Additional HMO licence'; title = 'Yes — this property needs an additional HMO licence'; why.push('The property is in ' + ward + ' ward, which is covered by ' + borough + '’s additional HMO licensing scheme' + (w.note ? ' (' + w.note + ')' : '') + '.'); }
+      else if (st === 'some' && inWards(sc.add_wards) === false) { verdict = 'no'; title = 'No licence needed'; why.push('The property is in ' + ward + ' ward, which isn’t part of ' + borough + '’s additional HMO licensing scheme, so this size of HMO doesn’t need a licence. HMO management and safety rules still apply.'); }
       else if (st === 'some') { verdict = 'maybe'; licence = 'Additional HMO licence'; title = 'Probably — it depends on the street'; why.push(borough + ' runs additional HMO licensing ' + area(st) + '. Whether this property is covered depends on its exact location.'); }
       else if (st === 'none') { verdict = 'no'; title = 'No licence needed'; why.push(borough + ' doesn’t run an additional HMO licensing scheme at the moment, so this size of HMO doesn’t need a licence. HMO management and safety rules still apply.'); }
       else { verdict = 'maybe'; licence = 'Additional HMO licence'; title = 'Check with the council'; why.push(borough + '’s licensing schemes have recently changed or are under review, so please confirm with the council.'); }
@@ -9285,6 +9321,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const st = sc ? sc.sel : 'check';
       why.push(shared ? (people < 3 ? 'Two sharers don’t make an HMO, so the rules for a single household apply.' : 'As the occupiers don’t share a kitchen, bathroom or toilet, it isn’t treated as a shared HMO.') : 'The property is let to a single household (one person, a couple or a family).');
       if (st === 'all') { verdict = 'yes'; licence = 'Selective licence'; title = 'Yes — this property needs a selective licence'; why.push(borough + ' runs a selective licensing scheme ' + area(st) + ': every privately rented home in the area needs a licence.'); }
+      else if (st === 'some' && inWards(sc.sel_wards)) { const w = inWards(sc.sel_wards); verdict = 'yes'; licence = 'Selective licence'; title = 'Yes — this property needs a selective licence'; why.push('The property is in ' + ward + ' ward, which is covered by ' + borough + '’s selective licensing scheme' + (w.note ? ' (' + w.note + ')' : '') + ': every privately rented home there needs a licence.'); }
+      else if (st === 'some' && inWards(sc.sel_wards) === false) { verdict = 'no'; title = 'No licence needed'; why.push('The property is in ' + ward + ' ward, which isn’t part of ' + borough + '’s selective licensing scheme, so a home let to a single household doesn’t need a licence.'); }
       else if (st === 'some') { verdict = 'maybe'; licence = 'Selective licence'; title = 'Possibly — it depends on the street'; why.push(borough + ' runs selective licensing ' + area(st) + ' (certain wards or streets). Whether this property is covered depends on its exact location.'); }
       else if (st === 'none') { verdict = 'no'; title = 'No licence needed'; why.push(borough + ' doesn’t run a selective licensing scheme at the moment, so a home let to a single household doesn’t need a licence.'); }
       else { verdict = 'maybe'; licence = 'Selective licence'; title = 'Check with the council'; why.push(borough + '’s licensing schemes have recently changed or are under review, so please confirm with the council.'); }
@@ -9297,7 +9335,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const rows = (await p.query('SELECT property_key, address, licence FROM property_info WHERE licence IS NOT NULL AND property_key = ANY($1::text[])', [Object.keys(keys || {})])).rows;
     const hit = rows.filter(function (r) { return (key && r.property_key === key) || (b.address && sameAddr(r.address, String(b.address) + ' ' + postcode)); })[0];
     if (hit && hit.licence && hit.licence.status !== 'none') onFile = { status: hit.licence.status, type: hit.licence.type || '', number: hit.licence.number || '', expires: hit.licence.expires || null };
-    return { ok: true, borough: borough, postcode: postcode, verdict: verdict, title: title, licence: licence, why: why, link: link, on_file: onFile, people: people, households: households };
+    if (ward && verdict === 'maybe' && st0(sc) === 'some') why.push('The property is in ' + ward + ' ward — the council’s scheme map shows whether this ward is included.');
+    return { ok: true, ward: ward, address: str(b.address, 200) || null, borough: borough, postcode: postcode, verdict: verdict, title: title, licence: licence, why: why, link: link, on_file: onFile, people: people, households: households };
   }
   app.post('/l/:token/licence-check', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -9305,6 +9344,23 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json(await licenceCheck(p, req.body || {}, who.keys));
   }));
+  // The actual addresses at a postcode (from the energy certificate register), to pick from.
+  async function postcodeAddresses(postcode) {
+    const m = POSTCODE_RE.exec(String(postcode || '')); if (!m) return { ok: false, error: 'postcode' };
+    const pc = (m[1] + ' ' + m[2]).toUpperCase();
+    let list = []; try { list = (await epcSearch(pc)).results || []; } catch (e) { return { ok: true, postcode: pc, addresses: [], unavailable: true }; }
+    const seen = {}, out = [];
+    list.forEach(function (r) { const a = String(r.address || '').replace(/\s*,?\s*$/, '').trim(); const k = a.toLowerCase(); if (a && !seen[k]) { seen[k] = 1; out.push(a); } });
+    out.sort(function (a, b) { return a.localeCompare(b, 'en', { numeric: true }); });
+    return { ok: true, postcode: pc, addresses: out.slice(0, 300) };
+  }
+  app.get('/l/:token/addresses', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, String(req.params.token || ''));
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json(await postcodeAddresses(req.query.postcode));
+  }));
+  app.get('/api/admin/postcode-addresses', withDb(async function (p, req, res) { res.json(await postcodeAddresses(req.query.postcode)); }));
   app.post('/api/admin/licence-check', withDb(async function (p, req, res) {
     const keys = {}; (await p.query('SELECT property_key FROM property_info WHERE licence IS NOT NULL')).rows.forEach(function (r) { keys[r.property_key] = 1; });
     res.json(await licenceCheck(p, req.body || {}, keys));
@@ -9319,6 +9375,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (LIC_STATES.indexOf(v.sel) !== -1) o.sel = v.sel;
       if (LIC_STATES.indexOf(v.add) !== -1) o.add = v.add;
       const u = str(v.link, 500); if (u && /^https?:\/\//i.test(u)) o.link = u;
+      // Wards a 'some' scheme covers (one per line in Templates).
+      ['sel_wards', 'add_wards'].forEach(function (f) { if (Array.isArray(v[f])) { const l = v[f].map(function (x) { return str(x, 80); }).filter(Boolean).slice(0, 60); if (l.length) o[f] = l; } });
       if (Object.keys(o).length) custom[str(k, 80)] = o;
     });
     const value = { custom: custom, updated_at: new Date().toISOString() };
