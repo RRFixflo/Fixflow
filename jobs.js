@@ -8875,9 +8875,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (onlyKey && t.property_key !== onlyKey) continue;
       const next = tcys.slice(i + 1).filter(function (x) { return x.property_key && x.property_key === t.property_key; })[0];
       if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) continue;
-      if (!rentByUs(d)) { if (!next) notOurs++; continue; }
+      // Rent we don't collect (Tenant Find / landlord collects): still the move-in money — rent + deposit
+      // less our fees — goes through us, so the first month comes up; nothing after it.
+      const firstOnly = !rentByUs(d);
+      if (firstOnly && !next) notOurs++;
       const rcvd = d.rent_rcvd || {}, paid = d.ll_paid || {}, ll = lls[t.property_key] || {};
       for (let n = 0; n < 120; n++) {
+        if (firstOnly && n > 0) break;
         const from = addMonthsIso(start, n);
         if (from > (onlyKey ? tomorrow > until ? tomorrow : until : until)) break;
         if (next && from >= String(next.start_date).slice(0, 10)) break;
@@ -8919,7 +8923,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           fees: r2((f.fees || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount + (x.vat || 0); }, 0)),
           fees_net: r2((f.fees || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount; }, 0)), fee_lines: (f.fees || []).filter(function (x) { return !x.invoice_id; }).map(function (x) { return { label: x.label, amount: r2(x.amount + (x.vat || 0)) }; }),
           recovered: (f.fees || []).filter(function (x) { return x.invoice_id; }).map(function (x) { return { label: x.label, amount: x.amount }; }),
-          bf: stm ? stm.bf : 0, income: stm ? stm.income : rent,
+          bf: stm ? stm.bf : 0, income: stm ? stm.income : rent, deposit_ll: stm ? (stm.deposit || 0) : depLl, first_only: firstOnly,
           pending: pend, pending_total: pendTotal, to_landlord: toLl,
           collected: rcvd[from] || autoIn || null, paid: paid[from] || null, movein: movein,
           stmt: stm ? { sent: stm.sent || null, changed: stm.changed || null } : null,

@@ -12780,6 +12780,7 @@
     var details = function(x, k){
       if (!rbOpen[k]) return '';
       var lines = ['<div><span>Rent from the tenants</span><b>' + gbp(x.rent) + '</b></div>'];
+      if (x.deposit_ll) lines.push('<div><span>Deposit (the landlord registers it)</span><b>+ ' + gbp(x.deposit_ll) + '</b></div>');
       if (x.fees) lines.push('<div><span>Our fees (inc. VAT)</span><b>− ' + gbp(x.fees) + '</b></div>');
       x.recovered.forEach(function(r){ lines.push('<div><span>' + esc(r.label.replace(/ \(repairs, inc\. VAT\)/, '')) + '</span><b>− ' + gbp(r.amount) + '</b></div>'); });
       x.pending.forEach(function(i){ lines.push('<div><span>Invoice ' + esc(i.number || '') + (i.title ? ' · ' + esc(i.title) : '') + '</span><b>− ' + gbp(i.total) + '</b></div>'); });
@@ -12808,7 +12809,7 @@
     var prow = function(x){
       var k = x.tenancy_id + '|' + x.from, st = x.stmt;
       return '<div class="rb-line"><input type="checkbox" class="rb-pick" data-rb-ppick="' + k + '"' + (rbSelP[k] ? ' checked' : '') + ' aria-label="Select">' + day(x) +
-        '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + 'Landlord: ' + (x.landlord ? rbLl(x, true) : '<b>not saved</b>') + (x.pay_to ? ' · Pay to: <b>' + esc(x.pay_to) + '</b>' : '') + (x.landlord ? '' : ' · <button type="button" class="linkish" data-rb-payto="' + x.tenancy_id + '" data-cur="' + esc(x.pay_to || '') + '" data-ll="the landlord of ' + esc(rbAddr(x.address)) + '">' + (x.pay_to ? 'Change' : 'Pay into a company?') + '</button>') + '</div><div class="rb-sub">' + more(k, '🔍 See the charges') + ' · ' + (x.from > today ? '<span class="rb-earlytag">Paid early · rent due ' + esc(rbDay(x.from)) + '</span> · ' : '') +
+        '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + (x.first_only ? '<span class="rb-earlytag">Move-in money</span> · ' : '') + 'Landlord: ' + (x.landlord ? rbLl(x, true) : '<b>not saved</b>') + (x.pay_to ? ' · Pay to: <b>' + esc(x.pay_to) + '</b>' : '') + (x.landlord ? '' : ' · <button type="button" class="linkish" data-rb-payto="' + x.tenancy_id + '" data-cur="' + esc(x.pay_to || '') + '" data-ll="the landlord of ' + esc(rbAddr(x.address)) + '">' + (x.pay_to ? 'Change' : 'Pay into a company?') + '</button>') + '</div><div class="rb-sub">' + more(k, '🔍 See the charges') + ' · ' + (x.from > today ? '<span class="rb-earlytag">Paid early · rent due ' + esc(rbDay(x.from)) + '</span> · ' : '') +
           (x.collected && !x.collected.auto ? '<button type="button" class="linkish rb-notpaid" data-rb-uncollect="' + k + '">Rent not paid? Undo</button> · ' : '') +
           (st ? (st.sent && !st.changed ? '✓ Statement sent' : '<button type="button" class="linkish" data-st-pdf="' + k + '">Statement</button>' + (x.landlord_email ? ' · <button type="button" class="linkish" data-st-mail="' + k + '">Email it</button>' : '') + ' · <button type="button" class="linkish" data-st-sent="' + k + '">Mark sent</button>') : 'No statement') + '</div>' + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(x.to_landlord) + '</div><div class="rb-btn"><button type="button" class="btn small primary" data-rb-pay="' + k + '">Paid</button></div></div>';
