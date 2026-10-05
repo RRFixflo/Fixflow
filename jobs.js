@@ -4231,6 +4231,43 @@ module.exports = function mountJobs(app, opts) {
     if (!c || who.keys[c.property_key] === undefined) return res.status(404).send('Not found');
     await sendCertDoc(p, c.id, res);
   }));
+  // A landlord's statements, per property: months we've marked as paid to them.
+  async function landlordStatements(p, keys) {
+    const out = {}, st = await statementsAll(p), byT = {};
+    st.items.forEach(function (x) { byT[x.tenancy_id] = x; });
+    const rows = (await p.query("SELECT id, property_key, data->'ll_paid' AS paid, data->'rent_rcvd' AS rcvd FROM tenancies WHERE property_key = ANY($1::text[])", [Object.keys(keys)])).rows;
+    rows.forEach(function (t) {
+      const paid = t.paid || {}, x = byT[t.id];
+      Object.keys(paid).sort().reverse().forEach(function (from) {
+        const m = x && x.months.filter(function (mm) { return mm.from === from; })[0];
+        (out[t.property_key] = out[t.property_key] || []).push({ tid: t.id, from: from, month: certDay(from).replace(/^\d+ /, ''), rent: m ? m.rent : null, paid: paid[from], m: m || null, address: x ? x.address : '' });
+      });
+    });
+    return out;
+  }
+  app.get('/l/:token/statement/:tid/:from', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const who = await landlordByToken(p, req.params.token);
+    const nf = function () { return res.status(404).send(trackShell('Statement not found', '<h1>Statement not found</h1>', true)); };
+    if (!who) return nf();
+    const all = await landlordStatements(p, who.keys), from = String(req.params.from || '').slice(0, 10), tid = Number(req.params.tid) || 0;
+    let x = null; Object.keys(all).forEach(function (k) { all[k].forEach(function (s) { if (s.tid === tid && s.from === from) x = s; }); });
+    if (!x || !x.m) return nf();
+    const m = x.m, money = function (v) { return (v < 0 ? '−' : '') + '£' + Math.abs(Number(v) || 0).toFixed(2); }, day = function (v) { return certDay(String(v || '').slice(0, 10)); };
+    const rowsIn = ['<tr><td>Rent ' + htmlEsc(day(m.from)) + ' – ' + htmlEsc(day(m.to)) + '</td><td class="a">' + money(m.rent) + '</td></tr>']
+      .concat(m.deposit ? ['<tr><td>Deposit</td><td class="a">' + money(m.deposit) + '</td></tr>'] : [])
+      .concat((m.credits || []).map(function (c) { return '<tr><td>' + htmlEsc(c.label) + '</td><td class="a">' + money(c.amount) + '</td></tr>'; }));
+    const rowsOut = (m.fees || []).map(function (f) { return '<tr><td>' + htmlEsc(f.label) + (f.vat ? ' <span class="muted">+ VAT ' + money(f.vat) + '</span>' : '') + '</td><td class="a">− ' + money(f.amount + (f.vat || 0)) + '</td></tr>'; })
+      .concat(m.bf ? ['<tr><td>Brought forward from the previous statement</td><td class="a">− ' + money(m.bf) + '</td></tr>'] : []);
+    res.send(trackShell('Statement ' + x.month, '<style>table{width:100%;border-collapse:collapse}td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}td.a{text-align:right;white-space:nowrap}tr.t td{font-weight:700;border-bottom:0;font-size:1.05rem}.muted{color:#6b7280;font-size:.86em}@media print{.noprint{display:none}}</style>' +
+      '<p class="noprint"><a href="/l/' + htmlEsc(req.params.token) + '" style="color:var(--blue);font-weight:600;text-decoration:none">← Your properties</a></p>' +
+      '<h1>Statement — ' + htmlEsc(x.month) + '</h1><p class="sub">' + htmlEsc(x.address || '') + '</p>' +
+      '<div class="card"><h3 style="margin:0 0 6px">Money in</h3><table>' + rowsIn.join('') + '<tr class="t"><td>Total in</td><td class="a">' + money(m.income) + '</td></tr></table></div>' +
+      (rowsOut.length ? '<div class="card"><h3 style="margin:0 0 6px">Taken off</h3><table>' + rowsOut.join('') + '<tr class="t"><td>Total taken off</td><td class="a">− ' + money(m.total) + '</td></tr></table></div>' : '') +
+      '<div class="card"><table><tr class="t"><td>Paid to you</td><td class="a">' + money(x.paid.amount != null ? x.paid.amount : m.balance) + '</td></tr></table><p class="muted" style="margin:6px 0 0">Sent ' + htmlEsc(day(x.paid.at)) + (x.paid.ref ? ' · reference ' + htmlEsc(x.paid.ref) : '') + '</p></div>' +
+      '<p class="noprint" style="text-align:center"><button onclick="window.print()">Print or save as PDF</button></p>', true));
+  }));
   app.get('/l/:token/invoice/:id', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -4293,6 +4330,8 @@ module.exports = function mountJobs(app, opts) {
       j.photo_token = t;
     }
     const invs = (await p.query("SELECT id, job_id, number, total, created_at, paid_at, property_key, data->>'due' AS due, data->>'date' AS date, data->>'title' AS title FROM invoices WHERE job_id = ANY($1::int[]) OR (job_id IS NULL AND property_key = ANY($2::text[])) ORDER BY id", [ids, Object.keys(keys)])).rows;
+    // Monthly statements the landlord has been paid for (shown once we've sent their money).
+    const stmtsAt = await landlordStatements(p, keys);
     // Which property an invoice is for: its repair's, or (a tenancy invoice) its own.
     const invKey = function (i) { const j = all.filter(function (x) { return x.id === i.job_id; })[0]; return j ? propKey(j.property_address) : i.property_key; };
     const parts = {};
@@ -4808,6 +4847,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
           (d.length ? '<details class="ldone"><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '')],
         tcyHtml ? ['tcy', 'Tenancy', tcyHtml] : null,
         ['doc', 'Certificates', docHtml + certUp('data-key="' + htmlEsc(k) + '"')],
+        (stmtsAt[k] || []).length ? ['st', 'Statements', '<p class="muted" style="margin:0 0 8px">Your monthly statements — each appears once we’ve sent you the money for that month.</p>' + stmtsAt[k].map(function (x) {
+          return '<a class="iv" href="/l/' + htmlEsc(token) + '/statement/' + x.tid + '/' + x.from + '"><div><b>' + htmlEsc(x.month) + '</b><div class="muted">Rent ' + money(x.rent) + ' · paid to you ' + htmlEsc(day(x.paid.at)) + (x.paid.ref ? ' (ref ' + htmlEsc(x.paid.ref) + ')' : '') + '</div></div><div style="text-align:right"><b>' + money(x.paid.amount) + '</b><div><span class="paid">Paid</span></div></div></a>';
+        }).join('')] : null,
         pInv.length || pSpent ? ['inv', 'Costs', (pSpent ? '<div class="muted" style="margin:0 0 8px">Spent on repairs: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + invBox] : null].filter(Boolean);
       const ppl = peopleAt(k).length;
       return '<section class="lview pv" id="' + htmlEsc(pid) + '" hidden>' + (Object.keys(keys).length > 1 ? '<a class="lback" href="#">← All properties</a>' : '') +
@@ -8736,9 +8778,21 @@ document.querySelectorAll('.lcu').forEach(function(box){
         if (!(rent > 0)) continue;   // no rent amount on the tenancy
         const stm = stBy[t.id] && stBy[t.id].months.filter(function (m) { return m.from === from; })[0];
         const f = stm ? { sub: stm.sub, vat: stm.vat, fees: stm.fees } : stmtFees(d, rent, n === 0, from);
-        const pend = rcvd[from] ? [] : await rentPendingInvoices(p, t, from);
+        // First rent of a tenancy: it's the move-in money (rent + deposit) — collected once the
+        // tenants' payments received cover it; only then does the landlord's payment come up.
+        let movein = null;
+        if (n === 0) {
+          const dep = d.deposit != null && d.deposit !== '' ? Number(d.deposit) || 0 : Math.floor(rent * 12 / 52 * 5 + 1e-9);
+          const due = r2(rent + dep), got = r2((d.receipts || []).reduce(function (a, x) { return a + (Number(String(x && x.amount || '').replace(/[£,\s]/g, '')) || 0); }, 0));
+          const lastAt = (d.receipts || []).map(function (x) { return x && x.date; }).filter(Boolean).sort().pop() || null;
+          movein = { due: due, paid: got, left: r2(due - got), last: lastAt };
+        }
+        const autoIn = movein && movein.left <= 0.004 && !rcvd[from] ? { at: (movein.last ? movein.last + 'T12:00:00Z' : new Date().toISOString()), amount: movein.paid, auto: true } : null;
+        const isIn = rcvd[from] || autoIn;
+        const pend = isIn ? [] : await rentPendingInvoices(p, t, from);
         const pendTotal = r2(pend.reduce(function (a, x) { return a + x.total; }, 0));
-        const base = stm ? stm.balance : r2(rent - f.sub - f.vat);
+        const depLl = n === 0 && !stm && d.deposit_by === 'landlord' ? (movein ? r2(movein.due - rent) : 0) : 0;
+        const base = stm ? stm.balance : r2(rent + depLl - f.sub - f.vat);
         const toLl = r2(base - pendTotal);
         items.push({
           tenancy_id: t.id, address: d.address || t.address, from: from, n: n, rent: rent,
@@ -8749,9 +8803,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
           recovered: (f.fees || []).filter(function (x) { return x.invoice_id; }).map(function (x) { return { label: x.label, amount: x.amount }; }),
           bf: stm ? stm.bf : 0, income: stm ? stm.income : rent,
           pending: pend, pending_total: pendTotal, to_landlord: toLl,
-          collected: rcvd[from] || null, paid: paid[from] || null,
+          collected: rcvd[from] || autoIn || null, paid: paid[from] || null, movein: movein,
           stmt: stm ? { sent: stm.sent || null, changed: stm.changed || null } : null,
-          status: rcvd[from] ? 'collected' : from < today ? 'overdue' : from === today ? 'today' : from === tomorrow ? 'tomorrow' : 'upcoming'
+          status: isIn ? 'collected' : movein ? 'movein' : from < today ? 'overdue' : from === today ? 'today' : from === tomorrow ? 'tomorrow' : 'upcoming'
         });
       }
     }
