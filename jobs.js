@@ -201,6 +201,9 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tenancy_id INTEGER;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS property_key TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS photo_token TEXT;
+-- VAT on top of the contractor's price / our charge to the landlord (the figures are before VAT).
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS cost_vat BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS charge_vat BOOLEAN NOT NULL DEFAULT false;
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_photo_token_idx ON jobs (photo_token);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS track_token TEXT;
 CREATE TABLE IF NOT EXISTS job_parts (
@@ -1085,7 +1088,7 @@ const SOURCES = ['Online report', 'Phone call', 'Email', 'Text / WhatsApp', 'In 
 const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenant_name, tenant_email,
   tenant_phone, property_address, category, affected, symptom, location, description, access_days,
   access_time, access_notes, key_permission, key_instructions, direct_contact, summary, appointment_date, appointment_time, assigned_to, assigned_to_2, task_2, part_done_by, next_steps,
-  estimated_cost, actual_cost, landlord_charge, completed_at, completion_notes, photo_count, source,
+  estimated_cost, actual_cost, landlord_charge, cost_vat, charge_vat, completed_at, completion_notes, photo_count, source,
   archived_at, archived_reason, (SELECT count(*)::int FROM job_photos ph WHERE ph.job_id = jobs.id) AS photos_saved,
   (SELECT array_agg(ph.id ORDER BY ph.id) FROM job_photos ph WHERE ph.job_id = jobs.id) AS photo_ids,
   (SELECT count(*)::int FROM job_updates u WHERE u.job_id = jobs.id AND u.kind = 'contractor_note' AND u.seen_at IS NULL) AS unread_notes,
@@ -2447,7 +2450,9 @@ module.exports = function mountJobs(app, opts) {
     landlord_address: { clean: function (v) { return str(v, 500); }, label: 'Landlord address' },
     estimated_cost: { clean: money, label: 'Estimated cost', show: gbp },
     actual_cost: { clean: money, label: 'Actual cost', show: gbp },
-    landlord_charge: { clean: money, label: 'Charge to landlord', show: gbp }
+    landlord_charge: { clean: money, label: 'Charge to landlord', show: gbp },
+    cost_vat: { clean: function (v) { return v === true || v === false ? v : undefined; }, label: 'Contractor’s price + VAT', show: function (v) { return v ? 'yes' : 'no'; } },
+    charge_vat: { clean: function (v) { return v === true || v === false ? v : undefined; }, label: 'Charge to landlord + VAT', show: function (v) { return v ? 'yes' : 'no'; } }
   };
 
   app.patch('/api/admin/jobs/:id', withDb(async function (p, req, res) {
@@ -5581,7 +5586,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!d.address) return res.status(400).json({ ok: false, error: 'address-required' });
     // Kept from the saved tenancy: its move-in fees invoice and whether the landlord paid.
     const r = await p.query(`UPDATE tenancies SET property_key = $2, address = $3, start_date = $4,
-        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid', 'stmt_sent', data->'stmt_sent', 'month_costs', data->'month_costs', 'inventory_job_id', data->'inventory_job_id', 'tenant_changes', data->'tenant_changes')), updated_at = now() WHERE id = $1 RETURNING id`,
+        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid', 'stmt_sent', data->'stmt_sent', 'month_costs', data->'month_costs', 'inventory_job_id', data->'inventory_job_id', 'tenant_changes', data->'tenant_changes', 'rent_rcvd', data->'rent_rcvd', 'll_paid', data->'ll_paid')), updated_at = now() WHERE id = $1 RETURNING id`,
       [jobId(req), propKey(d.address), d.address, d.start_date, JSON.stringify(d)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await linkTenancyPeople(p, d);
@@ -8647,7 +8652,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       // Paid off by the landlord (marked paid, or the move-in invoice paid) before this rent: nothing brought forward.
       if (i > 0 && settled && settled < from) carry = 0;
       const ownCosts = (d.month_costs || []).some(function (c) { return c && c.from === from; });
-      if (i > 0 && (r4r || (tf && carry <= 0.004)) && !ownCosts) break;
+      if (i > 0 && (r4r || (tf && carry <= 0.004 && !rentByUs(d))) && !ownCosts) break;   // Tenant Find where we collect the rent: a statement every month
       const rent = i === 0 ? Number(d.rent_pcm) || 0 : rentAt(from);
       let deposit = 0;
       if (i === 0 && d.deposit_by === 'landlord') deposit = d.deposit != null && d.deposit !== '' ? Number(d.deposit) || 0 : Math.floor(rent * 12 / 52 * 5 + 1e-9);
@@ -8682,6 +8687,117 @@ document.querySelectorAll('.lcu').forEach(function(box){
     });
     return { today: today, items: out };
   }
+  // ---------- Rent & landlords: collect each rent, send each landlord their money ----------
+  // For every tenancy where WE collect the rent: each rent date (from when this started), the rent to
+  // collect, what comes off it (our fees + VAT, landlord invoices due from this rent, anything brought
+  // forward — the same figures as the monthly statement) and so what to send the landlord; plus whether
+  // the rent's been collected, the landlord paid and the statement sent.
+  async function rentPendingInvoices(p, t, from) {
+    const ym = from.slice(0, 7);
+    return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.data->>'collect_month' AS cm, coalesce(i.data->>'title', '') AS title, i.job_id FROM invoices i
+      WHERE i.paid_at IS NULL AND coalesce(i.data->>'collect_month', '') <> 'direct' AND (i.tenancy_id = $1 OR i.property_key = $2)
+        AND (i.job_id IS NULL OR EXISTS (SELECT 1 FROM jobs j WHERE j.id = i.job_id AND j.archived_at IS NULL)) ORDER BY i.created_at`, [t.id, t.property_key])).rows
+      .filter(function (i) { return i.cm ? i.cm <= ym : new Date(i.created_at).toISOString().slice(0, 10) <= from; })
+      .map(function (i) { return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.title, job_id: i.job_id }; });
+  }
+  async function rentBoard(p, month) {
+    const today = londonDay(), r2 = function (v) { return Math.round(v * 100) / 100; };
+    let since = (await p.query("SELECT value FROM app_settings WHERE key = 'rent_board_since'")).rows[0];
+    if (!since) { since = { value: { from: today.slice(0, 7) + '-01' } }; await p.query("INSERT INTO app_settings (key, value) VALUES ('rent_board_since', $1) ON CONFLICT (key) DO NOTHING", [JSON.stringify(since.value)]); }
+    const sinceDay = since.value.from, thisMonth = today.slice(0, 7);
+    month = /^\d{4}-\d{2}$/.test(String(month || '')) ? month : thisMonth;
+    const mStart = month + '-01', mEnd = addDaysIso(addMonthsIso(mStart, 1), -1);
+    const st = await statementsAll(p), stBy = {}; st.items.forEach(function (x) { stBy[x.tenancy_id] = x; });
+    const tcys = (await p.query('SELECT id, property_key, address, start_date, data, intention FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date, id')).rows;
+    const lls = {}; (await p.query('SELECT pl.property_key, l.id, l.name, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r; });
+    const items = []; let notOurs = 0;
+    for (let i = 0; i < tcys.length; i++) {
+      const t = tcys[i], d = t.data || {}, start = String(d.start_date || t.start_date || '').slice(0, 10);
+      const next = tcys.slice(i + 1).filter(function (x) { return x.property_key && x.property_key === t.property_key; })[0];
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) continue;
+      if (!rentByUs(d)) { if (!next) notOurs++; continue; }
+      const rcvd = d.rent_rcvd || {}, paid = d.ll_paid || {}, ll = lls[t.property_key] || {};
+      for (let n = 0; n < 120; n++) {
+        const from = addMonthsIso(start, n);
+        if (from > mEnd) break;
+        if (next && from >= String(next.start_date).slice(0, 10)) break;
+        if (from < sinceDay) continue;
+        // Earlier months only on this month's page, and only while something's still to do.
+        if (from < mStart && (month !== thisMonth || (rcvd[from] && paid[from]))) continue;
+        let rent = Number(d.rent_pcm) || 0;
+        if (n > 0) Object.keys(t.intention || {}).sort().forEach(function (k) { const it = t.intention[k] || {}; const nr = Number(it.new_rent); if (nr && !it.no_increase && (it.rent_from || k) <= from) rent = nr; });
+        if (!(rent > 0)) continue;   // no rent amount on the tenancy
+        const stm = stBy[t.id] && stBy[t.id].months.filter(function (m) { return m.from === from; })[0];
+        const f = stm ? { sub: stm.sub, vat: stm.vat, fees: stm.fees } : stmtFees(d, rent, n === 0, from);
+        const pend = rcvd[from] ? [] : await rentPendingInvoices(p, t, from);
+        const pendTotal = r2(pend.reduce(function (a, x) { return a + x.total; }, 0));
+        const base = stm ? stm.balance : r2(rent - f.sub - f.vat);
+        const toLl = r2(base - pendTotal);
+        items.push({
+          tenancy_id: t.id, address: d.address || t.address, from: from, n: n, rent: rent,
+          tenants: (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean),
+          landlord: (d.landlord && d.landlord.name) || ll.name || '', landlord_id: ll.id || null, landlord_email: (d.landlord && d.landlord.email) || ll.email || '',
+          service: d.service || '', pay_ref: d.pay_ref || '',
+          fees: r2((f.fees || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount + (x.vat || 0); }, 0)), fee_lines: (f.fees || []).filter(function (x) { return !x.invoice_id; }).map(function (x) { return { label: x.label, amount: r2(x.amount + (x.vat || 0)) }; }),
+          recovered: (f.fees || []).filter(function (x) { return x.invoice_id; }).map(function (x) { return { label: x.label, amount: x.amount }; }),
+          bf: stm ? stm.bf : 0, income: stm ? stm.income : rent,
+          pending: pend, pending_total: pendTotal, to_landlord: toLl,
+          collected: rcvd[from] || null, paid: paid[from] || null,
+          stmt: stm ? { sent: stm.sent || null, changed: stm.changed || null } : null,
+          status: rcvd[from] ? 'collected' : from < today ? 'overdue' : from === today ? 'today' : 'upcoming'
+        });
+      }
+    }
+    items.sort(function (a, b) { return a.from < b.from ? -1 : a.from > b.from ? 1 : String(a.address).localeCompare(String(b.address)); });
+    return { today: today, month: month, since: sinceDay, items: items, not_ours: notOurs };
+  }
+  app.get('/api/admin/rent-board', withDb(async function (p, req, res) {
+    res.json(Object.assign({ ok: true }, await rentBoard(p, req.query.month)));
+  }));
+  // Rent collected for one rent date (or undone). Landlord invoices due from this rent are taken
+  // off it then — they go on that month's statement — and put back if it's undone.
+  app.post('/api/admin/tenancies/:id/rent-collected', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req), from = String(b.from || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return res.status(400).json({ ok: false, error: 'from' });
+    const t = (await p.query('SELECT id, property_key, data FROM tenancies WHERE id = $1', [id])).rows[0];
+    if (!t) return res.status(404).json({ ok: false, error: 'not-found' });
+    const who = req.user ? req.user.name : 'Office', d = t.data || {}, rec = (d.rent_rcvd || {})[from];
+    if (b.undo) {
+      if (!rec) return res.json({ ok: true });
+      const ids = (rec.invoice_ids || []).map(Number);
+      for (const iid of ids) { const r = await p.query('UPDATE invoices SET paid_at = NULL WHERE id = $1 RETURNING job_id, tenancy_id, number', [iid]); if (r.rows[0]) await invoiceNote(p, r.rows[0], 'Invoice ' + r.rows[0].number + ' no longer recovered from the rent due ' + from + ' (rent marked not collected).', 'change'); }
+      await p.query(`UPDATE tenancies SET data = jsonb_set(data #- ARRAY['rent_rcvd', $2::text], '{month_costs}', coalesce((SELECT jsonb_agg(c) FROM jsonb_array_elements(coalesce(data->'month_costs', '[]'::jsonb)) c WHERE NOT ((c->>'invoice_id')::int = ANY($3::int[]))), '[]'::jsonb)),
+        log = log || $4::jsonb, updated_at = now() WHERE id = $1`, [id, from, ids, JSON.stringify([{ at: new Date().toISOString(), text: 'Rent due ' + certDay(from) + ' marked not collected (' + who + ')' }])]);
+      return res.json({ ok: true });
+    }
+    if (rec) return res.json({ ok: true, already: true });
+    const amount = Number(String(b.amount == null ? '' : b.amount).replace(/[£,\s]/g, '')) || 0;
+    const pend = await rentPendingInvoices(p, t, from), ids = [];
+    for (const i of pend) {
+      const r = await p.query('UPDATE invoices SET paid_at = coalesce(paid_at, now()) WHERE id = $1 RETURNING job_id, tenancy_id', [i.id]);
+      if (r.rows[0]) await invoiceNote(p, r.rows[0], 'Invoice ' + i.number + ' (' + gbp(i.total) + ') recovered from the rent due ' + from + '.', 'change');
+      await addMonthCost(p, id, from, { label: 'Invoice ' + i.number + ' (repairs, inc. VAT)', amount: i.total, novat: true, invoice_id: i.id });
+      ids.push(i.id);
+    }
+    const row = { at: new Date().toISOString(), amount: amount || null, by: who, invoice_ids: ids };
+    await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_rcvd}', coalesce(data->'rent_rcvd', '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
+      [id, from, JSON.stringify(row), JSON.stringify([{ at: row.at, text: 'Rent due ' + certDay(from) + ' collected' + (amount ? ' (' + gbp(amount) + ')' : '') + (ids.length ? ' — ' + ids.length + ' landlord invoice' + (ids.length === 1 ? '' : 's') + ' taken off it' : '') + ' (' + who + ')' }])]);
+    res.json({ ok: true, invoices: ids.length });
+  }));
+  // The landlord's money for one rent date sent (or undone): amount, date, reference.
+  app.post('/api/admin/tenancies/:id/landlord-paid', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req), from = String(b.from || '').slice(0, 10), who = req.user ? req.user.name : 'Office';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return res.status(400).json({ ok: false, error: 'from' });
+    if (b.undo) {
+      const r = await p.query(`UPDATE tenancies SET data = data #- ARRAY['ll_paid', $2::text], log = log || $3::jsonb, updated_at = now() WHERE id = $1 RETURNING id`, [id, from, JSON.stringify([{ at: new Date().toISOString(), text: 'Payment to the landlord for ' + certDay(from) + ' marked not sent (' + who + ')' }])]);
+      return res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
+    }
+    const amount = Number(String(b.amount == null ? '' : b.amount).replace(/[£,\s]/g, '')) || 0;
+    const row = { at: new Date().toISOString(), amount: amount, ref: str(b.ref, 80) || null, by: who };
+    const r = await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{ll_paid}', coalesce(data->'ll_paid', '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1 RETURNING id`,
+      [id, from, JSON.stringify(row), JSON.stringify([{ at: row.at, text: 'Sent the landlord ' + gbp(amount) + ' for the rent due ' + certDay(from) + (row.ref ? ' (ref ' + row.ref + ')' : '') + ' (' + who + ')' }])]);
+    res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
+  }));
   app.get('/api/admin/statements', withDb(async function (p, req, res) {
     res.json(Object.assign({ ok: true }, await statementsAll(p)));
   }));
