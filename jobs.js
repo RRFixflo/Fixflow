@@ -8866,7 +8866,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const st = await statementsAll(p), stBy = {}; st.items.forEach(function (x) { stBy[x.tenancy_id] = x; });
     const tcys = (await p.query('SELECT id, property_key, address, start_date, data, intention FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date, id')).rows;
     const lls = {}; (await p.query('SELECT pl.property_key, l.id, l.name, l.email, l.pay_to FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r; });
-    const items = [], feeList = []; let notOurs = 0, feesAll = 0, feesN = 0;
+    const items = [], feeList = []; let notOurs = 0, feesAll = 0, feesN = 0, feesNnet = 0;
     // On this month's page, tomorrow's rents too (even when tomorrow is next month).
     // On this month's page, the next 7 days' rents too (even into next month) — for tenants who pay early.
     const week = addDaysIso(today, 7), until = month === thisMonth && week > mEnd ? week : mEnd;
@@ -8885,8 +8885,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
         // Our fees on every rent collected so far (all months).
         if (rcvd[from] && !onlyKey) { feesAll += 1; }
         // Earlier months only on this month's page, and only while something's still to do (a property's page shows them all).
-        if (!onlyKey && from < mStart && (month !== thisMonth || (rcvd[from] && paid[from]))) { if (rcvd[from]) { const stm0 = stBy[t.id] && stBy[t.id].months.filter(function (m) { return m.from === from; })[0]; const f0 = (stm0 ? stm0.fees : stmtFees(d, Number(d.rent_pcm) || 0, n === 0, from).fees || []).filter(function (x) { return !x.invoice_id; }); const a0 = r2(f0.reduce(function (a, x) { return a + x.amount + (x.vat || 0); }, 0)); feesN = r2(feesN + a0);
-          if (a0) feeList.push({ tenancy_id: t.id, address: d.address || t.address, from: from, service: d.service || '', amount: a0, lines: f0.map(function (x) { return { label: x.label, amount: r2(x.amount + (x.vat || 0)) }; }) }); } continue; }
+        if (!onlyKey && from < mStart && (month !== thisMonth || (rcvd[from] && paid[from]))) { if (rcvd[from]) { const stm0 = stBy[t.id] && stBy[t.id].months.filter(function (m) { return m.from === from; })[0]; const f0 = (stm0 ? stm0.fees : stmtFees(d, Number(d.rent_pcm) || 0, n === 0, from).fees || []).filter(function (x) { return !x.invoice_id; }); const a0 = r2(f0.reduce(function (a, x) { return a + x.amount + (x.vat || 0); }, 0)), n0 = r2(f0.reduce(function (a, x) { return a + x.amount; }, 0)); feesN = r2(feesN + a0); feesNnet = r2(feesNnet + n0);
+          if (a0) feeList.push({ tenancy_id: t.id, address: d.address || t.address, from: from, service: d.service || '', amount: a0, net: n0, lines: f0.map(function (x) { return { label: x.label, amount: r2(x.amount + (x.vat || 0)) }; }) }); } continue; }
         let rent = Number(d.rent_pcm) || 0;
         if (n > 0) Object.keys(t.intention || {}).sort().forEach(function (k) { const it = t.intention[k] || {}; const nr = Number(it.new_rent); if (nr && !it.no_increase && (it.rent_from || k) <= from) rent = nr; });
         if (!(rent > 0)) continue;   // no rent amount on the tenancy
@@ -8916,7 +8916,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
           tenants: (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean),
           landlord: (d.landlord && d.landlord.name) || ll.name || '', landlord_id: ll.id || null, landlord_email: (d.landlord && d.landlord.email) || ll.email || '',
           service: d.service || '', pay_ref: d.pay_ref || '', pay_to: ll.pay_to || d.pay_to || '',
-          fees: r2((f.fees || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount + (x.vat || 0); }, 0)), fee_lines: (f.fees || []).filter(function (x) { return !x.invoice_id; }).map(function (x) { return { label: x.label, amount: r2(x.amount + (x.vat || 0)) }; }),
+          fees: r2((f.fees || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount + (x.vat || 0); }, 0)),
+          fees_net: r2((f.fees || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount; }, 0)), fee_lines: (f.fees || []).filter(function (x) { return !x.invoice_id; }).map(function (x) { return { label: x.label, amount: r2(x.amount + (x.vat || 0)) }; }),
           recovered: (f.fees || []).filter(function (x) { return x.invoice_id; }).map(function (x) { return { label: x.label, amount: x.amount }; }),
           bf: stm ? stm.bf : 0, income: stm ? stm.income : rent,
           pending: pend, pending_total: pendTotal, to_landlord: toLl,
@@ -8929,10 +8930,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     items.sort(function (a, b) { return a.from < b.from ? -1 : a.from > b.from ? 1 : String(a.address).localeCompare(String(b.address)); });
     // Fees collected since the start: earlier months (worked out above) + the ones on this page.
     const feesShown = items.filter(function (x) { return x.collected; }).reduce(function (a, x) { return a + x.fees; }, 0);
+    const feesShownNet = items.filter(function (x) { return x.collected; }).reduce(function (a, x) { return a + x.fees_net; }, 0);
     // Each fee collected, by property (for "Fees collected so far" → the breakdown).
-    if (month <= thisMonth) items.filter(function (x) { return x.collected && x.fees; }).forEach(function (x) { feeList.push({ tenancy_id: x.tenancy_id, address: x.address, from: x.from, service: x.service, amount: x.fees, lines: x.fee_lines }); });
+    if (month <= thisMonth) items.filter(function (x) { return x.collected && x.fees; }).forEach(function (x) { feeList.push({ tenancy_id: x.tenancy_id, address: x.address, from: x.from, service: x.service, amount: x.fees, net: x.fees_net, lines: x.fee_lines }); });
     feeList.sort(function (a, b) { return a.from < b.from ? 1 : a.from > b.from ? -1 : String(a.address).localeCompare(String(b.address)); });
-    return { fee_list: feeList, today: today, tomorrow: tomorrow, month: month, since: sinceDay, items: items, not_ours: notOurs, fees_before: feesN, fees_all: r2(feesN + (month <= thisMonth ? feesShown : 0)) };
+    return { fee_list: feeList, today: today, tomorrow: tomorrow, month: month, since: sinceDay, items: items, not_ours: notOurs, fees_before: feesN, fees_all: r2(feesN + (month <= thisMonth ? feesShown : 0)), fees_all_net: r2(feesNnet + (month <= thisMonth ? feesShownNet : 0)) };
   }
   app.get('/api/admin/rent-board', withDb(async function (p, req, res) {
     const key = req.query.property ? propKey(str(req.query.property, 400)) : null;
