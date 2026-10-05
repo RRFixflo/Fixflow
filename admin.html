@@ -2034,15 +2034,21 @@
     <p class="muted-note" id="ctoSub" style="margin:0 0 10px">Makes the Change of Tenancy Agreement. When you complete the change, the outgoing tenant becomes a previous tenant and the incoming tenant is added — on the tenancy and at the property.</p>
     <div class="grid2"><div><label class="lbl" for="ctoOut">Tenant moving out</label><select class="inp" id="ctoOut"></select></div>
       <div><label class="lbl" for="ctoEff">Effective date</label><input class="inp" id="ctoEff" type="date"></div></div>
+    <div style="margin-top:8px"><label class="lbl" for="ctoOutAddr">Outgoing tenant's forwarding address</label><input class="inp" id="ctoOutAddr" autocomplete="off" placeholder="Where they're moving to (for the deposit and any letters)"></div>
     <div style="margin:16px 0 6px;font-weight:700;font-size:.92rem;border-top:1px solid var(--line);padding-top:12px">Tenant moving in</div>
     <div class="grid2"><div><label class="lbl" for="ctoInName">Full name *</label><input class="inp" id="ctoInName" autocomplete="off"></div>
       <div><label class="lbl" for="ctoInPhone">Mobile</label><input class="inp" id="ctoInPhone" type="tel" autocomplete="off"></div>
       <div><label class="lbl" for="ctoInEmail">Email</label><input class="inp" id="ctoInEmail" type="email" autocomplete="off"></div>
-      <div><label class="lbl" for="ctoInAddr">Their current address</label><input class="inp" id="ctoInAddr" autocomplete="off"></div></div>
+      <div><label class="lbl" for="ctoInAddr">Their current address</label><input class="inp" id="ctoInAddr" autocomplete="off"></div>
+      <div><label class="lbl" for="ctoGuar">Guarantor (if any)</label><input class="inp" id="ctoGuar" autocomplete="off"></div>
+      <div><label class="lbl" for="ctoRtr">Right to Rent checked on</label><input class="inp" id="ctoRtr" type="date"></div></div>
     <div style="margin:16px 0 6px;font-weight:700;font-size:.92rem;border-top:1px solid var(--line);padding-top:12px">Rent</div>
     <div class="grid3"><div><label class="lbl" for="ctoRent">Monthly rent (total) £</label><input class="inp" id="ctoRent" inputmode="decimal"></div>
       <div><label class="lbl" for="ctoOutShare">Outgoing tenant's share £</label><input class="inp" id="ctoOutShare" inputmode="decimal"></div>
-      <div><label class="lbl" for="ctoInShare">Incoming tenant's share £</label><input class="inp" id="ctoInShare" inputmode="decimal"></div></div>
+      <div><label class="lbl" for="ctoInShare">Incoming tenant's share £</label><input class="inp" id="ctoInShare" inputmode="decimal"></div>
+      <div><label class="lbl" for="ctoFirst">Incoming tenant's first rent due</label><input class="inp" id="ctoFirst" type="date"></div>
+      <div><label class="lbl" for="ctoPayRef">Payment reference</label><input class="inp" id="ctoPayRef"></div>
+      <div><label class="lbl" for="ctoFee">Change of tenant fee £ <span class="muted-note" style="margin:0">(optional)</span></label><input class="inp" id="ctoFee" inputmode="decimal" placeholder="e.g. 50"></div></div>
     <div style="margin:16px 0 6px;font-weight:700;font-size:.92rem;border-top:1px solid var(--line);padding-top:12px">Deposit</div>
     <div class="grid3"><div><label class="lbl" for="ctoDep">Total deposit held £</label><input class="inp" id="ctoDep" inputmode="decimal"></div>
       <div><label class="lbl" for="ctoOutDep">Outgoing tenant's share £</label><input class="inp" id="ctoOutDep" inputmode="decimal"></div>
@@ -2050,6 +2056,10 @@
       <div><label class="lbl" for="ctoScheme">Protection scheme</label><input class="inp" id="ctoScheme" list="tfSchemes"></div>
       <div><label class="lbl" for="ctoRef">Scheme reference</label><input class="inp" id="ctoRef"></div>
       <div><label class="lbl" for="ctoEnd">Tenancy end date</label><input class="inp" id="ctoEnd" placeholder="n/a"></div></div>
+    <div style="margin-top:8px"><label class="lbl" for="ctoDepHow">How the deposit is handled</label><select class="inp" id="ctoDepHow">
+      <option value="replace">Incoming tenant pays us their share; we return the outgoing tenant's share</option>
+      <option value="direct">Incoming tenant pays the outgoing tenant's share to them directly</option>
+      <option value="end">Outgoing tenant's share stays protected until the tenancy ends</option></select></div>
     <label class="switch-row" style="margin-top:12px"><input type="checkbox" id="ctoAttach" checked> Attach the original tenancy agreement behind it</label>
     <p class="err" id="ctoErr"></p>
     <div class="row-actions" style="flex-wrap:wrap"><button class="btn" type="button" id="ctoClose">Close</button><span style="flex:1"></span><button class="btn" type="button" id="ctoPreview">👁 Preview the document</button><button class="btn primary" type="button" id="ctoDone">Complete the change</button></div>
@@ -12709,13 +12719,14 @@
     $('ctoRent').value = r2(d.rent_pcm); $('ctoOutShare').value = d.rent_pcm ? r2(d.rent_pcm / n) : ''; $('ctoInShare').value = $('ctoOutShare').value;
     $('ctoDep').value = r2(d.deposit); $('ctoOutDep').value = d.deposit ? r2(d.deposit / n) : ''; $('ctoInDep').value = $('ctoInShare').value || $('ctoOutDep').value;
     $('ctoScheme').value = d.deposit_scheme || ''; $('ctoRef').value = d.deposit_ref || '';
+    ['ctoOutAddr', 'ctoGuar', 'ctoRtr', 'ctoFee'].forEach(function(id){ $(id).value = ''; }); $('ctoFirst').value = $('ctoEff').value; $('ctoPayRef').value = d.pay_ref || payRef(d.address || ''); $('ctoDepHow').value = 'replace'; delete $('ctoFirst').dataset.touched;
     $('ctoSub').innerHTML = esc(d.address || '') + ' — makes the Change of Tenancy Agreement. When you complete the change, the outgoing tenant becomes a <b>previous tenant</b> and the incoming tenant is added, on the tenancy and at the property.';
     $('ctoErr').textContent = ''; $('ctoModal').hidden = false; $('ctoInName').focus();
   }
   function ctoBody(mode){
     return { mode: mode, out_index: Number($('ctoOut').value), effective: $('ctoEff').value, incoming: { name: $('ctoInName').value.trim(), phone: $('ctoInPhone').value.trim(), email: $('ctoInEmail').value.trim(), address: $('ctoInAddr').value.trim() },
       rent_total: ctoNum('ctoRent'), out_share: ctoNum('ctoOutShare'), in_share: ctoNum('ctoInShare'), deposit_total: ctoNum('ctoDep'), out_deposit: ctoNum('ctoOutDep'), in_deposit: ctoNum('ctoInDep'),
-      scheme: $('ctoScheme').value.trim(), scheme_ref: $('ctoRef').value.trim(), end_date: $('ctoEnd').value.trim(), attach: $('ctoAttach').checked, agreement: $('ctoAttach').checked ? agreementValues(ctoD) : null };
+      scheme: $('ctoScheme').value.trim(), scheme_ref: $('ctoRef').value.trim(), end_date: $('ctoEnd').value.trim(), out_address: $('ctoOutAddr').value.trim(), in_guarantor: $('ctoGuar').value.trim(), rtr_date: $('ctoRtr').value, first_rent: $('ctoFirst').value, pay_ref: $('ctoPayRef').value.trim(), fee: ctoNum('ctoFee'), deposit_how: $('ctoDepHow').value, attach: $('ctoAttach').checked, agreement: $('ctoAttach').checked ? agreementValues(ctoD) : null };
   }
   function ctoCheck(){
     if (!$('ctoInName').value.trim()) { $('ctoErr').textContent = 'Enter the incoming tenant’s name.'; $('ctoInName').focus(); return false; }
@@ -12732,9 +12743,11 @@
   $('ctoClose').addEventListener('click', function(){ $('ctoModal').hidden = true; });
   $('ctoInShare').addEventListener('input', function(){ if (!$('ctoInDep').dataset.touched) $('ctoInDep').value = this.value; });
   $('ctoInDep').addEventListener('input', function(){ this.dataset.touched = '1'; });
+  $('ctoEff').addEventListener('change', function(){ if (!$('ctoFirst').dataset.touched) $('ctoFirst').value = this.value; });
+  $('ctoFirst').addEventListener('input', function(){ this.dataset.touched = '1'; });
   $('ctoPreview').addEventListener('click', function(){
     if (!ctoCheck()) return;
-    var win = window.open('', '_blank'); busy($('ctoPreview'), true, 'Making it…');
+    var win = window.open('', '_blank'); busy($('ctoPreview'), true, $('ctoAttach').checked ? 'Making it (with the agreement)…' : 'Making it…');
     api('POST', '/api/admin/tenancies/' + openTcyId + '/change-of-tenant', ctoBody('preview')).then(function(d){
       busy($('ctoPreview'), false);
       if (!d.ok) { if (win) win.close(); $('ctoErr').textContent = 'Couldn’t make the document (' + (d.error || 'error') + ').'; return; }
@@ -12745,7 +12758,7 @@
     if (!ctoCheck()) return;
     var outName = $('ctoOut').selectedOptions[0] ? $('ctoOut').selectedOptions[0].textContent : 'the outgoing tenant';
     if (!confirm('Complete the change of tenant?\n\n' + outName + ' moves out and becomes a previous tenant; ' + $('ctoInName').value.trim() + ' moves in. The document is saved on the tenancy.')) return;
-    busy($('ctoDone'), true, 'Completing…');
+    busy($('ctoDone'), true, $('ctoAttach').checked ? 'Making the documents…' : 'Completing…');
     api('POST', '/api/admin/tenancies/' + openTcyId + '/change-of-tenant', ctoBody('complete')).then(function(d){
       busy($('ctoDone'), false);
       if (!d.ok) { $('ctoErr').textContent = 'Couldn’t complete the change (' + (d.error || 'error') + ').'; return; }
