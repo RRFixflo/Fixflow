@@ -1348,6 +1348,10 @@
     .staff-tabs button { flex: none; white-space: nowrap; padding: 7px 11px; font-size: .84rem; }
   }
   /* Tenant page: the property address wraps instead of running off the edge. */
+  .av-on-banner { display: flex; gap: 10px; align-items: flex-start; border: 1px solid #abefc6; background: #ecfdf3; color: #05603a; border-radius: 14px; padding: 10px 14px; margin: 10px 0 12px; font-size: .88rem; line-height: 1.45; }
+  .av-on-banner .av-on-ic { font-size: 1.1rem; line-height: 1.3; }
+  .av-on-banner .av-on-row { color: #1d2939; }
+  .av-on-banner .linkish { color: #067647; font-weight: 600; padding: 0; min-height: 0; }
   .prop-added { font-size: .74rem; color: var(--ink-faint); margin-top: 2px; }
   .tn-paddr { padding: 0 !important; font-weight: 600; white-space: normal; text-align: left; justify-content: flex-start; height: auto; min-height: 0; line-height: 1.35; }
   .tn-pacts { display: flex; gap: 6px; align-items: center; }
@@ -1573,6 +1577,7 @@
             <div style="display:flex;gap:14px;align-items:center"><span id="llAvatar"></span><div><h2 id="llTitle"></h2><div class="prop-sub" id="llSub"></div></div></div>
             <div class="prop-actions" id="llActions"></div>
           </div>
+          <div id="llAvBanner"></div>
           <div class="card" id="llCard"></div>
           <div class="card" id="llMails" style="margin-top:12px"></div>
           <div class="card" id="llOwed" style="margin-top:12px"></div>
@@ -1941,6 +1946,7 @@
               <button class="btn primary" id="propShare" type="button">Share report</button>
             </div>
           </div>
+          <div id="propAvBanner"></div>
           <div class="tiles prop-tiles" id="propTiles"></div>
           <div class="card" id="propCerts" style="margin-bottom:12px"></div>
           <div class="card" id="propInv" style="margin-bottom:12px" hidden></div>
@@ -4442,6 +4448,35 @@
       .sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); });
     return { property: p, jobs: list, periodLabel: $('propRange').selectedOptions[0].textContent };
   }
+  // Is this property on the available list right now (a real listing — not a Rightmove Dream)?
+  // Shown on the property, tenancy and landlord pages.
+  function avSig(a){ var m = POSTCODE_RE.exec(String(a || '')); if (!m) return ''; var n = (String(a).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).join(' ').toUpperCase(); return n ? (m[1] + m[2]).toUpperCase() + '|' + n : ''; }
+  var avOnAsked = false;
+  function avOnList(address){
+    if (!address) return [];
+    if (!avItems.length && !avOnAsked && meta.db) { avOnAsked = true; api('GET', '/api/admin/available').then(function(d){ if (d && d.ok && !avItems.length) { avItems = d.items || []; avLinkData = d.links || {}; } avBannersRefresh(); }); return []; }
+    var k = propKey(address), sg = avSig(address);
+    return avItems.filter(function(x){ return x.status === 'available' && (propKey(x.address) === k || (sg && avSig(x.address) === sg)); });
+  }
+  function avBannerHtml(addresses){
+    var seen = {}, rows = [];
+    addresses.forEach(function(a){ avOnList(a).forEach(function(x){ if (!seen[x.id]) { seen[x.id] = 1; rows.push(x); } }); });
+    if (!rows.length) return '';
+    return '<div class="av-on-banner"><span class="av-on-ic">🏷</span><div style="flex:1;min-width:0"><b>On the available list</b>' + rows.map(function(x){
+      return '<div class="av-on-row">' + esc(shortAddr(x.address)) + ' · ' + [x.beds != null ? (Number(x.beds) === 0 ? 'Studio' : x.beds + ' bed') : '', x.rent_pcm ? gbp(Number(x.rent_pcm)).replace(/\.00$/, '') + ' pcm' : '', x.vacant ? 'available now' : x.available_from ? 'available from ' + longDay(String(x.available_from).slice(0, 10)) : '', x.key_no ? '🔑 ' + x.key_no : ''].filter(Boolean).map(esc).join(' · ') +
+        ' <button type="button" class="linkish" data-avgo="' + x.id + '">Open on the list ›</button></div>'; }).join('') + '</div></div>';
+  }
+  function avBannersRefresh(){
+    if ($('propDetail') && !$('propDetail').hidden) { var d = propertyJobs(); $('propAvBanner').innerHTML = d ? avBannerHtml([d.property.address]) : ''; }
+    if ($('llDetail') && !$('llDetail').hidden) { var l = landlordById(openLlId); $('llAvBanner').innerHTML = l ? avBannerHtml(llProperties(l).map(function(x){ return x.address; })) : ''; }
+    if ($('tcyAvBanner')) { var t = tcyDraft; $('tcyAvBanner').innerHTML = t && t.address && openTcyId !== 'new' ? avBannerHtml([t.address]) : ''; }
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-avgo]'); if (!b) return;
+    var x = avItems.filter(function(i){ return i.id === Number(b.dataset.avgo); })[0]; if (!x) return;
+    closeDrawer(); showView('avail'); avFlag = ''; document.querySelectorAll('#avBeds [data-avf]').forEach(function(f){ f.classList.toggle('on', f.dataset.avf === ''); });
+    $('avQ').value = x.address; avOpenCards[x.id] = 1; renderAvail();
+  });
   function renderProperty(){
     var d = propertyJobs();
     if (!d) { $('propBack').click(); return; }
@@ -4457,6 +4492,7 @@
       keyTile(d.property.address) + licenceTile(d.property.address) +
       (function(){ var t = propTenancy(d.property.key); return '<div class="tile' + (t.k === 'none' ? ' alert has' : t.k === 'ending' ? ' warnish' : ' good') + '"><div class="k">Tenancy</div><div class="v" style="font-size:1rem">' + (t.k === 'none' ? 'None on file' : esc(t.text)) + '</div>' + (t.k === 'none' ? '<button type="button" class="btn small primary" id="propAddTerms" style="margin-top:6px">📄 Add Terms of Let</button><div class="drop-hint" style="margin-top:4px">or drag &amp; drop it onto this page</div>' : '') + '</div>'; })();
     bindKeyTile(d.property.address); bindLicenceTile(d.property.address);
+    $('propAvBanner').innerHTML = avBannerHtml([d.property.address]);
     // This property's invoices: what it has cost the landlord, and what's still owed.
     (function(){
       var pi = allInvoices.filter(function(i){ return propKey(i.property_address) === d.property.key || addrSame(i.property_address, d.property.address); })
@@ -7903,6 +7939,7 @@
     all.sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); });
     var open = all.filter(isOpen).length;
     $('llAvatar').innerHTML = avatar(l.name);
+    $('llAvBanner').innerHTML = avBannerHtml(props.map(function(x){ return x.address; }));
     $('llTitle').textContent = l.name;
     personMails($('llMails'), l.email);
     $('llSub').textContent = props.length + ' propert' + (props.length === 1 ? 'y' : 'ies') + ' · ' + all.length + ' repair' + (all.length === 1 ? '' : 's') + ' · ' + open + ' open · ' + gbp(chargedTotal(all)) + ' charged';
@@ -12503,11 +12540,13 @@
     }).join('');
   }
   function renderTcyForm(){
+    setTimeout(avBannersRefresh, 0);   // "On the available list", once the form is drawn
     var d = tcyDraft, x = openTcyId === 'new' ? null : tenancies.filter(function(t){ return t.id === openTcyId; })[0], l = d.landlord || {};
     var props = certProperties().map(function(p){ return '<option value="' + esc(p.address) + '"></option>'; }).join('');
     $('tcyDetail').innerHTML =
       '<button class="btn small ghost" id="tcyBack" type="button">← All tenancies</button>' +
       '<div class="prop-head"><div><h2>' + esc(x ? d.address || 'Tenancy' : 'New tenancy') + '</h2><div class="prop-sub">' + esc(x ? tcyStatus(d) : 'Fill in the details, then save to make the documents and emails.') + '</div>' +
+        '<div id="tcyAvBanner"></div>' +
         // Straight to the property and the landlord.
         (x ? (function(){
           var pr = d.address && matchProperty(d.address), lr = findLandlordRec(d.landlord || {}, d.address);
