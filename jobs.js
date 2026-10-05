@@ -3005,7 +3005,7 @@ module.exports = function mountJobs(app, opts) {
     }
     await p.query(`INSERT INTO property_tenants (tenant_id, property_key, address, moved_out_at) VALUES ($1, $2, $3, $4)
       ON CONFLICT (tenant_id, property_key) DO UPDATE SET moved_out_at = excluded.moved_out_at, address = coalesce(excluded.address, property_tenants.address)`,
-      [id, key, str(b.address, 500), b.moved_out ? new Date() : null]);
+      [id, key, str(b.address, 500), b.moved_out ? (/^\d{4}-\d{2}-\d{2}$/.test(String(b.moved_out_on || '')) ? new Date(b.moved_out_on + 'T12:00:00Z') : new Date()) : null]);
     res.json({ ok: true });
   }));
 
@@ -3215,11 +3215,12 @@ module.exports = function mountJobs(app, opts) {
   // Mark an invoice as paid by the landlord (or not paid).
   // Which month's rent an unpaid invoice is taken from ('YYYY-MM'; empty = the next rent day).
   app.post('/api/admin/invoices/:id/collect', withDb(async function (p, req, res) {
-    const m = String((req.body || {}).month || ''), ok = /^\d{4}-(0[1-9]|1[0-2])$/.test(m);
+    // 'direct': the landlord pays it themselves (we don't collect this rent), so it's never taken from rent.
+    const m = String((req.body || {}).month || ''), ok = /^\d{4}-(0[1-9]|1[0-2])$/.test(m) || m === 'direct';
     if (m && !ok) return res.status(400).json({ ok: false, error: 'month' });
     const r = await p.query(ok ? "UPDATE invoices SET data = data || jsonb_build_object('collect_month', $2::text) WHERE id = $1 RETURNING job_id, tenancy_id, number" : "UPDATE invoices SET data = data - 'collect_month' WHERE id = $1 RETURNING job_id, tenancy_id, number", ok ? [jobId(req), m] : [jobId(req)]);
     if (!r.rows[0]) return res.status(404).json({ ok: false, error: 'not-found' });
-    await invoiceNote(p, r.rows[0], 'Invoice ' + r.rows[0].number + (ok ? ' to be taken from the ' + new Date(m + '-15T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) + ' rent.' : ' to be taken from the next rent.'), 'change').catch(function () {});
+    await invoiceNote(p, r.rows[0], 'Invoice ' + r.rows[0].number + (m === 'direct' ? ' to be paid by the landlord directly (not taken from rent).' : ok ? ' to be taken from the ' + new Date(m + '-15T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) + ' rent.' : ' to be taken from the next rent.'), 'change').catch(function () {});
     res.json({ ok: true });
   }));
   app.post('/api/admin/invoices/:id/paid', withDb(async function (p, req, res) {
@@ -5404,6 +5405,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       manage_basis: b.manage_basis === 'upfront' ? 'upfront' : 'monthly', find_unit: b.find_unit === 'gbp' ? 'gbp' : 'pct', collect_unit: b.collect_unit === 'gbp' ? 'gbp' : 'pct', manage_unit: b.manage_unit === 'gbp' ? 'gbp' : 'pct', collect_pct: amt(b.collect_pct), manage_pct: amt(b.manage_pct),
       credits: (Array.isArray(b.credits) ? b.credits : []).slice(0, 20).map(function (f) { return { label: s(f && f.label, 200), amount: amt(f && f.amount), vat: !!(f && f.vat) }; }).filter(function (f) { return f.label && f.amount; }),
       fees: (Array.isArray(b.fees) ? b.fees : []).slice(0, 30).map(function (f) { const x = { label: s(f && f.label, 200), amount: amt(f && f.amount) }; if (f && f.novat === true) x.novat = true; return x; }).filter(function (f) { return f.label; }),
+      rent_by: b.rent_by === 'landlord' ? 'landlord' : b.rent_by === 'us' ? 'us' : null, deposit_ref: s(b.deposit_ref, 60),
       vat: b.vat !== false, statement_date: day(b.statement_date), notes: s(b.notes, 4000),
       // Banking trail: each payment received.
       receipts: (Array.isArray(b.receipts) ? b.receipts : []).slice(0, 40).map(function (r) {
@@ -5474,7 +5476,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!d.address) return res.status(400).json({ ok: false, error: 'address-required' });
     // Kept from the saved tenancy: its move-in fees invoice and whether the landlord paid.
     const r = await p.query(`UPDATE tenancies SET property_key = $2, address = $3, start_date = $4,
-        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid', 'stmt_sent', data->'stmt_sent', 'month_costs', data->'month_costs', 'inventory_job_id', data->'inventory_job_id')), updated_at = now() WHERE id = $1 RETURNING id`,
+        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid', 'stmt_sent', data->'stmt_sent', 'month_costs', data->'month_costs', 'inventory_job_id', data->'inventory_job_id', 'tenant_changes', data->'tenant_changes')), updated_at = now() WHERE id = $1 RETURNING id`,
       [jobId(req), propKey(d.address), d.address, d.start_date, JSON.stringify(d)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await linkTenancyPeople(p, d);
@@ -5485,6 +5487,145 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await p.query('DELETE FROM tenancies WHERE id = $1 RETURNING id', [jobId(req)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json({ ok: true });
+  }));
+  // ---------- Change of tenant (one tenant swapped for another) ----------
+  // The Change of Tenancy Agreement (assignment and substitution of a tenant), in
+  // the office's own layout, with the original tenancy agreement attached behind
+  // it when it can be made. Completing the change swaps the tenants on the
+  // tenancy and at the property (the outgoing one kept as a previous tenant).
+  async function changeOfTenancyPdf(v) {
+    const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+    const pdf = await PDFDocument.create(), F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold), I = await pdf.embedFont(StandardFonts.HelveticaOblique);
+    const W = 595.28, H = 841.89, M = 70, CW = W - 2 * M;
+    const C = { navy: rgb(0.13, 0.23, 0.40), ink: rgb(0.08, 0.09, 0.11), soft: rgb(0.40, 0.42, 0.46), line: rgb(0.80, 0.81, 0.83), label: rgb(0.95, 0.95, 0.95), blue: rgb(0.10, 0.36, 0.75) };
+    const safe = function (t) { return String(t == null ? '' : t).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/[^\x20-\x7E\xA3\xA0-\xFF]/g, ''); };
+    let page = pdf.addPage([W, H]), y = H - 70;
+    const text = function (t, x, yy, size, font, color) { page.drawText(safe(t), { x: x, y: yy, size: size, font: font || F, color: color || C.ink }); };
+    const center = function (t, yy, size, font, color) { const w = (font || F).widthOfTextAtSize(safe(t), size); text(t, (W - w) / 2, yy, size, font, color); };
+    const wrap = function (t, font, size, width) { const out = []; String(safe(t)).split('\n').forEach(function (para) { let line = ''; para.split(/\s+/).forEach(function (w) { const tryL = line ? line + ' ' + w : w; if (font.widthOfTextAtSize(tryL, size) > width && line) { out.push(line); line = w; } else line = tryL; }); out.push(line); }); return out; };
+    const ensure = function (h) { if (y - h < 70) { page = pdf.addPage([W, H]); y = H - 70; } };
+    const section = function (t) { ensure(60); y -= 22; text(t, M, y, 12.5, B, C.navy); y -= 6; page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.8, color: C.navy }); y -= 16; };
+    const sub = function (t, rows) { ensure(26 + (rows || 1) * 31); y -= 10; text(t, M, y, 9.5, B, C.navy); y -= 8; };
+    const row = function (label, value, faint) {
+      const lw = 140, vw = CW - lw, lines = wrap(value || '', F, 9.5, vw - 14), h = Math.max(22, lines.length * 12 + 10);
+      ensure(h + 8);
+      page.drawRectangle({ x: M, y: y - h, width: lw, height: h, color: C.label, borderColor: C.line, borderWidth: 0.6 });
+      page.drawRectangle({ x: M + lw, y: y - h, width: vw, height: h, borderColor: C.line, borderWidth: 0.6 });
+      text(label, M + 7, y - 15, 9.5, B, C.ink);
+      lines.forEach(function (ln, i) { text(ln, M + lw + 7, y - 15 - i * 12, 9.5, F, faint ? C.soft : C.ink); });
+      y -= h + 9;
+    };
+    // Letterhead.
+    center('RESIDENTIAL REALTORS', y, 18, B, C.navy); y -= 18;
+    center('28-30 Harper Road, London SE1 6AD', y, 8.5, F, C.soft); y -= 12;
+    center('T: 0207 096 8131  |  E: info@residentialrealtors.co.uk', y, 8.5, F, C.soft); y -= 14;
+    page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 1.4, color: C.navy }); y -= 30;
+    center('CHANGE OF TENANCY AGREEMENT', y, 15, B, C.navy); y -= 16;
+    center('Assignment & Substitution of Tenant', y, 10, F, C.soft); y -= 6;
+    section('1. Property Details');
+    row('Property Address', v.address);
+    row('Effective Date', v.effective);
+    row('Original Tenancy Start', v.original_start);
+    row('Tenancy End Date', v.end_date || 'n/a');
+    row('Monthly Rent (Total)', v.rent_total);
+    row('Outgoing Tenant\'s Share', v.out_share);
+    row('Incoming Tenant\'s Share', v.in_share);
+    section('2. Parties');
+    sub('Outgoing Tenant', 2); row('Full Name', v.out_name); row('Current Address', v.out_address);
+    sub('Incoming Tenant', 2); row('Full Name', v.in_name); row('Current Address', v.in_address);
+    if (v.remaining.length) { sub('Remaining Tenant(s)', v.remaining.length); v.remaining.forEach(function (n, i) { row('Tenant ' + (i + 1) + ' Full Name', n); }); }
+    sub('Managing Agent', 2); row('Company Name', 'Residential Realtors (Estallion Investments Limited)'); row('Address', '28-30 Harper Road, London SE1 6AD');
+    section('3. Deposit');
+    row('Total Deposit Held', v.deposit_total);
+    row('Outgoing Tenant\'s Share', v.out_deposit);
+    row('Incoming Tenant\'s Share', v.in_deposit ? v.in_deposit + ' (payable prior to occupation)' : '');
+    row('Protection Scheme', v.scheme);
+    row('Scheme Reference', v.scheme_ref);
+    section('4. Terms & Conditions');
+    [
+      'The Outgoing Tenant agrees to relinquish all rights and obligations under the original tenancy agreement with effect from the Effective Date stated above.',
+      'The Incoming Tenant agrees to assume all rights and obligations under the original tenancy agreement from the Effective Date, including all terms and conditions therein.',
+      'The Incoming Tenant acknowledges that they are taking over the room in its current condition. It is the responsibility of the Incoming Tenant to inspect the room and report any pre-existing damages or defects to the Managing Agent in writing within 48 hours of the Effective Date.',
+      'The Incoming Tenant\'s share of rent and deposit must be received by the Managing Agent prior to or on the Effective Date. This agreement will not take effect until payment has been confirmed.',
+      'The Outgoing Tenant remains jointly and severally liable for all rental arrears and obligations accrued prior to the Effective Date.',
+      'The Remaining Tenant(s) consent to this change of tenancy by signing below and agree to continue to be bound by all terms of the original tenancy agreement.',
+      'All other terms of the original tenancy agreement dated ' + (v.original_start || 'as stated above') + ' shall remain in full force and effect.'
+    ].forEach(function (t) { const lines = wrap(t, F, 9.5, CW - 30); ensure(lines.length * 12 + 6); page.drawCircle({ x: M + 16, y: y + 3, size: 1.7, color: C.ink }); lines.forEach(function (ln, i) { text(ln, M + 30, y - i * 12, 9.5, F, C.ink); }); y -= lines.length * 12 + 6; });
+    section('5. Signatures');
+    text('By signing below, all parties agree to the terms of this Change of Tenancy Agreement.', M, y, 9.5, I, C.ink); y -= 22;
+    const sig = function (who, name) {
+      ensure(92);
+      text(who, M + 6, y, 9.5, B, C.ink); if (name) text(name, M + 6, y - 13, 8.5, F, C.soft);
+      y -= 62; page.drawLine({ start: { x: M + 4, y: y }, end: { x: M + 230, y: y }, thickness: 0.8, color: C.ink });
+      text('Signature', M + 6, y - 11, 8, F, C.soft); text('Date', M + 260, y - 11, 8, F, C.soft);
+      page.drawLine({ start: { x: M + 258, y: y }, end: { x: M + 380, y: y }, thickness: 0.8, color: C.ink });
+      y -= 30;
+    };
+    sig('Outgoing Tenant', v.out_name);
+    sig('Incoming Tenant', v.in_name);
+    v.remaining.forEach(function (n, i) { sig('Remaining Tenant ' + (i + 1), n); });
+    sig('Managing Agent (on behalf of Landlord)', 'Residential Realtors');
+    ensure(40); y -= 4; page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.6, color: C.navy }); y -= 12;
+    wrap('Residential Realtors is a trading name of Estallion Investments Limited. This document is produced for the purposes of recording a change of tenancy and does not constitute a new tenancy agreement.', I, 7.8, CW).forEach(function (ln) { center(ln, y, 7.8, I, C.soft); y -= 10; });
+    pdf.setTitle('Change of Tenancy Agreement - ' + safe(v.address)); pdf.setAuthor('Residential Realtors'); pdf.setCreator('Fixflow');
+    return pdf;
+  }
+  app.post('/api/admin/tenancies/:id/change-of-tenant', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req);
+    const t = (await p.query('SELECT id, address, start_date, data FROM tenancies WHERE id = $1', [id])).rows[0];
+    if (!t) return res.status(404).json({ ok: false, error: 'not-found' });
+    const d = t.data || {}, tenants = Array.isArray(d.tenants) ? d.tenants : [];
+    const oi = parseInt(b.out_index, 10), out = tenants[oi];
+    if (!out) return res.status(400).json({ ok: false, error: 'outgoing' });
+    const inc = { name: str((b.incoming || {}).name, 200), email: str((b.incoming || {}).email, 200), phone: str((b.incoming || {}).phone, 50), address: str((b.incoming || {}).address, 500) };
+    if (!inc.name) return res.status(400).json({ ok: false, error: 'incoming' });
+    const eff = /^\d{4}-\d{2}-\d{2}$/.test(String(b.effective || '')) ? String(b.effective) : null;
+    if (!eff) return res.status(400).json({ ok: false, error: 'effective' });
+    const addr = tidyAddress(d.address || t.address || '');
+    const ord = function (n) { const s = ['th', 'st', 'nd', 'rd'], v2 = n % 100; return n + (s[(v2 - 20) % 10] || s[v2] || s[0]); };
+    const ukLong = function (iso) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '')); return m ? ord(+m[3]) + ' ' + ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][+m[2] - 1] + ' ' + m[1] : ''; };
+    const cash = function (v2) { const n = money(v2); return n == null || n === undefined ? '' : '\xA3' + n.toLocaleString('en-GB', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
+    const pcm = function (v2) { const c = cash(v2); return c ? c + ' per calendar month' : ''; };
+    const start = String(d.start_date || t.start_date || '').slice(0, 10);
+    const info = {
+      address: addr, effective: ukLong(eff), original_start: ukLong(start), end_date: str(b.end_date, 60) || 'n/a',
+      rent_total: pcm(b.rent_total != null ? b.rent_total : d.rent_pcm), out_share: pcm(b.out_share), in_share: pcm(b.in_share),
+      out_name: out.name || '', out_address: str(b.out_address, 500) || addr, in_name: inc.name, in_address: inc.address,
+      remaining: tenants.filter(function (x, i) { return i !== oi && x && x.name; }).map(function (x) { return x.name; }),
+      deposit_total: cash(b.deposit_total != null ? b.deposit_total : d.deposit), out_deposit: cash(b.out_deposit), in_deposit: cash(b.in_deposit),
+      scheme: str(b.scheme, 80) || d.deposit_scheme || '', scheme_ref: str(b.scheme_ref, 60) || d.deposit_ref || ''
+    };
+    const pdf = await changeOfTenancyPdf(info);
+    // The original tenancy agreement behind it, from the office's template (as it was, before the change).
+    let attached = false, attachError = null;
+    if (b.attach && b.agreement) {
+      try {
+        const ag = await makeAgreement(p, { format: 'pdf', values: b.agreement });
+        if (ag.error) attachError = ag.error;
+        else { const { PDFDocument } = require('pdf-lib'); const src = await PDFDocument.load(ag.data); (await pdf.copyPages(src, src.getPageIndices())).forEach(function (pg) { pdf.addPage(pg); }); attached = true; }
+      } catch (e) { attachError = 'pdf-failed'; console.error('Change of tenant: agreement not attached:', e.message); }
+    }
+    const bytes = Buffer.from(await pdf.save());
+    const name = 'Change of Tenancy Agreement - ' + shortAddrText(addr) + '.pdf';
+    if (b.mode !== 'complete') return res.json({ ok: true, pdf: bytes.toString('base64'), name: name, attached: attached, attach_error: attachError });
+    // Complete: keep the document, swap the tenants on the tenancy and at the property.
+    const token = crypto.randomBytes(18).toString('base64url');
+    await p.query('INSERT INTO shared_docs (token, job_id, name, pdf) VALUES ($1, NULL, $2, $3)', [token, name, bytes]);
+    // The incoming tenant takes the outgoing one's place (and isn't listed twice if already there).
+    const samePerson = function (x) { return x && ((inc.email && x.email && x.email.toLowerCase() === inc.email.toLowerCase()) || (phoneTail(inc.phone) && phoneTail(x.phone) === phoneTail(inc.phone)) || (nameKey(inc.name) && nameKey(x.name) === nameKey(inc.name))); };
+    const newTenants = tenants.map(function (x, i) { return i === oi ? { name: inc.name, email: inc.email, phone: inc.phone, address: '' } : x; }).filter(function (x, i) { return i === oi || !samePerson(x); });
+    const change = { at: new Date().toISOString(), effective: eff, out: { name: out.name || '', email: out.email || '', phone: out.phone || '' }, in: { name: inc.name, email: inc.email, phone: inc.phone }, doc: token, by: req.user && req.user.name || null };
+    const changes = (Array.isArray(d.tenant_changes) ? d.tenant_changes : []).concat([change]).slice(-30);
+    const nd = Object.assign({}, d, { tenants: newTenants, tenant_changes: changes });
+    if (info.scheme_ref && !d.deposit_ref) nd.deposit_ref = info.scheme_ref;
+    const logText = 'Change of tenant from ' + info.effective + ': ' + (out.name || 'outgoing tenant') + ' moved out, ' + inc.name + ' moved in. Change of Tenancy Agreement: /d/' + token;
+    await p.query("UPDATE tenancies SET data = $2::jsonb, log = coalesce(log, '[]'::jsonb) || $3::jsonb, updated_at = now() WHERE id = $1", [id, JSON.stringify(nd), JSON.stringify([{ at: new Date().toISOString(), text: logText }])]);
+    // At the property: the outgoing tenant becomes a previous tenant; the incoming one is added.
+    const outId = await ensureTenant(p, { name: out.name, email: out.email, phone: out.phone }, d.address || t.address, true);
+    if (outId) await p.query('UPDATE property_tenants SET moved_out_at = $3 WHERE tenant_id = $1 AND property_key = $2', [outId, propKey(d.address || t.address), new Date(eff + 'T12:00:00Z')]);
+    const inId = await ensureTenant(p, { name: inc.name, email: inc.email, phone: inc.phone }, d.address || t.address, true);
+    if (inId) await p.query('UPDATE property_tenants SET moved_out_at = NULL WHERE tenant_id = $1 AND property_key = $2', [inId, propKey(d.address || t.address)]);
+    res.json({ ok: true, doc: '/d/' + token, name: name, attached: attached, attach_error: attachError, tenancy: nd });
   }));
   // ---------- Form 4A: landlord's notice proposing a new rent (Housing Act 1988 s.13(2)) ----------
   // The official form is filled in from the tenancy (and kept editable). The new rent
@@ -7099,6 +7240,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // (and a phone alert sent) so the money can be taken from the rent we pass on.
   // Only where we collect the rent (not Tenant Find). Shown for 7 days after the
   // rent day until marked recovered or skipped.
+  // Whether we collect the rent for a tenancy: as set on the tenancy, else by its service (not Tenant Find).
+  function rentByUs(d) { d = d || {}; return d.rent_by === 'landlord' ? false : d.rent_by === 'us' ? true : !/tenant find/i.test(String(d.service || '')); }
   const rentDateIn = function (day, y, m) { const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); return new Date(Date.UTC(y, m, Math.min(day, last))).toISOString().slice(0, 10); };
   async function rentRecoveries(p) {
     const today = londonDay(), y = +today.slice(0, 4), m = +today.slice(5, 7) - 1;
@@ -7106,14 +7249,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const tcys = (await p.query("SELECT id, property_key, address, start_date, data FROM tenancies WHERE start_date IS NOT NULL AND start_date <= $1 ORDER BY start_date DESC", [today])).rows;
     const seen = {}, out = [];
     const invs = (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.landlord_name, i.data->>'collect_month' AS cm, coalesce(j.property_address, i.address) AS property_address FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id
-      WHERE i.paid_at IS NULL AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.id`)).rows;
+      WHERE i.paid_at IS NULL AND coalesce(i.data->>'collect_month', '') <> 'direct' AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.id`)).rows;
     const lls = {};
     (await p.query('SELECT pl.property_key, l.name FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r.name; });
     for (const t of tcys) {
       if (!t.property_key || seen[t.property_key]) continue;
       seen[t.property_key] = 1;   // the latest tenancy at each property is the current one
       const d = t.data || {};
-      if (/tenant find/i.test(String(d.service || ''))) continue;
+      if (!rentByUs(d)) continue;   // the landlord collects this rent: nothing to take it from
       const base = /^\d{4}-\d{2}-\d{2}$/.test(d.so_start || '') ? d.so_start : String(t.start_date).slice(0, 10);
       const day = +base.slice(8, 10); if (!day) continue;
       let rd = rentDateIn(day, y, m);
@@ -10108,7 +10251,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     'https://www.ealing.gov.uk/a_to_z/service/489/register_for_council_tax',
     'https://www.enfield.gov.uk/services/council-tax/new-to-enfield-moving-house',
     'https://www.gov.uk/find-local-council',
-    'https://www.gov.uk/government/collections/assured-tenancy-forms',
+    'https://www.gov.uk/search/all?keywords=form+4a+landlord+notice+proposing+a+new+rent&order=relevance',
     'https://www.gov.uk/government/publications/how-to-rent',
     'https://www.gov.uk/prove-right-to-rent',
     'https://www.gov.uk/view-right-to-rent',

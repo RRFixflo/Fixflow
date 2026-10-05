@@ -1395,6 +1395,7 @@
         <div id="tenantsListView">
           <div class="toolbar">
             <input class="inp search" id="tenantSearch" type="search" placeholder="Search by name, phone, email or address">
+            <select class="inp" id="tenantWho" style="width:auto" aria-label="Which tenants"><option value="current">Current tenants</option><option value="past">Previous tenants</option><option value="all">Everyone</option></select>
             <button class="btn" id="tenantEmailAll" type="button">✉️ Email all tenants</button>
             <button class="btn" id="tenantBroadcast" type="button">📣 Message tenants</button>
             <button class="btn primary" id="tenantAdd" type="button">+ Add tenant</button>
@@ -2026,6 +2027,35 @@
     <div class="ml-actions"><button class="btn primary" type="button" id="mlSend">Send now</button><button class="btn" type="button" id="mlNative">Open in my mail app instead</button></div>
   </div>
 </div>
+<!-- CHANGE OF TENANT: ONE TENANT SWAPPED FOR ANOTHER -->
+<div class="modal" id="ctoModal" hidden>
+  <div class="card" role="dialog" aria-labelledby="ctoTitle" style="max-width:640px">
+    <h3 id="ctoTitle">🔁 Change of tenant</h3>
+    <p class="muted-note" id="ctoSub" style="margin:0 0 10px">Makes the Change of Tenancy Agreement. When you complete the change, the outgoing tenant becomes a previous tenant and the incoming tenant is added — on the tenancy and at the property.</p>
+    <div class="grid2"><div><label class="lbl" for="ctoOut">Tenant moving out</label><select class="inp" id="ctoOut"></select></div>
+      <div><label class="lbl" for="ctoEff">Effective date</label><input class="inp" id="ctoEff" type="date"></div></div>
+    <div style="margin:16px 0 6px;font-weight:700;font-size:.92rem;border-top:1px solid var(--line);padding-top:12px">Tenant moving in</div>
+    <div class="grid2"><div><label class="lbl" for="ctoInName">Full name *</label><input class="inp" id="ctoInName" autocomplete="off"></div>
+      <div><label class="lbl" for="ctoInPhone">Mobile</label><input class="inp" id="ctoInPhone" type="tel" autocomplete="off"></div>
+      <div><label class="lbl" for="ctoInEmail">Email</label><input class="inp" id="ctoInEmail" type="email" autocomplete="off"></div>
+      <div><label class="lbl" for="ctoInAddr">Their current address</label><input class="inp" id="ctoInAddr" autocomplete="off"></div></div>
+    <div style="margin:16px 0 6px;font-weight:700;font-size:.92rem;border-top:1px solid var(--line);padding-top:12px">Rent</div>
+    <div class="grid3"><div><label class="lbl" for="ctoRent">Monthly rent (total) £</label><input class="inp" id="ctoRent" inputmode="decimal"></div>
+      <div><label class="lbl" for="ctoOutShare">Outgoing tenant's share £</label><input class="inp" id="ctoOutShare" inputmode="decimal"></div>
+      <div><label class="lbl" for="ctoInShare">Incoming tenant's share £</label><input class="inp" id="ctoInShare" inputmode="decimal"></div></div>
+    <div style="margin:16px 0 6px;font-weight:700;font-size:.92rem;border-top:1px solid var(--line);padding-top:12px">Deposit</div>
+    <div class="grid3"><div><label class="lbl" for="ctoDep">Total deposit held £</label><input class="inp" id="ctoDep" inputmode="decimal"></div>
+      <div><label class="lbl" for="ctoOutDep">Outgoing tenant's share £</label><input class="inp" id="ctoOutDep" inputmode="decimal"></div>
+      <div><label class="lbl" for="ctoInDep">Incoming tenant's share £</label><input class="inp" id="ctoInDep" inputmode="decimal"></div>
+      <div><label class="lbl" for="ctoScheme">Protection scheme</label><input class="inp" id="ctoScheme" list="tfSchemes"></div>
+      <div><label class="lbl" for="ctoRef">Scheme reference</label><input class="inp" id="ctoRef"></div>
+      <div><label class="lbl" for="ctoEnd">Tenancy end date</label><input class="inp" id="ctoEnd" placeholder="n/a"></div></div>
+    <label class="switch-row" style="margin-top:12px"><input type="checkbox" id="ctoAttach" checked> Attach the original tenancy agreement behind it</label>
+    <p class="err" id="ctoErr"></p>
+    <div class="row-actions" style="flex-wrap:wrap"><button class="btn" type="button" id="ctoClose">Close</button><span style="flex:1"></span><button class="btn" type="button" id="ctoPreview">👁 Preview the document</button><button class="btn primary" type="button" id="ctoDone">Complete the change</button></div>
+  </div>
+</div>
+
 <div class="modal" id="tiModal" hidden>
   <div class="card" role="dialog" aria-labelledby="tiTitle">
     <h3 id="tiTitle">Anniversary — rent review</h3>
@@ -3726,7 +3756,7 @@
   // A rent increase needs the government notice form (Form 4A) served at least
   // 2 months before it starts: the serve-by date for an anniversary, and — if
   // that's passed — the earliest date a new rent could start if served today.
-  var FORM_4A_URL = 'https://www.gov.uk/government/collections/assured-tenancy-forms';
+  var FORM_4A_URL = 'https://www.gov.uk/search/all?keywords=form+4a+landlord+notice+proposing+a+new+rent&order=relevance';
   function tcyNoticeBy(anniv){ return addMonthsIso(anniv, -2); }
   function tcyEarliestIfToday(anniv){
     var min = addMonthsIso(isoDay(new Date()), 2), d = anniv;
@@ -4493,34 +4523,43 @@
     $('propTenants').innerHTML = '<h3>Tenants <span class="count-chip">' + cur.length + '</span><span style="flex:1"></span><button class="btn small ghost" id="ptPaste" type="button" title="Paste names, numbers and emails in any layout">📋 Paste details</button> <button class="btn small" id="ptTenAdd" type="button">+ Add tenant</button></h3>' +
       '<div id="ptPasteBox" hidden></div>' +
       (cur.length ? cur.map(function(t){
-        return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 auto;min-width:120px;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
+        return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 200px;min-width:0;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
           '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
           '<span style="display:flex;gap:8px;align-items:center;margin-left:auto">' + ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Moved out</button></span></div>';
       }).join('') : '<p class="muted-note">No tenants saved for this property yet.</p>') +
       (guar.length ? '<div class="pt-guar-h">Guarantors <span class="count-chip">' + guar.length + '</span></div>' + guar.map(function(t){
-        return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 auto;min-width:120px;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Guarantor') + '</button> <span class="pt-badge guar">Guarantor' + (t.guarantorFor ? ' for ' + esc(t.guarantorFor) : '') + '</span>' +
+        return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 200px;min-width:0;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Guarantor') + '</button> <span class="pt-badge guar">Guarantor' + (t.guarantorFor ? ' for ' + esc(t.guarantorFor) : '') + '</span>' +
           '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
           '<span style="display:flex;gap:8px;align-items:center;margin-left:auto">' + ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Remove</button></span></div>';
       }).join('') : '') +
-      (past.length ? '<div class="prop-sub" style="margin-top:8px">Moved out: ' + past.map(function(t){ return '<button type="button" class="btn ghost small" style="padding:0" data-pt-open="' + t.id + '">' + esc(t.name) + '</button>'; }).join(', ') + '</div>' : '');
+      (past.length ? '<div class="pt-guar-h">Previous tenants <span class="count-chip">' + past.length + '</span></div>' + past.map(function(t){
+        return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0;opacity:.85">' + avatar(t.name) + '<div style="flex:1 1 200px;min-width:0;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' +
+          '<div class="prop-sub" style="margin:0">Moved out ' + esc(new Date(t.movedOut).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) + (t.phone || t.email ? ' · ' + esc([t.phone, t.email].filter(Boolean).join(' · ')) : '') + '</div></div>' +
+          '<span style="display:flex;gap:8px;align-items:center;margin-left:auto">' + ptRoleSel(t) + '</span></div>';
+      }).join('') : '');
     $('ptTenAdd').addEventListener('click', function(){ openTenantForm(null, pr.address); });
     $('ptPaste').addEventListener('click', function(){ ptPasteOpen(pr); });
     $('propTenants').querySelectorAll('[data-pt-role]').forEach(function(sel){ sel.addEventListener('change', function(){
-      var id = Number(sel.dataset.ptRole), role = sel.value, body = { address: pr.address, role: role };
+      var id = Number(sel.dataset.ptRole), role = sel.value, body = { address: pr.address, role: role }, rec = tenantRecById(id) || {};
+      var wasPast = past.some(function(x){ return x.id === id; });
+      // Previous tenant: they've moved out (kept on the property as a previous tenant).
+      if (role === 'past') { if (!confirm('Mark ' + (rec.name || 'them') + ' as a previous tenant (moved out of ' + pr.address + ')?')) { renderPropTenants(pr); return; } tenantPropertyUpdate(id, { address: pr.address, moved_out: true }, (rec.name || 'Tenant') + ' is now a previous tenant').then(function(){ if (openPropKey) openProperty(openPropKey); }); return; }
+      // A previous tenant given a role again: they've moved back in.
+      if (wasPast) { api('PUT', '/api/admin/tenant-records/' + id + '/property', { address: pr.address, moved_out: false }).then(function(){ tenantPropertyUpdate(id, { address: pr.address, role: role === 'guarantor' ? 'tenant' : role }, (rec.name || 'Tenant') + ' moved back in').then(function(){ if (openPropKey) openProperty(openPropKey); }); }); return; }
       if (role === 'guarantor') { var opts = cur.filter(function(x){ return x.id !== id; }).map(function(x){ return x.name; }); var who = prompt('Whose guarantor are they?' + (opts.length ? ' (e.g. ' + opts.slice(0, 3).join(', ') + ')' : ''), opts[0] || ''); if (who === null) { renderPropTenants(pr); return; } body.guarantor_for = who.trim(); }
       tenantPropertyUpdate(id, body, role === 'guarantor' ? 'Marked as a guarantor' : role === 'lead' ? 'Marked as the lead tenant' : 'Marked as a tenant').then(function(){ if (openPropKey) openProperty(openPropKey); });
     }); });
     $('propTenants').querySelectorAll('[data-pt-open]').forEach(function(b){ b.addEventListener('click', function(){ openTenant(Number(b.dataset.ptOpen)); }); });
     $('propTenants').querySelectorAll('[data-pt-out]').forEach(function(b){ b.addEventListener('click', function(){
       var t = tenantRecById(Number(b.dataset.ptOut));
-      if (confirm('Mark ' + t.name + ' as moved out of ' + pr.address + '?')) tenantPropertyUpdate(t.id, { address: pr.address, moved_out: true }, t.name + ' marked as moved out');
+      if (confirm('Mark ' + t.name + ' as moved out of ' + pr.address + '? They’ll be kept as a previous tenant.')) tenantPropertyUpdate(t.id, { address: pr.address, moved_out: true }, t.name + ' is now a previous tenant');
     }); });
   }
   // Paste a bunch of tenant details (an email, a form, WhatsApp, a spreadsheet…): sorted into people to check and save.
   // Copied tenancy pages (name line, then "Lead Tenant" / "Tenant" / "Guarantor", then "Phone07…", "Emailx@y"…).
   var PT_ROLE = /^(lead tenant|main tenant|joint tenant|tenant|guarantor|permitted occupier|occupant)$/i;
   var PT_SKIP = /^(share of rent|account creation|pending|completed|verified|active|status|rent share|deposit share|referencing|right to rent)\b/i;
-  function ptRoleSel(t){ return '<select class="inp pt-role" data-pt-role="' + t.id + '" title="Their role at this property" style="width:auto;max-width:130px;min-width:0;height:30px;min-height:30px;flex:0 0 auto;padding:2px 24px 2px 8px;font-size:.78rem"><option value="lead"' + (t.role === 'lead' ? ' selected' : '') + '>Lead tenant</option><option value="tenant"' + (!t.role || t.role === 'tenant' ? ' selected' : '') + '>Tenant</option><option value="guarantor"' + (t.role === 'guarantor' ? ' selected' : '') + '>Guarantor</option></select>'; }
+  function ptRoleSel(t){ return '<select class="inp pt-role" data-pt-role="' + t.id + '" title="Their role at this property" style="width:auto;max-width:170px;min-width:0;height:30px;min-height:30px;flex:0 0 auto;padding:2px 24px 2px 8px;font-size:.78rem"><option value="lead"' + (!t.movedOut && t.role === 'lead' ? ' selected' : '') + '>Lead tenant</option><option value="tenant"' + (!t.movedOut && (!t.role || t.role === 'tenant') ? ' selected' : '') + '>Tenant</option><option value="guarantor"' + (!t.movedOut && t.role === 'guarantor' ? ' selected' : '') + '>Guarantor</option><option value="past"' + (t.movedOut ? ' selected' : '') + '>Previous tenant</option></select>'; }
   function ptStructured(text){
     var out = [], cur = null;
     String(text || '').replace(/\r/g, '').split('\n').forEach(function(raw){
@@ -4739,6 +4778,8 @@
         (q && addrs.some(function(a){ return propKey(a).indexOf(q) !== -1; })) ||
         (digits.length >= 4 && String(t.phone || '').replace(/\D/g, '').indexOf(digits) !== -1);
     }).map(function(t){ var js = jobsForTenant(t); return { t: t, jobs: js, props: tenantProps(t), latest: js.reduce(function(a, j){ return Math.max(a, new Date(j.created_at).getTime()); }, 0) }; })
+      // Current or previous tenants (previous: moved out of every property they had).
+      .filter(function(x){ var who = $('tenantWho') ? $('tenantWho').value : 'all', past = x.props.length && !x.props.some(function(p){ return !p.movedOut; }); return who === 'all' || (who === 'past' ? past : !past); })
       .sort(function(a, b){
         var by = tenantSort.by, az = String(a.t.name || '').localeCompare(String(b.t.name || ''), 'en', { sensitivity: 'base' });
         var d = by === 'az' ? az : by === 'added' ? (new Date(b.t.created_at) - new Date(a.t.created_at)) || az
@@ -4747,12 +4788,12 @@
       });
     drawSortTabs('tenantSortTabs', TENANT_SORTS, tenantSort);
     var el = $('tenantList');
-    if (!list.length) { el.innerHTML = '<div class="empty">' + (tenantRecs.length ? 'No tenant matches.' : 'Tenants appear here as reports and jobs come in, or add one.') + '</div>'; return; }
+    if (!list.length) { el.innerHTML = '<div class="empty">' + (tenantRecs.length ? ($('tenantWho').value === 'past' && !$('tenantSearch').value.trim() ? 'No previous tenants yet.' : 'No tenant matches.') : 'Tenants appear here as reports and jobs come in, or add one.') + '</div>'; return; }
     el.innerHTML = list.map(function(x){
       var t = x.t, open = x.jobs.filter(isOpen).length;
       var current = x.props.filter(function(p){ return !p.movedOut; });
       return '<button type="button" class="prop-row" data-key="' + t.id + '">' +
-        '<div class="who-cell">' + avatar(t.name || '?') + '<div style="min-width:0"><div class="addr">' + esc(t.name || 'No name') + newChip(t.created_at) + (x.props.length && !current.length ? ' <span class="count-chip">Moved out</span>' : '') + '</div>' +
+        '<div class="who-cell">' + avatar(t.name || '?') + '<div style="min-width:0"><div class="addr">' + esc(t.name || 'No name') + newChip(t.created_at) + (x.props.length && !current.length ? ' <span class="count-chip">Previous tenant</span>' : '') + '</div>' +
           '<div class="prop-sub" style="margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
           esc([t.phone, (current[0] || x.props[0] || {}).address].filter(Boolean).join(' · ')) + '</div></div></div>' +
         '<div class="num">' + x.jobs.length + '<small>repair' + (x.jobs.length === 1 ? '' : 's') + '</small></div>' +
@@ -4762,6 +4803,8 @@
     }).join('');
   }
   $('tenantSearch').addEventListener('input', renderTenants);
+  $('tenantWho').addEventListener('change', function(){ try { localStorage.setItem('rr_tenant_who', this.value); } catch (e) {} renderTenants(); });
+  try { var tw0 = localStorage.getItem('rr_tenant_who'); if (tw0 && /^(current|past|all)$/.test(tw0)) $('tenantWho').value = tw0; } catch (e) {}
   $('tenantSortTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-sort]'); if (b) { tapSort(tenantSort, b.dataset.sort, 'rr_tenant_sort2'); renderTenants(); } });
   $('tenantList').addEventListener('click', function(e){ var b = e.target.closest('.prop-row'); if (b) openTenant(Number(b.dataset.key)); });
   $('tenantBack').addEventListener('click', function(){ openTenantKey = null; $('tenantDetail').hidden = true; $('tenantsListView').hidden = false; renderTenants(); pushNav(); });
@@ -4797,7 +4840,7 @@
       (props.length ? '<div class="list">' + props.map(function(x){
         var others = tenantsAtProperty(x.address).filter(function(o){ return o.id !== t.id; });
         return '<div class="prop-row" style="cursor:default;grid-template-columns:minmax(0,1fr) auto"><div style="min-width:0"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-tprop="' + esc(x.key) + '">' + esc(x.address) + '</button>' +
-            '<div class="prop-sub" style="margin:2px 0 0">' + (x.movedOut ? 'Moved out ' + esc(fmtShort(x.movedOut)) : 'Lives here') + (others.length ? ' · also: ' + esc(others.map(function(o){ return o.name; }).join(', ')) : '') + '</div></div>' +
+            '<div class="prop-sub" style="margin:2px 0 0">' + (x.movedOut ? 'Previous tenant · moved out ' + esc(new Date(x.movedOut).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) : 'Lives here') + (others.length ? ' · also: ' + esc(others.map(function(o){ return o.name; }).join(', ')) : '') + '</div></div>' +
           '<div style="display:flex;gap:6px"><button type="button" class="btn small" data-tmove="' + esc(x.address) + '" data-out="' + (x.movedOut ? '0' : '1') + '">' + (x.movedOut ? 'Moved back in' : 'Moved out') + '</button>' +
           '<button type="button" class="btn small ghost" data-tremove="' + esc(x.address) + '">Remove</button></div></div>';
       }).join('') + '</div>' : '<p class="muted-note">Not linked to a property yet.</p>') +
@@ -7297,12 +7340,12 @@
   }
   // Which month's rent an unpaid invoice comes out of: the next rent day, or a month you choose.
   function invMonthOpts(cur){
-    var d = new Date(), out = '<option value="">next rent</option>';
+    var d = new Date(), out = '<option value="">next rent</option><option value="direct"' + (cur === 'direct' ? ' selected' : '') + '>Landlord pays directly</option>';
     for (var k = 0; k < 7; k++) { var x = new Date(d.getFullYear(), d.getMonth() + k, 15), v = x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2); out += '<option value="' + v + '"' + (cur === v ? ' selected' : '') + '>' + x.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) + ' rent</option>'; }
     if (cur && out.indexOf('value="' + cur + '"') === -1) out += '<option value="' + cur + '" selected>' + cur + ' rent</option>';
     return out;
   }
-  function invSetMonth(id, m){ return api('POST', '/api/admin/invoices/' + id + '/collect', { month: m }).then(function(d){ toast(d && d.ok ? (m ? '✓ Will be taken from that month’s rent' : '✓ Will be taken from the next rent') : 'Couldn’t save that'); return Promise.all([loadJobs(), loadRentRecoveries()]); }); }
+  function invSetMonth(id, m){ return api('POST', '/api/admin/invoices/' + id + '/collect', { month: m }).then(function(d){ toast(d && d.ok ? (m === 'direct' ? '✓ The landlord pays this one directly — not taken from rent' : m ? '✓ Will be taken from that month’s rent' : '✓ Will be taken from the next rent') : 'Couldn’t save that'); return Promise.all([loadJobs(), loadRentRecoveries()]); }); }
   function invRowHtml(i, showAddress){
     var od = invOverdue(i);
     return '<div class="pay-row" style="grid-template-columns:minmax(0,1fr) 120px 96px auto">' +
@@ -11674,6 +11717,8 @@
     var start = new Date(d.start_date + 'T00:00:00'); if (next < start) next = start;
     return { day: day, next: next, days: Math.round((next - today) / 86400000) };
   }
+  // Whether we collect the rent (as set on the tenancy, else by the service: not Tenant Find).
+  function tcyRentByUs(d){ return d.rent_by === 'landlord' ? false : d.rent_by === 'us' ? true : !/tenant find/i.test(String(d.service || '')); }
   function tcySvcOf(d){ var s = String(d.service || 'Tenant Find'); return /rent\s*(4|for|2|to)\s*rent|r2r/i.test(s) ? 'r2r' : /manag/i.test(s) ? 'managed' : /collect/i.test(s) ? 'collect' : 'find'; }
   function tcySvcMatch(d, f){ var k = tcySvcOf(d); return f === 'all' || f === k || (f === 'notmanaged' && k !== 'managed'); }
   function renderTenancies(){
@@ -11872,7 +11917,10 @@
     });
     // Every current tenant saved at the property belongs on its tenancy (names
     // only seen on old repair jobs are left out — they may have moved on).
-    onFile.filter(function(o){ return (o.src === 'saved' || o.src === 'jobs') && !list.some(function(x){ return tcySameTenant(x, o, true); }); }).forEach(function(o){ list.push(Object.assign({}, o)); n++; });
+    // Never anyone who has moved out (or was swapped out by a change of tenant).
+    var gone = (d.tenant_changes || []).map(function(c){ return c.out || {}; });
+    (tenantLinks || []).forEach(function(l){ if (l.moved_out_at && (l.property_key === pr.key || addrSame(l.address, pr.address))) { var r = tenantRecById(l.tenant_id); if (r) gone.push(r); } });
+    onFile.filter(function(o){ return (o.src === 'saved' || o.src === 'jobs') && !list.some(function(x){ return tcySameTenant(x, o, true); }) && !gone.some(function(g){ return tcySameTenant(g, o, true); }); }).forEach(function(o){ list.push(Object.assign({}, o)); n++; });
     d.tenants = list;
     return n;
   }
@@ -11934,7 +11982,9 @@
           var pr = d.address && matchProperty(d.address), lr = findLandlordRec(d.landlord || {}, d.address);
           return '<div class="tcy-links">' + (pr ? '<button type="button" class="btn small" data-tcy-prop="' + esc(pr.key) + '">🏠 Property</button>' : '') +
             (lr ? '<button type="button" class="btn small" data-tcy-ll="' + lr.id + '">👤 Landlord: ' + esc(lr.name) + '</button>' : '') +
-            '<button type="button" class="btn small" data-tcy-inv="1">🧾 Invoice the landlord</button></div>';
+            '<button type="button" class="btn small" data-tcy-inv="1">🧾 Invoice the landlord</button>' +
+            '<button type="button" class="btn small" data-tcy-swap="1">🔁 Change of tenant</button></div>' +
+            ((d.tenant_changes || []).length ? '<div class="prop-sub" style="margin-top:8px">' + d.tenant_changes.slice().reverse().map(function(c){ return '🔁 ' + esc(longDay(c.effective)) + ': ' + esc((c.out || {}).name || '') + ' → ' + esc((c.in || {}).name || '') + (c.doc ? ' · <a href="/d/' + esc(c.doc) + '" target="_blank" rel="noopener">Change of Tenancy Agreement</a>' : ''); }).join('<br>') + '</div>' : '');
         })() : '') + '</div></div>' +
       '<div class="tcy-form">' +
       // Property
@@ -11942,6 +11992,11 @@
         '<div><label class="lbl" for="tfAddress">Property full address *</label><input class="inp" id="tfAddress" list="tfProps" value="' + esc(d.address || '') + '" placeholder="Flat 5, Dudley Court, Upper Berkeley Street, London, W1H 5QA"><datalist id="tfProps">' + props + '</datalist></div>' +
         '<div class="grid3" style="margin-top:10px">' + tcyInp('tfNeg', 'Negotiator', d.negotiator) + tcyInp('tfTaken', 'Date taken', d.date_taken, ' type="date"') +
           '<div><label class="lbl" for="tfService">Service</label><select class="inp" id="tfService">' + ['Tenant Find', 'Rent Collection', 'Fully Managed', 'Rent4Rent'].map(function(s){ return '<option' + (d.service === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div></div>' +
+        '<div style="margin-top:10px"><label class="lbl" for="tfRentBy">Who collects the rent?</label><select class="inp" id="tfRentBy" style="max-width:420px">' +
+          '<option value="">' + esc('Usual for the service (' + (tcyRentByUs(Object.assign({}, d, { rent_by: '' })) ? 'we collect it' : 'the landlord collects it') + ')') + '</option>' +
+          '<option value="us"' + (d.rent_by === 'us' ? ' selected' : '') + '>We collect the rent</option>' +
+          '<option value="landlord"' + (d.rent_by === 'landlord' ? ' selected' : '') + '>The landlord collects the rent</option></select>' +
+          '<p class="muted-note" style="margin:4px 0 0">Unpaid invoices are taken from the rent only when we collect it. When the landlord collects it, they pay invoices directly.</p></div>' +
       '</div>' +
       // Tenancy and money
       '<div class="card"><h3>Tenancy and rent</h3>' +
@@ -12030,7 +12085,8 @@
   }
   $('tcyDetail').addEventListener('click', function(e){
     if (e.target.closest('#tfStmts')) { stmtClick(e); return; }
-    var b = e.target.closest('[data-tcy-prop],[data-tcy-ll],[data-tcy-inv],[data-owe]'); if (!b) return;
+    var b = e.target.closest('[data-tcy-prop],[data-tcy-ll],[data-tcy-inv],[data-tcy-swap],[data-owe]'); if (!b) return;
+    if (b.dataset.tcySwap) { ctoOpen(); return; }
     if (b.dataset.tcyInv) { var dd = tcySaved() || tcyDraft; openNewInvoice({ address: dd.address, props: [dd.address], tenancy_id: openTcyId === 'new' ? null : openTcyId, vat: dd.vat !== false && !/rent\s*4\s*rent/i.test(String(dd.service || '')) }); return; }
     if (b.dataset.owe) { tcyOwe(b.dataset.owe, b); return; }
     if (b.dataset.tcyProp) openProperty(b.dataset.tcyProp); else openLandlord(Number(b.dataset.tcyLl));
@@ -12231,7 +12287,7 @@
   // Read the form into the draft.
   function tcyRead(){
     var d = tcyDraft, v = function(id){ return $(id) ? $(id).value.trim() : ''; }, n = function(id){ var s = v(id).replace(/[£,\s]/g, ''); return s === '' ? null : Number(s); };
-    d.address = v('tfAddress'); d.negotiator = v('tfNeg'); d.date_taken = v('tfTaken'); d.service = v('tfService');
+    d.address = v('tfAddress'); d.negotiator = v('tfNeg'); d.date_taken = v('tfTaken'); d.service = v('tfService'); d.rent_by = $('tfRentBy') ? $('tfRentBy').value || null : d.rent_by;
     d.start_date = v('tfStart'); d.term_months = n('tfTerm'); d.break_months = n('tfBreak') || 0; d.rent_pcm = n('tfRent');
     d.deposit = n('tfDeposit'); d.holding = n('tfHolding'); d.holding_date = v('tfHoldDate'); d.deposit_scheme = v('tfScheme');
     d.move_in_due = v('tfDue'); d.so_start = v('tfSo'); d.pay_ref = v('tfPayRef').replace(/\s+/g, ''); d.so_payments = n('tfSoN');
@@ -12400,7 +12456,7 @@
       tcyRefresh();
     };
     tcySvcApply = svcApply;
-    $('tfService').addEventListener('change', function(){ tcyRead(); svcApply(true); });
+    $('tfService').addEventListener('change', function(){ tcyRead(); svcApply(true); var o = $('tfRentBy') && $('tfRentBy').options[0]; if (o) o.textContent = 'Usual for the service (' + (tcyRentByUs(Object.assign({}, tcyDraft, { rent_by: '' })) ? 'we collect it' : 'the landlord collects it') + ')'; });
     svcApply(false);
     $('tfDepBy').addEventListener('click', function(e){
       var b = e.target.closest('[data-v]'); if (!b) return;
@@ -12599,6 +12655,68 @@
   }
 
   // ----- Documents -----
+  // ---------- Change of tenant ----------
+  var ctoD = null;
+  function ctoNum(id){ var v = String($(id).value || '').replace(/[£,\s]/g, ''); return v === '' ? null : Number(v); }
+  function ctoOpen(){
+    var d = tcySaved(); if (!d || openTcyId === 'new') { toast('Save the tenancy first'); return; }
+    var ts = (d.tenants || []).filter(function(t){ return t && t.name; });
+    if (!ts.length) { toast('Add the tenants to the tenancy first'); return; }
+    ctoD = d;
+    var n = (d.tenants || []).length || 1, r2 = function(v){ return v == null ? '' : String(Math.round(v * 100) / 100); };
+    $('ctoOut').innerHTML = (d.tenants || []).map(function(t, i){ return t && t.name ? '<option value="' + i + '">' + esc(t.name) + '</option>' : ''; }).join('');
+    $('ctoEff').value = isoDay(new Date());
+    ['ctoInName', 'ctoInPhone', 'ctoInEmail', 'ctoInAddr', 'ctoEnd'].forEach(function(id){ $(id).value = ''; });
+    $('ctoRent').value = r2(d.rent_pcm); $('ctoOutShare').value = d.rent_pcm ? r2(d.rent_pcm / n) : ''; $('ctoInShare').value = $('ctoOutShare').value;
+    $('ctoDep').value = r2(d.deposit); $('ctoOutDep').value = d.deposit ? r2(d.deposit / n) : ''; $('ctoInDep').value = $('ctoInShare').value || $('ctoOutDep').value;
+    $('ctoScheme').value = d.deposit_scheme || ''; $('ctoRef').value = d.deposit_ref || '';
+    $('ctoSub').innerHTML = esc(d.address || '') + ' — makes the Change of Tenancy Agreement. When you complete the change, the outgoing tenant becomes a <b>previous tenant</b> and the incoming tenant is added, on the tenancy and at the property.';
+    $('ctoErr').textContent = ''; $('ctoModal').hidden = false; $('ctoInName').focus();
+  }
+  function ctoBody(mode){
+    return { mode: mode, out_index: Number($('ctoOut').value), effective: $('ctoEff').value, incoming: { name: $('ctoInName').value.trim(), phone: $('ctoInPhone').value.trim(), email: $('ctoInEmail').value.trim(), address: $('ctoInAddr').value.trim() },
+      rent_total: ctoNum('ctoRent'), out_share: ctoNum('ctoOutShare'), in_share: ctoNum('ctoInShare'), deposit_total: ctoNum('ctoDep'), out_deposit: ctoNum('ctoOutDep'), in_deposit: ctoNum('ctoInDep'),
+      scheme: $('ctoScheme').value.trim(), scheme_ref: $('ctoRef').value.trim(), end_date: $('ctoEnd').value.trim(), attach: $('ctoAttach').checked, agreement: $('ctoAttach').checked ? agreementValues(ctoD) : null };
+  }
+  function ctoCheck(){
+    if (!$('ctoInName').value.trim()) { $('ctoErr').textContent = 'Enter the incoming tenant’s name.'; $('ctoInName').focus(); return false; }
+    if (!$('ctoEff').value) { $('ctoErr').textContent = 'Choose the effective date.'; $('ctoEff').focus(); return false; }
+    $('ctoErr').textContent = ''; return true;
+  }
+  function ctoShowPdf(b64, win){
+    var bin = atob(b64), arr = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    var url = URL.createObjectURL(new Blob([arr], { type: 'application/pdf' }));
+    if (win) win.location = url; else window.open(url, '_blank', 'noopener');
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 120000);
+  }
+  var ctoAttachNote = function(d){ return d.attach_error ? (d.attach_error === 'no-template' ? ' The original agreement isn’t attached: upload the agreement template in Tenancies → Templates first.' : ' The original agreement couldn’t be attached this time.') : ''; };
+  $('ctoClose').addEventListener('click', function(){ $('ctoModal').hidden = true; });
+  $('ctoInShare').addEventListener('input', function(){ if (!$('ctoInDep').dataset.touched) $('ctoInDep').value = this.value; });
+  $('ctoInDep').addEventListener('input', function(){ this.dataset.touched = '1'; });
+  $('ctoPreview').addEventListener('click', function(){
+    if (!ctoCheck()) return;
+    var win = window.open('', '_blank'); busy($('ctoPreview'), true, 'Making it…');
+    api('POST', '/api/admin/tenancies/' + openTcyId + '/change-of-tenant', ctoBody('preview')).then(function(d){
+      busy($('ctoPreview'), false);
+      if (!d.ok) { if (win) win.close(); $('ctoErr').textContent = 'Couldn’t make the document (' + (d.error || 'error') + ').'; return; }
+      ctoShowPdf(d.pdf, win); if (ctoAttachNote(d)) $('ctoErr').textContent = ctoAttachNote(d).trim();
+    });
+  });
+  $('ctoDone').addEventListener('click', function(){
+    if (!ctoCheck()) return;
+    var outName = $('ctoOut').selectedOptions[0] ? $('ctoOut').selectedOptions[0].textContent : 'the outgoing tenant';
+    if (!confirm('Complete the change of tenant?\n\n' + outName + ' moves out and becomes a previous tenant; ' + $('ctoInName').value.trim() + ' moves in. The document is saved on the tenancy.')) return;
+    busy($('ctoDone'), true, 'Completing…');
+    api('POST', '/api/admin/tenancies/' + openTcyId + '/change-of-tenant', ctoBody('complete')).then(function(d){
+      busy($('ctoDone'), false);
+      if (!d.ok) { $('ctoErr').textContent = 'Couldn’t complete the change (' + (d.error || 'error') + ').'; return; }
+      var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0]; if (x && d.tenancy) x.data = d.tenancy;
+      $('ctoModal').hidden = true;
+      toast('✓ Change of tenant done — ' + outName + ' is now a previous tenant.' + ctoAttachNote(d));
+      window.open(d.doc, '_blank', 'noopener');
+      var tid = openTcyId; Promise.resolve(loadJobs()).then(function(){ openTenancy(tid); });
+    });
+  });
   function tcySaved(){ var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0]; return x ? x.data : null; }
   function pdfDoc(){ var J = window.jspdf && window.jspdf.jsPDF; if (!J) { toast('The PDF maker didn’t load — check your connection and reload'); return null; } return new J({ unit: 'pt', format: 'a4' }); }
   function termsPdf(d){
