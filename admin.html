@@ -8984,7 +8984,7 @@
   function closeCmdk(){ $('cmdk').hidden = true; }
   function renderCmdk(){
     var raw = $('cmdkInput').value.trim().toLowerCase(), digits = raw.replace(/\D/g, ''), pk = propKey(raw);
-    // Every word typed, anywhere, ignoring commas and capitals: "56 moorland" finds "56, Moorland Road".
+    // Every word typed, anywhere, ignoring commas and capitals: "12 sample" finds "12, Sample Road".
     var toks = psNorm(raw).split(' ').filter(Boolean);
     var hit = function(hay){ var h = psNorm(hay); return toks.length > 0 && toks.every(function(t){ return h.indexOf(t) !== -1; }); };
     var phoneHit = function(ph){ return digits.length >= 4 && String(ph || '').replace(/\D/g, '').indexOf(digits) !== -1; };
