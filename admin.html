@@ -6183,6 +6183,13 @@
     var t = [j.affected, j.symptom].filter(Boolean).join(' – ') || String(j.summary || '').trim() || j.category || '';
     return t ? 'your repair (' + t.charAt(0).toLowerCase() + t.slice(1) + ')' : 'your repair';
   }
+  // Rent page: the address with its postcode, without "London" ("Flat 9, 141 Sample Road, SE1 2AB").
+  function rbAddr(a){
+    var str = String(a || ''), m = POSTCODE_RE.exec(str), pc = m ? (m[1] + ' ' + m[2]).toUpperCase() : '';
+    var parts = str.replace(POSTCODE_RE, '').split(',').map(function(t){ return t.replace(/\blondon\b/ig, '').replace(/\s+/g, ' ').trim(); }).filter(Boolean), out = [];
+    parts.forEach(function(t){ if (out.length && /^\d+[a-z]?$/i.test(out[out.length - 1])) out[out.length - 1] += ' ' + t; else out.push(t); });   // "141, Sample Road" → "141 Sample Road"
+    return (out.slice(0, 2).join(', ') + (pc ? ', ' + pc : '')) || 'your home';
+  }
   function shortAddr(a){ return String(a || '').split(',').slice(0, 2).join(',').trim() || 'your home'; }
   // The address as we give it to people enquiring about a property: no flat or door number,
   // and just the postcode area ("Dudley Court, Upper Berkeley Street, London W1H").
@@ -12781,10 +12788,10 @@
     var crow = function(x){
       var k = x.tenancy_id + '|' + x.from, mi = x.status === 'movein', pre = !x.collected && x.movein && x.movein.left <= 0.004;   // move-in money paid ahead of the start
       if (pre) return '<div class="rb-line rb-' + x.status + '"><span class="rb-pickpad"></span>' + day(x) +
-        '<div class="rb-main"><div class="rb-addr">' + esc(shortAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + 'New tenancy · move-in money paid ✓ · rent due ' + esc(rbDay(x.from)) + ' · ' + more(k) + '</div>' + details(x, k) + '</div>' +
+        '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + 'New tenancy · move-in money paid ✓ · rent due ' + esc(rbDay(x.from)) + ' · ' + more(k) + '</div>' + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(x.rent) + '<small>due ' + esc(rbDay(x.from)) + '</small></div><div class="rb-btn"><span class="muted-note" style="margin:0;font-size:.78rem">Landlord payment comes up on ' + esc(rbDay(x.from)) + '</span></div></div>';
       return '<div class="rb-line rb-' + x.status + '">' + (mi ? '<span class="rb-pickpad"></span>' : '<input type="checkbox" class="rb-pick" data-rb-cpick="' + k + '"' + (rbSelC[k] ? ' checked' : '') + ' aria-label="Select">') + day(x) +
-        '<div class="rb-main"><div class="rb-addr">' + esc(shortAddr(x.address)) + '</div>' +
+        '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div>' +
           '<div class="rb-sub">' + svcTag(x.service) + (mi ? 'New tenancy · move-in money <b>' + gbp(x.movein.paid) + '</b> of ' + gbp(x.movein.due) + ' paid' : x.status === 'overdue' ? '<span class="rb-late">' + Math.round((parseDay(today) - parseDay(x.from)) / 86400000) + ' days late</span>' : esc(x.tenants[0] || x.landlord || '')) + ' · ' + more(k) + '</div>' + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(mi ? x.movein.left : x.rent) + (mi ? '<small>still to pay</small>' : '') + '</div>' +
         '<div class="rb-btn">' + (mi ? '<button type="button" class="btn small" data-rb-open="' + x.tenancy_id + '">Record payment</button>' : '<button type="button" class="btn small primary" data-rb-collect="' + k + '">Collected</button>') + '</div></div>';
@@ -12795,7 +12802,7 @@
     var prow = function(x){
       var k = x.tenancy_id + '|' + x.from, st = x.stmt;
       return '<div class="rb-line"><input type="checkbox" class="rb-pick" data-rb-ppick="' + k + '"' + (rbSelP[k] ? ' checked' : '') + ' aria-label="Select">' + day(x) +
-        '<div class="rb-main"><div class="rb-addr">' + esc(shortAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + 'Landlord: <b>' + esc(x.landlord || 'not saved') + '</b>' + (x.pay_to ? ' · Pay to: <b>' + esc(x.pay_to) + '</b>' : '') + (x.landlord ? '' : ' · <button type="button" class="linkish" data-rb-payto="' + x.tenancy_id + '" data-cur="' + esc(x.pay_to || '') + '" data-ll="the landlord of ' + esc(shortAddr(x.address)) + '">' + (x.pay_to ? 'Change' : 'Pay into a company?') + '</button>') + '</div><div class="rb-sub">' + more(k, '🔍 See the charges') + ' · ' + (x.from > today ? '<span class="rb-earlytag">Paid early · rent due ' + esc(rbDay(x.from)) + '</span> · ' : '') +
+        '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + 'Landlord: <b>' + esc(x.landlord || 'not saved') + '</b>' + (x.pay_to ? ' · Pay to: <b>' + esc(x.pay_to) + '</b>' : '') + (x.landlord ? '' : ' · <button type="button" class="linkish" data-rb-payto="' + x.tenancy_id + '" data-cur="' + esc(x.pay_to || '') + '" data-ll="the landlord of ' + esc(rbAddr(x.address)) + '">' + (x.pay_to ? 'Change' : 'Pay into a company?') + '</button>') + '</div><div class="rb-sub">' + more(k, '🔍 See the charges') + ' · ' + (x.from > today ? '<span class="rb-earlytag">Paid early · rent due ' + esc(rbDay(x.from)) + '</span> · ' : '') +
           (x.collected && !x.collected.auto ? '<button type="button" class="linkish rb-notpaid" data-rb-uncollect="' + k + '">Rent not paid? Undo</button> · ' : '') +
           (st ? (st.sent && !st.changed ? '✓ Statement sent' : '<button type="button" class="linkish" data-st-pdf="' + k + '">Statement</button>' + (x.landlord_email ? ' · <button type="button" class="linkish" data-st-mail="' + k + '">Email it</button>' : '') + ' · <button type="button" class="linkish" data-st-sent="' + k + '">Mark sent</button>') : 'No statement') + '</div>' + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(x.to_landlord) + '</div><div class="rb-btn"><button type="button" class="btn small primary" data-rb-pay="' + k + '">Paid</button></div></div>';
@@ -12805,7 +12812,7 @@
     // Done: rents collected and landlords paid, with undo.
     var drow = function(x){
       var k = x.tenancy_id + '|' + x.from;
-      return '<div class="rb-line rb-collected">' + day(x) + '<div class="rb-main"><div class="rb-addr">' + esc(shortAddr(x.address)) + '</div><div class="rb-sub">' + more(k, 'Charges') + ' · ' +
+      return '<div class="rb-line rb-collected">' + day(x) + '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + more(k, 'Charges') + ' · ' +
         '✓ ' + (x.collected.auto ? 'Move-in money paid' : (early(x) ? 'Paid early ' : 'Rent collected ') + esc(fmtShort(x.collected.at).split(',')[0]) + (early(x) ? ' (due ' + esc(rbDay(x.from)) + ')' : '')) +
         (x.paid ? ' · ✓ Landlord paid ' + esc(gbp(x.paid.amount)) + (x.paid.ref ? ' (' + esc(x.paid.ref) + ')' : '') + ' <button type="button" class="linkish" data-rb-unpay="' + k + '">undo</button>' : x.to_landlord > 0 ? ' · landlord not paid yet' : '') + '</div>' + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(x.rent) + '</div>' +
@@ -12945,7 +12952,7 @@
     if (ma) { var lst = rbData.items.filter(function(x){ return (x.landlord || 'No landlord saved') === ma.dataset.rbMailall && x.stmt && (!x.stmt.sent || x.stmt.changed); }).map(function(x){ var f = stmtFind(x.tenancy_id + '|' + x.from); return f && f.m ? f : null; }).filter(Boolean); if (lst.length) stmtEmailMany(lst); return; }
     var c = e.target.closest('[data-rb-collect]');
     if (c) { var x = rbFind(c.dataset.rbCollect); if (!x) return;
-      rentAsk({ title: 'Rent collected — ' + shortAddr(x.address), sub: 'Rent due ' + longDay(x.from) + (x.pending.length ? ' · ' + x.pending.length + ' landlord invoice' + (x.pending.length === 1 ? '' : 's') + ' (' + gbp(x.pending_total) + ') will be taken off it' : ''), amount: x.rent }).then(function(r){ if (!r) return;
+      rentAsk({ title: 'Rent collected — ' + rbAddr(x.address), sub: 'Rent due ' + longDay(x.from) + (x.pending.length ? ' · ' + x.pending.length + ' landlord invoice' + (x.pending.length === 1 ? '' : 's') + ' (' + gbp(x.pending_total) + ') will be taken off it' : ''), amount: x.rent }).then(function(r){ if (!r) return;
       busy(c, true, 'Saving…');
       api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-collected', { from: x.from, amount: r.amount, date: r.date }).then(function(d){ busy(c, false); if (!d || !d.ok) { toast('Couldn’t save that'); return; } toast('✓ Rent collected' + (d.invoices ? ' · ' + d.invoices + ' invoice' + (d.invoices === 1 ? '' : 's') + ' taken off it' : '')); loadAllInvoices && loadAllInvoices(); loadStatements(); loadRentBoard(true); }); });
       return; }
@@ -12983,7 +12990,7 @@
     var total = list.reduce(function(a, x){ return a + x.amount; }, 0), tnet = list.reduce(function(a, x){ return a + (x.net || 0); }, 0);
     $('rbFeesList').innerHTML = '<p class="muted-note" style="margin:6px 0 0"><b>' + gbp(total) + ' inc. VAT</b> (' + gbp(tnet) + ' + ' + gbp(Math.round((total - tnet) * 100) / 100) + ' VAT) from ' + order.length + ' propert' + (order.length === 1 ? 'y' : 'ies') + ' since ' + esc(longDay(d.since)) + '. Amounts below include VAT.</p>' +
       (order.length ? order.map(function(k){ var g = groups[k];
-        return '<div class="fee-prop"><span>' + esc(shortAddr(g.address)) + ' ' + svcTag(g.service) + '</span>' + gbp(g.total) + '</div>' + g.rows.map(function(x){
+        return '<div class="fee-prop"><span>' + esc(rbAddr(g.address)) + ' ' + svcTag(g.service) + '</span>' + gbp(g.total) + '</div>' + g.rows.map(function(x){
           return '<div class="fee-row"><span>Rent ' + esc(rbDay(x.from)) + ' — ' + esc((x.lines || []).map(function(l){ return l.label; }).join(', ') || 'Our fee') + '</span><div style="text-align:right">' + gbp(x.amount) + (x.net != null && Math.abs(x.amount - x.net) > 0.004 ? '<small style="display:block;color:var(--ink-faint);font-size:.72rem">' + gbp(x.net) + ' + VAT</small>' : '') + '</div></div>'; }).join(''); }).join('')
       : '<p class="muted-note" style="margin:16px 0">No fees collected yet.</p>');
     m.hidden = false;
