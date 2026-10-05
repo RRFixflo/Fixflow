@@ -1737,7 +1737,7 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/available-dedupe' || path === '/available-lookup' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path) || /^\/dreams\/\d+$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
-    if (method === 'GET') return path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
+    if (method === 'GET') return path === '/tenant-suggest' || path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
   }
@@ -2327,7 +2327,7 @@ module.exports = function mountJobs(app, opts) {
   app.get('/api/admin/me', async function (req, res) {
     let alerts = ''; try { alerts = (await db()) ? NTFY_SERVER + '/' + (await offersTopic()) : ''; } catch (e) {}
     let uemail = ''; try { if (req.user && req.user.id) uemail = ((await (await db()).query('SELECT email FROM staff_users WHERE id = $1', [req.user.id])).rows[0] || {}).email || ''; } catch (e) {}
-    res.json({ ok: true, role: req.role || null, user: req.user ? Object.assign({}, req.user, { email: uemail }) : null, canManageUsers: canManageUsers(req), offerAlerts: alerts, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, offerOrigin: OFFER_ORIGIN, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
+    res.json({ ok: true, reportUrl: (PUBLIC_URL || '') + '/', role: req.role || null, user: req.user ? Object.assign({}, req.user, { email: uemail }) : null, canManageUsers: canManageUsers(req), offerAlerts: alerts, db: !!(await db()), canEmail: canEmail(), canAi: !!(opts.canAi && opts.canAi()), invoice: INVOICE, offerOrigin: OFFER_ORIGIN, statuses: STATUSES, urgencies: URGENCIES, dueHours: DUE_HOURS, sources: SOURCES, deployedAt: DEPLOYED_AT });
   });
 
   // Wraps a handler: no database -> 503; unexpected errors -> 500 (logged).
@@ -3009,6 +3009,20 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true });
   }));
 
+  // Our tenants matching what's typed (name, mobile, email or address): for sending
+  // the report-a-repair link. Current tenants first; open to every staff sign-in.
+  app.get('/api/admin/tenant-suggest', withDb(async function (p, req, res) {
+    const q = String(req.query.q || '').trim().slice(0, 80);
+    if (q.length < 2) return res.json({ ok: true, tenants: [] });
+    const like = '%' + q.replace(/[\\%_]/g, '\\$&') + '%', digits = q.replace(/\D/g, '');
+    const r = await p.query(`SELECT t.id, t.name, t.phone, t.email, pt.address, pt.moved_out_at
+      FROM tenants t LEFT JOIN property_tenants pt ON pt.tenant_id = t.id AND pt.role IS DISTINCT FROM 'guarantor'
+      WHERE t.deleted_at IS NULL AND (t.name ILIKE $1 OR t.email ILIKE $1 OR pt.address ILIKE $1 OR ($2 <> '' AND length($2) >= 4 AND regexp_replace(coalesce(t.phone, ''), '\\D', '', 'g') LIKE '%' || $2 || '%'))
+      ORDER BY (pt.moved_out_at IS NULL AND pt.address IS NOT NULL) DESC, (t.name ILIKE $3) DESC, t.updated_at DESC NULLS LAST LIMIT 40`, [like, digits, q.replace(/[\\%_]/g, '\\$&') + '%']);
+    const seen = {}, out = [];
+    r.rows.forEach(function (x) { if (seen[x.id] || out.length >= 8) return; seen[x.id] = 1; out.push({ id: x.id, name: x.name || '', phone: x.phone || '', email: x.email || '', address: x.address || '', current: !!x.address && !x.moved_out_at }); });
+    res.json({ ok: true, tenants: out });
+  }));
   // ---------- Saved tenants ----------
   // Tenants aren't kept in a separate list: every job already records them, so
   // this returns the most recent details for each tenant (by name + address),
@@ -7545,12 +7559,42 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const pcm = r2(pw * 52 / 12), holding = r2(pw), deposit = r2(pw * 5);
     return { pw: r2(pw), pcm: pcm, holding: holding, deposit: deposit, rent: pcm, total: r2(pcm + deposit), balance: r2(pcm + deposit - holding) };
   }
+  // The offer form's property box: properties on our available list matching what's typed
+  // (postcode, street, building), shown without the flat or door number.
+  function publicAddrS(a) {
+    const pcM = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}\b/i.exec(String(a || '')), area = pcM ? pcM[1].toUpperCase() : '';
+    const parts = String(a || '').replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i, '').split(',').map(function (x) { return x.trim(); }).filter(Boolean)
+      .map(function (x) { return x.replace(/^(flat|apartment|apt|unit|room|studio|maisonette|suite)\s*[\w\/-]+\b[,\s]*/i, '').replace(/^(\d+[A-Z]?(\s*[-\/]\s*\d+[A-Z]?)?|[A-Z]\d*)\s+(?=[A-Za-z])/i, '').replace(/^(\d+[A-Z]?(\s*[-\/]\s*\d+[A-Z]?)?|[A-Z]\d*)\s+(?=[A-Za-z])/i, '').trim(); })
+      .filter(function (x) { return x && !/^\d+[A-Z]?$/i.test(x); });
+    const out = parts.slice(0, 3).join(', ');
+    return (out + (area ? (out ? ' ' : '') + area : '')).trim();
+  }
+  app.get('/api/offer-props', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const norm = function (v) { return String(v || '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); };
+    const q = norm(String(req.query.q || '').slice(0, 80)); if (q.length < 2) return res.json({ ok: true, items: [] });
+    const qpc = q.replace(/\s+/g, ''), pcLike = /^[A-Z]{1,2}\d/.test(qpc), toks = q.split(' ');
+    const rows = (await p.query("SELECT id, address, beds, rent_pcm, available_from, vacant FROM available_props WHERE status = 'available' ORDER BY id DESC LIMIT 400")).rows;
+    const items = rows.map(function (r) {
+      const n = norm(r.address), words = n.split(' '), pc = ((/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.exec(r.address) || [''])[0]).replace(/\s+/g, '').toUpperCase();
+      let score = pcLike && pc && pc.indexOf(qpc) === 0 ? 40 : 0;
+      const all = toks.every(function (t) { if (pcLike && pc && pc.indexOf(qpc) === 0) return true; if (words.some(function (w) { return w.indexOf(t) === 0; })) { score += 4; return true; } if (t.length >= 3 && n.indexOf(t) !== -1) { score += 2; return true; } return false; });
+      return all || score >= 40 ? { r: r, score: score } : null;
+    }).filter(Boolean).sort(function (a, b) { return b.score - a.score; }).slice(0, 8).map(function (x) {
+      const r = x.r; return { id: r.id, label: publicAddrS(r.address) || 'Property', beds: r.beds, rent_pcm: r.rent_pcm != null ? Number(r.rent_pcm) : null, available: r.vacant ? 'now' : (r.available_from ? String(r.available_from).slice(0, 10) : '') };
+    });
+    res.json({ ok: true, items: items });
+  }));
   app.post('/api/offers', withDb(async function (p, req, res) {
     if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const b = req.body || {};
     if (b.website) return res.json({ ok: true });   // a robot filled the hidden box
     const s = function (v, n) { return str(v, n || 200) || ''; };
-    const address = s(b.property, 400), lead = s(b.lead_name), phone = s(b.lead_phone, 40), email = s(b.lead_email);
+    let address = s(b.property, 400);
+    // Picked from the available list: the exact property (the applicant sees it without the door number).
+    const pref = parseInt(b.property_ref, 10);
+    if (pref) { const av = (await p.query("SELECT address FROM available_props WHERE id = $1", [pref])).rows[0]; if (av && av.address) address = s(av.address, 400); }
+    const lead = s(b.lead_name), phone = s(b.lead_phone, 40), email = s(b.lead_email);
     const amt = money(b.offer), maxAmt = money(b.max_offer), per = b.per === 'pcm' ? 'pcm' : 'pw';
     if (!address || !lead || !(phone || email)) return res.status(400).json({ ok: false, error: 'details' });
     if (!amt) return res.status(400).json({ ok: false, error: 'offer' });

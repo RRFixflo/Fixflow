@@ -458,7 +458,7 @@
   .oc-refund span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
-  .staff-mode .side .nav:not(#logoutBtn):not(#navTeam):not(#navWho):not(#navAvail):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navTeam):not(#navWho):not(#navAvail):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
@@ -1325,6 +1325,7 @@
     <button class="nav" type="button" id="navLt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg> Landlord Terms <span class="count-chip" id="sLt" hidden></span></button>
     <button class="nav" type="button" id="navEmail" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
     <button class="nav" type="button" id="navNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
+    <button class="nav" type="button" id="navRepLink" title="Send the report-a-repair link to anyone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg><span>Send repair link</span></button>
     <div class="side-sec">Links</div>
     <a class="nav" href="/" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Tenant report page</a>
     <a class="nav" href="/offer" target="_blank" rel="noopener" style="text-decoration:none" title="The form applicants fill in to make an offer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offer form (applicants)</a>
@@ -1634,7 +1635,7 @@
         </details>
       </div>
 
-      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
+      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
       <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto;max-width:100%;min-width:0"><option value="">Everyone</option></select></div><div id="teamFeed"></div></div>
@@ -2038,6 +2039,20 @@
     <div class="ml-actions"><button class="btn primary" type="button" id="mlSend">Send now</button><button class="btn" type="button" id="mlNative">Open in my mail app instead</button></div>
   </div>
 </div>
+<!-- SEND THE REPORT-A-REPAIR LINK -->
+<div class="modal" id="rlModal" hidden>
+  <div class="card" role="dialog" aria-labelledby="rlTitle" style="max-width:560px">
+    <h3 id="rlTitle">🔧 Send the repair link</h3>
+    <p class="muted-note" style="margin:0 0 10px">The Fixflow page where tenants report a repair with photos or a video. Start typing a tenant’s name, mobile, email or address to pick one of our tenants — or type anyone’s details.</p>
+    <div style="position:relative"><label class="lbl" for="rlWho">Who</label><input class="inp" id="rlWho" autocomplete="off" placeholder="Name, mobile, email or address"><div class="lt-sugg" id="rlSugg" hidden></div></div>
+    <div class="grid2" style="margin-top:8px"><div><label class="lbl" for="rlName">Name</label><input class="inp" id="rlName" autocomplete="off"></div><div><label class="lbl" for="rlTo">Mobile or email</label><input class="inp" id="rlTo" autocomplete="off"></div></div>
+    <label class="lbl" for="rlMsg" style="margin-top:8px">Message</label><textarea class="inp" id="rlMsg" rows="6"></textarea>
+    <p class="err" id="rlErr"></p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px"><button class="btn wa" type="button" id="rlWa" style="min-height:48px;font-size:.95rem;justify-content:center;white-space:normal;overflow-wrap:anywhere;text-align:center">💬 Send by WhatsApp</button><button class="btn primary" type="button" id="rlEmail" style="min-height:48px;font-size:.95rem;justify-content:center;white-space:normal;overflow-wrap:anywhere;text-align:center">✉ Send by email</button></div>
+    <div class="row-actions" style="margin-top:8px"><button class="btn" type="button" id="rlClose">Close</button><span style="flex:1"></span><button class="btn ghost" type="button" id="rlCopy">📋 Copy the message</button></div>
+  </div>
+</div>
+
 <!-- CHANGE OF TENANT: ONE TENANT SWAPPED FOR ANOTHER -->
 <div class="modal" id="ctoModal" hidden>
   <div class="card" role="dialog" aria-labelledby="ctoTitle" style="max-width:640px">
@@ -12803,6 +12818,66 @@
   }
 
   // ----- Documents -----
+  // ---------- Send the report-a-repair link (every staff sign-in) ----------
+  var rlPicked = null, rlT = 0, rlHits = [];
+  function rlUrl(){ return (meta.reportUrl && meta.reportUrl !== '/' ? meta.reportUrl : location.origin + '/'); }
+  function rlText(){
+    var first = String($('rlName').value || '').trim().split(/\s+/)[0], addr = rlPicked && rlPicked.address ? shortAddr(rlPicked.address) : '';
+    return 'Hi' + (first ? ' ' + first : '') + ',\n\nTo report a repair' + (addr ? ' at ' + addr : '') + ', please use our online repair form — it only takes a minute, and you can add photos or a short video:\n' + rlUrl() + '\n\nWe’ll be in touch as soon as it’s booked in.\n\nResidential Realtors\n0207 096 8131';
+  }
+  function rlOpen(){
+    rlPicked = null; ['rlWho', 'rlName', 'rlTo'].forEach(function(id){ $(id).value = ''; }); $('rlErr').textContent = ''; $('rlSugg').hidden = true;
+    $('rlMsg').value = rlText(); delete $('rlMsg').dataset.touched; $('rlModal').hidden = false; rlSync(); $('rlWho').focus();
+  }
+  function rlRefresh(){ if (!$('rlMsg').dataset.touched) $('rlMsg').value = rlText(); }
+  $('navRepLink').addEventListener('click', rlOpen);
+  if ($('stRepLink')) $('stRepLink').addEventListener('click', rlOpen);
+  $('rlClose').addEventListener('click', function(){ $('rlModal').hidden = true; });
+  $('rlMsg').addEventListener('input', function(){ this.dataset.touched = '1'; });
+  $('rlName').addEventListener('input', rlRefresh);
+  $('rlWho').addEventListener('input', function(){
+    var q = this.value.trim(); clearTimeout(rlT);
+    if (q.length < 2) { $('rlSugg').hidden = true; return; }
+    rlT = setTimeout(function(){
+      api('GET', '/api/admin/tenant-suggest?q=' + encodeURIComponent(q)).then(function(d){
+        rlHits = (d && d.ok && d.tenants) || [];
+        if ($('rlWho').value.trim() !== q) return;
+        if (!rlHits.length) { $('rlSugg').innerHTML = '<div class="muted-note" style="padding:10px 12px;margin:0">No tenant found — type their details below.</div>'; $('rlSugg').hidden = false; return; }
+        $('rlSugg').innerHTML = rlHits.map(function(t, i){ return '<button type="button" data-rl="' + i + '"><b>' + esc(t.name || 'Tenant') + '</b>' + (t.current ? '' : ' <span class="muted-note" style="margin:0">· previous tenant</span>') + '<br><small class="muted-note" style="margin:0">' + esc([t.address ? shortAddr(t.address) : '', t.phone, t.email].filter(Boolean).join(' · ')) + '</small></button>'; }).join('');
+        $('rlSugg').hidden = false;
+      });
+    }, 160);
+  });
+  $('rlSugg').addEventListener('mousedown', function(e){ e.preventDefault(); });
+  $('rlSugg').addEventListener('click', function(e){
+    var b = e.target.closest('[data-rl]'); if (!b) return; var t = rlHits[Number(b.dataset.rl)]; if (!t) return;
+    rlPicked = t; $('rlWho').value = t.name + (t.address ? ' — ' + shortAddr(t.address) : ''); $('rlName').value = t.name || ''; $('rlTo').value = t.phone || t.email || ''; $('rlSugg').hidden = true; rlRefresh(); rlSync();
+  });
+  $('rlWho').addEventListener('blur', function(){ setTimeout(function(){ $('rlSugg').hidden = true; }, 150);
+    // Typed someone's details straight in: use them.
+    var v = this.value.trim(); if (!rlPicked && v) { if (/@/.test(v) || /^[+\d][\d\s()-]{7,}$/.test(v)) { if (!$('rlTo').value) $('rlTo').value = v; } else if (!$('rlName').value) { $('rlName').value = v; rlRefresh(); } } });
+  $('rlCopy').addEventListener('click', function(){ var t = $('rlMsg').value.trim(); copyText(t).then(function(){ toast('Copied — paste it anywhere'); })['catch'](function(){ window.prompt('Copy this:', t); }); });
+  $('rlWa').addEventListener('click', function(){
+    var to = $('rlTo').value.trim(), n = /@/.test(to) ? (rlPicked && rlPicked.phone ? waNumber(rlPicked.phone) : '') : waNumber(to);
+    if (to && !/@/.test(to) && !n) { $('rlErr').textContent = 'That mobile number doesn’t look right.'; return; }
+    window.open('https://wa.me/' + n + '?text=' + encodeURIComponent($('rlMsg').value.trim()), '_blank', 'noopener');
+  });
+  // Email: sent straight away when we have their email address; otherwise the email box to type it.
+  $('rlEmail').addEventListener('click', function(){
+    var to = $('rlTo').value.trim(), em = /@/.test(to) ? to : (rlPicked && rlPicked.email) || '', subj = 'Report a repair — Residential Realtors', body = $('rlMsg').value.trim();
+    if (!em) { $('rlModal').hidden = true; composeMail({ to: [], subject: subj, body: body, title: '✉ Send the repair link' }); return; }
+    if (!meta.canEmail) { $('rlModal').hidden = true; composeMail({ to: [em], subject: subj, body: body, title: '✉ Send the repair link' }); return; }
+    busy($('rlEmail'), true, 'Sending…');
+    api('POST', '/api/admin/email', { to: [em], subject: subj, text: body }).then(function(d){
+      busy($('rlEmail'), false);
+      if (!d || !d.ok) { $('rlErr').textContent = 'Couldn’t send the email (' + ((d && d.error) || 'error') + ').'; return; }
+      $('rlModal').hidden = true; toast('✓ Repair link emailed to ' + em);
+    });
+  });
+  // WhatsApp: straight to their chat when we have their mobile.
+  $('rlTo').addEventListener('input', function(){ rlSync(); });
+  function rlSync(){ var to = $('rlTo').value.trim(), em = /@/.test(to) ? to : (rlPicked && rlPicked.email) || '', ph = /@/.test(to) ? (rlPicked && rlPicked.phone) || '' : to;
+    $('rlWa').textContent = '💬 ' + (ph && waNumber(ph) ? 'WhatsApp ' + ph : 'Send by WhatsApp'); $('rlEmail').textContent = '✉ ' + (em ? 'Email ' + em : 'Send by email'); }
   // ---------- Change of tenant ----------
   var ctoD = null;
   function ctoNum(id){ var v = String($(id).value || '').replace(/[£,\s]/g, ''); return v === '' ? null : Number(v); }
@@ -13977,7 +14052,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navAvail', 'Available properties'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
