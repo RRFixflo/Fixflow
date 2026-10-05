@@ -8883,9 +8883,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await addMonthCost(p, id, from, { label: 'Invoice ' + i.number + ' (repairs, inc. VAT)', amount: i.total, novat: true, invoice_id: i.id });
       ids.push(i.id);
     }
-    const row = { at: new Date().toISOString(), amount: amount || null, by: who, invoice_ids: ids };
+    // The day the rent was received (it can be marked later — back-dated, never in the future).
+    const rd = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) && b.date <= londonDay() ? b.date : null;
+    const row = { at: rd ? rd + 'T12:00:00.000Z' : new Date().toISOString(), amount: amount || null, by: who, invoice_ids: ids, marked_at: new Date().toISOString() };
     await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_rcvd}', coalesce(data->'rent_rcvd', '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
-      [id, from, JSON.stringify(row), JSON.stringify([{ at: row.at, text: 'Rent due ' + certDay(from) + ' collected' + (amount ? ' (' + gbp(amount) + ')' : '') + (ids.length ? ' — ' + ids.length + ' landlord invoice' + (ids.length === 1 ? '' : 's') + ' taken off it' : '') + ' (' + who + ')' }])]);
+      [id, from, JSON.stringify(row), JSON.stringify([{ at: row.marked_at, text: 'Rent due ' + certDay(from) + ' collected' + (amount ? ' (' + gbp(amount) + ')' : '') + (rd ? ' — received ' + certDay(rd) : '') + (ids.length ? ' — ' + ids.length + ' landlord invoice' + (ids.length === 1 ? '' : 's') + ' taken off it' : '') + ' (' + who + ')' }])]);
     res.json({ ok: true, invoices: ids.length });
   }));
   // Who collects the rent on a tenancy (from the rent page: "we don't collect this any more").
