@@ -1494,7 +1494,7 @@
               </div>
               <div class="grid2">
                 <div><label class="lbl" for="tsBank">Bank details (move-in monies)</label><textarea class="inp" id="tsBank" rows="6"></textarea>
-                  <details class="ct-links" id="ctLinks" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-size:.86rem">🏛 Council tax links by borough</summary><p class="muted-note" style="margin:6px 0">The welcome email works out the property’s borough from its postcode and links to that council’s council tax registration. Each link is checked before it’s used; type your own to replace any.</p><div id="ctxList"></div><button type="button" class="btn small primary" id="ctxSave" style="margin-top:8px">Save council tax links</button></details></div>
+                  <details class="ct-links" id="ctLinks" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-size:.86rem">🏛 Council tax links by borough</summary><p class="muted-note" style="margin:6px 0">The welcome email works out the property’s borough from its postcode and links to that council’s council tax registration. Each link is checked before it’s used; type your own to replace any.</p><div id="ctxList"></div><button type="button" class="btn small primary" id="ctxSave" style="margin-top:8px">Save council tax links</button></details><details class="ct-links" id="lsLinks" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-size:.86rem">📜 Property licensing schemes by borough</summary><p class="muted-note" style="margin:6px 0">All = the whole borough · Parts = certain wards or streets · None = no scheme · Not sure = changing or unclear. Used for the licence check on the landlord page. Councils change their schemes every few years — correct any that are out of date and add the council’s licensing page.</p><div id="lsList"></div><button type="button" class="btn small primary" id="lsSave" style="margin-top:8px">Save licensing schemes</button></details></div>
                 <div><label class="lbl" for="tsSigT">Signature — tenants' email</label><textarea class="inp" id="tsSigT" rows="6"></textarea></div>
               </div>
               <div><label class="lbl" for="tsSigL">Signature — landlord's email</label><textarea class="inp" id="tsSigL" rows="5"></textarea></div>
@@ -7469,6 +7469,43 @@
     });
   }
   function gbp0(n){ return '£' + Math.round(Number(n) || 0).toLocaleString('en-GB'); }
+  // Does a property need a licence? (the same check landlords can run on their page)
+  function openLicCheck(l){
+    var m = $('lkModal');
+    if (!m) {
+      var opt = function(name, vals){ return '<div class="lk-opts">' + vals.map(function(v, i){ return '<label><input type="radio" name="' + name + '" value="' + v[0] + '"' + (i ? '' : ' checked') + '> ' + v[1] + '</label>'; }).join('') + '</div>'; };
+      document.body.insertAdjacentHTML('beforeend', '<style>.lk-opts{display:flex;flex-wrap:wrap;gap:6px}.lk-opts label{display:flex;gap:6px;align-items:center;padding:7px 10px;border:1px solid var(--line-strong);border-radius:10px;font-size:.86rem;cursor:pointer}.lk-opts label:has(input:checked){border-color:var(--ink);background:var(--panel-2)}' +
+        '.lk-res{border-radius:14px;padding:14px 16px;margin-top:4px}.lk-res.yes{background:#fef3f2;border:1px solid #fecdca}.lk-res.maybe{background:#fffaeb;border:1px solid #fedf89}.lk-res.no{background:#ecfdf3;border:1px solid #abefc6}.lk-res h4{margin:0 0 4px;font-size:1rem}.lk-res.yes h4{color:#b42318}.lk-res.maybe h4{color:#b54708}.lk-res.no h4{color:#067647}.lk-res ul{margin:6px 0 0;padding-left:18px;font-size:.88rem}</style>' +
+        '<div class="modal" id="lkModal" hidden><div class="card" style="width:min(620px,100%);max-height:92vh;overflow:auto;display:flex;flex-direction:column;gap:10px">' +
+        '<h3 style="margin:0">📜 Does the property need a licence?</h3><p class="muted-note" style="margin:0">The same check landlords can run on their page. Council schemes are kept in Tenancies → Templates.</p>' +
+        '<label class="lbl">Property (address with postcode)<input class="inp" id="lkAddr" list="lkProps" placeholder="e.g. Flat 2, 14 Sample Road, London E13 9AB"><datalist id="lkProps"></datalist></label>' +
+        '<div><div class="lbl">Who will live there?</div>' + opt('lkHh', [['single', 'One household'], ['shared', 'Sharers from different households']]) + '</div>' +
+        '<div class="grid2"><label class="lbl">People in total<input class="inp" id="lkPeople" inputmode="numeric" value="2"></label><label class="lbl lk-sh" hidden>Separate households<input class="inp" id="lkHhN" inputmode="numeric" value="2"></label></div>' +
+        '<div class="lk-sh" hidden><div class="lbl">Share a kitchen, bathroom or toilet?</div>' + opt('lkShare', [['yes', 'Yes'], ['no', 'No — each has their own']]) + '</div>' +
+        '<div><div class="lbl">Type of property</div>' + opt('lkType', [['house', 'House'], ['converted', 'Flat in a converted house'], ['purpose', 'Flat in a purpose-built block'], ['block', 'Whole building of flats']]) + '</div>' +
+        '<p class="err" id="lkErr" style="margin:0"></p><div id="lkOut"></div>' +
+        '<div class="row-actions"><button class="btn" type="button" id="lkClose">Close</button><button class="btn primary" type="button" id="lkGo">Check</button></div></div></div>');
+      m = $('lkModal');
+      var v = function(n){ var x = m.querySelector('input[name=' + n + ']:checked'); return x ? x.value : ''; };
+      var sync = function(){ m.querySelectorAll('.lk-sh').forEach(function(e){ e.hidden = v('lkHh') !== 'shared'; }); };
+      m.addEventListener('change', sync);
+      $('lkClose').addEventListener('click', function(){ m.hidden = true; });
+      $('lkGo').addEventListener('click', function(){
+        var a = $('lkAddr').value.trim(); $('lkErr').textContent = ''; if (!a) { $('lkErr').textContent = 'Enter the address with its postcode.'; return; }
+        busy($('lkGo'), true, 'Checking…');
+        api('POST', '/api/admin/licence-check', { postcode: a, address: a, household: v('lkHh'), people: $('lkPeople').value, households: $('lkHhN').value, share: v('lkShare'), type: v('lkType') }).then(function(d){
+          busy($('lkGo'), false);
+          if (!d.ok) { $('lkErr').textContent = d.error === 'postcode' ? 'Include the postcode in the address.' : d.error === 'postcode-unknown' ? 'That postcode wasn’t found.' : 'Couldn’t check that.'; return; }
+          var f = d.on_file ? '<p class="muted-note" style="margin:8px 0 0">📎 On file: ' + esc(d.on_file.status === 'not_needed' ? 'not needed' : (d.on_file.type || 'licence') + (d.on_file.number ? ' ' + d.on_file.number : '') + (d.on_file.expires ? ', expires ' + longDay(d.on_file.expires) : '')) + '</p>' : '';
+          $('lkOut').innerHTML = '<div class="lk-res ' + d.verdict + '"><h4>' + esc(d.title) + '</h4><div class="muted-note" style="margin:0">' + esc(d.postcode + ' · ' + d.borough + (d.licence ? ' · ' + d.licence : '')) + '</div><ul>' + d.why.map(function(w){ return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>' + f + '<a href="' + esc(d.link) + '" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;font-weight:600">' + esc(d.borough) + ' licensing ›</a></div>';
+        });
+      });
+    }
+    var props = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; });
+    $('lkProps').innerHTML = props.map(function(a){ return '<option value="' + esc(a) + '">'; }).join('');
+    $('lkAddr').value = props.length === 1 ? props[0] : ''; $('lkOut').innerHTML = ''; $('lkErr').textContent = '';
+    m.hidden = false;
+  }
   function openValuation(l){
     var m = $('valModal');
     if (!m) {
@@ -7549,10 +7586,12 @@
       '<button class="btn" id="llLinkBtn" type="button" title="' + esc(sentWhen(l.link_sent) || 'Not sent yet') + '">🔗 Send their page' + (l.link_sent ? ' ✓' : '') + '</button>' +
       '<button class="btn" id="llInvBtn" type="button">🧾 New invoice</button>' +
       '<button class="btn" id="llValBtn" type="button">📄 Valuation letter</button>' +
+      '<button class="btn" id="llLicBtn" type="button">📜 Licence check</button>' +
       '<button class="btn primary" id="llEditBtn" type="button">Edit details</button>';
     $('llLinkBtn').addEventListener('click', function(){ openLlLink(l); });
     $('llInvBtn').addEventListener('click', function(){ var ps = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; }); openNewInvoice({ props: ps.length ? ps : null, address: ps.length === 1 ? ps[0] : '' }); });
     $('llValBtn').addEventListener('click', function(){ openValuation(l); });
+    $('llLicBtn').addEventListener('click', function(){ openLicCheck(l); });
     loadValuations(l);
     $('llCard').innerHTML = '<dl class="kv">' + [['Name', l.name], ['Phone', l.phone], ['Email', l.email], ['Address (for invoices)', l.address], ['Notes', l.notes]]
       .filter(function(r){ return r[1]; }).map(function(r){ return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
@@ -12990,6 +13029,25 @@
     var ctReq = who === 'tenants' ? api('GET', '/api/admin/council-tax?address=' + encodeURIComponent(d.address || '')).then(function(r){ if (r && r.ok) ct = r; })['catch'](function(){}) : null;
     Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq]).then(go);
   }
+  // Templates: each borough's licensing schemes (selective and additional HMO), for the licence check.
+  var lsData = null, LS_OPTS = [['all', 'All'], ['some', 'Parts'], ['none', 'None'], ['check', 'Not sure']];
+  if ($('lsLinks')) $('lsLinks').addEventListener('toggle', function(){
+    if (!this.open || lsData) return;
+    api('GET', '/api/admin/licensing-schemes').then(function(d){
+      if (!d || !d.ok) return; lsData = d;
+      var sel = function(b, k, cur){ return '<select class="inp" data-ls="' + esc(b) + '" data-k="' + k + '" style="min-width:0">' + LS_OPTS.map(function(o){ return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'; };
+      $('lsList').innerHTML = '<div class="ls-grid" style="display:grid;grid-template-columns:minmax(110px,1.1fr) 1fr 1fr 1.4fr;gap:6px;align-items:center;font-size:.84rem"><b>Borough</b><b>Selective</b><b>Additional HMO</b><b>Council licensing page</b>' +
+        Object.keys(d.schemes).sort().map(function(b){ var x = d.schemes[b] || {}; return '<span>' + esc(b) + '</span>' + sel(b, 'sel', x.sel) + sel(b, 'add', x.add) + '<input class="inp" data-ls="' + esc(b) + '" data-k="link" placeholder="https://…" value="' + esc((d.custom[b] || {}).link || '') + '">'; }).join('') + '</div>';
+    });
+  });
+  if ($('lsSave')) $('lsSave').addEventListener('click', function(){
+    if (!lsData) return;
+    var custom = {};
+    document.querySelectorAll('#lsList [data-ls]').forEach(function(el){ var b = el.dataset.ls, k = el.dataset.k, v = el.value.trim(); var def = (lsData.defaults[b] || {})[k];
+      if (k === 'link' ? v : v !== def) { custom[b] = custom[b] || {}; custom[b][k] = v; } });
+    busy($('lsSave'), true, 'Saving…');
+    api('PUT', '/api/admin/licensing-schemes', { custom: custom }).then(function(d){ busy($('lsSave'), false); toast(d && d.ok ? 'Licensing schemes saved' : 'Couldn’t save'); if (d && d.ok) lsData.custom = d.custom; });
+  });
   // Templates: the council tax link for each borough (ours, or the office's own).
   var ctLinksData = null;
   if ($('ctLinks')) $('ctLinks').addEventListener('toggle', function(){
