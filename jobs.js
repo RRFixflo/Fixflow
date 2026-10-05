@@ -4799,6 +4799,38 @@ document.querySelectorAll('.lcu').forEach(function(box){
       }
     }
     // Handy tools for landlords: mortgage, borrowing, yield, stamp duty, rent and deposits (all worked out on the page).
+    // Does a property need a licence? The landlord answers a few questions; we give a clear answer.
+    const licView = '<section class="lview" id="licence" hidden><a class="lback" href="#">← Back</a>' +
+      '<style>#lcForm{display:block!important;width:100%}#lcForm .lc-shared[hidden]{display:none!important}.lc-opts input{flex:none;width:18px;height:18px;margin:0}.lc-q{margin:14px 0 0}.lc-q>b{display:block;font-size:.9rem;margin:0 0 6px}.lc-opts{display:flex;flex-wrap:wrap;gap:8px}.lc-opts label{display:flex;align-items:center;gap:6px;padding:9px 12px;border:1px solid #dfe3ea;border-radius:12px;font-size:.9rem;background:#fff;cursor:pointer}.lc-opts label:has(input:checked){border-color:#0b1f3a;background:#eef3fb}' +
+        '.lc-in{width:100%;padding:10px 12px;border:1px solid #dfe3ea;border-radius:12px;font:inherit;font-size:1rem;box-sizing:border-box}.lc-go{margin-top:16px;width:100%;padding:13px;border:0;border-radius:14px;background:#0b1f3a;color:#fff;font:inherit;font-weight:700;font-size:1rem;cursor:pointer}' +
+        '.lc-res{margin-top:16px;border-radius:16px;padding:16px 18px}.lc-res.yes{background:#fef3f2;border:1px solid #fecdca}.lc-res.maybe{background:#fffaeb;border:1px solid #fedf89}.lc-res.no{background:#ecfdf3;border:1px solid #abefc6}' +
+        '.lc-res h3{margin:0 0 4px;font-size:1.1rem;text-transform:none;letter-spacing:0}.lc-res.yes h3{color:#b42318}.lc-res.maybe h3{color:#b54708}.lc-res.no h3{color:#067647}.lc-res ul{margin:8px 0 0;padding-left:18px}.lc-res li{margin:4px 0;font-size:.92rem}.lc-res .lc-a{display:inline-block;margin-top:10px;font-weight:700}.lc-file{margin-top:10px;padding:10px 12px;border-radius:12px;background:#fff;font-size:.9rem}</style>' +
+      '<div class="card"><h2>📜 Does my property need a licence?</h2><p class="muted" style="margin:-2px 0 0">Answer a few questions and we’ll tell you whether the council needs the property to be licensed.</p>' +
+        '<form id="lcForm" novalidate>' +
+          '<div class="lc-q"><b>Property postcode</b><input class="lc-in" id="lcPc" autocomplete="postal-code" placeholder="e.g. E13 9AB" style="text-transform:uppercase"></div>' +
+          '<div class="lc-q"><b>First line of the address <span class="muted" style="font-weight:400">(optional)</span></b><input class="lc-in" id="lcAddr" placeholder="e.g. Flat 2, 14 Sample Road"></div>' +
+          '<div class="lc-q"><b>Who will live there?</b><div class="lc-opts"><label><input type="radio" name="lcHh" value="single" checked> One household (a person, couple or family)</label><label><input type="radio" name="lcHh" value="shared"> Sharers from different households</label></div></div>' +
+          '<div class="lc-q"><b>How many people in total?</b><input class="lc-in" id="lcPeople" inputmode="numeric" value="2" style="max-width:120px"></div>' +
+          '<div class="lc-shared" hidden><div class="lc-q"><b>How many separate households?</b><input class="lc-in" id="lcHhN" inputmode="numeric" value="2" style="max-width:120px"><div class="muted" style="font-size:.8rem;margin-top:4px">A couple or a family counts as one household; each unrelated person is their own.</div></div>' +
+          '<div class="lc-q"><b>Do they share a kitchen, bathroom or toilet?</b><div class="lc-opts"><label><input type="radio" name="lcShare" value="yes" checked> Yes</label><label><input type="radio" name="lcShare" value="no"> No — each has their own</label></div></div></div>' +
+          '<div class="lc-q"><b>Type of property</b><div class="lc-opts"><label><input type="radio" name="lcType" value="house" checked> House</label><label><input type="radio" name="lcType" value="converted"> Flat in a converted house</label><label><input type="radio" name="lcType" value="purpose"> Flat in a purpose-built block</label><label><input type="radio" name="lcType" value="block"> Whole building of flats</label></div></div>' +
+          '<button class="lc-go" type="submit">Check now</button><p class="muted" id="lcErr" style="color:#b42318;margin:8px 0 0"></p></form>' +
+        '<div id="lcOut"></div>' +
+        '<p class="muted" style="font-size:.8rem;margin:14px 0 0">A guide based on the national HMO rules and the council’s licensing schemes as we know them. Councils change their schemes, so the council has the final say — we’re happy to check for you: 0207 096 8131 · info@residentialrealtors.co.uk</p></div>' +
+      '<script>(function(){var T=document.body.getAttribute("data-lt"),f=document.getElementById("lcForm"),o=document.getElementById("lcOut"),er=document.getElementById("lcErr");' +
+        'var e=function(v){return String(v==null?"":v).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c];});};' +
+        'var v=function(n){var x=f.querySelector("input[name="+n+"]:checked");return x?x.value:"";};' +
+        'var sync=function(){f.querySelector(".lc-shared").hidden=v("lcHh")!=="shared";};f.addEventListener("change",sync);sync();' +
+        'f.addEventListener("submit",function(ev){ev.preventDefault();er.textContent="";var pc=document.getElementById("lcPc").value.trim();if(!pc){er.textContent="Please enter the postcode.";return;}' +
+          'var b=f.querySelector(".lc-go");b.disabled=true;b.textContent="Checking…";' +
+          'fetch("/l/"+T+"/licence-check",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({postcode:pc,address:document.getElementById("lcAddr").value.trim(),household:v("lcHh"),people:document.getElementById("lcPeople").value,households:document.getElementById("lcHhN").value,share:v("lcShare"),type:v("lcType")})}).then(function(r){return r.json();}).then(function(d){' +
+            'b.disabled=false;b.textContent="Check again";' +
+            'if(!d.ok){er.textContent=d.error==="postcode"?"That doesn’t look like a UK postcode.":d.error==="postcode-unknown"?"We couldn’t find that postcode — please check it.":"Sorry, something went wrong. Please try again.";return;}' +
+            'var fl=d.on_file?"<div class=\\"lc-file\\">📎 We have "+(d.on_file.status==="not_needed"?"this property recorded as <b>not needing a licence</b>":d.on_file.status==="applied"?"a licence application on file"+(d.on_file.number?" ("+e(d.on_file.number)+")":""):"a <b>"+e(d.on_file.type||"property")+" licence</b> on file"+(d.on_file.number?" — "+e(d.on_file.number):"")+(d.on_file.expires?", valid until "+e(new Date(d.on_file.expires+"T12:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})):""))+".</div>":"";' +
+            'o.innerHTML="<div class=\\"lc-res "+d.verdict+"\\"><h3>"+(d.verdict==="yes"?"📜 ":d.verdict==="maybe"?"⚠️ ":"👍 ")+e(d.title)+"</h3><div class=\\"muted\\">"+e(d.postcode)+" · "+e(d.borough)+" council"+(d.licence?" · "+e(d.licence):"")+"</div><ul>"+d.why.map(function(w){return"<li>"+e(w)+"</li>";}).join("")+"</ul>"+fl+' +
+              '"<a class=\\"lc-a\\" href=\\""+e(d.link)+"\\" target=\\"_blank\\" rel=\\"noopener\\">"+e(d.borough)+" council’s licensing page ›</a></div>";o.scrollIntoView({behavior:"smooth",block:"start"});' +
+          '}).catch(function(){b.disabled=false;b.textContent="Check now";er.textContent="Couldn’t connect — please try again.";});});})();</script>' +
+      '</section>';
     const toolsView = '<section class="lview" id="tools" hidden><a class="lback" href="#">← Back</a>' +
       '<div class="card"><h2>🧮 Landlord tools</h2><p class="muted" style="margin:-2px 0 0">Quick calculators for buy-to-let. These are a guide only — not financial or tax advice. Speak to a mortgage broker or accountant before deciding.</p></div>' +
       '<div class="ttabs" id="tTabs"><button type="button" data-tt="mort" class="on">🏦 Mortgage</button><button type="button" data-tt="borrow">📈 Borrowing</button><button type="button" data-tt="yield">💷 Yield</button><button type="button" data-tt="sdlt">🏛 Stamp duty</button><button type="button" data-tt="rent">🔁 Rent &amp; deposit</button></div>' +
@@ -4837,10 +4869,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
         (quick.length + owns.length > 4 ? '<input id="lfind" type="search" placeholder="Find a property…" autocomplete="off">' : '') + '<div class="qlist">' + quick.join('') + '</div></div>' : '') +
         '<div class="card"><h2>' + (quick.length ? 'Your other properties' : 'Your properties') + '</h2>' + (owns.length ? '<div class="qlist">' + ownRows.join('') + '</div>' : '<p class="muted" style="margin:-4px 0 6px">Keep all your properties in one place — even ones we don’t manage. We’ll find each EPC automatically.</p>') +
           '<a class="o-add" href="#add">＋ Add a property</a></div>' +
-        '<a class="card qrow lspend" href="#tools"><span class="qa">🧮 Landlord tools · mortgage, yield, stamp duty</span><span class="qgo">›</span></a>' + (quick.length ? '<a class="card qrow lspend" href="#spending"><span class="qa">🧾 Invoices &amp; spending' + (unpaidInv.length ? ' · <span class="due">' + money(toPay) + ' to pay</span>' : invs.length ? ' · all paid' : '') + '</span><span class="qgo">›</span></a>' : '') + '</section>' : '') +
+        '<a class="card qrow lspend" href="#licence"><span class="qa">📜 Does a property need a licence? Check here</span><span class="qgo">›</span></a>' + '<a class="card qrow lspend" href="#tools"><span class="qa">🧮 Landlord tools · mortgage, yield, stamp duty</span><span class="qgo">›</span></a>' + (quick.length ? '<a class="card qrow lspend" href="#spending"><span class="qa">🧾 Invoices &amp; spending' + (unpaidInv.length ? ' · <span class="due">' + money(toPay) + ' to pay</span>' : invs.length ? ' · all paid' : '') + '</span><span class="qgo">›</span></a>' : '') + '</section>' : '') +
       (!homeView ? letCss + letCard : '') + propBlocks + ownViews + ownForm +
       (!homeView ? '<div class="lone"><a class="card qrow lspend" href="#spending"><span class="qa">🧾 Invoices &amp; spending' + (unpaidInv.length ? ' · <span class="due">' + money(toPay) + ' to pay</span>' : invs.length ? ' · all paid' : '') + '</span><span class="qgo">›</span></a><a class="card qrow lspend" href="#tools"><span class="qa">🧮 Landlord tools · mortgage, yield, stamp duty</span><span class="qgo">›</span></a><a class="card qrow lspend" href="#add"><span class="qa">＋ Add a property we don’t manage</span><span class="qgo">›</span></a></div>' : '') +
-      toolsView +
+      toolsView + licView +
       '<section class="lview" id="spending" hidden><a class="lback" href="#">← Back</a>' + invCard + spendCard.replace(' id="spending"', '') + '</section>' +
       ownScript + ownPropScript + certUpScript +
       '<script>(function(){var f=document.getElementById("lfind");if(f)f.addEventListener("input",function(){var q=f.value.trim().toLowerCase();document.querySelectorAll(".qrow[data-find]").forEach(function(el){el.style.display=!q||el.getAttribute("data-find").indexOf(q)!==-1?"":"none";});});' +
@@ -8527,6 +8559,102 @@ document.querySelectorAll('.lcu').forEach(function(box){
     Object.keys(b.custom || {}).slice(0, 200).forEach(function (k) { const u = str((b.custom || {})[k], 500); if (u && /^https?:\/\//i.test(u)) custom[str(k, 80)] = u; });
     const own = ((await p.query("SELECT value FROM app_settings WHERE key = 'council_tax_links'")).rows[0] || {}).value || {};
     own.custom = custom; await p.query("INSERT INTO app_settings (key, value) VALUES ('council_tax_links', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(own)]);
+    res.json({ ok: true, custom: custom });
+  }));
+  // ---------- Does a property need a licence? ----------
+  // Mandatory HMO licensing is national (5+ people, 2+ households, sharing a kitchen,
+  // bathroom or toilet). Additional HMO licensing (smaller HMOs) and selective licensing
+  // (every rented home) are council schemes: 'all' = the whole borough, 'some' = parts
+  // of it, 'none' = no scheme, 'check' = unclear or changing. Our starting list, which
+  // the office keeps up to date in Templates (schemes change every few years).
+  const LICENSING = {
+    'Barking and Dagenham': { sel: 'all', add: 'all' }, 'Barnet': { sel: 'none', add: 'all' }, 'Bexley': { sel: 'none', add: 'none' }, 'Brent': { sel: 'some', add: 'all' },
+    'Bromley': { sel: 'none', add: 'none' }, 'Camden': { sel: 'none', add: 'all' }, 'City of London': { sel: 'none', add: 'none' }, 'Croydon': { sel: 'check', add: 'check' },
+    'Ealing': { sel: 'some', add: 'all' }, 'Enfield': { sel: 'some', add: 'all' }, 'Greenwich': { sel: 'none', add: 'all' }, 'Hackney': { sel: 'some', add: 'all' },
+    'Hammersmith and Fulham': { sel: 'some', add: 'all' }, 'Haringey': { sel: 'some', add: 'all' }, 'Harrow': { sel: 'none', add: 'all' }, 'Havering': { sel: 'some', add: 'some' },
+    'Hillingdon': { sel: 'none', add: 'some' }, 'Hounslow': { sel: 'some', add: 'all' }, 'Islington': { sel: 'some', add: 'all' }, 'Kensington and Chelsea': { sel: 'none', add: 'check' },
+    'Kingston upon Thames': { sel: 'none', add: 'none' }, 'Lambeth': { sel: 'none', add: 'all' }, 'Lewisham': { sel: 'check', add: 'all' }, 'Merton': { sel: 'none', add: 'check' },
+    'Newham': { sel: 'all', add: 'all' }, 'Redbridge': { sel: 'some', add: 'all' }, 'Richmond upon Thames': { sel: 'none', add: 'none' }, 'Southwark': { sel: 'some', add: 'all' },
+    'Sutton': { sel: 'none', add: 'none' }, 'Tower Hamlets': { sel: 'some', add: 'all' }, 'Waltham Forest': { sel: 'all', add: 'all' }, 'Wandsworth': { sel: 'none', add: 'all' },
+    'Westminster': { sel: 'none', add: 'check' }
+  };
+  const LIC_STATES = ['all', 'some', 'none', 'check'];
+  async function licensingSchemes(p) {
+    const own = ((await p.query("SELECT value FROM app_settings WHERE key = 'licensing_schemes'")).rows[0] || {}).value || {};
+    const out = {};
+    Object.keys(LICENSING).forEach(function (b) { out[b] = Object.assign({}, LICENSING[b]); });
+    Object.keys(own.custom || {}).forEach(function (b) { out[b] = Object.assign({}, out[b] || {}, own.custom[b]); });
+    return { schemes: out, custom: own.custom || {}, updated_at: own.updated_at || null };
+  }
+  async function licenceCheck(p, b, keys) {
+    const pcM = POSTCODE_RE.exec(String(b.postcode || '') + ' ' + String(b.address || ''));
+    if (!pcM) return { ok: false, error: 'postcode' };
+    const postcode = (pcM[1] + ' ' + pcM[2]).toUpperCase();
+    const borough = await boroughOf(postcode);
+    if (!borough) return { ok: false, error: 'postcode-unknown' };
+    const people = Math.max(1, Math.min(50, parseInt(b.people, 10) || 1));
+    const shared = b.household === 'shared';
+    const households = shared ? Math.max(2, Math.min(50, parseInt(b.households, 10) || 2)) : 1;
+    const amenities = b.share !== 'no';
+    const type = ['house', 'converted', 'purpose', 'block'].indexOf(b.type) !== -1 ? b.type : 'house';
+    const all = await licensingSchemes(p), sc = all.schemes[borough] || null, custom = all.custom[borough] || {};
+    const link = (custom.link && /^https?:\/\//i.test(custom.link)) ? custom.link : 'https://www.google.com/search?q=' + encodeURIComponent(borough + ' council property licensing scheme');
+    const isHmo = shared && people >= 3 && amenities;
+    let verdict, title, licence = '', why = [];
+    const area = function (st) { return st === 'all' ? 'across the whole of ' + borough : st === 'some' ? 'in parts of ' + borough : ''; };
+    if (isHmo && people >= 5 && type !== 'purpose') {
+      verdict = 'yes'; licence = 'Mandatory HMO licence'; title = 'Yes — this property needs a mandatory HMO licence';
+      why.push(people + ' people from ' + households + ' households sharing a kitchen, bathroom or toilet is a large HMO. A mandatory HMO licence is needed everywhere in England.');
+    } else if (isHmo) {
+      const st = sc ? sc.add : 'check';
+      if (type === 'purpose' && people >= 5) why.push('A flat in a purpose-built block of three or more flats doesn’t need a mandatory HMO licence, but it can still need an additional HMO licence.');
+      else why.push(people + ' people from ' + households + ' households sharing facilities makes this an HMO (house in multiple occupation).');
+      if (st === 'all') { verdict = 'yes'; licence = 'Additional HMO licence'; title = 'Yes — this property needs an additional HMO licence'; why.push(borough + ' runs an additional HMO licensing scheme ' + area(st) + ', which covers HMOs like this one.'); }
+      else if (st === 'some') { verdict = 'maybe'; licence = 'Additional HMO licence'; title = 'Probably — it depends on the street'; why.push(borough + ' runs additional HMO licensing ' + area(st) + '. Whether this property is covered depends on its exact location.'); }
+      else if (st === 'none') { verdict = 'no'; title = 'No licence needed'; why.push(borough + ' doesn’t run an additional HMO licensing scheme at the moment, so this size of HMO doesn’t need a licence. HMO management and safety rules still apply.'); }
+      else { verdict = 'maybe'; licence = 'Additional HMO licence'; title = 'Check with the council'; why.push(borough + '’s licensing schemes have recently changed or are under review, so please confirm with the council.'); }
+    } else {
+      const st = sc ? sc.sel : 'check';
+      why.push(shared ? (people < 3 ? 'Two sharers don’t make an HMO, so the rules for a single household apply.' : 'As the occupiers don’t share a kitchen, bathroom or toilet, it isn’t treated as a shared HMO.') : 'The property is let to a single household (one person, a couple or a family).');
+      if (st === 'all') { verdict = 'yes'; licence = 'Selective licence'; title = 'Yes — this property needs a selective licence'; why.push(borough + ' runs a selective licensing scheme ' + area(st) + ': every privately rented home in the area needs a licence.'); }
+      else if (st === 'some') { verdict = 'maybe'; licence = 'Selective licence'; title = 'Possibly — it depends on the street'; why.push(borough + ' runs selective licensing ' + area(st) + ' (certain wards or streets). Whether this property is covered depends on its exact location.'); }
+      else if (st === 'none') { verdict = 'no'; title = 'No licence needed'; why.push(borough + ' doesn’t run a selective licensing scheme at the moment, so a home let to a single household doesn’t need a licence.'); }
+      else { verdict = 'maybe'; licence = 'Selective licence'; title = 'Check with the council'; why.push(borough + '’s licensing schemes have recently changed or are under review, so please confirm with the council.'); }
+    }
+    if (type === 'block' && sc && (sc.add === 'all' || sc.add === 'some')) why.push('A whole building converted into flats that don’t meet the 1991 building regulations (a section 257 HMO) can also need a licence for the building.');
+    if (!sc) { if (verdict === 'no') verdict = 'maybe'; title = verdict === 'yes' ? title : 'Check with the council'; why.push('We don’t have ' + borough + '’s local schemes on file yet, so please confirm with the council.'); }
+    // A licence we already hold for the property.
+    let onFile = null;
+    const key = propKey(String(b.address || '') ? String(b.address) + ' ' + postcode : '');
+    const rows = (await p.query('SELECT property_key, address, licence FROM property_info WHERE licence IS NOT NULL AND property_key = ANY($1::text[])', [Object.keys(keys || {})])).rows;
+    const hit = rows.filter(function (r) { return (key && r.property_key === key) || (b.address && sameAddr(r.address, String(b.address) + ' ' + postcode)); })[0];
+    if (hit && hit.licence && hit.licence.status !== 'none') onFile = { status: hit.licence.status, type: hit.licence.type || '', number: hit.licence.number || '', expires: hit.licence.expires || null };
+    return { ok: true, borough: borough, postcode: postcode, verdict: verdict, title: title, licence: licence, why: why, link: link, on_file: onFile, people: people, households: households };
+  }
+  app.post('/l/:token/licence-check', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const who = await landlordByToken(p, String(req.params.token || ''));
+    if (!who) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json(await licenceCheck(p, req.body || {}, who.keys));
+  }));
+  app.post('/api/admin/licence-check', withDb(async function (p, req, res) {
+    const keys = {}; (await p.query('SELECT property_key FROM property_info WHERE licence IS NOT NULL')).rows.forEach(function (r) { keys[r.property_key] = 1; });
+    res.json(await licenceCheck(p, req.body || {}, keys));
+  }));
+  app.get('/api/admin/licensing-schemes', withDb(async function (p, req, res) {
+    res.json(Object.assign({ ok: true, defaults: LICENSING }, await licensingSchemes(p)));
+  }));
+  app.put('/api/admin/licensing-schemes', withDb(async function (p, req, res) {
+    const b = req.body || {}, custom = {};
+    Object.keys(b.custom || {}).slice(0, 200).forEach(function (k) {
+      const v = (b.custom || {})[k] || {}, o = {};
+      if (LIC_STATES.indexOf(v.sel) !== -1) o.sel = v.sel;
+      if (LIC_STATES.indexOf(v.add) !== -1) o.add = v.add;
+      const u = str(v.link, 500); if (u && /^https?:\/\//i.test(u)) o.link = u;
+      if (Object.keys(o).length) custom[str(k, 80)] = o;
+    });
+    const value = { custom: custom, updated_at: new Date().toISOString() };
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('licensing_schemes', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(value)]);
     res.json({ ok: true, custom: custom });
   }));
   // ---------- Valuation letters ----------
