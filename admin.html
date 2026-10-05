@@ -12601,7 +12601,7 @@
       '<div class="rb-big">' +
         '<div class="rb-bigc' + (now.length ? ' hot' : '') + '"><span>To collect ' + (isNow ? 'today' : '') + '</span><b>' + gbp(sum(now, 'rent')) + '</b><small>' + now.length + ' rent' + (now.length === 1 ? '' : 's') + (isNow && tmw.length ? ' · ' + gbp(sum(tmw, 'rent')) + ' tomorrow' : '') + '</small></div>' +
         '<div class="rb-bigc' + (toPay.length ? ' warm' : '') + '"><span>To pay landlords</span><b>' + gbp(sum(toPay, 'to_landlord')) + '</b><small>' + toPay.length + ' payment' + (toPay.length === 1 ? '' : 's') + '</small></div>' +
-        '<div class="rb-bigc good"><span>Our fees</span><b>' + gbp(feesMonth) + '</b><small>' + (isNow ? gbp(d.fees_all) + ' since ' + esc(rbDay(d.since)) : 'in ' + esc(mLabel)) + '</small></div>' +
+        '<div class="rb-bigc good"><span>Fees collected so far</span><b>' + gbp(isNow ? d.fees_all : feesMonth) + '</b><small>' + (isNow ? gbp(feesMonth) + ' this month · since ' + esc(rbDay(d.since)) : 'in ' + esc(mLabel)) + '</small></div>' +
       '</div>' +
       '<div class="rb-tabs">' + tab('collect', 'Collect rent', due.length) + tab('pay', 'Pay landlords', toPay.length) + tab('done', 'Done', got.length) + '</div>' +
       '<div class="card rb-body">' + body + '</div>' +
