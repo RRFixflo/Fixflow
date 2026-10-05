@@ -870,9 +870,18 @@ async function syncLandlordTenancies(p, id) {
     const recHasPc = POSTCODE_RE.test(String(l.address || '')), tcyHasPc = !!(tl.postcode && POSTCODE_RE.test(tl.postcode));
     if (l.address && (recHasPc || !tcyHasPc) && norm([tl.line1, tl.line2, tl.country, tl.postcode].filter(Boolean).join(',')) !== norm(l.address)) Object.assign(next, llAddrLines(l.address));
     else if (!recHasPc && tcyHasPc && tl.line1) { const full = [tl.line1, tl.line2, tl.country, tl.postcode].filter(Boolean).join(', '); await p.query('UPDATE landlords SET address = $2, updated_at = now() WHERE id = $1', [id, full]); l.address = full; }
-    if (l.email && !tl.email) next.email = l.email; if (l.phone && !tl.phone) next.phone = l.phone; if (l.name && !tl.name) next.name = l.name;
+    // The landlord record is the one place their details live: its name, email and phone go everywhere.
+    if (l.email) next.email = l.email; if (l.phone) next.phone = l.phone; if (l.name) next.name = l.name;
     if (JSON.stringify(next) === JSON.stringify(tl)) continue;
     await p.query("UPDATE tenancies SET data = jsonb_set(data, '{landlord}', $2::jsonb), updated_at = now() WHERE id = $1", [t.id, JSON.stringify(next)]); n++;
+  }
+  // Repair jobs at their properties that aren't invoiced yet (an invoice already issued stays as it was sent).
+  if (keys.length && l.name) {
+    for (const j of (await p.query('SELECT id, property_address, landlord_name, landlord_email, landlord_phone FROM jobs WHERE archived_at IS NULL AND invoiced_at IS NULL AND landlord_name IS NOT NULL')).rows) {
+      if (keys.indexOf(propKey(j.property_address || '')) === -1) continue;
+      if (j.landlord_name === l.name && (!l.email || j.landlord_email === l.email) && (!l.phone || j.landlord_phone === l.phone)) continue;
+      await p.query('UPDATE jobs SET landlord_name = $2, landlord_email = coalesce($3, landlord_email), landlord_phone = coalesce($4, landlord_phone), updated_at = now() WHERE id = $1', [j.id, l.name, l.email || null, l.phone || null]);
+    }
   }
   return n;
 }
@@ -10450,7 +10459,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // Deleted landlord agreements are kept 30 days (Landlord Terms → Recently deleted), then removed.
   setInterval(function () { db().then(function (p) { return p && p.query("DELETE FROM landlord_terms WHERE deleted_at < now() - interval '30 days'"); }).catch(function () {}); }, 12 * 3600 * 1000).unref();
   // Once: bring every tenancy's landlord address up to date with the landlord records.
-  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k && k.value && k.value.v >= 4) return; let n = 0;
+  setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'll_tcy_sync'")).rows[0]; if (k && k.value && k.value.v >= 5) return; let n = 0;
     // A landlord address left without its postcode: recover it from another place the same address was written
     // (their landlord record, the correspondence address on their signed terms, or another of their tenancies).
     const pcRe = POSTCODE_RE, firstNo = function (a) { return ((String(a || '').replace(pcRe, ' ').match(/\b\d+[a-z]?\b/i) || [''])[0]).toLowerCase(); };
@@ -10475,7 +10484,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await p.query("UPDATE tenancies SET data = jsonb_set(data, '{landlord}', $2::jsonb) WHERE id = $1", [t.id, JSON.stringify(next)]); n++;
     }
     for (const r of (await p.query('SELECT id FROM landlords')).rows) n += await syncLandlordTenancies(p, r.id);
-    await p.query("INSERT INTO app_settings (key, value) VALUES ('ll_tcy_sync', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 4, at: new Date().toISOString(), updated: n })]); console.log('Tenancy landlord details synced:', n); }).catch(function (e) { console.error('Landlord sync failed:', e.message); }); }, 20000).unref();
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('ll_tcy_sync', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 5, at: new Date().toISOString(), updated: n })]); console.log('Tenancy landlord details synced:', n); }).catch(function (e) { console.error('Landlord sync failed:', e.message); }); }, 20000).unref();
   setTimeout(function () { db().then(function (p) { if (p) return mergeSameHomes(p); }).catch(function (e) { console.error('Same-home merge:', e.message); }); }, 45000);
   setTimeout(function () { db().then(async function (p) { if (!p) return; const k = (await p.query("SELECT value FROM app_settings WHERE key = 'avail_fix'")).rows[0]; if (k && k.value && k.value.v >= 4) return; const n = await availTidyAll(p); await p.query("INSERT INTO app_settings (key, value) VALUES ('avail_fix', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ v: 4, at: new Date().toISOString(), tidied: n })]); console.log('Available list tidied:', n); }).catch(function (e) { console.error('Available tidy failed:', e.message); }); }, 15000).unref();
   // Empty the Been let list before pasting a corrected copy (managers only).
