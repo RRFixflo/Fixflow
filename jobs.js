@@ -10082,5 +10082,74 @@ document.querySelectorAll('.lcu').forEach(function(box){
     pdf.setTitle('Pre-Viewing Reservation - ' + ref); pdf.setAuthor('Residential Realtors'); pdf.setCreator('Fixflow'); pdf.setProducer('Fixflow');
     return { bytes: await pdf.save(), name: 'Pre-Viewing Reservation - ' + ref + ' - ' + String(t.property_address || '').replace(/[^\w ,.-]+/g, ' ').slice(0, 60) + '.pdf' };
   }
+  // The fixed outside links used in pages, emails and letters: checked once
+  // after each deploy, and any that don't open are written to the log.
+  const LINKS_USED = [
+    'https://apps.apple.com/app/ntfy/id1625396347',
+    'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+    'https://coa.myforms.southwark.gov.uk/CoaPlus/launch',
+    'https://find-energy-certificate.service.gov.uk',
+    'https://lewisham.gov.uk/myservices/counciltax/council-tax---tell-us-you-ve-moved',
+    'https://offers.residentialrealtors.co.uk',
+    'https://southwark.metastreet.co.uk/public-register',
+    'https://terms.residentialrealtors.co.uk',
+    'https://www.barnet.gov.uk/council-tax/council-tax-tell-us-about-change-circumstances',
+    'https://www.bexley.gov.uk/services/council-tax/moving-home/let-us-know-your-new-address',
+    'https://www.brent.gov.uk/council-tax/register-or-tell-us-you-are-moving',
+    'https://www.britishgas.co.uk/heating/guides/how-to-bleed-a-radiator.html',
+    'https://www.britishgas.co.uk/heating/guides/how-to-repressurise-your-boiler.html',
+    'https://www.bromley.gov.uk/council-tax/council-tax-moving-house',
+    'https://www.camden.gov.uk/council-tax-moving',
+    'https://www.cityoflondon.gov.uk/services/council-tax/moving-into-or-out-of-a-property',
+    'https://www.croydon.gov.uk/council-tax/circumstances-change/moving/moving-into-croydon',
+    'https://www.dartford.gov.uk/council-tax/change-address',
+    'https://www.ealing.gov.uk/a_to_z/service/489/register_for_council_tax',
+    'https://www.enfield.gov.uk/services/council-tax/new-to-enfield-moving-house',
+    'https://www.gov.uk/find-local-council',
+    'https://www.gov.uk/government/collections/assured-tenancy-forms',
+    'https://www.gov.uk/government/publications/how-to-rent',
+    'https://www.gov.uk/prove-right-to-rent',
+    'https://www.gov.uk/view-right-to-rent',
+    'https://www.haringey.gov.uk/council-tax/tell-us-about-a-council-tax-change/tell-us-youre-moving-home',
+    'https://www.harrow.gov.uk/council-tax/register-council-tax',
+    'https://www.havering.gov.uk/council-tax/moving-home',
+    'https://www.hillingdon.gov.uk/counciltax',
+    'https://www.hounslow.gov.uk/council-tax/moving-home-council-tax',
+    'https://www.islington.gov.uk/council-tax/tell-us-youre-moving/moving-in-to-islington',
+    'https://www.kingston.gov.uk/council-tax/moving-in',
+    'https://www.lambeth.gov.uk/council-tax/register',
+    'https://www.lbbd.gov.uk/council-tax/your-council-tax-account/register-council-tax-or-tell-us-youve-moved',
+    'https://www.lbhf.gov.uk/council-tax/moving-or-out-borough',
+    'https://www.merton.gov.uk/council-tax-benefits-and-housing/council-tax/your-council-tax/moving-home-and-registering',
+    'https://www.newham.gov.uk/council-tax/moving-newham',
+    'https://www.rbkc.gov.uk/council-tax/tell-us-about-any-changes/register-council-tax',
+    'https://www.redbridge.gov.uk/council-tax/council-tax-moving-into-redbridge',
+    'https://www.residentialrealtors.co.uk',
+    'https://www.richmond.gov.uk/services/council_tax/tell_us_you_are_moving/moving_in_to_the_borough',
+    'https://www.rightmove.co.uk',
+    'https://www.royalgreenwich.gov.uk/forms/form/82/en/council_tax_notification_-_moving_into_royal_greenwich',
+    'https://www.spelthorne.gov.uk/counciltax',
+    'https://www.sutton.gov.uk/w/moving-into-or-out-of-the-area',
+    'https://www.thurrock.gov.uk/changes-to-your-circumstances-affecting-council-tax',
+    'https://www.towerhamlets.gov.uk/lgnl/council_and_democracy/council_tax/Moving_in_or_out.aspx',
+    'https://www.walthamforest.gov.uk/council-tax',
+    'https://www.westminster.gov.uk/council-tax/register-council-tax',
+    'https://www.youtube.com',
+    'https://www.gov.uk/tax-uk-income-live-abroad/rent'
+  ];
+  async function checkLinksUsed() {
+    const bad = [], blocked = [];
+    for (const u of LINKS_USED) {
+      try {
+        const r = await fetch(u, { redirect: 'follow', signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', Accept: 'text/html,*/*' } });
+        if (r.status === 403 || r.status === 429) blocked.push(r.status + ' ' + u); else if (!r.ok) bad.push(r.status + ' ' + u);
+        r.body && r.body.cancel && r.body.cancel().catch(function () {});
+      } catch (e) { bad.push('no answer ' + u); }
+    }
+    console.log('Link check: ' + (LINKS_USED.length - bad.length - blocked.length) + ' of ' + LINKS_USED.length + ' links open' + (bad.length ? ' | NOT WORKING: ' + bad.join(' ; ') : '') + (blocked.length ? ' | site refused an automatic check: ' + blocked.join(' ; ') : ''));
+  }
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME) setTimeout(function () { checkLinksUsed().catch(function () {}); }, 120000).unref();
   return { saveReport: saveReport, hasDb: async function () { return !!(await db()); } };
 };
