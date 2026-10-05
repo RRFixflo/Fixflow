@@ -8794,6 +8794,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
       [id, from, JSON.stringify(row), JSON.stringify([{ at: row.at, text: 'Rent due ' + certDay(from) + ' collected' + (amount ? ' (' + gbp(amount) + ')' : '') + (ids.length ? ' — ' + ids.length + ' landlord invoice' + (ids.length === 1 ? '' : 's') + ' taken off it' : '') + ' (' + who + ')' }])]);
     res.json({ ok: true, invoices: ids.length });
   }));
+  // Who collects the rent on a tenancy (from the rent page: "we don't collect this any more").
+  app.post('/api/admin/tenancies/:id/rent-by', withDb(async function (p, req, res) {
+    const by = (req.body || {}).by, who = req.user ? req.user.name : 'Office';
+    if (['us', 'landlord'].indexOf(by) === -1) return res.status(400).json({ ok: false, error: 'by' });
+    const r = await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_by}', to_jsonb($2::text)), log = log || $3::jsonb, updated_at = now() WHERE id = $1 RETURNING id`,
+      [jobId(req), by, JSON.stringify([{ at: new Date().toISOString(), text: (by === 'landlord' ? 'Rent now collected by the landlord (not us)' : 'Rent now collected by us') + ' (' + who + ')' }])]);
+    res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
+  }));
   // The landlord's money for one rent date sent (or undone): amount, date, reference.
   app.post('/api/admin/tenancies/:id/landlord-paid', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req), from = String(b.from || '').slice(0, 10), who = req.user ? req.user.name : 'Office';

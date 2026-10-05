@@ -1377,6 +1377,16 @@
   .rb-ok { color: #067647; font-weight: 600; font-size: .82rem; } .rb-late { color: var(--brick, #b42318); font-size: .74rem; font-weight: 600; }
   .rb-ll { border: 1px solid var(--line); border-radius: 14px; padding: 4px 12px; margin-top: 10px; }
   .rb-llh { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; flex-wrap: wrap; } .rb-llh b { font-size: .95rem; } .rb-llh span { display: block; font-size: .82rem; color: var(--ink-soft); }
+  .rb-ch { display: flex; align-items: center; gap: 8px; }
+  button.rb-gh { width: 100%; border: 0; background: none; padding: 4px 0; cursor: pointer; text-align: left; font: inherit; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); display: flex; gap: 8px; align-items: center; }
+  button.rb-gh i { margin-left: auto; font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--ink-soft); }
+  .rb-g-over button.rb-gh { color: var(--brick, #b42318); } .rb-g-tmw button.rb-gh { color: #175cd3; }
+  .rb-notours { font-size: .74rem; color: var(--ink-faint); padding: 0; min-height: 0; } .rb-notours:hover { color: var(--brick, #b42318); }
+  .rb-llbtns { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .rb-pick { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--brick, #b42318); cursor: pointer; } .rb-pickpad { flex: none; width: 18px; }
+  .rb-bulk { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; padding: 6px 0 4px; font-size: .86rem; position: sticky; top: 0; background: var(--panel, #fff); z-index: 2; }
+  .rb-bulk label { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--ink-soft); } .rb-bulk label input { width: 18px; height: 18px; margin: 0; }
+  .rb-bulk span { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .rb-stmt { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
   @media (max-width: 640px) {
     #rentBoard .rb-tiles { grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px; } .rb-tiles .tile { padding: 6px 7px; } .rb-tiles .tile .k { font-size: .62rem; } .rb-tiles .tile .v { font-size: .95rem; margin-top: 2px; } .rb-tiles .tile small { font-size: .62rem; margin-top: 2px; }
@@ -12478,7 +12488,7 @@
   // Each rent date for tenancies where we collect the rent: collect it (landlord invoices due from it
   // come off), then send the landlord what's theirs and their statement. Same figures as the statements.
   var tcyMode = (function(){ try { return localStorage.getItem('rr_tcy_mode') === 'rent' ? 'rent' : 'list'; } catch (e) { return 'list'; } })();
-  var rbData = null, rbMonth = '', rbBusy = false;
+  var rbData = null, rbMonth = '', rbBusy = false, rbSelC = {}, rbSelP = {};
   function rbShown(){ return view === 'tcy' && !openTcyId && tcyMode === 'rent' && $('rentBoard') && !$('rentBoard').hidden; }
   function loadRentBoard(quiet){
     if (!meta.db || rbBusy) return Promise.resolve(); rbBusy = true;
@@ -12486,7 +12496,7 @@
     var stmts = Object.keys(stmtsBy).length ? Promise.resolve() : loadStatements();
     return Promise.all([api('GET', '/api/admin/rent-board' + (rbMonth ? '?month=' + rbMonth : '')), stmts]).then(function(r){
       rbBusy = false; var d = r[0]; if (!d || !d.ok) { $('rentBoard').innerHTML = '<div class="card"><p class="err">Couldn’t load the rents.</p></div>'; return; }
-      rbData = d; if (!rbMonth) rbMonth = d.month; renderRentBoard(); rbBadge();
+      rbData = d; if (!rbMonth) rbMonth = d.month; renderRentBoard(); rbBulkBars(); rbBadge();
     }, function(){ rbBusy = false; });
   }
   function rbBadge(){
@@ -12513,16 +12523,17 @@
     };
     var row = function(x){
       var k = x.tenancy_id + '|' + x.from, owes = x.to_landlord < 0;
-      return '<div class="rb-row rb-' + x.status + '"><div class="rb-day"><b>' + esc(rbDay(x.from).split(' ')[0]) + '</b><span>' + esc(rbDay(x.from).split(' ')[1] || '') + '</span></div>' +
+      return '<div class="rb-row rb-' + x.status + '">' + (x.collected ? '<span class="rb-pickpad"></span>' : '<input type="checkbox" class="rb-pick" data-rb-cpick="' + k + '"' + (rbSelC[k] ? ' checked' : '') + ' aria-label="Select ' + esc(x.address) + '">') + '<div class="rb-day"><b>' + esc(rbDay(x.from).split(' ')[0]) + '</b><span>' + esc(rbDay(x.from).split(' ')[1] || '') + '</span></div>' +
         '<div class="rb-main"><div class="rb-addr"><button type="button" class="linkish" data-rb-open="' + x.tenancy_id + '">' + esc(x.address) + '</button></div>' +
         '<div class="rb-sub">' + esc([x.tenants.join(', '), x.landlord ? 'Landlord: ' + x.landlord : '', x.pay_ref ? 'Ref ' + x.pay_ref : ''].filter(Boolean).join(' · ')) + '</div>' +
         '<div class="rb-money"><span>Collect <b>' + gbp(x.rent) + '</b></span><span class="rb-arrow">→</span>' + (owes ? '<span class="rb-owes">Landlord owes us <b>' + gbp(-x.to_landlord) + '</b></span>' : '<span>Send landlord <b>' + gbp(x.to_landlord) + '</b></span>') + '</div>' +
         (keepTxt(x) ? '<div class="rb-keep">We keep: ' + esc(keepTxt(x)) + '</div>' : '') +
         (x.pending.length ? '<div class="rb-inv">🧾 ' + x.pending.length + ' landlord invoice' + (x.pending.length === 1 ? '' : 's') + ' come' + (x.pending.length === 1 ? 's' : '') + ' off this rent when you mark it collected</div>' : '') +
         '</div><div class="rb-act">' + (x.collected ? '<span class="rb-ok">✓ Collected ' + esc(fmtShort(x.collected.at).split(',')[0]) + (x.collected.amount ? ' · ' + esc(gbp(x.collected.amount)) : '') + '</span><button type="button" class="linkish" data-rb-uncollect="' + k + '">Undo</button>'
-          : '<button type="button" class="btn small' + (x.status !== 'upcoming' ? ' primary' : '') + '" data-rb-collect="' + k + '">✓ Rent collected</button>' + (x.status === 'overdue' ? '<span class="rb-late">' + Math.round((parseDay(today) - parseDay(x.from)) / 86400000) + ' days late</span>' : '')) + '</div></div>';
+          : '<button type="button" class="btn small' + (x.status !== 'upcoming' ? ' primary' : '') + '" data-rb-collect="' + k + '">✓ Rent collected</button>' + (x.status === 'overdue' ? '<span class="rb-late">' + Math.round((parseDay(today) - parseDay(x.from)) / 86400000) + ' days late</span>' : '') + '<button type="button" class="linkish rb-notours" data-rb-notours="' + x.tenancy_id + '" title="The landlord collects this rent — take it off this page">We don’t collect this</button>') + '</div></div>';
     };
-    var group = function(title, list, cls){ return list.length ? '<div class="rb-group ' + (cls || '') + '"><div class="rb-gh">' + title + ' <span>' + list.length + ' · ' + gbp(sum(list, 'rent')) + '</span></div>' + list.map(row).join('') + '</div>' : ''; };
+    var group = function(title, list, cls){ if (!list.length) return ''; var gk = cls || title, min = rbMin('g:' + gk, cls === 'rb-g-done');
+      return '<div class="rb-group ' + (cls || '') + (min ? ' rb-min' : '') + '"><button type="button" class="rb-gh" data-rb-min="g:' + esc(gk) + '" data-rb-def="' + (cls === 'rb-g-done' ? 1 : 0) + '" aria-expanded="' + !min + '">' + title + ' <span>' + list.length + ' · ' + gbp(sum(list, 'rent')) + '</span><i>' + (min ? 'Show ▾' : 'Hide ▴') + '</i></button>' + (min ? '' : list.map(row).join('')) + '</div>'; };
     // Landlords: what to send each one, property by property, with the statement and "paid".
     var byLl = {};
     items.filter(function(x){ return x.collected || x.paid; }).forEach(function(x){ var key = x.landlord || 'No landlord saved'; (byLl[key] = byLl[key] || []).push(x); });
@@ -12530,10 +12541,10 @@
       var list = byLl[name], left = list.filter(function(x){ return !x.paid && x.to_landlord > 0; });
       var unsent = list.filter(function(x){ return x.stmt && (!x.stmt.sent || x.stmt.changed); });
       return '<div class="rb-ll"><div class="rb-llh"><div><b>' + esc(name) + '</b><span>' + (left.length ? 'To send: <b>' + gbp(sum(left, 'to_landlord')) + '</b>' : '✓ All sent') + '</span></div>' +
-        (unsent.length > 1 && list[0].landlord_email ? '<button type="button" class="btn small" data-rb-mailall="' + esc(name) + '">✉ Email ' + unsent.length + ' statements</button>' : '') + '</div>' +
+        '<span class="rb-llbtns">' + (unsent.length > 1 && list[0].landlord_email ? '<button type="button" class="btn small" data-rb-mailall="' + esc(name) + '">✉ Email ' + unsent.length + ' statements</button>' : '') + (name !== 'No landlord saved' ? '<button type="button" class="linkish rb-notours" data-rb-llnot="' + esc(name) + '">Stop collecting for this landlord</button>' : '') + '</span></div>' +
         list.map(function(x){
           var k = x.tenancy_id + '|' + x.from, st = x.stmt;
-          return '<div class="rb-pay"><div class="rb-main"><div class="rb-addr">' + esc(shortAddr(x.address)) + ' <span class="muted-note" style="margin:0">· rent ' + esc(rbDay(x.from)) + '</span></div>' +
+          return '<div class="rb-pay">' + (!x.paid && x.to_landlord > 0 ? '<input type="checkbox" class="rb-pick" data-rb-ppick="' + k + '"' + (rbSelP[k] ? ' checked' : '') + ' aria-label="Select ' + esc(x.address) + '">' : '<span class="rb-pickpad"></span>') + '<div class="rb-main"><div class="rb-addr">' + esc(shortAddr(x.address)) + ' <span class="muted-note" style="margin:0">· rent ' + esc(rbDay(x.from)) + '</span></div>' +
             '<div class="rb-money"><span>' + (x.to_landlord < 0 ? '<span class="rb-owes">Landlord owes us ' + gbp(-x.to_landlord) + '</span>' : 'Send <b>' + gbp(x.paid ? x.paid.amount : x.to_landlord) + '</b>') + '</span></div>' +
             '<div class="rb-stmt">' + (st ? '<button type="button" class="btn small ghost" data-st-pdf="' + k + '">📄 Statement</button>' + (x.landlord_email ? '<button type="button" class="btn small ghost" data-st-mail="' + k + '">✉ Email statement</button>' : '') +
               (st.sent && !st.changed ? '<span class="rb-ok">✓ Statement sent</span>' : '<button type="button" class="btn small ghost" data-st-sent="' + k + '">✓ Statement sent</button>') : '<span class="muted-note" style="margin:0">No statement for this month</span>') + '</div></div>' +
@@ -12553,12 +12564,66 @@
         '<div class="tile good"><div class="k">Sent to landlords</div><div class="v">' + gbp(sum(sent, 'paid')) + '</div><small>' + sent.length + '</small></div>' +
         '<div class="tile good"><div class="k">Our fees collected</div><div class="v">' + gbp(feesMonth) + '</div><small>' + (isNow ? gbp(d.fees_all) + ' since ' + esc(rbDay(d.since)) : 'in ' + esc(mLabel)) + '</small></div>' +
       '</div>' +
-      '<div class="card rb-card"><h3>💷 Collect rent</h3>' +
-        (items.length ? group('⚠️ Overdue', over, 'rb-g-over') + group('Due today', tod, 'rb-g-today') + group('Due tomorrow — ' + esc(longDay(d.tomorrow || '')), tmw, 'rb-g-tmw') + group('Coming up', up) + group('✓ Collected', got, 'rb-g-done')
-          : '<p class="muted-note" style="margin:0">No rents due in ' + esc(mLabel) + ' for tenancies where we collect the rent.</p>') +
-        '<p class="muted-note" style="margin:10px 0 0">Only tenancies where <b>we</b> collect the rent' + (d.not_ours ? ' — ' + d.not_ours + ' where the landlord collects it aren’t shown (set “Who collects the rent?” on the tenancy)' : '') + '. Tracking started ' + esc(longDay(d.since)) + '.</p></div>' +
-      '<div class="card rb-card"><h3>🏦 Pay landlords</h3>' + (llHtml || '<p class="muted-note" style="margin:0">Once a rent is collected, what to send its landlord shows here — with their statement.</p>') + '</div>';
+      '<div class="card rb-card' + (rbMin('collect') ? ' rb-min' : '') + '"><h3 class="rb-ch">💷 Collect rent<span style="flex:1"></span><button type="button" class="btn small ghost" data-rb-min="collect">' + (rbMin('collect') ? 'Show' : 'Minimise') + '</button></h3>' +
+        (rbMin('collect') ? '<p class="muted-note" style="margin:0">' + due.length + ' still to collect · ' + gbp(sum(due, 'rent')) + '</p>' :
+          (due.length > 1 ? '<div class="rb-bulk"><label><input type="checkbox" data-rb-callall> Select all ' + due.length + ' not collected</label><span id="rbBulkC"></span></div>' : '') +
+          (items.length ? group('⚠️ Overdue', over, 'rb-g-over') + group('Due today', tod, 'rb-g-today') + group('Due tomorrow — ' + esc(longDay(d.tomorrow || '')), tmw, 'rb-g-tmw') + group('Coming up', up) + group('✓ Collected', got, 'rb-g-done')
+            : '<p class="muted-note" style="margin:0">No rents due in ' + esc(mLabel) + ' for tenancies where we collect the rent.</p>') +
+          '<p class="muted-note" style="margin:10px 0 0">Only tenancies where <b>we</b> collect the rent' + (d.not_ours ? ' — ' + d.not_ours + ' where the landlord collects it aren’t shown (set “Who collects the rent?” on the tenancy, or tap “We don’t collect this”)' : '') + '. Tracking started ' + esc(longDay(d.since)) + '.</p>') + '</div>' +
+      '<div class="card rb-card' + (rbMin('pay') ? ' rb-min' : '') + '"><h3 class="rb-ch">🏦 Pay landlords<span style="flex:1"></span><button type="button" class="btn small ghost" data-rb-min="pay">' + (rbMin('pay') ? 'Show' : 'Minimise') + '</button></h3>' +
+        (rbMin('pay') ? '<p class="muted-note" style="margin:0">' + toSend.length + ' to send · ' + gbp(sum(toSend, 'to_landlord')) + '</p>' :
+          (toSend.length > 1 ? '<div class="rb-bulk"><label><input type="checkbox" data-rb-pallall> Select all ' + toSend.length + ' to send</label><span id="rbBulkP"></span></div>' : '') + (llHtml || '<p class="muted-note" style="margin:0">Once a rent is collected, what to send its landlord shows here — with their statement.</p>')) + '</div>';
   }
+  // Minimised sections and groups (remembered on this device).
+  function rbMin(k, def){ try { var v = localStorage.getItem('rr_rb_min_' + k); return v == null ? !!def : v === '1'; } catch (e) { return !!def; } }
+  $('rentBoard').addEventListener('click', function(e){
+    var m = e.target.closest('[data-rb-min]'); if (m) { var k = m.dataset.rbMin; try { localStorage.setItem('rr_rb_min_' + k, rbMin(k, m.dataset.rbDef === '1') ? '0' : '1'); } catch (er) {} renderRentBoard(); rbBulkBars(); return; }
+    var no = e.target.closest('[data-rb-notours]'), ln = e.target.closest('[data-rb-llnot]');
+    if (no || ln) {
+      var ids = no ? [Number(no.dataset.rbNotours)] : Array.from(new Set(rbData.items.filter(function(x){ return x.landlord === ln.dataset.rbLlnot; }).map(function(x){ return x.tenancy_id; })));
+      var what = no ? (rbData.items.filter(function(x){ return x.tenancy_id === ids[0]; })[0] || {}).address : ln.dataset.rbLlnot + '’s ' + ids.length + ' propert' + (ids.length === 1 ? 'y' : 'ies');
+      if (!confirm('We don’t collect the rent for ' + what + ' any more?\n\nIt’s set to “the landlord collects the rent” and comes off this page (no statements or payments to the landlord from us). You can change it back on the tenancy.')) return;
+      rbRunAll(ids, function(id){ return api('POST', '/api/admin/tenancies/' + id + '/rent-by', { by: 'landlord' }); }, function(){
+        ids.forEach(function(id){ var t = tenancies.filter(function(x){ return x.id === id; })[0]; if (t) t.data = Object.assign({}, t.data, { rent_by: 'landlord' }); });
+        toast('✓ ' + (ids.length === 1 ? 'Taken off' : ids.length + ' tenancies taken off') + ' — the landlord collects the rent'); loadStatements(); loadRentBoard(true);
+      });
+    }
+  });
+  // Tick several, then mark them all collected / paid at once.
+  function rbBulkBars(){
+    if (!rbData) return;
+    var c = Object.keys(rbSelC).map(rbFind).filter(function(x){ return x && !x.collected; }), p = Object.keys(rbSelP).map(rbFind).filter(function(x){ return x && !x.paid && x.to_landlord > 0; });
+    var tot = function(l, k){ return l.reduce(function(a, x){ return a + (Number(x[k]) || 0); }, 0); };
+    if ($('rbBulkC')) $('rbBulkC').innerHTML = c.length ? '<b>' + c.length + ' selected · ' + gbp(tot(c, 'rent')) + '</b> <button type="button" class="btn small primary" data-rb-cbulk>✓ Mark ' + c.length + ' collected</button>' : '';
+    if ($('rbBulkP')) $('rbBulkP').innerHTML = p.length ? '<b>' + p.length + ' selected · ' + gbp(tot(p, 'to_landlord')) + '</b> <button type="button" class="btn small primary" data-rb-pbulk>✓ Mark ' + p.length + ' paid</button>' : '';
+  }
+  function rbRunAll(list, fn, done){ var i = 0; var next = function(){ if (i >= list.length) return done(); fn(list[i++]).then(next, next); }; next(); }
+  $('rentBoard').addEventListener('change', function(e){
+    var t = e.target;
+    if (t.dataset.rbCpick) { if (t.checked) rbSelC[t.dataset.rbCpick] = 1; else delete rbSelC[t.dataset.rbCpick]; }
+    else if (t.dataset.rbPpick) { if (t.checked) rbSelP[t.dataset.rbPpick] = 1; else delete rbSelP[t.dataset.rbPpick]; }
+    else if (t.hasAttribute('data-rb-callall')) { $('rentBoard').querySelectorAll('[data-rb-cpick]').forEach(function(b){ b.checked = t.checked; if (t.checked) rbSelC[b.dataset.rbCpick] = 1; else delete rbSelC[b.dataset.rbCpick]; }); }
+    else if (t.hasAttribute('data-rb-pallall')) { $('rentBoard').querySelectorAll('[data-rb-ppick]').forEach(function(b){ b.checked = t.checked; if (t.checked) rbSelP[b.dataset.rbPpick] = 1; else delete rbSelP[b.dataset.rbPpick]; }); }
+    else return;
+    rbBulkBars();
+  });
+  $('rentBoard').addEventListener('click', function(e){
+    var cb = e.target.closest('[data-rb-cbulk]'), pb = e.target.closest('[data-rb-pbulk]');
+    if (cb) {
+      var c = Object.keys(rbSelC).map(rbFind).filter(function(x){ return x && !x.collected; }); if (!c.length) return;
+      var inv = c.reduce(function(a, x){ return a + x.pending.length; }, 0);
+      if (!confirm('Mark ' + c.length + ' rent' + (c.length === 1 ? '' : 's') + ' as collected (' + gbp(c.reduce(function(a, x){ return a + x.rent; }, 0)) + ', each for its full rent)?' + (inv ? '\n\n' + inv + ' landlord invoice' + (inv === 1 ? '' : 's') + ' will be taken off them.' : ''))) return;
+      busy(cb, true, 'Saving…');
+      rbRunAll(c, function(x){ return api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-collected', { from: x.from, amount: x.rent }); }, function(){ rbSelC = {}; toast('✓ ' + c.length + ' rent' + (c.length === 1 ? '' : 's') + ' marked collected'); loadStatements(); loadRentBoard(true); });
+      return;
+    }
+    if (pb) {
+      var p = Object.keys(rbSelP).map(rbFind).filter(function(x){ return x && !x.paid && x.to_landlord > 0; }); if (!p.length) return;
+      var ref = prompt('Mark ' + p.length + ' landlord payment' + (p.length === 1 ? '' : 's') + ' as sent (' + gbp(p.reduce(function(a, x){ return a + x.to_landlord; }, 0)) + ')?\n\nPayment reference for all (optional):', ''); if (ref === null) return;
+      busy(pb, true, 'Saving…');
+      rbRunAll(p, function(x){ return api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/landlord-paid', { from: x.from, amount: x.to_landlord, ref: ref }); }, function(){ rbSelP = {}; toast('✓ ' + p.length + ' landlord payment' + (p.length === 1 ? '' : 's') + ' marked sent'); loadRentBoard(true); });
+    }
+  });
   function rbFind(k){ var a = String(k).split('|'); return (rbData && rbData.items || []).filter(function(x){ return x.tenancy_id === Number(a[0]) && x.from === a[1]; })[0]; }
   $('tcyModes').addEventListener('click', function(e){
     var b = e.target.closest('[data-tmode]'); if (!b) return;
