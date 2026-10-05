@@ -479,6 +479,7 @@
   .psug button { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 9px 12px; font: inherit; font-size: .9rem; cursor: pointer; color: var(--ink); }
   .psug button:last-child { border-bottom: 0; }
   .psug button.on, .psug button:hover { background: var(--panel-2, #f2f4f7); }
+  .tenant-results mark { background: #fff3c4; color: inherit; border-radius: 3px; padding: 0 1px; }
   .psug mark { background: #fff3c4; color: inherit; border-radius: 3px; padding: 0 1px; }
   .psug small { display: block; color: var(--ink-soft); font-size: .76rem; margin-top: 1px; }
   .psug .psug-av { color: #067647; font-weight: 600; }
@@ -1338,6 +1339,66 @@
     .staff-tabs::-webkit-scrollbar { display: none; }
     .staff-tabs button { flex: none; white-space: nowrap; padding: 7px 11px; font-size: .84rem; }
   }
+  /* Tenant page: the property address wraps instead of running off the edge. */
+  .tn-paddr { padding: 0 !important; font-weight: 600; white-space: normal; text-align: left; justify-content: flex-start; height: auto; min-height: 0; line-height: 1.35; }
+  .tn-pacts { display: flex; gap: 6px; align-items: center; }
+  /* ---------- Jobs and tenants on phones: compact ---------- */
+  @media (max-width: 640px) {
+    /* To do: one swipeable row of chips, the button on the title line. */
+    .todo-head { flex-wrap: nowrap; gap: 6px; margin: 0 0 6px; }
+    .todo-head #todoMin { order: 2; flex: none; min-height: 30px; padding: 0 10px; }
+    #todoBox.todo-min .todo-head { flex-wrap: wrap; margin-bottom: 10px; }
+    #todoBox.todo-min .todo-chips { order: 3; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+    #todoBox.todo-min .todo-chips::-webkit-scrollbar { display: none; }
+    .todo-chip { flex: none; white-space: nowrap; padding: 5px 10px; font-size: .8rem; }
+    #todoBox > .addr-warn { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: .8rem; line-height: 1.35; margin-bottom: 8px !important; }
+    #todoBox > .addr-warn > span:first-child { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    #todoBox > .addr-warn .btn { flex: none; margin: 0; }
+    /* Number tiles: four small ones a row. */
+    #jobsView .tiles { gap: 5px; margin-bottom: 10px; }
+    #jobsView .tile { padding: 6px 7px 7px; border-radius: 10px; min-height: 0; }
+    #jobsView .tile .k { font-size: .62rem; line-height: 1.2; min-height: 0; }
+    #jobsView .tile .v { font-size: 1.05rem; margin-top: 2px; }
+    #todoBox > .addr-warn, #badAddrBanner { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: .8rem; line-height: 1.35; margin-bottom: 8px !important; }
+    #badAddrBanner > span:first-child { flex: 1; min-width: 0; }
+    #badAddrBanner .btn { flex: none; margin: 0; }
+    /* Search and sort side by side. */
+    #jobsView > .toolbar, #jobsView .toolbar:has(#sort) { display: grid; grid-template-columns: minmax(0,1fr) 112px; gap: 6px; margin-bottom: 10px; }
+    #jobsView .toolbar:has(#sort) .tabs { grid-column: 1 / -1; }
+    #jobsView .toolbar:has(#sort) #search { min-width: 0; width: 100%; }
+    #jobsView .toolbar:has(#sort) #sort { width: 100%; min-width: 0; padding-left: 8px; padding-right: 22px; text-overflow: ellipsis; }
+    /* Job rows: ref, urgency and money on one line; the address; what and who;
+       then status and contractor — about half the height. */
+    .jobrow .pick { width: 30px; }
+    .job { gap: 3px 10px; padding-top: 9px; padding-bottom: 9px; padding-right: 12px; }
+    .job .title { font-size: .9rem; }
+    .job .meta { margin-top: 1px; }
+    .job .money { font-size: .82rem; }
+    .job .money small { display: none; }
+    .job .c-time { display: flex; align-items: center; gap: 8px; font-size: .8rem; }
+    .job .c-time .time { white-space: nowrap; font-size: .8rem; }
+    .job .c-time .bar { flex: 1; margin: 0; height: 3px; }
+    .job .c-time .sub { display: none; }
+    .job .c-status { gap: 4px 8px; }
+    .job .c-status .pill, .job .c-status .appt-chip, .job .c-status .note-chip { font-size: .7rem; padding: 2px 7px; }
+    .job .who-chip .av { width: 20px; height: 20px; font-size: .58rem; }
+    .job .who-chip .nm { font-size: .78rem; }
+    /* Tenants list: search, then the filter and buttons in one swipeable row. */
+    #tenantsListView .toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    #tenantsListView .toolbar > * { flex: none; width: auto; }
+    #tenantsListView .toolbar .search { flex: 0 0 100%; }
+    #tenantsListView .toolbar .btn, #tenantsListView .toolbar select { min-height: 36px; height: 36px; padding: 0 10px; font-size: .82rem; }
+    #tenantsListView .toolbar select { font-size: 16px; }
+    #tenantsListView .prop-sortbar { margin: 4px 0 8px; }
+    #tenantsListView .prop-sortbar > .muted-note { display: none; }
+    #tenantSortTabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+    #tenantSortTabs::-webkit-scrollbar { display: none; }
+    #tenantSortTabs button { flex: none; white-space: nowrap; }
+    #tenantList .prop-row { padding-top: 8px; padding-bottom: 8px; gap: 10px; }
+    /* One tenant: the property's buttons under its address. */
+    .tn-prow { grid-template-columns: minmax(0,1fr) !important; gap: 6px; }
+    .tn-pacts .btn { min-height: 32px; padding: 0 10px; }
+  }
 </style>
 </head>
 <body>
@@ -1865,6 +1926,7 @@
           <div class="prop-head">
             <div><h2 id="propTitle"></h2><div class="prop-sub" id="propSub"></div></div>
             <div class="prop-actions">
+              <button class="btn small primary" id="propNewJob" type="button">🔧 New job</button>
               <button class="btn small" id="propMsgTenants" type="button">📣 Message tenants</button>
               <button class="btn small" id="propAddrEdit" type="button">✎ Edit address</button>
               <button class="btn small ghost danger" id="propDelete" type="button">🗑 Delete property</button>
@@ -2227,7 +2289,7 @@
       <div class="tenant-results" id="jfFindResults" hidden></div>
     </div>
     <div class="jf-sec">Property &amp; tenant</div>
-    <div class="tenant-find"><label class="lbl" for="jfAddress">Property address *</label><input class="inp" id="jfAddress" required autocomplete="off" placeholder="Start typing — addresses from past jobs will pop up"><div class="tenant-results" id="jfAddressResults" hidden></div></div>
+    <div class="tenant-find"><label class="lbl" for="jfAddress">Property address *</label><input class="inp" id="jfAddress" required autocomplete="off" placeholder="Door number, street or postcode — our properties pop up"><div class="tenant-results" id="jfAddressResults" hidden></div></div>
     <div class="grid3">
       <div class="tenant-find"><label class="lbl" for="jfName">Tenant name</label><input class="inp" id="jfName" autocomplete="off" placeholder="Start typing to find a saved tenant"><div class="tenant-results" id="jfNameResults" hidden></div></div>
       <div class="tenant-find"><label class="lbl" for="jfPhone">Tenant phone</label><input class="inp" id="jfPhone" type="tel" autocomplete="off"><div class="tenant-results" id="jfPhoneResults" hidden></div></div>
@@ -3548,24 +3610,35 @@
     input.addEventListener('blur', function(){ setTimeout(function(){ box.hidden = true; }, 150); });
     input.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !box.hidden) { e.stopPropagation(); box.hidden = true; } });
   }
-  // Property address: suggest addresses from previous jobs as you type.
+  // Property address: suggest every property we know (jobs, tenancies, tenants,
+  // landlords, certificates) as you type a door number, street or postcode.
   // Picking one fills the full address, and (when the tenant boxes are still
-  // empty) the most recent tenant and access details at that property.
+  // empty) the current tenant, or the most recent tenant and access details.
   (function(){
     var input = $('jfAddress'), box = $('jfAddressResults'), results = [], active = 0;
     function show(){
-      var raw = input.value.trim().toLowerCase(), q = propKey(raw), squash = raw.replace(/\s+/g, '');
-      if (raw.length < 2) { box.hidden = true; results = []; return; }
-      results = propertiesFromJobs().filter(function(pr){
-        var hay = pr.jobs.map(function(j){ return (j.property_address || '').toLowerCase(); }).join(' | ');
-        return hay.indexOf(raw) !== -1 || (q && pr.key.indexOf(q) !== -1) || hay.replace(/\s+/g, '').indexOf(squash) !== -1;
-      }).slice(0, 6);
+      var raw = input.value.trim().toLowerCase();
+      if (raw.length < 1 || (raw.length < 2 && !/\d/.test(raw))) { box.hidden = true; results = []; return; }
+      results = psMatch(raw, allPropsForList().map(function(pr){
+        var o = psItem(pr.jobs.length ? pr.address : (knownFullAddress(pr.key) || pr.address), '', pr.jobs.length ? 1 : 0);
+        o.jobs = pr.jobs; o.latest = pr.latest; o.key = pr.key;
+        // Older spellings from past jobs still find it.
+        pr.jobs.forEach(function(j){ var n = psNorm(j.property_address); if (o.n.indexOf(n) === -1) o.n += ' ' + n; });
+        return o;
+      })).slice(0, 6);
       if (!results.length || (results.length === 1 && results[0].address.toLowerCase() === raw)) { box.hidden = true; return; }
       active = 0;
-      box.innerHTML = '<div class="tr-head">From previous jobs</div>' + results.map(function(pr, i){
-        var last = pr.jobs.slice().sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })[0];
-        return '<button type="button" data-i="' + i + '"' + (i === 0 ? ' class="active"' : '') + '><strong>' + esc(pr.address) + '</strong><span>' +
-          esc([last && last.tenant_name, pr.jobs.length + ' job' + (pr.jobs.length === 1 ? '' : 's'), 'last ' + fmtShort(pr.latest)].filter(Boolean).join(' · ')) + '</span></button>';
+      box.innerHTML = '<div class="tr-head">Our properties</div>' + results.map(function(pr, i){
+        var sub;
+        if (pr.jobs.length) {
+          var last = pr.jobs.slice().sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })[0];
+          sub = [last && last.tenant_name, pr.jobs.length + ' job' + (pr.jobs.length === 1 ? '' : 's'), 'last ' + fmtShort(pr.latest)];
+        } else {
+          var ts = tenantsAtProperty(pr.address);
+          sub = [ts.map(function(t){ return t.name; }).filter(Boolean).slice(0, 2).join(', '), 'no jobs yet'];
+        }
+        return '<button type="button" data-i="' + i + '"' + (i === 0 ? ' class="active"' : '') + '><strong>' + psHi(pr.address, input.value) + '</strong><span>' +
+          esc(sub.filter(Boolean).join(' · ')) + '</span></button>';
       }).join('');
       box.hidden = false;
     }
@@ -3575,8 +3648,12 @@
       input.value = pr.address;
       box.hidden = true;
       var tenantEmpty = !jfEditing && !$('jfName').value.trim() && !$('jfPhone').value.trim() && !$('jfEmail').value.trim();
+      var cur = tenantsAtProperty(pr.address)[0];
       var last = pr.jobs.slice().sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })[0];
-      if (tenantEmpty && last && (last.tenant_name || last.tenant_phone)) {
+      if (tenantEmpty && cur && (!last || !last.tenant_name)) {
+        $('jfName').value = cur.name || ''; $('jfPhone').value = cur.phone || ''; $('jfEmail').value = cur.email || '';
+        toast('Filled in ' + (cur.name || 'the tenant') + ', the tenant at this property');
+      } else if (tenantEmpty && last && (last.tenant_name || last.tenant_phone)) {
         var t = tenantsFromJobs().filter(function(x){ return x.key === tenantKey(last); })[0] || last;
         Object.keys(TENANT_FIELDS).forEach(function(id){ if (id !== 'jfAddress') $(id).value = t[TENANT_FIELDS[id]] || ''; });
         toast('Filled in ' + (t.tenant_name || 'the tenant') + ' from the last job here — change it if someone new has moved in');
@@ -3854,11 +3931,12 @@
     allPropsForList().forEach(function(p){ add(knownFullAddress(p.key) || p.address, '', 1); });
     return out;
   }
-  function psMatch(q){
+  function psItem(addr, extra, rank){ return { address: addr, extra: extra || '', rank: rank || 0, n: psNorm(addr), pc: (pcOf(addr) || '').replace(/\s+/g, '').toUpperCase() }; }
+  function psMatch(q, list){
     var qn = psNorm(q); if (qn.length < 1) return [];
     var toks = qn.split(' '), qpc = qn.replace(/\s+/g, '');
     var pcLike = /^[A-Z]{1,2}\d/.test(qpc) && qpc.length >= 2;
-    return psSources().map(function(o){
+    return (list || psSources()).map(function(o){
       var words = o.n.split(' '), score = 0;
       // The postcode typed (all or the start of it, with or without the space).
       if (pcLike && o.pc && o.pc.indexOf(qpc) === 0) score += 40 + qpc.length;
@@ -3895,7 +3973,7 @@
     inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true }));
     psHide();
   }
-  var PS_LISTS = { offProps: 1, tfProps: 1 };
+  var PS_LISTS = { offProps: 1, tfProps: 1, tenantPropList: 1 };
   document.addEventListener('focusin', function(e){
     var inp = e.target; if (!inp || inp.tagName !== 'INPUT') return;
     var l = inp.getAttribute('list'); if (l && PS_LISTS[l]) { inp.removeAttribute('list'); inp.dataset.psug = '1'; inp.setAttribute('autocomplete', 'off'); }
@@ -5018,9 +5096,9 @@
       '<h3 style="margin-top:16px">Propert' + (props.length === 1 ? 'y' : 'ies') + '</h3>' +
       (props.length ? '<div class="list">' + props.map(function(x){
         var others = tenantsAtProperty(x.address).filter(function(o){ return o.id !== t.id; });
-        return '<div class="prop-row" style="cursor:default;grid-template-columns:minmax(0,1fr) auto"><div style="min-width:0"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-tprop="' + esc(x.key) + '">' + esc(x.address) + '</button>' +
+        return '<div class="prop-row tn-prow" style="cursor:default;grid-template-columns:minmax(0,1fr) auto"><div style="min-width:0"><button type="button" class="btn ghost small tn-paddr" data-tprop="' + esc(x.key) + '">' + esc(x.address) + '</button>' +
             '<div class="prop-sub" style="margin:2px 0 0">' + (x.movedOut ? 'Previous tenant · moved out ' + esc(new Date(x.movedOut).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) : 'Lives here') + (others.length ? ' · also: ' + esc(others.map(function(o){ return o.name; }).join(', ')) : '') + '</div></div>' +
-          '<div style="display:flex;gap:6px"><button type="button" class="btn small" data-tmove="' + esc(x.address) + '" data-out="' + (x.movedOut ? '0' : '1') + '">' + (x.movedOut ? 'Moved back in' : 'Moved out') + '</button>' +
+          '<div class="tn-pacts"><button type="button" class="btn small" data-tmove="' + esc(x.address) + '" data-out="' + (x.movedOut ? '0' : '1') + '">' + (x.movedOut ? 'Moved back in' : 'Moved out') + '</button>' +
           '<button type="button" class="btn small ghost" data-tremove="' + esc(x.address) + '">Remove</button></div></div>';
       }).join('') + '</div>' : '<p class="muted-note">Not linked to a property yet.</p>') +
       '<div style="display:flex;gap:8px;margin-top:10px"><input class="inp" id="tenantAddProp" list="tenantPropList" placeholder="Add a property — start typing an address"><button class="btn" id="tenantAddPropBtn" type="button">Add</button></div>' +
@@ -5076,6 +5154,28 @@
     fillTenant({ tenant_name: t.name, tenant_phone: t.phone, tenant_email: t.email, property_address: cur.address || last.property_address,
       access_days: last.access_days, access_time: last.access_time, access_notes: last.access_notes, key_permission: last.key_permission, key_instructions: last.key_instructions });
   });
+
+  // A new job at a property (from its page or a tenancy): the address, the
+  // current tenant's contact details (the lead tenant; the others go in the
+  // access notes), the access details from the last job there, and the landlord.
+  function newJobAt(address, tenancyTenants){
+    if (!address) { openJobForm(null); return; }
+    var key = propKey(address), full = knownFullAddress(key) || address;
+    var people = (tenancyTenants || []).filter(function(t){ return t && (t.name || t.phone || t.email); });
+    if (!people.length) people = tenantsAtProperty(full).sort(function(a, b){ return (b.role === 'lead') - (a.role === 'lead'); });
+    var last = jobs.filter(function(j){ return propKey(j.property_address) === key; }).sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })[0] || {};
+    var lead = people[0] || null, others = people.slice(1).filter(function(t){ return t.name || t.phone; });
+    openJobForm(null);
+    $('jfAddress').value = full;
+    if (lead) { $('jfName').value = lead.name || ''; $('jfPhone').value = lead.phone || ''; $('jfEmail').value = lead.email || ''; }
+    $('jfDays').value = last.access_days || ''; $('jfTime').value = last.access_time || '';
+    $('jfAccess').value = [last.access_notes || '', others.length ? 'Other tenants: ' + others.map(function(t){ return [t.name, t.phone].filter(Boolean).join(' '); }).join(', ') : ''].filter(Boolean).join('\n');
+    $('jfKeys').value = last.key_permission || ''; $('jfKeyNotes').value = last.key_instructions || '';
+    var ll = landlordAt(full); if (ll) fillLandlord('jf', ll);
+    toast(lead ? 'New job at this property — ' + (lead.name || 'the tenant') + '’s details filled in' : 'New job at this property — no tenant saved here yet');
+    setTimeout(function(){ $('jfCat').focus(); $('jfAddressResults').hidden = true; }, 80);
+  }
+  $('propNewJob').addEventListener('click', function(){ var d = propertyJobs(); if (d) newJobAt(d.property.address); });
 
   // Add / edit a tenant.
   var tnEditing = null, tnForAddress = null;
@@ -9126,7 +9226,8 @@
   // ---------- Home reminders box: minimise to chips (remembered) ----------
   (function(){
     var box = $('todoBox'), ids = ['offerBanner', 'tcyEndBanner', 'feeBanner', 'stBanner', 'rentBanner', 'certBanner'];
-    var min = false; try { min = localStorage.getItem('rr_todo_min') === '1'; } catch (e) {}
+    // Phones start minimised (it fills the screen otherwise) until someone chooses.
+    var min = window.matchMedia && window.matchMedia('(max-width: 640px)').matches; try { var st = localStorage.getItem('rr_todo_min'); if (st !== null) min = st === '1'; } catch (e) {}
     var short = function(t){ t = String(t || '').replace(/\s+/g, ' ').trim(); var cut = t.split(/ — | \(| for this month| within | in the next|: recover/)[0]; return cut.length > 46 ? cut.slice(0, 44) + '…' : cut; };
     function draw(){
       var on = ids.filter(function(id){ return !$(id).hidden; });
@@ -12234,6 +12335,7 @@
           var pr = d.address && matchProperty(d.address), lr = findLandlordRec(d.landlord || {}, d.address);
           return '<div class="tcy-links">' + (pr ? '<button type="button" class="btn small" data-tcy-prop="' + esc(pr.key) + '">🏠 Property</button>' : '') +
             (lr ? '<button type="button" class="btn small" data-tcy-ll="' + lr.id + '">👤 Landlord: ' + esc(lr.name) + '</button>' : '') +
+            '<button type="button" class="btn small primary" data-tcy-job="1">🔧 New job</button>' +
             '<button type="button" class="btn small" data-tcy-inv="1">🧾 Invoice the landlord</button>' +
             '<button type="button" class="btn small" data-tcy-swap="1">🔁 Change of tenant</button></div>' +
             ((d.tenant_changes || []).length ? '<div class="prop-sub" style="margin-top:8px">' + d.tenant_changes.slice().reverse().map(function(c){ return '🔁 ' + esc(longDay(c.effective)) + ': ' + esc((c.out || {}).name || '') + ' → ' + esc((c.in || {}).name || '') + (c.doc ? ' · <a href="/d/' + esc(c.doc) + '" target="_blank" rel="noopener">Change of Tenancy Agreement</a>' : ''); }).join('<br>') + '</div>' : '');
@@ -12337,8 +12439,9 @@
   }
   $('tcyDetail').addEventListener('click', function(e){
     if (e.target.closest('#tfStmts')) { stmtClick(e); return; }
-    var b = e.target.closest('[data-tcy-prop],[data-tcy-ll],[data-tcy-inv],[data-tcy-swap],[data-owe]'); if (!b) return;
+    var b = e.target.closest('[data-tcy-prop],[data-tcy-ll],[data-tcy-inv],[data-tcy-swap],[data-tcy-job],[data-owe]'); if (!b) return;
     if (b.dataset.tcySwap) { ctoOpen(); return; }
+    if (b.dataset.tcyJob) { var dj = tcySaved() || tcyDraft; newJobAt(dj.address, dj.tenants); return; }
     if (b.dataset.tcyInv) { var dd = tcySaved() || tcyDraft; openNewInvoice({ address: dd.address, props: [dd.address], tenancy_id: openTcyId === 'new' ? null : openTcyId, vat: dd.vat !== false && !/rent\s*4\s*rent/i.test(String(dd.service || '')) }); return; }
     if (b.dataset.owe) { tcyOwe(b.dataset.owe, b); return; }
     if (b.dataset.tcyProp) openProperty(b.dataset.tcyProp); else openLandlord(Number(b.dataset.tcyLl));
