@@ -923,6 +923,14 @@ async function homeRecord(p, address) {
   return hit ? { key: hit.k || propKey(hit.a), address: hit.a } : { key: k, address: address };
 }
 function upper(v) { return String(v || '').toUpperCase(); }
+// The landlord's full name: the landlord record's name when it's the same person written out more
+// fully (the tenancy may just say "Sadia"), otherwise the record's name; the tenancy's when there's no record.
+function llFullName(tcyName, recName) {
+  const a = String(tcyName || '').trim(), b = String(recName || '').trim(); if (!a) return b; if (!b) return a;
+  const w = function (v) { return v.toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function (x) { return x.length > 1 && !/^(mr|mrs|ms|miss|dr|mx)$/.test(x); }); };
+  const wa = w(a), wb = w(b), share = wa.some(function (x) { return wb.indexOf(x) !== -1; });
+  return share ? (wb.length > wa.length ? b : a) : b;
+}
 async function ensureLandlord(p, l, address) {
   const name = str(l.landlord_name || l.name, 200);
   if (!name) return null;
@@ -4333,7 +4341,7 @@ module.exports = function mountJobs(app, opts) {
       .concat(m.bf ? ['<tr><td>Brought forward from the previous statement</td><td class="a">− ' + money(m.bf) + '</td></tr>'] : []);
     res.send(trackShell('Statement ' + x.month, '<style>table{width:100%;border-collapse:collapse}td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}td.a{text-align:right;white-space:nowrap}tr.t td{font-weight:700;border-bottom:0;font-size:1.05rem}.muted{color:#6b7280;font-size:.86em}@media print{.noprint{display:none}}</style>' +
       '<p class="noprint"><a href="/l/' + htmlEsc(req.params.token) + '" style="color:var(--blue);font-weight:600;text-decoration:none">← Your properties</a></p>' +
-      '<h1>Statement — ' + htmlEsc(x.month) + '</h1><p class="sub">' + htmlEsc(x.address || '') + '</p>' +
+      '<h1>Statement — ' + htmlEsc(x.month) + '</h1><p class="sub">' + (who.l && who.l.name ? '<b>' + htmlEsc(who.l.name) + '</b> · ' : '') + htmlEsc(x.address || '') + '</p>' +
       '<div class="card"><h3 style="margin:0 0 6px">Money in</h3><table>' + rowsIn.join('') + '<tr class="t"><td>Total in</td><td class="a">' + money(m.income) + '</td></tr></table></div>' +
       (rowsOut.length ? '<div class="card"><h3 style="margin:0 0 6px">Taken off</h3><table>' + rowsOut.join('') + '<tr class="t"><td>Total taken off</td><td class="a">− ' + money(m.total) + '</td></tr></table></div>' : '') +
       '<div class="card"><table><tr class="t"><td>Paid to you</td><td class="a">' + money(x.paid.amount != null ? x.paid.amount : m.balance) + '</td></tr></table><p class="muted" style="margin:6px 0 0">Sent ' + htmlEsc(day(x.paid.at)) + (x.paid.ref ? ' · reference ' + htmlEsc(x.paid.ref) : '') + '</p></div>' +
@@ -8849,7 +8857,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const months = statementChain(t, next ? String(next.start_date).slice(0, 10) : null, settled, today);
       if (!months.length) return;
       const ll = lls[t.property_key] || {};
-      out.push({ tenancy_id: t.id, address: d.address || t.address, current: !next, landlord: (d.landlord && d.landlord.name) || ll.name || '', email: (d.landlord && d.landlord.email) || ll.email || '', settled: settled, months: months });
+      out.push({ tenancy_id: t.id, address: d.address || t.address, current: !next, landlord: llFullName(d.landlord && d.landlord.name, ll.name), email: (d.landlord && d.landlord.email) || ll.email || '', settled: settled, months: months });
     });
     return { today: today, items: out };
   }
@@ -8932,7 +8940,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         items.push({
           tenancy_id: t.id, address: d.address || t.address, from: from, n: n, rent: rent,
           tenants: (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean),
-          landlord: (d.landlord && d.landlord.name) || ll.name || '', landlord_id: ll.id || null, landlord_email: (d.landlord && d.landlord.email) || ll.email || '',
+          landlord: llFullName(d.landlord && d.landlord.name, ll.name), landlord_id: ll.id || null, landlord_email: (d.landlord && d.landlord.email) || ll.email || '',
           service: d.service || '', pay_ref: d.pay_ref || '', pay_to: ll.pay_to || d.pay_to || '',
           fees: r2((f.fees || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount + (x.vat || 0); }, 0)),
           fees_net: r2((f.fees || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount; }, 0)), fee_lines: (f.fees || []).filter(function (x) { return !x.invoice_id; }).map(function (x) { return { label: x.label, amount: r2(x.amount + (x.vat || 0)) }; }),
