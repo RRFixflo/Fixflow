@@ -458,7 +458,7 @@
   .oc-refund span { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 650; }
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
-  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navTeam):not(#navWho):not(#navAvail):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
@@ -1449,6 +1449,7 @@
     <button class="nav" type="button" id="navEmail" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
     <button class="nav" type="button" id="navNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <button class="nav" type="button" id="navRepLink" title="Send the report-a-repair link to anyone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg><span>Send repair link</span></button>
+    <button class="nav" type="button" id="navAlerts" title="Get alerts on your phone: new offers, deposits, landlord forms"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>Phone alerts</span></button>
     <div class="side-sec">Links</div>
     <a class="nav" href="/" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Tenant report page</a>
     <a class="nav" href="/offer" target="_blank" rel="noopener" style="text-decoration:none" title="The form applicants fill in to make an offer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offer form (applicants)</a>
@@ -1861,15 +1862,6 @@
         <details class="card" id="offInv" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📨 Offer forms sent <span class="muted-note" id="offInvSum" style="margin:0 0 0 6px;font-weight:400"></span></summary><div id="offInvList" style="margin-top:10px"></div></details>
         <div class="card" id="offRemind" style="margin-bottom:12px" hidden><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b>⏰ Automatic holding deposit reminders</b><div class="muted-note" id="offRemindNote" style="margin:2px 0 0"></div></div>
           <label class="switch-row"><input type="checkbox" id="offRemindOn"> <span id="offRemindLbl">On</span></label></div></div>
-        <details class="card off-alerts-staff" id="offAlertStaff" hidden><summary style="cursor:pointer;font-weight:700">🔔 Get alerts on your phone <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">new offers, deposits, landlord forms</span></summary>
-          <ol class="ntfy-steps">
-            <li><b>Install the free ntfy app</b><div class="ntfy-stores"><a class="btn small" href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener"> iPhone – App Store</a><a class="btn small" href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">▶ Android – Google Play</a></div></li>
-            <li><b>Subscribe to our channel</b><span class="muted-note" style="display:block;margin:2px 0 6px">On your phone: tap the button. On a computer: scan the code with your phone’s camera.</span>
-              <div class="ntfy-sub"><div><a class="btn primary" id="offAlertOpen" target="_blank" rel="noopener">Subscribe on this phone</a><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" type="button" id="offAlertCopy2">Copy channel</button></div><div class="muted-note" id="offAlertManual" style="margin:6px 0 0;font-size:.78rem"></div></div><div id="offAlertQr" class="ntfy-qr"></div></div></li>
-            <li><b>Allow notifications</b><span class="muted-note" style="display:block;margin:2px 0 0">When the app asks, tap <b>Allow</b>. On iPhone, check Settings → ntfy → Notifications is on.</span></li>
-            <li><b>Check it works</b><div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" type="button" id="offAlertTest">Send me a test alert</button><span class="muted-note" id="offAlertTestMsg" style="margin:0"></span></div></li>
-          </ol>
-        </details>
         <details class="card" id="offStaff" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">👥 Staff access to offers <span class="muted-note" id="offStaffSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
           <p class="muted-note" style="margin:8px 0">Give staff this link and the staff password. They can only see and work on offers — accept or reject, mark deposits, right to rent checks, tracking links and the PDF. They can’t delete offers or see anything else in Fixflow. Everything they do is noted on the offer.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="offStaffLink" readonly style="flex:1;min-width:220px"><button class="btn" type="button" id="offStaffCopy">Copy link</button></div>
@@ -2536,6 +2528,17 @@
     <div class="row-actions"><button class="btn ghost danger" type="button" id="certDelete">Remove</button><span style="flex:1"></span><button class="btn" type="button" id="certCancel">Cancel</button><button class="btn primary" type="submit" id="certSave">Save</button></div>
   </form>
 </div>
+<div class="modal" id="alertsModal" hidden><div class="card" style="width:min(580px,100%);max-height:92vh;overflow:auto">
+        <details class="off-alerts-staff" id="offAlertStaff" open><summary style="cursor:pointer;font-weight:700">🔔 Get alerts on your phone <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">new offers, deposits, landlord forms</span></summary>
+          <ol class="ntfy-steps">
+            <li><b>Install the free ntfy app</b><div class="ntfy-stores"><a class="btn small" href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener"> iPhone – App Store</a><a class="btn small" href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">▶ Android – Google Play</a></div></li>
+            <li><b>Subscribe to our channel</b><span class="muted-note" style="display:block;margin:2px 0 6px">On your phone: tap the button. On a computer: scan the code with your phone’s camera.</span>
+              <div class="ntfy-sub"><div><a class="btn primary" id="offAlertOpen" target="_blank" rel="noopener">Subscribe on this phone</a><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" type="button" id="offAlertCopy2">Copy channel</button></div><div class="muted-note" id="offAlertManual" style="margin:6px 0 0;font-size:.78rem"></div></div><div id="offAlertQr" class="ntfy-qr"></div></div></li>
+            <li><b>Allow notifications</b><span class="muted-note" style="display:block;margin:2px 0 0">When the app asks, tap <b>Allow</b>. On iPhone, check Settings → ntfy → Notifications is on.</span></li>
+            <li><b>Check it works</b><div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" type="button" id="offAlertTest">Send me a test alert</button><span class="muted-note" id="offAlertTestMsg" style="margin:0"></span></div></li>
+          </ol>
+        </details>
+<div class="row-actions" style="margin-top:10px"><button class="btn" type="button" id="alertsClose">Close</button></div></div></div>
 <div class="modal" id="moreSheet" hidden>
   <div class="card more-card" role="dialog" aria-label="More">
     <div class="more-grab"></div>
@@ -9338,6 +9341,13 @@
   $('offStaffCopy').addEventListener('click', function(){ offCopyText($('offStaffLink').value); });
   $('offAlertCopy').addEventListener('click', function(){ offCopyText($('offAlertLink').value); });
   $('offAlertCopy2').addEventListener('click', function(){ offCopyText(meta.offerAlerts || ''); });
+  // Phone alerts (ntfy): opened from the menu when wanted, not shown on the Offers page.
+  $('navAlerts').addEventListener('click', function(){
+    if (!meta.offerAlerts) { toast('Phone alerts aren’t set up yet — ask the office'); return; }
+    renderOffers(); $('offAlertStaff').hidden = false; $('offAlertStaff').open = true; $('alertsModal').hidden = false; offAlertQr();
+  });
+  $('alertsClose').addEventListener('click', function(){ $('alertsModal').hidden = true; });
+  $('alertsModal').addEventListener('click', function(e){ if (e.target === this) this.hidden = true; });
   $('offAlertStaff').addEventListener('toggle', function(){ try { localStorage.setItem('rr_alerts_open', this.open ? '1' : '0'); } catch (e) {} if (this.open) offAlertQr(); });
   $('offAlertTest').addEventListener('click', function(){ var b = this; b.disabled = true; $('offAlertTestMsg').textContent = 'Sending…';
     api('POST', '/api/admin/offer-alerts/test', {}).then(function(x){ b.disabled = false; $('offAlertTestMsg').textContent = x && x.ok ? '✓ Sent — it should pop up on your phone within a few seconds. Nothing? Check step 2 and 3.' : 'Couldn’t send — try again.'; }).catch(function(){ b.disabled = false; $('offAlertTestMsg').textContent = 'Couldn’t send — try again.'; }); });
@@ -14412,7 +14422,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navRepLink', 'Send repair link'], ['navAlerts', 'Phone alerts'], ['navAvail', 'Available properties'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
