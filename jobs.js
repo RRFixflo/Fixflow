@@ -8782,12 +8782,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
       .map(function (i) { return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.title, job_id: i.job_id }; });
   }
   // Rent collection starts from this day (earlier rent dates count as already dealt with).
-  const RENT_START = '2026-10-05';
+  const RENT_START = '2026-10-03';
   async function rentBoard(p, month, onlyKey) {
     const today = londonDay(), r2 = function (v) { return Math.round(v * 100) / 100; };
     let since = (await p.query("SELECT value FROM app_settings WHERE key = 'rent_board_since'")).rows[0];
     if (!since) { since = { value: { from: today.slice(0, 7) + '-01' } }; await p.query("INSERT INTO app_settings (key, value) VALUES ('rent_board_since', $1) ON CONFLICT (key) DO NOTHING", [JSON.stringify(since.value)]); }
-    const sinceDay = since.value.from > RENT_START ? since.value.from : RENT_START, thisMonth = today.slice(0, 7), tomorrow = addDaysIso(today, 1);
+    const sinceDay = RENT_START, thisMonth = today.slice(0, 7), tomorrow = addDaysIso(today, 1);
     month = /^\d{4}-\d{2}$/.test(String(month || '')) ? month : thisMonth;
     const mStart = month + '-01', mEnd = addDaysIso(addMonthsIso(mStart, 1), -1);
     const st = await statementsAll(p), stBy = {}; st.items.forEach(function (x) { stBy[x.tenancy_id] = x; });
