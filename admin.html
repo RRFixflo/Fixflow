@@ -1417,6 +1417,8 @@
   .rb-btn { flex: none; min-width: 112px; display: flex; justify-content: flex-end; } .rb-btn .btn { min-width: 100px; justify-content: center; }
   .rb-more { font-size: .78rem; padding: 0; min-height: 0; }
   .rent-top { gap: 6px; position: relative; } .rent-top .rt-ic { font-size: 1rem; line-height: 1; } .rent-top .rb-badge { margin-left: 2px; }
+  .ref-chip { display: inline-block; font-size: .7rem; font-weight: 700; color: #344054; background: #f2f4f7; border: 1px solid #e4e7ec; border-radius: 6px; padding: 0 6px; vertical-align: 2px; letter-spacing: .02em; }
+  .ref-chip.big { font-size: .78rem; padding: 1px 8px; vertical-align: 3px; }
   .svc-tag { display: inline-block; font-size: .68rem; font-weight: 700; border-radius: 6px; padding: 1px 6px; margin-right: 2px; white-space: nowrap; vertical-align: 1px; }
   .svc-r4r { color: #5925dc; background: #f4f3ff; } .svc-man { color: #05603a; background: #ecfdf3; } .svc-col { color: #175cd3; background: #eff8ff; } .svc-tf { color: #b54708; background: #fffaeb; }
   .prop-tcyq { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; margin: 0 0 12px; border: 1px solid var(--line, #e5e7eb); border-radius: 14px; background: var(--card, #fff); }
@@ -4457,6 +4459,7 @@
       if (!raw) return true;
       var kn = keyNo(p.address).toLowerCase();
       if (kn && (raw === kn || raw.replace(/^key\s*(no\.?|number)?\s*#?\s*/, '') === kn)) return true;
+      if (propByRef(raw) === p.key) return true;
       var text = [p.address.toLowerCase()].concat(p.jobs.map(function(j){ return (j.property_address || '').toLowerCase(); })).join(' | ');
       return (q && p.key.indexOf(q) !== -1) || text.indexOf(raw) !== -1 || text.replace(/\s+/g, '').indexOf(raw.replace(/\s+/g, '')) !== -1;
     });
@@ -4495,7 +4498,7 @@
     el.innerHTML = props.map(function(p){
       var open = p.jobs.filter(isOpen).length;
       return '<button type="button" class="prop-row" data-key="' + esc(p.key) + '">' +
-        '<div><div class="addr">' + esc(p.address) + newChip(key[p.key].added) + (key[p.key].kn ? ' <span class="key-chip">🔑 ' + esc(key[p.key].kn) + '</span>' : '') + '</div><div class="prop-sub" style="margin-top:2px">' +
+        '<div><div class="addr">' + (propRef(p.key) ? '<span class="ref-chip">' + propRef(p.key) + '</span> ' : '') + esc(p.address) + newChip(key[p.key].added) + (key[p.key].kn ? ' <span class="key-chip">🔑 ' + esc(key[p.key].kn) + '</span>' : '') + '</div><div class="prop-sub" style="margin-top:2px">' +
           esc([propTenantNames(p) || 'No tenant name', by === 'landlord' ? (key[p.key].ll ? 'Landlord: ' + key[p.key].ll : 'No landlord') : ''].filter(Boolean).join(' · ')) + '</div>' + '<div class="prop-added">' + esc(propOriginTxt(p)) + '</div>' + '<div class="tcy-line">' + tcyChip(tcyOf[p.key]) + (function(){ var st = licenceState(licenceOf(p.address)); return st.k === 'bad' || st.k === 'warn' ? ' <span class="tcy-chip ' + (st.k === 'bad' ? 'none' : 'warn') + '">📜 Licence: ' + esc(st.text) + '</span>' : ''; })() + '</div>' + certChips(p.key) + '</div>' +
         '<div class="num">' + p.jobs.length + '<small>repair' + (p.jobs.length === 1 ? '' : 's') + '</small></div>' +
         '<div class="num' + (open ? ' hot' : '') + '">' + open + '<small>open</small></div>' +
@@ -4662,7 +4665,7 @@
     var d = propertyJobs();
     if (!d) { $('propBack').click(); return; }
     var open = d.jobs.filter(isOpen).length, done = d.jobs.filter(function(j){ return j.status === 'Completed'; }).length;
-    $('propTitle').innerHTML = '<button type="button" class="title-edit" id="propTitleEdit" title="Edit address">' + esc(d.property.address) + ' <span class="pen">✎</span></button>' + (addressProblem(d.property.address) ? ' <span class="pill warn-pill" title="' + esc(addressProblem(d.property.address)) + '">Address incomplete</span>' : '');
+    $('propTitle').innerHTML = '<button type="button" class="title-edit" id="propTitleEdit" title="Edit address">' + esc(d.property.address) + ' <span class="pen">✎</span></button>' + (propRef(d.property.key) ? ' <span class="ref-chip big" title="This property’s reference number">Ref ' + propRef(d.property.key) + '</span>' : '') + (addressProblem(d.property.address) ? ' <span class="pill warn-pill" title="' + esc(addressProblem(d.property.address)) + '">Address incomplete</span>' : '');
     $('propSub').textContent = d.property.jobs.length + ' repair' + (d.property.jobs.length === 1 ? '' : 's') + ' on record' +
       (postcodeArea(d.property.address) ? ' · ' + postcodeArea(d.property.address) : '') + ' · ' + propOriginTxt(d.property);
     $('propTiles').innerHTML =
@@ -9281,10 +9284,11 @@
         return { t: t.tenant_name || 'No name', s: [t.tenant_phone, t.property_address].filter(Boolean).join(' · '), av: t.tenant_name || '?', run: function(){ closeDrawer(); openTenant(t.key); } };
       }) });
       // Every property we know (jobs, tenancies, tenants, landlords, certificates), by door number, street or postcode.
-      var ps = psMatch(raw, X.props).slice(0, 6);
+      var rk = propByRef(raw), ps = psMatch(raw, X.props).slice(0, 6);
+      if (rk) { var rp = X.props.filter(function(o){ return o.pr.key === rk; })[0]; if (rp) ps = [rp].concat(ps.filter(function(o){ return o !== rp; })); }
       if (ps.length) sections.push({ h: 'Properties', items: ps.map(function(o){
         var pr = o.pr, tn = tenantsAtProperty(o.address).map(function(t){ return t.name; }).filter(Boolean).slice(0, 2).join(', ');
-        return { t: o.address, s: [tn, pr.jobs.length ? pr.jobs.length + ' repair' + (pr.jobs.length === 1 ? '' : 's') + ' · ' + pr.jobs.filter(isOpen).length + ' open' : 'no repairs yet'].filter(Boolean).join(' · '), ic: IC.home, run: function(){ closeDrawer(); openProperty(pr.key); } };
+        return { t: (propRef(pr.key) ? propRef(pr.key) + ' · ' : '') + o.address, s: [tn, pr.jobs.length ? pr.jobs.length + ' repair' + (pr.jobs.length === 1 ? '' : 's') + ' · ' + pr.jobs.filter(isOpen).length + ' open' : 'no repairs yet'].filter(Boolean).join(' · '), ic: IC.home, run: function(){ closeDrawer(); openProperty(pr.key); } };
       }) });
       var tcs = pick(X.tcs, 4, function(r){ return hitN(r.h); });
       if (tcs.length) sections.push({ h: 'Tenancies', items: tcs.map(function(t){ var d = t.data || {};
@@ -9316,6 +9320,7 @@
         return { t: c.name, s: [c.trade, c.phone].filter(Boolean).join(' · '), av: c.name, run: function(){ openContractor(c.name); } };
       }) });
     }
+    if (raw && propByRef(raw)) sections.sort(function(a, b){ return (b.h === 'Properties') - (a.h === 'Properties'); });   // a property reference: that property first
     if (actions.length) sections.push({ h: 'Go to', items: actions });
     cmdkItems = [];
     var html = sections.map(function(sec){
@@ -9366,12 +9371,16 @@
   ];
   var certs = [], certWho = {}, certCost = {}, CERT_REMIND = 10, certFilter = 'action';
   // Key numbers (the number on the key tag in the office), by property.
-  var propInfo = {}, licencePool = [];
+  var propInfo = {}, licencePool = [], propRefs = {};
+  // A property's own reference number: P-0001.
+  function propRef(key){ var n = propRefs[key]; return n ? 'P-' + String(n).padStart(4, '0') : ''; }
+  // "P-12", "p0012", "P 12" → the property key with that reference.
+  function propByRef(q){ var m = /^p[\s-]*0*(\d{1,6})$/i.exec(String(q || '').trim()); if (!m) return null; var n = Number(m[1]); for (var k in propRefs) if (propRefs[k] === n) return k; return null; }
   function loadPropInfo(){
     if (!meta.db) return Promise.resolve();
     // Saved licences for properties added since are applied first (server side).
     return api('GET', '/api/admin/licence-pool').then(function(d){ if (d.ok) licencePool = d.pool; }).catch(function(){})
-      .then(function(){ return api('GET', '/api/admin/property-info'); }).then(function(d){ if (d.ok) { propInfo = {}; d.info.forEach(function(r){ propInfo[r.property_key] = r; }); } });
+      .then(function(){ return api('GET', '/api/admin/property-info'); }).then(function(d){ if (d.ok) { propInfo = {}; d.info.forEach(function(r){ propInfo[r.property_key] = r; }); propRefs = d.refs || {}; } });
   }
   // A key number another property already has: say which (each key belongs to one property).
   function keyTaken(d){ if (!d || d.error !== 'key-taken') return false; alert('That key number is already used for ' + (d.address || 'another property') + '.\n\nEach key number can only belong to one property — check the key, or change it on ' + (d.address || 'the other property') + ' first.'); return true; }

@@ -234,6 +234,12 @@ ALTER TABLE property_info ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ;
 ALTER TABLE property_info ALTER COLUMN created_at SET DEFAULT now();
 ALTER TABLE property_info ADD COLUMN IF NOT EXISTS added_how TEXT;
 ALTER TABLE property_info ADD COLUMN IF NOT EXISTS added_by TEXT;
+-- Each property's own reference number (P-0001…), given in the order properties first appeared.
+CREATE TABLE IF NOT EXISTS property_refs (
+  property_key TEXT PRIMARY KEY,
+  ref          SERIAL UNIQUE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS licence_pool (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -2664,7 +2670,9 @@ module.exports = function mountJobs(app, opts) {
       ON CONFLICT (property_key) DO UPDATE SET key_number = excluded.key_number, updated_at = now()`, [h.key, h.address, num]);
   }
   app.get('/api/admin/property-info', withDb(async function (p, req, res) {
-    res.json({ ok: true, info: (await p.query('SELECT property_key, address, key_number, key_notes, licence, updated_at, created_at, added_how, added_by FROM property_info')).rows });
+    await assignPropRefs(p).catch(function (e) { console.error('Property refs:', e.message); });
+    const refs = {}; (await p.query('SELECT property_key, ref FROM property_refs')).rows.forEach(function (r) { refs[r.property_key] = r.ref; });
+    res.json({ ok: true, info: (await p.query('SELECT property_key, address, key_number, key_notes, licence, updated_at, created_at, added_how, added_by FROM property_info')).rows, refs: refs });
   }));
   app.put('/api/admin/property-info', withDb(async function (p, req, res) {
     const b = req.body || {}, address = str(b.address, 500), key = propKey(address);
@@ -5502,6 +5510,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (toKey !== fromKey) await p.query('DELETE FROM property_info WHERE property_key = $1 AND EXISTS (SELECT 1 FROM property_info x WHERE x.property_key = $2 AND coalesce(x.key_number, x.key_notes) IS NOT NULL)', [fromKey, toKey]);
     if (toKey !== fromKey) await p.query('DELETE FROM property_info WHERE property_key = $2 AND EXISTS (SELECT 1 FROM property_info x WHERE x.property_key = $1)', [fromKey, toKey]);
     await p.query('UPDATE property_info SET property_key = $2, address = $3, updated_at = now() WHERE property_key = $1', [fromKey, toKey, to]);
+    // The reference number: the record kept keeps its own; otherwise it takes this one's.
+    if (toKey !== fromKey) {
+      await p.query('DELETE FROM property_refs WHERE property_key = $1 AND EXISTS (SELECT 1 FROM property_refs x WHERE x.property_key = $2)', [fromKey, toKey]);
+      await p.query('UPDATE property_refs SET property_key = $2 WHERE property_key = $1', [fromKey, toKey]);
+    }
     // Tenancies at the property move too (otherwise the property splits in two).
     await p.query(`UPDATE tenancies SET property_key = $2, address = $3, data = jsonb_set(data, '{address}', to_jsonb($3::text)), updated_at = now() WHERE property_key = $1`, [fromKey, toKey, to]);
     return rows.length;
@@ -6497,6 +6510,28 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   // Two records for one home: fold the one that holds nothing but a key number / notes into the
   // other (never when both have jobs, tenants, tenancies, landlords or certificates of their own).
+  // Give every property we know a reference number (oldest first) — once; it stays with the property.
+  let refsBusy = null;
+  async function assignPropRefs(p) {
+    if (refsBusy) return refsBusy;
+    refsBusy = (async function () {
+      const have = {}; (await p.query('SELECT property_key FROM property_refs')).rows.forEach(function (r) { have[r.property_key] = 1; });
+      const props = await allProperties(p), seen = {};
+      props.forEach(function (x) { seen[x.key] = 1; });
+      (await p.query('SELECT DISTINCT property_key FROM tenancies WHERE property_key IS NOT NULL')).rows.forEach(function (r) { if (!seen[r.property_key]) { seen[r.property_key] = 1; props.push({ key: r.property_key }); } });
+      const todo = props.filter(function (x) { return !have[x.key]; });
+      if (!todo.length) return 0;
+      const first = {}, early = function (k, t) { if (k && t && (!first[k] || new Date(t) < first[k])) first[k] = new Date(t); };
+      (await p.query('SELECT property_address, created_at FROM jobs WHERE property_address IS NOT NULL')).rows.forEach(function (r) { early(propKey(r.property_address), r.created_at); });
+      (await p.query('SELECT property_key, created_at FROM tenancies')).rows.forEach(function (r) { early(r.property_key, r.created_at); });
+      (await p.query('SELECT property_key, created_at FROM property_info')).rows.forEach(function (r) { early(r.property_key, r.created_at); });
+      (await p.query('SELECT property_key, updated_at AS created_at FROM property_landlords')).rows.forEach(function (r) { early(r.property_key, r.created_at); });
+      todo.sort(function (a, b) { return (first[a.key] || Infinity) - (first[b.key] || Infinity) || String(a.key).localeCompare(String(b.key)); });
+      for (const x of todo) await p.query('INSERT INTO property_refs (property_key) VALUES ($1) ON CONFLICT (property_key) DO NOTHING', [x.key]);
+      return todo.length;
+    })();
+    try { return await refsBusy; } finally { refsBusy = null; }
+  }
   async function mergeSameHomes(p) {
     const props = await allProperties(p), byPc = {}, seenK = {};
     props.forEach(function (x) { seenK[x.key] = 1; });
