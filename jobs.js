@@ -9263,7 +9263,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     'Hammersmith and Fulham': { sel: 'some', add: 'all' }, 'Haringey': { sel: 'some', add: 'all' }, 'Harrow': { sel: 'none', add: 'all' }, 'Havering': { sel: 'some', add: 'some' },
     'Hillingdon': { sel: 'none', add: 'some' }, 'Hounslow': { sel: 'some', add: 'all' }, 'Islington': { sel: 'some', add: 'all' }, 'Kensington and Chelsea': { sel: 'none', add: 'check' },
     'Kingston upon Thames': { sel: 'none', add: 'none' }, 'Lambeth': { sel: 'none', add: 'all' }, 'Lewisham': { sel: 'check', add: 'all' }, 'Merton': { sel: 'none', add: 'check' },
-    'Newham': { sel: 'all', add: 'all' }, 'Redbridge': { sel: 'some', add: 'all' }, 'Richmond upon Thames': { sel: 'none', add: 'none' },
+    // Newham: selective and additional licensing in every ward except Royal Victoria and Stratford Olympic Park (1 June 2023 designation).
+    'Newham': { sel: 'all', add: 'all', sel_except: ['Royal Victoria', 'Stratford Olympic Park'], add_except: ['Royal Victoria', 'Stratford Olympic Park'] }, 'Redbridge': { sel: 'some', add: 'all' }, 'Richmond upon Thames': { sel: 'none', add: 'none' },
     // Southwark selective licensing — designation 1 (1 Mar 2022 – 28 Feb 2027) and designation 2
     // (1 Nov 2023 – 31 Oct 2028): 19 of the 23 wards. Not covered: Borough & Bankside, Dulwich Village,
     // North Bermondsey, St George's.
@@ -9299,11 +9300,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const households = shared ? Math.max(2, Math.min(50, parseInt(b.households, 10) || 2)) : 1;
     const amenities = b.share !== 'no';
     const type = ['house', 'converted', 'purpose', 'block'].indexOf(b.type) !== -1 ? b.type : 'house';
-    const all = await licensingSchemes(p), sc = all.schemes[borough] || null, custom = all.custom[borough] || {};
+    const all = await licensingSchemes(p), sc0 = all.schemes[borough] || null, custom = all.custom[borough] || {};
+    const wk = function (w) { return String(w || '').toLowerCase().replace(/&/g, ' and ').replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim(); };
+    const excluded = function (list) { return !!(ward && Array.isArray(list) && list.some(function (x) { return wk(x) === wk(ward); })); };
+    // A borough-wide scheme with excluded wards: the property's ward decides it.
+    const sc = sc0 ? Object.assign({}, sc0, excluded(sc0.sel_except) ? { sel: 'none', sel_ex: true } : {}, excluded(sc0.add_except) ? { add: 'none', add_ex: true } : {}) : null;
     const link = (custom.link && /^https?:\/\//i.test(custom.link)) ? custom.link : (sc && sc.link) ? sc.link : 'https://www.google.com/search?q=' + encodeURIComponent(borough + ' council property licensing scheme');
     const isHmo = shared && people >= 3 && amenities;
     let verdict, title, licence = '', why = [];
-    const area = function (st) { return st === 'all' ? 'across the whole of ' + borough : st === 'some' ? 'in parts of ' + borough : ''; };
+    const exl = sc0 && (sc0.sel_except || sc0.add_except);
+    const area = function (st) { return st === 'all' ? (exl && exl.length ? 'in every ward of ' + borough + ' except ' + exl.join(' and ') + (ward ? ' (this property is in ' + ward + ' ward)' : '') : 'across the whole of ' + borough) : st === 'some' ? 'in parts of ' + borough : ''; };
     if (isHmo && people >= 5 && type !== 'purpose') {
       verdict = 'yes'; licence = 'Mandatory HMO licence'; title = 'Yes — this property needs a mandatory HMO licence';
       why.push(people + ' people from ' + households + ' households sharing a kitchen, bathroom or toilet is a large HMO. A mandatory HMO licence is needed everywhere in England.');
@@ -9315,6 +9321,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       else if (st === 'some' && inWards(sc.add_wards)) { const w = inWards(sc.add_wards); verdict = 'yes'; licence = 'Additional HMO licence'; title = 'Yes — this property needs an additional HMO licence'; why.push('The property is in ' + ward + ' ward, which is covered by ' + borough + '’s additional HMO licensing scheme' + (w.note ? ' (' + w.note + ')' : '') + '.'); }
       else if (st === 'some' && inWards(sc.add_wards) === false) { verdict = 'no'; title = 'No licence needed'; why.push('The property is in ' + ward + ' ward, which isn’t part of ' + borough + '’s additional HMO licensing scheme, so this size of HMO doesn’t need a licence. HMO management and safety rules still apply.'); }
       else if (st === 'some') { verdict = 'maybe'; licence = 'Additional HMO licence'; title = 'Probably — it depends on the street'; why.push(borough + ' runs additional HMO licensing ' + area(st) + '. Whether this property is covered depends on its exact location.'); }
+      else if (st === 'none' && sc.add_ex) { verdict = 'no'; title = 'No licence needed'; why.push('The property is in ' + ward + ' ward, which ' + borough + ' has excluded from its additional HMO licensing scheme, so this size of HMO doesn’t need a licence. HMO management and safety rules still apply.'); }
       else if (st === 'none') { verdict = 'no'; title = 'No licence needed'; why.push(borough + ' doesn’t run an additional HMO licensing scheme at the moment, so this size of HMO doesn’t need a licence. HMO management and safety rules still apply.'); }
       else { verdict = 'maybe'; licence = 'Additional HMO licence'; title = 'Check with the council'; why.push(borough + '’s licensing schemes have recently changed or are under review, so please confirm with the council.'); }
     } else {
@@ -9324,6 +9331,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       else if (st === 'some' && inWards(sc.sel_wards)) { const w = inWards(sc.sel_wards); verdict = 'yes'; licence = 'Selective licence'; title = 'Yes — this property needs a selective licence'; why.push('The property is in ' + ward + ' ward, which is covered by ' + borough + '’s selective licensing scheme' + (w.note ? ' (' + w.note + ')' : '') + ': every privately rented home there needs a licence.'); }
       else if (st === 'some' && inWards(sc.sel_wards) === false) { verdict = 'no'; title = 'No licence needed'; why.push('The property is in ' + ward + ' ward, which isn’t part of ' + borough + '’s selective licensing scheme, so a home let to a single household doesn’t need a licence.'); }
       else if (st === 'some') { verdict = 'maybe'; licence = 'Selective licence'; title = 'Possibly — it depends on the street'; why.push(borough + ' runs selective licensing ' + area(st) + ' (certain wards or streets). Whether this property is covered depends on its exact location.'); }
+      else if (st === 'none' && sc.sel_ex) { verdict = 'no'; title = 'No licence needed'; why.push('The property is in ' + ward + ' ward, which ' + borough + ' has excluded from its selective licensing scheme, so a home let to a single household doesn’t need a licence.'); }
       else if (st === 'none') { verdict = 'no'; title = 'No licence needed'; why.push(borough + ' doesn’t run a selective licensing scheme at the moment, so a home let to a single household doesn’t need a licence.'); }
       else { verdict = 'maybe'; licence = 'Selective licence'; title = 'Check with the council'; why.push(borough + '’s licensing schemes have recently changed or are under review, so please confirm with the council.'); }
     }
@@ -9376,7 +9384,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (LIC_STATES.indexOf(v.add) !== -1) o.add = v.add;
       const u = str(v.link, 500); if (u && /^https?:\/\//i.test(u)) o.link = u;
       // Wards a 'some' scheme covers (one per line in Templates).
-      ['sel_wards', 'add_wards'].forEach(function (f) { if (Array.isArray(v[f])) { const l = v[f].map(function (x) { return str(x, 80); }).filter(Boolean).slice(0, 60); if (l.length) o[f] = l; } });
+      ['sel_wards', 'add_wards', 'sel_except', 'add_except'].forEach(function (f) { if (Array.isArray(v[f])) { const l = v[f].map(function (x) { return str(x, 80); }).filter(Boolean).slice(0, 60); if (l.length) o[f] = l; } });
       if (Object.keys(o).length) custom[str(k, 80)] = o;
     });
     const value = { custom: custom, updated_at: new Date().toISOString() };
