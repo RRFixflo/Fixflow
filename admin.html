@@ -999,6 +999,12 @@
   @media (max-width: 480px) { #ctSortTabs button { padding: 6px 7px; } }
   .note-banner { margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; background: #EEF4FF; border: 1px solid #C9DAFF; }
   .note-banner strong { display: block; margin-bottom: 6px; }
+  .charge-banner { background: #FFF7E6; border-color: #F3D28B; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .charge-banner strong { margin: 0; }
+  .cg-prop { margin: 12px 0 4px; font-weight: 700; font-size: .9rem; }
+  .cg-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; margin-top: 6px; font-size: .88rem; }
+  .cg-row .cg-tx { flex: 1; min-width: 180px; }
+  .cg-row .cg-why { display: block; color: #9A5B00; font-size: .82rem; margin-top: 2px; }
   .note-banner button.nb-item { display: block; width: 100%; text-align: left; background: #fff; border: 1px solid #DCE6FB; border-radius: 10px; padding: 8px 10px; margin-top: 6px; font: inherit; font-size: .88rem; cursor: pointer; color: inherit; }
   .note-chip { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; background: #2563EB; color: #fff; font-size: .72rem; font-weight: 700; }
   .ctr-notes .cn { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 8px; white-space: pre-wrap; }
@@ -1411,6 +1417,10 @@
   .rb-btn { flex: none; min-width: 112px; display: flex; justify-content: flex-end; } .rb-btn .btn { min-width: 100px; justify-content: center; }
   .rb-more { font-size: .78rem; padding: 0; min-height: 0; }
   .rent-top { gap: 6px; position: relative; } .rent-top .rt-ic { font-size: 1rem; line-height: 1; } .rent-top .rb-badge { margin-left: 2px; }
+  .svc-tag { display: inline-block; font-size: .68rem; font-weight: 700; border-radius: 6px; padding: 1px 6px; margin-right: 2px; white-space: nowrap; vertical-align: 1px; }
+  .svc-r4r { color: #5925dc; background: #f4f3ff; } .svc-man { color: #05603a; background: #ecfdf3; } .svc-col { color: #175cd3; background: #eff8ff; } .svc-tf { color: #b54708; background: #fffaeb; }
+  .prop-tcyq { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; margin: 0 0 12px; border: 1px solid var(--line, #e5e7eb); border-radius: 14px; background: var(--card, #fff); }
+  .prop-tcyq .q-tx { flex: 1; min-width: 180px; font-size: .9rem; }
   .rb-r4r { display: inline-block; font-size: .68rem; font-weight: 700; color: #5925dc; background: #f4f3ff; border-radius: 6px; padding: 1px 6px; margin-right: 2px; }
   .rb-bulk:has(span:empty) { display: none; }
   .rb-sall { display: inline-flex; align-items: center; gap: 5px; font-size: .74rem; font-weight: 600; color: var(--ink-soft); cursor: pointer; margin-right: 4px; } .rb-sall input { width: 16px; height: 16px; margin: 0; }
@@ -1560,6 +1570,7 @@
 
       <div id="jobsView">
       <div class="note-banner" id="noteBanner" hidden></div>
+      <div class="note-banner charge-banner" id="chargeBanner" hidden></div>
       <div id="todoBox">
       <div class="todo-head" id="todoHead" hidden><b id="todoTitle">To do</b><span class="todo-chips" id="todoChips"></span><span style="flex:1 0 0"></span><button type="button" class="btn small ghost" id="todoMin">Minimise</button></div>
       <div class="addr-warn tcy-warn" id="tcyEndBanner" hidden style="margin:0 0 12px"><span id="tcyEndBannerText"></span> <button type="button" class="btn small" id="tcyEndBannerGo">Ask the tenants</button></div>
@@ -2027,6 +2038,9 @@
             </div>
           </div>
           <div id="propAvBanner"></div>
+          <div id="propTwin"></div>
+          <div id="propCharge"></div>
+          <div id="propTcyQuick"></div>
           <div class="card" id="propRent" hidden style="margin-bottom:12px"></div>
           <div class="tiles prop-tiles" id="propTiles"></div>
           <div class="card" id="propCerts" style="margin-bottom:12px"></div>
@@ -2865,7 +2879,7 @@
       if (view === 'tcy') { if (openTcyId) renderTcyCerts(); else renderTenancies(); }
       if (view === 'ctr') renderContractorPage();
       renderCertAlerts();
-      renderNoteAlerts();
+      renderNoteAlerts(); renderChargeBanner();
       renderTcyEndAlerts();
       loadRentRecoveries(); loadRenewalFees(); loadOffers(); loadPvr(); rbTopCount();
       var owedN = jobs.filter(isOwed).length;
@@ -4547,8 +4561,45 @@
       return '<div class="av-on-row">' + esc(shortAddr(x.address)) + ' · ' + [x.beds != null ? (Number(x.beds) === 0 ? 'Studio' : x.beds + ' bed') : '', x.rent_pcm ? gbp(Number(x.rent_pcm)).replace(/\.00$/, '') + ' pcm' : '', x.vacant ? 'available now' : x.available_from ? 'available from ' + longDay(String(x.available_from).slice(0, 10)) : '', x.key_no ? '🔑 ' + x.key_no : ''].filter(Boolean).map(esc).join(' · ') +
         ' <button type="button" class="linkish" data-avgo="' + x.id + '">Open on the list ›</button></div>'; }).join('') + '</div></div>';
   }
+  // Two records that look like the same home, written differently ("Flat 5, Windsor Court, AB1 2CD" and
+  // "Flat 5 Windsor Court, 23 Sample Road, AB1 2CD"): same postcode, the door numbers of one all in the
+  // other, and a street / building name in common. Offered on the property page to join with one click.
+  var TWIN_STOP = ['flat', 'apartment', 'london', 'floor', 'ground', 'first', 'second', 'third', 'basement', 'road', 'street', 'house', 'court', 'lane', 'avenue'];
+  function twinNums(a){ return (String(a || '').replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function(x){ return x.toUpperCase(); }); }
+  function twinWords(a){ return String(a || '').replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function(w){ return w.length >= 4 && TWIN_STOP.indexOf(w) === -1; }); }
+  function twinPc(a){ var m = POSTCODE_RE.exec(String(a || '')); return m ? (m[1] + m[2]).toUpperCase().replace(/\s+/g, '') : ''; }
+  function twinOf(a, b){
+    var pa = twinPc(a), pb = twinPc(b); if ((pa || pb) && pa && pb && pa !== pb) return false; if (!pa && !pb) return false;
+    var na = twinNums(a), nb = twinNums(b); if (!na.length || !nb.length) return false;
+    var sm = na.length <= nb.length ? na : nb, bg = sm === na ? nb : na;
+    if (!sm.every(function(n){ return bg.indexOf(n) !== -1; })) return false;
+    var wa = twinWords(a), wb = twinWords(b); return wa.some(function(w){ return wb.indexOf(w) !== -1; });
+  }
+  function propTwinRefresh(addr){
+    var box = $('propTwin'); if (!box) return;
+    if (!addr || staffMode) { box.innerHTML = ''; return; }
+    var tw = allPropsForList().filter(function(pr){ return pr.key !== openPropKey && twinOf(addr, pr.address); }).slice(0, 3);
+    box.innerHTML = tw.length ? '<div class="av-on-banner" style="background:#fff7e6;border-color:#f3d28b"><span class="av-on-ic">⚠️</span><div style="flex:1;min-width:0"><b>Is this the same property as…</b>' + tw.map(function(pr){
+      return '<div class="av-on-row">' + esc(pr.address) + ' <button type="button" class="linkish" data-twin-open="' + esc(pr.key) + '">Open ›</button> <button type="button" class="btn small primary" data-twin-merge="' + esc(pr.address) + '">Same property — join them</button></div>'; }).join('') +
+      '<div class="muted-note" style="margin:4px 0 0">Joining moves everything here (repairs, tenants, tenancies, key, certificates) onto that record, so the property shows once.</div></div></div>' : '';
+  }
+  document.addEventListener('click', function(e){
+    var o = e.target.closest('[data-twin-open]'); if (o) { openProperty(o.dataset.twinOpen); return; }
+    var b = e.target.closest('[data-twin-merge]'); if (!b) return;
+    var d = propertyJobs(); if (!d) return;
+    var to = b.dataset.twinMerge, from = d.property.address;
+    if (!confirm('Join these as one property?\n\n' + from + '\n→ ' + to + '\n\nEverything on the first moves to the second. If both have a landlord, the second one’s landlord is kept.')) return;
+    busy(b, true, 'Joining…');
+    api('POST', '/api/admin/properties/rename', { from: from, to: to }).then(function(r){
+      busy(b, false);
+      if (!r || !r.ok) { toast('Couldn’t join them (' + ((r && r.error) || 'error') + ')'); return; }
+      toast('✓ Joined — one property now');
+      openPropKey = propKey(to);
+      loadJobs().then(function(){ if (view === 'props') renderProperty(); });
+    });
+  });
   function avBannersRefresh(){
-    if ($('propDetail') && !$('propDetail').hidden) { var d = propertyJobs(); $('propAvBanner').innerHTML = d ? avBannerHtml([d.property.address]) : ''; }
+    if ($('propDetail') && !$('propDetail').hidden) { var d = propertyJobs(); $('propAvBanner').innerHTML = d ? avBannerHtml([d.property.address]) : ''; propTwinRefresh(d && d.property.address); propChargeNote(); }
     if ($('llDetail') && !$('llDetail').hidden) { var l = landlordById(openLlId); $('llAvBanner').innerHTML = l ? avBannerHtml(llProperties(l).map(function(x){ return x.address; })) : ''; }
     if ($('tcyAvBanner')) { var t = tcyDraft; $('tcyAvBanner').innerHTML = t && t.address && openTcyId !== 'new' ? avBannerHtml([t.address]) : ''; }
     var rc = $('tcyRentCard'); if (rc && !rc.dataset.wired) { rc.dataset.wired = 1; rc.addEventListener('click', rentCardClick); }
@@ -4564,6 +4615,12 @@
   var propRentFor = '';
   function propRentLoad(address){ rentCardLoad($('propRent'), address, null); }
   // The rent card (property page and tenancy page): each rent date — collected or not, landlord paid or not.
+  // What we do for the landlord, as a small coloured tag: Rent4Rent, Fully Managed, Rent Collection or Tenant Find.
+  function svcTag(service){
+    var sv = String(service || '');
+    var t = /rent\s*4\s*rent/i.test(sv) ? ['r4r', 'Rent4Rent'] : /manag/i.test(sv) ? ['man', 'Fully Managed'] : /collect/i.test(sv) ? ['col', 'Rent Collection'] : /find/i.test(sv) ? ['tf', 'Tenant Find'] : null;
+    return t ? '<span class="svc-tag svc-' + t[0] + '">' + t[1] + '</span> ' : '';
+  }
   function rentCardLoad(box, address, tid){
     if (!box) return; if (!meta.db || staffMode || !address) { box.hidden = true; return; }
     box.dataset.addr = address; box.dataset.tid = tid || '';
@@ -4579,8 +4636,8 @@
           var k = x.tenancy_id + '|' + x.from;
           return '<div class="rb-row rb-' + x.status + '" style="padding:8px 0"><div class="rb-day"><b>' + esc(rbDay(x.from).split(' ')[0]) + '</b><span>' + esc(rbDay(x.from).split(' ')[1] || '') + '</span></div>' +
             '<div class="rb-main"><div class="rb-money"><span>Rent <b>' + gbp(x.rent) + '</b></span><span class="rb-arrow">→</span><span>' + (x.to_landlord < 0 ? '<span class="rb-owes">landlord owes ' + gbp(-x.to_landlord) + '</span>' : 'landlord ' + gbp(x.paid ? x.paid.amount : x.to_landlord)) + '</span></div>' +
-            '<div class="rb-sub">' + (x.collected ? '✓ Collected ' + esc(fmtShort(x.collected.at).split(',')[0]) : x.status === 'overdue' ? '⚠️ Not collected yet' : x.status === 'today' ? 'Due today' : 'Not due yet') + ' · ' + (x.paid ? '✓ Landlord paid ' + esc(fmtShort(x.paid.at).split(',')[0]) + (x.paid.ref ? ' (' + esc(x.paid.ref) + ')' : '') : x.collected ? 'Landlord not paid yet' : '') + '</div></div>' +
-            '<div class="rb-act">' + (x.collected ? (x.collected.auto ? '' : '<button type="button" class="linkish" data-prop-uncollect="' + k + '">↩ Not paid — undo</button>') : x.status === 'movein' ? '<span class="muted-note" style="margin:0">Move-in money ' + gbp(x.movein.paid) + ' of ' + gbp(x.movein.due) + '</span>' : '<button type="button" class="btn small' + (x.status === 'upcoming' || x.status === 'tomorrow' ? '' : ' primary') + '" data-prop-collect="' + k + '" data-amt="' + x.rent + '">✓ Collected</button>') + '</div></div>';
+            '<div class="rb-sub">' + (tid ? '' : svcTag(x.service)) + (x.collected ? '✓ Collected ' + esc(fmtShort(x.collected.at).split(',')[0]) : x.status === 'overdue' ? '⚠️ Not collected yet' : x.status === 'today' ? 'Due today' : 'Not due yet') + ' · ' + (x.paid ? '✓ Landlord paid ' + esc(fmtShort(x.paid.at).split(',')[0]) + (x.paid.ref ? ' (' + esc(x.paid.ref) + ')' : '') : x.collected ? 'Landlord not paid yet' : '') + '</div></div>' +
+            '<div class="rb-act">' + (x.collected ? (x.collected.auto ? '' : '<button type="button" class="linkish" data-prop-uncollect="' + k + '">↩ Not paid — undo</button>') : x.status === 'movein' ? '<span class="muted-note" style="margin:0">Move-in money ' + gbp(x.movein.paid) + ' of ' + gbp(x.movein.due) + '</span>' : x.movein && x.movein.left <= 0.004 ? '<span class="muted-note" style="margin:0">Move-in money paid ✓</span>' : '<button type="button" class="btn small' + (x.status === 'upcoming' || x.status === 'tomorrow' ? '' : ' primary') + '" data-prop-collect="' + k + '" data-amt="' + x.rent + '">✓ Collected</button>') + '</div></div>';
         }).join('');
     });
   }
@@ -4616,7 +4673,7 @@
       keyTile(d.property.address) + licenceTile(d.property.address) +
       (function(){ var t = propTenancy(d.property.key); return '<div class="tile' + (t.k === 'none' ? ' alert has' : t.k === 'ending' ? ' warnish' : ' good') + '"><div class="k">Tenancy</div><div class="v" style="font-size:1rem">' + (t.k === 'none' ? 'None on file' : esc(t.text)) + '</div>' + (t.k === 'none' ? '<button type="button" class="btn small primary" id="propAddTerms" style="margin-top:6px">📄 Add Terms of Let</button><div class="drop-hint" style="margin-top:4px">or drag &amp; drop it onto this page</div>' : '') + '</div>'; })();
     bindKeyTile(d.property.address); bindLicenceTile(d.property.address);
-    $('propAvBanner').innerHTML = avBannerHtml([d.property.address]);
+    $('propAvBanner').innerHTML = avBannerHtml([d.property.address]); propTwinRefresh(d.property.address); propChargeNote();
     propRentLoad(d.property.address);
     // This property's invoices: what it has cost the landlord, and what's still owed.
     (function(){
@@ -4634,10 +4691,14 @@
     (function(address){
       var key = propKey(address), list = tenancies.filter(function(t){ return t.property_key === key; });
       $('propTcy').innerHTML = '<h3>Tenancies<span style="flex:1"></span><button type="button" class="btn small primary" id="propTcyNew">+ New tenancy</button></h3>' +
-        (list.length ? list.map(function(t){ var dd = t.data || {}; return '<button type="button" class="tcy-row" data-tcy="' + t.id + '" style="padding:10px 4px"><div><div style="font-weight:600">' + esc(joinAnd(tcyNames(dd.tenants)) || 'Tenancy') + '</div><div class="prop-sub">' + esc(tcyStatus(dd)) + '</div></div><div class="num">' + esc(gbp(num(dd.rent_pcm))) + '<small>per month</small></div><div class="when"></div><span class="chev">›</span></button>'; }).join('')
+        (list.length ? list.map(function(t){ var dd = t.data || {}; return '<button type="button" class="tcy-row" data-tcy="' + t.id + '" style="padding:10px 4px"><div><div style="font-weight:600">' + esc(joinAnd(tcyNames(dd.tenants)) || 'Tenancy') + '</div><div class="prop-sub">' + svcTag(dd.service) + esc(tcyStatus(dd)) + '</div></div><div class="num">' + esc(gbp(num(dd.rent_pcm))) + '<small>per month</small></div><div class="when"></div><span class="chev">›</span></button>'; }).join('')
           : '<p class="muted-note" style="margin:0">No tenancy recorded here yet.</p>');
       $('propTcyNew').addEventListener('click', function(){ openTenancy('new', { address: address }); });
       $('propTcy').querySelectorAll('[data-tcy]').forEach(function(b){ b.addEventListener('click', function(){ openTenancy(Number(b.dataset.tcy)); }); });
+      // At the top: the tenancy here (newest first) — what we do for the landlord, and straight into it.
+      var top = list.slice().sort(function(a, b){ return String((b.data || {}).start_date || '9') .localeCompare(String((a.data || {}).start_date || '9')); }).slice(0, 2);
+      $('propTcyQuick').innerHTML = top.map(function(t){ var dd = t.data || {};
+        return '<div class="prop-tcyq"><span style="font-size:1.2rem">📄</span><div class="q-tx"><b>Tenancy</b> ' + svcTag(dd.service) + '<br>' + esc(joinAnd(tcyNames(dd.tenants)) || 'Tenancy') + ' · ' + esc(gbp(num(dd.rent_pcm))) + ' pm · ' + esc(tcyStatus(dd)) + '</div><button type="button" class="btn small primary" data-tcy-open="' + t.id + '">Open tenancy ›</button></div>'; }).join('');
     })(d.property.address);
     renderPropLandlord(d.property);
     renderPropTenants(d.property);
@@ -6089,7 +6150,7 @@
       if ((d.updates || []).some(function(u){ return u.kind === 'contractor_note' && !u.seen_at; })) {
         api('POST', '/api/admin/jobs/' + id + '/notes-seen', {}).then(function(){
           jobs.forEach(function(x){ if (x.id === id) x.unread_notes = 0; });
-          renderNoteAlerts(); render();
+          renderNoteAlerts(); renderChargeBanner(); render();
         });
       }
       $('scrim').hidden = false;
@@ -9156,7 +9217,23 @@
   });
 
   // ---------- Quick search (Ctrl+K / Cmd+K, or "/") ----------
-  var cmdkItems = [], cmdkIndex = 0;
+  var cmdkItems = [], cmdkIndex = 0, cmdkIdx = null, cmdkTimer = null;
+  // Everything searchable, worked out once when the box opens (not on every key press).
+  function cmdkIndexBuild(){
+    var J = function(a){ return psNorm(a.join(' | ')); };
+    return {
+      jobs: jobs.map(function(j){ return { o: j, h: J([j.ref, j.property_address, j.tenant_name, j.tenant_email, j.assigned_to, issueOf(j), j.description, j.status]), ph: String(j.tenant_phone || '').replace(/\D/g, ''), pk: propKey(j.property_address) || '' }; }),
+      tenants: tenantRecs.map(function(t){ var pp = tenantProps(t), ad = pp.map(function(x){ return x.address; }); return { o: { key: t.id, tenant_name: t.name, tenant_phone: t.phone, property_address: ad[0] }, h: J([t.name, t.email].concat(ad)), ph: String(t.phone || '').replace(/\D/g, '') }; }),
+      props: allPropsForList().map(function(pr){ var o = psItem(pr.jobs.length ? pr.address : (knownFullAddress(pr.key) || pr.address), '', 0); o.pr = pr; return o; }),
+      tcs: tenancies.map(function(t){ var d = t.data || {}; return { o: t, h: J([d.address || t.address, joinAnd(tcyNames(d.tenants)), (d.landlord || {}).name]) }; }),
+      avs: (avItems || []).map(function(x){ return { o: x, h: J([x.address, x.landlord, x.tags, x.key_no ? 'key ' + x.key_no : '']) }; }),
+      ofs: (offers || []).map(function(o){ return { o: o, h: J([o.lead_name, o.property_address]) }; }),
+      ivs: (allInvoices || []).map(function(i){ return { o: i, h: J([i.number, i.property_address, i.title]) }; }),
+      crs: (certs || []).map(function(c){ return { o: c, h: J([c.address, c.type]) }; }),
+      lls: landlords.map(function(l){ var pp = llProperties(l); return { o: l, n: pp.length, h: J([l.name, l.email, l.phone].concat(pp.map(function(x){ return x.address; }))), ph: String(l.phone || '').replace(/\D/g, '') }; }),
+      cs: contractors.map(function(c){ return { o: c, h: J([c.name, c.trade, c.phone]), ph: String(c.phone || '').replace(/\D/g, '') }; })
+    };
+  }
   var IC = {
     job: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg>',
     home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/></svg>',
@@ -9166,7 +9243,9 @@
     if ($('appView').hidden) return;
     $('cmdk').hidden = false;
     $('cmdkInput').value = '';
+    cmdkIdx = null;
     renderCmdk();
+    setTimeout(function(){ if (!cmdkIdx && !$('cmdk').hidden) cmdkIdx = cmdkIndexBuild(); }, 30);   // ready before the first letter
     setTimeout(function(){ $('cmdkInput').focus(); }, 0);
   }
   function closeCmdk(){ $('cmdk').hidden = true; }
@@ -9175,7 +9254,10 @@
     // Every word typed, anywhere, ignoring commas and capitals: "12 sample" finds "12, Sample Road".
     var toks = psNorm(raw).split(' ').filter(Boolean);
     var hit = function(hay){ var h = psNorm(hay); return toks.length > 0 && toks.every(function(t){ return h.indexOf(t) !== -1; }); };
-    var phoneHit = function(ph){ return digits.length >= 4 && String(ph || '').replace(/\D/g, '').indexOf(digits) !== -1; };
+    var hitN = function(h){ return toks.length > 0 && toks.every(function(t){ return h.indexOf(t) !== -1; }); };
+    var phN = function(ph){ return digits.length >= 4 && ph.indexOf(digits) !== -1; };
+    var X = raw ? (cmdkIdx || (cmdkIdx = cmdkIndexBuild())) : null;
+    var pick = function(list, n, f){ var out = []; for (var i = 0; i < list.length && out.length < n; i++) if (f(list[i])) out.push(list[i].o); return out; };
     var sections = [];
     var actions = [
       { t: 'New job', s: 'Add a repair by hand', ic: IC.go, run: function(){ $('newJobBtn').click(); } },
@@ -9189,54 +9271,47 @@
       { t: 'Ask Fixflow', s: 'Speak or type an instruction, e.g. add a gas safety', ic: IC.go, run: function(){ openAsk('say'); } },
       { t: 'Jobs from an email', s: 'Paste a tenant’s email and let AI organise it into jobs', ic: IC.go, run: function(){ openAsk('email'); } }
     ].filter(function(a){ return !raw || hit(a.t + ' ' + a.s); });
-    var js = (raw ? jobs.filter(function(j){
-      return hit([j.ref, j.property_address, j.tenant_name, j.tenant_email, j.assigned_to, issueOf(j), j.description, j.status].join(' | ')) ||
-        (digits.length >= 4 && String(j.tenant_phone || '').replace(/\D/g, '').indexOf(digits) !== -1) ||
-        (pk && propKey(j.property_address).indexOf(pk) !== -1);
-    }) : jobs.filter(isOpen).sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })).slice(0, raw ? 7 : 5);
+    var js = (raw ? pick(X.jobs, 7, function(r){ return hitN(r.h) || phN(r.ph) || (pk && r.pk.indexOf(pk) !== -1); }) : jobs.filter(isOpen).sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })).slice(0, raw ? 7 : 5);
     if (js.length) sections.push({ h: raw ? 'Jobs' : 'Recent open jobs', items: js.map(function(j){
       return { t: j.ref + ' · ' + (j.property_address || 'No address'), s: [issueOf(j), j.tenant_name, j.status].filter(Boolean).join(' · '), ic: IC.job, run: function(){ openJob(j.id); } };
     }) });
     if (raw) {
-      var ts = tenantRecs.map(function(t){ var pp = tenantProps(t); return { key: t.id, tenant_name: t.name, tenant_phone: t.phone, tenant_email: t.email, addresses: pp.map(function(x){ return x.address; }), property_address: (pp[0] || {}).address }; }).filter(function(t){
-        return hit([t.tenant_name, t.tenant_email].concat(t.addresses).join(' | ')) ||
-          (digits.length >= 4 && String(t.tenant_phone || '').replace(/\D/g, '').indexOf(digits) !== -1);
-      }).slice(0, 5);
+      var ts = pick(X.tenants, 5, function(r){ return hitN(r.h) || phN(r.ph); });
       if (ts.length) sections.push({ h: 'Tenants', items: ts.map(function(t){
         return { t: t.tenant_name || 'No name', s: [t.tenant_phone, t.property_address].filter(Boolean).join(' · '), av: t.tenant_name || '?', run: function(){ closeDrawer(); openTenant(t.key); } };
       }) });
       // Every property we know (jobs, tenancies, tenants, landlords, certificates), by door number, street or postcode.
-      var ps = psMatch(raw, allPropsForList().map(function(pr){ var o = psItem(pr.jobs.length ? pr.address : (knownFullAddress(pr.key) || pr.address), '', 0); o.pr = pr; return o; })).slice(0, 6);
+      var ps = psMatch(raw, X.props).slice(0, 6);
       if (ps.length) sections.push({ h: 'Properties', items: ps.map(function(o){
         var pr = o.pr, tn = tenantsAtProperty(o.address).map(function(t){ return t.name; }).filter(Boolean).slice(0, 2).join(', ');
         return { t: o.address, s: [tn, pr.jobs.length ? pr.jobs.length + ' repair' + (pr.jobs.length === 1 ? '' : 's') + ' · ' + pr.jobs.filter(isOpen).length + ' open' : 'no repairs yet'].filter(Boolean).join(' · '), ic: IC.home, run: function(){ closeDrawer(); openProperty(pr.key); } };
       }) });
-      var tcs = tenancies.filter(function(t){ var d = t.data || {}; return hit([d.address || t.address, joinAnd(tcyNames(d.tenants)), (d.landlord || {}).name].join(' | ')); }).slice(0, 4);
+      var tcs = pick(X.tcs, 4, function(r){ return hitN(r.h); });
       if (tcs.length) sections.push({ h: 'Tenancies', items: tcs.map(function(t){ var d = t.data || {};
         return { t: (d.address || t.address || 'Tenancy'), s: [joinAnd(tcyNames(d.tenants)), tcyStatus(d)].filter(Boolean).join(' · '), ic: IC.home, run: function(){ closeDrawer(); openTenancy(t.id); } };
       }) });
-      var avs = (avItems || []).filter(function(x){ return hit([x.address, x.landlord, x.tags, x.key_no ? 'key ' + x.key_no : ''].join(' | ')); }).sort(function(a, b){ return (b.status === 'available') - (a.status === 'available'); }).slice(0, 4);
+      var avs = X.avs.filter(function(r){ return hitN(r.h); }).map(function(r){ return r.o; }).sort(function(a, b){ return (b.status === 'available') - (a.status === 'available'); }).slice(0, 4);
       if (avs.length) sections.push({ h: 'Available list', items: avs.map(function(x){
         return { t: x.address, s: [x.status === 'available' ? 'Available' : x.status === 'let' ? 'Let' : 'Withdrawn', x.rent_pcm ? gbp(Number(x.rent_pcm)).replace(/\.00$/, '') + ' pcm' : '', x.key_no ? 'key ' + x.key_no : '', x.landlord].filter(Boolean).join(' · '), ic: IC.home, run: function(){ closeDrawer(); showView('avail'); avFlag = x.status === 'available' ? '' : 'let'; document.querySelectorAll('#avBeds [data-avf]').forEach(function(f){ f.classList.toggle('on', f.dataset.avf === avFlag); }); $('avQ').value = x.address; renderAvail(); } };
       }) });
-      var ofs = (offers || []).filter(function(o){ return hit([o.lead_name, o.property_address].join(' | ')); }).slice(0, 4);
+      var ofs = pick(X.ofs, 4, function(r){ return hitN(r.h); });
       if (ofs.length) sections.push({ h: 'Offers', items: ofs.map(function(o){
         return { t: (o.lead_name || 'Offer') + ' · ' + (o.property_address || ''), s: [({ new: 'To decide', accepted: 'Accepted', rejected: 'Rejected', withdrawn: 'Withdrawn' })[o.status] || o.status, o.offer_pw ? gbp(Number(o.offer_pw)) + ' pw' : '', fmtShort(o.created_at)].filter(Boolean).join(' · '), av: o.lead_name || '?', run: function(){ closeDrawer(); offTab = 'all'; offFocus = o.id; showView('offers'); setTimeout(function(){ var c = document.querySelector('#offList [data-off="' + o.id + '"]'); if (c) { c.querySelectorAll('details').forEach(function(d, i){ if (!i) d.open = true; }); c.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }, 350); } };
       }) });
-      var ivs = (allInvoices || []).filter(function(i){ return hit([i.number, i.property_address, i.title].join(' | ')); }).slice(0, 4);
+      var ivs = pick(X.ivs, 4, function(r){ return hitN(r.h); });
       if (ivs.length) sections.push({ h: 'Invoices', items: ivs.map(function(i){
         return { t: (i.number || 'Invoice') + ' · ' + (i.property_address || ''), s: [i.title, i.paid_at ? 'Paid' : 'Unpaid', fmtShort(i.created_at)].filter(Boolean).join(' · '), ic: IC.go, run: function(){ if (i.job_id) openJob(i.job_id); else window.open('/api/admin/invoices/' + i.id + '/view', '_blank', 'noopener'); } };
       }) });
-      var crs = (certs || []).filter(function(c){ return hit([c.address, c.type].join(' | ')); }).slice(0, 4);
+      var crs = pick(X.crs, 4, function(r){ return hitN(r.h); });
       if (crs.length) sections.push({ h: 'Certificates', items: crs.map(function(c){
         return { t: (c.type || 'Certificate') + ' · ' + (c.address || ''), s: c.expires_on ? 'Expires ' + longDay(String(c.expires_on).slice(0, 10)) : '', ic: IC.go, run: function(){ closeDrawer(); showView('certs'); $('certSearch').value = c.address || ''; $('certSearch').dispatchEvent(new Event('input', { bubbles: true })); } };
       }) });
-      var lls = landlords.filter(function(l){ return hit([l.name, l.email, l.phone].concat(llProperties(l).map(function(x){ return x.address; })).join(' | ')) || phoneHit(l.phone); }).slice(0, 4);
-      if (lls.length) sections.push({ h: 'Landlords', items: lls.map(function(l){
-        var n = llProperties(l).length;
+      var llr = X.lls.filter(function(r){ return hitN(r.h) || phN(r.ph); }).slice(0, 4), lls = llr.map(function(r){ return r.o; });
+      if (lls.length) sections.push({ h: 'Landlords', items: lls.map(function(l, i){
+        var n = llr[i].n;
         return { t: l.name, s: [l.phone, n + ' propert' + (n === 1 ? 'y' : 'ies')].filter(Boolean).join(' · '), av: l.name, run: function(){ closeDrawer(); openLandlord(l.id); } };
       }) });
-      var cs = contractors.filter(function(c){ return hit([c.name, c.trade, c.phone].join(' | ')) || phoneHit(c.phone); }).slice(0, 4);
+      var cs = pick(X.cs, 4, function(r){ return hitN(r.h) || phN(r.ph); });
       if (cs.length) sections.push({ h: 'Contractors', items: cs.map(function(c){
         return { t: c.name, s: [c.trade, c.phone].filter(Boolean).join(' · '), av: c.name, run: function(){ openContractor(c.name); } };
       }) });
@@ -9262,11 +9337,12 @@
     });
   }
   function runCmdk(n){ var it = cmdkItems[n]; if (!it) return; closeCmdk(); it.run(); }
-  $('cmdkInput').addEventListener('input', renderCmdk);
+  // Wait for a short pause in typing, so fast typing doesn't redo the search on every letter.
+  $('cmdkInput').addEventListener('input', function(){ clearTimeout(cmdkTimer); cmdkTimer = setTimeout(function(){ cmdkTimer = null; renderCmdk(); }, 90); });
   $('cmdkInput').addEventListener('keydown', function(e){
     if (e.key === 'ArrowDown') { e.preventDefault(); cmdkIndex = Math.min(cmdkItems.length - 1, cmdkIndex + 1); markCmdk(); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkIndex = Math.max(0, cmdkIndex - 1); markCmdk(); }
-    else if (e.key === 'Enter') { e.preventDefault(); runCmdk(cmdkIndex); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (cmdkTimer) { clearTimeout(cmdkTimer); cmdkTimer = null; renderCmdk(); } runCmdk(cmdkIndex); }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCmdk(); }
   });
   $('cmdkList').addEventListener('click', function(e){ var b = e.target.closest('.cmdk-item'); if (b) runCmdk(Number(b.dataset.n)); });
@@ -9365,6 +9441,89 @@
     }).join('') + (list.length > 5 ? '<div class="muted" style="margin-top:6px">…and ' + (list.length - 5) + ' more jobs</div>' : '');
   }
   $('noteBanner').addEventListener('click', function(e){ var b = e.target.closest('[data-job]'); if (b) openJob(Number(b.dataset.job)); });
+  // ---------- Repairs that may be missing a charge to the landlord ----------
+  // Every repair is checked: finished with nothing charged, charged less than the contractor cost, or
+  // looks finished (cost in, contractor paid, appointment gone by) but was never closed — so no charge
+  // is ever forgotten. "No charge needed" takes one off the list.
+  function jobGross(v, vat){ var n = num(v) || 0; return vat ? Math.round(n * 120) / 100 : n; }
+  function chargeChecks(){
+    var today = isoDay(new Date()), now = Date.now(), invJob = {};
+    (allInvoices || []).forEach(function(i){ if (i.job_id) invJob[i.job_id] = 1; });
+    var out = [];
+    jobs.forEach(function(j){
+      if (j.archived_at || j.status === 'Cancelled' || j.no_charge_at || j.landlord_handles) return;
+      var cost = jobGross(j.actual_cost, j.cost_vat) + (num(j.parts_cost) || 0);
+      var charge = jobGross(j.landlord_charge, j.charge_vat) + (num(j.parts_charge) || 0);
+      var charged = charge > 0 || !!j.invoiced_at || !!invJob[j.id];
+      if (j.status === 'Completed') {
+        if (!charged) out.push({ j: j, k: 'none', amt: cost, why: cost > 0 ? 'Finished — contractor cost ' + gbp(cost) + ', nothing charged to the landlord' : 'Finished — no charge added' });
+        else if (cost > 0 && charge > 0 && charge < cost) out.push({ j: j, k: 'low', amt: cost - charge, why: 'Charged ' + gbp(charge) + ' but the contractor cost ' + gbp(cost) });
+        return;
+      }
+      var signs = [];
+      if (num(j.actual_cost) > 0) signs.push('contractor cost ' + gbp(cost) + ' entered');
+      if (j.contractor_paid_at) signs.push('contractor paid');
+      if (j.part_done_by) signs.push('part done by ' + j.part_done_by);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(j.appointment_date || '')) && j.appointment_date <= addDaysIso(today, -3)) signs.push('appointment was ' + longDay(j.appointment_date));
+      var age = Math.floor((now - new Date(j.created_at).getTime()) / 86400000), quiet = j.last_update_at ? Math.floor((now - new Date(j.last_update_at).getTime()) / 86400000) : age;
+      if (!signs.length && (j.assigned_to || '').trim() && age >= 45 && quiet >= 30) signs.push('open ' + age + ' days, nothing new for ' + quiet + ' days');
+      if (signs.length && !charged) out.push({ j: j, k: 'open', amt: cost, why: 'Still open — ' + signs.join(', ') + '. Finished? Close it and add the charge' });
+    });
+    return out.sort(function(a, b){ return b.amt - a.amt || new Date(b.j.created_at) - new Date(a.j.created_at); });
+  }
+  function renderChargeBanner(){
+    var box = $('chargeBanner'); if (!box) return;
+    var list = staffMode ? [] : chargeChecks();
+    box.hidden = !list.length; if (!list.length) return;
+    var props = {}; list.forEach(function(x){ props[propKey(x.j.property_address) || '-'] = 1; });
+    var money = list.reduce(function(a, x){ return a + x.amt; }, 0), np = Object.keys(props).length;
+    box.innerHTML = '<span style="font-size:1.3rem">💷</span><div style="flex:1;min-width:200px"><strong>' + list.length + ' repair' + (list.length === 1 ? '' : 's') + ' may be missing a charge</strong>' +
+      '<span class="muted" style="font-size:.85rem">At ' + np + ' propert' + (np === 1 ? 'y' : 'ies') + (money ? ' · ' + gbp(money) + ' of contractor costs not passed on yet' : '') + '</span></div>' +
+      '<button type="button" class="btn small primary" data-charge-open>Check them ›</button>';
+  }
+  function chargeOpen(onlyKey){
+    var m = $('chargeModal');
+    if (!m) {
+      document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="chargeModal" hidden><div class="card" style="width:min(640px,100%);max-height:88vh;overflow:auto">' +
+        '<div style="display:flex;align-items:center;gap:8px"><h3 style="margin:0;flex:1">💷 Repairs that may be missing a charge</h3><button class="btn small" type="button" data-charge-close>Close</button></div>' +
+        '<p class="muted-note" style="margin:6px 0 0">Finished with no charge, charged less than the contractor cost, or looks finished but never closed. Open the job to add the charge — or say none is needed.</p>' +
+        '<div id="chargeList"></div></div></div>');
+      m = $('chargeModal');
+      m.addEventListener('click', function(e){
+        if (e.target === m || e.target.closest('[data-charge-close]')) { m.hidden = true; return; }
+        var o = e.target.closest('[data-charge-job]'); if (o) { m.hidden = true; openJob(Number(o.dataset.chargeJob)); return; }
+        var n = e.target.closest('[data-charge-none]'); if (!n) return;
+        var id = Number(n.dataset.chargeNone); busy(n, true, 'Saving…');
+        api('POST', '/api/admin/jobs/' + id + '/no-charge', {}).then(function(d){
+          if (!d || !d.ok) { busy(n, false); toast('Couldn’t save that'); return; }
+          jobs.forEach(function(j){ if (j.id === id) j.no_charge_at = new Date().toISOString(); });
+          toast('✓ Off the list — no charge needed'); chargeDraw(); renderChargeBanner(); if (view === 'props' && openPropKey) propChargeNote();
+        });
+      });
+    }
+    m.dataset.only = onlyKey || '';
+    chargeDraw(); m.hidden = false;
+  }
+  function chargeDraw(){
+    var m = $('chargeModal'), only = m.dataset.only;
+    var list = chargeChecks().filter(function(x){ return !only || propKey(x.j.property_address) === only; });
+    var groups = {}, order = [];
+    list.forEach(function(x){ var k = propKey(x.j.property_address) || '-'; if (!groups[k]) { groups[k] = { address: x.j.property_address || 'No address', items: [] }; order.push(k); } groups[k].items.push(x); });
+    $('chargeList').innerHTML = list.length ? order.map(function(k){ var g = groups[k];
+      return '<div class="cg-prop">' + esc(g.address) + '</div>' + g.items.map(function(x){ var j = x.j;
+        return '<div class="cg-row"><div class="cg-tx"><b>' + esc(j.ref) + '</b> · ' + esc(issueOf(j)) + (j.assigned_to ? ' · ' + esc(j.assigned_to) : '') + ' · ' + esc(fmtShort(j.completed_at || j.created_at).split(',')[0]) +
+          '<span class="cg-why">' + esc(x.why) + '</span></div>' +
+          '<button type="button" class="btn small primary" data-charge-job="' + j.id + '">Open job ›</button><button type="button" class="btn small ghost" data-charge-none="' + j.id + '">No charge needed</button></div>';
+      }).join(''); }).join('') : '<p class="muted-note" style="margin:16px 0">✓ Nothing missing — every repair has a charge or is marked as not needing one.</p>';
+  }
+  document.addEventListener('click', function(e){ var b = e.target.closest('[data-tcy-open]'); if (b) openTenancy(Number(b.dataset.tcyOpen)); });
+  document.addEventListener('click', function(e){ var b = e.target.closest('[data-charge-open]'); if (b) chargeOpen(b.dataset.chargeOpen || ''); });
+  // On the property page: this property's repairs that may be missing a charge.
+  function propChargeNote(){
+    var box = $('propCharge'); if (!box) return;
+    var n = staffMode ? [] : chargeChecks().filter(function(x){ return propKey(x.j.property_address) === openPropKey; });
+    box.innerHTML = n.length ? '<div class="note-banner charge-banner"><span style="font-size:1.2rem">💷</span><div style="flex:1;min-width:180px"><strong>' + n.length + ' repair' + (n.length === 1 ? '' : 's') + ' here may be missing a charge</strong></div><button type="button" class="btn small primary" data-charge-open="' + esc(openPropKey) + '">Check ›</button></div>' : '';
+  }
   // ---------- New invoice to a landlord (any charge, for a property) ----------
   var ni = null;
   function openNewInvoice(o){
@@ -12594,10 +12753,13 @@
     var more = function(k, lbl){ return '<button type="button" class="linkish rb-more" data-rb-det="' + k + '">' + (rbOpen[k] ? 'Hide details' : lbl || 'Details') + '</button>'; };
     // Collect: one line per rent — tick, date, address, amount, one button.
     var crow = function(x){
-      var k = x.tenancy_id + '|' + x.from, mi = x.status === 'movein';
+      var k = x.tenancy_id + '|' + x.from, mi = x.status === 'movein', pre = !x.collected && x.movein && x.movein.left <= 0.004;   // move-in money paid ahead of the start
+      if (pre) return '<div class="rb-line rb-' + x.status + '"><span class="rb-pickpad"></span>' + day(x) +
+        '<div class="rb-main"><div class="rb-addr">' + esc(shortAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + 'New tenancy · move-in money paid ✓ · rent due ' + esc(rbDay(x.from)) + ' · ' + more(k) + '</div>' + details(x, k) + '</div>' +
+        '<div class="rb-amt">' + gbp(x.rent) + '<small>due ' + esc(rbDay(x.from)) + '</small></div><div class="rb-btn"><span class="muted-note" style="margin:0;font-size:.78rem">Landlord payment comes up on ' + esc(rbDay(x.from)) + '</span></div></div>';
       return '<div class="rb-line rb-' + x.status + '">' + (mi ? '<span class="rb-pickpad"></span>' : '<input type="checkbox" class="rb-pick" data-rb-cpick="' + k + '"' + (rbSelC[k] ? ' checked' : '') + ' aria-label="Select">') + day(x) +
         '<div class="rb-main"><div class="rb-addr">' + esc(shortAddr(x.address)) + '</div>' +
-          '<div class="rb-sub">' + (/rent\s*4\s*rent/i.test(x.service || '') ? '<span class="rb-r4r">Rent4Rent</span> ' : '') + (mi ? 'New tenancy · move-in money <b>' + gbp(x.movein.paid) + '</b> of ' + gbp(x.movein.due) + ' paid' : x.status === 'overdue' ? '<span class="rb-late">' + Math.round((parseDay(today) - parseDay(x.from)) / 86400000) + ' days late</span>' : esc(x.tenants[0] || x.landlord || '')) + ' · ' + more(k) + '</div>' + details(x, k) + '</div>' +
+          '<div class="rb-sub">' + svcTag(x.service) + (mi ? 'New tenancy · move-in money <b>' + gbp(x.movein.paid) + '</b> of ' + gbp(x.movein.due) + ' paid' : x.status === 'overdue' ? '<span class="rb-late">' + Math.round((parseDay(today) - parseDay(x.from)) / 86400000) + ' days late</span>' : esc(x.tenants[0] || x.landlord || '')) + ' · ' + more(k) + '</div>' + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(mi ? x.movein.left : x.rent) + (mi ? '<small>still to pay</small>' : '') + '</div>' +
         '<div class="rb-btn">' + (mi ? '<button type="button" class="btn small" data-rb-open="' + x.tenancy_id + '">Record payment</button>' : '<button type="button" class="btn small primary" data-rb-collect="' + k + '">Collected</button>') + '</div></div>';
     };

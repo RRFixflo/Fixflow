@@ -204,6 +204,8 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS photo_token TEXT;
 -- VAT on top of the contractor's price / our charge to the landlord (the figures are before VAT).
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS cost_vat BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS charge_vat BOOLEAN NOT NULL DEFAULT false;
+-- "No charge needed" on a job (so it leaves the missing-charge check).
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS no_charge_at TIMESTAMPTZ;
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_photo_token_idx ON jobs (photo_token);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS track_token TEXT;
 CREATE TABLE IF NOT EXISTS job_parts (
@@ -873,11 +875,29 @@ function sameHomeTop(a, b) {
   if (propKey(a) && propKey(a) === propKey(b)) return true;
   const pa = POSTCODE_RE.exec(String(a || '')), pb = POSTCODE_RE.exec(String(b || ''));
   if (!pa || !pb || (pa[1] + pa[2]).toUpperCase() !== (pb[1] + pb[2]).toUpperCase()) return false;
-  const nums = function (s) { return (String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }).join(' '); };
+  // Same numbers in any order ("Flat 3, 12 X Road" and "12 X Road Flat 3").
+  const nums = function (s) { return (String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }).sort().join(' '); };
   if (!nums(a) || nums(a) !== nums(b)) return false;
   const words = function (s) { return String(s).replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 4 && HOME_STOP.indexOf(w) === -1; }); };
   const aw = words(a), bw = words(b);
   return !aw.length || !bw.length || aw.some(function (w) { return bw.indexOf(w) !== -1; });
+}
+// Nearly certain: same full postcode, one address's door numbers all in the other's ("Flat 5, Windsor
+// Court" and "Flat 5 Windsor Court, 23 Sample Road"), a building / street name in common, and both
+// say "flat" (or neither) — so a whole house is never joined with one of its flats.
+function sameHomeLoose(a, b) {
+  if (sameHomeTop(a, b)) return true;
+  const pa = POSTCODE_RE.exec(String(a || '')), pb = POSTCODE_RE.exec(String(b || ''));
+  if (!pa || !pb || (pa[1] + pa[2]).toUpperCase() !== (pb[1] + pb[2]).toUpperCase()) return false;
+  const flat = function (s) { return /\b(flat|apartment|apt|unit|room)\b/i.test(s); };
+  if (flat(a) !== flat(b)) return false;
+  const nums = function (s) { return (String(s).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }); };
+  const na = nums(a), nb = nums(b); if (!na.length || !nb.length) return false;
+  const sm = na.length <= nb.length ? na : nb, bg = sm === na ? nb : na;
+  if (!sm.every(function (n) { return bg.indexOf(n) !== -1; })) return false;
+  const words = function (s) { return String(s).replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 4 && HOME_STOP.indexOf(w) === -1; }); };
+  const aw = words(a), bw = words(b);
+  return aw.length > 0 && bw.length > 0 && aw.some(function (w) { return bw.indexOf(w) !== -1; });
 }
 // The property record an address belongs to — an existing one for the same home if there is one —
 // so links (landlord, key…) never start a second copy of a property we already have.
@@ -1125,7 +1145,8 @@ const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenan
   (SELECT coalesce(sum(jp.cost), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_cost,
   (SELECT coalesce(sum(jp.charge), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_charge,
   (SELECT count(*)::int FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_count,
-  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total, contractor_paid_at, landlord_handles, landlord_contractor`;
+  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total, contractor_paid_at, landlord_handles, landlord_contractor, no_charge_at,
+  (SELECT max(u.created_at) FROM job_updates u WHERE u.job_id = jobs.id) AS last_update_at`;
 
 function str(v, max) {
   if (v === undefined || v === null) return null;
@@ -2415,6 +2436,14 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true, jobs: r.rows.map(function (j) { j.ref = refFor(j.id); return j; }) });
   }));
 
+  // A job that needs no charge to the landlord (warranty, our cost, tenant paid…): out of the missing-charge check.
+  app.post('/api/admin/jobs/:id/no-charge', withDb(async function (p, req, res) {
+    const id = jobId(req), undo = !!(req.body || {}).undo;
+    const r = await p.query('UPDATE jobs SET no_charge_at = ' + (undo ? 'NULL' : 'now()') + ', updated_at = now() WHERE id = $1 RETURNING id', [id]);
+    if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', undo ? 'Back on the missing-charge check' : 'Marked: no charge to the landlord needed']);
+    res.json({ ok: true });
+  }));
   app.get('/api/admin/jobs/:id', withDb(async function (p, req, res) {
     const id = jobId(req);
     const r = await p.query('SELECT *, (pdf IS NOT NULL) AS has_pdf FROM jobs WHERE id = $1', [id]);
@@ -6479,14 +6508,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
     for (const pc of Object.keys(byPc)) {
       const list = byPc[pc]; if (list.length < 2) continue;
       for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
-        const a = list[i], b = list[j]; if (!a || !b || a.key === b.key || !sameHomeStrict(a.address, b.address)) continue;
+        const a = list[i], b = list[j]; if (!a || !b || a.key === b.key) continue;
+        // Exactly the same home, or nearly certain and neither could be another home in this postcode.
+        const loneLoose = function (x) { return list.filter(function (z) { return z && z !== x && sameHomeLoose(x.address, z.address); }).length === 1; };
+        if (!sameHomeStrict(a.address, b.address) && !(sameHomeLoose(a.address, b.address) && loneLoose(a) && loneLoose(b))) continue;
         const jobsAt = function (k) { return p.query('SELECT property_address FROM jobs WHERE archived_at IS NULL AND property_address IS NOT NULL').then(function (r) { return r.rows.filter(function (x) { return propKey(x.property_address) === k; }).length; }); };
         const ua = (await used(a.key)).o + await jobsAt(a.key), ub = (await used(b.key)).o + await jobsAt(b.key);
         // Different landlords on the two records: not safe to join — leave for a person to decide.
         const la = (await p.query('SELECT landlord_id FROM property_landlords WHERE property_key = $1', [a.key])).rows[0], lb = (await p.query('SELECT landlord_id FROM property_landlords WHERE property_key = $1', [b.key])).rows[0];
         if (la && lb && la.landlord_id !== lb.landlord_id) continue;
         // Keep the one with more on it (jobs, tenants, tenancies…); the other's things move across.
-        const keep = ua > ub ? a : ub > ua ? b : (a.address.length <= b.address.length ? a : b), drop = keep === a ? b : a;
+        const loose = !sameHomeStrict(a.address, b.address);
+        // A tie: the shorter wording for the same home written twice — or, when one has more of the address (a street number), that fuller one.
+        const keep = ua > ub ? a : ub > ua ? b : ((loose ? a.address.length >= b.address.length : a.address.length <= b.address.length) ? a : b), drop = keep === a ? b : a;
         // The kept record takes the key number / notes if it has none.
         await p.query('UPDATE property_info k SET key_number = coalesce(k.key_number, d.key_number), key_notes = coalesce(k.key_notes, d.key_notes), licence = coalesce(k.licence, d.licence) FROM property_info d WHERE k.property_key = $1 AND d.property_key = $2', [keep.key, drop.key]);
         await renameProperty(p, drop.key, keep.address);
@@ -8827,7 +8861,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
           const lastAt = (d.receipts || []).map(function (x) { return x && x.date; }).filter(Boolean).sort().pop() || null;
           movein = { due: due, paid: got, left: r2(due - got), last: lastAt };
         }
-        const autoIn = movein && movein.left <= 0.004 && !rcvd[from] ? { at: (movein.last ? movein.last + 'T12:00:00Z' : new Date().toISOString()), amount: movein.paid, auto: true } : null;
+        // Move-in money paid ahead of the start: it counts as that rent from the move-in day — not before
+        // (until then it's just the rent due on the start date, and nothing to pay the landlord yet).
+        const autoIn = movein && movein.left <= 0.004 && !rcvd[from] && from <= today ? { at: (movein.last ? movein.last + 'T12:00:00Z' : new Date().toISOString()), amount: movein.paid, auto: true } : null;
         const isIn = rcvd[from] || autoIn;
         const pend = isIn ? [] : await rentPendingInvoices(p, t, from);
         const pendTotal = r2(pend.reduce(function (a, x) { return a + x.total; }, 0));
@@ -8845,7 +8881,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           pending: pend, pending_total: pendTotal, to_landlord: toLl,
           collected: rcvd[from] || autoIn || null, paid: paid[from] || null, movein: movein,
           stmt: stm ? { sent: stm.sent || null, changed: stm.changed || null } : null,
-          status: isIn ? 'collected' : movein ? 'movein' : from < today ? 'overdue' : from === today ? 'today' : from === tomorrow ? 'tomorrow' : 'upcoming'
+          status: isIn ? 'collected' : movein && movein.left > 0.004 ? 'movein' : from < today ? 'overdue' : from === today ? 'today' : from === tomorrow ? 'tomorrow' : 'upcoming'
         });
       }
     }
