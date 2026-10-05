@@ -5705,7 +5705,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!d.address) return res.status(400).json({ ok: false, error: 'address-required' });
     // Kept from the saved tenancy: its move-in fees invoice and whether the landlord paid.
     const r = await p.query(`UPDATE tenancies SET property_key = $2, address = $3, start_date = $4,
-        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid', 'stmt_sent', data->'stmt_sent', 'month_costs', data->'month_costs', 'inventory_job_id', data->'inventory_job_id', 'tenant_changes', data->'tenant_changes', 'rent_rcvd', data->'rent_rcvd', 'll_paid', data->'ll_paid')), updated_at = now() WHERE id = $1 RETURNING id`,
+        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid', 'stmt_sent', data->'stmt_sent', 'month_costs', data->'month_costs', 'inventory_job_id', data->'inventory_job_id', 'tenant_changes', data->'tenant_changes', 'rent_rcvd', data->'rent_rcvd', 'll_paid', data->'ll_paid', 'rent_parts', data->'rent_parts', 'rent_reminders', data->'rent_reminders', 'pay_to', data->'pay_to')), updated_at = now() WHERE id = $1 RETURNING id`,
       [jobId(req), propKey(d.address), d.address, d.start_date, JSON.stringify(d)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await linkTenancyPeople(p, d);
@@ -8927,6 +8927,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
           bf: stm ? stm.bf : 0, income: stm ? stm.income : rent, deposit_ll: stm ? (stm.deposit || 0) : depLl, first_only: firstOnly,
           pending: pend, pending_total: pendTotal, to_landlord: toLl,
           collected: rcvd[from] || autoIn || null, paid: paid[from] || null, movein: movein,
+          parts: (d.rent_parts || {})[from] || [], part_paid: r2(((d.rent_parts || {})[from] || []).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0)),
+          reminded: ((d.rent_reminders || {})[from] || []).slice(-1)[0] || null, emails: (d.tenants || []).map(function (x) { return x && x.email; }).filter(function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); }).length,
           stmt: stm ? { sent: stm.sent || null, changed: stm.changed || null } : null,
           status: isIn ? 'collected' : movein && movein.left > 0.004 ? 'movein' : from < today ? 'overdue' : from === today ? 'today' : from === tomorrow ? 'tomorrow' : 'upcoming'
         });
@@ -8995,15 +8997,27 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!t) return res.status(404).json({ ok: false, error: 'not-found' });
     const who = req.user ? req.user.name : 'Office', d = t.data || {}, rec = (d.rent_rcvd || {})[from];
     if (b.undo) {
-      if (!rec) return res.json({ ok: true });
+      if (!rec) { await p.query(`UPDATE tenancies SET data = data #- ARRAY['rent_parts', $2::text], updated_at = now() WHERE id = $1`, [id, from]); return res.json({ ok: true }); }
       const ids = (rec.invoice_ids || []).map(Number);
       for (const iid of ids) { const r = await p.query('UPDATE invoices SET paid_at = NULL WHERE id = $1 RETURNING job_id, tenancy_id, number', [iid]); if (r.rows[0]) await invoiceNote(p, r.rows[0], 'Invoice ' + r.rows[0].number + ' no longer recovered from the rent due ' + from + ' (rent marked not collected).', 'change'); }
-      await p.query(`UPDATE tenancies SET data = jsonb_set(data #- ARRAY['rent_rcvd', $2::text], '{month_costs}', coalesce((SELECT jsonb_agg(c) FROM jsonb_array_elements(coalesce(data->'month_costs', '[]'::jsonb)) c WHERE NOT ((c->>'invoice_id')::int = ANY($3::int[]))), '[]'::jsonb)),
+      await p.query(`UPDATE tenancies SET data = jsonb_set(data #- ARRAY['rent_rcvd', $2::text] #- ARRAY['rent_parts', $2::text], '{month_costs}', coalesce((SELECT jsonb_agg(c) FROM jsonb_array_elements(coalesce(data->'month_costs', '[]'::jsonb)) c WHERE NOT ((c->>'invoice_id')::int = ANY($3::int[]))), '[]'::jsonb)),
         log = log || $4::jsonb, updated_at = now() WHERE id = $1`, [id, from, ids, JSON.stringify([{ at: new Date().toISOString(), text: 'Rent due ' + certDay(from) + ' marked not collected (' + who + ')' }])]);
       return res.json({ ok: true });
     }
     if (rec) return res.json({ ok: true, already: true });
-    const amount = Number(String(b.amount == null ? '' : b.amount).replace(/[£,\s]/g, '')) || 0;
+    let amount = Number(String(b.amount == null ? '' : b.amount).replace(/[£,\s]/g, '')) || 0;
+    // Part payments (some tenants pay in parts, or split it between them): kept until they add up to the
+    // rent due; then the rent counts as collected (received on the last part's date).
+    const dueAmt = Number(b.due) || Number(d.rent_pcm) || 0, parts = ((d.rent_parts || {})[from] || []).slice();
+    const pd = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) && b.date <= londonDay() ? b.date : londonDay();
+    if (b.part || parts.length) {
+      if (amount > 0) parts.push({ amount: amount, date: pd, who: str(b.who, 120) || null, at: new Date().toISOString(), by: who });
+      const got = Math.round(parts.reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0) * 100) / 100;
+      await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_parts}', coalesce(data->'rent_parts', '{}'::jsonb) || jsonb_build_object($2::text, $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
+        [id, from, JSON.stringify(parts), JSON.stringify([{ at: new Date().toISOString(), text: 'Part payment ' + gbp(amount) + (b.who ? ' from ' + str(b.who, 120) : '') + ' towards the rent due ' + certDay(from) + ' — ' + gbp(got) + ' of ' + gbp(dueAmt) + ' paid (' + who + ')' }])]);
+      if (!(dueAmt > 0) || got < dueAmt - 0.004) return res.json({ ok: true, part: true, paid: got, left: Math.round((dueAmt - got) * 100) / 100 });
+      amount = got; b.date = parts.map(function (x) { return x.date; }).sort().pop();
+    }
     const pend = await rentPendingInvoices(p, t, from), ids = [];
     for (const i of pend) {
       const r = await p.query('UPDATE invoices SET paid_at = coalesce(paid_at, now()) WHERE id = $1 RETURNING job_id, tenancy_id', [i.id]);
@@ -9033,6 +9047,33 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query(`UPDATE tenancies SET data = CASE WHEN $2::text IS NULL THEN data - 'pay_to' ELSE jsonb_set(data, '{pay_to}', to_jsonb($2::text)) END, log = log || $3::jsonb, updated_at = now() WHERE id = $1`,
       [id, name, JSON.stringify([{ at: new Date().toISOString(), text: (name ? 'Landlord’s money now paid to ' + name : 'Landlord’s money paid to the landlord personally') + ' (' + who + ')' }])]);
     res.json({ ok: true, landlord: !!ll });
+  }));
+  // Late rent: an email reminder to every tenant on the tenancy (replies come to the office).
+  app.post('/api/admin/tenancies/:id/rent-reminder', withDb(async function (p, req, res) {
+    if (!canEmail() || !sendEmail) return res.status(503).json({ ok: false, error: 'email-not-configured' });
+    const b = req.body || {}, id = jobId(req), from = String(b.from || '').slice(0, 10), who = req.user ? req.user.name : 'Office';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return res.status(400).json({ ok: false, error: 'from' });
+    const t = (await p.query('SELECT id, address, data FROM tenancies WHERE id = $1', [id])).rows[0];
+    if (!t) return res.status(404).json({ ok: false, error: 'not-found' });
+    const d = t.data || {}, ok = function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); };
+    const to = (d.tenants || []).map(function (x) { return x && String(x.email || '').trim(); }).filter(ok).filter(function (e, i, a) { return a.indexOf(e) === i; });
+    if (!to.length) return res.status(400).json({ ok: false, error: 'no-email' });
+    if (((d.rent_rcvd || {})[from])) return res.json({ ok: true, already: true });
+    const due = Number(b.due) || Number(d.rent_pcm) || 0, got = ((d.rent_parts || {})[from] || []).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0), left = Math.round((due - got) * 100) / 100;
+    const names = (d.tenants || []).map(function (x) { return x && String(x.name || '').trim().split(/\s+/)[0]; }).filter(Boolean);
+    const hello = names.length ? 'Dear ' + (names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names.slice(-1) : names[0]) : 'Dear tenant';
+    const late = Math.max(0, Math.round((Date.parse(londonDay() + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 86400000));
+    const addr = d.address || t.address || 'your home';
+    const text = hello + ',\n\nThis is a friendly reminder that the rent for ' + addr + ' was due on ' + certDay(from) + (late ? ' (' + late + ' day' + (late === 1 ? '' : 's') + ' ago)' : '') + ' and we haven\u2019t received it in full yet.\n\n' +
+      'Rent due: ' + gbp(due) + (got > 0 ? '\nReceived so far: ' + gbp(got) + '\nStill to pay: ' + gbp(left) : '') + (d.pay_ref ? '\nPayment reference: ' + d.pay_ref : '') +
+      '\n\nPlease make the payment as soon as possible using your usual payment details' + (d.pay_ref ? ' and reference' : '') + '. If you share the rent, please each check your part has been sent. If you have already paid, please reply with the date and amount so we can match it \u2014 and thank you.\n\n' +
+      'If you\u2019re having difficulty paying, please get in touch with us straight away so we can help.\n\nKind regards,\nResidential Realtors\n0207 096 8131 \u00b7 info@residentialrealtors.co.uk';
+    const r = await sendEmail({ to: to, subject: 'Rent reminder \u2014 ' + addr.split(',').slice(0, 2).join(','), text: text, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors' });
+    if (r && r.ok === false) return res.status(502).json({ ok: false, error: 'send-failed' });
+    const row = { at: new Date().toISOString(), to: to.length, by: who };
+    await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_reminders}', coalesce(data->'rent_reminders', '{}'::jsonb) || jsonb_build_object($2::text, coalesce(data->'rent_reminders'->$2, '[]'::jsonb) || $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
+      [id, from, JSON.stringify([row]), JSON.stringify([{ at: row.at, text: 'Rent reminder emailed to ' + to.length + ' tenant' + (to.length === 1 ? '' : 's') + ' for the rent due ' + certDay(from) + ' (' + who + ')' }])]);
+    res.json({ ok: true, sent: to.length });
   }));
   // Who collects the rent on a tenancy (from the rent page: "we don't collect this any more").
   app.post('/api/admin/tenancies/:id/rent-by', withDb(async function (p, req, res) {

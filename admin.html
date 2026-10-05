@@ -1389,6 +1389,8 @@
   .rb-skh { margin: 14px 0 2px; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); } .rb-skh span { font-weight: 500; opacity: .7; }
   .rb-skrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line, #eef0f3); } .rb-skrow .rb-main { flex: 1; min-width: 0; }
   .rb-lllink { font: inherit; color: var(--brand, #2563eb); padding: 0; }
+  .rb-parts { font-size: .8rem; color: #175cd3; margin-top: 3px; }
+  .rb-reminded { font-size: .75rem; color: var(--ink-faint); }
   .rb-sknote { display: block; color: #9A5B00; font-size: .8rem; margin-top: 2px; }
   .rb-feesbtn { text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; }
   .rb-feesbtn em { font-style: normal; opacity: .6; }
@@ -4657,7 +4659,7 @@
           return '<div class="rb-row rb-' + x.status + '" style="padding:8px 0"><div class="rb-day"><b>' + esc(rbDay(x.from).split(' ')[0]) + '</b><span>' + esc(rbDay(x.from).split(' ')[1] || '') + '</span></div>' +
             '<div class="rb-main"><div class="rb-money"><span>Rent <b>' + gbp(x.rent) + '</b></span><span class="rb-arrow">→</span><span>' + (x.to_landlord < 0 ? '<span class="rb-owes">landlord owes ' + gbp(-x.to_landlord) + '</span>' : 'landlord ' + gbp(x.paid ? x.paid.amount : x.to_landlord)) + '</span></div>' +
             '<div class="rb-sub">' + (tid ? '' : svcTag(x.service)) + (x.collected ? '✓ Collected ' + esc(fmtShort(x.collected.at).split(',')[0]) : x.status === 'overdue' ? '⚠️ Not collected yet' : x.status === 'today' ? 'Due today' : 'Not due yet') + ' · ' + (x.paid ? '✓ Landlord paid ' + esc(fmtShort(x.paid.at).split(',')[0]) + (x.paid.ref ? ' (' + esc(x.paid.ref) + ')' : '') : x.collected ? 'Landlord not paid yet' : '') + '</div></div>' +
-            '<div class="rb-act">' + (x.collected ? (x.collected.auto ? '' : '<button type="button" class="linkish" data-prop-uncollect="' + k + '">↩ Not paid — undo</button>') : x.status === 'movein' ? '<span class="muted-note" style="margin:0">Move-in money ' + gbp(x.movein.paid) + ' of ' + gbp(x.movein.due) + '</span>' : x.movein && x.movein.left <= 0.004 ? '<span class="muted-note" style="margin:0">Move-in money paid ✓</span>' : '<button type="button" class="btn small' + (x.status === 'upcoming' || x.status === 'tomorrow' ? '' : ' primary') + '" data-prop-collect="' + k + '" data-amt="' + x.rent + '">✓ Collected</button>') + '</div></div>';
+            '<div class="rb-act">' + (x.collected ? (x.collected.auto ? '' : '<button type="button" class="linkish" data-prop-uncollect="' + k + '">↩ Not paid — undo</button>') : x.status === 'movein' ? '<span class="muted-note" style="margin:0">Move-in money ' + gbp(x.movein.paid) + ' of ' + gbp(x.movein.due) + '</span>' : x.movein && x.movein.left <= 0.004 ? '<span class="muted-note" style="margin:0">Move-in money paid ✓</span>' : (x.part_paid ? '<span class="rb-parts" style="margin-right:6px">' + gbp(x.part_paid) + ' paid</span>' : '') + '<button type="button" class="btn small' + (x.status === 'upcoming' || x.status === 'tomorrow' ? '' : ' primary') + '" data-prop-collect="' + k + '" data-amt="' + x.rent + '" data-left="' + (x.rent - (x.part_paid || 0)) + '">✓ ' + (x.part_paid ? 'More paid' : 'Collected') + '</button>') + '</div></div>';
         }).join('');
     });
   }
@@ -4673,9 +4675,11 @@
     if (e.target.closest('[data-prop-rentboard]')) { tcyMode = 'rent'; try { localStorage.setItem('rr_tcy_mode', 'rent'); } catch (er) {} $('tcyModes').querySelectorAll('[data-tmode]').forEach(function(x){ x.classList.toggle('on', x.dataset.tmode === 'rent'); }); openTcyId = null; tcyDraft = null; showView('tcy'); tcyShowList(); return; }
     var c = e.target.closest('[data-prop-collect]'); if (!c) return;
     var a = c.dataset.propCollect.split('|');
-    rentAsk({ title: 'Rent collected', sub: 'Rent due ' + longDay(a[1]), amount: c.dataset.amt }).then(function(r){ if (!r) return;
+    var due = Number(c.dataset.amt) || 0, left = Number(c.dataset.left || due) || 0;
+    rentAsk({ title: 'Rent received', sub: 'Rent due ' + longDay(a[1]) + ' · ' + gbp(due) + (left < due ? ' · ' + gbp(due - left) + ' paid already' : ''), amount: left, left: left }).then(function(r){ if (!r) return;
+      var amt = Number(String(r.amount).replace(/[£,\s]/g, '')) || 0;
       busy(c, true, 'Saving…');
-      api('POST', '/api/admin/tenancies/' + a[0] + '/rent-collected', { from: a[1], amount: r.amount, date: r.date }).then(function(d){ busy(c, false); if (!d || !d.ok) { toast('Couldn’t save that'); return; } toast('✓ Rent collected' + (d.invoices ? ' · ' + d.invoices + ' invoice' + (d.invoices === 1 ? '' : 's') + ' taken off it' : '')); reload(); });
+      api('POST', '/api/admin/tenancies/' + a[0] + '/rent-collected', { from: a[1], amount: amt, date: r.date, due: due, who: r.who, part: amt > 0 && amt < left - 0.004 }).then(function(d){ busy(c, false); if (!d || !d.ok) { toast('Couldn’t save that'); return; } toast(d.part ? '✓ Part payment saved · ' + gbp(d.left) + ' still to collect' : '✓ Rent collected' + (d.invoices ? ' · ' + d.invoices + ' invoice' + (d.invoices === 1 ? '' : 's') + ' taken off it' : '')); reload(); });
     });
   }
   function renderProperty(){
@@ -12799,11 +12803,14 @@
         '<div class="rb-amt">' + gbp(x.rent) + '<small>due ' + esc(rbDay(x.from)) + '</small></div><div class="rb-btn"><span class="muted-note" style="margin:0;font-size:.78rem">Landlord payment comes up on ' + esc(rbDay(x.from)) + '</span></div></div>';
       return '<div class="rb-line rb-' + x.status + '">' + (mi ? '<span class="rb-pickpad"></span>' : '<input type="checkbox" class="rb-pick" data-rb-cpick="' + k + '"' + (rbSelC[k] ? ' checked' : '') + ' aria-label="Select">') + day(x) +
         '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div>' +
-          '<div class="rb-sub">' + svcTag(x.service) + (mi ? 'New tenancy · move-in money <b>' + gbp(x.movein.paid) + '</b> of ' + gbp(x.movein.due) + ' paid' : x.status === 'overdue' ? '<span class="rb-late">' + Math.round((parseDay(today) - parseDay(x.from)) / 86400000) + ' days late</span>' : esc(x.tenants[0] || x.landlord || '')) + ' · ' + more(k) + '</div>' + details(x, k) + '</div>' +
-        '<div class="rb-amt">' + gbp(mi ? x.movein.left : x.rent) + (mi ? '<small>still to pay</small>' : '') + '</div>' +
+          '<div class="rb-sub">' + svcTag(x.service) + (mi ? 'New tenancy · move-in money <b>' + gbp(x.movein.paid) + '</b> of ' + gbp(x.movein.due) + ' paid' : x.status === 'overdue' ? '<span class="rb-late">' + Math.round((parseDay(today) - parseDay(x.from)) / 86400000) + ' days late</span>' : esc(x.tenants[0] || x.landlord || '')) + ' · ' + more(k) +
+          (x.status === 'overdue' || x.status === 'today' ? ' · ' + (x.emails ? '<button type="button" class="linkish" data-rb-remind="' + k + '">📧 Remind' + (x.reminded ? ' again' : '') + '</button>' : '<span class="muted">no tenant email</span>') + (x.reminded ? ' <span class="rb-reminded">reminded ' + esc(fmtShort(x.reminded.at).split(',')[0]) + '</span>' : '') : '') + '</div>' +
+          (x.part_paid ? '<div class="rb-parts">Part paid <b>' + gbp(x.part_paid) + '</b> of ' + gbp(x.rent) + ' — ' + x.parts.map(function(pp){ return gbp(pp.amount) + (pp.who ? ' ' + esc(pp.who.split(' ')[0]) : '') + ' ' + esc(rbDay(pp.date)); }).join(', ') + ' <button type="button" class="linkish" data-rb-unpart="' + k + '">clear</button></div>' : '') + details(x, k) + '</div>' +
+        '<div class="rb-amt">' + gbp(mi ? x.movein.left : x.rent - (x.part_paid || 0)) + (mi ? '<small>still to pay</small>' : x.part_paid ? '<small>left to pay</small>' : '') + '</div>' +
         '<div class="rb-btn">' + (mi ? '<button type="button" class="btn small" data-rb-open="' + x.tenancy_id + '">Record payment</button>' : '<button type="button" class="btn small primary" data-rb-collect="' + k + '">Collected</button>') + '</div></div>';
     };
-    var sect = function(title, list, note){ var pickable = list.filter(function(x){ return x.status !== 'movein'; }).length; return list.length ? '<div class="rb-sect"><div class="rb-sh">' + (pickable > 1 ? '<label class="rb-sall" title="Select all in this section"><input type="checkbox" data-rb-sall="c"> All</label>' : '') + title + '<span>' + list.length + ' · ' + gbp(list.reduce(function(a, x){ return a + (x.status === 'movein' ? x.movein.left : x.rent); }, 0)) + '</span></div>' + (note ? '<p class="rb-note">' + note + '</p>' : '') + list.map(crow).join('') + '</div>' : ''; };
+    var sect = function(title, list, note){ var pickable = list.filter(function(x){ return x.status !== 'movein'; }).length, lateN = list.filter(function(x){ return x.status === 'overdue' && x.emails; }).length;
+      return list.length ? '<div class="rb-sect"><div class="rb-sh">' + (pickable > 1 ? '<label class="rb-sall" title="Select all in this section"><input type="checkbox" data-rb-sall="c"> All</label>' : '') + title + (lateN > 1 ? ' <button type="button" class="btn small" data-rb-remindall style="margin-left:6px">📧 Email all ' + lateN + ' late</button>' : '') + '<span>' + list.length + ' · ' + gbp(list.reduce(function(a, x){ return a + (x.status === 'movein' ? x.movein.left : x.rent - (x.part_paid || 0)); }, 0)) + '</span></div>' + (note ? '<p class="rb-note">' + note + '</p>' : '') + list.map(crow).join('') + '</div>' : ''; };
     // Pay: per landlord — what to send, one button per property.
     var byLl = {}; toPay.forEach(function(x){ var n = x.landlord || 'No landlord saved'; (byLl[n] = byLl[n] || []).push(x); });
     var prow = function(x){
@@ -12922,7 +12929,9 @@
         document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="rentAskModal" hidden><div class="card" style="width:min(420px,100%);display:flex;flex-direction:column;gap:10px">' +
           '<h3 style="margin:0" id="raT"></h3><p class="muted-note" style="margin:0" id="raS"></p>' +
           '<label class="lbl" id="raAmtL">Amount received (£)<input class="inp" id="raAmt" inputmode="decimal"></label>' +
+          '<label class="lbl" id="raWhoL" hidden>Who paid it<select class="inp" id="raWho"></select></label>' +
           '<label class="lbl">Date received<input class="inp" id="raDate" type="date"></label>' +
+          '<p class="muted-note" id="raPart" style="margin:0" hidden></p>' +
           '<p class="err" id="raErr" style="margin:0"></p>' +
           '<div class="row-actions"><button class="btn" type="button" id="raNo">Cancel</button><button class="btn primary" type="button" id="raGo">✓ Save</button></div></div></div>');
         m = $('rentAskModal');
@@ -12931,13 +12940,19 @@
       $('raT').textContent = o.title; $('raS').textContent = o.sub || '';
       $('raAmtL').hidden = o.amount == null; $('raAmt').value = o.amount == null ? '' : String(o.amount);
       $('raDate').value = today; $('raDate').max = today; $('raErr').textContent = '';
+      // Split rent: say which tenant paid (optional). Less than what's due: kept as a part payment.
+      var who = o.who || []; $('raWhoL').hidden = who.length < 2;
+      $('raWho').innerHTML = '<option value="">All of them / not sure</option>' + who.map(function(n){ return '<option>' + esc(n) + '</option>'; }).join('');
+      var partHint = function(){ var a = Number(String($('raAmt').value).replace(/[£,\s]/g, '')) || 0, left = Number(o.left != null ? o.left : o.amount) || 0;
+        $('raPart').hidden = !(o.left != null && a > 0 && a < left - 0.004); $('raPart').textContent = 'Part payment — ' + gbp(left - a) + ' will still be to collect. It counts as collected once the full rent is in.'; };
+      $('raAmt').oninput = partHint; partHint();
       var close = function(r){ m.hidden = true; $('raGo').onclick = $('raNo').onclick = m.onclick = null; done(r); };
       $('raNo').onclick = function(){ close(null); };
       m.onclick = function(e){ if (e.target === m) close(null); };
       $('raGo').onclick = function(){
         var dt = $('raDate').value || today;
         if (dt > today) { $('raErr').textContent = 'The date can’t be in the future.'; return; }
-        close({ amount: o.amount == null ? null : $('raAmt').value, date: dt });
+        close({ amount: o.amount == null ? null : $('raAmt').value, date: dt, who: $('raWho').value });
       };
       m.hidden = false; setTimeout(function(){ (o.amount == null ? $('raDate') : $('raAmt')).focus(); }, 30);
     });
@@ -12957,11 +12972,28 @@
     var op = e.target.closest('[data-rb-open]'); if (op) { openTenancy(Number(op.dataset.rbOpen)); return; }
     var ma = e.target.closest('[data-rb-mailall]');
     if (ma) { var lst = rbData.items.filter(function(x){ return (x.landlord || 'No landlord saved') === ma.dataset.rbMailall && x.stmt && (!x.stmt.sent || x.stmt.changed); }).map(function(x){ var f = stmtFind(x.tenancy_id + '|' + x.from); return f && f.m ? f : null; }).filter(Boolean); if (lst.length) stmtEmailMany(lst); return; }
+    var rm = e.target.closest('[data-rb-remind]');
+    if (rm) { var xr = rbFind(rm.dataset.rbRemind); if (!xr) return;
+      if (!confirm('Email a rent reminder to ' + (xr.tenants.length > 1 ? 'all ' + xr.emails + ' tenants' : 'the tenant') + ' at ' + rbAddr(xr.address) + '?\n\nRent due ' + longDay(xr.from) + ': ' + gbp(xr.rent) + (xr.part_paid ? ' (' + gbp(xr.part_paid) + ' paid, ' + gbp(xr.rent - xr.part_paid) + ' still to pay)' : '') + '. Replies come to info@residentialrealtors.co.uk.')) return;
+      busy(rm, true, 'Sending…');
+      api('POST', '/api/admin/tenancies/' + xr.tenancy_id + '/rent-reminder', { from: xr.from, due: xr.rent }).then(function(d){ busy(rm, false); if (!d || !d.ok) { toast(d && d.error === 'email-not-configured' ? 'Email isn’t set up' : d && d.error === 'no-email' ? 'No email address for the tenants' : 'Couldn’t send it'); return; } toast('✓ Reminder emailed to ' + d.sent + ' tenant' + (d.sent === 1 ? '' : 's')); loadRentBoard(true); }); return; }
+    var ra = e.target.closest('[data-rb-remindall]');
+    if (ra) { var late = rbData.items.filter(function(x){ return !x.collected && x.status === 'overdue' && x.emails; });
+      if (!late.length || !confirm('Email a rent reminder to the tenants of all ' + late.length + ' late rents?\n\nEach email says the amount due (and anything already paid). Replies come to info@residentialrealtors.co.uk.')) return;
+      busy(ra, true, 'Sending…'); var sent = 0, failed = 0;
+      late.reduce(function(pr, x){ return pr.then(function(){ return api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-reminder', { from: x.from, due: x.rent }).then(function(d){ if (d && d.ok) sent++; else failed++; }); }); }, Promise.resolve())
+        .then(function(){ busy(ra, false); toast('✓ ' + sent + ' reminder' + (sent === 1 ? '' : 's') + ' emailed' + (failed ? ' · ' + failed + ' couldn’t be sent' : '')); loadRentBoard(true); }); return; }
+    var upx = e.target.closest('[data-rb-unpart]');
+    if (upx) { var xp2 = rbFind(upx.dataset.rbUnpart); if (!xp2 || !confirm('Clear the part payments recorded for this rent (' + gbp(xp2.part_paid) + ')?')) return;
+      api('POST', '/api/admin/tenancies/' + xp2.tenancy_id + '/rent-collected', { from: xp2.from, undo: true }).then(function(){ loadRentBoard(true); }); return; }
     var c = e.target.closest('[data-rb-collect]');
     if (c) { var x = rbFind(c.dataset.rbCollect); if (!x) return;
-      rentAsk({ title: 'Rent collected — ' + rbAddr(x.address), sub: 'Rent due ' + longDay(x.from) + (x.pending.length ? ' · ' + x.pending.length + ' landlord invoice' + (x.pending.length === 1 ? '' : 's') + ' (' + gbp(x.pending_total) + ') will be taken off it' : ''), amount: x.rent }).then(function(r){ if (!r) return;
+      var left = Math.round((x.rent - (x.part_paid || 0)) * 100) / 100;
+      rentAsk({ title: 'Rent received — ' + rbAddr(x.address), sub: 'Rent due ' + longDay(x.from) + ' · ' + gbp(x.rent) + (x.part_paid ? ' · ' + gbp(x.part_paid) + ' paid already' : '') + (x.pending.length ? ' · ' + x.pending.length + ' landlord invoice' + (x.pending.length === 1 ? '' : 's') + ' (' + gbp(x.pending_total) + ') will be taken off it' : ''), amount: left, left: left, who: x.tenants }).then(function(r){ if (!r) return;
+      var amt = Number(String(r.amount).replace(/[£,\s]/g, '')) || 0;
       busy(c, true, 'Saving…');
-      api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-collected', { from: x.from, amount: r.amount, date: r.date }).then(function(d){ busy(c, false); if (!d || !d.ok) { toast('Couldn’t save that'); return; } toast('✓ Rent collected' + (d.invoices ? ' · ' + d.invoices + ' invoice' + (d.invoices === 1 ? '' : 's') + ' taken off it' : '')); loadAllInvoices && loadAllInvoices(); loadStatements(); loadRentBoard(true); }); });
+      api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-collected', { from: x.from, amount: amt, date: r.date, due: x.rent, who: r.who, part: amt > 0 && amt < left - 0.004 }).then(function(d){ busy(c, false); if (!d || !d.ok) { toast('Couldn’t save that'); return; }
+        toast(d.part ? '✓ Part payment saved · ' + gbp(d.left) + ' still to collect' : '✓ Rent collected' + (d.invoices ? ' · ' + d.invoices + ' invoice' + (d.invoices === 1 ? '' : 's') + ' taken off it' : '')); loadAllInvoices && loadAllInvoices(); loadStatements(); loadRentBoard(true); }); });
       return; }
     var u = e.target.closest('[data-rb-uncollect]');
     if (u) { var xu = rbFind(u.dataset.rbUncollect); if (!xu || !confirm('The rent for ' + shortAddr(xu.address) + ' (due ' + longDay(xu.from) + ') wasn’t paid?\n\nIt goes back into Collect rent' + (xu.paid ? ', and the payment to the landlord is undone too' : '') + '. Any landlord invoices taken off it go back to unpaid.')) return;
