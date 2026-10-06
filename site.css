@@ -884,7 +884,6 @@ body.bk-lock { overflow: hidden; }
 .hc-price { margin-top: 8px; color: var(--soft); font-size: .95rem; min-height: 1.6em; } .hc-price b { color: var(--red); font-size: 1.5rem; font-weight: 800; }
 .hc-go { margin-top: auto; padding-top: 12px; font-weight: 800; color: var(--navy); } .hc-card:hover .hc-go { color: var(--red); }
 .hc-points { display: flex; flex-wrap: wrap; gap: 10px 26px; margin: 24px 0 0; padding: 0; list-style: none; color: #c9d3e1; font-weight: 600; font-size: .92rem; } .hc-points li::before { content: "✓"; color: #6ee7a8; font-weight: 800; margin-right: 8px; }
-.xcard:nth-child(3) { border-color: var(--navy); box-shadow: 0 0 0 1px var(--navy), 0 26px 50px -30px rgba(11,31,58,.5); } .xcard:nth-child(3)::before { transform: scaleX(1); }
 .xgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } @media (max-width: 1060px) { .xgrid { grid-template-columns: 1fr; max-width: 620px; margin-left: auto; margin-right: auto; } } @media (max-width: 560px) { .xgrid { grid-template-columns: 1fr; } }
 
 /* DIY inventory: example report */
@@ -968,3 +967,24 @@ html, body { overflow-x: clip; }
 }
 @media (prefers-reduced-motion: no-preference) { .hx-swipe i { display: inline-block; font-style: normal; animation: hxNudge 1.6s ease-in-out infinite; } @keyframes hxNudge { 50% { transform: translateX(5px); } } }
 @media (prefers-reduced-motion: reduce) { .hx-card, .hx-ic, .hx-go i { transition: none; } .hx-card:hover, .hx-card:hover .hx-ic, .hx-card:hover .hx-go i { transform: none; } }
+
+/* Home experts: DIY inventory poster card */
+.xcard.xdiy { padding: 0; gap: 0; border-color: transparent; box-shadow: 0 30px 60px -34px rgba(76,29,149,.55); }
+.xcard.xdiy::before { display: none; }
+.xd-top { position: relative; width: 100%; height: 190px; overflow: hidden; background: radial-gradient(260px 200px at 85% 0%, rgba(255,255,255,.25), transparent 70%), linear-gradient(135deg, #5b5bf7, #a64dff); }
+.xd-top::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,.16) 1px, transparent 1.5px); background-size: 16px 16px; }
+.xd-chip { position: absolute; left: 18px; top: 18px; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.4); color: #fff; font-size: .78rem; font-weight: 800; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.xd-phone { position: absolute; right: 22px; top: 26px; width: 158px; height: 210px; padding: 22px 9px 10px; border-radius: 24px; background: #fff; border: 5px solid #1d1b3a; box-shadow: 0 24px 40px -16px rgba(20,10,60,.6); transform: rotate(7deg); transition: transform .35s cubic-bezier(.2,.7,.2,1); }
+.xd-notch { position: absolute; left: 50%; top: 6px; width: 44px; height: 8px; margin-left: -22px; border-radius: 6px; background: #1d1b3a; }
+.xd-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; padding: 6px; margin-bottom: 6px; border-radius: 10px; background: #f3f1ff; font-size: .7rem; font-weight: 700; color: #2b2560; }
+.xd-row span { flex: 1; } .xd-row b { color: #16a34a; } .xd-row em { font-style: normal; color: #7c3aed; font-size: .62rem; }
+.xd-ph { width: 22px; height: 22px; border-radius: 6px; flex: none; } .xd-ph.a { background: linear-gradient(135deg, #fbbf24, #f97316); } .xd-ph.b { background: linear-gradient(135deg, #34d399, #0ea5e9); } .xd-ph.c { background: repeating-linear-gradient(45deg, #ddd6fe 0 4px, #ede9fe 4px 8px); border: 1.5px dashed #a78bfa; }
+.xd-price { position: absolute; left: 18px; bottom: 18px; padding: 8px 14px; border-radius: 14px; background: #fff; color: #6b6890; font-size: .85rem; font-weight: 600; box-shadow: 0 10px 22px -10px rgba(20,10,60,.5); transform: rotate(-4deg); }
+.xd-price b { color: #1d1b3a; font-size: 1.4rem; font-weight: 900; }
+.xcard.xdiy:hover .xd-phone { transform: rotate(2deg) translateY(-6px); }
+.xd-body { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; flex: 1; width: 100%; padding: 22px 24px 24px; }
+.xd-body h3 { margin: 0; } .xd-body p { margin: 0; }
+.xd-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.xd-pills a { padding: 8px 14px; border-radius: 999px; background: #f3f1ff; color: #4c1d95; font-weight: 700; font-size: .88rem; text-decoration: none; transition: background .2s; } .xd-pills a:hover { background: #e4ddff; }
+.xcard .btn.xd-go { margin-top: auto; background: var(--red); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .xd-phone { transition: none; } .xcard.xdiy:hover .xd-phone { transform: rotate(7deg); } }
