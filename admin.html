@@ -464,7 +464,7 @@
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
   body:not(.staff-mode) #navAlerts { display: none !important; }
-  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCrm):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCrm):not(#navWeb):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
@@ -638,6 +638,15 @@
   .av-acc-det { margin-top: 4px; color: var(--ink-soft); } .av-acc-det b { color: var(--ink, #101828); } .av-acc-warn { color: #b54708; font-weight: 600; } .av-acc-det .linkish { padding: 0; min-height: 0; line-height: inherit; vertical-align: baseline; }
   .av-fromrm { font-style: normal; color: #00a88f; text-transform: none; letter-spacing: 0; }
   .av-llpick { width: auto; max-width: 220px; min-height: 30px; padding: 2px 6px; font-size: .8rem; }
+  .web-range { display: flex; gap: 6px; flex-wrap: wrap; } .web-range button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 999px; padding: 7px 14px; font: inherit; font-weight: 700; font-size: .86rem; cursor: pointer; color: var(--ink-soft); } .web-range button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; }
+  .web-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; } .web-tiles small { display: block; margin-top: 4px; font-size: .76rem; color: var(--ink-soft); } .web-up { color: #067647 !important; font-weight: 700; } .web-down { color: #b42318 !important; font-weight: 700; }
+  .web-chart { display: grid; grid-template-columns: auto 1fr; gap: 8px; height: 200px; margin-top: 12px; } .web-yl { display: flex; flex-direction: column; justify-content: space-between; font-size: .72rem; color: var(--ink-soft); text-align: right; padding-bottom: 2px; }
+  .web-bars { display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line, #e6e8ec); background-image: linear-gradient(var(--line, #eef0f3) 1px, transparent 1px); background-size: 100% 50%; } .web-bar { flex: 1; height: 100%; display: flex; align-items: flex-end; position: relative; cursor: default; min-width: 2px; } .web-bar i { display: block; width: 100%; background: #1d4ed8; border-radius: 4px 4px 0 0; min-height: 1px; }
+  .web-bar:hover i, .web-bar:focus i { background: #0b1f3a; } .web-bar:hover::after, .web-bar:focus::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #0b1f3a; color: #fff; padding: 6px 9px; border-radius: 8px; font-size: .76rem; white-space: nowrap; z-index: 5; pointer-events: none; }
+  .web-xl { display: flex; justify-content: space-between; font-size: .72rem; color: var(--ink-soft); margin: 4px 0 0 28px; }
+  .web-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; } .web-grid .card { margin: 0; min-width: 0; } .web-list table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: .88rem; } .web-list th { text-align: left; font-size: .74rem; color: var(--ink-soft); font-weight: 700; padding: 4px 6px; border-bottom: 1px solid var(--line, #eef0f3); } .web-list td { padding: 7px 6px; border-bottom: 1px solid var(--line, #f2f4f7); vertical-align: top; overflow-wrap: anywhere; } .web-list .num { text-align: right; white-space: nowrap; width: 1%; }
+  .web-hb { display: block; height: 6px; background: #eef2f8; border-radius: 3px; margin-top: 5px; } .web-hb i { display: block; height: 100%; background: #1d4ed8; border-radius: 3px; }
+  @media (max-width: 760px) { .web-tiles { grid-template-columns: 1fr 1fr; } .web-grid { grid-template-columns: 1fr; } .web-chart { height: 160px; } }
   .crm-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
   .crm-tile { text-align: left; border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 14px; padding: 10px 12px; cursor: pointer; font: inherit; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; color: var(--ink); }
   .crm-tile span { grid-row: span 2; font-size: 1.4rem; } .crm-tile b { font-size: 1.3rem; line-height: 1.1; } .crm-tile small { color: var(--ink-soft); font-size: .78rem; }
@@ -1598,6 +1607,7 @@
     <button class="nav" type="button" id="navOffers" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg> Offers <span class="badge hot" id="sOffers" hidden>0</span></button>
     <button class="nav" type="button" id="navAvail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg> Available properties <span class="count-chip" id="sAvail" hidden></span></button>
     <button class="nav" type="button" id="navCrm" title="Every website request, viewing request, alert sign-up and contact"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17c.8-2 2.4-3 4.5-3s3.7 1 4.5 3"/></svg> Website leads <span class="badge hot" id="sCrm" hidden></span></button>
+    <button class="nav" type="button" id="navWeb" title="Who visits the website and what they look at"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg> Website visitors</button>
     <button class="nav" type="button" id="navLandlords"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg> Landlords</button>
     <button class="nav" type="button" id="navCerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/></svg> Certificates <span class="badge hot" id="sCerts" hidden></span></button>
     <button class="nav" type="button" id="navPay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg> Payments <span class="badge" id="sOwed" hidden></span></button>
@@ -1928,7 +1938,7 @@
         </details>
       </div>
 
-      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="crm">📇 Website leads <span class="st-n" id="stCrmN" hidden></span></button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
+      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="crm">📇 Website leads <span class="st-n" id="stCrmN" hidden></span></button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="web" id="stWeb" hidden>📈 Visitors</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
       <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto;max-width:100%;min-width:0"><option value="">Everyone</option></select><button type="button" class="btn small ghost" id="teamFeedMin">Minimise</button></div><div id="teamFeed"></div></div>
@@ -1965,6 +1975,11 @@
         <div class="card" style="margin-bottom:12px"><div class="sent-bar"><input class="inp" id="sentQ" placeholder="Search who it went to, subject or text" style="flex:1;min-width:200px"><select class="inp" id="sentWho" hidden style="width:auto"><option value="">Everyone</option></select></div>
           <p class="muted-note" id="sentNote" style="margin:8px 0 0"></p></div>
         <div id="sentList"></div>
+      </div>
+      <div id="webView" hidden>
+        <div class="card web-top"><div class="web-range" id="webRange" role="group" aria-label="Time range"><button type="button" data-days="1">Today</button><button type="button" data-days="7" class="on">7 days</button><button type="button" data-days="30">30 days</button><button type="button" data-days="90">90 days</button><button type="button" data-days="365">12 months</button></div>
+          <p class="muted-note" style="margin:6px 0 0">Counted on our own website, without cookies. Staff and search-engine robots aren’t counted. A visitor is one person on one day.</p></div>
+        <div id="webBody"><div class="empty">Loading…</div></div>
       </div>
       <div class="crm-nag" id="crmNag" hidden></div>
       <div id="crmView" hidden>
@@ -2931,7 +2946,7 @@
         loadOffers().then(function(){ showView(wantCrm ? 'crm' : wantLt ? 'lt' : wantOffers ? 'offers' : 'avail'); }); loadPvr(); loadCrm(true); refreshListings(true);
         // An offers team manager also gets the Team section on the Offers page.
         $('stWho').hidden = false; $('navWho').hidden = false;   // everyone sees who did what
-        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; showDeployed(d); }
+        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; $('stWeb').hidden = false; showDeployed(d); } else { $('navWeb').hidden = true; }
         return;
       }
       // Your own (full) page: Team and Who did what stay in Activity; the red manager buttons are for the staff page.
@@ -4049,7 +4064,8 @@
     if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
-    if (staffMode && v !== 'crm' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
+    if (staffMode && v === 'web' && !meta.canManageUsers) v = 'avail';
+    if (staffMode && v !== 'web' && v !== 'crm' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -4068,6 +4084,7 @@
     $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
     $('availView').hidden = v !== 'avail'; $('navAvail').classList.toggle('on', v === 'avail');
     $('crmView').hidden = v !== 'crm'; $('navCrm').classList.toggle('on', v === 'crm'); crmNag();
+    $('webView').hidden = v !== 'web'; $('navWeb').classList.toggle('on', v === 'web');
     // Sent emails: its own tab for staff; inside the Activity page for the owner.
     if (!staffMode && $('sentView').parentNode !== $('actSentSlot')) $('actSentSlot').appendChild($('sentView'));
     $('sentView').hidden = staffMode ? v !== 'sent' : false;
@@ -4081,12 +4098,13 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', avail: 'Available properties', crm: 'Website leads', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', avail: 'Available properties', crm: 'Website leads', web: 'Website visitors', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') { loadLt(); if (!loadVr.done) { loadVr.done = true; loadVr(); } else renderVr(); }
     if (v === 'avail') loadAvail();
     if (v === 'crm') loadCrm();
+    if (v === 'web') loadWeb();
     if (v === 'sent' || (v === 'act' && !staffMode)) loadSent();
     if (v === 'team') { loadTeam(); $('teamSec').open = true; }
     if (v === 'who') loadTeam();
@@ -8067,6 +8085,50 @@
   }
   document.addEventListener('change', function(e){ var sel = e.target.closest('[data-vr-st]'); if (!sel) return;
     api('POST', '/api/admin/valuation-requests/' + sel.dataset.vrSt, { status: sel.value }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save that'); return; } vrItems.forEach(function(x){ if (String(x.id) === sel.dataset.vrSt) x.status = sel.value; }); renderVr(); loadVr(); toast('✓ Saved'); }); });
+  // ---------- Website visitors: who visits the website, what they look at and where they came from ----------
+  var webDays = 7, webData = null;
+  function loadWeb(){
+    $('webRange').querySelectorAll('[data-days]').forEach(function(b){ b.classList.toggle('on', +b.dataset.days === webDays); });
+    return api('GET', '/api/admin/site-stats?days=' + webDays).then(function(d){ if (!d || !d.ok) { $('webBody').innerHTML = '<div class="empty">Couldn’t load the visitor numbers.</div>'; return; } webData = d; renderWeb(); });
+  }
+  function renderWeb(){
+    var d = webData, t = d.totals || {}, pv = d.previous || {}, n = function(x){ return Number(x || 0).toLocaleString('en-GB'); };
+    var change = function(now, before){ if (!before) return now ? '<small class="web-up">new</small>' : ''; var c = Math.round((now - before) / before * 100); return '<small class="' + (c >= 0 ? 'web-up' : 'web-down') + '">' + (c >= 0 ? '▲ ' : '▼ ') + Math.abs(c) + '% vs previous ' + (d.days === 1 ? 'day' : d.days + ' days') + '</small>'; };
+    var label = d.days === 1 ? 'today' : d.days === 365 ? 'in the last 12 months' : 'in the last ' + d.days + ' days';
+    var h = '<div class="web-tiles"><div class="tile"><div class="k">Visitors ' + label + '</div><div class="v">' + n(t.visitors) + '</div>' + change(t.visitors, pv.visitors) + '</div>' +
+      '<div class="tile"><div class="k">Pages viewed</div><div class="v">' + n(t.views) + '</div>' + change(t.views, pv.views) + '</div>' +
+      '<div class="tile"><div class="k">Pages per visitor</div><div class="v">' + (t.visitors ? (t.views / t.visitors).toFixed(1) : '0') + '</div></div>' +
+      '<div class="tile good"><div class="k">On the website now</div><div class="v">' + n(d.live.length) + '</div><small>in the last 5 minutes</small></div></div>';
+    // Visitors over time: one bar per day (per hour for today).
+    var pts = webSeries(d), max = Math.max.apply(null, pts.map(function(p){ return p.visitors; }).concat([1]));
+    h += '<div class="card"><b>Visitors ' + (d.days === 1 ? 'by hour today' : 'by day') + '</b><div class="web-chart" role="img" aria-label="Visitors ' + label + ', peak ' + max + '">' +
+      '<div class="web-yl"><span>' + max + '</span><span>' + (max >= 2 ? Math.round(max / 2) : '') + '</span><span>0</span></div><div class="web-bars">' +
+      pts.map(function(p){ return '<div class="web-bar" tabindex="0" data-tip="' + esc(p.label + ': ' + p.visitors + ' visitor' + (p.visitors === 1 ? '' : 's') + ', ' + p.views + ' page' + (p.views === 1 ? '' : 's')) + '"><i style="height:' + (p.visitors / max * 100) + '%"></i></div>'; }).join('') + '</div></div>' +
+      '<div class="web-xl"><span>' + esc(pts[0] ? pts[0].label : '') + '</span><span>' + esc(pts.length ? pts[pts.length - 1].label : '') + '</span></div></div>';
+    var list = function(title, rows, cols){ return '<div class="card web-list"><b>' + title + '</b>' + (rows.length ? '<table><thead><tr>' + cols.map(function(c){ return '<th' + (c[2] ? ' class="num"' : '') + '>' + c[0] + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.map(function(r){ return '<tr>' + cols.map(function(c){ return '<td' + (c[2] ? ' class="num"' : '') + '>' + c[1](r) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table>' : '<p class="muted-note">Nothing yet.</p>') + '</div>'; };
+    var bar = function(v, top){ return '<span class="web-hb"><i style="width:' + (top ? v / top * 100 : 0) + '%"></i></span>'; };
+    var pageName = function(r){ var tt = String(r.title || '').replace(/\s*\|\s*Residential Realtors\s*$/, ''); return '<a href="' + esc((location.origin.indexOf('residentialrealtors') !== -1 ? '' : 'https://www.residentialrealtors.co.uk') + r.path) + '" target="_blank" rel="noopener">' + esc(tt || r.path) + '</a><small class="muted-note" style="display:block;margin:0">' + esc(r.path) + '</small>'; };
+    var topS = (d.sources[0] || {}).visitors || 0, topD = (d.devices[0] || {}).visitors || 0;
+    h += '<div class="web-grid">' +
+      list('🏠 Most viewed properties', d.properties, [['Property', pageName], ['Views', function(r){ return n(r.views); }, 1], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
+      list('📄 Top pages', d.pages, [['Page', pageName], ['Views', function(r){ return n(r.views); }, 1], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
+      list('🔗 Where visitors came from', d.sources, [['Source', function(r){ return esc(r.k) + bar(r.visitors, topS); }], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
+      list('📱 Devices', d.devices, [['Device', function(r){ return esc(r.k || 'Unknown') + bar(r.visitors, topD); }], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
+      list('🌍 Countries', d.countries, [['Country', function(r){ return esc(webCountry(r.k)); }], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
+      list('🟢 On the website right now', d.live, [['Looking at', pageName], ['Device', function(r){ return esc(r.device || ''); }]]) +
+      '</div>';
+    $('webBody').innerHTML = h;
+  }
+  function webSeries(d){
+    var by = {}, out = []; (d.series || []).forEach(function(r){ by[r.k] = r; });
+    if (d.days === 1) { var hr = +new Date().toLocaleString('en-GB', { timeZone: TZ, hour: '2-digit', hour12: false }); for (var i = 0; i <= hr; i++) { var k = (i < 10 ? '0' : '') + i, r = by[k] || {}; out.push({ label: (i % 12 || 12) + (i < 12 ? 'am' : 'pm'), visitors: r.visitors || 0, views: r.views || 0 }); } return out; }
+    for (var j = d.days - 1; j >= 0; j--) { var day = new Date(Date.now() - j * 86400000).toLocaleDateString('en-CA', { timeZone: TZ }), r2 = by[day] || {}; out.push({ label: new Date(day + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }), visitors: r2.visitors || 0, views: r2.views || 0 }); }
+    if (d.days === 365) { var wk = []; for (var w = 0; w < out.length; w += 7) { var seg = out.slice(w, w + 7); wk.push({ label: 'w/c ' + seg[0].label, visitors: seg.reduce(function(a, x){ return a + x.visitors; }, 0), views: seg.reduce(function(a, x){ return a + x.views; }, 0) }); } return wk; }
+    return out;
+  }
+  function webCountry(c){ if (!c) return 'Unknown'; try { return new Intl.DisplayNames(['en-GB'], { type: 'region' }).of(c) || c; } catch (e) { return c; } }
+  $('webRange').addEventListener('click', function(e){ var b = e.target.closest('[data-days]'); if (!b) return; webDays = +b.dataset.days; loadWeb(); });
+  $('navWeb').addEventListener('click', function(){ showView('web'); });
   // ---------- Contacts (CRM): every website request, viewing request, landlord alert sign-up and contact staff add ----------
   var crm = { items: [], staff: [], me: '', type: '', open: {} }, CRM_T = {
     viewing: ['🗓', 'Viewing request', '#b54708', '#fffaeb'], val: ['🏠', 'Rental valuation', '#5925dc', '#f4f3ff'], sale: ['🏷️', 'Sales valuation', '#5925dc', '#f4f3ff'], quick: ['⚡', 'Quick valuation', '#5925dc', '#f4f3ff'],
@@ -15536,7 +15598,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navCrm', 'Website leads'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navSiteLink', 'Website properties'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navCrm', 'Website leads'], ['navWeb', 'Website visitors'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navSiteLink', 'Website properties'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';

@@ -189,6 +189,7 @@ app.get('/offer', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer
 // ---------- The Residential Realtors website ----------
 // Each page's content is in site/<name>.html; every page shares the same menu and footer.
 const SITE_URL = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
+let visits = null;   // set up once the jobs database is ready (below)
 const SITE_PAGES = {
   home: { paths: ['/home'], canon: '/', title: 'Estate Agents & Letting Agents in London SE1 | Residential Realtors', desc: 'London estate and letting agents in SE1. Free sales and rental valuations, property sales, tenant find, rent collection and full management — ARLA Propertymark protected with Client Money Protection.', img: 'u-london-bus' },
   sales: { paths: ['/sales', '/selling', '/sell'], canon: '/sales', crumb: 'Sales', title: 'Sell Your Home in London: Free Sales Valuation | Residential Realtors Estate Agents', desc: 'Selling your home in London? Free, no-obligation sales valuation, professional marketing, accompanied viewings and sale progression from Residential Realtors, SE1.', img: 'u-flat-dining' },
@@ -341,6 +342,7 @@ function landlordsShell(home, req) {
 }
 const siteCache = {};
 function sendSite(req, res, name) {
+  if (visits) visits.track(req, (SITE_PAGES[name] && SITE_PAGES[name].title) || name);
   const f = name === 'landlords' ? path.join(__dirname, 'landlords.html') : path.join(__dirname, 'site', name + '.html'); let st; try { st = fs.statSync(f); } catch (e) { return res.status(404).end(); }
   const home = isSiteHost(req) ? '/' : '/home', ck = name + home + (listings ? listings.stamp() + listings.show(req) + londonDay() : '') + (name === 'home' && typeof news !== 'undefined' ? 'n' + news.count() + (news.status().at || 0) : '');
   let c = siteCache[ck];
@@ -353,6 +355,7 @@ function sendSite(req, res, name) {
 // A page built elsewhere (property listings), in the website's frame.
 const builtCache = new Map();
 function sendBuilt(req, res, meta, body) {
+  if (visits && res.statusCode < 400) visits.track(req, meta.title || meta.name);
   const home = isSiteHost(req) ? '/' : '/home', ck = meta.name + home + (meta.stamp || '') + listings.show(req) + listings.stamp() + londonDay();
   let c = builtCache.get(ck);
   if (!c) {
@@ -404,6 +407,8 @@ const jobs = require('./jobs')(app, {
   // files: optional [{ mime, data (base64) }] — PDFs and photos the AI reads directly.
   askAi: function (prompt, wantJson, files) { return askAiSafe(prompt, wantJson, files); }
 });
+// Website visitors (counted on our server, no cookies) — the Website visitors page in Fixflow.
+visits = require('./visits')(app, { db: function () { return jobs.db(); }, isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); } });
 
 // Simple existence check the frontend can use to confirm a real backend is present
 // (there is no such endpoint when this same file runs as a claude.ai artifact).

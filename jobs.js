@@ -1888,6 +1888,7 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/available-history' || /^\/available-history\/\d+\/restore$/.test(path)) return true;
     if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;
     if (path === '/crm' || /^\/crm\/(note|meta|archive|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
+    if (method === 'GET' && path === '/site-stats') return true;   // Website visitors (managers only, checked in the route)
     if (method === 'GET') return path === '/tenant-suggest' || path === '/landlord-suggest' || path === '/our-props' || path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
