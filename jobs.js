@@ -9665,7 +9665,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     { id: 'eicr_m', name: 'EICR — 3 to 4 bedrooms', desc: 'Electrical Installation Condition Report by a qualified electrician', price: '' },
     { id: 'eicr_l', name: 'EICR — 5 or more bedrooms', desc: 'Electrical Installation Condition Report by a qualified electrician', price: '' },
     { id: 'epc', name: 'EPC (Energy Performance Certificate)', desc: 'Survey by an accredited energy assessor; valid for 10 years and lodged on the government register', price: '' },
-    { id: 'licence', name: 'Property licence application', desc: 'We prepare and submit your selective or HMO licence application and deal with the council until it’s granted (council fee not included)', price: '' }
+    { id: 'licence', name: 'Property licence application', desc: 'We prepare and submit your selective or HMO licence application and deal with the council until it’s granted — free, you only pay the council’s fee', price: '0' }
   ];
   const CERT_NEW = ['licence'];   // services added later: offered to offices that already saved their list
   const SUMUP_KEY = process.env.SUMUP_API_KEY || ''; let SUMUP_MC = process.env.SUMUP_MERCHANT_CODE || ''; const SITE = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
@@ -9680,7 +9680,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const v = ((await p.query("SELECT value FROM app_settings WHERE key = 'cert_services'")).rows[0] || {}).value || {};
     let items = Array.isArray(v.items) && v.items.length ? v.items : CERT_DEFAULTS;
     if (items !== CERT_DEFAULTS) CERT_NEW.forEach(function (id) { if (!items.some(function (x) { return x.id === id; }) && (v.removed || []).indexOf(id) === -1) items = items.concat(CERT_DEFAULTS.filter(function (x) { return x.id === id; })); });
-    return items.map(function (x) { const n = Math.round(parseFloat(String(x.price || '').replace(/[£,\s]/g, '')) * 100) / 100; return { id: str(x.id, 30), name: str(x.name, 120), desc: str(x.desc, 300) || '', price: isFinite(n) && n > 0 ? n : null, contractor: str(x.contractor, 120) || '' }; }).filter(function (x) { return x.id && x.name; });
+    return items.map(function (x) { const raw = String(x.price == null ? '' : x.price).trim(), n = /^free$/i.test(raw) ? 0 : raw === '' ? NaN : Math.round(parseFloat(raw.replace(/[£,\s]/g, '')) * 100) / 100; return { id: str(x.id, 30), name: str(x.name, 120), desc: str(x.desc, 300) || '', price: isFinite(n) && n >= 0 ? n : null, contractor: str(x.contractor, 120) || '' }; }).filter(function (x) { return x.id && x.name; });
   }
   async function sumup(method, path, body) {
     const r = await fetch('https://api.sumup.com' + path, { method: method, headers: { Authorization: 'Bearer ' + SUMUP_KEY, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });
@@ -9698,7 +9698,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return d.pay_url || (SITE + '/book-certificate?b=' + row.id + '&k=' + d.token + '&pay=1');
   }
   const certText = function (row) { const d = row.data || {};
-    return 'Booked: ' + (d.items || []).map(function (i) { return i.name + ' (£' + i.price.toFixed(2) + ' + VAT)'; }).join(', ') + (d.vat != null ? '\nSubtotal: £' + Number(d.subtotal).toFixed(2) + ' + VAT £' + Number(d.vat).toFixed(2) : '') + '\nTotal: £' + Number(d.total || 0).toFixed(2) + (d.vat != null ? ' inc. VAT' : '') + (d.paid_at ? ' — PAID online' : canPay() ? ' — not paid yet' : ' — payment to be taken by the office') +
+    return 'Booked: ' + (d.items || []).map(function (i) { return i.name + (i.price ? ' (£' + i.price.toFixed(2) + ' + VAT)' : ' (free)'); }).join(', ') + (d.vat != null ? '\nSubtotal: £' + Number(d.subtotal).toFixed(2) + ' + VAT £' + Number(d.vat).toFixed(2) : '') + '\nTotal: £' + Number(d.total || 0).toFixed(2) + (d.vat != null ? ' inc. VAT' : '') + (!d.total ? ' — free service' : d.paid_at ? ' — PAID online' : canPay() ? ' — not paid yet' : ' — payment to be taken by the office') +
       '\n\nName: ' + row.name + '\nPhone: ' + (row.phone || '—') + '\nEmail: ' + (row.email || '—') + '\nProperty: ' + row.address +
       '\nAccess: ' + ({ landlord: 'Landlord will let the engineer in', tenant: 'Contact the tenant directly', keys: 'Keys at our office / key safe' }[d.access] || '—') + (d.tenant_name || d.tenant_phone ? '\nTenant: ' + [d.tenant_name, d.tenant_phone, d.tenant_email].filter(Boolean).join(' · ') : '') +
       '\nPreferred dates: ' + ((d.dates || []).join(', ') || 'Any') + (d.message ? '\n\nNotes: ' + d.message : ''); };
@@ -9721,24 +9721,30 @@ document.querySelectorAll('.lcu').forEach(function(box){
         VALUES ($1, 'Routine', $2, 'Other', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
         [pick ? 'Assigned' : 'New', due, row.address, cat, cat, desc, pick ? pick.name : null, d.tenant_name || null, d.tenant_phone || null, d.tenant_email || null, row.name, row.email || null, row.phone || null]);
       const id = r.rows[0].id; ids.push(id);
-      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'created', 'Job raised from a website certificate booking (' + it.name + ', £' + Number(it.price).toFixed(2) + ' + VAT' + (d.paid_at ? ', paid online' : ', payment to take') + ').' + (pick ? ' Assigned to ' + pick.name + '.' : ' No contractor chosen for this service yet — pick one in Certificates → Website bookings.')]);
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'created', 'Job raised from a website certificate booking (' + it.name + ', ' + (it.price ? '£' + Number(it.price).toFixed(2) + ' + VAT' : 'free') + (!it.price ? '' : d.paid_at ? ', paid online' : ', payment to take') + ').' + (pick ? ' Assigned to ' + pick.name + '.' : ' No contractor chosen for this service yet — pick one in Certificates → Website bookings.')]);
       ntfy({ title: refFor(id) + ' raised: ' + cat, message: String(row.address).replace(/\s+/g, ' ') + '\n' + (pick ? 'Assigned to ' + pick.name + ' — open it to send them the job.' : 'No contractor chosen yet — open it to assign one.'), tags: ['scroll'] }, '#job-' + id).catch(function () {});
     }
     d.jobs = ids; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]); row.data = d;
+  }
+  // Certificate bookings are for the owner only: the office inbox, not every member of staff.
+  function certOwnerEmail(subject, text) {
+    if (!canEmail() || !sendEmail) return;
+    const link = (PUBLIC_URL || SITE) + '/admin#leads';
+    sendEmail({ to: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors website', subject: subject, text: text + '\n\nIt’s in Website leads: ' + link }).catch(function (e) { console.error('Certificate booking email failed:', e.message); });
   }
   async function certPaid(p, row) {
     const d = row.data || {}; if (d.paid_at) return;
     d.paid_at = new Date().toISOString(); await p.query("UPDATE valuation_requests SET data = $2 WHERE id = $1", [row.id, JSON.stringify(d)]); row.data = d;
     await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); });
-    teamAlert({ title: '💳 Certificate booking paid: £' + Number(d.total).toFixed(2), message: (d.items || []).map(function (i) { return i.name; }).join(' + ') + ' · ' + row.address.split(',').slice(0, 2).join(','), tags: ['credit_card'] }, '#leads').catch(function () {});
-    staffEmailAll('💳 Certificate booking paid - ' + row.address.split(',').slice(0, 2).join(','), function (link) { return 'A landlord has booked and paid on the website. Please arrange the visit.\n\n' + certText(row) + '\n\nIt’s in Website leads: ' + link; }, '#leads').catch(function () {});
+    ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined, title: '💳 Certificate booking paid: £' + Number(d.total).toFixed(2), message: (d.items || []).map(function (i) { return i.name; }).join(' + ') + ' · ' + row.address.split(',').slice(0, 2).join(','), tags: ['credit_card'] }).catch(function () {});
+    certOwnerEmail('💳 Certificate booking paid - ' + row.address.split(',').slice(0, 2).join(','), 'A landlord has booked and paid on the website.\n\n' + certText(row));
     if (canEmail() && sendEmail && row.email) sendEmail({ to: row.email, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Booking confirmed — ' + (d.items || []).map(function (i) { return i.name.replace(/ —.*/, ''); }).join(' + '),
       text: 'Dear ' + row.name.split(' ')[0] + ',\n\nThank you — we’ve received your payment of £' + Number(d.total).toFixed(2) + (d.vat != null ? ' (including VAT of £' + Number(d.vat).toFixed(2) + ')' : '') + ' for:\n' + (d.items || []).map(function (i) { return '• ' + i.name; }).join('\n') + '\n\nProperty: ' + row.address + '\n\nWe’ll be in touch shortly to confirm the date and time' + ((d.dates || []).length ? ' (you asked for: ' + d.dates.join(', ') + ')' : '') + '. Your certificate will be emailed to you once the visit is done.\n\nIf you need anything in the meantime, call us on 0207 096 8131 or reply to this email.\n\nResidential Realtors\n28-30 Harper Road, London SE1 6AD' }).catch(function () {});
   }
   async function certRow(p, id, k) { const r = (await p.query("SELECT * FROM valuation_requests WHERE id = $1 AND data->>'kind' = 'cert'", [parseInt(id, 10) || 0])).rows[0]; return r && r.data && r.data.token && k && String(k) === r.data.token ? r : null; }
   app.get('/api/public/cert-services', withDb(async function (p, req, res) {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, items: (await certServices(p)).filter(function (x) { return x.price; }).map(function (x) { return { id: x.id, name: x.name, desc: x.desc, price: x.price }; }), vat: CERT_VAT, pay: canPay() });
+    res.json({ ok: true, items: (await certServices(p)).filter(function (x) { return x.price !== null; }).map(function (x) { return { id: x.id, name: x.name, desc: x.desc, price: x.price }; }), vat: CERT_VAT, pay: canPay() });
   }));
   const cbHits = new Map();
   app.post('/api/public/cert-booking', withDb(async function (p, req, res) {
@@ -9748,7 +9754,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (str(b.website, 200)) return res.json({ ok: true });
     if (await refuseBot(req, res, b, [b.name, b.message, b.address])) return;
     const all = await certServices(p), want = Array.isArray(b.items) ? b.items.map(String) : [];
-    const items = all.filter(function (x) { return x.price && want.indexOf(x.id) !== -1; });
+    const items = all.filter(function (x) { return x.price !== null && want.indexOf(x.id) !== -1; });
     if (!items.length) return res.status(400).json({ ok: false, error: 'items' });
     const name = str(b.name, 120), email = str(b.email, 200), phone = str(b.phone, 40), addr = str(b.address, 300), pcm = POSTCODE_RE.exec(String(b.postcode || '') + ' ' + String(b.address || ''));
     if (!name || !addr || !phone) return res.status(400).json({ ok: false, error: 'missing' });
@@ -9761,9 +9767,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const data = { kind: 'cert', postcode: postcode, items: items.map(function (x) { return { id: x.id, name: x.name, price: x.price, contractor: x.contractor }; }), subtotal: subtotal, vat: vat, total: total, token: crypto.randomBytes(12).toString('base64url'),
       access: ['landlord', 'tenant', 'keys'].indexOf(b.access) !== -1 ? b.access : '', tenant_name: str(b.tenant_name, 120) || '', tenant_phone: str(b.tenant_phone, 40) || '', tenant_email: str(b.tenant_email, 200) || '', dates: (Array.isArray(b.dates) ? b.dates : []).map(function (x) { return str(x, 60); }).filter(Boolean).slice(0, 3), dates_iso: (Array.isArray(b.dates_iso) ? b.dates_iso : []).filter(function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(String(x)); }).slice(0, 3), message: str(b.message, 2000) || '' };
     const row = (await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING *', [name, email, phone, full, JSON.stringify(data)])).rows[0];
-    teamAlert({ title: '📜 Certificate booking: ' + items.map(function (x) { return x.name.replace(/ —.*/, ''); }).join(' + '), message: full.split(',').slice(0, 2).join(',') + ' · £' + total.toFixed(2) + (canPay() ? ' · paying online' : ' · take payment'), tags: ['scroll'] }, '#leads').catch(function () {});
-    if (!canPay()) staffEmailAll('📜 Certificate booking - ' + full.split(',').slice(0, 2).join(','), function (link) { return 'A landlord has booked on the website. Please call them to take payment and arrange the visit.\n\n' + certText(row) + '\n\nIt’s in Website leads: ' + link; }, '#leads').catch(function () {});
-    if (!canPay()) { await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); }); return res.json({ ok: true, id: row.id, pay: false }); }
+    ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined, title: '📜 Certificate booking: ' + items.map(function (x) { return x.name.replace(/ —.*/, ''); }).join(' + '), message: full.split(',').slice(0, 2).join(',') + (total ? ' · £' + total.toFixed(2) : '') + (!total ? ' · free service' : canPay() ? ' · paying online' : ' · take payment'), tags: ['scroll'] }).catch(function () {});
+    if (!canPay() || !total) certOwnerEmail('📜 Certificate booking - ' + full.split(',').slice(0, 2).join(','), (total ? 'A landlord has booked on the website. Please call them to take payment and arrange the visit.' : 'A landlord has asked for our free service on the website. Please call them to get started.') + '\n\n' + certText(row));
+    if (!canPay() || !total) { await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); }); return res.json({ ok: true, id: row.id, pay: false }); }
     try { res.json({ ok: true, id: row.id, pay: true, url: await certCheckout(p, row) }); }
     catch (e) { console.error('SumUp checkout failed:', e.message); res.json({ ok: true, id: row.id, pay: false, payError: true }); }
   }));
@@ -9878,7 +9884,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function crmLog(p, ref, note, req, auto) { return p.query('INSERT INTO crm_notes (ref, note, by_name, auto) VALUES ($1, $2, $3, $4)', [ref, String(note).slice(0, 4000), req && req.user ? req.user.name : 'Office', auto !== false]).catch(function () {}); }
   const CRM_REF = /^(vr|sub):\d+$/;
   app.get('/api/admin/crm', withDb(async function (p, req, res) {
-    const items = (await p.query('SELECT * FROM valuation_requests ORDER BY id DESC LIMIT 1000')).rows;
+    const items = (await p.query('SELECT * FROM valuation_requests ORDER BY id DESC LIMIT 1000')).rows.filter(function (x) { return req.role !== 'offers' || !x.data || x.data.kind !== 'cert'; });   // certificate bookings: the owner only
     let subs = [];
     try { subs = (await p.query('SELECT id, created_at, email, name, freq, confirmed_at, unsubscribed_at, last_sent_at, sent_count FROM landlord_alert_subs ORDER BY id DESC LIMIT 2000')).rows; } catch (e) {}
     const notes = (await p.query('SELECT id, ref, note, by_name, auto, at FROM crm_notes ORDER BY at DESC LIMIT 5000')).rows;
