@@ -9383,11 +9383,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
     'Hillingdon': { sel: 'none', add: 'some' }, 'Hounslow': { sel: 'some', add: 'all' }, 'Islington': { sel: 'some', add: 'all' }, 'Kensington and Chelsea': { sel: 'none', add: 'check' },
     'Kingston upon Thames': { sel: 'none', add: 'none' }, 'Lambeth': { sel: 'none', add: 'all' }, 'Lewisham': { sel: 'check', add: 'all' }, 'Merton': { sel: 'none', add: 'check' },
     // Newham: selective and additional licensing in every ward except Royal Victoria and Stratford Olympic Park (1 June 2023 designation).
-    'Newham': { sel: 'all', add: 'all', sel_except: ['Royal Victoria', 'Stratford Olympic Park'], add_except: ['Royal Victoria', 'Stratford Olympic Park'] }, 'Redbridge': { sel: 'some', add: 'all' }, 'Richmond upon Thames': { sel: 'none', add: 'none' },
+    // Council fees (the office can change these in Templates → Licensing schemes): as published, August 2026.
+    'Newham': { sel: 'all', add: 'all', sel_except: ['Royal Victoria', 'Stratford Olympic Park'], add_except: ['Royal Victoria', 'Stratford Olympic Park'],
+      sel_fee: '£750 for up to 5 years (£650 if you’re an accredited landlord and the EPC is A to C)', add_fee: '£1,250 for up to 5 years', hmo_fee: '£1,400 for up to 5 lettings' }, 'Redbridge': { sel: 'some', add: 'all' }, 'Richmond upon Thames': { sel: 'none', add: 'none' },
     // Southwark selective licensing — designation 1 (1 Mar 2022 – 28 Feb 2027) and designation 2
     // (1 Nov 2023 – 31 Oct 2028): 19 of the 23 wards. Not covered: Borough & Bankside, Dulwich Village,
     // North Bermondsey, St George's.
-    'Southwark': { sel: 'some', add: 'all', link: 'https://www.southwark.gov.uk/housing/private-tenants-and-landlords/private-rented-property-licensing/property-licensing-3',
+    'Southwark': { sel: 'some', add: 'all',
+      sel_fee: '£945 — £661.50 when you apply and £283.50 when the licence is granted', add_fee: '£1,433 — £1,017.50 when you apply and £415.50 when the licence is granted',
+      hmo_fee: '£1,653.50 for up to 5 lettings (£1,157.50 when you apply, £496 when granted), plus £110 for each extra letting', link: 'https://www.southwark.gov.uk/housing/private-tenants-and-landlords/private-rented-property-licensing/property-licensing-3',
       sel_wards: { 'Newington': 'designation 1, until 28 February 2027', 'Champion Hill': 'designation 1, until 28 February 2027', 'Faraday': 'designation 1, until 28 February 2027', 'St Giles': 'designation 1, until 28 February 2027', 'Goose Green': 'designation 1, until 28 February 2027',
         'North Walworth': 'designation 2, until 31 October 2028', 'Nunhead & Queen\'s Road': 'designation 2, until 31 October 2028', 'Old Kent Road': 'designation 2, until 31 October 2028', 'Peckham': 'designation 2, until 31 October 2028', 'Camberwell Green': 'designation 2, until 31 October 2028',
         'Chaucer': 'designation 2, until 31 October 2028', 'Dulwich Hill': 'designation 2, until 31 October 2028', 'Dulwich Wood': 'designation 2, until 31 October 2028', 'London Bridge & West Bermondsey': 'designation 2, until 31 October 2028', 'Peckham Rye': 'designation 2, until 31 October 2028',
@@ -9463,7 +9467,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const hit = rows.filter(function (r) { return (key && r.property_key === key) || (b.address && sameAddr(r.address, String(b.address) + ' ' + postcode)); })[0];
     if (hit && hit.licence && hit.licence.status !== 'none') onFile = { status: hit.licence.status, type: hit.licence.type || '', number: hit.licence.number || '', expires: hit.licence.expires || null };
     if (ward && verdict === 'maybe' && st0(sc) === 'some') why.push('The property is in ' + ward + ' ward — the council’s scheme map shows whether this ward is included.');
-    return { ok: true, ward: ward, address: str(b.address, 200) || null, borough: borough, postcode: postcode, verdict: verdict, title: title, licence: licence, why: why, link: link, on_file: onFile, people: people, households: households };
+    const fee = licence && sc ? (/^Mandatory/.test(licence) ? sc.hmo_fee : /^Additional/.test(licence) ? sc.add_fee : /^Selective/.test(licence) ? sc.sel_fee : '') || '' : '';
+    return { ok: true, ward: ward, address: str(b.address, 200) || null, borough: borough, postcode: postcode, verdict: verdict, title: title, licence: licence, fee: fee, why: why, link: link, on_file: onFile, people: people, households: households };
   }
   app.post('/l/:token/licence-check', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -9508,7 +9513,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!r.ok) return res.json({ ok: false, error: r.error });
     const firm = !!LIC_VERIFIED[r.borough];
     res.json({ ok: true, borough: r.borough, ward: r.ward, postcode: r.postcode, verdict: firm || r.verdict === 'yes' ? r.verdict : 'maybe', title: firm ? r.title : (r.verdict === 'yes' ? r.title : 'Check with ' + r.borough + ' council'),
-      licence: r.licence, why: r.why, link: r.link, verified: firm });
+      licence: r.licence, fee: r.licence && (firm || r.verdict === 'yes') ? r.fee || '' : '', why: r.why, link: r.link, verified: firm });
   }));
   app.post('/api/admin/licence-check', withDb(async function (p, req, res) {
     const keys = {}; (await p.query('SELECT property_key FROM property_info WHERE licence IS NOT NULL')).rows.forEach(function (r) { keys[r.property_key] = 1; });
@@ -9524,6 +9529,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (LIC_STATES.indexOf(v.sel) !== -1) o.sel = v.sel;
       if (LIC_STATES.indexOf(v.add) !== -1) o.add = v.add;
       const u = str(v.link, 500); if (u && /^https?:\/\//i.test(u)) o.link = u;
+      ['sel_fee', 'add_fee', 'hmo_fee'].forEach(function (f) { if (typeof v[f] === 'string') o[f] = str(v[f], 200) || ''; });
       // Wards a 'some' scheme covers (one per line in Templates).
       ['sel_wards', 'add_wards', 'sel_except', 'add_except'].forEach(function (f) { if (Array.isArray(v[f])) { const l = v[f].map(function (x) { return str(x, 80); }).filter(Boolean).slice(0, 60); if (l.length) o[f] = l; } });
       if (Object.keys(o).length) custom[str(k, 80)] = o;

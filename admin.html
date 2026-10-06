@@ -14860,15 +14860,17 @@
     api('GET', '/api/admin/licensing-schemes').then(function(d){
       if (!d || !d.ok) return; lsData = d;
       var sel = function(b, k, cur){ return '<select class="inp" data-ls="' + esc(b) + '" data-k="' + k + '" style="min-width:0">' + LS_OPTS.map(function(o){ return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'; };
-      $('lsList').innerHTML = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div class="ls-grid" style="display:grid;grid-template-columns:minmax(110px,1.1fr) 1fr 1fr 1.4fr;gap:6px;align-items:center;font-size:.84rem;min-width:520px"><b>Borough</b><b>Selective</b><b>Additional HMO</b><b>Council licensing page</b>' +
-        Object.keys(d.schemes).sort().map(function(b){ var x = d.schemes[b] || {}; return '<span>' + esc(b) + '</span>' + sel(b, 'sel', x.sel) + sel(b, 'add', x.add) + '<input class="inp" data-ls="' + esc(b) + '" data-k="link" placeholder="https://…" value="' + esc((d.custom[b] || {}).link || '') + '">'; }).join('') + '</div></div>';
+      $('lsList').innerHTML = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div class="ls-grid" style="display:grid;grid-template-columns:minmax(110px,1.1fr) .8fr .8fr 1.2fr 1.3fr 1.3fr 1.3fr;gap:6px;align-items:center;font-size:.84rem;min-width:1100px"><b>Borough</b><b>Selective</b><b>Additional HMO</b><b>Council licensing page</b><b>Selective fee</b><b>Additional HMO fee</b><b>Mandatory HMO fee</b>' +
+        Object.keys(d.schemes).sort().map(function(b){ var x = d.schemes[b] || {}, fee = function(k){ return '<input class="inp" data-ls="' + esc(b) + '" data-k="' + k + '" placeholder="e.g. £750" value="' + esc(x[k] || '') + '">'; };
+          return '<span>' + esc(b) + '</span>' + sel(b, 'sel', x.sel) + sel(b, 'add', x.add) + '<input class="inp" data-ls="' + esc(b) + '" data-k="link" placeholder="https://…" value="' + esc((d.custom[b] || {}).link || '') + '">' + fee('sel_fee') + fee('add_fee') + fee('hmo_fee'); }).join('') + '</div></div>' +
+        '<p class="muted-note" style="margin:8px 0 0">Fees show on the website’s licence checker when a licence is needed. Southwark and Newham are filled in from the councils’ published fees (August 2026) — check them against the council’s page now and then.</p>';
     });
   });
   if ($('lsSave')) $('lsSave').addEventListener('click', function(){
     if (!lsData) return;
     var custom = {};
     document.querySelectorAll('#lsList [data-ls]').forEach(function(el){ var b = el.dataset.ls, k = el.dataset.k, v = el.value.trim(); var def = (lsData.defaults[b] || {})[k];
-      if (k === 'link' ? v : v !== def) { custom[b] = custom[b] || {}; custom[b][k] = v; } });
+      if (k === 'link' ? v : /_fee$/.test(k) ? v !== (def || '') : v !== def) { custom[b] = custom[b] || {}; custom[b][k] = v; } });
     busy($('lsSave'), true, 'Saving…');
     api('PUT', '/api/admin/licensing-schemes', { custom: custom }).then(function(d){ busy($('lsSave'), false); toast(d && d.ok ? 'Licensing schemes saved' : 'Couldn’t save'); if (d && d.ok) lsData.custom = d.custom; });
   });
