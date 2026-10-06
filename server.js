@@ -241,13 +241,30 @@ function siteFooter(home) {
   return '<footer><div class="wrap"><div class="cols">' +
     '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Estate agents, lettings and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div><div style="margin-top:6px">Open 7 days, 9am–7pm</div></div>' +
     '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlords#tools">Landlord tools</a></div>' +
-    '<div><h4>Tenants</h4><a href="/report-a-repair">Report a repair</a><a href="/offer">Make an offer</a><a href="/tenants">Renting with us</a><a href="/tenants#fees">Tenant fees</a></div>' +
+    '<div><h4>Tenants</h4><a href="/report-a-repair">Report a repair</a><a href="/offer">Make an offer</a><a href="/tenants">Renting with us</a><a href="/tenants#fees">Tenant fees</a><a href="/tenants#guides">Renting guides</a></div>' +
     '<div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="/about">About us</a><a href="/news">Property news</a><a href="/privacy">Privacy</a></div>' +
     '</div><div class="accred">' +
     '<a href="/cmp-certificate.pdf" target="_blank" rel="noopener" title="View our Client Money Protection certificate"><img src="/img/logo-cmp.webp" alt="Propertymark Client Money Protection" width="100" height="60" loading="lazy"></a>' +
     '<a href="https://www.propertymark.co.uk" target="_blank" rel="noopener" class="w"><img src="/img/logo-arla.png" alt="ARLA Propertymark Protected" width="96" height="60" loading="lazy"></a>' +
     '<a href="https://www.tpos.co.uk" target="_blank" rel="noopener"><img src="/img/logo-tpo.png" alt="The Property Ombudsman" width="159" height="60" loading="lazy"></a>' +
     '<p><b>Client Money Protection:</b> Propertymark, membership number C0130229 — <a href="/cmp-certificate.pdf" target="_blank" rel="noopener">view our certificate</a>.<br><b>Independent redress:</b> The Property Ombudsman (<a href="https://www.tpos.co.uk" target="_blank" rel="noopener">tpos.co.uk</a>). <a href="/tenants#fees">Tenant fees</a></p></div>' +
+    // Quick valuation: a tab on the side of every page — name, email and phone, and we call back.
+    '<button type="button" class="qv-tab" id="qvTab" aria-controls="qvBox" aria-expanded="false">Free valuation</button>' +
+    '<div class="qv" id="qvBox" hidden role="dialog" aria-label="Quick valuation request"><button type="button" class="qv-x" id="qvX" aria-label="Close">×</button>' +
+    '<form id="qvForm" novalidate><h3>Free valuation</h3><p>Leave your details and we’ll call you back.</p>' +
+    '<div class="qv-seg"><label><input type="radio" name="what" value="Sales"> Sales</label><label><input type="radio" name="what" value="Rental" checked> Rental</label></div>' +
+    '<input name="name" placeholder="Your name" autocomplete="name" required><input name="email" type="email" placeholder="Email" autocomplete="email" required><input name="phone" type="tel" placeholder="Phone number" autocomplete="tel" inputmode="tel" required>' +
+    '<input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
+    '<label class="qv-ok"><input type="checkbox" name="consent"> <span>I’m happy for you to contact me (<a href="/privacy">privacy</a>)</span></label>' +
+    '<p class="qv-err" id="qvErr" role="alert"></p><button class="btn red" type="submit" id="qvGo">Request a call back</button></form></div>' +
+    '<script>(function(){var t=document.getElementById("qvTab"),b=document.getElementById("qvBox"),f=document.getElementById("qvForm"),e=document.getElementById("qvErr"),g=document.getElementById("qvGo");if(!t)return;' +
+    'var o=function(v){b.hidden=!v;t.setAttribute("aria-expanded",v?"true":"false");t.classList.toggle("on",v);if(v){var n=f&&f.elements.name;if(n)setTimeout(function(){n.focus()},50)}};' +
+    't.onclick=function(){o(b.hidden)};document.getElementById("qvX").onclick=function(){o(false)};document.addEventListener("keydown",function(k){if(k.key==="Escape")o(false)});' +
+    'if(f)f.onsubmit=function(ev){ev.preventDefault();var v=function(k){return String(f.elements[k].value||"").trim()},w=f.querySelector("input[name=what]:checked");e.textContent="";' +
+    'if(!v("name"))return e.textContent="Please enter your name.";if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v("email")))return e.textContent="Please enter a valid email.";if(v("phone").replace(/\\D/g,"").length<10)return e.textContent="Please enter your phone number.";if(!f.elements.consent.checked)return e.textContent="Please tick the box so we can call you.";' +
+    'g.disabled=true;g.textContent="Sending…";fetch("/api/valuation-request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"quick",what:w?w.value:"Not sure",name:v("name"),email:v("email"),phone:v("phone"),website:v("website"),consent:true,page:location.pathname})}).then(function(r){return r.json()}).then(function(d){' +
+    'if(!d.ok){g.disabled=false;g.textContent="Request a call back";e.textContent=d.error==="rate-limited"?"Too many requests — please call 0207 096 8131.":"Sorry, something went wrong — please call 0207 096 8131.";return}' +
+    'f.innerHTML="<div class=\\"qv-done\\"><b>✓ Thanks — we’ll call you soon.</b><span>Or ring us now on <a href=\\"tel:02070968131\\">0207 096 8131</a>.</span></div>"}).catch(function(){g.disabled=false;g.textContent="Request a call back";e.textContent="Couldn’t connect — please try again."})}})();</script>' +
     '<div class="legal">© <span id="yr"></span> Estallion Investments Ltd trading as Residential Realtors · Registered in England, company number 08760284 · 28-30 Harper Road, London SE1 6AD.</div></div></footer>';
 }
 const isSiteHost = function (req) { return SITE_HOSTS.indexOf(String(req.hostname || '').toLowerCase()) !== -1; };

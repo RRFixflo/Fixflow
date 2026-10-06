@@ -478,3 +478,28 @@ h1 em, h2 em { background: none; -webkit-background-clip: initial; background-cl
 .hero4 h1 { font-size: clamp(2rem, 4vw, 3.2rem); margin: 14px 0 12px; }
 .hero4 .lead { margin-bottom: 22px; }
 @media (max-width: 960px) { .hero4 > .wrap { grid-template-columns: 1fr; padding: 44px 0 52px; } }
+
+/* Quick valuation tab on the side of every page */
+.qv-tab { position: fixed; right: 0; top: 50%; z-index: 60; transform: translateY(-50%) rotate(180deg); writing-mode: vertical-rl; background: var(--red); color: #fff; border: 0; border-radius: 0 10px 10px 0; padding: 18px 11px; font: inherit; font-weight: 800; font-size: .92rem; letter-spacing: .02em; cursor: pointer; box-shadow: 0 10px 30px -10px rgba(0,0,0,.5); }
+.qv-tab:hover, .qv-tab.on { background: #c01f27; }
+.qv { position: fixed; right: 54px; top: 50%; transform: translateY(-50%); z-index: 61; width: 320px; max-width: calc(100vw - 32px); background: #fff; border-radius: 18px; padding: 22px; box-shadow: 0 40px 90px -30px rgba(11,31,58,.6); border: 1px solid var(--line); }
+.qv h3 { margin: 0 0 4px; color: var(--navy); font-size: 1.2rem; } .qv form > p { margin: 0 0 12px; color: var(--soft); font-size: .9rem; }
+.qv input:not([type=radio]):not([type=checkbox]) { width: 100%; padding: 12px 13px; margin-bottom: 8px; border: 1.5px solid var(--line); border-radius: 10px; font: inherit; font-size: 1rem; background: #fbfcfe; color: var(--ink); }
+.qv input:focus { outline: 0; border-color: var(--navy); }
+.qv .btn { width: 100%; margin-top: 4px; padding: 13px; }
+.qv-seg { display: flex; gap: 6px; margin-bottom: 10px; } .qv-seg label { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1.5px solid var(--line); border-radius: 10px; padding: 9px; font-weight: 700; font-size: .9rem; cursor: pointer; }
+.qv-seg label:has(input:checked) { border-color: var(--navy); background: var(--tint); } .qv-seg input { accent-color: var(--navy); }
+.qv-ok { display: flex; gap: 8px; align-items: flex-start; font-size: .8rem; color: var(--soft); margin: 2px 0 4px; } .qv-ok input { margin-top: 2px; accent-color: var(--navy); }
+.qv-err { color: var(--red); font-weight: 700; font-size: .85rem; min-height: 1em; margin: 4px 0; }
+.qv-x { position: absolute; top: 10px; right: 12px; border: 0; background: none; font-size: 1.5rem; line-height: 1; color: var(--soft); cursor: pointer; }
+.qv-done { padding: 18px 0 6px; display: grid; gap: 6px; } .qv-done b { color: var(--good); font-size: 1.05rem; } .qv-done span { color: var(--soft); font-size: .9rem; } .qv-done a { color: var(--navy); font-weight: 800; }
+@media (max-width: 640px) {
+  .qv-tab { top: auto; bottom: 90px; padding: 14px 9px; font-size: .82rem; }
+  .qv { top: auto; bottom: 16px; right: 16px; left: 16px; width: auto; max-width: none; transform: none; }
+}
+.dl { text-decoration: none; display: flex; flex-direction: column; } .dl-go { margin-top: 14px; font-weight: 800; color: var(--navy); } .dl:hover { border-color: var(--navy); }
+.qv label { flex-direction: row; text-transform: none; letter-spacing: 0; margin: 0; }
+.qv .qv-seg label { color: var(--ink); font-size: .9rem; font-weight: 700; }
+.qv .qv-ok { display: flex; flex-direction: row; font-weight: 500; color: var(--soft); }
+.qv .qv-ok span { display: inline; } .qv .qv-ok a { display: inline; color: var(--navy); font-weight: 700; }
+.qv-done { display: block; } .qv-done b { display: block; margin-bottom: 6px; } .qv-done span { display: block; }
