@@ -323,6 +323,10 @@
   var io = 'IntersectionObserver' in window ? new IntersectionObserver(function(es){ es.forEach(function(e){ if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }); }, { threshold: .12 }) : null;
   document.querySelectorAll('.rv').forEach(function(el){ if (io) io.observe(el); else el.classList.add('in'); });
   // "Ask about …" buttons pre-pick the service.
+  // From the home page: ?postcode= and ?svc= fill in the valuation form.
+  try { var vsp = new URLSearchParams(location.search), vpc = vsp.get('postcode'), vsv = vsp.get('svc');
+    if (vpc) { var vpi = document.querySelector('#vForm [name=postcode]'); if (vpi) vpi.value = vpc.toUpperCase().slice(0, 10); }
+    if (vsv) { var vr = Array.prototype.filter.call(document.querySelectorAll('input[name=service]'), function(r){ return r.value === vsv; })[0]; if (vr) vr.checked = true; } } catch (e) {}
   document.querySelectorAll('[data-svc]').forEach(function(b){ b.addEventListener('click', function(){ var r = document.querySelector('input[name=service][value="' + b.getAttribute('data-svc') + '"]'); if (r) r.checked = true; }); });
 
   // ---- Calculators (same sums as the landlord portal) ----
