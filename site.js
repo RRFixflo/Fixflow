@@ -289,10 +289,13 @@
     xf.textContent = 'From £' + Math.min.apply(null, ps).toLocaleString('en-GB') + ' + VAT'; xf.hidden = false;
   }).catch(function () {});
   // Service pages (Gas Safety, EICR, EPC): the live price from the office's price list.
-  var svp = document.querySelector('[data-svc-price]');
+  var svp = document.querySelector('.sv-price[data-svc-price], .lp-price[data-svc-price]');
   if (svp) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
     var ids = svp.getAttribute('data-svc-price').split(','), list = ((d && d.items) || []).filter(function (i) { return ids.indexOf(i.id) !== -1 && i.price; });
-    if (!list.length) return; var low = Math.min.apply(null, list.map(function (i) { return i.price; }));
+    var low = list.length ? Math.min.apply(null, list.map(function (i) { return i.price; })) : 0;
+    var free = ((d && d.items) || []).some(function (i) { return ids.indexOf(i.id) !== -1 && i.price === 0; });
+    if (!list.length && free) { svp.innerHTML = '<span><b>Free</b> · you only pay the council’s fee</span>'; svp.hidden = false; return; }
+    if (!list.length) return;
     svp.innerHTML = '<span>' + (list.length > 1 ? 'From ' : '') + '<b>£' + low.toLocaleString('en-GB', { minimumFractionDigits: low % 1 ? 2 : 0 }) + '</b> + VAT</span>' + (list.length > 1 ? '<small>' + list.map(function (i) { return i.name.replace(/^.*?[—–-]\s*/, '') + ' £' + i.price; }).join(' · ') + ' (+ VAT)</small>' : '');
     svp.hidden = false;
   }).catch(function () {});

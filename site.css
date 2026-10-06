@@ -910,5 +910,22 @@ body.bk-lock { overflow: hidden; }
 .sv-all { grid-template-columns: repeat(3, minmax(0, 1fr)); } @media (max-width: 860px) { .sv-all { grid-template-columns: 1fr; } }
 .hc-card.lt { border: 1px solid #d3dbe6; box-shadow: 0 18px 40px -28px rgba(11,31,58,.4); } .hc-card.lt .hc-price b { color: var(--navy); }
 
+/* Service landing pages: photo with an overlapping navy card */
+.lp { background: linear-gradient(180deg, #eef2f8, #f6f8fb); padding: 34px 0 40px; }
+.lp-wrap { position: relative; display: grid; grid-template-columns: 1fr; min-height: 560px; align-items: center; }
+.lp-photo { position: absolute; top: 0; bottom: 0; right: 0; width: 72%; border-radius: 24px; overflow: hidden; box-shadow: 0 40px 80px -50px rgba(11,31,58,.6); }
+.lp-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lp-chip { position: absolute; right: 20px; bottom: 20px; padding: 12px 16px; border-radius: 14px; background: rgba(11,31,58,.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #fff; font-weight: 700; border: 1px solid rgba(255,255,255,.25); }
+.lp-card { position: relative; z-index: 1; width: min(540px, 52%); margin: 40px 0; padding: 38px 40px; border-radius: 22px; background: var(--navy); color: #fff; box-shadow: 0 40px 80px -40px rgba(11,31,58,.8); }
+.lp-tag { margin: 0 0 8px; font-size: .8rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #9fb0c8; }
+.lp-card h1 { margin: 0 0 12px; font-size: clamp(2.1rem, 4.4vw, 3.3rem); line-height: 1.04; color: #fff; } .lp-red { color: #ff5a5f; }
+.lp-price { margin: 0 0 8px; font-size: 1.15rem; color: #fff; } .lp-price b { font-size: 1.5rem; } .lp-price small { display: block; color: #9fb0c8; font-size: .85rem; } .lp-price[hidden] { display: none; }
+.lp-lead { margin: 0 0 22px; color: #d6deea; font-size: 1.08rem; line-height: 1.5; }
+.lp-cta { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; } .lp-go { background: var(--red); color: #fff; padding: 16px 26px; font-size: 1.05rem; box-shadow: 0 16px 30px -16px rgba(217,38,46,.9); } .lp-go:hover { filter: brightness(1.06); }
+.lp-call { color: #d6deea; font-weight: 700; text-decoration: none; } .lp-call:hover { color: #fff; }
+.lp-ticks { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 10px; } .lp-ticks li { position: relative; padding-left: 30px; color: #e8edf5; } .lp-ticks li::before { content: "✓"; position: absolute; left: 0; color: #6ee7a8; font-weight: 800; }
+@media (max-width: 900px) { .lp-wrap { min-height: 0; display: block; } .lp-photo { position: relative; width: 100%; height: 260px; } .lp-card { width: auto; margin: -50px 12px 0; padding: 28px 22px; } .lp-chip { display: none; } }
+.lp-strip { background: #fff; border-bottom: 1px solid var(--line); } .lp-strip .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; justify-content: center; padding: 18px 0; color: var(--soft); font-weight: 600; } .lp-logos { display: flex; gap: 18px; align-items: center; } .lp-logos img { height: 34px; width: auto; }
+
 /* Never scroll sideways because of a stray pixel. */
 html, body { overflow-x: clip; }
