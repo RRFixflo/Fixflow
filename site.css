@@ -772,7 +772,8 @@ body.bk-lock { overflow: hidden; }
 .cb-item input { width: 20px; height: 20px; accent-color: var(--red); margin: 0; }
 .cb-ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: #eef2f8; font-size: 1.2rem; }
 .cb-it b { display: block; color: var(--ink); } .cb-it small { display: block; font-weight: 500; color: var(--soft); font-size: .84rem; margin-top: 2px; }
-.cb-pr { font-weight: 800; color: var(--navy); font-size: 1.1rem; white-space: nowrap; }
+.cb-pr { font-weight: 800; color: var(--navy); font-size: 1.1rem; white-space: nowrap; text-align: right; } .cb-pr small { display: block; font-size: .72rem; font-weight: 600; color: var(--soft); }
+.cb-sum { display: grid; gap: 4px; padding: 0 16px; } .cb-sum div { display: flex; justify-content: space-between; color: var(--soft); font-size: .92rem; } .cb-sum b { color: var(--ink); font-weight: 700; }
 @media (max-width: 480px) { .cb-item { grid-template-columns: auto 1fr auto; } .cb-ic { display: none; } }
 .cb-none { padding: 16px; border-radius: 14px; background: var(--tint); }
 .cb-consent { display: flex !important; gap: 10px !important; align-items: flex-start; font-weight: 500 !important; color: var(--ink) !important; } .cb-consent input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
