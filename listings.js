@@ -42,7 +42,7 @@ module.exports = function (app, opts) {
       const p = { id: id, kind: kind, type: type, category: tag(x, 'category'), status: status, taken: TAKEN.test(status),
         street: street, area: area && area !== town ? area : '', town: town, outcode: outcode,
         beds: beds, studio: res && (/studio/i.test(bedsRaw) || /studio/i.test(type)), commercial: !res, baths: parseInt(tag(x, 'bathrooms'), 10) || 0, receptions: parseInt(tag(x, 'receptions'), 10) || 0,
-        price: parseFloat(tag(x, 'price')) || 0, qualifier: tag(x, 'price_qualifier'), short: tag(x, 'short_description').replace(/<[^>]*>/g, ''), html: cleanHtml(tag(x, 'full_details')),
+        price: kind === 'let' && process.env.GNOMEN_LET_PRICE !== 'pcm' ? Math.round((parseFloat(tag(x, 'price')) || 0) * 52 / 12) : (parseFloat(tag(x, 'price')) || 0), qualifier: tag(x, 'price_qualifier'),   // Gnomen sends rents per week: shown per month (with the weekly figure beside it) short: tag(x, 'short_description').replace(/<[^>]*>/g, ''), html: cleanHtml(tag(x, 'full_details')),
         available: tag(x, 'available_date'), furnished: tag(x, 'furnished'), tenure: tag(x, 'tenure'), pets: tag(x, 'pets') === 'Yes', parking: tag(x, 'parking') === '1', garden: tag(x, 'garden') === 'Yes',
         features: tag(x, 'features').split(',').map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 20),
         lat: isFinite(lat) && Math.abs(lat) > 1 ? lat : null, lng: isFinite(lng) && Math.abs(lat) > 1 ? lng : null,
@@ -381,6 +381,19 @@ module.exports = function (app, opts) {
   app.get(['/properties-to-rent', '/to-rent', '/rent', '/lettings', '/properties'], function (req, res) { listPage(req, res, 'let'); });
   app.get(['/properties-for-sale', '/for-sale', '/buy'], function (req, res) { listPage(req, res, 'sale'); });
 
+  // Links from our old Gnomen website keep working: /search~action=detail,pid=3925 (and
+  // /property-search~…) go to that property's page; old search pages go to the list.
+  app.use(function (req, res, next) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    let path = req.path; try { path = decodeURIComponent(path); } catch (e) {}
+    const old = /^\/(?:property-)?search~(.*)$/i.exec(path);
+    if (old) {
+      const pid = (/(?:^|[,&;~])pid=(\d+)/i.exec(old[1]) || [])[1];
+      if (pid) { const p = find(pid); return res.redirect(301, p ? p.url : '/property/' + pid); }
+      return res.redirect(301, /sale|buy|property_for=1|for=1/i.test(old[1]) ? '/properties-for-sale' : '/properties-to-rent');
+    }
+    next();
+  });
   // Book a viewing: pick up to 3 times that suit, then name, phone and email. Opens over the property page.
   function book(p) {
     return '<div class="bk" id="book" role="dialog" aria-modal="true" aria-labelledby="bkH"><a class="bk-bg" href="#" aria-label="Close" tabindex="-1"></a>' +

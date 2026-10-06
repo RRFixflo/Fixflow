@@ -22,7 +22,7 @@
     if (!/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(data.postcode)) { err.textContent = 'Please enter the postcode.'; return; }
     if (!data.consent) { err.textContent = 'Please tick the box so we can contact you.'; return; }
     go.disabled = true; go.textContent = 'Sending…';
-    fetch('/api/valuation-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(function (r) { return r.json(); }).then(function (d) {
+    ffPost('/api/valuation-request', data, sf).then(function (r) { return r.json(); }).then(function (d) {
       if (!d.ok) { go.disabled = false; go.textContent = 'Request my free valuation →'; err.textContent = d.error === 'rate-limited' ? 'Too many requests — please try again later or call 0207 096 8131.' : d.error === 'postcode' ? 'Please check the postcode.' : 'Sorry, something went wrong. Please try again or call 0207 096 8131.'; return; }
       document.getElementById('sBody').innerHTML = '<div class="done"><div class="big">✓</div><h3 style="margin:0">Thanks, ' + String(data.name.split(/\s+/)[0]).replace(/[<>&"]/g, '') + ' — request sent</h3><p style="color:var(--soft);margin:8px 0 0">We’ll be in touch shortly to arrange your free valuation. For anything urgent, call <a href="tel:02070968131" style="font-weight:700;color:var(--navy)">0207 096 8131</a>.</p></div>';
     }).catch(function () { go.disabled = false; go.textContent = 'Request my free valuation →'; err.textContent = 'Couldn’t connect — please try again or call 0207 096 8131.'; });
@@ -165,7 +165,7 @@
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.value.trim())) return say('Please enter a valid email address.', f.email);
       if (!f.consent.checked) return say('Please tick the box so we can contact you about the viewing.', f.consent);
       go.disabled = true; go.textContent = 'Sending…';
-      fetch('/api/viewing-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name.value.trim(), phone: f.phone.value.trim(), email: f.email.value.trim(), people: f.people ? f.people.value : '', move: f.move ? f.move.value : '', message: f.message.value.trim(), website: f.website.value, consent: true, slots: picked, flexible: f.flexible.checked, ref: bkF.dataset.ref, address: bkF.dataset.addr, listing: bkF.dataset.kind, url: bkF.dataset.url }) })
+      ffPost('/api/viewing-request', { name: f.name.value.trim(), phone: f.phone.value.trim(), email: f.email.value.trim(), people: f.people ? f.people.value : '', move: f.move ? f.move.value : '', message: f.message.value.trim(), website: f.website.value, consent: true, slots: picked, flexible: f.flexible.checked, ref: bkF.dataset.ref, address: bkF.dataset.addr, listing: bkF.dataset.kind, url: bkF.dataset.url }, bkF)
         .then(function (r) { return r.json(); }).then(function (d) {
           if (!d.ok) { go.disabled = false; go.textContent = 'Request viewing →'; return say(d.error === 'rate-limited' ? 'Too many requests — please call us on 0207 096 8131.' : d.error === 'slots' ? 'Please pick a time in the next few weeks.' : 'Please check your details and try again.'); }
           document.getElementById('bkBody').innerHTML = '<div class="bk-done"><div class="ok">✅</div><h3 style="margin:6px 0">Viewing requested</h3><p class="bk-where">' + escH(bkF.dataset.addr) + '</p>' + (picked.length ? '<p style="margin:0">You suggested:</p><ul>' + picked.map(function (v) { return '<li>' + label(v) + '</li>'; }).join('') + '</ul>' : '<p>You’re flexible — we’ll suggest a time.</p>') + '<p class="bk-where">We’ll confirm a time with you shortly by email or phone. We’ve sent you an email with the details.</p><a class="btn navy" href="#" data-bk-close>Done</a></div>';
@@ -237,7 +237,7 @@
     if (data.message.length < 5) { err.textContent = 'Please tell us how we can help.'; return; }
     if (!data.consent) { err.textContent = 'Please tick the box so we can reply to you.'; return; }
     go.disabled = true; go.textContent = 'Sending…';
-    fetch('/api/enquiry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(function (r) { return r.json(); }).then(function (d) {
+    ffPost('/api/enquiry', data, form).then(function (r) { return r.json(); }).then(function (d) {
       if (!d.ok) { go.disabled = false; go.textContent = 'Send message'; err.textContent = d.error === 'rate-limited' ? 'Too many messages — please try again later or call 0207 096 8131.' : 'Sorry, something went wrong. Please try again or call 0207 096 8131.'; return; }
       document.getElementById('eBody').innerHTML = '<div class="done"><div class="big">✓</div><h3 style="margin:0">Thanks, ' + String(data.name.split(/\s+/)[0]).replace(/[<>&"]/g, '') + ' — message sent</h3><p style="color:var(--soft);margin:8px 0 0">We’ll get back to you as soon as we can. For anything urgent, call <a href="tel:02070968131" style="font-weight:700;color:var(--navy)">0207 096 8131</a>.</p></div>';
     }).catch(function () { go.disabled = false; go.textContent = 'Send message'; err.textContent = 'Couldn’t connect — please try again or call 0207 096 8131.'; });

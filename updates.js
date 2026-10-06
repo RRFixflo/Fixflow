@@ -113,6 +113,7 @@ module.exports = function (app, opts) {
   app.post('/api/landlord-alerts', async function (req, res) {
     const b = req.body || {}, ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
     if (String(b.website || '').trim()) return res.json({ ok: true });   // a bot filled the hidden box
+    if (opts.refuseBot && await opts.refuseBot(req, res, b, [b.name])) return;   // only real people
     if (tooMany(ip)) return res.status(429).json({ ok: false, error: 'rate-limited' });
     const email = String(b.email || '').trim().toLowerCase().slice(0, 200), name = String(b.name || '').trim().slice(0, 100), freq = FREQ[b.freq] ? b.freq : 'weekly';
     if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
