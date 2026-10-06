@@ -51,7 +51,7 @@ module.exports = function (app, opts) {
         features: tag(x, 'features').split(',').map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 20),
         lat: isFinite(lat) && Math.abs(lat) > 1 ? lat : null, lng: isFinite(lng) && Math.abs(lat) > 1 ? lng : null,
         epc: /^https:\/\//.test(tag(x, 'epc')) ? tag(x, 'epc') : '', vtour: videoLink(tag(x, 'external_vtour')) || videoLink(tag(x, 'video_tour')),
-        images: list(x, 'images', 'image').slice(0, 40), floorplans: list(x, 'floorplans', 'floorplan').slice(0, 6), added: tag(x, 'date_added') };
+        images: list(x, 'images', 'image').slice(0, 40), floorplans: list(x, 'floorplans', 'floorplan').slice(0, 6), added: tag(x, 'date_added'), updated: tag(x, 'date_updated') };
       p.where = [p.street, p.area || p.town].filter(Boolean).join(', ') + (outcode ? ' ' + outcode : '');
       p.unit = tag(x, 'property_no') ? (tag(x, 'property_no').toLowerCase().replace(/\b(flat|apartment|apt|unit|no)\b\.?/g, '') + '|' + street.toLowerCase()).replace(/[^a-z0-9|]/g, '') : ''; p.postcode = pc.replace(/\s+/g, '');
       p.headline = (p.studio ? 'Studio' : beds ? beds + ' bedroom ' + type.toLowerCase() : (p.commercial ? 'Commercial ' + type.toLowerCase() : type)) + (kind === 'let' ? ' to rent' : ' for sale');
@@ -112,7 +112,7 @@ module.exports = function (app, opts) {
         data[kind] = list;
       } catch (e) { console.error('Listings feed (' + kind + ') not read:', e.message); }   // keep the last good copy
     }
-    data.at = Date.now(); data.stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(function (p) { return p.id + p.status + p.price; }), data.let.map(function (p) { return p.id + p.status + p.price; })])).digest('hex').slice(0, 12);
+    // (refreshAll works out when the list last changed)
   }
   // ---------- Rightmove: our branch's adverts ----------
   const RM = 'https://www.rightmove.co.uk', UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'Accept-Language': 'en-GB,en;q=0.9' };
@@ -344,7 +344,13 @@ module.exports = function (app, opts) {
   }
   async function refreshAll() {
     if (SOURCE === 'rightmove') await refreshRightmove(); else await refresh();
-    data.at = Date.now(); data.stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(function (p) { return p.id + p.status + p.price + p.images.length; }), data.let.map(function (p) { return p.id + p.status + p.price + p.images.length; })])).digest('hex').slice(0, 12);
+    const sig = function (p) { return [p.id, p.status, p.price, p.images.length, p.floorplans.length, p.vtour, p.available, p.headline, (p.html || p.short || '').length].join('|'); };
+    const stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(sig), data.let.map(sig)])).digest('hex').slice(0, 12);
+    // When the properties last changed: the moment we see the feed change; on first load, the latest
+    // date Gnomen gives (added or updated).
+    if (!data.stamp) { let latest = 0; data.let.concat(data.sale).forEach(function (p) { [p.updated, p.added].forEach(function (d) { const t = Date.parse(String(d || '').replace(' ', 'T')); if (t && t <= Date.now() && t > latest) latest = t; }); }); data.changedAt = latest || Date.now(); }
+    else if (stamp !== data.stamp) { data.changedAt = Date.now(); console.log('Property listings changed — website updated'); }
+    data.at = Date.now(); data.stamp = stamp;
   }
   if (SOURCE === 'rightmove' || FEEDS.sale || FEEDS.let) { setTimeout(refreshAll, 3000); setInterval(refreshAll, (SOURCE === 'rightmove' ? 30 : 15) * 60000).unref(); }
   const find = function (id) { id = rmAlias[id] || id; return data.let.find(function (p) { return p.id === id; }) || data.sale.find(function (p) { return p.id === id; }); };
@@ -406,11 +412,17 @@ module.exports = function (app, opts) {
 
   // ---------- Pages ----------
   const KIND = { let: { path: '/properties-to-rent', h1: 'Properties to rent', kicker: 'To rent', none: 'to rent' }, sale: { path: '/properties-for-sale', h1: 'Properties for sale', kicker: 'For sale', none: 'for sale' } };
+  const whenText = function (t) {
+    const d = new Date(t), o = { timeZone: 'Europe/London' }, day = function (x) { return x.toLocaleDateString('en-CA', o); };
+    const time = d.toLocaleTimeString('en-GB', Object.assign({ hour: 'numeric', minute: '2-digit', hour12: true }, o)).replace(' ', '').toLowerCase();
+    const today = day(new Date()), yest = day(new Date(Date.now() - 86400000));
+    return (day(d) === today ? 'today' : day(d) === yest ? 'yesterday' : d.toLocaleDateString('en-GB', Object.assign({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }, o))) + ' at ' + time;
+  };
   function listPage(req, res, kind) {
     const K = KIND[kind], pv = preview(req), items = show(req) ? data[kind] : [], avail = items.filter(function (p) { return !p.taken; }).length;
     const prices = kind === 'let' ? [1000, 1250, 1500, 1750, 2000, 2500, 3000, 4000, 5000] : [250000, 300000, 400000, 500000, 600000, 750000, 1000000, 1500000, 2000000];
-    const body = (pv ? '<div class="pvbar">👀 Staff preview — only people signed in to Fixflow can see these properties. They’re not public yet.</div>' : '') + '<div class="phead small"><div class="wrap"><span class="eyebrow"><i></i> ' + K.kicker + ' · London</span><h1>' + K.h1 + '</h1>' +
-      '<p class="lead">' + (items.length ? avail + ' available now' + (items.length > avail ? ' · ' + (items.length - avail) + ' ' + (kind === 'let' ? 'let agreed or under offer' : 'under offer or sold STC') : '') + '. Updated throughout the day.' : 'New properties are coming soon.') + '</p></div></div>' +
+    const body = (pv ? '<div class="pvbar">👀 Staff preview — only people signed in to Fixflow can see these properties. They’re not public yet.</div>' : '') + '<div class="phead small"><div class="wrap"><div class="lupd-row"><span class="eyebrow"><i></i> ' + K.kicker + ' · London</span>' + (data.changedAt ? '<span class="lupd" title="When our property list last changed">🕒 Last updated ' + esc(whenText(data.changedAt)) + '</span>' : '') + '</div><h1>' + K.h1 + '</h1>' +
+      '<p class="lead">' + (items.length ? avail + ' available now' + (items.length > avail ? ' · ' + (items.length - avail) + ' ' + (kind === 'let' ? 'let agreed or under offer' : 'under offer or sold STC') : '') + '.' : 'New properties are coming soon.') + '</p></div></div>' +
       (items.length ? '<section class="lsec"><div class="wrap"><form class="lfilter" id="lFilter" onsubmit="return false" role="search" aria-label="Filter properties">' +
         '<div class="lf-q"><label for="lfQ">Area or postcode</label><div class="lf-qrow"><input id="lfQ" type="search" name="q" placeholder="e.g. SE1, Camberwell" autocomplete="off" enterkeyhint="search"><button type="submit" class="lf-go" aria-label="Search">Search</button></div></div>' +
         '<label>Bedrooms<select name="beds"><option value="">Any</option><option value="0">Studio+</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select></label>' +
@@ -424,7 +436,7 @@ module.exports = function (app, opts) {
       : '<section class="white"><div class="wrap" style="text-align:center;max-width:640px"><h2>Our list of properties ' + K.none + ' is on its way</h2><p class="sub" style="margin:0 auto 24px">Tell us what you’re looking for and we’ll let you know about suitable homes — or call us on 0207 096 8131.</p><a class="btn red" href="/contact?topic=' + (kind === 'let' ? 'Looking%20to%20rent' : 'Buying') + '">Tell us what you need →</a></div></section>') +
       '<section><div class="wrap"><div class="band"><div><h2>' + (kind === 'let' ? 'Got a property to let?' : 'Thinking of selling?') + '</h2><p>Get a free, no-obligation valuation from our local team.</p></div><div class="btns"><a class="btn red" href="' + (kind === 'let' ? '/landlords#valuation' : '/sales#sales-valuation') + '">Free valuation →</a><a class="btn ghost" href="tel:02070968131">📞 0207 096 8131</a></div></div></div></section>';
     const ld = items.length ? [{ '@type': 'ItemList', name: K.h1 + ' in London', numberOfItems: items.length, itemListElement: items.slice(0, 50).map(function (p, i) { return { '@type': 'ListItem', position: i + 1, url: opts.siteUrl + p.url, name: p.headline + ', ' + p.where }; }) }] : [];
-    opts.send(req, res, { canon: K.path, crumb: K.h1, title: K.h1 + ' in London | Residential Realtors', desc: (kind === 'let' ? 'Flats and houses to rent in London from Residential Realtors' : 'Homes for sale in London from Residential Realtors') + ' — photos, floorplans, prices and availability, updated throughout the day.', ld: pv ? [] : ld, name: 'list-' + kind + (pv ? '-pv' : ''), stamp: data.stamp, private: pv, robots: items.length && !pv ? '' : 'noindex, follow' }, body);
+    opts.send(req, res, { canon: K.path, crumb: K.h1, title: K.h1 + ' in London | Residential Realtors', desc: (kind === 'let' ? 'Flats and houses to rent in London from Residential Realtors' : 'Homes for sale in London from Residential Realtors') + ' — photos, floorplans, prices and availability, updated throughout the day.', ld: pv ? [] : ld, name: 'list-' + kind + (pv ? '-pv' : ''), stamp: data.stamp + new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' }), private: pv, robots: items.length && !pv ? '' : 'noindex, follow' }, body);
   }
   app.get(['/properties-to-rent', '/to-rent', '/rent', '/lettings', '/properties'], function (req, res) { listPage(req, res, 'let'); });
   app.get(['/properties-for-sale', '/for-sale', '/buy'], function (req, res) { listPage(req, res, 'sale'); });

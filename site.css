@@ -689,3 +689,6 @@ body.bk-lock { overflow: hidden; }
 .gal:has(.gmedia) .lst { top: 14px; }
 @media (max-width: 640px) { .pdtabs { flex-wrap: nowrap; } .pdtabs button { flex: 1 1 0; min-width: 0; padding: 10px 6px; font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
 @media (max-width: 640px) { .pdt-n { display: none; } }
+/* Property lists: when the list last changed, top left. */
+.lupd-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.lupd { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--line); font-size: .82rem; font-weight: 700; color: var(--soft); }
