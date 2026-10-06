@@ -176,15 +176,31 @@
   <div class="svc">
     <div class="svc-c rv"><div class="svc-ic">🔑</div><h3>Tenant Find</h3><p>We market your property and find great tenants. You manage the rest.</p>
       <ul><li>Valuation, photos and advertising on the major portals</li><li>Accompanied viewings and offers handled for you</li><li>Full referencing and Right to Rent checks</li><li>Tenancy agreement, inventory and move-in</li></ul>
-      <a class="btn navy" href="#valuation" data-svc="Tenant Find">Ask about Tenant Find</a></div>
+      <a class="btn navy" href="#signup" data-start="Tenant Find">Get started →</a><a class="svc-ask" href="#valuation" data-svc="Tenant Find">or ask us first</a></div>
     <div class="svc-c rv"><div class="svc-ic">💷</div><h3>Rent Collection</h3><p>Everything in Tenant Find, and we collect the rent for you every month.</p>
       <ul><li>Rent collected and paid to you each month</li><li>Clear monthly statements</li><li>Late or missed rent chased promptly</li><li>Your own online landlord portal</li></ul>
-      <a class="btn navy" href="#valuation" data-svc="Rent Collection">Ask about Rent Collection</a></div>
+      <a class="btn navy" href="#signup" data-start="Rent Collection">Get started →</a><a class="svc-ask" href="#valuation" data-svc="Rent Collection">or ask us first</a></div>
     <div class="svc-c star rv"><span class="badge">Most hands-off</span><div class="svc-ic">🏡</div><h3>Fully Managed</h3><p>Sit back — we look after your property and tenants day to day.</p>
       <ul><li>Everything in Rent Collection</li><li>Repairs arranged with our trusted contractors</li><li>Safety certificates and licences tracked and renewed</li><li>24/7 online repair reporting for tenants</li><li>Deposit registration and check-out</li></ul>
-      <a class="btn red" href="#valuation" data-svc="Fully Managed">Ask about Full Management</a></div>
+      <a class="btn red" href="#signup" data-start="Fully Managed">Get started →</a><a class="svc-ask" href="#valuation" data-svc="Fully Managed">or ask us first</a></div>
   </div>
 </div></section>
+
+<section id="signup" class="ls-sec" hidden><div class="wrap"><div class="ls-box rv">
+  <div class="ls-intro"><p class="kicker">Get started</p><h2>Let your property with us</h2>
+    <p class="sub">Tell us who you are and which property, then fill in and sign our landlord terms online — it takes about five minutes. We’ll call you to arrange photos and viewings.</p>
+    <div class="ls-svc" role="radiogroup" aria-label="Service"><label><input type="radio" name="ls-svc" value="Tenant Find"><span>Tenant Find</span></label><label><input type="radio" name="ls-svc" value="Rent Collection"><span>Rent Collection</span></label><label><input type="radio" name="ls-svc" value="Fully Managed"><span>Fully Managed</span></label></div>
+    <p class="ls-fee" id="lsFee"></p></div>
+  <form class="ls-form" id="lsForm" novalidate>
+    <label>Your name<input name="name" autocomplete="name"></label>
+    <div class="ls-g2"><label>Phone<input name="phone" type="tel" autocomplete="tel"></label><label>Email<input name="email" type="email" autocomplete="email"></label></div>
+    <div class="ls-g2"><label>Property address<input name="address" autocomplete="street-address"></label><label>Postcode<input name="postcode" autocomplete="postal-code" style="text-transform:uppercase"></label></div>
+    <input name="website" tabindex="-1" autocomplete="off" class="hp" aria-hidden="true">
+    <label class="ls-consent"><input type="checkbox" name="consent"><span>I agree to Residential Realtors contacting me about letting my property (see our <a href="/privacy">privacy notice</a>).</span></label>
+    <button class="btn red" type="submit" id="lsGo">Continue to our terms →</button>
+    <p class="tool-err" id="lsErr" role="alert"></p>
+  </form>
+</div></div></section>
 
 <section class="why" id="why"><div class="wrap">
   <div class="head rv"><p class="kicker">Why landlords choose us</p><h2>Less hassle. More peace of mind.</h2><p class="sub">We built our own system to run your property properly — so nothing slips, and you always know what’s going on.</p></div>
@@ -357,6 +373,31 @@
     f.addEventListener('submit', function(e){ e.preventDefault(); run(); });
     out.addEventListener('click', function(e){ if (!e.target.closest('[data-rcval]')) return; var v = document.querySelector('#vForm [name=postcode]'); if (v && !v.value) v.value = f.elements.postcode.value.trim().toUpperCase(); var b = document.querySelector('#vForm [name=beds]'); if (b && f.elements.beds) { var want = f.elements.beds.value; Array.prototype.forEach.call(b.options || [], function(o){ if (o.value === want || o.text.indexOf(want === '0' ? 'Studio' : want) === 0) b.value = o.value; }); } });
     try { var q = new URLSearchParams(location.search); if (q.get('postcode')) f.elements.postcode.value = q.get('postcode').toUpperCase().slice(0, 10); if (q.get('beds') !== null && f.elements.beds.querySelector('option[value="' + q.get('beds') + '"]')) f.elements.beds.value = q.get('beds'); if (location.hash === '#compare' && q.get('postcode')) run(); } catch (e) {}
+  })();
+  // Get started: pick a service, give your details, then fill in and sign our terms online.
+  (function(){
+    var sec = document.getElementById('signup'), f = document.getElementById('lsForm'); if (!sec || !f) return;
+    var FEE = { 'Tenant Find': 'Tenant find fee: 10% + VAT', 'Rent Collection': 'Tenant find fee 10% + VAT, then rent collection at our standard rate', 'Fully Managed': 'Tenant find fee 10% + VAT, then full management at our standard rate' };
+    var pick = function(v){ Array.prototype.forEach.call(document.querySelectorAll('input[name=ls-svc]'), function(r){ r.checked = r.value === v; }); document.getElementById('lsFee').textContent = (FEE[v] || '') + ' — full details in the terms before you sign.'; };
+    document.querySelectorAll('[data-start]').forEach(function(b){ b.addEventListener('click', function(e){ e.preventDefault(); sec.hidden = false; pick(b.getAttribute('data-start')); sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(function(){ try { f.elements.name.focus({ preventScroll: true }); } catch (x) {} }, 500); }); });
+    document.querySelectorAll('input[name=ls-svc]').forEach(function(r){ r.addEventListener('change', function(){ pick(r.value); }); });
+    if (location.hash === '#signup') { sec.hidden = false; pick((new URLSearchParams(location.search)).get('svc') || 'Fully Managed'); }
+    f.addEventListener('submit', function(ev){
+      ev.preventDefault(); var err = document.getElementById('lsErr'), go = document.getElementById('lsGo'), v = function(k){ return String(f.elements[k].value || '').trim(); }, sv = (document.querySelector('input[name=ls-svc]:checked') || {}).value;
+      var data = { service: sv, name: v('name'), phone: v('phone'), email: v('email'), address: v('address'), postcode: v('postcode'), website: v('website'), consent: f.elements.consent.checked };
+      err.textContent = '';
+      if (!sv) { err.textContent = 'Please choose a service.'; return; }
+      if (!data.name || !data.phone) { err.textContent = 'Please enter your name and phone number.'; return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { err.textContent = 'Please enter a valid email address.'; return; }
+      if (!data.address) { err.textContent = 'Please enter the property address.'; return; }
+      if (!/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(data.postcode)) { err.textContent = 'Please enter the postcode.'; return; }
+      if (!data.consent) { err.textContent = 'Please tick the box so we can contact you.'; return; }
+      go.disabled = true; go.textContent = 'Opening your terms…';
+      ffPost('/api/public/landlord-signup', data, f).then(function(r){ return r.json(); }).then(function(d){
+        if (d.ok && d.link) { location.href = d.link; return; }
+        go.disabled = false; go.textContent = 'Continue to our terms →'; err.textContent = d.error === 'rate-limited' ? 'Too many attempts — please call 0207 096 8131.' : d.error === 'postcode' ? 'Please check the postcode.' : 'Sorry, something went wrong. Please try again or call 0207 096 8131.';
+      }).catch(function(){ go.disabled = false; go.textContent = 'Continue to our terms →'; err.textContent = 'Couldn’t connect — please try again or call 0207 096 8131.'; });
+    });
   })();
   // From the home page: ?postcode= and ?svc= fill in the valuation form.
   try { var vsp = new URLSearchParams(location.search), vpc = vsp.get('postcode'), vsv = vsp.get('svc');
