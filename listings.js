@@ -31,6 +31,10 @@ module.exports = function (app, opts) {
   };
   const SHOW = { let: ['to let', 'new instruction', 'let agreed', 'under offer', 'short let'], sale: ['for sale', 'new instruction', 'under offer', 'coming soon', 'sold stc', 'price reduction', 'new homes'] };
   const TAKEN = /let agreed|under offer|sold stc/i;
+  // A video or virtual tour we can show: YouTube, Vimeo, Matterport or Gnomen's own tours.
+  const videoLink = function (u) { u = String(u || '').trim(); return /^https:\/\/((www\.|m\.)?youtube\.com\/(watch\?|embed\/|shorts\/)|youtu\.be\/|(player\.)?vimeo\.com\/|my\.matterport\.com\/|vt\.gnomen\.co\.uk\/)/i.test(u) && !/[<>"\s]/.test(u) ? u : ''; };
+  const ytId = function (u) { const m = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(String(u || '')); return m ? m[1] : ''; };
+  const vimeoId = function (u) { const m = /vimeo\.com\/(?:video\/)?(\d{6,12})/.exec(String(u || '')); return m ? m[1] : ''; };
   function parse(xml, kind) {
     const out = [];
     String(xml || '').replace(/<property>([\s\S]*?)<\/property>/g, function (m, x) {
@@ -46,7 +50,7 @@ module.exports = function (app, opts) {
         available: tag(x, 'available_date'), furnished: tag(x, 'furnished'), tenure: tag(x, 'tenure'), pets: tag(x, 'pets') === 'Yes', parking: tag(x, 'parking') === '1', garden: tag(x, 'garden') === 'Yes',
         features: tag(x, 'features').split(',').map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 20),
         lat: isFinite(lat) && Math.abs(lat) > 1 ? lat : null, lng: isFinite(lng) && Math.abs(lat) > 1 ? lng : null,
-        epc: /^https:\/\//.test(tag(x, 'epc')) ? tag(x, 'epc') : '', vtour: /^https:\/\/vt\.gnomen\.co\.uk\//.test(tag(x, 'external_vtour')) ? tag(x, 'external_vtour') : '',
+        epc: /^https:\/\//.test(tag(x, 'epc')) ? tag(x, 'epc') : '', vtour: videoLink(tag(x, 'external_vtour')) || videoLink(tag(x, 'video_tour')),
         images: list(x, 'images', 'image').slice(0, 40), floorplans: list(x, 'floorplans', 'floorplan').slice(0, 6), added: tag(x, 'date_added') };
       p.where = [p.street, p.area || p.town].filter(Boolean).join(', ') + (outcode ? ' ' + outcode : '');
       p.headline = (p.studio ? 'Studio' : beds ? beds + ' bedroom ' + type.toLowerCase() : (p.commercial ? 'Commercial ' + type.toLowerCase() : type)) + (kind === 'let' ? ' to rent' : ' for sale');
@@ -372,7 +376,7 @@ module.exports = function (app, opts) {
   function card(p, sizes) {
     return '<a class="lcard" href="' + esc(p.url) + '" data-k="' + p.kind + '" data-beds="' + p.beds + '" data-price="' + Math.round(p.price) + '" data-taken="' + (p.taken ? 1 : 0) + '" data-added="' + esc(p.added) + '" data-q="' + esc((p.where + ' ' + p.type + ' ' + p.town).toLowerCase()) + '"' + (p.lat != null ? ' data-lat="' + p.lat.toFixed(5) + '" data-lng="' + p.lng.toFixed(5) + '"' : '') + '>' +
       '<div class="lph">' + (p.images.length ? pic(p, 0, sizes || '(max-width: 640px) 100vw, (max-width: 1060px) 50vw, 380px', p.headline + ', ' + p.where) : '<div class="noph">Photos coming soon</div>') +
-      '<span class="lst' + (p.taken ? ' taken' : '') + '">' + esc(p.status) + '</span>' + (p.images.length > 1 ? '<span class="lcount">📷 ' + p.images.length + '</span>' : '') + '</div>' +
+      '<span class="lst' + (p.taken ? ' taken' : '') + '">' + esc(p.status) + '</span>' + '<span class="lmedia">' + (p.vtour ? '<span>▶ Video</span>' : '') + (p.floorplans.length ? '<span>📐 Floorplan</span>' : '') + (p.images.length > 1 ? '<span>📷 ' + p.images.length + '</span>' : '') + '</span></div>' +
       '<div class="lbody"><div class="lprice">' + priceHtml(p) + '</div><h3>' + esc(p.headline) + '</h3><p class="lwhere">' + esc(p.where) + '</p><div class="lfacts">' + facts(p) + '</div>' +
       (availText(p) ? '<p class="lavail">' + esc(availText(p)) + '</p>' : '') + '</div></a>';
   }
@@ -385,7 +389,7 @@ module.exports = function (app, opts) {
     const body = (pv ? '<div class="pvbar">👀 Staff preview — only people signed in to Fixflow can see these properties. They’re not public yet.</div>' : '') + '<div class="phead small"><div class="wrap"><span class="eyebrow"><i></i> ' + K.kicker + ' · London</span><h1>' + K.h1 + '</h1>' +
       '<p class="lead">' + (items.length ? avail + ' available now' + (items.length > avail ? ' · ' + (items.length - avail) + ' ' + (kind === 'let' ? 'let agreed or under offer' : 'under offer or sold STC') : '') + '. Updated throughout the day.' : 'New properties are coming soon.') + '</p></div></div>' +
       (items.length ? '<section class="lsec"><div class="wrap"><form class="lfilter" id="lFilter" onsubmit="return false" role="search" aria-label="Filter properties">' +
-        '<label class="lf-q">Area or postcode<input type="search" name="q" placeholder="e.g. SE1, Camberwell" autocomplete="off"></label>' +
+        '<div class="lf-q"><label for="lfQ">Area or postcode</label><div class="lf-qrow"><input id="lfQ" type="search" name="q" placeholder="e.g. SE1, Camberwell" autocomplete="off" enterkeyhint="search"><button type="submit" class="lf-go" aria-label="Search">Search</button></div></div>' +
         '<label>Bedrooms<select name="beds"><option value="">Any</option><option value="0">Studio+</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select></label>' +
         '<label>Max price<select name="max"><option value="">No max</option>' + prices.map(function (v) { return '<option value="' + v + '">' + gbp(v) + (kind === 'let' ? ' pcm' : '') + '</option>'; }).join('') + '</select></label>' +
         '<label>Sort<select name="sort"><option value="new">Newest</option><option value="low">Lowest price</option><option value="high">Highest price</option></select></label>' +
@@ -420,7 +424,7 @@ module.exports = function (app, opts) {
     return '<div class="bk" id="book" role="dialog" aria-modal="true" aria-labelledby="bkH"><a class="bk-bg" href="#" aria-label="Close" tabindex="-1"></a>' +
       '<form class="bk-box form" id="bkForm" novalidate data-ref="' + esc(p.id) + '" data-addr="' + esc(p.where) + '" data-kind="' + p.kind + '" data-url="' + esc(p.url) + '"><a class="bk-x" href="#" aria-label="Close">×</a><div id="bkBody">' +
       '<p class="kicker">Book a viewing</p><h3 id="bkH">' + esc(p.headline) + '</h3><p class="bk-where">📍 ' + esc(p.where) + '</p>' +
-      '<div class="bk-step"><b><i>1</i> Pick up to 3 times that suit you</b><small>We’ll confirm one with you — usually within a few hours.</small></div>' +
+      '<div class="bk-step"><b><i>1</i> Pick up to 3 times that suit you</b><small>This is a request, not a confirmed booking — one of our agents will contact you first to agree a time.</small></div>' +
       '<div class="bk-days" id="bkDays" role="group" aria-label="Day"></div><div class="bk-times" id="bkTimes" role="group" aria-label="Time"></div>' +
       '<div class="bk-picked" id="bkPicked" aria-live="polite"></div>' +
       '<label class="bk-flex"><input type="checkbox" name="flexible"> I’m flexible — any time is fine</label>' +
@@ -432,7 +436,7 @@ module.exports = function (app, opts) {
       '<label class="full">Anything else? <span class="opt">(optional)</span><textarea name="message" rows="2" placeholder="e.g. questions about the property"></textarea></label>' +
       '<label class="hp" aria-hidden="true">Leave this empty<input name="website" tabindex="-1" autocomplete="off"></label>' +
       '<label class="full consent"><input type="checkbox" name="consent" required> <span>I’m happy for Residential Realtors to contact me about this viewing. See our <a href="/privacy">privacy notice</a>.</span></label></div>' +
-      '<p class="ferr" id="bkErr" role="alert"></p><button class="btn red" type="submit" id="bkGo">Request viewing →</button><p class="bk-call">Rather talk? Call <a href="tel:02070968131">0207 096 8131</a></p></div></form></div>';
+      '<p class="bk-note">ℹ️ Sending this form <b>doesn’t book the viewing</b>. One of our agents will call or email you first to confirm a time that works.</p><p class="ferr" id="bkErr" role="alert"></p><button class="btn red" type="submit" id="bkGo">Request viewing →</button><p class="bk-call">Rather talk? Call <a href="tel:02070968131">0207 096 8131</a></p></div></form></div>';
   }
   app.get(['/property/:id', '/property/:id/*'], function (req, res) {
     const pv = preview(req), p = show(req) ? find(String(req.params.id)) : null;
@@ -456,15 +460,19 @@ module.exports = function (app, opts) {
         '<div class="lprice big">' + priceHtml(p) + '</div><h1>' + esc(p.headline) + '</h1><p class="pdwhere">📍 ' + esc(p.where) + '</p>' +
         '<div class="lfacts big">' + facts(p) + '</div>' + (availText(p) ? '<p class="lavail">' + esc(availText(p)) + '</p>' : '') +
         (extras.length ? '<div class="tagrow">' + extras.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+        (p.vtour || p.floorplans.length || p.epc ? '<div class="pdjump">' + (p.vtour ? '<a href="#pd-video">▶ Watch the video</a>' : '') + (p.floorplans.length ? '<a href="#pd-floorplan">📐 Floorplan</a>' : '') + (p.epc ? '<a href="#pd-epc">⚡ EPC</a>' : '') + '<a href="#pd-map">📍 Map</a></div>' : '') +
+        (p.vtour ? '<h2 id="pd-video">' + (ytId(p.vtour) || vimeoId(p.vtour) ? 'Video tour' : 'Virtual tour') + '</h2>' + (ytId(p.vtour) ? '<div class="pdvid"><iframe src="https://www.youtube-nocookie.com/embed/' + ytId(p.vtour) + '?rel=0" title="Video tour of ' + esc(p.where) + '" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>'
+          : vimeoId(p.vtour) ? '<div class="pdvid"><iframe src="https://player.vimeo.com/video/' + vimeoId(p.vtour) + '" title="Video tour of ' + esc(p.where) + '" loading="lazy" allow="fullscreen; picture-in-picture" allowfullscreen></iframe></div>'
+          : '<p><a class="btn navy" href="' + esc(p.vtour) + '" target="_blank" rel="noopener">🎥 Open the virtual tour ↗</a></p>') : '') +
         (p.html ? '<h2>About this property</h2><div class="pddesc">' + p.html + '</div>' : (p.short ? '<h2>About this property</h2><p class="pddesc">' + esc(p.short) + '</p>' : '')) +
         (p.features.length ? '<h2>Key features</h2><ul class="ticks cols2">' + p.features.map(function (f) { return '<li>' + esc(f) + '</li>'; }).join('') + '</ul>' : '') +
-        (p.floorplans.length ? '<h2>Floorplan</h2>' + p.floorplans.map(function (u, i) { return '<a class="pdplan" href="/listing-img/' + p.id + '/fp' + i + '.webp?w=1600" target="_blank" rel="noopener">' + pic(p, 'fp' + i, '(max-width: 900px) 100vw, 700px', 'Floorplan ' + (i + 1)) + '</a>'; }).join('') : '') +
-        (p.epc ? '<h2>Energy performance (EPC)</h2><a class="pdplan epc" href="/listing-img/' + p.id + '/epc.webp?w=1200" target="_blank" rel="noopener">' + pic(p, 'epc', '(max-width: 900px) 100vw, 520px', 'EPC energy rating chart') + '</a>' : '') +
-        '<h2>Location</h2><iframe class="map" title="Map of ' + esc(p.where) + '" src="https://maps.google.com/maps?q=' + mapQ + '&amp;z=15&amp;output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe><p class="mapnote">The map shows the approximate location.</p>' +
+        (p.floorplans.length ? '<h2 id="pd-floorplan">Floorplan</h2>' + p.floorplans.map(function (u, i) { return '<a class="pdplan" href="/listing-img/' + p.id + '/fp' + i + '.webp?w=1600" target="_blank" rel="noopener">' + pic(p, 'fp' + i, '(max-width: 900px) 100vw, 700px', 'Floorplan ' + (i + 1)) + '</a>'; }).join('') : '') +
+        (p.epc ? '<h2 id="pd-epc">Energy performance (EPC)</h2><a class="pdplan epc" href="/listing-img/' + p.id + '/epc.webp?w=1200" target="_blank" rel="noopener">' + pic(p, 'epc', '(max-width: 900px) 100vw, 520px', 'EPC energy rating chart') + '</a>' : '') +
+        '<h2 id="pd-map">Location</h2><iframe class="map" title="Map of ' + esc(p.where) + '" src="https://maps.google.com/maps?q=' + mapQ + '&amp;z=15&amp;output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe><p class="mapnote">The map shows the approximate location.</p>' +
       '</div><aside class="pdside"><div class="pdbox">' +
         '<div class="lprice">' + priceHtml(p) + '</div><p class="pdsideh">' + esc(p.headline) + '</p>' +
         '<a class="btn red" href="' + esc(view) + '">Book a viewing</a>' + (p.kind === 'let' ? '<a class="btn navy" href="' + esc(offer) + '">Make an offer</a>' : '<a class="btn navy" href="' + esc(ask) + '">Make an enquiry</a>') +
-        '<a class="btn line" href="tel:02070968131">📞 0207 096 8131</a>' + (p.vtour ? '<a class="btn line" href="' + esc(p.vtour) + '" target="_blank" rel="noopener">🎥 Virtual tour</a>' : '') +
+        '<a class="btn line" href="tel:02070968131">📞 0207 096 8131</a>' + (p.vtour ? '<a class="btn line" href="#pd-video">▶ Watch the video</a>' : '') + (p.floorplans.length ? '<a class="btn line" href="#pd-floorplan">📐 See the floorplan</a>' : '') +
         '<a class="pdshare" href="https://wa.me/?text=' + share + '" target="_blank" rel="noopener">Share on WhatsApp</a><p class="pdref">Ref. ' + esc(p.id) + '</p></div></aside></div></div></section>' +
       book(p) +
       '<div class="pdbar"><a class="btn red" href="' + esc(view) + '">Book a viewing</a>' + (p.kind === 'let' ? '<a class="btn navy" href="' + esc(offer) + '">Make an offer</a>' : '<a class="btn navy" href="tel:02070968131">📞 Call us</a>') + '</div>' +

@@ -242,6 +242,13 @@ function siteHeader(name, home, req) {
     '<a class="rep" href="/report-a-repair">' + WRENCH + '<span>Report a repair</span></a>' +
     '<button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button></div></header>';
 }
+// Our own CSS and scripts carry a fingerprint of their contents (?v=…), so every update reaches
+// visitors straight away — even though Cloudflare tells browsers to keep these files for hours.
+const assetV = {};
+function asset(name) {
+  if (!assetV[name]) { try { assetV[name] = crypto.createHash('sha1').update(fs.readFileSync(path.join(__dirname, name))).digest('hex').slice(0, 10); } catch (e) { assetV[name] = String(Date.now()); } }
+  return '/' + name + '?v=' + assetV[name];
+}
 function siteFooter(home) {
   return '<footer><div class="wrap"><div class="cols">' +
     '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Estate agents, lettings and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div><div style="margin-top:6px">Open 7 days, 9am–7pm</div></div>' +
@@ -262,7 +269,7 @@ function siteFooter(home) {
     '<input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
     '<label class="qv-ok"><input type="checkbox" name="consent"> <span>I’m happy for you to contact me (<a href="/privacy">privacy</a>)</span></label>' +
     '<p class="qv-err" id="qvErr" role="alert"></p><button class="btn red" type="submit" id="qvGo">Request a call back</button></form></div>' +
-    (process.env.TURNSTILE_SITE_KEY ? '<script>window.FF_TS=' + JSON.stringify(String(process.env.TURNSTILE_SITE_KEY)) + '</script>' : '') + '<script src="/ff.js"></script>' +
+    (process.env.TURNSTILE_SITE_KEY ? '<script>window.FF_TS=' + JSON.stringify(String(process.env.TURNSTILE_SITE_KEY)) + '</script>' : '') + '<script src="' + asset('ff.js') + '"></script>' +
     '<script>document.querySelectorAll(".la-form").forEach(function(f){f.onsubmit=function(ev){ev.preventDefault();var v=function(k){return String(f.elements[k].value||"").trim()},e=f.querySelector(".la-err"),g=f.querySelector("button[type=submit]"),w=f.querySelector("input[name=freq]:checked");e.textContent="";' +
     'if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v("email")))return e.textContent="Please enter a valid email address.";if(!f.elements.consent.checked)return e.textContent="Please tick the box so we can email you.";g.disabled=true;g.textContent="Signing you up…";' +
     'ffPost("/api/landlord-alerts",{name:v("name"),email:v("email"),freq:w?w.value:"weekly",website:v("website"),consent:true},f).then(function(r){return r.json()}).then(function(d){' +
@@ -283,8 +290,8 @@ function siteShell(name, home, req) {
   let body = fs.readFileSync(path.join(__dirname, 'site', name + '.html'), 'utf8');
   if (name === 'home') body = body.replace('<!--FEATURED-->', listings ? listings.featured(req) : '').replace('<!--HEROSEARCH-->', heroSearch(req)).replace('<!--STATS-->', heroStats(req)).replace('<!--AREAS-->', heroAreas(req)).replace('<!--EXPERTS-->', heroExperts(req)).replace('<!--NEWS-->', news ? news.section() : '');
   return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
-    siteHead(name, body) + SITE_FONTS + '<link rel="stylesheet" href="/site.css"></head><body>' + siteHeader(name, home, req) + '<main>' + body + '</main>' + siteFooter(home) +
-    '<script src="/site.js" defer></script></body></html>';
+    siteHead(name, body) + SITE_FONTS + '<link rel="stylesheet" href="' + asset('site.css') + '"></head><body>' + siteHeader(name, home, req) + '<main>' + body + '</main>' + siteFooter(home) +
+    '<script src="' + asset('site.js') + '" defer></script></body></html>';
 }
 // Home page: a property search (when our listings are showing), the live numbers and the areas.
 const ICONS = {
@@ -327,7 +334,7 @@ function heroAreas(req) {
 // The landlords page is its own file (calculators and valuation form); it gets the same head, menu and footer.
 function landlordsShell(home, req) {
   let h = fs.readFileSync(path.join(__dirname, 'landlords.html'), 'utf8');
-  h = h.replace(/<title>[\s\S]*?<link rel="icon"[^>]*>/, siteHead('landlords', h)).replace('<style>', '<link rel="stylesheet" href="/site.css">\n<style>')
+  h = h.replace(/<title>[\s\S]*?<link rel="icon"[^>]*>/, siteHead('landlords', h)).replace('<style>', '<link rel="stylesheet" href="' + asset('site.css') + '">\n<style>')
     .replace(/<header class="top">[\s\S]*?<\/header>/, siteHeader('landlords', home, req)).replace(/<footer>[\s\S]*?<\/footer>/, siteFooter(home));
   return h;
 }
@@ -349,7 +356,7 @@ function sendBuilt(req, res, meta, body) {
   let c = builtCache.get(ck);
   if (!c) {
     const raw = Buffer.from('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
-      siteHeadFor(meta, body) + SITE_FONTS + '<link rel="stylesheet" href="/site.css"></head><body>' + siteHeader(meta.name, home, req) + '<main>' + body + '</main>' + siteFooter(home) + '<script src="/site.js" defer></script></body></html>');
+      siteHeadFor(meta, body) + SITE_FONTS + '<link rel="stylesheet" href="' + asset('site.css') + '"></head><body>' + siteHeader(meta.name, home, req) + '<main>' + body + '</main>' + siteFooter(home) + '<script src="' + asset('site.js') + '" defer></script></body></html>');
     c = { raw: raw, gzip: zlib.gzipSync(raw, { level: 6 }), etag: '"b' + crypto.createHash('sha1').update(raw).digest('base64').slice(0, 26) + '"' };
     if (res.statusCode === 200) { builtCache.set(ck, c); while (builtCache.size > 400) builtCache.delete(builtCache.keys().next().value); }
   }
