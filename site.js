@@ -21,6 +21,7 @@
 
   // Sales valuation form (Sales page): saved with the website requests and sent to the office.
   var sf = document.getElementById('sForm');
+  try { var spc = new URLSearchParams(location.search).get('postcode'); if (sf && spc && sf.elements.postcode) sf.elements.postcode.value = spc.toUpperCase().slice(0, 10); } catch (e) {}
   if (sf) sf.addEventListener('submit', function (ev) {
     ev.preventDefault();
     var err = document.getElementById('sErr'), go = document.getElementById('sGo'), v = function (k) { var el = sf.elements[k]; return el ? String(el.value || '').trim() : ''; };

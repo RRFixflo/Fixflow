@@ -705,6 +705,37 @@ body.bk-lock { overflow: hidden; }
 @media (max-width: 560px) { .lic-row { grid-template-columns: 1fr; } }
 .lic-help { margin: 16px 0 4px; padding: 16px 18px; border-radius: 14px; background: #fff5f5; border: 1px solid #ffd6d8; } .lic-help b { color: var(--navy); } .lic-help p { margin: 6px 0 0; }
 
+
+/* ---------- Colour for the tool tiles and expert cards ---------- */
+.tl { position: relative; overflow: hidden; background: linear-gradient(135deg, var(--c-bg, #fff), #fff 70%); border-color: var(--c-line, var(--line)); }
+.tl .tl-ic { background: var(--c-ic, var(--tint)); }
+.tl:hover { border-color: var(--c-strong, var(--navy)); }
+.tl i { color: var(--c-strong, var(--red)); transition: transform .25s ease; } .tl:hover i { transform: translateX(4px); }
+.tl:nth-child(4n+1) { --c-bg: #fff6e6; --c-ic: #ffe3b3; --c-line: #fbd9a0; --c-strong: #d97706; }
+.tl:nth-child(4n+2) { --c-bg: #eef4ff; --c-ic: #d4e3ff; --c-line: #c3d6fb; --c-strong: #2563eb; }
+.tl:nth-child(4n+3) { --c-bg: #ebfbf1; --c-ic: #c6f1d6; --c-line: #b4e6c6; --c-strong: #059669; }
+.tl:nth-child(4n+4) { --c-bg: #f5f0ff; --c-ic: #e3d8ff; --c-line: #d6c8fb; --c-strong: #7c3aed; }
+.xcard { position: relative; overflow: hidden; background: linear-gradient(180deg, var(--x-bg, var(--tint)) 0%, #fff 100%); border: 1.5px solid var(--x-line, transparent); }
+.xcard::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 5px; background: var(--x-strong, var(--navy)); }
+.x-ic { display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%; background: #fff; box-shadow: 0 10px 26px -16px var(--x-strong, rgba(11,31,58,.6)); }
+.xcard .x-ic svg { stroke: var(--x-strong, var(--navy)); width: 46px; height: 46px; }
+.xcard:hover { border-color: var(--x-line, var(--line)); }
+.xcard:nth-child(4n+1) { --x-bg: #ffeef0; --x-line: #ffd1d5; --x-strong: #d9262e; }
+.xcard:nth-child(4n+2) { --x-bg: #fff6dc; --x-line: #fde6a3; --x-strong: #c88a00; }
+.xcard:nth-child(4n+3) { --x-bg: #eaf2ff; --x-line: #c9dcfd; --x-strong: #2563eb; }
+.xcard:nth-child(4n+4) { --x-bg: #e9faf0; --x-line: #bfe9cf; --x-strong: #059669; }
+
+.x-svc { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0 0 12px; }
+.x-svc a { padding: 7px 12px; border-radius: 999px; background: #fff; border: 1.5px solid var(--x-line, var(--line)); color: var(--ink); font-weight: 700; font-size: .86rem; text-decoration: none; transition: background .2s, color .2s, border-color .2s; }
+.x-svc a:hover { background: var(--x-strong, var(--navy)); border-color: var(--x-strong, var(--navy)); color: #fff; }
+.x-form { display: flex; gap: 6px; width: 100%; margin: 0 0 12px; }
+.x-form input { flex: 1; min-width: 0; padding: 11px 13px; border-radius: 12px; border: 1.5px solid var(--x-line, var(--line)); background: #fff; font: inherit; font-size: 16px; color: var(--ink); }
+.x-form input:focus { outline: none; border-color: var(--x-strong, var(--navy)); box-shadow: 0 0 0 3px rgba(11,31,58,.08); }
+.x-form > button, .x-val-b button { border: 0; border-radius: 12px; padding: 0 14px; background: var(--x-strong, var(--navy)); color: #fff; font: inherit; font-weight: 800; cursor: pointer; transition: transform .15s, filter .15s; }
+.x-form > button:hover, .x-val-b button:hover { transform: translateY(-1px); filter: brightness(1.08); }
+.x-val { flex-direction: column; } .x-val-b { display: flex; gap: 6px; } .x-val-b button { flex: 1; padding: 11px 10px; }
+.x-val-b button + button { background: #fff; color: var(--x-strong, var(--navy)); border: 1.5px solid var(--x-strong, var(--navy)); }
+
 /* ---------- Motion: subtle, modern; all of it off for people who ask their device for less motion ---------- */
 @keyframes rrUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 @keyframes rrZoom { from { transform: scale(1.14); } to { transform: scale(1); } }
@@ -728,4 +759,18 @@ body.bk-lock { overflow: hidden; }
   .gl4-ic, .tl-ic { animation: rrFloat 5s ease-in-out infinite; }
   .gl4:nth-child(odd) .gl4-ic, .tl:nth-child(even) .tl-ic { animation-delay: -2.5s; }
   .eyebrow i { animation: rrPulse 2.4s ease-out infinite; border-radius: 50%; }
+  /* More life: a light sweep across cards, icons that react, a heading accent that draws in, a CTA shine. */
+  @keyframes rrSweep { from { transform: translateX(-120%) skewX(-18deg); } to { transform: translateX(260%) skewX(-18deg); } }
+  @keyframes rrWiggle { 0%, 100% { transform: rotate(0) scale(1); } 30% { transform: rotate(-10deg) scale(1.12); } 60% { transform: rotate(6deg) scale(1.08); } }
+  @keyframes rrBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes rrCtaShine { 0%, 80% { transform: translateX(-140%) skewX(-20deg); } 100% { transform: translateX(240%) skewX(-20deg); } }
+  .tl::after, .xcard::after, .pcard::after, .big-card::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(255,255,255,.65), transparent); transform: translateX(-120%) skewX(-18deg); }
+  .tl:hover::after, .xcard:hover::after, .pcard:hover::after, .big-card:hover::after { animation: rrSweep .8s ease; }
+  .xcard:hover .x-ic svg, .tl:hover .tl-ic { animation: rrWiggle .6s ease; }
+  .x-ic { transition: transform .3s ease, box-shadow .3s ease; } .xcard:hover .x-ic { transform: translateY(-4px); box-shadow: 0 18px 34px -16px var(--x-strong, rgba(11,31,58,.6)); }
+  .h2x.rv.in::after, main section h2.rv.in::after { content: ""; display: block; width: 56px; height: 4px; margin-top: 10px; border-radius: 4px; background: linear-gradient(90deg, var(--red), #ff8a8f); transform-origin: left; animation: rrBar .7s .25s cubic-bezier(.2,.7,.2,1) backwards; }
+  .nav a.cta, .btn.red { position: relative; overflow: hidden; }
+  .nav a.cta::after, .btn.red::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); animation: rrCtaShine 5s ease-in-out infinite; }
+  .tb-logos img { transition: transform .3s ease; } .tb-logos img:hover, .tb-logos a:hover img { transform: translateY(-3px) scale(1.04); }
+
 }

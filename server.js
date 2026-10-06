@@ -315,15 +315,24 @@ function heroSearch(req) {
     '<div class="hs-modes"><button type="button" class="on" data-mode="list">📍 Location</button><button type="button" data-mode="map">🗺️ Map</button><button type="button" data-mode="near">➤ Near me</button></div></div>' +
     val + '</form>';
 }
-// The four "When you need experts" cards, with live numbers where we have them.
+// The four "When you need experts" cards: each one does something — search homes (with live
+// numbers), start a valuation from a postcode, or pick a landlord service.
 function heroExperts(req) {
   const c = listings && listings.counts(req);
-  const card = function (ic, h, line, btn, href) { return '<a class="xcard rv" href="' + href + '"><span class="x-ic">' + ICONS[ic] + '</span><h3>' + h + '</h3><p>' + line + '</p><span class="btn yellow">' + btn + '</span></a>'; };
+  const n = function (x) { return Number(x || 0).toLocaleString('en-GB'); };
+  const search = function (action, label, ph) { return '<form class="x-form" action="' + action + '" method="get" role="search"><input name="q" aria-label="' + label + '" placeholder="' + ph + '" autocomplete="off"><button type="submit" aria-label="Search">→</button></form>'; };
+  const card = function (ic, h, line, body, btn, href) { return '<div class="xcard rv"><span class="x-ic">' + ICONS[ic] + '</span><h3>' + h + '</h3><p>' + line + '</p>' + body + '<a class="btn yellow" href="' + href + '">' + btn + '</a></div>'; };
   return '<div class="xgrid">' +
-    card('key', 'Let your property hassle-free', 'Tenant find, rent collection or full management', 'Let your property', '/landlords') +
-    card('worth', 'What’s your home worth?', 'Free, no-obligation sales and rental valuations', 'Get a valuation', '/sales#sales-valuation') +
-    card('rent', 'Find the right property to rent', c && c.let ? 'Flats and houses across London' : 'Tell us what you’re looking for', 'Rent a property', c && c.let ? '/properties-to-rent' : '/contact?topic=Looking%20to%20rent') +
-    card('buy', 'Find the right property to buy', c && c.sale ? 'Homes for sale across London' : 'Register to hear about new homes first', 'Buy a property', c && c.sale ? '/properties-for-sale' : '/contact?topic=Buying') +
+    card('key', 'Let your property hassle-free', 'Pick the service that suits you',
+      '<div class="x-svc"><a href="/landlords?svc=Tenant%20Find#valuation">Tenant find</a><a href="/landlords?svc=Rent%20Collection#valuation">Rent collection</a><a href="/landlords?svc=Fully%20Managed#valuation">Full management</a></div>',
+      'Let your property', '/landlords') +
+    card('worth', 'What’s your home worth?', 'Free, no-obligation valuation — start with your postcode',
+      '<form class="x-form x-val" action="/sales" method="get"><input name="postcode" aria-label="Your postcode" placeholder="Your postcode" autocomplete="postal-code" style="text-transform:uppercase"><span class="x-val-b"><button type="submit" formaction="/sales#sales-valuation">Selling</button><button type="submit" formaction="/landlords#valuation">Letting</button></span></form>',
+      '', '') +
+    (c && c.let ? card('rent', 'Find the right property to rent', '<b>' + n(c.let) + ' home' + (c.let === 1 ? '' : 's') + '</b> to rent right now', search('/properties-to-rent', 'Search homes to rent', 'Area or postcode'), 'See homes to rent', '/properties-to-rent')
+      : card('rent', 'Find the right property to rent', 'Tell us what you’re looking for', '', 'Rent a property', '/contact?topic=Looking%20to%20rent')) +
+    (c && c.sale ? card('buy', 'Find the right property to buy', '<b>' + n(c.sale) + ' home' + (c.sale === 1 ? '' : 's') + '</b> for sale right now', search('/properties-for-sale', 'Search homes for sale', 'Area or postcode'), 'See homes for sale', '/properties-for-sale')
+      : card('buy', 'Find the right property to buy', 'Register to hear about new homes first', '', 'Buy a property', '/contact?topic=Buying')) +
     '</div>';
 }
 function heroStats(req) {
