@@ -692,3 +692,28 @@ body.bk-lock { overflow: hidden; }
 /* Property lists: when the list last changed, top left. */
 .lupd-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .lupd { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--line); font-size: .82rem; font-weight: 700; color: var(--soft); }
+
+/* ---------- Motion: subtle, modern; all of it off for people who ask their device for less motion ---------- */
+@keyframes rrUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@keyframes rrZoom { from { transform: scale(1.14); } to { transform: scale(1); } }
+@keyframes rrShine { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@keyframes rrFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes rrPulse { 0% { box-shadow: 0 0 0 0 rgba(50,213,131,.55); } 70% { box-shadow: 0 0 0 10px rgba(50,213,131,0); } 100% { box-shadow: 0 0 0 0 rgba(50,213,131,0); } }
+.top { transition: box-shadow .3s ease; } .top.scrolled { box-shadow: 0 10px 30px -18px rgba(11,31,58,.55); }
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .28s; }
+  /* Scroll reveal: slides in once, one after another (--d), then hover effects work as normal. */
+  .rv { opacity: 0; transform: none; transition: none; }
+  .rv.in { opacity: 1; animation: rrUp .75s cubic-bezier(.2,.7,.2,1) backwards; animation-delay: var(--d, 0s); }
+  /* Page tops: the headline, text and search come in on load. */
+  .hero4 .hbg { animation: rrZoom 16s ease-out both; }
+  .hero4 > .wrap > div:first-child > *, .phead .wrap > * { animation: rrUp .8s cubic-bezier(.2,.7,.2,1) backwards; }
+  .hero4 > .wrap > div:first-child > :nth-child(2), .phead .wrap > :nth-child(2) { animation-delay: .1s; }
+  .hero4 > .wrap > div:first-child > :nth-child(3), .phead .wrap > :nth-child(3) { animation-delay: .2s; }
+  .hero4 > .wrap > div:first-child > :nth-child(n+4), .phead .wrap > :nth-child(n+4) { animation-delay: .3s; }
+  .hero4 h1 em { background-image: linear-gradient(90deg, #fff, #ffb4b7, #fff, #ffb4b7); background-size: 300% 100%; animation: rrShine 8s ease-in-out infinite; }
+  .gl4-ic, .tl-ic { animation: rrFloat 5s ease-in-out infinite; }
+  .gl4:nth-child(odd) .gl4-ic, .tl:nth-child(even) .tl-ic { animation-delay: -2.5s; }
+  .eyebrow i { animation: rrPulse 2.4s ease-out infinite; border-radius: 50%; }
+}

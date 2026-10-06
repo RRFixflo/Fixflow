@@ -6,8 +6,18 @@
     nav.addEventListener('click', function (e) { if (e.target.closest('a')) { nav.classList.remove('open'); btn.textContent = '☰'; } });
   }
   var yr = document.getElementById('yr'); if (yr) yr.textContent = new Date().getFullYear();
-  var io = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }); }, { threshold: .1 }) : null;
+  // Things that come into view together arrive one after another (a short stagger).
+  var io = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) { var n = 0; es.forEach(function (e) { if (e.isIntersecting) { if (n) e.target.style.setProperty('--d', Math.min(n, 6) * 0.08 + 's'); n++; e.target.classList.add('in'); io.unobserve(e.target); } }); }, { threshold: .1 }) : null;
+  // Cards and headings slide in as you scroll, one after another within each group.
+  if (io && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+    document.querySelectorAll('main section h2, .lcard, .pcard, .big-card, .xcard, .tl, .mo, .news-l > *, .lu-card, .dl, .pd-cert, .pd-doc, .gl4').forEach(function (el) {
+      if (el.closest('.hero4, .phead, header, footer, form, [role=dialog]') && !el.classList.contains('gl4')) return;
+      el.classList.add('rv');
+    });
+  }
   document.querySelectorAll('.rv').forEach(function (el) { if (io) io.observe(el); else el.classList.add('in'); });
+  var top = document.querySelector('.top');
+  if (top) { var onScroll = function () { top.classList.toggle('scrolled', window.scrollY > 8); }; window.addEventListener('scroll', onScroll, { passive: true }); onScroll(); }
 
   // Sales valuation form (Sales page): saved with the website requests and sent to the office.
   var sf = document.getElementById('sForm');
