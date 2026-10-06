@@ -633,6 +633,11 @@
   .av-acc-det { margin-top: 4px; color: var(--ink-soft); } .av-acc-det b { color: var(--ink, #101828); } .av-acc-warn { color: #b54708; font-weight: 600; } .av-acc-det .linkish { padding: 0; min-height: 0; line-height: inherit; vertical-align: baseline; }
   .av-fromrm { font-style: normal; color: #00a88f; text-transform: none; letter-spacing: 0; }
   .av-llpick { width: auto; max-width: 220px; min-height: 30px; padding: 2px 6px; font-size: .8rem; }
+  .vr-card summary { cursor: pointer; } .vr-new { display: inline-block; padding: 1px 8px; border-radius: 999px; background: #fef3f2; color: #b42318; font-size: .78rem; font-weight: 700; }
+  .vr-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--line, #eef0f3); } .vr-row:first-of-type { margin-top: 10px; }
+  .vr-main { flex: 1; min-width: 0; } .vr-msg { font-size: .85rem; margin-top: 4px; color: var(--ink-soft); font-style: italic; }
+  .vr-links { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-size: .88rem; } .vr-links a { font-weight: 600; text-decoration: none; }
+  .vr-st select { min-width: 150px; } @media (max-width: 560px) { .vr-row { flex-direction: column; } .vr-st select { width: 100%; } }
   .av-offers { display: block; margin: 6px 0 2px; padding: 0; border: 0; background: none; font: inherit; font-size: .84rem; color: var(--ink-soft); cursor: pointer; text-align: left; }
   .oc-addr-ed { font-size: .78rem; font-weight: 600; margin-left: 4px; }
   .av-offers b { color: var(--ink, #101828); } .av-offers:hover { text-decoration: underline; }
@@ -1671,6 +1676,7 @@
       <!-- LANDLORDS: each landlord, their properties and repairs -->
       <div id="llView" hidden>
         <div id="llListView">
+          <div id="vrBox"></div>
           <div class="tiles prop-tiles" id="llTiles"></div>
           <div class="toolbar">
             <input class="inp search" id="llSearch" type="search" placeholder="Search landlords by name, phone, email or property">
@@ -7968,7 +7974,27 @@
 
   // ---------- Landlords page ----------
   var openLlId = null;
+  // ---------- Valuation requests from the public Landlords page ----------
+  var vrItems = [], VR_ST = { new: ['New', '#b42318'], contacted: ['Contacted', '#175cd3'], booked: ['Valuation booked', '#6941c6'], won: ['Instructed ✓', '#067647'], lost: ['Not going ahead', '#667085'] };
+  function loadVr(){ if (!meta.db || staffMode) return Promise.resolve(); return api('GET', '/api/admin/valuation-requests').then(function(d){ if (d && d.ok) { vrItems = d.items; renderVr(); } }).catch(function(){}); }
+  function renderVr(){
+    var box = $('vrBox'); if (!box) return;
+    if (!vrItems.length) { box.innerHTML = ''; return; }
+    var nNew = vrItems.filter(function(x){ return x.status === 'new'; }).length, open = false; try { open = localStorage.getItem('rr_vr_open') === '1'; } catch (e) {}
+    box.innerHTML = '<details class="card vr-card"' + (open || nNew ? ' open' : '') + ' data-vr-box><summary><b>🏠 Valuation requests</b>' + (nNew ? ' <span class="vr-new">' + nNew + ' new</span>' : '') + ' <span class="muted">· from the website’s Landlords page</span></summary>' +
+      vrItems.slice(0, 50).map(function(x){ var d = x.data || {}, st = VR_ST[x.status] || VR_ST.new;
+        return '<div class="vr-row"><div class="vr-main"><div><b>' + esc(x.name) + '</b> · ' + esc(x.address) + '</div>' +
+          '<div class="muted" style="font-size:.85rem">' + [d.beds ? (d.beds === 'Studio' ? 'Studio' : d.beds + ' bed') : '', d.type, d.service && d.service !== 'Not sure yet' ? 'wants ' + d.service : '', d.when ? 'available: ' + d.when.toLowerCase() : '', 'sent ' + fmtShort(x.created_at)].filter(Boolean).map(esc).join(' · ') + '</div>' +
+          (d.message ? '<div class="vr-msg">“' + esc(d.message) + '”</div>' : '') +
+          '<div class="vr-links">' + (x.phone ? '<a href="tel:' + esc(String(x.phone).replace(/[^\d+]/g, '')) + '">📞 ' + esc(x.phone) + '</a>' : '') + (x.email ? '<a href="mailto:' + esc(x.email) + '?subject=' + encodeURIComponent('Your rental valuation — ' + x.address) + '">✉️ ' + esc(x.email) + '</a>' : '') + '</div></div>' +
+          '<div class="vr-st"><select class="inp" data-vr-st="' + x.id + '" style="color:' + st[1] + ';font-weight:700">' + Object.keys(VR_ST).map(function(k){ return '<option value="' + k + '"' + (k === x.status ? ' selected' : '') + '>' + VR_ST[k][0] + '</option>'; }).join('') + '</select></div></div>';
+      }).join('') + '</details>';
+  }
+  document.addEventListener('change', function(e){ var sel = e.target.closest('[data-vr-st]'); if (!sel) return;
+    api('POST', '/api/admin/valuation-requests/' + sel.dataset.vrSt, { status: sel.value }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save that'); return; } vrItems.forEach(function(x){ if (String(x.id) === sel.dataset.vrSt) x.status = sel.value; }); renderVr(); toast('✓ Saved'); }); });
+  document.addEventListener('toggle', function(e){ if (e.target && e.target.matches && e.target.matches('[data-vr-box]')) { try { localStorage.setItem('rr_vr_open', e.target.open ? '1' : '0'); } catch (x) {} } }, true);
   function renderLandlords(){
+    if (!renderLandlords.vr) { renderLandlords.vr = true; loadVr(); } else renderVr();
     var unpaid = allInvoices.filter(function(i){ return !i.paid_at; }), overdue = unpaid.filter(invOverdue);
     var monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
     var received = allInvoices.filter(function(i){ return i.paid_at && new Date(i.paid_at) >= monthStart; });
