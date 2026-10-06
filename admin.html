@@ -603,6 +603,7 @@
   .av-rm-unl { margin: 0 0 10px; font-size: .86rem; } .av-rm-unl summary { cursor: pointer; font-weight: 700; }
   .av-rm-item { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line, #e6e8ec); flex-wrap: wrap; } .av-rm-item img { width: 64px; height: 44px; object-fit: cover; border-radius: 8px; } .av-rm-item span { display: block; color: var(--ink-soft); font-size: .8rem; }
   .av-rmlink { display: flex; gap: 10px; align-items: center; text-decoration: none; color: inherit; border: 1px solid #c8ece4; background: #f2fbf9; border-radius: 12px; padding: 6px; } .av-rmlink img { width: 72px; height: 50px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; } .av-rmlink span { font-size: .8rem; color: var(--ink-soft); min-width: 0; } .av-rmlink b { display: block; color: #0b6b5a; font-size: .84rem; }
+  .diy-row { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line, #eef0f3); } .diy-row > div { flex: 1; min-width: 0; }
   .cb-arow { display: grid; grid-template-columns: 1.2fr 1.4fr 100px 1fr auto; gap: 6px; margin-bottom: 6px; align-items: center; } .cb-aprice { display: flex; align-items: center; gap: 4px; font-weight: 700; } .cb-admin summary { cursor: pointer; } .cb-admin { margin-bottom: 12px; }
   @media (max-width: 760px) { .cb-arow { grid-template-columns: 1fr 100px auto; } .cb-arow [data-k=desc] { grid-column: 1 / -1; grid-row: 2; } .cb-arow [data-k=contractor] { grid-column: 1 / -1; grid-row: 3; } }
   .av-dream-d summary { cursor: pointer; list-style: none; } .av-dream-d summary::-webkit-details-marker { display: none; } .av-dream-d summary::after { content: ' ▸'; } .av-dream-d[open] summary::after { content: ' ▾'; } .av-dream-d[open] .av-dreams { margin-top: 6px; }
@@ -2085,6 +2086,7 @@
       <div id="certsView" hidden>
         <div class="cert-up" id="certUpload" role="button" tabindex="0">📎 <b>Upload a gas safety, EICR, EPC or property licence</b><span>Fixflow reads which property it’s for and the dates — check them and save. Or drag &amp; drop it here.</span></div>
         <div class="tiles prop-tiles" id="certTiles"></div>
+        <details class="card cb-admin" id="diyReps"><summary><b>📄 DIY inventory reports</b> <span class="muted-note" id="diyRepsN" style="margin:0"></span></summary><div id="diyRepsList" style="margin-top:8px"></div></details>
         <details class="card cb-admin" id="cbAdmin"><summary><b>🌐 Website bookings — gas safety, EICR &amp; EPC prices</b> <span class="muted-note" id="cbAdminSt" style="margin:0"></span></summary>
           <p class="muted-note" style="margin:8px 0">Landlords can book and pay for these at <a href="https://www.residentialrealtors.co.uk/book-certificate" target="_blank" rel="noopener">residentialrealtors.co.uk/book-certificate</a>. Enter prices <b>excluding VAT</b> — the website adds VAT at 20%. Type <b>0</b> for a free service; leave it empty to hide it. Each booking appears in Website leads and raises a job for the contractor you choose for that service.</p>
           <div id="cbAdminList"></div>
@@ -8316,6 +8318,8 @@
       facts.push(['Booked', (d.items || []).map(function(i){ return esc(i.name) + ' <span class="muted-note" style="margin:0">£' + Number(i.price).toFixed(2) + ' + VAT</span>'; }).join('<br>') + (d.vat != null ? '<br><span class="muted-note" style="margin:0">Subtotal £' + Number(d.subtotal).toFixed(2) + ' + VAT £' + Number(d.vat).toFixed(2) + '</span>' : '')]);
       facts.push(['Total', '<b>£' + Number(d.total || 0).toFixed(2) + '</b>' + (d.vat != null ? ' inc. VAT ' : ' ') + (d.paid_at ? '<span class="crm-flag ok">💳 Paid online ' + esc(fmtShort(d.paid_at)) + '</span>' : d.checkout_id ? '<span class="crm-flag warn">Not paid yet — payment page opened</span>' : '<span class="crm-flag warn">Take payment</span>')]);
       facts.push(['Access', esc({ landlord: 'Landlord will let us in', tenant: 'Contact the tenant directly', keys: 'Keys at the office / key safe' }[d.access] || '—') + (d.tenant_name || d.tenant_phone ? '<br>Tenant: ' + esc([d.tenant_name, d.tenant_phone, d.tenant_email].filter(Boolean).join(' · ')) : '')]);
+      if (d.diy_report_id) facts.push(['DIY report', '<a href="/api/admin/diy-reports/' + d.diy_report_id + '/pdf" target="_blank" rel="noopener">📄 Open the report</a> · <a href="/api/admin/diy-reports/' + d.diy_report_id + '/pdf?download=1">Download</a>']);
+      else if (d.diy_link) facts.push(['DIY inventory', d.paid_at || !d.total ? 'Access link sent — report not finished yet' : 'Waiting for payment']);
       if ((d.jobs || []).length) facts.push(['Jobs raised', d.jobs.map(function(id){ return '<button type="button" class="linkish" data-crm-job="' + id + '">RR-' + String(id).padStart(5, '0') + '</button>'; }).join(' · ')]);
       facts.push(['Preferred', esc((d.dates || []).join(', ') || 'Any date')]);
     }
@@ -14892,6 +14896,12 @@
       if (k === 'link' ? v : /_fee$/.test(k) ? v !== (def || '') : v !== def) { custom[b] = custom[b] || {}; custom[b][k] = v; } });
     busy($('lsSave'), true, 'Saving…');
     api('PUT', '/api/admin/licensing-schemes', { custom: custom }).then(function(d){ busy($('lsSave'), false); toast(d && d.ok ? 'Licensing schemes saved' : 'Couldn’t save'); if (d && d.ok) lsData.custom = d.custom; });
+  });
+  // Certificates: DIY inventory reports people have finished (paid ones, and tenancy check-ins).
+  if ($('diyReps')) $('diyReps').addEventListener('toggle', function(){
+    if (!this.open) return;
+    api('GET', '/api/admin/diy-reports').then(function(d){ if (!d || !d.ok) return; $('diyRepsN').textContent = '· ' + d.reports.length;
+      $('diyRepsList').innerHTML = d.reports.length ? d.reports.map(function(r){ var m = r.meta || {}; return '<div class="diy-row"><div><b>' + esc(r.address || 'Property') + '</b><small class="muted-note" style="display:block;margin:0">' + esc([m.type, r.name || m.by, r.kind === 'office' ? 'tenancy check-in' : 'paid online', fmtShort(r.created_at), m.photos ? m.photos + ' photos' : ''].filter(Boolean).join(' · ')) + '</small></div><a class="btn small" href="/api/admin/diy-reports/' + r.id + '/pdf" target="_blank" rel="noopener">Open</a><a class="btn small ghost" href="/api/admin/diy-reports/' + r.id + '/pdf?download=1">Download</a></div>'; }).join('') : '<p class="muted-note" style="margin:0">No reports yet. They appear here as soon as someone finishes one.</p>'; });
   });
   // Certificates: what landlords can book (and pay for) on the website, and the prices.
   var cbAdm = null;

@@ -566,6 +566,16 @@ CREATE TABLE IF NOT EXISTS diy_access (
   used_at     TIMESTAMPTZ,
   uses        INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS diy_reports (
+  id          SERIAL PRIMARY KEY,
+  token       TEXT NOT NULL,
+  booking_id  INTEGER,
+  address     TEXT,
+  meta        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  pdf         BYTEA NOT NULL,
+  size        INTEGER NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS crm_meta (
   ref         TEXT PRIMARY KEY,
   assigned_to TEXT,
@@ -9793,6 +9803,41 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const t = String(req.params.token || ''); if (!/^[\w-]{12,40}$/.test(t)) return res.status(400).json({ ok: false });
     await p.query('UPDATE diy_access SET uses = uses + 1, used_at = now() WHERE token = $1', [t]);
     res.json({ ok: true });
+  }));
+  // A finished DIY report: the DIY app sends us a copy of the PDF. It shows in Fixflow (Website leads and
+  // Certificates), and the person who did it gets a link to download it.
+  app.post('/api/public/diy-report/:token', require('express').raw({ type: 'application/pdf', limit: '40mb' }), withDb(async function (p, req, res) {
+    diyCors(res);
+    const t = String(req.params.token || ''); if (!/^[\w-]{12,40}$/.test(t)) return res.status(400).json({ ok: false });
+    const a = (await p.query('SELECT * FROM diy_access WHERE token = $1', [t])).rows[0]; if (!a) return res.status(404).json({ ok: false });
+    const pdf = req.body; if (!Buffer.isBuffer(pdf) || pdf.length < 1000 || pdf.slice(0, 5).toString() !== '%PDF-') return res.status(400).json({ ok: false, error: 'pdf' });
+    let meta = {}; try { meta = JSON.parse(decodeURIComponent(String(req.headers['x-report-meta'] || ''))) || {}; } catch (e) {}
+    const clean = { address: str(meta.address, 200) || '', type: str(meta.inspectionType, 40) || '', ref: str(meta.ref, 40) || '', by: str(meta.signedBy || meta.inspectorName, 120) || '', finished: str(meta.finalizedAt, 40) || '', rooms: parseInt(meta.rooms, 10) || 0, photos: parseInt(meta.photos, 10) || 0 };
+    const dup = (await p.query("SELECT id FROM diy_reports WHERE token = $1 AND meta->>'ref' = $2 AND meta->>'finished' = $3", [t, clean.ref, clean.finished])).rows[0];
+    if (dup) return res.json({ ok: true, id: dup.id, duplicate: true });
+    const r = await p.query('INSERT INTO diy_reports (token, booking_id, address, meta, pdf, size) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id', [t, a.booking_id, clean.address || a.address, JSON.stringify(clean), pdf, pdf.length]);
+    const id = r.rows[0].id, dl = SITE + '/api/public/diy-report/' + t + '/pdf';
+    if (a.booking_id) { const b = (await p.query('SELECT data FROM valuation_requests WHERE id = $1', [a.booking_id])).rows[0]; if (b) { const d = b.data || {}; d.diy_report_id = id; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [a.booking_id, JSON.stringify(d)]); } }
+    ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#certs' : undefined, title: '📄 DIY inventory report received', message: (clean.address || a.address || 'A property') + (a.name ? ' · ' + a.name : '') + (a.kind === 'office' ? ' (tenancy check-in)' : ''), tags: ['page_facing_up'] }).catch(function () {});
+    const to = a.email || (/@/.test(String(meta.email || '')) ? String(meta.email) : '');
+    if (to && canEmail() && sendEmail) sendEmail({ to: to, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Your inventory report — ' + (clean.address || a.address || 'your property'),
+      text: 'Hello' + (a.name ? ' ' + String(a.name).split(' ')[0] : '') + ',\n\nThank you — your inventory report for ' + (clean.address || a.address || 'the property') + ' is ready. You can download it any time here:\n' + dl + '\n\nKeep it safe and give a copy to your tenant — it’s your evidence of the condition at the start of the tenancy.\n\nResidential Realtors\n0207 096 8131' }).catch(function () {});
+    res.json({ ok: true, id: id, download: dl });
+  }));
+  // Download: by the report's private link (the person who did it), or signed in to Fixflow.
+  app.get('/api/public/diy-report/:token/pdf', withDb(async function (p, req, res) {
+    const t = String(req.params.token || ''); if (!/^[\w-]{12,40}$/.test(t)) return res.status(404).end();
+    const r = (await p.query('SELECT id, address, pdf FROM diy_reports WHERE token = $1 ORDER BY id DESC LIMIT 1', [t])).rows[0]; if (!r) return res.status(404).send('Report not found');
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', (req.query.view ? 'inline' : 'attachment') + '; filename="Inventory report - ' + String(r.address || 'property').replace(/[^\w ,.-]/g, '').slice(0, 80) + '.pdf"');
+    res.end(r.pdf);
+  }));
+  app.get('/api/admin/diy-reports', withDb(async function (p, req, res) {
+    res.json({ ok: true, reports: (await p.query('SELECT r.id, r.address, r.meta, r.size, r.created_at, r.booking_id, a.kind, a.name, a.email FROM diy_reports r LEFT JOIN diy_access a ON a.token = r.token ORDER BY r.id DESC LIMIT 200')).rows });
+  }));
+  app.get('/api/admin/diy-reports/:id/pdf', withDb(async function (p, req, res) {
+    const r = (await p.query('SELECT address, pdf FROM diy_reports WHERE id = $1', [parseInt(req.params.id, 10) || 0])).rows[0]; if (!r) return res.status(404).end();
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', (req.query.download ? 'attachment' : 'inline') + '; filename="Inventory report - ' + String(r.address || 'property').replace(/[^\w ,.-]/g, '').slice(0, 80) + '.pdf"'); res.end(r.pdf);
   }));
   // The office: a free DIY link (for a tenancy's welcome email, or to give someone by hand).
   app.post('/api/admin/diy-access', withDb(async function (p, req, res) {

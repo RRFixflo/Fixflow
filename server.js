@@ -305,6 +305,7 @@ function siteShell(name, home, req) {
 }
 // Home page: a property search (when our listings are showing), the live numbers and the areas.
 const ICONS = {
+  diy: '<svg viewBox="0 0 48 48"><rect x="8" y="12" width="32" height="24" rx="4"/><circle cx="24" cy="24" r="6"/><path d="M17 12l3-4h8l3 4"/></svg>',
   cert: '<svg viewBox="0 0 48 48"><path d="M14 6h16l8 8v28H14z"/><path d="M30 6v8h8"/><path d="m20 28 4 4 8-9"/></svg>',
   key: '<svg viewBox="0 0 48 48"><circle cx="17" cy="17" r="9"/><circle cx="17" cy="17" r="3"/><path d="m24 24 16 16M33 33l4-4M37 37l4-4"/></svg>',
   worth: '<svg viewBox="0 0 48 48"><path d="M6 22 24 7l18 15"/><path d="M10 19v21h12"/><circle cx="34" cy="34" r="9"/><path d="M36.5 30.5a3 3 0 0 0-5 2.2v4.6h5.5M30 35h4.5"/></svg>',
@@ -337,6 +338,9 @@ function heroExperts(req) {
     card('cert', 'Landlord certificates', 'Low fixed prices across London — book online in minutes<span class="x-from" data-svc-from hidden></span>',
       '<div class="x-svc"><a href="/gas-safety-certificate">Gas safety certificate</a><a href="/eicr">EICR (electrical report)</a><a href="/epc">EPC</a></div>',
       'Book now →', '/book-certificate') +
+    card('diy', 'DIY inventory', 'Do your own check-in report on your phone — £30 + VAT',
+      '<div class="x-svc"><a href="/diy-inventory#example">See an example report</a><a href="/diy-inventory">How it works</a><a href="/book-certificate?service=diy">Buy &amp; start now</a></div>',
+      'Get started →', '/book-certificate?service=diy') +
     '</div>';
 }
 function heroStats(req) {
