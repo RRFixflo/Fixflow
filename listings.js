@@ -11,7 +11,7 @@ let sharp = null; try { sharp = require('sharp'); } catch (e) { sharp = null; }
 
 module.exports = function (app, opts) {
   const FEEDS = { sale: process.env.GNOMEN_SALES_FEED || '', let: process.env.GNOMEN_LETTINGS_FEED || '' };
-  const LIVE = process.env.LISTINGS_ON === '1', SOURCE = process.env.LISTINGS_SOURCE === 'gnomen' ? 'gnomen' : 'rightmove', BRANCH = String(process.env.RIGHTMOVE_BRANCH || '105856').replace(/\D/g, '');
+  const LIVE = process.env.LISTINGS_ON === '1', SOURCE = process.env.LISTINGS_SOURCE === 'gnomen' ? 'gnomen' : 'rightmove', BRANCH = String(process.env.RIGHTMOVE_BRANCH || '105856').replace(/\D/g, ''), SALES_BRANCH = String(process.env.RIGHTMOVE_SALES_BRANCH || BRANCH).replace(/\D/g, '');
   // Shown to this visitor? Everyone when live; otherwise signed-in staff only (a private preview).
   const staff = function (req) { try { return !!(req && opts.isStaff && opts.isStaff(req)); } catch (e) { return false; } };
   const show = function (req) { return LIVE || staff(req); };
@@ -86,7 +86,7 @@ module.exports = function (app, opts) {
     return out;
   }
   async function rmBranch(kind) {
-    const ch = kind === 'let' ? 'RENT' : 'BUY', loc = 'BRANCH%5E' + BRANCH, seen = {}, items = [];
+    const ch = kind === 'let' ? 'RENT' : 'BUY', loc = 'BRANCH%5E' + (kind === 'let' ? BRANCH : SALES_BRANCH), seen = {}, items = [];
     const sources = [
       function (i) { return RM + '/api/property-search/listing/search?searchLocation=&useLocationIdentifier=true&locationIdentifier=' + loc + '&channel=' + ch + '&index=' + i + '&sortType=6&includeLetAgreed=true&includeSSTC=true&_includeLetAgreed=on'; },
       function (i) { return RM + '/api/_search?locationIdentifier=' + loc + '&numberOfPropertiesPerPage=24&radius=0.0&sortType=6&index=' + i + '&includeLetAgreed=true&includeSSTC=true&viewType=LIST&channel=' + ch + '&areaSizeUnit=sqft&currencyCode=GBP&isFetching=false'; },
@@ -110,17 +110,28 @@ module.exports = function (app, opts) {
     return items;
   }
   // An advert's own page: every photo, the description, key features, floorplans, location.
+  let rmDiag = 0;
   async function rmDetail(id) {
     const c = rmDetails.get(id); if (c && Date.now() - c.at < 12 * 3600000) return c.d;
     let d = null;
     try {
       const r = await fetch(RM + '/properties/' + id, { headers: UA, signal: AbortSignal.timeout(15000) });
+      const body = r.ok ? await r.text() : '';
       if (r.ok) {
         const found = [], look = function (v, depth) { if (!v || typeof v !== 'object' || depth > 10 || found.length) return; if (!Array.isArray(v) && Array.isArray(v.images) && (v.keyFeatures || v.text || v.floorplans)) { found.push(v); return; } Object.keys(v).forEach(function (k) { look(v[k], depth + 1); }); };
-        pageJson(await r.text()).forEach(function (j) { look(j, 0); });
+        pageJson(body).forEach(function (j) { look(j, 0); });
         d = found[0] || null;
       }
-    } catch (e) { d = null; }
+      // What an advert page looks like, the first couple of times one can't be read (to fix the reader).
+      if (!d && rmDiag < 2) {
+        rmDiag++;
+        const scripts = []; body.replace(/<script\b([^>]*)>([\s\S]{0,80})/g, function (m, a, t) { if (scripts.length < 14) scripts.push((a.match(/id="([^"]+)"/) || [])[1] || (a.match(/type="([^"]+)"/) || [])[1] || t.replace(/\s+/g, ' ').slice(0, 40)); });
+        const imgs = (body.match(/media\.rightmove\.co\.uk[^"'\s)\\]*/g) || []);
+        console.log('Rightmove advert page ' + id + ': status ' + r.status + ', ' + body.length + ' bytes, title "' + ((/<title>([^<]{0,80})/.exec(body) || [])[1] || '') + '"' +
+          ', markers ' + ['PAGE_MODEL', '__NEXT_DATA__', 'jsonModel', '__PRELOADED_STATE__', 'propertyData', 'keyFeatures', '"images"', 'floorplans', 'self.__next_f'].filter(function (k) { return body.indexOf(k) !== -1; }).join('/') +
+          ', photo links ' + imgs.length + (imgs[0] ? ' e.g. ' + imgs[0].slice(0, 120) : '') + ', scripts: ' + scripts.join(' | '));
+      }
+    } catch (e) { d = null; if (rmDiag < 2) { rmDiag++; console.log('Rightmove advert page ' + id + ' not read: ' + e.message); } }
     if (d || !c) rmDetails.set(id, { at: Date.now(), d: d || (c && c.d) || null });
     return d || (c && c.d) || null;
   }
@@ -163,6 +174,7 @@ module.exports = function (app, opts) {
     for (const kind of ['let', 'sale']) {
       try {
         const items = await rmBranch(kind), out = [];
+        if (items[0] && !refreshRightmove.shown) { refreshRightmove.shown = 1; const x = items[0]; console.log('Rightmove list item fields: ' + Object.keys(x).join(',') + ' | images ' + JSON.stringify(x.propertyImages || {}).slice(0, 300)); }
         for (const x of items) {
           const fresh = !rmDetails.has(String(x.id));
           const d = await rmDetail(String(x.id));
@@ -173,7 +185,7 @@ module.exports = function (app, opts) {
         counts[kind] = out.length + ' (' + out.filter(function (p) { return p.images.length > 1; }).length + ' with full photos)';
       } catch (e) { counts[kind] = 'not read: ' + e.message; }
     }
-    console.log('Listings from Rightmove branch ' + BRANCH + ': to rent ' + counts.let + ', for sale ' + counts.sale + (LIVE ? '' : ' — staff preview only (LISTINGS_ON is off)'));
+    console.log('Listings from Rightmove branch ' + BRANCH + (SALES_BRANCH !== BRANCH ? ' (sales ' + SALES_BRANCH + ')' : '') + ': to rent ' + counts.let + ', for sale ' + counts.sale + (LIVE ? '' : ' — staff preview only (LISTINGS_ON is off)'));
   }
   async function refreshAll() {
     if (SOURCE === 'rightmove') await refreshRightmove(); else await refresh();
