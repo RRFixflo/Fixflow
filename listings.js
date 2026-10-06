@@ -374,6 +374,35 @@ module.exports = function (app, opts) {
     try { await refreshAll(); } catch (e) {}
     res.json({ ok: true, let: data.let.length, sale: data.sale.length, changed: data.changedAt });
   });
+  // ---------- Rent comparison for landlords (website) ----------
+  // Homes we're letting (or have just let) near a postcode with the same number of bedrooms:
+  // the range and middle rent, and the homes themselves. Only our own published adverts.
+  const pcGeo = new Map(), rcHits = new Map();
+  async function geoPostcode(pc) {
+    if (pcGeo.has(pc)) return pcGeo.get(pc);
+    try { const r = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc), { signal: AbortSignal.timeout(6000) }); const j = r.ok ? await r.json() : null, x = j && j.result;
+      const g = x ? { lat: x.latitude, lng: x.longitude, outcode: x.outcode, area: x.admin_district || '' } : null; if (g) pcGeo.set(pc, g); return g; } catch (e) { return null; }
+  }
+  const miles = function (a, b, c, d) { const R = 3958.8, t = Math.PI / 180, x = Math.sin((c - a) * t / 2), y = Math.sin((d - b) * t / 2); return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * t) * Math.cos(c * t) * y * y)); };
+  app.get('/api/public/rent-compare', async function (req, res) {
+    const ip = String(req.headers['cf-connecting-ip'] || req.ip || ''), now = Date.now(), h = (rcHits.get(ip) || []).filter(function (t) { return now - t < 600000; });
+    if (h.length >= 30) return res.status(429).json({ ok: false, error: 'rate-limited' }); h.push(now); rcHits.set(ip, h); if (rcHits.size > 5000) rcHits.clear();
+    const m = /^([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})$/i.exec(String(req.query.postcode || '').trim());
+    if (!m) return res.status(400).json({ ok: false, error: 'postcode' });
+    const pc = (m[1] + ' ' + m[2]).toUpperCase(), beds = Math.max(0, Math.min(6, parseInt(req.query.beds, 10) || 0));
+    const g = await geoPostcode(pc.replace(' ', '')) || {}, out = m[1].toUpperCase(), hasGeo = isFinite(g.lat) && isFinite(g.lng);
+    const same = data.let.filter(function (p) { return !p.commercial && p.price > 0 && (beds === 0 ? p.studio || p.beds === 0 : beds >= 5 ? p.beds >= 5 : p.beds === beds && !p.studio); })
+      .map(function (p) { return { p: p, d: hasGeo && p.lat != null ? miles(g.lat, g.lng, p.lat, p.lng) : (p.outcode === out ? 0.5 : 99) }; });
+    let radius = 1, near = [];
+    for (const r of [1, 2, 3, 5]) { radius = r; near = same.filter(function (x) { return x.d <= r; }); if (near.length >= 4) break; }
+    near.sort(function (a, b) { return a.d - b.d; }); near = near.slice(0, 12);
+    const prices = near.map(function (x) { return Math.round(x.p.price); }).sort(function (a, b) { return a - b; });
+    const mid = prices.length ? (prices.length % 2 ? prices[(prices.length - 1) / 2] : Math.round((prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2)) : 0;
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: true, postcode: pc, area: g.area || '', beds: beds, radius: radius, count: near.length,
+      low: prices[0] || 0, high: prices[prices.length - 1] || 0, mid: mid,
+      html: near.slice(0, 3).map(function (x) { return card(x.p, '(max-width: 640px) 100vw, 360px').replace('<div class="lbody">', '<div class="lbody"><span class="rc-dist">' + (x.d < 0.1 ? 'Very close' : x.d.toFixed(1) + ' miles away') + '</span>'); }).join('') });
+  });
   const find = function (id) { id = rmAlias[id] || id; return data.let.find(function (p) { return p.id === id; }) || data.sale.find(function (p) { return p.id === id; }); };
 
   // ---------- Photos: resized and cached ----------

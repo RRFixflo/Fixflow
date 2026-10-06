@@ -326,8 +326,8 @@ function heroExperts(req) {
     card('key', 'Let your property hassle-free', 'Pick the service that suits you',
       '<div class="x-svc"><a href="/landlords?svc=Tenant%20Find#valuation">Tenant find</a><a href="/landlords?svc=Rent%20Collection#valuation">Rent collection</a><a href="/landlords?svc=Fully%20Managed#valuation">Full management</a></div>',
       'Let your property', '/landlords') +
-    card('worth', 'What’s your home worth?', 'Free, no-obligation valuation — start with your postcode',
-      '<form class="x-form x-val" action="/sales" method="get"><input name="postcode" aria-label="Your postcode" placeholder="Your postcode" autocomplete="postal-code" style="text-transform:uppercase"><span class="x-val-b"><button type="submit" formaction="/sales#sales-valuation">Selling</button><button type="submit" formaction="/landlords#valuation">Letting</button></span></form>',
+    card('worth', 'What rent could you get?', 'Compare similar homes we’re letting near you',
+      '<form class="x-form x-val" action="/landlords" method="get"><input name="postcode" aria-label="Your postcode" placeholder="Your postcode" autocomplete="postal-code" style="text-transform:uppercase"><span class="x-val-b"><select name="beds" aria-label="Bedrooms"><option value="0">Studio</option><option value="1">1 bed</option><option value="2" selected>2 beds</option><option value="3">3 beds</option><option value="4">4 beds</option><option value="5">5+ beds</option></select><button type="submit" formaction="/landlords#compare">Compare</button></span></form><a class="x-sale" href="/sales#sales-valuation">Selling instead? Get a sales valuation →</a>',
       '', '') +
     (c && c.let ? card('rent', 'Find the right property to rent', '<b>' + n(c.let) + ' home' + (c.let === 1 ? '' : 's') + '</b> to rent right now', search('/properties-to-rent', 'Search homes to rent', 'Area or postcode'), 'See homes to rent', '/properties-to-rent')
       : card('rent', 'Find the right property to rent', 'Tell us what you’re looking for', '', 'Rent a property', '/contact?topic=Looking%20to%20rent')) +
