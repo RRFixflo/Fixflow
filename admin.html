@@ -14863,7 +14863,7 @@
       $('lsList').innerHTML = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div class="ls-grid" style="display:grid;grid-template-columns:minmax(110px,1.1fr) .8fr .8fr 1.2fr 1.3fr 1.3fr 1.3fr;gap:6px;align-items:center;font-size:.84rem;min-width:1100px"><b>Borough</b><b>Selective</b><b>Additional HMO</b><b>Council licensing page</b><b>Selective fee</b><b>Additional HMO fee</b><b>Mandatory HMO fee</b>' +
         Object.keys(d.schemes).sort().map(function(b){ var x = d.schemes[b] || {}, fee = function(k){ return '<input class="inp" data-ls="' + esc(b) + '" data-k="' + k + '" placeholder="e.g. £750" value="' + esc(x[k] || '') + '">'; };
           return '<span>' + esc(b) + '</span>' + sel(b, 'sel', x.sel) + sel(b, 'add', x.add) + '<input class="inp" data-ls="' + esc(b) + '" data-k="link" placeholder="https://…" value="' + esc((d.custom[b] || {}).link || '') + '">' + fee('sel_fee') + fee('add_fee') + fee('hmo_fee'); }).join('') + '</div></div>' +
-        '<p class="muted-note" style="margin:8px 0 0">Fees show on the website’s licence checker when a licence is needed. Southwark and Newham are filled in from the councils’ published fees (August 2026) — check them against the council’s page now and then.</p>';
+        '<p class="muted-note" style="margin:8px 0 0">Fees show on the website’s licence checker for every borough. They’re filled in from the councils’ published fees (October 2026); a blank one shows as “not confirmed — ask the council or ask us”. Check them against the council’s page now and then.</p>';
     });
   });
   if ($('lsSave')) $('lsSave').addEventListener('click', function(){
