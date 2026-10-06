@@ -1757,23 +1757,17 @@ module.exports = function mountJobs(app, opts) {
   }
 
   // Phone alert for a new job. Never delays or breaks saving the report.
+  // A new repair: a phone alert to the owner and every member of staff, and an email to each of them.
   function notifyNewJob(j) {
-    if (!NTFY_TOPIC || typeof fetch !== 'function') return;
     const PRIORITY = { Emergency: 5, Urgent: 4, Routine: 3 };
     const TAGS = { Emergency: ['rotating_light'], Urgent: ['warning'], Routine: ['wrench'] };
-    const body = {
-      topic: NTFY_TOPIC,
-      title: j.urgency.toUpperCase() + ' · New repair ' + refFor(j.id),
-      message: [String(j.address || 'No address given').replace(/\s+/g, ' ').trim(),
-        (j.issue || 'Repair') + (j.location ? ' (' + j.location + ')' : ''),
-        j.photos ? j.photos + ' photo' + (j.photos === 1 ? '' : 's') : ''].filter(Boolean).join('\n').slice(0, 1000),
-      priority: PRIORITY[j.urgency] || 3,
-      tags: TAGS[j.urgency] || ['wrench']
-    };
-    if (PUBLIC_URL) body.click = PUBLIC_URL + '/admin#job=' + j.id;
-    fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) })
-      .then(function (res) { if (!res.ok) console.error('Phone alert failed: HTTP ' + res.status); })
-      .catch(function (err) { console.error('Phone alert failed:', err.message); });
+    const where = String(j.address || 'No address given').replace(/\s+/g, ' ').trim(), what = (j.issue || 'Repair') + (j.location ? ' (' + j.location + ')' : '');
+    teamAlert({ title: j.urgency.toUpperCase() + ' · New repair ' + refFor(j.id),
+      message: [where, what, j.photos ? j.photos + ' photo' + (j.photos === 1 ? '' : 's') : ''].filter(Boolean).join('\n').slice(0, 1000),
+      priority: PRIORITY[j.urgency] || 3, tags: TAGS[j.urgency] || ['wrench'] }, '#job=' + j.id).catch(function () {});
+    staffEmailAll((j.urgency === 'Emergency' ? '🚨 ' : j.urgency === 'Urgent' ? '⚠️ ' : '🔧 ') + j.urgency + ' repair ' + refFor(j.id) + ' - ' + where.split(',').slice(0, 2).join(','), function (link) {
+      return 'A new repair has been reported.\n\nReference: ' + refFor(j.id) + '\nUrgency: ' + j.urgency + '\nProperty: ' + where + '\nProblem: ' + what + (j.photos ? '\nPhotos: ' + j.photos : '') + '\n\nOpen it in Fixflow: ' + link;
+    }, '#job=' + j.id).catch(function (e) { console.error('Repair staff emails failed:', e.message); });
   }
 
   function refFor(id) { return 'RR-' + String(id).padStart(5, '0'); }
@@ -4147,7 +4141,8 @@ module.exports = function mountJobs(app, opts) {
     const id = r.rows[0].id;
     await ensureTrackToken(p, id);
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', 'Reported by the landlord, ' + (l.name || '') + ' (landlord page)' + (self ? ' — they are arranging it themselves.' : ' — asked us to arrange it.')]);
-    ntfy({ title: (self ? 'Landlord arranging repair: ' : 'Landlord reported repair: ') + refFor(id), message: (l.name || 'A landlord') + ' — ' + address + ': ' + title + (self ? ' (they’re arranging it)' : '') + '. Open Fixflow.', tags: ['house'] }).catch(function () {});
+    teamAlert({ title: (self ? 'Landlord arranging repair: ' : 'Landlord reported repair: ') + refFor(id), message: (l.name || 'A landlord') + ' — ' + address + ': ' + title + (self ? ' (they’re arranging it)' : '') + '. Open Fixflow.', tags: ['house'] }, '#job=' + id).catch(function () {});
+    if (!self) staffEmailAll('🔧 Landlord reported repair ' + refFor(id) + ' - ' + String(address).split(',').slice(0, 2).join(','), function (link) { return 'A landlord has reported a repair on their page.\n\nReference: ' + refFor(id) + '\nLandlord: ' + (l.name || '—') + '\nProperty: ' + address + '\nProblem: ' + title + '\n\nOpen it in Fixflow: ' + link; }, '#job=' + id).catch(function () {});
     res.json({ ok: true, id: id, ref: refFor(id) });
   }));
   // The landlord books the visit for a repair they're arranging themselves.
