@@ -9376,12 +9376,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // of it, 'none' = no scheme, 'check' = unclear or changing. Our starting list, which
   // the office keeps up to date in Templates (schemes change every few years).
   const LICENSING = {
-    'Barking and Dagenham': { sel: 'all', add: 'all' }, 'Barnet': { sel: 'none', add: 'all' }, 'Bexley': { sel: 'none', add: 'none' }, 'Brent': { sel: 'some', add: 'all' },
+    'Barking and Dagenham': { sel: 'all', add: 'all' }, 'Barnet': { sel: 'some', add: 'all' }, 'Bexley': { sel: 'none', add: 'none' }, 'Brent': { sel: 'some', add: 'all' },
     'Bromley': { sel: 'none', add: 'none' }, 'Camden': { sel: 'none', add: 'all' }, 'City of London': { sel: 'none', add: 'none' }, 'Croydon': { sel: 'check', add: 'check' },
     'Ealing': { sel: 'some', add: 'all' }, 'Enfield': { sel: 'some', add: 'all' }, 'Greenwich': { sel: 'none', add: 'all' }, 'Hackney': { sel: 'some', add: 'all' },
     'Hammersmith and Fulham': { sel: 'some', add: 'all' }, 'Haringey': { sel: 'some', add: 'all' }, 'Harrow': { sel: 'none', add: 'all' }, 'Havering': { sel: 'some', add: 'some' },
     'Hillingdon': { sel: 'none', add: 'some' }, 'Hounslow': { sel: 'some', add: 'all' }, 'Islington': { sel: 'some', add: 'all' }, 'Kensington and Chelsea': { sel: 'none', add: 'check' },
-    'Kingston upon Thames': { sel: 'none', add: 'none' }, 'Lambeth': { sel: 'none', add: 'all' }, 'Lewisham': { sel: 'check', add: 'all' }, 'Merton': { sel: 'none', add: 'check' },
+    'Kingston upon Thames': { sel: 'none', add: 'none' }, 'Lambeth': { sel: 'some', add: 'all' }, 'Lewisham': { sel: 'check', add: 'all' }, 'Merton': { sel: 'none', add: 'check' },
     // Newham: selective and additional licensing in every ward except Royal Victoria and Stratford Olympic Park (1 June 2023 designation).
     'Newham': { sel: 'all', add: 'all', sel_except: ['Royal Victoria', 'Stratford Olympic Park'], add_except: ['Royal Victoria', 'Stratford Olympic Park'] }, 'Redbridge': { sel: 'some', add: 'all' }, 'Richmond upon Thames': { sel: 'none', add: 'none' },
     // Southwark selective licensing — designation 1 (1 Mar 2022 – 28 Feb 2027) and designation 2
