@@ -727,7 +727,9 @@ body.bk-lock { overflow: hidden; }
 .x-form input:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 3px rgba(11,31,58,.08); }
 .x-form > button, .x-val-b button { border: 0; border-radius: 12px; padding: 0 14px; background: var(--navy); color: #fff; font: inherit; font-weight: 800; cursor: pointer; transition: transform .15s, filter .15s; }
 .x-form > button:hover, .x-val-b button:hover { transform: translateY(-1px); filter: brightness(1.08); }
-.x-val { flex-direction: column; } .x-val-b { display: flex; gap: 6px; } .x-val-b button { flex: 1; padding: 11px 10px; }
+.x-val { flex-direction: column; }
+.x-find { flex-direction: column; } .x-row { display: flex; gap: 6px; } .x-row input { flex: 1; min-width: 0; padding: 11px 13px; border-radius: 12px; border: 1.5px solid var(--line); background: #fff; font: inherit; font-size: 16px; color: var(--ink); } .x-row button { border: 0; border-radius: 12px; padding: 0 14px; background: var(--navy); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+.x-seg { display: inline-flex; padding: 3px; border-radius: 12px; background: #eef2f8; align-self: flex-start; } .x-seg label { cursor: pointer; } .x-seg input { position: absolute; opacity: 0; pointer-events: none; } .x-seg span { display: block; padding: 7px 16px; border-radius: 9px; font-weight: 700; font-size: .9rem; color: var(--soft); transition: background .2s, color .2s; } .x-seg input:checked + span { background: #fff; color: var(--navy); box-shadow: 0 2px 8px -4px rgba(11,31,58,.4); } .x-val-b { display: flex; gap: 6px; } .x-val-b button { flex: 1; padding: 11px 10px; }
 .x-val-b select { flex: 1; min-width: 0; padding: 11px 10px; border-radius: 12px; border: 1.5px solid var(--line); background: #fff; font: inherit; font-size: 16px; color: var(--ink); }
 .x-sale { font-size: .86rem; font-weight: 600; color: var(--soft); text-decoration: none; margin-top: auto; } .x-sale:hover { text-decoration: underline; }
 .x-val-b button + button { background: #fff; color: var(--navy); border: 1.5px solid var(--navy); }
