@@ -176,6 +176,25 @@
     });
   }
 
+  // Property page: Photos / Video / Floorplan tabs at the top (the video only loads when opened).
+  var pdm = document.getElementById('pdmedia');
+  if (pdm) {
+    var pdShow = function (t) {
+      document.querySelectorAll('.pdtabs [data-pdtab]').forEach(function (b) { b.classList.toggle('on', b.dataset.pdtab === t); b.setAttribute('aria-selected', b.dataset.pdtab === t ? 'true' : 'false'); });
+      var g = document.getElementById('gal'); if (g) g.hidden = t !== 'photos';
+      pdm.querySelectorAll('[data-panel]').forEach(function (x) {
+        x.hidden = x.dataset.panel !== t;
+        var f = x.querySelector('iframe[data-src]');
+        if (f) { if (!x.hidden && !f.getAttribute('src')) f.setAttribute('src', f.dataset.src); if (x.hidden && f.getAttribute('src')) f.removeAttribute('src'); }   // stop the video when leaving it
+      });
+    };
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pdtab]'); if (!b) return; e.preventDefault(); pdShow(b.dataset.pdtab);
+      var tabs = document.querySelector('.pdtabs') || pdm, r = tabs.getBoundingClientRect();
+      if (r.top < 0 || r.top > window.innerHeight * 0.4) tabs.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
   // Property checks page: EPC checker and licence checker.
   var escH = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var pcOk = function (v) { return /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(String(v || '').trim()); };

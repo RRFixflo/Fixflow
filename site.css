@@ -670,3 +670,22 @@ body.bk-lock { overflow: hidden; }
 .lmedia .lm-v { background: var(--red); } .lmedia .lm-f { background: #fff; color: var(--navy); }
 .pdjump a[href="#pd-video"] { background: var(--red); border-color: var(--red); color: #fff; }
 .pdjump a[href="#pd-floorplan"] { background: var(--navy); border-color: var(--navy); color: #fff; }
+/* Property page: Photos / Video / Floorplan tabs */
+.pdtabs { display: flex; gap: 8px; margin: 0 0 12px; flex-wrap: wrap; scroll-margin-top: 90px; }
+.pdtabs button { border: 1.5px solid var(--line); background: #fff; color: var(--navy); font: inherit; font-weight: 800; font-size: .98rem; padding: 11px 18px; border-radius: 999px; cursor: pointer; }
+.pdtabs button.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.pdtabs .pdt-v:not(.on) { background: var(--red); border-color: var(--red); color: #fff; }
+.pdtabs .pdt-v.on { background: var(--navy); border-color: var(--navy); }
+.pdpanel { border-radius: 22px; overflow: hidden; background: #0b1f3a; }
+.pdpanel .pdvid { border-radius: 0; }
+.pdplanp { background: #fff; border: 1px solid var(--line); display: grid; gap: 12px; padding: 12px; max-height: 80vh; overflow: auto; }
+.pdplanp img { width: 100%; height: auto; display: block; border-radius: 12px; }
+.pdtour { aspect-ratio: 16 / 9; display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center; padding: 20px; background: #0b1f3a center / cover no-repeat; position: relative; }
+.pdtour::before { content: ''; position: absolute; inset: 0; background: rgba(11,31,58,.55); }
+.pdtour > * { position: relative; } .pdtour span { color: #fff; font-weight: 600; }
+.pdjump .pj-v { background: var(--red); border-color: var(--red); color: #fff; } .pdjump .pj-f { background: var(--navy); border-color: var(--navy); color: #fff; }
+@media (max-width: 640px) { .pdtabs { gap: 6px; } .pdtabs button { padding: 9px 13px; font-size: .9rem; } .pdtour { aspect-ratio: 4 / 3; } }
+.gal:has(.gmedia) .gnum { top: 14px; bottom: auto; right: 14px; }
+.gal:has(.gmedia) .lst { top: 14px; }
+@media (max-width: 640px) { .pdtabs { flex-wrap: nowrap; } .pdtabs button { flex: 1 1 0; min-width: 0; padding: 10px 6px; font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
+@media (max-width: 640px) { .pdt-n { display: none; } }
