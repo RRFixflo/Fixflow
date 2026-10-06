@@ -227,8 +227,8 @@ function siteHeadFor(pg, body) {
 const SITE_FONTS = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">';
 const WRENCH = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
 // The menu (with "Report a repair" always one tap away) and footer shared by every website page.
-function siteHeader(name, home) {
-  const props = listings && listings.live() ? [['/properties-for-sale', 'Buy', 'list-sale'], ['/properties-to-rent', 'Rent', 'list-let']] : [[home, 'Home', 'home']];
+function siteHeader(name, home, req) {
+  const props = listings && listings.show(req) ? [['/properties-for-sale', 'Buy', 'list-sale'], ['/properties-to-rent', 'Rent', 'list-let']] : [[home, 'Home', 'home']];
   const nav = props.concat([['/sales', 'Sell', 'sales'], ['/landlords', 'Landlords', 'landlords'], ['/tenants', 'Tenants', 'tenants'], ['/about', 'About', 'about'], ['/contact', 'Contact', 'contact']])
     .map(function (n) { return '<a href="' + n[0] + '"' + (n[2] === name ? ' class="on" aria-current="page"' : '') + '>' + n[1] + '</a>'; }).join('');
   return '<header class="top"><div class="wrap"><a class="brand" href="' + home + '" aria-label="Residential Realtors — home"><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34"></a>' +
@@ -250,27 +250,27 @@ function siteFooter(home) {
     '<div class="legal">© <span id="yr"></span> Estallion Investments Ltd trading as Residential Realtors · Registered in England, company number 08760284 · 28-30 Harper Road, London SE1 6AD.</div></div></footer>';
 }
 const isSiteHost = function (req) { return SITE_HOSTS.indexOf(String(req.hostname || '').toLowerCase()) !== -1; };
-function siteShell(name, home) {
+function siteShell(name, home, req) {
   let body = fs.readFileSync(path.join(__dirname, 'site', name + '.html'), 'utf8');
-  if (name === 'home') body = body.replace('<!--FEATURED-->', listings ? listings.featured() : '');
+  if (name === 'home') body = body.replace('<!--FEATURED-->', listings ? listings.featured(req) : '');
   return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
-    siteHead(name, body) + SITE_FONTS + '<link rel="stylesheet" href="/site.css"></head><body>' + siteHeader(name, home) + '<main>' + body + '</main>' + siteFooter(home) +
+    siteHead(name, body) + SITE_FONTS + '<link rel="stylesheet" href="/site.css"></head><body>' + siteHeader(name, home, req) + '<main>' + body + '</main>' + siteFooter(home) +
     '<script src="/site.js" defer></script></body></html>';
 }
 // The landlords page is its own file (calculators and valuation form); it gets the same head, menu and footer.
-function landlordsShell(home) {
+function landlordsShell(home, req) {
   let h = fs.readFileSync(path.join(__dirname, 'landlords.html'), 'utf8');
   h = h.replace(/<title>[\s\S]*?<link rel="icon"[^>]*>/, siteHead('landlords', h)).replace('<style>', '<link rel="stylesheet" href="/site.css">\n<style>')
-    .replace(/<header class="top">[\s\S]*?<\/header>/, siteHeader('landlords', home)).replace(/<footer>[\s\S]*?<\/footer>/, siteFooter(home));
+    .replace(/<header class="top">[\s\S]*?<\/header>/, siteHeader('landlords', home, req)).replace(/<footer>[\s\S]*?<\/footer>/, siteFooter(home));
   return h;
 }
 const siteCache = {};
 function sendSite(req, res, name) {
   const f = name === 'landlords' ? path.join(__dirname, 'landlords.html') : path.join(__dirname, 'site', name + '.html'); let st; try { st = fs.statSync(f); } catch (e) { return res.status(404).end(); }
-  const home = isSiteHost(req) ? '/' : '/home', ck = name + home + (listings ? listings.stamp() + listings.live() : '');
+  const home = isSiteHost(req) ? '/' : '/home', ck = name + home + (listings ? listings.stamp() + listings.show(req) : '');
   let c = siteCache[ck];
-  if (!c || c.mtime !== st.mtimeMs) { const raw = Buffer.from(name === 'landlords' ? landlordsShell(home) : siteShell(name, home)); c = siteCache[ck] = { mtime: st.mtimeMs, raw: raw, gzip: zlib.gzipSync(raw, { level: 9 }), etag: '"s' + crypto.createHash('sha1').update(raw).digest('base64').slice(0, 26) + '"' }; }
-  res.setHeader('Cache-Control', 'no-cache'); res.setHeader('ETag', c.etag); res.setHeader('Vary', 'Accept-Encoding'); res.type('html');
+  if (!c || c.mtime !== st.mtimeMs) { const raw = Buffer.from(name === 'landlords' ? landlordsShell(home, req) : siteShell(name, home, req)); c = siteCache[ck] = { mtime: st.mtimeMs, raw: raw, gzip: zlib.gzipSync(raw, { level: 9 }), etag: '"s' + crypto.createHash('sha1').update(raw).digest('base64').slice(0, 26) + '"' }; }
+  res.setHeader('Cache-Control', listings && listings.preview(req) ? 'private, no-store' : 'no-cache'); res.setHeader('ETag', c.etag); res.setHeader('Vary', 'Accept-Encoding, Cookie'); res.type('html');
   if (req.headers['if-none-match'] === c.etag) return res.status(304).end();
   const gz = /\bgzip\b/.test(String(req.headers['accept-encoding'] || '')); if (gz) res.setHeader('Content-Encoding', 'gzip');
   res.end(req.method === 'HEAD' ? undefined : (gz ? c.gzip : c.raw));
@@ -278,20 +278,20 @@ function sendSite(req, res, name) {
 // A page built elsewhere (property listings), in the website's frame.
 const builtCache = new Map();
 function sendBuilt(req, res, meta, body) {
-  const home = isSiteHost(req) ? '/' : '/home', ck = meta.name + home + (meta.stamp || '') + listings.live();
+  const home = isSiteHost(req) ? '/' : '/home', ck = meta.name + home + (meta.stamp || '') + listings.show(req);
   let c = builtCache.get(ck);
   if (!c) {
     const raw = Buffer.from('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
-      siteHeadFor(meta, body) + SITE_FONTS + '<link rel="stylesheet" href="/site.css"></head><body>' + siteHeader(meta.name, home) + '<main>' + body + '</main>' + siteFooter(home) + '<script src="/site.js" defer></script></body></html>');
+      siteHeadFor(meta, body) + SITE_FONTS + '<link rel="stylesheet" href="/site.css"></head><body>' + siteHeader(meta.name, home, req) + '<main>' + body + '</main>' + siteFooter(home) + '<script src="/site.js" defer></script></body></html>');
     c = { raw: raw, gzip: zlib.gzipSync(raw, { level: 6 }), etag: '"b' + crypto.createHash('sha1').update(raw).digest('base64').slice(0, 26) + '"' };
     if (res.statusCode === 200) { builtCache.set(ck, c); while (builtCache.size > 400) builtCache.delete(builtCache.keys().next().value); }
   }
-  res.setHeader('Cache-Control', 'no-cache'); res.setHeader('ETag', c.etag); res.setHeader('Vary', 'Accept-Encoding'); res.type('html');
+  res.setHeader('Cache-Control', meta.private ? 'private, no-store' : 'no-cache'); res.setHeader('ETag', c.etag); res.setHeader('Vary', 'Accept-Encoding, Cookie'); res.type('html');
   if (res.statusCode === 200 && req.headers['if-none-match'] === c.etag) return res.status(304).end();
   const gz = /\bgzip\b/.test(String(req.headers['accept-encoding'] || '')); if (gz) res.setHeader('Content-Encoding', 'gzip');
   res.end(req.method === 'HEAD' ? undefined : (gz ? c.gzip : c.raw));
 }
-const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt });
+const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
 // On the website's own address, /home is the same page as / — send search engines to one address.
 app.get('/home', (req, res, next) => { if (isSiteHost(req)) return res.redirect(301, '/'); next(); });
 Object.keys(SITE_PAGES).forEach(function (name) { if (SITE_PAGES[name].paths) app.get(SITE_PAGES[name].paths, function (req, res) { sendSite(req, res, name); }); });
@@ -304,7 +304,7 @@ app.get('/robots.txt', (req, res) => {
 app.get('/sitemap.xml', (req, res) => {
   const pages = [['/', '1.0'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
   res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
-    pages.concat(listings.live() ? [['/properties-to-rent', '0.9'], ['/properties-for-sale', '0.9']] : []).concat(listings.urls().map(function (u) { return [u, '0.7']; }))
+    pages.concat(listings.urls().length ? [['/properties-to-rent', '0.9'], ['/properties-for-sale', '0.9']] : []).concat(listings.urls().map(function (u) { return [u, '0.7']; }))
       .map(function (x) { return '  <url><loc>' + SITE_URL + siteEsc(x[0]) + '</loc><priority>' + x[1] + '</priority></url>'; }).join('\n') + '\n</urlset>\n');
 });
 // The repair report (the tool tenants use) at a clear address on the website.

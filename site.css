@@ -285,3 +285,6 @@ footer .accred p a { display: inline; color: #fff; text-decoration: underline; }
   .pdbar .btn { padding: 14px 10px; font-size: .95rem; }
   body:has(.pdbar) footer { padding-bottom: 110px; }
 }
+
+/* Staff preview of listings that aren't public yet */
+.pvbar { background: #fff4d6; color: #7a5200; border-bottom: 1px solid #f3d28b; text-align: center; font-weight: 700; font-size: .9rem; padding: 10px 16px; }
