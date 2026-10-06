@@ -885,7 +885,7 @@ body.bk-lock { overflow: hidden; }
 .hc-go { margin-top: auto; padding-top: 12px; font-weight: 800; color: var(--navy); } .hc-card:hover .hc-go { color: var(--red); }
 .hc-points { display: flex; flex-wrap: wrap; gap: 10px 26px; margin: 24px 0 0; padding: 0; list-style: none; color: #c9d3e1; font-weight: 600; font-size: .92rem; } .hc-points li::before { content: "✓"; color: #6ee7a8; font-weight: 800; margin-right: 8px; }
 .xcard:nth-child(3) { border-color: var(--navy); box-shadow: 0 0 0 1px var(--navy), 0 26px 50px -30px rgba(11,31,58,.5); } .xcard:nth-child(3)::before { transform: scaleX(1); }
-.xgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } @media (max-width: 1060px) { .xgrid { grid-template-columns: 1fr 1fr; } } @media (max-width: 560px) { .xgrid { grid-template-columns: 1fr; } }
+.xgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } @media (max-width: 1060px) { .xgrid { grid-template-columns: 1fr; max-width: 620px; margin-left: auto; margin-right: auto; } } @media (max-width: 560px) { .xgrid { grid-template-columns: 1fr; } }
 
 /* DIY inventory: example report */
 .ex-doc { position: relative; overflow: hidden; max-width: 900px; margin: 18px auto 0; padding: 30px; border-radius: 18px; background: #fff; border: 1px solid #d3dbe6; box-shadow: 0 40px 80px -50px rgba(11,31,58,.6); }

@@ -337,9 +337,6 @@ function heroExperts(req) {
     card('worth', 'What rent could you get?', 'Compare similar homes we’re letting near you',
       '<form class="x-form x-val" action="/landlords" method="get"><input name="postcode" aria-label="Your postcode" placeholder="Your postcode" autocomplete="postal-code" style="text-transform:uppercase"><span class="x-val-b"><select name="beds" aria-label="Bedrooms"><option value="0">Studio</option><option value="1">1 bed</option><option value="2" selected>2 beds</option><option value="3">3 beds</option><option value="4">4 beds</option><option value="5">5+ beds</option></select><button type="submit" formaction="/landlords#compare">Compare</button></span></form><a class="x-sale" href="/sales#sales-valuation">Selling instead? Get a sales valuation →</a>',
       '', '') +
-    card('cert', 'Landlord certificates', 'Low fixed prices across London — book online in minutes<span class="x-from" data-svc-from hidden></span>',
-      '<div class="x-svc"><a href="/gas-safety-certificate">Gas Safety certificate</a><a href="/eicr">EICR (electrical report)</a><a href="/epc">EPC</a></div>',
-      'Book now →', '/book-certificate') +
     card('diy', 'DIY inventory', 'Do your own check-in report on your phone — £30 + VAT',
       '<div class="x-svc"><a href="/diy-inventory#example">See an example report</a><a href="/diy-inventory">How it works</a><a href="/book-certificate?service=diy">Buy &amp; start now</a></div>',
       'Get started →', '/book-certificate?service=diy') +
