@@ -305,7 +305,8 @@
     var cbVat = 0.2, r2 = function (n) { return Math.round(n * 100) / 100; };
     var cbSum = function () { var sub = r2(cbItems.filter(function (i) { return picked().indexOf(i.id) !== -1; }).reduce(function (a, i) { return a + i.price; }, 0)), vat = r2(sub * cbVat), t = r2(sub + vat);
       document.getElementById('cbSub').textContent = money(sub); document.getElementById('cbVat').textContent = money(vat);
-      var n = picked().length;
+      var n = picked().length, onlyDiy = n && picked().every(function (id) { return /^diy/.test(id); });
+      cb.querySelectorAll('.cb-visit').forEach(function (el) { el.hidden = !!onlyDiy; });
       document.getElementById('cbTotal').textContent = n && !t ? 'Free' : money(t); cbGo.disabled = !n; cbGo.textContent = !n ? 'Choose a service' : !t ? 'Send request — free →' : (cbPay ? 'Book & pay ' + money(t) + ' →' : 'Send booking — ' + money(t)); };
     var showDone = function (html) { cb.closest('.cb-grid').hidden = true; cbDone.innerHTML = '<div class="cb-done">' + html + '</div>'; cbDone.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
     fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
@@ -317,13 +318,13 @@
       cbItems.forEach(function (i) { var m = /^(.+?)\s+[—–-]\s+(.+)$/.exec(i.name), key = m ? m[1] : i.id;
         if (m && byName[key]) { byName[key].opts.push({ id: i.id, label: m[2], price: i.price }); return; }
         var g = { name: m ? m[1] : i.name, desc: i.desc, opts: [{ id: i.id, label: m ? m[2] : '', price: i.price }] }; if (m) byName[key] = g; groups.push(g); });
-      var icon = function (n) { return /gas/i.test(n) ? '🔥' : /eicr|electr/i.test(n) ? '⚡' : /epc|energy/i.test(n) ? '🏷️' : /licen/i.test(n) ? '📋' : '📋'; };
+      var icon = function (n) { return /gas/i.test(n) ? '🔥' : /eicr|electr/i.test(n) ? '⚡' : /epc|energy/i.test(n) ? '🏷️' : /inventory/i.test(n) ? '📸' : '📋'; };
       box.innerHTML = groups.map(function (g) { var o = g.opts[0], multi = g.opts.length > 1;
         return '<label class="cb-item"><input type="checkbox" name="svc" value="' + escH(o.id) + '"><span class="cb-ic">' + icon(g.name) + '</span><span class="cb-it"><b>' + escH(multi ? g.name : g.name + (o.label ? ' — ' + o.label : '')) + '</b>' + (g.desc ? '<small>' + escH(g.desc) + '</small>' : '') +
           (multi ? '<select class="cb-size" aria-label="Property size">' + g.opts.map(function (x) { return '<option value="' + escH(x.id) + '" data-price="' + x.price + '">' + escH(x.label.charAt(0).toUpperCase() + x.label.slice(1)) + '</option>'; }).join('') + '</select>' : '') +
           '</span><span class="cb-pr"><span class="cb-prv">' + (o.price ? money(o.price) : 'Free') + '</span>' + (o.price ? '<small>+ VAT</small>' : '') + '</span></label>'; }).join('');
       document.getElementById('cbPayNote').textContent = cbPay ? 'You’ll pay on SumUp’s secure page. Card details never touch our website.' : 'We’ll call you to take payment and confirm the date.';
-      try { var want = new URLSearchParams(location.search).get('service'); if (want) cb.querySelectorAll('[name=svc]').forEach(function (x) { if (x.value === want || (want === 'gas' && /^gas/.test(x.value)) || (want === 'eicr' && /^eicr/.test(x.value)) || (want === 'epc' && /^epc/.test(x.value)) || (want === 'licence' && /^licen/.test(x.value))) { x.checked = true; x.closest('.cb-item').classList.add('on'); } }); } catch (e) {}
+      try { var want = new URLSearchParams(location.search).get('service'); if (want) cb.querySelectorAll('[name=svc]').forEach(function (x) { if (x.value === want || (want === 'gas' && /^gas/.test(x.value)) || (want === 'eicr' && /^eicr/.test(x.value)) || (want === 'epc' && /^epc/.test(x.value)) || (want === 'licence' && /^licen/.test(x.value)) || (want === 'diy' && /^diy/.test(x.value))) { x.checked = true; x.closest('.cb-item').classList.add('on'); } }); } catch (e) {}
       cbSum();
     }).catch(function () { document.getElementById('cbItems').innerHTML = '<p class="tool-err">Couldn’t load the services — please call 0207 096 8131.</p>'; });
     cb.addEventListener('change', function (e) { if (e.target.classList.contains('cb-size')) { var it = e.target.closest('.cb-item'), box2 = it.querySelector('[name=svc]'), op = e.target.selectedOptions[0]; box2.value = e.target.value; it.querySelector('.cb-prv').textContent = +op.dataset.price ? money(+op.dataset.price) : 'Free'; if (!box2.checked) { box2.checked = true; it.classList.add('on'); } cbSum(); return; } if (e.target.name === 'svc') { e.target.closest('.cb-item').classList.toggle('on', e.target.checked); cbSum(); } if (e.target.name === 'access') document.getElementById('cbTenantRow').hidden = e.target.value !== 'tenant'; });
@@ -354,7 +355,8 @@
         var check = function (n) { fetch('/api/public/cert-booking/' + encodeURIComponent(bid) + '?k=' + encodeURIComponent(bk), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
           if (!d.ok) { showDone('<h3>We couldn’t find that booking</h3><p>Please call <a href="tel:02070968131">0207 096 8131</a>.</p>'); return; }
           var what = (d.items || []).map(function (i) { return escH(i.name); }).join(' + ');
-          if (d.paid) { showDone('<div class="big">✓</div><h3>Paid — thank you! Your booking is confirmed</h3><p><b>' + what + '</b><br>' + escH(d.address) + ' · ' + money(d.total) + '</p><p>We’ll be in touch shortly to confirm the date and time. A confirmation has been emailed to you.</p>'); return; }
+          if (d.paid) { var visit = (d.items || []).some(function (i) { return !/DIY/i.test(i.name); });
+            showDone('<div class="big">✓</div><h3>Paid — thank you!</h3><p><b>' + what + '</b><br>' + escH(d.address) + ' · ' + money(d.total) + (d.vat != null ? ' inc. VAT' : '') + '</p>' + (d.diy ? '<p><a class="btn red" href="' + escH(d.diy) + '">Start your DIY inventory →</a></p><p>We’ve also emailed you this link, so you can come back to it.</p>' : '') + (visit ? '<p>We’ll be in touch shortly to confirm the date and time, and we’ll remind you before your certificate expires.</p>' : '') + '<p>A confirmation has been emailed to you.</p>'); return; }
           if (n < 4) { setTimeout(function () { check(n + 1); }, 2500); return; }
           showDone('<h3>Your payment hasn’t gone through yet</h3><p><b>' + what + '</b> · ' + money(d.total) + '</p><p>If you closed the payment page, you can try again — nothing has been taken.</p><div class="btns" style="justify-content:center"><button type="button" class="btn red" id="cbRetry">Pay ' + money(d.total) + ' →</button><a class="btn line" href="tel:02070968131">Call 0207 096 8131</a></div>');
           var rb = document.getElementById('cbRetry'); if (rb) rb.addEventListener('click', function () { rb.disabled = true; rb.textContent = 'Opening payment…';

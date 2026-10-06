@@ -377,7 +377,7 @@
   // Get started: pick a service, give your details, then fill in and sign our terms online.
   (function(){
     var sec = document.getElementById('signup'), f = document.getElementById('lsForm'); if (!sec || !f) return;
-    var FEE = { 'Tenant Find': 'Tenant find fee: 10% + VAT', 'Rent Collection': 'Tenant find fee 10% + VAT, then rent collection at our standard rate', 'Fully Managed': 'Tenant find fee 10% + VAT, then full management at our standard rate' };
+    var FEE = { 'Tenant Find': 'Tenant find fee 10% + VAT, then 9% + VAT on each anniversary', 'Rent Collection': 'Tenant find fee 10% + VAT, then rent collection at our standard rate', 'Fully Managed': 'Tenant find fee 10% + VAT, then full management at our standard rate' };
     var pick = function(v){ Array.prototype.forEach.call(document.querySelectorAll('input[name=ls-svc]'), function(r){ r.checked = r.value === v; }); document.getElementById('lsFee').textContent = (FEE[v] || '') + ' — full details in the terms before you sign.'; };
     document.querySelectorAll('[data-start]').forEach(function(b){ b.addEventListener('click', function(e){ e.preventDefault(); sec.hidden = false; pick(b.getAttribute('data-start')); sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(function(){ try { f.elements.name.focus({ preventScroll: true }); } catch (x) {} }, 500); }); });
     document.querySelectorAll('input[name=ls-svc]').forEach(function(r){ r.addEventListener('change', function(){ pick(r.value); }); });

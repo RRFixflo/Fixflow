@@ -554,6 +554,18 @@ CREATE TABLE IF NOT EXISTS crm_notes (
   at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS crm_notes_ref ON crm_notes (ref, at DESC);
+CREATE TABLE IF NOT EXISTS diy_access (
+  token       TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL DEFAULT 'paid',
+  booking_id  INTEGER,
+  name        TEXT,
+  email       TEXT,
+  address     TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at  TIMESTAMPTZ NOT NULL,
+  used_at     TIMESTAMPTZ,
+  uses        INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS crm_meta (
   ref         TEXT PRIMARY KEY,
   assigned_to TEXT,
@@ -9667,7 +9679,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     { id: 'epc', name: 'EPC (Energy Performance Certificate)', desc: 'Survey by an accredited energy assessor; valid for 10 years and lodged on the government register', price: '' },
     { id: 'licence', name: 'Property licence application', desc: 'We prepare and submit your selective or HMO licence application and deal with the council until it’s granted — free, you only pay the council’s fee', price: '0' }
   ];
-  const CERT_NEW = ['licence'];   // services added later: offered to offices that already saved their list
+  CERT_DEFAULTS.push({ id: 'diy', name: 'DIY inventory report', desc: 'Do your own room-by-room inventory on your phone and get a dated report — access link sent as soon as you’ve paid', price: '30' });
+  const CERT_NEW = ['licence', 'diy'];   // services added later: offered to offices that already saved their list
   const SUMUP_KEY = process.env.SUMUP_API_KEY || ''; let SUMUP_MC = process.env.SUMUP_MERCHANT_CODE || ''; const SITE = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
   const canPay = function () { return !!(SUMUP_KEY && SUMUP_MC); }, CERT_VAT = 0.2;
   // No merchant code set? Ask SumUp for it with the API key (once, at start-up).
@@ -9710,6 +9723,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const cons = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY id')).rows, ids = [];
     const pref = d.dates && d.dates.length ? d.dates.join(' or ') : 'any date';
     for (const it of d.items || []) {
+      if (/^diy/.test(it.id)) continue;   // the DIY inventory is an access link, not a visit
       const kind = /^gas/.test(it.id) ? 'gas' : /^eicr/.test(it.id) ? 'eicr' : /^epc/.test(it.id) ? 'epc' : /^licen/.test(it.id) ? 'licence' : '';
       const pick = (it.contractor && cons.find(function (c) { return c.name === it.contractor; })) || (kind && CERT_TRADE[kind] && CERT_TRADE[kind].reduce(function (hit, re) { return hit || cons.find(function (c) { return re.test(c.trade || ''); }); }, null)) || null;
       const cat = kind === 'gas' ? 'Gas safety certificate' : kind === 'eicr' ? 'EICR' : kind === 'epc' ? 'EPC' : kind === 'licence' ? 'Property licence application' : 'Certificate';
@@ -9726,6 +9740,67 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     d.jobs = ids; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]); row.data = d;
   }
+  // ---------- Reminders before a certificate we sold runs out ----------
+  // Counted from the booking (gas safety yearly, EICR every 5 years, EPC every 10), a month ahead.
+  const CERT_LIFE = { gas: 12, eicr: 60, epc: 120 };
+  async function certReminders() {
+    const p = await db(); if (!p || !canEmail() || !sendEmail) return;
+    const rows = (await p.query("SELECT * FROM valuation_requests WHERE data->>'kind' = 'cert' AND created_at > now() - interval '11 years' AND email IS NOT NULL")).rows;
+    for (const row of rows) {
+      const d = row.data || {}; if (!(d.paid_at || !d.total)) continue;
+      const done = d.reminded || {}; let changed = false;
+      for (const it of d.items || []) {
+        const k = /^gas/.test(it.id) ? 'gas' : /^eicr/.test(it.id) ? 'eicr' : /^epc/.test(it.id) ? 'epc' : ''; if (!k || done[k]) continue;
+        const start = new Date(d.paid_at || row.created_at), due = new Date(start); due.setMonth(due.getMonth() + CERT_LIFE[k]);
+        const remind = new Date(due.getTime() - 30 * 86400000); if (remind > new Date()) continue;
+        const what = { gas: 'gas safety certificate', eicr: 'EICR (electrical report)', epc: 'EPC' }[k], page = { gas: '/gas-safety-certificate', eicr: '/eicr', epc: '/epc' }[k];
+        await sendEmail({ to: row.email, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Reminder: your ' + what + ' is due for renewal — ' + String(row.address).split(',').slice(0, 2).join(','),
+          text: 'Dear ' + String(row.name).split(' ')[0] + ',\n\nThe ' + what + ' we arranged for ' + row.address + ' is due for renewal around ' + due.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + '.\n\nYou can book the renewal online in a couple of minutes:\n' + SITE + page + '\n\nOr just reply to this email and we’ll arrange it for you.\n\nResidential Realtors\n0207 096 8131' }).catch(function (e) { console.error('Certificate reminder failed:', e.message); });
+        done[k] = new Date().toISOString(); changed = true;
+      }
+      if (changed) { d.reminded = done; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]); }
+    }
+  }
+  setInterval(function () { certReminders().catch(function (e) { console.error('Certificate reminders failed:', e.message); }); }, 6 * 3600 * 1000).unref();
+
+  // ---------- DIY inventory access ----------
+  // Paying for the DIY inventory (or a tenancy welcome email from the office) makes a personal link
+  // to the DIY app; the app checks it here before letting anyone in, and marks it used once the report is sent.
+  const DIY_URL = String(process.env.DIY_URL || 'https://diy-check-in-production-6024.up.railway.app').replace(/\/+$/, '');
+  async function diyMint(p, o) {
+    const token = crypto.randomBytes(12).toString('base64url');
+    await p.query('INSERT INTO diy_access (token, kind, booking_id, name, email, address, expires_at) VALUES ($1, $2, $3, $4, $5, $6, now() + ($7 || \' days\')::interval)', [token, o.kind || 'paid', o.booking || null, o.name || null, o.email || null, o.address || null, String(o.days || 180)]);
+    return { token: token, link: DIY_URL + '/?access=' + token };
+  }
+  async function certDiy(p, row) {
+    const d = row.data || {}; if (d.diy_link || !(d.items || []).some(function (i) { return /^diy/.test(i.id); })) return;
+    const n = (d.items || []).filter(function (i) { return /^diy/.test(i.id); }).length;
+    const m = await diyMint(p, { kind: 'paid', booking: row.id, name: row.name, email: row.email, address: row.address, days: 180 });
+    d.diy_link = m.link; d.diy_reports = n; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]); row.data = d;
+  }
+  const diyCors = function (res) { res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Cache-Control', 'no-store'); };
+  app.get('/api/public/diy-access/:token', withDb(async function (p, req, res) {
+    diyCors(res);
+    const t = String(req.params.token || ''); if (!/^[\w-]{12,40}$/.test(t)) return res.json({ ok: true, valid: false, reason: 'unknown' });
+    const r = (await p.query('SELECT kind, name, address, expires_at, uses, used_at FROM diy_access WHERE token = $1', [t])).rows[0];
+    if (!r) return res.json({ ok: true, valid: false, reason: 'unknown' });
+    if (new Date(r.expires_at) < new Date()) return res.json({ ok: true, valid: false, reason: 'expired' });
+    if (r.kind === 'paid' && r.uses >= 1) return res.json({ ok: true, valid: false, reason: 'used' });
+    res.json({ ok: true, valid: true, kind: r.kind, name: r.name || '', address: r.address || '', expires_at: r.expires_at });
+  }));
+  app.post('/api/public/diy-access/:token/used', withDb(async function (p, req, res) {
+    diyCors(res);
+    const t = String(req.params.token || ''); if (!/^[\w-]{12,40}$/.test(t)) return res.status(400).json({ ok: false });
+    await p.query('UPDATE diy_access SET uses = uses + 1, used_at = now() WHERE token = $1', [t]);
+    res.json({ ok: true });
+  }));
+  // The office: a free DIY link (for a tenancy's welcome email, or to give someone by hand).
+  app.post('/api/admin/diy-access', withDb(async function (p, req, res) {
+    const b = req.body || {};
+    const m = await diyMint(p, { kind: 'office', name: str(b.name, 200), email: str(b.email, 200), address: str(b.address, 300), days: 180 });
+    res.json({ ok: true, link: m.link });
+  }));
+
   // Certificate bookings are for the owner only: the office inbox, not every member of staff.
   function certOwnerEmail(subject, text) {
     if (!canEmail() || !sendEmail) return;
@@ -9736,10 +9811,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const d = row.data || {}; if (d.paid_at) return;
     d.paid_at = new Date().toISOString(); await p.query("UPDATE valuation_requests SET data = $2 WHERE id = $1", [row.id, JSON.stringify(d)]); row.data = d;
     await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); });
+    await certDiy(p, row).catch(function (e) { console.error('DIY access failed:', e.message); });
     ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined, title: '💳 Certificate booking paid: £' + Number(d.total).toFixed(2), message: (d.items || []).map(function (i) { return i.name; }).join(' + ') + ' · ' + row.address.split(',').slice(0, 2).join(','), tags: ['credit_card'] }).catch(function () {});
     certOwnerEmail('💳 Certificate booking paid - ' + row.address.split(',').slice(0, 2).join(','), 'A landlord has booked and paid on the website.\n\n' + certText(row));
     if (canEmail() && sendEmail && row.email) sendEmail({ to: row.email, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Booking confirmed — ' + (d.items || []).map(function (i) { return i.name.replace(/ —.*/, ''); }).join(' + '),
-      text: 'Dear ' + row.name.split(' ')[0] + ',\n\nThank you — we’ve received your payment of £' + Number(d.total).toFixed(2) + (d.vat != null ? ' (including VAT of £' + Number(d.vat).toFixed(2) + ')' : '') + ' for:\n' + (d.items || []).map(function (i) { return '• ' + i.name; }).join('\n') + '\n\nProperty: ' + row.address + '\n\nWe’ll be in touch shortly to confirm the date and time' + ((d.dates || []).length ? ' (you asked for: ' + d.dates.join(', ') + ')' : '') + '. Your certificate will be emailed to you once the visit is done.\n\nIf you need anything in the meantime, call us on 0207 096 8131 or reply to this email.\n\nResidential Realtors\n28-30 Harper Road, London SE1 6AD' }).catch(function () {});
+      text: 'Dear ' + row.name.split(' ')[0] + ',\n\nThank you — we’ve received your payment of £' + Number(d.total).toFixed(2) + (d.vat != null ? ' (including VAT of £' + Number(d.vat).toFixed(2) + ')' : '') + ' for:\n' + (d.items || []).map(function (i) { return '• ' + i.name; }).join('\n') + '\n\nProperty: ' + row.address + '\n\n' + (d.diy_link ? 'Start your DIY inventory here (your personal link — for one report):\n' + d.diy_link + '\n\n' : '') + ((d.items || []).some(function (i) { return !/^diy/.test(i.id); }) ? 'We’ll be in touch shortly to confirm the date and time' + ((d.dates || []).length ? ' (you asked for: ' + d.dates.join(', ') + ')' : '') + '. Your certificate will be emailed to you once the visit is done, and we’ll email you a reminder before it expires.\n\n' : '') + 'If you need anything in the meantime, call us on 0207 096 8131 or reply to this email.\n\nResidential Realtors\n28-30 Harper Road, London SE1 6AD' }).catch(function () {});
   }
   async function certRow(p, id, k) { const r = (await p.query("SELECT * FROM valuation_requests WHERE id = $1 AND data->>'kind' = 'cert'", [parseInt(id, 10) || 0])).rows[0]; return r && r.data && r.data.token && k && String(k) === r.data.token ? r : null; }
   app.get('/api/public/cert-services', withDb(async function (p, req, res) {
@@ -9772,7 +9848,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const row = (await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING *', [name, email, phone, full, JSON.stringify(data)])).rows[0];
     ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined, title: '📜 Certificate booking: ' + items.map(function (x) { return x.name.replace(/ —.*/, ''); }).join(' + '), message: full.split(',').slice(0, 2).join(',') + (total ? ' · £' + total.toFixed(2) : '') + (!total ? ' · free service' : canPay() ? ' · paying online' : ' · take payment'), tags: ['scroll'] }).catch(function () {});
     if (!canPay() || !total) certOwnerEmail('📜 Certificate booking - ' + full.split(',').slice(0, 2).join(','), (total ? 'A landlord has booked on the website. Please call them to take payment and arrange the visit.' : 'A landlord has asked for our free service on the website. Please call them to get started.') + '\n\n' + certText(row));
-    if (!canPay() || !total) { await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); }); return res.json({ ok: true, id: row.id, pay: false }); }
+    if (!canPay() || !total) { await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); }); if (!total) await certDiy(p, row).catch(function () {}); return res.json({ ok: true, id: row.id, pay: false, diy: !total ? (row.data.diy_link || '') : '' }); }
     try { res.json({ ok: true, id: row.id, pay: true, url: await certCheckout(p, row) }); }
     catch (e) { console.error('SumUp checkout failed:', e.message); res.json({ ok: true, id: row.id, pay: false, payError: true }); }
   }));
@@ -9784,7 +9860,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       for (const cid of (d.checkouts || [d.checkout_id]).slice().reverse()) { try { const c = await sumup('GET', '/v0.1/checkouts/' + encodeURIComponent(cid)); if (String(c.status).toUpperCase() === 'PAID') { await certPaid(p, row); break; } } catch (e) { console.error('SumUp status check failed:', e.message); } }
     }
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, paid: !!row.data.paid_at, total: d.total, vat: d.vat, items: (d.items || []).map(function (i) { return { name: i.name, price: i.price }; }), address: row.address, checkout: req.query.pay ? d.checkout_id || '' : undefined, canPay: canPay() });
+    res.json({ ok: true, paid: !!row.data.paid_at, diy: row.data.paid_at || !d.total ? row.data.diy_link || '' : '', total: d.total, vat: d.vat, items: (d.items || []).map(function (i) { return { name: i.name, price: i.price }; }), address: row.address, checkout: req.query.pay ? d.checkout_id || '' : undefined, canPay: canPay() });
   }));
   app.post('/api/public/cert-booking/:id/pay', withDb(async function (p, req, res) {
     const row = await certRow(p, req.params.id, (req.body || {}).k); if (!row) return res.status(404).json({ ok: false });
@@ -10368,7 +10444,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, id: r.rows[0].id, link: ltLink({ token: token }) });
   }));
   // Website: a landlord picks a letting service and goes straight to our terms to fill in and sign,
-  // at our standard rates (tenant find 10%; collection and management at the standard scale on top).
+  // at our standard rates (tenant find 10%, anniversary fee 1% less; collection and management at the standard scale on top).
   const lsHits = new Map();
   app.post('/api/public/landlord-signup', withDb(async function (p, req, res) {
     const b = req.body || {}, ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim(), now = Date.now();
@@ -10384,14 +10460,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!pcm) return res.status(400).json({ ok: false, error: 'postcode' });
     if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
     const postcode = (pcm[1] + ' ' + pcm[2]).toUpperCase(), full = POSTCODE_RE.test(addr) ? addr : addr + ', ' + postcode;
-    const fees = cleanFees({ find: 'sole', find_pct: LT_STD.sole, renewal: false, ongoing: svc, ongoing_pct: svc === 'none' ? null : LT_STD[svc], vat: true, choose: true });
+    const fees = cleanFees({ find: 'sole', find_pct: LT_STD.sole, renewal: true, renewal_pct: LT_STD.sole - 1, ongoing: svc, ongoing_pct: svc === 'none' ? null : LT_STD[svc], vat: true, choose: true });
     const token = crypto.randomBytes(16).toString('base64url');
     const r = await p.query('INSERT INTO landlord_terms (token, property_address, landlord_name, landlord_email, landlord_phone, fees, log, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
       [token, full, name, email, phone, JSON.stringify(fees), JSON.stringify([{ at: new Date().toISOString(), by: 'Website', text: 'Landlord chose ' + b.service + ' on the website — terms at our standard rates' }]), 'Website']);
     ltEpc(p, { id: r.rows[0].id, property_address: full, data: {} }).catch(function () {});
     try { const k = await ltKnown(p, full, null); await p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('known', $2::jsonb) WHERE id = $1", [r.rows[0].id, JSON.stringify(k)]); } catch (e) {}
     teamAlert({ title: '🏠 New landlord signing up: ' + b.service, message: name + ' · ' + full.split(',').slice(0, 2).join(',') + ' — they’re filling in our terms now.', tags: ['house', 'star'] }, '#lt').catch(function () {});
-    staffEmailAll('🏠 New landlord signing up - ' + b.service, function (link) { return 'A landlord has chosen ' + b.service + ' on the website and is filling in our terms now.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\nProperty: ' + full + '\nFees: tenant find ' + LT_STD.sole + '%' + (svc === 'none' ? '' : ' + ' + (svc === 'collect' ? 'rent collection ' : 'full management ') + LT_STD[svc] + '%') + ' (+ VAT)\n\nSee it in Landlord Terms: ' + link; }, '#lt').catch(function () {});
+    staffEmailAll('🏠 New landlord signing up - ' + b.service, function (link) { return 'A landlord has chosen ' + b.service + ' on the website and is filling in our terms now.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\nProperty: ' + full + '\nFees: tenant find ' + LT_STD.sole + '%, anniversary ' + (LT_STD.sole - 1) + '%' + (svc === 'none' ? '' : ' + ' + (svc === 'collect' ? 'rent collection ' : 'full management ') + LT_STD[svc] + '%') + ' (+ VAT)\n\nSee it in Landlord Terms: ' + link; }, '#lt').catch(function () {});
     res.json({ ok: true, link: '/landlord/' + token });
   }));
   app.post('/api/admin/landlord-terms/:id', withDb(async function (p, req, res) {
