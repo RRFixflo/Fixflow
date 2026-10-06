@@ -334,9 +334,6 @@ function heroExperts(req) {
     card('worth', 'What rent could you get?', 'Compare similar homes we’re letting near you',
       '<form class="x-form x-val" action="/landlords" method="get"><input name="postcode" aria-label="Your postcode" placeholder="Your postcode" autocomplete="postal-code" style="text-transform:uppercase"><span class="x-val-b"><select name="beds" aria-label="Bedrooms"><option value="0">Studio</option><option value="1">1 bed</option><option value="2" selected>2 beds</option><option value="3">3 beds</option><option value="4">4 beds</option><option value="5">5+ beds</option></select><button type="submit" formaction="/landlords#compare">Compare</button></span></form><a class="x-sale" href="/sales#sales-valuation">Selling instead? Get a sales valuation →</a>',
       '', '') +
-    card('rent', 'Find your next home', 'Flats and houses to rent or buy across London',
-      '<form class="x-form x-find" action="/properties-to-rent" method="get" role="search"><span class="x-seg"><label><input type="radio" name="x-kind" form="x-kind-none" value="/properties-to-rent" checked><span>Rent</span></label><label><input type="radio" name="x-kind" form="x-kind-none" value="/properties-for-sale"><span>Buy</span></label></span><span class="x-row"><input name="q" aria-label="Area or postcode" placeholder="Area or postcode" autocomplete="off"><button type="submit" aria-label="Search">→</button></span></form>',
-      'See all homes', c && c.let ? '/properties-to-rent' : '/contact?topic=Looking%20to%20rent') +
     card('cert', 'Landlord certificates', 'Low fixed prices across London — book online in minutes<span class="x-from" data-svc-from hidden></span>',
       '<div class="x-svc"><a href="/gas-safety-certificate">Gas safety certificate</a><a href="/eicr">EICR (electrical report)</a><a href="/epc">EPC</a></div>',
       'Book now →', '/book-certificate') +
