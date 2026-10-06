@@ -692,9 +692,3 @@ body.bk-lock { overflow: hidden; }
 /* Property lists: when the list last changed, top left. */
 .lupd-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .lupd { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--line); font-size: .82rem; font-weight: 700; color: var(--soft); }
-/* Top left, under the logo: when the property list last changed. */
-.brand-col { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; flex: none; min-width: 0; }
-.top-upd { font-size: .68rem; font-weight: 700; color: var(--soft); text-decoration: none; white-space: nowrap; letter-spacing: .01em; line-height: 1; }
-.top-upd:hover { color: var(--navy); }
-@media (max-width: 640px) { .brand-col { flex: 0 1 auto; max-width: 132px; } .top-upd { font-size: .6rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; } }
-.tu-s { display: none; } @media (max-width: 640px) { .tu-l { display: none; } .tu-s { display: inline; } }

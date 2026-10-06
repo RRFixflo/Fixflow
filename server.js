@@ -238,8 +238,7 @@ function siteHeader(name, home, req) {
   const props = listings && listings.show(req) ? [['/properties-for-sale', 'Buy', 'list-sale'], ['/properties-to-rent', 'Rent', 'list-let']] : [[home, 'Home', 'home']];
   const nav = props.concat([['/sales', 'Sell', 'sales'], ['/landlords', 'Landlords', 'landlords'], ['/tenants', 'Tenants', 'tenants'], ['/property-checks', 'Property checks', 'checks'], ['/about', 'About', 'about'], ['/contact', 'Contact', 'contact']])
     .map(function (n) { return '<a href="' + n[0] + '"' + (n[2] === name ? ' class="on" aria-current="page"' : '') + '>' + n[1] + '</a>'; }).join('');
-  const upd = listings && listings.show(req) && listings.updated();
-  return '<header class="top"><div class="wrap"><div class="brand-col"><a class="brand" href="' + home + '" aria-label="Residential Realtors — home"><img src="/logo-tight.png" alt="Residential Realtors" width="122" height="38"></a>' + (upd ? '<a class="top-upd" href="/properties-to-rent" title="When our property list last changed">🕒 <span class="tu-l">Updated ' + siteEsc(upd) + '</span><span class="tu-s">Updated ' + siteEsc(listings.updatedShort()) + '</span></a>' : '') + '</div>' +
+  return '<header class="top"><div class="wrap"><a class="brand" href="' + home + '" aria-label="Residential Realtors — home"><img src="/logo-tight.png" alt="Residential Realtors" width="122" height="38"></a>' +
     '<nav class="nav" aria-label="Main menu">' + nav + '<a class="cta" href="' + (name === 'sales' ? '/sales#sales-valuation' : '/landlords#valuation') + '">Get a valuation</a></nav>' +
     '<a class="rep" href="/report-a-repair">' + WRENCH + '<span>Report a repair</span></a>' +
     '<button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button></div></header>';
