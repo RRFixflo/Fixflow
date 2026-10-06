@@ -265,6 +265,61 @@
     });
   }
 
+  // Book a gas safety certificate or EICR: pick services, see the total, book — then pay on SumUp.
+  var cb = document.getElementById('cbForm');
+  if (cb) {
+    var cbItems = [], cbPay = false, money = function (n) { return '£' + Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    var cbDone = document.getElementById('cbDone'), cbGo = document.getElementById('cbGo'), cbErr = document.getElementById('cbErr');
+    var picked = function () { return Array.prototype.map.call(cb.querySelectorAll('[name=svc]:checked'), function (x) { return x.value; }); };
+    var cbSum = function () { var t = cbItems.filter(function (i) { return picked().indexOf(i.id) !== -1; }).reduce(function (a, i) { return a + i.price; }, 0);
+      document.getElementById('cbTotal').textContent = money(t); cbGo.disabled = !t; cbGo.textContent = !t ? 'Choose a service' : (cbPay ? 'Book & pay ' + money(t) + ' →' : 'Send booking — ' + money(t)); };
+    var showDone = function (html) { cb.closest('.cb-grid').hidden = true; cbDone.innerHTML = '<div class="cb-done">' + html + '</div>'; cbDone.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+    fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+      cbItems = (d && d.items) || []; cbPay = !!(d && d.pay);
+      var box = document.getElementById('cbItems');
+      if (!cbItems.length) { box.innerHTML = '<div class="cb-none"><b>Online booking is coming soon.</b> Call us on <a href="tel:02070968131">0207 096 8131</a> or <a href="/contact?topic=Landlord&message=' + encodeURIComponent('I’d like to book a gas safety certificate / EICR.') + '">send us a message</a> and we’ll book it for you.</div>'; cbGo.hidden = true; return; }
+      box.innerHTML = cbItems.map(function (i) { return '<label class="cb-item"><input type="checkbox" name="svc" value="' + escH(i.id) + '"><span class="cb-ic">' + (/gas/i.test(i.name) ? '🔥' : /eicr|electr/i.test(i.name) ? '⚡' : /epc|energy/i.test(i.name) ? '🏷️' : '📋') + '</span><span class="cb-it"><b>' + escH(i.name) + '</b>' + (i.desc ? '<small>' + escH(i.desc) + '</small>' : '') + '</span><span class="cb-pr">' + money(i.price) + '</span></label>'; }).join('');
+      document.getElementById('cbPayNote').textContent = cbPay ? 'You’ll pay on SumUp’s secure page. Card details never touch our website.' : 'We’ll call you to take payment and confirm the date.';
+      try { var want = new URLSearchParams(location.search).get('service'); if (want) cb.querySelectorAll('[name=svc]').forEach(function (x) { if (x.value === want || (want === 'gas' && /^gas/.test(x.value)) || (want === 'eicr' && /^eicr_s/.test(x.value)) || (want === 'epc' && /^epc/.test(x.value))) { x.checked = true; x.closest('.cb-item').classList.add('on'); } }); } catch (e) {}
+      cbSum();
+    }).catch(function () { document.getElementById('cbItems').innerHTML = '<p class="tool-err">Couldn’t load the services — please call 0207 096 8131.</p>'; });
+    cb.addEventListener('change', function (e) { if (e.target.name === 'svc') { e.target.closest('.cb-item').classList.toggle('on', e.target.checked); cbSum(); } if (e.target.name === 'access') document.getElementById('cbTenantRow').hidden = e.target.value !== 'tenant'; });
+    cb.addEventListener('submit', function (ev) {
+      ev.preventDefault(); cbErr.textContent = '';
+      var e = cb.elements, v = function (k) { return String(e[k].value || '').trim(); };
+      var data = { items: picked(), address: v('address'), postcode: v('postcode'), access: v('access'), tenant: v('tenant'), dates: [v('d1'), v('d2')].filter(Boolean).map(function (x) { return new Date(x + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); }), name: v('name'), phone: v('phone'), email: v('email'), message: v('message'), website: v('website'), consent: e.consent.checked };
+      if (!data.items.length) { cbErr.textContent = 'Please choose a service.'; return; }
+      if (!data.address) { cbErr.textContent = 'Please enter the property address.'; return; }
+      if (!pcOk(data.postcode)) { cbErr.textContent = 'Please enter the postcode.'; return; }
+      if (!data.name || !data.phone) { cbErr.textContent = 'Please enter your name and phone number.'; return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { cbErr.textContent = 'Please enter a valid email address.'; return; }
+      if (!data.consent) { cbErr.textContent = 'Please tick the box so we can contact you.'; return; }
+      var label = cbGo.textContent; cbGo.disabled = true; cbGo.textContent = cbPay ? 'Taking you to payment…' : 'Sending…';
+      ffPost('/api/public/cert-booking', data, cb).then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) { cbGo.disabled = false; cbGo.textContent = label; cbErr.textContent = d.error === 'rate-limited' ? 'Too many bookings — please call 0207 096 8131.' : d.error === 'postcode' ? 'Please check the postcode.' : 'Sorry, something went wrong. Please try again or call 0207 096 8131.'; return; }
+        if (d.url) { location.href = d.url; return; }
+        showDone('<div class="big">✓</div><h3>Thanks, ' + escH(data.name.split(/\s+/)[0]) + ' — booking received</h3><p>' + (d.payError ? 'We couldn’t open the payment page just now, so we’ll call you to take payment. ' : 'We’ll call you shortly to take payment and confirm the date. ') + 'Questions? Call <a href="tel:02070968131">0207 096 8131</a>.</p>');
+      }).catch(function () { cbGo.disabled = false; cbGo.textContent = label; cbErr.textContent = 'Couldn’t connect — please try again or call 0207 096 8131.'; });
+    });
+    // Back from SumUp: ask our server (which asks SumUp) whether it's paid.
+    try {
+      var bq = new URLSearchParams(location.search), bid = bq.get('b'), bk = bq.get('k');
+      if (bid && bk) {
+        showDone('<p>Checking your payment…</p>');
+        var check = function (n) { fetch('/api/public/cert-booking/' + encodeURIComponent(bid) + '?k=' + encodeURIComponent(bk), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+          if (!d.ok) { showDone('<h3>We couldn’t find that booking</h3><p>Please call <a href="tel:02070968131">0207 096 8131</a>.</p>'); return; }
+          var what = (d.items || []).map(function (i) { return escH(i.name); }).join(' + ');
+          if (d.paid) { showDone('<div class="big">✓</div><h3>Paid — thank you! Your booking is confirmed</h3><p><b>' + what + '</b><br>' + escH(d.address) + ' · ' + money(d.total) + '</p><p>We’ll be in touch shortly to confirm the date and time. A confirmation has been emailed to you.</p>'); return; }
+          if (n < 4) { setTimeout(function () { check(n + 1); }, 2500); return; }
+          showDone('<h3>Your payment hasn’t gone through yet</h3><p><b>' + what + '</b> · ' + money(d.total) + '</p><p>If you closed the payment page, you can try again — nothing has been taken.</p><div class="btns" style="justify-content:center"><button type="button" class="btn red" id="cbRetry">Pay ' + money(d.total) + ' →</button><a class="btn line" href="tel:02070968131">Call 0207 096 8131</a></div>');
+          var rb = document.getElementById('cbRetry'); if (rb) rb.addEventListener('click', function () { rb.disabled = true; rb.textContent = 'Opening payment…';
+            fetch('/api/public/cert-booking/' + encodeURIComponent(bid) + '/pay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ k: bk }) }).then(function (r) { return r.json(); }).then(function (x) { if (x.paid) return check(0); if (x.url) location.href = x.url; else { rb.disabled = false; rb.textContent = 'Try again'; } }); });
+        }).catch(function () { if (n < 4) setTimeout(function () { check(n + 1); }, 2500); }); };
+        check(0);
+      }
+    } catch (e) {}
+  }
+
   // Contact page: ?topic=Buying (etc.) picks the topic.
   var tp = /[?&]topic=([^&]+)/.exec(location.search), tsel = document.querySelector('#eForm select[name=topic]');
   if (tp && tsel) { var want = decodeURIComponent(tp[1].replace(/\+/g, ' ')); Array.prototype.forEach.call(tsel.options, function (o) { if (o.text === want) tsel.value = o.value || o.text; }); }

@@ -197,6 +197,7 @@ const SITE_PAGES = {
   home: { paths: ['/home'], canon: '/', title: 'Estate Agents & Letting Agents in London SE1 | Residential Realtors', desc: 'London estate and letting agents in SE1. Free sales and rental valuations, property sales, tenant find, rent collection and full management — ARLA Propertymark protected with Client Money Protection.', img: 'u-london-bus' },
   sales: { paths: ['/sales', '/selling', '/sell'], canon: '/sales', crumb: 'Sales', title: 'Sell Your Home in London: Free Sales Valuation | Residential Realtors Estate Agents', desc: 'Selling your home in London? Free, no-obligation sales valuation, professional marketing, accompanied viewings and sale progression from Residential Realtors, SE1.', img: 'u-flat-dining' },
   checks: { img: 'u-thames', paths: ['/property-checks', '/epc-checker', '/licence-checker', '/diy-inventory'], canon: '/property-checks', crumb: 'Property checks', title: 'Free EPC Checker & Property Licence Checker for London Landlords | Residential Realtors', desc: 'Check any property’s EPC rating and expiry, find out if a London rental needs a licence, do a free DIY inventory and try our landlord portal.' },
+  certs: { img: 'u-flat-kitchen', paths: ['/book-certificate', '/gas-safety-certificate', '/eicr', '/book-epc', '/landlord-certificates'], canon: '/book-certificate', crumb: 'Gas safety, EICR & EPC', title: 'Book a Gas Safety Certificate, EICR or EPC in London | Residential Realtors', desc: 'Book your landlord gas safety certificate (CP12), electrical report (EICR) or EPC online in London. Choose your service, tell us how to get in, and pay securely.' },
   tenants: { paths: ['/tenants'], canon: '/tenants', crumb: 'Tenants', title: 'Renting in London: Report a Repair, Tenant Fees & Offers | Residential Realtors', desc: 'Report a repair online 24/7, make an offer and see our tenant fees. Renting with Residential Realtors, London SE1 — no hidden fees.', img: 'u-couple-home' },
   about: { paths: ['/about', '/about-us'], canon: '/about', crumb: 'About us', title: 'About Residential Realtors | ARLA Propertymark Letting Agent, London SE1', desc: 'A modern London letting and property management agency at 28-30 Harper Road, SE1. ARLA Propertymark member with Client Money Protection and The Property Ombudsman redress.', img: 'u-tower-bridge' },
   contact: { paths: ['/contact'], canon: '/contact', crumb: 'Contact', title: 'Contact Residential Realtors | Letting Agent, Harper Road, London SE1 6AD', desc: 'Call 0207 096 8131, email or message Residential Realtors — 28-30 Harper Road, London SE1 6AD.', img: 'u-phonebox' },
@@ -257,7 +258,7 @@ function asset(name) {
 function siteFooter(home) {
   return '<footer><div class="wrap"><div class="cols">' +
     '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Estate agents, lettings and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div><div style="margin-top:6px">Open 7 days, 9am–7pm</div></div>' +
-    '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlords#tools">Landlord calculators</a><a href="/property-checks">EPC &amp; licence checker</a><a href="/landlord-updates">Landlord updates &amp; alerts</a><a href="https://diy-check-in-production-6024.up.railway.app" target="_blank" rel="noopener">DIY inventory ↗</a><a href="/landlord-portal-demo">Example landlord portal</a></div>' +
+    '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlords#tools">Landlord calculators</a><a href="/book-certificate">Book gas safety, EICR &amp; EPC</a><a href="/property-checks">EPC &amp; licence checker</a><a href="/landlord-updates">Landlord updates &amp; alerts</a><a href="https://diy-check-in-production-6024.up.railway.app" target="_blank" rel="noopener">DIY inventory ↗</a><a href="/landlord-portal-demo">Example landlord portal</a></div>' +
     '<div><h4>Tenants</h4><a href="/report-a-repair">Report a repair</a><a href="/offer">Make an offer</a><a href="/tenants">Renting with us</a><a href="/tenants#fees">Tenant fees</a><a href="/tenants#guides">Renting guides</a></div>' +
     '<div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="/about">About us</a><a href="/news">Property news</a><a href="/privacy">Privacy</a></div>' +
     '</div><div class="accred">' +
@@ -315,11 +316,10 @@ function heroSearch(req) {
     '<div class="hs-modes"><button type="button" class="on" data-mode="list">📍 Location</button><button type="button" data-mode="map">🗺️ Map</button><button type="button" data-mode="near">➤ Near me</button></div></div>' +
     val + '</form>';
 }
-// The four "When you need experts" cards: each one does something — search homes (with live
-// numbers), start a valuation from a postcode, or pick a landlord service.
+// The four "When you need experts" cards: each one does something — search homes, compare
+// rents from a postcode, or pick a landlord service.
 function heroExperts(req) {
   const c = listings && listings.counts(req);
-  const n = function (x) { return Number(x || 0).toLocaleString('en-GB'); };
   const search = function (action, label, ph) { return '<form class="x-form" action="' + action + '" method="get" role="search"><input name="q" aria-label="' + label + '" placeholder="' + ph + '" autocomplete="off"><button type="submit" aria-label="Search">→</button></form>'; };
   const card = function (ic, h, line, body, btn, href) { return '<div class="xcard rv"><span class="x-ic">' + ICONS[ic] + '</span><h3>' + h + '</h3><p>' + line + '</p>' + body + (btn ? '<a class="btn yellow" href="' + href + '">' + btn + '</a>' : '') + '</div>'; };
   return '<div class="xgrid">' +
@@ -329,9 +329,9 @@ function heroExperts(req) {
     card('worth', 'What rent could you get?', 'Compare similar homes we’re letting near you',
       '<form class="x-form x-val" action="/landlords" method="get"><input name="postcode" aria-label="Your postcode" placeholder="Your postcode" autocomplete="postal-code" style="text-transform:uppercase"><span class="x-val-b"><select name="beds" aria-label="Bedrooms"><option value="0">Studio</option><option value="1">1 bed</option><option value="2" selected>2 beds</option><option value="3">3 beds</option><option value="4">4 beds</option><option value="5">5+ beds</option></select><button type="submit" formaction="/landlords#compare">Compare</button></span></form><a class="x-sale" href="/sales#sales-valuation">Selling instead? Get a sales valuation →</a>',
       '', '') +
-    (c && c.let ? card('rent', 'Find the right property to rent', '<b>' + n(c.let) + ' home' + (c.let === 1 ? '' : 's') + '</b> to rent right now', search('/properties-to-rent', 'Search homes to rent', 'Area or postcode'), 'See homes to rent', '/properties-to-rent')
+    (c && c.let ? card('rent', 'Find the right property to rent', 'Flats and houses to rent across London', search('/properties-to-rent', 'Search homes to rent', 'Area or postcode'), 'See homes to rent', '/properties-to-rent')
       : card('rent', 'Find the right property to rent', 'Tell us what you’re looking for', '', 'Rent a property', '/contact?topic=Looking%20to%20rent')) +
-    (c && c.sale ? card('buy', 'Find the right property to buy', '<b>' + n(c.sale) + ' home' + (c.sale === 1 ? '' : 's') + '</b> for sale right now', search('/properties-for-sale', 'Search homes for sale', 'Area or postcode'), 'See homes for sale', '/properties-for-sale')
+    (c && c.sale ? card('buy', 'Find the right property to buy', 'Homes for sale across London', search('/properties-for-sale', 'Search homes for sale', 'Area or postcode'), 'See homes for sale', '/properties-for-sale')
       : card('buy', 'Find the right property to buy', 'Register to hear about new homes first', '', 'Buy a property', '/contact?topic=Buying')) +
     '</div>';
 }
@@ -397,7 +397,7 @@ app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send('User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /staff\nDisallow: /api/\nDisallow: /offer/\nDisallow: /landlord/\nDisallow: /reserve/\nDisallow: /portal\n\nSitemap: ' + SITE_URL + '/sitemap.xml\n');
 });
 app.get('/sitemap.xml', (req, res) => {
-  const pages = [['/', '1.0'], ['/landlord-updates', '0.8'], ['/news', '0.5'], ['/property-checks', '0.8'], ['/landlord-portal-demo', '0.6'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
+  const pages = [['/', '1.0'], ['/landlord-updates', '0.8'], ['/news', '0.5'], ['/property-checks', '0.8'], ['/book-certificate', '0.8'], ['/landlord-portal-demo', '0.6'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
   res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
     pages.concat(listings.urls().length ? [['/properties-to-rent', '0.9'], ['/properties-for-sale', '0.9']] : []).concat(listings.urls().map(function (u) { return [u, '0.7']; }))
       .map(function (x) { return '  <url><loc>' + SITE_URL + siteEsc(x[0]) + '</loc><priority>' + x[1] + '</priority></url>'; }).join('\n') + '\n</urlset>\n');
