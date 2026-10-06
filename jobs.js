@@ -9483,11 +9483,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!pcm) return res.status(400).json({ ok: false, error: 'postcode' });
     if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
     const postcode = (pcm[1] + ' ' + pcm[2]).toUpperCase(), full = POSTCODE_RE.test(addr) ? addr : addr + ', ' + postcode;
-    const data = { postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', service: str(b.service, 40) || '', when: str(b.when, 40) || '', message: str(b.message, 2000) || '' };
+    const sale = b.kind === 'sale';   // from the Sales page: a homeowner thinking of selling
+    const data = { postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', service: str(b.service, 40) || '', when: str(b.when, 40) || '', message: str(b.message, 2000) || '' }; if (sale) data.kind = 'sale';
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(data)]);
-    ntfy({ title: '🏠 Valuation request: ' + full.split(',').slice(0, 2).join(','), message: name + ' · ' + (phone || email) + (data.service && data.service !== 'Not sure yet' ? ' · ' + data.service : ''), tags: ['house'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#landlords' : undefined }).catch(function () {});
-    if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Valuation request — ' + full, text: 'A landlord has asked for a valuation on the website.\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + email + '\nProperty: ' + full +
-      '\nBedrooms: ' + (data.beds || '—') + '\nType: ' + (data.type || '—') + '\nInterested in: ' + (data.service || '—') + '\nAvailable: ' + (data.when || '—') + (data.message ? '\n\nMessage:\n' + data.message : '') + '\n\nIt’s also in Fixflow under Landlords → Valuation requests.' }).catch(function () {});
+    ntfy({ title: (sale ? '🏷️ Sales valuation: ' : '🏠 Valuation request: ') + full.split(',').slice(0, 2).join(','), message: name + ' · ' + (phone || email) + (data.service && data.service !== 'Not sure yet' ? ' · ' + data.service : ''), tags: ['house'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#landlords' : undefined }).catch(function () {});
+    if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: (sale ? 'Sales valuation request — ' : 'Valuation request — ') + full, text: (sale ? 'A homeowner has asked for a sales valuation on the website.' : 'A landlord has asked for a valuation on the website.') + '\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + email + '\nProperty: ' + full +
+      '\nBedrooms: ' + (data.beds || '—') + '\nType: ' + (data.type || '—') + (sale ? '\nLooking to sell: ' + (data.when || '—') : '\nInterested in: ' + (data.service || '—') + '\nAvailable: ' + (data.when || '—')) + (data.message ? '\n\nMessage:\n' + data.message : '') + '\n\nIt’s also in Fixflow under Landlords → Valuation requests.' }).catch(function () {});
     res.json({ ok: true, id: r.rows[0].id });
   }));
   // Website contact form: kept with the valuation requests (marked as an enquiry) and sent to the office.
