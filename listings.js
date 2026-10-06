@@ -595,9 +595,21 @@ module.exports = function (app, opts) {
         for (let b = a + 1; b < items.length; b++) if (!used.has(b) && items[b].id !== items[a].id && (items[b].h === items[a].h || hamming(items[a].h, items[b].h) <= 4)) { g.push(items[b]); used.add(b); }
         if (g.length > 1) { used.add(a); const ids = {}; g.forEach(function (x) { ids[x.id] = 1; }); if (Object.keys(ids).length > 1) groups.push(g); }
       }
-      dupes = groups.map(function (g) { const seen = {}; return { key: g.map(function (x) { return x.id; }).sort().join('+') + '|' + g[0].h, homes: g.filter(function (x) { if (seen[x.id]) return false; seen[x.id] = 1; return true; }).map(function (x) { return { id: x.id, where: x.where, url: x.url, photo: x.n + 1, img: '/listing-img/' + x.id + '/' + x.n + '.webp?w=480' }; }) }; });
+      // Report by pairs of homes ("Corry Drive and St Leonards Road share 10 photos") — easier to fix in Gnomen.
+      const pairs = {};
+      groups.forEach(function (g) {
+        for (let a = 0; a < g.length; a++) for (let b = a + 1; b < g.length; b++) {
+          if (g[a].id === g[b].id) continue;
+          const x = +g[a].id < +g[b].id ? g[a] : g[b], y = x === g[a] ? g[b] : g[a], k = x.id + '+' + y.id;
+          const pr = pairs[k] || (pairs[k] = { key: k, homes: [x, y].map(function (h) { return { id: h.id, where: h.where, url: h.url, img: '/listing-img/' + h.id + '/' + h.n + '.webp?w=480' }; }), photos: [] });
+          if (!pr.photos.some(function (q) { return q[0] === x.n + 1 && q[1] === y.n + 1; })) pr.photos.push([x.n + 1, y.n + 1]);
+        }
+      });
+      const oc = function (w) { return (String(w).match(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*$/) || [])[1] || ''; };
+      dupes = Object.keys(pairs).map(function (k) { const pr = pairs[k]; pr.count = pr.photos.length; pr.sameArea = !!oc(pr.homes[0].where) && oc(pr.homes[0].where) === oc(pr.homes[1].where) && pr.homes[0].where.split(',')[0] === pr.homes[1].where.split(',')[0]; return pr; })
+        .sort(function (a, b) { return (a.sameArea - b.sameArea) || (b.count - a.count); });
       dupesAt = Date.now();
-      console.log('Photo check: ' + items.length + ' photos on ' + homes.length + ' homes — ' + (dupes.length ? dupes.length + ' photo(s) used on more than one home' : 'no repeats'));
+      console.log('Photo check: ' + items.length + ' photos on ' + homes.length + ' homes — ' + (dupes.length ? dupes.length + ' pair(s) of homes sharing photos (' + groups.length + ' photos)' : 'no repeats'));
       if (opts.onPhotoDupes) opts.onPhotoDupes(dupes);
     } catch (e) { console.log('Photo check stopped: ' + e.message); }
     checking = false;
