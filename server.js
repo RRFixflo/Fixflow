@@ -296,7 +296,7 @@ function heroSearch(req) {
   if (!c) return '<div class="hsearch">' + val.replace('class="hs-val"', 'class="hs-val solo"') + '</div>';
   return '<form class="hsearch" id="hSearch" action="/properties-to-rent" method="get" role="search">' +
     '<div class="hs-tabs" role="tablist"><button type="button" class="on" data-hs="rent" role="tab">Rent</button><button type="button" data-hs="buy" role="tab">Buy</button></div>' +
-    '<div class="hs-box"><div class="hs-row"><input name="q" aria-label="Area, street or postcode" placeholder="Find a property by area or postcode" autocomplete="off"><button class="hs-go" type="submit">Search <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button></div>' +
+    '<div class="hs-box"><div class="hs-row"><input name="q" aria-label="Area, street or postcode" placeholder="Area, street or postcode" autocomplete="off"><button class="hs-go" type="submit" aria-label="Search"><span class="hs-gt">Search</span> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button></div>' +
     '<div class="hs-modes"><button type="button" class="on" data-mode="list">📍 Location</button><button type="button" data-mode="map">🗺️ Map</button><button type="button" data-mode="near">➤ Near me</button></div></div>' +
     val + '</form>';
 }
