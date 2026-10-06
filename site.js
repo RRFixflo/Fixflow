@@ -271,14 +271,16 @@
     var cbItems = [], cbPay = false, money = function (n) { return '£' + Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
     var cbDone = document.getElementById('cbDone'), cbGo = document.getElementById('cbGo'), cbErr = document.getElementById('cbErr');
     var picked = function () { return Array.prototype.map.call(cb.querySelectorAll('[name=svc]:checked'), function (x) { return x.value; }); };
-    var cbSum = function () { var t = cbItems.filter(function (i) { return picked().indexOf(i.id) !== -1; }).reduce(function (a, i) { return a + i.price; }, 0);
+    var cbVat = 0.2, r2 = function (n) { return Math.round(n * 100) / 100; };
+    var cbSum = function () { var sub = r2(cbItems.filter(function (i) { return picked().indexOf(i.id) !== -1; }).reduce(function (a, i) { return a + i.price; }, 0)), vat = r2(sub * cbVat), t = r2(sub + vat);
+      document.getElementById('cbSub').textContent = money(sub); document.getElementById('cbVat').textContent = money(vat);
       document.getElementById('cbTotal').textContent = money(t); cbGo.disabled = !t; cbGo.textContent = !t ? 'Choose a service' : (cbPay ? 'Book & pay ' + money(t) + ' →' : 'Send booking — ' + money(t)); };
     var showDone = function (html) { cb.closest('.cb-grid').hidden = true; cbDone.innerHTML = '<div class="cb-done">' + html + '</div>'; cbDone.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
     fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
-      cbItems = (d && d.items) || []; cbPay = !!(d && d.pay);
+      cbItems = (d && d.items) || []; cbPay = !!(d && d.pay); if (d && typeof d.vat === 'number') cbVat = d.vat;
       var box = document.getElementById('cbItems');
       if (!cbItems.length) { box.innerHTML = '<div class="cb-none"><b>Online booking is coming soon.</b> Call us on <a href="tel:02070968131">0207 096 8131</a> or <a href="/contact?topic=Landlord&message=' + encodeURIComponent('I’d like to book a gas safety certificate / EICR.') + '">send us a message</a> and we’ll book it for you.</div>'; cbGo.hidden = true; return; }
-      box.innerHTML = cbItems.map(function (i) { return '<label class="cb-item"><input type="checkbox" name="svc" value="' + escH(i.id) + '"><span class="cb-ic">' + (/gas/i.test(i.name) ? '🔥' : /eicr|electr/i.test(i.name) ? '⚡' : /epc|energy/i.test(i.name) ? '🏷️' : '📋') + '</span><span class="cb-it"><b>' + escH(i.name) + '</b>' + (i.desc ? '<small>' + escH(i.desc) + '</small>' : '') + '</span><span class="cb-pr">' + money(i.price) + '</span></label>'; }).join('');
+      box.innerHTML = cbItems.map(function (i) { return '<label class="cb-item"><input type="checkbox" name="svc" value="' + escH(i.id) + '"><span class="cb-ic">' + (/gas/i.test(i.name) ? '🔥' : /eicr|electr/i.test(i.name) ? '⚡' : /epc|energy/i.test(i.name) ? '🏷️' : '📋') + '</span><span class="cb-it"><b>' + escH(i.name) + '</b>' + (i.desc ? '<small>' + escH(i.desc) + '</small>' : '') + '</span><span class="cb-pr">' + money(i.price) + '<small>+ VAT</small></span></label>'; }).join('');
       document.getElementById('cbPayNote').textContent = cbPay ? 'You’ll pay on SumUp’s secure page. Card details never touch our website.' : 'We’ll call you to take payment and confirm the date.';
       try { var want = new URLSearchParams(location.search).get('service'); if (want) cb.querySelectorAll('[name=svc]').forEach(function (x) { if (x.value === want || (want === 'gas' && /^gas/.test(x.value)) || (want === 'eicr' && /^eicr_s/.test(x.value)) || (want === 'epc' && /^epc/.test(x.value))) { x.checked = true; x.closest('.cb-item').classList.add('on'); } }); } catch (e) {}
       cbSum();

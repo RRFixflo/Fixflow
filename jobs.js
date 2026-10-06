@@ -9672,7 +9672,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     { id: 'epc', name: 'EPC (Energy Performance Certificate)', desc: 'Survey by an accredited energy assessor; valid for 10 years and lodged on the government register', price: '' }
   ];
   const SUMUP_KEY = process.env.SUMUP_API_KEY || '', SUMUP_MC = process.env.SUMUP_MERCHANT_CODE || '', SITE = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
-  const canPay = function () { return !!(SUMUP_KEY && SUMUP_MC); };
+  const canPay = function () { return !!(SUMUP_KEY && SUMUP_MC); }, CERT_VAT = 0.2;
   async function certServices(p) {
     const v = ((await p.query("SELECT value FROM app_settings WHERE key = 'cert_services'")).rows[0] || {}).value || {};
     const items = Array.isArray(v.items) && v.items.length ? v.items : CERT_DEFAULTS;
@@ -9694,7 +9694,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return d.pay_url || (SITE + '/book-certificate?b=' + row.id + '&k=' + d.token + '&pay=1');
   }
   const certText = function (row) { const d = row.data || {};
-    return 'Booked: ' + (d.items || []).map(function (i) { return i.name + ' (£' + i.price.toFixed(2) + ')'; }).join(', ') + '\nTotal: £' + Number(d.total || 0).toFixed(2) + (d.paid_at ? ' — PAID online' : canPay() ? ' — not paid yet' : ' — payment to be taken by the office') +
+    return 'Booked: ' + (d.items || []).map(function (i) { return i.name + ' (£' + i.price.toFixed(2) + ' + VAT)'; }).join(', ') + (d.vat != null ? '\nSubtotal: £' + Number(d.subtotal).toFixed(2) + ' + VAT £' + Number(d.vat).toFixed(2) : '') + '\nTotal: £' + Number(d.total || 0).toFixed(2) + (d.vat != null ? ' inc. VAT' : '') + (d.paid_at ? ' — PAID online' : canPay() ? ' — not paid yet' : ' — payment to be taken by the office') +
       '\n\nName: ' + row.name + '\nPhone: ' + (row.phone || '—') + '\nEmail: ' + (row.email || '—') + '\nProperty: ' + row.address +
       '\nAccess: ' + ({ landlord: 'Landlord will let the engineer in', tenant: 'Contact the tenant directly', keys: 'Keys at our office / key safe' }[d.access] || '—') + (d.tenant_name || d.tenant_phone ? '\nTenant: ' + [d.tenant_name, d.tenant_phone, d.tenant_email].filter(Boolean).join(' · ') : '') +
       '\nPreferred dates: ' + ((d.dates || []).join(', ') || 'Any') + (d.message ? '\n\nNotes: ' + d.message : ''); };
@@ -9717,7 +9717,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         VALUES ($1, 'Routine', $2, 'Other', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
         [pick ? 'Assigned' : 'New', due, row.address, cat, cat, desc, pick ? pick.name : null, d.tenant_name || null, d.tenant_phone || null, d.tenant_email || null, row.name, row.email || null, row.phone || null]);
       const id = r.rows[0].id; ids.push(id);
-      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'created', 'Job raised from a website certificate booking (' + it.name + ', £' + Number(it.price).toFixed(2) + (d.paid_at ? ', paid online' : ', payment to take') + ').' + (pick ? ' Assigned to ' + pick.name + '.' : ' No contractor chosen for this service yet — pick one in Certificates → Website bookings.')]);
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'created', 'Job raised from a website certificate booking (' + it.name + ', £' + Number(it.price).toFixed(2) + ' + VAT' + (d.paid_at ? ', paid online' : ', payment to take') + ').' + (pick ? ' Assigned to ' + pick.name + '.' : ' No contractor chosen for this service yet — pick one in Certificates → Website bookings.')]);
       ntfy({ title: refFor(id) + ' raised: ' + cat, message: String(row.address).replace(/\s+/g, ' ') + '\n' + (pick ? 'Assigned to ' + pick.name + ' — open it to send them the job.' : 'No contractor chosen yet — open it to assign one.'), tags: ['scroll'] }, '#job-' + id).catch(function () {});
     }
     d.jobs = ids; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]); row.data = d;
@@ -9729,12 +9729,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     teamAlert({ title: '💳 Certificate booking paid: £' + Number(d.total).toFixed(2), message: (d.items || []).map(function (i) { return i.name; }).join(' + ') + ' · ' + row.address.split(',').slice(0, 2).join(','), tags: ['credit_card'] }, '#leads').catch(function () {});
     staffEmailAll('💳 Certificate booking paid - ' + row.address.split(',').slice(0, 2).join(','), function (link) { return 'A landlord has booked and paid on the website. Please arrange the visit.\n\n' + certText(row) + '\n\nIt’s in Website leads: ' + link; }, '#leads').catch(function () {});
     if (canEmail() && sendEmail && row.email) sendEmail({ to: row.email, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Booking confirmed — ' + (d.items || []).map(function (i) { return i.name.replace(/ —.*/, ''); }).join(' + '),
-      text: 'Dear ' + row.name.split(' ')[0] + ',\n\nThank you — we’ve received your payment of £' + Number(d.total).toFixed(2) + ' for:\n' + (d.items || []).map(function (i) { return '• ' + i.name; }).join('\n') + '\n\nProperty: ' + row.address + '\n\nWe’ll be in touch shortly to confirm the date and time' + ((d.dates || []).length ? ' (you asked for: ' + d.dates.join(', ') + ')' : '') + '. Your certificate will be emailed to you once the visit is done.\n\nIf you need anything in the meantime, call us on 0207 096 8131 or reply to this email.\n\nResidential Realtors\n28-30 Harper Road, London SE1 6AD' }).catch(function () {});
+      text: 'Dear ' + row.name.split(' ')[0] + ',\n\nThank you — we’ve received your payment of £' + Number(d.total).toFixed(2) + (d.vat != null ? ' (including VAT of £' + Number(d.vat).toFixed(2) + ')' : '') + ' for:\n' + (d.items || []).map(function (i) { return '• ' + i.name; }).join('\n') + '\n\nProperty: ' + row.address + '\n\nWe’ll be in touch shortly to confirm the date and time' + ((d.dates || []).length ? ' (you asked for: ' + d.dates.join(', ') + ')' : '') + '. Your certificate will be emailed to you once the visit is done.\n\nIf you need anything in the meantime, call us on 0207 096 8131 or reply to this email.\n\nResidential Realtors\n28-30 Harper Road, London SE1 6AD' }).catch(function () {});
   }
   async function certRow(p, id, k) { const r = (await p.query("SELECT * FROM valuation_requests WHERE id = $1 AND data->>'kind' = 'cert'", [parseInt(id, 10) || 0])).rows[0]; return r && r.data && r.data.token && k && String(k) === r.data.token ? r : null; }
   app.get('/api/public/cert-services', withDb(async function (p, req, res) {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, items: (await certServices(p)).filter(function (x) { return x.price; }).map(function (x) { return { id: x.id, name: x.name, desc: x.desc, price: x.price }; }), pay: canPay() });
+    res.json({ ok: true, items: (await certServices(p)).filter(function (x) { return x.price; }).map(function (x) { return { id: x.id, name: x.name, desc: x.desc, price: x.price }; }), vat: CERT_VAT, pay: canPay() });
   }));
   const cbHits = new Map();
   app.post('/api/public/cert-booking', withDb(async function (p, req, res) {
@@ -9752,8 +9752,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!pcm) return res.status(400).json({ ok: false, error: 'postcode' });
     if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
     const postcode = (pcm[1] + ' ' + pcm[2]).toUpperCase(), full = POSTCODE_RE.test(addr) ? addr : addr + ', ' + postcode;
-    const total = Math.round(items.reduce(function (a, x) { return a + x.price; }, 0) * 100) / 100;
-    const data = { kind: 'cert', postcode: postcode, items: items.map(function (x) { return { id: x.id, name: x.name, price: x.price, contractor: x.contractor }; }), total: total, token: crypto.randomBytes(12).toString('base64url'),
+    // Prices are set excluding VAT; the landlord pays the total with VAT at 20%.
+    const subtotal = Math.round(items.reduce(function (a, x) { return a + x.price; }, 0) * 100) / 100, vat = Math.round(subtotal * CERT_VAT * 100) / 100, total = Math.round((subtotal + vat) * 100) / 100;
+    const data = { kind: 'cert', postcode: postcode, items: items.map(function (x) { return { id: x.id, name: x.name, price: x.price, contractor: x.contractor }; }), subtotal: subtotal, vat: vat, total: total, token: crypto.randomBytes(12).toString('base64url'),
       access: ['landlord', 'tenant', 'keys'].indexOf(b.access) !== -1 ? b.access : '', tenant_name: str(b.tenant_name, 120) || '', tenant_phone: str(b.tenant_phone, 40) || '', tenant_email: str(b.tenant_email, 200) || '', dates: (Array.isArray(b.dates) ? b.dates : []).map(function (x) { return str(x, 60); }).filter(Boolean).slice(0, 3), dates_iso: (Array.isArray(b.dates_iso) ? b.dates_iso : []).filter(function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(String(x)); }).slice(0, 3), message: str(b.message, 2000) || '' };
     const row = (await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING *', [name, email, phone, full, JSON.stringify(data)])).rows[0];
     teamAlert({ title: '📜 Certificate booking: ' + items.map(function (x) { return x.name.replace(/ —.*/, ''); }).join(' + '), message: full.split(',').slice(0, 2).join(',') + ' · £' + total.toFixed(2) + (canPay() ? ' · paying online' : ' · take payment'), tags: ['scroll'] }, '#leads').catch(function () {});
@@ -9770,7 +9771,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       for (const cid of (d.checkouts || [d.checkout_id]).slice().reverse()) { try { const c = await sumup('GET', '/v0.1/checkouts/' + encodeURIComponent(cid)); if (String(c.status).toUpperCase() === 'PAID') { await certPaid(p, row); break; } } catch (e) { console.error('SumUp status check failed:', e.message); } }
     }
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, paid: !!row.data.paid_at, total: d.total, items: (d.items || []).map(function (i) { return { name: i.name, price: i.price }; }), address: row.address, checkout: req.query.pay ? d.checkout_id || '' : undefined, canPay: canPay() });
+    res.json({ ok: true, paid: !!row.data.paid_at, total: d.total, vat: d.vat, items: (d.items || []).map(function (i) { return { name: i.name, price: i.price }; }), address: row.address, checkout: req.query.pay ? d.checkout_id || '' : undefined, canPay: canPay() });
   }));
   app.post('/api/public/cert-booking/:id/pay', withDb(async function (p, req, res) {
     const row = await certRow(p, req.params.id, (req.body || {}).k); if (!row) return res.status(404).json({ ok: false });
