@@ -386,7 +386,7 @@ module.exports = function (app, opts) {
   function card(p, sizes) {
     return '<a class="lcard" href="' + esc(p.url) + '" data-k="' + p.kind + '" data-beds="' + p.beds + '" data-price="' + Math.round(p.price) + '" data-taken="' + (p.taken ? 1 : 0) + '" data-added="' + esc(p.added) + '" data-q="' + esc((p.where + ' ' + p.type + ' ' + p.town).toLowerCase()) + '"' + (p.lat != null ? ' data-lat="' + p.lat.toFixed(5) + '" data-lng="' + p.lng.toFixed(5) + '"' : '') + '>' +
       '<div class="lph">' + (p.images.length ? pic(p, 0, sizes || '(max-width: 640px) 100vw, (max-width: 1060px) 50vw, 380px', p.headline + ', ' + p.where) : '<div class="noph">Photos coming soon</div>') +
-      '<span class="lst' + (p.taken ? ' taken' : '') + '">' + esc(p.status) + '</span>' + '<span class="lmedia">' + (p.vtour ? '<span>▶ Video</span>' : '') + (p.floorplans.length ? '<span>📐 Floorplan</span>' : '') + (p.images.length > 1 ? '<span>📷 ' + p.images.length + '</span>' : '') + '</span></div>' +
+      '<span class="lst' + (p.taken ? ' taken' : '') + '">' + esc(p.status) + '</span>' + '<span class="lmedia">' + (p.vtour ? '<span class="lm-v">▶ Video</span>' : '') + (p.floorplans.length ? '<span class="lm-f">📐 Floorplan</span>' : '') + (p.images.length > 1 ? '<span>📷 ' + p.images.length + '</span>' : '') + '</span></div>' +
       '<div class="lbody"><div class="lprice">' + priceHtml(p) + '</div><h3>' + esc(p.headline) + '</h3><p class="lwhere">' + esc(p.where) + '</p><div class="lfacts">' + facts(p) + '</div>' +
       (availText(p) ? '<p class="lavail">' + esc(availText(p)) + '</p>' : '') + '</div></a>';
   }
@@ -465,7 +465,8 @@ module.exports = function (app, opts) {
       '<section class="pd"><div class="wrap">' +
       (n ? '<div class="gal" id="gal"><div class="gtrack" id="gTrack">' + p.images.map(function (u, i) { return '<figure>' + pic(p, i, '(max-width: 1100px) 100vw, 1100px', p.headline + ' — photo ' + (i + 1) + ' of ' + n, i === 0 ? ' fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"') + '</figure>'; }).join('') + '</div>' +
         (n > 1 ? '<button class="gbtn prev" type="button" aria-label="Previous photo">‹</button><button class="gbtn next" type="button" aria-label="Next photo">›</button><span class="gnum" id="gNum">1 / ' + n + '</span>' : '') +
-        '<span class="lst' + (p.taken ? ' taken' : '') + '">' + esc(p.status) + '</span></div>' : '') +
+        '<span class="lst' + (p.taken ? ' taken' : '') + '">' + esc(p.status) + '</span>' +
+        (p.vtour || p.floorplans.length ? '<div class="gmedia">' + (p.vtour ? '<a class="gm-v" href="#pd-video">▶ Video tour</a>' : '') + (p.floorplans.length ? '<a class="gm-f" href="#pd-floorplan">📐 Floorplan</a>' : '') + '</div>' : '') + '</div>' : '') +
       '<div class="pdgrid"><div class="pdmain">' +
         '<div class="lprice big">' + priceHtml(p) + '</div><h1>' + esc(p.headline) + '</h1><p class="pdwhere">📍 ' + esc(p.where) + '</p>' +
         '<div class="lfacts big">' + facts(p) + '</div>' + (availText(p) ? '<p class="lavail">' + esc(availText(p)) + '</p>' : '') +

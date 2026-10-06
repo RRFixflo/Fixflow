@@ -661,3 +661,12 @@ body.bk-lock { overflow: hidden; }
 .lf-qrow input[type=search] { flex: 1; min-width: 0; }
 .lf-go { flex: none; border: 0; border-radius: 12px; background: var(--navy); color: #fff; font: inherit; font-weight: 800; font-size: .95rem; padding: 0 18px; cursor: pointer; }
 .lf-go:hover { background: var(--navy2); }
+/* Video and floorplan: hard to miss — big buttons on the main photo, bold labels on the cards. */
+.gmedia { position: absolute; left: 14px; bottom: 14px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 3; }
+.gmedia a { display: inline-flex; align-items: center; gap: 6px; padding: 11px 16px; border-radius: 999px; font-weight: 800; font-size: .95rem; text-decoration: none; box-shadow: 0 10px 24px -10px rgba(0,0,0,.6); }
+.gmedia .gm-v { background: var(--red); color: #fff; } .gmedia .gm-f { background: #fff; color: var(--navy); }
+.gmedia a:hover { transform: translateY(-1px); }
+@media (max-width: 640px) { .gmedia { left: 10px; bottom: 10px; } .gmedia a { padding: 9px 13px; font-size: .88rem; } }
+.lmedia .lm-v { background: var(--red); } .lmedia .lm-f { background: #fff; color: var(--navy); }
+.pdjump a[href="#pd-video"] { background: var(--red); border-color: var(--red); color: #fff; }
+.pdjump a[href="#pd-floorplan"] { background: var(--navy); border-color: var(--navy); color: #fff; }
