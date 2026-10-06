@@ -274,6 +274,13 @@
   // Home page "Find your next home" card: Rent / Buy picks where the search goes.
   document.querySelectorAll('.x-find').forEach(function (f) { f.addEventListener('change', function (e) { if (e.target.name === 'x-kind') f.action = e.target.value; }); });
 
+  // Home page certificates section: each service's price from the price list.
+  var hcp = document.querySelectorAll('[data-cert-price]');
+  if (hcp.length) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+    var items = (d && d.items) || [];
+    hcp.forEach(function (el) { var ids = el.getAttribute('data-cert-price').split(','), ps = items.filter(function (i) { return ids.indexOf(i.id) !== -1 && i.price; }).map(function (i) { return i.price; });
+      if (ps.length) el.innerHTML = (ps.length > 1 ? 'From ' : '') + '<b>£' + Math.min.apply(null, ps).toLocaleString('en-GB') + '</b> + VAT'; });
+  }).catch(function () {});
   // Home page certificates card: "from £X + VAT" from the price list.
   var xf = document.querySelector('[data-svc-from]');
   if (xf) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
