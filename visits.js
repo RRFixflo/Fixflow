@@ -8,9 +8,10 @@ const crypto = require('crypto');
 module.exports = function (app, opts) {
   const BOT = /bot\b|bot\/|spider|crawl|slurp|curl|wget|python|httpx|aiohttp|go-http|java\/|okhttp|axios|node-fetch|undici|libwww|scrapy|headless|phantom|selenium|puppeteer|playwright|lighthouse|pagespeed|gtmetrix|pingdom|uptime|monitor|preview|facebookexternalhit|whatsapp|telegram|slack|discord|skype|linkedinbot|embedly|quora|pinterest|gpt|openai|anthropic|claude|perplexity|bytespider|ccbot|petalbot|semrush|ahrefs|mj12|dotbot|yandex|baidu|seznam/i;
   const SALT = crypto.createHash('sha256').update('visits|' + (process.env.ADMIN_PASSWORD || '') + '|' + (process.env.DATABASE_URL || crypto.randomBytes(16).toString('hex'))).digest('hex');
-  let ready = null, queue = [], ignore = [];   // ignore: our own IP addresses (not counted)
+  let ready = null, queue = [], ignore = [], names = {};   // ignore: our own IP addresses (not counted); names: IP → a name staff gave it
   const ipOf = function (req) { return String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim().replace(/^::ffff:/, '').slice(0, 64); };
-  async function loadIgnore() { const p = await pool().catch(function () { return null; }); if (!p) return; const r = (await p.query("SELECT value FROM app_settings WHERE key = 'web_ignore_ips'").catch(function () { return { rows: [] }; })).rows[0]; ignore = (r && r.value && r.value.ips) || []; }
+  async function loadIgnore() { const p = await pool().catch(function () { return null; }); if (!p) return; const r = (await p.query("SELECT value FROM app_settings WHERE key = 'web_ignore_ips'").catch(function () { return { rows: [] }; })).rows[0]; ignore = (r && r.value && r.value.ips) || [];
+    const n = (await p.query("SELECT value FROM app_settings WHERE key = 'web_ip_names'").catch(function () { return { rows: [] }; })).rows[0]; names = (n && n.value && n.value.names) || {}; }
   setTimeout(function () { loadIgnore().catch(function () {}); }, 5000);
   async function pool() {
     const p = await opts.db(); if (!p) return null;
@@ -65,7 +66,7 @@ module.exports = function (app, opts) {
     if (!(opts.isStaff && opts.isStaff(req))) return res.status(401).json({ ok: false });
     if (req.role === 'offers' && !(req.user && req.user.role === 'offers_admin')) return res.status(403).json({ ok: false, error: 'managers-only' });
     const p = await pool().catch(function () { return null; }); if (!p) return res.status(503).json({ ok: false, error: 'db' });
-    await flush().catch(function () {});
+    await flush().catch(function () {}); await loadIgnore().catch(function () {});
     const days = [1, 7, 30, 90, 365].indexOf(+req.query.days) !== -1 ? +req.query.days : 7;
     // "Today" starts at midnight London time; longer ranges include today.
     const since = "date_trunc('day', now() AT TIME ZONE 'Europe/London') AT TIME ZONE 'Europe/London' - interval '" + (days - 1) + " days'";
@@ -84,12 +85,16 @@ module.exports = function (app, opts) {
       q("SELECT DISTINCT ON (visitor) visitor, path, title, device, ip, at FROM web_visits WHERE at >= now() - interval '5 minutes' ORDER BY visitor, at DESC"),
       q("SELECT at, path, title, ref, device, country, ip FROM web_visits ORDER BY id DESC LIMIT 60")
     ]).then(function (r) { recent = r.pop(); return r; });
+    const namedIps = Object.keys(names);
+    const seen = namedIps.length ? await p.query('SELECT ip, max(at) AS last, count(*) FILTER (WHERE at >= ' + since + ')::int AS views FROM web_visits WHERE ip = ANY($1) GROUP BY ip', [namedIps]).then(function (x) { return x.rows; }).catch(function () { return []; }) : [];
+    const named = namedIps.map(function (ip) { const s = seen.find(function (x) { return x.ip === ip; }) || {}; return { ip: ip, name: names[ip].name, last: s.last || null, views: s.views || 0 }; })
+      .sort(function (a, b) { return (b.last ? new Date(b.last) : 0) - (a.last ? new Date(a.last) : 0); });
     const src = {}; refs.forEach(function (r) { const n = srcName(r.ref); src[n] = (src[n] || 0) + r.visitors; });
     res.setHeader('Cache-Control', 'no-store');
     res.json({ ok: true, days: days, totals: tot[0], previous: prev[0], series: byDay, pages: pages, properties: props,
       sources: Object.keys(src).map(function (k) { return { k: k, visitors: src[k] }; }).sort(function (a, b) { return b.visitors - a.visitors; }),
       devices: devices, countries: countries, live: live.map(function (l) { return { path: l.path, title: l.title, device: l.device, ip: l.ip, at: l.at }; }),
-      me: ipOf(req), ignore: ignore, recent: recent.map(function (r) { return { at: r.at, path: r.path, title: r.title, source: srcName(r.ref), device: r.device, country: r.country, ip: r.ip }; }) });
+      me: ipOf(req), ignore: ignore, names: named, recent: recent.map(function (r) { return { at: r.at, path: r.path, title: r.title, source: srcName(r.ref), device: r.device, country: r.country, ip: r.ip }; }) });
   });
   // Don't count visits from an address (the office, home) — or count them again.
   app.post('/api/admin/site-ignore', async function (req, res) {
@@ -104,6 +109,22 @@ module.exports = function (app, opts) {
     await p.query("INSERT INTO app_settings (key, value) VALUES ('web_ignore_ips', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ ips: list.slice(-50) })]);
     ignore = list.slice(-50);
     res.json({ ok: true, ignore: ignore });
+  });
+
+  // Give a visitor's IP address a name (e.g. "Mr Smith – landlord", "Office phone") so it's always recognised.
+  app.post('/api/admin/site-name', async function (req, res) {
+    if (!(opts.isStaff && opts.isStaff(req))) return res.status(401).json({ ok: false });
+    if (req.role === 'offers' && !(req.user && req.user.role === 'offers_admin')) return res.status(403).json({ ok: false, error: 'managers-only' });
+    const b = req.body || {}, ip = String(b.ip || '').trim().slice(0, 64), name = String(b.name || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (!/^[0-9a-f.:]{3,64}$/i.test(ip)) return res.status(400).json({ ok: false, error: 'ip' });
+    const p = await pool().catch(function () { return null; }); if (!p) return res.status(503).json({ ok: false });
+    await loadIgnore();
+    const next = Object.assign({}, names);
+    if (name) next[ip] = { name: name, by: req.user ? req.user.name : 'Office', at: new Date().toISOString() }; else delete next[ip];
+    const keys = Object.keys(next); if (keys.length > 300) keys.slice(0, keys.length - 300).forEach(function (k) { delete next[k]; });
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('web_ip_names', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ names: next })]);
+    names = next;
+    res.json({ ok: true });
   });
 
   return { track: track };

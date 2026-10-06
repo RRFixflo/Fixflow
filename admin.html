@@ -646,6 +646,9 @@
   .web-xl { display: flex; justify-content: space-between; font-size: .72rem; color: var(--ink-soft); margin: 4px 0 0 28px; }
   .web-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; } .web-grid .card { margin: 0; min-width: 0; } .web-list table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: .88rem; } .web-list th { text-align: left; font-size: .74rem; color: var(--ink-soft); font-weight: 700; padding: 4px 6px; border-bottom: 1px solid var(--line, #eef0f3); } .web-list td { padding: 7px 6px; border-bottom: 1px solid var(--line, #f2f4f7); vertical-align: top; overflow-wrap: anywhere; } .web-list .num { text-align: right; white-space: nowrap; width: 1%; }
   .web-me { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 12px; } .web-me code, .web-list code { background: #f2f4f7; padding: 1px 6px; border-radius: 6px; font-size: .85em; } .web-ign { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .web-card { position: relative; } .web-card > .web-title, .web-card > div:first-of-type b { padding-right: 96px; } .web-mbtn { position: absolute; top: 10px; right: 10px; z-index: 2; }
+  .web-card.web-min > *:not(.web-mbtn):not(.web-title) { display: none !important; } .web-card.web-min { padding-bottom: 14px; } .web-me.web-card { display: block; } .web-card.web-me.web-min > div:first-of-type { display: block !important; } .web-me.web-min > div:first-of-type > :not(b) { display: none !important; } .web-me > .btn.primary { margin-top: 10px; }
+  .web-card.web-me.web-min > div:first-of-type { display: block !important; } .web-me.web-min > div:first-of-type > :not(b) { display: none !important; }
   .web-dupes { margin-top: 12px; } .web-dupe { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--line, #eef0f3); } .web-dupe a { display: flex; gap: 10px; align-items: center; text-decoration: none; color: inherit; flex: 1 1 240px; min-width: 0; } .web-dupe img { width: 96px; height: 64px; object-fit: cover; border-radius: 8px; flex: none; background: #eef2f8; } .web-dupe span { display: grid; min-width: 0; } .web-dupe small { color: var(--ink-soft); } .web-dupe i { font-style: normal; font-weight: 800; color: #b42318; white-space: nowrap; font-size: .85rem; }
   .web-hb { display: block; height: 6px; background: #eef2f8; border-radius: 3px; margin-top: 5px; } .web-hb i { display: block; height: 100%; background: #1d4ed8; border-radius: 3px; }
   @media (max-width: 760px) { .web-tiles { grid-template-columns: 1fr 1fr; } .web-grid { grid-template-columns: 1fr; } .web-chart { height: 160px; } }
@@ -8109,6 +8112,7 @@
       '<p class="muted-note" style="margin:4px 0 0">Visits from a browser signed in to Fixflow are never counted. To leave out the office (or your home) when you’re signed out too — e.g. on your phone on the office Wi-Fi — stop counting its address.</p>' +
       ((d.ignore || []).length ? '<div class="web-ign">' + d.ignore.map(function(x){ return '<span class="crm-flag">🚫 ' + esc(x.ip) + (x.label ? ' · ' + esc(x.label) : '') + ' <button type="button" class="linkish" data-unignore="' + esc(x.ip) + '">count again</button></span>'; }).join('') + '</div>' : '') + '</div>' +
       (d.me && !meIgnored ? '<button type="button" class="btn small primary" data-ignore-me="' + esc(d.me) + '">🚫 Don’t count visits from this address</button>' : '') + '</div>' +
+      '<div class="card web-list web-named"><b>🏷️ Named visitors</b>' + ((d.names || []).length ? '<table><thead><tr><th>Name</th><th>IP address</th><th>Last visit</th><th class="num">Pages</th></tr></thead><tbody>' + d.names.map(function(x){ return '<tr><td><b class="web-nm">' + esc(x.name) + '</b></td><td><code>' + esc(x.ip) + '</code> <button type="button" class="linkish" data-wname="' + esc(x.ip) + '">rename</button></td><td>' + (x.last ? esc(fmtShort(x.last)) : '<span class="muted-note" style="margin:0">not since named</span>') + '</td><td class="num">' + n(x.views) + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="muted-note" style="margin:6px 0 0">Know who a visitor is? Press <b>Name</b> next to their IP address below and the name stays with that address — it shows wherever they appear and in this list.</p>') + '</div>' +
       '<div class="web-tiles"><div class="tile"><div class="k">Visitors ' + label + '</div><div class="v">' + n(t.visitors) + '</div>' + change(t.visitors, pv.visitors) + '</div>' +
       '<div class="tile"><div class="k">Pages viewed</div><div class="v">' + n(t.views) + '</div>' + change(t.views, pv.views) + '</div>' +
       '<div class="tile"><div class="k">Pages per visitor</div><div class="v">' + (t.visitors ? (t.views / t.visitors).toFixed(1) : '0') + '</div></div>' +
@@ -8132,13 +8136,14 @@
       list('🟢 On the website right now', d.live, [['Looking at', pageName], ['Device', function(r){ return esc(r.device || ''); }], ['IP address', webIp]]) +
       '</div>' +
       list('🕘 Latest visits (with IP addresses)', d.recent, [['When', function(r){ return esc(fmtShort(r.at)); }], ['Page', pageName], ['From', function(r){ return esc(r.source) + '<small class="muted-note" style="display:block;margin:0">' + esc([r.device, webCountry(r.country)].filter(Boolean).join(' · ')) + '</small>'; }], ['IP address', webIp]]);
-    $('webBody').innerHTML = h + '<div id="webDupes"></div>';
+    $('webBody').innerHTML = h + '<div id="webDupes"></div>'; webMinify();
     api('GET', '/api/admin/photo-dupes').then(function(pd){
       var box = $('webDupes'); if (!box || !pd || !pd.ok) return;
       if (!pd.at) { box.innerHTML = '<div class="card"><b>📷 Same photo on more than one property</b><p class="muted-note">' + (pd.checking ? 'Checking the photos now — ' + (pd.total ? Math.round(pd.done / pd.total * 100) + '% (' + pd.done + ' of ' + pd.total + ')' : 'starting') + '. Refresh in a minute.' : 'The photo check starts a minute after the website updates.') + '</p></div>'; return; }
       box.innerHTML = '<div class="card web-dupes"><b>📷 Same photo on more than one property</b> <span class="muted-note" style="margin:0">checked ' + esc(fmtShort(new Date(pd.at))) + '</span>' +
         (pd.groups.length ? '<p class="muted-note" style="margin:6px 0 10px">' + pd.groups.length + ' pair' + (pd.groups.length === 1 ? '' : 's') + ' of properties share photos. Remove the photos from the property they don’t belong to in Gnomen — the website updates within 2 minutes. Pairs in the same building are listed last (they may be fine).</p>' + pd.groups.map(function(g){ return '<div class="web-dupe">' + g.homes.map(function(h, i){ return '<a href="https://www.residentialrealtors.co.uk' + esc(h.url) + '" target="_blank" rel="noopener"><img src="' + esc(h.img) + '" alt="" loading="lazy"><span><b>' + esc(h.where) + '</b><small>Gnomen no. ' + esc(h.id) + ' · photo' + (g.photos.length === 1 ? ' ' : 's ') + esc(g.photos.map(function(q){ return q[i]; }).join(', ')) + '</small></span></a>'; }).join('<i>' + g.count + ' shared</i>') + (g.sameArea ? '<span class="crm-flag">Same building</span>' : '') + '</div>'; }).join('')
           : '<p class="muted-note" style="margin:6px 0 0">✓ No photo is used on more than one property.</p>') + '</div>';
+      webMinify();
     });
   }
   function webSeries(d){
@@ -8148,10 +8153,36 @@
     if (d.days === 365) { var wk = []; for (var w = 0; w < out.length; w += 7) { var seg = out.slice(w, w + 7); wk.push({ label: 'w/c ' + seg[0].label, visitors: seg.reduce(function(a, x){ return a + x.visitors; }, 0), views: seg.reduce(function(a, x){ return a + x.views; }, 0) }); } return wk; }
     return out;
   }
+  // Every box on this page can be minimised (remembered on this device).
+  function webMinGet(){ try { return JSON.parse(localStorage.getItem('rr_web_min') || '{}') || {}; } catch (e) { return {}; } }
+  function webMinify(){
+    var m = webMinGet();
+    document.querySelectorAll('#webBody > .card, #webBody .web-grid > .card, #webDupes > .card').forEach(function(card){
+      if (card.querySelector(':scope > .web-mbtn')) return;
+      var t = card.querySelector('b'); if (!t) return;
+      var key = t.textContent.replace(/[^A-Za-z ]/g, '').trim().slice(0, 40);
+      if (t.parentNode === card) t.classList.add('web-title');
+      card.classList.add('web-card'); card.dataset.wkey = key;
+      card.insertAdjacentHTML('afterbegin', '<button type="button" class="btn small ghost web-mbtn" data-wmin>' + (m[key] ? 'Show' : 'Minimise') + '</button>');
+      card.classList.toggle('web-min', !!m[key]);
+    });
+  }
+  $('webView').addEventListener('click', function(e){
+    var b = e.target.closest('[data-wmin]'); if (!b) return;
+    var card = b.closest('.web-card'), m = webMinGet(), on = !card.classList.contains('web-min');
+    card.classList.toggle('web-min', on); b.textContent = on ? 'Show' : 'Minimise';
+    if (on) m[card.dataset.wkey] = 1; else delete m[card.dataset.wkey];
+    try { localStorage.setItem('rr_web_min', JSON.stringify(m)); } catch (x) {}
+  });
   function webIp(r){ if (!r.ip) return '<span class="muted-note" style="margin:0">—</span>'; var d = webData || {}, own = r.ip === d.me, ign = (d.ignore || []).some(function(x){ return x.ip === r.ip; });
-    return '<code>' + esc(r.ip) + '</code>' + (own ? ' <span class="crm-flag ok">You</span>' : ign ? ' <span class="crm-flag">Ours</span>' : ''); }
+    var nm = (d.names || []).find(function(x){ return x.ip === r.ip; });
+    return (nm ? '<b class="web-nm">' + esc(nm.name) + '</b><br>' : '') + '<code>' + esc(r.ip) + '</code>' + (own ? ' <span class="crm-flag ok">You</span>' : ign ? ' <span class="crm-flag">Ours</span>' : '') +
+      ' <button type="button" class="linkish" data-wname="' + esc(r.ip) + '">' + (nm ? 'rename' : 'Name') + '</button>'; }
   $('webBody').addEventListener('click', function(e){
-    var a = e.target.closest('[data-ignore-me]'), u = e.target.closest('[data-unignore]');
+    var a = e.target.closest('[data-ignore-me]'), u = e.target.closest('[data-unignore]'), w = e.target.closest('[data-wname]');
+    if (w) { var ip = w.dataset.wname, cur = ((webData.names || []).find(function(x){ return x.ip === ip; }) || {}).name || '';
+      var v = prompt('Name for visitor ' + ip + '\n(e.g. "Office phone", "Landlord – Flat 2"). Leave empty to remove the name.', cur); if (v === null) return;
+      api('POST', '/api/admin/site-name', { ip: ip, name: v }).then(function(d){ toast(d && d.ok ? (v.trim() ? '✓ Named ' + v.trim() : 'Name removed') : 'Couldn’t save that'); loadWeb(); }); return; }
     if (a) { if (!confirm('Stop counting visits from ' + a.dataset.ignoreMe + '?\n\nUse this for the office or your home. Visits already counted from it are removed too.')) return; api('POST', '/api/admin/site-ignore', { ip: a.dataset.ignoreMe, label: 'Office / us', purge: true }).then(function(d){ toast(d && d.ok ? '✓ Visits from your address won’t be counted' : 'Couldn’t save that'); loadWeb(); }); }
     if (u) api('POST', '/api/admin/site-ignore', { ip: u.dataset.unignore, remove: true }).then(function(d){ toast(d && d.ok ? 'Counting that address again' : 'Couldn’t save that'); loadWeb(); });
   });
