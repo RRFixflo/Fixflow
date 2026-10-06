@@ -73,7 +73,7 @@ module.exports = function (app, opts) {
       if (k && keep[k]) { rmAlias[p.id] = keep[k].id; gone.push(p.id + '→' + keep[k].id); return; }
       if (k) keep[k] = p; out.push(p);
     });
-    if (gone.length) console.log('Duplicate Gnomen records shown once (' + (kind === 'let' ? 'lettings' : 'sales') + '): ' + gone.join(', '));
+    if (gone.length) logOnce('Duplicate Gnomen records shown once (' + (kind === 'let' ? 'lettings' : 'sales') + '): ' + gone.join(', '));
     return out.sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
   }
   async function gnomenFeed(kind) {
@@ -88,9 +88,12 @@ module.exports = function (app, opts) {
     const st = function (p) { return String(p.street || p.where || '').toLowerCase().replace(/^(flat|apartment|unit)\s*\w+[,\s]*/, '').replace(/^\d+[a-z]?\s+/, '').replace(/[^a-z]/g, ''); };
     return a.outcode && a.outcode === b.outcode && (a.beds || 0) === (b.beds || 0) && st(a) && st(a) === st(b);
   };
+  const rmListCache = {};   // our Rightmove adverts, re-read every 30 minutes (Gnomen is checked every couple of minutes)
   async function addFromRightmove(kind, list) {
     if (process.env.LISTINGS_RIGHTMOVE_TOO === '0') return list;
-    const items = await rmBranch(kind), extra = [], skippedLet = [];
+    const c = rmListCache[kind]; let items;
+    if (c && Date.now() - c.at < 30 * 60000) items = c.items; else { items = await rmBranch(kind); rmListCache[kind] = { at: Date.now(), items: items }; }
+    const extra = [], skippedLet = [];
     for (const x of items) {
       const quick = rmListing(x, null, kind);
       if (list.some(function (p) { return sameHome(p, quick); })) continue;
@@ -102,16 +105,19 @@ module.exports = function (app, opts) {
       if (pid && !list.some(function (q) { return q.id === pid; })) { rmAlias[p.id] = pid; p.rmId = p.id; p.id = pid; p.url = '/property/' + pid + '/' + p.slug; }
       extra.push(p);
     }
-    if (skippedLet.length) console.log('Not added from Rightmove — Gnomen says let/sold: ' + skippedLet.join('; ').slice(0, 300));
-    if (extra.length) console.log('Added from Rightmove (not in the Gnomen ' + (kind === 'let' ? 'lettings' : 'sales') + ' feed): ' + extra.length + ' — ' + extra.map(function (p) { return p.where + (p.rmId ? ' (our no. ' + p.id + ')' : ' (Rightmove no. ' + p.id + ' — Gnomen number not known)'); }).join('; ').slice(0, 600));
+    if (skippedLet.length) logOnce('Not added from Rightmove — Gnomen says let/sold: ' + skippedLet.join('; ').slice(0, 300));
+    if (extra.length) logOnce('Added from Rightmove (not in the Gnomen ' + (kind === 'let' ? 'lettings' : 'sales') + ' feed): ' + extra.length + ' — ' + extra.map(function (p) { return p.where + (p.rmId ? ' (our no. ' + p.id + ')' : ' (Rightmove no. ' + p.id + ' — Gnomen number not known)'); }).join('; ').slice(0, 600));
     return list.concat(extra).sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
   }
+  const lastMsg = {};
+  const logOnce = function (m) { if (lastMsg['m:' + m] ) return; lastMsg['m:' + m] = 1; console.log(m); };
   async function refresh() {
     for (const kind of ['sale', 'let']) {
       if (!FEEDS[kind]) continue;
       try {
         let list = await gnomenFeed(kind);
-        console.log('Listings from the Gnomen ' + (kind === 'let' ? 'lettings' : 'sales') + ' feed: ' + list.length + ' (' + list.filter(function (p) { return !p.taken; }).length + ' available)');
+        const msg = 'Listings from the Gnomen ' + (kind === 'let' ? 'lettings' : 'sales') + ' feed: ' + list.length + ' (' + list.filter(function (p) { return !p.taken; }).length + ' available)';
+        if (msg !== lastMsg[kind]) { console.log(msg); lastMsg[kind] = msg; }
         try { list = await addFromRightmove(kind, list); } catch (e) { console.log('Rightmove check not done: ' + e.message); }
         data[kind] = list;
       } catch (e) { console.error('Listings feed (' + kind + ') not read:', e.message); }   // keep the last good copy
@@ -346,7 +352,9 @@ module.exports = function (app, opts) {
     }
     console.log('Listings from Rightmove branch ' + BRANCH + (SALES_BRANCH !== BRANCH ? ' (sales ' + SALES_BRANCH + ')' : '') + ': to rent ' + counts.let + ', for sale ' + counts.sale + (counts.gnomen ? ' (from the Gnomen sales feed)' : counts.oldsite ? ' (from the old Gnomen website)' : '') + (LIVE ? '' : ' — staff preview only (LISTINGS_ON is off)'));
   }
-  async function refreshAll() {
+  let refreshing = null;
+  function refreshAll() { if (!refreshing) refreshing = doRefresh().finally(function () { refreshing = null; }); return refreshing; }
+  async function doRefresh() {
     if (SOURCE === 'rightmove') await refreshRightmove(); else await refresh();
     const sig = function (p) { return [p.id, p.status, p.price, p.images.length, p.floorplans.length, p.vtour, p.available, p.headline, (p.html || p.short || '').length].join('|'); };
     const stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(sig), data.let.map(sig)])).digest('hex').slice(0, 12);
@@ -356,7 +364,16 @@ module.exports = function (app, opts) {
     else if (stamp !== data.stamp) { data.changedAt = Date.now(); console.log('Property listings changed — website updated'); }
     data.at = Date.now(); data.stamp = stamp;
   }
-  if (SOURCE === 'rightmove' || FEEDS.sale || FEEDS.let) { setTimeout(refreshAll, 3000); setInterval(refreshAll, (SOURCE === 'rightmove' ? 30 : 15) * 60000).unref(); }
+  // Gnomen is checked every couple of minutes (LISTINGS_POLL_MIN), so changes show almost straight away.
+  const POLL = Math.max(1, parseFloat(process.env.LISTINGS_POLL_MIN) || 2);
+  if (SOURCE === 'rightmove' || FEEDS.sale || FEEDS.let) { setTimeout(refreshAll, 3000); setInterval(function () { refreshAll().catch(function () {}); }, (SOURCE === 'rightmove' ? 30 : POLL) * 60000).unref(); }
+  // Staff: "Update website now" in Fixflow — read Gnomen straight away.
+  app.post('/api/admin/listings-refresh', async function (req, res) {
+    if (!staff(req)) return res.status(401).json({ ok: false });
+    for (const k of ['let', 'sale']) if (rmListCache[k]) rmListCache[k].at = 0;   // and look at Rightmove again
+    try { await refreshAll(); } catch (e) {}
+    res.json({ ok: true, let: data.let.length, sale: data.sale.length, changed: data.changedAt });
+  });
   const find = function (id) { id = rmAlias[id] || id; return data.let.find(function (p) { return p.id === id; }) || data.sale.find(function (p) { return p.id === id; }); };
 
   // ---------- Photos: resized and cached ----------

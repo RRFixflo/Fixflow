@@ -2005,7 +2005,7 @@
           <details class="av-tools" id="avTools" open><summary class="av-tools-s">📡 Rightmove &amp; video checks<span class="av-tools-b" id="avToolsBadge"></span></summary>
           <div class="av-rm" id="avRm"></div>
           <div class="av-rm" id="avYt"></div></details>
-          <div class="av-add-btns"><button type="button" class="btn small primary" id="avAddBtn">➕ Add a property</button><button type="button" class="btn small" id="avPasteBtn">📋 Paste from your spreadsheet</button></div>
+          <div class="av-add-btns"><button type="button" class="btn small primary" id="avAddBtn">➕ Add a property</button><button type="button" class="btn small" id="avPasteBtn">📋 Paste from your spreadsheet</button><button type="button" class="btn small" id="siteRefreshBtn" title="Changed something in Gnomen? Show it on the website now">🌐 Update website now</button></div>
           <div class="av-form" id="avForm" hidden>
             <div class="av-grid"><label class="av-wide">Address<input class="inp" id="avAddr" list="offProps" placeholder="Include the postcode"></label><div class="av-wide" id="avKnown" hidden></div><label>Bedrooms<select class="inp" id="avBedsIn"><option value="">—</option><option value="0">Studio</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
               <label>Available from<input class="inp" id="avFrom" type="date"></label><label class="switch-row" style="align-self:end"><input type="checkbox" id="avVacant"> Vacant now</label>
@@ -8137,6 +8137,11 @@
   function webCountry(c){ if (!c) return 'Unknown'; try { return new Intl.DisplayNames(['en-GB'], { type: 'region' }).of(c) || c; } catch (e) { return c; } }
   $('webRange').addEventListener('click', function(e){ var b = e.target.closest('[data-days]'); if (!b) return; webDays = +b.dataset.days; loadWeb(); });
   $('navWeb').addEventListener('click', function(){ showView('web'); });
+  // Changed a property in Gnomen? Read Gnomen now so the website shows it straight away.
+  $('siteRefreshBtn').addEventListener('click', function(){
+    var b = this; busy(b, true, 'Updating…');
+    api('POST', '/api/admin/listings-refresh', {}).then(function(d){ busy(b, false); toast(d && d.ok ? '✓ Website updated from Gnomen — ' + d.let + ' to rent, ' + d.sale + ' for sale' : 'Couldn’t update the website just now'); });
+  });
   // ---------- Contacts (CRM): every website request, viewing request, landlord alert sign-up and contact staff add ----------
   var crm = { items: [], staff: [], me: '', type: '', open: {} }, CRM_T = {
     viewing: ['🗓', 'Viewing request', '#b54708', '#fffaeb'], val: ['🏠', 'Rental valuation', '#5925dc', '#f4f3ff'], sale: ['🏷️', 'Sales valuation', '#5925dc', '#f4f3ff'], quick: ['⚡', 'Quick valuation', '#5925dc', '#f4f3ff'],
