@@ -176,6 +176,8 @@ app.get('/admin', (req, res) => { sendPage(req, res, path.join(__dirname, 'admin
 app.get('/staff', (req, res) => { sendPage(req, res, path.join(__dirname, 'admin.html')); });
 // Applicants' offer / holding deposit form (the link given to applicants).
 app.get('/offer', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer.html')); });
+// Public page for landlords: our services, free calculators and a valuation request form.
+app.get(['/landlords', '/landlord-tools', '/valuation'], (req, res) => { sendPage(req, res, path.join(__dirname, 'landlords.html')); });
 app.get('/offer/track/:token', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer.html')); });
 // A landlord's private link to review the agreed fees and terms, fill in the property details and sign.
 app.get('/landlord/:token', (req, res) => { sendPage(req, res, path.join(__dirname, 'landlord.html')); });

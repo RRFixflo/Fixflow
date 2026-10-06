@@ -525,6 +525,19 @@ CREATE TABLE IF NOT EXISTS offer_invites (
   events      JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 -- Valuation letters (sales and / or lettings) sent to landlords, kept so they can be downloaded again.
+-- Valuation requests from landlords on the public Landlords page.
+CREATE TABLE IF NOT EXISTS valuation_requests (
+  id          SERIAL PRIMARY KEY,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  name        TEXT NOT NULL,
+  email       TEXT,
+  phone       TEXT,
+  address     TEXT NOT NULL,
+  data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status      TEXT NOT NULL DEFAULT 'new',
+  handled_at  TIMESTAMPTZ,
+  handled_by  TEXT
+);
 CREATE TABLE IF NOT EXISTS valuations (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -9420,6 +9433,34 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const value = { custom: custom, updated_at: new Date().toISOString() };
     await p.query("INSERT INTO app_settings (key, value) VALUES ('licensing_schemes', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(value)]);
     res.json({ ok: true, custom: custom });
+  }));
+  // ---------- Valuation requests (public Landlords page) ----------
+  const vrHits = new Map();
+  app.post('/api/valuation-request', withDb(async function (p, req, res) {
+    const b = req.body || {}, ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim(), now = Date.now();
+    const hits = (vrHits.get(ip) || []).filter(function (t) { return now - t < 3600000; }); if (hits.length >= 5) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    hits.push(now); vrHits.set(ip, hits); if (vrHits.size > 5000) vrHits.clear();
+    if (str(b.website, 200)) return res.json({ ok: true });   // a bot filled the hidden box
+    const name = str(b.name, 120), email = str(b.email, 200), phone = str(b.phone, 40), addr = str(b.address, 300), pcm = POSTCODE_RE.exec(String(b.postcode || '') + ' ' + String(b.address || ''));
+    if (!name || !addr) return res.status(400).json({ ok: false, error: 'missing' });
+    if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
+    if (!pcm) return res.status(400).json({ ok: false, error: 'postcode' });
+    if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
+    const postcode = (pcm[1] + ' ' + pcm[2]).toUpperCase(), full = POSTCODE_RE.test(addr) ? addr : addr + ', ' + postcode;
+    const data = { postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', service: str(b.service, 40) || '', when: str(b.when, 40) || '', message: str(b.message, 2000) || '' };
+    const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(data)]);
+    ntfy({ title: '🏠 Valuation request: ' + full.split(',').slice(0, 2).join(','), message: name + ' · ' + (phone || email) + (data.service && data.service !== 'Not sure yet' ? ' · ' + data.service : ''), tags: ['house'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#landlords' : undefined }).catch(function () {});
+    if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Valuation request — ' + full, text: 'A landlord has asked for a valuation on the website.\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + email + '\nProperty: ' + full +
+      '\nBedrooms: ' + (data.beds || '—') + '\nType: ' + (data.type || '—') + '\nInterested in: ' + (data.service || '—') + '\nAvailable: ' + (data.when || '—') + (data.message ? '\n\nMessage:\n' + data.message : '') + '\n\nIt’s also in Fixflow under Landlords → Valuation requests.' }).catch(function () {});
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+  app.get('/api/admin/valuation-requests', withDb(async function (p, req, res) {
+    res.json({ ok: true, items: (await p.query('SELECT * FROM valuation_requests ORDER BY id DESC LIMIT 300')).rows });
+  }));
+  app.post('/api/admin/valuation-requests/:id', withDb(async function (p, req, res) {
+    const st = String((req.body || {}).status || ''); if (['new', 'contacted', 'booked', 'won', 'lost'].indexOf(st) === -1) return res.status(400).json({ ok: false, error: 'status' });
+    const r = await p.query('UPDATE valuation_requests SET status = $2, handled_at = CASE WHEN $2 = \'new\' THEN NULL ELSE now() END, handled_by = $3 WHERE id = $1 RETURNING id', [jobId(req), st, req.user ? req.user.name : 'Office']);
+    res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
   }));
   // ---------- Valuation letters ----------
   function cleanValuation(b) {
