@@ -16,19 +16,8 @@
   a { color: inherit; }
   img { max-width: 100%; display: block; }
   .wrap { width: min(1160px, 100% - 32px); margin: 0 auto; }
-  /* Top bar */
-  .top { position: sticky; top: 0; z-index: 50; backdrop-filter: saturate(160%) blur(14px); -webkit-backdrop-filter: saturate(160%) blur(14px); background: rgba(11, 31, 58, .82); border-bottom: 1px solid rgba(255,255,255,.08); }
-  .top .wrap { display: flex; align-items: center; gap: 18px; height: 68px; }
-  .top img { height: 34px; width: auto; }
-  .nav { display: flex; gap: 4px; margin-left: auto; align-items: center; }
-  .nav a { color: #d6deea; text-decoration: none; font-weight: 600; font-size: .92rem; padding: 8px 12px; border-radius: 10px; }
-  .nav a:hover { color: #fff; background: rgba(255,255,255,.08); }
-  .nav a.cta { background: var(--red); color: #fff; padding: 10px 16px; border-radius: 12px; box-shadow: 0 8px 22px -10px rgba(217,38,46,.8); }
-  .nav a.cta:hover { background: #c01f27; }
-  .nav a.on { color: #fff; background: rgba(255,255,255,.08); }
-  .menu-btn { display: none; margin-left: auto; width: 44px; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: #fff; font-size: 1.3rem; cursor: pointer; }
-  @media (max-width: 900px) { .menu-btn { display: grid; place-items: center; } .nav { position: fixed; top: 68px; left: 0; right: 0; flex-direction: column; align-items: stretch; gap: 4px; padding: 14px 16px 20px; background: var(--navy); border-bottom: 1px solid rgba(255,255,255,.1); transform: translateY(-120%); transition: transform .25s ease; margin: 0; } .nav.open { transform: none; } .nav a { padding: 14px; font-size: 1rem; } .nav a.cta { margin-top: 6px; text-align: center; } }
   /* Hero */
+  .hero .hbg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .16; mix-blend-mode: luminosity; }
   .hero { position: relative; overflow: hidden; color: #fff; background: radial-gradient(900px 480px at 88% -10%, rgba(217,38,46,.35), transparent 60%), radial-gradient(700px 400px at -10% 110%, rgba(56,120,255,.22), transparent 60%), linear-gradient(160deg, var(--navy2), var(--navy) 58%, #071428); }
   .hero::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 44px 44px; mask-image: linear-gradient(to bottom, #000 30%, transparent); pointer-events: none; }
   .hero .wrap { position: relative; z-index: 1; display: grid; grid-template-columns: 1.15fr .85fr; gap: 48px; align-items: center; padding: 84px 0 96px; }
@@ -141,14 +130,6 @@
   .vdone { text-align: center; padding: 30px 10px; } .vdone .big { width: 72px; height: 72px; border-radius: 50%; margin: 0 auto 16px; display: grid; place-items: center; background: rgba(18,183,106,.12); color: var(--good); font-size: 2rem; }
   @media (max-width: 900px) { .val .wrap { grid-template-columns: 1fr; gap: 34px; } }
   @media (max-width: 520px) { .vg { grid-template-columns: 1fr; } .vf { padding: 22px 18px; } }
-  /* Footer */
-  footer { background: #071428; color: #aebbd0; padding: 54px 0 40px; font-size: .92rem; }
-  footer .wrap { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 30px; }
-  footer img { height: 34px; width: auto; margin-bottom: 14px; }
-  footer h4 { color: #fff; margin: 0 0 12px; font-size: .95rem; }
-  footer a { color: #d6deea; text-decoration: none; display: block; margin: 6px 0; } footer a:hover { color: #fff; }
-  .legal { width: min(1160px, 100% - 32px); margin: 34px auto 0; padding-top: 22px; border-top: 1px solid rgba(255,255,255,.08); font-size: .8rem; color: #7d8aa0; }
-  @media (max-width: 760px) { footer .wrap { grid-template-columns: 1fr; } }
   /* Reveal on scroll */
   .rv { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; } .rv.in { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } html { scroll-behavior: auto; } }
@@ -161,7 +142,7 @@
   <nav class="nav"><a href="/home">Home</a><a href="/landlords" class="on" aria-current="page">Landlords</a><a href="/tenants">Tenants</a><a href="/about">About</a><a href="/contact">Contact</a><a class="cta" href="#valuation">Free valuation</a></nav>
 </div></header>
 
-<div class="hero" id="top"><div class="wrap">
+<div class="hero" id="top"><img class="hbg" src="/img/taxis.webp" srcset="/img/taxis-sm.webp 800w, /img/taxis.webp 1600w" sizes="100vw" alt="" fetchpriority="high"><div class="wrap">
   <div>
     <span class="eyebrow"><i></i> London letting &amp; property management</span>
     <h1>Your property, let and <em>looked after properly.</em></h1>
@@ -181,6 +162,13 @@
     <div class="gl-row"><span class="gl-ic">📜</span><div><b>Certificates &amp; reminders</b><small>Gas, electrical, EPC and licensing on time</small></div><span class="gl-tick">✓</span></div>
     <div class="gl-row"><span class="gl-ic">📈</span><div><b>Viewings &amp; offers</b><small>Follow your letting progress as it happens</small></div><span class="gl-tick">✓</span></div>
   </div>
+</div></div>
+
+<div class="trustbar"><div class="wrap">
+  <p>Your money is protected</p>
+  <a href="/cmp-certificate.pdf" target="_blank" rel="noopener"><img class="cmpl" src="/img/logo-cmp.webp" alt="Propertymark Client Money Protection" width="77" height="46"></a>
+  <img src="/img/logo-arla.png" alt="ARLA Propertymark Protected" width="73" height="46">
+  <img src="/img/logo-tpo.png" alt="The Property Ombudsman" width="122" height="46">
 </div></div>
 
 <section id="services"><div class="wrap">
@@ -207,6 +195,16 @@
     <div class="feat-c rv"><div class="fi">🤝</div><h3>The right tenants</h3><p>Thorough referencing and Right to Rent checks, so you can let with confidence.</p></div>
     <div class="feat-c rv"><div class="fi">🧾</div><h3>Clear, honest statements</h3><p>Every payment and every charge set out simply each month — and in your portal.</p></div>
     <div class="feat-c rv"><div class="fi">📍</div><h3>A local team</h3><p>A real office in London and people who pick up the phone when you call.</p></div>
+  </div>
+</div></section>
+
+<section class="white" style="background:#fff"><div class="wrap split">
+  <div class="ph rv"><img src="/img/home-living.webp" srcset="/img/home-living-sm.webp 800w, /img/home-living.webp 1600w" sizes="(max-width: 900px) 100vw, 560px" alt="A bright, modern living room in a London rental flat" width="1600" height="720" loading="lazy" style="aspect-ratio:4/3;height:auto"><span class="tag">🏡 Homes presented at their best</span></div>
+  <div class="rv">
+    <p class="kicker">Protected &amp; regulated</p><h2>Peace of mind, in writing</h2>
+    <p class="sub">We’re an ARLA Propertymark protected agent. The rent and deposits we hold are covered by Propertymark Client Money Protection, and you have independent redress through The Property Ombudsman.</p>
+    <ul class="ticks" style="margin-top:22px"><li>Propertymark Client Money Protection — membership no. C0130229</li><li>Member of The Property Ombudsman redress scheme</li><li>Deposits registered with a government-approved scheme</li></ul>
+    <div class="btns"><a class="btn navy" href="/cmp-certificate.pdf" target="_blank" rel="noopener">View our CMP certificate</a><a class="btn line" href="#valuation">Free valuation</a></div>
   </div>
 </div></section>
 
