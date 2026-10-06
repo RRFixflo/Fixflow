@@ -46,7 +46,7 @@ module.exports = function (app, opts) {
       const street = tag(x, 'address1'), area = tag(x, 'address2'), town = tag(x, 'town'), pc = tag(x, 'postcode').toUpperCase(), outcode = pc.split(/\s+/)[0] || '';
       const lat = parseFloat(tag(x, 'latitude')), lng = parseFloat(tag(x, 'longitude'));
       const p = { id: id, kind: kind, type: type, category: tag(x, 'category'), status: status, taken: TAKEN.test(status),
-        street: street, area: area && area !== town ? area : '', town: town, outcode: outcode,
+        street: street, area: area && [town, street].every(function (v) { return area.trim().toLowerCase() !== String(v || '').trim().toLowerCase(); }) ? area : '', town: town, outcode: outcode,
         beds: beds, studio: res && (/studio/i.test(bedsRaw) || /studio/i.test(type)), commercial: !res, baths: parseInt(tag(x, 'bathrooms'), 10) || 0, receptions: parseInt(tag(x, 'receptions'), 10) || 0,
         price: kind === 'let' && process.env.GNOMEN_LET_PRICE !== 'pcm' ? Math.round((parseFloat(tag(x, 'price')) || 0) * 52 / 12) : (parseFloat(tag(x, 'price')) || 0), qualifier: tag(x, 'price_qualifier'),   // Gnomen sends rents per week: shown per month (with the weekly figure beside it) short: tag(x, 'short_description').replace(/<[^>]*>/g, ''), html: cleanHtml(tag(x, 'full_details')),
         available: tag(x, 'available_date'), furnished: tag(x, 'furnished'), tenure: tag(x, 'tenure'), pets: tag(x, 'pets') === 'Yes', parking: tag(x, 'parking') === '1', garden: tag(x, 'garden') === 'Yes',
