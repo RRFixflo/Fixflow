@@ -68,6 +68,7 @@ module.exports = function (app, opts) {
       if (!FEEDS[kind]) continue;
       try {
         data[kind] = await gnomenFeed(kind);
+        console.log('Listings from the Gnomen ' + (kind === 'let' ? 'lettings' : 'sales') + ' feed: ' + data[kind].length + ' (' + data[kind].filter(function (p) { return !p.taken; }).length + ' available)');
       } catch (e) { console.error('Listings feed (' + kind + ') not read:', e.message); }   // keep the last good copy
     }
     data.at = Date.now(); data.stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(function (p) { return p.id + p.status + p.price; }), data.let.map(function (p) { return p.id + p.status + p.price; })])).digest('hex').slice(0, 12);
