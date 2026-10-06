@@ -696,6 +696,13 @@ body.bk-lock { overflow: hidden; }
 /* Licence checker: the council fee and our offer to apply. */
 .lic-fee { display: grid; gap: 2px; margin: 12px 0; padding: 14px 16px; border-radius: 14px; background: var(--tint); border: 1px solid var(--line); }
 .lic-fee span { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--soft); } .lic-fee b { font-size: 1.15rem; color: var(--navy); } .lic-fee small { color: var(--soft); }
+.lic-fees { margin: 14px 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; }
+.lic-fh { margin: 0; padding: 10px 16px; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--soft); background: var(--tint); }
+.lic-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 4px 14px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.lic-row span { font-weight: 700; color: var(--ink); } .lic-row b { color: var(--navy); font-weight: 700; } .lic-row em { display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 6px; background: var(--red); color: #fff; font-size: .7rem; font-style: normal; vertical-align: 1px; }
+.lic-row.on { background: #fff5f5; } .lic-row .lic-none { color: var(--soft); font-weight: 500; }
+.lic-fees > small { display: block; padding: 10px 16px; border-top: 1px solid var(--line); color: var(--soft); }
+@media (max-width: 560px) { .lic-row { grid-template-columns: 1fr; } }
 .lic-help { margin: 16px 0 4px; padding: 16px 18px; border-radius: 14px; background: #fff5f5; border: 1px solid #ffd6d8; } .lic-help b { color: var(--navy); } .lic-help p { margin: 6px 0 0; }
 
 /* ---------- Motion: subtle, modern; all of it off for people who ask their device for less motion ---------- */

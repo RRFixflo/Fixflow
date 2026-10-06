@@ -9383,15 +9383,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     'Hillingdon': { sel: 'none', add: 'some' }, 'Hounslow': { sel: 'some', add: 'all' }, 'Islington': { sel: 'some', add: 'all' }, 'Kensington and Chelsea': { sel: 'none', add: 'check' },
     'Kingston upon Thames': { sel: 'none', add: 'none' }, 'Lambeth': { sel: 'none', add: 'all' }, 'Lewisham': { sel: 'check', add: 'all' }, 'Merton': { sel: 'none', add: 'check' },
     // Newham: selective and additional licensing in every ward except Royal Victoria and Stratford Olympic Park (1 June 2023 designation).
-    // Council fees (the office can change these in Templates → Licensing schemes): as published, August 2026.
-    'Newham': { sel: 'all', add: 'all', sel_except: ['Royal Victoria', 'Stratford Olympic Park'], add_except: ['Royal Victoria', 'Stratford Olympic Park'],
-      sel_fee: '£750 for up to 5 years (£650 if you’re an accredited landlord and the EPC is A to C)', add_fee: '£1,250 for up to 5 years', hmo_fee: '£1,400 for up to 5 lettings' }, 'Redbridge': { sel: 'some', add: 'all' }, 'Richmond upon Thames': { sel: 'none', add: 'none' },
+    'Newham': { sel: 'all', add: 'all', sel_except: ['Royal Victoria', 'Stratford Olympic Park'], add_except: ['Royal Victoria', 'Stratford Olympic Park'] }, 'Redbridge': { sel: 'some', add: 'all' }, 'Richmond upon Thames': { sel: 'none', add: 'none' },
     // Southwark selective licensing — designation 1 (1 Mar 2022 – 28 Feb 2027) and designation 2
     // (1 Nov 2023 – 31 Oct 2028): 19 of the 23 wards. Not covered: Borough & Bankside, Dulwich Village,
     // North Bermondsey, St George's.
-    'Southwark': { sel: 'some', add: 'all',
-      sel_fee: '£945 — £661.50 when you apply and £283.50 when the licence is granted', add_fee: '£1,433 — £1,017.50 when you apply and £415.50 when the licence is granted',
-      hmo_fee: '£1,653.50 for up to 5 lettings (£1,157.50 when you apply, £496 when granted), plus £110 for each extra letting', link: 'https://www.southwark.gov.uk/housing/private-tenants-and-landlords/private-rented-property-licensing/property-licensing-3',
+    'Southwark': { sel: 'some', add: 'all', link: 'https://www.southwark.gov.uk/housing/private-tenants-and-landlords/private-rented-property-licensing/property-licensing-3',
       sel_wards: { 'Newington': 'designation 1, until 28 February 2027', 'Champion Hill': 'designation 1, until 28 February 2027', 'Faraday': 'designation 1, until 28 February 2027', 'St Giles': 'designation 1, until 28 February 2027', 'Goose Green': 'designation 1, until 28 February 2027',
         'North Walworth': 'designation 2, until 31 October 2028', 'Nunhead & Queen\'s Road': 'designation 2, until 31 October 2028', 'Old Kent Road': 'designation 2, until 31 October 2028', 'Peckham': 'designation 2, until 31 October 2028', 'Camberwell Green': 'designation 2, until 31 October 2028',
         'Chaucer': 'designation 2, until 31 October 2028', 'Dulwich Hill': 'designation 2, until 31 October 2028', 'Dulwich Wood': 'designation 2, until 31 October 2028', 'London Bridge & West Bermondsey': 'designation 2, until 31 October 2028', 'Peckham Rye': 'designation 2, until 31 October 2028',
@@ -9399,6 +9395,45 @@ document.querySelectorAll('.lcu').forEach(function(box){
     'Sutton': { sel: 'none', add: 'none' }, 'Tower Hamlets': { sel: 'some', add: 'all' }, 'Waltham Forest': { sel: 'all', add: 'all' }, 'Wandsworth': { sel: 'none', add: 'all' },
     'Westminster': { sel: 'none', add: 'check' }
   };
+  // Council licence fees as published (checked October 2026): selective, additional HMO and mandatory HMO.
+  // Blank = not confirmed — the website says to ask. The office can change any of these in
+  // Templates → Licensing schemes.
+  const LIC_FEES = {
+    'Barking and Dagenham': ['£950 (£650 when you apply, £300 when granted)', '£1,400 (£1,000 when you apply, £400 when granted)', '£1,500 for up to 5 rooms (£1,000 + £500); £1,600 for 6 to 9 rooms'],
+    'Barnet': ['£774 (Burnt Oak, Colindale North and Colindale South)', '£1,872, plus £37 for each unit above five', '£1,872, plus £37 for each unit above five'],
+    'Bexley': ['£830 (£350 when you apply, £480 when granted)', '', '£350, plus £330 per letting'],
+    'Brent': ['£640 (£600 to renew)', '£1,040 (£940 to renew)', '£1,040 for up to 5 habitable rooms, plus £25 for each extra room'],
+    'Bromley': ['', '', '£1,100'],
+    'Camden': ['', '£1,570 (less with accreditation discounts)', '£1,570'],
+    'City of London': ['', '', ''],
+    'Croydon': ['£800 (£480 when you apply, £320 when granted)', '£1,250 (£750 when you apply, £500 when granted)', ''],
+    'Ealing': ['£750 (£675 for a self-contained flat)', '£1,300', '£1,000 plus a charge per room — about £1,500 to £2,000 in total'],
+    'Enfield': ['£750 (discounts for accredited landlords and EPC C or above)', '£1,450', ''],
+    'Greenwich': ['', '£1,500', ''],
+    'Hackney': ['£925', '£1,400 (£840 when you apply, £560 when granted)', '£1,400'],
+    'Hammersmith and Fulham': ['£755', '£755', '£1,656 for 5 bedrooms, plus £183 for each extra bedroom'],
+    'Haringey': ['£680', '£1,360, plus £50 for each unit above five', '£1,360, plus £50 for each unit above five'],
+    'Harrow': ['£786', '£1,900 (£1,343.80 to renew)', '£1,900 (£1,343.80 to renew)'],
+    'Havering': ['£950 (£570 when you apply, £380 when granted)', '£1,400 (£840 when you apply, £560 when granted)', '£1,329 for up to 5 lettings'],
+    'Hillingdon': ['', '£1,401', '£1,656'],
+    'Hounslow': ['', '£1,100', '£1,550, plus £25 per household'],
+    'Islington': ['£850', '£900 plus £100 per letting (£1,400 for 5 people)', '£900 plus £100 per letting (£1,400 for 5 people)'],
+    'Kensington and Chelsea': ['', '£1,493', '£1,493'],
+    'Kingston upon Thames': ['', '', '£285 per room'],
+    'Lambeth': ['£923 (£50 off with an EPC of C or better)', '£520 per room', '£520 per room'],
+    'Lewisham': ['£640', '£500 per unit', '£500 per unit'],
+    'Merton': ['£747.60 (£267 when you apply, £480.60 when granted)', 'from £1,566 (2 bedrooms) to £1,674 (4 bedrooms)', 'from £1,949.79 (2 units) to £2,464.43 (10 units)'],
+    'Newham': ['£750 for up to 5 years (£650 if you’re an accredited landlord and the EPC is A to C)', '£1,250 for up to 5 years', '£1,400 for up to 5 lettings'],
+    'Redbridge': ['£997.69 (£371.05 when you apply, £626.64 when granted)', '£1,400', '£1,400'],
+    'Richmond upon Thames': ['', '', '£1,716'],
+    'Southwark': ['£945 (£661.50 when you apply, £283.50 when granted)', '£1,433 (£1,017.50 when you apply, £415.50 when granted)', '£1,653.50 for up to 5 lettings (£1,157.50 + £496), plus £110 for each extra letting'],
+    'Sutton': ['', '', '£1,150'],
+    'Tower Hamlets': ['£897', '£1,323, plus £68.50 per habitable room', '£977, plus £68.50 per habitable room'],
+    'Waltham Forest': ['£895', '£1,200', '£1,650 for up to 8 units'],
+    'Wandsworth': ['£885 (£529 when you apply, £356 when granted)', '£1,507 (£903 when you apply, £604 when granted)', '£1,827 for 5 bedrooms (£1,152 + £675)'],
+    'Westminster': ['', '', '']
+  };
+  Object.keys(LIC_FEES).forEach(function (b) { if (!LICENSING[b]) return; const f = LIC_FEES[b]; LICENSING[b].sel_fee = f[0]; LICENSING[b].add_fee = f[1]; LICENSING[b].hmo_fee = f[2]; });
   const LIC_STATES = ['all', 'some', 'none', 'check'];
   async function licensingSchemes(p) {
     const own = ((await p.query("SELECT value FROM app_settings WHERE key = 'licensing_schemes'")).rows[0] || {}).value || {};
@@ -9468,7 +9503,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (hit && hit.licence && hit.licence.status !== 'none') onFile = { status: hit.licence.status, type: hit.licence.type || '', number: hit.licence.number || '', expires: hit.licence.expires || null };
     if (ward && verdict === 'maybe' && st0(sc) === 'some') why.push('The property is in ' + ward + ' ward — the council’s scheme map shows whether this ward is included.');
     const fee = licence && sc ? (/^Mandatory/.test(licence) ? sc.hmo_fee : /^Additional/.test(licence) ? sc.add_fee : /^Selective/.test(licence) ? sc.sel_fee : '') || '' : '';
-    return { ok: true, ward: ward, address: str(b.address, 200) || null, borough: borough, postcode: postcode, verdict: verdict, title: title, licence: licence, fee: fee, why: why, link: link, on_file: onFile, people: people, households: households };
+    return { ok: true, ward: ward, address: str(b.address, 200) || null, borough: borough, postcode: postcode, verdict: verdict, title: title, licence: licence, fee: fee, fees: sc ? { sel: sc.sel_fee || '', add: sc.add_fee || '', hmo: sc.hmo_fee || '', sel_state: sc0 ? sc0.sel : '', add_state: sc0 ? sc0.add : '' } : null, why: why, link: link, on_file: onFile, people: people, households: households };
   }
   app.post('/l/:token/licence-check', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -9513,7 +9548,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!r.ok) return res.json({ ok: false, error: r.error });
     const firm = !!LIC_VERIFIED[r.borough];
     res.json({ ok: true, borough: r.borough, ward: r.ward, postcode: r.postcode, verdict: firm || r.verdict === 'yes' ? r.verdict : 'maybe', title: firm ? r.title : (r.verdict === 'yes' ? r.title : 'Check with ' + r.borough + ' council'),
-      licence: r.licence, fee: r.licence && (firm || r.verdict === 'yes') ? r.fee || '' : '', why: r.why, link: r.link, verified: firm });
+      licence: r.licence, fee: r.licence && (firm || r.verdict === 'yes') ? r.fee || '' : '', fees: r.fees, why: r.why, link: r.link, verified: firm });
   }));
   app.post('/api/admin/licence-check', withDb(async function (p, req, res) {
     const keys = {}; (await p.query('SELECT property_key FROM property_info WHERE licence IS NOT NULL')).rows.forEach(function (r) { keys[r.property_key] = 1; });

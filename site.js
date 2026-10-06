@@ -228,6 +228,17 @@
       }).join('') + '</div><p class="tool-src">From the government’s <a href="' + escH(d.url) + '" target="_blank" rel="noopener">EPC register</a>.</p>';
     }).catch(function () { go.disabled = false; go.textContent = 'Check EPCs'; err.textContent = 'Couldn’t connect — please try again.'; });
   });
+  // Every licence's council fee in the borough, with the one this property needs picked out.
+  function licFees(d) {
+    var f = d.fees; if (!f) return '';
+    var row = function (name, fee, state, key) {
+      var on = d.licence && d.licence.indexOf(key) === 0, val = state === 'none' && key !== 'Mandatory' ? '<span class="lic-none">No ' + name.toLowerCase() + ' scheme in ' + escH(d.borough) + '</span>' : fee ? escH(fee) : '<span class="lic-none">Not confirmed — ask the council or ask us</span>';
+      return '<div class="lic-row' + (on ? ' on' : '') + '"><span>' + name + (on ? ' <em>this property</em>' : '') + '</span><b>' + val + '</b></div>';
+    };
+    return '<div class="lic-fees"><p class="lic-fh">Licence fees in ' + escH(d.borough) + '</p>' +
+      row('Selective licence', f.sel, f.sel_state, 'Selective') + row('Additional HMO licence', f.add, f.add_state, 'Additional') + row('Mandatory HMO licence', f.hmo, '', 'Mandatory') +
+      '<small>Paid to ' + escH(d.borough) + ' Council, usually for a 5-year licence. Fees are set by the council and can change — check before you apply.</small></div>';
+  }
   var lf2 = document.getElementById('licForm');
   if (lf2) {
     var shBox = document.getElementById('licShared');
@@ -243,7 +254,7 @@
           if (!d.ok) { out.innerHTML = '<div class="tool-card">' + (d.error === 'rate-limited' ? 'Too many checks — please try again shortly.' : d.error === 'postcode-unknown' ? 'We couldn’t find that postcode.' : 'Sorry, we couldn’t check that postcode.') + '</div>'; return; }
           out.innerHTML = '<div class="tool-card lic-' + escH(d.verdict) + '"><p class="lic-area">' + escH(d.borough) + (d.ward ? ' · ' + escH(d.ward) + ' ward' : '') + '</p><h3>' + escH(d.title) + '</h3>' +
             (d.licence ? '<p class="lic-type">' + escH(d.licence) + '</p>' : '') +
-            (d.fee ? '<div class="lic-fee"><span>Council fee</span><b>' + escH(d.fee) + '</b><small>Paid to ' + escH(d.borough) + ' Council. Fees are set by the council and can change.</small></div>' : '') +
+            licFees(d) +
             (d.why || []).map(function (w) { return '<p>' + escH(w) + '</p>'; }).join('') +
             (d.verified ? '' : '<p class="tool-note">We haven’t checked ' + escH(d.borough) + '’s schemes ward by ward yet, so please confirm with the council.</p>') +
             (d.verdict !== 'no' ? '<div class="lic-help"><b>Struggling with the application? We’ll do it for you.</b><p>We handle the whole licence application for you — the council forms, floor plan, certificates and documents, and all the back-and-forth with the council until the licence is granted.</p></div>' : '') +
