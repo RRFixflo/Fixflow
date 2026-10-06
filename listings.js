@@ -146,7 +146,12 @@ module.exports = function (app, opts) {
         const imgs = (body.match(/media\.rightmove\.co\.uk[^"'\s)\\]*/g) || []);
         console.log('Rightmove advert page ' + id + ': status ' + r.status + ', ' + body.length + ' bytes, title "' + ((/<title>([^<]{0,80})/.exec(body) || [])[1] || '') + '"' +
           ', markers ' + ['PAGE_MODEL', '__NEXT_DATA__', 'jsonModel', '__PRELOADED_STATE__', 'propertyData', 'keyFeatures', '"images"', 'floorplans', 'self.__next_f'].filter(function (k) { return body.indexOf(k) !== -1; }).join('/') +
-          ', photo links ' + imgs.length + (imgs[0] ? ' e.g. ' + imgs[0].slice(0, 120) : '') + ', scripts: ' + scripts.join(' | '));
+          ', photo links ' + imgs.length + (imgs[0] ? ' e.g. ' + imgs[0].slice(0, 120) : ''));
+        const pm = /window\.__PAGE_MODEL\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/.exec(body);
+        if (pm) { let info = 'regex matched ' + pm[1].length + ' chars';
+          try { const j = JSON.parse(pm[1]); info += ', keys ' + Object.keys(j).join(','); if (typeof j.data === 'string') { const arr = JSON.parse(j.data); info += ', data is ' + (Array.isArray(arr) ? 'list of ' + arr.length : typeof arr) + ': ' + j.data.slice(0, 700); } } catch (e) { info += ', parse error ' + e.message + ' near ' + pm[1].slice(-120); }
+          console.log('Rightmove advert data ' + id + ': ' + info); }
+        else console.log('Rightmove advert data ' + id + ': no __PAGE_MODEL match; around it: ' + body.slice(Math.max(0, body.indexOf('__PAGE_MODEL') - 20), body.indexOf('__PAGE_MODEL') + 300));
       }
     } catch (e) { d = null; if (rmDiag < 2) { rmDiag++; console.log('Rightmove advert page ' + id + ' not read: ' + e.message); } }
     if (d || !c) rmDetails.set(id, { at: Date.now(), d: d || (c && c.d) || null });
