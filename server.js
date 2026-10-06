@@ -372,7 +372,7 @@ function sendBuilt(req, res, meta, body) {
 const news = require('./news')();
 const updates = require('./updates')(app, { siteUrl: SITE_URL, refuseBot: function (req, res, b, t) { return jobs && jobs.refuseBot ? jobs.refuseBot(req, res, b, t) : Promise.resolve(false); }, db: function () { return jobs.db(); }, sendMail: function (o) { return jobs.sendMail(o); }, alert: function (o) { return jobs.alert(o); }, isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); }, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
 require('./portaldemo')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
-const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
+const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, onPhotoDupes: function (g) { photoDupesAlert(g).catch(function (e) { console.error('Photo alert failed:', e.message); }); }, isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
 // On the website's own address, /home is the same page as / — send search engines to one address.
 app.get('/home', (req, res, next) => { if (isSiteHost(req)) return res.redirect(301, '/'); next(); });
 Object.keys(SITE_PAGES).forEach(function (name) { if (SITE_PAGES[name].paths) app.get(SITE_PAGES[name].paths, function (req, res) { sendSite(req, res, name); }); });
@@ -406,6 +406,21 @@ const jobs = require('./jobs')(app, {
   canAi: function () { return !!(GEMINI_API_KEY || ANTHROPIC_API_KEY); },
   // files: optional [{ mime, data (base64) }] — PDFs and photos the AI reads directly.
   askAi: function (prompt, wantJson, files) { return askAiSafe(prompt, wantJson, files); }
+});
+// The same photo on more than one property: tell the office once per new case, so it can be removed in Gnomen.
+async function photoDupesAlert(groups) {
+  const p = await jobs.db(); if (!p) return;
+  const row = (await p.query("SELECT value FROM app_settings WHERE key = 'photo_dupes_told'")).rows[0], told = (row && row.value && row.value.keys) || [];
+  const fresh = groups.filter(function (g) { return told.indexOf(g.key) === -1; });
+  await p.query("INSERT INTO app_settings (key, value) VALUES ('photo_dupes_told', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ keys: groups.map(function (g) { return g.key; }) })]);
+  if (!fresh.length) return;
+  const lines = fresh.map(function (g) { return '• ' + g.homes.map(function (h) { return h.where + ' (no. ' + h.id + ', photo ' + h.photo + ')'; }).join('  =  '); }).join('\n');
+  jobs.alert({ title: '📷 Same photo on ' + (fresh.length === 1 ? 'two properties' : fresh.length + ' sets of properties'), message: 'Remove it from the wrong property in Gnomen. ' + fresh[0].homes.map(function (h) { return h.where; }).join(' = ') + (fresh.length > 1 ? ' (+' + (fresh.length - 1) + ' more)' : '') + '. See Website visitors in Fixflow.', tags: ['camera'] });
+  jobs.sendMail({ to: ['info@residentialrealtors.co.uk'], fromName: 'Fixflow', subject: 'Same photo on more than one property — please fix in Gnomen', text: 'The website found the same photo on more than one property. Please remove it from the property it doesn’t belong to in Gnomen (the website updates within 15 minutes):\n\n' + lines + '\n\nThe full list, with the photos, is in Fixflow → Website visitors.' }).catch(function () {});
+}
+app.get('/api/admin/photo-dupes', function (req, res) {
+  if (!(jobs && jobs.isStaff(req))) return res.status(401).json({ ok: false });
+  res.setHeader('Cache-Control', 'no-store'); res.json(Object.assign({ ok: true }, listings.photoDupes()));
 });
 // Website visitors (counted on our server, no cookies) — the Website visitors page in Fixflow.
 visits = require('./visits')(app, { db: function () { return jobs.db(); }, isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); } });

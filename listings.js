@@ -528,7 +528,56 @@ module.exports = function (app, opts) {
       ogImg: n ? opts.siteUrl + '/listing-img/' + p.id + '/0.webp?w=1200' : '', ld: pv ? [] : ld, name: 'p' + p.id + (pv ? '-pv' : ''), stamp: data.stamp, private: pv, robots: pv ? 'noindex, nofollow' : '', preload: n ? '/listing-img/' + p.id + '/0.webp?w=800' : '' }, body);
   });
 
+  // ---------- The same photo on more than one property (to get it removed in Gnomen) ----------
+  // Each photo gets a small fingerprint of what it looks like (so a re-upload under another name still
+  // matches); photos on two different homes with the same fingerprint are reported. Checked slowly in
+  // the background, one photo at a time; fingerprints are remembered so each photo is read once.
+  const fp = new Map();   // photo address -> 64-bit fingerprint (hex) or '' if unreadable
+  let dupes = [], dupesAt = 0, checking = false;
+  async function fingerprint(url) {
+    if (fp.has(url)) return fp.get(url);
+    let h = '';
+    try {
+      const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(20000) });
+      if (r.ok && sharp) {
+        const px = await sharp(Buffer.from(await r.arrayBuffer())).rotate().greyscale().resize(9, 8, { fit: 'fill' }).raw().toBuffer();
+        let bits = '';
+        for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) bits += px[y * 9 + x] > px[y * 9 + x + 1] ? '1' : '0';
+        // A plain or nearly plain picture (all the same) can't be told apart from others — skip it.
+        if (/^(0+|1+)$/.test(bits)) h = ''; else h = BigInt('0b' + bits).toString(16).padStart(16, '0');
+      }
+    } catch (e) { h = null; }
+    if (h !== null) fp.set(url, h);
+    return h || '';
+  }
+  const hamming = function (a, b) { let x = BigInt('0x' + a) ^ BigInt('0x' + b), n = 0; while (x) { n += Number(x & 1n); x >>= 1n; } return n; };
+  async function checkPhotos() {
+    if (checking || !sharp) return; checking = true;
+    try {
+      const homes = data.let.concat(data.sale), items = [];
+      for (const p of homes) for (let i = 0; i < p.images.length; i++) {
+        const fresh = !fp.has(p.images[i]), h = await fingerprint(p.images[i]);
+        if (fresh) await new Promise(function (ok) { setTimeout(ok, 250); });
+        if (h) items.push({ h: h, id: p.id, where: p.where, url: p.url, kind: p.kind, n: i, img: p.images[i] });
+      }
+      // Group photos that look the same (fingerprints within 4 of 64 bits), across different homes.
+      const groups = [], used = new Set();
+      for (let a = 0; a < items.length; a++) {
+        if (used.has(a)) continue; const g = [items[a]];
+        for (let b = a + 1; b < items.length; b++) if (!used.has(b) && items[b].id !== items[a].id && (items[b].h === items[a].h || hamming(items[a].h, items[b].h) <= 4)) { g.push(items[b]); used.add(b); }
+        if (g.length > 1) { used.add(a); const ids = {}; g.forEach(function (x) { ids[x.id] = 1; }); if (Object.keys(ids).length > 1) groups.push(g); }
+      }
+      dupes = groups.map(function (g) { const seen = {}; return { key: g.map(function (x) { return x.id; }).sort().join('+') + '|' + g[0].h, homes: g.filter(function (x) { if (seen[x.id]) return false; seen[x.id] = 1; return true; }).map(function (x) { return { id: x.id, where: x.where, url: x.url, photo: x.n + 1, img: '/listing-img/' + x.id + '/' + x.n + '.webp?w=480' }; }) }; });
+      dupesAt = Date.now();
+      console.log('Photo check: ' + items.length + ' photos on ' + homes.length + ' homes — ' + (dupes.length ? dupes.length + ' photo(s) used on more than one home' : 'no repeats'));
+      if (opts.onPhotoDupes) opts.onPhotoDupes(dupes);
+    } catch (e) { console.log('Photo check stopped: ' + e.message); }
+    checking = false;
+  }
+  setTimeout(function () { checkPhotos(); }, 4 * 60000); setInterval(function () { checkPhotos(); }, 6 * 3600000).unref();
+
   return {
+    photoDupes: function () { return { at: dupesAt, checking: checking, groups: dupes }; },
     // Shown to this visitor (everyone when live, signed-in staff otherwise), and there's something to show.
     show: function (req) { return show(req) && (data.let.length + data.sale.length) > 0; },
     preview: preview,
