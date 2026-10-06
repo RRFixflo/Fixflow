@@ -10,6 +10,14 @@ module.exports = function (app, opts) {
   const SALT = crypto.createHash('sha256').update('visits|' + (process.env.ADMIN_PASSWORD || '') + '|' + (process.env.DATABASE_URL || crypto.randomBytes(16).toString('hex'))).digest('hex');
   let ready = null, queue = [], ignore = [], names = {};   // ignore: our own IP addresses (not counted); names: IP → a name staff gave it
   const ipOf = function (req) { return String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim().replace(/^::ffff:/, '').slice(0, 64); };
+  // Home broadband on IPv6 keeps the first half of the address and changes the rest every day or so,
+  // so names and "don't count" match on that first half (the /64). IPv4 addresses match exactly.
+  const ipKey = function (ip) {
+    ip = String(ip || '').trim().toLowerCase(); if (ip.indexOf(':') === -1) return ip;
+    const parts = ip.split('::'), a = parts[0] ? parts[0].split(':') : [], b = parts.length > 1 && parts[1] ? parts[1].split(':') : [];
+    const full = a.concat(new Array(Math.max(0, 8 - a.length - b.length)).fill('0'), b);
+    return full.slice(0, 4).map(function (h) { return (parseInt(h, 16) || 0).toString(16); }).join(':') + '::/64';
+  };
   async function loadIgnore() { const p = await pool().catch(function () { return null; }); if (!p) return; const r = (await p.query("SELECT value FROM app_settings WHERE key = 'web_ignore_ips'").catch(function () { return { rows: [] }; })).rows[0]; ignore = (r && r.value && r.value.ips) || [];
     const n = (await p.query("SELECT value FROM app_settings WHERE key = 'web_ip_names'").catch(function () { return { rows: [] }; })).rows[0]; names = (n && n.value && n.value.names) || {}; }
   setTimeout(function () { loadIgnore().catch(function () {}); }, 5000);
@@ -37,7 +45,7 @@ module.exports = function (app, opts) {
       if (!ua || BOT.test(ua) || /prefetch|prerender/i.test(String(req.headers.purpose || req.headers['sec-purpose'] || ''))) return;
       if (opts.isStaff && opts.isStaff(req)) return;   // our own team browsing the site
       const ip = ipOf(req);
-      if (ignore.some(function (x) { return x.ip === ip; })) return;   // the office's own address
+      if (ignore.some(function (x) { return ipKey(x.ip) === ipKey(ip); })) return;   // the office's own address
       const day = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
       queue.push({ path: String(req.path || '/').slice(0, 300), title: String(title || '').slice(0, 200), ref: source(req) || null,
         device: /ipad|tablet|kindle|silk/i.test(ua) ? 'Tablet' : /mobi|iphone|android/i.test(ua) ? 'Phone' : 'Computer',
@@ -86,15 +94,18 @@ module.exports = function (app, opts) {
       q("SELECT at, path, title, ref, device, country, ip FROM web_visits ORDER BY id DESC LIMIT 60")
     ]).then(function (r) { recent = r.pop(); return r; });
     const namedIps = Object.keys(names);
-    const seen = namedIps.length ? await p.query('SELECT ip, max(at) AS last, count(*) FILTER (WHERE at >= ' + since + ')::int AS views FROM web_visits WHERE ip = ANY($1) GROUP BY ip', [namedIps]).then(function (x) { return x.rows; }).catch(function () { return []; }) : [];
-    const named = namedIps.map(function (ip) { const s = seen.find(function (x) { return x.ip === ip; }) || {}; return { ip: ip, name: names[ip].name, last: s.last || null, views: s.views || 0 }; })
+    const keyOf = {}; namedIps.forEach(function (ip) { keyOf[ipKey(ip)] = ip; });
+    const seenBy = {};
+    if (namedIps.length) (await p.query('SELECT ip, max(at) AS last, count(*) FILTER (WHERE at >= ' + since + ')::int AS views FROM web_visits WHERE ip IS NOT NULL GROUP BY ip').then(function (x) { return x.rows; }).catch(function () { return []; }))
+      .forEach(function (r) { const k = ipKey(r.ip); if (!keyOf[k]) return; const o = seenBy[k] || (seenBy[k] = { last: null, views: 0 }); o.views += r.views; if (!o.last || new Date(r.last) > new Date(o.last)) o.last = r.last; });
+    const named = namedIps.map(function (ip) { const s = seenBy[ipKey(ip)] || {}; return { ip: ip, key: ipKey(ip), name: names[ip].name, last: s.last || null, views: s.views || 0 }; })
       .sort(function (a, b) { return (b.last ? new Date(b.last) : 0) - (a.last ? new Date(a.last) : 0); });
     const src = {}; refs.forEach(function (r) { const n = srcName(r.ref); src[n] = (src[n] || 0) + r.visitors; });
     res.setHeader('Cache-Control', 'no-store');
     res.json({ ok: true, days: days, totals: tot[0], previous: prev[0], series: byDay, pages: pages, properties: props,
       sources: Object.keys(src).map(function (k) { return { k: k, visitors: src[k] }; }).sort(function (a, b) { return b.visitors - a.visitors; }),
-      devices: devices, countries: countries, live: live.map(function (l) { return { path: l.path, title: l.title, device: l.device, ip: l.ip, at: l.at }; }),
-      me: ipOf(req), ignore: ignore, names: named, recent: recent.map(function (r) { return { at: r.at, path: r.path, title: r.title, source: srcName(r.ref), device: r.device, country: r.country, ip: r.ip }; }) });
+      devices: devices, countries: countries, live: live.map(function (l) { return { path: l.path, title: l.title, device: l.device, ip: l.ip, key: l.ip ? ipKey(l.ip) : '', at: l.at }; }),
+      me: ipOf(req), meKey: ipKey(ipOf(req)), ignore: ignore.map(function (x) { return Object.assign({ key: ipKey(x.ip) }, x); }), names: named, recent: recent.map(function (r) { return { at: r.at, path: r.path, title: r.title, source: srcName(r.ref), device: r.device, country: r.country, ip: r.ip, key: r.ip ? ipKey(r.ip) : '' }; }) });
   });
   // Don't count visits from an address (the office, home) — or count them again.
   app.post('/api/admin/site-ignore', async function (req, res) {
@@ -104,8 +115,8 @@ module.exports = function (app, opts) {
     if (!/^[0-9a-f.:]{3,64}$/i.test(ip)) return res.status(400).json({ ok: false, error: 'ip' });
     const p = await pool().catch(function () { return null; }); if (!p) return res.status(503).json({ ok: false });
     await loadIgnore();
-    let list = ignore.filter(function (x) { return x.ip !== ip; });
-    if (!b.remove) { list.push({ ip: ip, label: String(b.label || '').trim().slice(0, 60) || 'Our address', by: req.user ? req.user.name : 'Office', at: new Date().toISOString() }); if (b.purge) await p.query('DELETE FROM web_visits WHERE ip = $1', [ip]); }
+    let list = ignore.filter(function (x) { return ipKey(x.ip) !== ipKey(ip); });
+    if (!b.remove) { list.push({ ip: ip, label: String(b.label || '').trim().slice(0, 60) || 'Our address', by: req.user ? req.user.name : 'Office', at: new Date().toISOString() }); if (b.purge) { const all = (await p.query('SELECT DISTINCT ip FROM web_visits WHERE ip IS NOT NULL')).rows.map(function (r) { return r.ip; }).filter(function (x) { return ipKey(x) === ipKey(ip); }); if (all.length) await p.query('DELETE FROM web_visits WHERE ip = ANY($1)', [all]); } }
     await p.query("INSERT INTO app_settings (key, value) VALUES ('web_ignore_ips', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ ips: list.slice(-50) })]);
     ignore = list.slice(-50);
     res.json({ ok: true, ignore: ignore });
@@ -120,6 +131,7 @@ module.exports = function (app, opts) {
     const p = await pool().catch(function () { return null; }); if (!p) return res.status(503).json({ ok: false });
     await loadIgnore();
     const next = Object.assign({}, names);
+    Object.keys(next).forEach(function (k) { if (ipKey(k) === ipKey(ip)) delete next[k]; });
     if (name) next[ip] = { name: name, by: req.user ? req.user.name : 'Office', at: new Date().toISOString() }; else delete next[ip];
     const keys = Object.keys(next); if (keys.length > 300) keys.slice(0, keys.length - 300).forEach(function (k) { delete next[k]; });
     await p.query("INSERT INTO app_settings (key, value) VALUES ('web_ip_names', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ names: next })]);
