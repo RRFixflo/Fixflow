@@ -14847,7 +14847,7 @@
   function openTcyMail(who, d){
     var ct = null;
     var go = function(){
-      var t = tcySet.templates, vals = tcyValues(d);
+      var t = tcySet.templates, vals = tcyValues(d); if (diyOffice) vals.diy_link = diyOffice;
       vals.signature = sigMarkup(who === 'tenants' ? t.signature_tenant : t.signature_landlord);
       var to = who === 'tenants' ? (d.tenants || []).map(function(p){ return p.email; }).filter(Boolean) : [(d.landlord || {}).email].filter(Boolean);
       var atts = who === 'tenants'
@@ -14868,7 +14868,9 @@
       });
     };
     var ctReq = who === 'tenants' ? api('GET', '/api/admin/council-tax?address=' + encodeURIComponent(d.address || '')).then(function(r){ if (r && r.ok) ct = r; })['catch'](function(){}) : null;
-    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq]).then(go);
+    // DIY check-in: the app needs a personal link — the office makes a free one for these tenants.
+    var diyOffice = '', diyReq = who === 'tenants' && (d.checkin_type === 'diy' || /diy/i.test(String(d.checkin_type || ''))) ? api('POST', '/api/admin/diy-access', { name: ((d.tenants || [])[0] || {}).name || '', address: d.address || '' }).then(function(r){ if (r && r.ok) diyOffice = r.link; })['catch'](function(){}) : null;
+    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq, diyReq]).then(go);
   }
   // Templates: each borough's licensing schemes (selective and additional HMO), for the licence check.
   var lsData = null, LS_OPTS = [['all', 'All'], ['some', 'Parts'], ['none', 'None'], ['check', 'Not sure']];
