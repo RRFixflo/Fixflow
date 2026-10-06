@@ -633,6 +633,11 @@
   .av-acc-det { margin-top: 4px; color: var(--ink-soft); } .av-acc-det b { color: var(--ink, #101828); } .av-acc-warn { color: #b54708; font-weight: 600; } .av-acc-det .linkish { padding: 0; min-height: 0; line-height: inherit; vertical-align: baseline; }
   .av-fromrm { font-style: normal; color: #00a88f; text-transform: none; letter-spacing: 0; }
   .av-llpick { width: auto; max-width: 220px; min-height: 30px; padding: 2px 6px; font-size: .8rem; }
+  .av-offers { display: block; margin: 6px 0 2px; padding: 0; border: 0; background: none; font: inherit; font-size: .84rem; color: var(--ink-soft); cursor: pointer; text-align: left; }
+  .oc-addr-ed { font-size: .78rem; font-weight: 600; margin-left: 4px; }
+  .av-offers b { color: var(--ink, #101828); } .av-offers:hover { text-decoration: underline; }
+  .av-off-open { color: #b54708; font-weight: 700; }
+  .off-propf { margin: 0 0 10px; padding: 10px 14px; border-radius: 12px; background: #eff8ff; border: 1px solid #b2ddff; font-size: .9rem; }
   .av-key { font-size: .84rem; margin: 6px 0 2px; } .av-llink { font-size: .84rem; margin: 2px 0; color: var(--ink-soft); } .av-llink b { color: var(--ink, #101828); }
   .av-key .linkish, .av-llink .linkish, .av-novid .linkish { padding: 0; min-height: 0; line-height: inherit; vertical-align: baseline; }
   .av-novid { background: #fffaeb; border: 1px solid #fedf89; color: #93370d; border-radius: 10px; padding: 6px 10px; font-size: .84rem; margin: 6px 0; }
@@ -9677,7 +9682,7 @@
   })();
 
   // ---------- Offers from applicants (the /offer link) ----------
-  var offers = [], offTab = 'open';
+  var offers = [], offTab = 'open', offPropF = null;   // offPropF: show only the offers for this property (from the available list)
   var OFF_TABS = [['open', 'To decide'], ['accepted', 'Accepted'], ['rejected', 'Rejected'], ['withdrawn', 'Withdrawn'], ['all', 'All']];
   function loadOffers(){
     if (!meta.db) return Promise.resolve();
@@ -9871,14 +9876,39 @@
     $('offTabs').innerHTML = OFF_TABS.map(function(t){ var n = offers.filter(function(o){ return t[0] === 'all' || (t[0] === 'open' ? o.status === 'new' : o.status === t[0]); }).length;
       return '<button type="button" data-otab="' + t[0] + '"' + (offTab === t[0] ? ' class="on"' : '') + '>' + t[1] + ' <span class="n">' + n + '</span></button>'; }).join('');
     // The offer being worked on stays on screen (even if its status no longer fits this tab), with its open sections and place kept.
-    var list = offers.filter(function(o){ return match(o) || (offFocus && String(o.id) === String(offFocus)); });
+    var list = offers.filter(function(o){ return offPropF ? offSameProp(offPropF, o) : (match(o) || (offFocus && String(o.id) === String(offFocus))); });
     var keep = offKeepState();
-    $('offList').innerHTML = list.length ? list.map(offerCard).join('') : '<p class="muted-note">' + (offTab === 'open' ? 'No offers waiting for a decision.' : 'Nothing here yet.') + ' Send applicants the link above.</p>';
+    $('offList').innerHTML = (offPropF ? '<div class="off-propf">📝 All offers for <b>' + esc(offPropF) + '</b> (' + list.length + ') <button type="button" class="linkish" data-off-propf-x>✕ Show all offers</button></div>' : '') + (list.length ? list.map(offerCard).join('') : '<p class="muted-note">' + (offTab === 'open' ? 'No offers waiting for a decision.' : 'Nothing here yet.') + ' Send applicants the link above.</p>');
     offRestoreState(keep);
     // Seen: new offers on screen stop counting as new.
     var unseen = list.filter(function(o){ return !o.seen_at; });
     unseen.forEach(function(o){ o.seen_at = new Date().toISOString(); api('POST', '/api/admin/offers/' + o.id, { seen: true }); });
     if (unseen.length) renderOfferBanner();
+  }
+  document.addEventListener('click', function(e){ if (e.target.closest('[data-off-propf-x]')) { offPropF = null; renderOffers(); } });
+  // Correct an offer's property address (applicants sometimes type it wrongly) — suggests our addresses.
+  function offAddrEdit(o){
+    var m = $('offAddrModal');
+    if (!m) {
+      document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="offAddrModal" hidden><div class="card" style="width:min(520px,100%);display:flex;flex-direction:column;gap:10px">' +
+        '<h3 style="margin:0">Correct the property address</h3><p class="muted-note" style="margin:0" id="oaWas"></p>' +
+        '<label class="lbl">Address<input class="inp" id="oaIn" list="oaList" autocomplete="off"></label><datalist id="oaList"></datalist>' +
+        '<p class="err" id="oaErr" style="margin:0"></p><div class="row-actions"><button class="btn" type="button" id="oaNo">Cancel</button><button class="btn primary" type="button" id="oaGo">Save address</button></div></div></div>');
+      m = $('offAddrModal');
+    }
+    var seen = {}, opts = [];
+    (avItems || []).filter(function(x){ return x.status === 'available'; }).concat(allPropsForList()).forEach(function(x){ var a = x.address; if (a && !seen[a.toLowerCase()]) { seen[a.toLowerCase()] = 1; opts.push(a); } });
+    $('oaList').innerHTML = opts.slice(0, 3000).map(function(a){ return '<option value="' + esc(a) + '">'; }).join('');
+    $('oaWas').textContent = 'The applicant wrote: ' + (o.property_address || '—'); $('oaIn').value = o.property_address || ''; $('oaErr').textContent = '';
+    var close = function(){ m.hidden = true; $('oaGo').onclick = $('oaNo').onclick = m.onclick = null; };
+    $('oaNo').onclick = close; m.onclick = function(e){ if (e.target === m) close(); };
+    $('oaGo').onclick = function(){
+      var a = $('oaIn').value.trim(); if (!a) { $('oaErr').textContent = 'Please enter the address.'; return; }
+      busy($('oaGo'), true, 'Saving…');
+      api('POST', '/api/admin/offers/' + o.id, { property_address: a }).then(function(d){ busy($('oaGo'), false); if (!d || !d.ok) { $('oaErr').textContent = (d && d.message) || 'Couldn’t save that.'; return; }
+        o.property_address = d.property_address; close(); toast('✓ Address corrected'); loadOffers(); });
+    };
+    m.hidden = false; setTimeout(function(){ $('oaIn').focus(); $('oaIn').select(); }, 30);
   }
   function offRow(label, v){ return v ? '<div><span>' + esc(label) + '</span><b>' + esc(v) + '</b></div>' : ''; }
   // ---------- Right to rent checks ----------
@@ -10206,7 +10236,7 @@
     var mini = '<div class="oc-mini" data-oc-expand title="Show everything"><b>' + esc(shortAddr(o.property_address || '')) + '</b><span>' + (offCreditText(o) || 'Not credited') + '</span><span>' + esc(gbp(m.pcm || 0)) + ' pcm</span><span>' + (d.move_in ? 'Move in ' + esc(longDay(d.move_in)) : 'Move in TBC') + '</span><span class="oc-pill ' + st[0] + '">' + st[1] + '</span><span class="oc-mini-go">▾</span></div>';
     return '<article class="oc oc-' + st[0] + (offMin[o.id] ? ' oc-min' : '') + '" data-off="' + o.id + '">' + mini + '<button type="button" class="oc-minbtn" data-oc-min title="Minimise">–</button>' +
       '<header class="oc-head"><div class="oc-av">' + esc(initials || '?') + '</div>' +
-        '<div class="oc-who"><div class="oc-addr">' + esc(o.property_address || '') + '</div>' +
+        '<div class="oc-who"><div class="oc-addr">' + esc(o.property_address || '') + ' <button type="button" class="linkish oc-addr-ed" data-off-addr title="Correct the address">✎ Edit</button></div>' +
           '<div class="oc-meta">' + esc(o.lead_name || '') + ' · ' + esc(o.ref) + ' · ' + esc(fmtShort(o.created_at)) + '</div>' +
           '<div class="oc-contact">' + (o.lead_phone ? '<a href="tel:' + esc(o.lead_phone) + '">📞 ' + esc(o.lead_phone) + '</a><a class="wa-btn" target="_blank" rel="noopener" href="' + esc(offWa(o.lead_phone, o.lead_name, o)) + '">' + WA_ICON + 'WhatsApp</a>' : '') + (o.lead_email ? '<a href="mailto:' + esc(o.lead_email) + '">✉ ' + esc(o.lead_email) + '</a>' : '') + '</div></div>' +
         '<div class="oc-price"><div class="oc-pw">' + esc(gbp(offPw(o))) + '<small> /week</small></div><div class="oc-pcm">' + esc(gbp(m.pcm || 0)) + ' /month' + (d.max_pw ? ' · max ' + esc(gbp(d.max_pw)) + ' /wk' : '') + '</div></div></header>' +
@@ -10256,7 +10286,7 @@
         (staffMode ? '' : '<button type="button" class="btn small ghost danger" data-off-del title="Delete this offer and its IDs">🗑</button>') + '</footer>' +
     '</article>';
   }
-  $('offTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-otab]'); if (!b) return; offTab = b.dataset.otab; offFocus = null; renderOffers(); });
+  $('offTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-otab]'); if (!b) return; offTab = b.dataset.otab; offFocus = null; offPropF = null; renderOffers(); });
   // Read a GOV.UK right to rent result and record the check.
   function rtrRead(box, f){
     var o = offers.filter(function(x){ return x.id === Number(box.closest('[data-off]').dataset.off); })[0], n = Number(box.dataset.rtr); if (!o || !f) return;
@@ -10378,6 +10408,7 @@
       });
       return;
     }
+    if (e.target.closest('[data-off-addr]')) { offAddrEdit(o); return; }
     var rfb = e.target.closest('[data-off-refunded]');
     if (rfb) { api('POST', '/api/admin/offers/' + o.id, { refunded: rfb.dataset.offRefunded === '1' }).then(function(d2){ if (!d2.ok) { toast('Couldn’t save that'); return; } toast(rfb.dataset.offRefunded === '1' ? 'Refund marked as sent' : 'Undone'); loadOffers(); }); return; }
     if (e.target.closest('[data-off-accmail]')) { offSendMail(offConfirmMail(o)); api('POST', '/api/admin/offers/' + o.id, { note: 'Offer confirmation email prepared for the applicants' }); return; }
@@ -10931,6 +10962,16 @@
     return h;
   }
   function avPatch(x, body, msg){ return api('POST', '/api/admin/available/' + x.id, Object.assign({ patch: true }, body)).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save that'); return false; } Object.keys(body).forEach(function(k){ x[k] = body[k] || null; }); if (msg) toast(msg); renderAvail(); return true; }); }
+  // Offers made on a property on the available list: how many in total, and any waiting for a decision.
+  function offSameProp(addr, o){ var k = propKey(addr), sg = avSig(addr); return !!o.property_address && (propKey(o.property_address) === k || (sg && avSig(o.property_address) === sg)); }
+  function avOffersHtml(x){
+    if (!offers || !offers.length) return '';
+    var l = offers.filter(function(o){ return offSameProp(x.address, o); }); if (!l.length) return '';
+    var open = l.filter(function(o){ return o.status === 'new'; }).length, acc = l.filter(function(o){ return o.status === 'accepted'; }).length, rej = l.filter(function(o){ return o.status === 'rejected' || o.status === 'withdrawn'; }).length;
+    return '<button type="button" class="av-offers' + (open ? ' hot' : '') + '" data-av-offers="' + esc(x.address) + '">📝 <b>' + l.length + ' offer' + (l.length === 1 ? '' : 's') + '</b> received' +
+      (open ? ' · <span class="av-off-open">⏳ ' + open + ' waiting for a decision</span>' : '') + (acc ? ' · ✓ ' + acc + ' accepted' : '') + (rej ? ' · ' + rej + ' declined/withdrawn' : '') + ' ›</button>';
+  }
+  document.addEventListener('click', function(e){ var b = e.target.closest('[data-av-offers]'); if (!b) return; offPropF = b.dataset.avOffers; offTab = 'all'; showView('offers'); });
   function renderAvail(){
     var q = $('avQ').value.trim().toLowerCase(), sort = $('avSort').value;
     var list = avItems.filter(function(x){
@@ -11005,7 +11046,7 @@
       var tags = (x.tags ? x.tags.split(/\s*,\s*/).filter(Boolean).map(function(t){ return '<span class="av-tag">' + esc(t) + '</span>'; }).join('') : '') + (x.urgent ? '<span class="av-tag urgent">🔥 URGENT</span>' : '') + (off ? '<span class="av-tag let">' + (x.status === 'let' ? '✓ Let' : 'Withdrawn') + '</span>' : '');
       return '<div class="av-card' + (x.urgent ? ' is-urgent' : '') + (off ? ' is-off' : '') + (avOpenCards[x.id] ? ' av-open' : '') + '" data-av="' + x.id + '">' +
         '<div class="av-h"><div class="av-beds"><b>' + (x.beds == null ? '–' : x.beds === 0 ? 'S' : x.beds) + '</b><span>' + (x.beds === 0 ? 'studio' : 'bed') + '</span></div><div style="min-width:0"><div class="av-addr">' + esc(x.address.replace(pc, '').replace(/[,\s]+$/, '')) + '</div><div class="av-pc">' + esc(pc) + '</div></div></div>' +
-        (tags ? '<div class="av-tags">' + tags + '</div>' : '') + (off ? '' : avFixHtml(x)) +
+        (tags ? '<div class="av-tags">' + tags + '</div>' : '') + avOffersHtml(x) + (off ? '' : avFixHtml(x)) +
         (function(){ if (off) return ''; var r = x.rm_id && rmBy[x.rm_id];
           if (!r && x.rm_id && x.rm_id !== 'none' && x.rm_url) return '<div class="av-rmwrap"><a class="av-rmlink" target="_blank" rel="noopener" href="' + esc(x.rm_url) + '"><span><b>On Rightmove ↗</b>Linked by hand · listing ' + esc(x.rm_id) + '</span></a>' + '<button type="button" class="av-rmx" data-ava="rmx" title="Not this property — unlink the advert so it goes back in Dreams" aria-label="Unlink from Rightmove">✕</button></div>';
           var dreams = (x.dream_rm || []).map(function(id){ var d = rmBy[id]; return '<span class="av-dlink"><a target="_blank" rel="noopener" href="' + esc(d ? d.url : 'https://www.rightmove.co.uk/properties/' + id) + '">' + esc(d ? d.address : 'Listing ' + id) + (d && d.pcm ? ' · ' + gbp(d.pcm) : '') + ' ↗</a>' + (function(){ var i = dreamInfo(id); return i.first ? '<small class="av-dd' + (i.due ? ' due' : '') + '" title="' + (i.due ? 'Up 7+ days — review it in the Dreams list above' : 'Review by ' + esc(avDay(i.review))) + '">' + i.days + 'd' + (i.due ? ' ⏰' : '') + '</small>' : ''; })() + '<button type="button" class="linkish" data-dreamrm="' + esc(id) + '" title="Unlink">×</button></span>'; }).join('');

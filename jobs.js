@@ -8202,6 +8202,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   app.post('/api/admin/offers/:id', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req), sets = [], vals = [id], notes = [], dataSets = [];
+    // The property address corrected (applicants sometimes type it wrongly).
+    if (b.property_address !== undefined) {
+      const a = tidyAddress(str(b.property_address, 300));
+      if (!a || addressProblem(a)) return res.status(400).json({ ok: false, error: 'address', message: addressProblem(a) || 'Please enter the address.' });
+      const cur = (await p.query('SELECT property_address FROM offers WHERE id = $1', [id])).rows[0]; if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+      if (cur.property_address === a) return res.json({ ok: true, property_address: a });
+      await p.query('UPDATE offers SET property_address = $2, property_key = $3, log = log || $4::jsonb WHERE id = $1', [id, a, propKey(a), JSON.stringify([offerLog(req, 'Property address corrected: ' + (cur.property_address || '—') + ' → ' + a)])]);
+      return res.json({ ok: true, property_address: a });
+    }
     // The agreed rent or move-in date changed (e.g. after negotiating) before it goes to the landlord.
     if (b.rent != null || b.move_in !== undefined) {
       const cur = (await p.query('SELECT offer_pw, data FROM offers WHERE id = $1', [id])).rows[0]; if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
