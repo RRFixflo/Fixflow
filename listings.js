@@ -529,6 +529,9 @@ module.exports = function (app, opts) {
     show: function (req) { return show(req) && (data.let.length + data.sale.length) > 0; },
     preview: preview,
     stamp: function () { return data.stamp; },
+    // When the property list last changed, in words ("today at 7:30pm"); '' before the first read.
+    updated: function () { return data.changedAt ? whenText(data.changedAt) : ''; },
+    updatedShort: function () { return data.changedAt ? whenText(data.changedAt).replace(/^today at /, '').replace(/ at .*$/, '').replace(/^\w{3} (\d+ \w{3}) \d{4}$/, '$1') : ''; },
     // A few of the latest, for the home page.
     featured: function (req) {
       if (!show(req)) return '';

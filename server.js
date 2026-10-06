@@ -233,11 +233,13 @@ function siteHeadFor(pg, body) {
 const SITE_FONTS = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">';
 const WRENCH = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
 // The menu (with "Report a repair" always one tap away) and footer shared by every website page.
+const londonDay = function () { return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' }); };
 function siteHeader(name, home, req) {
   const props = listings && listings.show(req) ? [['/properties-for-sale', 'Buy', 'list-sale'], ['/properties-to-rent', 'Rent', 'list-let']] : [[home, 'Home', 'home']];
   const nav = props.concat([['/sales', 'Sell', 'sales'], ['/landlords', 'Landlords', 'landlords'], ['/tenants', 'Tenants', 'tenants'], ['/property-checks', 'Property checks', 'checks'], ['/about', 'About', 'about'], ['/contact', 'Contact', 'contact']])
     .map(function (n) { return '<a href="' + n[0] + '"' + (n[2] === name ? ' class="on" aria-current="page"' : '') + '>' + n[1] + '</a>'; }).join('');
-  return '<header class="top"><div class="wrap"><a class="brand" href="' + home + '" aria-label="Residential Realtors — home"><img src="/logo-tight.png" alt="Residential Realtors" width="122" height="38"></a>' +
+  const upd = listings && listings.show(req) && listings.updated();
+  return '<header class="top"><div class="wrap"><div class="brand-col"><a class="brand" href="' + home + '" aria-label="Residential Realtors — home"><img src="/logo-tight.png" alt="Residential Realtors" width="122" height="38"></a>' + (upd ? '<a class="top-upd" href="/properties-to-rent" title="When our property list last changed">🕒 <span class="tu-l">Updated ' + siteEsc(upd) + '</span><span class="tu-s">Updated ' + siteEsc(listings.updatedShort()) + '</span></a>' : '') + '</div>' +
     '<nav class="nav" aria-label="Main menu">' + nav + '<a class="cta" href="' + (name === 'sales' ? '/sales#sales-valuation' : '/landlords#valuation') + '">Get a valuation</a></nav>' +
     '<a class="rep" href="/report-a-repair">' + WRENCH + '<span>Report a repair</span></a>' +
     '<button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button></div></header>';
@@ -341,7 +343,7 @@ function landlordsShell(home, req) {
 const siteCache = {};
 function sendSite(req, res, name) {
   const f = name === 'landlords' ? path.join(__dirname, 'landlords.html') : path.join(__dirname, 'site', name + '.html'); let st; try { st = fs.statSync(f); } catch (e) { return res.status(404).end(); }
-  const home = isSiteHost(req) ? '/' : '/home', ck = name + home + (listings ? listings.stamp() + listings.show(req) : '') + (name === 'home' && typeof news !== 'undefined' ? 'n' + news.count() + (news.status().at || 0) : '');
+  const home = isSiteHost(req) ? '/' : '/home', ck = name + home + (listings ? listings.stamp() + listings.show(req) + londonDay() : '') + (name === 'home' && typeof news !== 'undefined' ? 'n' + news.count() + (news.status().at || 0) : '');
   let c = siteCache[ck];
   if (!c || c.mtime !== st.mtimeMs) { const raw = Buffer.from(name === 'landlords' ? landlordsShell(home, req) : siteShell(name, home, req)); c = siteCache[ck] = { mtime: st.mtimeMs, raw: raw, gzip: zlib.gzipSync(raw, { level: 9 }), etag: '"s' + crypto.createHash('sha1').update(raw).digest('base64').slice(0, 26) + '"' }; }
   res.setHeader('Cache-Control', listings && listings.preview(req) ? 'private, no-store' : 'no-cache'); res.setHeader('ETag', c.etag); res.setHeader('Vary', 'Accept-Encoding, Cookie'); res.type('html');
@@ -352,7 +354,7 @@ function sendSite(req, res, name) {
 // A page built elsewhere (property listings), in the website's frame.
 const builtCache = new Map();
 function sendBuilt(req, res, meta, body) {
-  const home = isSiteHost(req) ? '/' : '/home', ck = meta.name + home + (meta.stamp || '') + listings.show(req);
+  const home = isSiteHost(req) ? '/' : '/home', ck = meta.name + home + (meta.stamp || '') + listings.show(req) + listings.stamp() + londonDay();
   let c = builtCache.get(ck);
   if (!c) {
     const raw = Buffer.from('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
