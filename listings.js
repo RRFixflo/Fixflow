@@ -53,6 +53,7 @@ module.exports = function (app, opts) {
         epc: /^https:\/\//.test(tag(x, 'epc')) ? tag(x, 'epc') : '', vtour: videoLink(tag(x, 'external_vtour')) || videoLink(tag(x, 'video_tour')),
         images: list(x, 'images', 'image').slice(0, 40), floorplans: list(x, 'floorplans', 'floorplan').slice(0, 6), added: tag(x, 'date_added') };
       p.where = [p.street, p.area || p.town].filter(Boolean).join(', ') + (outcode ? ' ' + outcode : '');
+      p.unit = tag(x, 'property_no') ? (tag(x, 'property_no').toLowerCase().replace(/\b(flat|apartment|apt|unit|no)\b\.?/g, '') + '|' + street.toLowerCase()).replace(/[^a-z0-9|]/g, '') : ''; p.postcode = pc.replace(/\s+/g, '');
       p.headline = (p.studio ? 'Studio' : beds ? beds + ' bedroom ' + type.toLowerCase() : (p.commercial ? 'Commercial ' + type.toLowerCase() : type)) + (kind === 'let' ? ' to rent' : ' for sale');
       p.slug = (p.where + ' ' + (p.studio ? 'studio' : p.commercial ? type : beds + ' bed ' + type)).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 90);
       p.url = '/property/' + id + '/' + p.slug;
@@ -61,11 +62,23 @@ module.exports = function (app, opts) {
     // Available first, newest first.
     return out.sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
   }
+  // Gnomen sometimes holds two records for the same home (re-added for a new let): same flat
+  // number, full postcode and bedrooms. Show it once — the newest record — and send the other's link to it.
+  function dedupe(list, kind) {
+    const keep = {}, out = [], gone = [];
+    list.slice().sort(function (a, b) { return (+b.id) - (+a.id); }).forEach(function (p) {
+      const k = p.unit && p.postcode ? p.unit + '|' + p.postcode + '|' + p.beds : '';
+      if (k && keep[k]) { rmAlias[p.id] = keep[k].id; gone.push(p.id + '→' + keep[k].id); return; }
+      if (k) keep[k] = p; out.push(p);
+    });
+    if (gone.length) console.log('Duplicate Gnomen records shown once (' + (kind === 'let' ? 'lettings' : 'sales') + '): ' + gone.join(', '));
+    return out.sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
+  }
   async function gnomenFeed(kind) {
     const r = await fetch(FEEDS[kind], { signal: AbortSignal.timeout(30000) });
     const xml = await r.text();
     if (!r.ok || xml.indexOf('<properties') === -1) throw new Error('bad feed ' + r.status);
-    return parse(xml, kind);
+    return dedupe(parse(xml, kind), kind);
   }
   // Gnomen's feed leaves some published properties out, so anything advertised on our Rightmove
   // branch that isn't in the feed is added too (matched on street, postcode district and bedrooms).
