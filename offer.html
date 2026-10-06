@@ -376,10 +376,8 @@
           <p class="lead">Which property, how much, and when you’d like to move in.</p>
           <div class="f" style="position:relative"><label class="l" for="property">Property address</label><input id="property" autocomplete="off" placeholder="Start typing the street, building or postcode"><div class="psugg" id="propSugg" hidden></div></div>
           <div class="f"><label class="l">I’m offering</label><div class="seg" id="perSeg"><button type="button" data-per="pw" class="on">£ per week</button><button type="button" data-per="pcm">£ per month</button></div><div class="hint" style="margin-top:6px">Choose how you’d like to enter your offer — rent is always <b>paid monthly</b>.</div></div>
-          <div class="g2">
-            <div class="f"><label class="l" for="offer">Your offer <span class="opt perTxt">per week</span></label><div class="money-in unit" data-unit="/ week"><input id="offer" inputmode="decimal" placeholder="500"></div></div>
-            <div class="f"><label class="l" for="max_offer">Maximum offer <span class="opt"><span class="perTxt">per week</span> · optional</span></label><div class="money-in unit" data-unit="/ week"><input id="max_offer" inputmode="decimal" placeholder="520"></div></div>
-          </div>
+          <div class="f"><label class="l" for="offer">Your offer <span class="opt perTxt">per week</span></label><div class="money-in unit" data-unit="/ week"><input id="offer" inputmode="decimal" placeholder="500"></div><div class="hint" id="advertHint" hidden></div></div>
+          <input id="max_offer" type="hidden" value="">
           <div class="conv" id="perConv"></div>
           <p class="hint" style="margin:6px 0 14px">Your maximum offer is binding subject to contract, references and the terms in the information sheet.</p>
           <div class="hold-explain" id="holdExplain"></div>
@@ -527,7 +525,7 @@
     $('holdExplain').innerHTML = '<div class="he-h"><span class="he-ico">£</span><div><b>What is the holding deposit?</b><span>' + (f ? '<b class="he-amt">' + gbp(f.hold) + '</b> — one week’s rent at your offer' : 'One week’s rent at your offer') + '</span></div></div>' +
       '<ul><li><b>When:</b> paid by bank transfer <b>straight away</b>, as soon as you send this form. It takes the property off the market while we do references.</li>' +
       '<li><b>Not an extra cost:</b> once your offer is accepted it goes towards your first month’s rent' + (f ? ', so you’d then pay ' + gbp(f.pcm - f.hold) + ' for the rest of the first month' : '') + '.</li>' +
-      '<li><b>Returned within 24 hours</b> if the landlord rejects your maximum offer or takes the property off the market.</li>' +
+      '<li><b>Returned within 24 hours</b> if the landlord rejects your offer or takes the property off the market.</li>' +
       '<li><b>Not returned</b> if you withdraw, don’t pass referencing or the right to rent check, give false information, or don’t sign and pay on time — you’ll tick each of these before you sign.</li></ul>';
   }
   // Property suggestions from our available list (the property they're offering on is almost always one of them).
@@ -549,7 +547,18 @@
       })['catch'](function(){});
     }, 160);
   }
-  function propPick(i){ var h = propHits[i]; if (!h) return; propRef = h; $('property').value = h.label; $('propSugg').hidden = true; $('property').dispatchEvent(new Event('input')); }
+  function propPick(i){ var h = propHits[i]; if (!h) return; propRef = h; $('property').value = h.label; $('propSugg').hidden = true; $('property').dispatchEvent(new Event('input')); advertCheck(); }
+  // Renters' Rights Act (from 1 May 2026): no offers above the advertised rent.
+  function advertOver(){ var o = num($('offer').value); if (!propRef || !propRef.rent_pcm || !o) return false; return (per === 'pw' ? o * 52 / 12 : o) > Number(propRef.rent_pcm) + 1; }
+  function advertCheck(){
+    var h = $('advertHint'); if (!h) return;
+    if (!propRef || !propRef.rent_pcm) { h.hidden = true; return; }
+    var adv = Number(propRef.rent_pcm), over = advertOver();
+    h.hidden = false; h.style.color = over ? '#b42318' : ''; h.style.fontWeight = over ? '700' : '';
+    h.innerHTML = over ? 'The advertised rent is <b>' + gbp0(adv) + ' a month</b> (' + gbp0(adv * 12 / 52) + ' a week). By law we can’t accept offers above the advertised rent — please offer this amount or less.'
+      : 'Advertised rent: <b>' + gbp0(adv) + ' a month</b> (' + gbp0(adv * 12 / 52) + ' a week). By law, offers can’t be above the advertised rent.';
+  }
+  ['offer', 'property'].forEach(function(id){ $(id).addEventListener('input', advertCheck); });
   $('property').addEventListener('input', function(e){ if (e.isTrusted) propSuggest(); });
   $('property').addEventListener('focus', function(){ if (this.value.trim().length >= 2 && !propRef) propSuggest(); });
   $('property').addEventListener('blur', function(){ setTimeout(function(){ $('propSugg').hidden = true; }, 160); });
@@ -563,7 +572,7 @@
   $('propSugg').addEventListener('click', function(e){ var b = e.target.closest('[data-ph]'); if (b) propPick(Number(b.dataset.ph)); });
   ['property', 'offer', 'move_in', 'max_offer'].forEach(function(id){ $(id).addEventListener('input', drawSummary); });
   $('perSeg').addEventListener('click', function(e){
-    var b = e.target.closest('[data-per]'); if (!b) return; per = b.dataset.per;
+    var b = e.target.closest('[data-per]'); if (!b) return; per = b.dataset.per; setTimeout(advertCheck, 0);
     this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
     document.querySelectorAll('.perTxt').forEach(function(s){ s.textContent = per === 'pw' ? 'per week' : 'per month'; });
     document.querySelectorAll('.money-in.unit').forEach(function(m){ m.dataset.unit = per === 'pw' ? '/ week' : '/ month'; });
@@ -785,6 +794,7 @@
   function checkStep1(){
     if (!$('property').value.trim()) return showErr('Please enter the property address.', $('property'));
     if (!num($('offer').value)) return showErr('Please enter your offer.', $('offer'));
+    if (advertOver()) { advertCheck(); return showErr('By law we can’t accept an offer above the advertised rent of ' + gbp0(Number(propRef.rent_pcm)) + ' a month. Please offer this amount or less.', $('offer')); }
     if (!$('move_in').value) return showErr('Please choose your move-in date.', $('move_in'));
     if (!stay) return showErr($('stayOther').hidden ? 'Please choose how long you would like to stay.' : 'Please type how long you would like to stay.', $('stayOther').hidden ? $('stayChips') : $('stayOther'));
     return true;
@@ -889,7 +899,7 @@
     }).then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) {
         busyBtns(false, 'Submit offer');
-        return showErr(d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'company' ? 'Please enter each working tenant’s company name.' : d.error === 'position' ? 'Please enter each working tenant’s job title.' : d.error === 'salary' ? 'Please enter each tenant’s gross annual salary.' : d.error === 'terms' ? 'Please tick each holding deposit point.' : d.error === 'guarantor' ? 'Please complete the guarantor details (name, relation, email, phone, income and home owner).' : d.error === 'share_code' ? 'Please check each right to rent share code (9 letters and numbers).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
+        return showErr(d.error === 'above-advertised' ? 'By law we can’t accept an offer above the advertised rent' + (d.advertised_pcm ? ' of ' + gbp0(d.advertised_pcm) + ' a month' : '') + '. Please go back and offer this amount or less.' : d.error === 'ids' ? 'We couldn’t read tenant ' + d.tenant + '’s ID — please add it again (a photo or PDF).' : d.error === 'company' ? 'Please enter each working tenant’s company name.' : d.error === 'position' ? 'Please enter each working tenant’s job title.' : d.error === 'salary' ? 'Please enter each tenant’s gross annual salary.' : d.error === 'terms' ? 'Please tick each holding deposit point.' : d.error === 'guarantor' ? 'Please complete the guarantor details (name, relation, email, phone, income and home owner).' : d.error === 'share_code' ? 'Please check each right to rent share code (9 letters and numbers).' : d.error === 'rate-limited' ? 'Too many tries — please wait a little and try again.' : 'Something wasn’t filled in — please check the form and try again.');
       }
       done(d);
     }).catch(function(){ busyBtns(false, 'Submit offer'); showErr('Couldn’t send — please check your connection and try again.'); });
