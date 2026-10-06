@@ -242,9 +242,13 @@
           go.disabled = false; go.textContent = 'Check licence';
           if (!d.ok) { out.innerHTML = '<div class="tool-card">' + (d.error === 'rate-limited' ? 'Too many checks — please try again shortly.' : d.error === 'postcode-unknown' ? 'We couldn’t find that postcode.' : 'Sorry, we couldn’t check that postcode.') + '</div>'; return; }
           out.innerHTML = '<div class="tool-card lic-' + escH(d.verdict) + '"><p class="lic-area">' + escH(d.borough) + (d.ward ? ' · ' + escH(d.ward) + ' ward' : '') + '</p><h3>' + escH(d.title) + '</h3>' +
-            (d.licence ? '<p class="lic-type">' + escH(d.licence) + '</p>' : '') + (d.why || []).map(function (w) { return '<p>' + escH(w) + '</p>'; }).join('') +
+            (d.licence ? '<p class="lic-type">' + escH(d.licence) + '</p>' : '') +
+            (d.fee ? '<div class="lic-fee"><span>Council fee</span><b>' + escH(d.fee) + '</b><small>Paid to ' + escH(d.borough) + ' Council. Fees are set by the council and can change.</small></div>' : '') +
+            (d.why || []).map(function (w) { return '<p>' + escH(w) + '</p>'; }).join('') +
             (d.verified ? '' : '<p class="tool-note">We haven’t checked ' + escH(d.borough) + '’s schemes ward by ward yet, so please confirm with the council.</p>') +
-            '<div class="btns">' + (d.link ? '<a class="btn line" href="' + escH(d.link) + '" target="_blank" rel="noopener">Council licensing page ↗</a>' : '') + '<a class="btn red" href="/contact?topic=Landlord">Ask us to handle it</a></div></div>';
+            (d.verdict !== 'no' ? '<div class="lic-help"><b>Struggling with the application? We’ll do it for you.</b><p>We handle the whole licence application for you — the council forms, floor plan, certificates and documents, and all the back-and-forth with the council until the licence is granted.</p></div>' : '') +
+            '<div class="btns"><a class="btn red" href="/contact?topic=Landlord&message=' + encodeURIComponent(d.verdict === 'no' ? 'I checked my property (' + d.postcode + ') on your licence checker and would like some advice.' : 'Please help me apply for ' + (d.licence ? 'a ' + d.licence.toLowerCase() : 'a property licence') + ' for my property in ' + d.postcode + ' (' + d.borough + ').') + '">' + (d.verdict === 'no' ? 'Ask us a question' : 'Get us to apply for you →') + '</a>' +
+            '<a class="btn line" href="tel:02070968131">Call 0207 096 8131</a>' + (d.link ? '<a class="btn line" href="' + escH(d.link) + '" target="_blank" rel="noopener">Council licensing page ↗</a>' : '') + '</div></div>';
         }).catch(function () { go.disabled = false; go.textContent = 'Check licence'; err.textContent = 'Couldn’t connect — please try again.'; });
     });
   }
@@ -254,7 +258,8 @@
   if (tp && tsel) { var want = decodeURIComponent(tp[1].replace(/\+/g, ' ')); Array.prototype.forEach.call(tsel.options, function (o) { if (o.text === want) tsel.value = o.value || o.text; }); }
   // From a property page: the address and a ready-written viewing request.
   try { var cq = new URLSearchParams(location.search), ef = document.getElementById('eForm');
-    if (ef && cq.get('address')) { ef.elements.address.value = cq.get('address'); if (!ef.elements.message.value) ef.elements.message.value = 'I’d like to book a viewing of ' + cq.get('address') + (cq.get('ref') ? ' (ref. ' + cq.get('ref') + ')' : '') + '. '; } } catch (e) {}
+    if (ef && cq.get('address')) { ef.elements.address.value = cq.get('address'); if (!ef.elements.message.value) ef.elements.message.value = 'I’d like to book a viewing of ' + cq.get('address') + (cq.get('ref') ? ' (ref. ' + cq.get('ref') + ')' : '') + '. '; }
+    if (ef && cq.get('message') && !ef.elements.message.value) ef.elements.message.value = String(cq.get('message')).slice(0, 500); } catch (e) {}
 
   // Enquiry form (Contact page): saved in Fixflow and sent to the office.
   var form = document.getElementById('eForm');
