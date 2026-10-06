@@ -1,0 +1,56 @@
+<div class="phead small"><div class="wrap">
+  <span class="eyebrow"><i></i> Free landlord tools</span>
+  <h1>Property checks</h1>
+  <p class="lead">Check a property’s energy certificate, find out if it needs a licence, do your own inventory — and try our landlord portal.</p>
+  <div class="btns"><a class="btn red" href="#epc">EPC checker</a><a class="btn ghost" href="#licence">Licence checker</a><a class="btn ghost" href="#inventory">DIY inventory</a><a class="btn ghost" href="/landlord-portal-demo">Try the landlord portal</a></div>
+</div></div>
+
+<section class="white" id="epc"><div class="wrap">
+  <div class="tool2">
+    <div class="rv"><p class="kicker">EPC checker</p><h2>Find a property’s energy rating</h2>
+      <p class="sub">Search the official government register by postcode to see each home’s EPC rating and when its certificate expires. Rented homes need an EPC rated E or better.</p></div>
+    <form class="tool-box rv" id="epcForm" novalidate>
+      <label>Postcode<input name="postcode" placeholder="e.g. SE1 6AD" autocomplete="postal-code" style="text-transform:uppercase"></label>
+      <label>House number or name <span class="opt">(optional — narrows the list)</span><input name="filter" placeholder="e.g. Flat 2 or 14"></label>
+      <button class="btn red" type="submit" id="epcGo">Check EPCs</button>
+      <p class="tool-err" id="epcErr" role="alert"></p>
+    </form>
+  </div>
+  <div id="epcOut" class="tool-out"></div>
+</div></section>
+
+<section id="licence"><div class="wrap">
+  <div class="tool2">
+    <div class="rv"><p class="kicker">Licence checker</p><h2>Does your property need a licence?</h2>
+      <p class="sub">Many London councils require landlords to licence rented homes. Tell us about the property and we’ll tell you which licence may apply.</p>
+      <p class="tool-note">A guide only. We give a firm answer for Southwark and Newham, where we’ve checked every ward against the council’s own scheme. For other councils, please confirm with the council before letting.</p></div>
+    <form class="tool-box rv" id="licForm" novalidate>
+      <label>Postcode<input name="postcode" placeholder="e.g. SE17 1AA" autocomplete="postal-code" style="text-transform:uppercase"></label>
+      <div class="tool-g2">
+        <label>Number of people living there<select name="people"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option value="8">8 or more</option></select></label>
+        <label>Who lives there?<select name="household"><option value="single">One family or couple</option><option value="shared">Sharers (unrelated people)</option></select></label>
+      </div>
+      <div class="tool-g2" id="licShared" hidden>
+        <label>How many separate households?<select name="households"><option>2</option><option>3</option><option>4</option><option>5</option><option value="6">6 or more</option></select></label>
+        <label>Do they share a kitchen or bathroom?<select name="share"><option value="yes">Yes</option><option value="no">No</option></select></label>
+      </div>
+      <label>Type of building<select name="type"><option value="house">House</option><option value="purpose">Flat in a purpose-built block</option><option value="converted">Flat in a converted house</option></select></label>
+      <button class="btn red" type="submit" id="licGo">Check licence</button>
+      <p class="tool-err" id="licErr" role="alert"></p>
+    </form>
+  </div>
+  <div id="licOut" class="tool-out"></div>
+</div></section>
+
+<section class="white" id="inventory"><div class="wrap">
+  <div class="inv-band rv">
+    <div><p class="kicker">DIY inventory</p><h2>Do your own check-in inventory</h2>
+      <p class="sub">Our online DIY inventory tool walks you through every room with photos and notes, and gives you a dated report to share with your tenant — free to use.</p></div>
+    <div class="btns"><a class="btn red" href="https://diy-check-in-production-6024.up.railway.app" target="_blank" rel="noopener">Start a DIY inventory ↗</a></div>
+  </div>
+  <div class="inv-band portal rv">
+    <div><p class="kicker">Landlord portal</p><h2>See your property online</h2>
+      <p class="sub">Try our landlord portal with an example property — rent statements, repairs, certificates and every document in one place.</p></div>
+    <div class="btns"><a class="btn navy" href="/landlord-portal-demo">Try the example portal →</a></div>
+  </div>
+</div></section>
