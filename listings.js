@@ -32,7 +32,7 @@ module.exports = function (app, opts) {
   const SHOW = { let: ['to let', 'new instruction', 'let agreed', 'under offer', 'short let'], sale: ['for sale', 'new instruction', 'under offer', 'coming soon', 'sold stc', 'price reduction', 'new homes'] };
   const TAKEN = /let agreed|under offer|sold stc/i;
   // A video or virtual tour we can show: YouTube, Vimeo, Matterport or Gnomen's own tours.
-  const videoLink = function (u) { u = String(u || '').trim(); return /^https:\/\/((www\.|m\.)?youtube\.com\/(watch\?|embed\/|shorts\/)|youtu\.be\/|(player\.)?vimeo\.com\/|my\.matterport\.com\/|vt\.gnomen\.co\.uk\/)/i.test(u) && !/[<>"\s]/.test(u) ? u : ''; };
+  const videoLink = function (u) { u = String(u || '').trim(); return /^https:\/\/((www\.|m\.)?youtube\.com\/(watch\?|embed\/|shorts\/)|youtu\.be\/|(player\.)?vimeo\.com\/|my\.matterport\.com\/|vt\.gnomen\.co\.uk\/|(www\.)?kuula\.co\/|(www\.)?panoramea\.co\.uk\/|(www\.)?spec\.co\/|[\w.-]*eyespy360\.com\/|[\w.-]*giraffe360\.com\/|[\w.-]*tourbuilder[\w.-]*\/)/i.test(u) && !/[<>"\s]/.test(u) ? u : ''; };
   const ytId = function (u) { const m = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(String(u || '')); return m ? m[1] : ''; };
   const vimeoId = function (u) { const m = /vimeo\.com\/(?:video\/)?(\d{6,12})/.exec(String(u || '')); return m ? m[1] : ''; };
   function parse(xml, kind) {
@@ -248,7 +248,7 @@ module.exports = function (app, opts) {
       html: cleanHtml(desc), available: rmDay(lt.letAvailableDate), furnished: String(lt.furnishType || '').replace(/^furnished$/i, 'Full'), tenure: String((d.tenure || x.tenure || {}).tenureType || '').replace(/^(\w)(\w*)$/, function (m, a, b) { return a + b.toLowerCase(); }),
       pets: false, parking: false, garden: false, features: (d.keyFeatures && d.keyFeatures.length ? d.keyFeatures : x.keyFeatures || []).map(function (f) { return String(f && typeof f === 'object' ? f.description || f.text || f.feature || '' : f || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(); }).filter(Boolean).slice(0, 20),
       lat: isFinite(lat) && lat ? lat : null, lng: isFinite(lng) && lng ? lng : null,
-      epc: ((d.epcGraphs || []).map(function (e) { return abs(e.url); }).filter(isImg))[0] || '', vtour: '',
+      epc: ((d.epcGraphs || []).map(function (e) { return abs(e.url); }).filter(isImg))[0] || '', vtour: ((d.virtualTours || []).map(function (v) { return videoLink(v && (v.url || v.link)); }).filter(Boolean))[0] || '',
       images: images, alts: alts, floorplans: (d.floorplans || []).map(function (f) { return abs(f.url); }).filter(isImg).slice(0, 6), added: String(x.firstVisibleDate || x.listingUpdate && x.listingUpdate.listingUpdateDate || '') };
     p.where = addr; p.street = p.street.replace(new RegExp('\\s*' + oc + '$', 'i'), '');
     p.headline = (p.studio ? 'Studio' : beds ? beds + ' bedroom ' + type.toLowerCase() : type) + (kind === 'let' ? ' to rent' : ' for sale');
@@ -399,7 +399,7 @@ module.exports = function (app, opts) {
   function card(p, sizes) {
     return '<a class="lcard" href="' + esc(p.url) + '" data-k="' + p.kind + '" data-beds="' + p.beds + '" data-price="' + Math.round(p.price) + '" data-taken="' + (p.taken ? 1 : 0) + '" data-added="' + esc(p.added) + '" data-q="' + esc((p.where + ' ' + p.type + ' ' + p.town).toLowerCase()) + '"' + (p.lat != null ? ' data-lat="' + p.lat.toFixed(5) + '" data-lng="' + p.lng.toFixed(5) + '"' : '') + '>' +
       '<div class="lph">' + (p.images.length ? pic(p, 0, sizes || '(max-width: 640px) 100vw, (max-width: 1060px) 50vw, 380px', p.headline + ', ' + p.where) : '<div class="noph">Photos coming soon</div>') +
-      '<span class="lst' + (p.taken ? ' taken' : '') + '">' + esc(p.status) + '</span>' + '<span class="lmedia">' + (p.vtour ? '<span class="lm-v">▶ Video</span>' : '') + (p.floorplans.length ? '<span class="lm-f">📐 Floorplan</span>' : '') + (p.images.length > 1 ? '<span>📷 ' + p.images.length + '</span>' : '') + '</span></div>' +
+      '<span class="lst' + (p.taken ? ' taken' : '') + '">' + esc(p.status) + '</span>' + '<span class="lmedia">' + (p.vtour ? '<span class="lm-v">' + (ytId(p.vtour) || vimeoId(p.vtour) ? '▶ Video' : '🎥 360° tour') + '</span>' : '') + (p.floorplans.length ? '<span class="lm-f">📐 Floorplan</span>' : '') + (p.images.length > 1 ? '<span>📷 ' + p.images.length + '</span>' : '') + '</span></div>' +
       '<div class="lbody"><div class="lprice">' + priceHtml(p) + '</div><h3>' + esc(p.headline) + '</h3><p class="lwhere">' + esc(p.where) + '</p><div class="lfacts">' + facts(p) + '</div>' +
       (availText(p) ? '<p class="lavail">' + esc(availText(p)) + '</p>' : '') + '</div></a>';
   }
@@ -479,7 +479,7 @@ module.exports = function (app, opts) {
       (n ? '<div class="gal" id="gal"><div class="gtrack" id="gTrack">' + p.images.map(function (u, i) { return '<figure>' + pic(p, i, '(max-width: 1100px) 100vw, 1100px', p.headline + ' — photo ' + (i + 1) + ' of ' + n, i === 0 ? ' fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"') + '</figure>'; }).join('') + '</div>' +
         (n > 1 ? '<button class="gbtn prev" type="button" aria-label="Previous photo">‹</button><button class="gbtn next" type="button" aria-label="Next photo">›</button><span class="gnum" id="gNum">1 / ' + n + '</span>' : '') +
         '<span class="lst' + (p.taken ? ' taken' : '') + '">' + esc(p.status) + '</span>' +
-        (p.vtour || p.floorplans.length ? '<div class="gmedia">' + (p.vtour ? '<a class="gm-v" href="#pd-video">▶ Video tour</a>' : '') + (p.floorplans.length ? '<a class="gm-f" href="#pd-floorplan">📐 Floorplan</a>' : '') + '</div>' : '') + '</div>' : '') +
+        (p.vtour || p.floorplans.length ? '<div class="gmedia">' + (p.vtour ? '<a class="gm-v" href="#pd-video">' + (ytId(p.vtour) || vimeoId(p.vtour) ? '▶ Video tour' : '🎥 360° tour') + '</a>' : '') + (p.floorplans.length ? '<a class="gm-f" href="#pd-floorplan">📐 Floorplan</a>' : '') + '</div>' : '') + '</div>' : '') +
       '<div class="pdgrid"><div class="pdmain">' +
         '<div class="lprice big">' + priceHtml(p) + '</div><h1>' + esc(p.headline) + '</h1><p class="pdwhere">📍 ' + esc(p.where) + '</p>' +
         '<div class="lfacts big">' + facts(p) + '</div>' + (availText(p) ? '<p class="lavail">' + esc(availText(p)) + '</p>' : '') +
