@@ -170,6 +170,9 @@ app.get(/^\/[\w-]+\.html$/, function (req, res, next) { if (!sendPage(req, res, 
 const noCache = function (res, p) { if (/\.html$/.test(p)) res.setHeader('Cache-Control', 'no-cache'); };
 // Website photos and logos rarely change: let browsers keep them (faster pages, better search ranking).
 app.use('/img', express.static(path.join(__dirname, 'img'), { maxAge: '30d', index: false }));
+// The app's own server code, settings and notes aren't for download — only the files pages use.
+const NOT_PUBLIC = /^\/(node_modules|cloudflare)(\/|$)|^\/(server|jobs|listings|visits|tenancy|outlook|news|updates|portaldemo)\.js$|^\/(package(-lock)?|railpack|landlord-terms)\.json$|\.md$/i;
+app.use(function (req, res, next) { if (NOT_PUBLIC.test(req.path)) return res.status(404).send('Not found'); next(); });
 app.use(express.static(__dirname, { setHeaders: noCache, index: false }));
 
 // On the offers address (e.g. offers.residentialrealtors.co.uk) the home page is the offer form.
