@@ -9671,8 +9671,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     { id: 'eicr_l', name: 'EICR — 5 or more bedrooms', desc: 'Electrical Installation Condition Report by a qualified electrician', price: '' },
     { id: 'epc', name: 'EPC (Energy Performance Certificate)', desc: 'Survey by an accredited energy assessor; valid for 10 years and lodged on the government register', price: '' }
   ];
-  const SUMUP_KEY = process.env.SUMUP_API_KEY || '', SUMUP_MC = process.env.SUMUP_MERCHANT_CODE || '', SITE = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
+  const SUMUP_KEY = process.env.SUMUP_API_KEY || ''; let SUMUP_MC = process.env.SUMUP_MERCHANT_CODE || ''; const SITE = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
   const canPay = function () { return !!(SUMUP_KEY && SUMUP_MC); }, CERT_VAT = 0.2;
+  // No merchant code set? Ask SumUp for it with the API key (once, at start-up).
+  if (SUMUP_KEY && !SUMUP_MC) setTimeout(function () {
+    fetch('https://api.sumup.com/v0.1/me', { headers: { Authorization: 'Bearer ' + SUMUP_KEY }, signal: AbortSignal.timeout(15000) }).then(function (r) { return r.json(); })
+      .then(function (d) { const mc = d && d.merchant_profile && d.merchant_profile.merchant_code; if (mc) { SUMUP_MC = String(mc); console.log('SumUp connected: merchant ' + SUMUP_MC); } else console.error('SumUp: couldn’t read the merchant code —', (d && (d.message || d.error_code)) || 'no profile'); })
+      .catch(function (e) { console.error('SumUp merchant lookup failed:', e.message); });
+  }, 4000);
   async function certServices(p) {
     const v = ((await p.query("SELECT value FROM app_settings WHERE key = 'cert_services'")).rows[0] || {}).value || {};
     const items = Array.isArray(v.items) && v.items.length ? v.items : CERT_DEFAULTS;
