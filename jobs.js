@@ -9664,8 +9664,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     { id: 'eicr_s', name: 'EICR — studio to 2 bedrooms', desc: 'Electrical Installation Condition Report by a qualified electrician', price: '' },
     { id: 'eicr_m', name: 'EICR — 3 to 4 bedrooms', desc: 'Electrical Installation Condition Report by a qualified electrician', price: '' },
     { id: 'eicr_l', name: 'EICR — 5 or more bedrooms', desc: 'Electrical Installation Condition Report by a qualified electrician', price: '' },
-    { id: 'epc', name: 'EPC (Energy Performance Certificate)', desc: 'Survey by an accredited energy assessor; valid for 10 years and lodged on the government register', price: '' }
+    { id: 'epc', name: 'EPC (Energy Performance Certificate)', desc: 'Survey by an accredited energy assessor; valid for 10 years and lodged on the government register', price: '' },
+    { id: 'licence', name: 'Property licence application', desc: 'We prepare and submit your selective or HMO licence application and deal with the council until it’s granted (council fee not included)', price: '' }
   ];
+  const CERT_NEW = ['licence'];   // services added later: offered to offices that already saved their list
   const SUMUP_KEY = process.env.SUMUP_API_KEY || ''; let SUMUP_MC = process.env.SUMUP_MERCHANT_CODE || ''; const SITE = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
   const canPay = function () { return !!(SUMUP_KEY && SUMUP_MC); }, CERT_VAT = 0.2;
   // No merchant code set? Ask SumUp for it with the API key (once, at start-up).
@@ -9676,7 +9678,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }, 4000);
   async function certServices(p) {
     const v = ((await p.query("SELECT value FROM app_settings WHERE key = 'cert_services'")).rows[0] || {}).value || {};
-    const items = Array.isArray(v.items) && v.items.length ? v.items : CERT_DEFAULTS;
+    let items = Array.isArray(v.items) && v.items.length ? v.items : CERT_DEFAULTS;
+    if (items !== CERT_DEFAULTS) CERT_NEW.forEach(function (id) { if (!items.some(function (x) { return x.id === id; }) && (v.removed || []).indexOf(id) === -1) items = items.concat(CERT_DEFAULTS.filter(function (x) { return x.id === id; })); });
     return items.map(function (x) { const n = Math.round(parseFloat(String(x.price || '').replace(/[£,\s]/g, '')) * 100) / 100; return { id: str(x.id, 30), name: str(x.name, 120), desc: str(x.desc, 300) || '', price: isFinite(n) && n > 0 ? n : null, contractor: str(x.contractor, 120) || '' }; }).filter(function (x) { return x.id && x.name; });
   }
   async function sumup(method, path, body) {
@@ -9707,12 +9710,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const cons = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY id')).rows, ids = [];
     const pref = d.dates && d.dates.length ? d.dates.join(' or ') : 'any date';
     for (const it of d.items || []) {
-      const kind = /^gas/.test(it.id) ? 'gas' : /^eicr/.test(it.id) ? 'eicr' : /^epc/.test(it.id) ? 'epc' : '';
-      const pick = (it.contractor && cons.find(function (c) { return c.name === it.contractor; })) || (kind && CERT_TRADE[kind].reduce(function (hit, re) { return hit || cons.find(function (c) { return re.test(c.trade || ''); }); }, null)) || null;
-      const cat = kind === 'gas' ? 'Gas safety certificate' : kind === 'eicr' ? 'EICR' : kind === 'epc' ? 'EPC' : 'Certificate';
+      const kind = /^gas/.test(it.id) ? 'gas' : /^eicr/.test(it.id) ? 'eicr' : /^epc/.test(it.id) ? 'epc' : /^licen/.test(it.id) ? 'licence' : '';
+      const pick = (it.contractor && cons.find(function (c) { return c.name === it.contractor; })) || (kind && CERT_TRADE[kind] && CERT_TRADE[kind].reduce(function (hit, re) { return hit || cons.find(function (c) { return re.test(c.trade || ''); }); }, null)) || null;
+      const cat = kind === 'gas' ? 'Gas safety certificate' : kind === 'eicr' ? 'EICR' : kind === 'epc' ? 'EPC' : kind === 'licence' ? 'Property licence application' : 'Certificate';
       const access = d.access === 'tenant' ? 'Please contact the tenant directly to arrange access: ' + ([d.tenant_name, d.tenant_phone, d.tenant_email].filter(Boolean).join(' · ') || 'details to follow') + '.'
         : d.access === 'keys' ? 'Keys: collect from our office / key safe — call us to arrange.' : 'The landlord will let you in — please call them to arrange: ' + row.name + ' · ' + (row.phone || row.email) + '.';
-      const desc = it.name + ' booked by the landlord on our website' + (d.paid_at ? ' (paid online)' : '') + '.\nPreferred: ' + pref + '.\n' + access + '\nPlease email the certificate to us once done.' + (d.message ? '\nLandlord’s notes: ' + d.message : '');
+      const desc = it.name + ' booked by the landlord on our website' + (d.paid_at ? ' (paid online)' : '') + '.\nPreferred: ' + pref + '.\n' + access + (kind === 'licence' ? '\nPrepare and submit the licence application; ask the landlord for anything the council needs.' : '\nPlease email the certificate to us once done.') + (d.message ? '\nLandlord’s notes: ' + d.message : '');
       const due = d.dates_iso && d.dates_iso[0] ? new Date(d.dates_iso[0] + 'T18:00:00Z') : new Date(Date.now() + 7 * 86400000);
       const r = await p.query(`INSERT INTO jobs (status, urgency, due_at, source, property_address, category, affected, description, assigned_to, tenant_name, tenant_phone, tenant_email, landlord_name, landlord_email, landlord_phone)
         VALUES ($1, 'Routine', $2, 'Other', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
@@ -9793,7 +9796,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.put('/api/admin/cert-services', withDb(async function (p, req, res) {
     if (req.role === 'offers' && !(req.user && req.user.role === 'offers_admin')) return res.status(403).json({ ok: false, error: 'managers-only' });
     const items = (Array.isArray((req.body || {}).items) ? req.body.items : []).slice(0, 20).map(function (x, i) { return { id: str(x.id, 30) || 'svc' + (i + 1), name: str(x.name, 120), desc: str(x.desc, 300) || '', price: str(String(x.price || ''), 20) || '', contractor: str(x.contractor, 120) || '' }; }).filter(function (x) { return x.name; });
-    await p.query("INSERT INTO app_settings (key, value) VALUES ('cert_services', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ items: items, updated_at: new Date().toISOString() })]);
+    const removed = CERT_DEFAULTS.map(function (x) { return x.id; }).filter(function (id) { return !items.some(function (x) { return x.id === id; }); });
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('cert_services', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ items: items, removed: removed, updated_at: new Date().toISOString() })]);
     res.json({ ok: true, items: await certServices(p) });
   }));
   // Website contact form: kept with the valuation requests (marked as an enquiry) and sent to the office.
