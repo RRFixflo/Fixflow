@@ -287,7 +287,7 @@
     var ps = ((d && d.items) || []).filter(function (i) { return i.price && /^(gas|eicr|epc)/.test(i.id); }).map(function (i) { return i.price; }); if (!ps.length) return;
     xf.textContent = 'From £' + Math.min.apply(null, ps).toLocaleString('en-GB') + ' + VAT'; xf.hidden = false;
   }).catch(function () {});
-  // Service pages (gas safety, EICR, EPC): the live price from the office's price list.
+  // Service pages (Gas Safety, EICR, EPC): the live price from the office's price list.
   var svp = document.querySelector('[data-svc-price]');
   if (svp) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
     var ids = svp.getAttribute('data-svc-price').split(','), list = ((d && d.items) || []).filter(function (i) { return ids.indexOf(i.id) !== -1 && i.price; });
@@ -296,7 +296,7 @@
     svp.hidden = false;
   }).catch(function () {});
 
-  // Book a gas safety certificate or EICR: pick services, see the total, book — then pay on SumUp.
+  // Book a Gas Safety certificate or EICR: pick services, see the total, book — then pay on SumUp.
   var cb = document.getElementById('cbForm');
   if (cb) {
     var cbItems = [], cbPay = false, money = function (n) { return '£' + Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
@@ -312,7 +312,7 @@
     fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
       cbItems = (d && d.items) || []; cbPay = !!(d && d.pay); if (d && typeof d.vat === 'number') cbVat = d.vat;
       var box = document.getElementById('cbItems');
-      if (!cbItems.length) { box.innerHTML = '<div class="cb-none"><b>Online booking is coming soon.</b> Call us on <a href="tel:02070968131">0207 096 8131</a> or <a href="/contact?topic=Landlord&message=' + encodeURIComponent('I’d like to book a gas safety certificate / EICR.') + '">send us a message</a> and we’ll book it for you.</div>'; cbGo.hidden = true; return; }
+      if (!cbItems.length) { box.innerHTML = '<div class="cb-none"><b>Online booking is coming soon.</b> Call us on <a href="tel:02070968131">0207 096 8131</a> or <a href="/contact?topic=Landlord&message=' + encodeURIComponent('I’d like to book a Gas Safety certificate / EICR.') + '">send us a message</a> and we’ll book it for you.</div>'; cbGo.hidden = true; return; }
       // Services named "EICR — studio to 2 bedrooms", "EICR — 3 to 4 bedrooms"… become one card with a size dropdown.
       var groups = [], byName = {};
       cbItems.forEach(function (i) { var m = /^(.+?)\s+[—–-]\s+(.+)$/.exec(i.name), key = m ? m[1] : i.id;

@@ -9682,7 +9682,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // page and the booking is marked paid when SumUp confirms it; otherwise the office takes payment.
   // Bookings are kept with the website leads (kind 'cert').
   const CERT_DEFAULTS = [
-    { id: 'gas', name: 'Gas safety certificate (CP12)', desc: 'Annual gas safety check of the boiler and gas appliances by a Gas Safe registered engineer', price: '' },
+    { id: 'gas', name: 'Gas Safety certificate (CP12)', desc: 'Annual Gas Safety check of the boiler and gas appliances by a Gas Safe registered engineer', price: '' },
     { id: 'eicr_s', name: 'EICR — studio to 2 bedrooms', desc: 'Electrical Installation Condition Report by a qualified electrician', price: '' },
     { id: 'eicr_m', name: 'EICR — 3 to 4 bedrooms', desc: 'Electrical Installation Condition Report by a qualified electrician', price: '' },
     { id: 'eicr_l', name: 'EICR — 5 or more bedrooms', desc: 'Electrical Installation Condition Report by a qualified electrician', price: '' },
@@ -9703,7 +9703,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const v = ((await p.query("SELECT value FROM app_settings WHERE key = 'cert_services'")).rows[0] || {}).value || {};
     let items = Array.isArray(v.items) && v.items.length ? v.items : CERT_DEFAULTS;
     if (items !== CERT_DEFAULTS) CERT_NEW.forEach(function (id) { if (!items.some(function (x) { return x.id === id; }) && (v.removed || []).indexOf(id) === -1) items = items.concat(CERT_DEFAULTS.filter(function (x) { return x.id === id; })); });
-    return items.map(function (x) { const raw = String(x.price == null ? '' : x.price).trim(), n = /^free$/i.test(raw) ? 0 : raw === '' ? NaN : Math.round(parseFloat(raw.replace(/[£,\s]/g, '')) * 100) / 100; return { id: str(x.id, 30), name: str(x.name, 120), desc: str(x.desc, 300) || '', price: isFinite(n) && n >= 0 ? n : null, contractor: str(x.contractor, 120) || '' }; }).filter(function (x) { return x.id && x.name; });
+    return items.map(function (x) { const raw = String(x.price == null ? '' : x.price).trim(), n = /^free$/i.test(raw) ? 0 : raw === '' ? NaN : Math.round(parseFloat(raw.replace(/[£,\s]/g, '')) * 100) / 100; return { id: str(x.id, 30), name: str(x.name, 120).replace(/\bgas safety\b/gi, 'Gas Safety'), desc: str(x.desc, 300) || '', price: isFinite(n) && n >= 0 ? n : null, contractor: str(x.contractor, 120) || '' }; }).filter(function (x) { return x.id && x.name; });
   }
   async function sumup(method, path, body) {
     const r = await fetch('https://api.sumup.com' + path, { method: method, headers: { Authorization: 'Bearer ' + SUMUP_KEY, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });
@@ -9736,7 +9736,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (/^diy/.test(it.id)) continue;   // the DIY inventory is an access link, not a visit
       const kind = /^gas/.test(it.id) ? 'gas' : /^eicr/.test(it.id) ? 'eicr' : /^epc/.test(it.id) ? 'epc' : /^licen/.test(it.id) ? 'licence' : '';
       const pick = (it.contractor && cons.find(function (c) { return c.name === it.contractor; })) || (kind && CERT_TRADE[kind] && CERT_TRADE[kind].reduce(function (hit, re) { return hit || cons.find(function (c) { return re.test(c.trade || ''); }); }, null)) || null;
-      const cat = kind === 'gas' ? 'Gas safety certificate' : kind === 'eicr' ? 'EICR' : kind === 'epc' ? 'EPC' : kind === 'licence' ? 'Property licence application' : 'Certificate';
+      const cat = kind === 'gas' ? 'Gas Safety certificate' : kind === 'eicr' ? 'EICR' : kind === 'epc' ? 'EPC' : kind === 'licence' ? 'Property licence application' : 'Certificate';
       const access = d.access === 'tenant' ? 'Please contact the tenant directly to arrange access: ' + ([d.tenant_name, d.tenant_phone, d.tenant_email].filter(Boolean).join(' · ') || 'details to follow') + '.'
         : d.access === 'keys' ? 'Keys: collect from our office / key safe — call us to arrange.' : 'The landlord will let you in — please call them to arrange: ' + row.name + ' · ' + (row.phone || row.email) + '.';
       const desc = it.name + ' booked by the landlord on our website' + (d.paid_at ? ' (paid online)' : '') + '.\nPreferred: ' + pref + '.\n' + access + (kind === 'licence' ? '\nPrepare and submit the licence application; ask the landlord for anything the council needs.' : '\nPlease email the certificate to us once done.') + (d.message ? '\nLandlord’s notes: ' + d.message : '');
@@ -9751,7 +9751,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     d.jobs = ids; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]); row.data = d;
   }
   // ---------- Reminders before a certificate we sold runs out ----------
-  // Counted from the booking (gas safety yearly, EICR every 5 years, EPC every 10), a month ahead.
+  // Counted from the booking (Gas Safety yearly, EICR every 5 years, EPC every 10), a month ahead.
   const CERT_LIFE = { gas: 12, eicr: 60, epc: 120 };
   async function certReminders() {
     const p = await db(); if (!p || !canEmail() || !sendEmail) return;
@@ -9763,7 +9763,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         const k = /^gas/.test(it.id) ? 'gas' : /^eicr/.test(it.id) ? 'eicr' : /^epc/.test(it.id) ? 'epc' : ''; if (!k || done[k]) continue;
         const start = new Date(d.paid_at || row.created_at), due = new Date(start); due.setMonth(due.getMonth() + CERT_LIFE[k]);
         const remind = new Date(due.getTime() - 30 * 86400000); if (remind > new Date()) continue;
-        const what = { gas: 'gas safety certificate', eicr: 'EICR (electrical report)', epc: 'EPC' }[k], page = { gas: '/gas-safety-certificate', eicr: '/eicr', epc: '/epc' }[k];
+        const what = { gas: 'Gas Safety certificate', eicr: 'EICR (electrical report)', epc: 'EPC' }[k], page = { gas: '/gas-safety-certificate', eicr: '/eicr', epc: '/epc' }[k];
         await sendEmail({ to: row.email, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Reminder: your ' + what + ' is due for renewal — ' + String(row.address).split(',').slice(0, 2).join(','),
           text: 'Dear ' + String(row.name).split(' ')[0] + ',\n\nThe ' + what + ' we arranged for ' + row.address + ' is due for renewal around ' + due.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + '.\n\nYou can book the renewal online in a couple of minutes:\n' + SITE + page + '\n\nOr just reply to this email and we’ll arrange it for you.\n\nResidential Realtors\n0207 096 8131' }).catch(function (e) { console.error('Certificate reminder failed:', e.message); });
         done[k] = new Date().toISOString(); changed = true;
