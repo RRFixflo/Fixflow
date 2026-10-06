@@ -28,9 +28,40 @@
     }).catch(function () { go.disabled = false; go.textContent = 'Request my free valuation →'; err.textContent = 'Couldn’t connect — please try again or call 0207 096 8131.'; });
   });
 
+  // Property list: filter and sort the cards on the page.
+  var lf = document.getElementById('lFilter'), lg = document.getElementById('lGrid');
+  if (lf && lg) {
+    var cards = Array.prototype.slice.call(lg.children), cnt = document.getElementById('lCount'), none = document.getElementById('lNone');
+    var applyF = function () {
+      var q = String(lf.elements.q.value || '').trim().toLowerCase().replace(/\s+/g, ' '), beds = lf.elements.beds.value, max = +lf.elements.max.value || 0, all = lf.elements.all.checked, sort = lf.elements.sort.value, shown = 0;
+      cards.slice().sort(function (a, b) { return sort === 'low' ? a.dataset.price - b.dataset.price : sort === 'high' ? b.dataset.price - a.dataset.price : (a.dataset.taken - b.dataset.taken) || String(b.dataset.added).localeCompare(String(a.dataset.added)); })
+        .forEach(function (c) { lg.appendChild(c);
+          var ok = (!q || c.dataset.q.indexOf(q) !== -1 || c.dataset.q.replace(/\s/g, '').indexOf(q.replace(/\s/g, '')) !== -1) && (beds === '' || +c.dataset.beds >= +beds) && (!max || +c.dataset.price <= max) && (all || c.dataset.taken !== '1');
+          c.hidden = !ok; if (ok) shown++; });
+      cnt.textContent = shown + (shown === 1 ? ' property' : ' properties'); none.hidden = shown > 0;
+      try { history.replaceState(null, '', location.pathname + (q || beds || max || !all || sort !== 'new' ? '?' + new URLSearchParams({ q: q, beds: beds, max: max || '', all: all ? '' : '0', sort: sort === 'new' ? '' : sort }).toString().replace(/[^&=]+=(&|$)/g, '').replace(/&$/, '') : '')); } catch (e) {}
+    };
+    try { var sp = new URLSearchParams(location.search); ['q', 'beds', 'max', 'sort'].forEach(function (k) { if (sp.get(k)) lf.elements[k].value = sp.get(k); }); if (sp.get('all') === '0') lf.elements.all.checked = false; } catch (e) {}
+    lf.addEventListener('input', applyF); lf.addEventListener('change', applyF); applyF();
+  }
+
+  // Property page: photo gallery (swipe on phones, arrows on computers).
+  var gt = document.getElementById('gTrack');
+  if (gt) {
+    var gn = document.getElementById('gNum'), total = gt.children.length, at = function () { return Math.round(gt.scrollLeft / gt.clientWidth); };
+    gt.addEventListener('scroll', function () { if (gn) gn.textContent = (at() + 1) + ' / ' + total; }, { passive: true });
+    var go = function (d) { var i = (at() + d + total) % total; gt.scrollTo({ left: i * gt.clientWidth, behavior: 'smooth' }); };
+    var pb = document.querySelector('.gbtn.prev'), nb = document.querySelector('.gbtn.next');
+    if (pb) pb.addEventListener('click', function () { go(-1); }); if (nb) nb.addEventListener('click', function () { go(1); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'ArrowLeft') go(-1); if (e.key === 'ArrowRight') go(1); });
+  }
+
   // Contact page: ?topic=Buying (etc.) picks the topic.
   var tp = /[?&]topic=([^&]+)/.exec(location.search), tsel = document.querySelector('#eForm select[name=topic]');
   if (tp && tsel) { var want = decodeURIComponent(tp[1].replace(/\+/g, ' ')); Array.prototype.forEach.call(tsel.options, function (o) { if (o.text === want) tsel.value = o.value || o.text; }); }
+  // From a property page: the address and a ready-written viewing request.
+  try { var cq = new URLSearchParams(location.search), ef = document.getElementById('eForm');
+    if (ef && cq.get('address')) { ef.elements.address.value = cq.get('address'); if (!ef.elements.message.value) ef.elements.message.value = 'I’d like to book a viewing of ' + cq.get('address') + (cq.get('ref') ? ' (ref. ' + cq.get('ref') + ')' : '') + '. '; } } catch (e) {}
 
   // Enquiry form (Contact page): saved in Fixflow and sent to the office.
   var form = document.getElementById('eForm');
