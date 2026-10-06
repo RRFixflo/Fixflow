@@ -341,6 +341,7 @@ function heroExperts(req) {
       '<div class="xd-phone" aria-hidden="true"><i class="xd-notch"></i><div class="xd-row"><i class="xd-ph a"></i><span>Kitchen</span><b>✓</b></div><div class="xd-row"><i class="xd-ph b"></i><span>Living room</span><b>✓</b></div><div class="xd-row"><i class="xd-ph c"></i><span>Bedroom</span><em>📷</em></div></div>' +
       '<span class="xd-price" data-cert-price="diy"><b>£30</b> + VAT</span></div>' +
       '<div class="xd-body"><h3>DIY inventory</h3><p>Do your own check-in report on your phone, room by room with photos, and download a professional PDF.</p>' +
+      '<div class="xd-vs"><span>💡 A fraction of the cost of an inventory clerk</span><small>Clerks typically charge £150–£200 a visit</small></div>' +
       '<div class="xd-pills"><a href="/diy-inventory#example">👀 See an example</a><a href="/diy-inventory">How it works</a></div>' +
       '<a class="btn red xd-go" href="/book-certificate?service=diy">Buy &amp; start now →</a></div></div>' +
     '</div>';
