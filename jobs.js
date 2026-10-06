@@ -6864,6 +6864,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: topic, click: base ? base + '/staff#offers' : undefined }, body)), signal: AbortSignal.timeout(8000) });
     } catch (err) { console.error('Staff offer alert failed:', err.message); }
   }
+  // A phone alert for everyone: the office's channel and the staff channel (opening the given page).
+  async function teamAlert(body, hash) {
+    ntfy(Object.assign({ click: PUBLIC_URL ? PUBLIC_URL + '/admin' + (hash || '') : undefined }, body)).catch(function () {});
+    try {
+      const topic = await offersTopic(); if (!topic || typeof fetch !== 'function') return;
+      const base = OFFER_ORIGIN || PUBLIC_URL;
+      await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ topic: topic, click: base ? base + '/staff' + (hash || '') : undefined }, body)), signal: AbortSignal.timeout(8000) });
+    } catch (err) { console.error('Staff alert failed:', err.message); }
+  }
   // Email every active staff member who has an email address (each with the sign-in link that
   // suits their access). Kept in Sent emails as sent automatically.
   async function staffEmailAll(subject, textFor, hash) {
@@ -7018,7 +7027,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.post('/api/admin/offer-alerts/test', async function (req, res) {
     const topic = await offersTopic().catch(function () { return ''; }); if (!topic || typeof fetch !== 'function') return res.status(503).json({ ok: false });
     const who = req.user && req.user.name ? req.user.name : 'the team';
-    try { const r = await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: topic, title: 'Fixflow alerts are working', message: 'Test sent by ' + who + '. You\u2019ll get alerts here for new offers, deposits and landlord forms.', tags: ['white_check_mark'] }), signal: AbortSignal.timeout(8000) }); res.json({ ok: r.ok }); }
+    try { const r = await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: topic, title: 'Fixflow alerts are working', message: 'Test sent by ' + who + '. You\u2019ll get alerts here for new offers, deposits, landlord forms and viewing requests.', tags: ['white_check_mark'] }), signal: AbortSignal.timeout(8000) }); res.json({ ok: r.ok }); }
     catch (err) { res.status(502).json({ ok: false }); }
   });
   // Ask a landlord to send us an updated certificate, or let us arrange it.
@@ -9609,7 +9618,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const data = { kind: 'viewing', listing: kind, ref: ref, url: url, slots: slots, flexible: !!b.flexible, message: msg, people: str(b.people, 20) || '', move: str(b.move, 40) || '' };
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, addr, JSON.stringify(data)]);
     const times = slots.map(slotText);
-    ntfy({ title: '🗓 Viewing request: ' + addr.split(',').slice(0, 2).join(','), message: name + ' · ' + phone + (times.length ? ' · ' + times.join(' / ') : ' · any time'), tags: ['calendar'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#contacts' : undefined }).catch(function () {});
+    // Every member of staff hears about it: a phone alert and an email each.
+    teamAlert({ title: '🗓 Viewing request: ' + addr.split(',').slice(0, 2).join(','), message: name + ' · ' + phone + (times.length ? ' · ' + times.join(' / ') : ' · any time') + ' — confirm a time in Website leads.', tags: ['calendar'] }, '#leads').catch(function () {});
+    staffEmailAll('🗓 Viewing request - ' + addr.split(',').slice(0, 2).join(','), function (link) {
+      return 'Someone has asked to view ' + addr + (ref ? ' (ref ' + ref + ')' : '') + ' on the website.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') +
+        (data.people ? '\nPeople: ' + data.people : '') + (data.move ? '\nMove / buy: ' + data.move : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Website leads (they’re emailed straight away):\n' + link;
+    }, '#leads').catch(function (e) { console.error('Viewing request staff emails failed:', e.message); });
     if (canEmail() && sendEmail) {
       sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Viewing request — ' + addr, text: 'Someone has asked to view a property on the website.\n\nProperty: ' + addr + (ref ? ' (ref ' + ref + ')' : '') + '\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email +
         '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') + (data.people ? '\nPeople: ' + data.people : '') + (data.move ? '\nMove / buy: ' + data.move : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Fixflow under Contacts — they’re emailed straight away.' }).catch(function () {});
@@ -9739,6 +9753,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       emailed = !!(r && r.ok !== false);
     }
     await crmLog(p, 'vr:' + x.id, 'Viewing confirmed for ' + slotText(b.at) + (emailed ? ' · confirmation emailed' : ''), req);
+    teamAlert({ title: '✅ Viewing booked: ' + slotText(b.at), message: String(x.address).split(',').slice(0, 2).join(',') + ' · ' + x.name + (x.phone ? ' · ' + x.phone : '') + ' — booked by ' + (req.user ? req.user.name : 'the office') + '.', tags: ['white_check_mark'] }, '#leads').catch(function () {});
     res.json({ ok: true, emailed: emailed, when: slotText(b.at) });
   }));
   // ---------- Valuation letters ----------
