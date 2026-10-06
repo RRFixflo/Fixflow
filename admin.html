@@ -394,6 +394,10 @@
   .tcy-row { display: grid; grid-template-columns: minmax(0,1fr) 110px 170px 130px 20px; gap: 14px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 13px 16px; cursor: pointer; color: inherit; font: inherit; }
   .tcy-locked input:disabled, .tcy-locked select:disabled, .tcy-locked textarea:disabled { background: var(--hover, #F5F6F8); color: var(--ink); opacity: 1; -webkit-text-fill-color: var(--ink); cursor: default; }
   .tcy-locked button:disabled { opacity: .45; cursor: default; }
+  /* Locked tenancy: text stays selectable, and a click copies it. */
+  .tcy-locked .tcy-ro { background: var(--hover, #F5F6F8); cursor: copy; }
+  .tcy-locked .tcy-ro:hover { box-shadow: 0 0 0 2px rgba(37,99,235,.25); }
+  .tcy-locked .tcy-ro:focus { outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,.45); }
   .cert-up { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin: 0 0 12px; padding: 14px 16px; border: 1.5px dashed var(--line); border-radius: 14px; background: var(--panel); cursor: pointer; }
   /* Home reminders: one box that can be minimised to a row of chips. */
   small.fee-vat { font-size: .78rem; color: var(--ink-soft); }
@@ -13484,14 +13488,44 @@
   // A saved tenancy is read-only until "Edit tenancy": every box and button is
   // locked except the documents and emails.
   var tcyLocked = false;
+  // A locked tenancy: one click copies a box (dates as dd/mm/yyyy).
+  document.addEventListener('click', function(e){
+    var el = e.target.closest && e.target.closest('.tcy-locked .tcy-ro'); if (!el || !el.value) return;
+    var v = el.type === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(el.value) ? el.value.split('-').reverse().join('/') : el.value;
+    if (el.select && el.type !== 'date' && el.type !== 'email') try { el.select(); } catch (x) {}
+    copyText(v).then(function(){ toast('✓ Copied: ' + (v.length > 60 ? v.slice(0, 57) + '…' : v)); }, function(){});
+  });
+  // Every detail of a tenancy as plain text, ready to paste.
+  function tcyDetailsText(d){
+    var l = d.landlord || {}, dmy = function(v){ return /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? longDay(v) : ''; }, money = function(v){ return num(v) ? gbp(num(v)) : ''; };
+    var lines = [], add = function(k, v){ if (v !== '' && v != null && v !== false) lines.push(k + ': ' + v); };
+    add('Property', d.address); add('Service', d.service); add('Negotiator', d.negotiator);
+    add('Start date', dmy(d.start_date)); add('Term', d.term_months ? d.term_months + ' months' : ''); add('Break clause', num(d.break_months) ? d.break_months + ' months' : '');
+    add('Rent', money(d.rent_pcm) ? money(d.rent_pcm) + ' a month' : ''); add('Deposit', money(d.deposit)); add('Deposit registered by', d.deposit_by === 'landlord' ? 'Landlord' : d.deposit_by ? 'Us' : ''); add('Deposit scheme', d.deposit_scheme);
+    add('Holding deposit', money(d.holding)); add('First rent and deposit due', dmy(d.move_in_due)); add('Standing order starts', dmy(d.so_start)); add('Payment reference', d.pay_ref);
+    add('Check-in', dmy(d.checkin_date) ? dmy(d.checkin_date) + (d.checkin_time ? ' at ' + d.checkin_time : '') : '');
+    var people = function(title, list){ (list || []).filter(function(p){ return p && (p.name || p.email || p.phone); }).forEach(function(p, i){ lines.push(''); lines.push(title + (list.length > 1 ? ' ' + (i + 1) : '')); add('Name', p.name); add('Email', p.email); add('Phone', p.phone); }); };
+    people('Tenant', d.tenants); people('Guarantor', d.guarantors);
+    if (l.name || l.email || l.phone) { lines.push(''); lines.push('Landlord'); add('Name', l.name); add('Email', l.email); add('Phone', l.phone);
+      add('Address', [l.line1, l.line2, l.postcode, l.country].filter(Boolean).join(', ')); add('Pay to', d.pay_to); }
+    if (d.notes) { lines.push(''); add('Notes', d.notes); }
+    return lines.join('\n');
+  }
   function tcyLock(){
     var form = $('tcyDetail').querySelector('.tcy-form'); if (!form) return;
     form.classList.add('tcy-locked');
-    form.querySelectorAll('input, select, textarea, button').forEach(function(el){ if (!el.closest('.tcy-docs') && !el.closest('.tcy-stmts') && !el.dataset.owe && !el.hasAttribute('data-keep')) el.disabled = true; });
+    form.querySelectorAll('input, select, textarea, button').forEach(function(el){
+      if (el.closest('.tcy-docs') || el.closest('.tcy-stmts') || el.dataset.owe || el.hasAttribute('data-keep')) return;
+      // Text stays selectable and copyable (read-only, not disabled); choices and buttons are switched off.
+      if ((el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(checkbox|radio|file|hidden|button|submit)$/i.test(el.type))) && !el.closest('#tfCerts')) { el.readOnly = true; el.classList.add('tcy-ro'); el.title = 'Click to copy'; }
+      else el.disabled = true;
+    });
     var save = form.querySelector('.tcy-save'); if (save) save.hidden = true;
     var del = $('tfDelete'); if (del) del.closest('.card').hidden = true;
     var head = $('tcyDetail').querySelector('.prop-head');
+    if (head && !$('tfCopyAll')) head.insertAdjacentHTML('beforeend', '<button type="button" class="btn" id="tfCopyAll">📋 Copy all details</button>');
     if (head && !$('tfEdit')) head.insertAdjacentHTML('beforeend', '<button type="button" class="btn primary" id="tfEdit">✎ Edit tenancy</button>');
+    $('tfCopyAll').addEventListener('click', function(){ copyText(tcyDetailsText(tcyDraft)).then(function(){ toast('✓ All tenancy details copied'); }, function(){ window.prompt('Copy the tenancy details:', tcyDetailsText(tcyDraft)); }); });
     if (!$('tfLockNote')) form.insertAdjacentHTML('afterbegin', '<div class="banner" id="tfLockNote" style="margin:0">🔒 This tenancy is saved and locked. Click <b>Edit tenancy</b> to change it. You can still add payments received.</div>');
     // Payments received can be added while locked; removing one needs "Edit tenancy".
     var addRc = $('tfAddReceipt');
