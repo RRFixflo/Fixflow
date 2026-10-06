@@ -186,9 +186,10 @@ app.get('/offer', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer
 // Each page's content is in site/<name>.html; every page shares the same menu and footer.
 const SITE_URL = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
 const SITE_PAGES = {
-  home: { paths: ['/home'], canon: '/', title: 'Letting Agents & Property Management in London SE1 | Residential Realtors', desc: 'ARLA Propertymark letting agent in London SE1. Free rental valuations, tenant find, rent collection and full property management — with Client Money Protection and online repair reporting.', img: 'home-living' },
+  home: { paths: ['/home'], canon: '/', title: 'Estate Agents & Letting Agents in London SE1 | Residential Realtors', desc: 'London estate and letting agents in SE1. Free sales and rental valuations, property sales, tenant find, rent collection and full management — ARLA Propertymark protected with Client Money Protection.', img: 'home-living' },
+  sales: { paths: ['/sales', '/selling', '/sell'], canon: '/sales', crumb: 'Sales', title: 'Sell Your Home in London: Free Sales Valuation | Residential Realtors Estate Agents', desc: 'Selling your home in London? Free, no-obligation sales valuation, professional marketing, accompanied viewings and sale progression from Residential Realtors, SE1.', img: 'home-living' },
   tenants: { paths: ['/tenants'], canon: '/tenants', crumb: 'Tenants', title: 'Renting in London: Report a Repair, Tenant Fees & Offers | Residential Realtors', desc: 'Report a repair online 24/7, make an offer and see our tenant fees. Renting with Residential Realtors, London SE1 — no hidden fees.', img: 'family' },
-  about: { paths: ['/about', '/about-us'], canon: '/about', crumb: 'About us', title: 'About Residential Realtors | ARLA Propertymark Letting Agent, London SE1', desc: 'A modern London letting and property management agency at 28-30 Harper Road, SE1. ARLA Propertymark member with Client Money Protection and The Property Ombudsman redress.', img: 'taxis' },
+  about: { paths: ['/about', '/about-us'], canon: '/about', crumb: 'About us', title: 'About Residential Realtors | ARLA Propertymark Letting Agent, London SE1', desc: 'A modern London letting and property management agency at 28-30 Harper Road, SE1. ARLA Propertymark member with Client Money Protection and The Property Ombudsman redress.', img: 'taxis', imgW: 1860 },
   contact: { paths: ['/contact'], canon: '/contact', crumb: 'Contact', title: 'Contact Residential Realtors | Letting Agent, Harper Road, London SE1 6AD', desc: 'Call 0207 096 8131, email or message Residential Realtors — 28-30 Harper Road, London SE1 6AD.', img: 'home-living' },
   privacy: { paths: ['/privacy'], canon: '/privacy', crumb: 'Privacy', title: 'Privacy notice | Residential Realtors', desc: 'How Residential Realtors uses the details you give us.' },
   landlords: { canon: '/landlords', crumb: 'Landlords', title: 'Landlords: Free Rental Valuation & Property Management in London | Residential Realtors', desc: 'Let your London property with Residential Realtors: tenant find, rent collection or full management, free rental valuations and free buy-to-let calculators.' }
@@ -198,7 +199,7 @@ const siteEsc = function (v) { return String(v).replace(/[&<>"]/g, function (c) 
 const SITE_ORG = { '@type': 'RealEstateAgent', '@id': SITE_URL + '/#agency', name: 'Residential Realtors', legalName: 'Estallion Investments Ltd', url: SITE_URL + '/',
   logo: SITE_URL + '/logo.png', image: SITE_URL + '/img/og-image.jpg', telephone: '+44 20 7096 8131', email: 'info@residentialrealtors.co.uk',
   address: { '@type': 'PostalAddress', streetAddress: '28-30 Harper Road', addressLocality: 'London', postalCode: 'SE1 6AD', addressCountry: 'GB' },
-  areaServed: { '@type': 'City', name: 'London' }, knowsAbout: ['Lettings', 'Property management', 'Rent collection', 'Tenant find', 'Rental valuations'],
+  areaServed: { '@type': 'City', name: 'London' }, knowsAbout: ['Property sales', 'Lettings', 'Property management', 'Rent collection', 'Tenant find', 'Sales valuations', 'Rental valuations'],
   identifier: { '@type': 'PropertyValue', propertyID: 'Companies House', value: '08760284' },
   memberOf: [{ '@type': 'Organization', name: 'ARLA Propertymark', url: 'https://www.propertymark.co.uk' }, { '@type': 'Organization', name: 'The Property Ombudsman', url: 'https://www.tpos.co.uk' }] };
 // <head>: title, description, canonical address, social sharing cards and structured data.
@@ -216,24 +217,24 @@ function siteHead(name, body) {
     '<meta property="og:image" content="' + img + '"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="Residential Realtors branded London taxis">' +
     '<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="' + siteEsc(pg.title) + '"><meta name="twitter:description" content="' + siteEsc(pg.desc) + '"><meta name="twitter:image" content="' + img + '">' +
     '<link rel="icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">' +
-    (pg.img ? '<link rel="preload" as="image" href="/img/' + pg.img + '.webp" imagesrcset="/img/' + pg.img + '-sm.webp 800w, /img/' + pg.img + '.webp 1600w" imagesizes="100vw" fetchpriority="high">' : '') +
+    (pg.img ? '<link rel="preload" as="image" href="/img/' + pg.img + '.webp" imagesrcset="/img/' + pg.img + '-sm.webp 800w, /img/' + pg.img + '.webp ' + (pg.imgW || 1600) + 'w" imagesizes="100vw" fetchpriority="high">' : '') +
     '<script type="application/ld+json">' + JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c') + '</script>';
 }
 const SITE_FONTS = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">';
 const WRENCH = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
 // The menu (with "Report a repair" always one tap away) and footer shared by every website page.
 function siteHeader(name, home) {
-  const nav = [[home, 'Home', 'home'], ['/landlords', 'Landlords', 'landlords'], ['/tenants', 'Tenants', 'tenants'], ['/about', 'About', 'about'], ['/contact', 'Contact', 'contact']]
+  const nav = [[home, 'Home', 'home'], ['/sales', 'Sales', 'sales'], ['/landlords', 'Landlords', 'landlords'], ['/tenants', 'Tenants', 'tenants'], ['/about', 'About', 'about'], ['/contact', 'Contact', 'contact']]
     .map(function (n) { return '<a href="' + n[0] + '"' + (n[2] === name ? ' class="on" aria-current="page"' : '') + '>' + n[1] + '</a>'; }).join('');
   return '<header class="top"><div class="wrap"><a class="brand" href="' + home + '" aria-label="Residential Realtors — home"><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34"></a>' +
-    '<nav class="nav" aria-label="Main menu">' + nav + '<a class="cta" href="/landlords#valuation">Free valuation</a></nav>' +
+    '<nav class="nav" aria-label="Main menu">' + nav + '<a class="cta" href="' + (name === 'sales' ? '/sales#sales-valuation' : '/landlords#valuation') + '">Free valuation</a></nav>' +
     '<a class="rep" href="/report-a-repair">' + WRENCH + '<span>Report a repair</span></a>' +
     '<button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button></div></header>';
 }
 function siteFooter(home) {
   return '<footer><div class="wrap"><div class="cols">' +
-    '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Letting and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div></div>' +
-    '<div><h4>Landlords</h4><a href="/landlords">Our services</a><a href="/landlords#valuation">Free valuation</a><a href="/landlords#tools">Landlord tools</a></div>' +
+    '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Estate agents, lettings and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div></div>' +
+    '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlords#tools">Landlord tools</a></div>' +
     '<div><h4>Tenants</h4><a href="/report-a-repair">Report a repair</a><a href="/offer">Make an offer</a><a href="/tenants">Renting with us</a><a href="/tenants#fees">Tenant fees</a></div>' +
     '<div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="/about">About us</a><a href="/privacy">Privacy</a></div>' +
     '</div><div class="accred">' +
@@ -278,7 +279,7 @@ app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send('User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /staff\nDisallow: /api/\nDisallow: /offer/\nDisallow: /landlord/\nDisallow: /reserve/\nDisallow: /portal\n\nSitemap: ' + SITE_URL + '/sitemap.xml\n');
 });
 app.get('/sitemap.xml', (req, res) => {
-  const pages = [['/', '1.0'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
+  const pages = [['/', '1.0'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
   res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
     pages.map(function (x) { return '  <url><loc>' + SITE_URL + x[0] + '</loc><priority>' + x[1] + '</priority></url>'; }).join('\n') + '\n</urlset>\n');
 });
