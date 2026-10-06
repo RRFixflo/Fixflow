@@ -26,7 +26,7 @@
   }
   // Start as soon as someone begins filling in a form, so it's ready by the time they press send.
   document.addEventListener('focusin', function (e) { if (!work && e.target && e.target.closest && e.target.closest('form')) start(); });
-  window.ffPost = function (url, data, form) {
+  window.ffPost = function (url, data, form, again) {
     return (work || start()).then(function (t) {
       var wait = Math.max(0, (t.min || 0) - (Date.now() - got) + 300);
       return new Promise(function (r) { setTimeout(r, wait); }).then(function () {
@@ -36,7 +36,11 @@
         work = null;   // each send uses a fresh check
         var p = fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) });
         p.then(function () { try { var w = form && form.querySelector('.cf-turnstile'); if (w && window.turnstile) window.turnstile.reset(w); } catch (e) {} });
-        return p;
+        // A check that didn't pass in time (e.g. a slow connection): get a fresh one and send again, once.
+        return p.then(function (res) {
+          if (res.status !== 403 || again) return res;
+          return res.clone().json().then(function (d) { if (!d || !d.retry) return res; work = null; return window.ffPost(url, data, form, true); }, function () { return res; });
+        });
       });
     });
   };

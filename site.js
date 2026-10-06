@@ -90,6 +90,8 @@
       var nr = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(sp.get('near') || ''); if (nr) { setNear(+nr[1], +nr[2]); var nb = document.querySelector('.lviews [data-view=near]'); if (nb) nb.classList.add('on'); }
       if (sp.get('view') === 'map') { document.querySelectorAll('.lviews [data-view=list], .lviews [data-view=map]').forEach(function (x) { x.classList.toggle('on', x.dataset.view === 'map'); }); showMap(true); } } catch (e) {}
     lf.addEventListener('input', applyF); lf.addEventListener('change', applyF); applyF();
+    // The Search button (or Enter): show the results and close the phone keyboard.
+    lf.addEventListener('submit', function (e) { e.preventDefault(); applyF(); try { lf.elements.q.blur(); } catch (x) {} var c = document.getElementById('lCount'); if (c && c.getBoundingClientRect().top > window.innerHeight * .6) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   }
 
   // Home page: the search box (Buy / Rent, Location / Map / Near me) and the row of latest homes.
@@ -168,7 +170,7 @@
       ffPost('/api/viewing-request', { name: f.name.value.trim(), phone: f.phone.value.trim(), email: f.email.value.trim(), people: f.people ? f.people.value : '', move: f.move ? f.move.value : '', message: f.message.value.trim(), website: f.website.value, consent: true, slots: picked, flexible: f.flexible.checked, ref: bkF.dataset.ref, address: bkF.dataset.addr, listing: bkF.dataset.kind, url: bkF.dataset.url }, bkF)
         .then(function (r) { return r.json(); }).then(function (d) {
           if (!d.ok) { go.disabled = false; go.textContent = 'Request viewing →'; return say(d.error === 'rate-limited' ? 'Too many requests — please call us on 0207 096 8131.' : d.error === 'slots' ? 'Please pick a time in the next few weeks.' : 'Please check your details and try again.'); }
-          document.getElementById('bkBody').innerHTML = '<div class="bk-done"><div class="ok">✅</div><h3 style="margin:6px 0">Viewing requested</h3><p class="bk-where">' + escH(bkF.dataset.addr) + '</p>' + (picked.length ? '<p style="margin:0">You suggested:</p><ul>' + picked.map(function (v) { return '<li>' + label(v) + '</li>'; }).join('') + '</ul>' : '<p>You’re flexible — we’ll suggest a time.</p>') + '<p class="bk-where">We’ll confirm a time with you shortly by email or phone. We’ve sent you an email with the details.</p><a class="btn navy" href="#" data-bk-close>Done</a></div>';
+          document.getElementById('bkBody').innerHTML = '<div class="bk-done"><div class="ok">✅</div><h3 style="margin:6px 0">Request sent — not booked yet</h3><p class="bk-where">' + escH(bkF.dataset.addr) + '</p>' + (picked.length ? '<p style="margin:0">You suggested:</p><ul>' + picked.map(function (v) { return '<li>' + label(v) + '</li>'; }).join('') + '</ul>' : '<p>You’re flexible — we’ll suggest a time.</p>') + '<p class="bk-where"><b>Your viewing isn’t booked yet.</b> One of our agents will contact you first, by phone or email, to confirm a time. We’ve emailed you a copy of your request.</p><a class="btn navy" href="#" data-bk-close>Done</a></div>';
           bk.querySelector('[data-bk-close]').addEventListener('click', function (e) { e.preventDefault(); close(); });
         }).catch(function () { go.disabled = false; go.textContent = 'Request viewing →'; say('Couldn’t send — please check your connection or call 0207 096 8131.'); });
     });

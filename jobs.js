@@ -9571,7 +9571,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const why = await humanCheck(req, b, texts);
     if (!why) return false;
     console.log('Website form refused (' + why + '): ' + req.path + ' · ' + String(req.headers['user-agent'] || 'no browser').slice(0, 80));
-    res.status(403).json({ ok: false, error: 'check' });
+    res.status(403).json({ ok: false, error: 'check', retry: why === 'timing' || why === 'token' || why === 'reused' || why === 'puzzle' });
     return true;
   }
   // ---------- Valuation requests (public Landlords page) ----------
@@ -9683,8 +9683,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (canEmail() && sendEmail) {
       sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Viewing request — ' + addr, text: 'Someone has asked to view a property on the website.\n\nProperty: ' + addr + (ref ? ' (ref ' + ref + ')' : '') + '\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email +
         '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') + (data.people ? '\nPeople: ' + data.people : '') + (data.move ? '\nMove / buy: ' + data.move : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Fixflow under Contacts — they’re emailed straight away.' }).catch(function () {});
-      const t = 'Dear ' + name.split(' ')[0] + ',\n\nThank you for asking to view ' + addr + '.\n\n' + (times.length ? 'You suggested:\n' + times.map(function (x) { return '• ' + x; }).join('\n') + '\n\n' : '') + 'We’ll confirm a time with you shortly — usually within a few hours during opening hours (Monday to Sunday, 9am–7pm). If you need us sooner, call 0207 096 8131.\n\nKind regards,\nResidential Realtors';
-      sendEmail({ to: [email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Your viewing request — ' + addr, text: t, html: brandEmail(t, 'Your viewing request') }).catch(function () {});
+      const t = 'Dear ' + name.split(' ')[0] + ',\n\nThank you for asking to view ' + addr + '.\n\n' + (times.length ? 'You suggested:\n' + times.map(function (x) { return '• ' + x; }).join('\n') + '\n\n' : '') + 'Please note: this is a viewing request, not a confirmed booking. One of our agents will contact you first, by phone or email, to agree a time — usually within a few hours during opening hours (Monday to Sunday, 9am–7pm). Your viewing is only booked once we’ve confirmed it with you. If you need us sooner, call 0207 096 8131.\n\nKind regards,\nResidential Realtors';
+      sendEmail({ to: [email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Viewing request received (not yet booked) — ' + addr, text: t, html: brandEmail(t, 'Your viewing request') }).catch(function () {});
     }
     res.json({ ok: true, id: r.rows[0].id });
   }));
