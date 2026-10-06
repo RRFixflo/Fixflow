@@ -703,6 +703,7 @@ body.bk-lock { overflow: hidden; }
 .lic-row.on { background: #fff5f5; } .lic-row .lic-none { color: var(--soft); font-weight: 500; }
 .lic-fees > small { display: block; padding: 10px 16px; border-top: 1px solid var(--line); color: var(--soft); }
 @media (max-width: 560px) { .lic-row { grid-template-columns: 1fr; } }
+.lic-buy { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid #ffd6d8; } .lic-buy b { display: block; color: var(--navy); } .lic-buy small { color: var(--soft); }
 .lic-help { margin: 16px 0 4px; padding: 16px 18px; border-radius: 14px; background: #fff5f5; border: 1px solid #ffd6d8; } .lic-help b { color: var(--navy); } .lic-help p { margin: 6px 0 0; }
 
 

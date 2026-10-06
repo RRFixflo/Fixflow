@@ -258,9 +258,15 @@
             licFees(d) +
             (d.why || []).map(function (w) { return '<p>' + escH(w) + '</p>'; }).join('') +
             (d.verified ? '' : '<p class="tool-note">We haven’t checked ' + escH(d.borough) + '’s schemes ward by ward yet, so please confirm with the council.</p>') +
-            (d.verdict !== 'no' ? '<div class="lic-help"><b>Struggling with the application? We’ll do it for you.</b><p>We handle the whole licence application for you — the council forms, floor plan, certificates and documents, and all the back-and-forth with the council until the licence is granted.</p></div>' : '') +
+            (d.verdict !== 'no' ? '<div class="lic-help" id="licBuy"><b>Struggling with the application? We’ll do it for you.</b><p>We handle the whole licence application for you — the council forms, floor plan, certificates and documents, and all the back-and-forth with the council until the licence is granted.</p></div>' : '') +
             '<div class="btns"><a class="btn red" href="/contact?topic=Landlord&message=' + encodeURIComponent(d.verdict === 'no' ? 'I checked my property (' + d.postcode + ') on your licence checker and would like some advice.' : 'Please help me apply for ' + (d.licence ? 'a ' + d.licence.toLowerCase() : 'a property licence') + ' for my property in ' + d.postcode + ' (' + d.borough + ').') + '">' + (d.verdict === 'no' ? 'Ask us a question' : 'Get us to apply for you →') + '</a>' +
             '<a class="btn line" href="tel:02070968131">Call 0207 096 8131</a>' + (d.link ? '<a class="btn line" href="' + escH(d.link) + '" target="_blank" rel="noopener">Council licensing page ↗</a>' : '') + '</div></div>';
+          // Our licence application service, if the office has priced it: buy it straight away.
+          if (d.verdict !== 'no') fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (x) {
+            var svc = ((x && x.items) || []).filter(function (i) { return /^licen/.test(i.id); })[0], box = document.getElementById('licBuy'); if (!svc || !box) return;
+            box.insertAdjacentHTML('beforeend', '<div class="lic-buy"><span><b>Our licence application service</b><small>£' + Number(svc.price).toLocaleString('en-GB', { minimumFractionDigits: 2 }) + ' + VAT · council fee paid separately</small></span><a class="btn red" href="/book-certificate?service=licence">Buy now →</a></div>');
+            var ask = document.querySelector('#licOut .btns a.btn.red[href^="/contact"]'); if (ask) { ask.className = 'btn line'; ask.textContent = 'Ask a question'; }
+          }).catch(function () {});
         }).catch(function () { go.disabled = false; go.textContent = 'Check licence'; err.textContent = 'Couldn’t connect — please try again.'; });
     });
   }
@@ -288,13 +294,13 @@
       cbItems.forEach(function (i) { var m = /^(.+?)\s+[—–-]\s+(.+)$/.exec(i.name), key = m ? m[1] : i.id;
         if (m && byName[key]) { byName[key].opts.push({ id: i.id, label: m[2], price: i.price }); return; }
         var g = { name: m ? m[1] : i.name, desc: i.desc, opts: [{ id: i.id, label: m ? m[2] : '', price: i.price }] }; if (m) byName[key] = g; groups.push(g); });
-      var icon = function (n) { return /gas/i.test(n) ? '🔥' : /eicr|electr/i.test(n) ? '⚡' : /epc|energy/i.test(n) ? '🏷️' : '📋'; };
+      var icon = function (n) { return /gas/i.test(n) ? '🔥' : /eicr|electr/i.test(n) ? '⚡' : /epc|energy/i.test(n) ? '🏷️' : /licen/i.test(n) ? '📋' : '📋'; };
       box.innerHTML = groups.map(function (g) { var o = g.opts[0], multi = g.opts.length > 1;
         return '<label class="cb-item"><input type="checkbox" name="svc" value="' + escH(o.id) + '"><span class="cb-ic">' + icon(g.name) + '</span><span class="cb-it"><b>' + escH(multi ? g.name : g.name + (o.label ? ' — ' + o.label : '')) + '</b>' + (g.desc ? '<small>' + escH(g.desc) + '</small>' : '') +
           (multi ? '<select class="cb-size" aria-label="Property size">' + g.opts.map(function (x) { return '<option value="' + escH(x.id) + '" data-price="' + x.price + '">' + escH(x.label.charAt(0).toUpperCase() + x.label.slice(1)) + '</option>'; }).join('') + '</select>' : '') +
           '</span><span class="cb-pr"><span class="cb-prv">' + money(o.price) + '</span><small>+ VAT</small></span></label>'; }).join('');
       document.getElementById('cbPayNote').textContent = cbPay ? 'You’ll pay on SumUp’s secure page. Card details never touch our website.' : 'We’ll call you to take payment and confirm the date.';
-      try { var want = new URLSearchParams(location.search).get('service'); if (want) cb.querySelectorAll('[name=svc]').forEach(function (x) { if (x.value === want || (want === 'gas' && /^gas/.test(x.value)) || (want === 'eicr' && /^eicr/.test(x.value)) || (want === 'epc' && /^epc/.test(x.value))) { x.checked = true; x.closest('.cb-item').classList.add('on'); } }); } catch (e) {}
+      try { var want = new URLSearchParams(location.search).get('service'); if (want) cb.querySelectorAll('[name=svc]').forEach(function (x) { if (x.value === want || (want === 'gas' && /^gas/.test(x.value)) || (want === 'eicr' && /^eicr/.test(x.value)) || (want === 'epc' && /^epc/.test(x.value)) || (want === 'licence' && /^licen/.test(x.value))) { x.checked = true; x.closest('.cb-item').classList.add('on'); } }); } catch (e) {}
       cbSum();
     }).catch(function () { document.getElementById('cbItems').innerHTML = '<p class="tool-err">Couldn’t load the services — please call 0207 096 8131.</p>'; });
     cb.addEventListener('change', function (e) { if (e.target.classList.contains('cb-size')) { var it = e.target.closest('.cb-item'), box2 = it.querySelector('[name=svc]'), op = e.target.selectedOptions[0]; box2.value = e.target.value; it.querySelector('.cb-prv').textContent = money(+op.dataset.price); if (!box2.checked) { box2.checked = true; it.classList.add('on'); } cbSum(); return; } if (e.target.name === 'svc') { e.target.closest('.cb-item').classList.toggle('on', e.target.checked); cbSum(); } if (e.target.name === 'access') document.getElementById('cbTenantRow').hidden = e.target.value !== 'tenant'; });
