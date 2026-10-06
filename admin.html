@@ -603,6 +603,8 @@
   .av-rm-unl { margin: 0 0 10px; font-size: .86rem; } .av-rm-unl summary { cursor: pointer; font-weight: 700; }
   .av-rm-item { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line, #e6e8ec); flex-wrap: wrap; } .av-rm-item img { width: 64px; height: 44px; object-fit: cover; border-radius: 8px; } .av-rm-item span { display: block; color: var(--ink-soft); font-size: .8rem; }
   .av-rmlink { display: flex; gap: 10px; align-items: center; text-decoration: none; color: inherit; border: 1px solid #c8ece4; background: #f2fbf9; border-radius: 12px; padding: 6px; } .av-rmlink img { width: 72px; height: 50px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; } .av-rmlink span { font-size: .8rem; color: var(--ink-soft); min-width: 0; } .av-rmlink b { display: block; color: #0b6b5a; font-size: .84rem; }
+  .cb-arow { display: grid; grid-template-columns: 1.2fr 1.6fr 110px auto; gap: 6px; margin-bottom: 6px; align-items: center; } .cb-aprice { display: flex; align-items: center; gap: 4px; font-weight: 700; } .cb-admin summary { cursor: pointer; } .cb-admin { margin-bottom: 12px; }
+  @media (max-width: 760px) { .cb-arow { grid-template-columns: 1fr 100px auto; } .cb-arow [data-k=desc] { grid-column: 1 / -1; grid-row: 2; } }
   .av-dream-d summary { cursor: pointer; list-style: none; } .av-dream-d summary::-webkit-details-marker { display: none; } .av-dream-d summary::after { content: ' ▸'; } .av-dream-d[open] summary::after { content: ' ▾'; } .av-dream-d[open] .av-dreams { margin-top: 6px; }
   .av-dream { font-size: .82rem; font-weight: 600; color: #6941c6; background: #f4f0ff; border-radius: 10px; padding: 6px 8px; }
   .av-dreams { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; } .av-dlink { display: inline-flex; gap: 2px; align-items: center; background: #fff; border: 1px solid #ddd2fe; border-radius: 999px; padding: 1px 4px 1px 8px; } .av-dlink a { color: #6941c6; text-decoration: none; } .av-dlink .linkish { color: #98a2b3; font-size: 1rem; padding: 0 4px; }
@@ -2083,6 +2085,11 @@
       <div id="certsView" hidden>
         <div class="cert-up" id="certUpload" role="button" tabindex="0">📎 <b>Upload a gas safety, EICR, EPC or property licence</b><span>Fixflow reads which property it’s for and the dates — check them and save. Or drag &amp; drop it here.</span></div>
         <div class="tiles prop-tiles" id="certTiles"></div>
+        <details class="card cb-admin" id="cbAdmin"><summary><b>🌐 Website bookings — gas safety, EICR &amp; EPC prices</b> <span class="muted-note" id="cbAdminSt" style="margin:0"></span></summary>
+          <p class="muted-note" style="margin:8px 0">Landlords can book and pay for these at <a href="https://www.residentialrealtors.co.uk/book-certificate" target="_blank" rel="noopener">residentialrealtors.co.uk/book-certificate</a>. A service with no price isn’t offered. Bookings appear in Website leads.</p>
+          <div id="cbAdminList"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" class="btn small" id="cbAdminAdd">➕ Add a service</button><button type="button" class="btn small primary" id="cbAdminSave">Save prices</button></div>
+        </details>
         <div class="card cert-who"><h3 style="margin-bottom:8px">Who renews each certificate</h3>
           <div class="grid3">
             <div><label class="lbl" for="certWhoEPC">EPC</label><select class="inp" id="certWhoEPC" data-cert-who="EPC"></select></div>
@@ -8220,7 +8227,7 @@
   // ---------- Contacts (CRM): every website request, viewing request, landlord alert sign-up and contact staff add ----------
   var crm = { items: [], staff: [], me: '', type: '', open: {} }, CRM_T = {
     viewing: ['🗓', 'Viewing request', '#b54708', '#fffaeb'], val: ['🏠', 'Rental valuation', '#5925dc', '#f4f3ff'], sale: ['🏷️', 'Sales valuation', '#5925dc', '#f4f3ff'], quick: ['⚡', 'Quick valuation', '#5925dc', '#f4f3ff'],
-    enquiry: ['💬', 'Message', '#175cd3', '#eff8ff'], contact: ['📇', 'Added by staff', '#344054', '#f2f4f7'], sub: ['🔔', 'Alert sign-up', '#067647', '#ecfdf3'] };
+    cert: ['📜', 'Certificate booking', '#c4320a', '#fff6ed'], enquiry: ['💬', 'Message', '#175cd3', '#eff8ff'], contact: ['📇', 'Added by staff', '#344054', '#f2f4f7'], sub: ['🔔', 'Alert sign-up', '#067647', '#ecfdf3'] };
   var CRM_ST = { new: ['New', '#b42318'], contacted: ['Contacted', '#175cd3'], booked: ['Booked', '#6941c6'], won: ['Won ✓', '#067647'], lost: ['Not going ahead', '#667085'] };
   function crmDay(d){ return new Date(d).toISOString().slice(0, 10); }
   function crmToday(){ return new Date().toLocaleDateString('en-CA', { timeZone: TZ }); }
@@ -8234,7 +8241,7 @@
       (d.meta || []).forEach(function(m){ mt[m.ref] = m; });
       crm.staff = d.staff || []; crm.me = d.me || ''; crm.manager = !!d.manager;
       crm.items = (d.items || []).map(function(x){ var dd = x.data || {}, ref = 'vr:' + x.id, m = mt[ref] || {};
-        return { ref: ref, id: x.id, type: dd.kind === 'viewing' ? 'viewing' : dd.kind === 'sale' ? 'sale' : dd.kind === 'quick' ? 'quick' : dd.kind === 'enquiry' ? 'enquiry' : dd.kind === 'contact' ? 'contact' : 'val',
+        return { ref: ref, id: x.id, type: dd.kind === 'viewing' ? 'viewing' : dd.kind === 'cert' ? 'cert' : dd.kind === 'sale' ? 'sale' : dd.kind === 'quick' ? 'quick' : dd.kind === 'enquiry' ? 'enquiry' : dd.kind === 'contact' ? 'contact' : 'val',
           name: x.name, email: x.email, phone: x.phone, address: /^\(/.test(x.address) ? '' : x.address, status: x.status, at: x.created_at, data: dd, by: x.handled_by, archived: m.archived_at || null, archivedBy: m.archived_by || '', assigned: m.assigned_to || x.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : x.follow_up ? crmDay(x.follow_up) : '', notes: notes[ref] || [] }; })
         .concat((d.subs || []).map(function(x){ var ref = 'sub:' + x.id, m = mt[ref] || {};
           return { ref: ref, id: x.id, type: 'sub', archived: m.archived_at || null, archivedBy: m.archived_by || '', name: x.name || x.email, email: x.email, phone: '', address: '', status: x.unsubscribed_at ? 'lost' : x.confirmed_at ? 'won' : 'new', subSt: x.unsubscribed_at ? 'Unsubscribed' : x.confirmed_at ? 'Subscribed' : 'Waiting for them to confirm', at: x.created_at, data: { freq: x.freq, sent: x.sent_count, last: x.last_sent_at }, assigned: m.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : '', notes: notes[ref] || [] }; }))
@@ -8271,7 +8278,7 @@
     $('crmTiles').innerHTML = [['attn', '📣', nNew.length, 'Need contacting or an update'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm'], ['subs', '🔔', subs.length, 'Landlords getting alerts']].map(function(t){
       return '<button type="button" class="crm-tile' + (crm.tile === t[0] ? ' on' : '') + (t[2] && t[0] !== 'subs' ? ' hot' : '') + '" data-crm-tile="' + t[0] + '"><span>' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></button>'; }).join('');
     var counts = {}; live.forEach(function(x){ counts[x.type] = (counts[x.type] || 0) + 1; });
-    $('crmTypes').innerHTML = '<button type="button" data-crm-type=""' + (crm.type ? '' : ' class="on"') + '>All ' + live.length + '</button>' + ['viewing', 'val', 'sale', 'quick', 'enquiry', 'contact', 'sub'].filter(function(k){ return counts[k]; }).map(function(k){ return '<button type="button" data-crm-type="' + k + '"' + (crm.type === k ? ' class="on"' : '') + '>' + CRM_T[k][0] + ' ' + ({ viewing: 'Viewings', val: 'Rental valuations', sale: 'Sales valuations', quick: 'Quick valuations', enquiry: 'Messages', contact: 'Added by staff', sub: 'Alert sign-ups' }[k]) + ' ' + counts[k] + '</button>'; }).join('') + (archived.length ? '<span class="av-sep"></span><button type="button" data-crm-type="archive"' + (crm.type === 'archive' ? ' class="on"' : '') + '>🗄 Archive ' + archived.length + '</button>' : '');
+    $('crmTypes').innerHTML = '<button type="button" data-crm-type=""' + (crm.type ? '' : ' class="on"') + '>All ' + live.length + '</button>' + ['viewing', 'cert', 'val', 'sale', 'quick', 'enquiry', 'contact', 'sub'].filter(function(k){ return counts[k]; }).map(function(k){ return '<button type="button" data-crm-type="' + k + '"' + (crm.type === k ? ' class="on"' : '') + '>' + CRM_T[k][0] + ' ' + ({ viewing: 'Viewings', cert: 'Certificate bookings', val: 'Rental valuations', sale: 'Sales valuations', quick: 'Quick valuations', enquiry: 'Messages', contact: 'Added by staff', sub: 'Alert sign-ups' }[k]) + ' ' + counts[k] + '</button>'; }).join('') + (archived.length ? '<span class="av-sep"></span><button type="button" data-crm-type="archive"' + (crm.type === 'archive' ? ' class="on"' : '') + '>🗄 Archive ' + archived.length + '</button>' : '');
     var q = $('crmQ').value.trim().toLowerCase(), qd = q.replace(/\D/g, ''), st = $('crmSt').value, who = $('crmWho').value;
     var list = all.filter(function(x){
       if (crm.tile === 'attn' && nNew.indexOf(x) === -1) return false; if (crm.tile === 'due' && due.indexOf(x) === -1) return false; if (crm.tile === 'confirm' && toConfirm.indexOf(x) === -1) return false; if (crm.tile === 'subs' && subs.indexOf(x) === -1) return false;
@@ -8288,7 +8295,7 @@
   function crmCard(x){
     var t = CRM_T[x.type], d = x.data, st = CRM_ST[x.status] || CRM_ST.new, today = crmToday(), open = !!crm.open[x.ref];
     var tel = x.phone ? String(x.phone).replace(/[^\d+]/g, '') : '', wa = x.phone ? waNumber(x.phone) : '';
-    var sub = [x.address ? shortAddr(x.address) : '', x.type === 'sub' ? x.email + ' · ' + ({ instant: 'as it happens', weekly: 'weekly', monthly: 'monthly' }[d.freq] || d.freq) : '', x.type === 'contact' && d.topic ? d.topic : '', x.type === 'enquiry' && d.topic ? d.topic : '', x.type === 'quick' && d.service ? d.service + ' valuation' : '', fmtShort(x.at)].filter(Boolean);
+    var sub = [x.address ? shortAddr(x.address) : '', x.type === 'sub' ? x.email + ' · ' + ({ instant: 'as it happens', weekly: 'weekly', monthly: 'monthly' }[d.freq] || d.freq) : '', x.type === 'contact' && d.topic ? d.topic : '', x.type === 'enquiry' && d.topic ? d.topic : '', x.type === 'cert' ? (d.items || []).map(function(i){ return i.name.replace(/ —.*/, ''); }).join(' + ') + ' · £' + Number(d.total || 0).toFixed(2) + (d.paid_at ? ' · paid ✓' : '') : '', x.type === 'quick' && d.service ? d.service + ' valuation' : '', fmtShort(x.at)].filter(Boolean);
     var pill = x.type === 'sub' ? '<span class="crm-pill" style="color:' + (x.subSt === 'Subscribed' ? '#067647' : x.subSt === 'Unsubscribed' ? '#667085' : '#b54708') + '">' + x.subSt + '</span>' : '<span class="crm-pill" style="color:' + st[1] + '">' + st[0] + '</span>';
     var need = crmNeed(x);
     var flags = (x.archived ? '<span class="crm-flag">🗄 Archived ' + esc(fmtShort(x.archived)) + (x.archivedBy ? ' by ' + esc(x.archivedBy) : '') + '</span>' : '') + (need ? '<span class="crm-flag warn">📣 ' + esc(need) + '</span>' : '') + (x.type === 'viewing' && !d.confirmed && x.status !== 'lost' ? '<span class="crm-flag warn">Time to confirm</span>' : '') + (x.type === 'viewing' && d.confirmed ? '<span class="crm-flag ok">🗓 ' + esc(crmSlot(d.confirmed)) + '</span>' : '') +
@@ -8305,6 +8312,12 @@
     if (x.address) facts.push(['Property', esc(x.address) + (d.url ? ' · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">see listing ↗</a>' : '')]);
     if (d.beds) facts.push(['Bedrooms', esc(d.beds)]); if (d.type) facts.push(['Type', esc(d.type)]); if (d.service && x.type !== 'quick') facts.push(['Wants', esc(d.service)]);
     if (d.when) facts.push([x.type === 'sale' ? 'Selling' : 'Available', esc(d.when)]); if (d.people) facts.push(['People', esc(d.people)]); if (d.move) facts.push([d.listing === 'sale' ? 'Position' : 'Moving', esc(d.move)]);
+    if (x.type === 'cert') {
+      facts.push(['Booked', (d.items || []).map(function(i){ return esc(i.name) + ' <span class="muted-note" style="margin:0">£' + Number(i.price).toFixed(2) + '</span>'; }).join('<br>')]);
+      facts.push(['Total', '<b>£' + Number(d.total || 0).toFixed(2) + '</b> ' + (d.paid_at ? '<span class="crm-flag ok">💳 Paid online ' + esc(fmtShort(d.paid_at)) + '</span>' : d.checkout_id ? '<span class="crm-flag warn">Not paid yet — payment page opened</span>' : '<span class="crm-flag warn">Take payment</span>')]);
+      facts.push(['Access', esc({ landlord: 'Landlord will let us in', tenant: 'Arrange with the tenant', keys: 'Keys at the office / key safe' }[d.access] || '—') + (d.tenant ? '<br>Tenant: ' + esc(d.tenant) : '')]);
+      facts.push(['Preferred', esc((d.dates || []).join(', ') || 'Any date')]);
+    }
     if (d.source) facts.push(['Came via', esc(d.source)]); if (d.page) facts.push(['Sent from', esc(d.page)]);
     if (x.type === 'sub') { facts.push(['Alerts', esc({ instant: 'As it happens', weekly: 'Weekly round-up', monthly: 'Monthly round-up' }[d.freq] || d.freq)]); facts.push(['Emails sent', String(d.sent || 0) + (d.last ? ' · last ' + esc(fmtShort(d.last)) : '')]); }
     h += '<div class="crm-facts">' + facts.map(function(f){ return '<div><span>' + f[0] + '</span><b>' + f[1] + '</b></div>'; }).join('') + '</div>';
@@ -14875,6 +14888,22 @@
       if (k === 'link' ? v : /_fee$/.test(k) ? v !== (def || '') : v !== def) { custom[b] = custom[b] || {}; custom[b][k] = v; } });
     busy($('lsSave'), true, 'Saving…');
     api('PUT', '/api/admin/licensing-schemes', { custom: custom }).then(function(d){ busy($('lsSave'), false); toast(d && d.ok ? 'Licensing schemes saved' : 'Couldn’t save'); if (d && d.ok) lsData.custom = d.custom; });
+  });
+  // Certificates: what landlords can book (and pay for) on the website, and the prices.
+  var cbAdm = null;
+  function cbAdmRow(x){ return '<div class="cb-arow" data-cbid="' + esc(x.id || '') + '"><input class="inp" data-k="name" placeholder="Service name" value="' + esc(x.name || '') + '"><input class="inp" data-k="desc" placeholder="Short description (optional)" value="' + esc(x.desc || '') + '"><label class="cb-aprice">£<input class="inp" data-k="price" inputmode="decimal" placeholder="Price" value="' + esc(x.price == null ? '' : x.price) + '"></label><button type="button" class="btn small ghost" data-cbdel title="Remove">✕</button></div>'; }
+  if ($('cbAdmin')) $('cbAdmin').addEventListener('toggle', function(){
+    if (!this.open || cbAdm) return;
+    api('GET', '/api/admin/cert-services').then(function(d){ if (!d || !d.ok) return; cbAdm = d;
+      $('cbAdminSt').textContent = d.pay ? '· SumUp connected — landlords pay online' : '· SumUp not connected yet — the office takes payment';
+      $('cbAdminList').innerHTML = d.items.map(cbAdmRow).join(''); });
+  });
+  if ($('cbAdminAdd')) $('cbAdminAdd').addEventListener('click', function(){ $('cbAdminList').insertAdjacentHTML('beforeend', cbAdmRow({})); });
+  if ($('cbAdminList')) $('cbAdminList').addEventListener('click', function(e){ var b = e.target.closest('[data-cbdel]'); if (b) b.closest('.cb-arow').remove(); });
+  if ($('cbAdminSave')) $('cbAdminSave').addEventListener('click', function(){
+    var items = Array.prototype.map.call(document.querySelectorAll('#cbAdminList .cb-arow'), function(r, i){ var v = function(k){ return r.querySelector('[data-k="' + k + '"]').value.trim(); }; return { id: r.dataset.cbid || ('svc' + Date.now().toString(36) + i), name: v('name'), desc: v('desc'), price: v('price') }; }).filter(function(x){ return x.name; });
+    busy($('cbAdminSave'), true, 'Saving…');
+    api('PUT', '/api/admin/cert-services', { items: items }).then(function(d){ busy($('cbAdminSave'), false); toast(d && d.ok ? '✓ Saved — ' + d.items.filter(function(x){ return x.price; }).length + ' service(s) on the website' : 'Couldn’t save'); if (d && d.ok) $('cbAdminList').innerHTML = d.items.map(cbAdmRow).join(''); });
   });
   // Templates: the council tax link for each borough (ours, or the office's own).
   var ctLinksData = null;
