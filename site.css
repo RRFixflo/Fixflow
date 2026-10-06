@@ -467,3 +467,14 @@ h1 em, h2 em { background: none; -webkit-background-clip: initial; background-cl
 .news-m { display: block; margin-top: 4px; font-size: .82rem; font-weight: 600; color: var(--soft); }
 .news-src { margin: 18px 0 0; font-size: .85rem; color: var(--soft); } .news-src a { color: var(--navy); font-weight: 700; }
 @media (max-width: 760px) { .news-l { grid-template-columns: 1fr; } }
+/* Front page header: same compact height as the Landlords page */
+.hero4 > .wrap { padding: 72px 0 80px; }
+.hero4 .hs-val { flex-wrap: nowrap; padding: 10px 12px 10px 16px; }
+.hero4 .hs-val span { font-size: .92rem; }
+.hero4 .hs-val .btn { padding: 10px 16px; white-space: nowrap; flex: none; }
+.hero4 .hs-box { padding: 12px; }
+@media (max-width: 640px) { .hero4 .hs-val { flex-wrap: wrap; } }
+.hero4 > .wrap { grid-template-columns: 1.25fr .75fr; gap: 40px; padding: 64px 0 72px; }
+.hero4 h1 { font-size: clamp(2rem, 4vw, 3.2rem); margin: 14px 0 12px; }
+.hero4 .lead { margin-bottom: 22px; }
+@media (max-width: 960px) { .hero4 > .wrap { grid-template-columns: 1fr; padding: 44px 0 52px; } }
