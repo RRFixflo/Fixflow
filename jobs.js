@@ -9482,6 +9482,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
     hits.push(now); vrHits.set(ip, hits); if (vrHits.size > 5000) vrHits.clear();
     if (str(b.website, 200)) return res.json({ ok: true });   // a bot filled the hidden box
     const name = str(b.name, 120), email = str(b.email, 200), phone = str(b.phone, 40), addr = str(b.address, 300), pcm = POSTCODE_RE.exec(String(b.postcode || '') + ' ' + String(b.address || ''));
+    // The quick form on the side of every page: just a name, email and phone — we call them back for the rest.
+    if (b.kind === 'quick') {
+      if (!name || !phone) return res.status(400).json({ ok: false, error: 'missing' });
+      if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
+      if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
+      const what = ['Sales', 'Rental', 'Not sure'].indexOf(b.what) !== -1 ? b.what : 'Not sure', page = str(b.page, 120) || '';
+      const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, '(quick request — call back for the address)', JSON.stringify({ kind: 'quick', service: what, page: page })]);
+      ntfy({ title: '⚡ Quick valuation request: ' + name, message: phone + ' · ' + what + ' valuation', tags: ['house'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#landlords' : undefined }).catch(function () {});
+      if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Quick valuation request — ' + name, text: 'Someone used the quick valuation form on the website. Please call them back for the property details.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\nValuation: ' + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s also in Fixflow under Website requests.' }).catch(function () {});
+      return res.json({ ok: true, id: r.rows[0].id });
+    }
     if (!name || !addr) return res.status(400).json({ ok: false, error: 'missing' });
     if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
     if (!pcm) return res.status(400).json({ ok: false, error: 'postcode' });
