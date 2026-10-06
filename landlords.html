@@ -25,7 +25,9 @@
   .nav a:hover { color: #fff; background: rgba(255,255,255,.08); }
   .nav a.cta { background: var(--red); color: #fff; padding: 10px 16px; border-radius: 12px; box-shadow: 0 8px 22px -10px rgba(217,38,46,.8); }
   .nav a.cta:hover { background: #c01f27; }
-  @media (max-width: 820px) { .nav a:not(.cta) { display: none; } }
+  .nav a.on { color: #fff; background: rgba(255,255,255,.08); }
+  .menu-btn { display: none; margin-left: auto; width: 44px; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: #fff; font-size: 1.3rem; cursor: pointer; }
+  @media (max-width: 900px) { .menu-btn { display: grid; place-items: center; } .nav { position: fixed; top: 68px; left: 0; right: 0; flex-direction: column; align-items: stretch; gap: 4px; padding: 14px 16px 20px; background: var(--navy); border-bottom: 1px solid rgba(255,255,255,.1); transform: translateY(-120%); transition: transform .25s ease; margin: 0; } .nav.open { transform: none; } .nav a { padding: 14px; font-size: 1rem; } .nav a.cta { margin-top: 6px; text-align: center; } }
   /* Hero */
   .hero { position: relative; overflow: hidden; color: #fff; background: radial-gradient(900px 480px at 88% -10%, rgba(217,38,46,.35), transparent 60%), radial-gradient(700px 400px at -10% 110%, rgba(56,120,255,.22), transparent 60%), linear-gradient(160deg, var(--navy2), var(--navy) 58%, #071428); }
   .hero::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 44px 44px; mask-image: linear-gradient(to bottom, #000 30%, transparent); pointer-events: none; }
@@ -154,8 +156,9 @@
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <a href="#top" aria-label="Residential Realtors"><img src="/logo-white.png" alt="Residential Realtors"></a>
-  <nav class="nav"><a href="#services">Services</a><a href="#why">Why us</a><a href="#how">How it works</a><a href="#tools">Landlord tools</a><a class="cta" href="#valuation">Free valuation</a></nav>
+  <a href="/home" aria-label="Residential Realtors — home"><img src="/logo-white.png" alt="Residential Realtors"></a>
+  <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button>
+  <nav class="nav"><a href="/home">Home</a><a href="/landlords" class="on" aria-current="page">Landlords</a><a href="/tenants">Tenants</a><a href="/about">About</a><a href="/contact">Contact</a><a class="cta" href="#valuation">Free valuation</a></nav>
 </div></header>
 
 <div class="hero" id="top"><div class="wrap">
@@ -264,7 +267,7 @@
         <label class="full">When is it available?<span class="chips"><label><input type="radio" name="when" value="Now"> Now</label><label><input type="radio" name="when" value="Within 3 months"> Within 3 months</label><label><input type="radio" name="when" value="Currently tenanted"> Currently tenanted</label><label><input type="radio" name="when" value="Just exploring"> Just exploring</label></span></label>
         <label class="full">Anything else? <span style="font-weight:500;color:var(--faint)">(optional)</span><textarea name="message" placeholder="e.g. best time to call, current rent, parking, garden…"></textarea></label>
         <label class="hp" aria-hidden="true">Leave this empty<input name="website" tabindex="-1" autocomplete="off"></label>
-        <label class="full consent"><input type="checkbox" name="consent" required> I’m happy for Residential Realtors to contact me about my valuation. We’ll only use your details to respond to this request.</label>
+        <label class="full consent"><input type="checkbox" name="consent" required> I’m happy for Residential Realtors to contact me about my valuation. We’ll only use your details to respond to this request (<a href="/privacy">privacy notice</a>).</label>
       </div>
       <p class="verr" id="vErr" role="alert"></p>
       <button class="btn red" type="submit" id="vGo">Request my free valuation →</button>
@@ -275,8 +278,8 @@
 <footer>
   <div class="wrap">
     <div><img src="/logo-white.png" alt="Residential Realtors"><div>Letting and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London, SE1 6AD</div></div>
-    <div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="https://www.residentialrealtors.co.uk/">residentialrealtors.co.uk</a></div>
-    <div><h4>Quick links</h4><a href="#valuation">Free valuation</a><a href="#tools">Landlord tools</a><a href="/">Tenants: report a repair</a></div>
+    <div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="/contact">Contact us</a><a href="/about">About us</a></div>
+    <div><h4>Quick links</h4><a href="#valuation">Free valuation</a><a href="#tools">Landlord tools</a><a href="/tenants">Tenants</a><a href="/report-a-repair">Report a repair</a><a href="/privacy">Privacy</a></div>
   </div>
   <div class="legal">© <span id="yr"></span> Estallion Investments Ltd trading as Residential Realtors · Company number 08760284 · 28-30 Harper Road, London, SE1 6AD. Member of The Property Ombudsman redress scheme. The calculators are a guide only and are not financial, tax or legal advice.</div>
 </footer>
@@ -284,6 +287,9 @@
 <script>
 (function(){
   document.getElementById('yr').textContent = new Date().getFullYear();
+  var mb = document.querySelector('.menu-btn'), nv = document.querySelector('.nav');
+  mb.addEventListener('click', function(){ var o = nv.classList.toggle('open'); mb.textContent = o ? '✕' : '☰'; mb.setAttribute('aria-expanded', o ? 'true' : 'false'); });
+  nv.addEventListener('click', function(e){ if (e.target.closest('a')) { nv.classList.remove('open'); mb.textContent = '☰'; } });
   // Reveal on scroll.
   var io = 'IntersectionObserver' in window ? new IntersectionObserver(function(es){ es.forEach(function(e){ if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }); }, { threshold: .12 }) : null;
   document.querySelectorAll('.rv').forEach(function(el){ if (io) io.observe(el); else el.classList.add('in'); });

@@ -633,6 +633,7 @@
   .av-acc-det { margin-top: 4px; color: var(--ink-soft); } .av-acc-det b { color: var(--ink, #101828); } .av-acc-warn { color: #b54708; font-weight: 600; } .av-acc-det .linkish { padding: 0; min-height: 0; line-height: inherit; vertical-align: baseline; }
   .av-fromrm { font-style: normal; color: #00a88f; text-transform: none; letter-spacing: 0; }
   .av-llpick { width: auto; max-width: 220px; min-height: 30px; padding: 2px 6px; font-size: .8rem; }
+  .vr-tag { display: inline-block; padding: 1px 8px; border-radius: 6px; background: #eff8ff; color: #175cd3; font-size: .74rem; font-weight: 700; margin-right: 4px; } .vr-tag.val { background: #f4f3ff; color: #5925dc; }
   .vr-card summary { cursor: pointer; } .vr-new { display: inline-block; padding: 1px 8px; border-radius: 999px; background: #fef3f2; color: #b42318; font-size: .78rem; font-weight: 700; }
   .vr-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--line, #eef0f3); } .vr-row:first-of-type { margin-top: 10px; }
   .vr-main { flex: 1; min-width: 0; } .vr-msg { font-size: .85rem; margin-top: 4px; color: var(--ink-soft); font-style: italic; }
@@ -7981,9 +7982,10 @@
     var box = $('vrBox'); if (!box) return;
     if (!vrItems.length) { box.innerHTML = ''; return; }
     var nNew = vrItems.filter(function(x){ return x.status === 'new'; }).length, open = false; try { open = localStorage.getItem('rr_vr_open') === '1'; } catch (e) {}
-    box.innerHTML = '<details class="card vr-card"' + (open || nNew ? ' open' : '') + ' data-vr-box><summary><b>🏠 Valuation requests</b>' + (nNew ? ' <span class="vr-new">' + nNew + ' new</span>' : '') + ' <span class="muted">· from the website’s Landlords page</span></summary>' +
+    box.innerHTML = '<details class="card vr-card"' + (open || nNew ? ' open' : '') + ' data-vr-box><summary><b>🌐 Website requests</b>' + (nNew ? ' <span class="vr-new">' + nNew + ' new</span>' : '') + ' <span class="muted">· valuations and messages from the website</span></summary>' +
       vrItems.slice(0, 50).map(function(x){ var d = x.data || {}, st = VR_ST[x.status] || VR_ST.new;
-        return '<div class="vr-row"><div class="vr-main"><div><b>' + esc(x.name) + '</b> · ' + esc(x.address) + '</div>' +
+        var enq = d.kind === 'enquiry';
+        return '<div class="vr-row"><div class="vr-main"><div>' + (enq ? '<span class="vr-tag">💬 Message · ' + esc(d.topic || '') + '</span> ' : '<span class="vr-tag val">🏠 Valuation</span> ') + '<b>' + esc(x.name) + '</b>' + (enq && x.address === '(general enquiry)' ? '' : ' · ' + esc(x.address)) + '</div>' +
           '<div class="muted" style="font-size:.85rem">' + [d.beds ? (d.beds === 'Studio' ? 'Studio' : d.beds + ' bed') : '', d.type, d.service && d.service !== 'Not sure yet' ? 'wants ' + d.service : '', d.when ? 'available: ' + d.when.toLowerCase() : '', 'sent ' + fmtShort(x.created_at)].filter(Boolean).map(esc).join(' · ') + '</div>' +
           (d.message ? '<div class="vr-msg">“' + esc(d.message) + '”</div>' : '') +
           '<div class="vr-links">' + (x.phone ? '<a href="tel:' + esc(String(x.phone).replace(/[^\d+]/g, '')) + '">📞 ' + esc(x.phone) + '</a>' : '') + (x.email ? '<a href="mailto:' + esc(x.email) + '?subject=' + encodeURIComponent('Your rental valuation — ' + x.address) + '">✉️ ' + esc(x.email) + '</a>' : '') + '</div></div>' +

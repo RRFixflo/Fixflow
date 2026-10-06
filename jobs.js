@@ -9454,6 +9454,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '\nBedrooms: ' + (data.beds || '—') + '\nType: ' + (data.type || '—') + '\nInterested in: ' + (data.service || '—') + '\nAvailable: ' + (data.when || '—') + (data.message ? '\n\nMessage:\n' + data.message : '') + '\n\nIt’s also in Fixflow under Landlords → Valuation requests.' }).catch(function () {});
     res.json({ ok: true, id: r.rows[0].id });
   }));
+  // Website contact form: kept with the valuation requests (marked as an enquiry) and sent to the office.
+  app.post('/api/enquiry', withDb(async function (p, req, res) {
+    const b = req.body || {}, ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim(), now = Date.now();
+    const hits = (vrHits.get('e:' + ip) || []).filter(function (t) { return now - t < 3600000; }); if (hits.length >= 6) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    hits.push(now); vrHits.set('e:' + ip, hits);
+    if (str(b.website, 200)) return res.json({ ok: true });
+    const name = str(b.name, 120), email = str(b.email, 200), phone = str(b.phone, 40) || null, msg = str(b.message, 3000), topic = str(b.topic, 40) || 'Other', addr = str(b.address, 300) || '';
+    if (!name || !msg) return res.status(400).json({ ok: false, error: 'missing' });
+    if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
+    if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
+    const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, addr || '(general enquiry)', JSON.stringify({ kind: 'enquiry', topic: topic, message: msg })]);
+    ntfy({ title: '💬 Website message from ' + name + ' (' + topic + ')', message: msg.slice(0, 200), tags: ['speech_balloon'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#landlords' : undefined }).catch(function () {});
+    if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Website message — ' + name + ' (' + topic + ')',
+      text: 'A message from the website contact form.\n\nName: ' + name + '\nEmail: ' + email + '\nPhone: ' + (phone || '—') + '\nThey are: ' + topic + (addr ? '\nProperty: ' + addr : '') + '\n\n' + msg + '\n\nIt’s also in Fixflow under Landlords → Website requests.' }).catch(function () {});
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
   app.get('/api/admin/valuation-requests', withDb(async function (p, req, res) {
     res.json({ ok: true, items: (await p.query('SELECT * FROM valuation_requests ORDER BY id DESC LIMIT 300')).rows });
   }));
