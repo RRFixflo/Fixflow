@@ -188,6 +188,7 @@ const SITE_URL = String(process.env.SITE_URL || 'https://www.residentialrealtors
 const SITE_PAGES = {
   home: { paths: ['/home'], canon: '/', title: 'Estate Agents & Letting Agents in London SE1 | Residential Realtors', desc: 'London estate and letting agents in SE1. Free sales and rental valuations, property sales, tenant find, rent collection and full management — ARLA Propertymark protected with Client Money Protection.', img: 'home-living' },
   sales: { paths: ['/sales', '/selling', '/sell'], canon: '/sales', crumb: 'Sales', title: 'Sell Your Home in London: Free Sales Valuation | Residential Realtors Estate Agents', desc: 'Selling your home in London? Free, no-obligation sales valuation, professional marketing, accompanied viewings and sale progression from Residential Realtors, SE1.', img: 'home-living' },
+  checks: { paths: ['/property-checks', '/epc-checker', '/licence-checker', '/diy-inventory'], canon: '/property-checks', crumb: 'Property checks', title: 'Free EPC Checker & Property Licence Checker for London Landlords | Residential Realtors', desc: 'Check any property’s EPC rating and expiry, find out if a London rental needs a licence, do a free DIY inventory and try our landlord portal.' },
   tenants: { paths: ['/tenants'], canon: '/tenants', crumb: 'Tenants', title: 'Renting in London: Report a Repair, Tenant Fees & Offers | Residential Realtors', desc: 'Report a repair online 24/7, make an offer and see our tenant fees. Renting with Residential Realtors, London SE1 — no hidden fees.', img: 'family' },
   about: { paths: ['/about', '/about-us'], canon: '/about', crumb: 'About us', title: 'About Residential Realtors | ARLA Propertymark Letting Agent, London SE1', desc: 'A modern London letting and property management agency at 28-30 Harper Road, SE1. ARLA Propertymark member with Client Money Protection and The Property Ombudsman redress.', img: 'taxis', imgW: 1860 },
   contact: { paths: ['/contact'], canon: '/contact', crumb: 'Contact', title: 'Contact Residential Realtors | Letting Agent, Harper Road, London SE1 6AD', desc: 'Call 0207 096 8131, email or message Residential Realtors — 28-30 Harper Road, London SE1 6AD.', img: 'home-living' },
@@ -240,7 +241,7 @@ function siteHeader(name, home, req) {
 function siteFooter(home) {
   return '<footer><div class="wrap"><div class="cols">' +
     '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Estate agents, lettings and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div><div style="margin-top:6px">Open 7 days, 9am–7pm</div></div>' +
-    '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlords#tools">Landlord tools</a></div>' +
+    '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlords#tools">Landlord calculators</a><a href="/property-checks">EPC &amp; licence checker</a><a href="https://diy-check-in-production-6024.up.railway.app" target="_blank" rel="noopener">DIY inventory ↗</a><a href="/landlord-portal-demo">Example landlord portal</a></div>' +
     '<div><h4>Tenants</h4><a href="/report-a-repair">Report a repair</a><a href="/offer">Make an offer</a><a href="/tenants">Renting with us</a><a href="/tenants#fees">Tenant fees</a><a href="/tenants#guides">Renting guides</a></div>' +
     '<div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="/about">About us</a><a href="/news">Property news</a><a href="/privacy">Privacy</a></div>' +
     '</div><div class="accred">' +
@@ -348,6 +349,7 @@ function sendBuilt(req, res, meta, body) {
   res.end(req.method === 'HEAD' ? undefined : (gz ? c.gzip : c.raw));
 }
 const news = require('./news')();
+require('./portaldemo')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
 const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
 // On the website's own address, /home is the same page as / — send search engines to one address.
 app.get('/home', (req, res, next) => { if (isSiteHost(req)) return res.redirect(301, '/'); next(); });
@@ -361,7 +363,7 @@ app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send('User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /staff\nDisallow: /api/\nDisallow: /offer/\nDisallow: /landlord/\nDisallow: /reserve/\nDisallow: /portal\n\nSitemap: ' + SITE_URL + '/sitemap.xml\n');
 });
 app.get('/sitemap.xml', (req, res) => {
-  const pages = [['/', '1.0'], ['/news', '0.5'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
+  const pages = [['/', '1.0'], ['/news', '0.5'], ['/property-checks', '0.8'], ['/landlord-portal-demo', '0.6'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
   res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
     pages.concat(listings.urls().length ? [['/properties-to-rent', '0.9'], ['/properties-for-sale', '0.9']] : []).concat(listings.urls().map(function (u) { return [u, '0.7']; }))
       .map(function (x) { return '  <url><loc>' + SITE_URL + siteEsc(x[0]) + '</loc><priority>' + x[1] + '</priority></url>'; }).join('\n') + '\n</urlset>\n');

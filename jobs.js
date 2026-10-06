@@ -9452,6 +9452,28 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json(await postcodeAddresses(req.query.postcode));
   }));
   app.get('/api/admin/postcode-addresses', withDb(async function (p, req, res) { res.json(await postcodeAddresses(req.query.postcode)); }));
+  // ---------- Website tools: EPC checker and licence checker (public) ----------
+  // EPCs come from the government's public register. The licence check gives the scheme answer only —
+  // never our own records or anything from licence registers (no names). Only councils whose schemes
+  // we've checked against the council's own designations get a firm answer.
+  const LIC_VERIFIED = { 'Southwark': 1, 'Newham': 1 };
+  app.get('/api/public/epc', async function (req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const m = POSTCODE_RE.exec(String(req.query.postcode || ''));
+    if (!m) return res.status(400).json({ ok: false, error: 'postcode' });
+    const pc = (m[1] + ' ' + m[2]).toUpperCase();
+    try { const s = await epcSearch(pc); res.json({ ok: true, postcode: pc, url: s.url, results: s.results.slice(0, 300).map(function (r) { return { address: r.address, rating: r.rating, expires_on: r.expires_on, expired: r.expired, link: r.link }; }) }); }
+    catch (e) { res.json({ ok: false, error: 'register', url: 'https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?lang=en&property_type=domestic&postcode=' + encodeURIComponent(pc) }); }
+  });
+  app.post('/api/public/licence-check', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const b = req.body || {};
+    const r = await licenceCheck(p, { postcode: b.postcode, address: '', people: b.people, household: b.household, households: b.households, share: b.share, type: b.type }, {});
+    if (!r.ok) return res.json({ ok: false, error: r.error });
+    const firm = !!LIC_VERIFIED[r.borough];
+    res.json({ ok: true, borough: r.borough, ward: r.ward, postcode: r.postcode, verdict: firm || r.verdict === 'yes' ? r.verdict : 'maybe', title: firm ? r.title : (r.verdict === 'yes' ? r.title : 'Check with ' + r.borough + ' council'),
+      licence: r.licence, why: r.why, link: r.link, verified: firm });
+  }));
   app.post('/api/admin/licence-check', withDb(async function (p, req, res) {
     const keys = {}; (await p.query('SELECT property_key FROM property_info WHERE licence IS NOT NULL')).rows.forEach(function (r) { keys[r.property_key] = 1; });
     res.json(await licenceCheck(p, req.body || {}, keys));

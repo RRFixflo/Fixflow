@@ -122,6 +122,50 @@
     document.addEventListener('keydown', function (e) { if (e.key === 'ArrowLeft') go(-1); if (e.key === 'ArrowRight') go(1); });
   }
 
+  // Property checks page: EPC checker and licence checker.
+  var escH = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var pcOk = function (v) { return /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(String(v || '').trim()); };
+  var epcF = document.getElementById('epcForm');
+  if (epcF) epcF.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var pc = epcF.elements.postcode.value.trim(), flt = epcF.elements.filter.value.trim().toLowerCase(), err = document.getElementById('epcErr'), out = document.getElementById('epcOut'), go = document.getElementById('epcGo');
+    err.textContent = ''; if (!pcOk(pc)) { err.textContent = 'Please enter a full postcode, e.g. SE1 6AD.'; return; }
+    go.disabled = true; go.textContent = 'Checking…'; out.innerHTML = '';
+    fetch('/api/public/epc?postcode=' + encodeURIComponent(pc)).then(function (r) { return r.json(); }).then(function (d) {
+      go.disabled = false; go.textContent = 'Check EPCs';
+      if (!d.ok) { out.innerHTML = '<div class="tool-card">' + (d.error === 'rate-limited' ? 'Too many checks — please try again shortly.' : 'The EPC register isn’t answering right now.') + (d.url ? ' <a href="' + escH(d.url) + '" target="_blank" rel="noopener">Search the register directly ↗</a>' : '') + '</div>'; return; }
+      var list = d.results.filter(function (r) { return !flt || r.address.toLowerCase().indexOf(flt) !== -1; });
+      if (!list.length) { out.innerHTML = '<div class="tool-card">No EPCs found' + (flt ? ' matching “' + escH(flt) + '”' : '') + ' at ' + escH(d.postcode) + '. <a href="' + escH(d.url) + '" target="_blank" rel="noopener">Check the register ↗</a></div>'; return; }
+      var today = new Date().toISOString().slice(0, 10);
+      out.innerHTML = '<p class="tool-count">' + list.length + ' certificate' + (list.length === 1 ? '' : 's') + ' at ' + escH(d.postcode) + '</p><div class="epc-l">' + list.slice(0, 120).map(function (r) {
+        var exp = r.expired || (r.expires_on && r.expires_on < today), low = /[FG]/.test(r.rating);
+        return '<a class="epc-r" href="' + escH(r.link) + '" target="_blank" rel="noopener"><span class="epc-b epc-' + escH(r.rating || 'x') + '">' + escH(r.rating || '?') + '</span><span class="epc-a"><b>' + escH(r.address) + '</b><small>' +
+          (r.expires_on ? (exp ? '<i class="bad">Expired ' : 'Valid until ') + new Date(r.expires_on + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + (exp ? '</i>' : '') : 'Expiry not shown') +
+          (low ? ' · <i class="bad">Below E — can’t be let without an exemption</i>' : '') + '</small></span><span class="epc-go">View ↗</span></a>';
+      }).join('') + '</div><p class="tool-src">From the government’s <a href="' + escH(d.url) + '" target="_blank" rel="noopener">EPC register</a>.</p>';
+    }).catch(function () { go.disabled = false; go.textContent = 'Check EPCs'; err.textContent = 'Couldn’t connect — please try again.'; });
+  });
+  var lf2 = document.getElementById('licForm');
+  if (lf2) {
+    var shBox = document.getElementById('licShared');
+    lf2.elements.household.addEventListener('change', function () { shBox.hidden = lf2.elements.household.value !== 'shared'; });
+    lf2.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var e = lf2.elements, err = document.getElementById('licErr'), out = document.getElementById('licOut'), go = document.getElementById('licGo');
+      err.textContent = ''; if (!pcOk(e.postcode.value)) { err.textContent = 'Please enter a full postcode.'; return; }
+      go.disabled = true; go.textContent = 'Checking…'; out.innerHTML = '';
+      fetch('/api/public/licence-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ postcode: e.postcode.value, people: e.people.value, household: e.household.value, households: e.households.value, share: e.share.value, type: e.type.value }) })
+        .then(function (r) { return r.json(); }).then(function (d) {
+          go.disabled = false; go.textContent = 'Check licence';
+          if (!d.ok) { out.innerHTML = '<div class="tool-card">' + (d.error === 'rate-limited' ? 'Too many checks — please try again shortly.' : d.error === 'postcode-unknown' ? 'We couldn’t find that postcode.' : 'Sorry, we couldn’t check that postcode.') + '</div>'; return; }
+          out.innerHTML = '<div class="tool-card lic-' + escH(d.verdict) + '"><p class="lic-area">' + escH(d.borough) + (d.ward ? ' · ' + escH(d.ward) + ' ward' : '') + '</p><h3>' + escH(d.title) + '</h3>' +
+            (d.licence ? '<p class="lic-type">' + escH(d.licence) + '</p>' : '') + (d.why || []).map(function (w) { return '<p>' + escH(w) + '</p>'; }).join('') +
+            (d.verified ? '' : '<p class="tool-note">We haven’t checked ' + escH(d.borough) + '’s schemes ward by ward yet, so please confirm with the council.</p>') +
+            '<div class="btns">' + (d.link ? '<a class="btn line" href="' + escH(d.link) + '" target="_blank" rel="noopener">Council licensing page ↗</a>' : '') + '<a class="btn red" href="/contact?topic=Landlord">Ask us to handle it</a></div></div>';
+        }).catch(function () { go.disabled = false; go.textContent = 'Check licence'; err.textContent = 'Couldn’t connect — please try again.'; });
+    });
+  }
+
   // Contact page: ?topic=Buying (etc.) picks the topic.
   var tp = /[?&]topic=([^&]+)/.exec(location.search), tsel = document.querySelector('#eForm select[name=topic]');
   if (tp && tsel) { var want = decodeURIComponent(tp[1].replace(/\+/g, ' ')); Array.prototype.forEach.call(tsel.options, function (o) { if (o.text === want) tsel.value = o.value || o.text; }); }
