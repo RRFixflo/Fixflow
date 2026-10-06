@@ -7950,9 +7950,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let address = s(b.property, 400);
     // Picked from the available list: the exact property (the applicant sees it without the door number).
     const pref = parseInt(b.property_ref, 10);
-    if (pref) { const av = (await p.query("SELECT address FROM available_props WHERE id = $1", [pref])).rows[0]; if (av && av.address) address = s(av.address, 400); }
+    let advertPcm = null;
+    if (pref) { const av = (await p.query("SELECT address, rent_pcm FROM available_props WHERE id = $1", [pref])).rows[0]; if (av && av.address) address = s(av.address, 400); if (av && Number(av.rent_pcm) > 0) advertPcm = Number(av.rent_pcm); }
     const lead = s(b.lead_name), phone = s(b.lead_phone, 40), email = s(b.lead_email);
-    const amt = money(b.offer), maxAmt = money(b.max_offer), per = b.per === 'pcm' ? 'pcm' : 'pw';
+    // No "maximum offer" any more: since the Renters' Rights Act (1 May 2026) offers above the advertised rent can't be invited or accepted.
+    const amt = money(b.offer), maxAmt = null, per = b.per === 'pcm' ? 'pcm' : 'pw';
+    if (amt && advertPcm && (per === 'pcm' ? amt : amt * 52 / 12) > advertPcm + 1) return res.status(400).json({ ok: false, error: 'above-advertised', advertised_pcm: advertPcm });
     if (!address || !lead || !(phone || email)) return res.status(400).json({ ok: false, error: 'details' });
     if (!amt) return res.status(400).json({ ok: false, error: 'offer' });
     if (!s(b.signature) || b.agree !== true) return res.status(400).json({ ok: false, error: 'sign' });
