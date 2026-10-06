@@ -63,12 +63,33 @@ module.exports = function (app, opts) {
     if (!r.ok || xml.indexOf('<properties') === -1) throw new Error('bad feed ' + r.status);
     return parse(xml, kind);
   }
+  // Gnomen's feed leaves some published properties out, so anything advertised on our Rightmove
+  // branch that isn't in the feed is added too (matched on street, postcode district and bedrooms).
+  const sameHome = function (a, b) {
+    const st = function (p) { return String(p.street || p.where || '').toLowerCase().replace(/^(flat|apartment|unit)\s*\w+[,\s]*/, '').replace(/^\d+[a-z]?\s+/, '').replace(/[^a-z]/g, ''); };
+    return a.outcode && a.outcode === b.outcode && (a.beds || 0) === (b.beds || 0) && st(a) && st(a) === st(b);
+  };
+  async function addFromRightmove(kind, list) {
+    if (process.env.LISTINGS_RIGHTMOVE_TOO === '0') return list;
+    const items = await rmBranch(kind), extra = [];
+    for (const x of items) {
+      const quick = rmListing(x, null, kind);
+      if (list.some(function (p) { return sameHome(p, quick); })) continue;
+      const fresh = !rmDetails.has(String(x.id)), d = await rmDetail(String(x.id));
+      if (fresh) await new Promise(function (ok) { setTimeout(ok, 800); });
+      extra.push(rmListing(x, d, kind));
+    }
+    if (extra.length) console.log('Added from Rightmove (not in the Gnomen ' + (kind === 'let' ? 'lettings' : 'sales') + ' feed): ' + extra.length + ' — ' + extra.map(function (p) { return p.where; }).join('; ').slice(0, 400));
+    return list.concat(extra).sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
+  }
   async function refresh() {
     for (const kind of ['sale', 'let']) {
       if (!FEEDS[kind]) continue;
       try {
-        data[kind] = await gnomenFeed(kind);
-        console.log('Listings from the Gnomen ' + (kind === 'let' ? 'lettings' : 'sales') + ' feed: ' + data[kind].length + ' (' + data[kind].filter(function (p) { return !p.taken; }).length + ' available)');
+        let list = await gnomenFeed(kind);
+        console.log('Listings from the Gnomen ' + (kind === 'let' ? 'lettings' : 'sales') + ' feed: ' + list.length + ' (' + list.filter(function (p) { return !p.taken; }).length + ' available)');
+        try { list = await addFromRightmove(kind, list); } catch (e) { console.log('Rightmove check not done: ' + e.message); }
+        data[kind] = list;
       } catch (e) { console.error('Listings feed (' + kind + ') not read:', e.message); }   // keep the last good copy
     }
     data.at = Date.now(); data.stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(function (p) { return p.id + p.status + p.price; }), data.let.map(function (p) { return p.id + p.status + p.price; })])).digest('hex').slice(0, 12);

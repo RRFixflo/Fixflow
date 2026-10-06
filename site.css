@@ -1,4 +1,6 @@
 /* Residential Realtors website: shared look (Home, Tenants, About, Contact, Privacy). */
+/* Anything the page hides stays hidden, whatever its own display style. */
+[hidden] { display: none !important; }
 :root { --navy: #0b1f3a; --navy2: #13294b; --red: #d9262e; --ink: #0f172a; --soft: #475467; --faint: #98a2b3; --line: #e6e9ef; --bg: #f6f7fb; --card: #fff; --good: #12b76a; --r: 22px; }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
