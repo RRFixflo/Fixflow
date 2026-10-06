@@ -771,7 +771,8 @@ body.bk-lock { overflow: hidden; }
 .cb-item:hover { border-color: var(--navy); transform: translateY(-1px); } .cb-item.on { border-color: var(--red); background: #fff5f5; box-shadow: 0 14px 30px -24px rgba(217,38,46,.7); }
 .cb-item input { width: 20px; height: 20px; accent-color: var(--red); margin: 0; }
 .cb-ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: #eef2f8; font-size: 1.2rem; }
-.cb-it b { display: block; color: var(--ink); } .cb-it small { display: block; font-weight: 500; color: var(--soft); font-size: .84rem; margin-top: 2px; }
+.cb-it { min-width: 0; } .cb-it b { display: block; color: var(--ink); }
+.cb-size { margin-top: 8px; padding: 8px 10px !important; border-radius: 10px; border: 1.5px solid var(--line); font: inherit; font-size: 15px !important; background: #fff; color: var(--ink); width: auto !important; max-width: 100%; } .cb-it small { display: block; font-weight: 500; color: var(--soft); font-size: .84rem; margin-top: 2px; }
 .cb-pr { font-weight: 800; color: var(--navy); font-size: 1.1rem; white-space: nowrap; text-align: right; } .cb-pr small { display: block; font-size: .72rem; font-weight: 600; color: var(--soft); }
 .cb-sum { display: grid; gap: 4px; padding: 0 16px; } .cb-sum div { display: flex; justify-content: space-between; color: var(--soft); font-size: .92rem; } .cb-sum b { color: var(--ink); font-weight: 700; }
 @media (max-width: 480px) { .cb-item { grid-template-columns: auto 1fr auto; } .cb-ic { display: none; } }
