@@ -11391,5 +11391,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME) setTimeout(function () { checkLinksUsed().catch(function () {}); }, 120000).unref();
   // Signed in to Fixflow (for staff-only previews on the website).
   function isStaff(req) { const t = parseToken(readCookie(req, 'rr_admin')); if (!t) return false; const c = t.sid && sessionCache.get(t.sid); return !(c && c.revoked); }
-  return { saveReport: saveReport, hasDb: async function () { return !!(await db()); }, isStaff: isStaff };
+  return { saveReport: saveReport, hasDb: async function () { return !!(await db()); }, isStaff: isStaff, db: db,
+    // For other parts of the site (landlord alerts): send an email, and the office phone alert.
+    sendMail: function (o) { return canEmail() && sendEmail ? sendEmail(o) : Promise.resolve({ ok: false, error: 'email-off' }); },
+    alert: function (o) { return ntfy(o).catch(function () {}); } };
 };
