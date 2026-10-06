@@ -603,8 +603,8 @@
   .av-rm-unl { margin: 0 0 10px; font-size: .86rem; } .av-rm-unl summary { cursor: pointer; font-weight: 700; }
   .av-rm-item { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line, #e6e8ec); flex-wrap: wrap; } .av-rm-item img { width: 64px; height: 44px; object-fit: cover; border-radius: 8px; } .av-rm-item span { display: block; color: var(--ink-soft); font-size: .8rem; }
   .av-rmlink { display: flex; gap: 10px; align-items: center; text-decoration: none; color: inherit; border: 1px solid #c8ece4; background: #f2fbf9; border-radius: 12px; padding: 6px; } .av-rmlink img { width: 72px; height: 50px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; } .av-rmlink span { font-size: .8rem; color: var(--ink-soft); min-width: 0; } .av-rmlink b { display: block; color: #0b6b5a; font-size: .84rem; }
-  .cb-arow { display: grid; grid-template-columns: 1.2fr 1.6fr 110px auto; gap: 6px; margin-bottom: 6px; align-items: center; } .cb-aprice { display: flex; align-items: center; gap: 4px; font-weight: 700; } .cb-admin summary { cursor: pointer; } .cb-admin { margin-bottom: 12px; }
-  @media (max-width: 760px) { .cb-arow { grid-template-columns: 1fr 100px auto; } .cb-arow [data-k=desc] { grid-column: 1 / -1; grid-row: 2; } }
+  .cb-arow { display: grid; grid-template-columns: 1.2fr 1.4fr 100px 1fr auto; gap: 6px; margin-bottom: 6px; align-items: center; } .cb-aprice { display: flex; align-items: center; gap: 4px; font-weight: 700; } .cb-admin summary { cursor: pointer; } .cb-admin { margin-bottom: 12px; }
+  @media (max-width: 760px) { .cb-arow { grid-template-columns: 1fr 100px auto; } .cb-arow [data-k=desc] { grid-column: 1 / -1; grid-row: 2; } .cb-arow [data-k=contractor] { grid-column: 1 / -1; grid-row: 3; } }
   .av-dream-d summary { cursor: pointer; list-style: none; } .av-dream-d summary::-webkit-details-marker { display: none; } .av-dream-d summary::after { content: ' ▸'; } .av-dream-d[open] summary::after { content: ' ▾'; } .av-dream-d[open] .av-dreams { margin-top: 6px; }
   .av-dream { font-size: .82rem; font-weight: 600; color: #6941c6; background: #f4f0ff; border-radius: 10px; padding: 6px 8px; }
   .av-dreams { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; } .av-dlink { display: inline-flex; gap: 2px; align-items: center; background: #fff; border: 1px solid #ddd2fe; border-radius: 999px; padding: 1px 4px 1px 8px; } .av-dlink a { color: #6941c6; text-decoration: none; } .av-dlink .linkish { color: #98a2b3; font-size: 1rem; padding: 0 4px; }
@@ -2086,7 +2086,7 @@
         <div class="cert-up" id="certUpload" role="button" tabindex="0">📎 <b>Upload a gas safety, EICR, EPC or property licence</b><span>Fixflow reads which property it’s for and the dates — check them and save. Or drag &amp; drop it here.</span></div>
         <div class="tiles prop-tiles" id="certTiles"></div>
         <details class="card cb-admin" id="cbAdmin"><summary><b>🌐 Website bookings — gas safety, EICR &amp; EPC prices</b> <span class="muted-note" id="cbAdminSt" style="margin:0"></span></summary>
-          <p class="muted-note" style="margin:8px 0">Landlords can book and pay for these at <a href="https://www.residentialrealtors.co.uk/book-certificate" target="_blank" rel="noopener">residentialrealtors.co.uk/book-certificate</a>. A service with no price isn’t offered. Bookings appear in Website leads.</p>
+          <p class="muted-note" style="margin:8px 0">Landlords can book and pay for these at <a href="https://www.residentialrealtors.co.uk/book-certificate" target="_blank" rel="noopener">residentialrealtors.co.uk/book-certificate</a>. A service with no price isn’t offered. Each booking appears in Website leads and raises a job for the contractor you choose for that service.</p>
           <div id="cbAdminList"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" class="btn small" id="cbAdminAdd">➕ Add a service</button><button type="button" class="btn small primary" id="cbAdminSave">Save prices</button></div>
         </details>
@@ -8315,7 +8315,8 @@
     if (x.type === 'cert') {
       facts.push(['Booked', (d.items || []).map(function(i){ return esc(i.name) + ' <span class="muted-note" style="margin:0">£' + Number(i.price).toFixed(2) + '</span>'; }).join('<br>')]);
       facts.push(['Total', '<b>£' + Number(d.total || 0).toFixed(2) + '</b> ' + (d.paid_at ? '<span class="crm-flag ok">💳 Paid online ' + esc(fmtShort(d.paid_at)) + '</span>' : d.checkout_id ? '<span class="crm-flag warn">Not paid yet — payment page opened</span>' : '<span class="crm-flag warn">Take payment</span>')]);
-      facts.push(['Access', esc({ landlord: 'Landlord will let us in', tenant: 'Arrange with the tenant', keys: 'Keys at the office / key safe' }[d.access] || '—') + (d.tenant ? '<br>Tenant: ' + esc(d.tenant) : '')]);
+      facts.push(['Access', esc({ landlord: 'Landlord will let us in', tenant: 'Contact the tenant directly', keys: 'Keys at the office / key safe' }[d.access] || '—') + (d.tenant_name || d.tenant_phone ? '<br>Tenant: ' + esc([d.tenant_name, d.tenant_phone, d.tenant_email].filter(Boolean).join(' · ')) : '')]);
+      if ((d.jobs || []).length) facts.push(['Jobs raised', d.jobs.map(function(id){ return '<button type="button" class="linkish" data-crm-job="' + id + '">RR-' + String(id).padStart(5, '0') + '</button>'; }).join(' · ')]);
       facts.push(['Preferred', esc((d.dates || []).join(', ') || 'Any date')]);
     }
     if (d.source) facts.push(['Came via', esc(d.source)]); if (d.page) facts.push(['Sent from', esc(d.page)]);
@@ -8347,6 +8348,7 @@
   $('navCrm').addEventListener('click', function(){ showView('crm'); });
   ['crmQ', 'crmSt', 'crmWho'].forEach(function(id){ $(id).addEventListener(id === 'crmQ' ? 'input' : 'change', renderCrm); });
   $('crmTiles').addEventListener('click', function(e){ var b = e.target.closest('[data-crm-tile]'); if (!b) return; crm.tile = crm.tile === b.dataset.crmTile ? '' : b.dataset.crmTile; if (crm.tile === 'subs') crm.type = ''; renderCrm(); });
+  $('crmView').addEventListener('click', function(e){ var j = e.target.closest('[data-crm-job]'); if (!j) return; e.stopPropagation(); var jid = Number(j.dataset.crmJob); showView('jobs'); Promise.resolve(loadJobs()).then(function(){ openJob(jid); }); });
   $('crmTypes').addEventListener('click', function(e){ var b = e.target.closest('[data-crm-type]'); if (!b) return; crm.type = b.dataset.crmType; crm.tile = ''; renderCrm(); });
   $('crmAddBtn').addEventListener('click', function(){ $('crmAdd').hidden = !$('crmAdd').hidden; if (!$('crmAdd').hidden) $('caName').focus(); });
   $('caCancel').addEventListener('click', function(){ $('crmAdd').hidden = true; });
@@ -14891,7 +14893,7 @@
   });
   // Certificates: what landlords can book (and pay for) on the website, and the prices.
   var cbAdm = null;
-  function cbAdmRow(x){ return '<div class="cb-arow" data-cbid="' + esc(x.id || '') + '"><input class="inp" data-k="name" placeholder="Service name" value="' + esc(x.name || '') + '"><input class="inp" data-k="desc" placeholder="Short description (optional)" value="' + esc(x.desc || '') + '"><label class="cb-aprice">£<input class="inp" data-k="price" inputmode="decimal" placeholder="Price" value="' + esc(x.price == null ? '' : x.price) + '"></label><button type="button" class="btn small ghost" data-cbdel title="Remove">✕</button></div>'; }
+  function cbAdmRow(x){ return '<div class="cb-arow" data-cbid="' + esc(x.id || '') + '"><input class="inp" data-k="name" placeholder="Service name" value="' + esc(x.name || '') + '"><input class="inp" data-k="desc" placeholder="Short description (optional)" value="' + esc(x.desc || '') + '"><label class="cb-aprice">£<input class="inp" data-k="price" inputmode="decimal" placeholder="Price" value="' + esc(x.price == null ? '' : x.price) + '"></label><select class="inp" data-k="contractor" title="Who does the work — a job is raised for them on every booking"><option value="">Contractor: match by trade</option>' + (typeof contractors !== 'undefined' ? contractors : []).filter(function(c){ return c.active !== false; }).map(function(c){ return '<option' + (c.name === x.contractor ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + (x.contractor && !(typeof contractors !== 'undefined' ? contractors : []).some(function(c){ return c.name === x.contractor; }) ? '<option selected>' + esc(x.contractor) + '</option>' : '') + '</select><button type="button" class="btn small ghost" data-cbdel title="Remove">✕</button></div>'; }
   if ($('cbAdmin')) $('cbAdmin').addEventListener('toggle', function(){
     if (!this.open || cbAdm) return;
     api('GET', '/api/admin/cert-services').then(function(d){ if (!d || !d.ok) return; cbAdm = d;
@@ -14901,7 +14903,7 @@
   if ($('cbAdminAdd')) $('cbAdminAdd').addEventListener('click', function(){ $('cbAdminList').insertAdjacentHTML('beforeend', cbAdmRow({})); });
   if ($('cbAdminList')) $('cbAdminList').addEventListener('click', function(e){ var b = e.target.closest('[data-cbdel]'); if (b) b.closest('.cb-arow').remove(); });
   if ($('cbAdminSave')) $('cbAdminSave').addEventListener('click', function(){
-    var items = Array.prototype.map.call(document.querySelectorAll('#cbAdminList .cb-arow'), function(r, i){ var v = function(k){ return r.querySelector('[data-k="' + k + '"]').value.trim(); }; return { id: r.dataset.cbid || ('svc' + Date.now().toString(36) + i), name: v('name'), desc: v('desc'), price: v('price') }; }).filter(function(x){ return x.name; });
+    var items = Array.prototype.map.call(document.querySelectorAll('#cbAdminList .cb-arow'), function(r, i){ var v = function(k){ return r.querySelector('[data-k="' + k + '"]').value.trim(); }; return { id: r.dataset.cbid || ('svc' + Date.now().toString(36) + i), name: v('name'), desc: v('desc'), price: v('price'), contractor: v('contractor') }; }).filter(function(x){ return x.name; });
     busy($('cbAdminSave'), true, 'Saving…');
     api('PUT', '/api/admin/cert-services', { items: items }).then(function(d){ busy($('cbAdminSave'), false); toast(d && d.ok ? '✓ Saved — ' + d.items.filter(function(x){ return x.price; }).length + ' service(s) on the website' : 'Couldn’t save'); if (d && d.ok) $('cbAdminList').innerHTML = d.items.map(cbAdmRow).join(''); });
   });

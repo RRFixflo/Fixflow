@@ -13,8 +13,10 @@
       <div class="cb-sec">
         <h3>The property</h3>
         <div class="tool-g2"><label>Address<input name="address" autocomplete="street-address" placeholder="e.g. Flat 2, 10 Example Road"></label><label>Postcode<input name="postcode" autocomplete="postal-code" placeholder="e.g. SE1 6AD" style="text-transform:uppercase"></label></div>
-        <label>How do we get in?<select name="access"><option value="landlord">I’ll let the engineer in</option><option value="tenant">Please arrange it with my tenant</option><option value="keys">Keys at your office / a key safe</option></select></label>
-        <label id="cbTenantRow" hidden>Tenant’s name and phone number<input name="tenant" placeholder="So we can arrange a time with them"></label>
+        <label>How do we get in?<select name="access"><option value="landlord">I’ll let the engineer in</option><option value="tenant">Contact my tenant directly to arrange it</option><option value="keys">Keys at your office / a key safe</option></select></label>
+        <div id="cbTenantRow" class="cb-tenant" hidden><p class="tool-note" style="margin:0">We’ll contact your tenant directly to arrange a time.</p>
+          <div class="tool-g2"><label>Tenant’s name<input name="tenant_name" autocomplete="off"></label><label>Tenant’s phone<input name="tenant_phone" type="tel" autocomplete="off"></label></div>
+          <label>Tenant’s email <small>(optional)</small><input name="tenant_email" type="email" autocomplete="off"></label></div>
         <div class="tool-g2"><label>Preferred date<input name="d1" type="date"></label><label>Or another date<input name="d2" type="date"></label></div>
       </div>
       <div class="cb-sec">

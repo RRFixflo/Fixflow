@@ -9676,7 +9676,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   async function certServices(p) {
     const v = ((await p.query("SELECT value FROM app_settings WHERE key = 'cert_services'")).rows[0] || {}).value || {};
     const items = Array.isArray(v.items) && v.items.length ? v.items : CERT_DEFAULTS;
-    return items.map(function (x) { const n = Math.round(parseFloat(String(x.price || '').replace(/[£,\s]/g, '')) * 100) / 100; return { id: str(x.id, 30), name: str(x.name, 120), desc: str(x.desc, 300) || '', price: isFinite(n) && n > 0 ? n : null }; }).filter(function (x) { return x.id && x.name; });
+    return items.map(function (x) { const n = Math.round(parseFloat(String(x.price || '').replace(/[£,\s]/g, '')) * 100) / 100; return { id: str(x.id, 30), name: str(x.name, 120), desc: str(x.desc, 300) || '', price: isFinite(n) && n > 0 ? n : null, contractor: str(x.contractor, 120) || '' }; }).filter(function (x) { return x.id && x.name; });
   }
   async function sumup(method, path, body) {
     const r = await fetch('https://api.sumup.com' + path, { method: method, headers: { Authorization: 'Bearer ' + SUMUP_KEY, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });
@@ -9696,11 +9696,36 @@ document.querySelectorAll('.lcu').forEach(function(box){
   const certText = function (row) { const d = row.data || {};
     return 'Booked: ' + (d.items || []).map(function (i) { return i.name + ' (£' + i.price.toFixed(2) + ')'; }).join(', ') + '\nTotal: £' + Number(d.total || 0).toFixed(2) + (d.paid_at ? ' — PAID online' : canPay() ? ' — not paid yet' : ' — payment to be taken by the office') +
       '\n\nName: ' + row.name + '\nPhone: ' + (row.phone || '—') + '\nEmail: ' + (row.email || '—') + '\nProperty: ' + row.address +
-      '\nAccess: ' + ({ landlord: 'Landlord will let the engineer in', tenant: 'Arrange with the tenant', keys: 'Keys at our office / key safe' }[d.access] || '—') + (d.tenant ? '\nTenant contact: ' + d.tenant : '') +
+      '\nAccess: ' + ({ landlord: 'Landlord will let the engineer in', tenant: 'Contact the tenant directly', keys: 'Keys at our office / key safe' }[d.access] || '—') + (d.tenant_name || d.tenant_phone ? '\nTenant: ' + [d.tenant_name, d.tenant_phone, d.tenant_email].filter(Boolean).join(' · ') : '') +
       '\nPreferred dates: ' + ((d.dates || []).join(', ') || 'Any') + (d.message ? '\n\nNotes: ' + d.message : ''); };
+  // Each service booked becomes a work order for the contractor who does it (chosen per service in
+  // Certificates → Website bookings; otherwise the first active contractor whose trade fits).
+  const CERT_TRADE = { gas: [/gas/i, /boiler|heating/i], eicr: [/eicr/i, /electric/i], epc: [/epc/i, /energy assess|domestic energy/i] };
+  async function certJobs(p, row) {
+    const d = row.data || {}; if (d.jobs && d.jobs.length) return;
+    const cons = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY id')).rows, ids = [];
+    const pref = d.dates && d.dates.length ? d.dates.join(' or ') : 'any date';
+    for (const it of d.items || []) {
+      const kind = /^gas/.test(it.id) ? 'gas' : /^eicr/.test(it.id) ? 'eicr' : /^epc/.test(it.id) ? 'epc' : '';
+      const pick = (it.contractor && cons.find(function (c) { return c.name === it.contractor; })) || (kind && CERT_TRADE[kind].reduce(function (hit, re) { return hit || cons.find(function (c) { return re.test(c.trade || ''); }); }, null)) || null;
+      const cat = kind === 'gas' ? 'Gas safety certificate' : kind === 'eicr' ? 'EICR' : kind === 'epc' ? 'EPC' : 'Certificate';
+      const access = d.access === 'tenant' ? 'Please contact the tenant directly to arrange access: ' + ([d.tenant_name, d.tenant_phone, d.tenant_email].filter(Boolean).join(' · ') || 'details to follow') + '.'
+        : d.access === 'keys' ? 'Keys: collect from our office / key safe — call us to arrange.' : 'The landlord will let you in — please call them to arrange: ' + row.name + ' · ' + (row.phone || row.email) + '.';
+      const desc = it.name + ' booked by the landlord on our website' + (d.paid_at ? ' (paid online)' : '') + '.\nPreferred: ' + pref + '.\n' + access + '\nPlease email the certificate to us once done.' + (d.message ? '\nLandlord’s notes: ' + d.message : '');
+      const due = d.dates_iso && d.dates_iso[0] ? new Date(d.dates_iso[0] + 'T18:00:00Z') : new Date(Date.now() + 7 * 86400000);
+      const r = await p.query(`INSERT INTO jobs (status, urgency, due_at, source, property_address, category, affected, description, assigned_to, tenant_name, tenant_phone, tenant_email, landlord_name, landlord_email, landlord_phone)
+        VALUES ($1, 'Routine', $2, 'Other', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+        [pick ? 'Assigned' : 'New', due, row.address, cat, cat, desc, pick ? pick.name : null, d.tenant_name || null, d.tenant_phone || null, d.tenant_email || null, row.name, row.email || null, row.phone || null]);
+      const id = r.rows[0].id; ids.push(id);
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'created', 'Job raised from a website certificate booking (' + it.name + ', £' + Number(it.price).toFixed(2) + (d.paid_at ? ', paid online' : ', payment to take') + ').' + (pick ? ' Assigned to ' + pick.name + '.' : ' No contractor chosen for this service yet — pick one in Certificates → Website bookings.')]);
+      ntfy({ title: refFor(id) + ' raised: ' + cat, message: String(row.address).replace(/\s+/g, ' ') + '\n' + (pick ? 'Assigned to ' + pick.name + ' — open it to send them the job.' : 'No contractor chosen yet — open it to assign one.'), tags: ['scroll'] }, '#job-' + id).catch(function () {});
+    }
+    d.jobs = ids; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]); row.data = d;
+  }
   async function certPaid(p, row) {
     const d = row.data || {}; if (d.paid_at) return;
     d.paid_at = new Date().toISOString(); await p.query("UPDATE valuation_requests SET data = $2 WHERE id = $1", [row.id, JSON.stringify(d)]); row.data = d;
+    await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); });
     teamAlert({ title: '💳 Certificate booking paid: £' + Number(d.total).toFixed(2), message: (d.items || []).map(function (i) { return i.name; }).join(' + ') + ' · ' + row.address.split(',').slice(0, 2).join(','), tags: ['credit_card'] }, '#leads').catch(function () {});
     staffEmailAll('💳 Certificate booking paid - ' + row.address.split(',').slice(0, 2).join(','), function (link) { return 'A landlord has booked and paid on the website. Please arrange the visit.\n\n' + certText(row) + '\n\nIt’s in Website leads: ' + link; }, '#leads').catch(function () {});
     if (canEmail() && sendEmail && row.email) sendEmail({ to: row.email, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Booking confirmed — ' + (d.items || []).map(function (i) { return i.name.replace(/ —.*/, ''); }).join(' + '),
@@ -9709,7 +9734,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   async function certRow(p, id, k) { const r = (await p.query("SELECT * FROM valuation_requests WHERE id = $1 AND data->>'kind' = 'cert'", [parseInt(id, 10) || 0])).rows[0]; return r && r.data && r.data.token && k && String(k) === r.data.token ? r : null; }
   app.get('/api/public/cert-services', withDb(async function (p, req, res) {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, items: (await certServices(p)).filter(function (x) { return x.price; }), pay: canPay() });
+    res.json({ ok: true, items: (await certServices(p)).filter(function (x) { return x.price; }).map(function (x) { return { id: x.id, name: x.name, desc: x.desc, price: x.price }; }), pay: canPay() });
   }));
   const cbHits = new Map();
   app.post('/api/public/cert-booking', withDb(async function (p, req, res) {
@@ -9728,12 +9753,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
     const postcode = (pcm[1] + ' ' + pcm[2]).toUpperCase(), full = POSTCODE_RE.test(addr) ? addr : addr + ', ' + postcode;
     const total = Math.round(items.reduce(function (a, x) { return a + x.price; }, 0) * 100) / 100;
-    const data = { kind: 'cert', postcode: postcode, items: items.map(function (x) { return { id: x.id, name: x.name, price: x.price }; }), total: total, token: crypto.randomBytes(12).toString('base64url'),
-      access: ['landlord', 'tenant', 'keys'].indexOf(b.access) !== -1 ? b.access : '', tenant: str(b.tenant, 200) || '', dates: (Array.isArray(b.dates) ? b.dates : []).map(function (x) { return str(x, 60); }).filter(Boolean).slice(0, 3), message: str(b.message, 2000) || '' };
+    const data = { kind: 'cert', postcode: postcode, items: items.map(function (x) { return { id: x.id, name: x.name, price: x.price, contractor: x.contractor }; }), total: total, token: crypto.randomBytes(12).toString('base64url'),
+      access: ['landlord', 'tenant', 'keys'].indexOf(b.access) !== -1 ? b.access : '', tenant_name: str(b.tenant_name, 120) || '', tenant_phone: str(b.tenant_phone, 40) || '', tenant_email: str(b.tenant_email, 200) || '', dates: (Array.isArray(b.dates) ? b.dates : []).map(function (x) { return str(x, 60); }).filter(Boolean).slice(0, 3), dates_iso: (Array.isArray(b.dates_iso) ? b.dates_iso : []).filter(function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(String(x)); }).slice(0, 3), message: str(b.message, 2000) || '' };
     const row = (await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING *', [name, email, phone, full, JSON.stringify(data)])).rows[0];
     teamAlert({ title: '📜 Certificate booking: ' + items.map(function (x) { return x.name.replace(/ —.*/, ''); }).join(' + '), message: full.split(',').slice(0, 2).join(',') + ' · £' + total.toFixed(2) + (canPay() ? ' · paying online' : ' · take payment'), tags: ['scroll'] }, '#leads').catch(function () {});
     if (!canPay()) staffEmailAll('📜 Certificate booking - ' + full.split(',').slice(0, 2).join(','), function (link) { return 'A landlord has booked on the website. Please call them to take payment and arrange the visit.\n\n' + certText(row) + '\n\nIt’s in Website leads: ' + link; }, '#leads').catch(function () {});
-    if (!canPay()) return res.json({ ok: true, id: row.id, pay: false });
+    if (!canPay()) { await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); }); return res.json({ ok: true, id: row.id, pay: false }); }
     try { res.json({ ok: true, id: row.id, pay: true, url: await certCheckout(p, row) }); }
     catch (e) { console.error('SumUp checkout failed:', e.message); res.json({ ok: true, id: row.id, pay: false, payError: true }); }
   }));
@@ -9745,7 +9770,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       for (const cid of (d.checkouts || [d.checkout_id]).slice().reverse()) { try { const c = await sumup('GET', '/v0.1/checkouts/' + encodeURIComponent(cid)); if (String(c.status).toUpperCase() === 'PAID') { await certPaid(p, row); break; } } catch (e) { console.error('SumUp status check failed:', e.message); } }
     }
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, paid: !!row.data.paid_at, total: d.total, items: d.items, address: row.address, checkout: req.query.pay ? d.checkout_id || '' : undefined, canPay: canPay() });
+    res.json({ ok: true, paid: !!row.data.paid_at, total: d.total, items: (d.items || []).map(function (i) { return { name: i.name, price: i.price }; }), address: row.address, checkout: req.query.pay ? d.checkout_id || '' : undefined, canPay: canPay() });
   }));
   app.post('/api/public/cert-booking/:id/pay', withDb(async function (p, req, res) {
     const row = await certRow(p, req.params.id, (req.body || {}).k); if (!row) return res.status(404).json({ ok: false });
@@ -9765,7 +9790,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.get('/api/admin/cert-services', withDb(async function (p, req, res) { res.json({ ok: true, items: await certServices(p), pay: canPay() }); }));
   app.put('/api/admin/cert-services', withDb(async function (p, req, res) {
     if (req.role === 'offers' && !(req.user && req.user.role === 'offers_admin')) return res.status(403).json({ ok: false, error: 'managers-only' });
-    const items = (Array.isArray((req.body || {}).items) ? req.body.items : []).slice(0, 20).map(function (x, i) { return { id: str(x.id, 30) || 'svc' + (i + 1), name: str(x.name, 120), desc: str(x.desc, 300) || '', price: str(String(x.price || ''), 20) || '' }; }).filter(function (x) { return x.name; });
+    const items = (Array.isArray((req.body || {}).items) ? req.body.items : []).slice(0, 20).map(function (x, i) { return { id: str(x.id, 30) || 'svc' + (i + 1), name: str(x.name, 120), desc: str(x.desc, 300) || '', price: str(String(x.price || ''), 20) || '', contractor: str(x.contractor, 120) || '' }; }).filter(function (x) { return x.name; });
     await p.query("INSERT INTO app_settings (key, value) VALUES ('cert_services', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ items: items, updated_at: new Date().toISOString() })]);
     res.json({ ok: true, items: await certServices(p) });
   }));
