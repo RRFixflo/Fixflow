@@ -358,7 +358,7 @@
     if (!data.address || !data.postcode) { err.textContent = 'Please enter the property address and postcode.'; return; }
     if (!data.consent) { err.textContent = 'Please tick the box so we can contact you.'; return; }
     go.disabled = true; go.textContent = 'Sending…';
-    fetch('/api/valuation-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(function(r){ return r.json(); }).then(function(d){
+    ffPost('/api/valuation-request', data, form).then(function(r){ return r.json(); }).then(function(d){
       if (!d.ok) { go.disabled = false; go.textContent = 'Request my free valuation →'; err.textContent = d.error === 'rate-limited' ? 'Too many requests — please try again in a few minutes, or call us on 0207 096 8131.' : d.error === 'postcode' ? 'Please check the postcode.' : 'Sorry, something went wrong. Please try again or call 0207 096 8131.'; return; }
       q('#vBody').innerHTML = '<div class="vdone"><div class="big">✓</div><h3>Thank you, ' + String(data.name.split(/\s+/)[0]).replace(/[<>&"]/g, '') + '!</h3><p style="color:var(--soft);margin:6px 0 0">We’ve got your request and will be in touch shortly to arrange your free valuation. If it’s urgent, call us on <a href="tel:02070968131" style="font-weight:700;color:var(--navy)">0207 096 8131</a>.</p></div>';
     }).catch(function(){ go.disabled = false; go.textContent = 'Request my free valuation →'; err.textContent = 'Couldn’t connect — please try again or call 0207 096 8131.'; });

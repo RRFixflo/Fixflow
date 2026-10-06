@@ -9529,6 +9529,51 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query("INSERT INTO app_settings (key, value) VALUES ('licensing_schemes', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(value)]);
     res.json({ ok: true, custom: custom });
   }));
+  // ---------- Public forms: only real people (no bots, scripts or AI agents) ----------
+  // Every website form gets a one-off check token from /api/form-token, has to solve a small puzzle
+  // in the browser and wait a few seconds (people take longer than that to type), and must come
+  // from our own pages. With TURNSTILE_SECRET set, Cloudflare Turnstile is checked too.
+  const FF_KEY = (process.env.ADMIN_PASSWORD || process.env.DATABASE_URL) ? crypto.createHash('sha256').update('ff|' + (process.env.ADMIN_PASSWORD || '') + '|' + (process.env.DATABASE_URL || '')).digest() : crypto.randomBytes(32);
+  const FF_BITS = 12, FF_MIN = 3000, FF_MAX = 6 * 3600000, ffUsed = new Map();
+  const FORM_BOT_UA = /bot\b|bot\/|spider|crawl|slurp|curl|wget|python|httpx|aiohttp|requests\/|go-http|java\/|okhttp|axios|node-fetch|undici|libwww|scrapy|headless|phantom|selenium|puppeteer|playwright|gpt|openai|anthropic|claude|perplexity|cohere|bytespider|ccbot|diffbot|petalbot|semrush|ahrefs|postman|insomnia/i;
+  const ffSign = function (body) { return crypto.createHmac('sha256', FF_KEY).update(body).digest('base64url').slice(0, 22); };
+  app.get('/api/form-token', function (req, res) {
+    const body = Date.now().toString(36) + '.' + crypto.randomBytes(9).toString('base64url');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ t: body + '.' + ffSign(body), bits: FF_BITS, min: FF_MIN });
+  });
+  async function humanCheck(req, b, texts) {
+    const ua = String(req.headers['user-agent'] || '');
+    if (!ua || ua.length < 20 || FORM_BOT_UA.test(ua)) return 'agent';
+    const site = String(req.headers['sec-fetch-site'] || ''); if (site && site !== 'same-origin') return 'cross-site';
+    const origin = String(req.headers.origin || ''), host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+    if (origin) { let oh = ''; try { oh = new URL(origin).host.toLowerCase(); } catch (e) {} if (oh !== host) return 'origin'; }
+    const t = String(b.ff || ''), m = /^([0-9a-z]+)\.([\w-]{12})\.([\w-]{22})$/.exec(t);
+    if (!m || ffSign(m[1] + '.' + m[2]) !== m[3]) return 'token';
+    const age = Date.now() - parseInt(m[1], 36); if (!(age >= FF_MIN - 1000 && age <= FF_MAX)) return 'timing';
+    if (ffUsed.has(t)) return 'reused';
+    const h = crypto.createHash('sha256').update(t + ':' + String(b.ffn || '')).digest('hex');
+    if (!/^\d{1,9}$/.test(String(b.ffn || '')) || h.slice(0, FF_BITS / 4) !== '0'.repeat(FF_BITS / 4)) return 'puzzle';
+    // Links in a name, or a message full of links: spam.
+    const all = (texts || []).map(function (x) { return String(x || ''); });
+    if (/https?:|www\.|<a\s|\[url/i.test(all[0] || '') || all.join(' ').split(/https?:\/\//i).length > 3) return 'links';
+    if (process.env.TURNSTILE_SECRET) {
+      try {
+        const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ secret: process.env.TURNSTILE_SECRET, response: String(b.ts || ''), remoteip: String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim() }), signal: AbortSignal.timeout(8000) });
+        const d = await r.json(); if (!d.success) return 'turnstile';
+      } catch (e) { console.error('Turnstile check not reached:', e.message); }   // Cloudflare down: the other checks still apply
+    }
+    ffUsed.set(t, Date.now()); if (ffUsed.size > 5000) { const cut = Date.now() - FF_MAX; ffUsed.forEach(function (v, k) { if (v < cut) ffUsed.delete(k); }); }
+    return '';
+  }
+  // Send a refusal (and note it in the log) when a form isn't from a real person; true when refused.
+  async function refuseBot(req, res, b, texts) {
+    const why = await humanCheck(req, b, texts);
+    if (!why) return false;
+    console.log('Website form refused (' + why + '): ' + req.path + ' · ' + String(req.headers['user-agent'] || 'no browser').slice(0, 80));
+    res.status(403).json({ ok: false, error: 'check' });
+    return true;
+  }
   // ---------- Valuation requests (public Landlords page) ----------
   const vrHits = new Map();
   app.post('/api/valuation-request', withDb(async function (p, req, res) {
@@ -9536,6 +9581,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const hits = (vrHits.get(ip) || []).filter(function (t) { return now - t < 3600000; }); if (hits.length >= 5) return res.status(429).json({ ok: false, error: 'rate-limited' });
     hits.push(now); vrHits.set(ip, hits); if (vrHits.size > 5000) vrHits.clear();
     if (str(b.website, 200)) return res.json({ ok: true });   // a bot filled the hidden box
+    if (await refuseBot(req, res, b, [b.name, b.message, b.address])) return;
     const name = str(b.name, 120), email = str(b.email, 200), phone = str(b.phone, 40), addr = str(b.address, 300), pcm = POSTCODE_RE.exec(String(b.postcode || '') + ' ' + String(b.address || ''));
     // The quick form on the side of every page: just a name, email and phone — we call them back for the rest.
     if (b.kind === 'quick') {
@@ -9575,6 +9621,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const hits = (vrHits.get('e:' + ip) || []).filter(function (t) { return now - t < 3600000; }); if (hits.length >= 6) return res.status(429).json({ ok: false, error: 'rate-limited' });
     hits.push(now); vrHits.set('e:' + ip, hits);
     if (str(b.website, 200)) return res.json({ ok: true });
+    if (await refuseBot(req, res, b, [b.name, b.message, b.address])) return;
     const name = str(b.name, 120), email = str(b.email, 200), phone = str(b.phone, 40) || null, msg = str(b.message, 3000), topic = str(b.topic, 40) || 'Other', addr = str(b.address, 300) || '';
     if (!name || !msg) return res.status(400).json({ ok: false, error: 'missing' });
     if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
@@ -9613,6 +9660,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const hits = (vrHits.get('v:' + ip) || []).filter(function (t) { return now - t < 3600000; }); if (hits.length >= 6) return res.status(429).json({ ok: false, error: 'rate-limited' });
     hits.push(now); vrHits.set('v:' + ip, hits);
     if (str(b.website, 200)) return res.json({ ok: true });
+    if (await refuseBot(req, res, b, [b.name, b.message])) return;
     const name = str(b.name, 120), email = str(b.email, 200), phone = str(b.phone, 40), addr = str(b.address, 300), ref = str(b.ref, 40) || '', msg = str(b.message, 2000) || '';
     if (!name || !phone || !addr) return res.status(400).json({ ok: false, error: 'missing' });
     if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
@@ -11603,7 +11651,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME) setTimeout(function () { checkLinksUsed().catch(function () {}); }, 120000).unref();
   // Signed in to Fixflow (for staff-only previews on the website).
   function isStaff(req) { const t = parseToken(readCookie(req, 'rr_admin')); if (!t) return false; const c = t.sid && sessionCache.get(t.sid); return !(c && c.revoked); }
-  return { saveReport: saveReport, hasDb: async function () { return !!(await db()); }, isStaff: isStaff, db: db,
+  return { saveReport: saveReport, hasDb: async function () { return !!(await db()); }, isStaff: isStaff, db: db, refuseBot: refuseBot,
     // For other parts of the site (landlord alerts): send an email, and the office phone alert.
     sendMail: function (o) { return canEmail() && sendEmail ? sendEmail(o) : Promise.resolve({ ok: false, error: 'email-off' }); },
     alert: function (o) { return ntfy(o).catch(function () {}); } };

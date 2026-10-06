@@ -77,6 +77,8 @@ app.use(function (req, res, next) {
   if (req.get('x-forwarded-proto') === 'http' && req.method === 'GET') return res.redirect(301, 'https://' + req.get('host') + req.originalUrl);
   // The bare domain goes to www (one address for search engines), keeping the page asked for.
   if (req.hostname === 'residentialrealtors.co.uk' && (req.method === 'GET' || req.method === 'HEAD')) return res.redirect(301, 'https://www.residentialrealtors.co.uk' + req.originalUrl);
+  // Old Gnomen website search pages (/?id=…&action=view&jengo_…) go to our property lists.
+  if (req.path === '/' && req.method === 'GET' && (req.query.jengo_property_for || req.query.action === 'view')) return res.redirect(301, String(req.query.jengo_property_for) === '1' ? '/properties-for-sale' : '/properties-to-rent');
   if (req.secure) { res.setHeader('Strict-Transport-Security', 'max-age=31536000'); res.setHeader('Content-Security-Policy', 'upgrade-insecure-requests'); }
   next();
 });
@@ -260,9 +262,10 @@ function siteFooter(home) {
     '<input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
     '<label class="qv-ok"><input type="checkbox" name="consent"> <span>I’m happy for you to contact me (<a href="/privacy">privacy</a>)</span></label>' +
     '<p class="qv-err" id="qvErr" role="alert"></p><button class="btn red" type="submit" id="qvGo">Request a call back</button></form></div>' +
+    (process.env.TURNSTILE_SITE_KEY ? '<script>window.FF_TS=' + JSON.stringify(String(process.env.TURNSTILE_SITE_KEY)) + '</script>' : '') + '<script src="/ff.js"></script>' +
     '<script>document.querySelectorAll(".la-form").forEach(function(f){f.onsubmit=function(ev){ev.preventDefault();var v=function(k){return String(f.elements[k].value||"").trim()},e=f.querySelector(".la-err"),g=f.querySelector("button[type=submit]"),w=f.querySelector("input[name=freq]:checked");e.textContent="";' +
     'if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v("email")))return e.textContent="Please enter a valid email address.";if(!f.elements.consent.checked)return e.textContent="Please tick the box so we can email you.";g.disabled=true;g.textContent="Signing you up…";' +
-    'fetch("/api/landlord-alerts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:v("name"),email:v("email"),freq:w?w.value:"weekly",website:v("website"),consent:true})}).then(function(r){return r.json()}).then(function(d){' +
+    'ffPost("/api/landlord-alerts",{name:v("name"),email:v("email"),freq:w?w.value:"weekly",website:v("website"),consent:true},f).then(function(r){return r.json()}).then(function(d){' +
     'if(!d.ok){g.disabled=false;g.textContent="Sign me up";e.textContent=d.error==="rate-limited"?"Too many sign-ups — please try again later.":d.error==="email"?"Please check your email address.":"Sorry, something went wrong — please try again.";return}' +
     'f.innerHTML=d.already?"<div class=\\"la-done\\"><b>✓ You’re already signed up</b><span>We’ve updated how often you hear from us.</span></div>":"<div class=\\"la-done\\"><b>✓ Nearly done — check your email</b><span>Click the link we’ve sent to confirm your landlord alerts.</span></div>"}).catch(function(){g.disabled=false;g.textContent="Sign me up";e.textContent="Couldn’t connect — please try again."})}});</script>' +
     '<script>(function(){var t=document.getElementById("qvTab"),b=document.getElementById("qvBox"),f=document.getElementById("qvForm"),e=document.getElementById("qvErr"),g=document.getElementById("qvGo");if(!t)return;' +
@@ -270,7 +273,7 @@ function siteFooter(home) {
     't.onclick=function(){o(b.hidden)};document.getElementById("qvX").onclick=function(){o(false)};document.addEventListener("keydown",function(k){if(k.key==="Escape")o(false)});' +
     'if(f)f.onsubmit=function(ev){ev.preventDefault();var v=function(k){return String(f.elements[k].value||"").trim()},w=f.querySelector("input[name=what]:checked");e.textContent="";' +
     'if(!v("name"))return e.textContent="Please enter your name.";if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v("email")))return e.textContent="Please enter a valid email.";if(v("phone").replace(/\\D/g,"").length<10)return e.textContent="Please enter your phone number.";if(!f.elements.consent.checked)return e.textContent="Please tick the box so we can call you.";' +
-    'g.disabled=true;g.textContent="Sending…";fetch("/api/valuation-request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"quick",what:w?w.value:"Not sure",name:v("name"),email:v("email"),phone:v("phone"),website:v("website"),consent:true,page:location.pathname})}).then(function(r){return r.json()}).then(function(d){' +
+    'g.disabled=true;g.textContent="Sending…";ffPost("/api/valuation-request",{kind:"quick",what:w?w.value:"Not sure",name:v("name"),email:v("email"),phone:v("phone"),website:v("website"),consent:true,page:location.pathname},f).then(function(r){return r.json()}).then(function(d){' +
     'if(!d.ok){g.disabled=false;g.textContent="Request a call back";e.textContent=d.error==="rate-limited"?"Too many requests — please call 0207 096 8131.":"Sorry, something went wrong — please call 0207 096 8131.";return}' +
     'f.innerHTML="<div class=\\"qv-done\\"><b>✓ Thanks — we’ll call you soon.</b><span>Or ring us now on <a href=\\"tel:02070968131\\">0207 096 8131</a>.</span></div>"}).catch(function(){g.disabled=false;g.textContent="Request a call back";e.textContent="Couldn’t connect — please try again."})}})();</script>' +
     '<div class="legal">© <span id="yr"></span> Estallion Investments Ltd trading as Residential Realtors · Registered in England, company number 08760284 · 28-30 Harper Road, London SE1 6AD.</div></div></footer>';
@@ -356,7 +359,7 @@ function sendBuilt(req, res, meta, body) {
   res.end(req.method === 'HEAD' ? undefined : (gz ? c.gzip : c.raw));
 }
 const news = require('./news')();
-const updates = require('./updates')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, sendMail: function (o) { return jobs.sendMail(o); }, alert: function (o) { return jobs.alert(o); }, isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); }, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
+const updates = require('./updates')(app, { siteUrl: SITE_URL, refuseBot: function (req, res, b, t) { return jobs && jobs.refuseBot ? jobs.refuseBot(req, res, b, t) : Promise.resolve(false); }, db: function () { return jobs.db(); }, sendMail: function (o) { return jobs.sendMail(o); }, alert: function (o) { return jobs.alert(o); }, isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); }, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
 require('./portaldemo')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
 const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
 // On the website's own address, /home is the same page as / — send search engines to one address.
