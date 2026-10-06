@@ -241,7 +241,7 @@ function siteHeader(name, home, req) {
 function siteFooter(home) {
   return '<footer><div class="wrap"><div class="cols">' +
     '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Estate agents, lettings and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div><div style="margin-top:6px">Open 7 days, 9am–7pm</div></div>' +
-    '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlords#tools">Landlord calculators</a><a href="/property-checks">EPC &amp; licence checker</a><a href="https://diy-check-in-production-6024.up.railway.app" target="_blank" rel="noopener">DIY inventory ↗</a><a href="/landlord-portal-demo">Example landlord portal</a></div>' +
+    '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlords#tools">Landlord calculators</a><a href="/property-checks">EPC &amp; licence checker</a><a href="/landlord-updates">Landlord updates &amp; alerts</a><a href="https://diy-check-in-production-6024.up.railway.app" target="_blank" rel="noopener">DIY inventory ↗</a><a href="/landlord-portal-demo">Example landlord portal</a></div>' +
     '<div><h4>Tenants</h4><a href="/report-a-repair">Report a repair</a><a href="/offer">Make an offer</a><a href="/tenants">Renting with us</a><a href="/tenants#fees">Tenant fees</a><a href="/tenants#guides">Renting guides</a></div>' +
     '<div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="/about">About us</a><a href="/news">Property news</a><a href="/privacy">Privacy</a></div>' +
     '</div><div class="accred">' +
@@ -258,6 +258,11 @@ function siteFooter(home) {
     '<input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
     '<label class="qv-ok"><input type="checkbox" name="consent"> <span>I’m happy for you to contact me (<a href="/privacy">privacy</a>)</span></label>' +
     '<p class="qv-err" id="qvErr" role="alert"></p><button class="btn red" type="submit" id="qvGo">Request a call back</button></form></div>' +
+    '<script>document.querySelectorAll(".la-form").forEach(function(f){f.onsubmit=function(ev){ev.preventDefault();var v=function(k){return String(f.elements[k].value||"").trim()},e=f.querySelector(".la-err"),g=f.querySelector("button[type=submit]"),w=f.querySelector("input[name=freq]:checked");e.textContent="";' +
+    'if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v("email")))return e.textContent="Please enter a valid email address.";if(!f.elements.consent.checked)return e.textContent="Please tick the box so we can email you.";g.disabled=true;g.textContent="Signing you up…";' +
+    'fetch("/api/landlord-alerts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:v("name"),email:v("email"),freq:w?w.value:"weekly",website:v("website"),consent:true})}).then(function(r){return r.json()}).then(function(d){' +
+    'if(!d.ok){g.disabled=false;g.textContent="Sign me up";e.textContent=d.error==="rate-limited"?"Too many sign-ups — please try again later.":d.error==="email"?"Please check your email address.":"Sorry, something went wrong — please try again.";return}' +
+    'f.innerHTML=d.already?"<div class=\\"la-done\\"><b>✓ You’re already signed up</b><span>We’ve updated how often you hear from us.</span></div>":"<div class=\\"la-done\\"><b>✓ Nearly done — check your email</b><span>Click the link we’ve sent to confirm your landlord alerts.</span></div>"}).catch(function(){g.disabled=false;g.textContent="Sign me up";e.textContent="Couldn’t connect — please try again."})}});</script>' +
     '<script>(function(){var t=document.getElementById("qvTab"),b=document.getElementById("qvBox"),f=document.getElementById("qvForm"),e=document.getElementById("qvErr"),g=document.getElementById("qvGo");if(!t)return;' +
     'var o=function(v){b.hidden=!v;t.setAttribute("aria-expanded",v?"true":"false");t.classList.toggle("on",v);if(v){var n=f&&f.elements.name;if(n)setTimeout(function(){n.focus()},50)}};' +
     't.onclick=function(){o(b.hidden)};document.getElementById("qvX").onclick=function(){o(false)};document.addEventListener("keydown",function(k){if(k.key==="Escape")o(false)});' +
@@ -349,6 +354,7 @@ function sendBuilt(req, res, meta, body) {
   res.end(req.method === 'HEAD' ? undefined : (gz ? c.gzip : c.raw));
 }
 const news = require('./news')();
+const updates = require('./updates')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, sendMail: function (o) { return jobs.sendMail(o); }, alert: function (o) { return jobs.alert(o); }, isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); }, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
 require('./portaldemo')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
 const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
 // On the website's own address, /home is the same page as / — send search engines to one address.
@@ -363,7 +369,7 @@ app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send('User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /staff\nDisallow: /api/\nDisallow: /offer/\nDisallow: /landlord/\nDisallow: /reserve/\nDisallow: /portal\n\nSitemap: ' + SITE_URL + '/sitemap.xml\n');
 });
 app.get('/sitemap.xml', (req, res) => {
-  const pages = [['/', '1.0'], ['/news', '0.5'], ['/property-checks', '0.8'], ['/landlord-portal-demo', '0.6'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
+  const pages = [['/', '1.0'], ['/landlord-updates', '0.8'], ['/news', '0.5'], ['/property-checks', '0.8'], ['/landlord-portal-demo', '0.6'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
   res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
     pages.concat(listings.urls().length ? [['/properties-to-rent', '0.9'], ['/properties-for-sale', '0.9']] : []).concat(listings.urls().map(function (u) { return [u, '0.7']; }))
       .map(function (x) { return '  <url><loc>' + SITE_URL + siteEsc(x[0]) + '</loc><priority>' + x[1] + '</priority></url>'; }).join('\n') + '\n</urlset>\n');

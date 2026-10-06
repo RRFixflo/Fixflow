@@ -580,3 +580,26 @@ h1 em, h2 em { background: none; -webkit-background-clip: initial; background-cl
 .hero4 .hbg { opacity: .3; }
 .nav a { padding: 8px 9px; font-size: .92rem; white-space: nowrap; } .nav a.cta { margin-left: 4px; } .rep { white-space: nowrap; }
 .top .wrap { width: min(1340px, 100% - 32px); gap: 12px; }
+
+/* Landlord updates & alerts */
+.lu-grid { display: grid; grid-template-columns: 1fr 360px; gap: 40px; align-items: start; } @media (max-width: 960px) { .lu-grid { grid-template-columns: 1fr; } }
+.lu-grid > * { min-width: 0; }
+.lu-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 40px; } @media (max-width: 560px) { .lu-cards { grid-template-columns: 1fr; } }
+.lu-card { display: block; padding: 16px; border-radius: 14px; background: var(--tint); text-decoration: none; color: var(--ink); border: 1.5px solid transparent; } .lu-card:hover { border-color: var(--navy); } .lu-card b { display: block; color: var(--navy); margin-bottom: 4px; } .lu-card span { color: var(--soft); font-size: .9rem; }
+.lu-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; } .lu-up { font-size: .82rem; font-weight: 700; color: var(--good); }
+.lu-list { list-style: none; margin: 0; padding: 0; } .lu-list li { border-bottom: 1px solid var(--line); }
+.lu-list a { display: block; padding: 16px 0; text-decoration: none; color: var(--ink); } .lu-list a:hover b { color: var(--red); }
+.lu-list b { display: block; font-size: 1.04rem; line-height: 1.35; margin: 6px 0 4px; } .lu-list small { display: block; color: var(--soft); font-size: .9rem; } .lu-list em { display: block; font-style: normal; font-size: .8rem; font-weight: 700; color: var(--faint); margin-top: 6px; }
+.lu-tag { display: inline-block; font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; padding: 3px 8px; border-radius: 6px; background: var(--tint); color: var(--navy); } .lu-news { background: #fde8e9; color: #b42318; } .lu-consultation { background: #fff4d6; color: #7a5200; }
+.lu-side { position: sticky; top: 96px; display: grid; gap: 14px; scroll-margin-top: 96px; }
+.la-form { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 22px; box-shadow: 0 30px 60px -45px rgba(11,31,58,.55); }
+.la-form h3 { margin: 0 0 4px; color: var(--navy); font-size: 1.2rem; } .la-form > p { margin: 0 0 14px; color: var(--soft); font-size: .92rem; }
+.la-row { display: grid; gap: 8px; } .la-form input:not([type=radio]):not([type=checkbox]) { width: 100%; padding: 12px 13px; border: 1.5px solid var(--line); border-radius: 10px; font: inherit; font-size: 1rem; background: #fbfcfe; color: var(--ink); }
+.la-freq { display: flex; gap: 6px; margin: 10px 0; flex-wrap: wrap; } .la-freq label { flex: 1; min-width: 92px; display: flex; gap: 6px; align-items: center; justify-content: center; border: 1.5px solid var(--line); border-radius: 10px; padding: 9px 6px; font-weight: 700; font-size: .86rem; cursor: pointer; color: var(--ink); flex-direction: row; }
+.la-freq label:has(input:checked) { border-color: var(--navy); background: var(--tint); } .la-freq input { accent-color: var(--navy); margin: 0; width: auto; }
+.la-ok { display: flex; flex-direction: row; gap: 8px; align-items: flex-start; font-size: .82rem; color: var(--soft); font-weight: 500; } .la-ok input { margin-top: 2px; accent-color: var(--navy); width: auto; } .la-ok a { color: var(--navy); font-weight: 700; display: inline; }
+.la-err { color: var(--red); font-weight: 700; font-size: .85rem; min-height: 1em; margin: 6px 0; } .la-form .btn { width: 100%; padding: 13px; }
+.la-done { padding: 10px 0; } .la-done b { display: block; color: var(--good); font-size: 1.05rem; margin-bottom: 4px; } .la-done span { color: var(--soft); }
+.lu-help { background: var(--tint); border-radius: 18px; padding: 18px; } .lu-help p { color: var(--soft); margin: 4px 0 12px; font-size: .92rem; }
+.la-band { display: grid; grid-template-columns: 1fr 400px; gap: 34px; align-items: center; background: var(--tint); border-radius: 24px; padding: 32px; } @media (max-width: 900px) { .la-band { grid-template-columns: 1fr; padding: 22px; } }
+.la-band > * { min-width: 0; }
