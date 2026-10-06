@@ -1642,7 +1642,7 @@
       <button class="btn small rent-top" id="rentTopBtn" type="button" title="Collect rent and pay landlords"><span class="rt-ic">💷</span><span class="mobile-hide">Rent</span><span class="rb-badge" id="rentTopBadge" hidden></span></button>
       <button class="btn small ask" id="askBtn" type="button" title="Tell Fixflow what to do (speak or type)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg><span class="mobile-hide">Ask Fixflow</span></button>
       <button class="btn small ghost mobile-only" id="searchBtnM" type="button" title="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
-      <button class="btn small ghost" id="refreshBtn" type="button" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg><span class="mobile-hide">Refresh</span></button>
+      <button class="btn small ghost" id="refreshBtn" type="button" title="Reload the latest for this page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg><span class="mobile-hide">Refresh</span></button>
       <button class="btn small" hidden id="propsBtnM" type="button" title="Properties"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/><path d="M8 8h3M8 12h3M8 16h3"/></svg></button>
       <button class="btn small" hidden id="tenantsBtnM" type="button" title="Tenants"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/></svg></button>
       <button class="btn small" hidden id="contractorsBtnM" type="button" title="Contractors"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2 .7 3.2 2.4 3.5 5.2"/></svg></button>
@@ -3196,11 +3196,23 @@
   $('logoutBtnM').addEventListener('click', function(){ $('logoutBtn').click(); });
   $('todayLbl').textContent = new Date().toLocaleDateString('en-GB', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' });
   // Refresh: fetch everything again, redraw the page you're on, and say so.
+  // Refresh reloads every page: jobs, properties, tenants, landlords, certificates and tenancies come with
+  // loadJobs(); the pages below have their own data.
+  function reloadView(){
+    var v = view, safe = function(x){ return Promise.resolve(x).catch(function(){}); };
+    if (v === 'avail') return safe(loadAvail());
+    if (v === 'crm') return safe(loadCrm(true));
+    if (v === 'web') return safe(loadWeb());
+    if (v === 'lt') return safe(loadLt());
+    if (v === 'sent' || (v === 'act' && !staffMode)) return safe(loadSent());
+    if (v === 'team' || v === 'who') return safe(loadTeam());
+    return Promise.resolve();
+  }
   $('refreshBtn').addEventListener('click', function(){
     var btn = $('refreshBtn');
     if (staffMode) {
       if (btn.classList.contains('spinning')) return; btn.classList.add('spinning'); refreshListings(false);
-      Promise.all([loadOffers(), loadInvites(), loadViewings(), view === 'lt' ? loadLt() : null, loadPvr(), view === 'team' || view === 'who' ? loadTeam() : null]).then(function(){ if (view === 'offers') renderOffers(); toast('Up to date · ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })); })
+      Promise.all([loadOffers(), loadInvites(), loadViewings(), reloadView(), loadPvr()]).then(function(){ if (view === 'offers') renderOffers(); toast('Up to date · ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })); })
         .catch(function(){ toast('Couldn’t refresh — check your connection'); }).then(function(){ setTimeout(function(){ btn.classList.remove('spinning'); }, 400); });
       return;
     }
@@ -3214,6 +3226,8 @@
       if (view === 'offers') { loadOffers().then(function(){ renderOffers(); }); loadInvites(); loadViewings(); loadPvr(); }
       refreshListings(false);
       if (openJobId) openJob(openJobId);
+      return reloadView();
+    }).then(function(){
       toast('Up to date · ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
     }).catch(function(){ toast('Couldn’t refresh — check your connection'); }).then(function(){
       setTimeout(function(){ btn.classList.remove('spinning'); }, Math.max(0, 500 - (Date.now() - t0)));
@@ -8112,7 +8126,7 @@
       '<p class="muted-note" style="margin:4px 0 0">Visits from a browser signed in to Fixflow are never counted. To leave out the office (or your home) when you’re signed out too — e.g. on your phone on the office Wi-Fi — stop counting its address.</p>' +
       ((d.ignore || []).length ? '<div class="web-ign">' + d.ignore.map(function(x){ return '<span class="crm-flag">🚫 ' + esc(x.ip) + (x.label ? ' · ' + esc(x.label) : '') + ' <button type="button" class="linkish" data-unignore="' + esc(x.ip) + '">count again</button></span>'; }).join('') + '</div>' : '') + '</div>' +
       (d.me && !meIgnored ? '<button type="button" class="btn small primary" data-ignore-me="' + esc(d.me) + '">🚫 Don’t count visits from this address</button>' : '') + '</div>' +
-      '<div class="card web-list web-named"><b>🏷️ Named visitors</b>' + ((d.names || []).length ? '<table><thead><tr><th>Name</th><th>IP address</th><th>Last visit</th><th class="num">Pages</th></tr></thead><tbody>' + d.names.map(function(x){ return '<tr><td><b class="web-nm">' + esc(x.name) + '</b></td><td><code>' + esc(x.key && x.key !== x.ip ? x.key.replace('::/64', ':…') : x.ip) + '</code> <button type="button" class="linkish" data-wname="' + esc(x.ip) + '" data-wkey="' + esc(x.key || '') + '">rename</button></td><td>' + (x.last ? esc(fmtShort(x.last)) : '<span class="muted-note" style="margin:0">not since named</span>') + '</td><td class="num">' + n(x.views) + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="muted-note" style="margin:6px 0 0">Know who a visitor is? Press <b>Name</b> next to their IP address below and the name stays with that connection — it shows wherever they appear and in this list. The same person on their phone (mobile data) has a different address: name that one too.</p>') + '</div>' +
+      '<div class="card web-list web-named"><b>🏷️ Named visitors</b>' + (webPeople(d).length ? '<table><thead><tr><th>Name</th><th>Phone / computer</th><th>Last visit</th><th class="num">Pages</th></tr></thead><tbody>' + webPeople(d).map(function(g){ return '<tr><td><b class="web-nm">' + esc(g.name) + '</b>' + (g.addrs.length > 1 ? '<small class="muted-note" style="display:block;margin:0">' + g.addrs.length + ' connections linked</small>' : '') + '</td><td>' + g.addrs.map(function(x){ return '<div><code>' + esc(x.key && x.key !== x.ip ? x.key.replace('::/64', ':…') : x.ip) + '</code> <button type="button" class="linkish" data-wname="' + esc(x.ip) + '" data-wkey="' + esc(x.key || '') + '">rename</button></div>'; }).join('') + '</td><td>' + (g.last ? esc(fmtShort(g.last)) : '<span class="muted-note" style="margin:0">not since named</span>') + '</td><td class="num">' + n(g.views) + '</td></tr>'; }).join('') + '</tbody></table>' : '<p class="muted-note" style="margin:6px 0 0">Know who a visitor is? Press <b>Name</b> next to their IP address below and the name stays with that connection — it shows wherever they appear and in this list. Same person on their phone and computer? Give both the same name and they’re linked as one person.</p>') + '</div>' +
       '<div class="web-tiles"><div class="tile"><div class="k">Visitors ' + label + '</div><div class="v">' + n(t.visitors) + '</div>' + change(t.visitors, pv.visitors) + '</div>' +
       '<div class="tile"><div class="k">Pages viewed</div><div class="v">' + n(t.views) + '</div>' + change(t.views, pv.views) + '</div>' +
       '<div class="tile"><div class="k">Pages per visitor</div><div class="v">' + (t.visitors ? (t.views / t.visitors).toFixed(1) : '0') + '</div></div>' +
@@ -8145,6 +8159,14 @@
           : '<p class="muted-note" style="margin:6px 0 0">✓ No photo is used on more than one property.</p>') + '</div>';
       webMinify();
     });
+  }
+  // Named visitors grouped by name: the same name on a phone and a computer is one person.
+  function webPeople(d){
+    var by = {}, out = [];
+    (d.names || []).forEach(function(x){ var k = String(x.name || '').trim().toLowerCase(), g = by[k];
+      if (!g) { g = by[k] = { name: x.name, addrs: [], last: null, views: 0 }; out.push(g); }
+      g.addrs.push(x); g.views += x.views || 0; if (x.last && (!g.last || new Date(x.last) > new Date(g.last))) g.last = x.last; });
+    return out.sort(function(a, b){ return (b.last ? new Date(b.last) : 0) - (a.last ? new Date(a.last) : 0); });
   }
   function webSeries(d){
     var by = {}, out = []; (d.series || []).forEach(function(r){ by[r.k] = r; });
@@ -8181,7 +8203,8 @@
   $('webBody').addEventListener('click', function(e){
     var a = e.target.closest('[data-ignore-me]'), u = e.target.closest('[data-unignore]'), w = e.target.closest('[data-wname]');
     if (w) { var ip = w.dataset.wname, cur = ((webData.names || []).find(function(x){ return x.ip === ip || (w.dataset.wkey && x.key === w.dataset.wkey); }) || {}).name || '';
-      var v = prompt('Name for visitor ' + ip + '\n(e.g. "Office phone", "Landlord – Flat 2"). Leave empty to remove the name.', cur); if (v === null) return;
+      var have = webPeople(webData).map(function(g){ return g.name; }).filter(function(x){ return x.toLowerCase() !== cur.toLowerCase(); });
+      var v = prompt('Name for visitor ' + ip + '\n(e.g. "Office phone", "Landlord – Flat 2"). Leave empty to remove the name.' + (have.length ? '\n\nSame person on another phone or computer? Type the same name to link them. Names so far: ' + have.slice(0, 12).join(', ') : ''), cur); if (v === null) return;
       api('POST', '/api/admin/site-name', { ip: ip, name: v }).then(function(d){ toast(d && d.ok ? (v.trim() ? '✓ Named ' + v.trim() : 'Name removed') : 'Couldn’t save that'); loadWeb(); }); return; }
     if (a) { if (!confirm('Stop counting visits from ' + a.dataset.ignoreMe + '?\n\nUse this for the office or your home. Visits already counted from it are removed too.')) return; api('POST', '/api/admin/site-ignore', { ip: a.dataset.ignoreMe, label: 'Office / us', purge: true }).then(function(d){ toast(d && d.ok ? '✓ Visits from your address won’t be counted' : 'Couldn’t save that'); loadWeb(); }); }
     if (u) api('POST', '/api/admin/site-ignore', { ip: u.dataset.unignore, remove: true }).then(function(d){ toast(d && d.ok ? 'Counting that address again' : 'Couldn’t save that'); loadWeb(); });
