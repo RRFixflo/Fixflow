@@ -75,6 +75,8 @@ const OFFERS_HOSTNAME = (function () { try { return new URL(process.env.OFFER_OR
 app.use(function (req, res, next) {
   if (OFFERS_HOSTNAME && req.hostname === OFFERS_HOSTNAME) { delete req.headers['if-none-match']; delete req.headers['if-modified-since']; }
   if (req.get('x-forwarded-proto') === 'http' && req.method === 'GET') return res.redirect(301, 'https://' + req.get('host') + req.originalUrl);
+  // The bare domain goes to www (one address for search engines), keeping the page asked for.
+  if (req.hostname === 'residentialrealtors.co.uk' && (req.method === 'GET' || req.method === 'HEAD')) return res.redirect(301, 'https://www.residentialrealtors.co.uk' + req.originalUrl);
   if (req.secure) { res.setHeader('Strict-Transport-Security', 'max-age=31536000'); res.setHeader('Content-Security-Policy', 'upgrade-insecure-requests'); }
   next();
 });

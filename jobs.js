@@ -560,6 +560,10 @@ CREATE TABLE IF NOT EXISTS crm_meta (
   follow_up   DATE,
   status      TEXT
 );
+-- Website leads a manager removed: kept in the archive, never deleted.
+ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS archived_by TEXT;
+ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS archive_unsub BOOLEAN NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS valuations (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1883,7 +1887,7 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (path === '/available-history' || /^\/available-history\/\d+\/restore$/.test(path)) return true;
     if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;
-    if (path === '/crm' || /^\/crm\/(note|meta|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
+    if (path === '/crm' || /^\/crm\/(note|meta|archive|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
     if (method === 'GET') return path === '/tenant-suggest' || path === '/landlord-suggest' || path === '/our-props' || path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
@@ -9565,7 +9569,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, id: r.rows[0].id });
   }));
   app.get('/api/admin/valuation-requests', withDb(async function (p, req, res) {
-    res.json({ ok: true, items: (await p.query('SELECT * FROM valuation_requests ORDER BY id DESC LIMIT 300')).rows });
+    res.json({ ok: true, items: (await p.query("SELECT * FROM valuation_requests v WHERE NOT EXISTS (SELECT 1 FROM crm_meta m WHERE m.ref = 'vr:' || v.id AND m.archived_at IS NOT NULL) ORDER BY id DESC LIMIT 300")).rows });
   }));
   app.post('/api/admin/valuation-requests/:id', withDb(async function (p, req, res) {
     const st = String((req.body || {}).status || ''); if (['new', 'contacted', 'booked', 'won', 'lost'].indexOf(st) === -1) return res.status(400).json({ ok: false, error: 'status' });
@@ -9626,7 +9630,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const meta = (await p.query('SELECT * FROM crm_meta')).rows;
     let staff = [];
     try { staff = (await p.query('SELECT name FROM staff_users WHERE disabled_at IS NULL ORDER BY name')).rows.map(function (x) { return x.name; }); } catch (e) {}
-    res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, staff: staff, me: req.user ? req.user.name : '' });
+    res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, staff: staff, me: req.user ? req.user.name : '', manager: !!canManageUsers(req) });
   }));
   app.post('/api/admin/crm/note', withDb(async function (p, req, res) {
     const b = req.body || {}, ref = String(b.ref || ''), note = str(b.note, 4000);
@@ -9647,6 +9651,60 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (fu !== undefined) await crmLog(p, ref, fu ? 'Follow up on ' + new Date(fu + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Follow-up cleared', req);
     res.json({ ok: true });
   }));
+  // Remove a lead (managers only): it goes into the archive, from where it can be put back.
+  app.post('/api/admin/crm/archive', withDb(async function (p, req, res) {
+    const b = req.body || {}, ref = String(b.ref || ''), restore = b.restore === true;
+    if (!CRM_REF.test(ref)) return res.status(400).json({ ok: false });
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    const who = req.user ? req.user.name : 'Office', sub = ref.indexOf('sub:') === 0, id = +ref.slice(ref.indexOf(':') + 1);
+    const old = (await p.query('SELECT * FROM crm_meta WHERE ref = $1', [ref])).rows[0] || {};
+    if (restore) {
+      await p.query('UPDATE crm_meta SET archived_at = NULL, archived_by = NULL, archive_unsub = false WHERE ref = $1', [ref]);
+      if (sub && old.archive_unsub) await p.query('UPDATE landlord_alert_subs SET unsubscribed_at = NULL WHERE id = $1', [id]).catch(function () {});
+      await crmLog(p, ref, 'Put back from the archive by ' + who, req);
+      return res.json({ ok: true });
+    }
+    // An alert sign-up that's removed stops getting emails (and starts again if it's put back).
+    let unsub = false;
+    if (sub) unsub = !!(await p.query('UPDATE landlord_alert_subs SET unsubscribed_at = now() WHERE id = $1 AND unsubscribed_at IS NULL RETURNING id', [id]).catch(function () { return { rows: [] }; })).rows.length;
+    await p.query('INSERT INTO crm_meta (ref, archived_at, archived_by, archive_unsub) VALUES ($1, now(), $2, $3) ON CONFLICT (ref) DO UPDATE SET archived_at = now(), archived_by = $2, archive_unsub = $3', [ref, who, unsub]);
+    await crmLog(p, ref, 'Removed to the archive by ' + who + (str(b.reason, 300) ? ' — ' + str(b.reason, 300) : ''), req);
+    res.json({ ok: true });
+  }));
+  // Every lead should hear from us: new ones not contacted within 2 hours, follow-ups due, and
+  // open leads with nothing done for 7 days. A reminder to the team at 9am and 3pm.
+  async function crmNeeds(p) {
+    const items = (await p.query("SELECT v.id, v.name, v.phone, v.address, v.status, v.created_at, v.data, m.follow_up, m.assigned_to, (SELECT max(at) FROM crm_notes n WHERE n.ref = 'vr:' || v.id) AS last_at FROM valuation_requests v LEFT JOIN crm_meta m ON m.ref = 'vr:' || v.id WHERE (m.archived_at IS NULL) AND v.status IN ('new', 'contacted', 'booked') AND v.created_at > now() - interval '120 days' ORDER BY v.id DESC")).rows;
+    const now = Date.now(), today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' }), out = { fresh: [], due: [], stale: [] };
+    items.forEach(function (x) {
+      const d = x.data || {}, last = Math.max(new Date(x.created_at).getTime(), x.last_at ? new Date(x.last_at).getTime() : 0);
+      if (x.status === 'booked' && d.kind === 'viewing') return;
+      if (x.status === 'new' && now - new Date(x.created_at).getTime() > 2 * 3600000) out.fresh.push(x);
+      else if (x.follow_up && new Date(x.follow_up).toISOString().slice(0, 10) <= today) out.due.push(x);
+      else if (x.status !== 'new' && now - last > 7 * 86400000) out.stale.push(x);
+    });
+    return out;
+  }
+  async function crmRemind() {
+    const p = await db(); if (!p) return;
+    const t = new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false }), hour = +t, slot = hour >= 15 ? 'pm' : hour >= 9 ? 'am' : '';
+    if (!slot || hour >= 19) return;
+    const key = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' }) + slot;
+    const row = (await p.query("SELECT value FROM app_settings WHERE key = 'crm_reminder'")).rows[0];
+    if (row && row.value && row.value.last === key) return;
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('crm_reminder', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ last: key })]);
+    const n = await crmNeeds(p), total = n.fresh.length + n.due.length + n.stale.length;
+    if (!total) return;
+    const line = function (x) { return '• ' + x.name + (x.address && !/^\(/.test(x.address) ? ' — ' + String(x.address).split(',').slice(0, 2).join(',') : '') + (x.phone ? ' — ' + x.phone : '') + (x.assigned_to ? ' (' + x.assigned_to + ')' : ''); };
+    const parts = [n.fresh.length ? n.fresh.length + ' not contacted yet' : '', n.due.length ? n.due.length + ' follow-up' + (n.due.length === 1 ? '' : 's') + ' due' : '', n.stale.length ? n.stale.length + ' with no update for a week' : ''].filter(Boolean);
+    ntfy({ title: '📣 ' + total + ' website lead' + (total === 1 ? '' : 's') + ' to contact', message: parts.join(' · ') + ' — everyone on the list should hear from us.', tags: ['loudspeaker'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined }).catch(function () {});
+    if (canEmail() && sendEmail) {
+      const text = 'Website leads that need contacting or an update:\n\n' + (n.fresh.length ? 'NOT CONTACTED YET\n' + n.fresh.map(line).join('\n') + '\n\n' : '') + (n.due.length ? 'FOLLOW-UP DUE\n' + n.due.map(line).join('\n') + '\n\n' : '') + (n.stale.length ? 'NO UPDATE FOR A WEEK\n' + n.stale.map(line).join('\n') + '\n\n' : '') + 'Everyone on the list should hear from us. Open Website leads in Fixflow, call or message them, and add a note.';
+      sendEmail({ to: ['info@residentialrealtors.co.uk'], fromName: 'Fixflow', subject: total + ' website lead' + (total === 1 ? '' : 's') + ' to contact', text: text, html: brandEmail(text, 'Website leads to contact') }).catch(function () {});
+    }
+  }
+  setTimeout(function () { crmRemind().catch(function (e) { console.error('Lead reminder failed:', e.message); }); }, 120 * 1000);
+  setInterval(function () { crmRemind().catch(function (e) { console.error('Lead reminder failed:', e.message); }); }, 20 * 60 * 1000).unref();
   // A contact staff add themselves: a phone call, walk-in or someone met at a viewing.
   app.post('/api/admin/crm/contact', withDb(async function (p, req, res) {
     const b = req.body || {}, name = str(b.name, 120), email = str(b.email, 200) || null, phone = str(b.phone, 40) || null;
