@@ -94,10 +94,20 @@ module.exports = function (app, opts) {
     };
     return r(0, 0);
   }
+  // The JSON object that starts at body[at] ("{"), read to its matching "}" (skipping strings).
+  function jsonAt(body, at) {
+    let depth = 0, inStr = false;
+    for (let i = at; i < body.length; i++) {
+      const c = body[i];
+      if (inStr) { if (c === '\\') i++; else if (c === '"') inStr = false; continue; }
+      if (c === '"') inStr = true; else if (c === '{') depth++; else if (c === '}' && --depth === 0) return body.slice(at, i + 1);
+    }
+    return '';
+  }
   function pageJson(body) {
     const out = [];
-    const pm = /window\.__PAGE_MODEL\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/.exec(body);
-    if (pm) { try { const j = JSON.parse(pm[1]); if (typeof j.data === 'string') { const arr = JSON.parse(j.data); if (Array.isArray(arr)) { out.push(unpack(arr, false)); out.push(unpack(arr, true)); } else out.push(arr); } else out.push(j); } catch (e) {} }
+    const pmAt = body.search(/window\.__PAGE_MODEL\s*=\s*\{/), pm = pmAt === -1 ? null : [null, jsonAt(body, body.indexOf('{', pmAt))];
+    if (pm && pm[1]) { try { const j = JSON.parse(pm[1]); if (typeof j.data === 'string') { const arr = JSON.parse(j.data); if (Array.isArray(arr)) { out.push(unpack(arr, false)); out.push(unpack(arr, true)); } else out.push(arr); } else out.push(j); } catch (e) {} }
     [/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/, /window\.jsonModel\s*=\s*(\{[\s\S]*?\})\s*<\/script>/, /window\.PAGE_MODEL\s*=\s*(\{[\s\S]*?\})\s*<\/script>/, /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/]
       .forEach(function (re) { const m = re.exec(body); if (m) { try { out.push(JSON.parse(m[1])); } catch (e) {} } });
     return out;
@@ -147,7 +157,7 @@ module.exports = function (app, opts) {
         console.log('Rightmove advert page ' + id + ': status ' + r.status + ', ' + body.length + ' bytes, title "' + ((/<title>([^<]{0,80})/.exec(body) || [])[1] || '') + '"' +
           ', markers ' + ['PAGE_MODEL', '__NEXT_DATA__', 'jsonModel', '__PRELOADED_STATE__', 'propertyData', 'keyFeatures', '"images"', 'floorplans', 'self.__next_f'].filter(function (k) { return body.indexOf(k) !== -1; }).join('/') +
           ', photo links ' + imgs.length + (imgs[0] ? ' e.g. ' + imgs[0].slice(0, 120) : ''));
-        const pm = /window\.__PAGE_MODEL\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/.exec(body);
+        const pmAt = body.search(/window\.__PAGE_MODEL\s*=\s*\{/), pm = pmAt === -1 ? null : [null, jsonAt(body, body.indexOf('{', pmAt))];
         if (pm) { let info = 'regex matched ' + pm[1].length + ' chars';
           try { const j = JSON.parse(pm[1]); info += ', keys ' + Object.keys(j).join(','); if (typeof j.data === 'string') { const arr = JSON.parse(j.data); info += ', data is ' + (Array.isArray(arr) ? 'list of ' + arr.length : typeof arr) + ': ' + j.data.slice(0, 700); } } catch (e) { info += ', parse error ' + e.message + ' near ' + pm[1].slice(-120); }
           console.log('Rightmove advert data ' + id + ': ' + info); }
