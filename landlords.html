@@ -267,11 +267,19 @@
   </div>
 </div></section>
 
-<section style="padding-top:0"><div class="wrap"><div class="grid3">
-  <a class="card dl rv" href="/property-checks#epc"><div class="ic">⚡</div><h3>EPC checker</h3><p>See any property’s energy rating and when its certificate expires.</p><span class="dl-go">Check an EPC →</span></a>
-  <a class="card dl rv" href="/property-checks#licence"><div class="ic">📋</div><h3>Licence checker</h3><p>Find out if your London rental needs a selective or HMO licence.</p><span class="dl-go">Check a property →</span></a>
-  <a class="card dl rv" href="https://diy-check-in-production-6024.up.railway.app" target="_blank" rel="noopener"><div class="ic">📸</div><h3>DIY inventory</h3><p>Do your own check-in inventory with photos and get a dated report.</p><span class="dl-go">Start an inventory ↗</span></a>
-</div></div></section>
+<section class="rc" id="compare"><div class="wrap">
+  <div class="rc-top rv">
+    <div><p class="kicker">Compare rents near you</p><h2>What are similar homes letting for?</h2>
+      <p class="sub">Enter your postcode and number of bedrooms to see what similar homes we’re letting nearby are going for — then get an exact figure with a free valuation.</p></div>
+    <form class="rc-form" id="rcForm" novalidate>
+      <label>Postcode<input name="postcode" placeholder="e.g. SE1 6AD" autocomplete="postal-code" style="text-transform:uppercase"></label>
+      <label>Bedrooms<select name="beds"><option value="0">Studio</option><option value="1">1 bedroom</option><option value="2" selected>2 bedrooms</option><option value="3">3 bedrooms</option><option value="4">4 bedrooms</option><option value="5">5 or more</option></select></label>
+      <button class="btn red" type="submit" id="rcGo">Compare rents →</button>
+      <p class="tool-err" id="rcErr" role="alert"></p>
+    </form>
+  </div>
+  <div id="rcOut" aria-live="polite"></div>
+</div></section>
 
 <section class="val" id="valuation"><div class="wrap">
   <div class="rv">
@@ -323,6 +331,31 @@
   var io = 'IntersectionObserver' in window ? new IntersectionObserver(function(es){ es.forEach(function(e){ if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }); }, { threshold: .12 }) : null;
   document.querySelectorAll('.rv').forEach(function(el){ if (io) io.observe(el); else el.classList.add('in'); });
   // "Ask about …" buttons pre-pick the service.
+  // Rent comparison: similar homes we're letting nearby, then a free valuation for the exact figure.
+  (function(){
+    var f = document.getElementById('rcForm'); if (!f) return;
+    var out = document.getElementById('rcOut'), err = document.getElementById('rcErr'), go = document.getElementById('rcGo');
+    var gbp = function(n){ return '£' + Number(n).toLocaleString('en-GB'); }, bedTxt = function(b){ return b === 0 ? 'studios' : b >= 5 ? '5+ bedroom homes' : b + ' bedroom homes'; };
+    function run(){
+      var pc = f.elements.postcode.value.trim(), beds = +f.elements.beds.value; err.textContent = '';
+      if (!/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(pc)) { err.textContent = 'Please enter a full postcode.'; return; }
+      go.disabled = true; go.textContent = 'Comparing…';
+      fetch('/api/public/rent-compare?postcode=' + encodeURIComponent(pc) + '&beds=' + beds).then(function(r){ return r.json(); }).then(function(d){
+        go.disabled = false; go.textContent = 'Compare rents →';
+        if (!d.ok) { out.innerHTML = '<div class="rc-card">' + (d.error === 'rate-limited' ? 'Too many searches — please try again shortly.' : d.error === 'postcode-unknown' ? 'We couldn’t find that postcode.' : 'Please check the postcode.') + '</div>'; return; }
+        var vurl = '#valuation', cta = '<div class="rc-cta"><div><b>Want an exact figure for your property?</b><span>Every home is different — condition, floor, outside space and furnishing all count. Our free valuation looks at the whole local market.</span></div><a class="btn red" href="' + vurl + '" data-rcval>Get my free valuation →</a></div>';
+        if (d.count < 2) { out.innerHTML = '<div class="rc-card"><h3>We don’t have enough similar ' + bedTxt(d.beds) + ' listed near ' + d.postcode + ' right now</h3><p>Get a free valuation and we’ll compare everything letting in your area for you.</p></div>' + cta; return; }
+        var span = d.high - d.low || 1, pos = Math.round((d.mid - d.low) / span * 100);
+        out.innerHTML = '<div class="rc-card rc-res"><p class="rc-k">' + d.count + ' similar ' + bedTxt(d.beds) + ' we’re letting within ' + d.radius + ' mile' + (d.radius === 1 ? '' : 's') + ' of ' + d.postcode + '</p>' +
+          '<div class="rc-range"><div><span>From</span><b>' + gbp(d.low) + '</b></div><div class="rc-mid"><span>Typical</span><b>' + gbp(d.mid) + '</b><small>per month</small></div><div><span>Up to</span><b>' + gbp(d.high) + '</b></div></div>' +
+          '<div class="rc-bar"><i style="left:' + pos + '%"></i></div><p class="rc-note">Asking rents on our current adverts, for guidance only — not a valuation.</p></div>' +
+          '<div class="lgrid rc-grid">' + d.html + '</div>' + cta;
+      }).catch(function(){ go.disabled = false; go.textContent = 'Compare rents →'; err.textContent = 'Couldn’t connect — please try again.'; });
+    }
+    f.addEventListener('submit', function(e){ e.preventDefault(); run(); });
+    out.addEventListener('click', function(e){ if (!e.target.closest('[data-rcval]')) return; var v = document.querySelector('#vForm [name=postcode]'); if (v && !v.value) v.value = f.elements.postcode.value.trim().toUpperCase(); var b = document.querySelector('#vForm [name=beds]'); if (b && f.elements.beds) { var want = f.elements.beds.value; Array.prototype.forEach.call(b.options || [], function(o){ if (o.value === want || o.text.indexOf(want === '0' ? 'Studio' : want) === 0) b.value = o.value; }); } });
+    try { var q = new URLSearchParams(location.search); if (q.get('postcode')) f.elements.postcode.value = q.get('postcode').toUpperCase().slice(0, 10); if (q.get('beds') !== null && f.elements.beds.querySelector('option[value="' + q.get('beds') + '"]')) f.elements.beds.value = q.get('beds'); if (location.hash === '#compare' && q.get('postcode')) run(); } catch (e) {}
+  })();
   // From the home page: ?postcode= and ?svc= fill in the valuation form.
   try { var vsp = new URLSearchParams(location.search), vpc = vsp.get('postcode'), vsv = vsp.get('svc');
     if (vpc) { var vpi = document.querySelector('#vForm [name=postcode]'); if (vpi) vpi.value = vpc.toUpperCase().slice(0, 10); }
