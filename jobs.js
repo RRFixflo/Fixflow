@@ -9762,6 +9762,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!pcm) return res.status(400).json({ ok: false, error: 'postcode' });
     if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
     const postcode = (pcm[1] + ' ' + pcm[2]).toUpperCase(), full = POSTCODE_RE.test(addr) ? addr : addr + ', ' + postcode;
+    // London only: checked with postcodes.io (if it can't be reached, the booking still goes through).
+    try { const lr = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(postcode.replace(' ', '')), { signal: AbortSignal.timeout(6000) }); const lj = lr.ok ? await lr.json() : null;
+      if (lj && lj.result && lj.result.region && lj.result.region !== 'London') return res.status(400).json({ ok: false, error: 'not-london' }); } catch (e) {}
     // Prices are set excluding VAT; the landlord pays the total with VAT at 20%.
     const subtotal = Math.round(items.reduce(function (a, x) { return a + x.price; }, 0) * 100) / 100, vat = Math.round(subtotal * CERT_VAT * 100) / 100, total = Math.round((subtotal + vat) * 100) / 100;
     const data = { kind: 'cert', postcode: postcode, items: items.map(function (x) { return { id: x.id, name: x.name, price: x.price, contractor: x.contractor }; }), subtotal: subtotal, vat: vat, total: total, token: crypto.randomBytes(12).toString('base64url'),

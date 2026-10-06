@@ -274,6 +274,21 @@
   // Home page "Find your next home" card: Rent / Buy picks where the search goes.
   document.querySelectorAll('.x-find').forEach(function (f) { f.addEventListener('change', function (e) { if (e.target.name === 'x-kind') f.action = e.target.value; }); });
 
+  // Home page certificates card: "from £X + VAT" from the price list.
+  var xf = document.querySelector('[data-svc-from]');
+  if (xf) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+    var ps = ((d && d.items) || []).filter(function (i) { return i.price && !/^licen/.test(i.id); }).map(function (i) { return i.price; }); if (!ps.length) return;
+    xf.textContent = 'From £' + Math.min.apply(null, ps).toLocaleString('en-GB') + ' + VAT'; xf.hidden = false;
+  }).catch(function () {});
+  // Service pages (gas safety, EICR, EPC): the live price from the office's price list.
+  var svp = document.querySelector('[data-svc-price]');
+  if (svp) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+    var ids = svp.getAttribute('data-svc-price').split(','), list = ((d && d.items) || []).filter(function (i) { return ids.indexOf(i.id) !== -1 && i.price; });
+    if (!list.length) return; var low = Math.min.apply(null, list.map(function (i) { return i.price; }));
+    svp.innerHTML = '<span>' + (list.length > 1 ? 'From ' : '') + '<b>£' + low.toLocaleString('en-GB', { minimumFractionDigits: low % 1 ? 2 : 0 }) + '</b> + VAT</span>' + (list.length > 1 ? '<small>' + list.map(function (i) { return i.name.replace(/^.*?[—–-]\s*/, '') + ' £' + i.price; }).join(' · ') + ' (+ VAT)</small>' : '');
+    svp.hidden = false;
+  }).catch(function () {});
+
   // Book a gas safety certificate or EICR: pick services, see the total, book — then pay on SumUp.
   var cb = document.getElementById('cbForm');
   if (cb) {
@@ -318,7 +333,7 @@
       if (!data.consent) { cbErr.textContent = 'Please tick the box so we can contact you.'; return; }
       var label = cbGo.textContent; cbGo.disabled = true; cbGo.textContent = cbPay ? 'Taking you to payment…' : 'Sending…';
       ffPost('/api/public/cert-booking', data, cb).then(function (r) { return r.json(); }).then(function (d) {
-        if (!d.ok) { cbGo.disabled = false; cbGo.textContent = label; cbErr.textContent = d.error === 'rate-limited' ? 'Too many bookings — please call 0207 096 8131.' : d.error === 'postcode' ? 'Please check the postcode.' : 'Sorry, something went wrong. Please try again or call 0207 096 8131.'; return; }
+        if (!d.ok) { cbGo.disabled = false; cbGo.textContent = label; cbErr.textContent = d.error === 'rate-limited' ? 'Too many bookings — please call 0207 096 8131.' : d.error === 'not-london' ? 'Sorry — we only cover properties in London.' : d.error === 'postcode' ? 'Please check the postcode.' : 'Sorry, something went wrong. Please try again or call 0207 096 8131.'; return; }
         if (d.url) { location.href = d.url; return; }
         var free = !cbItems.filter(function (i) { return data.items.indexOf(i.id) !== -1; }).reduce(function (a, i) { return a + i.price; }, 0);
         showDone('<div class="big">✓</div><h3>Thanks, ' + escH(data.name.split(/\s+/)[0]) + ' — ' + (free ? 'request received' : 'booking received') + '</h3><p>' + (free ? 'We’ll call you shortly to get started. ' : d.payError ? 'We couldn’t open the payment page just now, so we’ll call you to take payment. ' : 'We’ll call you shortly to take payment and confirm the date. ') + 'Questions? Call <a href="tel:02070968131">0207 096 8131</a>.</p>');
