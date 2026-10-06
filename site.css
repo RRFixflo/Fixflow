@@ -904,8 +904,11 @@ body.bk-lock { overflow: hidden; }
 .lhead .lupd { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.25); color: #fff; }
 
 /* Home: more room around the property checks */
-.tools2 { padding: 64px 0 72px; } .tools2-g { gap: 16px; } .tools2 .tl { padding: 20px; } .tools2 .tl b { font-size: 1.05rem; } .tools2 .tl small { font-size: .9rem; }
+.tools2 { padding: 88px 0 100px; } .tools2-g { gap: 16px; } .tools2 .tl { padding: 20px; } .tools2 .tl b { font-size: 1.05rem; } .tools2 .tl small { font-size: .9rem; }
 .trustbar2 { padding: 22px 0; }
+
+.sv-all { grid-template-columns: repeat(3, minmax(0, 1fr)); } @media (max-width: 860px) { .sv-all { grid-template-columns: 1fr; } }
+.hc-card.lt { border: 1px solid #d3dbe6; box-shadow: 0 18px 40px -28px rgba(11,31,58,.4); } .hc-card.lt .hc-price b { color: var(--navy); }
 
 /* Never scroll sideways because of a stray pixel. */
 html, body { overflow-x: clip; }

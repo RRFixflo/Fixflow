@@ -381,7 +381,7 @@
     var pick = function(v){ Array.prototype.forEach.call(document.querySelectorAll('input[name=ls-svc]'), function(r){ r.checked = r.value === v; }); document.getElementById('lsFee').textContent = (FEE[v] || '') + ' — full details in the terms before you sign.'; };
     document.querySelectorAll('[data-start]').forEach(function(b){ b.addEventListener('click', function(e){ e.preventDefault(); sec.hidden = false; pick(b.getAttribute('data-start')); sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(function(){ try { f.elements.name.focus({ preventScroll: true }); } catch (x) {} }, 500); }); });
     document.querySelectorAll('input[name=ls-svc]').forEach(function(r){ r.addEventListener('change', function(){ pick(r.value); }); });
-    if (location.hash === '#signup') { sec.hidden = false; pick((new URLSearchParams(location.search)).get('svc') || 'Fully Managed'); }
+    if (location.hash === '#signup') { sec.hidden = false; pick((new URLSearchParams(location.search)).get('svc') || 'Fully Managed'); setTimeout(function(){ sec.scrollIntoView({ block: 'start' }); }, 300); }
     f.addEventListener('submit', function(ev){
       ev.preventDefault(); var err = document.getElementById('lsErr'), go = document.getElementById('lsGo'), v = function(k){ return String(f.elements[k].value || '').trim(); }, sv = (document.querySelector('input[name=ls-svc]:checked') || {}).value;
       var data = { service: sv, name: v('name'), phone: v('phone'), email: v('email'), address: v('address'), postcode: v('postcode'), website: v('website'), consent: f.elements.consent.checked };

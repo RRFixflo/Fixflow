@@ -279,7 +279,8 @@
   if (hcp.length) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
     var items = (d && d.items) || [];
     hcp.forEach(function (el) { var ids = el.getAttribute('data-cert-price').split(','), ps = items.filter(function (i) { return ids.indexOf(i.id) !== -1 && i.price; }).map(function (i) { return i.price; });
-      if (ps.length) el.innerHTML = (ps.length > 1 ? 'From ' : '') + '<b>£' + Math.min.apply(null, ps).toLocaleString('en-GB') + '</b> + VAT'; });
+      var free = items.some(function (i) { return ids.indexOf(i.id) !== -1 && i.price === 0; });
+      if (ps.length) el.innerHTML = (ps.length > 1 ? 'From ' : '') + '<b>£' + Math.min.apply(null, ps).toLocaleString('en-GB') + '</b> + VAT'; else if (free) el.innerHTML = '<b>Free</b> · council fee separate'; });
   }).catch(function () {});
   // Home page certificates card: "from £X + VAT" from the price list.
   var xf = document.querySelector('[data-svc-from]');
