@@ -287,10 +287,11 @@
     cb.addEventListener('submit', function (ev) {
       ev.preventDefault(); cbErr.textContent = '';
       var e = cb.elements, v = function (k) { return String(e[k].value || '').trim(); };
-      var data = { items: picked(), address: v('address'), postcode: v('postcode'), access: v('access'), tenant: v('tenant'), dates: [v('d1'), v('d2')].filter(Boolean).map(function (x) { return new Date(x + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); }), name: v('name'), phone: v('phone'), email: v('email'), message: v('message'), website: v('website'), consent: e.consent.checked };
+      var data = { items: picked(), address: v('address'), postcode: v('postcode'), access: v('access'), tenant_name: v('tenant_name'), tenant_phone: v('tenant_phone'), tenant_email: v('tenant_email'), dates_iso: [v('d1'), v('d2')].filter(Boolean), dates: [v('d1'), v('d2')].filter(Boolean).map(function (x) { return new Date(x + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); }), name: v('name'), phone: v('phone'), email: v('email'), message: v('message'), website: v('website'), consent: e.consent.checked };
       if (!data.items.length) { cbErr.textContent = 'Please choose a service.'; return; }
       if (!data.address) { cbErr.textContent = 'Please enter the property address.'; return; }
       if (!pcOk(data.postcode)) { cbErr.textContent = 'Please enter the postcode.'; return; }
+      if (data.access === 'tenant' && (!data.tenant_name || !data.tenant_phone)) { cbErr.textContent = 'Please enter your tenant’s name and phone number so we can arrange access.'; return; }
       if (!data.name || !data.phone) { cbErr.textContent = 'Please enter your name and phone number.'; return; }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { cbErr.textContent = 'Please enter a valid email address.'; return; }
       if (!data.consent) { cbErr.textContent = 'Please tick the box so we can contact you.'; return; }
