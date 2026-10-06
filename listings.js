@@ -205,6 +205,71 @@ module.exports = function (app, opts) {
     p.url = '/property/' + p.id + '/' + p.slug;
     return p;
   }
+  // ---------- Sales from our old Gnomen website (until the Gnomen feed is set up) ----------
+  // Only while that site is still Gnomen's (it stops by itself once the domain points at this website).
+  const OLD = String(process.env.OLD_SITE || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
+  const oldDetails = new Map();
+  const txt = function (h) { return String(h || '').replace(/<[^>]*>/g, ' ').replace(/&pound;/g, '£').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&#0?39;|&rsquo;/g, '’').replace(/\s+/g, ' ').trim(); };
+  const isOldImg = function (u) { return /^https:\/\/s3\.eu-central-003\.backblazeb2\.com\/Gnomen-Pms5-I\/[a-f0-9]+\/large\/[\w.-]+\.(jpe?g|png|gif|webp)$/i.test(String(u || '')); };
+  async function oldSales() {
+    const q = '/?id=37096&action=view&route=&view=&input=&jengo_radius=10&jengo_property_for=1&jengo_category=&jengo_property_type=-1&jengo_min_price=0&jengo_max_price=99999999999&jengo_min_beds=0&jengo_max_beds=9999&jengo_min_bathrooms=0&jengo_max_bathrooms=9999&min_land=0&max_land=999999999&min_space=0&max_space=999999999&jengo_branch=&country=&daterange=&jengo_order=6&trueSearch=&searchType=postcode&latitude=&longitude=&pfor_complete=on&pfor_offer=on&page=';
+    const cards = [], seen = {};
+    for (let pg = 1; pg <= 8; pg++) {
+      const r = await fetch(OLD + q + pg, { headers: UA, signal: AbortSignal.timeout(20000) }); if (!r.ok) break;
+      const html = await r.text();
+      if (!/jengo|gnomen/i.test(html)) { console.log('Old website is no longer the Gnomen site — not reading sales from it'); return null; }
+      let added = 0;
+      html.split('resultWrapProperties').slice(1).forEach(function (c) {
+        const id = (/href="\/property\/(\d+)\//.exec(c) || [])[1]; if (!id || seen[id]) return;
+        seen[id] = 1; added++;
+        const nums = []; c.replace(/class="property_items_amount[^"]*">\s*(\d+)/g, function (m, n) { nums.push(+n); });
+        cards.push({ id: id, title: txt((/<h4>\s*<a[^>]*>([\s\S]*?)<\/a>/.exec(c) || [])[1]), type: txt((/tag_propertytype__group">([\s\S]*?)<\/div>/.exec(c) || [])[1]),
+          status: txt((/status_group status__[^"]*"><\/span>([^<]*)</.exec(c) || [])[1]), price: Number(txt((/class="SSresults">([\s\S]*?)<\/div>/.exec(c) || [])[1]).replace(/[^\d.]/g, '')) || 0,
+          beds: nums[0] || 0, baths: nums[1] || 0, receptions: nums[2] || 0, thumb: (/'(https:\/\/s3\.[^']+\/thumbnails\/[^']+)'/.exec(c) || [])[1] || '' });
+      });
+      if (!added) break;
+    }
+    return cards;
+  }
+  async function oldDetail(id) {
+    const c = oldDetails.get(id); if (c && Date.now() - c.at < 12 * 3600000) return c.d;
+    let d = null;
+    try {
+      const r = await fetch(OLD + '/property/' + id, { headers: UA, signal: AbortSignal.timeout(20000) });
+      if (r.ok) {
+        const h = await r.text(), di = h.indexOf('id="description"'), de = di === -1 ? -1 : h.indexOf('<!--end', di);
+        const gal = h.indexOf('id="galleria"'), galEnd = gal === -1 ? -1 : h.indexOf('</div>', gal);
+        const imgs = []; (gal === -1 ? '' : h.slice(gal, galEnd)).replace(/href="([^"]+)"/g, function (m, u) { if (isOldImg(u) && imgs.indexOf(u) === -1) imgs.push(u); });
+        const ep = h.indexOf('class="epc__wrapper"'), epc = ep === -1 ? '' : ((/src="([^"]+)"/.exec(h.slice(ep, h.indexOf('</div>', ep))) || [])[1] || '');
+        d = { html: di === -1 ? '' : cleanHtml(h.slice(h.indexOf('>', di) + 1, de === -1 ? di + 20000 : de).replace(/<div class="tab__header">[\s\S]*?<\/div>/, '')),
+          images: imgs.slice(0, 40), lat: parseFloat((/prop_lat\s*=\s*(-?\d+\.\d+)/.exec(h) || [])[1]), lng: parseFloat((/prop_lng\s*=\s*(-?\d+\.\d+)/.exec(h) || [])[1]), epc: isOldImg(epc) ? epc : '' };
+      }
+    } catch (e) { d = null; }
+    if (d || !c) oldDetails.set(id, { at: Date.now(), d: d || (c && c.d) || null });
+    return d || (c && c.d) || null;
+  }
+  async function refreshOldSales() {
+    const cards = await oldSales(); if (!cards) return null;
+    const out = [];
+    for (const x of cards) {
+      if (/^sold$/i.test(x.status) || /awaiting/i.test(x.status)) continue;   // sold or not on the market yet
+      const fresh = !oldDetails.has(x.id), d = await oldDetail(x.id) || {};
+      if (fresh) await new Promise(function (ok) { setTimeout(ok, 600); });
+      const parts = x.title.split(/\s*,\s*/).filter(Boolean), oc = (parts[parts.length - 1] || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
+      const images = (d.images && d.images.length ? d.images : x.thumb ? [x.thumb.replace('/thumbnails/', '/large/')] : []).filter(isOldImg);
+      const p = { id: x.id, kind: 'sale', src: 'oldsite', type: x.type || 'Property', category: 'Residential', status: x.status || 'For sale', taken: /under offer|sold stc/i.test(x.status),
+        street: parts[0] || x.title, area: '', town: parts.length > 2 ? parts[1] : '', outcode: /^[A-Z]{1,2}\d[A-Z\d]?$/.test(oc) ? oc : '',
+        beds: x.beds, studio: /studio/i.test(x.type), commercial: false, baths: x.baths, receptions: x.receptions, price: x.price, qualifier: '', short: '', html: d.html || '',
+        available: '', furnished: '', tenure: '', pets: false, parking: false, garden: false, features: [], lat: isFinite(d.lat) && d.lat ? d.lat : null, lng: isFinite(d.lng) && d.lng ? d.lng : null,
+        epc: d.epc || '', vtour: '', images: images, alts: images, floorplans: [], added: '' };
+      p.where = x.title;
+      p.headline = (p.studio ? 'Studio' : p.beds ? p.beds + ' bedroom ' + p.type.toLowerCase() : p.type) + ' for sale';
+      p.slug = (x.title + ' ' + (p.studio ? 'studio' : p.beds + ' bed ' + p.type)).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 90);
+      p.url = '/property/' + p.id + '/' + p.slug;
+      out.push(p);
+    }
+    return out;
+  }
   async function refreshRightmove() {
     const counts = {};
     for (const kind of ['let', 'sale']) {
@@ -217,11 +282,12 @@ module.exports = function (app, opts) {
           if (fresh) await new Promise(function (ok) { setTimeout(ok, 800); });   // gently, one advert at a time
           out.push(rmListing(x, d, kind));
         }
+        if (kind === 'sale' && !out.length && OLD) { try { const o = await refreshOldSales(); if (o && o.length) { o.forEach(function (p) { out.push(p); }); counts.oldsite = o.length; } } catch (e) { console.log('Sales from the old website not read: ' + e.message); } }
         if (out.length || !data[kind].length) data[kind] = out.sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
         counts[kind] = out.length + ' (' + out.filter(function (p) { return p.images.length > 1; }).length + ' with full photos)';
       } catch (e) { counts[kind] = 'not read: ' + e.message; }
     }
-    console.log('Listings from Rightmove branch ' + BRANCH + (SALES_BRANCH !== BRANCH ? ' (sales ' + SALES_BRANCH + ')' : '') + ': to rent ' + counts.let + ', for sale ' + counts.sale + (LIVE ? '' : ' — staff preview only (LISTINGS_ON is off)'));
+    console.log('Listings from Rightmove branch ' + BRANCH + (SALES_BRANCH !== BRANCH ? ' (sales ' + SALES_BRANCH + ')' : '') + ': to rent ' + counts.let + ', for sale ' + counts.sale + (counts.oldsite ? ' (from the old Gnomen website)' : '') + (LIVE ? '' : ' — staff preview only (LISTINGS_ON is off)'));
   }
   async function refreshAll() {
     if (SOURCE === 'rightmove') await refreshRightmove(); else await refresh();
