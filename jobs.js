@@ -10726,10 +10726,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!list.length) return;
     const av = (await p.query("SELECT id, address, beds, rent_pcm, rm_id, rm_manual, dream_rm FROM available_props WHERE status = 'available'")).rows;
     const taken = {}; av.forEach(function (a) { if (a.rm_manual && a.rm_id && a.rm_id !== 'none') taken[a.rm_id] = 1; (a.dream_rm || []).forEach(function (d) { taken[d] = 1; }); });
-    const pairs = [];
-    av.filter(function (a) { return !a.rm_manual; }).forEach(function (a) { list.forEach(function (r) { const s = rmScore(a, r); if (s >= 5) pairs.push({ a: a.id, r: r.id, s: s }); }); });
+    const pairs = [], got = {};
+    // An advert already linked stays linked while the area and bedrooms still agree, so a price
+    // change (e.g. a reduction) doesn't unlink it and turn it into a "Dream".
+    av.filter(function (a) { return !a.rm_manual && a.rm_id && a.rm_id !== 'none' && !taken[a.rm_id]; }).forEach(function (a) {
+      const r = list.find(function (x) { return x.id === a.rm_id; });
+      if (r && rmScore(a, r) >= 3 && (a.beds == null || r.beds == null || Number(a.beds) === Number(r.beds))) { got[a.id] = r.id; taken[r.id] = 1; }
+    });
+    av.filter(function (a) { return !a.rm_manual && !got[a.id]; }).forEach(function (a) { list.forEach(function (r) { const s = rmScore(a, r); if (s >= 5) pairs.push({ a: a.id, r: r.id, s: s }); }); });
     pairs.sort(function (x, y) { return y.s - x.s; });
-    const got = {};
     pairs.forEach(function (x) { if (got[x.a] || taken[x.r]) return; got[x.a] = x.r; taken[x.r] = 1; });
     for (const a of av.filter(function (a) { return !a.rm_manual; })) { const nid = got[a.id] || null; if (nid !== a.rm_id) await p.query('UPDATE available_props SET rm_id = $2 WHERE id = $1', [a.id, nid]); }
   }
@@ -10824,9 +10829,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
         if (ch.length) await p.query("UPDATE rm_dreams SET review_at = GREATEST(coalesce(review_at, (now() AT TIME ZONE 'Europe/London')::date), (now() AT TIME ZONE 'Europe/London')::date + 7), extended = extended + 1, change_note = $2, changed_at = now(), by_name = 'Rightmove change' WHERE rm_id = $1", [r.id, ch.join(', ').slice(0, 200)]);
       }
       const first = r.added && Date.parse(r.added) < Date.now() ? r.added : new Date().toISOString();
-      await p.query("INSERT INTO rm_dreams (rm_id, first_seen, review_at) VALUES ($1, $2, ($2::timestamptz AT TIME ZONE 'Europe/London')::date + 7) ON CONFLICT (rm_id) DO UPDATE SET last_seen = now(), first_seen = LEAST(rm_dreams.first_seen, EXCLUDED.first_seen), review_at = CASE WHEN rm_dreams.extended = 0 AND EXCLUDED.first_seen < rm_dreams.first_seen THEN EXCLUDED.review_at ELSE rm_dreams.review_at END", [r.id, first]);
+      // (First seen: when the advert went up. A new Dream's 7-day review starts today, so it never arrives already overdue.)
+      await p.query("INSERT INTO rm_dreams (rm_id, first_seen, review_at) VALUES ($1, $2, GREATEST(($2::timestamptz AT TIME ZONE 'Europe/London')::date, (now() AT TIME ZONE 'Europe/London')::date) + 7) ON CONFLICT (rm_id) DO UPDATE SET last_seen = now(), first_seen = LEAST(rm_dreams.first_seen, EXCLUDED.first_seen)", [r.id, first]);
       await p.query('UPDATE rm_dreams SET snap = $2 WHERE rm_id = $1', [r.id, JSON.stringify(snap)]);
     }
+    const linked = Object.keys(matched).filter(function (id) { return items.some(function (r) { return r.id === id; }); });
+    if (linked.length) await p.query('DELETE FROM rm_dreams WHERE rm_id = ANY($1::text[]) AND takedown_at IS NULL AND extended = 0', [linked]);
     // Gone from Rightmove for 3 days: forget it (a new advert later starts a fresh timeline).
     await p.query("DELETE FROM rm_dreams WHERE last_seen < now() - interval '3 days'");
   }
