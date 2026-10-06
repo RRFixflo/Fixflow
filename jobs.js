@@ -10367,6 +10367,33 @@ document.querySelectorAll('.lcu').forEach(function(box){
     try { const k = await ltKnown(p, address, b.landlord_id); await p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('known', $2::jsonb) WHERE id = $1", [r.rows[0].id, JSON.stringify(k)]); } catch (e) { console.error('Landlord terms prefill failed:', e.message); }
     res.json({ ok: true, id: r.rows[0].id, link: ltLink({ token: token }) });
   }));
+  // Website: a landlord picks a letting service and goes straight to our terms to fill in and sign,
+  // at our standard rates (tenant find 10%; collection and management at the standard scale on top).
+  const lsHits = new Map();
+  app.post('/api/public/landlord-signup', withDb(async function (p, req, res) {
+    const b = req.body || {}, ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim(), now = Date.now();
+    const hits = (lsHits.get(ip) || []).filter(function (t) { return now - t < 3600000; }); if (hits.length >= 5) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    hits.push(now); lsHits.set(ip, hits); if (lsHits.size > 5000) lsHits.clear();
+    if (str(b.website, 200)) return res.json({ ok: true });
+    if (await refuseBot(req, res, b, [b.name, b.address])) return;
+    const svc = { 'Tenant Find': 'none', 'Rent Collection': 'collect', 'Fully Managed': 'both' }[b.service];
+    if (!svc) return res.status(400).json({ ok: false, error: 'service' });
+    const name = str(b.name, 200), email = str(b.email, 200), phone = str(b.phone, 40), addr = str(b.address, 300), pcm = POSTCODE_RE.exec(String(b.postcode || '') + ' ' + String(b.address || ''));
+    if (!name || !addr || !phone) return res.status(400).json({ ok: false, error: 'missing' });
+    if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
+    if (!pcm) return res.status(400).json({ ok: false, error: 'postcode' });
+    if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
+    const postcode = (pcm[1] + ' ' + pcm[2]).toUpperCase(), full = POSTCODE_RE.test(addr) ? addr : addr + ', ' + postcode;
+    const fees = cleanFees({ find: 'sole', find_pct: LT_STD.sole, renewal: false, ongoing: svc, ongoing_pct: svc === 'none' ? null : LT_STD[svc], vat: true, choose: true });
+    const token = crypto.randomBytes(16).toString('base64url');
+    const r = await p.query('INSERT INTO landlord_terms (token, property_address, landlord_name, landlord_email, landlord_phone, fees, log, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+      [token, full, name, email, phone, JSON.stringify(fees), JSON.stringify([{ at: new Date().toISOString(), by: 'Website', text: 'Landlord chose ' + b.service + ' on the website — terms at our standard rates' }]), 'Website']);
+    ltEpc(p, { id: r.rows[0].id, property_address: full, data: {} }).catch(function () {});
+    try { const k = await ltKnown(p, full, null); await p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('known', $2::jsonb) WHERE id = $1", [r.rows[0].id, JSON.stringify(k)]); } catch (e) {}
+    teamAlert({ title: '🏠 New landlord signing up: ' + b.service, message: name + ' · ' + full.split(',').slice(0, 2).join(',') + ' — they’re filling in our terms now.', tags: ['house', 'star'] }, '#lt').catch(function () {});
+    staffEmailAll('🏠 New landlord signing up - ' + b.service, function (link) { return 'A landlord has chosen ' + b.service + ' on the website and is filling in our terms now.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\nProperty: ' + full + '\nFees: tenant find ' + LT_STD.sole + '%' + (svc === 'none' ? '' : ' + ' + (svc === 'collect' ? 'rent collection ' : 'full management ') + LT_STD[svc] + '%') + ' (+ VAT)\n\nSee it in Landlord Terms: ' + link; }, '#lt').catch(function () {});
+    res.json({ ok: true, link: '/landlord/' + token });
+  }));
   app.post('/api/admin/landlord-terms/:id', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req);
     const t = (await p.query('SELECT status FROM landlord_terms WHERE id = $1', [id])).rows[0];
