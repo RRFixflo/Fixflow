@@ -550,3 +550,7 @@ h1 em, h2 em { background: none; -webkit-background-clip: initial; background-cl
 .pd-cert-ic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 800; } .pd-cert.ok .pd-cert-ic { background: #e7f8ef; color: #067647; } .pd-cert.due .pd-cert-ic { background: #fff4d6; }
 .pd-doc-ic { font-size: 1.3rem; flex: none; } .pd-doc span:nth-child(2) { flex: 1; min-width: 0; } .pd-doc-go { font-weight: 800; color: var(--navy); font-size: .82rem; }
 .pd-dh { margin: 22px 0 10px; color: var(--navy); font-size: 1rem; }
+.pd-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } .pd-tile { min-width: 0; } .pd-props > *, .pd-jobs > *, .pd-certs > *, .pd-docs > * { min-width: 0; }
+@media (max-width: 900px) { .pd-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .pd-tile b { font-size: 1.25rem; } .pd-tile { padding: 14px; } .pd-kv { flex-direction: column; gap: 2px; } .pd-kv b { text-align: left; } }
+.pd-table { max-width: 100%; }
