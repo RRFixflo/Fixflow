@@ -284,7 +284,7 @@
   // Home page certificates card: "from £X + VAT" from the price list.
   var xf = document.querySelector('[data-svc-from]');
   if (xf) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
-    var ps = ((d && d.items) || []).filter(function (i) { return i.price && !/^licen/.test(i.id); }).map(function (i) { return i.price; }); if (!ps.length) return;
+    var ps = ((d && d.items) || []).filter(function (i) { return i.price && /^(gas|eicr|epc)/.test(i.id); }).map(function (i) { return i.price; }); if (!ps.length) return;
     xf.textContent = 'From £' + Math.min.apply(null, ps).toLocaleString('en-GB') + ' + VAT'; xf.hidden = false;
   }).catch(function () {});
   // Service pages (gas safety, EICR, EPC): the live price from the office's price list.
