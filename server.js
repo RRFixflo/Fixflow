@@ -242,7 +242,7 @@ function siteFooter(home) {
     '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Estate agents, lettings and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div><div style="margin-top:6px">Open 7 days, 9am–7pm</div></div>' +
     '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlords#tools">Landlord tools</a></div>' +
     '<div><h4>Tenants</h4><a href="/report-a-repair">Report a repair</a><a href="/offer">Make an offer</a><a href="/tenants">Renting with us</a><a href="/tenants#fees">Tenant fees</a></div>' +
-    '<div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="/about">About us</a><a href="/privacy">Privacy</a></div>' +
+    '<div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="/about">About us</a><a href="/news">Property news</a><a href="/privacy">Privacy</a></div>' +
     '</div><div class="accred">' +
     '<a href="/cmp-certificate.pdf" target="_blank" rel="noopener" title="View our Client Money Protection certificate"><img src="/img/logo-cmp.webp" alt="Propertymark Client Money Protection" width="100" height="60" loading="lazy"></a>' +
     '<a href="https://www.propertymark.co.uk" target="_blank" rel="noopener" class="w"><img src="/img/logo-arla.png" alt="ARLA Propertymark Protected" width="96" height="60" loading="lazy"></a>' +
@@ -253,7 +253,7 @@ function siteFooter(home) {
 const isSiteHost = function (req) { return SITE_HOSTS.indexOf(String(req.hostname || '').toLowerCase()) !== -1; };
 function siteShell(name, home, req) {
   let body = fs.readFileSync(path.join(__dirname, 'site', name + '.html'), 'utf8');
-  if (name === 'home') body = body.replace('<!--FEATURED-->', listings ? listings.featured(req) : '').replace('<!--HEROSEARCH-->', heroSearch(req)).replace('<!--STATS-->', heroStats(req)).replace('<!--AREAS-->', heroAreas(req)).replace('<!--EXPERTS-->', heroExperts(req));
+  if (name === 'home') body = body.replace('<!--FEATURED-->', listings ? listings.featured(req) : '').replace('<!--HEROSEARCH-->', heroSearch(req)).replace('<!--STATS-->', heroStats(req)).replace('<!--AREAS-->', heroAreas(req)).replace('<!--EXPERTS-->', heroExperts(req)).replace('<!--NEWS-->', news ? news.section() : '');
   return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
     siteHead(name, body) + SITE_FONTS + '<link rel="stylesheet" href="/site.css"></head><body>' + siteHeader(name, home, req) + '<main>' + body + '</main>' + siteFooter(home) +
     '<script src="/site.js" defer></script></body></html>';
@@ -270,7 +270,7 @@ function heroSearch(req) {
   const val = '<div class="hs-val"><span>Find out your home’s sales or rental value</span><a class="btn yellow" href="/sales#sales-valuation">Get a free valuation</a></div>';
   if (!c) return '<div class="hsearch">' + val.replace('class="hs-val"', 'class="hs-val solo"') + '</div>';
   return '<form class="hsearch" id="hSearch" action="/properties-to-rent" method="get" role="search">' +
-    '<div class="hs-tabs" role="tablist">' + (c.sale ? '<button type="button" data-hs="buy" role="tab">Buy</button>' : '') + '<button type="button" class="on" data-hs="rent" role="tab">Rent</button></div>' +
+    '<div class="hs-tabs" role="tablist"><button type="button" data-hs="buy" role="tab">Buy</button><button type="button" class="on" data-hs="rent" role="tab">Rent</button></div>' +
     '<div class="hs-box"><div class="hs-row"><input name="q" aria-label="Area, street or postcode" placeholder="Find a property by area or postcode" autocomplete="off"><button class="hs-go" type="submit">Search <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button></div>' +
     '<div class="hs-modes"><button type="button" class="on" data-mode="list">📍 Location</button><button type="button" data-mode="map">🗺️ Map</button><button type="button" data-mode="near">➤ Near me</button></div></div>' +
     val + '</form>';
@@ -282,14 +282,14 @@ function heroExperts(req) {
   return '<div class="xgrid">' +
     card('key', 'Let your property hassle-free', 'Tenant find, rent collection or full management', 'Let your property', '/landlords') +
     card('worth', 'What’s your home worth?', 'Free, no-obligation sales and rental valuations', 'Get a valuation', '/sales#sales-valuation') +
-    card('rent', 'Find the right property to rent', c && c.let ? '<b>' + c.let + '</b> homes to rent right now' : 'Tell us what you’re looking for', 'Rent a property', c && c.let ? '/properties-to-rent' : '/contact?topic=Looking%20to%20rent') +
-    card('buy', 'Find the right property to buy', c && c.sale ? '<b>' + c.sale + '</b> homes for sale right now' : 'Register to hear about new homes first', 'Buy a property', c && c.sale ? '/properties-for-sale' : '/contact?topic=Buying') +
+    card('rent', 'Find the right property to rent', c && c.let ? 'Flats and houses across London' : 'Tell us what you’re looking for', 'Rent a property', c && c.let ? '/properties-to-rent' : '/contact?topic=Looking%20to%20rent') +
+    card('buy', 'Find the right property to buy', c && c.sale ? 'Homes for sale across London' : 'Register to hear about new homes first', 'Buy a property', c && c.sale ? '/properties-for-sale' : '/contact?topic=Buying') +
     '</div>';
 }
 function heroStats(req) {
   const c = listings && listings.counts(req);
   if (!c || !(c.let + c.sale)) return '<p class="tb-p">Protected &amp; regulated</p>';
-  return '<div class="tb-stats">' + (c.let ? '<a href="/properties-to-rent"><b>' + c.let + '</b> homes to rent now</a>' : '') + (c.sale ? '<a href="/properties-for-sale"><b>' + c.sale + '</b> for sale</a>' : '') + '<span>Protected &amp; regulated</span></div>';
+  return '<div class="tb-stats"><a href="/properties-to-rent">Homes to rent</a><a href="/properties-for-sale">Homes for sale</a><span>Protected &amp; regulated</span></div>';
 }
 function heroAreas(req) {
   const c = listings && listings.counts(req);
@@ -306,7 +306,7 @@ function landlordsShell(home, req) {
 const siteCache = {};
 function sendSite(req, res, name) {
   const f = name === 'landlords' ? path.join(__dirname, 'landlords.html') : path.join(__dirname, 'site', name + '.html'); let st; try { st = fs.statSync(f); } catch (e) { return res.status(404).end(); }
-  const home = isSiteHost(req) ? '/' : '/home', ck = name + home + (listings ? listings.stamp() + listings.show(req) : '');
+  const home = isSiteHost(req) ? '/' : '/home', ck = name + home + (listings ? listings.stamp() + listings.show(req) : '') + (name === 'home' && typeof news !== 'undefined' ? 'n' + news.count() + (news.status().at || 0) : '');
   let c = siteCache[ck];
   if (!c || c.mtime !== st.mtimeMs) { const raw = Buffer.from(name === 'landlords' ? landlordsShell(home, req) : siteShell(name, home, req)); c = siteCache[ck] = { mtime: st.mtimeMs, raw: raw, gzip: zlib.gzipSync(raw, { level: 9 }), etag: '"s' + crypto.createHash('sha1').update(raw).digest('base64').slice(0, 26) + '"' }; }
   res.setHeader('Cache-Control', listings && listings.preview(req) ? 'private, no-store' : 'no-cache'); res.setHeader('ETag', c.etag); res.setHeader('Vary', 'Accept-Encoding, Cookie'); res.type('html');
@@ -330,18 +330,21 @@ function sendBuilt(req, res, meta, body) {
   const gz = /\bgzip\b/.test(String(req.headers['accept-encoding'] || '')); if (gz) res.setHeader('Content-Encoding', 'gzip');
   res.end(req.method === 'HEAD' ? undefined : (gz ? c.gzip : c.raw));
 }
+const news = require('./news')();
 const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
 // On the website's own address, /home is the same page as / — send search engines to one address.
 app.get('/home', (req, res, next) => { if (isSiteHost(req)) return res.redirect(301, '/'); next(); });
 Object.keys(SITE_PAGES).forEach(function (name) { if (SITE_PAGES[name].paths) app.get(SITE_PAGES[name].paths, function (req, res) { sendSite(req, res, name); }); });
 app.get(['/landlords', '/landlord-tools', '/valuation'], function (req, res) { sendSite(req, res, 'landlords'); });
 app.get('/tenant-fees', (req, res) => res.redirect(301, '/tenants#fees'));
+// London property news (headlines that link to the full stories).
+app.get('/news', function (req, res) { sendBuilt(req, res, { name: 'news', stamp: 'n' + news.count() + (news.status().at || 0), canon: '/news', crumb: 'London property news', title: 'London Property News | Residential Realtors', desc: 'The latest London property news headlines, updated through the day.' }, news.page()); });
 // For search engines: what to index (the public website) and what not to (staff and private links).
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send('User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /staff\nDisallow: /api/\nDisallow: /offer/\nDisallow: /landlord/\nDisallow: /reserve/\nDisallow: /portal\n\nSitemap: ' + SITE_URL + '/sitemap.xml\n');
 });
 app.get('/sitemap.xml', (req, res) => {
-  const pages = [['/', '1.0'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
+  const pages = [['/', '1.0'], ['/news', '0.5'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
   res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
     pages.concat(listings.urls().length ? [['/properties-to-rent', '0.9'], ['/properties-for-sale', '0.9']] : []).concat(listings.urls().map(function (u) { return [u, '0.7']; }))
       .map(function (x) { return '  <url><loc>' + SITE_URL + siteEsc(x[0]) + '</loc><priority>' + x[1] + '</priority></url>'; }).join('\n') + '\n</urlset>\n');
