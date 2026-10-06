@@ -11344,5 +11344,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     console.log('Link check: ' + (LINKS_USED.length - bad.length - blocked.length) + ' of ' + LINKS_USED.length + ' links open' + (bad.length ? ' | NOT WORKING: ' + bad.join(' ; ') : '') + (blocked.length ? ' | site refused an automatic check: ' + blocked.join(' ; ') : ''));
   }
   if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME) setTimeout(function () { checkLinksUsed().catch(function () {}); }, 120000).unref();
-  return { saveReport: saveReport, hasDb: async function () { return !!(await db()); } };
+  // Signed in to Fixflow (for staff-only previews on the website).
+  function isStaff(req) { const t = parseToken(readCookie(req, 'rr_admin')); if (!t) return false; const c = t.sid && sessionCache.get(t.sid); return !(c && c.revoked); }
+  return { saveReport: saveReport, hasDb: async function () { return !!(await db()); }, isStaff: isStaff };
 };

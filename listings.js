@@ -1,16 +1,21 @@
-// Property listings on the website, from the Gnomen sales and lettings feeds
-// (GNOMEN_SALES_FEED / GNOMEN_LETTINGS_FEED: the feed addresses, which hold the
-// keys, so they live in the environment, never in the code).
-// The feeds are read every 15 minutes and kept in memory. Pages are built on the
-// server so search engines see every property. Photos are resized here
-// (sharp) so they're sharp but light on phones.
-// They only go on the website when LISTINGS_ON=1 (so a test feed never shows publicly).
+// Property listings on the website. Two sources (LISTINGS_SOURCE):
+//  - rightmove (the default): our branch's adverts on Rightmove (RIGHTMOVE_BRANCH), read every
+//    30 minutes, with each advert's photos, description and features;
+//  - gnomen: the Gnomen sales and lettings feeds (GNOMEN_SALES_FEED / GNOMEN_LETTINGS_FEED: the
+//    feed addresses hold the keys, so they live in the environment, never in the code).
+// Kept in memory. Pages are built on the server so search engines see every property. Photos are
+// resized here (sharp) so they're sharp but light on phones.
+// They go on the public website only when LISTINGS_ON=1; signed-in staff always see them (a preview).
 const crypto = require('crypto');
 let sharp = null; try { sharp = require('sharp'); } catch (e) { sharp = null; }
 
 module.exports = function (app, opts) {
   const FEEDS = { sale: process.env.GNOMEN_SALES_FEED || '', let: process.env.GNOMEN_LETTINGS_FEED || '' };
-  const LIVE = process.env.LISTINGS_ON === '1';
+  const LIVE = process.env.LISTINGS_ON === '1', SOURCE = process.env.LISTINGS_SOURCE === 'gnomen' ? 'gnomen' : 'rightmove', BRANCH = String(process.env.RIGHTMOVE_BRANCH || '105856').replace(/\D/g, '');
+  // Shown to this visitor? Everyone when live; otherwise signed-in staff only (a private preview).
+  const staff = function (req) { try { return !!(req && opts.isStaff && opts.isStaff(req)); } catch (e) { return false; } };
+  const show = function (req) { return LIVE || staff(req); };
+  const preview = function (req) { return !LIVE && staff(req); };
   const esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   const data = { sale: [], let: [], at: 0, stamp: '' };
 
@@ -65,7 +70,116 @@ module.exports = function (app, opts) {
     }
     data.at = Date.now(); data.stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(function (p) { return p.id + p.status + p.price; }), data.let.map(function (p) { return p.id + p.status + p.price; })])).digest('hex').slice(0, 12);
   }
-  if (FEEDS.sale || FEEDS.let) { setTimeout(refresh, 3000); setInterval(refresh, 15 * 60000).unref(); }
+  // ---------- Rightmove: our branch's adverts ----------
+  const RM = 'https://www.rightmove.co.uk', UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'Accept-Language': 'en-GB,en;q=0.9' };
+  const rmDetails = new Map();   // advert id -> { at, d }
+  // Any list of advert-like objects inside a page's data.
+  function dig(v, out, depth) {
+    if (!v || depth > 10 || out.length > 500) return;
+    if (Array.isArray(v)) { if (v.length && v.every(function (o) { return o && typeof o === 'object' && o.id != null && (o.displayAddress || o.propertyUrl); })) v.forEach(function (o) { out.push(o); }); else v.forEach(function (o) { dig(o, out, depth + 1); }); return; }
+    if (typeof v === 'object') Object.keys(v).forEach(function (k) { dig(v[k], out, depth + 1); });
+  }
+  function pageJson(body) {
+    const out = [];
+    [/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/, /window\.jsonModel\s*=\s*(\{[\s\S]*?\})\s*<\/script>/, /window\.PAGE_MODEL\s*=\s*(\{[\s\S]*?\})\s*<\/script>/, /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/]
+      .forEach(function (re) { const m = re.exec(body); if (m) { try { out.push(JSON.parse(m[1])); } catch (e) {} } });
+    return out;
+  }
+  async function rmBranch(kind) {
+    const ch = kind === 'let' ? 'RENT' : 'BUY', loc = 'BRANCH%5E' + BRANCH, seen = {}, items = [];
+    const sources = [
+      function (i) { return RM + '/api/property-search/listing/search?searchLocation=&useLocationIdentifier=true&locationIdentifier=' + loc + '&channel=' + ch + '&index=' + i + '&sortType=6&includeLetAgreed=true&includeSSTC=true&_includeLetAgreed=on'; },
+      function (i) { return RM + '/api/_search?locationIdentifier=' + loc + '&numberOfPropertiesPerPage=24&radius=0.0&sortType=6&index=' + i + '&includeLetAgreed=true&includeSSTC=true&viewType=LIST&channel=' + ch + '&areaSizeUnit=sqft&currencyCode=GBP&isFetching=false'; },
+      function (i) { return RM + (kind === 'let' ? '/property-to-rent' : '/property-for-sale') + '/find.html?locationIdentifier=' + loc + '&includeLetAgreed=true&includeSSTC=true&index=' + i; }
+    ];
+    let src = -1;
+    for (let index = 0; index < 480; index += 24) {
+      let raw = 0;
+      for (let k = src === -1 ? 0 : src; k < sources.length; k++) {
+        try {
+          const r = await fetch(sources[k](index), { headers: Object.assign({ Accept: 'application/json, text/html;q=0.9, */*;q=0.8' }, UA), signal: AbortSignal.timeout(15000) });
+          const body = await r.text(), found = [];
+          if (/^\s*[{[]/.test(body)) { try { dig(JSON.parse(body), found, 0); } catch (e) {} } else pageJson(body).forEach(function (j) { dig(j, found, 0); });
+          raw = found.length;
+          found.forEach(function (x) { if (!seen[x.id]) { seen[x.id] = 1; items.push(x); } });
+        } catch (e) { raw = 0; }
+        if (raw) { src = k; break; }
+      }
+      if (raw < 20) break;
+    }
+    return items;
+  }
+  // An advert's own page: every photo, the description, key features, floorplans, location.
+  async function rmDetail(id) {
+    const c = rmDetails.get(id); if (c && Date.now() - c.at < 12 * 3600000) return c.d;
+    let d = null;
+    try {
+      const r = await fetch(RM + '/properties/' + id, { headers: UA, signal: AbortSignal.timeout(15000) });
+      if (r.ok) {
+        const found = [], look = function (v, depth) { if (!v || typeof v !== 'object' || depth > 10 || found.length) return; if (!Array.isArray(v) && Array.isArray(v.images) && (v.keyFeatures || v.text || v.floorplans)) { found.push(v); return; } Object.keys(v).forEach(function (k) { look(v[k], depth + 1); }); };
+        pageJson(await r.text()).forEach(function (j) { look(j, 0); });
+        d = found[0] || null;
+      }
+    } catch (e) { d = null; }
+    if (d || !c) rmDetails.set(id, { at: Date.now(), d: d || (c && c.d) || null });
+    return d || (c && c.d) || null;
+  }
+  const big = function (u) { return String(u || '').replace(/\/dir\/crop\/[^/]+\//, '/').replace(/_max_\d+x\d+(\.\w+)(\?.*)?$/, '$1'); };
+  const isImg = function (u) { return /^https:\/\/[^/]*rightmove\.co\.uk\/.+\.(jpe?g|png|gif|webp)(\?.*)?$/i.test(String(u || '')); };
+  const rmDay = function (v) { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(v || '').trim()); return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : /^now$/i.test(String(v || '').trim()) ? '2000-01-01' : ''; };
+  function rmListing(x, d, kind) {
+    d = d || {};
+    const pr = x.price || {}, freq = String(pr.frequency || '').toLowerCase(), amt = Number(pr.amount) || 0, dp = (pr.displayPrices || [])[0] || {};
+    let price = kind === 'let' ? (freq === 'weekly' ? amt * 52 / 12 : freq === 'yearly' ? amt / 12 : amt) : amt;
+    if (!price) { const m = /£([\d,]+)/.exec(dp.displayPrice || ((d.prices || {}).primaryPrice) || ''); if (m) price = Number(m[1].replace(/,/g, '')); }
+    const addr = String(x.displayAddress || (d.address || {}).displayAddress || '').replace(/\s+/g, ' ').trim(), parts = addr.split(/\s*,\s*/).filter(Boolean);
+    const oc = ((d.address || {}).outcode) || ((/\b([A-Z]{1,2}\d[A-Z\d]?)(?:\s*\d[A-Z]{2})?\s*$/i.exec(addr) || [])[1] || '').toUpperCase();
+    const last = parts.length > 1 ? parts[parts.length - 1].replace(new RegExp('\\s*' + oc + '.*$', 'i'), '').trim() : '';
+    const type = String(x.propertySubType || d.propertySubType || x.propertyTypeFullDescription || 'Property').replace(/\s+/g, ' ').trim();
+    const st = String(x.displayStatus || '').trim(), taken = /let agreed|under offer|sold stc|sold subject|reserved/i.test(st);
+    const beds = Number(x.bedrooms != null ? x.bedrooms : d.bedrooms) || 0;
+    const listImgs = ((x.propertyImages || {}).images || []).map(function (i) { return i.srcUrl || i.url; }).filter(Boolean);
+    const imgs = ((d.images || []).map(function (i) { return i.url || (i.resizedImageUrls || {}).size656x437; }).filter(isImg));
+    const images = (imgs.length ? imgs : listImgs.map(big)).filter(isImg).slice(0, 40), alts = (imgs.length ? imgs : listImgs).slice(0, 40);
+    const loc = d.location || x.location || {}, lat = Number(loc.latitude), lng = Number(loc.longitude), lt = d.lettings || {};
+    const desc = (d.text || {}).description || '';
+    const p = { id: String(x.id), kind: kind, src: 'rightmove', type: type, category: 'Residential', status: st || (kind === 'let' ? 'To let' : 'For sale'), taken: taken,
+      street: parts[0] || addr, area: parts.length > 2 ? parts[1] : '', town: last, outcode: oc,
+      beds: beds, studio: /studio/i.test(type) || (!beds && /flat|apartment/i.test(type)), commercial: false, baths: Number(x.bathrooms != null ? x.bathrooms : d.bathrooms) || 0, receptions: 0,
+      price: Math.round(price) || 0, qualifier: String(dp.displayPriceQualifier || '').trim(), short: String(x.summary || (d.text || {}).propertyPhrase || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 400),
+      html: cleanHtml(desc), available: rmDay(lt.letAvailableDate), furnished: String(lt.furnishType || '').replace(/^furnished$/i, 'Full'), tenure: String((d.tenure || {}).tenureType || '').replace(/^(\w)(\w*)$/, function (m, a, b) { return a + b.toLowerCase(); }),
+      pets: false, parking: false, garden: false, features: (d.keyFeatures || []).map(function (f) { return String(f).replace(/\s+/g, ' ').trim(); }).filter(Boolean).slice(0, 20),
+      lat: isFinite(lat) && lat ? lat : null, lng: isFinite(lng) && lng ? lng : null,
+      epc: ((d.epcGraphs || []).map(function (e) { return e.url; }).filter(isImg))[0] || '', vtour: '',
+      images: images, alts: alts, floorplans: (d.floorplans || []).map(function (f) { return f.url; }).filter(isImg).slice(0, 6), added: String(x.firstVisibleDate || x.listingUpdate && x.listingUpdate.listingUpdateDate || '') };
+    p.where = addr; p.street = p.street.replace(new RegExp('\\s*' + oc + '$', 'i'), '');
+    p.headline = (p.studio ? 'Studio' : beds ? beds + ' bedroom ' + type.toLowerCase() : type) + (kind === 'let' ? ' to rent' : ' for sale');
+    p.slug = (addr + ' ' + (p.studio ? 'studio' : beds + ' bed ' + type)).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 90);
+    p.url = '/property/' + p.id + '/' + p.slug;
+    return p;
+  }
+  async function refreshRightmove() {
+    const counts = {};
+    for (const kind of ['let', 'sale']) {
+      try {
+        const items = await rmBranch(kind), out = [];
+        for (const x of items) {
+          const fresh = !rmDetails.has(String(x.id));
+          const d = await rmDetail(String(x.id));
+          if (fresh) await new Promise(function (ok) { setTimeout(ok, 800); });   // gently, one advert at a time
+          out.push(rmListing(x, d, kind));
+        }
+        if (out.length || !data[kind].length) data[kind] = out.sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
+        counts[kind] = out.length + ' (' + out.filter(function (p) { return p.images.length > 1; }).length + ' with full photos)';
+      } catch (e) { counts[kind] = 'not read: ' + e.message; }
+    }
+    console.log('Listings from Rightmove branch ' + BRANCH + ': to rent ' + counts.let + ', for sale ' + counts.sale + (LIVE ? '' : ' — staff preview only (LISTINGS_ON is off)'));
+  }
+  async function refreshAll() {
+    if (SOURCE === 'rightmove') await refreshRightmove(); else await refresh();
+    data.at = Date.now(); data.stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(function (p) { return p.id + p.status + p.price + p.images.length; }), data.let.map(function (p) { return p.id + p.status + p.price + p.images.length; })])).digest('hex').slice(0, 12);
+  }
+  if (SOURCE === 'rightmove' || FEEDS.sale || FEEDS.let) { setTimeout(refreshAll, 3000); setInterval(refreshAll, (SOURCE === 'rightmove' ? 30 : 15) * 60000).unref(); }
   const find = function (id) { return data.let.find(function (p) { return p.id === id; }) || data.sale.find(function (p) { return p.id === id; }); };
 
   // ---------- Photos: resized and cached ----------
@@ -80,7 +194,10 @@ module.exports = function (app, opts) {
     if (imgCache.has(key)) { const b = imgCache.get(key); imgCache.delete(key); imgCache.set(key, b); return send(b); }
     try {
       if (!inflight.has(key)) inflight.set(key, (async function () {
-        const r = await fetch(src); if (!r.ok) throw new Error('photo ' + r.status);
+        let r = await fetch(src, { headers: UA });
+        const alt = /^\d+$/.test(n) && p.alts && p.alts[+n];
+        if (!r.ok && alt && alt !== src) r = await fetch(alt, { headers: UA });
+        if (!r.ok) throw new Error('photo ' + r.status);
         const buf = Buffer.from(await r.arrayBuffer());
         return sharp(buf).rotate().resize({ width: w, withoutEnlargement: true }).webp({ quality: n === 'epc' || /^fp/.test(n) ? 85 : 76 }).toBuffer();
       })().finally(function () { inflight.delete(key); }));
@@ -123,9 +240,9 @@ module.exports = function (app, opts) {
   // ---------- Pages ----------
   const KIND = { let: { path: '/properties-to-rent', h1: 'Properties to rent', kicker: 'To rent', none: 'to rent' }, sale: { path: '/properties-for-sale', h1: 'Properties for sale', kicker: 'For sale', none: 'for sale' } };
   function listPage(req, res, kind) {
-    const K = KIND[kind], items = LIVE ? data[kind] : [], avail = items.filter(function (p) { return !p.taken; }).length;
+    const K = KIND[kind], pv = preview(req), items = show(req) ? data[kind] : [], avail = items.filter(function (p) { return !p.taken; }).length;
     const prices = kind === 'let' ? [1000, 1250, 1500, 1750, 2000, 2500, 3000, 4000, 5000] : [250000, 300000, 400000, 500000, 600000, 750000, 1000000, 1500000, 2000000];
-    const body = '<div class="phead small"><div class="wrap"><span class="eyebrow"><i></i> ' + K.kicker + ' · London</span><h1>' + K.h1 + '</h1>' +
+    const body = (pv ? '<div class="pvbar">👀 Staff preview — only people signed in to Fixflow can see these properties. They’re not public yet.</div>' : '') + '<div class="phead small"><div class="wrap"><span class="eyebrow"><i></i> ' + K.kicker + ' · London</span><h1>' + K.h1 + '</h1>' +
       '<p class="lead">' + (items.length ? avail + ' available now' + (items.length > avail ? ' · ' + (items.length - avail) + ' ' + (kind === 'let' ? 'let agreed or under offer' : 'under offer or sold STC') : '') + '. Updated throughout the day.' : 'New properties are coming soon.') + '</p></div></div>' +
       (items.length ? '<section class="lsec"><div class="wrap"><form class="lfilter" id="lFilter" onsubmit="return false" role="search" aria-label="Filter properties">' +
         '<label class="lf-q">Area or postcode<input type="search" name="q" placeholder="e.g. SE1, Camberwell" autocomplete="off"></label>' +
@@ -138,13 +255,13 @@ module.exports = function (app, opts) {
       : '<section class="white"><div class="wrap" style="text-align:center;max-width:640px"><h2>Our list of properties ' + K.none + ' is on its way</h2><p class="sub" style="margin:0 auto 24px">Tell us what you’re looking for and we’ll let you know about suitable homes — or call us on 0207 096 8131.</p><a class="btn red" href="/contact?topic=' + (kind === 'let' ? 'Looking%20to%20rent' : 'Buying') + '">Tell us what you need →</a></div></section>') +
       '<section><div class="wrap"><div class="band"><div><h2>' + (kind === 'let' ? 'Got a property to let?' : 'Thinking of selling?') + '</h2><p>Get a free, no-obligation valuation from our local team.</p></div><div class="btns"><a class="btn red" href="' + (kind === 'let' ? '/landlords#valuation' : '/sales#sales-valuation') + '">Free valuation →</a><a class="btn ghost" href="tel:02070968131">📞 0207 096 8131</a></div></div></div></section>';
     const ld = items.length ? [{ '@type': 'ItemList', name: K.h1 + ' in London', numberOfItems: items.length, itemListElement: items.slice(0, 50).map(function (p, i) { return { '@type': 'ListItem', position: i + 1, url: opts.siteUrl + p.url, name: p.headline + ', ' + p.where }; }) }] : [];
-    opts.send(req, res, { canon: K.path, crumb: K.h1, title: K.h1 + ' in London | Residential Realtors', desc: (kind === 'let' ? 'Flats and houses to rent in London from Residential Realtors' : 'Homes for sale in London from Residential Realtors') + ' — photos, floorplans, prices and availability, updated throughout the day.', ld: ld, name: 'list-' + kind, stamp: data.stamp, robots: items.length ? '' : 'noindex, follow' }, body);
+    opts.send(req, res, { canon: K.path, crumb: K.h1, title: K.h1 + ' in London | Residential Realtors', desc: (kind === 'let' ? 'Flats and houses to rent in London from Residential Realtors' : 'Homes for sale in London from Residential Realtors') + ' — photos, floorplans, prices and availability, updated throughout the day.', ld: pv ? [] : ld, name: 'list-' + kind + (pv ? '-pv' : ''), stamp: data.stamp, private: pv, robots: items.length && !pv ? '' : 'noindex, follow' }, body);
   }
   app.get(['/properties-to-rent', '/to-rent', '/rent', '/lettings', '/properties'], function (req, res) { listPage(req, res, 'let'); });
   app.get(['/properties-for-sale', '/for-sale', '/buy'], function (req, res) { listPage(req, res, 'sale'); });
 
   app.get(['/property/:id', '/property/:id/*'], function (req, res) {
-    const p = LIVE ? find(String(req.params.id)) : null;
+    const pv = preview(req), p = show(req) ? find(String(req.params.id)) : null;
     if (!p) {
       res.status(404);
       return opts.send(req, res, { canon: '/properties-to-rent', title: 'Property no longer available | Residential Realtors', desc: 'This property is no longer on the market.', robots: 'noindex, follow', name: '404' },
@@ -156,7 +273,7 @@ module.exports = function (app, opts) {
     const offer = '/offer?p=' + encodeURIComponent(p.where);
     const share = encodeURIComponent(p.headline + ', ' + p.where + ' — ' + opts.siteUrl + p.url);
     const extras = [p.furnished ? (p.furnished === 'Full' ? 'Furnished' : p.furnished) : '', p.tenure, p.parking ? 'Parking' : '', p.garden ? 'Garden' : '', p.kind === 'let' ? (p.pets ? 'Pets considered' : '') : ''].filter(Boolean);
-    const body = '<div class="pdhead"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › <a href="' + K.path + '">' + K.h1 + '</a> › <span>' + esc(p.where) + '</span></nav></div></div>' +
+    const body = (pv ? '<div class="pvbar">👀 Staff preview — only people signed in to Fixflow can see these properties. They’re not public yet.</div>' : '') + '<div class="pdhead"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › <a href="' + K.path + '">' + K.h1 + '</a> › <span>' + esc(p.where) + '</span></nav></div></div>' +
       '<section class="pd"><div class="wrap">' +
       (n ? '<div class="gal" id="gal"><div class="gtrack" id="gTrack">' + p.images.map(function (u, i) { return '<figure>' + pic(p, i, '(max-width: 1100px) 100vw, 1100px', p.headline + ' — photo ' + (i + 1) + ' of ' + n, i === 0 ? ' fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"') + '</figure>'; }).join('') + '</div>' +
         (n > 1 ? '<button class="gbtn prev" type="button" aria-label="Previous photo">‹</button><button class="gbtn next" type="button" aria-label="Next photo">›</button><span class="gnum" id="gNum">1 / ' + n + '</span>' : '') +
@@ -182,15 +299,17 @@ module.exports = function (app, opts) {
       about: { '@type': p.type === 'House' ? 'House' : 'Apartment', numberOfRooms: p.beds || undefined, numberOfBedrooms: p.beds, numberOfBathroomsTotal: p.baths || undefined, address: { '@type': 'PostalAddress', streetAddress: p.street, addressLocality: p.area || p.town, postalCode: p.outcode, addressCountry: 'GB' },
         geo: p.lat != null ? { '@type': 'GeoCoordinates', latitude: +p.lat.toFixed(3), longitude: +p.lng.toFixed(3) } : undefined } }];
     opts.send(req, res, { canon: p.url, crumb: K.h1, crumbUrl: K.path, crumb2: p.where, title: p.headline + ' in ' + p.where + ' | Residential Realtors', desc: (p.short || p.headline + ' in ' + p.where).slice(0, 155),
-      ogImg: n ? opts.siteUrl + '/listing-img/' + p.id + '/0.webp?w=1200' : '', ld: ld, name: 'p' + p.id, stamp: data.stamp, preload: n ? '/listing-img/' + p.id + '/0.webp?w=800' : '' }, body);
+      ogImg: n ? opts.siteUrl + '/listing-img/' + p.id + '/0.webp?w=1200' : '', ld: pv ? [] : ld, name: 'p' + p.id + (pv ? '-pv' : ''), stamp: data.stamp, private: pv, robots: pv ? 'noindex, nofollow' : '', preload: n ? '/listing-img/' + p.id + '/0.webp?w=800' : '' }, body);
   });
 
   return {
-    live: function () { return LIVE && (data.let.length + data.sale.length) > 0; },
+    // Shown to this visitor (everyone when live, signed-in staff otherwise), and there's something to show.
+    show: function (req) { return show(req) && (data.let.length + data.sale.length) > 0; },
+    preview: preview,
     stamp: function () { return data.stamp; },
     // A few of the latest, for the home page.
-    featured: function () {
-      if (!LIVE) return '';
+    featured: function (req) {
+      if (!show(req)) return '';
       const pick = data.let.filter(function (p) { return !p.taken; }).slice(0, 3).concat(data.sale.filter(function (p) { return !p.taken; }).slice(0, 3));
       if (!pick.length) return '';
       return '<section><div class="wrap"><div class="head center"><p class="kicker">On the market</p><h2>Latest properties</h2><p class="sub">Homes to rent and for sale, straight from our listings.</p></div><div class="lgrid">' + pick.map(function (p) { return card(p); }).join('') + '</div>' +
