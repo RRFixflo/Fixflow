@@ -645,6 +645,7 @@
   .web-bar:hover i, .web-bar:focus i { background: #0b1f3a; } .web-bar:hover::after, .web-bar:focus::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #0b1f3a; color: #fff; padding: 6px 9px; border-radius: 8px; font-size: .76rem; white-space: nowrap; z-index: 5; pointer-events: none; }
   .web-xl { display: flex; justify-content: space-between; font-size: .72rem; color: var(--ink-soft); margin: 4px 0 0 28px; }
   .web-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; } .web-grid .card { margin: 0; min-width: 0; } .web-list table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: .88rem; } .web-list th { text-align: left; font-size: .74rem; color: var(--ink-soft); font-weight: 700; padding: 4px 6px; border-bottom: 1px solid var(--line, #eef0f3); } .web-list td { padding: 7px 6px; border-bottom: 1px solid var(--line, #f2f4f7); vertical-align: top; overflow-wrap: anywhere; } .web-list .num { text-align: right; white-space: nowrap; width: 1%; }
+  .web-me { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 12px; } .web-me code, .web-list code { background: #f2f4f7; padding: 1px 6px; border-radius: 6px; font-size: .85em; } .web-ign { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .web-dupes { margin-top: 12px; } .web-dupe { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--line, #eef0f3); } .web-dupe a { display: flex; gap: 10px; align-items: center; text-decoration: none; color: inherit; flex: 1 1 240px; min-width: 0; } .web-dupe img { width: 96px; height: 64px; object-fit: cover; border-radius: 8px; flex: none; background: #eef2f8; } .web-dupe span { display: grid; min-width: 0; } .web-dupe small { color: var(--ink-soft); } .web-dupe i { font-style: normal; font-weight: 800; color: #b42318; }
   .web-hb { display: block; height: 6px; background: #eef2f8; border-radius: 3px; margin-top: 5px; } .web-hb i { display: block; height: 100%; background: #1d4ed8; border-radius: 3px; }
   @media (max-width: 760px) { .web-tiles { grid-template-columns: 1fr 1fr; } .web-grid { grid-template-columns: 1fr; } .web-chart { height: 160px; } }
@@ -1946,7 +1947,7 @@
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
       <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto;max-width:100%;min-width:0"><option value="">Everyone</option></select><button type="button" class="btn small ghost" id="teamFeedMin">Minimise</button></div><div id="teamFeed"></div></div>
-        <div class="card" id="signinCard" hidden><div class="team-feed-h" style="margin-top:0"><b>🔐 Sign-ins — who signed in, from where and on what</b><select class="inp" id="siDays" style="width:auto"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select></div><p class="muted-note" style="margin:0 0 8px">Location is approximate, worked out from the internet (IP) address. Tap an IP to see everything done from it.</p><div id="signinList"></div></div></div>
+        <div class="card" id="signinCard" hidden><div class="team-feed-h" style="margin-top:0"><b>🔐 Sign-ins — who signed in, from where and on what</b><select class="inp" id="siDays" style="width:auto"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select><button type="button" class="btn small ghost" id="signinMin">Minimise</button></div><p class="muted-note" style="margin:0 0 8px">Location is approximate, worked out from the internet (IP) address. Tap an IP to see everything done from it.</p><div id="signinList"></div></div></div>
       <div id="ltView" hidden>
         <div id="vrBoxLt"></div>
         <details class="card" id="ltNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New landlord agreement</summary>
@@ -2945,9 +2946,10 @@
       // Offers staff: only the Offers page (the server refuses everything else).
       if (d.role === 'offers') {
         staffMode = true; document.body.classList.add('staff-mode'); $('staffTabs').hidden = false;
+        var wasOn = history.state && history.state.v;   // a refresh keeps you on the page you were on
         if (!history.state) history.replaceState({ v: 'avail', depth: 0 }, '', location.pathname);
         // Staff start on the Available list (links from alerts and emails open their own page).
-        loadOffers().then(function(){ showView(wantCrm ? 'crm' : wantLt ? 'lt' : wantOffers ? 'offers' : 'avail'); }); loadPvr(); loadCrm(true); refreshListings(true);
+        loadOffers().then(function(){ showView(wantCrm ? 'crm' : wantLt ? 'lt' : wantOffers ? 'offers' : (wasOn && ['offers', 'lt', 'avail', 'sent', 'team', 'who', 'crm', 'web'].indexOf(wasOn) !== -1 ? wasOn : 'avail')); }); loadPvr(); loadCrm(true); refreshListings(true);
         // An offers team manager also gets the Team section on the Offers page.
         $('stWho').hidden = false; $('navWho').hidden = false;   // everyone sees who did what
         if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; $('stWeb').hidden = false; showDeployed(d); } else { $('navWeb').hidden = true; }
@@ -2956,8 +2958,9 @@
       // Your own (full) page: Team and Who did what stay in Activity; the red manager buttons are for the staff page.
       $('navTeam').hidden = true; $('navWho').hidden = true; $('actView').insertBefore($('signinCard'), $('actView').firstChild); $('actView').insertBefore($('whoView').firstElementChild, $('actView').firstChild); $('actView').insertBefore($('teamSec'), $('actView').firstChild);
       showDeployed(d); loadCrm(true);
+      var wasState = history.state && history.state.v && history.state.v !== 'jobs' && !/^#(job=|offers|contacts|leads|lt|certs)/.test(location.hash) ? history.state : null;   // a refresh keeps you where you were
       if (!history.state) history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname + location.hash);
-      loadContractors().then(loadJobs).then(openJobFromLink).then(updateBack);
+      loadContractors().then(loadJobs).then(openJobFromLink).then(function(){ if (wasState) applyNav(wasState); }).then(updateBack);
       refreshListings(true);   // Rightmove and YouTube, once when you sign in
     });
   }
@@ -4034,7 +4037,7 @@
     }, 0);
   }
   function applyNav(st){
-    if (staffMode && (!st || ['offers', 'lt', 'avail', 'sent', 'team', 'who'].indexOf(st.v) === -1)) st = { v: 'avail' };
+    if (staffMode && (!st || ['offers', 'lt', 'avail', 'sent', 'team', 'who', 'crm', 'web'].indexOf(st.v) === -1)) st = { v: 'avail' };
     navRestoring = true;
     openPropKey = st.prop || null; openTenantKey = st.ten || null; openLlId = st.ll || null;
     $('propDetail').hidden = !openPropKey; $('propsListView').hidden = !!openPropKey;
@@ -8099,7 +8102,12 @@
     var d = webData, t = d.totals || {}, pv = d.previous || {}, n = function(x){ return Number(x || 0).toLocaleString('en-GB'); };
     var change = function(now, before){ if (!before) return now ? '<small class="web-up">new</small>' : ''; var c = Math.round((now - before) / before * 100); return '<small class="' + (c >= 0 ? 'web-up' : 'web-down') + '">' + (c >= 0 ? '▲ ' : '▼ ') + Math.abs(c) + '% vs previous ' + (d.days === 1 ? 'day' : d.days + ' days') + '</small>'; };
     var label = d.days === 1 ? 'today' : d.days === 365 ? 'in the last 12 months' : 'in the last ' + d.days + ' days';
-    var h = '<div class="web-tiles"><div class="tile"><div class="k">Visitors ' + label + '</div><div class="v">' + n(t.visitors) + '</div>' + change(t.visitors, pv.visitors) + '</div>' +
+    var meIgnored = (d.ignore || []).some(function(x){ return x.ip === d.me; });
+    var h = '<div class="card web-me"><div><b>Your IP address right now: <code>' + esc(d.me || 'unknown') + '</code></b>' + (meIgnored ? ' <span class="crm-flag ok">✓ Not counted</span>' : '') +
+      '<p class="muted-note" style="margin:4px 0 0">Visits from a browser signed in to Fixflow are never counted. To leave out the office (or your home) when you’re signed out too — e.g. on your phone on the office Wi-Fi — stop counting its address.</p>' +
+      ((d.ignore || []).length ? '<div class="web-ign">' + d.ignore.map(function(x){ return '<span class="crm-flag">🚫 ' + esc(x.ip) + (x.label ? ' · ' + esc(x.label) : '') + ' <button type="button" class="linkish" data-unignore="' + esc(x.ip) + '">count again</button></span>'; }).join('') + '</div>' : '') + '</div>' +
+      (d.me && !meIgnored ? '<button type="button" class="btn small primary" data-ignore-me="' + esc(d.me) + '">🚫 Don’t count visits from this address</button>' : '') + '</div>' +
+      '<div class="web-tiles"><div class="tile"><div class="k">Visitors ' + label + '</div><div class="v">' + n(t.visitors) + '</div>' + change(t.visitors, pv.visitors) + '</div>' +
       '<div class="tile"><div class="k">Pages viewed</div><div class="v">' + n(t.views) + '</div>' + change(t.views, pv.views) + '</div>' +
       '<div class="tile"><div class="k">Pages per visitor</div><div class="v">' + (t.visitors ? (t.views / t.visitors).toFixed(1) : '0') + '</div></div>' +
       '<div class="tile good"><div class="k">On the website now</div><div class="v">' + n(d.live.length) + '</div><small>in the last 5 minutes</small></div></div>';
@@ -8119,12 +8127,13 @@
       list('🔗 Where visitors came from', d.sources, [['Source', function(r){ return esc(r.k) + bar(r.visitors, topS); }], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
       list('📱 Devices', d.devices, [['Device', function(r){ return esc(r.k || 'Unknown') + bar(r.visitors, topD); }], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
       list('🌍 Countries', d.countries, [['Country', function(r){ return esc(webCountry(r.k)); }], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
-      list('🟢 On the website right now', d.live, [['Looking at', pageName], ['Device', function(r){ return esc(r.device || ''); }]]) +
-      '</div>';
+      list('🟢 On the website right now', d.live, [['Looking at', pageName], ['Device', function(r){ return esc(r.device || ''); }], ['IP address', webIp]]) +
+      '</div>' +
+      list('🕘 Latest visits (with IP addresses)', d.recent, [['When', function(r){ return esc(fmtShort(r.at)); }], ['Page', pageName], ['From', function(r){ return esc(r.source) + '<small class="muted-note" style="display:block;margin:0">' + esc([r.device, webCountry(r.country)].filter(Boolean).join(' · ')) + '</small>'; }], ['IP address', webIp]]);
     $('webBody').innerHTML = h + '<div id="webDupes"></div>';
     api('GET', '/api/admin/photo-dupes').then(function(pd){
       var box = $('webDupes'); if (!box || !pd || !pd.ok) return;
-      if (!pd.at) { box.innerHTML = '<div class="card"><b>📷 Same photo on more than one property</b><p class="muted-note">' + (pd.checking ? 'Checking every photo now — this takes a few minutes…' : 'The first photo check runs a few minutes after the website starts.') + '</p></div>'; return; }
+      if (!pd.at) { box.innerHTML = '<div class="card"><b>📷 Same photo on more than one property</b><p class="muted-note">' + (pd.checking ? 'Checking the photos now — ' + (pd.total ? Math.round(pd.done / pd.total * 100) + '% (' + pd.done + ' of ' + pd.total + ')' : 'starting') + '. Refresh in a minute.' : 'The photo check starts a minute after the website updates.') + '</p></div>'; return; }
       box.innerHTML = '<div class="card web-dupes"><b>📷 Same photo on more than one property</b> <span class="muted-note" style="margin:0">checked ' + esc(fmtShort(new Date(pd.at))) + '</span>' +
         (pd.groups.length ? '<p class="muted-note" style="margin:6px 0 10px">Remove the photo from the property it doesn’t belong to in Gnomen — the website updates within 15 minutes.</p>' + pd.groups.map(function(g){ return '<div class="web-dupe">' + g.homes.map(function(h){ return '<a href="https://www.residentialrealtors.co.uk' + esc(h.url) + '" target="_blank" rel="noopener"><img src="' + esc(h.img) + '" alt="" loading="lazy"><span><b>' + esc(h.where) + '</b><small>Gnomen no. ' + esc(h.id) + ' · photo ' + h.photo + '</small></span></a>'; }).join('<i>=</i>') + '</div>'; }).join('')
           : '<p class="muted-note" style="margin:6px 0 0">✓ No photo is used on more than one property.</p>') + '</div>';
@@ -8137,6 +8146,13 @@
     if (d.days === 365) { var wk = []; for (var w = 0; w < out.length; w += 7) { var seg = out.slice(w, w + 7); wk.push({ label: 'w/c ' + seg[0].label, visitors: seg.reduce(function(a, x){ return a + x.visitors; }, 0), views: seg.reduce(function(a, x){ return a + x.views; }, 0) }); } return wk; }
     return out;
   }
+  function webIp(r){ if (!r.ip) return '<span class="muted-note" style="margin:0">—</span>'; var d = webData || {}, own = r.ip === d.me, ign = (d.ignore || []).some(function(x){ return x.ip === r.ip; });
+    return '<code>' + esc(r.ip) + '</code>' + (own ? ' <span class="crm-flag ok">You</span>' : ign ? ' <span class="crm-flag">Ours</span>' : ''); }
+  $('webBody').addEventListener('click', function(e){
+    var a = e.target.closest('[data-ignore-me]'), u = e.target.closest('[data-unignore]');
+    if (a) { if (!confirm('Stop counting visits from ' + a.dataset.ignoreMe + '?\n\nUse this for the office or your home. Visits already counted from it are removed too.')) return; api('POST', '/api/admin/site-ignore', { ip: a.dataset.ignoreMe, label: 'Office / us', purge: true }).then(function(d){ toast(d && d.ok ? '✓ Visits from your address won’t be counted' : 'Couldn’t save that'); loadWeb(); }); }
+    if (u) api('POST', '/api/admin/site-ignore', { ip: u.dataset.unignore, remove: true }).then(function(d){ toast(d && d.ok ? 'Counting that address again' : 'Couldn’t save that'); loadWeb(); });
+  });
   function webCountry(c){ if (!c) return 'Unknown'; try { return new Intl.DisplayNames(['en-GB'], { type: 'region' }).of(c) || c; } catch (e) { return c; } }
   $('webRange').addEventListener('click', function(e){ var b = e.target.closest('[data-days]'); if (!b) return; webDays = +b.dataset.days; loadWeb(); });
   $('navWeb').addEventListener('click', function(){ showView('web'); });
@@ -15217,6 +15233,10 @@
     var min = false; try { min = localStorage.getItem('rr_feed_min') === '1'; } catch (e) {}
     var draw = function(){ $('teamFeed').hidden = min; $('tmFilter').hidden = min; $('teamFeedMin').textContent = min ? 'Show' : 'Minimise'; };
     $('teamFeedMin').addEventListener('click', function(){ min = !min; try { localStorage.setItem('rr_feed_min', min ? '1' : '0'); } catch (e) {} draw(); });
+    // Sign-ins: minimise too (remembered).
+    (function(){ var sm = false; try { sm = localStorage.getItem('rr_signin_min') === '1'; } catch (e) {}
+      var sdraw = function(){ var c = $('signinCard'); if (!c) return; $('signinList').hidden = sm; $('siDays').hidden = sm; c.querySelectorAll('.muted-note').forEach(function(n){ n.hidden = sm; }); $('signinMin').textContent = sm ? 'Show' : 'Minimise'; };
+      $('signinMin').addEventListener('click', function(){ sm = !sm; try { localStorage.setItem('rr_signin_min', sm ? '1' : '0'); } catch (e) {} sdraw(); }); sdraw(); })();
     draw();
   })();
   function loadTeamFeed(noSignins){
