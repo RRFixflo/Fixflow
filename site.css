@@ -453,7 +453,6 @@ h1 em, h2 em { background: none; -webkit-background-clip: initial; background-cl
 .gl4 { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: rgba(255,255,255,.07); margin-top: 10px; }
 .gl4 b { display: block; font-size: .95rem; } .gl4 small { color: #aebbd0; font-size: .8rem; }
 .gl4-ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(255,255,255,.12); flex: none; font-size: 1.15rem; }
-.gl4-t { margin-left: auto; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: rgba(50,213,131,.18); color: #32d583; font-size: .8rem; font-weight: 800; flex: none; }
 @media (max-width: 960px) { .hero4 > .wrap { grid-template-columns: 1fr; padding: 52px 0 60px; gap: 34px; } .hero4 .hsearch { max-width: none; } }
 .hero4 > .wrap > * { min-width: 0; } .hero4 .hsearch { width: 100%; }
 
