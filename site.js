@@ -265,6 +265,9 @@
     });
   }
 
+  // Home page "Find your next home" card: Rent / Buy picks where the search goes.
+  document.querySelectorAll('.x-find').forEach(function (f) { f.addEventListener('change', function (e) { if (e.target.name === 'x-kind') f.action = e.target.value; }); });
+
   // Book a gas safety certificate or EICR: pick services, see the total, book — then pay on SumUp.
   var cb = document.getElementById('cbForm');
   if (cb) {

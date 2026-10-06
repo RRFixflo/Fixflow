@@ -301,6 +301,7 @@ function siteShell(name, home, req) {
 }
 // Home page: a property search (when our listings are showing), the live numbers and the areas.
 const ICONS = {
+  cert: '<svg viewBox="0 0 48 48"><path d="M14 6h16l8 8v28H14z"/><path d="M30 6v8h8"/><path d="m20 28 4 4 8-9"/></svg>',
   key: '<svg viewBox="0 0 48 48"><circle cx="17" cy="17" r="9"/><circle cx="17" cy="17" r="3"/><path d="m24 24 16 16M33 33l4-4M37 37l4-4"/></svg>',
   worth: '<svg viewBox="0 0 48 48"><path d="M6 22 24 7l18 15"/><path d="M10 19v21h12"/><circle cx="34" cy="34" r="9"/><path d="M36.5 30.5a3 3 0 0 0-5 2.2v4.6h5.5M30 35h4.5"/></svg>',
   rent: '<svg viewBox="0 0 48 48"><circle cx="21" cy="21" r="13"/><path d="m31 31 10 10"/><path d="M14 22 21 16l7 6M16 21v7h10v-7"/></svg>',
@@ -329,10 +330,12 @@ function heroExperts(req) {
     card('worth', 'What rent could you get?', 'Compare similar homes we’re letting near you',
       '<form class="x-form x-val" action="/landlords" method="get"><input name="postcode" aria-label="Your postcode" placeholder="Your postcode" autocomplete="postal-code" style="text-transform:uppercase"><span class="x-val-b"><select name="beds" aria-label="Bedrooms"><option value="0">Studio</option><option value="1">1 bed</option><option value="2" selected>2 beds</option><option value="3">3 beds</option><option value="4">4 beds</option><option value="5">5+ beds</option></select><button type="submit" formaction="/landlords#compare">Compare</button></span></form><a class="x-sale" href="/sales#sales-valuation">Selling instead? Get a sales valuation →</a>',
       '', '') +
-    (c && c.let ? card('rent', 'Find the right property to rent', 'Flats and houses to rent across London', search('/properties-to-rent', 'Search homes to rent', 'Area or postcode'), 'See homes to rent', '/properties-to-rent')
-      : card('rent', 'Find the right property to rent', 'Tell us what you’re looking for', '', 'Rent a property', '/contact?topic=Looking%20to%20rent')) +
-    (c && c.sale ? card('buy', 'Find the right property to buy', 'Homes for sale across London', search('/properties-for-sale', 'Search homes for sale', 'Area or postcode'), 'See homes for sale', '/properties-for-sale')
-      : card('buy', 'Find the right property to buy', 'Register to hear about new homes first', '', 'Buy a property', '/contact?topic=Buying')) +
+    card('rent', 'Find your next home', 'Flats and houses to rent or buy across London',
+      '<form class="x-form x-find" action="/properties-to-rent" method="get" role="search"><span class="x-seg"><label><input type="radio" name="x-kind" form="x-kind-none" value="/properties-to-rent" checked><span>Rent</span></label><label><input type="radio" name="x-kind" form="x-kind-none" value="/properties-for-sale"><span>Buy</span></label></span><span class="x-row"><input name="q" aria-label="Area or postcode" placeholder="Area or postcode" autocomplete="off"><button type="submit" aria-label="Search">→</button></span></form>',
+      'See all homes', c && c.let ? '/properties-to-rent' : '/contact?topic=Looking%20to%20rent') +
+    card('cert', 'Landlord certificates', 'Book and pay online — we arrange the visit',
+      '<div class="x-svc"><a href="/book-certificate?service=gas">Gas safety certificate</a><a href="/book-certificate?service=eicr">EICR (electrical report)</a><a href="/book-certificate?service=epc">EPC</a></div>',
+      'Book a certificate', '/book-certificate') +
     '</div>';
 }
 function heroStats(req) {
