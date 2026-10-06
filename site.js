@@ -280,12 +280,21 @@
       cbItems = (d && d.items) || []; cbPay = !!(d && d.pay); if (d && typeof d.vat === 'number') cbVat = d.vat;
       var box = document.getElementById('cbItems');
       if (!cbItems.length) { box.innerHTML = '<div class="cb-none"><b>Online booking is coming soon.</b> Call us on <a href="tel:02070968131">0207 096 8131</a> or <a href="/contact?topic=Landlord&message=' + encodeURIComponent('I’d like to book a gas safety certificate / EICR.') + '">send us a message</a> and we’ll book it for you.</div>'; cbGo.hidden = true; return; }
-      box.innerHTML = cbItems.map(function (i) { return '<label class="cb-item"><input type="checkbox" name="svc" value="' + escH(i.id) + '"><span class="cb-ic">' + (/gas/i.test(i.name) ? '🔥' : /eicr|electr/i.test(i.name) ? '⚡' : /epc|energy/i.test(i.name) ? '🏷️' : '📋') + '</span><span class="cb-it"><b>' + escH(i.name) + '</b>' + (i.desc ? '<small>' + escH(i.desc) + '</small>' : '') + '</span><span class="cb-pr">' + money(i.price) + '<small>+ VAT</small></span></label>'; }).join('');
+      // Services named "EICR — studio to 2 bedrooms", "EICR — 3 to 4 bedrooms"… become one card with a size dropdown.
+      var groups = [], byName = {};
+      cbItems.forEach(function (i) { var m = /^(.+?)\s+[—–-]\s+(.+)$/.exec(i.name), key = m ? m[1] : i.id;
+        if (m && byName[key]) { byName[key].opts.push({ id: i.id, label: m[2], price: i.price }); return; }
+        var g = { name: m ? m[1] : i.name, desc: i.desc, opts: [{ id: i.id, label: m ? m[2] : '', price: i.price }] }; if (m) byName[key] = g; groups.push(g); });
+      var icon = function (n) { return /gas/i.test(n) ? '🔥' : /eicr|electr/i.test(n) ? '⚡' : /epc|energy/i.test(n) ? '🏷️' : '📋'; };
+      box.innerHTML = groups.map(function (g) { var o = g.opts[0], multi = g.opts.length > 1;
+        return '<label class="cb-item"><input type="checkbox" name="svc" value="' + escH(o.id) + '"><span class="cb-ic">' + icon(g.name) + '</span><span class="cb-it"><b>' + escH(multi ? g.name : g.name + (o.label ? ' — ' + o.label : '')) + '</b>' + (g.desc ? '<small>' + escH(g.desc) + '</small>' : '') +
+          (multi ? '<select class="cb-size" aria-label="Property size">' + g.opts.map(function (x) { return '<option value="' + escH(x.id) + '" data-price="' + x.price + '">' + escH(x.label.charAt(0).toUpperCase() + x.label.slice(1)) + '</option>'; }).join('') + '</select>' : '') +
+          '</span><span class="cb-pr"><span class="cb-prv">' + money(o.price) + '</span><small>+ VAT</small></span></label>'; }).join('');
       document.getElementById('cbPayNote').textContent = cbPay ? 'You’ll pay on SumUp’s secure page. Card details never touch our website.' : 'We’ll call you to take payment and confirm the date.';
-      try { var want = new URLSearchParams(location.search).get('service'); if (want) cb.querySelectorAll('[name=svc]').forEach(function (x) { if (x.value === want || (want === 'gas' && /^gas/.test(x.value)) || (want === 'eicr' && /^eicr_s/.test(x.value)) || (want === 'epc' && /^epc/.test(x.value))) { x.checked = true; x.closest('.cb-item').classList.add('on'); } }); } catch (e) {}
+      try { var want = new URLSearchParams(location.search).get('service'); if (want) cb.querySelectorAll('[name=svc]').forEach(function (x) { if (x.value === want || (want === 'gas' && /^gas/.test(x.value)) || (want === 'eicr' && /^eicr/.test(x.value)) || (want === 'epc' && /^epc/.test(x.value))) { x.checked = true; x.closest('.cb-item').classList.add('on'); } }); } catch (e) {}
       cbSum();
     }).catch(function () { document.getElementById('cbItems').innerHTML = '<p class="tool-err">Couldn’t load the services — please call 0207 096 8131.</p>'; });
-    cb.addEventListener('change', function (e) { if (e.target.name === 'svc') { e.target.closest('.cb-item').classList.toggle('on', e.target.checked); cbSum(); } if (e.target.name === 'access') document.getElementById('cbTenantRow').hidden = e.target.value !== 'tenant'; });
+    cb.addEventListener('change', function (e) { if (e.target.classList.contains('cb-size')) { var it = e.target.closest('.cb-item'), box2 = it.querySelector('[name=svc]'), op = e.target.selectedOptions[0]; box2.value = e.target.value; it.querySelector('.cb-prv').textContent = money(+op.dataset.price); if (!box2.checked) { box2.checked = true; it.classList.add('on'); } cbSum(); return; } if (e.target.name === 'svc') { e.target.closest('.cb-item').classList.toggle('on', e.target.checked); cbSum(); } if (e.target.name === 'access') document.getElementById('cbTenantRow').hidden = e.target.value !== 'tenant'; });
     cb.addEventListener('submit', function (ev) {
       ev.preventDefault(); cbErr.textContent = '';
       var e = cb.elements, v = function (k) { return String(e[k].value || '').trim(); };
