@@ -35,10 +35,12 @@ module.exports = function (app, opts) {
   const videoLink = function (u) { u = String(u || '').trim(); return /^https:\/\/((www\.|m\.)?youtube\.com\/(watch\?|embed\/|shorts\/)|youtu\.be\/|(player\.)?vimeo\.com\/|my\.matterport\.com\/|vt\.gnomen\.co\.uk\/|(www\.)?kuula\.co\/|(www\.)?panoramea\.co\.uk\/|(www\.)?spec\.co\/|[\w.-]*eyespy360\.com\/|[\w.-]*giraffe360\.com\/|[\w.-]*tourbuilder[\w.-]*\/)/i.test(u) && !/[<>"\s]/.test(u) ? u : ''; };
   const ytId = function (u) { const m = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(String(u || '')); return m ? m[1] : ''; };
   const vimeoId = function (u) { const m = /vimeo\.com\/(?:video\/)?(\d{6,12})/.exec(String(u || '')); return m ? m[1] : ''; };
+  const gone = { let: [], sale: [] };   // homes the feed lists as let / sold
   function parse(xml, kind) {
-    const out = [];
+    const out = []; gone[kind] = [];
     String(xml || '').replace(/<property>([\s\S]*?)<\/property>/g, function (m, x) {
       const status = tag(x, 'status'), id = tag(x, 'id');
+      if (/^\d+$/.test(id) && /^(let|sold|withdrawn|completed|archived)$/i.test(status.trim())) { const st0 = tag(x, 'address1'), pc0 = tag(x, 'postcode').toUpperCase(); gone[kind].push({ street: st0, outcode: pc0.split(/\s+/)[0] || '', beds: /studio/i.test(tag(x, 'bedrooms')) ? 0 : parseInt(tag(x, 'bedrooms'), 10) || 0, status: status }); }
       if (!/^\d+$/.test(id) || tag(x, 'published') !== '1' || SHOW[kind].indexOf(status.toLowerCase()) === -1) return;
       const res = !/commercial|land/i.test(tag(x, 'category')), bedsRaw = res ? tag(x, 'bedrooms') : '', beds = /studio/i.test(bedsRaw) ? 0 : parseInt(bedsRaw, 10) || 0, type = tag(x, 'property_type') || tag(x, 'category') || 'Property';
       const street = tag(x, 'address1'), area = tag(x, 'address2'), town = tag(x, 'town'), pc = tag(x, 'postcode').toUpperCase(), outcode = pc.split(/\s+/)[0] || '';
@@ -88,10 +90,11 @@ module.exports = function (app, opts) {
   };
   async function addFromRightmove(kind, list) {
     if (process.env.LISTINGS_RIGHTMOVE_TOO === '0') return list;
-    const items = await rmBranch(kind), extra = [];
+    const items = await rmBranch(kind), extra = [], skippedLet = [];
     for (const x of items) {
       const quick = rmListing(x, null, kind);
       if (list.some(function (p) { return sameHome(p, quick); })) continue;
+      if (gone[kind].some(function (g) { return sameHome(g, quick); })) { skippedLet.push(quick.where); continue; }   // Gnomen says it's let / sold: Gnomen wins
       const fresh = !rmDetails.has(String(x.id)), d = await rmDetail(String(x.id));
       if (fresh) await new Promise(function (ok) { setTimeout(ok, 800); });
       const p = rmListing(x, d, kind), manual = {}; String(process.env.RM_GNOMEN_IDS || '').split(/[\s,]+/).forEach(function (pair) { const m = /^(\d+)[=:](\d+)$/.exec(pair); if (m) manual[m[1]] = m[2]; });
@@ -99,6 +102,7 @@ module.exports = function (app, opts) {
       if (pid && !list.some(function (q) { return q.id === pid; })) { rmAlias[p.id] = pid; p.rmId = p.id; p.id = pid; p.url = '/property/' + pid + '/' + p.slug; }
       extra.push(p);
     }
+    if (skippedLet.length) console.log('Not added from Rightmove — Gnomen says let/sold: ' + skippedLet.join('; ').slice(0, 300));
     if (extra.length) console.log('Added from Rightmove (not in the Gnomen ' + (kind === 'let' ? 'lettings' : 'sales') + ' feed): ' + extra.length + ' — ' + extra.map(function (p) { return p.where + (p.rmId ? ' (our no. ' + p.id + ')' : ' (Rightmove no. ' + p.id + ' — Gnomen number not known)'); }).join('; ').slice(0, 600));
     return list.concat(extra).sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
   }
