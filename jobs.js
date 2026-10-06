@@ -7027,7 +7027,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.post('/api/admin/offer-alerts/test', async function (req, res) {
     const topic = await offersTopic().catch(function () { return ''; }); if (!topic || typeof fetch !== 'function') return res.status(503).json({ ok: false });
     const who = req.user && req.user.name ? req.user.name : 'the team';
-    try { const r = await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: topic, title: 'Fixflow alerts are working', message: 'Test sent by ' + who + '. You\u2019ll get alerts here for new offers, deposits, landlord forms and viewing requests.', tags: ['white_check_mark'] }), signal: AbortSignal.timeout(8000) }); res.json({ ok: r.ok }); }
+    try { const r = await fetch(NTFY_SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: topic, title: 'Fixflow alerts are working', message: 'Test sent by ' + who + '. You\u2019ll get alerts here for new offers, deposits, landlord forms, viewing and valuation requests.', tags: ['white_check_mark'] }), signal: AbortSignal.timeout(8000) }); res.json({ ok: r.ok }); }
     catch (err) { res.status(502).json({ ok: false }); }
   });
   // Ask a landlord to send us an updated certificate, or let us arrange it.
@@ -9544,7 +9544,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
       const what = ['Sales', 'Rental', 'Not sure'].indexOf(b.what) !== -1 ? b.what : 'Not sure', page = str(b.page, 120) || '';
       const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, '(quick request — call back for the address)', JSON.stringify({ kind: 'quick', service: what, page: page })]);
-      ntfy({ title: '⚡ Quick valuation request: ' + name, message: phone + ' · ' + what + ' valuation', tags: ['house'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#contacts' : undefined }).catch(function () {});
+      // Every member of staff hears about it: a phone alert and an email each.
+      teamAlert({ title: '⚡ Quick valuation request: ' + name, message: phone + ' · ' + what + ' valuation — call them back for the address.', tags: ['house'] }, '#leads').catch(function () {});
+      staffEmailAll('⚡ Quick valuation request - ' + name, function (link) {
+        return 'Someone used the quick valuation form on the website. Please call them back for the property details.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\nValuation: ' + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s in Website leads — add a note once you’ve called:\n' + link;
+      }, '#leads').catch(function (e) { console.error('Valuation staff emails failed:', e.message); });
       if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Quick valuation request — ' + name, text: 'Someone used the quick valuation form on the website. Please call them back for the property details.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\nValuation: ' + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s also in Fixflow under Contacts.' }).catch(function () {});
       return res.json({ ok: true, id: r.rows[0].id });
     }
@@ -9556,7 +9560,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const sale = b.kind === 'sale';   // from the Sales page: a homeowner thinking of selling
     const data = { postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', service: str(b.service, 40) || '', when: str(b.when, 40) || '', message: str(b.message, 2000) || '' }; if (sale) data.kind = 'sale';
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(data)]);
-    ntfy({ title: (sale ? '🏷️ Sales valuation: ' : '🏠 Valuation request: ') + full.split(',').slice(0, 2).join(','), message: name + ' · ' + (phone || email) + (data.service && data.service !== 'Not sure yet' ? ' · ' + data.service : ''), tags: ['house'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#contacts' : undefined }).catch(function () {});
+    teamAlert({ title: (sale ? '🏷️ Sales valuation: ' : '🏠 Valuation request: ') + full.split(',').slice(0, 2).join(','), message: name + ' · ' + (phone || email) + (data.service && data.service !== 'Not sure yet' ? ' · ' + data.service : '') + ' — in Website leads.', tags: ['house'] }, '#leads').catch(function () {});
+    staffEmailAll((sale ? '🏷️ Sales valuation request - ' : '🏠 Valuation request - ') + full.split(',').slice(0, 2).join(','), function (link) {
+      return (sale ? 'A homeowner has asked for a sales valuation on the website.' : 'A landlord has asked for a rental valuation on the website.') + '\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + email + '\nProperty: ' + full +
+        '\nBedrooms: ' + (data.beds || '—') + '\nType: ' + (data.type || '—') + (sale ? '\nLooking to sell: ' + (data.when || '—') : '\nInterested in: ' + (data.service || '—') + '\nAvailable: ' + (data.when || '—')) + (data.message ? '\n\nMessage:\n' + data.message : '') + '\n\nIt’s in Website leads — add a note once you’ve been in touch:\n' + link;
+    }, '#leads').catch(function (e) { console.error('Valuation staff emails failed:', e.message); });
     if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: (sale ? 'Sales valuation request — ' : 'Valuation request — ') + full, text: (sale ? 'A homeowner has asked for a sales valuation on the website.' : 'A landlord has asked for a valuation on the website.') + '\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + email + '\nProperty: ' + full +
       '\nBedrooms: ' + (data.beds || '—') + '\nType: ' + (data.type || '—') + (sale ? '\nLooking to sell: ' + (data.when || '—') : '\nInterested in: ' + (data.service || '—') + '\nAvailable: ' + (data.when || '—')) + (data.message ? '\n\nMessage:\n' + data.message : '') + '\n\nIt’s also in Fixflow under Contacts.' }).catch(function () {});
     res.json({ ok: true, id: r.rows[0].id });
