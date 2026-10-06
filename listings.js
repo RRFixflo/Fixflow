@@ -79,8 +79,25 @@ module.exports = function (app, opts) {
     if (Array.isArray(v)) { if (v.length && v.every(function (o) { return o && typeof o === 'object' && o.id != null && (o.displayAddress || o.propertyUrl); })) v.forEach(function (o) { out.push(o); }); else v.forEach(function (o) { dig(o, out, depth + 1); }); return; }
     if (typeof v === 'object') Object.keys(v).forEach(function (k) { dig(v[k], out, depth + 1); });
   }
+  // Rightmove packs an advert's data as one list in which values point to other entries by position.
+  function unpack(arr, byString) {
+    const memo = new Map(), ref = function (x) { return byString ? (typeof x === 'string' && /^\d+$/.test(x) ? +x : null) : (typeof x === 'number' && x >= 0 && x % 1 === 0 ? x : null); };
+    const r = function (i, depth) {
+      if (i == null || i >= arr.length || depth > 60) return undefined;
+      if (memo.has(i)) return memo.get(i);
+      const v = arr[i];
+      if (v === null || typeof v !== 'object') return v;
+      const out = Array.isArray(v) ? [] : {}; memo.set(i, out);
+      if (Array.isArray(v)) v.forEach(function (x) { const k = ref(x); out.push(k == null ? x : r(k, depth + 1)); });
+      else Object.keys(v).forEach(function (key) { const k = ref(v[key]); out[key] = k == null ? v[key] : r(k, depth + 1); });
+      return out;
+    };
+    return r(0, 0);
+  }
   function pageJson(body) {
     const out = [];
+    const pm = /window\.__PAGE_MODEL\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/.exec(body);
+    if (pm) { try { const j = JSON.parse(pm[1]); if (typeof j.data === 'string') { const arr = JSON.parse(j.data); if (Array.isArray(arr)) { out.push(unpack(arr, false)); out.push(unpack(arr, true)); } else out.push(arr); } else out.push(j); } catch (e) {} }
     [/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/, /window\.jsonModel\s*=\s*(\{[\s\S]*?\})\s*<\/script>/, /window\.PAGE_MODEL\s*=\s*(\{[\s\S]*?\})\s*<\/script>/, /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/]
       .forEach(function (re) { const m = re.exec(body); if (m) { try { out.push(JSON.parse(m[1])); } catch (e) {} } });
     return out;
@@ -135,9 +152,11 @@ module.exports = function (app, opts) {
     if (d || !c) rmDetails.set(id, { at: Date.now(), d: d || (c && c.d) || null });
     return d || (c && c.d) || null;
   }
-  const big = function (u) { return String(u || '').replace(/\/dir\/crop\/[^/]+\//, '/').replace(/_max_\d+x\d+(\.\w+)(\?.*)?$/, '$1'); };
-  const isImg = function (u) { return /^https:\/\/[^/]*rightmove\.co\.uk\/.+\.(jpe?g|png|gif|webp)(\?.*)?$/i.test(String(u || '')); };
-  const rmDay = function (v) { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(v || '').trim()); return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : /^now$/i.test(String(v || '').trim()) ? '2000-01-01' : ''; };
+  // Photo addresses: full size, absolute, without the :443 Rightmove sometimes adds.
+  const abs = function (u) { u = String(u || '').trim(); return !u ? '' : (/^https?:\/\//i.test(u) ? u : 'https://media.rightmove.co.uk/' + u.replace(/^\/+/, '')).replace(/^http:/i, 'https:').replace('media.rightmove.co.uk:443/', 'media.rightmove.co.uk/'); };
+  const big = function (u) { return abs(u).replace(/\/dir\/crop\/[^/]+\//, '/').replace(/_max_\d+x\d+(\.\w+)(\?.*)?$/, '$1'); };
+  const isImg = function (u) { return /^https:\/\/media\.rightmove\.co\.uk\/.+\.(jpe?g|png|gif|webp)(\?.*)?$/i.test(String(u || '')); };
+  const rmDay = function (v) { if (/^\d{4}-\d{2}-\d{2}/.test(String(v || ''))) return String(v).slice(0, 10); const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(v || '').trim()); return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : /^now$/i.test(String(v || '').trim()) ? '2000-01-01' : ''; };
   function rmListing(x, d, kind) {
     d = d || {};
     const pr = x.price || {}, freq = String(pr.frequency || '').toLowerCase(), amt = Number(pr.amount) || 0, dp = (pr.displayPrices || [])[0] || {};
@@ -149,20 +168,22 @@ module.exports = function (app, opts) {
     const type = String(x.propertySubType || d.propertySubType || x.propertyTypeFullDescription || 'Property').replace(/\s+/g, ' ').trim();
     const st = String(x.displayStatus || '').trim(), taken = /let agreed|under offer|sold stc|sold subject|reserved/i.test(st);
     const beds = Number(x.bedrooms != null ? x.bedrooms : d.bedrooms) || 0;
-    const listImgs = ((x.propertyImages || {}).images || []).map(function (i) { return i.srcUrl || i.url; }).filter(Boolean);
-    const imgs = ((d.images || []).map(function (i) { return i.url || (i.resizedImageUrls || {}).size656x437; }).filter(isImg));
-    const images = (imgs.length ? imgs : listImgs.map(big)).filter(isImg).slice(0, 40), alts = (imgs.length ? imgs : listImgs).slice(0, 40);
-    const loc = d.location || x.location || {}, lat = Number(loc.latitude), lng = Number(loc.longitude), lt = d.lettings || {};
+    // Photos: the advert page's, else the search result's (its "url" is the full-size photo; "srcUrl" a smaller copy).
+    const pick = function (list) { return (list || []).map(function (i) { return typeof i === 'string' ? { big: big(i), alt: abs(i) } : { big: i.url ? abs(i.url) : big(i.srcUrl || (i.resizedImageUrls || {}).size656x437), alt: abs(i.srcUrl || (i.resizedImageUrls || {}).size656x437 || i.url) }; }).filter(function (o) { return isImg(o.big) || isImg(o.alt); }); };
+    let ph = pick(d.images); if (!ph.length) ph = pick((x.propertyImages || {}).images); if (!ph.length) ph = pick(x.images);
+    ph = ph.slice(0, 40);
+    const images = ph.map(function (o) { return isImg(o.big) ? o.big : o.alt; }), alts = ph.map(function (o) { return isImg(o.alt) ? o.alt : o.big; });
+    const loc = d.location || x.location || {}, lat = Number(loc.latitude), lng = Number(loc.longitude), lt = Object.assign({ letAvailableDate: x.letAvailableDate }, d.lettings || {});
     const desc = (d.text || {}).description || '';
     const p = { id: String(x.id), kind: kind, src: 'rightmove', type: type, category: 'Residential', status: st || (kind === 'let' ? 'To let' : 'For sale'), taken: taken,
       street: parts[0] || addr, area: parts.length > 2 ? parts[1] : '', town: last, outcode: oc,
       beds: beds, studio: /studio/i.test(type) || (!beds && /flat|apartment/i.test(type)), commercial: false, baths: Number(x.bathrooms != null ? x.bathrooms : d.bathrooms) || 0, receptions: 0,
       price: Math.round(price) || 0, qualifier: String(dp.displayPriceQualifier || '').trim(), short: String(x.summary || (d.text || {}).propertyPhrase || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 400),
-      html: cleanHtml(desc), available: rmDay(lt.letAvailableDate), furnished: String(lt.furnishType || '').replace(/^furnished$/i, 'Full'), tenure: String((d.tenure || {}).tenureType || '').replace(/^(\w)(\w*)$/, function (m, a, b) { return a + b.toLowerCase(); }),
-      pets: false, parking: false, garden: false, features: (d.keyFeatures || []).map(function (f) { return String(f).replace(/\s+/g, ' ').trim(); }).filter(Boolean).slice(0, 20),
+      html: cleanHtml(desc), available: rmDay(lt.letAvailableDate), furnished: String(lt.furnishType || '').replace(/^furnished$/i, 'Full'), tenure: String((d.tenure || x.tenure || {}).tenureType || '').replace(/^(\w)(\w*)$/, function (m, a, b) { return a + b.toLowerCase(); }),
+      pets: false, parking: false, garden: false, features: (d.keyFeatures && d.keyFeatures.length ? d.keyFeatures : x.keyFeatures || []).map(function (f) { return String(f && typeof f === 'object' ? f.description || f.text || f.feature || '' : f || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(); }).filter(Boolean).slice(0, 20),
       lat: isFinite(lat) && lat ? lat : null, lng: isFinite(lng) && lng ? lng : null,
-      epc: ((d.epcGraphs || []).map(function (e) { return e.url; }).filter(isImg))[0] || '', vtour: '',
-      images: images, alts: alts, floorplans: (d.floorplans || []).map(function (f) { return f.url; }).filter(isImg).slice(0, 6), added: String(x.firstVisibleDate || x.listingUpdate && x.listingUpdate.listingUpdateDate || '') };
+      epc: ((d.epcGraphs || []).map(function (e) { return abs(e.url); }).filter(isImg))[0] || '', vtour: '',
+      images: images, alts: alts, floorplans: (d.floorplans || []).map(function (f) { return abs(f.url); }).filter(isImg).slice(0, 6), added: String(x.firstVisibleDate || x.listingUpdate && x.listingUpdate.listingUpdateDate || '') };
     p.where = addr; p.street = p.street.replace(new RegExp('\\s*' + oc + '$', 'i'), '');
     p.headline = (p.studio ? 'Studio' : beds ? beds + ' bedroom ' + type.toLowerCase() : type) + (kind === 'let' ? ' to rent' : ' for sale');
     p.slug = (addr + ' ' + (p.studio ? 'studio' : beds + ' bed ' + type)).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 90);
