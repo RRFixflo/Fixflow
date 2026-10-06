@@ -57,15 +57,17 @@ module.exports = function (app, opts) {
     // Available first, newest first.
     return out.sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
   }
+  async function gnomenFeed(kind) {
+    const r = await fetch(FEEDS[kind], { signal: AbortSignal.timeout(30000) });
+    const xml = await r.text();
+    if (!r.ok || xml.indexOf('<properties') === -1) throw new Error('bad feed ' + r.status);
+    return parse(xml, kind);
+  }
   async function refresh() {
     for (const kind of ['sale', 'let']) {
       if (!FEEDS[kind]) continue;
       try {
-        const ctl = new AbortController(), t = setTimeout(function () { ctl.abort(); }, 30000);
-        const r = await fetch(FEEDS[kind], { signal: ctl.signal }); clearTimeout(t);
-        const xml = await r.text();
-        if (!r.ok || xml.indexOf('<properties') === -1) throw new Error('bad feed ' + r.status);
-        data[kind] = parse(xml, kind);
+        data[kind] = await gnomenFeed(kind);
       } catch (e) { console.error('Listings feed (' + kind + ') not read:', e.message); }   // keep the last good copy
     }
     data.at = Date.now(); data.stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(function (p) { return p.id + p.status + p.price; }), data.let.map(function (p) { return p.id + p.status + p.price; })])).digest('hex').slice(0, 12);
@@ -282,12 +284,14 @@ module.exports = function (app, opts) {
           if (fresh) await new Promise(function (ok) { setTimeout(ok, 800); });   // gently, one advert at a time
           out.push(rmListing(x, d, kind));
         }
+        // No sales adverts on Rightmove: our Gnomen sales feed, then (failing that) the old website.
+        if (kind === 'sale' && !out.length && FEEDS.sale) { try { const g = await gnomenFeed('sale'); g.forEach(function (p) { out.push(p); }); counts.gnomen = g.length; } catch (e) { console.log('Gnomen sales feed not read: ' + e.message); } }
         if (kind === 'sale' && !out.length && OLD) { try { const o = await refreshOldSales(); if (o && o.length) { o.forEach(function (p) { out.push(p); }); counts.oldsite = o.length; } } catch (e) { console.log('Sales from the old website not read: ' + e.message); } }
         if (out.length || !data[kind].length) data[kind] = out.sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
         counts[kind] = out.length + ' (' + out.filter(function (p) { return p.images.length > 1; }).length + ' with full photos)';
       } catch (e) { counts[kind] = 'not read: ' + e.message; }
     }
-    console.log('Listings from Rightmove branch ' + BRANCH + (SALES_BRANCH !== BRANCH ? ' (sales ' + SALES_BRANCH + ')' : '') + ': to rent ' + counts.let + ', for sale ' + counts.sale + (counts.oldsite ? ' (from the old Gnomen website)' : '') + (LIVE ? '' : ' — staff preview only (LISTINGS_ON is off)'));
+    console.log('Listings from Rightmove branch ' + BRANCH + (SALES_BRANCH !== BRANCH ? ' (sales ' + SALES_BRANCH + ')' : '') + ': to rent ' + counts.let + ', for sale ' + counts.sale + (counts.gnomen ? ' (from the Gnomen sales feed)' : counts.oldsite ? ' (from the old Gnomen website)' : '') + (LIVE ? '' : ' — staff preview only (LISTINGS_ON is off)'));
   }
   async function refreshAll() {
     if (SOURCE === 'rightmove') await refreshRightmove(); else await refresh();
@@ -376,6 +380,25 @@ module.exports = function (app, opts) {
   app.get(['/properties-to-rent', '/to-rent', '/rent', '/lettings', '/properties'], function (req, res) { listPage(req, res, 'let'); });
   app.get(['/properties-for-sale', '/for-sale', '/buy'], function (req, res) { listPage(req, res, 'sale'); });
 
+  // Book a viewing: pick up to 3 times that suit, then name, phone and email. Opens over the property page.
+  function book(p) {
+    return '<div class="bk" id="book" role="dialog" aria-modal="true" aria-labelledby="bkH"><a class="bk-bg" href="#" aria-label="Close" tabindex="-1"></a>' +
+      '<form class="bk-box form" id="bkForm" novalidate data-ref="' + esc(p.id) + '" data-addr="' + esc(p.where) + '" data-kind="' + p.kind + '" data-url="' + esc(p.url) + '"><a class="bk-x" href="#" aria-label="Close">×</a><div id="bkBody">' +
+      '<p class="kicker">Book a viewing</p><h3 id="bkH">' + esc(p.headline) + '</h3><p class="bk-where">📍 ' + esc(p.where) + '</p>' +
+      '<div class="bk-step"><b><i>1</i> Pick up to 3 times that suit you</b><small>We’ll confirm one with you — usually within a few hours.</small></div>' +
+      '<div class="bk-days" id="bkDays" role="group" aria-label="Day"></div><div class="bk-times" id="bkTimes" role="group" aria-label="Time"></div>' +
+      '<div class="bk-picked" id="bkPicked" aria-live="polite"></div>' +
+      '<label class="bk-flex"><input type="checkbox" name="flexible"> I’m flexible — any time is fine</label>' +
+      '<div class="bk-step"><b><i>2</i> Your details</b></div><div class="fg">' +
+      '<label>Your name<input name="name" autocomplete="name" required></label><label>Mobile<input name="phone" type="tel" autocomplete="tel" inputmode="tel" required></label>' +
+      '<label class="full">Email<input name="email" type="email" autocomplete="email" required></label>' +
+      (p.kind === 'let' ? '<label>How many people?<select name="people"><option value="">Choose…</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5+</option></select></label><label>When do you want to move?<select name="move"><option value="">Choose…</option><option>As soon as possible</option><option>Within a month</option><option>1–2 months</option><option>Just looking</option></select></label>'
+        : '<label class="full">Your position<select name="move"><option value="">Choose…</option><option>First-time buyer</option><option>Nothing to sell</option><option>Selling — on the market</option><option>Selling — not yet on the market</option><option>Investor</option></select></label>') +
+      '<label class="full">Anything else? <span class="opt">(optional)</span><textarea name="message" rows="2" placeholder="e.g. questions about the property"></textarea></label>' +
+      '<label class="hp" aria-hidden="true">Leave this empty<input name="website" tabindex="-1" autocomplete="off"></label>' +
+      '<label class="full consent"><input type="checkbox" name="consent" required> <span>I’m happy for Residential Realtors to contact me about this viewing. See our <a href="/privacy">privacy notice</a>.</span></label></div>' +
+      '<p class="ferr" id="bkErr" role="alert"></p><button class="btn red" type="submit" id="bkGo">Request viewing →</button><p class="bk-call">Rather talk? Call <a href="tel:02070968131">0207 096 8131</a></p></div></form></div>';
+  }
   app.get(['/property/:id', '/property/:id/*'], function (req, res) {
     const pv = preview(req), p = show(req) ? find(String(req.params.id)) : null;
     if (!p) {
@@ -385,7 +408,7 @@ module.exports = function (app, opts) {
     }
     if (req.path !== p.url) return res.redirect(301, p.url);   // old or changed address → the current one
     const K = KIND[p.kind], n = p.images.length, mapQ = p.lat != null ? p.lat + ',' + p.lng : encodeURIComponent(p.where);
-    const view = '/contact?topic=' + (p.kind === 'let' ? 'Looking%20to%20rent' : 'Buying') + '&address=' + encodeURIComponent(p.where) + '&ref=' + p.id;
+    const view = '#book', ask = '/contact?topic=' + (p.kind === 'let' ? 'Looking%20to%20rent' : 'Buying') + '&address=' + encodeURIComponent(p.where) + '&ref=' + p.id;
     const offer = '/offer?p=' + encodeURIComponent(p.where);
     const share = encodeURIComponent(p.headline + ', ' + p.where + ' — ' + opts.siteUrl + p.url);
     const extras = [p.furnished ? (p.furnished === 'Full' ? 'Furnished' : p.furnished) : '', p.tenure, p.parking ? 'Parking' : '', p.garden ? 'Garden' : '', p.kind === 'let' ? (p.pets ? 'Pets considered' : '') : ''].filter(Boolean);
@@ -405,9 +428,10 @@ module.exports = function (app, opts) {
         '<h2>Location</h2><iframe class="map" title="Map of ' + esc(p.where) + '" src="https://maps.google.com/maps?q=' + mapQ + '&amp;z=15&amp;output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe><p class="mapnote">The map shows the approximate location.</p>' +
       '</div><aside class="pdside"><div class="pdbox">' +
         '<div class="lprice">' + priceHtml(p) + '</div><p class="pdsideh">' + esc(p.headline) + '</p>' +
-        '<a class="btn red" href="' + esc(view) + '">Book a viewing</a>' + (p.kind === 'let' ? '<a class="btn navy" href="' + esc(offer) + '">Make an offer</a>' : '<a class="btn navy" href="' + esc(view) + '">Make an enquiry</a>') +
+        '<a class="btn red" href="' + esc(view) + '">Book a viewing</a>' + (p.kind === 'let' ? '<a class="btn navy" href="' + esc(offer) + '">Make an offer</a>' : '<a class="btn navy" href="' + esc(ask) + '">Make an enquiry</a>') +
         '<a class="btn line" href="tel:02070968131">📞 0207 096 8131</a>' + (p.vtour ? '<a class="btn line" href="' + esc(p.vtour) + '" target="_blank" rel="noopener">🎥 Virtual tour</a>' : '') +
         '<a class="pdshare" href="https://wa.me/?text=' + share + '" target="_blank" rel="noopener">Share on WhatsApp</a><p class="pdref">Ref. ' + esc(p.id) + '</p></div></aside></div></div></section>' +
+      book(p) +
       '<div class="pdbar"><a class="btn red" href="' + esc(view) + '">Book a viewing</a>' + (p.kind === 'let' ? '<a class="btn navy" href="' + esc(offer) + '">Make an offer</a>' : '<a class="btn navy" href="tel:02070968131">📞 Call us</a>') + '</div>' +
       (function () { const more = data[p.kind].filter(function (x) { return x.id !== p.id && !x.taken; }).slice(0, 3); return more.length ? '<section class="white"><div class="wrap"><div class="head"><h2>More ' + K.none + '</h2></div><div class="lgrid">' + more.map(function (x) { return card(x); }).join('') + '</div><p style="margin-top:22px"><a class="btn line" href="' + K.path + '">See all ' + K.h1.toLowerCase() + ' →</a></p></div></section>' : ''; })();
     const ld = [{ '@type': 'RealEstateListing', name: p.headline + ', ' + p.where, url: opts.siteUrl + p.url, datePosted: String(p.added).slice(0, 10) || undefined, description: p.short || undefined,

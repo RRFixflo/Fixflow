@@ -542,6 +542,24 @@ CREATE TABLE IF NOT EXISTS valuation_requests (
   handled_at  TIMESTAMPTZ,
   handled_by  TEXT
 );
+-- Contacts (CRM): who's looking after each website request, when to follow up, and notes.
+ALTER TABLE valuation_requests ADD COLUMN IF NOT EXISTS assigned_to TEXT;
+ALTER TABLE valuation_requests ADD COLUMN IF NOT EXISTS follow_up DATE;
+CREATE TABLE IF NOT EXISTS crm_notes (
+  id       SERIAL PRIMARY KEY,
+  ref      TEXT NOT NULL,
+  note     TEXT NOT NULL,
+  by_name  TEXT,
+  auto     BOOLEAN NOT NULL DEFAULT false,
+  at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS crm_notes_ref ON crm_notes (ref, at DESC);
+CREATE TABLE IF NOT EXISTS crm_meta (
+  ref         TEXT PRIMARY KEY,
+  assigned_to TEXT,
+  follow_up   DATE,
+  status      TEXT
+);
 CREATE TABLE IF NOT EXISTS valuations (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -596,6 +614,7 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS access TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_synced_at TIMESTAMPTZ;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS access_note TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS online_since TIMESTAMPTZ;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS landlord_phone TEXT;
 ALTER TABLE available_props ALTER COLUMN online_since SET DEFAULT now();
 UPDATE available_props SET online_since = created_at WHERE online_since IS NULL;
 -- Every change to (or removal of) a property on the available list keeps the version before it,
@@ -1863,7 +1882,8 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (path === '/available-history' || /^\/available-history\/\d+\/restore$/.test(path)) return true;
-    if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;   // website valuation requests and messages: every member of staff
+    if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;
+    if (path === '/crm' || /^\/crm\/(note|meta|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
     if (method === 'GET') return path === '/tenant-suggest' || path === '/landlord-suggest' || path === '/our-props' || path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
     return false;
@@ -9511,8 +9531,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
       const what = ['Sales', 'Rental', 'Not sure'].indexOf(b.what) !== -1 ? b.what : 'Not sure', page = str(b.page, 120) || '';
       const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, '(quick request — call back for the address)', JSON.stringify({ kind: 'quick', service: what, page: page })]);
-      ntfy({ title: '⚡ Quick valuation request: ' + name, message: phone + ' · ' + what + ' valuation', tags: ['house'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#landlords' : undefined }).catch(function () {});
-      if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Quick valuation request — ' + name, text: 'Someone used the quick valuation form on the website. Please call them back for the property details.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\nValuation: ' + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s also in Fixflow under Website requests.' }).catch(function () {});
+      ntfy({ title: '⚡ Quick valuation request: ' + name, message: phone + ' · ' + what + ' valuation', tags: ['house'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#contacts' : undefined }).catch(function () {});
+      if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Quick valuation request — ' + name, text: 'Someone used the quick valuation form on the website. Please call them back for the property details.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\nValuation: ' + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s also in Fixflow under Contacts.' }).catch(function () {});
       return res.json({ ok: true, id: r.rows[0].id });
     }
     if (!name || !addr) return res.status(400).json({ ok: false, error: 'missing' });
@@ -9523,9 +9543,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const sale = b.kind === 'sale';   // from the Sales page: a homeowner thinking of selling
     const data = { postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', service: str(b.service, 40) || '', when: str(b.when, 40) || '', message: str(b.message, 2000) || '' }; if (sale) data.kind = 'sale';
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(data)]);
-    ntfy({ title: (sale ? '🏷️ Sales valuation: ' : '🏠 Valuation request: ') + full.split(',').slice(0, 2).join(','), message: name + ' · ' + (phone || email) + (data.service && data.service !== 'Not sure yet' ? ' · ' + data.service : ''), tags: ['house'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#landlords' : undefined }).catch(function () {});
+    ntfy({ title: (sale ? '🏷️ Sales valuation: ' : '🏠 Valuation request: ') + full.split(',').slice(0, 2).join(','), message: name + ' · ' + (phone || email) + (data.service && data.service !== 'Not sure yet' ? ' · ' + data.service : ''), tags: ['house'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#contacts' : undefined }).catch(function () {});
     if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: (sale ? 'Sales valuation request — ' : 'Valuation request — ') + full, text: (sale ? 'A homeowner has asked for a sales valuation on the website.' : 'A landlord has asked for a valuation on the website.') + '\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + email + '\nProperty: ' + full +
-      '\nBedrooms: ' + (data.beds || '—') + '\nType: ' + (data.type || '—') + (sale ? '\nLooking to sell: ' + (data.when || '—') : '\nInterested in: ' + (data.service || '—') + '\nAvailable: ' + (data.when || '—')) + (data.message ? '\n\nMessage:\n' + data.message : '') + '\n\nIt’s also in Fixflow under Landlords → Valuation requests.' }).catch(function () {});
+      '\nBedrooms: ' + (data.beds || '—') + '\nType: ' + (data.type || '—') + (sale ? '\nLooking to sell: ' + (data.when || '—') : '\nInterested in: ' + (data.service || '—') + '\nAvailable: ' + (data.when || '—')) + (data.message ? '\n\nMessage:\n' + data.message : '') + '\n\nIt’s also in Fixflow under Contacts.' }).catch(function () {});
     res.json({ ok: true, id: r.rows[0].id });
   }));
   // Website contact form: kept with the valuation requests (marked as an enquiry) and sent to the office.
@@ -9539,9 +9559,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
     if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, addr || '(general enquiry)', JSON.stringify({ kind: 'enquiry', topic: topic, message: msg })]);
-    ntfy({ title: '💬 Website message from ' + name + ' (' + topic + ')', message: msg.slice(0, 200), tags: ['speech_balloon'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#landlords' : undefined }).catch(function () {});
+    ntfy({ title: '💬 Website message from ' + name + ' (' + topic + ')', message: msg.slice(0, 200), tags: ['speech_balloon'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#contacts' : undefined }).catch(function () {});
     if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Website message — ' + name + ' (' + topic + ')',
-      text: 'A message from the website contact form.\n\nName: ' + name + '\nEmail: ' + email + '\nPhone: ' + (phone || '—') + '\nThey are: ' + topic + (addr ? '\nProperty: ' + addr : '') + '\n\n' + msg + '\n\nIt’s also in Fixflow under Landlords → Website requests.' }).catch(function () {});
+      text: 'A message from the website contact form.\n\nName: ' + name + '\nEmail: ' + email + '\nPhone: ' + (phone || '—') + '\nThey are: ' + topic + (addr ? '\nProperty: ' + addr : '') + '\n\n' + msg + '\n\nIt’s also in Fixflow under Contacts.' }).catch(function () {});
     res.json({ ok: true, id: r.rows[0].id });
   }));
   app.get('/api/admin/valuation-requests', withDb(async function (p, req, res) {
@@ -9550,7 +9570,118 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.post('/api/admin/valuation-requests/:id', withDb(async function (p, req, res) {
     const st = String((req.body || {}).status || ''); if (['new', 'contacted', 'booked', 'won', 'lost'].indexOf(st) === -1) return res.status(400).json({ ok: false, error: 'status' });
     const r = await p.query('UPDATE valuation_requests SET status = $2, handled_at = CASE WHEN $2 = \'new\' THEN NULL ELSE now() END, handled_by = $3 WHERE id = $1 RETURNING id', [jobId(req), st, req.user ? req.user.name : 'Office']);
+    if (r.rows.length) await crmLog(p, 'vr:' + jobId(req), 'Status: ' + ({ new: 'New', contacted: 'Contacted', booked: 'Booked', won: 'Won ✓', lost: 'Not going ahead' }[st]), req);
     res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
+  }));
+  // ---------- Viewing requests from a property page: the applicant proposes up to 3 times ----------
+  // Times are London wall-clock ("2026-10-08T10:00"); this turns one into a real moment.
+  function londonToDate(local) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(String(local || '')); if (!m) return null;
+    const guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(guess));
+    const g = {}; parts.forEach(function (x) { g[x.type] = x.value; });
+    const shown = Date.UTC(+g.year, +g.month - 1, +g.day, +g.hour % 24, +g.minute);
+    return new Date(guess - (shown - guess));
+  }
+  function slotText(local) {
+    const d = londonToDate(local); if (!d) return String(local || '');
+    return d.toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).replace(/ (am|pm)$/i, '$1').replace(':00', '');
+  }
+  app.post('/api/viewing-request', withDb(async function (p, req, res) {
+    const b = req.body || {}, ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim(), now = Date.now();
+    const hits = (vrHits.get('v:' + ip) || []).filter(function (t) { return now - t < 3600000; }); if (hits.length >= 6) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    hits.push(now); vrHits.set('v:' + ip, hits);
+    if (str(b.website, 200)) return res.json({ ok: true });
+    const name = str(b.name, 120), email = str(b.email, 200), phone = str(b.phone, 40), addr = str(b.address, 300), ref = str(b.ref, 40) || '', msg = str(b.message, 2000) || '';
+    if (!name || !phone || !addr) return res.status(400).json({ ok: false, error: 'missing' });
+    if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
+    if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
+    const slots = (Array.isArray(b.slots) ? b.slots : []).map(String).filter(function (x, i, a) {
+      const d = londonToDate(x); if (!d || a.indexOf(x) !== i) return false;
+      const h = +x.slice(11, 13); return d.getTime() > now - 3600000 && d.getTime() < now + 31 * 86400000 && h >= 8 && h <= 20;
+    }).slice(0, 3);
+    if (!slots.length && !b.flexible) return res.status(400).json({ ok: false, error: 'slots' });
+    const kind = b.listing === 'sale' ? 'sale' : 'let', url = /^\/property\/[\w-]+(\/[\w-]*)?$/.test(String(b.url || '')) ? String(b.url) : '';
+    const data = { kind: 'viewing', listing: kind, ref: ref, url: url, slots: slots, flexible: !!b.flexible, message: msg, people: str(b.people, 20) || '', move: str(b.move, 40) || '' };
+    const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, addr, JSON.stringify(data)]);
+    const times = slots.map(slotText);
+    ntfy({ title: '🗓 Viewing request: ' + addr.split(',').slice(0, 2).join(','), message: name + ' · ' + phone + (times.length ? ' · ' + times.join(' / ') : ' · any time'), tags: ['calendar'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#contacts' : undefined }).catch(function () {});
+    if (canEmail() && sendEmail) {
+      sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Viewing request — ' + addr, text: 'Someone has asked to view a property on the website.\n\nProperty: ' + addr + (ref ? ' (ref ' + ref + ')' : '') + '\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email +
+        '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') + (data.people ? '\nPeople: ' + data.people : '') + (data.move ? '\nMove / buy: ' + data.move : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Fixflow under Contacts — they’re emailed straight away.' }).catch(function () {});
+      const t = 'Dear ' + name.split(' ')[0] + ',\n\nThank you for asking to view ' + addr + '.\n\n' + (times.length ? 'You suggested:\n' + times.map(function (x) { return '• ' + x; }).join('\n') + '\n\n' : '') + 'We’ll confirm a time with you shortly — usually within a few hours during opening hours (Monday to Sunday, 9am–7pm). If you need us sooner, call 0207 096 8131.\n\nKind regards,\nResidential Realtors';
+      sendEmail({ to: [email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Your viewing request — ' + addr, text: t, html: brandEmail(t, 'Your viewing request') }).catch(function () {});
+    }
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+
+  // ---------- Contacts (CRM): every website request, landlord alert sign-up and contact added by staff ----------
+  function crmLog(p, ref, note, req, auto) { return p.query('INSERT INTO crm_notes (ref, note, by_name, auto) VALUES ($1, $2, $3, $4)', [ref, String(note).slice(0, 4000), req && req.user ? req.user.name : 'Office', auto !== false]).catch(function () {}); }
+  const CRM_REF = /^(vr|sub):\d+$/;
+  app.get('/api/admin/crm', withDb(async function (p, req, res) {
+    const items = (await p.query('SELECT * FROM valuation_requests ORDER BY id DESC LIMIT 1000')).rows;
+    let subs = [];
+    try { subs = (await p.query('SELECT id, created_at, email, name, freq, confirmed_at, unsubscribed_at, last_sent_at, sent_count FROM landlord_alert_subs ORDER BY id DESC LIMIT 2000')).rows; } catch (e) {}
+    const notes = (await p.query('SELECT id, ref, note, by_name, auto, at FROM crm_notes ORDER BY at DESC LIMIT 5000')).rows;
+    const meta = (await p.query('SELECT * FROM crm_meta')).rows;
+    let staff = [];
+    try { staff = (await p.query('SELECT name FROM staff_users WHERE disabled_at IS NULL ORDER BY name')).rows.map(function (x) { return x.name; }); } catch (e) {}
+    res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, staff: staff, me: req.user ? req.user.name : '' });
+  }));
+  app.post('/api/admin/crm/note', withDb(async function (p, req, res) {
+    const b = req.body || {}, ref = String(b.ref || ''), note = str(b.note, 4000);
+    if (!CRM_REF.test(ref) || !note) return res.status(400).json({ ok: false });
+    await crmLog(p, ref, note, req, false);
+    res.json({ ok: true });
+  }));
+  // Who's looking after it and when to follow up.
+  app.post('/api/admin/crm/meta', withDb(async function (p, req, res) {
+    const b = req.body || {}, ref = String(b.ref || '');
+    if (!CRM_REF.test(ref)) return res.status(400).json({ ok: false });
+    const who = b.assigned_to !== undefined ? (str(b.assigned_to, 120) || null) : undefined, fu = b.follow_up !== undefined ? (/^\d{4}-\d{2}-\d{2}$/.test(String(b.follow_up || '')) ? b.follow_up : null) : undefined;
+    const old = (await p.query('SELECT * FROM crm_meta WHERE ref = $1', [ref])).rows[0] || {};
+    const next = { assigned_to: who !== undefined ? who : old.assigned_to || null, follow_up: fu !== undefined ? fu : (old.follow_up ? new Date(old.follow_up).toISOString().slice(0, 10) : null) };
+    await p.query('INSERT INTO crm_meta (ref, assigned_to, follow_up) VALUES ($1, $2, $3) ON CONFLICT (ref) DO UPDATE SET assigned_to = $2, follow_up = $3', [ref, next.assigned_to, next.follow_up]);
+    if (ref.indexOf('vr:') === 0) await p.query('UPDATE valuation_requests SET assigned_to = $2, follow_up = $3 WHERE id = $1', [+ref.slice(3), next.assigned_to, next.follow_up]);
+    if (who !== undefined && who !== (old.assigned_to || null)) await crmLog(p, ref, who ? 'Assigned to ' + who : 'No longer assigned', req);
+    if (fu !== undefined) await crmLog(p, ref, fu ? 'Follow up on ' + new Date(fu + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Follow-up cleared', req);
+    res.json({ ok: true });
+  }));
+  // A contact staff add themselves: a phone call, walk-in or someone met at a viewing.
+  app.post('/api/admin/crm/contact', withDb(async function (p, req, res) {
+    const b = req.body || {}, name = str(b.name, 120), email = str(b.email, 200) || null, phone = str(b.phone, 40) || null;
+    if (!name || (!email && !phone)) return res.status(400).json({ ok: false, error: 'missing' });
+    const type = ['Landlord', 'Tenant', 'Applicant', 'Buyer', 'Seller', 'Contractor', 'Other'].indexOf(b.type) !== -1 ? b.type : 'Other';
+    const data = { kind: 'contact', topic: type, message: str(b.message, 3000) || '', source: ['Phone call', 'Walk-in', 'Email', 'Viewing', 'Rightmove', 'Referral', 'Other'].indexOf(b.source) !== -1 ? b.source : '' };
+    const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id', [name, email, phone, str(b.address, 300) || '(no address)', JSON.stringify(data), 'contacted']);
+    await crmLog(p, 'vr:' + r.rows[0].id, 'Added by ' + (req.user ? req.user.name : 'Office') + (data.source ? ' · ' + data.source : ''), req);
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+  // Edit a contact's details.
+  app.post('/api/admin/crm/contact/:id', withDb(async function (p, req, res) {
+    const b = req.body || {}, name = str(b.name, 120);
+    if (!name) return res.status(400).json({ ok: false, error: 'missing' });
+    const r = await p.query('UPDATE valuation_requests SET name = $2, email = $3, phone = $4, address = COALESCE($5, address) WHERE id = $1 RETURNING id', [jobId(req), name, str(b.email, 200) || null, str(b.phone, 40) || null, str(b.address, 300) || null]);
+    if (r.rows.length) await crmLog(p, 'vr:' + jobId(req), 'Contact details edited', req);
+    res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
+  }));
+  // Confirm a viewing time: books it (so it's on the viewings list and the landlord's page) and emails the applicant.
+  app.post('/api/admin/crm/viewing/:id/confirm', withDb(async function (p, req, res) {
+    const b = req.body || {}, x = (await p.query('SELECT * FROM valuation_requests WHERE id = $1', [jobId(req)])).rows[0];
+    if (!x || (x.data || {}).kind !== 'viewing') return res.status(404).json({ ok: false });
+    const at = londonToDate(b.at); if (!at) return res.status(400).json({ ok: false, error: 'time' });
+    const d = Object.assign({}, x.data, { confirmed: String(b.at), confirmed_by: req.user ? req.user.name : 'Office', confirmed_at: new Date().toISOString() });
+    if (d.viewing_id) await p.query('UPDATE viewings SET at = $2, status = \'booked\' WHERE id = $1', [d.viewing_id, at.toISOString()]).catch(function () {});
+    else d.viewing_id = (await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id', [x.address, propKey(x.address), at.toISOString(), x.name, req.user ? req.user.name : 'Office'])).rows[0].id;
+    await p.query('UPDATE valuation_requests SET data = $2, status = \'booked\', handled_at = now(), handled_by = $3 WHERE id = $1', [x.id, JSON.stringify(d), req.user ? req.user.name : 'Office']);
+    let emailed = false;
+    if (b.email !== false && x.email && canEmail() && sendEmail) {
+      const t = 'Dear ' + String(x.name).split(' ')[0] + ',\n\nYour viewing is confirmed:\n\n' + x.address + '\n' + slotText(b.at) + '\n\n' + (str(b.note, 1000) ? str(b.note, 1000) + '\n\n' : '') + 'If you need to change the time, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\n' + (req.user && req.user.id ? req.user.name + '\n' : '') + 'Residential Realtors';
+      const r = await sendEmail({ to: [x.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Viewing confirmed — ' + slotText(b.at), text: t, html: brandEmail(t, 'Viewing confirmed') }).catch(function () { return { ok: false }; });
+      emailed = !!(r && r.ok !== false);
+    }
+    await crmLog(p, 'vr:' + x.id, 'Viewing confirmed for ' + slotText(b.at) + (emailed ? ' · confirmation emailed' : ''), req);
+    res.json({ ok: true, emailed: emailed, when: slotText(b.at) });
   }));
   // ---------- Valuation letters ----------
   function cleanValuation(b) {
@@ -10354,10 +10485,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (fee && !/\d/.test(fee)) { notes = str([fee, notes].filter(Boolean).join(' · '), 2000); fee = null; }
     const beds = parseInt(b.beds, 10);
     return availFix({ address: str(availAddr(b.address), 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
-      rent_pw: pw, rent_pcm: pcm, landlord: str(b.landlord, 120) || null, commission: fee, contact: str(b.contact, 2000) || null, notes: notes,
+      rent_pw: pw, rent_pcm: pcm, landlord: str(b.landlord, 120) || null, landlord_phone: str(b.landlord_phone, 40) || null, commission: fee, contact: str(b.contact, 2000) || null, notes: notes,
       tags: str(b.tags, 200) || null, key_no: str(b.key_no, 40) || null, access: ['landlord', 'tenants', 'keys'].indexOf(b.access) !== -1 ? b.access : null, access_note: str(b.access_note, 300) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: letDayOk(isoDay(b.let_on)) });
   }
-  const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'urgent', 'status', 'let_on'];
+  const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'landlord_phone', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
     const items = (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 20000')).rows;
     res.json({ ok: true, items: items, links: await availLinks(p, items, req.role !== 'offers') });
@@ -10525,7 +10656,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     // A few fields at once from the card (access, key number, tenants' contact).
     if (b.patch === true) {
-      const lim = { key_no: 40, access: 20, access_note: 300, contact: 2000, commission: 40 }, sets = [], vals = [id];
+      const lim = { key_no: 40, access: 20, access_note: 300, contact: 2000, commission: 40, landlord: 120, landlord_phone: 40 }, sets = [], vals = [id];
       // A commission is a figure or a percentage (e.g. 8%, £1,000, 1 month + VAT).
       if ('commission' in b && b.commission && (!/\d/.test(String(b.commission)) || /@|\d{7,}/.test(String(b.commission)))) return res.status(400).json({ ok: false, error: 'fee' });
       Object.keys(lim).forEach(function (k) { if (!(k in b)) return; let v = str(b[k], lim[k]) || null; if (k === 'access' && ['landlord', 'tenants', 'keys'].indexOf(v) === -1) v = null; vals.push(v); sets.push(k + ' = $' + vals.length); });
@@ -10555,7 +10686,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // emptied on purpose (sent in "clear") is wiped. So a half-filled form can never lose details.
     const clear = Array.isArray(b.clear) ? b.clear : [];
     if (x.key_no && x.status === 'available') { const owner = await keyOwner(p, x.key_no, x.address); if (owner) return res.status(409).json({ ok: false, error: 'key-taken', address: owner }); }
-    const KEEP = ['landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'beds', 'rent_pw', 'rent_pcm'];
+    const KEEP = ['landlord', 'landlord_phone', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'beds', 'rent_pw', 'rent_pcm'];
     const r = await p.query('UPDATE available_props SET ' + AVAIL_COLS.map(function (c, i) { return KEEP.indexOf(c) !== -1 && clear.indexOf(c) === -1 ? c + ' = coalesce($' + (i + 2) + ', ' + c + ')' : c + ' = $' + (i + 2); }).join(', ') + ', updated_at = now() WHERE id = $1', [id].concat(AVAIL_COLS.map(function (c) { return x[c] === '' ? null : x[c]; })));
     if (!r.rowCount) return res.status(404).json({ ok: false, error: 'not-found' });
     { const a = (await p.query('SELECT address, key_no, status FROM available_props WHERE id = $1', [id])).rows[0]; if (a && a.status === 'available') await availToKey(p, a.address, a.key_no).catch(function () {}); }
