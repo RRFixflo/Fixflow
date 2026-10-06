@@ -550,12 +550,17 @@ module.exports = function (app, opts) {
   // matches); photos on two different homes with the same fingerprint are reported. Checked slowly in
   // the background, one photo at a time; fingerprints are remembered so each photo is read once.
   const fp = new Map();   // photo address -> 64-bit fingerprint (hex) or '' if unreadable
-  let dupes = [], dupesAt = 0, checking = false;
+  let dupes = [], dupesAt = 0, checking = false, progress = { done: 0, total: 0 }, fpLoaded = false;
+  // Fingerprints are kept in the database, so a restart doesn't read every photo again.
+  async function fpDb() { try { const p = opts.db && await opts.db(); if (!p) return null; if (!fpLoaded) { await p.query('CREATE TABLE IF NOT EXISTS photo_prints (url TEXT PRIMARY KEY, h TEXT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now())'); (await p.query('SELECT url, h FROM photo_prints')).rows.forEach(function (r) { fp.set(r.url, r.h); }); fpLoaded = true; } return p; } catch (e) { return null; } }
   async function fingerprint(url) {
     if (fp.has(url)) return fp.get(url);
     let h = '';
     try {
-      const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(20000) });
+      // Gnomen's small thumbnail (about 30KB) is plenty to compare by; the full photo if there isn't one.
+      const small = /\/Gnomen-Pms5-I\/[^/]+\/large\//.test(url) ? url.replace('/large/', '/thumbnails/') : '';
+      let r = small ? await fetch(small, { headers: UA, signal: AbortSignal.timeout(15000) }) : null;
+      if (!r || !r.ok) r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(20000) });
       if (r.ok && sharp) {
         const px = await sharp(Buffer.from(await r.arrayBuffer())).rotate().greyscale().resize(9, 8, { fit: 'fill' }).raw().toBuffer();
         let bits = '';
@@ -564,19 +569,25 @@ module.exports = function (app, opts) {
         if (/^(0+|1+)$/.test(bits)) h = ''; else h = BigInt('0b' + bits).toString(16).padStart(16, '0');
       }
     } catch (e) { h = null; }
-    if (h !== null) fp.set(url, h);
+    if (h !== null) { fp.set(url, h); const p = await fpDb(); if (p) p.query('INSERT INTO photo_prints (url, h) VALUES ($1, $2) ON CONFLICT (url) DO UPDATE SET h = $2', [url, h]).catch(function () {}); }
     return h || '';
   }
   const hamming = function (a, b) { let x = BigInt('0x' + a) ^ BigInt('0x' + b), n = 0; while (x) { n += Number(x & 1n); x >>= 1n; } return n; };
   async function checkPhotos() {
-    if (checking || !sharp) return; checking = true;
+    if (checking || !sharp || process.env.PHOTO_CHECK === '0') return; checking = true;
     try {
-      const homes = data.let.concat(data.sale), items = [];
-      for (const p of homes) for (let i = 0; i < p.images.length; i++) {
-        const fresh = !fp.has(p.images[i]), h = await fingerprint(p.images[i]);
-        if (fresh) await new Promise(function (ok) { setTimeout(ok, 250); });
-        if (h) items.push({ h: h, id: p.id, where: p.where, url: p.url, kind: p.kind, n: i, img: p.images[i] });
-      }
+      await fpDb();
+      const homes = data.let.concat(data.sale), items = [], jobs = [];
+      homes.forEach(function (p) { p.images.forEach(function (u, i) { jobs.push({ p: p, i: i, u: u }); }); });
+      progress = { done: 0, total: jobs.length };
+      // Eight photos at a time.
+      let next = 0;
+      await Promise.all(Array.from({ length: 8 }, async function () {
+        while (next < jobs.length) {
+          const j = jobs[next++], h = await fingerprint(j.u); progress.done++;
+          if (h) items.push({ h: h, id: j.p.id, where: j.p.where, url: j.p.url, kind: j.p.kind, n: j.i, img: j.u });
+        }
+      }));
       // Group photos that look the same (fingerprints within 4 of 64 bits), across different homes.
       const groups = [], used = new Set();
       for (let a = 0; a < items.length; a++) {
@@ -591,10 +602,10 @@ module.exports = function (app, opts) {
     } catch (e) { console.log('Photo check stopped: ' + e.message); }
     checking = false;
   }
-  setTimeout(function () { checkPhotos(); }, 4 * 60000); setInterval(function () { checkPhotos(); }, 6 * 3600000).unref();
+  setTimeout(function () { checkPhotos(); }, 60000); setInterval(function () { checkPhotos(); }, 2 * 3600000).unref();
 
   return {
-    photoDupes: function () { return { at: dupesAt, checking: checking, groups: dupes }; },
+    photoDupes: function () { return { at: dupesAt, checking: checking, done: progress.done, total: progress.total, groups: dupes }; },
     // Shown to this visitor (everyone when live, signed-in staff otherwise), and there's something to show.
     show: function (req) { return show(req) && (data.let.length + data.sale.length) > 0; },
     preview: preview,

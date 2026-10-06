@@ -1,19 +1,24 @@
 // Website visitors, counted on our own server: which pages people look at, where they came from
 // (Google, Rightmove…), on what device and roughly where. No cookies and no tracking scripts —
-// a visitor is a daily-changing anonymous code (from their connection and browser), never stored
-// as an IP address. Staff and bots aren't counted. Kept for 13 months.
+// a visitor is a daily-changing code (from their connection and browser). The IP address is kept for
+// 30 days only, so the office can tell its own visits from real ones (and stop counting its own).
+// Staff signed in to Fixflow, the office's own addresses and bots aren't counted. Kept for 13 months.
 const crypto = require('crypto');
 
 module.exports = function (app, opts) {
   const BOT = /bot\b|bot\/|spider|crawl|slurp|curl|wget|python|httpx|aiohttp|go-http|java\/|okhttp|axios|node-fetch|undici|libwww|scrapy|headless|phantom|selenium|puppeteer|playwright|lighthouse|pagespeed|gtmetrix|pingdom|uptime|monitor|preview|facebookexternalhit|whatsapp|telegram|slack|discord|skype|linkedinbot|embedly|quora|pinterest|gpt|openai|anthropic|claude|perplexity|bytespider|ccbot|petalbot|semrush|ahrefs|mj12|dotbot|yandex|baidu|seznam/i;
   const SALT = crypto.createHash('sha256').update('visits|' + (process.env.ADMIN_PASSWORD || '') + '|' + (process.env.DATABASE_URL || crypto.randomBytes(16).toString('hex'))).digest('hex');
-  let ready = null, queue = [];
+  let ready = null, queue = [], ignore = [];   // ignore: our own IP addresses (not counted)
+  const ipOf = function (req) { return String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim().replace(/^::ffff:/, '').slice(0, 64); };
+  async function loadIgnore() { const p = await pool().catch(function () { return null; }); if (!p) return; const r = (await p.query("SELECT value FROM app_settings WHERE key = 'web_ignore_ips'").catch(function () { return { rows: [] }; })).rows[0]; ignore = (r && r.value && r.value.ips) || []; }
+  setTimeout(function () { loadIgnore().catch(function () {}); }, 5000);
   async function pool() {
     const p = await opts.db(); if (!p) return null;
     if (!ready) ready = p.query(`CREATE TABLE IF NOT EXISTS web_visits (
         id BIGSERIAL PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT now(), path TEXT NOT NULL, title TEXT,
         ref TEXT, device TEXT, country TEXT, visitor TEXT);
-      CREATE INDEX IF NOT EXISTS web_visits_at ON web_visits (at);`).catch(function (e) { ready = null; throw e; });
+      CREATE INDEX IF NOT EXISTS web_visits_at ON web_visits (at);
+      ALTER TABLE web_visits ADD COLUMN IF NOT EXISTS ip TEXT;`).catch(function (e) { ready = null; throw e; });
     await ready; return p;
   }
   // Where a visit came from: another website's name, or a campaign tag (?utm_source=…).
@@ -30,12 +35,13 @@ module.exports = function (app, opts) {
       const ua = String(req.headers['user-agent'] || '');
       if (!ua || BOT.test(ua) || /prefetch|prerender/i.test(String(req.headers.purpose || req.headers['sec-purpose'] || ''))) return;
       if (opts.isStaff && opts.isStaff(req)) return;   // our own team browsing the site
-      const ip = String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+      const ip = ipOf(req);
+      if (ignore.some(function (x) { return x.ip === ip; })) return;   // the office's own address
       const day = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
       queue.push({ path: String(req.path || '/').slice(0, 300), title: String(title || '').slice(0, 200), ref: source(req) || null,
         device: /ipad|tablet|kindle|silk/i.test(ua) ? 'Tablet' : /mobi|iphone|android/i.test(ua) ? 'Phone' : 'Computer',
         country: String(req.headers['cf-ipcountry'] || '').toUpperCase().slice(0, 2) || null,
-        visitor: crypto.createHash('sha256').update(SALT + '|' + day + '|' + ip + '|' + ua).digest('hex').slice(0, 16) });
+        visitor: crypto.createHash('sha256').update(SALT + '|' + day + '|' + ip + '|' + ua).digest('hex').slice(0, 16), ip: ip || null });
       if (queue.length > 5000) queue = queue.slice(-5000);
     } catch (e) {}
   }
@@ -43,11 +49,11 @@ module.exports = function (app, opts) {
     if (!queue.length) return;
     const p = await pool().catch(function () { return null; }); if (!p) return;
     const rows = queue.splice(0, 500), vals = [], ph = [];
-    rows.forEach(function (r, i) { const b = i * 6; ph.push('($' + (b + 1) + ',$' + (b + 2) + ',$' + (b + 3) + ',$' + (b + 4) + ',$' + (b + 5) + ',$' + (b + 6) + ')'); vals.push(r.path, r.title, r.ref, r.device, r.country, r.visitor); });
-    await p.query('INSERT INTO web_visits (path, title, ref, device, country, visitor) VALUES ' + ph.join(','), vals).catch(function (e) { console.error('Visitor log not saved:', e.message); });
+    rows.forEach(function (r, i) { const b = i * 7; ph.push('($' + (b + 1) + ',$' + (b + 2) + ',$' + (b + 3) + ',$' + (b + 4) + ',$' + (b + 5) + ',$' + (b + 6) + ',$' + (b + 7) + ')'); vals.push(r.path, r.title, r.ref, r.device, r.country, r.visitor, r.ip); });
+    await p.query('INSERT INTO web_visits (path, title, ref, device, country, visitor, ip) VALUES ' + ph.join(','), vals).catch(function (e) { console.error('Visitor log not saved:', e.message); });
   }
   setInterval(function () { flush().catch(function () {}); }, 10000).unref();
-  setInterval(function () { pool().then(function (p) { return p && p.query("DELETE FROM web_visits WHERE at < now() - interval '13 months'"); }).catch(function () {}); }, 24 * 3600000).unref();
+  setInterval(function () { pool().then(function (p) { return p && p.query("DELETE FROM web_visits WHERE at < now() - interval '13 months'").then(function () { return p.query("UPDATE web_visits SET ip = NULL WHERE ip IS NOT NULL AND at < now() - interval '30 days'"); }); }).catch(function () {}); }, 24 * 3600000).unref();
 
   // Sources grouped into names people recognise.
   const SRC = [[/google/, 'Google'], [/bing/, 'Bing'], [/yahoo|duckduckgo|ecosia/, 'Other search'], [/rightmove/, 'Rightmove'], [/zoopla/, 'Zoopla'], [/onthemarket/, 'OnTheMarket'],
@@ -65,6 +71,7 @@ module.exports = function (app, opts) {
     const since = "date_trunc('day', now() AT TIME ZONE 'Europe/London') AT TIME ZONE 'Europe/London' - interval '" + (days - 1) + " days'";
     const prevSince = since + " - interval '" + days + " days'";
     const q = function (sql) { return p.query(sql).then(function (r) { return r.rows; }); };
+    let recent = [];
     const [tot, prev, byDay, pages, props, refs, devices, countries, live] = await Promise.all([
       q('SELECT count(*)::int AS views, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= ' + since),
       q('SELECT count(*)::int AS views, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= ' + prevSince + ' AND at < ' + since),
@@ -74,13 +81,29 @@ module.exports = function (app, opts) {
       q('SELECT ref, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= ' + since + ' GROUP BY ref'),
       q('SELECT device AS k, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= ' + since + ' GROUP BY 1 ORDER BY 2 DESC'),
       q('SELECT coalesce(country, \'\') AS k, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= ' + since + ' GROUP BY 1 ORDER BY 2 DESC LIMIT 8'),
-      q("SELECT DISTINCT ON (visitor) visitor, path, title, device, at FROM web_visits WHERE at >= now() - interval '5 minutes' ORDER BY visitor, at DESC")
-    ]);
+      q("SELECT DISTINCT ON (visitor) visitor, path, title, device, ip, at FROM web_visits WHERE at >= now() - interval '5 minutes' ORDER BY visitor, at DESC"),
+      q("SELECT at, path, title, ref, device, country, ip FROM web_visits ORDER BY id DESC LIMIT 60")
+    ]).then(function (r) { recent = r.pop(); return r; });
     const src = {}; refs.forEach(function (r) { const n = srcName(r.ref); src[n] = (src[n] || 0) + r.visitors; });
     res.setHeader('Cache-Control', 'no-store');
     res.json({ ok: true, days: days, totals: tot[0], previous: prev[0], series: byDay, pages: pages, properties: props,
       sources: Object.keys(src).map(function (k) { return { k: k, visitors: src[k] }; }).sort(function (a, b) { return b.visitors - a.visitors; }),
-      devices: devices, countries: countries, live: live.map(function (l) { return { path: l.path, title: l.title, device: l.device, at: l.at }; }) });
+      devices: devices, countries: countries, live: live.map(function (l) { return { path: l.path, title: l.title, device: l.device, ip: l.ip, at: l.at }; }),
+      me: ipOf(req), ignore: ignore, recent: recent.map(function (r) { return { at: r.at, path: r.path, title: r.title, source: srcName(r.ref), device: r.device, country: r.country, ip: r.ip }; }) });
+  });
+  // Don't count visits from an address (the office, home) — or count them again.
+  app.post('/api/admin/site-ignore', async function (req, res) {
+    if (!(opts.isStaff && opts.isStaff(req))) return res.status(401).json({ ok: false });
+    if (req.role === 'offers' && !(req.user && req.user.role === 'offers_admin')) return res.status(403).json({ ok: false, error: 'managers-only' });
+    const b = req.body || {}, ip = String(b.ip || '').trim().slice(0, 64);
+    if (!/^[0-9a-f.:]{3,64}$/i.test(ip)) return res.status(400).json({ ok: false, error: 'ip' });
+    const p = await pool().catch(function () { return null; }); if (!p) return res.status(503).json({ ok: false });
+    await loadIgnore();
+    let list = ignore.filter(function (x) { return x.ip !== ip; });
+    if (!b.remove) { list.push({ ip: ip, label: String(b.label || '').trim().slice(0, 60) || 'Our address', by: req.user ? req.user.name : 'Office', at: new Date().toISOString() }); if (b.purge) await p.query('DELETE FROM web_visits WHERE ip = $1', [ip]); }
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('web_ignore_ips', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify({ ips: list.slice(-50) })]);
+    ignore = list.slice(-50);
+    res.json({ ok: true, ignore: ignore });
   });
 
   return { track: track };
