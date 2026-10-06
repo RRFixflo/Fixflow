@@ -312,12 +312,12 @@ const ICONS = {
 };
 function heroSearch(req) {
   const c = listings && listings.counts(req);
-  const val = '<div class="hs-val"><span>Find out your home’s sales or rental value</span><a class="btn yellow" href="/sales#sales-valuation">Get a free valuation</a></div>';
+  const val = '<div class="hs-val"><span><b>What’s your home worth?</b> Free sales and rental valuations</span><a class="btn yellow" href="/sales#sales-valuation">Get a valuation →</a></div>';
   if (!c) return '<div class="hsearch">' + val.replace('class="hs-val"', 'class="hs-val solo"') + '</div>';
   return '<form class="hsearch" id="hSearch" action="/properties-to-rent" method="get" role="search">' +
     '<div class="hs-tabs" role="tablist"><button type="button" class="on" data-hs="rent" role="tab">Rent</button><button type="button" data-hs="buy" role="tab">Buy</button></div>' +
     '<div class="hs-box"><div class="hs-row"><input name="q" aria-label="Area, street or postcode" placeholder="Area, street or postcode" autocomplete="off"><button class="hs-go" type="submit" aria-label="Search"><span class="hs-gt">Search</span> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button></div>' +
-    '<div class="hs-modes"><button type="button" class="on" data-mode="list">📍 Location</button><button type="button" data-mode="map">🗺️ Map</button><button type="button" data-mode="near">➤ Near me</button></div></div>' +
+    '<div class="hs-modes"><button type="button" class="on" data-mode="list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Location</button><button type="button" data-mode="map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>Map</button><button type="button" data-mode="near"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-8-8 18-2-8-8-2z"/></svg>Near me</button></div></div>' +
     val + '</form>';
 }
 // The four "When you need experts" cards: each one does something — search homes, compare
