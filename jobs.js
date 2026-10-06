@@ -269,6 +269,10 @@ CREATE TABLE IF NOT EXISTS property_certificates (
   UNIQUE (property_key, type)
 );
 ALTER TABLE property_certificates ADD COLUMN IF NOT EXISTS not_required BOOLEAN NOT NULL DEFAULT false;
+-- The result: an EICR 'Unsatisfactory' / a gas record with an unsafe appliance is 'fail' (remedial work needed).
+ALTER TABLE property_certificates ADD COLUMN IF NOT EXISTS outcome TEXT;
+ALTER TABLE property_certificates ADD COLUMN IF NOT EXISTS faults TEXT;
+ALTER TABLE property_certificates ADD COLUMN IF NOT EXISTS remedial_cost NUMERIC(10,2);
 -- A property's licence document (the council's licence), when uploaded.
 CREATE TABLE IF NOT EXISTS licence_docs (
   property_key TEXT PRIMARY KEY,
@@ -3710,7 +3714,7 @@ module.exports = function mountJobs(app, opts) {
       '(e.g. "add a gas safety for 134 Regina Road starting on 22/5/26", "EICR at 9 Park Road done 3 March 2025", "gas cert for Flat 2 expires 1/6/27", or a list such as "gas safety expiry: 30/03/2026 / eicr expiry: 7/6/24" with the property on another line — one certificate each, all for that property). ' +
       'That is NOT a job (a job is when a check needs booking or doing, with no date it was done) — even when the expiry date given has already passed, record it as a certificate, not a job. ' +
       'Put each in "certificates" with: address (as said, or the exact one from their property list if it clearly matches), type ("Gas", "EICR" or "EPC"), issued_on (the date done / started / valid from, YYYY-MM-DD, UK dates are day/month/year, 2-digit years are 20xx; "" if only an expiry is given), ' +
-      'expires_on (YYYY-MM-DD if an expiry is given, else ""), reference (certificate number if given, else ""), rating (EPC rating letter if given, else ""), document (the number of the attached document it was read from — 1 for the first attached, 2 for the second — or 0 if from the text).\n' +
+      'expires_on (YYYY-MM-DD if an expiry is given, else ""), reference (certificate number if given, else ""), rating (EPC rating letter if given, else ""), outcome ("fail" if an EICR is Unsatisfactory / has C1, C2 or FI codes, or a gas record has an unsafe appliance; "pass" if it says Satisfactory / passed; else ""), faults (e.g. "C2 x3, FI x1", else ""), document (the number of the attached document it was read from — 1 for the first attached, 2 for the second — or 0 if from the text).\n' +
       'A council PROPERTY LICENCE (selective / additional HMO / mandatory HMO licence, e.g. "Property licence under section 64 of the Housing Act 2004") attached or described is recorded in "certificates" too, with type "Licence", issued_on = valid from, expires_on = expiry date, reference = licence reference, plus licence_type ("Selective", "Additional (HMO)" or "Mandatory HMO" — a House in Multiple Occupation licence is "Additional (HMO)" unless it says mandatory), holder (licence holder) and council. ' +
       'An ATTACHED CERTIFICATE (gas safety record / CP12 / LGSR, EICR, or EPC) is recorded the same way: address = the address of the property inspected (the installation / site / premises address — NOT the landlord\'s, agent\'s or engineer\'s company address), ' +
       'type, issued_on = the inspection / check date (or date of assessment for an EPC), expires_on = the date the next check is due if printed ("next inspection due", "recommended date for next inspection", "valid until"; else ""), reference = the certificate / report / serial number. Do not make a job for it.\n' +
@@ -4243,6 +4247,8 @@ module.exports = function mountJobs(app, opts) {
       const r = await opts.askAi('This is a UK property document: a gas safety record (CP12 / LGSR), an EICR (electrical installation condition report), an EPC, or a council PROPERTY LICENCE (selective, additional HMO or mandatory HMO licence under the Housing Act 2004). Read it and reply with ONLY JSON: ' +
         '{"type": "Gas" | "EICR" | "EPC" | "Licence" | "", "address": "the address of the property inspected / licensed (not the landlord\'s, agent\'s, licence holder\'s or engineer\'s address)", "issued_on": "inspection / assessment date, or for a licence the date it is valid from, YYYY-MM-DD", ' +
         '"expires_on": "next inspection due / recommended next inspection / valid until / licence expiry date, YYYY-MM-DD, or \"\" if not printed", "reference": "certificate / report / licence reference number", "rating": "EPC rating letter or \"\"", ' +
+        '"outcome": "for an EICR the overall assessment: \"Satisfactory\" or \"Unsatisfactory\" (any C1, C2 or FI code means Unsatisfactory); for a gas safety record \"Pass\", or \"Fail\" if any appliance is Immediately Dangerous, At Risk or failed; else \"\"", ' +
+        '"faults": "for an EICR the observation codes found, e.g. \"C1 x1, C2 x3, FI x1\" (C3 alone is still Satisfactory); for gas the unsafe appliances and why; else \"\"", ' +
         '"licence_type": "for a licence: \"Selective\", \"Additional (HMO)\" or \"Mandatory HMO\" (a House in Multiple Occupation licence under section 64 is HMO: \"Additional (HMO)\" unless it says mandatory), else \"\"", "holder": "licence holder name or \"\"", "council": "the council that issued it, e.g. Southwark, or \"\"", "max_occupants": "licence maximum number of people as a number, or null"}. UK dates are day/month/year.',
         true, [{ mime: f.mime, data: f.buf.toString('base64') }]).catch(function () { return { ok: false }; });
       if (r && r.ok) { try { got = JSON.parse(String(r.text).replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()) || {}; } catch (e) { got = {}; } }
@@ -4255,9 +4261,12 @@ module.exports = function mountJobs(app, opts) {
     const pc = function (a) { const m = POSTCODE_RE.exec(String(a || '')); return m ? (m[1] + m[2]).toUpperCase() : ''; };
     const other = addr && t.address && ((pc(addr) && pc(t.address) && pc(addr) !== pc(t.address)) || (doorNumKey(addr) && doorNumKey(t.address) && doorNumKey(addr) !== doorNumKey(t.address)));
     return { read: !!type, type: type, issued_on: issued, expires_on: expires, reference: str(got.reference, 100) || '', rating: str(got.rating, 5) || '', address: addr,
+      outcome: certOutcome(got.outcome), faults: str(got.faults, 300) || '',
       licence_type: str(got.licence_type, 60) || '', holder: str(got.holder, 200) || '', council: str(got.council, 80) || '', max_occupants: parseInt(got.max_occupants, 10) || null,
       warning: other ? 'This certificate seems to be for ' + addr + ', not ' + t.address + '. Please check it’s the right one.' : '' };
   }
+  // 'Unsatisfactory' / 'Fail' → 'fail'; 'Satisfactory' / 'Pass' → 'pass'; anything else → ''.
+  function certOutcome(v) { const x = String(v || '').toLowerCase().trim(); return /^(unsatisfactory|fail|failed|unsafe)\b/.test(x) ? 'fail' : /^(satisfactory|pass|passed|safe)\b/.test(x) ? 'pass' : ''; }
   // A licence read from a document, as the property's licence.
   function licenceFromRead(d) {
     return { status: 'licensed', type: d.licence_type || '', number: d.reference || '', holder: d.holder || '', starts: d.issued_on || null, expires: d.expires_on || null, borough: d.council || '', max_occupants: d.max_occupants || null };
@@ -4305,7 +4314,7 @@ module.exports = function mountJobs(app, opts) {
       return res.json({ ok: true });
     }
     const out = await saveCertificate(p, { address: t.address, type: type, issued_on: issued, expires_on: expires, reference: str(b.reference, 100) || '', rating: str(b.rating, 5) || '',
-      notes: 'Uploaded by the landlord', doc: f ? { data: f.buf.toString('base64'), name: f.name, mime: f.mime } : undefined });
+      notes: 'Uploaded by the landlord', outcome: b.outcome !== undefined ? b.outcome : undefined, faults: b.faults, doc: f ? { data: f.buf.toString('base64'), name: f.name, mime: f.mime } : undefined });
     if (!out.json.ok) return res.status(out.status || 400).json(out.json);
     ntfy({ title: 'Landlord uploaded a certificate', message: (who.l.name || 'A landlord') + ' uploaded the ' + CERT_TYPES[type].name.toLowerCase() + ' for ' + t.address + ' — expires ' + certDay(expires) + '. Check it in Fixflow.', tags: ['page_facing_up'] }).catch(function () {});
     res.json({ ok: true });
@@ -5629,17 +5638,39 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function isoDay(v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) && apptDay(v) ? String(v) : null; }
   // A gas safety, EICR or EPC job completed: the property's certificate is
   // renewed from the date it was done (expiry worked out from how long it lasts).
-  async function recordCertFromJob(p, jobId, date, by) {
-    const j = (await p.query('SELECT id, property_address, category, affected FROM jobs WHERE id = $1', [jobId])).rows[0];
+  // The certificate's own dates win: a certificate document attached at completion (read for its dates
+  // and result), or one already saved for the property since the job was raised, beats a typed date.
+  async function recordCertFromJob(p, jobId, date, by, file) {
+    const j = (await p.query('SELECT id, property_address, category, affected, created_at FROM jobs WHERE id = $1', [jobId])).rows[0];
     const type = j && certTypeOf(j.category, j.affected), issued = isoDay(date);
-    if (!type || !issued || !j.property_address) return null;
+    if (!type || !j.property_address) return null;
     const key = propKey(j.property_address); if (!key) return null;
+    if (file) {
+      const rd = await readCertDoc(file, j.property_address);
+      if (rd.read && (!rd.type || rd.type === type) && (rd.issued_on || rd.expires_on)) {
+        const out = await saveCertificate(p, { address: j.property_address, type: type, issued_on: rd.issued_on || '', expires_on: rd.expires_on, reference: rd.reference || '', rating: rd.rating || '',
+          outcome: rd.outcome || '', faults: rd.faults || '', doc: { data: file.buf.toString('base64'), name: file.name, mime: file.mime } });
+        if (out.json && out.json.ok) {
+          await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [j.id, 'note', CERT_TYPES[type].name + ' recorded from the certificate' + (by ? ' (' + by + ')' : '') + ': done ' + (rd.issued_on ? certDay(rd.issued_on) : '—') + ', expires ' + certDay(rd.expires_on) +
+            (rd.outcome === 'fail' ? ' — ' + (type === 'EICR' ? 'UNSATISFACTORY' : 'FAILED') + (rd.faults ? ' (' + rd.faults + ')' : '') + ', remedial work needed' : '') + '. The dates on the certificate were used.']);
+          return { type: type, issued: rd.issued_on || null, expires: rd.expires_on, from_doc: true, outcome: rd.outcome || '', faults: rd.faults || '', warning: rd.warning || '' };
+        }
+      }
+    }
+    // A certificate document already saved for the property since this job was raised: keep its dates.
+    const have = (await p.query(`SELECT c.issued_on, c.expires_on, c.updated_at, c.outcome FROM property_certificates c WHERE c.property_key = $1 AND c.type = $2 AND EXISTS (SELECT 1 FROM certificate_docs d WHERE d.cert_id = c.id)`, [key, type])).rows[0];
+    if (have && have.expires_on && new Date(have.updated_at) >= new Date(j.created_at)) {
+      await p.query('UPDATE property_certificates SET job_id = NULL, reminded_at = NULL WHERE property_key = $1 AND type = $2', [key, type]);
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [j.id, 'note', CERT_TYPES[type].name + ': kept the dates from the certificate already uploaded (done ' + (have.issued_on ? certDay(have.issued_on) : '—') + ', expires ' + certDay(have.expires_on) + ').']);
+      return { type: type, issued: have.issued_on, expires: have.expires_on, from_doc: true, outcome: have.outcome || '' };
+    }
+    if (!issued) return null;
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(issued), def = CERT_TYPES[type];
     const ex = new Date(Date.UTC(+m[1] + def.years, +m[2] - 1, +m[3] - 1)).toISOString().slice(0, 10);   // e.g. 1 Oct 2026 → 30 Sep 2027
     await p.query(`INSERT INTO property_certificates (property_key, address, type, issued_on, expires_on, not_required)
       VALUES ($1, $2, $3, $4, $5, false)
       ON CONFLICT (property_key, type) DO UPDATE SET address = coalesce(property_certificates.address, excluded.address), issued_on = excluded.issued_on, expires_on = excluded.expires_on,
-        not_required = false, reminded_at = NULL, job_id = NULL, updated_at = now()`, [key, j.property_address, type, issued, ex]);
+        not_required = false, reminded_at = NULL, job_id = NULL, outcome = NULL, faults = NULL, remedial_cost = NULL, updated_at = now()`, [key, j.property_address, type, issued, ex]);
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [j.id, 'note', def.name + ' recorded' + (by ? ' by ' + by : '') + ': done ' + certDay(issued) + ', expires ' + certDay(ex) + '. Certificates updated.']);
     return { type: type, issued: issued, expires: ex };
   }
@@ -6266,7 +6297,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   require('./outlook')(app, { db: db, withDb: withDb, str: str, publicUrl: PUBLIC_URL });
 
   app.get('/api/admin/certificates', withDb(async function (p, req, res) {
-    const r = await p.query(`SELECT id, property_key, address, type, issued_on, expires_on, reference, rating, notes, not_required, job_id, reminded_at, updated_at,
+    const r = await p.query(`SELECT id, property_key, address, type, issued_on, expires_on, reference, rating, notes, not_required, outcome, faults, remedial_cost, job_id, reminded_at, updated_at,
       EXISTS (SELECT 1 FROM certificate_docs d WHERE d.cert_id = property_certificates.id) AS has_doc FROM property_certificates ORDER BY expires_on NULLS LAST`);
     const s = (await p.query("SELECT value FROM app_settings WHERE key = 'cert_contractors'")).rows[0];
     res.json({ ok: true, certificates: r.rows, contractors: (s && s.value) || {}, costs: await certCosts(p), remind_days: REMIND_DAYS });
@@ -6285,14 +6316,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if ((b.issued_on && !issued) || (b.expires_on && !expires)) return { status: 400, json: { ok: false, error: 'bad-date' } };
     const notRequired = !!b.not_required;
     if (!expires && !notRequired) return { status: 400, json: { ok: false, error: 'expiry-required' } };
-    const cur = (await p.query('SELECT id, expires_on, job_id FROM property_certificates WHERE property_key = $1 AND type = $2', [key, type])).rows[0];
+    const cur = (await p.query('SELECT id, expires_on, job_id, outcome, faults, remedial_cost FROM property_certificates WHERE property_key = $1 AND type = $2', [key, type])).rows[0];
     const renewed = !cur || cur.expires_on !== expires;
-    const r = await p.query(`INSERT INTO property_certificates (property_key, address, type, issued_on, expires_on, reference, rating, notes, not_required)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    // The result (EICR / gas): as sent; otherwise kept unless it's a new certificate.
+    const outcome = type === 'EPC' || notRequired ? null : b.outcome !== undefined ? (certOutcome(b.outcome) || null) : (renewed ? null : cur && cur.outcome || null);
+    const faults = outcome === 'fail' ? (b.faults !== undefined ? str(b.faults, 300) : (renewed ? null : cur && cur.faults || null)) : null;
+    const remCost = outcome === 'fail' ? (b.remedial_cost !== undefined ? (money(b.remedial_cost) || null) : (renewed ? null : cur && cur.remedial_cost || null)) : null;
+    const r = await p.query(`INSERT INTO property_certificates (property_key, address, type, issued_on, expires_on, reference, rating, notes, not_required, outcome, faults, remedial_cost)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       ON CONFLICT (property_key, type) DO UPDATE SET address = excluded.address, issued_on = excluded.issued_on, expires_on = excluded.expires_on,
-        reference = excluded.reference, rating = excluded.rating, notes = excluded.notes, not_required = excluded.not_required, updated_at = now()` +
+        reference = excluded.reference, rating = excluded.rating, notes = excluded.notes, not_required = excluded.not_required, outcome = excluded.outcome, faults = excluded.faults, remedial_cost = excluded.remedial_cost, updated_at = now()` +
         (renewed ? ', reminded_at = NULL, job_id = NULL' : '') + ' RETURNING id',
-      [key, str(b.address, 500), type, notRequired ? null : issued, notRequired ? null : expires, str(b.reference, 100), str(b.rating, 5), str(b.notes, 1000), notRequired]);
+      [key, str(b.address, 500), type, notRequired ? null : issued, notRequired ? null : expires, str(b.reference, 100), str(b.rating, 5), str(b.notes, 1000), notRequired, outcome, faults, remCost]);
     // The certificate document, when one is uploaded with it; a renewal without
     // one drops the old document (it would be out of date).
     const doc = b.doc && typeof b.doc.data === 'string' ? Buffer.from(b.doc.data.replace(/^data:[^,]*,/, ''), 'base64') : null;
@@ -7643,7 +7678,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'completed', 'Job marked completed.' + (notes ? ' ' + notes : '')]);
-    const cert = (req.body || {}).cert_date ? await recordCertFromJob(p, id, req.body.cert_date) : null;
+    const cf = certFile((req.body || {}).cert_file);
+    const cert = (req.body || {}).cert_date || cf ? await recordCertFromJob(p, id, req.body.cert_date, req.user ? req.user.name : null, cf) : null;
     const auto = await autoJobInvoice(p, id);
     res.json({ ok: true, cert: cert, invoice: auto });
   }));

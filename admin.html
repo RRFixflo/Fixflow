@@ -2655,6 +2655,9 @@
       <div><label class="lbl" for="certRef">Certificate number (optional)</label><input class="inp" id="certRef"></div>
       <div id="certRatingWrap"><label class="lbl" for="certRating">Energy rating</label><select class="inp" id="certRating"><option value="">—</option><option>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option></select></div>
     </div>
+    <div class="grid2" id="certOutWrap"><div><label class="lbl" for="certOutcome">Result</label><select class="inp" id="certOutcome"><option value="">Not recorded</option><option value="pass">✓ Satisfactory / passed</option><option value="fail">❌ Unsatisfactory / failed</option></select></div>
+      <div><label class="lbl" for="certFaults">What failed <span class="muted-note" style="margin:0">(e.g. C2 x3, FI x1)</span></label><input class="inp" id="certFaults"></div>
+      <div id="certRemWrap"><label class="lbl" for="certRemCost">Remedial work cost (£, optional)</label><input class="inp" id="certRemCost" inputmode="decimal" placeholder="e.g. 450"></div></div>
     <div><label class="lbl" for="certNotes">Notes (optional)</label><input class="inp" id="certNotes"></div>
     <label class="check-row"><input type="checkbox" id="certNA"> <span>Not required at this property (e.g. no gas supply)</span></label>
     <div class="err-msg" id="certErr"></div>
@@ -7023,7 +7026,8 @@
             '<textarea class="inp" id="fDoneNotes" placeholder="e.g. Replaced tap washer, tested, no further leaks"></textarea>' +
             (jobCertType(j) ? '<label class="lbl" for="fCertDate" style="margin-top:10px">Date the ' + esc(certDef(jobCertType(j)).long.toLowerCase()) + ' was done</label>' +
               '<input class="inp" id="fCertDate" type="date" value="' + esc(j.appointment_date && j.appointment_date <= ymd(new Date()) ? j.appointment_date : ymd(new Date())) + '" style="max-width:220px">' +
-              '<p class="muted-note" style="margin:4px 0 0">The certificate is updated straight away — expiry worked out (' + (certDef(jobCertType(j)).years === 1 ? '12 months' : certDef(jobCertType(j)).years + ' years') + ').</p>' : '') +
+              '<p class="muted-note" style="margin:4px 0 0">The certificate is updated straight away — expiry worked out (' + (certDef(jobCertType(j)).years === 1 ? '12 months' : certDef(jobCertType(j)).years + ' years') + ').</p>' +
+              '<label class="lbl" style="margin-top:10px">Attach the certificate <span class="muted-note" style="margin:0">(optional — its own dates and result are used instead)</span><input class="inp" type="file" id="fCertFile" accept="application/pdf,image/*"></label>' : '') +
             '<div class="row-actions"><button class="btn success" id="completeBtn" type="button">✓ Mark job completed</button></div>') +
       '</div>' +
 
@@ -7776,17 +7780,23 @@
 
     if ($('completeBtn')) $('completeBtn').addEventListener('click', function(){
       if (!confirm('Mark ' + j.ref + ' as completed?')) return;
-      if ($('fCertDate') && !$('fCertDate').value) { toast('Enter the date the certificate was done'); $('fCertDate').focus(); return; }
-      api('POST', '/api/admin/jobs/' + j.id + '/complete', { notes: $('fDoneNotes').value, cert_date: $('fCertDate') ? $('fCertDate').value : undefined }).then(function(d){
+      var cfIn = $('fCertFile'), cf = cfIn && cfIn.files && cfIn.files[0];
+      if ($('fCertDate') && !$('fCertDate').value && !cf) { toast('Enter the date the certificate was done, or attach the certificate'); $('fCertDate').focus(); return; }
+      if (cf && cf.size > 15 * 1024 * 1024) { toast('The certificate file is too big (15 MB max)'); return; }
+      var send = function(file){ busy($('completeBtn'), true, file ? 'Reading the certificate…' : 'Saving…');
+      api('POST', '/api/admin/jobs/' + j.id + '/complete', { notes: $('fDoneNotes').value, cert_date: $('fCertDate') ? $('fCertDate').value : undefined, cert_file: file || undefined }).then(function(d){
+        busy($('completeBtn'), false);
         if (!d.ok) { toast('Couldn’t complete the job.'); return; }
-        toast(d.cert ? 'Job completed — ' + certDef(d.cert.type).name + ' updated: expires ' + longDay(d.cert.expires) : 'Job completed — let the tenant know');
+        toast(d.cert ? 'Job completed — ' + certDef(d.cert.type).name + ' updated' + (d.cert.from_doc ? ' from the certificate' : '') + ': expires ' + longDay(d.cert.expires) + (d.cert.outcome === 'fail' ? ' · ⚠️ ' + (d.cert.type === 'EICR' ? 'UNSATISFACTORY' : 'FAILED') + ' — remedial work needed' : '') : 'Job completed — let the tenant know');
+        if (d.cert && d.cert.warning) setTimeout(function(){ toast(d.cert.warning); }, 2500);
         if (d.cert) loadCerts();
         drawerTab = 'messages';
         openJob(j.id); loadJobs();
         // Offer the "completed" message straight away, and the landlord update.
         setTimeout(function(){ var sel = $('fTpl'); if (sel) { sel.value = '6'; sel.dispatchEvent(new Event('change')); } }, 400);
         if (llContact(j)) setTimeout(function(){ openLandlordNotice([Object.assign({}, j, { status: 'Completed', completed_at: new Date().toISOString() })]); }, 700);
-      });
+      }); };
+      if (cf) { var fr = new FileReader(); fr.onload = function(){ send({ name: cf.name, mime: cf.type || 'application/pdf', data: String(fr.result).replace(/^data:[^,]*,/, '') }); }; fr.readAsDataURL(cf); } else send(null);
     });
     if ($('reopenBtn')) $('reopenBtn').addEventListener('click', function(){
       api('POST', '/api/admin/jobs/' + j.id + '/reopen', {}).then(function(d){
@@ -8864,7 +8874,7 @@
   }
   function saveAskCert(c){
     if (c.type === 'Licence') return saveReadLicence(c.address, c, c.file);
-    return api('PUT', '/api/admin/certificates', { address: c.address, type: c.type, issued_on: c.issued_on, expires_on: c.expires_on, reference: c.reference, rating: c.rating || '', doc: c.file || undefined });
+    return api('PUT', '/api/admin/certificates', { address: c.address, type: c.type, issued_on: c.issued_on, expires_on: c.expires_on, reference: c.reference, rating: c.rating || '', outcome: c.outcome || '', faults: c.faults || '', doc: c.file || undefined });
   }
   function renderAskCerts(){
     askCerts.forEach(function(c){ if (!c.checked && !c.looking) { c.looking = true; setTimeout(function(){ certLookup(c, true); }, 0); } });
@@ -9480,6 +9490,8 @@
     var k = d === null ? 'missing' : d < 0 ? 'expired' : d <= CERT_REMIND ? 'due' : d <= 60 ? 'soon' : 'ok';
     var left = d > 60 ? '' : ' · ' + d + ' day' + (d === 1 ? '' : 's');
     var text = d === null ? 'No expiry date' : d < 0 ? 'Expired ' + certDay(c.expires_on) : d === 0 ? 'Expires today' : 'Expires ' + certDay(c.expires_on) + left;
+    // Didn't pass (EICR Unsatisfactory / gas safety failed): needs action now, whatever the expiry date.
+    if (c.outcome === 'fail') return { k: 'expired', failed: true, text: (c.type === 'EICR' ? '❌ Unsatisfactory' : '❌ Failed') + ' — remedial work needed' + (c.faults ? ' (' + c.faults + ')' : '') + (c.remedial_cost ? ' · quoted ' + gbp(Number(c.remedial_cost)) : ''), days: d, booked: booked, job: jb };
     return { k: k, text: text, days: d, booked: booked, job: jb };
   }
   function certContractorName(type){
@@ -12077,7 +12089,7 @@
   function certTick(st){
     if (st.k === 'na') return '<span class="tick na" title="Not required">–</span>';
     if (st.k === 'missing') return '<span class="tick no" title="Not recorded">✗</span>';
-    if (st.k === 'expired') return '<span class="tick no" title="Expired">✗</span>';
+    if (st.k === 'expired') return '<span class="tick no" title="' + esc(st.failed ? st.text : 'Expired') + '">✗</span>';
     return '<span class="tick ' + (st.k === 'ok' ? 'yes' : 'warn') + '" title="' + esc(st.text) + '">✓</span>';
   }
   function certChips(key){
@@ -12093,7 +12105,7 @@
       '<div class="cs">' + esc(st.text) + '</div>' + (status ? '<div class="cb">' + status + '</div>' : '') +
       (x.c && x.c.reference ? '<div class="cs" style="font-size:.74rem">No. ' + esc(x.c.reference) + '</div>' : '') + certAskLine(propKey(address), x.def.type) +
       '<div class="ca">' + (st.k === 'missing' ? '<button type="button" class="btn small primary" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">+ Add certificate</button>' : '') +
-        (book ? '<button type="button" class="btn small ' + (st.k === 'expired' || st.k === 'due' ? 'primary' : st.k === 'missing' ? 'ghost' : '') + '" data-cert-book="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">' + (st.k === 'missing' ? 'Book new' : 'Book ' + esc(certContractorName(x.def.type) || 'contractor')) + '</button>' : '') +
+        (book ? '<button type="button" class="btn small ' + (st.k === 'expired' || st.k === 'due' ? 'primary' : st.k === 'missing' ? 'ghost' : '') + '" data-cert-book="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">' + (st.failed ? 'Book remedial work' : st.k === 'missing' ? 'Book new' : 'Book ' + esc(certContractorName(x.def.type) || 'contractor')) + '</button>' : '') +
         (st.booked ? '<button type="button" class="btn small" data-open-job="' + jb.id + '">Open job</button>' : '') +
         (st.k === 'expired' || st.k === 'due' || st.k === 'soon' || st.k === 'missing' ? '<button type="button" class="btn small" data-cert-ask="' + esc(x.def.type) + '" data-addr="' + esc(address) + '" title="Ask the landlord for the new certificate, or if we should arrange it">💬 Ask landlord</button>' : '') +
         (x.c && x.c.has_doc ? '<a class="btn small ghost" target="_blank" rel="noopener" href="/api/admin/certificates/' + x.c.id + '/doc">📎 View certificate</a>' : '') +
@@ -12239,6 +12251,10 @@
     var last = jobs.filter(function(j){ return propKey(j.property_address) === key && (j.tenant_name || j.tenant_phone); }).sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })[0] || {};
     var body = { property_address: address, category: def.category, affected: def.job, urgency: c && st.days < 0 ? 'Urgent' : 'Routine', source: 'Other',
       description: def.long + (c && c.expires_on ? (st.days < 0 ? ' expired on ' : ' expires on ') + certDay(c.expires_on) : ' needed') + '. Please contact the tenant directly to arrange a time.' };
+    // A certificate that didn't pass: the job is the remedial work, then a satisfactory certificate.
+    if (st.failed) { body.affected = (type === 'EICR' ? 'EICR remedial work' : 'Gas safety remedial work'); body.urgency = 'Urgent';
+      body.description = 'The ' + def.long + (c.issued_on ? ' done on ' + certDay(c.issued_on) : '') + ' was ' + (type === 'EICR' ? 'UNSATISFACTORY' : 'FAILED') + (c.faults ? ' (' + c.faults + ')' : '') + '. Please carry out the remedial work and issue a new satisfactory ' + (type === 'EICR' ? 'certificate / electrical installation certificate' : 'gas safety record') + '. Please contact the tenant directly to arrange a time.';
+      if (c.remedial_cost) { body.estimated_cost = Number(c.remedial_cost); body.description += ' Quoted remedial cost: ' + gbp(Number(c.remedial_cost)) + '.'; } }
     if (who) body.assigned_to = who;
     if (t) { if (t.name) body.tenant_name = t.name; if (t.phone) body.tenant_phone = t.phone; if (t.email) body.tenant_email = t.email; }
     else { ['tenant_name', 'tenant_phone', 'tenant_email', 'key_permission', 'key_instructions', 'access_notes'].forEach(function(f){ if (last[f]) body[f] = last[f]; }); }
@@ -12294,6 +12310,8 @@
     $('certRef').value = c && c.reference || ''; $('certRating').value = c && c.rating || ''; $('certNotes').value = c && c.notes || '';
     $('certNA').checked = !!(c && c.not_required);
     $('certRatingWrap').hidden = type !== 'EPC';
+    $('certOutWrap').hidden = type === 'EPC' || type === 'Licence'; $('certOutcome').value = c && c.outcome || ''; $('certFaults').value = c && c.faults || ''; $('certRemCost').value = c && c.remedial_cost != null ? Number(c.remedial_cost).toFixed(2) : '';
+    var syncOut = function(){ var f = $('certOutcome').value === 'fail'; $('certFaults').closest('div').hidden = !f; $('certRemWrap').hidden = !f; }; $('certOutcome').onchange = syncOut; syncOut();
     $('certEpcBox').hidden = type !== 'EPC'; $('certEpcResults').innerHTML = '';
     var pc = (POSTCODE_RE.exec(address) || []);
     $('certEpcOpen').href = epcSearchUrl(address);
@@ -12311,7 +12329,8 @@
     if (!na && !$('certExpires').value) { $('certErr').textContent = 'Please enter the expiry date (or the date issued).'; $('certExpires').focus(); return; }
     busy($('certSave'), true, 'Saving…');
     api('PUT', '/api/admin/certificates', { address: certCtx.address, type: certCtx.type, issued_on: na ? '' : $('certIssued').value, expires_on: na ? '' : $('certExpires').value,
-      reference: $('certRef').value, rating: $('certRating').value, notes: $('certNotes').value, not_required: na, register_address: certCtx.registerAddress || '' }).then(function(d){
+      reference: $('certRef').value, rating: $('certRating').value, notes: $('certNotes').value, not_required: na, register_address: certCtx.registerAddress || '',
+      outcome: $('certOutWrap').hidden ? undefined : $('certOutcome').value, faults: $('certFaults').value, remedial_cost: $('certRemCost').value }).then(function(d){
       busy($('certSave'), false);
       if (!d.ok) { $('certErr').textContent = 'Couldn’t save (' + (d.error || 'error') + ')'; return; }
       $('certModal').hidden = true; toast(certDef(certCtx.type).name + ' saved' + (d.address ? ' — address updated to ' + d.address : ''));
@@ -13557,7 +13576,8 @@
               toast('✓ Property licence saved for ' + shortAddr(address) + (d.reference ? ' — ' + d.reference : '') + ', expires ' + longDay(d.expires_on));
               loadPropInfo().then(function(){ if (after) after(); });
             });
-            return api('PUT', '/api/admin/certificates', { address: address, type: d.type, issued_on: d.issued_on, expires_on: d.expires_on, reference: d.reference, rating: d.rating || '', doc: file }).then(function(s){
+            if (d.outcome === 'fail') toast('⚠️ This ' + (d.type === 'EICR' ? 'EICR is UNSATISFACTORY' : 'gas safety record FAILED') + (d.faults ? ' (' + d.faults + ')' : '') + ' — remedial work needed');
+            return api('PUT', '/api/admin/certificates', { address: address, type: d.type, issued_on: d.issued_on, expires_on: d.expires_on, reference: d.reference, rating: d.rating || '', outcome: d.outcome || '', faults: d.faults || '', doc: file }).then(function(s){
               if (!s.ok) { toast('Couldn’t save the certificate'); return; }
               if (tcyDraft && tcyDraft.certs) delete tcyDraft.certs[d.type];
               toast('✓ ' + certDef(d.type).name + ' saved for ' + shortAddr(address) + (d.issued_on ? ' — done ' + longDay(d.issued_on) : '') + ', expires ' + longDay(d.expires_on));
