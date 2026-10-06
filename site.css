@@ -988,3 +988,11 @@ html, body { overflow-x: clip; }
 .xd-pills a { padding: 8px 14px; border-radius: 999px; background: #f3f1ff; color: #4c1d95; font-weight: 700; font-size: .88rem; text-decoration: none; transition: background .2s; } .xd-pills a:hover { background: #e4ddff; }
 .xcard .btn.xd-go { margin-top: auto; background: var(--red); color: #fff; }
 @media (prefers-reduced-motion: reduce) { .xd-phone { transition: none; } .xcard.xdiy:hover .xd-phone { transform: rotate(7deg); } }
+
+/* DIY: price comparison with an inventory clerk */
+.xd-vs { width: 100%; padding: 10px 14px; border-radius: 14px; background: #ecfdf3; border: 1px solid #bbf7d0; }
+.xd-vs span { display: block; color: #14532d; font-weight: 800; font-size: .92rem; } .xd-vs small { color: #3f6b50; font-size: .8rem; }
+.lp-vs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 16px; }
+.lp-vs > div { padding: 10px 14px; border-radius: 14px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); }
+.lp-vs small { display: block; color: #b9c5d6; font-size: .78rem; font-weight: 700; } .lp-vs b { color: #dbe3ee; font-size: 1rem; }
+.lp-vs .lp-vs-us { background: rgba(110,231,168,.14); border-color: rgba(110,231,168,.5); } .lp-vs .lp-vs-us b { color: #6ee7a8; font-size: 1.1rem; } .lp-vs .lp-vs-us b b { color: inherit; font-size: inherit; }
