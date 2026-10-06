@@ -122,6 +122,58 @@
     document.addEventListener('keydown', function (e) { if (e.key === 'ArrowLeft') go(-1); if (e.key === 'ArrowRight') go(1); });
   }
 
+  // Property page: book a viewing — pick up to 3 times that suit, then your details.
+  var bk = document.getElementById('book'), bkF = document.getElementById('bkForm');
+  if (bk && bkF) {
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; }, picked = [], dayAt = 0;
+    var ldn = function () { var g = {}; new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date()).forEach(function (x) { g[x.type] = x.value; }); return g; };
+    var now = ldn(), base = Date.UTC(+now.year, +now.month - 1, +now.day, 12), nowH = (+now.hour % 24) + (+now.minute) / 60;
+    var DAYS = [], HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+    for (var i = 0; i < 14; i++) { var d = new Date(base + i * 86400000); DAYS.push({ key: d.toISOString().slice(0, 10), wd: i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' }), n: d.getUTCDate(), mon: d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }), long: d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) }); }
+    if (HOURS.every(function (h) { return h < nowH + 2; })) { DAYS.shift(); }   // too late to view today
+    var hTxt = function (h) { return (h > 12 ? h - 12 : h) + (h >= 12 ? 'pm' : 'am'); };
+    var label = function (v) { var d = DAYS.filter(function (x) { return x.key === v.slice(0, 10); })[0]; return (d ? (d.wd === 'Today' || d.wd === 'Tmrw' ? (d.wd === 'Tmrw' ? 'Tomorrow' : 'Today') + ' ' + d.n + ' ' + d.mon : d.long) : v.slice(0, 10)) + ', ' + hTxt(+v.slice(11, 13)); };
+    var drawDays = function () {
+      document.getElementById('bkDays').innerHTML = DAYS.map(function (d, i) { var has = picked.some(function (v) { return v.slice(0, 10) === d.key; }); return '<button type="button" class="bk-day' + (i === dayAt ? ' on' : '') + (has ? ' has' : '') + '" data-day="' + i + '" aria-pressed="' + (i === dayAt) + '"><small>' + d.wd + '</small><b>' + d.n + '</b><small>' + d.mon + '</small><span class="dot"></span></button>'; }).join('');
+    };
+    var drawTimes = function () {
+      var d = DAYS[dayAt], isToday = d.wd === 'Today', full = picked.length >= 3;
+      var btn = function (h) { var v = d.key + 'T' + pad(h) + ':00', on = picked.indexOf(v) !== -1, past = isToday && h < nowH + 2; return '<button type="button" class="bk-t' + (on ? ' on' : '') + '" data-t="' + v + '"' + (past || (full && !on) ? ' disabled' : '') + ' aria-pressed="' + on + '">' + hTxt(h) + '</button>'; };
+      document.getElementById('bkTimes').innerHTML = '<span class="bk-tg">Morning</span>' + [9, 10, 11].map(btn).join('') + '<span class="bk-tg">Afternoon</span>' + [12, 13, 14, 15, 16].map(btn).join('') + '<span class="bk-tg">Evening</span>' + [17, 18].map(btn).join('');
+      document.getElementById('bkPicked').innerHTML = picked.length ? picked.map(function (v) { return '<span class="bk-pk">' + label(v) + '<button type="button" data-rm="' + v + '" aria-label="Remove ' + label(v) + '">×</button></span>'; }).join('') + (full ? '<span class="bk-hint">That’s 3 — perfect.</span>' : '<span class="bk-hint">' + (3 - picked.length) + ' more if you like</span>') : '<span class="bk-hint">Tap a day, then a time.</span>';
+    };
+    var draw = function () { drawDays(); drawTimes(); };
+    var open = function () { bk.classList.add('open'); document.body.classList.add('bk-lock'); draw(); setTimeout(function () { var b = bk.querySelector('.bk-day.on'); if (b) b.focus({ preventScroll: true }); }, 30); };
+    var close = function () { bk.classList.remove('open'); document.body.classList.remove('bk-lock'); if (location.hash === '#book') history.replaceState(null, '', location.pathname + location.search); };
+    document.querySelectorAll('a[href="#book"]').forEach(function (a) { a.addEventListener('click', function (e) { e.preventDefault(); open(); }); });
+    bk.querySelectorAll('.bk-bg, .bk-x').forEach(function (a) { a.addEventListener('click', function (e) { e.preventDefault(); close(); }); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && bk.classList.contains('open')) close(); });
+    if (location.hash === '#book') { history.replaceState(null, '', location.pathname + location.search); open(); }
+    bk.addEventListener('click', function (e) {
+      var dy = e.target.closest('[data-day]'), t = e.target.closest('[data-t]'), rm = e.target.closest('[data-rm]');
+      if (dy) { dayAt = +dy.dataset.day; draw(); }
+      else if (t && !t.disabled) { var v = t.dataset.t, k = picked.indexOf(v); if (k !== -1) picked.splice(k, 1); else if (picked.length < 3) picked.push(v); picked.sort(); if (picked.length) bkF.elements.flexible.checked = false; draw(); }
+      else if (rm) { picked.splice(picked.indexOf(rm.dataset.rm), 1); draw(); }
+    });
+    bkF.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var f = bkF.elements, err = document.getElementById('bkErr'), go = document.getElementById('bkGo'), say = function (m, el) { err.textContent = m; if (el) el.focus(); };
+      err.textContent = '';
+      if (!picked.length && !f.flexible.checked) return say('Please pick at least one time — or tick “I’m flexible”.');
+      if (!f.name.value.trim()) return say('Please enter your name.', f.name);
+      if (f.phone.value.replace(/\D/g, '').length < 10) return say('Please enter your mobile number.', f.phone);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.value.trim())) return say('Please enter a valid email address.', f.email);
+      if (!f.consent.checked) return say('Please tick the box so we can contact you about the viewing.', f.consent);
+      go.disabled = true; go.textContent = 'Sending…';
+      fetch('/api/viewing-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name.value.trim(), phone: f.phone.value.trim(), email: f.email.value.trim(), people: f.people ? f.people.value : '', move: f.move ? f.move.value : '', message: f.message.value.trim(), website: f.website.value, consent: true, slots: picked, flexible: f.flexible.checked, ref: bkF.dataset.ref, address: bkF.dataset.addr, listing: bkF.dataset.kind, url: bkF.dataset.url }) })
+        .then(function (r) { return r.json(); }).then(function (d) {
+          if (!d.ok) { go.disabled = false; go.textContent = 'Request viewing →'; return say(d.error === 'rate-limited' ? 'Too many requests — please call us on 0207 096 8131.' : d.error === 'slots' ? 'Please pick a time in the next few weeks.' : 'Please check your details and try again.'); }
+          document.getElementById('bkBody').innerHTML = '<div class="bk-done"><div class="ok">✅</div><h3 style="margin:6px 0">Viewing requested</h3><p class="bk-where">' + escH(bkF.dataset.addr) + '</p>' + (picked.length ? '<p style="margin:0">You suggested:</p><ul>' + picked.map(function (v) { return '<li>' + label(v) + '</li>'; }).join('') + '</ul>' : '<p>You’re flexible — we’ll suggest a time.</p>') + '<p class="bk-where">We’ll confirm a time with you shortly by email or phone. We’ve sent you an email with the details.</p><a class="btn navy" href="#" data-bk-close>Done</a></div>';
+          bk.querySelector('[data-bk-close]').addEventListener('click', function (e) { e.preventDefault(); close(); });
+        }).catch(function () { go.disabled = false; go.textContent = 'Request viewing →'; say('Couldn’t send — please check your connection or call 0207 096 8131.'); });
+    });
+  }
+
   // Property checks page: EPC checker and licence checker.
   var escH = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var pcOk = function (v) { return /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(String(v || '').trim()); };
