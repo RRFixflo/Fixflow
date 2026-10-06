@@ -9405,7 +9405,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     'Brent': ['£640 (£600 to renew)', '£1,040 (£940 to renew)', '£1,040 for up to 5 habitable rooms, plus £25 for each extra room'],
     'Bromley': ['', '', '£1,100'],
     'Camden': ['', '£1,570 (less with accreditation discounts)', '£1,570'],
-    'City of London': ['', '', ''],
+    'City of London': ['', '', '£1,050 for up to 5 lettings; £1,200 for 6–9; £1,350 for 10–14; £1,500 for 15–19; £1,650 for 20 or more'],
     'Croydon': ['£800 (£480 when you apply, £320 when granted)', '£1,250 (£750 when you apply, £500 when granted)', ''],
     'Ealing': ['£750 (£675 for a self-contained flat)', '£1,300', '£1,000 plus a charge per room — about £1,500 to £2,000 in total'],
     'Enfield': ['£750 (discounts for accredited landlords and EPC C or above)', '£1,450', ''],
@@ -9431,7 +9431,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     'Tower Hamlets': ['£897', '£1,323, plus £68.50 per habitable room', '£977, plus £68.50 per habitable room'],
     'Waltham Forest': ['£895', '£1,200', '£1,650 for up to 8 units'],
     'Wandsworth': ['£885 (£529 when you apply, £356 when granted)', '£1,507 (£903 when you apply, £604 when granted)', '£1,827 for 5 bedrooms (£1,152 + £675)'],
-    'Westminster': ['', '', '']
+    'Westminster': ['', '', '£1,540, plus £68 for each letting above five']
   };
   Object.keys(LIC_FEES).forEach(function (b) { if (!LICENSING[b]) return; const f = LIC_FEES[b]; LICENSING[b].sel_fee = f[0]; LICENSING[b].add_fee = f[1]; LICENSING[b].hmo_fee = f[2]; });
   const LIC_STATES = ['all', 'some', 'none', 'check'];
