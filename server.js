@@ -199,7 +199,8 @@ const siteEsc = function (v) { return String(v).replace(/[&<>"]/g, function (c) 
 const SITE_ORG = { '@type': 'RealEstateAgent', '@id': SITE_URL + '/#agency', name: 'Residential Realtors', legalName: 'Estallion Investments Ltd', url: SITE_URL + '/',
   logo: SITE_URL + '/logo.png', image: SITE_URL + '/img/og-image.jpg', telephone: '+44 20 7096 8131', email: 'info@residentialrealtors.co.uk',
   address: { '@type': 'PostalAddress', streetAddress: '28-30 Harper Road', addressLocality: 'London', postalCode: 'SE1 6AD', addressCountry: 'GB' },
-  areaServed: { '@type': 'City', name: 'London' }, knowsAbout: ['Property sales', 'Lettings', 'Property management', 'Rent collection', 'Tenant find', 'Sales valuations', 'Rental valuations'],
+  areaServed: { '@type': 'City', name: 'London' },
+  openingHoursSpecification: [{ '@type': 'OpeningHoursSpecification', dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], opens: '09:00', closes: '19:00' }], knowsAbout: ['Property sales', 'Lettings', 'Property management', 'Rent collection', 'Tenant find', 'Sales valuations', 'Rental valuations'],
   identifier: { '@type': 'PropertyValue', propertyID: 'Companies House', value: '08760284' },
   memberOf: [{ '@type': 'Organization', name: 'ARLA Propertymark', url: 'https://www.propertymark.co.uk' }, { '@type': 'Organization', name: 'The Property Ombudsman', url: 'https://www.tpos.co.uk' }] };
 // <head>: title, description, canonical address, social sharing cards and structured data.
@@ -238,7 +239,7 @@ function siteHeader(name, home, req) {
 }
 function siteFooter(home) {
   return '<footer><div class="wrap"><div class="cols">' +
-    '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Estate agents, lettings and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div></div>' +
+    '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Estate agents, lettings and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div><div style="margin-top:6px">Open 7 days, 9am–7pm</div></div>' +
     '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlords#tools">Landlord tools</a></div>' +
     '<div><h4>Tenants</h4><a href="/report-a-repair">Report a repair</a><a href="/offer">Make an offer</a><a href="/tenants">Renting with us</a><a href="/tenants#fees">Tenant fees</a></div>' +
     '<div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="/about">About us</a><a href="/privacy">Privacy</a></div>' +

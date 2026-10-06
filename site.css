@@ -433,3 +433,5 @@ h1 em, h2 em { background: none; -webkit-background-clip: initial; background-cl
 .phead:not(.photo) .eyebrow { background: #fff; border-color: var(--line); color: var(--navy); }
 .phead:not(.photo) .btn.ghost { background: #fff; color: var(--navy); border-color: var(--line); }
 .phead.small:not(.photo) .wrap { padding: 44px 0 40px; }
+
+.office-open { display: flex; justify-content: space-between; gap: 14px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,.14); flex-wrap: wrap; } .office-open span { color: #aebbd0; font-weight: 600; } .office-open b { color: var(--gold); }
