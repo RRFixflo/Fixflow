@@ -920,6 +920,9 @@
   .mail-preview:focus { border-color: var(--blue, #2563eb); }
   .mail-preview a { color: #0563c1; }
   .tcy-form h3 { display: flex; align-items: center; gap: 8px; }
+  .cp-in { position: relative; } .cp-in > .inp { padding-right: 38px; width: 100%; }
+  .cp-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border: 1px solid var(--line, #e6e8ec); border-radius: 8px; background: var(--panel, #fff); color: var(--ink-soft); font-size: 1rem; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0; }
+  .cp-btn:hover { color: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); }
   .tcy-person { display: grid; grid-template-columns: 1.2fr 1fr 1fr 34px; gap: 8px; align-items: end; margin-bottom: 8px; }
   .tcy-person.g { grid-template-columns: 1.2fr 1fr 1fr 34px; }
   @media (max-width: 700px) { .tcy-person, .tcy-person.g { grid-template-columns: 1fr 1fr; } .tcy-person > :first-child { grid-column: 1 / -1; } }
@@ -13598,7 +13601,7 @@
     // Every current tenant saved at the property belongs on its tenancy (names
     // only seen on old repair jobs are left out — they may have moved on).
     // Never anyone who has moved out (or was swapped out by a change of tenant).
-    var gone = (d.tenant_changes || []).map(function(c){ return c.out || {}; });
+    var gone = (d.tenant_changes || []).map(function(c){ return c.out || {}; }).concat(d.removed_tenants || []);   // and anyone removed from this tenancy by hand
     (tenantLinks || []).forEach(function(l){ if (l.moved_out_at && (l.property_key === pr.key || addrSame(l.address, pr.address))) { var r = tenantRecById(l.tenant_id); if (r) gone.push(r); } });
     onFile.filter(function(o){ return (o.src === 'saved' || o.src === 'jobs') && !list.some(function(x){ return tcySameTenant(x, o, true); }) && !gone.some(function(g){ return tcySameTenant(g, o, true); }); }).forEach(function(o){ list.push(Object.assign({}, o)); n++; });
     d.tenants = list;
@@ -13613,14 +13616,23 @@
 
   // ----- Form -----
   function tcyInp(id, label, value, attrs){ return '<div><label class="lbl" for="' + id + '">' + label + '</label><input class="inp" id="' + id + '" value="' + esc(value == null ? '' : value) + '"' + (attrs || '') + '></div>'; }
+  // A small copy button inside a box (name, email, phone): copies what's in it.
+  var CP_BTN = '<button type="button" class="cp-btn" data-copy-inp data-keep title="Copy" aria-label="Copy">⧉</button>';
+  function addCopyBtns(ids){ ids.forEach(function(id){ var el = $(id); if (!el || el.closest('.cp-in')) return; var w = document.createElement('div'); w.className = 'cp-in'; el.parentNode.insertBefore(w, el); w.appendChild(el); w.insertAdjacentHTML('beforeend', CP_BTN); }); }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-copy-inp]'); if (!b) return; e.preventDefault(); e.stopPropagation();
+    var inp = b.parentNode.querySelector('input, textarea'), v = inp ? inp.value.trim() : '';
+    if (!v) { toast('Nothing to copy yet'); return; }
+    copyText(v).then(function(){ toast('✓ Copied: ' + (v.length > 40 ? v.slice(0, 40) + '…' : v)); b.textContent = '✓'; setTimeout(function(){ b.textContent = '⧉'; }, 1200); }, function(){ window.prompt('Copy:', v); });
+  }, true);
   function tcyPersonRows(kind){
     var list = tcyDraft[kind];
     return list.map(function(p, i){
       var lab = kind === 'tenants' ? (i === 0 ? 'Lead tenant' : 'Tenant ' + (i + 1)) : 'Guarantor ' + (i + 1);
       return '<div class="tcy-person' + (kind === 'guarantors' ? ' g' : '') + '" data-kind="' + kind + '" data-i="' + i + '">' +
-        '<div><label class="lbl">' + lab + ' — full name</label><input class="inp" data-f="name"' + (kind === 'tenants' ? ' list="tfTenantNames" autocomplete="off"' : '') + ' value="' + esc(p.name || '') + '"></div>' +
-        '<div><label class="lbl">Email</label><input class="inp" type="email" data-f="email" value="' + esc(p.email || '') + '"></div>' +
-        '<div><label class="lbl">Phone</label><input class="inp" type="tel" data-f="phone" value="' + esc(p.phone || '') + '"></div>' +
+        '<div><label class="lbl">' + lab + ' — full name</label><div class="cp-in"><input class="inp" data-f="name"' + (kind === 'tenants' ? ' list="tfTenantNames" autocomplete="off"' : '') + ' value="' + esc(p.name || '') + '">' + CP_BTN + '</div></div>' +
+        '<div><label class="lbl">Email</label><div class="cp-in"><input class="inp" type="email" data-f="email" value="' + esc(p.email || '') + '">' + CP_BTN + '</div></div>' +
+        '<div><label class="lbl">Phone</label><div class="cp-in"><input class="inp" type="tel" data-f="phone" value="' + esc(p.phone || '') + '">' + CP_BTN + '</div></div>' +
         '<button type="button" class="tcy-x" data-del-person="' + kind + '" data-i="' + i + '" title="Remove"' + (kind === 'tenants' && list.length === 1 ? ' disabled' : '') + '>×</button></div>';
     }).join('');
   }
@@ -14180,6 +14192,7 @@
       if (b.dataset.v === 'landlord' && !$('tfScheme').value) $('tfScheme').value = 'Landlord to register';
       tcyRefresh();
     });
+    addCopyBtns(['tfLlName', 'tfLlEmail', 'tfLlPhone']);
     $('tfAddTen').addEventListener('click', function(){ tcyRead(); tcyDraft.tenants.push({ name: '', email: '', phone: '' }); $('tfTenants').innerHTML = tcyPersonRows('tenants'); });
     $('tfAddGua').addEventListener('click', function(){ tcyRead(); tcyDraft.guarantors.push({ name: '', email: '', phone: '' }); $('tfGuarantors').innerHTML = tcyPersonRows('guarantors'); });
     // Picking a landlord on file fills their details in place (nothing else on the form changes).
@@ -14271,7 +14284,8 @@
     body.addEventListener('click', function(e){
       var b = e.target.closest('button'); if (!b || !tcyDraft) return;
       if (b.dataset.delPerson) {
-        tcyRead(); var kind = b.dataset.delPerson; tcyDraft[kind].splice(Number(b.dataset.i), 1);
+        tcyRead(); var kind = b.dataset.delPerson, gone1 = tcyDraft[kind].splice(Number(b.dataset.i), 1)[0];
+        if (kind === 'tenants' && gone1 && (gone1.name || gone1.email || gone1.phone)) { tcyDraft.removed_tenants = (tcyDraft.removed_tenants || []).concat([{ name: gone1.name || '', email: gone1.email || '', phone: gone1.phone || '' }]).slice(-20); toast('Removed ' + (gone1.name || 'the tenant') + ' — save the tenancy to keep the change'); }
         if (kind === 'tenants') $('tfTenants').innerHTML = tcyPersonRows('tenants');
         else $('tfGuarantors').innerHTML = tcyDraft.guarantors.length ? tcyPersonRows('guarantors') : '<p class="muted-note" style="margin:0">No guarantors. The agreement leaves the guarantor sections out.</p>';
       } else if (b.dataset.nvChip !== undefined) {

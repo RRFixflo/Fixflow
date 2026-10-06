@@ -5718,6 +5718,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       checkin_date: day(b.checkin_date), checkin_time: s(b.checkin_time, 20), checkin_type: b.checkin_type === 'diy' ? 'diy' : b.checkin_type === 'clerk' ? 'clerk' : b.checkin_type === 'none' ? 'none' : null, checkin_tbc: !!b.checkin_tbc,
       tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       guarantors: (Array.isArray(b.guarantors) ? b.guarantors : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
+      removed_tenants: (Array.isArray(b.removed_tenants) ? b.removed_tenants : []).slice(-20).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       landlord: (function () { const o = { name: s(l.name), email: s(l.email), phone: s(l.phone, 50), line1: s(l.line1, 300), line2: s(l.line2, 300), country: s(l.country, 100), postcode: s(String(l.postcode || '').trim(), 300) };
         // A whole address typed in one box (often the postcode box): put each part in its place.
         const pcOnly = /^\s*[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\s*$/i;
