@@ -1,0 +1,32 @@
+<div class="phead small"><div class="wrap">
+  <span class="eyebrow"><i></i> Contact</span>
+  <h1>Let’s <em>talk.</em></h1>
+  <p class="lead">Questions about letting, renting or your tenancy? Call, email or send us a message and we’ll get back to you.</p>
+</div></div>
+
+<section class="white"><div class="wrap" style="display:grid;grid-template-columns:.85fr 1.15fr;gap:44px;align-items:start" id="ctGrid">
+  <div class="rv" style="display:grid;gap:14px">
+    <a class="card" href="tel:02070968131" style="text-decoration:none"><div class="ic">📞</div><h3>Call us</h3><p style="font-weight:700;color:var(--navy);font-size:1.15rem">0207 096 8131</p></a>
+    <a class="card" href="mailto:info@residentialrealtors.co.uk" style="text-decoration:none"><div class="ic">✉️</div><h3>Email us</h3><p>info@residentialrealtors.co.uk</p></a>
+    <a class="card" href="https://www.google.com/maps/search/?api=1&query=28-30+Harper+Road+London+SE1+6AD" target="_blank" rel="noopener" style="text-decoration:none"><div class="ic">📍</div><h3>Our office</h3><p>28-30 Harper Road, London SE1 6AD<br><b style="color:var(--navy)">Open in Maps ↗</b></p></a>
+    <a class="card" href="/report-a-repair" style="text-decoration:none;background:#fff7e6;border-color:#f3d28b"><div class="ic">🔧</div><h3>Tenant with a repair?</h3><p>The quickest way is our online repair form — <b style="color:var(--navy)">report it here ›</b></p></a>
+  </div>
+  <form class="form rv" id="eForm" novalidate>
+    <div id="eBody">
+      <h3 style="margin:0 0 4px;font-size:1.35rem;letter-spacing:-.02em">Send us a message</h3><p style="margin:0 0 20px;color:var(--soft)">We usually reply within one working day.</p>
+      <div class="fg">
+        <label>Your name<input name="name" autocomplete="name" required></label>
+        <label>Phone <span style="font-weight:500;color:var(--faint)">(optional)</span><input name="phone" type="tel" autocomplete="tel"></label>
+        <label class="full">Email<input name="email" type="email" autocomplete="email" required></label>
+        <label class="full">I’m a…<select name="topic"><option>Landlord</option><option>Tenant</option><option>Looking to rent</option><option>Other</option></select></label>
+        <label class="full">Property address <span style="font-weight:500;color:var(--faint)">(if it’s about a property)</span><input name="address" autocomplete="street-address"></label>
+        <label class="full">How can we help?<textarea name="message" required></textarea></label>
+        <label class="hp" aria-hidden="true">Leave this empty<input name="website" tabindex="-1" autocomplete="off"></label>
+        <label class="full consent"><input type="checkbox" name="consent" required> I’m happy for Residential Realtors to contact me about my message. See our <a href="/privacy">privacy notice</a>.</label>
+      </div>
+      <p class="ferr" id="eErr" role="alert"></p>
+      <button class="btn red" type="submit" id="eGo">Send message</button>
+    </div>
+  </form>
+</div></section>
+<style>@media (max-width:900px){#ctGrid{grid-template-columns:1fr!important}}</style>
