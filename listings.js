@@ -81,9 +81,12 @@ module.exports = function (app, opts) {
       if (list.some(function (p) { return sameHome(p, quick); })) continue;
       const fresh = !rmDetails.has(String(x.id)), d = await rmDetail(String(x.id));
       if (fresh) await new Promise(function (ok) { setTimeout(ok, 800); });
-      extra.push(rmListing(x, d, kind));
+      const p = rmListing(x, d, kind), manual = {}; String(process.env.RM_GNOMEN_IDS || '').split(/[\s,]+/).forEach(function (pair) { const m = /^(\d+)[=:](\d+)$/.exec(pair); if (m) manual[m[1]] = m[2]; });
+      const pid = (d && d.gnomenPid) || manual[String(x.id)];
+      if (pid && !list.some(function (q) { return q.id === pid; })) { rmAlias[p.id] = pid; p.rmId = p.id; p.id = pid; p.url = '/property/' + pid + '/' + p.slug; }
+      extra.push(p);
     }
-    if (extra.length) console.log('Added from Rightmove (not in the Gnomen ' + (kind === 'let' ? 'lettings' : 'sales') + ' feed): ' + extra.length + ' — ' + extra.map(function (p) { return p.where; }).join('; ').slice(0, 400));
+    if (extra.length) console.log('Added from Rightmove (not in the Gnomen ' + (kind === 'let' ? 'lettings' : 'sales') + ' feed): ' + extra.length + ' — ' + extra.map(function (p) { return p.where + (p.rmId ? ' (our no. ' + p.id + ')' : ' (Rightmove no. ' + p.id + ' — Gnomen number not known)'); }).join('; ').slice(0, 600));
     return list.concat(extra).sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
   }
   async function refresh() {
@@ -101,6 +104,8 @@ module.exports = function (app, opts) {
   // ---------- Rightmove: our branch's adverts ----------
   const RM = 'https://www.rightmove.co.uk', UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'Accept-Language': 'en-GB,en;q=0.9' };
   const rmDetails = new Map();   // advert id -> { at, d }
+  let rmPidDiag = 0;
+  const rmAlias = {};   // Rightmove advert number -> our (Gnomen) property number, so old Rightmove-numbered links still work
   // Any list of advert-like objects inside a page's data.
   function dig(v, out, depth) {
     if (!v || depth > 10 || out.length > 500) return;
@@ -176,6 +181,11 @@ module.exports = function (app, opts) {
         const found = [], look = function (v, depth) { if (!v || typeof v !== 'object' || depth > 10 || found.length) return; if (!Array.isArray(v) && Array.isArray(v.images) && (v.keyFeatures || v.text || v.floorplans)) { found.push(v); return; } Object.keys(v).forEach(function (k) { look(v[k], depth + 1); }); };
         pageJson(body).forEach(function (j) { look(j, 0); });
         d = found[0] || null;
+        // Gnomen sends our property number with each advert (the brochure / details link, …pid=1650).
+        const pidM = /residentialrealtors[^"'<>\s]{0,160}?pid[=:](\d{1,7})/i.exec(body) || /action=detail,pid=(\d{1,7})/i.exec(body) || /gnomen[^"'<>\s]{0,160}?[?&,]pid=(\d{1,7})/i.exec(body);
+        if (d && pidM) d.gnomenPid = pidM[1];
+        if (d && !pidM && rmPidDiag < 3) { rmPidDiag++; const links = (body.match(/https?:\\?\/\\?\/[^"'<>\s]{6,140}/g) || []).filter(function (u) { return !/rightmove|google|gstatic|facebook|twitter|doubleclick|cookielaw|onetrust/i.test(u); }).slice(0, 8);
+          console.log('Rightmove advert ' + id + ': no Gnomen number found. Other links on it: ' + (links.join(' ') || 'none') + ' | data keys: ' + Object.keys(d).join(',').slice(0, 300)); }
       }
       // What an advert page looks like, the first couple of times one can't be read (to fix the reader).
       if (!d && rmDiag < 2) {
@@ -324,7 +334,7 @@ module.exports = function (app, opts) {
     data.at = Date.now(); data.stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(function (p) { return p.id + p.status + p.price + p.images.length; }), data.let.map(function (p) { return p.id + p.status + p.price + p.images.length; })])).digest('hex').slice(0, 12);
   }
   if (SOURCE === 'rightmove' || FEEDS.sale || FEEDS.let) { setTimeout(refreshAll, 3000); setInterval(refreshAll, (SOURCE === 'rightmove' ? 30 : 15) * 60000).unref(); }
-  const find = function (id) { return data.let.find(function (p) { return p.id === id; }) || data.sale.find(function (p) { return p.id === id; }); };
+  const find = function (id) { id = rmAlias[id] || id; return data.let.find(function (p) { return p.id === id; }) || data.sale.find(function (p) { return p.id === id; }); };
 
   // ---------- Photos: resized and cached ----------
   const imgCache = new Map(), inflight = new Map(), WIDTHS = [480, 800, 1200, 1600];
