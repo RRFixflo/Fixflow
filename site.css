@@ -720,6 +720,7 @@ body.bk-lock { overflow: hidden; }
 .xcard h3 { font-size: 1.12rem; } .xcard p { min-height: 0; }
 .xcard:hover { border-color: var(--navy); box-shadow: 0 2px 4px rgba(11,31,58,.06), 0 26px 50px -30px rgba(11,31,58,.5); }
 .xcard .btn.yellow { background: var(--navy); color: #fff; } .xcard .btn.yellow:hover { background: #13325c; }
+.x-from { display: block; margin-top: 6px; font-weight: 800; color: var(--red); } .x-from[hidden] { display: none; }
 .x-svc { display: flex; flex-direction: column; gap: 0; width: 100%; margin: 0 0 14px; border-top: 1px solid var(--line); }
 .x-svc a { display: flex; justify-content: space-between; padding: 10px 2px; border-bottom: 1px solid var(--line); color: var(--ink); font-weight: 600; font-size: .92rem; text-decoration: none; transition: color .2s, padding .2s; } .x-svc a::after { content: '→'; color: var(--red); }
 .x-svc a:hover { color: var(--red); padding-left: 6px; }
