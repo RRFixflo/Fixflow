@@ -63,7 +63,7 @@ module.exports = function (opts) {
         '<p class="news-src">Headlines from <a href="' + esc(PAGE) + '" target="_blank" rel="noopener nofollow">Property Week</a> — each opens the full story on their website.</p></div></section>';
     },
     page: function () {
-      return '<div class="phead small"><div class="wrap"><span class="eyebrow"><i></i> News</span><h1>London property news</h1><p class="lead">The latest London property headlines, updated through the day.</p></div></div>' +
+      return '<div class="phead photo small"><img class="bg" src=\"/img/u-london-night.webp\" srcset=\"/img/u-london-night-sm.webp 800w, /img/u-london-night.webp 1600w\" sizes="100vw" alt="" width="1600" height="1248"><div class="wrap"><span class="eyebrow"><i></i> News</span><h1>London property news</h1><p class="lead">The latest London property headlines, updated through the day.</p></div></div>' +
         '<section class="white"><div class="wrap">' + (items.length ? list(20) + '<p class="news-src">Headlines from <a href="' + esc(PAGE) + '" target="_blank" rel="noopener nofollow">Property Week</a> — each opens the full story on their website.</p>' : '<p class="sub">News is on its way — please check back soon.</p>') + '</div></section>';
     },
     status: function () { return { items: items.length, at: at, how: how }; }
