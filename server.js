@@ -224,15 +224,15 @@ function siteHeadFor(pg, body) {
     (pg.img ? '<link rel="preload" as="image" href="/img/' + pg.img + '.webp" imagesrcset="/img/' + pg.img + '-sm.webp 800w, /img/' + pg.img + '.webp ' + (pg.imgW || 1600) + 'w" imagesizes="100vw" fetchpriority="high">' : '') +
     '<script type="application/ld+json">' + JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c') + '</script>';
 }
-const SITE_FONTS = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">';
+const SITE_FONTS = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">';
 const WRENCH = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
 // The menu (with "Report a repair" always one tap away) and footer shared by every website page.
 function siteHeader(name, home, req) {
   const props = listings && listings.show(req) ? [['/properties-for-sale', 'Buy', 'list-sale'], ['/properties-to-rent', 'Rent', 'list-let']] : [[home, 'Home', 'home']];
   const nav = props.concat([['/sales', 'Sell', 'sales'], ['/landlords', 'Landlords', 'landlords'], ['/tenants', 'Tenants', 'tenants'], ['/about', 'About', 'about'], ['/contact', 'Contact', 'contact']])
     .map(function (n) { return '<a href="' + n[0] + '"' + (n[2] === name ? ' class="on" aria-current="page"' : '') + '>' + n[1] + '</a>'; }).join('');
-  return '<header class="top"><div class="wrap"><a class="brand" href="' + home + '" aria-label="Residential Realtors — home"><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34"></a>' +
-    '<nav class="nav" aria-label="Main menu">' + nav + '<a class="cta" href="' + (name === 'sales' ? '/sales#sales-valuation' : '/landlords#valuation') + '">Free valuation</a></nav>' +
+  return '<header class="top"><div class="wrap"><a class="brand" href="' + home + '" aria-label="Residential Realtors — home"><img src="/logo-tight.png" alt="Residential Realtors" width="122" height="38"></a>' +
+    '<nav class="nav" aria-label="Main menu">' + nav + '<a class="cta" href="' + (name === 'sales' ? '/sales#sales-valuation' : '/landlords#valuation') + '">Get a valuation</a></nav>' +
     '<a class="rep" href="/report-a-repair">' + WRENCH + '<span>Report a repair</span></a>' +
     '<button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false">☰</button></div></header>';
 }
@@ -252,10 +252,48 @@ function siteFooter(home) {
 const isSiteHost = function (req) { return SITE_HOSTS.indexOf(String(req.hostname || '').toLowerCase()) !== -1; };
 function siteShell(name, home, req) {
   let body = fs.readFileSync(path.join(__dirname, 'site', name + '.html'), 'utf8');
-  if (name === 'home') body = body.replace('<!--FEATURED-->', listings ? listings.featured(req) : '');
+  if (name === 'home') body = body.replace('<!--FEATURED-->', listings ? listings.featured(req) : '').replace('<!--HEROSEARCH-->', heroSearch(req)).replace('<!--STATS-->', heroStats(req)).replace('<!--AREAS-->', heroAreas(req)).replace('<!--EXPERTS-->', heroExperts(req));
   return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
     siteHead(name, body) + SITE_FONTS + '<link rel="stylesheet" href="/site.css"></head><body>' + siteHeader(name, home, req) + '<main>' + body + '</main>' + siteFooter(home) +
     '<script src="/site.js" defer></script></body></html>';
+}
+// Home page: a property search (when our listings are showing), the live numbers and the areas.
+const ICONS = {
+  key: '<svg viewBox="0 0 48 48"><circle cx="17" cy="17" r="9"/><circle cx="17" cy="17" r="3"/><path d="m24 24 16 16M33 33l4-4M37 37l4-4"/></svg>',
+  worth: '<svg viewBox="0 0 48 48"><path d="M6 22 24 7l18 15"/><path d="M10 19v21h12"/><circle cx="34" cy="34" r="9"/><path d="M36.5 30.5a3 3 0 0 0-5 2.2v4.6h5.5M30 35h4.5"/></svg>',
+  rent: '<svg viewBox="0 0 48 48"><circle cx="21" cy="21" r="13"/><path d="m31 31 10 10"/><path d="M14 22 21 16l7 6M16 21v7h10v-7"/></svg>',
+  buy: '<svg viewBox="0 0 48 48"><path d="M6 22 24 7l18 15"/><path d="M10 19v21h14"/><path d="m35 26 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z"/></svg>'
+};
+function heroSearch(req) {
+  const c = listings && listings.counts(req);
+  const val = '<div class="hs-val"><span>Find out your home’s sales or rental value</span><a class="btn yellow" href="/sales#sales-valuation">Get a free valuation</a></div>';
+  if (!c) return '<div class="hsearch">' + val.replace('class="hs-val"', 'class="hs-val solo"') + '</div>';
+  return '<form class="hsearch" id="hSearch" action="/properties-to-rent" method="get" role="search">' +
+    '<div class="hs-tabs" role="tablist">' + (c.sale ? '<button type="button" data-hs="buy" role="tab">Buy</button>' : '') + '<button type="button" class="on" data-hs="rent" role="tab">Rent</button></div>' +
+    '<div class="hs-box"><div class="hs-row"><input name="q" aria-label="Area, street or postcode" placeholder="Find a property by area or postcode" autocomplete="off"><button class="hs-go" type="submit">Search <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button></div>' +
+    '<div class="hs-modes"><button type="button" class="on" data-mode="list">📍 Location</button><button type="button" data-mode="map">🗺️ Map</button><button type="button" data-mode="near">➤ Near me</button></div></div>' +
+    val + '</form>';
+}
+// The four "When you need experts" cards, with live numbers where we have them.
+function heroExperts(req) {
+  const c = listings && listings.counts(req);
+  const card = function (ic, h, line, btn, href) { return '<a class="xcard rv" href="' + href + '"><span class="x-ic">' + ICONS[ic] + '</span><h3>' + h + '</h3><p>' + line + '</p><span class="btn yellow">' + btn + '</span></a>'; };
+  return '<div class="xgrid">' +
+    card('key', 'Let your property hassle-free', 'Tenant find, rent collection or full management', 'Let your property', '/landlords') +
+    card('worth', 'What’s your home worth?', 'Free, no-obligation sales and rental valuations', 'Get a valuation', '/sales#sales-valuation') +
+    card('rent', 'Find the right property to rent', c && c.let ? '<b>' + c.let + '</b> homes to rent right now' : 'Tell us what you’re looking for', 'Rent a property', c && c.let ? '/properties-to-rent' : '/contact?topic=Looking%20to%20rent') +
+    card('buy', 'Find the right property to buy', c && c.sale ? '<b>' + c.sale + '</b> homes for sale right now' : 'Register to hear about new homes first', 'Buy a property', c && c.sale ? '/properties-for-sale' : '/contact?topic=Buying') +
+    '</div>';
+}
+function heroStats(req) {
+  const c = listings && listings.counts(req);
+  if (!c || !(c.let + c.sale)) return '<p class="tb-p">Protected &amp; regulated</p>';
+  return '<div class="tb-stats">' + (c.let ? '<a href="/properties-to-rent"><b>' + c.let + '</b> homes to rent now</a>' : '') + (c.sale ? '<a href="/properties-for-sale"><b>' + c.sale + '</b> for sale</a>' : '') + '<span>Protected &amp; regulated</span></div>';
+}
+function heroAreas(req) {
+  const c = listings && listings.counts(req);
+  if (!c || !c.areas.length) return '';
+  return '<div class="areas"><span class="areas-h">Where our homes are right now</span><div class="areas-l">' + c.areas.map(function (a) { return '<a href="/properties-to-rent?q=' + encodeURIComponent(a.toLowerCase()) + '">' + siteEsc(a) + '</a>'; }).join('') + '</div></div>';
 }
 // The landlords page is its own file (calculators and valuation form); it gets the same head, menu and footer.
 function landlordsShell(home, req) {

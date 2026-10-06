@@ -278,7 +278,7 @@ module.exports = function (app, opts) {
     return (p.commercial ? '' : '<span>' + ICON.bed + (p.studio ? 'Studio' : p.beds + ' bed' + (p.beds === 1 ? '' : 's')) + '</span>') + (p.baths ? '<span>' + ICON.bath + p.baths + ' bath' + (p.baths === 1 ? '' : 's') + '</span>' : '') + (p.receptions ? '<span>' + ICON.sofa + p.receptions + ' reception' + (p.receptions === 1 ? '' : 's') + '</span>' : '');
   };
   function card(p, sizes) {
-    return '<a class="lcard" href="' + esc(p.url) + '" data-k="' + p.kind + '" data-beds="' + p.beds + '" data-price="' + Math.round(p.price) + '" data-taken="' + (p.taken ? 1 : 0) + '" data-added="' + esc(p.added) + '" data-q="' + esc((p.where + ' ' + p.type + ' ' + p.town).toLowerCase()) + '">' +
+    return '<a class="lcard" href="' + esc(p.url) + '" data-k="' + p.kind + '" data-beds="' + p.beds + '" data-price="' + Math.round(p.price) + '" data-taken="' + (p.taken ? 1 : 0) + '" data-added="' + esc(p.added) + '" data-q="' + esc((p.where + ' ' + p.type + ' ' + p.town).toLowerCase()) + '"' + (p.lat != null ? ' data-lat="' + p.lat.toFixed(5) + '" data-lng="' + p.lng.toFixed(5) + '"' : '') + '>' +
       '<div class="lph">' + (p.images.length ? pic(p, 0, sizes || '(max-width: 640px) 100vw, (max-width: 1060px) 50vw, 380px', p.headline + ', ' + p.where) : '<div class="noph">Photos coming soon</div>') +
       '<span class="lst' + (p.taken ? ' taken' : '') + '">' + esc(p.status) + '</span>' + (p.images.length > 1 ? '<span class="lcount">📷 ' + p.images.length + '</span>' : '') + '</div>' +
       '<div class="lbody"><div class="lprice">' + priceHtml(p) + '</div><h3>' + esc(p.headline) + '</h3><p class="lwhere">' + esc(p.where) + '</p><div class="lfacts">' + facts(p) + '</div>' +
@@ -298,6 +298,8 @@ module.exports = function (app, opts) {
         '<label>Max price<select name="max"><option value="">No max</option>' + prices.map(function (v) { return '<option value="' + v + '">' + gbp(v) + (kind === 'let' ? ' pcm' : '') + '</option>'; }).join('') + '</select></label>' +
         '<label>Sort<select name="sort"><option value="new">Newest</option><option value="low">Lowest price</option><option value="high">Highest price</option></select></label>' +
         '<label class="lf-chk"><input type="checkbox" name="all" checked> Include ' + (kind === 'let' ? 'let agreed' : 'under offer') + '</label></form>' +
+        '<div class="lviews" role="group" aria-label="How to show the properties"><button type="button" class="on" data-view="list">☰ List</button><button type="button" data-view="map">🗺️ Map</button><button type="button" data-view="near">➤ Near me</button><span class="lnear" id="lNear" hidden></span></div>' +
+        '<div class="lmap" id="lMap" hidden></div>' +
         '<p class="lcountline" id="lCount" aria-live="polite"></p><div class="lgrid" id="lGrid">' + items.map(function (p) { return card(p); }).join('') + '</div>' +
         '<div class="lnone" id="lNone" hidden><h3>No properties match those filters</h3><p>Try widening your search — or tell us what you’re looking for and we’ll let you know when something comes up.</p><a class="btn red" href="/contact?topic=' + (kind === 'let' ? 'Looking%20to%20rent' : 'Buying') + '">Tell us what you need →</a></div></div></section>'
       : '<section class="white"><div class="wrap" style="text-align:center;max-width:640px"><h2>Our list of properties ' + K.none + ' is on its way</h2><p class="sub" style="margin:0 auto 24px">Tell us what you’re looking for and we’ll let you know about suitable homes — or call us on 0207 096 8131.</p><a class="btn red" href="/contact?topic=' + (kind === 'let' ? 'Looking%20to%20rent' : 'Buying') + '">Tell us what you need →</a></div></section>') +
@@ -358,10 +360,21 @@ module.exports = function (app, opts) {
     // A few of the latest, for the home page.
     featured: function (req) {
       if (!show(req)) return '';
-      const pick = data.let.filter(function (p) { return !p.taken; }).slice(0, 3).concat(data.sale.filter(function (p) { return !p.taken; }).slice(0, 3));
+      const pick = data.let.concat(data.sale).filter(function (p) { return !p.taken; }).sort(function (a, b) { return String(b.added).localeCompare(String(a.added)); }).slice(0, 10);
       if (!pick.length) return '';
-      return '<section><div class="wrap"><div class="head center"><p class="kicker">On the market</p><h2>Latest properties</h2><p class="sub">Homes to rent and for sale, straight from our listings.</p></div><div class="lgrid">' + pick.map(function (p) { return card(p); }).join('') + '</div>' +
-        '<div class="btns" style="justify-content:center;margin-top:26px">' + (data.let.length ? '<a class="btn navy" href="/properties-to-rent">All properties to rent →</a>' : '') + (data.sale.length ? '<a class="btn line" href="/properties-for-sale">All properties for sale →</a>' : '') + '</div></div></section>';
+      // A swipeable row of the latest homes.
+      return '<section class="feat2"><div class="wrap"><div class="head2 row"><div><p class="kicker">On the market now</p><h2>Latest <em>homes.</em></h2></div>' +
+        '<div class="car-nav"><button type="button" class="car-b" data-car="-1" aria-label="Previous homes">‹</button><button type="button" class="car-b" data-car="1" aria-label="More homes">›</button></div></div>' +
+        '<div class="car" id="car">' + pick.map(function (p) { return card(p, '(max-width: 640px) 85vw, 360px'); }).join('') + '</div>' +
+        '<div class="btns car-all">' + (data.let.length ? '<a class="btn navy" href="/properties-to-rent">All homes to rent →</a>' : '') + (data.sale.length ? '<a class="btn line" href="/properties-for-sale">All homes for sale →</a>' : '') + '</div></div></section>';
+    },
+    // Live numbers for the home page: homes available now, and the areas they're in.
+    counts: function (req) {
+      if (!show(req)) return null;
+      const av = data.let.concat(data.sale).filter(function (p) { return !p.taken; }), n = {};
+      av.forEach(function (p) { if (p.outcode) n[p.outcode] = (n[p.outcode] || 0) + 1; });
+      return { let: data.let.filter(function (p) { return !p.taken; }).length, sale: data.sale.filter(function (p) { return !p.taken; }).length,
+        areas: Object.keys(n).sort(function (a, b) { return n[b] - n[a] || a.localeCompare(b); }).slice(0, 14) };
     },
     urls: function () { return LIVE ? data.let.concat(data.sale).map(function (p) { return p.url; }) : []; }
   };
