@@ -49,7 +49,7 @@ The owner is not a developer: explain results in plain, non-technical English, b
 - Property URLs use the Gnomen id: `/property/<gnomen id>/<slug>`. Old Gnomen-style links redirect.
 - If a published property is missing from Gnomen's feed it is filled in from the Rightmove advert; `RM_GNOMEN_IDS` maps Rightmove ids to Gnomen ids. Re-saving the property in Gnomen usually makes it appear in the feed.
 - Records are de-duplicated; let/sold Gnomen records win over Rightmove adverts.
-- Managers can take a property off the website (e.g. a duplicate listing) from Website visitors → "Same photo on more than one property"; it stays off even though Gnomen's feed still sends it (app_settings `web_hidden`, also holds pairs marked "not a duplicate") until put back. If a hidden property comes back on the market in Gnomen (let → available, a new listing date, or back in the feed), all staff get a phone alert and email once, and it is flagged red on that page (“Keep it off” or “Put back on website”).
+- Managers can take a property off the website (e.g. a duplicate listing) from Website visitors → "Same photo on more than one property"; it stays off even though Gnomen's feed still sends it (app_settings `web_hidden`, also holds pairs marked "not a duplicate") until put back. If a hidden property is published again in Gnomen after it was taken off (let → available, a newer listing date, or back in the feed after being out of it), it goes back on the website automatically (listed under “Back on the website automatically”); no alert is sent.
 
 ## How to work
 
