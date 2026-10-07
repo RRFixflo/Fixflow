@@ -8554,7 +8554,7 @@
     if (x.phone) facts.push(['Phone', esc(x.phone)]); if (x.email) facts.push(['Email', esc(x.email)]);
     if (x.address) facts.push(['Property', esc(x.address) + (d.url ? ' · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">see listing ↗</a>' : '')]);
     if (d.beds) facts.push(['Bedrooms', esc(d.beds)]); if (d.type) facts.push(['Type', esc(d.type)]); if (d.service && x.type !== 'quick') facts.push(['Wants', esc(d.service)]);
-    if (d.when) facts.push([x.type === 'sale' ? 'Selling' : 'Available', esc(d.when)]); if (d.people) facts.push(['People', esc(d.people)]); if (d.move) facts.push([d.listing === 'sale' ? 'Position' : 'Moving', esc(d.move)]);
+    if (d.when) facts.push([x.type === 'sale' ? 'Selling' : 'Available', esc(d.when)]); if (d.people) facts.push(['People', esc(d.people)]); if (d.move) facts.push([d.listing === 'sale' ? 'Position' : d.move_date ? 'Move-in date' : 'Moving', esc(d.move)]);
     if (x.type === 'cert') {
       facts.push(['Booked', (d.items || []).map(function(i){ return esc(i.name) + ' <span class="muted-note" style="margin:0">£' + Number(i.price).toFixed(2) + ' + VAT</span>'; }).join('<br>') + (d.vat != null ? '<br><span class="muted-note" style="margin:0">Subtotal £' + Number(d.subtotal).toFixed(2) + ' + VAT £' + Number(d.vat).toFixed(2) + '</span>' : '')]);
       facts.push(['Total', '<b>£' + Number(d.total || 0).toFixed(2) + '</b>' + (d.vat != null ? ' inc. VAT ' : ' ') + (d.paid_at ? '<span class="crm-flag ok">💳 Paid online ' + esc(fmtShort(d.paid_at)) + '</span>' : d.checkout_id ? '<span class="crm-flag warn">Not paid yet — payment page opened</span>' : '<span class="crm-flag warn">Take payment</span>')]);
