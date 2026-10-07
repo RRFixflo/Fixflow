@@ -371,9 +371,29 @@ module.exports = function (app, opts) {
   async function doRefresh() {
     if (SOURCE === 'rightmove') await refreshRightmove(); else await refresh();
     await loadHidden();
-    if (hidden.items.length) ['let', 'sale'].forEach(function (kind) {
-      data[kind] = data[kind].filter(function (p) { if (!isHidden(p.id) && !(p.rmId && isHidden(p.rmId))) return true; hidden.items.forEach(function (h) { if (String(h.id) === String(p.id) && !h.where) h.where = p.where; }); return false; });
-    });
+    if (hidden.items.length) {
+      const seen = {}; let changed = false; const back = [];
+      ['let', 'sale'].forEach(function (kind) {
+        data[kind] = data[kind].filter(function (p) {
+          if (!isHidden(p.id) && !(p.rmId && isHidden(p.rmId))) return true;
+          hidden.items.forEach(function (h) {
+            if (String(h.id) !== String(p.id)) return; seen[h.id] = 1;
+            if (!h.where) { h.where = p.where; changed = true; }
+            if (p.src) return;   // only Gnomen's own record says whether it's been put back on the market
+            // Put back on the market in Gnomen since we took it off: let/sold → available again, a new
+            // listing date, or back in the feed after being out of it. Tell the office once.
+            const again = (h.lastTaken === true && !p.taken) || (h.lastAdded && p.added && p.added > h.lastAdded) || (h.absentSince && Date.now() - Date.parse(h.absentSince) > 3600000);
+            if (again && !h.relisted) { h.relisted = new Date().toISOString(); back.push({ h: h, p: p }); changed = true; }
+            if (h.lastTaken !== !!p.taken || (p.added && h.lastAdded !== p.added) || h.absentSince) { h.lastTaken = !!p.taken; if (p.added) h.lastAdded = p.added; delete h.absentSince; changed = true; }
+          });
+          return false;
+        });
+      });
+      // Out of Gnomen's feed for now (let and archived, withdrawn…): noted, so its return can be spotted.
+      if (SOURCE !== 'rightmove' && (data.let.length || data.sale.length)) hidden.items.forEach(function (h) { if (!seen[h.id] && !h.absentSince) { h.absentSince = new Date().toISOString(); changed = true; } });
+      if (changed) { try { const p = opts.db && await opts.db(); if (p) await saveHidden(p); } catch (e) { console.error('Hidden properties not saved:', e.message); } }
+      back.forEach(function (b) { console.log('Taken off the website but back on the market in Gnomen: ' + b.h.where + ' (no. ' + b.h.id + ')'); if (opts.onRelisted) try { opts.onRelisted(b.h, b.p); } catch (e) { /* alert is best-effort */ } });
+    }
     const sig = function (p) { return [p.id, p.status, p.price, p.images.length, p.floorplans.length, p.vtour, p.available, p.headline, (p.html || p.short || '').length].join('|'); };
     const stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(sig), data.let.map(sig)])).digest('hex').slice(0, 12);
     // When the properties last changed: the moment we see the feed change; on first load, the latest
@@ -672,14 +692,25 @@ module.exports = function (app, opts) {
   setTimeout(function () { checkPhotos(); }, 60000); setInterval(function () { checkPhotos(); }, 2 * 3600000).unref();
 
   return {
-    photoDupes: function () { return { at: dupesAt, checking: checking, done: progress.done, total: progress.total, hidden: hidden.items,
-      groups: dupes.filter(function (g) { return hidden.ok.indexOf(g.key) === -1 && !g.homes.some(function (h) { return isHidden(h.id); }); }) }; },
+    photoDupes: function () {
+      // With when each was put on the market and last updated in Gnomen (as of now, not the last photo check).
+      const rec = {}; data.let.concat(data.sale).forEach(function (p) { rec[p.id] = p; });
+      const dated = function (h) { const p = rec[h.id] || {}; return Object.assign({}, h, { added: p.added || '', updated: p.updated || '', status: p.status || '' }); };
+      return { at: dupesAt, checking: checking, done: progress.done, total: progress.total, hidden: hidden.items,
+        groups: dupes.filter(function (g) { return hidden.ok.indexOf(g.key) === -1 && !g.homes.some(function (h) { return isHidden(h.id); }); }).map(function (g) { return Object.assign({}, g, { homes: g.homes.map(dated) }); }) };
+    },
     // Take a property off our website (or put it back); the website updates straight away.
     hide: async function (id, where, on, by) {
       const p = opts.db && await opts.db(); if (!p) throw new Error('no database'); await loadHidden(); id = String(id);
       hidden.items = hidden.items.filter(function (h) { return String(h.id) !== id; });
-      if (on) hidden.items.push({ id: id, where: String(where || '').slice(0, 160), by: String(by || '').slice(0, 80), at: new Date().toISOString() });
+      const cur = data.let.concat(data.sale).filter(function (p) { return String(p.id) === id && !p.src; })[0];
+      if (on) hidden.items.push(Object.assign({ id: id, where: String(where || '').slice(0, 160), by: String(by || '').slice(0, 80), at: new Date().toISOString() }, cur ? { lastTaken: !!cur.taken, lastAdded: cur.added || '', added: cur.added || '', updated: cur.updated || '' } : {}));
       await saveHidden(p); await refreshAll(); return hidden.items;
+    },
+    // "Keep it off": the office has seen that it's back on the market and still wants it off the website.
+    keepOff: async function (id) {
+      const p = opts.db && await opts.db(); if (!p) throw new Error('no database'); await loadHidden();
+      hidden.items.forEach(function (h) { if (String(h.id) === String(id)) delete h.relisted; }); await saveHidden(p); return hidden.items;
     },
     // "These two are fine" — a pair of properties that may share photos (e.g. same building) stops being listed.
     pairOk: async function (key, on) {
