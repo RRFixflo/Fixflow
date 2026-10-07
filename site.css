@@ -1126,3 +1126,8 @@ html, body { overflow-x: clip; }
 @media (max-width: 960px) { .hero4.reeling::before { background: linear-gradient(180deg, rgba(11,31,58,.55) 0%, rgba(11,31,58,.72) 45%, rgba(11,31,58,.9) 100%); } }
 @media (prefers-reduced-motion: reduce) { .reel img { animation: none; } .reel img:first-child { opacity: 1; } }
 .hero4.reeling { isolation: isolate; } .hero4.reeling .reel { z-index: -1; }
+
+/* Home hero: real video (falls back to the photo reel underneath if it can't play) */
+.hero4 .hvid { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1s ease; }
+.hero4 .hvid.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .hero4 .hvid { display: none; } }
