@@ -288,7 +288,7 @@
 <section class="rc" id="compare"><div class="wrap">
   <div class="rc-top rv">
     <div><p class="kicker">Compare rents near you</p><h2>What are similar homes letting for?</h2>
-      <p class="sub">Enter your postcode and number of bedrooms to see what similar homes we’re letting nearby are going for — then get an exact figure with a free valuation.</p></div>
+      <p class="sub">Enter your postcode and number of bedrooms to see what similar homes let for in your area — then get an exact figure with a free valuation.</p></div>
     <form class="rc-form" id="rcForm" novalidate>
       <label>Postcode<input name="postcode" placeholder="e.g. SE1 6AD" autocomplete="postal-code" style="text-transform:uppercase"></label>
       <label>Bedrooms<select name="beds"><option value="0">Studio</option><option value="1">1 bedroom</option><option value="2" selected>2 bedrooms</option><option value="3">3 bedrooms</option><option value="4">4 bedrooms</option><option value="5">5 or more</option></select></label>
@@ -362,12 +362,19 @@
         go.disabled = false; go.textContent = 'Compare rents →';
         if (!d.ok) { out.innerHTML = '<div class="rc-card">' + (d.error === 'rate-limited' ? 'Too many searches — please try again shortly.' : d.error === 'postcode-unknown' ? 'We couldn’t find that postcode.' : 'Please check the postcode.') + '</div>'; return; }
         var vurl = '#valuation', cta = '<div class="rc-cta"><div><b>Want an exact figure for your property?</b><span>Every home is different — condition, floor, outside space and furnishing all count. Our free valuation looks at the whole local market.</span></div><a class="btn red" href="' + vurl + '" data-rcval>Get my free valuation →</a></div>';
-        if (d.count < 2) { out.innerHTML = '<div class="rc-card"><h3>We don’t have enough similar ' + bedTxt(d.beds) + ' listed near ' + d.postcode + ' right now</h3><p>Get a free valuation and we’ll compare everything letting in your area for you.</p></div>' + cta; return; }
-        var span = d.high - d.low || 1, pos = Math.round((d.mid - d.low) / span * 100);
-        out.innerHTML = '<div class="rc-card rc-res"><p class="rc-k">' + d.count + ' similar ' + bedTxt(d.beds) + ' we’re letting within ' + d.radius + ' mile' + (d.radius === 1 ? '' : 's') + ' of ' + d.postcode + '</p>' +
-          '<div class="rc-range"><div><span>From</span><b>' + gbp(d.low) + '</b></div><div class="rc-mid"><span>Typical</span><b>' + gbp(d.mid) + '</b><small>per month</small></div><div><span>Up to</span><b>' + gbp(d.high) + '</b></div></div>' +
-          '<div class="rc-bar"><i style="left:' + pos + '%"></i></div><p class="rc-note">Asking rents on our current adverts, for guidance only — not a valuation.</p></div>' +
-          '<div class="lgrid rc-grid">' + d.html + '</div>' + cta;
+        var bt = bedTxt(d.beds);
+        if (d.source === 'market') {
+          if (!d.mid) { out.innerHTML = '<div class="rc-card"><h3>Not enough similar ' + bt + ' advertised near ' + d.postcode + ' right now</h3><p>Get a free valuation and we’ll look at the whole local market for you.</p></div>' + cta; return; }
+          var span = d.high - d.low || 1, pos = d.high ? Math.round((d.mid - d.low) / span * 100) : 50;
+          out.innerHTML = '<div class="rc-card rc-res"><p class="rc-k">' + (d.count ? d.count + ' similar ' : 'Similar ') + bt + ' advertised to let' + (d.radius ? ' within ' + d.radius + ' mile' + (d.radius === 1 ? '' : 's') : ' nearby') + ' of ' + d.postcode + '</p>' +
+            '<div class="rc-range">' + (d.low ? '<div><span>From</span><b>' + gbp(d.low) + '</b></div>' : '') + '<div class="rc-mid"><span>Average</span><b>' + gbp(d.mid) + '</b><small>per month</small></div>' + (d.high ? '<div><span>Up to</span><b>' + gbp(d.high) + '</b></div>' : '') + '</div>' +
+            (d.high ? '<div class="rc-bar"><i style="left:' + pos + '%"></i></div>' : '') + '<p class="rc-note">Asking rents across all agents and property portals, from PropertyData. A guide only — not a valuation.</p></div>' + cta;
+          return;
+        }
+        if (!d.mid) { out.innerHTML = '<div class="rc-card"><h3>We don’t have figures for ' + (d.area || d.postcode) + ' yet</h3><p>Get a free valuation and we’ll look at the whole local market for you.</p></div>' + cta; return; }
+        out.innerHTML = '<div class="rc-card rc-res"><p class="rc-k">Average rent for ' + (d.beds === 0 ? '1 bedroom homes (the nearest to a studio)' : d.beds >= 4 ? '4+ bedroom homes' : bt) + ' in ' + d.area + '</p>' +
+          '<div class="rc-range"><div class="rc-mid"><span>Average</span><b>' + gbp(d.mid) + '</b><small>per month' + (d.month ? ' · ' + d.month : '') + '</small></div>' + (d.all ? '<div><span>All sizes</span><b>' + gbp(d.all) + '</b></div>' : '') + '</div>' +
+          '<p class="rc-note">Official average for all private rented homes in the borough, from the Office for National Statistics. Rents vary street by street — a guide only, not a valuation.' + (d.slug ? ' <a href="/london-rents/' + d.slug + '">More about rents in ' + d.area + ' →</a>' : '') + '</p></div>' + cta;
       }).catch(function(){ go.disabled = false; go.textContent = 'Compare rents →'; err.textContent = 'Couldn’t connect — please try again.'; });
     }
     f.addEventListener('submit', function(e){ e.preventDefault(); run(); });

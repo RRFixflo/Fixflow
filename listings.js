@@ -375,33 +375,40 @@ module.exports = function (app, opts) {
     res.json({ ok: true, let: data.let.length, sale: data.sale.length, changed: data.changedAt });
   });
   // ---------- Rent comparison for landlords (website) ----------
-  // Homes we're letting (or have just let) near a postcode with the same number of bedrooms:
-  // the range and middle rent, and the homes themselves. Only our own published adverts.
-  const pcGeo = new Map(), rcHits = new Map();
+  // What similar homes let for near a postcode: asking rents across the whole market (all agents and portals)
+  // from PropertyData's licensed API when PROPERTYDATA_API_KEY is set, otherwise the ONS average for the
+  // borough and bedroom count. Never our own adverts, and never scraped from Rightmove or other portals.
+  const pcGeo = new Map(), rcHits = new Map(), pdCache = new Map();
   async function geoPostcode(pc) {
     if (pcGeo.has(pc)) return pcGeo.get(pc);
     try { const r = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc), { signal: AbortSignal.timeout(6000) }); const j = r.ok ? await r.json() : null, x = j && j.result;
-      const g = x ? { lat: x.latitude, lng: x.longitude, outcode: x.outcode, area: x.admin_district || '' } : null; if (g) pcGeo.set(pc, g); return g; } catch (e) { return null; }
+      const g = x ? { lat: x.latitude, lng: x.longitude, outcode: x.outcode, area: x.admin_district || '', gss: (x.codes && x.codes.admin_district) || '' } : null; if (g) pcGeo.set(pc, g); return g; } catch (e) { return null; }
   }
-  const miles = function (a, b, c, d) { const R = 3958.8, t = Math.PI / 180, x = Math.sin((c - a) * t / 2), y = Math.sin((d - b) * t / 2); return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * t) * Math.cos(c * t) * y * y)); };
+  async function marketRents(pc, beds) {
+    const key = process.env.PROPERTYDATA_API_KEY; if (!key) return null;
+    const ck = pc + '|' + beds, hit = pdCache.get(ck); if (hit && Date.now() - hit.at < 86400000) return hit.v;
+    try {
+      const r = await fetch('https://api.propertydata.co.uk/rents?key=' + encodeURIComponent(key) + '&postcode=' + encodeURIComponent(pc) + '&bedrooms=' + Math.min(beds, 5), { signal: AbortSignal.timeout(10000) });
+      const j = await r.json(), L = j && j.data && j.data.long_let;
+      if (!L || !L.average) { console.error('PropertyData rents:', r.status, JSON.stringify(j).slice(0, 300)); return null; }
+      const k = /week/.test(String(L.unit || 'gbp_per_week')) ? 52 / 12 : 1, rg = L['80pc_range'] || L['70pc_range'] || L['90pc_range'] || [];
+      const v = { mid: Math.round(L.average * k), low: rg[0] ? Math.round(rg[0] * k) : 0, high: rg[1] ? Math.round(rg[1] * k) : 0, count: parseInt(L.points_analysed, 10) || 0, radius: parseFloat(L.radius) || 0 };
+      pdCache.set(ck, { at: Date.now(), v: v }); if (pdCache.size > 2000) pdCache.clear(); return v;
+    } catch (e) { console.error('PropertyData rents failed:', e.message); return null; }
+  }
   app.get('/api/public/rent-compare', async function (req, res) {
     const ip = String(req.headers['cf-connecting-ip'] || req.ip || ''), now = Date.now(), h = (rcHits.get(ip) || []).filter(function (t) { return now - t < 600000; });
     if (h.length >= 30) return res.status(429).json({ ok: false, error: 'rate-limited' }); h.push(now); rcHits.set(ip, h); if (rcHits.size > 5000) rcHits.clear();
     const m = /^([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})$/i.exec(String(req.query.postcode || '').trim());
     if (!m) return res.status(400).json({ ok: false, error: 'postcode' });
     const pc = (m[1] + ' ' + m[2]).toUpperCase(), beds = Math.max(0, Math.min(6, parseInt(req.query.beds, 10) || 0));
-    const g = await geoPostcode(pc.replace(' ', '')) || {}, out = m[1].toUpperCase(), hasGeo = isFinite(g.lat) && isFinite(g.lng);
-    const same = data.let.filter(function (p) { return !p.commercial && p.price > 0 && (beds === 0 ? p.studio || p.beds === 0 : beds >= 5 ? p.beds >= 5 : p.beds === beds && !p.studio); })
-      .map(function (p) { return { p: p, d: hasGeo && p.lat != null ? miles(g.lat, g.lng, p.lat, p.lng) : (p.outcode === out ? 0.5 : 99) }; });
-    let radius = 1, near = [];
-    for (const r of [1, 2, 3, 5]) { radius = r; near = same.filter(function (x) { return x.d <= r; }); if (near.length >= 4) break; }
-    near.sort(function (a, b) { return a.d - b.d; }); near = near.slice(0, 12);
-    const prices = near.map(function (x) { return Math.round(x.p.price); }).sort(function (a, b) { return a - b; });
-    const mid = prices.length ? (prices.length % 2 ? prices[(prices.length - 1) / 2] : Math.round((prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2)) : 0;
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, postcode: pc, area: g.area || '', beds: beds, radius: radius, count: near.length,
-      low: prices[0] || 0, high: prices[prices.length - 1] || 0, mid: mid,
-      html: near.slice(0, 3).map(function (x) { return card(x.p, '(max-width: 640px) 100vw, 360px').replace('<div class="lbody">', '<div class="lbody"><span class="rc-dist">' + (x.d < 0.1 ? 'Very close' : x.d.toFixed(1) + ' miles away') + '</span>'); }).join('') });
+    const mk = await marketRents(pc.replace(' ', ''), beds);
+    if (mk) return res.json({ ok: true, source: 'market', postcode: pc, beds: beds, radius: mk.radius, count: mk.count, low: mk.low, high: mk.high, mid: mk.mid });
+    const g = await geoPostcode(pc.replace(' ', ''));
+    if (!g) return res.json({ ok: false, error: 'postcode-unknown' });
+    const o = opts.onsBeds ? opts.onsBeds(g.gss, beds) : null;
+    res.json({ ok: true, source: 'ons', postcode: pc, beds: beds, area: g.area, gss: g.gss, slug: o ? o.slug : '', mid: o ? o.rent : 0, month: o ? o.month : '', all: o ? o.all : 0 });
   });
   const find = function (id) { id = rmAlias[id] || id; return data.let.find(function (p) { return p.id === id; }) || data.sale.find(function (p) { return p.id === id; }); };
 

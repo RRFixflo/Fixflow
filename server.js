@@ -335,7 +335,7 @@ function heroExperts(req) {
     card('key', 'Let your property hassle-free', 'Pick the service that suits you',
       '<div class="x-svc"><a href="/landlords?svc=Tenant%20Find#valuation">Tenant find</a><a href="/landlords?svc=Rent%20Collection#valuation">Rent collection</a><a href="/landlords?svc=Fully%20Managed#valuation">Full management</a></div>',
       'Let your property', '/landlords') +
-    card('worth', 'What rent could you get?', 'Compare similar homes we’re letting near you',
+    card('worth', 'What rent could you get?', 'Compare rents for similar homes near you',
       '<form class="x-form x-val" action="/landlords" method="get"><input name="postcode" aria-label="Your postcode" placeholder="Your postcode" autocomplete="postal-code" style="text-transform:uppercase"><span class="x-val-b"><select name="beds" aria-label="Bedrooms"><option value="0">Studio</option><option value="1">1 bed</option><option value="2" selected>2 beds</option><option value="3">3 beds</option><option value="4">4 beds</option><option value="5">5+ beds</option></select><button type="submit" formaction="/landlords#compare">Compare</button></span></form><a class="x-sale" href="/sales#sales-valuation">Selling instead? Get a sales valuation →</a>',
       '', '') +
     '<div class="xcard xdiy rv"><div class="xd-top"><span class="xd-chip"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg> Do it yourself</span>' +
@@ -396,7 +396,7 @@ function sendBuilt(req, res, meta, body) {
 const news = require('./news')();
 const updates = require('./updates')(app, { siteUrl: SITE_URL, refuseBot: function (req, res, b, t) { return jobs && jobs.refuseBot ? jobs.refuseBot(req, res, b, t) : Promise.resolve(false); }, db: function () { return jobs.db(); }, sendMail: function (o) { return jobs.sendMail(o); }, alert: function (o) { return jobs.alert(o); }, isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); }, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
 require('./portaldemo')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
-const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, db: function () { return jobs ? jobs.db() : null; },  isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
+const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, onsBeds: function (g, b) { return areas.onsBeds(g, b); }, db: function () { return jobs ? jobs.db() : null; },  isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
 const areas = require('./areas')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, listings: function () { return listings; } });
 // On the website's own address, /home is the same page as / — send search engines to one address.
 app.get('/home', (req, res, next) => { if (isSiteHost(req)) return res.redirect(301, '/'); next(); });
