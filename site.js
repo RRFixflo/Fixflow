@@ -303,6 +303,21 @@
       '<p class="rd-note">A quick guide based on your answers, not legal advice. Requirements depend on the property — see the essentials below.</p>';
     out.hidden = false; out.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+  // "Should you switch letting agent?" score.
+  var swf = document.getElementById('swForm');
+  if (swf) swf.addEventListener('submit', function (e) {
+    e.preventDefault(); var err = document.getElementById('swErr'), out = document.getElementById('swRes'), sc = 0, left = 0, weak = [];
+    var GOOD = ['A reply within one working day, even if it’s just “we’re on it”.', 'A clear statement every month showing rent, fees and costs.', 'Rent passed on promptly and reliably, every month.', 'Repairs logged, booked with a trusted contractor and you kept updated.', 'Regular updates about the property and tenant, without chasing.', 'A yearly rent review against what similar homes are letting for.', 'Certificates tracked, with reminders well before they expire.', 'Quick, well-referenced re-lets, so empty weeks are kept down.', 'Fees agreed up front and shown on every statement.', 'A named person who knows you and your property.'];
+    swf.querySelectorAll('.sw-q').forEach(function (q) { var c = q.querySelector('input:checked'); q.classList.toggle('miss', !c); if (!c) left++; else { sc += +c.value; if (+c.value < 7) weak.push(+q.dataset.i); } });
+    if (left) { err.textContent = 'Please answer every question (' + left + ' left).'; var m = swf.querySelector('.sw-q.miss'); if (m) m.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    err.textContent = '';
+    var band = sc >= 80 ? ['Your agent is doing well', 'Sounds like you’re in good hands. If anything changes, we’re here.'] : sc >= 50 ? ['Room to improve', 'Some things are working, but a few areas are letting you down.'] : ['Worth a second opinion', 'Several important areas aren’t working. It may be time to look at other options.'];
+    out.innerHTML = '<div class="rd-score"><span class="rd-ring" style="--p:' + sc + '"><b>' + sc + '</b></span><div><h3>' + band[0] + '</h3><p>Your score: ' + sc + ' out of 100. ' + band[1] + '</p></div></div>' +
+      (weak.length ? '<h4>Where your agent could do better, and what good looks like</h4><ul class="rd-list">' + weak.map(function (i) { return '<li class="todo"><span>' + GOOD[i] + '</span></li>'; }).join('') + '</ul>' : '') +
+      '<div class="btns"><a class="btn red" href="/contact?topic=Landlord&message=' + encodeURIComponent('I scored my current letting agent ' + sc + '/100 and would like a confidential second opinion.') + '">Get a confidential second opinion →</a><a class="btn line" href="/landlords#services">See our services</a></div>' +
+      '<p class="rd-note">Your answers stay in your browser unless you choose to contact us.</p>';
+    out.hidden = false; out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
   // Home page certificates section: each service's price from the price list.
   var hcp = document.querySelectorAll('[data-cert-price]');
   if (hcp.length) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {

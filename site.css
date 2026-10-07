@@ -1192,3 +1192,11 @@ html, body { overflow-x: clip; }
 .cp-more { margin-top: 20px; padding: 16px 20px; border-radius: 16px; background: #f1f4f9; color: var(--ink); } .cp-more a { color: var(--red); font-weight: 700; }
 @media (max-width: 1000px) { .cp-g { grid-template-columns: 1fr 1fr; } } @media (max-width: 640px) { .cp-g { grid-template-columns: 1fr; } .rd, .cp { padding: 50px 0; } .rd-res { padding: 20px; } }
 .rl { padding: 64px 0 80px; background: #fff; border-top: 1px solid var(--line); }
+
+/* Switch agent + overseas landlords */
+.sw-how { display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; align-items: start; }
+.sw-how h2 { margin: 4px 0 14px; color: var(--navy); font-size: clamp(1.5rem, 3vw, 2.1rem); } .sw-how p { color: var(--soft); } .sw-how p a, .sw-faq a { color: var(--red); font-weight: 700; }
+.sw-faq { padding: 22px; border-radius: 20px; background: #f6f7fb; border: 1px solid var(--line); } .sw-faq h3 { margin: 0 0 8px; color: var(--navy); }
+.sw-faq details { border-top: 1px solid var(--line); padding: 12px 0; } .sw-faq summary { cursor: pointer; font-weight: 700; color: var(--navy); } .sw-faq details p { margin: 8px 0 0; font-size: .94rem; }
+.rd .sw-how .rv > p { font-size: 1rem; }
+@media (max-width: 900px) { .sw-how { grid-template-columns: 1fr; gap: 24px; } }
