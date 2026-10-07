@@ -17,8 +17,17 @@ module.exports = function (app, opts) {
   const REGIONS = [['Central', 'Central London'], ['North', 'North London'], ['East', 'East London'], ['South', 'South London'], ['West', 'West London']];
   const SOURCE = '<p class="ar-src">Source: Office for National Statistics — Price Index of Private Rents and UK House Price Index. Average rents are for all private rented homes in the area, not only homes we let. Contains public sector information licensed under the <a href="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/" rel="noopener">Open Government Licence v3.0</a>.</p>';
   const cta = function (where) {
-    return '<section class="ar-cta"><div class="wrap ar-cta-in"><div><h2>Letting a property in ' + esc(where) + '?</h2><p>Get a free rental valuation from a local agent, or compare similar homes we’re letting.</p></div>' +
+    return '<section class="ar-cta"><div class="wrap ar-cta-in"><div><h2>Letting a property in ' + esc(where) + '?</h2><p>Get a free rental valuation from a local agent, or compare rents for similar homes near you.</p></div>' +
       '<div class="btns"><a class="btn red" href="/landlords#valuation">Free rental valuation →</a><a class="btn line" href="/landlords#compare">Compare rents</a></div></div></section>';
+  };
+
+  // A table of average rent by bedrooms: one row per borough, sortable (site.js), the current one highlighted.
+  const table = function (list, cur) {
+    const cell = function (v) { return '<td data-v="' + (v || 0) + '">' + (v ? gbp(v) : '–') + '</td>'; };
+    return '<div class="ar-tw"><table class="ar-tbl"><thead><tr><th data-k="0" scope="col">Borough</th><th data-k="1" scope="col">1 bed</th><th data-k="2" scope="col">2 bed</th><th data-k="3" scope="col">3 bed</th><th data-k="4" scope="col">4+ beds</th><th data-k="5" scope="col">All homes</th></tr></thead><tbody>' +
+      list.map(function (a) { const g = fig(a), b = g.beds || {};
+        return '<tr' + (a === cur ? ' class="on"' : '') + '><th scope="row" data-v="' + esc(a.name) + '"><a href="/london-rents/' + a.slug + '">' + esc(a.name) + '</a></th>' + cell(b['1']) + cell(b['2']) + cell(b['3']) + cell(b['4']) + cell(g.rent) + '</tr>'; }).join('') +
+      '</tbody></table></div><p class="ar-tnote">Average monthly rent (pcm) for all private rented homes in each borough, ONS. Tap a column heading to sort.</p>';
   };
 
   // One borough.
@@ -39,6 +48,7 @@ module.exports = function (app, opts) {
       h += '<div class="ar-card ar-beds rv"><h2>Average rent by bedrooms' + (f.bedsMonth ? ' <small>' + esc(f.bedsMonth) + '</small>' : '') + '</h2>' + bk.map(function (k) {
         return '<div class="ar-bar"><span>' + (k === '4' ? '4+ beds' : k + ' bed') + '</span><i style="--w:' + Math.round(beds[k] / max * 100) + '%"></i><b>' + gbp(beds[k]) + '</b></div>'; }).join('') + '</div>';
     }
+    if (f.rent) h += '<div class="ar-card ar-beds rv"><h2>' + esc(a.name) + ' compared with nearby boroughs</h2>' + table([a].concat(a.near.map(function (x) { return BY[x]; }).filter(function (b) { return fig(b).rent; })), a) + '</div>';
     if (!f.rent && !f.price) h += '<div class="ar-card rv"><b>' + (a.gss === 'E09000001' ? 'No official average' : 'Figures coming soon') + '</b><span>' + (a.gss === 'E09000001' ? 'The ONS doesn’t publish average rents for the City of London because too few homes are in its survey. ' : '') + 'Call us on <a href="tel:02070968131">0207 096 8131</a> for a rental valuation in ' + esc(a.name) + '.</span></div>';
     h += '</div>' + (f.rent || f.price ? '<div class="wrap">' + SOURCE.replace('</p>', (f.source ? ' <a href="' + esc(f.source) + '" rel="noopener">See the ONS figures for ' + esc(a.name) + '</a>.' : '') + '</p>') + '</div>' : '') + '</section>';
     const homes = opts.listings && opts.listings() ? opts.listings().near(req, a.outcodes, 8) : '';
@@ -58,7 +68,7 @@ module.exports = function (app, opts) {
     const L = ons.london || {};
     let h = '<section class="ar-hero"><div class="wrap"><p class="ar-kick">London rents</p><h1>Rental values across London</h1>' +
       '<p class="ar-lead">Average monthly rents for every London borough, from official ONS figures' + (L.rent ? '. The London average is <b>' + gbp(L.rent) + ' a month</b>' + (L.rentMonth ? ' (' + esc(L.rentMonth) + ')' : '') : '') + '.</p></div></section>';
-    h += '<section class="ar-main"><div class="wrap">' + REGIONS.map(function (r, i) {
+    h += '<section class="ar-main"><div class="wrap"><div class="ar-card ar-all rv"><h2>Average rent by bedrooms in every borough</h2>' + table(AREAS.filter(function (a) { return fig(a).rent; }).sort(function (x, y) { return x.name.localeCompare(y.name); })) + '</div><h2 class="ar-h2">Boroughs by area</h2>' + REGIONS.map(function (r, i) {
       const list = AREAS.filter(function (a) { return a.region === r[0]; });
       return '<details class="ar-reg"' + (i === 0 ? ' open' : '') + '><summary>' + r[1] + '<span>' + list.length + ' boroughs</span></summary><ul class="ar-list">' + list.map(function (a) { const g = fig(a); return '<li><a href="/london-rents/' + a.slug + '">' + esc(a.name) + (g.rent ? '<span>' + gbp(g.rent) + ' pcm</span>' : '') + '</a></li>'; }).join('') + '</ul></details>';
     }).join('') + SOURCE + '</div></section>' + cta('London');
@@ -129,7 +139,7 @@ module.exports = function (app, opts) {
   const onsBeds = function (gss, beds) {
     const a = AREAS.find(function (x) { return x.gss === gss; }); if (!a) return null;
     const f = fig(a), k = String(Math.max(1, Math.min(4, beds || 1))), v = (f.beds || {})[k];
-    return { slug: a.slug, name: a.name, rent: v || 0, month: f.bedsMonth || f.rentMonth || '', all: f.rent || 0 };
+    return { slug: a.slug, name: a.name, rent: v || 0, month: f.bedsMonth || f.rentMonth || '', all: f.rent || 0, beds: f.beds || null };
   };
 
   return { parseOns: parseOns, onsBeds: onsBeds, urls: function () { return ['/london-rents'].concat(AREAS.filter(function (a) { return fig(a).rent; }).map(function (a) { return '/london-rents/' + a.slug; })); } };

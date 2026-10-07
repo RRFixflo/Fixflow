@@ -408,7 +408,7 @@ module.exports = function (app, opts) {
     const g = await geoPostcode(pc.replace(' ', ''));
     if (!g) return res.json({ ok: false, error: 'postcode-unknown' });
     const o = opts.onsBeds ? opts.onsBeds(g.gss, beds) : null;
-    res.json({ ok: true, source: 'ons', postcode: pc, beds: beds, area: g.area, gss: g.gss, slug: o ? o.slug : '', mid: o ? o.rent : 0, month: o ? o.month : '', all: o ? o.all : 0 });
+    res.json({ ok: true, source: 'ons', postcode: pc, beds: beds, area: g.area, gss: g.gss, slug: o ? o.slug : '', mid: o ? o.rent : 0, month: o ? o.month : '', all: o ? o.all : 0, table: o && o.beds ? o.beds : null });
   });
   const find = function (id) { id = rmAlias[id] || id; return data.let.find(function (p) { return p.id === id; }) || data.sale.find(function (p) { return p.id === id; }); };
 
