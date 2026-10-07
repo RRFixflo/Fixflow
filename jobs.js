@@ -6568,6 +6568,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
     });
   }
   const EPC_BUILDING = ['house', 'court', 'apartments', 'mansions', 'lodge', 'tower', 'point', 'building', 'buildings', 'block', 'heights', 'wharf', 'gardens', 'place', 'lodge', 'hall'];
+  // The newest certificate whose door numbers are exactly ours and which shares a distinctive name word
+  // (building or street) with one of our spellings — for finding a renewed EPC listed under another spelling.
+  function epcSameHome(addresses, results) {
+    const GEN = { flat: 1, apartment: 1, london: 1, road: 1, street: 1, lane: 1, avenue: 1, house: 1, court: 1, close: 1, greater: 1, the: 1, and: 1, floor: 1, first: 1, second: 1, ground: 1, top: 1 };
+    const nums = function (v) { return (String(v).replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function (x) { return x.toUpperCase(); }).sort().join(','); };
+    const words = function (v) { return String(v).replace(POSTCODE_RE, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 4 && !GEN[w]; }); };
+    const ours = addresses.map(function (a) { return { n: nums(a), w: words(a) }; }).filter(function (o) { return o.n; });
+    if (!ours.length) return null;
+    return (results || []).filter(function (r) {
+      if (!r.expires_on) return false; const n = nums(r.address), w = words(r.address);
+      return ours.some(function (o) { return o.n === n && o.w.some(function (x) { return w.indexOf(x) !== -1; }); });
+    }).sort(function (x, y) { return y.expires_on.localeCompare(x.expires_on); })[0] || null;
+  }
   function epcMatch(address, results) {
     const aw = epcWords(address);
     const cands = epcCandidates(address, results);
@@ -6800,8 +6813,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // 30 days; ones expiring within 60 days (or expired) weekly, to catch a renewal.
   async function autoEpc(p, onlyAddress, limit) {
     const props = onlyAddress ? [{ key: propKey(onlyAddress), address: onlyAddress }] : await allProperties(p);
-    const epc = {}, checked = {};
-    (await p.query("SELECT property_key, expires_on FROM property_certificates WHERE type = 'EPC'")).rows.forEach(function (r) { epc[r.property_key] = r.expires_on; });
+    const epc = {}, checked = {}, epcRef = {};
+    (await p.query("SELECT property_key, expires_on, reference FROM property_certificates WHERE type = 'EPC'")).rows.forEach(function (r) { epc[r.property_key] = r.expires_on; epcRef[r.property_key] = r.reference; });
     const synced = {};
     (await p.query('SELECT property_key, checked_at, address_synced FROM epc_checks')).rows.forEach(function (r) { checked[r.property_key] = new Date(r.checked_at).getTime(); synced[r.property_key] = r.address_synced; });
     const now = Date.now(), soon = new Date(now + 60 * 86400000).toISOString().slice(0, 10), today = new Date(now).toISOString().slice(0, 10);
@@ -6814,14 +6827,23 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (epc[x.key] < today) return age > 86400000;   // expired: daily, to catch the new one
       return epc[x.key] <= soon && age > 7 * 86400000;
     });
-    const cache = {}; let found = 0, done = 0, newAddress = null;
+    const cache = {}; let found = 0, done = 0, newAddress = null, latest = null;
     for (const x of todo.slice(0, limit || 1000)) {
       const m = POSTCODE_RE.exec(x.address), pc = (m[1] + ' ' + m[2]).toUpperCase();
       try {
         if (!cache[pc]) { cache[pc] = (await epcSearch(pc)).results; await new Promise(function (r) { setTimeout(r, 1200); }); }
       } catch (err) { console.error('EPC register lookup failed for ' + pc + ':', err.message); break; }
       done += 1;
-      const hit = epcMatch(x.address, cache[pc]);
+      let hit = epcMatch(x.address, cache[pc]);
+      // The certificate we already have, as the register spells it: a newer one for the same home is often
+      // listed under a slightly different address (e.g. "Flat 3" vs "3"), so look with that spelling too.
+      const mine = epcRef[x.key] && cache[pc].filter(function (r) { return r.reference === epcRef[x.key]; })[0];
+      const viaOld = mine ? epcMatch(mine.address, cache[pc]) : null;
+      if (viaOld && (!hit || String(viaOld.expires_on) > String(hit.expires_on))) hit = viaOld;
+      // Still older than a certificate for the same door numbers and building/street name: that's the same home.
+      const newer = epcSameHome([x.address].concat(mine ? [mine.address] : []), cache[pc]);
+      if (newer && (!hit || String(newer.expires_on) > String(hit.expires_on))) hit = newer;
+      if (onlyAddress) latest = hit ? { expires_on: hit.expires_on, rating: hit.rating, reference: hit.reference } : null;
       await p.query(`INSERT INTO epc_checks (property_key, checked_at, found, address_synced) VALUES ($1, now(), $2, true)
         ON CONFLICT (property_key) DO UPDATE SET checked_at = now(), found = excluded.found, address_synced = true`, [x.key, !!hit]);
       if (!hit) {
@@ -6845,7 +6867,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (renamed) { newAddress = renamed; console.log('Address updated from the EPC register: ' + x.address + ' → ' + renamed); }
     }
     if (found) raiseCertificateJobs().catch(function () {});
-    return { checked: done, found: found, remaining: Math.max(0, todo.length - done), address: newAddress };
+    return { checked: done, found: found, remaining: Math.max(0, todo.length - done), address: newAddress, latest: latest };
   }
   // Tenant page address finder: every home at a postcode, from the public EPC
   // register (domestic), tidied. Cached for a day; limited per visitor.
