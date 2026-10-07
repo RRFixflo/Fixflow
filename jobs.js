@@ -210,6 +210,7 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS charge_vat BOOLEAN NOT NULL DEFAULT fa
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS no_charge_at TIMESTAMPTZ;
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_photo_token_idx ON jobs (photo_token);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS track_token TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS urgency_check JSONB;
 CREATE TABLE IF NOT EXISTS job_parts (
   id          SERIAL PRIMARY KEY,
   job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
@@ -1224,7 +1225,7 @@ const SOURCES = ['Online report', 'Phone call', 'Email', 'Text / WhatsApp', 'In 
 // the list stays quick however many jobs there are.
 // Description and access details are included so several jobs can be sent to a
 // contractor together straight from the list.
-const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, due_at, tenant_name, tenant_email,
+const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, urgency_check, due_at, tenant_name, tenant_email,
   tenant_phone, property_address, category, affected, symptom, location, description, access_days,
   access_time, access_notes, key_permission, key_instructions, direct_contact, summary, appointment_date, appointment_time, assigned_to, assigned_to_2, task_2, part_done_by, next_steps,
   estimated_cost, actual_cost, landlord_charge, cost_vat, charge_vat, completed_at, completion_notes, photo_count, source,
@@ -1733,26 +1734,40 @@ module.exports = function mountJobs(app, opts) {
   }
 
   // ---------- Saving a submitted report ----------
+  // How urgent a problem usually is, from what the tenant picked and wrote (the same rules as the report form).
+  const URG_RANK = { Routine: 0, Urgent: 1, Emergency: 2 };
+  function suggestUrgency(r) {
+    const t = [r.category, r.affected, r.symptom].join(' ').toLowerCase(), d = String(r.description || '').toLowerCase();
+    if (/smell gas|gas leak|fire|smoke|sparking|burning smell|carbon monoxide|co alarm|flood|burst|sewage|no power|no electricity|can.?t lock|cannot lock|won.?t lock|front door.*(broken|won|can)|break.?in|insecure/.test(t + ' ' + d)) return 'Emergency';
+    if (/damp|mould|mold|condensation/.test(t) && !/leak|dripping|flood/.test(t)) return 'Routine';
+    if (/no heating|no hot water|not heating|boiler|leak|dripping|only toilet|toilet.*(blocked|won.?t flush|not flushing)|blocked|lock|front door|entrance door|broken (window|glass)|window.*(won.?t|can.?t) (close|lock)|fridge|freezer|pest|rat|mice|mouse|vermin|electric|power|trip hazard|handrail|step|stairs|smoke alarm|alarm|beeping/.test(t)) return 'Urgent';
+    return 'Routine';
+  }
   async function saveReport(r, pdfBase64, pdfFilename, reportText, photos) {
     const p = await db();
     if (!p) return null;
     r = r || {};
     const urgency = URGENCIES.indexOf(r.urgency) !== -1 ? r.urgency : 'Routine';
     const dueAt = new Date(Date.now() + DUE_HOURS[urgency] * 3600 * 1000);
+    // The tenant's reasons for Emergency / Urgent, and whether it looks over-marked (staff decide).
+    const reasons = (Array.isArray(r.emergencyReasons) ? r.emergencyReasons : []).map(function (x) { return str(x, 80); }).filter(Boolean).slice(0, 10);
+    const suggested = suggestUrgency(r), why = str(r.urgentReason, 500) || '';
+    const over = URG_RANK[urgency] > URG_RANK[suggested] && !(urgency === 'Emergency' && reasons.length);
+    const check = { suggested: suggested, reasons: reasons, why: why, over: over };
     const pdf = pdfBase64 ? Buffer.from(pdfBase64, 'base64') : null;
     try { r.address = await canonicalAddress(p, r.address); } catch (e) { /* keep as typed */ }
     const res = await p.query(
       `INSERT INTO jobs (urgency, due_at, tenant_name, tenant_email, tenant_phone, property_address,
          category, affected, symptom, location, description, access_days, access_time, access_notes,
-         key_permission, key_instructions, photo_count, report_text, pdf_filename, pdf)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+         key_permission, key_instructions, photo_count, report_text, pdf_filename, pdf, urgency_check)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        RETURNING id`,
       [urgency, dueAt, str(r.name, 200), str(r.email, 200), str(r.phone, 50), str(r.address, 500),
         str(r.category, 200), str(r.affected, 200), str(r.symptom, 200), str(r.location, 200),
         str(r.description, 5000), str(Array.isArray(r.accessDays) ? r.accessDays.join(', ') : r.accessDays, 100),
         str(r.accessTime, 50), str(r.accessNotes, 1000), str(r.keyPermission, 10), str(r.keyInstructions, 1000),
         Math.max(0, Math.min(50, parseInt(r.photoCount, 10) || 0)), str(reportText, 20000),
-        str(pdfFilename, 200), pdf]
+        str(pdfFilename, 200), pdf, JSON.stringify(check)]
     );
     const id = res.rows[0].id;
     // If we know whose property this is, record the landlord on the job.
@@ -1765,9 +1780,9 @@ module.exports = function mountJobs(app, opts) {
     // A problem here shouldn't lose the report itself.
     try { await insertPhotos(p, id, decodePhotos(photos), 'tenant'); } catch (err) { console.error('Saving photos failed:', err.message); }
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
-      [id, 'created', 'Report submitted by ' + (str(r.name, 200) || 'tenant') + ' (' + urgency + ').']);
+      [id, 'created', 'Report submitted by ' + (str(r.name, 200) || 'tenant') + ' (' + urgency + ').' + (reasons.length ? '\nEmergency because: ' + reasons.join(', ') + '.' : '') + (why ? '\nWhy urgent: ' + why : '') + (over ? '\n⚠ Looks ' + suggested + ' from the problem chosen — please check the urgency.' : '')]);
     const trackToken = await ensureTrackToken(p, id);
-    notifyNewJob({ id: id, urgency: urgency, address: r.address, issue: [r.category, r.affected, r.symptom].filter(Boolean).join(' – '),
+    notifyNewJob({ id: id, urgency: urgency, over: over ? suggested : '', address: r.address, issue: [r.category, r.affected, r.symptom].filter(Boolean).join(' – '),
       location: r.location, photos: parseInt(r.photoCount, 10) || 0 });
     return { id: id, ref: refFor(id), trackPath: trackToken ? '/t/' + trackToken : null };
   }
@@ -1788,11 +1803,11 @@ module.exports = function mountJobs(app, opts) {
     const PRIORITY = { Emergency: 5, Urgent: 4, Routine: 3 };
     const TAGS = { Emergency: ['rotating_light'], Urgent: ['warning'], Routine: ['wrench'] };
     const where = String(j.address || 'No address given').replace(/\s+/g, ' ').trim(), what = (j.issue || 'Repair') + (j.location ? ' (' + j.location + ')' : '');
-    ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#job=' + j.id : undefined, title: j.urgency.toUpperCase() + ' · New repair ' + refFor(j.id),
+    ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#job=' + j.id : undefined, title: j.urgency.toUpperCase() + (j.over ? ' (tenant says — looks ' + j.over + ')' : '') + ' · New repair ' + refFor(j.id),
       message: [where, what, j.photos ? j.photos + ' photo' + (j.photos === 1 ? '' : 's') : ''].filter(Boolean).join('\n').slice(0, 1000),
       priority: PRIORITY[j.urgency] || 3, tags: TAGS[j.urgency] || ['wrench'] }).catch(function () {});
     ownerEmail((j.urgency === 'Emergency' ? '🚨 ' : j.urgency === 'Urgent' ? '⚠️ ' : '🔧 ') + j.urgency + ' repair ' + refFor(j.id) + ' - ' + where.split(',').slice(0, 2).join(','), function (link) {
-      return 'A new repair has been reported.\n\nReference: ' + refFor(j.id) + '\nUrgency: ' + j.urgency + '\nProperty: ' + where + '\nProblem: ' + what + (j.photos ? '\nPhotos: ' + j.photos : '') + '\n\nOpen it in Fixflow: ' + link;
+      return 'A new repair has been reported.\n\nReference: ' + refFor(j.id) + '\nUrgency: ' + j.urgency + (j.over ? ' (chosen by the tenant — from the problem it looks ' + j.over + '; please check)' : '') + '\nProperty: ' + where + '\nProblem: ' + what + (j.photos ? '\nPhotos: ' + j.photos : '') + '\n\nOpen it in Fixflow: ' + link;
     }, '#job=' + j.id).catch(function (e) { console.error('Repair email failed:', e.message); });
   }
 
