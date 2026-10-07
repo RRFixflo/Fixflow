@@ -114,6 +114,12 @@
   /* Arranging the menu: drag the items, or use the arrows. Each person's order is saved for them. */
   #avKey { text-transform: uppercase; }
   .web-ro [data-wname], .web-ro [data-ignore-me], .web-ro [data-unignore] { display: none !important; }
+  .call-t { width: 100%; border-collapse: collapse; font-size: .88rem; } .call-t th { text-align: left; font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); padding: 6px 8px; } .call-t td { padding: 9px 8px; border-top: 1px solid var(--line); vertical-align: top; } .call-t .nw { white-space: nowrap; }
+  .call-who { display: inline-block; margin: 0 6px 4px 0; padding: 2px 8px; border-radius: 999px; background: #f2f4f7; font-size: .8rem; } .call-who.k-tenant { background: #eff8ff; } .call-who.k-landlord { background: #f4f3ff; } .call-who.k-contractor { background: #fffaeb; } .call-who.k-lead, .call-who.k-applicant { background: #ecfdf3; }
+  .call-setup { margin-bottom: 12px; } .call-setup summary { cursor: pointer; } .call-hook { display: flex; gap: 8px; } .call-hook .inp { flex: 1; min-width: 0; font-size: .8rem; } .call-raw { white-space: pre-wrap; word-break: break-all; font-size: .74rem; background: var(--panel-2, #f5f6f8); padding: 8px 10px; border-radius: 8px; max-height: 200px; overflow: auto; }
+  .call-pop { position: fixed; right: 18px; bottom: 18px; z-index: 600; width: min(340px, calc(100vw - 36px)); background: var(--panel, #fff); border: 1px solid var(--line); border-left: 4px solid #12924a; border-radius: 14px; box-shadow: 0 18px 40px -12px rgba(15,23,42,.35); padding: 14px 16px; }
+  .call-pop-h { font-weight: 800; font-size: 1rem; margin-right: 22px; } .call-pop-w { margin: 6px 0 10px; font-size: .86rem; } .call-pop-x { position: absolute; top: 6px; right: 8px; border: 0; background: none; font-size: 1.3rem; cursor: pointer; color: var(--ink-soft); }
+  @media (max-width: 900px) { .call-pop { bottom: calc(76px + env(safe-area-inset-bottom)); right: 12px; } .call-t th:nth-child(1), .call-t td:nth-child(1) { font-size: .76rem; } }
   .nav-arr-bar { display: flex; gap: 6px; padding: 0 10px 6px; }
   .nav-arr-btn { border: 0; background: none; color: var(--side-soft); font: inherit; font-size: .74rem; padding: 2px 0; cursor: pointer; } .nav-arr-btn:hover { color: #fff; text-decoration: underline; }
   .nav-arranging #navArrange { color: #fff; font-weight: 700; background: #D9262E; padding: 3px 10px; border-radius: 999px; text-decoration: none; }
@@ -498,7 +504,7 @@
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
   body:not(.staff-mode) #navAlerts { display: none !important; }
-  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCrm):not(#navWeb):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCrm):not(#navWeb):not(#navCalls):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
@@ -1673,6 +1679,7 @@
     <button class="nav" type="button" id="navNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <button class="nav" type="button" id="navCrm" title="Every website request, viewing request, alert sign-up and contact"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17c.8-2 2.4-3 4.5-3s3.7 1 4.5 3"/></svg> Website leads <span class="badge hot" id="sCrm" hidden></span></button>
     <button class="nav" type="button" id="navWeb" title="Who visits the website and what they look at"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg> Website visitors</button>
+    <button class="nav" type="button" id="navCalls" title="Who has called the office"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg> Calls</button>
     <button class="nav" type="button" id="navAct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Activity</button>
     <button class="nav" type="button" id="navRepLink" title="Send the report-a-repair link to anyone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg><span>Send repair link</span></button>
     <button class="nav" type="button" id="navAlerts" title="Get alerts on your phone: new offers, deposits, landlord forms, viewing and valuation requests"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>Phone alerts</span></button>
@@ -1995,7 +2002,7 @@
         </details>
       </div>
 
-      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="crm">📇 Website leads <span class="st-n" id="stCrmN" hidden></span></button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="web" id="stWeb" hidden>📈 Visitors</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
+      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="crm">📇 Website leads <span class="st-n" id="stCrmN" hidden></span></button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="web" id="stWeb" hidden>📈 Visitors</button><button type="button" data-stab="calls">📞 Calls</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
       <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto;max-width:100%;min-width:0"><option value="">Everyone</option></select><button type="button" class="btn small ghost" id="teamFeedMin">Minimise</button></div><div id="teamFeed"></div></div>
@@ -2033,6 +2040,7 @@
           <p class="muted-note" id="sentNote" style="margin:8px 0 0"></p></div>
         <div id="sentList"></div>
       </div>
+      <div id="callsView" hidden><div id="callsBody"><div class="empty">Loading…</div></div></div>
       <div id="webView" hidden>
         <div class="card web-top"><div class="web-range" id="webRange" role="group" aria-label="Time range"><button type="button" data-days="1">Today</button><button type="button" data-days="7" class="on">7 days</button><button type="button" data-days="30">30 days</button><button type="button" data-days="90">90 days</button><button type="button" data-days="365">12 months</button></div>
           <p class="muted-note" style="margin:6px 0 0">Counted on our own website, without cookies. Staff and search-engine robots aren’t counted. A visitor is one person on one day.</p></div>
@@ -4193,7 +4201,7 @@
     }, 0);
   }
   function applyNav(st){
-    if (staffMode && (!st || ['offers', 'lt', 'avail', 'sent', 'team', 'who', 'crm', 'web'].indexOf(st.v) === -1)) st = { v: 'avail' };
+    if (staffMode && (!st || ['offers', 'lt', 'avail', 'sent', 'team', 'who', 'crm', 'web', 'calls'].indexOf(st.v) === -1)) st = { v: 'avail' };
     navRestoring = true;
     openPropKey = st.prop || null; openTenantKey = st.ten || null; openLlId = st.ll || null;
     $('propDetail').hidden = !openPropKey; $('propsListView').hidden = !!openPropKey;
@@ -4227,7 +4235,7 @@
     if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
-    if (staffMode && v !== 'web' && v !== 'crm' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
+    if (staffMode && v !== 'web' && v !== 'calls' && v !== 'crm' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -4247,6 +4255,7 @@
     $('availView').hidden = v !== 'avail'; $('navAvail').classList.toggle('on', v === 'avail');
     $('crmView').hidden = v !== 'crm'; $('navCrm').classList.toggle('on', v === 'crm'); crmNag();
     $('webView').hidden = v !== 'web'; $('navWeb').classList.toggle('on', v === 'web');
+    $('callsView').hidden = v !== 'calls'; $('navCalls').classList.toggle('on', v === 'calls');
     // Sent emails: its own tab for staff; inside the Activity page for the owner.
     if (!staffMode && $('sentView').parentNode !== $('actSentSlot')) $('actSentSlot').appendChild($('sentView'));
     $('sentView').hidden = staffMode ? v !== 'sent' : false;
@@ -4260,13 +4269,14 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', avail: 'Available properties', crm: 'Website leads', web: 'Website visitors', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', avail: 'Available properties', calls: 'Calls', crm: 'Website leads', web: 'Website visitors', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') { loadLt(); if (!loadVr.done) { loadVr.done = true; loadVr(); } else renderVr(); }
     if (v === 'avail') loadAvail();
     if (v === 'crm') loadCrm();
     if (v === 'web') loadWeb();
+    if (v === 'calls') loadCalls();
     if (v === 'sent' || (v === 'act' && !staffMode)) loadSent();
     if (v === 'team') { loadTeam(); $('teamSec').open = true; }
     if (v === 'who') loadTeam();
@@ -4303,7 +4313,7 @@
   })();
 
   // ---------- Menu order (each person arranges their own) ----------
-  var NAV_IDS = ['navJobs', 'navLandlords', 'navProps', 'navTcy', 'navTenants', 'contractorsBtn', 'navOffers', 'navAvail', 'navCerts', 'navPay', 'navLt', 'navEmail', 'navNew', 'navCrm', 'navWeb', 'navAct'];
+  var NAV_IDS = ['navJobs', 'navLandlords', 'navProps', 'navTcy', 'navTenants', 'contractorsBtn', 'navOffers', 'navAvail', 'navCerts', 'navPay', 'navLt', 'navEmail', 'navNew', 'navCrm', 'navWeb', 'navCalls', 'navAct'];
   function navApply(order){
     var anchor = $('navRepLink'), par = anchor.parentNode, seen = {};
     (order || []).concat(NAV_IDS).forEach(function(id){ if (seen[id] || NAV_IDS.indexOf(id) === -1 || !$(id)) return; seen[id] = 1; par.insertBefore($(id), anchor); });
@@ -4336,6 +4346,42 @@
     var r = t.getBoundingClientRect(); if (e.clientY > r.top + r.height / 2) t.after(navDrag); else t.before(navDrag);
   });
   document.querySelector('.side').addEventListener('dragend', function(){ if (navDrag) navDrag.classList.remove('dragging'); navDrag = null; });
+
+  // ---------- Calls: every call to the office (from the phone system's webhook), with who it is ----------
+  function callWho(c){ return (c.who || []).map(function(w){ return '<span class="call-who k-' + esc(w.kind) + '">' + esc(w.label) + (w.name ? ': <b>' + esc(w.name) + '</b>' : '') + (w.where ? ' · ' + esc(shortAddr(w.where)) : '') + '</span>'; }).join(' '); }
+  function callNum(n){ return n ? String(n).replace(/^(07\d{3}|0[12]\d{2,3}|0\d{4})(\d+)$/, '$1 $2') : 'Number withheld'; }
+  function loadCalls(){
+    return api('GET', '/api/admin/calls').then(function(d){
+      if (!d || !d.ok) { $('callsBody').innerHTML = '<div class="empty">Couldn’t load the calls.</div>'; return; }
+      var h = '';
+      if (d.hook) h += '<details class="card call-setup"' + (d.items.length ? '' : ' open') + '><summary><b>⚙️ Connect your phone system</b> <span class="muted-note" style="margin:0">— managers only</span></summary>' +
+        '<p class="muted-note">In your phone portal (Telecom150): <b>Company Features → Webhooks</b>, add a webhook for incoming calls (call ringing / answered) and paste this address. Keep it private — anyone with it can add calls to this list.</p>' +
+        '<div class="call-hook"><input class="inp" readonly id="callHook" value="' + esc(d.hook) + '"><button type="button" class="btn small" id="callHookCopy">Copy</button></div>' +
+        (d.lastRaw ? '<p class="muted-note" style="margin:10px 0 4px">Last thing the phone system sent (' + esc(fmtShort(d.lastRaw.at)) + ') — send this to Claude if the numbers don’t show right:</p><pre class="call-raw">' + esc(JSON.stringify(d.lastRaw.raw, null, 1)) + '</pre>' : '<p class="muted-note" style="margin:8px 0 0">Nothing received yet.</p>') + '</details>';
+      h += d.items.length ? '<div class="card"><table class="call-t"><thead><tr><th>When</th><th>Caller</th><th>Who it is</th></tr></thead><tbody>' + d.items.map(function(c){
+        return '<tr><td class="nw">' + esc(fmtShort(c.at)) + (c.direction === 'out' ? ' <span class="muted">↗ out</span>' : '') + '</td><td class="nw">' + (c.number ? '<a href="tel:' + esc(c.number) + '">' + esc(callNum(c.number)) + '</a>' : '<span class="muted">Number withheld</span>') + '</td><td>' + (callWho(c) || '<span class="muted">Not on file</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>'
+        : '<div class="empty">No calls yet. Once the phone system is connected, every call shows here with the caller’s number — and who they are if we have them on file.</div>';
+      $('callsBody').innerHTML = h;
+      var cp = $('callHookCopy'); if (cp) cp.addEventListener('click', function(){ $('callHook').select(); try { navigator.clipboard.writeText($('callHook').value); } catch (e) {} toast('Copied'); });
+    });
+  }
+  // A pop-up as the phone rings: who's calling, if we know them.
+  var callLast = null, callPopT = null;
+  function callPoll(){
+    if (!meta.db || document.hidden) return;
+    api('GET', '/api/admin/calls/new' + (callLast !== null ? '?after=' + callLast : '')).then(function(d){
+      if (!d || !d.ok) return; var first = callLast === null; callLast = d.last || 0; if (first) return;
+      (d.items || []).filter(function(c){ return c.direction !== 'out'; }).slice(0, 1).forEach(function(c){
+        var box = $('callPop'); if (!box) { box = document.createElement('div'); box.id = 'callPop'; box.className = 'call-pop'; box.setAttribute('role', 'status'); document.body.appendChild(box); }
+        box.innerHTML = '<button type="button" class="call-pop-x" aria-label="Close">×</button><div class="call-pop-h">📞 Call from ' + (c.number ? '<a href="tel:' + esc(c.number) + '">' + esc(callNum(c.number)) + '</a>' : 'a withheld number') + '</div>' +
+          '<div class="call-pop-w">' + (callWho(c) || 'Not on file yet') + '</div><button type="button" class="btn small" data-call-open>See all calls</button>';
+        box.hidden = false; clearTimeout(callPopT); callPopT = setTimeout(function(){ box.hidden = true; }, 90000);
+        box.onclick = function(e){ if (e.target.closest('.call-pop-x')) box.hidden = true; if (e.target.closest('[data-call-open]')) { box.hidden = true; showView('calls'); } };
+        if (view === 'calls') loadCalls();
+      });
+    });
+  }
+  setInterval(callPoll, 8000);
   // ---------- Quick property suggestions ----------
   // Address boxes for our properties: type a postcode (or part of one), a door or
   // flat number, or a street, and matching properties appear straight away —
@@ -8414,6 +8460,7 @@
   function webCountry(c){ if (!c) return 'Unknown'; try { return new Intl.DisplayNames(['en-GB'], { type: 'region' }).of(c) || c; } catch (e) { return c; } }
   $('webRange').addEventListener('click', function(e){ var b = e.target.closest('[data-days]'); if (!b) return; webDays = +b.dataset.days; loadWeb(); });
   $('navWeb').addEventListener('click', function(){ showView('web'); });
+  $('navCalls').addEventListener('click', function(){ showView('calls'); });
   // Changed a property in Gnomen? Read Gnomen now so the website shows it straight away.
   $('siteRefreshBtn').addEventListener('click', function(){
     var b = this; busy(b, true, 'Updating…');
@@ -15985,7 +16032,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navCrm', 'Website leads'], ['navWeb', 'Website visitors'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navCrm', 'Website leads'], ['navWeb', 'Website visitors'], ['navCalls', 'Calls'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';

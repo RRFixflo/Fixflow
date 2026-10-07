@@ -1909,6 +1909,8 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;
     if (path === '/crm' || /^\/crm\/(note|meta|archive|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
     if (method === 'GET' && (path === '/site-stats' || path === '/photo-dupes')) return true;
+    if (method === 'GET' && (path === '/calls' || path === '/calls/new')) return true;   // who has called (every member of staff)
+    if ((method === 'GET' || method === 'PUT') && path === '/me/nav-order') return true;   // their own menu order
     if (method === 'POST' && (path === '/site-ignore' || path === '/site-name')) return true;   // managers only (checked in the route)   // Website visitors (managers only, checked in the route)
     if (method === 'GET') return path === '/tenant-suggest' || path === '/landlord-suggest' || path === '/our-props' || path === '/me' || path === '/staff-activity' || path === '/staff-progress' || path === '/staff-signins' || path === '/epc-check' || path === '/property-match' || path === '/offers/people' || path === '/offer-invites' || path === '/viewings' || path === '/offers' || /^\/offers\/\d+\/(pdf|doc\/\d+)$/.test(path);
     if (method === 'POST') return path === '/email/preview' || path === '/me/password' || path === '/offer-alerts/test' || path === '/email' || path === '/offer-invites' || /^\/viewings(\/\d+)?$/.test(path) || /^\/offers\/\d+(\/(track|rtr|rtr\/read|rtr\/photo|conditions|landlord-link))?$/.test(path);
@@ -12152,6 +12154,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // For other parts of the site (landlord alerts): send an email, and the office phone alert.
     sendMail: function (o) { return canEmail() && sendEmail ? sendEmail(o) : Promise.resolve({ ok: false, error: 'email-off' }); },
     alert: function (o) { return ntfy(o).catch(function () {}); },
+    canManage: function (req) { return !!canManageUsers(req); },
     // For the out-of-hours phone answering: the same alerts as website leads (team) and repairs (owner only).
     teamAlert: function (b, h) { return teamAlert(b, h).catch(function () {}); }, staffEmailAll: function (s, t, h) { return staffEmailAll(s, t, h).catch(function (e) { console.error('Staff emails failed:', e.message); }); },
     ownerEmail: function (s, t, h) { return ownerEmail(s, t, h).catch(function () {}); }, ntfy: function (b) { return ntfy(Object.assign({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined }, b)).catch(function () {}); } };
