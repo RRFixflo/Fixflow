@@ -401,14 +401,7 @@ function sendBuilt(req, res, meta, body) {
 const news = require('./news')();
 const updates = require('./updates')(app, { siteUrl: SITE_URL, refuseBot: function (req, res, b, t) { return jobs && jobs.refuseBot ? jobs.refuseBot(req, res, b, t) : Promise.resolve(false); }, db: function () { return jobs.db(); }, sendMail: function (o) { return jobs.sendMail(o); }, alert: function (o) { return jobs.alert(o); }, isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); }, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
 require('./portaldemo')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
-const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, onsBeds: function (g, b) { return areas.onsBeds(g, b); }, db: function () { return jobs ? jobs.db() : null; },  isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); },
-  // A property we took off the website is back on the market in Gnomen: tell everyone, so it isn't missed.
-  onRelisted: function (h, p) {
-    if (!jobs) return;
-    const msg = h.where + ' (Gnomen no. ' + h.id + ') is back on the market in Gnomen' + (p.status ? ' (' + p.status + ')' : '') + ', but it was taken off our website' + (h.by ? ' by ' + h.by : '') + ' and isn’t showing.';
-    jobs.teamAlert({ title: '🏠 Re-marketed but not on the website', message: msg + ' Put it back in Fixflow → Website visitors.', priority: 4, tags: ['house'] }, '#web');
-    jobs.staffEmailAll('Re-marketed but not on our website: ' + h.where, function (link) { return msg + '\n\nIf it should be on the website, open Fixflow → Website visitors → “Taken off our website” and press “Put back on website”:\n' + link + '\n\nFixflow'; }, '#web');
-  } });
+const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, onsBeds: function (g, b) { return areas.onsBeds(g, b); }, db: function () { return jobs ? jobs.db() : null; },  isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
 const areas = require('./areas')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, listings: function () { return listings; }, db: function () { return jobs ? jobs.db() : null; } });
 const svcAreas = require('./svcareas')(app, { siteUrl: SITE_URL, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, db: function () { return jobs ? jobs.db() : null; } });
 // On the website's own address, /home is the same page as / — send search engines to one address.

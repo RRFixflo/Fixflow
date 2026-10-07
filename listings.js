@@ -360,10 +360,10 @@ module.exports = function (app, opts) {
   function refreshAll() { if (!refreshing) refreshing = doRefresh().finally(function () { refreshing = null; }); return refreshing; }
   // Properties staff have taken off our website (e.g. a duplicate of another listing): kept off however
   // often Gnomen's feed sends them again, until staff put them back. app_settings 'web_hidden'.
-  let hidden = { items: [], ok: [] };
+  let hidden = { items: [], ok: [], back: [] };
   async function loadHidden() {
     try { const p = opts.db && await opts.db(); if (!p) return hidden; const v = ((await p.query("SELECT value FROM app_settings WHERE key = 'web_hidden'")).rows[0] || {}).value || {};
-      hidden = { items: Array.isArray(v.items) ? v.items : [], ok: Array.isArray(v.ok) ? v.ok : [] }; } catch (e) { /* keep the last copy */ }
+      hidden = { items: Array.isArray(v.items) ? v.items : [], ok: Array.isArray(v.ok) ? v.ok : [], back: Array.isArray(v.back) ? v.back : [] }; } catch (e) { /* keep the last copy */ }
     return hidden;
   }
   async function saveHidden(p) { await p.query("INSERT INTO app_settings (key, value) VALUES ('web_hidden', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(hidden)]); }
@@ -372,27 +372,33 @@ module.exports = function (app, opts) {
     if (SOURCE === 'rightmove') await refreshRightmove(); else await refresh();
     await loadHidden();
     if (hidden.items.length) {
-      const seen = {}; let changed = false; const back = [];
+      const seen = {}, back = {}; let changed = false;
       ['let', 'sale'].forEach(function (kind) {
         data[kind] = data[kind].filter(function (p) {
           if (!isHidden(p.id) && !(p.rmId && isHidden(p.rmId))) return true;
+          let show = false;
           hidden.items.forEach(function (h) {
             if (String(h.id) !== String(p.id)) return; seen[h.id] = 1;
             if (!h.where) { h.where = p.where; changed = true; }
             if (p.src) return;   // only Gnomen's own record says whether it's been put back on the market
-            // Put back on the market in Gnomen since we took it off: let/sold → available again, a new
-            // listing date, or back in the feed after being out of it. Tell the office once.
-            const again = (h.lastTaken === true && !p.taken) || (h.lastAdded && p.added && p.added > h.lastAdded) || (h.absentSince && Date.now() - Date.parse(h.absentSince) > 3600000);
-            if (again && !h.relisted) { h.relisted = new Date().toISOString(); back.push({ h: h, p: p }); changed = true; }
+            // Published again in Gnomen since we took it off — let/sold → available again, a newer listing
+            // date, or back in the feed after being out of it: it goes back on our website as normal.
+            if ((h.lastTaken === true && !p.taken) || (h.lastAdded && p.added && p.added > h.lastAdded) || (h.absentSince && Date.now() - Date.parse(h.absentSince) > 3600000)) { back[h.id] = { h: h, p: p }; show = true; return; }
             if (h.lastTaken !== !!p.taken || (p.added && h.lastAdded !== p.added) || h.absentSince) { h.lastTaken = !!p.taken; if (p.added) h.lastAdded = p.added; delete h.absentSince; changed = true; }
           });
-          return false;
+          return show;
         });
       });
       // Out of Gnomen's feed for now (let and archived, withdrawn…): noted, so its return can be spotted.
       if (SOURCE !== 'rightmove' && (data.let.length || data.sale.length)) hidden.items.forEach(function (h) { if (!seen[h.id] && !h.absentSince) { h.absentSince = new Date().toISOString(); changed = true; } });
+      const ids = Object.keys(back);
+      if (ids.length) {
+        hidden.items = hidden.items.filter(function (h) { return !back[h.id]; });
+        hidden.back = ids.map(function (id) { const b = back[id]; return { id: id, where: b.h.where || b.p.where, at: new Date().toISOString(), added: b.p.added || '', status: b.p.status || '' }; }).concat(hidden.back || []).slice(0, 20);
+        ids.forEach(function (id) { console.log('Published again in Gnomen — back on the website: ' + back[id].h.where + ' (no. ' + id + ')'); });
+        changed = true;
+      }
       if (changed) { try { const p = opts.db && await opts.db(); if (p) await saveHidden(p); } catch (e) { console.error('Hidden properties not saved:', e.message); } }
-      back.forEach(function (b) { console.log('Taken off the website but back on the market in Gnomen: ' + b.h.where + ' (no. ' + b.h.id + ')'); if (opts.onRelisted) try { opts.onRelisted(b.h, b.p); } catch (e) { /* alert is best-effort */ } });
     }
     const sig = function (p) { return [p.id, p.status, p.price, p.images.length, p.floorplans.length, p.vtour, p.available, p.headline, (p.html || p.short || '').length].join('|'); };
     const stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(sig), data.let.map(sig)])).digest('hex').slice(0, 12);
@@ -698,7 +704,7 @@ module.exports = function (app, opts) {
       // With when each was put on the market and last updated in Gnomen (as of now, not the last photo check).
       const rec = {}; data.let.concat(data.sale).forEach(function (p) { rec[p.id] = p; });
       const dated = function (h) { const p = rec[h.id] || {}; return Object.assign({}, h, { added: p.added || '', updated: p.updated || '', status: p.status || '' }); };
-      return { at: dupesAt, checking: checking, done: progress.done, total: progress.total, hidden: hidden.items,
+      return { at: dupesAt, checking: checking, done: progress.done, total: progress.total, hidden: hidden.items, back: hidden.back || [],
         groups: dupes.filter(function (g) { return hidden.ok.indexOf(g.key) === -1 && !g.homes.some(function (h) { return isHidden(h.id); }); }).map(function (g) { return Object.assign({}, g, { homes: g.homes.map(dated) }); }) };
     },
     // Take a property off our website (or put it back); the website updates straight away.
