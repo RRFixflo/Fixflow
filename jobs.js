@@ -642,6 +642,8 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS access_note TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS online_since TIMESTAMPTZ;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS landlord_phone TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS gnomen_id TEXT;
+UPDATE available_props SET key_no = upper(key_no) WHERE key_no <> upper(key_no);
+UPDATE property_info SET key_number = upper(key_number) WHERE key_number <> upper(key_number);
 ALTER TABLE available_props ALTER COLUMN online_since SET DEFAULT now();
 UPDATE available_props SET online_since = created_at WHERE online_since IS NULL;
 -- Every change to (or removal of) a property on the available list keeps the version before it,
@@ -1951,6 +1953,11 @@ module.exports = function mountJobs(app, opts) {
 
   // Everything below needs a valid session. State-changing requests must also be
   // JSON, which a cross-site form can't send — on top of the SameSite cookie.
+  // Key numbers are always in capitals (k12a → K12A), however they're typed.
+  app.use('/api/admin', function (req, res, next) {
+    const b = req.body; if (b && typeof b === 'object') ['key_no', 'key_number'].forEach(function (k) { if (typeof b[k] === 'string') b[k] = b[k].toUpperCase(); });
+    next();
+  });
   app.use('/api/admin', async function (req, res, next) {
     if (!ADMIN_PASSWORD) return res.status(503).json({ ok: false, error: 'admin-not-configured' });
     const t = parseToken(readCookie(req, 'rr_admin'));
@@ -11079,7 +11086,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const beds = parseInt(b.beds, 10);
     return availFix({ address: str(availAddr(b.address), 400), beds: isFinite(beds) && beds >= 0 && beds < 20 ? beds : null, available_from: isoDay(b.available_from) || null, vacant: b.vacant === true,
       rent_pw: pw, rent_pcm: pcm, landlord: str(b.landlord, 120) || null, landlord_phone: str(b.landlord_phone, 40) || null, commission: fee, contact: str(b.contact, 2000) || null, notes: notes,
-      tags: str(b.tags, 200) || null, key_no: str(b.key_no, 40) || null, access: ['landlord', 'tenants', 'keys'].indexOf(b.access) !== -1 ? b.access : null, access_note: str(b.access_note, 300) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: letDayOk(isoDay(b.let_on)) });
+      tags: str(b.tags, 200) || null, key_no: (str(b.key_no, 40) || "").toUpperCase() || null, access: ['landlord', 'tenants', 'keys'].indexOf(b.access) !== -1 ? b.access : null, access_note: str(b.access_note, 300) || null, urgent: b.urgent === true, status: ['available', 'let', 'withdrawn'].indexOf(b.status) !== -1 ? b.status : 'available', let_on: letDayOk(isoDay(b.let_on)) });
   }
   const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'landlord_phone', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
