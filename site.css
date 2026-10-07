@@ -1103,3 +1103,7 @@ html, body { overflow-x: clip; }
 @media (max-width: 760px) { .ar-grid, .ar-cols { grid-template-columns: 1fr; } .ar-cols { gap: 30px; } .ar-bar { grid-template-columns: 60px 1fr auto; gap: 10px; } }
 .ar-beds h2 small { color: var(--soft); font-size: .8rem; font-weight: 600; margin-left: 6px; }
 .ar-bar span { white-space: nowrap; }
+
+/* Landlord tools hub */
+.lt-grp { padding: 56px 0 0; } .lt-grp:last-of-type { padding-bottom: 80px; }
+.lt-h { margin-bottom: 18px; } .lt-h h2 { margin: 0 0 4px; color: var(--navy); font-size: clamp(1.4rem, 2.6vw, 1.8rem); } .lt-h p { margin: 0; color: var(--soft); }
