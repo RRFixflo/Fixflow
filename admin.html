@@ -111,6 +111,16 @@
   .nav .badge.hot { background: #D9262E; color: #fff; }
   .side-sec { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #5E626C; padding: 16px 10px 6px; }
   .side .grow { flex: 1; }
+  /* Arranging the menu: drag the items, or use the arrows. Each person's order is saved for them. */
+  .nav-arr-bar { display: flex; gap: 6px; padding: 0 10px 6px; }
+  .nav-arr-btn { border: 0; background: none; color: var(--side-soft); font: inherit; font-size: .74rem; padding: 2px 0; cursor: pointer; } .nav-arr-btn:hover { color: #fff; text-decoration: underline; }
+  .nav-arranging #navArrange { color: #fff; font-weight: 700; background: #D9262E; padding: 3px 10px; border-radius: 999px; text-decoration: none; }
+  .nav-arranging .side .nav[data-navmv] { cursor: grab; outline: 1px dashed rgba(255,255,255,.22); outline-offset: -2px; }
+  .nav-arranging .side .nav[data-navmv].dragging { opacity: .45; }
+  .nav-arranging .side .nav { gap: 7px; font-size: .84rem; }
+  .nav-mv { display: none; margin-left: auto; gap: 2px; } .nav-arranging .nav-mv { display: inline-flex; }
+  .nav-arranging .side .nav[data-navmv] .badge { display: none; }
+  .nav-mv span { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 6px; background: rgba(255,255,255,.1); color: #fff; font-size: .8rem; cursor: pointer; } .nav-mv span:hover { background: rgba(255,255,255,.25); }
   /* The sidebar fits the window without scrolling: it tightens up on shorter screens. */
   .side { scrollbar-width: none; } .side::-webkit-scrollbar { display: none; }
   .side .nav { white-space: nowrap; }
@@ -594,7 +604,7 @@
   .av-card { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px; position: relative; }
   .av-card.is-urgent { border-color: #f3a7a7; box-shadow: 0 0 0 2px #fdecec; } .av-card.is-off { opacity: .6; }
   .av-h { display: flex; gap: 10px; align-items: flex-start; } .av-beds { flex: 0 0 auto; min-width: 46px; text-align: center; border-radius: 12px; background: var(--navy, #0b1f3a); color: #fff; padding: 6px 4px; line-height: 1.1; } .av-beds b { display: block; font-size: 1.2rem; } .av-beds span { font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; opacity: .8; }
-  .av-addr { font-weight: 700; line-height: 1.3; } .av-gid.none { background: #fff; color: var(--ink-soft); border: 1px dashed #c7cbe0; font-weight: 700; } button.av-gid { cursor: pointer; border: 0; font-family: inherit; line-height: 1.5; } .av-gid { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: #eef2ff; color: #3538cd; font-weight: 800; font-size: .74rem; letter-spacing: .02em; white-space: nowrap; } .av-pc { font-size: .8rem; color: var(--ink-soft); }
+  .av-addr { font-weight: 700; line-height: 1.3; } .av-gid.gone { background: #fef3f2; color: #b42318; border: 1px solid #fda29b; } .av-gid.none { background: #fff; color: var(--ink-soft); border: 1px dashed #c7cbe0; font-weight: 700; } button.av-gid { cursor: pointer; border: 0; font-family: inherit; line-height: 1.5; } .av-gid { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: #eef2ff; color: #3538cd; font-weight: 800; font-size: .74rem; letter-spacing: .02em; white-space: nowrap; } .av-pc { font-size: .8rem; color: var(--ink-soft); }
   .av-tags { display: flex; gap: 4px; flex-wrap: wrap; } .av-tag { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: #eef2ff; color: #1d3fae; } .av-tag.urgent { background: #fdecec; color: #b42318; } .av-tag.let { background: #f1f2f4; color: #5f6673; }
   .av-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; } .av-row div { background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 6px 8px; } .av-row span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 700; } .av-row b { font-size: .92rem; } .av-row .now b { color: #0d7a3d; }
   .av-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -1666,7 +1676,7 @@
     <div class="side-sec">Links</div>
     <a class="nav" href="/admin#offers" id="navOffersLink" style="text-decoration:none" title="Where the offer forms are collected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> Offers collected <span class="badge hot" id="sOffers2" hidden>0</span></a>
     <div class="grow"></div>
-    <div class="side-foot"><div class="deployed" id="whoAmI" hidden></div><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="myPwBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg> My password</button><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
+    <div class="side-foot"><div class="deployed" id="whoAmI" hidden></div><div class="nav-arr-bar"><button type="button" class="nav-arr-btn" id="navArrange" title="Put the menu in the order you like (just for you)">⇅ Arrange menu</button><button type="button" class="nav-arr-btn" id="navArrReset" hidden>Reset</button></div><div class="deployed" id="deployedAt" hidden></div><button class="nav" type="button" id="myPwBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg> My password</button><button class="nav" type="button" id="logoutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg> Sign out</button></div>
   </aside>
 
   <main class="main">
@@ -2981,6 +2991,7 @@
     api('GET', '/api/admin/me').then(function(d){
       if (!d.ok) { if (d.status !== 401) showLogin(); return; }
       meta = d;
+      navLoadOrder();
       if (d.user) { $('whoAmI').innerHTML = 'Signed in as<br><b>' + esc(d.user.name) + '</b>'; $('whoAmI').hidden = false; }
       $('myPwBtn').hidden = $('myPwBtnM').hidden = !(d.user && d.user.id);
       $('loginView').hidden = true;
@@ -4284,6 +4295,41 @@
     var badge = function(){ var txt = ($('avRm').innerText || '') + ' ' + ($('avYt').innerText || ''); $('avToolsBadge').textContent = /didn.t work|Dream advert|has been up|not linked|unlinked|need/i.test(txt) ? '⚠️ needs a look' : ''; };
     if (window.MutationObserver) { var mo = new MutationObserver(badge); mo.observe($('avRm'), { childList: true, subtree: true, characterData: true }); mo.observe($('avYt'), { childList: true, subtree: true, characterData: true }); }
   })();
+
+  // ---------- Menu order (each person arranges their own) ----------
+  var NAV_IDS = ['navJobs', 'navLandlords', 'navProps', 'navTcy', 'navTenants', 'contractorsBtn', 'navOffers', 'navAvail', 'navCerts', 'navPay', 'navLt', 'navEmail', 'navNew', 'navCrm', 'navWeb', 'navAct'];
+  function navApply(order){
+    var anchor = $('navRepLink'), par = anchor.parentNode, seen = {};
+    (order || []).concat(NAV_IDS).forEach(function(id){ if (seen[id] || NAV_IDS.indexOf(id) === -1 || !$(id)) return; seen[id] = 1; par.insertBefore($(id), anchor); });
+  }
+  function navCurrent(){ return Array.prototype.map.call(document.querySelectorAll('.side .nav'), function(b){ return b.id; }).filter(function(id){ return NAV_IDS.indexOf(id) !== -1; }); }
+  function navLoadOrder(){ if (!meta.db) return; api('GET', '/api/admin/me/nav-order').then(function(d){ if (d && d.ok && d.order) navApply(d.order); }); }
+  var navArr = false, navDrag = null;
+  function navArrange(on){
+    navArr = on; document.body.classList.toggle('nav-arranging', on);
+    $('navArrange').textContent = on ? '✓ Done' : '⇅ Arrange menu'; $('navArrReset').hidden = !on;
+    NAV_IDS.forEach(function(id){ var b = $(id); if (!b) return;
+      if (on) { b.dataset.navmv = '1'; b.draggable = true; if (!b.querySelector('.nav-mv')) b.insertAdjacentHTML('beforeend', '<span class="nav-mv"><span data-mv="-1" title="Move up">↑</span><span data-mv="1" title="Move down">↓</span></span>'); }
+      else { delete b.dataset.navmv; b.draggable = false; var m = b.querySelector('.nav-mv'); if (m) m.remove(); } });
+    if (!on) api('PUT', '/api/admin/me/nav-order', { order: navCurrent() }).then(function(d){ toast(d && d.ok ? '✓ Menu order saved' : 'Couldn’t save the menu order'); });
+  }
+  $('navArrange').addEventListener('click', function(){ navArrange(!navArr); });
+  $('navArrReset').addEventListener('click', function(){ navApply(NAV_IDS); navArrange(false); });
+  // While arranging, tapping an item doesn't open it; the arrows move it past the next visible item.
+  document.querySelector('.side').addEventListener('click', function(e){
+    if (!navArr) return; var b = e.target.closest('.nav[data-navmv]'); if (!b) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    var mv = e.target.closest('[data-mv]'); if (!mv) return;
+    var vis = navCurrent().map(function(id){ return $(id); }).filter(function(x){ return x.offsetParent !== null; }), i = vis.indexOf(b), j = i + Number(mv.dataset.mv);
+    if (i < 0 || j < 0 || j >= vis.length) return;
+    if (j > i) vis[j].after(b); else vis[j].before(b);
+  }, true);
+  document.querySelector('.side').addEventListener('dragstart', function(e){ var b = navArr && e.target.closest && e.target.closest('.nav[data-navmv]'); if (!b) return; navDrag = b; b.classList.add('dragging'); try { e.dataTransfer.setData('text/plain', b.id); e.dataTransfer.effectAllowed = 'move'; } catch (x) {} });
+  document.querySelector('.side').addEventListener('dragover', function(e){
+    if (!navDrag) return; var t = e.target.closest('.nav[data-navmv]'); e.preventDefault(); if (!t || t === navDrag) return;
+    var r = t.getBoundingClientRect(); if (e.clientY > r.top + r.height / 2) t.after(navDrag); else t.before(navDrag);
+  });
+  document.querySelector('.side').addEventListener('dragend', function(){ if (navDrag) navDrag.classList.remove('dragging'); navDrag = null; });
   // ---------- Quick property suggestions ----------
   // Address boxes for our properties: type a postcode (or part of one), a door or
   // flat number, or a street, and matching properties appear straight away —
@@ -11541,6 +11587,7 @@
   }
   // The property's Gnomen number (matched automatically, or typed in) — tap to type or change it.
   function avGid(x){
+    if (x.gnomen_missing) return '<button type="button" class="av-gid gone" data-gnomen="' + x.id + '" title="' + (x.gnomen_id ? 'Gnomen ' + esc(x.gnomen_id) + ' isn’t in Gnomen’s feed any more — it may have been taken off or archived in Gnomen' : 'Nothing at this address is in Gnomen’s feed — it may have been taken off Gnomen, or never added') + '. Tap to type the number.">⚠ ' + (x.gnomen_id ? 'Gnomen ' + esc(x.gnomen_id) + ' — not on Gnomen' : 'Not on Gnomen') + '</button>';
     return x.gnomen_id ? '<button type="button" class="av-gid" data-gnomen="' + x.id + '" title="Gnomen number' + (x.gnomen_auto ? ' (found automatically)' : '') + ' — tap to change">Gnomen ' + esc(x.gnomen_id) + '</button>'
       : '<button type="button" class="av-gid none" data-gnomen="' + x.id + '" title="Add the property’s number from Gnomen">+ Gnomen no.</button>';
   }
@@ -11551,7 +11598,7 @@
     var v = prompt('Gnomen number for ' + shortAddr(x.address) + ' (leave empty to find it automatically):', x.gnomen_auto ? '' : (x.gnomen_id || ''));
     if (v === null) return; v = v.replace(/^#/, '').trim();
     if (v && !/^\d{1,12}$/.test(v)) { toast('A Gnomen number is digits only, e.g. 1234'); return; }
-    avPatch(x, { gnomen_id: v }, v ? '✓ Gnomen ' + v + ' saved' : 'Gnomen number cleared').then(function(ok){ if (ok) { x.gnomen_auto = false; if (!v) loadAvail(); } });
+    avPatch(x, { gnomen_id: v }, v ? '✓ Gnomen ' + v + ' saved' : 'Gnomen number cleared').then(function(ok){ if (ok) { x.gnomen_auto = false; loadAvail(); } });
   }, true);
   function avPatch(x, body, msg){ return api('POST', '/api/admin/available/' + x.id, Object.assign({ patch: true }, body)).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save that'); return false; } Object.keys(body).forEach(function(k){ x[k] = body[k] || null; }); if (msg) toast(msg); renderAvail(); return true; }); }
   // Offers made on a property on the available list: how many in total, and any waiting for a decision.
@@ -11603,8 +11650,8 @@
         '<details class="av-rm-unl"' + (avDreamOpen ? ' open' : '') + ' id="avDreams"><summary>💭 Dreams on Rightmove (' + dreamsAll.length + ')' + (unlN ? ' · ' + unlN + ' not linked to a property' : '') + (dueN ? ' · <span style="color:#b42318">' + dueN + ' need a decision</span>' : '') + '</summary>' +
           '<div class="av-dream-sort"><label for="avDreamSort">Sort by</label><select class="inp" id="avDreamSort" style="width:auto">' + [['due', 'Needs a decision first'], ['new', 'Newest on Rightmove'], ['old', 'Oldest on Rightmove (up longest)'], ['review', 'Review date (soonest first)']].map(function(o){ return '<option value="' + o[0] + '"' + (avDreamSort === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' + '<p class="muted-note" style="margin:6px 0 8px">Adverts we keep online for leads — link each to the available property it brings enquiries for. Every 7 days you’ll be asked to keep it, change it or take it down.</p>' + dreamsAll.map(function(r){
           var d = dreamInfo(r.id), of = dreamOf[r.id];
-          return '<div class="av-rm-item' + (d.due ? ' is-due' : '') + '">' + (r.image ? '<img src="' + esc(r.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<div style="flex:1;min-width:200px"><b>' + esc(r.address) + '</b><span>' + [r.beds != null ? (r.beds === 0 ? 'Studio' : r.beds + ' bed') : '', r.pcm ? gbp(r.pcm) + ' pcm' : '', rmStatusText(r.status)].filter(Boolean).map(esc).join(' · ') + '</span>' +
-            '<span class="av-dream-of">' + (of ? '💭 Dream of <b>' + esc(shortAddr(of.address)) + '</b> ' + avGid(of) : '<i>Not linked to a property yet</i>') + '</span>' + dreamTimeline(d) + '</div>' +
+          return '<div class="av-rm-item' + (d.due ? ' is-due' : '') + '">' + (r.image ? '<img src="' + esc(r.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<div style="flex:1;min-width:200px"><b>' + esc(r.address) + '</b>' + (of ? ' ' + avGid(of) : '') + '<span>' + [r.beds != null ? (r.beds === 0 ? 'Studio' : r.beds + ' bed') : '', r.pcm ? gbp(r.pcm) + ' pcm' : '', rmStatusText(r.status)].filter(Boolean).map(esc).join(' · ') + '</span>' +
+            '<span class="av-dream-of">' + (of ? '💭 Dream of <b>' + esc(shortAddr(of.address)) + '</b>' : '<i>Not linked to a property yet</i>') + '</span>' + dreamTimeline(d) + '</div>' +
             '<span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(r.url) + '">View ↗</a><select class="inp av-dreamsel" data-dreamfor="' + esc(r.id) + '" style="width:auto;max-width:230px"><option value="">' + (of ? 'Change to…' : 'It’s a Dream of…') + '</option>' + (function(){ var oc = avOutcode(r.address); var near = liveSorted.filter(function(x){ return oc && avOutcode(x.address) === oc; }), rest = liveSorted.filter(function(x){ return near.indexOf(x) === -1; }); var opt = function(x){ return '<option value="' + x.id + '"' + (of && of.id === x.id ? ' selected' : '') + '>' + esc(shortAddr(x.address)) + (x.beds != null ? ' · ' + (x.beds === 0 ? 'studio' : x.beds + ' bed') : '') + (x.gnomen_id ? ' · #' + esc(x.gnomen_id) : '') + '</option>'; }; return (near.length ? '<optgroup label="Same area">' + near.map(opt).join('') + '</optgroup>' : '') + '<optgroup label="All available">' + rest.map(opt).join('') + '</optgroup>'; })() + '</select><button type="button" class="btn small' + (of ? '' : ' primary') + '" data-dreamgo="' + esc(r.id) + '">🔗 ' + (of ? 'Change' : 'Link as Dream') + '</button>' +
             (d.takedown && !d.stale ? '<button type="button" class="btn small ghost" data-dreamact="undo" data-dreamid="' + esc(r.id) + '">Undo take down</button>' : '<button type="button" class="btn small' + (d.due ? ' primary' : '') + '" data-dreamact="extend" data-dreamid="' + esc(r.id) + '">⏱ +7 days</button><button type="button" class="btn small ghost" data-dreamact="takedown" data-dreamid="' + esc(r.id) + '" style="color:#b42318">🗑 Take down</button>') +
             (of ? '' : '<button type="button" class="btn small" data-rmadd="' + esc(r.id) + '" title="Adds it to our available list, linked to this listing">➕ Add to available list</button>') + '</span></div>'; }).join('') + '</details>' : '');
