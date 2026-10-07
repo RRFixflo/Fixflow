@@ -673,6 +673,13 @@ module.exports = function (app, opts) {
       return { let: data.let.filter(function (p) { return !p.taken; }).length, sale: data.sale.filter(function (p) { return !p.taken; }).length,
         areas: Object.keys(n).sort(function (a, b) { return n[b] - n[a] || a.localeCompare(b); }).slice(0, 14) };
     },
+    // Available homes in some postcode districts ('W1' matches W1T but 'SW1' doesn't match SW10), for the area pages.
+    near: function (req, outcodes, max) {
+      if (!show(req)) return '';
+      const hit = function (o) { return outcodes.some(function (b) { return o === b || (o.indexOf(b) === 0 && /[A-Z]/.test(o.charAt(b.length))); }); };
+      const pick = data.let.concat(data.sale).filter(function (p) { return !p.taken && p.outcode && hit(p.outcode); }).sort(function (a, b) { return String(b.added).localeCompare(String(a.added)); }).slice(0, max || 6);
+      return pick.map(function (p) { return card(p, '(max-width: 640px) 85vw, 360px'); }).join('');
+    },
     urls: function () { return LIVE ? data.let.concat(data.sale).map(function (p) { return p.url; }) : []; }
   };
 };
