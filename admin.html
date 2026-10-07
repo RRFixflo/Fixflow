@@ -111,6 +111,27 @@
   .nav .badge.hot { background: #D9262E; color: #fff; }
   .side-sec { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #5E626C; padding: 16px 10px 6px; }
   .side .grow { flex: 1; }
+  /* The sidebar fits the window without scrolling: it tightens up on shorter screens. */
+  .side { scrollbar-width: none; } .side::-webkit-scrollbar { display: none; }
+  .side .nav { white-space: nowrap; }
+  @media (min-width: 901px) and (max-height: 980px) {
+    .side { padding-top: 12px; padding-bottom: 10px; gap: 2px; }
+    .side-brand:has(.side-logo) { padding: 6px 10px 10px; margin-bottom: 6px; gap: 6px; }
+    .side-logo img { height: 44px; }
+    .nav { padding: 7px 10px; }
+    .side-sec { padding: 10px 10px 4px; }
+  }
+  @media (min-width: 901px) and (max-height: 840px) {
+    .side-sub { display: none; }
+    .side-logo img { height: 36px; }
+    .nav { padding: 5px 10px; font-size: .85rem; }
+    .side-search { margin-bottom: 4px; }
+  }
+  @media (min-width: 901px) and (max-height: 720px) {
+    .nav { padding: 3px 10px; font-size: .82rem; } .nav svg { width: 15px; height: 15px; }
+    .side-sec { padding: 6px 10px 2px; }
+    .side-foot { padding-top: 6px; } .deployed { display: none; }
+  }
   .side-foot { border-top: 1px solid var(--side-line); padding-top: 10px; }
   .deployed { font-size: .72rem; color: var(--side-soft); padding: 0 10px 6px; line-height: 1.35; }
   .deployed b { font-weight: 600; color: var(--side-ink); }

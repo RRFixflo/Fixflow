@@ -36,10 +36,12 @@ module.exports = function (app, opts) {
   const ytId = function (u) { const m = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(String(u || '')); return m ? m[1] : ''; };
   const vimeoId = function (u) { const m = /vimeo\.com\/(?:video\/)?(\d{6,12})/.exec(String(u || '')); return m ? m[1] : ''; };
   const gone = { let: [], sale: [] };   // homes the feed lists as let / sold
+  const every = { let: [], sale: [] };   // every home in the feed (published or not), for matching Gnomen numbers
   function parse(xml, kind) {
-    const out = []; gone[kind] = [];
+    const out = []; gone[kind] = []; every[kind] = [];
     String(xml || '').replace(/<property>([\s\S]*?)<\/property>/g, function (m, x) {
       const status = tag(x, 'status'), id = tag(x, 'id');
+      if (/^\d+$/.test(id)) { const st1 = tag(x, 'address1'), b1 = tag(x, 'bedrooms'); every[kind].push({ id: id, street: st1, postcode: tag(x, 'postcode').toUpperCase().replace(/\s+/g, ''), beds: /studio/i.test(b1) ? 0 : parseInt(b1, 10) || 0, unit: tag(x, 'property_no') ? (tag(x, 'property_no').toLowerCase().replace(/\b(flat|apartment|apt|unit|no)\b\.?/g, '') + '|' + st1.toLowerCase()).replace(/[^a-z0-9|]/g, '') : '', status: status }); }
       if (/^\d+$/.test(id) && /^(let|sold|withdrawn|completed|archived)$/i.test(status.trim())) { const st0 = tag(x, 'address1'), pc0 = tag(x, 'postcode').toUpperCase(); gone[kind].push({ street: st0, outcode: pc0.split(/\s+/)[0] || '', beds: /studio/i.test(tag(x, 'bedrooms')) ? 0 : parseInt(tag(x, 'bedrooms'), 10) || 0, status: status }); }
       if (!/^\d+$/.test(id) || tag(x, 'published') !== '1' || SHOW[kind].indexOf(status.toLowerCase()) === -1) return;
       const res = !/commercial|land/i.test(tag(x, 'category')), bedsRaw = res ? tag(x, 'bedrooms') : '', beds = /studio/i.test(bedsRaw) ? 0 : parseInt(bedsRaw, 10) || 0, type = tag(x, 'property_type') || tag(x, 'category') || 'Property';
@@ -698,14 +700,21 @@ module.exports = function (app, opts) {
     },
     // Gnomen numbers for the office's available list: matched on postcode, bedrooms and door number (only when clear-cut).
     gnomenFor: function (rows) {
-      const out = {}, recs = data.let.concat(data.sale).filter(function (p) { return /^\d+$/.test(String(p.id)) && p.postcode; });
+      // Every home in Gnomen's feeds (also unpublished ones), not just those on the website.
+      const seen = {}, recs = every.let.concat(every.sale, data.let, data.sale).filter(function (p) { const ok = /^\d+$/.test(String(p.id)) && p.postcode && !seen[p.id]; if (ok) seen[p.id] = 1; return ok; }), out = {};
+      const plain = function (s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); };
+      const stName = function (s) { return plain(s).replace(/^(flat|apartment|apt|unit)?\s*\d+[a-z]?\s+/, '').trim(); };
       const PC = /([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i, door = function (s) { const m = /^\s*(?:flat|apartment|apt|unit)?\s*([0-9]+[a-z]?)\b/i.exec(String(s || '')); return m ? m[1].toLowerCase() : ''; };
       (rows || []).forEach(function (r) {
-        const m = PC.exec(String(r.address || '')); if (!m) return;
-        const pc = (m[1] + m[2]).toUpperCase(), beds = r.beds == null ? null : Number(r.beds), addr = String(r.address).toLowerCase();
-        let c = recs.filter(function (p) { return p.postcode === pc && (beds == null || p.beds === beds); });
+        const m = PC.exec(String(r.address || '')), beds = r.beds == null ? null : Number(r.beds), addr = String(r.address || '').toLowerCase();
+        let c;
+        if (m) { const pc = (m[1] + m[2]).toUpperCase(); c = recs.filter(function (p) { return p.postcode === pc && (beds == null || p.beds === beds); }); }
+        // No full postcode on our list: the same street name (and door number below) instead.
+        if (!c || !c.length) { const pa = plain(addr), d0 = door(r.address); c = d0 ? recs.filter(function (p) { const sn = stName(p.street); return sn.length >= 6 && sn.indexOf(' ') > 0 && !/^(london|central london|greater london)$/.test(sn) && (' ' + pa + ' ').indexOf(' ' + sn + ' ') !== -1 && (beds == null || p.beds === beds) && p.unit && p.unit.split('|')[0] === d0.replace(/[^a-z0-9]/g, ''); }) : []; }
         if (c.length > 1) { const d = door(r.address); if (d) { const byNo = c.filter(function (p) { return p.unit && p.unit.split('|')[0] === d.replace(/[^a-z0-9]/g, ''); }); if (byNo.length) c = byNo; } }
         if (c.length > 1) { const bySt = c.filter(function (p) { return p.street && addr.indexOf(String(p.street).toLowerCase().replace(/^[\d\s\w]*?\d+[a-z]?\s+/, '').trim()) !== -1; }); if (bySt.length) c = bySt; }
+        // The same home listed again later (an old let record and a new one): the current listing wins.
+        if (c.length > 1) { const cur = c.filter(function (p) { return !/^(let|sold|withdrawn|completed|archived)$/i.test(String(p.status || '').trim()); }); if (cur.length) c = cur; }
         const ids = Array.from(new Set(c.map(function (p) { return String(p.id); })));
         if (ids.length === 1) out[r.id] = ids[0];
       });
