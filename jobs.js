@@ -9979,7 +9979,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   const compsList = function (raw) {
     return (Array.isArray(raw) ? raw : []).slice(0, 10).map(function (c) {
       const url = str(c && c.url, 500) || '', rent = Math.round(parseFloat(String((c && c.rent) || '').replace(/[£,\s]/g, '')) || 0), dist = Math.round((parseFloat(c && c.dist) || 0) * 10) / 10;
-      return { url: /^https?:\/\//i.test(url) ? url : '', address: str(c && c.address, 200) || '', beds: str(c && c.beds, 20) || '', rent: rent, dist: dist };
+      return { url: /^https?:\/\//i.test(url) ? url : '', address: str(c && c.address, 200) || '', beds: str(c && c.beds, 20) || '', rent: rent, dist: dist, ours: !!(c && (c.ours === true || c.ours === '1')) };
     }).filter(function (c) { return c.rent >= 200 && c.rent <= 100000 && (c.address || c.url); });
   };
   const compsStats = function (list) {
@@ -9990,29 +9990,36 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.post('/api/admin/valuation-requests/:id/comps', withDb(async function (p, req, res) {
     const row = (await p.query('SELECT * FROM valuation_requests WHERE id = $1', [jobId(req)])).rows[0]; if (!row) return res.status(404).json({ ok: false });
     const b = req.body || {}, d = row.data || {}, list = compsList(b.comps);
-    d.comps = list; d.comps_note = str(b.note, 1000) || '';
+    const money = function (v) { const n = Math.round(parseFloat(String(v || '').replace(/[£,\s]/g, '')) || 0); return n >= 200 && n <= 100000 ? n : 0; };
+    d.comps = list; d.comps_note = str(b.note, 1000) || ''; d.comps_est = money(b.est); d.comps_est_high = money(b.est_high) > d.comps_est ? money(b.est_high) : 0;
     if (b.send) {
-      if (list.length < 2) return res.status(400).json({ ok: false, error: 'few' });
+      if (list.length < 2 && !d.comps_est) return res.status(400).json({ ok: false, error: 'few' });
       if (!canEmail() || !sendEmail || !row.email) return res.status(400).json({ ok: false, error: 'email' });
       d.comps_token = d.comps_token || crypto.randomBytes(18).toString('base64url');
       const s = compsStats(list), link = (PUBLIC_URL || SITE) + '/comparables/' + d.comps_token, first = String(row.name || '').split(/\s+/)[0] || 'there';
       const bt = d.beds ? (d.beds === 'Studio' ? 'studios' : d.beds + ' bedroom homes') : 'homes';
       const subject = 'Your local rent comparison — ' + String(row.address).split(',').slice(0, 2).join(',');
-      const text = 'Hi ' + first + ',\n\nThank you for asking for a local rent comparison. We’ve looked at ' + s.n + ' similar ' + bt + ' advertised to let near ' + (d.postcode || 'you') + '.\n\n' +
-        'Typical rent: ' + gbp0(s.mid) + ' a month\nRange: ' + gbp0(s.low) + ' to ' + gbp0(s.high) + ' a month\n\n' +
-        list.map(function (c) { return '• ' + (c.address || 'Similar home') + (c.beds ? ' (' + c.beds + ' bed)' : '') + ' — ' + gbp0(c.rent) + ' pcm' + (c.dist ? ' · ' + c.dist + ' miles away' : ''); }).join('\n') +
+      const est = d.comps_est ? gbp0(d.comps_est) + (d.comps_est_high ? ' to ' + gbp0(d.comps_est_high) : '') + ' a month' : '';
+      const text = 'Hi ' + first + ',\n\nThank you for asking for a local rent comparison' + (s.n ? '. We’ve looked at ' + s.n + ' similar ' + bt + ' near ' + (d.postcode || 'you') : '') + '.\n\n' +
+        (est ? 'Our estimate for your home: ' + est + '\n' : '') + (s.n >= 2 ? 'Similar homes: typically ' + gbp0(s.mid) + ' a month (' + gbp0(s.low) + ' to ' + gbp0(s.high) + ')\n' : '') + '\n' +
+        list.map(function (c) { return '• ' + (c.address || 'Similar home') + (c.beds ? ' (' + c.beds + ' bed)' : '') + ' — ' + gbp0(c.rent) + ' pcm' + (c.dist ? ' · ' + c.dist + ' miles away' : '') + (c.ours ? ' · let by us' : ''); }).join('\n') +
         (d.comps_note ? '\n\n' + d.comps_note : '') + '\n\nSee the full comparison, with links to each advert: ' + link +
-        '\n\nThese are asking rents on current adverts, for guidance only. Every home is different, so for an exact figure we’d be happy to do a free valuation. Just reply to this email or call us on 0207 096 8131.\n\nResidential Realtors';
+        '\n\nThese are asking rents on adverts, for guidance only. Every home is different, so for an exact figure we’d be happy to do a free valuation. Just reply to this email or call us on 0207 096 8131.\n\nResidential Realtors';
       const r = await sendEmail({ to: [row.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
       p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', [req.user ? req.user.name : 'Office', [row.email], 'info@residentialrealtors.co.uk', subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
       if (!(r && r.ok)) return res.status(502).json({ ok: false, error: 'send' });
       d.comps_sent_at = new Date().toISOString(); d.comps_sent_by = req.user ? req.user.name : 'Office';
       await p.query("UPDATE valuation_requests SET data = $2, status = CASE WHEN status = 'new' THEN 'contacted' ELSE status END, handled_at = coalesce(handled_at, now()), handled_by = coalesce(handled_by, $3) WHERE id = $1", [row.id, JSON.stringify(d), d.comps_sent_by]);
-      await crmLog(p, 'vr:' + row.id, 'Comparables report sent (' + s.n + ' homes, typical ' + gbp0(s.mid) + ' pcm)', req);
+      await crmLog(p, 'vr:' + row.id, 'Comparables report sent (' + s.n + ' homes' + (s.n ? ', typical ' + gbp0(s.mid) + ' pcm' : '') + (est ? '; our estimate ' + est : '') + ')', req);
       return res.json({ ok: true, sent: true, link: link });
     }
     await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]);
     res.json({ ok: true });
+  }));
+  // Our own lets near the landlord's postcode, to add to their comparables report.
+  app.get('/api/admin/valuation-requests/:id/ours', withDb(async function (p, req, res) {
+    const row = (await p.query('SELECT data FROM valuation_requests WHERE id = $1', [jobId(req)])).rows[0]; if (!row) return res.status(404).json({ ok: false });
+    const d = row.data || {}; res.json({ ok: true, items: opts.ourComps ? await opts.ourComps(d.postcode, d.beds) : [] });
   }));
   // The landlord's report page (from the email). No contact details on it; not for search engines.
   app.get('/comparables/:token', withDb(async function (p, req, res) {
@@ -10026,11 +10033,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '<style>body{margin:0;font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;background:#f6f7fb;color:#0f172a;line-height:1.5}.top{background:#0b1f3a;color:#fff;padding:22px 16px}.w{max-width:820px;margin:0 auto}.top img{height:40px;background:#fff;border-radius:8px;padding:4px 8px}.top h1{margin:16px 0 4px;font-size:1.7rem}.top p{margin:0;color:#c9d3e1}' +
       '.card{background:#fff;border:1px solid #e6e9ef;border-radius:20px;padding:22px;margin:18px 16px}.rg{display:flex;justify-content:space-between;text-align:center;gap:10px}.rg span{display:block;color:#475467;font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.rg b{font-size:1.4rem;color:#0b1f3a}.rg .m b{font-size:2.1rem;color:#d9262e}' +
       '.bar{position:relative;height:10px;border-radius:6px;background:linear-gradient(90deg,#d1fadf,#fef0c7,#fee4e2);margin:16px 6px 4px}.bar i{position:absolute;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;background:#d9262e;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25)}' +
-      'table{width:100%;border-collapse:collapse;font-size:.94rem}th,td{padding:10px 8px;border-bottom:1px solid #e6e9ef;text-align:left}th{color:#475467;font-size:.8rem}td.r{text-align:right;font-weight:800;color:#0b1f3a;white-space:nowrap}a{color:#d9262e;font-weight:700}.note{color:#475467;font-size:.88rem}.cta{background:#0b1f3a;color:#fff}.cta a.b{display:inline-block;margin-top:10px;background:#d9262e;color:#fff;text-decoration:none;padding:12px 18px;border-radius:12px}</style></head><body>' +
+      'table{width:100%;border-collapse:collapse;font-size:.94rem}th,td{padding:10px 8px;border-bottom:1px solid #e6e9ef;text-align:left}th{color:#475467;font-size:.8rem}td.r{text-align:right;font-weight:800;color:#0b1f3a;white-space:nowrap}a{color:#d9262e;font-weight:700}.note{color:#475467;font-size:.88rem}.cta{background:#0b1f3a;color:#fff}.est{text-align:center;border:2px solid #d9262e}.est span{display:block;color:#475467;font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.est b{display:block;font-size:2.2rem;color:#d9262e;line-height:1.2}.cta a.b{display:inline-block;margin-top:10px;background:#d9262e;color:#fff;text-decoration:none;padding:12px 18px;border-radius:12px}</style></head><body>' +
       '<div class="top"><div class="w"><img src="/logo-tight.png" alt="Residential Realtors"><h1>Your local rent comparison</h1><p>' + e(row.address) + (d.beds ? ' · ' + e(d.beds === 'Studio' ? 'Studio' : d.beds + ' bed') : '') + '</p></div></div><div class="w">' +
-      '<div class="card"><p style="margin:0 0 12px;font-weight:700">' + s.n + ' similar ' + e(bt) + ' advertised to let nearby</p><div class="rg"><div><span>From</span><b>' + gbp0(s.low) + '</b></div><div class="m"><span>Typical</span><b>' + gbp0(s.mid) + '</b><div class="note">per month</div></div><div><span>Up to</span><b>' + gbp0(s.high) + '</b></div></div><div class="bar"><i style="left:' + pos + '%"></i></div></div>' +
-      '<div class="card"><table><thead><tr><th>Home</th><th>Distance</th><th style="text-align:right">Rent</th></tr></thead><tbody>' + list.map(function (c) { return '<tr><td>' + (c.url ? '<a href="' + e(c.url) + '" rel="noopener nofollow" target="_blank">' + e(c.address || 'See advert') + '</a>' : e(c.address)) + (c.beds ? '<div class="note">' + e(c.beds) + ' bed</div>' : '') + '</td><td>' + (c.dist ? e(c.dist) + ' miles' : '—') + '</td><td class="r">' + gbp0(c.rent) + ' pcm</td></tr>'; }).join('') + '</tbody></table>' +
-      (d.comps_note ? '<p>' + e(d.comps_note) + '</p>' : '') + '<p class="note">Asking rents on current adverts, checked by our team on ' + new Date(d.comps_sent_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }) + '. A guide only, not a valuation.</p></div>' +
+      (d.comps_est ? '<div class="card est"><span>Our estimate for your home</span><b>' + gbp0(d.comps_est) + (d.comps_est_high ? ' – ' + gbp0(d.comps_est_high) : '') + '</b><div class="note">per month, from our local team</div></div>' : '') +
+      (s.n < 2 ? '' : '<div class="card"><p style="margin:0 0 12px;font-weight:700">' + s.n + ' similar ' + e(bt) + ' nearby</p><div class="rg"><div><span>From</span><b>' + gbp0(s.low) + '</b></div><div class="m"><span>Typical</span><b>' + gbp0(s.mid) + '</b><div class="note">per month</div></div><div><span>Up to</span><b>' + gbp0(s.high) + '</b></div></div><div class="bar"><i style="left:' + pos + '%"></i></div></div>') +
+      '<div class="card"><table><thead><tr><th>Home</th><th>Distance</th><th style="text-align:right">Rent</th></tr></thead><tbody>' + list.map(function (c) { return '<tr><td>' + (c.url ? '<a href="' + e(c.url) + '" rel="noopener nofollow" target="_blank">' + e(c.address || 'See advert') + '</a>' : e(c.address)) + (c.beds || c.ours ? '<div class="note">' + [c.beds ? e(c.beds) + ' bed' : '', c.ours ? 'Let by us' : ''].filter(Boolean).join(' · ') + '</div>' : '') + '</td><td>' + (c.dist ? e(c.dist) + ' miles' : '—') + '</td><td class="r">' + gbp0(c.rent) + ' pcm</td></tr>'; }).join('') + '</tbody></table>' +
+      (d.comps_note ? '<p>' + e(d.comps_note) + '</p>' : '') + '<p class="note">Asking rents on adverts, checked by our team on ' + new Date(d.comps_sent_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }) + '. A guide only, not a valuation.</p></div>' +
       '<div class="card cta"><b style="font-size:1.15rem">Want an exact figure for your property?</b><div style="color:#c9d3e1">Condition, floor, outside space and furnishing all count. Our free valuation looks at the whole picture.</div><a class="b" href="/landlords#valuation">Get my free valuation →</a> <a href="tel:02070968131" style="color:#fff;margin-left:10px">or call 0207 096 8131</a></div>' +
       '</div></body></html>');
   }));

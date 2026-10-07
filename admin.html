@@ -2,7 +2,7 @@
 <html lang="en-GB">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style id="mobile-fit">html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}@media (max-width:900px){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}.vr-comps{margin:8px 0;padding:10px 12px;border:1px dashed #c7d2e0;border-radius:12px;background:#f8fafc}.vr-comps summary{cursor:pointer;font-weight:700;color:#0b1f3a;font-size:.9rem}.cmp-row{display:grid;grid-template-columns:2fr 2fr .7fr 1fr .7fr auto;gap:6px;margin-bottom:6px}.cmp-row .inp{min-width:0;padding:7px 8px;font-size:.85rem}.vr-comps textarea{width:100%;margin-top:4px}.cmp-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}@media(max-width:700px){.cmp-row{grid-template-columns:1fr 1fr}.cmp-row [data-c=url],.cmp-row [data-c=address]{grid-column:1/-1}}
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style id="mobile-fit">html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}@media (max-width:900px){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}.vr-comps{margin:8px 0;padding:10px 12px;border:1px dashed #c7d2e0;border-radius:12px;background:#f8fafc}.vr-comps summary{cursor:pointer;font-weight:700;color:#0b1f3a;font-size:.9rem}.cmp-row{display:grid;grid-template-columns:2fr 2fr .7fr 1fr .7fr auto;gap:6px;margin-bottom:6px}.cmp-row .inp{min-width:0;padding:7px 8px;font-size:.85rem}.vr-comps textarea{width:100%;margin-top:4px}.cmp-est{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 10px;max-width:420px}.cmp-est label{display:grid;gap:3px;font-size:.78rem;font-weight:700;color:#0b1f3a}.cmp-row.ours .inp{background:#f0fdf4}.cmp-ours{margin:6px 0;padding:8px;border-radius:10px;background:#fff;border:1px solid #e6e9ef;max-height:260px;overflow:auto}.cmp-o{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f2f4f7;font-size:.85rem}.cmp-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}@media(max-width:700px){.cmp-row{grid-template-columns:1fr 1fr}.cmp-row [data-c=url],.cmp-row [data-c=address]{grid-column:1/-1}}
 </style><script>(function(){var ua=navigator.userAgent;if(/iP(hone|ad|od)/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)){var m=document.querySelector('meta[name=viewport]');if(m&&!/maximum-scale/.test(m.content))m.content+=', maximum-scale=1';}})();</script>
 <meta name="robots" content="noindex, nofollow">
 <title>Repair Jobs — Residential Realtors</title>
@@ -2555,9 +2555,8 @@
     <div><label class="lbl" for="jfLlAddress">Landlord address (shown on invoices)</label><textarea class="inp" id="jfLlAddress" rows="3" style="min-height:80px" placeholder="e.g. 12 High Street, Northampton NN1 1AA"></textarea></div>
     <div class="jf-new">
       <div class="jf-sec">Optional</div>
-      <div class="grid3">
+      <div class="grid2">
         <div><label class="lbl" for="jfAssigned">Assign to</label><input class="inp" id="jfAssigned" list="assignees"></div>
-        <div><label class="lbl" for="jfEst">Estimated cost (£)</label><input class="inp" id="jfEst" inputmode="decimal"></div>
         <div><label class="lbl" for="jfCharge">Charge to landlord (£)</label><input class="inp" id="jfCharge" inputmode="decimal"></div>
       </div>
     </div>
@@ -2835,7 +2834,6 @@
     charge = (charge || 0) + pCharge;
     var cost = num(j.actual_cost);
     var estimated = false;
-    if (cost === null) { cost = num(j.estimated_cost); estimated = cost !== null; }
     if (cost === null && !pCost) return null;
     cost = (cost || 0) + pCost;
     return { value: Math.round((charge - cost) * 100) / 100, estimated: estimated, margin: charge > 0 ? (charge - cost) / charge : null };
@@ -3981,7 +3979,7 @@
       if ($('jfReceived').value) body.received_at = new Date($('jfReceived').value).toISOString();
       if ($('jfDue').value) body.due_at = new Date($('jfDue').value).toISOString();
       var rcj = resolveContractor($('jfAssigned').value); if (rcj) $('jfAssigned').value = rcj.name;
-      var extra = [['jfAssigned', 'assigned_to'], ['jfEst', 'estimated_cost'], ['jfCharge', 'landlord_charge']];
+      var extra = [['jfAssigned', 'assigned_to'], ['jfCharge', 'landlord_charge']];
       for (var i = 0; i < extra.length; i++) {
         var v = $(extra[i][0]).value.trim();
         if (!v) continue;
@@ -7055,11 +7053,10 @@
 
       // Money
       '<div class="card" data-pane="money"><h3>Costs &amp; profit</h3>' +
-        '<div class="grid3">' +
-          '<div><label class="lbl" for="fEst">Estimated cost (£)</label><input class="inp" id="fEst" inputmode="decimal" value="' + esc(j.estimated_cost == null ? '' : j.estimated_cost) + '"></div>' +
+        '<div class="grid2">' +
           '<div><label class="lbl" for="fAct">Actual cost (£)</label><input class="inp" id="fAct" inputmode="decimal" value="' + esc(j.actual_cost == null ? '' : j.actual_cost) + '"><label class="vat-tick"><input type="checkbox" id="fActVat"' + (j.cost_vat ? ' checked' : '') + '> + VAT (20%) <span id="fActGross"></span></label></div>' +
           '<div><label class="lbl" for="fCharge">Charge to landlord (£)' + (jobParts.length ? ' <span style="font-weight:500;color:var(--ink-faint)">+ parts below</span>' : '') + '</label><input class="inp" id="fCharge" inputmode="decimal" value="' + esc(j.landlord_charge == null ? '' : j.landlord_charge) + '"><label class="vat-tick"><input type="checkbox" id="fChargeVat"' + (j.charge_vat ? ' checked' : '') + '> + VAT (20%) <span id="fChargeGross"></span></label></div>' +
-        '</div>' + mkChips('data-mk-base="#fAct,#fEst" data-mk-target="#fCharge"', 'Our price = contractor’s price +') +
+        '</div>' + mkChips('data-mk-base="#fAct" data-mk-target="#fCharge"', 'Our price = contractor’s price +') +
         '<div class="profit-box" id="profitBox"><div><div class="lbl2" id="profitLbl">Profit</div><div class="big" id="profitVal">—</div></div><div class="lbl2" id="profitMargin"></div></div>' +
         (j.assigned_to && j.actual_cost != null
           ? '<div class="nearby" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
@@ -7748,7 +7745,7 @@
     // Live profit as costs are typed.
     function readMoney(id){ var v = $(id).value.replace(/[£,\s]/g, ''); return v === '' ? null : Number(v); }
     function updateProfit(){
-      var p = profitOf({ landlord_charge: readMoney('fCharge'), actual_cost: readMoney('fAct'), estimated_cost: readMoney('fEst'), parts_cost: j.parts_cost, parts_charge: j.parts_charge });
+      var p = profitOf({ landlord_charge: readMoney('fCharge'), actual_cost: readMoney('fAct'), parts_cost: j.parts_cost, parts_charge: j.parts_charge });
       var box = $('profitBox');
       box.classList.toggle('pos', !!p && p.value >= 0);
       box.classList.toggle('neg', !!p && p.value < 0);
@@ -7759,7 +7756,7 @@
       // With VAT: the total including VAT next to each figure (the figures themselves are before VAT).
       [['fAct', 'fActVat', 'fActGross'], ['fCharge', 'fChargeVat', 'fChargeGross']].forEach(function(f){ var v = readMoney(f[0]); $(f[2]).textContent = $(f[1]).checked && v ? '= ' + gbp(Math.round(v * 120) / 100) + ' with VAT' : ''; });
     }
-    ['fEst', 'fAct', 'fCharge'].forEach(function(id){ $(id).addEventListener('input', updateProfit); });
+    ['fAct', 'fCharge'].forEach(function(id){ $(id).addEventListener('input', updateProfit); });
     ['fActVat', 'fChargeVat'].forEach(function(id){ $(id).addEventListener('change', updateProfit); });
     updateProfit();
 
@@ -7787,7 +7784,7 @@
       if (!who && $('fAssigned2').value.trim() && !t2) { toast('What is ' + $('fAssigned2').value.trim() + ' doing? Add their task.'); $('fTask2').focus(); return; }
       if (body.assigned_to_2 && body.assigned_to_2.trim().toLowerCase() === ('assigned_to' in body ? body.assigned_to : j.assigned_to || '').trim().toLowerCase()) { toast('The second contractor is the same as the first'); $('fAssigned2').focus(); return; }
       if ($('fNext').value.trim() !== (j.next_steps || '')) body.next_steps = $('fNext').value;
-      [['fEst', 'estimated_cost'], ['fAct', 'actual_cost'], ['fCharge', 'landlord_charge']].forEach(function(pair){
+      [['fAct', 'actual_cost'], ['fCharge', 'landlord_charge']].forEach(function(pair){
         var v = readMoney(pair[0]);
         if (v !== null && (isNaN(v) || v < 0)) { body.__bad = pair[0]; return; }
         if (v !== num(j[pair[1]])) body[pair[1]] = v;
@@ -8121,24 +8118,30 @@
       }).join('') + '</details>';
   }
   // Comparables report: our team adds similar homes found on Rightmove, then sends the landlord the report.
-  function compsRow(c){ c = c || {}; return '<div class="cmp-row"><input class="inp" data-c="url" placeholder="Rightmove link" value="' + esc(c.url || '') + '"><input class="inp" data-c="address" placeholder="Street, area" value="' + esc(c.address || '') + '"><input class="inp" data-c="beds" placeholder="Beds" value="' + esc(c.beds || '') + '"><input class="inp" data-c="rent" inputmode="decimal" placeholder="Rent £ pcm" value="' + (c.rent || '') + '"><input class="inp" data-c="dist" inputmode="decimal" placeholder="Miles" value="' + (c.dist || '') + '"><button type="button" class="btn small ghost" data-comps-act="del" title="Remove">✕</button></div>'; }
+  function compsRow(c){ c = c || {}; return '<div class="cmp-row' + (c.ours ? ' ours' : '') + '"><input type="hidden" data-c="ours" value="' + (c.ours ? '1' : '') + '"><input class="inp" data-c="url" placeholder="' + (c.ours ? 'Our listing' : 'Rightmove link') + '" value="' + esc(c.url || '') + '"><input class="inp" data-c="address" placeholder="Street, area" value="' + esc(c.address || '') + '"><input class="inp" data-c="beds" placeholder="Beds" value="' + esc(c.beds || '') + '"><input class="inp" data-c="rent" inputmode="decimal" placeholder="Rent £ pcm" value="' + (c.rent || '') + '"><input class="inp" data-c="dist" inputmode="decimal" placeholder="Miles" value="' + (c.dist || '') + '"><button type="button" class="btn small ghost" data-comps-act="del" title="Remove">✕</button></div>'; }
   function compsEditor(x){ var d = x.data || {}, list = (d.comps && d.comps.length) ? d.comps : [{}, {}, {}, {}];
-    return '<details class="vr-comps" data-comps="' + x.id + '"' + (d.comps_sent_at ? '' : ' open') + '><summary>' + (d.comps_sent_at ? '✓ Report sent ' + esc(fmtShort(d.comps_sent_at)) + (d.comps_sent_by ? ' by ' + esc(d.comps_sent_by) : '') + ' · edit or resend' : '📊 Prepare the report: add 3–6 similar homes advertised nearby on Rightmove') + '</summary>' +
-      '<div class="muted" style="font-size:.8rem;margin:6px 0">Paste the Rightmove link, the street and area, bedrooms, the rent per month and roughly how far it is. The landlord gets the typical rent, the range and a link to each advert.</div>' +
-      '<div class="cmp-rows">' + list.map(compsRow).join('') + '</div>' +
+    return '<details class="vr-comps" data-comps="' + x.id + '"' + (d.comps_sent_at ? '' : ' open') + '><summary>' + (d.comps_sent_at ? '✓ Report sent ' + esc(fmtShort(d.comps_sent_at)) + (d.comps_sent_by ? ' by ' + esc(d.comps_sent_by) : '') + ' · edit or resend' : '📊 Prepare the report: our estimate, plus similar homes from Rightmove or our own lets') + '</summary>' +
+      '<div class="muted" style="font-size:.8rem;margin:6px 0">Give our own estimate, and/or add similar homes: paste a Rightmove link with the street, bedrooms, rent per month and distance, or pick one of our properties. The landlord gets our estimate, the typical rent, the range and a link to each home.</div>' +
+      '<div class="cmp-est"><label>Our estimate (£ pcm)<input class="inp" data-c-est inputmode="decimal" placeholder="e.g. 2300" value="' + (d.comps_est || '') + '"></label><label>Up to (optional)<input class="inp" data-c-est-high inputmode="decimal" placeholder="e.g. 2450" value="' + (d.comps_est_high || '') + '"></label></div>' +
+      '<div class="cmp-rows">' + list.map(compsRow).join('') + '</div><div class="cmp-ours" hidden></div>' +
       '<textarea class="inp" data-c-note rows="2" placeholder="Optional note for the landlord, e.g. what would help it let for more">' + esc(d.comps_note || '') + '</textarea>' +
-      '<div class="cmp-btns"><button type="button" class="btn small ghost" data-comps-act="add">+ Add a home</button><button type="button" class="btn small ghost" data-comps-act="save">Save</button><button type="button" class="btn small" data-comps-act="send">' + (d.comps_sent_at ? 'Resend report' : 'Send report to ' + esc(x.name.split(/\s+/)[0] || 'landlord')) + ' →</button>' +
+      '<div class="cmp-btns"><button type="button" class="btn small ghost" data-comps-act="add">+ Add a home</button><button type="button" class="btn small ghost" data-comps-act="ours">+ Add one of our properties</button><button type="button" class="btn small ghost" data-comps-act="save">Save</button><button type="button" class="btn small" data-comps-act="send">' + (d.comps_sent_at ? 'Resend report' : 'Send report to ' + esc(x.name.split(/\s+/)[0] || 'landlord')) + ' →</button>' +
       (d.comps_token && d.comps_sent_at ? '<a class="muted" href="/comparables/' + esc(d.comps_token) + '" target="_blank" rel="noopener">View report</a>' : '') + '</div></details>'; }
   document.addEventListener('click', function(e){ var b = e.target.closest('[data-comps-act]'); if (!b) return; var box = b.closest('[data-comps]'); if (!box) return; var act = b.dataset.compsAct;
     if (act === 'add') { box.querySelector('.cmp-rows').insertAdjacentHTML('beforeend', compsRow()); return; }
     if (act === 'del') { b.closest('.cmp-row').remove(); return; }
+    if (act === 'ours') { var pk = box.querySelector('.cmp-ours'); if (!pk.hidden) { pk.hidden = true; return; } pk.hidden = false; pk.innerHTML = '<span class="muted">Finding our properties nearby…</span>';
+      api('GET', '/api/admin/valuation-requests/' + box.dataset.comps + '/ours').then(function(d){ var it = (d && d.items) || []; box._ours = it;
+        pk.innerHTML = it.length ? '<div class="muted" style="font-size:.8rem;margin-bottom:4px">Our properties with the same bedrooms, nearest first:</div>' + it.map(function(o, i){ return '<div class="cmp-o"><span><b>' + esc(o.address) + '</b> · ' + esc(o.beds === 'Studio' ? 'Studio' : o.beds + ' bed') + ' · ' + esc(gbp(o.rent)) + ' pcm' + (o.dist < 50 ? ' · ' + o.dist + ' mi' : '') + (o.status ? ' · ' + esc(o.status) : '') + '</span><button type="button" class="btn small ghost" data-comps-act="pick" data-i="' + i + '">Add</button></div>'; }).join('') : '<span class="muted">None of our properties with the same bedrooms within 3 miles.</span>'; }); return; }
+    if (act === 'pick') { var o = (box._ours || [])[+b.dataset.i]; if (!o) return; var rows = box.querySelector('.cmp-rows'), empty = Array.prototype.filter.call(rows.querySelectorAll('.cmp-row'), function(r){ return !Array.prototype.some.call(r.querySelectorAll('.inp'), function(i){ return i.value.trim(); }); })[0];
+      var html = compsRow({ url: o.url, address: o.address, beds: o.beds, rent: o.rent, dist: o.dist < 50 ? o.dist : '', ours: true }); if (empty) empty.outerHTML = html; else rows.insertAdjacentHTML('beforeend', html); b.disabled = true; b.textContent = 'Added'; return; }
     var comps = Array.prototype.map.call(box.querySelectorAll('.cmp-row'), function(r){ var o = {}; r.querySelectorAll('[data-c]').forEach(function(i){ o[i.dataset.c] = i.value.trim(); }); return o; }).filter(function(o){ return o.rent || o.url || o.address; });
-    var send = act === 'send', n = comps.filter(function(o){ return parseFloat(String(o.rent).replace(/[£,\s]/g, '')) >= 200; }).length;
-    if (send && n < 2) { toast('Add at least 2 homes with a rent first'); return; }
-    if (send && !confirm('Email the report (' + n + ' homes) to the landlord now?')) return;
+    var send = act === 'send', n = comps.filter(function(o){ return parseFloat(String(o.rent).replace(/[£,\s]/g, '')) >= 200; }).length, est = box.querySelector('[data-c-est]').value.trim(), estH = box.querySelector('[data-c-est-high]').value.trim();
+    if (send && n < 2 && !(parseFloat(est.replace(/[£,\s]/g, '')) >= 200)) { toast('Add our estimate, or at least 2 homes with a rent'); return; }
+    if (send && !confirm('Email the report' + (n ? ' (' + n + ' homes)' : '') + ' to the landlord now?')) return;
     b.disabled = true;
-    api('POST', '/api/admin/valuation-requests/' + box.dataset.comps + '/comps', { comps: comps, note: (box.querySelector('[data-c-note]') || {}).value || '', send: send }).then(function(d){ b.disabled = false;
-      if (!d || !d.ok) { toast(d && d.error === 'few' ? 'Add at least 2 homes with a rent' : d && d.error === 'email' ? 'No email for this landlord, or email isn’t set up' : 'Couldn’t ' + (send ? 'send' : 'save') + ' that'); return; }
+    api('POST', '/api/admin/valuation-requests/' + box.dataset.comps + '/comps', { comps: comps, note: (box.querySelector('[data-c-note]') || {}).value || '', est: est, est_high: estH, send: send }).then(function(d){ b.disabled = false;
+      if (!d || !d.ok) { toast(d && d.error === 'few' ? 'Add our estimate, or at least 2 homes with a rent' : d && d.error === 'email' ? 'No email for this landlord, or email isn’t set up' : 'Couldn’t ' + (send ? 'send' : 'save') + ' that'); return; }
       toast(send ? '✓ Report sent' : '✓ Saved'); loadVr(); loadCrm(true); }).catch(function(){ b.disabled = false; toast('Couldn’t connect'); });
   });
   document.addEventListener('change', function(e){ var sel = e.target.closest('[data-vr-st]'); if (!sel) return;

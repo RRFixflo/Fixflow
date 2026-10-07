@@ -687,6 +687,15 @@ module.exports = function (app, opts) {
       const pick = data.let.concat(data.sale).filter(function (p) { return !p.taken && p.outcode && hit(p.outcode); }).sort(function (a, b) { return String(b.added).localeCompare(String(a.added)); }).slice(0, max || 6);
       return pick.map(function (p) { return card(p, '(max-width: 640px) 85vw, 360px'); }).join('');
     },
+    // Our own lets near a postcode (any status, incl. let agreed) for staff to add to a comparables report.
+    compsNear: async function (postcode, beds) {
+      const g = await geoPostcode(String(postcode || '').replace(/\s+/g, '').toUpperCase()) || {}, has = isFinite(g.lat) && isFinite(g.lng);
+      const mi = function (a, b, c, d) { const R = 3958.8, t = Math.PI / 180, x = Math.sin((c - a) * t / 2), y = Math.sin((d - b) * t / 2); return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * t) * Math.cos(c * t) * y * y)); };
+      const n = /studio/i.test(beds || '') ? 0 : parseInt(beds, 10), five = /\+/.test(beds || '') || n >= 5, out = String(postcode || '').trim().split(/\s+/)[0].toUpperCase();
+      return data.let.filter(function (p) { return !p.commercial && p.price > 0 && (isNaN(n) || (n === 0 ? p.studio || p.beds === 0 : five ? p.beds >= 5 : p.beds === n && !p.studio)); })
+        .map(function (p) { const d = has && p.lat != null ? mi(g.lat, g.lng, p.lat, p.lng) : (p.outcode === out ? 0.5 : 99); return { url: opts.siteUrl + p.url, address: p.where, beds: p.studio ? 'Studio' : String(p.beds), rent: Math.round(p.price), dist: Math.round(d * 10) / 10, status: p.status || '' }; })
+        .filter(function (x) { return x.dist <= 3; }).sort(function (a, b) { return a.dist - b.dist; }).slice(0, 15);
+    },
     urls: function () { return LIVE ? data.let.concat(data.sale).map(function (p) { return p.url; }) : []; }
   };
 };

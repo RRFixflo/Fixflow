@@ -450,6 +450,7 @@ app.get('/reserve/:token', (req, res) => { sendPage(req, res, path.join(__dirnam
 app.get('/offer/review/:token', (req, res) => { sendPage(req, res, path.join(__dirname, 'offer-review.html')); });
 
 const jobs = require('./jobs')(app, {
+  ourComps: function (pc, beds) { return listings.compsNear(pc, beds); },
   sendEmail: function (opts) { return sendViaResend(opts); },
   canEmail: function () { return !!RESEND_API_KEY; },
   // The same AI provider the tenant page uses, for drafting emails from a job.
