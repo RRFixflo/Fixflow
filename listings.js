@@ -703,7 +703,7 @@ module.exports = function (app, opts) {
     // Gnomen numbers for the office's available list: matched on postcode, bedrooms and door number (only when clear-cut).
     gnomenFor: function (rows) {
       // Every home in Gnomen's feeds (also unpublished ones), not just those on the website.
-      const seen = {}, recs = every.let.concat(every.sale, data.let, data.sale).filter(function (p) { const ok = /^\d+$/.test(String(p.id)) && p.postcode && !seen[p.id]; if (ok) seen[p.id] = 1; return ok; }), out = {};
+      const seen = {}, recs = every.let.concat(every.sale, data.let, data.sale).filter(function (p) { const ok = /^\d{1,7}$/.test(String(p.id)) && p.postcode && !seen[p.id]; if (ok) seen[p.id] = 1; return ok; }), out = {};
       const diag = [], maybe = {};
       const missing = {}, feedOk = every.let.length + every.sale.length > 0;
       const plain = function (s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); };
@@ -734,6 +734,31 @@ module.exports = function (app, opts) {
       // Gnomen numbers in the feed right now (to check numbers typed by hand), and the homes not on Gnomen.
       Object.defineProperty(out, 'missing', { value: missing }); Object.defineProperty(out, 'maybe', { value: maybe }); Object.defineProperty(out, 'known', { value: feedOk ? function (id) { id = String(id); return every.let.concat(every.sale, data.let, data.sale).some(function (p) { return String(p.id) === id; }); } : null });
       return out;
+    },
+    // Gnomen numbers for our Rightmove adverts (e.g. the Dreams): the number Rightmove's page gave, one set by hand
+    // (RM_GNOMEN_IDS or typed in the staff app), else the Gnomen home on the same street, in the same area, with the
+    // same bedrooms (the rent decides between a few). Unsure → the likely ones, for staff to confirm.
+    gnomenForAdverts: function (items, typed) {
+      const out = {}, maybe = {}, manual = Object.assign({}, typed || {}), seen = {};
+      String(process.env.RM_GNOMEN_IDS || '').split(/[\s,]+/).forEach(function (pair) { const m = /^(\d+)[=:](\d+)$/.exec(pair); if (m && !manual[m[1]]) manual[m[1]] = m[2]; });
+      const recs = data.let.concat(every.let, data.sale, every.sale).filter(function (p) { const ok = /^\d{1,7}$/.test(String(p.id)) && !seen[p.id]; if (ok) seen[p.id] = 1; return ok; });
+      const plain = function (v) { return String(v || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); };
+      const stName = function (v) { return plain(v).replace(/^(flat|apartment|apt|unit)?\s*\d+[a-z]?\s+/, '').trim(); };
+      const oc = function (p) { return String(p.outcode || String(p.postcode || '').replace(/\d[A-Z]{2}$/i, '') || '').toUpperCase(); };
+      (items || []).forEach(function (r) {
+        const rid = String(r.id || ''); if (!rid) return;
+        if (manual[rid]) { out[rid] = String(manual[rid]); return; }
+        const e = rmDetails.get(rid), pid = e && e.d && e.d.gnomenPid; if (pid && seen[pid]) { out[rid] = String(pid); return; }
+        const addr = plain(r.address), m = /\b([A-Z]{1,2}\d[A-Z\d]?)(?:\s*\d[A-Z]{2})?\s*$/i.exec(String(r.address || '').replace(/[,\s]+$/, '')), o = m ? m[1].toUpperCase() : '';
+        let c = recs.filter(function (p) { const sn = stName(p.street); return (!o || oc(p) === o) && (r.beds == null || p.beds === Number(r.beds)) && sn.length >= 4 && !/^(london|central london)$/.test(sn) && (' ' + addr + ' ').indexOf(' ' + sn + ' ') !== -1; });
+        if (c.length > 1 && r.pcm) { const byRent = c.filter(function (p) { return p.price && Math.abs(p.price - r.pcm) / r.pcm <= 0.06; }); if (byRent.length) c = byRent; }
+        if (c.length > 1) { const cur = c.filter(function (p) { return !/^(let|sold|withdrawn|completed|archived)$/i.test(String(p.status || '').trim()); }); if (cur.length) c = cur; }
+        // The same home entered twice in Gnomen: the one shown on the website wins.
+        if (c.length > 1) { const shown = c.filter(function (p) { return data.let.concat(data.sale).some(function (q) { return q === p || String(q.id) === String(p.id); }) && p.url; }); if (shown.length) c = shown; }
+        const ids = Array.from(new Set(c.map(function (p) { return String(p.id); })));
+        if (ids.length === 1) out[rid] = ids[0]; else if (ids.length) maybe[rid] = ids.slice(0, 3);
+      });
+      return { ids: out, maybe: maybe };
     },
     urls: function () { return LIVE ? data.let.concat(data.sale).map(function (p) { return p.url; }) : []; }
   };

@@ -113,6 +113,7 @@
   .side .grow { flex: 1; }
   /* Arranging the menu: drag the items, or use the arrows. Each person's order is saved for them. */
   #avKey { text-transform: uppercase; }
+  .web-ro [data-wname], .web-ro [data-ignore-me], .web-ro [data-unignore] { display: none !important; }
   .nav-arr-bar { display: flex; gap: 6px; padding: 0 10px 6px; }
   .nav-arr-btn { border: 0; background: none; color: var(--side-soft); font: inherit; font-size: .74rem; padding: 2px 0; cursor: pointer; } .nav-arr-btn:hover { color: #fff; text-decoration: underline; }
   .nav-arranging #navArrange { color: #fff; font-weight: 700; background: #D9262E; padding: 3px 10px; border-radius: 999px; text-decoration: none; }
@@ -3008,7 +3009,9 @@
         loadOffers().then(function(){ showView(wantCrm ? 'crm' : wantLt ? 'lt' : wantOffers ? 'offers' : (wasOn && ['offers', 'lt', 'avail', 'sent', 'team', 'who', 'crm', 'web'].indexOf(wasOn) !== -1 ? wasOn : 'avail')); }); loadPvr(); loadCrm(true); refreshListings(true);
         // An offers team manager also gets the Team section on the Offers page.
         $('stWho').hidden = false; $('navWho').hidden = false;   // everyone sees who did what
-        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; $('stWeb').hidden = false; showDeployed(d); } else { $('navWeb').hidden = true; }
+        $('stWeb').hidden = false;   // every staff member sees the website visitors
+        document.body.classList.toggle('web-ro', !d.canManageUsers);
+        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; showDeployed(d); }
         return;
       }
       // Your own (full) page: Team and Who did what stay in Activity; the red manager buttons are for the staff page.
@@ -4222,7 +4225,6 @@
     if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
-    if (staffMode && v === 'web' && !meta.canManageUsers) v = 'avail';
     if (staffMode && v !== 'web' && v !== 'crm' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
@@ -8532,7 +8534,7 @@
     h += '<div class="crm-notes"><b>Notes &amp; history</b><div class="crm-add-note"><textarea class="inp" rows="2" data-crm-note placeholder="Add a note — a call, what they said, what’s next…"></textarea><button type="button" class="btn small primary" data-crm-note-save>Add note</button></div>' +
       (x.notes.length ? '<ul>' + x.notes.map(function(n){ return '<li class="' + (n.auto ? 'auto' : '') + '"><span>' + esc(n.note) + '</span><small>' + esc(n.by_name || '') + ' · ' + esc(fmtShort(n.at)) + '</small></li>'; }).join('') + '</ul>' : '') +
       '<p class="muted-note" style="margin:6px 0 0">Came in ' + esc(fmtShort(x.at)) + (x.type === 'sub' ? ' · signed up on the website' : '') + '</p></div>';
-    if (crm.manager) h += '<div class="crm-arch">' + (x.archived ? '<button type="button" class="btn small" data-crm-restore>↩︎ Put back from the archive</button>' : '<button type="button" class="btn small ghost danger" data-crm-archive>🗑 Delete (moves to the archive)</button>') + '</div>';
+    h += '<div class="crm-arch">' + (x.archived ? '<button type="button" class="btn small" data-crm-restore>↩︎ Put back from the archive</button>' : '<button type="button" class="btn small ghost danger" data-crm-archive>🗑 Delete (moves to the archive)</button>') + '</div>';
     if (x.type !== 'sub') h += '<details class="crm-edit"><summary>✏️ Edit contact details</summary><div class="lt-grid"><label>Name<input class="inp" data-ce="name" value="' + esc(x.name) + '"></label><label>Mobile<input class="inp" data-ce="phone" type="tel" value="' + esc(x.phone || '') + '"></label><label>Email<input class="inp" data-ce="email" type="email" value="' + esc(x.email || '') + '"></label><label>Address<input class="inp" data-ce="address" value="' + esc(x.address || '') + '"></label></div><button type="button" class="btn small" data-crm-edit-save style="margin-top:8px">Save details</button></details>';
     return h + '</div></div>';
   }
@@ -11587,6 +11589,22 @@
     h += '<div class="av-acc-det">' + det + ' · ' + (x.access_note ? '📝 ' + esc(x.access_note) + ' <button type="button" class="linkish" data-ava="accnote">edit</button>' : '<button type="button" class="linkish" data-ava="accnote">add a note</button>') + '</div></div>';
     return h;
   }
+  // A Rightmove advert's own Gnomen number (e.g. a Dream) — tap to type, confirm or change it.
+  function rmGid(r){
+    return r.gnomen_id ? '<button type="button" class="av-gid" data-rmgnomen="' + esc(r.id) + '" title="Gnomen number of this advert' + (r.gnomen_typed ? ' (typed in)' : '') + ' — tap to change">Gnomen ' + esc(r.gnomen_id) + '</button>'
+      : r.gnomen_maybe && r.gnomen_maybe.length ? '<button type="button" class="av-gid none maybe" data-rmgnomen="' + esc(r.id) + '" title="Possibly ' + esc(r.gnomen_maybe.join(' or ')) + ' — tap to check and confirm">Gnomen ' + esc(r.gnomen_maybe.join(' / ')) + '?</button>'
+      : '<button type="button" class="av-gid gone" data-rmgnomen="' + esc(r.id) + '" title="No home like this advert is in Gnomen’s feed — it may have been taken off Gnomen. Tap to type the number.">⚠ Not on Gnomen</button>';
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('[data-rmgnomen]'); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    var r = ((rmData && rmData.items) || []).filter(function(x){ return String(x.id) === b.dataset.rmgnomen; })[0]; if (!r) return;
+    var v = prompt('Gnomen number for the advert ' + r.address + (r.gnomen_maybe && !r.gnomen_id ? '\n\nPossibly (check in Gnomen): ' + r.gnomen_maybe.join(' or ') : '') + '\n\n(leave empty to work it out automatically):', r.gnomen_id && r.gnomen_typed ? r.gnomen_id : (r.gnomen_maybe || [])[0] || '');
+    if (v === null) return; v = v.replace(/^#/, '').trim();
+    if (v && !/^\d{1,12}$/.test(v)) { toast('A Gnomen number is digits only, e.g. 1234'); return; }
+    avDreamOpen = true;
+    api('POST', '/api/admin/rightmove/' + encodeURIComponent(r.id) + '/gnomen', { gnomen_id: v }).then(function(d){ toast(d && d.ok ? (v ? '✓ Gnomen ' + v + ' saved' : 'Gnomen number cleared') : 'Couldn’t save that'); if (d && d.ok) loadAvail(); });
+  }, true);
   // The property's Gnomen number (matched automatically, or typed in) — tap to type or change it.
   function avGid(x){
     if (x.gnomen_missing) return '<button type="button" class="av-gid gone" data-gnomen="' + x.id + '" title="' + (x.gnomen_id ? 'Gnomen ' + esc(x.gnomen_id) + ' isn’t in Gnomen’s feed any more — it may have been taken off or archived in Gnomen' : 'Nothing at this address is in Gnomen’s feed — it may have been taken off Gnomen, or never added') + '. Tap to type the number.">⚠ ' + (x.gnomen_id ? 'Gnomen ' + esc(x.gnomen_id) + ' — not on Gnomen' : 'Not on Gnomen') + '</button>';
@@ -11654,7 +11672,7 @@
         '<details class="av-rm-unl"' + (avDreamOpen ? ' open' : '') + ' id="avDreams"><summary>💭 Dreams on Rightmove (' + dreamsAll.length + ')' + (unlN ? ' · ' + unlN + ' not linked to a property' : '') + (dueN ? ' · <span style="color:#b42318">' + dueN + ' need a decision</span>' : '') + '</summary>' +
           '<div class="av-dream-sort"><label for="avDreamSort">Sort by</label><select class="inp" id="avDreamSort" style="width:auto">' + [['due', 'Needs a decision first'], ['new', 'Newest on Rightmove'], ['old', 'Oldest on Rightmove (up longest)'], ['review', 'Review date (soonest first)']].map(function(o){ return '<option value="' + o[0] + '"' + (avDreamSort === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' + '<p class="muted-note" style="margin:6px 0 8px">Adverts we keep online for leads — link each to the available property it brings enquiries for. Every 7 days you’ll be asked to keep it, change it or take it down.</p>' + dreamsAll.map(function(r){
           var d = dreamInfo(r.id), of = dreamOf[r.id];
-          return '<div class="av-rm-item' + (d.due ? ' is-due' : '') + '">' + (r.image ? '<img src="' + esc(r.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<div style="flex:1;min-width:200px"><b>' + esc(r.address) + '</b>' + (of ? ' ' + avGid(of) : '') + '<span>' + [r.beds != null ? (r.beds === 0 ? 'Studio' : r.beds + ' bed') : '', r.pcm ? gbp(r.pcm) + ' pcm' : '', rmStatusText(r.status)].filter(Boolean).map(esc).join(' · ') + '</span>' +
+          return '<div class="av-rm-item' + (d.due ? ' is-due' : '') + '">' + (r.image ? '<img src="' + esc(r.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<div style="flex:1;min-width:200px"><b>' + esc(r.address) + '</b> ' + rmGid(r) + '<span>' + [r.beds != null ? (r.beds === 0 ? 'Studio' : r.beds + ' bed') : '', r.pcm ? gbp(r.pcm) + ' pcm' : '', rmStatusText(r.status)].filter(Boolean).map(esc).join(' · ') + '</span>' +
             '<span class="av-dream-of">' + (of ? '💭 Dream of <b>' + esc(shortAddr(of.address)) + '</b>' : '<i>Not linked to a property yet</i>') + '</span>' + dreamTimeline(d) + '</div>' +
             '<span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(r.url) + '">View ↗</a><select class="inp av-dreamsel" data-dreamfor="' + esc(r.id) + '" style="width:auto;max-width:230px"><option value="">' + (of ? 'Change to…' : 'It’s a Dream of…') + '</option>' + (function(){ var oc = avOutcode(r.address); var near = liveSorted.filter(function(x){ return oc && avOutcode(x.address) === oc; }), rest = liveSorted.filter(function(x){ return near.indexOf(x) === -1; }); var opt = function(x){ return '<option value="' + x.id + '"' + (of && of.id === x.id ? ' selected' : '') + '>' + esc(shortAddr(x.address)) + (x.beds != null ? ' · ' + (x.beds === 0 ? 'studio' : x.beds + ' bed') : '') + (x.gnomen_id ? ' · #' + esc(x.gnomen_id) : '') + '</option>'; }; return (near.length ? '<optgroup label="Same area">' + near.map(opt).join('') + '</optgroup>' : '') + '<optgroup label="All available">' + rest.map(opt).join('') + '</optgroup>'; })() + '</select><button type="button" class="btn small' + (of ? '' : ' primary') + '" data-dreamgo="' + esc(r.id) + '">🔗 ' + (of ? 'Change' : 'Link as Dream') + '</button>' +
             (d.takedown && !d.stale ? '<button type="button" class="btn small ghost" data-dreamact="undo" data-dreamid="' + esc(r.id) + '">Undo take down</button>' : '<button type="button" class="btn small' + (d.due ? ' primary' : '') + '" data-dreamact="extend" data-dreamid="' + esc(r.id) + '">⏱ +7 days</button><button type="button" class="btn small ghost" data-dreamact="takedown" data-dreamid="' + esc(r.id) + '" style="color:#b42318">🗑 Take down</button>') +
