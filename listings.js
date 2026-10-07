@@ -696,6 +696,21 @@ module.exports = function (app, opts) {
         .map(function (p) { const d = has && p.lat != null ? mi(g.lat, g.lng, p.lat, p.lng) : (p.outcode === out ? 0.5 : 99); return { url: opts.siteUrl + p.url, address: p.where, beds: p.studio ? 'Studio' : String(p.beds), rent: Math.round(p.price), dist: Math.round(d * 10) / 10, status: p.status || '' }; })
         .filter(function (x) { return x.dist <= 3; }).sort(function (a, b) { return a.dist - b.dist; }).slice(0, 15);
     },
+    // Gnomen numbers for the office's available list: matched on postcode, bedrooms and door number (only when clear-cut).
+    gnomenFor: function (rows) {
+      const out = {}, recs = data.let.concat(data.sale).filter(function (p) { return /^\d+$/.test(String(p.id)) && p.postcode; });
+      const PC = /([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i, door = function (s) { const m = /^\s*(?:flat|apartment|apt|unit)?\s*([0-9]+[a-z]?)\b/i.exec(String(s || '')); return m ? m[1].toLowerCase() : ''; };
+      (rows || []).forEach(function (r) {
+        const m = PC.exec(String(r.address || '')); if (!m) return;
+        const pc = (m[1] + m[2]).toUpperCase(), beds = r.beds == null ? null : Number(r.beds), addr = String(r.address).toLowerCase();
+        let c = recs.filter(function (p) { return p.postcode === pc && (beds == null || p.beds === beds); });
+        if (c.length > 1) { const d = door(r.address); if (d) { const byNo = c.filter(function (p) { return p.unit && p.unit.split('|')[0] === d.replace(/[^a-z0-9]/g, ''); }); if (byNo.length) c = byNo; } }
+        if (c.length > 1) { const bySt = c.filter(function (p) { return p.street && addr.indexOf(String(p.street).toLowerCase().replace(/^[\d\s\w]*?\d+[a-z]?\s+/, '').trim()) !== -1; }); if (bySt.length) c = bySt; }
+        const ids = Array.from(new Set(c.map(function (p) { return String(p.id); })));
+        if (ids.length === 1) out[r.id] = ids[0];
+      });
+      return out;
+    },
     urls: function () { return LIVE ? data.let.concat(data.sale).map(function (p) { return p.url; }) : []; }
   };
 };
