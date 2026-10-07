@@ -1200,3 +1200,11 @@ html, body { overflow-x: clip; }
 .sw-faq details { border-top: 1px solid var(--line); padding: 12px 0; } .sw-faq summary { cursor: pointer; font-weight: 700; color: var(--navy); } .sw-faq details p { margin: 8px 0 0; font-size: .94rem; }
 .rd .sw-how .rv > p { font-size: 1rem; }
 @media (max-width: 900px) { .sw-how { grid-template-columns: 1fr; gap: 24px; } }
+
+/* London rents: local letting guide */
+.ag { padding: 56px 0; background: #fff; border-top: 1px solid var(--line); }
+.ag h2 { margin: 4px 0 12px; color: var(--navy); font-size: clamp(1.5rem, 3vw, 2.1rem); } .ag .rv > p { color: var(--soft); }
+.ag-g { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.ag-g > div { padding: 14px 16px; border-radius: 14px; background: #f6f7fb; border: 1px solid var(--line); }
+.ag-g span { display: block; color: var(--soft); font-size: .78rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; } .ag-g b { color: var(--navy); } .ag-g small { display: block; color: var(--faint); font-size: .78rem; }
+.ag-g .ag-w { grid-column: 1 / -1; }
