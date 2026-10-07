@@ -1107,3 +1107,11 @@ html, body { overflow-x: clip; }
 /* Landlord tools hub */
 .lt-grp { padding: 56px 0 0; } .lt-grp:last-of-type { padding-bottom: 80px; }
 .lt-h { margin-bottom: 18px; } .lt-h h2 { margin: 0 0 4px; color: var(--navy); font-size: clamp(1.4rem, 2.6vw, 1.8rem); } .lt-h p { margin: 0; color: var(--soft); }
+/* Home hero "Everything in one place": a touch of colour per row */
+.glass4 h3::after { content: ""; display: block; width: 36px; height: 3px; margin-top: 8px; border-radius: 3px; background: var(--red); }
+.gl4 { border-left: 3px solid var(--c, transparent); }
+.gl4 .gl4-ic { color: var(--c, #fff); background: var(--t, rgba(255,255,255,.12)); }
+.gl4:nth-of-type(1) { --c: #4ade80; --t: rgba(74,222,128,.16); }
+.gl4:nth-of-type(2) { --c: #fbbf24; --t: rgba(251,191,36,.16); }
+.gl4:nth-of-type(3) { --c: #f87171; --t: rgba(248,113,113,.16); }
+.gl4:nth-of-type(4) { --c: #60a5fa; --t: rgba(96,165,250,.16); }
