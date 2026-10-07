@@ -9689,7 +9689,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     { id: 'epc', name: 'EPC (Energy Performance Certificate)', desc: 'Survey by an accredited energy assessor; valid for 10 years and lodged on the government register', price: '' },
     { id: 'licence', name: 'Property licence application', desc: 'We prepare and submit your selective or HMO licence application and deal with the council until it’s granted — free, you only pay the council’s fee', price: '0' }
   ];
-  CERT_DEFAULTS.push({ id: 'diy', name: 'DIY inventory report', desc: 'Do your own room-by-room inventory on your phone and get a dated report — access link sent as soon as you’ve paid', price: '30' });
+  CERT_DEFAULTS.push({ id: 'diy', name: 'DIY inventory report', desc: 'Your tenant (or you) does the room-by-room inventory on their phone and signs it — access link sent as soon as you’ve paid', price: '30' });
   const CERT_NEW = ['licence', 'diy'];   // services added later: offered to offices that already saved their list
   const SUMUP_KEY = process.env.SUMUP_API_KEY || ''; let SUMUP_MC = process.env.SUMUP_MERCHANT_CODE || ''; const SITE = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
   const canPay = function () { return !!(SUMUP_KEY && SUMUP_MC); }, CERT_VAT = 0.2;

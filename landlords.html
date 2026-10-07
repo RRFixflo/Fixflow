@@ -9,6 +9,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+.rc-tbl{width:100%;border-collapse:collapse;margin:16px 0 4px;font-size:.92rem;text-align:center}.rc-tbl th{padding:8px 4px;color:#475467;font-weight:700;font-size:.8rem;border-bottom:1px solid #e6e9ef}.rc-tbl td{padding:10px 4px;font-weight:800;color:#0b1f3a}.rc-tbl td.on{background:#fff5f5;color:#d9262e;border-radius:10px}
+
   :root { --navy: #0b1f3a; --navy2: #13294b; --red: #d9262e; --ink: #0f172a; --soft: #475467; --faint: #98a2b3; --line: #e6e9ef; --bg: #f6f7fb; --card: #fff; --good: #12b76a; --r: 22px; }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -374,7 +376,7 @@
         if (!d.mid) { out.innerHTML = '<div class="rc-card"><h3>We don’t have figures for ' + (d.area || d.postcode) + ' yet</h3><p>Get a free valuation and we’ll look at the whole local market for you.</p></div>' + cta; return; }
         out.innerHTML = '<div class="rc-card rc-res"><p class="rc-k">Average rent for ' + (d.beds === 0 ? '1 bedroom homes (the nearest to a studio)' : d.beds >= 4 ? '4+ bedroom homes' : bt) + ' in ' + d.area + '</p>' +
           '<div class="rc-range"><div class="rc-mid"><span>Average</span><b>' + gbp(d.mid) + '</b><small>per month' + (d.month ? ' · ' + d.month : '') + '</small></div>' + (d.all ? '<div><span>All sizes</span><b>' + gbp(d.all) + '</b></div>' : '') + '</div>' +
-          '<p class="rc-note">Official average for all private rented homes in the borough, from the Office for National Statistics. Rents vary street by street — a guide only, not a valuation.' + (d.slug ? ' <a href="/london-rents/' + d.slug + '">More about rents in ' + d.area + ' →</a>' : '') + '</p></div>' + cta;
+          (d.table ? '<table class="rc-tbl"><thead><tr><th>1 bed</th><th>2 bed</th><th>3 bed</th><th>4+ beds</th></tr></thead><tbody><tr>' + ['1','2','3','4'].map(function(k){ return '<td' + ((d.beds === 0 ? 1 : Math.min(Math.max(d.beds,1),4)) === +k ? ' class="on"' : '') + '>' + (d.table[k] ? gbp(d.table[k]) : '–') + '</td>'; }).join('') + '</tr></tbody></table>' : '') + '<p class="rc-note">Official average for all private rented homes in the borough, from the Office for National Statistics. Rents vary street by street — a guide only, not a valuation.' + (d.slug ? ' <a href="/london-rents/' + d.slug + '">More about rents in ' + d.area + ' →</a>' : '') + '</p></div>' + cta;
       }).catch(function(){ go.disabled = false; go.textContent = 'Compare rents →'; err.textContent = 'Couldn’t connect — please try again.'; });
     }
     f.addEventListener('submit', function(e){ e.preventDefault(); run(); });

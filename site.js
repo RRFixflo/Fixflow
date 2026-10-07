@@ -278,6 +278,12 @@
   var hv = document.querySelector('.hero4 .hvid');
   if (hv) { var sd = navigator.connection && navigator.connection.saveData, rm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (sd || rm) hv.remove(); else { hv.addEventListener('playing', function () { hv.classList.add('on'); }); var pp = hv.play && hv.play(); if (pp && pp.catch) pp.catch(function () {}); } }
+  // Sortable rent tables (London rents pages).
+  document.querySelectorAll('.ar-tbl').forEach(function (t) { t.querySelectorAll('thead th').forEach(function (th) { th.addEventListener('click', function () {
+    var k = +th.dataset.k, asc = !th.classList.contains('asc'), body = t.tBodies[0], rows = Array.prototype.slice.call(body.rows);
+    t.querySelectorAll('thead th').forEach(function (x) { x.classList.remove('asc', 'desc'); }); th.classList.add(asc ? 'asc' : 'desc');
+    rows.sort(function (a, b) { var x = a.cells[k].dataset.v, y = b.cells[k].dataset.v; var r = k ? (+x || 0) - (+y || 0) : String(x).localeCompare(String(y)); return asc ? r : -r; });
+    rows.forEach(function (r) { body.appendChild(r); }); }); }); });
   // Home page certificates section: each service's price from the price list.
   var hcp = document.querySelectorAll('[data-cert-price]');
   if (hcp.length) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {

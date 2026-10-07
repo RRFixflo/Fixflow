@@ -1131,3 +1131,29 @@ html, body { overflow-x: clip; }
 .hero4 .hvid { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1s ease; }
 .hero4 .hvid.on { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .hero4 .hvid { display: none; } }
+
+/* DIY inventory: why landlords get the tenant to do it */
+.dv-why { padding: 70px 0; background: var(--bg); }
+.dv-why-h { margin-bottom: 22px; } .dv-why-h h2 { margin: 4px 0 0; color: var(--navy); font-size: clamp(1.6rem, 3.4vw, 2.3rem); }
+.dv-why-g { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.dv-w { padding: 24px; border-radius: 20px; background: #fff; border: 1px solid var(--line); box-shadow: 0 18px 40px -30px rgba(11,31,58,.4); }
+.dv-w h3 { margin: 12px 0 6px; color: var(--navy); font-size: 1.15rem; } .dv-w p { margin: 0; color: var(--soft); }
+.dv-wi { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 1.3rem; background: #f3f1ff; color: #6d28d9; }
+.dv-note { margin: 18px 0 0; color: var(--soft); font-size: .9rem; }
+@media (max-width: 860px) { .dv-why-g { grid-template-columns: 1fr; } .dv-why { padding: 50px 0; } }
+
+/* London rents: bedroom tables */
+.ar-all { margin-bottom: 26px; } .ar-all h2 { margin: 0 0 14px; color: var(--navy); font-size: 1.25rem; } .ar-h2 { margin: 0 0 14px; color: var(--navy); font-size: 1.35rem; }
+.ar-tw { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 14px; }
+.ar-tbl { width: 100%; min-width: 560px; border-collapse: collapse; font-size: .92rem; }
+.ar-tbl th, .ar-tbl td { padding: 11px 14px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ar-tbl thead th { position: sticky; top: 0; background: #f1f4f9; color: var(--navy); font-weight: 800; cursor: pointer; user-select: none; }
+.ar-tbl thead th::after { content: " ↕"; color: var(--faint); font-weight: 400; } .ar-tbl thead th.asc::after { content: " ↑"; color: var(--red); } .ar-tbl thead th.desc::after { content: " ↓"; color: var(--red); }
+.ar-tbl th:first-child, .ar-tbl td:first-child { text-align: left; position: sticky; left: 0; background: #fff; }
+.ar-tbl thead th:first-child { background: #f1f4f9; z-index: 1; }
+.ar-tbl tbody th a { color: var(--navy); font-weight: 700; text-decoration: none; } .ar-tbl tbody th a:hover { color: var(--red); }
+.ar-tbl td { color: var(--ink); font-variant-numeric: tabular-nums; } .ar-tbl td:last-child { font-weight: 800; color: var(--navy); }
+.ar-tbl tbody tr:hover td, .ar-tbl tbody tr:hover th { background: #f8fafc; }
+.ar-tbl tr.on th, .ar-tbl tr.on td { background: #fff5f5; } .ar-tbl tr.on th a { color: var(--red); }
+.ar-tbl tbody tr:last-child th, .ar-tbl tbody tr:last-child td { border-bottom: 0; }
+.ar-tnote { margin: 10px 0 0; color: var(--faint); font-size: .8rem; }
