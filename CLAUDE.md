@@ -32,6 +32,7 @@ The owner is not a developer: explain results in plain, non-technical English, b
 | `jobs.js` | Most API routes: repairs, tenancies, landlords, offers, certificates, website leads (CRM), alerts, form bot checks (`humanCheck`), licence checker |
 | `admin.html` | The whole staff app (owner at `/admin`, staff at `/staff` — "staff mode") |
 | `listings.js` | Property listings from Gnomen XML feeds (+ Rightmove fill-in), property pages, photo cache, duplicate-photo check |
+| `areas.js`, `areas-data.js`, `data/ons-london.json` | London rent pages (`/london-rents`, `/london-rents/<borough>`): ONS average rents, rent by bedrooms and house prices per borough. ONS figures only (never scraped from Foxtons/Rightmove); refresh the JSON when the ONS publishes a new month (`ons.gov.uk/visualisations/housingpriceslocal/<GSS code>/`) |
 | `visits.js` | Website visitor stats (no cookies), IP names, "don't count" list |
 | `site/*.html`, `site.css`, `site.js` | Public website pages, styles and scripts |
 | `index.html` | Public repair report form |
