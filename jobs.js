@@ -11898,22 +11898,54 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await saveList(p, 'youtube_list', val, prev);
     return val;
   }
+  // Exact publish dates, read once per video from its YouTube page (the channel list only dates the newest few).
+  let ytDatesBusy = false;
+  async function ytDates(p, ids) {
+    const c = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_dates'")).rows[0], v = (c && c.value) || {};
+    const due = ids.filter(function (id, i) { return id && ids.indexOf(id) === i && !(v[id] && (v[id].d || Date.now() - Date.parse(v[id].at) < 24 * 3600000)); });
+    if (!due.length || ytDatesBusy) return v; ytDatesBusy = true;
+    try {
+      for (const id of due.slice(0, 40)) {
+        try {
+          const r = await fetch('https://www.youtube.com/watch?v=' + encodeURIComponent(id), { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'Accept-Language': 'en-GB,en;q=0.9', 'Cookie': 'CONSENT=YES+1; SOCS=CAI' }, signal: AbortSignal.timeout(15000) });
+          const h = r.ok ? await r.text() : '', m = /"publishDate"\s*:\s*"([^"]+)"/.exec(h) || /itemprop="datePublished"\s+content="([^"]+)"/.exec(h) || /"uploadDate"\s*:\s*"([^"]+)"/.exec(h);
+          v[id] = { at: new Date().toISOString(), d: m && Date.parse(m[1]) ? new Date(m[1]).toISOString() : null };
+        } catch (e) { v[id] = { at: new Date().toISOString(), d: null }; }
+        await new Promise(function (ok) { setTimeout(ok, 400); });
+      }
+      await p.query("INSERT INTO app_settings (key, value) VALUES ('youtube_dates', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(v)]);
+    } finally { ytDatesBusy = false; }
+    return v;
+  }
   app.get('/api/admin/youtube', withDb(async function (p, req, res) {
     const c = (await p.query("SELECT value FROM app_settings WHERE key = 'youtube_list'")).rows[0], st = await ytSettings(p), v = listFresh('youtube_list', (c && c.value) || {}), vids = v.items || [];
     // For each available property: its videos, newest first (a hand-picked video always comes first).
     const av = (await p.query("SELECT id, address, beds, yt_id, rm_id FROM available_props WHERE status = 'available'")).rows, matches = {}, suggest = {}, fromRm = {};
     const rv = ((await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_videos'")).rows[0] || {}).value || {};
+    // Exact dates where we have them (read in the background for the rest, then shown next time).
+    const known = ((await p.query("SELECT value FROM app_settings WHERE key = 'youtube_dates'")).rows[0] || {}).value || {}, want = [], stale = {};
+    vids.forEach(function (x) { if (known[x.id] && known[x.id].d) { x.published = known[x.id].d; x.exact = true; } });
     av.forEach(function (a) {
       if (a.yt_id === 'none') { matches[a.id] = []; return; }
       let list = vids.map(function (x) { const sc = ytScore(a, x); return { x: x, s: sc, long: !!x._long }; }).filter(function (o) { return o.s >= 3; }).map(function (o) { return o.x; }).sort(ytNewest);
+      const newest = list[0];
       // The video on its Rightmove listing beats a title match (a hand-picked one still comes first).
       const rmv = a.rm_id && rv[a.rm_id] && (rv[a.rm_id].ids || [])[0];
+      // Is the video on the Rightmove advert the latest one we have for this property?
+      if (rmv) {
+        want.push(rmv); if (newest) want.push(newest.id);
+        const rd = known[rmv] && known[rmv].d, nd = newest && (known[newest.id] && known[newest.id].d);
+        if (newest && newest.id !== rmv && rd && nd && Date.parse(nd) > Date.parse(rd) + 86400000) stale[a.id] = { rm: rmv, rm_date: rd, id: newest.id, title: newest.title || '', date: nd };
+      }
       if (rmv && !a.yt_id) { fromRm[a.id] = rmv; list = [vids.filter(function (x) { return x.id === rmv; })[0] || { id: rmv, title: 'Video on the Rightmove listing' }].concat(list.filter(function (x) { return x.id !== rmv; })); }
       if (a.yt_id) { const pick = vids.filter(function (x) { return x.id === a.yt_id; })[0] || { id: a.yt_id, title: 'Chosen video' }; list = [pick].concat(list.filter(function (x) { return x.id !== a.yt_id; })); }
       matches[a.id] = list.slice(0, 1).map(function (x) { return x.id; });   // one video per property: the latest
+      if (list[0]) want.push(list[0].id);
       suggest[a.id] = vids.map(function (x) { return { id: x.id, s: ytScore(a, x) }; }).filter(function (o) { return o.s > 0; }).sort(function (x, y) { return y.s - x.s; }).slice(0, 6).map(function (o) { return o.id; });
     });
-    res.json(Object.assign({ ok: true, handle: st.handle, channel_url: 'https://www.youtube.com/' + st.handle, matches: matches, suggest: suggest, from_rm: fromRm, has_key: !!YT_KEY }, v, { items: vids }));
+    ytDates(p, want).catch(function (e) { console.error('YouTube dates:', e.message); });
+    const dates = {}; want.forEach(function (id) { if (known[id] && known[id].d) dates[id] = known[id].d; });
+    res.json(Object.assign({ ok: true, handle: st.handle, channel_url: 'https://www.youtube.com/' + st.handle, matches: matches, suggest: suggest, from_rm: fromRm, stale: stale, dates: dates, has_key: !!YT_KEY }, v, { items: vids }));
   }));
   app.post('/api/admin/youtube/refresh', withDb(async function (p, req, res) { const v = await softRefresh(p, 'youtube_list', ytRefresh, function () { return ytBusy; }, function (x) { ytBusy = x; }, (req.body || {}).soft === true); res.json(Object.assign({ ok: !v.error }, v)); }));
   app.post('/api/admin/youtube/settings', withDb(async function (p, req, res) {
