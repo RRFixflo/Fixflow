@@ -125,6 +125,18 @@ module.exports = function (app, opts) {
     setTimeout(tick, 86400000);
   }, 60000);
 
+  // One-off: list Mixkit's free London clips in the server log (to choose a hero video).
+  if (process.env.DATABASE_URL && !/localhost/.test(process.env.DATABASE_URL)) setTimeout(function () {
+    ['https://mixkit.co/free-stock-video/london/', 'https://mixkit.co/free-stock-video/london/?page=2'].forEach(function (u) {
+      fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ResidentialRealtors/1.0)' } }).then(function (r) { return r.text().then(function (t) {
+        console.log('Mixkit probe', u, r.status, t.length);
+        const vids = t.match(/https:\/\/assets\.mixkit\.co\/[^"'\s)]+?\.mp4/g) || []; console.log('Mixkit mp4s', Array.from(new Set(vids)).slice(0, 40).join(' '));
+        const items = t.match(/<h2[^>]*>[\s\S]{0,200}?<\/h2>|alt="[^"]{8,120}"/g) || []; console.log('Mixkit titles', items.slice(0, 40).map(function (x) { return x.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(); }).join(' | '));
+        const hrefs = t.match(/href="\/free-stock-video\/[a-z0-9-]+-\d+\/"/g) || []; console.log('Mixkit pages', Array.from(new Set(hrefs)).slice(0, 40).join(' '));
+      }); }).catch(function (e) { console.log('Mixkit probe failed', e.message); });
+    });
+  }, 15000);
+
   // ONS average rent for a borough (by its ONS code) and bedroom count, for the rent comparison tool.
   const onsBeds = function (gss, beds) {
     const a = AREAS.find(function (x) { return x.gss === gss; }); if (!a) return null;
