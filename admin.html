@@ -114,6 +114,7 @@
   /* Arranging the menu: drag the items, or use the arrows. Each person's order is saved for them. */
   #avKey { text-transform: uppercase; }
   .web-ro [data-wname], .web-ro [data-ignore-me], .web-ro [data-unignore] { display: none !important; }
+  .caller-now { border-left: 4px solid #12924a; margin-bottom: 12px; } .caller-h { font-weight: 800; font-size: 1.15rem; } .caller-w { margin-top: 8px; }
   .call-t { width: 100%; border-collapse: collapse; font-size: .88rem; } .call-t th { text-align: left; font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); padding: 6px 8px; } .call-t td { padding: 9px 8px; border-top: 1px solid var(--line); vertical-align: top; } .call-t .nw { white-space: nowrap; }
   .call-who { display: inline-block; margin: 0 6px 4px 0; padding: 2px 8px; border-radius: 999px; background: #f2f4f7; font-size: .8rem; } .call-who.k-tenant { background: #eff8ff; } .call-who.k-landlord { background: #f4f3ff; } .call-who.k-contractor { background: #fffaeb; } .call-who.k-lead, .call-who.k-applicant { background: #ecfdf3; }
   .call-setup { margin-bottom: 12px; } .call-setup summary { cursor: pointer; } .call-hook { display: flex; gap: 8px; } .call-hook .inp { flex: 1; min-width: 0; font-size: .8rem; } .call-raw { white-space: pre-wrap; word-break: break-all; font-size: .74rem; background: var(--panel-2, #f5f6f8); padding: 8px 10px; border-radius: 8px; max-height: 200px; overflow: auto; }
@@ -4382,6 +4383,26 @@
     });
   }
   setInterval(callPoll, 8000);
+  // Screen pop: the phone system opens Fixflow at #caller=<number> as the phone rings.
+  function callerFromHash(){
+    var m = /[#&]caller=([0-9+]{6,16})/.exec(location.hash); if (!m) return;
+    history.replaceState(null, '', location.pathname + location.search);
+    var n = m[1];
+    var go = function(){ if (!meta || !meta.db) return setTimeout(go, 500);
+      showView('calls');
+      api('GET', '/api/admin/calls/who?number=' + encodeURIComponent(n)).then(function(d){
+        if (!d || !d.ok) return;
+        var card = '<div class="card caller-now"><div class="caller-h">📞 On the line: <a href="tel:' + esc(d.number) + '">' + esc(callNum(d.number)) + '</a></div>' +
+          '<div class="caller-w">' + (callWho(d) || 'This number isn’t on file yet.') + '</div>' +
+          '<div class="row-actions" style="margin-top:10px"><button type="button" class="btn small" data-caller-search="' + esc(d.number) + '">🔎 Search Fixflow for this number</button></div></div>';
+        loadCalls().then(function(){ $('callsBody').insertAdjacentHTML('afterbegin', card); });
+      });
+    };
+    go();
+  }
+  window.addEventListener('hashchange', callerFromHash);
+  setTimeout(callerFromHash, 300);
+  document.addEventListener('click', function(e){ var b = e.target.closest && e.target.closest('[data-caller-search]'); if (!b) return; openCmdk(); setTimeout(function(){ var q = $('cmdkInput'); q.value = b.dataset.callerSearch; q.dispatchEvent(new Event('input', { bubbles: true })); }, 60); });
   // ---------- Quick property suggestions ----------
   // Address boxes for our properties: type a postcode (or part of one), a door or
   // flat number, or a street, and matching properties appear straight away —

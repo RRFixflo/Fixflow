@@ -86,5 +86,21 @@ module.exports = function (app, opts) {
     const m = (await p.query('SELECT coalesce(max(id), 0) AS id FROM phone_calls')).rows[0];
     res.json({ ok: true, items: items, last: m.id });
   });
+  // Screen pop (Telecom150 → CRM Integration → Generic URL): the phone system opens /caller/<number> as the
+  // phone rings; it sends you into the staff app (owner or staff, whichever you're signed in as) on that caller.
+  app.get(['/caller', '/caller/:n'], function (req, res) {
+    const n = norm(req.params.n || req.query.number || req.query.n || req.query.cli || req.query.caller || '');
+    res.set('Cache-Control', 'no-store').type('html').send('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Caller</title><p style="font:16px system-ui;padding:20px">Opening Fixflow…</p>' +
+      '<script>fetch("/api/admin/me",{credentials:"same-origin"}).then(function(r){return r.json()}).then(function(d){location.replace((d&&d.ok&&d.role==="offers"?"/staff":"/admin")+"#caller=' + n + '")}).catch(function(){location.replace("/admin#caller=' + n + '")})</script>');
+  });
+  // Who's on the line (for the screen pop); also noted in the calls list, once.
+  app.get('/api/admin/calls/who', async function (req, res) {
+    const p = await pool().catch(function () { return null; }); if (!p) return res.status(503).json({ ok: false });
+    const n = norm(req.query.number); if (!n) return res.json({ ok: true, number: '', who: [] });
+    const recent = (await p.query("SELECT id FROM phone_calls WHERE number = $1 AND at > now() - interval '2 minutes' LIMIT 1", [n])).rows[0];
+    if (!recent) await p.query("INSERT INTO phone_calls (number, direction, event, raw) VALUES ($1, 'in', 'screen pop', '{}'::jsonb)", [n]).catch(function () {});
+    const who = await whoIs(p, [n]);
+    res.json({ ok: true, number: n, who: who[n.slice(-10)] || [] });
+  });
   return { norm: norm, readCall: readCall };
 };
