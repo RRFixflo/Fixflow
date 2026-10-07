@@ -486,6 +486,9 @@
   .psug button { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 9px 12px; font: inherit; font-size: .9rem; cursor: pointer; color: var(--ink); }
   .psug button:last-child { border-bottom: 0; }
   .psug button.on, .psug button:hover { background: var(--panel-2, #f2f4f7); }
+  .addr-hint { margin-top: 6px; padding: 9px 11px; border-radius: 10px; background: #fffbea; border: 1px solid #f3dd8b; font-size: .84rem; line-height: 1.45; }
+  .addr-hint b { font-weight: 700; } .addr-hint .ah-why { display: block; color: var(--ink-soft); font-size: .78rem; margin-top: 2px; }
+  .addr-hint .ah-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
   .tenant-results mark { background: #fff3c4; color: inherit; border-radius: 3px; padding: 0 1px; }
   .psug mark { background: #fff3c4; color: inherit; border-radius: 3px; padding: 0 1px; }
   .psug small { display: block; color: var(--ink-soft); font-size: .76rem; margin-top: 1px; }
@@ -567,7 +570,7 @@
   .av-card { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px; position: relative; }
   .av-card.is-urgent { border-color: #f3a7a7; box-shadow: 0 0 0 2px #fdecec; } .av-card.is-off { opacity: .6; }
   .av-h { display: flex; gap: 10px; align-items: flex-start; } .av-beds { flex: 0 0 auto; min-width: 46px; text-align: center; border-radius: 12px; background: var(--navy, #0b1f3a); color: #fff; padding: 6px 4px; line-height: 1.1; } .av-beds b { display: block; font-size: 1.2rem; } .av-beds span { font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; opacity: .8; }
-  .av-addr { font-weight: 700; line-height: 1.3; } .av-gid { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: #eef2ff; color: #3538cd; font-weight: 800; font-size: .74rem; letter-spacing: .02em; white-space: nowrap; } .av-pc { font-size: .8rem; color: var(--ink-soft); }
+  .av-addr { font-weight: 700; line-height: 1.3; } .av-gid.none { background: #fff; color: var(--ink-soft); border: 1px dashed #c7cbe0; font-weight: 700; } button.av-gid { cursor: pointer; border: 0; font-family: inherit; line-height: 1.5; } .av-gid { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: #eef2ff; color: #3538cd; font-weight: 800; font-size: .74rem; letter-spacing: .02em; white-space: nowrap; } .av-pc { font-size: .8rem; color: var(--ink-soft); }
   .av-tags { display: flex; gap: 4px; flex-wrap: wrap; } .av-tag { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: #eef2ff; color: #1d3fae; } .av-tag.urgent { background: #fdecec; color: #b42318; } .av-tag.let { background: #f1f2f4; color: #5f6673; }
   .av-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; } .av-row div { background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 6px 8px; } .av-row span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 700; } .av-row b { font-size: .92rem; } .av-row .now b { color: #0d7a3d; }
   .av-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -2518,7 +2521,7 @@
       <div class="tenant-results" id="jfFindResults" hidden></div>
     </div>
     <div class="jf-sec">Property &amp; tenant</div>
-    <div class="tenant-find"><label class="lbl" for="jfAddress">Property address *</label><input class="inp" id="jfAddress" required autocomplete="off" placeholder="Door number, street or postcode — our properties pop up"><div class="tenant-results" id="jfAddressResults" hidden></div></div>
+    <div class="tenant-find"><label class="lbl" for="jfAddress">Property address *</label><input class="inp" id="jfAddress" required autocomplete="off" placeholder="Door number, street or postcode — our properties pop up"><div class="tenant-results" id="jfAddressResults" hidden></div><div class="addr-hint" id="jfAddrHint" hidden></div></div>
     <div class="grid3">
       <div class="tenant-find"><label class="lbl" for="jfName">Tenant name</label><input class="inp" id="jfName" autocomplete="off" placeholder="Start typing to find a saved tenant"><div class="tenant-results" id="jfNameResults" hidden></div></div>
       <div class="tenant-find"><label class="lbl" for="jfPhone">Tenant phone</label><input class="inp" id="jfPhone" type="tel" autocomplete="off"><div class="tenant-results" id="jfPhoneResults" hidden></div></div>
@@ -3819,8 +3822,9 @@
       jfDueTouched = false;
       jfDefaultDue();
     }
+    $('jfAddrHint').hidden = true;
     $('jfModal').hidden = false;
-    setTimeout(function(){ $('jfAddress').focus(); }, 50);
+    setTimeout(function(){ $('jfAddress').focus(); if (job && window.jfAddrCheck) window.jfAddrCheck(); }, 50);
   }
   function closeJobForm(){ $('jfModal').hidden = true; jfEditing = null; ['jfFindResults', 'jfNameResults', 'jfPhoneResults', 'jfAddressResults', 'jfLlResults'].forEach(function(id){ $(id).hidden = true; }); }
 
@@ -3875,7 +3879,83 @@
   // Picking one fills the full address, and (when the tenant boxes are still
   // empty) the current tenant, or the most recent tenant and access details.
   (function(){
-    var input = $('jfAddress'), box = $('jfAddressResults'), results = [], active = 0;
+    var input = $('jfAddress'), box = $('jfAddressResults'), results = [], active = 0, ahTimer = null, ahSeq = 0, ahFix = null;
+    // "Did you mean…": the address typed is close to one on file (same door number, a street or
+    // building name in common, small spelling slips allowed) but differs — often a wrong or
+    // half-typed postcode. Postcodes are checked as real (postcodes.io); one that doesn't exist,
+    // even on file (e.g. SM1V for SW1V), is put right where the fix is clear.
+    var AH_PLAIN = { flat: 1, apartment: 1, apt: 1, unit: 1, road: 1, street: 1, lane: 1, avenue: 1, house: 1, court: 1, london: 1, the: 1, and: 1, rd: 1, st: 1, ave: 1, block: 1, floor: 1 };
+    var AH_LOOK = { M: 'WN', W: 'MV', N: 'MH', V: 'WY', O: '0Q', Q: 'O', I: '1L', L: 'I', S: '5', B: '8', E: 'F', F: 'E', C: 'G', G: 'C' };
+    function ahNums(a){ return (String(a || '').replace(POSTCODE_RE, ' ').match(/\b\d+[a-z]?\b/gi) || []).map(function(x){ return x.toUpperCase(); }).sort().join(','); }
+    function ahWords(a){ return String(a || '').replace(POSTCODE_RE, ' ').replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*$/i, ' ').toLowerCase().replace(/[^a-z ]+/g, ' ').split(' ').filter(function(w){ return w.length >= 4 && !AH_PLAIN[w]; }); }
+    function ahDist(a, b){ if (Math.abs(a.length - b.length) > 2) return 9; var d = [], i, j; for (i = 0; i <= a.length; i++) d[i] = [i]; for (j = 1; j <= b.length; j++) d[0][j] = j;
+      for (i = 1; i <= a.length; i++) for (j = 1; j <= b.length; j++) { d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1); }
+      return d[a.length][b.length]; }
+    function ahLike(a, b){ return a === b || (Math.min(a.length, b.length) >= 5 && ahDist(a, b) <= (Math.min(a.length, b.length) >= 7 ? 2 : 1)); }
+    function ahOut(a){ var m = POSTCODE_RE.exec(a || ''); if (m) return m[1].toUpperCase(); m = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*$/i.exec(String(a || '').replace(/[,\s]+$/, '')); return m ? m[1].toUpperCase() : ''; }
+    function ahSetPc(addr, pc){ return POSTCODE_RE.test(addr) ? addr.replace(POSTCODE_RE, pc) : addr.replace(/[,\s]+$/, '') + ', ' + pc; }
+    function jfAddrCheck(){
+      var hint = $('jfAddrHint'), typed = input.value.trim(), mine = ++ahSeq; ahFix = null;
+      var nums = ahNums(typed), words = ahWords(typed);
+      if (!nums || !words.length) { hint.hidden = true; return; }
+      var best = null;
+      allPropsForList().forEach(function(pr){
+        var addr = knownFullAddress(pr.key) || pr.address; if (ahNums(addr) !== nums) return;
+        // Not the address as typed, nor a record that's only this job itself.
+        if (tidyAddress(addr).toLowerCase() === tidyAddress(typed).toLowerCase() || (jfEditing && pr.jobs.length && pr.jobs.every(function(j){ return j.id === jfEditing.id; }))) return;
+        var fw = ahWords(addr), n = words.filter(function(w){ return fw.some(function(f){ return ahLike(w, f); }); }).length;
+        if (n && pcOf(addr)) n += 0.5;
+        if (n && (!best || n > best.n || (n === best.n && pr.jobs.length > best.pr.jobs.length))) best = { pr: pr, addr: addr, n: n };
+      });
+      var typedPc = pcOf(typed), typedOut = ahOut(typed);
+      var filePc = best ? pcOf(best.addr) : '', fileIn = filePc ? filePc.split(' ')[1] : '';
+      var cands = [];
+      if (typedPc) cands.push(typedPc);
+      if (filePc) {
+        cands.push(filePc);
+        if (typedOut && typedOut !== filePc.split(' ')[0]) cands.push(typedOut + ' ' + fileIn);
+        // One look-alike letter or number wrong in the outward part (SM1V → SW1V).
+        var fo = filePc.split(' ')[0];
+        fo.split('').forEach(function(ch, i){ (AH_LOOK[ch] || '').split('').forEach(function(r){ if (cands.length < 16) cands.push(fo.slice(0, i) + r + fo.slice(i + 1) + ' ' + fileIn); }); });
+      }
+      if (!cands.length) { hint.hidden = true; return; }
+      api('POST', '/api/admin/postcode-check', { postcodes: cands }).then(function(d){
+        if (mine !== ahSeq) return;
+        var real = (d && d.ok && d.real) || {}, ok = function(pc){ return real[pc] !== false; };
+        var good = function(pc){ return real[pc] === true; };
+        var fixPc = '', why = [];
+        if (best) {
+          if (filePc && ok(filePc)) fixPc = filePc;
+          else if (filePc) {
+            fixPc = cands.slice(1).filter(good).sort(function(a, b){ return (b.split(' ')[0] === typedOut) - (a.split(' ')[0] === typedOut); })[0] || '';
+            if (fixPc) why.push('the postcode on file, ' + filePc + ', doesn’t exist — corrected to ' + fixPc);
+          }
+          var sugg = fixPc ? ahSetPc(best.addr, fixPc) : best.addr;
+          if (tidyAddress(sugg).toLowerCase() === tidyAddress(typed).toLowerCase()) { hint.hidden = true; return; }
+          if (typedPc && !ok(typedPc)) why.unshift('the postcode typed, ' + typedPc + ', doesn’t exist');
+          else if (!typedPc && typedOut) why.unshift('the postcode typed (' + typedOut + ') isn’t complete');
+          else if (!typedPc) why.unshift('no postcode was typed');
+          else if (fixPc && typedPc !== fixPc) why.unshift('the postcode typed is ' + typedPc);
+          ahFix = { to: sugg, from: best.addr, fileWrong: !!(filePc && fixPc && fixPc !== filePc) };
+          hint.innerHTML = '💡 Did you mean <b>' + esc(sugg) + '</b>? It’s on file' + (best.pr.jobs.length ? ' with ' + best.pr.jobs.length + ' job' + (best.pr.jobs.length === 1 ? '' : 's') : '') + '.' +
+            (why.length ? '<span class="ah-why">' + esc(why.join('; ')) + '.</span>' : '') +
+            '<span class="ah-btns"><button type="button" class="btn small primary" data-ah="use">Use this address</button>' + (ahFix.fileWrong ? '<button type="button" class="btn small" data-ah="both">Use it and fix the postcode on file too</button>' : '') + '<button type="button" class="btn small ghost" data-ah="no">Keep what’s typed</button></span>';
+          hint.hidden = false;
+        } else if (typedPc && real[typedPc] === false) {
+          hint.innerHTML = '⚠ <b>' + esc(typedPc) + '</b> doesn’t look like a real postcode — please check it.'; hint.hidden = false;
+        } else hint.hidden = true;
+      });
+    }
+    $('jfAddrHint').addEventListener('click', function(e){
+      var b = e.target.closest('[data-ah]'); if (!b || !ahFix) return;
+      var act = b.dataset.ah, hint = $('jfAddrHint');
+      if (act === 'no') { hint.hidden = true; return; }
+      input.value = ahFix.to; hint.hidden = true; box.hidden = true;
+      if (act === 'both') api('POST', '/api/admin/properties/rename', { from: ahFix.from, to: ahFix.to }).then(function(d){ toast(d && d.ok ? '✓ Postcode fixed on file' + (d.changed ? ' (' + d.changed + ' record' + (d.changed === 1 ? '' : 's') + ')' : '') : 'Couldn’t fix it on file'); if (d && d.ok) loadJobs(); });
+      else toast('Address updated — press Save details to keep it');
+    });
+    window.jfAddrCheck = jfAddrCheck;
+
     function show(){
       var raw = input.value.trim().toLowerCase();
       if (raw.length < 1 || (raw.length < 2 && !/\d/.test(raw))) { box.hidden = true; results = []; return; }
@@ -3888,7 +3968,7 @@
       })).slice(0, 6);
       if (!results.length || (results.length === 1 && results[0].address.toLowerCase() === raw)) { box.hidden = true; return; }
       active = 0;
-      box.innerHTML = '<div class="tr-head">Our properties</div>' + results.map(function(pr, i){
+      box.innerHTML = '<div class="tr-head">Our properties — tap one to use it</div>' + results.map(function(pr, i){
         var sub;
         if (pr.jobs.length) {
           var last = pr.jobs.slice().sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })[0];
@@ -3920,9 +4000,11 @@
       }
       if (!jfEditing && !$('jfLlName').value.trim()) { var ll = landlordAt(pr.address); if (ll) fillLandlord('jf', ll); }
       $('jfCat').focus();
+      jfAddrCheck();
     }
     input.addEventListener('input', show);
     input.addEventListener('focus', function(){ if (input.value.trim().length >= 2) show(); });
+    input.addEventListener('input', function(){ clearTimeout(ahTimer); ahTimer = setTimeout(jfAddrCheck, 500); });
     input.addEventListener('keydown', function(e){
       if (box.hidden) return;
       if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(results.length - 1, active + 1); mark(); }
@@ -11428,6 +11510,20 @@
     h += '<div class="av-acc-det">' + det + ' · ' + (x.access_note ? '📝 ' + esc(x.access_note) + ' <button type="button" class="linkish" data-ava="accnote">edit</button>' : '<button type="button" class="linkish" data-ava="accnote">add a note</button>') + '</div></div>';
     return h;
   }
+  // The property's Gnomen number (matched automatically, or typed in) — tap to type or change it.
+  function avGid(x){
+    return x.gnomen_id ? '<button type="button" class="av-gid" data-gnomen="' + x.id + '" title="Gnomen number' + (x.gnomen_auto ? ' (found automatically)' : '') + ' — tap to change">Gnomen ' + esc(x.gnomen_id) + '</button>'
+      : '<button type="button" class="av-gid none" data-gnomen="' + x.id + '" title="Add the property’s number from Gnomen">+ Gnomen no.</button>';
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('[data-gnomen]'); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    var x = (avItems || []).filter(function(i){ return String(i.id) === b.dataset.gnomen; })[0]; if (!x) return;
+    var v = prompt('Gnomen number for ' + shortAddr(x.address) + ' (leave empty to find it automatically):', x.gnomen_auto ? '' : (x.gnomen_id || ''));
+    if (v === null) return; v = v.replace(/^#/, '').trim();
+    if (v && !/^\d{1,12}$/.test(v)) { toast('A Gnomen number is digits only, e.g. 1234'); return; }
+    avPatch(x, { gnomen_id: v }, v ? '✓ Gnomen ' + v + ' saved' : 'Gnomen number cleared').then(function(ok){ if (ok) { x.gnomen_auto = false; if (!v) loadAvail(); } });
+  }, true);
   function avPatch(x, body, msg){ return api('POST', '/api/admin/available/' + x.id, Object.assign({ patch: true }, body)).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save that'); return false; } Object.keys(body).forEach(function(k){ x[k] = body[k] || null; }); if (msg) toast(msg); renderAvail(); return true; }); }
   // Offers made on a property on the available list: how many in total, and any waiting for a decision.
   function offSameProp(addr, o){ var k = propKey(addr), sg = avSig(addr); return !!o.property_address && (propKey(o.property_address) === k || (sg && avSig(o.property_address) === sg)); }
@@ -11459,7 +11555,7 @@
     var live = avItems.filter(function(x){ return x.status === 'available'; });
     $('avSum').innerHTML = '<b>' + live.length + '</b> available · <b>' + live.filter(avNow).length + '</b> available now · <b>' + live.filter(function(x){ return x.urgent; }).length + '</b> urgent · ' + (function(){ if (!ytData || !ytData.at) return ''; var n = live.filter(function(x){ return !((ytData.matches || {})[x.id] || []).length; }).length; return n ? '<b style="color:#b54708">' + n + '</b> need a video · ' : ''; })() + (function(){ var n = live.filter(function(x){ return !x.commission; }).length; return n ? '<button type="button" class="linkish" data-avfee="1" style="color:#b54708"><b>' + n + '</b> need a commission</button> · ' : ''; })() + '<b>' + avItems.filter(function(x){ return x.status === 'let'; }).length + '</b> been let · <b>' + avItems.filter(function(x){ return x.status === 'withdrawn'; }).length + '</b> withdrawn' + (list.length !== live.length ? ' · showing ' + list.length : '') + (!staffMode && avItems.length > 1 ? ' <button type="button" class="linkish" id="avDedupe" title="Puts every address on one tidy line (capital postcodes, no line breaks) and removes repeats of the same address, keeping the latest">🧹 Tidy addresses &amp; remove duplicates</button> <button type="button" class="linkish" data-avremoved="1" title="Properties removed from the list in the last 60 days — put any back">↩ Recently removed</button>' : '');
     var rmList = (rmData && rmData.items) || [], rmBy = {}; rmList.forEach(function(r){ rmBy[r.id] = r; });
-    var linkedIds = {}; avItems.forEach(function(x){ if (x.status !== 'available') return; if (x.rm_id && rmBy[x.rm_id]) linkedIds[x.rm_id] = 1; (x.dream_rm || []).forEach(function(d){ linkedIds[d] = 1; }); });
+    var linkedIds = {}; avItems.forEach(function(x){ if (x.status !== 'available') return; if (x.rm_id && rmBy[x.rm_id]) linkedIds[x.rm_id] = 1; (x.dream_rm || []).forEach(function(d){ if (rmBy[d]) linkedIds[d] = 1; }); });
     var liveSorted = live.slice().sort(function(a, b){ return String(a.address).localeCompare(String(b.address)); });
     var unl = rmList.filter(function(r){ return !linkedIds[r.id]; }), canSet = !staffMode || meta.canManageUsers;
     // Dreams: listings that aren't one of our properties, with how long they've been up and the 7-day review.
@@ -11479,8 +11575,8 @@
           '<div class="av-dream-sort"><label for="avDreamSort">Sort by</label><select class="inp" id="avDreamSort" style="width:auto">' + [['due', 'Needs a decision first'], ['new', 'Newest on Rightmove'], ['old', 'Oldest on Rightmove (up longest)'], ['review', 'Review date (soonest first)']].map(function(o){ return '<option value="' + o[0] + '"' + (avDreamSort === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' + '<p class="muted-note" style="margin:6px 0 8px">Adverts we keep online for leads — link each to the available property it brings enquiries for. Every 7 days you’ll be asked to keep it, change it or take it down.</p>' + dreamsAll.map(function(r){
           var d = dreamInfo(r.id), of = dreamOf[r.id];
           return '<div class="av-rm-item' + (d.due ? ' is-due' : '') + '">' + (r.image ? '<img src="' + esc(r.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '<div style="flex:1;min-width:200px"><b>' + esc(r.address) + '</b><span>' + [r.beds != null ? (r.beds === 0 ? 'Studio' : r.beds + ' bed') : '', r.pcm ? gbp(r.pcm) + ' pcm' : '', rmStatusText(r.status)].filter(Boolean).map(esc).join(' · ') + '</span>' +
-            '<span class="av-dream-of">' + (of ? '💭 Dream of <b>' + esc(shortAddr(of.address)) + '</b>' : '<i>Not linked to a property yet</i>') + '</span>' + dreamTimeline(d) + '</div>' +
-            '<span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(r.url) + '">View ↗</a><select class="inp av-dreamsel" data-dreamfor="' + esc(r.id) + '" style="width:auto;max-width:230px"><option value="">' + (of ? 'Change to…' : 'It’s a Dream of…') + '</option>' + (function(){ var oc = avOutcode(r.address); var near = liveSorted.filter(function(x){ return oc && avOutcode(x.address) === oc; }), rest = liveSorted.filter(function(x){ return near.indexOf(x) === -1; }); var opt = function(x){ return '<option value="' + x.id + '"' + (of && of.id === x.id ? ' selected' : '') + '>' + esc(shortAddr(x.address)) + (x.beds != null ? ' · ' + (x.beds === 0 ? 'studio' : x.beds + ' bed') : '') + '</option>'; }; return (near.length ? '<optgroup label="Same area">' + near.map(opt).join('') + '</optgroup>' : '') + '<optgroup label="All available">' + rest.map(opt).join('') + '</optgroup>'; })() + '</select><button type="button" class="btn small' + (of ? '' : ' primary') + '" data-dreamgo="' + esc(r.id) + '">🔗 ' + (of ? 'Change' : 'Link as Dream') + '</button>' +
+            '<span class="av-dream-of">' + (of ? '💭 Dream of <b>' + esc(shortAddr(of.address)) + '</b> ' + avGid(of) : '<i>Not linked to a property yet</i>') + '</span>' + dreamTimeline(d) + '</div>' +
+            '<span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(r.url) + '">View ↗</a><select class="inp av-dreamsel" data-dreamfor="' + esc(r.id) + '" style="width:auto;max-width:230px"><option value="">' + (of ? 'Change to…' : 'It’s a Dream of…') + '</option>' + (function(){ var oc = avOutcode(r.address); var near = liveSorted.filter(function(x){ return oc && avOutcode(x.address) === oc; }), rest = liveSorted.filter(function(x){ return near.indexOf(x) === -1; }); var opt = function(x){ return '<option value="' + x.id + '"' + (of && of.id === x.id ? ' selected' : '') + '>' + esc(shortAddr(x.address)) + (x.beds != null ? ' · ' + (x.beds === 0 ? 'studio' : x.beds + ' bed') : '') + (x.gnomen_id ? ' · #' + esc(x.gnomen_id) : '') + '</option>'; }; return (near.length ? '<optgroup label="Same area">' + near.map(opt).join('') + '</optgroup>' : '') + '<optgroup label="All available">' + rest.map(opt).join('') + '</optgroup>'; })() + '</select><button type="button" class="btn small' + (of ? '' : ' primary') + '" data-dreamgo="' + esc(r.id) + '">🔗 ' + (of ? 'Change' : 'Link as Dream') + '</button>' +
             (d.takedown && !d.stale ? '<button type="button" class="btn small ghost" data-dreamact="undo" data-dreamid="' + esc(r.id) + '">Undo take down</button>' : '<button type="button" class="btn small' + (d.due ? ' primary' : '') + '" data-dreamact="extend" data-dreamid="' + esc(r.id) + '">⏱ +7 days</button><button type="button" class="btn small ghost" data-dreamact="takedown" data-dreamid="' + esc(r.id) + '" style="color:#b42318">🗑 Take down</button>') +
             (of ? '' : '<button type="button" class="btn small" data-rmadd="' + esc(r.id) + '" title="Adds it to our available list, linked to this listing">➕ Add to available list</button>') + '</span></div>'; }).join('') + '</details>' : '');
     var ytM = (ytData && ytData.matches) || {}, withV = live.filter(function(x){ return (ytM[x.id] || []).length; }).length;
@@ -11518,7 +11614,7 @@
       var pc = (String(x.address).match(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i) || [''])[0].toUpperCase(), phones = avPhones(x.contact), mails = avEmails(x.contact), off = x.status !== 'available';
       var tags = (x.tags ? x.tags.split(/\s*,\s*/).filter(Boolean).map(function(t){ return '<span class="av-tag">' + esc(t) + '</span>'; }).join('') : '') + (x.urgent ? '<span class="av-tag urgent">🔥 URGENT</span>' : '') + (off ? '<span class="av-tag let">' + (x.status === 'let' ? '✓ Let' : 'Withdrawn') + '</span>' : '');
       return '<div class="av-card' + (x.urgent ? ' is-urgent' : '') + (off ? ' is-off' : '') + (avOpenCards[x.id] ? ' av-open' : '') + '" data-av="' + x.id + '">' +
-        '<div class="av-h"><div class="av-beds"><b>' + (x.beds == null ? '–' : x.beds === 0 ? 'S' : x.beds) + '</b><span>' + (x.beds === 0 ? 'studio' : 'bed') + '</span></div><div style="min-width:0"><div class="av-addr">' + esc(x.address.replace(pc, '').replace(/[,\s]+$/, '')) + '</div><div class="av-pc">' + esc(pc) + (x.gnomen_id ? ' <span class="av-gid" title="Gnomen number">Gnomen ' + esc(x.gnomen_id) + '</span>' : '') + '</div></div></div>' +
+        '<div class="av-h"><div class="av-beds"><b>' + (x.beds == null ? '–' : x.beds === 0 ? 'S' : x.beds) + '</b><span>' + (x.beds === 0 ? 'studio' : 'bed') + '</span></div><div style="min-width:0"><div class="av-addr">' + esc(x.address.replace(pc, '').replace(/[,\s]+$/, '')) + '</div><div class="av-pc">' + esc(pc) + ' ' + avGid(x) + '</div></div></div>' +
         (tags ? '<div class="av-tags">' + tags + '</div>' : '') + avOffersHtml(x) + (off ? '' : avFixHtml(x)) +
         (function(){ if (off) return ''; var r = x.rm_id && rmBy[x.rm_id];
           if (!r && x.rm_id && x.rm_id !== 'none' && x.rm_url) return '<div class="av-rmwrap"><a class="av-rmlink" target="_blank" rel="noopener" href="' + esc(x.rm_url) + '"><span><b>On Rightmove ↗</b>Linked by hand · listing ' + esc(x.rm_id) + '</span></a>' + '<button type="button" class="av-rmx" data-ava="rmx" title="Not this property — unlink the advert so it goes back in Dreams" aria-label="Unlink from Rightmove">✕</button></div>';

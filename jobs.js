@@ -641,6 +641,7 @@ ALTER TABLE available_props ADD COLUMN IF NOT EXISTS rm_synced_at TIMESTAMPTZ;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS access_note TEXT;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS online_since TIMESTAMPTZ;
 ALTER TABLE available_props ADD COLUMN IF NOT EXISTS landlord_phone TEXT;
+ALTER TABLE available_props ADD COLUMN IF NOT EXISTS gnomen_id TEXT;
 ALTER TABLE available_props ALTER COLUMN online_since SET DEFAULT now();
 UPDATE available_props SET online_since = created_at WHERE online_since IS NULL;
 -- Every change to (or removal of) a property on the available list keeps the version before it,
@@ -5549,6 +5550,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
 
   // Correct a property's address on every job there (and on its landlord and
   // tenant links), e.g. to add a missing door number or postcode.
+  // Which of a few postcodes really exist (postcodes.io) — used to spot and fix a mistyped
+  // postcode (e.g. SM1V for SW1V). Unknown (null) when postcodes.io can't be reached.
+  const pcRealCache = new Map();
+  app.post('/api/admin/postcode-check', async function (req, res) {
+    const list = Array.from(new Set(((req.body || {}).postcodes || []).slice(0, 16).map(function (v) { const m = POSTCODE_RE.exec(String(v || '')); return m ? (m[1] + ' ' + m[2]).toUpperCase() : null; }).filter(Boolean)));
+    const out = {};
+    await Promise.all(list.map(async function (pc) {
+      if (pcRealCache.has(pc)) { out[pc] = pcRealCache.get(pc); return; }
+      try {
+        const r = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc.replace(' ', '')), { signal: AbortSignal.timeout(6000) });
+        if (r.status !== 200 && r.status !== 404) { out[pc] = null; return; }
+        out[pc] = r.status === 200; pcRealCache.set(pc, out[pc]);
+      } catch (e) { out[pc] = null; }
+    }));
+    res.json({ ok: true, real: out });
+  });
   app.post('/api/admin/properties/rename', withDb(async function (p, req, res) {
     const b = req.body || {};
     const to = tidyAddress(b.to);
@@ -11053,7 +11070,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'landlord_phone', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
     const items = (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 20000')).rows;
-    try { const g = opts.gnomenFor ? opts.gnomenFor(items) : {}; items.forEach(function (r) { if (g[r.id]) r.gnomen_id = g[r.id]; }); } catch (e) { console.error('Gnomen numbers:', e.message); }
+    try { const g = opts.gnomenFor ? opts.gnomenFor(items) : {}; items.forEach(function (r) { if (!r.gnomen_id && g[r.id]) { r.gnomen_id = g[r.id]; r.gnomen_auto = true; } }); } catch (e) { console.error('Gnomen numbers:', e.message); }
     res.json({ ok: true, items: items, links: await availLinks(p, items, req.role !== 'offers') });
   }));
   // What we already know about an address being added: its landlord, current tenants, key number
@@ -11219,7 +11236,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     // A few fields at once from the card (access, key number, tenants' contact).
     if (b.patch === true) {
-      const lim = { key_no: 40, access: 20, access_note: 300, contact: 2000, commission: 40, landlord: 120, landlord_phone: 40 }, sets = [], vals = [id];
+      const lim = { key_no: 40, access: 20, access_note: 300, contact: 2000, commission: 40, landlord: 120, landlord_phone: 40, gnomen_id: 12 }, sets = [], vals = [id];
+      // A Gnomen number typed by hand (digits only) — used instead of the automatic match.
+      if ('gnomen_id' in b && b.gnomen_id && !/^\d{1,12}$/.test(String(b.gnomen_id).replace(/^#/, '').trim())) return res.status(400).json({ ok: false, error: 'gnomen' });
+      if ('gnomen_id' in b) b.gnomen_id = String(b.gnomen_id || '').replace(/^#/, '').trim();
       // A commission is a figure or a percentage (e.g. 8%, £1,000, 1 month + VAT).
       if ('commission' in b && b.commission && (!/\d/.test(String(b.commission)) || /@|\d{7,}/.test(String(b.commission)))) return res.status(400).json({ ok: false, error: 'fee' });
       Object.keys(lim).forEach(function (k) { if (!(k in b)) return; let v = str(b[k], lim[k]) || null; if (k === 'access' && ['landlord', 'tenants', 'keys'].indexOf(v) === -1) v = null; vals.push(v); sets.push(k + ' = $' + vals.length); });
@@ -11268,7 +11288,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       // Two entries with different key numbers or landlords aren't the same listing — leave both.
       " AND NOT (a.key_no IS NOT NULL AND b.key_no IS NOT NULL AND lower(trim(a.key_no)) <> lower(trim(b.key_no)))" +
       " AND NOT (a.landlord IS NOT NULL AND b.landlord IS NOT NULL AND lower(trim(a.landlord)) <> lower(trim(b.landlord)))";
-    const FILL = ['beds', 'available_from', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'let_on', 'rm_id', 'rm_url', 'yt_id'];
+    const FILL = ['beds', 'available_from', 'rent_pw', 'rent_pcm', 'landlord', 'commission', 'contact', 'notes', 'tags', 'key_no', 'gnomen_id', 'access', 'access_note', 'let_on', 'rm_id', 'rm_url', 'yt_id'];
     const fillSql = FILL.map(function (c) { return c + ' = coalesce(k.' + c + ', d.' + c + ')'; }).join(', ') + ", rm_manual = k.rm_manual OR d.rm_manual, dream_rm = CASE WHEN k.dream_rm = '[]'::jsonb THEN d.dream_rm ELSE k.dream_rm END";
     await p.query('UPDATE available_props k SET ' + fillSql + ' FROM available_props d WHERE ' + same.replace(/\ba\./g, 'k.').replace(/\bb\./g, 'd.') + " AND k.id <> d.id AND ((k.status = 'available' AND k.id < d.id) OR (k.status <> 'available' AND k.id > d.id))");
     const r = await p.query('DELETE FROM available_props a USING available_props b WHERE ' + same + " AND ((a.status = 'available' AND a.id > b.id) OR (a.status <> 'available' AND a.id < b.id))");
@@ -11493,6 +11513,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const keep = error && prev && prev.value && prev.value.items ? prev.value.items : items;
     const val = { at: new Date().toISOString(), items: keep, error: error, diag: diag, ok_at: error ? (prev && prev.value && prev.value.ok_at) || null : new Date().toISOString() };
     await saveList(p, 'rightmove_list', val, prev);
+    // Dream links to adverts that have gone from Rightmove are removed (so "linked" never exceeds the listings).
+    if (!error && items.length) { const ids = items.map(function (x) { return String(x.id); }); await p.query("UPDATE available_props SET dream_rm = coalesce((SELECT jsonb_agg(x) FROM jsonb_array_elements_text(dream_rm) x WHERE x = ANY($1::text[])), '[]'::jsonb) WHERE dream_rm <> '[]'::jsonb AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(dream_rm) x WHERE NOT (x = ANY($1::text[])))", [ids]).catch(function (e) { console.error('Dream tidy:', e.message); }); }
     if (!error) { await rmAutoLink(p, items); await rmDreamTrack(p, items); }
     rmVideos(p).then(function () { return error ? null : rmSync(p, items); }).catch(function (e) { console.error('Rightmove details:', e.message); });
     return val;
