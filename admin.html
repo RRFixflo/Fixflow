@@ -605,7 +605,7 @@
   .av-card { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px; position: relative; }
   .av-card.is-urgent { border-color: #f3a7a7; box-shadow: 0 0 0 2px #fdecec; } .av-card.is-off { opacity: .6; }
   .av-h { display: flex; gap: 10px; align-items: flex-start; } .av-beds { flex: 0 0 auto; min-width: 46px; text-align: center; border-radius: 12px; background: var(--navy, #0b1f3a); color: #fff; padding: 6px 4px; line-height: 1.1; } .av-beds b { display: block; font-size: 1.2rem; } .av-beds span { font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; opacity: .8; }
-  .av-addr { font-weight: 700; line-height: 1.3; } .av-gid.gone { background: #fef3f2; color: #b42318; border: 1px solid #fda29b; } .av-gid.none { background: #fff; color: var(--ink-soft); border: 1px dashed #c7cbe0; font-weight: 700; } button.av-gid { cursor: pointer; border: 0; font-family: inherit; line-height: 1.5; } .av-gid { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: #eef2ff; color: #3538cd; font-weight: 800; font-size: .74rem; letter-spacing: .02em; white-space: nowrap; } .av-pc { font-size: .8rem; color: var(--ink-soft); }
+  .av-addr { font-weight: 700; line-height: 1.3; } .av-gid.maybe { color: #3538cd; border-color: #a4bcfd; } .av-gid.gone { background: #fef3f2; color: #b42318; border: 1px solid #fda29b; } .av-gid.none { background: #fff; color: var(--ink-soft); border: 1px dashed #c7cbe0; font-weight: 700; } button.av-gid { cursor: pointer; border: 0; font-family: inherit; line-height: 1.5; } .av-gid { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: #eef2ff; color: #3538cd; font-weight: 800; font-size: .74rem; letter-spacing: .02em; white-space: nowrap; } .av-pc { font-size: .8rem; color: var(--ink-soft); }
   .av-tags { display: flex; gap: 4px; flex-wrap: wrap; } .av-tag { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: #eef2ff; color: #1d3fae; } .av-tag.urgent { background: #fdecec; color: #b42318; } .av-tag.let { background: #f1f2f4; color: #5f6673; }
   .av-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; } .av-row div { background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 6px 8px; } .av-row span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 700; } .av-row b { font-size: .92rem; } .av-row .now b { color: #0d7a3d; }
   .av-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -11591,13 +11591,15 @@
   function avGid(x){
     if (x.gnomen_missing) return '<button type="button" class="av-gid gone" data-gnomen="' + x.id + '" title="' + (x.gnomen_id ? 'Gnomen ' + esc(x.gnomen_id) + ' isn’t in Gnomen’s feed any more — it may have been taken off or archived in Gnomen' : 'Nothing at this address is in Gnomen’s feed — it may have been taken off Gnomen, or never added') + '. Tap to type the number.">⚠ ' + (x.gnomen_id ? 'Gnomen ' + esc(x.gnomen_id) + ' — not on Gnomen' : 'Not on Gnomen') + '</button>';
     return x.gnomen_id ? '<button type="button" class="av-gid" data-gnomen="' + x.id + '" title="Gnomen number' + (x.gnomen_auto ? ' (found automatically)' : '') + ' — tap to change">Gnomen ' + esc(x.gnomen_id) + '</button>'
+      : x.gnomen_maybe && x.gnomen_maybe.length ? '<button type="button" class="av-gid none maybe" data-gnomen="' + x.id + '" title="Possibly ' + esc(x.gnomen_maybe.map(function(m){ return m.id + ' (' + m.label + ')'; }).join(' or ')) + ' — tap to check and confirm">Gnomen ' + esc(x.gnomen_maybe.map(function(m){ return m.id; }).join(' / ')) + '?</button>'
       : '<button type="button" class="av-gid none" data-gnomen="' + x.id + '" title="Add the property’s number from Gnomen">+ Gnomen no.</button>';
   }
   document.addEventListener('click', function(e){
     var b = e.target.closest && e.target.closest('[data-gnomen]'); if (!b) return;
     e.preventDefault(); e.stopPropagation();
     var x = (avItems || []).filter(function(i){ return String(i.id) === b.dataset.gnomen; })[0]; if (!x) return;
-    var v = prompt('Gnomen number for ' + shortAddr(x.address) + ' (leave empty to find it automatically):', x.gnomen_auto ? '' : (x.gnomen_id || ''));
+    var mb = !x.gnomen_id && x.gnomen_maybe && x.gnomen_maybe.length ? x.gnomen_maybe : null;
+    var v = prompt('Gnomen number for ' + shortAddr(x.address) + (mb ? '\n\nPossibly (check in Gnomen):\n' + mb.map(function(m){ return '• ' + m.id + ' — ' + m.label; }).join('\n') + '\n' : '') + '\n(leave empty to find it automatically):', mb ? mb[0].id : x.gnomen_auto ? '' : (x.gnomen_id || ''));
     if (v === null) return; v = v.replace(/^#/, '').trim();
     if (v && !/^\d{1,12}$/.test(v)) { toast('A Gnomen number is digits only, e.g. 1234'); return; }
     avPatch(x, { gnomen_id: v }, v ? '✓ Gnomen ' + v + ' saved' : 'Gnomen number cleared').then(function(ok){ if (ok) { x.gnomen_auto = false; loadAvail(); } });

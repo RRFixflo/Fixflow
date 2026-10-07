@@ -36,7 +36,7 @@ module.exports = function (app, opts) {
   const ytId = function (u) { const m = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(String(u || '')); return m ? m[1] : ''; };
   const vimeoId = function (u) { const m = /vimeo\.com\/(?:video\/)?(\d{6,12})/.exec(String(u || '')); return m ? m[1] : ''; };
   const gone = { let: [], sale: [] };   // homes the feed lists as let / sold
-  const every = { let: [], sale: [] }; const feedSum = {};   // every home in the feed (published or not), for matching Gnomen numbers
+  const every = { let: [], sale: [] }; const feedSum = {}; let lastDiag = '';   // every home in the feed (published or not), for matching Gnomen numbers
   function parse(xml, kind) {
     const out = []; gone[kind] = []; every[kind] = [];
     String(xml || '').replace(/<property>([\s\S]*?)<\/property>/g, function (m, x) {
@@ -704,6 +704,7 @@ module.exports = function (app, opts) {
     gnomenFor: function (rows) {
       // Every home in Gnomen's feeds (also unpublished ones), not just those on the website.
       const seen = {}, recs = every.let.concat(every.sale, data.let, data.sale).filter(function (p) { const ok = /^\d+$/.test(String(p.id)) && p.postcode && !seen[p.id]; if (ok) seen[p.id] = 1; return ok; }), out = {};
+      const diag = [], maybe = {};
       const missing = {}, feedOk = every.let.length + every.sale.length > 0;
       const plain = function (s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); };
       const stName = function (s) { return plain(s).replace(/^(flat|apartment|apt|unit)?\s*\d+[a-z]?\s+/, '').trim(); };
@@ -722,9 +723,16 @@ module.exports = function (app, opts) {
         if (c.length > 1) { const cur = c.filter(function (p) { return !/^(let|sold|withdrawn|completed|archived)$/i.test(String(p.status || '').trim()); }); if (cur.length) c = cur; }
         const ids = Array.from(new Set(c.map(function (p) { return String(p.id); })));
         if (ids.length === 1) out[r.id] = ids[0];
+        // Not sure: the likely ones (same postcode, any bedrooms; or the few it couldn't choose between) for staff to confirm.
+        else if (r.status === 'available' && !missing[r.id]) { let mb = ids.slice(0, 3); if (!mb.length && m) { const pc1 = (m[1] + m[2]).toUpperCase(); mb = Array.from(new Set(recs.filter(function (p) { return p.postcode === pc1; }).map(function (p) { return String(p.id); }))).slice(0, 3); } if (mb.length) maybe[r.id] = mb.map(function (id) { const p = recs.find(function (q) { return String(q.id) === id; }) || {}; return { id: id, label: [p.unit ? p.unit.split('|')[0] : '', p.street, String(p.postcode || '').replace(/(\d[A-Z]{2})$/, ' $1'), p.beds != null ? (p.beds === 0 ? 'studio' : p.beds + ' bed') : '', p.status].filter(Boolean).join(' · ') }; }); }
+        if (ids.length === 1) {}
+        else if (r.status === 'available' && !missing[r.id]) diag.push((ids.length ? ids.length + ' possible (' + ids.slice(0, 4).join('/') + ')' : 'none with ' + (beds == null ? 'any' : beds) + ' bed') + ': ' + String(r.address || '').slice(0, 70));
       });
+      { const av = (rows || []).filter(function (r) { return r.status === 'available'; }), got = av.filter(function (r) { return out[r.id]; }).length, miss = av.filter(function (r) { return missing[r.id]; }).length;
+        const sum = 'Gnomen numbers: ' + av.length + ' available · ' + got + ' matched · ' + miss + ' not on Gnomen · ' + diag.length + ' unsure' + (diag.length ? ' — ' + diag.slice(0, 25).join(' | ') : '');
+        if (sum !== lastDiag) { lastDiag = sum; console.log(sum); } }
       // Gnomen numbers in the feed right now (to check numbers typed by hand), and the homes not on Gnomen.
-      Object.defineProperty(out, 'missing', { value: missing }); Object.defineProperty(out, 'known', { value: feedOk ? function (id) { id = String(id); return every.let.concat(every.sale, data.let, data.sale).some(function (p) { return String(p.id) === id; }); } : null });
+      Object.defineProperty(out, 'missing', { value: missing }); Object.defineProperty(out, 'maybe', { value: maybe }); Object.defineProperty(out, 'known', { value: feedOk ? function (id) { id = String(id); return every.let.concat(every.sale, data.let, data.sale).some(function (p) { return String(p.id) === id; }); } : null });
       return out;
     },
     urls: function () { return LIVE ? data.let.concat(data.sale).map(function (p) { return p.url; }) : []; }
