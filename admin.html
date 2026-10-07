@@ -507,6 +507,7 @@
   .psug button { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 9px 12px; font: inherit; font-size: .9rem; cursor: pointer; color: var(--ink); }
   .psug button:last-child { border-bottom: 0; }
   .psug button.on, .psug button:hover { background: var(--panel-2, #f2f4f7); }
+  .cert-cell .cb .cb-sub { display: block; font-weight: 400; font-size: .74rem; opacity: .85; }
   .cert-asked { font-size: .76rem; margin-top: 5px; padding: 5px 8px; border-radius: 8px; background: #f1f4ff; color: #2d3a8c; line-height: 1.4; }
   .cert-asked b { font-weight: 700; } .cert-asked-more { color: var(--ink-soft); } .cert-asked-ans { display: block; color: var(--ink-soft); }
   .addr-hint { margin-top: 6px; padding: 9px 11px; border-radius: 10px; background: #fffbea; border: 1px solid #f3dd8b; font-size: .84rem; line-height: 1.45; }
@@ -10001,7 +10002,13 @@
   function daysUntil(day){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || '')); if (!m) return null; var t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((new Date(+m[1], +m[2] - 1, +m[3]) - t) / 86400000); }
   // A gas safety, EICR or EPC job (same rule as the server).
   function jobCertType(j){ var t = String(j.category || '') + ' ' + String(j.affected || ''); return /eicr|electrical (safety|installation)/i.test(t) ? 'EICR' : /gas safety|cp12/i.test(t) ? 'Gas' : /\bepc\b|energy performance/i.test(t) ? 'EPC' : null; }
-  function certJob(c){ return c && c.job_id ? jobs.filter(function(j){ return j.id === c.job_id; })[0] || null : null; }
+  function certJob(c){
+    var j = c && c.job_id ? jobs.filter(function(x){ return x.id === c.job_id; })[0] || null : null;
+    if (j && isOpen(j)) return j;
+    // An open gas safety / EICR / EPC job at the property counts as booked even if it isn't linked to the certificate.
+    var o = c ? jobs.filter(function(x){ return isOpen(x) && jobCertType(x) === c.type && propKey(x.property_address) === c.property_key; }).sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })[0] : null;
+    return o || j;
+  }
   // missing / na / expired / due (within 10 days) / soon (60 days) / ok — and booked if an open job is on it.
   function certState(c){
     if (!c) return { k: 'missing', text: 'Not recorded' };
@@ -12662,7 +12669,7 @@
   // One certificate box (EPC / Gas / EICR) for a property, with Book / Update.
   function certCellHtml(x, address){
     var st = x.st, jb = st.job;
-    var status = st.booked ? 'Booked · ' + esc(jb.ref) + ' (' + esc(jb.status) + ')' : jb && jb.status === 'Completed' && st.k !== 'ok' ? 'Job ' + esc(jb.ref) + ' done — enter the new certificate' : '';
+    var status = st.booked ? '📅 <b>' + (jb.appointment_date ? 'Booked for ' + esc(apptText(jb)) : 'Job open — no date booked yet') + '</b><span class="cb-sub">' + esc(jb.ref) + ' · ' + esc(jb.status) + (jb.assigned_to ? ' · ' + esc(jb.assigned_to) : '') + '</span>' : jb && jb.status === 'Completed' && st.k !== 'ok' ? 'Job ' + esc(jb.ref) + ' done — enter the new certificate' : '';
     var book = (st.k === 'expired' || st.k === 'due' || st.k === 'soon' || st.k === 'missing') && !st.booked;
     return '<div class="cert-cell c-' + st.k + (st.booked ? ' booked' : '') + '">' +
       '<div class="ct">' + certTick(st) + ' ' + esc(x.def.name) + (x.c && x.c.rating ? ' <span class="count-chip">' + esc(x.c.rating) + '</span>' : '') + '</div>' +
