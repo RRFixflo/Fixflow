@@ -9,6 +9,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+.cf{margin-top:14px;border:2px solid #fde2e2;background:#fffafa}.cf-h{display:flex;gap:12px;align-items:flex-start}.cf-h b{display:block;color:#0b1f3a;font-size:1.08rem}.cf-h span{color:#475467;font-size:.92rem}.cf-badge{flex:none;padding:4px 10px;border-radius:999px;background:#d9262e;color:#fff!important;font-weight:800;font-size:.75rem!important;letter-spacing:.04em;text-transform:uppercase}.cf-g{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0 8px}.cf-g label{display:grid;gap:4px;font-weight:700;font-size:.85rem;color:#0b1f3a}.cf-g i{font-weight:500;color:#98a2b3;font-style:normal}.cf-g input{font:inherit;font-size:16px;padding:11px 12px;border:1.5px solid #e6e9ef;border-radius:12px}.cf-ok{display:flex;gap:8px;align-items:flex-start;font-size:.85rem;color:#475467;margin:4px 0 10px}.cf .hp{position:absolute;left:-9999px}@media(max-width:560px){.cf-g{grid-template-columns:1fr}}
+
 .rc-tbl{width:100%;border-collapse:collapse;margin:16px 0 4px;font-size:.92rem;text-align:center}.rc-tbl th{padding:8px 4px;color:#475467;font-weight:700;font-size:.8rem;border-bottom:1px solid #e6e9ef}.rc-tbl td{padding:10px 4px;font-weight:800;color:#0b1f3a}.rc-tbl td.on{background:#fff5f5;color:#d9262e;border-radius:10px}
 
   :root { --navy: #0b1f3a; --navy2: #13294b; --red: #d9262e; --ink: #0f172a; --soft: #475467; --faint: #98a2b3; --line: #e6e9ef; --bg: #f6f7fb; --card: #fff; --good: #12b76a; --r: 22px; }
@@ -364,6 +366,7 @@
         go.disabled = false; go.textContent = 'Compare rents →';
         if (!d.ok) { out.innerHTML = '<div class="rc-card">' + (d.error === 'rate-limited' ? 'Too many searches — please try again shortly.' : d.error === 'postcode-unknown' ? 'We couldn’t find that postcode.' : 'Please check the postcode.') + '</div>'; return; }
         var vurl = '#valuation', cta = '<div class="rc-cta"><div><b>Want an exact figure for your property?</b><span>Every home is different — condition, floor, outside space and furnishing all count. Our free valuation looks at the whole local market.</span></div><a class="btn red" href="' + vurl + '" data-rcval>Get my free valuation →</a></div>';
+        cta = compsForm(d) + cta;
         var bt = bedTxt(d.beds);
         if (d.source === 'market') {
           if (!d.mid) { out.innerHTML = '<div class="rc-card"><h3>Not enough similar ' + bt + ' advertised near ' + d.postcode + ' right now</h3><p>Get a free valuation and we’ll look at the whole local market for you.</p></div>' + cta; return; }
@@ -379,6 +382,28 @@
           (d.table ? '<table class="rc-tbl"><thead><tr><th>1 bed</th><th>2 bed</th><th>3 bed</th><th>4+ beds</th></tr></thead><tbody><tr>' + ['1','2','3','4'].map(function(k){ return '<td' + ((d.beds === 0 ? 1 : Math.min(Math.max(d.beds,1),4)) === +k ? ' class="on"' : '') + '>' + (d.table[k] ? gbp(d.table[k]) : '–') + '</td>'; }).join('') + '</tr></tbody></table>' : '') + '<p class="rc-note">Official average for all private rented homes in the borough, from the Office for National Statistics. Rents vary street by street — a guide only, not a valuation.' + (d.slug ? ' <a href="/london-rents/' + d.slug + '">More about rents in ' + d.area + ' →</a>' : '') + '</p></div>' + cta;
       }).catch(function(){ go.disabled = false; go.textContent = 'Compare rents →'; err.textContent = 'Couldn’t connect — please try again.'; });
     }
+    // Free local comparables report: our team checks similar homes advertised nearby and emails the landlord.
+    function compsForm(d){
+      return '<form class="rc-card cf" id="cfForm" novalidate><div class="cf-h"><span class="cf-badge">Free</span><div><b>Want the real local picture?</b><span>We’ll check similar ' + bedTxt(d.beds) + ' advertised to let near ' + d.postcode + ' and email you a short comparison report, usually within one working day.</span></div></div>' +
+        '<div class="cf-g"><label>Your name<input name="name" autocomplete="name"></label><label>Email<input name="email" type="email" autocomplete="email"></label><label>Phone <i>(optional)</i><input name="phone" type="tel" autocomplete="tel" inputmode="tel"></label><label>First line of the address<input name="address" autocomplete="address-line1" placeholder="e.g. Flat 2, 14 Sample Road"></label></div>' +
+        '<label class="hp" aria-hidden="true">Leave this empty<input name="website" tabindex="-1" autocomplete="off"></label>' +
+        '<label class="cf-ok"><input type="checkbox" name="consent"><span>I’m happy for Residential Realtors to email me the report and contact me about it (<a href="/privacy">privacy notice</a>).</span></label>' +
+        '<p class="verr" id="cfErr" role="alert"></p><button class="btn red" type="submit" id="cfGo">Email me the free report →</button><input type="hidden" name="pc" value="' + d.postcode + '"><input type="hidden" name="bd" value="' + d.beds + '"></form>';
+    }
+    out.addEventListener('submit', function(e){ var cf = e.target.closest('#cfForm'); if (!cf) return; e.preventDefault();
+      var el = cf.elements, er = cf.querySelector('#cfErr'), btn = cf.querySelector('#cfGo'), bd = +el.bd.value;
+      var data = { kind: 'comps', name: el.name.value.trim(), email: el.email.value.trim(), phone: el.phone.value.trim(), address: el.address.value.trim(), postcode: el.pc.value, beds: bd === 0 ? 'Studio' : bd >= 5 ? '5+' : String(bd), website: el.website.value, consent: el.consent.checked };
+      er.textContent = '';
+      if (!data.name) { er.textContent = 'Please enter your name.'; return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { er.textContent = 'Please enter a valid email address.'; return; }
+      if (!data.address) { er.textContent = 'Please enter the first line of the address.'; return; }
+      if (!data.consent) { er.textContent = 'Please tick the box so we can email you the report.'; return; }
+      btn.disabled = true; btn.textContent = 'Sending…';
+      ffPost('/api/valuation-request', data, cf).then(function(r){ return r.json(); }).then(function(d){
+        if (!d.ok) { btn.disabled = false; btn.textContent = 'Email me the free report →'; er.textContent = d.error === 'rate-limited' ? 'Too many requests — please try again later, or call 0207 096 8131.' : 'Sorry, something went wrong — please try again or call 0207 096 8131.'; return; }
+        cf.innerHTML = '<div class="vdone"><div class="big">✓</div><h3>Thank you, ' + String(data.name.split(/\s+/)[0]).replace(/[<>&"]/g, '') + '!</h3><p style="color:var(--soft);margin:6px 0 0">We’ll check similar homes near ' + data.postcode + ' and email your report, usually within one working day.</p></div>';
+      }).catch(function(){ btn.disabled = false; btn.textContent = 'Email me the free report →'; er.textContent = 'Couldn’t connect — please try again or call 0207 096 8131.'; });
+    });
     f.addEventListener('submit', function(e){ e.preventDefault(); run(); });
     out.addEventListener('click', function(e){ if (!e.target.closest('[data-rcval]')) return; var v = document.querySelector('#vForm [name=postcode]'); if (v && !v.value) v.value = f.elements.postcode.value.trim().toUpperCase(); var b = document.querySelector('#vForm [name=beds]'); if (b && f.elements.beds) { var want = f.elements.beds.value; Array.prototype.forEach.call(b.options || [], function(o){ if (o.value === want || o.text.indexOf(want === '0' ? 'Studio' : want) === 0) b.value = o.value; }); } });
     try { var q = new URLSearchParams(location.search); if (q.get('postcode')) f.elements.postcode.value = q.get('postcode').toUpperCase().slice(0, 10); if (q.get('beds') !== null && f.elements.beds.querySelector('option[value="' + q.get('beds') + '"]')) f.elements.beds.value = q.get('beds'); if (location.hash === '#compare' && q.get('postcode')) run(); } catch (e) {}
