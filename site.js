@@ -284,6 +284,25 @@
     t.querySelectorAll('thead th').forEach(function (x) { x.classList.remove('asc', 'desc'); }); th.classList.add(asc ? 'asc' : 'desc');
     rows.sort(function (a, b) { var x = a.cells[k].dataset.v, y = b.cells[k].dataset.v; var r = k ? (+x || 0) - (+y || 0) : String(x).localeCompare(String(y)); return asc ? r : -r; });
     rows.forEach(function (r) { body.appendChild(r); }); }); }); });
+  // Landlord compliance: "How ready is your property to let?" checklist.
+  var rd = document.getElementById('rdForm');
+  if (rd) rd.addEventListener('submit', function (e) {
+    e.preventDefault(); var err = document.getElementById('rdErr'), out = document.getElementById('rdRes'), ans = {}, missing = 0;
+    rd.querySelectorAll('.rd-q').forEach(function (q) { var c = q.querySelector('input:checked'); q.classList.toggle('miss', !c); if (!c) missing++; else ans[q.dataset.k] = c.value; });
+    if (missing) { err.textContent = 'Please answer every question (' + missing + ' left).'; var m = rd.querySelector('.rd-q.miss'); if (m) m.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    err.textContent = '';
+    var T = { gas: ['Gas Safety record', '/book-certificate?service=gas', 'Book a Gas Safety check', 'gas'], eicr: ['EICR (electrical safety)', '/book-certificate?service=eicr', 'Book an EICR', 'eicr'], epc: ['EPC rated E or better', '/book-certificate?service=epc', 'Book an EPC', 'epc'],
+      alarms: ['Smoke and CO alarms', '/landlord-compliance#essentials', 'What you need', ''], licence: ['Council licence', '/licence-application', 'We apply for you, free', ''], inventory: ['Check-in inventory', '/book-certificate?service=diy', 'DIY inventory — £30 + VAT', 'diy'],
+      deposit: ['Deposit protection', '/landlords#services', 'Let us handle it', ''], rtr: ['Right to rent checks', '/landlords#services', 'Let us handle it', ''] };
+    var keys = Object.keys(T).filter(function (k) { return ans[k] !== 'na'; }), done = keys.filter(function (k) { return ans[k] === 'yes'; }), todo = keys.filter(function (k) { return ans[k] !== 'yes'; });
+    var pct = keys.length ? Math.round(done.length / keys.length * 100) : 100, book = todo.map(function (k) { return T[k][3]; }).filter(Boolean);
+    out.innerHTML = '<div class="rd-score"><span class="rd-ring" style="--p:' + pct + '"><b>' + pct + '%</b></span><div><h3>' + (pct === 100 ? 'Ready to let' : pct >= 75 ? 'Nearly there' : 'A few things to sort') + '</h3><p>' + done.length + ' of ' + keys.length + ' done' + (todo.length ? ' · ' + todo.length + ' to sort' : '') + '</p></div></div>' +
+      (todo.length ? '<h4>Still to sort</h4><ul class="rd-list">' + todo.map(function (k) { return '<li class="todo"><span>' + T[k][0] + '</span><a href="' + T[k][1] + '">' + T[k][2] + ' →</a></li>'; }).join('') + '</ul>' : '') +
+      (done.length ? '<h4>Done</h4><ul class="rd-list">' + done.map(function (k) { return '<li class="ok"><span>' + T[k][0] + '</span></li>'; }).join('') + '</ul>' : '') +
+      '<div class="btns">' + (book.length > 1 ? '<a class="btn red" href="/book-certificate?service=' + book.join(',') + '">Book my outstanding services →</a>' : '') + '<a class="btn line" href="/contact?topic=Landlord&message=' + encodeURIComponent('I used the property readiness check and would like help with: ' + (todo.map(function (k) { return T[k][0]; }).join(', ') || 'letting my property')) + '">Speak to our landlord team</a></div>' +
+      '<p class="rd-note">A quick guide based on your answers, not legal advice. Requirements depend on the property — see the essentials below.</p>';
+    out.hidden = false; out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
   // Home page certificates section: each service's price from the price list.
   var hcp = document.querySelectorAll('[data-cert-price]');
   if (hcp.length) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
@@ -332,7 +351,7 @@
           (multi ? '<select class="cb-size" aria-label="Property size">' + g.opts.map(function (x) { return '<option value="' + escH(x.id) + '" data-price="' + x.price + '">' + escH(x.label.charAt(0).toUpperCase() + x.label.slice(1)) + '</option>'; }).join('') + '</select>' : '') +
           '</span><span class="cb-pr"><span class="cb-prv">' + (o.price ? money(o.price) : 'Free') + '</span>' + (o.price ? '<small>+ VAT</small>' : '') + '</span></label>'; }).join('');
       document.getElementById('cbPayNote').textContent = cbPay ? 'You’ll pay on SumUp’s secure page. Card details never touch our website.' : 'We’ll call you to take payment and confirm the date.';
-      try { var want = new URLSearchParams(location.search).get('service'); if (want) cb.querySelectorAll('[name=svc]').forEach(function (x) { if (x.value === want || (want === 'gas' && /^gas/.test(x.value)) || (want === 'eicr' && /^eicr/.test(x.value)) || (want === 'epc' && /^epc/.test(x.value)) || (want === 'licence' && /^licen/.test(x.value)) || (want === 'diy' && /^diy/.test(x.value))) { x.checked = true; x.closest('.cb-item').classList.add('on'); } }); } catch (e) {}
+      try { var want = new URLSearchParams(location.search).get('service'); if (want) cb.querySelectorAll('[name=svc]').forEach(function (x) { if (want.split(',').some(function (w) { return x.value === w || (w === 'gas' && /^gas/.test(x.value)) || (w === 'eicr' && /^eicr/.test(x.value)) || (w === 'epc' && /^epc/.test(x.value)) || (w === 'licence' && /^licen/.test(x.value)) || (w === 'diy' && /^diy/.test(x.value)); })) { x.checked = true; x.closest('.cb-item').classList.add('on'); } }); } catch (e) {}
       cbSum();
     }).catch(function () { document.getElementById('cbItems').innerHTML = '<p class="tool-err">Couldn’t load the services — please call 0207 096 8131.</p>'; });
     cb.addEventListener('change', function (e) { if (e.target.classList.contains('cb-size')) { var it = e.target.closest('.cb-item'), box2 = it.querySelector('[name=svc]'), op = e.target.selectedOptions[0]; box2.value = e.target.value; it.querySelector('.cb-prv').textContent = +op.dataset.price ? money(+op.dataset.price) : 'Free'; if (!box2.checked) { box2.checked = true; it.classList.add('on'); } cbSum(); return; } if (e.target.name === 'svc') { e.target.closest('.cb-item').classList.toggle('on', e.target.checked); cbSum(); } if (e.target.name === 'access') document.getElementById('cbTenantRow').hidden = e.target.value !== 'tenant'; });
