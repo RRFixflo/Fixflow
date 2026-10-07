@@ -41,7 +41,7 @@ module.exports = function (app, opts) {
     const out = []; gone[kind] = []; every[kind] = [];
     String(xml || '').replace(/<property>([\s\S]*?)<\/property>/g, function (m, x) {
       const status = tag(x, 'status'), id = tag(x, 'id');
-      if (/^\d+$/.test(id)) { const st1 = tag(x, 'address1'), b1 = tag(x, 'bedrooms'); every[kind].push({ id: id, street: st1, postcode: tag(x, 'postcode').toUpperCase().replace(/\s+/g, ''), beds: /studio/i.test(b1) ? 0 : parseInt(b1, 10) || 0, unit: tag(x, 'property_no') ? (tag(x, 'property_no').toLowerCase().replace(/\b(flat|apartment|apt|unit|no)\b\.?/g, '') + '|' + st1.toLowerCase()).replace(/[^a-z0-9|]/g, '') : '', status: status }); }
+      if (/^\d+$/.test(id)) { const st1 = tag(x, 'address1'), b1 = tag(x, 'bedrooms'); every[kind].push({ id: id, street: st1, postcode: tag(x, 'postcode').toUpperCase().replace(/\s+/g, ''), beds: /studio/i.test(b1) ? 0 : parseInt(b1, 10) || 0, unit: tag(x, 'property_no') ? (tag(x, 'property_no').toLowerCase().replace(/\b(flat|apartment|apt|unit|no)\b\.?/g, '') + '|' + st1.toLowerCase()).replace(/[^a-z0-9|]/g, '') : '', status: status, images: list(x, 'images', 'image').slice(0, 12) }); }
       if (/^\d+$/.test(id) && /^(let|sold|withdrawn|completed|archived)$/i.test(status.trim())) { const st0 = tag(x, 'address1'), pc0 = tag(x, 'postcode').toUpperCase(); gone[kind].push({ street: st0, outcode: pc0.split(/\s+/)[0] || '', beds: /studio/i.test(tag(x, 'bedrooms')) ? 0 : parseInt(tag(x, 'bedrooms'), 10) || 0, status: status }); }
       if (!/^\d+$/.test(id) || tag(x, 'published') !== '1' || SHOW[kind].indexOf(status.toLowerCase()) === -1) return;
       const res = !/commercial|land/i.test(tag(x, 'category')), bedsRaw = res ? tag(x, 'bedrooms') : '', beds = /studio/i.test(bedsRaw) ? 0 : parseInt(bedsRaw, 10) || 0, type = tag(x, 'property_type') || tag(x, 'category') || 'Property';
@@ -635,7 +635,7 @@ module.exports = function (app, opts) {
   const fp = new Map();   // photo address -> 64-bit fingerprint (hex) or '' if unreadable
   let dupes = [], dupesAt = 0, checking = false, progress = { done: 0, total: 0 }, fpLoaded = false;
   // Fingerprints are kept in the database, so a restart doesn't read every photo again.
-  async function fpDb() { try { const p = opts.db && await opts.db(); if (!p) return null; if (!fpLoaded) { await p.query('CREATE TABLE IF NOT EXISTS photo_prints (url TEXT PRIMARY KEY, h TEXT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now())'); (await p.query('SELECT url, h FROM photo_prints')).rows.forEach(function (r) { fp.set(r.url, r.h); }); fpLoaded = true; } return p; } catch (e) { return null; } }
+  async function fpDb() { try { const p = opts.db && await opts.db(); if (!p) return null; if (!fpLoaded) { await p.query('CREATE TABLE IF NOT EXISTS photo_prints (url TEXT PRIMARY KEY, h TEXT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now())'); await p.query('CREATE TABLE IF NOT EXISTS own_photos (gid TEXT NOT NULL, h TEXT NOT NULL, seen TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (gid, h))'); (await p.query('SELECT url, h FROM photo_prints')).rows.forEach(function (r) { fp.set(r.url, r.h); }); fpLoaded = true; } return p; } catch (e) { return null; } }
   async function fingerprint(url) {
     if (fp.has(url)) return fp.get(url);
     let h = '';
@@ -692,6 +692,15 @@ module.exports = function (app, opts) {
       dupes = Object.keys(pairs).map(function (k) { const pr = pairs[k]; pr.count = pr.photos.length; pr.sameArea = !!oc(pr.homes[0].where) && oc(pr.homes[0].where) === oc(pr.homes[1].where) && pr.homes[0].where.split(',')[0] === pr.homes[1].where.split(',')[0]; return pr; })
         .sort(function (a, b) { return (a.sameArea - b.sameArea) || (b.count - a.count); });
       dupesAt = Date.now();
+      // Our own photos, kept per Gnomen number (also homes now let), so other agents' adverts can be checked against them later.
+      try {
+        const own = {}; items.forEach(function (x) { if (/^\d{1,7}$/.test(String(x.id))) (own[x.id] = own[x.id] || {})[x.h] = 1; });
+        const extra = every.let.concat(every.sale).filter(function (r) { return r.images && r.images.length && !own[r.id] && /^\d{1,7}$/.test(String(r.id)); });
+        for (const r of extra) for (const u of r.images.slice(0, 12)) { const h = await fingerprint(u); if (h) (own[r.id] = own[r.id] || {})[h] = 1; }
+        const p = await fpDb(), gids = Object.keys(own);
+        if (p && gids.length) { const g = [], hs = []; gids.forEach(function (id) { Object.keys(own[id]).forEach(function (h) { g.push(id); hs.push(h); }); });
+          await p.query('INSERT INTO own_photos (gid, h) SELECT * FROM unnest($1::text[], $2::text[]) ON CONFLICT (gid, h) DO UPDATE SET seen = now()', [g, hs]); }
+      } catch (e) { console.log('Own photos not recorded: ' + e.message); }
       console.log('Photo check: ' + items.length + ' photos on ' + homes.length + ' homes — ' + (dupes.length ? dupes.length + ' pair(s) of homes sharing photos (' + groups.length + ' photos)' : 'no repeats'));
       if (opts.onPhotoDupes) opts.onPhotoDupes(dupes);
     } catch (e) { console.log('Photo check stopped: ' + e.message); }
@@ -700,6 +709,8 @@ module.exports = function (app, opts) {
   setTimeout(function () { checkPhotos(); }, 60000); setInterval(function () { checkPhotos(); }, 2 * 3600000).unref();
 
   return {
+    // For checking other agents' Rightmove adverts against our own photos (rivals.js).
+    rmTools: { RM: RM, UA: UA, dig: dig, pageJson: pageJson, abs: abs, isImg: isImg, fingerprint: fingerprint, hamming: hamming, branches: [BRANCH, SALES_BRANCH], detail: rmDetail, db: fpDb },
     photoDupes: function () {
       // With when each was put on the market and last updated in Gnomen (as of now, not the last photo check).
       const rec = {}; data.let.concat(data.sale).forEach(function (p) { rec[p.id] = p; });

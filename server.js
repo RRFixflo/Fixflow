@@ -464,6 +464,11 @@ const jobs = require('./jobs')(app, {
   askAi: function (prompt, wantJson, files) { return askAiSafe(prompt, wantJson, files); }
 });
 // Who's calling: the phone system's webhook, shown in the staff app.
+// Our properties with other agents on Rightmove (checked each night against our own photos and addresses).
+require('./rivals')(app, { tools: listings.rmTools, gnomenFor: function (rows) { return listings.gnomenFor(rows); }, db: function () { return jobs.db(); },
+  isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); }, canManage: function (req) { return jobs.canManage(req); },
+  alert: function (b) { const base = process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : ''); return jobs.ntfy(Object.assign({ click: base ? base + '/admin#avail' : undefined }, b)); },
+  email: function (subject, textFor, hash) { return jobs.ownerEmail(subject, textFor, hash); } });
 require('./calls')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, canManage: function (req) { return jobs.canManage(req); } });
 // Out-of-hours phone answering (Twilio + Claude): calls become Website leads.
 require('./voice')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, teamAlert: function (b, h) { return jobs.teamAlert(b, h); }, staffEmailAll: function (s, t, h) { return jobs.staffEmailAll(s, t, h); }, ownerEmail: function (s, t, h) { return jobs.ownerEmail(s, t, h); }, ntfy: function (b) { return jobs.ntfy(b); } });

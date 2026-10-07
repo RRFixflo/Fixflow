@@ -728,6 +728,7 @@
   .crm-chev { border: 0; background: none; font-size: 1rem; color: var(--ink-soft); cursor: pointer; padding: 6px; }
   .crm-body { padding: 4px 14px 14px; border-top: 1px solid var(--line, #eef0f3); }
   .crm-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px; margin: 12px 0; } .crm-facts div { display: grid; min-width: 0; } .crm-facts span { font-size: .74rem; color: var(--ink-soft); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; } .crm-facts b { font-weight: 600; overflow-wrap: anywhere; }
+  .riv-top { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; } .riv { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line, #eef0f3); } .riv.off { opacity: .6; } .riv-img img { width: 110px; height: 74px; object-fit: cover; border-radius: 8px; display: block; } .riv-b { display: grid; gap: 3px; min-width: 0; font-size: .85rem; } .riv-b small, .riv-their, .riv-ll { color: var(--ink-soft); overflow-wrap: anywhere; } .riv-their b { color: var(--ink); } .riv-why { justify-self: start; font-size: .75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #fef3f2; color: #b42318; } .riv-why.street { background: #f2f4f7; color: #475467; } .riv-more { margin-top: 8px; } .riv-more summary { cursor: pointer; font-weight: 700; font-size: .85rem; padding: 6px 0; } @media (max-width: 520px) { .riv-img img { width: 84px; height: 60px; } }
   .crm-qq { background: #f0f9ff; border: 1px solid #b9e6fe; border-radius: 12px; padding: 12px; margin: 12px 0; display: grid; gap: 6px; } .crm-qq-btns { display: flex; gap: 8px; flex-wrap: wrap; }
   .crm-vw { background: #fffaeb; border: 1px solid #fedf89; border-radius: 12px; padding: 12px; margin: 12px 0; } .crm-slots { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
   .crm-slot { border: 1.5px solid #b54708; color: #b54708; background: #fff; border-radius: 10px; padding: 8px 12px; font: inherit; font-weight: 700; cursor: pointer; } .crm-slot.on { background: #067647; border-color: #067647; color: #fff; }
@@ -2079,6 +2080,7 @@
           <details class="av-tools" id="avTools"><summary class="av-tools-s">📡 Rightmove &amp; video checks<span class="av-tools-b" id="avToolsBadge"></span></summary>
           <div class="av-rm" id="avRm"></div>
           <div class="av-rm" id="avYt"></div></details>
+          <details class="av-tools" id="avRiv" hidden><summary class="av-tools-s">🔎 Our properties with other agents<span class="av-tools-b" id="avRivBadge"></span></summary><div id="avRivBody"></div></details>
           <div class="av-add-btns"><button type="button" class="btn small primary" id="avAddBtn">➕ Add a property</button><button type="button" class="btn small" id="avPasteBtn">📋 Paste from your spreadsheet</button><button type="button" class="btn small" id="siteRefreshBtn" title="Changed something in Gnomen? Show it on the website now">🌐 Update website now</button><a class="btn small" href="https://www.residentialrealtors.co.uk/properties-to-rent" target="_blank" rel="noopener" title="Our properties on the website">🔗 View on website</a></div>
           <div class="av-form" id="avForm" hidden>
             <div class="av-grid"><label class="av-wide">Address<input class="inp" id="avAddr" list="offProps" placeholder="Include the postcode"></label><div class="av-wide" id="avKnown" hidden></div><label>Bedrooms<select class="inp" id="avBedsIn"><option value="">—</option><option value="0">Studio</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
@@ -3040,7 +3042,7 @@
       showDeployed(d); loadCrm(true);
       // Your own page: no "Send repair link" (staff still have it on theirs).
       $('navRepLink').hidden = true; document.querySelectorAll('[data-go="navRepLink"]').forEach(function(x){ x.remove(); });
-      var wasState = history.state && history.state.v && history.state.v !== 'jobs' && !/^#(job=|offers|contacts|leads|lt|certs|web)/.test(location.hash) ? history.state : null;   // a refresh keeps you where you were
+      var wasState = history.state && history.state.v && history.state.v !== 'jobs' && !/^#(job=|offers|contacts|leads|lt|certs|web|avail)/.test(location.hash) ? history.state : null;   // a refresh keeps you where you were
       if (!history.state) history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname + location.hash);
       loadContractors().then(loadJobs).then(openJobFromLink).then(function(){ if (wasState) applyNav(wasState); }).then(updateBack);
       refreshListings(true);   // Rightmove and YouTube, once when you sign in
@@ -3052,6 +3054,7 @@
     if (location.hash === '#contacts' || location.hash === '#leads') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('crm'); return; }
     if (location.hash === '#lt') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('lt'); return; }
     if (location.hash === '#certs') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('certs'); return; }
+    if (location.hash === '#avail') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('avail'); return; }
     if (location.hash === '#web') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('web'); return; }
     var m = /^#job=(\d+)$/.exec(location.hash);
     if (!m) return;
@@ -11671,7 +11674,35 @@
   function loadYt(){ return api('GET', '/api/admin/youtube').then(function(d){ if (d && d.ok) { ytData = d; renderAvail(); } }); }
   function ytVid(id){ return ((ytData && ytData.items) || []).filter(function(v){ return v.id === id; })[0] || { id: id, title: 'Video' }; }
   function ytUrl(id){ return 'https://www.youtube.com/watch?v=' + encodeURIComponent(id); }
-  function loadAvail(){ loadRm(); loadYt(); psOurList(); return api('GET', '/api/admin/available').then(function(d){ if (!d || !d.ok) return; avItems = d.items || []; avLinkData = d.links || {}; renderAvail(); var n = avItems.filter(function(x){ return x.status === 'available'; }).length; $('sAvail').hidden = !n; $('sAvail').textContent = n; }); }
+  // Our properties on other agents' Rightmove adverts (owner and managers): checked each night.
+  var rivData = null;
+  function loadRiv(){ if (!meta.canManageUsers) return; api('GET', '/api/admin/rivals').then(function(d){ if (d && d.ok) { rivData = d; renderRiv(); } }); }
+  function renderRiv(){
+    var d = rivData; if (!d) return; $('avRiv').hidden = false;
+    var live = d.hits.filter(function(h){ return !h.dismissed_at; }), strong = live.filter(function(h){ return h.kind !== 'street'; }), weak = live.filter(function(h){ return h.kind === 'street'; }), gone = d.hits.filter(function(h){ return h.dismissed_at; });
+    $('avRivBadge').textContent = strong.length ? strong.length : '';
+    var r = d.run, card = function(h){
+      var why = h.kind === 'photos' ? '📷 ' + h.photos + ' of our photos' : h.kind === 'address' ? '🏢 Same building' : '📍 Same street & bedrooms', tel = String(h.landlord_phone || '').replace(/[^\d+]/g, '');
+      return '<div class="riv' + (h.dismissed_at ? ' off' : '') + '">' + (h.img ? '<a href="' + esc(h.url) + '" target="_blank" rel="noopener" class="riv-img"><img src="' + esc(h.img) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"></a>' : '') +
+        '<div class="riv-b"><span class="riv-why ' + esc(h.kind) + '">' + why + '</span>' +
+        '<b>' + esc(h.ours) + '</b><small>' + (h.our_status === 'let' ? 'We let it' + (h.let_on ? ' ' + esc(certDay(String(h.let_on).slice(0, 10))) : '') : 'On our books now') + '</small>' +
+        '<span class="riv-their">Now with <b>' + esc(h.agent || 'another agent') + '</b>: <a href="' + esc(h.url) + '" target="_blank" rel="noopener">' + esc(h.address || 'their advert') + ' ↗</a>' + [h.price, h.beds != null ? (h.beds ? h.beds + ' bed' : 'Studio') : '', h.status, h.listed ? 'on Rightmove since ' + certDay(h.listed) : ''].filter(Boolean).map(function(t){ return ' · ' + esc(t); }).join('') + '</span>' +
+        (h.landlord ? '<span class="riv-ll">👤 ' + esc(h.landlord) + (tel ? ' · <a href="tel:' + esc(tel) + '">📞 ' + esc(h.landlord_phone) + '</a>' : '') + '</span>' : '') +
+        '<span class="riv-acts">' + (h.dismissed_at ? '<button type="button" class="linkish" data-riv-undo="' + h.id + '">↩ Show again</button>' : '<button type="button" class="linkish" data-riv-hide="' + h.id + '">Not ours — hide</button>') + '</span></div></div>';
+    };
+    $('avRivBody').innerHTML = '<div class="riv-top"><span class="muted-note" style="margin:0">' + (r ? 'Last checked ' + esc(fmtShort(r.at)) + ' · ' + r.rows + ' of our properties · ' + r.searches + ' Rightmove searches' + (r.error ? ' · <b style="color:#b42318">' + esc(r.error) + '</b>' : '') : 'Not checked yet — it runs each night at about 2am.') + '</span>' +
+        '<button type="button" class="btn small" data-riv-run' + (d.running ? ' disabled' : '') + '>' + (d.running ? 'Checking…' : '🔎 Check 40 now') + '</button></div>' +
+      '<p class="muted-note" style="margin:6px 0 10px">Each night Fixflow looks at other agents’ Rightmove adverts in the same postcode area with the same bedrooms as our properties (available, and let in the last 3 years — about ' + (r && r.eligible ? r.eligible : 'all of them') + ', a batch a night) and compares their photos and addresses with ours. A match means the landlord may be marketing with someone else — worth a call.</p>' +
+      (strong.length ? strong.map(card).join('') : '<p class="muted-note" style="margin:0 0 6px">✓ No other agent is using our photos or advertising the same building' + (r ? ' (so far)' : '') + '.</p>') +
+      (weak.length ? '<details class="riv-more"><summary>📍 Same street and bedrooms — weaker (' + weak.length + ')</summary>' + weak.map(card).join('') + '</details>' : '') +
+      (gone.length ? '<details class="riv-more"><summary>Hidden (' + gone.length + ')</summary>' + gone.map(card).join('') + '</details>' : '');
+  }
+  $('avRivBody').addEventListener('click', function(e){
+    var run = e.target.closest('[data-riv-run]'), hide = e.target.closest('[data-riv-hide]'), undo = e.target.closest('[data-riv-undo]');
+    if (run) { run.disabled = true; run.textContent = 'Checking…'; api('POST', '/api/admin/rivals/run', {}).then(function(){ toast('Checking 40 properties — it takes a few minutes'); setTimeout(loadRiv, 90000); }); return; }
+    if (hide || undo) { var b = hide || undo; api('POST', '/api/admin/rivals/' + (hide ? b.dataset.rivHide : b.dataset.rivUndo) + '/dismiss', { undo: !!undo }).then(function(){ loadRiv(); }); }
+  });
+  function loadAvail(){ loadRm(); loadYt(); loadRiv(); psOurList(); return api('GET', '/api/admin/available').then(function(d){ if (!d || !d.ok) return; avItems = d.items || []; avLinkData = d.links || {}; renderAvail(); var n = avItems.filter(function(x){ return x.status === 'available'; }).length; $('sAvail').hidden = !n; $('sAvail').textContent = n; }); }
   function avOutcode(a){ var t = String(a || '').replace(/[,\s]+$/, ''), m = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}\b/i.exec(t) || /\b([A-Z]{1,2}\d[A-Z\d]?)\s*$/i.exec(t); return m ? m[1].toUpperCase() : ''; }
   function avDay(v){ return v ? certDay(String(v).slice(0, 10)) : ''; }
   // How long an available property has been online: from its Rightmove advert when linked, else since it went on our list.
