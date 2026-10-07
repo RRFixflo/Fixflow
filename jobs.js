@@ -10117,18 +10117,24 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }).slice(0, 3);
     if (!slots.length && !b.flexible) return res.status(400).json({ ok: false, error: 'slots' });
     const kind = b.listing === 'sale' ? 'sale' : 'let', url = /^\/property\/[\w-]+(\/[\w-]*)?$/.test(String(b.url || '')) ? String(b.url) : '';
-    const data = { kind: 'viewing', listing: kind, ref: ref, url: url, slots: slots, flexible: !!b.flexible, message: msg, people: str(b.people, 20) || '', move: str(b.move, 40) || '' };
+    // Lettings: who's moving in (adults and children) and when.
+    const adults = /^([1-5]|6\+)$/.test(String(b.adults || '')) ? String(b.adults) : '', children = /^([0-4]|5\+)$/.test(String(b.children || '')) ? String(b.children) : '';
+    const md = /^\d{4}-\d{2}-\d{2}$/.test(String(b.move_date || '')) ? String(b.move_date) : '', mdText = md ? new Date(md + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
+    if (kind === 'let' && (b.adults !== undefined || b.move_date !== undefined) && (!adults || !md)) return res.status(400).json({ ok: false, error: 'household' });
+    const kids = children && children !== '0' ? children + (children === '1' ? ' child' : ' children') : 'no children';
+    const people = adults ? adults + (adults === '1' ? ' adult' : ' adults') + ', ' + kids : str(b.people, 20) || '';
+    const data = { kind: 'viewing', listing: kind, ref: ref, url: url, slots: slots, flexible: !!b.flexible, message: msg, people: people, adults: adults, children: children || (adults ? '0' : ''), move_date: md, move: mdText || str(b.move, 40) || '' };
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, addr, JSON.stringify(data)]);
     const times = slots.map(slotText);
     // Every member of staff hears about it: a phone alert and an email each.
     teamAlert({ title: '🗓 Viewing request: ' + addr.split(',').slice(0, 2).join(','), message: name + ' · ' + phone + (times.length ? ' · ' + times.join(' / ') : ' · any time') + ' — confirm a time in Website leads.', tags: ['calendar'] }, '#leads').catch(function () {});
     staffEmailAll('🗓 Viewing request - ' + addr.split(',').slice(0, 2).join(','), function (link) {
       return 'Someone has asked to view ' + addr + (ref ? ' (ref ' + ref + ')' : '') + ' on the website.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') +
-        (data.people ? '\nPeople: ' + data.people : '') + (data.move ? '\nMove / buy: ' + data.move : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Website leads (they’re emailed straight away):\n' + link;
+        (data.people ? '\nPeople: ' + data.people : '') + (data.move ? (md ? '\nMove-in date: ' : '\nMove / buy: ') + data.move : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Website leads (they’re emailed straight away):\n' + link;
     }, '#leads').catch(function (e) { console.error('Viewing request staff emails failed:', e.message); });
     if (canEmail() && sendEmail) {
       sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Viewing request — ' + addr, text: 'Someone has asked to view a property on the website.\n\nProperty: ' + addr + (ref ? ' (ref ' + ref + ')' : '') + '\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email +
-        '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') + (data.people ? '\nPeople: ' + data.people : '') + (data.move ? '\nMove / buy: ' + data.move : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Fixflow under Contacts — they’re emailed straight away.' }).catch(function () {});
+        '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') + (data.people ? '\nPeople: ' + data.people : '') + (data.move ? (md ? '\nMove-in date: ' : '\nMove / buy: ') + data.move : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Fixflow under Contacts — they’re emailed straight away.' }).catch(function () {});
       const t = 'Dear ' + name.split(' ')[0] + ',\n\nThank you for asking to view ' + addr + '.\n\n' + (times.length ? 'You suggested:\n' + times.map(function (x) { return '• ' + x; }).join('\n') + '\n\n' : '') + 'Please note: this is a viewing request, not a confirmed booking. One of our agents will contact you first, by phone or email, to agree a time — usually within a few hours during opening hours (Monday to Sunday, 9am–7pm). Your viewing is only booked once we’ve confirmed it with you. If you need us sooner, call 0207 096 8131.\n\nKind regards,\nResidential Realtors';
       sendEmail({ to: [email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Viewing request received (not yet booked) — ' + addr, text: t, html: brandEmail(t, 'Your viewing request') }).catch(function () {});
     }
