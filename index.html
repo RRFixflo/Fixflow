@@ -472,6 +472,14 @@
   #urgencyRow .urgency-opt[data-val="Emergency"] strong::before { background: var(--danger); }
   #urgencyRow .urgency-opt[data-val="Routine"].selected { border-color: var(--ok); background: var(--ok-tint); box-shadow: 0 0 0 1px var(--ok); }
   #urgencyRow .urgency-opt[data-val="Urgent"].selected { border-color: var(--warn); background: var(--warn-tint); box-shadow: 0 0 0 1px var(--warn); }
+  .urg-hint { margin: 8px 0 0; font-size: .82rem; color: var(--ink-soft); } .urg-hint b { color: var(--ink); }
+  .emg-check, .urg-why { margin-top: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line-strong, #d0d5dd); background: var(--surface, #fff); }
+  .emg-check { border-color: var(--danger); background: var(--danger-tint, #fef3f2); }
+  .emg-check strong { display: block; margin-bottom: 4px; } .emg-check p { margin: 0 0 8px; font-size: .84rem; color: var(--ink-soft); }
+  .emg-list label { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; font-size: .9rem; cursor: pointer; } .emg-list input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+  .emg-check .btn-small { margin-top: 8px; }
+  .urg-why label { display: block; font-weight: 600; font-size: .88rem; margin-bottom: 6px; } .urg-why input { width: 100%; box-sizing: border-box; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line-strong, #d0d5dd); border-radius: 10px; }
+  .err-inline { color: var(--danger); font-size: .82rem; margin-top: 6px; }
   .urgency-note {
     font-size: 0.8rem;
     color: var(--ink-soft);
@@ -1316,6 +1324,19 @@
         <div class="urgency-opt" data-val="Routine"><strong>Routine</strong><small>No rush</small></div>
         <div class="urgency-opt" data-val="Urgent"><strong>Urgent</strong><small>Within days</small></div>
         <div class="urgency-opt" data-val="Emergency"><strong>Emergency</strong><small>Safety risk</small></div>
+      </div>
+      <p class="urg-hint" id="urgHint" hidden></p>
+      <div class="emg-check" id="emgCheck" hidden>
+        <strong>Is it one of these?</strong>
+        <p>Emergencies are for things that put people or the home at risk right now. Tick what applies:</p>
+        <div class="emg-list" id="emgList"></div>
+        <button class="btn ghost btn-small" id="emgNone" type="button">None of these — it can wait a day or two</button>
+        <div class="err-inline" id="emgErr" hidden>Please tick what makes it an emergency, or press “None of these”.</div>
+      </div>
+      <div class="urg-why" id="urgWhy" hidden>
+        <label for="urgentReason">Why does this need doing within days?</label>
+        <input id="urgentReason" type="text" maxlength="300" placeholder="e.g. the only toilet, water coming through the ceiling, can’t use the kitchen">
+        <div class="err-inline" id="urgWhyErr" hidden>Please tell us briefly why it can’t wait — or choose Routine.</div>
       </div>
       <div class="err">Please select how urgent this is.</div>
       <p class="urgency-note">Please only choose Urgent or Emergency for something that genuinely can't wait or is a safety risk. Marking an issue more urgent than it is can mean an out-of-hours contractor gets called out unnecessarily, and those costs may be recharged to you under your tenancy agreement.</p>
@@ -2203,7 +2224,42 @@
       });
     });
   }
-  wireOptionRow('urgencyRow', function(val){ state.urgency = val; clearError('f-urgency'); checkUrgencyOpinion(true); });
+  wireOptionRow('urgencyRow', function(val){ state.urgency = val; state.urgencyByUser = true; clearError('f-urgency'); urgencyExtras(); checkUrgencyOpinion(true); });
+  // Keeping Emergency and Urgent for real: the usual level is suggested from the problem chosen, Emergency needs a
+  // reason from the list (or drops to Urgent), and Urgent needs a short "why".
+  var EMG_REASONS = ['Smell of gas', 'Fire or smoke', 'Flooding, or a leak I can’t stop', 'Sparking, a burning smell or exposed wires', 'Carbon monoxide or smoke alarm going off', 'No heating or hot water in cold weather', 'No power to the whole home', 'Can’t lock or secure the home', 'Sewage coming back up'];
+  document.getElementById('emgList').innerHTML = EMG_REASONS.map(function(r, i){ return '<label><input type="checkbox" value="' + r.replace(/"/g, '&quot;') + '" data-emg="' + i + '"> <span>' + r + '</span></label>'; }).join('');
+  function emgPicked(){ return Array.prototype.map.call(document.querySelectorAll('#emgList input:checked'), function(x){ return x.value; }); }
+  function suggestUrgency(){
+    var t = [state.category, state.subLabel, state.symptomLabel].join(' ').toLowerCase(), d = String(document.getElementById('description').value || '').toLowerCase();
+    if (/smell gas|gas leak|fire|smoke|sparking|burning smell|carbon monoxide|co alarm|flood|burst|sewage|no power|no electricity|can.?t lock|cannot lock|won.?t lock|break.?in|insecure/.test(t + ' ' + d)) return 'Emergency';
+    if (/damp|mould|mold|condensation/.test(t) && !/leak|dripping|flood/.test(t)) return 'Routine';
+    if (/no heating|no hot water|not heating|boiler|leak|dripping|only toilet|toilet.*(blocked|won.?t flush|not flushing)|blocked|lock|front door|entrance door|broken (window|glass)|window.*(won.?t|can.?t) (close|lock)|fridge|freezer|pest|rat|mice|mouse|vermin|electric|power|trip hazard|handrail|step|stairs|smoke alarm|alarm|beeping/.test(t)) return 'Urgent';
+    return 'Routine';
+  }
+  function setUrgency(val){
+    document.querySelectorAll('#urgencyRow .urgency-opt').forEach(function(el){ el.classList.toggle('selected', el.dataset.val === val); });
+    state.urgency = val; clearError('f-urgency'); urgencyExtras();
+  }
+  function urgencyExtras(){
+    document.getElementById('emgCheck').hidden = state.urgency !== 'Emergency';
+    document.getElementById('urgWhy').hidden = state.urgency !== 'Urgent';
+    document.getElementById('emgErr').hidden = true; document.getElementById('urgWhyErr').hidden = true;
+  }
+  function applyUrgencySuggestion(){
+    var sug = suggestUrgency(); state.suggestedUrgency = sug;
+    var h = document.getElementById('urgHint');
+    h.innerHTML = 'Usually <b>' + sug + '</b> for this kind of problem' + (sug === 'Routine' ? ' — we still fix it, just not as an emergency.' : '.'); h.hidden = false;
+    // Pre-select the usual level (not Emergency — that's the tenant's call, with a reason).
+    if (!state.urgencyByUser && state.urgency !== 'Emergency') setUrgency(sug === 'Emergency' ? 'Urgent' : sug);
+  }
+  document.getElementById('emgNone').addEventListener('click', function(){
+    document.querySelectorAll('#emgList input').forEach(function(x){ x.checked = false; });
+    setUrgency(state.suggestedUrgency === 'Routine' ? 'Routine' : 'Urgent'); state.urgencyByUser = true;
+    var h = document.getElementById('urgHint'); h.innerHTML = 'Thanks — we’ve set this to <b>' + state.urgency + '</b>. We still fix it, it just won’t be treated as an emergency.'; h.hidden = false;
+  });
+  document.getElementById('emgList').addEventListener('change', function(){ document.getElementById('emgErr').hidden = true; });
+  document.getElementById('urgentReason').addEventListener('input', function(){ document.getElementById('urgWhyErr').hidden = true; });
   wireOptionRow('timeRow', function(val){ state.accessTime = val; });
   wireOptionRow('keyPermRow', function(val){
     state.keyPermission = val;
@@ -2472,8 +2528,9 @@
       document.querySelectorAll('#urgencyRow .urgency-opt').forEach(function(el){
         el.classList.toggle('selected', el.dataset.val === 'Emergency');
       });
-      state.urgency = 'Emergency';
-      clearError('f-urgency');
+      state.urgency = 'Emergency'; state.urgencyByUser = true;
+      clearError('f-urgency'); urgencyExtras();
+      var tick = { gas: 0, fire: 1 }[key]; if (tick !== undefined) { var cb = document.querySelector('#emgList [data-emg="' + tick + '"]'); if (cb) cb.checked = true; }
     } else {
       banner.style.display = 'none';
     }
@@ -2517,6 +2574,7 @@
           lastSkippedDiy = false;
           document.getElementById('safetyBanner').style.display = 'none';
           renderDiyPanel();
+          applyUrgencySuggestion();
           goTo(2);
         } else {
           state.subKey = item.key;
@@ -2549,6 +2607,7 @@
         lastSkippedDiy = false;
         document.getElementById('safetyBanner').style.display = 'none';
         renderDiyPanel();
+        applyUrgencySuggestion();
         goTo(2);
       });
       el.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); el.click(); } });
@@ -2582,6 +2641,10 @@
     var desc = document.getElementById('description').value.trim();
     if(!desc){ setError('f-desc'); ok = false; } else { clearError('f-desc'); state.description = desc; }
     if(!state.urgency){ setError('f-urgency'); ok = false; }
+    state.emergencyReasons = state.urgency === 'Emergency' ? emgPicked() : [];
+    state.urgentReason = state.urgency === 'Urgent' ? document.getElementById('urgentReason').value.trim() : '';
+    if(state.urgency === 'Emergency' && !state.emergencyReasons.length){ document.getElementById('emgErr').hidden = false; ok = false; }
+    if(state.urgency === 'Urgent' && state.urgentReason.length < 4){ document.getElementById('urgWhyErr').hidden = false; ok = false; }
     if(state.photos.length === 0){ setError('f-photos'); ok = false; }
     if(state.photos.some(function(p){ return !p.dataUrl; })){ alert('Your photos are still being prepared — please wait a moment.'); return; }
     state.location = document.getElementById('location').value.trim();
@@ -2670,6 +2733,8 @@
     if(state.symptomLabel) lines.push("What's happening: " + state.symptomLabel);
     if(state.location) lines.push('Location in property: ' + state.location);
     lines.push('Urgency: ' + state.urgency);
+    if(state.emergencyReasons && state.emergencyReasons.length) lines.push('Emergency because: ' + state.emergencyReasons.join(', '));
+    if(state.urgentReason) lines.push('Why urgent: ' + state.urgentReason);
     lines.push('');
     lines.push('Description:');
     lines.push(state.description);
@@ -3046,6 +3111,8 @@
     if (state.symptomLabel) addRow("What's happening", state.symptomLabel);
     if (state.location) addRow('Location in property', state.location);
     addRow('Urgency', state.urgency);
+    if (state.emergencyReasons && state.emergencyReasons.length) addRow('Emergency because', state.emergencyReasons.join(', '));
+    if (state.urgentReason) addRow('Why urgent', state.urgentReason);
     addRow('Description', state.description);
 
     addSectionHeading('Access & Key Permission');
@@ -3143,6 +3210,7 @@
             name: state.name, email: state.email, phone: state.phone, address: state.address,
             category: state.category, affected: state.subLabel, symptom: state.symptomLabel,
             location: state.location, description: state.description, urgency: state.urgency,
+            emergencyReasons: state.emergencyReasons || [], urgentReason: state.urgentReason || '', suggestedUrgency: state.suggestedUrgency || '',
             accessDays: state.accessDays, accessTime: state.accessTime, accessNotes: state.accessNotes,
             keyPermission: state.keyPermission,
             keyInstructions: state.keyPermission === 'Yes' ? state.keyInstructions : '',
@@ -3340,6 +3408,7 @@
     usedSubflow = false;
     document.querySelectorAll('.cat').forEach(function(el){ el.classList.remove('selected'); });
     document.querySelectorAll('.urgency-opt').forEach(function(el){ el.classList.remove('selected'); });
+    document.querySelectorAll('#emgList input').forEach(function(x){ x.checked = false; }); document.getElementById('urgentReason').value = ''; urgencyExtras(); document.getElementById('urgHint').hidden = true;
     document.querySelectorAll('#dayChips .chip').forEach(function(el){ el.classList.remove('selected'); });
     document.getElementById('catSearch').value = '';
     document.getElementById('description').value = '';
