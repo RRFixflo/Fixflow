@@ -11621,6 +11621,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (g) val.items = (val.items || []).map(function (r) { const id = String(r.id); return Object.assign({}, r, { gnomen_id: g.ids[id] || null, gnomen_typed: !!typed[id], gnomen_maybe: g.maybe[id] || null }); }); } catch (e) { console.error('Advert Gnomen numbers:', e.message); }
     res.json(Object.assign({ ok: true, branch: st.branch, branch_url: RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + st.branch, items: [] }, val, { dreams: await rmDreams(p), today: londonDay() }));
   }));
+  // Check the adverts' Gnomen numbers on their own too (logged, so missing ones can be looked into): soon after start, then hourly.
+  async function advertGnomenCheck() {
+    const p = await db(); if (!p || !opts.gnomenForAdverts) return;
+    const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], typed = ((await p.query("SELECT value FROM app_settings WHERE key = 'rm_gnomen'")).rows[0] || {}).value || {};
+    const items = (c && c.value && c.value.items) || []; if (items.length) opts.gnomenForAdverts(items, typed);
+  }
+  setTimeout(function () { advertGnomenCheck().catch(function () {}); }, 90 * 1000).unref();
+  setInterval(function () { advertGnomenCheck().catch(function () {}); }, 3600 * 1000).unref();
   // A Gnomen number typed in for a Rightmove advert (empty = work it out again).
   app.post('/api/admin/rightmove/:rmid/gnomen', withDb(async function (p, req, res) {
     const rid = String(req.params.rmid || '').replace(/\D/g, '').slice(0, 20), v = String((req.body || {}).gnomen_id || '').replace(/^#/, '').trim();
