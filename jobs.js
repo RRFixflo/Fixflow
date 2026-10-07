@@ -1779,7 +1779,7 @@ module.exports = function mountJobs(app, opts) {
   }
 
   // Phone alert for a new job. Never delays or breaks saving the report.
-  // A new repair: a phone alert to the owner and every member of staff, and an email to each of them.
+  // A new repair: a phone alert to the owner and every member of staff, and an email to the owner only.
   function notifyNewJob(j) {
     const PRIORITY = { Emergency: 5, Urgent: 4, Routine: 3 };
     const TAGS = { Emergency: ['rotating_light'], Urgent: ['warning'], Routine: ['wrench'] };
@@ -1787,9 +1787,9 @@ module.exports = function mountJobs(app, opts) {
     teamAlert({ title: j.urgency.toUpperCase() + ' · New repair ' + refFor(j.id),
       message: [where, what, j.photos ? j.photos + ' photo' + (j.photos === 1 ? '' : 's') : ''].filter(Boolean).join('\n').slice(0, 1000),
       priority: PRIORITY[j.urgency] || 3, tags: TAGS[j.urgency] || ['wrench'] }, '#job=' + j.id).catch(function () {});
-    staffEmailAll((j.urgency === 'Emergency' ? '🚨 ' : j.urgency === 'Urgent' ? '⚠️ ' : '🔧 ') + j.urgency + ' repair ' + refFor(j.id) + ' - ' + where.split(',').slice(0, 2).join(','), function (link) {
+    ownerEmail((j.urgency === 'Emergency' ? '🚨 ' : j.urgency === 'Urgent' ? '⚠️ ' : '🔧 ') + j.urgency + ' repair ' + refFor(j.id) + ' - ' + where.split(',').slice(0, 2).join(','), function (link) {
       return 'A new repair has been reported.\n\nReference: ' + refFor(j.id) + '\nUrgency: ' + j.urgency + '\nProperty: ' + where + '\nProblem: ' + what + (j.photos ? '\nPhotos: ' + j.photos : '') + '\n\nOpen it in Fixflow: ' + link;
-    }, '#job=' + j.id).catch(function (e) { console.error('Repair staff emails failed:', e.message); });
+    }, '#job=' + j.id).catch(function (e) { console.error('Repair email failed:', e.message); });
   }
 
   function refFor(id) { return 'RR-' + String(id).padStart(5, '0'); }
@@ -4164,7 +4164,7 @@ module.exports = function mountJobs(app, opts) {
     await ensureTrackToken(p, id);
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', 'Reported by the landlord, ' + (l.name || '') + ' (landlord page)' + (self ? ' — they are arranging it themselves.' : ' — asked us to arrange it.')]);
     teamAlert({ title: (self ? 'Landlord arranging repair: ' : 'Landlord reported repair: ') + refFor(id), message: (l.name || 'A landlord') + ' — ' + address + ': ' + title + (self ? ' (they’re arranging it)' : '') + '. Open Fixflow.', tags: ['house'] }, '#job=' + id).catch(function () {});
-    if (!self) staffEmailAll('🔧 Landlord reported repair ' + refFor(id) + ' - ' + String(address).split(',').slice(0, 2).join(','), function (link) { return 'A landlord has reported a repair on their page.\n\nReference: ' + refFor(id) + '\nLandlord: ' + (l.name || '—') + '\nProperty: ' + address + '\nProblem: ' + title + '\n\nOpen it in Fixflow: ' + link; }, '#job=' + id).catch(function () {});
+    if (!self) ownerEmail('🔧 Landlord reported repair ' + refFor(id) + ' - ' + String(address).split(',').slice(0, 2).join(','), function (link) { return 'A landlord has reported a repair on their page.\n\nReference: ' + refFor(id) + '\nLandlord: ' + (l.name || '—') + '\nProperty: ' + address + '\nProblem: ' + title + '\n\nOpen it in Fixflow: ' + link; }, '#job=' + id).catch(function () {});
     res.json({ ok: true, id: id, ref: refFor(id) });
   }));
   // The landlord books the visit for a repair they're arranging themselves.
@@ -6895,6 +6895,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   // Email every active staff member who has an email address (each with the sign-in link that
   // suits their access). Kept in Sent emails as sent automatically.
+  // An email to the owner only (the office inbox), e.g. for new repairs.
+  async function ownerEmail(subject, textFor, hash) {
+    const p = await db(); if (!p || !canEmail() || !sendEmail) return;
+    const to = 'info@residentialrealtors.co.uk', text = 'Hi,\n\n' + textFor((PUBLIC_URL || OFFER_ORIGIN) + '/admin' + (hash || ''));
+    const r = await sendEmail({ to: [to], fromName: 'Fixflow - Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
+    p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', ['Fixflow (automatic)', [to], null, subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
+  }
   async function staffEmailAll(subject, textFor, hash) {
     const p = await db(); if (!p || !canEmail() || !sendEmail) return;
     const users = (await p.query("SELECT id, name, email, role FROM staff_users WHERE disabled_at IS NULL AND coalesce(email, '') <> ''")).rows.filter(function (u) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(u.email).trim()); });
