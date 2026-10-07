@@ -10165,11 +10165,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (fu !== undefined) await crmLog(p, ref, fu ? 'Follow up on ' + new Date(fu + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Follow-up cleared', req);
     res.json({ ok: true });
   }));
-  // Remove a lead (managers only): it goes into the archive, from where it can be put back.
+  // Remove a lead (any member of staff): it goes into the archive, from where it can be put back.
   app.post('/api/admin/crm/archive', withDb(async function (p, req, res) {
     const b = req.body || {}, ref = String(b.ref || ''), restore = b.restore === true;
     if (!CRM_REF.test(ref)) return res.status(400).json({ ok: false });
-    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
     const who = req.user ? req.user.name : 'Office', sub = ref.indexOf('sub:') === 0, id = +ref.slice(ref.indexOf(':') + 1);
     const old = (await p.query('SELECT * FROM crm_meta WHERE ref = $1', [ref])).rows[0] || {};
     if (restore) {
@@ -11616,7 +11615,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   app.get('/api/admin/rightmove', withDb(async function (p, req, res) {
     const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], st = await rmSettings(p);
-    res.json(Object.assign({ ok: true, branch: st.branch, branch_url: RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + st.branch, items: [] }, listFresh('rightmove_list', (c && c.value) || {}), { dreams: await rmDreams(p), today: londonDay() }));
+    const val = Object.assign({}, listFresh('rightmove_list', (c && c.value) || {}));
+    // Each advert's Gnomen number (worked out, or typed in by staff), and the likely ones when unsure.
+    try { const typed = ((await p.query("SELECT value FROM app_settings WHERE key = 'rm_gnomen'")).rows[0] || {}).value || {}, g = opts.gnomenForAdverts ? opts.gnomenForAdverts(val.items || [], typed) : null;
+      if (g) val.items = (val.items || []).map(function (r) { const id = String(r.id); return Object.assign({}, r, { gnomen_id: g.ids[id] || null, gnomen_typed: !!typed[id], gnomen_maybe: g.maybe[id] || null }); }); } catch (e) { console.error('Advert Gnomen numbers:', e.message); }
+    res.json(Object.assign({ ok: true, branch: st.branch, branch_url: RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + st.branch, items: [] }, val, { dreams: await rmDreams(p), today: londonDay() }));
+  }));
+  // A Gnomen number typed in for a Rightmove advert (empty = work it out again).
+  app.post('/api/admin/rightmove/:rmid/gnomen', withDb(async function (p, req, res) {
+    const rid = String(req.params.rmid || '').replace(/\D/g, '').slice(0, 20), v = String((req.body || {}).gnomen_id || '').replace(/^#/, '').trim();
+    if (!rid || (v && !/^\d{1,12}$/.test(v))) return res.status(400).json({ ok: false, error: 'gnomen' });
+    const cur = ((await p.query("SELECT value FROM app_settings WHERE key = 'rm_gnomen'")).rows[0] || {}).value || {};
+    if (v) cur[rid] = v; else delete cur[rid];
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('rm_gnomen', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(cur)]);
+    res.json({ ok: true });
   }));
   app.post('/api/admin/dreams/:rmid', withDb(async function (p, req, res) {
     const rid = String(req.params.rmid || '').replace(/\D/g, '').slice(0, 20), act = (req.body || {}).action, who = req.user ? req.user.name : 'Office';
