@@ -11091,7 +11091,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'landlord_phone', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
     const items = (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 20000')).rows;
-    try { const g = opts.gnomenFor ? opts.gnomenFor(items) : {}; items.forEach(function (r) { if (!r.gnomen_id && g[r.id]) { r.gnomen_id = g[r.id]; r.gnomen_auto = true; } if (r.status !== 'available') return; if (r.gnomen_id ? g.known && !g.known(r.gnomen_id) : g.missing && g.missing[r.id]) r.gnomen_missing = true; }); } catch (e) { console.error('Gnomen numbers:', e.message); }
+    try { const g = opts.gnomenFor ? opts.gnomenFor(items) : {}; items.forEach(function (r) { if (!r.gnomen_id && g[r.id]) { r.gnomen_id = g[r.id]; r.gnomen_auto = true; } if (r.status !== 'available') return; if (!r.gnomen_id && g.maybe && g.maybe[r.id]) r.gnomen_maybe = g.maybe[r.id]; if (r.gnomen_id ? g.known && !g.known(r.gnomen_id) : g.missing && g.missing[r.id]) r.gnomen_missing = true; }); } catch (e) { console.error('Gnomen numbers:', e.message); }
     res.json({ ok: true, items: items, links: await availLinks(p, items, req.role !== 'offers') });
   }));
   // What we already know about an address being added: its landlord, current tenants, key number
