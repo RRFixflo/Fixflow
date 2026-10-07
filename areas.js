@@ -75,5 +75,12 @@ module.exports = function (app, opts) {
     }).catch(function (e) { console.log('ONS json probe failed', e.message); });
   }, 20000);
 
-  return { urls: function () { return ['/london-rents'].concat(AREAS.filter(function (a) { return fig(a).rent; }).map(function (a) { return '/london-rents/' + a.slug; })); } };
+  // ONS average rent for a borough (by its ONS code) and bedroom count, for the rent comparison tool.
+  const onsBeds = function (gss, beds) {
+    const a = AREAS.find(function (x) { return x.gss === gss; }); if (!a) return null;
+    const f = fig(a), k = String(Math.max(1, Math.min(4, beds || 1))), v = (f.beds || {})[k];
+    return { slug: a.slug, name: a.name, rent: v || 0, month: f.bedsMonth || f.rentMonth || '', all: f.rent || 0 };
+  };
+
+  return { onsBeds: onsBeds, urls: function () { return ['/london-rents'].concat(AREAS.filter(function (a) { return fig(a).rent; }).map(function (a) { return '/london-rents/' + a.slug; })); } };
 };
