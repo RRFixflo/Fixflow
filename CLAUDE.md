@@ -62,4 +62,5 @@ Public website changes must respect `prefers-reduced-motion`, work without horiz
 - No "Last updated" label in the website header (removed at the owner's request).
 - No notifications about properties that share photos — the report stays on the Website visitors page only.
 - Staff alerts for viewings and valuation requests go to all staff.
+- New repair emails go to the owner only (info@); repair phone alerts still go to everyone.
 - Refreshing the staff app keeps you on the same page; the Refresh button reloads every page's data.
