@@ -25,7 +25,7 @@ const SYSTEM = [
   '- If the caller smells gas or suspects a gas leak: tell them to call the National Gas Emergency Service on 0800 111 999 straight away, open windows, and not use switches or flames. If anyone is in danger, tell them to call 999. Then take their details; mark it urgent.',
   '- Urgent repairs (major leak or flooding, no heating or hot water, no power, unable to secure the home, fire or carbon monoxide alarm sounding): mark urgent and reassure them the message goes to the person on call.',
   '- If they only want the office phone number or email: 0207 096 8131, info at residential realtors dot co dot uk.',
-  '- If they want to view or rent a property: ask which property (the street or area is enough), how many people are moving in, how many are adults and how many are children, and their move-in date. Fill adults, children and move_date.',
+  '- If they want to view or rent a property: ask which property (the street or area is enough), how many people are moving in, how many are adults and how many are children, their move-in date, and how they will pay the rent (for example working, self-employed, Universal Credit or Housing Benefit, student, retired) and whether they have a UK guarantor if needed. Ask this neutrally and never turn anyone away because of how they pay. Fill adults, children, move_date, income and guarantor.',
   '- If the caller refuses to give some details, accept that and carry on.',
   '- When you have their name, what it is about, and at least one way to contact them (and you have read back the email if they gave one), thank them, say the team will be in touch, say goodbye, and set done to true.',
   '- If the caller says goodbye or wants to end the call, end politely and set done to true.',
@@ -34,7 +34,7 @@ const SYSTEM = [
 
 const SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['reply', 'name', 'email', 'phone', 'about', 'address', 'category', 'adults', 'children', 'move_date', 'urgent', 'done', 'summary'],
+  required: ['reply', 'name', 'email', 'phone', 'about', 'address', 'category', 'adults', 'children', 'move_date', 'income', 'guarantor', 'urgent', 'done', 'summary'],
   properties: {
     reply: { type: 'string', description: 'What to say to the caller next (spoken aloud).' },
     name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' },
@@ -42,6 +42,7 @@ const SCHEMA = {
     address: { type: 'string', description: 'Property address if mentioned.' },
     adults: { type: 'string', description: 'Number of adults moving in, if a viewing or rental enquiry.' }, children: { type: 'string', description: 'Number of children moving in.' },
     move_date: { type: 'string', description: 'When they want to move in, as they said it (e.g. 1 November, ASAP).' },
+    income: { type: 'string', description: 'How they will pay the rent, as they said it (e.g. employed, self-employed, Universal Credit, student).' }, guarantor: { type: 'string', description: 'Whether they have a UK guarantor if needed (yes / no / not sure).' },
     category: { type: 'string', enum: ['repair', 'letting', 'renting', 'buying', 'selling', 'valuation', 'certificate', 'other'] },
     urgent: { type: 'boolean' }, done: { type: 'boolean' }, summary: { type: 'string' }
   }
@@ -120,7 +121,7 @@ module.exports = function (app, opts) {
     else if (!heard && call.silences === 1) out = { reply: 'Sorry, I didn’t catch that. Could you say it again?', done: false };
     else out = (await think(call)) || scripted(call.info || {}, call.turns.length);
     call.turns.push({ role: 'assistant', text: out.reply });
-    const info = Object.assign({}, call.info || {}); ['name', 'email', 'phone', 'about', 'address', 'category', 'adults', 'children', 'move_date', 'summary'].forEach(function (k) { if (out[k]) info[k] = String(out[k]).slice(0, 500); }); if (out.urgent) info.urgent = true;
+    const info = Object.assign({}, call.info || {}); ['name', 'email', 'phone', 'about', 'address', 'category', 'adults', 'children', 'move_date', 'income', 'guarantor', 'summary'].forEach(function (k) { if (out[k]) info[k] = String(out[k]).slice(0, 500); }); if (out.urgent) info.urgent = true;
     call.info = info;
     if (p && sid) await p.query('INSERT INTO voice_calls (sid, from_no, turns, info, silences) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (sid) DO UPDATE SET turns = $3, info = $4, silences = $5',
       [sid, call.from_no || '', JSON.stringify(call.turns), JSON.stringify(info), call.silences || 0]).catch(function (e) { console.error('Phone answering:', e.message); });
@@ -142,11 +143,11 @@ module.exports = function (app, opts) {
     const phone = String(info.phone || '').replace(/[^\d+ ]/g, '').trim() || String(call.from_no || '').replace(/^\+44/, '0'), email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(info.email || '').replace(/\s+/g, '')) ? String(info.email).replace(/\s+/g, '').toLowerCase() : null;
     const name = String(info.name || '').trim() || 'Caller ' + (String(call.from_no || '').replace(/^\+44/, '0') || '(number withheld)');
     const data = { kind: 'call', message: info.summary || info.about || (said.length ? 'Caller said: ' + said.map(function (t) { return t.text; }).join(' / ').slice(0, 600) : 'Rang and didn’t leave a message.'),
-      about: info.about || '', category: info.category || '', move: info.move_date || '', people: info.adults ? info.adults + ' adult' + (info.adults === '1' ? '' : 's') + (info.children && info.children !== '0' ? ', ' + info.children + ' child' + (info.children === '1' ? '' : 'ren') : ', no children') : '', urgent: !!info.urgent, caller_id: call.from_no || '', transcript: (call.turns || []).map(function (t) { return (t.role === 'assistant' ? 'Assistant: ' : 'Caller: ') + t.text; }).join('\n').slice(0, 8000) };
+      about: info.about || '', category: info.category || '', move: info.move_date || '', income: info.income || '', guarantor: info.guarantor || '', people: info.adults ? info.adults + ' adult' + (info.adults === '1' ? '' : 's') + (info.children && info.children !== '0' ? ', ' + info.children + ' child' + (info.children === '1' ? '' : 'ren') : ', no children') : '', urgent: !!info.urgent, caller_id: call.from_no || '', transcript: (call.turns || []).map(function (t) { return (t.role === 'assistant' ? 'Assistant: ' : 'Caller: ') + t.text; }).join('\n').slice(0, 8000) };
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name.slice(0, 120), email, phone || null, (info.address || '(out-of-hours call)').slice(0, 300), JSON.stringify(data)]);
     await p.query('UPDATE voice_calls SET lead_id = $2 WHERE sid = $1', [sid, r.rows[0].id]);
     const title = (data.urgent ? '🚨 Urgent out-of-hours call: ' : '📞 Out-of-hours call: ') + name, line = (phone || email || 'no number') + ' — ' + data.message;
-    const text = function (link) { return 'Someone rang the office out of hours and left a message with the phone assistant.\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + (email || '—') + (info.address ? '\nProperty: ' + info.address : '') + (data.people ? '\nMoving in: ' + data.people : '') + (data.move ? '\nMove-in date: ' + data.move : '') + (data.urgent ? '\nMarked URGENT' : '') + '\n\nWhat it’s about:\n' + data.message + '\n\nThe full conversation is in Website leads:\n' + link; };
+    const text = function (link) { return 'Someone rang the office out of hours and left a message with the phone assistant.\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + (email || '—') + (info.address ? '\nProperty: ' + info.address : '') + (data.people ? '\nMoving in: ' + data.people : '') + (data.move ? '\nMove-in date: ' + data.move : '') + (data.income ? '\nRent paid by: ' + data.income : '') + (data.guarantor ? '\nUK guarantor: ' + data.guarantor : '') + (data.urgent ? '\nMarked URGENT' : '') + '\n\nWhat it’s about:\n' + data.message + '\n\nThe full conversation is in Website leads:\n' + link; };
     // Repairs go to the owner only (as with online repair reports); everything else to all staff.
     if (data.category === 'repair') { opts.ntfy({ title: title, message: line, tags: [data.urgent ? 'rotating_light' : 'telephone_receiver'], priority: data.urgent ? 5 : 4 }); opts.ownerEmail(title, text, '#leads'); }
     else { opts.teamAlert({ title: title, message: line, tags: ['telephone_receiver'] }, '#leads'); opts.staffEmailAll(title, text, '#leads'); }
