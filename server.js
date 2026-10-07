@@ -482,6 +482,18 @@ app.get('/api/admin/photo-dupes', function (req, res) {
   if (!(jobs && jobs.isStaff(req))) return res.status(401).json({ ok: false });
   res.setHeader('Cache-Control', 'no-store'); res.json(Object.assign({ ok: true }, listings.photoDupes()));
 });
+// Take a property off our website (e.g. a duplicate listing) so Gnomen's feed doesn't bring it back; managers only.
+app.post('/api/admin/web-hidden', express.json(), async function (req, res) {
+  if (!(jobs && jobs.isStaff(req) && jobs.canManage(req))) return res.status(403).json({ ok: false, error: 'Only managers can change what is on the website.' });
+  const b = req.body || {}, id = String(b.id || '').trim(); if (!/^\d{1,12}$/.test(id)) return res.status(400).json({ ok: false, error: 'Property number missing' });
+  try { res.json({ ok: true, hidden: await listings.hide(id, b.where, b.hide !== false, req.user && (req.user.name || req.user.username) || '') }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post('/api/admin/photo-dupes/ok', express.json(), async function (req, res) {
+  if (!(jobs && jobs.isStaff(req) && jobs.canManage(req))) return res.status(403).json({ ok: false, error: 'Only managers can change this.' });
+  const key = String((req.body || {}).key || ''); if (!/^\d+\+\d+$/.test(key)) return res.status(400).json({ ok: false });
+  try { await listings.pairOk(key, (req.body || {}).ok !== false); res.json({ ok: true }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 // Website visitors (counted on our server, no cookies) — the Website visitors page in Fixflow.
 visits = require('./visits')(app, { db: function () { return jobs.db(); }, isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); } });
 
