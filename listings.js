@@ -36,7 +36,7 @@ module.exports = function (app, opts) {
   const ytId = function (u) { const m = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(String(u || '')); return m ? m[1] : ''; };
   const vimeoId = function (u) { const m = /vimeo\.com\/(?:video\/)?(\d{6,12})/.exec(String(u || '')); return m ? m[1] : ''; };
   const gone = { let: [], sale: [] };   // homes the feed lists as let / sold
-  const every = { let: [], sale: [] };   // every home in the feed (published or not), for matching Gnomen numbers
+  const every = { let: [], sale: [] }; const feedSum = {};   // every home in the feed (published or not), for matching Gnomen numbers
   function parse(xml, kind) {
     const out = []; gone[kind] = []; every[kind] = [];
     String(xml || '').replace(/<property>([\s\S]*?)<\/property>/g, function (m, x) {
@@ -63,6 +63,8 @@ module.exports = function (app, opts) {
       p.url = '/property/' + id + '/' + p.slug;
       out.push(p);
     });
+    { const sum = every[kind].length + ' in the feed, ' + out.length + ' on the website · statuses: ' + Object.entries(every[kind].reduce(function (m, p) { const k = String(p.status || '?').toLowerCase(); m[k] = (m[k] || 0) + 1; return m; }, {})).map(function (e) { return e[0] + ' ' + e[1]; }).join(', ');
+      if (feedSum[kind] !== sum) { feedSum[kind] = sum; console.log('Gnomen ' + kind + ' feed: ' + sum); } }
     // Available first, newest first.
     return out.sort(function (a, b) { return (a.taken - b.taken) || String(b.added).localeCompare(String(a.added)); });
   }
@@ -702,6 +704,7 @@ module.exports = function (app, opts) {
     gnomenFor: function (rows) {
       // Every home in Gnomen's feeds (also unpublished ones), not just those on the website.
       const seen = {}, recs = every.let.concat(every.sale, data.let, data.sale).filter(function (p) { const ok = /^\d+$/.test(String(p.id)) && p.postcode && !seen[p.id]; if (ok) seen[p.id] = 1; return ok; }), out = {};
+      const missing = {}, feedOk = every.let.length + every.sale.length > 0;
       const plain = function (s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); };
       const stName = function (s) { return plain(s).replace(/^(flat|apartment|apt|unit)?\s*\d+[a-z]?\s+/, '').trim(); };
       const PC = /([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i, door = function (s) { const m = /^\s*(?:flat|apartment|apt|unit)?\s*([0-9]+[a-z]?)\b/i.exec(String(s || '')); return m ? m[1].toLowerCase() : ''; };
@@ -711,6 +714,8 @@ module.exports = function (app, opts) {
         if (m) { const pc = (m[1] + m[2]).toUpperCase(); c = recs.filter(function (p) { return p.postcode === pc && (beds == null || p.beds === beds); }); }
         // No full postcode on our list: the same street name (and door number below) instead.
         if (!c || !c.length) { const pa = plain(addr), d0 = door(r.address); c = d0 ? recs.filter(function (p) { const sn = stName(p.street); return sn.length >= 6 && sn.indexOf(' ') > 0 && !/^(london|central london|greater london)$/.test(sn) && (' ' + pa + ' ').indexOf(' ' + sn + ' ') !== -1 && (beds == null || p.beds === beds) && p.unit && p.unit.split('|')[0] === d0.replace(/[^a-z0-9]/g, ''); }) : []; }
+        // Nothing in Gnomen at that postcode or on that street at all: it isn't on Gnomen (staff are told).
+        if (!c.length && feedOk) { const pa = plain(addr), pc0 = m ? (m[1] + m[2]).toUpperCase() : ''; const any = recs.some(function (p) { const sn = stName(p.street); return (pc0 && p.postcode === pc0) || (sn.length >= 6 && sn.indexOf(' ') > 0 && (' ' + pa + ' ').indexOf(' ' + sn + ' ') !== -1); }); if (!any) missing[r.id] = 1; }
         if (c.length > 1) { const d = door(r.address); if (d) { const byNo = c.filter(function (p) { return p.unit && p.unit.split('|')[0] === d.replace(/[^a-z0-9]/g, ''); }); if (byNo.length) c = byNo; } }
         if (c.length > 1) { const bySt = c.filter(function (p) { return p.street && addr.indexOf(String(p.street).toLowerCase().replace(/^[\d\s\w]*?\d+[a-z]?\s+/, '').trim()) !== -1; }); if (bySt.length) c = bySt; }
         // The same home listed again later (an old let record and a new one): the current listing wins.
@@ -718,6 +723,8 @@ module.exports = function (app, opts) {
         const ids = Array.from(new Set(c.map(function (p) { return String(p.id); })));
         if (ids.length === 1) out[r.id] = ids[0];
       });
+      // Gnomen numbers in the feed right now (to check numbers typed by hand), and the homes not on Gnomen.
+      Object.defineProperty(out, 'missing', { value: missing }); Object.defineProperty(out, 'known', { value: feedOk ? function (id) { id = String(id); return every.let.concat(every.sale, data.let, data.sale).some(function (p) { return String(p.id) === id; }); } : null });
       return out;
     },
     urls: function () { return LIVE ? data.let.concat(data.sale).map(function (p) { return p.url; }) : []; }

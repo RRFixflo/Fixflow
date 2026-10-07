@@ -2495,6 +2495,20 @@ module.exports = function mountJobs(app, opts) {
     db().then(function (p) { return p && p.query("DELETE FROM site_sessions WHERE started_at < now() - interval '400 days'"); }).catch(function () {});
   }, 24 * 3600 * 1000).unref();
 
+  // Each person's own order for the staff app menu (owner, offers staff and each staff login separately).
+  const navKey = function (req) { return 'nav_order:' + (req.user && req.user.id ? 'u' + req.user.id : (req.role === 'offers' ? 'offers' : 'owner')); };
+  app.get('/api/admin/me/nav-order', withDb(async function (p, req, res) {
+    const r = (await p.query('SELECT value FROM app_settings WHERE key = $1', [navKey(req)])).rows[0];
+    res.json({ ok: true, order: r && Array.isArray(r.value) ? r.value : null });
+  }));
+  app.put('/api/admin/me/nav-order', withDb(async function (p, req, res) {
+    const order = ((req.body || {}).order || []);
+    if (!Array.isArray(order)) return res.status(400).json({ ok: false });
+    const clean = order.slice(0, 40).map(function (v) { return String(v || '').slice(0, 40); }).filter(function (v) { return /^[A-Za-z]\w*$/.test(v); });
+    if (!clean.length) await p.query('DELETE FROM app_settings WHERE key = $1', [navKey(req)]);
+    else await p.query('INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', [navKey(req), JSON.stringify(clean)]);
+    res.json({ ok: true });
+  }));
   app.get('/api/admin/me', async function (req, res) {
     let alerts = ''; try { alerts = (await db()) ? NTFY_SERVER + '/' + (await offersTopic()) : ''; } catch (e) {}
     let uemail = ''; try { if (req.user && req.user.id) uemail = ((await (await db()).query('SELECT email FROM staff_users WHERE id = $1', [req.user.id])).rows[0] || {}).email || ''; } catch (e) {}
@@ -11070,7 +11084,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'landlord_phone', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
     const items = (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 20000')).rows;
-    try { const g = opts.gnomenFor ? opts.gnomenFor(items) : {}; items.forEach(function (r) { if (!r.gnomen_id && g[r.id]) { r.gnomen_id = g[r.id]; r.gnomen_auto = true; } }); } catch (e) { console.error('Gnomen numbers:', e.message); }
+    try { const g = opts.gnomenFor ? opts.gnomenFor(items) : {}; items.forEach(function (r) { if (!r.gnomen_id && g[r.id]) { r.gnomen_id = g[r.id]; r.gnomen_auto = true; } if (r.status !== 'available') return; if (r.gnomen_id ? g.known && !g.known(r.gnomen_id) : g.missing && g.missing[r.id]) r.gnomen_missing = true; }); } catch (e) { console.error('Gnomen numbers:', e.message); }
     res.json({ ok: true, items: items, links: await availLinks(p, items, req.role !== 'offers') });
   }));
   // What we already know about an address being added: its landlord, current tenants, key number
