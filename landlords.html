@@ -425,6 +425,7 @@
   }
   var box = q('#tbox'); box.addEventListener('input', calc); box.addEventListener('change', calc); calc();
   q('#tTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-tt]'); if (!b) return; document.querySelectorAll('#tTabs button').forEach(function(x){ x.classList.toggle('on', x === b); }); document.querySelectorAll('.tpane').forEach(function(p){ p.hidden = p.getAttribute('data-tp') !== b.getAttribute('data-tt'); }); });
+  try { var tth = /^#tools-(\w+)$/.exec(location.hash), ttb = tth && q('#tTabs [data-tt="' + tth[1] + '"]'); if (ttb) { ttb.click(); setTimeout(function () { q('#tools').scrollIntoView(); }, 50); } } catch (e) {}
 
   // ---- Valuation request ----
   var form = q('#vForm'), err = q('#vErr'), go = q('#vGo');
