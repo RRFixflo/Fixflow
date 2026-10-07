@@ -111,6 +111,8 @@ h2 { font-size: clamp(1.8rem, 3.6vw, 2.6rem); line-height: 1.1; letter-spacing: 
 .form input, .form select, .form textarea { width: 100%; padding: 13px 14px; border: 1.5px solid var(--line); border-radius: 14px; font: inherit; font-size: 1rem; color: var(--ink); background: #fbfcfe; }
 .form input:focus, .form select:focus, .form textarea:focus { outline: 0; border-color: var(--navy); box-shadow: 0 0 0 4px rgba(11,31,58,.08); background: #fff; }
 .form textarea { min-height: 120px; resize: vertical; }
+/* iPhone draws date boxes wider than their column unless told otherwise */
+.fg > * { min-width: 0; } .form input[type=date] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; min-height: 51px; text-align: left; } .form input[type=date]::-webkit-date-and-time-value { text-align: left; }
 .form .consent { flex-direction: row; align-items: flex-start; gap: 10px; font-weight: 500; font-size: .85rem; }
 .form .consent input { width: 18px; height: 18px; margin-top: 2px; flex: none; accent-color: var(--navy); }
 .form .btn { width: 100%; margin-top: 8px; padding: 16px; }
