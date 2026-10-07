@@ -112,6 +112,7 @@
   .side-sec { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #5E626C; padding: 16px 10px 6px; }
   .side .grow { flex: 1; }
   /* Arranging the menu: drag the items, or use the arrows. Each person's order is saved for them. */
+  #avKey { text-transform: uppercase; }
   .nav-arr-bar { display: flex; gap: 6px; padding: 0 10px 6px; }
   .nav-arr-btn { border: 0; background: none; color: var(--side-soft); font: inherit; font-size: .74rem; padding: 2px 0; cursor: pointer; } .nav-arr-btn:hover { color: #fff; text-decoration: underline; }
   .nav-arranging #navArrange { color: #fff; font-weight: 700; background: #D9262E; padding: 3px 10px; border-radius: 999px; text-decoration: none; }
@@ -2919,6 +2920,7 @@
   // quietly try again a couple of times instead of showing an error.
   var AI_URL = /\/(assistant|ai-invoice|ai-email|licence-read|summaries|rtr\/read)$/;
   function api(method, url, body, tries){
+    if (body && typeof body === 'object') ['key_no', 'key_number'].forEach(function(k){ if (typeof body[k] === 'string') body[k] = body[k].toUpperCase(); });   // key numbers always in capitals
     if (AI_URL.test(url) && tries === undefined) {
       var again = function(n){ return api(method, url, body, n)['catch'](function(){ return { ok: false, error: 'network', status: 0 }; }).then(function(d){
         var failed = !d.ok && (d.error === 'ai-failed' || d.error === 'network' || d.error === 'bad-response' || d.status === 0 || d.status >= 502);
@@ -10028,7 +10030,7 @@
   function saveKey(address, num, notes){
     return api('PUT', '/api/admin/property-info', { address: address, key_number: num, key_notes: notes }).then(function(d){
       if (!d.ok) { if (!keyTaken(d)) toast('Couldn’t save the key number'); return false; }
-      propInfo[propKey(address)] = Object.assign({}, propInfo[propKey(address)], { property_key: propKey(address), address: address, key_number: String(num || '').trim() || null, key_notes: String(notes || '').trim() || null });
+      propInfo[propKey(address)] = Object.assign({}, propInfo[propKey(address)], { property_key: propKey(address), address: address, key_number: String(num || '').trim().toUpperCase() || null, key_notes: String(notes || '').trim() || null });
       toast(num ? 'Key number saved' : 'Key number removed');
       return true;
     });
@@ -11600,7 +11602,7 @@
     if (v && !/^\d{1,12}$/.test(v)) { toast('A Gnomen number is digits only, e.g. 1234'); return; }
     avPatch(x, { gnomen_id: v }, v ? '✓ Gnomen ' + v + ' saved' : 'Gnomen number cleared').then(function(ok){ if (ok) { x.gnomen_auto = false; loadAvail(); } });
   }, true);
-  function avPatch(x, body, msg){ return api('POST', '/api/admin/available/' + x.id, Object.assign({ patch: true }, body)).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save that'); return false; } Object.keys(body).forEach(function(k){ x[k] = body[k] || null; }); if (msg) toast(msg); renderAvail(); return true; }); }
+  function avPatch(x, body, msg){ if (typeof body.key_no === 'string') body.key_no = body.key_no.toUpperCase(); return api('POST', '/api/admin/available/' + x.id, Object.assign({ patch: true }, body)).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save that'); return false; } Object.keys(body).forEach(function(k){ x[k] = body[k] || null; }); if (msg) toast(msg); renderAvail(); return true; }); }
   // Offers made on a property on the available list: how many in total, and any waiting for a decision.
   function offSameProp(addr, o){ var k = propKey(addr), sg = avSig(addr); return !!o.property_address && (propKey(o.property_address) === k || (sg && avSig(o.property_address) === sg)); }
   function avOffersHtml(x){
@@ -12105,7 +12107,7 @@
     if (act === 'fee') { var nf = prompt('Commission / fee for ' + shortAddr(x.address) + ' (a figure or %):', x.commission || ''); if (nf === null) return; nf = nf.trim(); if (nf && !/\d/.test(nf)) { toast('Type the fee as a figure or %, e.g. 8% or £1,000'); return; } avPatch(x, { commission: nf }, nf ? '✓ Commission saved' : 'Commission removed'); return; }
     if (act === 'tcontact') { var tc = prompt('Tenants’ contact (names, mobiles, emails):', x.contact || ''); if (tc === null) return; avPatch(x, { contact: tc.trim() }, tc.trim() ? '✓ Tenants’ contact saved' : 'Contact removed'); return; }
     if (act === 'accnote') { var an = prompt('Access note (e.g. call 1 hour before, concierge, lockbox code with the office):', x.access_note || ''); if (an === null) return; avPatch(x, { access_note: an.trim() }, '✓ Access note saved'); return; }
-    if (act === 'key') { var kn = prompt('Key number for ' + shortAddr(x.address) + ':', x.key_no || ''); if (kn === null) return; api('POST', '/api/admin/available/' + x.id, { key_no: kn.trim() }).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save the key number'); return; } x.key_no = kn.trim() || null; toast(kn.trim() ? '✓ Key number saved' : 'Key number removed'); renderAvail(); }); return; }
+    if (act === 'key') { var kn = prompt('Key number for ' + shortAddr(x.address) + ':', x.key_no || ''); if (kn === null) return; kn = kn.toUpperCase(); api('POST', '/api/admin/available/' + x.id, { key_no: kn.trim() }).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save the key number'); return; } x.key_no = kn.trim() || null; toast(kn.trim() ? '✓ Key number saved' : 'Key number removed'); renderAvail(); }); return; }
     if (act === 'llq') {
       var ex = card.querySelector('.av-llqf'); if (ex) { ex.remove(); return; }
       var LQ = (avLinkData[x.id] || {}).landlord || {}, row = card.querySelector('.av-llq');
