@@ -274,6 +274,8 @@
   // Home page "Find your next home" card: Rent / Buy picks where the search goes.
   document.querySelectorAll('.x-find').forEach(function (f) { f.addEventListener('change', function (e) { if (e.target.name === 'x-kind') f.action = e.target.value; }); });
 
+  // Home hero "video" option, previewed with ?hero=reel.
+  try { var rl = document.querySelector('.hero4 .reel'); if (rl && new URLSearchParams(location.search).get('hero') === 'reel') { rl.hidden = false; rl.parentNode.classList.add('reeling'); } } catch (e) {}
   // Home page certificates section: each service's price from the price list.
   var hcp = document.querySelectorAll('[data-cert-price]');
   if (hcp.length) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {

@@ -1115,3 +1115,14 @@ html, body { overflow-x: clip; }
 .gl4:nth-of-type(2) { --c: #fbbf24; --t: rgba(251,191,36,.16); }
 .gl4:nth-of-type(3) { --c: #f87171; --t: rgba(248,113,113,.16); }
 .gl4:nth-of-type(4) { --c: #60a5fa; --t: rgba(96,165,250,.16); }
+
+/* Home hero, "video" option (preview with ?hero=reel): slow pan and zoom through London scenes */
+.reel { position: absolute; inset: 0; overflow: hidden; }
+.reel img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; animation: reel 30s linear infinite; will-change: transform, opacity; }
+.reel img:nth-child(2) { animation-delay: 6s; } .reel img:nth-child(3) { animation-delay: 12s; } .reel img:nth-child(4) { animation-delay: 18s; } .reel img:nth-child(5) { animation-delay: 24s; }
+@keyframes reel { 0% { opacity: 0; transform: scale(1.04) translate(0, 0); } 4% { opacity: 1; } 20% { opacity: 1; } 25% { opacity: 0; transform: scale(1.16) translate(-2%, -1.5%); } 100% { opacity: 0; transform: scale(1.16) translate(-2%, -1.5%); } }
+.hero4.reeling .hbg { display: none; }
+.hero4.reeling::before { content: ""; position: absolute; inset: 0; z-index: 0; background: linear-gradient(90deg, rgba(11,31,58,.93) 0%, rgba(11,31,58,.72) 55%, rgba(11,31,58,.45) 100%), linear-gradient(0deg, rgba(11,31,58,.6), transparent 40%); }
+@media (max-width: 960px) { .hero4.reeling::before { background: linear-gradient(180deg, rgba(11,31,58,.55) 0%, rgba(11,31,58,.72) 45%, rgba(11,31,58,.9) 100%); } }
+@media (prefers-reduced-motion: reduce) { .reel img { animation: none; } .reel img:first-child { opacity: 1; } }
+.hero4.reeling { isolation: isolate; } .hero4.reeling .reel { z-index: -1; }
