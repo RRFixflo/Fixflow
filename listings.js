@@ -358,8 +358,22 @@ module.exports = function (app, opts) {
   }
   let refreshing = null;
   function refreshAll() { if (!refreshing) refreshing = doRefresh().finally(function () { refreshing = null; }); return refreshing; }
+  // Properties staff have taken off our website (e.g. a duplicate of another listing): kept off however
+  // often Gnomen's feed sends them again, until staff put them back. app_settings 'web_hidden'.
+  let hidden = { items: [], ok: [] };
+  async function loadHidden() {
+    try { const p = opts.db && await opts.db(); if (!p) return hidden; const v = ((await p.query("SELECT value FROM app_settings WHERE key = 'web_hidden'")).rows[0] || {}).value || {};
+      hidden = { items: Array.isArray(v.items) ? v.items : [], ok: Array.isArray(v.ok) ? v.ok : [] }; } catch (e) { /* keep the last copy */ }
+    return hidden;
+  }
+  async function saveHidden(p) { await p.query("INSERT INTO app_settings (key, value) VALUES ('web_hidden', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(hidden)]); }
+  const isHidden = function (id) { return hidden.items.some(function (h) { return String(h.id) === String(id); }); };
   async function doRefresh() {
     if (SOURCE === 'rightmove') await refreshRightmove(); else await refresh();
+    await loadHidden();
+    if (hidden.items.length) ['let', 'sale'].forEach(function (kind) {
+      data[kind] = data[kind].filter(function (p) { if (!isHidden(p.id) && !(p.rmId && isHidden(p.rmId))) return true; hidden.items.forEach(function (h) { if (String(h.id) === String(p.id) && !h.where) h.where = p.where; }); return false; });
+    });
     const sig = function (p) { return [p.id, p.status, p.price, p.images.length, p.floorplans.length, p.vtour, p.available, p.headline, (p.html || p.short || '').length].join('|'); };
     const stamp = crypto.createHash('sha1').update(JSON.stringify([data.sale.map(sig), data.let.map(sig)])).digest('hex').slice(0, 12);
     // When the properties last changed: the moment we see the feed change; on first load, the latest
@@ -658,7 +672,21 @@ module.exports = function (app, opts) {
   setTimeout(function () { checkPhotos(); }, 60000); setInterval(function () { checkPhotos(); }, 2 * 3600000).unref();
 
   return {
-    photoDupes: function () { return { at: dupesAt, checking: checking, done: progress.done, total: progress.total, groups: dupes }; },
+    photoDupes: function () { return { at: dupesAt, checking: checking, done: progress.done, total: progress.total, hidden: hidden.items,
+      groups: dupes.filter(function (g) { return hidden.ok.indexOf(g.key) === -1 && !g.homes.some(function (h) { return isHidden(h.id); }); }) }; },
+    // Take a property off our website (or put it back); the website updates straight away.
+    hide: async function (id, where, on, by) {
+      const p = opts.db && await opts.db(); if (!p) throw new Error('no database'); await loadHidden(); id = String(id);
+      hidden.items = hidden.items.filter(function (h) { return String(h.id) !== id; });
+      if (on) hidden.items.push({ id: id, where: String(where || '').slice(0, 160), by: String(by || '').slice(0, 80), at: new Date().toISOString() });
+      await saveHidden(p); await refreshAll(); return hidden.items;
+    },
+    // "These two are fine" — a pair of properties that may share photos (e.g. same building) stops being listed.
+    pairOk: async function (key, on) {
+      const p = opts.db && await opts.db(); if (!p) throw new Error('no database'); await loadHidden(); key = String(key).slice(0, 40);
+      hidden.ok = hidden.ok.filter(function (k) { return k !== key; }); if (on) hidden.ok.push(key);
+      await saveHidden(p); return hidden.ok;
+    },
     // Shown to this visitor (everyone when live, signed-in staff otherwise), and there's something to show.
     show: function (req) { return show(req) && (data.let.length + data.sale.length) > 0; },
     preview: preview,
