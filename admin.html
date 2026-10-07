@@ -1370,7 +1370,12 @@
     .login-card { border: 0; box-shadow: 0 30px 60px -20px rgba(3,10,25,.6); }
   }
   /* Phones: the available list, its cards and the staff tabs, compact (staff use these on the go). */
-  .av-tools > summary { display: none; }
+  /* The Rightmove (Dream adverts) and YouTube video checks fold away under one bar, on every screen size. */
+  .av-tools > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 700; font-size: .86rem; padding: 8px 10px; border: 1px solid var(--line, #e6e8ec); border-radius: 10px; background: var(--panel-2, #f5f6f8); margin: 4px 0 8px; list-style: none; }
+  .av-tools > summary::-webkit-details-marker { display: none; }
+  .av-tools > summary::after { content: '▸'; margin-left: auto; color: var(--ink-soft); }
+  .av-tools[open] > summary::after { content: '▾'; }
+  .av-tools-b { color: #b54708; font-weight: 700; font-size: .8rem; }
   .av-more-btn { display: none; }
   .av-fix { border: 1px solid #fedf89; background: #fffaeb; color: #93370d; border-radius: 12px; padding: 8px 10px; font-size: .82rem; margin: 6px 0; line-height: 1.4; }
   .av-fix .linkish { color: #b54708; font-weight: 600; padding: 0; min-height: 0; }
@@ -4162,13 +4167,13 @@
   var avOpenCards = {};
   // Phones: a card's More / Less.
   $('avList').addEventListener('click', function(e){ var m = e.target.closest('[data-av-more]'); if (!m) return; e.stopPropagation(); var card = m.closest('.av-card'); var open = card.classList.toggle('av-open'); m.textContent = open ? 'Less ▴' : 'More ▾'; if (open) avOpenCards[card.dataset.av] = 1; else delete avOpenCards[card.dataset.av]; }, true);
-  // Phones: the Rightmove and video checks start folded (one line, with a ⚠️ when something needs a look).
+  // The Rightmove (Dream adverts) and video checks: open on computers, folded on phones (one line, with a ⚠️ when something needs a look).
   (function(){
     var t = $('avTools'); if (!t) return;
     var phone = window.matchMedia('(max-width: 640px)');
     var saved = null; try { saved = localStorage.getItem('rr_av_tools'); } catch (e) {}
     // Folded away unless you open it (remembered on this device) — keeps the page calm.
-    t.open = saved === '1';
+    t.open = phone.matches ? saved === '1' : saved !== '0';   // open on computers unless folded, folded on phones unless opened
     t.addEventListener('toggle', function(){ saved = t.open ? '1' : '0'; try { localStorage.setItem('rr_av_tools', saved); } catch (e) {} });
     var badge = function(){ var txt = ($('avRm').innerText || '') + ' ' + ($('avYt').innerText || ''); $('avToolsBadge').textContent = /didn.t work|Dream advert|has been up|not linked|unlinked|need/i.test(txt) ? '⚠️ needs a look' : ''; };
     if (window.MutationObserver) { var mo = new MutationObserver(badge); mo.observe($('avRm'), { childList: true, subtree: true, characterData: true }); mo.observe($('avYt'), { childList: true, subtree: true, characterData: true }); }
