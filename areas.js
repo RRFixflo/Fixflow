@@ -65,17 +65,14 @@ module.exports = function (app, opts) {
       desc: 'Average monthly rents for all 33 London boroughs from official ONS figures' + (L.rent ? ' — London average ' + gbp(L.rent) + ' a month' : '') + '. Rent by bedrooms, house prices and homes to rent.' }, h);
   });
 
-  // One-off look at an ONS borough page (written to the server log) to build the monthly refresh against.
+  // One-off look at an ONS borough data file (written to the server log) to build the monthly refresh against.
   if (process.env.DATABASE_URL && !/localhost/.test(process.env.DATABASE_URL)) setTimeout(function () {
-    fetch('https://www.ons.gov.uk/visualisations/housingpriceslocal/E09000028/', { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ResidentialRealtors/1.0)' } }).then(function (r) {
-      return r.text().then(function (t) {
-        console.log('ONS probe: status', r.status, r.headers.get('content-type'), 'length', t.length);
-        console.log('ONS probe: assets', (t.match(/(src|href)="[^"]+\.(js|json|csv)[^"]*"/g) || []).slice(0, 20).join(' '));
-        const txt = t.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-        for (let i = 0; i < Math.min(txt.length, 6000); i += 1500) console.log('ONS probe text ' + i + ': ' + txt.slice(i, i + 1500));
-        const m = t.match(/<script[^>]*>([\s\S]*?)<\/script>/g) || []; m.slice(0, 6).forEach(function (s, i) { console.log('ONS probe script ' + i + ': ' + s.slice(0, 600).replace(/\s+/g, ' ')); });
+    fetch('https://www.ons.gov.uk/visualisations/housingpriceslocal/data/json/E09000028.json', { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ResidentialRealtors/1.0)' } }).then(function (r) { return r.json(); }).then(function (j) {
+      (j.sections || []).forEach(function (sec, i) {
+        const t = JSON.stringify(sec); console.log('ONS json ' + i + ' ' + sec.type + ' ' + (sec.title || '') + ' keys=' + Object.keys(sec).join(',') + ' len=' + t.length);
+        if (/bed|rent/i.test(t)) for (let k = 0; k < Math.min(t.length, 3000); k += 1000) console.log('ONS json ' + i + ' @' + k + ': ' + t.slice(k, k + 1000));
       });
-    }).catch(function (e) { console.log('ONS probe failed', e.message); });
+    }).catch(function (e) { console.log('ONS json probe failed', e.message); });
   }, 20000);
 
   return { urls: function () { return ['/london-rents'].concat(AREAS.filter(function (a) { return fig(a).rent; }).map(function (a) { return '/london-rents/' + a.slug; })); } };
