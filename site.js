@@ -274,6 +274,10 @@
   // Home page "Find your next home" card: Rent / Buy picks where the search goes.
   document.querySelectorAll('.x-find').forEach(function (f) { f.addEventListener('change', function (e) { if (e.target.name === 'x-kind') f.action = e.target.value; }); });
 
+  // Home hero video: fade in once it's actually playing; skip it for reduced motion or data saver (the photo reel stays).
+  var hv = document.querySelector('.hero4 .hvid');
+  if (hv) { var sd = navigator.connection && navigator.connection.saveData, rm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (sd || rm) hv.remove(); else { hv.addEventListener('playing', function () { hv.classList.add('on'); }); var pp = hv.play && hv.play(); if (pp && pp.catch) pp.catch(function () {}); } }
   // Home page certificates section: each service's price from the price list.
   var hcp = document.querySelectorAll('[data-cert-price]');
   if (hcp.length) fetch('/api/public/cert-services', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {

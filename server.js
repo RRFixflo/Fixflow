@@ -405,6 +405,25 @@ app.get(['/landlords', '/valuation'], function (req, res) { sendSite(req, res, '
 app.get('/tenant-fees', (req, res) => res.redirect(301, '/tenants#fees'));
 // London property news (headlines that link to the full stories).
 app.get('/news', function (req, res) { sendBuilt(req, res, { name: 'news', stamp: 'n' + news.count() + (news.status().at || 0), canon: '/news', crumb: 'London property news', title: 'London Property News | Residential Realtors', desc: 'The latest London property news headlines, updated through the day.' }, news.page()); });
+// Home page hero video: a free-licence Mixkit clip ("Tower bridge in a river in London", Mixkit Free License),
+// downloaded once and served from here (with Range support for iPhones) instead of linking to Mixkit.
+const HERO_VIDEO = { '720': 'https://assets.mixkit.co/videos/26851/26851-720.mp4', '360': 'https://assets.mixkit.co/videos/26851/26851-360.mp4' }, heroVidLoads = {};
+app.get('/media/hero-:q.mp4', async function (req, res) {
+  const src = HERO_VIDEO[req.params.q]; if (!src) return res.status(404).end();
+  const file = path.join(require('os').tmpdir(), 'rr-hero-' + req.params.q + '.mp4');
+  try {
+    if (!fs.existsSync(file)) {
+      heroVidLoads[file] = heroVidLoads[file] || (async function () {
+        const r = await fetch(src, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ResidentialRealtors/1.0)' }, signal: AbortSignal.timeout(60000) });
+        if (!r.ok) throw new Error('video ' + r.status);
+        const buf = Buffer.from(await r.arrayBuffer()); if (buf.length < 100000) throw new Error('video too small');
+        fs.writeFileSync(file + '.part', buf); fs.renameSync(file + '.part', file);
+      })().finally(function () { delete heroVidLoads[file]; });
+      await heroVidLoads[file];
+    }
+    res.setHeader('Cache-Control', 'public, max-age=2592000'); res.sendFile(file);
+  } catch (e) { console.error('Hero video:', e.message); res.status(502).end(); }
+});
 // For search engines: what to index (the public website) and what not to (staff and private links).
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send('User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /staff\nDisallow: /api/\nDisallow: /offer/\nDisallow: /landlord/\nDisallow: /reserve/\nDisallow: /portal\n\nSitemap: ' + SITE_URL + '/sitemap.xml\n');
