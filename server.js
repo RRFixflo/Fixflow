@@ -276,6 +276,8 @@ function siteFooter(home) {
     '<a href="https://www.propertymark.co.uk" target="_blank" rel="noopener" class="w"><img src="/img/logo-arla.png" alt="ARLA Propertymark Protected" width="96" height="60" loading="lazy"></a>' +
     '<a href="https://www.tpos.co.uk" target="_blank" rel="noopener"><img src="/img/logo-tpo.png" alt="The Property Ombudsman" width="159" height="60" loading="lazy"></a>' +
     '<p><b>Client Money Protection:</b> Propertymark, membership number C0130229 — <a href="/cmp-certificate.pdf" target="_blank" rel="noopener">view our certificate</a>.<br><b>Independent redress:</b> The Property Ombudsman (<a href="https://www.tpos.co.uk" target="_blank" rel="noopener">tpos.co.uk</a>). <a href="/tenants#fees">Tenant fees</a></p></div>' +
+    // Call us: a button on every page that rings the office (bottom corner; above the property page's bar on phones).
+    '<a class="callfab" href="tel:02070968131" aria-label="Call us on 0207 096 8131"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg><span>0207 096 8131</span></a>' +
     // Quick valuation: a tab on the side of every page — name, email and phone, and we call back.
     '<button type="button" class="qv-tab" id="qvTab" aria-controls="qvBox" aria-expanded="false">Free valuation</button>' +
     '<div class="qv" id="qvBox" hidden role="dialog" aria-label="Quick valuation request"><button type="button" class="qv-x" id="qvX" aria-label="Close">×</button>' +

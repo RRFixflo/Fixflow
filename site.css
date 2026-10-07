@@ -1224,3 +1224,15 @@ html, body { overflow-x: clip; }
 .sa-cols ul { list-style: none; margin: 0; padding: 0; } .sa-cols li { margin: 0 0 6px; }
 .sa-cols a { color: var(--ink); text-decoration: none; font-weight: 600; font-size: .92rem; } .sa-cols a:hover { color: var(--red); text-decoration: underline; }
 @media (max-width: 900px) { .sa-grid { grid-template-columns: 1fr; gap: 24px; } .sa-cols { grid-template-columns: repeat(2, 1fr); } .sa-local { padding: 40px 0; } }
+/* Call us: on every page */
+.callfab { position: fixed; right: 20px; bottom: 20px; z-index: 55; display: inline-flex; align-items: center; gap: 9px; padding: 12px 18px 12px 14px; border-radius: 999px; background: #12924a; color: #fff; text-decoration: none; font-weight: 800; font-size: .95rem; box-shadow: 0 10px 26px -8px rgba(18,146,74,.6), 0 2px 6px rgba(15,23,42,.18); transition: transform .15s, background .15s; }
+.callfab:hover { background: #0e7a3d; transform: translateY(-2px); color: #fff; }
+.callfab svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+@media (max-width: 900px) {
+  .callfab { left: 14px; right: auto; bottom: calc(14px + env(safe-area-inset-bottom)); padding: 0; width: 56px; height: 56px; justify-content: center; }
+  .callfab span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .callfab svg { width: 24px; height: 24px; }
+  body:has(.pdbar) .callfab { bottom: calc(86px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) { .callfab { transition: none; } .callfab:hover { transform: none; } }
+@media print { .callfab { display: none; } }
