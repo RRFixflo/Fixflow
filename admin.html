@@ -486,6 +486,8 @@
   .psug button { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 9px 12px; font: inherit; font-size: .9rem; cursor: pointer; color: var(--ink); }
   .psug button:last-child { border-bottom: 0; }
   .psug button.on, .psug button:hover { background: var(--panel-2, #f2f4f7); }
+  .cert-asked { font-size: .76rem; margin-top: 5px; padding: 5px 8px; border-radius: 8px; background: #f1f4ff; color: #2d3a8c; line-height: 1.4; }
+  .cert-asked b { font-weight: 700; } .cert-asked-more { color: var(--ink-soft); } .cert-asked-ans { display: block; color: var(--ink-soft); }
   .addr-hint { margin-top: 6px; padding: 9px 11px; border-radius: 10px; background: #fffbea; border: 1px solid #f3dd8b; font-size: .84rem; line-height: 1.45; }
   .addr-hint b { font-weight: 700; } .addr-hint .ah-why { display: block; color: var(--ink-soft); font-size: .78rem; margin-top: 2px; }
   .addr-hint .ah-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
@@ -9965,8 +9967,7 @@
   }
   function loadCerts(){
     if (!meta.db) return Promise.resolve();
-    loadCertReqs();
-    return api('GET', '/api/admin/certificates').then(function(d){ if (d.ok) { certs = d.certificates; certWho = d.contractors || {}; certCost = d.costs || {}; CERT_REMIND = d.remind_days || 10; } });
+    return Promise.all([loadCertReqs(), api('GET', '/api/admin/certificates').then(function(d){ if (d.ok) { certs = d.certificates; certWho = d.contractors || {}; certCost = d.costs || {}; CERT_REMIND = d.remind_days || 10; } })]);
   }
   function certDay(v){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
   function certDef(t){ return t === 'Licence' ? { type: 'Licence', name: 'Property licence', long: 'Property licence', years: 5 } : CERTS.filter(function(c){ return c.type === t; })[0]; }
@@ -12726,9 +12727,12 @@
   var certReqs = [];
   function loadCertReqs(){ return api('GET', '/api/admin/cert-requests').then(function(d){ if (d && d.ok) certReqs = d.requests || []; }); }
   function certAskLine(key, type){
-    var r = certReqs.filter(function(x){ return x.property_key === key && x.type === type; })[0]; if (!r) return '';
-    var ans = r.answer === 'arrange' ? '<b style="color:#a3141b">🛠 Landlord asked us to arrange it</b>' : r.answer === 'sending' ? '<b style="color:#12924a">📤 Landlord is sending the new one</b>' : r.opened_at ? '👀 Landlord opened the message' : 'No reply yet';
-    return '<div class="cs" style="font-size:.78rem;margin-top:3px">💬 Asked ' + esc(fmtShort(r.created_at).split(',')[0]) + (r.via ? ' by ' + esc(r.via) : '') + ' · ' + ans + '</div>';
+    var all = certReqs.filter(function(x){ return x.property_key === key && x.type === type; }), r = all[0]; if (!r) return '';
+    var when = function(v){ var d = new Date(v); return d.toLocaleDateString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) + ' at ' + d.toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }); };
+    var ans = r.answer === 'arrange' ? '<b style="color:#a3141b">🛠 Landlord asked us to arrange it' + (r.answered_at ? ' · ' + esc(when(r.answered_at)) : '') + '</b>' : r.answer === 'sending' ? '<b style="color:#12924a">📤 Landlord is sending the new one' + (r.answered_at ? ' · ' + esc(when(r.answered_at)) : '') + '</b>' : r.opened_at ? '👀 Landlord opened it ' + esc(when(r.opened_at)) + ' · no reply yet' : 'Not opened yet';
+    return '<div class="cert-asked">💬 Landlord messaged <b>' + esc(when(r.created_at)) + '</b>' + (r.via ? ' by ' + esc(r.via) : '') + (r.created_by ? ' · ' + esc(r.created_by) : '') +
+      (all.length > 1 ? '<span class="cert-asked-more" title="' + esc(all.slice(1).map(function(x){ return when(x.created_at) + (x.via ? ' by ' + x.via : ''); }).join('\n')) + '"> · asked ' + all.length + ' times (first ' + esc(when(all[all.length - 1].created_at)) + ')</span>' : '') +
+      '<span class="cert-asked-ans">' + ans + '</span></div>';
   }
   function openCertAsk(address, type){
     var NAME = { Gas: 'Gas Safety Certificate', EICR: 'Electrical Safety Certificate (EICR)', EPC: 'Energy Performance Certificate (EPC)', Licence: 'Property licence' }[type] || type;
@@ -12756,7 +12760,7 @@
         var body = 'Dear ' + (first || 'Sir or Madam') + ',\n\nThe ' + d.name + ' for ' + address + ' ' + due + '. A valid certificate is a legal requirement while the property is let.\n\nPlease send us the updated certificate, or if you’d like us to arrange it for you, let us know here: ' + d.link + '\n\nOn that page you can upload the new certificate or ask us to arrange it with one tap.' + mailSignoff();
         openMailto('mailto:' + encodeURIComponent(l.email || '') + '?subject=' + encodeURIComponent(d.name + ' due — ' + shortAddr(address)) + '&body=' + encodeURIComponent(body));
       }
-      loadCertReqs().then(function(){ if (view === 'certs') renderCerts(); });
+      loadCertReqs().then(function(){ if (view === 'certs') renderCerts(); else if (view === 'props' && openPropKey) renderProperty(); });
     });
   }
   $('caX').addEventListener('click', function(){ $('caModal').hidden = true; });
@@ -15068,6 +15072,7 @@
   // Certificate reminder to the landlord: "your EPC is about to expire — shall we book one in?"
   var CERT_LONG = { EPC: 'Energy Performance Certificate (EPC)', Gas: 'Gas Safety Certificate (CP12)', EICR: 'Electrical Installation Condition Report (EICR)' };
   function openCertMail(address, type){
+    var logged = false;
     var go = function(){
       var t = tcySet.templates, key = propKey(address), c = certFor(key, type), st = certState(c), l = landlordAt(address) || {};
       var expired = st.k === 'expired';
@@ -15084,7 +15089,8 @@
         to: [l.landlord_email].filter(Boolean), subject: fillTpl(t.cert_subject || '', vals), bodyHtml: mailHtml(body),
         warn: l.landlord_email ? '' : '⚠ No email saved for this landlord — type it in above. ',
         fileName: (type + ' reminder - ' + address).replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 120) + '.eml',
-        log: function(){}
+        // Remember when the landlord was emailed, so it shows on the certificate.
+        log: function(){ if (logged) return; logged = true; api('POST', '/api/admin/cert-requests', { address: address, type: type, via: 'email' }).then(function(){ return loadCertReqs(); }).then(function(){ if (view === 'certs') renderCerts(); else if (view === 'props' && openPropKey) renderProperty(); }); }
       });
     };
     Promise.all([tcySet ? null : loadTcySettings(), loadOutlook()]).then(go);
