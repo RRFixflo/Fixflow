@@ -2380,6 +2380,7 @@
   <span class="n" id="bulkCount">0 selected</span>
   <button class="btn small wa" id="bulkWa" type="button">Send to contractor</button>
   <button class="btn small" id="bulkCopy" type="button">Copy for contractor</button>
+  <button class="btn small" id="bulkTn" type="button" title="Tell each tenant we've received their report, and who's been assigned">💬 Tell tenants</button>
   <button class="btn small" id="bulkLl" type="button" title="Send each landlord an update with the progress link">🏠 Tell landlords</button>
   <button class="btn small" id="bulkArea" type="button" title="Also select open jobs in the same postcode area">+ Same area</button>
   <input id="bulkAssign" list="assignees" placeholder="Assign all to…">
@@ -3780,6 +3781,21 @@
     if (!list.length) return;
     if (!list.some(llContact)) { toast('No landlord phone or email for those properties'); return; }
     openLandlordNotice(list);
+  });
+  // Tell the tenants of the selected jobs we've received their reports — and, for each, who's been assigned
+  // (or that we're arranging someone). One message per tenant, to check and send.
+  $('bulkTn').addEventListener('click', function(){
+    var list = selectedJobs().filter(function(j){ return j.status !== 'Cancelled' && j.status !== 'Completed'; });
+    if (!list.length) { toast('Pick open jobs to tell the tenants about'); return; }
+    openTenantNotice(list, '', { title: 'Tell the tenant we’ve got it', text: function(g, links){
+      var line = function(j){
+        var link = tagUrl(links[j.id], 't'), who = j.landlord_handles ? (j.landlord_handles === 'contractor' ? 'your landlord’s contractor' : 'your landlord') : j.assigned_to;
+        var what = who ? (j.direct_contact !== 'No' ? who + ' has been booked and will contact you directly to arrange a time.' : who + ' has been booked — we’ll be in touch to arrange access.') : 'We’re arranging a contractor now and will be in touch as soon as someone is booked.';
+        return '• ' + workText(j).replace(/^./, function(c){ return c.toUpperCase(); }) + ' (ref ' + j.ref + '): ' + what + (link ? '\n  Follow the progress: ' + link : '');
+      };
+      return 'Hi ' + (greetName(g.name) || 'there') + ',\n\nThis is Residential Realtors. Thank you for reporting ' + (g.jobs.length === 1 ? 'the repair' : 'these repairs') + ' at ' + shortAddr(g.address) + ' — we’ve received ' + (g.jobs.length === 1 ? 'it' : 'them') + '.\n\n' +
+        g.jobs.map(line).join('\n\n') + '\n\nIf anything changes or gets worse, just reply to this message or call 0207 096 8131.\n\nThanks,\nResidential Realtors';
+    } });
   });
   $('bulkCopy').addEventListener('click', function(){
     var list = selectedJobs();
@@ -6712,7 +6728,7 @@
     if (b.dataset.tt === 'wa') { window.open('https://wa.me/' + waNumber(g.phone) + '?text=' + encodeURIComponent(msg), '_blank', 'noopener'); log('WhatsApp'); }
     else if (b.dataset.tt === 'copy') copyText(msg).then(function(){ toast('Copied'); log('copied'); })['catch'](function(){ toast('Couldn’t copy'); });
     else if (b.dataset.tt === 'email') {
-      var subject = 'Your repair at ' + shortAddr(g.address) + ' — contractor booked';
+      var subject = 'Your repair at ' + shortAddr(g.address) + (ttCustom ? ' — update' : ' — contractor booked');
       if (meta.canEmail) {
         composeMail({ title: '✉ Email the tenant — check before sending', to: [g.email || ''], subject: subject, body: msg,
           sendFn: function(to, subj, body){ return api('POST', '/api/admin/jobs/' + g.jobs[0].id + '/email-tenant', { subject: subj, body: body }); },
