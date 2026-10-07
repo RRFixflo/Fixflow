@@ -12151,5 +12151,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   return { saveReport: saveReport, hasDb: async function () { return !!(await db()); }, isStaff: isStaff, db: db, refuseBot: refuseBot,
     // For other parts of the site (landlord alerts): send an email, and the office phone alert.
     sendMail: function (o) { return canEmail() && sendEmail ? sendEmail(o) : Promise.resolve({ ok: false, error: 'email-off' }); },
-    alert: function (o) { return ntfy(o).catch(function () {}); } };
+    alert: function (o) { return ntfy(o).catch(function () {}); },
+    // For the out-of-hours phone answering: the same alerts as website leads (team) and repairs (owner only).
+    teamAlert: function (b, h) { return teamAlert(b, h).catch(function () {}); }, staffEmailAll: function (s, t, h) { return staffEmailAll(s, t, h).catch(function (e) { console.error('Staff emails failed:', e.message); }); },
+    ownerEmail: function (s, t, h) { return ownerEmail(s, t, h).catch(function () {}); }, ntfy: function (b) { return ntfy(Object.assign({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined }, b)).catch(function () {}); } };
 };
