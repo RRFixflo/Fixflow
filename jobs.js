@@ -10049,6 +10049,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, addr || '(general enquiry)', JSON.stringify({ kind: 'enquiry', topic: topic, message: msg })]);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
+    // Companies selling to us (cleaning, SEO, "quick call?"…): kept in Junk, nobody is alerted.
+    const pitch = salesPitch(msg, topic);
+    if (pitch) {
+      await p.query("INSERT INTO crm_meta (ref, archived_at, archived_by, junk) VALUES ($1, now(), 'Automatic (sales pitch)', true) ON CONFLICT (ref) DO UPDATE SET archived_at = now(), archived_by = 'Automatic (sales pitch)', junk = true", ['vr:' + r.rows[0].id]);
+      await crmLog(p, 'vr:' + r.rows[0].id, 'Sent to Junk automatically — ' + pitch + '. No alerts or emails were sent. If it’s a real enquiry, restore it.', null);
+      return res.json({ ok: true, id: r.rows[0].id });
+    }
     ntfy({ title: '💬 Website message from ' + name + ' (' + topic + ')', message: msg.slice(0, 200), tags: ['speech_balloon'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#contacts' : undefined }).catch(function () {});
     if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Website message — ' + name + ' (' + topic + ')',
       text: 'A message from the website contact form.\n\nName: ' + name + '\nEmail: ' + email + '\nPhone: ' + (phone || '—') + '\nThey are: ' + topic + (addr ? '\nProperty: ' + addr : '') + '\n\n' + msg + '\n\nIt’s also in Fixflow under Contacts.' }).catch(function () {});
@@ -10196,6 +10203,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // in a day, go straight to the Junk folder (archived, flagged junk) — no alerts. Staff can put them back.
   const junkTail = function (v) { return String(v || '').replace(/\D/g, '').slice(-10); };
   async function junkList(p) { const v = ((await p.query("SELECT value FROM app_settings WHERE key = 'crm_junk'")).rows[0] || {}).value || {}; return { emails: v.emails || [], phones: v.phones || [] }; }
+  // A contact-form message that reads like a company selling us something; returns why, or ''.
+  const PITCH_STRONG = [/\b(i'?m|i am|as) (the )?(founder|co-?founder|ceo|owner|director|md) (of|at)\b/, /\bfounder of\b/, /\b(my|our) (company|agency|firm|team|business) (is|are|has|have|specialis|specializ|offer|provide|help|work)/, /\bwe (specialise|specialize|offer|provide|help (letting|estate|property|agents|landlords|businesses)|work with (letting|estate|agents|property))/,
+    /\bspeciali[sz](ing|e|es) in\b/, /\bour (services|rates|prices|pricing|clients|portfolio|solutions?)\b/, /\bcompetitive (rates|prices|pricing)\b/, /\b(would|are) you (be )?(open|interested|available) (to|in) (a )?(quick |short |brief )?(call|chat|meeting|partnership|collaborat)/, /\b(quick|short|brief|15[- ]?min(ute)?|10[- ]?min(ute)?) (call|chat|meeting|intro)/,
+    /\b(book|schedule|arrange) a (quick |short |brief )?(call|demo|meeting)\b/, /\bpartner(ship)? (with|opportunit)/, /\b(seo|search engine optimi[sz]ation|lead generation|google (ranking|reviews|ads)|web ?design|website redesign|digital marketing|marketing agency|social media management|virtual assistants?|outsourc|white[- ]label|backlinks?|guest post)\b/,
+    /\breferral (fee|commission|scheme)\b/, /\bi'?m (writing|reaching out|contacting you) (to [\w ]{0,40} )?because\b/, /\breach(ing)? out\b/, /\b(over |more than )?\d+\+? years'? (of )?experience\b/, /\bi (came across|found|noticed) your (website|company|agency|business|listing)/, /\b(free (quote|audit|trial|consultation|demo))\b/, /\bunsubscribe\b/, /\bcase stud(y|ies)\b/];
+  function salesPitch(msg, topic) {
+    const t = String(msg || '').toLowerCase().replace(/[\u2018\u2019]/g, "'"), hits = PITCH_STRONG.filter(function (re) { return re.test(t); }).length;
+    if (/company offering a service/i.test(String(topic || ''))) return 'the sender said they’re a company offering a service';
+    // A landlord, tenant or buyer can use a phrase or two; a pitch uses several (fewer if they chose "Other").
+    const need = /^other$/i.test(String(topic || '')) || !topic ? 3 : 4;
+    return hits >= need ? 'it reads like a company selling a service (' + hits + ' sales phrases)' : '';
+  }
   async function leadJunk(p, id, email, phone) {
     try {
       const L = await junkList(p), e = String(email || '').trim().toLowerCase(), t = junkTail(phone);
