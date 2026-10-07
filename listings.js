@@ -702,11 +702,15 @@ module.exports = function (app, opts) {
         groups: dupes.filter(function (g) { return hidden.ok.indexOf(g.key) === -1 && !g.homes.some(function (h) { return isHidden(h.id); }); }).map(function (g) { return Object.assign({}, g, { homes: g.homes.map(dated) }); }) };
     },
     // Take a property off our website (or put it back); the website updates straight away.
-    hide: async function (id, where, on, by) {
-      const p = opts.db && await opts.db(); if (!p) throw new Error('no database'); await loadHidden(); id = String(id);
-      hidden.items = hidden.items.filter(function (h) { return String(h.id) !== id; });
-      const cur = data.let.concat(data.sale).filter(function (p) { return String(p.id) === id && !p.src; })[0];
-      if (on) hidden.items.push(Object.assign({ id: id, where: String(where || '').slice(0, 160), by: String(by || '').slice(0, 80), at: new Date().toISOString() }, cur ? { lastTaken: !!cur.taken, lastAdded: cur.added || '', added: cur.added || '', updated: cur.updated || '' } : {}));
+    // list: [{ id, where }] — several at once, then the website updates once.
+    hide: async function (list, on, by) {
+      const p = opts.db && await opts.db(); if (!p) throw new Error('no database'); await loadHidden();
+      list.forEach(function (x) {
+        const id = String(x.id);
+        hidden.items = hidden.items.filter(function (h) { return String(h.id) !== id; });
+        const cur = data.let.concat(data.sale).filter(function (q) { return String(q.id) === id && !q.src; })[0];
+        if (on) hidden.items.push(Object.assign({ id: id, where: String(x.where || (cur && cur.where) || '').slice(0, 160), by: String(by || '').slice(0, 80), at: new Date().toISOString() }, cur ? { lastTaken: !!cur.taken, lastAdded: cur.added || '', added: cur.added || '', updated: cur.updated || '' } : {}));
+      });
       await saveHidden(p); await refreshAll(); return hidden.items;
     },
     // "Keep it off": the office has seen that it's back on the market and still wants it off the website.

@@ -492,8 +492,9 @@ app.get('/api/admin/photo-dupes', function (req, res) {
 // Take a property off our website (e.g. a duplicate listing) so Gnomen's feed doesn't bring it back; managers only.
 app.post('/api/admin/web-hidden', express.json(), async function (req, res) {
   if (!(jobs && jobs.isStaff(req) && jobs.canManage(req))) return res.status(403).json({ ok: false, error: 'Only managers can change what is on the website.' });
-  const b = req.body || {}, id = String(b.id || '').trim(); if (!/^\d{1,12}$/.test(id)) return res.status(400).json({ ok: false, error: 'Property number missing' });
-  try { res.json({ ok: true, hidden: b.keep ? await listings.keepOff(id) : await listings.hide(id, b.where, b.hide !== false, req.user && (req.user.name || req.user.username) || '') }); }
+  const b = req.body || {}, list = (Array.isArray(b.items) ? b.items : [{ id: b.id, where: b.where }]).slice(0, 200).map(function (x) { return { id: String((x && x.id) || '').trim(), where: x && x.where }; });
+  if (!list.length || list.some(function (x) { return !/^\d{1,12}$/.test(x.id); })) return res.status(400).json({ ok: false, error: 'Property number missing' });
+  try { res.json({ ok: true, hidden: b.keep ? await listings.keepOff(list[0].id) : await listings.hide(list, b.hide !== false, req.user && (req.user.name || req.user.username) || '') }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 app.post('/api/admin/photo-dupes/ok', express.json(), async function (req, res) {
