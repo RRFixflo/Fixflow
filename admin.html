@@ -3011,7 +3011,8 @@
         $('stWho').hidden = false; $('navWho').hidden = false;   // everyone sees who did what
         $('stWeb').hidden = false;   // every staff member sees the website visitors
         document.body.classList.toggle('web-ro', !d.canManageUsers);
-        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; showDeployed(d); }
+        showDeployed(d);   // everyone sees when Fixflow was last updated
+        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; }
         return;
       }
       // Your own (full) page: Team and Who did what stay in Activity; the red manager buttons are for the staff page.
