@@ -1210,3 +1210,17 @@ html, body { overflow-x: clip; }
 .ag-g .ag-w { grid-column: 1 / -1; }
 /* Readiness / agent-score questions: keep the answers under the question in Safari (floated legend) */
 .rd-q { min-width: 0; display: flow-root; } .rd-q legend { display: block; max-width: 100%; white-space: normal; } .rd-o { clear: both; width: 100%; }
+/* Services by borough (/gas-safety-certificate/<borough> …) and the "across London" lists on each service page */
+.sa-in { display: block; font-size: .55em; color: #c9d4e6 !important; letter-spacing: -.01em; margin-top: 6px; }
+.sa-local { padding: 56px 0; background: var(--bg); }
+.sa-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: start; }
+.sa-grid h2 { margin: 6px 0 12px; } .sa-grid h3 { font-size: 1.05rem; margin: 0 0 8px; } .sa-grid h3 + .ar-list { margin-bottom: 22px; }
+.sa-grid p { color: var(--soft); line-height: 1.6; } .sa-pc { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; color: var(--ink) !important; }
+.sa-grid .btns { margin-top: 18px; }
+.sa-faqs { padding-top: 40px; }
+.sa-cover { padding: 48px 0; }
+.sa-cols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 22px; margin-top: 18px; }
+.sa-cols h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); margin: 0 0 8px; }
+.sa-cols ul { list-style: none; margin: 0; padding: 0; } .sa-cols li { margin: 0 0 6px; }
+.sa-cols a { color: var(--ink); text-decoration: none; font-weight: 600; font-size: .92rem; } .sa-cols a:hover { color: var(--red); text-decoration: underline; }
+@media (max-width: 900px) { .sa-grid { grid-template-columns: 1fr; gap: 24px; } .sa-cols { grid-template-columns: repeat(2, 1fr); } .sa-local { padding: 40px 0; } }

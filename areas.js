@@ -69,7 +69,7 @@ module.exports = function (app, opts) {
     h += '<section class="ar-more"><div class="wrap ar-cols">' +
       '<div><h2>Areas in ' + esc(a.name) + '</h2><ul class="ar-list">' + a.areas.map(function (n) { return '<li><a href="/properties-to-rent?q=' + encodeURIComponent(n) + '">Homes to rent in ' + esc(n) + '</a></li>'; }).join('') + '</ul></div>' +
       '<div><h2>Rental values in nearby boroughs</h2><ul class="ar-list">' + a.near.map(function (s) { const b = BY[s], g = fig(b); return '<li><a href="/london-rents/' + s + '">' + esc(b.name) + (g.rent ? '<span>' + gbp(g.rent) + ' pcm</span>' : '') + '</a></li>'; }).join('') + '</ul>' +
-      '<p class="ar-also">Landlords in ' + esc(a.name) + ': <a href="/property-checks#licence">check if you need a licence</a> · <a href="/services">certificates and services</a></p></div></div></section>';
+      '<p class="ar-also">Landlords in ' + esc(a.name) + ': <a href="/gas-safety-certificate/' + a.slug + '">Gas Safety certificate</a> · <a href="/eicr/' + a.slug + '">EICR</a> · <a href="/epc/' + a.slug + '">EPC</a> · <a href="/diy-inventory/' + a.slug + '">inventory</a> · <a href="/property-checks#licence">licence check</a></p></div></div></section>';
     h += cta(a.name);
     const desc = f.rent ? 'Letting in ' + a.name + ': the average rent is ' + gbp(f.rent) + ' a month' + (f.rentMonth ? ' (' + f.rentMonth + ', ONS)' : ' (ONS)') + '. Rent by bedrooms, local letting guide, homes to rent and a free rental valuation.' : 'Rental values, areas and homes to rent in ' + a.name + ', London.';
     opts.send(req, res, { name: 'rents', stamp: 'ar' + a.slug + ver, canon: '/london-rents/' + a.slug, crumb: 'London rents', crumbUrl: '/london-rents', crumb2: a.name,

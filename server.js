@@ -171,7 +171,7 @@ const noCache = function (res, p) { if (/\.html$/.test(p)) res.setHeader('Cache-
 // Website photos and logos rarely change: let browsers keep them (faster pages, better search ranking).
 app.use('/img', express.static(path.join(__dirname, 'img'), { maxAge: '30d', index: false }));
 // The app's own server code, settings and notes aren't for download — only the files pages use.
-const NOT_PUBLIC = /^\/(node_modules|cloudflare)(\/|$)|^\/(server|jobs|listings|visits|tenancy|outlook|news|updates|portaldemo|areas|areas-data)\.js$|^\/data(\/|$)|^\/(package(-lock)?|railpack|landlord-terms)\.json$|\.md$/i;
+const NOT_PUBLIC = /^\/(node_modules|cloudflare)(\/|$)|^\/(server|jobs|listings|visits|tenancy|outlook|news|updates|portaldemo|areas|areas-data|svcareas)\.js$|^\/data(\/|$)|^\/(package(-lock)?|railpack|landlord-terms)\.json$|\.md$/i;
 app.use(function (req, res, next) { if (NOT_PUBLIC.test(req.path)) return res.status(404).send('Not found'); next(); });
 app.use(express.static(__dirname, { setHeaders: noCache, index: false }));
 
@@ -401,6 +401,7 @@ const updates = require('./updates')(app, { siteUrl: SITE_URL, refuseBot: functi
 require('./portaldemo')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
 const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, onsBeds: function (g, b) { return areas.onsBeds(g, b); }, db: function () { return jobs ? jobs.db() : null; },  isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
 const areas = require('./areas')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, listings: function () { return listings; }, db: function () { return jobs ? jobs.db() : null; } });
+const svcAreas = require('./svcareas')(app, { siteUrl: SITE_URL, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, db: function () { return jobs ? jobs.db() : null; } });
 // On the website's own address, /home is the same page as / — send search engines to one address.
 app.get('/home', (req, res, next) => { if (isSiteHost(req)) return res.redirect(301, '/'); next(); });
 Object.keys(SITE_PAGES).forEach(function (name) { if (SITE_PAGES[name].paths) app.get(SITE_PAGES[name].paths, function (req, res) { sendSite(req, res, name); }); });
@@ -437,7 +438,7 @@ app.get('/robots.txt', (req, res) => {
 app.get('/sitemap.xml', (req, res) => {
   const pages = [['/', '1.0'], ['/landlord-updates', '0.8'], ['/news', '0.5'], ['/property-checks', '0.8'], ['/landlord-tools', '0.8'], ['/landlord-compliance', '0.8'], ['/switch-letting-agent', '0.7'], ['/overseas-landlords', '0.7'], ['/book-certificate', '0.8'], ['/services', '0.9'], ['/licence-application', '0.8'], ['/diy-inventory', '0.7'], ['/gas-safety-certificate', '0.8'], ['/eicr', '0.8'], ['/epc', '0.8'], ['/landlord-portal-demo', '0.6'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/offer', '0.5'], ['/privacy', '0.2']];
   res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
-    pages.concat(listings.urls().length ? [['/properties-to-rent', '0.9'], ['/properties-for-sale', '0.9']] : []).concat(listings.urls().map(function (u) { return [u, '0.7']; })).concat(areas.urls().map(function (u) { return [u, '0.6']; }))
+    pages.concat(listings.urls().length ? [['/properties-to-rent', '0.9'], ['/properties-for-sale', '0.9']] : []).concat(listings.urls().map(function (u) { return [u, '0.7']; })).concat(areas.urls().map(function (u) { return [u, '0.6']; })).concat(svcAreas.urls().map(function (u) { return [u, '0.6']; }))
       .map(function (x) { return '  <url><loc>' + SITE_URL + siteEsc(x[0]) + '</loc><priority>' + x[1] + '</priority></url>'; }).join('\n') + '\n</urlset>\n');
 });
 // The repair report (the tool tenants use) at a clear address on the website.
