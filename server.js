@@ -451,6 +451,7 @@ app.get('/offer/review/:token', (req, res) => { sendPage(req, res, path.join(__d
 
 const jobs = require('./jobs')(app, {
   ourComps: function (pc, beds) { return listings.compsNear(pc, beds); },
+  gnomenFor: function (rows) { return listings.gnomenFor(rows); },
   sendEmail: function (opts) { return sendViaResend(opts); },
   canEmail: function () { return !!RESEND_API_KEY; },
   // The same AI provider the tenant page uses, for drafting emails from a job.

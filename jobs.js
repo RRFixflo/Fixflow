@@ -1520,7 +1520,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
       '<details class="dt"><summary style="color:#139A4B">✓ Mark completed</summary>' +
         '<form class="stack" style="margin:10px 0 0" data-done="' + j.id + '">' +
           '<textarea name="notes" rows="3" placeholder="What did you do? (optional)" style="padding:12px 14px;border:1px solid #d5d7dd;border-radius:12px;font:inherit"></textarea>' +
-          '<input name="price" inputmode="decimal" placeholder="Your price £ (optional)">' +
+          '<input name="price" inputmode="decimal" required placeholder="Your price £ (enter 0 if no charge)">' +
           '<div class="muted">Parts or materials you bought (optional)</div><div class="parts" data-parts="' + j.id + '">' + partRow() + '</div>' +
           '<button type="button" class="linkbtn" data-addpart="' + j.id + '">+ Another part</button>' +
           (j.cert ? '<label class="muted" style="display:block">Date the ' + esc(j.cert) + ' was done<input type="date" name="cert_date" required value="' + new Date().toISOString().slice(0, 10) + '" style="display:block;width:100%;margin-top:4px"></label>' : '') +
@@ -1659,6 +1659,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
     e.preventDefault();
     var btn = f.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Saving…';
     var price = f.price.value.replace(/[£,\\s]/g, '');
+    if (price === '') { btn.disabled = false; btn.textContent = 'Add your price — enter 0 if there’s no charge'; f.price.focus(); return; }
     var files = (picked[f.dataset.done] || []).slice(0, MAXPH), badPart = false;
     var parts = Array.prototype.slice.call(f.querySelectorAll('.prow')).map(function(r){
       var d = r.querySelector('[data-pd]').value.trim(), c = r.querySelector('[data-pc]').value.replace(/[£,]/g, '').trim();
@@ -1670,7 +1671,7 @@ const CONTRACTOR_PAGE_JS = `(function(){
     Promise.all(files.map(shrink)).then(function(ph){ return fetch('/api/c/' + TOKEN + '/jobs/' + f.dataset.done + '/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ notes: f.notes.value.trim(), price: price === '' ? null : price, cert_date: f.cert_date ? f.cert_date.value : undefined, photos: ph.filter(Boolean), parts: parts }) }); })
       .then(function(r){ return r.json(); }).then(function(d){
-        if (!d.ok) { btn.disabled = false; btn.textContent = d.error === 'bad-price' ? 'Check the price and try again' : d.error === 'bad-part' ? 'Check the parts and try again' : 'Couldn’t save — try again'; return; }
+        if (!d.ok) { btn.disabled = false; btn.textContent = d.error === 'need-price' ? 'Add your price — enter 0 if there’s no charge' : d.error === 'bad-price' ? 'Check the price and try again' : d.error === 'bad-part' ? 'Check the parts and try again' : 'Couldn’t save — try again'; return; }
         delete picked[f.dataset.done]; load();
       }).catch(function(){ btn.disabled = false; btn.textContent = 'Couldn’t save — try again'; });
   });
@@ -7493,6 +7494,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!c) return res.status(404).json({ ok: false, error: 'not-found' });
     const b = req.body || {}, notes = str(b.notes, 3000), price = money(b.price), photos = decodePhotos(b.photos).slice(0, 30);
     if (price === undefined) return res.status(400).json({ ok: false, error: 'bad-price' });
+    if (price === null) return res.status(400).json({ ok: false, error: 'need-price' });   // every job needs a cost (0 is fine)
     // Parts the contractor bought: added to the job's parts (cost, and charged on to the landlord at cost
     // unless the office changes it).
     const parts = (Array.isArray(b.parts) ? b.parts : []).slice(0, 5).map(function (x) { return { description: str(x && x.description, 300), cost: money(x && x.cost) }; });
@@ -7732,10 +7734,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   app.post('/api/admin/jobs/:id/complete', withDb(async function (p, req, res) {
     const id = jobId(req);
-    const notes = str((req.body || {}).notes, 5000);
+    const notes = str((req.body || {}).notes, 5000), cost = money((req.body || {}).actual_cost);
+    // A job can't be completed without its actual cost (0 is fine).
+    if (cost === undefined) return res.status(400).json({ ok: false, error: 'cost' });
+    if (cost === null) { const cur = (await p.query('SELECT actual_cost FROM jobs WHERE id = $1', [id])).rows[0]; if (cur && cur.actual_cost == null) return res.status(400).json({ ok: false, error: 'cost' }); }
     const r = await p.query(
-      `UPDATE jobs SET status = 'Completed', completed_at = now(), completion_notes = $2, updated_at = now()
-       WHERE id = $1 RETURNING completed_at`, [id, notes]);
+      `UPDATE jobs SET status = 'Completed', completed_at = now(), completion_notes = $2, actual_cost = coalesce($3::numeric, actual_cost), updated_at = now()
+       WHERE id = $1 RETURNING completed_at`, [id, notes, cost]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'completed', 'Job marked completed.' + (notes ? ' ' + notes : '')]);
@@ -11048,6 +11053,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   const AVAIL_COLS = ['address', 'beds', 'available_from', 'vacant', 'rent_pw', 'rent_pcm', 'landlord', 'landlord_phone', 'commission', 'contact', 'notes', 'tags', 'key_no', 'access', 'access_note', 'urgent', 'status', 'let_on'];
   app.get('/api/admin/available', withDb(async function (p, req, res) {
     const items = (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 20000')).rows;
+    try { const g = opts.gnomenFor ? opts.gnomenFor(items) : {}; items.forEach(function (r) { if (g[r.id]) r.gnomen_id = g[r.id]; }); } catch (e) { console.error('Gnomen numbers:', e.message); }
     res.json({ ok: true, items: items, links: await availLinks(p, items, req.role !== 'offers') });
   }));
   // What we already know about an address being added: its landlord, current tenants, key number
