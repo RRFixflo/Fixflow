@@ -586,6 +586,7 @@ CREATE TABLE IF NOT EXISTS crm_meta (
 -- Website leads a manager removed: kept in the archive, never deleted.
 ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS archived_by TEXT;
+ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS junk BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS archive_unsub BOOLEAN NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS valuations (
   id          SERIAL PRIMARY KEY,
@@ -9740,6 +9741,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
       const what = ['Sales', 'Rental', 'Not sure'].indexOf(b.what) !== -1 ? b.what : 'Not sure', page = str(b.page, 120) || '';
       const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, '(quick request — call back for the address)', JSON.stringify({ kind: 'quick', service: what, page: page })]);
+    if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
       // Every member of staff hears about it: a phone alert and an email each.
       teamAlert({ title: '⚡ Quick valuation request: ' + name, message: phone + ' · ' + what + ' valuation — call them back for the address.', tags: ['house'] }, '#leads').catch(function () {});
       staffEmailAll('⚡ Quick valuation request - ' + name, function (link) {
@@ -9758,6 +9760,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.kind === 'comps') {
       const cd = { kind: 'comps', postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', message: str(b.message, 2000) || '' };
       const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(cd)]);
+    if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
       const short = full.split(',').slice(0, 2).join(','), bt = cd.beds ? (cd.beds === 'Studio' ? 'studio' : cd.beds + ' bed') : '';
       teamAlert({ title: '📊 Comparables report request: ' + short, message: name + ' · ' + (phone || email) + (bt ? ' · ' + bt : '') + ' — add similar homes in Website requests and send it.', tags: ['house'] }, '#leads').catch(function () {});
       staffEmailAll('📊 Comparables report request - ' + short, function (link) {
@@ -9768,6 +9771,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const sale = b.kind === 'sale';   // from the Sales page: a homeowner thinking of selling
     const data = { postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', service: str(b.service, 40) || '', when: str(b.when, 40) || '', message: str(b.message, 2000) || '' }; if (sale) data.kind = 'sale';
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(data)]);
+    if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
     teamAlert({ title: (sale ? '🏷️ Sales valuation: ' : '🏠 Valuation request: ') + full.split(',').slice(0, 2).join(','), message: name + ' · ' + (phone || email) + (data.service && data.service !== 'Not sure yet' ? ' · ' + data.service : '') + ' — in Website leads.', tags: ['house'] }, '#leads').catch(function () {});
     staffEmailAll((sale ? '🏷️ Sales valuation request - ' : '🏠 Valuation request - ') + full.split(',').slice(0, 2).join(','), function (link) {
       return (sale ? 'A homeowner has asked for a sales valuation on the website.' : 'A landlord has asked for a rental valuation on the website.') + '\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + email + '\nProperty: ' + full +
@@ -10043,6 +10047,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
     if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, addr || '(general enquiry)', JSON.stringify({ kind: 'enquiry', topic: topic, message: msg })]);
+    if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
     ntfy({ title: '💬 Website message from ' + name + ' (' + topic + ')', message: msg.slice(0, 200), tags: ['speech_balloon'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#contacts' : undefined }).catch(function () {});
     if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Website message — ' + name + ' (' + topic + ')',
       text: 'A message from the website contact form.\n\nName: ' + name + '\nEmail: ' + email + '\nPhone: ' + (phone || '—') + '\nThey are: ' + topic + (addr ? '\nProperty: ' + addr : '') + '\n\n' + msg + '\n\nIt’s also in Fixflow under Contacts.' }).catch(function () {});
@@ -10162,6 +10167,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const people = adults ? adults + (adults === '1' ? ' adult' : ' adults') + ', ' + kids : str(b.people, 20) || '';
     const data = { kind: 'viewing', listing: kind, ref: ref, url: url, slots: slots, flexible: !!b.flexible, message: msg, people: people, adults: adults, children: children || (adults ? '0' : ''), move_date: md, move: mdText || str(b.move, 40) || '' };
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, addr, JSON.stringify(data)]);
+    if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
     const times = slots.map(slotText);
     // Every member of staff hears about it: a phone alert and an email each.
     teamAlert({ title: '🗓 Viewing request: ' + addr.split(',').slice(0, 2).join(','), message: name + ' · ' + phone + (times.length ? ' · ' + times.join(' / ') : ' · any time') + ' — confirm a time in Website leads.', tags: ['calendar'] }, '#leads').catch(function () {});
@@ -10181,6 +10187,24 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // ---------- Contacts (CRM): every website request, landlord alert sign-up and contact added by staff ----------
   function crmLog(p, ref, note, req, auto) { return p.query('INSERT INTO crm_notes (ref, note, by_name, auto) VALUES ($1, $2, $3, $4)', [ref, String(note).slice(0, 4000), req && req.user ? req.user.name : 'Office', auto !== false]).catch(function () {}); }
   const CRM_REF = /^(vr|sub):\d+$/;
+  // Junk: senders staff have marked as junk (app_settings 'crm_junk'), and anyone sending more than 3 requests
+  // in a day, go straight to the Junk folder (archived, flagged junk) — no alerts. Staff can put them back.
+  const junkTail = function (v) { return String(v || '').replace(/\D/g, '').slice(-10); };
+  async function junkList(p) { const v = ((await p.query("SELECT value FROM app_settings WHERE key = 'crm_junk'")).rows[0] || {}).value || {}; return { emails: v.emails || [], phones: v.phones || [] }; }
+  async function leadJunk(p, id, email, phone) {
+    try {
+      const L = await junkList(p), e = String(email || '').trim().toLowerCase(), t = junkTail(phone);
+      let why = (e && L.emails.indexOf(e) !== -1) || (t.length >= 9 && L.phones.indexOf(t) !== -1) ? 'Sender marked as junk before' : '';
+      if (!why && (e || t.length >= 9)) {
+        const n = (await p.query("SELECT count(*)::int AS n FROM valuation_requests WHERE id <> $1 AND created_at > now() - interval '24 hours' AND ((lower(email) = $2 AND $2 <> '') OR (right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = $3 AND length($3) >= 9))", [id, e, t])).rows[0].n;
+        if (n >= 3) why = 'More than 3 requests from the same sender in a day';
+      }
+      if (!why) return false;
+      await p.query("INSERT INTO crm_meta (ref, archived_at, archived_by, junk) VALUES ($1, now(), 'Automatic (junk)', true) ON CONFLICT (ref) DO UPDATE SET archived_at = now(), archived_by = 'Automatic (junk)', junk = true", ['vr:' + id]);
+      await crmLog(p, 'vr:' + id, 'Sent to Junk automatically — ' + why + '. No alerts were sent.', null);
+      return true;
+    } catch (err) { console.error('Junk check failed:', err.message); return false; }
+  }
   app.get('/api/admin/crm', withDb(async function (p, req, res) {
     const items = (await p.query('SELECT * FROM valuation_requests ORDER BY id DESC LIMIT 1000')).rows.filter(function (x) { return req.role !== 'offers' || !x.data || x.data.kind !== 'cert'; });   // certificate bookings: the owner only
     let subs = [];
@@ -10189,7 +10213,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const meta = (await p.query('SELECT * FROM crm_meta')).rows;
     let staff = [];
     try { staff = (await p.query('SELECT name FROM staff_users WHERE disabled_at IS NULL ORDER BY name')).rows.map(function (x) { return x.name; }); } catch (e) {}
-    res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, staff: staff, me: req.user ? req.user.name : '', manager: !!canManageUsers(req) });
+    res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, staff: staff, me: req.user ? req.user.name : '', manager: !!canManageUsers(req), junk: await junkList(p) });
   }));
   app.post('/api/admin/crm/note', withDb(async function (p, req, res) {
     const b = req.body || {}, ref = String(b.ref || ''), note = str(b.note, 4000);
@@ -10216,8 +10240,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!CRM_REF.test(ref)) return res.status(400).json({ ok: false });
     const who = req.user ? req.user.name : 'Office', sub = ref.indexOf('sub:') === 0, id = +ref.slice(ref.indexOf(':') + 1);
     const old = (await p.query('SELECT * FROM crm_meta WHERE ref = $1', [ref])).rows[0] || {};
+    const row = !sub ? (await p.query('SELECT email, phone FROM valuation_requests WHERE id = $1', [id])).rows[0] : (await p.query('SELECT email FROM landlord_alert_subs WHERE id = $1', [id]).catch(function () { return { rows: [] }; })).rows[0];
+    const setBlock = async function (on) {
+      if (!row) return; const L = await junkList(p), e = String(row.email || '').trim().toLowerCase(), t = junkTail(row.phone);
+      const upd = function (arr, v) { if (!v) return arr; arr = arr.filter(function (x) { return x !== v; }); if (on) arr.push(v); return arr.slice(-2000); };
+      L.emails = upd(L.emails, e); if (t.length >= 9) L.phones = upd(L.phones, t);
+      await p.query("INSERT INTO app_settings (key, value) VALUES ('crm_junk', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(L)]);
+    };
     if (restore) {
-      await p.query('UPDATE crm_meta SET archived_at = NULL, archived_by = NULL, archive_unsub = false WHERE ref = $1', [ref]);
+      await p.query('UPDATE crm_meta SET archived_at = NULL, archived_by = NULL, archive_unsub = false, junk = false WHERE ref = $1', [ref]);
+      if (old.junk) await setBlock(false);   // not junk after all: stop junking this sender
       if (sub && old.archive_unsub) await p.query('UPDATE landlord_alert_subs SET unsubscribed_at = NULL WHERE id = $1', [id]).catch(function () {});
       await crmLog(p, ref, 'Put back from the archive by ' + who, req);
       return res.json({ ok: true });
@@ -10225,8 +10257,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // An alert sign-up that's removed stops getting emails (and starts again if it's put back).
     let unsub = false;
     if (sub) unsub = !!(await p.query('UPDATE landlord_alert_subs SET unsubscribed_at = now() WHERE id = $1 AND unsubscribed_at IS NULL RETURNING id', [id]).catch(function () { return { rows: [] }; })).rows.length;
-    await p.query('INSERT INTO crm_meta (ref, archived_at, archived_by, archive_unsub) VALUES ($1, now(), $2, $3) ON CONFLICT (ref) DO UPDATE SET archived_at = now(), archived_by = $2, archive_unsub = $3', [ref, who, unsub]);
-    await crmLog(p, ref, 'Removed to the archive by ' + who + (str(b.reason, 300) ? ' — ' + str(b.reason, 300) : ''), req);
+    const junk = b.junk === true;
+    await p.query('INSERT INTO crm_meta (ref, archived_at, archived_by, archive_unsub, junk) VALUES ($1, now(), $2, $3, $4) ON CONFLICT (ref) DO UPDATE SET archived_at = now(), archived_by = $2, archive_unsub = $3, junk = $4', [ref, who, unsub, junk]);
+    if (junk && b.block !== false) await setBlock(true);   // future requests from this email / number go straight to Junk
+    await crmLog(p, ref, (junk ? 'Marked as junk by ' + who + (b.block !== false ? ' (future requests from this sender go to Junk)' : '') : 'Removed to the archive by ' + who) + (str(b.reason, 300) ? ' — ' + str(b.reason, 300) : ''), req);
     res.json({ ok: true });
   }));
   // Every lead should hear from us: new ones not contacted within 2 hours, follow-ups due, and

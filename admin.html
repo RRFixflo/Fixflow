@@ -117,6 +117,12 @@
   .caller-now { border-left: 4px solid #12924a; margin-bottom: 12px; } .caller-h { font-weight: 800; font-size: 1.15rem; } .caller-w { margin-top: 8px; }
   .urg-over { display: inline-block; font-size: .7rem; font-weight: 700; color: #b54708; background: #fffaeb; border: 1px solid #fedf89; border-radius: 999px; padding: 0 6px; margin-top: 3px; white-space: nowrap; }
   .urg-over-box { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: #fffaeb; border: 1px solid #fedf89; font-size: .84rem; } .urg-over-box .btn { margin-left: 6px; } .urg-why-s { margin-top: 6px; font-size: .82rem; color: var(--ink-soft); }
+  .crm-pick { display: flex; align-items: center; padding: 2px 8px 0 0; cursor: pointer; } .crm-pick input { width: 20px; height: 20px; }
+  .crm-confirm { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #fef3f2; border: 1px solid #fda29b; } .crm-cb { display: flex; gap: 8px; align-items: center; margin: 6px 0 8px; font-size: .86rem; }
+  .crm-arch .btn + .btn { margin-left: 6px; }
+  .crm-bulk { position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; z-index: 300; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; background: #0b1f3a; color: #fff; padding: 10px 14px; border-radius: 14px; box-shadow: 0 16px 40px -12px rgba(0,0,0,.45); max-width: calc(100vw - 24px); }
+  .crm-bulk .btn.sure { background: #d92d20 !important; color: #fff !important; border-color: #d92d20 !important; }
+  @media (max-width: 900px) { .crm-bulk { bottom: calc(76px + env(safe-area-inset-bottom)); } }
   .call-t { width: 100%; border-collapse: collapse; font-size: .88rem; } .call-t th { text-align: left; font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); padding: 6px 8px; } .call-t td { padding: 9px 8px; border-top: 1px solid var(--line); vertical-align: top; } .call-t .nw { white-space: nowrap; }
   .call-who { display: inline-block; margin: 0 6px 4px 0; padding: 2px 8px; border-radius: 999px; background: #f2f4f7; font-size: .8rem; } .call-who.k-tenant { background: #eff8ff; } .call-who.k-landlord { background: #f4f3ff; } .call-who.k-contractor { background: #fffaeb; } .call-who.k-lead, .call-who.k-applicant { background: #ecfdf3; }
   .call-setup { margin-bottom: 12px; } .call-setup summary { cursor: pointer; } .call-hook { display: flex; gap: 8px; } .call-hook .inp { flex: 1; min-width: 0; font-size: .8rem; } .call-raw { white-space: pre-wrap; word-break: break-all; font-size: .74rem; background: var(--panel-2, #f5f6f8); padding: 8px 10px; border-radius: 8px; max-height: 200px; overflow: auto; }
@@ -4272,7 +4278,7 @@
     $('ctsView').hidden = v !== 'cts';
     $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
     $('availView').hidden = v !== 'avail'; $('navAvail').classList.toggle('on', v === 'avail');
-    $('crmView').hidden = v !== 'crm'; $('navCrm').classList.toggle('on', v === 'crm'); crmNag();
+    $('crmView').hidden = v !== 'crm'; $('navCrm').classList.toggle('on', v === 'crm'); crmNag(); if ($('crmBulk')) crmSelDraw();
     $('webView').hidden = v !== 'web'; $('navWeb').classList.toggle('on', v === 'web');
     $('callsView').hidden = v !== 'calls'; $('navCalls').classList.toggle('on', v === 'calls');
     // Sent emails: its own tab for staff; inside the Activity page for the owner.
@@ -8530,9 +8536,9 @@
       crm.staff = d.staff || []; crm.me = d.me || ''; crm.manager = !!d.manager;
       crm.items = (d.items || []).map(function(x){ var dd = x.data || {}, ref = 'vr:' + x.id, m = mt[ref] || {};
         return { ref: ref, id: x.id, type: dd.kind === 'viewing' ? 'viewing' : dd.kind === 'cert' ? 'cert' : dd.kind === 'sale' ? 'sale' : dd.kind === 'quick' ? 'quick' : dd.kind === 'comps' ? 'comps' : dd.kind === 'enquiry' ? 'enquiry' : dd.kind === 'contact' ? 'contact' : dd.kind === 'call' ? 'call' : 'val',
-          name: x.name, email: x.email, phone: x.phone, address: /^\(/.test(x.address) ? '' : x.address, status: x.status, at: x.created_at, data: dd, by: x.handled_by, archived: m.archived_at || null, archivedBy: m.archived_by || '', assigned: m.assigned_to || x.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : x.follow_up ? crmDay(x.follow_up) : '', notes: notes[ref] || [] }; })
+          name: x.name, email: x.email, phone: x.phone, address: /^\(/.test(x.address) ? '' : x.address, status: x.status, at: x.created_at, data: dd, by: x.handled_by, archived: m.archived_at || null, junk: !!m.junk, archivedBy: m.archived_by || '', assigned: m.assigned_to || x.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : x.follow_up ? crmDay(x.follow_up) : '', notes: notes[ref] || [] }; })
         .concat((d.subs || []).map(function(x){ var ref = 'sub:' + x.id, m = mt[ref] || {};
-          return { ref: ref, id: x.id, type: 'sub', archived: m.archived_at || null, archivedBy: m.archived_by || '', name: x.name || x.email, email: x.email, phone: '', address: '', status: x.unsubscribed_at ? 'lost' : x.confirmed_at ? 'won' : 'new', subSt: x.unsubscribed_at ? 'Unsubscribed' : x.confirmed_at ? 'Subscribed' : 'Waiting for them to confirm', at: x.created_at, data: { freq: x.freq, sent: x.sent_count, last: x.last_sent_at }, assigned: m.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : '', notes: notes[ref] || [] }; }))
+          return { ref: ref, id: x.id, type: 'sub', archived: m.archived_at || null, junk: !!m.junk, archivedBy: m.archived_by || '', name: x.name || x.email, email: x.email, phone: '', address: '', status: x.unsubscribed_at ? 'lost' : x.confirmed_at ? 'won' : 'new', subSt: x.unsubscribed_at ? 'Unsubscribed' : x.confirmed_at ? 'Subscribed' : 'Waiting for them to confirm', at: x.created_at, data: { freq: x.freq, sent: x.sent_count, last: x.last_sent_at }, assigned: m.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : '', notes: notes[ref] || [] }; }))
         .sort(function(a, b){ return new Date(b.at) - new Date(a.at); });
       var nNeed = crm.items.filter(crmNeed).length;
       $('sCrm').hidden = !nNeed; $('sCrm').textContent = nNeed; $('stCrmN').hidden = !nNeed; $('stCrmN').textContent = nNeed;
@@ -8559,18 +8565,18 @@
   document.addEventListener('click', function(e){ if (e.target.closest('[data-crm-nag]')) { crm.tile = 'attn'; crm.type = ''; showView('crm'); } });
   function crmOpenItem(x){ return x.type !== 'sub' && (x.status === 'new' || x.status === 'contacted' || (x.status === 'booked' && x.type !== 'viewing')); }
   function renderCrm(){
-    var today = crmToday(), archived = crm.items.filter(function(x){ return x.archived; }), all = crm.type === 'archive' ? archived : crm.items.filter(function(x){ return !x.archived; });
+    var today = crmToday(), archived = crm.items.filter(function(x){ return x.archived && !x.junk; }), junked = crm.items.filter(function(x){ return x.junk; }), all = crm.type === 'archive' ? archived : crm.type === 'junk' ? junked : crm.items.filter(function(x){ return !x.archived; });
     var live = crm.items.filter(function(x){ return !x.archived; });
     var due = live.filter(function(x){ return x.follow && x.follow <= today && x.status !== 'won' && x.status !== 'lost'; }), nNew = live.filter(crmNeed),
       toConfirm = live.filter(function(x){ return x.type === 'viewing' && !x.data.confirmed && x.status !== 'lost'; }), subs = live.filter(function(x){ return x.type === 'sub' && x.subSt === 'Subscribed'; });
     $('crmTiles').innerHTML = [['attn', '📣', nNew.length, 'Need contacting or an update'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm'], ['subs', '🔔', subs.length, 'Landlords getting alerts']].map(function(t){
       return '<button type="button" class="crm-tile' + (crm.tile === t[0] ? ' on' : '') + (t[2] && t[0] !== 'subs' ? ' hot' : '') + '" data-crm-tile="' + t[0] + '"><span>' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></button>'; }).join('');
     var counts = {}; live.forEach(function(x){ counts[x.type] = (counts[x.type] || 0) + 1; });
-    $('crmTypes').innerHTML = '<button type="button" data-crm-type=""' + (crm.type ? '' : ' class="on"') + '>All ' + live.length + '</button>' + ['call', 'viewing', 'cert', 'val', 'sale', 'quick', 'enquiry', 'contact', 'sub'].filter(function(k){ return counts[k]; }).map(function(k){ return '<button type="button" data-crm-type="' + k + '"' + (crm.type === k ? ' class="on"' : '') + '>' + CRM_T[k][0] + ' ' + ({ call: 'Out-of-hours calls', viewing: 'Viewings', cert: 'Certificate bookings', val: 'Rental valuations', sale: 'Sales valuations', quick: 'Quick valuations', enquiry: 'Messages', contact: 'Added by staff', sub: 'Alert sign-ups' }[k]) + ' ' + counts[k] + '</button>'; }).join('') + (archived.length ? '<span class="av-sep"></span><button type="button" data-crm-type="archive"' + (crm.type === 'archive' ? ' class="on"' : '') + '>🗄 Archive ' + archived.length + '</button>' : '');
+    $('crmTypes').innerHTML = '<button type="button" data-crm-type=""' + (crm.type ? '' : ' class="on"') + '>All ' + live.length + '</button>' + ['call', 'viewing', 'cert', 'val', 'sale', 'quick', 'enquiry', 'contact', 'sub'].filter(function(k){ return counts[k]; }).map(function(k){ return '<button type="button" data-crm-type="' + k + '"' + (crm.type === k ? ' class="on"' : '') + '>' + CRM_T[k][0] + ' ' + ({ call: 'Out-of-hours calls', viewing: 'Viewings', cert: 'Certificate bookings', val: 'Rental valuations', sale: 'Sales valuations', quick: 'Quick valuations', enquiry: 'Messages', contact: 'Added by staff', sub: 'Alert sign-ups' }[k]) + ' ' + counts[k] + '</button>'; }).join('') + (archived.length ? '<span class="av-sep"></span><button type="button" data-crm-type="archive"' + (crm.type === 'archive' ? ' class="on"' : '') + '>🗄 Archive ' + archived.length + '</button>' : '') + (junked.length ? '<button type="button" data-crm-type="junk"' + (crm.type === 'junk' ? ' class="on"' : '') + '>🚫 Junk ' + junked.length + '</button>' : '');
     var q = $('crmQ').value.trim().toLowerCase(), qd = q.replace(/\D/g, ''), st = $('crmSt').value, who = $('crmWho').value;
     var list = all.filter(function(x){
       if (crm.tile === 'attn' && nNew.indexOf(x) === -1) return false; if (crm.tile === 'due' && due.indexOf(x) === -1) return false; if (crm.tile === 'confirm' && toConfirm.indexOf(x) === -1) return false; if (crm.tile === 'subs' && subs.indexOf(x) === -1) return false;
-      if (crm.type && crm.type !== 'archive' && x.type !== crm.type) return false;
+      if (crm.type && crm.type !== 'archive' && crm.type !== 'junk' && x.type !== crm.type) return false;
       if (st === 'open' ? !crmOpenItem(x) : st && x.status !== st) return false;
       if (who === 'me' && x.assigned !== crm.me) return false; if (who === 'none' && x.assigned) return false;
       if (!q) return true;
@@ -8590,7 +8596,7 @@
       (x.follow && need !== 'Follow-up due' ? '<span class="crm-flag' + (x.follow <= today && x.status !== 'won' && x.status !== 'lost' ? ' warn' : '') + '">⏰ ' + (x.follow === today ? 'Today' : x.follow < today ? 'Overdue · ' + esc(fmtDateOnly(x.follow)) : esc(fmtDateOnly(x.follow))) + '</span>' : '') + (x.assigned ? '<span class="crm-flag">👤 ' + esc(x.assigned) + '</span>' : '') + (x.notes.filter(function(n){ return !n.auto; }).length ? '<span class="crm-flag">📝 ' + x.notes.filter(function(n){ return !n.auto; }).length + '</span>' : '');
     var acts = (tel ? '<a class="crm-act" href="tel:' + esc(tel) + '" title="Call ' + esc(x.phone) + '">📞<span> Call</span></a>' : '') + (wa ? '<a class="crm-act wa" href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener" title="WhatsApp">💬<span> WhatsApp</span></a>' : '') + (x.email ? '<a class="crm-act" href="mailto:' + esc(x.email) + '" title="Email ' + esc(x.email) + '">✉️<span> Email</span></a>' : '');
     var h = '<div class="crm-card' + (open ? ' open' : '') + (need ? ' is-new' : '') + (x.archived ? ' is-arch' : '') + '" data-crm="' + x.ref + '">' +
-      '<div class="crm-head" data-crm-tog><div class="crm-who"><span class="crm-tag" style="color:' + t[2] + ';background:' + t[3] + '">' + t[0] + ' ' + t[1] + '</span> <b>' + esc(x.name) + '</b> ' + pill + '<div class="crm-sub">' + sub.map(esc).join(' · ') + '</div>' + (flags ? '<div class="crm-flags">' + flags + '</div>' : '') + '</div>' +
+      '<div class="crm-head" data-crm-tog><label class="crm-pick" title="Select"><input type="checkbox" data-crm-pick="' + x.ref + '"' + (crmSel[x.ref] ? ' checked' : '') + '></label><div class="crm-who"><span class="crm-tag" style="color:' + t[2] + ';background:' + t[3] + '">' + t[0] + ' ' + t[1] + '</span> <b>' + esc(x.name) + '</b> ' + pill + '<div class="crm-sub">' + sub.map(esc).join(' · ') + '</div>' + (flags ? '<div class="crm-flags">' + flags + '</div>' : '') + '</div>' +
       '<div class="crm-acts">' + acts + '<button type="button" class="crm-chev" aria-label="' + (open ? 'Less' : 'More') + '">' + (open ? '▴' : '▾') + '</button></div></div>';
     if (!open) return h + '</div>';
     h += '<div class="crm-body">';
@@ -8630,7 +8636,8 @@
     h += '<div class="crm-notes"><b>Notes &amp; history</b><div class="crm-add-note"><textarea class="inp" rows="2" data-crm-note placeholder="Add a note — a call, what they said, what’s next…"></textarea><button type="button" class="btn small primary" data-crm-note-save>Add note</button></div>' +
       (x.notes.length ? '<ul>' + x.notes.map(function(n){ return '<li class="' + (n.auto ? 'auto' : '') + '"><span>' + esc(n.note) + '</span><small>' + esc(n.by_name || '') + ' · ' + esc(fmtShort(n.at)) + '</small></li>'; }).join('') + '</ul>' : '') +
       '<p class="muted-note" style="margin:6px 0 0">Came in ' + esc(fmtShort(x.at)) + (x.type === 'sub' ? ' · signed up on the website' : '') + '</p></div>';
-    h += '<div class="crm-arch">' + (x.archived ? '<button type="button" class="btn small" data-crm-restore>↩︎ Put back from the archive</button>' : '<button type="button" class="btn small ghost danger" data-crm-archive>🗑 Delete (moves to the archive)</button>') + '</div>';
+    h += '<div class="crm-arch">' + (x.archived ? '<button type="button" class="btn small" data-crm-restore>' + (x.junk ? '↩︎ Not junk — put it back' : '↩︎ Put back from the archive') + '</button>' : '<button type="button" class="btn small ghost" data-crm-ask="junk">🚫 Junk</button><button type="button" class="btn small ghost danger" data-crm-ask="del">🗑 Delete (moves to the archive)</button>') + '</div>' +
+      '<div class="crm-confirm" data-crm-confirmbox hidden></div>';
     if (x.type !== 'sub') h += '<details class="crm-edit"><summary>✏️ Edit contact details</summary><div class="lt-grid"><label>Name<input class="inp" data-ce="name" value="' + esc(x.name) + '"></label><label>Mobile<input class="inp" data-ce="phone" type="tel" value="' + esc(x.phone || '') + '"></label><label>Email<input class="inp" data-ce="email" type="email" value="' + esc(x.email || '') + '"></label><label>Address<input class="inp" data-ce="address" value="' + esc(x.address || '') + '"></label></div><button type="button" class="btn small" data-crm-edit-save style="margin-top:8px">Save details</button></details>';
     return h + '</div></div>';
   }
@@ -8649,7 +8656,25 @@
     if (!b.name) { toast('Add their name'); $('caName').focus(); return; } if (!b.phone && !b.email) { toast('Add a phone number or email'); $('caPhone').focus(); return; }
     api('POST', '/api/admin/crm/contact', b).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save'); return; } ['caName', 'caPhone', 'caEmail', 'caAddr', 'caMsg'].forEach(function(id){ $(id).value = ''; }); $('crmAdd').hidden = true; crm.open['vr:' + d.id] = 1; crm.type = ''; crm.tile = ''; toast('✓ Contact saved'); loadCrm(); });
   });
+  // Several leads at once: tick them, then Delete or Junk from the bar (tap twice to confirm — no pop-ups).
+  var crmSel = {};
+  function crmSelDraw(){
+    var refs = Object.keys(crmSel), bar = $('crmBulk');
+    if (!bar) { bar = document.createElement('div'); bar.id = 'crmBulk'; bar.className = 'crm-bulk'; document.body.appendChild(bar);
+      bar.addEventListener('click', function(e){ var b = e.target.closest('[data-cb]'); if (!b) return; var act = b.dataset.cb, refs2 = Object.keys(crmSel);
+        if (act === 'clear') { crmSel = {}; crmSelDraw(); renderCrm(); return; }
+        if (act === 'all') { document.querySelectorAll('[data-crm-pick]').forEach(function(c){ crmSel[c.dataset.crmPick] = 1; }); crmSelDraw(); renderCrm(); return; }
+        if (!b.classList.contains('sure')) { bar.querySelectorAll('.sure').forEach(function(x){ x.classList.remove('sure'); x.textContent = x.dataset.label; }); b.classList.add('sure'); b.dataset.label = b.textContent; b.textContent = 'Tap again to ' + (act === 'junk' ? 'junk ' : 'delete ') + refs2.length; return; }
+        busy(b, true, 'Saving…');
+        Promise.all(refs2.map(function(r){ return api('POST', '/api/admin/crm/archive', act === 'junk' ? { ref: r, junk: true, block: true } : { ref: r, reason: 'Deleted with others' }); })).then(function(rs){
+          var ok = rs.filter(function(d){ return d && d.ok; }).length; crmSel = {}; crmSelDraw(); toast((act === 'junk' ? '🚫 ' + ok + ' moved to Junk' : '🗄 ' + ok + ' moved to the archive') + (ok < rs.length ? ' · ' + (rs.length - ok) + ' couldn’t be saved' : '')); loadCrm(); loadVr(); });
+      }); }
+    bar.hidden = !refs.length || view !== 'crm';
+    bar.innerHTML = '<span><b>' + refs.length + '</b> selected</span><button type="button" class="btn small ghost" data-cb="all">Select all shown</button><button type="button" class="btn small" data-cb="junk">🚫 Junk</button><button type="button" class="btn small danger" data-cb="del">🗑 Delete</button><button type="button" class="btn small ghost" data-cb="clear">Clear</button>';
+  }
+  $('crmList').addEventListener('change', function(e){ var c = e.target.closest('[data-crm-pick]'); if (!c) return; if (c.checked) crmSel[c.dataset.crmPick] = 1; else delete crmSel[c.dataset.crmPick]; crmSelDraw(); });
   $('crmList').addEventListener('click', function(e){
+    if (e.target.closest('.crm-pick')) { e.stopPropagation(); return; }
     var x = crmItem(e.target); if (!x) return;
     if (e.target.closest('a, input, select, textarea, summary')) return;   // links and fields work as normal
     var card = e.target.closest('[data-crm]'), b;
@@ -8659,7 +8684,21 @@
       if (!confirm('Confirm the viewing for ' + crmSlot(at.slice(0, 16)) + '?' + (mail ? '\n\n' + x.name + ' will be emailed straight away.' : ''))) return;
       api('POST', '/api/admin/crm/viewing/' + x.id + '/confirm', { at: at.slice(0, 16), email: mail }).then(function(d){ crmDone(d && d.ok ? '✓ Booked for ' + d.when + (d.emailed ? ' — they’ve been emailed' : '') : '')(d); }); return;
     }
-    if (e.target.closest('[data-crm-archive]')) { var why = prompt('Delete ' + x.name + '?\n\nThey move to the archive (nothing is lost) and can be put back any time.' + (x.type === 'sub' ? ' They’ll stop getting landlord alerts.' : '') + '\n\nReason (optional):', ''); if (why === null) return; api('POST', '/api/admin/crm/archive', { ref: x.ref, reason: why.trim() }).then(crmDone('🗄 Moved to the archive')); return; }
+    var ask = e.target.closest('[data-crm-ask]');
+    if (ask) {   // an on-screen confirmation (phones can block pop-up boxes)
+      var box = card.querySelector('[data-crm-confirmbox]'), jk = ask.dataset.crmAsk === 'junk';
+      box.innerHTML = jk ? '<b>Mark ' + esc(x.name) + ' as junk?</b><label class="crm-cb"><input type="checkbox" data-crm-block checked> Send future requests from ' + esc(x.email || x.phone || 'this sender') + ' straight to Junk</label><div class="row-actions"><button type="button" class="btn small primary" data-crm-do="junk">🚫 Yes, junk it</button><button type="button" class="btn small ghost" data-crm-do="cancel">Cancel</button></div>'
+        : '<b>Delete ' + esc(x.name) + '?</b><p class="muted-note" style="margin:2px 0 6px">It moves to the archive — nothing is lost and it can be put back.</p><input class="inp" data-crm-reason placeholder="Reason (optional)"><div class="row-actions" style="margin-top:8px"><button type="button" class="btn small danger" data-crm-do="del">🗑 Yes, delete</button><button type="button" class="btn small ghost" data-crm-do="cancel">Cancel</button></div>';
+      box.hidden = false; return;
+    }
+    var dob = e.target.closest('[data-crm-do]');
+    if (dob) {
+      var bx = card.querySelector('[data-crm-confirmbox]');
+      if (dob.dataset.crmDo === 'cancel') { bx.hidden = true; return; }
+      busy(dob, true, 'Saving…');
+      var body = dob.dataset.crmDo === 'junk' ? { ref: x.ref, junk: true, block: !!(bx.querySelector('[data-crm-block]') || {}).checked } : { ref: x.ref, reason: ((bx.querySelector('[data-crm-reason]') || {}).value || '').trim() };
+      api('POST', '/api/admin/crm/archive', body).then(crmDone(body.junk ? '🚫 Moved to Junk' : '🗄 Moved to the archive')); return;
+    }
     if (e.target.closest('[data-crm-restore]')) { api('POST', '/api/admin/crm/archive', { ref: x.ref, restore: true }).then(crmDone('↩︎ Put back')); return; }
     if ((b = e.target.closest('[data-crm-fu-in]'))) { var n = +b.dataset.crmFuIn, dt = n ? new Date(Date.now() + n * 86400000).toLocaleDateString('en-CA', { timeZone: TZ }) : ''; api('POST', '/api/admin/crm/meta', { ref: x.ref, follow_up: dt }).then(crmDone(n ? '⏰ Follow-up set' : 'Follow-up cleared')); return; }
     if (e.target.closest('[data-crm-note-save]')) { var t = card.querySelector('[data-crm-note]').value.trim(); if (!t) { card.querySelector('[data-crm-note]').focus(); return; } api('POST', '/api/admin/crm/note', { ref: x.ref, note: t }).then(crmDone('✓ Note added')); return; }
