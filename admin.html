@@ -12845,6 +12845,7 @@
         (st.booked ? '<button type="button" class="btn small" data-open-job="' + jb.id + '">Open job</button>' : '') +
         (st.k === 'expired' || st.k === 'due' || st.k === 'soon' || st.k === 'missing' ? '<button type="button" class="btn small" data-cert-ask="' + esc(x.def.type) + '" data-addr="' + esc(address) + '" title="Ask the landlord for the new certificate, or if we should arrange it">💬 Ask landlord</button>' : '') +
         (x.c && x.c.has_doc ? '<a class="btn small ghost" target="_blank" rel="noopener" href="/api/admin/certificates/' + x.c.id + '/doc">📎 View certificate</a>' : '') +
+        (x.def.type === 'EPC' && /expired|due|soon/.test(st.k) ? '<button type="button" class="btn small ghost" data-epc-check="' + esc(address) + '" title="Look on the government register for a newer EPC">🔄 Check register</button>' : '') +
         (x.def.type === 'EPC' ? '<a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(epcUrl(x.c, address)) + '">' + (x.c && x.c.reference ? 'View EPC ↗' : 'Find EPC ↗') + '</a>' : '') +
         (st.k === 'missing' ? '' : '<button type="button" class="btn small ghost" data-cert-edit="' + esc(x.def.type) + '" data-addr="' + esc(address) + '">Update</button>') + '</div></div>';
   }
@@ -12963,6 +12964,21 @@
   $('caTpl').addEventListener('click', function(){ var m = $('caModal'); m.hidden = true; openCertMail(m.dataset.addr, m.dataset.type); });
   function certClick(e){
     var b = e.target.closest('button'); if (!b || b.id === 'propCertsAll') return;
+    if (b.dataset.epcCheck !== undefined && b.dataset.epcCheck) {
+      var addr = b.dataset.epcCheck, before = certFor(propKey(addr), 'EPC');
+      busy(b, true, 'Checking…');
+      api('POST', '/api/admin/epc-auto', { address: addr }).then(function(d){
+        busy(b, false);
+        if (!d || !d.ok) { toast('Couldn’t reach the EPC register — try again in a minute'); return; }
+        if (!d.checked) { toast('The register couldn’t be checked for this address (it needs a full postcode)'); return; }
+        var L = d.latest;
+        if (!L) toast('This home isn’t clearly on the register — use “View EPC” to look it up, then Update');
+        else if (d.found) toast('✓ Updated from the register: EPC ' + (L.rating ? 'rated ' + L.rating + ', ' : '') + 'valid until ' + certDay(L.expires_on));
+        else toast((before && before.expires_on && before.expires_on < new Date().toISOString().slice(0, 10) ? 'No newer EPC on the register — this one really has expired' : 'Already up to date') + ' (latest: valid until ' + certDay(L.expires_on) + ')');
+        loadCerts().then(function(){ if (view === 'certs') renderCerts(); else if (view === 'props' && openPropKey) renderProperty(); });
+      });
+      return;
+    }
     if (b.dataset.addrEdit) openAddressEdit(b.dataset.addrEdit, null);
     else if (b.dataset.certEdit) openCertEdit(b.dataset.addr, b.dataset.certEdit);
     else if (b.dataset.certBook) bookCert(b.dataset.addr, b.dataset.certBook, b);
