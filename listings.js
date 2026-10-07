@@ -36,7 +36,7 @@ module.exports = function (app, opts) {
   const ytId = function (u) { const m = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(String(u || '')); return m ? m[1] : ''; };
   const vimeoId = function (u) { const m = /vimeo\.com\/(?:video\/)?(\d{6,12})/.exec(String(u || '')); return m ? m[1] : ''; };
   const gone = { let: [], sale: [] };   // homes the feed lists as let / sold
-  const every = { let: [], sale: [] }; const feedSum = {}; let lastDiag = '';   // every home in the feed (published or not), for matching Gnomen numbers
+  const every = { let: [], sale: [] }; const feedSum = {}; let lastDiag = '', lastAdDiag = '';   // every home in the feed (published or not), for matching Gnomen numbers
   function parse(xml, kind) {
     const out = []; gone[kind] = []; every[kind] = [];
     String(xml || '').replace(/<property>([\s\S]*?)<\/property>/g, function (m, x) {
@@ -758,6 +758,8 @@ module.exports = function (app, opts) {
         const ids = Array.from(new Set(c.map(function (p) { return String(p.id); })));
         if (ids.length === 1) out[rid] = ids[0]; else if (ids.length) maybe[rid] = ids.slice(0, 3);
       });
+      { const miss = (items || []).filter(function (r) { return !out[String(r.id)]; }); const sum = 'Advert Gnomen numbers: ' + (items || []).length + ' adverts · ' + Object.keys(out).length + ' numbered · ' + Object.keys(maybe).length + ' unsure · ' + (miss.length - Object.keys(maybe).length) + ' not found' + (miss.length ? ' — ' + miss.slice(0, 30).map(function (r) { return r.address + ' ' + r.beds + 'b £' + r.pcm + (maybe[String(r.id)] ? ' (maybe ' + maybe[String(r.id)].join('/') + ')' : ''); }).join(' | ') : '');
+        if (sum !== lastAdDiag) { lastAdDiag = sum; console.log(sum); } }
       return { ids: out, maybe: maybe };
     },
     urls: function () { return LIVE ? data.let.concat(data.sale).map(function (p) { return p.url; }) : []; }
