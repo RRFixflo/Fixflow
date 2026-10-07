@@ -49,6 +49,7 @@ The owner is not a developer: explain results in plain, non-technical English, b
 - Property URLs use the Gnomen id: `/property/<gnomen id>/<slug>`. Old Gnomen-style links redirect.
 - If a published property is missing from Gnomen's feed it is filled in from the Rightmove advert; `RM_GNOMEN_IDS` maps Rightmove ids to Gnomen ids. Re-saving the property in Gnomen usually makes it appear in the feed.
 - Records are de-duplicated; let/sold Gnomen records win over Rightmove adverts.
+- YouTube videos on Available properties show their exact publish date (read once per video from its YouTube page, app_settings `youtube_dates`). If the video on the Rightmove advert is older than the newest video matching the property, the card warns “Rightmove shows an older video” (update the advert in Gnomen).
 - Managers can take a property off the website (e.g. a duplicate listing) from Website visitors → "Same photo on more than one property"; it stays off even though Gnomen's feed still sends it (app_settings `web_hidden`, also holds pairs marked "not a duplicate") until put back. If a hidden property is published again in Gnomen after it was taken off (let → available, a newer listing date, or back in the feed after being out of it), it goes back on the website automatically (listed under “Back on the website automatically”); no alert is sent.
 
 ## How to work
