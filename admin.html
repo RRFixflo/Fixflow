@@ -113,6 +113,7 @@
   .side .grow { flex: 1; }
   /* Arranging the menu: drag the items, or use the arrows. Each person's order is saved for them. */
   #avKey { text-transform: uppercase; }
+  .web-ro [data-wname], .web-ro [data-ignore-me], .web-ro [data-unignore] { display: none !important; }
   .nav-arr-bar { display: flex; gap: 6px; padding: 0 10px 6px; }
   .nav-arr-btn { border: 0; background: none; color: var(--side-soft); font: inherit; font-size: .74rem; padding: 2px 0; cursor: pointer; } .nav-arr-btn:hover { color: #fff; text-decoration: underline; }
   .nav-arranging #navArrange { color: #fff; font-weight: 700; background: #D9262E; padding: 3px 10px; border-radius: 999px; text-decoration: none; }
@@ -3008,7 +3009,9 @@
         loadOffers().then(function(){ showView(wantCrm ? 'crm' : wantLt ? 'lt' : wantOffers ? 'offers' : (wasOn && ['offers', 'lt', 'avail', 'sent', 'team', 'who', 'crm', 'web'].indexOf(wasOn) !== -1 ? wasOn : 'avail')); }); loadPvr(); loadCrm(true); refreshListings(true);
         // An offers team manager also gets the Team section on the Offers page.
         $('stWho').hidden = false; $('navWho').hidden = false;   // everyone sees who did what
-        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; $('stWeb').hidden = false; showDeployed(d); } else { $('navWeb').hidden = true; }
+        $('stWeb').hidden = false;   // every staff member sees the website visitors
+        document.body.classList.toggle('web-ro', !d.canManageUsers);
+        if (d.canManageUsers) { $('stTeam').hidden = false; $('navTeam').hidden = false; showDeployed(d); }
         return;
       }
       // Your own (full) page: Team and Who did what stay in Activity; the red manager buttons are for the staff page.
@@ -4222,7 +4225,6 @@
     if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
-    if (staffMode && v === 'web' && !meta.canManageUsers) v = 'avail';
     if (staffMode && v !== 'web' && v !== 'crm' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
     view = v;
     $('jobsView').hidden = v !== 'jobs';

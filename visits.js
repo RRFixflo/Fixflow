@@ -70,9 +70,9 @@ module.exports = function (app, opts) {
     [/gnomen/, 'Gnomen'], [/mail|outlook|gmail/, 'Email']];
   const srcName = function (r) { if (!r) return 'Direct (typed or bookmarked)'; for (const s of SRC) if (s[0].test(r)) return s[1]; return r; };
 
+  // Every staff login can see the visitor stats; naming and "don't count" stay with managers.
   app.get('/api/admin/site-stats', async function (req, res) {
     if (!(opts.isStaff && opts.isStaff(req))) return res.status(401).json({ ok: false });
-    if (req.role === 'offers' && !(req.user && req.user.role === 'offers_admin')) return res.status(403).json({ ok: false, error: 'managers-only' });
     const p = await pool().catch(function () { return null; }); if (!p) return res.status(503).json({ ok: false, error: 'db' });
     await flush().catch(function () {}); await loadIgnore().catch(function () {});
     const days = [1, 7, 30, 90, 365].indexOf(+req.query.days) !== -1 ? +req.query.days : 7;
