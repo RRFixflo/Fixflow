@@ -337,12 +337,12 @@ function heroExperts(req) {
     card('worth', 'What rent could you get?', 'Compare similar homes we’re letting near you',
       '<form class="x-form x-val" action="/landlords" method="get"><input name="postcode" aria-label="Your postcode" placeholder="Your postcode" autocomplete="postal-code" style="text-transform:uppercase"><span class="x-val-b"><select name="beds" aria-label="Bedrooms"><option value="0">Studio</option><option value="1">1 bed</option><option value="2" selected>2 beds</option><option value="3">3 beds</option><option value="4">4 beds</option><option value="5">5+ beds</option></select><button type="submit" formaction="/landlords#compare">Compare</button></span></form><a class="x-sale" href="/sales#sales-valuation">Selling instead? Get a sales valuation →</a>',
       '', '') +
-    '<div class="xcard xdiy rv"><div class="xd-top"><span class="xd-chip">📸 Do it yourself</span>' +
-      '<div class="xd-phone" aria-hidden="true"><i class="xd-notch"></i><div class="xd-row"><i class="xd-ph a"></i><span>Kitchen</span><b>✓</b></div><div class="xd-row"><i class="xd-ph b"></i><span>Living room</span><b>✓</b></div><div class="xd-row"><i class="xd-ph c"></i><span>Bedroom</span><em>📷</em></div></div>' +
+    '<div class="xcard xdiy rv"><div class="xd-top"><span class="xd-chip"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg> Do it yourself</span>' +
+      '<div class="xd-phone" aria-hidden="true"><i class="xd-notch"></i><div class="xd-row"><i class="xd-ph a"></i><span>Kitchen</span><b>✓</b></div><div class="xd-row"><i class="xd-ph b"></i><span>Living room</span><b>✓</b></div><div class="xd-row"><i class="xd-ph c"></i><span>Bedroom</span><em><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></em></div></div>' +
       '<span class="xd-price" data-cert-price="diy"><b>£30</b> + VAT</span></div>' +
       '<div class="xd-body"><h3>DIY inventory</h3><p>Do your own check-in report on your phone, room by room with photos, and download a professional PDF.</p>' +
-      '<div class="xd-vs"><span>💡 A fraction of the cost of an inventory clerk</span><small>Clerks typically charge £150–£200 a visit</small></div>' +
-      '<div class="xd-pills"><a href="/diy-inventory#example">👀 See an example</a><a href="/diy-inventory">How it works</a></div>' +
+      '<div class="xd-vs"><span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2H2v10l9.29 9.29a2.41 2.41 0 0 0 3.42 0l6.58-6.58a2.41 2.41 0 0 0 0-3.42L12 2Z"/><circle cx="7" cy="7" r="1.5"/></svg> A fraction of the cost of an inventory clerk</span><small>Clerks typically charge £150–£200 a visit</small></div>' +
+      '<div class="xd-pills"><a href="/diy-inventory#example"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg> See an example</a><a href="/diy-inventory">How it works</a></div>' +
       '<a class="btn red xd-go" href="/book-certificate?service=diy">Buy &amp; start now →</a></div></div>' +
     '</div>';
 }
