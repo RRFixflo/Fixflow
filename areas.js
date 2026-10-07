@@ -9,6 +9,7 @@ module.exports = function (app, opts) {
   const BY = {}; AREAS.forEach(function (a) { BY[a.slug] = a; });
   let ons = { london: {}, boroughs: {} };
   try { ons = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'ons-london.json'), 'utf8')); } catch (e) { console.error('London rents: no ONS figures', e.message); }
+  const base = ons; let ver = '';
   const fig = function (a) { return (ons.boroughs || {})[a.gss] || {}; };
   const esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   const gbp = function (n) { return '£' + Math.round(n).toLocaleString('en-GB'); };
@@ -48,7 +49,7 @@ module.exports = function (app, opts) {
       '<p class="ar-also">Landlords in ' + esc(a.name) + ': <a href="/property-checks#licence">check if you need a licence</a> · <a href="/services">certificates and services</a></p></div></div></section>';
     h += cta(a.name);
     const desc = f.rent ? 'The average rent in ' + a.name + ' is ' + gbp(f.rent) + ' a month' + (f.rentMonth ? ' (' + f.rentMonth + ', ONS)' : ' (ONS)') + '. Rent by bedrooms, house prices, areas and homes to rent in ' + a.name + '.' : 'Rental values, areas and homes to rent in ' + a.name + ', London.';
-    opts.send(req, res, { name: 'rents', stamp: 'ar' + a.slug, canon: '/london-rents/' + a.slug, crumb: 'London rents', crumbUrl: '/london-rents', crumb2: a.name,
+    opts.send(req, res, { name: 'rents', stamp: 'ar' + a.slug + ver, canon: '/london-rents/' + a.slug, crumb: 'London rents', crumbUrl: '/london-rents', crumb2: a.name,
       title: 'Average Rent in ' + a.name + (f.rentMonth ? ' (' + String(f.rentMonth).replace(/^\w+ /, '') + ')' : '') + ': Rental Values | Residential Realtors', desc: desc, robots: f.rent ? undefined : 'noindex, follow' }, h);
   });
 
@@ -61,19 +62,68 @@ module.exports = function (app, opts) {
       const list = AREAS.filter(function (a) { return a.region === r[0]; });
       return '<details class="ar-reg"' + (i === 0 ? ' open' : '') + '><summary>' + r[1] + '<span>' + list.length + ' boroughs</span></summary><ul class="ar-list">' + list.map(function (a) { const g = fig(a); return '<li><a href="/london-rents/' + a.slug + '">' + esc(a.name) + (g.rent ? '<span>' + gbp(g.rent) + ' pcm</span>' : '') + '</a></li>'; }).join('') + '</ul></details>';
     }).join('') + SOURCE + '</div></section>' + cta('London');
-    opts.send(req, res, { name: 'rents', stamp: 'arall', canon: '/london-rents', crumb: 'London rents', title: 'Average Rent in London by Borough: Rental Values | Residential Realtors',
+    opts.send(req, res, { name: 'rents', stamp: 'arall' + ver, canon: '/london-rents', crumb: 'London rents', title: 'Average Rent in London by Borough: Rental Values | Residential Realtors',
       desc: 'Average monthly rents for all 33 London boroughs from official ONS figures' + (L.rent ? ' — London average ' + gbp(L.rent) + ' a month' : '') + '. Rent by bedrooms, house prices and homes to rent.' }, h);
   });
 
-  // One-off look at an ONS borough data file (written to the server log) to build the monthly refresh against.
-  if (process.env.DATABASE_URL && !/localhost/.test(process.env.DATABASE_URL)) setTimeout(function () {
-    fetch('https://www.ons.gov.uk/visualisations/housingpriceslocal/data/json/E09000028.json', { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ResidentialRealtors/1.0)' } }).then(function (r) { return r.json(); }).then(function (j) {
-      (j.sections || []).forEach(function (sec, i) {
-        const t = JSON.stringify(sec); console.log('ONS json ' + i + ' ' + sec.type + ' ' + (sec.title || '') + ' keys=' + Object.keys(sec).join(',') + ' len=' + t.length);
-        if (/bed|rent/i.test(t)) for (let k = 0; k < Math.min(t.length, 3000); k += 1000) console.log('ONS json ' + i + ' @' + k + ': ' + t.slice(k, k + 1000));
-      });
-    }).catch(function (e) { console.log('ONS json probe failed', e.message); });
-  }, 20000);
+  // Automatic refresh: once a week, read each borough's ONS data file (the one behind its ONS page) and keep
+  // any newer figures in app_settings ('ons_london'), laid over data/ons-london.json. Only sane numbers are used.
+  const ONS_URL = function (gss) { return 'https://www.ons.gov.uk/visualisations/housingpriceslocal/data/json/' + gss + '.json'; };
+  const num = function (v) { return parseInt(String(v).replace(/[£,\s]/g, ''), 10) || 0; };
+  const chg = function (a, b) { return a && b ? Math.round((a - b) / b * 1000) / 10 : null; };
+  const inR = function (v, lo, hi) { return v >= lo && v <= hi; };
+  // The ONS's own stated change ("a 5.4% rise", "a 0.6% change"), signed; else worked out from the two figures.
+  const said = function (t, a, b) { const m = /a (\d+(?:\.\d+)?)% (rise|increase|fall|decrease|change)/.exec(t || ''); if (!m) return chg(a, b); const v = parseFloat(m[1]); return /fall|decrease/.test(m[2]) || (m[2] === 'change' && a < b) ? -v : v; };
+  function parseOns(j) {
+    const S = (j && j.sections) || [], text = function (sec) { return String((sec && sec.content) || '').replace(/<[^>]+>/g, ' ').replace(/&pound;/g, '£').replace(/\s+/g, ' '); };
+    const by = function (id) { return S.find(function (x) { return x.id === id; }); }, all = S.map(text).join(' '), f = {}, L = {};
+    const tr = text(by('rent_price')); let m = /private rent in .+? was £([\d,]+) in (\w+ \d{4})\. This was [^£]*£([\d,]+) in \w+ \d{4}/.exec(tr);
+    if (m && inR(num(m[1]), 300, 20000)) { f.rent = num(m[1]); f.rentMonth = m[2]; f.rentChange = said(tr.slice(m.index), f.rent, num(m[3])); }
+    const t3 = text(by('rent_price_third')), bm = /as of (\w+ \d{4})/.exec(t3), beds = {};
+    [['1', 'One bedroom'], ['2', 'Two bedrooms'], ['3', 'Three bedrooms'], ['4', 'Four or more bedrooms']].forEach(function (k) { const x = new RegExp(k[1] + ': £([\\d,]+)').exec(t3); if (x && inR(num(x[1]), 300, 30000)) beds[k[0]] = num(x[1]); });
+    if (Object.keys(beds).length === 4) { f.beds = beds; f.bedsMonth = bm ? bm[1] : f.rentMonth; }
+    m = /average house price in [^.]*? in (\w+ \d{4}) was £([\d,]+)\. This was [^£]*£([\d,]+) in \w+ \d{4}/.exec(all);
+    if (m && inR(num(m[2]), 50000, 10000000)) { f.price = num(m[2]); f.priceMonth = m[1]; f.priceChange = said(all.slice(m.index, m.index + m[0].length + 60), f.price, num(m[3])); }
+    m = /Across London, the average monthly rent was £([\d,]+), (?:up|down) from £([\d,]+)/.exec(text(by('rent_price_two')));
+    if (m && inR(num(m[1]), 500, 10000)) { L.rent = num(m[1]); L.rentMonth = f.rentMonth; L.rentChange = chg(L.rent, num(m[2])); }
+    m = /Across London, the average house price in (\w+ \d{4}) was £([\d,]+)[^£]*\(£([\d,]+)\)/.exec(all);
+    if (m && inR(num(m[2]), 100000, 5000000)) { L.price = num(m[2]); L.priceMonth = m[1]; L.priceChange = chg(L.price, num(m[3])); }
+    return { f: f, L: L };
+  }
+  function apply(over) {
+    const b = JSON.parse(JSON.stringify(base)); b.london = Object.assign({}, b.london, over.london || {}); b.boroughs = b.boroughs || {};
+    Object.keys(over.boroughs || {}).forEach(function (g) { b.boroughs[g] = Object.assign({}, b.boroughs[g], over.boroughs[g], { source: 'https://www.ons.gov.uk/visualisations/housingpriceslocal/' + g + '/' }); });
+    ons = b; ver = String(over.at || '');
+  }
+  let refreshing = false;
+  async function refreshOns(p) {
+    if (refreshing) return; refreshing = true;
+    const over = { at: Date.now(), london: {}, boroughs: {} }; let ok = 0, bad = [];
+    try {
+      for (const a of AREAS) {
+        if (a.gss === 'E09000001') continue;
+        try {
+          const r = await fetch(ONS_URL(a.gss), { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ResidentialRealtors/1.0; +https://www.residentialrealtors.co.uk)' }, signal: AbortSignal.timeout(20000) });
+          const x = parseOns(r.ok ? await r.json() : null);
+          if (x.f.rent) { over.boroughs[a.gss] = x.f; ok++; } else bad.push(a.name);
+          if (x.L.rent && !over.london.rent) over.london = Object.assign({}, x.L);
+          else if (x.L.price && !over.london.price) Object.assign(over.london, { price: x.L.price, priceMonth: x.L.priceMonth, priceChange: x.L.priceChange });
+        } catch (e) { bad.push(a.name); }
+        await new Promise(function (res) { setTimeout(res, 1500); });
+      }
+      if (ok >= 16) { apply(over); await p.query("INSERT INTO app_settings (key, value) VALUES ('ons_london', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()", [JSON.stringify(over)]); }
+      console.log('London rents: ONS refresh', ok, 'boroughs updated' + (bad.length ? '; not read: ' + bad.join(', ') : '') + (ok < 16 ? ' — too few, kept the old figures' : ''));
+    } finally { refreshing = false; }
+  }
+  if (opts.db) setTimeout(async function tick() {
+    try {
+      const p = await opts.db(); if (!p) return;
+      const row = (await p.query("SELECT value FROM app_settings WHERE key = 'ons_london'")).rows[0], v = row && row.value;
+      if (v && v.boroughs && !ver) apply(v);
+      if (!v || Date.now() - (v.at || 0) > 7 * 86400000) await refreshOns(p);
+    } catch (e) { console.error('London rents: ONS refresh failed', e.message); }
+    setTimeout(tick, 86400000);
+  }, 60000);
 
   // ONS average rent for a borough (by its ONS code) and bedroom count, for the rent comparison tool.
   const onsBeds = function (gss, beds) {
@@ -82,5 +132,5 @@ module.exports = function (app, opts) {
     return { slug: a.slug, name: a.name, rent: v || 0, month: f.bedsMonth || f.rentMonth || '', all: f.rent || 0 };
   };
 
-  return { onsBeds: onsBeds, urls: function () { return ['/london-rents'].concat(AREAS.filter(function (a) { return fig(a).rent; }).map(function (a) { return '/london-rents/' + a.slug; })); } };
+  return { parseOns: parseOns, onsBeds: onsBeds, urls: function () { return ['/london-rents'].concat(AREAS.filter(function (a) { return fig(a).rent; }).map(function (a) { return '/london-rents/' + a.slug; })); } };
 };
