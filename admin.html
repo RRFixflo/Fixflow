@@ -2,7 +2,8 @@
 <html lang="en-GB">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style id="mobile-fit">html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}@media (max-width:900px){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}</style><script>(function(){var ua=navigator.userAgent;if(/iP(hone|ad|od)/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)){var m=document.querySelector('meta[name=viewport]');if(m&&!/maximum-scale/.test(m.content))m.content+=', maximum-scale=1';}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style id="mobile-fit">html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}@media (max-width:900px){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}.vr-comps{margin:8px 0;padding:10px 12px;border:1px dashed #c7d2e0;border-radius:12px;background:#f8fafc}.vr-comps summary{cursor:pointer;font-weight:700;color:#0b1f3a;font-size:.9rem}.cmp-row{display:grid;grid-template-columns:2fr 2fr .7fr 1fr .7fr auto;gap:6px;margin-bottom:6px}.cmp-row .inp{min-width:0;padding:7px 8px;font-size:.85rem}.vr-comps textarea{width:100%;margin-top:4px}.cmp-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}@media(max-width:700px){.cmp-row{grid-template-columns:1fr 1fr}.cmp-row [data-c=url],.cmp-row [data-c=address]{grid-column:1/-1}}
+</style><script>(function(){var ua=navigator.userAgent;if(/iP(hone|ad|od)/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)){var m=document.querySelector('meta[name=viewport]');if(m&&!/maximum-scale/.test(m.content))m.content+=', maximum-scale=1';}})();</script>
 <meta name="robots" content="noindex, nofollow">
 <title>Repair Jobs — Residential Realtors</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/icons/admin-32.png">
@@ -8111,13 +8112,35 @@
     return '<details class="card vr-card"' + (open || nNew ? ' open' : '') + ' data-vr-box><summary><b>🌐 Website requests</b>' + (nNew ? ' <span class="vr-new">' + nNew + ' new</span>' : '') + ' <span class="muted">· valuations and messages from the website</span></summary>' +
       vrItems.slice(0, 50).map(function(x){ var d = x.data || {}, st = VR_ST[x.status] || VR_ST.new;
         var enq = d.kind === 'enquiry';
-        return '<div class="vr-row"><div class="vr-main"><div>' + (enq ? '<span class="vr-tag">💬 Message · ' + esc(d.topic || '') + '</span> ' : d.kind === 'sale' ? '<span class="vr-tag val">🏷️ Sales valuation</span> ' : d.kind === 'quick' ? '<span class="vr-tag val">⚡ Quick valuation · ' + esc(d.service || '') + '</span> ' : '<span class="vr-tag val">🏠 Valuation</span> ') + '<b>' + esc(x.name) + '</b>' + ((enq && x.address === '(general enquiry)') || d.kind === 'quick' ? '' : ' · ' + esc(x.address)) + '</div>' +
+        return '<div class="vr-row"><div class="vr-main"><div>' + (enq ? '<span class="vr-tag">💬 Message · ' + esc(d.topic || '') + '</span> ' : d.kind === 'sale' ? '<span class="vr-tag val">🏷️ Sales valuation</span> ' : d.kind === 'quick' ? '<span class="vr-tag val">⚡ Quick valuation · ' + esc(d.service || '') + '</span> ' : d.kind === 'comps' ? '<span class="vr-tag val">📊 Comparables report</span> ' : '<span class="vr-tag val">🏠 Valuation</span> ') + '<b>' + esc(x.name) + '</b>' + ((enq && x.address === '(general enquiry)') || d.kind === 'quick' ? '' : ' · ' + esc(x.address)) + '</div>' +
           '<div class="muted" style="font-size:.85rem">' + [d.beds ? (d.beds === 'Studio' ? 'Studio' : d.beds + ' bed') : '', d.type, d.service && d.service !== 'Not sure yet' ? 'wants ' + d.service : '', d.when ? (d.kind === 'sale' ? 'selling: ' : 'available: ') + d.when.toLowerCase() : '', 'sent ' + fmtShort(x.created_at), x.handled_by && x.status !== 'new' ? 'by ' + x.handled_by : ''].filter(Boolean).map(esc).join(' · ') + '</div>' +
           (d.message ? '<div class="vr-msg">“' + esc(d.message) + '”</div>' : '') +
+          (d.kind === 'comps' ? compsEditor(x) : '') +
           '<div class="vr-links">' + (x.phone ? '<a href="tel:' + esc(String(x.phone).replace(/[^\d+]/g, '')) + '">📞 ' + esc(x.phone) + '</a>' : '') + (x.email ? '<a href="mailto:' + esc(x.email) + '?subject=' + encodeURIComponent((d.kind === 'sale' ? 'Your sales valuation — ' : 'Your rental valuation — ') + x.address) + '">✉️ ' + esc(x.email) + '</a>' : '') + '</div></div>' +
           '<div class="vr-st"><select class="inp" data-vr-st="' + x.id + '" style="color:' + st[1] + ';font-weight:700">' + Object.keys(VR_ST).map(function(k){ return '<option value="' + k + '"' + (k === x.status ? ' selected' : '') + '>' + VR_ST[k][0] + '</option>'; }).join('') + '</select></div></div>';
       }).join('') + '</details>';
   }
+  // Comparables report: our team adds similar homes found on Rightmove, then sends the landlord the report.
+  function compsRow(c){ c = c || {}; return '<div class="cmp-row"><input class="inp" data-c="url" placeholder="Rightmove link" value="' + esc(c.url || '') + '"><input class="inp" data-c="address" placeholder="Street, area" value="' + esc(c.address || '') + '"><input class="inp" data-c="beds" placeholder="Beds" value="' + esc(c.beds || '') + '"><input class="inp" data-c="rent" inputmode="decimal" placeholder="Rent £ pcm" value="' + (c.rent || '') + '"><input class="inp" data-c="dist" inputmode="decimal" placeholder="Miles" value="' + (c.dist || '') + '"><button type="button" class="btn small ghost" data-comps-act="del" title="Remove">✕</button></div>'; }
+  function compsEditor(x){ var d = x.data || {}, list = (d.comps && d.comps.length) ? d.comps : [{}, {}, {}, {}];
+    return '<details class="vr-comps" data-comps="' + x.id + '"' + (d.comps_sent_at ? '' : ' open') + '><summary>' + (d.comps_sent_at ? '✓ Report sent ' + esc(fmtShort(d.comps_sent_at)) + (d.comps_sent_by ? ' by ' + esc(d.comps_sent_by) : '') + ' · edit or resend' : '📊 Prepare the report: add 3–6 similar homes advertised nearby on Rightmove') + '</summary>' +
+      '<div class="muted" style="font-size:.8rem;margin:6px 0">Paste the Rightmove link, the street and area, bedrooms, the rent per month and roughly how far it is. The landlord gets the typical rent, the range and a link to each advert.</div>' +
+      '<div class="cmp-rows">' + list.map(compsRow).join('') + '</div>' +
+      '<textarea class="inp" data-c-note rows="2" placeholder="Optional note for the landlord, e.g. what would help it let for more">' + esc(d.comps_note || '') + '</textarea>' +
+      '<div class="cmp-btns"><button type="button" class="btn small ghost" data-comps-act="add">+ Add a home</button><button type="button" class="btn small ghost" data-comps-act="save">Save</button><button type="button" class="btn small" data-comps-act="send">' + (d.comps_sent_at ? 'Resend report' : 'Send report to ' + esc(x.name.split(/\s+/)[0] || 'landlord')) + ' →</button>' +
+      (d.comps_token && d.comps_sent_at ? '<a class="muted" href="/comparables/' + esc(d.comps_token) + '" target="_blank" rel="noopener">View report</a>' : '') + '</div></details>'; }
+  document.addEventListener('click', function(e){ var b = e.target.closest('[data-comps-act]'); if (!b) return; var box = b.closest('[data-comps]'); if (!box) return; var act = b.dataset.compsAct;
+    if (act === 'add') { box.querySelector('.cmp-rows').insertAdjacentHTML('beforeend', compsRow()); return; }
+    if (act === 'del') { b.closest('.cmp-row').remove(); return; }
+    var comps = Array.prototype.map.call(box.querySelectorAll('.cmp-row'), function(r){ var o = {}; r.querySelectorAll('[data-c]').forEach(function(i){ o[i.dataset.c] = i.value.trim(); }); return o; }).filter(function(o){ return o.rent || o.url || o.address; });
+    var send = act === 'send', n = comps.filter(function(o){ return parseFloat(String(o.rent).replace(/[£,\s]/g, '')) >= 200; }).length;
+    if (send && n < 2) { toast('Add at least 2 homes with a rent first'); return; }
+    if (send && !confirm('Email the report (' + n + ' homes) to the landlord now?')) return;
+    b.disabled = true;
+    api('POST', '/api/admin/valuation-requests/' + box.dataset.comps + '/comps', { comps: comps, note: (box.querySelector('[data-c-note]') || {}).value || '', send: send }).then(function(d){ b.disabled = false;
+      if (!d || !d.ok) { toast(d && d.error === 'few' ? 'Add at least 2 homes with a rent' : d && d.error === 'email' ? 'No email for this landlord, or email isn’t set up' : 'Couldn’t ' + (send ? 'send' : 'save') + ' that'); return; }
+      toast(send ? '✓ Report sent' : '✓ Saved'); loadVr(); loadCrm(true); }).catch(function(){ b.disabled = false; toast('Couldn’t connect'); });
+  });
   document.addEventListener('change', function(e){ var sel = e.target.closest('[data-vr-st]'); if (!sel) return;
     api('POST', '/api/admin/valuation-requests/' + sel.dataset.vrSt, { status: sel.value }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save that'); return; } vrItems.forEach(function(x){ if (String(x.id) === sel.dataset.vrSt) x.status = sel.value; }); renderVr(); loadVr(); toast('✓ Saved'); }); });
   // ---------- Website visitors: who visits the website, what they look at and where they came from ----------
@@ -8229,7 +8252,7 @@
   // ---------- Contacts (CRM): every website request, viewing request, landlord alert sign-up and contact staff add ----------
   var crm = { items: [], staff: [], me: '', type: '', open: {} }, CRM_T = {
     viewing: ['🗓', 'Viewing request', '#b54708', '#fffaeb'], val: ['🏠', 'Rental valuation', '#5925dc', '#f4f3ff'], sale: ['🏷️', 'Sales valuation', '#5925dc', '#f4f3ff'], quick: ['⚡', 'Quick valuation', '#5925dc', '#f4f3ff'],
-    cert: ['📜', 'Certificate booking', '#c4320a', '#fff6ed'], enquiry: ['💬', 'Message', '#175cd3', '#eff8ff'], contact: ['📇', 'Added by staff', '#344054', '#f2f4f7'], sub: ['🔔', 'Alert sign-up', '#067647', '#ecfdf3'] };
+    cert: ['📜', 'Certificate booking', '#c4320a', '#fff6ed'], comps: ['📊', 'Comparables report', '#6941c6', '#f4f3ff'], enquiry: ['💬', 'Message', '#175cd3', '#eff8ff'], contact: ['📇', 'Added by staff', '#344054', '#f2f4f7'], sub: ['🔔', 'Alert sign-up', '#067647', '#ecfdf3'] };
   var CRM_ST = { new: ['New', '#b42318'], contacted: ['Contacted', '#175cd3'], booked: ['Booked', '#6941c6'], won: ['Won ✓', '#067647'], lost: ['Not going ahead', '#667085'] };
   function crmDay(d){ return new Date(d).toISOString().slice(0, 10); }
   function crmToday(){ return new Date().toLocaleDateString('en-CA', { timeZone: TZ }); }
@@ -8243,7 +8266,7 @@
       (d.meta || []).forEach(function(m){ mt[m.ref] = m; });
       crm.staff = d.staff || []; crm.me = d.me || ''; crm.manager = !!d.manager;
       crm.items = (d.items || []).map(function(x){ var dd = x.data || {}, ref = 'vr:' + x.id, m = mt[ref] || {};
-        return { ref: ref, id: x.id, type: dd.kind === 'viewing' ? 'viewing' : dd.kind === 'cert' ? 'cert' : dd.kind === 'sale' ? 'sale' : dd.kind === 'quick' ? 'quick' : dd.kind === 'enquiry' ? 'enquiry' : dd.kind === 'contact' ? 'contact' : 'val',
+        return { ref: ref, id: x.id, type: dd.kind === 'viewing' ? 'viewing' : dd.kind === 'cert' ? 'cert' : dd.kind === 'sale' ? 'sale' : dd.kind === 'quick' ? 'quick' : dd.kind === 'comps' ? 'comps' : dd.kind === 'enquiry' ? 'enquiry' : dd.kind === 'contact' ? 'contact' : 'val',
           name: x.name, email: x.email, phone: x.phone, address: /^\(/.test(x.address) ? '' : x.address, status: x.status, at: x.created_at, data: dd, by: x.handled_by, archived: m.archived_at || null, archivedBy: m.archived_by || '', assigned: m.assigned_to || x.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : x.follow_up ? crmDay(x.follow_up) : '', notes: notes[ref] || [] }; })
         .concat((d.subs || []).map(function(x){ var ref = 'sub:' + x.id, m = mt[ref] || {};
           return { ref: ref, id: x.id, type: 'sub', archived: m.archived_at || null, archivedBy: m.archived_by || '', name: x.name || x.email, email: x.email, phone: '', address: '', status: x.unsubscribed_at ? 'lost' : x.confirmed_at ? 'won' : 'new', subSt: x.unsubscribed_at ? 'Unsubscribed' : x.confirmed_at ? 'Subscribed' : 'Waiting for them to confirm', at: x.created_at, data: { freq: x.freq, sent: x.sent_count, last: x.last_sent_at }, assigned: m.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : '', notes: notes[ref] || [] }; }))
@@ -8308,6 +8331,7 @@
       '<div class="crm-acts">' + acts + '<button type="button" class="crm-chev" aria-label="' + (open ? 'Less' : 'More') + '">' + (open ? '▴' : '▾') + '</button></div></div>';
     if (!open) return h + '</div>';
     h += '<div class="crm-body">';
+    if (x.type === 'comps') h += compsEditor({ id: x.id, data: d, name: x.name || '' });
     // What they asked for.
     var facts = [];
     if (x.phone) facts.push(['Phone', esc(x.phone)]); if (x.email) facts.push(['Email', esc(x.email)]);

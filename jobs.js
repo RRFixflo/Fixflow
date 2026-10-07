@@ -9671,6 +9671,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!pcm) return res.status(400).json({ ok: false, error: 'postcode' });
     if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
     const postcode = (pcm[1] + ' ' + pcm[2]).toUpperCase(), full = POSTCODE_RE.test(addr) ? addr : addr + ', ' + postcode;
+    // A free local comparables report (Compare rents on the Landlords page): our team adds similar homes
+    // they've found on Rightmove in Fixflow and sends the landlord a short report.
+    if (b.kind === 'comps') {
+      const cd = { kind: 'comps', postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', message: str(b.message, 2000) || '' };
+      const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(cd)]);
+      const short = full.split(',').slice(0, 2).join(','), bt = cd.beds ? (cd.beds === 'Studio' ? 'studio' : cd.beds + ' bed') : '';
+      teamAlert({ title: '📊 Comparables report request: ' + short, message: name + ' · ' + (phone || email) + (bt ? ' · ' + bt : '') + ' — add similar homes in Website requests and send it.', tags: ['house'] }, '#leads').catch(function () {});
+      staffEmailAll('📊 Comparables report request - ' + short, function (link) {
+        return 'A landlord has asked for a free local comparables report on the website.\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + email + '\nProperty: ' + full + '\nBedrooms: ' + (cd.beds || '—') + '\n\nFind 3 to 6 similar homes advertised nearby on Rightmove, add them under Website requests in Fixflow and press Send report: ' + link;
+      }, '#leads').catch(function (e) { console.error('Comparables staff emails failed:', e.message); });
+      return res.json({ ok: true, id: r.rows[0].id });
+    }
     const sale = b.kind === 'sale';   // from the Sales page: a homeowner thinking of selling
     const data = { postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', service: str(b.service, 40) || '', when: str(b.when, 40) || '', message: str(b.message, 2000) || '' }; if (sale) data.kind = 'sale';
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(data)]);
@@ -9962,6 +9974,65 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await p.query('UPDATE valuation_requests SET status = $2, handled_at = CASE WHEN $2 = \'new\' THEN NULL ELSE now() END, handled_by = $3 WHERE id = $1 RETURNING id', [jobId(req), st, req.user ? req.user.name : 'Office']);
     if (r.rows.length) await crmLog(p, 'vr:' + jobId(req), 'Status: ' + ({ new: 'New', contacted: 'Contacted', booked: 'Booked', won: 'Won ✓', lost: 'Not going ahead' }[st]), req);
     res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
+  }));
+  // ---------- Comparables report: similar homes our team found, sent to the landlord ----------
+  const compsList = function (raw) {
+    return (Array.isArray(raw) ? raw : []).slice(0, 10).map(function (c) {
+      const url = str(c && c.url, 500) || '', rent = Math.round(parseFloat(String((c && c.rent) || '').replace(/[£,\s]/g, '')) || 0), dist = Math.round((parseFloat(c && c.dist) || 0) * 10) / 10;
+      return { url: /^https?:\/\//i.test(url) ? url : '', address: str(c && c.address, 200) || '', beds: str(c && c.beds, 20) || '', rent: rent, dist: dist };
+    }).filter(function (c) { return c.rent >= 200 && c.rent <= 100000 && (c.address || c.url); });
+  };
+  const compsStats = function (list) {
+    const v = list.map(function (c) { return c.rent; }).sort(function (a, b) { return a - b; }), n = v.length;
+    return { n: n, low: n ? v[0] : 0, high: n ? v[n - 1] : 0, avg: n ? Math.round(v.reduce(function (s, x) { return s + x; }, 0) / n) : 0, mid: n ? (n % 2 ? v[(n - 1) / 2] : Math.round((v[n / 2 - 1] + v[n / 2]) / 2)) : 0 };
+  };
+  const gbp0 = function (n) { return '£' + Math.round(n).toLocaleString('en-GB'); };
+  app.post('/api/admin/valuation-requests/:id/comps', withDb(async function (p, req, res) {
+    const row = (await p.query('SELECT * FROM valuation_requests WHERE id = $1', [jobId(req)])).rows[0]; if (!row) return res.status(404).json({ ok: false });
+    const b = req.body || {}, d = row.data || {}, list = compsList(b.comps);
+    d.comps = list; d.comps_note = str(b.note, 1000) || '';
+    if (b.send) {
+      if (list.length < 2) return res.status(400).json({ ok: false, error: 'few' });
+      if (!canEmail() || !sendEmail || !row.email) return res.status(400).json({ ok: false, error: 'email' });
+      d.comps_token = d.comps_token || crypto.randomBytes(18).toString('base64url');
+      const s = compsStats(list), link = (PUBLIC_URL || SITE) + '/comparables/' + d.comps_token, first = String(row.name || '').split(/\s+/)[0] || 'there';
+      const bt = d.beds ? (d.beds === 'Studio' ? 'studios' : d.beds + ' bedroom homes') : 'homes';
+      const subject = 'Your local rent comparison — ' + String(row.address).split(',').slice(0, 2).join(',');
+      const text = 'Hi ' + first + ',\n\nThank you for asking for a local rent comparison. We’ve looked at ' + s.n + ' similar ' + bt + ' advertised to let near ' + (d.postcode || 'you') + '.\n\n' +
+        'Typical rent: ' + gbp0(s.mid) + ' a month\nRange: ' + gbp0(s.low) + ' to ' + gbp0(s.high) + ' a month\n\n' +
+        list.map(function (c) { return '• ' + (c.address || 'Similar home') + (c.beds ? ' (' + c.beds + ' bed)' : '') + ' — ' + gbp0(c.rent) + ' pcm' + (c.dist ? ' · ' + c.dist + ' miles away' : ''); }).join('\n') +
+        (d.comps_note ? '\n\n' + d.comps_note : '') + '\n\nSee the full comparison, with links to each advert: ' + link +
+        '\n\nThese are asking rents on current adverts, for guidance only. Every home is different, so for an exact figure we’d be happy to do a free valuation. Just reply to this email or call us on 0207 096 8131.\n\nResidential Realtors';
+      const r = await sendEmail({ to: [row.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
+      p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', [req.user ? req.user.name : 'Office', [row.email], 'info@residentialrealtors.co.uk', subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
+      if (!(r && r.ok)) return res.status(502).json({ ok: false, error: 'send' });
+      d.comps_sent_at = new Date().toISOString(); d.comps_sent_by = req.user ? req.user.name : 'Office';
+      await p.query("UPDATE valuation_requests SET data = $2, status = CASE WHEN status = 'new' THEN 'contacted' ELSE status END, handled_at = coalesce(handled_at, now()), handled_by = coalesce(handled_by, $3) WHERE id = $1", [row.id, JSON.stringify(d), d.comps_sent_by]);
+      await crmLog(p, 'vr:' + row.id, 'Comparables report sent (' + s.n + ' homes, typical ' + gbp0(s.mid) + ' pcm)', req);
+      return res.json({ ok: true, sent: true, link: link });
+    }
+    await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]);
+    res.json({ ok: true });
+  }));
+  // The landlord's report page (from the email). No contact details on it; not for search engines.
+  app.get('/comparables/:token', withDb(async function (p, req, res) {
+    const row = (await p.query("SELECT * FROM valuation_requests WHERE data->>'comps_token' = $1", [String(req.params.token || '').slice(0, 60)])).rows[0];
+    const e = function (v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Cache-Control', 'private, no-store');
+    if (!row || !(row.data && row.data.comps_sent_at)) return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><title>Not found</title><p style="font-family:system-ui;padding:40px">This report link isn’t valid. Call us on 0207 096 8131.</p>');
+    const d = row.data, list = d.comps || [], s = compsStats(list), bt = d.beds ? (d.beds === 'Studio' ? 'studios' : d.beds + ' bedroom homes') : 'homes';
+    const pos = s.high > s.low ? Math.round((s.mid - s.low) / (s.high - s.low) * 100) : 50;
+    res.type('html').send('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Your local rent comparison | Residential Realtors</title>' +
+      '<style>body{margin:0;font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;background:#f6f7fb;color:#0f172a;line-height:1.5}.top{background:#0b1f3a;color:#fff;padding:22px 16px}.w{max-width:820px;margin:0 auto}.top img{height:40px;background:#fff;border-radius:8px;padding:4px 8px}.top h1{margin:16px 0 4px;font-size:1.7rem}.top p{margin:0;color:#c9d3e1}' +
+      '.card{background:#fff;border:1px solid #e6e9ef;border-radius:20px;padding:22px;margin:18px 16px}.rg{display:flex;justify-content:space-between;text-align:center;gap:10px}.rg span{display:block;color:#475467;font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.rg b{font-size:1.4rem;color:#0b1f3a}.rg .m b{font-size:2.1rem;color:#d9262e}' +
+      '.bar{position:relative;height:10px;border-radius:6px;background:linear-gradient(90deg,#d1fadf,#fef0c7,#fee4e2);margin:16px 6px 4px}.bar i{position:absolute;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;background:#d9262e;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25)}' +
+      'table{width:100%;border-collapse:collapse;font-size:.94rem}th,td{padding:10px 8px;border-bottom:1px solid #e6e9ef;text-align:left}th{color:#475467;font-size:.8rem}td.r{text-align:right;font-weight:800;color:#0b1f3a;white-space:nowrap}a{color:#d9262e;font-weight:700}.note{color:#475467;font-size:.88rem}.cta{background:#0b1f3a;color:#fff}.cta a.b{display:inline-block;margin-top:10px;background:#d9262e;color:#fff;text-decoration:none;padding:12px 18px;border-radius:12px}</style></head><body>' +
+      '<div class="top"><div class="w"><img src="/logo-tight.png" alt="Residential Realtors"><h1>Your local rent comparison</h1><p>' + e(row.address) + (d.beds ? ' · ' + e(d.beds === 'Studio' ? 'Studio' : d.beds + ' bed') : '') + '</p></div></div><div class="w">' +
+      '<div class="card"><p style="margin:0 0 12px;font-weight:700">' + s.n + ' similar ' + e(bt) + ' advertised to let nearby</p><div class="rg"><div><span>From</span><b>' + gbp0(s.low) + '</b></div><div class="m"><span>Typical</span><b>' + gbp0(s.mid) + '</b><div class="note">per month</div></div><div><span>Up to</span><b>' + gbp0(s.high) + '</b></div></div><div class="bar"><i style="left:' + pos + '%"></i></div></div>' +
+      '<div class="card"><table><thead><tr><th>Home</th><th>Distance</th><th style="text-align:right">Rent</th></tr></thead><tbody>' + list.map(function (c) { return '<tr><td>' + (c.url ? '<a href="' + e(c.url) + '" rel="noopener nofollow" target="_blank">' + e(c.address || 'See advert') + '</a>' : e(c.address)) + (c.beds ? '<div class="note">' + e(c.beds) + ' bed</div>' : '') + '</td><td>' + (c.dist ? e(c.dist) + ' miles' : '—') + '</td><td class="r">' + gbp0(c.rent) + ' pcm</td></tr>'; }).join('') + '</tbody></table>' +
+      (d.comps_note ? '<p>' + e(d.comps_note) + '</p>' : '') + '<p class="note">Asking rents on current adverts, checked by our team on ' + new Date(d.comps_sent_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }) + '. A guide only, not a valuation.</p></div>' +
+      '<div class="card cta"><b style="font-size:1.15rem">Want an exact figure for your property?</b><div style="color:#c9d3e1">Condition, floor, outside space and furnishing all count. Our free valuation looks at the whole picture.</div><a class="b" href="/landlords#valuation">Get my free valuation →</a> <a href="tel:02070968131" style="color:#fff;margin-left:10px">or call 0207 096 8131</a></div>' +
+      '</div></body></html>');
   }));
   // ---------- Viewing requests from a property page: the applicant proposes up to 3 times ----------
   // Times are London wall-clock ("2026-10-08T10:00"); this turns one into a real moment.
