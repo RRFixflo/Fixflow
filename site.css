@@ -1208,3 +1208,5 @@ html, body { overflow-x: clip; }
 .ag-g > div { padding: 14px 16px; border-radius: 14px; background: #f6f7fb; border: 1px solid var(--line); }
 .ag-g span { display: block; color: var(--soft); font-size: .78rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; } .ag-g b { color: var(--navy); } .ag-g small { display: block; color: var(--faint); font-size: .78rem; }
 .ag-g .ag-w { grid-column: 1 / -1; }
+/* Readiness / agent-score questions: keep the answers under the question in Safari (floated legend) */
+.rd-q { min-width: 0; display: flow-root; } .rd-q legend { display: block; max-width: 100%; white-space: normal; } .rd-o { clear: both; width: 100%; }
