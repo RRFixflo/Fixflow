@@ -6733,32 +6733,42 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const addr = String((t.data || {}).address || t.address || 'a tenancy');
     await p.query('UPDATE tenancies SET log = log || $2::jsonb WHERE id = $1', [t.id, JSON.stringify([{ at: new Date().toISOString(), text: 'Proof of payment uploaded: ' + gbp(amt) + (payer ? ' from ' + payer : '') }])]);
     const what = gbp(amt) + (payer ? ' from ' + payer : '') + ' — ' + addr.split(',').slice(0, 2).join(',');
-    ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin' : undefined, title: '💷 Move-in payment proof uploaded', message: what + '. Check it and confirm on the tenancy.' }).catch(function () {});
-    ownerEmail('Move-in payment proof: ' + what, function (link) { return 'A tenant has uploaded proof of a move-in payment: ' + what + '.\n\nOpen the tenancy in Fixflow to see the proof and confirm it once it is in the account: ' + link; }).catch(function () {});
+    // One email, to the negotiator on the tenancy only (the office inbox if no negotiator can be matched).
+    tcyNegotiator(p, t.data || {}).then(function (n) {
+      const body = function (link) { return 'A tenant has uploaded proof of a move-in payment: ' + what + '.\n\nOpen the tenancy in Fixflow to see the proof and confirm it once it is in the account: ' + link; };
+      if (!n.email) return ownerEmail('Move-in payment proof: ' + what, body);
+      if (!canEmail() || !sendEmail) return;
+      const text = 'Hi ' + (String(n.name || '').split(/\s+/)[0] || 'there') + ',\n\n' + body((PUBLIC_URL || OFFER_ORIGIN) + '/admin');
+      return sendEmail({ to: [n.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: 'Move-in payment proof: ' + what, text: text, html: brandEmail(text, 'Move-in payment proof') });
+    }).catch(function (e) { console.error('Payment proof email failed:', e.message); });
     res.json({ ok: true });
   }));
 
   // The negotiator who got the offer (copied in on the tenants' welcome email): the staff member the
   // linked offer is credited to (largest share), or else the name in the tenancy's Negotiator box,
   // matched to an active staff sign-in by full name or a unique first name.
-  app.get('/api/admin/tenancies/:id/negotiator', withDb(async function (p, req, res) {
-    const t = (await p.query('SELECT data FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
-    if (!t) return res.status(404).json({ ok: false });
-    const d = t.data || {}, names = [];
+  async function tcyNegotiator(p, d) {
+    // The Negotiator box on the tenancy first (it always names the right person), then whoever the offer is credited to.
+    const names = [];
+    if (d.negotiator) names.push(String(d.negotiator));
     if (d.offer_id) {
       const o = (await p.query("SELECT data->'credit' AS credit FROM offers WHERE id = $1", [parseInt(d.offer_id, 10) || 0])).rows[0];
       const cr = o && Array.isArray(o.credit) ? o.credit.filter(function (c) { return c && c.name && (c.share == null || Number(c.share) > 0); }) : [];
       cr.sort(function (a, b) { return (Number(b.share) || 0) - (Number(a.share) || 0); }).forEach(function (c) { names.push(String(c.name)); });
     }
-    if (d.negotiator) names.push(String(d.negotiator));
     const staff = (await p.query("SELECT name, email FROM staff_users WHERE disabled_at IS NULL AND coalesce(email, '') <> ''")).rows;
     const norm = function (v) { return String(v || '').toLowerCase().replace(/\s+/g, ' ').trim(); };
     for (const n of names) {
       let hit = staff.filter(function (u) { return norm(u.name) === norm(n); });
       if (!hit.length) { const f = norm(n).split(' ')[0]; hit = f ? staff.filter(function (u) { return norm(u.name).split(' ')[0] === f; }) : []; }
-      if (hit.length === 1) return res.json({ ok: true, name: hit[0].name, email: hit[0].email });
+      if (hit.length === 1) return { name: hit[0].name, email: hit[0].email };
     }
-    res.json({ ok: true, name: names[0] || '', email: '' });
+    return { name: names[0] || '', email: '' };
+  }
+  app.get('/api/admin/tenancies/:id/negotiator', withDb(async function (p, req, res) {
+    const t = (await p.query('SELECT data FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
+    if (!t) return res.status(404).json({ ok: false });
+    res.json(Object.assign({ ok: true }, await tcyNegotiator(p, t.data || {})));
   }));
   // Send a welcome email (when email sending is set up), with PDFs attached.
   app.post('/api/admin/tenancies/:id/email', withDb(async function (p, req, res) {
