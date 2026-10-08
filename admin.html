@@ -11747,7 +11747,7 @@
   var ltEnsureP = null;
   function ltEnsure(){
     if (ltItems.length) return Promise.resolve(ltItems);
-    if (!ltEnsureP) ltEnsureP = api('GET', '/api/admin/landlord-terms').then(function(d){ if (d && d.ok && !ltItems.length) { ltItems = d.items; ltOrigin = d.origin || ''; } return ltItems; }, function(){ ltEnsureP = null; return []; });
+    if (!ltEnsureP) ltEnsureP = api('GET', '/api/admin/landlord-terms').then(function(d){ if (d && d.ok) { if (!ltItems.length) { ltItems = d.items || []; ltOrigin = d.origin || ''; } } else ltEnsureP = null; return ltItems; }, function(){ ltEnsureP = null; return []; });
     return ltEnsureP;
   }
   function ltDay(v){ return v ? new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }) : ''; }
@@ -11769,18 +11769,22 @@
         '<span style="display:flex;gap:6px;flex:0 0 auto"><a class="btn small" target="_blank" rel="noopener" href="/api/admin/landlord-terms/' + t.id + '/pdf">View</a><a class="btn small ghost" href="/api/admin/landlord-terms/' + t.id + '/pdf?dl=1">⬇ PDF</a></span></div>';
     }).join('');
   }
+  // Is this set of terms from this person? Same email or mobile, or the same name with no different email.
+  function ltFromPerson(t, who){
+    var em = function(v){ return String(v || '').toLowerCase().trim(); }, nm = function(v){ return String(v || '').toLowerCase().replace(/^(mr|mrs|ms|miss|dr)\.?\s+/, '').replace(/\s+/g, ' ').trim(); };
+    if (em(who.email) && em(t.landlord_email) === em(who.email)) return true;
+    if (phoneTail(who.phone) && phoneTail(t.landlord_phone) === phoneTail(who.phone)) return true;
+    return !!nm(who.name) && nm(t.landlord_name) === nm(who.name) && !(em(who.email) && em(t.landlord_email) && em(who.email) !== em(t.landlord_email));
+  }
   function ltSort(list){ return list.slice().sort(function(a, b){ return new Date(b.signed_at || b.created_at) - new Date(a.signed_at || a.created_at); }); }
   function renderLlTerms(l){
     var box = $('llTerms'); if (!box) return;
     ltEnsure().then(function(){
       if (openLlId !== l.id) return;
-      var keys = llProperties(l).map(function(x){ return x.key; }), ph = function(v){ return phoneTail(v); };
-      var list = ltSort(ltItems.filter(function(t){
-        if (t.status === 'cancelled') return false;
-        return (l.email && t.landlord_email && t.landlord_email.toLowerCase().trim() === l.email.toLowerCase().trim()) || (ph(l.phone) && ph(t.landlord_phone) === ph(l.phone)) ||
-          keys.indexOf(propKey(t.property_address)) !== -1;
-      }));
-      box.hidden = !list.length; if (!list.length) return;
+      var keys = llProperties(l).map(function(x){ return x.key; });
+      var list = ltSort(ltItems.filter(function(t){ return t.status !== 'cancelled' && (ltFromPerson(t, l) || keys.indexOf(propKey(t.property_address)) !== -1); }));
+      box.hidden = false;
+      if (!list.length) { box.innerHTML = '<h3>Terms of business</h3><p class="muted-note" style="margin:0">No terms of business found for ' + esc(l.name || 'this landlord') + ' yet. Send them from <b>Landlord terms</b> in the menu.</p>'; return; }
       var g = list.filter(function(t){ return t.status === 'signed'; }).map(ltGiven)[0];
       var miss = g ? [['phone', g.phone], ['email', g.email], ['address', g.address]].filter(function(x){ return x[1] && !String(l[x[0]] || '').trim(); }) : [];
       var shown = box.dataset.all === String(l.id) ? list : list.slice(0, 5);
@@ -11806,7 +11810,10 @@
     if (!k) { box.hidden = true; return; }
     ltEnsure().then(function(){
       if (tcyDraft !== d || !$('tfTerms')) return;
+      var tl = d.landlord || {}, byLl = ltItems.filter(function(t){ return t.status !== 'cancelled' && ltFromPerson(t, tl); });
       var list = ltSort(ltItems.filter(function(t){ return t.status !== 'cancelled' && (propKey(t.property_address) === k || addrSame(t.property_address, d.address)); }));
+      // None for this exact address: the landlord's own terms (the address may be written differently).
+      if (!list.length) list = ltSort(byLl);
       var signed = list.filter(function(t){ return t.status === 'signed' && t.signed_at; });
       // Let under: the latest terms signed before (or within a month after) the start date, else the latest signed.
       var start = d.start_date ? new Date(d.start_date + 'T12:00:00Z').getTime() + 31 * 864e5 : Infinity;
@@ -11821,7 +11828,7 @@
           '<label class="crm-chk"><input type="radio" name="tfRentBank" value=""' + (useLl ? '' : ' checked') + '> Our account (the bank details under Templates)</label>' +
           '<label class="crm-chk"><input type="radio" name="tfRentBank" value="landlord"' + (useLl ? ' checked' : '') + (g && g.bank || lb ? '' : ' disabled') + '> The landlord’s own account' + (g && g.bank || lb ? '' : ' (no bank details from their terms yet)') + '</label>' +
           (useLl ? '<div class="muted-note" style="margin:4px 0 0;white-space:pre-line">' + esc(ltBankLines(lb).join('\n')) + '</div>' : '') +
-          '<p class="muted-note" style="margin:6px 0 0">Used for the account details on the tenancy agreement and in the tenant’s welcome email.</p></div>';
+          '<p class="muted-note" style="margin:6px 0 0">Used for the rent account details on the tenancy agreement. The tenant’s welcome email always shows our account, as we collect the first month’s rent and deposit.</p></div>';
       var save = function(msg){
         if (openTcyId === 'new' || !openTcyId) { toast(msg + ' — save the tenancy to keep it'); renderTcyTerms(); return; }
         api('PUT', '/api/admin/tenancies/' + openTcyId, tcyDraft).then(function(r){
@@ -14059,7 +14066,7 @@
       address: d.address || '', landlord_name: (d.landlord && d.landlord.name) || '', tenant_names: joinAnd(tcyNames(d.tenants)), start_date: longDay(d.start_date),
       payment_reference: d.pay_ref || payRef(d.address), move_in_due: weekdayDay(c.moveInDue), standing_order_start: ordDay(c.soStart), standing_order_payments: String(c.soPayments),
       first_rent: gbp(c.rent), deposit: gbp(c.deposit), move_in_total: gbp(c.total), holding_deposit: gbp(c.holding), move_in_remaining: gbp(c.remaining),
-      diy_link: DIY_LINK, checkin_date: ukDay(d.checkin_date || d.start_date), checkin_time: d.checkin_tbc ? 'a time the inventory clerk will contact you to confirm' : (d.checkin_time || '12:00'), bank_details: bankMarkup(tcyLlBank(d) ? ltBankLines(tcyLlBank(d)).join('\n') : t.bank_details), year: String(new Date().getFullYear())
+      diy_link: DIY_LINK, checkin_date: ukDay(d.checkin_date || d.start_date), checkin_time: d.checkin_tbc ? 'a time the inventory clerk will contact you to confirm' : (d.checkin_time || '12:00'), bank_details: bankMarkup(t.bank_details), year: String(new Date().getFullYear())
     };
   }
   // Email formatting marks → HTML (for pasting into Outlook or sending), or plain text.
