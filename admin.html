@@ -694,6 +694,9 @@
   .rb-llmark { display: inline-block; font-weight: 600; font-size: .8rem; padding: 1px 8px; border-radius: 999px; background: #f2f4f7; color: #475467; } .rb-llmark.ok { background: #ecfdf3; color: #067647; } .rb-llmark.due { background: #fffaeb; color: #b54708; }
   .rb-dchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .rb-dchip { border: 1px solid var(--line, #e5e7eb); background: #fff; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: .85rem; cursor: pointer; } .rb-dchip.on { background: var(--ink, #111); color: #fff; border-color: var(--ink, #111); }
   .mip { margin-bottom: 12px; } .mip-t { display: block; border-top: 1px solid var(--line, #e5e7eb); padding-top: 8px; margin-top: 8px; } .mip h3 + .mip-t { border-top: 0; margin-top: 0; padding-top: 0; } .mip-h { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; } .mip-h .linkish { text-align: left; }
+  .aa-card { border: 1px solid var(--line, #e5e7eb); border-radius: 12px; padding: 10px 12px; background: #fff; } .aa-answer { background: #f5f3ff; border-color: #ddd6fe; } .aa-h { display: block; margin-bottom: 4px; font-size: .86rem; }
+  .aa-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .92rem; line-height: 1.45; } .aa-clip { max-height: 160px; overflow: auto; margin-top: 6px; padding: 8px; background: var(--bg, #f6f7f9); border-radius: 8px; }
+  .aa-rems summary { cursor: pointer; font-weight: 600; font-size: .9rem; } .aa-rem { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line, #e5e7eb); font-size: .88rem; } .aa-rem label { flex: 1; display: flex; gap: 8px; align-items: flex-start; min-width: 0; overflow-wrap: anywhere; } .aa-rem small { color: var(--ink-soft, #667085); white-space: nowrap; } .aa-rem.done span { text-decoration: line-through; color: var(--ink-soft, #667085); } .aa-rem.late small { color: #b42318; font-weight: 600; }
   .jt-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
   .jt-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; cursor: pointer; }
   .jt-row input[type=radio] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
@@ -2390,6 +2393,9 @@
       <button type="button">Leaking tap in the bathroom at Flat 4, 22 Queen Street, give it to Jim</button>
       <button type="button">EICR needed at 9 Park Road</button>
       <button type="button">Add a contractor: Miguel from NW Cleaning, cleaner, 07404 043045</button>
+      <button type="button">Which rents are late this month?</button>
+      <button type="button">Remind me to call the landlord of 9 Park Road tomorrow at 10am</button>
+      <button type="button">Email the landlord of 9 Park Road to say the boiler has been fixed</button>
     </div>
     <div class="ask-file"><button class="btn small" id="askAttach" type="button">📎 Attach a document</button><button class="btn small" id="askDriveBtn" type="button" title="Use a file from Google Drive">🔗 From Google Drive</button><span id="askFileName" class="muted-note" style="margin:0"><span class="drop-hint">or drag &amp; drop files here</span></span>
       <button class="btn small ghost" id="askFileX" type="button" hidden title="Remove all">Remove all</button>
@@ -2402,6 +2408,8 @@
     <div class="err-msg" id="askErr" style="margin:0"></div>
     <div class="row-actions" style="margin-top:0"><span class="muted-note" style="margin-right:auto;font-size:.78rem">Ctrl + Enter to go</span><button class="btn" id="askClose" type="button">Close</button><button class="btn primary" id="askGo" type="button">✦ Go</button></div>
     <div class="row-actions" id="askAllRow" style="margin-top:0" hidden><span class="muted-note" id="askAllNote" style="margin-right:auto"></span><button class="btn primary" id="askAll" type="button">Create all</button></div>
+    <div id="askAssist" hidden style="display:flex;flex-direction:column;gap:10px"></div>
+    <details id="askRem" class="aa-rems" hidden><summary>⏰ Your reminders <span class="count-chip" id="askRemN"></span></summary><div id="askRemList"></div></details>
     <div id="askTenancies" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askCerts" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askProps" style="display:flex;flex-direction:column;gap:12px"></div>
@@ -9606,7 +9614,7 @@
   var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
   var rec = null, listening = false;
   function openAsk(mode){
-    $('askModal').hidden = false; $('askErr').textContent = '';
+    $('askModal').hidden = false; $('askErr').textContent = ''; loadReminders();
     if (!askDrafts.length && !askContacts.length) { $('askText').value = ''; $('askDrafts').innerHTML = ''; $('askContacts').innerHTML = ''; $('askAllRow').hidden = true; }
     setAskMode(mode === 'email' ? 'email' : (typeof mode === 'string' ? mode : askMode));
     setTimeout(function(){ $('askText').focus(); }, 50);
@@ -9831,6 +9839,60 @@
     return null;
   }
   $('askText').addEventListener('input', function(){ if ($('askErr').textContent) $('askErr').textContent = ''; });
+  // ---------- Ask Fixflow as an assistant: answers, emails, WhatsApp messages and reminders ----------
+  var askAssist = { emails: [], messages: [] };
+  function renderAskAssist(d){
+    var box = $('askAssist'); if (!box) return;
+    askAssist.emails = (d && d.emails) || []; askAssist.messages = (d && d.messages) || [];
+    var h = '';
+    if (d && d.answer) h += '<div class="aa-card aa-answer"><b class="aa-h">✦ Fixflow</b><div class="aa-text">' + esc(d.answer) + '</div></div>';
+    askAssist.emails.forEach(function(e, i){
+      h += '<div class="aa-card"><b class="aa-h">✉ Email' + (e.to_name ? ' to ' + esc(e.to_name) : '') + '</b><div class="muted-note" style="margin:0">' + esc(e.to.join(', ') || 'No email address found — add it before sending') + (e.subject ? ' · ' + esc(e.subject) : '') + '</div>' +
+        '<div class="aa-text aa-clip">' + esc(e.body) + '</div><div class="row-actions" style="margin-top:6px"><button type="button" class="btn small primary" data-aa-mail="' + i + '">Check &amp; send</button></div></div>';
+    });
+    askAssist.messages.forEach(function(m, i){
+      var wa = waNumber(m.phone);
+      h += '<div class="aa-card"><b class="aa-h">💬 WhatsApp' + (m.to_name ? ' to ' + esc(m.to_name) : '') + '</b><div class="muted-note" style="margin:0">' + esc(m.phone || 'No number found') + '</div><div class="aa-text">' + esc(m.text) + '</div>' +
+        '<div class="row-actions" style="margin-top:6px">' + (wa ? '<a class="btn small wa" target="_blank" rel="noopener" href="https://wa.me/' + wa + '?text=' + encodeURIComponent(m.text) + '">Open WhatsApp</a>' : '') + '<button type="button" class="btn small" data-aa-copy="' + i + '">Copy</button></div></div>';
+    });
+    // Reminders are set straight away (with an undo).
+    ((d && d.reminders) || []).forEach(function(r){
+      var due = new Date(r.due); if (isNaN(due.getTime())) return;
+      var id = 'aar' + Math.random().toString(36).slice(2, 8);
+      h += '<div class="aa-card" id="' + id + '"><b class="aa-h">⏰ Reminder</b><div class="aa-text">' + esc(r.text) + '</div><div class="muted-note aa-st" style="margin:0">Setting…</div></div>';
+      api('POST', '/api/admin/reminders', { text: r.text, due_at: due.toISOString() }).then(function(x){
+        var el = document.getElementById(id); if (!el) return;
+        el.querySelector('.aa-st').innerHTML = x && x.ok ? '✓ Set for ' + esc(due.toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + ' — you’ll get an email then. <button type="button" class="linkish" data-rem-del="' + x.id + '">Undo</button>' : 'Couldn’t set it — please try again.';
+        loadReminders();
+      });
+    });
+    box.innerHTML = h; box.hidden = !h;
+  }
+  function loadReminders(){
+    if (!$('askRem')) return;
+    api('GET', '/api/admin/reminders').then(function(d){
+      if (!d || !d.ok || !$('askRem')) return;
+      var open = d.reminders.filter(function(r){ return !r.done_at; });
+      $('askRem').hidden = !d.reminders.length;
+      $('askRemN').textContent = open.length ? open.length : '';
+      $('askRemList').innerHTML = d.reminders.map(function(r){
+        var late = !r.done_at && new Date(r.due_at) <= new Date();
+        return '<div class="aa-rem' + (r.done_at ? ' done' : '') + (late ? ' late' : '') + '"><label><input type="checkbox" data-rem-done="' + r.id + '"' + (r.done_at ? ' checked' : '') + '> <span>' + esc(r.text) + '</span></label><small>' + esc(new Date(r.due_at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</small><button type="button" class="linkish" data-rem-del="' + r.id + '" title="Delete">✕</button></div>';
+      }).join('') || '<p class="muted-note" style="margin:0">No reminders.</p>';
+    });
+  }
+  document.addEventListener('click', function(e){
+    var m = e.target.closest('[data-aa-mail]');
+    if (m) { var em = askAssist.emails[Number(m.dataset.aaMail)]; if (em) composeMail({ title: '✉ Email' + (em.to_name ? ' to ' + em.to_name : '') + ' — check before sending', to: em.to, subject: em.subject, body: em.body }); return; }
+    var c = e.target.closest('[data-aa-copy]');
+    if (c) { var ms = askAssist.messages[Number(c.dataset.aaCopy)]; if (ms) copyText(ms.text).then(function(){ toast('Copied'); }); return; }
+    var dl = e.target.closest('[data-rem-del]');
+    if (dl) { api('POST', '/api/admin/reminders/' + dl.dataset.remDel, { delete: true }).then(function(){ toast('Reminder removed'); var card = dl.closest('.aa-card'); if (card) card.querySelector('.aa-st').textContent = 'Removed.'; loadReminders(); }); return; }
+  });
+  document.addEventListener('change', function(e){
+    var cb = e.target.closest('[data-rem-done]'); if (!cb) return;
+    api('POST', '/api/admin/reminders/' + cb.dataset.remDone, { done: cb.checked }).then(loadReminders);
+  });
   function runAsk(){
     var text = $('askText').value.trim();
     if (!text && !askFiles.length) { $('askText').focus(); return; }
@@ -9841,9 +9903,10 @@
       busy($('askGo'), false);
       if (!d.ok && typeof d.file_index === 'number' && askFiles[d.file_index]) { askFiles.splice(d.file_index, 1); renderAskFiles(); }   // drop the link that failed
       if (!d.ok) { $('askErr').textContent = { 'file-type': 'I can read PDFs, Word (.docx) and text (.txt) files, and photos.', 'file-unreadable': 'I couldn’t read the words in that Word file — try saving it as a PDF.', 'file-too-big': 'That file is too big (15 MB max).', 'drive-link': 'That doesn’t look like a link to a Google Drive file — use Share → Copy link on the file.', 'drive-type': 'Google Sheets and Slides can’t be read — download it as a PDF, or use a Google Doc, PDF, Word file or photo.', 'drive-private': 'Google wouldn’t let me open that file. In Drive, open Share and set General access to “Anyone with the link”, then try again (you can switch it back afterwards).', 'drive-fetch': 'I couldn’t reach Google Drive just now — please try again.' }[d.error] || 'That didn’t go through — please press Go again.'; return; }
+      renderAskAssist(d.ok && d.understood ? d : null);
       var sentFiles = askFiles.slice();   // kept for certificates read from them
       if (d.understood) setAskFile(null);
-      if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can add jobs, properties, contacts and tenancies — try “add a gas safety for 6 Whitworth House”, “add 36 Balin House with tenants Sarah Jones 07700 900123 and Tom Lee”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; askProps = []; askCerts = []; renderAskContacts(); renderAskTenancies(); renderAskProps(); renderAskCerts(); $('askAllRow').hidden = true; return; }
+      if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can answer questions about your properties, rents and repairs, write emails and WhatsApp messages, set reminders, and add jobs, properties, contacts and tenancies — try “which rents are late?”, “add a gas safety for 6 Whitworth House”, “add 36 Balin House with tenants Sarah Jones 07700 900123 and Tom Lee”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; askProps = []; askCerts = []; renderAskContacts(); renderAskTenancies(); renderAskProps(); renderAskCerts(); $('askAllRow').hidden = true; return; }
       askContacts = (d.contacts || []).slice();
       askTenancies = (d.tenancies || []).slice();
       // Tenants or a landlord the AI listed as separate contacts alongside a new
