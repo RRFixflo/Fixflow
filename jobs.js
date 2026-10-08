@@ -4705,9 +4705,17 @@ module.exports = function mountJobs(app, opts) {
     const rowsIn = ['<tr><td>Rent ' + htmlEsc(day(m.from)) + ' – ' + htmlEsc(day(m.to)) + '</td><td class="a">' + money(m.rent) + '</td></tr>']
       .concat(m.deposit ? ['<tr><td>Deposit</td><td class="a">' + money(m.deposit) + '</td></tr>'] : [])
       .concat((m.credits || []).map(function (c) { return '<tr><td>' + htmlEsc(c.label) + '</td><td class="a">' + money(c.amount) + '</td></tr>'; }));
-    const rowsOut = (m.fees || []).map(function (f) { return '<tr><td>' + htmlEsc(f.label) + (f.vat ? ' <span class="muted">+ VAT ' + money(f.vat) + '</span>' : '') + '</td><td class="a">− ' + money(f.amount + (f.vat || 0)) + '</td></tr>'; })
+    // Repair charges link to the repair itself (progress, photos, notes) and its invoice.
+    const invIds = (m.fees || []).map(function (f) { return parseInt(f.invoice_id, 10) || 0; }).filter(Boolean), rep = {};
+    if (invIds.length) (await p.query('SELECT i.id, i.number, j.id AS job_id, j.track_token, j.category, j.affected FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id AND j.archived_at IS NULL WHERE i.id = ANY($1::int[])', [invIds])).rows.forEach(function (r) { rep[r.id] = r; });
+    const tok = htmlEsc(req.params.token);
+    const rowsOut = (m.fees || []).map(function (f) {
+      const r = rep[parseInt(f.invoice_id, 10) || 0], what = r && r.job_id ? [r.category, r.affected].filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(' — ') : '';
+      const label = r && r.job_id && r.track_token ? '<a class="rl" href="/t/' + htmlEsc(r.track_token) + '"><b>' + htmlEsc(what || 'Repair') + '</b> <span class="muted">' + htmlEsc(refFor(r.job_id)) + '</span> ›</a>' + '<div class="muted">Repair charge · <a href="/l/' + tok + '/invoice/' + r.id + '">View invoice ' + htmlEsc(r.number || '') + ' ›</a></div>'
+        : r ? htmlEsc(f.label) + ' · <a href="/l/' + tok + '/invoice/' + r.id + '">Invoice ›</a>' : htmlEsc(f.label);
+      return '<tr><td>' + label + (f.vat ? ' <span class="muted">+ VAT ' + money(f.vat) + '</span>' : '') + '</td><td class="a">− ' + money(f.amount + (f.vat || 0)) + '</td></tr>'; })
       .concat(m.bf ? ['<tr><td>Brought forward from the previous statement</td><td class="a">− ' + money(m.bf) + '</td></tr>'] : []);
-    res.send(trackShell('Statement ' + x.month, '<style>table{width:100%;border-collapse:collapse}td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}td.a{text-align:right;white-space:nowrap}tr.t td{font-weight:700;border-bottom:0;font-size:1.05rem}.muted{color:#6b7280;font-size:.86em}@media print{.noprint{display:none}}</style>' +
+    res.send(trackShell('Statement ' + x.month, '<style>a.rl{color:var(--blue);text-decoration:none;display:inline-block;padding:2px 0}a.rl:hover b{text-decoration:underline}td a{color:var(--blue)}table{width:100%;border-collapse:collapse}td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}td.a{text-align:right;white-space:nowrap}tr.t td{font-weight:700;border-bottom:0;font-size:1.05rem}.muted{color:#6b7280;font-size:.86em}@media print{.noprint{display:none}}</style>' +
       '<p class="noprint"><a href="/l/' + htmlEsc(req.params.token) + '" style="color:var(--blue);font-weight:600;text-decoration:none">← Your properties</a></p>' +
       '<h1>Statement — ' + htmlEsc(x.month) + '</h1><p class="sub">' + (who.l && who.l.name ? '<b>' + htmlEsc(who.l.name) + '</b> · ' : '') + htmlEsc(x.address || '') + '</p>' +
       '<div class="card"><h3 style="margin:0 0 6px">Money in</h3><table>' + rowsIn.join('') + '<tr class="t"><td>Total in</td><td class="a">' + money(m.income) + '</td></tr></table></div>' +
@@ -4721,7 +4729,8 @@ module.exports = function mountJobs(app, opts) {
     const who = await landlordByToken(p, req.params.token);
     const inv = who ? await invoiceRow(p, req.params.id) : null;
     if (!inv || who.keys[propKey(inv.property_address)] === undefined) return res.status(404).send(trackShell('Invoice not found', '<h1>Invoice not found</h1>', true));
-    res.send(invoicePage(inv, '/l/' + htmlEsc(req.params.token), '← Your properties'));
+    const tj = inv.job_id ? (await p.query('SELECT track_token FROM jobs WHERE id = $1', [inv.job_id])).rows[0] : null;
+    res.send(invoicePage(inv, '/l/' + htmlEsc(req.params.token), '← Your properties', tj && tj.track_token ? '/t/' + tj.track_token : ''));
   }));
   // The office's view of an invoice (e.g. a tenancy's renewal fee).
   app.get('/api/admin/invoices/:id/view', withDb(async function (p, req, res) {
@@ -4734,14 +4743,14 @@ module.exports = function mountJobs(app, opts) {
     return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.paid_at, i.data, i.job_id, coalesce(j.property_address, i.address) AS property_address FROM invoices i
       LEFT JOIN jobs j ON j.id = i.job_id WHERE i.id = $1 AND (i.job_id IS NULL OR j.archived_at IS NULL) AND (i.job_id IS NULL OR j.id IS NOT NULL)`, [parseInt(id, 10) || 0])).rows[0] || null;
   }
-  function invoicePage(inv, back, backText) {
+  function invoicePage(inv, back, backText, repairLink) {
     const dt = inv.data || {}, day = function (v) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
     const money = function (v) { return v == null ? '' : '£' + Number(v).toFixed(2); };
     const overdue = !inv.paid_at && dt.due && dt.due < new Date().toISOString().slice(0, 10);
     const pay = INVOICE.payee && INVOICE.accountNumber ? '<div class="card"><h3 style="margin:0 0 6px">How to pay</h3><div>' + htmlEsc(INVOICE.payee) + '</div><div>Sort code ' + htmlEsc(INVOICE.sortCode) + ' · Account ' + htmlEsc(INVOICE.accountNumber) + '</div><div class="muted">Please use the reference ' + htmlEsc(dt.ref || inv.number) + '</div></div>' : '';
     return trackShell('Invoice ' + inv.number, '<style>table{width:100%;border-collapse:collapse}td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}td.a{text-align:right;white-space:nowrap;padding-left:12px}tr.t td{font-weight:800;border-bottom:0;font-size:1.05rem}.st{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:700;font-size:.8rem}.st.ok{background:var(--ok);color:#fff}.st.due{background:var(--ambert);color:var(--amber)}.st.late{background:#fdecec;color:var(--red)}@media print{header,.noprint{display:none}}</style>' +
       '<p class="noprint"><a href="' + back + '" style="color:var(--blue);font-weight:600;text-decoration:none">' + backText + '</a></p>' +
-      '<h1>Invoice ' + htmlEsc(inv.number) + '</h1><p class="sub">' + htmlEsc(inv.property_address || '') + (inv.job_id ? ' · repair ' + htmlEsc(refFor(inv.job_id)) : dt.title ? ' · ' + htmlEsc(dt.title) : '') + '</p>' +
+      '<h1>Invoice ' + htmlEsc(inv.number) + '</h1><p class="sub">' + htmlEsc(inv.property_address || '') + (inv.job_id ? ' · repair ' + (repairLink ? '<a href="' + htmlEsc(repairLink) + '" style="color:var(--blue);font-weight:600">' + htmlEsc(refFor(inv.job_id)) + ' — see the repair ›</a>' : htmlEsc(refFor(inv.job_id))) : dt.title ? ' · ' + htmlEsc(dt.title) : '') + '</p>' +
       '<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div class="muted">Issued</div><b>' + htmlEsc(day(dt.date) || day(inv.created_at.toISOString())) + '</b></div>' +
         (dt.due ? '<div><div class="muted">Due</div><b>' + htmlEsc(day(dt.due)) + '</b></div>' : '') +
         '<div><div class="muted">Status</div>' + (inv.paid_at ? '<span class="st ok">Paid ' + htmlEsc(day(inv.paid_at.toISOString())) + '</span>' : overdue ? '<span class="st late">Overdue</span>' : '<span class="st due">Awaiting payment</span>') + '</div></div></div>' +
