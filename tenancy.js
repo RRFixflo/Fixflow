@@ -6,6 +6,7 @@
 // they come from Railway variables, and can be edited in the admin page, where
 // they are saved in the database.
 //   TENANCY_BANK_DETAILS        the bank account block for move-in monies
+//   DIY_ACCESS_CODE             (optional) the DIY check-in access code for the tenants' welcome email (also set under Templates)
 //   TENANCY_SIGNATURE_TENANT    signature under the tenants' welcome email
 //   TENANCY_SIGNATURE_LANDLORD  signature under the landlord's welcome email
 const zlib = require('zlib');
@@ -54,6 +55,7 @@ Please register with the relevant local authority for council tax purposes withi
 
 [diy][b]Where no formal inventory has been commissioned for your property, you may submit your own record of the property's condition using our DIY check-in platform:[/b]
 {{diy_link}}
+[b]Your access code:[/b] [red]{{diy_code}}[/red] — enter this on the DIY check-in page so you don’t need to pay.
 [b]Your submission, including photographs and written notes, must be completed within 7 days of your tenancy commencement date. We will review it and confirm in writing within 7 days if any part of it is disputed. If we do not raise a dispute within that period, your submission will stand as the agreed record of the property's condition for deposit purposes.[/b][/diy]
 
 [b][u]Cleaning[/u][/b]
@@ -135,6 +137,7 @@ function defaultTemplates() {
     landlord_subject: 'Welcome pack: {{address}}',
     landlord_body: LANDLORD_BODY,
     bank_details: envText('TENANCY_BANK_DETAILS'),
+    diy_code: envText('DIY_ACCESS_CODE'),
     signature_tenant: envText('TENANCY_SIGNATURE_TENANT') || 'Residential Realtors\n28-30 Harper Road, London, SE1 6AD\nwww.residentialrealtors.co.uk',
     signature_landlord: envText('TENANCY_SIGNATURE_LANDLORD') || envText('TENANCY_SIGNATURE_TENANT') || 'Residential Realtors\n28-30 Harper Road, London, SE1 6AD\nwww.residentialrealtors.co.uk'
   };
@@ -431,7 +434,12 @@ function bankRules(b) {
   // numbers wherever they appear.
   const whole = function (rule) { return rule ? [new RegExp('^(\\s*)' + rule[0].source + '(\\s*)$', 'i'), function (m, a, z) { return a + rule[1] + z; }] : null; };
   const own = [whole(lit(our.holder, b.holder)), lit(our.sort, b.sort, true), lit(our.account, b.account, true), lit(our.iban, b.iban), lit(our.swift, b.swift), whole(lit(our.bank, b.bank))].filter(Boolean);
-  return own.concat([said('Account\\s*(?:name|holder)|Name\\s*of\\s*account|Payee|Beneficiary', b.holder), said('Bank\\s*name|\\bBank', b.bank),
+  // Written in a sentence: "… to Example Bank, Sort Code … Account Number … in the name of Example Ltd."
+  // (only next to the sort code / account number, so "in the name of" elsewhere is left alone)
+  const inName = b.holder ? [/((?:Sort\s*Code|Account\s*(?:Number|No\.?))[^.]*?\bin\s+the\s+name\s+of\s+)(.+?)(?=\s*(?:[.;,](?:\s|$)|\s+Reference\b|$))/gi, function (m, pre) { return pre + b.holder; }] : null;
+  const inName2 = b.holder ? [/(\bin\s+the\s+name\s+of\s+)(.+?)(?=\s*[,;]?\s*(?:Sort\s*Code|Account\s*(?:Number|No\.?))\b)/gi, function (m, pre) { return pre + b.holder; }] : null;
+  const toBank = b.bank ? [/(\b(?:to|with|into)\s+)((?:[A-Z][\w&'.-]*\s+){0,4}Bank(?:\s+(?:plc|PLC|UK|Limited|Ltd))?)(?=\s*,|\s+(?:Sort|Account)\b)/g, function (m, pre) { return pre + b.bank; }] : null;
+  return own.concat([inName, inName2, toBank, said('Account\\s*(?:name|holder)|Name\\s*of\\s*account|Payee|Beneficiary', b.holder), said('Bank\\s*name|\\bBank', b.bank),
     r('Sort\\s*code', b.sort, '\\d{2}\\s*[-\u2013 ]?\\s*\\d{2}\\s*[-\u2013 ]?\\s*\\d{2}'), r('Account\\s*(?:number|no\\.?)', b.account, '\\d[\\d ]{5,10}\\d'),
     said('IBAN', b.iban), said('SWIFT(?:\\s*/\\s*BIC)?|\\bBIC', b.swift)].filter(Boolean));
 }
