@@ -3505,6 +3505,52 @@ module.exports = function mountJobs(app, opts) {
     await quoteNote(p, r.rows[0], st === 'sent' ? 'Quote ' + r.rows[0].number + ' sent to the landlord' + (b.how ? ' by ' + str(b.how, 20) : '') + '.' : st === 'draft' ? 'Quote ' + r.rows[0].number + ' reopened.' : 'Quote ' + r.rows[0].number + ' marked as ' + st + ' by the landlord (recorded by ' + ((req.user && req.user.name) || 'the office') + ').');
     res.json({ ok: true });
   }));
+  // Change a quote after it's made (same number and link). If the landlord had already answered, it reopens so
+  // they answer the new version.
+  app.put('/api/admin/quotes/:id', withDb(async function (p, req, res) {
+    await quotesTable(p);
+    const id = parseInt(req.params.id, 10) || 0, b = req.body || {}, q = (await p.query('SELECT * FROM quotes WHERE id = $1', [id])).rows[0];
+    if (!q) return res.status(404).json({ ok: false });
+    const lines = (Array.isArray(b.lines) ? b.lines : []).slice(0, 30).map(function (l) { const x = { desc: str(l && l.desc, 300) || '', amount: money(l && l.amount) }; if (l && l.novat === true && b.vat !== false) x.novat = true; return x; }).filter(function (l) { return l.desc && l.amount; });
+    if (!lines.length) return res.status(400).json({ ok: false, error: 'lines' });
+    const r2 = function (v) { return Math.round(v * 100) / 100; };
+    const sub = r2(lines.reduce(function (a, l) { return a + l.amount; }, 0)), vat = b.vat === false ? 0 : r2(lines.reduce(function (a, l) { return a + (l.novat ? 0 : l.amount); }, 0) * 0.2), total = r2(sub + vat);
+    const days = parseInt(b.valid_days, 10), answered = q.status === 'accepted' || q.status === 'declined';
+    const data = Object.assign({}, q.data, { title: str(b.title, 160) || lines[0].desc, lines: lines, sub: sub, vat: vat, total: total, notes: str(b.notes, 2000) || '', edited: new Date().toISOString(), version: (q.data.version || 1) + 1 });
+    if (days > 0) data.valid_until = new Date(Date.now() + Math.min(180, days) * 86400000).toISOString().slice(0, 10);
+    await p.query("UPDATE quotes SET data = $2, total = $3" + (answered ? ", status = CASE WHEN sent_at IS NULL THEN 'draft' ELSE 'sent' END, decided_at = NULL, decided_by = NULL, decision_note = NULL" : '') + ' WHERE id = $1', [id, JSON.stringify(data), total]);
+    await quoteNote(p, q, 'Quote ' + q.number + ' changed by ' + ((req.user && req.user.name) || 'the office') + ' — now ' + gbp(total) + (answered ? ' (the landlord had ' + q.status + ' it; they need to answer the new version).' : '.'));
+    res.json({ ok: true, total: total, reopened: answered });
+  }));
+  // AI: break the work on a quote into clear lines — labour, each material (including the small things such as
+  // silicone, fixings, sealant), disposal. With a total, the lines add up to it exactly; without, typical prices.
+  app.post('/api/admin/quotes/ai-lines', withDb(async function (p, req, res) {
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    const b = req.body || {}, total = money(b.total), title = str(b.title, 200), notes = str(b.notes, 1000), have = (Array.isArray(b.lines) ? b.lines : []).map(function (l) { return str(l && l.desc, 200); }).filter(Boolean).slice(0, 10);
+    let job = '';
+    const jid = parseInt(b.job_id, 10);
+    if (jid) { const j = (await p.query('SELECT category, affected, symptom, location, description FROM jobs WHERE id = $1', [jid])).rows[0]; if (j) job = [j.category, j.affected, j.symptom].filter(Boolean).join(' – ') + (j.location ? ' (' + j.location + ')' : '') + (j.description ? '. Reported: ' + String(j.description).replace(/\s+/g, ' ').slice(0, 400) : ''); }
+    if (!title && !have.length && !job) return res.status(400).json({ ok: false, error: 'empty' });
+    const prompt = 'You price quotes for Residential Realtors, a London letting agent, quoting a landlord for work at their rental property.\n\n' +
+      'The work: ' + (title || have[0] || job) + '\n' + (job ? 'The repair job: ' + job + '\n' : '') + (have.length ? 'Lines written so far: ' + have.join('; ') + '\n' : '') + (notes ? 'Notes: ' + notes + '\n' : '') +
+      '\nBreak the work into clear quote lines a landlord can follow: labour (with a sensible number of hours or days), each main material, and the smaller materials and consumables the job really needs (for example silicone sealant, fixings, adhesive, end caps, filler, protective sheeting), plus waste removal or call-out only if they fit. ' +
+      'Group tiny items into one "sundries" line if there are many. 3 to 8 lines. Short, specific descriptions, e.g. "Laminate worktop, 3m (supply)", "Silicone sealant and fixings". No brand names, part numbers, contractor names or dates. ' +
+      (total ? 'The total to charge is £' + total.toFixed(2) + ' before VAT — the amounts must add up to exactly that. ' : 'Give typical 2026 London trade prices as estimates (what a landlord would expect to pay before VAT). ') +
+      'Amounts in pounds with 2 decimals. Reply with ONLY JSON: {"lines": [{"desc": "...", "amount": 0.00}]}';
+    const result = await opts.askAi(prompt, true);
+    if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
+    let lines = null;
+    try { const parsed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim());
+      lines = (parsed.lines || []).map(function (l) { return { desc: str(l.desc, 300), amount: money(l.amount) }; }).filter(function (l) { return l.desc && typeof l.amount === 'number' && l.amount > 0; }).slice(0, 10); } catch (e) { lines = null; }
+    if (!lines || !lines.length) return res.status(502).json({ ok: false, error: 'ai-bad-reply' });
+    if (total) {   // exactly the total: scale if far off, then put any rounding gap on the largest line
+      const sum = Math.round(lines.reduce(function (a, l) { return a + l.amount; }, 0) * 100), want = Math.round(total * 100);
+      if (sum !== want && Math.abs(want - sum) > want * 0.02) { const f = want / sum; lines.forEach(function (l) { l.amount = Math.round(l.amount * f * 100) / 100; }); }
+      const gap = want - Math.round(lines.reduce(function (a, l) { return a + l.amount; }, 0) * 100), big = lines.reduce(function (a, l) { return l.amount > a.amount ? l : a; }, lines[0]);
+      big.amount = Math.round(big.amount * 100 + gap) / 100;
+    }
+    res.json({ ok: true, lines: lines, estimate: !total });
+  }));
   app.delete('/api/admin/quotes/:id', withDb(async function (p, req, res) {
     await quotesTable(p);
     const r = await p.query('DELETE FROM quotes WHERE id = $1 RETURNING job_id, number', [parseInt(req.params.id, 10) || 0]);
@@ -3527,7 +3573,7 @@ module.exports = function mountJobs(app, opts) {
       : '';
     return trackShell('Quote ' + q.number, '<style>table{width:100%;border-collapse:collapse}td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}td.a{text-align:right;white-space:nowrap;padding-left:12px}tr.t td{font-weight:800;border-bottom:0;font-size:1.05rem}.st{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:700;font-size:.85rem}.st.ok{background:#ecfdf3;color:#067647}.st.due{background:#fffaeb;color:#b54708}.st.late{background:#fef3f2;color:#b42318}@media print{.noprint{display:none}}</style>' +
       (staffView ? '<p class="noprint"><a href="/admin" style="color:var(--blue);font-weight:600;text-decoration:none">← Back to Fixflow</a></p>' : '') +
-      '<h1>Quote ' + htmlEsc(q.number) + '</h1><p class="sub">' + htmlEsc(q.address || '') + (dt.title ? ' · ' + htmlEsc(dt.title) : '') + '</p>' +
+      '<h1>Quote ' + htmlEsc(q.number) + (dt.version > 1 ? ' <span style="font-size:.6em;color:#6b7280;font-weight:600">updated ' + htmlEsc(day(dt.edited)) + '</span>' : '') + '</h1><p class="sub">' + htmlEsc(q.address || '') + (dt.title ? ' · ' + htmlEsc(dt.title) : '') + '</p>' +
       '<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">' + (dt.landlord ? '<div><div class="muted">For</div><b>' + htmlEsc(dt.landlord) + '</b></div>' : '') +
         '<div><div class="muted">Date</div><b>' + htmlEsc(day(dt.date)) + '</b></div>' + (dt.valid_until ? '<div><div class="muted">Valid until</div><b>' + htmlEsc(day(dt.valid_until)) + '</b></div>' : '') +
         '<div><div class="muted">Status</div>' + st + '</div></div></div>' +

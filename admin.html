@@ -731,6 +731,7 @@
   .riv-top { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; } .riv { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line, #eef0f3); } .riv.off { opacity: .6; } .riv-img img { width: 110px; height: 74px; object-fit: cover; border-radius: 8px; display: block; } .riv-b { display: grid; gap: 3px; min-width: 0; font-size: .85rem; } .riv-b small, .riv-their, .riv-ll { color: var(--ink-soft); overflow-wrap: anywhere; } .riv-their b { color: var(--ink); } .riv-why { justify-self: start; font-size: .75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #fef3f2; color: #b42318; } .riv-why.street { background: #f2f4f7; color: #475467; } .riv-why.openrent { background: #ecfdf3; color: #067647; } .riv-more { margin-top: 8px; } .riv-more summary { cursor: pointer; font-weight: 700; font-size: .85rem; padding: 6px 0; } @media (max-width: 520px) { .riv-img img { width: 84px; height: 60px; } }
   .tn-ai { margin: 0 0 10px; border: 1px solid #d9d6fe; background: #f8f7ff; border-radius: 12px; padding: 8px 10px; } .tn-ai summary { cursor: pointer; font-weight: 700; color: #5925dc; } .tn-ai[open] summary { margin-bottom: 8px; } .tn-ai-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
   .pt-copy { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; } .pt-cp { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 40px; padding: 6px 12px; border: 1px solid var(--line, #dfe3ea); border-radius: 999px; background: #fff; font: inherit; font-size: .88rem; color: var(--ink); cursor: pointer; text-align: left; } .pt-cp span { overflow-wrap: anywhere; min-width: 0; } .pt-cp i { font-style: normal; font-weight: 700; font-size: .78rem; color: #175cd3; flex: none; } .pt-cp.all { background: #f5f8ff; border-color: #c7d7fe; font-weight: 700; } .pt-cp.done { background: #ecfdf3; border-color: #75e0a7; } .pt-cp.done i::after { content: ' ✓'; }
+  .ni-ai { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; padding: 10px; border: 1px solid #d9d6fe; background: #f8f7ff; border-radius: 12px; } .ni-ai .inp { flex: 1 1 200px; width: auto; min-width: 0; }
   .q-row { grid-template-columns: minmax(0,1fr) 110px !important; } .q-acts { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } .q-st { width: auto !important; max-width: 100%; padding: 6px 8px; font-size: .85rem; } .q-row .addr, .q-row .addr strong, .q-row .addr small { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; } .q-row .addr small { display: block; }
   .crm-qq { background: #f0f9ff; border: 1px solid #b9e6fe; border-radius: 12px; padding: 12px; margin: 12px 0; display: grid; gap: 6px; } .crm-qq-btns { display: flex; gap: 8px; flex-wrap: wrap; }
   .crm-vw { background: #fffaeb; border: 1px solid #fedf89; border-radius: 12px; padding: 12px; margin: 12px 0; } .crm-slots { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
@@ -999,6 +1000,7 @@
   @media (max-width: 700px) { .tcy-rc { grid-template-columns: 1fr 1fr; } .tcy-rc > :first-child { grid-column: 1 / -1; } }
   .tcy-fee { display: grid; grid-template-columns: minmax(0,1fr) 120px 34px; gap: 8px; margin-bottom: 8px; }
   .tcy-fee.nv4 { grid-template-columns: minmax(0,1fr) 110px auto 34px; }
+  @media (max-width: 560px) { #niLines .tcy-fee.nv4 { grid-template-columns: minmax(0,1fr) auto 34px; } #niLines .tcy-fee.nv4 [data-nl=desc] { grid-column: 1 / -1; } }
   .tcy-nv { display: flex; align-items: center; gap: 5px; font-size: .82rem; color: var(--ink-soft); white-space: nowrap; cursor: pointer; }
   .tcy-nv input { margin: 0; }
   .tcy-x { height: 40px; border: 1px solid var(--line); background: none; border-radius: 10px; cursor: pointer; color: var(--ink-soft); font-size: 1.1rem; }
@@ -2716,11 +2718,14 @@
       <label class="lbl" style="margin-top:10px">What it’s for (title)</label><input class="inp" id="niTitleIn" placeholder="e.g. Fees for the let, Inventory, Key cutting">
       <label class="lbl" style="margin-top:10px">Lines (before VAT)</label><div id="niLines"></div>
       <button type="button" class="btn small ghost" id="niAddLine">+ Another line</button>
+      <div class="ni-ai" id="niAiRow" hidden><button type="button" class="btn small" id="niAiGo">✨ Break down the costs</button><input class="inp" id="niAiTotal" inputmode="decimal" placeholder="Total to split, £ before VAT (optional)">
+        <span class="muted-note" id="niAiMsg" style="margin:0;flex-basis:100%">Lists labour, each material and the small extras (silicone, fixings…). With a total it splits it exactly; without one it suggests typical London prices — check them before sending.</span></div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px">
         <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="niVat" checked> Add VAT (20%)</label>
         <label style="display:flex;gap:6px;align-items:center" id="niDueWrap">Due <input class="inp" type="date" id="niDue" style="width:auto"></label>
         <label style="display:flex;gap:6px;align-items:center" id="niValidWrap" hidden>Valid for <select class="inp" id="niValid" style="width:auto"><option value="14">14 days</option><option value="30" selected>30 days</option><option value="60">60 days</option><option value="90">90 days</option></select></label>
       </div>
+      <p class="muted-note" id="niEditNote" hidden style="margin:10px 0 0"></p>
       <div id="niNotesWrap" hidden><label class="lbl" style="margin-top:10px">Notes for the landlord (optional)</label><textarea class="inp" id="niNotes" rows="3" placeholder="e.g. what’s included, how long it takes, access needed"></textarea>
         <p class="muted-note" style="margin:4px 0 0">The landlord sees the lines, notes and total — don’t include contractor names or what we pay.</p></div>
       <p id="niTotal" style="margin:10px 0 0;font-weight:700"></p>
@@ -10458,7 +10463,10 @@
     ni = Object.assign({ address: '', title: '', lines: [{ desc: '', amount: '' }], vat: true, tenancy_id: null, kind: '', props: null, after: null, mode: '', job_id: null, landlord_id: null }, o || {});
     var quote = ni.mode === 'quote';
     $('niTitle').textContent = quote ? 'New quotation for the landlord' : 'New invoice to the landlord'; $('niCreate').textContent = quote ? 'Create quote' : 'Create invoice';
-    $('niDueWrap').hidden = quote; $('niValidWrap').hidden = !quote; $('niNotesWrap').hidden = !quote; $('niNotes').value = ''; $('niValid').value = '30';
+    $('niDueWrap').hidden = quote; $('niValidWrap').hidden = !quote; $('niNotesWrap').hidden = !quote; $('niNotes').value = ni.notes || ''; $('niValid').value = String(ni.validDays || 30);
+    $('niAiRow').hidden = !quote || !meta.canAi; $('niAiTotal').value = ''; $('niAiMsg').dataset.base = $('niAiMsg').dataset.base || $('niAiMsg').textContent; $('niAiMsg').textContent = $('niAiMsg').dataset.base;
+    if (ni.editId) { $('niTitle').textContent = 'Edit quotation'; $('niCreate').textContent = 'Save changes'; }
+    $('niEditNote').hidden = !ni.editId; $('niEditNote').textContent = ni.editAnswered ? '⚠ The landlord has already ' + ni.editAnswered + ' this quote. Saving changes reopens it so they can answer the new version — send it to them again.' : 'Same quote number and link — the landlord sees the new version when they open it.';
     var props = ni.props || allPropsForList().map(function(p){ return p.address; });
     $('niProps').innerHTML = props.map(function(a){ return '<option value="' + esc(a) + '">'; }).join('');
     $('niAddr').value = ni.address || (ni.props && ni.props.length === 1 ? ni.props[0] : '');
@@ -10491,6 +10499,7 @@
     var addr = $('niAddr').value.trim(), lines = ni.lines.filter(function(l){ return l.desc && num(l.amount); });
     if (!addr) { toast('Choose the property'); $('niAddr').focus(); return; }
     if (!lines.length) { toast('Add a line with a description and an amount'); return; }
+    if (ni.mode === 'quote' && ni.editId) { niSaveQuote(lines); return; }
     if (ni.mode === 'quote') { niCreateQuote(addr, lines); return; }
     var b = $('niCreate'); busy(b, true, 'Creating…');
     api('POST', '/api/admin/invoices', { address: addr, title: $('niTitleIn').value.trim() || lines[0].desc, lines: lines.map(function(l){ return { desc: l.desc, amount: num(l.amount), novat: !!l.novat }; }), vat: $('niVat').checked, due: $('niDue').value, tenancy_id: ni.tenancy_id, kind: ni.kind }).then(function(d){
@@ -10509,6 +10518,26 @@
       loadAllInvoices().then(function(){ if (view === 'll' && openLlId) renderLandlord(); if (ni.after) ni.after(d); });
     });
   });
+  $('niAiGo').addEventListener('click', function(){
+    niRead();
+    var b = $('niAiGo'), tot = num($('niAiTotal').value), title = $('niTitleIn').value.trim();
+    if (!title && !ni.lines.some(function(l){ return l.desc; }) && !ni.job_id) { toast('Write what the work is first (the title)'); $('niTitleIn').focus(); return; }
+    busy(b, true, 'Working it out…'); $('niAiMsg').textContent = 'Working out the lines — a few seconds…';
+    api('POST', '/api/admin/quotes/ai-lines', { title: title, lines: ni.lines, total: tot || null, job_id: ni.job_id, notes: $('niNotes').value.trim() }).then(function(d){
+      busy(b, false);
+      if (!d || !d.ok) { $('niAiMsg').textContent = 'Couldn’t break it down just now — please try again.'; return; }
+      ni.lines = d.lines.map(function(l){ return { desc: l.desc, amount: l.amount }; }); niDrawLines(); niUpdate();
+      $('niAiMsg').textContent = d.estimate ? '✓ Suggested lines with typical London prices — check and change any amounts before sending.' : '✓ Split into ' + d.lines.length + ' lines adding up to ' + gbp(tot) + ' before VAT — change anything you like.';
+    });
+  });
+  function niSaveQuote(lines){
+    var b = $('niCreate'); busy(b, true, 'Saving…');
+    api('PUT', '/api/admin/quotes/' + ni.editId, { title: $('niTitleIn').value.trim() || lines[0].desc, lines: lines.map(function(l){ return { desc: l.desc, amount: num(l.amount), novat: !!l.novat }; }), vat: $('niVat').checked, valid_days: $('niValid').value, notes: $('niNotes').value.trim() }).then(function(d){
+      busy(b, false);
+      if (!d || !d.ok) { toast('Couldn’t save the quote (' + ((d && d.error) || 'error') + ')'); return; }
+      $('niModal').hidden = true; toast(d.reopened ? '✓ Saved — the quote is reopened; send it to the landlord again' : '✓ Quote updated — now ' + gbp(d.total)); if (qRefresh) qRefresh();
+    });
+  }
   function niCreateQuote(addr, lines){
     var b = $('niCreate'); busy(b, true, 'Creating…');
     api('POST', '/api/admin/quotes', { address: addr, job_id: ni.job_id, landlord_id: ni.landlord_id, title: $('niTitleIn').value.trim() || lines[0].desc, lines: lines.map(function(l){ return { desc: l.desc, amount: num(l.amount), novat: !!l.novat }; }),
@@ -10541,6 +10570,7 @@
         '<div class="q-acts"><a class="btn small" href="/api/admin/quotes/' + q.id + '/view" target="_blank" rel="noopener">Open</a>' +
           '<button class="btn small primary" type="button" data-q-send="email" data-q="' + q.id + '">✉ Email</button>' +
           (waNumber(d.landlordPhone) ? '<button class="btn small wa" type="button" data-q-send="wa" data-q="' + q.id + '">WhatsApp</button>' : '') +
+          '<button class="btn small" type="button" data-q-edit="' + q.id + '">✏️ Edit</button>' +
           '<button class="btn small ghost" type="button" data-q-copy="' + q.id + '">Copy link</button>' +
           '<select class="inp q-st" data-q-st="' + q.id + '" title="Record the landlord’s answer (e.g. by phone)">' + ['draft', 'sent', 'accepted', 'declined'].map(function(k){ return '<option value="' + k + '"' + (k === q.status ? ' selected' : '') + '>' + Q_ST[k][0] + '</option>'; }).join('') + '</select>' +
           (opts.invoice && q.status === 'accepted' && !q.job_id ? '<button class="btn small" type="button" data-q-inv="' + q.id + '">🧾 Turn into invoice</button>' : '') +
@@ -10569,6 +10599,10 @@
     composeMail({ to: d.landlordEmail ? [d.landlordEmail] : [], subject: 'Quote ' + q.number + ' — ' + shortAddr(q.address), body: quoteText(q), title: '✉ Send the quote to the landlord', onSent: function(){ quoteMark(q, 'email'); } });
   }
   document.addEventListener('click', function(e){
+    var ed = e.target.closest && e.target.closest('[data-q-edit]');
+    if (ed) { var qe = qCache[ed.dataset.qEdit]; if (!qe) return; var de = qe.data || {}, left = de.valid_until ? Math.max(1, Math.ceil((new Date(de.valid_until + 'T23:59:00') - new Date()) / 864e5)) : 30;
+      openNewInvoice({ mode: 'quote', editId: qe.id, editAnswered: qe.status === 'accepted' || qe.status === 'declined' ? qe.status : '', address: qe.address, props: [qe.address], title: de.title, vat: !!de.vat, notes: de.notes || '', validDays: [14, 30, 60, 90].reduce(function(a, b){ return Math.abs(b - left) < Math.abs(a - left) ? b : a; }, 30),
+        lines: (de.lines || []).map(function(l){ return { desc: l.desc, amount: l.amount, novat: !!l.novat }; }) }); return; }
     var s = e.target.closest && e.target.closest('[data-q-send]'), c = e.target.closest && e.target.closest('[data-q-copy]'), x = e.target.closest && e.target.closest('[data-q-del]'), iv = e.target.closest && e.target.closest('[data-q-inv]');
     if (s) { var q = qCache[s.dataset.q]; if (q) quoteSend(q, s.dataset.qSend); return; }
     if (c) { var q2 = qCache[c.dataset.qCopy]; if (q2) copyText(q2.url).then(function(){ toast('✓ Link to the quote copied'); }); return; }
