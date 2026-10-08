@@ -420,9 +420,20 @@ function bankRules(b) {
   const stop = '(?=\\s*(?:Account\\s*(?:name|number|no\\.?)|Sort\\s*code|Bank(?:\\s*name)?\\s*:|IBAN|SWIFT|BIC|Reference|Payee|$))';
   const r = function (label, val, value) { return val ? [new RegExp('((?:' + label + ')\\s*(?::|-|\u2013)?\\s*)(' + value + ')', 'gi'), function (m, pre) { return pre + val; }] : null; };
   const said = function (label, val) { return val ? [new RegExp('((?:' + label + ')\\s*:\\s*)(.+?)' + stop, 'gi'), function (m, pre) { return pre + val; }] : null; };
-  return [said('Account\\s*name|Payee', b.holder), said('Bank\\s*name|\\bBank', b.bank),
+  // Our own account details (from Templates), wherever they are written — e.g. in a table cell next to the label.
+  const esc = function (x) { return String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+  const our = b.our || {}, lit = function (from, to, loose) {
+    if (!from || !to || String(from).replace(/\W/g, '').length < 4) return null;
+    const src = loose ? String(from).replace(/\D/g, '').split('').map(esc).join('[\\s\\-\u2013]*') : esc(String(from).trim()).replace(/\s+/g, '\\s+');
+    return [new RegExp(loose ? '(?<!\\d)' + src + '(?!\\d)' : src, 'gi'), to];
+  };
+  // Names only when they are the whole line or cell (so the agency's name elsewhere in the agreement is left alone);
+  // numbers wherever they appear.
+  const whole = function (rule) { return rule ? [new RegExp('^(\\s*)' + rule[0].source + '(\\s*)$', 'i'), function (m, a, z) { return a + rule[1] + z; }] : null; };
+  const own = [whole(lit(our.holder, b.holder)), lit(our.sort, b.sort, true), lit(our.account, b.account, true), lit(our.iban, b.iban), lit(our.swift, b.swift), whole(lit(our.bank, b.bank))].filter(Boolean);
+  return own.concat([said('Account\\s*(?:name|holder)|Name\\s*of\\s*account|Payee|Beneficiary', b.holder), said('Bank\\s*name|\\bBank', b.bank),
     r('Sort\\s*code', b.sort, '\\d{2}\\s*[-\u2013 ]?\\s*\\d{2}\\s*[-\u2013 ]?\\s*\\d{2}'), r('Account\\s*(?:number|no\\.?)', b.account, '\\d[\\d ]{5,10}\\d'),
-    said('IBAN', b.iban), said('SWIFT(?:\\s*/\\s*BIC)?|\\bBIC', b.swift)].filter(Boolean);
+    said('IBAN', b.iban), said('SWIFT(?:\\s*/\\s*BIC)?|\\bBIC', b.swift)].filter(Boolean));
 }
 
 function fillAgreement(buf, v) {

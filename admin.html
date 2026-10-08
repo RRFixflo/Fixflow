@@ -11827,7 +11827,7 @@
         '<div class="lt-given"><b>Account for the rent on the tenancy agreement</b>' +
           '<label class="crm-chk"><input type="radio" name="tfRentBank" value=""' + (useLl ? '' : ' checked') + '> Our account (the bank details under Templates)</label>' +
           '<label class="crm-chk"><input type="radio" name="tfRentBank" value="landlord"' + (useLl ? ' checked' : '') + (g && g.bank || lb ? '' : ' disabled') + '> The landlord’s own account' + (g && g.bank || lb ? '' : ' (no bank details from their terms yet)') + '</label>' +
-          (useLl ? '<div class="muted-note" style="margin:4px 0 0;white-space:pre-line">' + esc(ltBankLines(lb).join('\n')) + '</div>' : '') +
+          (useLl ? '<div class="muted-note" style="margin:4px 0 0;white-space:pre-line">' + esc(ltBankLines(Object.assign({}, lb, { holder: lb.holder || (d.landlord && d.landlord.name) || '' })).join('\n')) + '</div>' : '') +
           '<p class="muted-note" style="margin:6px 0 0">Used for the rent account details on the tenancy agreement. The tenant’s welcome email always shows our account, as we collect the first month’s rent and deposit.</p></div>';
       var save = function(msg){
         if (openTcyId === 'new' || !openTcyId) { toast(msg + ' — save the tenancy to keep it'); renderTcyTerms(); return; }
@@ -14059,6 +14059,21 @@
     return { name: llFullName(l.name, rec.name), lines: parts.concat(pc ? [pc] : []) };
   }
   // The landlord's own bank account, when the rent is paid to them (chosen on the tenancy from their terms).
+  // For the agreement: the landlord's account (account name defaults to the landlord's name), plus our
+  // account from Templates so it can be swapped wherever it is written (labelled lines or table cells).
+  function tcyAgreementBank(d){
+    var b = tcyLlBank(d); if (!b) return undefined;
+    var out = Object.assign({}, b), t = (tcySet && tcySet.templates) || {}, our = {};
+    if (!out.holder) out.holder = (d.landlord && d.landlord.name) || '';
+    String(t.bank_details || '').split('\n').forEach(function(line){
+      var m = /^\s*(account\s*name|account\s*holder|payee|beneficiary|name\s*of\s*account|sort\s*code|account\s*(?:number|no\.?)|bank(?:\s*name)?|iban|swift(?:\s*\/\s*bic)?|bic)\s*[:\-\u2013]?\s*(.+?)\s*$/i.exec(line);
+      if (!m) return;
+      var k = m[1].toLowerCase(), v = m[2];
+      if (/sort/.test(k)) our.sort = v; else if (/number|no/.test(k)) our.account = v; else if (/iban/.test(k)) our.iban = v; else if (/swift|bic/.test(k)) our.swift = v; else if (/^bank/.test(k)) our.bank = v; else our.holder = v;
+    });
+    out.our = our;
+    return out;
+  }
   function tcyLlBank(d){ return d && d.rent_bank === 'landlord' && d.landlord_bank && (d.landlord_bank.account || d.landlord_bank.iban) ? d.landlord_bank : null; }
   function tcyValues(d){
     var c = tcyCalc(d), t = (tcySet && tcySet.templates) || {};
@@ -15812,7 +15827,7 @@
     return {
       address: d.address, payment_reference: d.pay_ref || payRef(d.address), landlord: (d.landlord || {}).name || '', start: longDay(d.start_date), rent: gbp(c.rent), deposit: gbp(c.deposit), deposit_scheme: d.deposit_scheme || '',
       first_rent: longDay(c.moveInDue), rent_day: so ? ordinal(so.getDate()) : '', second_rent: ordDay(c.soStart), second_rent_month: so ? MONTHS_EN[so.getMonth()] : '',
-      agreement_date: longDay(isoDay(new Date())), tenants: tcyNames(d.tenants), guarantors: tcyNames(d.guarantors), values: tcyValues(d), bank: tcyLlBank(d) || undefined
+      agreement_date: longDay(isoDay(new Date())), tenants: tcyNames(d.tenants), guarantors: tcyNames(d.guarantors), values: tcyValues(d), bank: tcyAgreementBank(d)
     };
   }
   // The agreement from the server, as a Blob.
