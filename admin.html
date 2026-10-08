@@ -740,6 +740,7 @@
   .ni-ai { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; padding: 10px; border: 1px solid #d9d6fe; background: #f8f7ff; border-radius: 12px; } .ni-ai .inp { flex: 1 1 200px; width: auto; min-width: 0; }
   .q-row { grid-template-columns: minmax(0,1fr) 110px !important; } .q-acts { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } .q-st { width: auto !important; max-width: 100%; padding: 6px 8px; font-size: .85rem; } .q-row .addr, .q-row .addr strong, .q-row .addr small { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; } .q-row .addr small { display: block; }
   .crm-qq { background: #f0f9ff; border: 1px solid #b9e6fe; border-radius: 12px; padding: 12px; margin: 12px 0; display: grid; gap: 6px; } .crm-qq-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .crm-qq-list { display: grid; gap: 4px; } .crm-qq-list label { display: flex; gap: 8px; align-items: flex-start; font-size: .86rem; line-height: 1.35; cursor: pointer; } .crm-qq-list input { flex: 0 0 auto; width: 16px; height: 16px; margin: 2px 0 0; }
   .crm-vw { background: #fffaeb; border: 1px solid #fedf89; border-radius: 12px; padding: 12px; margin: 12px 0; } .crm-slots { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
   .crm-slot { border: 1.5px solid #b54708; color: #b54708; background: #fff; border-radius: 10px; padding: 8px 12px; font: inherit; font-weight: 700; cursor: pointer; } .crm-slot.on { background: #067647; border-color: #067647; color: #fff; }
   .crm-other { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .crm-other input { width: auto; } .crm-chk { display: flex; gap: 6px; align-items: center; font-size: .86rem; margin-top: 8px; }
@@ -8893,7 +8894,9 @@
         '<div class="crm-other"><label class="muted-note" style="margin:0">' + (d.confirmed ? 'Change the time' : 'Or another time') + '</label><input class="inp" type="datetime-local" step="900" data-crm-at><button type="button" class="btn small" data-crm-confirm-other>Confirm &amp; email</button></div>' +
         '<label class="crm-chk"><input type="checkbox" data-crm-mail' + (x.email ? ' checked' : ' disabled') + '> Email them the confirmation' + (x.email ? '' : ' (no email)') + '</label></div>';
       // Before the viewing: ask what we still need to know (move date, who's moving in, an offer…).
-      if (x.phone || x.email) h += '<div class="crm-qq"><b>❓ Ask them qualifying questions</b><span class="muted-note" style="margin:0">' + esc(crmQQ(x).list.length) + ' questions — only what we don’t know yet. You can edit the message before it goes.</span><div class="crm-qq-btns">' +
+      if (x.phone || x.email) h += '<div class="crm-qq"><b>❓ Ask them qualifying questions</b><span class="muted-note" style="margin:0">Untick any you don’t want to ask, and add your own below. You can still edit the message before it goes.</span>' +
+        '<div class="crm-qq-list">' + crmQQ(x).list.map(function(t, i){ return '<label><input type="checkbox" data-crm-qq-pick="' + i + '" checked> <span>' + esc(t) + '</span></label>'; }).join('') + '</div>' +
+        '<textarea class="inp" data-crm-qq-extra rows="2" placeholder="Your own question(s) — one per line, e.g. Would you be happy with a 12-month tenancy?"></textarea><div class="crm-qq-btns">' +
         (x.phone && waNumber(x.phone) ? '<button type="button" class="btn small wa-btn" data-crm-qq="wa">💬 WhatsApp</button>' : '') + (x.email ? '<button type="button" class="btn small" data-crm-qq="email">✉ Email</button>' : '') + '</div></div>';
     }
     // Status, who's looking after it, follow-up.
@@ -8910,7 +8913,8 @@
     return h + '</div></div>';
   }
   // Qualifying questions for someone who asked to view: only the ones their request didn't answer.
-  function crmQQ(x){
+  // The questions to ask (sel: { skip: [numbers of the suggested questions to leave out], extra: [staff's own questions] }).
+  function crmQQ(x, sel){
     var d = x.data || {}, sale = d.listing === 'sale', q = [];
     if (sale) {
       q.push('Are you a first-time buyer, or do you have a property to sell? If so, is it on the market, under offer or sold?');
@@ -8931,6 +8935,7 @@
       q.push('Are you happy to go through referencing and Right to Rent checks (we’ll need photo ID for each adult)?');
       q.push('If you like the property, are you in a position to make an offer and pay the holding deposit (one week’s rent) straight away?');
     }
+    if (sel) q = q.filter(function(t, i){ return (sel.skip || []).indexOf(i) === -1; }).concat(sel.extra || []);
     var me = String((meta.user && meta.user.name) || '').split(/\s+/)[0].replace(/^Owner$/, ''), first = String(x.name || '').trim().split(/\s+/)[0] || 'there', addr = String(x.address || 'the property').split(',').slice(0, 2).join(',');
     var text = 'Hi ' + first + ',\n\nThank you for asking to view ' + addr + (d.confirmed ? ' — we’ll see you ' + crmSlot(d.confirmed) : '') + '. To help us arrange everything, could you let us know:\n\n' +
       q.map(function(t, i){ return (i + 1) + '. ' + t; }).join('\n') + '\n\nThank you' + (d.confirmed ? '' : ' — once we have this we’ll confirm your viewing time') + '.\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors\n0207 096 8131';
@@ -8997,7 +9002,9 @@
     if (e.target.closest('[data-crm-restore]')) { api('POST', '/api/admin/crm/archive', { ref: x.ref, restore: true }).then(crmDone('↩︎ Put back')); return; }
     if ((b = e.target.closest('[data-crm-fu-in]'))) { var n = +b.dataset.crmFuIn, dt = n ? new Date(Date.now() + n * 86400000).toLocaleDateString('en-CA', { timeZone: TZ }) : ''; api('POST', '/api/admin/crm/meta', { ref: x.ref, follow_up: dt }).then(crmDone(n ? '⏰ Follow-up set' : 'Follow-up cleared')); return; }
     var qq = e.target.closest('[data-crm-qq]');
-    if (qq) { var Q = crmQQ(x), how = qq.dataset.crmQq, logIt = function(via){ api('POST', '/api/admin/crm/note', { ref: x.ref, note: 'Sent qualifying questions by ' + via + ':\n' + Q.list.map(function(t, i){ return (i + 1) + '. ' + t; }).join('\n') }).then(crmDone()); };
+    if (qq && card && !card.querySelector('[data-crm-qq-pick]:checked') && !((card.querySelector('[data-crm-qq-extra]') || {}).value || '').trim()) { toast('Tick a question or write your own'); return; }
+    if (qq) { var Q = crmQQ(x, { skip: Array.from(card.querySelectorAll('[data-crm-qq-pick]')).filter(function(c){ return !c.checked; }).map(function(c){ return Number(c.dataset.crmQqPick); }),
+        extra: ((card.querySelector('[data-crm-qq-extra]') || {}).value || '').split(/\n+/).map(function(l){ return l.replace(/^\s*(?:\d+[.)]|[-•*])\s*/, '').trim(); }).filter(Boolean) }), how = qq.dataset.crmQq, logIt = function(via){ api('POST', '/api/admin/crm/note', { ref: x.ref, note: 'Sent qualifying questions by ' + via + ':\n' + Q.list.map(function(t, i){ return (i + 1) + '. ' + t; }).join('\n') }).then(crmDone()); };
       if (how === 'wa') { window.open('https://wa.me/' + waNumber(x.phone) + '?text=' + encodeURIComponent(Q.text), '_blank', 'noopener'); logIt('WhatsApp'); }
       else composeMail({ to: [x.email], subject: Q.subject, body: Q.text, title: '❓ Ask qualifying questions', onSent: function(){ logIt('email'); } });
       return; }
