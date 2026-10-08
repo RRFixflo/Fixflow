@@ -156,10 +156,12 @@ module.exports = function (app, opts) {
   }, 10 * 60000).unref();
 
   // ---------- New on Rightmove near the office ----------
-  // Every couple of hours in the day: adverts (to rent and for sale, other agents) newly on Rightmove within a
-  // quarter of a mile of the office — landlords worth a call. The first look only records what's there already.
+  // Every couple of hours in the day: adverts to rent newly on Rightmove near the office — other agents' within a
+  // quarter of a mile, and OpenRent's (private landlords letting it themselves) within half a mile. Landlords worth a
+  // call. The first look only records what's there already.
   const OFFICE_PC = String(process.env.OFFICE_POSTCODE || 'SE1 6AD').toUpperCase().replace(/\s+/g, ' ').trim();
-  const NEAR_MILES = Math.min(2, Math.max(0.1, parseFloat(process.env.NEARBY_MILES) || 0.25));
+  const NEAR_MILES = Math.min(2, Math.max(0.1, parseFloat(process.env.NEARBY_MILES) || 0.25)), OPEN_MILES = Math.min(2, Math.max(NEAR_MILES, parseFloat(process.env.NEARBY_OPENRENT_MILES) || 0.5));
+  const isOpenRent = function (x) { const c = x.customer || {}; return /open\s*rent/i.test(String(c.brandTradingName || '') + ' ' + String(c.branchDisplayName || '')); };
   let nearReady = null, nearRunning = false;
   async function nearPool() {
     const p = await opts.db(); if (!p) return null;
@@ -185,38 +187,38 @@ module.exports = function (app, opts) {
       if (!s.pcId) { try { const j = JSON.parse(await get('https://los.rightmove.co.uk/typeahead?query=' + encodeURIComponent(OFFICE_PC) + '&limit=10', true) || '{}');
         const m = (j.matches || []).filter(function (x) { return String(x.type).toUpperCase() === 'POSTCODE'; })[0]; if (m) s.pcId = String(m.id); } catch (e) { if (e.blocked) throw e; } }
       s.oc = s.oc || {}; s.checked = s.checked || {};
-      const isNew = !s.seeded, found = [];
-      for (const buy of [false, true]) {
-        let ads = [];
-        if (s.pcId) ads = await search(null, null, { loc: 'POSTCODE%5E' + s.pcId, radius: NEAR_MILES <= 0.25 ? '0.25' : NEAR_MILES <= 0.5 ? '0.5' : '1.0', buy: buy, fresh: true });
-        else { const id = await outcodeId(s, OFFICE_PC.split(' ')[0]); if (id) ads = await search(id, null, { buy: buy, fresh: true }); }
-        sum.adverts += ads.length;
-        ads.forEach(function (x) {
-          const loc = x.location || {}, lat = Number(loc.latitude), lng = Number(loc.longitude), d = isFinite(lat) && isFinite(lng) && lat ? miles(s.office.lat, s.office.lng, lat, lng) : null;
-          if (d == null ? !s.pcId : d > NEAR_MILES + 0.01) return;   // outside the circle (or no map position to tell)
-          found.push({ x: x, buy: buy, d: d });
-        });
-        await wait(1500);
-      }
+      // (seeded2: the first look since OpenRent's wider circle was added — records without alerting, like the very first)
+      const isNew = !s.seeded2, found = [], wide = Math.max(NEAR_MILES, OPEN_MILES);
+      let ads = [];
+      if (s.pcId) ads = await search(null, null, { loc: 'POSTCODE%5E' + s.pcId, radius: wide <= 0.25 ? '0.25' : wide <= 0.5 ? '0.5' : wide <= 1 ? '1.0' : '3.0', fresh: true });
+      else { const id = await outcodeId(s, OFFICE_PC.split(' ')[0]); if (id) ads = await search(id, null, { fresh: true }); }
+      sum.adverts = ads.length;
+      ads.forEach(function (x) {
+        const loc = x.location || {}, lat = Number(loc.latitude), lng = Number(loc.longitude), d = isFinite(lat) && isFinite(lng) && lat ? miles(s.office.lat, s.office.lng, lat, lng) : null;
+        const lim = isOpenRent(x) ? OPEN_MILES : NEAR_MILES;
+        if (d == null ? !(s.pcId && lim >= wide) : d > lim + 0.01) return;   // outside its circle (or no map position to tell)
+        found.push({ x: x, buy: false, d: d });
+      });
       sum.inside = found.length;
       const fresh = [];
       for (const f of found) {
         const x = f.x, c = x.customer || {}, pr = ((x.price || {}).displayPrices || [])[0] || {}, img = T.abs(((x.propertyImages || {}).mainImageSrc) || ((((x.propertyImages || {}).images) || [])[0] || {}).srcUrl || '');
         const q = await p.query(`INSERT INTO nearby_ads (rm_id, channel, address, price, beds, type, agent, url, img, listed, miles, seeded) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           ON CONFLICT (rm_id) DO UPDATE SET price = $4, last_seen = now() RETURNING (xmax = 0) AS fresh`,
-          [String(x.id), f.buy ? 'sale' : 'let', String(x.displayAddress || '').slice(0, 200), String(pr.displayPrice || '').slice(0, 40), x.bedrooms == null ? null : Number(x.bedrooms), String(x.propertySubType || x.propertyTypeFullDescription || '').slice(0, 60),
+          [String(x.id), isOpenRent(x) ? 'openrent' : 'let', String(x.displayAddress || '').slice(0, 200), String(pr.displayPrice || '').slice(0, 40), x.bedrooms == null ? null : Number(x.bedrooms), String(x.propertySubType || x.propertyTypeFullDescription || '').slice(0, 60),
             String(c.brandTradingName || c.branchDisplayName || 'An agent').slice(0, 120), T.RM + '/properties/' + x.id, T.isImg(img) ? img : null, String(x.firstVisibleDate || '').slice(0, 10), f.d == null ? null : Math.round(f.d * 100) / 100, isNew]);
         if (q.rows[0] && q.rows[0].fresh && !isNew) fresh.push(f);
       }
-      sum.fresh = fresh.length; s.seeded = true;
-      await p.query("DELETE FROM nearby_ads WHERE last_seen < now() - interval '120 days'");
+      sum.fresh = fresh.length; s.seeded = true; s.seeded2 = true;
+      await p.query("DELETE FROM nearby_ads WHERE last_seen < now() - interval '120 days' OR channel = 'sale'");
       if (fresh.length && opts.alert) {
-        const first = fresh[0].x;
-        opts.alert({ title: '📍 ' + (fresh.length === 1 ? 'New on Rightmove near the office' : fresh.length + ' new on Rightmove near the office'), message: String(first.displayAddress || '').split(',')[0] + ' — ' + (fresh[0].buy ? 'for sale' : 'to rent') + ' with ' + String((first.customer || {}).brandTradingName || 'another agent') + (fresh.length > 1 ? ' (+' + (fresh.length - 1) + ' more)' : '') + '. A landlord to call.', tags: ['round_pushpin'] });
+        const first = fresh.filter(function (f) { return isOpenRent(f.x); })[0] || fresh[0], fx = first.x, nOpen = fresh.filter(function (f) { return isOpenRent(f.x); }).length;
+        opts.alert({ title: '📍 ' + (fresh.length === 1 ? (nOpen ? 'New OpenRent let near the office' : 'New to let near the office') : fresh.length + ' new to let near the office' + (nOpen ? ' (' + nOpen + ' OpenRent)' : '')),
+          message: String(fx.displayAddress || '').split(',')[0] + ' — ' + (isOpenRent(fx) ? 'private landlord on OpenRent' : 'with ' + String((fx.customer || {}).brandTradingName || 'another agent')) + (fresh.length > 1 ? ' (+' + (fresh.length - 1) + ' more)' : '') + '. A landlord to call.', tags: ['round_pushpin'] });
       }
     } catch (e) { sum.error = String(e.message || e).slice(0, 200); console.error('Near the office check:', sum.error); }
     try { if (p && s) { s.run = sum; await nearState(p, s); } } catch (e) {}
-    console.log('Near the office check: ' + sum.adverts + ' adverts, ' + sum.inside + ' within ' + NEAR_MILES + ' mile, ' + sum.fresh + ' new' + (sum.error ? ' — ' + sum.error : ''));
+    console.log('Near the office check: ' + sum.adverts + ' adverts to rent, ' + sum.inside + ' within ' + NEAR_MILES + ' mile (OpenRent ' + OPEN_MILES + '), ' + sum.fresh + ' new' + (sum.error ? ' — ' + sum.error : ''));
     nearRunning = false; return sum;
   }
   // Every 2 hours from 8am to 8pm (London).
@@ -230,7 +232,7 @@ module.exports = function (app, opts) {
   app.get('/api/admin/nearby', async function (req, res) {
     if (!mgr(req)) return res.status(403).json({ ok: false });
     try { const p = await nearPool(), s = await nearState(p);
-      res.json({ ok: true, run: s.run || null, running: nearRunning, miles: NEAR_MILES, office: OFFICE_PC, items: (await p.query("SELECT * FROM nearby_ads WHERE NOT seeded AND first_seen > now() - interval '60 days' ORDER BY (dismissed_at IS NULL) DESC, first_seen DESC LIMIT 200")).rows }); }
+      res.json({ ok: true, run: s.run || null, running: nearRunning, miles: NEAR_MILES, openMiles: OPEN_MILES, office: OFFICE_PC, items: (await p.query("SELECT * FROM nearby_ads WHERE NOT seeded AND channel <> 'sale' AND first_seen > now() - interval '60 days' ORDER BY (dismissed_at IS NULL) DESC, first_seen DESC LIMIT 200")).rows }); }
     catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
   app.post('/api/admin/nearby/run', function (req, res) {
