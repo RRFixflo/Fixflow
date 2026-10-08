@@ -3448,6 +3448,125 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true });
   }));
 
+  // ---------- Quotations to landlords ----------
+  // A price for work (from a repair job, or any work at a landlord's property), sent to the landlord as a private
+  // link where they can accept or decline it. Kept apart from invoices, so a quote is never counted as owed.
+  let quotesReady = null;
+  async function quotesTable(p) {
+    if (!quotesReady) quotesReady = p.query(`CREATE TABLE IF NOT EXISTS quotes (id SERIAL PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), created_by TEXT, job_id INTEGER, landlord_id INTEGER,
+      address TEXT, property_key TEXT, number TEXT, total NUMERIC(12,2), status TEXT NOT NULL DEFAULT 'draft', token TEXT UNIQUE, data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      sent_at TIMESTAMPTZ, decided_at TIMESTAMPTZ, decided_by TEXT, decision_note TEXT)`).catch(function (e) { quotesReady = null; throw e; });
+    await quotesReady;
+  }
+  const quoteUrl = function (req, token) { return (process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : req.protocol + '://' + req.get('host'))) + '/q/' + token; };
+  async function quoteNote(p, q, text) {
+    if (q.job_id) { await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [q.job_id, 'change', text]); await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1', [q.job_id]); }
+  }
+  app.post('/api/admin/quotes', withDb(async function (p, req, res) {
+    await quotesTable(p);
+    const b = req.body || {}, jid = parseInt(b.job_id, 10) || null;
+    let address = str(b.address, 500) || '';
+    if (jid && !address) address = ((await p.query('SELECT property_address FROM jobs WHERE id = $1', [jid])).rows[0] || {}).property_address || '';
+    const key = propKey(address); if (!key) return res.status(400).json({ ok: false, error: 'address' });
+    const lines = (Array.isArray(b.lines) ? b.lines : []).slice(0, 30).map(function (l) { const x = { desc: str(l && l.desc, 300) || '', amount: money(l && l.amount) }; if (l && l.novat === true && b.vat !== false) x.novat = true; return x; }).filter(function (l) { return l.desc && l.amount; });
+    if (!lines.length) return res.status(400).json({ ok: false, error: 'lines' });
+    const r2 = function (v) { return Math.round(v * 100) / 100; };
+    const sub = r2(lines.reduce(function (a, l) { return a + l.amount; }, 0)), vat = b.vat === false ? 0 : r2(lines.reduce(function (a, l) { return a + (l.novat ? 0 : l.amount); }, 0) * 0.2), total = r2(sub + vat);
+    const lid = parseInt(b.landlord_id, 10) || null;
+    const ll = (lid ? (await p.query('SELECT id, name, email, phone, address FROM landlords WHERE id = $1', [lid])).rows[0] : null) ||
+      (await p.query('SELECT l.id, l.name, l.email, l.phone, l.address FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [key])).rows[0] || {};
+    const days = Math.max(1, Math.min(180, parseInt(b.valid_days, 10) || 30)), today = new Date().toISOString().slice(0, 10);
+    const token = crypto.randomBytes(18).toString('base64url');
+    const ins = await p.query('INSERT INTO quotes (created_by, job_id, landlord_id, address, property_key, total, token) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+      [(req.user && req.user.name) || 'Office', jid, ll.id || null, address, key, total, token]);
+    const id = ins.rows[0].id, number = 'QUO-' + String(id).padStart(5, '0');
+    const data = { number: number, title: str(b.title, 160) || lines[0].desc, date: today, valid_until: new Date(Date.now() + days * 86400000).toISOString().slice(0, 10), landlord: ll.name || '', landlordEmail: ll.email || '',
+      landlordPhone: ll.phone || '', landlordAddress: ll.address || '', lines: lines, sub: sub, vat: vat, total: total, notes: str(b.notes, 2000) || '' };
+    await p.query('UPDATE quotes SET number = $2, data = $3 WHERE id = $1', [id, number, JSON.stringify(data)]);
+    await quoteNote(p, { job_id: jid }, 'Quote ' + number + ' for ' + gbp(total) + ' created for the landlord — ' + data.title);
+    res.json({ ok: true, id: id, number: number, total: total, url: quoteUrl(req, token), landlord_name: data.landlord, landlord_email: data.landlordEmail, landlord_phone: data.landlordPhone, title: data.title, address: address });
+  }));
+  app.get('/api/admin/quotes', withDb(async function (p, req, res) {
+    await quotesTable(p);
+    const jid = parseInt(req.query.job_id, 10), lid = parseInt(req.query.landlord_id, 10);
+    const r = await p.query('SELECT id, created_at, created_by, job_id, landlord_id, address, number, total, status, token, data, sent_at, decided_at, decided_by, decision_note FROM quotes WHERE ' +
+      (jid ? 'job_id = $1' : lid ? 'landlord_id = $1' : 'true') + ' ORDER BY id DESC LIMIT 200', jid || lid ? [jid || lid] : []);
+    res.json({ ok: true, items: r.rows.map(function (q) { q.url = quoteUrl(req, q.token); delete q.token; q.expired = q.status !== 'accepted' && q.status !== 'declined' && q.data.valid_until && q.data.valid_until < new Date().toISOString().slice(0, 10); return q; }) });
+  }));
+  // Sent (by email or WhatsApp), or the landlord said yes / no on the phone.
+  app.post('/api/admin/quotes/:id/status', withDb(async function (p, req, res) {
+    await quotesTable(p);
+    const b = req.body || {}, st = ['sent', 'accepted', 'declined', 'draft'].indexOf(b.status) !== -1 ? b.status : '';
+    if (!st) return res.status(400).json({ ok: false, error: 'status' });
+    const r = await p.query("UPDATE quotes SET status = CASE WHEN $2 = 'sent' AND status IN ('accepted', 'declined') THEN status ELSE $2 END, sent_at = CASE WHEN $2 = 'sent' THEN now() ELSE sent_at END, " +
+      "decided_at = CASE WHEN $2 IN ('accepted', 'declined') THEN now() WHEN $2 = 'draft' THEN NULL ELSE decided_at END, decided_by = CASE WHEN $2 IN ('accepted', 'declined') THEN $3 WHEN $2 = 'draft' THEN NULL ELSE decided_by END WHERE id = $1 RETURNING job_id, number",
+      [parseInt(req.params.id, 10) || 0, st, (req.user && req.user.name ? req.user.name : 'Office') + ' (by phone)']);
+    if (!r.rows[0]) return res.status(404).json({ ok: false });
+    await quoteNote(p, r.rows[0], st === 'sent' ? 'Quote ' + r.rows[0].number + ' sent to the landlord' + (b.how ? ' by ' + str(b.how, 20) : '') + '.' : st === 'draft' ? 'Quote ' + r.rows[0].number + ' reopened.' : 'Quote ' + r.rows[0].number + ' marked as ' + st + ' by the landlord (recorded by ' + ((req.user && req.user.name) || 'the office') + ').');
+    res.json({ ok: true });
+  }));
+  app.delete('/api/admin/quotes/:id', withDb(async function (p, req, res) {
+    await quotesTable(p);
+    const r = await p.query('DELETE FROM quotes WHERE id = $1 RETURNING job_id, number', [parseInt(req.params.id, 10) || 0]);
+    if (r.rows[0]) await quoteNote(p, r.rows[0], 'Quote ' + r.rows[0].number + ' deleted.');
+    res.json({ ok: true });
+  }));
+  function quotePage(q, staffView) {
+    const dt = q.data || {}, day = function (v) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
+    const money = function (v) { return v == null ? '' : '£' + Number(v).toFixed(2); };
+    const expired = q.status !== 'accepted' && q.status !== 'declined' && dt.valid_until && dt.valid_until < new Date().toISOString().slice(0, 10);
+    const st = q.status === 'accepted' ? '<span class="st ok">Accepted ' + htmlEsc(day(q.decided_at && q.decided_at.toISOString())) + '</span>' : q.status === 'declined' ? '<span class="st late">Declined</span>' : expired ? '<span class="st late">Expired</span>' : '<span class="st due">Waiting for your answer</span>';
+    const decide = !staffView && !expired && q.status !== 'accepted' && q.status !== 'declined'
+      ? '<div class="card noprint" id="qd"><h3 style="margin:0 0 6px">Your answer</h3><p class="muted" style="margin:0 0 10px">Accept to go ahead, or decline. You can add a note for us.</p>' +
+        '<input id="qn" placeholder="Your name" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:16px;margin-bottom:8px">' +
+        '<textarea id="qm" rows="3" placeholder="A note for us (optional)" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:16px"></textarea>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><button type="button" data-d="accept" style="flex:1 1 160px;padding:14px;border:0;border-radius:12px;background:#067647;color:#fff;font:inherit;font-weight:800;cursor:pointer">✓ Accept the quote</button>' +
+        '<button type="button" data-d="decline" style="flex:1 1 160px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;color:#1f2937;font:inherit;font-weight:700;cursor:pointer">Decline</button></div><p id="qe" class="muted" style="margin:8px 0 0"></p></div>' +
+        '<script>document.querySelectorAll("#qd [data-d]").forEach(function(b){b.addEventListener("click",function(){var d=b.getAttribute("data-d");if(d==="decline"&&!confirm("Decline this quote?"))return;b.disabled=true;' +
+        'fetch(location.pathname+"/decide",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({decision:d,name:document.getElementById("qn").value,note:document.getElementById("qm").value})}).then(function(r){return r.json()}).then(function(x){if(x&&x.ok){location.reload()}else{b.disabled=false;document.getElementById("qe").textContent="Sorry, that didn’t work — please call us on 0207 096 8131."}}).catch(function(){b.disabled=false;document.getElementById("qe").textContent="Sorry, that didn’t work — please try again."})})})</script>'
+      : '';
+    return trackShell('Quote ' + q.number, '<style>table{width:100%;border-collapse:collapse}td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}td.a{text-align:right;white-space:nowrap;padding-left:12px}tr.t td{font-weight:800;border-bottom:0;font-size:1.05rem}.st{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:700;font-size:.85rem}.st.ok{background:#ecfdf3;color:#067647}.st.due{background:#fffaeb;color:#b54708}.st.late{background:#fef3f2;color:#b42318}@media print{.noprint{display:none}}</style>' +
+      (staffView ? '<p class="noprint"><a href="/admin" style="color:var(--blue);font-weight:600;text-decoration:none">← Back to Fixflow</a></p>' : '') +
+      '<h1>Quote ' + htmlEsc(q.number) + '</h1><p class="sub">' + htmlEsc(q.address || '') + (dt.title ? ' · ' + htmlEsc(dt.title) : '') + '</p>' +
+      '<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">' + (dt.landlord ? '<div><div class="muted">For</div><b>' + htmlEsc(dt.landlord) + '</b></div>' : '') +
+        '<div><div class="muted">Date</div><b>' + htmlEsc(day(dt.date)) + '</b></div>' + (dt.valid_until ? '<div><div class="muted">Valid until</div><b>' + htmlEsc(day(dt.valid_until)) + '</b></div>' : '') +
+        '<div><div class="muted">Status</div>' + st + '</div></div></div>' +
+      '<div class="card"><table>' + (dt.lines || []).map(function (x) { return '<tr><td>' + htmlEsc(x.desc) + (x.novat && dt.vat ? ' <span style="color:#6b7280">(no VAT)</span>' : '') + '</td><td class="a">' + money(x.amount) + '</td></tr>'; }).join('') +
+        (dt.vat ? '<tr><td>Subtotal</td><td class="a">' + money(dt.sub) + '</td></tr><tr><td>VAT (20%)</td><td class="a">' + money(dt.vat) + '</td></tr>' : '') +
+        '<tr class="t"><td>Total' + (dt.vat ? ' including VAT' : '') + '</td><td class="a">' + money(q.total) + '</td></tr></table></div>' +
+      (dt.notes ? '<div class="card"><h3 style="margin:0 0 6px">Notes</h3><div style="white-space:pre-wrap">' + htmlEsc(dt.notes) + '</div></div>' : '') +
+      (q.status === 'accepted' || q.status === 'declined' ? '<div class="card"><b>' + (q.status === 'accepted' ? 'Thank you — accepted' : 'Declined') + (q.decided_by ? ' by ' + htmlEsc(q.decided_by) : '') + '.</b>' + (q.decision_note ? '<div class="muted" style="margin-top:4px;white-space:pre-wrap">“' + htmlEsc(q.decision_note) + '”</div>' : '') + (q.status === 'accepted' && !staffView ? '<div class="muted" style="margin-top:4px">We’ll be in touch to arrange the work.</div>' : '') + '</div>' : '') +
+      decide + '<p class="muted" style="text-align:center">Questions? Call 0207 096 8131 or email info@residentialrealtors.co.uk</p>' +
+      '<p class="noprint" style="text-align:center"><button onclick="window.print()">Print or save as PDF</button></p>', true, 'Quotation');
+  }
+  app.get('/api/admin/quotes/:id/view', withDb(async function (p, req, res) {
+    await quotesTable(p); res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const q = (await p.query('SELECT * FROM quotes WHERE id = $1', [parseInt(req.params.id, 10) || 0])).rows[0];
+    if (!q) return res.status(404).send(trackShell('Quote not found', '<h1>Quote not found</h1>', true));
+    res.send(quotePage(q, true));
+  }));
+  // The landlord's private link: see the quote and accept or decline it.
+  app.get('/q/:token', withDb(async function (p, req, res) {
+    await quotesTable(p);
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const q = (await p.query('SELECT * FROM quotes WHERE token = $1', [String(req.params.token).slice(0, 40)])).rows[0];
+    if (!q) return res.status(404).send(trackShell('Quote not found', '<h1>Quote not found</h1><p>This link may have been replaced. Please call us on 0207 096 8131.</p>', true));
+    res.send(quotePage(q, false));
+  }));
+  app.post('/q/:token/decide', withDb(async function (p, req, res) {
+    await quotesTable(p);
+    const b = req.body || {}, d = b.decision === 'accept' ? 'accepted' : b.decision === 'decline' ? 'declined' : '';
+    if (!d) return res.status(400).json({ ok: false });
+    const r = await p.query("UPDATE quotes SET status = $2, decided_at = now(), decided_by = $3, decision_note = $4 WHERE token = $1 AND status NOT IN ('accepted', 'declined') AND coalesce(data->>'valid_until', '9999') >= to_char(now(), 'YYYY-MM-DD') RETURNING *",
+      [String(req.params.token).slice(0, 40), d, str(b.name, 120) || 'The landlord', str(b.note, 2000) || null]);
+    const q = r.rows[0]; if (!q) return res.status(409).json({ ok: false, error: 'closed' });
+    const who = q.decided_by, text = 'Quote ' + q.number + ' ' + d + ' by ' + who + ' (' + gbp(q.total) + ')' + (q.decision_note ? ' — “' + q.decision_note + '”' : '') + '.';
+    await quoteNote(p, q, text);
+    ntfy({ title: (d === 'accepted' ? '✅ Quote accepted: ' : '❌ Quote declined: ') + q.number, message: shortAddrText(q.address) + ' — ' + gbp(q.total) + ' — ' + who + (q.decision_note ? ': “' + q.decision_note.slice(0, 120) + '”' : ''), tags: [d === 'accepted' ? 'white_check_mark' : 'x'], click: PUBLIC_URL ? PUBLIC_URL + '/admin' + (q.job_id ? '#job=' + q.job_id : '') : undefined }).catch(function () {});
+    ownerEmail('Quote ' + q.number + ' ' + d + ' — ' + shortAddrText(q.address), function (link) { return text + '\n\nProperty: ' + q.address + '\nQuote: ' + (q.data.title || '') + '\n\nOpen Fixflow: ' + link; }, q.job_id ? '#job=' + q.job_id : '');
+    res.json({ ok: true });
+  }));
+
   // ---------- Landlord invoices ----------
   function cleanInvoiceData(d, number, total) {
     return {

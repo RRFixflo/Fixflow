@@ -731,6 +731,7 @@
   .riv-top { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; } .riv { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line, #eef0f3); } .riv.off { opacity: .6; } .riv-img img { width: 110px; height: 74px; object-fit: cover; border-radius: 8px; display: block; } .riv-b { display: grid; gap: 3px; min-width: 0; font-size: .85rem; } .riv-b small, .riv-their, .riv-ll { color: var(--ink-soft); overflow-wrap: anywhere; } .riv-their b { color: var(--ink); } .riv-why { justify-self: start; font-size: .75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #fef3f2; color: #b42318; } .riv-why.street { background: #f2f4f7; color: #475467; } .riv-why.openrent { background: #ecfdf3; color: #067647; } .riv-more { margin-top: 8px; } .riv-more summary { cursor: pointer; font-weight: 700; font-size: .85rem; padding: 6px 0; } @media (max-width: 520px) { .riv-img img { width: 84px; height: 60px; } }
   .tn-ai { margin: 0 0 10px; border: 1px solid #d9d6fe; background: #f8f7ff; border-radius: 12px; padding: 8px 10px; } .tn-ai summary { cursor: pointer; font-weight: 700; color: #5925dc; } .tn-ai[open] summary { margin-bottom: 8px; } .tn-ai-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
   .pt-copy { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; } .pt-cp { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 40px; padding: 6px 12px; border: 1px solid var(--line, #dfe3ea); border-radius: 999px; background: #fff; font: inherit; font-size: .88rem; color: var(--ink); cursor: pointer; text-align: left; } .pt-cp span { overflow-wrap: anywhere; min-width: 0; } .pt-cp i { font-style: normal; font-weight: 700; font-size: .78rem; color: #175cd3; flex: none; } .pt-cp.all { background: #f5f8ff; border-color: #c7d7fe; font-weight: 700; } .pt-cp.done { background: #ecfdf3; border-color: #75e0a7; } .pt-cp.done i::after { content: ' ✓'; }
+  .q-row { grid-template-columns: minmax(0,1fr) 110px !important; } .q-acts { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } .q-st { width: auto !important; max-width: 100%; padding: 6px 8px; font-size: .85rem; } .q-row .addr, .q-row .addr strong, .q-row .addr small { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; } .q-row .addr small { display: block; }
   .crm-qq { background: #f0f9ff; border: 1px solid #b9e6fe; border-radius: 12px; padding: 12px; margin: 12px 0; display: grid; gap: 6px; } .crm-qq-btns { display: flex; gap: 8px; flex-wrap: wrap; }
   .crm-vw { background: #fffaeb; border: 1px solid #fedf89; border-radius: 12px; padding: 12px; margin: 12px 0; } .crm-slots { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
   .crm-slot { border: 1.5px solid #b54708; color: #b54708; background: #fff; border-radius: 10px; padding: 8px 12px; font: inherit; font-weight: 700; cursor: pointer; } .crm-slot.on { background: #067647; border-color: #067647; color: #fff; }
@@ -1826,6 +1827,7 @@
           <div class="card" id="llMails" style="margin-top:12px"></div>
           <div class="card" id="llOwed" style="margin-top:12px"></div>
           <div class="card" id="llVals" style="margin-top:12px" hidden></div>
+          <div class="card" id="llQuotes" style="margin-top:12px" hidden><h3>Quotations <span class="count-chip" id="llQuotesN">0</span></h3><div id="llQuotesList"></div></div>
           <div class="card" style="margin-top:12px"><h3>Properties</h3>
             <div class="list" id="llProps"></div>
             <div class="tenant-find" style="margin-top:12px"><label class="lbl" for="llAddProp">Add a property to this landlord</label>
@@ -2716,8 +2718,11 @@
       <button type="button" class="btn small ghost" id="niAddLine">+ Another line</button>
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px">
         <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="niVat" checked> Add VAT (20%)</label>
-        <label style="display:flex;gap:6px;align-items:center">Due <input class="inp" type="date" id="niDue" style="width:auto"></label>
+        <label style="display:flex;gap:6px;align-items:center" id="niDueWrap">Due <input class="inp" type="date" id="niDue" style="width:auto"></label>
+        <label style="display:flex;gap:6px;align-items:center" id="niValidWrap" hidden>Valid for <select class="inp" id="niValid" style="width:auto"><option value="14">14 days</option><option value="30" selected>30 days</option><option value="60">60 days</option><option value="90">90 days</option></select></label>
       </div>
+      <div id="niNotesWrap" hidden><label class="lbl" style="margin-top:10px">Notes for the landlord (optional)</label><textarea class="inp" id="niNotes" rows="3" placeholder="e.g. what’s included, how long it takes, access needed"></textarea>
+        <p class="muted-note" style="margin:4px 0 0">The landlord sees the lines, notes and total — don’t include contractor names or what we pay.</p></div>
       <p id="niTotal" style="margin:10px 0 0;font-weight:700"></p>
       <div class="row-actions" style="margin-top:12px"><button class="btn ghost" type="button" id="niCancel">Cancel</button><span style="flex:1"></span><button class="btn primary" type="button" id="niCreate">Create invoice</button></div>
     </div>
@@ -7415,6 +7420,9 @@
             : '<p class="muted-note">Create a PDF invoice with our logo, company details and bank details. The AI can break the charge into labour, materials and call-out lines, and you can choose whether to add VAT.</p>') +
         '<div class="row-actions"><button class="btn primary" id="invBtn" type="button">' + (j.invoiced_at ? 'Create another invoice' : 'Create invoice') + '</button></div>' +
       '</div>' +
+      '<div class="card" data-pane="money"><h3>Quotes for the landlord</h3><div id="jobQuotes"></div>' +
+        '<p class="muted-note" style="margin:6px 0 0">Send the landlord a price before the work — they accept or decline it from a link, and you get an alert.</p>' +
+        '<div class="row-actions"><button class="btn" id="quoteBtn" type="button">📝 Create a quote</button></div></div>' +
 
       // Contractor
       '<div class="card" data-pane="overview"><h3>Send to contractor</h3>' +
@@ -7743,6 +7751,8 @@
     photos = photos || [];
     var LLJ_ID = (landlordFor(j) || {}).id;
     $('invBtn').addEventListener('click', function(){ openInvoice(j, null); });
+    $('quoteBtn').addEventListener('click', function(){ var lr = landlordRecordAt(j.property_address); openNewInvoice({ mode: 'quote', job_id: j.id, landlord_id: lr ? lr.id : null, address: j.property_address, props: [j.property_address], title: issueOf(j), lines: [{ desc: issueOf(j) + (j.location ? ' — ' + j.location : ''), amount: j.landlord_charge != null ? j.landlord_charge : '' }] }); });
+    qRefresh = function(){ quotesLoad('job_id=' + j.id, $('jobQuotes'), { empty: '' }); }; qRefresh();
     // Past invoices: open (view the PDF) or resend to the landlord.
     function invDoc(inv){ var v = Object.assign({}, inv.data); v.number = v.number || inv.number; return invoicePdf(j, v); }
     function invName(inv){ return (inv.number || 'Invoice') + '-' + pdfName('', j.property_address).replace(/^-/, ''); }
@@ -9038,11 +9048,14 @@
       (l.email ? '<a class="btn" href="mailto:' + esc(l.email) + '">Email</a>' : '') +
       '<button class="btn" id="llLinkBtn" type="button" title="' + esc(sentWhen(l.link_sent) || 'Not sent yet') + '">🔗 Send their page' + (l.link_sent ? ' ✓' : '') + '</button>' +
       '<button class="btn" id="llInvBtn" type="button">🧾 New invoice</button>' +
+      (staffMode ? '' : '<button class="btn" id="llQuoteBtn" type="button">📝 New quotation</button>') +
       '<button class="btn" id="llValBtn" type="button">📄 Valuation letter</button>' +
       '<button class="btn" id="llLicBtn" type="button">📜 Licence check</button>' +
       '<button class="btn primary" id="llEditBtn" type="button">Edit details</button>';
     $('llLinkBtn').addEventListener('click', function(){ openLlLink(l); });
     $('llInvBtn').addEventListener('click', function(){ var ps = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; }); openNewInvoice({ props: ps.length ? ps : null, address: ps.length === 1 ? ps[0] : '' }); });
+    if ($('llQuoteBtn')) $('llQuoteBtn').addEventListener('click', function(){ var ps = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; }); openNewInvoice({ mode: 'quote', landlord_id: l.id, props: ps.length ? ps : null, address: ps.length === 1 ? ps[0] : '' }); });
+    qRefresh = function(){ if (openLlId === l.id) quotesLoad('landlord_id=' + l.id, $('llQuotesList'), { showAddr: true, invoice: true, wrap: $('llQuotes'), count: $('llQuotesN') }); }; if (!staffMode) qRefresh();
     $('llValBtn').addEventListener('click', function(){ openValuation(l); });
     $('llLicBtn').addEventListener('click', function(){ openLicCheck(l); });
     loadValuations(l);
@@ -10442,7 +10455,10 @@
   // ---------- New invoice to a landlord (any charge, for a property) ----------
   var ni = null;
   function openNewInvoice(o){
-    ni = Object.assign({ address: '', title: '', lines: [{ desc: '', amount: '' }], vat: true, tenancy_id: null, kind: '', props: null, after: null }, o || {});
+    ni = Object.assign({ address: '', title: '', lines: [{ desc: '', amount: '' }], vat: true, tenancy_id: null, kind: '', props: null, after: null, mode: '', job_id: null, landlord_id: null }, o || {});
+    var quote = ni.mode === 'quote';
+    $('niTitle').textContent = quote ? 'New quotation for the landlord' : 'New invoice to the landlord'; $('niCreate').textContent = quote ? 'Create quote' : 'Create invoice';
+    $('niDueWrap').hidden = quote; $('niValidWrap').hidden = !quote; $('niNotesWrap').hidden = !quote; $('niNotes').value = ''; $('niValid').value = '30';
     var props = ni.props || allPropsForList().map(function(p){ return p.address; });
     $('niProps').innerHTML = props.map(function(a){ return '<option value="' + esc(a) + '">'; }).join('');
     $('niAddr').value = ni.address || (ni.props && ni.props.length === 1 ? ni.props[0] : '');
@@ -10475,6 +10491,7 @@
     var addr = $('niAddr').value.trim(), lines = ni.lines.filter(function(l){ return l.desc && num(l.amount); });
     if (!addr) { toast('Choose the property'); $('niAddr').focus(); return; }
     if (!lines.length) { toast('Add a line with a description and an amount'); return; }
+    if (ni.mode === 'quote') { niCreateQuote(addr, lines); return; }
     var b = $('niCreate'); busy(b, true, 'Creating…');
     api('POST', '/api/admin/invoices', { address: addr, title: $('niTitleIn').value.trim() || lines[0].desc, lines: lines.map(function(l){ return { desc: l.desc, amount: num(l.amount), novat: !!l.novat }; }), vat: $('niVat').checked, due: $('niDue').value, tenancy_id: ni.tenancy_id, kind: ni.kind }).then(function(d){
       busy(b, false);
@@ -10491,6 +10508,78 @@
       toast('Invoice ' + d.number + ' created');
       loadAllInvoices().then(function(){ if (view === 'll' && openLlId) renderLandlord(); if (ni.after) ni.after(d); });
     });
+  });
+  function niCreateQuote(addr, lines){
+    var b = $('niCreate'); busy(b, true, 'Creating…');
+    api('POST', '/api/admin/quotes', { address: addr, job_id: ni.job_id, landlord_id: ni.landlord_id, title: $('niTitleIn').value.trim() || lines[0].desc, lines: lines.map(function(l){ return { desc: l.desc, amount: num(l.amount), novat: !!l.novat }; }),
+      vat: $('niVat').checked, valid_days: $('niValid').value, notes: $('niNotes').value.trim() }).then(function(d){
+      busy(b, false);
+      if (!d || !d.ok) { toast('Couldn’t create the quote (' + ((d && d.error) || 'error') + ')'); return; }
+      var q = { id: d.id, number: d.number, total: d.total, url: d.url, address: d.address, status: 'draft', data: { title: d.title, landlord: d.landlord_name, landlordEmail: d.landlord_email, landlordPhone: d.landlord_phone, vat: $('niVat').checked, valid_until: addDaysIso(isoDay(new Date()), Number($('niValid').value)) } };
+      qCache[q.id] = q;
+      $('niForm').hidden = true; $('niDone').hidden = false;
+      $('niDone').innerHTML = '<div class="match ok" style="margin:10px 0">✓ Quote <b>' + esc(d.number) + '</b> for <b>' + esc(gbp(d.total)) + '</b> created. Send it to ' + esc(d.landlord_name || 'the landlord') + ' — they can accept or decline it from the link.</div>' +
+        '<div class="row-actions" style="flex-wrap:wrap"><a class="btn" href="/api/admin/quotes/' + d.id + '/view" target="_blank" rel="noopener">View quote</a>' +
+        '<button class="btn primary" type="button" data-q-send="email" data-q="' + d.id + '">✉ Email it</button>' + (waNumber(d.landlord_phone) ? '<button class="btn wa" type="button" data-q-send="wa" data-q="' + d.id + '">WhatsApp</button>' : '') +
+        '<button class="btn ghost" type="button" data-q-copy="' + d.id + '">Copy link</button>' + (d.landlord_name ? '' : '<span class="muted-note" style="margin:0">No landlord linked to this property — add their email when sending.</span>') +
+        '<span style="flex:1"></span><button class="btn ghost" type="button" id="niClose">Done</button></div>';
+      $('niClose').addEventListener('click', function(){ $('niModal').hidden = true; });
+      $('niDone').addEventListener('click', function(e){ if (e.target.closest('[data-q-send]')) setTimeout(function(){ $('niModal').hidden = true; }, 50); });
+      toast('Quote ' + d.number + ' created');
+      if (qRefresh) qRefresh(); if (ni.after) ni.after(d);
+    });
+  }
+  // ---------- Quotations to landlords (from a job or a landlord's page) ----------
+  var Q_ST = { draft: ['Not sent yet', 'New'], sent: ['Sent — waiting', 'Assigned'], accepted: ['Accepted', 'Completed'], declined: ['Declined', 'Cancelled'] };
+  function quoteRows(items, opts){
+    opts = opts || {};
+    return items.map(function(q){
+      var d = q.data || {}, st = q.expired ? ['Expired', 'Cancelled'] : Q_ST[q.status] || Q_ST.draft;
+      return '<div class="pay-row q-row" style="grid-template-columns:minmax(0,1fr) 110px"><div class="addr"><strong>' + esc(q.number) + '</strong> <span class="pill status ' + st[1] + '">' + esc(st[0]) + '</span>' +
+          '<small>' + esc([d.title, opts.showAddr ? shortAddr(q.address) : '', fmtShort(q.created_at), q.decided_by && q.status !== 'draft' && q.status !== 'sent' ? q.status + ' by ' + q.decided_by : '', d.valid_until && q.status !== 'accepted' && q.status !== 'declined' ? 'valid until ' + ukDate(d.valid_until) : ''].filter(Boolean).join(' · ')) + '</small>' +
+          (q.decision_note ? '<small>“' + esc(q.decision_note) + '”</small>' : '') + '</div><div class="amt">' + esc(gbp(q.total)) + '</div>' +
+        '<div class="q-acts"><a class="btn small" href="/api/admin/quotes/' + q.id + '/view" target="_blank" rel="noopener">Open</a>' +
+          '<button class="btn small primary" type="button" data-q-send="email" data-q="' + q.id + '">✉ Email</button>' +
+          (waNumber(d.landlordPhone) ? '<button class="btn small wa" type="button" data-q-send="wa" data-q="' + q.id + '">WhatsApp</button>' : '') +
+          '<button class="btn small ghost" type="button" data-q-copy="' + q.id + '">Copy link</button>' +
+          '<select class="inp q-st" data-q-st="' + q.id + '" title="Record the landlord’s answer (e.g. by phone)">' + ['draft', 'sent', 'accepted', 'declined'].map(function(k){ return '<option value="' + k + '"' + (k === q.status ? ' selected' : '') + '>' + Q_ST[k][0] + '</option>'; }).join('') + '</select>' +
+          (opts.invoice && q.status === 'accepted' && !q.job_id ? '<button class="btn small" type="button" data-q-inv="' + q.id + '">🧾 Turn into invoice</button>' : '') +
+          '<button class="btn small ghost danger" type="button" data-q-del="' + q.id + '">Delete</button></div></div>';
+    }).join('');
+  }
+  var qCache = {};
+  function quotesLoad(query, box, opts){
+    return api('GET', '/api/admin/quotes?' + query).then(function(d){
+      if (!d || !d.ok || !box) return; d.items.forEach(function(q){ qCache[q.id] = q; });
+      box.innerHTML = d.items.length ? '<div class="list">' + quoteRows(d.items, opts) + '</div>' : (opts && opts.empty || '');
+      if (opts && opts.wrap) opts.wrap.hidden = !d.items.length && !opts.empty;
+      if (opts && opts.count) opts.count.textContent = d.items.length;
+    });
+  }
+  function quoteText(q){
+    var d = q.data || {};
+    return llGreeting(d.landlord) + ',\n\nPlease find our quote ' + q.number + ' for ' + (d.title || 'the work') + ' at ' + shortAddr(q.address) + ': ' + gbp(q.total) + (d.vat ? ' including VAT' : '') + '.' +
+      '\n\nYou can see the full quote and accept or decline it here:\n' + q.url + (d.valid_until ? '\n\nThe quote is valid until ' + ukDate(d.valid_until) + '.' : '') + '\n\nKind regards,\nResidential Realtors\n0207 096 8131';
+  }
+  var qRefresh = null;
+  function quoteMark(q, how){ api('POST', '/api/admin/quotes/' + q.id + '/status', { status: 'sent', how: how }).then(function(){ if (qRefresh) qRefresh(); }); }
+  function quoteSend(q, how){
+    var d = q.data || {};
+    if (how === 'wa') { window.open('https://wa.me/' + waNumber(d.landlordPhone) + '?text=' + encodeURIComponent(quoteText(q)), '_blank', 'noopener'); quoteMark(q, 'WhatsApp'); return; }
+    composeMail({ to: d.landlordEmail ? [d.landlordEmail] : [], subject: 'Quote ' + q.number + ' — ' + shortAddr(q.address), body: quoteText(q), title: '✉ Send the quote to the landlord', onSent: function(){ quoteMark(q, 'email'); } });
+  }
+  document.addEventListener('click', function(e){
+    var s = e.target.closest && e.target.closest('[data-q-send]'), c = e.target.closest && e.target.closest('[data-q-copy]'), x = e.target.closest && e.target.closest('[data-q-del]'), iv = e.target.closest && e.target.closest('[data-q-inv]');
+    if (s) { var q = qCache[s.dataset.q]; if (q) quoteSend(q, s.dataset.qSend); return; }
+    if (c) { var q2 = qCache[c.dataset.qCopy]; if (q2) copyText(q2.url).then(function(){ toast('✓ Link to the quote copied'); }); return; }
+    if (x) { if (!x.dataset.armed) { x.dataset.armed = '1'; x.textContent = 'Tap again to delete'; setTimeout(function(){ if (x.isConnected) { delete x.dataset.armed; x.textContent = 'Delete'; } }, 4000); return; }
+      api('DELETE', '/api/admin/quotes/' + x.dataset.qDel, {}).then(function(){ toast('Quote deleted'); if (qRefresh) qRefresh(); }); return; }
+    if (iv) { var q3 = qCache[iv.dataset.qInv]; if (!q3) return; var d3 = q3.data || {};
+      openNewInvoice({ address: q3.address, props: [q3.address], title: d3.title, vat: !!d3.vat, lines: (d3.lines || []).map(function(l){ return { desc: l.desc, amount: l.amount, novat: !!l.novat }; }) }); }
+  });
+  document.addEventListener('change', function(e){
+    var sel = e.target.closest && e.target.closest('[data-q-st]'); if (!sel) return;
+    api('POST', '/api/admin/quotes/' + sel.dataset.qSt + '/status', { status: sel.value }).then(function(d){ toast(d && d.ok ? '✓ Saved' : 'Couldn’t save that'); if (qRefresh) qRefresh(); });
   });
   // ---------- Markup: our price from a cost (contractor's price or a part) ----------
   var MARKUPS = [10, 15, 20, 25, 30];
