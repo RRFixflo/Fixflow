@@ -6622,6 +6622,28 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (out.error) return res.status(404).json({ ok: false, error: out.error });
     res.json({ ok: true, type: out.type, data: out.data.toString('base64') });
   }));
+  // The negotiator who got the offer (copied in on the tenants' welcome email): the staff member the
+  // linked offer is credited to (largest share), or else the name in the tenancy's Negotiator box,
+  // matched to an active staff sign-in by full name or a unique first name.
+  app.get('/api/admin/tenancies/:id/negotiator', withDb(async function (p, req, res) {
+    const t = (await p.query('SELECT data FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
+    if (!t) return res.status(404).json({ ok: false });
+    const d = t.data || {}, names = [];
+    if (d.offer_id) {
+      const o = (await p.query("SELECT data->'credit' AS credit FROM offers WHERE id = $1", [parseInt(d.offer_id, 10) || 0])).rows[0];
+      const cr = o && Array.isArray(o.credit) ? o.credit.filter(function (c) { return c && c.name && (c.share == null || Number(c.share) > 0); }) : [];
+      cr.sort(function (a, b) { return (Number(b.share) || 0) - (Number(a.share) || 0); }).forEach(function (c) { names.push(String(c.name)); });
+    }
+    if (d.negotiator) names.push(String(d.negotiator));
+    const staff = (await p.query("SELECT name, email FROM staff_users WHERE disabled_at IS NULL AND coalesce(email, '') <> ''")).rows;
+    const norm = function (v) { return String(v || '').toLowerCase().replace(/\s+/g, ' ').trim(); };
+    for (const n of names) {
+      let hit = staff.filter(function (u) { return norm(u.name) === norm(n); });
+      if (!hit.length) { const f = norm(n).split(' ')[0]; hit = f ? staff.filter(function (u) { return norm(u.name).split(' ')[0] === f; }) : []; }
+      if (hit.length === 1) return res.json({ ok: true, name: hit[0].name, email: hit[0].email });
+    }
+    res.json({ ok: true, name: names[0] || '', email: '' });
+  }));
   // Send a welcome email (when email sending is set up), with PDFs attached.
   app.post('/api/admin/tenancies/:id/email', withDb(async function (p, req, res) {
     if (!canEmail()) return res.status(503).json({ ok: false, error: 'email-not-configured' });
@@ -6634,7 +6656,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return { filename: (str(a && a.name, 150) || 'Document.pdf').replace(/[^a-zA-Z0-9.\-_ ]+/g, '-'), content: String(a && a.data || '').replace(/^data:[^,]*,/, '') };
     }).filter(function (a) { return a.content && a.content.length < 15 * 1024 * 1024; });
     const html = typeof b.html === 'string' && b.html.length < 300000 ? b.html.replace(/<script[\s\S]*?<\/script>/gi, '') : undefined;
-    const sent = await sendEmail({ to: to, subject: subject, text: text, html: html, attachments: atts });
+    const cc = (Array.isArray(b.cc) ? b.cc : []).map(function (x) { return str(x, 200); }).filter(function (x) { return x && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x) && to.indexOf(x) === -1; }).slice(0, 6);
+    const sent = await sendEmail({ to: to, cc: cc, subject: subject, text: text, html: html, attachments: atts });
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     await p.query(`UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1`,
       [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: 'Emailed ' + to.join(', ') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : '') }])]);

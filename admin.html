@@ -2310,6 +2310,7 @@
     <h3 id="tmTitle" style="margin:0">Welcome email</h3>
     <div id="tmFromRow" hidden><label class="lbl" for="tmFrom">From (your Outlook)</label><select class="inp" id="tmFrom"></select></div>
     <div><label class="lbl" for="tmTo">To</label><input class="inp" id="tmTo" placeholder="name@example.com, …"></div>
+    <div><label class="lbl" for="tmCc">Cc</label><input class="inp" id="tmCc" placeholder="Optional — e.g. the negotiator"></div>
     <div><label class="lbl" for="tmSubject">Subject</label><input class="inp" id="tmSubject"></div>
     <div><div class="ml-tabs" style="margin-bottom:6px"><button type="button" class="on" data-tmv="edit">✏️ Write</button><button type="button" data-tmv="look">👁 Preview — how they’ll see it</button></div>
       <div class="mail-preview" id="tmBody" contenteditable="true" spellcheck="true" aria-label="Message — you can edit it here"></div><div id="tmLook" class="ml-look" role="document" aria-label="How the email will look" hidden></div></div>
@@ -15934,7 +15935,7 @@
       showMail({
         who: who, d: d, atts: atts, sendUrl: '/api/admin/tenancies/' + openTcyId + '/email',
         title: who === 'tenants' ? 'Welcome email to the tenants' : 'Welcome email to ' + ((d.landlord || {}).name || 'the landlord'),
-        to: to, subject: fillTpl(who === 'tenants' ? t.tenant_subject : t.landlord_subject, vals),
+        to: to, cc: negCc, subject: fillTpl(who === 'tenants' ? t.tenant_subject : t.landlord_subject, vals),
         bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? withDiyCode(withCouncilTax(t.tenant_body, ct), t.diy_code) : t.landlord_body, d.checkin_type === 'clerk' && !d.checkin_date ? 'none' : d.checkin_type || 'clerk'), vals), vals)),
         attNote: who === 'landlord' ? 'Add the signed agreement, tenant ID and deposit certificate yourself.' : '',
         warn: (!t.bank_details && who === 'tenants' ? '⚠ No bank details saved yet — add them under Templates. ' : '') + (who === 'tenants' && isDiy && !t.diy_code ? '⚠ No DIY check-in access code saved — add it under Templates, or the tenants will be asked to pay. ' : ''),
@@ -15945,7 +15946,9 @@
     var ctReq = who === 'tenants' ? api('GET', '/api/admin/council-tax?address=' + encodeURIComponent(d.address || '')).then(function(r){ if (r && r.ok) ct = r; })['catch'](function(){}) : null;
     // DIY check-in: the app needs a personal link — the office makes a free one for these tenants.
     var diyOffice = '', diyReq = who === 'tenants' && (d.checkin_type === 'diy' || /diy/i.test(String(d.checkin_type || ''))) ? api('POST', '/api/admin/diy-access', { name: ((d.tenants || [])[0] || {}).name || '', address: d.address || '' }).then(function(r){ if (r && r.ok) diyOffice = r.link; })['catch'](function(){}) : null;
-    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq, diyReq]).then(go);
+    // The negotiator who got the offer is copied in on the tenants' email.
+    var negCc = [], negReq = who === 'tenants' && openTcyId && openTcyId !== 'new' ? api('GET', '/api/admin/tenancies/' + openTcyId + '/negotiator').then(function(r){ if (r && r.ok && r.email) negCc = [r.email]; })['catch'](function(){}) : null;
+    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq, diyReq, negReq]).then(go);
   }
   // Templates: each borough's licensing schemes (selective and additional HMO), for the licence check.
   var lsData = null, LS_OPTS = [['all', 'All'], ['some', 'Parts'], ['none', 'None'], ['check', 'Not sure']];
@@ -16034,7 +16037,7 @@
   function showMail(o){
     tmCtx = o;
     $('tmTitle').textContent = o.title;
-    $('tmTo').value = (o.to || []).join(', ');
+    $('tmTo').value = (o.to || []).join(', '); $('tmCc').value = (o.cc || []).join(', ');
     $('tmSubject').value = o.subject || '';
     $('tmBody').innerHTML = o.bodyHtml || '';
     var atts = o.atts || [];
@@ -16073,7 +16076,7 @@
     var row = function(k, v){ return '<div style="display:flex;gap:10px;padding:3px 0"><span style="color:#667085;min-width:58px">' + k + '</span><span style="color:#101828;word-break:break-word">' + v + '</span></div>'; };
     root.innerHTML = '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:13px;background:#f3f5f8;margin:12px;border:1px solid #e4e7ec;border-radius:10px;overflow:hidden">' +
       '<div style="padding:12px 16px;border-bottom:1px solid #eaecf0;background:#fff"><div style="font-size:16px;font-weight:600;color:#101828;margin-bottom:6px">' + esc($('tmSubject').value || '(no subject)') + '</div>' +
-      row('From', esc(from)) + row('To', esc($('tmTo').value || '—')) +
+      row('From', esc(from)) + row('To', esc($('tmTo').value || '—')) + ($('tmCc').value.trim() ? row('Cc', esc($('tmCc').value)) : '') +
       (atts.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' + atts.map(function(a){ return '<span style="display:inline-flex;align-items:center;gap:6px;border:1px solid #d0d5dd;border-radius:8px;padding:5px 9px;background:#fff;font-size:12px">📄 ' + esc(a.name) + '</span>'; }).join('') + '</div>' : '') + '</div>' +
       '<div id="tmBrandBox"><p style="font-family:sans-serif;color:#667085;padding:20px;margin:0">Loading the preview…</p></div></div>';
     tmRefreshBrand().then(function(html){
@@ -16169,7 +16172,7 @@
       busy($('tmDraft'), true, 'Adding to Outlook…');
       var logo = logoB64(), withLogo = logo && html.indexOf(MAIL_LOGO) !== -1;
       if (withLogo) { html = html.split(MAIL_LOGO).join('cid:rrlogo'); atts.push({ name: 'logo.png', data: logo, inline: true, cid: 'rrlogo' }); }
-      return api('POST', '/api/admin/outlook/draft', { from: from, to: to, subject: subject, html: html, attachments: atts }).then(function(r){
+      return api('POST', '/api/admin/outlook/draft', { from: from, to: to, cc: tmCcList(), subject: subject, html: html, attachments: atts }).then(function(r){
         busy($('tmDraft'), false);
         if (!r.ok) {
           toast(r.error === 'reconnect' ? 'Please reconnect Outlook (Tenancies → Templates), then try again' : r.error === 'too-large' ? 'The attachments are too big for a draft — use Open in Outlook instead' : 'Couldn’t add it to Outlook — try Open in Outlook instead');
@@ -16188,9 +16191,10 @@
   function wrap76(b64){ return b64.replace(/.{1,76}/g, '$&\r\n'); }
   function mimeWord(str){ return /^[\x20-\x7e]*$/.test(str) ? str : '=?UTF-8?B?' + b64utf8(str) + '?='; }
   function logoB64(){ return logoData && /^data:image\/png;base64,/.test(logoData.url) ? logoData.url.split(',')[1] : ''; }
-  function buildEml(to, subject, text, html, files){
+  function tmCcList(){ return $('tmCc').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(function(x){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x); }); }
+  function buildEml(to, subject, text, html, files, cc){
     var mixed = 'mix_' + Math.random().toString(36).slice(2), alt = 'alt_' + Math.random().toString(36).slice(2), L = '\r\n';
-    var out = 'X-Unsent: 1' + L + 'To: ' + to.join(', ') + L + 'Subject: ' + mimeWord(subject) + L + 'MIME-Version: 1.0' + L +
+    var out = 'X-Unsent: 1' + L + 'To: ' + to.join(', ') + L + (cc && cc.length ? 'Cc: ' + cc.join(', ') + L : '') + 'Subject: ' + mimeWord(subject) + L + 'MIME-Version: 1.0' + L +
       'Content-Type: multipart/mixed; boundary="' + mixed + '"' + L + L +
       '--' + mixed + L + 'Content-Type: multipart/alternative; boundary="' + alt + '"' + L + L +
       '--' + alt + L + 'Content-Type: text/plain; charset=UTF-8' + L + 'Content-Transfer-Encoding: base64' + L + L + wrap76(b64utf8(text)) +
@@ -16223,7 +16227,7 @@
       return Promise.all(files.map(function(f){ return blobB64(f.blob).then(function(b){ return { name: f.name, b64: b }; }); }));
     }).then(function(files){
       busy($('tmOutlook'), false);
-      var eml = buildEml(to, subject, text, html, files);
+      var eml = buildEml(to, subject, text, html, files, tmCcList());
       saveBlob(new Blob([eml], { type: 'message/rfc822' }), ctx.fileName || 'Email.eml');
       $('tmModal').hidden = true;
       toast('Email downloaded — open it and it opens in Outlook, ready to send');
@@ -16242,7 +16246,7 @@
       if (direct) {
         return Promise.all(files.map(function(f){ return blobB64(f.blob).then(function(b){ return { name: f.name, data: b }; }); })).then(function(atts){
           busy($('tmSend'), true, 'Sending…');
-          return api('POST', ctx.sendUrl, { to: to, subject: subject, body: text, html: html, attachments: atts }).then(function(r){
+          return api('POST', ctx.sendUrl, { to: to, cc: tmCcList(), subject: subject, body: text, html: html, attachments: atts }).then(function(r){
             busy($('tmSend'), false);
             if (!r.ok) { toast('Couldn’t send — try “Copy text” instead'); return; }
             $('tmModal').hidden = true; toast('Sent to ' + to.join(', '));
@@ -16253,7 +16257,7 @@
       busy($('tmSend'), false);
       files.forEach(function(f, i){ setTimeout(function(){ saveBlob(f.blob, f.name); }, i * 400); });
       copied.then(function(){
-        location.href = 'mailto:' + to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(subject);
+        location.href = 'mailto:' + to.map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(subject) + (tmCcList().length ? '&cc=' + tmCcList().map(encodeURIComponent).join(',') : '');
       });
       $('tmModal').hidden = true;
       toast('Email copied — paste it into the message that’s opening' + (files.length ? ', then attach the downloaded documents' : ''));
