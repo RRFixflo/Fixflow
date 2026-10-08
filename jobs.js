@@ -364,6 +364,17 @@ CREATE TABLE IF NOT EXISTS tenancy_payments (
   confirmed_by TEXT
 );
 CREATE INDEX IF NOT EXISTS tenancy_payments_t ON tenancy_payments (tenancy_id);
+-- Reminders set through Ask Fixflow ("remind me to call … tomorrow at 10").
+CREATE TABLE IF NOT EXISTS assistant_reminders (
+  id          SERIAL PRIMARY KEY,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  user_id     INTEGER,
+  user_name   TEXT,
+  text        TEXT NOT NULL,
+  due_at      TIMESTAMPTZ NOT NULL,
+  done_at     TIMESTAMPTZ,
+  notified_at TIMESTAMPTZ
+);
 -- Each 12-month anniversary: the rent review (new rent, or no increase), the
 -- landlord and tenants asked/told, and whether the tenants are staying.
 -- { "2027-09-24": { "new_rent": 1950, "rent_from": "2027-09-24", "asked_at": "...", "answer": "staying", "alerted_at": "..." } }
@@ -3949,6 +3960,72 @@ module.exports = function mountJobs(app, opts) {
     return { buf: buf, name: name, mime: mime };
   }
 
+  // ---------- Ask Fixflow as an assistant: what it knows about the business ----------
+  // A compact summary of the live data (properties with their tenants, landlord, open repairs,
+  // certificates and tenancy; this month's rents; recent leads; reminders) so the assistant can
+  // answer questions and address emails / messages to the right people. Only for staff questions.
+  async function assistantDigest(p, req) {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' }), out = [];
+    const props = {}, P = function (key, addr) { if (!key) return null; return props[key] = props[key] || { addr: addr || key, tenants: [], ll: null, jobs: [], certs: [], tcy: null }; };
+    (await p.query(`SELECT pt.property_key, pt.address, pt.role, t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id
+      WHERE pt.moved_out_at IS NULL AND t.deleted_at IS NULL ORDER BY pt.property_key LIMIT 2000`)).rows.forEach(function (r) { const x = P(r.property_key, r.address); if (x) x.tenants.push((r.role === 'guarantor' ? 'guarantor ' : '') + [r.name, r.phone, r.email].filter(Boolean).join(' ')); });
+    (await p.query(`SELECT pl.property_key, pl.address, l.name, l.phone, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id LIMIT 2000`)).rows
+      .forEach(function (r) { const x = P(r.property_key, r.address); if (x) x.ll = [r.name, r.phone, r.email].filter(Boolean).join(' '); });
+    (await p.query(`SELECT id, status, urgency, property_address, category, affected, assigned_to, appointment_date, appointment_time, created_at FROM jobs
+      WHERE archived_at IS NULL AND status NOT IN ('Completed', 'Cancelled') ORDER BY id DESC LIMIT 600`)).rows.forEach(function (j) {
+      const x = P(propKey(j.property_address), j.property_address); if (x) x.jobs.push(refFor(j.id) + ' ' + [j.category, j.affected].filter(Boolean).join(' – ') + ' [' + j.status + (j.urgency && j.urgency !== 'Routine' ? ', ' + j.urgency : '') + '] ' + (j.assigned_to ? 'contractor ' + j.assigned_to : 'no contractor') + (j.appointment_date ? ', visit ' + j.appointment_date + (j.appointment_time ? ' ' + j.appointment_time : '') : '') + ', raised ' + String(j.created_at.toISOString()).slice(0, 10)); });
+    (await p.query(`SELECT property_key, address, type, expires_on, not_required FROM property_certificates ORDER BY expires_on NULLS LAST LIMIT 2000`)).rows.forEach(function (c) {
+      const x = P(c.property_key, c.address); if (x) x.certs.push(c.type + (c.not_required ? ' not required' : ' expires ' + (c.expires_on || '?'))); });
+    (await p.query(`SELECT id, property_key, address, data FROM tenancies ORDER BY coalesce(data->>'start_date', start_date) DESC LIMIT 1500`)).rows.forEach(function (t) {
+      const d = t.data || {}, x = P(t.property_key || propKey(d.address || t.address), d.address || t.address); if (!x || x.tcy) return;
+      x.tcy = 'tenancy from ' + (d.start_date || '?') + ', rent £' + (d.rent_pcm || '?') + ' pcm, ' + (d.service || 'service ?') + (d.negotiator ? ', negotiator ' + d.negotiator : '') + ((d.tenants || []).length && !x.tenants.length ? ', tenants ' + d.tenants.map(function (z) { return [z.name, z.phone, z.email].filter(Boolean).join(' '); }).join('; ') : '') + (d.landlord && d.landlord.name && !x.ll ? ', landlord ' + [d.landlord.name, d.landlord.phone, d.landlord.email].filter(Boolean).join(' ') : '');
+    });
+    out.push('Today is ' + new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' }) + ', ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' }) + ' (London).');
+    out.push('PROPERTIES (address | tenants | landlord | tenancy | open repairs | certificates):');
+    Object.keys(props).slice(0, 700).forEach(function (k) { const x = props[k];
+      out.push('- ' + x.addr + ' | tenants: ' + (x.tenants.join('; ') || '—') + ' | landlord: ' + (x.ll || '—') + ' | ' + (x.tcy || 'no tenancy') + ' | repairs: ' + (x.jobs.join('; ') || 'none open') + ' | certs: ' + (x.certs.join(', ') || '—')); });
+    try {
+      const rb = await rentBoard(p, today.slice(0, 7), null);
+      const lines = (rb.items || []).map(function (x) { return x.address + ' rent ' + x.from + ' £' + x.rent + ' — ' + (x.collected ? 'collected' + (x.paid ? ', landlord paid £' + x.paid.amount : x.to_landlord > 0 ? ', landlord NOT paid yet (£' + x.to_landlord + ' to pay)' : '') : x.status === 'movein' ? 'waiting for move-in money (£' + (x.movein && x.movein.left) + ' left)' : x.status + (x.part_paid ? ', part paid £' + x.part_paid : '')); });
+      out.push('RENTS THIS MONTH (' + today.slice(0, 7) + '): ' + (lines.length ? '\n- ' + lines.join('\n- ') : 'none'));
+    } catch (e) {}
+    const leads = (await p.query(`SELECT created_at, name, address, status, data->>'kind' AS kind FROM valuation_requests WHERE created_at > now() - interval '21 days' ORDER BY id DESC LIMIT 60`)).rows;
+    out.push('WEBSITE LEADS (last 3 weeks): ' + (leads.length ? '\n- ' + leads.map(function (l) { return String(l.created_at.toISOString()).slice(0, 10) + ' ' + (l.kind || 'enquiry') + ' — ' + l.name + ', ' + (l.address || '') + ' [' + (l.status || 'new') + ']'; }).join('\n- ') : 'none'));
+    const rem = (await p.query('SELECT text, due_at FROM assistant_reminders WHERE done_at IS NULL AND (user_id IS NOT DISTINCT FROM $1) ORDER BY due_at LIMIT 30', [(req.user && req.user.id) || null])).rows;
+    out.push('MY REMINDERS: ' + (rem.length ? rem.map(function (r) { return r.due_at.toISOString() + ' ' + r.text; }).join('; ') : 'none'));
+    return out.join('\n').slice(0, 120000);
+  }
+  // Reminders set through Ask Fixflow: emailed (and, for the owner, a phone alert) when due.
+  app.get('/api/admin/reminders', withDb(async function (p, req, res) {
+    const r = await p.query('SELECT id, text, due_at, done_at, notified_at FROM assistant_reminders WHERE (user_id IS NOT DISTINCT FROM $1) AND (done_at IS NULL OR done_at > now() - interval \'2 days\') ORDER BY done_at NULLS FIRST, due_at LIMIT 100', [(req.user && req.user.id) || null]);
+    res.json({ ok: true, reminders: r.rows });
+  }));
+  app.post('/api/admin/reminders', withDb(async function (p, req, res) {
+    const b = req.body || {}, text = str(b.text, 500), due = new Date(b.due_at);
+    if (!text || isNaN(due.getTime())) return res.status(400).json({ ok: false, error: 'bad' });
+    const r = await p.query('INSERT INTO assistant_reminders (user_id, user_name, text, due_at) VALUES ($1, $2, $3, $4) RETURNING id', [(req.user && req.user.id) || null, (req.user && req.user.name) || 'Owner', text, due]);
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+  app.post('/api/admin/reminders/:id', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = parseInt(req.params.id, 10) || 0, uid = (req.user && req.user.id) || null;
+    if (b.delete) await p.query('DELETE FROM assistant_reminders WHERE id = $1 AND (user_id IS NOT DISTINCT FROM $2)', [id, uid]);
+    else await p.query('UPDATE assistant_reminders SET done_at = ' + (b.done === false ? 'NULL' : 'now()') + ' WHERE id = $1 AND (user_id IS NOT DISTINCT FROM $2)', [id, uid]);
+    res.json({ ok: true });
+  }));
+  async function remindersDue() {
+    const p = await db(); if (!p) return;
+    const rows = (await p.query('SELECT r.id, r.text, r.due_at, r.user_id, u.email, u.name FROM assistant_reminders r LEFT JOIN staff_users u ON u.id = r.user_id WHERE r.done_at IS NULL AND r.notified_at IS NULL AND r.due_at <= now() LIMIT 50')).rows;
+    for (const r of rows) {
+      await p.query('UPDATE assistant_reminders SET notified_at = now() WHERE id = $1', [r.id]);
+      const when = r.due_at.toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
+      if (!r.user_id) ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin' : undefined, title: '⏰ Reminder', message: r.text }).catch(function () {});
+      const to = r.user_id ? String(r.email || '').trim() : 'info@residentialrealtors.co.uk';
+      if (to && canEmail() && sendEmail) { const text = 'Hi' + (r.name ? ' ' + String(r.name).split(/\s+/)[0] : '') + ',\n\nYou asked Fixflow to remind you (' + when + '):\n\n' + r.text + '\n\nOpen Fixflow: ' + (PUBLIC_URL || OFFER_ORIGIN) + (r.user_id ? '/staff' : '/admin');
+        sendEmail({ to: [to], fromName: 'Fixflow - Residential Realtors', subject: '⏰ Reminder: ' + r.text.slice(0, 80), text: text, html: brandEmail(text, 'Reminder') }).catch(function () {}); }
+    }
+  }
+  setInterval(function () { remindersDue().catch(function (e) { console.error('Reminders failed:', e.message); }); }, 60 * 1000).unref();
+
   // ---------- Assistant: plain-English (or spoken) commands ----------
   // Turns something like "add a gas safety for 6 Whitworth House" into a
   // structured job draft. Nothing is created here: the dashboard matches the
@@ -4058,7 +4135,15 @@ module.exports = function mountJobs(app, opts) {
       '"certificates": [{"address": "", "type": "Gas", "issued_on": "", "expires_on": "", "reference": "", "rating": "", "document": 0}], ' +
       '"documents": [], "contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "properties": [{"address": "", "tenants": [], "landlord": "", "key_number": "", "notes": ""}], "tenancies": [], "understood": true}. ' +
       'Use [] for jobs, certificates, contacts, properties or tenancies when there are none. If the instruction is none of these, reply {"jobs": [], "certificates": [], "contacts": [], "properties": [], "tenancies": [], "understood": false}.';
-    const result = await opts.askAi(prompt, true, files);
+    // Typed or spoken (no documents): Fixflow also acts as the office assistant — answers questions from
+    // the live data, drafts emails and WhatsApp messages to the right people, and sets reminders.
+    let fullPrompt = prompt;
+    if (!fromEmail && !given.length) {
+      const digest = await assistantDigest(p, req).catch(function (e) { console.error('Assistant digest failed:', e.message); return ''; });
+      fullPrompt = prompt.replace(/Reply with ONLY JSON: \{/, function () { return 'You are also the office’s virtual ASSISTANT. Besides creating records, the instruction may be a QUESTION about the business (e.g. "who lives at 43 Example House?", "which rents are late?", "when does the gas certificate at … expire?", "what repairs are open for Mr Khan?", "which landlords still need paying?"), a request to WRITE or SEND an email / WhatsApp message (e.g. "email the landlord of 9 Park Road that the boiler is fixed", "text the tenants at Flat 2 that the plumber comes Tuesday"), or a REMINDER (e.g. "remind me to call Mrs Jones tomorrow at 10"). Use ONLY the business data below — never invent people, numbers, emails, amounts or dates; if the data does not say, say so plainly.\n' +
+        'Then also give: "answer": a short, clear reply in plain British English to any question (or a one-line summary of what you have prepared), else ""; "emails": [{"to": ["email addresses from the data or the instruction"], "to_name": "", "subject": "", "body": "the full email, polite and professional, signed Kind regards, Residential Realtors"}] for each email asked for (never put our costs, profit or contractor prices in an email to a landlord or tenant); "messages": [{"to_name": "", "phone": "number from the data or instruction", "text": "the WhatsApp message"}] for each text / WhatsApp asked for; "reminders": [{"text": "what to do, naming the person and property", "due": "YYYY-MM-DDTHH:MM in London time (tomorrow 09:00 if no time is given)"}]. Do not create jobs, contacts, properties, tenancies or certificates for a question, email, message or reminder.\n\nBUSINESS DATA:\n' + digest + '\n\nReply with ONLY JSON: {"answer": "", "emails": [], "messages": [], "reminders": [], '; });
+    }
+    const result = await opts.askAi(fullPrompt, true, files);
     if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
     let parsed = null;
     try { parsed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()); } catch (e) { parsed = null; }
@@ -4149,7 +4234,14 @@ module.exports = function mountJobs(app, opts) {
       const re = { Gas: /gas|cp12/i, EICR: /eicr|electric/i, EPC: /\bepc\b|energy performance/i };
       for (let i = jobs.length - 1; i >= 0; i--) if (lines.some(function (c) { return re[c.type].test(jobs[i].title + ' ' + jobs[i].category); })) jobs.splice(i, 1);
     }
-    res.json({ ok: true, jobs: jobs, certificates: certificates, contacts: contacts, properties: properties, tenancies: tenancies, understood: (parsed.understood !== false || certificates.length > 0) && (jobs.length > 0 || certificates.length > 0 || contacts.length > 0 || properties.length > 0 || tenancies.length > 0) });
+    const okMail = function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); };
+    const answer = str(parsed.answer, 4000) || '';
+    const emails = (Array.isArray(parsed.emails) ? parsed.emails : []).slice(0, 10).map(function (e) { return { to: (Array.isArray(e && e.to) ? e.to : [e && e.to]).map(function (x) { return String(x || '').trim(); }).filter(okMail).slice(0, 10), to_name: str(e && e.to_name, 200) || '', subject: str(e && e.subject, 300) || '', body: str(e && e.body, 8000) || '' }; }).filter(function (e) { return e.subject || e.body; });
+    const messages = (Array.isArray(parsed.messages) ? parsed.messages : []).slice(0, 10).map(function (m) { return { to_name: str(m && m.to_name, 200) || '', phone: str(m && m.phone, 40) || '', text: str(m && m.text, 3000) || '' }; }).filter(function (m) { return m.text; });
+    const reminders = (Array.isArray(parsed.reminders) ? parsed.reminders : []).slice(0, 10).map(function (r) { return { text: str(r && r.text, 500) || '', due: str(r && r.due, 30) || '' }; }).filter(function (r) { return r.text && /^\d{4}-\d{2}-\d{2}/.test(r.due); });
+    const made = jobs.length > 0 || certificates.length > 0 || contacts.length > 0 || properties.length > 0 || tenancies.length > 0;
+    res.json({ ok: true, jobs: jobs, certificates: certificates, contacts: contacts, properties: properties, tenancies: tenancies, answer: answer, emails: emails, messages: messages, reminders: reminders,
+      understood: ((parsed.understood !== false || certificates.length > 0) && made) || !!answer || emails.length > 0 || messages.length > 0 || reminders.length > 0 });
   }));
 
   app.post('/api/admin/jobs/:id/ai-invoice', withDb(async function (p, req, res) {
