@@ -3623,7 +3623,7 @@ module.exports = function mountJobs(app, opts) {
       (dt.notes ? '<div class="card"><h3 style="margin:0 0 6px">Notes</h3><div style="white-space:pre-wrap">' + htmlEsc(dt.notes) + '</div></div>' : '') +
       (q.status === 'accepted' || q.status === 'declined' ? '<div class="card"><b>' + (q.status === 'accepted' ? 'Thank you — accepted' : 'Declined') + (q.decided_by ? ' by ' + htmlEsc(q.decided_by) : '') + '.</b>' + (q.decision_note ? '<div class="muted" style="margin-top:4px;white-space:pre-wrap">“' + htmlEsc(q.decision_note) + '”</div>' : '') + (q.status === 'accepted' && !staffView ? '<div class="muted" style="margin-top:4px">We’ll be in touch to arrange the work.</div>' : '') + '</div>' : '') +
       decide + '<p class="muted" style="text-align:center">Questions? Call 0207 096 8131 or email info@residentialrealtors.co.uk</p>' +
-      '<p class="noprint" style="text-align:center"><button onclick="window.print()">Print or save as PDF</button></p>', true, 'Quotation');
+      '<p class="noprint" style="text-align:center"><button onclick="window.print()">⬇ Download or print (PDF)</button></p>', true, 'Quotation');
   }
   app.get('/api/admin/quotes/:id/view', withDb(async function (p, req, res) {
     await quotesTable(p); res.setHeader('Content-Type', 'text/html; charset=utf-8');

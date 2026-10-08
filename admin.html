@@ -6390,7 +6390,7 @@
     doc.setFillColor.apply(doc, RED); doc.rect(0, 6, W, 2, 'F');
     // Header: logo on the left, INVOICE and who it's from on the right
     if (!drawLogo(doc, M, 30, 52)) t(cfg.from || 'Residential Realtors', M, 64, 14, 'bold');
-    t('INVOICE', W - M, 62, 26, 'bold', INK, 'right');
+    t(v.quote ? 'QUOTATION' : 'INVOICE', W - M, 62, 26, 'bold', INK, 'right');
     // Our registered details under the title
     var reg = [cfg.companyNo ? 'Company No. ' + cfg.companyNo : '', cfg.vatNo ? 'VAT No. ' + cfg.vatNo : ''].filter(Boolean).join(' · ');
     t(cfg.from || 'Residential Realtors', W - M, 80, 9, 'bold', INK, 'right');
@@ -6398,14 +6398,14 @@
     if (reg) t(reg, W - M, 104, 8.5, 'normal', SOFT, 'right');
     // Meta
     y = 136;
-    [['Invoice number', v.number], ['Invoice date', ukDate(v.date)], ['Payment due', ukDate(v.due)], ['Job reference', j.ref]].forEach(function(r, i){
+    (v.quote ? [['Quote number', v.number], ['Date', ukDate(v.date)], ['Valid until', v.due ? ukDate(v.due) : '—'], ['Reference', j.ref || '—']] : [['Invoice number', v.number], ['Invoice date', ukDate(v.date)], ['Payment due', ukDate(v.due)], ['Job reference', j.ref]]).forEach(function(r, i){
       var x = M + i * ((W - M * 2) / 4);
       t(r[0].toUpperCase(), x, y, 7.5, 'normal', SOFT);
       t(r[1], x, y + 15, 10.5, 'bold');
     });
     // Bill to / property
     y = 188;
-    t('BILL TO', M, y, 7.5, 'normal', SOFT);
+    t(v.quote ? 'PREPARED FOR' : 'BILL TO', M, y, 7.5, 'normal', SOFT);
     t(v.landlord || 'The landlord', M, y + 16, 11, 'bold');
     var by = y + 30;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor.apply(doc, INK);
@@ -6443,7 +6443,20 @@
       y += bold ? 22 : 16;
     }
     if (v.vat) { totalRow('Subtotal', gbp(v.sub)); totalRow('VAT (20%)', gbp(v.vat)); }
-    totalRow('Total due', gbp(v.total), true);
+    totalRow(v.quote ? (v.vat ? 'Total inc. VAT' : 'Total') : 'Total due', gbp(v.total), true);
+    if (v.quote) {
+      // A quote: the notes and how to accept, instead of payment details.
+      y += 10;
+      if (v.notes) { if (y > H - 140) { doc.addPage(); y = M; } t('NOTES', M, y, 8, 'bold', RED); y += 14;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor.apply(doc, INK);
+        var nl = doc.splitTextToSize(pdfSafe(v.notes), W - M * 2); nl.forEach(function(line){ if (y > H - 70) { doc.addPage(); y = M; } doc.text(line, M, y); y += 13; }); y += 8; }
+      if (y > H - 90) { doc.addPage(); y = M; }
+      t('To accept this quote, use the link we sent you or call us on 0207 096 8131.' + (v.due ? ' Valid until ' + ukDate(v.due) + '.' : ''), M, y + 6, 9, 'normal', SOFT);
+      doc.setDrawColor.apply(doc, LINE); doc.line(M, H - 44, W - M, H - 44);
+      t([cfg.from || 'Residential Realtors', cfg.address].filter(Boolean).join(' · '), M, H - 28, 8, 'normal', SOFT);
+      t([reg, v.number].filter(Boolean).join(' · '), W - M, H - 28, 8, 'normal', SOFT, 'right');
+      return doc;
+    }
     // Payment details
     y += 14;
     if (y > H - 170) { doc.addPage(); y = M; }
@@ -10584,13 +10597,14 @@
       vat: $('niVat').checked, valid_days: $('niValid').value, notes: $('niNotes').value.trim() }).then(function(d){
       busy(b, false);
       if (!d || !d.ok) { toast('Couldn’t create the quote (' + ((d && d.error) || 'error') + ')'); return; }
-      var q = { id: d.id, number: d.number, total: d.total, url: d.url, address: d.address, status: 'draft', data: { title: d.title, landlord: d.landlord_name, landlordEmail: d.landlord_email, landlordPhone: d.landlord_phone, vat: $('niVat').checked, valid_until: addDaysIso(isoDay(new Date()), Number($('niValid').value)) } };
+      var qLines = lines.map(function(l){ return { desc: l.desc, amount: num(l.amount), novat: !!l.novat }; }), qSub = r2(qLines.reduce(function(t, l){ return t + l.amount; }, 0));
+      var q = { id: d.id, number: d.number, total: d.total, url: d.url, address: d.address, status: 'draft', job_id: ni.job_id, created_at: new Date().toISOString(), data: { title: d.title, landlord: d.landlord_name, landlordEmail: d.landlord_email, landlordPhone: d.landlord_phone, vat: r2(d.total - qSub), sub: qSub, lines: qLines, notes: $('niNotes').value.trim(), date: isoDay(new Date()), valid_until: addDaysIso(isoDay(new Date()), Number($('niValid').value)) } };
       qCache[q.id] = q;
       $('niForm').hidden = true; $('niDone').hidden = false;
       $('niDone').innerHTML = '<div class="match ok" style="margin:10px 0">✓ Quote <b>' + esc(d.number) + '</b> for <b>' + esc(gbp(d.total)) + '</b> created. Send it to ' + esc(d.landlord_name || 'the landlord') + ' — they can accept or decline it from the link.</div>' +
         '<div class="row-actions" style="flex-wrap:wrap"><a class="btn" href="/api/admin/quotes/' + d.id + '/view" target="_blank" rel="noopener">View quote</a>' +
         '<button class="btn primary" type="button" data-q-send="email" data-q="' + d.id + '">✉ Email it</button>' + (waNumber(d.landlord_phone) ? '<button class="btn wa" type="button" data-q-send="wa" data-q="' + d.id + '">WhatsApp</button>' : '') +
-        '<button class="btn ghost" type="button" data-q-copy="' + d.id + '">Copy link</button>' + (d.landlord_name ? '' : '<span class="muted-note" style="margin:0">No landlord linked to this property — add their email when sending.</span>') +
+        '<button class="btn" type="button" data-q-pdf="' + d.id + '">⬇ PDF</button><button class="btn ghost" type="button" data-q-copy="' + d.id + '">Copy link</button>' + (d.landlord_name ? '' : '<span class="muted-note" style="margin:0">No landlord linked to this property — add their email when sending.</span>') +
         '<span style="flex:1"></span><button class="btn ghost" type="button" id="niClose">Done</button></div>';
       $('niClose').addEventListener('click', function(){ $('niModal').hidden = true; });
       $('niDone').addEventListener('click', function(e){ if (e.target.closest('[data-q-send]')) setTimeout(function(){ $('niModal').hidden = true; }, 50); });
@@ -10610,6 +10624,7 @@
         '<div class="q-acts"><a class="btn small" href="/api/admin/quotes/' + q.id + '/view" target="_blank" rel="noopener">Open</a>' +
           '<button class="btn small primary" type="button" data-q-send="email" data-q="' + q.id + '">✉ Email</button>' +
           (waNumber(d.landlordPhone) ? '<button class="btn small wa" type="button" data-q-send="wa" data-q="' + q.id + '">WhatsApp</button>' : '') +
+          '<button class="btn small" type="button" data-q-pdf="' + q.id + '">⬇ PDF</button>' +
           '<button class="btn small" type="button" data-q-edit="' + q.id + '">✏️ Edit</button>' +
           '<button class="btn small ghost" type="button" data-q-copy="' + q.id + '">Copy link</button>' +
           '<select class="inp q-st" data-q-st="' + q.id + '" title="Record the landlord’s answer (e.g. by phone)">' + ['draft', 'sent', 'accepted', 'declined'].map(function(k){ return '<option value="' + k + '"' + (k === q.status ? ' selected' : '') + '>' + Q_ST[k][0] + '</option>'; }).join('') + '</select>' +
@@ -10626,6 +10641,12 @@
       if (opts && opts.count) opts.count.textContent = d.items.length;
     });
   }
+  function quotePdf(q){
+    var d = q.data || {}, jb = q.job_id ? jobs.filter(function(x){ return x.id === q.job_id; })[0] : null;
+    var doc = invoicePdf({ ref: jb ? jb.ref : '', property_address: q.address }, { quote: true, number: q.number, date: d.date || String(q.created_at || '').slice(0, 10), due: d.valid_until, landlord: d.landlord, landlordAddress: d.landlordAddress, landlordEmail: d.landlordEmail, landlordPhone: d.landlordPhone,
+      lines: d.lines || [], sub: d.sub, vat: d.vat, total: q.total, notes: d.notes });
+    if (doc) deliverPdf(doc, pdfName('Quote-' + q.number, q.address), false);
+  }
   function quoteText(q){
     var d = q.data || {};
     return llGreeting(d.landlord) + ',\n\nPlease find our quote ' + q.number + ' for ' + (d.title || 'the work') + ' at ' + shortAddr(q.address) + ': ' + gbp(q.total) + (d.vat ? ' including VAT' : '') + '.' +
@@ -10639,6 +10660,8 @@
     composeMail({ to: d.landlordEmail ? [d.landlordEmail] : [], subject: 'Quote ' + q.number + ' — ' + shortAddr(q.address), body: quoteText(q), title: '✉ Send the quote to the landlord', onSent: function(){ quoteMark(q, 'email'); } });
   }
   document.addEventListener('click', function(e){
+    var pd = e.target.closest && e.target.closest('[data-q-pdf]');
+    if (pd) { var qp = qCache[pd.dataset.qPdf]; if (qp) quotePdf(qp); return; }
     var ed = e.target.closest && e.target.closest('[data-q-edit]');
     if (ed) { var qe = qCache[ed.dataset.qEdit]; if (!qe) return; var de = qe.data || {}, left = de.valid_until ? Math.max(1, Math.ceil((new Date(de.valid_until + 'T23:59:00') - new Date()) / 864e5)) : 30;
       openNewInvoice({ mode: 'quote', editId: qe.id, editAnswered: qe.status === 'accepted' || qe.status === 'declined' ? qe.status : '', address: qe.address, props: [qe.address], title: de.title, vat: !!de.vat, notes: de.notes || '', validDays: [14, 30, 60, 90].reduce(function(a, b){ return Math.abs(b - left) < Math.abs(a - left) ? b : a; }, 30),
