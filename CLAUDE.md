@@ -40,7 +40,7 @@ The owner is not a developer: explain results in plain, non-technical English, b
 | `visits.js` | Website visitor stats (no cookies), IP names, "don't count" list |
 | `site/*.html`, `site.css`, `site.js` | Public website pages, styles and scripts |
 | `index.html` | Public repair report form |
-| `offer.html`, `reserve.html`, `landlord.html`, `landlords.html` | Applicant offer form, reservations, landlord portal/terms, landlords page. A landlord's terms of business (sent / filled-in dates, View / ⬇ PDF, the details they gave) show on their landlord page and on the tenancy for that property (the one it was let under marked); from the tenancy, staff can copy the landlord's details into it and choose the landlord's own bank account for the rent (`rent_bank`/`landlord_bank`: replaces labelled account details in the agreement and `{{bank_details}}` in the tenant email) |
+| `offer.html`, `reserve.html`, `landlord.html`, `landlords.html` | Applicant offer form, reservations, landlord portal/terms, landlords page. A landlord's terms of business (sent / filled-in dates, View / ⬇ PDF, the details they gave) show on their landlord page and on the tenancy for that property (the one it was let under marked); from the tenancy, staff can copy the landlord's details into it and choose the landlord's own bank account for the rent (`rent_bank`/`landlord_bank`: replaces labelled account details in the agreement only — the tenant welcome email's `{{bank_details}}` is always our account, as we collect the first month's rent and deposit) |
 | `tenancy.js`, `outlook.js`, `news.js`, `updates.js`, `rrt.js`, `portaldemo.js`, `ff.js` | Tenancy docs, Outlook drafts, news, landlord updates, Renters' Rights, demo portal, form token client |
 
 ## Listings (Gnomen) quirks
