@@ -251,7 +251,7 @@
   .list-head { display: grid; grid-template-columns: 118px minmax(0,1fr) 190px 170px 96px; gap: 14px; padding: 9px 16px 9px 40px; font-size: .72rem; font-weight: 600; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--line); background: var(--panel-2); }
   .list-head span:last-child { text-align: right; }
   .lh-sort { all: unset; cursor: pointer; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; }
-  .lh-sort:hover { color: var(--ink); }
+  .lh-sort:hover, .lh-sort.on { color: var(--ink); }
   .jobrow { position: relative; display: flex; align-items: stretch; border-bottom: 1px solid var(--line); transition: background .12s; }
   .jobrow:last-child { border-bottom: 0; }
   .jobrow::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--line-strong); }
@@ -1774,6 +1774,14 @@
           <option value="newest">Sort: Received — newest</option>
           <option value="oldest">Sort: Received — oldest</option>
           <option value="profit">Sort: Profit — highest</option>
+          <option value="profit-asc">Sort: Profit — lowest</option>
+          <option value="ref">Sort: Job number — newest first</option>
+          <option value="ref-asc">Sort: Job number — oldest first</option>
+          <option value="addr">Sort: Property — A to Z</option>
+          <option value="addr-desc">Sort: Property — Z to A</option>
+          <option value="status">Sort: Status</option>
+          <option value="status-desc">Sort: Status — reversed</option>
+          <option value="contractor">Sort: Contractor — A to Z</option>
         </select>
       </div>
 
@@ -3240,6 +3248,12 @@
       if (sort === 'days') return (isOpen(b) - isOpen(a)) || (created(a) - created(b));
       if (sort === 'days-asc') return (isOpen(b) - isOpen(a)) || (created(b) - created(a));
       if (sort === 'profit') { var pa = profitOf(a), pb = profitOf(b); return (pb ? pb.value : -Infinity) - (pa ? pa.value : -Infinity); }
+      if (sort === 'profit-asc') { var qa = profitOf(a), qb = profitOf(b); return (qa ? qa.value : Infinity) - (qb ? qb.value : Infinity); }
+      if (sort === 'ref') return b.id - a.id;
+      if (sort === 'ref-asc') return a.id - b.id;
+      if (sort === 'addr' || sort === 'addr-desc') return (sort === 'addr' ? 1 : -1) * String(a.property_address || '').localeCompare(String(b.property_address || ''), 'en', { numeric: true, sensitivity: 'base' }) || (created(b) - created(a));
+      if (sort === 'status' || sort === 'status-desc') { var si = function(j){ var i = meta.statuses.indexOf(j.status); return i === -1 ? 99 : i; }; return (sort === 'status' ? 1 : -1) * (si(a) - si(b)) || (created(b) - created(a)); }
+      if (sort === 'contractor') { var ca = String(a.assigned_to || '').trim(), cb = String(b.assigned_to || '').trim(); return (!ca - !cb) || ca.localeCompare(cb, 'en', { sensitivity: 'base' }) || (created(b) - created(a)); }
       // Priority: open before closed, overdue first, then urgency, then deadline.
       var oa = isOpen(a), ob = isOpen(b);
       if (oa !== ob) return ob - oa;
@@ -3255,7 +3269,11 @@
       renderBulk();
       return;
     }
-    el.innerHTML = '<div class="list-head"><span>Job</span><span>Property &amp; issue</span><span><button type="button" class="lh-sort" id="lhRaised" title="Sort by days since raised">Raised' + (sort === 'days' ? ' ↓' : sort === 'days-asc' ? ' ↑' : '') + '</button></span><span>Status &amp; contractor</span><span>Profit</span></div>' +
+    // Every heading sorts the list: tap it, tap again to reverse.
+    var lh = function(label, a, b, tip){ return '<span><button type="button" class="lh-sort' + (sort === a || sort === b ? ' on' : '') + '" data-lh="' + a + '|' + b + '" title="' + tip + '">' + label + (sort === a ? ' ↓' : sort === b ? ' ↑' : '') + '</button></span>'; };
+    el.innerHTML = '<div class="list-head">' + lh('Job', 'ref', 'ref-asc', 'Sort by job number') + lh('Property &amp; issue', 'addr', 'addr-desc', 'Sort by property A to Z') + lh('Raised', 'days', 'days-asc', 'Sort by days since raised') +
+      '<span><button type="button" class="lh-sort' + (/^status|^contractor/.test(sort) ? ' on' : '') + '" data-lh="status|status-desc" title="Sort by status">Status' + (sort === 'status' ? ' ↓' : sort === 'status-desc' ? ' ↑' : '') + '</button> &amp; <button type="button" class="lh-sort' + (sort === 'contractor' ? ' on' : '') + '" data-lh="contractor|contractor" title="Sort by contractor A to Z">contractor' + (sort === 'contractor' ? ' ↓' : '') + '</button></span>' +
+      lh('Profit', 'profit', 'profit-asc', 'Sort by profit') + '</div>' +
       list.map(rowHtml).join('');
     renderBulk();
   }
@@ -3301,10 +3319,11 @@
   });
   $('assignChipClear').addEventListener('click', function(){ assignFilter = null; render(); });
   $('badAddrShow').addEventListener('click', function(){ assignFilter = 'badAddr'; activeTile = null; setTab('open'); render(); });
-  // Tap the "Raised" heading to sort by days since raised (tap again to reverse).
+  // Tap a heading (Job, Property, Raised, Status, contractor, Profit) to sort by it; tap again to reverse.
   $('list').addEventListener('click', function(e){
-    if (!e.target.closest('#lhRaised')) return;
-    $('sort').value = $('sort').value === 'days' ? 'days-asc' : 'days';
+    var h = e.target.closest('[data-lh]'); if (!h) return;
+    var ab = h.dataset.lh.split('|');
+    $('sort').value = $('sort').value === ab[0] ? ab[1] : ab[0];
     $('sort').dispatchEvent(new Event('change'));
   });
   $('sort').addEventListener('change', function(){ try { localStorage.setItem('rrJobsSort', $('sort').value); } catch (e) {} render(); });
