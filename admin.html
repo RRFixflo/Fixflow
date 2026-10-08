@@ -9653,6 +9653,20 @@
     var n = name.toLowerCase();
     return contractors.filter(function(c){ return c.active && (c.name.toLowerCase() === n || c.name.toLowerCase().indexOf(n) !== -1 || n.indexOf(c.name.toLowerCase()) !== -1); })[0] || null;
   }
+  // No contractor named for a job: one whose trade fits it (a cleaner for
+  // cleaning, pest control for bed bugs …), not already given to another draft.
+  var TRADE_WORDS = [[/clean|mattress|carpet|end of tenancy/, /clean/], [/pest|bed ?bugs?|mice|mouse|rats?\b|cockroach|fleas?|wasps?|vermin|rodent/, /pest|vermin|rodent/], [/plumb|leak|drain|toilet|tap|sink|shower|blocked/, /plumb/],
+    [/gas|boiler|heating|cp12/, /gas|boiler|heating/], [/electr|eicr|socket|fuse|light/, /electr/], [/lock|door|key/, /lock/], [/damp|mould|mold/, /damp|mould/], [/roof|gutter/, /roof/], [/paint|decorat/, /paint|decor/], [/glaz|window/, /glaz|window/], [/appliance|washing machine|fridge|oven|cooker/, /appliance/]];
+  function contractorForJob(x, taken){
+    var job = ((x.category || '') + ' ' + (x.title || '') + ' ' + (x.description || '')).toLowerCase(), pool = contractors.filter(function(c){ return c.active && c.trade; });
+    for (var i = 0; i < TRADE_WORDS.length; i++) {
+      if (!TRADE_WORDS[i][0].test(job)) continue;
+      var fit = pool.filter(function(c){ return TRADE_WORDS[i][1].test(c.trade.toLowerCase()); });
+      var c = fit.filter(function(c){ return taken.indexOf(c.id) === -1; })[0] || fit[0];
+      if (c) return c;
+    }
+    return null;
+  }
   $('askText').addEventListener('input', function(){ if ($('askErr').textContent) $('askErr').textContent = ''; });
   function runAsk(){
     var text = $('askText').value.trim();
@@ -9706,8 +9720,10 @@
         return { ai: x, property: pr, address: pr ? (knownFullAddress(pr.key) || pr.address) : x.address, tenants: x.tenants.slice() };
       });
       renderAskProps();
+      var taken = [];
       askDrafts = d.jobs.map(function(x){
-        var pr = matchProperty(x.address), ts = tenantsAt(pr), c = matchContractor(x.contractor);
+        var pr = matchProperty(x.address), ts = tenantsAt(pr), c = matchContractor(x.contractor) || contractorForJob(x, taken);
+        if (c) taken.push(c.id);
         // A property on file with a complete address fills in a missing postcode.
         if (pr && addressProblem(pr.address)) { var full = knownFullAddress(pr.key); if (full) pr.address = full; }
         return { ai: x, property: pr, tenants: ts, contractor: c, source: askSource };
