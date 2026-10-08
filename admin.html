@@ -15908,7 +15908,10 @@
       vals.signature = sigMarkup(who === 'tenants' ? t.signature_tenant : t.signature_landlord);
       var to = who === 'tenants' ? (d.tenants || []).map(function(p){ return p.email; }).filter(Boolean) : [(d.landlord || {}).email].filter(Boolean);
       var atts = who === 'tenants'
-        ? [{ id: 'agr-pdf', name: tcyFile(d, 'Tenancy Agreement'), label: 'Tenancy agreement (PDF) — if you’re not sending it by Adobe Sign', on: false }]
+        ? [{ id: 'agr-pdf', name: tcyFile(d, 'Tenancy Agreement'), label: 'Tenancy agreement (PDF) — if you’re not sending it by Adobe Sign', on: false },
+           // The government's guides every new tenant should have (official PDFs, kept in /docs).
+           { id: 'file', url: '/docs/how-to-rent.pdf', name: 'How to Rent guide.pdf', label: 'How to Rent guide (GOV.UK)', on: true },
+           { id: 'file', url: '/docs/renters-rights-act-information-sheet-2026.pdf', name: 'The Renters’ Rights Act Information Sheet 2026.pdf', label: 'Renters’ Rights Act information sheet 2026 (GOV.UK)', on: true }]
         : [{ id: 'statement', name: tcyFile(d, 'Landlord Statement'), label: 'Landlord statement', on: true },
            { id: 'contacts', name: tcyFile(d, 'Tenant Contact Sheet'), label: 'Tenant contact sheet', on: true },
            { id: 'agr-pdf', name: tcyFile(d, 'Tenancy Agreement'), label: 'Tenancy agreement (PDF)', on: false }];
@@ -16039,6 +16042,7 @@
     var d = tmCtx.d, list = (tmCtx.atts || []).filter(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); return cb && cb.checked; });
     return Promise.all(list.map(function(a){
       if (a.id === 'agr-pdf') return agreementBlob(d, 'pdf').then(function(b){ return { name: a.name, blob: b }; });
+      if (a.url) return fetch(a.url, { credentials: 'same-origin' }).then(function(r){ if (!r.ok) throw new Error('missing'); return r.blob(); }).then(function(b){ return { name: a.name, blob: b }; })['catch'](function(){ toast('Couldn’t attach ' + a.name); return null; });
       var doc = a.id === 'statement' ? statementPdf(d) : contactsPdf(d);
       return Promise.resolve(doc ? { name: a.name, blob: doc.output('blob') } : null);
     })).then(function(r){ return r.filter(Boolean); });
