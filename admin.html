@@ -14838,7 +14838,7 @@
           '<p class="muted-note" id="tfDepByNote" style="margin:6px 0 0"></p></div>' +
           '<div><label class="lbl" for="tfScheme">Deposit scheme (for the agreement)</label><input class="inp" id="tfScheme" list="tfSchemes" value="' + esc(d.deposit_scheme || '') + '"><datalist id="tfSchemes">' + TCY_SCHEMES.map(function(s){ return '<option value="' + esc(s) + '"></option>'; }).join('') + '</datalist></div></div>' +
         '<h3 style="margin:16px 0 8px">Move-in monies</h3>' +
-        '<div class="grid3">' + tcyInp('tfDue', 'First rent and deposit due by *', d.move_in_due, ' type="date"') + tcyInp('tfSo', 'Standing order starts', d.so_start || addMonthsIso(d.start_date, 1), ' type="date" data-auto="' + (!d.so_start || d.so_start === addMonthsIso(d.start_date, 1) ? '1' : '0') + '"') +
+        '<div class="grid3">' + tcyInp('tfDue', 'First rent and deposit due by * <span class="muted-note" style="margin:0;font-weight:400">(set to 48 hours from sending the agreement or welcome email)</span>', d.move_in_due, ' type="date"') + tcyInp('tfSo', 'Standing order starts', d.so_start || addMonthsIso(d.start_date, 1), ' type="date" data-auto="' + (!d.so_start || d.so_start === addMonthsIso(d.start_date, 1) ? '1' : '0') + '"') +
           tcyInp('tfSoN', 'Standing order payments', d.so_payments || Math.max(1, (parseInt(d.term_months, 10) || 12) - 1), ' inputmode="numeric" data-auto="' + (!d.so_payments || d.so_payments === Math.max(1, (parseInt(d.term_months, 10) || 12) - 1) ? '1' : '0') + '"') + '</div>' +
         '<div class="grid3" style="margin-top:10px">' + tcyInp('tfPayRef', 'Payment reference', d.pay_ref, ' maxlength="18" autocapitalize="off"') + '</div>' +
         '<p class="muted-note" style="margin:6px 0 10px">Usually 48 hours after the agreement is sent. The standing order starts a month after moving in unless you change it.</p>' +
@@ -15645,6 +15645,19 @@
       var tid = openTcyId; Promise.resolve(loadJobs()).then(function(){ openTenancy(tid); });
     });
   });
+  // Move-in monies are due 48 hours after the agreement / welcome email goes out: sending either sets
+  // "First rent and deposit due by" to two days from today (never after the move-in date), and saves it.
+  function tcyDueNow(d){
+    var today = isoDay(new Date()), due = addDaysIso(today, 2);
+    if (d.start_date && d.start_date >= today && d.start_date < due) due = d.start_date;
+    if (d.move_in_due === due) return d;
+    d.move_in_due = due;
+    if (tcyDraft) tcyDraft.move_in_due = due;
+    if ($('tfDue')) $('tfDue').value = due;
+    if (openTcyId && openTcyId !== 'new') api('PUT', '/api/admin/tenancies/' + openTcyId, d).then(function(r){ if (r && r.ok) tcyLog('First rent and deposit due date set to ' + longDay(due) + ' (48 hours from sending)'); });
+    toast('First rent and deposit now due by ' + weekdayDay(due) + ' — 48 hours from today');
+    return d;
+  }
   function tcySaved(){ var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0]; return x ? x.data : null; }
   function pdfDoc(){ var J = window.jspdf && window.jspdf.jsPDF; if (!J) { toast('The PDF maker didn’t load — check your connection and reload'); return null; } return new J({ unit: 'pt', format: 'a4' }); }
   function termsPdf(d){
@@ -15861,6 +15874,7 @@
     if (kind === 'agr-docx' || kind === 'agr-pdf') {
       var fmt = kind === 'agr-pdf' ? 'pdf' : 'docx';
       if (!d.deposit_scheme && !confirm('No deposit scheme is filled in, so that part of the agreement will be blank. Carry on?')) return;
+      tcyDueNow(d);
       busy(btn, true, fmt === 'pdf' ? 'Making PDF…' : 'Filling in…');
       agreementBlob(d, fmt).then(function(blob){
         busy(btn, false); saveBlob(blob, tcyFile(d, 'Tenancy Agreement', fmt)); toast('Tenancy agreement downloaded'); tcyLog('Tenancy agreement (' + (fmt === 'pdf' ? 'PDF' : 'Word') + ') downloaded');
@@ -15870,6 +15884,7 @@
     if (kind === 'mail-tenants' || kind === 'mail-landlord') {
       // The check-in choice on screen counts even before the tenancy is saved again (e.g. just switched to No inventory).
       if (!tcyLocked && tcyDraft) { try { tcyRead(); } catch (e) {} d = Object.assign({}, d, { checkin_type: tcyDraft.checkin_type, checkin_date: tcyDraft.checkin_date, checkin_time: tcyDraft.checkin_time, checkin_tbc: tcyDraft.checkin_tbc }); }
+      if (kind === 'mail-tenants') { tcyDueNow(tcySaved() || d); d.move_in_due = (tcySaved() || d).move_in_due; }
       openTcyMail(kind === 'mail-tenants' ? 'tenants' : 'landlord', d);
     }
   }
