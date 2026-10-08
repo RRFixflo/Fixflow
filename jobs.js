@@ -6027,6 +6027,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
       start_date: day(b.start_date), term_months: parseInt(b.term_months, 10) || null, break_months: parseInt(b.break_months, 10) || 0,
       rent_pcm: amt(b.rent_pcm), deposit: amt(b.deposit), holding: amt(b.holding), holding_date: day(b.holding_date), deposit_by: b.deposit_by === 'landlord' ? 'landlord' : 'agent', deposit_scheme: s(b.deposit_scheme), pay_ref: s(b.pay_ref, 40),
       move_in_due: day(b.move_in_due), so_start: day(b.so_start), so_payments: parseInt(b.so_payments, 10) || null,
+      // Rent paid to the landlord's own account (from their terms of business): used on the agreement and the tenant's email.
+      rent_bank: b.rent_bank === 'landlord' ? 'landlord' : '',
+      landlord_bank: b.landlord_bank && typeof b.landlord_bank === 'object' ? { holder: s(b.landlord_bank.holder, 120), bank: s(b.landlord_bank.bank, 80), sort: s(b.landlord_bank.sort, 12), account: s(b.landlord_bank.account, 20), iban: s(b.landlord_bank.iban, 40), swift: s(b.landlord_bank.swift, 15), terms: s(b.landlord_bank.terms, 12) } : null,
       checkin_date: day(b.checkin_date), checkin_time: s(b.checkin_time, 20), checkin_type: b.checkin_type === 'diy' ? 'diy' : b.checkin_type === 'clerk' ? 'clerk' : b.checkin_type === 'none' ? 'none' : null, checkin_tbc: !!b.checkin_tbc,
       tenants: (Array.isArray(b.tenants) ? b.tenants : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
       guarantors: (Array.isArray(b.guarantors) ? b.guarantors : []).slice(0, 12).map(person).filter(function (x) { return x.name || x.email || x.phone; }),
@@ -6602,6 +6605,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const clean = { tenants: (Array.isArray(v.tenants) ? v.tenants : []).slice(0, 12).map(s), guarantors: (Array.isArray(v.guarantors) ? v.guarantors : []).slice(0, 12).map(s), values: {} };
     ['address', 'payment_reference', 'landlord', 'start', 'rent', 'deposit', 'deposit_scheme', 'first_rent', 'rent_day', 'second_rent', 'second_rent_month', 'agreement_date'].forEach(function (k) { clean[k] = s(v[k]); });
     Object.keys(v.values || {}).slice(0, 200).forEach(function (k) { clean.values[String(k).toLowerCase()] = s(v.values[k]); });
+    // The landlord's own account (rent paid to them): replaces the account details in the agreement.
+    if (v.bank && typeof v.bank === 'object') { const bk = {}; ['holder', 'bank', 'sort', 'account', 'iban', 'swift'].forEach(function (k) { bk[k] = s(v.bank[k]).slice(0, 80); }); if (bk.account || bk.iban) clean.bank = bk; }
     const docx = tenancy.fillAgreement(Buffer.from(a.data, 'base64'), clean);
     if (body.format !== 'pdf') return { data: docx, type: 'docx' };
     return { data: await tenancy.docxToPdf(docx), type: 'pdf' };

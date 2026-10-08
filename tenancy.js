@@ -398,8 +398,10 @@ function agreementRules(v) {
     [/TENANCY START DATE/g, v.start || ''],
     [/LANDLORD NAME/g, v.landlord || ''],
     [/(THIS AGREEMENT IS MADE on the )\d{1,2}(?:st|nd|rd|th)? [A-Z][a-z]+ \d{4}/g, function (m, a) { return a + (v.agreement_date || ''); }],
+    // Rent paid to the landlord's own account: the account details written in the agreement become theirs.
+  ].concat(bankRules(v.bank)).concat([
     [/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, function (m, k) { k = k.toLowerCase(); return Object.prototype.hasOwnProperty.call(vals, k) ? String(vals[k]) : m; }]
-  ];
+  ]);
 }
 
 // Date fields (e.g. SAVEDATE) would be recalculated when opened; keep their
@@ -410,6 +412,17 @@ function unfieldDates(xml) {
   return xml.replace(re, function (m, instr, result) {
     return /\b(SAVEDATE|CREATEDATE|PRINTDATE|DATE|TIME)\b/.test(instr.replace(/<[^>]+>/g, '')) ? result : m;
   });
+}
+
+function bankRules(b) {
+  if (!b) return [];
+  // Only labelled values ("Sort code: 20-00-00"), so wording that mentions an account is left alone.
+  const stop = '(?=\\s*(?:Account\\s*(?:name|number|no\\.?)|Sort\\s*code|Bank(?:\\s*name)?\\s*:|IBAN|SWIFT|BIC|Reference|Payee|$))';
+  const r = function (label, val, value) { return val ? [new RegExp('((?:' + label + ')\\s*(?::|-|\u2013)?\\s*)(' + value + ')', 'gi'), function (m, pre) { return pre + val; }] : null; };
+  const said = function (label, val) { return val ? [new RegExp('((?:' + label + ')\\s*:\\s*)(.+?)' + stop, 'gi'), function (m, pre) { return pre + val; }] : null; };
+  return [said('Account\\s*name|Payee', b.holder), said('Bank\\s*name|\\bBank', b.bank),
+    r('Sort\\s*code', b.sort, '\\d{2}\\s*[-\u2013 ]?\\s*\\d{2}\\s*[-\u2013 ]?\\s*\\d{2}'), r('Account\\s*(?:number|no\\.?)', b.account, '\\d[\\d ]{5,10}\\d'),
+    said('IBAN', b.iban), said('SWIFT(?:\\s*/\\s*BIC)?|\\bBIC', b.swift)].filter(Boolean);
 }
 
 function fillAgreement(buf, v) {
