@@ -2425,6 +2425,35 @@ module.exports = function mountJobs(app, opts) {
       [str(b.subject, 300), body, str(b.audience, 300), keys, JSON.stringify(recips)]);
     res.json({ ok: true, id: r.rows[0].id });
   }));
+  // AI: turn what the staff member pastes (e.g. the landlord's email) into a professional notice for the tenants,
+  // following on from the earlier notices those tenants were sent (so a new one doesn't come out of the blue).
+  app.post('/api/admin/tenant-notices/ai', withDb(async function (p, req, res) {
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    const b = req.body || {}, text = str(b.text, 8000), how = str(b.how, 1000), keys = (Array.isArray(b.keys) ? b.keys : []).slice(0, 1000).map(function (k) { return str(k, 300); }).filter(Boolean);
+    if (!text) return res.status(400).json({ ok: false, error: 'empty' });
+    const past = keys.length ? (await p.query("SELECT created_at, subject, body FROM tenant_notices WHERE property_keys && $1::text[] AND created_at > now() - interval '12 months' ORDER BY id DESC LIMIT 6", [keys])).rows : [];
+    const when = function (d) { return new Date(d).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }); };
+    const history = past.map(function (n) { return '--- Sent ' + when(n.created_at) + (n.subject ? ' — "' + n.subject + '"' : '') + ':\n' + String(n.body).slice(0, 1500); }).join('\n\n');
+    const prompt = 'You write messages from Residential Realtors, a London letting and property management agency, to the tenants of the properties we manage. ' +
+      'The same message goes to every tenant chosen' + (str(b.audience, 200) ? ' (' + str(b.audience, 200) + ')' : '') + ', by email and by WhatsApp.\n\n' +
+      'Today is ' + when(new Date()) + '.\n\n' +
+      'What the staff member pasted (it may be an email or message from the landlord, a contractor or the council, or their own notes), between the lines:\n-----\n' + text + '\n-----\n\n' +
+      (how ? 'Extra instructions from the staff member: ' + how + '\n\n' : '') +
+      (history ? 'Earlier messages we sent to these tenants, newest first. Use them for context: if the new message follows on from one of them (an update, a reminder, a change of date), say so naturally, e.g. "Further to our message of 3 March…"; don\'t repeat old details that no longer matter, and don\'t contradict them without saying what has changed:\n' + history + '\n\n' : 'There are no earlier messages to these tenants in the last 12 months.\n\n') +
+      'Rules: write it as our own message, in our voice — never forward or quote the pasted email word for word, and don\'t say "the landlord wrote". ' +
+      'Never include the landlord\'s (or anyone else\'s) personal phone numbers, emails or private matters, money between the landlord and us, or internal notes. Tenants contact us: 0207 096 8131 or info@residentialrealtors.co.uk. ' +
+      'Only use facts from the pasted text and the earlier messages; never invent dates, times, names or details — where something tenants need is missing, put a placeholder in square brackets such as [DATE] or [TIME]. ' +
+      'Start with "Hi {first_name}," exactly (that is filled in for each tenant). Where the property is mentioned you may write {address}. ' +
+      'Polite, clear and warm UK English; say plainly what is happening, when, and anything the tenant needs to do (such as giving access); short paragraphs, readable on a phone; no markdown. ' +
+      'End with "Kind regards,\nResidential Realtors\n0207 096 8131". ' +
+      'Reply with ONLY a JSON object: {"subject": "...", "body": "..."} where subject is a short email subject and body is plain text with \\n line breaks.';
+    const result = await opts.askAi(prompt, true);
+    if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
+    let parsed = null;
+    try { parsed = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()); } catch (e) { /* fall through */ }
+    if (!parsed || !parsed.body) return res.status(502).json({ ok: false, error: 'ai-bad-reply' });
+    res.json({ ok: true, subject: String(parsed.subject || '').slice(0, 300), body: String(parsed.body).slice(0, 10000), history: past.length });
+  }));
   // Record how one tenant was sent the notice (WhatsApp / copied / email app).
   app.post('/api/admin/tenant-notices/:id/sent', withDb(async function (p, req, res) {
     const b = req.body || {}, k = str(b.key, 80), how = str(b.how, 40);
