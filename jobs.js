@@ -6736,10 +6736,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // One email, to the negotiator on the tenancy only (the office inbox if no negotiator can be matched).
     tcyNegotiator(p, t.data || {}).then(function (n) {
       const body = function (link) { return 'A tenant has uploaded proof of a move-in payment: ' + what + '.\n\nOpen the tenancy in Fixflow to see the proof and confirm it once it is in the account: ' + link; };
-      if (!n.email) return ownerEmail('Move-in payment proof: ' + what, body);
+      if (!n.people.length) return ownerEmail('Move-in payment proof: ' + what, body);
       if (!canEmail() || !sendEmail) return;
-      const text = 'Hi ' + (String(n.name || '').split(/\s+/)[0] || 'there') + ',\n\n' + body((PUBLIC_URL || OFFER_ORIGIN) + '/admin');
-      return sendEmail({ to: [n.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: 'Move-in payment proof: ' + what, text: text, html: brandEmail(text, 'Move-in payment proof') });
+      return Promise.all(n.people.map(function (x) {
+        const text = 'Hi ' + (String(x.name || '').split(/\s+/)[0] || 'there') + ',\n\n' + body((PUBLIC_URL || OFFER_ORIGIN) + '/admin');
+        return sendEmail({ to: [x.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: 'Move-in payment proof: ' + what, text: text, html: brandEmail(text, 'Move-in payment proof') });
+      }));
     }).catch(function (e) { console.error('Payment proof email failed:', e.message); });
     res.json({ ok: true });
   }));
@@ -6747,24 +6749,31 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // The negotiator who got the offer (copied in on the tenants' welcome email): the staff member the
   // linked offer is credited to (largest share), or else the name in the tenancy's Negotiator box,
   // matched to an active staff sign-in by full name or a unique first name.
+  // The negotiator(s) on a tenancy, with their staff emails: the Negotiator box (one or more names,
+  // e.g. "Ann & Bob"), else whoever the offer is credited to. Returns { name, email, people: [{name, email}] }.
   async function tcyNegotiator(p, d) {
-    // The Negotiator box on the tenancy first (it always names the right person), then whoever the offer is credited to.
-    const names = [];
-    if (d.negotiator) names.push(String(d.negotiator));
-    if (d.offer_id) {
+    const split = function (v) { return String(v || '').split(/\s*(?:&|,|\/|\band\b|\+)\s*/i).map(function (x) { return x.trim(); }).filter(Boolean); };
+    let names = split(d.negotiator);
+    if (!names.length && d.offer_id) {
       const o = (await p.query("SELECT data->'credit' AS credit FROM offers WHERE id = $1", [parseInt(d.offer_id, 10) || 0])).rows[0];
       const cr = o && Array.isArray(o.credit) ? o.credit.filter(function (c) { return c && c.name && (c.share == null || Number(c.share) > 0); }) : [];
-      cr.sort(function (a, b) { return (Number(b.share) || 0) - (Number(a.share) || 0); }).forEach(function (c) { names.push(String(c.name)); });
+      names = cr.sort(function (a, b) { return (Number(b.share) || 0) - (Number(a.share) || 0); }).map(function (c) { return String(c.name); });
     }
     const staff = (await p.query("SELECT name, email FROM staff_users WHERE disabled_at IS NULL AND coalesce(email, '') <> ''")).rows;
     const norm = function (v) { return String(v || '').toLowerCase().replace(/\s+/g, ' ').trim(); };
+    const people = [];
     for (const n of names) {
       let hit = staff.filter(function (u) { return norm(u.name) === norm(n); });
       if (!hit.length) { const f = norm(n).split(' ')[0]; hit = f ? staff.filter(function (u) { return norm(u.name).split(' ')[0] === f; }) : []; }
-      if (hit.length === 1) return { name: hit[0].name, email: hit[0].email };
+      if (hit.length === 1 && !people.some(function (x) { return x.email === hit[0].email; })) people.push({ name: hit[0].name, email: hit[0].email });
     }
-    return { name: names[0] || '', email: '' };
+    return { name: people.length ? people.map(function (x) { return x.name; }).join(' & ') : names.join(' & '), email: people.length ? people[0].email : '', people: people };
   }
+  // Staff names for the tenancy's Negotiator(s) tick boxes (no contact details).
+  app.get('/api/admin/staff-names', withDb(async function (p, req, res) {
+    const r = await p.query("SELECT name FROM staff_users WHERE disabled_at IS NULL AND coalesce(trim(name), '') <> '' ORDER BY lower(name)");
+    res.json({ ok: true, names: r.rows.map(function (x) { return x.name; }) });
+  }));
   app.get('/api/admin/tenancies/:id/negotiator', withDb(async function (p, req, res) {
     const t = (await p.query('SELECT data FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
     if (!t) return res.status(404).json({ ok: false });
