@@ -10262,7 +10262,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     { id: 'licence', name: 'Property licence application', desc: 'We prepare and submit your selective or HMO licence application and deal with the council until it’s granted — free, you only pay the council’s fee', price: '0' }
   ];
   CERT_DEFAULTS.push({ id: 'diy', name: 'DIY inventory report', desc: 'Your tenant (or you) does the room-by-room inventory on their phone and signs it — access link sent as soon as you’ve paid', price: '30' });
-  const CERT_NEW = ['licence', 'diy'];   // services added later: offered to offices that already saved their list
+  // End-of-tenancy cleaning, booked and paid for by tenants on /book-a-clean (priced in the staff app; blank = not offered).
+  CERT_DEFAULTS.push({ id: 'clean_s', name: 'End of tenancy clean — studio or 1 bedroom', desc: 'A professional deep clean of the whole home before you hand back the keys: kitchen, bathroom, every room, inside cupboards and appliances', price: '' },
+    { id: 'clean_m', name: 'End of tenancy clean — 2 or 3 bedrooms', desc: 'A professional deep clean of the whole home before you hand back the keys: kitchen, bathroom, every room, inside cupboards and appliances', price: '' },
+    { id: 'clean_l', name: 'End of tenancy clean — 4 or more bedrooms', desc: 'A professional deep clean of the whole home before you hand back the keys: kitchen, bathroom, every room, inside cupboards and appliances', price: '' },
+    { id: 'clean_oven', name: 'Oven deep clean', desc: 'Oven, hob and extractor degreased and cleaned inside and out', price: '' },
+    { id: 'clean_carpet', name: 'Carpet steam clean', desc: 'Hot-water extraction of the carpets throughout', price: '' });
+  const CERT_NEW = ['licence', 'diy', 'clean_s', 'clean_m', 'clean_l', 'clean_oven', 'clean_carpet'];   // services added later: offered to offices that already saved their list
   const SUMUP_KEY = process.env.SUMUP_API_KEY || ''; let SUMUP_MC = process.env.SUMUP_MERCHANT_CODE || ''; const SITE = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
   const canPay = function () { return !!(SUMUP_KEY && SUMUP_MC); }, CERT_VAT = 0.2;
   // No merchant code set? Ask SumUp for it with the API key (once, at start-up).
@@ -10285,12 +10291,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   async function certCheckout(p, row) {
     const d = row.data || {}, ref = 'RR-CERT-' + row.id + '-' + crypto.randomBytes(3).toString('hex');
-    const back = SITE + '/book-certificate?b=' + row.id + '&k=' + d.token;
+    const page = d.who === 'tenant' ? '/book-a-clean' : '/book-certificate', back = SITE + page + '?b=' + row.id + '&k=' + d.token;
     const c = await sumup('POST', '/v0.1/checkouts', { checkout_reference: ref, amount: Number(d.total), currency: 'GBP', merchant_code: SUMUP_MC,
       description: 'Residential Realtors — ' + (d.items || []).map(function (i) { return i.name; }).join(' + ').slice(0, 200), redirect_url: back, return_url: (PUBLIC_URL || SITE) + '/api/sumup/webhook', hosted_checkout: { enabled: true } });
     d.checkout_id = c.id; d.checkout_ref = ref; d.pay_url = c.hosted_checkout_url || ''; d.checkouts = (d.checkouts || []).concat([c.id]).slice(-5);
     await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]);
-    return d.pay_url || (SITE + '/book-certificate?b=' + row.id + '&k=' + d.token + '&pay=1');
+    return d.pay_url || (SITE + page + '?b=' + row.id + '&k=' + d.token + '&pay=1');
   }
   const certText = function (row) { const d = row.data || {};
     return 'Booked: ' + (d.items || []).map(function (i) { return i.name + (i.price ? ' (£' + i.price.toFixed(2) + ' + VAT)' : ' (free)'); }).join(', ') + (d.vat != null ? '\nSubtotal: £' + Number(d.subtotal).toFixed(2) + ' + VAT £' + Number(d.vat).toFixed(2) : '') + '\nTotal: £' + Number(d.total || 0).toFixed(2) + (d.vat != null ? ' inc. VAT' : '') + (!d.total ? ' — free service' : d.paid_at ? ' — PAID online' : canPay() ? ' — not paid yet' : ' — payment to be taken by the office') +
@@ -10299,23 +10305,26 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '\nPreferred dates: ' + ((d.dates || []).join(', ') || 'Any') + (d.message ? '\n\nNotes: ' + d.message : ''); };
   // Each service booked becomes a work order for the contractor who does it (chosen per service in
   // Certificates → Website bookings; otherwise the first active contractor whose trade fits).
-  const CERT_TRADE = { gas: [/gas/i, /boiler|heating/i], eicr: [/eicr/i, /electric/i], epc: [/epc/i, /energy assess|domestic energy/i] };
+  const CERT_TRADE = { clean: [/clean/i], gas: [/gas/i, /boiler|heating/i], eicr: [/eicr/i, /electric/i], epc: [/epc/i, /energy assess|domestic energy/i] };
   async function certJobs(p, row) {
     const d = row.data || {}; if (d.jobs && d.jobs.length) return;
     const cons = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY id')).rows, ids = [];
     const pref = d.dates && d.dates.length ? d.dates.join(' or ') : 'any date';
     for (const it of d.items || []) {
       if (/^diy/.test(it.id)) continue;   // the DIY inventory is an access link, not a visit
-      const kind = /^gas/.test(it.id) ? 'gas' : /^eicr/.test(it.id) ? 'eicr' : /^epc/.test(it.id) ? 'epc' : /^licen/.test(it.id) ? 'licence' : '';
+      const kind = /^clean/.test(it.id) ? 'clean' : /^gas/.test(it.id) ? 'gas' : /^eicr/.test(it.id) ? 'eicr' : /^epc/.test(it.id) ? 'epc' : /^licen/.test(it.id) ? 'licence' : '';
+      const byTenant = d.who === 'tenant';
       const pick = (it.contractor && cons.find(function (c) { return c.name === it.contractor; })) || (kind && CERT_TRADE[kind] && CERT_TRADE[kind].reduce(function (hit, re) { return hit || cons.find(function (c) { return re.test(c.trade || ''); }); }, null)) || null;
-      const cat = kind === 'gas' ? 'Gas Safety certificate' : kind === 'eicr' ? 'EICR' : kind === 'epc' ? 'EPC' : kind === 'licence' ? 'Property licence application' : 'Certificate';
-      const access = d.access === 'tenant' ? 'Please contact the tenant directly to arrange access: ' + ([d.tenant_name, d.tenant_phone, d.tenant_email].filter(Boolean).join(' · ') || 'details to follow') + '.'
+      const cat = kind === 'clean' ? 'Cleaning' : kind === 'gas' ? 'Gas Safety certificate' : kind === 'eicr' ? 'EICR' : kind === 'epc' ? 'EPC' : kind === 'licence' ? 'Property licence application' : 'Certificate';
+      const access = byTenant ? (d.access === 'keys' ? 'Keys: the tenant is leaving them at our office — call us to arrange collection.' : 'The tenant will let you in — please call them to confirm the time: ' + row.name + ' · ' + (row.phone || row.email) + '.')
+        : d.access === 'tenant' ? 'Please contact the tenant directly to arrange access: ' + ([d.tenant_name, d.tenant_phone, d.tenant_email].filter(Boolean).join(' · ') || 'details to follow') + '.'
         : d.access === 'keys' ? 'Keys: collect from our office / key safe — call us to arrange.' : 'The landlord will let you in — please call them to arrange: ' + row.name + ' · ' + (row.phone || row.email) + '.';
-      const desc = it.name + ' booked by the landlord on our website' + (d.paid_at ? ' (paid online)' : '') + '.\nPreferred: ' + pref + '.\n' + access + (kind === 'licence' ? '\nPrepare and submit the licence application; ask the landlord for anything the council needs.' : '\nPlease email the certificate to us once done.') + (d.message ? '\nLandlord’s notes: ' + d.message : '');
+      const desc = it.name + ' booked by the ' + (byTenant ? 'tenant (moving out)' : 'landlord') + ' on our website' + (d.paid_at ? ' (paid online)' : '') + '.\nPreferred: ' + pref + '.\n' + access + (kind === 'licence' ? '\nPrepare and submit the licence application; ask the landlord for anything the council needs.' : '\nPlease email the certificate to us once done.') + (d.message ? '\nLandlord’s notes: ' + d.message : '');
       const due = d.dates_iso && d.dates_iso[0] ? new Date(d.dates_iso[0] + 'T18:00:00Z') : new Date(Date.now() + 7 * 86400000);
       const r = await p.query(`INSERT INTO jobs (status, urgency, due_at, source, property_address, category, affected, description, assigned_to, tenant_name, tenant_phone, tenant_email, landlord_name, landlord_email, landlord_phone)
         VALUES ($1, 'Routine', $2, 'Other', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
-        [pick ? 'Assigned' : 'New', due, row.address, cat, cat, desc, pick ? pick.name : null, d.tenant_name || null, d.tenant_phone || null, d.tenant_email || null, row.name, row.email || null, row.phone || null]);
+        byTenant ? [pick ? 'Assigned' : 'New', due, row.address, cat, it.name, desc, pick ? pick.name : null, row.name, row.phone || null, row.email || null, null, null, null]
+          : [pick ? 'Assigned' : 'New', due, row.address, cat, cat, desc, pick ? pick.name : null, d.tenant_name || null, d.tenant_phone || null, d.tenant_email || null, row.name, row.email || null, row.phone || null]);
       const id = r.rows[0].id; ids.push(id);
       await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'created', 'Job raised from a website certificate booking (' + it.name + ', ' + (it.price ? '£' + Number(it.price).toFixed(2) + ' + VAT' : 'free') + (!it.price ? '' : d.paid_at ? ', paid online' : ', payment to take') + ').' + (pick ? ' Assigned to ' + pick.name + '.' : ' No contractor chosen for this service yet — pick one in Certificates → Website bookings.')]);
       ntfy({ title: refFor(id) + ' raised: ' + cat, message: String(row.address).replace(/\s+/g, ' ') + '\n' + (pick ? 'Assigned to ' + pick.name + ' — open it to send them the job.' : 'No contractor chosen yet — open it to assign one.'), tags: ['scroll'] }, '#job-' + id).catch(function () {});
@@ -10429,10 +10438,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     d.paid_at = new Date().toISOString(); await p.query("UPDATE valuation_requests SET data = $2 WHERE id = $1", [row.id, JSON.stringify(d)]); row.data = d;
     await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); });
     await certDiy(p, row).catch(function (e) { console.error('DIY access failed:', e.message); });
-    ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined, title: '💳 Certificate booking paid: £' + Number(d.total).toFixed(2), message: (d.items || []).map(function (i) { return i.name; }).join(' + ') + ' · ' + row.address.split(',').slice(0, 2).join(','), tags: ['credit_card'] }).catch(function () {});
-    certOwnerEmail('💳 Certificate booking paid - ' + row.address.split(',').slice(0, 2).join(','), 'A landlord has booked and paid on the website.\n\n' + certText(row));
+    ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined, title: '💳 ' + (d.who === 'tenant' ? 'Cleaning' : 'Certificate') + ' booking paid: £' + Number(d.total).toFixed(2), message: (d.items || []).map(function (i) { return i.name; }).join(' + ') + ' · ' + row.address.split(',').slice(0, 2).join(','), tags: ['credit_card'] }).catch(function () {});
+    certOwnerEmail('💳 ' + (d.who === 'tenant' ? 'Cleaning' : 'Certificate') + ' booking paid - ' + row.address.split(',').slice(0, 2).join(','), 'A ' + (d.who === 'tenant' ? 'tenant' : 'landlord') + ' has booked and paid on the website.\n\n' + certText(row));
     if (canEmail() && sendEmail && row.email) sendEmail({ to: row.email, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Booking confirmed — ' + (d.items || []).map(function (i) { return i.name.replace(/ —.*/, ''); }).join(' + '),
-      text: 'Dear ' + row.name.split(' ')[0] + ',\n\nThank you — we’ve received your payment of £' + Number(d.total).toFixed(2) + (d.vat != null ? ' (including VAT of £' + Number(d.vat).toFixed(2) + ')' : '') + ' for:\n' + (d.items || []).map(function (i) { return '• ' + i.name; }).join('\n') + '\n\nProperty: ' + row.address + '\n\n' + (d.diy_link ? 'Start your DIY inventory here (your personal link — for one report):\n' + d.diy_link + '\n\n' : '') + ((d.items || []).some(function (i) { return !/^diy/.test(i.id); }) ? 'We’ll be in touch shortly to confirm the date and time' + ((d.dates || []).length ? ' (you asked for: ' + d.dates.join(', ') + ')' : '') + '. Your certificate will be emailed to you once the visit is done, and we’ll email you a reminder before it expires.\n\n' : '') + 'If you need anything in the meantime, call us on 0207 096 8131 or reply to this email.\n\nResidential Realtors\n28-30 Harper Road, London SE1 6AD' }).catch(function () {});
+      text: 'Dear ' + row.name.split(' ')[0] + ',\n\nThank you — we’ve received your payment of £' + Number(d.total).toFixed(2) + (d.vat != null ? ' (including VAT of £' + Number(d.vat).toFixed(2) + ')' : '') + ' for:\n' + (d.items || []).map(function (i) { return '• ' + i.name; }).join('\n') + '\n\nProperty: ' + row.address + '\n\n' + (d.diy_link ? 'Start your DIY inventory here (your personal link — for one report):\n' + d.diy_link + '\n\n' : '') + ((d.items || []).some(function (i) { return !/^diy/.test(i.id); }) ? 'We’ll be in touch shortly to confirm the date and time' + ((d.dates || []).length ? ' (you asked for: ' + d.dates.join(', ') + ')' : '') + '' + (d.who === 'tenant' ? '.' : '. Your certificate will be emailed to you once the visit is done, and we’ll email you a reminder before it expires.') + '\n\n' : '') + 'If you need anything in the meantime, call us on 0207 096 8131 or reply to this email.\n\nResidential Realtors\n28-30 Harper Road, London SE1 6AD' }).catch(function () {});
   }
   async function certRow(p, id, k) { const r = (await p.query("SELECT * FROM valuation_requests WHERE id = $1 AND data->>'kind' = 'cert'", [parseInt(id, 10) || 0])).rows[0]; return r && r.data && r.data.token && k && String(k) === r.data.token ? r : null; }
   app.get('/api/public/cert-services', withDb(async function (p, req, res) {
@@ -10447,7 +10456,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (str(b.website, 200)) return res.json({ ok: true });
     if (await refuseBot(req, res, b, [b.name, b.message, b.address])) return;
     const all = await certServices(p), want = Array.isArray(b.items) ? b.items.map(String) : [];
-    const items = all.filter(function (x) { return x.price !== null && want.indexOf(x.id) !== -1; });
+    const tenantClean = b.group === 'clean';
+    const items = all.filter(function (x) { return x.price !== null && want.indexOf(x.id) !== -1 && (tenantClean ? /^clean/.test(x.id) : !/^clean/.test(x.id)); });
     if (!items.length) return res.status(400).json({ ok: false, error: 'items' });
     const name = str(b.name, 120), email = str(b.email, 200), phone = str(b.phone, 40), addr = str(b.address, 300), pcm = POSTCODE_RE.exec(String(b.postcode || '') + ' ' + String(b.address || ''));
     if (!name || !addr || !phone) return res.status(400).json({ ok: false, error: 'missing' });
@@ -10460,11 +10470,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (lj && lj.result && lj.result.region && lj.result.region !== 'London') return res.status(400).json({ ok: false, error: 'not-london' }); } catch (e) {}
     // Prices are set excluding VAT; the landlord pays the total with VAT at 20%.
     const subtotal = Math.round(items.reduce(function (a, x) { return a + x.price; }, 0) * 100) / 100, vat = Math.round(subtotal * CERT_VAT * 100) / 100, total = Math.round((subtotal + vat) * 100) / 100;
-    const data = { kind: 'cert', postcode: postcode, items: items.map(function (x) { return { id: x.id, name: x.name, price: x.price, contractor: x.contractor }; }), subtotal: subtotal, vat: vat, total: total, token: crypto.randomBytes(12).toString('base64url'),
+    const data = { kind: 'cert', who: tenantClean ? 'tenant' : 'landlord', postcode: postcode, items: items.map(function (x) { return { id: x.id, name: x.name, price: x.price, contractor: x.contractor }; }), subtotal: subtotal, vat: vat, total: total, token: crypto.randomBytes(12).toString('base64url'),
       access: ['landlord', 'tenant', 'keys'].indexOf(b.access) !== -1 ? b.access : '', tenant_name: str(b.tenant_name, 120) || '', tenant_phone: str(b.tenant_phone, 40) || '', tenant_email: str(b.tenant_email, 200) || '', dates: (Array.isArray(b.dates) ? b.dates : []).map(function (x) { return str(x, 60); }).filter(Boolean).slice(0, 3), dates_iso: (Array.isArray(b.dates_iso) ? b.dates_iso : []).filter(function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(String(x)); }).slice(0, 3), message: str(b.message, 2000) || '' };
     const row = (await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING *', [name, email, phone, full, JSON.stringify(data)])).rows[0];
-    ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined, title: '📜 Certificate booking: ' + items.map(function (x) { return x.name.replace(/ —.*/, ''); }).join(' + '), message: full.split(',').slice(0, 2).join(',') + (total ? ' · £' + total.toFixed(2) : '') + (!total ? ' · free service' : canPay() ? ' · paying online' : ' · take payment'), tags: ['scroll'] }).catch(function () {});
-    if (!canPay() || !total) certOwnerEmail('📜 Certificate booking - ' + full.split(',').slice(0, 2).join(','), (total ? 'A landlord has booked on the website. Please call them to take payment and arrange the visit.' : 'A landlord has asked for our free service on the website. Please call them to get started.') + '\n\n' + certText(row));
+    ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined, title: (tenantClean ? '🧽 Cleaning booking: ' : '📜 Certificate booking: ') + items.map(function (x) { return x.name.replace(/ —.*/, ''); }).join(' + '), message: full.split(',').slice(0, 2).join(',') + (total ? ' · £' + total.toFixed(2) : '') + (!total ? ' · free service' : canPay() ? ' · paying online' : ' · take payment'), tags: ['scroll'] }).catch(function () {});
+    if (!canPay() || !total) certOwnerEmail('📜 Certificate booking - ' + full.split(',').slice(0, 2).join(','), (total ? 'A ' + (tenantClean ? 'tenant' : 'landlord') + ' has booked on the website. Please call them to take payment and arrange the visit.' : 'A landlord has asked for our free service on the website. Please call them to get started.') + '\n\n' + certText(row));
     if (!canPay() || !total) { await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); }); if (!total) await certDiy(p, row).catch(function () {}); return res.json({ ok: true, id: row.id, pay: false, diy: !total ? (row.data.diy_link || '') : '' }); }
     try { res.json({ ok: true, id: row.id, pay: true, url: await certCheckout(p, row) }); }
     catch (e) { console.error('SumUp checkout failed:', e.message); res.json({ ok: true, id: row.id, pay: false, payError: true }); }
