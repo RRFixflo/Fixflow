@@ -6699,6 +6699,36 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query('DELETE FROM tenancy_payments WHERE id = $1', [parseInt(req.params.id, 10) || 0]);
     res.json({ ok: true });
   }));
+  // Not paid by the deadline: one reminder email to the tenants (the negotiators copied in), the day after
+  // the move-in monies were due, unless proof or recorded payments already cover the amount.
+  async function payReminders() {
+    const p = await db(); if (!p || !canEmail() || !sendEmail) return;
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+    if (Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false })) < 9) return;   // not before 9am
+    const week = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+    const rows = (await p.query("SELECT id, address, data FROM tenancies WHERE data ? 'pay_token' AND data->>'pay_due' < $1 AND data->>'pay_due' >= $2 AND NOT (data ? 'pay_reminded_at')", [today, week])).rows;
+    for (const t of rows) {
+      const d = t.data || {}, due = Number(d.pay_amount) || 0; if (!(due > 0)) continue;
+      const sent = Number((await p.query('SELECT coalesce(sum(amount), 0) AS s FROM tenancy_payments WHERE tenancy_id = $1', [t.id])).rows[0].s) || 0;
+      const recorded = (d.receipts || []).reduce(function (a, x) { return a + (Number(String(x && x.amount || '').replace(/[£,\s]/g, '')) || 0); }, 0);
+      if (sent >= due - 0.5 || recorded >= due - 0.5) { await p.query("UPDATE tenancies SET data = data || jsonb_build_object('pay_reminded_at', 'not needed') WHERE id = $1", [t.id]); continue; }
+      const to = (d.tenants || []).map(function (x) { return String(x && x.email || '').trim(); }).filter(function (x) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x); });
+      if (!to.length) continue;
+      const neg = await tcyNegotiator(p, d), cc = neg.people.map(function (x) { return x.email; }).filter(function (x) { return to.indexOf(x) === -1; });
+      const addr = String(d.address || t.address || 'your new home'), link = (PUBLIC_URL || SITE) + '/pay/' + d.pay_token, left = due - sent;
+      const dueDay = new Date(d.pay_due + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+      const subject = 'Reminder: move-in monies overdue — ' + addr.split(',').slice(0, 2).join(',');
+      const text = 'Dear Tenants,\n\nOur records show that the move-in monies for ' + addr + ' were due by ' + dueDay + ', and we have not yet received ' + (sent > 0 ? 'the full amount — proof of ' + gbp(sent) + ' has been sent so far, leaving ' + gbp(left) + ' outstanding' : 'proof of payment for ' + gbp(due)) + '.\n\n' +
+        'Please make the payment today, using the bank details and reference in your welcome email, and upload proof of each payment here:\n' + link + '\n\n' +
+        'If you have already paid, please upload your proof using the link above so we can confirm it. Keys cannot be released until the move-in monies have cleared in our account in full.\n\nIf you have any questions, please call us on 0207 096 8131 or reply to this email.\n\nKind regards,\nResidential Realtors';
+      const r = await sendEmail({ to: to, cc: cc, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (e) { return { ok: false, error: e.message }; });
+      if (!r || !r.ok) { console.error('Move-in payment reminder failed for tenancy ' + t.id + ':', r && r.error); continue; }
+      await p.query("UPDATE tenancies SET data = data || jsonb_build_object('pay_reminded_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1",
+        [t.id, JSON.stringify([{ at: new Date().toISOString(), text: 'Reminder sent automatically — move-in monies not paid by the deadline (emailed ' + to.join(', ') + (cc.length ? ', cc ' + cc.join(', ') : '') + ')', email: logEmail({ to: to, cc: cc, subject: subject, text: text, attachments: [] }) }])]);
+    }
+  }
+  setInterval(function () { payReminders().catch(function (e) { console.error('Move-in payment reminders failed:', e.message); }); }, 30 * 60 * 1000).unref();
+  setTimeout(function () { payReminders().catch(function () {}); }, 90 * 1000).unref();
   async function payTenancy(p, token) { return /^[\w-]{16,40}$/.test(String(token || '')) ? (await p.query("SELECT id, address, data FROM tenancies WHERE data->>'pay_token' = $1", [String(token)])).rows[0] : null; }
   app.get('/pay/:token', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
