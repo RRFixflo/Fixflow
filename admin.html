@@ -688,6 +688,12 @@
   .sv-pages { font-size: .76rem; color: var(--ink-soft); margin-top: 2px; }
   .pt-paste { border: 1px solid var(--line, #e6e8ec); border-radius: 12px; padding: 10px; margin: 8px 0; background: #f9fafb; }
   .pt-row { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line, #e6e8ec); } .pt-row [data-ptuse] { grid-row: span 2; } .pt-row .inp { min-width: 0; } .pt-dup { grid-column: 2 / -1; color: #b54708; font-size: .76rem; }
+  .jt-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .jt-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; cursor: pointer; }
+  .jt-row input[type=radio] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
+  .jt-who { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; } .jt-who small { display: block; color: var(--muted, #6b7280); }
+  .jt-add { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 4px; }
+  @media (max-width: 600px) { .jt-add { grid-template-columns: 1fr 1fr; } .jt-add #jtEmail { grid-column: 1 / -1; } .jt-add #jtAdd { grid-column: 1 / -1; } }
   .pt-badge { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: .72rem; font-weight: 700; margin-left: 4px; } .pt-badge.lead { background: #ecfdf3; color: #067647; border: 1px solid #abefc6; } .pt-badge.guar { background: #fffaeb; color: #b54708; border: 1px solid #fedf89; }
   select.inp.pt-role { width: auto !important; flex: 0 0 auto; max-width: 130px; min-height: 30px; height: 30px; padding: 2px 24px 2px 8px; font-size: .78rem; margin-right: 6px; }
   .pt-guar-h { font-weight: 700; margin: 12px 0 2px; font-size: .9rem; }
@@ -2856,6 +2862,24 @@
     <div class="more-deployed" id="deployedAtM" hidden></div>
   </div>
 </div>
+<div class="modal" id="jtModal" hidden>
+  <div class="card">
+    <h3>Tenants for this job</h3>
+    <p class="muted-note" style="margin-top:0">Pick who the contractor contacts first. Everyone listed goes in the message to the contractor.</p>
+    <div id="jtList" class="jt-list"></div>
+    <div class="jt-add">
+      <input class="inp" id="jtName" placeholder="Name" autocomplete="off">
+      <input class="inp" id="jtPhone" placeholder="Mobile" inputmode="tel" autocomplete="off">
+      <input class="inp" id="jtEmail" placeholder="Email (optional)" type="email" autocomplete="off">
+      <button class="btn" id="jtAdd" type="button">+ Add</button>
+    </div>
+    <div class="row-actions">
+      <button class="btn" id="jtClose" type="button">Cancel</button>
+      <button class="btn primary" id="jtSave" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="waModal" hidden>
   <div class="card">
     <h3 id="waTitle">Message for contractor</h3>
@@ -5692,6 +5716,87 @@
       return !(tail && phoneTail(t.phone) === tail) && !(nm && String(t.name || '').trim().toLowerCase() === nm);
     });
   }
+  // ---------- Tenants on a job: change the main contact, include everyone ----------
+  // People in a job's "Other tenants:" line (added from a message or here).
+  function jobExtraTenants(j){
+    var m = /^Other tenants:\s*(.+)$/im.exec(j.description || '');
+    return m ? m[1].split(/;\s*/).map(function(x){
+      var p = /^(.*?)\s*[–-]\s*([+\d][\d\s()+-]{6,})$/.exec(x.trim());
+      return p ? { name: p[1].trim(), phone: p[2].trim(), email: '' } : { name: x.trim(), phone: '', email: '' };
+    }).filter(function(t){ return t.name || t.phone; }) : [];
+  }
+  var jtJob = null, jtPeople = [], jtMain = 0;
+  function jtSame(a, b){
+    var ta = phoneTail(a.phone), tb = phoneTail(b.phone);
+    if (ta && tb) return ta === tb;
+    if (a.email && b.email) return a.email.toLowerCase() === b.email.toLowerCase();
+    return !!a.name && String(a.name).trim().toLowerCase() === String(b.name || '').trim().toLowerCase();
+  }
+  function openJobTenants(j){
+    jtJob = j; jtPeople = []; jtMain = 0;
+    var add = function(t, onFile){
+      t = { name: t.name || '', phone: t.phone || '', email: t.email || '', onFile: onFile };
+      if (!t.name && !t.phone && !t.email) return;
+      var same = jtPeople.filter(function(x){ return jtSame(x, t); })[0];
+      if (same) { ['name', 'phone', 'email'].forEach(function(k){ if (!same[k] && t[k]) same[k] = t[k]; }); if (onFile) same.onFile = true; }
+      else jtPeople.push(t);
+    };
+    add({ name: j.tenant_name, phone: j.tenant_phone, email: j.tenant_email }, false);
+    tenantsAtProperty(j.property_address).forEach(function(t){ add(t, true); });
+    jobExtraTenants(j).forEach(function(t){ add(t, false); });
+    if (!(j.tenant_name || j.tenant_phone || j.tenant_email)) jtMain = jtPeople.length ? 0 : -1;
+    ['jtName', 'jtPhone', 'jtEmail'].forEach(function(id){ $(id).value = ''; });
+    renderJobTenants();
+    $('jtModal').hidden = false;
+  }
+  function renderJobTenants(){
+    $('jtList').innerHTML = jtPeople.length ? jtPeople.map(function(t, i){
+      return '<label class="jt-row"><input type="radio" name="jtMain" value="' + i + '"' + (i === jtMain ? ' checked' : '') + '>' + avatar(t.name || '?') +
+        '<span class="jt-who"><b>' + esc(t.name || 'Tenant') + '</b>' + (i === jtMain ? ' <span class="pt-badge lead">Main contact</span>' : '') +
+        '<small>' + esc([t.phone, t.email].filter(Boolean).join(' · ') || 'No contact details') + (t.onFile ? ' · saved at this property' : '') + '</small></span>' +
+        (t.onFile ? '' : '<button class="btn ghost small" type="button" data-jt-del="' + i + '" title="Take off this job" aria-label="Remove">✕</button>') + '</label>';
+    }).join('') : '<p class="muted-note">No tenants yet — add them below.</p>';
+  }
+  $('jtList').addEventListener('change', function(e){ if (e.target.name === 'jtMain') { jtMain = Number(e.target.value); renderJobTenants(); } });
+  $('jtList').addEventListener('click', function(e){
+    var b = e.target.closest('[data-jt-del]'); if (!b) return;
+    e.preventDefault();
+    var i = Number(b.dataset.jtDel); jtPeople.splice(i, 1);
+    if (jtMain === i) jtMain = jtPeople.length ? 0 : -1; else if (jtMain > i) jtMain--;
+    renderJobTenants();
+  });
+  $('jtAdd').addEventListener('click', function(){
+    var t = { name: $('jtName').value.trim(), phone: $('jtPhone').value.trim(), email: $('jtEmail').value.trim(), onFile: false };
+    if (!t.name && !t.phone) { $('jtName').focus(); return; }
+    if (jtPeople.some(function(x){ return jtSame(x, t); })) { toast('They’re already on the list'); return; }
+    jtPeople.push(t); if (jtMain < 0) jtMain = 0;
+    ['jtName', 'jtPhone', 'jtEmail'].forEach(function(id){ $(id).value = ''; });
+    renderJobTenants(); $('jtName').focus();
+  });
+  $('jtEmail').addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); $('jtAdd').click(); } });
+  $('jtClose').addEventListener('click', function(){ $('jtModal').hidden = true; });
+  $('jtSave').addEventListener('click', function(){
+    var j = jtJob; if (!j) return;
+    if ($('jtName').value.trim() || $('jtPhone').value.trim()) $('jtAdd').click();   // typed but not added yet
+    var main = jtPeople[jtMain] || { name: '', phone: '', email: '' };
+    // Tenants saved at the property are always included; anyone else goes in the job's "Other tenants:" line.
+    var extra = jtPeople.filter(function(t, i){ return i !== jtMain && !t.onFile; });
+    var desc = String(j.description || '').replace(/\n?^Other tenants:.*$/im, '').replace(/^\n+/, '');
+    if (extra.length) desc += (desc ? '\n' : '') + 'Other tenants: ' + extra.map(function(t){ return (t.name || 'Tenant') + (t.phone ? ' – ' + t.phone : ''); }).join('; ');
+    var body = {};
+    if (main.name !== (j.tenant_name || '')) body.tenant_name = main.name;
+    if (main.phone !== (j.tenant_phone || '')) body.tenant_phone = main.phone;
+    if (main.email !== (j.tenant_email || '')) body.tenant_email = main.email;
+    if (desc !== (j.description || '')) body.description = desc;
+    if (!Object.keys(body).length) { $('jtModal').hidden = true; return; }
+    busy($('jtSave'), true, 'Saving…');
+    api('PATCH', '/api/admin/jobs/' + j.id, body).then(function(d){
+      busy($('jtSave'), false);
+      if (!d.ok) { toast('Couldn’t save (' + (d.error || 'error') + ')'); return; }
+      $('jtModal').hidden = true; toast('Tenants updated'); openJob(j.id); loadJobs();
+    });
+  });
+
   // Who can be messaged about a job: its tenant (details filled from their saved
   // record if missing), then the other tenants at the property.
   function msgRecipients(j){
@@ -7292,6 +7397,7 @@
     $('dBody').dataset.tab = drawerTab;
     var t = timeInfo(j), prof = profitOf(j), LLJ = landlordFor(j) || {};
     var OTHERS = otherTenants(j);
+    var TEN_N = (j.tenant_name || j.tenant_phone ? 1 : 0) + OTHERS.length + jobExtraTenants(j).length;
     var completed = j.status === 'Completed';
     var statusOpts = meta.statuses.filter(function(s){ return s !== 'Completed' || completed; });
     var rows = function(pairs){
@@ -7325,7 +7431,7 @@
         '<div><div class="k">Contractor' + (j.assigned_to_2 ? 's' : '') + '</div><div class="v"><div class="who-chip">' + avatar(j.assigned_to) + '<span class="nm">' + esc(j.assigned_to || 'Unassigned') + '</span></div>' +
           (j.assigned_to_2 ? '<div class="who-chip" style="margin-top:4px">' + avatar(j.assigned_to_2) + '<span class="nm">' + esc(j.assigned_to_2) + '</span></div>' + (j.task_2 ? '<small>' + esc(j.task_2) + '</small>' : '') : '') + '</div></div>' +
         '<div><div class="k">Received</div><div class="v">' + esc(ago(j.created_at)) + '<small>' + esc(fmtShort(j.created_at)) + (j.source ? ' · ' + esc(j.source) : '') + '</small></div></div>' +
-        '<div><div class="k">Tenant</div><div class="v">' + esc(j.tenant_name || '—') + '<small>' + (j.tenant_phone ? '<a href="tel:' + esc(tel) + '" style="color:var(--blue);text-decoration:none">' + esc(j.tenant_phone) + '</a>' : 'No phone') + '</small></div></div>' +
+        '<div id="glanceTenant" style="cursor:pointer" title="Change the tenant or add all tenants"><div class="k">Tenant' + (TEN_N > 1 ? 's' : '') + ' ✎</div><div class="v">' + esc(j.tenant_name || (TEN_N ? 'Choose the tenant' : 'Add tenants')) + (TEN_N > 1 ? ' <span class="muted-note" style="margin:0;font-weight:500">+' + (TEN_N - 1) + ' more</span>' : '') + '<small>' + (j.tenant_phone ? '<a href="tel:' + esc(tel) + '" style="color:var(--blue);text-decoration:none">' + esc(j.tenant_phone) + '</a>' : 'No phone') + '</small></div></div>' +
         '<div id="glanceAccess" style="cursor:pointer" title="Edit access"><div class="k">Access ✎</div><div class="v">' + esc(j.access_days || 'Not given') + '<small>' + esc([j.direct_contact === 'No' ? 'We arrange access' : 'Contractor contacts tenant', j.access_time, j.key_permission ? 'Keys: ' + j.key_permission : '', keyNo(j.property_address) ? '🔑 Key no. ' + keyNo(j.property_address) : ''].filter(Boolean).join(' · ') || '—') + '</small></div></div>' +
         '<div><div class="k">Profit</div><div class="v ' + (prof ? (prof.value >= 0 ? 'profit-pos' : 'profit-neg') : '') + '">' + (prof ? esc(gbp(prof.value)) : '—') +
           '<small>' + (j.invoiced_at ? 'Invoiced ' + esc(j.invoice_number || '') : prof && prof.estimated ? 'Estimated' : j.landlord_charge != null ? 'Not invoiced yet' : 'No costs yet') + '</small></div></div>' +
@@ -7522,7 +7628,7 @@
         ['Email', j.tenant_email ? '<a href="mailto:' + esc(j.tenant_email) + '">' + esc(j.tenant_email) + '</a>' : '', true],
         ['Phone', j.tenant_phone ? '<a href="tel:' + esc(j.tenant_phone.replace(/\s/g, '')) + '">' + esc(j.tenant_phone) + '</a>' : '', true],
         ['Property', j.property_address],
-        ['Other tenants', OTHERS.map(function(t){ return esc(t.name || 'Tenant') + (t.phone ? ' – <a href="tel:' + esc(String(t.phone).replace(/[^\d+]/g, '')) + '">' + esc(t.phone) + '</a>' : ''); }).join('<br>'), true]
+        ['Other tenants', OTHERS.concat(jobExtraTenants(j)).map(function(t){ return esc(t.name || 'Tenant') + (t.phone ? ' – <a href="tel:' + esc(String(t.phone).replace(/[^\d+]/g, '')) + '">' + esc(t.phone) + '</a>' : ''); }).join('<br>'), true]
       ]) + ('<div class="job-links">' + (j.property_address ? '<button class="btn small" id="propLink" type="button">All repairs at this property</button>' : '') +
         (j.tenant_name || j.tenant_phone ? '<button class="btn small" id="tenantLink" type="button">All repairs for this tenant</button>' : '') + '</div>') + '</div>' +
 
@@ -8027,6 +8133,7 @@
     }
     $('editAccess').addEventListener('click', function(){ accessEditing(true); });
     $('glanceAccess').addEventListener('click', function(){ accessEditing(true); });
+    $('glanceTenant').addEventListener('click', function(e){ if (e.target.closest('a')) return; openJobTenants(j); });
     $('accessCancel').addEventListener('click', function(){ accessEditing(false); });
     $('accessSave').addEventListener('click', function(){
       var body = {};
@@ -13489,6 +13596,7 @@
   $('certIssued').addEventListener('change', function(){ if ($('certIssued').value && certCtx) $('certExpires').value = addYears($('certIssued').value, certDef(certCtx.type).years); });
   $('certCancel').addEventListener('click', function(){ $('certModal').hidden = true; });
   $('certModal').addEventListener('mousedown', function(e){ if (e.target === $('certModal')) $('certModal').hidden = true; });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !$('jtModal').hidden) { e.stopImmediatePropagation(); $('jtModal').hidden = true; } }, true);
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !$('certModal').hidden) { e.stopImmediatePropagation(); $('certModal').hidden = true; } }, true);
   $('certForm').addEventListener('submit', function(e){
     e.preventDefault();
