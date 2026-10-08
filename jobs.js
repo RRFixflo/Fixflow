@@ -6606,7 +6606,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     ['address', 'payment_reference', 'landlord', 'start', 'rent', 'deposit', 'deposit_scheme', 'first_rent', 'rent_day', 'second_rent', 'second_rent_month', 'agreement_date'].forEach(function (k) { clean[k] = s(v[k]); });
     Object.keys(v.values || {}).slice(0, 200).forEach(function (k) { clean.values[String(k).toLowerCase()] = s(v.values[k]); });
     // The landlord's own account (rent paid to them): replaces the account details in the agreement.
-    if (v.bank && typeof v.bank === 'object') { const bk = {}; ['holder', 'bank', 'sort', 'account', 'iban', 'swift'].forEach(function (k) { bk[k] = s(v.bank[k]).slice(0, 80); }); if (bk.account || bk.iban) clean.bank = bk; }
+    if (v.bank && typeof v.bank === 'object') {
+      const bk = { our: {} }, ob = v.bank.our && typeof v.bank.our === 'object' ? v.bank.our : {};
+      ['holder', 'bank', 'sort', 'account', 'iban', 'swift'].forEach(function (k) { bk[k] = s(v.bank[k]).slice(0, 80); bk.our[k] = s(ob[k]).slice(0, 80); });
+      if (bk.account || bk.iban) clean.bank = bk;
+    }
     const docx = tenancy.fillAgreement(Buffer.from(a.data, 'base64'), clean);
     if (body.format !== 'pdf') return { data: docx, type: 'docx' };
     return { data: await tenancy.docxToPdf(docx), type: 'pdf' };
