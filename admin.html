@@ -1021,6 +1021,9 @@
   .tcy-docs { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
   .tcy-docs .btn { justify-content: flex-start; text-align: left; }
   .tcy-save { position: sticky; bottom: 0; z-index: 5; display: flex; gap: 8px; justify-content: flex-end; padding: 10px 0; background: linear-gradient(transparent, var(--bg) 35%); }
+  .tcy-log li.tcy-log-mail { cursor: pointer; } .tcy-log li.tcy-log-mail:hover { background: var(--bg, #f6f7f9); } .tcy-log-open { color: var(--blue, #2F5BEA); font-weight: 600; white-space: nowrap; }
+  .tle-row { display: flex; gap: 10px; font-size: .9rem; padding: 3px 0; } .tle-row span { color: var(--ink-soft, #667085); min-width: 64px; flex: 0 0 auto; } .tle-row b { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+  .tle-frame { width: 100%; height: 55vh; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; background: #fff; } .tle-text { white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 12px; font-size: .9rem; max-height: 55vh; overflow: auto; }
   .tcy-log { list-style: none; margin: 0; padding: 0; font-size: .85rem; } .tcy-log li { padding: 6px 0; border-bottom: 1px solid var(--line); } .tcy-log span { color: var(--ink-soft); font-size: .76rem; display: block; }
   .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; } .seg button { border: 0; background: none; padding: 9px 14px; cursor: pointer; font: inherit; color: inherit; } .seg button.on { background: var(--blue, #2563eb); color: #fff; }
   .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
@@ -1915,7 +1918,7 @@
               <div><label class="lbl" for="tsLSub">Landlord's welcome email — subject</label><input class="inp" id="tsLSub"></div>
               <div><label class="lbl" for="tsLBody">Landlord's welcome email</label><textarea class="inp" id="tsLBody" rows="10"></textarea></div>
               <p class="muted-note" style="margin:0">Formatting: [b]bold[/b], [u]underline[/u], [red]red and bold[/red], [small]small print[/small]. [clerk]…[/clerk] only when an inventory clerk is booked; [diy]…[/diy] only for a DIY check-in.</p>
-              <p class="muted-note" style="margin:0">Filled in automatically: {{address}}, {{payment_reference}}, {{council_tax}} (the borough's council tax registration, worked out from the postcode), {{landlord_name}}, {{tenant_names}}, {{start_date}}, {{move_in_due}}, {{standing_order_start}}, {{standing_order_payments}}, {{first_rent}}, {{deposit}}, {{move_in_total}}, {{holding_deposit}}, {{move_in_remaining}}, {{checkin_date}}, {{checkin_time}}, {{diy_link}}, {{diy_code}} (the DIY check-in access code, added after the DIY link automatically), {{bank_details}}, {{signature}}, {{year}}.</p>
+              <p class="muted-note" style="margin:0">Filled in automatically: {{address}}, {{payment_reference}}, {{council_tax}} (the borough's council tax registration, worked out from the postcode), {{landlord_name}}, {{tenant_names}}, {{start_date}}, {{move_in_due}}, {{standing_order_start}}, {{standing_order_payments}}, {{first_rent}}, {{deposit}}, {{move_in_total}}, {{holding_deposit}}, {{move_in_remaining}}, {{checkin_date}}, {{checkin_time}}, {{diy_link}}, {{diy_code}} (the DIY check-in access code, added after the DIY link automatically), {{payment_link}} (the tenants’ link to upload proof of payment — a button is added after the bank details automatically), {{bank_details}}, {{signature}}, {{year}}.</p>
               <div class="row-actions" style="margin-top:0"><button class="btn ghost" id="tsReset" type="button">Restore the original emails</button><button class="btn primary" id="tsSave" type="button">Save templates</button></div>
             </div>
           </details>
@@ -11806,6 +11809,54 @@
   }
   // The tenancy: the terms for its property, the one it was let under, and the
   // landlord's details and bank account from them (to use on the tenancy if needed).
+  // Move-in payments the tenants have sent proof of (from the button in their welcome email): open the proof, confirm each.
+  function renderTcyPays(){
+    var box = $('tfPays'); if (!box || !openTcyId || openTcyId === 'new') { if (box) box.hidden = true; return; }
+    var id = openTcyId, d = tcyDraft || {};
+    api('GET', '/api/admin/tenancies/' + id + '/payments').then(function(r){
+      if (openTcyId !== id || !$('tfPays') || !r || !r.ok) return;
+      var due = r.amount != null ? r.amount : tcyCalc(d).remaining, ps = r.payments || [];
+      var sent = ps.reduce(function(n, x){ return n + (Number(x.amount) || 0); }, 0), ok = ps.filter(function(x){ return x.confirmed_at; }).reduce(function(n, x){ return n + (Number(x.amount) || 0); }, 0);
+      var all = due > 0 && ok >= due - 0.005;
+      box.hidden = false;
+      box.innerHTML = '<h3>Move-in payments ' + (all ? '<span class="pt-badge lead">✓ All received</span>' : ps.length ? '<span class="pt-badge guar">' + ps.filter(function(x){ return !x.confirmed_at; }).length + ' to check</span>' : '') + '</h3>' +
+        '<p class="muted-note" style="margin:0 0 8px">Due ' + esc(gbp(due)) + (r.due ? ' by ' + esc(weekdayDay(r.due)) : '') + ' · proof sent for ' + esc(gbp(sent)) + ' · confirmed ' + esc(gbp(ok)) + (due > ok && ok > 0 ? ' · ' + esc(gbp(due - ok)) + ' still to confirm' : '') + '</p>' +
+        (ps.length ? ps.map(function(x){
+          return '<div class="lt-mini"><div style="min-width:0"><b>' + esc(gbp(x.amount)) + '</b>' + (x.payer ? ' · ' + esc(x.payer) : '') +
+            '<span class="muted-note" style="margin:0;display:block">' + esc((x.paid_on ? 'Paid ' + longDay(String(x.paid_on).slice(0, 10)) : '') + ' · sent ' + fmtShort(x.created_at)) + (x.note ? ' · “' + esc(x.note) + '”' : '') +
+            (x.confirmed_at ? ' · <b style="color:#067647">✓ Confirmed by ' + esc(x.confirmed_by || 'staff') + ' ' + esc(fmtShort(x.confirmed_at)) + '</b>' : '') + '</span></div>' +
+            '<span style="display:flex;gap:6px;flex:0 0 auto;flex-wrap:wrap">' + (x.has_file ? '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/tenancy-payments/' + x.id + '/file">View proof</a>' : '') +
+            (x.confirmed_at ? '<button type="button" class="btn small ghost" data-pay-ok="' + x.id + '" data-on="0">Undo</button>' : '<button type="button" class="btn small primary" data-pay-ok="' + x.id + '" data-on="1">✓ Confirm received</button>') + '</span></div>';
+        }).join('') : '<p class="muted-note" style="margin:0">No proof of payment yet. The tenants’ welcome email has an “Upload proof of payment” button — each tenant can send their own if they pay separately.</p>') +
+        (r.url ? '<div class="row-actions" style="margin-top:8px"><button type="button" class="btn small" data-pay-copy="' + esc(r.url) + '">Copy the upload link</button></div>' : '');
+    });
+  }
+  document.addEventListener('click', function(e){
+    var c = e.target.closest('[data-pay-copy]'); if (c) { copyText(c.dataset.payCopy).then(function(){ toast('Link copied — send it to the tenants'); }); return; }
+    var b = e.target.closest('[data-pay-ok]'); if (!b) return;
+    busy(b, true, '…');
+    api('POST', '/api/admin/tenancy-payments/' + b.dataset.payOk + '/confirm', { confirmed: b.dataset.on === '1' }).then(function(r){ busy(b, false); if (!r || !r.ok) { toast('Couldn’t save'); return; } toast(b.dataset.on === '1' ? '✓ Payment confirmed' : 'Marked as not received'); renderTcyPays(); });
+  });
+  // History: open an email that was sent (when, who to, subject, attachments and the message itself).
+  function openLogEmail(n){
+    var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0], e = x && (x.log || [])[n]; if (!e) return;
+    if (!$('tleModal')) {
+      document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="tleModal" hidden><div class="card" style="width:min(720px,100%);max-height:92vh;overflow:auto;display:flex;flex-direction:column;gap:10px">' +
+        '<h3 style="margin:0;display:flex;gap:8px;align-items:center">✉ Email sent<span style="flex:1"></span><button type="button" class="btn small ghost" id="tleClose" aria-label="Close">✕</button></h3><div id="tleBody"></div></div></div>');
+      $('tleClose').addEventListener('click', function(){ $('tleModal').hidden = true; });
+      $('tleModal').addEventListener('click', function(ev){ if (ev.target === this) this.hidden = true; });
+      document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape' && $('tleModal') && !$('tleModal').hidden) { ev.stopImmediatePropagation(); $('tleModal').hidden = true; } }, true);
+    }
+    var m = e.email, when = new Date(e.at).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
+    var row = function(k, v){ return v ? '<div class="tle-row"><span>' + k + '</span><b>' + esc(v) + '</b></div>' : ''; };
+    $('tleBody').innerHTML = row('Sent', when) + (m ? row('From', m.from) + row('To', (m.to || []).join(', ')) + row('Cc', (m.cc || []).join(', ')) + row('Subject', m.subject) + row('Attached', (m.attachments || []).join(', ')) +
+        (m.html ? '<iframe class="tle-frame" sandbox="" title="The email"></iframe>' : '<div class="tle-text">' + esc(m.text || '') + '</div>')
+      : '<div class="tle-text">' + esc(e.text || '') + '</div><p class="muted-note" style="margin:0">Only this summary was kept for emails sent before today. Emails sent from now on are saved here in full, so you can open exactly what went.</p>');
+    var fr = $('tleBody').querySelector('.tle-frame'); if (fr) fr.srcdoc = '<!doctype html><meta charset="utf-8"><base target="_blank"><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:14px;margin:12px;overflow-wrap:anywhere}img{max-width:100%;height:auto}</style>' + m.html;
+    $('tleModal').hidden = false;
+  }
+  document.addEventListener('click', function(ev){ var li = ev.target.closest('[data-tlog]'); if (li) openLogEmail(Number(li.dataset.tlog)); });
+  document.addEventListener('keydown', function(ev){ if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.closest && ev.target.closest('[data-tlog]')) { ev.preventDefault(); openLogEmail(Number(ev.target.closest('[data-tlog]').dataset.tlog)); } });
   function renderTcyTerms(){
     var box = $('tfTerms'); if (!box || !tcyDraft) return;
     var d = tcyDraft, k = propKey(d.address);
@@ -14091,15 +14142,19 @@
   // Signature: T: M: W: A: labels in red, as in the agency's own signature.
   function sigMarkup(text){ return String(text || '').split('\n').map(function(l){ var m = /^([A-Z]{1,2}):\s*(.*)$/.exec(l.trim()); return m ? '[r]' + m[1] + ':[/r] ' + m[2] : l; }).join('\n'); }
   function mailHtml(text){
+    // [button=https://…]Label[/button]: a big tappable button (kept out of the link finder below).
+    var btns = [];
+    text = String(text || '').replace(/\[button=(https?:\/\/[^\]\s]+)\]([\s\S]*?)\[\/button\]/g, function(m, url, label){ btns.push('<a href="' + esc(url) + '" style="display:inline-block;background:#0b1f3a;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px;margin:6px 0">' + esc(label) + '</a>'); return '\u0000B' + (btns.length - 1) + '\u0000'; });
     var h = esc(text)
       .replace(/\[b\]/g, '<b>').replace(/\[\/b\]/g, '</b>').replace(/\[u\]/g, '<u>').replace(/\[\/u\]/g, '</u>')
       .replace(/\[red\]/g, '<span style="color:' + MAIL_RED + ';font-weight:bold">').replace(/\[\/red\]/g, '</span>')
       .replace(/\[small\]/g, '<span style="font-size:7pt;color:#808080">').replace(/\[\/small\]/g, '</span>')
       .replace(/\[r\]/g, '<span style="color:' + MAIL_RED + '">').replace(/\[\/r\]/g, '</span>')
       .replace(/(https?:\/\/[^\s<]+[^\s<.,;:)])|(www\.[^\s<]+[^\s<.,;:)])|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/g, function(m, url, www, mail){ return '<a href="' + (url || (www ? 'https://' + www : 'mailto:' + mail)) + '" style="color:#0563c1">' + m + '</a>'; });
+    h = h.replace(/\u0000B(\d+)\u0000/g, function(m, i){ return btns[+i]; });
     return h.replace(/\[logo\]\n?/g, '<img src="' + MAIL_LOGO + '" alt="Residential Realtors" width="100" style="display:block;width:100px;height:auto;margin:10px 0 8px;border:0">').replace(/\n/g, '<br>');
   }
-  function mailPlain(text){ return String(text || '').replace(/\[logo\]\n?/g, '').replace(/\[\/?(b|u|red|small|r)\]/g, ''); }
+  function mailPlain(text){ return String(text || '').replace(/\[button=(\S+?)\]([\s\S]*?)\[\/button\]/g, '$2: $1').replace(/\[logo\]\n?/g, '').replace(/\[\/?(b|u|red|small|r)\]/g, ''); }
   // Bank details: labels in bold, the numbers in red (as in the agency's email).
   function bankMarkup(text){
     return String(text || '').split('\n').map(function(line){
@@ -14891,6 +14946,7 @@
           '<label class="tcy-nv" style="margin-top:8px"><input type="checkbox" id="tfCiTbc"' + (d.checkin_tbc ? ' checked' : '') + '> The clerk will contact them to confirm the time</label></div>' +
         '<p class="muted-note" id="tfCiNote" style="margin:8px 0 0">' + esc(tcyCiNote(d.checkin_type)) + '</p></div>' +
       // Certificates
+      '<div class="card" id="tfPays" hidden></div>' +
       '<div class="card" id="tfTerms" hidden></div>' +
       '<div class="card" id="tfCerts"></div>' +
       '<div class="card"><h3>Notes</h3><textarea class="inp" id="tfNotes" rows="3">' + esc(d.notes || '') + '</textarea></div>' +
@@ -14905,7 +14961,7 @@
         '<button type="button" class="btn primary" data-doc="mail-landlord">✉️ Welcome email to landlord</button>' +
         '</div><p class="muted-note" style="margin:8px 0 0">Documents use the details as last saved.</p></div>' +
         '<div class="card tcy-stmts" id="tfStmts">' + stmtCard(x.id) + '</div>' +
-        '<div class="card"><h3>History</h3><ul class="tcy-log">' + (x.log || []).slice().reverse().map(function(e){ return '<li><span>' + esc(fmtDate(e.at)) + '</span>' + esc(e.text) + '</li>'; }).join('') + '</ul></div>' +
+        '<div class="card"><h3>History</h3><ul class="tcy-log">' + (x.log || []).slice().reverse().map(function(e, i, arr){ var n = arr.length - 1 - i, isMail = e.email || /^(Emailed |Welcome email )/.test(e.text || ''); return '<li' + (isMail ? ' class="tcy-log-mail" data-tlog="' + n + '" role="button" tabindex="0" title="Open this email"' : '') + '><span>' + esc(fmtDate(e.at)) + '</span>' + (isMail ? '✉ ' : '') + esc(e.text) + (isMail ? ' <b class="tcy-log-open">Open ›</b>' : '') + '</li>'; }).join('') + '</ul></div>' +
         '<div class="card danger-card"><h3>Delete tenancy</h3><p class="muted-note">Removes this tenancy record. Tenants and the landlord stay on file.</p><div class="row-actions"><button class="btn danger" id="tfDelete" type="button">Delete tenancy</button></div></div>' : '') +
       '<div class="tcy-save"><button class="btn ghost" id="tfCancel" type="button">Cancel</button><button class="btn primary" id="tfSave" type="button">' + (x ? 'Save changes' : 'Save tenancy') + '</button></div>' +
       '</div>';
@@ -14913,6 +14969,7 @@
     tcyRefresh();
     renderTcyCerts();
     renderTcyTerms();
+    renderTcyPays();
     if (tcyLocked) tcyLock();
   }
   $('tcyDetail').addEventListener('click', function(e){
@@ -14975,7 +15032,7 @@
     var form = $('tcyDetail').querySelector('.tcy-form'); if (!form) return;
     form.classList.add('tcy-locked');
     form.querySelectorAll('input, select, textarea, button').forEach(function(el){
-      if (el.closest('.tcy-docs') || el.closest('.tcy-stmts') || el.closest('#tfTerms') || el.dataset.owe || el.hasAttribute('data-keep')) return;
+      if (el.closest('.tcy-docs') || el.closest('.tcy-stmts') || el.closest('#tfTerms') || el.closest('#tfPays') || el.dataset.owe || el.hasAttribute('data-keep')) return;
       // Text stays selectable and copyable (read-only, not disabled); choices and buttons are switched off.
       if ((el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(checkbox|radio|file|hidden|button|submit)$/i.test(el.type))) && !el.closest('#tfCerts')) { el.readOnly = true; el.classList.add('tcy-ro'); el.title = 'Click to copy'; }
       else el.disabled = true;
@@ -15860,7 +15917,7 @@
     setTimeout(function(){ URL.revokeObjectURL(url); }, 15000);
   }
   function blobB64(blob){ return new Promise(function(res){ var fr = new FileReader(); fr.onload = function(){ res(String(fr.result).split(',')[1]); }; fr.readAsDataURL(blob); }); }
-  function tcyLog(text){ return api('POST', '/api/admin/tenancies/' + openTcyId + '/log', { text: text }); }
+  function tcyLog(text, email){ return api('POST', '/api/admin/tenancies/' + openTcyId + '/log', { text: text, email: email || undefined }); }
   function agreementError(err){
     var m = String(err && err.message || '');
     if (m === 'no-template') { toast('Upload your tenancy agreement template first (Templates, below the tenancy list)'); $('tcySettings').open = true; return; }
@@ -15902,6 +15959,17 @@
   }
   // The DIY check-in access code (Templates), so tenants doing a DIY check-in don't have to pay:
   // shown just after the DIY link unless the template already places {{diy_code}} itself.
+  // The "upload proof of payment" button, after the bank details (unless the template places {{payment_link}} itself).
+  function withPayLink(tpl, url){
+    tpl = String(tpl || '');
+    if (!url) return tpl.replace(/^.*\{\{\s*payment_link\s*\}\}.*\n?/gm, '');
+    if (/\{\{\s*payment_link\s*\}\}/.test(tpl)) return tpl;
+    var block = '\n\n[b]Once you’ve paid, please send us proof of payment:[/b]\n[button={{payment_link}}]Upload proof of payment[/button]\nPaying in more than one transfer — for example each tenant paying their share? Upload proof of each payment using the same button.';
+    var at = tpl.search(/\{\{\s*bank_details\s*\}\}[^\n]*/);
+    if (at === -1) return tpl + block;
+    var end = tpl.indexOf('\n\n', at); end = end === -1 ? tpl.length : end;   // after the whole bank details paragraph (with its reference)
+    return tpl.slice(0, end) + block + tpl.slice(end);
+  }
   function withDiyCode(tpl, code){
     tpl = String(tpl || '');
     if (!code) return tpl.replace(/^.*\{\{\s*diy_code\s*\}\}.*\n?/gm, '');   // no code saved: no empty line
@@ -15920,6 +15988,7 @@
     var ct = null;
     var go = function(){
       var t = tcySet.templates, vals = tcyValues(d); if (diyOffice) vals.diy_link = diyOffice;
+      vals.payment_link = payUrl;
       var isDiy = d.checkin_type === 'diy' || /diy/i.test(String(d.checkin_type || '')); vals.diy_code = t.diy_code || '';
       vals.signature = sigMarkup(who === 'tenants' ? t.signature_tenant : t.signature_landlord);
       var to = who === 'tenants' ? (d.tenants || []).map(function(p){ return p.email; }).filter(Boolean) : [(d.landlord || {}).email].filter(Boolean);
@@ -15936,11 +16005,11 @@
         who: who, d: d, atts: atts, sendUrl: '/api/admin/tenancies/' + openTcyId + '/email',
         title: who === 'tenants' ? 'Welcome email to the tenants' : 'Welcome email to ' + ((d.landlord || {}).name || 'the landlord'),
         to: to, cc: negCc, subject: fillTpl(who === 'tenants' ? t.tenant_subject : t.landlord_subject, vals),
-        bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? withDiyCode(withCouncilTax(t.tenant_body, ct), t.diy_code) : t.landlord_body, d.checkin_type === 'clerk' && !d.checkin_date ? 'none' : d.checkin_type || 'clerk'), vals), vals)),
+        bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? withPayLink(withDiyCode(withCouncilTax(t.tenant_body, ct), t.diy_code), payUrl) : t.landlord_body, d.checkin_type === 'clerk' && !d.checkin_date ? 'none' : d.checkin_type || 'clerk'), vals), vals)),
         attNote: who === 'landlord' ? 'Add the signed agreement, tenant ID and deposit certificate yourself.' : '',
         warn: (!t.bank_details && who === 'tenants' ? '⚠ No bank details saved yet — add them under Templates. ' : '') + (who === 'tenants' && isDiy && !t.diy_code ? '⚠ No DIY check-in access code saved — add it under Templates, or the tenants will be asked to pay. ' : ''),
         fileName: tcyFile(d, label, 'eml'),
-        log: function(how){ tcyLog(label + ' ' + how); }
+        log: function(how, email){ tcyLog(label + ' ' + how, email); }
       });
     };
     var ctReq = who === 'tenants' ? api('GET', '/api/admin/council-tax?address=' + encodeURIComponent(d.address || '')).then(function(r){ if (r && r.ok) ct = r; })['catch'](function(){}) : null;
@@ -15948,7 +16017,9 @@
     var diyOffice = '', diyReq = who === 'tenants' && (d.checkin_type === 'diy' || /diy/i.test(String(d.checkin_type || ''))) ? api('POST', '/api/admin/diy-access', { name: ((d.tenants || [])[0] || {}).name || '', address: d.address || '' }).then(function(r){ if (r && r.ok) diyOffice = r.link; })['catch'](function(){}) : null;
     // The negotiator who got the offer is copied in on the tenants' email.
     var negCc = [], negReq = who === 'tenants' && openTcyId && openTcyId !== 'new' ? api('GET', '/api/admin/tenancies/' + openTcyId + '/negotiator').then(function(r){ if (r && r.ok && r.email) negCc = [r.email]; })['catch'](function(){}) : null;
-    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq, diyReq, negReq]).then(go);
+    // The tenants' private link for uploading proof of the move-in payments (amount and date shown there).
+    var payUrl = '', payReq = who === 'tenants' && openTcyId && openTcyId !== 'new' ? api('POST', '/api/admin/tenancies/' + openTcyId + '/pay-link', { amount: tcyCalc(d).remaining, due: tcyCalc(d).moveInDue }).then(function(r){ if (r && r.ok) payUrl = r.url; })['catch'](function(){}) : null;
+    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq, diyReq, negReq, payReq]).then(go);
   }
   // Templates: each borough's licensing schemes (selective and additional HMO), for the licence check.
   var lsData = null, LS_OPTS = [['all', 'All'], ['some', 'Parts'], ['none', 'None'], ['check', 'Not sure']];
@@ -16180,7 +16251,7 @@
         }
         $('tmModal').hidden = true;
         toast('In your Outlook Drafts (' + r.from + ') — open it there and press Send');
-        if (ctx.log) ctx.log('put in Outlook Drafts of ' + r.from + ' (' + to.join(', ') + ')');
+        if (ctx.log) ctx.log('put in Outlook Drafts of ' + r.from + ' (' + to.join(', ') + ')', tmEmailCopy(to, subject, html, files));
       });
     }, function(err){ busy($('tmDraft'), false); agreementError(err); });
   });
@@ -16191,6 +16262,7 @@
   function wrap76(b64){ return b64.replace(/.{1,76}/g, '$&\r\n'); }
   function mimeWord(str){ return /^[\x20-\x7e]*$/.test(str) ? str : '=?UTF-8?B?' + b64utf8(str) + '?='; }
   function logoB64(){ return logoData && /^data:image\/png;base64,/.test(logoData.url) ? logoData.url.split(',')[1] : ''; }
+  function tmEmailCopy(to, subject, html, files){ return { to: to, cc: tmCcList(), subject: subject, text: tmText(), html: html, attachments: (files || []).map(function(f){ return f.name; }) }; }
   function tmCcList(){ return $('tmCc').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(function(x){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x); }); }
   function buildEml(to, subject, text, html, files, cc){
     var mixed = 'mix_' + Math.random().toString(36).slice(2), alt = 'alt_' + Math.random().toString(36).slice(2), L = '\r\n';
@@ -16231,7 +16303,7 @@
       saveBlob(new Blob([eml], { type: 'message/rfc822' }), ctx.fileName || 'Email.eml');
       $('tmModal').hidden = true;
       toast('Email downloaded — open it and it opens in Outlook, ready to send');
-      if (ctx.log) ctx.log('prepared for Outlook (' + to.join(', ') + ')');
+      if (ctx.log) ctx.log('prepared for Outlook (' + to.join(', ') + ')', tmEmailCopy(to, subject, html, files));
     }, function(err){ busy($('tmOutlook'), false); agreementError(err); });
   });
   $('tmCopy').addEventListener('click', function(){ copyMail().then(function(){ toast('Email copied with its formatting — paste it into your email'); }); });
@@ -16261,7 +16333,7 @@
       });
       $('tmModal').hidden = true;
       toast('Email copied — paste it into the message that’s opening' + (files.length ? ', then attach the downloaded documents' : ''));
-      if (ctx.log) ctx.log('opened in email app (' + to.join(', ') + ')');
+      if (ctx.log) ctx.log('opened in email app (' + to.join(', ') + ')', tmEmailCopy(to, subject, html, files));
     }, function(err){ busy($('tmSend'), false); agreementError(err); });
   });
 
