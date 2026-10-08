@@ -3448,6 +3448,46 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true });
   }));
 
+  // ---------- Contractor report (for the landlord) ----------
+  // What the contractor found and did on a repair, written up from the job (completion notes, updates, messages)
+  // so it can go straight to the landlord. Saved per job so staff can edit it before it's sent.
+  let jrReady = null;
+  async function jrTable(p) { if (!jrReady) jrReady = p.query('CREATE TABLE IF NOT EXISTS job_reports (job_id INTEGER PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_by TEXT)').catch(function (e) { jrReady = null; throw e; }); await jrReady; }
+  const JR_KEYS = ['attended', 'reported', 'found', 'work', 'parts', 'recommend', 'next'];
+  app.get('/api/admin/jobs/:id/contractor-report', withDb(async function (p, req, res) {
+    await jrTable(p); const r = (await p.query('SELECT data, updated_at, updated_by FROM job_reports WHERE job_id = $1', [jobId(req)])).rows[0];
+    res.json({ ok: true, report: r ? Object.assign({}, r.data, { updated_at: r.updated_at, updated_by: r.updated_by }) : null });
+  }));
+  app.put('/api/admin/jobs/:id/contractor-report', withDb(async function (p, req, res) {
+    await jrTable(p); const b = req.body || {}, d = { show_name: b.show_name === true };
+    JR_KEYS.forEach(function (k) { d[k] = str(b[k], 3000) || ''; });
+    await p.query('INSERT INTO job_reports (job_id, data, updated_by) VALUES ($1, $2, $3) ON CONFLICT (job_id) DO UPDATE SET data = $2, updated_at = now(), updated_by = $3', [jobId(req), JSON.stringify(d), (req.user && req.user.name) || 'Office']);
+    res.json({ ok: true });
+  }));
+  app.post('/api/admin/jobs/:id/contractor-report/ai', withDb(async function (p, req, res) {
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    const j = (await p.query('SELECT * FROM jobs WHERE id = $1', [jobId(req)])).rows[0];
+    if (!j) return res.status(404).json({ ok: false, error: 'not-found' });
+    // The job's history, without money (what we pay, our charge — never in a landlord report).
+    const COST = /(Estimated cost|Actual cost|Charge to landlord|contractor cost|profit|margin|invoice|£)/i;
+    const ups = (await p.query("SELECT created_at, kind, body FROM job_updates WHERE job_id = $1 AND kind IN ('note', 'completed', 'change', 'contractor_message', 'contractor_note') ORDER BY created_at LIMIT 40", [j.id])).rows
+      .filter(function (u) { return !COST.test(u.body); });
+    const when = function (d) { return d ? new Date(d).toLocaleString('en-GB', { timeZone: 'Europe/London', dateStyle: 'medium', timeStyle: 'short' }) : ''; };
+    const fact = function (label, v) { return v ? '- ' + label + ': ' + String(v).replace(/\s+/g, ' ').trim() + '\n' : ''; };
+    const prompt = 'You write contractor reports for Residential Realtors, a London letting and property management agency, to send to the landlord of a rental property after a repair visit.\n\n' +
+      'Job:\n' + fact('Issue', [j.category, j.affected, j.symptom].filter(Boolean).join(' – ')) + fact('Location in the property', j.location) + fact('What the tenant reported', j.description) +
+      fact('Reported', when(j.created_at)) + fact('Status', j.status) + fact('Completed', when(j.completed_at)) + fact('Appointment', apptText(j)) + fact('Work carried out (completion notes)', j.completion_notes) + fact('Next steps', j.next_steps) +
+      fact('Trade of the contractor (do not name them)', j.assigned_to ? 'the contractor who attended' : '') +
+      (ups.length ? '\nJob history (oldest first):\n' + ups.map(function (u) { return '- ' + when(u.created_at) + ': ' + String(u.body).replace(/\s+/g, ' ').slice(0, 400); }).join('\n') + '\n' : '') +
+      '\nWrite the report from these facts only — never invent findings, work, parts, dates or names. Where something isn\'t known, leave that field empty. Never mention any prices, costs, invoices or the contractor\'s name or company (say "our contractor" or the trade, e.g. "our plumber"). Plain, professional UK English a landlord understands; short sentences.\n' +
+      'Reply with ONLY a JSON object with these string fields: {"attended": "when the contractor attended, e.g. 3 October 2026", "reported": "the problem as reported, one or two sentences", "found": "what the contractor found / the cause", "work": "the work carried out", "parts": "parts and materials used, if any", "recommend": "any recommendations or further work advised", "next": "next steps, or that no further action is needed"}';
+    const result = await opts.askAi(prompt, true);
+    if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
+    let d = null; try { d = JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()); } catch (e) { d = null; }
+    if (!d || typeof d !== 'object') return res.status(502).json({ ok: false, error: 'ai-bad-reply' });
+    const out = {}; JR_KEYS.forEach(function (k) { out[k] = str(d[k], 3000) || ''; });
+    res.json({ ok: true, report: out });
+  }));
   // ---------- Quotations to landlords ----------
   // A price for work (from a repair job, or any work at a landlord's property), sent to the landlord as a private
   // link where they can accept or decline it. Kept apart from invoices, so a quote is never counted as owed.
