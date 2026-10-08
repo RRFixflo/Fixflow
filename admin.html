@@ -5957,6 +5957,11 @@
       var issue = [j.category, j.affected, j.symptom].filter(Boolean).join(' - ') || 'Repair';
       text(j.ref + '  ·  ' + issue, M, 11.5, 'bold', INK);
       y += 2;
+      if (o.report) {
+        var rp = o.report;
+        row('Attended', rp.attended); if (rp.contractor) row('Contractor', rp.contractor); if (!o.hideLocation) row('Location', j.location);
+        row('Problem reported', rp.reported); row('What our contractor found', rp.found); row('Work carried out', rp.work); row('Parts and materials', rp.parts); row('Recommendations', rp.recommend); row('Next steps', rp.next);
+      } else {
       row('Status', j.status + (j.urgency ? ' (' + j.urgency + ')' : ''));
       row('Reported', fmtDate(j.created_at) + (j.source && j.source !== 'Online report' ? ' via ' + j.source.toLowerCase() : ''));
       if (!o.hideLocation) row('Location', j.location);
@@ -5966,6 +5971,7 @@
       row('Work carried out', j.completion_notes);
       var totalCharge = j.landlord_charge != null || num(j.parts_charge) ? (num(j.landlord_charge) || 0) + (num(j.parts_charge) || 0) : null;
       row('Charge to landlord', totalCharge != null ? gbp(totalCharge).replace('−', '-') + (num(j.parts_charge) ? ' (including parts ' + gbp(num(j.parts_charge)) + ')' : '') : 'Not yet confirmed');
+      }
       if (o.history && o.history.length) {
         y += 4; text('Progress', M, 9.5, 'bold', INK);
         o.history.forEach(function(h){ row(fmtShort(h.created_at), h.body); });
@@ -5996,7 +6002,7 @@
     for (var i = 1; i <= pages; i++) {
       doc.setPage(i);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor.apply(doc, SOFT);
-      doc.text('Residential Realtors · Repair report · Page ' + i + ' of ' + pages, M, H - 24);
+      doc.text('Residential Realtors · ' + (o.footer || 'Repair report') + ' · Page ' + i + ' of ' + pages, M, H - 24);
     }
     return doc;
   }
@@ -7573,6 +7579,10 @@
           '<button class="btn primary" id="jobPdfShare" type="button">Share with ' + (LLJ.landlord_name ? esc(LLJ.landlord_name) : 'landlord') + '</button>' +
         '</div>' +
       '</div>' +
+      '<div class="card" data-pane="overview" id="crCard"><h3>🧰 Contractor report for the landlord</h3>' +
+        '<div id="crIntro"><p class="muted-note" style="margin:0 0 8px">What the contractor found, the work they did, parts used and what they recommend — written up from this job’s notes and messages, ready to send to the landlord with the photos.</p>' +
+          '<div class="row-actions" style="justify-content:flex-start;margin-top:0"><button class="btn primary" type="button" id="crAi">✨ Write the report</button><button class="btn" type="button" id="crBlank">Write it myself</button></div></div>' +
+        '<div id="crBody" hidden></div></div>' +
 
       // Timeline
       '<div class="card" data-pane="history"><h3>Updates &amp; history</h3>' +
@@ -7964,6 +7974,36 @@
       jobReportDoc().then(function(doc){ deliverPdf(doc, pdfName('Repair-' + j.ref, j.property_address), false); })
         .then(function(){ busy($('jobPdf'), false); }, function(){ busy($('jobPdf'), false); toast('Couldn\u2019t create the report'); });
     }
+    // Contractor report: what the contractor found and did, written up for the landlord (edit, then send).
+    var CR_F = [['attended', 'Attended', 1], ['reported', 'Problem reported', 2], ['found', 'What our contractor found', 3], ['work', 'Work carried out', 3], ['parts', 'Parts and materials', 2], ['recommend', 'Recommendations', 2], ['next', 'Next steps', 2]];
+    function crRead(){ var o = { show_name: $('crName').checked }; CR_F.forEach(function(f){ o[f[0]] = $('cr_' + f[0]).value.trim(); }); return o; }
+    function crDraw(rep){
+      $('crBody').innerHTML = CR_F.map(function(f){ return '<label class="lbl" style="margin-top:8px">' + f[1] + '</label><textarea class="inp" id="cr_' + f[0] + '" rows="' + f[2] + '">' + esc((rep && rep[f[0]]) || '') + '</textarea>'; }).join('') +
+        (j.assigned_to ? '<label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="crName"' + (rep && rep.show_name ? ' checked' : '') + '> Show the contractor’s name (' + esc(j.assigned_to) + ') on the report</label>' : '<input type="checkbox" id="crName" hidden>') +
+        '<p class="muted-note" style="margin:6px 0 0">No prices or costs go on this report.' + (rep && rep.updated_at ? ' Last saved ' + esc(fmtShort(rep.updated_at)) + (rep.updated_by ? ' by ' + esc(rep.updated_by) : '') + '.' : '') + '</p>' +
+        '<div class="row-actions" style="flex-wrap:wrap"><button class="btn" type="button" id="crSave">Save</button><button class="btn" type="button" id="crPdf">📄 Report (PDF)</button><button class="btn primary" type="button" id="crShare">Send to ' + ((landlordFor(j) || {}).landlord_name ? esc(landlordFor(j).landlord_name) : 'landlord') + '</button></div>';
+      $('crBody').hidden = false;
+      $('crSave').addEventListener('click', function(){ crSave().then(function(ok){ if (ok) toast('✓ Report saved'); }); });
+      $('crPdf').addEventListener('click', function(){ crSave().then(function(){ busy($('crPdf'), true, 'Preparing…'); crDoc().then(function(doc){ deliverPdf(doc, pdfName('Contractor-report-' + j.ref, j.property_address), false); }).then(function(){ busy($('crPdf'), false); }, function(){ busy($('crPdf'), false); toast('Couldn’t create the report'); }); }); });
+      $('crShare').addEventListener('click', function(){ crSave().then(function(){ var what = [j.affected, j.symptom].filter(Boolean).join(' – ') || j.category || 'repair';
+        openShare({ landlord: landlordFor(j), address: j.property_address, jobId: j.id, name: pdfName('Contractor-report-' + j.ref, j.property_address), subject: 'Contractor report — ' + what + ' at ' + shortAddr(j.property_address) + ' (' + j.ref + ')',
+          intro: 'Please find attached our contractor’s report on the ' + what.toLowerCase() + ' at ' + (j.property_address || 'your property') + ' (ref ' + j.ref + '): what they found, the work carried out and any recommendations.',
+          makeDoc: crDoc, onAddLandlord: function(){ setDrawerTab('overview'); $('editLl').click(); } }); }); });
+    }
+    function crSave(){ return api('PUT', '/api/admin/jobs/' + j.id + '/contractor-report', crRead()).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save the report'); return false; } return true; }); }
+    function crDoc(){
+      var r = crRead(); r.contractor = r.show_name ? j.assigned_to : '';
+      return loadPdfPhotos(photos.map(function(ph){ return ph.id; })).then(function(list){ var map = {}; map[j.id] = list; return landlordPdf([j], { title: 'Contractor report ' + j.ref, address: j.property_address || '', subtitle: 'Repair visit', report: r, footer: 'Contractor report' }, map); });
+    }
+    api('GET', '/api/admin/jobs/' + j.id + '/contractor-report').then(function(d){ if (d && d.ok && d.report && $('crBody')) { crDraw(d.report); $('crIntro').hidden = true; } });
+    $('crAi').addEventListener('click', function(){
+      if (!meta.canAi) { toast('AI isn’t switched on'); return; }
+      var b = $('crAi'); busy(b, true, 'Writing…');
+      api('POST', '/api/admin/jobs/' + j.id + '/contractor-report/ai', {}).then(function(d){ busy(b, false);
+        if (!d || !d.ok) { toast('Couldn’t write it just now — try again'); return; }
+        crDraw(Object.assign({ show_name: $('crName') ? $('crName').checked : false }, d.report)); $('crIntro').hidden = true; toast('✓ Report written — check it, then Save or Send'); });
+    });
+    $('crBlank').addEventListener('click', function(){ crDraw({ attended: j.completed_at ? new Date(j.completed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '', work: j.completion_notes || '', reported: j.description || '', next: j.next_steps || '' }); $('crIntro').hidden = true; });
     $('jobPdf').addEventListener('click', function(){ jobReport(false); });
     $('jobPdfShare').addEventListener('click', function(){ jobReport(true); });
     $('editDetails').addEventListener('click', function(){ openJobForm(j); });
