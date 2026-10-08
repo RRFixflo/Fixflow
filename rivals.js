@@ -35,11 +35,14 @@ module.exports = function (app, opts) {
     return id;
   }
   // Rightmove adverts to rent in that area with that many bedrooms (other agents only).
-  async function search(id, beds) {
-    const items = [], seen = {}, bq = beds == null ? '' : '&minBedrooms=' + beds + '&maxBedrooms=' + beds, loc = 'OUTCODE%5E' + id;
+  // (o: { loc: a full location id such as POSTCODE%5E123, radius in miles, buy: for sale, fresh: leave out let agreed / sold STC })
+  async function search(id, beds, o) {
+    o = o || {};
+    const items = [], seen = {}, bq = beds == null ? '' : '&minBedrooms=' + beds + '&maxBedrooms=' + beds, loc = o.loc || 'OUTCODE%5E' + id, rad = '&radius=' + (o.radius || '0.0');
+    const ch = o.buy ? 'BUY' : 'RENT', inc = o.fresh ? '' : (o.buy ? '&includeSSTC=true' : '&includeLetAgreed=true&_includeLetAgreed=on');
     for (let index = 0; index < 72; index += 24) {
-      const urls = [T.RM + '/api/property-search/listing/search?searchLocation=&useLocationIdentifier=true&locationIdentifier=' + loc + '&channel=RENT&index=' + index + '&sortType=6&includeLetAgreed=true&_includeLetAgreed=on&radius=0.0' + bq,
-        T.RM + '/property-to-rent/find.html?locationIdentifier=' + loc + '&includeLetAgreed=true&radius=0.0&index=' + index + bq];
+      const urls = [T.RM + '/api/property-search/listing/search?searchLocation=&useLocationIdentifier=true&locationIdentifier=' + loc + '&channel=' + ch + '&index=' + index + '&sortType=6' + inc + rad + bq,
+        T.RM + (o.buy ? '/property-for-sale' : '/property-to-rent') + '/find.html?locationIdentifier=' + loc + inc + rad + '&sortType=6&index=' + index + bq];
       let got = 0;
       for (const u of urls) {
         const body = await get(u, true), found = [];
@@ -152,7 +155,94 @@ module.exports = function (app, opts) {
     pool().then(async function (p) { if (!p) return; const s = await state(p); if (s.run && Date.now() - Date.parse(s.run.at) < 20 * 3600000) return; await run(); }).catch(function (e) { console.error('Other agents check:', e.message); });
   }, 10 * 60000).unref();
 
+  // ---------- New on Rightmove near the office ----------
+  // Every couple of hours in the day: adverts (to rent and for sale, other agents) newly on Rightmove within a
+  // quarter of a mile of the office — landlords worth a call. The first look only records what's there already.
+  const OFFICE_PC = String(process.env.OFFICE_POSTCODE || 'SE1 6AD').toUpperCase().replace(/\s+/g, ' ').trim();
+  const NEAR_MILES = Math.min(2, Math.max(0.1, parseFloat(process.env.NEARBY_MILES) || 0.25));
+  let nearReady = null, nearRunning = false;
+  async function nearPool() {
+    const p = await opts.db(); if (!p) return null;
+    if (!nearReady) nearReady = p.query(`CREATE TABLE IF NOT EXISTS nearby_ads (rm_id TEXT PRIMARY KEY, channel TEXT NOT NULL, address TEXT, price TEXT, beds INTEGER, type TEXT, agent TEXT, url TEXT, img TEXT,
+      listed TEXT, miles REAL, first_seen TIMESTAMPTZ NOT NULL DEFAULT now(), last_seen TIMESTAMPTZ NOT NULL DEFAULT now(), seeded BOOLEAN NOT NULL DEFAULT false, dismissed_at TIMESTAMPTZ)`).catch(function (e) { nearReady = null; throw e; });
+    await nearReady; return p;
+  }
+  async function nearState(p, v) {
+    if (v) { await p.query("INSERT INTO app_settings (key, value) VALUES ('nearby', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [JSON.stringify(v)]); return v; }
+    const r = (await p.query("SELECT value FROM app_settings WHERE key = 'nearby'")).rows[0]; return (r && r.value) || {};
+  }
+  const miles = function (a, b, c, d) { const R = 3958.8, r = Math.PI / 180, x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2); return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * r) * Math.cos(c * r) * y * y)); };
+  async function nearRun() {
+    if (nearRunning) return { busy: true }; nearRunning = true;
+    const sum = { at: new Date().toISOString(), adverts: 0, inside: 0, fresh: 0, error: null };
+    let p, s;
+    try {
+      p = await nearPool(); if (!p) throw new Error('no database'); s = await nearState(p);
+      // Where the office is (postcodes.io, free), remembered.
+      if (!s.office || s.office.pc !== OFFICE_PC) { const j = JSON.parse(await (await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(OFFICE_PC.replace(/\s/g, '')), { signal: AbortSignal.timeout(15000) })).text() || '{}');
+        if (!j.result || !j.result.latitude) throw new Error('office postcode ' + OFFICE_PC + ' not found'); s.office = { pc: OFFICE_PC, lat: j.result.latitude, lng: j.result.longitude }; }
+      // Rightmove's number for the office postcode (a search within a radius of it), else the postcode area.
+      if (!s.pcId) { try { const j = JSON.parse(await get('https://los.rightmove.co.uk/typeahead?query=' + encodeURIComponent(OFFICE_PC) + '&limit=10', true) || '{}');
+        const m = (j.matches || []).filter(function (x) { return String(x.type).toUpperCase() === 'POSTCODE'; })[0]; if (m) s.pcId = String(m.id); } catch (e) { if (e.blocked) throw e; } }
+      s.oc = s.oc || {}; s.checked = s.checked || {};
+      const isNew = !s.seeded, found = [];
+      for (const buy of [false, true]) {
+        let ads = [];
+        if (s.pcId) ads = await search(null, null, { loc: 'POSTCODE%5E' + s.pcId, radius: NEAR_MILES <= 0.25 ? '0.25' : NEAR_MILES <= 0.5 ? '0.5' : '1.0', buy: buy, fresh: true });
+        else { const id = await outcodeId(s, OFFICE_PC.split(' ')[0]); if (id) ads = await search(id, null, { buy: buy, fresh: true }); }
+        sum.adverts += ads.length;
+        ads.forEach(function (x) {
+          const loc = x.location || {}, lat = Number(loc.latitude), lng = Number(loc.longitude), d = isFinite(lat) && isFinite(lng) && lat ? miles(s.office.lat, s.office.lng, lat, lng) : null;
+          if (d == null ? !s.pcId : d > NEAR_MILES + 0.01) return;   // outside the circle (or no map position to tell)
+          found.push({ x: x, buy: buy, d: d });
+        });
+        await wait(1500);
+      }
+      sum.inside = found.length;
+      const fresh = [];
+      for (const f of found) {
+        const x = f.x, c = x.customer || {}, pr = ((x.price || {}).displayPrices || [])[0] || {}, img = T.abs(((x.propertyImages || {}).mainImageSrc) || ((((x.propertyImages || {}).images) || [])[0] || {}).srcUrl || '');
+        const q = await p.query(`INSERT INTO nearby_ads (rm_id, channel, address, price, beds, type, agent, url, img, listed, miles, seeded) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          ON CONFLICT (rm_id) DO UPDATE SET price = $4, last_seen = now() RETURNING (xmax = 0) AS fresh`,
+          [String(x.id), f.buy ? 'sale' : 'let', String(x.displayAddress || '').slice(0, 200), String(pr.displayPrice || '').slice(0, 40), x.bedrooms == null ? null : Number(x.bedrooms), String(x.propertySubType || x.propertyTypeFullDescription || '').slice(0, 60),
+            String(c.brandTradingName || c.branchDisplayName || 'An agent').slice(0, 120), T.RM + '/properties/' + x.id, T.isImg(img) ? img : null, String(x.firstVisibleDate || '').slice(0, 10), f.d == null ? null : Math.round(f.d * 100) / 100, isNew]);
+        if (q.rows[0] && q.rows[0].fresh && !isNew) fresh.push(f);
+      }
+      sum.fresh = fresh.length; s.seeded = true;
+      await p.query("DELETE FROM nearby_ads WHERE last_seen < now() - interval '120 days'");
+      if (fresh.length && opts.alert) {
+        const first = fresh[0].x;
+        opts.alert({ title: '📍 ' + (fresh.length === 1 ? 'New on Rightmove near the office' : fresh.length + ' new on Rightmove near the office'), message: String(first.displayAddress || '').split(',')[0] + ' — ' + (fresh[0].buy ? 'for sale' : 'to rent') + ' with ' + String((first.customer || {}).brandTradingName || 'another agent') + (fresh.length > 1 ? ' (+' + (fresh.length - 1) + ' more)' : '') + '. A landlord to call.', tags: ['round_pushpin'] });
+      }
+    } catch (e) { sum.error = String(e.message || e).slice(0, 200); console.error('Near the office check:', sum.error); }
+    try { if (p && s) { s.run = sum; await nearState(p, s); } } catch (e) {}
+    console.log('Near the office check: ' + sum.adverts + ' adverts, ' + sum.inside + ' within ' + NEAR_MILES + ' mile, ' + sum.fresh + ' new' + (sum.error ? ' — ' + sum.error : ''));
+    nearRunning = false; return sum;
+  }
+  // Every 2 hours from 8am to 8pm (London).
+  setInterval(function () {
+    const h = Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false }));
+    if (h < 8 || h > 20 || nearRunning || process.env.NEARBY_CHECK === '0') return;
+    nearPool().then(async function (p) { if (!p) return; const s = await nearState(p); if (s.run && Date.now() - Date.parse(s.run.at) < 115 * 60000) return; await nearRun(); }).catch(function (e) { console.error('Near the office check:', e.message); });
+  }, 10 * 60000).unref();
+
   const mgr = function (req) { return opts.isStaff(req) && opts.canManage(req); };
+  app.get('/api/admin/nearby', async function (req, res) {
+    if (!mgr(req)) return res.status(403).json({ ok: false });
+    try { const p = await nearPool(), s = await nearState(p);
+      res.json({ ok: true, run: s.run || null, running: nearRunning, miles: NEAR_MILES, office: OFFICE_PC, items: (await p.query("SELECT * FROM nearby_ads WHERE NOT seeded AND first_seen > now() - interval '60 days' ORDER BY (dismissed_at IS NULL) DESC, first_seen DESC LIMIT 200")).rows }); }
+    catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+  app.post('/api/admin/nearby/run', function (req, res) {
+    if (!mgr(req)) return res.status(403).json({ ok: false });
+    if (nearRunning) return res.json({ ok: true, running: true });
+    nearRun().catch(function () {}); res.json({ ok: true, started: true });
+  });
+  app.post('/api/admin/nearby/:id/dismiss', async function (req, res) {
+    if (!mgr(req)) return res.status(403).json({ ok: false });
+    try { const p = await nearPool(); await p.query('UPDATE nearby_ads SET dismissed_at = ' + ((req.body || {}).undo === true ? 'NULL' : 'now()') + ' WHERE rm_id = $1', [String(req.params.id).slice(0, 20)]); res.json({ ok: true }); }
+    catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
   app.get('/api/admin/rivals', async function (req, res) {
     if (!mgr(req)) return res.status(403).json({ ok: false });
     try {
@@ -173,5 +263,5 @@ module.exports = function (app, opts) {
       await p.query('UPDATE rival_hits SET dismissed_at = ' + (undo ? 'NULL' : 'now()') + ', dismissed_by = $2 WHERE id = $1', [parseInt(req.params.id, 10) || 0, undo ? null : (req.user && req.user.name) || '']);
       res.json({ ok: true }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
-  return { run: run, addrParts: addrParts };
+  return { run: run, nearRun: nearRun, addrParts: addrParts };
 };
