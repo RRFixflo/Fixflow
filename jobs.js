@@ -6666,6 +6666,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await p.query('SELECT id, created_at, payer, amount, paid_on, note, file_name, file_mime, (file IS NOT NULL) AS has_file, confirmed_at, confirmed_by FROM tenancy_payments WHERE tenancy_id = $1 ORDER BY id', [jobId(req)]);
     res.json({ ok: true, url: d.pay_token ? (PUBLIC_URL || SITE) + '/pay/' + d.pay_token : '', amount: d.pay_amount == null ? null : Number(d.pay_amount), due: d.pay_due || '', payments: r.rows });
   }));
+  // Every tenancy with proof of move-in payment to check, or sent in the last 30 days (for the Rent page).
+  app.get('/api/admin/tenancy-payments', withDb(async function (p, req, res) {
+    const r = await p.query(`SELECT x.id, x.tenancy_id, x.created_at, x.payer, x.amount, x.paid_on, x.note, (x.file IS NOT NULL) AS has_file, x.confirmed_at, x.confirmed_by,
+        t.address, t.data->>'address' AS addr2, t.data->>'pay_amount' AS pay_amount, t.data->>'pay_due' AS pay_due, t.data->>'negotiator' AS negotiator
+      FROM tenancy_payments x JOIN tenancies t ON t.id = x.tenancy_id
+      WHERE x.tenancy_id IN (SELECT tenancy_id FROM tenancy_payments WHERE confirmed_at IS NULL OR created_at > now() - interval '30 days')
+      ORDER BY x.tenancy_id, x.id`);
+    const by = {};
+    r.rows.forEach(function (x) {
+      const g = by[x.tenancy_id] = by[x.tenancy_id] || { tenancy_id: x.tenancy_id, address: x.addr2 || x.address || '', due: x.pay_amount == null ? null : Number(x.pay_amount), due_by: x.pay_due || '', negotiator: x.negotiator || '', payments: [] };
+      g.payments.push({ id: x.id, created_at: x.created_at, payer: x.payer, amount: Number(x.amount), paid_on: x.paid_on, note: x.note, has_file: x.has_file, confirmed_at: x.confirmed_at, confirmed_by: x.confirmed_by });
+    });
+    res.json({ ok: true, tenancies: Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return b.payments.filter(function (x) { return !x.confirmed_at; }).length - a.payments.filter(function (x) { return !x.confirmed_at; }).length; }) });
+  }));
   app.get('/api/admin/tenancy-payments/:id/file', withDb(async function (p, req, res) {
     const r = (await p.query('SELECT file_name, file_mime, file FROM tenancy_payments WHERE id = $1', [parseInt(req.params.id, 10) || 0])).rows[0];
     if (!r || !r.file) return res.status(404).send('Not found');

@@ -691,6 +691,7 @@
   .lt-mini { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--line, #e5e7eb); } .lt-mini:first-of-type { border-top: 0; } .lt-mini b { overflow-wrap: anywhere; }
   .lt-given { margin-top: 10px; padding: 10px 12px; background: var(--bg, #f6f7f9); border-radius: 10px; } .lt-given > b { display: block; margin-bottom: 6px; }
   .neg-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 40px; align-items: center; } .neg-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line, #e5e7eb); border-radius: 999px; padding: 6px 12px; font-size: .86rem; cursor: pointer; background: #fff; } .neg-chip:has(input:checked) { border-color: var(--blue, #2F5BEA); background: #eef2fe; font-weight: 600; } .neg-chip.warn { border-color: #f79009; background: #fffaeb; } .neg-chip input { margin: 0; }
+  .mip { margin-bottom: 12px; } .mip-t { display: block; border-top: 1px solid var(--line, #e5e7eb); padding-top: 8px; margin-top: 8px; } .mip h3 + .mip-t { border-top: 0; margin-top: 0; padding-top: 0; } .mip-h { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; } .mip-h .linkish { text-align: left; }
   .jt-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
   .jt-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; cursor: pointer; }
   .jt-row input[type=radio] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
@@ -11859,7 +11860,7 @@
     var c = e.target.closest('[data-pay-copy]'); if (c) { copyText(c.dataset.payCopy).then(function(){ toast('Link copied — send it to the tenants'); }); return; }
     var b = e.target.closest('[data-pay-ok]'); if (!b) return;
     busy(b, true, '…');
-    api('POST', '/api/admin/tenancy-payments/' + b.dataset.payOk + '/confirm', { confirmed: b.dataset.on === '1' }).then(function(r){ busy(b, false); if (!r || !r.ok) { toast('Couldn’t save'); return; } toast(b.dataset.on === '1' ? '✓ Payment confirmed' : 'Marked as not received'); renderTcyPays(); });
+    api('POST', '/api/admin/tenancy-payments/' + b.dataset.payOk + '/confirm', { confirmed: b.dataset.on === '1' }).then(function(r){ busy(b, false); if (!r || !r.ok) { toast('Couldn’t save'); return; } toast(b.dataset.on === '1' ? '✓ Payment confirmed' : 'Marked as not received'); renderTcyPays(); loadRbPays(); });
   });
   // History: open an email that was sent (when, who to, subject, attachments and the message itself).
   function openLogEmail(n){
@@ -14392,6 +14393,25 @@
   function rbTopCount(){ if (!meta.db || staffMode) return; api('GET', '/api/admin/rent-board').then(function(d){ if (d && d.ok) { if (!rbData) { rbData = d; rbMonth = rbMonth || d.month; } var n = d.items.filter(function(x){ return x.status === 'overdue' || x.status === 'today'; }).length; $('rentTopBadge').hidden = !n; $('rentTopBadge').textContent = n; $('rbBadge').hidden = !n; $('rbBadge').textContent = n; } }); }
   function rbDay(iso){ var d = parseDay(iso); return d ? d.getDate() + ' ' + MONTHS_EN[d.getMonth()].slice(0, 3) : iso; }
   var rbTab = (function(){ try { return localStorage.getItem('rr_rb_tab') || 'collect'; } catch (e) { return 'collect'; } })(), rbOpen = {}, rbQ = '';
+  // Proof of move-in payments the tenants have uploaded (from their welcome email), to check and confirm here too.
+  function loadRbPays(){
+    if (!$('rbPays')) return;
+    api('GET', '/api/admin/tenancy-payments').then(function(r){
+      var box = $('rbPays'); if (!box || !r || !r.ok) return;
+      var ts = r.tenancies || []; if (!ts.length) { box.innerHTML = ''; return; }
+      var todo = ts.reduce(function(n, t){ return n + t.payments.filter(function(x){ return !x.confirmed_at; }).length; }, 0);
+      box.innerHTML = '<div class="card mip"><h3>Move-in payments ' + (todo ? '<span class="pt-badge guar">' + todo + ' to check</span>' : '<span class="pt-badge lead">✓ All checked</span>') + '</h3>' + ts.map(function(t){
+        var ok = t.payments.filter(function(x){ return x.confirmed_at; }).reduce(function(n, x){ return n + x.amount; }, 0), sent = t.payments.reduce(function(n, x){ return n + x.amount; }, 0), all = t.due > 0 && ok >= t.due - 0.005;
+        return '<div class="mip-t"><div class="mip-h"><button type="button" class="linkish" data-rb-open="' + t.tenancy_id + '"><b>' + esc(rbAddr(t.address)) + '</b></button>' +
+          '<span class="muted-note" style="margin:0">' + (t.due != null ? 'Due ' + esc(gbp(t.due)) + (t.due_by ? ' by ' + esc(rbDay(t.due_by)) : '') + ' · ' : '') + 'proof for ' + esc(gbp(sent)) + ' · confirmed ' + esc(gbp(ok)) + (t.negotiator ? ' · ' + esc(t.negotiator) : '') + '</span>' + (all ? ' <span class="pt-badge lead">✓ All received</span>' : '') + '</div>' +
+          t.payments.map(function(x){
+            return '<div class="lt-mini"><div style="min-width:0"><b>' + esc(gbp(x.amount)) + '</b>' + (x.payer ? ' · ' + esc(x.payer) : '') + '<span class="muted-note" style="margin:0;display:block">' + esc(x.paid_on ? 'Paid ' + rbDay(String(x.paid_on).slice(0, 10)) : 'Sent ' + fmtShort(x.created_at)) + (x.note ? ' · “' + esc(x.note) + '”' : '') + (x.confirmed_at ? ' · <b style="color:#067647">✓ Confirmed by ' + esc(x.confirmed_by || 'staff') + '</b>' : '') + '</span></div>' +
+              '<span style="display:flex;gap:6px;flex:0 0 auto;flex-wrap:wrap">' + (x.has_file ? '<a class="btn small" target="_blank" rel="noopener" href="/api/admin/tenancy-payments/' + x.id + '/file">View proof</a>' : '') +
+              (x.confirmed_at ? '<button type="button" class="btn small ghost" data-pay-ok="' + x.id + '" data-on="0">Undo</button>' : '<button type="button" class="btn small primary" data-pay-ok="' + x.id + '" data-on="1">✓ Confirm received</button>') + '</span></div>';
+          }).join('') + '</div>';
+      }).join('') + '</div>';
+    });
+  }
   function renderRentBoard(){
     var d = rbData, today = d.today, isNow = d.month === today.slice(0, 7);
     // Search: address, tenant, landlord or payment reference (every word typed).
@@ -14469,7 +14489,9 @@
       : ('<div class="rb-bulk"><span id="rbBulkC"></span></div>' +
          sect(isNow ? 'Due today & late' : 'Due', now) + sect('Waiting for move-in money', mov, 'New tenancies — the landlord’s payment comes up once the tenants have paid everything due at move-in.') + sect('Tomorrow', tmw) + sect(isNow ? 'Later this month' : 'Later', later) + sect('Early next month', soonNext, 'Due in the next few days — mark it collected if the tenant has paid early.') +
          (due.length ? '' : '<p class="rb-empty">✓ All rents collected for ' + esc(mLabel) + '.</p>') + rbSkippedHtml(d, qt));
+    setTimeout(loadRbPays, 0);
     $('rentBoard').innerHTML =
+      '<div id="rbPays"></div>' +
       '<div class="rb-head"><button type="button" class="btn small ghost" data-rb-month="-1" aria-label="Previous month">‹</button><b>' + esc(mLabel) + '</b><button type="button" class="btn small ghost" data-rb-month="1" aria-label="Next month">›</button>' + (isNow ? '' : '<button type="button" class="linkish" data-rb-month="0">This month</button>') + '</div>' +
       '<div class="rb-big">' +
         '<div class="rb-bigc' + (now.length ? ' hot' : '') + '"><span>To collect ' + (isNow ? 'today' : '') + '</span><b>' + gbp(sum(now, 'rent')) + '</b><small>' + now.length + ' rent' + (now.length === 1 ? '' : 's') + (isNow && tmw.length ? ' · ' + gbp(sum(tmw, 'rent')) + ' tomorrow' : '') + '</small></div>' +
