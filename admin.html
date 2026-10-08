@@ -690,6 +690,7 @@
   .pt-row { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line, #e6e8ec); } .pt-row [data-ptuse] { grid-row: span 2; } .pt-row .inp { min-width: 0; } .pt-dup { grid-column: 2 / -1; color: #b54708; font-size: .76rem; }
   .lt-mini { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--line, #e5e7eb); } .lt-mini:first-of-type { border-top: 0; } .lt-mini b { overflow-wrap: anywhere; }
   .lt-given { margin-top: 10px; padding: 10px 12px; background: var(--bg, #f6f7f9); border-radius: 10px; } .lt-given > b { display: block; margin-bottom: 6px; }
+  .neg-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 40px; align-items: center; } .neg-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line, #e5e7eb); border-radius: 999px; padding: 6px 12px; font-size: .86rem; cursor: pointer; background: #fff; } .neg-chip:has(input:checked) { border-color: var(--blue, #2F5BEA); background: #eef2fe; font-weight: 600; } .neg-chip.warn { border-color: #f79009; background: #fffaeb; } .neg-chip input { margin: 0; }
   .jt-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
   .jt-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; cursor: pointer; }
   .jt-row input[type=radio] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
@@ -11809,6 +11810,29 @@
   }
   // The tenancy: the terms for its property, the one it was let under, and the
   // landlord's details and bank account from them (to use on the tenancy if needed).
+  // Negotiator(s): ticked from the staff on Team (one or more), so the name always matches someone —
+  // their email is used for the welcome email's Cc and the payment-proof emails. Kept as "Ann & Bob".
+  var staffNamesP = null;
+  function negSplit(v){ return String(v || '').split(/\s*(?:&|,|\/|\band\b|\+)\s*/i).map(function(x){ return x.trim(); }).filter(Boolean); }
+  function renderNegChips(){
+    var box = $('tfNegChips'); if (!box) return;
+    if (!staffNamesP) staffNamesP = api('GET', '/api/admin/staff-names').then(function(r){ return r && r.ok ? r.names : []; }, function(){ staffNamesP = null; return []; });
+    staffNamesP.then(function(names){
+      if (!$('tfNegChips')) return;
+      var cur = negSplit($('tfNeg').value), low = function(x){ return x.toLowerCase(); };
+      // A name typed before (e.g. a first name) ticks the staff member it belongs to.
+      var picked = names.filter(function(n){ return cur.some(function(c){ return low(c) === low(n) || (low(n).split(' ')[0] === low(c) && names.filter(function(m){ return low(m).split(' ')[0] === low(c); }).length === 1); }); });
+      var other = cur.filter(function(c){ return !names.some(function(n){ return low(n) === low(c) || low(n).split(' ')[0] === low(c); }); });
+      if (tcyLocked) names = picked;   // read-only: just the people ticked
+      $('tfNegChips').innerHTML = (tcyLocked && !picked.length && !other.length ? '<span class="muted-note" style="margin:0">None ticked — press Edit tenancy to choose</span>' : '') + names.map(function(n){ return '<label class="neg-chip"><input type="checkbox" data-neg="' + esc(n) + '"' + (picked.indexOf(n) !== -1 ? ' checked' : '') + '> ' + esc(n) + '</label>'; }).join('') +
+        other.map(function(n){ return '<label class="neg-chip warn" title="Not on Team — untick and pick the right person"><input type="checkbox" data-neg="' + esc(n) + '" checked> ' + esc(n) + ' ⚠</label>'; }).join('') +
+        (names.length || tcyLocked ? '' : '<span class="muted-note" style="margin:0">Add your staff under Team first.</span>');
+      var sync = function(){ $('tfNeg').value = Array.prototype.map.call($('tfNegChips').querySelectorAll('[data-neg]:checked'), function(c){ return c.dataset.neg; }).join(' & '); };
+      if (picked.length && !other.length) sync();   // tidy a first name into the full name
+      $('tfNegChips').addEventListener('change', sync);
+      if (tcyLocked) Array.prototype.forEach.call($('tfNegChips').querySelectorAll('input'), function(i){ i.disabled = true; });
+    });
+  }
   // Move-in payments the tenants have sent proof of (from the button in their welcome email): open the proof, confirm each.
   function renderTcyPays(){
     var box = $('tfPays'); if (!box || !openTcyId || openTcyId === 'new') { if (box) box.hidden = true; return; }
@@ -14875,7 +14899,7 @@
       // Property
       '<div class="card"><h3>Property</h3>' +
         '<div><label class="lbl" for="tfAddress">Property full address *</label><input class="inp" id="tfAddress" list="tfProps" value="' + esc(d.address || '') + '" placeholder="Flat 5, Dudley Court, Upper Berkeley Street, London, W1H 5QA"><datalist id="tfProps">' + props + '</datalist></div>' +
-        '<div class="grid3" style="margin-top:10px">' + tcyInp('tfNeg', 'Negotiator', d.negotiator) + tcyInp('tfTaken', 'Date taken', d.date_taken, ' type="date"') +
+        '<div class="grid3" style="margin-top:10px">' + '<div><label class="lbl">Negotiator(s)</label><input type="hidden" id="tfNeg" value="' + esc(d.negotiator || '') + '"><div class="neg-chips" id="tfNegChips"><span class="muted-note" style="margin:0">Loading staff…</span></div></div>' + tcyInp('tfTaken', 'Date taken', d.date_taken, ' type="date"') +
           '<div><label class="lbl" for="tfService">Service</label><select class="inp" id="tfService">' + ['Tenant Find', 'Rent Collection', 'Fully Managed', 'Rent4Rent'].map(function(s){ return '<option' + (d.service === s ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div></div>' +
         '<div style="margin-top:10px"><label class="lbl" for="tfRentBy">Who collects the rent?</label><select class="inp" id="tfRentBy" style="max-width:420px">' +
           '<option value="">' + esc('Usual for the service (' + (tcyRentByUs(Object.assign({}, d, { rent_by: '' })) ? 'we collect it' : 'the landlord collects it') + ')') + '</option>' +
@@ -14970,6 +14994,7 @@
     renderTcyCerts();
     renderTcyTerms();
     renderTcyPays();
+    renderNegChips();
     if (tcyLocked) tcyLock();
   }
   $('tcyDetail').addEventListener('click', function(e){
@@ -16016,7 +16041,7 @@
     // DIY check-in: the app needs a personal link — the office makes a free one for these tenants.
     var diyOffice = '', diyReq = who === 'tenants' && (d.checkin_type === 'diy' || /diy/i.test(String(d.checkin_type || ''))) ? api('POST', '/api/admin/diy-access', { name: ((d.tenants || [])[0] || {}).name || '', address: d.address || '' }).then(function(r){ if (r && r.ok) diyOffice = r.link; })['catch'](function(){}) : null;
     // The negotiator who got the offer is copied in on the tenants' email.
-    var negCc = [], negReq = who === 'tenants' && openTcyId && openTcyId !== 'new' ? api('GET', '/api/admin/tenancies/' + openTcyId + '/negotiator').then(function(r){ if (r && r.ok && r.email) negCc = [r.email]; })['catch'](function(){}) : null;
+    var negCc = [], negReq = who === 'tenants' && openTcyId && openTcyId !== 'new' ? api('GET', '/api/admin/tenancies/' + openTcyId + '/negotiator').then(function(r){ if (r && r.ok) negCc = (r.people || []).map(function(x){ return x.email; }).filter(Boolean); if (!negCc.length && r && r.email) negCc = [r.email]; })['catch'](function(){}) : null;
     // The tenants' private link for uploading proof of the move-in payments (amount and date shown there).
     var payUrl = '', payReq = who === 'tenants' && openTcyId && openTcyId !== 'new' ? api('POST', '/api/admin/tenancies/' + openTcyId + '/pay-link', { amount: tcyCalc(d).remaining, due: tcyCalc(d).moveInDue }).then(function(r){ if (r && r.ok) payUrl = r.url; })['catch'](function(){}) : null;
     Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq, diyReq, negReq, payReq]).then(go);
