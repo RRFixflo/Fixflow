@@ -8913,14 +8913,22 @@
   function crmQQ(x){
     var d = x.data || {}, sale = d.listing === 'sale', q = [];
     if (sale) {
-      if (!d.move) q.push('Are you a first-time buyer, or do you have a property to sell? If so, is it on the market or under offer?');
-      q.push('Will you be buying with a mortgage or in cash? If a mortgage, do you have an agreement in principle?');
+      q.push('Are you a first-time buyer, or do you have a property to sell? If so, is it on the market, under offer or sold?');
+      q.push('Will you be buying with a mortgage or in cash? If a mortgage, do you have an agreement in principle, and roughly what is your budget?');
+      q.push('Do you have a solicitor lined up, and what timescale are you working to?');
       q.push('If you like the property, are you in a position to make an offer straight away?');
     } else {
-      if (!d.move_date) q.push(d.move ? 'You mentioned moving in ' + d.move + ' — do you have a date in mind?' : 'When would you like to move in?');
-      if (!d.adults) q.push(d.people ? 'You mentioned ' + d.people + (/^\d+\+?$/.test(d.people) ? ' people' : '') + ' — how many are adults and how many are children?' : 'How many people will be moving in — how many adults and how many children?');
-      if (!d.income) q.push('How will the rent be paid — are you working (employed or self-employed), a student, retired, or receiving Universal Credit / Housing Benefit?');
-      if (!d.guarantor) q.push('If one is needed, do you have a UK-based guarantor?');
+      // Every question is asked; what the form already told us is checked rather than skipped.
+      var kids = parseInt(d.children, 10) || 0, ad = String(d.adults || ''), benefit = /universal credit|housing benefit/i.test(d.income || '');
+      q.push(d.move_date ? 'You’d like to move in on ' + fmtDateOnly(d.move_date) + ' — is that date fixed, or is there some flexibility?' : d.move ? 'You mentioned moving in ' + d.move + ' — do you have a date in mind?' : 'When would you like to move in?');
+      q.push(ad ? 'You mentioned ' + ad + ' adult' + (ad === '1' ? '' : 's') + (kids ? ' and ' + d.children + ' child' + (kids === 1 ? '' : 'ren') : '') + ' — who will be living there (for example a couple, a family or sharers)?' :
+        d.people ? 'You mentioned ' + d.people + (/^\d+\+?$/.test(d.people) ? ' people' : '') + ' — how many are adults and how many are children, and who will be living there (a couple, a family or sharers)?' : 'How many people will be moving in — how many adults and how many children — and who will be living there (a couple, a family or sharers)?');
+      q.push(benefit ? 'You mentioned Universal Credit / Housing Benefit — roughly how much of the rent will it cover, and is anyone in the household working as well?' :
+        'What does each adult do for work (job and employer, or self-employed), and roughly what is the total household income per year?' + (d.income ? '' : ' If the rent will be paid another way — Universal Credit / Housing Benefit, savings, a student loan or a pension — just let us know.'));
+      q.push('Where are you living at the moment — are you renting, and if so how much notice do you need to give?');
+      q.push('Do you have any pets, and does anyone in the household smoke?');
+      if (!/^yes/i.test(d.guarantor || '')) q.push('If one is needed, do you have a UK-based guarantor (usually a homeowner in work)?');
+      q.push('Are you happy to go through referencing and Right to Rent checks (we’ll need photo ID for each adult)?');
       q.push('If you like the property, are you in a position to make an offer and pay the holding deposit (one week’s rent) straight away?');
     }
     var me = String((meta.user && meta.user.name) || '').split(/\s+/)[0].replace(/^Owner$/, ''), first = String(x.name || '').trim().split(/\s+/)[0] || 'there', addr = String(x.address || 'the property').split(',').slice(0, 2).join(',');
