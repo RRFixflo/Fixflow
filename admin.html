@@ -729,6 +729,7 @@
   .crm-body { padding: 4px 14px 14px; border-top: 1px solid var(--line, #eef0f3); }
   .crm-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px; margin: 12px 0; } .crm-facts div { display: grid; min-width: 0; } .crm-facts span { font-size: .74rem; color: var(--ink-soft); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; } .crm-facts b { font-weight: 600; overflow-wrap: anywhere; }
   .riv-top { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; } .riv { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line, #eef0f3); } .riv.off { opacity: .6; } .riv-img img { width: 110px; height: 74px; object-fit: cover; border-radius: 8px; display: block; } .riv-b { display: grid; gap: 3px; min-width: 0; font-size: .85rem; } .riv-b small, .riv-their, .riv-ll { color: var(--ink-soft); overflow-wrap: anywhere; } .riv-their b { color: var(--ink); } .riv-why { justify-self: start; font-size: .75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #fef3f2; color: #b42318; } .riv-why.street { background: #f2f4f7; color: #475467; } .riv-more { margin-top: 8px; } .riv-more summary { cursor: pointer; font-weight: 700; font-size: .85rem; padding: 6px 0; } @media (max-width: 520px) { .riv-img img { width: 84px; height: 60px; } }
+  .tn-ai { margin: 0 0 10px; border: 1px solid #d9d6fe; background: #f8f7ff; border-radius: 12px; padding: 8px 10px; } .tn-ai summary { cursor: pointer; font-weight: 700; color: #5925dc; } .tn-ai[open] summary { margin-bottom: 8px; } .tn-ai-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
   .crm-qq { background: #f0f9ff; border: 1px solid #b9e6fe; border-radius: 12px; padding: 12px; margin: 12px 0; display: grid; gap: 6px; } .crm-qq-btns { display: flex; gap: 8px; flex-wrap: wrap; }
   .crm-vw { background: #fffaeb; border: 1px solid #fedf89; border-radius: 12px; padding: 12px; margin: 12px 0; } .crm-slots { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
   .crm-slot { border: 1.5px solid #b54708; color: #b54708; background: #fff; border-radius: 10px; padding: 8px 12px; font: inherit; font-weight: 700; cursor: pointer; } .crm-slot.on { background: #067647; border-color: #067647; color: #fff; }
@@ -2760,6 +2761,11 @@
     <div class="tn-sec">
       <div class="tn-lbl">Message</div>
       <div class="tn-tpls" id="tnTpls"></div>
+      <details class="tn-ai" id="tnAi"><summary>✨ Write it for me with AI</summary>
+        <textarea class="inp" id="tnAiSrc" rows="5" placeholder="Paste the landlord’s email or message here — or jot down what the tenants need to know"></textarea>
+        <input class="inp" id="tnAiHow" placeholder="Anything else? e.g. keep it short, ask them to reply to confirm (optional)" style="margin-top:6px">
+        <div class="tn-ai-row"><button type="button" class="btn small primary" id="tnAiGo">✨ Write the message</button><span class="muted-note" id="tnAiMsg" style="margin:0">It reads the earlier messages these tenants were sent, so a new one follows on from them. Check it before sending.</span></div>
+      </details>
       <input class="inp" id="tnSubject" placeholder="Email subject" style="margin-bottom:8px">
       <textarea class="inp" id="tnBody" rows="8" placeholder="Write your message…"></textarea>
       <div class="muted-note" style="margin-top:4px">{first_name} and {address} are filled in for each tenant.</div>
@@ -6902,6 +6908,19 @@
       recipients: tn.recips.filter(function(r){ return !tn.excluded[r.key]; }).map(function(r){ return { key: r.key, name: r.name, phone: r.phone, email: r.email, address: r.address }; }) })
       .then(function(d){ if (!d.ok) { toast('Couldn’t save the message'); throw new Error('save'); } tn.noticeId = d.id; return d.id; });
   }
+  // AI writes the notice from what's pasted, following on from earlier notices to the same tenants.
+  $('tnAiGo').addEventListener('click', function(){
+    var src = $('tnAiSrc').value.trim(), b = $('tnAiGo'); if (!src) { toast('Paste the message first'); $('tnAiSrc').focus(); return; }
+    if (!meta.canAi) { toast('AI isn’t switched on'); return; }
+    busy(b, true, 'Writing…'); $('tnAiMsg').textContent = 'Writing — this takes a few seconds…';
+    api('POST', '/api/admin/tenant-notices/ai', { text: src, how: $('tnAiHow').value.trim(), keys: tn.keys, audience: $('tnTitle').textContent.replace(/^Message tenants — ?/, '') }).then(function(d){
+      busy(b, false);
+      if (!d || !d.ok) { $('tnAiMsg').textContent = 'Couldn’t write it just now — please try again.'; return; }
+      $('tnSubject').value = d.subject || $('tnSubject').value; $('tnBody').value = d.body; tn.noticeId = null;
+      $('tnAiMsg').textContent = '✓ Written' + (d.history ? ', following on from ' + d.history + ' earlier message' + (d.history === 1 ? '' : 's') + ' to these tenants' : '') + '. Read it through and change anything before sending.';
+      $('tnBody').focus(); $('tnBody').setSelectionRange(0, 0); $('tnBody').scrollTop = 0;
+    });
+  });
   function tnMark(r, how){ tn.sent[r.key] = how; if (tn.noticeId) api('POST', '/api/admin/tenant-notices/' + tn.noticeId + '/sent', { key: r.key, how: how }); tnDraw(); }
   function tnWa(r){
     tnEnsureNotice().then(function(){ window.open('https://wa.me/' + waNumber(r.phone) + '?text=' + encodeURIComponent(tnFill($('tnBody').value, r)), '_blank', 'noopener'); tnMark(r, 'WhatsApp'); })['catch'](function(){});
