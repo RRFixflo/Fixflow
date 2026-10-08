@@ -688,6 +688,8 @@
   .sv-pages { font-size: .76rem; color: var(--ink-soft); margin-top: 2px; }
   .pt-paste { border: 1px solid var(--line, #e6e8ec); border-radius: 12px; padding: 10px; margin: 8px 0; background: #f9fafb; }
   .pt-row { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line, #e6e8ec); } .pt-row [data-ptuse] { grid-row: span 2; } .pt-row .inp { min-width: 0; } .pt-dup { grid-column: 2 / -1; color: #b54708; font-size: .76rem; }
+  .lt-mini { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--line, #e5e7eb); } .lt-mini:first-of-type { border-top: 0; } .lt-mini b { overflow-wrap: anywhere; }
+  .lt-given { margin-top: 10px; padding: 10px 12px; background: var(--bg, #f6f7f9); border-radius: 10px; } .lt-given > b { display: block; margin-bottom: 6px; }
   .jt-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
   .jt-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; cursor: pointer; }
   .jt-row input[type=radio] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
@@ -1841,6 +1843,7 @@
           <div id="llAvBanner"></div>
           <div id="llPayTo"></div>
           <div class="card" id="llCard"></div>
+          <div class="card" id="llTerms" style="margin-top:12px" hidden></div>
           <div class="card" id="llMails" style="margin-top:12px"></div>
           <div class="card" id="llOwed" style="margin-top:12px"></div>
           <div class="card" id="llVals" style="margin-top:12px" hidden></div>
@@ -2940,6 +2943,14 @@
     return x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()) + 'T' + pad(x.getHours()) + ':' + pad(x.getMinutes());
   }
   function isOpen(j){ return j.status !== 'Completed' && j.status !== 'Cancelled'; }
+  // What the job is, for the jobs list: the issue type and what needs doing (its title, or else the
+  // first line of the details), so a job filed under "Other" still says what it is.
+  function jobWhat(j, max){
+    var d = String(j.affected || j.summary || '').trim() || (String(j.description || '').split(/\n+/).map(function(l){ return l.replace(/^(?:[-•*]|\d+[.)])\s*/, '').trim(); }).filter(function(l){ return l && !/^Other tenants:/i.test(l); })[0] || '');
+    if (d.length > max) d = d.slice(0, max - 1).replace(/\s+\S*$/, '') + '…';
+    var cat = j.category && !(/^other$/i.test(j.category) && d) ? j.category : '';
+    return [cat, d, j.symptom && !d ? j.symptom : ''].filter(Boolean).join(' · ') || 'Repair';
+  }
   function issueOf(j){ return [j.category, j.affected, j.symptom].filter(Boolean).join(' · ') || 'Repair'; }
   // Profit = charge to landlord minus what the job cost. Uses the actual cost once
   // entered, otherwise the estimate (shown as "estimated").
@@ -3171,7 +3182,7 @@
         '<button type="button" class="job' + (fin ? ' done' : open ? '' : ' cancelled') + '" data-id="' + j.id + '">' +
         '<div class="c-ref"><div class="ref">' + (fin ? '<span class="done-tick">✓</span>' : '') + esc(j.ref) + '</div><div class="sub"><span class="pill ' + esc(j.urgency) + '">' + esc(j.urgency) + '</span>' + (urgOver(j) ? ' <span class="urg-over" title="The tenant chose ' + esc(j.urgency) + ' — from the problem it looks ' + esc(j.urgency_check.suggested) + '">⚠ looks ' + esc(j.urgency_check.suggested) + '</span>' : '') + '</div></div>' +
         '<div class="c-issue"><div class="title">' + esc(j.property_address || 'No address') + '</div>' +
-          '<div class="meta">' + esc(issueOf(j)) + (j.tenant_name ? ' · ' + esc(j.tenant_name) : '') + '</div></div>' +
+          '<div class="meta" title="' + esc(jobWhat(j, 400)) + '">' + esc(jobWhat(j, 90)) + (j.tenant_name ? ' · ' + esc(j.tenant_name) : '') + '</div></div>' +
         '<div class="c-time">' + (fin && j.completed_at ? '<span class="done-badge">✓ Completed</span><div class="sub">on ' + esc(fmtShort(j.completed_at)) + '</div>' : '<div class="time ' + t.cls + '">' + esc(t.text) + '</div>') +
           (open && pct !== null ? '<div class="bar" title="Time used before the deadline"><i class="' + t.cls + '" style="width:' + pct + '%"></i></div>' : '') +
           '<div class="sub">Received ' + esc(fmtShort(j.created_at)) + '</div></div>' +
@@ -9241,6 +9252,7 @@
     setTimeout(avBannersRefresh, 0);   // "paid to" line
     $('llTitle').textContent = l.name;
     personMails($('llMails'), l.email);
+    renderLlTerms(l);
     $('llSub').textContent = props.length + ' propert' + (props.length === 1 ? 'y' : 'ies') + ' · ' + all.length + ' repair' + (all.length === 1 ? '' : 's') + ' · ' + open + ' open · ' + gbp(chargedTotal(all)) + ' charged';
     var wa = waNumber(l.phone);
     $('llActions').innerHTML = (l.phone ? '<a class="btn" href="tel:' + esc(l.phone.replace(/[^\d+]/g, '')) + '">Call</a>' : '') +
@@ -11731,6 +11743,106 @@
   $('ltFindPct').addEventListener('input', function(){ var v = parseFloat(this.value); if (!$('ltRenPct').dataset.manual && !isNaN(v)) { $('ltRenPct').value = Math.max(0, Math.round((v - 1) * 100) / 100); ltPreview(); } }); $('ltMonthly').addEventListener('change', ltPreview);
   $('ltNew').addEventListener('input', ltPreview); $('ltVat').addEventListener('change', ltPreview);
   ltDefaults();
+  // ----- A landlord's terms of business, shown on their landlord page and on the tenancy -----
+  var ltEnsureP = null;
+  function ltEnsure(){
+    if (ltItems.length) return Promise.resolve(ltItems);
+    if (!ltEnsureP) ltEnsureP = api('GET', '/api/admin/landlord-terms').then(function(d){ if (d && d.ok && !ltItems.length) { ltItems = d.items; ltOrigin = d.origin || ''; } return ltItems; }, function(){ ltEnsureP = null; return []; });
+    return ltEnsureP;
+  }
+  function ltDay(v){ return v ? new Date(v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }) : ''; }
+  // What the landlord told us on their terms: contact details, address and bank account.
+  function ltGiven(t){
+    var dt = (t.data || {}).details || {}, intl = dt.bank_type === 'intl';
+    var bank = { holder: dt.bank_account_name || '', bank: intl || dt.bank_name === 'Other' ? dt.bank_other || '' : dt.bank_name || '', sort: intl ? '' : dt.bank_sort || '', account: intl ? '' : dt.bank_account || '', iban: intl ? dt.bank_iban || '' : '', swift: intl ? dt.bank_swift || '' : '', terms: t.ref };
+    return { name: t.landlord_name || '', email: t.landlord_email || '', phone: t.landlord_phone || '', address: dt.corr_address || dt.overseas_address || '', bank: bank.account || bank.iban ? bank : null };
+  }
+  function ltBankLines(b){
+    return [b.holder ? 'Account name: ' + b.holder : '', b.bank ? 'Bank: ' + b.bank : '', b.sort ? 'Sort code: ' + b.sort : '', b.account ? 'Account number: ' + b.account : '', b.iban ? 'IBAN: ' + b.iban : '', b.swift ? 'SWIFT / BIC: ' + b.swift : ''].filter(Boolean);
+  }
+  function ltRowsHtml(list, opts){
+    opts = opts || {};
+    return list.map(function(t){
+      var signed = t.status === 'signed' && t.signed_at;
+      return '<div class="lt-mini' + (opts.best === t ? ' best' : '') + '"><div style="min-width:0"><b>' + esc(opts.showAddr ? shortAddr(t.property_address || '') || t.ref : t.ref) + '</b>' + (opts.best === t ? ' <span class="pt-badge lead">For this tenancy</span>' : '') +
+        '<span class="muted-note" style="margin:0;display:block">' + esc((opts.showAddr ? t.ref + ' · ' : '') + (signed ? 'Filled in and signed on ' + ltDay(t.signed_at) : t.status === 'cancelled' ? 'Cancelled' : 'Not filled in yet') + ' · sent ' + ltDay(t.created_at)) + '</span></div>' +
+        '<span style="display:flex;gap:6px;flex:0 0 auto"><a class="btn small" target="_blank" rel="noopener" href="/api/admin/landlord-terms/' + t.id + '/pdf">View</a><a class="btn small ghost" href="/api/admin/landlord-terms/' + t.id + '/pdf?dl=1">⬇ PDF</a></span></div>';
+    }).join('');
+  }
+  function ltSort(list){ return list.slice().sort(function(a, b){ return new Date(b.signed_at || b.created_at) - new Date(a.signed_at || a.created_at); }); }
+  function renderLlTerms(l){
+    var box = $('llTerms'); if (!box) return;
+    ltEnsure().then(function(){
+      if (openLlId !== l.id) return;
+      var keys = llProperties(l).map(function(x){ return x.key; }), ph = function(v){ return phoneTail(v); };
+      var list = ltSort(ltItems.filter(function(t){
+        if (t.status === 'cancelled') return false;
+        return (l.email && t.landlord_email && t.landlord_email.toLowerCase().trim() === l.email.toLowerCase().trim()) || (ph(l.phone) && ph(t.landlord_phone) === ph(l.phone)) ||
+          keys.indexOf(propKey(t.property_address)) !== -1;
+      }));
+      box.hidden = !list.length; if (!list.length) return;
+      var g = list.filter(function(t){ return t.status === 'signed'; }).map(ltGiven)[0];
+      var miss = g ? [['phone', g.phone], ['email', g.email], ['address', g.address]].filter(function(x){ return x[1] && !String(l[x[0]] || '').trim(); }) : [];
+      var shown = box.dataset.all === String(l.id) ? list : list.slice(0, 5);
+      box.innerHTML = '<h3>Terms of business <span class="count-chip">' + list.length + '</span></h3>' + ltRowsHtml(shown, { showAddr: true }) +
+        (list.length > shown.length ? '<button class="btn small ghost" type="button" id="llTermsAll">Show all ' + list.length + '</button>' : '') +
+        (g ? '<div class="lt-given"><b>Details they gave on their latest signed terms</b><dl class="kv">' + [['Name', g.name], ['Phone', g.phone], ['Email', g.email], ['Address', g.address]].concat(g.bank ? [['Bank account', ltBankLines(g.bank).join('\n')]] : []).filter(function(r){ return r[1]; })
+          .map(function(r){ return '<dt>' + r[0] + '</dt><dd style="white-space:pre-line">' + esc(r[1]) + '</dd>'; }).join('') + '</dl>' +
+          (miss.length ? '<button class="btn small" type="button" id="llTermsFill">Add their ' + miss.map(function(x){ return x[0]; }).join(' and ') + ' to this landlord</button>' : '') + '</div>' : '');
+      if ($('llTermsAll')) $('llTermsAll').addEventListener('click', function(){ box.dataset.all = String(l.id); renderLlTerms(l); });
+      if ($('llTermsFill')) $('llTermsFill').addEventListener('click', function(){
+        var body = { name: l.name, phone: l.phone || '', email: l.email || '', address: l.address || '', notes: l.notes || '' };
+        miss.forEach(function(x){ body[x[0]] = x[1]; });
+        busy(this, true, 'Saving…');
+        api('PATCH', '/api/admin/landlords/' + l.id, body).then(function(d){ if (!d.ok) { toast('Couldn’t save (' + (d.error || 'error') + ')'); return; } miss.forEach(function(x){ l[x[0]] = x[1]; }); toast('✓ Landlord details updated'); renderLandlord(); });
+      });
+    });
+  }
+  // The tenancy: the terms for its property, the one it was let under, and the
+  // landlord's details and bank account from them (to use on the tenancy if needed).
+  function renderTcyTerms(){
+    var box = $('tfTerms'); if (!box || !tcyDraft) return;
+    var d = tcyDraft, k = propKey(d.address);
+    if (!k) { box.hidden = true; return; }
+    ltEnsure().then(function(){
+      if (tcyDraft !== d || !$('tfTerms')) return;
+      var list = ltSort(ltItems.filter(function(t){ return t.status !== 'cancelled' && (propKey(t.property_address) === k || addrSame(t.property_address, d.address)); }));
+      var signed = list.filter(function(t){ return t.status === 'signed' && t.signed_at; });
+      // Let under: the latest terms signed before (or within a month after) the start date, else the latest signed.
+      var start = d.start_date ? new Date(d.start_date + 'T12:00:00Z').getTime() + 31 * 864e5 : Infinity;
+      var best = signed.filter(function(t){ return new Date(t.signed_at).getTime() <= start; })[0] || signed[0] || null;
+      var g = best ? ltGiven(best) : null, lb = d.landlord_bank, useLl = d.rent_bank === 'landlord' && lb;
+      box.hidden = false;
+      box.innerHTML = '<h3>Landlord’s terms of business</h3>' + (list.length ? ltRowsHtml(list, { best: best }) : '<p class="muted-note" style="margin:0">No terms of business sent for this property yet.</p>') +
+        (g ? '<div class="lt-given"><b>Landlord’s details from ' + esc(best.ref) + '</b><dl class="kv">' + [['Name', g.name], ['Phone', g.phone], ['Email', g.email], ['Address', g.address]].concat(g.bank ? [['Bank account', ltBankLines(g.bank).join('\n')]] : []).filter(function(r){ return r[1]; })
+            .map(function(r){ return '<dt>' + r[0] + '</dt><dd style="white-space:pre-line">' + esc(r[1]) + '</dd>'; }).join('') + '</dl>' +
+          '<div class="row-actions" style="margin-top:6px"><button class="btn small" type="button" id="tfTermsLl">Use these landlord details on this tenancy</button></div></div>' : '') +
+        '<div class="lt-given"><b>Account for the rent on the tenancy agreement</b>' +
+          '<label class="crm-chk"><input type="radio" name="tfRentBank" value=""' + (useLl ? '' : ' checked') + '> Our account (the bank details under Templates)</label>' +
+          '<label class="crm-chk"><input type="radio" name="tfRentBank" value="landlord"' + (useLl ? ' checked' : '') + (g && g.bank || lb ? '' : ' disabled') + '> The landlord’s own account' + (g && g.bank || lb ? '' : ' (no bank details from their terms yet)') + '</label>' +
+          (useLl ? '<div class="muted-note" style="margin:4px 0 0;white-space:pre-line">' + esc(ltBankLines(lb).join('\n')) + '</div>' : '') +
+          '<p class="muted-note" style="margin:6px 0 0">Used for the account details on the tenancy agreement and in the tenant’s welcome email.</p></div>';
+      var save = function(msg){
+        if (openTcyId === 'new' || !openTcyId) { toast(msg + ' — save the tenancy to keep it'); renderTcyTerms(); return; }
+        api('PUT', '/api/admin/tenancies/' + openTcyId, tcyDraft).then(function(r){
+          if (!r.ok) { toast('Couldn’t save (' + (r.error || 'error') + ')'); return; }
+          var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0]; if (x) x.data = JSON.parse(JSON.stringify(tcyDraft));
+          toast(msg); tcyLog(msg); renderTcyForm();
+        });
+      };
+      if ($('tfTermsLl')) $('tfTermsLl').addEventListener('click', function(){
+        var l = d.landlord = d.landlord || {}, parts = String(g.address || '').split(/\s*[,\n]+\s*/).filter(Boolean), pc = '';
+        parts = parts.filter(function(x){ var m = POSTCODE_RE.exec(x); if (m && !pc && x.replace(m[0], '').trim() === '') { pc = (m[1] + ' ' + m[2]).toUpperCase(); return false; } return true; });
+        if (g.name) l.name = g.name; if (g.email) l.email = g.email; if (g.phone) l.phone = g.phone;
+        if (parts.length) { l.line1 = parts[0]; l.line2 = parts.slice(1).join(', '); l.postcode = pc || l.postcode || ''; }
+        save('Landlord details filled in from ' + best.ref);
+      });
+      Array.prototype.forEach.call(box.querySelectorAll('[name=tfRentBank]'), function(r){ r.addEventListener('change', function(){
+        if (r.value === 'landlord') { if (g && g.bank) d.landlord_bank = g.bank; d.rent_bank = 'landlord'; save('Tenancy agreement now uses the landlord’s bank account'); }
+        else { d.rent_bank = ''; save('Tenancy agreement now uses our bank account'); }
+      }); });
+    });
+  }
   function loadLt(){ return api('GET', '/api/admin/landlord-terms').then(function(d){ if (!d.ok) return; ltItems = d.items; ltDeleted = d.deleted || []; renderLtDeleted(); ltOrigin = d.origin || ''; renderLt(); var waiting = ltItems.filter(function(x){ return x.status === 'sent'; }).length; $('sLt').hidden = !waiting; $('sLt').textContent = waiting; }); }
   var ltOrigin = '';
   function ltLink(t){ return (ltOrigin || meta.offerOrigin || location.origin) + '/landlord/' + t.token; }
@@ -13939,13 +14051,15 @@
     if (parts.length > 2 && /^(flat|apartment|apt|unit|room|suite|studio)\b/i.test(parts[0])) parts.splice(0, 2, parts[0] + ', ' + parts[1]);
     return { name: llFullName(l.name, rec.name), lines: parts.concat(pc ? [pc] : []) };
   }
+  // The landlord's own bank account, when the rent is paid to them (chosen on the tenancy from their terms).
+  function tcyLlBank(d){ return d && d.rent_bank === 'landlord' && d.landlord_bank && (d.landlord_bank.account || d.landlord_bank.iban) ? d.landlord_bank : null; }
   function tcyValues(d){
     var c = tcyCalc(d), t = (tcySet && tcySet.templates) || {};
     return {
       address: d.address || '', landlord_name: (d.landlord && d.landlord.name) || '', tenant_names: joinAnd(tcyNames(d.tenants)), start_date: longDay(d.start_date),
       payment_reference: d.pay_ref || payRef(d.address), move_in_due: weekdayDay(c.moveInDue), standing_order_start: ordDay(c.soStart), standing_order_payments: String(c.soPayments),
       first_rent: gbp(c.rent), deposit: gbp(c.deposit), move_in_total: gbp(c.total), holding_deposit: gbp(c.holding), move_in_remaining: gbp(c.remaining),
-      diy_link: DIY_LINK, checkin_date: ukDay(d.checkin_date || d.start_date), checkin_time: d.checkin_tbc ? 'a time the inventory clerk will contact you to confirm' : (d.checkin_time || '12:00'), bank_details: bankMarkup(t.bank_details), year: String(new Date().getFullYear())
+      diy_link: DIY_LINK, checkin_date: ukDay(d.checkin_date || d.start_date), checkin_time: d.checkin_tbc ? 'a time the inventory clerk will contact you to confirm' : (d.checkin_time || '12:00'), bank_details: bankMarkup(tcyLlBank(d) ? ltBankLines(tcyLlBank(d)).join('\n') : t.bank_details), year: String(new Date().getFullYear())
     };
   }
   // Email formatting marks → HTML (for pasting into Outlook or sending), or plain text.
@@ -14753,6 +14867,7 @@
           '<label class="tcy-nv" style="margin-top:8px"><input type="checkbox" id="tfCiTbc"' + (d.checkin_tbc ? ' checked' : '') + '> The clerk will contact them to confirm the time</label></div>' +
         '<p class="muted-note" id="tfCiNote" style="margin:8px 0 0">' + esc(tcyCiNote(d.checkin_type)) + '</p></div>' +
       // Certificates
+      '<div class="card" id="tfTerms" hidden></div>' +
       '<div class="card" id="tfCerts"></div>' +
       '<div class="card"><h3>Notes</h3><textarea class="inp" id="tfNotes" rows="3">' + esc(d.notes || '') + '</textarea></div>' +
       (x ? '<div class="card"><h3>Documents and emails</h3><div class="tcy-docs">' +
@@ -14773,6 +14888,7 @@
     wireTcyForm();
     tcyRefresh();
     renderTcyCerts();
+    renderTcyTerms();
     if (tcyLocked) tcyLock();
   }
   $('tcyDetail').addEventListener('click', function(e){
@@ -14835,7 +14951,7 @@
     var form = $('tcyDetail').querySelector('.tcy-form'); if (!form) return;
     form.classList.add('tcy-locked');
     form.querySelectorAll('input, select, textarea, button').forEach(function(el){
-      if (el.closest('.tcy-docs') || el.closest('.tcy-stmts') || el.dataset.owe || el.hasAttribute('data-keep')) return;
+      if (el.closest('.tcy-docs') || el.closest('.tcy-stmts') || el.closest('#tfTerms') || el.dataset.owe || el.hasAttribute('data-keep')) return;
       // Text stays selectable and copyable (read-only, not disabled); choices and buttons are switched off.
       if ((el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(checkbox|radio|file|hidden|button|submit)$/i.test(el.type))) && !el.closest('#tfCerts')) { el.readOnly = true; el.classList.add('tcy-ro'); el.title = 'Click to copy'; }
       else el.disabled = true;
@@ -15689,7 +15805,7 @@
     return {
       address: d.address, payment_reference: d.pay_ref || payRef(d.address), landlord: (d.landlord || {}).name || '', start: longDay(d.start_date), rent: gbp(c.rent), deposit: gbp(c.deposit), deposit_scheme: d.deposit_scheme || '',
       first_rent: longDay(c.moveInDue), rent_day: so ? ordinal(so.getDate()) : '', second_rent: ordDay(c.soStart), second_rent_month: so ? MONTHS_EN[so.getMonth()] : '',
-      agreement_date: longDay(isoDay(new Date())), tenants: tcyNames(d.tenants), guarantors: tcyNames(d.guarantors), values: tcyValues(d)
+      agreement_date: longDay(isoDay(new Date())), tenants: tcyNames(d.tenants), guarantors: tcyNames(d.guarantors), values: tcyValues(d), bank: tcyLlBank(d) || undefined
     };
   }
   // The agreement from the server, as a Blob.
