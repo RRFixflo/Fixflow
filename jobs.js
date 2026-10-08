@@ -5519,7 +5519,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
       pause: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/></svg>'
     };
-    const headline = cancelled ? 'This repair has been closed' : held ? 'On hold for now' : j.status === 'Completed' ? 'Repair completed' + (j.completed_at ? ' on ' + whenUk(j.completed_at) : '')
+    const certT = String(j.category || '') + ' ' + String(j.affected || ''), certName = /eicr|electrical (safety|installation)/i.test(certT) ? 'Electrical certificate' : /gas safety|cp12/i.test(certT) ? 'Gas safety certificate' : /\bepc\b|energy performance/i.test(certT) ? 'EPC' : '';
+    const headline = cancelled ? 'This repair has been closed' : held ? 'On hold for now' : j.status === 'Completed' ? (certName || 'Repair') + ' completed' + (j.completed_at ? ' on ' + whenUk(j.completed_at) : '')
       : appt ? 'Booked for ' + appt : j.landlord_handles ? 'Your landlord is arranging this' : st === 2 ? 'Contractor arranged' : st === 1 ? 'Arranging a contractor' : 'Report received';
     const icon = cancelled || held ? ICONS.pause : st === 3 ? ICONS.check : appt || st === 2 ? ICONS.cal : st === 1 ? ICONS.tool : ICONS.inbox;
     const chipText = cancelled ? 'Closed' : held ? 'On hold' : j.status === 'Completed' ? 'Completed' : appt ? 'Booked' : j.landlord_handles ? 'Landlord arranging' : (PUBLIC_STATUS[j.status] || (st === 1 ? 'In progress' : 'Received'));

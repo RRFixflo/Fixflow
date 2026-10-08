@@ -6886,7 +6886,8 @@
       return;
     }
     if (ll && b.dataset.tt === 'email') {
-      var llSubject = (g.jobs.every(function(j){ return j.status === 'Completed'; }) ? 'Repair completed — ' : 'Repair update — ') + (g.jobs.length === 1 ? shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + ' repairs at your properties');
+      var cw = certWord(g.jobs);   // gas, electrical or EPC certificate jobs say so instead of "Repair"
+      var llSubject = (cw || 'Repair') + (g.jobs.every(function(j){ return j.status === 'Completed'; }) ? ' completed — ' : ' update — ') + (g.jobs.length === 1 ? shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + (cw ? ' certificates' : ' repairs') + ' at your properties');
       if (meta.canEmail) {
         // Check the email first; sent once, logged on the first job, and the others get a note.
         composeMail({ title: '✉ Email the landlord — check before sending', to: [g.email], subject: llSubject, body: msg,
@@ -7248,7 +7249,7 @@
         (link ? '\n' + (isDone(j) ? 'See the details: ' : !j.assigned_to ? 'See the report and follow the progress: ' : 'Follow the progress: ') + link : '');
     };
     var body = jobs.length === 1
-      ? (allDone ? 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : jobs[0].landlord_handles ? 'Here are the details of the repair at ' + shortAddr(jobs[0].property_address) + ' that you’re arranging.\n\n' : !jobs[0].assigned_to ? 'Just to let you know, a repair has been reported at ' + shortAddr(jobs[0].property_address) + '.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
+      ? (allDone ? (certWord(jobs) ? 'Good news — the ' + (certWord(jobs) === 'EPC' ? 'EPC' : certWord(jobs).toLowerCase()) + ' for ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n') : jobs[0].landlord_handles ? 'Here are the details of the repair at ' + shortAddr(jobs[0].property_address) + ' that you’re arranging.\n\n' : !jobs[0].assigned_to ? 'Just to let you know, a repair has been reported at ' + shortAddr(jobs[0].property_address) + '.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
       : 'Here’s an update on the work at ' + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j, i){ return (i + 1) + '. ' + line(j); }).join('\n\n');
     return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone || jobs.every(function(j){ return j.landlord_handles || isDone(j); }) ? 'Thank you — please get in touch if you have any questions.' : (llInform && jobs.every(function(j){ return isDone(j) || j.landlord_handles || !j.assigned_to; }) ? 'Please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.')) + '\n\nKind regards,\nResidential Realtors';
   }
@@ -10496,6 +10497,11 @@
   function certFor(key, type){ return certs.filter(function(c){ return c.property_key === key && c.type === type; })[0] || null; }
   function daysUntil(day){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || '')); if (!m) return null; var t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((new Date(+m[1], +m[2] - 1, +m[3]) - t) / 86400000); }
   // A gas safety, EICR or EPC job (same rule as the server).
+  // "Gas safety certificate", "Electrical certificate" or "EPC" when every job is that kind of certificate job.
+  function certWord(list){
+    var t = list.map(jobCertType);
+    return t.length && t[0] && t.every(function(x){ return x === t[0]; }) ? { Gas: 'Gas safety certificate', EICR: 'Electrical certificate', EPC: 'EPC' }[t[0]] : null;
+  }
   function jobCertType(j){ var t = String(j.category || '') + ' ' + String(j.affected || ''); return /eicr|electrical (safety|installation)/i.test(t) ? 'EICR' : /gas safety|cp12/i.test(t) ? 'Gas' : /\bepc\b|energy performance/i.test(t) ? 'EPC' : null; }
   function certJob(c){
     var j = c && c.job_id ? jobs.filter(function(x){ return x.id === c.job_id; })[0] || null : null;
