@@ -124,6 +124,7 @@ module.exports = function (app, o) {
       subject: str(b.subject, 300) || '',
       body: { contentType: 'HTML', content: typeof b.html === 'string' ? b.html.replace(/<script[\s\S]*?<\/script>/gi, '').slice(0, 500000) : '' },
       toRecipients: to.map(function (x) { return { emailAddress: { address: x } }; }),
+      ccRecipients: (Array.isArray(b.cc) ? b.cc : []).map(function (x) { return str(x, 200); }).filter(function (x) { return x && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x); }).slice(0, 10).map(function (x) { return { emailAddress: { address: x } }; }),
       attachments: atts
     };
     const r = await fetch(GRAPH + '/me/messages', { method: 'POST', headers: { Authorization: 'Bearer ' + t.access_token, 'Content-Type': 'application/json' }, body: JSON.stringify(msg), signal: AbortSignal.timeout(30000) });
