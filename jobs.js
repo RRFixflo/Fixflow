@@ -6575,7 +6575,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   app.put('/api/admin/tenancy-settings', withDb(async function (p, req, res) {
     const b = req.body || {}, keep = {};
-    ['tenant_subject', 'tenant_body', 'landlord_subject', 'landlord_body', 'cert_subject', 'cert_body', 'bank_details', 'signature_tenant', 'signature_landlord'].forEach(function (k) {
+    ['tenant_subject', 'tenant_body', 'landlord_subject', 'landlord_body', 'cert_subject', 'cert_body', 'bank_details', 'diy_code', 'signature_tenant', 'signature_landlord'].forEach(function (k) {
       if (typeof b[k] === 'string') keep[k] = b[k].slice(0, 30000);
     });
     if (Array.isArray(b.fee_presets)) keep.fee_presets = b.fee_presets.slice(0, 40).map(function (f) {

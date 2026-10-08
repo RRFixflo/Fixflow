@@ -1903,6 +1903,7 @@
               </div>
               <div class="grid2">
                 <div><label class="lbl" for="tsBank">Bank details (move-in monies)</label><textarea class="inp" id="tsBank" rows="6"></textarea>
+                  <label class="lbl" for="tsDiyCode" style="margin-top:10px">DIY check-in access code</label><input class="inp" id="tsDiyCode" autocomplete="off" placeholder="The code set on the DIY check-in app" style="max-width:240px"><p class="muted-note" style="margin:4px 0 0">Goes in the tenants’ welcome email when the tenancy has a DIY check-in, so they can use the DIY check-in without paying. Change it here whenever you change it on the DIY app.</p>
                   <details class="ct-links" id="ctLinks" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-size:.86rem">🏛 Council tax links by borough</summary><p class="muted-note" style="margin:6px 0">The welcome email works out the property’s borough from its postcode and links to that council’s council tax registration. Each link is checked before it’s used; type your own to replace any.</p><div id="ctxList"></div><button type="button" class="btn small primary" id="ctxSave" style="margin-top:8px">Save council tax links</button></details><details class="ct-links" id="lsLinks" style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-size:.86rem">📜 Property licensing schemes by borough</summary><p class="muted-note" style="margin:6px 0">All = the whole borough · Parts = certain wards or streets · None = no scheme · Not sure = changing or unclear. Used for the licence check on the landlord page. Councils change their schemes every few years — correct any that are out of date and add the council’s licensing page.</p><div id="lsList"></div><button type="button" class="btn small primary" id="lsSave" style="margin-top:8px">Save licensing schemes</button></details></div>
                 <div><label class="lbl" for="tsSigT">Signature — tenants' email</label><textarea class="inp" id="tsSigT" rows="6"></textarea></div>
               </div>
@@ -1914,7 +1915,7 @@
               <div><label class="lbl" for="tsLSub">Landlord's welcome email — subject</label><input class="inp" id="tsLSub"></div>
               <div><label class="lbl" for="tsLBody">Landlord's welcome email</label><textarea class="inp" id="tsLBody" rows="10"></textarea></div>
               <p class="muted-note" style="margin:0">Formatting: [b]bold[/b], [u]underline[/u], [red]red and bold[/red], [small]small print[/small]. [clerk]…[/clerk] only when an inventory clerk is booked; [diy]…[/diy] only for a DIY check-in.</p>
-              <p class="muted-note" style="margin:0">Filled in automatically: {{address}}, {{payment_reference}}, {{council_tax}} (the borough's council tax registration, worked out from the postcode), {{landlord_name}}, {{tenant_names}}, {{start_date}}, {{move_in_due}}, {{standing_order_start}}, {{standing_order_payments}}, {{first_rent}}, {{deposit}}, {{move_in_total}}, {{holding_deposit}}, {{move_in_remaining}}, {{checkin_date}}, {{checkin_time}}, {{diy_link}}, {{bank_details}}, {{signature}}, {{year}}.</p>
+              <p class="muted-note" style="margin:0">Filled in automatically: {{address}}, {{payment_reference}}, {{council_tax}} (the borough's council tax registration, worked out from the postcode), {{landlord_name}}, {{tenant_names}}, {{start_date}}, {{move_in_due}}, {{standing_order_start}}, {{standing_order_payments}}, {{first_rent}}, {{deposit}}, {{move_in_total}}, {{holding_deposit}}, {{move_in_remaining}}, {{checkin_date}}, {{checkin_time}}, {{diy_link}}, {{diy_code}} (the DIY check-in access code, added after the DIY link automatically), {{bank_details}}, {{signature}}, {{year}}.</p>
               <div class="row-actions" style="margin-top:0"><button class="btn ghost" id="tsReset" type="button">Restore the original emails</button><button class="btn primary" id="tsSave" type="button">Save templates</button></div>
             </div>
           </details>
@@ -15883,6 +15884,14 @@
     return '[b]Council tax' + (b ? ' — ' + b : '') + '[/b]\n' + (b ? 'The property is in ' + b + '. ' : '') + 'Please first open a council tax account with ' + council + ' as soon as you move in: ' + link + '\n' +
       'Once you have your council tax account number, you can then apply for any student exemption or discount you may be entitled to (students need to apply to ' + council + ' with their account number and proof of study).';
   }
+  // The DIY check-in access code (Templates), so tenants doing a DIY check-in don't have to pay:
+  // shown just after the DIY link unless the template already places {{diy_code}} itself.
+  function withDiyCode(tpl, code){
+    tpl = String(tpl || '');
+    if (!code) return tpl.replace(/^.*\{\{\s*diy_code\s*\}\}.*\n?/gm, '');   // no code saved: no empty line
+    if (/\{\{\s*diy_code\s*\}\}/.test(tpl)) return tpl;
+    return tpl.replace(/(\{\{\s*diy_link\s*\}\}[^\n]*)/, '$1\n[b]Your access code:[/b] [red]{{diy_code}}[/red] — enter this on the DIY check-in page so you don’t need to pay.');
+  }
   function withCouncilTax(tpl, ct){
     tpl = String(tpl || ''); var block = councilTaxBlock(ct);
     if (/\{\{\s*council_tax\s*\}\}/.test(tpl)) return tpl.replace(/\{\{\s*council_tax\s*\}\}/g, block);
@@ -15895,6 +15904,7 @@
     var ct = null;
     var go = function(){
       var t = tcySet.templates, vals = tcyValues(d); if (diyOffice) vals.diy_link = diyOffice;
+      var isDiy = d.checkin_type === 'diy' || /diy/i.test(String(d.checkin_type || '')); vals.diy_code = t.diy_code || '';
       vals.signature = sigMarkup(who === 'tenants' ? t.signature_tenant : t.signature_landlord);
       var to = who === 'tenants' ? (d.tenants || []).map(function(p){ return p.email; }).filter(Boolean) : [(d.landlord || {}).email].filter(Boolean);
       var atts = who === 'tenants'
@@ -15907,9 +15917,9 @@
         who: who, d: d, atts: atts, sendUrl: '/api/admin/tenancies/' + openTcyId + '/email',
         title: who === 'tenants' ? 'Welcome email to the tenants' : 'Welcome email to ' + ((d.landlord || {}).name || 'the landlord'),
         to: to, subject: fillTpl(who === 'tenants' ? t.tenant_subject : t.landlord_subject, vals),
-        bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? withCouncilTax(t.tenant_body, ct) : t.landlord_body, d.checkin_type === 'clerk' && !d.checkin_date ? 'none' : d.checkin_type || 'clerk'), vals), vals)),
+        bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? withDiyCode(withCouncilTax(t.tenant_body, ct), t.diy_code) : t.landlord_body, d.checkin_type === 'clerk' && !d.checkin_date ? 'none' : d.checkin_type || 'clerk'), vals), vals)),
         attNote: who === 'landlord' ? 'Add the signed agreement, tenant ID and deposit certificate yourself.' : '',
-        warn: !t.bank_details && who === 'tenants' ? '⚠ No bank details saved yet — add them under Templates. ' : '',
+        warn: (!t.bank_details && who === 'tenants' ? '⚠ No bank details saved yet — add them under Templates. ' : '') + (who === 'tenants' && isDiy && !t.diy_code ? '⚠ No DIY check-in access code saved — add it under Templates, or the tenants will be asked to pay. ' : ''),
         fileName: tcyFile(d, label, 'eml'),
         log: function(how){ tcyLog(label + ' ' + how); }
       });
@@ -16236,7 +16246,7 @@
   function renderTcySettings(){
     if (!tcySet) return;
     var t = tcySet.templates, a = tcySet.agreement;
-    $('tsBank').value = t.bank_details || ''; $('tsSigT').value = t.signature_tenant || ''; $('tsSigL').value = t.signature_landlord || '';
+    $('tsBank').value = t.bank_details || ''; $('tsDiyCode').value = t.diy_code || ''; $('tsSigT').value = t.signature_tenant || ''; $('tsSigL').value = t.signature_landlord || '';
     $('tsTSub').value = t.tenant_subject || ''; $('tsTBody').value = t.tenant_body || ''; $('tsLSub').value = t.landlord_subject || ''; $('tsLBody').value = t.landlord_body || ''; $('tsCSub').value = t.cert_subject || ''; $('tsCBody').value = t.cert_body || '';
     tsFeeList = tcyFeePresets().map(function(f){ return { label: f.label, amount: f.amount }; }); renderTsFees();
     $('tcyAgrInfo').innerHTML = a ? '✓ <strong>' + esc(a.name) + '</strong> · uploaded ' + esc(fmtDate(a.updated_at)) : '⚠ No template uploaded yet.';
@@ -16259,7 +16269,7 @@
   $('tcySettings').addEventListener('toggle', function(){ if ($('tcySettings').open) { (tcySet ? Promise.resolve() : loadTcySettings()).then(renderTcySettings); loadOutlook().then(renderOutlook); } });
   $('tsSave').addEventListener('click', function(){
     busy($('tsSave'), true, 'Saving…');
-    api('PUT', '/api/admin/tenancy-settings', { bank_details: $('tsBank').value, signature_tenant: $('tsSigT').value, signature_landlord: $('tsSigL').value,
+    api('PUT', '/api/admin/tenancy-settings', { bank_details: $('tsBank').value, diy_code: $('tsDiyCode').value.trim(), signature_tenant: $('tsSigT').value, signature_landlord: $('tsSigL').value,
       fee_presets: (readTsFees(), tsFeeList.filter(function(f){ return f.label; })), tenant_subject: $('tsTSub').value, tenant_body: $('tsTBody').value, landlord_subject: $('tsLSub').value, landlord_body: $('tsLBody').value, cert_subject: $('tsCSub').value, cert_body: $('tsCBody').value }).then(function(r){
       busy($('tsSave'), false);
       if (!r.ok) { toast('Couldn’t save'); return; }
