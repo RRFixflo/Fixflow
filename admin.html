@@ -8367,13 +8367,15 @@
   // ---------- Landlords page ----------
   var openLlId = null;
   // ---------- Valuation requests from the public Landlords page ----------
-  var vrItems = [], VR_ST = { new: ['New', '#b42318'], contacted: ['Contacted', '#175cd3'], booked: ['Valuation booked', '#6941c6'], won: ['Instructed ✓', '#067647'], lost: ['Not going ahead', '#667085'] };
-  function loadVr(){ if (!meta.db) return Promise.resolve(); return api('GET', '/api/admin/valuation-requests').then(function(d){ if (d && d.ok) { vrItems = d.items; renderVr(); } }).catch(function(){}); }
+  var vrAll = [], VR_ST = { new: ['New', '#b42318'], contacted: ['Contacted', '#175cd3'], booked: ['Valuation booked', '#6941c6'], won: ['Instructed ✓', '#067647'], lost: ['Not going ahead', '#667085'] };
+  function loadVr(){ if (!meta.db) return Promise.resolve(); return api('GET', '/api/admin/valuation-requests').then(function(d){ if (d && d.ok) { vrAll = d.items; renderVr(); } }).catch(function(){}); }
   // Website requests (valuations, sales valuations, messages): under Landlords and on the Landlord Terms page, for every member of staff.
   function renderVr(){
     ['vrBox', 'vrBoxLt'].forEach(function(id){ var b = $(id); if (b) b.innerHTML = vrHtml(); });
   }
   function vrHtml(){
+    // Landlord-side requests only (valuations and messages): viewing requests, calls and certificate bookings live in Website leads.
+    var vrItems = vrAll.filter(function(x){ var k = (x.data || {}).kind; return !k || ['valuation', 'sale', 'quick', 'comps', 'enquiry'].indexOf(k) !== -1; });
     if (!vrItems.length) return '';
     var nNew = vrItems.filter(function(x){ return x.status === 'new'; }).length, open = false; try { open = localStorage.getItem('rr_vr_open') === '1'; } catch (e) {}
     return '<details class="card vr-card"' + (open || nNew ? ' open' : '') + ' data-vr-box><summary><b>🌐 Website requests</b>' + (nNew ? ' <span class="vr-new">' + nNew + ' new</span>' : '') + ' <span class="muted">· valuations and messages from the website</span></summary>' +
@@ -8415,7 +8417,7 @@
       toast(send ? '✓ Report sent' : '✓ Saved'); loadVr(); loadCrm(true); }).catch(function(){ b.disabled = false; toast('Couldn’t connect'); });
   });
   document.addEventListener('change', function(e){ var sel = e.target.closest('[data-vr-st]'); if (!sel) return;
-    api('POST', '/api/admin/valuation-requests/' + sel.dataset.vrSt, { status: sel.value }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save that'); return; } vrItems.forEach(function(x){ if (String(x.id) === sel.dataset.vrSt) x.status = sel.value; }); renderVr(); loadVr(); toast('✓ Saved'); }); });
+    api('POST', '/api/admin/valuation-requests/' + sel.dataset.vrSt, { status: sel.value }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save that'); return; } vrAll.forEach(function(x){ if (String(x.id) === sel.dataset.vrSt) x.status = sel.value; }); renderVr(); loadVr(); toast('✓ Saved'); }); });
   // ---------- Website visitors: who visits the website, what they look at and where they came from ----------
   var webDays = 7, webData = null;
   function loadWeb(){
