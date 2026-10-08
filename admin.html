@@ -13257,7 +13257,7 @@
     if (m.bf) lines.push('- Balance brought forward from your ' + monthName(m.bf_from) + ' statement: ' + gbp(m.bf));
     return (withAddr ? shortAddr(x.address) + ' — ' : '') + monthName(m.from) + ':\n' + lines.join('\n') + '\nClosing balance: ' + (stmtOwes(m) ? '−' : '') + gbp(Math.abs(m.balance)) + '\n' +
       (stmtOwes(m) ? 'After this month’s rent there is still ' + gbp(-m.balance) + ' owed to us. Please pay it by bank transfer' + (cfg.payee && cfg.accountNumber ? ' to ' + cfg.payee + ', sort code ' + cfg.sortCode + ', account ' + cfg.accountNumber + ', reference ' + (payRef(x.address) || 'the property address') : '') + ' — otherwise it will be taken from next month’s rent.'
-        : 'We will pay ' + gbp(m.balance) + ' to you by BACS within 3 working days.');
+        : 'We have paid ' + gbp(m.balance) + ' to you by bank transfer.');
   }
   // One email to a landlord for one or more statements (any of their properties): who, subject, text.
   function stmtEmail(list){
@@ -15911,7 +15911,7 @@
     y += gk('closing'); doc.text('Closing Balance', X - 2, y); doc.text(pdfGbp(c.balance), R, y, { align: 'right' });
     // Fees can be more than the rent received (e.g. a tenant find fee taken up front): the landlord owes the difference.
     y += gk('amount'); doc.text(owes ? 'AMOUNT DUE FROM LANDLORD' : 'PAYMENT AMOUNT', X - 2, y); doc.text(pdfGbp(Math.abs(c.balance)), R, y, { align: 'right' });
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(owes ? 'Please pay by bank transfer within 7 days, or it will be taken from next month\'s rent' : 'Paid by BACS within 3 working days', X - 2, y + 14);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(owes ? 'Please pay by bank transfer within 7 days, or it will be taken from next month\'s rent' : 'Paid to you by bank transfer', X - 2, y + 14);
     if (bank) doc.text('Bank: ' + cfg.payee + ', sort code ' + cfg.sortCode + ', account ' + cfg.accountNumber + ', reference ' + (payRef(d.address) || ''), X - 2, y + 28);
     doc.setFontSize(6.5); doc.setTextColor(200, 16, 30); doc.setFont('helvetica', 'bold'); doc.text('Residential Realtors', X - 2, fy);
     doc.setTextColor(40); doc.setFont('helvetica', 'normal');
