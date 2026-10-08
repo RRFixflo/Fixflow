@@ -348,6 +348,22 @@ CREATE TABLE IF NOT EXISTS tenancies (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS tenancies_key ON tenancies (property_key);
+-- Proof of the move-in payments, uploaded by the tenants from the link in their welcome email.
+CREATE TABLE IF NOT EXISTS tenancy_payments (
+  id           SERIAL PRIMARY KEY,
+  tenancy_id   INTEGER NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payer        TEXT,
+  amount       NUMERIC(10,2),
+  paid_on      DATE,
+  note         TEXT,
+  file_name    TEXT,
+  file_mime    TEXT,
+  file         BYTEA,
+  confirmed_at TIMESTAMPTZ,
+  confirmed_by TEXT
+);
+CREATE INDEX IF NOT EXISTS tenancy_payments_t ON tenancy_payments (tenancy_id);
 -- Each 12-month anniversary: the rent review (new rent, or no increase), the
 -- landlord and tenants asked/told, and whether the tenants are staying.
 -- { "2027-09-24": { "new_rent": 1950, "rent_from": "2027-09-24", "asked_at": "...", "answer": "staying", "alerted_at": "..." } }
@@ -6550,11 +6566,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json({ ok: true, data: r.rows[0].data });
   }));
+  // A copy of an email kept in the tenancy's history (opened from History to see exactly what went).
+  function logEmail(e) {
+    if (!e || typeof e !== 'object') return null;
+    const list = function (v) { return (Array.isArray(v) ? v : []).map(function (x) { return str(x, 200); }).filter(Boolean).slice(0, 20); };
+    const html = typeof e.html === 'string' && e.html.length < 200000 ? e.html.replace(/<script[\s\S]*?<\/script>/gi, '') : null;
+    return { to: list(e.to), cc: list(e.cc), subject: str(e.subject, 300) || '', text: str(e.text, 30000) || '', html: html, attachments: list(e.attachments), from: str(e.from, 200) || '' };
+  }
   app.post('/api/admin/tenancies/:id/log', withDb(async function (p, req, res) {
-    const text = str((req.body || {}).text, 500);
+    const text = str((req.body || {}).text, 500), email = logEmail((req.body || {}).email);
     if (!text) return res.status(400).json({ ok: false, error: 'empty' });
     const r = await p.query(`UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1 RETURNING id`,
-      [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: text }])]);
+      [jobId(req), JSON.stringify([Object.assign({ at: new Date().toISOString(), text: text }, email ? { email: email } : {})])]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json({ ok: true });
   }));
@@ -6622,6 +6645,99 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (out.error) return res.status(404).json({ ok: false, error: out.error });
     res.json({ ok: true, type: out.type, data: out.data.toString('base64') });
   }));
+  // ---------- Move-in payments: tenants upload proof of each payment ----------
+  // The tenants' welcome email has a button to a private page for the tenancy (/pay/<token>), where
+  // each tenant can upload proof of what they paid (one payment or several, e.g. one per tenant).
+  // Staff see them on the tenancy, open the proof and confirm each one as received.
+  app.post('/api/admin/tenancies/:id/pay-link', withDb(async function (p, req, res) {
+    const t = (await p.query('SELECT id, data FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
+    if (!t) return res.status(404).json({ ok: false });
+    const b = req.body || {}, d = t.data || {}, set = {};
+    if (!/^[\w-]{16,40}$/.test(String(d.pay_token || ''))) set.pay_token = crypto.randomBytes(15).toString('base64url');
+    const amt = money(b.amount); if (amt !== undefined && amt !== null) set.pay_amount = amt;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(b.due || ''))) set.pay_due = String(b.due);
+    if (Object.keys(set).length) await p.query('UPDATE tenancies SET data = data || $2::jsonb WHERE id = $1', [t.id, JSON.stringify(set)]);
+    res.json({ ok: true, url: (PUBLIC_URL || SITE) + '/pay/' + (set.pay_token || d.pay_token) });
+  }));
+  app.get('/api/admin/tenancies/:id/payments', withDb(async function (p, req, res) {
+    const t = (await p.query('SELECT data FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
+    if (!t) return res.status(404).json({ ok: false });
+    const d = t.data || {};
+    const r = await p.query('SELECT id, created_at, payer, amount, paid_on, note, file_name, file_mime, (file IS NOT NULL) AS has_file, confirmed_at, confirmed_by FROM tenancy_payments WHERE tenancy_id = $1 ORDER BY id', [jobId(req)]);
+    res.json({ ok: true, url: d.pay_token ? (PUBLIC_URL || SITE) + '/pay/' + d.pay_token : '', amount: d.pay_amount == null ? null : Number(d.pay_amount), due: d.pay_due || '', payments: r.rows });
+  }));
+  app.get('/api/admin/tenancy-payments/:id/file', withDb(async function (p, req, res) {
+    const r = (await p.query('SELECT file_name, file_mime, file FROM tenancy_payments WHERE id = $1', [parseInt(req.params.id, 10) || 0])).rows[0];
+    if (!r || !r.file) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', r.file_mime || 'application/octet-stream'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', 'inline; filename="' + String(r.file_name || 'proof').replace(/[^\w .,()-]/g, '') + '"');
+    res.end(r.file);
+  }));
+  app.post('/api/admin/tenancy-payments/:id/confirm', withDb(async function (p, req, res) {
+    const on = (req.body || {}).confirmed !== false, who = (req.user && req.user.name) || 'Owner';
+    const r = await p.query('UPDATE tenancy_payments SET confirmed_at = ' + (on ? 'now()' : 'NULL') + ', confirmed_by = $2 WHERE id = $1 RETURNING tenancy_id, payer, amount', [parseInt(req.params.id, 10) || 0, on ? who : null]);
+    if (!r.rows.length) return res.status(404).json({ ok: false });
+    const x = r.rows[0];
+    await p.query('UPDATE tenancies SET log = log || $2::jsonb WHERE id = $1', [x.tenancy_id, JSON.stringify([{ at: new Date().toISOString(), text: (on ? 'Confirmed received: ' : 'Marked not received: ') + gbp(x.amount) + (x.payer ? ' from ' + x.payer : '') + ' (by ' + who + ')' }])]);
+    res.json({ ok: true });
+  }));
+  app.delete('/api/admin/tenancy-payments/:id', withDb(async function (p, req, res) {
+    await p.query('DELETE FROM tenancy_payments WHERE id = $1', [parseInt(req.params.id, 10) || 0]);
+    res.json({ ok: true });
+  }));
+  async function payTenancy(p, token) { return /^[\w-]{16,40}$/.test(String(token || '')) ? (await p.query("SELECT id, address, data FROM tenancies WHERE data->>'pay_token' = $1", [String(token)])).rows[0] : null; }
+  app.get('/pay/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
+    const t = await payTenancy(p, req.params.token);
+    res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex');
+    if (!t) return res.status(404).send(trackShell('Link not found', '<h1>Link not found</h1><p>This link may have been replaced. Please call us on 0207 096 8131.</p>', true));
+    const d = t.data || {}, addr = String(d.address || t.address || 'your new home');
+    const list = (await p.query('SELECT created_at, payer, amount, paid_on, confirmed_at FROM tenancy_payments WHERE tenancy_id = $1 ORDER BY id', [t.id])).rows;
+    const day = function (v) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v instanceof Date ? v.toISOString() : String(v || '')); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12)).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }) : ''; };
+    const sent = list.reduce(function (n, x) { return n + (Number(x.amount) || 0); }, 0);
+    const rows = list.map(function (x) { return '<div class="pp-row"><div><b>' + htmlEsc(gbp(x.amount)) + '</b>' + (x.payer ? ' · ' + htmlEsc(x.payer) : '') + '<div class="muted">' + htmlEsc(x.paid_on ? 'Paid ' + day(x.paid_on) : 'Sent ' + day(x.created_at)) + '</div></div>' + (x.confirmed_at ? '<span class="st ok">✓ Received</span>' : '<span class="st">Being checked</span>') + '</div>'; }).join('');
+    const inner = '<h1>Move-in payment</h1><p class="sub">' + htmlEsc(addr) + '</p>' +
+      '<div class="card">' + (d.pay_amount != null ? '<div class="muted">Move-in monies due</div><div style="font-size:1.6rem;font-weight:700">' + htmlEsc(gbp(d.pay_amount)) + '</div>' : '') +
+        (d.pay_due ? '<div class="muted">Please pay by <b>' + htmlEsc(day(d.pay_due)) + '</b></div>' : '') +
+        '<p class="muted" style="margin:10px 0 0">Paid it in more than one transfer — for example each tenant paying their share? That’s fine: upload proof of each payment here.</p></div>' +
+      (list.length ? '<div class="card"><b>Payments you’ve told us about</b> <span class="muted">(' + htmlEsc(gbp(sent)) + ' so far)</span>' + rows + '</div>' : '') +
+      '<div class="card"><b>Upload proof of a payment</b><p class="muted" style="margin:4px 0 10px">A screenshot or PDF of the bank transfer confirmation.</p>' +
+        '<form class="stack" id="pf"><label>Your name<input name="payer" required maxlength="120" autocomplete="name"></label>' +
+        '<label>Amount paid (£)<input name="amount" required inputmode="decimal" placeholder="e.g. 1250.00"></label>' +
+        '<label>Date paid<input name="paid_on" type="date" required></label>' +
+        '<label>Proof of payment<input name="file" type="file" accept="image/*,application/pdf,.heic,.heif" required></label>' +
+        '<label>Note <span class="muted">(optional)</span><input name="note" maxlength="300" placeholder="e.g. My share of the deposit"></label>' +
+        '<button type="submit" class="btn" id="pb">Send proof of payment</button><p class="muted" id="pm" role="status"></p></form></div>' +
+      '<p class="muted" style="text-align:center">Questions? Call 0207 096 8131 or email info@residentialrealtors.co.uk</p>' +
+      '<style>.pp-row{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--line);padding:10px 0;margin-top:8px}.st{font-size:.8rem;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--ambert);color:var(--amber);white-space:nowrap}.st.ok{background:var(--okt);color:var(--ok)}' +
+        '#pf label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:.92rem}#pf input{font:inherit;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;width:100%;min-width:0}#pf .btn{font:inherit;font-weight:700;border:0;border-radius:12px;padding:13px;background:var(--ink);color:#fff;cursor:pointer}#pf .btn:disabled{opacity:.6}</style>' +
+      '<script>(function(){var f=document.getElementById("pf"),m=document.getElementById("pm"),b=document.getElementById("pb");f.paid_on.value=new Date().toISOString().slice(0,10);' +
+        'f.addEventListener("submit",function(e){e.preventDefault();var file=f.file.files[0];if(!file){m.textContent="Please choose the proof of payment.";return;}if(file.size>12*1024*1024){m.textContent="That file is too big (12 MB max).";return;}' +
+        'b.disabled=true;m.textContent="Sending…";var rd=new FileReader();rd.onload=function(){fetch(location.pathname,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payer:f.payer.value,amount:f.amount.value,paid_on:f.paid_on.value,note:f.note.value,file:{name:file.name,mime:file.type,data:String(rd.result).split(",")[1]}})})' +
+        '.then(function(r){return r.json()}).then(function(d){if(d.ok){m.textContent="✓ Thank you — we’ve got it and will confirm once it’s in our account.";setTimeout(function(){location.reload()},1500);}else{b.disabled=false;m.textContent=d.error==="amount"?"Please enter the amount you paid.":"That didn’t go through — please try again.";}})["catch"](function(){b.disabled=false;m.textContent="That didn’t go through — please try again.";});};rd.readAsDataURL(file);});})();</script>';
+    res.send(trackShell('Move-in payment', inner, true, 'Move-in'));
+  }));
+  app.post('/pay/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const t = await payTenancy(p, req.params.token);
+    if (!t) return res.status(404).json({ ok: false });
+    const b = req.body || {}, amt = money(b.amount);
+    if (!amt || amt <= 0) return res.status(400).json({ ok: false, error: 'amount' });
+    const f = b.file || {}, buf = typeof f.data === 'string' ? Buffer.from(f.data, 'base64') : null;
+    if (!buf || !buf.length || buf.length > 12 * 1024 * 1024) return res.status(400).json({ ok: false, error: 'file' });
+    const mime = /^(application\/pdf|image\/(jpeg|png|webp|heic|heif|gif))$/.test(String(f.mime || '')) ? String(f.mime) : (/\.pdf$/i.test(String(f.name || '')) ? 'application/pdf' : 'application/octet-stream');
+    const count = (await p.query('SELECT count(*)::int AS n FROM tenancy_payments WHERE tenancy_id = $1', [t.id])).rows[0].n;
+    if (count >= 30) return res.status(400).json({ ok: false, error: 'too-many' });
+    const payer = str(b.payer, 120) || '', paid = /^\d{4}-\d{2}-\d{2}$/.test(String(b.paid_on || '')) ? String(b.paid_on) : null;
+    await p.query('INSERT INTO tenancy_payments (tenancy_id, payer, amount, paid_on, note, file_name, file_mime, file) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [t.id, payer, amt, paid, str(b.note, 300) || null, str(f.name, 150) || 'proof', mime, buf]);
+    const addr = String((t.data || {}).address || t.address || 'a tenancy');
+    await p.query('UPDATE tenancies SET log = log || $2::jsonb WHERE id = $1', [t.id, JSON.stringify([{ at: new Date().toISOString(), text: 'Proof of payment uploaded: ' + gbp(amt) + (payer ? ' from ' + payer : '') }])]);
+    const what = gbp(amt) + (payer ? ' from ' + payer : '') + ' — ' + addr.split(',').slice(0, 2).join(',');
+    ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin' : undefined, title: '💷 Move-in payment proof uploaded', message: what + '. Check it and confirm on the tenancy.' }).catch(function () {});
+    ownerEmail('Move-in payment proof: ' + what, function (link) { return 'A tenant has uploaded proof of a move-in payment: ' + what + '.\n\nOpen the tenancy in Fixflow to see the proof and confirm it once it is in the account: ' + link; }).catch(function () {});
+    res.json({ ok: true });
+  }));
+
   // The negotiator who got the offer (copied in on the tenants' welcome email): the staff member the
   // linked offer is credited to (largest share), or else the name in the tenancy's Negotiator box,
   // matched to an active staff sign-in by full name or a unique first name.
@@ -6660,7 +6776,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const sent = await sendEmail({ to: to, cc: cc, subject: subject, text: text, html: html, attachments: atts });
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     await p.query(`UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1`,
-      [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: 'Emailed ' + to.join(', ') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : '') }])]);
+      [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: 'Emailed ' + to.join(', ') + (cc.length ? ' (cc ' + cc.join(', ') + ')' : '') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : ''), email: logEmail({ to: to, cc: cc, subject: subject, text: text, html: html, attachments: atts.map(function (a) { return a.filename; }) }) }])]);
     res.json({ ok: true });
   }));
 
