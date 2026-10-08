@@ -730,6 +730,7 @@
   .crm-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px; margin: 12px 0; } .crm-facts div { display: grid; min-width: 0; } .crm-facts span { font-size: .74rem; color: var(--ink-soft); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; } .crm-facts b { font-weight: 600; overflow-wrap: anywhere; }
   .riv-top { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; } .riv { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line, #eef0f3); } .riv.off { opacity: .6; } .riv-img img { width: 110px; height: 74px; object-fit: cover; border-radius: 8px; display: block; } .riv-b { display: grid; gap: 3px; min-width: 0; font-size: .85rem; } .riv-b small, .riv-their, .riv-ll { color: var(--ink-soft); overflow-wrap: anywhere; } .riv-their b { color: var(--ink); } .riv-why { justify-self: start; font-size: .75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #fef3f2; color: #b42318; } .riv-why.street { background: #f2f4f7; color: #475467; } .riv-why.openrent { background: #ecfdf3; color: #067647; } .riv-more { margin-top: 8px; } .riv-more summary { cursor: pointer; font-weight: 700; font-size: .85rem; padding: 6px 0; } @media (max-width: 520px) { .riv-img img { width: 84px; height: 60px; } }
   .tn-ai { margin: 0 0 10px; border: 1px solid #d9d6fe; background: #f8f7ff; border-radius: 12px; padding: 8px 10px; } .tn-ai summary { cursor: pointer; font-weight: 700; color: #5925dc; } .tn-ai[open] summary { margin-bottom: 8px; } .tn-ai-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .pt-copy { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; } .pt-cp { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 40px; padding: 6px 12px; border: 1px solid var(--line, #dfe3ea); border-radius: 999px; background: #fff; font: inherit; font-size: .88rem; color: var(--ink); cursor: pointer; text-align: left; } .pt-cp span { overflow-wrap: anywhere; min-width: 0; } .pt-cp i { font-style: normal; font-weight: 700; font-size: .78rem; color: #175cd3; flex: none; } .pt-cp.all { background: #f5f8ff; border-color: #c7d7fe; font-weight: 700; } .pt-cp.done { background: #ecfdf3; border-color: #75e0a7; } .pt-cp.done i::after { content: ' ✓'; }
   .crm-qq { background: #f0f9ff; border: 1px solid #b9e6fe; border-radius: 12px; padding: 12px; margin: 12px 0; display: grid; gap: 6px; } .crm-qq-btns { display: flex; gap: 8px; flex-wrap: wrap; }
   .crm-vw { background: #fffaeb; border: 1px solid #fedf89; border-radius: 12px; padding: 12px; margin: 12px 0; } .crm-slots { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
   .crm-slot { border: 1.5px solid #b54708; color: #b54708; background: #fff; border-radius: 10px; padding: 8px 12px; font: inherit; font-weight: 700; cursor: pointer; } .crm-slot.on { background: #067647; border-color: #067647; color: #fff; }
@@ -5449,23 +5450,35 @@
       $('krSub').textContent = set + ' of ' + props.length + ' properties have a key number. Type a number and it saves when you move to the next box.';
     });
   });
+  // A tenant's number and email as big tap-to-copy buttons (easy on a phone), plus one to copy everything.
+  function ptCopyRow(t){
+    if (!t.phone && !t.email) return '';
+    var all = [t.name, t.phone, t.email].filter(Boolean).join('\n');
+    return '<div class="pt-copy">' + (t.phone ? '<button type="button" class="pt-cp" data-copy-val="' + esc(t.phone) + '" data-copy-what="Number"><span>📞 ' + esc(t.phone) + '</span><i>Copy</i></button>' : '') +
+      (t.email ? '<button type="button" class="pt-cp" data-copy-val="' + esc(t.email) + '" data-copy-what="Email"><span>✉ ' + esc(t.email) + '</span><i>Copy</i></button>' : '') +
+      '<button type="button" class="pt-cp all" data-copy-val="' + esc(all) + '" data-copy-what="Name, number and email"><span>📋 Copy all</span></button></div>';
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('[data-copy-val]'); if (!b) return; e.preventDefault();
+    copyText(b.dataset.copyVal).then(function(){ toast('✓ ' + (b.dataset.copyWhat || 'Copied') + ' copied'); b.classList.add('done'); setTimeout(function(){ b.classList.remove('done'); }, 1500); }, function(){ toast('Couldn’t copy — press and hold to select it'); });
+  });
   function renderPropTenants(pr){
     var cur = tenantsAtProperty(pr.address), past = tenantsAtProperty(pr.address, true).filter(function(t){ return t.movedOut; }), guar = tenantsAtProperty(pr.address, false, true);
     $('propTenants').innerHTML = '<h3>Tenants <span class="count-chip">' + cur.length + '</span><span style="flex:1"></span><button class="btn small ghost" id="ptPaste" type="button" title="Paste names, numbers and emails in any layout">📋 Paste details</button> <button class="btn small" id="ptTenAdd" type="button">+ Add tenant</button></h3>' +
       '<div id="ptPasteBox" hidden></div>' +
       (cur.length ? cur.map(function(t){
         return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 200px;min-width:0;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
-          '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
+          ptCopyRow(t) + '</div>' +
           '<span style="display:flex;gap:8px;align-items:center;margin-left:auto">' + ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Moved out</button></span></div>';
       }).join('') : '<p class="muted-note">No tenants saved for this property yet.</p>') +
       (guar.length ? '<div class="pt-guar-h">Guarantors <span class="count-chip">' + guar.length + '</span></div>' + guar.map(function(t){
         return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 200px;min-width:0;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Guarantor') + '</button> <span class="pt-badge guar">Guarantor' + (t.guarantorFor ? ' for ' + esc(t.guarantorFor) : '') + '</span>' +
-          '<div class="prop-sub" style="margin:0">' + esc([t.phone, t.email].filter(Boolean).join(' · ')) + '</div></div>' +
+          ptCopyRow(t) + '</div>' +
           '<span style="display:flex;gap:8px;align-items:center;margin-left:auto">' + ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Remove</button></span></div>';
       }).join('') : '') +
       (past.length ? '<div class="pt-guar-h">Previous tenants <span class="count-chip">' + past.length + '</span></div>' + past.map(function(t){
         return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0;opacity:.85">' + avatar(t.name) + '<div style="flex:1 1 200px;min-width:0;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' +
-          '<div class="prop-sub" style="margin:0">Moved out ' + esc(new Date(t.movedOut).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) + (t.phone || t.email ? ' · ' + esc([t.phone, t.email].filter(Boolean).join(' · ')) : '') + '</div></div>' +
+          '<div class="prop-sub" style="margin:0">Moved out ' + esc(new Date(t.movedOut).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) + '</div>' + ptCopyRow(t) + '</div>' +
           '<span style="display:flex;gap:8px;align-items:center;margin-left:auto">' + ptRoleSel(t) + '</span></div>';
       }).join('') : '');
     $('ptTenAdd').addEventListener('click', function(){ openTenantForm(null, pr.address); });
