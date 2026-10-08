@@ -2082,6 +2082,7 @@
           <div class="av-rm" id="avRm"></div>
           <div class="av-rm" id="avYt"></div></details>
           <details class="av-tools" id="avRiv" hidden><summary class="av-tools-s">🔎 Our properties with other agents<span class="av-tools-b" id="avRivBadge"></span></summary><div id="avRivBody"></div></details>
+          <details class="av-tools" id="avNear" hidden><summary class="av-tools-s">📍 New on Rightmove near the office<span class="av-tools-b" id="avNearBadge"></span></summary><div id="avNearBody"></div></details>
           <div class="av-add-btns"><button type="button" class="btn small primary" id="avAddBtn">➕ Add a property</button><button type="button" class="btn small" id="avPasteBtn">📋 Paste from your spreadsheet</button><button type="button" class="btn small" id="siteRefreshBtn" title="Changed something in Gnomen? Show it on the website now">🌐 Update website now</button><a class="btn small" href="https://www.residentialrealtors.co.uk/properties-to-rent" target="_blank" rel="noopener" title="Our properties on the website">🔗 View on website</a></div>
           <div class="av-form" id="avForm" hidden>
             <div class="av-grid"><label class="av-wide">Address<input class="inp" id="avAddr" list="offProps" placeholder="Include the postcode"></label><div class="av-wide" id="avKnown" hidden></div><label>Bedrooms<select class="inp" id="avBedsIn"><option value="">—</option><option value="0">Studio</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
@@ -11723,7 +11724,33 @@
     if (run) { run.disabled = true; run.textContent = 'Checking…'; api('POST', '/api/admin/rivals/run', {}).then(function(){ toast('Checking 40 properties — it takes a few minutes'); setTimeout(loadRiv, 90000); }); return; }
     if (hide || undo) { var b = hide || undo; api('POST', '/api/admin/rivals/' + (hide ? b.dataset.rivHide : b.dataset.rivUndo) + '/dismiss', { undo: !!undo }).then(function(){ loadRiv(); }); }
   });
-  function loadAvail(){ loadRm(); loadYt(); loadRiv(); psOurList(); return api('GET', '/api/admin/available').then(function(d){ if (!d || !d.ok) return; avItems = d.items || []; avLinkData = d.links || {}; renderAvail(); var n = avItems.filter(function(x){ return x.status === 'available'; }).length; $('sAvail').hidden = !n; $('sAvail').textContent = n; }); }
+  // New on Rightmove within a short walk of the office (owner and managers).
+  var nearData = null;
+  function loadNear(){ if (!meta.canManageUsers) return; api('GET', '/api/admin/nearby').then(function(d){ if (d && d.ok) { nearData = d; renderNear(); } }); }
+  function renderNear(){
+    var d = nearData; if (!d) return; $('avNear').hidden = false;
+    var live = d.items.filter(function(x){ return !x.dismissed_at; }), gone = d.items.filter(function(x){ return x.dismissed_at; }), wk = live.filter(function(x){ return Date.now() - new Date(x.first_seen) < 7 * 864e5; }).length;
+    $('avNearBadge').textContent = wk ? wk : '';
+    var r = d.run, mi = d.miles === 0.25 ? '¼ mile' : d.miles + ' mile', card = function(x){
+      return '<div class="riv' + (x.dismissed_at ? ' off' : '') + '">' + (x.img ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" class="riv-img"><img src="' + esc(x.img) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"></a>' : '') +
+        '<div class="riv-b"><span class="riv-why street">' + (x.channel === 'sale' ? '🏷️ For sale' : '🔑 To rent') + (x.miles != null ? ' · ' + esc(String(x.miles)) + ' mi from the office' : '') + '</span>' +
+        '<b><a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.address || 'Rightmove advert') + ' ↗</a></b>' +
+        '<span class="riv-their">' + [x.price, x.beds != null ? (x.beds ? x.beds + ' bed' : 'Studio') : '', x.type].filter(Boolean).map(esc).join(' · ') + '</span>' +
+        '<small>With <b>' + esc(x.agent || 'an agent') + '</b> · spotted ' + esc(fmtShort(x.first_seen)) + (x.listed ? ' · on Rightmove since ' + esc(certDay(x.listed)) : '') + '</small>' +
+        '<span class="riv-acts">' + (x.dismissed_at ? '<button type="button" class="linkish" data-near-undo="' + esc(x.rm_id) + '">↩ Show again</button>' : '<button type="button" class="linkish" data-near-hide="' + esc(x.rm_id) + '">Done — hide</button>') + '</span></div></div>';
+    };
+    $('avNearBody').innerHTML = '<div class="riv-top"><span class="muted-note" style="margin:0">' + (r ? 'Last checked ' + esc(fmtShort(r.at)) + (r.error ? ' · <b style="color:#b42318">' + esc(r.error) + '</b>' : '') : 'Not checked yet — it looks every 2 hours, 8am to 8pm.') + '</span>' +
+        '<button type="button" class="btn small" data-near-run' + (d.running ? ' disabled' : '') + '>' + (d.running ? 'Checking…' : '🔎 Check now') + '</button></div>' +
+      '<p class="muted-note" style="margin:6px 0 10px">Adverts that appear on Rightmove within ' + mi + ' of the office (' + esc(d.office) + ') with other agents — to rent and for sale. Each is a local landlord or owner worth a call. You get a phone alert when new ones appear; the ones already on Rightmove on the first check aren’t listed.</p>' +
+      (live.length ? live.map(card).join('') : '<p class="muted-note" style="margin:0 0 6px">' + (r ? 'Nothing new nearby yet.' : '') + '</p>') +
+      (gone.length ? '<details class="riv-more"><summary>Hidden (' + gone.length + ')</summary>' + gone.map(card).join('') + '</details>' : '');
+  }
+  $('avNearBody').addEventListener('click', function(e){
+    var run = e.target.closest('[data-near-run]'), hide = e.target.closest('[data-near-hide]'), undo = e.target.closest('[data-near-undo]');
+    if (run) { run.disabled = true; run.textContent = 'Checking…'; api('POST', '/api/admin/nearby/run', {}).then(function(){ toast('Checking Rightmove near the office — about a minute'); setTimeout(loadNear, 60000); }); return; }
+    if (hide || undo) { var b = hide || undo; api('POST', '/api/admin/nearby/' + (hide ? b.dataset.nearHide : b.dataset.nearUndo) + '/dismiss', { undo: !!undo }).then(function(){ loadNear(); }); }
+  });
+  function loadAvail(){ loadRm(); loadYt(); loadRiv(); loadNear(); psOurList(); return api('GET', '/api/admin/available').then(function(d){ if (!d || !d.ok) return; avItems = d.items || []; avLinkData = d.links || {}; renderAvail(); var n = avItems.filter(function(x){ return x.status === 'available'; }).length; $('sAvail').hidden = !n; $('sAvail').textContent = n; }); }
   function avOutcode(a){ var t = String(a || '').replace(/[,\s]+$/, ''), m = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}\b/i.exec(t) || /\b([A-Z]{1,2}\d[A-Z\d]?)\s*$/i.exec(t); return m ? m[1].toUpperCase() : ''; }
   function avDay(v){ return v ? certDay(String(v).slice(0, 10)) : ''; }
   // How long an available property has been online: from its Rightmove advert when linked, else since it went on our list.

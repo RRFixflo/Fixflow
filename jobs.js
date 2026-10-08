@@ -1926,7 +1926,7 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/crm' || /^\/crm\/(note|meta|archive|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
     if (method === 'GET' && (path === '/site-stats' || path === '/photo-dupes')) return true;
     if (method === 'POST' && (path === '/web-hidden' || path === '/photo-dupes/ok')) return true;   // managers only (checked in the route)
-    if (path === '/rivals' || path === '/rivals/run' || /^\/rivals\/\d+\/dismiss$/.test(path)) return true;   // managers only (checked in the route)
+    if (path === '/rivals' || path === '/rivals/run' || /^\/rivals\/\d+\/dismiss$/.test(path) || path === '/nearby' || path === '/nearby/run' || /^\/nearby\/\d+\/dismiss$/.test(path)) return true;   // managers only (checked in the route)
     if (method === 'GET' && (path === '/calls' || path === '/calls/new' || path === '/calls/who')) return true;   // who has called (every member of staff)
     if ((method === 'GET' || method === 'PUT') && path === '/me/nav-order') return true;   // their own menu order
     if (method === 'POST' && (path === '/site-ignore' || path === '/site-name')) return true;   // managers only (checked in the route)   // Website visitors (managers only, checked in the route)
