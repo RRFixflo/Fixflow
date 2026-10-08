@@ -6836,7 +6836,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }).filter(function (a) { return a.content && a.content.length < 15 * 1024 * 1024; });
     const html = typeof b.html === 'string' && b.html.length < 300000 ? b.html.replace(/<script[\s\S]*?<\/script>/gi, '') : undefined;
     const cc = (Array.isArray(b.cc) ? b.cc : []).map(function (x) { return str(x, 200); }).filter(function (x) { return x && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x) && to.indexOf(x) === -1; }).slice(0, 6);
-    const sent = await sendEmail({ to: to, cc: cc, subject: subject, text: text, html: html, attachments: atts });
+    const sent = await sendEmail({ to: to, cc: cc, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: html || brandEmail(text, subject), attachments: atts });
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     await p.query(`UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1`,
       [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: 'Emailed ' + to.join(', ') + (cc.length ? ' (cc ' + cc.join(', ') + ')' : '') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : ''), email: logEmail({ to: to, cc: cc, subject: subject, text: text, html: html, attachments: atts.map(function (a) { return a.filename; }) }) }])]);
@@ -9598,8 +9598,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
         const pendTotal = r2(pend.reduce(function (a, x) { return a + x.total; }, 0));
         const depLl = n === 0 && !stm && d.deposit_by === 'landlord' ? (movein ? r2(movein.due - rent) : 0) : 0;
         const base = stm ? stm.balance : r2(rent + depLl - f.sub - f.vat);
-        const toLl = r2(base - pendTotal);
+        // Part rent received (not all of it yet): the landlord can be paid their share of what's in now —
+        // our fee is the same percentage of the part paid. Part payouts sent already come off what's left.
+        const llParts = ((d.ll_paid_parts || {})[from] || []), llPartSent = r2(llParts.reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0));
+        const partIn = r2(((d.rent_parts || {})[from] || []).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0));
+        const share = rent > 0 ? Math.min(1, partIn / rent) : 0, partFees = r2((f.sub + f.vat) * share);
+        const partOut = !isIn && !movein && partIn > 0 ? Math.max(0, r2(partIn - partFees - llPartSent)) : 0;
+        const toLl = r2(base - pendTotal - llPartSent);
         items.push({
+          part_out: partOut, part_fees: partFees, part_in: partIn, ll_parts: llParts, ll_part_sent: llPartSent,
           tenancy_id: t.id, address: d.address || t.address, from: from, n: n, rent: rent,
           tenants: (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean),
           landlord: llFullName(d.landlord && d.landlord.name, ll.name), landlord_id: ll.id || null, landlord_email: (d.landlord && d.landlord.email) || ll.email || '',
@@ -9775,6 +9782,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
     }
     const amount = Number(String(b.amount == null ? '' : b.amount).replace(/[£,\s]/g, '')) || 0;
+    // The landlord's share of a part rent received (the rest is paid when the full rent is in).
+    if (b.part) {
+      if (!(amount > 0)) return res.status(400).json({ ok: false, error: 'amount' });
+      const pr = { at: new Date().toISOString(), amount: amount, ref: str(b.ref, 80) || null, by: who };
+      const r = await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{ll_paid_parts}', coalesce(data->'ll_paid_parts', '{}'::jsonb) || jsonb_build_object($2::text, coalesce(data->'ll_paid_parts'->$2, '[]'::jsonb) || $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1 RETURNING id`,
+        [id, from, JSON.stringify([pr]), JSON.stringify([{ at: pr.at, text: 'Sent the landlord ' + gbp(amount) + ' from the part rent received for ' + certDay(from) + (pr.ref ? ' (ref ' + pr.ref + ')' : '') + ' (' + who + ')' }])]);
+      return res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
+    }
+    if (b.undo_parts) {
+      const r = await p.query(`UPDATE tenancies SET data = data #- ARRAY['ll_paid_parts', $2::text], log = log || $3::jsonb, updated_at = now() WHERE id = $1 RETURNING id`, [id, from, JSON.stringify([{ at: new Date().toISOString(), text: 'Part payments to the landlord for ' + certDay(from) + ' undone (' + who + ')' }])]);
+      return res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
+    }
     // Charges added after the rent came in (and taken off this payment): recovered from this rent now.
     const tl = (await p.query('SELECT id, property_key, data FROM tenancies WHERE id = $1', [id])).rows[0];
     const rc = tl && ((tl.data || {}).rent_rcvd || {})[from];
