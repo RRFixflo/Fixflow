@@ -762,6 +762,7 @@
   .tm-drop { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; padding: 16px; border: 2px dashed #b0b8c4; border-radius: 12px; background: #f9fafb; font: inherit; cursor: pointer; color: var(--ink, #101828); transition: background .15s, border-color .15s; }
   .tm-drop span { font-size: .8rem; color: var(--ink-soft, #667085); } .tm-drop:hover { border-color: #2563eb; background: #eff6ff; }
   .tm-dragging .tm-drop { border-color: #2563eb; background: #dbeafe; border-style: solid; } .tm-dragging .tm-drop b::after { content: " — drop now"; }
+  .rb-dep { display: block; margin-top: 3px; font-size: .8rem; color: var(--ink-soft, #475467); } .rb-dep .linkish { font-size: .8rem; }
   .crm-bar { display: flex; gap: 8px; flex-wrap: wrap; } .crm-bar #crmQ { flex: 1; min-width: 200px; } .crm-bar select { width: auto; }
   .crm-add { border-top: 1px solid var(--line, #eef0f3); margin-top: 10px; padding-top: 12px; } .crm-wide { grid-column: 1 / -1; }
   .crm-card { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 14px; margin-top: 8px; overflow: hidden; } .crm-card.is-new { border-left: 4px solid #b42318; }
@@ -5204,12 +5205,28 @@
           return '<div class="rb-row rb-' + x.status + '" style="padding:8px 0"><div class="rb-day"><b>' + esc(rbDay(x.from).split(' ')[0]) + '</b><span>' + esc(rbDay(x.from).split(' ')[1] || '') + '</span></div>' +
             '<div class="rb-main"><div class="rb-money"><span>Rent <b>' + gbp(x.rent) + '</b></span><span class="rb-arrow">→</span><span>' + (x.to_landlord < 0 ? '<span class="rb-owes">landlord owes ' + gbp(-x.to_landlord) + '</span>' : 'landlord ' + gbp(x.paid ? x.paid.amount : x.to_landlord)) + '</span></div>' +
             '<div class="rb-sub">' + (tid ? '' : svcTag(x.service)) + (x.collected ? '✓ Collected ' + esc(fmtShort(x.collected.at).split(',')[0]) : x.status === 'overdue' ? '⚠️ Not collected yet' : x.status === 'today' ? 'Due today' : 'Not due yet') + ' · ' + (x.paid ? '✓ Landlord paid ' + esc(fmtShort(x.paid.at).split(',')[0]) + (x.paid.ref ? ' (' + esc(x.paid.ref) + ')' : '') : x.collected ? 'Landlord not paid yet' : '') + '</div></div>' +
-            '<div class="rb-act">' + (x.collected ? (x.collected.auto ? '' : '<button type="button" class="linkish" data-prop-uncollect="' + k + '">↩ Not paid — undo</button>') : x.status === 'movein' ? '<span class="muted-note" style="margin:0">Move-in money ' + gbp(x.movein.paid) + ' of ' + gbp(x.movein.due) + '</span>' : x.movein && x.movein.left <= 0.004 ? '<span class="muted-note" style="margin:0">Move-in money paid ✓</span> ' + payNowBtn(x) : (x.part_paid ? '<span class="rb-parts" style="margin-right:6px">' + gbp(x.part_paid) + ' paid</span>' : '') + '<button type="button" class="btn small' + (x.status === 'upcoming' || x.status === 'tomorrow' ? '' : ' primary') + '" data-prop-collect="' + k + '" data-amt="' + x.rent + '" data-left="' + (x.rent - (x.part_paid || 0)) + '">✓ ' + (x.part_paid ? 'More paid' : 'Collected') + '</button>') + '</div></div>';
+            '<div class="rb-act">' + (x.collected ? (x.collected.auto ? '' : '<button type="button" class="linkish" data-prop-uncollect="' + k + '">↩ Not paid — undo</button>') : x.status === 'movein' ? '<span class="muted-note" style="margin:0">Move-in money ' + gbp(x.movein.paid) + ' of ' + gbp(x.movein.due) + '</span>' : x.movein && x.movein.left <= 0.004 ? '<span class="muted-note" style="margin:0">Move-in money paid ✓</span> ' + payNowBtn(x) + depSwitch(x) : (x.part_paid ? '<span class="rb-parts" style="margin-right:6px">' + gbp(x.part_paid) + ' paid</span>' : '') + '<button type="button" class="btn small' + (x.status === 'upcoming' || x.status === 'tomorrow' ? '' : ' primary') + '" data-prop-collect="' + k + '" data-amt="' + x.rent + '" data-left="' + (x.rent - (x.part_paid || 0)) + '">✓ ' + (x.part_paid ? 'More paid' : 'Collected') + '</button>') + '</div></div>';
         }).join('');
     });
   }
   // Move-in money already in: pay the landlord now, rather than waiting for the tenancy start date.
   // Marks the first rent collected (today) and the landlord paid, in one go.
+  // First rent: who holds the deposit, with a one-click switch (the landlord's share includes it when they hold it).
+  function depSwitch(x){
+    if (!x.movein || !(x.deposit_amt > 0) || x.paid) return '';
+    return x.deposit_by === 'landlord' ? '<span class="rb-dep">+ deposit ' + gbp(x.deposit_amt) + ' to the landlord (they hold it) · <button type="button" class="linkish" data-dep-by="agent" data-dep-t="' + x.tenancy_id + '">we hold it</button></span>'
+      : '<span class="rb-dep">Deposit ' + gbp(x.deposit_amt) + ' held by us · <button type="button" class="linkish" data-dep-by="landlord" data-dep-t="' + x.tenancy_id + '">the landlord holds it — add it to their payment</button></span>';
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-dep-by]'); if (!b) return;
+    var toLl = b.dataset.depBy === 'landlord';
+    if (!confirm(toLl ? 'The landlord holds the deposit?\n\nIt’s added to the landlord’s first payment and shown on their statement.' : 'We hold the deposit?\n\nIt’s taken off the landlord’s first payment.')) return;
+    api('POST', '/api/admin/tenancies/' + b.dataset.depT + '/deposit-by', { by: b.dataset.depBy }).then(function(d){
+      if (!d || !d.ok) { toast('Couldn’t save that'); return; }
+      toast(toLl ? '✓ Deposit added to the landlord’s payment' : '✓ Deposit kept by us'); loadTenancies && loadTenancies(); loadStatements(); if (rbShown()) loadRentBoard(true);
+      var rc = b.closest('[data-addr]'); if (rc && rc.dataset.addr) rentCardLoad(rc, rc.dataset.addr, rc.dataset.tid);
+    });
+  });
   function payNowBtn(x){
     if (!(x.to_landlord > 0.004)) return '<span class="muted-note" style="margin:0;font-size:.78rem">Nothing to pay the landlord</span>';
     return '<button type="button" class="btn small primary" data-paynow="' + x.tenancy_id + '|' + x.from + '" data-rent="' + x.rent + '" data-toll="' + x.to_landlord + '" data-ll="' + esc(x.pay_to || x.landlord || 'the landlord') + '" data-paddr="' + esc(shortAddr(x.address)) + '">💸 Pay landlord now · ' + gbp(x.to_landlord) + '</button>';
@@ -14887,7 +14904,7 @@
     var crow = function(x){
       var k = x.tenancy_id + '|' + x.from, mi = x.status === 'movein', pre = !x.collected && x.movein && x.movein.left <= 0.004;   // move-in money paid ahead of the start
       if (pre) return '<div class="rb-line rb-' + x.status + '"><span class="rb-pickpad"></span>' + day(x) +
-        '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + 'New tenancy · move-in money paid ✓ · rent due ' + esc(rbDay(x.from)) + ' · ' + more(k) + '</div>' + details(x, k) + '</div>' +
+        '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + 'New tenancy · move-in money paid ✓ · rent due ' + esc(rbDay(x.from)) + ' · ' + more(k) + '</div>' + depSwitch(x) + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(x.rent) + '<small>due ' + esc(rbDay(x.from)) + '</small></div><div class="rb-btn">' + payNowBtn(x) + '</div></div>';
       return '<div class="rb-line rb-' + x.status + '">' + (mi ? '<span class="rb-pickpad"></span>' : '<input type="checkbox" class="rb-pick" data-rb-cpick="' + k + '"' + (rbSelC[k] ? ' checked' : '') + ' aria-label="Select">') + day(x) +
         '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div>' +
@@ -14909,7 +14926,7 @@
       return '<div class="rb-line"><input type="checkbox" class="rb-pick" data-rb-ppick="' + k + '"' + (rbSelP[k] ? ' checked' : '') + ' aria-label="Select">' + day(x) +
         '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + (x.first_only ? '<span class="rb-earlytag">Move-in money</span> · ' : '') + 'Landlord: ' + (x.landlord ? rbLl(x, true) : '<b>not saved</b>') + (x.pay_to ? ' · Pay to: <b>' + esc(x.pay_to) + '</b>' : '') + (x.landlord ? '' : ' · <button type="button" class="linkish" data-rb-payto="' + x.tenancy_id + '" data-cur="' + esc(x.pay_to || '') + '" data-ll="the landlord of ' + esc(rbAddr(x.address)) + '">' + (x.pay_to ? 'Change' : 'Pay into a company?') + '</button>') + '</div><div class="rb-sub">' + more(k, '🔍 See the charges') + ' · ' + (x.from > today ? '<span class="rb-earlytag">Paid early · rent due ' + esc(rbDay(x.from)) + '</span> · ' : '') +
           (x.collected && !x.collected.auto ? '<button type="button" class="linkish rb-notpaid" data-rb-uncollect="' + k + '">Rent not paid? Undo</button> · ' : '') +
-          (st ? (st.sent && !st.changed ? '✓ Statement sent' : '<button type="button" class="linkish" data-st-pdf="' + k + '">Statement</button>' + (x.landlord_email ? ' · <button type="button" class="linkish" data-st-mail="' + k + '">Email it</button>' : '') + ' · <button type="button" class="linkish" data-st-sent="' + k + '">Mark sent</button>') : 'No statement') + '</div>' + details(x, k) + '</div>' +
+          (st ? (st.sent && !st.changed ? '✓ Statement sent' : '<button type="button" class="linkish" data-st-pdf="' + k + '">Statement</button>' + (x.landlord_email ? ' · <button type="button" class="linkish" data-st-mail="' + k + '">Email it</button>' : '') + ' · <button type="button" class="linkish" data-st-sent="' + k + '">Mark sent</button>') : 'No statement') + '</div>' + depSwitch(x) + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(x.to_landlord) + (x.ll_part_sent ? '<small>' + gbp(x.ll_part_sent) + ' sent earlier</small>' : '') + '</div><div class="rb-btn"><button type="button" class="btn small primary" data-rb-pay="' + k + '">Paid</button></div></div>';
     };
     var payHtml = Object.keys(byLl).sort().map(function(n){ var l = byLl[n];
