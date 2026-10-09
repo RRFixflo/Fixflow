@@ -9862,7 +9862,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
         const pend = isIn && paid[from] ? [] : await rentPendingInvoices(p, t, from);
         const pendTotal = r2(pend.reduce(function (a, x) { return a + x.total; }, 0));
         const depLl = n === 0 && !stm && d.deposit_by === 'landlord' ? (movein ? r2(movein.due - rent) : 0) : 0;
-        const base = stm ? stm.balance : r2(rent + depLl - f.sub - f.vat);
+        // Money in for the landlord on this rent (credits on the tenancy for the first rent, and money-in
+        // costs for the month) — the statement counts them once it exists; until then, here.
+        const credits = stm ? (stm.credits || []) : ((n === 0 ? (d.credits || []).filter(function (c) { return c && c.label && Number(c.amount); }).map(function (c) { return { label: c.label + (c.vat ? ' (inc. VAT)' : ''), amount: r2(Number(c.amount) * (c.vat ? 1.2 : 1)) }; }) : []).concat((d.month_costs || []).filter(function (c) { return c && c.from === from && c.money_in && Number(c.amount); }).map(function (c) { return { label: c.label, amount: r2(Number(c.amount)) }; })));
+        const creditTotal = r2(credits.reduce(function (a, c) { return a + (Number(c.amount) || 0); }, 0));
+        const base = stm ? stm.balance : r2(rent + depLl + creditTotal - f.sub - f.vat);
         // Part rent received (not all of it yet): the landlord can be paid their share of what's in now —
         // our fee is the same percentage of the part paid. Part payouts sent already come off what's left.
         const llParts = ((d.ll_paid_parts || {})[from] || []), llPartSent = r2(llParts.reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0));
@@ -9880,7 +9884,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           fees_net: r2((f.fees || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount; }, 0)), fee_lines: (f.fees || []).filter(function (x) { return !x.invoice_id; }).map(function (x) { return { label: x.label, amount: r2(x.amount + (x.vat || 0)) }; }),
           recovered: (f.fees || []).filter(function (x) { return x.invoice_id; }).map(function (x) { return { label: x.label, amount: x.amount }; }),
           bf: stm ? stm.bf : 0, income: stm ? stm.income : rent, deposit_ll: stm ? (stm.deposit || 0) : depLl, first_only: firstOnly,
-          deposit_amt: movein ? r2(movein.due - rent) : 0, deposit_by: d.deposit_by === 'landlord' ? 'landlord' : 'agent',
+          credits: credits.map(function (c) { return { label: c.label, amount: Number(c.amount) || 0 }; }), deposit_amt: movein ? r2(movein.due - rent) : 0, deposit_by: d.deposit_by === 'landlord' ? 'landlord' : 'agent',
           pending: pend, pending_total: pendTotal, to_landlord: toLl,
           collected: rcvd[from] || autoIn || null, paid: paid[from] || null, movein: movein,
           parts: (d.rent_parts || {})[from] || [], part_paid: r2(((d.rent_parts || {})[from] || []).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0)),
