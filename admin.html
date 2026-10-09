@@ -15012,7 +15012,9 @@
       var lines = ['<div><span>Rent from the tenants</span><b>' + gbp(x.rent) + '</b></div>'];
       if (x.deposit_ll) lines.push('<div><span>Deposit (the landlord registers it)</span><b>+ ' + gbp(x.deposit_ll) + '</b></div>');
       (x.credits || []).forEach(function(c){ lines.push('<div><span>' + esc(c.label) + '</span><b>+ ' + gbp(c.amount) + '</b></div>'); });   // money in for the landlord
-      if (x.fees) lines.push('<div><span>Our fees (inc. VAT)</span><b>− ' + gbp(x.fees) + '</b></div>');
+      // Our fees, one line each (inc. VAT), so the landlord's money can be checked line by line.
+      if ((x.fee_lines || []).length > 1) x.fee_lines.forEach(function(f){ lines.push('<div><span>' + esc(f.label) + ' (inc. VAT)</span><b>− ' + gbp(f.amount) + '</b></div>'); });
+      else if (x.fees) lines.push('<div><span>' + esc((x.fee_lines && x.fee_lines[0] && x.fee_lines[0].label) || 'Our fees') + ' (inc. VAT)</span><b>− ' + gbp(x.fees) + '</b></div>');
       x.recovered.forEach(function(r){ lines.push('<div><span>' + esc(r.label.replace(/ \(repairs, inc\. VAT\)/, '')) + '</span><b>− ' + gbp(r.amount) + '</b></div>'); });
       x.pending.forEach(function(i){ lines.push('<div><span>Invoice ' + esc(i.number || '') + (i.title ? ' · ' + esc(i.title) : '') + '</span><b>− ' + gbp(i.total) + '</b></div>'); });
       if (x.bf) lines.push('<div><span>Owed from before</span><b>− ' + gbp(x.bf) + '</b></div>');
