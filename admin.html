@@ -753,6 +753,12 @@
   .vd-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: .9rem; } .vd-facts span { color: var(--ink-soft, #667085); } .vd-sec { border-top: 1px solid var(--line, #eaecf0); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; } .vd-fb { background: #f9fafb; border-radius: 10px; padding: 10px; font-size: .9rem; }
   @media (max-width: 1100px) { .cal-week { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   @media (max-width: 760px) { .cal-week { grid-template-columns: 1fr; } .cal-day { min-height: 0; } .cal-day.empty-day { display: none; } .cal-g3 { grid-template-columns: 1fr; } }
+  .ll-tcy { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: -2px 0 10px; padding: 10px 14px; border-radius: 12px; border: 1px solid #abefc6; border-left: 6px solid #12b76a; background: #ecfdf3; }
+  .ll-tcy-m { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .ll-tcy-h { font-weight: 700; color: #054f31; overflow-wrap: anywhere; } .ll-tcy-s { font-size: .86rem; color: #344054; overflow-wrap: anywhere; }
+  .ll-tcy.ending { background: #fffaeb; border-color: #fedf89; border-left-color: #f79009; } .ll-tcy.ending .ll-tcy-h { color: #93370d; }
+  .ll-tcy.upcoming { background: #eff8ff; border-color: #b2ddff; border-left-color: #2e90fa; } .ll-tcy.upcoming .ll-tcy-h { color: #194185; }
+  .ll-tcy.draft, .ll-tcy.rolling { background: #f9fafb; border-color: #eaecf0; border-left-color: #98a2b3; } .ll-tcy.draft .ll-tcy-h, .ll-tcy.rolling .ll-tcy-h { color: #344054; }
+  .ll-tcy.none { background: #fef3f2; border-color: #fecdca; border-left-color: #f04438; } .ll-tcy.none .ll-tcy-h { color: #912018; }
   .crm-bar { display: flex; gap: 8px; flex-wrap: wrap; } .crm-bar #crmQ { flex: 1; min-width: 200px; } .crm-bar select { width: auto; }
   .crm-add { border-top: 1px solid var(--line, #eef0f3); margin-top: 10px; padding-top: 12px; } .crm-wide { grid-column: 1 / -1; }
   .crm-card { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 14px; margin-top: 8px; overflow: hidden; } .crm-card.is-new { border-left: 4px solid #b42318; }
@@ -9417,7 +9423,7 @@
       var o = x.jobs.filter(isOpen).length;
       return '<div class="prop-row" style="cursor:default"><div class="addr"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-prop="' + esc(x.key) + '">' + esc(x.address) + '</button></div>' +
         '<div class="num">' + x.jobs.length + '<small>repairs</small></div><div class="num' + (o ? ' hot' : '') + '">' + o + '<small>open</small></div>' +
-        '<div class="last"><button type="button" class="btn small ghost" data-unlink="' + esc(x.address) + '">Remove</button></div><span></span></div>';
+        '<div class="last"><button type="button" class="btn small ghost" data-unlink="' + esc(x.address) + '">Remove</button></div><span></span></div>' + llTcyBox(x);
     }).join('') : '<div class="empty" style="padding:18px">No properties linked yet — add one below.</div>';
     var linked = {}; props.forEach(function(x){ linked[x.key] = true; });
     $('llPropList').innerHTML = propertiesFromJobs().filter(function(pr){ return !linked[pr.key]; }).map(function(pr){ return '<option value="' + esc(pr.address) + '">'; }).join('');
@@ -9457,7 +9463,18 @@
   $('llSortTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-sort]'); if (b) { tapSort(llSort, b.dataset.sort, 'rr_ll_sort'); renderLandlords(); } });
   $('llList').addEventListener('click', function(e){ var b = e.target.closest('.prop-row'); if (b) openLandlord(Number(b.dataset.id)); });
   $('llNew').addEventListener('click', function(){ openLandlordForm(null); });
+  // The property's tenancy, highlighted under it on the landlord page: who's in, the rent, the dates.
+  function llTcyBox(x){
+    var t = propTenancy(x.key), tc = t.id ? tenancies.filter(function(z){ return z.id === t.id; })[0] : null, d = (tc && tc.data) || {};
+    if (t.k === 'none') return '<div class="ll-tcy none"><span class="ll-tcy-h">📄 No tenancy recorded</span><button type="button" class="btn small" data-ll-tcynew="' + esc(knownFullAddress(x.key) || x.address) + '">＋ Add tenancy</button></div>';
+    var rent = Number(d.rent_pcm) || 0, who = Array.isArray(t.tenants) ? joinAnd(t.tenants) : (t.tenants || '');
+    return '<div class="ll-tcy ' + t.k + '"><div class="ll-tcy-m"><span class="ll-tcy-h">📄 ' + esc(t.text) + '</span>' +
+      '<span class="ll-tcy-s">' + [who ? '👥 ' + esc(who) : '', rent ? '💷 ' + esc(gbp(rent)) + ' pcm' : '', d.service ? esc(d.service) : ''].filter(Boolean).join(' · ') + '</span></div>' +
+      '<button type="button" class="btn small primary" data-ll-tcy="' + t.id + '">Open tenancy →</button></div>';
+  }
   $('llProps').addEventListener('click', function(e){
+    var tb = e.target.closest('[data-ll-tcy]'); if (tb) { showView('tcy'); openTenancy(Number(tb.dataset.llTcy)); return; }
+    var tn = e.target.closest('[data-ll-tcynew]'); if (tn) { showView('tcy'); openTenancy('new', { address: tn.dataset.llTcynew }); return; }
     var b = e.target.closest('button'); if (!b) return;
     if (b.dataset.prop) openProperty(b.dataset.prop);
     else if (b.dataset.unlink && confirm('Remove ' + b.dataset.unlink + ' from this landlord?')) linkProperty(b.dataset.unlink, null);
@@ -16580,9 +16597,11 @@
     $('tmSubject').value = o.subject || '';
     $('tmBody').innerHTML = o.bodyHtml || '';
     var atts = o.atts || [];
-    $('tmAtt').parentNode.hidden = !atts.length && !o.attNote;
+    tmCtx.extra = [];   // files staff add themselves
+    $('tmAtt').parentNode.hidden = false;
     $('tmAtt').innerHTML = atts.map(function(a, i){ return '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-att="' + i + '"' + (a.on ? ' checked' : '') + '> ' + esc(a.label) + '</label>'; }).join('') +
-      (o.attNote ? '<p class="muted-note" style="margin:2px 0 0">' + esc(o.attNote) + '</p>' : '');
+      (o.attNote ? '<p class="muted-note" style="margin:2px 0 0">' + esc(o.attNote) + '</p>' : '') +
+      '<div id="tmExtra" style="display:flex;flex-direction:column;gap:6px"></div><div><button type="button" class="btn small" id="tmAddFile">📎 Add your own files</button> <span class="muted-note" style="margin:0;font-size:.78rem">PDFs, Word documents, photos… or drag them here</span><input type="file" id="tmFile" multiple hidden></div>';
     var direct = meta.canEmail && o.sendUrl;
     $('tmSend').textContent = direct ? 'Send from Fixflow' : 'Other email app';
     $('tmCopy').textContent = 'Copy email';
@@ -16595,6 +16614,26 @@
     if (hasOl) { $('tmFrom').innerHTML = outlook.accounts.map(function(a){ return '<option value="' + esc(a.email) + '">' + esc(a.name ? a.name + ' — ' + a.email : a.email) + '</option>'; }).join(''); $('tmFrom').value = olFrom(); }
     tmBrand = ''; tmBrandKey = ''; tmView('edit'); $('tmModal').hidden = false; tmRefreshBrand();
   }
+  // Files added by hand: listed with a remove button, up to 20 MB in all.
+  function tmDrawExtra(){
+    var box = $('tmExtra'); if (!box) return;
+    box.innerHTML = (tmCtx.extra || []).map(function(f, i){ return '<div style="display:flex;gap:8px;align-items:center"><span>📄 ' + esc(f.name) + ' <span class="muted-note" style="margin:0">(' + Math.max(1, Math.round(f.blob.size / 1024)) + ' KB)</span></span><button type="button" class="linkish" data-tm-rmfile="' + i + '" title="Remove">✕</button></div>'; }).join('');
+  }
+  function tmAddFiles(files){
+    var total = (tmCtx.extra || []).reduce(function(n, f){ return n + f.blob.size; }, 0);
+    Array.prototype.forEach.call(files || [], function(f){
+      if (total + f.size > 20 * 1024 * 1024) { toast(f.name + ' is too big — attachments can be up to 20 MB in all'); return; }
+      total += f.size; tmCtx.extra.push({ name: f.name, blob: f });
+    });
+    tmDrawExtra(); if (!$('tmLook').hidden) tmView('look');
+  }
+  document.addEventListener('click', function(e){
+    if (e.target.closest('#tmAddFile')) { $('tmFile').click(); return; }
+    var rm = e.target.closest('[data-tm-rmfile]'); if (rm && tmCtx && tmCtx.extra) { tmCtx.extra.splice(Number(rm.dataset.tmRmfile), 1); tmDrawExtra(); }
+  });
+  document.addEventListener('change', function(e){ if (e.target && e.target.id === 'tmFile') { tmAddFiles(e.target.files); e.target.value = ''; } });
+  $('tmModal').addEventListener('dragover', function(e){ if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') !== -1) e.preventDefault(); });
+  $('tmModal').addEventListener('drop', function(e){ if (!e.dataTransfer || !e.dataTransfer.files.length) return; e.preventDefault(); tmAddFiles(e.dataTransfer.files); });
   function tmAttachments(){
     var d = tmCtx.d, list = (tmCtx.atts || []).filter(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); return cb && cb.checked; });
     return Promise.all(list.map(function(a){
@@ -16602,7 +16641,7 @@
       if (a.url) return fetch(a.url, { credentials: 'same-origin' }).then(function(r){ if (!r.ok) throw new Error('missing'); return r.blob(); }).then(function(b){ return { name: a.name, blob: b }; })['catch'](function(){ toast('Couldn’t attach ' + a.name); return null; });
       var doc = a.id === 'statement' ? statementPdf(d) : contactsPdf(d);
       return Promise.resolve(doc ? { name: a.name, blob: doc.output('blob') } : null);
-    })).then(function(r){ return r.filter(Boolean); });
+    })).then(function(r){ return r.filter(Boolean).concat((tmCtx.extra || []).map(function(f){ return { name: f.name, blob: f.blob }; })); });
   }
   // Write ↔ preview: the email as the recipient will see it — sender, recipients, subject, attachments and the formatted message.
   function tmView(v){
@@ -16611,7 +16650,7 @@
     if (v !== 'look') return;
     var box = $('tmLook'), root = box.shadowRoot || box.attachShadow({ mode: 'open' });
     var hasOl = outlook.configured && outlook.accounts.length, from = hasOl && $('tmFrom').value ? $('tmFrom').value : 'Residential Realtors';
-    var atts = (tmCtx && tmCtx.atts || []).filter(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); return cb && cb.checked; });
+    var atts = (tmCtx && tmCtx.atts || []).filter(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); return cb && cb.checked; }).concat((tmCtx && tmCtx.extra) || []);
     var row = function(k, v){ return '<div style="display:flex;gap:10px;padding:3px 0"><span style="color:#667085;min-width:58px">' + k + '</span><span style="color:#101828;word-break:break-word">' + v + '</span></div>'; };
     root.innerHTML = '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:13px;background:#f3f5f8;margin:12px;border:1px solid #e4e7ec;border-radius:10px;overflow:hidden">' +
       '<div style="padding:12px 16px;border-bottom:1px solid #eaecf0;background:#fff"><div style="font-size:16px;font-weight:600;color:#101828;margin-bottom:6px">' + esc($('tmSubject').value || '(no subject)') + '</div>' +
