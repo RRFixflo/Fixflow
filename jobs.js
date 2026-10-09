@@ -375,6 +375,20 @@ CREATE TABLE IF NOT EXISTS assistant_reminders (
   done_at     TIMESTAMPTZ,
   notified_at TIMESTAMPTZ
 );
+-- What Ask Fixflow has learned from staff: their corrections to its drafts
+-- (contractor, urgency, job title, address, email wording) and "remember that …".
+-- One row per lesson (key); seen again → hits + 1. Shown in the Ask window.
+CREATE TABLE IF NOT EXISTS assistant_learned (
+  id         SERIAL PRIMARY KEY,
+  key        TEXT UNIQUE NOT NULL,
+  kind       TEXT NOT NULL,
+  text       TEXT NOT NULL,
+  data       JSONB,
+  user_name  TEXT,
+  hits       INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 -- Each 12-month anniversary: the rent review (new rent, or no increase), the
 -- landlord and tenants asked/told, and whether the tenants are staying.
 -- { "2027-09-24": { "new_rent": 1950, "rent_from": "2027-09-24", "asked_at": "...", "answer": "staying", "alerted_at": "..." } }
@@ -4026,6 +4040,59 @@ module.exports = function mountJobs(app, opts) {
   }
   setInterval(function () { remindersDue().catch(function (e) { console.error('Reminders failed:', e.message); }); }, 60 * 1000).unref();
 
+  // ---------- Ask Fixflow learns from what staff do ----------
+  // Lessons come from staff correcting its drafts (a different contractor, urgency,
+  // job title or property) and editing its emails before sending, or from "remember that …".
+  // The most used ones go into every Ask Fixflow prompt.
+  async function learn(p, req, kind, key, text, data) {
+    text = str(String(text || '').replace(/\s+/g, ' '), 300); key = str(String(key || ''), 200);
+    if (!text || !key) return;
+    await p.query(`INSERT INTO assistant_learned (key, kind, text, data, user_name) VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (key) DO UPDATE SET text = excluded.text, data = excluded.data, user_name = excluded.user_name, hits = assistant_learned.hits + 1, last_at = now()`,
+      [kind + ':' + key.toLowerCase(), kind, text, data ? JSON.stringify(data) : null, (req.user && req.user.name) || 'Owner']);
+  }
+  async function learnedLines(p) {
+    const r = await p.query('SELECT text FROM assistant_learned ORDER BY hits DESC, last_at DESC LIMIT 60').catch(function () { return { rows: [] }; });
+    return r.rows.length ? '\n\nLEARNED FROM THIS OFFICE (how staff here like things done — follow these unless the instruction says otherwise):\n' + r.rows.map(function (x) { return '- ' + x.text; }).join('\n') + '\n\n' : '';
+  }
+  app.get('/api/admin/assistant/learned', withDb(async function (p, req, res) {
+    const r = await p.query('SELECT id, kind, text, data, user_name, hits, created_at, last_at FROM assistant_learned ORDER BY last_at DESC LIMIT 200');
+    res.json({ ok: true, learned: r.rows });
+  }));
+  app.post('/api/admin/assistant/learned/:id', withDb(async function (p, req, res) {
+    await p.query('DELETE FROM assistant_learned WHERE id = $1', [Number(req.params.id) || 0]);
+    res.json({ ok: true });
+  }));
+  // What staff changed in a draft before using it.
+  app.post('/api/admin/assistant/learn', withDb(async function (p, req, res) {
+    const b = req.body || {}, n = function (v, m) { return str(String(v == null ? '' : v).trim(), m || 300) || ''; };
+    let count = 0;
+    if (b.kind === 'job') {
+      const cat = n(b.category, 80) || 'General repair', ai = b.ai || {}, fin = b.final || {};
+      if (fin.contractor && n(fin.contractor) !== n(ai.contractor)) { await learn(p, req, 'contractor', cat, 'For ' + cat + ' jobs use ' + n(fin.contractor) + (fin.trade ? ' (' + n(fin.trade, 60) + ')' : '') + '.', { category: cat, contractor: n(fin.contractor) }); count++; }
+      if (fin.urgency && ai.urgency && fin.urgency !== ai.urgency) { await learn(p, req, 'urgency', cat + '|' + n(fin.title, 80), '"' + (n(fin.title, 80) || cat) + '" (' + cat + ') is ' + n(fin.urgency, 20) + ', not ' + n(ai.urgency, 20) + '.'); count++; }
+      if (fin.title && ai.title && fin.title.toLowerCase() !== String(ai.title).toLowerCase()) { await learn(p, req, 'title', cat + '|' + n(ai.title, 80), 'Job title "' + n(fin.title, 100) + '" rather than "' + n(ai.title, 100) + '".'); count++; }
+      const said = n(b.address_said, 120), addr = n(fin.address, 200);
+      if (said && addr && b.address_changed) { await learn(p, req, 'address', said, '"' + said + '" means ' + addr + '.'); count++; }
+    } else if (b.kind === 'email' || b.kind === 'message') {
+      // The draft and what was sent: the AI says in one line what staff changed (tone, sign-off, wording).
+      const before = n(b.before, 4000), after = n(b.after, 4000);
+      if (before && after && before !== after && opts.askAi && opts.canAi && opts.canAi()) {
+        const r = await opts.askAi('A letting agent\'s assistant drafted this ' + (b.kind === 'email' ? 'email' : 'WhatsApp message') + ' and staff edited it before sending.\n\nDRAFT:\n' + before + '\n\nSENT:\n' + after +
+          '\n\nIn ONE short general rule (max 25 words) say how staff prefer these to be written, so future drafts need no editing (e.g. "Sign emails Kind regards, Residential Realtors team" or "Keep WhatsApp messages short and start with Hi <first name>"). ' +
+          'Never include names, phone numbers, emails, addresses, amounts or dates of particular people. If the change was only a fact (a date, name, number) and not a style preference, reply with an empty rule. Reply with ONLY JSON: {"rule": ""}', true).catch(function () { return { ok: false }; });
+        let rule = '';
+        try { rule = r.ok ? String(JSON.parse(r.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()).rule || '') : ''; } catch (e) { rule = ''; }
+        rule = rule.trim();
+        if (rule && !/@|\d{5,}/.test(rule)) { await learn(p, req, 'style', rule.toLowerCase().replace(/[^a-z ]/g, '').slice(0, 80), rule); count++; }
+      }
+    } else if (b.kind === 'note') {
+      const t = n(b.text, 300);
+      if (t) { await learn(p, req, 'note', t.toLowerCase().replace(/[^a-z0-9 ]/g, '').slice(0, 120), t); count++; }
+    }
+    res.json({ ok: true, learned: count });
+  }));
+
   // ---------- Assistant: plain-English (or spoken) commands ----------
   // Turns something like "add a gas safety for 6 Whitworth House" into a
   // structured job draft. Nothing is created here: the dashboard matches the
@@ -4137,11 +4204,12 @@ module.exports = function mountJobs(app, opts) {
       'Use [] for jobs, certificates, contacts, properties or tenancies when there are none. If the instruction is none of these, reply {"jobs": [], "certificates": [], "contacts": [], "properties": [], "tenancies": [], "understood": false}.';
     // Typed or spoken (no documents): Fixflow also acts as the office assistant — answers questions from
     // the live data, drafts emails and WhatsApp messages to the right people, and sets reminders.
-    let fullPrompt = prompt;
+    const learned = await learnedLines(p);
+    let fullPrompt = learned ? prompt.replace(/Reply with ONLY JSON: \{/, function (m) { return learned + m; }) : prompt;
     if (!fromEmail && !given.length) {
       const digest = await assistantDigest(p, req).catch(function (e) { console.error('Assistant digest failed:', e.message); return ''; });
-      fullPrompt = prompt.replace(/Reply with ONLY JSON: \{/, function () { return 'You are also the office’s virtual ASSISTANT. Besides creating records, the instruction may be a QUESTION about the business (e.g. "who lives at 43 Example House?", "which rents are late?", "when does the gas certificate at … expire?", "what repairs are open for Mr Khan?", "which landlords still need paying?"), a request to WRITE or SEND an email / WhatsApp message (e.g. "email the landlord of 9 Park Road that the boiler is fixed", "text the tenants at Flat 2 that the plumber comes Tuesday"), or a REMINDER (e.g. "remind me to call Mrs Jones tomorrow at 10"). Use ONLY the business data below — never invent people, numbers, emails, amounts or dates; if the data does not say, say so plainly.\n' +
-        'Then also give: "answer": a short, clear reply in plain British English to any question (or a one-line summary of what you have prepared), else ""; "emails": [{"to": ["email addresses from the data or the instruction"], "to_name": "", "subject": "", "body": "the full email, polite and professional, signed Kind regards, Residential Realtors"}] for each email asked for (never put our costs, profit or contractor prices in an email to a landlord or tenant); "messages": [{"to_name": "", "phone": "number from the data or instruction", "text": "the WhatsApp message"}] for each text / WhatsApp asked for; "reminders": [{"text": "what to do, naming the person and property", "due": "YYYY-MM-DDTHH:MM in London time (tomorrow 09:00 if no time is given)"}]. Do not create jobs, contacts, properties, tenancies or certificates for a question, email, message or reminder.\n\nBUSINESS DATA:\n' + digest + '\n\nReply with ONLY JSON: {"answer": "", "emails": [], "messages": [], "reminders": [], '; });
+      fullPrompt = fullPrompt.replace(/Reply with ONLY JSON: \{/, function () { return 'You are also the office’s virtual ASSISTANT. Besides creating records, the instruction may be a QUESTION about the business (e.g. "who lives at 43 Example House?", "which rents are late?", "when does the gas certificate at … expire?", "what repairs are open for Mr Khan?", "which landlords still need paying?"), a request to WRITE or SEND an email / WhatsApp message (e.g. "email the landlord of 9 Park Road that the boiler is fixed", "text the tenants at Flat 2 that the plumber comes Tuesday"), or a REMINDER (e.g. "remind me to call Mrs Jones tomorrow at 10"). Use ONLY the business data below — never invent people, numbers, emails, amounts or dates; if the data does not say, say so plainly.\n' +
+        'Then also give: "remember": [short general rules] when the instruction asks you to REMEMBER or LEARN something for the future (e.g. "remember that Ali does all our bed bug jobs", "from now on sign emails Kind regards, the RR team", "always make leaks Urgent") — each one plain sentence, with a short "answer" confirming it; else []; "answer": a short, clear reply in plain British English to any question (or a one-line summary of what you have prepared), else ""; "emails": [{"to": ["email addresses from the data or the instruction"], "to_name": "", "subject": "", "body": "the full email, polite and professional, signed Kind regards, Residential Realtors"}] for each email asked for (never put our costs, profit or contractor prices in an email to a landlord or tenant); "messages": [{"to_name": "", "phone": "number from the data or instruction", "text": "the WhatsApp message"}] for each text / WhatsApp asked for; "reminders": [{"text": "what to do, naming the person and property", "due": "YYYY-MM-DDTHH:MM in London time (tomorrow 09:00 if no time is given)"}]. Do not create jobs, contacts, properties, tenancies or certificates for a question, email, message or reminder.\n\nBUSINESS DATA:\n' + digest + '\n\nReply with ONLY JSON: {"answer": "", "emails": [], "messages": [], "reminders": [], "remember": [], '; });
     }
     const result = await opts.askAi(fullPrompt, true, files);
     if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
@@ -4239,9 +4307,11 @@ module.exports = function mountJobs(app, opts) {
     const emails = (Array.isArray(parsed.emails) ? parsed.emails : []).slice(0, 10).map(function (e) { return { to: (Array.isArray(e && e.to) ? e.to : [e && e.to]).map(function (x) { return String(x || '').trim(); }).filter(okMail).slice(0, 10), to_name: str(e && e.to_name, 200) || '', subject: str(e && e.subject, 300) || '', body: str(e && e.body, 8000) || '' }; }).filter(function (e) { return e.subject || e.body; });
     const messages = (Array.isArray(parsed.messages) ? parsed.messages : []).slice(0, 10).map(function (m) { return { to_name: str(m && m.to_name, 200) || '', phone: str(m && m.phone, 40) || '', text: str(m && m.text, 3000) || '' }; }).filter(function (m) { return m.text; });
     const reminders = (Array.isArray(parsed.reminders) ? parsed.reminders : []).slice(0, 10).map(function (r) { return { text: str(r && r.text, 500) || '', due: str(r && r.due, 30) || '' }; }).filter(function (r) { return r.text && /^\d{4}-\d{2}-\d{2}/.test(r.due); });
+    const remember = (Array.isArray(parsed.remember) ? parsed.remember : []).slice(0, 5).map(function (x) { return str(String(x || '').replace(/\s+/g, ' ').trim(), 300) || ''; }).filter(Boolean);
+    for (const t of remember) await learn(p, req, 'note', t.toLowerCase().replace(/[^a-z0-9 ]/g, '').slice(0, 120), t).catch(function (e) { console.error('Learn failed:', e.message); });
     const made = jobs.length > 0 || certificates.length > 0 || contacts.length > 0 || properties.length > 0 || tenancies.length > 0;
-    res.json({ ok: true, jobs: jobs, certificates: certificates, contacts: contacts, properties: properties, tenancies: tenancies, answer: answer, emails: emails, messages: messages, reminders: reminders,
-      understood: ((parsed.understood !== false || certificates.length > 0) && made) || !!answer || emails.length > 0 || messages.length > 0 || reminders.length > 0 });
+    res.json({ ok: true, jobs: jobs, certificates: certificates, contacts: contacts, properties: properties, tenancies: tenancies, answer: answer, emails: emails, messages: messages, reminders: reminders, remembered: remember,
+      understood: ((parsed.understood !== false || certificates.length > 0) && made) || !!answer || remember.length > 0 || emails.length > 0 || messages.length > 0 || reminders.length > 0 });
   }));
 
   app.post('/api/admin/jobs/:id/ai-invoice', withDb(async function (p, req, res) {
