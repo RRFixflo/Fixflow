@@ -553,6 +553,18 @@ CREATE TABLE IF NOT EXISTS viewings (
   share        BOOLEAN NOT NULL DEFAULT true,
   created_by   TEXT
 );
+-- The staff calendar: who is doing each viewing, the applicant's contact details (to ask for feedback),
+-- and the applicant's own feedback from the private form /vf/<token>.
+ALTER TABLE viewings ADD COLUMN IF NOT EXISTS staff TEXT;
+ALTER TABLE viewings ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE viewings ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE viewings ADD COLUMN IF NOT EXISTS lead_id INTEGER;
+ALTER TABLE viewings ADD COLUMN IF NOT EXISTS mins INTEGER;
+ALTER TABLE viewings ADD COLUMN IF NOT EXISTS fb_token TEXT;
+ALTER TABLE viewings ADD COLUMN IF NOT EXISTS fb_sent_at TIMESTAMPTZ;
+ALTER TABLE viewings ADD COLUMN IF NOT EXISTS app_fb JSONB;
+ALTER TABLE viewings ADD COLUMN IF NOT EXISTS app_fb_at TIMESTAMPTZ;
+CREATE UNIQUE INDEX IF NOT EXISTS viewings_fb_token ON viewings (fb_token);
 -- Each offer-form link sent to an applicant from Fixflow: who, how, and what they did with it.
 CREATE TABLE IF NOT EXISTS offer_invites (
   id          SERIAL PRIMARY KEY,
@@ -1969,7 +1981,9 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/available-history' || /^\/available-history\/\d+\/restore$/.test(path)) return true;
     if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;
     if (path === '/crm' || /^\/crm\/(note|meta|archive|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
-    if (method === 'GET' && path === '/lead-hook') return true;   // managers only (checked in the route)   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
+    if (method === 'GET' && path === '/lead-hook') return true;
+    if (method === 'GET' && path === '/staff-names') return true;   // the calendar's people
+    if (method === 'POST' && /^\/viewings\/\d+\/feedback-link$/.test(path)) return true;   // managers only (checked in the route)   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
     if (method === 'GET' && (path === '/site-stats' || path === '/photo-dupes')) return true;
     if (method === 'POST' && (path === '/web-hidden' || path === '/photo-dupes/ok')) return true;   // managers only (checked in the route)
     if (path === '/rivals' || path === '/rivals/run' || /^\/rivals\/\d+\/dismiss$/.test(path) || path === '/nearby' || path === '/nearby/run' || /^\/nearby\/\d+\/dismiss$/.test(path)) return true;   // managers only (checked in the route)
@@ -7817,14 +7831,29 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true });
   }));
   // Viewings: book them, mark them done (or cancelled / no-show) and add feedback.
+  // The calendar asks for a date range (from / to); the Offers page for the recent ones.
+  const VW_COLS = 'id, created_at, property_address, property_key, at, applicant, status, feedback, share, created_by, staff, email, phone, lead_id, mins, fb_sent_at, app_fb, app_fb_at';
   app.get('/api/admin/viewings', withDb(async function (p, req, res) {
-    res.json({ ok: true, viewings: (await p.query("SELECT * FROM viewings WHERE at > now() - interval '120 days' ORDER BY at DESC LIMIT 300")).rows });
+    const from = Date.parse(req.query.from), to = Date.parse(req.query.to);
+    if (from && to && to > from && to - from < 100 * 86400000) return res.json({ ok: true, viewings: (await p.query('SELECT ' + VW_COLS + ' FROM viewings WHERE at >= $1 AND at < $2 ORDER BY at LIMIT 2000', [new Date(from).toISOString(), new Date(to).toISOString()])).rows });
+    res.json({ ok: true, viewings: (await p.query("SELECT " + VW_COLS + " FROM viewings WHERE at > now() - interval '120 days' ORDER BY at DESC LIMIT 300")).rows });
   }));
+  const vwEmail = function (v) { v = str(v, 200); return v && /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(v) ? v.toLowerCase() : null; };
   app.post('/api/admin/viewings', withDb(async function (p, req, res) {
     const b = req.body || {}, addr = str(b.property, 400), at = Date.parse(b.at);
     if (!addr || !at) return res.status(400).json({ ok: false, error: 'details' });
-    const r = await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id', [addr, propKey(addr), new Date(at).toISOString(), str(b.applicant, 120) || null, req.user ? req.user.name : 'Office']);
+    const me = req.user ? req.user.name : 'Office', mins = [15, 30, 45, 60, 90].indexOf(+b.mins) !== -1 ? +b.mins : 30;
+    const r = await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, created_by, staff, email, phone, lead_id, mins) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
+      [addr, propKey(addr), new Date(at).toISOString(), str(b.applicant, 120) || null, me, str(b.staff, 120) || me, vwEmail(b.email), str(b.phone, 40) || null, parseInt(b.lead_id, 10) || null, mins]);
     res.json({ ok: true, id: r.rows[0].id });
+  }));
+  // A private link for the applicant to give feedback on the viewing (staff send it from Fixflow's email window).
+  app.post('/api/admin/viewings/:id/feedback-link', withDb(async function (p, req, res) {
+    const v = (await p.query('SELECT id, fb_token FROM viewings WHERE id = $1', [jobId(req)])).rows[0];
+    if (!v) return res.status(404).json({ ok: false });
+    let t = v.fb_token; if (!t) { t = crypto.randomBytes(12).toString('base64url'); await p.query('UPDATE viewings SET fb_token = $2 WHERE id = $1', [v.id, t]); }
+    if ((req.body || {}).sent === true) await p.query('UPDATE viewings SET fb_sent_at = now() WHERE id = $1', [v.id]);
+    res.json({ ok: true, url: String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '') + '/vf/' + t });   // on our website's own address
   }));
   app.post('/api/admin/viewings/:id', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req), sets = [], vals = [id];
@@ -7832,9 +7861,60 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.feedback !== undefined) { vals.push(str(b.feedback, 2000) || null); sets.push('feedback = $' + vals.length); }
     if (typeof b.share === 'boolean') { vals.push(b.share); sets.push('share = $' + vals.length); }
     if (b.at && Date.parse(b.at)) { vals.push(new Date(Date.parse(b.at)).toISOString()); sets.push('at = $' + vals.length); }
+    if (b.staff !== undefined) { vals.push(str(b.staff, 120) || null); sets.push('staff = $' + vals.length); }
+    if (b.applicant !== undefined) { vals.push(str(b.applicant, 120) || null); sets.push('applicant = $' + vals.length); }
+    if (b.email !== undefined) { vals.push(vwEmail(b.email)); sets.push('email = $' + vals.length); }
+    if (b.phone !== undefined) { vals.push(str(b.phone, 40) || null); sets.push('phone = $' + vals.length); }
+    if (b.mins !== undefined && [15, 30, 45, 60, 90].indexOf(+b.mins) !== -1) { vals.push(+b.mins); sets.push('mins = $' + vals.length); }
+    if (b.property !== undefined && str(b.property, 400)) { vals.push(str(b.property, 400)); sets.push('property_address = $' + vals.length); vals.push(propKey(str(b.property, 400))); sets.push('property_key = $' + vals.length); }
     if (b.delete === true) { await p.query('DELETE FROM viewings WHERE id = $1', [id]); return res.json({ ok: true }); }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
     await p.query('UPDATE viewings SET ' + sets.join(', ') + ' WHERE id = $1', vals);
+    res.json({ ok: true });
+  }));
+  // The applicant's feedback on a viewing: a short private form; the member of staff who did the viewing is emailed.
+  const VF_INTEREST = { yes: 'Yes — I’d like to make an offer', maybe: 'Maybe — I have some questions', no: 'No — it’s not for me' };
+  async function vfViewing(p, token) { return /^[\w-]{12,40}$/.test(String(token || '')) ? (await p.query('SELECT * FROM viewings WHERE fb_token = $1', [token])).rows[0] : null; }
+  app.get('/vf/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
+    const v = await vfViewing(p, req.params.token);
+    res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex');
+    if (!v) return res.status(404).send(trackShell('Link not found', '<h1>Link not found</h1><p>This link may have expired. Please call us on 0207 096 8131.</p>', true));
+    const addr = String(v.property_address || 'the property').split(',').slice(0, 2).join(','), when = new Date(v.at).toLocaleDateString('en-GB', { timeZone: 'Europe/London', weekday: 'long', day: 'numeric', month: 'long' });
+    const done = v.app_fb_at ? '<div class="card"><b>✓ Thank you — we’ve got your feedback.</b><p class="muted" style="margin:4px 0 0">You can change it below if you like.</p></div>' : '';
+    const f = v.app_fb || {}, stars = [1, 2, 3, 4, 5].map(function (n) { return '<label class="st"><input type="radio" name="rating" value="' + n + '"' + (f.rating === n ? ' checked' : '') + ' required><span>' + n + '</span></label>'; }).join('');
+    const inner = '<h1>How was your viewing?</h1><p class="sub">' + htmlEsc(addr) + ' · ' + htmlEsc(when) + '</p>' + done +
+      '<div class="card"><form class="stack" id="vf">' +
+      '<fieldset><legend>Overall, how did you find the property? <span class="muted">(1 = not for me, 5 = loved it)</span></legend><div class="stars">' + stars + '</div></fieldset>' +
+      '<fieldset><legend>Would you like to go ahead?</legend>' + Object.keys(VF_INTEREST).map(function (k) { return '<label class="opt"><input type="radio" name="interest" value="' + k + '"' + (f.interest === k ? ' checked' : '') + ' required> ' + htmlEsc(VF_INTEREST[k]) + '</label>'; }).join('') + '</fieldset>' +
+      '<label>What did you like?<textarea name="liked" maxlength="1000" rows="3">' + htmlEsc(f.liked || '') + '</textarea></label>' +
+      '<label>Anything you didn’t like, or any questions?<textarea name="disliked" maxlength="1000" rows="3">' + htmlEsc(f.disliked || '') + '</textarea></label>' +
+      '<label>How was our service at the viewing?<select name="service"><option value="">Choose…</option>' + ['Excellent', 'Good', 'OK', 'Poor'].map(function (o) { return '<option' + (f.service === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select></label>' +
+      '<button type="submit" class="btn" id="vb">Send feedback</button><p class="muted" id="vm" role="status"></p></form></div>' +
+      '<p class="muted" style="text-align:center">Questions? Call 0207 096 8131 or email info@residentialrealtors.co.uk</p>' +
+      '<style>#vf fieldset{border:0;padding:0;margin:0 0 6px}#vf legend{font-weight:600;font-size:.95rem;margin-bottom:8px}#vf label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:.92rem}#vf .opt{flex-direction:row;align-items:center;gap:8px;font-weight:500;padding:6px 0}' +
+      '#vf textarea,#vf select{font:inherit;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}.stars{display:flex;gap:8px}.st{flex:1}.st input{position:absolute;opacity:0}.st span{display:block;text-align:center;padding:12px 0;border:1px solid var(--line);border-radius:12px;font-weight:700;background:#fff;cursor:pointer}.st input:checked+span{background:var(--ink);color:#fff;border-color:var(--ink)}.st input:focus-visible+span{outline:2px solid var(--blue)}</style>' +
+      '<script>(function(){var f=document.getElementById("vf"),m=document.getElementById("vm"),b=document.getElementById("vb");f.addEventListener("submit",function(e){e.preventDefault();b.disabled=true;m.textContent="Sending…";' +
+      'var r=f.querySelector("[name=rating]:checked"),i=f.querySelector("[name=interest]:checked");fetch(location.pathname,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rating:r?+r.value:0,interest:i?i.value:"",liked:f.liked.value,disliked:f.disliked.value,service:f.service.value})})' +
+      '.then(function(x){return x.json()}).then(function(d){b.disabled=false;m.textContent=d.ok?"✓ Thank you — your feedback has been sent.":"Sorry, that didn’t send — please try again.";}).catch(function(){b.disabled=false;m.textContent="Sorry, that didn’t send — please try again.";});});})();</script>';
+    res.send(trackShell('Viewing feedback', inner, true, 'Viewing'));
+  }));
+  app.post('/vf/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const v = await vfViewing(p, req.params.token); if (!v) return res.status(404).json({ ok: false });
+    const b = req.body || {}, rating = Math.max(0, Math.min(5, parseInt(b.rating, 10) || 0)), interest = VF_INTEREST[b.interest] ? b.interest : '';
+    if (!rating || !interest) return res.status(400).json({ ok: false, error: 'missing' });
+    const fb = { rating: rating, interest: interest, liked: str(b.liked, 1000) || '', disliked: str(b.disliked, 1000) || '', service: ['Excellent', 'Good', 'OK', 'Poor'].indexOf(b.service) !== -1 ? b.service : '' };
+    const first = !v.app_fb_at;
+    await p.query('UPDATE viewings SET app_fb = $2, app_fb_at = now() WHERE id = $1', [v.id, JSON.stringify(fb)]);
+    if (v.lead_id) await p.query('INSERT INTO crm_notes (ref, note, by_name, auto) VALUES ($1, $2, $3, true)', ['vr:' + v.lead_id, 'Viewing feedback from the applicant: ' + rating + '/5 · ' + VF_INTEREST[interest] + (fb.liked ? ' · Liked: ' + fb.liked : '') + (fb.disliked ? ' · Didn’t like: ' + fb.disliked : ''), 'Applicant']).catch(function () {});
+    // One email to whoever did the viewing (the office inbox if they have no email on file).
+    if (first && canEmail() && sendEmail) {
+      const who = v.staff || v.created_by || '', u = who ? (await p.query("SELECT email FROM staff_users WHERE disabled_at IS NULL AND lower(name) = lower($1) AND coalesce(email, '') <> '' LIMIT 1", [who])).rows[0] : null;
+      const addr = String(v.property_address || '').split(',').slice(0, 2).join(','), subj = 'Viewing feedback: ' + (v.applicant || 'Applicant') + ' — ' + addr;
+      const text = (v.applicant || 'The applicant') + ' has given feedback on the viewing at ' + addr + '.\n\nRating: ' + rating + '/5\nGoing ahead: ' + VF_INTEREST[interest] + (fb.liked ? '\nLiked: ' + fb.liked : '') + (fb.disliked ? '\nDidn’t like / questions: ' + fb.disliked : '') + (fb.service ? '\nOur service: ' + fb.service : '') + '\n\nIt’s on the viewing in Fixflow’s calendar.';
+      sendEmail({ to: [u ? u.email : 'info@residentialrealtors.co.uk'], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subj, text: text, html: brandEmail(text, 'Viewing feedback') }).catch(function (e) { console.error('Viewing feedback email failed:', e.message); });
+    }
     res.json({ ok: true });
   }));
   // Offer-form links sent to applicants: one private link each, so we can see if it was opened.
@@ -11048,7 +11128,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const at = londonToDate(b.at); if (!at) return res.status(400).json({ ok: false, error: 'time' });
     const d = Object.assign({}, x.data, { confirmed: String(b.at), confirmed_by: req.user ? req.user.name : 'Office', confirmed_at: new Date().toISOString() });
     if (d.viewing_id) await p.query('UPDATE viewings SET at = $2, status = \'booked\' WHERE id = $1', [d.viewing_id, at.toISOString()]).catch(function () {});
-    else d.viewing_id = (await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id', [x.address, propKey(x.address), at.toISOString(), x.name, req.user ? req.user.name : 'Office'])).rows[0].id;
+    else d.viewing_id = (await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, email, phone, lead_id, staff, created_by) VALUES ($1, $2, $3, $4, $6, $7, $8, $5, $5) RETURNING id', [x.address, propKey(x.address), at.toISOString(), x.name, req.user ? req.user.name : 'Office', x.email || null, x.phone || null, x.id])).rows[0].id;
     await p.query('UPDATE valuation_requests SET data = $2, status = \'booked\', handled_at = now(), handled_by = $3 WHERE id = $1', [x.id, JSON.stringify(d), req.user ? req.user.name : 'Office']);
     let emailed = false;
     if (b.email !== false && x.email && canEmail() && sendEmail) {
