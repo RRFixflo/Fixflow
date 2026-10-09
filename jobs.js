@@ -7021,7 +7021,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const subject = str(b.subject, 300), text = str(b.body, 30000);
     if (!to.length) return res.status(400).json({ ok: false, error: 'bad-address' });
     if (!subject || !text) return res.status(400).json({ ok: false, error: 'empty' });
-    const atts = (Array.isArray(b.attachments) ? b.attachments : []).slice(0, 6).map(function (a) {
+    const atts = (Array.isArray(b.attachments) ? b.attachments : []).slice(0, 15).map(function (a) {
       return { filename: (str(a && a.name, 150) || 'Document.pdf').replace(/[^a-zA-Z0-9.\-_ ]+/g, '-'), content: String(a && a.data || '').replace(/^data:[^,]*,/, '') };
     }).filter(function (a) { return a.content && a.content.length < 15 * 1024 * 1024; });
     const html = typeof b.html === 'string' && b.html.length < 300000 ? b.html.replace(/<script[\s\S]*?<\/script>/gi, '') : undefined;
