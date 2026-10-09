@@ -9871,6 +9871,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           fees_net: r2((f.fees || []).filter(function (x) { return !x.invoice_id; }).reduce(function (a, x) { return a + x.amount; }, 0)), fee_lines: (f.fees || []).filter(function (x) { return !x.invoice_id; }).map(function (x) { return { label: x.label, amount: r2(x.amount + (x.vat || 0)) }; }),
           recovered: (f.fees || []).filter(function (x) { return x.invoice_id; }).map(function (x) { return { label: x.label, amount: x.amount }; }),
           bf: stm ? stm.bf : 0, income: stm ? stm.income : rent, deposit_ll: stm ? (stm.deposit || 0) : depLl, first_only: firstOnly,
+          deposit_amt: movein ? r2(movein.due - rent) : 0, deposit_by: d.deposit_by === 'landlord' ? 'landlord' : 'agent',
           pending: pend, pending_total: pendTotal, to_landlord: toLl,
           collected: rcvd[from] || autoIn || null, paid: paid[from] || null, movein: movein,
           parts: (d.rent_parts || {})[from] || [], part_paid: r2(((d.rent_parts || {})[from] || []).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0)),
@@ -10030,6 +10031,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
   }));
   // The landlord's money for one rent date sent (or undone): amount, date, reference.
+  // Who holds the tenancy deposit: the landlord (it's added to their first payment and statement) or us.
+  app.post('/api/admin/tenancies/:id/deposit-by', withDb(async function (p, req, res) {
+    const by = (req.body || {}).by === 'landlord' ? 'landlord' : 'agent', who = req.user ? req.user.name : 'Office';
+    const r = await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{deposit_by}', to_jsonb($2::text)), log = log || $3::jsonb, updated_at = now() WHERE id = $1 RETURNING id`,
+      [jobId(req), by, JSON.stringify([{ at: new Date().toISOString(), text: 'Deposit set as held by ' + (by === 'landlord' ? 'the landlord (added to their first payment)' : 'us') + ' (' + who + ')' }])]);
+    res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
+  }));
   app.post('/api/admin/tenancies/:id/landlord-paid', withDb(async function (p, req, res) {
     const b = req.body || {}, id = jobId(req), from = String(b.from || '').slice(0, 10), who = req.user ? req.user.name : 'Office';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return res.status(400).json({ ok: false, error: 'from' });
