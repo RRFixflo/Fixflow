@@ -5204,10 +5204,32 @@
           return '<div class="rb-row rb-' + x.status + '" style="padding:8px 0"><div class="rb-day"><b>' + esc(rbDay(x.from).split(' ')[0]) + '</b><span>' + esc(rbDay(x.from).split(' ')[1] || '') + '</span></div>' +
             '<div class="rb-main"><div class="rb-money"><span>Rent <b>' + gbp(x.rent) + '</b></span><span class="rb-arrow">→</span><span>' + (x.to_landlord < 0 ? '<span class="rb-owes">landlord owes ' + gbp(-x.to_landlord) + '</span>' : 'landlord ' + gbp(x.paid ? x.paid.amount : x.to_landlord)) + '</span></div>' +
             '<div class="rb-sub">' + (tid ? '' : svcTag(x.service)) + (x.collected ? '✓ Collected ' + esc(fmtShort(x.collected.at).split(',')[0]) : x.status === 'overdue' ? '⚠️ Not collected yet' : x.status === 'today' ? 'Due today' : 'Not due yet') + ' · ' + (x.paid ? '✓ Landlord paid ' + esc(fmtShort(x.paid.at).split(',')[0]) + (x.paid.ref ? ' (' + esc(x.paid.ref) + ')' : '') : x.collected ? 'Landlord not paid yet' : '') + '</div></div>' +
-            '<div class="rb-act">' + (x.collected ? (x.collected.auto ? '' : '<button type="button" class="linkish" data-prop-uncollect="' + k + '">↩ Not paid — undo</button>') : x.status === 'movein' ? '<span class="muted-note" style="margin:0">Move-in money ' + gbp(x.movein.paid) + ' of ' + gbp(x.movein.due) + '</span>' : x.movein && x.movein.left <= 0.004 ? '<span class="muted-note" style="margin:0">Move-in money paid ✓</span>' : (x.part_paid ? '<span class="rb-parts" style="margin-right:6px">' + gbp(x.part_paid) + ' paid</span>' : '') + '<button type="button" class="btn small' + (x.status === 'upcoming' || x.status === 'tomorrow' ? '' : ' primary') + '" data-prop-collect="' + k + '" data-amt="' + x.rent + '" data-left="' + (x.rent - (x.part_paid || 0)) + '">✓ ' + (x.part_paid ? 'More paid' : 'Collected') + '</button>') + '</div></div>';
+            '<div class="rb-act">' + (x.collected ? (x.collected.auto ? '' : '<button type="button" class="linkish" data-prop-uncollect="' + k + '">↩ Not paid — undo</button>') : x.status === 'movein' ? '<span class="muted-note" style="margin:0">Move-in money ' + gbp(x.movein.paid) + ' of ' + gbp(x.movein.due) + '</span>' : x.movein && x.movein.left <= 0.004 ? '<span class="muted-note" style="margin:0">Move-in money paid ✓</span> ' + payNowBtn(x) : (x.part_paid ? '<span class="rb-parts" style="margin-right:6px">' + gbp(x.part_paid) + ' paid</span>' : '') + '<button type="button" class="btn small' + (x.status === 'upcoming' || x.status === 'tomorrow' ? '' : ' primary') + '" data-prop-collect="' + k + '" data-amt="' + x.rent + '" data-left="' + (x.rent - (x.part_paid || 0)) + '">✓ ' + (x.part_paid ? 'More paid' : 'Collected') + '</button>') + '</div></div>';
         }).join('');
     });
   }
+  // Move-in money already in: pay the landlord now, rather than waiting for the tenancy start date.
+  // Marks the first rent collected (today) and the landlord paid, in one go.
+  function payNowBtn(x){
+    if (!(x.to_landlord > 0.004)) return '<span class="muted-note" style="margin:0;font-size:.78rem">Nothing to pay the landlord</span>';
+    return '<button type="button" class="btn small primary" data-paynow="' + x.tenancy_id + '|' + x.from + '" data-rent="' + x.rent + '" data-toll="' + x.to_landlord + '" data-ll="' + esc(x.pay_to || x.landlord || 'the landlord') + '" data-paddr="' + esc(shortAddr(x.address)) + '">💸 Pay landlord now · ' + gbp(x.to_landlord) + '</button>';
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-paynow]'); if (!b) return;
+    var a = b.dataset.paynow.split('|'), toLl = Number(b.dataset.toll) || 0, rent = Number(b.dataset.rent) || 0;
+    var ref = prompt('Send ' + gbp(toLl) + ' to ' + b.dataset.ll + ' for ' + b.dataset.paddr + ' now?\n\nThe move-in money is in, so the first rent (due ' + longDay(a[1]) + ') is marked collected today and the landlord paid.\n\nPayment reference (optional):', '');
+    if (ref === null) return;
+    busy(b, true, 'Saving…');
+    api('POST', '/api/admin/tenancies/' + a[0] + '/rent-collected', { from: a[1], amount: rent, due: rent, who: 'Move-in money' }).then(function(d){
+      if (!d || !d.ok) throw new Error('collect');
+      return api('POST', '/api/admin/tenancies/' + a[0] + '/landlord-paid', { from: a[1], amount: toLl, ref: ref });
+    }).then(function(d){
+      busy(b, false); if (!d || !d.ok) { toast('Couldn’t save that'); return; }
+      toast('✓ ' + gbp(toLl) + ' marked as paid to ' + b.dataset.ll + ' — it’s on their statement');
+      loadStatements(); if (rbShown()) loadRentBoard(true);
+      var rc = b.parentNode && b.parentNode.closest('[data-addr]'); if (rc && rc.dataset.addr) rentCardLoad(rc, rc.dataset.addr, rc.dataset.tid);
+    })['catch'](function(){ busy(b, false); toast('Couldn’t save that — please try again'); });
+  });
   function rentCardClick(e){
     var box = e.currentTarget, reload = function(){ loadStatements(); rentCardLoad(box, box.dataset.addr, box.dataset.tid); if (rbShown()) loadRentBoard(true); };
     var un = e.target.closest('[data-prop-uncollect]');
@@ -14866,7 +14888,7 @@
       var k = x.tenancy_id + '|' + x.from, mi = x.status === 'movein', pre = !x.collected && x.movein && x.movein.left <= 0.004;   // move-in money paid ahead of the start
       if (pre) return '<div class="rb-line rb-' + x.status + '"><span class="rb-pickpad"></span>' + day(x) +
         '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + 'New tenancy · move-in money paid ✓ · rent due ' + esc(rbDay(x.from)) + ' · ' + more(k) + '</div>' + details(x, k) + '</div>' +
-        '<div class="rb-amt">' + gbp(x.rent) + '<small>due ' + esc(rbDay(x.from)) + '</small></div><div class="rb-btn"><span class="muted-note" style="margin:0;font-size:.78rem">Landlord payment comes up on ' + esc(rbDay(x.from)) + '</span></div></div>';
+        '<div class="rb-amt">' + gbp(x.rent) + '<small>due ' + esc(rbDay(x.from)) + '</small></div><div class="rb-btn">' + payNowBtn(x) + '</div></div>';
       return '<div class="rb-line rb-' + x.status + '">' + (mi ? '<span class="rb-pickpad"></span>' : '<input type="checkbox" class="rb-pick" data-rb-cpick="' + k + '"' + (rbSelC[k] ? ' checked' : '') + ' aria-label="Select">') + day(x) +
         '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div>' +
           '<div class="rb-sub">' + svcTag(x.service) + (mi ? 'New tenancy · move-in money <b>' + gbp(x.movein.paid) + '</b> of ' + gbp(x.movein.due) + ' paid' : x.status === 'overdue' ? '<span class="rb-late">' + Math.round((parseDay(today) - parseDay(x.from)) / 86400000) + ' days late</span>' : esc(x.tenants[0] || x.landlord || '')) + ' · ' + more(k) +
