@@ -171,7 +171,7 @@ const noCache = function (res, p) { if (/\.html$/.test(p)) res.setHeader('Cache-
 // Website photos and logos rarely change: let browsers keep them (faster pages, better search ranking).
 app.use('/img', express.static(path.join(__dirname, 'img'), { maxAge: '30d', index: false }));
 // The app's own server code, settings and notes aren't for download — only the files pages use.
-const NOT_PUBLIC = /^\/(node_modules|cloudflare)(\/|$)|^\/(server|jobs|listings|visits|tenancy|outlook|news|updates|portaldemo|areas|areas-data|svcareas|voice|calls)\.js$|^\/data(\/|$)|^\/(package(-lock)?|railpack|landlord-terms)\.json$|\.md$/i;
+const NOT_PUBLIC = /^\/(node_modules|cloudflare)(\/|$)|^\/(server|jobs|listings|visits|tenancy|outlook|news|updates|portaldemo|areas|areas-data|svcareas|voice|calls|leads)\.js$|^\/data(\/|$)|^\/(package(-lock)?|railpack|landlord-terms)\.json$|\.md$/i;
 app.use(function (req, res, next) { if (NOT_PUBLIC.test(req.path)) return res.status(404).send('Not found'); next(); });
 app.use(express.static(__dirname, { setHeaders: noCache, index: false }));
 
@@ -471,6 +471,8 @@ require('./rivals')(app, { tools: listings.rmTools, gnomenFor: function (rows) {
   alert: function (b) { const base = process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : ''); return jobs.ntfy(Object.assign({ click: base ? base + '/admin#avail' : undefined }, b)); },
   email: function (subject, textFor, hash) { return jobs.ownerEmail(subject, textFor, hash); } });
 require('./calls')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, canManage: function (req) { return jobs.canManage(req); } });
+// Applicant leads from outside the website (Rightmove's datafeed, or any service posting to /hooks/leads/<key>).
+require('./leads')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, canManage: function (req) { return jobs.canManage(req); } });
 // Out-of-hours phone answering (Twilio + Claude): calls become Website leads.
 require('./voice')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, teamAlert: function (b, h) { return jobs.teamAlert(b, h); }, staffEmailAll: function (s, t, h) { return jobs.staffEmailAll(s, t, h); }, ownerEmail: function (s, t, h) { return jobs.ownerEmail(s, t, h); }, ntfy: function (b) { return jobs.ntfy(b); } });
 // The same photo on more than one property: tell the office once per new case, so it can be removed in Gnomen.

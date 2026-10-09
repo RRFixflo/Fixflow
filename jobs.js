@@ -629,6 +629,10 @@ ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS archived_by TEXT;
 ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS junk BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS archive_unsub BOOLEAN NOT NULL DEFAULT false;
+-- Applicant leads: when the member of staff took it (theirs for 24 hours from their last contact), and
+-- their verdict on the applicant (good / maybe / no).
+ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;
+ALTER TABLE crm_meta ADD COLUMN IF NOT EXISTS verdict TEXT;
 CREATE TABLE IF NOT EXISTS valuations (
   id          SERIAL PRIMARY KEY,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1964,7 +1968,8 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (path === '/available-history' || /^\/available-history\/\d+\/restore$/.test(path)) return true;
     if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;
-    if (path === '/crm' || /^\/crm\/(note|meta|archive|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
+    if (path === '/crm' || /^\/crm\/(note|meta|archive|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
+    if (method === 'GET' && path === '/lead-hook') return true;   // managers only (checked in the route)   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
     if (method === 'GET' && (path === '/site-stats' || path === '/photo-dupes')) return true;
     if (method === 'POST' && (path === '/web-hidden' || path === '/photo-dupes/ok')) return true;   // managers only (checked in the route)
     if (path === '/rivals' || path === '/rivals/run' || /^\/rivals\/\d+\/dismiss$/.test(path) || path === '/nearby' || path === '/nearby/run' || /^\/nearby\/\d+\/dismiss$/.test(path)) return true;   // managers only (checked in the route)
@@ -10713,6 +10718,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   app.post('/api/admin/valuation-requests/:id', withDb(async function (p, req, res) {
     const st = String((req.body || {}).status || ''); if (['new', 'contacted', 'booked', 'won', 'lost'].indexOf(st) === -1) return res.status(400).json({ ok: false, error: 'status' });
+    const blk = await applBlocked(p, req, 'vr:' + jobId(req)); if (blk) return res.status(409).json(heldMsg(blk));
+    await applClaim(p, req, 'vr:' + jobId(req));
     const r = await p.query('UPDATE valuation_requests SET status = $2, handled_at = CASE WHEN $2 = \'new\' THEN NULL ELSE now() END, handled_by = $3 WHERE id = $1 RETURNING id', [jobId(req), st, req.user ? req.user.name : 'Office']);
     if (r.rows.length) await crmLog(p, 'vr:' + jobId(req), 'Status: ' + ({ new: 'New', contacted: 'Contacted', booked: 'Booked', won: 'Won ✓', lost: 'Not going ahead' }[st]), req);
     res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
@@ -10846,6 +10853,41 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // ---------- Contacts (CRM): every website request, landlord alert sign-up and contact added by staff ----------
   function crmLog(p, ref, note, req, auto) { return p.query('INSERT INTO crm_notes (ref, note, by_name, auto) VALUES ($1, $2, $3, $4)', [ref, String(note).slice(0, 4000), req && req.user ? req.user.name : 'Office', auto !== false]).catch(function () {}); }
   const CRM_REF = /^(vr|sub):\d+$/;
+  // Applicant leads (the Leads page): viewing requests, Rightmove and other portal leads, "looking to rent / buy"
+  // messages, applicants added by staff and out-of-hours calls about renting or buying. Each is the
+  // assigned member of staff's for 24 hours from their last contact (a note, call log or status change by
+  // them); after that anyone can take it. Managers can always reassign.
+  const APPL_HOLD = 24 * 3600000;
+  function isApplicant(d) {
+    d = d || {};
+    return d.kind === 'viewing' || d.kind === 'rightmove' || d.kind === 'lead' || ((d.kind === 'enquiry' || d.kind === 'contact') && /^(looking to rent|buying|applicant|buyer)$/i.test(String(d.topic || ''))) ||
+      (d.kind === 'call' && /^(renting|buying)$/.test(String(d.category || '')));
+  }
+  async function applHold(p, ref) {
+    if (!/^vr:\d+$/.test(ref)) return null;
+    const v = (await p.query('SELECT data FROM valuation_requests WHERE id = $1', [+ref.slice(3)])).rows[0];
+    if (!v || !isApplicant(v.data)) return null;
+    const m = (await p.query('SELECT assigned_to, claimed_at FROM crm_meta WHERE ref = $1', [ref])).rows[0] || {};
+    if (!m.assigned_to) return { applicant: true, who: '', held: false };
+    const last = (await p.query('SELECT max(at) AS at FROM crm_notes WHERE ref = $1 AND by_name = $2', [ref, m.assigned_to])).rows[0].at;
+    const t = Math.max(m.claimed_at ? new Date(m.claimed_at).getTime() : 0, last ? new Date(last).getTime() : 0);
+    return { applicant: true, who: m.assigned_to, until: new Date(t + APPL_HOLD).toISOString(), held: t + APPL_HOLD > Date.now() };
+  }
+  // Someone else's applicant (still within their 24 hours): only they or a manager can act on it.
+  async function applBlocked(p, req, ref) {
+    const h = await applHold(p, ref), me = req.user ? req.user.name : 'Office';
+    if (h && h.held && h.who !== me && !canManageUsers(req)) return h;
+    return null;
+  }
+  // A member of staff working an applicant nobody holds takes it.
+  async function applClaim(p, req, ref) {
+    if (!req.user || !req.user.name) return;
+    const h = await applHold(p, ref); if (!h || h.held) return;
+    await p.query('INSERT INTO crm_meta (ref, assigned_to, claimed_at) VALUES ($1, $2, now()) ON CONFLICT (ref) DO UPDATE SET assigned_to = $2, claimed_at = now()', [ref, req.user.name]);
+    await p.query('UPDATE valuation_requests SET assigned_to = $2 WHERE id = $1', [+ref.slice(3), req.user.name]);
+    await crmLog(p, ref, (h.who ? 'Taken over by ' + req.user.name + ' (no contact from ' + h.who + ' for 24 hours)' : 'Taken by ' + req.user.name), req);
+  }
+  const heldMsg = function (h) { return { ok: false, error: 'held', who: h.who, until: h.until }; };
   // Junk: senders staff have marked as junk (app_settings 'crm_junk'), and anyone sending more than 3 requests
   // in a day, go straight to the Junk folder (archived, flagged junk) — no alerts. Staff can put them back.
   const junkTail = function (v) { return String(v || '').replace(/\D/g, '').slice(-10); };
@@ -10889,6 +10931,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.post('/api/admin/crm/note', withDb(async function (p, req, res) {
     const b = req.body || {}, ref = String(b.ref || ''), note = str(b.note, 4000);
     if (!CRM_REF.test(ref) || !note) return res.status(400).json({ ok: false });
+    const blk = await applBlocked(p, req, ref); if (blk) return res.status(409).json(heldMsg(blk));
+    await applClaim(p, req, ref);
     await crmLog(p, ref, note, req, false);
     res.json({ ok: true });
   }));
@@ -10898,8 +10942,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!CRM_REF.test(ref)) return res.status(400).json({ ok: false });
     const who = b.assigned_to !== undefined ? (str(b.assigned_to, 120) || null) : undefined, fu = b.follow_up !== undefined ? (/^\d{4}-\d{2}-\d{2}$/.test(String(b.follow_up || '')) ? b.follow_up : null) : undefined;
     const old = (await p.query('SELECT * FROM crm_meta WHERE ref = $1', [ref])).rows[0] || {};
+    const blk = await applBlocked(p, req, ref); if (blk) return res.status(409).json(heldMsg(blk));
+    // The verdict on an applicant, with the reason (kept as a note by whoever gave it).
+    if (b.verdict !== undefined) {
+      const v = ['good', 'maybe', 'no'].indexOf(b.verdict) !== -1 ? b.verdict : null, why = str(b.reason, 2000);
+      if (v && !why) return res.status(400).json({ ok: false, error: 'reason' });
+      await applClaim(p, req, ref);
+      await p.query('INSERT INTO crm_meta (ref, verdict) VALUES ($1, $2) ON CONFLICT (ref) DO UPDATE SET verdict = $2', [ref, v]);
+      await crmLog(p, ref, v ? 'Verdict: ' + { good: '✅ Good applicant', maybe: '🤔 Maybe', no: '❌ Not suitable' }[v] + ' — ' + why : 'Verdict cleared', req, false);
+      if (b.assigned_to === undefined && b.follow_up === undefined) return res.json({ ok: true });
+    }
     const next = { assigned_to: who !== undefined ? who : old.assigned_to || null, follow_up: fu !== undefined ? fu : (old.follow_up ? new Date(old.follow_up).toISOString().slice(0, 10) : null) };
     await p.query('INSERT INTO crm_meta (ref, assigned_to, follow_up) VALUES ($1, $2, $3) ON CONFLICT (ref) DO UPDATE SET assigned_to = $2, follow_up = $3', [ref, next.assigned_to, next.follow_up]);
+    if (who !== undefined && who !== (old.assigned_to || null)) await p.query('UPDATE crm_meta SET claimed_at = ' + (who ? 'now()' : 'NULL') + ' WHERE ref = $1', [ref]);
     if (ref.indexOf('vr:') === 0) await p.query('UPDATE valuation_requests SET assigned_to = $2, follow_up = $3 WHERE id = $1', [+ref.slice(3), next.assigned_to, next.follow_up]);
     if (who !== undefined && who !== (old.assigned_to || null)) await crmLog(p, ref, who ? 'Assigned to ' + who : 'No longer assigned', req);
     if (fu !== undefined) await crmLog(p, ref, fu ? 'Follow up on ' + new Date(fu + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Follow-up cleared', req);

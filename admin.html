@@ -513,7 +513,7 @@
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
   body:not(.staff-mode) #navAlerts { display: none !important; }
-  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCrm):not(#navWeb):not(#navCalls):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
@@ -732,6 +732,7 @@
   .crm-tile { text-align: left; border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 14px; padding: 10px 12px; cursor: pointer; font: inherit; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; color: var(--ink); }
   .crm-tile span { grid-row: span 2; font-size: 1.4rem; } .crm-tile b { font-size: 1.3rem; line-height: 1.1; } .crm-tile small { color: var(--ink-soft); font-size: .78rem; }
   .crm-tile.hot b { color: #b42318; } .crm-tile.on { border-color: var(--navy, #0b1f3a); box-shadow: 0 0 0 2px var(--navy, #0b1f3a) inset; }
+  .crm-appl { border: 1px solid #d0d5dd; background: #f9fafb; border-radius: 10px; padding: 10px 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .crm-appl-own { font-size: .9rem; line-height: 1.4; } .crm-verdict { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; font-weight: 600; width: 100%; max-width: 320px; } .crm-hook { margin-bottom: 12px; } .crm-hook summary { cursor: pointer; font-weight: 600; }
   .crm-bar { display: flex; gap: 8px; flex-wrap: wrap; } .crm-bar #crmQ { flex: 1; min-width: 200px; } .crm-bar select { width: auto; }
   .crm-add { border-top: 1px solid var(--line, #eef0f3); margin-top: 10px; padding-top: 12px; } .crm-wide { grid-column: 1 / -1; }
   .crm-card { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 14px; margin-top: 8px; overflow: hidden; } .crm-card.is-new { border-left: 4px solid #b42318; }
@@ -1713,7 +1714,8 @@
     <button class="nav" type="button" id="navLt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg> Landlord Terms <span class="count-chip" id="sLt" hidden></span></button>
     <button class="nav" type="button" id="navEmail" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
     <button class="nav" type="button" id="navNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
-    <button class="nav" type="button" id="navCrm" title="Every website request, viewing request, alert sign-up and contact"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17c.8-2 2.4-3 4.5-3s3.7 1 4.5 3"/></svg> Website leads <span class="badge hot" id="sCrm" hidden></span></button>
+    <button class="nav" type="button" id="navLeads" title="Applicants: website viewing requests, Rightmove and other portal leads, people looking to rent or buy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.9-3.3 3.3-5 6.5-5s5.6 1.7 6.5 5"/><path d="M17 8h5M19.5 5.5v5"/></svg> Leads <span class="badge hot" id="sLeads" hidden></span></button>
+    <button class="nav" type="button" id="navCrm" title="Landlord and other website requests, alert sign-ups and contacts (applicants are under Leads)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17c.8-2 2.4-3 4.5-3s3.7 1 4.5 3"/></svg> Website leads <span class="badge hot" id="sCrm" hidden></span></button>
     <button class="nav" type="button" id="navWeb" title="Who visits the website and what they look at"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg> Website visitors</button>
     <button class="nav" type="button" id="navCalls" title="Who has called the office"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg> Calls</button>
     <button class="nav" type="button" id="navAct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Activity</button>
@@ -2049,7 +2051,7 @@
         </details>
       </div>
 
-      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="crm">📇 Website leads <span class="st-n" id="stCrmN" hidden></span></button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="web" id="stWeb" hidden>📈 Visitors</button><button type="button" data-stab="calls">📞 Calls</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
+      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="appl">🙋 Leads <span class="st-n" id="stApplN" hidden></span></button><button type="button" data-stab="crm">📇 Website leads <span class="st-n" id="stCrmN" hidden></span></button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="web" id="stWeb" hidden>📈 Visitors</button><button type="button" data-stab="calls">📞 Calls</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
       <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto;max-width:100%;min-width:0"><option value="">Everyone</option></select><button type="button" class="btn small ghost" id="teamFeedMin">Minimise</button></div><div id="teamFeed"></div></div>
@@ -2106,6 +2108,7 @@
             <div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="btn primary" id="caSave">Save lead</button><button type="button" class="btn ghost" id="caCancel">Cancel</button></div>
           </div>
         </div>
+        <details class="card crm-hook" id="crmHook" hidden><summary>🔌 Connect Rightmove and other portals</summary><div id="crmHookBody" class="muted-note">Loading…</div></details>
         <div id="crmList"></div>
       </div>
       <div id="availView" hidden>
@@ -4360,7 +4363,7 @@
     if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
-    if (staffMode && v !== 'web' && v !== 'calls' && v !== 'crm' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
+    if (staffMode && v !== 'web' && v !== 'calls' && v !== 'crm' && v !== 'appl' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -4378,7 +4381,8 @@
     $('ctsView').hidden = v !== 'cts';
     $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
     $('availView').hidden = v !== 'avail'; $('navAvail').classList.toggle('on', v === 'avail');
-    $('crmView').hidden = v !== 'crm'; $('navCrm').classList.toggle('on', v === 'crm'); crmNag(); if ($('crmBulk')) crmSelDraw();
+    if (v === 'crm' || v === 'appl') { if (crm.mode !== v) { crm.type = ''; crm.tile = ''; crmSel = {}; } crm.mode = v; }
+    $('crmView').hidden = v !== 'crm' && v !== 'appl'; $('navCrm').classList.toggle('on', v === 'crm'); $('navLeads').classList.toggle('on', v === 'appl'); crmNag(); if ($('crmBulk')) crmSelDraw();
     $('webView').hidden = v !== 'web'; $('navWeb').classList.toggle('on', v === 'web');
     $('callsView').hidden = v !== 'calls'; $('navCalls').classList.toggle('on', v === 'calls');
     // Sent emails: its own tab for staff; inside the Activity page for the owner.
@@ -4394,12 +4398,12 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', avail: 'Available properties', calls: 'Calls', crm: 'Website leads', web: 'Website visitors', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { appl: 'Leads', jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', avail: 'Available properties', calls: 'Calls', crm: 'Website leads', web: 'Website visitors', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') { loadLt(); if (!loadVr.done) { loadVr.done = true; loadVr(); } else renderVr(); }
     if (v === 'avail') loadAvail();
-    if (v === 'crm') loadCrm();
+    if (v === 'crm' || v === 'appl') loadCrm();
     if (v === 'web') loadWeb();
     if (v === 'calls') loadCalls();
     if (v === 'sent' || (v === 'act' && !staffMode)) loadSent();
@@ -4438,10 +4442,11 @@
   })();
 
   // ---------- Menu order (each person arranges their own) ----------
-  var NAV_IDS = ['navJobs', 'navLandlords', 'navProps', 'navTcy', 'navTenants', 'contractorsBtn', 'navOffers', 'navAvail', 'navCerts', 'navPay', 'navLt', 'navEmail', 'navNew', 'navCrm', 'navWeb', 'navCalls', 'navAct'];
+  var NAV_IDS = ['navJobs', 'navLandlords', 'navProps', 'navTcy', 'navTenants', 'contractorsBtn', 'navOffers', 'navAvail', 'navCerts', 'navPay', 'navLt', 'navEmail', 'navNew', 'navLeads', 'navCrm', 'navWeb', 'navCalls', 'navAct'];
   function navApply(order){
     var anchor = $('navRepLink'), par = anchor.parentNode, seen = {};
-    (order || []).concat(NAV_IDS).forEach(function(id){ if (seen[id] || NAV_IDS.indexOf(id) === -1 || !$(id)) return; seen[id] = 1; par.insertBefore($(id), anchor); });
+    order = (order || []).slice(); if (order.indexOf('navLeads') === -1 && order.indexOf('navCrm') !== -1) order.splice(order.indexOf('navCrm'), 0, 'navLeads');   // new in the menu: next to Website leads
+    order.concat(NAV_IDS).forEach(function(id){ if (seen[id] || NAV_IDS.indexOf(id) === -1 || !$(id)) return; seen[id] = 1; par.insertBefore($(id), anchor); });
   }
   function navCurrent(){ return Array.prototype.map.call(document.querySelectorAll('.side .nav'), function(b){ return b.id; }).filter(function(id){ return NAV_IDS.indexOf(id) !== -1; }); }
   function navLoadOrder(){ if (!meta.db) return; api('GET', '/api/admin/me/nav-order').then(function(d){ if (d && d.ok && d.order) navApply(d.order); }); }
@@ -8837,7 +8842,8 @@
     api('POST', '/api/admin/listings-refresh', {}).then(function(d){ busy(b, false); toast(d && d.ok ? '✓ Website updated from Gnomen — ' + d.let + ' to rent, ' + d.sale + ' for sale' : 'Couldn’t update the website just now'); });
   });
   // ---------- Contacts (CRM): every website request, viewing request, landlord alert sign-up and contact staff add ----------
-  var crm = { items: [], staff: [], me: '', type: '', open: {} }, CRM_T = {
+  var crm = { items: [], staff: [], me: '', type: '', open: {}, mode: 'crm' }, CRM_T = {
+    rm: ['🏠', 'Rightmove', '#0e7a64', '#e6fbf6'], lead: ['📥', 'Portal lead', '#0e7a64', '#e6fbf6'],
     viewing: ['🗓', 'Viewing request', '#b54708', '#fffaeb'], val: ['🏠', 'Rental valuation', '#5925dc', '#f4f3ff'], sale: ['🏷️', 'Sales valuation', '#5925dc', '#f4f3ff'], quick: ['⚡', 'Quick valuation', '#5925dc', '#f4f3ff'],
     cert: ['📜', 'Certificate booking', '#c4320a', '#fff6ed'], comps: ['📊', 'Comparables report', '#6941c6', '#f4f3ff'], enquiry: ['💬', 'Message', '#175cd3', '#eff8ff'], contact: ['📇', 'Added by staff', '#344054', '#f2f4f7'], call: ['📞', 'Out-of-hours call', '#b42318', '#fef3f2'], sub: ['🔔', 'Alert sign-up', '#067647', '#ecfdf3'] };
   var CRM_ST = { new: ['New', '#b42318'], contacted: ['Contacted', '#175cd3'], booked: ['Booked', '#6941c6'], won: ['Won ✓', '#067647'], lost: ['Not going ahead', '#667085'] };
@@ -8853,17 +8859,34 @@
       (d.meta || []).forEach(function(m){ mt[m.ref] = m; });
       crm.staff = d.staff || []; crm.me = d.me || ''; crm.manager = !!d.manager;
       crm.items = (d.items || []).map(function(x){ var dd = x.data || {}, ref = 'vr:' + x.id, m = mt[ref] || {};
-        return { ref: ref, id: x.id, type: dd.kind === 'viewing' ? 'viewing' : dd.kind === 'cert' ? 'cert' : dd.kind === 'sale' ? 'sale' : dd.kind === 'quick' ? 'quick' : dd.kind === 'comps' ? 'comps' : dd.kind === 'enquiry' ? 'enquiry' : dd.kind === 'contact' ? 'contact' : dd.kind === 'call' ? 'call' : 'val',
-          name: x.name, email: x.email, phone: x.phone, address: /^\(/.test(x.address) ? '' : x.address, status: x.status, at: x.created_at, data: dd, by: x.handled_by, archived: m.archived_at || null, junk: !!m.junk, archivedBy: m.archived_by || '', assigned: m.assigned_to || x.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : x.follow_up ? crmDay(x.follow_up) : '', notes: notes[ref] || [] }; })
+        return { ref: ref, id: x.id, type: dd.kind === 'viewing' ? 'viewing' : dd.kind === 'cert' ? 'cert' : dd.kind === 'sale' ? 'sale' : dd.kind === 'quick' ? 'quick' : dd.kind === 'comps' ? 'comps' : dd.kind === 'enquiry' ? 'enquiry' : dd.kind === 'contact' ? 'contact' : dd.kind === 'call' ? 'call' : dd.kind === 'rightmove' ? 'rm' : dd.kind === 'lead' ? 'lead' : 'val',
+          name: x.name, email: x.email, phone: x.phone, address: /^\(/.test(x.address) ? '' : x.address, status: x.status, at: x.created_at, data: dd, by: x.handled_by, archived: m.archived_at || null, junk: !!m.junk, archivedBy: m.archived_by || '', assigned: m.assigned_to || x.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : x.follow_up ? crmDay(x.follow_up) : '', notes: notes[ref] || [], claimed: m.claimed_at || null, verdict: m.verdict || '' }; })
         .concat((d.subs || []).map(function(x){ var ref = 'sub:' + x.id, m = mt[ref] || {};
           return { ref: ref, id: x.id, type: 'sub', archived: m.archived_at || null, junk: !!m.junk, archivedBy: m.archived_by || '', name: x.name || x.email, email: x.email, phone: '', address: '', status: x.unsubscribed_at ? 'lost' : x.confirmed_at ? 'won' : 'new', subSt: x.unsubscribed_at ? 'Unsubscribed' : x.confirmed_at ? 'Subscribed' : 'Waiting for them to confirm', at: x.created_at, data: { freq: x.freq, sent: x.sent_count, last: x.last_sent_at }, assigned: m.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : '', notes: notes[ref] || [] }; }))
         .sort(function(a, b){ return new Date(b.at) - new Date(a.at); });
-      var nNeed = crm.items.filter(crmNeed).length;
+      var nNeed = crm.items.filter(function(x){ return !isAppl(x) && crmNeed(x); }).length, nAppl = crm.items.filter(function(x){ return isAppl(x) && crmNeed(x); }).length;
       $('sCrm').hidden = !nNeed; $('sCrm').textContent = nNeed; $('stCrmN').hidden = !nNeed; $('stCrmN').textContent = nNeed;
+      $('sLeads').hidden = !nAppl; $('sLeads').textContent = nAppl; $('stApplN').hidden = !nAppl; $('stApplN').textContent = nAppl;
       crmNag();
-      if (!quiet || view === 'crm') renderCrm();
+      if (!quiet || view === 'crm' || view === 'appl') renderCrm();
     }).catch(function(){});
   }
+  // Applicants (the Leads page): viewing requests, Rightmove and portal leads, people looking to rent or buy.
+  function isAppl(x){
+    var d = x.data || {};
+    return x.type === 'viewing' || x.type === 'rm' || x.type === 'lead' || ((x.type === 'enquiry' || x.type === 'contact') && /^(looking to rent|buying|applicant|buyer)$/i.test(String(d.topic || ''))) ||
+      (x.type === 'call' && /^(renting|buying)$/.test(String(d.category || '')));
+  }
+  // An applicant is the assigned member of staff's for 24 hours from their last contact; then anyone can take it.
+  function applHold(x){
+    if (!x.assigned) return { who: '', held: false };
+    var t = x.claimed ? new Date(x.claimed).getTime() : 0;
+    x.notes.forEach(function(n){ if (n.by_name === x.assigned) t = Math.max(t, new Date(n.at).getTime()); });
+    var left = t + 24 * 3600000 - Date.now();
+    return { who: x.assigned, held: left > 0, left: left, since: Date.now() - t };
+  }
+  function applLocked(x){ var h = applHold(x); return isAppl(x) && h.held && h.who !== crm.me && !crm.manager; }
+  var VERDICT = { good: ['✅', 'Good applicant', '#067647'], maybe: ['🤔', 'Maybe', '#b54708'], no: ['❌', 'Not suitable', '#b42318'] };
   // Everyone on the list should hear from us: what's still owed to a lead (nothing when they're fine).
   function crmNeed(x){
     if (x.archived || x.type === 'sub' || x.status === 'won' || x.status === 'lost') return '';
@@ -8877,23 +8900,26 @@
   function crmAgo(ms){ var h = Math.floor(ms / 3600000); return h < 48 ? h + 'h' : Math.floor(h / 24) + ' days'; }
   function crmNag(){
     var b = $('crmNag'); if (!b) return; var n = crm.items.filter(crmNeed);
-    b.hidden = !n.length || view === 'crm';
+    b.hidden = !n.length || view === 'crm' || view === 'appl';
     if (!b.hidden) b.innerHTML = '<span>📣 <b>' + n.length + ' website lead' + (n.length === 1 ? '' : 's') + ' need contacting or an update.</b> Everyone on the list should hear from us.</span><button type="button" class="btn small primary" data-crm-nag>Open website leads →</button>';
   }
-  document.addEventListener('click', function(e){ if (e.target.closest('[data-crm-nag]')) { crm.tile = 'attn'; crm.type = ''; showView('crm'); } });
+  document.addEventListener('click', function(e){ if (e.target.closest('[data-crm-nag]')) { var ap = crm.items.some(function(x){ return isAppl(x) && crmNeed(x); }); showView(ap ? 'appl' : 'crm'); crm.tile = 'attn'; crm.type = ''; renderCrm(); } });
   function crmOpenItem(x){ return x.type !== 'sub' && (x.status === 'new' || x.status === 'contacted' || (x.status === 'booked' && x.type !== 'viewing')); }
   function renderCrm(){
-    var today = crmToday(), archived = crm.items.filter(function(x){ return x.archived && !x.junk; }), junked = crm.items.filter(function(x){ return x.junk; }), all = crm.type === 'archive' ? archived : crm.type === 'junk' ? junked : crm.items.filter(function(x){ return !x.archived; });
-    var live = crm.items.filter(function(x){ return !x.archived; });
+    var appl = crm.mode === 'appl', base = crm.items.filter(function(x){ return appl ? isAppl(x) : !isAppl(x); });
+    $('crmHook').hidden = !appl || !crm.manager; if (appl && crm.manager) loadLeadHook();
+    $('crmView').classList.toggle('is-appl', appl);
+    var today = crmToday(), archived = base.filter(function(x){ return x.archived && !x.junk; }), junked = base.filter(function(x){ return x.junk; }), all = crm.type === 'archive' ? archived : crm.type === 'junk' ? junked : base.filter(function(x){ return !x.archived; });
+    var live = base.filter(function(x){ return !x.archived; }), openAppl = appl ? live.filter(function(x){ return crmOpenItem(x) && !applHold(x).held; }) : [];
     var due = live.filter(function(x){ return x.follow && x.follow <= today && x.status !== 'won' && x.status !== 'lost'; }), nNew = live.filter(crmNeed),
       toConfirm = live.filter(function(x){ return x.type === 'viewing' && !x.data.confirmed && x.status !== 'lost'; }), subs = live.filter(function(x){ return x.type === 'sub' && x.subSt === 'Subscribed'; });
-    $('crmTiles').innerHTML = [['attn', '📣', nNew.length, 'Need contacting or an update'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm'], ['subs', '🔔', subs.length, 'Landlords getting alerts']].map(function(t){
+    $('crmTiles').innerHTML = (appl ? [['attn', '📣', nNew.length, 'Need contacting or an update'], ['free', '🔓', openAppl.length, 'Open to anyone'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm']] : [['attn', '📣', nNew.length, 'Need contacting or an update'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm'], ['subs', '🔔', subs.length, 'Landlords getting alerts']]).map(function(t){
       return '<button type="button" class="crm-tile' + (crm.tile === t[0] ? ' on' : '') + (t[2] && t[0] !== 'subs' ? ' hot' : '') + '" data-crm-tile="' + t[0] + '"><span>' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></button>'; }).join('');
     var counts = {}; live.forEach(function(x){ counts[x.type] = (counts[x.type] || 0) + 1; });
-    $('crmTypes').innerHTML = '<button type="button" data-crm-type=""' + (crm.type ? '' : ' class="on"') + '>All ' + live.length + '</button>' + ['call', 'viewing', 'cert', 'val', 'sale', 'quick', 'enquiry', 'contact', 'sub'].filter(function(k){ return counts[k]; }).map(function(k){ return '<button type="button" data-crm-type="' + k + '"' + (crm.type === k ? ' class="on"' : '') + '>' + CRM_T[k][0] + ' ' + ({ call: 'Out-of-hours calls', viewing: 'Viewings', cert: 'Certificate bookings', val: 'Rental valuations', sale: 'Sales valuations', quick: 'Quick valuations', enquiry: 'Messages', contact: 'Added by staff', sub: 'Alert sign-ups' }[k]) + ' ' + counts[k] + '</button>'; }).join('') + (archived.length ? '<span class="av-sep"></span><button type="button" data-crm-type="archive"' + (crm.type === 'archive' ? ' class="on"' : '') + '>🗄 Archive ' + archived.length + '</button>' : '') + (junked.length ? '<button type="button" data-crm-type="junk"' + (crm.type === 'junk' ? ' class="on"' : '') + '>🚫 Junk ' + junked.length + '</button>' : '');
+    $('crmTypes').innerHTML = '<button type="button" data-crm-type=""' + (crm.type ? '' : ' class="on"') + '>All ' + live.length + '</button>' + (appl ? ['rm', 'lead', 'viewing', 'enquiry', 'call', 'contact'] : ['call', 'viewing', 'cert', 'val', 'sale', 'quick', 'enquiry', 'contact', 'sub']).filter(function(k){ return counts[k]; }).map(function(k){ return '<button type="button" data-crm-type="' + k + '"' + (crm.type === k ? ' class="on"' : '') + '>' + CRM_T[k][0] + ' ' + ({ rm: 'Rightmove', lead: 'Other portals', call: 'Out-of-hours calls', viewing: 'Viewings', cert: 'Certificate bookings', val: 'Rental valuations', sale: 'Sales valuations', quick: 'Quick valuations', enquiry: 'Messages', contact: 'Added by staff', sub: 'Alert sign-ups' }[k]) + ' ' + counts[k] + '</button>'; }).join('') + (archived.length ? '<span class="av-sep"></span><button type="button" data-crm-type="archive"' + (crm.type === 'archive' ? ' class="on"' : '') + '>🗄 Archive ' + archived.length + '</button>' : '') + (junked.length ? '<button type="button" data-crm-type="junk"' + (crm.type === 'junk' ? ' class="on"' : '') + '>🚫 Junk ' + junked.length + '</button>' : '');
     var q = $('crmQ').value.trim().toLowerCase(), qd = q.replace(/\D/g, ''), st = $('crmSt').value, who = $('crmWho').value;
     var list = all.filter(function(x){
-      if (crm.tile === 'attn' && nNew.indexOf(x) === -1) return false; if (crm.tile === 'due' && due.indexOf(x) === -1) return false; if (crm.tile === 'confirm' && toConfirm.indexOf(x) === -1) return false; if (crm.tile === 'subs' && subs.indexOf(x) === -1) return false;
+      if (crm.tile === 'attn' && nNew.indexOf(x) === -1) return false; if (crm.tile === 'due' && due.indexOf(x) === -1) return false; if (crm.tile === 'confirm' && toConfirm.indexOf(x) === -1) return false; if (crm.tile === 'free' && openAppl.indexOf(x) === -1) return false; if (crm.tile === 'subs' && subs.indexOf(x) === -1) return false;
       if (crm.type && crm.type !== 'archive' && crm.type !== 'junk' && x.type !== crm.type) return false;
       if (st === 'open' ? !crmOpenItem(x) : st && x.status !== st) return false;
       if (who === 'me' && x.assigned !== crm.me) return false; if (who === 'none' && x.assigned) return false;
@@ -8902,15 +8928,18 @@
       return hay.indexOf(q) !== -1 || (qd.length >= 4 && String(x.phone || '').replace(/\D/g, '').indexOf(qd) !== -1);
     });
     if (crm.tile === 'due') list.sort(function(a, b){ return a.follow < b.follow ? -1 : 1; });
-    $('crmList').innerHTML = list.length ? list.slice(0, 300).map(crmCard).join('') + (list.length > 300 ? '<p class="muted-note">Showing the newest 300 — search to find older ones.</p>' : '') : '<div class="empty">' + (crm.type === 'archive' ? 'Nothing in the archive.' : all.length ? 'Nothing matches.' : 'No leads yet. Website valuation and viewing requests, messages and landlord alert sign-ups all land here — or add one yourself.') + '</div>';
+    $('crmList').innerHTML = list.length ? list.slice(0, 300).map(crmCard).join('') + (list.length > 300 ? '<p class="muted-note">Showing the newest 300 — search to find older ones.</p>' : '') : '<div class="empty">' + (crm.type === 'archive' ? 'Nothing in the archive.' : all.length ? 'Nothing matches.' : (crm.mode === 'appl' ? 'No applicant leads yet. Website viewing requests, people looking to rent or buy, Rightmove leads and applicants you add yourself land here, newest first.' : 'No leads yet. Website valuation and viewing requests, messages and landlord alert sign-ups all land here — or add one yourself.')) + '</div>';
   }
   function crmCard(x){
     var t = x.type === 'cert' && x.data && x.data.who === 'tenant' ? ['🧽', 'Cleaning booking (tenant)', '#067647', '#ecfdf3'] : CRM_T[x.type], d = x.data, st = CRM_ST[x.status] || CRM_ST.new, today = crmToday(), open = !!crm.open[x.ref];
     var tel = x.phone ? String(x.phone).replace(/[^\d+]/g, '') : '', wa = x.phone ? waNumber(x.phone) : '';
     var sub = [x.address ? shortAddr(x.address) : '', x.type === 'sub' ? x.email + ' · ' + ({ instant: 'as it happens', weekly: 'weekly', monthly: 'monthly' }[d.freq] || d.freq) : '', x.type === 'contact' && d.topic ? d.topic : '', x.type === 'enquiry' && d.topic ? d.topic : '', x.type === 'cert' ? (d.items || []).map(function(i){ return i.name.replace(/ —.*/, ''); }).join(' + ') + ' · £' + Number(d.total || 0).toFixed(2) + (d.paid_at ? ' · paid ✓' : '') : '', x.type === 'quick' && d.service ? d.service + ' valuation' : '', fmtShort(x.at)].filter(Boolean);
     var pill = x.type === 'sub' ? '<span class="crm-pill" style="color:' + (x.subSt === 'Subscribed' ? '#067647' : x.subSt === 'Unsubscribed' ? '#667085' : '#b54708') + '">' + x.subSt + '</span>' : '<span class="crm-pill" style="color:' + st[1] + '">' + st[0] + '</span>';
-    var need = crmNeed(x);
-    var flags = (x.archived ? '<span class="crm-flag">🗄 Archived ' + esc(fmtShort(x.archived)) + (x.archivedBy ? ' by ' + esc(x.archivedBy) : '') + '</span>' : '') + (need ? '<span class="crm-flag warn">📣 ' + esc(need) + '</span>' : '') + (x.type === 'viewing' && !d.confirmed && x.status !== 'lost' ? '<span class="crm-flag warn">Time to confirm</span>' : '') + (x.type === 'viewing' && d.confirmed ? '<span class="crm-flag ok">🗓 ' + esc(crmSlot(d.confirmed)) + '</span>' : '') +
+    var need = crmNeed(x), ap = isAppl(x), hold = ap ? applHold(x) : null, hrs = function(ms){ var h = Math.max(1, Math.round(ms / 3600000)); return h < 48 ? h + 'h' : Math.round(h / 24) + ' days'; };
+    var holdFlag = !ap || !crmOpenItem(x) ? '' : hold.held ? '<span class="crm-flag' + (hold.who === crm.me ? ' ok' : '') + '">🔒 ' + (hold.who === crm.me ? 'Yours · ' + hrs(hold.left) + ' left to stay in touch' : esc(hold.who) + '’s applicant · open in ' + hrs(hold.left)) + '</span>'
+      : '<span class="crm-flag warn">🔓 Open to anyone' + (hold.who ? ' · no contact from ' + esc(hold.who) + ' for ' + hrs(hold.since) : '') + '</span>';
+    var vd = ap && VERDICT[x.verdict] ? '<span class="crm-flag" style="color:' + VERDICT[x.verdict][2] + '">' + VERDICT[x.verdict][0] + ' ' + VERDICT[x.verdict][1] + '</span>' : '';
+    var flags = holdFlag + vd + (x.archived ? '<span class="crm-flag">🗄 Archived ' + esc(fmtShort(x.archived)) + (x.archivedBy ? ' by ' + esc(x.archivedBy) : '') + '</span>' : '') + (need ? '<span class="crm-flag warn">📣 ' + esc(need) + '</span>' : '') + (x.type === 'viewing' && !d.confirmed && x.status !== 'lost' ? '<span class="crm-flag warn">Time to confirm</span>' : '') + (x.type === 'viewing' && d.confirmed ? '<span class="crm-flag ok">🗓 ' + esc(crmSlot(d.confirmed)) + '</span>' : '') +
       (x.follow && need !== 'Follow-up due' ? '<span class="crm-flag' + (x.follow <= today && x.status !== 'won' && x.status !== 'lost' ? ' warn' : '') + '">⏰ ' + (x.follow === today ? 'Today' : x.follow < today ? 'Overdue · ' + esc(fmtDateOnly(x.follow)) : esc(fmtDateOnly(x.follow))) + '</span>' : '') + (x.assigned ? '<span class="crm-flag">👤 ' + esc(x.assigned) + '</span>' : '') + (x.notes.filter(function(n){ return !n.auto; }).length ? '<span class="crm-flag">📝 ' + x.notes.filter(function(n){ return !n.auto; }).length + '</span>' : '');
     var acts = (tel ? '<a class="crm-act" href="tel:' + esc(tel) + '" title="Call ' + esc(x.phone) + '">📞<span> Call</span></a>' : '') + (wa ? '<a class="crm-act wa" href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener" title="WhatsApp">💬<span> WhatsApp</span></a>' : '') + (x.email ? '<a class="crm-act" href="mailto:' + esc(x.email) + '" title="Email ' + esc(x.email) + '">✉️<span> Email</span></a>' : '');
     var h = '<div class="crm-card' + (open ? ' open' : '') + (need ? ' is-new' : '') + (x.archived ? ' is-arch' : '') + '" data-crm="' + x.ref + '">' +
@@ -8951,6 +8980,15 @@
         '<textarea class="inp" data-crm-qq-extra rows="2" placeholder="Your own question(s) — one per line, e.g. Would you be happy with a 12-month tenancy?"></textarea><div class="crm-qq-btns">' +
         (x.phone && waNumber(x.phone) ? '<button type="button" class="btn small wa-btn" data-crm-qq="wa">💬 WhatsApp</button>' : '') + (x.email ? '<button type="button" class="btn small" data-crm-qq="email">✉ Email</button>' : '') + '</div></div>';
     }
+    // Applicant: whose it is (24 hours from their last contact), and their verdict with the reason.
+    if (ap) {
+      var mine = hold.held && hold.who === crm.me;
+      h += '<div class="crm-appl"><div class="crm-appl-own">' + (hold.held ? (mine ? '🔒 <b>Your applicant.</b> It stays yours while you keep in touch — every note, call or status change resets the 24 hours (' + hrs(hold.left) + ' left).' : '🔒 <b>' + esc(hold.who) + ' is looking after this applicant</b> — it opens to everyone in ' + hrs(hold.left) + ' if they don’t get in touch.' + (crm.manager ? ' As a manager you can still reassign it.' : ''))
+          : '🔓 <b>Open to anyone.</b> ' + (hold.who ? esc(hold.who) + ' hasn’t been in touch for over 24 hours. ' : '') + 'Take it, or add a note after you contact them, and it’s yours for 24 hours.') + '</div>' +
+        (!hold.held || (crm.manager && !mine) ? '<button type="button" class="btn small primary" data-crm-take>🙋 Take this applicant</button>' : '') +
+        '<label class="crm-verdict">Is this a good applicant?<select class="inp" data-crm-verdict><option value="">Not decided yet</option>' + Object.keys(VERDICT).map(function(k){ return '<option value="' + k + '"' + (x.verdict === k ? ' selected' : '') + '>' + VERDICT[k][0] + ' ' + VERDICT[k][1] + '</option>'; }).join('') + '</select></label>' +
+        '<p class="muted-note" style="margin:4px 0 0">Write why in the note box below first (e.g. affordability, move date, references, who’s moving in). Judge on the facts only — never on benefits, nationality, race, religion, disability, age or family status.</p></div>';
+    }
     // Status, who's looking after it, follow-up.
     h += '<div class="crm-ctl">' + (x.type === 'sub' ? '' : '<label>Status<select class="inp" data-crm-st style="color:' + st[1] + ';font-weight:700">' + Object.keys(CRM_ST).map(function(k){ return '<option value="' + k + '"' + (k === x.status ? ' selected' : '') + '>' + CRM_ST[k][0] + '</option>'; }).join('') + '</select></label>') +
       '<label>Looked after by<select class="inp" data-crm-who><option value="">Nobody yet</option>' + crm.staff.concat(crm.me && crm.staff.indexOf(crm.me) === -1 ? [crm.me] : []).concat(x.assigned && crm.staff.indexOf(x.assigned) === -1 && x.assigned !== crm.me ? [x.assigned] : []).map(function(n){ return '<option' + (n === x.assigned ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select></label>' +
@@ -8961,6 +8999,7 @@
       '<p class="muted-note" style="margin:6px 0 0">Came in ' + esc(fmtShort(x.at)) + (x.type === 'sub' ? ' · signed up on the website' : '') + '</p></div>';
     h += '<div class="crm-arch">' + (x.archived ? '<button type="button" class="btn small" data-crm-restore>' + (x.junk ? '↩︎ Not junk — put it back' : '↩︎ Put back from the archive') + '</button>' : '<button type="button" class="btn small ghost" data-crm-ask="junk">🚫 Junk</button><button type="button" class="btn small ghost danger" data-crm-ask="del">🗑 Delete (moves to the archive)</button>') + '</div>' +
       '<div class="crm-confirm" data-crm-confirmbox hidden></div>';
+    if (ap && applLocked(x)) h = h.replace(/data-crm-(st|who|verdict|fu)(?=[\s>])/g, 'data-crm-$1 disabled').replace(/data-crm-(note-save|qq|confirm|confirm-other|fu-in)(?=[=\s>])/g, 'disabled data-crm-$1');
     if (x.type !== 'sub') h += '<details class="crm-edit"><summary>✏️ Edit contact details</summary><div class="lt-grid"><label>Name<input class="inp" data-ce="name" value="' + esc(x.name) + '"></label><label>Mobile<input class="inp" data-ce="phone" type="tel" value="' + esc(x.phone || '') + '"></label><label>Email<input class="inp" data-ce="email" type="email" value="' + esc(x.email || '') + '"></label><label>Address<input class="inp" data-ce="address" value="' + esc(x.address || '') + '"></label></div><button type="button" class="btn small" data-crm-edit-save style="margin-top:8px">Save details</button></details>';
     return h + '</div></div>';
   }
@@ -8995,13 +9034,29 @@
   }
   function fmtDateOnly(d){ return new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }); }
   function crmItem(el){ var c = el.closest('[data-crm]'); if (!c) return null; var ref = c.dataset.crm; return crm.items.filter(function(x){ return x.ref === ref; })[0] || null; }
-  function crmDone(msg){ return function(d){ if (!d || !d.ok) { toast('Couldn’t save that'); return; } if (msg) toast(msg); loadCrm(); loadVr(); }; }
+  function crmHeldMsg(d){ return d && d.error === 'held' ? '🔒 ' + d.who + ' is looking after this applicant until ' + new Date(d.until).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) + ' — it opens to everyone if they don’t get in touch by then.' : ''; }
+  function crmDone(msg){ return function(d){ if (!d || !d.ok) { toast(crmHeldMsg(d) || (d && d.error === 'reason' ? 'Write why in the note box first' : 'Couldn’t save that')); if (d && d.error === 'held') loadCrm(); return; } if (msg) toast(msg); loadCrm(); loadVr(); }; }
   $('navCrm').addEventListener('click', function(){ showView('crm'); });
+  $('navLeads').addEventListener('click', function(){ showView('appl'); });
+  // Managers: the link other services can post leads to, and whether Rightmove's feed is switched on.
+  var leadHook = null;
+  function loadLeadHook(){
+    if (leadHook) return drawLeadHook();
+    api('GET', '/api/admin/lead-hook').then(function(d){ if (d && d.ok) { leadHook = d; drawLeadHook(); } });
+  }
+  function drawLeadHook(){
+    var d = leadHook, rm = d.rm_last;
+    $('crmHookBody').innerHTML = '<p style="margin:6px 0"><b>Rightmove:</b> ' + (d.rightmove ? 'switched on' + (rm ? ' · last checked ' + esc(fmtShort(rm.at)) + (rm.error ? ' — <span style="color:#b42318">' + esc(rm.error) + '</span>' : ' — ' + rm.added + ' new') : ' · first check in a minute or two') : 'not connected yet. When Rightmove sends the datafeed details (network ID, branch IDs and a certificate with its password), they go into Railway’s settings and new Rightmove enquiries appear here automatically.') + '</p>' +
+      '<p style="margin:6px 0"><b>Any other source</b> (e.g. a service that reads the Rightmove enquiry emails): post each lead to this private link. Keep it private — anyone with it can add leads.</p>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" readonly value="' + esc(d.url) + '" style="flex:1;min-width:220px"><button type="button" class="btn small" data-hook-copy>Copy</button></div>' +
+      (d.last_at ? '<p style="margin:6px 0 0">Last lead received ' + esc(fmtShort(d.last_at)) + '</p>' : '');
+  }
+  document.addEventListener('click', function(e){ if (e.target.closest('[data-hook-copy]') && leadHook) copyText(leadHook.url).then(function(){ toast('Copied'); }); });
   ['crmQ', 'crmSt', 'crmWho'].forEach(function(id){ $(id).addEventListener(id === 'crmQ' ? 'input' : 'change', renderCrm); });
   $('crmTiles').addEventListener('click', function(e){ var b = e.target.closest('[data-crm-tile]'); if (!b) return; crm.tile = crm.tile === b.dataset.crmTile ? '' : b.dataset.crmTile; if (crm.tile === 'subs') crm.type = ''; renderCrm(); });
   $('crmView').addEventListener('click', function(e){ var j = e.target.closest('[data-crm-job]'); if (!j) return; e.stopPropagation(); var jid = Number(j.dataset.crmJob); showView('jobs'); Promise.resolve(loadJobs()).then(function(){ openJob(jid); }); });
   $('crmTypes').addEventListener('click', function(e){ var b = e.target.closest('[data-crm-type]'); if (!b) return; crm.type = b.dataset.crmType; crm.tile = ''; renderCrm(); });
-  $('crmAddBtn').addEventListener('click', function(){ $('crmAdd').hidden = !$('crmAdd').hidden; if (!$('crmAdd').hidden) $('caName').focus(); });
+  $('crmAddBtn').addEventListener('click', function(){ $('crmAdd').hidden = !$('crmAdd').hidden; if (!$('crmAdd').hidden) { if (crm.mode === 'appl') $('caType').value = 'Applicant'; $('caName').focus(); } });
   $('caCancel').addEventListener('click', function(){ $('crmAdd').hidden = true; });
   $('caSave').addEventListener('click', function(){
     var b = { name: $('caName').value.trim(), phone: $('caPhone').value.trim(), email: $('caEmail').value.trim(), type: $('caType').value, source: $('caSource').value, address: $('caAddr').value.trim(), message: $('caMsg').value.trim() };
@@ -9021,7 +9076,7 @@
         Promise.all(refs2.map(function(r){ return api('POST', '/api/admin/crm/archive', act === 'junk' ? { ref: r, junk: true, block: true } : { ref: r, reason: 'Deleted with others' }); })).then(function(rs){
           var ok = rs.filter(function(d){ return d && d.ok; }).length; crmSel = {}; crmSelDraw(); toast((act === 'junk' ? '🚫 ' + ok + ' moved to Junk' : '🗄 ' + ok + ' moved to the archive') + (ok < rs.length ? ' · ' + (rs.length - ok) + ' couldn’t be saved' : '')); loadCrm(); loadVr(); });
       }); }
-    bar.hidden = !refs.length || view !== 'crm';
+    bar.hidden = !refs.length || (view !== 'crm' && view !== 'appl');
     bar.innerHTML = '<span><b>' + refs.length + '</b> selected</span><button type="button" class="btn small ghost" data-cb="all">Select all shown</button><button type="button" class="btn small" data-cb="junk">🚫 Junk</button><button type="button" class="btn small danger" data-cb="del">🗑 Delete</button><button type="button" class="btn small ghost" data-cb="clear">Clear</button>';
   }
   $('crmList').addEventListener('change', function(e){ var c = e.target.closest('[data-crm-pick]'); if (!c) return; if (c.checked) crmSel[c.dataset.crmPick] = 1; else delete crmSel[c.dataset.crmPick]; crmSelDraw(); });
@@ -9051,6 +9106,7 @@
       var body = dob.dataset.crmDo === 'junk' ? { ref: x.ref, junk: true, block: !!(bx.querySelector('[data-crm-block]') || {}).checked } : { ref: x.ref, reason: ((bx.querySelector('[data-crm-reason]') || {}).value || '').trim() };
       api('POST', '/api/admin/crm/archive', body).then(crmDone(body.junk ? '🚫 Moved to Junk' : '🗄 Moved to the archive')); return;
     }
+    if (e.target.closest('[data-crm-take]')) { api('POST', '/api/admin/crm/meta', { ref: x.ref, assigned_to: crm.me }).then(crmDone('🙋 ' + (x.name || 'The applicant') + ' is yours for 24 hours — keep in touch to keep them')); return; }
     if (e.target.closest('[data-crm-restore]')) { api('POST', '/api/admin/crm/archive', { ref: x.ref, restore: true }).then(crmDone('↩︎ Put back')); return; }
     if ((b = e.target.closest('[data-crm-fu-in]'))) { var n = +b.dataset.crmFuIn, dt = n ? new Date(Date.now() + n * 86400000).toLocaleDateString('en-CA', { timeZone: TZ }) : ''; api('POST', '/api/admin/crm/meta', { ref: x.ref, follow_up: dt }).then(crmDone(n ? '⏰ Follow-up set' : 'Follow-up cleared')); return; }
     var qq = e.target.closest('[data-crm-qq]');
@@ -9068,6 +9124,12 @@
     var x = crmItem(e.target); if (!x) return;
     if (e.target.matches('[data-crm-st]')) api('POST', '/api/admin/valuation-requests/' + x.id, { status: e.target.value }).then(crmDone('✓ Status saved'));
     if (e.target.matches('[data-crm-who]')) api('POST', '/api/admin/crm/meta', { ref: x.ref, assigned_to: e.target.value }).then(crmDone(e.target.value ? '✓ ' + e.target.value + ' is looking after it' : 'Unassigned'));
+    if (e.target.matches('[data-crm-verdict]')) {
+      var card2 = e.target.closest('[data-crm]'), nb = card2 && card2.querySelector('[data-crm-note]'), why = nb ? nb.value.trim() : '';
+      if (e.target.value && !why) { toast('Write why in the note box first, then choose again'); e.target.value = x.verdict || ''; if (nb) nb.focus(); return; }
+      api('POST', '/api/admin/crm/meta', { ref: x.ref, verdict: e.target.value, reason: why }).then(crmDone(e.target.value ? '✓ Verdict saved with your note' : 'Verdict cleared'));
+      return;
+    }
     if (e.target.matches('[data-crm-fu]')) api('POST', '/api/admin/crm/meta', { ref: x.ref, follow_up: e.target.value }).then(crmDone(e.target.value ? '⏰ Follow-up set' : 'Follow-up cleared'));
   });
   document.addEventListener('toggle', function(e){ if (e.target && e.target.matches && e.target.matches('[data-vr-box]')) { try { localStorage.setItem('rr_vr_open', e.target.open ? '1' : '0'); } catch (x) {} } }, true);
@@ -17104,7 +17166,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navCrm', 'Website leads'], ['navWeb', 'Website visitors'], ['navCalls', 'Calls'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navLeads', 'Leads'], ['navCrm', 'Website leads'], ['navWeb', 'Website visitors'], ['navCalls', 'Calls'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
