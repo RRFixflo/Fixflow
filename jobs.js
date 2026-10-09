@@ -10091,7 +10091,25 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
   }));
   app.get('/api/admin/statements', withDb(async function (p, req, res) {
-    res.json(Object.assign({ ok: true }, await statementsAll(p)));
+    const out = await statementsAll(p);
+    // Unpaid landlord invoices that will come off the next rent not yet paid to the landlord — the
+    // statement for that rent shows them, so it matches the rent page's "to the landlord".
+    const today = londonDay(), pend = {};
+    const tcys = (await p.query('SELECT id, property_key, start_date, data FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date, id')).rows;
+    const inv = (await p.query(`SELECT i.id, i.number, i.total, i.data->>'collect_month' AS cm, coalesce(i.data->>'title', '') AS title, i.tenancy_id, i.property_key, coalesce(j.property_address, i.address) AS addr
+      FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id
+      WHERE i.paid_at IS NULL AND coalesce(i.data->>'collect_month', '') <> 'direct' AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.created_at`)).rows;
+    tcys.forEach(function (t, k) {
+      if (t.property_key && tcys.slice(k + 1).some(function (x) { return x.property_key === t.property_key; })) return;   // an earlier tenancy
+      const d = t.data || {}, start = String(d.start_date || t.start_date || '').slice(0, 10), lp = d.ll_paid || {};
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return;
+      let from = null; for (let n = 0; n < 240; n++) { const f = addMonthsIso(start, n); if (f >= RENT_START && !lp[f]) { from = f; break; } }
+      if (!from || from > addDaysIso(today, 62)) return;
+      const ym = from.slice(0, 7), list = inv.filter(function (i) { return (i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key))) && (i.cm ? i.cm <= ym : true); })
+        .map(function (i) { return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.title }; });
+      if (list.length) pend[t.id] = { from: from, invoices: list };
+    });
+    res.json(Object.assign({ ok: true, pending: pend }, out));
   }));
   // A month's statement sent to the landlord (or not).
   app.post('/api/admin/tenancies/:id/statement', withDb(async function (p, req, res) {

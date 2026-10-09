@@ -13767,11 +13767,19 @@
   // ---------- Monthly landlord statements ----------
   // Worked out on the server (statementChain in jobs.js): one per rent date,
   // with any balance the landlord owed brought forward to the next rent.
-  var stmtsBy = {}, stmtToday = '';
+  var stmtsBy = {}, stmtToday = '', stmtPend = {};
+  // A statement with the unpaid landlord invoices that will come off that rent (not on it yet until the
+  // rent's collected) — so it matches the rent page's "to the landlord".
+  function stmtWithPend(tid, m){
+    var pp = stmtPend[tid]; if (!m || !pp || !pp.invoices.length || String(m.from || '').slice(0, 10) !== pp.from) return m;
+    var extra = pp.invoices.map(function(i){ return { label: 'Invoice ' + i.number + (i.title ? ' · ' + i.title : '') + ' (inc. VAT)', amount: i.total, vat: 0, novat: true, pending: true }; });
+    var t = r2(extra.reduce(function(a, f){ return a + f.amount; }, 0));
+    return Object.assign({}, m, { fees: (m.fees || []).concat(extra), sub: r2((m.sub || 0) + t), total: r2((m.total || 0) + t), balance: r2((m.balance || 0) - t) });
+  }
   function loadStatements(){
     if (!meta.db) return Promise.resolve();
     return api('GET', '/api/admin/statements').then(function(d){
-      if (!d.ok) return; stmtsBy = {}; stmtToday = d.today; d.items.forEach(function(x){ stmtsBy[x.tenancy_id] = x; });
+      if (!d.ok) return; stmtsBy = {}; stmtToday = d.today; stmtPend = d.pending || {}; d.items.forEach(function(x){ stmtsBy[x.tenancy_id] = x; });
       renderStmtBanner(); if (!$('stModal').hidden) renderStmtList();
       if ($('tfStmts') && openTcyId && openTcyId !== 'new') $('tfStmts').innerHTML = stmtCard(openTcyId);
       if (rbShown()) loadRentBoard(true);   // a statement sent from the rent board
@@ -13804,7 +13812,7 @@
   function stmtTcy(id){ var t = tenancies.filter(function(x){ return x.id === Number(id); })[0]; return t ? t.data || {} : null; }
   // The text for one statement in an email: its lines, closing balance and what happens next.
   function stmtMailBlock(x, m, withAddr){
-    var cfg = meta.invoice || {};
+    var cfg = meta.invoice || {}; m = stmtWithPend(x.tenancy_id, m);
     var lines = ['- Rent for ' + longDay(m.from) + ' to ' + longDay(m.to) + ': ' + gbp(m.rent)];
     if (m.deposit) lines.push('- Deposit: ' + gbp(m.deposit));
     (m.credits || []).forEach(function(c){ lines.push('- ' + c.label + ': ' + gbp(c.amount)); });
@@ -13838,7 +13846,7 @@
     return new Blob([out.join('\r\n')], { type: 'message/rfc822' });
   }
   function stmtPdfFile(o){
-    var d = stmtTcy(o.x.tenancy_id) || {}, doc = statementPdf(d, o.m); if (!doc) return null;
+    var d = stmtTcy(o.x.tenancy_id) || {}, doc = statementPdf(d, o.m, o.x.tenancy_id); if (!doc) return null;
     var name = tcyFile(d, 'Landlord Statement - ' + monthName(o.m.from));
     return { name: name, b64: doc.output('datauristring').split(',')[1], blob: doc.output('blob') };
   }
@@ -13894,7 +13902,7 @@
       : order.length + ' emails ready (one per landlord) with the statements attached — open each downloaded email to send it');
   }
   function stmtRow(x, m, withAddr){
-    var k = x.tenancy_id + '|' + m.from;
+    var k = x.tenancy_id + '|' + m.from; m = stmtWithPend(x.tenancy_id, m);
     return '<div class="inv-prop"' + (stmtOwes(m) ? ' style="border-color:var(--brick)"' : '') + '><div class="inv-prop-h">' + (withAddr ? '<input type="checkbox" class="st-pick" data-st-pick="' + k + '" checked title="Include in Email selected" style="margin:0 8px 0 0">' : '') + '<button type="button" class="linkish" style="font-weight:700;font-size:inherit;text-align:left;flex:1" title="Open the statement" data-st-pdf="' + k + '">' + (withAddr ? esc(shortAddr(x.address)) + (x.landlord ? ' · ' + esc(x.landlord) : '') : esc(monthName(m.from)) + (m.n === 0 ? ' · move-in' : '')) + '</button>' +
       '<span class="muted-note" style="margin:0">' + (withAddr ? esc(monthName(m.from)) + ' · ' : '') + esc(ukDay(m.from)) + ' – ' + esc(ukDay(m.to)) + '</span></div>' +
       '<div style="margin:3px 0 6px;font-size:.92rem">' + stmtSummary(m) + '</div>' +
@@ -13972,9 +13980,9 @@
     var b = e.target.closest('[data-st-pdf],[data-st-dl],[data-st-mail],[data-st-sent],[data-st-unsent]'); if (!b) return;
     var k = b.dataset.stPdf || b.dataset.stDl || b.dataset.stMail || b.dataset.stSent || b.dataset.stUnsent, f = stmtFind(k); if (!f || !f.m) return;
     var d = stmtTcy(f.x.tenancy_id) || {}, fname = tcyFile(d, 'Landlord Statement - ' + monthName(f.m.from));
-    if (b.dataset.stPdf) { openPdf(statementPdf(d, f.m), fname); return; }
+    if (b.dataset.stPdf) { openPdf(statementPdf(d, f.m, f.x.tenancy_id), fname); return; }
     if (b.dataset.stMail) { stmtEmailMany([f]); return; }
-    if (b.dataset.stDl) { deliverPdf(statementPdf(d, f.m), fname, true); return; }
+    if (b.dataset.stDl) { deliverPdf(statementPdf(d, f.m, f.x.tenancy_id), fname, true); return; }
     stmtSent(k, !!b.dataset.stSent);
   }
   $('stList').addEventListener('click', stmtClick);
@@ -16413,9 +16421,10 @@
   }
   // A landlord statement: the move-in one from the tenancy figures, or month m
   // from the server's statements (with any balance brought forward).
-  function statementPdf(d, m){
+  function statementPdf(d, m, tid){
     var doc = pdfDoc(); if (!doc) return null;
     if (!m) { var c0 = tcyCalc(d); m = { from: d.start_date, to: addDaysIso(addMonthsIso(d.start_date, 1), -1), date: d.statement_date, rent: c0.rent, deposit: d.deposit_by === 'landlord' ? c0.deposit : 0, income: c0.income, credits: c0.credits, fees: c0.fees, sub: c0.sub, vat: c0.vat, vatOn: c0.vatOn, bf: 0, total: c0.feeTotal, balance: c0.balance }; }
+    m = stmtWithPend(tid || openTcyId, m);
     var c = { rent: m.rent, deposit: m.deposit, income: m.income, fees: m.fees, sub: m.sub, vat: m.vat, vatOn: m.vatOn, feeTotal: m.total, balance: m.balance }, cfg = meta.invoice || {}, W = doc.internal.pageSize.getWidth(), X = 60, R = W - 60, l = d.landlord || {};
     drawLogo(doc, X, 50, 38, false, W);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30);
