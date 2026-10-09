@@ -108,7 +108,8 @@ function allowedByRateLimit(ip, map, max) {
 // so the default 100kb JSON body limit needs raising.
 // Photos are also sent individually (shrunk on the phone first) so staff can
 // view them, which roughly doubles the size of a report with many photos.
-app.use(express.json({ limit: '60mb' }));
+// Webhooks (e.g. Rightmove's leads) are checked against the exact bytes sent, so those keep the raw body.
+app.use(express.json({ limit: '60mb', verify: function (req, res, buf) { if (req.url.indexOf('/hooks/') === 0) req.rawBody = buf; } }));
 
 // Smaller downloads: pages and data are sent compressed (brotli or gzip) when the
 // browser accepts it — the dashboard page is ~900 KB, a few hundred KB compressed.
@@ -472,7 +473,7 @@ require('./rivals')(app, { tools: listings.rmTools, gnomenFor: function (rows) {
   email: function (subject, textFor, hash) { return jobs.ownerEmail(subject, textFor, hash); } });
 require('./calls')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, canManage: function (req) { return jobs.canManage(req); } });
 // Applicant leads from outside the website (Rightmove's datafeed, or any service posting to /hooks/leads/<key>).
-require('./leads')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, canManage: function (req) { return jobs.canManage(req); } });
+require('./leads')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, canManage: function (req) { return jobs.canManage(req); }, findListing: function (ref) { return listings.findRef(ref); } });
 // Out-of-hours phone answering (Twilio + Claude): calls become Website leads.
 require('./voice')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, teamAlert: function (b, h) { return jobs.teamAlert(b, h); }, staffEmailAll: function (s, t, h) { return jobs.staffEmailAll(s, t, h); }, ownerEmail: function (s, t, h) { return jobs.ownerEmail(s, t, h); }, ntfy: function (b) { return jobs.ntfy(b); } });
 // The same photo on more than one property: tell the office once per new case, so it can be removed in Gnomen.

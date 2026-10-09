@@ -28,7 +28,7 @@ module.exports = function (app, opts) {
     if (!email && !phone) return { skipped: 'no-contact' };
     if (ext && (await p.query("SELECT 1 FROM valuation_requests WHERE data->>'ext_id' = $1 LIMIT 1", [ext])).rows.length) return { skipped: 'duplicate' };
     if (!ext && (await p.query("SELECT 1 FROM valuation_requests WHERE created_at > now() - interval '1 hour' AND address = $1 AND (lower(email) = $2 OR phone = $3) LIMIT 1", [addr, email || '-', phone || '-'])).rows.length) return { skipped: 'duplicate' };
-    const data = { kind: l.source === 'Rightmove' ? 'rightmove' : 'lead', source: str(l.source, 40) || 'Other', listing: l.listing === 'sale' ? 'sale' : 'let', message: str(l.message, 3000),
+    const data = { kind: l.kind || (l.source === 'Rightmove' ? 'rightmove' : 'lead'), rm: Array.isArray(l.rm) ? l.rm : undefined, lead_type: l.lead_type || undefined, source: str(l.source, 40) || 'Other', listing: l.listing === 'sale' ? 'sale' : 'let', message: str(l.message, 3000),
       ref: str(l.ref, 60), url: /^https?:\/\//.test(String(l.url || '')) ? str(l.url, 400) : '', ext_id: ext, people: str(l.people, 60), move: str(l.move, 60) };
     const at = l.at && !isNaN(new Date(l.at).getTime()) && new Date(l.at).getTime() < Date.now() + 3600000 ? new Date(l.at).toISOString() : new Date().toISOString();
     const r = await p.query('INSERT INTO valuation_requests (created_at, name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id', [at, name, email, phone, addr, JSON.stringify(data)]);
@@ -61,7 +61,58 @@ module.exports = function (app, opts) {
     if (!opts.canManage(req)) return res.status(403).json({ ok: false });
     const p = await opts.db(); if (!p) return res.json({ ok: false });
     const h = await hookKey(p);
-    res.json({ ok: true, url: opts.siteUrl + '/hooks/leads/' + h.key, last_at: h.last_at || null, rightmove: rmOn(), rm_last: rmLast });
+    res.json({ ok: true, url: opts.siteUrl + '/hooks/leads/' + h.key, last_at: h.last_at || null, rightmove: rmOn(), rm_last: rmLast, rm_hook: { url: opts.siteUrl + '/hooks/rightmove', secret: !!String(process.env.RIGHTMOVE_WEBHOOK_SECRET || '').trim(), stats: rmHook } });
+  });
+
+  // ---------- Rightmove Real Time Lead Integration (webhooks) ----------
+  // Rightmove posts each new enquiry to /hooks/rightmove as { eventId, eventType: 'lead.created', data }.
+  // Every request is signed (Svix: svix-id, svix-timestamp, svix-signature) with the secret Rightmove gives
+  // us when they verify the address — kept in the Railway variable RIGHTMOVE_WEBHOOK_SECRET. Until it is set,
+  // requests are answered (so Rightmove can check the address) but no leads are saved.
+  const RM_TYPES = { LETTING_RESIDENTIAL: 'To rent', LETTING_RESIDENTIAL_ENHANCED: 'To rent (enhanced lead)', RESALE_RESIDENTIAL: 'To buy', RESALE_NEW_HOMES: 'New home to buy', RESALE_NEW_HOMES_ENHANCED: 'New home to buy (enhanced lead)',
+    OVERSEAS_SALES: 'Overseas to buy', LETTING_COMMERCIAL: 'Commercial to rent', RESALE_COMMERCIAL: 'Commercial to buy', BFR_ENHANCED_LEAD: 'Build to rent (enhanced lead)', VALUATION_REQUEST_DISCOVER: 'Valuation request',
+    VALUATION_REQUEST_LVA: 'Valuation request', ONLINE_AGENT_VALUATION: 'Online valuation request', EMAIL_AGENT: 'Message to the branch', MEDIA_CONTENT_REQUEST: 'Media request' };
+  let rmHook = { at: null, ok: 0, bad: 0, unsigned: 0 };
+  function svixOk(req) {
+    const secret = String(process.env.RIGHTMOVE_WEBHOOK_SECRET || '').trim(); if (!secret) return null;
+    const id = String(req.headers['svix-id'] || ''), ts = String(req.headers['svix-timestamp'] || ''), sig = String(req.headers['svix-signature'] || '');
+    if (!id || !/^\d+$/.test(ts) || !sig || !req.rawBody) return false;
+    if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;   // older than 5 minutes: a replay
+    const key = Buffer.from(secret.replace(/^whsec_/, ''), 'base64');
+    const want = crypto.createHmac('sha256', key).update(id + '.' + ts + '.').update(req.rawBody).digest();
+    return sig.split(' ').some(function (part) {
+      const v = part.split(','); if (v[0] !== 'v1' || !v[1]) return false;
+      const got = Buffer.from(v[1], 'base64'); return got.length === want.length && crypto.timingSafeEqual(got, want);
+    });
+  }
+  const yn = function (v) { return v === true ? 'Yes' : v === false ? 'No' : ''; };
+  const words = function (v) { v = String(v || ''); return !v || /^NOT_(STATED|APPLICABLE)$/.test(v) ? '' : v.charAt(0) + v.slice(1).toLowerCase().replace(/_/g, ' '); };
+  app.post('/hooks/rightmove', async function (req, res) {
+    try {
+      const ok = svixOk(req);
+      rmHook.at = new Date().toISOString();
+      if (ok === false) { rmHook.bad++; return res.status(401).json({ ok: false }); }
+      if (ok === null) { rmHook.unsigned++; return res.json({ ok: true, note: 'received; not saved until the signing secret is set' }); }
+      const b = req.body || {}; let d = b.data;
+      if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
+      if (b.eventType !== 'lead.created' || !d || typeof d !== 'object') { rmHook.ok++; return res.json({ ok: true, ignored: true }); }
+      const p = await opts.db(); if (!p) return res.status(503).end();
+      const a = d.applicant || {}, type = String(d.leadType || ''), val = /VALUATION/.test(type), sale = /RESALE|OVERSEAS/.test(type);
+      const home = d.reference && opts.findListing ? opts.findListing(d.reference) : null;
+      const adults = String(d.numberOfAdultsMoving || ''), kids = String(d.numberOfChildrenMoving || '');
+      const rm = [['Lead type', RM_TYPES[type] || words(type)], ['Wants a viewing', yn(d.requestViewing)], ['Wants more details', yn(d.requestPropertyDetails)],
+        ['Income satisfactory', words(d.incomeSatisfactory)], ['Adverse credit', d.adverseCredit === 'HAS_ADVERSE_CREDIT' ? 'Yes' : d.adverseCredit === 'NO_ADVERSE_CREDIT' ? 'No' : ''],
+        ['Work', words(d.employmentStatus)], ['Guarantor', yn(d.hasGuarantor)], ['Savings', yn(d.hasSavings)], ['Moving with', words(d.movingWith)],
+        ['First-time renter', yn(d.firstTimeRenter)], ['Pets', yn(d.pets) + (d.petsInformation ? ' — ' + str(d.petsInformation, 200) : '')], ['Smoker', yn(d.smoker)],
+        ['Credit check consent', words(d.creditCheckConsentStatus)], ['Selling', words(d.sellingSituationType)], ['Renting', words(d.rentingSituationType)], ['Valuation wanted', yn(d.valuationRequested)],
+        ['Buyer', words(d.buyerStatus)], ['Timescale', words(d.urgency)], ['Their address', str(a.address, 200)]].filter(function (x) { return x[1]; });
+      const got = await addLead(p, { source: 'Rightmove', ext_id: 'rm:' + (d.enquiryId || b.eventId), at: d.submitTime || d.createTime, name: [a.firstName, a.lastName].filter(Boolean).join(' '),
+        email: a.emailAddress, phone: a.telephone, address: home ? home.where : (val ? str(a.address, 300) : (d.reference ? 'Rightmove ref ' + d.reference : '')), ref: d.reference, url: home ? home.url : str(d.deepLink, 400),
+        listing: sale ? 'sale' : 'let', message: d.comments, people: adults ? adults + ' adult' + (adults === '1' ? '' : 's') + (kids && kids !== '0' ? ', ' + kids + ' child' + (kids === '1' ? '' : 'ren') : '') : '',
+        move: words(d.moveByUrgency), kind: val ? (sale ? 'sale' : 'val') : '', rm: rm, lead_type: type });
+      rmHook.ok++;
+      res.json({ ok: true, saved: !!got.id });
+    } catch (e) { console.error('Rightmove lead:', e.message); res.status(500).json({ ok: false }); }
   });
 
   // ---------- Rightmove Real Time Datafeed: enquiries to our branches ----------

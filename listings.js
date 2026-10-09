@@ -709,6 +709,12 @@ module.exports = function (app, opts) {
   setTimeout(function () { checkPhotos(); }, 60000); setInterval(function () { checkPhotos(); }, 2 * 3600000).unref();
 
   return {
+    // A property on our website by its Gnomen number or Rightmove id (e.g. the reference on a Rightmove lead).
+    findRef: function (ref) {
+      ref = String(ref || '').trim(); if (!ref) return null;
+      const p = data.let.concat(data.sale).filter(function (q) { return String(q.id) === ref || String(q.rmId || '') === ref; })[0];
+      return p ? { id: p.id, where: p.where || '', url: p.url ? opts.siteUrl + p.url : '', kind: p.kind } : null;
+    },
     // For checking other agents' Rightmove adverts against our own photos (rivals.js).
     rmTools: { RM: RM, UA: UA, dig: dig, pageJson: pageJson, abs: abs, isImg: isImg, fingerprint: fingerprint, hamming: hamming, branches: [BRANCH, SALES_BRANCH], detail: rmDetail, db: fpDb },
     photoDupes: function () {
