@@ -1070,7 +1070,8 @@
   .tcy-docs .btn { justify-content: flex-start; text-align: left; }
   .tcy-save { position: sticky; bottom: 0; z-index: 5; display: flex; gap: 8px; justify-content: flex-end; padding: 10px 0; background: linear-gradient(transparent, var(--bg) 35%); }
   .tcy-log li.tcy-log-mail { cursor: pointer; } .tcy-log li.tcy-log-mail:hover { background: var(--bg, #f6f7f9); } .tcy-log-open { color: var(--blue, #2F5BEA); font-weight: 600; white-space: nowrap; }
-  .tle-row { display: flex; gap: 10px; font-size: .9rem; padding: 3px 0; } .tle-row span { color: var(--ink-soft, #667085); min-width: 64px; flex: 0 0 auto; } .tle-row b { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+  .tle-row { display: flex; gap: 10px; font-size: .9rem; padding: 3px 0; } .tle-row > span { color: var(--ink-soft, #667085); min-width: 64px; flex: 0 0 auto; }
+  .tle-files { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; } .tle-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; padding: 6px 8px; border: 1px solid var(--line, #e4e7ec); border-radius: 8px; } .tle-fn { font-weight: 600; overflow-wrap: anywhere; min-width: 0; flex: 1 1 180px; } .tle-fa { display: flex; gap: 6px; flex: 0 0 auto; } .tle-row b { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
   .tle-frame { width: 100%; height: 55vh; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; background: #fff; } .tle-text { white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 12px; font-size: .9rem; max-height: 55vh; overflow: auto; }
   .tcy-log { list-style: none; margin: 0; padding: 0; font-size: .85rem; } .tcy-log li { padding: 6px 0; border-bottom: 1px solid var(--line); } .tcy-log span { color: var(--ink-soft); font-size: .76rem; display: block; }
   .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; } .seg button { border: 0; background: none; padding: 9px 14px; cursor: pointer; font: inherit; color: inherit; } .seg button.on { background: var(--blue, #2563eb); color: #fff; }
@@ -12418,6 +12419,19 @@
     busy(b, true, '…');
     api('POST', '/api/admin/tenancy-payments/' + b.dataset.payOk + '/confirm', { confirmed: b.dataset.on === '1' }).then(function(r){ busy(b, false); if (!r || !r.ok) { toast('Couldn’t save'); return; } toast(b.dataset.on === '1' ? '✓ Payment confirmed' : 'Marked as not received'); renderTcyPays(); loadRbPays(); });
   });
+  // The attachments of a sent email: each one to open or download (copies kept since this was added;
+  // older emails only have the file names).
+  function tleFiles(m){
+    var files = m.files || [], names = m.attachments || [];
+    if (!files.length && !names.length) return '';
+    var size = function(b){ return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; };
+    var icon = function(n){ return /\.pdf$/i.test(n) ? '📄' : /\.(jpe?g|png|gif|webp|heic)$/i.test(n) ? '🖼️' : '📎'; };
+    var list = files.length ? files.map(function(f){ var u = '/api/admin/email-files/' + encodeURIComponent(f.id) + '?name=' + encodeURIComponent(f.name);
+        return '<div class="tle-file"><span class="tle-fn">' + icon(f.name) + ' ' + esc(f.name) + (f.size ? ' <span class="muted-note" style="margin:0;display:inline">' + esc(size(f.size)) + '</span>' : '') + '</span>' +
+          '<span class="tle-fa"><a class="btn small ghost" target="_blank" rel="noopener" href="' + u + '">Open</a><a class="btn small" href="' + u + '&dl=1" download="' + esc(f.name) + '">⬇ Download</a></span></div>'; }).join('')
+      : names.map(function(nm){ return '<div class="tle-file"><span class="tle-fn">' + icon(nm) + ' ' + esc(nm) + '</span></div>'; }).join('') + '<p class="muted-note" style="margin:4px 0 0">Copies of attachments are kept for emails sent from now on — this one only has the file names.</p>';
+    return '<div class="tle-row" style="align-items:flex-start"><span>Attached</span><div class="tle-files">' + list + '</div></div>';
+  }
   // History: open an email that was sent (when, who to, subject, attachments and the message itself).
   function openLogEmail(n){
     var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0], e = x && (x.log || [])[n]; if (!e) return;
@@ -12430,7 +12444,7 @@
     }
     var m = e.email, when = new Date(e.at).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
     var row = function(k, v){ return v ? '<div class="tle-row"><span>' + k + '</span><b>' + esc(v) + '</b></div>' : ''; };
-    $('tleBody').innerHTML = row('Sent', when) + (m ? row('From', m.from) + row('To', (m.to || []).join(', ')) + row('Cc', (m.cc || []).join(', ')) + row('Subject', m.subject) + row('Attached', (m.attachments || []).join(', ')) +
+    $('tleBody').innerHTML = row('Sent', when) + (m ? row('From', m.from) + row('To', (m.to || []).join(', ')) + row('Cc', (m.cc || []).join(', ')) + row('Subject', m.subject) + tleFiles(m) +
         (m.html ? '<iframe class="tle-frame" sandbox="" title="The email"></iframe>' : '<div class="tle-text">' + esc(m.text || '') + '</div>')
       : '<div class="tle-text">' + esc(e.text || '') + '</div><p class="muted-note" style="margin:0">Only this summary was kept for emails sent before today. Emails sent from now on are saved here in full, so you can open exactly what went.</p>');
     var fr = $('tleBody').querySelector('.tle-frame'); if (fr) fr.srcdoc = '<!doctype html><meta charset="utf-8"><base target="_blank"><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:14px;margin:12px;overflow-wrap:anywhere}img{max-width:100%;height:auto}</style>' + m.html;
@@ -13767,19 +13781,24 @@
   // ---------- Monthly landlord statements ----------
   // Worked out on the server (statementChain in jobs.js): one per rent date,
   // with any balance the landlord owed brought forward to the next rent.
-  var stmtsBy = {}, stmtToday = '', stmtPend = {};
+  var stmtsBy = {}, stmtToday = '', stmtPend = {}, stmtInv = {};
+  // An invoice on a statement: its number once, a few words on the job, and the link to it.
+  function stmtInvLabel(f){
+    var i = f && f.invoice_id && stmtInv[f.invoice_id]; if (!i) return f.label;
+    return 'Invoice ' + i.number + (i.what ? ' · ' + i.what : '') + ' (inc. VAT)';
+  }
   // A statement with the unpaid landlord invoices that will come off that rent (not on it yet until the
   // rent's collected) — so it matches the rent page's "to the landlord".
   function stmtWithPend(tid, m){
     var pp = stmtPend[tid]; if (!m || !pp || !pp.invoices.length || String(m.from || '').slice(0, 10) !== pp.from) return m;
-    var extra = pp.invoices.map(function(i){ return { label: 'Invoice ' + i.number + (i.title ? ' · ' + i.title : '') + ' (inc. VAT)', amount: i.total, vat: 0, novat: true, pending: true }; });
+    var extra = pp.invoices.map(function(i){ return { label: 'Invoice ' + i.number + (i.title && i.title.indexOf(i.number) === -1 && !/^repair\s+[A-Z]{1,4}-?\d+$/i.test(i.title) ? ' · ' + i.title : '') + ' (inc. VAT)', amount: i.total, vat: 0, novat: true, pending: true, invoice_id: i.id }; });
     var t = r2(extra.reduce(function(a, f){ return a + f.amount; }, 0));
     return Object.assign({}, m, { fees: (m.fees || []).concat(extra), sub: r2((m.sub || 0) + t), total: r2((m.total || 0) + t), balance: r2((m.balance || 0) - t) });
   }
   function loadStatements(){
     if (!meta.db) return Promise.resolve();
     return api('GET', '/api/admin/statements').then(function(d){
-      if (!d.ok) return; stmtsBy = {}; stmtToday = d.today; stmtPend = d.pending || {}; d.items.forEach(function(x){ stmtsBy[x.tenancy_id] = x; });
+      if (!d.ok) return; stmtsBy = {}; stmtToday = d.today; stmtPend = d.pending || {}; stmtInv = d.inv_info || {}; d.items.forEach(function(x){ stmtsBy[x.tenancy_id] = x; });
       renderStmtBanner(); if (!$('stModal').hidden) renderStmtList();
       if ($('tfStmts') && openTcyId && openTcyId !== 'new') $('tfStmts').innerHTML = stmtCard(openTcyId);
       if (rbShown()) loadRentBoard(true);   // a statement sent from the rent board
@@ -13816,7 +13835,7 @@
     var lines = ['- Rent for ' + longDay(m.from) + ' to ' + longDay(m.to) + ': ' + gbp(m.rent)];
     if (m.deposit) lines.push('- Deposit: ' + gbp(m.deposit));
     (m.credits || []).forEach(function(c){ lines.push('- ' + c.label + ': ' + gbp(c.amount)); });
-    m.fees.forEach(function(f){ lines.push('- ' + f.label + ': ' + gbp(f.amount) + (f.vat ? ' + VAT ' + gbp(f.vat) : m.vatOn ? ' (no VAT)' : '')); });
+    m.fees.forEach(function(f){ var iu = f.invoice_id && stmtInv[f.invoice_id] && stmtInv[f.invoice_id].url; lines.push('- ' + stmtInvLabel(f) + ': ' + gbp(f.amount) + (f.vat ? ' + VAT ' + gbp(f.vat) : m.vatOn ? ' (no VAT)' : '') + (iu ? '\n  View the invoice: ' + iu : '')); });
     if (m.bf) lines.push('- Balance brought forward from your ' + monthName(m.bf_from) + ' statement: ' + gbp(m.bf));
     return (withAddr ? shortAddr(x.address) + ' — ' : '') + monthName(m.from) + ':\n' + lines.join('\n') + '\nClosing balance: ' + (stmtOwes(m) ? '−' : '') + gbp(Math.abs(m.balance)) + '\n' +
       (stmtOwes(m) ? 'After this month’s rent there is still ' + gbp(-m.balance) + ' owed to us. Please pay it by bank transfer' + (cfg.payee && cfg.accountNumber ? ' to ' + cfg.payee + ', sort code ' + cfg.sortCode + ', account ' + cfg.accountNumber + ', reference ' + (payRef(x.address) || 'the property address') : '') + ' — otherwise it will be taken from next month’s rent.'
@@ -16472,7 +16491,11 @@
     // Each fee with its own VAT (£0.00 on fees with no VAT), like the office statements.
     y += gk('exp'); band(y, 'Expenditure', c.vatOn);
     y += gk('band'); doc.setFontSize(rowFont);
-    c.fees.forEach(function(f){ doc.text(ukDay(m.from, true), X - 2, y); fit(f.label, X + 48, y, c.vatOn ? (VX - 48) - (X + 48) : (R - 80) - (X + 48), rowFont); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += rh; });
+    c.fees.forEach(function(f){ doc.text(ukDay(m.from, true), X - 2, y);
+      var lw = c.vatOn ? (VX - 48) - (X + 48) : (R - 80) - (X + 48), iv = f.invoice_id && stmtInv[f.invoice_id];
+      // An invoice: in blue, and clicking it opens the invoice.
+      if (iv && iv.url) { doc.setTextColor(23, 92, 211); fit(stmtInvLabel(f), X + 48, y, lw, rowFont); doc.setTextColor(20); doc.link(X + 48, y - rowFont, Math.min(lw, doc.getTextWidth(stmtInvLabel(f))), rowFont + 3, { url: iv.url }); }
+      else fit(stmtInvLabel(f), X + 48, y, lw, rowFont); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += rh; });
     if (!c.fees.length) { doc.text(m.bf ? 'No fees this month' : 'No fees', X + 48, y); y += rh; }
     y += gk('fees') - rh; doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
     doc.text('Sub-Total:', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.sub), R, y, { align: 'right' });

@@ -364,6 +364,17 @@ CREATE TABLE IF NOT EXISTS tenancy_payments (
   confirmed_by TEXT
 );
 CREATE INDEX IF NOT EXISTS tenancy_payments_t ON tenancy_payments (tenancy_id);
+-- Copies of the files attached to emails sent from a tenancy (downloaded again from its History).
+-- One copy per identical file (the same guide sent to many tenancies is kept once).
+CREATE TABLE IF NOT EXISTS email_files (
+  id         SERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  sha        TEXT UNIQUE,
+  file_name  TEXT,
+  file_mime  TEXT,
+  size       INTEGER,
+  file       BYTEA
+);
 -- Reminders set through Ask Fixflow ("remind me to call … tomorrow at 10").
 CREATE TABLE IF NOT EXISTS assistant_reminders (
   id          SERIAL PRIMARY KEY,
@@ -6770,8 +6781,32 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!e || typeof e !== 'object') return null;
     const list = function (v) { return (Array.isArray(v) ? v : []).map(function (x) { return str(x, 200); }).filter(Boolean).slice(0, 20); };
     const html = typeof e.html === 'string' && e.html.length < 200000 ? e.html.replace(/<script[\s\S]*?<\/script>/gi, '') : null;
-    return { to: list(e.to), cc: list(e.cc), subject: str(e.subject, 300) || '', text: str(e.text, 30000) || '', html: html, attachments: list(e.attachments), from: str(e.from, 200) || '' };
+    const files = (Array.isArray(e.files) ? e.files : []).filter(function (f) { return f && f.id; }).slice(0, 20).map(function (f) { return { id: f.id, name: str(f.name, 200) || 'File', size: Number(f.size) || 0 }; });
+    return { to: list(e.to), cc: list(e.cc), subject: str(e.subject, 300) || '', text: str(e.text, 30000) || '', html: html, attachments: list(e.attachments), files: files, from: str(e.from, 200) || '' };
   }
+  // Keep a copy of each attachment sent (so it can be opened again from History); identical files once.
+  const EXT_MIME = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', txt: 'text/plain', csv: 'text/csv', eml: 'message/rfc822' };
+  async function keepEmailFiles(p, atts) {
+    const out = [];
+    for (const a of atts) {
+      try {
+        const buf = Buffer.from(a.content, 'base64'); if (!buf.length) continue;
+        const sha = crypto.createHash('sha256').update(buf).digest('hex'), ext = (String(a.filename).split('.').pop() || '').toLowerCase();
+        const r = await p.query(`INSERT INTO email_files (sha, file_name, file_mime, size, file) VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (sha) DO UPDATE SET sha = EXCLUDED.sha RETURNING id`, [sha, a.filename, EXT_MIME[ext] || 'application/octet-stream', buf.length, buf]);
+        out.push({ id: r.rows[0].id, name: a.filename, size: buf.length });
+      } catch (e) { console.error('[email files]', e.message); }
+    }
+    return out;
+  }
+  app.get('/api/admin/email-files/:id', withDb(async function (p, req, res) {
+    const r = (await p.query('SELECT file_name, file_mime, file FROM email_files WHERE id = $1', [parseInt(req.params.id, 10) || 0])).rows[0];
+    if (!r || !r.file) return res.status(404).send('Not found');
+    const name = String(req.query.name || r.file_name || 'file').replace(/[^\w .,()-]/g, '').slice(0, 150) || 'file';
+    res.setHeader('Content-Type', r.file_mime || 'application/octet-stream'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + '; filename="' + name + '"');
+    res.end(r.file);
+  }));
   app.post('/api/admin/tenancies/:id/log', withDb(async function (p, req, res) {
     const text = str((req.body || {}).text, 500), email = logEmail((req.body || {}).email);
     if (!text) return res.status(400).json({ ok: false, error: 'empty' });
@@ -7037,8 +7072,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const cc = (Array.isArray(b.cc) ? b.cc : []).map(function (x) { return str(x, 200); }).filter(function (x) { return x && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x) && to.indexOf(x) === -1; }).slice(0, 6);
     const sent = await sendEmail({ to: to, cc: cc, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: html || brandEmail(text, subject), attachments: atts });
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
+    const kept = await keepEmailFiles(p, atts);
     await p.query(`UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1`,
-      [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: 'Emailed ' + to.join(', ') + (cc.length ? ' (cc ' + cc.join(', ') + ')' : '') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : ''), email: logEmail({ to: to, cc: cc, subject: subject, text: text, html: html, attachments: atts.map(function (a) { return a.filename; }) }) }])]);
+      [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: 'Emailed ' + to.join(', ') + (cc.length ? ' (cc ' + cc.join(', ') + ')' : '') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : ''), email: logEmail({ to: to, cc: cc, subject: subject, text: text, html: html, attachments: atts.map(function (a) { return a.filename; }), files: kept }) }])]);
     res.json({ ok: true });
   }));
 
@@ -9797,11 +9833,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Every unpaid landlord invoice for the property so far — repair invoices included (they're linked
     // through the job's address) — unless it's set to be taken from a later month's rent.
     const ym = from.slice(0, 7);
-    return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.data->>'collect_month' AS cm, coalesce(i.data->>'title', '') AS title, i.job_id, i.tenancy_id, i.property_key, coalesce(j.property_address, i.address) AS addr
+    return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.data->>'collect_month' AS cm, coalesce(i.data->>'title', '') AS title, i.job_id, i.tenancy_id, i.property_key, coalesce(j.property_address, i.address) AS addr, j.category, j.affected, j.symptom, j.description
       FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id
       WHERE i.paid_at IS NULL AND coalesce(i.data->>'collect_month', '') <> 'direct' AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.created_at`)).rows
       .filter(function (i) { return (i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key))) && (i.cm ? i.cm <= ym : true); })
-      .map(function (i) { return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.title, job_id: i.job_id }; });
+      .map(function (i) { const t = String(i.title || '').trim(), generic = !t || /^repair\s+[A-Z]{1,4}-?\d+$/i.test(t) || t.indexOf(i.number) !== -1;
+        return { id: i.id, number: i.number, total: Number(i.total) || 0, title: (i.category || i.affected || i.description ? jobBrief(i, 60) : '') || (generic ? '' : t), job_id: i.job_id }; });
   }
   // Rent collection starts from this day (earlier rent dates count as already dealt with).
   const RENT_START = '2026-10-03';
@@ -10090,6 +10127,36 @@ document.querySelectorAll('.lcu').forEach(function(box){
       [id, from, JSON.stringify(row), JSON.stringify([{ at: row.at, text: 'Sent the landlord ' + gbp(amount) + ' for the rent due ' + certDay(from) + (row.ref ? ' (ref ' + row.ref + ')' : '') + ' (' + who + ')' }])]);
     res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
   }));
+  // A few words on what an invoice was for (the job: category and what was wrong, or the invoice's title).
+  function jobBrief(j, max) {
+    let d = String(j.affected || '').trim() || (String(j.description || '').split(/\n+/).map(function (l) { return l.replace(/^(?:[-•*]|\d+[.)])\s*/, '').trim(); }).filter(function (l) { return l && !/^Other tenants:/i.test(l); })[0] || '');
+    if (d.length > max) d = d.slice(0, max - 1).replace(/\s+\S*$/, '') + '…';
+    const cat = j.category && !(/^other$/i.test(j.category) && d) ? j.category : '';
+    return [cat, d, j.symptom && !d ? j.symptom : ''].filter(Boolean).join(' – ');
+  }
+  async function invoiceInfo(p, ids) {
+    const out = {}; if (!ids.length) return out;
+    const site = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, ''), toks = {};
+    const rows = (await p.query(`SELECT i.id, i.number, i.property_key, coalesce(i.data->>'title', '') AS title, coalesce(j.property_address, i.address) AS addr, j.category, j.affected, j.symptom, j.description
+      FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.id = ANY($1::int[])`, [ids])).rows;
+    for (const r of rows) {
+      const title = String(r.title || '').trim(), generic = !title || /^repair\s+[A-Z]{1,4}-?\d+$/i.test(title) || title.indexOf(r.number) !== -1;
+      const what = (r.category || r.affected || r.description ? jobBrief(r, 60) : '') || (generic ? '' : title);
+      const key = r.property_key || propKey(r.addr || '');
+      let url = null;
+      if (key) {
+        if (toks[key] === undefined) {
+          const ll = (await p.query('SELECT l.id, l.portal_token FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1', [key])).rows[0];
+          let t = ll ? ll.portal_token : null;
+          if (ll && !t) { t = crypto.randomBytes(18).toString('base64url'); await p.query('UPDATE landlords SET portal_token = $2, updated_at = now() WHERE id = $1', [ll.id, t]); }
+          toks[key] = t || null;
+        }
+        if (toks[key]) url = site + '/l/' + toks[key] + '/invoice/' + r.id;
+      }
+      out[r.id] = { number: r.number, what: what, url: url };
+    }
+    return out;
+  }
   app.get('/api/admin/statements', withDb(async function (p, req, res) {
     const out = await statementsAll(p);
     // Unpaid landlord invoices that will come off the next rent not yet paid to the landlord — the
@@ -10109,7 +10176,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
         .map(function (i) { return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.title }; });
       if (list.length) pend[t.id] = { from: from, invoices: list };
     });
-    res.json(Object.assign({ ok: true, pending: pend }, out));
+    // Each invoice on a statement: a short description of the job and a link to the invoice (the landlord's
+    // own invoice page, so the statement's reader can open it).
+    const ids = {};
+    Object.keys(pend).forEach(function (k) { pend[k].invoices.forEach(function (i) { ids[i.id] = 1; }); });
+    out.items.forEach(function (x) { x.months.forEach(function (m) { (m.fees || []).forEach(function (f) { if (f.invoice_id) ids[f.invoice_id] = 1; }); }); });
+    res.json(Object.assign({ ok: true, pending: pend, inv_info: await invoiceInfo(p, Object.keys(ids).map(Number)) }, out));
   }));
   // A month's statement sent to the landlord (or not).
   app.post('/api/admin/tenancies/:id/statement', withDb(async function (p, req, res) {
