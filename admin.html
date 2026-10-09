@@ -733,6 +733,7 @@
   .crm-tile span { grid-row: span 2; font-size: 1.4rem; } .crm-tile b { font-size: 1.3rem; line-height: 1.1; } .crm-tile small { color: var(--ink-soft); font-size: .78rem; }
   .crm-tile.hot b { color: #b42318; } .crm-tile.on { border-color: var(--navy, #0b1f3a); box-shadow: 0 0 0 2px var(--navy, #0b1f3a) inset; }
   .crm-appl { border: 1px solid #d0d5dd; background: #f9fafb; border-radius: 10px; padding: 10px 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .crm-appl-own { font-size: .9rem; line-height: 1.4; } .crm-verdict { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; font-weight: 600; width: 100%; max-width: 320px; } .crm-hook { margin-bottom: 12px; } .crm-hook summary { cursor: pointer; font-weight: 600; }
+  body:not(.staff-mode) #navLeads { display: none; }   /* the owner sees applicants in Website leads */
   .crm-bar { display: flex; gap: 8px; flex-wrap: wrap; } .crm-bar #crmQ { flex: 1; min-width: 200px; } .crm-bar select { width: auto; }
   .crm-add { border-top: 1px solid var(--line, #eef0f3); margin-top: 10px; padding-top: 12px; } .crm-wide { grid-column: 1 / -1; }
   .crm-card { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 14px; margin-top: 8px; overflow: hidden; } .crm-card.is-new { border-left: 4px solid #b42318; }
@@ -4360,6 +4361,7 @@
   $('brandHomeM').addEventListener('click', goHome);
 
   function showView(v){
+    if (v === 'appl' && !staffMode) v = 'crm';   // the owner sees applicants in Website leads
     if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
@@ -8864,7 +8866,7 @@
         .concat((d.subs || []).map(function(x){ var ref = 'sub:' + x.id, m = mt[ref] || {};
           return { ref: ref, id: x.id, type: 'sub', archived: m.archived_at || null, junk: !!m.junk, archivedBy: m.archived_by || '', name: x.name || x.email, email: x.email, phone: '', address: '', status: x.unsubscribed_at ? 'lost' : x.confirmed_at ? 'won' : 'new', subSt: x.unsubscribed_at ? 'Unsubscribed' : x.confirmed_at ? 'Subscribed' : 'Waiting for them to confirm', at: x.created_at, data: { freq: x.freq, sent: x.sent_count, last: x.last_sent_at }, assigned: m.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : '', notes: notes[ref] || [] }; }))
         .sort(function(a, b){ return new Date(b.at) - new Date(a.at); });
-      var nNeed = crm.items.filter(function(x){ return !isAppl(x) && crmNeed(x); }).length, nAppl = crm.items.filter(function(x){ return isAppl(x) && crmNeed(x); }).length;
+      var nNeed = crm.items.filter(function(x){ return (!staffMode || !isAppl(x)) && crmNeed(x); }).length, nAppl = crm.items.filter(function(x){ return isAppl(x) && crmNeed(x); }).length;
       $('sCrm').hidden = !nNeed; $('sCrm').textContent = nNeed; $('stCrmN').hidden = !nNeed; $('stCrmN').textContent = nNeed;
       $('sLeads').hidden = !nAppl; $('sLeads').textContent = nAppl; $('stApplN').hidden = !nAppl; $('stApplN').textContent = nAppl;
       crmNag();
@@ -8903,11 +8905,11 @@
     b.hidden = !n.length || view === 'crm' || view === 'appl';
     if (!b.hidden) b.innerHTML = '<span>📣 <b>' + n.length + ' website lead' + (n.length === 1 ? '' : 's') + ' need contacting or an update.</b> Everyone on the list should hear from us.</span><button type="button" class="btn small primary" data-crm-nag>Open website leads →</button>';
   }
-  document.addEventListener('click', function(e){ if (e.target.closest('[data-crm-nag]')) { var ap = crm.items.some(function(x){ return isAppl(x) && crmNeed(x); }); showView(ap ? 'appl' : 'crm'); crm.tile = 'attn'; crm.type = ''; renderCrm(); } });
+  document.addEventListener('click', function(e){ if (e.target.closest('[data-crm-nag]')) { var ap = staffMode && crm.items.some(function(x){ return isAppl(x) && crmNeed(x); }); showView(ap ? 'appl' : 'crm'); crm.tile = 'attn'; crm.type = ''; renderCrm(); } });
   function crmOpenItem(x){ return x.type !== 'sub' && (x.status === 'new' || x.status === 'contacted' || (x.status === 'booked' && x.type !== 'viewing')); }
   function renderCrm(){
-    var appl = crm.mode === 'appl', base = crm.items.filter(function(x){ return appl ? isAppl(x) : !isAppl(x); });
-    $('crmHook').hidden = !appl || !crm.manager; if (appl && crm.manager) loadLeadHook();
+    var appl = crm.mode === 'appl', base = crm.items.filter(function(x){ return appl ? isAppl(x) : (!staffMode || !isAppl(x)); });   // the owner's Website leads has everything
+    var hk = crm.manager && (appl || !staffMode); $('crmHook').hidden = !hk; if (hk) loadLeadHook();
     $('crmView').classList.toggle('is-appl', appl);
     var today = crmToday(), archived = base.filter(function(x){ return x.archived && !x.junk; }), junked = base.filter(function(x){ return x.junk; }), all = crm.type === 'archive' ? archived : crm.type === 'junk' ? junked : base.filter(function(x){ return !x.archived; });
     var live = base.filter(function(x){ return !x.archived; }), openAppl = appl ? live.filter(function(x){ return crmOpenItem(x) && !applHold(x).held; }) : [];
@@ -8916,7 +8918,7 @@
     $('crmTiles').innerHTML = (appl ? [['attn', '📣', nNew.length, 'Need contacting or an update'], ['free', '🔓', openAppl.length, 'Open to anyone'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm']] : [['attn', '📣', nNew.length, 'Need contacting or an update'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm'], ['subs', '🔔', subs.length, 'Landlords getting alerts']]).map(function(t){
       return '<button type="button" class="crm-tile' + (crm.tile === t[0] ? ' on' : '') + (t[2] && t[0] !== 'subs' ? ' hot' : '') + '" data-crm-tile="' + t[0] + '"><span>' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></button>'; }).join('');
     var counts = {}; live.forEach(function(x){ counts[x.type] = (counts[x.type] || 0) + 1; });
-    $('crmTypes').innerHTML = '<button type="button" data-crm-type=""' + (crm.type ? '' : ' class="on"') + '>All ' + live.length + '</button>' + (appl ? ['rm', 'lead', 'viewing', 'enquiry', 'call', 'contact'] : ['call', 'viewing', 'cert', 'val', 'sale', 'quick', 'enquiry', 'contact', 'sub']).filter(function(k){ return counts[k]; }).map(function(k){ return '<button type="button" data-crm-type="' + k + '"' + (crm.type === k ? ' class="on"' : '') + '>' + CRM_T[k][0] + ' ' + ({ rm: 'Rightmove', lead: 'Other portals', call: 'Out-of-hours calls', viewing: 'Viewings', cert: 'Certificate bookings', val: 'Rental valuations', sale: 'Sales valuations', quick: 'Quick valuations', enquiry: 'Messages', contact: 'Added by staff', sub: 'Alert sign-ups' }[k]) + ' ' + counts[k] + '</button>'; }).join('') + (archived.length ? '<span class="av-sep"></span><button type="button" data-crm-type="archive"' + (crm.type === 'archive' ? ' class="on"' : '') + '>🗄 Archive ' + archived.length + '</button>' : '') + (junked.length ? '<button type="button" data-crm-type="junk"' + (crm.type === 'junk' ? ' class="on"' : '') + '>🚫 Junk ' + junked.length + '</button>' : '');
+    $('crmTypes').innerHTML = '<button type="button" data-crm-type=""' + (crm.type ? '' : ' class="on"') + '>All ' + live.length + '</button>' + (appl ? ['rm', 'lead', 'viewing', 'enquiry', 'call', 'contact'] : ['rm', 'lead', 'call', 'viewing', 'cert', 'val', 'sale', 'quick', 'enquiry', 'contact', 'sub']).filter(function(k){ return counts[k]; }).map(function(k){ return '<button type="button" data-crm-type="' + k + '"' + (crm.type === k ? ' class="on"' : '') + '>' + CRM_T[k][0] + ' ' + ({ rm: 'Rightmove', lead: 'Other portals', call: 'Out-of-hours calls', viewing: 'Viewings', cert: 'Certificate bookings', val: 'Rental valuations', sale: 'Sales valuations', quick: 'Quick valuations', enquiry: 'Messages', contact: 'Added by staff', sub: 'Alert sign-ups' }[k]) + ' ' + counts[k] + '</button>'; }).join('') + (archived.length ? '<span class="av-sep"></span><button type="button" data-crm-type="archive"' + (crm.type === 'archive' ? ' class="on"' : '') + '>🗄 Archive ' + archived.length + '</button>' : '') + (junked.length ? '<button type="button" data-crm-type="junk"' + (crm.type === 'junk' ? ' class="on"' : '') + '>🚫 Junk ' + junked.length + '</button>' : '');
     var q = $('crmQ').value.trim().toLowerCase(), qd = q.replace(/\D/g, ''), st = $('crmSt').value, who = $('crmWho').value;
     var list = all.filter(function(x){
       if (crm.tile === 'attn' && nNew.indexOf(x) === -1) return false; if (crm.tile === 'due' && due.indexOf(x) === -1) return false; if (crm.tile === 'confirm' && toConfirm.indexOf(x) === -1) return false; if (crm.tile === 'free' && openAppl.indexOf(x) === -1) return false; if (crm.tile === 'subs' && subs.indexOf(x) === -1) return false;
@@ -8963,6 +8965,7 @@
       if ((d.jobs || []).length) facts.push(['Jobs raised', d.jobs.map(function(id){ return '<button type="button" class="linkish" data-crm-job="' + id + '">RR-' + String(id).padStart(5, '0') + '</button>'; }).join(' · ')]);
       facts.push(['Preferred', esc((d.dates || []).join(', ') || 'Any date')]);
     }
+    (d.rm || []).forEach(function(r){ if (r && r[0] && r[1]) facts.push([esc(r[0]), esc(r[1])]); });   // what the applicant told Rightmove
     if (d.source) facts.push(['Came via', esc(d.source)]); if (d.page) facts.push(['Sent from', esc(d.page)]);
     if (x.type === 'sub') { facts.push(['Alerts', esc({ instant: 'As it happens', weekly: 'Weekly round-up', monthly: 'Monthly round-up' }[d.freq] || d.freq)]); facts.push(['Emails sent', String(d.sent || 0) + (d.last ? ' · last ' + esc(fmtShort(d.last)) : '')]); }
     h += '<div class="crm-facts">' + facts.map(function(f){ return '<div><span>' + f[0] + '</span><b>' + f[1] + '</b></div>'; }).join('') + '</div>';
@@ -9046,12 +9049,16 @@
   }
   function drawLeadHook(){
     var d = leadHook, rm = d.rm_last;
-    $('crmHookBody').innerHTML = '<p style="margin:6px 0"><b>Rightmove:</b> ' + (d.rightmove ? 'switched on' + (rm ? ' · last checked ' + esc(fmtShort(rm.at)) + (rm.error ? ' — <span style="color:#b42318">' + esc(rm.error) + '</span>' : ' — ' + rm.added + ' new') : ' · first check in a minute or two') : 'not connected yet. When Rightmove sends the datafeed details (network ID, branch IDs and a certificate with its password), they go into Railway’s settings and new Rightmove enquiries appear here automatically.') + '</p>' +
+    var rh = d.rm_hook || {}, st = rh.stats || {};
+    $('crmHookBody').innerHTML = '<p style="margin:6px 0"><b>Rightmove leads (real time):</b> ' + (rh.secret ? '✅ connected' + (st.at ? ' · last lead ' + esc(fmtShort(st.at)) : ' · waiting for the first lead') + (st.bad ? ' · <span style="color:#b42318">' + st.bad + ' request(s) refused (wrong signature)</span>' : '') :
+        'give Rightmove this address, then put the secret they send you into Railway as <b>RIGHTMOVE_WEBHOOK_SECRET</b>.' + (st.unsigned ? ' Rightmove has already reached it ' + st.unsigned + ' time(s).' : '')) + '</p>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><input class="inp" readonly value="' + esc(rh.url || '') + '" style="flex:1;min-width:220px"><button type="button" class="btn small" data-hook-copy="rm">Copy</button></div>' +
+      '<p style="margin:6px 0"><b>Rightmove datafeed (older method):</b> ' + (d.rightmove ? 'switched on' + (rm ? ' · last checked ' + esc(fmtShort(rm.at)) + (rm.error ? ' — <span style="color:#b42318">' + esc(rm.error) + '</span>' : ' — ' + rm.added + ' new') : ' · first check in a minute or two') : 'not used (the real-time leads above replace it).') + '</p>' +
       '<p style="margin:6px 0"><b>Any other source</b> (e.g. a service that reads the Rightmove enquiry emails): post each lead to this private link. Keep it private — anyone with it can add leads.</p>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" readonly value="' + esc(d.url) + '" style="flex:1;min-width:220px"><button type="button" class="btn small" data-hook-copy>Copy</button></div>' +
       (d.last_at ? '<p style="margin:6px 0 0">Last lead received ' + esc(fmtShort(d.last_at)) + '</p>' : '');
   }
-  document.addEventListener('click', function(e){ if (e.target.closest('[data-hook-copy]') && leadHook) copyText(leadHook.url).then(function(){ toast('Copied'); }); });
+  document.addEventListener('click', function(e){ var c = e.target.closest('[data-hook-copy]'); if (c && leadHook) copyText(c.dataset.hookCopy === 'rm' ? (leadHook.rm_hook || {}).url : leadHook.url).then(function(){ toast('Copied'); }); });
   ['crmQ', 'crmSt', 'crmWho'].forEach(function(id){ $(id).addEventListener(id === 'crmQ' ? 'input' : 'change', renderCrm); });
   $('crmTiles').addEventListener('click', function(e){ var b = e.target.closest('[data-crm-tile]'); if (!b) return; crm.tile = crm.tile === b.dataset.crmTile ? '' : b.dataset.crmTile; if (crm.tile === 'subs') crm.type = ''; renderCrm(); });
   $('crmView').addEventListener('click', function(e){ var j = e.target.closest('[data-crm-job]'); if (!j) return; e.stopPropagation(); var jid = Number(j.dataset.crmJob); showView('jobs'); Promise.resolve(loadJobs()).then(function(){ openJob(jid); }); });
