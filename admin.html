@@ -513,7 +513,7 @@
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
   body:not(.staff-mode) #navAlerts { display: none !important; }
-  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
@@ -734,6 +734,25 @@
   .crm-tile.hot b { color: #b42318; } .crm-tile.on { border-color: var(--navy, #0b1f3a); box-shadow: 0 0 0 2px var(--navy, #0b1f3a) inset; }
   .crm-appl { border: 1px solid #d0d5dd; background: #f9fafb; border-radius: 10px; padding: 10px 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .crm-appl-own { font-size: .9rem; line-height: 1.4; } .crm-verdict { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; font-weight: 600; width: 100%; max-width: 320px; } .crm-hook { margin-bottom: 12px; } .crm-hook summary { cursor: pointer; font-weight: 600; }
   body:not(.staff-mode) #navLeads { display: none; }   /* the owner sees applicants in Website leads */
+  .av-win { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin: -4px 0 8px; } @media (max-width: 760px) { .av-win { display: none; } }
+  .cal-top { margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .cal-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .cal-bar b { font-size: 1.05rem; margin: 0 6px; flex: 1; min-width: 140px; }
+  .cal-seg { display: inline-flex; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; overflow: hidden; } .cal-seg button { border: 0; background: #fff; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: var(--ink-soft, #475467); } .cal-seg button.on { background: var(--ink, #101828); color: #fff; }
+  .cal-people { display: flex; gap: 6px; flex-wrap: wrap; } .cal-people button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line, #e5e7eb); background: #fff; border-radius: 999px; padding: 5px 11px; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; } .cal-people button.on { border-color: var(--ink, #101828); background: #f2f4f7; } .cal-people i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .cal-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; } .cal-week.one { grid-template-columns: 1fr; max-width: 760px; }
+  .cal-day { background: #fff; border: 1px solid var(--line, #e5e7eb); border-radius: 14px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-height: 220px; min-width: 0; }
+  .cal-day.today { border-color: #d92d20; box-shadow: 0 0 0 2px rgba(217,45,32,.12); } .cal-day.past { background: #fafafa; }
+  .cal-dh { display: flex; justify-content: space-between; align-items: baseline; font-size: .82rem; color: var(--ink-soft, #667085); font-weight: 700; padding: 2px 4px 6px; border-bottom: 1px solid var(--line, #eaecf0); } .cal-dh b { font-size: 1.05rem; color: var(--ink, #101828); } .cal-day.today .cal-dh b { color: #d92d20; }
+  .cal-ev { text-align: left; border: 1px solid var(--line, #eaecf0); border-left: 4px solid var(--c, #667085); background: #fff; border-radius: 10px; padding: 7px 8px; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .cal-ev:hover { background: #f9fafb; } .cal-ev .t { font-weight: 800; font-size: .86rem; } .cal-ev .p { font-size: .82rem; font-weight: 600; overflow-wrap: anywhere; } .cal-ev small { color: var(--ink-soft, #667085); font-size: .74rem; overflow-wrap: anywhere; }
+  .cal-ev .who { display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; font-weight: 700; color: var(--c, #667085); }
+  .cal-ev.st-cancelled { opacity: .55; } .cal-ev.st-cancelled .p { text-decoration: line-through; } .cal-ev.st-done .t::after { content: " ✓"; color: #067647; } .cal-ev.st-no_show .t::after { content: " · no-show"; color: #b42318; font-weight: 600; }
+  .cal-add { margin-top: auto; border: 1px dashed var(--line, #d0d5dd); background: transparent; border-radius: 10px; padding: 6px; font: inherit; font-size: .8rem; color: var(--ink-soft, #667085); cursor: pointer; } .cal-add:hover { border-color: var(--ink, #101828); color: var(--ink, #101828); }
+  .cal-none { color: var(--ink-soft, #98a2b3); font-size: .8rem; padding: 4px; }
+  .modal .card.cal-form { display: flex; flex-direction: column; gap: 10px; width: min(620px, 100%); } .cal-form label { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; font-weight: 600; } .cal-g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .vd-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: .9rem; } .vd-facts span { color: var(--ink-soft, #667085); } .vd-sec { border-top: 1px solid var(--line, #eaecf0); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; } .vd-fb { background: #f9fafb; border-radius: 10px; padding: 10px; font-size: .9rem; }
+  @media (max-width: 1100px) { .cal-week { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  @media (max-width: 760px) { .cal-week { grid-template-columns: 1fr; } .cal-day { min-height: 0; } .cal-day.empty-day { display: none; } .cal-g3 { grid-template-columns: 1fr; } }
   .crm-bar { display: flex; gap: 8px; flex-wrap: wrap; } .crm-bar #crmQ { flex: 1; min-width: 200px; } .crm-bar select { width: auto; }
   .crm-add { border-top: 1px solid var(--line, #eef0f3); margin-top: 10px; padding-top: 12px; } .crm-wide { grid-column: 1 / -1; }
   .crm-card { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 14px; margin-top: 8px; overflow: hidden; } .crm-card.is-new { border-left: 4px solid #b42318; }
@@ -1715,6 +1734,7 @@
     <button class="nav" type="button" id="navLt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg> Landlord Terms <span class="count-chip" id="sLt" hidden></span></button>
     <button class="nav" type="button" id="navEmail" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
     <button class="nav" type="button" id="navNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
+    <button class="nav" type="button" id="navCal" title="Everyone’s viewings, by day and time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h2M14 14h2M8 18h2"/></svg> Calendar <span class="badge" id="sCal" hidden></span></button>
     <button class="nav" type="button" id="navLeads" title="Applicants: website viewing requests, Rightmove and other portal leads, people looking to rent or buy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.9-3.3 3.3-5 6.5-5s5.6 1.7 6.5 5"/><path d="M17 8h5M19.5 5.5v5"/></svg> Leads <span class="badge hot" id="sLeads" hidden></span></button>
     <button class="nav" type="button" id="navCrm" title="Landlord and other website requests, alert sign-ups and contacts (applicants are under Leads)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17c.8-2 2.4-3 4.5-3s3.7 1 4.5 3"/></svg> Website leads <span class="badge hot" id="sCrm" hidden></span></button>
     <button class="nav" type="button" id="navWeb" title="Who visits the website and what they look at"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg> Website visitors</button>
@@ -2052,7 +2072,7 @@
         </details>
       </div>
 
-      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="appl">🙋 Leads <span class="st-n" id="stApplN" hidden></span></button><button type="button" data-stab="crm">📇 Website leads <span class="st-n" id="stCrmN" hidden></span></button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="web" id="stWeb" hidden>📈 Visitors</button><button type="button" data-stab="calls">📞 Calls</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
+      <div class="st-deployed mobile-only" id="stDeployed" hidden></div><div class="staff-tabs" id="staffTabs" hidden><button type="button" data-stab="avail" class="on">🏡 Available</button><button type="button" data-stab="cal">🗓 Calendar</button><button type="button" data-stab="appl">🙋 Leads <span class="st-n" id="stApplN" hidden></span></button><button type="button" data-stab="crm">📇 Website leads <span class="st-n" id="stCrmN" hidden></span></button><button type="button" data-stab="offers">📝 Offers</button><button type="button" data-stab="lt">🏠 Landlord Terms</button><button type="button" data-stab="sent">✉ Sent emails</button><button type="button" id="stRepLink">🔧 Repair link</button><button type="button" data-stab="web" id="stWeb" hidden>📈 Visitors</button><button type="button" data-stab="calls">📞 Calls</button><button type="button" data-stab="team" class="st-team" id="stTeam" hidden>👥 Team</button><button type="button" data-stab="who" class="st-team" id="stWho" hidden>🕘 Who did what</button></div>
       <!-- TEAM: staff sign-ins and who did what (managers only) -->
       <div id="teamView" hidden></div>
       <div id="whoView" hidden><div class="card"><div class="team-feed-h" style="margin-top:0"><b>Everything the team has done, newest first</b><select class="inp" id="tmFilter" style="width:auto;max-width:100%;min-width:0"><option value="">Everyone</option></select><button type="button" class="btn small ghost" id="teamFeedMin">Minimise</button></div><div id="teamFeed"></div></div>
@@ -2112,8 +2132,17 @@
         <details class="card crm-hook" id="crmHook" hidden><summary>🔌 Connect Rightmove and other portals</summary><div id="crmHookBody" class="muted-note">Loading…</div></details>
         <div id="crmList"></div>
       </div>
+      <div id="calView" hidden>
+        <div class="card cal-top">
+          <div class="cal-bar"><button type="button" class="btn small" id="calPrev" aria-label="Previous">‹</button><button type="button" class="btn small" id="calToday">Today</button><button type="button" class="btn small" id="calNext" aria-label="Next">›</button>
+            <b id="calLbl"></b><span class="cal-seg" id="calMode"><button type="button" data-cm="week" class="on">Week</button><button type="button" data-cm="day">Day</button></span><button type="button" class="btn small primary" id="calAdd">＋ Book a viewing</button></div>
+          <div class="cal-people" id="calPeople"></div>
+        </div>
+        <div id="calBody"><div class="empty">Loading…</div></div>
+      </div>
       <div id="availView" hidden>
         <div class="card av-top">
+          <div class="av-win"><button type="button" class="btn small ghost" data-open-win="cal" title="Keep the calendar open on your other screen">🗓 Open the calendar in a new window</button><button type="button" class="btn small ghost" data-open-win="avail" title="Open this list in its own window">⧉ This list in a new window</button></div>
           <div class="av-search"><input class="inp" id="avQ" placeholder="Search address, landlord, postcode, Gnomen no., notes…"><select class="inp" id="avSort" style="width:auto"><option value="date">Available soonest</option><option value="lo">Rent: low to high</option><option value="hi">Rent: high to low</option><option value="beds">Bedrooms</option><option value="new">Newest added</option><option value="online">Longest online</option><option value="fee">Commission: highest</option></select><div class="av-modes" id="avModes" title="How to see the list"><button type="button" data-avm="cards" class="on">▦ Cards</button><button type="button" data-avm="list">☰ List</button><button type="button" data-avm="compact">≡ Compact</button></div></div>
           <div class="av-chips" id="avBeds"><button type="button" class="on" data-avb="">All</button><button type="button" data-avb="1">Studio / 1 bed</button><button type="button" data-avb="2">2 bed</button><button type="button" data-avb="3">3 bed</button><button type="button" data-avb="4">4+ bed</button><span class="av-sep"></span><button type="button" data-avf="now">Available now</button><button type="button" data-avf="urgent">🔥 Urgent</button><button type="button" data-avf="novideo">🎥 Needs a video</button><button type="button" data-avf="let">✓ Been let</button><button type="button" data-avf="withdrawn">Withdrawn</button></div>
           <div class="av-sum" id="avSum"></div>
@@ -2900,6 +2929,21 @@
     <div class="more-deployed" id="deployedAtM" hidden></div>
   </div>
 </div>
+<div class="modal" id="cbModal" hidden>
+  <div class="card cal-form">
+    <h3 id="cbTitle">Book a viewing</h3>
+    <label>Property<input class="inp" id="cbProp" list="offProps" maxlength="400" autocomplete="off" placeholder="Start typing the address"></label>
+    <div class="cal-g3"><label>Date<input class="inp" id="cbDate" type="date"></label><label>Time<input class="inp" id="cbTime" type="time" step="900"></label><label>Length<select class="inp" id="cbMins"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 hour</option><option value="90">1½ hours</option></select></label></div>
+    <label>Who’s doing it<select class="inp" id="cbStaff"></select></label>
+    <div class="cal-g3"><label>Applicant<input class="inp" id="cbWho" maxlength="120" autocomplete="off"></label><label>Mobile<input class="inp" id="cbPhone" type="tel" maxlength="40" autocomplete="off"></label><label>Email<input class="inp" id="cbEmail" type="email" maxlength="200" autocomplete="off"></label></div>
+    <p class="muted-note" style="margin:0">The applicant’s email lets you send them the feedback form after the viewing. Their details are never shown to the landlord.</p>
+    <div class="banner" id="cbClash" hidden style="margin:0"></div>
+    <div class="row-actions"><button class="btn ghost" id="cbDel" type="button" hidden>Delete</button><span style="flex:1"></span><button class="btn" id="cbClose" type="button">Cancel</button><button class="btn primary" id="cbSave" type="button">Book viewing</button></div>
+  </div>
+</div>
+<div class="modal" id="vdModal" hidden>
+  <div class="card cal-form" id="vdBody"></div>
+</div>
 <div class="modal" id="jtModal" hidden>
   <div class="card">
     <h3>Tenants for this job</h3>
@@ -3100,7 +3144,7 @@
     if (staffMode) { $('stDeployed').textContent = '🕒 Fixflow last updated ' + when; $('stDeployed').hidden = false; }
   }
   function start(){
-    var wantLt = location.hash === '#lt', wantOffers = location.hash === '#offers', wantCrm = location.hash === '#contacts' || location.hash === '#leads';   // links from emails and phone alerts
+    var wantLt = location.hash === '#lt', wantOffers = location.hash === '#offers', wantCrm = location.hash === '#contacts' || location.hash === '#leads', wantPage = location.hash === '#cal' ? 'cal' : location.hash === '#avail' ? 'avail' : '';   // links from emails and phone alerts
     api('GET', '/api/admin/me').then(function(d){
       if (!d.ok) { if (d.status !== 401) showLogin(); return; }
       meta = d;
@@ -3116,7 +3160,7 @@
         var wasOn = history.state && history.state.v;   // a refresh keeps you on the page you were on
         if (!history.state) history.replaceState({ v: 'avail', depth: 0 }, '', location.pathname);
         // Staff start on the Available list (links from alerts and emails open their own page).
-        loadOffers().then(function(){ showView(wantCrm ? 'crm' : wantLt ? 'lt' : wantOffers ? 'offers' : (wasOn && ['offers', 'lt', 'avail', 'sent', 'team', 'who', 'crm', 'web'].indexOf(wasOn) !== -1 ? wasOn : 'avail')); }); loadPvr(); loadCrm(true); refreshListings(true);
+        loadOffers().then(function(){ showView(wantPage || (wantCrm ? 'crm' : wantLt ? 'lt' : wantOffers ? 'offers' : (wasOn && ['offers', 'lt', 'avail', 'sent', 'team', 'who', 'crm', 'web', 'cal', 'appl', 'calls'].indexOf(wasOn) !== -1 ? wasOn : 'avail'))); }); loadPvr(); loadCrm(true); refreshListings(true);
         // An offers team manager also gets the Team section on the Offers page.
         $('stWho').hidden = false; $('navWho').hidden = false;   // everyone sees who did what
         $('stWeb').hidden = false;   // every staff member sees the website visitors
@@ -3130,7 +3174,7 @@
       showDeployed(d); loadCrm(true);
       // Your own page: no "Send repair link" (staff still have it on theirs).
       $('navRepLink').hidden = true; document.querySelectorAll('[data-go="navRepLink"]').forEach(function(x){ x.remove(); });
-      var wasState = history.state && history.state.v && history.state.v !== 'jobs' && !/^#(job=|offers|contacts|leads|lt|certs|web|avail)/.test(location.hash) ? history.state : null;   // a refresh keeps you where you were
+      var wasState = history.state && history.state.v && history.state.v !== 'jobs' && !/^#(job=|offers|contacts|leads|lt|certs|web|avail|cal)/.test(location.hash) ? history.state : null;   // a refresh keeps you where you were
       if (!history.state) history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname + location.hash);
       loadContractors().then(loadJobs).then(openJobFromLink).then(function(){ if (wasState) applyNav(wasState); }).then(updateBack);
       refreshListings(true);   // Rightmove and YouTube, once when you sign in
@@ -3143,6 +3187,7 @@
     if (location.hash === '#lt') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('lt'); return; }
     if (location.hash === '#certs') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('certs'); return; }
     if (location.hash === '#avail') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('avail'); return; }
+    if (location.hash === '#cal') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('cal'); return; }
     if (location.hash === '#web') { history.replaceState({ v: 'jobs', depth: 0 }, '', location.pathname); showView('web'); return; }
     var m = /^#job=(\d+)$/.exec(location.hash);
     if (!m) return;
@@ -4365,7 +4410,7 @@
     if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
-    if (staffMode && v !== 'web' && v !== 'calls' && v !== 'crm' && v !== 'appl' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
+    if (staffMode && v !== 'web' && v !== 'calls' && v !== 'crm' && v !== 'appl' && v !== 'cal' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
     view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
@@ -4385,6 +4430,7 @@
     $('availView').hidden = v !== 'avail'; $('navAvail').classList.toggle('on', v === 'avail');
     if (v === 'crm' || v === 'appl') { if (crm.mode !== v) { crm.type = ''; crm.tile = ''; crmSel = {}; } crm.mode = v; }
     $('crmView').hidden = v !== 'crm' && v !== 'appl'; $('navCrm').classList.toggle('on', v === 'crm'); $('navLeads').classList.toggle('on', v === 'appl'); crmNag(); if ($('crmBulk')) crmSelDraw();
+    $('calView').hidden = v !== 'cal'; $('navCal').classList.toggle('on', v === 'cal');
     $('webView').hidden = v !== 'web'; $('navWeb').classList.toggle('on', v === 'web');
     $('callsView').hidden = v !== 'calls'; $('navCalls').classList.toggle('on', v === 'calls');
     // Sent emails: its own tab for staff; inside the Activity page for the owner.
@@ -4400,12 +4446,13 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { appl: 'Leads', jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', avail: 'Available properties', calls: 'Calls', crm: 'Website leads', web: 'Website visitors', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { cal: 'Calendar', appl: 'Leads', jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', avail: 'Available properties', calls: 'Calls', crm: 'Website leads', web: 'Website visitors', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') { loadLt(); if (!loadVr.done) { loadVr.done = true; loadVr(); } else renderVr(); }
     if (v === 'avail') loadAvail();
     if (v === 'crm' || v === 'appl') loadCrm();
+    if (v === 'cal') loadCal();
     if (v === 'web') loadWeb();
     if (v === 'calls') loadCalls();
     if (v === 'sent' || (v === 'act' && !staffMode)) loadSent();
@@ -4444,10 +4491,11 @@
   })();
 
   // ---------- Menu order (each person arranges their own) ----------
-  var NAV_IDS = ['navJobs', 'navLandlords', 'navProps', 'navTcy', 'navTenants', 'contractorsBtn', 'navOffers', 'navAvail', 'navCerts', 'navPay', 'navLt', 'navEmail', 'navNew', 'navLeads', 'navCrm', 'navWeb', 'navCalls', 'navAct'];
+  var NAV_IDS = ['navJobs', 'navLandlords', 'navProps', 'navTcy', 'navTenants', 'contractorsBtn', 'navOffers', 'navAvail', 'navCerts', 'navPay', 'navLt', 'navEmail', 'navNew', 'navCal', 'navLeads', 'navCrm', 'navWeb', 'navCalls', 'navAct'];
   function navApply(order){
     var anchor = $('navRepLink'), par = anchor.parentNode, seen = {};
     order = (order || []).slice(); if (order.indexOf('navLeads') === -1 && order.indexOf('navCrm') !== -1) order.splice(order.indexOf('navCrm'), 0, 'navLeads');   // new in the menu: next to Website leads
+    if (order.indexOf('navCal') === -1 && order.indexOf('navLeads') !== -1) order.splice(order.indexOf('navLeads'), 0, 'navCal');
     order.concat(NAV_IDS).forEach(function(id){ if (seen[id] || NAV_IDS.indexOf(id) === -1 || !$(id)) return; seen[id] = 1; par.insertBefore($(id), anchor); });
   }
   function navCurrent(){ return Array.prototype.map.call(document.querySelectorAll('.side .nav'), function(b){ return b.id; }).filter(function(id){ return NAV_IDS.indexOf(id) !== -1; }); }
@@ -11190,6 +11238,149 @@
       openMailto('mailto:' + (/@/.test(to) ? encodeURIComponent(to) : '') + '?subject=' + encodeURIComponent('Make your offer' + (a ? ' — ' + shortAddr(a) : '')) + '&body=' + encodeURIComponent(body));
     });
   });
+  // ---------- Calendar: everyone's viewings, by day and time ----------
+  // Any member of staff can book a viewing for anyone; each person has a colour. Works in a second window
+  // (e.g. the Available list on one screen and the Calendar on the other): bookings show in both at once.
+  var cal = { start: null, mode: 'week', items: [], staff: [], only: '', edit: null }, CAL_COL = ['#2563eb', '#d92d20', '#079455', '#7a5af8', '#dc6803', '#0e9384', '#c11574', '#4e5ba6', '#ca8504', '#475467'];
+  var calChan = null; try { calChan = 'BroadcastChannel' in window ? new BroadcastChannel('ff-calendar') : null; } catch (e) {}
+  if (calChan) calChan.onmessage = function(){ if (view === 'cal') loadCal(true); loadViewings(); };
+  function calChanged(){ if (calChan) try { calChan.postMessage('changed'); } catch (e) {} if (view === 'cal') loadCal(true); loadViewings(); }
+  function calMonday(d){ d = new Date(d); d.setHours(0, 0, 0, 0); var w = (d.getDay() + 6) % 7; d.setDate(d.getDate() - w); return d; }
+  function calDayKey(d){ d = new Date(d); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function calHm(d){ return new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+  function calWho(v){ return v.staff || v.created_by || 'Office'; }
+  function calColour(name){ var all = cal.staff.slice(); if (all.indexOf(name) === -1) all.push(name); all.sort(); var i = all.indexOf(name); return CAL_COL[i % CAL_COL.length]; }
+  function calMe(){ return (meta.user && meta.user.name) || (crm && crm.me) || 'Office'; }
+  function loadCal(quiet){
+    if (!cal.start) cal.start = calMonday(new Date());
+    var days = cal.mode === 'day' ? 1 : 7, from = new Date(cal.start), to = new Date(cal.start); to.setDate(to.getDate() + days);
+    if (!cal.staff.length) api('GET', '/api/admin/staff-names').then(function(d){ if (d && d.ok) { cal.staff = d.names || []; renderCal(); } });
+    return api('GET', '/api/admin/viewings?from=' + encodeURIComponent(from.toISOString()) + '&to=' + encodeURIComponent(to.toISOString())).then(function(d){
+      if (!d || !d.ok) { if (!quiet) $('calBody').innerHTML = '<div class="empty">Couldn’t load the calendar — press Refresh.</div>'; return; }
+      cal.items = d.viewings || []; renderCal();
+    });
+  }
+  function renderCal(){
+    if (!cal.start) return;
+    var days = cal.mode === 'day' ? 1 : 7, today = calDayKey(new Date()), end = new Date(cal.start); end.setDate(end.getDate() + days - 1);
+    var f = function(d, o){ return d.toLocaleDateString('en-GB', o); };
+    $('calLbl').textContent = days === 1 ? f(cal.start, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : f(cal.start, { day: 'numeric', month: 'short' }) + ' – ' + f(end, { day: 'numeric', month: 'short', year: 'numeric' });
+    document.querySelectorAll('[data-cm]').forEach(function(b){ b.classList.toggle('on', b.dataset.cm === cal.mode); });
+    var people = [calMe()]; cal.items.forEach(function(v){ var w = calWho(v); if (people.indexOf(w) === -1) people.push(w); }); if (cal.only && people.indexOf(cal.only) === -1) people.push(cal.only);   // just the people with viewings this week
+    $('calPeople').innerHTML = '<button type="button" data-cal-only=""' + (cal.only ? '' : ' class="on"') + '>Everyone</button>' + people.map(function(n){ return '<button type="button" data-cal-only="' + esc(n) + '"' + (cal.only === n ? ' class="on"' : '') + '><i style="background:' + calColour(n) + '"></i>' + esc(n === calMe() ? n + ' (me)' : n) + '</button>'; }).join('') +
+      '<button type="button" data-cal-win title="Open the calendar in its own window — e.g. on your second screen">⧉ Open in a new window</button>';
+    var h = '<div class="cal-week' + (days === 1 ? ' one' : '') + '">';
+    for (var i = 0; i < days; i++) {
+      var d = new Date(cal.start); d.setDate(d.getDate() + i); var key = calDayKey(d);
+      var list = cal.items.filter(function(v){ return calDayKey(v.at) === key && (!cal.only || calWho(v) === cal.only); }).sort(function(a, b){ return new Date(a.at) - new Date(b.at); });
+      h += '<div class="cal-day' + (key === today ? ' today' : '') + (key < today ? ' past' : '') + (list.length ? '' : ' empty-day') + '"><div class="cal-dh"><span>' + esc(f(d, { weekday: 'short' })) + '</span><b>' + d.getDate() + '</b><span>' + esc(f(d, { month: 'short' })) + '</span></div>' +
+        (list.length ? list.map(function(v){
+          var who = calWho(v), c = calColour(who), endT = new Date(new Date(v.at).getTime() + (v.mins || 30) * 60000);
+          return '<button type="button" class="cal-ev st-' + esc(v.status) + '" style="--c:' + c + '" data-cal-ev="' + v.id + '"><span class="t">' + calHm(v.at) + '–' + calHm(endT) + '</span><span class="p">' + esc(shortAddr(v.property_address)) + '</span>' + (v.applicant ? '<small>' + esc(v.applicant) + '</small>' : '') + '<span class="who">● ' + esc(who) + '</span>' + (v.app_fb_at ? '<small>💬 Applicant feedback</small>' : '') + '</button>';
+        }).join('') : '<div class="cal-none">No viewings</div>') +
+        (key >= today ? '<button type="button" class="cal-add" data-cal-new="' + key + '">＋ Add</button>' : '') + '</div>';
+    }
+    $('calBody').innerHTML = h + '</div>';
+    var n = cal.items.filter(function(v){ return calDayKey(v.at) === today && v.status === 'booked'; }).length;
+    $('sCal').hidden = !n; $('sCal').textContent = n;
+  }
+  $('calPrev').addEventListener('click', function(){ cal.start.setDate(cal.start.getDate() - (cal.mode === 'day' ? 1 : 7)); loadCal(); });
+  $('calNext').addEventListener('click', function(){ cal.start.setDate(cal.start.getDate() + (cal.mode === 'day' ? 1 : 7)); loadCal(); });
+  $('calToday').addEventListener('click', function(){ cal.start = cal.mode === 'day' ? new Date(new Date().setHours(0, 0, 0, 0)) : calMonday(new Date()); loadCal(); });
+  $('calMode').addEventListener('click', function(e){ var b = e.target.closest('[data-cm]'); if (!b) return; cal.mode = b.dataset.cm; cal.start = cal.mode === 'day' ? new Date(new Date().setHours(0, 0, 0, 0)) : calMonday(cal.start || new Date()); loadCal(); });
+  $('calAdd').addEventListener('click', function(){ openBook({}); });
+  $('navCal').addEventListener('click', function(){ showView('cal'); });
+  $('calView').addEventListener('click', function(e){
+    var b;
+    if ((b = e.target.closest('[data-cal-only]'))) { cal.only = b.dataset.calOnly; renderCal(); return; }
+    if (e.target.closest('[data-cal-win]')) { window.open(location.pathname + '#cal', 'ffcal' + Date.now()); return; }
+    if ((b = e.target.closest('[data-open-win]'))) { window.open(location.pathname + '#' + b.dataset.openWin, 'ff' + b.dataset.openWin + Date.now()); return; }
+    if ((b = e.target.closest('[data-cal-new]'))) { openBook({ date: b.dataset.calNew }); return; }
+    if ((b = e.target.closest('[data-cal-ev]'))) { var v = cal.items.filter(function(x){ return String(x.id) === b.dataset.calEv; })[0]; if (v) openViewing(v); }
+  });
+  document.addEventListener('click', function(e){ var b = e.target.closest('#availView [data-open-win]'); if (b) window.open(location.pathname + '#' + b.dataset.openWin, 'ff' + b.dataset.openWin + Date.now()); });
+  setInterval(function(){ if (view === 'cal' && !document.hidden && !$('appView').hidden) loadCal(true); }, 60000);   // others' bookings
+  // Book (or change) a viewing — from the calendar, the Available list or anywhere.
+  function openBook(o){
+    o = o || {}; var v = o.edit || null; cal.edit = v;
+    var at = v ? new Date(v.at) : null, me = calMe();
+    var names = cal.staff.slice(); if (names.indexOf(me) === -1) names.unshift(me); if (v && names.indexOf(calWho(v)) === -1) names.push(calWho(v));
+    $('cbStaff').innerHTML = names.map(function(n){ return '<option' + ((v ? calWho(v) : me) === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('');
+    if (!cal.staff.length) api('GET', '/api/admin/staff-names').then(function(d){ if (d && d.ok && d.names && d.names.length) { cal.staff = d.names; var cur = $('cbStaff').value, all = cal.staff.slice(); if (all.indexOf(cur) === -1) all.unshift(cur); $('cbStaff').innerHTML = all.map(function(n){ return '<option' + (n === cur ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join(''); } });
+    $('cbTitle').textContent = v ? 'Change viewing' : 'Book a viewing'; $('cbSave').textContent = v ? 'Save changes' : 'Book viewing'; $('cbDel').hidden = !v;
+    $('cbProp').value = v ? v.property_address : (o.property || '');
+    $('cbDate').value = at ? calDayKey(at) : (o.date || calDayKey(new Date()));
+    $('cbTime').value = at ? calHm(at) : '';
+    $('cbMins').value = String(v && v.mins || 30);
+    $('cbWho').value = v ? (v.applicant || '') : (o.applicant || ''); $('cbPhone').value = v ? (v.phone || '') : (o.phone || ''); $('cbEmail').value = v ? (v.email || '') : (o.email || '');
+    $('cbClash').hidden = true; $('cbModal').hidden = false; setTimeout(function(){ ($('cbProp').value ? $('cbTime') : $('cbProp')).focus(); }, 30);
+  }
+  // Warn when the person doing it already has a viewing at that time.
+  function calClash(){
+    var d = $('cbDate').value, t = $('cbTime').value, who = $('cbStaff').value; if (!d || !t) { $('cbClash').hidden = true; return; }
+    var st = new Date(d + 'T' + t).getTime(), en = st + (+$('cbMins').value || 30) * 60000;
+    api('GET', '/api/admin/viewings?from=' + encodeURIComponent(new Date(st - 3 * 3600000).toISOString()) + '&to=' + encodeURIComponent(new Date(en + 3 * 3600000).toISOString())).then(function(r){
+      var hit = ((r && r.viewings) || []).filter(function(v){ var a = new Date(v.at).getTime(), b = a + (v.mins || 30) * 60000; return v.status === 'booked' && calWho(v) === who && (!cal.edit || v.id !== cal.edit.id) && a < en && b > st; })[0];
+      $('cbClash').hidden = !hit; if (hit) $('cbClash').textContent = '⚠ ' + who + ' already has a viewing then: ' + calHm(hit.at) + ' at ' + shortAddr(hit.property_address) + '. You can still book it.';
+    });
+  }
+  ['cbDate', 'cbTime', 'cbMins', 'cbStaff'].forEach(function(id){ $(id).addEventListener('change', calClash); });
+  $('cbClose').addEventListener('click', function(){ $('cbModal').hidden = true; });
+  $('cbModal').addEventListener('click', function(e){ if (e.target === this) this.hidden = true; });
+  $('cbSave').addEventListener('click', function(){
+    var b = this, prop = $('cbProp').value.trim(), d = $('cbDate').value, t = $('cbTime').value;
+    if (!prop) { toast('Enter the property'); $('cbProp').focus(); return; } if (!d || !t) { toast('Choose the date and time'); (d ? $('cbTime') : $('cbDate')).focus(); return; }
+    var body = { property: prop, at: new Date(d + 'T' + t).toISOString(), mins: +$('cbMins').value, staff: $('cbStaff').value, applicant: $('cbWho').value.trim(), phone: $('cbPhone').value.trim(), email: $('cbEmail').value.trim() };
+    busy(b, true, 'Saving…');
+    api('POST', '/api/admin/viewings' + (cal.edit ? '/' + cal.edit.id : ''), body).then(function(r){
+      busy(b, false); if (!r || !r.ok) { toast('Couldn’t save the viewing'); return; }
+      $('cbModal').hidden = true; toast('✓ ' + (cal.edit ? 'Viewing updated' : 'Viewing booked for ' + body.staff + ' — ' + new Date(body.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })));
+      if (!cal.edit && view === 'cal') { cal.start = cal.mode === 'day' ? new Date(new Date(body.at).setHours(0, 0, 0, 0)) : calMonday(body.at); }
+      calChanged();
+    });
+  });
+  $('cbDel').addEventListener('click', function(){ if (!cal.edit || !confirm('Delete this viewing? (To keep a record, use Cancel on the viewing instead.)')) return; api('POST', '/api/admin/viewings/' + cal.edit.id, { delete: true }).then(function(){ $('cbModal').hidden = true; toast('Viewing deleted'); calChanged(); }); });
+  // A viewing's details: status, staff feedback (can be shared with the landlord), and the applicant's feedback.
+  function openViewing(v){
+    cal.open = v;
+    var who = calWho(v), endT = new Date(new Date(v.at).getTime() + (v.mins || 30) * 60000), fb = v.app_fb || {}, past = new Date(v.at).getTime() < Date.now() || v.status === 'done';
+    var ST = { booked: 'Booked', done: 'Done ✓', cancelled: 'Cancelled', no_show: 'No-show' };
+    var h = '<h3 style="margin:0">' + esc(shortAddr(v.property_address)) + '</h3>' +
+      '<div class="vd-facts"><span>When</span><b>' + esc(new Date(v.at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })) + ', ' + calHm(v.at) + '–' + calHm(endT) + '</b>' +
+      '<span>Doing it</span><b style="color:' + calColour(who) + '">● ' + esc(who) + '</b>' +
+      '<span>Applicant</span><b>' + esc(v.applicant || '—') + '</b>' +
+      (v.phone ? '<span>Mobile</span><b><a href="tel:' + esc(String(v.phone).replace(/[^\d+]/g, '')) + '">' + esc(v.phone) + '</a></b>' : '') + (v.email ? '<span>Email</span><b>' + esc(v.email) + '</b>' : '') +
+      '<span>Status</span><b>' + esc(ST[v.status] || v.status) + '</b><span>Booked by</span><b>' + esc(v.created_by || 'Office') + ' · ' + esc(fmtShort(v.created_at)) + '</b></div>' +
+      '<div class="row-actions" style="margin:0;flex-wrap:wrap">' + ['done', 'no_show', 'cancelled', 'booked'].filter(function(k){ return k !== v.status; }).map(function(k){ return '<button type="button" class="btn small' + (k === 'done' ? ' primary' : '') + '" data-vd-st="' + k + '">' + { done: '✓ Done', no_show: 'No-show', cancelled: 'Cancel viewing', booked: '↩ Back to booked' }[k] + '</button>'; }).join('') + '<button type="button" class="btn small ghost" data-vd-edit>✏️ Change / move</button></div>' +
+      '<div class="vd-sec"><b>Our feedback</b><textarea class="inp" id="vdFb" rows="3" placeholder="How it went, what they said, e.g. Liked the layout, thought the kitchen was small">' + esc(v.feedback || '') + '</textarea>' +
+        '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" id="vdShare"' + (v.share !== false ? ' checked' : '') + '> Show this feedback to the landlord (never the applicant’s details)</label><div><button type="button" class="btn small primary" data-vd-fb>Save feedback</button></div></div>' +
+      '<div class="vd-sec"><b>Applicant’s feedback</b>' + (v.app_fb_at ? '<div class="vd-fb"><b>' + '★'.repeat(fb.rating || 0) + '☆'.repeat(5 - (fb.rating || 0)) + '</b> · ' + esc({ yes: 'Would like to make an offer', maybe: 'Maybe — has questions', no: 'Not for them' }[fb.interest] || '') +
+          (fb.liked ? '<br><b>Liked:</b> ' + esc(fb.liked) : '') + (fb.disliked ? '<br><b>Didn’t like / questions:</b> ' + esc(fb.disliked) : '') + (fb.service ? '<br><b>Our service:</b> ' + esc(fb.service) : '') + '<br><small class="muted-note" style="margin:0">Sent ' + esc(fmtShort(v.app_fb_at)) + '</small></div>'
+        : '<p class="muted-note" style="margin:0">' + (v.fb_sent_at ? 'Asked ' + esc(fmtShort(v.fb_sent_at)) + ' — no reply yet.' : past ? 'Ask how it went — they get a short form (rating, what they liked, whether they want to go ahead).' : 'After the viewing you can send them a short feedback form.') + '</p>') +
+        '<div class="row-actions" style="margin:0;flex-wrap:wrap">' + (v.email ? '<button type="button" class="btn small" data-vd-ask="email">✉ Email feedback form</button>' : '') + (v.phone && waNumber(v.phone) ? '<button type="button" class="btn small wa-btn" data-vd-ask="wa">💬 WhatsApp feedback form</button>' : '') +
+        (!v.email && !(v.phone && waNumber(v.phone)) ? '<span class="muted-note" style="margin:0">Add their email or mobile (Change / move) to send the form.</span>' : '') + '</div></div>' +
+      '<div class="row-actions" style="margin:0"><span style="flex:1"></span><button type="button" class="btn" data-vd-close>Close</button></div>';
+    $('vdBody').innerHTML = h; $('vdModal').hidden = false;
+  }
+  $('vdModal').addEventListener('click', function(e){
+    var v = cal.open, b; if (e.target === this || e.target.closest('[data-vd-close]')) { this.hidden = true; return; } if (!v) return;
+    if ((b = e.target.closest('[data-vd-st]'))) { api('POST', '/api/admin/viewings/' + v.id, { status: b.dataset.vdSt }).then(function(){ toast(b.dataset.vdSt === 'done' ? '✓ Marked done — add your feedback, and ask the applicant for theirs' : 'Updated'); v.status = b.dataset.vdSt; openViewing(v); calChanged(); }); return; }
+    if (e.target.closest('[data-vd-edit]')) { this.hidden = true; openBook({ edit: v }); return; }
+    if (e.target.closest('[data-vd-fb]')) { var fbt = $('vdFb').value.trim(), sh = $('vdShare').checked; api('POST', '/api/admin/viewings/' + v.id, { feedback: fbt, share: sh }).then(function(r){ toast(r && r.ok ? '✓ Feedback saved' : 'Couldn’t save'); v.feedback = fbt; v.share = sh; calChanged(); }); return; }
+    if ((b = e.target.closest('[data-vd-ask]'))) {
+      var how = b.dataset.vdAsk, modal = this;
+      api('POST', '/api/admin/viewings/' + v.id + '/feedback-link', {}).then(function(r){
+        if (!r || !r.ok) { toast('Couldn’t make the link'); return; }
+        var first = String(v.applicant || '').trim().split(/\s+/)[0] || 'there', addr = String(v.property_address || '').split(',').slice(0, 2).join(','), me = String(calMe()).split(/\s+/)[0].replace(/^(Owner|Office)$/, '');
+        var text = 'Hi ' + first + ',\n\nThank you for viewing ' + addr + '. We’d love to know what you thought — it only takes a minute:\n\n' + r.url + '\n\nIf you’d like to go ahead or have any questions, just reply or call us on 0207 096 8131.\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors';
+        var mark = function(){ api('POST', '/api/admin/viewings/' + v.id + '/feedback-link', { sent: true }).then(function(){ v.fb_sent_at = new Date().toISOString(); calChanged(); }); };
+        if (how === 'wa') { window.open('https://wa.me/' + waNumber(v.phone) + '?text=' + encodeURIComponent(text), '_blank', 'noopener'); mark(); toast('Opened WhatsApp'); return; }
+        modal.hidden = true; composeMail({ to: [v.email], subject: 'How was your viewing? — ' + addr, body: text, title: '✉ Ask for viewing feedback', onSent: mark });
+      });
+    }
+  });
+  document.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; if (!$('cbModal').hidden) { e.stopImmediatePropagation(); $('cbModal').hidden = true; } else if (!$('vdModal').hidden) { e.stopImmediatePropagation(); $('vdModal').hidden = true; } }, true);
+
   // Viewings and feedback (the landlord sees these on their page).
   var viewings = [];
   function loadViewings(){ return api('GET', '/api/admin/viewings').then(function(d){ if (d && d.ok) { viewings = d.viewings || []; renderViewings(); } }); }
@@ -13192,6 +13383,7 @@
     }
     if (act === 'del') { if (!confirm('Delete ' + shortAddr(x.address) + ' from the available list?')) return; api('DELETE', '/api/admin/available/' + x.id, { confirm: true }).then(function(d){ toast(d && d.ok ? 'Deleted' : 'Only managers can delete'); loadAvail(); }); return; }
     if (act === 'copy') { copyText((x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : '') + ' — ' + publicAddr(x.address) + '\n' + (x.vacant ? 'Available now' : x.available_from ? 'Available from ' + avDay(x.available_from) : '') + '\n' + (x.rent_pcm ? gbp(Number(x.rent_pcm)) + ' pcm' : '') + (x.rent_pw ? ' (' + gbp(Number(x.rent_pw)) + ' pw)' : '') + (((ytData && ytData.matches) || {})[x.id] && ytData.matches[x.id][0] ? '\nVideo: ' + ytUrl(ytData.matches[x.id][0]) : '') + (x.rm_id && rmData && (rmData.items || []).some(function(r){ return r.id === x.rm_id; }) ? '\nRightmove: ' + (rmData.items.filter(function(r){ return r.id === x.rm_id; })[0].url) : '') + '\nResidential Realtors · 0207 096 8131').then(function(){ toast('Details copied'); })['catch'](function(){ toast('Couldn’t copy — please try again'); }); return; }
+    if (act === 'view') { openBook({ property: x.address }); return; }   // books straight into the shared calendar
     showView('offers');
     setTimeout(function(){
       if (act === 'view') { $('vwCard').open = true; $('vwProp').value = x.address; $('vwCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); $('vwAt').focus(); return; }
@@ -17173,7 +17365,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navLeads', 'Leads'], ['navCrm', 'Website leads'], ['navWeb', 'Website visitors'], ['navCalls', 'Calls'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navCal', 'Calendar'], ['navLeads', 'Leads'], ['navCrm', 'Website leads'], ['navWeb', 'Website visitors'], ['navCalls', 'Calls'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
