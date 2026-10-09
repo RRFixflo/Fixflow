@@ -3718,7 +3718,7 @@ module.exports = function mountJobs(app, opts) {
     return {
       number: number, date: str(d.date, 20), due: str(d.due, 20), ref: str(d.ref, 100),
       landlord: str(d.landlord, 200), landlordAddress: str(d.landlordAddress, 500), landlordEmail: str(d.landlordEmail, 200), landlordPhone: str(d.landlordPhone, 50),
-      lines: (Array.isArray(d.lines) ? d.lines : []).slice(0, 50).map(function (l) { return { desc: str(l && l.desc, 1000) || '', amount: money(l && l.amount) }; }),
+      lines: (Array.isArray(d.lines) ? d.lines : []).slice(0, 50).map(function (l) { const x = { desc: str(l && l.desc, 1000) || '', amount: money(l && l.amount) }; if (l && l.novat === true) x.novat = true; return x; }),
       sub: money(d.sub), vat: money(d.vat) || 0, total: total
     };
   }
@@ -3731,6 +3731,13 @@ module.exports = function mountJobs(app, opts) {
     res.json({ ok: true, invoices: r.rows.map(function (x) { x.ref = x.job_id ? refFor(x.job_id) : (x.title || 'Tenancy'); return x; }) });
   }));
 
+  // One invoice in full (for the Invoices page's edit window).
+  app.get('/api/admin/invoices/:id', withDb(async function (p, req, res) {
+    const r = (await p.query('SELECT i.id, i.number, i.total, i.created_at, i.paid_at, i.data, i.job_id, i.tenancy_id, i.landlord_name, i.landlord_email, coalesce(j.property_address, i.address) AS property_address FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.id = $1', [jobId(req)])).rows[0];
+    if (!r) return res.status(404).json({ ok: false });
+    r.ref = r.job_id ? refFor(r.job_id) : ((r.data || {}).title || 'Invoice');
+    res.json({ ok: true, invoice: r });
+  }));
   // A new invoice to a landlord, not tied to a repair job: any charge for a
   // property (e.g. the move-in fees a Tenant Find landlord owes us), optionally
   // for a tenancy. Lines are before VAT; VAT added unless off.
@@ -3875,11 +3882,13 @@ module.exports = function mountJobs(app, opts) {
     const total = money(b.total);
     if (total === undefined || total === null) return res.status(400).json({ ok: false, error: 'bad-total' });
     if (!b.data || typeof b.data !== 'object') return res.status(400).json({ ok: false, error: 'no-data' });
-    const cur = await p.query('SELECT i.id, i.job_id, i.tenancy_id, i.number, i.total, coalesce(j.property_address, i.address) AS property_address FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.id = $1', [jobId(req)]);
+    const cur = await p.query('SELECT i.id, i.job_id, i.tenancy_id, i.number, i.total, i.data AS old, coalesce(j.property_address, i.address) AS property_address FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.id = $1', [jobId(req)]);
     if (!cur.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     const inv = cur.rows[0];
     const number = str(b.invoice_number, 50) || inv.number;
-    const clean = cleanInvoiceData(b.data, number, total);
+    // Kept from before: what the edit doesn't touch (title, which rent it comes off, the kind of invoice…).
+    const clean = Object.assign({}, inv.old || {}, cleanInvoiceData(b.data, number, total));
+    if (b.data.title !== undefined) clean.title = str(b.data.title, 120) || clean.title || 'Invoice';
     await p.query('UPDATE invoices SET number = $2, total = $3, landlord_name = $4, landlord_email = $5, data = $6 WHERE id = $1',
       [inv.id, number, total, clean.landlord, clean.landlordEmail, JSON.stringify(clean)]);
     // Keep the job's invoice summary in step when this is its latest invoice.

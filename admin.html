@@ -513,7 +513,7 @@
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
   body:not(.staff-mode) #navAlerts { display: none !important; }
-  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #invTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
@@ -734,6 +734,15 @@
   .crm-tile.hot b { color: #b42318; } .crm-tile.on { border-color: var(--navy, #0b1f3a); box-shadow: 0 0 0 2px var(--navy, #0b1f3a) inset; }
   .crm-appl { border: 1px solid #d0d5dd; background: #f9fafb; border-radius: 10px; padding: 10px 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .crm-appl-own { font-size: .9rem; line-height: 1.4; } .crm-verdict { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; font-weight: 600; width: 100%; max-width: 320px; } .crm-hook { margin-bottom: 12px; } .crm-hook summary { cursor: pointer; font-weight: 600; }
   body:not(.staff-mode) #navLeads { display: none; }   /* the owner sees applicants in Website leads */
+  @media (max-width: 520px) { #invTopBtn { display: none; } }   /* phones: Invoices is in the More menu */
+  .inv-top { margin-bottom: 12px; } .inv-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .inv-bar #invQ { flex: 1; min-width: 200px; }
+  .inv-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 120px 130px auto; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line, #eaecf0); }
+  .inv-row:last-child { border-bottom: 0; } .inv-num { font-weight: 800; } .inv-num small, .inv-main small, .inv-amt small { display: block; font-weight: 500; color: var(--ink-soft, #667085); font-size: .76rem; }
+  .inv-main { min-width: 0; } .inv-main b { display: block; overflow-wrap: anywhere; } .inv-amt { text-align: right; font-weight: 800; }
+  .inv-st { font-size: .78rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; justify-self: start; } .inv-st.paid { background: #ecfdf3; color: #067647; } .inv-st.due { background: #eff8ff; color: #175cd3; } .inv-st.over { background: #fef3f2; color: #b42318; }
+  .inv-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .ie-line { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto auto; gap: 6px; align-items: center; } .ie-line label { flex-direction: row !important; font-size: .78rem; white-space: nowrap; } .ie-tot { text-align: right; font-size: .92rem; }
+  @media (max-width: 760px) { .inv-row { grid-template-columns: minmax(0, 1fr) auto; } .inv-st { grid-column: 1; } .inv-acts { grid-column: 1 / -1; justify-content: flex-start; } .ie-line { grid-template-columns: minmax(0, 1fr) 90px; } }
   .av-win { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin: -4px 0 8px; } @media (max-width: 760px) { .av-win { display: none; } }
   .cal-top { margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
   .cal-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .cal-bar b { font-size: 1.05rem; margin: 0 6px; flex: 1; min-width: 140px; }
@@ -1764,6 +1773,7 @@
       <button type="button" class="btn small ghost back-btn" id="backBtn" title="Back" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span class="mobile-hide">Back</span></button>
       <h1 id="mainTitle">Repair jobs</h1><span class="date" id="todayLbl"></span>
       <div class="grow"></div>
+      <button class="btn small rent-top" id="invTopBtn" type="button" title="Every invoice to landlords — see, edit, resend, mark paid"><span class="rt-ic">🧾</span><span class="mobile-hide">Invoices</span><span class="rb-badge" id="invTopBadge" hidden></span></button>
       <button class="btn small rent-top" id="rentTopBtn" type="button" title="Collect rent and pay landlords"><span class="rt-ic">💷</span><span class="mobile-hide">Rent</span><span class="rb-badge" id="rentTopBadge" hidden></span></button>
       <button class="btn small ask" id="askBtn" type="button" title="Tell Fixflow what to do (speak or type)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg><span class="mobile-hide">Ask Fixflow</span></button>
       <button class="btn small ghost mobile-only" id="searchBtnM" type="button" title="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
@@ -2141,6 +2151,11 @@
         </div>
         <details class="card crm-hook" id="crmHook" hidden><summary>🔌 Connect Rightmove and other portals</summary><div id="crmHookBody" class="muted-note">Loading…</div></details>
         <div id="crmList"></div>
+      </div>
+      <div id="invView" hidden>
+        <div class="tiles" id="invTiles"></div>
+        <div class="card inv-top"><div class="inv-bar"><input class="inp" id="invQ" type="search" placeholder="Search number, address, landlord or what it's for…"><span class="cal-seg" id="invF"><button type="button" data-invf="unpaid" class="on">Unpaid</button><button type="button" data-invf="overdue">Overdue</button><button type="button" data-invf="paid">Paid</button><button type="button" data-invf="all">All</button></span><button type="button" class="btn small primary" id="invNew">＋ New invoice</button></div></div>
+        <div class="list" id="invList"></div>
       </div>
       <div id="calView" hidden>
         <div class="card cal-top">
@@ -2937,6 +2952,21 @@
     <div id="moreList"></div>
     <button class="btn" type="button" id="moreClose" style="width:100%;margin-top:10px">Close</button>
     <div class="more-deployed" id="deployedAtM" hidden></div>
+  </div>
+</div>
+<div class="modal" id="ieModal" hidden>
+  <div class="card cal-form" style="width:min(720px,100%)">
+    <h3 id="ieTitle" style="margin:0">Edit invoice</h3>
+    <p class="muted-note" id="ieSub" style="margin:0"></p>
+    <div class="cal-g3"><label>Invoice number<input class="inp" id="ieNum" maxlength="50"></label><label>Date<input class="inp" id="ieDate" type="date"></label><label>Due<input class="inp" id="ieDue" type="date"></label></div>
+    <label>What it's for<input class="inp" id="ieWhat" maxlength="120" placeholder="e.g. Move-in fees"></label>
+    <div class="cal-g3" style="grid-template-columns:1fr 1fr"><label>Landlord<input class="inp" id="ieLl" maxlength="200"></label><label>Landlord's email<input class="inp" id="ieLlEmail" type="email" maxlength="200"></label></div>
+    <div><b style="font-size:.85rem">Lines (before VAT)</b><div id="ieLines" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div><button type="button" class="btn small ghost" id="ieAddLine" style="margin-top:6px">＋ Add a line</button></div>
+    <label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" id="ieVat"> Add VAT at 20% (except lines marked “no VAT”)</label>
+    <label id="ieCollectWrap">Taken from<select class="inp" id="ieCollect"></select></label>
+    <div class="ie-tot" id="ieTot"></div>
+    <div class="err-msg" id="ieErr" style="margin:0"></div>
+    <div class="row-actions"><button class="btn ghost" id="ieDel" type="button">Delete</button><span style="flex:1"></span><button class="btn" id="ieClose" type="button">Cancel</button><button class="btn primary" id="ieSave" type="button">Save changes</button></div>
   </div>
 </div>
 <div class="modal" id="cbModal" hidden>
@@ -4441,6 +4471,7 @@
     if (v === 'crm' || v === 'appl') { if (crm.mode !== v) { crm.type = ''; crm.tile = ''; crmSel = {}; } crm.mode = v; }
     $('crmView').hidden = v !== 'crm' && v !== 'appl'; $('navCrm').classList.toggle('on', v === 'crm'); $('navLeads').classList.toggle('on', v === 'appl'); crmNag(); if ($('crmBulk')) crmSelDraw();
     $('calView').hidden = v !== 'cal'; $('navCal').classList.toggle('on', v === 'cal');
+    $('invView').hidden = v !== 'inv'; $('invTopBtn').classList.toggle('on', v === 'inv');
     $('webView').hidden = v !== 'web'; $('navWeb').classList.toggle('on', v === 'web');
     $('callsView').hidden = v !== 'calls'; $('navCalls').classList.toggle('on', v === 'calls');
     // Sent emails: its own tab for staff; inside the Activity page for the owner.
@@ -4456,13 +4487,14 @@
     $('navJobs').classList.toggle('on', v === 'jobs');
     $('navProps').classList.toggle('on', v === 'props');
     $('navTenants').classList.toggle('on', v === 'tenants');
-    $('mainTitle').textContent = { cal: 'Calendar', appl: 'Leads', jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', avail: 'Available properties', calls: 'Calls', crm: 'Website leads', web: 'Website visitors', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
+    $('mainTitle').textContent = { inv: 'Invoices', cal: 'Calendar', appl: 'Leads', jobs: 'Repair jobs', props: 'Properties', tenants: 'Tenants', pay: 'Payments', ll: 'Landlords', certs: 'Certificates', tcy: 'Tenancies', offers: 'Offers', lt: 'Landlord Terms', avail: 'Available properties', calls: 'Calls', crm: 'Website leads', web: 'Website visitors', sent: 'Sent emails', team: 'Team & access', who: 'Who did what', act: 'Activity', ctr: 'Contractor', cts: 'Contractors' }[v];
     if (v === 'certs') renderCerts();
     if (v === 'offers') renderOffers();
     if (v === 'lt') { loadLt(); if (!loadVr.done) { loadVr.done = true; loadVr(); } else renderVr(); }
     if (v === 'avail') loadAvail();
     if (v === 'crm' || v === 'appl') loadCrm();
     if (v === 'cal') loadCal();
+    if (v === 'inv') { renderInvoices(); loadAllInvoices().then(renderInvoices); }
     if (v === 'web') loadWeb();
     if (v === 'calls') loadCalls();
     if (v === 'sent' || (v === 'act' && !staffMode)) loadSent();
@@ -11297,6 +11329,93 @@
       openMailto('mailto:' + (/@/.test(to) ? encodeURIComponent(to) : '') + '?subject=' + encodeURIComponent('Make your offer' + (a ? ' — ' + shortAddr(a) : '')) + '&body=' + encodeURIComponent(body));
     });
   });
+  // ---------- Invoices: every invoice to landlords, to see, edit, resend and mark paid ----------
+  var invF = 'unpaid', invEditRow = null;
+  $('invTopBtn').addEventListener('click', function(){ closeDrawer(); showView('inv'); });
+  function invStatus(i){ return i.paid_at ? 'paid' : invOverdue(i) ? 'over' : 'due'; }
+  function renderInvoices(){
+    if (view !== 'inv') return;
+    var all = allInvoices.slice(), unpaid = all.filter(function(i){ return !i.paid_at; }), over = unpaid.filter(invOverdue);
+    var ms = new Date(); ms.setDate(1); ms.setHours(0, 0, 0, 0);
+    var paidM = all.filter(function(i){ return i.paid_at && new Date(i.paid_at) >= ms; });
+    $('invTiles').innerHTML = '<div class="tile blue"><div class="k">Unpaid</div><div class="v">' + gbp(sumTotal(unpaid)) + '</div><div class="tile-sub">' + unpaid.length + ' invoice' + (unpaid.length === 1 ? '' : 's') + '</div></div>' +
+      '<div class="tile alert' + (over.length ? ' has' : '') + '"><div class="k">Overdue</div><div class="v">' + gbp(sumTotal(over)) + '</div><div class="tile-sub">' + over.length + ' invoice' + (over.length === 1 ? '' : 's') + '</div></div>' +
+      '<div class="tile good"><div class="k">Paid this month</div><div class="v">' + gbp(sumTotal(paidM)) + '</div><div class="tile-sub">' + paidM.length + ' invoice' + (paidM.length === 1 ? '' : 's') + '</div></div>' +
+      '<div class="tile"><div class="k">All invoices</div><div class="v">' + all.length + '</div></div>';
+    document.querySelectorAll('[data-invf]').forEach(function(b){ b.classList.toggle('on', b.dataset.invf === invF); });
+    var q = psNorm($('invQ').value || '').split(' ').filter(Boolean);
+    var list = all.filter(function(i){
+      if (invF === 'unpaid' && i.paid_at) return false; if (invF === 'paid' && !i.paid_at) return false; if (invF === 'overdue' && !invOverdue(i)) return false;
+      if (!q.length) return true; var h = psNorm([i.number, i.property_address, i.landlord_name, i.ref, i.title].join(' ')); return q.every(function(t){ return h.indexOf(t) !== -1; });
+    });
+    var day = function(v){ return v ? new Date(String(v).length === 10 ? v + 'T12:00:00' : v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; };
+    $('invList').innerHTML = list.length ? list.slice(0, 400).map(function(i){
+      var st = invStatus(i);
+      return '<div class="inv-row" data-inv-row="' + i.id + '"><div class="inv-num">' + esc(i.number || '—') + '<small>' + esc(day(i.created_at)) + '</small></div>' +
+        '<div class="inv-main"><b>' + esc(shortAddr(i.property_address || 'No address')) + '</b><small>' + esc([i.job_id ? 'Repair ' + i.ref : (i.title || i.ref), i.landlord_name].filter(Boolean).join(' · ')) + (i.collect_month === 'direct' ? ' · landlord pays directly' : i.collect_month ? ' · from ' + esc(new Date(i.collect_month + '-15').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })) + ' rent' : '') + '</small></div>' +
+        '<span class="inv-st ' + st + '">' + (st === 'paid' ? '✓ Paid ' + esc(day(i.paid_at)) : st === 'over' ? 'Overdue · due ' + esc(day(i.due)) : 'Due ' + esc(day(i.due) || '—')) + '</span>' +
+        '<div class="inv-amt">' + gbp(num(i.total)) + '</div>' +
+        '<div class="inv-acts"><a class="btn small ghost" href="/api/admin/invoices/' + i.id + '/view" target="_blank" rel="noopener">View</a><button type="button" class="btn small" data-inv-ed="' + i.id + '">✏️ Edit</button>' +
+          (i.paid_at ? '<button type="button" class="btn small ghost" data-inv-unpay="' + i.id + '">Not paid</button>' : '<button type="button" class="btn small primary" data-inv-pay="' + i.id + '">Mark paid</button>') +
+          (i.job_id ? '<button type="button" class="btn small ghost" data-open="' + i.job_id + '">Job</button>' : '') + '</div></div>';
+    }).join('') + (list.length > 400 ? '<div class="empty">Showing the newest 400 — search to find older ones.</div>' : '') : '<div class="empty">' + (all.length ? 'No invoices match.' : 'No invoices yet.') + '</div>';
+    var n = over.length; $('invTopBadge').hidden = !n; $('invTopBadge').textContent = n;
+  }
+  $('invQ').addEventListener('input', renderInvoices);
+  $('invF').addEventListener('click', function(e){ var b = e.target.closest('[data-invf]'); if (!b) return; invF = b.dataset.invf; renderInvoices(); });
+  $('invNew').addEventListener('click', function(){ openNewInvoice({ after: function(){ loadAllInvoices().then(renderInvoices); } }); });
+  function invRefresh(){ return loadAllInvoices().then(function(){ renderInvoices(); if (typeof loadJobs === 'function') loadJobs(); }); }
+  $('invList').addEventListener('click', function(e){
+    var b;
+    if ((b = e.target.closest('[data-inv-pay]'))) { api('POST', '/api/admin/invoices/' + b.dataset.invPay + '/paid', { paid: true }).then(function(d){ toast(d && d.ok ? '✓ Marked as paid' : 'Couldn’t update'); invRefresh(); }); return; }
+    if ((b = e.target.closest('[data-inv-unpay]'))) { if (!confirm('Mark this invoice as not paid?')) return; api('POST', '/api/admin/invoices/' + b.dataset.invUnpay + '/paid', { paid: false }).then(function(){ toast('Marked as not paid'); invRefresh(); }); return; }
+    if ((b = e.target.closest('[data-inv-ed]'))) { openInvEdit(Number(b.dataset.invEd)); return; }
+    if ((b = e.target.closest('[data-open]'))) { openJob(Number(b.dataset.open)); return; }
+  });
+  // The edit window: number, dates, landlord, lines, VAT and which rent it comes off — same number, saved in place.
+  function ieLine(l){ return '<div class="ie-line"><input class="inp" data-ie="desc" placeholder="Description" value="' + esc(l.desc || '') + '"><input class="inp" data-ie="amount" inputmode="decimal" placeholder="£" value="' + (l.amount != null && l.amount !== '' ? esc(Number(l.amount).toFixed(2)) : '') + '"><label><input type="checkbox" data-ie="novat"' + (l.novat ? ' checked' : '') + '> no VAT</label><button type="button" class="linkish" data-ie-rm title="Remove">✕</button></div>'; }
+  function ieTotals(){
+    var sub = 0, vatable = 0;
+    $('ieLines').querySelectorAll('.ie-line').forEach(function(r){ var a = Number(String(r.querySelector('[data-ie="amount"]').value).replace(/[£,\s]/g, '')) || 0; sub += a; if (!r.querySelector('[data-ie="novat"]').checked) vatable += a; });
+    var vat = $('ieVat').checked ? Math.round(vatable * 20) / 100 : 0; sub = Math.round(sub * 100) / 100;
+    return { sub: sub, vat: vat, total: Math.round((sub + vat) * 100) / 100 };
+  }
+  function ieDrawTot(){ var t = ieTotals(); $('ieTot').innerHTML = 'Subtotal ' + gbp(t.sub) + (t.vat ? ' · VAT ' + gbp(t.vat) : '') + ' · <b>Total ' + gbp(t.total) + '</b>'; }
+  function openInvEdit(id){
+    api('GET', '/api/admin/invoices/' + id).then(function(r){
+      if (!r || !r.ok) { toast('Couldn’t open that invoice'); return; }
+      var i = r.invoice, d = i.data || {}; invEditRow = i;
+      $('ieTitle').textContent = 'Edit invoice ' + (i.number || ''); $('ieSub').textContent = (i.property_address || '') + (i.job_id ? ' · repair ' + i.ref : '') + (i.paid_at ? ' · ✓ paid' : '') + ' — same invoice number and link; resend it afterwards if it has already gone out.';
+      $('ieNum').value = d.number || i.number || ''; $('ieDate').value = d.date || String(i.created_at).slice(0, 10); $('ieDue').value = d.due || '';
+      $('ieWhat').value = d.title || ''; $('ieWhat').parentNode.hidden = !!i.job_id;
+      $('ieLl').value = d.landlord || i.landlord_name || ''; $('ieLlEmail').value = d.landlordEmail || i.landlord_email || '';
+      $('ieLines').innerHTML = (d.lines && d.lines.length ? d.lines : [{ desc: '', amount: Number(i.total) || '' }]).map(ieLine).join('');
+      $('ieVat').checked = Number(d.vat) > 0;
+      $('ieCollectWrap').hidden = !!i.paid_at; $('ieCollect').innerHTML = invMonthOpts(d.collect_month || ''); $('ieCollect').dataset.was = d.collect_month || '';
+      $('ieErr').textContent = ''; ieDrawTot(); $('ieModal').hidden = false;
+    });
+  }
+  $('ieLines').addEventListener('input', ieDrawTot); $('ieLines').addEventListener('change', ieDrawTot); $('ieVat').addEventListener('change', ieDrawTot);
+  $('ieLines').addEventListener('click', function(e){ if (e.target.closest('[data-ie-rm]')) { e.target.closest('.ie-line').remove(); ieDrawTot(); } });
+  $('ieAddLine').addEventListener('click', function(){ $('ieLines').insertAdjacentHTML('beforeend', ieLine({})); ieDrawTot(); });
+  $('ieClose').addEventListener('click', function(){ $('ieModal').hidden = true; });
+  $('ieModal').addEventListener('mousedown', function(e){ if (e.target === this) this.hidden = true; });
+  $('ieDel').addEventListener('click', function(){ if (!invEditRow) return; $('ieModal').hidden = true; deleteInvoice(invEditRow.id); setTimeout(function(){ loadAllInvoices().then(renderInvoices); }, 800); });
+  $('ieSave').addEventListener('click', function(){
+    var i = invEditRow; if (!i) return; var d = i.data || {}, t = ieTotals(), b = this;
+    var lines = Array.prototype.map.call($('ieLines').querySelectorAll('.ie-line'), function(r){ var l = { desc: r.querySelector('[data-ie="desc"]').value.trim(), amount: Number(String(r.querySelector('[data-ie="amount"]').value).replace(/[£,\s]/g, '')) || 0 }; if (r.querySelector('[data-ie="novat"]').checked) l.novat = true; return l; }).filter(function(l){ return l.desc || l.amount; });
+    if (!lines.length) { $('ieErr').textContent = 'Add at least one line.'; return; }
+    if (!$('ieNum').value.trim()) { $('ieErr').textContent = 'The invoice needs a number.'; return; }
+    var data = Object.assign({}, d, { number: $('ieNum').value.trim(), date: $('ieDate').value, due: $('ieDue').value, landlord: $('ieLl').value.trim(), landlordEmail: $('ieLlEmail').value.trim(), lines: lines, sub: t.sub, vat: t.vat, total: t.total });
+    if (!i.job_id) data.title = $('ieWhat').value.trim();
+    busy(b, true, 'Saving…');
+    api('PUT', '/api/admin/invoices/' + i.id, { total: t.total, invoice_number: data.number, data: data }).then(function(r){
+      if (!r || !r.ok) throw new Error('save');
+      var cm = $('ieCollect').value; return cm !== ($('ieCollect').dataset.was || '') && !i.paid_at ? api('POST', '/api/admin/invoices/' + i.id + '/collect', { month: cm }) : null;
+    }).then(function(){ busy(b, false); $('ieModal').hidden = true; toast('✓ Invoice ' + data.number + ' saved'); invRefresh(); if (typeof loadStatements === 'function') loadStatements(); })
+      ['catch'](function(){ busy(b, false); $('ieErr').textContent = 'Couldn’t save — please try again.'; });
+  });
+
   // ---------- Calendar: everyone's viewings, by day and time ----------
   // Any member of staff can book a viewing for anyone; each person has a colour. Works in a second window
   // (e.g. the Available list on one screen and the Calendar on the other): bookings show in both at once.
@@ -17455,7 +17574,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['navCal', 'Calendar'], ['navLeads', 'Leads'], ['navCrm', 'Website leads'], ['navWeb', 'Website visitors'], ['navCalls', 'Calls'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['invTopBtn', 'Invoices'], ['navCal', 'Calendar'], ['navLeads', 'Leads'], ['navCrm', 'Website leads'], ['navWeb', 'Website visitors'], ['navCalls', 'Calls'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
