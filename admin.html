@@ -14873,14 +14873,16 @@
     var qt = psNorm(rbQ).split(' ').filter(Boolean);
     var items = !qt.length ? d.items : d.items.filter(function(x){ var h = psNorm([x.address, x.tenants.join(' '), x.landlord, x.pay_ref].join(' ')); return qt.every(function(t){ return h.indexOf(t) !== -1; }); });
     var sum = function(l, k){ return l.reduce(function(a, x){ return a + (Number(k === 'paid' ? x.paid.amount : x[k]) || 0); }, 0); };
-    var due = items.filter(function(x){ return !x.collected; });
+    // Move-in money paid ahead of the start: ready to pay the landlord now — shown in Pay landlords, not Collect.
+    var preIn = function(x){ return !x.collected && x.movein && x.movein.left <= 0.004 && x.to_landlord > 0.004 && !x.paid; };
+    var due = items.filter(function(x){ return !x.collected && !preIn(x); });
     var now = due.filter(function(x){ return x.status === 'overdue' || x.status === 'today'; }), mov = due.filter(function(x){ return x.status === 'movein'; }),
       tmw = due.filter(function(x){ return x.status === 'tomorrow'; }), later = due.filter(function(x){ return x.status === 'upcoming' && x.from.slice(0, 7) === d.month; }),
       soonNext = due.filter(function(x){ return x.status === 'upcoming' && x.from.slice(0, 7) !== d.month; });
     var early = function(x){ return x.collected && !x.collected.auto && String(x.collected.at).slice(0, 10) < x.from; };
     var got = items.filter(function(x){ return x.collected; });
     // To pay: rents in (landlord not paid yet), and part rents in — the landlord's share of what's been paid so far.
-    var toPay = got.filter(function(x){ return !x.paid && x.to_landlord > 0; }).concat(items.filter(function(x){ return !x.collected && x.part_out > 0.004; })), paid = items.filter(function(x){ return x.paid; });
+    var toPay = got.filter(function(x){ return !x.paid && x.to_landlord > 0; }).concat(items.filter(preIn)).concat(items.filter(function(x){ return !x.collected && !preIn(x) && x.part_out > 0.004; })), paid = items.filter(function(x){ return x.paid; });
     var feesMonth = got.filter(function(x){ return x.from.slice(0, 7) === d.month; }).reduce(function(a, x){ return a + x.fees; }, 0);
     var feesMonthNet = got.filter(function(x){ return x.from.slice(0, 7) === d.month; }).reduce(function(a, x){ return a + (x.fees_net || 0); }, 0);
     var ym = d.month.split('-'), mLabel = MONTHS_EN[Number(ym[1]) - 1] + ' ' + ym[0];
@@ -14920,6 +14922,9 @@
     var byLl = {}; toPay.forEach(function(x){ var n = x.landlord || 'No landlord saved'; (byLl[n] = byLl[n] || []).push(x); });
     var prow = function(x){
       var k = x.tenancy_id + '|' + x.from, st = x.stmt;
+      if (preIn(x)) return '<div class="rb-line"><span class="rb-pickpad"></span>' + day(x) +
+        '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + '<span class="rb-earlytag">Move-in money</span> · paid ✓ · rent due ' + esc(rbDay(x.from)) + ' · Landlord: ' + (x.landlord ? rbLl(x, true) : '<b>not saved</b>') + (x.pay_to ? ' · Pay to: <b>' + esc(x.pay_to) + '</b>' : '') + ' · ' + more(k) + '</div>' + depSwitch(x) + details(x, k) + '</div>' +
+        '<div class="rb-amt">' + gbp(x.to_landlord) + '<small>to the landlord</small></div><div class="rb-btn">' + payNowBtn(x) + '</div></div>';
       if (!x.collected) return '<div class="rb-line"><input type="checkbox" class="rb-pick" data-rb-ppick="' + k + '"' + (rbSelP[k] ? ' checked' : '') + ' aria-label="Select">' + day(x) +
         '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + '<span class="rb-earlytag">Part rent</span> · ' + gbp(x.part_in) + ' of ' + gbp(x.rent) + ' received · our fee on it ' + gbp(x.part_fees) + ' (' + Math.round(x.part_in / x.rent * 100) + '% of the month’s fee)' + (x.ll_part_sent ? ' · ' + gbp(x.ll_part_sent) + ' sent already' : '') + ' · the rest when the full rent is in · Landlord: ' + (x.landlord ? rbLl(x, true) : '<b>not saved</b>') + (x.pay_to ? ' · Pay to: <b>' + esc(x.pay_to) + '</b>' : '') + '</div></div>' +
         '<div class="rb-amt">' + gbp(x.part_out) + '<small>part payment</small></div><div class="rb-btn"><button type="button" class="btn small primary" data-rb-paypart="' + k + '">Paid</button></div></div>';
