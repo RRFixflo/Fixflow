@@ -10316,7 +10316,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   async function invoiceInfo(p, ids) {
     const out = {}; if (!ids.length) return out;
     const site = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, ''), toks = {};
-    const rows = (await p.query(`SELECT i.id, i.number, i.property_key, coalesce(i.data->>'title', '') AS title, coalesce(j.property_address, i.address) AS addr, j.category, j.affected, j.symptom, j.description
+    const rows = (await p.query(`SELECT i.id, i.number, i.job_id, i.property_key, coalesce(i.data->>'title', '') AS title, coalesce(j.property_address, i.address) AS addr, j.category, j.affected, j.symptom, j.description
       FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.id = ANY($1::int[])`, [ids])).rows;
     for (const r of rows) {
       const title = String(r.title || '').trim(), generic = !title || /^repair\s+[A-Z]{1,4}-?\d+$/i.test(title) || title.indexOf(r.number) !== -1;
@@ -10332,7 +10332,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         }
         if (toks[key]) url = site + '/l/' + toks[key] + '/invoice/' + r.id;
       }
-      out[r.id] = { number: r.number, what: what, url: url };
+      out[r.id] = { number: r.number, what: what, url: url, ref: r.job_id ? refFor(r.job_id) : '' };
     }
     return out;
   }
