@@ -1099,7 +1099,7 @@
   .fee-run { display: grid; grid-template-columns: 58px minmax(0, 1fr) 92px 96px; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line, #eef0f3); font-size: .86rem; align-items: baseline; } .fee-run > span:nth-child(n+3) { text-align: right; white-space: nowrap; } .fee-run small { display: block; color: var(--ink-soft, #667085); font-size: .76rem; } .fee-run-h { font-size: .74rem; color: var(--ink-soft, #667085); font-weight: 700; border-top: 0; }
   @media (max-width: 560px) { .fee-run { grid-template-columns: 46px minmax(0, 1fr) 78px; } .fee-run > span:nth-child(4) { grid-column: 2 / 4; text-align: right; font-size: .78rem; color: var(--ink-soft, #667085); } .fee-run > span:nth-child(4) b::before { content: 'Running total '; font-weight: 400; } .fee-run-h > span:nth-child(4) { display: none; } }
   .la-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .la-tabs button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: inherit; } .la-tabs button small { font-weight: 500; color: var(--ink-soft, #667085); margin-left: 4px; } .la-tabs button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; } .la-tabs button.on small { color: rgba(255,255,255,.75); }
-  .ap-hits { display: grid; gap: 6px; margin-bottom: 6px; } .ap-hit { display: grid; grid-template-columns: auto 72px minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 6px 10px 6px 8px; cursor: pointer; background: #fff; } .ap-hit.on { border-color: #2563eb; background: #f5f8ff; } .ap-hit img, .ap-noimg { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; background: #f2f4f7; display: block; } .ap-ht { font-size: .88rem; line-height: 1.3; min-width: 0; } .ap-when { color: #475467 !important; } .ap-old { color: #b54708; font-weight: 600; } .ap-ready { display: flex; flex-direction: column; gap: 6px; border: 1px solid #abefc6; background: #f6fef9; border-radius: 12px; padding: 12px 14px; margin-top: 8px; width: 100%; } .ap-ready span { font-size: .86rem; color: var(--muted, #667085); } .ml-ap { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; font-size: .86rem; cursor: pointer; } .ml-ap span { flex: 1; min-width: 0; }  .ap-ov .ap-ovrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; font-size: .88rem; } .ap-ov .ap-ovrow .inp { width: 120px; } .ap-ov .ap-ovrow[hidden], .ap-ov[hidden] { display: none; } .ap-let { display: inline-block; background: #ecfdf3; color: #067647; border: 1px solid #abefc6; border-radius: 999px; padding: 0 7px; font-size: .74rem; font-weight: 700; } .ap-ht small { display: block; color: var(--muted, #667085); font-size: .78rem; margin-top: 2px; } .ap-hit a { text-decoration: none; font-weight: 700; padding: 4px; } .la-sub .btn.small { margin-left: 6px; font-size: .75rem; padding: 3px 8px; vertical-align: middle; }
+  .ap-hits { display: grid; gap: 6px; margin-bottom: 6px; } .ap-hit { display: grid; grid-template-columns: auto 72px minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 6px 10px 6px 8px; cursor: pointer; background: #fff; } .ap-hit.on { border-color: #2563eb; background: #f5f8ff; } .ap-hit img, .ap-noimg { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; background: #f2f4f7; display: block; } .ap-ht { font-size: .88rem; line-height: 1.3; min-width: 0; } .ap-when { color: #475467 !important; } .ap-old { color: #b54708; font-weight: 600; } .ap-src { display: inline-block; font-size: .68rem; font-weight: 700; border-radius: 4px; padding: 0 5px; vertical-align: 1px; } .ap-src.z { background: #f1ecfd; color: #5b2bbf; } .ap-zp { margin: 4px 0 8px; } .ap-zp-panel { border: 1px dashed var(--line-strong, #d0d5dd); border-radius: 10px; padding: 8px 12px; margin-top: 6px; font-size: .86rem; } .ap-zp-panel ol { margin: 0 0 6px; padding-left: 18px; line-height: 1.6; } .ap-zp-box { min-height: 54px; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; padding: 8px; background: #fff; max-height: 90px; overflow: hidden; font-size: .8rem; color: #667085; } .ap-zp-box:empty::before { content: attr(data-ph); color: #98a2b3; } .ap-ready { display: flex; flex-direction: column; gap: 6px; border: 1px solid #abefc6; background: #f6fef9; border-radius: 12px; padding: 12px 14px; margin-top: 8px; width: 100%; } .ap-ready span { font-size: .86rem; color: var(--muted, #667085); } .ml-ap { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; font-size: .86rem; cursor: pointer; } .ml-ap span { flex: 1; min-width: 0; }  .ap-ov .ap-ovrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; font-size: .88rem; } .ap-ov .ap-ovrow .inp { width: 120px; } .ap-ov .ap-ovrow[hidden], .ap-ov[hidden] { display: none; } .ap-let { display: inline-block; background: #ecfdf3; color: #067647; border: 1px solid #abefc6; border-radius: 999px; padding: 0 7px; font-size: .74rem; font-weight: 700; } .ap-ht small { display: block; color: var(--muted, #667085); font-size: .78rem; margin-top: 2px; } .ap-hit a { text-decoration: none; font-weight: 700; padding: 4px; } .la-sub .btn.small { margin-left: 6px; font-size: .75rem; padding: 3px 8px; vertical-align: middle; }
   @media (max-width: 520px) { .ap-hit { grid-template-columns: auto 56px minmax(0,1fr) auto; gap: 8px; } .ap-hit img, .ap-noimg { width: 56px; height: 44px; } }
   .ap-hit.ap-sold { grid-template-columns: auto minmax(0,1fr) auto; }
   .ap-find { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; } #apSugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; }
@@ -12067,8 +12067,8 @@
         '<h4 class="la-sub">Report</h4><div class="cal-people ap-mode" id="apMode"><button type="button" data-apm="let" class="on">🔑 Lettings</button><button type="button" data-apm="sale">🏷 Sales</button><button type="button" data-apm="both">Both</button></div>' +
         '<div class="row-actions" style="flex-wrap:wrap;margin:10px 0 4px;align-items:center"><button type="button" class="btn primary small" id="apAuto">🔎 Find similar homes on Rightmove</button><select class="inp" id="apMiles" style="width:auto;padding:6px 8px"><option value="0.0">this area only (same postcode)</option><option value="0.25">within ¼ mile</option><option value="0.5">within ½ mile</option><option value="1.0" selected>within 1 mile</option><option value="3.0">within 3 miles</option></select></div>' +
         '<p class="muted-note" style="margin:0 0 6px">Searches Rightmove near the postcode for homes with the same bedrooms and ticks the 6 best: closest, same type, listed recently (homes on the market for months are often overpriced), let agreed / sold STC first (what someone actually agreed to pay)' + ' and, for lettings, available now or soon. Untick any that don’t really match (size, type, condition) or tick others.</p>' +
-        '<div id="apKSale" hidden><h4 class="la-sub">Similar homes for sale <button type="button" class="btn small ghost" data-ap-rm="sale">Open on Rightmove ↗</button><button type="button" class="btn small ghost" data-ap-zp="sale">Open on Zoopla ↗</button></h4><div id="apSaleRes"></div><div id="apSale"></div><h4 class="la-sub">🏛 Sold nearby — HM Land Registry</h4><div id="apSoldRes"><p class="muted-note">Press “Find similar homes” to see what homes nearby sold for in the last two years.</p></div></div>' +
-        '<div id="apKLet"><h4 class="la-sub">Similar homes to rent <button type="button" class="btn small ghost" data-ap-rm="let">Open on Rightmove ↗</button><button type="button" class="btn small ghost" data-ap-zp="let">Open on Zoopla ↗</button></h4><div id="apLetRes"></div><div id="apLet"></div></div>' +
+        '<div id="apKSale" hidden><h4 class="la-sub">Similar homes for sale <button type="button" class="btn small ghost" data-ap-rm="sale">Open on Rightmove ↗</button><button type="button" class="btn small ghost" data-ap-zp="sale">Open on Zoopla ↗</button></h4><div id="apSaleRes"></div>' + apprZpBox('sale') + '<div id="apSale"></div><h4 class="la-sub">🏛 Sold nearby — HM Land Registry</h4><div id="apSoldRes"><p class="muted-note">Press “Find similar homes” to see what homes nearby sold for in the last two years.</p></div></div>' +
+        '<div id="apKLet"><h4 class="la-sub">Similar homes to rent <button type="button" class="btn small ghost" data-ap-rm="let">Open on Rightmove ↗</button><button type="button" class="btn small ghost" data-ap-zp="let">Open on Zoopla ↗</button></h4><div id="apLetRes"></div>' + apprZpBox('let') + '<div id="apLet"></div></div>' +
         '<h4 class="la-sub">Estimate</h4><div id="apSum"></div>' +
         '<div id="apOv" class="ap-ov"><p class="muted-note" style="margin:8px 0 4px">Figure on the report — leave empty to use the average, or change it (a range: fill in both).</p>' +
           '<div class="ap-ovrow" data-ov="sale"><span>Valuation £</span><input class="inp" id="apOvSaleLo" inputmode="numeric"><span>to £</span><input class="inp" id="apOvSaleHi" inputmode="numeric" placeholder="optional"></div>' +
@@ -12077,6 +12077,10 @@
         '<p class="muted-note" id="apErr" style="color:var(--red,#c00);margin:6px 0 0" hidden></p>' +
         '<div class="row-actions" style="flex-wrap:wrap;margin-top:10px"><button type="button" class="btn primary" id="apMake">📄 Make the report</button></div><div id="apDone"></div>' +
         '<h4 class="la-sub">Recent appraisals</h4><div id="apList" class="muted-note">Loading…</div>';
+      b.addEventListener('paste', function(e){
+        var zb = e.target.closest && e.target.closest('[data-zp-box]'); if (!zb) return; e.preventDefault();
+        var cd = e.clipboardData || window.clipboardData; apprZpPaste(zb.dataset.zpBox, apprZpText(cd.getData('text/html'), cd.getData('text/plain') || cd.getData('Text')));
+      });
       b.addEventListener('change', function(e){
         var sd = e.target.closest('[data-ap-sold]');
         if (sd) { var sx = ((appr.res.sold || {}).items || []).filter(function(i){ return i.id === sd.value; })[0]; if (!sx) return;
@@ -12099,6 +12103,8 @@
             var msg = 'Hi' + (first ? ' ' + first : '') + ', here is our appraisal for ' + addr + ', with the similar homes nearby our figures are based on:\n' + d.url + '\n\nAny questions, just reply or call 0207 096 8131.\nResidential Realtors';
             var u = 'https://wa.me/' + ph + '?text=' + encodeURIComponent(msg); if (win) { try { win.opener = null; } catch (er) {} win.location.href = u; } else window.open(u, '_blank', 'noopener');
           }); return; }
+        var zo = e.target.closest('[data-zp-open]');
+        if (zo) { var pn = document.querySelector('[data-zp-panel="' + zo.dataset.zpOpen + '"]'); pn.hidden = !pn.hidden; if (!pn.hidden) pn.querySelector('[data-zp-box]').focus(); return; }
         var zp = e.target.closest('[data-ap-zp]');
         if (zp) { var zpc = apprPc(); if (!zpc) { toast('Add the address with its postcode first'); return; }
           var zb = parseInt($('apBeds').value, 10), zbuy = zp.dataset.apZp === 'sale', zr = { '0.0': '0', '0.25': '0.25', '0.5': '0.5', '1.0': '1', '3.0': '3' }[$('apMiles').value] || '1';
@@ -12205,14 +12211,13 @@
     var picked = {}; appr[kind].forEach(function(c){ if (c.rm) picked[c.rm] = 1; });
     var n = Object.keys(picked).length, done = r.items.filter(apprDone).length, word = kind === 'let' ? 'Let agreed' : 'Sold STC', list = r.done ? r.items.filter(apprDone) : r.items;
     box.innerHTML = '<p class="muted-note" style="margin:0 0 6px">' + r.items.length + ' found on Rightmove · ' + done + ' ' + word.toLowerCase() + ' · <b>' + n + ' ticked</b> for the report</p>' +
-      '<p class="muted-note" style="margin:0 0 6px">Also check <button type="button" class="btn small ghost" data-ap-zp="' + kind + '">Zoopla ↗</button> (same filters) — Zoopla blocks automatic searches, so to include a home from it, “＋ Add one by hand” and paste its link.</p>' +
       '<div class="cal-people" style="margin:0 0 6px"><button type="button" data-ap-done="' + kind + '"' + (r.done ? '' : ' class="on"') + '>All</button><button type="button" data-ap-done="' + kind + '" data-on="1"' + (r.done ? ' class="on"' : '') + '>✓ ' + word + ' only (' + done + ')</button></div>' +
       (r.done && !done ? '<p class="muted-note">None ' + word.toLowerCase() + ' nearby just now — Rightmove only shows them for a few weeks after they’re agreed. Try a wider distance.</p>' : '') +
       '<div class="ap-hits">' + list.map(function(x){
       return '<label class="ap-hit' + (picked[x.id] ? ' on' : '') + '"><input type="checkbox" data-ap-pick="' + kind + '" value="' + esc(x.id) + '"' + (picked[x.id] ? ' checked' : '') + '>' +
         (x.img ? '<img src="' + esc(x.img) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '<span class="ap-noimg"></span>') +
-        '<span class="ap-ht">' + (apprDone(x) ? '<span class="ap-let">✓ ' + esc(x.status) + '</span> ' : '') + '<b>' + gbp0(x.price) + (kind === 'let' ? ' pcm' : '') + '</b> ' + esc(x.addr) + '<small>' + esc([x.beds != null ? x.beds + ' bed' : '', x.type, x.miles != null ? (Math.round(x.miles * 100) / 100) + ' mi' : '', apprDone(x) ? '' : x.status, x.agent].filter(Boolean).join(' · ')) + '</small>' + apprWhen(x, kind) + '</span>' +
-        '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" title="Open the advert on Rightmove">↗</a></label>';
+        '<span class="ap-ht">' + (x.src === 'zoopla' ? '<span class="ap-src z">Zoopla</span> ' : '') + (apprDone(x) ? '<span class="ap-let">✓ ' + esc(x.status) + '</span> ' : '') + '<b>' + gbp0(x.price) + (kind === 'let' ? ' pcm' : '') + '</b> ' + esc(x.addr) + '<small>' + esc([x.beds != null ? x.beds + ' bed' : '', x.type, x.miles != null ? (Math.round(x.miles * 100) / 100) + ' mi' : '', apprDone(x) ? '' : x.status, x.agent].filter(Boolean).join(' · ')) + '</small>' + apprWhen(x, kind) + '</span>' +
+        '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" title="Open the advert">↗</a></label>';
     }).join('') + '</div>';
   }
   // When it went on Rightmove (and how long ago), price reduced, and for lettings when it's available.
@@ -12249,6 +12254,41 @@
   }
   function apprSoldTypeOk(t){ var want = $('apType').value; if (!want || !t) return true; return want === 'House' ? !/flat/i.test(t) : /flat/i.test(t); }
   function apprSoldPush(x){ appr.sale.push({ lr: x.id, addr: x.addr, beds: '', price: String(x.price), sold: x.sold, ptype: x.type, tenure: x.tenure }); }
+  // Zoopla turns automated searches away with a robot check, so staff open it themselves, copy the results page and
+  // paste it here; the AI reads the homes out of what was pasted (never invents any) and they join the list.
+  function apprZpBox(kind){
+    return '<div class="ap-zp"><button type="button" class="btn small" data-zp-open="' + kind + '">📋 Add homes from Zoopla</button>' +
+      '<div class="ap-zp-panel" data-zp-panel="' + kind + '" hidden><ol><li><button type="button" class="btn small ghost" data-ap-zp="' + kind + '">Open on Zoopla ↗</button> — same postcode, distance and bedrooms.</li>' +
+      '<li>On the Zoopla results page press <b>Ctrl+A</b> then <b>Ctrl+C</b> (Mac: ⌘A, ⌘C) to copy the whole page.</li><li>Click in the box below and press <b>Ctrl+V</b> (⌘V). Fixflow reads the homes out of it.</li></ol>' +
+      '<div class="ap-zp-box" contenteditable="true" data-zp-box="' + kind + '" data-ph="Paste the Zoopla page here"></div><p class="muted-note" data-zp-msg="' + kind + '" style="margin:4px 0 0"></p></div></div>';
+  }
+  function apprZpText(html, plain){
+    if (!html) return plain || '';
+    var d = document.createElement('div'); d.innerHTML = html.replace(/<(script|style|svg)[\s\S]*?<\/\1>/gi, '');
+    Array.prototype.forEach.call(d.querySelectorAll('a[href]'), function(a){ var h = a.getAttribute('href') || '', m = /\/(to-rent|for-sale|new-homes)\/details\/(\d+)/.exec(h); if (m) a.insertAdjacentText('afterend', ' [link: https://www.zoopla.co.uk/' + m[1] + '/details/' + m[2] + '/] '); });
+    Array.prototype.forEach.call(d.querySelectorAll('p,div,li,h1,h2,h3,h4,br,section,article'), function(e){ e.insertAdjacentText('beforebegin', '\n'); });
+    return (d.textContent || plain || '').replace(/[ \t]+/g, ' ');
+  }
+  function apprZpPaste(kind, text){
+    var msg = document.querySelector('[data-zp-msg="' + kind + '"]'), box = document.querySelector('[data-zp-box="' + kind + '"]');
+    if (!text || text.trim().length < 40) { msg.textContent = 'That doesn’t look like a results page — copy the whole Zoopla page (Ctrl+A, Ctrl+C) and paste again.'; return; }
+    msg.textContent = 'Reading the homes…'; box.textContent = '';
+    api('POST', '/api/admin/appraisal/paste', { kind: kind, text: text.slice(0, 45000) }).then(function(d){
+      if (!d || !d.ok) { msg.textContent = d && d.error === 'ai-not-configured' ? 'This needs the AI, which isn’t set up — add homes by hand instead.' : 'Couldn’t read that page — try copying it again, or add homes by hand.'; return; }
+      var beds = parseInt($('apBeds').value, 10), r = appr.res[kind] && appr.res[kind].items ? appr.res[kind] : (appr.res[kind] = { items: [] });
+      var words = function(a){ return String(a || '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(function(w){ return w.length > 3 && !/^(london|flat|apartment|road|street|house)$/.test(w); }); };
+      var added = 0, same = 0, other = 0;
+      (d.items || []).forEach(function(z){
+        if (beds >= 0 && z.beds != null && z.beds !== beds) { other++; return; }
+        var zw = words(z.addr), twin = r.items.filter(function(x){ return Math.abs((x.price || 0) - (z.price || 0)) <= 5 && words(x.addr).some(function(w){ return zw.indexOf(w) !== -1; }); })[0];
+        if (twin) { same++; if (!twin.avail && z.avail) twin.avail = z.avail; return; }
+        r.items.unshift(z); added++;
+      });
+      msg.textContent = added ? '✓ ' + added + ' home' + (added === 1 ? '' : 's') + ' added from Zoopla (marked Zoopla, at the top) — tick the ones like this home.' + (same ? ' ' + same + ' already listed from Rightmove.' : '') + (other ? ' ' + other + ' with other bedrooms left out.' : '')
+        : 'No new homes found in that page' + (same ? ' — ' + same + ' were already listed from Rightmove' : '') + (other ? (same ? ', ' : ' — ') + other + ' had other bedrooms' : '') + '.';
+      apprHits(kind);
+    }).catch(function(){ msg.textContent = 'Couldn’t read that page — try again.'; });
+  }
   function apprTypeOk(t){ var want = $('apType').value; t = String(t || '').toLowerCase(); if (!want || !t) return true;
     return want === 'House' ? /house|terrace|semi|detached|bungalow|cottage|town/.test(t) : /flat|apartment|maisonette|studio|penthouse/.test(t); }
   function apprAuto(){

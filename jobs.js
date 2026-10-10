@@ -2057,6 +2057,7 @@ module.exports = function mountJobs(app, opts) {
     if ((method === 'GET' || method === 'POST') && path === '/valuations') return true;   // property appraisals (Offers page)
     if (method === 'POST' && path === '/cal-feed') return true;
     if (method === 'GET' && path === '/appraisal/comps') return true;
+    if (method === 'POST' && path === '/appraisal/paste') return true;   // appraisal: homes from a pasted Zoopla page
     if (method === 'GET' && path === '/appraisal/sold') return true;   // appraisal: Land Registry sold prices   // appraisal: similar homes on Rightmove   // calendar: add the viewings to their phone's diary
     if (method === 'GET' && (path === '/epc-addresses' || path === '/landlord-for-address' || path === '/rm-location')) return true;   // appraisal: find the address and our landlord
     if (method === 'GET' && /^\/valuations\/\d+\/pdf$/.test(path)) return true;
@@ -3702,6 +3703,34 @@ module.exports = function mountJobs(app, opts) {
   }));
   // AI: break the work on a quote into clear lines — labour, each material (including the small things such as
   // silicone, fixings, sealant), disposal. With a total, the lines add up to it exactly; without, typical prices.
+  // Property appraisal: homes from a Zoopla (or other portal) results page that staff opened themselves and pasted in.
+  // The AI only reads what's in the pasted text — it never makes homes up. Links come through as [link: …] markers.
+  app.post('/api/admin/appraisal/paste', async function (req, res) {
+    if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
+    const b = req.body || {}, buy = b.kind === 'sale', text = String(b.text || '').replace(/\s+\n/g, '\n').replace(/\n{3,}/g, '\n\n').slice(0, 45000);
+    if (text.trim().length < 40) return res.status(400).json({ ok: false, error: 'empty' });
+    const prompt = 'Below is text copied from a UK property portal search results page (homes ' + (buy ? 'for sale' : 'to rent') + '). List every property advert in it.\n' +
+      'For each: "addr" (the address as shown), "price" (number only, pounds), "freq" ("pcm", "pw" or "" for sale), "beds" (number, 0 for studio, null if not shown), "type" (flat, house, maisonette, studio, terraced, semi-detached, detached… or ""), ' +
+      '"listed" (the date it was listed/added as YYYY-MM-DD — today is ' + new Date().toISOString().slice(0, 10) + ', so "Added today"/"yesterday"/"Listed on 3rd Oct" can be worked out — else ""), "reduced" (true if it says reduced), ' +
+      '"avail" (when available, YYYY-MM-DD, "now" for immediately, else ""), "status" ("Let agreed", "Under offer", "Sold STC" or ""), "agent" (the agent name if shown), "miles" (distance in miles if shown, else null), "url" (the [link: …] that belongs to that advert, else ""). ' +
+      'Only adverts actually in the text — never invent or guess an address or price; skip featured/sponsored duplicates. Reply with ONLY JSON: {"homes": [ ... ]}\n\nTEXT:\n' + text;
+    const result = await opts.askAi(prompt, true);
+    if (!result.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
+    let homes = [];
+    try { homes = (JSON.parse(result.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()).homes || []); } catch (e) { return res.status(502).json({ ok: false, error: 'ai-bad-reply' }); }
+    const day = function (v) { v = String(v || ''); return v === 'now' ? 'now' : /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null; }, seen = {};
+    const today = Date.parse(new Date().toISOString().slice(0, 10));
+    const items = homes.map(function (h, i) {
+      h = h || {}; const raw = Number(String(h.price || '').replace(/[^0-9.]/g, '')) || 0, price = buy ? raw : /pw|week/i.test(String(h.freq || '')) ? Math.round(raw * 52 / 12) : raw;
+      const url = /^https:\/\/(www\.)?zoopla\.co\.uk\//.test(String(h.url || '')) ? String(h.url).slice(0, 300) : '';
+      const addr = str(h.addr, 160) || '', key = addr.toLowerCase() + '|' + price; if (!addr || !price || seen[key] || text.toLowerCase().indexOf(addr.toLowerCase().split(',')[0].trim().slice(0, 12)) === -1) return null; seen[key] = 1;
+      const listed = day(h.listed), avail = buy ? null : day(h.avail);
+      return { id: 'zp' + (url ? (/details\/(\d+)/.exec(url) || [])[1] || i : i + '-' + Date.now()), src: 'zoopla', addr: addr, price: price, beds: h.beds == null || h.beds === '' || isNaN(Number(h.beds)) ? null : Number(h.beds),
+        type: str(h.type, 30) || '', listed: listed === 'now' ? null : listed, days: listed && listed !== 'now' ? Math.max(0, Math.round((today - Date.parse(listed)) / 86400000)) : null, reduced: h.reduced ? 'yes' : null, avail: avail,
+        status: /let agreed|under offer|sold stc/i.test(String(h.status || '')) ? str(h.status, 30) : '', agent: str(h.agent, 60) || '', miles: h.miles == null || isNaN(Number(h.miles)) ? null : Number(h.miles), url: url, img: '' };
+    }).filter(Boolean).slice(0, 60);
+    res.json({ ok: true, items: items });
+  });
   app.post('/api/admin/quotes/ai-lines', withDb(async function (p, req, res) {
     if (!opts.askAi || !opts.canAi || !opts.canAi()) return res.status(503).json({ ok: false, error: 'ai-not-configured' });
     const b = req.body || {}, total = money(b.total), title = str(b.title, 200), notes = str(b.notes, 1000), have = (Array.isArray(b.lines) ? b.lines : []).map(function (l) { return str(l && l.desc, 200); }).filter(Boolean).slice(0, 10);
