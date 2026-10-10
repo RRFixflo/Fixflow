@@ -1071,6 +1071,9 @@
   .tcy-save { position: sticky; bottom: 0; z-index: 5; display: flex; gap: 8px; justify-content: flex-end; padding: 10px 0; background: linear-gradient(transparent, var(--bg) 35%); }
   .tcy-log li.tcy-log-mail { cursor: pointer; } .tcy-log li.tcy-log-mail:hover { background: var(--bg, #f6f7f9); } .tcy-log-open { color: var(--blue, #2F5BEA); font-weight: 600; white-space: nowrap; }
   .tle-row { display: flex; gap: 10px; font-size: .9rem; padding: 3px 0; } .tle-row > span { color: var(--ink-soft, #667085); min-width: 64px; flex: 0 0 auto; }
+  .tcy-hist > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; } .tcy-hist > summary::-webkit-details-marker { display: none; }
+  .tcy-hist > summary h3 { margin: 0; } .tcy-hist > summary::after { content: '▾ Show'; margin-left: auto; font-size: .85rem; font-weight: 600; color: var(--blue, #1d4ed8); } .tcy-hist[open] > summary::after { content: '▴ Hide'; }
+  .tcy-hist-n { font-size: .85rem; color: var(--ink-soft, #667085); } .tcy-hist-last { flex-basis: 100%; font-size: .85rem; color: var(--ink-soft, #667085); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; } .tcy-hist[open] .tcy-hist-last { display: none; } .tcy-hist[open] > summary { margin-bottom: 8px; }
   .tm-incl { display: flex; flex-wrap: wrap; gap: 6px 14px; } .tm-incl-i { display: flex; gap: 6px; align-items: center; font-size: .92rem; }
   .tle-files { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; } .tle-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; padding: 6px 8px; border: 1px solid var(--line, #e4e7ec); border-radius: 8px; } .tle-fn { font-weight: 600; overflow-wrap: anywhere; min-width: 0; flex: 1 1 180px; } .tle-fa { display: flex; gap: 6px; flex: 0 0 auto; } .tle-row b { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
   .tle-frame { width: 100%; height: 55vh; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; background: #fff; } .tle-text { white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 12px; font-size: .9rem; max-height: 55vh; overflow: auto; }
@@ -12397,6 +12400,8 @@
   // Move-in payments the tenants have sent proof of (from the button in their welcome email): open the proof, confirm each.
   // The tenancy's own documents: deposit certificate, tenants' ID, signed agreement… (shared with the
   // landlord on their portal unless unticked), uploaded here, copied from the offer or saved from the welcome email.
+  // Remember whether the tenancy History is left open or folded away.
+  document.addEventListener('toggle', function(e){ if (e.target && e.target.id === 'tfHist') { try { localStorage.setItem('rr_tcy_hist', e.target.open ? '1' : '0'); } catch (er) {} } }, true);
   var tdocsBy = {}, TDOC_LABEL = { deposit_cert: 'Deposit protection certificate', tenant_id: 'Tenant ID / right to rent', signed_agreement: 'Signed tenancy agreement', other: 'Document' };
   function renderTcyDocs(){
     var box = $('tfTdocs'); if (!box || !openTcyId || openTcyId === 'new') return;
@@ -15704,7 +15709,9 @@
         '</div><p class="muted-note" style="margin:8px 0 0">Documents use the details as last saved.</p></div>' +
         '<div class="card" id="tfTdocs"></div>' +
         '<div class="card tcy-stmts" id="tfStmts">' + stmtCard(x.id) + '</div>' +
-        '<div class="card"><h3>History</h3><ul class="tcy-log">' + (x.log || []).slice().reverse().map(function(e, i, arr){ var n = arr.length - 1 - i, isMail = e.email || /^(Emailed |Welcome email )/.test(e.text || ''); return '<li' + (isMail ? ' class="tcy-log-mail" data-tlog="' + n + '" role="button" tabindex="0" title="Open this email"' : '') + '><span>' + esc(fmtDate(e.at)) + '</span>' + (isMail ? '✉ ' : '') + esc(e.text) + (isMail ? ' <b class="tcy-log-open">Open ›</b>' : '') + '</li>'; }).join('') + '</ul></div>' +
+        // History folds away (closed unless it was left open): the summary shows how many entries and the latest one.
+        '<details class="card tcy-hist" id="tfHist"' + ((function(){ try { return localStorage.getItem('rr_tcy_hist') === '1'; } catch (e) { return false; } })() ? ' open' : '') + '><summary><h3>History</h3><span class="tcy-hist-n">' + (x.log || []).length + ' entr' + ((x.log || []).length === 1 ? 'y' : 'ies') + '</span>' +
+          ((x.log || []).length ? '<span class="tcy-hist-last">Latest: ' + esc(fmtDate(x.log[x.log.length - 1].at)) + ' · ' + esc(String(x.log[x.log.length - 1].text || '').slice(0, 90)) + '</span>' : '') + '</summary><ul class="tcy-log">' + (x.log || []).slice().reverse().map(function(e, i, arr){ var n = arr.length - 1 - i, isMail = e.email || /^(Emailed |Welcome email )/.test(e.text || ''); return '<li' + (isMail ? ' class="tcy-log-mail" data-tlog="' + n + '" role="button" tabindex="0" title="Open this email"' : '') + '><span>' + esc(fmtDate(e.at)) + '</span>' + (isMail ? '✉ ' : '') + esc(e.text) + (isMail ? ' <b class="tcy-log-open">Open ›</b>' : '') + '</li>'; }).join('') + '</ul></details>' +
         '<div class="card danger-card"><h3>Delete tenancy</h3><p class="muted-note">Removes this tenancy record. Tenants and the landlord stay on file.</p><div class="row-actions"><button class="btn danger" id="tfDelete" type="button">Delete tenancy</button></div></div>' : '') +
       '<div class="tcy-save"><button class="btn ghost" id="tfCancel" type="button">Cancel</button><button class="btn primary" id="tfSave" type="button">' + (x ? 'Save changes' : 'Save tenancy') + '</button></div>' +
       '</div>';
