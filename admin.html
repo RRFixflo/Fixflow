@@ -1071,6 +1071,7 @@
   .tcy-save { position: sticky; bottom: 0; z-index: 5; display: flex; gap: 8px; justify-content: flex-end; padding: 10px 0; background: linear-gradient(transparent, var(--bg) 35%); }
   .tcy-log li.tcy-log-mail { cursor: pointer; } .tcy-log li.tcy-log-mail:hover { background: var(--bg, #f6f7f9); } .tcy-log-open { color: var(--blue, #2F5BEA); font-weight: 600; white-space: nowrap; }
   .tle-row { display: flex; gap: 10px; font-size: .9rem; padding: 3px 0; } .tle-row > span { color: var(--ink-soft, #667085); min-width: 64px; flex: 0 0 auto; }
+  .tm-incl { display: flex; flex-wrap: wrap; gap: 6px 14px; } .tm-incl-i { display: flex; gap: 6px; align-items: center; font-size: .92rem; }
   .tle-files { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; } .tle-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; padding: 6px 8px; border: 1px solid var(--line, #e4e7ec); border-radius: 8px; } .tle-fn { font-weight: 600; overflow-wrap: anywhere; min-width: 0; flex: 1 1 180px; } .tle-fa { display: flex; gap: 6px; flex: 0 0 auto; } .tle-row b { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
   .tle-frame { width: 100%; height: 55vh; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; background: #fff; } .tle-text { white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 12px; font-size: .9rem; max-height: 55vh; overflow: auto; }
   .tcy-log { list-style: none; margin: 0; padding: 0; font-size: .85rem; } .tcy-log li { padding: 6px 0; border-bottom: 1px solid var(--line); } .tcy-log span { color: var(--ink-soft); font-size: .76rem; display: block; }
@@ -2382,6 +2383,8 @@
     <div><label class="lbl" for="tmTo">To</label><input class="inp" id="tmTo" placeholder="name@example.com, …"></div>
     <div><label class="lbl" for="tmCc">Cc</label><input class="inp" id="tmCc" placeholder="Optional — e.g. the negotiator"></div>
     <div><label class="lbl" for="tmSubject">Subject</label><input class="inp" id="tmSubject"></div>
+    <div id="tmInclRow" hidden><label class="lbl">Listed in the email as included</label><div id="tmIncl" class="tm-incl"></div>
+      <div style="display:flex;gap:6px;margin-top:6px"><input class="inp" id="tmInclNew" placeholder="Add another item, e.g. Gas Safety Certificate" style="flex:1;min-width:0"><button type="button" class="btn small" id="tmInclAdd">＋ Add</button></div></div>
     <div><div class="ml-tabs" style="margin-bottom:6px"><button type="button" class="on" data-tmv="edit">✏️ Write</button><button type="button" data-tmv="look">👁 Preview — how they’ll see it</button></div>
       <div class="mail-preview" id="tmBody" contenteditable="true" spellcheck="true" aria-label="Message — you can edit it here"></div><div id="tmLook" class="ml-look" role="document" aria-label="How the email will look" hidden></div></div>
     <div><label class="lbl">Attach</label><div id="tmAtt" style="display:flex;flex-direction:column;gap:6px"></div></div>
@@ -12429,9 +12432,26 @@
     var list = files.length ? files.map(function(f){ var u = '/api/admin/email-files/' + encodeURIComponent(f.id) + '?name=' + encodeURIComponent(f.name);
         return '<div class="tle-file"><span class="tle-fn">' + icon(f.name) + ' ' + esc(f.name) + (f.size ? ' <span class="muted-note" style="margin:0;display:inline">' + esc(size(f.size)) + '</span>' : '') + '</span>' +
           '<span class="tle-fa"><a class="btn small ghost" target="_blank" rel="noopener" href="' + u + '">Open</a><a class="btn small" href="' + u + '&dl=1" download="' + esc(f.name) + '">⬇ Download</a></span></div>'; }).join('')
-      : names.map(function(nm){ return '<div class="tle-file"><span class="tle-fn">' + icon(nm) + ' ' + esc(nm) + '</span></div>'; }).join('') + '<p class="muted-note" style="margin:4px 0 0">Copies of attachments are kept for emails sent from now on — this one only has the file names.</p>';
+      : names.map(function(nm){ var k = tleRegenKind(nm);
+          return '<div class="tle-file"><span class="tle-fn">' + icon(nm) + ' ' + esc(nm) + '</span>' + (k ? '<span class="tle-fa"><button type="button" class="btn small" data-tle-regen="' + k + '" data-name="' + esc(nm) + '">Open</button></span>' : '<span class="muted-note" style="margin:0">Copy not kept</span>') + '</div>'; }).join('') +
+        '<p class="muted-note" style="margin:4px 0 0">This email was sent before Fixflow kept copies of attachments. Documents Fixflow makes open again from the tenancy as it is now (so they show any changes since); your own added files weren’t kept. Emails sent from now on keep an exact copy of every attachment.</p>';
     return '<div class="tle-row" style="align-items:flex-start"><span>Attached</span><div class="tle-files">' + list + '</div></div>';
   }
+  // Documents Fixflow makes, which can be made again from the tenancy (older emails kept only the names).
+  function tleRegenKind(nm){ return /^Landlord Statement/i.test(nm) ? 'statement' : /^Tenant Contact Sheet/i.test(nm) ? 'contacts' : /^Tenancy Agreement/i.test(nm) && /\.pdf$/i.test(nm) ? 'agreement' : /^Terms of Let/i.test(nm) ? 'terms' : ''; }
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest('[data-tle-regen]'); if (!b) return;
+    var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0], d = x && x.data; if (!d) return;
+    var k = b.dataset.tleRegen, nm = b.dataset.name || 'Document.pdf';
+    if (k === 'agreement') {
+      var w = window.open('', '_blank'); busy(b, true, '…');
+      agreementBlob(d, 'pdf').then(function(blob){ busy(b, false); var u = URL.createObjectURL(blob); if (w) w.location = u; else window.open(u, '_blank'); setTimeout(function(){ URL.revokeObjectURL(u); }, 300000); })
+        ['catch'](function(){ busy(b, false); if (w) w.close(); toast('Couldn’t make the agreement'); });
+      return;
+    }
+    var s0 = stmtsBy[x.id], m0 = s0 && s0.months[0] && s0.months[0].n === 0 ? Object.assign({ date: d.statement_date }, s0.months[0]) : null;
+    openPdf(k === 'statement' ? statementPdf(d, m0, x.id) : k === 'contacts' ? contactsPdf(d) : termsPdf(d), nm);
+  });
   // History: open an email that was sent (when, who to, subject, attachments and the message itself).
   function openLogEmail(n){
     var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0], e = x && (x.log || [])[n]; if (!e) return;
@@ -16702,8 +16722,8 @@
     var ctReq = who === 'tenants' ? api('GET', '/api/admin/council-tax?address=' + encodeURIComponent(d.address || '')).then(function(r){ if (r && r.ok) ct = r; })['catch'](function(){}) : null;
     // DIY check-in: the app needs a personal link — the office makes a free one for these tenants.
     var diyOffice = '', diyReq = who === 'tenants' && (d.checkin_type === 'diy' || /diy/i.test(String(d.checkin_type || ''))) ? api('POST', '/api/admin/diy-access', { name: ((d.tenants || [])[0] || {}).name || '', address: d.address || '' }).then(function(r){ if (r && r.ok) diyOffice = r.link; })['catch'](function(){}) : null;
-    // The negotiator who got the offer is copied in on the tenants' email.
-    var negCc = [], negReq = who === 'tenants' && openTcyId && openTcyId !== 'new' ? api('GET', '/api/admin/tenancies/' + openTcyId + '/negotiator').then(function(r){ if (r && r.ok) negCc = (r.people || []).map(function(x){ return x.email; }).filter(Boolean); if (!negCc.length && r && r.email) negCc = [r.email]; })['catch'](function(){}) : null;
+    // The tenancy's negotiator(s) are always copied in (tenants' and landlord's emails).
+    var negCc = [], negReq = openTcyId && openTcyId !== 'new' ? api('GET', '/api/admin/tenancies/' + openTcyId + '/negotiator').then(function(r){ if (r && r.ok) negCc = (r.people || []).map(function(x){ return x.email; }).filter(Boolean); if (!negCc.length && r && r.email) negCc = [r.email]; })['catch'](function(){}) : null;
     // The tenants' private link for uploading proof of the move-in payments (amount and date shown there).
     var payUrl = '', payReq = who === 'tenants' && openTcyId && openTcyId !== 'new' ? api('POST', '/api/admin/tenancies/' + openTcyId + '/pay-link', { amount: tcyCalc(d).remaining, due: tcyCalc(d).moveInDue }).then(function(r){ if (r && r.ok) payUrl = r.url; })['catch'](function(){}) : null;
     Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq, diyReq, negReq, payReq]).then(go);
@@ -16791,6 +16811,42 @@
     };
     Promise.all([tcySet ? null : loadTcySettings(), loadOutlook()]).then(go);
   }
+  // The bulleted list of what's included ("* Signed Tenancy Agreement" lines): a tick box for each, so
+  // staff choose what the email says is included (and can add more) without editing the text.
+  var tmIncl = null;
+  function tmInclBlock(items){ return items.filter(function(x){ return x.on; }).map(function(x){ return '* ' + esc(x.label) + '<br>'; }).join(''); }
+  function tmInclSetup(){
+    tmIncl = null; $('tmInclRow').hidden = true;
+    var h = $('tmBody').innerHTML, m = /((?:\* [^<]+<br>)+)/.exec(h);
+    if (!m) return;
+    var items = m[1].split('<br>').filter(Boolean).map(function(l){ return { label: l.replace(/^\* /, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim(), on: true }; });
+    tmIncl = { items: items, before: h.slice(Math.max(0, m.index - 80), m.index) };
+    tmInclDraw(); $('tmInclRow').hidden = false;
+  }
+  function tmInclDraw(){
+    $('tmIncl').innerHTML = tmIncl.items.map(function(x, i){ return '<label class="tm-incl-i"><input type="checkbox" data-incl="' + i + '"' + (x.on ? ' checked' : '') + '> ' + esc(x.label) + '</label>'; }).join('');
+  }
+  // Swap the list in the message for the ticked items (where it is now, even after other edits).
+  function tmInclApply(oldBlock){
+    var h = $('tmBody').innerHTML, nb = tmInclBlock(tmIncl.items), at = oldBlock ? h.indexOf(oldBlock) : -1;
+    if (at === -1 && !oldBlock) { var b = h.indexOf(tmIncl.before); if (b !== -1) at = b + tmIncl.before.length; }
+    if (at === -1) { toast('The list was changed in the message — edit it there'); return false; }
+    $('tmBody').innerHTML = h.slice(0, at) + nb + h.slice(at + oldBlock.length);
+    if (!$('tmLook').hidden) tmView('look');
+    return true;
+  }
+  $('tmIncl').addEventListener('change', function(e){
+    var c = e.target.closest('[data-incl]'); if (!c || !tmIncl) return;
+    var old = tmInclBlock(tmIncl.items); tmIncl.items[Number(c.dataset.incl)].on = c.checked;
+    if (!tmInclApply(old)) { tmIncl.items[Number(c.dataset.incl)].on = !c.checked; c.checked = !c.checked; }
+  });
+  var tmInclAdd = function(){
+    var v = $('tmInclNew').value.trim(); if (!v || !tmIncl) return;
+    var old = tmInclBlock(tmIncl.items); tmIncl.items.push({ label: v, on: true });
+    if (tmInclApply(old)) { $('tmInclNew').value = ''; tmInclDraw(); } else tmIncl.items.pop();
+  };
+  $('tmInclAdd').addEventListener('click', tmInclAdd);
+  $('tmInclNew').addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); tmInclAdd(); } });
   // The email window, used for welcome emails and certificate reminders to landlords.
   function showMail(o){
     tmCtx = o;
@@ -16798,6 +16854,7 @@
     $('tmTo').value = (o.to || []).join(', '); $('tmCc').value = (o.cc || []).join(', ');
     $('tmSubject').value = o.subject || '';
     $('tmBody').innerHTML = o.bodyHtml || '';
+    tmInclSetup();
     var atts = o.atts || [];
     tmCtx.extra = [];   // files staff add themselves
     $('tmAtt').parentNode.hidden = false;
