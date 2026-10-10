@@ -1099,7 +1099,7 @@
   .fee-run { display: grid; grid-template-columns: 58px minmax(0, 1fr) 92px 96px; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line, #eef0f3); font-size: .86rem; align-items: baseline; } .fee-run > span:nth-child(n+3) { text-align: right; white-space: nowrap; } .fee-run small { display: block; color: var(--ink-soft, #667085); font-size: .76rem; } .fee-run-h { font-size: .74rem; color: var(--ink-soft, #667085); font-weight: 700; border-top: 0; }
   @media (max-width: 560px) { .fee-run { grid-template-columns: 46px minmax(0, 1fr) 78px; } .fee-run > span:nth-child(4) { grid-column: 2 / 4; text-align: right; font-size: .78rem; color: var(--ink-soft, #667085); } .fee-run > span:nth-child(4) b::before { content: 'Running total '; font-weight: 400; } .fee-run-h > span:nth-child(4) { display: none; } }
   .la-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .la-tabs button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: inherit; } .la-tabs button small { font-weight: 500; color: var(--ink-soft, #667085); margin-left: 4px; } .la-tabs button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; } .la-tabs button.on small { color: rgba(255,255,255,.75); }
-  .ap-hits { display: grid; gap: 6px; margin-bottom: 6px; } .ap-hit { display: grid; grid-template-columns: auto 72px minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 6px 10px 6px 8px; cursor: pointer; background: #fff; } .ap-hit.on { border-color: #2563eb; background: #f5f8ff; } .ap-hit img, .ap-noimg { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; background: #f2f4f7; display: block; } .ap-ht { font-size: .88rem; line-height: 1.3; min-width: 0; } .ap-when { color: #475467 !important; } .ap-old { color: #b54708; font-weight: 600; } .ml-ap { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; font-size: .86rem; cursor: pointer; } .ml-ap span { flex: 1; min-width: 0; }  .ap-ov .ap-ovrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; font-size: .88rem; } .ap-ov .ap-ovrow .inp { width: 120px; } .ap-ov .ap-ovrow[hidden], .ap-ov[hidden] { display: none; } .ap-let { display: inline-block; background: #ecfdf3; color: #067647; border: 1px solid #abefc6; border-radius: 999px; padding: 0 7px; font-size: .74rem; font-weight: 700; } .ap-ht small { display: block; color: var(--muted, #667085); font-size: .78rem; margin-top: 2px; } .ap-hit a { text-decoration: none; font-weight: 700; padding: 4px; } .la-sub .btn.small { margin-left: 6px; font-size: .75rem; padding: 3px 8px; vertical-align: middle; }
+  .ap-hits { display: grid; gap: 6px; margin-bottom: 6px; } .ap-hit { display: grid; grid-template-columns: auto 72px minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 6px 10px 6px 8px; cursor: pointer; background: #fff; } .ap-hit.on { border-color: #2563eb; background: #f5f8ff; } .ap-hit img, .ap-noimg { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; background: #f2f4f7; display: block; } .ap-ht { font-size: .88rem; line-height: 1.3; min-width: 0; } .ap-when { color: #475467 !important; } .ap-old { color: #b54708; font-weight: 600; } .ap-ready { display: flex; flex-direction: column; gap: 6px; border: 1px solid #abefc6; background: #f6fef9; border-radius: 12px; padding: 12px 14px; margin-top: 8px; width: 100%; } .ap-ready span { font-size: .86rem; color: var(--muted, #667085); } .ml-ap { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; font-size: .86rem; cursor: pointer; } .ml-ap span { flex: 1; min-width: 0; }  .ap-ov .ap-ovrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; font-size: .88rem; } .ap-ov .ap-ovrow .inp { width: 120px; } .ap-ov .ap-ovrow[hidden], .ap-ov[hidden] { display: none; } .ap-let { display: inline-block; background: #ecfdf3; color: #067647; border: 1px solid #abefc6; border-radius: 999px; padding: 0 7px; font-size: .74rem; font-weight: 700; } .ap-ht small { display: block; color: var(--muted, #667085); font-size: .78rem; margin-top: 2px; } .ap-hit a { text-decoration: none; font-weight: 700; padding: 4px; } .la-sub .btn.small { margin-left: 6px; font-size: .75rem; padding: 3px 8px; vertical-align: middle; }
   @media (max-width: 520px) { .ap-hit { grid-template-columns: auto 56px minmax(0,1fr) auto; gap: 8px; } .ap-hit img, .ap-noimg { width: 56px; height: 44px; } }
   .ap-hit.ap-sold { grid-template-columns: auto minmax(0,1fr) auto; }
   .ap-find { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; } #apSugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; }
@@ -9527,11 +9527,17 @@
     api('GET', '/api/admin/valuations?landlord_id=' + l.id).then(function(d){
       if (!d || !d.ok || openLlId !== l.id) return; var items = d.items || [];
       $('llVals').hidden = !items.length; $('llVals')._items = items; $('llVals')._ll = l;
-      if (!$('llVals')._wired) { $('llVals')._wired = 1; $('llVals').addEventListener('click', function(e){ var b = e.target.closest('[data-val-mail]'); if (!b) return; var it = (this._items || []).filter(function(i){ return i.id === Number(b.dataset.valMail); })[0]; if (it) emailValuation(it, this._ll); }); }
+      if (!$('llVals')._wired) { $('llVals')._wired = 1; $('llVals').addEventListener('click', function(e){
+        var wb = e.target.closest('[data-val-wa]'), self = this;
+        if (wb) { var it0 = (this._items || []).filter(function(i){ return i.id === Number(wb.dataset.valWa); })[0], ll0 = this._ll || {}, win = window.open('about:blank', '_blank'); if (!it0) return;
+          api('POST', '/api/admin/valuations/' + it0.id + '/link').then(function(d){ if (!d || !d.ok) { if (win) win.close(); return toast('Couldn’t make the link'); }
+            var msg = 'Hi' + (ll0.name ? ' ' + String(ll0.name).trim().split(/\s+/)[0] : '') + ', here is our ' + (it0.data && it0.data.appraisal ? 'appraisal' : 'valuation') + ' for ' + shortAddr(it0.address) + ':\n' + d.url + '\n\nAny questions, just reply or call 0207 096 8131.\nResidential Realtors';
+            var u = 'https://wa.me/' + (ll0.phone ? waNumber(ll0.phone) : '') + '?text=' + encodeURIComponent(msg); if (win) { try { win.opener = null; } catch (er) {} win.location.href = u; } else window.open(u, '_blank', 'noopener'); }); return; }
+        var b = e.target.closest('[data-val-mail]'); if (!b) return; var it = (this._items || []).filter(function(i){ return i.id === Number(b.dataset.valMail); })[0]; if (it) emailValuation(it, this._ll); }); }
       $('llVals').innerHTML = '<h3>Valuation letters <span class="count-chip">' + items.length + '</span></h3>' + items.map(function(x){
         var v = x.data || {}, r = function(lo, hi){ return lo && hi && lo !== hi ? gbp0(lo) + '–' + gbp0(hi) : gbp0(lo || hi); };
         return '<div class="val-row"><div><b>' + esc(shortAddr(x.address)) + '</b><span class="muted-note" style="margin:0;display:block">' + [v.sales ? 'Sale ' + r(v.sales_low, v.sales_high) : '', v.lettings ? 'Let ' + r(v.let_low, v.let_high) + ' pcm' : ''].filter(Boolean).join(' · ') + ' · ' + esc(new Date(x.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) + (x.created_by ? ' · ' + esc(x.created_by) : '') + '</span></div>' +
-          '<span style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn small" target="_blank" rel="noopener" href="/api/admin/valuations/' + x.id + '/pdf">View</a><a class="btn small ghost" href="/api/admin/valuations/' + x.id + '/pdf?dl=1">⬇ PDF</a>' + (meta.canEmail ? '<button type="button" class="btn small ghost" data-val-mail="' + x.id + '">✉ Email</button>' : '') + '</span></div>';
+          '<span style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn small" target="_blank" rel="noopener" href="/api/admin/valuations/' + x.id + '/pdf">View</a><a class="btn small ghost" href="/api/admin/valuations/' + x.id + '/pdf?dl=1">⬇ PDF</a>' + (meta.canEmail ? '<button type="button" class="btn small ghost" data-val-mail="' + x.id + '">✉ Email</button>' : '') + '<button type="button" class="btn small ghost" data-val-wa="' + x.id + '">💬 WhatsApp</button></span></div>';
       }).join('');
     });
   }
@@ -12069,7 +12075,7 @@
           '<div class="ap-ovrow" data-ov="let"><span>Rent £</span><input class="inp" id="apOvLetLo" inputmode="numeric"><span>to £</span><input class="inp" id="apOvLetHi" inputmode="numeric" placeholder="optional"><span>pcm</span></div>' +
           '<div class="row-actions" style="gap:6px;margin-top:4px"><button type="button" class="btn small ghost" data-ov-pct="-5">−5%</button><button type="button" class="btn small ghost" data-ov-pct="5">+5%</button><button type="button" class="btn small ghost" data-ov-reset>Use the average</button></div></div>' +
         '<p class="muted-note" id="apErr" style="color:var(--red,#c00);margin:6px 0 0" hidden></p>' +
-        '<div class="row-actions" style="flex-wrap:wrap;margin-top:10px"><button type="button" class="btn primary" id="apMake">📄 Make the report</button><span id="apDone"></span></div>' +
+        '<div class="row-actions" style="flex-wrap:wrap;margin-top:10px"><button type="button" class="btn primary" id="apMake">📄 Make the report</button></div><div id="apDone"></div>' +
         '<h4 class="la-sub">Recent appraisals</h4><div id="apList" class="muted-note">Loading…</div>';
       b.addEventListener('change', function(e){
         var sd = e.target.closest('[data-ap-sold]');
@@ -12085,6 +12091,14 @@
       b.addEventListener('click', function(e){
         var m = e.target.closest('[data-apm]'); if (m) { appr.mode = m.dataset.apm; apprDraw(); return; }
         if (e.target.closest('#apAuto')) { apprAuto(); return; }
+        var aw = e.target.closest('[data-ap-wa]');
+        if (aw) { var wid = Number(aw.dataset.apWa), win = window.open('about:blank', '_blank'), ph = apprLl && apprLl.phone && !aw.dataset.addr ? waNumber(apprLl.phone) : '';
+          api('POST', '/api/admin/valuations/' + wid + '/link').then(function(d){
+            if (!d || !d.ok) { if (win) win.close(); return toast('Couldn’t make the link'); }
+            var first = String(aw.dataset.addr ? (aw.dataset.name || '') : ($('apTo').value || '')).trim().split(/\s+/)[0], addr = shortAddr(aw.dataset.addr || $('apAddr').value || '') || 'your property';
+            var msg = 'Hi' + (first ? ' ' + first : '') + ', here is our appraisal for ' + addr + ', with the similar homes nearby our figures are based on:\n' + d.url + '\n\nAny questions, just reply or call 0207 096 8131.\nResidential Realtors';
+            var u = 'https://wa.me/' + ph + '?text=' + encodeURIComponent(msg); if (win) { try { win.opener = null; } catch (er) {} win.location.href = u; } else window.open(u, '_blank', 'noopener');
+          }); return; }
         var am = e.target.closest('[data-ap-mail]');
         if (am) { var vid = Number(am.dataset.apMail), ll0 = apprLl; api('GET', '/api/admin/valuations').then(function(dd){ var it = ((dd && dd.items) || []).filter(function(i){ return i.id === vid; })[0]; if (!it) return toast('Couldn’t find the report');
           var ll = ll0 && ll0.id === it.landlord_id ? ll0 : (it.landlord_id ? landlordById(it.landlord_id) : null); if (ll && ll0 && !ll.email && ll0.email) ll = ll0; emailValuation(it, ll); }); return; }
@@ -12282,8 +12296,12 @@
       include_fees: true, signer: meta.user && meta.user.id && meta.user.name ? meta.user.name : '' }).then(function(d){
       busy(btn, false);
       if (!d || !d.ok) return err('Couldn’t make the report — please check the details.');
-      $('apDone').innerHTML = '<a class="btn small" href="' + esc(d.pdf) + '" target="_blank" rel="noopener">Open the report</a> <a class="btn small" href="' + esc(d.pdf) + '?dl=1">⬇ Download</a>' + (meta.canEmail && d.id ? ' <button type="button" class="btn small primary" data-ap-mail="' + d.id + '">✉ Email it</button>' : '');
-      window.open(d.pdf, '_blank', 'noopener'); apprList(); if (apprLl && typeof loadValuations === 'function') loadValuations(apprLl);
+      // Ready: send it straight to the landlord from here (no new tab to get lost in).
+      $('apDone').innerHTML = '<div class="ap-ready"><b>✅ The report is ready</b><span>Send it to ' + esc($('apTo').value.trim() || 'the landlord') + ':</span><div class="row-actions" style="flex-wrap:wrap;gap:6px;margin:0">' +
+        (meta.canEmail ? '<button type="button" class="btn primary" data-ap-mail="' + d.id + '">✉ Email it with the PDF</button>' : '') +
+        '<button type="button" class="btn wa-btn" data-ap-wa="' + d.id + '">' + WA_ICON + 'WhatsApp</button>' +
+        '<a class="btn" href="' + esc(d.pdf) + '" target="_blank" rel="noopener">👁 Open</a><a class="btn" href="' + esc(d.pdf) + '?dl=1">⬇ Download</a></div></div>';
+      $('apDone').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); apprList(); if (apprLl && typeof loadValuations === 'function') loadValuations(apprLl);
     });
   }
   function apprList(){
@@ -12291,7 +12309,7 @@
       if (!$('apList')) return;
       var list = ((d && d.items) || []).filter(function(x){ return x.data && x.data.appraisal; }).slice(0, 10);
       $('apList').innerHTML = list.length ? list.map(function(x){ var v = x.data, u = '/api/admin/valuations/' + x.id + '/pdf';
-        return '<div class="fee-run" style="grid-template-columns:minmax(0,1fr) auto"><span><b>' + esc(String(x.address).split(',').slice(0, 2).join(',')) + '</b><small>' + esc([v.sales ? 'Value ' + gbp0(v.sales_low) : '', v.lettings ? 'Rent ' + gbp0(v.let_low) + ' pcm' : '', fmtShort(x.created_at), x.created_by || ''].filter(Boolean).join(' · ')) + '</small></span><span><a class="btn small ghost" href="' + u + '" target="_blank" rel="noopener">Open</a> <a class="btn small ghost" href="' + u + '?dl=1">⬇</a>' + (meta.canEmail ? ' <button type="button" class="btn small ghost" data-ap-mail="' + x.id + '" title="Email the report">✉</button>' : '') + '</span></div>'; }).join('') : 'None yet.';
+        return '<div class="fee-run" style="grid-template-columns:minmax(0,1fr) auto"><span><b>' + esc(String(x.address).split(',').slice(0, 2).join(',')) + '</b><small>' + esc([v.sales ? 'Value ' + gbp0(v.sales_low) : '', v.lettings ? 'Rent ' + gbp0(v.let_low) + ' pcm' : '', fmtShort(x.created_at), x.created_by || ''].filter(Boolean).join(' · ')) + '</small></span><span><a class="btn small ghost" href="' + u + '" target="_blank" rel="noopener">Open</a> <a class="btn small ghost" href="' + u + '?dl=1">⬇</a>' + (meta.canEmail ? ' <button type="button" class="btn small ghost" data-ap-mail="' + x.id + '" title="Email the report">✉</button>' : '') + ' <button type="button" class="btn small ghost" data-ap-wa="' + x.id + '" data-addr="' + esc(x.address) + '" data-name="' + esc(v.to_name || '') + '" title="Send by WhatsApp">💬</button></span></div>'; }).join('') : 'None yet.';
     });
   }
   document.addEventListener('toggle', function(e){ if (e.target && e.target.id === 'offAppr' && e.target.open) apprRender(); }, true);
