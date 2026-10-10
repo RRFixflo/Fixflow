@@ -12809,7 +12809,7 @@
     tleCur = { x: x, n: n, e: e };
     if (k === 'mail') return openLogEmail(n);
     if (k === 'inv') {
-      var num = /\bInvoice ((?:RR-)?INV-[\w-]+)/.exec(t)[1], iv = allInvoices.filter(function(i){ return i.number === num || i.number === 'RR-' + num; })[0];
+      var num = /\bInvoice ((?:RR-)?INV-[\w-]+)/.exec(t)[1], iv = allInvoices.filter(function(i){ return i.number === num || i.was === num || i.was === 'RR-' + num; })[0];
       if (!iv) return tleShow('🧾 Invoice ' + num, head + '<p class="muted-note">This invoice isn’t on file any more (it may have been deleted).</p>');
       var u = '/api/admin/invoices/' + iv.id + '/pdf';
       return tleShow('🧾 Invoice ' + iv.number, head + '<div class="tle-row"><span>Amount</span><b>' + gbp(iv.total) + (iv.paid_at ? ' · paid' : ' · not paid yet') + '</b></div>' +
@@ -14206,9 +14206,8 @@
   // An invoice on a statement: its number once, a few words on the job, and the link to it.
   function stmtInvLabel(f){
     var i = f && f.invoice_id && stmtInv[f.invoice_id]; if (!i) return f.label;
-    // The job's reference and a few words on it (the invoice number is on the invoice the line links to);
-    // an invoice with no job (e.g. a property licence) shows its invoice number instead.
-    var id = i.ref || i.number || '';
+    // Every invoice the same way: its number and a few words on it (e.g. "INV-RR-00103 · Ant extermination").
+    var id = i.number || i.ref || '';
     return id ? id + (i.what ? ' · ' + i.what : '') : i.what || f.label;
   }
   // A statement with the unpaid landlord invoices that will come off that rent (not on it yet until the
@@ -15072,7 +15071,7 @@
   }
   // Payment reference: door/flat number and the building or road name, no spaces
   // ("Flat 5, Dudley Court, Upper Berkeley Street" -> "5DudleyCourt").
-  var REF_WORDS = /^(house|court|road|street|lane|avenue|close|place|way|gardens|terrace|mansions|apartments|lodge|tower|point|building|buildings|heights|square|crescent|drive|grove|walk|row|hill|mews|wharf|quay|parade|rise|green|park|view|yard|estate|block)$/i;
+  var REF_WORDS = /^(house|court|road|street|lane|avenue|close|place|way|gardens|terrace|mansions|apartments|lodge|tower|point|building|buildings|heights|square|crescent|drive|grove|walk|row|hill|mews|wharf|quay|parade|rise|green|park|view|yard|estate|block|st|rd|ave|ln|dr|cl|ct|pl|gdns|sq|cres)$/i;
   function payRef(address){
     var parts = String(address || '').replace(POSTCODE_RE, ' ').split(',').map(function(x){ return x.trim(); }).filter(Boolean);
     for (var i = 0; i < parts.length; i++) {
@@ -15081,11 +15080,8 @@
       if (!rest.replace(/\b(flat|apartment|apt|unit|room|studio)\b/gi, '').trim()) rest = parts[i + 1] || '';
       // A comma-separated part is the name as written; without commas, stop after
       // the building or road word ("… Court Upper Berkeley Street" -> "… Court").
-      var words = rest.split(/\s+/).filter(Boolean), keep = words;
-      if (words.length > 4) {
-        keep = [];
-        for (var w = 0; w < words.length; w++) { keep.push(words[w]); if (keep.length > 1 && REF_WORDS.test(words[w]) && !REF_WORDS.test(words[w + 1] || '')) break; }
-      }
+      var words = rest.split(/\s+/).filter(Boolean), keep = [];
+      for (var w = 0; w < words.length; w++) { keep.push(words[w]); if (keep.length > 1 && REF_WORDS.test(words[w]) && !REF_WORDS.test(words[w + 1] || '')) break; }
       // A road word after a building name is left off: "Sutton Court Road" -> "SuttonCourt".
       if (keep.length > 2 && !keep.some(function(x){ return /\d/.test(x); }) && /^(road|rd|street|st|lane|ln|avenue|ave|close|way|drive|grove|place|terrace)$/i.test(keep[keep.length - 1])) keep = keep.slice(0, -1);
       // A flat in a numbered building: keep the two numbers apart ("Flat 4, 22 Queen St" -> "4-22QueenSt").
@@ -16980,8 +16976,12 @@
       var lw = c.vatOn ? (VX - 48) - (X + 48) : (R - 80) - (X + 48), iv = f.invoice_id && stmtInv[f.invoice_id];
       // An invoice: clicking it opens the invoice.
       // Every row the same size: a long one ends at a whole word with "…" rather than getting smaller.
-      // Same look as every other line; a thin grey underline shows it opens the invoice.
-      if (iv && iv.url) { fit(stmtInvLabel(f), X + 48, y, lw, rowFont, true); var lwid = Math.min(lw, doc.getTextWidth(stmtInvLabel(f))); doc.setDrawColor(170); doc.setLineWidth(0.4); doc.line(X + 48, y + 1.6, X + 48 + lwid, y + 1.6); doc.setDrawColor(0); doc.link(X + 48, y - rowFont, lwid, rowFont + 3, { url: iv.url }); }
+      // Every line exactly the same type; an invoice adds a small blue "view ›" after it, and the line opens the invoice.
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(rowFont); doc.setTextColor(20);
+      if (iv && iv.url) { var vt = 'view \u203a', vw = (doc.setFontSize(rowFont * 0.85), doc.getTextWidth(vt) + 6); doc.setFontSize(rowFont);
+        fit(stmtInvLabel(f), X + 48, y, lw - vw, rowFont, true); var lwid = Math.min(lw - vw, doc.getTextWidth(stmtInvLabel(f)));
+        doc.setFontSize(rowFont * 0.85); doc.setTextColor(23, 92, 211); doc.text(vt, X + 48 + lwid + 6, y); doc.setTextColor(20); doc.setFontSize(rowFont);
+        doc.link(X + 48, y - rowFont, lwid + vw, rowFont + 3, { url: iv.url }); }
       else fit(stmtInvLabel(f), X + 48, y, lw, rowFont, true); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += rh; });
     if (!c.fees.length) { doc.text(m.bf ? 'No fees this month' : 'No fees', X + 48, y); y += rh; }
     y += gk('fees') - rh; doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
