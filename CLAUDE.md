@@ -89,3 +89,4 @@ Public website changes must respect `prefers-reduced-motion`, work without horiz
 - Staff alerts for viewings and valuation requests go to all staff.
 - New repair emails and phone alerts go to the owner only, never staff.
 - Refreshing the staff app keeps you on the same page; the Refresh button reloads every page's data.
+- Calls isn't in the side menu or the phone More menu (hidden with CSS on `#navCalls`); the ringing pop-up still opens the Calls page.
