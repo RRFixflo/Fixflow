@@ -56,18 +56,14 @@ Please register with the relevant local authority for council tax purposes withi
 [diy][b]Where no formal inventory has been commissioned for your property, you may submit your own record of the property's condition using our DIY check-in platform:[/b]
 {{diy_link}}
 [b]Your access code:[/b] [red]{{diy_code}}[/red] — enter this on the DIY check-in page so you don’t need to pay.
-[b]Your submission, including photographs and written notes, must be completed within 7 days of your tenancy commencement date. We will review it and confirm in writing within 7 days if any part of it is disputed. If we do not raise a dispute within that period, your submission will stand as the agreed record of the property's condition for deposit purposes.[/b][/diy]
+[b]Your submission, including photographs and written notes, must be completed within 7 days of your tenancy commencement date. We will review it and confirm in writing within 7 days if any part of it is disputed. If we do not raise a dispute within that period, your submission will stand as the agreed record of the property's condition for deposit purposes.[/b]
+
+[b][u]Collecting your keys[/u][/b]
+As there is no inventory clerk meeting you at the property, please collect your keys from our office at [b]28-30 Harper Road, London SE1 6AD[/b]. Keys can only be released once your move-in monies have cleared and your standing order has been confirmed. Please call us on 0207 096 8131 to arrange a time.[/diy]
 
 [b][u]Cleaning[/u][/b]
-We offer two options regarding the cleaning of the property:
-
-[b]Option 1 – Property as-is:[/b] No professional clean is arranged before your move-in, and the property is taken in its current condition. In return, no professional clean is required from you at the end of your tenancy, saving you the cost.
-[b]Option 2 – Professional clean arranged:[/b] We arrange a professional clean before you move in. In this case, as set out in your tenancy agreement, you will be expected to arrange a professional clean of the property to an equivalent standard when you vacate, and you may be asked to provide evidence of this (e.g. an invoice).
-
 Please note that on occasion, a property may not be cleaned to the standard we expect on the day you move in. We ask for your understanding here, as there are times we may need to arrange the clean on your actual move-in day rather than before it. If this would be a problem for you, please let us know now so we can address it in advance.
 Similarly, properties can occasionally have issues we were not previously aware of. If you notice anything on moving in, please report it to us straight away so we can resolve it swiftly. Again, if this arrangement would be a problem for you, please raise it with us now.
-
-[b]Please let us know which cleaning option you'd prefer.[/b]
 
 We wish you the best of luck in your new home and should you have any other queries please contact me to discuss.
 

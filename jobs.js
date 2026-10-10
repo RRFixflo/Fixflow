@@ -364,6 +364,24 @@ CREATE TABLE IF NOT EXISTS tenancy_payments (
   confirmed_by TEXT
 );
 CREATE INDEX IF NOT EXISTS tenancy_payments_t ON tenancy_payments (tenancy_id);
+-- A tenancy's own documents (deposit protection certificate, tenants' ID, the signed agreement…),
+-- uploaded by staff, copied from the offer, or saved from the landlord's welcome email. The landlord
+-- sees the ones marked landlord = true on their portal.
+CREATE TABLE IF NOT EXISTS tenancy_docs (
+  id          SERIAL PRIMARY KEY,
+  tenancy_id  INTEGER NOT NULL,
+  kind        TEXT NOT NULL DEFAULT 'other',
+  name        TEXT,
+  mime        TEXT,
+  size        INTEGER,
+  sha         TEXT,
+  src         TEXT,
+  landlord    BOOLEAN NOT NULL DEFAULT true,
+  added_by    TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  file        BYTEA
+);
+CREATE INDEX IF NOT EXISTS tenancy_docs_t ON tenancy_docs (tenancy_id, id);
 -- Copies of the files attached to emails sent from a tenancy (downloaded again from its History).
 -- One copy per identical file (the same guide sent to many tenancies is kept once).
 CREATE TABLE IF NOT EXISTS email_files (
@@ -4933,6 +4951,13 @@ module.exports = function mountJobs(app, opts) {
     const tj = inv.job_id ? (await p.query('SELECT track_token FROM jobs WHERE id = $1', [inv.job_id])).rows[0] : null;
     res.send(invoicePage(inv, '/l/' + htmlEsc(req.params.token), '← Your properties', tj && tj.track_token ? '/t/' + tj.track_token : '', '/l/' + htmlEsc(req.params.token) + '/invoice/' + inv.id + '/pdf'));
   }));
+  app.get('/l/:token/tdoc/:id', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex');
+    const who = await landlordByToken(p, req.params.token);
+    const r = who ? (await p.query('SELECT d.name, d.mime, d.file, t.property_key FROM tenancy_docs d JOIN tenancies t ON t.id = d.tenancy_id WHERE d.id = $1 AND d.landlord', [parseInt(req.params.id, 10) || 0])).rows[0] : null;
+    if (!r || !r.property_key || who.keys[r.property_key] === undefined) return res.status(404).send('Not found');
+    sendTdoc(res, r, !!req.query.dl);
+  }));
   app.get('/l/:token/invoice/:id/pdf', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex');
     const who = await landlordByToken(p, req.params.token);
@@ -5073,6 +5098,8 @@ module.exports = function mountJobs(app, opts) {
     const invs = (await p.query("SELECT id, job_id, number, total, created_at, paid_at, property_key, data->>'due' AS due, data->>'date' AS date, data->>'title' AS title FROM invoices WHERE job_id = ANY($1::int[]) OR (job_id IS NULL AND property_key = ANY($2::text[])) ORDER BY id", [ids, Object.keys(keys)])).rows;
     // Monthly statements the landlord has been paid for (shown once we've sent their money).
     const stmtsAt = await landlordStatements(p, keys);
+    // Documents on their tenancies that the office has shared (deposit certificate, tenants' ID, signed agreement…).
+    const tdocs = Object.keys(keys).length ? (await p.query('SELECT d.id, d.kind, d.name, d.created_at, t.property_key FROM tenancy_docs d JOIN tenancies t ON t.id = d.tenancy_id WHERE d.landlord AND t.property_key = ANY($1::text[]) ORDER BY d.id', [Object.keys(keys)])).rows : [];
     // Which property an invoice is for: its repair's, or (a tenancy invoice) its own.
     const invKey = function (i) { const j = all.filter(function (x) { return x.id === i.job_id; })[0]; return j ? propKey(j.property_address) : i.property_key; };
     const parts = {};
@@ -5581,7 +5608,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const pid = 'p-' + k.replace(/[^a-z0-9]+/g, '-');
       quick.push('<a class="qrow" href="#' + htmlEsc(pid) + '" data-find="' + htmlEsc(String(addr).toLowerCase()) + '"><span class="qa">' + htmlEsc(addr) + '</span><span class="qc">' + chips + '</span><span class="qgo">›</span></a>');
       // One property at a time, split into tabs so only one thing shows at once.
-      const tcyHtml = tcyBox(k) + contactBox(k, addr), docHtml = (cs ? '<div class="certs">' + cs + '</div>' : '') + licBox(k);
+      const tdl = tdocs.filter(function (x) { return x.property_key === k; });
+      const tdocHtml = tdl.length ? '<h3>Tenancy documents</h3><div class="tdocs">' + tdl.map(function (x) { return '<a class="iv" href="/l/' + htmlEsc(token) + '/tdoc/' + x.id + '" target="_blank" rel="noopener"><div><b>' + htmlEsc(TDOC_KINDS[x.kind] || 'Document') + '</b><div class="muted">' + htmlEsc(x.name || '') + ' · added ' + htmlEsc(day(x.created_at)) + '</div></div><div style="text-align:right;color:var(--blue);font-weight:600">Open ›</div></a>'; }).join('') + '</div>' : '';
+      const tcyHtml = tcyBox(k) + tdocHtml + contactBox(k, addr), docHtml = (cs ? '<div class="certs">' + cs + '</div>' : '') + licBox(k);
       const tabs = [['rep', 'Repairs' + (o.length ? ' (' + o.length + ')' : ''),
           repairForm(k, addr) + (o.length ? '<h3>Open repairs</h3>' + o.map(jobCard).join('') : '<p class="muted">No open repairs.</p>') +
           (d.length ? '<details class="ldone"><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '')],
@@ -7136,6 +7165,69 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await p.query("SELECT name FROM staff_users WHERE disabled_at IS NULL AND coalesce(trim(name), '') <> '' ORDER BY lower(name)");
     res.json({ ok: true, names: r.rows.map(function (x) { return x.name; }) });
   }));
+  // ---------- A tenancy's documents ----------
+  const TDOC_KINDS = { deposit_cert: 'Deposit protection certificate', tenant_id: 'Tenant ID / right to rent', signed_agreement: 'Signed tenancy agreement', other: 'Other document' };
+  const DOC_MIME = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', webp: 'image/webp', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
+  async function addTenancyDoc(p, tid, d) {
+    const buf = Buffer.isBuffer(d.buf) ? d.buf : Buffer.from(String(d.data || '').replace(/^data:[^,]*,/, ''), 'base64');
+    if (!buf.length || buf.length > 15 * 1024 * 1024) return null;
+    const sha = crypto.createHash('sha256').update(buf).digest('hex');
+    const had = (await p.query('SELECT id FROM tenancy_docs WHERE tenancy_id = $1 AND sha = $2', [tid, sha])).rows[0];
+    if (had) return { id: had.id, dup: true };
+    const name = (str(d.name, 150) || 'Document').replace(/[\\/:*?"<>|]+/g, '-'), ext = (name.split('.').pop() || '').toLowerCase();
+    const kind = TDOC_KINDS[d.kind] ? d.kind : 'other';
+    const r = await p.query('INSERT INTO tenancy_docs (tenancy_id, kind, name, mime, size, sha, src, landlord, added_by, file) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
+      [tid, kind, name, d.mime || DOC_MIME[ext] || 'application/octet-stream', buf.length, sha, d.src || null, d.landlord !== false, str(d.by, 80) || null, buf]);
+    await p.query('UPDATE tenancies SET log = log || $2::jsonb WHERE id = $1', [tid, JSON.stringify([{ at: new Date().toISOString(), text: TDOC_KINDS[kind] + ' saved to the tenancy: ' + name + (d.how ? ' (' + d.how + ')' : '') }])]);
+    return { id: r.rows[0].id };
+  }
+  app.get('/api/admin/tenancies/:id/docs', withDb(async function (p, req, res) {
+    const t = (await p.query('SELECT data FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
+    if (!t) return res.status(404).json({ ok: false });
+    const docs = (await p.query('SELECT id, kind, name, mime, size, src, landlord, added_by, created_at FROM tenancy_docs WHERE tenancy_id = $1 ORDER BY id', [jobId(req)])).rows;
+    // The tenants' ID from the offer (uploaded with the application, and right to rent checks) — not yet copied.
+    const oid = parseInt((t.data || {}).offer_id, 10) || 0, have = {};
+    docs.forEach(function (d) { if (d.src) have[d.src] = 1; });
+    const offer = oid ? (await p.query('SELECT id, tenant_no, name, mime FROM offer_docs WHERE offer_id = $1 AND tenant_no <> 0 ORDER BY id', [oid])).rows.filter(function (d) { return !have['offer:' + d.id]; }) : [];
+    res.json({ ok: true, kinds: TDOC_KINDS, docs: docs, offer_ids: offer.map(function (d) { return { id: d.id, name: d.name, check: d.tenant_no < 0 }; }) });
+  }));
+  app.post('/api/admin/tenancies/:id/docs', withDb(async function (p, req, res) {
+    const b = req.body || {}, tid = jobId(req), by = (req.user && req.user.name) || 'Office';
+    if (!(await p.query('SELECT 1 FROM tenancies WHERE id = $1', [tid])).rows.length) return res.status(404).json({ ok: false });
+    if (b.from_offer) {
+      const t = (await p.query('SELECT data FROM tenancies WHERE id = $1', [tid])).rows[0], oid = parseInt((t.data || {}).offer_id, 10) || 0;
+      const rows = oid ? (await p.query('SELECT id, tenant_no, name, mime, data FROM offer_docs WHERE offer_id = $1 AND tenant_no <> 0 ORDER BY id', [oid])).rows : [];
+      let n = 0;
+      for (const r of rows) { const x = await addTenancyDoc(p, tid, { buf: r.data, name: (r.tenant_no < 0 ? 'Right to rent check - ' : 'Tenant ID - ') + (r.name || 'document'), mime: r.mime, kind: 'tenant_id', src: 'offer:' + r.id, by: by, how: 'from the offer' }); if (x && !x.dup) n++; }
+      return res.json({ ok: true, added: n });
+    }
+    const x = await addTenancyDoc(p, tid, { data: b.data, name: b.name, kind: b.kind, landlord: b.landlord, by: by, how: 'uploaded' });
+    if (!x) return res.status(400).json({ ok: false, error: 'file' });
+    res.json({ ok: true, id: x.id, dup: !!x.dup });
+  }));
+  app.patch('/api/admin/tenancy-docs/:id', withDb(async function (p, req, res) {
+    const b = req.body || {}, sets = [], vals = [parseInt(req.params.id, 10) || 0];
+    if (typeof b.landlord === 'boolean') { vals.push(b.landlord); sets.push('landlord = $' + vals.length); }
+    if (TDOC_KINDS[b.kind]) { vals.push(b.kind); sets.push('kind = $' + vals.length); }
+    if (!sets.length) return res.status(400).json({ ok: false });
+    const r = await p.query('UPDATE tenancy_docs SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id', vals);
+    res.json({ ok: !!r.rows.length });
+  }));
+  app.delete('/api/admin/tenancy-docs/:id', withDb(async function (p, req, res) {
+    const r = await p.query('DELETE FROM tenancy_docs WHERE id = $1 RETURNING tenancy_id, kind, name', [parseInt(req.params.id, 10) || 0]);
+    if (r.rows[0]) await p.query('UPDATE tenancies SET log = log || $2::jsonb WHERE id = $1', [r.rows[0].tenancy_id, JSON.stringify([{ at: new Date().toISOString(), text: 'Document removed from the tenancy: ' + r.rows[0].name }])]);
+    res.json({ ok: !!r.rows.length });
+  }));
+  function sendTdoc(res, r, dl) {
+    res.setHeader('Content-Type', r.mime || 'application/octet-stream'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', (dl ? 'attachment' : 'inline') + '; filename="' + String(r.name || 'document').replace(/[^\w .,()-]/g, '') + '"');
+    res.end(r.file);
+  }
+  app.get('/api/admin/tenancy-docs/:id', withDb(async function (p, req, res) {
+    const r = (await p.query('SELECT name, mime, file FROM tenancy_docs WHERE id = $1', [parseInt(req.params.id, 10) || 0])).rows[0];
+    if (!r) return res.status(404).send('Not found');
+    sendTdoc(res, r, !!req.query.dl);
+  }));
   app.get('/api/admin/tenancies/:id/negotiator', withDb(async function (p, req, res) {
     const t = (await p.query('SELECT data FROM tenancies WHERE id = $1', [jobId(req)])).rows[0];
     if (!t) return res.status(404).json({ ok: false });
@@ -7150,13 +7242,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!to.length) return res.status(400).json({ ok: false, error: 'bad-address' });
     if (!subject || !text) return res.status(400).json({ ok: false, error: 'empty' });
     const atts = (Array.isArray(b.attachments) ? b.attachments : []).slice(0, 15).map(function (a) {
-      return { filename: (str(a && a.name, 150) || 'Document.pdf').replace(/[^a-zA-Z0-9.\-_ ]+/g, '-'), content: String(a && a.data || '').replace(/^data:[^,]*,/, '') };
+      return { filename: (str(a && a.name, 150) || 'Document.pdf').replace(/[^a-zA-Z0-9.\-_ ]+/g, '-'), content: String(a && a.data || '').replace(/^data:[^,]*,/, ''), kind: a && TDOC_KINDS[a.save] && a.save !== 'other' ? a.save : null };
     }).filter(function (a) { return a.content && a.content.length < 15 * 1024 * 1024; });
     const html = typeof b.html === 'string' && b.html.length < 300000 ? b.html.replace(/<script[\s\S]*?<\/script>/gi, '') : undefined;
     const cc = (Array.isArray(b.cc) ? b.cc : []).map(function (x) { return str(x, 200); }).filter(function (x) { return x && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x) && to.indexOf(x) === -1; }).slice(0, 6);
     const sent = await sendEmail({ to: to, cc: cc, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: html || brandEmail(text, subject), attachments: atts });
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     const kept = await keepEmailFiles(p, atts);
+    // Files added to the email that staff marked as the deposit certificate, tenant ID or signed agreement: kept on the tenancy too.
+    for (const a of atts.filter(function (x) { return x.kind; })) await addTenancyDoc(p, jobId(req), { data: a.content, name: a.filename, kind: a.kind, by: (req.user && req.user.name) || 'Office', how: 'from the welcome email' });
     await p.query(`UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1`,
       [jobId(req), JSON.stringify([{ at: new Date().toISOString(), text: 'Emailed ' + to.join(', ') + (cc.length ? ' (cc ' + cc.join(', ') + ')' : '') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : ''), email: logEmail({ to: to, cc: cc, subject: subject, text: text, html: html, attachments: atts.map(function (a) { return a.filename; }), files: kept }) }])]);
     res.json({ ok: true });

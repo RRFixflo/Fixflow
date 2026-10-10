@@ -2383,7 +2383,7 @@
     <div><label class="lbl" for="tmTo">To</label><input class="inp" id="tmTo" placeholder="name@example.com, …"></div>
     <div><label class="lbl" for="tmCc">Cc</label><input class="inp" id="tmCc" placeholder="Optional — e.g. the negotiator"></div>
     <div><label class="lbl" for="tmSubject">Subject</label><input class="inp" id="tmSubject"></div>
-    <div id="tmInclRow" hidden><label class="lbl">Listed in the email as included</label><div id="tmIncl" class="tm-incl"></div>
+    <div id="tmInclRow" hidden><label class="lbl">Listed in the email as included</label><div id="tmIncl" class="tm-incl"></div><p class="match warn" id="tmInclWarn" hidden style="margin:8px 0 0"></p>
       <div style="display:flex;gap:6px;margin-top:6px"><input class="inp" id="tmInclNew" placeholder="Add another item, e.g. Gas Safety Certificate" style="flex:1;min-width:0"><button type="button" class="btn small" id="tmInclAdd">＋ Add</button></div></div>
     <div><div class="ml-tabs" style="margin-bottom:6px"><button type="button" class="on" data-tmv="edit">✏️ Write</button><button type="button" data-tmv="look">👁 Preview — how they’ll see it</button></div>
       <div class="mail-preview" id="tmBody" contenteditable="true" spellcheck="true" aria-label="Message — you can edit it here"></div><div id="tmLook" class="ml-look" role="document" aria-label="How the email will look" hidden></div></div>
@@ -12395,6 +12395,48 @@
     });
   }
   // Move-in payments the tenants have sent proof of (from the button in their welcome email): open the proof, confirm each.
+  // The tenancy's own documents: deposit certificate, tenants' ID, signed agreement… (shared with the
+  // landlord on their portal unless unticked), uploaded here, copied from the offer or saved from the welcome email.
+  var tdocsBy = {}, TDOC_LABEL = { deposit_cert: 'Deposit protection certificate', tenant_id: 'Tenant ID / right to rent', signed_agreement: 'Signed tenancy agreement', other: 'Document' };
+  function renderTcyDocs(){
+    var box = $('tfTdocs'); if (!box || !openTcyId || openTcyId === 'new') return;
+    var id = openTcyId;
+    api('GET', '/api/admin/tenancies/' + id + '/docs').then(function(r){
+      if (openTcyId !== id || !$('tfTdocs') || !r || !r.ok) return;
+      tdocsBy[id] = r.docs || [];
+      var kinds = r.kinds || {}, size = function(b){ return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((b || 0) / 1024)) + ' KB'; };
+      $('tfTdocs').innerHTML = '<h3>📁 Tenancy documents</h3><p class="muted-note" style="margin:-4px 0 8px">The deposit certificate, tenants’ ID and signed agreement. Ticked ones show on the landlord’s portal and are attached to the landlord’s welcome email.</p>' +
+        (tdocsBy[id].length ? tdocsBy[id].map(function(x){
+          return '<div class="tle-file"><span class="tle-fn">' + (/pdf/i.test(x.mime) ? '📄' : /image/i.test(x.mime) ? '🖼️' : '📎') + ' ' + esc(kinds[x.kind] || 'Document') + ' <span class="muted-note" style="margin:0;display:block;font-weight:400">' + esc(x.name || '') + ' · ' + esc(size(x.size)) + ' · ' + esc(fmtShort(x.created_at)) + (x.added_by ? ' · ' + esc(x.added_by) : '') + '</span></span>' +
+            '<span class="tle-fa" style="align-items:center"><label class="muted-note" style="margin:0;display:flex;gap:5px;align-items:center"><input type="checkbox" data-tdoc-ll="' + x.id + '"' + (x.landlord ? ' checked' : '') + '> Landlord sees it</label>' +
+            '<a class="btn small ghost" target="_blank" rel="noopener" href="/api/admin/tenancy-docs/' + x.id + '">Open</a><button type="button" class="btn small ghost" data-tdoc-del="' + x.id + '" aria-label="Remove">✕</button></span></div>';
+        }).join('') : '<p class="muted-note" style="margin:0 0 6px">No documents saved yet.</p>') +
+        ((r.offer_ids || []).length ? '<button type="button" class="btn small" id="tdocOffer" style="margin-top:8px">📥 Add the tenants’ ID from the offer (' + r.offer_ids.length + ')</button>' : '') +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px"><select class="inp" id="tdocKind" style="flex:0 1 260px;min-width:0"><option value="">What is it? (we’ll guess from the name)</option>' + Object.keys(kinds).map(function(k){ return '<option value="' + k + '">' + esc(kinds[k]) + '</option>'; }).join('') + '</select>' +
+        '<button type="button" class="tm-drop" id="tdocAdd" style="flex:1 1 220px;padding:10px"><b>📎 Drag &amp; drop or click to add</b></button><input type="file" id="tdocFile" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx"></div>';
+    });
+  }
+  function tdocGuess(name){ name = String(name || '').toLowerCase(); return /deposit|dps|tds|mydeposit|protect/.test(name) ? 'deposit_cert' : /passport|\bid\b|\bbrp\b|licen[cs]e|right.?to.?rent|share.?code|visa/.test(name) ? 'tenant_id' : /agreement|signed|\bast\b/.test(name) ? 'signed_agreement' : ''; }
+  function tdocUpload(files, kind){
+    var id = openTcyId; if (!id || id === 'new') return;
+    Promise.all(Array.prototype.map.call(files || [], function(f){
+      if (f.size > 15 * 1024 * 1024) { toast(f.name + ' is over 15 MB'); return null; }
+      return blobB64(f).then(function(b){ return api('POST', '/api/admin/tenancies/' + id + '/docs', { name: f.name, data: b, kind: kind || tdocGuess(f.name) || 'other' }); });
+    })).then(function(rs){ var n = rs.filter(function(r){ return r && r.ok; }).length; if (n) toast('✓ ' + n + ' document' + (n === 1 ? '' : 's') + ' saved to the tenancy'); renderTcyDocs(); loadTenancies(); });
+  }
+  document.addEventListener('click', function(e){
+    if (e.target.closest('#tdocAdd')) { $('tdocFile').click(); return; }
+    if (e.target.closest('#tdocOffer')) { var b = e.target.closest('#tdocOffer'); busy(b, true, 'Copying…'); api('POST', '/api/admin/tenancies/' + openTcyId + '/docs', { from_offer: true }).then(function(r){ toast(r && r.ok ? '✓ ' + r.added + ' ID document' + (r.added === 1 ? '' : 's') + ' saved to the tenancy' : 'Couldn’t copy'); renderTcyDocs(); }); return; }
+    var del = e.target.closest('[data-tdoc-del]');
+    if (del && confirm('Remove this document from the tenancy?')) api('DELETE', '/api/admin/tenancy-docs/' + del.dataset.tdocDel).then(function(){ renderTcyDocs(); });
+  });
+  document.addEventListener('change', function(e){
+    if (e.target && e.target.id === 'tdocFile') { tdocUpload(e.target.files, $('tdocKind').value); e.target.value = ''; return; }
+    var ll = e.target.closest && e.target.closest('[data-tdoc-ll]');
+    if (ll) api('PATCH', '/api/admin/tenancy-docs/' + ll.dataset.tdocLl, { landlord: ll.checked }).then(function(r){ toast(r && r.ok ? (ll.checked ? 'Shown to the landlord' : 'Hidden from the landlord') : 'Couldn’t save'); renderTcyDocs(); });
+  });
+  document.addEventListener('dragover', function(e){ if (e.target.closest && e.target.closest('#tdocAdd')) e.preventDefault(); });
+  document.addEventListener('drop', function(e){ var z = e.target.closest && e.target.closest('#tdocAdd'); if (!z || !e.dataTransfer || !e.dataTransfer.files.length) return; e.preventDefault(); tdocUpload(e.dataTransfer.files, $('tdocKind').value); });
   function renderTcyPays(){
     var box = $('tfPays'); if (!box || !openTcyId || openTcyId === 'new') { if (box) box.hidden = true; return; }
     var id = openTcyId, d = tcyDraft || {};
@@ -15660,6 +15702,7 @@
         '<button type="button" class="btn primary" data-doc="mail-tenants">✉️ Welcome email to tenants</button>' +
         '<button type="button" class="btn primary" data-doc="mail-landlord">✉️ Welcome email to landlord</button>' +
         '</div><p class="muted-note" style="margin:8px 0 0">Documents use the details as last saved.</p></div>' +
+        '<div class="card" id="tfTdocs"></div>' +
         '<div class="card tcy-stmts" id="tfStmts">' + stmtCard(x.id) + '</div>' +
         '<div class="card"><h3>History</h3><ul class="tcy-log">' + (x.log || []).slice().reverse().map(function(e, i, arr){ var n = arr.length - 1 - i, isMail = e.email || /^(Emailed |Welcome email )/.test(e.text || ''); return '<li' + (isMail ? ' class="tcy-log-mail" data-tlog="' + n + '" role="button" tabindex="0" title="Open this email"' : '') + '><span>' + esc(fmtDate(e.at)) + '</span>' + (isMail ? '✉ ' : '') + esc(e.text) + (isMail ? ' <b class="tcy-log-open">Open ›</b>' : '') + '</li>'; }).join('') + '</ul></div>' +
         '<div class="card danger-card"><h3>Delete tenancy</h3><p class="muted-note">Removes this tenancy record. Tenants and the landlord stay on file.</p><div class="row-actions"><button class="btn danger" id="tfDelete" type="button">Delete tenancy</button></div></div>' : '') +
@@ -15670,6 +15713,7 @@
     renderTcyCerts();
     renderTcyTerms();
     renderTcyPays();
+    renderTcyDocs();
     renderNegChips();
     if (tcyLocked) tcyLock();
   }
@@ -16677,6 +16721,18 @@
     var end = tpl.indexOf('\n\n', at); end = end === -1 ? tpl.length : end;   // after the whole bank details paragraph (with its reference)
     return tpl.slice(0, end) + block + tpl.slice(end);
   }
+  // Saved templates from before: no choice of cleaning options any more, and a DIY check-in tells the
+  // tenants to collect their keys from the office (no clerk meets them at the property).
+  function tenantTplFix(tpl){
+    tpl = String(tpl || '')
+      .replace(/^[^\n]*We offer two options regarding the cleaning[^\n]*\n+/m, '')
+      .replace(/^\[b\]Option [12] [–-][^\n]*\n?/gm, '')
+      .replace(/\n*^\[b\]Please let us know which cleaning option[^\n]*$/m, '')
+      .replace(/\n{3,}/g, '\n\n').replace(/(\[b\]\[u\]Cleaning\[\/u\]\[\/b\])\n\n/, '$1\n');
+    if (/\[\/diy\]/.test(tpl) && !/collect (?:your )?keys/i.test(tpl))
+      tpl = tpl.replace(/\[\/diy\]/, '\n\n[b][u]Collecting your keys[/u][/b]\nAs there is no inventory clerk meeting you at the property, please collect your keys from our office at [b]28-30 Harper Road, London SE1 6AD[/b]. Keys can only be released once your move-in monies have cleared and your standing order has been confirmed. Please call us on 0207 096 8131 to arrange a time.[/diy]');
+    return tpl;
+  }
   function withDiyCode(tpl, code){
     tpl = String(tpl || '');
     if (!code) return tpl.replace(/^.*\{\{\s*diy_code\s*\}\}.*\n?/gm, '');   // no code saved: no empty line
@@ -16704,16 +16760,19 @@
            // The government's guides every new tenant should have (official PDFs, kept in /docs).
            { id: 'file', url: '/docs/how-to-rent.pdf', name: 'How to Rent guide.pdf', label: 'How to Rent guide (GOV.UK)', on: true },
            { id: 'file', url: '/docs/renters-rights-act-information-sheet-2026.pdf', name: 'The Renters’ Rights Act Information Sheet 2026.pdf', label: 'Renters’ Rights Act information sheet 2026 (GOV.UK)', on: true }]
-        : [{ id: 'statement', name: tcyFile(d, 'Landlord Statement'), label: 'Landlord statement', on: true },
-           { id: 'contacts', name: tcyFile(d, 'Tenant Contact Sheet'), label: 'Tenant contact sheet', on: true },
-           { id: 'agr-pdf', name: tcyFile(d, 'Tenancy Agreement'), label: 'Tenancy agreement (PDF)', on: false }];
+        : [{ id: 'statement', name: tcyFile(d, 'Landlord Statement'), label: 'Landlord statement', on: true, kind: 'statement' },
+           { id: 'contacts', name: tcyFile(d, 'Tenant Contact Sheet'), label: 'Tenant contact sheet', on: true, kind: 'contacts' },
+           { id: 'agr-pdf', name: tcyFile(d, 'Tenancy Agreement'), label: 'Tenancy agreement (PDF, unsigned)', on: !tdocs.some(function(x){ return x.kind === 'signed_agreement'; }), kind: 'agreement' }]
+          // The tenancy's saved documents the landlord can see: deposit certificate, tenants' ID, signed agreement.
+          .concat(tdocs.filter(function(x){ return x.landlord && x.kind !== 'other'; }).map(function(x){ return { id: 'file', url: '/api/admin/tenancy-docs/' + x.id, name: x.name, label: (TDOC_LABEL[x.kind] || 'Document') + ' — ' + x.name, on: true, kind: x.kind }; }));
       var label = who === 'tenants' ? 'Welcome email to tenants' : 'Welcome email to landlord';
       showMail({
         who: who, d: d, atts: atts, sendUrl: '/api/admin/tenancies/' + openTcyId + '/email',
         title: who === 'tenants' ? 'Welcome email to the tenants' : 'Welcome email to ' + ((d.landlord || {}).name || 'the landlord'),
         to: to, cc: negCc, subject: fillTpl(who === 'tenants' ? t.tenant_subject : t.landlord_subject, vals),
-        bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? withPayLink(withDiyCode(withCouncilTax(t.tenant_body, ct), t.diy_code), payUrl) : t.landlord_body, d.checkin_type === 'clerk' && !d.checkin_date ? 'none' : d.checkin_type || 'clerk'), vals), vals)),
-        attNote: who === 'landlord' ? 'Add the signed agreement, tenant ID and deposit certificate yourself.' : '',
+        bodyHtml: mailHtml(fillTpl(fillTpl(checkinBlocks(who === 'tenants' ? withPayLink(withDiyCode(withCouncilTax(tenantTplFix(t.tenant_body), ct), t.diy_code), payUrl) : t.landlord_body, d.checkin_type === 'clerk' && !d.checkin_date ? 'none' : d.checkin_type || 'clerk'), vals), vals)),
+        attNote: who === 'landlord' ? 'Documents saved on the tenancy (📁 Tenancy documents) are listed here. Files you add below can be saved to the tenancy too — choose what each one is.' : '',
+        saveKinds: who === 'landlord',
         warn: (!t.bank_details && who === 'tenants' ? '⚠ No bank details saved yet — add them under Templates. ' : '') + (who === 'tenants' && isDiy && !t.diy_code ? '⚠ No DIY check-in access code saved — add it under Templates, or the tenants will be asked to pay. ' : ''),
         fileName: tcyFile(d, label, 'eml'),
         log: function(how, email){ tcyLog(label + ' ' + how, email); }
@@ -16722,11 +16781,12 @@
     var ctReq = who === 'tenants' ? api('GET', '/api/admin/council-tax?address=' + encodeURIComponent(d.address || '')).then(function(r){ if (r && r.ok) ct = r; })['catch'](function(){}) : null;
     // DIY check-in: the app needs a personal link — the office makes a free one for these tenants.
     var diyOffice = '', diyReq = who === 'tenants' && (d.checkin_type === 'diy' || /diy/i.test(String(d.checkin_type || ''))) ? api('POST', '/api/admin/diy-access', { name: ((d.tenants || [])[0] || {}).name || '', address: d.address || '' }).then(function(r){ if (r && r.ok) diyOffice = r.link; })['catch'](function(){}) : null;
+    var tdocs = [], tdocReq = who === 'landlord' && openTcyId && openTcyId !== 'new' ? api('GET', '/api/admin/tenancies/' + openTcyId + '/docs').then(function(r){ if (r && r.ok) tdocs = r.docs || []; })['catch'](function(){}) : null;
     // The tenancy's negotiator(s) are always copied in (tenants' and landlord's emails).
     var negCc = [], negReq = openTcyId && openTcyId !== 'new' ? api('GET', '/api/admin/tenancies/' + openTcyId + '/negotiator').then(function(r){ if (r && r.ok) negCc = (r.people || []).map(function(x){ return x.email; }).filter(Boolean); if (!negCc.length && r && r.email) negCc = [r.email]; })['catch'](function(){}) : null;
     // The tenants' private link for uploading proof of the move-in payments (amount and date shown there).
     var payUrl = '', payReq = who === 'tenants' && openTcyId && openTcyId !== 'new' ? api('POST', '/api/admin/tenancies/' + openTcyId + '/pay-link', { amount: tcyCalc(d).remaining, due: tcyCalc(d).moveInDue }).then(function(r){ if (r && r.ok) payUrl = r.url; })['catch'](function(){}) : null;
-    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq, diyReq, negReq, payReq]).then(go);
+    Promise.all([tcySet ? null : loadTcySettings(), loadOutlook(), ctReq, diyReq, negReq, payReq, tdocReq]).then(go);
   }
   // Templates: each borough's licensing schemes (selective and additional HMO), for the licence check.
   var lsData = null, LS_OPTS = [['all', 'All'], ['some', 'Parts'], ['none', 'None'], ['check', 'Not sure']];
@@ -16843,7 +16903,7 @@
   var tmInclAdd = function(){
     var v = $('tmInclNew').value.trim(); if (!v || !tmIncl) return;
     var old = tmInclBlock(tmIncl.items); tmIncl.items.push({ label: v, on: true });
-    if (tmInclApply(old)) { $('tmInclNew').value = ''; tmInclDraw(); } else tmIncl.items.pop();
+    if (tmInclApply(old)) { $('tmInclNew').value = ''; tmInclDraw(); tmInclCheck(); } else tmIncl.items.pop();
   };
   $('tmInclAdd').addEventListener('click', tmInclAdd);
   $('tmInclNew').addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); tmInclAdd(); } });
@@ -16861,6 +16921,7 @@
     $('tmAtt').innerHTML = atts.map(function(a, i){ return '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-att="' + i + '"' + (a.on ? ' checked' : '') + '> ' + esc(a.label) + '</label>'; }).join('') +
       (o.attNote ? '<p class="muted-note" style="margin:2px 0 0">' + esc(o.attNote) + '</p>' : '') +
       '<div id="tmExtra" style="display:flex;flex-direction:column;gap:6px"></div><button type="button" class="tm-drop" id="tmAddFile"><b>📎 Drag &amp; drop files here</b><span>PDFs, Word documents, photos — or click to choose</span></button><input type="file" id="tmFile" multiple hidden>';
+    tmInclCheck();
     var direct = meta.canEmail && o.sendUrl;
     $('tmSend').textContent = direct ? 'Send from Fixflow' : 'Other email app';
     $('tmCopy').textContent = 'Copy email';
@@ -16876,13 +16937,28 @@
   // Files added by hand: listed with a remove button, up to 20 MB in all.
   function tmDrawExtra(){
     var box = $('tmExtra'); if (!box) return;
-    box.innerHTML = (tmCtx.extra || []).map(function(f, i){ return '<div style="display:flex;gap:8px;align-items:center"><span>📄 ' + esc(f.name) + ' <span class="muted-note" style="margin:0">(' + Math.max(1, Math.round(f.blob.size / 1024)) + ' KB)</span></span><button type="button" class="linkish" data-tm-rmfile="' + i + '" title="Remove">✕</button></div>'; }).join('');
+    box.innerHTML = (tmCtx.extra || []).map(function(f, i){ return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="min-width:0;overflow-wrap:anywhere">📄 ' + esc(f.name) + ' <span class="muted-note" style="margin:0">(' + Math.max(1, Math.round(f.blob.size / 1024)) + ' KB)</span></span>' +
+      (tmCtx.saveKinds ? '<select class="inp" data-tm-save="' + i + '" style="width:auto;min-width:0;padding:4px 8px;font-size:.85rem" title="Save to the tenancy as"><option value="">Don’t save to the tenancy</option>' + ['deposit_cert', 'tenant_id', 'signed_agreement'].map(function(k){ return '<option value="' + k + '"' + (f.save === k ? ' selected' : '') + '>Save as: ' + esc(TDOC_LABEL[k]) + '</option>'; }).join('') + '</select>' : '') +
+      '<button type="button" class="linkish" data-tm-rmfile="' + i + '" title="Remove">✕</button></div>'; }).join('');
+    tmInclCheck();
+  }
+  // Everything the email says is included should be attached: list any that aren't.
+  function tmInclCheck(){
+    var w = $('tmInclWarn'); if (!w) return;
+    if (!tmIncl || !tmCtx || !tmCtx.saveKinds) { w.hidden = true; return; }
+    var have = {};
+    (tmCtx.atts || []).forEach(function(a, i){ var cb = $('tmAtt').querySelector('[data-att="' + i + '"]'); if (cb && cb.checked && a.kind) have[a.kind] = 1; });
+    (tmCtx.extra || []).forEach(function(f){ var k = f.save || tdocGuess(f.name); if (k) have[k] = 1; });
+    var need = function(label){ return /agreement/i.test(label) ? have.signed_agreement || have.agreement : /statement/i.test(label) ? have.statement : /\bid\b|right to rent|passport/i.test(label) ? have.tenant_id : /deposit/i.test(label) ? have.deposit_cert : /contact/i.test(label) ? have.contacts : true; };
+    var miss = tmIncl.items.filter(function(x){ return x.on && !need(x.label); }).map(function(x){ return x.label; });
+    w.hidden = !miss.length;
+    w.innerHTML = miss.length ? '⚠ Mentioned in the email but not attached: <b>' + miss.map(esc).join(', ') + '</b>. Add the file below (or save it under 📁 Tenancy documents), or untick it above.' : '';
   }
   function tmAddFiles(files){
     var total = (tmCtx.extra || []).reduce(function(n, f){ return n + f.blob.size; }, 0);
     Array.prototype.forEach.call(files || [], function(f){
       if (total + f.size > 20 * 1024 * 1024) { toast(f.name + ' is too big — attachments can be up to 20 MB in all'); return; }
-      total += f.size; tmCtx.extra.push({ name: f.name, blob: f });
+      total += f.size; tmCtx.extra.push({ name: f.name, blob: f, save: tmCtx.saveKinds ? tdocGuess(f.name) : '' });
     });
     tmDrawExtra(); if (!$('tmLook').hidden) tmView('look');
   }
@@ -16890,7 +16966,11 @@
     if (e.target.closest('#tmAddFile')) { $('tmFile').click(); return; }
     var rm = e.target.closest('[data-tm-rmfile]'); if (rm && tmCtx && tmCtx.extra) { tmCtx.extra.splice(Number(rm.dataset.tmRmfile), 1); tmDrawExtra(); }
   });
-  document.addEventListener('change', function(e){ if (e.target && e.target.id === 'tmFile') { tmAddFiles(e.target.files); e.target.value = ''; } });
+  document.addEventListener('change', function(e){
+    if (e.target && e.target.id === 'tmFile') { tmAddFiles(e.target.files); e.target.value = ''; return; }
+    var sv = e.target.closest && e.target.closest('[data-tm-save]'); if (sv && tmCtx && tmCtx.extra[Number(sv.dataset.tmSave)]) { tmCtx.extra[Number(sv.dataset.tmSave)].save = sv.value; tmInclCheck(); return; }
+    if (e.target.closest && (e.target.closest('#tmAtt') || e.target.closest('#tmIncl'))) tmInclCheck();
+  });
   // Drop files anywhere on the email window; the drop area lights up while dragging.
   var tmDragN = 0, tmIsFiles = function(e){ return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') !== -1; };
   $('tmModal').addEventListener('dragenter', function(e){ if (!tmIsFiles(e)) return; tmDragN++; $('tmModal').classList.add('tm-dragging'); });
@@ -16904,7 +16984,7 @@
       if (a.url) return fetch(a.url, { credentials: 'same-origin' }).then(function(r){ if (!r.ok) throw new Error('missing'); return r.blob(); }).then(function(b){ return { name: a.name, blob: b }; })['catch'](function(){ toast('Couldn’t attach ' + a.name); return null; });
       var doc = a.id === 'statement' ? statementPdf(d) : contactsPdf(d);
       return Promise.resolve(doc ? { name: a.name, blob: doc.output('blob') } : null);
-    })).then(function(r){ return r.filter(Boolean).concat((tmCtx.extra || []).map(function(f){ return { name: f.name, blob: f.blob }; })); });
+    })).then(function(r){ return r.filter(Boolean).concat((tmCtx.extra || []).map(function(f){ return { name: f.name, blob: f.blob, save: f.save || '' }; })); });
   }
   // Write ↔ preview: the email as the recipient will see it — sender, recipients, subject, attachments and the formatted message.
   function tmView(v){
@@ -17086,7 +17166,7 @@
     busy($('tmSend'), true, 'Preparing…');
     tmRefreshBrand().then(function(){ html = tmHtml(); return tmAttachments(); }).then(function(files){
       if (direct) {
-        return Promise.all(files.map(function(f){ return blobB64(f.blob).then(function(b){ return { name: f.name, data: b }; }); })).then(function(atts){
+        return Promise.all(files.map(function(f){ return blobB64(f.blob).then(function(b){ return { name: f.name, data: b, save: f.save || undefined }; }); })).then(function(atts){
           busy($('tmSend'), true, 'Sending…');
           return api('POST', ctx.sendUrl, { to: to, cc: tmCcList(), subject: subject, body: text, html: html, attachments: atts }).then(function(r){
             busy($('tmSend'), false);
