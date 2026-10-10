@@ -4931,20 +4931,103 @@ module.exports = function mountJobs(app, opts) {
     const inv = who ? await invoiceRow(p, req.params.id) : null;
     if (!inv || who.keys[propKey(inv.property_address)] === undefined) return res.status(404).send(trackShell('Invoice not found', '<h1>Invoice not found</h1>', true));
     const tj = inv.job_id ? (await p.query('SELECT track_token FROM jobs WHERE id = $1', [inv.job_id])).rows[0] : null;
-    res.send(invoicePage(inv, '/l/' + htmlEsc(req.params.token), '← Your properties', tj && tj.track_token ? '/t/' + tj.track_token : ''));
+    res.send(invoicePage(inv, '/l/' + htmlEsc(req.params.token), '← Your properties', tj && tj.track_token ? '/t/' + tj.track_token : '', '/l/' + htmlEsc(req.params.token) + '/invoice/' + inv.id + '/pdf'));
+  }));
+  app.get('/l/:token/invoice/:id/pdf', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex');
+    const who = await landlordByToken(p, req.params.token);
+    const inv = who ? await invoiceRow(p, req.params.id) : null;
+    if (!inv || who.keys[propKey(inv.property_address)] === undefined) return res.status(404).send('Invoice not found');
+    sendInvoicePdf(res, inv, await invoicePdf(inv), !!req.query.dl);
+  }));
+  app.get('/api/admin/invoices/:id/pdf', withDb(async function (p, req, res) {
+    const inv = await invoiceRow(p, req.params.id);
+    if (!inv) return res.status(404).send('Not found');
+    sendInvoicePdf(res, inv, await invoicePdf(inv), !!req.query.dl);
   }));
   // The office's view of an invoice (e.g. a tenancy's renewal fee).
   app.get('/api/admin/invoices/:id/view', withDb(async function (p, req, res) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     const inv = await invoiceRow(p, req.params.id);
     if (!inv) return res.status(404).send(trackShell('Invoice not found', '<h1>Invoice not found</h1>', true));
-    res.send(invoicePage(inv, '/admin', '← Back to Fixflow'));
+    res.send(invoicePage(inv, '/admin', '← Back to Fixflow', '', '/api/admin/invoices/' + inv.id + '/pdf'));
   }));
   async function invoiceRow(p, id) {
-    return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.paid_at, i.data, i.job_id, coalesce(j.property_address, i.address) AS property_address FROM invoices i
+    return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.paid_at, i.data, i.job_id, i.landlord_name, coalesce(j.property_address, i.address) AS property_address FROM invoices i
       LEFT JOIN jobs j ON j.id = i.job_id WHERE i.id = $1 AND (i.job_id IS NULL OR j.archived_at IS NULL) AND (i.job_id IS NULL OR j.id IS NOT NULL)`, [parseInt(id, 10) || 0])).rows[0] || null;
   }
-  function invoicePage(inv, back, backText, repairLink) {
+  // The full invoice as a PDF (what the landlord downloads): our details, who it's to, the property,
+  // every line, VAT, total, status and how to pay.
+  async function invoicePdf(inv) {
+    const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+    const pdf = await PDFDocument.create(), W = 595.28, H = 841.89, M = 56;
+    const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const ink = rgb(0.06, 0.07, 0.09), soft = rgb(0.38, 0.4, 0.45), line = rgb(0.86, 0.87, 0.9), red = rgb(0.85, 0.15, 0.18), okc = rgb(0.07, 0.57, 0.29), band = rgb(0.96, 0.96, 0.97);
+    const safe = function (x) { return String(x == null ? '' : x).replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-').replace(/\u2026/g, '...').replace(/[^\x20-\x7E\xA3\xA0-\xFF]/g, ''); };
+    const dt = inv.data || {}, fmtM = function (v) { return '\xA3' + Number(v || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    const day = function (v) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12)).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''; };
+    const iso = function (v) { return v ? new Date(v).toISOString() : ''; };
+    const wrap = function (text, font, size, width) {
+      const out = []; String(text || '').split(/\n/).forEach(function (para) { let cur = ''; safe(para).split(' ').forEach(function (w) { const t = cur ? cur + ' ' + w : w; if (cur && font.widthOfTextAtSize(t, size) > width) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); });
+      return out;
+    };
+    let page = pdf.addPage([W, H]), y;
+    const right = function (pg, text, x, yy, size, font, color) { const t = safe(text); pg.drawText(t, { x: x - font.widthOfTextAtSize(t, size), y: yy, size: size, font: font, color: color || ink }); };
+    const footer = function (pg) { pg.drawText(safe((INVOICE.from || 'Residential Realtors') + ' - Trading name of Estallion Investments Limited - Registered in England No. ' + (INVOICE.companyNo || '') + (INVOICE.vatNo ? ' - VAT No. ' + INVOICE.vatNo : '')), { x: M, y: 40, size: 7.5, font: F, color: soft }); pg.drawText(safe('Registered office: ' + (INVOICE.address || '')), { x: M, y: 29, size: 7.5, font: F, color: soft }); };
+    try { const logo = await pdf.embedPng(require('fs').readFileSync(require('path').join(__dirname, 'logo-ink.png'))); page.drawImage(logo, { x: M, y: 760, width: logo.width * 40 / logo.height, height: 40 }); } catch (e) {}
+    right(page, 'INVOICE', W - M, 772, 22, B);
+    page.drawLine({ start: { x: M, y: 742 }, end: { x: W - M, y: 742 }, thickness: 1.2, color: red });
+    // From (us) on the left, the invoice details on the right.
+    y = 716;
+    const from = [INVOICE.from || 'Residential Realtors'].concat(String(INVOICE.address || '').split(/\s*,\s*/), ['0207 096 8131', 'info@residentialrealtors.co.uk'], INVOICE.vatNo ? ['VAT No. ' + INVOICE.vatNo] : []);
+    from.forEach(function (l, i) { page.drawText(safe(l), { x: M, y: y - i * 13, size: i ? 9.5 : 10.5, font: i ? F : B, color: i ? soft : ink }); });
+    const overdue = !inv.paid_at && dt.due && dt.due < new Date().toISOString().slice(0, 10);
+    const facts = [['Invoice no.', inv.number], ['Date', day(dt.date) || day(iso(inv.created_at))]].concat(dt.due ? [['Due', day(dt.due)]] : [], [['Reference', dt.ref || inv.number]], inv.job_id ? [['Repair', refFor(inv.job_id)]] : []);
+    facts.forEach(function (f, i) { right(page, f[0], W - M - 130, y - i * 15, 9.5, B, soft); right(page, f[1], W - M, y - i * 15, 10, F); });
+    const st = inv.paid_at ? 'PAID ' + day(iso(inv.paid_at)).toUpperCase() : overdue ? 'OVERDUE' : 'AWAITING PAYMENT';
+    right(page, st, W - M, y - facts.length * 15 - 6, 10, B, inv.paid_at ? okc : overdue ? red : rgb(0.7, 0.42, 0.02));
+    y = Math.min(y - from.length * 13, y - facts.length * 15 - 6) - 26;
+    // Who it's to and the property.
+    const to = [dt.landlord || inv.landlord_name || ''].concat(String(dt.landlordAddress || '').split(/\n|\s*,\s*/)).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+    page.drawText('INVOICE TO', { x: M, y: y, size: 8.5, font: B, color: soft }); page.drawText('PROPERTY', { x: W / 2 + 10, y: y, size: 8.5, font: B, color: soft }); y -= 15;
+    const pa = wrap(inv.property_address || '', F, 10, W / 2 - M - 10).concat(dt.title && !inv.job_id ? wrap(dt.title, F, 9.5, W / 2 - M - 10) : []);
+    const n = Math.max(to.length, pa.length);
+    for (let i = 0; i < n; i++) { if (to[i]) page.drawText(safe(to[i]).slice(0, 60), { x: M, y: y, size: i ? 9.5 : 10.5, font: i ? F : B, color: ink }); if (pa[i]) page.drawText(pa[i], { x: W / 2 + 10, y: y, size: 10, font: F, color: ink }); y -= 13; }
+    y -= 20;
+    // The lines.
+    const head = function () { page.drawRectangle({ x: M, y: y - 6, width: W - M * 2, height: 20, color: band }); page.drawText('DESCRIPTION', { x: M + 8, y: y, size: 8.5, font: B, color: soft }); right(page, 'AMOUNT', W - M - 8, y, 8.5, B, soft); y -= 26; };
+    head();
+    (dt.lines || []).forEach(function (l) {
+      const rows = wrap(l.desc + (l.novat && dt.vat ? ' (no VAT)' : ''), F, 10, W - M * 2 - 120);
+      if (y - rows.length * 13 < 150) { footer(page); page = pdf.addPage([W, H]); y = H - 70; head(); }
+      rows.forEach(function (r, i) { page.drawText(r, { x: M + 8, y: y - i * 13, size: 10, font: F, color: ink }); });
+      right(page, fmtM(l.amount), W - M - 8, y, 10, F);
+      y -= rows.length * 13 + 6; page.drawLine({ start: { x: M, y: y + 2 }, end: { x: W - M, y: y + 2 }, thickness: 0.5, color: line }); y -= 12;
+    });
+    if (y < 190) { footer(page); page = pdf.addPage([W, H]); y = H - 70; }
+    y -= 4;
+    const tot = (dt.vat ? [['Subtotal', fmtM(dt.sub)], ['VAT (20%)', fmtM(dt.vat)]] : []);
+    tot.forEach(function (t) { right(page, t[0], W - M - 120, y, 10, F, soft); right(page, t[1], W - M - 8, y, 10, F); y -= 16; });
+    page.drawLine({ start: { x: W / 2 + 40, y: y + 8 }, end: { x: W - M, y: y + 8 }, thickness: 1, color: ink }); y -= 6;
+    right(page, 'Total', W - M - 120, y, 12.5, B); right(page, fmtM(inv.total), W - M - 8, y, 12.5, B); y -= 34;
+    // How to pay (until it's paid).
+    if (!inv.paid_at && INVOICE.payee && INVOICE.accountNumber) {
+      const pay = [['Account name', INVOICE.payee], ['Sort code', INVOICE.sortCode], ['Account number', INVOICE.accountNumber]].concat(INVOICE.iban ? [['IBAN', INVOICE.iban]] : [], INVOICE.swift ? [['SWIFT / BIC', INVOICE.swift]] : [], [['Reference', dt.ref || inv.number]]);
+      const h = 26 + pay.length * 14;
+      if (y - h < 70) { footer(page); page = pdf.addPage([W, H]); y = H - 70; }
+      page.drawRectangle({ x: M, y: y - h + 12, width: W - M * 2, height: h, color: band });
+      page.drawText('How to pay', { x: M + 10, y: y - 4, size: 10.5, font: B, color: ink }); y -= 22;
+      pay.forEach(function (r) { page.drawText(safe(r[0]), { x: M + 10, y: y, size: 9.5, font: B, color: soft }); page.drawText(safe(r[1]), { x: M + 120, y: y, size: 10, font: F, color: ink }); y -= 14; });
+    } else if (inv.paid_at) page.drawText(safe('Paid with thanks on ' + day(iso(inv.paid_at)) + '.'), { x: M, y: y, size: 10, font: F, color: okc });
+    footer(page);
+    return await pdf.save();
+  }
+  function sendInvoicePdf(res, inv, bytes, dl) {
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', (dl ? 'attachment' : 'inline') + '; filename="Invoice ' + String(inv.number || inv.id).replace(/[^\w .-]/g, '') + '.pdf"');
+    res.end(Buffer.from(bytes));
+  }
+  function invoicePage(inv, back, backText, repairLink, pdfHref) {
     const dt = inv.data || {}, day = function (v) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
     const money = function (v) { return v == null ? '' : '£' + Number(v).toFixed(2); };
     const overdue = !inv.paid_at && dt.due && dt.due < new Date().toISOString().slice(0, 10);
@@ -4958,7 +5041,8 @@ module.exports = function mountJobs(app, opts) {
       '<div class="card"><table>' + (dt.lines || []).map(function (x) { return '<tr><td>' + htmlEsc(x.desc) + (x.novat && dt.vat ? ' <span style="color:#6b7280">(no VAT)</span>' : '') + '</td><td class="a">' + money(x.amount) + '</td></tr>'; }).join('') +
         (dt.vat ? '<tr><td>Subtotal</td><td class="a">' + money(dt.sub) + '</td></tr><tr><td>VAT</td><td class="a">' + money(dt.vat) + '</td></tr>' : '') +
         '<tr class="t"><td>Total</td><td class="a">' + money(inv.total) + '</td></tr></table></div>' + (inv.paid_at ? '' : pay) +
-      '<p class="noprint" style="text-align:center"><button onclick="window.print()">Print or save as PDF</button></p>', true);
+      '<p class="noprint" style="text-align:center;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' + (pdfHref ? '<a href="' + pdfHref + '?dl=1" download style="display:inline-block;background:var(--blue);color:#fff;font-weight:700;padding:11px 18px;border-radius:10px;text-decoration:none">⬇ Download the invoice (PDF)</a>' : '') +
+      '<button onclick="window.print()">Print</button></p>', true);
   }
   app.get('/l/:token', withDb(async function (p, req, res) {
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
