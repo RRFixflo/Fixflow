@@ -18650,9 +18650,27 @@
         }).join('') + (pages.length > 60 ? '<p class="muted-note">…and ' + (pages.length - 60) + ' more pages.</p>' : '') + '</div>' : '<p class="muted-note">✓ Nothing to fix on any page.</p>';
       } else html += '<p class="muted-note">' + (d.checking ? 'Checking every page now — this takes a minute or two.' : 'The first check runs shortly.') + '</p>';
       if (ix.log && ix.log.length) html += '<details class="act-sub" style="margin-top:10px"><summary>What search engines were told</summary><div style="margin-top:6px">' + ix.log.map(function(e){ return '<div class="muted-note" style="margin:2px 0">' + esc(fmtShort(e.at)) + ' — ' + e.n + ' page' + (e.n === 1 ? '' : 's') + ' (' + esc(e.why || '') + ')' + (e.skipped ? ' · not sent: ' + esc(e.skipped) : e.error ? ' · failed: ' + esc(e.error) : e.status ? ' · answer ' + e.status : '') + '</div>'; }).join('') + '</div></details>';
+      html += '<div id="trkBox" class="seo-row" style="margin-top:12px"></div>';
       html += '<div class="row-actions" style="margin-top:10px"><button type="button" class="btn small" id="seoRun"' + (d.checking ? ' disabled' : '') + '>' + (d.checking ? 'Checking…' : '↻ Check the website now') + '</button></div>';
       $('seoBox').innerHTML = html;
+      loadTrack();
       $('seoRun').addEventListener('click', function(){ var b = this; busy(b, true, 'Checking…'); api('POST', '/api/admin/seo/check', {}).then(function(){ setTimeout(function wait(){ api('GET', '/api/admin/seo').then(function(x){ if (x && x.checking) setTimeout(wait, 3000); else loadSeo(); }); }, 3000); }); });
+    });
+  }
+  // Our track record as the website shows it (from our records), and the office's own count of tenancies this year.
+  function loadTrack(){
+    api('GET', '/api/admin/track-record').then(function(d){
+      var box = $('trkBox'); if (!box || !d || !d.ok) return; var t = d.track || {}, yr = new Date().getFullYear();
+      var rows = [['Typical days to let', t.days ? t.days + ' days (median of ' + t.daysN + ')' : 'not shown yet — needs 5 homes marked let with a date (' + (t.daysN || 0) + ' so far)'],
+        ['Rent agreed vs asking', t.rentPct ? t.rentPct + '% (median of ' + t.rentN + ')' : 'not shown yet — needs 5 lets with the tenancy rent entered (' + (t.rentN || 0) + ' so far)'],
+        ['London boroughs let in', t.boroughs || 'not shown yet']];
+      box.innerHTML = '<b>📣 Our track record on the website</b><p class="muted-note" style="margin:2px 0 6px">Shown to landlords on the home, landlords and borough pages. Worked out from Fixflow every day — a figure only appears once there are enough real cases.</p>' +
+        rows.map(function(r){ return '<div style="display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line,#e5e7eb);padding:5px 0"><span>' + r[0] + '</span><b style="text-align:right">' + esc(String(r[1])) + '</b></div>'; }).join('') +
+        '<div style="border-top:1px solid var(--line,#e5e7eb);padding:6px 0 0"><label class="lbl" style="margin:0">Tenancies started so far in ' + yr + ' <span class="muted-note" style="margin:0">(our office count — Fixflow alone has ' + (t.autoN || 0) + ')</span>' +
+        '<span style="display:flex;gap:6px;margin-top:4px"><input class="inp" id="trkYtd" inputmode="numeric" style="max-width:130px" value="' + (t.ytd ? t.ytd.n : '') + '"><button type="button" class="btn small primary" id="trkSave">Save</button></span></label>' +
+        (t.ytd ? '<p class="muted-note" style="margin:4px 0 0">Website shows “' + t.ytd.n + ' tenancies started so far in ' + t.ytd.year + '” · updated ' + esc(t.ytd.at || '') + (t.ytd.by ? ' by ' + esc(t.ytd.by) : '') + '. It resets on 1 January — update it now and then.</p>' : '') + '</div>';
+      $('trkSave').addEventListener('click', function(){ var v = parseInt($('trkYtd').value, 10); if (!(v >= 0)) { toast('Enter a number'); return; } busy(this, true, 'Saving…');
+        api('POST', '/api/admin/track-record', { tenancies_ytd: v }).then(function(x){ if (x && x.ok) { toast('Saved — the website shows ' + v); loadTrack(); } else toast('Couldn’t save'); }); });
     });
   }
   function loadVisits(){

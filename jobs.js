@@ -13984,16 +13984,29 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const started = tcys.filter(function (x) { const st = dayOf(x.start_date); return st != null && st >= yearAgo && st <= today + 60 * 86400000; });
     const boroughs = {}; tcys.forEach(function (x) { const m = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}\b/i.exec(String(x.address || '')); const b = m && OC_BOROUGH[m[1].toUpperCase()]; if (b) boroughs[b] = 1; });
     const md = med(days), mr = med(ratios);
+    // The office's own count of tenancies started this calendar year (entered by a manager — many started outside Fixflow).
+    const man = ((await p.query("SELECT value FROM app_settings WHERE key = 'track_manual'")).rows[0] || {}).value || {}, yr = new Date().getFullYear();
     trackNow = { at: new Date().toISOString(),
       tenancies: started.length >= 5 ? started.length : null,
       days: days.length >= 5 ? Math.max(1, Math.round(md)) : null, daysN: days.length,
       rentPct: ratios.length >= 5 ? Math.round(mr * 1000) / 10 : null, rentN: ratios.length,
-      boroughs: Object.keys(boroughs).length >= 3 ? Object.keys(boroughs).length : null };
+      boroughs: Object.keys(boroughs).length >= 3 ? Object.keys(boroughs).length : null,
+      ytd: Number(man.year) === yr && Number(man.tenancies_ytd) > 0 ? { n: Number(man.tenancies_ytd), year: yr, at: man.at || null, by: man.by || '' } : null, autoN: started.length };
     return trackNow;
   }
   setTimeout(function () { refreshTrack().catch(function (e) { console.error('Track record:', e.message); }); }, 20000).unref();
   setInterval(function () { refreshTrack().catch(function (e) { console.error('Track record:', e.message); }); }, 6 * 3600000).unref();
   app.get('/api/admin/track-record', withDb(async function (p, req, res) { res.json({ ok: true, track: await refreshTrack() }); }));
+  app.post('/api/admin/track-record', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false });
+    const n = parseInt((req.body || {}).tenancies_ytd, 10);
+    if (!(n >= 0 && n < 100000)) return res.status(400).json({ ok: false, error: 'number' });
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('track_manual', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()",
+      [JSON.stringify({ tenancies_ytd: n, year: new Date().getFullYear(), at: new Date().toISOString().slice(0, 10), by: (req.user && req.user.name) || 'Owner' })]);
+    res.json({ ok: true, track: await refreshTrack() });
+  }));
+  // The owner's figure given when this was set up (306 tenancies started in 2026 by 10 October); only if none is saved yet.
+  setTimeout(function () { db().then(function (p) { return p && p.query("INSERT INTO app_settings (key, value) VALUES ('track_manual', $1) ON CONFLICT (key) DO NOTHING", [JSON.stringify({ tenancies_ytd: 306, year: 2026, at: '2026-10-10', by: 'Owner' })]); }).then(function () { return refreshTrack(); }).catch(function () {}); }, 15000).unref();
   return { saveReport: saveReport, hasDb: async function () { return !!(await db()); }, isStaff: isStaff, db: db, refuseBot: refuseBot, trackRecord: function () { return trackNow; },
     // For other parts of the site (landlord alerts): send an email, and the office phone alert.
     sendMail: function (o) { return canEmail() && sendEmail ? sendEmail(o) : Promise.resolve({ ok: false, error: 'email-off' }); },

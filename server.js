@@ -366,12 +366,13 @@ function trackHtml(where) {
   const tiles = [];
   if (t.days) tiles.push(['<b>' + t.days + ' day' + (t.days === 1 ? '' : 's') + '</b>', 'typical time from going online to let', 'median of ' + t.daysN + ' homes']);
   if (t.rentPct) tiles.push(['<b>' + (t.rentPct >= 100 ? t.rentPct.toFixed(t.rentPct % 1 ? 1 : 0) : t.rentPct.toFixed(1)) + '%</b>', 'of the asking rent agreed', 'median of ' + t.rentN + ' lets']);
-  if (t.tenancies) tiles.push(['<b>' + t.tenancies + '</b>', 'new tenancies started', 'in the last 12 months']);
+  if (t.ytd) tiles.push(['<b>' + t.ytd.n.toLocaleString('en-GB') + '</b>', 'tenancies started so far in ' + t.ytd.year, 'our office records']);
+  else if (t.tenancies) tiles.push(['<b>' + t.tenancies + '</b>', 'new tenancies started', 'in the last 12 months']);
   if (t.boroughs) tiles.push(['<b>' + t.boroughs + '</b>', 'London boroughs we’ve let homes in', 'we cover all 33']);
   if (!tiles.length) return '';
   return '<section class="trk"><div class="wrap"><div class="trk-h"><p class="kicker">Our track record</p><h2>' + (where ? 'Letting homes in ' + siteEsc(where) + ' — fast, at the right rent' : 'Fast lets at the right rent') + '</h2></div>' +
     '<div class="trk-g">' + tiles.map(function (x) { return '<div class="trk-t">' + x[0] + '<span>' + x[1] + '</span><small>' + x[2] + '</small></div>'; }).join('') + '</div>' +
-    '<p class="trk-n">From our own records over the last 12 months, updated every day. <a href="/landlords#valuation">Get a free rental valuation →</a></p></div></section>';
+    '<p class="trk-n">From our own records' + (t.days || t.rentPct ? ' (times and rents: the last 12 months)' : '') + ', updated every day. <a href="/landlords#valuation">Get a free rental valuation →</a></p></div></section>';
 }
 function heroStats(req) {
   const c = listings && listings.counts(req);
