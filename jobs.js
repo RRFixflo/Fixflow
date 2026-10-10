@@ -2056,7 +2056,8 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && path === '/staff-names') return true;   // the calendar's people
     if ((method === 'GET' || method === 'POST') && path === '/valuations') return true;   // property appraisals (Offers page)
     if (method === 'POST' && path === '/cal-feed') return true;
-    if (method === 'GET' && path === '/appraisal/comps') return true;   // appraisal: similar homes on Rightmove   // calendar: add the viewings to their phone's diary
+    if (method === 'GET' && path === '/appraisal/comps') return true;
+    if (method === 'GET' && path === '/appraisal/sold') return true;   // appraisal: Land Registry sold prices   // appraisal: similar homes on Rightmove   // calendar: add the viewings to their phone's diary
     if (method === 'GET' && (path === '/epc-addresses' || path === '/landlord-for-address' || path === '/rm-location')) return true;   // appraisal: find the address and our landlord
     if (method === 'GET' && /^\/valuations\/\d+\/pdf$/.test(path)) return true;
     if (method === 'POST' && /^\/viewings\/\d+\/feedback-link$/.test(path)) return true;   // managers only (checked in the route)   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
@@ -11893,9 +11894,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.appraisal) {
       v.appraisal = true;
       v.beds = str(b.beds, 10) || ''; v.baths = str(b.baths, 10) || ''; v.ptype = str(b.ptype, 60) || '';
-      const comps = function (list) { return (Array.isArray(list) ? list : []).slice(0, 12).map(function (c) { c = c || {}; const price = num(c.price); const url = /^https:\/\/(www\.)?rightmove\.co\.uk\//.test(String(c.url || '')) ? String(c.url).slice(0, 300) : '';
+      const comps = function (list) { return (Array.isArray(list) ? list : []).slice(0, 20).map(function (c) { c = c || {}; const price = num(c.price); const url = /^https:\/\/(www\.)?rightmove\.co\.uk\//.test(String(c.url || '')) ? String(c.url).slice(0, 300) : '';
         const day = function (v) { v = String(v || ''); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : v === 'now' ? 'now' : ''; };
-        return { addr: str(c.addr, 160) || '', beds: str(c.beds, 10) || '', price: price, url: url, listed: day(c.listed), avail: day(c.avail), reduced: c.reduced ? true : false, agreed: c.agreed ? true : false }; }).filter(function (c) { return c.price && (c.addr || c.url); }); };
+        return { addr: str(c.addr, 160) || '', beds: str(c.beds, 10) || '', price: price, url: url, listed: day(c.listed), avail: day(c.avail), reduced: c.reduced ? true : false, agreed: c.agreed ? true : false, sold: day(c.sold) === 'now' ? '' : day(c.sold), ptype: str(c.ptype, 30) || '', tenure: str(c.tenure, 20) || '' }; }).filter(function (c) { return c.price && (c.addr || c.url); }); };
       v.comps_sale = comps(b.comps_sale); v.comps_let = comps(b.comps_let); v.miles = ['0.25', '0.5', '1.0', '3.0'].indexOf(String(b.miles)) !== -1 ? String(b.miles) : '1.0';
     }
     if (v.sales_high && v.sales_low && v.sales_high < v.sales_low) { const x = v.sales_low; v.sales_low = v.sales_high; v.sales_high = x; }
@@ -12010,11 +12011,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (v.appraisal) {
       const det = [v.ptype, v.beds ? v.beds + ' bedroom' + (v.beds === '1' ? '' : 's') : '', v.baths ? v.baths + ' bathroom' + (v.baths === '1' ? '' : 's') : ''].filter(Boolean).join('  \xB7  ');
       if (det) { ensure(50); heading('The property'); para(det, 9.8, C.ink2); y -= 4; }
-      const table = function (title, list, unit) {
+      const table = function (title, list, unit, soldTbl) {
         if (!list || !list.length) return;
         ensure(70); heading(title);
         page.drawRectangle({ x: M, y: y - 4, width: CW, height: 16, color: C.panel });
-        text('Address', M + 8, y + 1, 7.6, B, C.soft); text('Beds', M + CW - 170, y + 1, 7.6, B, C.soft); right('Asking' + (unit ? ' (pcm)' : ''), W - M - 8, y + 1, 7.6, B, C.soft); y -= 18;
+        text('Address', M + 8, y + 1, 7.6, B, C.soft); if (!soldTbl) text('Beds', M + CW - 170, y + 1, 7.6, B, C.soft); right((soldTbl ? 'Sold for' : 'Asking') + (unit ? ' (pcm)' : ''), W - M - 8, y + 1, 7.6, B, C.soft); y -= 18;
         list.forEach(function (c) {
           ensure(30); const a = wrap(c.addr || 'Similar home', F, 9.2, CW - 200)[0];
           text(a, M + 8, y, 9.2, F, C.ink); text(String(c.beds || ''), M + CW - 170, y, 9.2, F, C.ink2); right(gbp0(c.price), W - M - 8, y, 9.2, B, C.ink);
@@ -12022,20 +12023,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
             const link = pdf.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: [M + 8, y - 3, M + 90 + tw, y + 10], Border: [0, 0, 0], A: { Type: 'Action', S: 'URI', URI: require('pdf-lib').PDFString.of(c.url) } });
             page.node.addAnnot(pdf.context.register(link)); }
           const fd = function (d) { return new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }); };
-          const when = [c.agreed ? (unit ? 'Let agreed' : 'Sold STC') : '', c.listed ? 'Listed ' + fd(c.listed) : '', c.reduced ? 'price reduced' : '', unit && c.avail ? (c.avail === 'now' ? 'available now' : 'available ' + fd(c.avail)) : ''].filter(Boolean).join('  \xB7  ');
+          const when = c.sold ? ['Sold ' + fd(c.sold), c.ptype, c.tenure].filter(Boolean).join('  \xB7  ') : [c.agreed ? (unit ? 'Let agreed' : 'Sold STC') : '', c.listed ? 'Listed ' + fd(c.listed) : '', c.reduced ? 'price reduced' : '', unit && c.avail ? (c.avail === 'now' ? 'available now' : 'available ' + fd(c.avail)) : ''].filter(Boolean).join('  \xB7  ');
           if (when) { y -= 11; text(when, M + 8, y, 7.6, F, C.soft); }
           page.drawLine({ start: { x: M, y: y - 5 }, end: { x: W - M, y: y - 5 }, thickness: 0.4, color: C.line }); y -= 17;
         });
         const prices = list.map(function (c) { return c.price; }), raw = prices.reduce(function (t, x) { return t + x; }, 0) / prices.length, avg = unit ? Math.round(raw / 10) * 10 : Math.round(raw / 1000) * 1000;   // rounded as the headline figure
-        ensure(18); text('Average of ' + list.length + ' similar home' + (list.length === 1 ? '' : 's') + (list.length > 1 ? '  (' + gbp0(Math.min.apply(null, prices)) + ' - ' + gbp0(Math.max.apply(null, prices)) + ')' : ''), M + 8, y, 9, B, C.navy); right(gbp0(avg) + (unit || ''), W - M - 8, y, 9.6, B, C.navy); y -= 22;
+        ensure(18); text('Average of ' + list.length + (soldTbl ? ' sale' : ' similar home') + (list.length === 1 ? '' : 's') + (list.length > 1 ? '  (' + gbp0(Math.min.apply(null, prices)) + ' - ' + gbp0(Math.max.apply(null, prices)) + ')' : ''), M + 8, y, 9, B, C.navy); right(gbp0(avg) + (unit || ''), W - M - 8, y, 9.6, B, C.navy); y -= 22;
       };
       const within = v.miles === '0.25' ? 'within a quarter of a mile' : v.miles === '0.5' ? 'within half a mile' : v.miles === '3.0' ? 'within 3 miles' : 'within a mile';
-      table('Similar homes for sale ' + within, v.comps_sale, '');
+      table('Similar homes for sale ' + within, (v.comps_sale || []).filter(function (c) { return !c.sold; }), '');
+      const soldList = (v.comps_sale || []).filter(function (c) { return c.sold; });
+      if (soldList.length) { table('Sold nearby  \xB7  HM Land Registry', soldList, '', true); ensure(14); text('Contains HM Land Registry data \xA9 Crown copyright and database right ' + new Date().getFullYear() + '. Licensed under the Open Government Licence v3.0.', M, y, 6.8, F, C.soft); y -= 14; }
       table('Similar homes to rent ' + within, v.comps_let, ' pcm');
     }
     // How we arrived at it
     ensure(80); heading('How we arrived at our figures');
-    [(v.appraisal && ((v.comps_sale || []).length || (v.comps_let || []).length) ? 'The average asking ' + ((v.comps_sale || []).length && (v.comps_let || []).length ? 'prices and rents' : (v.comps_sale || []).length ? 'price' : 'rent') + ' of the similar homes advertised ' + (v.miles === '0.25' ? 'within a quarter of a mile' : v.miles === '0.5' ? 'within half a mile' : v.miles === '3.0' ? 'within 3 miles' : 'within a mile') + ', listed above (asking figures, not completed sales or lets).' : 'Recent ' + (v.sales && v.lettings ? 'sales and lettings' : v.sales ? 'sales' : 'lettings') + ' of similar homes nearby, and what is on the market now.'), 'The size, layout, condition and features of the property, and its outside space and transport links.', 'Current demand from ' + (v.sales && v.lettings ? 'buyers and tenants' : v.sales ? 'buyers' : 'tenants') + ' registered with us in the area.'].forEach(function (l) {
+    [(v.appraisal && ((v.comps_sale || []).length || (v.comps_let || []).length) ? (!(v.comps_sale || []).filter(function (c) { return !c.sold; }).length && !(v.comps_let || []).length ? 'What similar homes nearby sold for in the last two years (HM Land Registry), listed above.' : 'The asking ' + ((v.comps_sale || []).filter(function (c) { return !c.sold; }).length && (v.comps_let || []).length ? 'prices and rents' : (v.comps_let || []).length ? 'rents' : 'prices') + ' of similar homes advertised ' + (v.miles === '0.25' ? 'within a quarter of a mile' : v.miles === '0.5' ? 'within half a mile' : v.miles === '3.0' ? 'within 3 miles' : 'within a mile') + ((v.comps_sale || []).some(function (c) { return c.sold; }) ? ', and what similar homes nearby sold for (HM Land Registry)' : '') + ', listed above.') : 'Recent ' + (v.sales && v.lettings ? 'sales and lettings' : v.sales ? 'sales' : 'lettings') + ' of similar homes nearby, and what is on the market now.'), 'The size, layout, condition and features of the property, and its outside space and transport links.', 'Current demand from ' + (v.sales && v.lettings ? 'buyers and tenants' : v.sales ? 'buyers' : 'tenants') + ' registered with us in the area.'].forEach(function (l) {
       const ls = wrap(l, F, 9.6, CW - 16); ensure(ls.length * 13.5 + 2); page.drawCircle({ x: M + 4, y: y + 3.2, size: 2.2, color: C.navy2 }); ls.forEach(function (ln) { text(ln, M + 14, y, 9.6, F, C.ink2); y -= 13.5; }); y -= 1; });
     if (v.note) { y -= 4; para(v.note, 9.8); }
     // Our lettings services (with any discount on our standard fees)
@@ -12266,6 +12269,43 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     if (loc) rmLocCache[pc] = loc;
     res.json({ ok: !!loc, loc: loc });
+  });
+  // Property appraisal: what homes near the postcode actually sold for (HM Land Registry Price Paid Data, open data,
+  // Open Government Licence). The nearest postcodes come from postcodes.io (up to 100, within the distance, at most
+  // about 1¼ miles); their sales in the last two years from the Land Registry's public query service. No bedrooms in it.
+  const soldCache = {};
+  app.get('/api/admin/appraisal/sold', async function (req, res) {
+    const pc = String(req.query.postcode || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 9);
+    const miles = ['0.25', '0.5', '1.0', '3.0'].indexOf(String(req.query.miles)) !== -1 ? Number(req.query.miles) : 1, years = req.query.years === '3' ? 3 : 2;
+    if (!/^[A-Z]{1,2}\d[A-Z\d]? \d[A-Z]{2}$/.test(pc)) return res.json({ ok: false, error: 'postcode' });
+    const ck = pc + '|' + miles + '|' + years; if (soldCache[ck] && Date.now() - soldCache[ck].at < 12 * 3600000) return res.json(soldCache[ck].body);
+    const getJson = async function (url, o) { const r = await fetch(url, Object.assign({ signal: AbortSignal.timeout(25000) }, o || {})); if (!r.ok) throw new Error(url.split('/')[2] + ' answered ' + r.status); return r.json(); };
+    try {
+      const me = (await getJson('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc.replace(' ', '')))).result;
+      if (!me || me.latitude == null) return res.json({ ok: false, error: 'postcode' });
+      const near = ((await getJson('https://api.postcodes.io/postcodes?lon=' + me.longitude + '&lat=' + me.latitude + '&radius=' + Math.min(2000, Math.round(miles * 1609)) + '&limit=100')).result || []);
+      const dist = {}; dist[me.postcode] = 0; near.forEach(function (x) { if (x && x.postcode) dist[x.postcode] = Math.round((Number(x.distance) || 0) / 1609 * 100) / 100; });
+      const pcs = Object.keys(dist).filter(function (p) { return /^[A-Z0-9 ]{5,8}$/.test(p); });
+      const since = new Date(Date.now() - years * 365.25 * 86400000).toISOString().slice(0, 10);
+      const q = 'PREFIX lrppi: <http://landregistry.data.gov.uk/def/ppi/>\nPREFIX lrcommon: <http://landregistry.data.gov.uk/def/common/>\nPREFIX xsd: <http://www.w3.org/2001/XMLSchema#>\n' +
+        'SELECT ?tx ?amount ?date ?ptype ?estate ?newBuild ?cat ?paon ?saon ?street ?postcode WHERE {\n  VALUES ?postcode { ' + pcs.map(function (p) { return '"' + p + '"'; }).join(' ') + ' }\n' +
+        '  ?addr lrcommon:postcode ?postcode .\n  ?tx lrppi:propertyAddress ?addr ; lrppi:pricePaid ?amount ; lrppi:transactionDate ?date .\n  FILTER (?date >= "' + since + '"^^xsd:date)\n' +
+        '  OPTIONAL { ?tx lrppi:propertyType ?ptype } OPTIONAL { ?tx lrppi:estateType ?estate } OPTIONAL { ?tx lrppi:newBuild ?newBuild } OPTIONAL { ?tx lrppi:transactionCategory ?cat }\n' +
+        '  OPTIONAL { ?addr lrcommon:paon ?paon } OPTIONAL { ?addr lrcommon:saon ?saon } OPTIONAL { ?addr lrcommon:street ?street }\n} ORDER BY DESC(?date) LIMIT 400';
+      const j = await getJson('https://landregistry.data.gov.uk/landregistry/query', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/sparql-results+json' }, body: 'query=' + encodeURIComponent(q) });
+      const val = function (b, k) { return b[k] ? String(b[k].value) : ''; }, tail = function (u) { return u.split(/[\/#]/).pop(); };
+      const cap = function (t) { return String(t || '').toLowerCase().replace(/\b([a-z])/g, function (m) { return m.toUpperCase(); }); };
+      const TYPE = { 'flat-maisonette': 'Flat / maisonette', terraced: 'Terraced', 'semi-detached': 'Semi-detached', detached: 'Detached' }, seen = {};
+      const items = ((j.results || {}).bindings || []).map(function (b) {
+        if (/additional/i.test(val(b, 'cat'))) return null;   // repossessions, company and other non-standard sales
+        const id = tail(val(b, 'tx')); if (!id || seen[id]) return null; seen[id] = 1;
+        const p = val(b, 'postcode'), addr = [cap(val(b, 'saon')), [cap(val(b, 'paon')), cap(val(b, 'street'))].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        return { id: 'lr' + id, addr: (addr || 'Home') + ', ' + p, price: Number(val(b, 'amount')) || 0, sold: val(b, 'date').slice(0, 10), type: TYPE[tail(val(b, 'ptype'))] || '',
+          tenure: cap(tail(val(b, 'estate'))), newBuild: /true/i.test(val(b, 'newBuild')), miles: dist[p] != null ? dist[p] : null };
+      }).filter(function (x) { return x && x.price; });
+      const body = { ok: true, items: items.slice(0, 120), miles: miles, capped: miles * 1609 > 2000 || near.length >= 100, years: years };
+      soldCache[ck] = { at: Date.now(), body: body }; res.json(body);
+    } catch (e) { console.log('Land Registry sold prices for ' + pc + ': ' + e.message); res.json({ ok: false, error: 'unreachable' }); }
   });
   app.get('/api/admin/landlord-for-address', withDb(async function (p, req, res) {
     const k = propKey(str(req.query.address, 400) || ''); if (!k) return res.json({ ok: true, landlord: null });
