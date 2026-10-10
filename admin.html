@@ -12497,6 +12497,7 @@
   // Move-in payments the tenants have sent proof of (from the button in their welcome email): open the proof, confirm each.
   // The tenancy's own documents: deposit certificate, tenants' ID, signed agreement… (shared with the
   // landlord on their portal unless unticked), uploaded here, copied from the offer or saved from the welcome email.
+  document.addEventListener('toggle', function(e){ if (e.target && e.target.id === 'tdocDet') { try { localStorage.setItem('rr_tcy_docs', e.target.open ? '1' : '0'); } catch (er) {} } }, true);
   // Remember whether the tenancy History is left open or folded away.
   document.addEventListener('toggle', function(e){ if (e.target && e.target.id === 'tfHist') { try { localStorage.setItem('rr_tcy_hist', e.target.open ? '1' : '0'); } catch (er) {} } }, true);
   var tdocsBy = {}, TDOC_LABEL = { deposit_cert: 'Deposit protection certificate', tenant_id: 'Tenant ID / right to rent', signed_agreement: 'Signed tenancy agreement', other: 'Document' };
@@ -12507,7 +12508,11 @@
       if (openTcyId !== id || !$('tfTdocs') || !r || !r.ok) return;
       tdocsBy[id] = r.docs || [];
       var kinds = r.kinds || {}, size = function(b){ return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((b || 0) / 1024)) + ' KB'; };
-      $('tfTdocs').innerHTML = '<h3>📁 Tenancy documents</h3><p class="muted-note" style="margin:-4px 0 8px">The deposit certificate, tenants’ ID and signed agreement. Ticked ones show on the landlord’s portal and are attached to the landlord’s welcome email.</p>' +
+      // Folds away like History (open/closed remembered per browser); the summary shows how many there are.
+      var tdOpen = (function(){ try { return localStorage.getItem('rr_tcy_docs') !== '0'; } catch (e) { return true; } })(), tdKinds = {};
+      tdocsBy[id].forEach(function(x){ tdKinds[kinds[x.kind] || 'Document'] = (tdKinds[kinds[x.kind] || 'Document'] || 0) + 1; });
+      $('tfTdocs').innerHTML = '<details class="tcy-hist" id="tdocDet"' + (tdOpen ? ' open' : '') + '><summary><h3>📁 Tenancy documents</h3><span class="tcy-hist-n">' + tdocsBy[id].length + ' document' + (tdocsBy[id].length === 1 ? '' : 's') + '</span>' +
+        (tdocsBy[id].length ? '<span class="tcy-hist-last">' + esc(Object.keys(tdKinds).map(function(k){ return tdKinds[k] + ' × ' + k; }).join(' · ')) + '</span>' : '') + '</summary><p class="muted-note" style="margin:-4px 0 8px">The deposit certificate, tenants’ ID and signed agreement. Ticked ones show on the landlord’s portal and are attached to the landlord’s welcome email.</p>' +
         (tdocsBy[id].length ? tdocsBy[id].map(function(x){
           return '<div class="tle-file"><span class="tle-fn">' + (/pdf/i.test(x.mime) ? '📄' : /image/i.test(x.mime) ? '🖼️' : '📎') + ' <select class="inp" data-tdoc-kind="' + x.id + '" data-name="' + esc(x.name || '') + '" style="width:auto;display:inline-block;padding:3px 8px;font-weight:700;font-size:.9rem" title="What is it?">' + Object.keys(kinds).map(function(k){ return '<option value="' + k + '"' + (x.kind === k ? ' selected' : '') + '>' + esc(kinds[k]) + '</option>'; }).join('') + '</select> <span class="muted-note" style="margin:0;display:block;font-weight:400">' + esc(x.name || '') + ' · ' + esc(size(x.size)) + ' · ' + esc(fmtShort(x.created_at)) + (x.added_by ? ' · ' + esc(x.added_by) : '') + '</span></span>' +
             '<span class="tle-fa" style="align-items:center"><label class="muted-note" style="margin:0;display:flex;gap:5px;align-items:center"><input type="checkbox" data-tdoc-ll="' + x.id + '"' + (x.landlord ? ' checked' : '') + '> Landlord sees it</label>' +
@@ -12515,7 +12520,7 @@
         }).join('') : '<p class="muted-note" style="margin:0 0 6px">No documents saved yet.</p>') +
         ((r.offer_ids || []).length ? '<button type="button" class="btn small" id="tdocOffer" style="margin-top:8px">📥 Add the tenants’ ID from the offer (' + r.offer_ids.length + ')</button>' : '') +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px"><select class="inp" id="tdocKind" style="flex:0 1 260px;min-width:0"><option value="">What is it? (we’ll guess from the name)</option>' + Object.keys(kinds).map(function(k){ return '<option value="' + k + '">' + esc(kinds[k]) + '</option>'; }).join('') + '</select>' +
-        '<button type="button" class="tm-drop" id="tdocAdd" style="flex:1 1 220px;padding:10px"><b>📎 Drag &amp; drop or click to add</b></button><input type="file" id="tdocFile" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx"></div>';
+        '<button type="button" class="tm-drop" id="tdocAdd" style="flex:1 1 220px;padding:10px"><b>📎 Drag &amp; drop or click to add</b></button><input type="file" id="tdocFile" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx"></div></details>';
     });
   }
   // Which of the tenancy's tenants a file is named after ("AMY.png" → "Miss Amy Smith"), if any.
