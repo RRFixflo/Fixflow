@@ -4924,11 +4924,21 @@ module.exports = function mountJobs(app, opts) {
     const out = {}, st = await statementsAll(p), byT = {};
     st.items.forEach(function (x) { byT[x.tenancy_id] = x; });
     const rows = (await p.query("SELECT id, property_key, data->'ll_paid' AS paid, data->'rent_rcvd' AS rcvd FROM tenancies WHERE property_key = ANY($1::text[])", [Object.keys(keys)])).rows;
+    const pend = rows.length ? await statementPending(p) : {};
+    const r2 = function (v) { return Math.round(v * 100) / 100; };
     rows.forEach(function (t) {
       const paid = t.paid || {}, x = byT[t.id];
-      Object.keys(paid).sort().reverse().forEach(function (from) {
-        const m = x && x.months.filter(function (mm) { return mm.from === from; })[0];
-        (out[t.property_key] = out[t.property_key] || []).push({ tid: t.id, from: from, month: certDay(from).replace(/^\d+ /, ''), rent: m ? m.rent : null, paid: paid[from], m: m || null, address: x ? x.address : '' });
+      // Every month's statement (not only the ones paid out yet), with the unpaid invoices that will come off it.
+      const froms = {}; (x ? x.months : []).forEach(function (m) { froms[m.from] = 1; }); Object.keys(paid).forEach(function (f) { froms[f] = 1; });
+      Object.keys(froms).sort().reverse().forEach(function (from) {
+        let m = x && x.months.filter(function (mm) { return mm.from === from; })[0];
+        const g = !paid[from] && (pend[t.id] || []).filter(function (gg) { return gg.from === from; })[0];
+        if (m && g && g.invoices.length) {
+          const extra = g.invoices.map(function (i) { return { label: 'Invoice ' + i.number + (i.title && i.title.indexOf(i.number) === -1 ? ' · ' + i.title : ''), amount: i.total, vat: 0, invoice_id: i.id, pending: true }; });
+          const tt = r2(extra.reduce(function (a, f) { return a + f.amount; }, 0));
+          m = Object.assign({}, m, { fees: (m.fees || []).concat(extra), total: r2((m.total || 0) + tt), balance: r2((m.balance || 0) - tt) });
+        }
+        (out[t.property_key] = out[t.property_key] || []).push({ tid: t.id, from: from, month: certDay(from).replace(/^\d+ /, ''), rent: m ? m.rent : null, paid: paid[from] || null, m: m || null, address: x ? x.address : '' });
       });
     });
     return out;
@@ -4961,7 +4971,8 @@ module.exports = function mountJobs(app, opts) {
       '<h1>Statement — ' + htmlEsc(x.month) + '</h1><p class="sub">' + (who.l && who.l.name ? '<b>' + htmlEsc(who.l.name) + '</b> · ' : '') + htmlEsc(x.address || '') + '</p>' +
       '<div class="card"><h3 style="margin:0 0 6px">Money in</h3><table>' + rowsIn.join('') + '<tr class="t"><td>Total in</td><td class="a">' + money(m.income) + '</td></tr></table></div>' +
       (rowsOut.length ? '<div class="card"><h3 style="margin:0 0 6px">Taken off</h3><table>' + rowsOut.join('') + '<tr class="t"><td>Total taken off</td><td class="a">− ' + money(m.total) + '</td></tr></table></div>' : '') +
-      '<div class="card"><table><tr class="t"><td>Paid to you</td><td class="a">' + money(x.paid.amount != null ? x.paid.amount : m.balance) + '</td></tr></table><p class="muted" style="margin:6px 0 0">Sent ' + htmlEsc(day(x.paid.at)) + (x.paid.ref ? ' · reference ' + htmlEsc(x.paid.ref) : '') + '</p></div>' +
+      (x.paid ? '<div class="card"><table><tr class="t"><td>Paid to you</td><td class="a">' + money(x.paid.amount != null ? x.paid.amount : m.balance) + '</td></tr></table><p class="muted" style="margin:6px 0 0">Sent ' + htmlEsc(day(x.paid.at)) + (x.paid.ref ? ' · reference ' + htmlEsc(x.paid.ref) : '') + '</p></div>'
+        : '<div class="card"><table><tr class="t"><td>' + (m.balance < 0 ? 'Owed to us' : 'Balance due to you') + '</td><td class="a">' + money(Math.abs(m.balance)) + '</td></tr></table><p class="muted" style="margin:6px 0 0">' + (m.balance < 0 ? 'Taken from your next rent unless paid before.' : 'Not paid to you yet — it’s sent once the rent is in.') + '</p></div>') +
       '<p class="noprint" style="text-align:center"><button onclick="window.print()">Print or save as PDF</button></p>', true));
   }));
   app.get('/l/:token/invoice/:id', withDb(async function (p, req, res) {
@@ -5638,7 +5649,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
           (d.length ? '<details class="ldone"><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '')],
         tcyHtml ? ['tcy', 'Tenancy', tcyHtml] : null,
         ['doc', 'Certificates', docHtml + certUp('data-key="' + htmlEsc(k) + '"')],
-        (stmtsAt[k] || []).length ? ['st', 'Statements', '<p class="muted" style="margin:0 0 8px">Your monthly statements — each appears once we’ve sent you the money for that month.</p>' + stmtsAt[k].map(function (x) {
+        (stmtsAt[k] || []).length ? ['st', 'Statements', '<p class="muted" style="margin:0 0 8px">Your monthly statements, newest first. Open one to print it or save it as a PDF.</p>' + stmtsAt[k].map(function (x) {
+          if (!x.paid) return '<a class="iv" href="/l/' + htmlEsc(token) + '/statement/' + x.tid + '/' + x.from + '"><div><b>' + htmlEsc(x.month) + '</b><div class="muted">Rent ' + money(x.rent) + ' · not paid to you yet</div></div><div style="text-align:right"><b>' + money(x.m ? Math.abs(x.m.balance) : 0) + '</b><div class="muted">' + (x.m && x.m.balance < 0 ? 'owed to us' : 'due to you') + '</div></div></a>';
           return '<a class="iv" href="/l/' + htmlEsc(token) + '/statement/' + x.tid + '/' + x.from + '"><div><b>' + htmlEsc(x.month) + '</b><div class="muted">Rent ' + money(x.rent) + ' · paid to you ' + htmlEsc(day(x.paid.at)) + (x.paid.ref ? ' (ref ' + htmlEsc(x.paid.ref) + ')' : '') + '</div></div><div style="text-align:right"><b>' + money(x.paid.amount) + '</b><div><span class="paid">Paid</span></div></div></a>';
         }).join('')] : null,
         pInv.length || pSpent ? ['inv', 'Costs', (pSpent ? '<div class="muted" style="margin:0 0 8px">Spent on repairs: <b>' + money(pYr) + '</b> this year · <b>' + money(pSpent) + '</b> in total</div>' : '') + invBox] : null].filter(Boolean);
@@ -10511,8 +10523,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let bal = 0; rows.forEach(function (r) { bal = r2(bal + (r.in || 0) - (r.out || 0)); if (!r.note) r.balance = bal; });
     res.json({ ok: true, rows: rows, money_in: r2(rows.reduce(function (a, r) { return a + (r.in || 0); }, 0)), money_out: r2(rows.reduce(function (a, r) { return a + (r.out || 0); }, 0)), balance: bal });
   }));
-  app.get('/api/admin/statements', withDb(async function (p, req, res) {
-    const out = await statementsAll(p);
+  // Unpaid landlord invoices that will come off each tenancy's statements, as groups [{from, invoices}]:
+  // the next rent not yet paid to the landlord, and the current statement for "Take from: the current statement".
+  async function statementPending(p) {
     // Unpaid landlord invoices that will come off the next rent not yet paid to the landlord — the
     // statement for that rent shows them, so it matches the rent page's "to the landlord".
     const today = londonDay(), pend = {};
@@ -10541,6 +10554,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
       }
       if (groups.length) pend[t.id] = groups;
     });
+    return pend;
+  }
+  app.get('/api/admin/statements', withDb(async function (p, req, res) {
+    const out = await statementsAll(p);
+    const pend = await statementPending(p);
     // Each invoice on a statement: a short description of the job and a link to the invoice (the landlord's
     // own invoice page, so the statement's reader can open it).
     const ids = {};
