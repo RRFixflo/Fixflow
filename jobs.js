@@ -8063,7 +8063,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
     officeCc(to, cc);
     const replyTo = isEmail(me) ? me : 'info@residentialrealtors.co.uk';
     const name = req.user && req.user.id && req.user.name ? req.user.name + ' - Residential Realtors' : 'Residential Realtors';
-    const r = await sendEmail({ to: to, cc: cc, bcc: b.copy !== false && isEmail(me) && to.concat(cc).indexOf(me) === -1 ? [me] : undefined, replyTo: replyTo, fromName: name, subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
+    // Appraisal reports / valuation letters ticked in the email window: made fresh and attached.
+    let atts;
+    const vids = (Array.isArray(b.valuation_ids) ? b.valuation_ids : []).map(function (x) { return parseInt(x, 10) || 0; }).filter(Boolean).slice(0, 5);
+    if (vids.length) {
+      try { const p = await db(); atts = [];
+        for (const row of (await p.query('SELECT * FROM valuations WHERE id = ANY($1::int[])', [vids])).rows) { const out = await valuationPdf(p, row); atts.push({ filename: String(out.name || 'Appraisal.pdf').replace(/[^a-zA-Z0-9.\-_ ,()]+/g, '-'), content: Buffer.from(out.bytes) }); }
+      } catch (e) { console.error('Valuation attachment failed:', e.message); return res.status(500).json({ ok: false, error: 'attachment' }); }
+    }
+    const r = await sendEmail({ to: to, cc: cc, bcc: b.copy !== false && isEmail(me) && to.concat(cc).indexOf(me) === -1 ? [me] : undefined, replyTo: replyTo, fromName: name, subject: subject, text: text, html: brandEmail(text, subject), attachments: atts }).catch(function (err) { return { ok: false, error: err.message }; });
     // Kept so each person can look back at what they sent, and when.
     try { await (await db()).query('INSERT INTO sent_emails (user_id, user_name, to_list, cc_list, reply_to, subject, body, ok, error) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
       [req.user && req.user.id ? req.user.id : null, req.user ? req.user.name : 'Office', to, cc, replyTo, subject, text, !!r.ok, r.ok ? null : String(r.error || '').slice(0, 300)]); } catch (e) { console.error('Sent email log failed:', e.message); }
@@ -11897,7 +11905,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const comps = function (list) { return (Array.isArray(list) ? list : []).slice(0, 20).map(function (c) { c = c || {}; const price = num(c.price); const url = /^https:\/\/(www\.)?rightmove\.co\.uk\//.test(String(c.url || '')) ? String(c.url).slice(0, 300) : '';
         const day = function (v) { v = String(v || ''); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : v === 'now' ? 'now' : ''; };
         return { addr: str(c.addr, 160) || '', beds: str(c.beds, 10) || '', price: price, url: url, listed: day(c.listed), avail: day(c.avail), reduced: c.reduced ? true : false, agreed: c.agreed ? true : false, sold: day(c.sold) === 'now' ? '' : day(c.sold), ptype: str(c.ptype, 30) || '', tenure: str(c.tenure, 20) || '' }; }).filter(function (c) { return c.price && (c.addr || c.url); }); };
-      v.comps_sale = comps(b.comps_sale); v.comps_let = comps(b.comps_let); v.miles = ['0.25', '0.5', '1.0', '3.0'].indexOf(String(b.miles)) !== -1 ? String(b.miles) : '1.0';
+      v.comps_sale = comps(b.comps_sale); v.comps_let = comps(b.comps_let); v.miles = ['0.0', '0.25', '0.5', '1.0', '3.0'].indexOf(String(b.miles)) !== -1 ? String(b.miles) : '1.0';
     }
     if (v.sales_high && v.sales_low && v.sales_high < v.sales_low) { const x = v.sales_low; v.sales_low = v.sales_high; v.sales_high = x; }
     if (v.let_high && v.let_low && v.let_high < v.let_low) { const x = v.let_low; v.let_low = v.let_high; v.let_high = x; }
@@ -12030,7 +12038,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         const prices = list.map(function (c) { return c.price; }), raw = prices.reduce(function (t, x) { return t + x; }, 0) / prices.length, avg = unit ? Math.round(raw / 10) * 10 : Math.round(raw / 1000) * 1000;   // rounded as the headline figure
         ensure(18); text('Average of ' + list.length + (soldTbl ? ' sale' : ' similar home') + (list.length === 1 ? '' : 's') + (list.length > 1 ? '  (' + gbp0(Math.min.apply(null, prices)) + ' - ' + gbp0(Math.max.apply(null, prices)) + ')' : ''), M + 8, y, 9, B, C.navy); right(gbp0(avg) + (unit || ''), W - M - 8, y, 9.6, B, C.navy); y -= 22;
       };
-      const within = v.miles === '0.25' ? 'within a quarter of a mile' : v.miles === '0.5' ? 'within half a mile' : v.miles === '3.0' ? 'within 3 miles' : 'within a mile';
+      const within = v.miles === '0.0' ? 'in the same postcode' : v.miles === '0.25' ? 'within a quarter of a mile' : v.miles === '0.5' ? 'within half a mile' : v.miles === '3.0' ? 'within 3 miles' : 'within a mile';
       table('Similar homes for sale ' + within, (v.comps_sale || []).filter(function (c) { return !c.sold; }), '');
       const soldList = (v.comps_sale || []).filter(function (c) { return c.sold; });
       if (soldList.length) { table('Sold nearby  \xB7  HM Land Registry', soldList, '', true); ensure(14); text('Contains HM Land Registry data \xA9 Crown copyright and database right ' + new Date().getFullYear() + '. Licensed under the Open Government Licence v3.0.', M, y, 6.8, F, C.soft); y -= 14; }
@@ -12038,7 +12046,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     // How we arrived at it
     ensure(80); heading('How we arrived at our figures');
-    [(v.appraisal && ((v.comps_sale || []).length || (v.comps_let || []).length) ? (!(v.comps_sale || []).filter(function (c) { return !c.sold; }).length && !(v.comps_let || []).length ? 'What similar homes nearby sold for in the last two years (HM Land Registry), listed above.' : 'The asking ' + ((v.comps_sale || []).filter(function (c) { return !c.sold; }).length && (v.comps_let || []).length ? 'prices and rents' : (v.comps_let || []).length ? 'rents' : 'prices') + ' of similar homes advertised ' + (v.miles === '0.25' ? 'within a quarter of a mile' : v.miles === '0.5' ? 'within half a mile' : v.miles === '3.0' ? 'within 3 miles' : 'within a mile') + ((v.comps_sale || []).some(function (c) { return c.sold; }) ? ', and what similar homes nearby sold for (HM Land Registry)' : '') + ', listed above.') : 'Recent ' + (v.sales && v.lettings ? 'sales and lettings' : v.sales ? 'sales' : 'lettings') + ' of similar homes nearby, and what is on the market now.'), 'The size, layout, condition and features of the property, and its outside space and transport links.', 'Current demand from ' + (v.sales && v.lettings ? 'buyers and tenants' : v.sales ? 'buyers' : 'tenants') + ' registered with us in the area.'].forEach(function (l) {
+    [(v.appraisal && ((v.comps_sale || []).length || (v.comps_let || []).length) ? (!(v.comps_sale || []).filter(function (c) { return !c.sold; }).length && !(v.comps_let || []).length ? 'What similar homes nearby sold for in the last two years (HM Land Registry), listed above.' : 'The asking ' + ((v.comps_sale || []).filter(function (c) { return !c.sold; }).length && (v.comps_let || []).length ? 'prices and rents' : (v.comps_let || []).length ? 'rents' : 'prices') + ' of similar homes advertised ' + (v.miles === '0.0' ? 'in the same postcode' : v.miles === '0.25' ? 'within a quarter of a mile' : v.miles === '0.5' ? 'within half a mile' : v.miles === '3.0' ? 'within 3 miles' : 'within a mile') + ((v.comps_sale || []).some(function (c) { return c.sold; }) ? ', and what similar homes nearby sold for (HM Land Registry)' : '') + ', listed above.') : 'Recent ' + (v.sales && v.lettings ? 'sales and lettings' : v.sales ? 'sales' : 'lettings') + ' of similar homes nearby, and what is on the market now.'), 'The size, layout, condition and features of the property, and its outside space and transport links.', 'Current demand from ' + (v.sales && v.lettings ? 'buyers and tenants' : v.sales ? 'buyers' : 'tenants') + ' registered with us in the area.'].forEach(function (l) {
       const ls = wrap(l, F, 9.6, CW - 16); ensure(ls.length * 13.5 + 2); page.drawCircle({ x: M + 4, y: y + 3.2, size: 2.2, color: C.navy2 }); ls.forEach(function (ln) { text(ln, M + 14, y, 9.6, F, C.ink2); y -= 13.5; }); y -= 1; });
     if (v.note) { y -= 4; para(v.note, 9.8); }
     // Our lettings services (with any discount on our standard fees)
@@ -12276,14 +12284,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
   const soldCache = {};
   app.get('/api/admin/appraisal/sold', async function (req, res) {
     const pc = String(req.query.postcode || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 9);
-    const miles = ['0.25', '0.5', '1.0', '3.0'].indexOf(String(req.query.miles)) !== -1 ? Number(req.query.miles) : 1, years = req.query.years === '3' ? 3 : 2;
+    const miles = ['0.0', '0.25', '0.5', '1.0', '3.0'].indexOf(String(req.query.miles)) !== -1 ? Number(req.query.miles) : 1, years = req.query.years === '3' ? 3 : 2;
     if (!/^[A-Z]{1,2}\d[A-Z\d]? \d[A-Z]{2}$/.test(pc)) return res.json({ ok: false, error: 'postcode' });
     const ck = pc + '|' + miles + '|' + years; if (soldCache[ck] && Date.now() - soldCache[ck].at < 12 * 3600000) return res.json(soldCache[ck].body);
     const getJson = async function (url, o) { const r = await fetch(url, Object.assign({ signal: AbortSignal.timeout(25000) }, o || {})); if (!r.ok) throw new Error(url.split('/')[2] + ' answered ' + r.status); return r.json(); };
     try {
       const me = (await getJson('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc.replace(' ', '')))).result;
       if (!me || me.latitude == null) return res.json({ ok: false, error: 'postcode' });
-      const near = ((await getJson('https://api.postcodes.io/postcodes?lon=' + me.longitude + '&lat=' + me.latitude + '&radius=' + Math.min(2000, Math.round(miles * 1609)) + '&limit=100')).result || []);
+      const near = miles === 0 ? [] : ((await getJson('https://api.postcodes.io/postcodes?lon=' + me.longitude + '&lat=' + me.latitude + '&radius=' + Math.min(2000, Math.round(miles * 1609)) + '&limit=100')).result || []);
       const dist = {}; dist[me.postcode] = 0; near.forEach(function (x) { if (x && x.postcode) dist[x.postcode] = Math.round((Number(x.distance) || 0) / 1609 * 100) / 100; });
       const pcs = Object.keys(dist).filter(function (p) { return /^[A-Z0-9 ]{5,8}$/.test(p); });
       const since = new Date(Date.now() - years * 365.25 * 86400000).toISOString().slice(0, 10);
