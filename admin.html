@@ -5351,11 +5351,16 @@
     api('GET', '/api/admin/rent-board?property=' + encodeURIComponent(address)).then(function(d){
       if (box.dataset.addr !== address) return;
       var list = ((d && d.ok && d.items) || []).filter(function(x){ return !tid || x.tenancy_id === Number(tid); });
-      if (!list.length) { box.hidden = true; return; }
+      // A move-in from before rent collection began, paid but not on Pay landlords: add it if the landlord is still owed.
+      var offer = ((d && d.movein_offer) || []).filter(function(o){ return !tid || o.tenancy_id === Number(tid); });
+      var offerHtml = offer.map(function(o){ return '<div class="rb-row" style="padding:8px 0;align-items:center"><div class="rb-main"><div class="rb-money"><span>Move-in rent <b>' + gbp(o.rent) + '</b> · ' + esc(longDay(o.from)) + '</span></div><div class="rb-sub">Move-in money received' + (o.last ? ' ' + esc(longDay(o.last)) : '') + ' — before Fixflow, so not on Pay landlords. Still to pay the landlord?</div></div>' +
+        '<div class="rb-act"><button type="button" class="btn small primary" data-movein-pay="' + o.tenancy_id + '">Add to Pay landlords</button></div></div>'; }).join('');
+      if (!list.length && !offer.length) { box.hidden = true; return; }
+      if (!list.length) { box.hidden = false; box.innerHTML = '<h3 style="display:flex;align-items:center;gap:8px">💷 Rent<span style="flex:1"></span><button type="button" class="btn small ghost" data-prop-rentboard>Rent &amp; landlords ›</button></h3>' + offerHtml; return; }
       var got = list.filter(function(x){ return x.collected; });
       box.hidden = false;
       box.innerHTML = '<h3 style="display:flex;align-items:center;gap:8px">💷 Rent<span style="flex:1"></span><button type="button" class="btn small ghost" data-prop-rentboard>Rent &amp; landlords ›</button></h3>' +
-        '<p class="muted-note" style="margin:0 0 6px">' + got.length + ' of ' + list.length + ' rent' + (list.length === 1 ? '' : 's') + ' collected since ' + esc(longDay(list.reduce(function(a, x){ return x.from < a ? x.from : a; }, d.since))) + ' · our fees ' + gbp(got.reduce(function(a, x){ return a + x.fees; }, 0)) + '</p>' +
+        offerHtml + '<p class="muted-note" style="margin:0 0 6px">' + got.length + ' of ' + list.length + ' rent' + (list.length === 1 ? '' : 's') + ' collected since ' + esc(longDay(list.reduce(function(a, x){ return x.from < a ? x.from : a; }, d.since))) + ' · our fees ' + gbp(got.reduce(function(a, x){ return a + x.fees; }, 0)) + '</p>' +
         list.slice().reverse().map(function(x){
           var k = x.tenancy_id + '|' + x.from;
           return '<div class="rb-row rb-' + x.status + '" style="padding:8px 0"><div class="rb-day"><b>' + esc(rbDay(x.from).split(' ')[0]) + '</b><span>' + esc(rbDay(x.from).split(' ')[1] || '') + '</span></div>' +
@@ -5373,6 +5378,13 @@
       var d = stmtTcy(f.x.tenancy_id) || {}; openPdf(statementPdf(d, f.m, f.x.tenancy_id), tcyFile(d, 'Landlord Statement - ' + monthName(f.m.from)));
     };
     var f0 = stmtFind(k); if (f0 && f0.m) go(); else loadStatements().then(go);
+  });
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-movein-pay]'); if (!b) return;
+    if (!confirm('Add this move-in rent to Pay landlords?\n\nIt shows there as the rent less our fees, ready to pay the landlord. Only do this if they haven’t been paid yet.')) return;
+    busy(b, true, '…');
+    api('POST', '/api/admin/tenancies/' + b.dataset.moveinPay + '/movein-pay', { on: true }).then(function(r){ busy(b, false); if (!r || !r.ok) { toast('Couldn’t do that'); return; }
+      toast('✓ Added to Pay landlords'); var rc = b.closest('[data-addr]'); if (rc && rc.dataset.addr) rentCardLoad(rc, rc.dataset.addr, rc.dataset.tid); if (typeof loadRentBoard === 'function' && rbShown()) loadRentBoard(true); });
   });
   // Move-in money already in: pay the landlord now, rather than waiting for the tenancy start date.
   // Marks the first rent collected (today) and the landlord paid, in one go.
@@ -15097,7 +15109,13 @@
       // A road word after a building name is left off: "Sutton Court Road" -> "SuttonCourt".
       if (keep.length > 2 && !keep.some(function(x){ return /\d/.test(x); }) && /^(road|rd|street|st|lane|ln|avenue|ave|close|way|drive|grove|place|terrace)$/i.test(keep[keep.length - 1])) keep = keep.slice(0, -1);
       // A flat in a numbered building: keep the two numbers apart ("Flat 4, 22 Queen St" -> "4-22QueenSt").
-      return (m[1] + (/^\d/.test(keep[0] || '') ? '-' : '') + keep.join('')).replace(/[^A-Za-z0-9-]/g, '');
+      // Bank references are 18 characters at most: shorten the road word, then leave it off, rather than cut mid-word.
+      var build = function(k){ return (m[1] + (/^\d/.test(k[0] || '') ? '-' : '') + k.join('')).replace(/[^A-Za-z0-9-]/g, ''); };
+      var ABBR = { road: 'Rd', street: 'St', avenue: 'Ave', lane: 'Ln', drive: 'Dr', close: 'Cl', court: 'Ct', place: 'Pl', gardens: 'Gdns', square: 'Sq', crescent: 'Cres', terrace: 'Ter', house: 'Ho' };
+      var ref = build(keep), lw = (keep[keep.length - 1] || '').toLowerCase();
+      if (ref.length > 18 && keep.length > 1 && ABBR[lw]) ref = build(keep.slice(0, -1).concat(ABBR[lw]));
+      if (ref.length > 18 && keep.length > 1 && REF_WORDS.test(keep[keep.length - 1])) ref = build(keep.slice(0, -1));
+      return ref;
     }
     return (parts[0] || '').replace(/[^A-Za-z0-9-]/g, '');
   }
