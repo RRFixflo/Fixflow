@@ -846,15 +846,16 @@ const POSTCODE_RE = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
 // Payment reference from an address: door number and building or road name, no
 // spaces ("Flat 5, Dudley Court, Upper Berkeley Street" -> "5DudleyCourt"). Same
 // rule as payRef in admin.html.
-const REF_WORDS = /^(house|court|road|street|lane|avenue|close|place|way|gardens|terrace|mansions|apartments|lodge|tower|point|building|buildings|heights|square|crescent|drive|grove|walk|row|hill|mews|wharf|quay|parade|rise|green|park|view|yard|estate|block)$/i;
+const REF_WORDS = /^(house|court|road|street|lane|avenue|close|place|way|gardens|terrace|mansions|apartments|lodge|tower|point|building|buildings|heights|square|crescent|drive|grove|walk|row|hill|mews|wharf|quay|parade|rise|green|park|view|yard|estate|block|st|rd|ave|ln|dr|cl|ct|pl|gdns|sq|cres)$/i;
 function addrPayRef(address) {
   const parts = String(address || '').replace(POSTCODE_RE, ' ').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
   for (let i = 0; i < parts.length; i++) {
     const m = /(\d+[a-z]?(?:-\d+[a-z]?)*)/i.exec(parts[i]); if (!m) continue;
     let rest = parts[i].slice(m.index + m[0].length).replace(/^[\s,]+/, '');
     if (!rest.replace(/\b(flat|apartment|apt|unit|room|studio)\b/gi, '').trim()) rest = parts[i + 1] || '';
-    const words = rest.split(/\s+/).filter(Boolean); let keep = words;
-    if (words.length > 4) { keep = []; for (let w = 0; w < words.length; w++) { keep.push(words[w]); if (keep.length > 1 && REF_WORDS.test(words[w]) && !REF_WORDS.test(words[w + 1] || '')) break; } }
+    // Stop after the building or road word ("74 Champness Road Barking" -> "74ChampnessRoad").
+    const words = rest.split(/\s+/).filter(Boolean), keep0 = []; let keep = keep0;
+    for (let w = 0; w < words.length; w++) { keep0.push(words[w]); if (keep0.length > 1 && REF_WORDS.test(words[w]) && !REF_WORDS.test(words[w + 1] || '')) break; }
     if (keep.length > 2 && !keep.some(function (x) { return /\d/.test(x); }) && /^(road|rd|street|st|lane|ln|avenue|ave|close|way|drive|grove|place|terrace)$/i.test(keep[keep.length - 1])) keep = keep.slice(0, -1);
     return (m[1] + (/^\d/.test(keep[0] || '') ? '-' : '') + keep.join('')).replace(/[^A-Za-z0-9-]/g, '');
   }
@@ -1824,10 +1825,23 @@ module.exports = function mountJobs(app, opts) {
   // didn't show on the Invoices page, the property or statements. Make a record for each one. They are not
   // taken from rent automatically (shown as paid directly) until staff choose a rent in the invoice editor.
   async function migrateJobInvoices(pool) {
-    // Older invoices with no job were numbered INV-00049: given RR like the rest (RR-INV-00049).
-    await pool.query(`UPDATE invoices SET number = 'RR-' || number,
-        data = data || jsonb_build_object('number', 'RR-' || number) || CASE WHEN data->>'ref' = number THEN jsonb_build_object('ref', 'RR-' || number) ELSE '{}'::jsonb END
-      WHERE job_id IS NULL AND number ~ '^INV-[0-9]+$'`);
+    // Payment references made before the rule stopped at the road name ran into the town
+    // ("74ChampnessRoadBar"): put right to "74ChampnessRoad", noted in the tenancy's History.
+    try {
+      const tr = (await pool.query("SELECT id, address, data->>'address' AS a, data->>'pay_ref' AS ref FROM tenancies WHERE coalesce(data->>'pay_ref', '') <> ''")).rows;
+      for (const t of tr) {
+        const want = addrPayRef(t.a || t.address).slice(0, 18);
+        if (want.length >= 5 && t.ref !== want && t.ref.indexOf(want) === 0) {
+          await pool.query(`UPDATE tenancies SET data = jsonb_set(data, '{pay_ref}', to_jsonb($2::text)), log = log || $3::jsonb WHERE id = $1`,
+            [t.id, want, JSON.stringify([{ at: new Date().toISOString(), text: 'Payment reference corrected from ' + t.ref + ' to ' + want + ' (the door number and road name only)' }])]);
+        }
+      }
+    } catch (e) { console.error('Payment reference fix failed:', e.message); }
+    // Invoices with no job (once INV-00049, then RR-INV-00049) share the jobs' format: INV-RR-9xxxx
+    // (from 90001 up, so never the same as a job's INV-RR-<job ref>). The old number is kept in data.was.
+    await pool.query(`UPDATE invoices SET number = 'INV-RR-' || (90000 + id),
+        data = data || jsonb_build_object('number', 'INV-RR-' || (90000 + id), 'was', number) || CASE WHEN data->>'ref' = number THEN jsonb_build_object('ref', 'INV-RR-' || (90000 + id)) ELSE '{}'::jsonb END
+      WHERE job_id IS NULL AND (number ~ '^INV-[0-9]+$' OR number ~ '^RR-INV-[0-9]+$' OR number ~ '^INV-RF-')`);
     const r = await pool.query(`INSERT INTO invoices (job_id, number, total, created_at, landlord_name, landlord_email, address, data)
       SELECT j.id, j.invoice_number, j.invoice_total, coalesce(j.invoiced_at, j.updated_at, now()), j.landlord_name, j.landlord_email, j.property_address,
         jsonb_build_object('number', j.invoice_number, 'date', to_char(coalesce(j.invoiced_at, j.updated_at, now()), 'YYYY-MM-DD'), 'landlord', j.landlord_name, 'landlordEmail', j.landlord_email,
@@ -3773,7 +3787,7 @@ module.exports = function mountJobs(app, opts) {
   // Every invoice (for what landlords owe), newest first, with its job's address.
   app.get('/api/admin/invoices', withDb(async function (p, req, res) {
     const r = await p.query(`SELECT i.id, i.job_id, i.tenancy_id, i.created_at, i.number, i.total, i.landlord_name, i.landlord_email, i.paid_at,
-        i.data->>'due' AS due, i.data->>'landlordPhone' AS landlord_phone, i.data->>'title' AS title, i.data->>'collect_month' AS collect_month, coalesce(j.property_address, i.address) AS property_address, j.archived_at
+        i.data->>'due' AS due, i.data->>'landlordPhone' AS landlord_phone, i.data->>'title' AS title, i.data->>'collect_month' AS collect_month, i.data->>'was' AS was, coalesce(j.property_address, i.address) AS property_address, j.archived_at
       FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.job_id IS NULL OR j.id IS NOT NULL ORDER BY i.id DESC LIMIT 5000`);
     res.json({ ok: true, invoices: r.rows.map(function (x) { x.ref = x.job_id ? refFor(x.job_id) : (x.title || 'Tenancy'); return x; }) });
   }));
@@ -3802,8 +3816,8 @@ module.exports = function mountJobs(app, opts) {
     const today = new Date().toISOString().slice(0, 10), due = isoDay(b.due) || new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
     const ins = await p.query('INSERT INTO invoices (job_id, tenancy_id, address, property_key, total, landlord_name, landlord_email) VALUES (NULL, $1, $2, $3, $4, $5, $6) RETURNING id',
       [tid, address, key, total, name || null, email || null]);
-    // Every invoice number has RR in it: a job's invoice is INV-<job ref> (INV-RR-00103); others RR-INV-00049.
-    const id = ins.rows[0].id, number = 'RR-INV-' + String(id).padStart(5, '0');
+    // Every invoice number looks the same: a job's invoice is INV-<job ref> (INV-RR-00103); others INV-RR-9xxxx.
+    const id = ins.rows[0].id, number = 'INV-RR-' + (90000 + id);
     const data = { number: number, title: str(b.title, 120) || 'Invoice', date: today, due: due, ref: str(b.ref, 40) || number, landlord: name, landlordEmail: email, landlordPhone: str(b.landlord_phone, 50) || ll.phone || '',
       landlordAddress: str(b.landlord_address, 500) || ll.address || '', lines: lines, sub: sub, vat: vat, total: total, kind: str(b.kind, 30) || '' };
     await p.query('UPDATE invoices SET number = $2, data = $3 WHERE id = $1', [id, number, JSON.stringify(data)]);
@@ -5649,7 +5663,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           (d.length ? '<details class="ldone"><summary>✓ Completed repairs (' + d.length + ')</summary>' + d.map(jobCard).join('') + '</details>' : '')],
         tcyHtml ? ['tcy', 'Tenancy', tcyHtml] : null,
         ['doc', 'Certificates', docHtml + certUp('data-key="' + htmlEsc(k) + '"')],
-        (stmtsAt[k] || []).length ? ['st', 'Statements', '<p class="muted" style="margin:0 0 8px">Your monthly statements, newest first. Open one to print it or save it as a PDF.</p>' + stmtsAt[k].map(function (x) {
+        (stmtsAt[k] || []).length ? ['st', 'Statements', '<p style="margin:0 0 10px"><a class="iv" href="/l/' + htmlEsc(token) + '/account" style="justify-content:space-between"><div><b>📄 Full statement of account</b><div class="muted">Every payment in and out — all months, the last 12 months, the tax year or dates you choose</div></div><div>›</div></a></p><p class="muted" style="margin:0 0 8px">Your monthly statements, newest first. Open one to print it or save it as a PDF.</p>' + stmtsAt[k].map(function (x) {
           if (!x.paid) return '<a class="iv" href="/l/' + htmlEsc(token) + '/statement/' + x.tid + '/' + x.from + '"><div><b>' + htmlEsc(x.month) + '</b><div class="muted">Rent ' + money(x.rent) + ' · not paid to you yet</div></div><div style="text-align:right"><b>' + money(x.m ? Math.abs(x.m.balance) : 0) + '</b><div class="muted">' + (x.m && x.m.balance < 0 ? 'owed to us' : 'due to you') + '</div></div></a>';
           return '<a class="iv" href="/l/' + htmlEsc(token) + '/statement/' + x.tid + '/' + x.from + '"><div><b>' + htmlEsc(x.month) + '</b><div class="muted">Rent ' + money(x.rent) + ' · paid to you ' + htmlEsc(day(x.paid.at)) + (x.paid.ref ? ' (ref ' + htmlEsc(x.paid.ref) + ')' : '') + '</div></div><div style="text-align:right"><b>' + money(x.paid.amount) + '</b><div><span class="paid">Paid</span></div></div></a>';
         }).join('')] : null,
@@ -7087,13 +7101,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
     if (Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false })) < 9) return;   // not before 9am
     const week = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
-    const rows = (await p.query("SELECT id, address, data FROM tenancies WHERE data ? 'pay_token' AND data->>'pay_due' < $1 AND data->>'pay_due' >= $2 AND NOT (data ? 'pay_reminded_at')", [today, week])).rows;
+    const rows = (await p.query("SELECT id, address, property_key, start_date, data FROM tenancies WHERE data ? 'pay_token' AND data->>'pay_due' < $1 AND data->>'pay_due' >= $2 AND NOT (data ? 'pay_reminded_at')", [today, week])).rows;
     for (const t of rows) {
       const d = t.data || {}, due = Number(d.pay_amount) || 0; if (!(due > 0)) continue;
       const sent = Number((await p.query('SELECT coalesce(sum(amount), 0) AS s FROM tenancy_payments WHERE tenancy_id = $1', [t.id])).rows[0].s) || 0;
       const recorded = (d.receipts || []).reduce(function (a, x) { return a + (Number(String(x && x.amount || '').replace(/[£,\s]/g, '')) || 0); }, 0);
       if (sent >= due - 0.5 || recorded >= due - 0.5) { await p.query("UPDATE tenancies SET data = data || jsonb_build_object('pay_reminded_at', 'not needed') WHERE id = $1", [t.id]); continue; }
-      const to = (d.tenants || []).map(function (x) { return String(x && x.email || '').trim(); }).filter(function (x) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x); });
+      const to = (await tenancyTenants(p, t)).map(function (x) { return x.email; });
       if (!to.length) continue;
       const neg = await tcyNegotiator(p, d), cc = neg.people.map(function (x) { return x.email; }).filter(function (x) { return to.indexOf(x) === -1; });
       const addr = String(d.address || t.address || 'your new home'), link = (PUBLIC_URL || SITE) + '/pay/' + d.pay_token, left = due - sent;
@@ -7279,6 +7293,21 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const office = 'info@residentialrealtors.co.uk', has = function (l) { return l.some(function (x) { return String(x).toLowerCase() === office; }); };
     if (!has(to) && !has(cc)) cc.push(office);
     return cc;
+  }
+  // Everyone to email about a tenancy's rent: the tenants on the tenancy plus anyone else saved as a current
+  // tenant at the property since it started (not guarantors, not moved out) — so every tenant gets it.
+  async function tenancyTenants(p, t) {
+    const d = t.data || {}, ok = function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); }, out = [], seen = {};
+    const add = function (email, name) { email = String(email || '').trim(); if (!ok(email) || seen[email.toLowerCase()]) return; seen[email.toLowerCase()] = 1; out.push({ email: email, name: String(name || '').trim() }); };
+    (d.tenants || []).forEach(function (x) { if (x) add(x.email, x.name); });
+    const key = t.property_key || propKey(d.address || t.address || ''), start = String(d.start_date || t.start_date || '').slice(0, 10);
+    if (key) {
+      const rows = (await p.query(`SELECT tn.name, tn.email FROM property_tenants pt JOIN tenants tn ON tn.id = pt.tenant_id
+        WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND tn.deleted_at IS NULL AND coalesce(pt.role, '') <> 'guarantor'
+          AND ($2::date IS NULL OR pt.created_at >= $2::date - interval '60 days') ORDER BY pt.created_at`, [key, /^\d{4}-\d{2}-\d{2}$/.test(start) ? start : null])).rows;
+      rows.forEach(function (r) { add(r.email, r.name); });
+    }
+    return out;
   }
   // Resend an email from a tenancy's History: the same attachments (the copies kept when it was sent),
   // to the same people unless changed; the wording can be changed first. Logged as a new History entry.
@@ -9015,7 +9044,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const k = propKey(item.address);
       inv = (await p.query('INSERT INTO invoices (job_id, tenancy_id, address, property_key, number, total, landlord_name, landlord_email, data) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
         [item.tenancy_id, item.address, k, number, amount, item.landlord || null, item.landlord_email || null, JSON.stringify(data)])).rows[0];
-      inv.number = number;
+      // Numbered like every other invoice (INV-RR-9xxxx).
+      const num2 = 'INV-RR-' + (90000 + inv.id);
+      await p.query(`UPDATE invoices SET number = $2, data = data || jsonb_build_object('number', $2::text, 'ref', CASE WHEN data->>'ref' = number THEN $2::text ELSE data->>'ref' END) WHERE id = $1`, [inv.id, num2]);
+      inv.number = num2;
       // Already paid by the landlord: the invoice is recorded as paid straight away.
       if (b.paid === true) { await p.query('UPDATE invoices SET paid_at = now() WHERE id = $1', [inv.id]); inv.paid = true; }
       // A link the landlord can open (their page), for the email.
@@ -10376,14 +10408,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!canEmail() || !sendEmail) return res.status(503).json({ ok: false, error: 'email-not-configured' });
     const b = req.body || {}, id = jobId(req), from = String(b.from || '').slice(0, 10), who = req.user ? req.user.name : 'Office';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return res.status(400).json({ ok: false, error: 'from' });
-    const t = (await p.query('SELECT id, address, data FROM tenancies WHERE id = $1', [id])).rows[0];
+    const t = (await p.query('SELECT id, address, property_key, start_date, data FROM tenancies WHERE id = $1', [id])).rows[0];
     if (!t) return res.status(404).json({ ok: false, error: 'not-found' });
-    const d = t.data || {}, ok = function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); };
-    const to = (d.tenants || []).map(function (x) { return x && String(x.email || '').trim(); }).filter(ok).filter(function (e, i, a) { return a.indexOf(e) === i; });
+    const d = t.data || {}, people = await tenancyTenants(p, t);
+    const to = people.map(function (x) { return x.email; });
     if (!to.length) return res.status(400).json({ ok: false, error: 'no-email' });
     if (((d.rent_rcvd || {})[from])) return res.json({ ok: true, already: true });
     const due = Number(b.due) || Number(d.rent_pcm) || 0, got = ((d.rent_parts || {})[from] || []).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0), left = Math.round((due - got) * 100) / 100;
-    const names = (d.tenants || []).map(function (x) { return x && String(x.name || '').trim().split(/\s+/)[0]; }).filter(Boolean);
+    const names = people.map(function (x) { return String(x.name || '').replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, '').trim().split(/\s+/)[0]; }).filter(Boolean);
     const hello = names.length ? 'Dear ' + (names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names.slice(-1) : names[0]) : 'Dear tenant';
     const dd = Math.round((Date.parse(londonDay() + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 86400000), late = Math.max(0, dd);
     const addr = d.address || t.address || 'your home';
@@ -10531,8 +10563,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // A landlord's account: every rent received for them, their credits and deposit (money in), and our fees,
   // charges taken from rent and the payments we sent them (money out), with a running balance held for them.
   app.get('/api/admin/landlords/:id/account', withDb(async function (p, req, res) {
-    const keys = (await p.query('SELECT property_key FROM property_landlords WHERE landlord_id = $1', [jobId(req)])).rows.map(function (r) { return r.property_key; });
-    if (!keys.length) return res.json({ ok: true, rows: [] });
+    res.json(Object.assign({ ok: true }, await landlordAccount(p, jobId(req))));
+  }));
+  async function landlordAccount(p, landlordId) {
+    const keys = (await p.query('SELECT property_key FROM property_landlords WHERE landlord_id = $1', [landlordId])).rows.map(function (r) { return r.property_key; });
+    if (!keys.length) return { rows: [], money_in: 0, money_out: 0, balance: 0 };
     const st = await statementsAll(p), byT = {}; st.items.forEach(function (x) { byT[x.tenancy_id] = x; });
     const tcys = (await p.query('SELECT id, property_key, address, start_date, data FROM tenancies WHERE property_key = ANY($1::text[])', [keys])).rows;
     const rows = [], r2 = function (v) { return Math.round((Number(v) || 0) * 100) / 100; }, today = londonDay();
@@ -10566,7 +10601,44 @@ document.querySelectorAll('.lcu').forEach(function(box){
     });
     rows.sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : (b.in ? 1 : 0) - (a.in ? 1 : 0); });
     let bal = 0; rows.forEach(function (r) { bal = r2(bal + (r.in || 0) - (r.out || 0)); if (!r.note) r.balance = bal; });
-    res.json({ ok: true, rows: rows, money_in: r2(rows.reduce(function (a, r) { return a + (r.in || 0); }, 0)), money_out: r2(rows.reduce(function (a, r) { return a + (r.out || 0); }, 0)), balance: bal });
+    return { rows: rows, money_in: r2(rows.reduce(function (a, r) { return a + (r.in || 0); }, 0)), money_out: r2(rows.reduce(function (a, r) { return a + (r.out || 0); }, 0)), balance: bal };
+  }
+  // The landlord's own full statement of account on their page: every payment in and out for a period
+  // (all time, last 12 months, this tax year or chosen dates), brought forward, totals, balance, unpaid invoices.
+  app.get('/l/:token/account', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const who = await landlordByToken(p, req.params.token);
+    if (!who) return res.status(404).send(trackShell('Not found', '<h1>Page not found</h1>', true));
+    const a = await landlordAccount(p, who.l.id), today = londonDay(), q = req.query || {}, isDay = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')); };
+    const per = ['all', '12m', 'tax', 'custom'].indexOf(q.period) !== -1 ? q.period : 'all';
+    let from = '', to = today;
+    if (per === '12m') from = addDaysIso(addMonthsIso(today, -12), 1);
+    else if (per === 'tax') { const y = +today.slice(0, 4); from = (today >= y + '-04-06' ? y : y - 1) + '-04-06'; }
+    else if (per === 'custom') { from = isDay(q.from) ? q.from : ''; to = isDay(q.to) ? q.to : today; }
+    const money = function (v) { return (v < 0 ? '−' : '') + '£' + Math.abs(Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+    const dd = function (v) { return certDay(String(v || '').slice(0, 10)); }, r2 = function (v) { return Math.round(v * 100) / 100; };
+    let bf = 0, tin = 0, tout = 0; const list = [];
+    a.rows.forEach(function (r) { const d = String(r.at || '').slice(0, 10); if (from && d < from) { if (!r.note) bf = r2(bf + (r.in || 0) - (r.out || 0)); return; } if (d > to) return; list.push(r); tin = r2(tin + (r.in || 0)); tout = r2(tout + (r.out || 0)); });
+    const cf = r2(bf + tin - tout);
+    const unpaid = (await p.query(`SELECT i.id, i.number, i.total, i.property_key, i.data->>'due' AS due, coalesce(j.property_address, i.address) AS addr FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id
+      WHERE i.paid_at IS NULL AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.created_at`)).rows
+      .filter(function (i) { return who.keys[i.property_key] !== undefined || who.keys[propKey(i.addr || '')] !== undefined; });
+    const tok = htmlEsc(req.params.token), opt = function (v, l) { return '<option value="' + v + '"' + (per === v ? ' selected' : '') + '>' + l + '</option>'; };
+    const ds = function (v) { v = String(v || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v.slice(8, 10) + '/' + v.slice(5, 7) + '/' + v.slice(2, 4) : ''; };
+    const row = function (r) { return '<tr' + (r.note ? ' class="note"' : '') + '><td>' + htmlEsc(ds(r.at)) + '</td><td>' + htmlEsc(r.what) + '</td><td class="a in">' + (r.in ? money(r.in) : '') + '</td><td class="a out">' + (r.out ? money(r.out) : '') + '</td><td class="a">' + (r.note ? '' : money(r.balance)) + '</td></tr>'; };
+    res.send(trackShell('Statement of account', '<style>table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{font-size:.78rem;color:#6b7280;font-weight:600}td.a,th.a{text-align:right;white-space:nowrap}td.in{color:#067647}td.out{color:#b42318}tr.note td{color:#6b7280;font-style:italic}tr.t td{font-weight:700;background:#f6f7f9}.per{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin:0 0 12px}.per label{display:flex;flex-direction:column;font-size:.8rem;color:#6b7280;gap:3px}.per select,.per input{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px}.per [hidden]{display:none!important}.wrap{overflow-x:auto}@media(max-width:560px){th:nth-child(5),td:nth-child(5):not([colspan]){display:none}table{font-size:.85rem}}@media print{.noprint{display:none}}</style>' +
+      '<p class="noprint"><a href="/l/' + tok + '" style="color:var(--blue);font-weight:600;text-decoration:none">← Your properties</a></p>' +
+      '<h1>Statement of account</h1><p class="sub">' + (who.l.name ? '<b>' + htmlEsc(who.l.name) + '</b> · ' : '') + htmlEsc((from ? dd(from) : 'From the start') + ' – ' + dd(to)) + '</p>' +
+      '<form class="per noprint" method="get"><label>Period<select name="period" onchange="var c=this.value===\'custom\';document.querySelectorAll(\'.cd\').forEach(function(e){e.hidden=!c});if(!c)this.form.submit()">' + opt('all', 'All time') + opt('12m', 'Last 12 months') + opt('tax', 'This tax year (from 6 April)') + opt('custom', 'Choose dates…') + '</select></label>' +
+        '<label class="cd"' + (per === 'custom' ? '' : ' hidden') + '>From<input type="date" name="from" value="' + htmlEsc(from) + '"></label><label class="cd"' + (per === 'custom' ? '' : ' hidden') + '>To<input type="date" name="to" value="' + htmlEsc(to) + '"></label>' +
+        '<button class="cd"' + (per === 'custom' ? '' : ' hidden') + ' type="submit">Show</button></form>' +
+      '<div class="card wrap"><table><thead><tr><th>Date</th><th>Details</th><th class="a">In</th><th class="a">Out</th><th class="a">Balance</th></tr></thead><tbody>' +
+        (from ? '<tr class="t"><td></td><td>Brought forward</td><td class="a" colspan="3">' + money(bf) + '</td></tr>' : '') +
+        (list.length ? list.map(row).join('') : '<tr><td></td><td class="muted">Nothing in this period.</td><td></td><td></td><td></td></tr>') +
+        '<tr class="t"><td></td><td>Totals</td><td class="a in">' + money(tin) + '</td><td class="a out">' + money(tout) + '</td><td></td></tr>' +
+        '<tr class="t"><td></td><td>' + (cf < 0 ? 'Owed to us' : 'Held for you') + ' at ' + htmlEsc(dd(to)) + '</td><td class="a" colspan="3">' + money(Math.abs(cf)) + '</td></tr></tbody></table></div>' +
+      (unpaid.length ? '<div class="card"><h3 style="margin:0 0 6px">Unpaid invoices</h3><table>' + unpaid.map(function (i) { return '<tr><td><a href="/l/' + tok + '/invoice/' + i.id + '" style="color:var(--blue)">' + htmlEsc(i.number || 'Invoice') + '</a> · ' + htmlEsc(String(i.addr || '').split(',')[0]) + (i.due ? ' · due ' + htmlEsc(dd(i.due)) : '') + '</td><td class="a out">' + money(i.total) + '</td></tr>'; }).join('') + '</table></div>' : '') +
+      '<p class="noprint" style="text-align:center"><button onclick="window.print()">Print or save as PDF</button></p>', true));
   }));
   // Unpaid landlord invoices that will come off each tenancy's statements, as groups [{from, invoices}]:
   // the next rent not yet paid to the landlord, and the current statement for "Take from: the current statement".
