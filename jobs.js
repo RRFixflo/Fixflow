@@ -11894,8 +11894,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
       v.appraisal = true;
       v.beds = str(b.beds, 10) || ''; v.baths = str(b.baths, 10) || ''; v.ptype = str(b.ptype, 60) || '';
       const comps = function (list) { return (Array.isArray(list) ? list : []).slice(0, 12).map(function (c) { c = c || {}; const price = num(c.price); const url = /^https:\/\/(www\.)?rightmove\.co\.uk\//.test(String(c.url || '')) ? String(c.url).slice(0, 300) : '';
-        return { addr: str(c.addr, 160) || '', beds: str(c.beds, 10) || '', price: price, url: url }; }).filter(function (c) { return c.price && (c.addr || c.url); }); };
-      v.comps_sale = comps(b.comps_sale); v.comps_let = comps(b.comps_let); v.miles = ['0.5', '1.0', '3.0'].indexOf(String(b.miles)) !== -1 ? String(b.miles) : '1.0';
+        const day = function (v) { v = String(v || ''); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : v === 'now' ? 'now' : ''; };
+        return { addr: str(c.addr, 160) || '', beds: str(c.beds, 10) || '', price: price, url: url, listed: day(c.listed), avail: day(c.avail), reduced: c.reduced ? true : false }; }).filter(function (c) { return c.price && (c.addr || c.url); }); };
+      v.comps_sale = comps(b.comps_sale); v.comps_let = comps(b.comps_let); v.miles = ['0.25', '0.5', '1.0', '3.0'].indexOf(String(b.miles)) !== -1 ? String(b.miles) : '1.0';
     }
     if (v.sales_high && v.sales_low && v.sales_high < v.sales_low) { const x = v.sales_low; v.sales_low = v.sales_high; v.sales_high = x; }
     if (v.let_high && v.let_low && v.let_high < v.let_low) { const x = v.let_low; v.let_low = v.let_high; v.let_high = x; }
@@ -12015,23 +12016,26 @@ document.querySelectorAll('.lcu').forEach(function(box){
         page.drawRectangle({ x: M, y: y - 4, width: CW, height: 16, color: C.panel });
         text('Address', M + 8, y + 1, 7.6, B, C.soft); text('Beds', M + CW - 170, y + 1, 7.6, B, C.soft); right('Asking' + (unit ? ' (pcm)' : ''), W - M - 8, y + 1, 7.6, B, C.soft); y -= 18;
         list.forEach(function (c) {
-          ensure(18); const a = wrap(c.addr || 'Similar home', F, 9.2, CW - 200)[0];
+          ensure(30); const a = wrap(c.addr || 'Similar home', F, 9.2, CW - 200)[0];
           text(a, M + 8, y, 9.2, F, C.ink); text(String(c.beds || ''), M + CW - 170, y, 9.2, F, C.ink2); right(gbp0(c.price), W - M - 8, y, 9.2, B, C.ink);
           if (c.url) { const tw = F.widthOfTextAtSize(safe(a), 9.2); text('view on Rightmove \xBB', M + 14 + tw, y, 7.6, F, hex('175CD3'));
             const link = pdf.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: [M + 8, y - 3, M + 90 + tw, y + 10], Border: [0, 0, 0], A: { Type: 'Action', S: 'URI', URI: require('pdf-lib').PDFString.of(c.url) } });
             page.node.addAnnot(pdf.context.register(link)); }
+          const fd = function (d) { return new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }); };
+          const when = [c.listed ? 'Listed ' + fd(c.listed) : '', c.reduced ? 'price reduced' : '', unit && c.avail ? (c.avail === 'now' ? 'available now' : 'available ' + fd(c.avail)) : ''].filter(Boolean).join('  \xB7  ');
+          if (when) { y -= 11; text(when, M + 8, y, 7.6, F, C.soft); }
           page.drawLine({ start: { x: M, y: y - 5 }, end: { x: W - M, y: y - 5 }, thickness: 0.4, color: C.line }); y -= 17;
         });
         const prices = list.map(function (c) { return c.price; }), raw = prices.reduce(function (t, x) { return t + x; }, 0) / prices.length, avg = unit ? Math.round(raw / 10) * 10 : Math.round(raw / 1000) * 1000;   // rounded as the headline figure
         ensure(18); text('Average of ' + list.length + ' similar home' + (list.length === 1 ? '' : 's') + (list.length > 1 ? '  (' + gbp0(Math.min.apply(null, prices)) + ' - ' + gbp0(Math.max.apply(null, prices)) + ')' : ''), M + 8, y, 9, B, C.navy); right(gbp0(avg) + (unit || ''), W - M - 8, y, 9.6, B, C.navy); y -= 22;
       };
-      const within = v.miles === '0.5' ? 'within half a mile' : v.miles === '3.0' ? 'within 3 miles' : 'within a mile';
+      const within = v.miles === '0.25' ? 'within a quarter of a mile' : v.miles === '0.5' ? 'within half a mile' : v.miles === '3.0' ? 'within 3 miles' : 'within a mile';
       table('Similar homes for sale ' + within, v.comps_sale, '');
       table('Similar homes to rent ' + within, v.comps_let, ' pcm');
     }
     // How we arrived at it
     ensure(80); heading('How we arrived at our figures');
-    [(v.appraisal && ((v.comps_sale || []).length || (v.comps_let || []).length) ? 'The average asking ' + ((v.comps_sale || []).length && (v.comps_let || []).length ? 'prices and rents' : (v.comps_sale || []).length ? 'price' : 'rent') + ' of the similar homes advertised ' + (v.miles === '0.5' ? 'within half a mile' : v.miles === '3.0' ? 'within 3 miles' : 'within a mile') + ', listed above (asking figures, not completed sales or lets).' : 'Recent ' + (v.sales && v.lettings ? 'sales and lettings' : v.sales ? 'sales' : 'lettings') + ' of similar homes nearby, and what is on the market now.'), 'The size, layout, condition and features of the property, and its outside space and transport links.', 'Current demand from ' + (v.sales && v.lettings ? 'buyers and tenants' : v.sales ? 'buyers' : 'tenants') + ' registered with us in the area.'].forEach(function (l) {
+    [(v.appraisal && ((v.comps_sale || []).length || (v.comps_let || []).length) ? 'The average asking ' + ((v.comps_sale || []).length && (v.comps_let || []).length ? 'prices and rents' : (v.comps_sale || []).length ? 'price' : 'rent') + ' of the similar homes advertised ' + (v.miles === '0.25' ? 'within a quarter of a mile' : v.miles === '0.5' ? 'within half a mile' : v.miles === '3.0' ? 'within 3 miles' : 'within a mile') + ', listed above (asking figures, not completed sales or lets).' : 'Recent ' + (v.sales && v.lettings ? 'sales and lettings' : v.sales ? 'sales' : 'lettings') + ' of similar homes nearby, and what is on the market now.'), 'The size, layout, condition and features of the property, and its outside space and transport links.', 'Current demand from ' + (v.sales && v.lettings ? 'buyers and tenants' : v.sales ? 'buyers' : 'tenants') + ' registered with us in the area.'].forEach(function (l) {
       const ls = wrap(l, F, 9.6, CW - 16); ensure(ls.length * 13.5 + 2); page.drawCircle({ x: M + 4, y: y + 3.2, size: 2.2, color: C.navy2 }); ls.forEach(function (ln) { text(ln, M + 14, y, 9.6, F, C.ink2); y -= 13.5; }); y -= 1; });
     if (v.note) { y -= 4; para(v.note, 9.8); }
     // Our lettings services (with any discount on our standard fees)
