@@ -2057,6 +2057,7 @@ module.exports = function mountJobs(app, opts) {
     if ((method === 'GET' || method === 'POST') && path === '/valuations') return true;   // property appraisals (Offers page)
     if (method === 'POST' && path === '/cal-feed') return true;
     if (method === 'GET' && path === '/appraisal/comps') return true;
+    if (method === 'GET' && path === '/appraisal/zoopla') return true;   // appraisal: the same search on Zoopla
     if (method === 'GET' && path === '/appraisal/sold') return true;   // appraisal: Land Registry sold prices   // appraisal: similar homes on Rightmove   // calendar: add the viewings to their phone's diary
     if (method === 'GET' && (path === '/epc-addresses' || path === '/landlord-for-address' || path === '/rm-location')) return true;   // appraisal: find the address and our landlord
     if (method === 'GET' && /^\/valuations\/\d+\/pdf$/.test(path)) return true;
@@ -11903,7 +11904,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.appraisal) {
       v.appraisal = true;
       v.beds = str(b.beds, 10) || ''; v.baths = str(b.baths, 10) || ''; v.ptype = str(b.ptype, 60) || '';
-      const comps = function (list) { return (Array.isArray(list) ? list : []).slice(0, 20).map(function (c) { c = c || {}; const price = num(c.price); const url = /^https:\/\/(www\.)?rightmove\.co\.uk\//.test(String(c.url || '')) ? String(c.url).slice(0, 300) : '';
+      const comps = function (list) { return (Array.isArray(list) ? list : []).slice(0, 20).map(function (c) { c = c || {}; const price = num(c.price); const url = /^https:\/\/(www\.)?(rightmove|zoopla)\.co\.uk\//.test(String(c.url || '')) ? String(c.url).slice(0, 300) : '';
         const day = function (v) { v = String(v || ''); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : v === 'now' ? 'now' : ''; };
         return { addr: str(c.addr, 160) || '', beds: str(c.beds, 10) || '', price: price, url: url, listed: day(c.listed), avail: day(c.avail), reduced: c.reduced ? true : false, agreed: c.agreed ? true : false, sold: day(c.sold) === 'now' ? '' : day(c.sold), ptype: str(c.ptype, 30) || '', tenure: str(c.tenure, 20) || '' }; }).filter(function (c) { return c.price && (c.addr || c.url); }); };
       v.comps_sale = comps(b.comps_sale); v.comps_let = comps(b.comps_let); v.miles = ['0.0', '0.25', '0.5', '1.0', '3.0'].indexOf(String(b.miles)) !== -1 ? String(b.miles) : '1.0';
@@ -12045,7 +12046,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         list.forEach(function (c) {
           ensure(30); const a = wrap(c.addr || 'Similar home', F, 9.2, CW - 200)[0];
           text(a, M + 8, y, 9.2, F, C.ink); text(String(c.beds || ''), M + CW - 170, y, 9.2, F, C.ink2); right(gbp0(c.price), W - M - 8, y, 9.2, B, C.ink);
-          if (c.url) { const tw = F.widthOfTextAtSize(safe(a), 9.2); text('view on Rightmove \xBB', M + 14 + tw, y, 7.6, F, hex('175CD3'));
+          if (c.url) { const tw = F.widthOfTextAtSize(safe(a), 9.2); text(/zoopla/.test(c.url) ? 'view on Zoopla \xBB' : 'view on Rightmove \xBB', M + 14 + tw, y, 7.6, F, hex('175CD3'));
             const link = pdf.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: [M + 8, y - 3, M + 90 + tw, y + 10], Border: [0, 0, 0], A: { Type: 'Action', S: 'URI', URI: require('pdf-lib').PDFString.of(c.url) } });
             page.node.addAnnot(pdf.context.register(link)); }
           const fd = function (d) { return new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }); };
