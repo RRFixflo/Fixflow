@@ -3830,6 +3830,8 @@ module.exports = function mountJobs(app, opts) {
     const id = ins.rows[0].id, number = 'INV-RR-' + (90000 + id);
     const data = { number: number, title: str(b.title, 120) || 'Invoice', date: today, due: due, ref: str(b.ref, 40) || number, landlord: name, landlordEmail: email, landlordPhone: str(b.landlord_phone, 50) || ll.phone || '',
       landlordAddress: str(b.landlord_address, 500) || ll.address || '', lines: lines, sub: sub, vat: vat, total: total, kind: str(b.kind, 30) || '' };
+    // Which rent it comes off (the current statement, a month, the landlord pays directly) — else the next rent.
+    { const cm = String(b.collect_month || ''); if (/^\d{4}-(0[1-9]|1[0-2])$/.test(cm) || cm === 'direct' || cm === 'current') data.collect_month = cm; }
     await p.query('UPDATE invoices SET number = $2, data = $3 WHERE id = $1', [id, number, JSON.stringify(data)]);
     if (tid) {
       await p.query('UPDATE tenancies SET log = log || $2::jsonb' + (b.kind === 'move_in' ? ", data = data || jsonb_build_object('fees_invoice_id', $3::int)" : '') + ' WHERE id = $1',
@@ -10621,17 +10623,27 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   // A landlord's account: every rent received for them, their credits and deposit (money in), and our fees,
   // charges taken from rent and the payments we sent them (money out), with a running balance held for them.
+  app.get('/api/admin/tenancies/:id/account', withDb(async function (p, req, res) {
+    const t = (await p.query('SELECT id, property_key, address, start_date, data FROM tenancies WHERE id = $1', [jobId(req)])).rows;
+    if (!t.length) return res.status(404).json({ ok: false, error: 'not-found' });
+    res.json(Object.assign({ ok: true }, await accountFor(p, t)));
+  }));
   app.get('/api/admin/landlords/:id/account', withDb(async function (p, req, res) {
     res.json(Object.assign({ ok: true }, await landlordAccount(p, jobId(req))));
   }));
   async function landlordAccount(p, landlordId) {
     const keys = (await p.query('SELECT property_key FROM property_landlords WHERE landlord_id = $1', [landlordId])).rows.map(function (r) { return r.property_key; });
-    if (!keys.length) return { rows: [], money_in: 0, money_out: 0, balance: 0 };
+    if (!keys.length) return { rows: [], props: [], money_in: 0, money_out: 0, balance: 0 };
+    return accountFor(p, (await p.query('SELECT id, property_key, address, start_date, data FROM tenancies WHERE property_key = ANY($1::text[]) ORDER BY start_date, id', [keys])).rows);
+  }
+  // The account for some tenancies: each line tagged with its tenancy (tid) and property, with a running
+  // balance overall (balance) and per tenancy (tbal), so a landlord with several properties sees what's for what.
+  async function accountFor(p, tcys) {
     const st = await statementsAll(p), byT = {}; st.items.forEach(function (x) { byT[x.tenancy_id] = x; });
-    const tcys = (await p.query('SELECT id, property_key, address, start_date, data FROM tenancies WHERE property_key = ANY($1::text[])', [keys])).rows;
     const rows = [], r2 = function (v) { return Math.round((Number(v) || 0) * 100) / 100; }, today = londonDay();
     const short = function (a) { return String(a || '').split(',')[0]; };
     tcys.forEach(function (t) {
+      const n0 = rows.length;
       const d = t.data || {}, addr = short(d.address || t.address), x = byT[t.id], rc = Object.assign({}, d.rent_rcvd || {}), lp = d.ll_paid || {};
       // The move-in money (first month's rent + deposit, paid to us by the tenants): once it covers what's
       // due it counts as the first rent from the start date, as on the Rent page; the deposit we hold isn't theirs.
@@ -10657,10 +10669,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
         const pd = lp[from] || {}, mon = certDay(from).replace(/^\d+ /, '');
         rows.push({ at: String(pd.at || from).slice(0, 10), what: 'Paid to you · ' + addr + ' (' + mon + ')' + (pd.ref ? ' · ref ' + pd.ref : ''), out: r2(pd.amount) });
       });
+      rows.slice(n0).forEach(function (r) { r.tid = t.id; r.prop = addr; });
+    });
+    // Unpaid invoices that will come off a rent (the current statement or the next rent): money out too.
+    const pendI = await statementPending(p);
+    tcys.forEach(function (t) {
+      const addr = short((t.data || {}).address || t.address);
+      (pendI[t.id] || []).forEach(function (g) { g.invoices.forEach(function (i) {
+        rows.push({ at: g.from, what: 'Invoice ' + i.number + (i.title && i.title.indexOf(i.number) === -1 ? ' · ' + i.title : '') + ' · ' + addr + ' (to come off the ' + certDay(g.from) + ' rent)', out: r2(i.total), pending: true, tid: t.id, prop: addr });
+      }); });
     });
     rows.sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : (b.in ? 1 : 0) - (a.in ? 1 : 0); });
-    let bal = 0; rows.forEach(function (r) { bal = r2(bal + (r.in || 0) - (r.out || 0)); if (!r.note) r.balance = bal; });
-    return { rows: rows, money_in: r2(rows.reduce(function (a, r) { return a + (r.in || 0); }, 0)), money_out: r2(rows.reduce(function (a, r) { return a + (r.out || 0); }, 0)), balance: bal };
+    let bal = 0; const tb = {}; rows.forEach(function (r) { bal = r2(bal + (r.in || 0) - (r.out || 0)); tb[r.tid] = r2((tb[r.tid] || 0) + (r.in || 0) - (r.out || 0)); if (!r.note) { r.balance = bal; r.tbal = tb[r.tid]; } });
+    const props = tcys.filter(function (t) { return rows.some(function (r) { return r.tid === t.id; }); }).map(function (t) { return { tid: t.id, address: (t.data || {}).address || t.address, prop: short((t.data || {}).address || t.address), balance: tb[t.id] || 0 }; });
+    return { rows: rows, props: props, money_in: r2(rows.reduce(function (a, r) { return a + (r.in || 0); }, 0)), money_out: r2(rows.reduce(function (a, r) { return a + (r.out || 0); }, 0)), balance: bal };
   }
   // The landlord's own full statement of account on their page: every payment in and out for a period
   // (all time, last 12 months, this tax year or chosen dates), brought forward, totals, balance, unpaid invoices.

@@ -1098,6 +1098,7 @@
   .kv-mini { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font-size: .88rem; } .kv-mini span { color: var(--ink-soft, #667085); } .kv-mini b { font-weight: 600; overflow-wrap: anywhere; }
   .fee-run { display: grid; grid-template-columns: 58px minmax(0, 1fr) 92px 96px; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line, #eef0f3); font-size: .86rem; align-items: baseline; } .fee-run > span:nth-child(n+3) { text-align: right; white-space: nowrap; } .fee-run small { display: block; color: var(--ink-soft, #667085); font-size: .76rem; } .fee-run-h { font-size: .74rem; color: var(--ink-soft, #667085); font-weight: 700; border-top: 0; }
   @media (max-width: 560px) { .fee-run { grid-template-columns: 46px minmax(0, 1fr) 78px; } .fee-run > span:nth-child(4) { grid-column: 2 / 4; text-align: right; font-size: .78rem; color: var(--ink-soft, #667085); } .fee-run > span:nth-child(4) b::before { content: 'Running total '; font-weight: 400; } .fee-run-h > span:nth-child(4) { display: none; } }
+  .la-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .la-tabs button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: inherit; } .la-tabs button small { font-weight: 500; color: var(--ink-soft, #667085); margin-left: 4px; } .la-tabs button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; } .la-tabs button.on small { color: rgba(255,255,255,.75); }
   .la-sub { margin: 14px 0 6px; font-size: .95rem; }
   .ll-cost { display: block; margin-top: 3px; font-size: .75rem; font-weight: 700; color: var(--navy, #0b1f3a); white-space: nowrap; } .ll-cost i { display: block; font-style: normal; font-weight: 500; color: var(--ink-soft, #667085); }
   .tm-incl { display: flex; flex-wrap: wrap; gap: 6px 14px; } .tm-incl-i { display: flex; gap: 6px; align-items: center; font-size: .92rem; }
@@ -2900,6 +2901,7 @@
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px">
         <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="niVat" checked> Add VAT (20%)</label>
         <label style="display:flex;gap:6px;align-items:center" id="niDueWrap">Due <input class="inp" type="date" id="niDue" style="width:auto"></label>
+        <label style="display:flex;gap:6px;align-items:center" id="niCmWrap">Take from <select class="inp" id="niCm" style="width:auto" title="Which rent it comes off"></select></label>
         <label style="display:flex;gap:6px;align-items:center" id="niValidWrap" hidden>Valid for <select class="inp" id="niValid" style="width:auto"><option value="14">14 days</option><option value="30" selected>30 days</option><option value="60">60 days</option><option value="90">90 days</option></select></label>
       </div>
       <p class="muted-note" id="niEditNote" hidden style="margin:10px 0 0"></p>
@@ -5330,6 +5332,7 @@
     if ($('tcyAvBanner')) { var t = tcyDraft; $('tcyAvBanner').innerHTML = t && t.address && openTcyId !== 'new' ? avBannerHtml([t.address]) : ''; }
     var rc = $('tcyRentCard'); if (rc && !rc.dataset.wired) { rc.dataset.wired = 1; rc.addEventListener('click', rentCardClick); }
     if (rc && tcyDraft && openTcyId !== 'new') { var tx = tenancies.filter(function(z){ return z.id === openTcyId; })[0]; rentCardLoad(rc, (tx && tx.address) || tcyDraft.address, openTcyId); }
+    if ($('tcyAcct') && tcyDraft && openTcyId !== 'new' && !staffMode) renderTcyAccount(openTcyId, tcyDraft);
   }
   document.addEventListener('click', function(e){
     var b = e.target.closest('[data-avgo]'); if (!b) return;
@@ -9657,9 +9660,9 @@
       '<div class="la-r la-tot"><span></span><span class="la-w"><b>' + (st.cf < 0 ? 'They owe us' : 'Held for them') + ' at ' + esc(ukDay(st.to)) + '</b></span><span></span><span></span><span><b>' + gbp(Math.abs(st.cf)) + '</b></span></div></div>' +
       (un.length ? '<h4 class="la-sub">Outstanding invoices (' + gbp(sumTotal(un)) + ')</h4><div class="la-tbl">' + un.map(function(i){ return '<div class="la-r la-inv"><span>' + esc(ukDay(String(i.created_at || '').slice(0, 10), true)) + '</span><span class="la-w">' + esc(i.number || '') + ' · ' + esc(String(i.property_address || '').split(',')[0]) + (i.due ? ' · due ' + esc(ukDay(i.due, true)) : '') + '</span><span></span><span class="la-out">' + gbp(i.total) + '</span><span></span></div>'; }).join('') + '</div>' : '');
   }
-  function openLlStatement(l, a, unpaid){
-    laCur = { l: l, a: a, unpaid: unpaid || [] };
-    $('laTitle').textContent = '📄 Full statement — ' + (l.name || 'landlord');
+  function openLlStatement(l, a, unpaid, prop){
+    laCur = { l: l, a: a, unpaid: unpaid || [], prop: prop || '' };
+    $('laTitle').textContent = '📄 Full statement — ' + (prop ? String(prop).split(',')[0] : (l.name || 'landlord'));
     laDraw(); $('laModal').hidden = false;
   }
   function laPdf(){
@@ -9672,6 +9675,7 @@
     var y = 140; doc.setFontSize(10);
     [l.name].concat(String(l.address || '').split(/\n|,\s*/)).filter(Boolean).forEach(function(line){ doc.text(line, X, y); y += 13; });
     y = Math.max(y + 14, 206); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('LANDLORD ACCOUNT STATEMENT', W / 2, y, { align: 'center' });
+    if (laCur.prop) { y += 15; doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(doc.splitTextToSize(laCur.prop, W - 120)[0], W / 2, y, { align: 'center' }); }
     y += 16; doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
     doc.text((st.from ? ukDay(st.from) : 'From the start') + '  –  ' + ukDay(st.to) + '     ·     Printed ' + ukDay(todayIso()), W / 2, y, { align: 'center' });
     var head = function(){ y += 22; doc.setFillColor(11, 31, 58); doc.rect(X - 4, y - 11, R - X + 8, 16, 'F'); doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
@@ -9711,29 +9715,56 @@
   $('laClose').addEventListener('click', function(){ $('laModal').hidden = true; });
   $('laPdf').addEventListener('click', function(){ openPdf(laPdf(), pdfName('Statement', laCur.l.name)); });
   $('laPdfDl').addEventListener('click', function(){ deliverPdf(laPdf(), pdfName('Statement', laCur.l.name), false); });
+  // An account (landlord page or tenancy page). A landlord with more than one property sees one property at a
+  // time (tabs, each with its own running balance), or All.
+  function acctDraw(box, a, o){
+    var props = (a && a.props) || [], all = (a && a.rows) || [];
+    var tid = props.length > 1 ? (box.dataset.tid || String(props[0].tid)) : '';
+    var prop = tid && tid !== 'all' ? props.filter(function(x){ return String(x.tid) === tid; })[0] : null;
+    var rows = prop ? all.filter(function(r){ return String(r.tid) === tid; }).map(function(r){ return Object.assign({}, r, { balance: r.tbal }); }) : all;
+    var r2 = function(v){ return Math.round(v * 100) / 100; };
+    var mIn = r2(rows.reduce(function(t, r){ return t + (r.in || 0); }, 0)), mOut = r2(rows.reduce(function(t, r){ return t + (r.out || 0); }, 0)), bal = r2(mIn - mOut);
+    var pk = prop ? propKey(prop.address) : null;
+    var unpaid = pk ? (o.unpaid || []).filter(function(i){ return propKey(i.property_address) === pk; }) : (o.unpaid || []);
+    var jobsOpen = pk ? (o.openJobs || []).filter(function(j){ return propKey(j.property_address) === pk; }) : (o.openJobs || []);
+    var od = unpaid.filter(invOverdue), allRows = box.dataset.all === '1';
+    var shown = allRows ? rows.slice().reverse() : rows.slice(-12).reverse();
+    box.innerHTML = '<h3>💷 ' + esc(o.title) + '</h3>' +
+      (props.length > 1 ? '<div class="la-tabs">' + props.map(function(x){ return '<button type="button" data-la-tid="' + x.tid + '" class="' + (String(x.tid) === tid ? 'on' : '') + '">' + esc(x.prop) + ' <small>' + gbp(x.balance) + '</small></button>'; }).join('') + '<button type="button" data-la-tid="all" class="' + (tid === 'all' ? 'on' : '') + '">All properties</button></div>' : '') +
+      '<div class="la-tiles"><div><span>Money in</span><b>' + gbp(mIn) + '</b></div><div><span>Money out</span><b>' + gbp(mOut) + '</b></div>' +
+      '<div><span>' + (bal < 0 ? 'They owe us' : 'Held for them') + '</span><b' + (bal < 0 ? ' style="color:var(--red,#c00)"' : '') + '>' + gbp(Math.abs(bal)) + '</b></div>' +
+      '<div><span>Outstanding invoices</span><b' + (unpaid.length ? ' style="color:var(--red,#c00)"' : '') + '>' + gbp(sumTotal(unpaid)) + '</b><small>' + unpaid.length + (od.length ? ' · ' + od.length + ' overdue' : '') + '</small></div>' +
+      '<div><span>Outstanding work</span><b>' + jobsOpen.length + '</b><small>open repair' + (jobsOpen.length === 1 ? '' : 's') + '</small></div></div>' +
+      (rows.length ? '<div class="la-tbl"><div class="la-r la-h"><span>Date</span><span>What</span><span>In</span><span>Out</span><span>Balance</span></div>' +
+        shown.map(laRowHtml).join('') + '</div>' +
+        '<div class="row-actions" style="margin-top:6px;flex-wrap:wrap">' + (rows.length > 12 ? '<button type="button" class="btn small ghost" data-la-all>' + (allRows ? 'Show the latest only' : 'Show all ' + rows.length) + '</button>' : '') +
+        '<button type="button" class="btn small" data-la-full>📄 Full statement' + (prop ? ' — ' + esc(prop.prop) : '') + '</button></div>'
+        : '<p class="muted-note" style="margin:6px 0 0">No rent collected through Fixflow yet.</p>') +
+      (unpaid.length ? '<h4 class="la-sub">Outstanding invoices</h4><div class="list">' + unpaid.map(function(i){ return invRowHtml(i, true); }).join('') + '</div>' : '') +
+      (jobsOpen.length ? '<h4 class="la-sub">Outstanding work</h4><div class="list">' + jobsOpen.map(rowHtml).join('') + '</div>' : '');
+    box.onclick = function(e){
+      var t = e.target.closest('[data-la-tid]'); if (t) { box.dataset.tid = t.dataset.laTid; box.dataset.all = ''; acctDraw(box, a, o); return; }
+      if (e.target.closest('[data-la-all]')) { box.dataset.all = allRows ? '' : '1'; acctDraw(box, a, o); return; }
+      if (e.target.closest('[data-la-full]')) openLlStatement(o.l, { rows: rows }, unpaid, prop ? prop.address : (o.prop || ''));
+    };
+  }
   function renderLlAccount(l, openJobs, unpaid){
     var box = $('llAcct'); if (!box) return;
-    var draw = function(a){
-      if (openLlId !== l.id) return;
-      var rows = (a && a.rows) || [], od = unpaid.filter(invOverdue), allRows = box.dataset.all === '1';
-      var shown = allRows ? rows.slice().reverse() : rows.slice(-12).reverse();
-      box.innerHTML = '<h3>💷 Landlord account</h3>' +
-        '<div class="la-tiles"><div><span>Money in</span><b>' + gbp((a && a.money_in) || 0) + '</b></div><div><span>Money out</span><b>' + gbp((a && a.money_out) || 0) + '</b></div>' +
-        '<div><span>' + (((a && a.balance) || 0) < 0 ? 'They owe us' : 'Held for them') + '</span><b' + (((a && a.balance) || 0) < 0 ? ' style="color:var(--red,#c00)"' : '') + '>' + gbp(Math.abs((a && a.balance) || 0)) + '</b></div>' +
-        '<div><span>Outstanding invoices</span><b' + (unpaid.length ? ' style="color:var(--red,#c00)"' : '') + '>' + gbp(sumTotal(unpaid)) + '</b><small>' + unpaid.length + (od.length ? ' · ' + od.length + ' overdue' : '') + '</small></div>' +
-        '<div><span>Outstanding work</span><b>' + openJobs.length + '</b><small>open repair' + (openJobs.length === 1 ? '' : 's') + '</small></div></div>' +
-        (rows.length ? '<div class="la-tbl"><div class="la-r la-h"><span>Date</span><span>What</span><span>In</span><span>Out</span><span>Balance</span></div>' +
-          shown.map(laRowHtml).join('') + '</div>' +
-          '<div class="row-actions" style="margin-top:6px;flex-wrap:wrap">' + (rows.length > 12 ? '<button type="button" class="btn small ghost" id="laAll">' + (allRows ? 'Show the latest only' : 'Show all ' + rows.length) + '</button>' : '') +
-          '<button type="button" class="btn small" id="laFull">📄 Full statement</button></div>'
-          : '<p class="muted-note" style="margin:6px 0 0">No rent collected for them through Fixflow yet.</p>') +
-        (unpaid.length ? '<h4 class="la-sub">Outstanding invoices</h4><div class="list">' + unpaid.map(function(i){ return invRowHtml(i, true); }).join('') + '</div>' : '') +
-        (openJobs.length ? '<h4 class="la-sub">Outstanding work</h4><div class="list">' + openJobs.map(rowHtml).join('') + '</div>' : '');
-      if ($('laAll')) $('laAll').addEventListener('click', function(){ box.dataset.all = allRows ? '' : '1'; draw(a); });
-      if ($('laFull')) $('laFull').addEventListener('click', function(){ openLlStatement(l, a, unpaid); });
-    };
-    draw(null);
-    api('GET', '/api/admin/landlords/' + l.id + '/account').then(function(a){ if (a && a.ok) draw(a); });
+    var o = { title: 'Landlord account', l: l, unpaid: unpaid, openJobs: openJobs };
+    acctDraw(box, null, o);
+    api('GET', '/api/admin/landlords/' + l.id + '/account').then(function(a){ if (a && a.ok && openLlId === l.id) acctDraw(box, a, o); });
+  }
+  // The tenancy's own account (same lines, just this tenancy), under its Rent card.
+  function renderTcyAccount(id, d){
+    var box = $('tcyAcct'); if (!box) return;
+    api('GET', '/api/admin/tenancies/' + id + '/account').then(function(a){
+      if (openTcyId !== id || !a || !a.ok) return;
+      if (!(a.rows || []).length) { box.hidden = true; return; }
+      box.hidden = false;
+      var pk = propKey(d.address || ''), l = d.landlord || {};
+      acctDraw(box, a, { title: 'Account for this property', l: { name: l.name || 'Landlord', address: [l.line1, l.line2, l.country, l.postcode].filter(Boolean).join(', ') }, prop: d.address || '',
+        unpaid: allInvoices.filter(function(i){ return !i.paid_at && propKey(i.property_address) === pk; }), openJobs: jobs.filter(function(j){ return isOpen(j) && propKey(j.property_address) === pk; }) });
+    });
   }
   function renderLandlord(){
     var l = landlordById(openLlId);
@@ -9804,7 +9835,7 @@
           (g.paid.length ? '<details style="margin-top:6px"><summary class="muted-note" style="cursor:pointer">Paid (' + g.paid.length + ' · ' + gbp(sumTotal(g.paid)) + ')</summary><div class="list" style="margin-top:6px">' + g.paid.map(function(i){ return invRowHtml(i, true); }).join('') + '</div></details>' : '') + '</div>';
       }).join('') : '<p class="muted-note">No invoices yet.</p>');
   }
-  wireInvList($('llOwed')); wireInvList($('propInv'));
+  wireInvList($('llOwed')); wireInvList($('propInv')); if ($('llAcct')) wireInvList($('llAcct'));
   $('navLandlords').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; showView('ll'); });
   $('llBack').addEventListener('click', function(){ openLlId = null; $('llDetail').hidden = true; $('llListView').hidden = false; renderLandlords(); pushNav(); });
   $('llSearch').addEventListener('input', renderLandlords);
@@ -11301,6 +11332,7 @@
     ni = Object.assign({ address: '', title: '', lines: [{ desc: '', amount: '' }], vat: true, tenancy_id: null, kind: '', props: null, after: null, mode: '', job_id: null, landlord_id: null }, o || {});
     var quote = ni.mode === 'quote';
     $('niTitle').textContent = quote ? 'New quotation for the landlord' : 'New invoice to the landlord'; $('niCreate').textContent = quote ? 'Create quote' : 'Create invoice';
+    $('niCmWrap').hidden = quote; $('niCm').innerHTML = invMonthOpts(ni.collect_month || '');
     $('niDueWrap').hidden = quote; $('niValidWrap').hidden = !quote; $('niNotesWrap').hidden = !quote; $('niNotes').value = ni.notes || ''; $('niValid').value = String(ni.validDays || 30);
     $('niAiRow').hidden = !quote || !meta.canAi; $('niAiTotal').value = ''; $('niAiMsg').dataset.base = $('niAiMsg').dataset.base || $('niAiMsg').textContent; $('niAiMsg').textContent = $('niAiMsg').dataset.base;
     if (ni.editId) { $('niTitle').textContent = 'Edit quotation'; $('niCreate').textContent = 'Save changes'; }
@@ -11340,7 +11372,7 @@
     if (ni.mode === 'quote' && ni.editId) { niSaveQuote(lines); return; }
     if (ni.mode === 'quote') { niCreateQuote(addr, lines); return; }
     var b = $('niCreate'); busy(b, true, 'Creating…');
-    api('POST', '/api/admin/invoices', { address: addr, title: $('niTitleIn').value.trim() || lines[0].desc, lines: lines.map(function(l){ return { desc: l.desc, amount: num(l.amount), novat: !!l.novat }; }), vat: $('niVat').checked, due: $('niDue').value, tenancy_id: ni.tenancy_id, kind: ni.kind }).then(function(d){
+    api('POST', '/api/admin/invoices', { address: addr, title: $('niTitleIn').value.trim() || lines[0].desc, lines: lines.map(function(l){ return { desc: l.desc, amount: num(l.amount), novat: !!l.novat }; }), vat: $('niVat').checked, due: $('niDue').value, collect_month: $('niCm').value, tenancy_id: ni.tenancy_id, kind: ni.kind }).then(function(d){
       busy(b, false);
       if (!d.ok) { toast('Couldn’t create the invoice (' + (d.error || 'error') + ')'); return; }
       var body = llGreeting(d.landlord_name) + ',\n\nPlease find invoice ' + d.number + ' for ' + gbp(d.total) + ' — ' + ($('niTitleIn').value.trim() || lines[0].desc) + ' (' + shortAddr(addr) + ').' + (d.url ? '\n\nView the invoice and how to pay: ' + d.url : '') + '\n\nKind regards,\nResidential Realtors';
@@ -16085,7 +16117,7 @@
     $('tcyDetail').innerHTML =
       '<button class="btn small ghost" id="tcyBack" type="button">← All tenancies</button>' +
       '<div class="prop-head"><div><h2>' + esc(x ? d.address || 'Tenancy' : 'New tenancy') + '</h2><div class="prop-sub">' + esc(x ? tcyStatus(d) : 'Fill in the details, then save to make the documents and emails.') + '</div>' +
-        '<div id="tcyAvBanner"></div>' + (x && tcyRentByUs(d) ? '<div class="card" id="tcyRentCard" hidden style="margin:10px 0"></div>' : '') +
+        '<div id="tcyAvBanner"></div>' + (x && tcyRentByUs(d) ? '<div class="card" id="tcyRentCard" hidden style="margin:10px 0"></div>' : '') + (x ? '<div class="card" id="tcyAcct" hidden style="margin:10px 0"></div>' : '') +
         // Straight to the property and the landlord.
         (x ? (function(){
           var pr = d.address && matchProperty(d.address), lr = findLandlordRec(d.landlord || {}, d.address);
