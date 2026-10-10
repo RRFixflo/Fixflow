@@ -13962,7 +13962,39 @@ document.querySelectorAll('.lcu').forEach(function(box){
   if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME) setTimeout(function () { checkLinksUsed().catch(function () {}); }, 120000).unref();
   // Signed in to Fixflow (for staff-only previews on the website).
   function isStaff(req) { const t = parseToken(readCookie(req, 'rr_admin')); if (!t) return false; const c = t.sid && sessionCache.get(t.sid); return !(c && c.revoked); }
-  return { saveReport: saveReport, hasDb: async function () { return !!(await db()); }, isStaff: isStaff, db: db, refuseBot: refuseBot,
+  // Our track record for landlords, from our own records only (never estimated): new tenancies started in the last
+  // 12 months, how long homes took to let (online → let, Available properties), the rent agreed against the asking
+  // rent, and how many London boroughs we've let in. Each figure is only shown when it rests on enough cases.
+  const AREAS_TR = require('./areas-data'), OC_BOROUGH = {};
+  AREAS_TR.forEach(function (a) { (a.outcodes || []).forEach(function (o) { OC_BOROUGH[o] = a.name; }); });
+  let trackNow = null;
+  async function refreshTrack() {
+    const p = await db(); if (!p) return null;
+    const med = function (a) { if (!a.length) return null; const s = a.slice().sort(function (x, y) { return x - y; }), m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+    const lets = (await p.query("SELECT address, rent_pcm, COALESCE(online_since, created_at) AS listed, let_on FROM available_props WHERE let_on IS NOT NULL AND let_on > now() - interval '12 months'")).rows;
+    const tcys = (await p.query("SELECT property_key, address, start_date, data->>'rent_pcm' AS rent FROM tenancies")).rows;
+    const today = Date.now(), yearAgo = today - 365 * 86400000, dayOf = function (v) { const t = Date.parse(String(v || '').slice(0, 10)); return isFinite(t) ? t : null; };
+    const days = lets.map(function (r) { return Math.round((Date.parse(r.let_on) - Date.parse(r.listed)) / 86400000); }).filter(function (d) { return d >= 0 && d <= 180; });
+    const ratios = [];
+    lets.forEach(function (r) {
+      const ask = Number(r.rent_pcm) || 0, k = propKey(r.address), on = Date.parse(r.let_on); if (!ask || !k) return;
+      const t = tcys.filter(function (x) { const st = dayOf(x.start_date); return x.property_key === k && Number(x.rent) > 0 && st != null && st >= on - 30 * 86400000 && st <= on + 120 * 86400000; })[0];
+      if (t) { const q = Number(t.rent) / ask; if (q > 0.7 && q < 1.3) ratios.push(q); }
+    });
+    const started = tcys.filter(function (x) { const st = dayOf(x.start_date); return st != null && st >= yearAgo && st <= today + 60 * 86400000; });
+    const boroughs = {}; tcys.forEach(function (x) { const m = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}\b/i.exec(String(x.address || '')); const b = m && OC_BOROUGH[m[1].toUpperCase()]; if (b) boroughs[b] = 1; });
+    const md = med(days), mr = med(ratios);
+    trackNow = { at: new Date().toISOString(),
+      tenancies: started.length >= 5 ? started.length : null,
+      days: days.length >= 5 ? Math.max(1, Math.round(md)) : null, daysN: days.length,
+      rentPct: ratios.length >= 5 ? Math.round(mr * 1000) / 10 : null, rentN: ratios.length,
+      boroughs: Object.keys(boroughs).length >= 3 ? Object.keys(boroughs).length : null };
+    return trackNow;
+  }
+  setTimeout(function () { refreshTrack().catch(function (e) { console.error('Track record:', e.message); }); }, 20000).unref();
+  setInterval(function () { refreshTrack().catch(function (e) { console.error('Track record:', e.message); }); }, 6 * 3600000).unref();
+  app.get('/api/admin/track-record', withDb(async function (p, req, res) { res.json({ ok: true, track: await refreshTrack() }); }));
+  return { saveReport: saveReport, hasDb: async function () { return !!(await db()); }, isStaff: isStaff, db: db, refuseBot: refuseBot, trackRecord: function () { return trackNow; },
     // For other parts of the site (landlord alerts): send an email, and the office phone alert.
     sendMail: function (o) { return canEmail() && sendEmail ? sendEmail(o) : Promise.resolve({ ok: false, error: 'email-off' }); },
     alert: function (o) { return ntfy(o).catch(function () {}); },
