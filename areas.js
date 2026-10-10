@@ -54,16 +54,19 @@ module.exports = function (app, opts) {
     // Local letting guide: who rents, how quickly homes let (our own experience across London), universities, transport, FAQs.
     const unis = (a.unis || []).length ? a.unis.slice(0, -1).join(', ') + (a.unis.length > 1 ? ' and ' : '') + a.unis[a.unis.length - 1] : '';
     const who = 'Most of our tenants are students and young professionals' + (unis ? ' — ' + esc(a.name) + ' is home to ' + esc(unis) : ', many working in the City, the West End and Canary Wharf') + '.';
+    // How fast homes let: our real median when we have enough lets, else what we usually see.
+    const T = opts.track && opts.track(), fast = T && T.days ? 'typically lets in ' + T.days + ' day' + (T.days === 1 ? '' : 's') + ' (the median across our lets in the last 12 months)' : 'usually lets within 1–2 weeks';
     h += '<section class="ag"><div class="wrap sw-how"><div class="rv"><p class="kicker">Local letting guide</p><h2>Letting a property in ' + esc(a.name) + '</h2>' +
-      '<p>We let and manage homes across all of London, including ' + esc(a.name) + '. ' + who + ' In our experience, a well-presented home at the right rent usually lets within 1–2 weeks.</p>' +
-      '<div class="ag-g"><div><span>Who rents</span><b>Students and young professionals</b></div><div><span>Time to let</span><b>Usually 1–2 weeks</b><small>Our experience, when priced right</small></div>' +
+      '<p>We let and manage homes across all of London, including ' + esc(a.name) + '. ' + who + ' In our experience, a well-presented home at the right rent ' + fast + '.</p>' +
+      '<div class="ag-g"><div><span>Who rents</span><b>Students and young professionals</b></div><div><span>Time to let</span>' + (T && T.days ? '<b>' + T.days + ' day' + (T.days === 1 ? '' : 's') + '</b><small>Median, our lets in the last 12 months</small>' : '<b>Usually 1–2 weeks</b><small>Our experience, when priced right</small>') + '</div>' +
       '<div class="ag-w"><span>Getting around</span><b>' + esc(a.transport || '') + '</b></div>' + (unis ? '<div class="ag-w"><span>Universities</span><b>' + esc(unis) + '</b></div>' : '') + '</div></div>' +
       '<div class="sw-faq rv"><h3>Common questions</h3>' +
       (beds['2'] ? '<details><summary>How much does it cost to rent a 2 bedroom home in ' + esc(a.name) + '?</summary><p>The ONS average for a 2 bedroom home in ' + esc(a.name) + ' is ' + gbp(beds['2']) + ' a month' + (f.bedsMonth ? ' (' + esc(f.bedsMonth) + ')' : '') + '. Rents vary street by street, so ask us for a free valuation of your property.</p></details>' : '') +
-      '<details><summary>How quickly do rental homes let in ' + esc(a.name) + '?</summary><p>In our experience, usually within 1–2 weeks when the home is well presented and priced in line with the local market.</p></details>' +
+      '<details><summary>How quickly do rental homes let in ' + esc(a.name) + '?</summary><p>' + (T && T.days ? 'Across our lets in the last 12 months the typical (median) time from going online to let was ' + T.days + ' day' + (T.days === 1 ? '' : 's') + '. A well-presented home priced in line with the local market lets fastest.' : 'In our experience, usually within 1–2 weeks when the home is well presented and priced in line with the local market.') + '</p></details>' +
       '<details><summary>Who rents in ' + esc(a.name) + '?</summary><p>' + who + '</p></details>' +
       '<details><summary>Do landlords in ' + esc(a.name) + ' need a property licence?</summary><p>It depends on the council’s licensing schemes and the property. Check your address with our free licence checker, and we can apply for you free of charge (council fee separate).</p></details>' +
       '</div></div></section>';
+    if (opts.trackHtml) h += opts.trackHtml(a.name);
     const homes = opts.listings && opts.listings() ? opts.listings().near(req, a.outcodes, 8) : '';
     if (homes) h += '<section class="ar-homes"><div class="wrap"><div class="head2 row"><div><h2>Homes in and around ' + esc(a.name) + '</h2></div><div class="car-nav"><button type="button" class="car-b" data-car="-1" aria-label="Previous homes">‹</button><button type="button" class="car-b" data-car="1" aria-label="More homes">›</button></div></div><div class="car" id="car">' + homes + '</div></div></section>';
     h += '<section class="ar-more"><div class="wrap ar-cols">' +
@@ -72,8 +75,27 @@ module.exports = function (app, opts) {
       '<p class="ar-also">Landlords in ' + esc(a.name) + ': <a href="/gas-safety-certificate/' + a.slug + '">Gas Safety certificate</a> · <a href="/eicr/' + a.slug + '">EICR</a> · <a href="/epc/' + a.slug + '">EPC</a> · <a href="/diy-inventory/' + a.slug + '">inventory</a> · <a href="/property-checks#licence">licence check</a></p></div></div></section>';
     h += cta(a.name);
     const desc = f.rent ? 'Letting in ' + a.name + ': the average rent is ' + gbp(f.rent) + ' a month' + (f.rentMonth ? ' (' + f.rentMonth + ', ONS)' : ' (ONS)') + '. Rent by bedrooms, local letting guide, homes to rent and a free rental valuation.' : 'Rental values, areas and homes to rent in ' + a.name + ', London.';
-    opts.send(req, res, { name: 'rents', stamp: 'ar' + a.slug + ver, canon: '/london-rents/' + a.slug, crumb: 'London rents', crumbUrl: '/london-rents', crumb2: a.name,
+    opts.send(req, res, { name: 'rents', stamp: 'ar' + a.slug + ver + ((T || {}).at || ''), canon: '/london-rents/' + a.slug, crumb: 'London rents', crumbUrl: '/london-rents', crumb2: a.name,
       title: 'Letting Agents in ' + a.name + ': Average Rent' + (f.rentMonth ? ' (' + String(f.rentMonth).replace(/^\w+ /, '') + ')' : '') + ' | Residential Realtors', desc: desc, robots: f.rent ? undefined : 'noindex, follow' }, h);
+  });
+
+  // Areas we cover: every London borough for landlords (letting and management across all 33), with our track record.
+  app.get('/letting-agents/:slug', function (req, res, next) { const a = BY[String(req.params.slug).toLowerCase()]; if (!a) return next(); res.redirect(301, '/london-rents/' + a.slug); });
+  app.get(['/letting-agents', '/areas-we-cover', '/areas'], function (req, res) {
+    const L = ons.london || {}, T = opts.track && opts.track();
+    let h = '<section class="ar-hero"><div class="wrap"><p class="ar-kick">Areas we cover</p><h1>Letting agents for all of London</h1>' +
+      '<p class="ar-lead">We let and manage homes in every one of London’s 33 boroughs — from Zone 1 flats to family houses in the suburbs. Pick your borough for local rents, who rents there and how quickly homes let.</p>' +
+      '<div class="btns" style="margin-top:14px"><a class="btn red" href="/landlords#valuation">Free rental valuation →</a><a class="btn line" href="/landlords#services">Our services &amp; fees</a></div></div></section>';
+    if (opts.trackHtml) h += opts.trackHtml('');
+    h += '<section class="ar-main"><div class="wrap">' + REGIONS.map(function (r) {
+      const list = AREAS.filter(function (a) { return a.region === r[0]; }).sort(function (x, y) { return x.name.localeCompare(y.name); });
+      return '<div class="ar-card rv" style="margin-bottom:14px"><h2>' + r[1] + ' <small>' + list.length + ' boroughs</small></h2><ul class="ar-list ar-cover">' + list.map(function (a) { const g = fig(a);
+        return '<li><a href="/london-rents/' + a.slug + '"><b>Letting agent in ' + esc(a.name) + '</b><span>' + esc(a.areas.slice(0, 3).join(', ')) + (g.rent ? ' · average rent ' + gbp(g.rent) + ' pcm' : '') + '</span></a></li>'; }).join('') + '</ul></div>';
+    }).join('') + '<p class="ar-src">Average rents: Office for National Statistics (all private rented homes in each borough). Track record: our own records.</p></div></section>' + cta('London');
+    opts.send(req, res, { name: 'rents', stamp: 'cover' + ver + ((T || {}).at || ''), canon: '/letting-agents', crumb: 'Areas we cover',
+      title: 'Letting Agents Across All of London — 33 Boroughs | Residential Realtors',
+      desc: 'Letting and property management in every London borough. Local rents, how quickly homes let and a free rental valuation from Residential Realtors, London SE1.',
+      ld: [{ '@type': 'RealEstateAgent', name: 'Residential Realtors', url: 'https://www.residentialrealtors.co.uk/', telephone: '+442070968131', areaServed: AREAS.map(function (a) { return { '@type': 'AdministrativeArea', name: a.name + ', London' }; }) }] }, h);
   });
 
   // Every borough, by region.
@@ -155,5 +177,5 @@ module.exports = function (app, opts) {
     return { slug: a.slug, name: a.name, rent: v || 0, month: f.bedsMonth || f.rentMonth || '', all: f.rent || 0, beds: f.beds || null };
   };
 
-  return { parseOns: parseOns, onsBeds: onsBeds, urls: function () { return ['/london-rents'].concat(AREAS.filter(function (a) { return fig(a).rent; }).map(function (a) { return '/london-rents/' + a.slug; })); } };
+  return { parseOns: parseOns, onsBeds: onsBeds, urls: function () { return ['/letting-agents', '/london-rents'].concat(AREAS.filter(function (a) { return fig(a).rent; }).map(function (a) { return '/london-rents/' + a.slug; })); } };
 };

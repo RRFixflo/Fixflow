@@ -274,7 +274,7 @@ function asset(name) {
 function siteFooter(home) {
   return '<footer><div class="wrap"><div class="cols">' +
     '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Estate agents, lettings and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div><div style="margin-top:6px">Open 7 days, 9am–7pm</div></div>' +
-    '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/london-rents">London rents by area</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlord-tools">Landlord tools</a><a href="/landlord-compliance">Landlord compliance checklist</a><a href="/switch-letting-agent">Switching letting agent</a><a href="/overseas-landlords">Overseas landlords</a><a href="/services">All landlord services</a><a href="/gas-safety-certificate">Gas Safety certificate</a><a href="/eicr">EICR</a><a href="/epc">EPC</a><a href="/property-checks">EPC &amp; licence checker</a><a href="/landlord-updates">Landlord updates &amp; alerts</a><a href="/diy-inventory">DIY inventory</a><a href="/landlord-portal-demo">Example landlord portal</a></div>' +
+    '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/letting-agents">Areas we cover — all of London</a><a href="/london-rents">London rents by area</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlord-tools">Landlord tools</a><a href="/landlord-compliance">Landlord compliance checklist</a><a href="/switch-letting-agent">Switching letting agent</a><a href="/overseas-landlords">Overseas landlords</a><a href="/services">All landlord services</a><a href="/gas-safety-certificate">Gas Safety certificate</a><a href="/eicr">EICR</a><a href="/epc">EPC</a><a href="/property-checks">EPC &amp; licence checker</a><a href="/landlord-updates">Landlord updates &amp; alerts</a><a href="/diy-inventory">DIY inventory</a><a href="/landlord-portal-demo">Example landlord portal</a></div>' +
     '<div><h4>Tenants</h4><a href="/report-a-repair">Report a repair</a><a href="/offer">Make an offer</a><a href="/tenants">Renting with us</a><a href="/book-a-clean">Book a moving-out clean</a><a href="/tenants#fees">Tenant fees</a><a href="/tenants#guides">Renting guides</a></div>' +
     '<div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="/about">About us</a><a href="/news">Property news</a><a href="/privacy">Privacy</a></div>' +
     '</div><div class="accred">' +
@@ -312,6 +312,7 @@ function siteFooter(home) {
 const isSiteHost = function (req) { return SITE_HOSTS.indexOf(String(req.hostname || '').toLowerCase()) !== -1; };
 function siteShell(name, home, req) {
   let body = fs.readFileSync(path.join(__dirname, 'site', name + '.html'), 'utf8');
+  if (name === 'home') body = body.replace('<section class="tools2">', trackHtml('') + '<section class="tools2">');
   if (name === 'home') body = body.replace('<!--FEATURED-->', listings ? listings.featured(req) : '').replace('<!--HEROSEARCH-->', heroSearch(req)).replace('<!--STATS-->', heroStats(req)).replace('<!--AREAS-->', heroAreas(req)).replace('<!--EXPERTS-->', heroExperts(req)).replace('<!--NEWS-->', news ? news.section() : '');
   return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
     siteHead(name, body) + SITE_FONTS + '<link rel="stylesheet" href="' + asset('site.css') + '"></head><body>' + siteHeader(name, home, req) + '<main>' + body + '</main>' + siteFooter(home) +
@@ -358,6 +359,20 @@ function heroExperts(req) {
       '<a class="btn red xd-go" href="/book-certificate?service=diy">Buy &amp; start now →</a></div></div>' +
     '</div>';
 }
+// Our track record for landlords (jobs.trackRecord(): our own records, last 12 months; each figure only when it
+// rests on enough cases). Nothing shows until there is real data — never a made-up figure.
+function trackHtml(where) {
+  const t = jobs && jobs.trackRecord && jobs.trackRecord(); if (!t) return '';
+  const tiles = [];
+  if (t.days) tiles.push(['<b>' + t.days + ' day' + (t.days === 1 ? '' : 's') + '</b>', 'typical time from going online to let', 'median of ' + t.daysN + ' homes']);
+  if (t.rentPct) tiles.push(['<b>' + (t.rentPct >= 100 ? t.rentPct.toFixed(t.rentPct % 1 ? 1 : 0) : t.rentPct.toFixed(1)) + '%</b>', 'of the asking rent agreed', 'median of ' + t.rentN + ' lets']);
+  if (t.tenancies) tiles.push(['<b>' + t.tenancies + '</b>', 'new tenancies started', 'in the last 12 months']);
+  if (t.boroughs) tiles.push(['<b>' + t.boroughs + '</b>', 'London boroughs we’ve let homes in', 'we cover all 33']);
+  if (!tiles.length) return '';
+  return '<section class="trk"><div class="wrap"><div class="trk-h"><p class="kicker">Our track record</p><h2>' + (where ? 'Letting homes in ' + siteEsc(where) + ' — fast, at the right rent' : 'Fast lets at the right rent') + '</h2></div>' +
+    '<div class="trk-g">' + tiles.map(function (x) { return '<div class="trk-t">' + x[0] + '<span>' + x[1] + '</span><small>' + x[2] + '</small></div>'; }).join('') + '</div>' +
+    '<p class="trk-n">From our own records over the last 12 months, updated every day. <a href="/landlords#valuation">Get a free rental valuation →</a></p></div></section>';
+}
 function heroStats(req) {
   const c = listings && listings.counts(req);
   if (!c || !(c.let + c.sale)) return '<p class="tb-p">Protected &amp; regulated</p>';
@@ -370,7 +385,7 @@ function heroAreas(req) {
 }
 // The landlords page is its own file (calculators and valuation form); it gets the same head, menu and footer.
 function landlordsShell(home, req) {
-  let h = fs.readFileSync(path.join(__dirname, 'landlords.html'), 'utf8');
+  let h = fs.readFileSync(path.join(__dirname, 'landlords.html'), 'utf8').replace('<section id="services">', trackHtml('London') + '<section id="services">');
   h = h.replace(/<title>[\s\S]*?<link rel="icon"[^>]*>/, siteHead('landlords', h)).replace('<style>', '<link rel="stylesheet" href="' + asset('site.css') + '">\n<style>')
     .replace(/<header class="top">[\s\S]*?<\/header>/, siteHeader('landlords', home, req)).replace(/<footer>[\s\S]*?<\/footer>/, siteFooter(home));
   return h;
@@ -379,7 +394,7 @@ const siteCache = {};
 function sendSite(req, res, name) {
   if (visits) visits.track(req, (SITE_PAGES[name] && SITE_PAGES[name].title) || name);
   const f = name === 'landlords' ? path.join(__dirname, 'landlords.html') : path.join(__dirname, 'site', name + '.html'); let st; try { st = fs.statSync(f); } catch (e) { return res.status(404).end(); }
-  const home = isSiteHost(req) ? '/' : '/home', ck = name + home + (listings ? listings.stamp() + listings.show(req) + londonDay() : '') + (name === 'home' && typeof news !== 'undefined' ? 'n' + news.count() + (news.status().at || 0) : '');
+  const home = isSiteHost(req) ? '/' : '/home', ck = name + home + ((jobs && jobs.trackRecord && jobs.trackRecord() || {}).at || '') + (listings ? listings.stamp() + listings.show(req) + londonDay() : '') + (name === 'home' && typeof news !== 'undefined' ? 'n' + news.count() + (news.status().at || 0) : '');
   let c = siteCache[ck];
   if (!c || c.mtime !== st.mtimeMs) { const raw = Buffer.from(name === 'landlords' ? landlordsShell(home, req) : siteShell(name, home, req)); c = siteCache[ck] = { mtime: st.mtimeMs, raw: raw, gzip: zlib.gzipSync(raw, { level: 9 }), etag: '"s' + crypto.createHash('sha1').update(raw).digest('base64').slice(0, 26) + '"' }; }
   res.setHeader('Cache-Control', listings && listings.preview(req) ? 'private, no-store' : 'no-cache'); res.setHeader('ETag', c.etag); res.setHeader('Vary', 'Accept-Encoding, Cookie'); res.type('html');
@@ -408,7 +423,7 @@ const news = require('./news')();
 const updates = require('./updates')(app, { siteUrl: SITE_URL, refuseBot: function (req, res, b, t) { return jobs && jobs.refuseBot ? jobs.refuseBot(req, res, b, t) : Promise.resolve(false); }, db: function () { return jobs.db(); }, sendMail: function (o) { return jobs.sendMail(o); }, alert: function (o) { return jobs.alert(o); }, isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); }, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
 require('./portaldemo')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); } });
 const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt, onsBeds: function (g, b) { return areas.onsBeds(g, b); }, db: function () { return jobs ? jobs.db() : null; },  isStaff: function (req) { return !!(jobs && jobs.isStaff && jobs.isStaff(req)); } });
-const areas = require('./areas')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, listings: function () { return listings; }, db: function () { return jobs ? jobs.db() : null; } });
+const areas = require('./areas')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, track: function () { return jobs && jobs.trackRecord && jobs.trackRecord(); }, trackHtml: function (w) { return trackHtml(w); }, listings: function () { return listings; }, db: function () { return jobs ? jobs.db() : null; } });
 const svcAreas = require('./svcareas')(app, { siteUrl: SITE_URL, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, db: function () { return jobs ? jobs.db() : null; } });
 // On the website's own address, /home is the same page as / — send search engines to one address.
 app.get('/home', (req, res, next) => { if (isSiteHost(req)) return res.redirect(301, '/'); next(); });

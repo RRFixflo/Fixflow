@@ -1296,3 +1296,18 @@ html, body { overflow-x: clip; }
 .hc-eyebrow { display: inline-flex; align-items: center; gap: 10px; padding: 0; border: 0; border-radius: 0; background: none; text-transform: uppercase; letter-spacing: .12em; font-size: .78rem; }
 .hc-eyebrow::before { content: ""; width: 24px; height: 2px; background: var(--red); }
 .chips-row span { background: none; border: 0; padding: 4px 12px 4px 0; border-radius: 0; }
+
+/* Our track record (landlords): real figures from our own records */
+.trk { padding: 34px 0; background: #f6f8fb; }
+.trk-h h2 { margin: 4px 0 16px; }
+.trk-g { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.trk-t { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 2px; }
+.trk-t b { display: block; text-align: left; font-size: 1.9rem; line-height: 1.1; color: var(--navy); }
+.trk-t { text-align: left; }
+.trk-t span { font-weight: 700; color: var(--ink); }
+.trk-t small { color: var(--muted, #667085); font-size: .8rem; }
+.trk-n { margin: 12px 0 0; font-size: .86rem; color: var(--muted, #667085); }
+.trk-n a { font-weight: 700; }
+.ar-cover a { flex-direction: column; align-items: flex-start; gap: 2px; }
+.ar-cover a span { white-space: normal; font-weight: 600; color: var(--muted, #667085); font-size: .86rem; }
+.ar-card h2 small { font-size: .5em; font-weight: 700; color: var(--muted, #667085); }
