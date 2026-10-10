@@ -513,7 +513,7 @@
   .oc-warn { color: #8a5200; margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
   body:not(.staff-mode) #navAlerts { display: none !important; }
-  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #invTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#navAppr):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #invTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: #5f6673; font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
@@ -1785,6 +1785,7 @@
     <button class="nav" type="button" id="navCerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m9 14 2 2 4-4"/></svg> Certificates <span class="badge hot" id="sCerts" hidden></span></button>
     <button class="nav" type="button" id="navPay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 19H7c2-2 2.5-4 2.5-7V8a3.5 3.5 0 0 1 6.5-1.8"/><path d="M6.5 13H14"/></svg> Payments <span class="badge" id="sOwed" hidden></span></button>
     <button class="nav" type="button" id="navLt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg> Landlord Terms <span class="count-chip" id="sLt" hidden></span></button>
+    <button class="nav" type="button" id="navAppr" title="Estimated value and rent from similar homes, with a report for the landlord"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg> Appraisal</button>
     <button class="nav" type="button" id="navEmail" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg> Jobs from an email</button>
     <button class="nav" type="button" id="navNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg> New job</button>
     <button class="nav" type="button" id="navCal" title="Everyone’s viewings, by day and time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h2M14 14h2M8 18h2"/></svg> Calendar <span class="badge" id="sCal" hidden></span></button>
@@ -2134,6 +2135,7 @@
         <div class="card" id="signinCard" hidden><div class="team-feed-h" style="margin-top:0"><b>🔐 Sign-ins — who signed in, from where and on what</b><select class="inp" id="siDays" style="width:auto"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select><button type="button" class="btn small ghost" id="signinMin">Minimise</button></div><p class="muted-note" style="margin:0 0 8px">Location is approximate, worked out from the internet (IP) address. Tap an IP to see everything done from it.</p><div id="signinList"></div></div></div>
       <div id="ltView" hidden>
         <div id="vrBoxLt"></div>
+        <div class="card" style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="flex:1;min-width:220px"><b>🏠 Property appraisal</b><div class="muted-note" style="margin:2px 0 0">Estimated value and rent from similar homes within a mile, with a branded report for the landlord.</div></div><button type="button" class="btn primary" data-open-appr>Start an appraisal</button></div>
         <details class="card" id="ltNew" style="margin-bottom:12px" open><summary style="cursor:pointer;font-weight:700;font-size:1.02rem">➕ New landlord agreement</summary>
           <p class="muted-note" style="margin:8px 0 12px">Set the fees you agreed with the landlord. You’ll get a private link to send them: they check the fees, fill in the property details form, read the terms and sign. You get the signed PDF with an audit trail.</p>
           <div class="lt-grid"><label style="position:relative">Landlord name<input class="inp" id="ltName" maxlength="200" autocomplete="off" placeholder="Start typing — we’ll find registered landlords"><div class="lt-sugg" id="ltSugg" hidden></div><div class="lt-props" id="ltProps" hidden></div></label><label>Property address<input class="inp" id="ltAddr" list="offProps" maxlength="400" placeholder="Include the postcode — we’ll check the EPC"><span id="ltEpc" class="lt-epc" hidden></span><div id="ltKnown" class="lt-known" hidden></div></label>
@@ -4664,7 +4666,7 @@
   })();
 
   // ---------- Menu order (each person arranges their own) ----------
-  var NAV_IDS = ['navJobs', 'navLandlords', 'navProps', 'navTcy', 'navTenants', 'contractorsBtn', 'navOffers', 'navAvail', 'navCerts', 'navPay', 'navLt', 'navEmail', 'navNew', 'navCal', 'navLeads', 'navCrm', 'navWeb', 'navCalls', 'navAct'];
+  var NAV_IDS = ['navJobs', 'navLandlords', 'navProps', 'navTcy', 'navTenants', 'contractorsBtn', 'navOffers', 'navAvail', 'navCerts', 'navPay', 'navLt', 'navAppr', 'navEmail', 'navNew', 'navCal', 'navLeads', 'navCrm', 'navWeb', 'navCalls', 'navAct'];
   function navApply(order){
     var anchor = $('navRepLink'), par = anchor.parentNode, seen = {};
     order = (order || []).slice(); if (order.indexOf('navLeads') === -1 && order.indexOf('navCrm') !== -1) order.splice(order.indexOf('navCrm'), 0, 'navLeads');   // new in the menu: next to Website leads
@@ -8910,7 +8912,7 @@
       '<div class="amt">' + esc(gbp(i.total)) + '</div>' +
       '<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">' + (i.paid_at
         ? '<button type="button" class="btn small ghost" data-inv-unpaid="' + i.id + '">Undo</button>'
-        : (i.job_id ? '<button type="button" class="btn small" data-open-money="' + i.job_id + '">Resend</button>' : '<a class="btn small" href="/api/admin/invoices/' + i.id + '/view" target="_blank" rel="noopener">View</a>') + '<button type="button" class="btn small primary" data-inv-paid="' + i.id + '">Mark paid</button>') +
+        : (i.job_id ? '<button type="button" class="btn small" data-open-money="' + i.job_id + '">Resend</button>' : '<a class="btn small" href="/api/admin/invoices/' + i.id + '/view" target="_blank" rel="noopener">View</a>') + (staffMode ? '' : '<button type="button" class="btn small" data-inv-ed="' + i.id + '">✏️ Edit</button>') + '<button type="button" class="btn small primary" data-inv-paid="' + i.id + '">Mark paid</button>') +
         '<button type="button" class="btn small ghost danger" data-inv-del="' + i.id + '" title="Delete this invoice">Delete</button></div>' +
     '</div>';
   }
@@ -8923,6 +8925,7 @@
         if (confirm('Mark ' + (inv ? inv.number + ' (' + gbp(inv.total) + ')' : 'this invoice') + ' as paid?')) markInvoicePaid(Number(b.dataset.invPaid), true); }
       else if (b.dataset.invUnpaid) markInvoicePaid(Number(b.dataset.invUnpaid), false);
       else if (b.dataset.invDel) deleteInvoice(Number(b.dataset.invDel));
+      else if (b.dataset.invEd) openInvEdit(Number(b.dataset.invEd));
       else if (b.dataset.openMoney) { drawerTab = 'money'; drawerTabJob = Number(b.dataset.openMoney); openJob(Number(b.dataset.openMoney)); }
       else if (b.dataset.open) openJob(Number(b.dataset.open));
     });
@@ -9794,6 +9797,7 @@
       '<button class="btn" id="llInvBtn" type="button">🧾 New invoice</button>' +
       (staffMode ? '' : '<button class="btn" id="llQuoteBtn" type="button">📝 New quotation</button>') +
       '<button class="btn" id="llValBtn" type="button">📄 Valuation letter</button>' +
+      '<button class="btn" id="llApprBtn" type="button">🏠 Appraisal</button>' +
       '<button class="btn" id="llLicBtn" type="button">📜 Licence check</button>' +
       '<button class="btn primary" id="llEditBtn" type="button">Edit details</button>';
     $('llLinkBtn').addEventListener('click', function(){ openLlLink(l); });
@@ -9801,6 +9805,7 @@
     if ($('llQuoteBtn')) $('llQuoteBtn').addEventListener('click', function(){ var ps = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; }); openNewInvoice({ mode: 'quote', landlord_id: l.id, props: ps.length ? ps : null, address: ps.length === 1 ? ps[0] : '' }); });
     qRefresh = function(){ if (openLlId === l.id) quotesLoad('landlord_id=' + l.id, $('llQuotesList'), { showAddr: true, invoice: true, wrap: $('llQuotes'), count: $('llQuotesN') }); }; if (!staffMode) qRefresh();
     $('llValBtn').addEventListener('click', function(){ openValuation(l); });
+    $('llApprBtn').addEventListener('click', function(){ openApprFor(l); });
     $('llLicBtn').addEventListener('click', function(){ openLicCheck(l); });
     loadValuations(l);
     $('llCard').innerHTML = '<dl class="kv">' + [['Name', l.name], ['Phone', l.phone], ['Email', l.email], ['Address (for invoices)', l.address], ['Notes', l.notes]]
@@ -12026,6 +12031,28 @@
     }
     apprList();
   }
+  // From a landlord's page: the same appraisal in a window, filled in with the landlord and their property; the
+  // report is saved against the landlord (listed with their valuation letters).
+  var apprLl = null;
+  function openApprFor(l){
+    if (!$('apprModal')) {
+      document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="apprModal" hidden><div class="card" style="width:min(860px,100%);max-height:92vh;overflow:auto"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h3 style="margin:0;flex:1">🏠 Property appraisal</h3><button type="button" class="btn small" id="apprClose">Close</button></div><div id="apprHost"></div></div></div>');
+      var close = function(){ $('apprModal').hidden = true; apprLl = null; var bd = $('apprBody'); if (bd && $('offAppr')) $('offAppr').appendChild(bd); };
+      $('apprClose').addEventListener('click', close);
+      $('apprModal').addEventListener('mousedown', function(e){ if (e.target === this) close(); });
+    }
+    apprRender();
+    $('apprHost').appendChild($('apprBody'));
+    apprLl = l || null;
+    if (!l) { $('apprModal').hidden = false; return; }
+    var ps = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; });
+    if (!$('apAddr').value.trim() && ps.length) $('apAddr').value = ps[0];
+    $('apAddr').setAttribute('list', 'apProps'); if (!$('apProps')) $('apAddr').insertAdjacentHTML('afterend', '<datalist id="apProps"></datalist>');
+    $('apProps').innerHTML = ps.map(function(a){ return '<option value="' + esc(a) + '">'; }).join('');
+    $('apTo').value = l.name || ''; $('apToAddr').value = l.address || '';
+    $('apprModal').hidden = false;
+  }
+  document.addEventListener('click', function(e){ if (e.target.closest('#navAppr, [data-open-appr]')) { if (typeof closeDrawer === 'function') closeDrawer(); openApprFor(null); } });
   function apprDraw(){ if (!appr.sale.length) appr.sale.push({}); if (!appr.let.length) appr.let.push({}); $('apSale').innerHTML = apprRows('sale'); $('apLet').innerHTML = apprRows('let'); apprSum(); }
   function apprMake(){
     var err = function(t){ $('apErr').textContent = t; $('apErr').hidden = false; };
@@ -12035,14 +12062,14 @@
     if (!s && !r) return err('Add at least one similar home with a price.');
     var clean = function(list, rent){ return list.filter(function(c){ return apprPrice(c.price, rent); }).map(function(c){ return { url: c.url || '', addr: c.addr || '', beds: c.beds || '', price: apprPrice(c.price, rent) }; }); };
     var btn = $('apMake'); busy(btn, true, 'Making…');
-    api('POST', '/api/admin/valuations', { appraisal: true, address: addr, ptype: $('apType').value, beds: $('apBeds').value.trim(), baths: $('apBaths').value.trim(),
+    api('POST', '/api/admin/valuations', { appraisal: true, landlord_id: apprLl ? apprLl.id : null, address: addr, ptype: $('apType').value, beds: $('apBeds').value.trim(), baths: $('apBaths').value.trim(),
       sales: !!s, lettings: !!r, sales_low: s ? s.est : null, sales_high: s ? s.est : null, let_low: r ? r.est : null, let_high: r ? r.est : null,
       comps_sale: clean(appr.sale, false), comps_let: clean(appr.let, true), to_name: $('apTo').value.trim(), to_address: $('apToAddr').value.trim(), highlights: $('apHi').value.trim(),
       include_fees: true, signer: meta.user && meta.user.id && meta.user.name ? meta.user.name : '' }).then(function(d){
       busy(btn, false);
       if (!d || !d.ok) return err('Couldn’t make the report — please check the details.');
       $('apDone').innerHTML = '<a class="btn small" href="' + esc(d.pdf) + '" target="_blank" rel="noopener">Open the report</a> <a class="btn small" href="' + esc(d.pdf) + '?dl=1">⬇ Download</a>';
-      window.open(d.pdf, '_blank', 'noopener'); apprList();
+      window.open(d.pdf, '_blank', 'noopener'); apprList(); if (apprLl && typeof loadValuations === 'function') loadValuations(apprLl);
     });
   }
   function apprList(){
@@ -18350,7 +18377,7 @@
   // sidebar's icons and simply click the matching sidebar item.
   (function(){
     var TABS = [['navJobs', 'Jobs'], ['navProps', 'Properties'], ['navTenants', 'Tenants'], ['navLandlords', 'Landlords']];
-    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['invTopBtn', 'Invoices'], ['navCal', 'Calendar'], ['navLeads', 'Leads'], ['navCrm', 'Website leads'], ['navWeb', 'Website visitors'], ['navLt', 'Landlord Terms'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
+    var MORE = [['navRepLink', 'Send repair link'], ['navAvail', 'Available properties'], ['invTopBtn', 'Invoices'], ['navCal', 'Calendar'], ['navLeads', 'Leads'], ['navCrm', 'Website leads'], ['navWeb', 'Website visitors'], ['navLt', 'Landlord Terms'], ['navAppr', 'Appraisal'], ['navTcy', 'Tenancies'], ['navOffers', 'Offers collected'], ['navCerts', 'Certificates'], ['navPay', 'Payments'], ['contractorsBtn', 'Contractors'], ['navAct', 'Activity'], ['refreshBtn', 'Refresh'], ['logoutBtn', 'Sign out']];
     var icon = function(id){ var s = $(id).querySelector('svg'); return s ? s.outerHTML : ''; };
     $('tabbar').innerHTML = TABS.map(function(t){ return '<button type="button" data-go="' + t[0] + '">' + icon(t[0]) + '<span>' + t[1] + '</span></button>'; }).join('') +
       '<button type="button" id="tabMore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span>More</span></button>';
