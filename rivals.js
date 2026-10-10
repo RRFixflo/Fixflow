@@ -269,10 +269,16 @@ module.exports = function (app, opts) {
   // Property appraisal: similar homes on Rightmove within a mile of the postcode, same bedrooms (for sale or to rent),
   // for staff to tick the ones that really match. One search when staff press the button; nothing kept.
   const pcIds = {};
+  // Dates on Rightmove adverts: ISO dates, "Added on 12/09/2026", "Reduced today", "Now" → YYYY-MM-DD (or 'now').
+  const compDay = function (v) { const t = Date.parse(v || ''); return v && isFinite(t) ? new Date(t).toISOString().slice(0, 10) : null; };
+  const ukDay = function (v) { const m = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(v || '')); return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : null; };
+  const addedDay = function (v, want) { v = String(v || ''); if (!want.test(v)) return null; if (/today/i.test(v)) return new Date().toISOString().slice(0, 10);
+    if (/yesterday/i.test(v)) return new Date(Date.now() - 86400000).toISOString().slice(0, 10); return ukDay(v); };
+  const availDay = function (v) { v = String(v || '').trim(); if (!v) return null; if (/^now$/i.test(v)) return 'now'; return ukDay(v) || compDay(v); };
   app.get('/api/admin/appraisal/comps', async function (req, res) {
     if (!opts.isStaff(req)) return res.status(403).json({ ok: false });
     const pc = String(req.query.postcode || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 9), buy = req.query.kind === 'sale';
-    const beds = /^\d{1,2}$/.test(String(req.query.beds || '')) ? Number(req.query.beds) : null, miles = ['0.5', '1.0', '3.0'].indexOf(String(req.query.miles)) !== -1 ? String(req.query.miles) : '1.0';
+    const beds = /^\d{1,2}$/.test(String(req.query.beds || '')) ? Number(req.query.beds) : null, miles = ['0.25', '0.5', '1.0', '3.0'].indexOf(String(req.query.miles)) !== -1 ? String(req.query.miles) : '1.0';
     if (!/^[A-Z]{1,2}\d[A-Z\d]? \d[A-Z]{2}$/.test(pc)) return res.json({ ok: false, error: 'postcode' });
     try {
       let loc = pcIds[pc];
@@ -292,9 +298,23 @@ module.exports = function (app, opts) {
         return { id: String(x.id), addr: String(x.displayAddress || '').replace(/\s+/g, ' ').trim(), beds: x.bedrooms != null ? Number(x.bedrooms) : null, baths: x.bathrooms != null ? Number(x.bathrooms) : null,
           price: price || null, type: String(x.propertySubType || x.propertyTypeFullDescription || '').slice(0, 40), miles: x.distance != null && isFinite(Number(x.distance)) ? Math.round(Number(x.distance) * 100) / 100 : null,
           url: /^https?:/.test(url) ? url : T.RM + url, img: /^https?:\/\//.test(img) ? img : '', agent: String(c.brandTradingName || c.branchDisplayName || '').slice(0, 60),
-          status: String(x.displayStatus || '').slice(0, 30), added: String(x.addedOrReduced || '').slice(0, 40) };
+          status: String(x.displayStatus || '').slice(0, 30), added: String(x.addedOrReduced || '').slice(0, 40),
+          listed: compDay(x.firstVisibleDate) || addedDay(x.addedOrReduced, /added/i), reduced: /reduced/i.test(String(x.addedOrReduced || '')) ? (addedDay(x.addedOrReduced, /reduced/i) || 'yes') : null,
+          avail: buy ? null : availDay(x.letAvailableDate) };
       }).filter(function (x) { return x.price && x.addr; })
         .sort(function (a, b) { return (a.miles == null ? 9 : a.miles) - (b.miles == null ? 9 : b.miles); }).slice(0, 40);
+      // Lettings: when each home is available, from the advert itself when the search doesn't say (the closest 15, a few at a time).
+      if (!buy && T.detail) {
+        const need = out.filter(function (x) { return !x.avail; }).slice(0, 15);
+        for (let i = 0; i < need.length; i += 4) {
+          await Promise.all(need.slice(i, i + 4).map(async function (x) {
+            try { const d = await T.detail(x.id); const lt = (d && d.lettings) || {}; x.avail = availDay(lt.letAvailableDate);
+              if (!x.listed && d && d.listingHistory) x.listed = addedDay(d.listingHistory.listingUpdateReason, /added/i); } catch (e) {}
+          }));
+        }
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      out.forEach(function (x) { x.days = x.listed ? Math.max(0, Math.round((Date.parse(today) - Date.parse(x.listed)) / 86400000)) : null; });
       res.json({ ok: true, items: out, kind: buy ? 'sale' : 'let', miles: miles, beds: beds });
     } catch (e) { res.json({ ok: false, error: e.blocked ? 'busy' : 'unreachable' }); }
   });
