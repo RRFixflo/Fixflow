@@ -148,8 +148,11 @@ module.exports = function (app, opts) {
     await p.query('UPDATE voice_calls SET lead_id = $2 WHERE sid = $1', [sid, r.rows[0].id]);
     const title = (data.urgent ? '🚨 Urgent out-of-hours call: ' : '📞 Out-of-hours call: ') + name, line = (phone || email || 'no number') + ' — ' + data.message;
     const text = function (link) { return 'Someone rang the office out of hours and left a message with the phone assistant.\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + (email || '—') + (info.address ? '\nProperty: ' + info.address : '') + (data.people ? '\nMoving in: ' + data.people : '') + (data.move ? '\nMove-in date: ' + data.move : '') + (data.income ? '\nRent paid by: ' + data.income : '') + (data.guarantor ? '\nUK guarantor: ' + data.guarantor : '') + (data.urgent ? '\nMarked URGENT' : '') + '\n\nWhat it’s about:\n' + data.message + '\n\nThe full conversation is in Website leads:\n' + link; };
-    // Repairs go to the owner only (as with online repair reports); everything else to all staff.
-    if (data.category === 'repair') { opts.ntfy({ title: title, message: line, tags: [data.urgent ? 'rotating_light' : 'telephone_receiver'], priority: data.urgent ? 5 : 4 }); opts.ownerEmail(title, text, '#leads'); }
+    // Repairs go to the owner only (as with online repair reports); everything else to all staff. A call that
+    // sounds like a repair counts as one even if the assistant filed it under another heading.
+    const heard = [info.about, info.summary, data.message].concat(said.map(function (t) { return t.text; })).join(' ').toLowerCase();
+    const repairish = /\b(repair|leak\w*|boiler|heating|hot water|no water|flood\w*|burst|damp|mou?ld|broken|blocked|toilet|drain|sink|shower|electric\w*|power cut|no power|fuse|socket|lights? (?:not|don)|lock(?:ed)? out|door won|window won|pest\w*|mice|rats?|cockroach\w*|bed ?bugs|gas smell|smell of gas|carbon monoxide|alarm going|fridge|oven|washing machine|dishwasher|ceiling|roof)\b/.test(heard);
+    if (data.category === 'repair' || (repairish && ['letting', 'renting', 'buying', 'selling', 'valuation'].indexOf(data.category) === -1)) { opts.ntfy({ title: title, message: line, tags: [data.urgent ? 'rotating_light' : 'telephone_receiver'], priority: data.urgent ? 5 : 4 }); opts.ownerEmail(title, text, '#leads'); }
     else { opts.teamAlert({ title: title, message: line, tags: ['telephone_receiver'] }, '#leads'); opts.staffEmailAll(title, text, '#leads'); }
   }
 
