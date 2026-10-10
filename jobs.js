@@ -2055,6 +2055,7 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && path === '/lead-hook') return true;
     if (method === 'GET' && path === '/staff-names') return true;   // the calendar's people
     if ((method === 'GET' || method === 'POST') && path === '/valuations') return true;   // property appraisals (Offers page)
+    if (method === 'GET' && (path === '/epc-addresses' || path === '/landlord-for-address' || path === '/rm-location')) return true;   // appraisal: find the address and our landlord
     if (method === 'GET' && /^\/valuations\/\d+\/pdf$/.test(path)) return true;
     if (method === 'POST' && /^\/viewings\/\d+\/feedback-link$/.test(path)) return true;   // managers only (checked in the route)   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
     if (method === 'GET' && (path === '/site-stats' || path === '/photo-dupes')) return true;
@@ -12202,6 +12203,31 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // What the landlord's page may show: their own details and the property's records (no fees or other properties).
   function ltPublicKnown(k) { if (!k) return null; return { landlord: k.landlord ? { name: k.landlord.name, email: k.landlord.email, phone: k.landlord.phone, address: k.landlord.address } : null, gas: k.gas || null, eicr: k.eicr || null, licence: k.licence || null, deposit_scheme: (k.tenancy || {}).deposit_scheme || '' }; }
   // Find registered landlords (name, email or phone) and properties (address) as staff type.
+  // Our landlord for an address (the property linked to a landlord record), for the appraisal.
+  // Rightmove's own number for a postcode (POSTCODE^1234567), so the appraisal's "Search Rightmove" opens a working search.
+  const rmLocCache = {};
+  app.get('/api/admin/rm-location', async function (req, res) {
+    const pc = String(req.query.postcode || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 9);
+    if (!pc) return res.json({ ok: false });
+    if (rmLocCache[pc]) return res.json({ ok: true, loc: rmLocCache[pc] });
+    let loc = null;
+    for (const q of [pc, pc.split(' ')[0]]) {
+      try {
+        const r = await fetch('https://los.rightmove.co.uk/typeahead?query=' + encodeURIComponent(q) + '&limit=10&exclude=STREET', { headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36' }, signal: AbortSignal.timeout(10000) });
+        const j = r.ok ? await r.json() : {}, want = q === pc && q.indexOf(' ') > 0 ? 'POSTCODE' : 'OUTCODE', flat = q.replace(/\s/g, '');
+        const m = (j.matches || []).filter(function (x) { return String(x.type).toUpperCase() === want && String(x.displayName || '').toUpperCase().replace(/\s/g, '') === flat; })[0]
+          || (j.matches || []).filter(function (x) { return String(x.type).toUpperCase() === want; })[0];
+        if (m) { loc = want + '^' + m.id; break; }
+      } catch (e) { /* try the postcode area, else the page falls back */ }
+    }
+    if (loc) rmLocCache[pc] = loc;
+    res.json({ ok: !!loc, loc: loc });
+  });
+  app.get('/api/admin/landlord-for-address', withDb(async function (p, req, res) {
+    const k = propKey(str(req.query.address, 400) || ''); if (!k) return res.json({ ok: true, landlord: null });
+    const l = (await p.query('SELECT l.id, l.name, l.email, l.phone, l.address FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1 LIMIT 1', [k])).rows[0] || null;
+    res.json({ ok: true, landlord: l });
+  }));
   app.get('/api/admin/landlord-terms/lookup', withDb(async function (p, req, res) {
     const q = str(req.query.q, 100); if (!q || q.length < 2) return res.json({ ok: true, landlords: [] });
     const like = '%' + q.toLowerCase().replace(/[%_]/g, '') + '%', digits = q.replace(/\D/g, '');
