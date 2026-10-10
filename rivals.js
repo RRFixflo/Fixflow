@@ -55,6 +55,7 @@ module.exports = function (app, opts) {
       await wait(1200);
     }
     const ours = T.branches.map(String);
+    if (o.all) return items;
     return items.filter(function (x) { const c = x.customer || {}; return ours.indexOf(String(c.branchId || '')) === -1 && !/residential realtors/i.test(String(c.brandTradingName || '') + ' ' + String(c.branchDisplayName || '')); });
   }
   // Addresses: the building name (Longridge House) and the street (Falmouth Road).
@@ -264,6 +265,38 @@ module.exports = function (app, opts) {
     try { const p = await pool(), undo = (req.body || {}).undo === true;
       await p.query('UPDATE rival_hits SET dismissed_at = ' + (undo ? 'NULL' : 'now()') + ', dismissed_by = $2 WHERE id = $1', [parseInt(req.params.id, 10) || 0, undo ? null : (req.user && req.user.name) || '']);
       res.json({ ok: true }); } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+  // Property appraisal: similar homes on Rightmove within a mile of the postcode, same bedrooms (for sale or to rent),
+  // for staff to tick the ones that really match. One search when staff press the button; nothing kept.
+  const pcIds = {};
+  app.get('/api/admin/appraisal/comps', async function (req, res) {
+    if (!opts.isStaff(req)) return res.status(403).json({ ok: false });
+    const pc = String(req.query.postcode || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 9), buy = req.query.kind === 'sale';
+    const beds = /^\d{1,2}$/.test(String(req.query.beds || '')) ? Number(req.query.beds) : null, miles = ['0.5', '1.0', '3.0'].indexOf(String(req.query.miles)) !== -1 ? String(req.query.miles) : '1.0';
+    if (!/^[A-Z]{1,2}\d[A-Z\d]? \d[A-Z]{2}$/.test(pc)) return res.json({ ok: false, error: 'postcode' });
+    try {
+      let loc = pcIds[pc];
+      if (!loc) {
+        try { const j = JSON.parse(await get('https://los.rightmove.co.uk/typeahead?query=' + encodeURIComponent(pc) + '&limit=10&exclude=STREET', true) || '{}');
+          const m = (j.matches || []).filter(function (x) { return String(x.type).toUpperCase() === 'POSTCODE'; })[0]; if (m) loc = 'POSTCODE%5E' + m.id; } catch (e) { if (e.blocked) throw e; }
+        if (!loc) { const id = await outcodeId({ oc: {} }, pc.split(' ')[0]); if (id) loc = 'OUTCODE%5E' + id; }
+        if (loc) pcIds[pc] = loc;
+      }
+      if (!loc) return res.json({ ok: false, error: 'unreachable' });
+      const items = await search(null, beds, { loc: loc, radius: miles, buy: buy, all: true });
+      const out = items.map(function (x) {
+        const pr = x.price || {}, freq = String(pr.frequency || '').toLowerCase(), amt = Number(pr.amount) || 0, c = x.customer || {};
+        const price = buy ? amt : freq === 'weekly' ? Math.round(amt * 52 / 12) : freq === 'yearly' ? Math.round(amt / 12) : amt;
+        const url = String(x.propertyUrl || '/properties/' + x.id).replace(/#.*$/, '');
+        const img = (x.propertyImages && (x.propertyImages.mainImageSrc || ((x.propertyImages.images || [])[0] || {}).srcUrl)) || '';
+        return { id: String(x.id), addr: String(x.displayAddress || '').replace(/\s+/g, ' ').trim(), beds: x.bedrooms != null ? Number(x.bedrooms) : null, baths: x.bathrooms != null ? Number(x.bathrooms) : null,
+          price: price || null, type: String(x.propertySubType || x.propertyTypeFullDescription || '').slice(0, 40), miles: x.distance != null && isFinite(Number(x.distance)) ? Math.round(Number(x.distance) * 100) / 100 : null,
+          url: /^https?:/.test(url) ? url : T.RM + url, img: /^https?:\/\//.test(img) ? img : '', agent: String(c.brandTradingName || c.branchDisplayName || '').slice(0, 60),
+          status: String(x.displayStatus || '').slice(0, 30), added: String(x.addedOrReduced || '').slice(0, 40) };
+      }).filter(function (x) { return x.price && x.addr; })
+        .sort(function (a, b) { return (a.miles == null ? 9 : a.miles) - (b.miles == null ? 9 : b.miles); }).slice(0, 40);
+      res.json({ ok: true, items: out, kind: buy ? 'sale' : 'let', miles: miles, beds: beds });
+    } catch (e) { res.json({ ok: false, error: e.blocked ? 'busy' : 'unreachable' }); }
   });
   return { run: run, nearRun: nearRun, addrParts: addrParts };
 };

@@ -1099,6 +1099,8 @@
   .fee-run { display: grid; grid-template-columns: 58px minmax(0, 1fr) 92px 96px; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line, #eef0f3); font-size: .86rem; align-items: baseline; } .fee-run > span:nth-child(n+3) { text-align: right; white-space: nowrap; } .fee-run small { display: block; color: var(--ink-soft, #667085); font-size: .76rem; } .fee-run-h { font-size: .74rem; color: var(--ink-soft, #667085); font-weight: 700; border-top: 0; }
   @media (max-width: 560px) { .fee-run { grid-template-columns: 46px minmax(0, 1fr) 78px; } .fee-run > span:nth-child(4) { grid-column: 2 / 4; text-align: right; font-size: .78rem; color: var(--ink-soft, #667085); } .fee-run > span:nth-child(4) b::before { content: 'Running total '; font-weight: 400; } .fee-run-h > span:nth-child(4) { display: none; } }
   .la-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .la-tabs button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: inherit; } .la-tabs button small { font-weight: 500; color: var(--ink-soft, #667085); margin-left: 4px; } .la-tabs button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; } .la-tabs button.on small { color: rgba(255,255,255,.75); }
+  .ap-hits { display: grid; gap: 6px; margin-bottom: 6px; } .ap-hit { display: grid; grid-template-columns: auto 72px minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 6px 10px 6px 8px; cursor: pointer; background: #fff; } .ap-hit.on { border-color: #2563eb; background: #f5f8ff; } .ap-hit img, .ap-noimg { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; background: #f2f4f7; display: block; } .ap-ht { font-size: .88rem; line-height: 1.3; min-width: 0; } .ap-ht small { display: block; color: var(--muted, #667085); font-size: .78rem; margin-top: 2px; } .ap-hit a { text-decoration: none; font-weight: 700; padding: 4px; } .la-sub .btn.small { margin-left: 6px; font-size: .75rem; padding: 3px 8px; vertical-align: middle; }
+  @media (max-width: 520px) { .ap-hit { grid-template-columns: auto 56px minmax(0,1fr) auto; gap: 8px; } .ap-hit img, .ap-noimg { width: 56px; height: 44px; } }
   .ap-find { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; } #apSugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; }
   .ap-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 64px 130px 34px; gap: 6px; margin-bottom: 6px; }
   @media (max-width: 640px) { .ap-row { grid-template-columns: 1fr 1fr; } .ap-row [data-f=url] { grid-column: 1 / -1; } .ap-row .tcy-x { justify-self: end; } }
@@ -12024,20 +12026,21 @@
   // Enter the home, open Rightmove for similar homes within a mile (for sale / to rent), add the ones that match by
   // hand; the estimated value and rent are their averages. "Make the report" saves it as a valuation letter (our
   // branded PDF) with the similar homes listed, to download and send to the landlord.
-  var appr = { sale: [], let: [] };
+  var appr = { sale: [], let: [], mode: 'let', res: { sale: null, let: null } };
+  function apprOn(kind){ return appr.mode === 'both' || appr.mode === kind; }
   function apprPc(){ var m = POSTCODE_RE.exec($('apAddr') ? $('apAddr').value : ''); return m ? (m[1] + ' ' + m[2]).toUpperCase() : ''; }
   function apprPrice(v, rent){ var t = String(v || '').toLowerCase(), n = num(t.replace(/[^0-9.]/g, '')); if (!n) return null; return rent && /pw|p\/w|week/.test(t) ? Math.round(n * 52 / 12) : n; }
   function apprStats(list, rent){ var ps = list.map(function(c){ return apprPrice(c.price, rent); }).filter(Boolean); if (!ps.length) return null; var avg = ps.reduce(function(a, b){ return a + b; }, 0) / ps.length; return { n: ps.length, avg: avg, lo: Math.min.apply(null, ps), hi: Math.max.apply(null, ps), est: rent ? Math.round(avg / 10) * 10 : Math.round(avg / 1000) * 1000 }; }
   function apprRows(kind){
-    return appr[kind].map(function(c, i){ return '<div class="ap-row" data-ap-k="' + kind + '" data-ap-i="' + i + '"><input class="inp" data-f="url" placeholder="Rightmove link (optional)" value="' + esc(c.url || '') + '"><input class="inp" data-f="addr" placeholder="Address / street" value="' + esc(c.addr || '') + '"><input class="inp" data-f="beds" placeholder="Beds" inputmode="numeric" value="' + esc(c.beds || '') + '"><input class="inp" data-f="price" inputmode="decimal" placeholder="' + (kind === 'let' ? '£ pcm (or 450 pw)' : '£ asking price') + '" value="' + esc(c.price || '') + '"><button type="button" class="tcy-x" data-ap-del title="Remove">×</button></div>'; }).join('') +
-      '<button type="button" class="btn small ghost" data-ap-add="' + kind + '">＋ Add a similar home</button>';
+    return appr[kind].map(function(c, i){ if (c.rm) return ''; return '<div class="ap-row" data-ap-k="' + kind + '" data-ap-i="' + i + '"><input class="inp" data-f="url" placeholder="Rightmove link (optional)" value="' + esc(c.url || '') + '"><input class="inp" data-f="addr" placeholder="Address / street" value="' + esc(c.addr || '') + '"><input class="inp" data-f="beds" placeholder="Beds" inputmode="numeric" value="' + esc(c.beds || '') + '"><input class="inp" data-f="price" inputmode="decimal" placeholder="' + (kind === 'let' ? '£ pcm (or 450 pw)' : '£ asking price') + '" value="' + esc(c.price || '') + '"><button type="button" class="tcy-x" data-ap-del title="Remove">×</button></div>'; }).join('') +
+      '<button type="button" class="btn small ghost" data-ap-add="' + kind + '">＋ Add one by hand</button>';
   }
   function apprSum(){
-    var s = apprStats(appr.sale, false), r = apprStats(appr.let, true), out = [];
+    var s = apprOn('sale') ? apprStats(appr.sale, false) : null, r = apprOn('let') ? apprStats(appr.let, true) : null, out = [];
     if (s) out.push('<div><span>Estimated value</span><b>' + gbp0(s.est) + '</b><small>average of ' + s.n + (s.n > 1 ? ' · ' + gbp0(s.lo) + '–' + gbp0(s.hi) : '') + '</small></div>');
     if (r) out.push('<div><span>Estimated rent</span><b>' + gbp0(r.est) + ' pcm</b><small>' + gbp0(r.est * 12 / 52) + ' pw · average of ' + r.n + (r.n > 1 ? ' · ' + gbp0(r.lo) + '–' + gbp0(r.hi) : '') + '</small></div>');
     if (s && r) out.push('<div><span>Gross yield</span><b>' + (r.est * 12 / s.est * 100).toFixed(1) + '%</b><small>rent × 12 ÷ value</small></div>');
-    $('apSum').innerHTML = out.length ? '<div class="la-tiles" style="grid-template-columns:repeat(' + out.length + ',minmax(0,1fr))">' + out.join('') + '</div>' : '<p class="muted-note" style="margin:0">Add similar homes below — the estimates are their averages.</p>';
+    $('apSum').innerHTML = out.length ? '<div class="la-tiles" style="grid-template-columns:repeat(' + out.length + ',minmax(0,1fr))">' + out.join('') + '</div>' : '<p class="muted-note" style="margin:0">Tick similar homes above — the estimate is their average.</p>';
   }
   function apprRender(){
     var b = $('apprBody'); if (!b) return;
@@ -12049,15 +12052,26 @@
         '<p class="muted-note" id="apLlNote" style="margin:-4px 0 6px" hidden></p>' +
         '<label class="lbl">Their address <span class="muted-note" style="margin:0">optional</span><textarea class="inp" id="apToAddr" rows="2"></textarea></label>' +
         '<label class="lbl">What stood out <span class="muted-note" style="margin:0">optional — one per line</span><textarea class="inp" id="apHi" rows="2" placeholder="e.g. Private balcony&#10;Five minutes to the station"></textarea></label>' +
-        '<div class="row-actions" style="flex-wrap:wrap;margin:8px 0"><button type="button" class="btn small" data-ap-rm="sale">🔎 Rightmove: for sale within 1 mile</button><button type="button" class="btn small" data-ap-rm="let">🔎 Rightmove: to rent within 1 mile</button></div>' +
-        '<p class="muted-note" style="margin:0 0 6px">Opens Rightmove for the postcode and bedrooms. Add the homes that really match (similar size, type and condition) below — paste the link, the street and the price.</p>' +
-        '<h4 class="la-sub">Similar homes for sale</h4><div id="apSale"></div><h4 class="la-sub">Similar homes to rent</h4><div id="apLet"></div>' +
+        '<h4 class="la-sub">Report</h4><div class="cal-people ap-mode" id="apMode"><button type="button" data-apm="let" class="on">🔑 Lettings</button><button type="button" data-apm="sale">🏷 Sales</button><button type="button" data-apm="both">Both</button></div>' +
+        '<div class="row-actions" style="flex-wrap:wrap;margin:10px 0 4px;align-items:center"><button type="button" class="btn primary small" id="apAuto">🔎 Find similar homes on Rightmove</button><select class="inp" id="apMiles" style="width:auto;padding:6px 8px"><option value="0.5">within ½ mile</option><option value="1.0" selected>within 1 mile</option><option value="3.0">within 3 miles</option></select></div>' +
+        '<p class="muted-note" style="margin:0 0 6px">Searches Rightmove near the postcode for homes with the same bedrooms and ticks the 6 closest. Untick any that don’t really match (size, type, condition) or tick others.</p>' +
+        '<div id="apKSale" hidden><h4 class="la-sub">Similar homes for sale <button type="button" class="btn small ghost" data-ap-rm="sale">Open on Rightmove ↗</button></h4><div id="apSaleRes"></div><div id="apSale"></div></div>' +
+        '<div id="apKLet"><h4 class="la-sub">Similar homes to rent <button type="button" class="btn small ghost" data-ap-rm="let">Open on Rightmove ↗</button></h4><div id="apLetRes"></div><div id="apLet"></div></div>' +
         '<h4 class="la-sub">Estimate</h4><div id="apSum"></div>' +
         '<p class="muted-note" id="apErr" style="color:var(--red,#c00);margin:6px 0 0" hidden></p>' +
         '<div class="row-actions" style="flex-wrap:wrap;margin-top:10px"><button type="button" class="btn primary" id="apMake">📄 Make the report</button><span id="apDone"></span></div>' +
         '<h4 class="la-sub">Recent appraisals</h4><div id="apList" class="muted-note">Loading…</div>';
+      b.addEventListener('change', function(e){
+        var pk = e.target.closest('[data-ap-pick]'); if (!pk) return;
+        var k = pk.dataset.apPick, x = ((appr.res[k] || {}).items || []).filter(function(i){ return i.id === pk.value; })[0]; if (!x) return;
+        appr[k] = appr[k].filter(function(c){ return c.rm !== x.id; });
+        if (pk.checked) appr[k].push({ rm: x.id, url: x.url, addr: x.addr, beds: x.beds != null ? String(x.beds) : '', price: String(x.price) });
+        apprHits(k); apprSum();
+      });
       b.addEventListener('input', function(e){ var row = e.target.closest('[data-ap-k]'); if (row && e.target.dataset.f) { appr[row.dataset.apK][Number(row.dataset.apI)][e.target.dataset.f] = e.target.value; apprSum(); } });
       b.addEventListener('click', function(e){
+        var m = e.target.closest('[data-apm]'); if (m) { appr.mode = m.dataset.apm; apprDraw(); return; }
+        if (e.target.closest('#apAuto')) { apprAuto(); return; }
         var a = e.target.closest('[data-ap-add]'); if (a) { appr[a.dataset.apAdd].push({}); apprDraw(); return; }
         var d = e.target.closest('[data-ap-del]'); if (d) { var row = d.closest('[data-ap-k]'); appr[row.dataset.apK].splice(Number(row.dataset.apI), 1); apprDraw(); return; }
         var rm = e.target.closest('[data-ap-rm]'); if (rm) { var pc = apprPc(); if (!pc) { toast('Add the address with its postcode first'); return; }
@@ -12138,18 +12152,60 @@
     if (ps.length) { $('apAddr').setAttribute('list', 'apProps'); if (!$('apProps')) $('apAddr').insertAdjacentHTML('afterend', '<datalist id="apProps"></datalist>'); $('apProps').innerHTML = ps.map(function(a){ return '<option value="' + esc(a) + '">'; }).join(''); if (!$('apAddr').value.trim() && ps.length === 1) $('apAddr').value = ps[0]; }
     $('apLlNote').hidden = false; $('apLlNote').innerHTML = (fromAddr ? '✓ This is our property — landlord on file: <b>' : '✓ Landlord on file: <b>') + esc(l.name || '') + '</b>' + (ps.length > 1 ? ' · pick one of their ' + ps.length + ' properties in the address box' : '') + '. The report is saved to their record.';
   }
-  function apprDraw(){ if (!appr.sale.length) appr.sale.push({}); if (!appr.let.length) appr.let.push({}); $('apSale').innerHTML = apprRows('sale'); $('apLet').innerHTML = apprRows('let'); apprSum(); }
+  function apprDraw(){
+    $('apKSale').hidden = !apprOn('sale'); $('apKLet').hidden = !apprOn('let');
+    document.querySelectorAll('#apMode [data-apm]').forEach(function(b){ b.classList.toggle('on', b.dataset.apm === appr.mode); });
+    $('apSale').innerHTML = apprRows('sale'); $('apLet').innerHTML = apprRows('let'); apprHits('sale'); apprHits('let'); apprSum();
+  }
+  // Rightmove's similar homes, each with a tick box (ticked = on the report).
+  function apprHits(kind){
+    var box = $(kind === 'sale' ? 'apSaleRes' : 'apLetRes'), r = appr.res[kind]; if (!box) return;
+    if (!r) { box.innerHTML = ''; return; }
+    if (r.loading) { box.innerHTML = '<p class="muted-note">Searching Rightmove…</p>'; return; }
+    if (r.error) { box.innerHTML = '<p class="muted-note">' + esc(r.error) + '</p>'; return; }
+    if (!r.items.length) { box.innerHTML = '<p class="muted-note">Rightmove has nothing ' + (kind === 'sale' ? 'for sale' : 'to rent') + ' with these bedrooms that close — try a wider distance, or add one by hand.</p>'; return; }
+    var picked = {}; appr[kind].forEach(function(c){ if (c.rm) picked[c.rm] = 1; });
+    var n = Object.keys(picked).length;
+    box.innerHTML = '<p class="muted-note" style="margin:0 0 6px">' + r.items.length + ' found · <b>' + n + ' ticked</b> for the report</p><div class="ap-hits">' + r.items.map(function(x){
+      return '<label class="ap-hit' + (picked[x.id] ? ' on' : '') + '"><input type="checkbox" data-ap-pick="' + kind + '" value="' + esc(x.id) + '"' + (picked[x.id] ? ' checked' : '') + '>' +
+        (x.img ? '<img src="' + esc(x.img) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '<span class="ap-noimg"></span>') +
+        '<span class="ap-ht"><b>' + gbp0(x.price) + (kind === 'let' ? ' pcm' : '') + '</b> ' + esc(x.addr) + '<small>' + esc([x.beds != null ? x.beds + ' bed' : '', x.type, x.miles != null ? x.miles + ' mi' : '', x.status, x.agent].filter(Boolean).join(' · ')) + '</small></span>' +
+        '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" title="Open the advert on Rightmove">↗</a></label>';
+    }).join('') + '</div>';
+  }
+  function apprTypeOk(t){ var want = $('apType').value; t = String(t || '').toLowerCase(); if (!want || !t) return true;
+    return want === 'House' ? /house|terrace|semi|detached|bungalow|cottage|town/.test(t) : /flat|apartment|maisonette|studio|penthouse/.test(t); }
+  function apprAuto(){
+    var pc = apprPc(); if (!pc) { toast('Add the address with its postcode first'); $('apAddr').focus(); return; }
+    var beds = parseInt($('apBeds').value, 10), kinds = appr.mode === 'both' ? ['let', 'sale'] : [appr.mode], btn = $('apAuto'); busy(btn, true, 'Searching…');
+    kinds.forEach(function(k){ appr.res[k] = { loading: true }; }); apprDraw();
+    var next = function(i){
+      if (i >= kinds.length) { busy(btn, false); apprDraw(); return; }
+      var k = kinds[i];
+      api('GET', '/api/admin/appraisal/comps?kind=' + k + '&postcode=' + encodeURIComponent(pc) + (beds >= 0 ? '&beds=' + beds : '') + '&miles=' + $('apMiles').value).then(function(d){
+        if (!d || !d.ok) appr.res[k] = { error: d && d.error === 'busy' ? 'Rightmove is busy just now — try again in a minute, or add homes by hand.' : 'Couldn’t reach Rightmove just now — try again, or add homes by hand.' };
+        else {
+          appr.res[k] = { items: d.items || [] };
+          appr[k] = appr[k].filter(function(c){ return !c.rm; });   // a new search replaces the last one's ticks
+          var good = appr.res[k].items.filter(function(x){ return apprTypeOk(x.type); }); if (!good.length) good = appr.res[k].items;
+          good.slice(0, 6).forEach(function(x){ appr[k].push({ rm: x.id, url: x.url, addr: x.addr, beds: x.beds != null ? String(x.beds) : '', price: String(x.price) }); });
+        }
+        next(i + 1);
+      }).catch(function(){ appr.res[k] = { error: 'Couldn’t reach Rightmove just now — try again, or add homes by hand.' }; next(i + 1); });
+    };
+    next(0);
+  }
   function apprMake(){
     var err = function(t){ $('apErr').textContent = t; $('apErr').hidden = false; };
-    var addr = $('apAddr').value.trim(), s = apprStats(appr.sale, false), r = apprStats(appr.let, true);
+    var addr = $('apAddr').value.trim(), s = apprOn('sale') ? apprStats(appr.sale, false) : null, r = apprOn('let') ? apprStats(appr.let, true) : null;
     $('apErr').hidden = true;
     if (!addr) return err('Add the property address.');
-    if (!s && !r) return err('Add at least one similar home with a price.');
+    if (!s && !r) return err('Tick at least one similar home' + (appr.mode === 'both' ? '' : appr.mode === 'sale' ? ' for sale' : ' to rent') + ' (press “Find similar homes on Rightmove”).');
     var clean = function(list, rent){ return list.filter(function(c){ return apprPrice(c.price, rent); }).map(function(c){ return { url: c.url || '', addr: c.addr || '', beds: c.beds || '', price: apprPrice(c.price, rent) }; }); };
     var btn = $('apMake'); busy(btn, true, 'Making…');
     api('POST', '/api/admin/valuations', { appraisal: true, landlord_id: apprLl ? apprLl.id : null, address: addr, ptype: $('apType').value, beds: $('apBeds').value.trim(), baths: $('apBaths').value.trim(),
       sales: !!s, lettings: !!r, sales_low: s ? s.est : null, sales_high: s ? s.est : null, let_low: r ? r.est : null, let_high: r ? r.est : null,
-      comps_sale: clean(appr.sale, false), comps_let: clean(appr.let, true), to_name: $('apTo').value.trim(), to_address: $('apToAddr').value.trim(), highlights: $('apHi').value.trim(),
+      comps_sale: s ? clean(appr.sale, false) : [], comps_let: r ? clean(appr.let, true) : [], miles: $('apMiles').value, to_name: $('apTo').value.trim(), to_address: $('apToAddr').value.trim(), highlights: $('apHi').value.trim(),
       include_fees: true, signer: meta.user && meta.user.id && meta.user.name ? meta.user.name : '' }).then(function(d){
       busy(btn, false);
       if (!d || !d.ok) return err('Couldn’t make the report — please check the details.');
