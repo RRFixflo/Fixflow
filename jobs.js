@@ -10243,7 +10243,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
       for (let n = 0; n < 120; n++) {
         if (firstOnly && n > 0) break;
         const from = addMonthsIso(start, n);
-        if (from > (onlyKey ? tomorrow > until ? tomorrow : until : until)) break;
+        // A new tenancy starting later whose move-in money is already in: its first rent shows now (on this month's
+        // page and its Rent card), so the landlord can be paid straight away ("Pay landlord now").
+        const earlyIn = n === 0 && (onlyKey || month === thisMonth) && !paid[from] && moveinCover(d).covered;
+        if (from > (onlyKey ? tomorrow > until ? tomorrow : until : until) && !earlyIn) break;
         if (next && from >= String(next.start_date).slice(0, 10)) break;
         const inNow = rcvd[from] || (n === 0 && mvShown);
         if (from < sinceDay && !inNow) { prevRow = null; continue; }   // before collection started — unless it was marked collected (or paid with the move-in money)
