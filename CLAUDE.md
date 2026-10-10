@@ -82,6 +82,8 @@ The owner is not a developer: explain results in plain, non-technical English, b
 4. Commit with a clear message, push the working branch, open a PR, squash-merge it, then reset the working branch to the new `main`.
 5. Tell the user what changed in plain English and anything they need to do.
 
+Speed: our CSS/JS are fingerprinted (`asset()`, `?v=`) and served with `max-age=31536000, immutable` (`noCache` in server.js); Google Fonts load without blocking the first paint (`SITE_FONTS`: preload + `media="print" onload`, `<noscript>` fallback; landlords.html the same). Only `site.js`, `ff.js` and `rrt.js` can be downloaded from the root — every other `.js` (server code) is 404 (`NOT_PUBLIC` allow-list), so new server modules are covered automatically.
+
 Public website changes must respect `prefers-reduced-motion`, work without horizontal scroll at phone width, and keep the existing SEO (titles, descriptions, sitemap, structured data).
 
 ## User preferences learned so far
