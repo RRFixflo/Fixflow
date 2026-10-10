@@ -353,7 +353,7 @@ module.exports = function (app, opts) {
     try {
       const r = await fetch(url, { headers: Object.assign({ Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }, T.UA), signal: AbortSignal.timeout(20000) });
       const body = r.ok ? await r.text() : '';
-      if (!r.ok || /cf-chl|challenge-platform|Just a moment/i.test(body.slice(0, 5000))) return res.json({ ok: false, error: 'blocked', url: url });
+      if (!r.ok || /cf-chl|challenge-platform|Just a moment/i.test(body.slice(0, 5000))) { console.log('Zoopla search ' + pc + ' refused: ' + zDiag(r.status, body, 0)); return res.json({ ok: false, error: 'blocked', url: url }); }
       let here = null; try { const j = await (await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc.replace(' ', '')), { signal: AbortSignal.timeout(10000) })).json(); if (j.result) here = { lat: j.result.latitude, lng: j.result.longitude }; } catch (e) {}
       const items = zObjects(body).map(function (o) {
         const title = String(o.title || o.propertyTitle || ''), feats = Array.isArray(o.features) ? o.features : [];
@@ -374,9 +374,22 @@ module.exports = function (app, opts) {
       }).filter(function (x) { return x.price && x.addr && (beds == null || x.beds == null || x.beds === beds); });
       const today = Date.parse(new Date().toISOString().slice(0, 10));
       items.forEach(function (x) { x.days = x.listed ? Math.max(0, Math.round((today - Date.parse(x.listed)) / 86400000)) : null; });
-      res.json({ ok: true, items: items.slice(0, 40), url: url });
+      if (!items.length) console.log('Zoopla search ' + pc + ' read nothing: ' + zDiag(r.status, body, zObjects(body).length));
+      res.json({ ok: !!items.length, error: items.length ? undefined : 'empty', items: items.slice(0, 40), url: url });
     } catch (e) { res.json({ ok: false, error: e.blocked ? 'blocked' : 'unreachable', url: url }); }
   });
+  // What a Zoopla page looked like (for the logs): status, size, title and whether listings were in it.
+  function zDiag(status, body, n) {
+    return 'status ' + status + ', ' + body.length + ' bytes, title "' + ((/<title>([^<]{0,80})/.exec(body) || [])[1] || '') + '", listingId x' + (body.split('"listingId"').length - 1) +
+      ', markers ' + ['__NEXT_DATA__', 'self.__next_f', 'cf-chl', 'challenge-platform', 'Just a moment', 'captcha', 'Access denied', 'regularListingsFormatted', 'listingId\\"'].filter(function (k) { return body.indexOf(k) !== -1; }).join('/') + ', read ' + n;
+  }
+  // Once after start-up: one Zoopla search near the office, so the logs show whether Zoopla answers this server.
+  setTimeout(function () {
+    const u = zooplaUrl(String(process.env.OFFICE_POSTCODE || 'SE1 6AD').toUpperCase(), false, 2, '1.0');
+    fetch(u, { headers: Object.assign({ Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }, T.UA), signal: AbortSignal.timeout(20000) })
+      .then(async function (r) { const b = await r.text(); console.log('Zoopla check: ' + zDiag(r.status, b, zObjects(b).length)); })
+      .catch(function (e) { console.log('Zoopla check failed: ' + e.message); });
+  }, 20000).unref();
   function zooplaUrl(pc, buy, beds, miles) {
     const r = { '0.0': '0', '0.25': '0.25', '0.5': '0.5', '1.0': '1', '3.0': '3' }[miles] || '1';
     return 'https://www.zoopla.co.uk/' + (buy ? 'for-sale' : 'to-rent') + '/property/' + pc.toLowerCase().replace(' ', '-') + '/?q=' + encodeURIComponent(pc) + '&radius=' + r +
