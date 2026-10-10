@@ -1099,6 +1099,8 @@
   .fee-run { display: grid; grid-template-columns: 58px minmax(0, 1fr) 92px 96px; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line, #eef0f3); font-size: .86rem; align-items: baseline; } .fee-run > span:nth-child(n+3) { text-align: right; white-space: nowrap; } .fee-run small { display: block; color: var(--ink-soft, #667085); font-size: .76rem; } .fee-run-h { font-size: .74rem; color: var(--ink-soft, #667085); font-weight: 700; border-top: 0; }
   @media (max-width: 560px) { .fee-run { grid-template-columns: 46px minmax(0, 1fr) 78px; } .fee-run > span:nth-child(4) { grid-column: 2 / 4; text-align: right; font-size: .78rem; color: var(--ink-soft, #667085); } .fee-run > span:nth-child(4) b::before { content: 'Running total '; font-weight: 400; } .fee-run-h > span:nth-child(4) { display: none; } }
   .la-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .la-tabs button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: inherit; } .la-tabs button small { font-weight: 500; color: var(--ink-soft, #667085); margin-left: 4px; } .la-tabs button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; } .la-tabs button.on small { color: rgba(255,255,255,.75); }
+  .ap-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 64px 130px 34px; gap: 6px; margin-bottom: 6px; }
+  @media (max-width: 640px) { .ap-row { grid-template-columns: 1fr 1fr; } .ap-row [data-f=url] { grid-column: 1 / -1; } .ap-row .tcy-x { justify-self: end; } }
   .la-sub { margin: 14px 0 6px; font-size: .95rem; }
   .ll-cost { display: block; margin-top: 3px; font-size: .75rem; font-weight: 700; color: var(--navy, #0b1f3a); white-space: nowrap; } .ll-cost i { display: block; font-style: normal; font-weight: 500; color: var(--ink-soft, #667085); }
   .tm-incl { display: flex; flex-wrap: wrap; gap: 6px 14px; } .tm-incl-i { display: flex; gap: 6px; align-items: center; font-size: .92rem; }
@@ -2241,6 +2243,7 @@
             <div class="off-pvr" id="offPvr" hidden><label>Rent<span style="display:flex;gap:6px"><input class="inp" id="pvRent2" inputmode="decimal" placeholder="e.g. 450"><select class="inp" id="pvPer2" style="width:auto"><option value="pw">per week</option><option value="pcm">per month</option></select></span></label><label>PVR amount £ <span class="muted-note" style="margin:0">one week’s rent</span><input class="inp" id="pvAmt2" inputmode="decimal"></label><label>Viewing <span class="muted-note" style="margin:0">optional — starts the 24 hours</span><input class="inp" id="pvAt2" type="datetime-local"></label><label class="switch-row" style="align-self:end"><input type="checkbox" id="pvAddV2" checked> Also add it to Viewings</label></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><input class="inp" id="offToName" placeholder="Their name" style="flex:1;min-width:140px"><input class="inp" id="offTo" placeholder="Their mobile or email (optional)" style="flex:1;min-width:200px"><button class="btn small wa-btn" type="button" id="offSendWa">WhatsApp</button><button class="btn small" type="button" id="offSendMail">✉ Email</button></div></div>
         </details>
+        <details class="card" id="offAppr" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">🏠 Property appraisal <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">estimated value and rent from similar homes within a mile — with a report for the landlord</span></summary><div id="apprBody" style="margin-top:10px"></div></details>
         <details class="card" id="offInv" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📨 Offer forms sent <span class="muted-note" id="offInvSum" style="margin:0 0 0 6px;font-weight:400"></span></summary><div id="offInvList" style="margin-top:10px"></div></details>
         <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="offMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="offMaxAll">▾ Expand all</button></span></div>
         <div id="offList" style="margin-bottom:14px"></div>
@@ -11976,6 +11979,81 @@
   }
   document.addEventListener('pointerdown', function(e){ var a = e.target.closest && e.target.closest('#offList [data-off]'); if (a) offFocus = a.dataset.off; }, true);
   document.addEventListener('focusin', function(e){ var a = e.target.closest && e.target.closest('#offList [data-off]'); if (a) offFocus = a.dataset.off; });
+  // ---------- Property appraisal ----------
+  // Enter the home, open Rightmove for similar homes within a mile (for sale / to rent), add the ones that match by
+  // hand; the estimated value and rent are their averages. "Make the report" saves it as a valuation letter (our
+  // branded PDF) with the similar homes listed, to download and send to the landlord.
+  var appr = { sale: [], let: [] };
+  function apprPc(){ var m = POSTCODE_RE.exec($('apAddr') ? $('apAddr').value : ''); return m ? (m[1] + ' ' + m[2]).toUpperCase() : ''; }
+  function apprPrice(v, rent){ var t = String(v || '').toLowerCase(), n = num(t.replace(/[^0-9.]/g, '')); if (!n) return null; return rent && /pw|p\/w|week/.test(t) ? Math.round(n * 52 / 12) : n; }
+  function apprStats(list, rent){ var ps = list.map(function(c){ return apprPrice(c.price, rent); }).filter(Boolean); if (!ps.length) return null; var avg = ps.reduce(function(a, b){ return a + b; }, 0) / ps.length; return { n: ps.length, avg: avg, lo: Math.min.apply(null, ps), hi: Math.max.apply(null, ps), est: rent ? Math.round(avg / 10) * 10 : Math.round(avg / 1000) * 1000 }; }
+  function apprRows(kind){
+    return appr[kind].map(function(c, i){ return '<div class="ap-row" data-ap-k="' + kind + '" data-ap-i="' + i + '"><input class="inp" data-f="url" placeholder="Rightmove link (optional)" value="' + esc(c.url || '') + '"><input class="inp" data-f="addr" placeholder="Address / street" value="' + esc(c.addr || '') + '"><input class="inp" data-f="beds" placeholder="Beds" inputmode="numeric" value="' + esc(c.beds || '') + '"><input class="inp" data-f="price" inputmode="decimal" placeholder="' + (kind === 'let' ? '£ pcm (or 450 pw)' : '£ asking price') + '" value="' + esc(c.price || '') + '"><button type="button" class="tcy-x" data-ap-del title="Remove">×</button></div>'; }).join('') +
+      '<button type="button" class="btn small ghost" data-ap-add="' + kind + '">＋ Add a similar home</button>';
+  }
+  function apprSum(){
+    var s = apprStats(appr.sale, false), r = apprStats(appr.let, true), out = [];
+    if (s) out.push('<div><span>Estimated value</span><b>' + gbp0(s.est) + '</b><small>average of ' + s.n + (s.n > 1 ? ' · ' + gbp0(s.lo) + '–' + gbp0(s.hi) : '') + '</small></div>');
+    if (r) out.push('<div><span>Estimated rent</span><b>' + gbp0(r.est) + ' pcm</b><small>' + gbp0(r.est * 12 / 52) + ' pw · average of ' + r.n + (r.n > 1 ? ' · ' + gbp0(r.lo) + '–' + gbp0(r.hi) : '') + '</small></div>');
+    if (s && r) out.push('<div><span>Gross yield</span><b>' + (r.est * 12 / s.est * 100).toFixed(1) + '%</b><small>rent × 12 ÷ value</small></div>');
+    $('apSum').innerHTML = out.length ? '<div class="la-tiles" style="grid-template-columns:repeat(' + out.length + ',minmax(0,1fr))">' + out.join('') + '</div>' : '<p class="muted-note" style="margin:0">Add similar homes below — the estimates are their averages.</p>';
+  }
+  function apprRender(){
+    var b = $('apprBody'); if (!b) return;
+    if (!b.dataset.built) {
+      b.dataset.built = 1;
+      b.innerHTML = '<div class="grid2"><label class="lbl">Property address<input class="inp" id="apAddr" placeholder="Full address with postcode"></label><label class="lbl">Type<select class="inp" id="apType"><option value="">—</option><option>Flat</option><option>Maisonette</option><option>House</option><option>Studio</option></select></label></div>' +
+        '<div class="grid3"><label class="lbl">Bedrooms<input class="inp" id="apBeds" inputmode="numeric" placeholder="e.g. 2"></label><label class="lbl">Bathrooms<input class="inp" id="apBaths" inputmode="numeric" placeholder="e.g. 1"></label><label class="lbl">Report for <span class="muted-note" style="margin:0">optional</span><input class="inp" id="apTo" placeholder="Landlord’s name"></label></div>' +
+        '<label class="lbl">Their address <span class="muted-note" style="margin:0">optional</span><textarea class="inp" id="apToAddr" rows="2"></textarea></label>' +
+        '<label class="lbl">What stood out <span class="muted-note" style="margin:0">optional — one per line</span><textarea class="inp" id="apHi" rows="2" placeholder="e.g. Private balcony&#10;Five minutes to the station"></textarea></label>' +
+        '<div class="row-actions" style="flex-wrap:wrap;margin:8px 0"><button type="button" class="btn small" data-ap-rm="sale">🔎 Rightmove: for sale within 1 mile</button><button type="button" class="btn small" data-ap-rm="let">🔎 Rightmove: to rent within 1 mile</button></div>' +
+        '<p class="muted-note" style="margin:0 0 6px">Opens Rightmove for the postcode and bedrooms. Add the homes that really match (similar size, type and condition) below — paste the link, the street and the price.</p>' +
+        '<h4 class="la-sub">Similar homes for sale</h4><div id="apSale"></div><h4 class="la-sub">Similar homes to rent</h4><div id="apLet"></div>' +
+        '<h4 class="la-sub">Estimate</h4><div id="apSum"></div>' +
+        '<p class="muted-note" id="apErr" style="color:var(--red,#c00);margin:6px 0 0" hidden></p>' +
+        '<div class="row-actions" style="flex-wrap:wrap;margin-top:10px"><button type="button" class="btn primary" id="apMake">📄 Make the report</button><span id="apDone"></span></div>' +
+        '<h4 class="la-sub">Recent appraisals</h4><div id="apList" class="muted-note">Loading…</div>';
+      b.addEventListener('input', function(e){ var row = e.target.closest('[data-ap-k]'); if (row && e.target.dataset.f) { appr[row.dataset.apK][Number(row.dataset.apI)][e.target.dataset.f] = e.target.value; apprSum(); } });
+      b.addEventListener('click', function(e){
+        var a = e.target.closest('[data-ap-add]'); if (a) { appr[a.dataset.apAdd].push({}); apprDraw(); return; }
+        var d = e.target.closest('[data-ap-del]'); if (d) { var row = d.closest('[data-ap-k]'); appr[row.dataset.apK].splice(Number(row.dataset.apI), 1); apprDraw(); return; }
+        var rm = e.target.closest('[data-ap-rm]'); if (rm) { var pc = apprPc(); if (!pc) { toast('Add the address with its postcode first'); return; }
+          var beds = parseInt($('apBeds').value, 10), q = '?searchLocation=' + encodeURIComponent(pc) + '&radius=1.0' + (beds >= 0 ? '&minBedrooms=' + beds + '&maxBedrooms=' + beds : '');
+          window.open('https://www.rightmove.co.uk/' + (rm.dataset.apRm === 'let' ? 'property-to-rent' : 'property-for-sale') + '/find.html' + q, '_blank', 'noopener'); return; }
+      });
+      $('apMake').addEventListener('click', apprMake);
+      apprDraw();
+    }
+    apprList();
+  }
+  function apprDraw(){ if (!appr.sale.length) appr.sale.push({}); if (!appr.let.length) appr.let.push({}); $('apSale').innerHTML = apprRows('sale'); $('apLet').innerHTML = apprRows('let'); apprSum(); }
+  function apprMake(){
+    var err = function(t){ $('apErr').textContent = t; $('apErr').hidden = false; };
+    var addr = $('apAddr').value.trim(), s = apprStats(appr.sale, false), r = apprStats(appr.let, true);
+    $('apErr').hidden = true;
+    if (!addr) return err('Add the property address.');
+    if (!s && !r) return err('Add at least one similar home with a price.');
+    var clean = function(list, rent){ return list.filter(function(c){ return apprPrice(c.price, rent); }).map(function(c){ return { url: c.url || '', addr: c.addr || '', beds: c.beds || '', price: apprPrice(c.price, rent) }; }); };
+    var btn = $('apMake'); busy(btn, true, 'Making…');
+    api('POST', '/api/admin/valuations', { appraisal: true, address: addr, ptype: $('apType').value, beds: $('apBeds').value.trim(), baths: $('apBaths').value.trim(),
+      sales: !!s, lettings: !!r, sales_low: s ? s.est : null, sales_high: s ? s.est : null, let_low: r ? r.est : null, let_high: r ? r.est : null,
+      comps_sale: clean(appr.sale, false), comps_let: clean(appr.let, true), to_name: $('apTo').value.trim(), to_address: $('apToAddr').value.trim(), highlights: $('apHi').value.trim(),
+      include_fees: true, signer: meta.user && meta.user.id && meta.user.name ? meta.user.name : '' }).then(function(d){
+      busy(btn, false);
+      if (!d || !d.ok) return err('Couldn’t make the report — please check the details.');
+      $('apDone').innerHTML = '<a class="btn small" href="' + esc(d.pdf) + '" target="_blank" rel="noopener">Open the report</a> <a class="btn small" href="' + esc(d.pdf) + '?dl=1">⬇ Download</a>';
+      window.open(d.pdf, '_blank', 'noopener'); apprList();
+    });
+  }
+  function apprList(){
+    api('GET', '/api/admin/valuations').then(function(d){
+      if (!$('apList')) return;
+      var list = ((d && d.items) || []).filter(function(x){ return x.data && x.data.appraisal; }).slice(0, 10);
+      $('apList').innerHTML = list.length ? list.map(function(x){ var v = x.data, u = '/api/admin/valuations/' + x.id + '/pdf';
+        return '<div class="fee-run" style="grid-template-columns:minmax(0,1fr) auto"><span><b>' + esc(String(x.address).split(',').slice(0, 2).join(',')) + '</b><small>' + esc([v.sales ? 'Value ' + gbp0(v.sales_low) : '', v.lettings ? 'Rent ' + gbp0(v.let_low) + ' pcm' : '', fmtShort(x.created_at), x.created_by || ''].filter(Boolean).join(' · ')) + '</small></span><span><a class="btn small ghost" href="' + u + '" target="_blank" rel="noopener">Open</a> <a class="btn small ghost" href="' + u + '?dl=1">⬇</a></span></div>'; }).join('') : 'None yet.';
+    });
+  }
+  document.addEventListener('toggle', function(e){ if (e.target && e.target.id === 'offAppr' && e.target.open) apprRender(); }, true);
   function renderOffers(){
     if (!renderOffers.staffLoaded) { renderOffers.staffLoaded = true; loadOffStaff(); loadRemind(); loadInvites(); loadViewings(); $('offSendWa').innerHTML = WA_ICON + 'WhatsApp'; }
     var al = meta.offerAlerts || '', hid = false; try { hid = localStorage.getItem('rr_alerts_hide') === '1'; } catch (e) {}
