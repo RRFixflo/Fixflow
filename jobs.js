@@ -1824,6 +1824,10 @@ module.exports = function mountJobs(app, opts) {
   // didn't show on the Invoices page, the property or statements. Make a record for each one. They are not
   // taken from rent automatically (shown as paid directly) until staff choose a rent in the invoice editor.
   async function migrateJobInvoices(pool) {
+    // Older invoices with no job were numbered INV-00049: given RR like the rest (RR-INV-00049).
+    await pool.query(`UPDATE invoices SET number = 'RR-' || number,
+        data = data || jsonb_build_object('number', 'RR-' || number) || CASE WHEN data->>'ref' = number THEN jsonb_build_object('ref', 'RR-' || number) ELSE '{}'::jsonb END
+      WHERE job_id IS NULL AND number ~ '^INV-[0-9]+$'`);
     const r = await pool.query(`INSERT INTO invoices (job_id, number, total, created_at, landlord_name, landlord_email, address, data)
       SELECT j.id, j.invoice_number, j.invoice_total, coalesce(j.invoiced_at, j.updated_at, now()), j.landlord_name, j.landlord_email, j.property_address,
         jsonb_build_object('number', j.invoice_number, 'date', to_char(coalesce(j.invoiced_at, j.updated_at, now()), 'YYYY-MM-DD'), 'landlord', j.landlord_name, 'landlordEmail', j.landlord_email,
@@ -3798,7 +3802,8 @@ module.exports = function mountJobs(app, opts) {
     const today = new Date().toISOString().slice(0, 10), due = isoDay(b.due) || new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
     const ins = await p.query('INSERT INTO invoices (job_id, tenancy_id, address, property_key, total, landlord_name, landlord_email) VALUES (NULL, $1, $2, $3, $4, $5, $6) RETURNING id',
       [tid, address, key, total, name || null, email || null]);
-    const id = ins.rows[0].id, number = 'INV-' + String(id).padStart(5, '0');
+    // Every invoice number has RR in it: a job's invoice is INV-<job ref> (INV-RR-00103); others RR-INV-00049.
+    const id = ins.rows[0].id, number = 'RR-INV-' + String(id).padStart(5, '0');
     const data = { number: number, title: str(b.title, 120) || 'Invoice', date: today, due: due, ref: str(b.ref, 40) || number, landlord: name, landlordEmail: email, landlordPhone: str(b.landlord_phone, 50) || ll.phone || '',
       landlordAddress: str(b.landlord_address, 500) || ll.address || '', lines: lines, sub: sub, vat: vat, total: total, kind: str(b.kind, 30) || '' };
     await p.query('UPDATE invoices SET number = $2, data = $3 WHERE id = $1', [id, number, JSON.stringify(data)]);
@@ -10074,14 +10079,36 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // collect, what comes off it (our fees + VAT, landlord invoices due from this rent, anything brought
   // forward — the same figures as the monthly statement) and so what to send the landlord; plus whether
   // the rent's been collected, the landlord paid and the statement sent.
+  // The move-in money (first month's rent + deposit) the tenants have paid us, from the tenancy's receipts.
+  function moveinCover(d) {
+    const r2 = function (v) { return Math.round(v * 100) / 100; }, rent = Number(d.rent_pcm) || 0;
+    const dep = d.deposit != null && d.deposit !== '' ? Number(d.deposit) || 0 : Math.floor(rent * 12 / 52 * 5 + 1e-9);
+    const due = r2(rent + dep), got = r2((d.receipts || []).reduce(function (a, x) { return a + (Number(String(x && x.amount || '').replace(/[£,\s]/g, '')) || 0); }, 0));
+    const last = (d.receipts || []).map(function (x) { return x && x.date; }).filter(Boolean).sort().pop() || null;
+    return { due: due, paid: got, left: r2(due - got), last: last, covered: rent > 0 && got > 0 && got >= due - 0.004 };
+  }
+  // A new tenancy's first rent paid with the move-in money counts on the Rent page even if it fell a little
+  // before rent collection started (RENT_START) — the landlord's move-in payment still has to go out.
+  function moveinRowShown(d, start, today) { return !!start && start <= today && start >= addDaysIso(RENT_START, -62) && moveinCover(d).covered; }
+  // Invoices set to "Take from: the current statement" come off that statement's rent (the latest rent date)
+  // while the landlord hasn't been paid for it; otherwise the next rent.
+  function currentStmtRent(t) {
+    const d = t.data || {}, start = String(d.start_date || t.start_date || '').slice(0, 10), today = londonDay(), lp = d.ll_paid || {};
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return null;
+    let cur = start; for (let n = 1; n < 240; n++) { const f = addMonthsIso(start, n); if (f > today) break; cur = f; }
+    const onBoard = cur >= RENT_START || (cur === start && moveinRowShown(d, start, today)) || !!(d.rent_rcvd || {})[cur];
+    if (onBoard && !lp[cur]) return cur;
+    for (let n = 1; n < 240; n++) { const f = addMonthsIso(start, n); if (f > cur && !lp[f]) return f; }
+    return null;
+  }
   async function rentPendingInvoices(p, t, from) {
     // Every unpaid landlord invoice for the property so far — repair invoices included (they're linked
     // through the job's address) — unless it's set to be taken from a later month's rent.
-    const ym = from.slice(0, 7);
+    const ym = from.slice(0, 7), curRent = currentStmtRent(t);
     return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.data->>'collect_month' AS cm, coalesce(i.data->>'title', '') AS title, i.job_id, i.tenancy_id, i.property_key, coalesce(j.property_address, i.address) AS addr, j.category, j.affected, j.symptom, j.description, i.data->>'short' AS short
       FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id
       WHERE i.paid_at IS NULL AND coalesce(i.data->>'collect_month', '') <> 'direct' AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.created_at`)).rows
-      .filter(function (i) { return (i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key))) && (i.cm && i.cm !== 'current' ? i.cm <= ym : true); })
+      .filter(function (i) { return (i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key))) && (i.cm === 'current' ? !curRent || from === curRent : i.cm ? i.cm <= ym : true); })
       .map(function (i) { const t = String(i.title || '').trim(), generic = !t || /^repair\s+[A-Z]{1,4}-?\d+$/i.test(t) || t.indexOf(i.number) !== -1;
         return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.short || shortOf((i.category || i.affected || i.description ? jobBrief(i, 48) : '') || (generic ? '' : t)), job_id: i.job_id }; });
   }
@@ -10111,16 +10138,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const firstOnly = !rentByUs(d);
       if (firstOnly && !next) notOurs++;
       const rcvd = d.rent_rcvd || {}, paid = d.ll_paid || {}, ll = lls[t.property_key] || {};
+      const mvShown = moveinRowShown(d, start, today);
+      let prevRow = null;
       for (let n = 0; n < 120; n++) {
         if (firstOnly && n > 0) break;
         const from = addMonthsIso(start, n);
         if (from > (onlyKey ? tomorrow > until ? tomorrow : until : until)) break;
         if (next && from >= String(next.start_date).slice(0, 10)) break;
-        if (from < sinceDay && !rcvd[from]) continue;   // before collection started — unless it was marked collected
+        const inNow = rcvd[from] || (n === 0 && mvShown);
+        if (from < sinceDay && !inNow) { prevRow = null; continue; }   // before collection started — unless it was marked collected (or paid with the move-in money)
         // Our fees on every rent collected so far (all months).
-        if (rcvd[from] && !onlyKey) { feesAll += 1; }
+        if (inNow && !onlyKey) { feesAll += 1; }
         // Earlier months only on this month's page, and only while something's still to do (a property's page shows them all).
-        if (!onlyKey && from < mStart && (month !== thisMonth || (rcvd[from] && paid[from]))) { if (rcvd[from]) { const stm0 = stBy[t.id] && stBy[t.id].months.filter(function (m) { return m.from === from; })[0]; const f0 = (stm0 ? stm0.fees : stmtFees(d, Number(d.rent_pcm) || 0, n === 0, from).fees || []).filter(function (x) { return !x.invoice_id; }); const a0 = r2(f0.reduce(function (a, x) { return a + x.amount + (x.vat || 0); }, 0)), n0 = r2(f0.reduce(function (a, x) { return a + x.amount; }, 0)); feesN = r2(feesN + a0); feesNnet = r2(feesNnet + n0);
+        if (!onlyKey && from < mStart && (month !== thisMonth || (inNow && paid[from]))) { prevRow = null; if (inNow) { const stm0 = stBy[t.id] && stBy[t.id].months.filter(function (m) { return m.from === from; })[0]; const f0 = (stm0 ? stm0.fees : stmtFees(d, Number(d.rent_pcm) || 0, n === 0, from).fees || []).filter(function (x) { return !x.invoice_id; }); const a0 = r2(f0.reduce(function (a, x) { return a + x.amount + (x.vat || 0); }, 0)), n0 = r2(f0.reduce(function (a, x) { return a + x.amount; }, 0)); feesN = r2(feesN + a0); feesNnet = r2(feesNnet + n0);
           if (a0) feeList.push({ tenancy_id: t.id, address: d.address || t.address, from: from, service: d.service || '', amount: a0, net: n0, lines: f0.map(function (x) { return { label: x.label, amount: r2(x.amount + (x.vat || 0)) }; }) }); } continue; }
         let rent = Number(d.rent_pcm) || 0;
         if (n > 0) Object.keys(t.intention || {}).sort().forEach(function (k) { const it = t.intention[k] || {}; const nr = Number(it.new_rent); if (nr && !it.no_increase && (it.rent_from || k) <= from) rent = nr; });
@@ -10155,8 +10185,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
         const partIn = r2(((d.rent_parts || {})[from] || []).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0));
         const share = rent > 0 ? Math.min(1, partIn / rent) : 0, partFees = r2((f.sub + f.vat) * share);
         const partOut = !isIn && !movein && partIn > 0 ? Math.max(0, r2(partIn - partFees - llPartSent)) : 0;
-        const toLl = r2(base - pendTotal - llPartSent);
-        items.push({
+        // What the landlord still owes from the previous rent's statement (e.g. invoices taken from it came
+        // to more than that rent) comes off this one — once, not counted again with the invoices.
+        let owedBf = 0;
+        if (prevRow && !prevRow.paid && prevRow.to_landlord < -0.004) owedBf = stm ? Math.max(0, r2(-prevRow.to_landlord - (stm.bf || 0))) : r2(-prevRow.to_landlord);
+        else if (!prevRow && !stm && n > 0) { const pm = stBy[t.id] && stBy[t.id].months.filter(function (m) { return m.from === addMonthsIso(start, n - 1); })[0]; if (pm && pm.balance < -0.004 && !paid[pm.from]) owedBf = r2(-pm.balance); }
+        const toLl = r2(base - owedBf - pendTotal - llPartSent);
+        items.push({ owed_bf: owedBf,
           part_out: partOut, part_fees: partFees, part_in: partIn, ll_parts: llParts, ll_part_sent: llPartSent,
           tenancy_id: t.id, address: d.address || t.address, from: from, n: n, rent: rent,
           tenants: (d.tenants || []).map(function (x) { return x && x.name; }).filter(Boolean),
@@ -10174,6 +10209,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           stmt: stm ? { sent: stm.sent || null, changed: stm.changed || null } : null,
           status: isIn ? 'collected' : movein && movein.left > 0.004 ? 'movein' : from < today ? 'overdue' : from === today ? 'today' : from === tomorrow ? 'tomorrow' : 'upcoming'
         });
+        prevRow = items[items.length - 1];
       }
     }
     items.sort(function (a, b) { return a.from < b.from ? -1 : a.from > b.from ? 1 : String(a.address).localeCompare(String(b.address)); });
@@ -10354,8 +10390,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
     }
     // Charges added after the rent came in (and taken off this payment): recovered from this rent now.
-    const tl = (await p.query('SELECT id, property_key, data FROM tenancies WHERE id = $1', [id])).rows[0];
-    const rc = tl && ((tl.data || {}).rent_rcvd || {})[from];
+    const tl = (await p.query('SELECT id, property_key, start_date, data FROM tenancies WHERE id = $1', [id])).rows[0];
+    // (The first rent paid with the move-in money counts as received too.)
+    const rc = tl && (((tl.data || {}).rent_rcvd || {})[from] || (from === String((tl.data || {}).start_date || tl.start_date || '').slice(0, 10) && moveinCover(tl.data || {}).covered));
     if (tl && rc && !((tl.data || {}).ll_paid || {})[from]) {
       const late = await rentPendingInvoices(p, tl, from), ids = [];
       for (const i of late) {
@@ -10487,9 +10524,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (t.property_key && tcys.slice(k + 1).some(function (x) { return x.property_key === t.property_key; })) return;   // an earlier tenancy
       const d = t.data || {}, start = String(d.start_date || t.start_date || '').slice(0, 10), lp = d.ll_paid || {};
       if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return;
-      let from = null; for (let n = 0; n < 240; n++) { const f = addMonthsIso(start, n); if (f >= RENT_START && !lp[f]) { from = f; break; } }
-      // The current statement: the most recent rent date (the move-in one if the tenancy hasn't started).
+      const mvShown = moveinRowShown(d, start, today);
+      let from = null; for (let n = 0; n < 240; n++) { const f = addMonthsIso(start, n); if ((f >= RENT_START || (n === 0 && mvShown)) && !lp[f]) { from = f; break; } }
+      // The current statement: the most recent rent date (the move-in one if the tenancy hasn't started) —
+      // or the next one once the landlord's been paid for it (as on the Rent page).
       let cur = start; for (let n = 1; n < 240; n++) { const f = addMonthsIso(start, n); if (f > today) break; cur = f; }
+      cur = currentStmtRent(t) || cur;
       const mine = inv.filter(function (i) { return i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key)); });
       const pick = function (i) { return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.title }; };
       const groups = [];
