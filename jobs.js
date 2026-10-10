@@ -1810,6 +1810,7 @@ module.exports = function mountJobs(app, opts) {
       .then(function () { return migrateTenants(pool).catch(function (err) { console.error('Tenant migration failed:', err.message); }); })
       .then(function () { return mergeDuplicateTenants(pool).catch(function (err) { console.error('Tenant merge failed:', err.message); }); })
       .then(function () { return mergeDuplicateLandlords(pool).catch(function (err) { console.error('Landlord merge failed:', err.message); }); })
+      .then(function () { return migrateJobInvoices(pool).catch(function (err) { console.error('Job invoice migration failed:', err.message); }); })
       .then(function () { console.log('Jobs database ready'); return true; })
       .catch(function (err) { console.error('Jobs database setup failed:', err.message); return false; });
   } else if (DATABASE_URL && !Pool) {
@@ -1818,6 +1819,19 @@ module.exports = function mountJobs(app, opts) {
 
   async function db() {
     return (await ready) ? pool : null;
+  }
+  // Invoices issued before they were saved in full were only noted on the job (number and total), so they
+  // didn't show on the Invoices page, the property or statements. Make a record for each one. They are not
+  // taken from rent automatically (shown as paid directly) until staff choose a rent in the invoice editor.
+  async function migrateJobInvoices(pool) {
+    const r = await pool.query(`INSERT INTO invoices (job_id, number, total, created_at, landlord_name, landlord_email, address, data)
+      SELECT j.id, j.invoice_number, j.invoice_total, coalesce(j.invoiced_at, j.updated_at, now()), j.landlord_name, j.landlord_email, j.property_address,
+        jsonb_build_object('number', j.invoice_number, 'date', to_char(coalesce(j.invoiced_at, j.updated_at, now()), 'YYYY-MM-DD'), 'landlord', j.landlord_name, 'landlordEmail', j.landlord_email,
+          'landlordAddress', j.landlord_address, 'lines', jsonb_build_array(jsonb_build_object('desc', trim(both ' –' from concat_ws(' – ', nullif(j.category, ''), coalesce(nullif(j.affected, ''), nullif(j.summary, '')))), 'amount', j.invoice_total)),
+          'sub', j.invoice_total, 'vat', 0, 'total', j.invoice_total, 'collect_month', 'direct', 'legacy', true)
+      FROM jobs j WHERE j.invoice_number IS NOT NULL AND trim(j.invoice_number) <> '' AND j.invoice_total IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.job_id = j.id) RETURNING id`);
+    if (r.rows.length) console.log('Job invoices: made ' + r.rows.length + ' invoice record(s) from older jobs');
   }
 
   // ---------- Saving a submitted report ----------
@@ -3815,11 +3829,12 @@ module.exports = function mountJobs(app, opts) {
   // Which month's rent an unpaid invoice is taken from ('YYYY-MM'; empty = the next rent day).
   app.post('/api/admin/invoices/:id/collect', withDb(async function (p, req, res) {
     // 'direct': the landlord pays it themselves (we don't collect this rent), so it's never taken from rent.
-    const m = String((req.body || {}).month || ''), ok = /^\d{4}-(0[1-9]|1[0-2])$/.test(m) || m === 'direct';
+    // 'current': on the latest statement (the one for the most recent rent), not the next rent.
+    const m = String((req.body || {}).month || ''), ok = /^\d{4}-(0[1-9]|1[0-2])$/.test(m) || m === 'direct' || m === 'current';
     if (m && !ok) return res.status(400).json({ ok: false, error: 'month' });
     const r = await p.query(ok ? "UPDATE invoices SET data = data || jsonb_build_object('collect_month', $2::text) WHERE id = $1 RETURNING job_id, tenancy_id, number" : "UPDATE invoices SET data = data - 'collect_month' WHERE id = $1 RETURNING job_id, tenancy_id, number", ok ? [jobId(req), m] : [jobId(req)]);
     if (!r.rows[0]) return res.status(404).json({ ok: false, error: 'not-found' });
-    await invoiceNote(p, r.rows[0], 'Invoice ' + r.rows[0].number + (m === 'direct' ? ' to be paid by the landlord directly (not taken from rent).' : ok ? ' to be taken from the ' + new Date(m + '-15T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) + ' rent.' : ' to be taken from the next rent.'), 'change').catch(function () {});
+    await invoiceNote(p, r.rows[0], 'Invoice ' + r.rows[0].number + (m === 'direct' ? ' to be paid by the landlord directly (not taken from rent).' : m === 'current' ? ' to go on the current statement.' : ok ? ' to be taken from the ' + new Date(m + '-15T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) + ' rent.' : ' to be taken from the next rent.'), 'change').catch(function () {});
     res.json({ ok: true });
   }));
   app.post('/api/admin/invoices/:id/paid', withDb(async function (p, req, res) {
@@ -8823,7 +8838,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const daysTo = Math.round((Date.parse(nextRd + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / 86400000);
       if (daysTo >= 1 && daysTo <= 2 && nextRd >= base) {
         const nk = t.id + '|' + nextRd;
-        const soonList = st[nk] === 'done' || st[nk] === 'skip' ? [] : invs.filter(function (i) { return propKey(i.property_address) === t.property_key && (!i.cm || i.cm <= nextRd.slice(0, 7)); });
+        const soonList = st[nk] === 'done' || st[nk] === 'skip' ? [] : invs.filter(function (i) { return propKey(i.property_address) === t.property_key && (!i.cm || i.cm === 'current' || i.cm <= nextRd.slice(0, 7)); });
         if (soonList.length) out.push({ key: nk, tenancy_id: t.id, property_key: t.property_key, address: d.address || t.address || soonList[0].property_address, landlord: lls[t.property_key] || soonList[0].landlord_name || '',
           rent_day: nextRd, today: false, soon: daysTo, rent: Number(d.rent_pcm) || null, total: Math.round(soonList.reduce(function (a, i) { return a + Number(i.total || 0); }, 0) * 100) / 100,
           invoices: soonList.map(function (i) { return { id: i.id, number: i.number, total: Number(i.total), cm: i.cm || null }; }), alerted: !!st[nk + '|pre' + daysTo] });
@@ -8833,7 +8848,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const k = t.id + '|' + rd;
       if (st[k] === 'done' || st[k] === 'skip') continue;
       // An invoice set to a later month's rent waits for that month.
-      const list = invs.filter(function (i) { return propKey(i.property_address) === t.property_key && (i.cm ? i.cm <= rd.slice(0, 7) : new Date(i.created_at).toISOString().slice(0, 10) <= rd); });
+      const list = invs.filter(function (i) { return propKey(i.property_address) === t.property_key && (i.cm === 'current' ? true : i.cm ? i.cm <= rd.slice(0, 7) : new Date(i.created_at).toISOString().slice(0, 10) <= rd); });
       if (!list.length) continue;
       out.push({ key: k, tenancy_id: t.id, property_key: t.property_key, address: d.address || t.address || list[0].property_address, landlord: lls[t.property_key] || list[0].landlord_name || '',
         rent_day: rd, today: rd === today, rent: Number(d.rent_pcm) || null, total: Math.round(list.reduce(function (a, i) { return a + Number(i.total || 0); }, 0) * 100) / 100,
@@ -10066,7 +10081,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.data->>'collect_month' AS cm, coalesce(i.data->>'title', '') AS title, i.job_id, i.tenancy_id, i.property_key, coalesce(j.property_address, i.address) AS addr, j.category, j.affected, j.symptom, j.description, i.data->>'short' AS short
       FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id
       WHERE i.paid_at IS NULL AND coalesce(i.data->>'collect_month', '') <> 'direct' AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.created_at`)).rows
-      .filter(function (i) { return (i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key))) && (i.cm ? i.cm <= ym : true); })
+      .filter(function (i) { return (i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key))) && (i.cm && i.cm !== 'current' ? i.cm <= ym : true); })
       .map(function (i) { const t = String(i.title || '').trim(), generic = !t || /^repair\s+[A-Z]{1,4}-?\d+$/i.test(t) || t.indexOf(i.number) !== -1;
         return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.short || shortOf((i.category || i.affected || i.description ? jobBrief(i, 48) : '') || (generic ? '' : t)), job_id: i.job_id }; });
   }
@@ -10433,15 +10448,23 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const d = t.data || {}, start = String(d.start_date || t.start_date || '').slice(0, 10), lp = d.ll_paid || {};
       if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return;
       let from = null; for (let n = 0; n < 240; n++) { const f = addMonthsIso(start, n); if (f >= RENT_START && !lp[f]) { from = f; break; } }
-      if (!from || from > addDaysIso(today, 62)) return;
-      const ym = from.slice(0, 7), list = inv.filter(function (i) { return (i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key))) && (i.cm ? i.cm <= ym : true); })
-        .map(function (i) { return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.title }; });
-      if (list.length) pend[t.id] = { from: from, invoices: list };
+      // The current statement: the most recent rent date (the move-in one if the tenancy hasn't started).
+      let cur = start; for (let n = 1; n < 240; n++) { const f = addMonthsIso(start, n); if (f > today) break; cur = f; }
+      const mine = inv.filter(function (i) { return i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key)); });
+      const pick = function (i) { return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.title }; };
+      const groups = [];
+      const now = mine.filter(function (i) { return i.cm === 'current'; }).map(pick);
+      if (now.length) groups.push({ from: cur, invoices: now });
+      if (from && from <= addDaysIso(today, 62)) {
+        const ym = from.slice(0, 7), list = mine.filter(function (i) { return i.cm !== 'current' && (i.cm ? i.cm <= ym : true); }).map(pick);
+        if (list.length) { const g = groups.filter(function (x) { return x.from === from; })[0]; if (g) g.invoices = g.invoices.concat(list); else groups.push({ from: from, invoices: list }); }
+      }
+      if (groups.length) pend[t.id] = groups;
     });
     // Each invoice on a statement: a short description of the job and a link to the invoice (the landlord's
     // own invoice page, so the statement's reader can open it).
     const ids = {};
-    Object.keys(pend).forEach(function (k) { pend[k].invoices.forEach(function (i) { ids[i.id] = 1; }); });
+    Object.keys(pend).forEach(function (k) { pend[k].forEach(function (g) { g.invoices.forEach(function (i) { ids[i.id] = 1; }); }); });
     out.items.forEach(function (x) { x.months.forEach(function (m) { (m.fees || []).forEach(function (f) { if (f.invoice_id) ids[f.invoice_id] = 1; }); }); });
     res.json(Object.assign({ ok: true, pending: pend, inv_info: await invoiceInfo(p, Object.keys(ids).map(Number)) }, out));
   }));

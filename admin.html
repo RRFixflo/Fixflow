@@ -8798,12 +8798,12 @@
   }
   // Which month's rent an unpaid invoice comes out of: the next rent day, or a month you choose.
   function invMonthOpts(cur){
-    var d = new Date(), out = '<option value="">next rent</option><option value="direct"' + (cur === 'direct' ? ' selected' : '') + '>Landlord pays directly</option>';
+    var d = new Date(), out = '<option value="">next rent</option><option value="current"' + (cur === 'current' ? ' selected' : '') + '>the current statement</option><option value="direct"' + (cur === 'direct' ? ' selected' : '') + '>Landlord pays directly</option>';
     for (var k = 0; k < 7; k++) { var x = new Date(d.getFullYear(), d.getMonth() + k, 15), v = x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2); out += '<option value="' + v + '"' + (cur === v ? ' selected' : '') + '>' + x.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) + ' rent</option>'; }
     if (cur && out.indexOf('value="' + cur + '"') === -1) out += '<option value="' + cur + '" selected>' + cur + ' rent</option>';
     return out;
   }
-  function invSetMonth(id, m){ return api('POST', '/api/admin/invoices/' + id + '/collect', { month: m }).then(function(d){ toast(d && d.ok ? (m === 'direct' ? '✓ The landlord pays this one directly — not taken from rent' : m ? '✓ Will be taken from that month’s rent' : '✓ Will be taken from the next rent') : 'Couldn’t save that'); return Promise.all([loadJobs(), loadRentRecoveries()]); }); }
+  function invSetMonth(id, m){ return api('POST', '/api/admin/invoices/' + id + '/collect', { month: m }).then(function(d){ toast(d && d.ok ? (m === 'direct' ? '✓ The landlord pays this one directly — not taken from rent' : m === 'current' ? '✓ Will go on the current statement' : m ? '✓ Will be taken from that month’s rent' : '✓ Will be taken from the next rent') : 'Couldn’t save that'); return Promise.all([loadJobs(), loadRentRecoveries()]); }); }
   function invRowHtml(i, showAddress){
     var od = invOverdue(i);
     return '<div class="pay-row" style="grid-template-columns:minmax(0,1fr) 120px 96px auto">' +
@@ -13945,7 +13945,7 @@
   // A statement with the unpaid landlord invoices that will come off that rent (not on it yet until the
   // rent's collected) — so it matches the rent page's "to the landlord".
   function stmtWithPend(tid, m){
-    var pp = stmtPend[tid]; if (!m || !pp || !pp.invoices.length || String(m.from || '').slice(0, 10) !== pp.from) return m;
+    var pp = (stmtPend[tid] || []).filter(function(g){ return m && String(m.from || '').slice(0, 10) === g.from; })[0]; if (!m || !pp || !pp.invoices.length) return m;
     var extra = pp.invoices.map(function(i){ return { label: 'Invoice ' + i.number + (i.title && i.title.indexOf(i.number) === -1 && !/^repair\s+[A-Z]{1,4}-?\d+$/i.test(i.title) ? ' · ' + i.title : ''), amount: i.total, vat: 0, novat: true, pending: true, invoice_id: i.id }; });
     var t = r2(extra.reduce(function(a, f){ return a + f.amount; }, 0));
     return Object.assign({}, m, { fees: (m.fees || []).concat(extra), sub: r2((m.sub || 0) + t), total: r2((m.total || 0) + t), balance: r2((m.balance || 0) - t) });
