@@ -70,6 +70,10 @@ Public website changes must respect `prefers-reduced-motion`, work without horiz
 
 ## User preferences learned so far
 
+- A new repair job with no contractor pops up for the owner (not staff mode) to assign one (`newJobPrompt`: suggested contractor from the job's trade or the one chosen before for that kind of job; Assign sets it and opens the job; Later asks again in 2 hours, `rr_nj_later`).
+- Quick search (Ctrl K): matching properties come first, then jobs, tenants and the rest.
+- Offers page: “Offer forms sent” is the first section, for everyone including staff.
+
 - No "Last updated" label in the website header (removed at the owner's request).
 - No notifications about properties that share photos — the report stays on the Website visitors page only.
 - Staff alerts for viewings and valuation requests go to all staff.
