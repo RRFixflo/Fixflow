@@ -278,7 +278,7 @@ module.exports = function (app, opts) {
   app.get('/api/admin/appraisal/comps', async function (req, res) {
     if (!opts.isStaff(req)) return res.status(403).json({ ok: false });
     const pc = String(req.query.postcode || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 9), buy = req.query.kind === 'sale';
-    const beds = /^\d{1,2}$/.test(String(req.query.beds || '')) ? Number(req.query.beds) : null, miles = ['0.25', '0.5', '1.0', '3.0'].indexOf(String(req.query.miles)) !== -1 ? String(req.query.miles) : '1.0';
+    const beds = /^\d{1,2}$/.test(String(req.query.beds || '')) ? Number(req.query.beds) : null, miles = ['0.0', '0.25', '0.5', '1.0', '3.0'].indexOf(String(req.query.miles)) !== -1 ? String(req.query.miles) : '1.0';
     if (!/^[A-Z]{1,2}\d[A-Z\d]? \d[A-Z]{2}$/.test(pc)) return res.json({ ok: false, error: 'postcode' });
     try {
       let loc = pcIds[pc];

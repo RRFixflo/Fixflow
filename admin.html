@@ -1099,7 +1099,7 @@
   .fee-run { display: grid; grid-template-columns: 58px minmax(0, 1fr) 92px 96px; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line, #eef0f3); font-size: .86rem; align-items: baseline; } .fee-run > span:nth-child(n+3) { text-align: right; white-space: nowrap; } .fee-run small { display: block; color: var(--ink-soft, #667085); font-size: .76rem; } .fee-run-h { font-size: .74rem; color: var(--ink-soft, #667085); font-weight: 700; border-top: 0; }
   @media (max-width: 560px) { .fee-run { grid-template-columns: 46px minmax(0, 1fr) 78px; } .fee-run > span:nth-child(4) { grid-column: 2 / 4; text-align: right; font-size: .78rem; color: var(--ink-soft, #667085); } .fee-run > span:nth-child(4) b::before { content: 'Running total '; font-weight: 400; } .fee-run-h > span:nth-child(4) { display: none; } }
   .la-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .la-tabs button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: inherit; } .la-tabs button small { font-weight: 500; color: var(--ink-soft, #667085); margin-left: 4px; } .la-tabs button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; } .la-tabs button.on small { color: rgba(255,255,255,.75); }
-  .ap-hits { display: grid; gap: 6px; margin-bottom: 6px; } .ap-hit { display: grid; grid-template-columns: auto 72px minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 6px 10px 6px 8px; cursor: pointer; background: #fff; } .ap-hit.on { border-color: #2563eb; background: #f5f8ff; } .ap-hit img, .ap-noimg { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; background: #f2f4f7; display: block; } .ap-ht { font-size: .88rem; line-height: 1.3; min-width: 0; } .ap-when { color: #475467 !important; } .ap-old { color: #b54708; font-weight: 600; }  .ap-ov .ap-ovrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; font-size: .88rem; } .ap-ov .ap-ovrow .inp { width: 120px; } .ap-ov .ap-ovrow[hidden], .ap-ov[hidden] { display: none; } .ap-let { display: inline-block; background: #ecfdf3; color: #067647; border: 1px solid #abefc6; border-radius: 999px; padding: 0 7px; font-size: .74rem; font-weight: 700; } .ap-ht small { display: block; color: var(--muted, #667085); font-size: .78rem; margin-top: 2px; } .ap-hit a { text-decoration: none; font-weight: 700; padding: 4px; } .la-sub .btn.small { margin-left: 6px; font-size: .75rem; padding: 3px 8px; vertical-align: middle; }
+  .ap-hits { display: grid; gap: 6px; margin-bottom: 6px; } .ap-hit { display: grid; grid-template-columns: auto 72px minmax(0,1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 6px 10px 6px 8px; cursor: pointer; background: #fff; } .ap-hit.on { border-color: #2563eb; background: #f5f8ff; } .ap-hit img, .ap-noimg { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; background: #f2f4f7; display: block; } .ap-ht { font-size: .88rem; line-height: 1.3; min-width: 0; } .ap-when { color: #475467 !important; } .ap-old { color: #b54708; font-weight: 600; } .ml-ap { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; font-size: .86rem; cursor: pointer; } .ml-ap span { flex: 1; min-width: 0; }  .ap-ov .ap-ovrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; font-size: .88rem; } .ap-ov .ap-ovrow .inp { width: 120px; } .ap-ov .ap-ovrow[hidden], .ap-ov[hidden] { display: none; } .ap-let { display: inline-block; background: #ecfdf3; color: #067647; border: 1px solid #abefc6; border-radius: 999px; padding: 0 7px; font-size: .74rem; font-weight: 700; } .ap-ht small { display: block; color: var(--muted, #667085); font-size: .78rem; margin-top: 2px; } .ap-hit a { text-decoration: none; font-weight: 700; padding: 4px; } .la-sub .btn.small { margin-left: 6px; font-size: .75rem; padding: 3px 8px; vertical-align: middle; }
   @media (max-width: 520px) { .ap-hit { grid-template-columns: auto 56px minmax(0,1fr) auto; gap: 8px; } .ap-hit img, .ap-noimg { width: 56px; height: 44px; } }
   .ap-hit.ap-sold { grid-template-columns: auto minmax(0,1fr) auto; }
   .ap-find { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; } #apSugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; }
@@ -2634,6 +2634,7 @@
     <textarea class="inp" id="mlBody" rows="14"></textarea>
     <div id="mlLook" class="ml-look" role="document" aria-label="How the email will look" hidden></div>
     <div class="ml-att" id="mlAtt" hidden></div>
+    <div class="ml-att" id="mlAppr" hidden></div>
     <label class="switch-row" style="margin:0"><input type="checkbox" id="mlCopy" checked> Send me a copy</label>
     <div class="ml-err" id="mlErr" hidden></div>
     <div class="ml-actions"><button class="btn primary" type="button" id="mlSend">Send now</button><button class="btn" type="button" id="mlNative">Open in my mail app instead</button></div>
@@ -9525,11 +9526,12 @@
   function loadValuations(l){
     api('GET', '/api/admin/valuations?landlord_id=' + l.id).then(function(d){
       if (!d || !d.ok || openLlId !== l.id) return; var items = d.items || [];
-      $('llVals').hidden = !items.length;
+      $('llVals').hidden = !items.length; $('llVals')._items = items; $('llVals')._ll = l;
+      if (!$('llVals')._wired) { $('llVals')._wired = 1; $('llVals').addEventListener('click', function(e){ var b = e.target.closest('[data-val-mail]'); if (!b) return; var it = (this._items || []).filter(function(i){ return i.id === Number(b.dataset.valMail); })[0]; if (it) emailValuation(it, this._ll); }); }
       $('llVals').innerHTML = '<h3>Valuation letters <span class="count-chip">' + items.length + '</span></h3>' + items.map(function(x){
         var v = x.data || {}, r = function(lo, hi){ return lo && hi && lo !== hi ? gbp0(lo) + '–' + gbp0(hi) : gbp0(lo || hi); };
         return '<div class="val-row"><div><b>' + esc(shortAddr(x.address)) + '</b><span class="muted-note" style="margin:0;display:block">' + [v.sales ? 'Sale ' + r(v.sales_low, v.sales_high) : '', v.lettings ? 'Let ' + r(v.let_low, v.let_high) + ' pcm' : ''].filter(Boolean).join(' · ') + ' · ' + esc(new Date(x.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) + (x.created_by ? ' · ' + esc(x.created_by) : '') + '</span></div>' +
-          '<span style="display:flex;gap:6px"><a class="btn small" target="_blank" rel="noopener" href="/api/admin/valuations/' + x.id + '/pdf">View</a><a class="btn small ghost" href="/api/admin/valuations/' + x.id + '/pdf?dl=1">⬇ PDF</a></span></div>';
+          '<span style="display:flex;gap:6px;flex-wrap:wrap"><a class="btn small" target="_blank" rel="noopener" href="/api/admin/valuations/' + x.id + '/pdf">View</a><a class="btn small ghost" href="/api/admin/valuations/' + x.id + '/pdf?dl=1">⬇ PDF</a>' + (meta.canEmail ? '<button type="button" class="btn small ghost" data-val-mail="' + x.id + '">✉ Email</button>' : '') + '</span></div>';
       }).join('');
     });
   }
@@ -12057,7 +12059,7 @@
         '<label class="lbl">Their address <span class="muted-note" style="margin:0">optional</span><textarea class="inp" id="apToAddr" rows="2"></textarea></label>' +
         '<label class="lbl">What stood out <span class="muted-note" style="margin:0">optional — one per line</span><textarea class="inp" id="apHi" rows="2" placeholder="e.g. Private balcony&#10;Five minutes to the station"></textarea></label>' +
         '<h4 class="la-sub">Report</h4><div class="cal-people ap-mode" id="apMode"><button type="button" data-apm="let" class="on">🔑 Lettings</button><button type="button" data-apm="sale">🏷 Sales</button><button type="button" data-apm="both">Both</button></div>' +
-        '<div class="row-actions" style="flex-wrap:wrap;margin:10px 0 4px;align-items:center"><button type="button" class="btn primary small" id="apAuto">🔎 Find similar homes on Rightmove</button><select class="inp" id="apMiles" style="width:auto;padding:6px 8px"><option value="0.25">within ¼ mile</option><option value="0.5">within ½ mile</option><option value="1.0" selected>within 1 mile</option><option value="3.0">within 3 miles</option></select></div>' +
+        '<div class="row-actions" style="flex-wrap:wrap;margin:10px 0 4px;align-items:center"><button type="button" class="btn primary small" id="apAuto">🔎 Find similar homes on Rightmove</button><select class="inp" id="apMiles" style="width:auto;padding:6px 8px"><option value="0.0">this area only (same postcode)</option><option value="0.25">within ¼ mile</option><option value="0.5">within ½ mile</option><option value="1.0" selected>within 1 mile</option><option value="3.0">within 3 miles</option></select></div>' +
         '<p class="muted-note" style="margin:0 0 6px">Searches Rightmove near the postcode for homes with the same bedrooms and ticks the 6 best: closest, same type, listed recently (homes on the market for months are often overpriced), let agreed / sold STC first (what someone actually agreed to pay)' + ' and, for lettings, available now or soon. Untick any that don’t really match (size, type, condition) or tick others.</p>' +
         '<div id="apKSale" hidden><h4 class="la-sub">Similar homes for sale <button type="button" class="btn small ghost" data-ap-rm="sale">Open on Rightmove ↗</button></h4><div id="apSaleRes"></div><div id="apSale"></div><h4 class="la-sub">🏛 Sold nearby — HM Land Registry</h4><div id="apSoldRes"><p class="muted-note">Press “Find similar homes” to see what homes nearby sold for in the last two years.</p></div></div>' +
         '<div id="apKLet"><h4 class="la-sub">Similar homes to rent <button type="button" class="btn small ghost" data-ap-rm="let">Open on Rightmove ↗</button></h4><div id="apLetRes"></div><div id="apLet"></div></div>' +
@@ -12083,6 +12085,9 @@
       b.addEventListener('click', function(e){
         var m = e.target.closest('[data-apm]'); if (m) { appr.mode = m.dataset.apm; apprDraw(); return; }
         if (e.target.closest('#apAuto')) { apprAuto(); return; }
+        var am = e.target.closest('[data-ap-mail]');
+        if (am) { var vid = Number(am.dataset.apMail), ll0 = apprLl; api('GET', '/api/admin/valuations').then(function(dd){ var it = ((dd && dd.items) || []).filter(function(i){ return i.id === vid; })[0]; if (!it) return toast('Couldn’t find the report');
+          var ll = ll0 && ll0.id === it.landlord_id ? ll0 : (it.landlord_id ? landlordById(it.landlord_id) : null); if (ll && ll0 && !ll.email && ll0.email) ll = ll0; emailValuation(it, ll); }); return; }
         var op = e.target.closest('[data-ov-pct]');
         if (op) { var f = 1 + Number(op.dataset.ovPct) / 100; [['apOvSaleLo', 1000], ['apOvSaleHi', 1000], ['apOvLetLo', 10], ['apOvLetHi', 10]].forEach(function(p){ var el = $(p[0]), v = num(el.value) || (el.placeholder && /Lo$/.test(p[0]) ? num(el.placeholder) : 0); if (v && !el.closest('[data-ov]').hidden) el.value = Math.round(v * f / p[1]) * p[1]; }); return; }
         if (e.target.closest('[data-ov-reset]')) { ['apOvSaleLo', 'apOvSaleHi', 'apOvLetLo', 'apOvLetHi'].forEach(function(id){ $(id).value = ''; }); return; }
@@ -12094,7 +12099,7 @@
           var kind = rm.dataset.apRm === 'let' ? 'property-to-rent' : 'property-for-sale', w = window.open('about:blank', '_blank');
           // Rightmove needs its own number for the postcode (a plain postcode in the link gives "This isn't the place you were looking for").
           api('GET', '/api/admin/rm-location?postcode=' + encodeURIComponent(pc)).then(function(j){
-            var url = j && j.loc ? 'https://www.rightmove.co.uk/' + kind + '/find.html?locationIdentifier=' + encodeURIComponent(j.loc) + '&radius=1.0' + (beds >= 0 ? '&minBedrooms=' + beds + '&maxBedrooms=' + beds : '') + '&sortType=6'
+            var url = j && j.loc ? 'https://www.rightmove.co.uk/' + kind + '/find.html?locationIdentifier=' + encodeURIComponent(j.loc) + '&radius=' + encodeURIComponent($('apMiles').value) + (beds >= 0 ? '&minBedrooms=' + beds + '&maxBedrooms=' + beds : '') + '&sortType=6'
               : 'https://www.rightmove.co.uk/' + kind + '/' + encodeURIComponent(pc.split(' ')[0]) + '.html';
             if (w) { try { w.opener = null; } catch (er) {} w.location.href = url; } else window.open(url, '_blank', 'noopener');
           }).catch(function(){ var url = 'https://www.rightmove.co.uk/' + kind + '/' + encodeURIComponent(pc.split(' ')[0]) + '.html'; if (w) w.location.href = url; else window.open(url, '_blank', 'noopener'); });
@@ -12277,7 +12282,7 @@
       include_fees: true, signer: meta.user && meta.user.id && meta.user.name ? meta.user.name : '' }).then(function(d){
       busy(btn, false);
       if (!d || !d.ok) return err('Couldn’t make the report — please check the details.');
-      $('apDone').innerHTML = '<a class="btn small" href="' + esc(d.pdf) + '" target="_blank" rel="noopener">Open the report</a> <a class="btn small" href="' + esc(d.pdf) + '?dl=1">⬇ Download</a>';
+      $('apDone').innerHTML = '<a class="btn small" href="' + esc(d.pdf) + '" target="_blank" rel="noopener">Open the report</a> <a class="btn small" href="' + esc(d.pdf) + '?dl=1">⬇ Download</a>' + (meta.canEmail && d.id ? ' <button type="button" class="btn small primary" data-ap-mail="' + d.id + '">✉ Email it</button>' : '');
       window.open(d.pdf, '_blank', 'noopener'); apprList(); if (apprLl && typeof loadValuations === 'function') loadValuations(apprLl);
     });
   }
@@ -12286,7 +12291,7 @@
       if (!$('apList')) return;
       var list = ((d && d.items) || []).filter(function(x){ return x.data && x.data.appraisal; }).slice(0, 10);
       $('apList').innerHTML = list.length ? list.map(function(x){ var v = x.data, u = '/api/admin/valuations/' + x.id + '/pdf';
-        return '<div class="fee-run" style="grid-template-columns:minmax(0,1fr) auto"><span><b>' + esc(String(x.address).split(',').slice(0, 2).join(',')) + '</b><small>' + esc([v.sales ? 'Value ' + gbp0(v.sales_low) : '', v.lettings ? 'Rent ' + gbp0(v.let_low) + ' pcm' : '', fmtShort(x.created_at), x.created_by || ''].filter(Boolean).join(' · ')) + '</small></span><span><a class="btn small ghost" href="' + u + '" target="_blank" rel="noopener">Open</a> <a class="btn small ghost" href="' + u + '?dl=1">⬇</a></span></div>'; }).join('') : 'None yet.';
+        return '<div class="fee-run" style="grid-template-columns:minmax(0,1fr) auto"><span><b>' + esc(String(x.address).split(',').slice(0, 2).join(',')) + '</b><small>' + esc([v.sales ? 'Value ' + gbp0(v.sales_low) : '', v.lettings ? 'Rent ' + gbp0(v.let_low) + ' pcm' : '', fmtShort(x.created_at), x.created_by || ''].filter(Boolean).join(' · ')) + '</small></span><span><a class="btn small ghost" href="' + u + '" target="_blank" rel="noopener">Open</a> <a class="btn small ghost" href="' + u + '?dl=1">⬇</a>' + (meta.canEmail ? ' <button type="button" class="btn small ghost" data-ap-mail="' + x.id + '" title="Email the report">✉</button>' : '') + '</span></div>'; }).join('') : 'None yet.';
     });
   }
   document.addEventListener('toggle', function(e){ if (e.target && e.target.id === 'offAppr' && e.target.open) apprRender(); }, true);
@@ -12460,13 +12465,45 @@
     $('mlTo').value = (o.to || []).join(', '); $('mlCc').value = (o.cc || []).join(', '); $('mlBcc').value = (o.bcc || []).join(', ');
     $('mlCcRow').hidden = !(o.cc || []).length; $('mlBccRow').hidden = !(o.bcc || []).length; $('mlAddCc').hidden = !$('mlCcRow').hidden;
     $('mlSubj').value = o.subject || ''; $('mlBody').value = o.body || ''; $('mlErr').hidden = true; busy($('mlSend'), false);
-    mlView('edit'); $('mlAtt').hidden = !o.attachment && !(o.files || []).length; if ((o.files || []).length) $('mlAtt').innerHTML = '📎 Attached (tap to check): ' + o.files.map(function(f){ return '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + esc(f.name) + '</a>'; }).join(', '); else $('mlAtt').textContent = o.attachment ? '📎 Attached: ' + o.attachment : ''; $('mlTitle').textContent = o.title || '✉ Send email';
+    mlView('edit'); $('mlAppr').hidden = true; $('mlAppr').innerHTML = ''; setTimeout(mlApprOffer, 0); $('mlAtt').hidden = !o.attachment && !(o.files || []).length; if ((o.files || []).length) $('mlAtt').innerHTML = '📎 Attached (tap to check): ' + o.files.map(function(f){ return '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + esc(f.name) + '</a>'; }).join(', '); else $('mlAtt').textContent = o.attachment ? '📎 Attached: ' + o.attachment : ''; $('mlTitle').textContent = o.title || '✉ Send email';
     $('mlCcRow').parentNode.querySelector('#mlAddCc').hidden = !!o.sendFn || !$('mlCcRow').hidden; $('mlCopy').parentNode.hidden = !me || !!o.sendFn; $('mlNative').hidden = !!o.sendFn;
     $('mlCopy').parentNode.hidden = !me;
     $('mlFrom').innerHTML = 'From <b>' + esc(meta.user && meta.user.id && meta.user.name ? meta.user.name + ' - Residential Realtors' : 'Residential Realtors') + '</b> · replies go to <b>' + esc(me || 'info@residentialrealtors.co.uk') + '</b> · info@residentialrealtors.co.uk is copied in';
     $('mlModal').hidden = false; setTimeout(function(){ ($('mlTo').value ? $('mlBody') : $('mlTo')).focus(); if ($('mlBody') === document.activeElement) $('mlBody').setSelectionRange(0, 0); $('mlBody').scrollTop = 0; }, 30);
   }
   function mlClose(){ $('mlModal').hidden = true; mlCur = null; }
+  // The landlord's appraisal reports (and valuation letters) as tick boxes to attach — when the email is to one of
+  // our landlords (or opened from an appraisal). The server makes the PDFs and attaches them.
+  function mlApprOffer(){
+    var box = $('mlAppr'), o = mlCur;
+    if (!o || o.sendFn) { box.hidden = true; box.innerHTML = ''; return; }
+    if (!o.valSel) o.valSel = (o.valuationIds || []).slice();
+    var to = $('mlTo').value.toLowerCase().split(/[,;]/).map(function(x){ return x.trim(); }).filter(Boolean);
+    var l = o.landlordId ? landlordById(o.landlordId) : null;
+    if (!l && to.length && typeof landlords !== 'undefined') l = landlords.filter(function(x){ return x.email && to.indexOf(String(x.email).trim().toLowerCase()) !== -1; })[0] || null;
+    var want = o.valuationIds || [], lid = l ? l.id : null;
+    if (!lid && !want.length) { box.hidden = true; box.innerHTML = ''; return; }
+    api('GET', '/api/admin/valuations' + (lid ? '?landlord_id=' + lid : '')).then(function(d){
+      if (mlCur !== o) return;
+      var items = ((d && d.items) || []).filter(function(x){ return want.indexOf(x.id) !== -1 || (lid && x.landlord_id === lid); }).slice(0, 12);
+      if (!items.length) { box.hidden = true; box.innerHTML = ''; return; }
+      var r = function(lo, hi){ return lo && hi && lo !== hi ? gbp0(lo) + '–' + gbp0(hi) : gbp0(lo || hi); };
+      box.innerHTML = '<div style="font-weight:600;margin-bottom:4px">📎 Attach ' + (items.some(function(x){ return x.data && x.data.appraisal; }) ? 'appraisal report' : 'valuation letter') + (l ? ' — ' + esc(l.name || '') : '') + '</div>' + items.map(function(x){ var v = x.data || {};
+        return '<label class="ml-ap"><input type="checkbox" data-ml-val="' + x.id + '"' + (o.valSel.indexOf(x.id) !== -1 ? ' checked' : '') + '> <span><b>' + esc(shortAddr(x.address)) + '</b> · ' + (v.appraisal ? 'Appraisal' : 'Valuation letter') + ' · ' + esc([v.sales ? 'Value ' + r(v.sales_low, v.sales_high) : '', v.lettings ? 'Rent ' + r(v.let_low, v.let_high) + ' pcm' : '', fmtShort(x.created_at)].filter(Boolean).join(' · ')) + '</span> <a href="/api/admin/valuations/' + x.id + '/pdf" target="_blank" rel="noopener">view</a></label>'; }).join('');
+      box.hidden = false;
+    });
+  }
+  function mlValIds(){ return mlCur && mlCur.valSel ? mlCur.valSel.slice() : []; }
+  $('mlAppr').addEventListener('change', function(e){ var c = e.target.closest('[data-ml-val]'); if (!c || !mlCur) return; var id = Number(c.dataset.mlVal);
+    mlCur.valSel = (mlCur.valSel || []).filter(function(x){ return x !== id; }); if (c.checked) mlCur.valSel.push(id); });
+  $('mlTo').addEventListener('change', function(){ if (mlCur && !mlCur.sendFn) mlApprOffer(); });
+  // Email an appraisal / valuation letter to the landlord (or whoever it's for).
+  function emailValuation(x, l){
+    var v = x.data || {}, email = (l && l.email) || v.to_email || '', first = String((l && l.name) || v.to_name || '').trim().split(/\s+/)[0];
+    composeMail({ title: '✉ Email the ' + (v.appraisal ? 'appraisal' : 'valuation') + ' — check before sending', to: email ? [email] : [], landlordId: (l && l.id) || x.landlord_id || null, valuationIds: [x.id],
+      subject: (v.appraisal ? 'Your property appraisal' : 'Your property valuation') + ' — ' + shortAddr(x.address),
+      body: 'Dear ' + (first || 'Sir or Madam') + ',\n\nThank you for the opportunity to look at ' + shortAddr(x.address) + '. Please find attached our ' + (v.appraisal ? 'appraisal' : 'valuation') + ', with the similar homes nearby that our figures are based on.\n\nIf you have any questions, or would like to go ahead, just reply to this email or call us on 0207 096 8131.' + mailSignoff() });
+  }
   // Write ↔ preview: the preview is exactly what the server will send (logo, layout, buttons).
   function mlView(v){
     document.querySelectorAll('[data-mlv]').forEach(function(b){ b.classList.toggle('on', b.dataset.mlv === v); });
@@ -12505,7 +12542,7 @@
         toast('✓ Email sent to ' + addr); var cb = mlCur && mlCur.onSent; mlClose(); if (cb) cb(d);
       }, function(){ err('Couldn’t send — please try again.'); });
     }
-    var send = function(toList, cc){ return api('POST', '/api/admin/email', { to: toList, cc: cc, subject: $('mlSubj').value.trim(), text: $('mlBody').value, copy: $('mlCopy').checked }); };
+    var vids = mlValIds(), send = function(toList, cc){ return api('POST', '/api/admin/email', { to: toList, cc: cc, subject: $('mlSubj').value.trim(), text: $('mlBody').value, copy: $('mlCopy').checked, valuation_ids: vids }); };
     // Bcc (e.g. a notice to many tenants): one email each, so nobody sees the others' addresses.
     var bccs = bcc ? bcc.split(/[,;]/).map(function(x){ return x.trim(); }).filter(Boolean) : [];
     var jobs = bccs.length ? bccs.map(function(x){ return function(){ return send([x], ''); }; }) : [function(){ return send(to, $('mlCc').value.trim()); }];
