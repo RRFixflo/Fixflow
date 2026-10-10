@@ -15505,7 +15505,11 @@
       if (x.bf) lines.push('<div><span>Owed from before</span><b>− ' + gbp(x.bf) + '</b></div>');
       if (x.owed_bf) lines.push('<div><span>Still owed from the ' + esc(longDay(addMonthsIso(x.from, -1))) + ' statement</span><b>− ' + gbp(x.owed_bf) + '</b></div>');
       lines.push('<div class="rb-dt"><span>' + (x.to_landlord < 0 ? 'Landlord owes us' : 'To the landlord') + '</span><b>' + gbp(Math.abs(x.to_landlord)) + '</b></div>');
-      return '<div class="rb-details">' + lines.join('') +
+      // Another charge (or a credit) on this rent: it goes on that month's statement and changes what the landlord gets.
+      var addc = x.paid ? '' : '<div class="rb-dlinks"><button type="button" class="linkish" data-rb-addc="' + k + '">+ Add a charge or credit</button></div>' +
+        '<div class="st-add" data-rb-cform="' + k + '" hidden style="margin:6px 0"><div class="tcy-fee nv4" style="grid-template-columns:minmax(0,1fr) 110px auto auto"><input class="inp" data-rc="label" placeholder="e.g. Key cutting, Gas safety certificate"><input class="inp" data-rc="amount" inputmode="decimal" placeholder="£ before VAT"><label class="tcy-nv"><input type="checkbox" data-rc="novat"> No VAT</label><label class="tcy-nv" title="Money back to the landlord (a refund or discount)"><input type="checkbox" data-rc="in"> Credit to landlord</label></div>' +
+        '<div style="display:flex;gap:6px;margin-top:6px"><button type="button" class="btn small primary" data-rb-savec="' + k + '">Add</button><button type="button" class="btn small ghost" data-rb-addc="' + k + '">Cancel</button></div></div>';
+      return '<div class="rb-details">' + lines.join('') + addc +
         '<div class="rb-dlinks">' + [x.tenants.length ? 'Tenants: ' + esc(x.tenants.join(', ')) : '', x.landlord ? 'Landlord: ' + rbLl(x) : '', x.pay_ref ? 'Ref ' + esc(x.pay_ref) : ''].filter(Boolean).join(' · ') + '</div>' +
         '<div class="rb-dlinks"><button type="button" class="linkish" data-rb-open="' + x.tenancy_id + '">Open the tenancy</button>' + (x.collected ? '' : ' · <button type="button" class="linkish rb-notours" data-rb-notours="' + x.tenancy_id + '">We don’t collect this rent</button>' + (x.landlord ? ' · <button type="button" class="linkish rb-notours" data-rb-llnot="' + esc(x.landlord) + '">Stop collecting for ' + esc(x.landlord) + '</button>' : '')) + '</div></div>';
     };
@@ -15741,6 +15745,18 @@
     if (rm) { var xr = rbFind(rm.dataset.rbRemind); if (!xr) return; rentRemindPreview([xr]); return; }
     var ra = e.target.closest('[data-rb-remindall]');
     if (ra) { var late = rbData.items.filter(function(x){ return !x.collected && x.status === 'overdue' && x.emails; }); if (late.length) rentRemindPreview(late); return; }
+    var adc = e.target.closest('[data-rb-addc]');
+    if (adc) { var cf = document.querySelector('[data-rb-cform="' + adc.dataset.rbAddc + '"]'); if (cf) { cf.hidden = !cf.hidden; if (!cf.hidden) cf.querySelector('[data-rc=label]').focus(); } return; }
+    var svc = e.target.closest('[data-rb-savec]');
+    if (svc) { var xc = rbFind(svc.dataset.rbSavec), cfm = document.querySelector('[data-rb-cform="' + svc.dataset.rbSavec + '"]'); if (!xc || !cfm) return;
+      var clab = cfm.querySelector('[data-rc=label]').value.trim(), camt = num(cfm.querySelector('[data-rc=amount]').value), cin = cfm.querySelector('[data-rc=in]').checked;
+      if (!clab || !camt) { toast('Add what it’s for and the amount'); return; }
+      busy(svc, true, 'Adding…');
+      api('POST', '/api/admin/tenancies/' + xc.tenancy_id + '/month-cost', { from: xc.from, label: clab, amount: camt, novat: cfm.querySelector('[data-rc=novat]').checked, money_in: cin }).then(function(d){
+        busy(svc, false); if (!d || !d.ok) { toast('Couldn’t add that'); return; }
+        toast((cin ? '✓ Credit added' : '✓ Charge added') + ' — on the ' + monthName(xc.from) + ' statement'); loadStatements(); loadRentBoard(true);
+      });
+      return; }
     var upx = e.target.closest('[data-rb-unpart]');
     if (upx) { var xp2 = rbFind(upx.dataset.rbUnpart); if (!xp2 || !confirm('Clear the part payments recorded for this rent (' + gbp(xp2.part_paid) + ')?')) return;
       api('POST', '/api/admin/tenancies/' + xp2.tenancy_id + '/rent-collected', { from: xp2.from, undo: true }).then(function(){ loadRentBoard(true); }); return; }
