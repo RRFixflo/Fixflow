@@ -9256,7 +9256,49 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const bank = (!o.paid_at || short > 0) && o.status !== 'rejected' && o.status !== 'withdrawn' && INVOICE.payee && INVOICE.accountNumber ? { payee: INVOICE.payee, sort_code: INVOICE.sortCode, account: INVOICE.accountNumber, iban: INVOICE.iban, swift: INVOICE.swift } : null;
     res.json({ ok: true, ref: ref, property: o.property_address, name: String(o.lead_name || '').split(/\s+/)[0], created_at: o.created_at, status: o.status, decided_at: o.decided_at, paid_at: o.paid_at,
       offer_pw: Number(o.offer_pw), money: d.money || {}, move_in: d.move_in || null, stay: d.stay || '', tenants: (d.tenants || []).length, bank: bank, reference: offerPayRef(o.property_address, ref),
-      refund: d.refund ? { given_at: d.refund.at, name: d.refund.name } : null, refunded_at: d.refunded_at || null, paid_claim: d.paid_claim || null, paid_amount: o.paid_at ? got : null, short: short, conditions: offerConds(d) });
+      refund: d.refund ? { given_at: d.refund.at, name: d.refund.name } : null, refunded_at: d.refunded_at || null, paid_claim: d.paid_claim || null, paid_amount: o.paid_at ? got : null, short: short, conditions: offerConds(d),
+      id_needs: await offerIdNeeds(p, o), can_add_id: offerCanAddId(o) });
+  }));
+  // Right to rent can be left for later on the form: after paying, the applicant adds each tenant's ID and
+  // share code from their tracking page (nothing else in the offer can be changed once it's sent).
+  function offerCanAddId(o) { return (o.status === 'new' || o.status === 'accepted') && !!(o.paid_at || (o.data || {}).paid_claim); }
+  async function offerIdNeeds(p, o) {
+    const counts = {}; (await p.query('SELECT tenant_no, count(*)::int AS n FROM offer_docs WHERE offer_id = $1 AND tenant_no > 0 GROUP BY 1', [o.id])).rows.forEach(function (r) { counts[r.tenant_no] = r.n; });
+    return ((o.data || {}).tenants || []).map(function (t, i) { return { n: i + 1, name: String((t && t.name) || 'Tenant ' + (i + 1)).split(/\s+/)[0], ids: counts[i + 1] || 0, uk_passport: (t && t.uk_passport) || '', share_code: !!(t && t.share_code) }; });
+  }
+  app.post('/api/offers/track/:token/id', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const t = String(req.params.token || ''), b = req.body || {}, n = parseInt(b.tenant, 10) || 0;
+    if (!/^[\w-]{16,40}$/.test(t)) return res.status(404).json({ ok: false, error: 'not-found' });
+    const o = (await p.query('SELECT id, property_address, lead_name, data, status, paid_at FROM offers WHERE track_token = $1', [t])).rows[0];
+    if (!o) return res.status(404).json({ ok: false, error: 'not-found' });
+    if (!offerCanAddId(o)) return res.status(409).json({ ok: false, error: 'not-allowed' });
+    const d = o.data || {}, ts = Array.isArray(d.tenants) ? d.tenants.slice() : [];
+    if (n < 1 || n > ts.length) return res.status(400).json({ ok: false, error: 'tenant' });
+    const tn = Object.assign({}, ts[n - 1]), notes = [];
+    if (b.uk_passport === 'Yes' || b.uk_passport === 'No') { if (tn.uk_passport !== b.uk_passport) notes.push('UK or Irish passport: ' + b.uk_passport); tn.uk_passport = b.uk_passport; }
+    const sc = String(b.share_code || '').toUpperCase().replace(/\s+/g, '');
+    if (sc) {
+      if (!/^[A-Z0-9]{9}$/.test(sc) || /^[WS]/.test(sc)) return res.status(400).json({ ok: false, error: 'share_code' });
+      tn.share_code = sc; tn.uk_passport = 'No'; notes.push('right to rent share code');
+    }
+    let added = 0;
+    for (const f of (Array.isArray(b.files) ? b.files : []).slice(0, 4)) {
+      const m = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(String((f && f.dataUrl) || ''));
+      if (!m) continue;
+      let mime = m[1].toLowerCase(); const buf = Buffer.from(m[2], 'base64');
+      if (OFFER_DOC_TYPES.indexOf(mime) === -1 && /\.hei[cf]$/i.test(String((f && f.name) || ''))) mime = 'image/heic';
+      if (OFFER_DOC_TYPES.indexOf(mime) === -1 || !buf.length || buf.length > 12 * 1024 * 1024) continue;
+      await p.query('INSERT INTO offer_docs (offer_id, tenant_no, name, mime, data) VALUES ($1, $2, $3, $4, $5)', [o.id, n, str(f.name, 150) || 'ID', mime, buf]); added++;
+    }
+    if (added) notes.push(added + ' ID file' + (added === 1 ? '' : 's'));
+    if (!notes.length) return res.status(400).json({ ok: false, error: 'nothing' });
+    ts[n - 1] = tn;
+    const who = String(tn.name || 'Tenant ' + n);
+    await p.query("UPDATE offers SET data = data || jsonb_build_object('tenants', $2::jsonb), log = log || $3::jsonb WHERE id = $1",
+      [o.id, JSON.stringify(ts), JSON.stringify([offerLog(req, 'Applicant added right to rent details for ' + who + ': ' + notes.join(', '), 'applicant')])]);
+    offerAlert({ title: 'ID added: ' + shortAddrText(o.property_address), message: (o.lead_name || 'The applicant') + ' added ' + notes.join(', ') + ' for ' + who + '. Open Offers in Fixflow to check it.', tags: 'id' });
+    res.json({ ok: true, added: added });
   }));
   app.get('/api/admin/offers', withDb(async function (p, req, res) {
     const r = await p.query(`SELECT o.id, o.created_at, o.property_address, o.property_key, o.lead_name, o.lead_email, o.lead_phone, o.offer_pw, o.data, o.status, o.decided_at, o.paid_at, o.seen_at, o.log, o.track_token,

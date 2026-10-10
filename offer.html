@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style id="mobile-fit">html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}@media (max-width:900px){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}  .sec-title .opt { margin-left:8px; font-size:.72rem; font-weight:600; text-transform:none; letter-spacing:0; color:#067647; }
+  .idt { border-top: 1px solid var(--line, #e6e8ec); padding: 14px 0 4px; } .idt-h { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; margin-bottom:8px; } .idt-st { font-size:.85rem; color:#667085; }
 </style><script>(function(){var ua=navigator.userAgent;if(/iP(hone|ad|od)/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)){var m=document.querySelector('meta[name=viewport]');if(m&&!/maximum-scale/.test(m.content))m.content+=', maximum-scale=1';}})();</script>
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#ffffff">
@@ -981,7 +982,7 @@
     var loadTrack = function(){
     fetch('/api/offers/track/' + tm[1], { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
       // Unchanged (or they're in the middle of withdrawing): leave the page as it is.
-      var key = JSON.stringify([d.status, d.paid_at, d.decided_at, d.paid_claim, d.refund, d.refunded_at]);
+      var key = JSON.stringify([d.status, d.paid_at, d.decided_at, d.paid_claim, d.refund, d.refunded_at, d.id_needs, d.can_add_id]);
       if (key === lastSeen || ($('wdBox') && !$('wdBox').hidden)) return;
       lastSeen = key;
       if (!d.ok) { forgetOffer(location.pathname); $('trackView').innerHTML = '<div class="card"><h2>Offer not found</h2><p class="lead" style="margin:0">This link isn’t valid. Please check it, or contact Residential Realtors.</p></div>'; return; }
@@ -1036,6 +1037,38 @@
           lastSeen = ''; loadTrack();
         });
       });
+      // Right to rent left for later on the form: after paying, add each tenant's ID / share code here (only that —
+      // the rest of the offer can't be changed once it's sent).
+      var needs = (d.id_needs || []).filter(function(t){ return !t.ids || (t.uk_passport !== 'Yes' && !t.share_code); });
+      if (needs.length && !rej && !wd) {
+        $('trackView').insertAdjacentHTML('beforeend', '<div class="card" id="idCard"><h2>Add your ID</h2>' +
+          (d.can_add_id ? '<p class="lead" style="margin:0 0 6px">Add each tenant’s passport or visa and, if they don’t have a UK or Irish passport, their right to rent share code. This is the only part you can add to — the rest of your offer stays as you sent it.</p>' +
+            needs.map(function(t){
+              return '<div class="idt" data-idt="' + t.n + '"><div class="idt-h"><b>' + esc(t.name) + '</b><span class="idt-st">' + (t.ids ? '✓ ID received' : 'ID still needed') + (t.uk_passport !== 'Yes' ? (t.share_code ? ' · ✓ share code' : t.uk_passport === 'No' ? ' · share code needed' : '') : '') + '</span></div>' +
+                '<div class="g2"><div class="f"><label class="l">UK or Irish passport?</label><select data-k="up"><option value="">Choose…</option><option' + (t.uk_passport === 'Yes' ? ' selected' : '') + '>Yes</option><option' + (t.uk_passport === 'No' ? ' selected' : '') + '>No</option></select></div>' +
+                '<div class="f" data-scw' + (t.uk_passport === 'No' ? '' : ' hidden') + '><label class="l">Right to rent share code</label><input data-k="sc" placeholder="R12 345 678" maxlength="12" style="text-transform:uppercase;letter-spacing:.06em"><div class="hint">Get one at gov.uk/prove-right-to-rent</div></div></div>' +
+                '<div class="f"><label class="l">Passport and/or visa</label><input type="file" data-k="f" accept="image/*,.heic,.heif,application/pdf" multiple></div>' +
+                '<button type="button" class="btn dark" data-idsave="' + t.n + '">Send ' + esc(t.name) + '’s details</button><div class="err" data-iderr hidden></div></div>';
+            }).join('')
+            : '<p class="lead" style="margin:0">Once you’ve paid the holding deposit, you can add each tenant’s passport or visa and right to rent share code here.</p>') + '</div>');
+        $('idCard').addEventListener('change', function(e){ var sel = e.target.closest('[data-k="up"]'); if (sel) sel.closest('.idt').querySelector('[data-scw]').hidden = sel.value !== 'No'; });
+        $('idCard').addEventListener('click', function(e){
+          var b = e.target.closest('[data-idsave]'); if (!b) return;
+          var box = b.closest('.idt'), er = box.querySelector('[data-iderr]'), up = box.querySelector('[data-k="up"]').value, sc = box.querySelector('[data-k="sc"]').value.toUpperCase().replace(/\s+/g, ''), fl = box.querySelector('[data-k="f"]').files;
+          var fail = function(t){ er.textContent = t; er.hidden = false; };
+          if (sc && (!/^[A-Z0-9]{9}$/.test(sc) || /^[WS]/.test(sc))) return fail('Right to rent share codes have 9 characters and start with R — please check it.');
+          if (!up && !sc && !fl.length) return fail('Add a passport or visa photo, or choose whether they have a UK or Irish passport.');
+          if (fl.length > 4) return fail('Please add up to 4 files.');
+          var big = Array.prototype.some.call(fl, function(f){ return f.size > 12 * 1024 * 1024; }); if (big) return fail('Each file can be up to 12 MB.');
+          b.disabled = true; b.textContent = 'Sending…'; er.hidden = true;
+          Promise.all(Array.prototype.map.call(fl, function(f){ return new Promise(function(res){ var r = new FileReader(); r.onload = function(){ res({ name: f.name, dataUrl: r.result }); }; r.onerror = function(){ res(null); }; r.readAsDataURL(f); }); })).then(function(files){
+            return fetch('/api/offers/track/' + tm[1] + '/id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenant: Number(b.dataset.idsave), uk_passport: up, share_code: sc, files: files.filter(Boolean) }) }).then(function(r){ return r.json(); });
+          }).then(function(x){
+            if (!x || !x.ok) { b.disabled = false; b.textContent = 'Try again'; return fail(x && x.error === 'share_code' ? 'That share code doesn’t look right — it has 9 characters and starts with R.' : 'Couldn’t send — please try again, or contact Residential Realtors.'); }
+            lastSeen = ''; loadTrack();
+          })['catch'](function(){ b.disabled = false; b.textContent = 'Try again'; fail('Couldn’t send — please check your connection.'); });
+        });
+      }
       $('trackView').insertAdjacentHTML('beforeend',
         // Withdraw: only once the holding deposit is confirmed, and they're told it isn't refunded.
         (paid && (d.status === 'new' || acc) ? '<div class="card"><h2>Changed your mind?</h2><p class="lead" style="margin:0 0 10px">You can withdraw your offer here.</p>' +
