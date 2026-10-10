@@ -10440,14 +10440,26 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const keys = (await p.query('SELECT property_key FROM property_landlords WHERE landlord_id = $1', [jobId(req)])).rows.map(function (r) { return r.property_key; });
     if (!keys.length) return res.json({ ok: true, rows: [] });
     const st = await statementsAll(p), byT = {}; st.items.forEach(function (x) { byT[x.tenancy_id] = x; });
-    const tcys = (await p.query('SELECT id, property_key, address, data FROM tenancies WHERE property_key = ANY($1::text[])', [keys])).rows;
-    const rows = [], r2 = function (v) { return Math.round((Number(v) || 0) * 100) / 100; };
+    const tcys = (await p.query('SELECT id, property_key, address, start_date, data FROM tenancies WHERE property_key = ANY($1::text[])', [keys])).rows;
+    const rows = [], r2 = function (v) { return Math.round((Number(v) || 0) * 100) / 100; }, today = londonDay();
     const short = function (a) { return String(a || '').split(',')[0]; };
     tcys.forEach(function (t) {
-      const d = t.data || {}, addr = short(d.address || t.address), x = byT[t.id], rc = d.rent_rcvd || {}, lp = d.ll_paid || {};
+      const d = t.data || {}, addr = short(d.address || t.address), x = byT[t.id], rc = Object.assign({}, d.rent_rcvd || {}), lp = d.ll_paid || {};
+      // The move-in money (first month's rent + deposit, paid to us by the tenants): once it covers what's
+      // due it counts as the first rent from the start date, as on the Rent page; the deposit we hold isn't theirs.
+      const start = String(d.start_date || t.start_date || '').slice(0, 10), rent0 = Number(d.rent_pcm) || 0;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(start) && rent0 > 0) {
+        const dep = d.deposit != null && d.deposit !== '' ? Number(d.deposit) || 0 : Math.floor(rent0 * 12 / 52 * 5 + 1e-9);
+        const due = r2(rent0 + dep), got = r2((d.receipts || []).reduce(function (a, y) { return a + (Number(String(y && y.amount || '').replace(/[£,\s]/g, '')) || 0); }, 0));
+        const last = (d.receipts || []).map(function (y) { return y && y.date; }).filter(Boolean).sort().pop() || null;
+        if (!rc[start] && got > 0 && got >= due - 0.004 && start <= today) rc[start] = { at: start, amount: rent0, movein: true };
+        if (got > 0 && (rc[start] || got < due - 0.004)) rows.push({ at: String(last || start).slice(0, 10), note: true,
+          what: 'Move-in money from the tenants · ' + addr + ': ' + gbp(got) + ' of ' + gbp(due) + ' (rent ' + gbp(rent0) + ' + deposit ' + gbp(dep) + ')' +
+            (got < due - 0.004 ? ' — ' + gbp(r2(due - got)) + ' still to come' : rc[start] ? (d.deposit_by === 'landlord' ? '' : ' — the deposit is held by us and protected') : ' — counts as the first rent on ' + certDay(start)) });
+      }
       Object.keys(rc).forEach(function (from) {
         const got = rc[from] || {}, at = String(got.at || from).slice(0, 10), m = x && x.months.filter(function (mm) { return mm.from === from; })[0], mon = certDay(from).replace(/^\d+ /, '');
-        rows.push({ at: at, what: 'Rent received · ' + addr + ' (' + mon + ')', in: r2(got.amount || (m ? m.rent : 0)) });
+        rows.push({ at: at, what: (from === start ? 'First month’s rent (move-in money)' : 'Rent received') + ' · ' + addr + ' (' + mon + ')', in: r2(got.amount || (m ? m.rent : 0)) });
         if (!m) return;
         if (m.deposit) rows.push({ at: at, what: 'Deposit (you hold it) · ' + addr, in: r2(m.deposit) });
         (m.credits || []).forEach(function (c) { rows.push({ at: at, what: c.label + ' · ' + addr, in: r2(c.amount) }); });
@@ -10459,7 +10471,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       });
     });
     rows.sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : (b.in ? 1 : 0) - (a.in ? 1 : 0); });
-    let bal = 0; rows.forEach(function (r) { bal = r2(bal + (r.in || 0) - (r.out || 0)); r.balance = bal; });
+    let bal = 0; rows.forEach(function (r) { bal = r2(bal + (r.in || 0) - (r.out || 0)); if (!r.note) r.balance = bal; });
     res.json({ ok: true, rows: rows, money_in: r2(rows.reduce(function (a, r) { return a + (r.in || 0); }, 0)), money_out: r2(rows.reduce(function (a, r) { return a + (r.out || 0); }, 0)), balance: bal });
   }));
   app.get('/api/admin/statements', withDb(async function (p, req, res) {
