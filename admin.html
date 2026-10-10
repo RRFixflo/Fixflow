@@ -2202,6 +2202,7 @@
         <div class="av-list" id="avList"></div>
       </div>
       <div id="offersView" hidden>
+        <details class="card" id="offInv" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📨 Offer forms sent <span class="muted-note" id="offInvSum" style="margin:0 0 0 6px;font-weight:400"></span></summary><div id="offInvList" style="margin-top:10px"></div></details>
         <details class="card" id="offLinkCard" style="margin-bottom:12px">
           <summary style="cursor:pointer;font-weight:700;font-size:1.02rem">🔗 Send a form to an applicant <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">offer form or pre-viewing reservation</span></summary>
           <div style="margin-top:8px"></div>
@@ -2236,7 +2237,6 @@
           <div class="vw-add"><input class="inp" id="vwProp" list="offProps" placeholder="Property address"><input class="inp" id="vwAt" type="datetime-local"><input class="inp" id="vwWho" placeholder="Applicant (not shown to the landlord)"><button class="btn primary small" type="button" id="vwAdd">Book viewing</button></div>
           <div id="vwList"></div>
         </details>
-        <details class="card" id="offInv" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📨 Offer forms sent <span class="muted-note" id="offInvSum" style="margin:0 0 0 6px;font-weight:400"></span></summary><div id="offInvList" style="margin-top:10px"></div></details>
         <div class="card" id="offRemind" style="margin-bottom:12px" hidden><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b>⏰ Automatic holding deposit reminders</b><div class="muted-note" id="offRemindNote" style="margin:2px 0 0"></div></div>
           <label class="switch-row"><input type="checkbox" id="offRemindOn"> <span id="offRemindLbl">On</span></label></div></div>
         <details class="card" id="offStaff" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">👥 Staff access to offers <span class="muted-note" id="offStaffSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
@@ -2375,6 +2375,22 @@
       <button class="btn primary" id="shEmail" type="button" hidden>Email</button>
     </div>
     <p class="muted-note" id="shNote" style="font-size:.8rem"></p>
+  </div>
+</div>
+
+<!-- NEW JOB: ASSIGN A CONTRACTOR -->
+<div class="modal" id="njModal" hidden>
+  <div class="card" style="width:min(520px,100%);display:flex;flex-direction:column;gap:10px">
+    <h3 style="margin:0">🛠 New job — assign a contractor</h3>
+    <div id="njBody"></div>
+    <label class="lbl" for="njWho" style="margin:0">Contractor</label>
+    <select class="inp" id="njWho"></select>
+    <p class="muted-note" id="njMore" style="margin:0"></p>
+    <div class="row-actions" style="margin-top:4px;flex-wrap:wrap">
+      <button class="btn ghost" type="button" id="njLater">Later</button>
+      <button class="btn" type="button" id="njOpen">Open the job</button>
+      <button class="btn primary" type="button" id="njGo">Assign</button>
+    </div>
   </div>
 </div>
 
@@ -3264,12 +3280,45 @@
       renderNoteAlerts(); renderChargeBanner();
       renderTcyEndAlerts();
       loadRentRecoveries(); loadRenewalFees(); loadOffers(); loadPvr(); rbTopCount();
+      newJobPrompt();
       var owedN = jobs.filter(isOwed).length;
       $('sOwed').hidden = !owedN; $('sOwed').textContent = gbp(owedTotal()).replace('.00', '');
       return true;
     });
   }
 
+  // A new job with no contractor: prompt the owner to assign one (suggested from the job's trade, or the
+  // contractor chosen before for that kind of job). "Later" asks again in 2 hours; one job at a time.
+  var njCur = null;
+  function njSnoozed(){ try { return JSON.parse(localStorage.getItem('rr_nj_later') || '{}'); } catch (e) { return {}; } }
+  function newJobPrompt(){
+    if (staffMode || !$('njModal') || !$('njModal').hidden || openJobId || document.querySelector('.modal:not([hidden])')) return;
+    var later = njSnoozed(), now = Date.now(), weekAgo = now - 7 * 864e5;
+    var j = jobs.filter(function(x){ return (x.status === 'New' || !x.status) && !String(x.assigned_to || '').trim() && !x.landlord_handles && new Date(x.created_at).getTime() > weekAgo && !(later[x.id] > now); })
+      .sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })[0];
+    if (!j) return;
+    njCur = j;
+    var pool = contractors.filter(function(c){ return c.active; });
+    var sug = learnedContractor({ category: j.category }) || contractorForJob({ category: j.category, title: j.affected || '', description: j.description || '' }, []);
+    $('njBody').innerHTML = '<div style="font-weight:700">' + esc(j.ref || '') + ' · ' + esc(jobWhat(j, 60)) + '</div>' +
+      '<div class="muted-note" style="margin:2px 0 0">' + esc(j.property_address || '') + ' · ' + esc(j.urgency || 'Routine') + ' · reported ' + esc(fmtShort(j.created_at)) + '</div>';
+    $('njWho').innerHTML = '<option value="">Choose a contractor…</option>' + pool.map(function(c){ return '<option value="' + esc(c.name) + '"' + (sug && sug.id === c.id ? ' selected' : '') + '>' + esc(c.name) + (c.trade ? ' — ' + esc(c.trade) : '') + '</option>'; }).join('');
+    $('njMore').textContent = sug ? 'Suggested: ' + sug.name + (sug.trade ? ' (' + sug.trade + ')' : '') + '. After assigning, the job opens so you can book and message them.' : 'After assigning, the job opens so you can book and message them.';
+    $('njModal').hidden = false;
+  }
+  $('njLater').addEventListener('click', function(){ if (njCur) { var l = njSnoozed(); l[njCur.id] = Date.now() + 2 * 36e5; try { localStorage.setItem('rr_nj_later', JSON.stringify(l)); } catch (e) {} } $('njModal').hidden = true; });
+  $('njOpen').addEventListener('click', function(){ $('njModal').hidden = true; if (njCur) openJob(njCur.id); });
+  $('njGo').addEventListener('click', function(){
+    var who = $('njWho').value, j = njCur; if (!j) return;
+    if (!who) { toast('Choose a contractor'); $('njWho').focus(); return; }
+    busy($('njGo'), true, 'Assigning…');
+    api('PATCH', '/api/admin/jobs/' + j.id, { assigned_to: who, status: 'Assigned' }).then(function(r){
+      busy($('njGo'), false);
+      if (!r || !r.ok) { toast('Couldn’t assign — open the job instead'); return; }
+      $('njModal').hidden = true; toast('✓ ' + who + ' assigned to ' + (j.ref || 'the job'));
+      loadJobs().then(function(){ openJob(j.id); });
+    });
+  });
   // "Assigned to" suggestions: contractors (with their trade) first, then any
   // other names used on jobs before.
   function rebuildAssignees(){
@@ -10797,7 +10846,7 @@
         return { t: c.name, s: [c.trade, c.phone].filter(Boolean).join(' · '), av: c.name, run: function(){ openContractor(c.name); } };
       }) });
     }
-    if (raw && propByRef(raw)) sections.sort(function(a, b){ return (b.h === 'Properties') - (a.h === 'Properties'); });   // a property reference: that property first
+    if (raw) sections.sort(function(a, b){ return (b.h === 'Properties') - (a.h === 'Properties'); });   // matching properties come first, then jobs, tenants…
     if (actions.length) sections.push({ h: 'Go to', items: actions });
     cmdkItems = [];
     var html = sections.map(function(sec){
