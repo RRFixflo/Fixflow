@@ -13785,13 +13785,13 @@
   // An invoice on a statement: its number once, a few words on the job, and the link to it.
   function stmtInvLabel(f){
     var i = f && f.invoice_id && stmtInv[f.invoice_id]; if (!i) return f.label;
-    return 'Invoice ' + i.number + (i.what ? ' · ' + i.what : '') + ' (inc. VAT)';
+    return 'Invoice ' + i.number + (i.what ? ' · ' + i.what : '');
   }
   // A statement with the unpaid landlord invoices that will come off that rent (not on it yet until the
   // rent's collected) — so it matches the rent page's "to the landlord".
   function stmtWithPend(tid, m){
     var pp = stmtPend[tid]; if (!m || !pp || !pp.invoices.length || String(m.from || '').slice(0, 10) !== pp.from) return m;
-    var extra = pp.invoices.map(function(i){ return { label: 'Invoice ' + i.number + (i.title && i.title.indexOf(i.number) === -1 && !/^repair\s+[A-Z]{1,4}-?\d+$/i.test(i.title) ? ' · ' + i.title : '') + ' (inc. VAT)', amount: i.total, vat: 0, novat: true, pending: true, invoice_id: i.id }; });
+    var extra = pp.invoices.map(function(i){ return { label: 'Invoice ' + i.number + (i.title && i.title.indexOf(i.number) === -1 && !/^repair\s+[A-Z]{1,4}-?\d+$/i.test(i.title) ? ' · ' + i.title : ''), amount: i.total, vat: 0, novat: true, pending: true, invoice_id: i.id }; });
     var t = r2(extra.reduce(function(a, f){ return a + f.amount; }, 0));
     return Object.assign({}, m, { fees: (m.fees || []).concat(extra), sub: r2((m.sub || 0) + t), total: r2((m.total || 0) + t), balance: r2((m.balance || 0) - t) });
   }
@@ -13835,7 +13835,7 @@
     var lines = ['- Rent for ' + longDay(m.from) + ' to ' + longDay(m.to) + ': ' + gbp(m.rent)];
     if (m.deposit) lines.push('- Deposit: ' + gbp(m.deposit));
     (m.credits || []).forEach(function(c){ lines.push('- ' + c.label + ': ' + gbp(c.amount)); });
-    m.fees.forEach(function(f){ var iu = f.invoice_id && stmtInv[f.invoice_id] && stmtInv[f.invoice_id].url; lines.push('- ' + stmtInvLabel(f) + ': ' + gbp(f.amount) + (f.vat ? ' + VAT ' + gbp(f.vat) : m.vatOn ? ' (no VAT)' : '') + (iu ? '\n  View the invoice: ' + iu : '')); });
+    m.fees.forEach(function(f){ var iu = f.invoice_id && stmtInv[f.invoice_id] && stmtInv[f.invoice_id].url; lines.push('- ' + stmtInvLabel(f) + ': ' + gbp(f.amount) + (f.vat ? ' + VAT ' + gbp(f.vat) : m.vatOn && !f.invoice_id ? ' (no VAT)' : '') + (iu ? '\n  View the invoice: ' + iu : '')); });
     if (m.bf) lines.push('- Balance brought forward from your ' + monthName(m.bf_from) + ' statement: ' + gbp(m.bf));
     return (withAddr ? shortAddr(x.address) + ' — ' : '') + monthName(m.from) + ':\n' + lines.join('\n') + '\nClosing balance: ' + (stmtOwes(m) ? '−' : '') + gbp(Math.abs(m.balance)) + '\n' +
       (stmtOwes(m) ? 'After this month’s rent there is still ' + gbp(-m.balance) + ' owed to us. Please pay it by bank transfer' + (cfg.payee && cfg.accountNumber ? ' to ' + cfg.payee + ', sort code ' + cfg.sortCode + ', account ' + cfg.accountNumber + ', reference ' + (payRef(x.address) || 'the property address') : '') + ' — otherwise it will be taken from next month’s rent.'
@@ -16455,9 +16455,9 @@
     var VX = R - 95;
     // Text that must fit a column on one line: shrink the type a little, and only if it still won't fit,
     // end it at a whole word with "…" — never chopped mid-phrase.
-    var fit = function(text, x, yy, w, size){
+    var fit = function(text, x, yy, w, size, same){
       text = String(text || ''); var fs = size; doc.setFontSize(fs);
-      while (doc.getTextWidth(text) > w && fs > Math.max(6, size - 2.5)) { fs -= 0.25; doc.setFontSize(fs); }
+      while (!same && doc.getTextWidth(text) > w && fs > Math.max(6, size - 2.5)) { fs -= 0.25; doc.setFontSize(fs); }
       if (doc.getTextWidth(text) > w) { var words = text.split(' '); while (words.length > 1 && doc.getTextWidth(words.join(' ') + '…') > w) words.pop(); text = words.join(' ').replace(/[\s,(]+$/, '') + '…'; }
       doc.text(text, x, yy); doc.setFontSize(size);
     };
@@ -16494,8 +16494,9 @@
     c.fees.forEach(function(f){ doc.text(ukDay(m.from, true), X - 2, y);
       var lw = c.vatOn ? (VX - 48) - (X + 48) : (R - 80) - (X + 48), iv = f.invoice_id && stmtInv[f.invoice_id];
       // An invoice: in blue, and clicking it opens the invoice.
-      if (iv && iv.url) { doc.setTextColor(23, 92, 211); fit(stmtInvLabel(f), X + 48, y, lw, rowFont); doc.setTextColor(20); doc.link(X + 48, y - rowFont, Math.min(lw, doc.getTextWidth(stmtInvLabel(f))), rowFont + 3, { url: iv.url }); }
-      else fit(stmtInvLabel(f), X + 48, y, lw, rowFont); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += rh; });
+      // Every row the same size: a long one ends at a whole word with "…" rather than getting smaller.
+      if (iv && iv.url) { doc.setTextColor(23, 92, 211); fit(stmtInvLabel(f), X + 48, y, lw, rowFont, true); doc.setTextColor(20); doc.link(X + 48, y - rowFont, Math.min(lw, doc.getTextWidth(stmtInvLabel(f))), rowFont + 3, { url: iv.url }); }
+      else fit(stmtInvLabel(f), X + 48, y, lw, rowFont, true); if (c.vatOn) doc.text(pdfGbp(f.vat), VX, y, { align: 'right' }); doc.text(pdfGbp(f.amount), R, y, { align: 'right' }); y += rh; });
     if (!c.fees.length) { doc.text(m.bf ? 'No fees this month' : 'No fees', X + 48, y); y += rh; }
     y += gk('fees') - rh; doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
     doc.text('Sub-Total:', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.sub), R, y, { align: 'right' });

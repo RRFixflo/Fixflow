@@ -9922,7 +9922,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       WHERE i.paid_at IS NULL AND coalesce(i.data->>'collect_month', '') <> 'direct' AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.created_at`)).rows
       .filter(function (i) { return (i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key))) && (i.cm ? i.cm <= ym : true); })
       .map(function (i) { const t = String(i.title || '').trim(), generic = !t || /^repair\s+[A-Z]{1,4}-?\d+$/i.test(t) || t.indexOf(i.number) !== -1;
-        return { id: i.id, number: i.number, total: Number(i.total) || 0, title: (i.category || i.affected || i.description ? jobBrief(i, 60) : '') || (generic ? '' : t), job_id: i.job_id }; });
+        return { id: i.id, number: i.number, total: Number(i.total) || 0, title: (i.category || i.affected || i.description ? jobBrief(i, 48) : '') || (generic ? '' : t), job_id: i.job_id }; });
   }
   // Rent collection starts from this day (earlier rent dates count as already dealt with).
   const RENT_START = '2026-10-03';
@@ -10215,8 +10215,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function jobBrief(j, max) {
     let d = String(j.affected || '').trim() || (String(j.description || '').split(/\n+/).map(function (l) { return l.replace(/^(?:[-•*]|\d+[.)])\s*/, '').trim(); }).filter(function (l) { return l && !/^Other tenants:/i.test(l); })[0] || '');
     if (d.length > max) d = d.slice(0, max - 1).replace(/\s+\S*$/, '') + '…';
-    const cat = j.category && !(/^other$/i.test(j.category) && d) ? j.category : '';
-    return [cat, d, j.symptom && !d ? j.symptom : ''].filter(Boolean).join(' – ');
+    // The job's own words when there are some (short enough to sit on one statement line), else its category.
+    if (d) return d;
+    return [j.category && !/^other$/i.test(j.category) ? j.category : '', j.symptom || ''].filter(Boolean).join(' – ');
   }
   async function invoiceInfo(p, ids) {
     const out = {}; if (!ids.length) return out;
@@ -10225,7 +10226,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.id = ANY($1::int[])`, [ids])).rows;
     for (const r of rows) {
       const title = String(r.title || '').trim(), generic = !title || /^repair\s+[A-Z]{1,4}-?\d+$/i.test(title) || title.indexOf(r.number) !== -1;
-      const what = (r.category || r.affected || r.description ? jobBrief(r, 60) : '') || (generic ? '' : title);
+      const what = (r.category || r.affected || r.description ? jobBrief(r, 48) : '') || (generic ? '' : title);
       const key = r.property_key || propKey(r.addr || '');
       let url = null;
       if (key) {
