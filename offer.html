@@ -491,6 +491,36 @@
   if (/^[\w-]{8,20}$/.test(invite) && !location.pathname.match(/\/track\//)) {
     fetch('/api/offers/invite/' + invite + '/open', { method: 'POST' }).catch(function(){});
     document.addEventListener('input', function once(){ document.removeEventListener('input', once, true); fetch('/api/offers/invite/' + invite + '/start', { method: 'POST' }).catch(function(){}); }, true);
+    // What they've typed so far (never files), so the office can see it before the offer is sent.
+    var draftT = null, draftLast = '';
+    var draftNow = function(beacon){
+      var form = document.getElementById('offerForm'); if (!form) return;
+      var out = [];
+      form.querySelectorAll('.f').forEach(function(f){
+        if (f.closest('[hidden]') && !f.closest('.step')) return;
+        var lab = f.querySelector('label.l, .l'); if (!lab) return;
+        var l = ''; lab.childNodes.forEach(function(n){ if (n.nodeType === 3) l += n.nodeValue; }); l = l.trim() || lab.textContent.trim();
+        var vals = [];
+        f.querySelectorAll('input, select, textarea').forEach(function(el){
+          var t = (el.type || '').toLowerCase(); if (t === 'file' || t === 'password' || t === 'hidden' || el.name === 'website' || el.name === 'cf-turnstile-response') return;
+          if (t === 'checkbox' || t === 'radio') { if (el.checked) vals.push(t === 'radio' ? el.value : 'Yes'); return; }
+          if (el.tagName === 'SELECT') { var o = el.options[el.selectedIndex]; if (o && o.value) vals.push(o.text); return; }
+          if (String(el.value || '').trim()) vals.push(String(el.value).trim());
+        });
+        f.querySelectorAll('.seg .on, .chips .on').forEach(function(b){ vals.push(b.textContent.trim()); });
+        var cnt = f.querySelector('.count b'); if (cnt) vals.push(cnt.textContent.trim());
+        if (!vals.length) return;
+        var card = f.closest('.card'), h = card && card.querySelector('h2');
+        out.push({ s: h ? h.textContent.replace(/Lead tenant/, ' (lead tenant)').trim() : '', l: l, v: vals.join(', ') });
+      });
+      var body = JSON.stringify({ fields: out }); if (body === draftLast) return; draftLast = body;
+      var url = '/api/offers/invite/' + invite + '/draft';
+      if (beacon && navigator.sendBeacon) { try { navigator.sendBeacon(url, new Blob([body], { type: 'application/json' })); return; } catch (e) {} }
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true }).catch(function(){});
+    };
+    ['input', 'change', 'click'].forEach(function(ev){ document.addEventListener(ev, function(){ clearTimeout(draftT); draftT = setTimeout(draftNow, 3000); }, true); });
+    document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') draftNow(true); });
+    window.addEventListener('pagehide', function(){ draftNow(true); });
   }
 
   // ----- Conditions: one per line -----

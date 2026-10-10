@@ -11869,6 +11869,16 @@
           '</div></div>';
       }).join('') : '<p class="muted-note" style="margin:6px 0">Nothing yet.</p>') + '</div></details>';
   }
+  // What an applicant has typed into the offer form so far (saved as they go; no files).
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-inv-draft]'); if (!b) return;
+    var x = invites.filter(function(i){ return i.id === Number(b.dataset.invDraft); })[0]; if (!x) return;
+    var secs = [], by = {};
+    (x.draft || []).forEach(function(f){ var k = f.s || 'Details'; if (!by[k]) { by[k] = []; secs.push(k); } by[k].push(f); });
+    tleShow('📝 ' + (x.to_name || x.to_contact || 'Applicant') + ' — filled in so far',
+      '<p class="muted-note" style="margin:0">Saved as they type' + (x.draft_at ? ' · last saved ' + esc(fmtShort(x.draft_at)) : '') + '. Not sent yet — this is only what’s on their screen so far (uploaded files aren’t included).</p>' +
+      secs.map(function(k){ return '<h4 class="la-sub" style="margin:12px 0 4px">' + esc(k) + '</h4><div class="kv-mini">' + by[k].map(function(f){ return '<span>' + esc(f.l) + '</span><b>' + esc(String(f.v).replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, '$3/$2/$1')) + '</b>'; }).join('') + '</div>'; }).join(''));
+  });
   function renderInvites(){
     var opened = invites.filter(function(x){ return x.opens > 0; }).length, made = invites.filter(function(x){ return x.offer_id; }).length;
     $('offInvSum').textContent = invites.length ? invites.length + ' sent · ' + opened + ' opened · ' + made + ' made an offer' : 'none yet';
@@ -11876,7 +11886,7 @@
     $('offInvList').innerHTML = !invites.length ? '<p class="muted-note" style="margin:0">When you send the form by WhatsApp or email from here, it shows up with whether they opened it.</p>' : shown.map(function(x){
       var st = x.offer_id ? ['ok', '✓ Made an offer · OF' + String(x.offer_id).padStart(4, '0')] : x.started_at ? ['wait', '✍ Started filling it in'] : x.opens ? ['wait', '👀 Opened' + (x.opens > 1 ? ' ×' + x.opens : '') + ' · ' + fmtShort(x.last_opened_at)] : ['muted', 'Not opened yet'];
       return '<div class="inv-row" data-inv="' + x.id + '"><div class="inv-main"><b>' + esc(x.to_name || x.to_contact || 'Applicant') + '</b><span>' + esc([x.to_name && x.to_contact ? x.to_contact : '', x.property_address ? shortAddr(x.property_address) : 'Any property'].filter(Boolean).join(' · ')) + '</span><span>Sent ' + esc(fmtShort(x.created_at)) + ' by ' + esc(x.via === 'whatsapp' ? 'WhatsApp' : x.via) + ' · ' + esc(x.sent_by || 'Office') + '</span></div>' +
-        '<span class="oc-pill ' + st[0] + '">' + esc(st[1]) + '</span><button type="button" class="btn small ghost" data-inv-act>Activity</button>' + (meta.canManageUsers ? '<button type="button" class="btn small ghost danger" data-inv-del title="Delete">🗑</button>' : '') +
+        '<span class="oc-pill ' + st[0] + '">' + esc(st[1]) + '</span>' + (!x.offer_id && (x.draft || []).length ? '<button type="button" class="btn small" data-inv-draft="' + x.id + '">📝 What they’ve filled in</button>' : '') + '<button type="button" class="btn small ghost" data-inv-act>Activity</button>' + (meta.canManageUsers ? '<button type="button" class="btn small ghost danger" data-inv-del title="Delete">🗑</button>' : '') +
         '<div class="inv-ev" hidden>' + linkActivityHtml(x.visits, [].concat(x.events || []).concat(x.offer_id ? [{ at: x.offer_at || x.started_at || x.created_at, what: '✓ Sent their offer (OF' + String(x.offer_id).padStart(4, '0') + ')' }] : []), 'Full activity') + '</div></div>';
     }).join('') + (invites.length > shown.length ? '<button type="button" class="btn small ghost" id="offInvMore" style="margin-top:8px">Show all ' + invites.length + '</button>' : '');
   }
