@@ -1053,6 +1053,14 @@
   .mail-preview:focus { border-color: var(--blue, #2563eb); }
   .mail-preview a { color: #0563c1; }
   .tcy-form h3 { display: flex; align-items: center; gap: 8px; }
+  .tcy-form > .card > h3.tcy-fold { cursor: pointer; user-select: none; }
+  .tcy-form > .card > h3.tcy-fold::before { content: '▾'; display: inline-block; font-size: .85em; color: var(--ink-soft, #667085); transition: transform .15s; }
+  .tcy-form > .card.folded > h3.tcy-fold::before { transform: rotate(-90deg); }
+  .tcy-form > .card.folded > h3.tcy-fold { margin-bottom: 0; }
+  .tcy-form > .card.folded > :not(h3.tcy-fold) { display: none !important; }
+  .tcy-fold-sum { display: none; font-size: .82rem; font-weight: 500; color: var(--ink-soft, #667085); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tcy-form > .card.folded .tcy-fold-sum { display: inline; }
+  @media (prefers-reduced-motion: reduce) { .tcy-form > .card > h3.tcy-fold::before { transition: none; } }
   .cp-in { position: relative; } .cp-in > .inp { padding-right: 38px; width: 100%; }
   .cp-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border: 1px solid var(--line, #e6e8ec); border-radius: 8px; background: var(--panel, #fff); color: var(--ink-soft); font-size: 1rem; line-height: 1; cursor: pointer; display: grid; place-items: center; padding: 0; }
   .cp-btn:hover { color: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); }
@@ -1086,7 +1094,7 @@
   .la-tbl { border: 1px solid var(--line, #e6e8ec); border-radius: 10px; overflow: hidden; font-size: .88rem; } .la-r { display: grid; grid-template-columns: 82px minmax(0, 1fr) 90px 90px 96px; gap: 8px; padding: 7px 10px; border-top: 1px solid var(--line, #eef0f3); align-items: baseline; } .la-r:first-child { border-top: 0; } .la-h { background: var(--panel-2, #f6f7f9); font-weight: 700; font-size: .78rem; color: var(--ink-soft, #667085); } .la-r > span:nth-child(n+3) { text-align: right; white-space: nowrap; } .la-w { overflow-wrap: anywhere; } .la-in { color: #067647; } .la-out { color: #b42318; } .la-note .la-w { color: var(--ink-soft, #667085); font-style: italic; } .la-tot { background: var(--panel-2, #f6f7f9); }
   @media (max-width: 560px) { .la-r { grid-template-columns: 64px minmax(0, 1fr) 76px; } .la-r > span:nth-child(4) { grid-column: 3; } .la-r > span:nth-child(5) { grid-column: 2 / 4; font-size: .78rem; color: var(--ink-soft, #667085); } .la-h > span:nth-child(4), .la-h > span:nth-child(5) { display: none; } .la-h > span:nth-child(3)::after { content: ' / Out'; } }
   .la-sub { margin: 14px 0 6px; font-size: .95rem; }
-  .ll-cost { display: block; margin-top: 3px; font-size: .75rem; font-weight: 700; color: var(--navy, #0b1f3a); white-space: nowrap; } .ll-cost i { font-style: normal; font-weight: 500; color: var(--ink-soft, #667085); }
+  .ll-cost { display: block; margin-top: 3px; font-size: .75rem; font-weight: 700; color: var(--navy, #0b1f3a); white-space: nowrap; } .ll-cost i { display: block; font-style: normal; font-weight: 500; color: var(--ink-soft, #667085); }
   .tm-incl { display: flex; flex-wrap: wrap; gap: 6px 14px; } .tm-incl-i { display: flex; gap: 6px; align-items: center; font-size: .92rem; }
   .tle-files { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; } .tle-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; padding: 6px 8px; border: 1px solid var(--line, #e4e7ec); border-radius: 8px; } .tle-fn { font-weight: 600; overflow-wrap: anywhere; min-width: 0; flex: 1 1 180px; } .tle-fa { display: flex; gap: 6px; flex: 0 0 auto; } .tle-row b { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
   .tle-frame { width: 100%; height: 55vh; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; background: #fff; } .tle-text { white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 12px; font-size: .9rem; max-height: 55vh; overflow: auto; }
@@ -15854,8 +15862,47 @@
       return '<div class="tcy-fee nv4" data-i="' + i + '"><input class="inp" data-ff="label" placeholder="Fee" value="' + esc(f.label || '') + '"><input class="inp" data-ff="amount" inputmode="decimal" placeholder="£" value="' + esc(f.amount == null ? '' : f.amount) + '"><label class="tcy-nv" title="Tick if there is no VAT on this one (e.g. a council licence fee)"><input type="checkbox" data-ff="novat"' + (f.novat ? ' checked' : '') + '> No VAT</label><button type="button" class="tcy-x" data-del-fee="' + i + '" title="Remove">×</button></div>';
     }).join('');
   }
+  // Every section of the tenancy form folds away: click its heading. Open/closed is remembered per
+  // browser (rr_tcy_fold, by the section's id or heading); a folded section shows a one-line summary.
+  function tcyFoldKey(card){ var h = card.querySelector(':scope > h3'); return card.id || (h ? (h.firstChild && h.firstChild.nodeType === 3 ? h.firstChild.nodeValue : h.textContent).trim() : ''); }
+  function tcyFoldState(){ try { return JSON.parse(localStorage.getItem('rr_tcy_fold') || '{}') || {}; } catch (e) { return {}; } }
+  function tcyFoldSum(key){
+    var d = tcyDraft || {}, bits = [];
+    if (key === 'Tenancy and rent') bits = [d.start_date ? 'From ' + ukDay(d.start_date) : '', num(d.rent_pcm) ? gbp(num(d.rent_pcm)) + ' pcm' : '', num(d.deposit) ? 'deposit ' + gbp(num(d.deposit)) : '', d.term_months ? d.term_months + ' months' : ''];
+    else if (key === 'Property') bits = [String(d.address || '').split(',')[0], d.service || ''];
+    else if (key === 'Tenants' || key === 'Guarantors') bits = [tcyNames(key === 'Tenants' ? d.tenants : d.guarantors).join(', ')];
+    else if (key === 'Landlord') bits = [(d.landlord || {}).name || ''];
+    else if (key === 'Payments received from the tenants') { var n = (d.receipts || []).length; bits = [n ? n + ' payment' + (n === 1 ? '' : 's') : 'None yet']; }
+    else if (key === 'Check-in') bits = [d.checkin_type === 'diy' ? 'DIY check-in' : d.checkin_type === 'none' ? 'No check-in' : 'Inventory clerk' + (d.checkin_date ? ' · ' + ukDay(d.checkin_date) : '')];
+    return bits.filter(Boolean).join(' · ');
+  }
+  function tcyFoldInit(){
+    var form = $('tcyDetail') && $('tcyDetail').querySelector('.tcy-form'); if (!form) return;
+    var st = tcyFoldState();
+    Array.prototype.forEach.call(form.children, function(card){
+      var h = card.classList.contains('card') && card.querySelector(':scope > h3'); if (!h || h !== card.firstElementChild) return;
+      // Not the ones that fold their own way (Monthly statements) or the delete box.
+      if (!h.classList.contains('tcy-fold') && (/Minimise|Expand/.test(h.textContent) || /^Delete tenancy/.test(h.textContent.trim()))) return;
+      h.classList.add('tcy-fold'); h.title = 'Click to fold away or open';
+      var key = tcyFoldKey(card); card.classList.toggle('folded', !!st[key]);
+      var sum = h.querySelector('.tcy-fold-sum'); if (!sum) { sum = document.createElement('span'); sum.className = 'tcy-fold-sum'; var sp = h.querySelector('span[style*="flex:1"]'); h.insertBefore(sum, sp || null); }
+      var t = tcyFoldSum(key); if (sum.textContent !== t) sum.textContent = t;
+    });
+  }
+  // Sections drawn later (certificates, move-in payments, terms) fold too.
+  (function(){ var box = $('tcyDetail'), due = false; if (!box || !window.MutationObserver) return;
+    new MutationObserver(function(){ if (due) return; due = true; setTimeout(function(){ due = false; tcyFoldInit(); }, 30); }).observe(box, { childList: true, subtree: true }); })();
+  document.addEventListener('click', function(e){
+    var h = e.target.closest && e.target.closest('.tcy-form > .card > h3.tcy-fold'); if (!h || e.target.closest('button, a, input, select, label')) return;
+    var card = h.parentNode, key = tcyFoldKey(card), st = tcyFoldState();
+    var folded = !card.classList.contains('folded'); card.classList.toggle('folded', folded);
+    var sum = h.querySelector('.tcy-fold-sum'); if (sum) sum.textContent = tcyFoldSum(key);
+    if (folded) st[key] = 1; else delete st[key];
+    try { localStorage.setItem('rr_tcy_fold', JSON.stringify(st)); } catch (er) {}
+  });
   function renderTcyForm(){
     setTimeout(avBannersRefresh, 0);   // "On the available list", once the form is drawn
+    setTimeout(tcyFoldInit, 0);
     var d = tcyDraft, x = openTcyId === 'new' ? null : tenancies.filter(function(t){ return t.id === openTcyId; })[0], l = d.landlord || {};
     var props = certProperties().map(function(p){ return '<option value="' + esc(p.address) + '"></option>'; }).join('');
     $('tcyDetail').innerHTML =
