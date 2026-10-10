@@ -7274,6 +7274,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!t) return res.status(404).json({ ok: false });
     res.json(Object.assign({ ok: true }, await tcyNegotiator(p, t.data || {})));
   }));
+  // Emails staff send from Fixflow always copy in the office inbox, so they're in Outlook too.
+  function officeCc(to, cc) {
+    const office = 'info@residentialrealtors.co.uk', has = function (l) { return l.some(function (x) { return String(x).toLowerCase() === office; }); };
+    if (!has(to) && !has(cc)) cc.push(office);
+    return cc;
+  }
   // Send a welcome email (when email sending is set up), with PDFs attached.
   app.post('/api/admin/tenancies/:id/email', withDb(async function (p, req, res) {
     if (!canEmail()) return res.status(503).json({ ok: false, error: 'email-not-configured' });
@@ -7287,6 +7293,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }).filter(function (a) { return a.content && a.content.length < 15 * 1024 * 1024; });
     const html = typeof b.html === 'string' && b.html.length < 300000 ? b.html.replace(/<script[\s\S]*?<\/script>/gi, '') : undefined;
     const cc = (Array.isArray(b.cc) ? b.cc : []).map(function (x) { return str(x, 200); }).filter(function (x) { return x && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x) && to.indexOf(x) === -1; }).slice(0, 6);
+    officeCc(to, cc);
     const sent = await sendEmail({ to: to, cc: cc, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: html || brandEmail(text, subject), attachments: atts });
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     const kept = await keepEmailFiles(p, atts);
@@ -7981,6 +7988,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (hist.length >= 80) return res.status(429).json({ ok: false, error: 'rate-limited' });
     hist.push(now); mailSent.set(who, hist);
     let me = ''; try { if (req.user && req.user.id) me = ((await (await db()).query('SELECT email FROM staff_users WHERE id = $1', [req.user.id])).rows[0] || {}).email || ''; } catch (e) {}
+    officeCc(to, cc);
     const replyTo = isEmail(me) ? me : 'info@residentialrealtors.co.uk';
     const name = req.user && req.user.id && req.user.name ? req.user.name + ' - Residential Realtors' : 'Residential Realtors';
     const r = await sendEmail({ to: to, cc: cc, bcc: b.copy !== false && isEmail(me) && to.concat(cc).indexOf(me) === -1 ? [me] : undefined, replyTo: replyTo, fromName: name, subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
@@ -10352,17 +10360,29 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const due = Number(b.due) || Number(d.rent_pcm) || 0, got = ((d.rent_parts || {})[from] || []).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0), left = Math.round((due - got) * 100) / 100;
     const names = (d.tenants || []).map(function (x) { return x && String(x.name || '').trim().split(/\s+/)[0]; }).filter(Boolean);
     const hello = names.length ? 'Dear ' + (names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names.slice(-1) : names[0]) : 'Dear tenant';
-    const late = Math.max(0, Math.round((Date.parse(londonDay() + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 86400000));
+    const dd = Math.round((Date.parse(londonDay() + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 86400000), late = Math.max(0, dd);
     const addr = d.address || t.address || 'your home';
-    const text = hello + ',\n\nThis is a friendly reminder that the rent for ' + addr + ' was due on ' + certDay(from) + (late ? ' (' + late + ' day' + (late === 1 ? '' : 's') + ' ago)' : '') + ' and we haven\u2019t received it in full yet.\n\n' +
-      'Rent due: ' + gbp(due) + (got > 0 ? '\nReceived so far: ' + gbp(got) + '\nStill to pay: ' + gbp(left) : '') + (d.pay_ref ? '\nPayment reference: ' + d.pay_ref : '') +
-      '\n\nPlease make the payment as soon as possible using your usual payment details' + (d.pay_ref ? ' and reference' : '') + '. If you share the rent, please each check your part has been sent. If you have already paid, please reply with the date and amount so we can match it \u2014 and thank you.\n\n' +
-      'If you\u2019re having difficulty paying, please get in touch with us straight away so we can help.\n\nKind regards,\nResidential Realtors\n0207 096 8131 \u00b7 info@residentialrealtors.co.uk';
-    const r = await sendEmail({ to: to, subject: 'Rent reminder \u2014 ' + addr.split(',').slice(0, 2).join(','), text: text, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors' });
+    const sign = '\n\nKind regards,\nResidential Realtors\n0207 096 8131 \u00b7 info@residentialrealtors.co.uk';
+    // Rent not due yet: a heads-up with the day and amount, so there's enough in the account for the standing order.
+    const soon = dd < 0;
+    const defText = soon
+      ? hello + ',\n\nThis is a friendly reminder that your rent for ' + addr + ' is due on ' + certDay(from) + ' (in ' + (-dd) + ' day' + (dd === -1 ? '' : 's') + ').\n\n' +
+        'Rent due: ' + gbp(due) + (got > 0 ? '\nReceived so far: ' + gbp(got) + '\nStill to pay: ' + gbp(left) : '') + (d.pay_ref ? '\nPayment reference: ' + d.pay_ref : '') +
+        '\n\nPlease make sure there is enough money in your account on that day for your standing order (or payment) to go through. If you share the rent, please each check your part is set up. If anything has changed with how you pay, just reply to this email.' + sign
+      : hello + ',\n\nThis is a friendly reminder that the rent for ' + addr + ' was due on ' + certDay(from) + (late ? ' (' + late + ' day' + (late === 1 ? '' : 's') + ' ago)' : '') + ' and we haven\u2019t received it in full yet.\n\n' +
+        'Rent due: ' + gbp(due) + (got > 0 ? '\nReceived so far: ' + gbp(got) + '\nStill to pay: ' + gbp(left) : '') + (d.pay_ref ? '\nPayment reference: ' + d.pay_ref : '') +
+        '\n\nPlease make the payment as soon as possible using your usual payment details' + (d.pay_ref ? ' and reference' : '') + '. If you share the rent, please each check your part has been sent. If you have already paid, please reply with the date and amount so we can match it \u2014 and thank you.\n\n' +
+        'If you\u2019re having difficulty paying, please get in touch with us straight away so we can help.' + sign;
+    const defSubject = (soon ? 'Rent due ' + certDay(from) + ' \u2014 ' : 'Rent reminder \u2014 ') + addr.split(',').slice(0, 2).join(',');
+    const cc = officeCc(to, []);
+    // Preview: what would be sent, to check (and change) before sending.
+    if (b.preview) return res.json({ ok: true, preview: true, to: to, cc: cc, subject: defSubject, text: defText, soon: soon });
+    const text = str(b.text, 20000) || defText, subject = str(b.subject, 300) || defSubject;
+    const r = await sendEmail({ to: to, cc: cc, subject: subject, text: text, html: brandEmail(text, subject), replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors' });
     if (r && r.ok === false) return res.status(502).json({ ok: false, error: 'send-failed' });
     const row = { at: new Date().toISOString(), to: to.length, by: who };
     await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_reminders}', coalesce(data->'rent_reminders', '{}'::jsonb) || jsonb_build_object($2::text, coalesce(data->'rent_reminders'->$2, '[]'::jsonb) || $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
-      [id, from, JSON.stringify([row]), JSON.stringify([{ at: row.at, text: 'Rent reminder emailed to ' + to.length + ' tenant' + (to.length === 1 ? '' : 's') + ' for the rent due ' + certDay(from) + ' (' + who + ')' }])]);
+      [id, from, JSON.stringify([row]), JSON.stringify([{ at: row.at, text: 'Rent reminder emailed to ' + to.length + ' tenant' + (to.length === 1 ? '' : 's') + ' for the rent due ' + certDay(from) + ' (' + who + ')', email: logEmail({ to: to, cc: cc, subject: subject, text: text, attachments: [] }) }])]);
     res.json({ ok: true, sent: to.length });
   }));
   // Who collects the rent on a tenancy (from the rent page: "we don't collect this any more").
