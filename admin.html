@@ -1099,6 +1099,7 @@
   .fee-run { display: grid; grid-template-columns: 58px minmax(0, 1fr) 92px 96px; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line, #eef0f3); font-size: .86rem; align-items: baseline; } .fee-run > span:nth-child(n+3) { text-align: right; white-space: nowrap; } .fee-run small { display: block; color: var(--ink-soft, #667085); font-size: .76rem; } .fee-run-h { font-size: .74rem; color: var(--ink-soft, #667085); font-weight: 700; border-top: 0; }
   @media (max-width: 560px) { .fee-run { grid-template-columns: 46px minmax(0, 1fr) 78px; } .fee-run > span:nth-child(4) { grid-column: 2 / 4; text-align: right; font-size: .78rem; color: var(--ink-soft, #667085); } .fee-run > span:nth-child(4) b::before { content: 'Running total '; font-weight: 400; } .fee-run-h > span:nth-child(4) { display: none; } }
   .la-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .la-tabs button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: inherit; } .la-tabs button small { font-weight: 500; color: var(--ink-soft, #667085); margin-left: 4px; } .la-tabs button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; } .la-tabs button.on small { color: rgba(255,255,255,.75); }
+  .ap-find { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; } #apSugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; }
   .ap-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 64px 130px 34px; gap: 6px; margin-bottom: 6px; }
   @media (max-width: 640px) { .ap-row { grid-template-columns: 1fr 1fr; } .ap-row [data-f=url] { grid-column: 1 / -1; } .ap-row .tcy-x { justify-self: end; } }
   .la-sub { margin: 14px 0 6px; font-size: .95rem; }
@@ -12007,8 +12008,10 @@
     var b = $('apprBody'); if (!b) return;
     if (!b.dataset.built) {
       b.dataset.built = 1;
-      b.innerHTML = '<div class="grid2"><label class="lbl">Property address<input class="inp" id="apAddr" placeholder="Full address with postcode"></label><label class="lbl">Type<select class="inp" id="apType"><option value="">—</option><option>Flat</option><option>Maisonette</option><option>House</option><option>Studio</option></select></label></div>' +
-        '<div class="grid3"><label class="lbl">Bedrooms<input class="inp" id="apBeds" inputmode="numeric" placeholder="e.g. 2"></label><label class="lbl">Bathrooms<input class="inp" id="apBaths" inputmode="numeric" placeholder="e.g. 1"></label><label class="lbl">Report for <span class="muted-note" style="margin:0">optional</span><input class="inp" id="apTo" placeholder="Landlord’s name"></label></div>' +
+      b.innerHTML = '<div class="ap-find"><span class="muted-note" style="margin:0">Find the address:</span><input class="inp" id="apPc" placeholder="Postcode" style="width:120px;text-transform:uppercase"><input class="inp" id="apDoor" placeholder="Door / flat no. (optional)" style="width:170px"><button type="button" class="btn small" id="apFind">🔎 Find address</button></div><div id="apFindRes"></div>' +
+        '<div class="grid2"><label class="lbl">Property address<input class="inp" id="apAddr" placeholder="Full address with postcode"></label><label class="lbl">Type<select class="inp" id="apType"><option value="">—</option><option>Flat</option><option>Maisonette</option><option>House</option><option>Studio</option></select></label></div>' +
+        '<div class="grid3"><label class="lbl">Bedrooms<input class="inp" id="apBeds" inputmode="numeric" placeholder="e.g. 2"></label><label class="lbl">Bathrooms<input class="inp" id="apBaths" inputmode="numeric" placeholder="e.g. 1"></label><label class="lbl" style="position:relative">Report for <span class="muted-note" style="margin:0">optional</span><input class="inp" id="apTo" placeholder="Landlord — type to search ours" autocomplete="off"><div class="lt-sugg" id="apSugg" hidden></div></label></div>' +
+        '<p class="muted-note" id="apLlNote" style="margin:-4px 0 6px" hidden></p>' +
         '<label class="lbl">Their address <span class="muted-note" style="margin:0">optional</span><textarea class="inp" id="apToAddr" rows="2"></textarea></label>' +
         '<label class="lbl">What stood out <span class="muted-note" style="margin:0">optional — one per line</span><textarea class="inp" id="apHi" rows="2" placeholder="e.g. Private balcony&#10;Five minutes to the station"></textarea></label>' +
         '<div class="row-actions" style="flex-wrap:wrap;margin:8px 0"><button type="button" class="btn small" data-ap-rm="sale">🔎 Rightmove: for sale within 1 mile</button><button type="button" class="btn small" data-ap-rm="let">🔎 Rightmove: to rent within 1 mile</button></div>' +
@@ -12023,10 +12026,49 @@
         var a = e.target.closest('[data-ap-add]'); if (a) { appr[a.dataset.apAdd].push({}); apprDraw(); return; }
         var d = e.target.closest('[data-ap-del]'); if (d) { var row = d.closest('[data-ap-k]'); appr[row.dataset.apK].splice(Number(row.dataset.apI), 1); apprDraw(); return; }
         var rm = e.target.closest('[data-ap-rm]'); if (rm) { var pc = apprPc(); if (!pc) { toast('Add the address with its postcode first'); return; }
-          var beds = parseInt($('apBeds').value, 10), q = '?searchLocation=' + encodeURIComponent(pc) + '&radius=1.0' + (beds >= 0 ? '&minBedrooms=' + beds + '&maxBedrooms=' + beds : '');
-          window.open('https://www.rightmove.co.uk/' + (rm.dataset.apRm === 'let' ? 'property-to-rent' : 'property-for-sale') + '/find.html' + q, '_blank', 'noopener'); return; }
+          var beds = parseInt($('apBeds').value, 10);
+          var kind = rm.dataset.apRm === 'let' ? 'property-to-rent' : 'property-for-sale', w = window.open('about:blank', '_blank');
+          // Rightmove needs its own number for the postcode (a plain postcode in the link gives "This isn't the place you were looking for").
+          api('GET', '/api/admin/rm-location?postcode=' + encodeURIComponent(pc)).then(function(j){
+            var url = j && j.loc ? 'https://www.rightmove.co.uk/' + kind + '/find.html?locationIdentifier=' + encodeURIComponent(j.loc) + '&radius=1.0' + (beds >= 0 ? '&minBedrooms=' + beds + '&maxBedrooms=' + beds : '') + '&sortType=6'
+              : 'https://www.rightmove.co.uk/' + kind + '/' + encodeURIComponent(pc.split(' ')[0]) + '.html';
+            if (w) { try { w.opener = null; } catch (er) {} w.location.href = url; } else window.open(url, '_blank', 'noopener');
+          }).catch(function(){ var url = 'https://www.rightmove.co.uk/' + kind + '/' + encodeURIComponent(pc.split(' ')[0]) + '.html'; if (w) w.location.href = url; else window.open(url, '_blank', 'noopener'); });
+          return; }
       });
       $('apMake').addEventListener('click', apprMake);
+      // Postcode (+ door number) → full addresses from the EPC register; picking one fills the address and, when it's
+      // one of our properties, its landlord.
+      var find = function(){
+        var pc = $('apPc').value.trim(); if (!POSTCODE_RE.test(pc)) { toast('Enter the full postcode'); $('apPc').focus(); return; }
+        busy($('apFind'), true, 'Searching…'); $('apFindRes').innerHTML = '';
+        api('GET', '/api/admin/epc-addresses?postcode=' + encodeURIComponent(pc) + '&door=' + encodeURIComponent($('apDoor').value.trim())).then(function(d){
+          busy($('apFind'), false);
+          if (!d || !d.ok) { $('apFindRes').innerHTML = '<p class="muted-note">' + (d && d.error === 'register-unreachable' ? 'The EPC register isn’t answering just now — type the address instead.' : 'Couldn’t search that postcode.') + '</p>'; return; }
+          if (!d.results.length) { $('apFindRes').innerHTML = '<p class="muted-note">No addresses found at ' + esc(d.postcode) + ' — type it in instead.</p>'; return; }
+          $('apFindRes').innerHTML = '<div class="ll-find-list">' + d.results.map(function(r){ return '<button type="button" class="ll-find-hit" data-apaddr="' + esc(r.address) + '"><b>' + esc(r.address) + '</b>' + (r.rating ? '<span>EPC ' + esc(r.rating) + '</span>' : '') + '</button>'; }).join('') + '</div>';
+        });
+      };
+      $('apFind').addEventListener('click', find);
+      ['apPc', 'apDoor'].forEach(function(id){ $(id).addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); find(); } }); });
+      $('apFindRes').addEventListener('click', function(e){
+        var h = e.target.closest('[data-apaddr]'); if (!h) return;
+        $('apAddr').value = h.dataset.apaddr; $('apFindRes').innerHTML = '';
+        api('GET', '/api/admin/landlord-for-address?address=' + encodeURIComponent(h.dataset.apaddr)).then(function(d){ if (d && d.landlord) apprPickLl(d.landlord, true); });
+      });
+      // Report for: search our landlords (name, email, phone or one of their properties).
+      var sT = null;
+      $('apTo').addEventListener('input', function(){
+        apprLl = null; $('apLlNote').hidden = true; clearTimeout(sT); var q = this.value.trim();
+        if (q.length < 2) { $('apSugg').hidden = true; return; }
+        sT = setTimeout(function(){ api('GET', '/api/admin/landlord-terms/lookup?q=' + encodeURIComponent(q)).then(function(d){
+          var ls = (d && d.landlords) || []; if (!ls.length || $('apTo').value.trim() !== q) { $('apSugg').hidden = true; return; }
+          $('apSugg').innerHTML = ls.map(function(l, i){ return '<button type="button" data-apll="' + i + '"><b>' + esc(l.name) + '</b><small>' + esc([l.phone, l.email, (l.properties || []).length ? (l.properties || []).length + ' propert' + ((l.properties || []).length === 1 ? 'y' : 'ies') : ''].filter(Boolean).join(' · ')) + '</small></button>'; }).join('');
+          $('apSugg').hidden = false; $('apSugg')._ls = ls;
+        }); }, 250);
+      });
+      $('apSugg').addEventListener('mousedown', function(e){ var x = e.target.closest('[data-apll]'); if (!x) return; e.preventDefault(); apprPickLl(this._ls[Number(x.dataset.apll)], false); this.hidden = true; });
+      $('apTo').addEventListener('blur', function(){ setTimeout(function(){ $('apSugg').hidden = true; }, 150); });
       apprDraw();
     }
     apprList();
@@ -12053,6 +12095,14 @@
     $('apprModal').hidden = false;
   }
   document.addEventListener('click', function(e){ if (e.target.closest('#navAppr, [data-open-appr]')) { if (typeof closeDrawer === 'function') closeDrawer(); openApprFor(null); } });
+  // A landlord from our records: their name and address on the report, their properties to pick from, and the
+  // report saved against them.
+  function apprPickLl(l, fromAddr){
+    apprLl = l; $('apTo').value = l.name || ''; $('apToAddr').value = l.address || '';
+    var ps = l.properties || [];
+    if (ps.length) { $('apAddr').setAttribute('list', 'apProps'); if (!$('apProps')) $('apAddr').insertAdjacentHTML('afterend', '<datalist id="apProps"></datalist>'); $('apProps').innerHTML = ps.map(function(a){ return '<option value="' + esc(a) + '">'; }).join(''); if (!$('apAddr').value.trim() && ps.length === 1) $('apAddr').value = ps[0]; }
+    $('apLlNote').hidden = false; $('apLlNote').innerHTML = (fromAddr ? '✓ This is our property — landlord on file: <b>' : '✓ Landlord on file: <b>') + esc(l.name || '') + '</b>' + (ps.length > 1 ? ' · pick one of their ' + ps.length + ' properties in the address box' : '') + '. The report is saved to their record.';
+  }
   function apprDraw(){ if (!appr.sale.length) appr.sale.push({}); if (!appr.let.length) appr.let.push({}); $('apSale').innerHTML = apprRows('sale'); $('apLet').innerHTML = apprRows('let'); apprSum(); }
   function apprMake(){
     var err = function(t){ $('apErr').textContent = t; $('apErr').hidden = false; };
