@@ -2202,7 +2202,6 @@
         <div class="av-list" id="avList"></div>
       </div>
       <div id="offersView" hidden>
-        <details class="card" id="offInv" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📨 Offer forms sent <span class="muted-note" id="offInvSum" style="margin:0 0 0 6px;font-weight:400"></span></summary><div id="offInvList" style="margin-top:10px"></div></details>
         <details class="card" id="offLinkCard" style="margin-bottom:12px">
           <summary style="cursor:pointer;font-weight:700;font-size:1.02rem">🔗 Send a form to an applicant <span class="muted-note" style="margin:0 0 0 6px;font-weight:400">offer form or pre-viewing reservation</span></summary>
           <div style="margin-top:8px"></div>
@@ -2214,6 +2213,7 @@
             <div class="off-pvr" id="offPvr" hidden><label>Rent<span style="display:flex;gap:6px"><input class="inp" id="pvRent2" inputmode="decimal" placeholder="e.g. 450"><select class="inp" id="pvPer2" style="width:auto"><option value="pw">per week</option><option value="pcm">per month</option></select></span></label><label>PVR amount £ <span class="muted-note" style="margin:0">one week’s rent</span><input class="inp" id="pvAmt2" inputmode="decimal"></label><label>Viewing <span class="muted-note" style="margin:0">optional — starts the 24 hours</span><input class="inp" id="pvAt2" type="datetime-local"></label><label class="switch-row" style="align-self:end"><input type="checkbox" id="pvAddV2" checked> Also add it to Viewings</label></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><input class="inp" id="offToName" placeholder="Their name" style="flex:1;min-width:140px"><input class="inp" id="offTo" placeholder="Their mobile or email (optional)" style="flex:1;min-width:200px"><button class="btn small wa-btn" type="button" id="offSendWa">WhatsApp</button><button class="btn small" type="button" id="offSendMail">✉ Email</button></div></div>
         </details>
+        <details class="card" id="offInv" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📨 Offer forms sent <span class="muted-note" id="offInvSum" style="margin:0 0 0 6px;font-weight:400"></span></summary><div id="offInvList" style="margin-top:10px"></div></details>
         <div class="prop-sortbar"><span class="muted-note" style="margin:0">Show</span><div id="offTabs" class="tabs" role="tablist" aria-label="Filter offers"></div><span style="margin-left:auto;display:flex;gap:6px"><button type="button" class="btn small ghost" id="offMinAll">– Minimise all</button><button type="button" class="btn small ghost" id="offMaxAll">▾ Expand all</button></span></div>
         <div id="offList" style="margin-bottom:14px"></div>
         <details class="card" id="offMonth" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700">📊 Accepted offers by month <span class="muted-note" id="offMonthSum" style="margin:0 0 0 6px;font-weight:400"></span></summary>
@@ -12463,7 +12463,7 @@
       var kinds = r.kinds || {}, size = function(b){ return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((b || 0) / 1024)) + ' KB'; };
       $('tfTdocs').innerHTML = '<h3>📁 Tenancy documents</h3><p class="muted-note" style="margin:-4px 0 8px">The deposit certificate, tenants’ ID and signed agreement. Ticked ones show on the landlord’s portal and are attached to the landlord’s welcome email.</p>' +
         (tdocsBy[id].length ? tdocsBy[id].map(function(x){
-          return '<div class="tle-file"><span class="tle-fn">' + (/pdf/i.test(x.mime) ? '📄' : /image/i.test(x.mime) ? '🖼️' : '📎') + ' <select class="inp" data-tdoc-kind="' + x.id + '" style="width:auto;display:inline-block;padding:3px 8px;font-weight:700;font-size:.9rem" title="What is it?">' + Object.keys(kinds).map(function(k){ return '<option value="' + k + '"' + (x.kind === k ? ' selected' : '') + '>' + esc(kinds[k]) + '</option>'; }).join('') + '</select> <span class="muted-note" style="margin:0;display:block;font-weight:400">' + esc(x.name || '') + ' · ' + esc(size(x.size)) + ' · ' + esc(fmtShort(x.created_at)) + (x.added_by ? ' · ' + esc(x.added_by) : '') + '</span></span>' +
+          return '<div class="tle-file"><span class="tle-fn">' + (/pdf/i.test(x.mime) ? '📄' : /image/i.test(x.mime) ? '🖼️' : '📎') + ' <select class="inp" data-tdoc-kind="' + x.id + '" data-name="' + esc(x.name || '') + '" style="width:auto;display:inline-block;padding:3px 8px;font-weight:700;font-size:.9rem" title="What is it?">' + Object.keys(kinds).map(function(k){ return '<option value="' + k + '"' + (x.kind === k ? ' selected' : '') + '>' + esc(kinds[k]) + '</option>'; }).join('') + '</select> <span class="muted-note" style="margin:0;display:block;font-weight:400">' + esc(x.name || '') + ' · ' + esc(size(x.size)) + ' · ' + esc(fmtShort(x.created_at)) + (x.added_by ? ' · ' + esc(x.added_by) : '') + '</span></span>' +
             '<span class="tle-fa" style="align-items:center"><label class="muted-note" style="margin:0;display:flex;gap:5px;align-items:center"><input type="checkbox" data-tdoc-ll="' + x.id + '"' + (x.landlord ? ' checked' : '') + '> Landlord sees it</label>' +
             '<a class="btn small ghost" target="_blank" rel="noopener" href="/api/admin/tenancy-docs/' + x.id + '">Open</a><button type="button" class="btn small ghost" data-tdoc-del="' + x.id + '" aria-label="Remove">✕</button></span></div>';
         }).join('') : '<p class="muted-note" style="margin:0 0 6px">No documents saved yet.</p>') +
@@ -12471,6 +12471,18 @@
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px"><select class="inp" id="tdocKind" style="flex:0 1 260px;min-width:0"><option value="">What is it? (we’ll guess from the name)</option>' + Object.keys(kinds).map(function(k){ return '<option value="' + k + '">' + esc(kinds[k]) + '</option>'; }).join('') + '</select>' +
         '<button type="button" class="tm-drop" id="tdocAdd" style="flex:1 1 220px;padding:10px"><b>📎 Drag &amp; drop or click to add</b></button><input type="file" id="tdocFile" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx"></div>';
     });
+  }
+  // Which of the tenancy's tenants a file is named after ("AMY.png" → "Miss Amy Smith"), if any.
+  function tdocTenant(name, d){
+    var base = ' ' + String(name || '').toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z]+/g, ' ').trim() + ' ', ts = ((d || tcyDraft || (tmCtx && tmCtx.d) || {}).tenants || []);
+    var t = ts.filter(function(t){ return String((t && t.name) || '').toLowerCase().replace(/^(mr|mrs|miss|ms|dr|mx)\.?\s+/, '').split(/\s+/).filter(function(w){ return w.length > 2; }).some(function(w){ return base.indexOf(' ' + w + ' ') !== -1; }); });
+    return t.length === 1 ? String(t[0].name).replace(/^(mr|mrs|miss|ms|dr|mx)\.?\s+/i, '').trim() : '';
+  }
+  // A tenant's ID file named "<Tenant name> - Tenant ID.<ext>" (as it goes to the landlord).
+  function tidName(name, d){
+    var who = tdocTenant(name, d); if (!who) return name;
+    var ext = (/\.[a-z0-9]+$/i.exec(String(name || '')) || [''])[0];
+    return who + ' - Tenant ID' + ext;
   }
   function tdocGuess(name, d){ name = String(name || '').toLowerCase();
     // A file named after one of the tenancy's tenants (e.g. "Amy.png") is their ID.
@@ -12482,7 +12494,8 @@
     var id = openTcyId; if (!id || id === 'new') return;
     Promise.all(Array.prototype.map.call(files || [], function(f){
       if (f.size > 15 * 1024 * 1024) { toast(f.name + ' is over 15 MB'); return null; }
-      return blobB64(f).then(function(b){ return api('POST', '/api/admin/tenancies/' + id + '/docs', { name: f.name, data: b, kind: kind || tdocGuess(f.name) || 'other' }); });
+      var k = kind || tdocGuess(f.name) || 'other';
+      return blobB64(f).then(function(b){ return api('POST', '/api/admin/tenancies/' + id + '/docs', { name: k === 'tenant_id' ? tidName(f.name) : f.name, data: b, kind: k }); });
     })).then(function(rs){ var n = rs.filter(function(r){ return r && r.ok; }).length; if (n) toast('✓ ' + n + ' document' + (n === 1 ? '' : 's') + ' saved to the tenancy'); renderTcyDocs(); loadTenancies(); });
   }
   document.addEventListener('click', function(e){
@@ -12494,7 +12507,7 @@
   document.addEventListener('change', function(e){
     if (e.target && e.target.id === 'tdocFile') { tdocUpload(e.target.files, $('tdocKind').value); e.target.value = ''; return; }
     var kd = e.target.closest && e.target.closest('[data-tdoc-kind]');
-    if (kd) { api('PATCH', '/api/admin/tenancy-docs/' + kd.dataset.tdocKind, { kind: kd.value }).then(function(r){ toast(r && r.ok ? '✓ Saved as ' + kd.options[kd.selectedIndex].text : 'Couldn’t save'); renderTcyDocs(); }); return; }
+    if (kd) { api('PATCH', '/api/admin/tenancy-docs/' + kd.dataset.tdocKind, kd.value === 'tenant_id' && tidName(kd.dataset.name) !== kd.dataset.name ? { kind: kd.value, name: tidName(kd.dataset.name) } : { kind: kd.value }).then(function(r){ toast(r && r.ok ? '✓ Saved as ' + kd.options[kd.selectedIndex].text : 'Couldn’t save'); renderTcyDocs(); }); return; }
     var ll = e.target.closest && e.target.closest('[data-tdoc-ll]');
     if (ll) api('PATCH', '/api/admin/tenancy-docs/' + ll.dataset.tdocLl, { landlord: ll.checked }).then(function(r){ toast(r && r.ok ? (ll.checked ? 'Shown to the landlord' : 'Hidden from the landlord') : 'Couldn’t save'); renderTcyDocs(); });
   });
@@ -16830,7 +16843,7 @@
            { id: 'contacts', name: tcyFile(d, 'Tenant Contact Sheet'), label: 'Tenant contact sheet', on: true, kind: 'contacts' },
            { id: 'agr-pdf', name: tcyFile(d, 'Tenancy Agreement'), label: 'Tenancy agreement (PDF, unsigned)', on: !tdocs.some(function(x){ return x.kind === 'signed_agreement'; }), kind: 'agreement' }]
           // The tenancy's saved documents the landlord can see: deposit certificate, tenants' ID, signed agreement.
-          .concat(tdocs.filter(function(x){ return x.landlord; }).map(function(x){ return { id: 'file', url: '/api/admin/tenancy-docs/' + x.id, name: x.name, label: (TDOC_LABEL[x.kind] || 'Document') + ' — ' + x.name, on: true, kind: x.kind }; }));
+          .concat(tdocs.filter(function(x){ return x.landlord; }).map(function(x){ return { id: 'file', url: '/api/admin/tenancy-docs/' + x.id, name: x.kind === 'tenant_id' ? tidName(x.name, d) : x.name, label: (TDOC_LABEL[x.kind] || 'Document') + ' — ' + x.name, on: true, kind: x.kind }; }));
       var label = who === 'tenants' ? 'Welcome email to tenants' : 'Welcome email to landlord';
       showMail({
         who: who, d: d, atts: atts, sendUrl: '/api/admin/tenancies/' + openTcyId + '/email',
@@ -17050,7 +17063,7 @@
       if (a.url) return fetch(a.url, { credentials: 'same-origin' }).then(function(r){ if (!r.ok) throw new Error('missing'); return r.blob(); }).then(function(b){ return { name: a.name, blob: b }; })['catch'](function(){ toast('Couldn’t attach ' + a.name); return null; });
       var doc = a.id === 'statement' ? statementPdf(d) : contactsPdf(d);
       return Promise.resolve(doc ? { name: a.name, blob: doc.output('blob') } : null);
-    })).then(function(r){ return r.filter(Boolean).concat((tmCtx.extra || []).map(function(f){ return { name: f.name, blob: f.blob, save: f.save || '' }; })); });
+    })).then(function(r){ return r.filter(Boolean).concat((tmCtx.extra || []).map(function(f){ return { name: f.save === 'tenant_id' ? tidName(f.name, d) : f.name, blob: f.blob, save: f.save || '' }; })); });
   }
   // Write ↔ preview: the email as the recipient will see it — sender, recipients, subject, attachments and the formatted message.
   function tmView(v){

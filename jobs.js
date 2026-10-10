@@ -7199,8 +7199,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.from_offer) {
       const t = (await p.query('SELECT data FROM tenancies WHERE id = $1', [tid])).rows[0], oid = parseInt((t.data || {}).offer_id, 10) || 0;
       const rows = oid ? (await p.query('SELECT id, tenant_no, name, mime, data FROM offer_docs WHERE offer_id = $1 AND tenant_no <> 0 ORDER BY id', [oid])).rows : [];
+      const ots = oid ? (((await p.query('SELECT data FROM offers WHERE id = $1', [oid])).rows[0] || {}).data || {}).tenants || [] : [];
       let n = 0;
-      for (const r of rows) { const x = await addTenancyDoc(p, tid, { buf: r.data, name: (r.tenant_no < 0 ? 'Right to rent check - ' : 'Tenant ID - ') + (r.name || 'document'), mime: r.mime, kind: 'tenant_id', src: 'offer:' + r.id, by: by, how: 'from the offer' }); if (x && !x.dup) n++; }
+      for (const r of rows) {
+        // Named after the tenant: "Amy Smith - Tenant ID.jpg" (or "- Right to rent check").
+        const who = String(((ots[Math.abs(r.tenant_no) - 1] || {}).name) || '').replace(/^(mr|mrs|miss|ms|dr|mx)\.?\s+/i, '').trim(), ext = (/\.[a-z0-9]+$/i.exec(String(r.name || '')) || [''])[0] || (/pdf/.test(r.mime) ? '.pdf' : /png/.test(r.mime) ? '.png' : '.jpg');
+        const nm = who ? who + (r.tenant_no < 0 ? ' - Right to rent check' : ' - Tenant ID') + ext : (r.tenant_no < 0 ? 'Right to rent check - ' : 'Tenant ID - ') + (r.name || 'document');
+        const x = await addTenancyDoc(p, tid, { buf: r.data, name: nm, mime: r.mime, kind: 'tenant_id', src: 'offer:' + r.id, by: by, how: 'from the offer' }); if (x && !x.dup) n++;
+      }
       return res.json({ ok: true, added: n });
     }
     const x = await addTenancyDoc(p, tid, { data: b.data, name: b.name, kind: b.kind, landlord: b.landlord, by: by, how: 'uploaded' });
@@ -7211,6 +7217,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const b = req.body || {}, sets = [], vals = [parseInt(req.params.id, 10) || 0];
     if (typeof b.landlord === 'boolean') { vals.push(b.landlord); sets.push('landlord = $' + vals.length); }
     if (TDOC_KINDS[b.kind]) { vals.push(b.kind); sets.push('kind = $' + vals.length); }
+    if (typeof b.name === 'string' && str(b.name, 150)) { vals.push(str(b.name, 150).replace(/[\\/:*?"<>|]+/g, '-')); sets.push('name = $' + vals.length); }
     if (!sets.length) return res.status(400).json({ ok: false });
     const r = await p.query('UPDATE tenancy_docs SET ' + sets.join(', ') + ' WHERE id = $1 RETURNING id', vals);
     res.json({ ok: !!r.rows.length });
