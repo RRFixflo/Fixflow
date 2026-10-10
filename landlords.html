@@ -137,6 +137,15 @@
   /* Reveal on scroll */
   .rv { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; } .rv.in { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } html { scroll-behavior: auto; } }
+  /* Plainer look: no pill or glowing dot, no gradient text, no glass card with emoji tiles. */
+  .eyebrow { padding: 0; border: 0; border-radius: 0; background: none; color: #fff; gap: 10px; letter-spacing: .12em; text-transform: uppercase; font-size: .78rem; }
+  .eyebrow::before { content: ""; width: 24px; height: 2px; background: var(--red); } .eyebrow i { display: none; }
+  h1 em { background: none; -webkit-background-clip: initial; background-clip: initial; color: #ffc4c7; animation: none; }
+  .step::before { background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--red); }
+  .glass { background: rgba(11,31,58,.5); border: 1.5px solid rgba(255,255,255,.55); border-radius: 10px; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .gl-row { align-items: flex-start; gap: 14px; padding: 13px 0; border-radius: 0; background: none; margin: 0; border-top: 1px solid rgba(255,255,255,.12); }
+  .gl-ic { width: 22px; height: 22px; background: none; border-radius: 0; color: #fff; opacity: .85; margin-top: 1px; }
+  .gl-ic svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 </style>
 </head>
 <body>
@@ -148,7 +157,7 @@
 
 <div class="hero" id="top"><img class="hbg" src="/img/taxis.webp" srcset="/img/taxis-sm.webp 800w, /img/taxis.webp 1860w" sizes="100vw" alt="" fetchpriority="high"><div class="wrap">
   <div>
-    <span class="eyebrow"><i></i> London letting &amp; property management</span>
+    <span class="eyebrow">London letting &amp; property management</span>
     <h1>Your property, let and <em>looked after properly.</em></h1>
     <p class="lead">From finding the right tenants to collecting the rent, handling repairs and keeping you compliant — a local team that takes the work off your hands and keeps you in the loop.</p>
     <div class="btns"><a class="btn red" href="#valuation">Get a free valuation →</a><a class="btn ghost" href="/landlord-portal-demo">Try the landlord portal</a></div>
@@ -161,10 +170,10 @@
   <div class="glass rv">
     <h3>Everything in one place</h3>
     <p>What our landlords see in their portal</p>
-    <div class="gl-row"><span class="gl-ic">💷</span><div><b>Rent paid &amp; monthly statements</b><small>Every payment and charge, clearly set out</small></div><span class="gl-tick">✓</span></div>
-    <div class="gl-row"><span class="gl-ic">🔧</span><div><b>Repairs, tracked</b><small>Reported by tenants, fixed by trusted contractors</small></div><span class="gl-tick">✓</span></div>
-    <div class="gl-row"><span class="gl-ic">📜</span><div><b>Certificates &amp; reminders</b><small>Gas, electrical, EPC and licensing on time</small></div><span class="gl-tick">✓</span></div>
-    <div class="gl-row"><span class="gl-ic">📈</span><div><b>Viewings &amp; offers</b><small>Follow your letting progress as it happens</small></div><span class="gl-tick">✓</span></div>
+    <div class="gl-row"><span class="gl-ic"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 7c0-5.33-8-5.33-8 0v14M6 21h12M6 13h10"/></svg></span><div><b>Rent paid &amp; monthly statements</b><small>Every payment and charge, clearly set out</small></div></div>
+    <div class="gl-row"><span class="gl-ic"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span><div><b>Repairs, tracked</b><small>Reported by tenants, fixed by trusted contractors</small></div></div>
+    <div class="gl-row"><span class="gl-ic"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></span><div><b>Certificates &amp; reminders</b><small>Gas, electrical, EPC and licensing on time</small></div></div>
+    <div class="gl-row"><span class="gl-ic"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></span><div><b>Viewings &amp; offers</b><small>Follow your letting progress as it happens</small></div></div>
   </div>
 </div></div>
 

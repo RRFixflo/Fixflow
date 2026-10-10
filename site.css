@@ -1257,3 +1257,42 @@ html, body { overflow-x: clip; }
 @media (max-width: 1000px) { .sv-x { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 860px) { .hx-grid.sv-x { display: grid; overflow: visible; margin: 0; padding: 0; } .sv-x .hx-card { flex: none; } }
 @media (max-width: 600px) { .sv-x { grid-template-columns: 1fr; } .sv-x .hx-top { height: 120px; } }
+
+/* ---------- Plainer look (owner's request: nothing that looks "AI-made") ----------
+   No shimmering or gradient text, glass blur, glowing blobs, dot or grid patterns, rainbow
+   colours, translucent pills, tilting cards or light sweeps. Flat colours, clear borders, real photos. */
+/* Home hero: let the photo show through more; the panel is see-through with a clear border. */
+.hero4.reeling::before { background: linear-gradient(90deg, rgba(11,31,58,.84) 0%, rgba(11,31,58,.5) 48%, rgba(11,31,58,.14) 100%), linear-gradient(0deg, rgba(11,31,58,.45), transparent 35%); }
+@media (max-width: 960px) { .hero4.reeling::before { background: linear-gradient(180deg, rgba(11,31,58,.38) 0%, rgba(11,31,58,.6) 45%, rgba(11,31,58,.85) 100%); } }
+.hero4 h1, .hero4 .lead, .hero4 .eyebrow { text-shadow: 0 1px 12px rgba(7,20,40,.55); }
+.glass4 { background: rgba(11,31,58,.5); border: 1.5px solid rgba(255,255,255,.55); border-radius: 10px; }
+.hero4::after, .phead::after { display: none; }
+.hero4 h1 em { background: none; -webkit-background-clip: initial; background-clip: initial; color: #ffc4c7; animation: none; }
+/* Flat page headers and bands (no coloured glows). */
+.phead { background: var(--navy); }
+.band, .hc, .ar-hero { background: var(--navy); }
+.pcard .bigic { background: var(--navy); }
+/* Solid colours instead of gradient text. */
+.step::before { background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--red); }
+.hx-hl { background: none; -webkit-background-clip: initial; background-clip: initial; color: #ffb4b7; }
+/* No light sweeps, button shine or wiggles; the heading underline is a plain short red line. */
+.tl::after, .xcard::after, .pcard::after, .big-card::after, .nav a.cta::after, .btn.red::after { content: none; animation: none; }
+.h2x.rv.in::after, main section h2.rv.in::after { background: var(--red); border-radius: 0; height: 3px; width: 40px; animation: none; }
+/* Service cards: flat colour tops, no blobs or dot patterns, cards lift slightly instead of tilting. */
+.hx::before, .hx-top::after, .xd-top::before, .sv-x .hx-top::before, .sv-x .hx-top::after { content: none; display: none; }
+.hx { background: var(--navy); }
+.hx-card .hx-top, .sv-x.hx-grid .hx-card .hx-top, .sv-x .hx-card.hx-diy .hx-top, .sv-x .hx-card.hx-lic .hx-top { background: #13294b; color: #fff; border-bottom: 3px solid var(--red); }
+.hx-card:hover { transform: translateY(-3px); } .hx-card:hover .hx-ic, .sv-x .hx-ic, .sv-x .hx-card:hover .hx-ic { transform: none; }
+.hx-card:hover .hx-go i { transform: translateX(3px); }
+.xcard.xdiy:hover .xd-phone { transform: translateY(-3px); }
+.xd-top { background: #13294b; }
+.hx-q { transform: none; }
+.hx-cta { background: transparent; border: 1.5px solid rgba(255,255,255,.4); }
+/* Labels on cards: plain small capitals, not translucent pills. */
+.hx-chip, .xd-chip { background: none !important; border: 0 !important; padding: 0; border-radius: 0; backdrop-filter: none; -webkit-backdrop-filter: none; letter-spacing: .1em; text-transform: uppercase; font-size: .72rem; }
+.hx-points li { background: none; border: 0; padding: 4px 14px 4px 0; border-radius: 0; }
+.hx-points li span { background: none; width: auto; height: auto; }
+.lp-chip { background: var(--navy); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.hc-eyebrow { display: inline-flex; align-items: center; gap: 10px; padding: 0; border: 0; border-radius: 0; background: none; text-transform: uppercase; letter-spacing: .12em; font-size: .78rem; }
+.hc-eyebrow::before { content: ""; width: 24px; height: 2px; background: var(--red); }
+.chips-row span { background: none; border: 0; padding: 4px 12px 4px 0; border-radius: 0; }
