@@ -15480,7 +15480,13 @@
     // To pay: rents in (landlord not paid yet), and part rents in — the landlord's share of what's been paid so far.
     var toPay = got.filter(function(x){ return !x.paid && x.to_landlord > 0; }).concat(items.filter(preIn)).concat(items.filter(function(x){ return !x.collected && !preIn(x) && x.part_out > 0.004; })), paid = items.filter(function(x){ return x.paid; });
     var feesMonth = got.filter(function(x){ return x.from.slice(0, 7) === d.month; }).reduce(function(a, x){ return a + x.fees; }, 0);
-    var feesMonthNet = got.filter(function(x){ return x.from.slice(0, 7) === d.month; }).reduce(function(a, x){ return a + (x.fees_net || 0); }, 0);
+    // One-off fees (paid up front at move-in, extra fees, costs) apart from the regular monthly fees.
+    var onceOf = function(x, k){ return (x.fee_lines || []).filter(function(l){ return l.once; }).reduce(function(a, l){ return a + (l[k] || 0); }, 0); };
+    var feesOnce = got.filter(function(x){ return x.from.slice(0, 7) === d.month; }).reduce(function(a, x){ return a + onceOf(x, 'amount'); }, 0);
+    var feesOnceNet = got.filter(function(x){ return x.from.slice(0, 7) === d.month; }).reduce(function(a, x){ return a + onceOf(x, 'net'); }, 0);
+    // Rents due before rent collection started (1–2 October): taken as collected, so their fees count too.
+    var fp = d.fees_pre || {}; feesMonth += fp.amount || 0; feesOnce += fp.once || 0; feesOnceNet += fp.once_net || 0;
+    var feesMonthNet = got.filter(function(x){ return x.from.slice(0, 7) === d.month; }).reduce(function(a, x){ return a + (x.fees_net || 0); }, 0) + ((d.fees_pre || {}).net || 0);
     var ym = d.month.split('-'), mLabel = MONTHS_EN[Number(ym[1]) - 1] + ' ' + ym[0];
     var day = function(x){ var t = rbDay(x.from).split(' '); return '<div class="rb-day"><b>' + esc(t[0]) + '</b><span>' + esc(t[1] || '') + '</span></div>'; };
     // The money breakdown, only when asked for ("Details").
@@ -15576,8 +15582,10 @@
           var left = (d.items || []).filter(function(x){ return !x.collected && x.from.slice(0, 7) === d.month; }).reduce(function(a, x){ return a + (x.fees || 0); }, 0);
           var all = feesMonth + left, pct = all > 0 ? Math.round(feesMonth / all * 100) : 100;
           // Fees collected this month (inc. VAT, with the net and VAT), and how much of the month's fees is still to come.
-          return '<button type="button" class="rb-bigc good rb-feesbtn" data-rb-fees title="See which fees, from which property"><span>Fees collected · ' + esc(mLabel) + ' <em>›</em></span><b>' + gbp(feesMonth) + '</b>' +
-            '<small><span style="font-weight:700">inc. VAT</span> · ' + gbp(feesMonthNet) + ' + ' + gbp(Math.round((feesMonth - feesMonthNet) * 100) / 100) + ' VAT</small>' +
+          var mf = Math.round((feesMonth - feesOnce) * 100) / 100, mfNet = Math.round((feesMonthNet - feesOnceNet) * 100) / 100;
+          return '<button type="button" class="rb-bigc good rb-feesbtn" data-rb-fees title="See which fees, from which property"><span>Monthly fees collected · ' + esc(mLabel) + ' <em>›</em></span><b>' + gbp(mf) + '</b>' +
+            '<small><span style="font-weight:700">inc. VAT</span> · ' + gbp(mfNet) + ' + ' + gbp(Math.round((mf - mfNet) * 100) / 100) + ' VAT</small>' +
+            (feesOnce > 0.004 ? '<small>+ ' + gbp(feesOnce) + ' one-off move-in fees · ' + gbp(feesMonth) + ' in all</small>' : '') +
             (all > 0 ? '<span class="rb-feebar"><i style="width:' + pct + '%"></i></span><small>' + pct + '% of ' + (isNow ? 'this month' : esc(mLabel)) + '’s fees collected' + (left > 0 ? ' · <span style="font-weight:700">' + gbp(left) + '</span> inc. VAT (' + (100 - pct) + '%) still to come' : '') + '</small>' : '') + '</button>';
         })() +
       '</div>' +
@@ -15839,15 +15847,26 @@
       m = $('rbFeesModal');
       m.addEventListener('click', function(e){ if (e.target === m || e.target.closest('[data-rbf-close]')) m.hidden = true; });
     }
-    var groups = {}, order = [];
-    list.forEach(function(x){ var k = x.tenancy_id; if (!groups[k]) { groups[k] = { address: x.address, service: x.service, total: 0, rows: [] }; order.push(k); } groups[k].total += x.amount; groups[k].rows.push(x); });
-    order.sort(function(a, b){ return groups[b].total - groups[a].total; });
-    var total = list.reduce(function(a, x){ return a + x.amount; }, 0), tnet = list.reduce(function(a, x){ return a + (x.net || 0); }, 0);
-    $('rbFeesList').innerHTML = '<p class="muted-note" style="margin:6px 0 0"><b>' + gbp(total) + ' inc. VAT</b> (' + gbp(tnet) + ' + ' + gbp(Math.round((total - tnet) * 100) / 100) + ' VAT) from ' + order.length + ' propert' + (order.length === 1 ? 'y' : 'ies') + ' since ' + esc(longDay(d.since)) + '. Amounts below include VAT.</p>' +
-      (order.length ? order.map(function(k){ var g = groups[k];
-        return '<div class="fee-prop"><span>' + esc(rbAddr(g.address)) + ' ' + svcTag(g.service) + '</span>' + gbp(g.total) + '</div>' + g.rows.map(function(x){
-          return '<div class="fee-row"><span>Rent ' + esc(rbDay(x.from)) + ' — ' + esc((x.lines || []).map(function(l){ return l.label; }).join(', ') || 'Our fee') + '</span><div style="text-align:right">' + gbp(x.amount) + (x.net != null && Math.abs(x.amount - x.net) > 0.004 ? '<small style="display:block;color:var(--ink-faint);font-size:.72rem">' + gbp(x.net) + ' + VAT</small>' : '') + '</div></div>'; }).join(''); }).join('')
-      : '<p class="muted-note" style="margin:16px 0">No fees collected yet.</p>');
+    // Two lists: the regular monthly fees, and one-off fees (paid up front at move-in, extra fees, costs).
+    var part = function(once){ var out = [];
+      list.forEach(function(x){ var ls = (x.lines || []).filter(function(l){ return !!l.once === once; }); if (!ls.length) return;
+        out.push({ tenancy_id: x.tenancy_id, address: x.address, service: x.service, from: x.from, pre: x.pre, lines: ls, amount: Math.round(ls.reduce(function(a, l){ return a + (l.amount || 0); }, 0) * 100) / 100, net: Math.round(ls.reduce(function(a, l){ return a + (l.net != null ? l.net : l.amount || 0); }, 0) * 100) / 100 }); });
+      return out; };
+    var block = function(title, rows, empty){
+      var groups = {}, order = [];
+      rows.forEach(function(x){ var k = x.tenancy_id; if (!groups[k]) { groups[k] = { address: x.address, service: x.service, total: 0, rows: [] }; order.push(k); } groups[k].total += x.amount; groups[k].rows.push(x); });
+      order.sort(function(a, b){ return groups[b].total - groups[a].total; });
+      var total = rows.reduce(function(a, x){ return a + x.amount; }, 0), tnet = rows.reduce(function(a, x){ return a + (x.net || 0); }, 0);
+      return '<h4 class="la-sub" style="margin:14px 0 2px">' + title + '</h4><p class="muted-note" style="margin:0"><b>' + gbp(total) + ' inc. VAT</b> (' + gbp(tnet) + ' + ' + gbp(Math.round((total - tnet) * 100) / 100) + ' VAT) from ' + order.length + ' propert' + (order.length === 1 ? 'y' : 'ies') + '</p>' +
+        (order.length ? order.map(function(k){ var g = groups[k];
+          return '<div class="fee-prop"><span>' + esc(rbAddr(g.address)) + ' ' + svcTag(g.service) + '</span>' + gbp(g.total) + '</div>' + g.rows.map(function(x){
+            return '<div class="fee-row"><span>Rent ' + esc(rbDay(x.from)) + (x.pre ? ' (before Fixflow — taken as collected)' : '') + ' — ' + esc(x.lines.map(function(l){ return l.label; }).join(', ')) + '</span><div style="text-align:right">' + gbp(x.amount) + (Math.abs(x.amount - x.net) > 0.004 ? '<small style="display:block;color:var(--ink-soft,#667085)">' + gbp(x.net) + ' + VAT</small>' : '') + '</div></div>'; }).join('');
+        }).join('') : '<p class="muted-note" style="margin:8px 0">' + empty + '</p>');
+    };
+    var monthly = part(false), once = part(true);
+    $('rbFeesList').innerHTML = '<p class="muted-note" style="margin:6px 0 0">Since ' + esc(longDay(list.reduce(function(a, x){ return x.from < a ? x.from : a; }, d.since))) + '. Amounts include VAT.</p>' +
+      block('Monthly fees', monthly, 'No monthly fees collected yet.') +
+      (once.length ? block('One-off fees — paid at move-in or added', once, '') : '');
     m.hidden = false;
   }
   function addMonthsYm(ym, n){ var a = String(ym).split('-'), d = new Date(Date.UTC(Number(a[0]), Number(a[1]) - 1 + n, 1)); return d.toISOString().slice(0, 7); }
