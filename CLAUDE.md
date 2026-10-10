@@ -66,6 +66,7 @@ The owner is not a developer: explain results in plain, non-technical English, b
 
 - Source of truth is Gnomen's XML feeds (`GNOMEN_LETTINGS_FEED`, `GNOMEN_SALES_FEED`, `LISTINGS_SOURCE=gnomen`), polled every 2 minutes; staff can press "🌐 Update website now".
 - **Gnomen lettings prices are per week** — convert to pcm (× 52 / 12).
+- Property pages show Gnomen's `full_details` as “About this property” (else `short_description`). Never show tenure (freehold/leasehold) on property pages — the owner asked for it off every property.
 - Property URLs use the Gnomen id: `/property/<gnomen id>/<slug>`. Old Gnomen-style links redirect.
 - If a published property is missing from Gnomen's feed it is filled in from the Rightmove advert; `RM_GNOMEN_IDS` maps Rightmove ids to Gnomen ids. Re-saving the property in Gnomen usually makes it appear in the feed.
 - Records are de-duplicated; let/sold Gnomen records win over Rightmove adverts.
