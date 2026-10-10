@@ -786,7 +786,13 @@
   .crm-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px; margin: 12px 0; } .crm-facts div { display: grid; min-width: 0; } .crm-facts span { font-size: .74rem; color: var(--ink-soft); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; } .crm-facts b { font-weight: 600; overflow-wrap: anywhere; }
   .riv-top { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; } .riv { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line, #eef0f3); } .riv.off { opacity: .6; } .riv-img img { width: 110px; height: 74px; object-fit: cover; border-radius: 8px; display: block; } .riv-b { display: grid; gap: 3px; min-width: 0; font-size: .85rem; } .riv-b small, .riv-their, .riv-ll { color: var(--ink-soft); overflow-wrap: anywhere; } .riv-their b { color: var(--ink); } .riv-why { justify-self: start; font-size: .75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #fef3f2; color: #b42318; } .riv-why.street { background: #f2f4f7; color: #475467; } .riv-why.openrent { background: #ecfdf3; color: #067647; } .riv-more { margin-top: 8px; } .riv-more summary { cursor: pointer; font-weight: 700; font-size: .85rem; padding: 6px 0; } @media (max-width: 520px) { .riv-img img { width: 84px; height: 60px; } }
   .tn-ai { margin: 0 0 10px; border: 1px solid #d9d6fe; background: #f8f7ff; border-radius: 12px; padding: 8px 10px; } .tn-ai summary { cursor: pointer; font-weight: 700; color: #5925dc; } .tn-ai[open] summary { margin-bottom: 8px; } .tn-ai-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
-  .pt-copy { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; } .pt-cp { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 40px; padding: 6px 12px; border: 1px solid var(--line, #dfe3ea); border-radius: 999px; background: #fff; font: inherit; font-size: .88rem; color: var(--ink); cursor: pointer; text-align: left; } .pt-cp span { overflow-wrap: anywhere; min-width: 0; } .pt-cp i { font-style: normal; font-weight: 700; font-size: .78rem; color: #175cd3; flex: none; } .pt-cp.all { background: #f5f8ff; border-color: #c7d7fe; font-weight: 700; } .pt-cp.done { background: #ecfdf3; border-color: #75e0a7; } .pt-cp.done i::after { content: ' ✓'; }
+  .pt-person { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line, #eef0f3); } .pt-person:first-of-type { border-top: 0; } .pt-person.past { opacity: .8; }
+  .pt-person > .av { margin-top: 2px; } .pt-main { min-width: 0; } .pt-main > .btn { text-align: left; }
+  .pt-acts { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+  @media (max-width: 560px) { .pt-person { grid-template-columns: auto minmax(0, 1fr); } .pt-acts { grid-column: 2; justify-content: flex-start; } }
+  .pt-copy { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; margin-top: 2px; font-size: .88rem; }
+  .pt-ci { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; } .pt-ci a { color: var(--ink, #101828); text-decoration: none; overflow-wrap: anywhere; min-width: 0; } .pt-ci a:hover { text-decoration: underline; }
+  .pt-cp { border: 0; background: none; padding: 2px 4px; font: inherit; font-size: .78rem; font-weight: 700; color: #175cd3; cursor: pointer; border-radius: 6px; flex: none; } .pt-cp:hover { background: #eef4ff; } .pt-cp.all { color: #475467; } .pt-cp.done { color: #067647; } .pt-cp.done::after { content: ' ✓'; }
   .ni-ai { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; padding: 10px; border: 1px solid #d9d6fe; background: #f8f7ff; border-radius: 12px; } .ni-ai .inp { flex: 1 1 200px; width: auto; min-width: 0; }
   .q-row { grid-template-columns: minmax(0,1fr) 110px !important; } .q-acts { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; } .q-st { width: auto !important; max-width: 100%; padding: 6px 8px; font-size: .85rem; } .q-row .addr, .q-row .addr strong, .q-row .addr small { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; } .q-row .addr small { display: block; }
   .crm-qq { background: #f0f9ff; border: 1px solid #b9e6fe; border-radius: 12px; padding: 12px; margin: 12px 0; display: grid; gap: 6px; } .crm-qq-btns { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -1074,6 +1080,7 @@
   .tcy-hist > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; } .tcy-hist > summary::-webkit-details-marker { display: none; }
   .tcy-hist > summary h3 { margin: 0; } .tcy-hist > summary::after { content: '▾ Show'; margin-left: auto; font-size: .85rem; font-weight: 600; color: var(--blue, #1d4ed8); } .tcy-hist[open] > summary::after { content: '▴ Hide'; }
   .tcy-hist-n { font-size: .85rem; color: var(--ink-soft, #667085); } .tcy-hist-last { flex-basis: 100%; font-size: .85rem; color: var(--ink-soft, #667085); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; } .tcy-hist[open] .tcy-hist-last { display: none; } .tcy-hist[open] > summary { margin-bottom: 8px; }
+  .tile-btn { font: inherit; text-align: left; cursor: pointer; width: 100%; } .tile-btn:hover { border-color: var(--navy, #0b1f3a); } .tile-btn.on { outline: 2px solid var(--navy, #0b1f3a); outline-offset: -2px; }
   .tm-incl { display: flex; flex-wrap: wrap; gap: 6px 14px; } .tm-incl-i { display: flex; gap: 6px; align-items: center; font-size: .92rem; }
   .tle-files { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; } .tle-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; padding: 6px 8px; border: 1px solid var(--line, #e4e7ec); border-radius: 8px; } .tle-fn { font-weight: 600; overflow-wrap: anywhere; min-width: 0; flex: 1 1 180px; } .tle-fa { display: flex; gap: 6px; flex: 0 0 auto; } .tle-row b { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
   .tle-frame { width: 100%; height: 55vh; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; background: #fff; } .tle-text { white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 12px; font-size: .9rem; max-height: 55vh; overflow: auto; }
@@ -5176,7 +5183,7 @@
   $('propBack').addEventListener('click', function(){ openPropKey = null; $('propDetail').hidden = true; $('propsListView').hidden = false; renderProps(); pushNav(); });
   $('propRange').addEventListener('change', function(){ renderProperty(); });
 
-  function openProperty(key){
+  function openProperty(key){ propJobFilter = 'all';
     openPropKey = key;
     $('propsListView').hidden = true;
     $('propDetail').hidden = false;
@@ -5355,6 +5362,13 @@
       api('POST', '/api/admin/tenancies/' + a[0] + '/rent-collected', { from: a[1], amount: amt, date: r.date, due: due, who: r.who, part: amt > 0 && amt < left - 0.004 }).then(function(d){ busy(c, false); if (!d || !d.ok) { toast('Couldn’t save that'); return; } toast(d.part ? '✓ Part payment saved · ' + gbp(d.left) + ' still to collect' : '✓ Rent collected' + (d.invoices ? ' · ' + d.invoices + ' invoice' + (d.invoices === 1 ? '' : 's') + ' taken off it' : '')); reload(); });
     });
   }
+  var propJobFilter = 'all';
+  document.addEventListener('click', function(e){
+    var t = e.target.closest('[data-pjf]'); if (!t) return;
+    propJobFilter = propJobFilter === t.dataset.pjf ? 'all' : t.dataset.pjf;
+    renderProperty();
+    var l = $('propJobs'); if (l) l.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
   function renderProperty(){
     var d = propertyJobs();
     if (!d) { $('propBack').click(); return; }
@@ -5363,9 +5377,10 @@
     $('propSub').textContent = d.property.jobs.length + ' repair' + (d.property.jobs.length === 1 ? '' : 's') + ' on record' +
       (postcodeArea(d.property.address) ? ' · ' + postcodeArea(d.property.address) : '') + ' · ' + propOriginTxt(d.property);
     $('propTiles').innerHTML =
-      '<div class="tile blue"><div class="k">Repairs (' + esc(d.periodLabel.toLowerCase()) + ')</div><div class="v">' + d.jobs.length + '</div></div>' +
-      '<div class="tile alert' + (open ? ' has' : '') + '"><div class="k">Open</div><div class="v">' + open + '</div></div>' +
-      '<div class="tile"><div class="k">Completed</div><div class="v">' + done + '</div></div>' +
+      // Tap a count to list just those repairs below (tap again for all).
+      '<button type="button" class="tile blue tile-btn' + (propJobFilter === 'all' ? ' on' : '') + '" data-pjf="all"><div class="k">Repairs (' + esc(d.periodLabel.toLowerCase()) + ')</div><div class="v">' + d.jobs.length + '</div></button>' +
+      '<button type="button" class="tile alert tile-btn' + (open ? ' has' : '') + (propJobFilter === 'open' ? ' on' : '') + '" data-pjf="open"><div class="k">Open</div><div class="v">' + open + '</div></button>' +
+      '<button type="button" class="tile tile-btn' + (propJobFilter === 'done' ? ' on' : '') + '" data-pjf="done"><div class="k">Completed</div><div class="v">' + done + '</div></button>' +
       '<div class="tile good"><div class="k">Charged to landlord</div><div class="v">' + gbp(chargedTotal(d.jobs)) + '</div></div>' +
       keyTile(d.property.address) + licenceTile(d.property.address) +
       (function(){ var t = propTenancy(d.property.key); return '<div class="tile' + (t.k === 'none' ? ' alert has' : t.k === 'ending' ? ' warnish' : ' good') + '"><div class="k">Tenancy</div><div class="v" style="font-size:1rem">' + (t.k === 'none' ? 'None on file' : esc(t.text)) + '</div>' + (t.k === 'none' ? '<button type="button" class="btn small primary" id="propAddTerms" style="margin-top:6px">📄 Add Terms of Let</button><div class="drop-hint" style="margin-top:4px">or drag &amp; drop it onto this page</div>' : '') + '</div>'; })();
@@ -5383,7 +5398,8 @@
         '<div class="list">' + pi.map(function(i){ return invRowHtml(i, false); }).join('') + '</div>' : '';
     })();
     if ($('propAddTerms')) $('propAddTerms').addEventListener('click', function(){ askFromTerms(knownFullAddress(d.property.key) || d.property.address); });
-    $('propJobs').innerHTML = d.jobs.length ? d.jobs.map(rowHtml).join('') : '<div class="empty">No repairs in this period.</div>';
+    var pjs = d.jobs.filter(function(j){ return propJobFilter === 'open' ? isOpen(j) : propJobFilter === 'done' ? j.status === 'Completed' : true; });
+    $('propJobs').innerHTML = pjs.length ? pjs.map(rowHtml).join('') : '<div class="empty">' + (propJobFilter === 'open' ? 'No open repairs.' : propJobFilter === 'done' ? 'No completed repairs in this period.' : 'No repairs in this period.') + '</div>';
     renderPropCerts(d.property.address);
     (function(address){
       var key = propKey(address), list = tenancies.filter(function(t){ return t.property_key === key; });
@@ -5733,9 +5749,9 @@
   function ptCopyRow(t){
     if (!t.phone && !t.email) return '';
     var all = [t.name, t.phone, t.email].filter(Boolean).join('\n');
-    return '<div class="pt-copy">' + (t.phone ? '<button type="button" class="pt-cp" data-copy-val="' + esc(t.phone) + '" data-copy-what="Number"><span>📞 ' + esc(t.phone) + '</span><i>Copy</i></button>' : '') +
-      (t.email ? '<button type="button" class="pt-cp" data-copy-val="' + esc(t.email) + '" data-copy-what="Email"><span>✉ ' + esc(t.email) + '</span><i>Copy</i></button>' : '') +
-      '<button type="button" class="pt-cp all" data-copy-val="' + esc(all) + '" data-copy-what="Name, number and email"><span>📋 Copy all</span></button></div>';
+    return '<div class="pt-copy">' + (t.phone ? '<span class="pt-ci"><a href="tel:' + esc(String(t.phone).replace(/[^\d+]/g, '')) + '">' + esc(t.phone) + '</a><button type="button" class="pt-cp" data-copy-val="' + esc(t.phone) + '" data-copy-what="Number" title="Copy the number">Copy</button></span>' : '') +
+      (t.email ? '<span class="pt-ci"><a href="mailto:' + esc(t.email) + '">' + esc(t.email) + '</a><button type="button" class="pt-cp" data-copy-val="' + esc(t.email) + '" data-copy-what="Email" title="Copy the email">Copy</button></span>' : '') +
+      '<button type="button" class="pt-cp all" data-copy-val="' + esc(all) + '" data-copy-what="Name, number and email">Copy all</button></div>';
   }
   document.addEventListener('click', function(e){
     var b = e.target.closest && e.target.closest('[data-copy-val]'); if (!b) return; e.preventDefault();
@@ -5746,19 +5762,19 @@
     $('propTenants').innerHTML = '<h3>Tenants <span class="count-chip">' + cur.length + '</span><span style="flex:1"></span><button class="btn small ghost" id="ptPaste" type="button" title="Paste names, numbers and emails in any layout">📋 Paste details</button> <button class="btn small" id="ptTenAdd" type="button">+ Add tenant</button></h3>' +
       '<div id="ptPasteBox" hidden></div>' +
       (cur.length ? cur.map(function(t){
-        return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 200px;min-width:0;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
+        return '<div class="pt-person">' + avatar(t.name) + '<div class="pt-main"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' + (t.role === 'lead' ? ' <span class="pt-badge lead">Lead tenant</span>' : '') +
           ptCopyRow(t) + '</div>' +
-          '<span style="display:flex;gap:8px;align-items:center;margin-left:auto">' + ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Moved out</button></span></div>';
+          '<span class="pt-acts">' + ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Moved out</button></span></div>';
       }).join('') : '<p class="muted-note">No tenants saved for this property yet.</p>') +
       (guar.length ? '<div class="pt-guar-h">Guarantors <span class="count-chip">' + guar.length + '</span></div>' + guar.map(function(t){
-        return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0">' + avatar(t.name) + '<div style="flex:1 1 200px;min-width:0;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Guarantor') + '</button> <span class="pt-badge guar">Guarantor' + (t.guarantorFor ? ' for ' + esc(t.guarantorFor) : '') + '</span>' +
+        return '<div class="pt-person">' + avatar(t.name) + '<div class="pt-main"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Guarantor') + '</button> <span class="pt-badge guar">Guarantor' + (t.guarantorFor ? ' for ' + esc(t.guarantorFor) : '') + '</span>' +
           ptCopyRow(t) + '</div>' +
-          '<span style="display:flex;gap:8px;align-items:center;margin-left:auto">' + ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Remove</button></span></div>';
+          '<span class="pt-acts">' + ptRoleSel(t) + '<button type="button" class="btn small ghost" data-pt-out="' + t.id + '">Remove</button></span></div>';
       }).join('') : '') +
       (past.length ? '<div class="pt-guar-h">Previous tenants <span class="count-chip">' + past.length + '</span></div>' + past.map(function(t){
-        return '<div style="display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:6px 0;opacity:.85">' + avatar(t.name) + '<div style="flex:1 1 200px;min-width:0;overflow-wrap:anywhere"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' +
+        return '<div class="pt-person past">' + avatar(t.name) + '<div class="pt-main"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-pt-open="' + t.id + '">' + esc(t.name || 'Tenant') + '</button>' +
           '<div class="prop-sub" style="margin:0">Moved out ' + esc(new Date(t.movedOut).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) + '</div>' + ptCopyRow(t) + '</div>' +
-          '<span style="display:flex;gap:8px;align-items:center;margin-left:auto">' + ptRoleSel(t) + '</span></div>';
+          '<span class="pt-acts">' + ptRoleSel(t) + '</span></div>';
       }).join('') : '');
     $('ptTenAdd').addEventListener('click', function(){ openTenantForm(null, pr.address); });
     $('ptPaste').addEventListener('click', function(){ ptPasteOpen(pr); });
