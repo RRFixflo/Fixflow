@@ -851,6 +851,8 @@ module.exports = function (app, opts) {
         if (sum !== lastAdDiag) { lastAdDiag = sum; console.log(sum); } }
       return { ids: out, maybe: maybe };
     },
-    urls: function () { return LIVE ? data.let.concat(data.sale).map(function (p) { return p.url; }) : []; }
+    urls: function () { return LIVE ? data.let.concat(data.sale).map(function (p) { return p.url; }) : []; },
+    // What each property page shows that matters to search engines (price, status, photos, last update) — a change is pinged to IndexNow.
+    sigs: function () { const o = {}; if (LIVE) data.let.concat(data.sale).forEach(function (p) { o[p.url] = 'L:' + [p.price, p.status, p.taken ? 1 : 0, (p.images || []).length, p.updated].join('|'); }); return o; }
   };
 };
