@@ -168,11 +168,15 @@ app.get(/^\/[\w-]+\.html$/, function (req, res, next) { if (!sendPage(req, res, 
 // from the environment rather than hardcoding it.
 // Pages are always re-checked, so phones pick up a new version straight away
 // (images and icons can still be cached).
-const noCache = function (res, p) { if (/\.html$/.test(p)) res.setHeader('Cache-Control', 'no-cache'); };
+// Pages are re-checked every time; our CSS/JS carry a fingerprint (?v=…, see asset()), so those can be kept for a year.
+const noCache = function (res, p) {
+  if (/\.html$/.test(p)) res.setHeader('Cache-Control', 'no-cache');
+  else if (/\.(css|js)$/.test(p) && res.req && res.req.query && res.req.query.v) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+};
 // Website photos and logos rarely change: let browsers keep them (faster pages, better search ranking).
 app.use('/img', express.static(path.join(__dirname, 'img'), { maxAge: '30d', index: false }));
 // The app's own server code, settings and notes aren't for download — only the files pages use.
-const NOT_PUBLIC = /^\/(node_modules|cloudflare)(\/|$)|^\/(server|jobs|listings|visits|tenancy|outlook|news|updates|portaldemo|areas|areas-data|svcareas|voice|calls|leads)\.js$|^\/data(\/|$)|^\/(package(-lock)?|railpack|landlord-terms)\.json$|\.md$/i;
+const NOT_PUBLIC = /^\/(node_modules|cloudflare)(\/|$)|^\/(?!(site|ff|rrt)\.js$)[^/]+\.js$|^\/data(\/|$)|^\/(package(-lock)?|railpack|landlord-terms)\.json$|\.md$/i;
 app.use(function (req, res, next) { if (NOT_PUBLIC.test(req.path)) return res.status(404).send('Not found'); next(); });
 app.use(express.static(__dirname, { setHeaders: noCache, index: false }));
 
@@ -251,7 +255,7 @@ function siteHeadFor(pg, body) {
     (pg.img ? '<link rel="preload" as="image" href="/img/' + pg.img + '.webp" imagesrcset="/img/' + pg.img + '-sm.webp 800w, /img/' + pg.img + '.webp ' + (pg.imgW || 1600) + 'w" imagesizes="100vw" fetchpriority="high">' : '') +
     '<script type="application/ld+json">' + JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c') + '</script>';
 }
-const SITE_FONTS = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">';
+const SITE_FONTS = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media=\'all\'"><noscript><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>';   // loads without holding up the first paint
 const WRENCH = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>';
 // The menu (with "Report a repair" always one tap away) and footer shared by every website page.
 const londonDay = function () { return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' }); };
