@@ -1081,6 +1081,11 @@
   .tcy-hist > summary h3 { margin: 0; } .tcy-hist > summary::after { content: '▾ Show'; margin-left: auto; font-size: .85rem; font-weight: 600; color: var(--blue, #1d4ed8); } .tcy-hist[open] > summary::after { content: '▴ Hide'; }
   .tcy-hist-n { font-size: .85rem; color: var(--ink-soft, #667085); } .tcy-hist-last { flex-basis: 100%; font-size: .85rem; color: var(--ink-soft, #667085); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; } .tcy-hist[open] .tcy-hist-last { display: none; } .tcy-hist[open] > summary { margin-bottom: 8px; }
   .tile-btn { font: inherit; text-align: left; cursor: pointer; width: 100%; } .tile-btn:hover { border-color: var(--navy, #0b1f3a); } .tile-btn.on { outline: 2px solid var(--navy, #0b1f3a); outline-offset: -2px; }
+  .la-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 4px 0 12px; } .la-tiles > div { border: 1px solid var(--line, #e6e8ec); border-radius: 10px; padding: 10px 12px; min-width: 0; } .la-tiles span { display: block; font-size: .78rem; color: var(--ink-soft, #667085); } .la-tiles b { font-size: 1.15rem; } .la-tiles small { display: block; font-size: .75rem; color: var(--ink-soft, #667085); }
+  @media (max-width: 760px) { .la-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .la-tbl { border: 1px solid var(--line, #e6e8ec); border-radius: 10px; overflow: hidden; font-size: .88rem; } .la-r { display: grid; grid-template-columns: 82px minmax(0, 1fr) 90px 90px 96px; gap: 8px; padding: 7px 10px; border-top: 1px solid var(--line, #eef0f3); align-items: baseline; } .la-r:first-child { border-top: 0; } .la-h { background: var(--panel-2, #f6f7f9); font-weight: 700; font-size: .78rem; color: var(--ink-soft, #667085); } .la-r > span:nth-child(n+3) { text-align: right; white-space: nowrap; } .la-w { overflow-wrap: anywhere; } .la-in { color: #067647; } .la-out { color: #b42318; }
+  @media (max-width: 560px) { .la-r { grid-template-columns: 64px minmax(0, 1fr) 76px; } .la-r > span:nth-child(4) { grid-column: 3; } .la-r > span:nth-child(5) { grid-column: 2 / 4; font-size: .78rem; color: var(--ink-soft, #667085); } .la-h > span:nth-child(4), .la-h > span:nth-child(5) { display: none; } .la-h > span:nth-child(3)::after { content: ' / Out'; } }
+  .la-sub { margin: 14px 0 6px; font-size: .95rem; }
   .tm-incl { display: flex; flex-wrap: wrap; gap: 6px 14px; } .tm-incl-i { display: flex; gap: 6px; align-items: center; font-size: .92rem; }
   .tle-files { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; } .tle-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; padding: 6px 8px; border: 1px solid var(--line, #e4e7ec); border-radius: 8px; } .tle-fn { font-weight: 600; overflow-wrap: anywhere; min-width: 0; flex: 1 1 180px; } .tle-fa { display: flex; gap: 6px; flex: 0 0 auto; } .tle-row b { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
   .tle-frame { width: 100%; height: 55vh; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; background: #fff; } .tle-text { white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; padding: 12px; font-size: .9rem; max-height: 55vh; overflow: auto; }
@@ -1908,6 +1913,7 @@
           </div>
           <div id="llAvBanner"></div>
           <div id="llPayTo"></div>
+          <div class="card" id="llAcct" style="margin-bottom:12px"></div>
           <div class="card" id="llCard"></div>
           <div class="card" id="llTerms" style="margin-top:12px" hidden></div>
           <div class="card" id="llMails" style="margin-top:12px"></div>
@@ -9532,6 +9538,29 @@
     $('valSigner').value = meta.user && meta.user.id && meta.user.name ? meta.user.name : '';
     $('valErr').hidden = true; m.setType('lettings'); m.hidden = false; setTimeout(function(){ ($('valAddr').value ? $('valLLo') : $('valAddr')).focus(); }, 30);
   }
+  // The landlord's account: money in and out with a running balance, outstanding invoices and outstanding work.
+  function renderLlAccount(l, openJobs, unpaid){
+    var box = $('llAcct'); if (!box) return;
+    var draw = function(a){
+      if (openLlId !== l.id) return;
+      var rows = (a && a.rows) || [], od = unpaid.filter(invOverdue), allRows = box.dataset.all === '1';
+      var shown = allRows ? rows.slice().reverse() : rows.slice(-12).reverse();
+      box.innerHTML = '<h3>💷 Landlord account</h3>' +
+        '<div class="la-tiles"><div><span>Money in</span><b>' + gbp((a && a.money_in) || 0) + '</b></div><div><span>Money out</span><b>' + gbp((a && a.money_out) || 0) + '</b></div>' +
+        '<div><span>' + (((a && a.balance) || 0) < 0 ? 'They owe us' : 'Held for them') + '</span><b' + (((a && a.balance) || 0) < 0 ? ' style="color:var(--red,#c00)"' : '') + '>' + gbp(Math.abs((a && a.balance) || 0)) + '</b></div>' +
+        '<div><span>Outstanding invoices</span><b' + (unpaid.length ? ' style="color:var(--red,#c00)"' : '') + '>' + gbp(sumTotal(unpaid)) + '</b><small>' + unpaid.length + (od.length ? ' · ' + od.length + ' overdue' : '') + '</small></div>' +
+        '<div><span>Outstanding work</span><b>' + openJobs.length + '</b><small>open repair' + (openJobs.length === 1 ? '' : 's') + '</small></div></div>' +
+        (rows.length ? '<div class="la-tbl"><div class="la-r la-h"><span>Date</span><span>What</span><span>In</span><span>Out</span><span>Balance</span></div>' +
+          shown.map(function(r){ return '<div class="la-r"><span>' + esc(ukDay(r.at, true)) + '</span><span class="la-w">' + esc(r.what) + '</span><span class="la-in">' + (r.in ? gbp(r.in) : '') + '</span><span class="la-out">' + (r.out ? gbp(r.out) : '') + '</span><span>' + gbp(r.balance) + '</span></div>'; }).join('') + '</div>' +
+          (rows.length > 12 ? '<button type="button" class="btn small ghost" id="laAll" style="margin-top:6px">' + (allRows ? 'Show the latest only' : 'Show all ' + rows.length) + '</button>' : '')
+          : '<p class="muted-note" style="margin:6px 0 0">No rent collected for them through Fixflow yet.</p>') +
+        (unpaid.length ? '<h4 class="la-sub">Outstanding invoices</h4><div class="list">' + unpaid.map(function(i){ return invRowHtml(i, true); }).join('') + '</div>' : '') +
+        (openJobs.length ? '<h4 class="la-sub">Outstanding work</h4><div class="list">' + openJobs.map(rowHtml).join('') + '</div>' : '');
+      if ($('laAll')) $('laAll').addEventListener('click', function(){ box.dataset.all = allRows ? '' : '1'; draw(a); });
+    };
+    draw(null);
+    api('GET', '/api/admin/landlords/' + l.id + '/account').then(function(a){ if (a && a.ok) draw(a); });
+  }
   function renderLandlord(){
     var l = landlordById(openLlId);
     if (!l) { $('llBack').click(); return; }
@@ -9587,6 +9616,7 @@
       return '<div class="inv-prop"><div class="inv-prop-h"><b>' + esc(o.address) + '</b>' + (d.manage_asked ? '<span class="pill Emergency">Asked us to manage it</span>' : '') + '</div><div class="muted-note" style="margin:2px 0 0">' + bits.join(' · ') + '</div></div>';
     }).join('');
     var invs = landlordInvoices(l), un = invs.filter(function(i){ return !i.paid_at; }), paid = invs.filter(function(i){ return i.paid_at; });
+    renderLlAccount(l, all.filter(isOpen), un);
     var od = un.filter(invOverdue);
     // Invoices by property, so it's clear what each property costs in maintenance.
     var byProp = {};
