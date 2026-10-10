@@ -1093,6 +1093,7 @@
   @media (max-width: 760px) { .la-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .la-tbl { border: 1px solid var(--line, #e6e8ec); border-radius: 10px; overflow: hidden; font-size: .88rem; } .la-r { display: grid; grid-template-columns: 82px minmax(0, 1fr) 90px 90px 96px; gap: 8px; padding: 7px 10px; border-top: 1px solid var(--line, #eef0f3); align-items: baseline; } .la-r:first-child { border-top: 0; } .la-h { background: var(--panel-2, #f6f7f9); font-weight: 700; font-size: .78rem; color: var(--ink-soft, #667085); } .la-r > span:nth-child(n+3) { text-align: right; white-space: nowrap; } .la-w { overflow-wrap: anywhere; } .la-in { color: #067647; } .la-out { color: #b42318; } .la-note .la-w { color: var(--ink-soft, #667085); font-style: italic; } .la-tot { background: var(--panel-2, #f6f7f9); }
   @media (max-width: 560px) { .la-r { grid-template-columns: 64px minmax(0, 1fr) 76px; } .la-r > span:nth-child(4) { grid-column: 3; } .la-r > span:nth-child(5) { grid-column: 2 / 4; font-size: .78rem; color: var(--ink-soft, #667085); } .la-h > span:nth-child(4), .la-h > span:nth-child(5) { display: none; } .la-h > span:nth-child(3)::after { content: ' / Out'; } }
+  .kv-mini { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font-size: .88rem; } .kv-mini span { color: var(--ink-soft, #667085); } .kv-mini b { font-weight: 600; overflow-wrap: anywhere; }
   .la-sub { margin: 14px 0 6px; font-size: .95rem; }
   .ll-cost { display: block; margin-top: 3px; font-size: .75rem; font-weight: 700; color: var(--navy, #0b1f3a); white-space: nowrap; } .ll-cost i { display: block; font-style: normal; font-weight: 500; color: var(--ink-soft, #667085); }
   .tm-incl { display: flex; flex-wrap: wrap; gap: 6px 14px; } .tm-incl-i { display: flex; gap: 6px; align-items: center; font-size: .92rem; }
@@ -2434,13 +2435,24 @@
   </div>
 </div>
 
+<!-- RENT REMINDER PREVIEW -->
+<div class="modal" id="rrModal" hidden>
+  <div class="card" style="width:min(640px,100%);display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 32px);overflow:auto">
+    <h3 style="margin:0" id="rrTitle">📧 Rent reminder</h3>
+    <div id="rrMeta"></div>
+    <label class="lbl" for="rrSubj" style="margin:0">Subject</label><input class="inp" id="rrSubj">
+    <label class="lbl" for="rrBody" style="margin:0">Message</label><textarea class="inp" id="rrBody" rows="14"></textarea>
+    <div class="row-actions" style="flex-wrap:wrap"><button class="btn ghost" type="button" id="rrCancel">Cancel</button><button class="btn primary" type="button" id="rrSend">Send</button></div>
+  </div>
+</div>
+
 <!-- TENANCY WELCOME EMAIL -->
 <div class="modal" id="tmModal" hidden>
   <div class="card" style="width:min(680px,100%);display:flex;flex-direction:column;gap:10px;max-height:92vh;overflow:auto">
     <h3 id="tmTitle" style="margin:0">Welcome email</h3>
     <div id="tmFromRow" hidden><label class="lbl" for="tmFrom">From (your Outlook)</label><select class="inp" id="tmFrom"></select></div>
     <div><label class="lbl" for="tmTo">To</label><input class="inp" id="tmTo" placeholder="name@example.com, …"></div>
-    <div><label class="lbl" for="tmCc">Cc</label><input class="inp" id="tmCc" placeholder="Optional — e.g. the negotiator"></div>
+    <div><label class="lbl" for="tmCc">Cc</label><input class="inp" id="tmCc" placeholder="Optional — e.g. the negotiator"><small class="muted-note" style="display:block;margin:3px 0 0">info@residentialrealtors.co.uk is always copied in.</small></div>
     <div><label class="lbl" for="tmSubject">Subject</label><input class="inp" id="tmSubject"></div>
     <div id="tmInclRow" hidden><label class="lbl">Listed in the email as included</label><div id="tmIncl" class="tm-incl"></div><p class="match warn" id="tmInclWarn" hidden style="margin:8px 0 0"></p>
       <div style="display:flex;gap:6px;margin-top:6px"><input class="inp" id="tmInclNew" placeholder="Add another item, e.g. Gas Safety Certificate" style="flex:1;min-width:0"><button type="button" class="btn small" id="tmInclAdd">＋ Add</button></div></div>
@@ -12076,7 +12088,7 @@
     mlView('edit'); $('mlAtt').hidden = !o.attachment && !(o.files || []).length; if ((o.files || []).length) $('mlAtt').innerHTML = '📎 Attached (tap to check): ' + o.files.map(function(f){ return '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + esc(f.name) + '</a>'; }).join(', '); else $('mlAtt').textContent = o.attachment ? '📎 Attached: ' + o.attachment : ''; $('mlTitle').textContent = o.title || '✉ Send email';
     $('mlCcRow').parentNode.querySelector('#mlAddCc').hidden = !!o.sendFn || !$('mlCcRow').hidden; $('mlCopy').parentNode.hidden = !me || !!o.sendFn; $('mlNative').hidden = !!o.sendFn;
     $('mlCopy').parentNode.hidden = !me;
-    $('mlFrom').innerHTML = 'From <b>' + esc(meta.user && meta.user.id && meta.user.name ? meta.user.name + ' - Residential Realtors' : 'Residential Realtors') + '</b> · replies go to <b>' + esc(me || 'info@residentialrealtors.co.uk') + '</b>';
+    $('mlFrom').innerHTML = 'From <b>' + esc(meta.user && meta.user.id && meta.user.name ? meta.user.name + ' - Residential Realtors' : 'Residential Realtors') + '</b> · replies go to <b>' + esc(me || 'info@residentialrealtors.co.uk') + '</b> · info@residentialrealtors.co.uk is copied in';
     $('mlModal').hidden = false; setTimeout(function(){ ($('mlTo').value ? $('mlBody') : $('mlTo')).focus(); if ($('mlBody') === document.activeElement) $('mlBody').setSelectionRange(0, 0); $('mlBody').scrollTop = 0; }, 30);
   }
   function mlClose(){ $('mlModal').hidden = true; mlCur = null; }
@@ -15399,7 +15411,7 @@
       return '<div class="rb-line rb-' + x.status + '">' + (mi ? '<span class="rb-pickpad"></span>' : '<input type="checkbox" class="rb-pick" data-rb-cpick="' + k + '"' + (rbSelC[k] ? ' checked' : '') + ' aria-label="Select">') + day(x) +
         '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div>' +
           '<div class="rb-sub">' + svcTag(x.service) + (mi ? 'New tenancy · move-in money <b>' + gbp(x.movein.paid) + '</b> of ' + gbp(x.movein.due) + ' paid' : x.status === 'overdue' ? '<span class="rb-late">' + Math.round((parseDay(today) - parseDay(x.from)) / 86400000) + ' days late</span>' : esc(x.tenants[0] || x.landlord || '')) + ' · ' + more(k) +
-          (x.status === 'overdue' || x.status === 'today' ? ' · ' + (x.emails ? '<button type="button" class="linkish" data-rb-remind="' + k + '">📧 Remind' + (x.reminded ? ' again' : '') + '</button>' : '<span class="muted">no tenant email</span>') + (x.reminded ? ' <span class="rb-reminded">reminded ' + esc(fmtShort(x.reminded.at).split(',')[0]) + '</span>' : '') : '') + '</div>' +
+          (x.status !== 'movein' ? ' · ' + (x.emails ? '<button type="button" class="linkish" data-rb-remind="' + k + '">📧 ' + (x.status === 'overdue' || x.status === 'today' ? 'Remind' : 'Rent due reminder') + (x.reminded ? ' again' : '') + '</button>' : '<span class="muted">no tenant email</span>') + (x.reminded ? ' <span class="rb-reminded">reminded ' + esc(fmtShort(x.reminded.at).split(',')[0]) + '</span>' : '') : '') + '</div>' +
           (x.part_paid ? '<div class="rb-parts">Part paid <b>' + gbp(x.part_paid) + '</b> of ' + gbp(x.rent) + ' — ' + x.parts.map(function(pp){ return gbp(pp.amount) + (pp.who ? ' ' + esc(pp.who.split(' ')[0]) : '') + ' ' + esc(rbDay(pp.date)); }).join(', ') + ' <button type="button" class="linkish" data-rb-unpart="' + k + '">clear</button></div>' : '') + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(mi ? x.movein.left : x.rent - (x.part_paid || 0)) + (mi ? '<small>still to pay</small>' : x.part_paid ? '<small>left to pay</small>' : '') + '</div>' +
         '<div class="rb-btn">' + (mi ? '<button type="button" class="btn small" data-rb-open="' + x.tenancy_id + '">Record payment</button>' : '<button type="button" class="btn small primary" data-rb-collect="' + k + '">Collected</button>') + '</div></div>';
@@ -15575,6 +15587,30 @@
       m.hidden = false; setTimeout(function(){ (o.amount == null ? $('raDate') : $('raAmt')).focus(); }, 30);
     });
   }
+  // Rent reminders: see exactly what goes out (and change it) before it's sent. Several at once: the first
+  // one is shown; each tenancy gets its own date and amounts.
+  var rrList = [];
+  function rentRemindPreview(list){
+    rrList = list; var x = list[0];
+    $('rrTitle').textContent = list.length > 1 ? '📧 Rent reminders — ' + list.length + ' tenancies' : '📧 Rent reminder — ' + rbAddr(x.address);
+    $('rrMeta').innerHTML = 'Loading…'; $('rrSubj').value = ''; $('rrBody').value = ''; $('rrModal').hidden = false;
+    $('rrSubj').disabled = $('rrBody').disabled = list.length > 1;
+    api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-reminder', { from: x.from, due: x.rent, preview: true }).then(function(d){
+      if (!d || !d.ok || !d.preview) { $('rrMeta').innerHTML = '<span style="color:var(--red,#c00)">' + esc(d && d.error === 'no-email' ? 'No email address for the tenants.' : d && d.error === 'email-not-configured' ? 'Email isn’t set up.' : 'Couldn’t prepare the reminder.') + '</span>'; return; }
+      $('rrMeta').innerHTML = (list.length > 1 ? '<p class="muted-note" style="margin:0 0 6px">This is the first of ' + list.length + '. Each tenancy gets its own date and amounts; the wording is the same.</p>' : '') +
+        '<div class="kv-mini"><span>To</span><b>' + esc(d.to.join(', ')) + '</b>' + (d.cc && d.cc.length ? '<span>Cc</span><b>' + esc(d.cc.join(', ')) + '</b>' : '') +
+        '<span>Rent</span><b>' + esc(longDay(x.from)) + ' · ' + gbp(x.rent) + (x.part_paid ? ' (' + gbp(x.part_paid) + ' paid, ' + gbp(x.rent - x.part_paid) + ' left)' : '') + '</b></div>';
+      $('rrSubj').value = d.subject; $('rrBody').value = d.text;
+    });
+  }
+  $('rrCancel').addEventListener('click', function(){ $('rrModal').hidden = true; });
+  $('rrSend').addEventListener('click', function(){
+    var list = rrList, one = list.length === 1, btn = this, sent = 0, failed = 0;
+    if (!list.length || !$('rrBody').value.trim()) return;
+    busy(btn, true, 'Sending…');
+    list.reduce(function(pr, x){ return pr.then(function(){ return api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-reminder', one ? { from: x.from, due: x.rent, subject: $('rrSubj').value.trim(), text: $('rrBody').value } : { from: x.from, due: x.rent }).then(function(d){ if (d && d.ok) sent++; else failed++; }); }); }, Promise.resolve())
+      .then(function(){ busy(btn, false); $('rrModal').hidden = true; toast(sent ? '✓ ' + sent + ' reminder' + (sent === 1 ? '' : 's') + ' emailed' + (failed ? ' · ' + failed + ' couldn’t be sent' : '') : 'Couldn’t send it'); loadRentBoard(true); });
+  });
   function rbFind(k){ var a = String(k).split('|'); return (rbData && rbData.items || []).filter(function(x){ return x.tenancy_id === Number(a[0]) && x.from === a[1]; })[0]; }
   $('tcyModes').addEventListener('click', function(e){
     var b = e.target.closest('[data-tmode]'); if (!b) return;
@@ -15591,16 +15627,9 @@
     var ma = e.target.closest('[data-rb-mailall]');
     if (ma) { var lst = rbData.items.filter(function(x){ return (x.landlord || 'No landlord saved') === ma.dataset.rbMailall && x.stmt && (!x.stmt.sent || x.stmt.changed); }).map(function(x){ var f = stmtFind(x.tenancy_id + '|' + x.from); return f && f.m ? f : null; }).filter(Boolean); if (lst.length) stmtEmailMany(lst); return; }
     var rm = e.target.closest('[data-rb-remind]');
-    if (rm) { var xr = rbFind(rm.dataset.rbRemind); if (!xr) return;
-      if (!confirm('Email a rent reminder to ' + (xr.tenants.length > 1 ? 'all ' + xr.emails + ' tenants' : 'the tenant') + ' at ' + rbAddr(xr.address) + '?\n\nRent due ' + longDay(xr.from) + ': ' + gbp(xr.rent) + (xr.part_paid ? ' (' + gbp(xr.part_paid) + ' paid, ' + gbp(xr.rent - xr.part_paid) + ' still to pay)' : '') + '. Replies come to info@residentialrealtors.co.uk.')) return;
-      busy(rm, true, 'Sending…');
-      api('POST', '/api/admin/tenancies/' + xr.tenancy_id + '/rent-reminder', { from: xr.from, due: xr.rent }).then(function(d){ busy(rm, false); if (!d || !d.ok) { toast(d && d.error === 'email-not-configured' ? 'Email isn’t set up' : d && d.error === 'no-email' ? 'No email address for the tenants' : 'Couldn’t send it'); return; } toast('✓ Reminder emailed to ' + d.sent + ' tenant' + (d.sent === 1 ? '' : 's')); loadRentBoard(true); }); return; }
+    if (rm) { var xr = rbFind(rm.dataset.rbRemind); if (!xr) return; rentRemindPreview([xr]); return; }
     var ra = e.target.closest('[data-rb-remindall]');
-    if (ra) { var late = rbData.items.filter(function(x){ return !x.collected && x.status === 'overdue' && x.emails; });
-      if (!late.length || !confirm('Email a rent reminder to the tenants of all ' + late.length + ' late rents?\n\nEach email says the amount due (and anything already paid). Replies come to info@residentialrealtors.co.uk.')) return;
-      busy(ra, true, 'Sending…'); var sent = 0, failed = 0;
-      late.reduce(function(pr, x){ return pr.then(function(){ return api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-reminder', { from: x.from, due: x.rent }).then(function(d){ if (d && d.ok) sent++; else failed++; }); }); }, Promise.resolve())
-        .then(function(){ busy(ra, false); toast('✓ ' + sent + ' reminder' + (sent === 1 ? '' : 's') + ' emailed' + (failed ? ' · ' + failed + ' couldn’t be sent' : '')); loadRentBoard(true); }); return; }
+    if (ra) { var late = rbData.items.filter(function(x){ return !x.collected && x.status === 'overdue' && x.emails; }); if (late.length) rentRemindPreview(late); return; }
     var upx = e.target.closest('[data-rb-unpart]');
     if (upx) { var xp2 = rbFind(upx.dataset.rbUnpart); if (!xp2 || !confirm('Clear the part payments recorded for this rent (' + gbp(xp2.part_paid) + ')?')) return;
       api('POST', '/api/admin/tenancies/' + xp2.tenancy_id + '/rent-collected', { from: xp2.from, undo: true }).then(function(){ loadRentBoard(true); }); return; }
