@@ -860,7 +860,14 @@ function addrPayRef(address) {
     const words = rest.split(/\s+/).filter(Boolean), keep0 = []; let keep = keep0;
     for (let w = 0; w < words.length; w++) { keep0.push(words[w]); if (keep0.length > 1 && REF_WORDS.test(words[w]) && !REF_WORDS.test(words[w + 1] || '')) break; }
     if (keep.length > 2 && !keep.some(function (x) { return /\d/.test(x); }) && /^(road|rd|street|st|lane|ln|avenue|ave|close|way|drive|grove|place|terrace)$/i.test(keep[keep.length - 1])) keep = keep.slice(0, -1);
-    return (m[1] + (/^\d/.test(keep[0] || '') ? '-' : '') + keep.join('')).replace(/[^A-Za-z0-9-]/g, '');
+    // Bank references are 18 characters at most: shorten the road word, then leave it off, rather than cut mid-word
+    // ("Flat 2, 143 South Lambeth Road" -> "2-143SouthLambeth").
+    const build = function (k) { return (m[1] + (/^\d/.test(k[0] || '') ? '-' : '') + k.join('')).replace(/[^A-Za-z0-9-]/g, ''); };
+    const ABBR = { road: 'Rd', street: 'St', avenue: 'Ave', lane: 'Ln', drive: 'Dr', close: 'Cl', court: 'Ct', place: 'Pl', gardens: 'Gdns', square: 'Sq', crescent: 'Cres', terrace: 'Ter', house: 'Ho' };
+    let ref = build(keep);
+    if (ref.length > 18 && keep.length > 1 && ABBR[keep[keep.length - 1].toLowerCase()]) ref = build(keep.slice(0, -1).concat(ABBR[keep[keep.length - 1].toLowerCase()]));
+    if (ref.length > 18 && keep.length > 1 && REF_WORDS.test(keep[keep.length - 1])) ref = build(keep.slice(0, -1));
+    return ref;
   }
   return (parts[0] || '').replace(/[^A-Za-z0-9-]/g, '');
 }
@@ -10176,8 +10183,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return { due: due, paid: got, left: r2(due - got), last: last, covered: rent > 0 && got > 0 && got >= due - 0.004 };
   }
   // A new tenancy's first rent paid with the move-in money counts as collected on the Rent page.
-  // (Only tenancies starting since rent collection began — earlier move-in money was dealt with before Fixflow.)
-  function moveinRowShown(d, start, today) { return !!start && start <= today && start >= RENT_START && moveinCover(d).covered; }
+  // Tenancies starting since rent collection began; an earlier one only when staff chose to add it to Pay
+  // landlords from its Rent card (`movein_pay`) — other earlier move-ins were dealt with before Fixflow.
+  function moveinRowShown(d, start, today) {
+    if (!start || start > today) return false;
+    if (!moveinCover(d).covered) return false;
+    return start >= RENT_START || !!d.movein_pay;
+  }
   // Invoices set to "Take from: the current statement" come off that statement's rent (the latest rent date)
   // while the landlord hasn't been paid for it; otherwise the next rent.
   function currentStmtRent(t) {
@@ -10231,7 +10243,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
       for (let n = 0; n < 120; n++) {
         if (firstOnly && n > 0) break;
         const from = addMonthsIso(start, n);
-        if (from > (onlyKey ? tomorrow > until ? tomorrow : until : until)) break;
+        // A new tenancy starting later whose move-in money is already in: its first rent shows now (on this month's
+        // page and its Rent card), so the landlord can be paid straight away ("Pay landlord now").
+        const earlyIn = n === 0 && (onlyKey || month === thisMonth) && !paid[from] && moveinCover(d).covered;
+        if (from > (onlyKey ? tomorrow > until ? tomorrow : until : until) && !earlyIn) break;
         if (next && from >= String(next.start_date).slice(0, 10)) break;
         const inNow = rcvd[from] || (n === 0 && mvShown);
         if (from < sinceDay && !inNow) { prevRow = null; continue; }   // before collection started — unless it was marked collected (or paid with the move-in money)
@@ -10348,7 +10363,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Each fee collected, by property (for "Fees collected so far" → the breakdown).
     if (month <= thisMonth) items.filter(function (x) { return x.collected && x.fees; }).forEach(function (x) { feeList.push({ tenancy_id: x.tenancy_id, address: x.address, from: x.from, service: x.service, amount: x.fees, net: x.fees_net, lines: x.fee_lines }); });
     feeList.sort(function (a, b) { return a.from < b.from ? 1 : a.from > b.from ? -1 : String(a.address).localeCompare(String(b.address)); });
-    return { holding: holding, skipped: skipped, fee_list: feeList, today: today, tomorrow: tomorrow, month: month, since: sinceDay, items: items, not_ours: notOurs, fees_before: feesN, fees_all: r2(feesN + (month <= thisMonth ? feesShown : 0)), fees_all_net: r2(feesNnet + (month <= thisMonth ? feesShownNet : 0)) };
+    // On a property's Rent card: earlier move-ins (paid, before rent collection began) that could be added to Pay landlords.
+    const moveinOffer = [];
+    if (onlyKey) tcys.forEach(function (t, i) {
+      const d = t.data || {}, start = String(d.start_date || t.start_date || '').slice(0, 10);
+      if (t.property_key !== onlyKey || !/^\d{4}-\d{2}-\d{2}$/.test(start) || start >= RENT_START || start > today || d.movein_pay || (d.ll_paid || {})[start] || (d.rent_rcvd || {})[start]) return;
+      if (tcys.slice(i + 1).some(function (x) { return x.property_key === t.property_key; })) return;   // not the current tenancy
+      const c = moveinCover(d); if (!c.covered) return;
+      moveinOffer.push({ tenancy_id: t.id, from: start, rent: Number(d.rent_pcm) || 0, paid: c.paid, last: c.last });
+    });
+    return { movein_offer: moveinOffer, holding: holding, skipped: skipped, fee_list: feeList, today: today, tomorrow: tomorrow, month: month, since: sinceDay, items: items, not_ours: notOurs, fees_before: feesN, fees_all: r2(feesN + (month <= thisMonth ? feesShown : 0)), fees_all_net: r2(feesNnet + (month <= thisMonth ? feesShownNet : 0)) };
   }
   app.get('/api/admin/rent-board', withDb(async function (p, req, res) {
     const key = req.query.property ? propKey(str(req.query.property, 400)) : null;
@@ -10452,6 +10476,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_reminders}', coalesce(data->'rent_reminders', '{}'::jsonb) || jsonb_build_object($2::text, coalesce(data->'rent_reminders'->$2, '[]'::jsonb) || $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
       [id, from, JSON.stringify([row]), JSON.stringify([{ at: row.at, text: 'Rent reminder emailed to ' + to.length + ' tenant' + (to.length === 1 ? '' : 's') + ' for the rent due ' + certDay(from) + ' (' + who + ')', email: logEmail({ to: to, cc: cc, subject: subject, text: text, attachments: [] }) }])]);
     res.json({ ok: true, sent: to.length });
+  }));
+  // An earlier tenancy's move-in rent added to (or taken off) Pay landlords — for one that still has to be paid.
+  app.post('/api/admin/tenancies/:id/movein-pay', withDb(async function (p, req, res) {
+    const on = (req.body || {}).on !== false, who = req.user ? req.user.name : 'Office';
+    const r = await p.query(`UPDATE tenancies SET data = CASE WHEN $2 THEN jsonb_set(data, '{movein_pay}', 'true'::jsonb) ELSE data - 'movein_pay' END, log = log || $3::jsonb, updated_at = now() WHERE id = $1 RETURNING id`,
+      [jobId(req), on, JSON.stringify([{ at: new Date().toISOString(), text: (on ? 'Move-in rent added to Pay landlords' : 'Move-in rent taken off Pay landlords') + ' (' + who + ')' }])]);
+    res.status(r.rows.length ? 200 : 404).json({ ok: !!r.rows.length });
   }));
   // Who collects the rent on a tenancy (from the rent page: "we don't collect this any more").
   app.post('/api/admin/tenancies/:id/rent-by', withDb(async function (p, req, res) {
@@ -10588,7 +10619,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       // The move-in money (first month's rent + deposit, paid to us by the tenants): once it covers what's
       // due it counts as the first rent from the start date, as on the Rent page; the deposit we hold isn't theirs.
       const start = String(d.start_date || t.start_date || '').slice(0, 10), rent0 = Number(d.rent_pcm) || 0;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(start) && start >= RENT_START && rent0 > 0) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(start) && rent0 > 0 && (start >= RENT_START || moveinRowShown(d, start, today) || !!(d.rent_rcvd || {})[start])) {
         const dep = d.deposit != null && d.deposit !== '' ? Number(d.deposit) || 0 : Math.floor(rent0 * 12 / 52 * 5 + 1e-9);
         const due = r2(rent0 + dep), got = r2((d.receipts || []).reduce(function (a, y) { return a + (Number(String(y && y.amount || '').replace(/[£,\s]/g, '')) || 0); }, 0));
         const last = (d.receipts || []).map(function (y) { return y && y.date; }).filter(Boolean).sort().pop() || null;
