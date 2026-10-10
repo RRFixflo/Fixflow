@@ -13852,7 +13852,8 @@
   // An invoice on a statement: its number once, a few words on the job, and the link to it.
   function stmtInvLabel(f){
     var i = f && f.invoice_id && stmtInv[f.invoice_id]; if (!i) return f.label;
-    return i.what || 'Invoice ' + i.number;   // the number is on the invoice the line links to
+    // The job's reference and a few words on it (the invoice number is on the invoice the line links to).
+    return i.ref ? i.ref + (i.what ? ' · ' + i.what : '') : i.what || 'Invoice ' + i.number;
   }
   // A statement with the unpaid landlord invoices that will come off that rent (not on it yet until the
   // rent's collected) — so it matches the rent page's "to the landlord".
