@@ -11,7 +11,7 @@ const SERVICES = {
     title: function (b) { return 'Gas Safety Certificate ' + b + ' — Landlord CP12 | Residential Realtors'; },
     desc: function (b, p) { return 'Landlord Gas Safety certificate (CP12) in ' + b + ', by Gas Safe registered engineers' + (p ? ', from £' + p + ' + VAT' : '') + '. Book online, and we arrange access with you or your tenant.'; } },
   eicr: { base: '/eicr', file: 'eicr', short: 'EICR', thing: 'EICR', type: 'EICR electrical safety certificate', price: function (m) { return m.eicr; },
-    title: function (b) { return 'EICR ' + b + ' — Landlord Electrical Safety Certificate | Residential Realtors'; },
+    title: function (b) { return 'EICR ' + b + ' — Landlord Electrical Certificate | Residential Realtors'; },
     desc: function (b, p) { return 'Landlord EICR (electrical safety report) in ' + b + ' by qualified electricians, priced by property size' + (p ? ' from £' + p + ' + VAT' : '') + '. Book online, and we arrange the visit.'; } },
   epc: { base: '/epc', file: 'epc', short: 'EPC', thing: 'EPC', type: 'Energy Performance Certificate (EPC)', price: function (m) { return m.epc; },
     title: function (b) { return 'EPC ' + b + ' — Energy Performance Certificate | Residential Realtors'; },
