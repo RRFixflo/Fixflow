@@ -1325,3 +1325,18 @@ html, body { overflow-x: clip; }
 .mk-art .ar-tbl th, .mk-art .ar-tbl td { padding: 9px 10px; white-space: normal; }
 .mk-art .ar-tbl thead th { cursor: default; } .mk-art .ar-tbl thead th::after { content: none; }
 @media (max-width: 520px) { .mk-art .ar-tbl { font-size: .84rem; } .mk-art .ar-tbl th, .mk-art .ar-tbl td { padding: 8px 6px; } }
+
+/* Landlord tools (rent increase calculator, certificate due dates) */
+.tl-card { max-width: 820px; }
+.tl-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 16px; }
+.tl-form label { display: flex; flex-direction: column; gap: 5px; font-weight: 700; font-size: .92rem; color: var(--ink); }
+.tl-form label small { font-weight: 500; color: var(--muted, #667085); }
+.tl-form input, .tl-form select { font: inherit; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; width: 100%; box-sizing: border-box; }
+.tl-out { margin-top: 16px; }
+.tl-res { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.tl-res div { background: #f6f8fb; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; }
+.tl-res b { font-size: 1.35rem; color: var(--navy); } .tl-res span { color: var(--muted, #667085); font-size: .88rem; }
+.tl-hint { color: var(--muted, #667085); } .tl-warn { background: #fffaeb; border: 1px solid #fedf89; border-radius: 10px; padding: 10px 12px; }
+.tl-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-left-width: 5px; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+.tl-row span { display: flex; flex-direction: column; } .tl-row small { color: var(--muted, #667085); }
+.tl-ok { border-left-color: #12b76a; } .tl-soon { border-left-color: #f79009; } .tl-over { border-left-color: #d92d20; }

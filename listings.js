@@ -590,6 +590,15 @@ module.exports = function (app, opts) {
     next();
   });
   // Book a viewing: pick up to 3 times that suit, then name, phone and email. Opens over the property page.
+  // Many people looking at our homes are landlords checking the market: a box on every property page to a free
+  // valuation, and a link to the borough's rent page (local rents, how fast homes let, our track record).
+  const OC_AREA = {}; require('./areas-data').forEach(function (a) { (a.outcodes || []).forEach(function (o) { OC_AREA[o] = a; }); });
+  function ownerCta(p) {
+    const a = OC_AREA[String(p.outcode || '').toUpperCase()], where = a ? a.name : (p.outcode || 'London');
+    if (p.kind !== 'let') return '<section class="ar-cta"><div class="wrap ar-cta-in"><div><h2>Own a home near ' + esc(where) + '?</h2><p>Find out what it could sell for — a free, no-obligation sales valuation from a local agent.</p></div><div class="btns"><a class="btn red" href="/sales#sales-valuation">Free sales valuation →</a></div></div></section>';
+    return '<section class="ar-cta"><div class="wrap ar-cta-in"><div><h2>Own a similar home in ' + esc(where) + '?</h2><p>See what it could let for — a free rental valuation from the agent letting homes like this one' + (a ? ', with local rents and how quickly homes let in ' + esc(a.name) : '') + '.</p></div>' +
+      '<div class="btns"><a class="btn red" href="/landlords#valuation">Free rental valuation →</a>' + (a ? '<a class="btn line" href="/london-rents/' + a.slug + '">Rents in ' + esc(a.name) + '</a>' : '<a class="btn line" href="/letting-agents">Areas we cover</a>') + '</div></div></section>';
+  }
   function book(p) {
     return '<div class="bk" id="book" role="dialog" aria-modal="true" aria-labelledby="bkH"><a class="bk-bg" href="#" aria-label="Close" tabindex="-1"></a>' +
       '<form class="bk-box form" id="bkForm" novalidate data-ref="' + esc(p.id) + '" data-addr="' + esc(p.where) + '" data-kind="' + p.kind + '" data-url="' + esc(p.url) + '"><a class="bk-x" href="#" aria-label="Close">×</a><div id="bkBody">' +
@@ -651,7 +660,7 @@ module.exports = function (app, opts) {
         '<a class="btn red" href="' + esc(view) + '">Book a viewing</a>' + (p.kind === 'let' ? '<a class="btn navy" href="' + esc(offer) + '">Make an offer</a>' : '<a class="btn navy" href="' + esc(ask) + '">Make an enquiry</a>') +
         '<a class="btn line" href="tel:02070968131">📞 0207 096 8131</a>' + (p.vtour ? '<a class="btn line" href="#pdmedia" data-pdtab="video">' + (isVid ? '▶ Watch the video' : '🎥 360° tour') + '</a>' : '') + (p.floorplans.length ? '<a class="btn line" href="#pdmedia" data-pdtab="plan">📐 See the floorplan</a>' : '') +
         '<a class="pdshare" href="https://wa.me/?text=' + share + '" target="_blank" rel="noopener">Share on WhatsApp</a><p class="pdref">Ref. ' + esc(p.id) + '</p></div></aside></div></div></section>' +
-      book(p) +
+      book(p) + ownerCta(p) +
       '<div class="pdbar"><a class="btn red" href="' + esc(view) + '">Book a viewing</a>' + (p.kind === 'let' ? '<a class="btn navy" href="' + esc(offer) + '">Make an offer</a>' : '<a class="btn navy" href="tel:02070968131">📞 Call us</a>') + '</div>' +
       (function () { const more = data[p.kind].filter(function (x) { return x.id !== p.id && !x.taken; }).slice(0, 3); return more.length ? '<section class="white"><div class="wrap"><div class="head"><h2>More ' + K.none + '</h2></div><div class="lgrid">' + more.map(function (x) { return card(x); }).join('') + '</div><p style="margin-top:22px"><a class="btn line" href="' + K.path + '">See all ' + K.h1.toLowerCase() + ' →</a></p></div></section>' : ''; })();
     const ld = [{ '@type': 'RealEstateListing', name: p.headline + ', ' + p.where, url: opts.siteUrl + p.url, datePosted: String(p.added).slice(0, 10) || undefined, description: p.short || undefined,
