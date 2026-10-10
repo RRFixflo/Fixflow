@@ -611,6 +611,9 @@ CREATE TABLE IF NOT EXISTS offer_invites (
   offer_id    INTEGER,
   events      JSONB NOT NULL DEFAULT '[]'::jsonb
 );
+-- What an applicant has typed into the offer form so far (no files), so staff can see it before it's sent.
+ALTER TABLE offer_invites ADD COLUMN IF NOT EXISTS draft JSONB;
+ALTER TABLE offer_invites ADD COLUMN IF NOT EXISTS draft_at TIMESTAMPTZ;
 -- Valuation letters (sales and / or lettings) sent to landlords, kept so they can be downloaded again.
 -- Valuation requests from landlords on the public Landlords page.
 CREATE TABLE IF NOT EXISTS valuation_requests (
@@ -8261,6 +8264,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const vis = await linkVisits(p, r.rows.map(function (x) { return x.token; }));
     r.rows.forEach(function (x) { x.visits = vis[x.token] || []; });
     res.json({ ok: true, invites: r.rows });
+  }));
+  // The offer form's answers so far (from a link we sent): saved as they type, shown to staff on the invite.
+  // Only until the offer is sent; files are never included.
+  app.post('/api/offers/invite/:token/draft', withDb(async function (p, req, res) {
+    if (!/^[\w-]{8,20}$/.test(req.params.token)) return res.status(404).json({ ok: false });
+    const list = (Array.isArray((req.body || {}).fields) ? req.body.fields : []).slice(0, 300).map(function (f) { return { s: str(f && f.s, 80) || '', l: str(f && f.l, 120) || '', v: str(f && f.v, 1000) || '' }; }).filter(function (f) { return f.l && f.v; });
+    await p.query('UPDATE offer_invites SET draft = $2::jsonb, draft_at = now() WHERE token = $1 AND offer_id IS NULL', [req.params.token, JSON.stringify(list)]);
+    res.json({ ok: true });
   }));
   app.post('/api/offers/invite/:token/:what', withDb(async function (p, req, res) {
     const what = req.params.what; if (['open', 'start'].indexOf(what) === -1 || !/^[\w-]{8,20}$/.test(req.params.token)) return res.status(404).json({ ok: false });
