@@ -177,5 +177,5 @@ module.exports = function (app, opts) {
     return { slug: a.slug, name: a.name, rent: v || 0, month: f.bedsMonth || f.rentMonth || '', all: f.rent || 0, beds: f.beds || null };
   };
 
-  return { parseOns: parseOns, onsBeds: onsBeds, urls: function () { return ['/letting-agents', '/london-rents'].concat(AREAS.filter(function (a) { return fig(a).rent; }).map(function (a) { return '/london-rents/' + a.slug; })); } };
+  return { figures: function () { return ons; }, areasList: AREAS, parseOns: parseOns, onsBeds: onsBeds, urls: function () { return ['/letting-agents', '/london-rents'].concat(AREAS.filter(function (a) { return fig(a).rent; }).map(function (a) { return '/london-rents/' + a.slug; })); } };
 };

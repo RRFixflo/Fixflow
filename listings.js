@@ -503,6 +503,40 @@ module.exports = function (app, opts) {
   const facts = function (p) {
     return (p.commercial ? '' : '<span>' + ICON.bed + (p.studio ? 'Studio' : p.beds + ' bed' + (p.beds === 1 ? '' : 's')) + '</span>') + (p.baths ? '<span>' + ICON.bath + p.baths + ' bath' + (p.baths === 1 ? '' : 's') + '</span>' : '') + (p.receptions ? '<span>' + ICON.sofa + p.receptions + ' reception' + (p.receptions === 1 ? '' : 's') + '</span>' : '');
   };
+  // What Google shows for a property page: a title of at most ~60 characters (bedrooms, type, street, postcode area and
+  // the price when it fits) and a description of 90–160 characters — never the same as another property's (homes in the
+  // same building get the price, then the reference, to tell them apart).
+  function seoBits(p) {
+    const kind = p.kind === 'let' ? 'to rent' : 'for sale', t = String(p.type || '').toLowerCase().replace(/apartment/, 'flat');
+    const what = p.studio ? 'Studio flat' : p.commercial ? 'Commercial ' + t : p.beds ? p.beds + ' bed ' + (t || 'home') : (t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Home');
+    const parts = String(p.street || '').split(',').map(function (x) { return x.trim(); }).filter(function (x) { return x && !/^london$/i.test(x) && !/^uk$/i.test(x) && !/^\d+$/.test(x); });
+    const town = [p.area, p.town].filter(function (x) { return x && !/^(london|uk)$/i.test(String(x).trim()); })[0] || '';
+    const road = parts.length ? parts[parts.length - 1] : town;
+    const price = p.price ? '£' + Math.round(p.price).toLocaleString('en-GB') + (p.kind === 'let' ? ' pcm' : '') : '';
+    const oc = p.outcode || '', places = [parts.join(', '), road].filter(function (x, i, a) { return x && a.indexOf(x) === i; }).concat(['']);
+    let base = '';
+    for (let i = 0; i < places.length && !base; i++) { const c = what + ' ' + kind + (places[i] ? ', ' + places[i] : ' in') + (oc ? ' ' + oc : ' London'); if (c.length <= 60 || i === places.length - 1) base = c; }
+    const where = [road, town || 'London'].filter(function (x, i, a) { return x && a.map(function (y) { return String(y).toLowerCase(); }).indexOf(String(x).toLowerCase()) === i; }).join(', ');
+    return { base: base, price: price, road: road, where: where };
+  }
+  let seoDup = { stamp: null, t: {}, d: {} };
+  function seoMeta(p) {
+    if (seoDup.stamp !== data.stamp) {   // which homes would share a title / description
+      const t = {}, d = {}; data.let.concat(data.sale).forEach(function (x) { const b = seoBits(x); t[b.base] = (t[b.base] || 0) + 1; const k = b.base + '|' + b.price; d[k] = (d[k] || 0) + 1; });
+      seoDup = { stamp: data.stamp, t: t, d: d };
+    }
+    const b = seoBits(p), dupT = seoDup.t[b.base] > 1, dupD = seoDup.d[b.base + '|' + b.price] > 1;
+    let title = b.base;
+    if (b.price && (title + ' — ' + b.price).length <= 62) title += ' — ' + b.price;
+    if (dupD || (dupT && title === b.base)) title = (title.length + 11 <= 66 ? title : b.base) + ' (ref ' + p.id + ')';
+    const extra = [availText(p), p.furnished ? String(p.furnished).replace(/^full$/i, 'Furnished').replace(/^part$/i, 'Part furnished').replace(/^un$/i, 'Unfurnished') : '', p.baths ? p.baths + ' bathroom' + (p.baths === 1 ? '' : 's') : ''].filter(Boolean).join(', ');
+    let desc = p.short && String(p.short).length >= 90 ? String(p.short) :
+      (p.studio ? 'Studio flat' : p.beds ? p.beds + ' bedroom ' + String(p.type || 'home').toLowerCase() : p.headline) + ' ' + (p.kind === 'let' ? 'to rent' : 'for sale') + ' in ' + b.where + (p.outcode ? ' ' + p.outcode : '') + (b.price ? ' — ' + b.price : '') + '. ' +
+      (extra ? extra + '. ' : '') + (p.taken ? 'Now ' + (p.kind === 'let' ? 'let' : 'sold') + ' — see similar homes with Residential Realtors.' : 'Photos' + (p.floorplans && p.floorplans.length ? ', floor plan' : '') + ' and viewings with Residential Realtors.');
+    if (dupD || dupT) desc = desc.replace(/\.?\s*$/, '') + '. Ref ' + p.id + '.';
+    if (desc.length > 160) { const cut = desc.slice(0, 157); desc = cut.replace(/[\s,;:—–-]+\S*$/, '') + '…'; }
+    return { title: title, desc: desc };
+  }
   function card(p, sizes) {
     return '<a class="lcard" href="' + esc(p.url) + '" data-k="' + p.kind + '" data-beds="' + p.beds + '" data-price="' + Math.round(p.price) + '" data-taken="' + (p.taken ? 1 : 0) + '" data-added="' + esc(p.added) + '" data-q="' + esc((p.where + ' ' + p.type + ' ' + p.town).toLowerCase()) + '"' + (p.lat != null ? ' data-lat="' + p.lat.toFixed(5) + '" data-lng="' + p.lng.toFixed(5) + '"' : '') + '>' +
       '<div class="lph">' + (p.images.length ? pic(p, 0, sizes || '(max-width: 640px) 100vw, (max-width: 1060px) 50vw, 380px', p.headline + ', ' + p.where) : '<div class="noph">Photos coming soon</div>') +
@@ -624,7 +658,7 @@ module.exports = function (app, opts) {
       image: p.images.slice(0, 6), offers: { '@type': 'Offer', price: Math.round(p.price), priceCurrency: 'GBP', availability: p.taken ? 'https://schema.org/LimitedAvailability' : 'https://schema.org/InStock', businessFunction: p.kind === 'let' ? 'http://purl.org/goodrelations/v1#LeaseOut' : 'http://purl.org/goodrelations/v1#Sell', seller: { '@id': opts.siteUrl + '/#agency' } },
       about: { '@type': p.type === 'House' ? 'House' : 'Apartment', numberOfRooms: p.beds || undefined, numberOfBedrooms: p.beds, numberOfBathroomsTotal: p.baths || undefined, address: { '@type': 'PostalAddress', streetAddress: p.street, addressLocality: p.area || p.town, postalCode: p.outcode, addressCountry: 'GB' },
         geo: p.lat != null ? { '@type': 'GeoCoordinates', latitude: +p.lat.toFixed(3), longitude: +p.lng.toFixed(3) } : undefined } }];
-    opts.send(req, res, { canon: p.url, crumb: K.h1, crumbUrl: K.path, crumb2: p.where, title: p.headline + ' in ' + p.where + ' | Residential Realtors', desc: (p.short || p.headline + ' in ' + p.where).slice(0, 155),
+    opts.send(req, res, { canon: p.url, crumb: K.h1, crumbUrl: K.path, crumb2: p.where, title: seoMeta(p).title + ' | Residential Realtors', desc: seoMeta(p).desc,
       ogImg: n ? opts.siteUrl + '/listing-img/' + p.id + '/0.webp?w=1200' : '', ld: pv ? [] : ld, name: 'p' + p.id + (pv ? '-pv' : ''), stamp: data.stamp, private: pv, robots: pv ? 'noindex, nofollow' : '', preload: n ? '/listing-img/' + p.id + '/0.webp?w=800' : '' }, body);
   });
 

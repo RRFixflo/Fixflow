@@ -274,7 +274,7 @@ function asset(name) {
 function siteFooter(home) {
   return '<footer><div class="wrap"><div class="cols">' +
     '<div><img src="/logo-white.png" alt="Residential Realtors" width="109" height="34" loading="lazy"><div>Estate agents, lettings and property management in London.</div><div style="margin-top:10px">28-30 Harper Road, London SE1 6AD</div><div style="margin-top:6px">Open 7 days, 9am–7pm</div></div>' +
-    '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/letting-agents">Areas we cover — all of London</a><a href="/london-rents">London rents by area</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlord-tools">Landlord tools</a><a href="/landlord-compliance">Landlord compliance checklist</a><a href="/switch-letting-agent">Switching letting agent</a><a href="/overseas-landlords">Overseas landlords</a><a href="/services">All landlord services</a><a href="/gas-safety-certificate">Gas Safety certificate</a><a href="/eicr">EICR</a><a href="/epc">EPC</a><a href="/property-checks">EPC &amp; licence checker</a><a href="/landlord-updates">Landlord updates &amp; alerts</a><a href="/diy-inventory">DIY inventory</a><a href="/landlord-portal-demo">Example landlord portal</a></div>' +
+    '<div><h4>Sell &amp; let</h4><a href="/sales">Selling your home</a><a href="/sales#sales-valuation">Sales valuation</a><a href="/landlords">Landlord services</a><a href="/letting-agents">Areas we cover — all of London</a><a href="/market-updates">London rental market updates</a><a href="/london-rents">London rents by area</a><a href="/landlords#valuation">Rental valuation</a><a href="/landlord-tools">Landlord tools</a><a href="/landlord-compliance">Landlord compliance checklist</a><a href="/switch-letting-agent">Switching letting agent</a><a href="/overseas-landlords">Overseas landlords</a><a href="/services">All landlord services</a><a href="/gas-safety-certificate">Gas Safety certificate</a><a href="/eicr">EICR</a><a href="/epc">EPC</a><a href="/property-checks">EPC &amp; licence checker</a><a href="/landlord-updates">Landlord updates &amp; alerts</a><a href="/diy-inventory">DIY inventory</a><a href="/landlord-portal-demo">Example landlord portal</a></div>' +
     '<div><h4>Tenants</h4><a href="/report-a-repair">Report a repair</a><a href="/offer">Make an offer</a><a href="/tenants">Renting with us</a><a href="/book-a-clean">Book a moving-out clean</a><a href="/tenants#fees">Tenant fees</a><a href="/tenants#guides">Renting guides</a></div>' +
     '<div><h4>Get in touch</h4><a href="tel:02070968131">0207 096 8131</a><a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a><a href="/about">About us</a><a href="/news">Property news</a><a href="/privacy">Privacy</a></div>' +
     '</div><div class="accred">' +
@@ -460,10 +460,10 @@ app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send('User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /staff\nDisallow: /api/\nDisallow: /offer/\nDisallow: /landlord/\nDisallow: /reserve/\nDisallow: /portal\n\nSitemap: ' + SITE_URL + '/sitemap.xml\n');
 });
 // Every public address for the sitemap (and the SEO autopilot in seo.js).
-let seo = null;
+let seo = null, market = null;
 function siteUrls() {
   const pages = [['/', '1.0'], ['/landlord-updates', '0.8'], ['/news', '0.5'], ['/property-checks', '0.8'], ['/landlord-tools', '0.8'], ['/landlord-compliance', '0.8'], ['/switch-letting-agent', '0.7'], ['/overseas-landlords', '0.7'], ['/book-certificate', '0.8'], ['/book-a-clean', '0.6'], ['/services', '0.9'], ['/licence-application', '0.8'], ['/diy-inventory', '0.7'], ['/gas-safety-certificate', '0.8'], ['/eicr', '0.8'], ['/epc', '0.8'], ['/landlord-portal-demo', '0.6'], ['/sales', '0.9'], ['/landlords', '0.9'], ['/tenants', '0.8'], ['/report-a-repair', '0.8'], ['/about', '0.6'], ['/contact', '0.6'], ['/privacy', '0.2']];
-  return pages.concat(listings.urls().length ? [['/properties-to-rent', '0.9'], ['/properties-for-sale', '0.9']] : []).concat(listings.urls().map(function (u) { return [u, '0.7']; })).concat(areas.urls().map(function (u) { return [u, '0.6']; })).concat(svcAreas.urls().map(function (u) { return [u, '0.6']; }));
+  return pages.concat(listings.urls().length ? [['/properties-to-rent', '0.9'], ['/properties-for-sale', '0.9']] : []).concat(listings.urls().map(function (u) { return [u, '0.7']; })).concat(areas.urls().map(function (u) { return [u, '0.6']; })).concat(svcAreas.urls().map(function (u) { return [u, '0.6']; })).concat(market ? market.urls().map(function (u) { return [u, '0.7']; }) : []);
 }
 app.get('/sitemap.xml', (req, res) => {
   res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
@@ -491,6 +491,9 @@ const jobs = require('./jobs')(app, {
 });
 // Who's calling: the phone system's webhook, shown in the staff app.
 // Our properties with other agents on Rightmove (checked each night against our own photos and addresses).
+market = require('./market')(app, { siteUrl: SITE_URL, db: function () { return jobs.db(); }, figures: function () { return areas.figures(); }, areas: areas.areasList, track: function () { return jobs.trackRecord && jobs.trackRecord(); },
+  askAi: function (prompt, wantJson) { return askAiSafe(prompt, wantJson); }, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); },
+  isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); }, canManage: function (req) { return jobs.canManage(req); }, sendMail: function (o) { return jobs.sendMail(o); } });
 seo = require('./seo')(app, { siteUrl: SITE_URL, port: PORT, db: function () { return jobs.db(); }, urls: function () { return siteUrls().map(function (x) { return x[0]; }); }, sigs: function () { return listings.sigs(); },
   isStaff: function (req) { return !!(jobs && jobs.isStaff(req)); }, canManage: function (req) { return jobs.canManage(req); }, sendMail: function (o) { return jobs.sendMail(o); } });
 require('./rivals')(app, { tools: listings.rmTools, gnomenFor: function (rows) { return listings.gnomenFor(rows); }, db: function () { return jobs.db(); },

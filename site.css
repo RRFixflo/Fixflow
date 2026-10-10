@@ -1311,3 +1311,17 @@ html, body { overflow-x: clip; }
 .ar-cover a { flex-direction: column; align-items: flex-start; gap: 2px; }
 .ar-cover a span { white-space: normal; font-weight: 600; color: var(--muted, #667085); font-size: .86rem; }
 .ar-card h2 small { font-size: .5em; font-weight: 700; color: var(--muted, #667085); }
+
+/* Monthly London rental market update */
+.mk-art { max-width: 900px; }
+.mk-art h2 { margin: 28px 0 8px; } .mk-art h3 { margin: 18px 0 8px; font-size: 1.05rem; }
+.mk-art p { line-height: 1.65; }
+.mk-key { margin: 0 0 8px; }
+.mk-g { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+.mk-g div { display: flex; flex-direction: column; gap: 2px; }
+.mk-g b { font-size: 1.7rem; color: var(--navy); line-height: 1.1; } .mk-g span { font-weight: 700; } .mk-g small { color: var(--muted, #667085); font-size: .8rem; }
+.mk-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 20px; }
+.mk-art .ar-tbl { min-width: 0; }
+.mk-art .ar-tbl th, .mk-art .ar-tbl td { padding: 9px 10px; white-space: normal; }
+.mk-art .ar-tbl thead th { cursor: default; } .mk-art .ar-tbl thead th::after { content: none; }
+@media (max-width: 520px) { .mk-art .ar-tbl { font-size: .84rem; } .mk-art .ar-tbl th, .mk-art .ar-tbl td { padding: 8px 6px; } }
