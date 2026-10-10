@@ -2060,6 +2060,7 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && path === '/appraisal/sold') return true;   // appraisal: Land Registry sold prices   // appraisal: similar homes on Rightmove   // calendar: add the viewings to their phone's diary
     if (method === 'GET' && (path === '/epc-addresses' || path === '/landlord-for-address' || path === '/rm-location')) return true;   // appraisal: find the address and our landlord
     if (method === 'GET' && /^\/valuations\/\d+\/pdf$/.test(path)) return true;
+    if (method === 'POST' && /^\/valuations\/\d+\/link$/.test(path)) return true;   // appraisal: private link to send the landlord
     if (method === 'POST' && /^\/viewings\/\d+\/feedback-link$/.test(path)) return true;   // managers only (checked in the route)   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
     if (method === 'GET' && (path === '/site-stats' || path === '/photo-dupes')) return true;
     if (method === 'POST' && (path === '/web-hidden' || path === '/photo-dupes/ok')) return true;   // managers only (checked in the route)
@@ -11926,6 +11927,23 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   app.delete('/api/admin/valuations/:id', withDb(async function (p, req, res) {
     await p.query('DELETE FROM valuations WHERE id = $1', [jobId(req)]); res.json({ ok: true });
+  }));
+  // A private link to the report, for sending the landlord by WhatsApp or text (the PDF opens in their browser).
+  app.post('/api/admin/valuations/:id/link', withDb(async function (p, req, res) {
+    const r = (await p.query('SELECT id, data FROM valuations WHERE id = $1', [jobId(req)])).rows[0];
+    if (!r) return res.status(404).json({ ok: false });
+    let t = (r.data || {}).token;
+    if (!t) { t = crypto.randomBytes(15).toString('base64url'); await p.query("UPDATE valuations SET data = jsonb_set(COALESCE(data, '{}'::jsonb), '{token}', to_jsonb($2::text)) WHERE id = $1", [r.id, t]); }
+    res.json({ ok: true, url: String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '') + '/appraisal/' + t });
+  }));
+  app.get('/appraisal/:token', withDb(async function (p, req, res) {
+    const t = String(req.params.token || ''); if (!/^[A-Za-z0-9_-]{16,40}$/.test(t)) return res.status(404).send('Not found');
+    const r = (await p.query("SELECT * FROM valuations WHERE data->>'token' = $1", [t])).rows[0];
+    if (!r) return res.status(404).type('text/plain').send('This report link is no longer available — please contact Residential Realtors on 0207 096 8131.');
+    const out = await valuationPdf(p, r);
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Cache-Control', 'private, no-store'); res.setHeader('X-Robots-Tag', 'noindex');
+    res.setHeader('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + '; filename="' + out.name.replace(/"/g, '') + '"');
+    res.send(Buffer.from(out.bytes));
   }));
   app.get('/api/admin/valuations/:id/pdf', withDb(async function (p, req, res) {
     const r = (await p.query('SELECT * FROM valuations WHERE id = $1', [jobId(req)])).rows[0];
