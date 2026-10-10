@@ -15557,16 +15557,9 @@
           // This month's fees: collected vs still to come (rents not collected yet).
           var left = (d.items || []).filter(function(x){ return !x.collected && x.from.slice(0, 7) === d.month; }).reduce(function(a, x){ return a + (x.fees || 0); }, 0);
           var all = feesMonth + left, pct = all > 0 ? Math.round(feesMonth / all * 100) : 100;
-          var tot = isNow ? d.fees_all : feesMonth, net = isNow ? (d.fees_all_net || 0) : feesMonthNet;
-          // The month's regular income: monthly fees (rent collection, management, letting fee taken monthly) on
-          // every rent due this month, collected or not; the month's rent roll alongside.
-          var rc = d.month_income || { find: 0, collect: 0, manage: 0, net: 0, roll: 0, n: 0 }, recNet = rc.net || 0, roll = rc.roll || 0, mRows = { length: rc.n || 0 };
-          var recTot = Math.round((rc.find + rc.collect + rc.manage) * 100) / 100;
-          var parts = [['Management', rc.manage], ['Rent collection', rc.collect], ['Letting fees (monthly)', rc.find]].filter(function(p){ return p[1] > 0.004; });
-          return '<button type="button" class="rb-bigc good rb-feesbtn" data-rb-fees title="See which fees, from which property"><span>Monthly income · ' + esc(mLabel) + ' <em>›</em></span><b>' + gbp(recTot) + '</b><small><span style="font-weight:700">inc. VAT</span> · ' + gbp(recNet) + ' + ' + gbp(Math.round((recTot - recNet) * 100) / 100) + ' VAT</small>' +
-            (parts.length ? '<small>' + parts.map(function(p){ return esc(p[0]) + ' <span style="font-weight:700">' + gbp(p[1]) + '</span>'; }).join(' · ') + '</small>' : '') +
-            '<small>Rent roll ' + gbp(roll) + ' · ' + mRows.length + ' rent' + (mRows.length === 1 ? '' : 's') + '</small>' +
-            '<small style="margin-top:6px;border-top:1px solid rgba(0,0,0,.08);padding-top:6px">All fees collected ' + (isNow ? 'this month' : 'in ' + esc(mLabel)) + ': <span style="font-weight:700">' + gbp(feesMonth) + '</span>' + (isNow ? ' · ' + gbp(tot) + ' since ' + esc(rbDay(d.since)) : '') + '</small>' +
+          // Fees collected this month (inc. VAT, with the net and VAT), and how much of the month's fees is still to come.
+          return '<button type="button" class="rb-bigc good rb-feesbtn" data-rb-fees title="See which fees, from which property"><span>Fees collected · ' + esc(mLabel) + ' <em>›</em></span><b>' + gbp(feesMonth) + '</b>' +
+            '<small><span style="font-weight:700">inc. VAT</span> · ' + gbp(feesMonthNet) + ' + ' + gbp(Math.round((feesMonth - feesMonthNet) * 100) / 100) + ' VAT</small>' +
             (all > 0 ? '<span class="rb-feebar"><i style="width:' + pct + '%"></i></span><small>' + pct + '% of ' + (isNow ? 'this month' : esc(mLabel)) + '’s fees collected' + (left > 0 ? ' · <span style="font-weight:700">' + gbp(left) + '</span> inc. VAT (' + (100 - pct) + '%) still to come' : '') + '</small>' : '') + '</button>';
         })() +
       '</div>' +

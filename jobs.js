@@ -10212,7 +10212,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const st = await statementsAll(p), stBy = {}; st.items.forEach(function (x) { stBy[x.tenancy_id] = x; });
     const tcys = (await p.query('SELECT id, property_key, address, start_date, data, intention FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date, id')).rows;
     const lls = {}; (await p.query('SELECT pl.property_key, l.id, l.name, l.email, l.pay_to FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r; });
-    const items = [], feeList = [], monthInc = { find: 0, collect: 0, manage: 0, net: 0, roll: 0, n: 0 }; let notOurs = 0, feesAll = 0, feesN = 0, feesNnet = 0;
+    const items = [], feeList = []; let notOurs = 0, feesAll = 0, feesN = 0, feesNnet = 0;
     // On this month's page, tomorrow's rents too (even when tomorrow is next month).
     // On this month's page, the next 7 days' rents too (even into next month) — for tenants who pay early.
     const week = addDaysIso(today, 7), until = month === thisMonth && week > mEnd ? week : mEnd;
@@ -10233,16 +10233,6 @@ document.querySelectorAll('.lcu').forEach(function(box){
         const from = addMonthsIso(start, n);
         if (from > (onlyKey ? tomorrow > until ? tomorrow : until : until)) break;
         if (next && from >= String(next.start_date).slice(0, 10)) break;
-        // The month's regular income counts every rent due in the month (also those before rent collection started).
-        if (from.slice(0, 7) === month && !firstOnly) {
-          let rentM = Number(d.rent_pcm) || 0;
-          if (n > 0) Object.keys(t.intention || {}).sort().forEach(function (k) { const it = t.intention[k] || {}; const nr = Number(it.new_rent); if (nr && !it.no_increase && (it.rent_from || k) <= from) rentM = nr; });
-          if (rentM > 0) {
-            const rf = stmtFees(Object.assign({}, d, { month_costs: [] }), rentM, false, from);
-            rf.fees.forEach(function (x) { const k = /^Rent Collection/.test(x.label) ? 'collect' : /^Management/.test(x.label) ? 'manage' : /^Tenant Find/.test(x.label) ? 'find' : null; if (k) { monthInc[k] = r2(monthInc[k] + x.amount + (x.vat || 0)); monthInc.net = r2(monthInc.net + x.amount); } });
-            monthInc.roll = r2(monthInc.roll + rentM); monthInc.n++;
-          }
-        }
         const inNow = rcvd[from] || (n === 0 && mvShown);
         if (from < sinceDay && !inNow) { prevRow = null; continue; }   // before collection started — unless it was marked collected (or paid with the move-in money)
         // Our fees on every rent collected so far (all months).
@@ -10358,7 +10348,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Each fee collected, by property (for "Fees collected so far" → the breakdown).
     if (month <= thisMonth) items.filter(function (x) { return x.collected && x.fees; }).forEach(function (x) { feeList.push({ tenancy_id: x.tenancy_id, address: x.address, from: x.from, service: x.service, amount: x.fees, net: x.fees_net, lines: x.fee_lines }); });
     feeList.sort(function (a, b) { return a.from < b.from ? 1 : a.from > b.from ? -1 : String(a.address).localeCompare(String(b.address)); });
-    return { month_income: monthInc, holding: holding, skipped: skipped, fee_list: feeList, today: today, tomorrow: tomorrow, month: month, since: sinceDay, items: items, not_ours: notOurs, fees_before: feesN, fees_all: r2(feesN + (month <= thisMonth ? feesShown : 0)), fees_all_net: r2(feesNnet + (month <= thisMonth ? feesShownNet : 0)) };
+    return { holding: holding, skipped: skipped, fee_list: feeList, today: today, tomorrow: tomorrow, month: month, since: sinceDay, items: items, not_ours: notOurs, fees_before: feesN, fees_all: r2(feesN + (month <= thisMonth ? feesShown : 0)), fees_all_net: r2(feesNnet + (month <= thisMonth ? feesShownNet : 0)) };
   }
   app.get('/api/admin/rent-board', withDb(async function (p, req, res) {
     const key = req.query.property ? propKey(str(req.query.property, 400)) : null;
