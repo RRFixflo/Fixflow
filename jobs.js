@@ -3918,6 +3918,8 @@ module.exports = function mountJobs(app, opts) {
     // Kept from before: what the edit doesn't touch (title, which rent it comes off, the kind of invoice…).
     const clean = Object.assign({}, inv.old || {}, cleanInvoiceData(b.data, number, total));
     if (b.data.title !== undefined) clean.title = str(b.data.title, 120) || clean.title || 'Invoice';
+    // The short title shown on statements (blank: the AI writes a new one).
+    if (b.data.short !== undefined) { const sh = str(b.data.short, 60); if (sh) clean.short = sh; else delete clean.short; }
     await p.query('UPDATE invoices SET number = $2, total = $3, landlord_name = $4, landlord_email = $5, data = $6 WHERE id = $1',
       [inv.id, number, total, clean.landlord, clean.landlordEmail, JSON.stringify(clean)]);
     // Keep the job's invoice summary in step when this is its latest invoice.
@@ -10011,12 +10013,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Every unpaid landlord invoice for the property so far — repair invoices included (they're linked
     // through the job's address) — unless it's set to be taken from a later month's rent.
     const ym = from.slice(0, 7);
-    return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.data->>'collect_month' AS cm, coalesce(i.data->>'title', '') AS title, i.job_id, i.tenancy_id, i.property_key, coalesce(j.property_address, i.address) AS addr, j.category, j.affected, j.symptom, j.description
+    return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.data->>'collect_month' AS cm, coalesce(i.data->>'title', '') AS title, i.job_id, i.tenancy_id, i.property_key, coalesce(j.property_address, i.address) AS addr, j.category, j.affected, j.symptom, j.description, i.data->>'short' AS short
       FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id
       WHERE i.paid_at IS NULL AND coalesce(i.data->>'collect_month', '') <> 'direct' AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.created_at`)).rows
       .filter(function (i) { return (i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key))) && (i.cm ? i.cm <= ym : true); })
       .map(function (i) { const t = String(i.title || '').trim(), generic = !t || /^repair\s+[A-Z]{1,4}-?\d+$/i.test(t) || t.indexOf(i.number) !== -1;
-        return { id: i.id, number: i.number, total: Number(i.total) || 0, title: (i.category || i.affected || i.description ? jobBrief(i, 48) : '') || (generic ? '' : t), job_id: i.job_id }; });
+        return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.short || shortOf((i.category || i.affected || i.description ? jobBrief(i, 48) : '') || (generic ? '' : t)), job_id: i.job_id }; });
   }
   // Rent collection starts from this day (earlier rent dates count as already dealt with).
   const RENT_START = '2026-10-03';
@@ -10313,14 +10315,45 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (d) return d;
     return [j.category && !/^other$/i.test(j.category) ? j.category : '', j.symptom || ''].filter(Boolean).join(' – ');
   }
+  // A very short title for each invoice ("Bathroom door lock", "Dishwasher purchase"), written once by the AI from
+  // the job and the invoice lines and kept on the invoice (data.short); staff can change it on the invoice.
+  // Without the AI: the job's words up to the first "due to / because / ,", at most four words.
+  function shortOf(t) {
+    let w = String(t || '').split(/\s+(?:due to|because|as|since|after|when|which|that|so|but)\s+|\s[–-]\s|[,.;:(]/i)[0].trim().split(/\s+/).filter(Boolean).slice(0, 3);
+    while (w.length > 1 && /^(for|of|to|and|the|a|an|in|on|with|at|from|is|was|has)$/i.test(w[w.length - 1])) w.pop();
+    return w.join(' ');
+  }
+  const shortTried = new Map();   // invoice id → when the AI was last asked (don't ask again for an hour)
+  async function invoiceShorts(p, rows) {
+    const now = Date.now(), need = rows.filter(function (r) { return !r.short && !(shortTried.get(r.id) > now - 3600000); }).slice(0, 25);
+    need.forEach(function (r) { shortTried.set(r.id, now); });
+    if (!need.length || !opts.askAi || (opts.canAi && !opts.canAi())) return;
+    const list = need.map(function (r) { return { id: r.id, job: [r.category, r.affected, r.symptom, String(r.description || '').slice(0, 300)].filter(Boolean).join(' | '), title: r.title || '', lines: (r.lines || []).map(function (l) { return l && l.desc; }).filter(Boolean).slice(0, 6) }; });
+    const prompt = 'For each landlord invoice below, write a very short title of 2 to 4 words saying what the work or purchase was, so it fits on one line of a statement. ' +
+      'Examples: "Bathroom door lock", "Dishwasher purchase", "Boiler repair", "Pest control (fleas)", "Gardening", "Paint room and ceiling". Sentence case, no full stop, no dates, no names, no addresses, no prices, no reference numbers. ' +
+      'Reply with ONLY JSON: {"titles": {"<id>": "<title>"}}.\n\n' + JSON.stringify(list);
+    try {
+      const r = await opts.askAi(prompt, true); if (!r || !r.ok) return;
+      const t = (JSON.parse(String(r.text || '').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()).titles) || {};
+      for (const x of need) {
+        const v = str(t[x.id], 60).replace(/[.\s]+$/, '');
+        if (!v || v.split(/\s+/).length > 6) continue;
+        x.short = v;
+        await p.query("UPDATE invoices SET data = jsonb_set(coalesce(data, '{}'::jsonb), '{short}', to_jsonb($2::text)) WHERE id = $1", [x.id, v]);
+      }
+    } catch (e) { console.error('[invoice titles]', e.message); }
+  }
   async function invoiceInfo(p, ids) {
     const out = {}; if (!ids.length) return out;
     const site = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, ''), toks = {};
-    const rows = (await p.query(`SELECT i.id, i.number, i.job_id, i.property_key, coalesce(i.data->>'title', '') AS title, coalesce(j.property_address, i.address) AS addr, j.category, j.affected, j.symptom, j.description
+    const rows = (await p.query(`SELECT i.id, i.number, i.job_id, i.property_key, coalesce(i.data->>'title', '') AS title, i.data->>'short' AS short, i.data->'lines' AS lines, coalesce(j.property_address, i.address) AS addr, j.category, j.affected, j.symptom, j.description
       FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.id = ANY($1::int[])`, [ids])).rows;
+    await invoiceShorts(p, rows);
     for (const r of rows) {
       const title = String(r.title || '').trim(), generic = !title || /^repair\s+[A-Z]{1,4}-?\d+$/i.test(title) || title.indexOf(r.number) !== -1;
-      const what = (r.category || r.affected || r.description ? jobBrief(r, 48) : '') || (generic ? '' : title);
+      // Short: the saved short title, else the first few words of the job.
+      const brief = (r.category || r.affected || r.description ? jobBrief(r, 48) : '') || (generic ? '' : title);
+      const what = r.short || shortOf(brief);
       const key = r.property_key || propKey(r.addr || '');
       let url = null;
       if (key) {

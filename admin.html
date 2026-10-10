@@ -2967,6 +2967,7 @@
     <p class="muted-note" id="ieSub" style="margin:0"></p>
     <div class="cal-g3"><label>Invoice number<input class="inp" id="ieNum" maxlength="50"></label><label>Date<input class="inp" id="ieDate" type="date"></label><label>Due<input class="inp" id="ieDue" type="date"></label></div>
     <label>What it's for<input class="inp" id="ieWhat" maxlength="120" placeholder="e.g. Move-in fees"></label>
+    <label>Short title on statements<input class="inp" id="ieShort" maxlength="40" placeholder="e.g. Dishwasher purchase (2–4 words)"></label>
     <div class="cal-g3" style="grid-template-columns:1fr 1fr"><label>Landlord<input class="inp" id="ieLl" maxlength="200"></label><label>Landlord's email<input class="inp" id="ieLlEmail" type="email" maxlength="200"></label></div>
     <div><b style="font-size:.85rem">Lines (before VAT)</b><div id="ieLines" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div><button type="button" class="btn small ghost" id="ieAddLine" style="margin-top:6px">＋ Add a line</button></div>
     <label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" id="ieVat"> Add VAT at 20% (except lines marked “no VAT”)</label>
@@ -11394,7 +11395,7 @@
       var i = r.invoice, d = i.data || {}; invEditRow = i;
       $('ieTitle').textContent = 'Edit invoice ' + (i.number || ''); $('ieSub').textContent = (i.property_address || '') + (i.job_id ? ' · repair ' + i.ref : '') + (i.paid_at ? ' · ✓ paid' : '') + ' — same invoice number and link; resend it afterwards if it has already gone out.';
       $('ieNum').value = d.number || i.number || ''; $('ieDate').value = d.date || String(i.created_at).slice(0, 10); $('ieDue').value = d.due || '';
-      $('ieWhat').value = d.title || ''; $('ieWhat').parentNode.hidden = !!i.job_id;
+      $('ieWhat').value = d.title || ''; $('ieWhat').parentNode.hidden = !!i.job_id; $('ieShort').value = d.short || '';
       $('ieLl').value = d.landlord || i.landlord_name || ''; $('ieLlEmail').value = d.landlordEmail || i.landlord_email || '';
       $('ieLines').innerHTML = (d.lines && d.lines.length ? d.lines : [{ desc: '', amount: Number(i.total) || '' }]).map(ieLine).join('');
       $('ieVat').checked = Number(d.vat) > 0;
@@ -11415,6 +11416,7 @@
     if (!$('ieNum').value.trim()) { $('ieErr').textContent = 'The invoice needs a number.'; return; }
     var data = Object.assign({}, d, { number: $('ieNum').value.trim(), date: $('ieDate').value, due: $('ieDue').value, landlord: $('ieLl').value.trim(), landlordEmail: $('ieLlEmail').value.trim(), lines: lines, sub: t.sub, vat: t.vat, total: t.total });
     if (!i.job_id) data.title = $('ieWhat').value.trim();
+    data.short = $('ieShort').value.trim();
     busy(b, true, 'Saving…');
     api('PUT', '/api/admin/invoices/' + i.id, { total: t.total, invoice_number: data.number, data: data }).then(function(r){
       if (!r || !r.ok) throw new Error('save');
