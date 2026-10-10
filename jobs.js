@@ -7280,6 +7280,31 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!has(to) && !has(cc)) cc.push(office);
     return cc;
   }
+  // Resend an email from a tenancy's History: the same attachments (the copies kept when it was sent),
+  // to the same people unless changed; the wording can be changed first. Logged as a new History entry.
+  app.post('/api/admin/tenancies/:id/resend', withDb(async function (p, req, res) {
+    if (!canEmail() || !sendEmail) return res.status(503).json({ ok: false, error: 'email-not-configured' });
+    const b = req.body || {}, id = jobId(req), n = parseInt(b.n, 10), who = req.user ? req.user.name : 'Office';
+    const t = (await p.query('SELECT log FROM tenancies WHERE id = $1', [id])).rows[0];
+    const e = t && Array.isArray(t.log) && t.log[n], m = e && e.email;
+    if (!m) return res.status(404).json({ ok: false, error: 'not-found' });
+    const ok = function (x) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(x); };
+    const list = function (v) { return (Array.isArray(v) ? v : String(v || '').split(/[,;\s]+/)).map(function (x) { return String(x).trim(); }).filter(ok).slice(0, 12); };
+    const to = b.to ? list(b.to) : list(m.to), cc = list(b.cc != null ? b.cc : m.cc).filter(function (x) { return to.indexOf(x) === -1; });
+    if (!to.length) return res.status(400).json({ ok: false, error: 'bad-address' });
+    const subject = str(b.subject, 300) || m.subject || 'Residential Realtors', text = str(b.text, 30000) || m.text || '';
+    const ids = (m.files || []).map(function (f) { return parseInt(f.id, 10) || 0; }).filter(Boolean);
+    const files = ids.length ? (await p.query('SELECT id, file_name, file FROM email_files WHERE id = ANY($1::int[])', [ids])).rows : [];
+    const atts = (m.files || []).map(function (f) { const r = files.filter(function (x) { return x.id === Number(f.id); })[0]; return r && r.file ? { filename: String(f.name || r.file_name || 'file').replace(/[^a-zA-Z0-9.\-_ ]+/g, '-'), content: Buffer.from(r.file).toString('base64') } : null; }).filter(Boolean);
+    officeCc(to, cc);
+    // The original's own layout when the wording wasn't changed; else our usual branded email.
+    const html = !b.text && m.html ? m.html : brandEmail(text, subject);
+    const sent = await sendEmail({ to: to, cc: cc, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: html, attachments: atts });
+    if (sent && sent.ok === false) return res.status(502).json({ ok: false, error: 'send-failed' });
+    await p.query('UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1',
+      [id, JSON.stringify([{ at: new Date().toISOString(), text: 'Resent to ' + to.join(', ') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : '') + ' (' + who + ')', email: logEmail({ to: to, cc: cc, subject: subject, text: text, html: html, attachments: atts.map(function (a) { return a.filename; }), files: m.files || [] }) }])]);
+    res.json({ ok: true });
+  }));
   // Send a welcome email (when email sending is set up), with PDFs attached.
   app.post('/api/admin/tenancies/:id/email', withDb(async function (p, req, res) {
     if (!canEmail()) return res.status(503).json({ ok: false, error: 'email-not-configured' });

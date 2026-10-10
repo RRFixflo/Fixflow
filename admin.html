@@ -12779,26 +12779,100 @@
     var s0 = stmtsBy[x.id], m0 = s0 && s0.months[0] && s0.months[0].n === 0 ? Object.assign({ date: d.statement_date }, s0.months[0]) : null;
     openPdf(k === 'statement' ? statementPdf(d, m0, x.id) : k === 'contacts' ? contactsPdf(d) : termsPdf(d), nm);
   });
-  // History: open an email that was sent (when, who to, subject, attachments and the message itself).
-  function openLogEmail(n){
-    var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0], e = x && (x.log || [])[n]; if (!e) return;
+  // What a History entry is about: an email, an invoice, a statement, a document — or just a note.
+  function tlogKind(e){
+    var t = String(e.text || '');
+    if (e.email || /^(Emailed |Welcome email |Resent to )/.test(t)) return 'mail';
+    if (/\bInvoice (RR-)?INV-[\w-]+/.test(t)) return 'inv';
+    if (/statement/i.test(t)) return 'stmt';
+    if (/saved to the tenancy: /i.test(t)) return 'doc';
+    return 'info';
+  }
+  function tlogDay(t){ var m = /(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})/.exec(t); if (!m) return ''; var mi = ['January','February','March','April','May','June','July','August','September','October','November','December'].indexOf(m[2]) + 1; return m[3] + '-' + String(mi).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0'); }
+  function tleShow(title, html){
     if (!$('tleModal')) {
       document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="tleModal" hidden><div class="card" style="width:min(720px,100%);max-height:92vh;overflow:auto;display:flex;flex-direction:column;gap:10px">' +
-        '<h3 style="margin:0;display:flex;gap:8px;align-items:center">✉ Email sent<span style="flex:1"></span><button type="button" class="btn small ghost" id="tleClose" aria-label="Close">✕</button></h3><div id="tleBody"></div></div></div>');
+        '<h3 style="margin:0;display:flex;gap:8px;align-items:center"><span id="tleTitle">✉ Email sent</span><span style="flex:1"></span><button type="button" class="btn small ghost" id="tleClose" aria-label="Close">✕</button></h3><div id="tleBody"></div></div></div>');
       $('tleClose').addEventListener('click', function(){ $('tleModal').hidden = true; });
       $('tleModal').addEventListener('click', function(ev){ if (ev.target === this) this.hidden = true; });
       document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape' && $('tleModal') && !$('tleModal').hidden) { ev.stopImmediatePropagation(); $('tleModal').hidden = true; } }, true);
     }
+    $('tleTitle').textContent = title; $('tleBody').innerHTML = html; $('tleModal').hidden = false;
+  }
+  // History: open anything — an email (and resend it), an invoice (open, download, email it), a statement
+  // (open, download, email it), a document saved to the tenancy (open, download).
+  var tleCur = null;
+  function openLogEntry(n){
+    var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0], e = x && (x.log || [])[n]; if (!e) return;
+    var k = tlogKind(e), t = String(e.text || ''), when = new Date(e.at).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
+    var head = '<div class="tle-row"><span>When</span><b>' + esc(when) + '</b></div><div class="tle-row"><span>What</span><b>' + esc(t) + '</b></div>';
+    tleCur = { x: x, n: n, e: e };
+    if (k === 'mail') return openLogEmail(n);
+    if (k === 'inv') {
+      var num = /\bInvoice ((?:RR-)?INV-[\w-]+)/.exec(t)[1], iv = allInvoices.filter(function(i){ return i.number === num || i.number === 'RR-' + num; })[0];
+      if (!iv) return tleShow('🧾 Invoice ' + num, head + '<p class="muted-note">This invoice isn’t on file any more (it may have been deleted).</p>');
+      var u = '/api/admin/invoices/' + iv.id + '/pdf';
+      return tleShow('🧾 Invoice ' + iv.number, head + '<div class="tle-row"><span>Amount</span><b>' + gbp(iv.total) + (iv.paid_at ? ' · paid' : ' · not paid yet') + '</b></div>' +
+        '<div class="row-actions" style="flex-wrap:wrap"><a class="btn" target="_blank" rel="noopener" href="' + u + '">Open</a><a class="btn" href="' + u + '?dl=1">⬇ Download</a><button type="button" class="btn primary" data-tle-invmail="' + iv.id + '">✉ Email it to the landlord</button></div>');
+    }
+    if (k === 'stmt') {
+      var day = tlogDay(t), sx = stmtsBy[x.id], m = sx && (day ? sx.months.filter(function(mm){ return mm.from === day; })[0] : sx.months[0]);
+      if (!m) return tleShow('💷 Landlord statement', head + '<p class="muted-note">That statement isn’t available now.</p>');
+      tleCur.stmt = x.id + '|' + m.from;
+      return tleShow('💷 Landlord statement — ' + monthName(m.from), head + '<p class="muted-note" style="margin:0">Made from the tenancy as it is now, so it shows any changes since.</p>' +
+        '<div class="row-actions" style="flex-wrap:wrap"><button type="button" class="btn" data-tle-st="open">Open</button><button type="button" class="btn" data-tle-st="dl">⬇ Download</button><button type="button" class="btn primary" data-tle-st="mail">✉ Email it to the landlord</button></div>');
+    }
+    if (k === 'doc') {
+      var nm = (/saved to the tenancy: (.+?)(?: \((?:uploaded|from the offer|from the welcome email)[^)]*\))?$/i.exec(t) || [])[1] || '', docs = tdocsBy[x.id] || [];
+      var dc = docs.filter(function(d0){ return d0.name === nm; })[0] || docs.filter(function(d0){ return nm && (d0.name.indexOf(nm.replace(/\.[a-z0-9]+$/i, '')) !== -1 || nm.indexOf(d0.name.replace(/\.[a-z0-9]+$/i, '')) !== -1); })[0];
+      if (!dc) return tleShow('📁 Document', head + '<p class="muted-note">That document isn’t on the tenancy any more (it may have been removed or renamed — see Tenancy documents).</p>');
+      var du = '/api/admin/tenancy-docs/' + dc.id;
+      return tleShow('📁 ' + dc.name, head + '<div class="row-actions" style="flex-wrap:wrap"><a class="btn" target="_blank" rel="noopener" href="' + du + '">Open</a><a class="btn" href="' + du + '?dl=1">⬇ Download</a></div>');
+    }
+    tleShow('History', head + '<p class="muted-note" style="margin:0">Nothing was sent with this entry.</p>');
+  }
+  document.addEventListener('click', function(ev){
+    var st = ev.target.closest('[data-tle-st]');
+    if (st && tleCur && tleCur.stmt) { var f = stmtFind(tleCur.stmt); if (!f || !f.m) return; var d = stmtTcy(f.x.tenancy_id) || {}, fname = tcyFile(d, 'Landlord Statement - ' + monthName(f.m.from));
+      if (st.dataset.tleSt === 'open') openPdf(statementPdf(d, f.m, f.x.tenancy_id), fname); else if (st.dataset.tleSt === 'dl') deliverPdf(statementPdf(d, f.m, f.x.tenancy_id), fname, false); else { $('tleModal').hidden = true; stmtEmailMany([f]); } return; }
+    var im = ev.target.closest('[data-tle-invmail]');
+    if (im && tleCur) { var iv = allInvoices.filter(function(i){ return i.id === Number(im.dataset.tleInvmail); })[0], x = tleCur.x, d = x.data || {}, tid = x.id; if (!iv) return;
+      var lm = (d.landlord && d.landlord.email) || iv.landlord_email || ''; busy(im, true, '…');
+      fetch('/api/admin/invoices/' + iv.id + '/pdf', { credentials: 'same-origin' }).then(function(r){ return r.blob(); }).then(function(blob){
+        var rd = new FileReader(); rd.onload = function(){ busy(im, false); $('tleModal').hidden = true;
+          var b64 = String(rd.result).split(',')[1], name = 'Invoice ' + iv.number + '.pdf', url = URL.createObjectURL(blob);
+          composeMail({ title: '✉ Invoice ' + iv.number + ' — check before sending', to: lm ? [lm] : [], subject: 'Invoice ' + iv.number + ' — ' + String(d.address || iv.property_address || '').split(',').slice(0, 2).join(','),
+            body: 'Dear ' + (String((d.landlord && d.landlord.name) || iv.landlord_name || '').trim().split(/\s+/)[0] || 'landlord') + ',\n\nPlease find attached invoice ' + iv.number + ' for ' + gbp(iv.total) + '.\n\nKind regards,\nResidential Realtors',
+            files: [{ name: name, url: url }],
+            sendFn: function(to, subj, body){ return api('POST', '/api/admin/tenancies/' + tid + '/email', { to: [to], subject: subj, body: body, attachments: [{ name: name, data: b64 }] }); },
+            onSent: function(){ loadTenancies(); } });
+        }; rd.readAsDataURL(blob);
+      })['catch'](function(){ busy(im, false); toast('Couldn’t get the invoice'); });
+      return; }
+    var rs = ev.target.closest('[data-tle-resend]');
+    if (rs && tleCur && tleCur.e && tleCur.e.email) { var m = tleCur.e.email, cur = tleCur; $('tleModal').hidden = true;
+      composeMail({ title: '↻ Resend — check before sending', to: m.to || [], cc: m.cc || [], subject: m.subject || '', body: m.text || '',
+        files: (m.files || []).map(function(f){ return { name: f.name, url: '/api/admin/email-files/' + encodeURIComponent(f.id) + '?name=' + encodeURIComponent(f.name) }; }),
+        sendFn: function(to, subj, body){ return api('POST', '/api/admin/tenancies/' + cur.x.id + '/resend', { n: cur.n, to: $('mlTo').value, cc: $('mlCc').value, subject: subj, text: body !== (m.text || '') ? body : '' }); },
+        onSent: function(){ loadTenancies(); } });
+      return; }
+  });
+  // History: open an email that was sent (when, who to, subject, attachments and the message itself).
+  function openLogEmail(n){
+    var x = tenancies.filter(function(t){ return t.id === openTcyId; })[0], e = x && (x.log || [])[n]; if (!e) return;
+    tleCur = { x: x, n: n, e: e };
+    tleShow('✉ Email sent', '');
     var m = e.email, when = new Date(e.at).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' });
     var row = function(k, v){ return v ? '<div class="tle-row"><span>' + k + '</span><b>' + esc(v) + '</b></div>' : ''; };
     $('tleBody').innerHTML = row('Sent', when) + (m ? row('From', m.from) + row('To', (m.to || []).join(', ')) + row('Cc', (m.cc || []).join(', ')) + row('Subject', m.subject) + tleFiles(m) +
         (m.html ? '<iframe class="tle-frame" sandbox="" title="The email"></iframe>' : '<div class="tle-text">' + esc(m.text || '') + '</div>')
-      : '<div class="tle-text">' + esc(e.text || '') + '</div><p class="muted-note" style="margin:0">Only this summary was kept for emails sent before today. Emails sent from now on are saved here in full, so you can open exactly what went.</p>');
+      : '<div class="tle-text">' + esc(e.text || '') + '</div><p class="muted-note" style="margin:0">Only this summary was kept for emails sent before today. Emails sent from now on are saved here in full, so you can open exactly what went.</p>') +
+      (m && meta.canEmail ? '<div class="row-actions"><button type="button" class="btn primary" data-tle-resend="1">↻ Resend</button></div>' : '');
     var fr = $('tleBody').querySelector('.tle-frame'); if (fr) fr.srcdoc = '<!doctype html><meta charset="utf-8"><base target="_blank"><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:14px;margin:12px;overflow-wrap:anywhere}img{max-width:100%;height:auto}</style>' + m.html;
     $('tleModal').hidden = false;
   }
-  document.addEventListener('click', function(ev){ var li = ev.target.closest('[data-tlog]'); if (li) openLogEmail(Number(li.dataset.tlog)); });
-  document.addEventListener('keydown', function(ev){ if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.closest && ev.target.closest('[data-tlog]')) { ev.preventDefault(); openLogEmail(Number(ev.target.closest('[data-tlog]').dataset.tlog)); } });
+  document.addEventListener('click', function(ev){ var li = ev.target.closest('[data-tlog]'); if (li) openLogEntry(Number(li.dataset.tlog)); });
+  document.addEventListener('keydown', function(ev){ if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.closest && ev.target.closest('[data-tlog]')) { ev.preventDefault(); openLogEntry(Number(ev.target.closest('[data-tlog]').dataset.tlog)); } });
   function renderTcyTerms(){
     var box = $('tfTerms'); if (!box || !tcyDraft) return;
     var d = tcyDraft, k = propKey(d.address);
@@ -16051,7 +16125,7 @@
         '<div class="card tcy-stmts" id="tfStmts">' + stmtCard(x.id) + '</div>' +
         // History folds away (closed unless it was left open): the summary shows how many entries and the latest one.
         '<details class="card tcy-hist" id="tfHist"' + ((function(){ try { return localStorage.getItem('rr_tcy_hist') === '1'; } catch (e) { return false; } })() ? ' open' : '') + '><summary><h3>History</h3><span class="tcy-hist-n">' + (x.log || []).length + ' entr' + ((x.log || []).length === 1 ? 'y' : 'ies') + '</span>' +
-          ((x.log || []).length ? '<span class="tcy-hist-last">Latest: ' + esc(fmtDate(x.log[x.log.length - 1].at)) + ' · ' + esc(String(x.log[x.log.length - 1].text || '').slice(0, 90)) + '</span>' : '') + '</summary><ul class="tcy-log">' + (x.log || []).slice().reverse().map(function(e, i, arr){ var n = arr.length - 1 - i, isMail = e.email || /^(Emailed |Welcome email )/.test(e.text || ''); return '<li' + (isMail ? ' class="tcy-log-mail" data-tlog="' + n + '" role="button" tabindex="0" title="Open this email"' : '') + '><span>' + esc(fmtDate(e.at)) + '</span>' + (isMail ? '✉ ' : '') + esc(e.text) + (isMail ? ' <b class="tcy-log-open">Open ›</b>' : '') + '</li>'; }).join('') + '</ul></details>' +
+          ((x.log || []).length ? '<span class="tcy-hist-last">Latest: ' + esc(fmtDate(x.log[x.log.length - 1].at)) + ' · ' + esc(String(x.log[x.log.length - 1].text || '').slice(0, 90)) + '</span>' : '') + '</summary><ul class="tcy-log">' + (x.log || []).slice().reverse().map(function(e, i, arr){ var n = arr.length - 1 - i, k = tlogKind(e), isMail = k === 'mail'; return '<li class="tcy-log-mail" data-tlog="' + n + '" role="button" tabindex="0" title="' + (k === 'info' ? 'Details' : 'Open what this was — download or send it again') + '"><span>' + esc(fmtDate(e.at)) + '</span>' + (isMail ? '✉ ' : k === 'inv' ? '🧾 ' : k === 'stmt' ? '💷 ' : k === 'doc' ? '📁 ' : '') + esc(e.text) + (k !== 'info' ? ' <b class="tcy-log-open">Open ›</b>' : '') + '</li>'; }).join('') + '</ul></details>' +
         '<div class="card danger-card"><h3>Delete tenancy</h3><p class="muted-note">Removes this tenancy record. Tenants and the landlord stay on file.</p><div class="row-actions"><button class="btn danger" id="tfDelete" type="button">Delete tenancy</button></div></div>' : '') +
       '<div class="tcy-save"><button class="btn ghost" id="tfCancel" type="button">Cancel</button><button class="btn primary" id="tfSave" type="button">' + (x ? 'Save changes' : 'Save tenancy') + '</button></div>' +
       '</div>';
