@@ -11382,7 +11382,7 @@
     var to = $('offTo').value.trim(), a = $('offProp').value.trim(), n = $('offToName').value.trim().split(/\s+/)[0];
     if (offKind === 'pvr') { var made = pvSendCreate('email'); if (made) made.then(function(t){ if (t) openMailto('mailto:' + encodeURIComponent(t.email || '') + '?subject=' + encodeURIComponent('Reserve ' + shortAddr(t.property_address) + ' before your viewing') + '&body=' + encodeURIComponent(pvMailBody(t))); }); return; }
     offInvite('email').then(function(tok){
-      var body = (n ? 'Dear ' + n + ',' : 'Hello,') + '\n\nThank you for your interest' + (a ? ' in ' + shortAddr(a) : '') + '.\n\nYou can make your offer online here: ' + offSendLink(tok) + '\n\nIt takes about 5 minutes. Please have a photo of each tenant’s passport or visa ready, plus your right to rent share code if you have one. Once you’ve sent the form, pay the 1 week holding deposit to secure your offer.' + mailSignoff();
+      var body = (n ? 'Dear ' + n + ',' : 'Hello,') + '\n\nThank you for your interest' + (a ? ' in ' + shortAddr(a) : '') + '.\n\nYou can make your offer online here: ' + offSendLink(tok) + '\n\nIt takes about 5 minutes. If you have them, add a photo of each tenant’s passport or visa and your right to rent share code — or send them later. Once you’ve sent the form, pay the 1 week holding deposit to secure your offer.' + mailSignoff();
       openMailto('mailto:' + (/@/.test(to) ? encodeURIComponent(to) : '') + '?subject=' + encodeURIComponent('Make your offer' + (a ? ' — ' + shortAddr(a) : '')) + '&body=' + encodeURIComponent(body));
     });
   });

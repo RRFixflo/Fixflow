@@ -2,7 +2,8 @@
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style id="mobile-fit">html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}@media (max-width:900px){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}</style><script>(function(){var ua=navigator.userAgent;if(/iP(hone|ad|od)/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)){var m=document.querySelector('meta[name=viewport]');if(m&&!/maximum-scale/.test(m.content))m.content+=', maximum-scale=1';}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style id="mobile-fit">html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}@media (max-width:900px){input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{font-size:16px!important}}  .sec-title .opt { margin-left:8px; font-size:.72rem; font-weight:600; text-transform:none; letter-spacing:0; color:#067647; }
+</style><script>(function(){var ua=navigator.userAgent;if(/iP(hone|ad|od)/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)){var m=document.querySelector('meta[name=viewport]');if(m&&!/maximum-scale/.test(m.content))m.content+=', maximum-scale=1';}})();</script>
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#ffffff">
 <title>Make an offer — Residential Realtors</title>
@@ -358,7 +359,7 @@
   <div class="hero"><div class="in">
     <span class="eyebrow">Offer form</span>
     <h1>Make an offer on your next home</h1>
-    <p>Three quick steps: your offer, the people who’ll live there, then review and sign. Have a photo of each tenant’s passport or visa ready.</p>
+    <p>Three quick steps: your offer, the people who’ll live there, then review and sign. If you have a photo of each tenant’s passport or visa, add it — or send it later.</p>
     <div class="hero-row"><div class="hold-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/></svg><span>After submitting, you’ll need to pay a <b>one week holding deposit</b> to reserve the property.</span></div>
     <div class="prop-pill" id="propPill" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg><span id="propPillTxt"></span></div></div>
     <div class="stepper" id="stepper"></div>
@@ -617,8 +618,9 @@
       '<div class="g2">' + field(n, 'income_type', 'Main income', { select: ['Employed', 'Self-employed', 'Student', 'Retired', 'Benefits', 'Other'], req: true }) + field(n, 'salary', 'Gross annual salary', { mode: 'decimal', money: true, req: true, hint: 'Before tax. Students who don’t work can leave it blank (a guarantor is needed).' }) + '</div>' +
       '<div class="g2">' + field(n, 'company', 'Company name', { req: true, hint: 'Who they work for — or their business name if self-employed' }) + field(n, 'position', 'Job title', { req: true, hint: 'Their role, e.g. Nurse, Software engineer, Director' }) + '</div>' +
       field(n, 'current_address', 'Current address', { area: true, req: true }) +
-      '<div class="sec-title">Right to rent</div>' +
-      '<div class="g2">' + field(n, 'uk_passport', 'UK or Irish passport?', { select: ['', 'Yes', 'No'], req: true }) + '</div>' +
+      '<div class="sec-title">Right to rent <span class="opt">Optional — you can send this later</span></div>' +
+      '<p class="hint" style="margin:-4px 0 10px">Not ready? Skip this and place your offer now — we’ll ask for ID before the tenancy starts.</p>' +
+      '<div class="g2">' + field(n, 'uk_passport', 'UK or Irish passport?', { select: ['', 'Yes', 'No'] }) + '</div>' +
       // The Home Office check needs the share code and the date of birth together.
       '<div class="g2 sharebox" data-share="' + n + '" hidden>' +
         '<div class="f"><label class="l" for="t' + n + '_share_code">Right to rent share code</label><input id="t' + n + '_share_code" data-k="share_code" placeholder="R12 345 678" maxlength="12" style="text-transform:uppercase;letter-spacing:.06em"><div class="hint" data-schint="' + n + '">Get one at <a href="https://www.gov.uk/prove-right-to-rent" target="_blank" rel="noopener">gov.uk/prove-right-to-rent</a></div></div>' +
@@ -819,10 +821,9 @@
       if ((t.income_type === 'Employed' || t.income_type === 'Self-employed') && !t.position) return showErr('Please enter tenant ' + i + '’s job title.', $('t' + i + '_position'));
       if (t.income_type !== 'Student' && !(num(t.salary) > 0)) return showErr('Please enter tenant ' + i + '’s gross annual salary.', $('t' + i + '_salary'));
       if (!t.current_address) return showErr('Please enter tenant ' + i + '’s current address.', $('t' + i + '_current_address'));
-      if (!t.uk_passport) return showErr('Please tell us whether tenant ' + i + ' has a UK or Irish passport.', $('t' + i + '_uk_passport'));
-      if (t.uk_passport === 'No' && !/^[A-Z0-9]{9}$/.test((t.share_code || '').toUpperCase().replace(/\s+/g, ''))) return showErr('Please enter tenant ' + i + '’s 9-character right to rent share code.', $('t' + i + '_share_code'));
+      // Right to rent is optional here (they can send it later); a share code that's been typed must look right.
+      if (t.uk_passport === 'No' && (t.share_code || '').trim() && !/^[A-Z0-9]{9}$/.test((t.share_code || '').toUpperCase().replace(/\s+/g, ''))) return showErr('Please enter tenant ' + i + '’s 9-character right to rent share code.', $('t' + i + '_share_code'));
       if (t.uk_passport === 'No' && /^[WS]/i.test(t.share_code || '')) return showErr('Tenant ' + i + '’s code isn’t a right to rent code (those start with R). Please get one at gov.uk/prove-right-to-rent.', $('t' + i + '_share_code'));
-      if (!(files[i] || []).length) return showErr('Please add tenant ' + i + '’s passport or visa.', document.querySelector('[data-ids="' + i + '"]'));
       // Students always need a guarantor; anyone whose guarantor section is started must finish it.
       if (t.income_type === 'Student' || ((guarantorsN > 0 || t.income_type === 'Student') && (guaStarted(t) || guarantorsN >= ts.length))) { var gm = guaMissing(t, i); if (gm !== true) return gm; }
     }

@@ -9063,7 +9063,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const guaN = Math.max(0, Math.min(parseInt(b.guarantors_count, 10) || 0, tenants.length));
     if (tenants.some(function (t) { return (t.income_type === 'Student' || guaStarted(t)) && !guaDone(t); }) || tenants.filter(guaDone).length < guaN) return res.status(400).json({ ok: false, error: 'guarantor' });
     // No UK or Irish passport: a right to rent share code (9 letters/numbers) is needed.
-    for (const t of tenants) { t.share_code = String(t.share_code || '').toUpperCase().replace(/\s+/g, ''); if (t.uk_passport === 'No' && !/^[A-Z0-9]{9}$/.test(t.share_code)) return res.status(400).json({ ok: false, error: 'share_code' }); if (t.uk_passport !== 'No') t.share_code = ''; }
+    for (const t of tenants) { t.share_code = String(t.share_code || '').toUpperCase().replace(/\s+/g, ''); if (t.uk_passport === 'No' && t.share_code && !/^[A-Z0-9]{9}$/.test(t.share_code)) return res.status(400).json({ ok: false, error: 'share_code' }); if (t.uk_passport !== 'No') t.share_code = ''; }
     // Each tenant's ID: required, photos or PDFs, up to 4 files of 12 MB each.
     const docs = [];
     for (let i = 0; i < tenants.length; i++) {
@@ -9077,7 +9077,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
         if (OFFER_DOC_TYPES.indexOf(mime) === -1 || !buf.length || buf.length > 12 * 1024 * 1024) continue;
         docs.push({ tenant_no: i + 1, name: s(f.name, 150) || 'ID', mime: mime, data: buf }); n++;
       }
-      if (!n) return res.status(400).json({ ok: false, error: 'ids', tenant: i + 1 });
+      // ID is optional on the offer — the office asks for it later (it shows as missing on the offer).
+      if (files.length && !n) return res.status(400).json({ ok: false, error: 'ids', tenant: i + 1 });
       delete tenants[i]._ids;
     }
     const data = {
