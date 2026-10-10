@@ -10434,6 +10434,34 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     return out;
   }
+  // A landlord's account: every rent received for them, their credits and deposit (money in), and our fees,
+  // charges taken from rent and the payments we sent them (money out), with a running balance held for them.
+  app.get('/api/admin/landlords/:id/account', withDb(async function (p, req, res) {
+    const keys = (await p.query('SELECT property_key FROM property_landlords WHERE landlord_id = $1', [jobId(req)])).rows.map(function (r) { return r.property_key; });
+    if (!keys.length) return res.json({ ok: true, rows: [] });
+    const st = await statementsAll(p), byT = {}; st.items.forEach(function (x) { byT[x.tenancy_id] = x; });
+    const tcys = (await p.query('SELECT id, property_key, address, data FROM tenancies WHERE property_key = ANY($1::text[])', [keys])).rows;
+    const rows = [], r2 = function (v) { return Math.round((Number(v) || 0) * 100) / 100; };
+    const short = function (a) { return String(a || '').split(',')[0]; };
+    tcys.forEach(function (t) {
+      const d = t.data || {}, addr = short(d.address || t.address), x = byT[t.id], rc = d.rent_rcvd || {}, lp = d.ll_paid || {};
+      Object.keys(rc).forEach(function (from) {
+        const got = rc[from] || {}, at = String(got.at || from).slice(0, 10), m = x && x.months.filter(function (mm) { return mm.from === from; })[0], mon = certDay(from).replace(/^\d+ /, '');
+        rows.push({ at: at, what: 'Rent received · ' + addr + ' (' + mon + ')', in: r2(got.amount || (m ? m.rent : 0)) });
+        if (!m) return;
+        if (m.deposit) rows.push({ at: at, what: 'Deposit (you hold it) · ' + addr, in: r2(m.deposit) });
+        (m.credits || []).forEach(function (c) { rows.push({ at: at, what: c.label + ' · ' + addr, in: r2(c.amount) }); });
+        (m.fees || []).forEach(function (f) { rows.push({ at: at, what: String(f.label || 'Fee').replace(/\s*\(repairs, inc\. VAT\)/, '') + ' · ' + addr, out: r2(Number(f.amount) + Number(f.vat || 0)) }); });
+      });
+      Object.keys(lp).forEach(function (from) {
+        const pd = lp[from] || {}, mon = certDay(from).replace(/^\d+ /, '');
+        rows.push({ at: String(pd.at || from).slice(0, 10), what: 'Paid to you · ' + addr + ' (' + mon + ')' + (pd.ref ? ' · ref ' + pd.ref : ''), out: r2(pd.amount) });
+      });
+    });
+    rows.sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : (b.in ? 1 : 0) - (a.in ? 1 : 0); });
+    let bal = 0; rows.forEach(function (r) { bal = r2(bal + (r.in || 0) - (r.out || 0)); r.balance = bal; });
+    res.json({ ok: true, rows: rows, money_in: r2(rows.reduce(function (a, r) { return a + (r.in || 0); }, 0)), money_out: r2(rows.reduce(function (a, r) { return a + (r.out || 0); }, 0)), balance: bal });
+  }));
   app.get('/api/admin/statements', withDb(async function (p, req, res) {
     const out = await statementsAll(p);
     // Unpaid landlord invoices that will come off the next rent not yet paid to the landlord — the
