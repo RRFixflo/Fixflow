@@ -2055,6 +2055,7 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && path === '/lead-hook') return true;
     if (method === 'GET' && path === '/staff-names') return true;   // the calendar's people
     if ((method === 'GET' || method === 'POST') && path === '/valuations') return true;   // property appraisals (Offers page)
+    if (method === 'POST' && path === '/cal-feed') return true;   // calendar: add the viewings to their phone's diary
     if (method === 'GET' && (path === '/epc-addresses' || path === '/landlord-for-address' || path === '/rm-location')) return true;   // appraisal: find the address and our landlord
     if (method === 'GET' && /^\/valuations\/\d+\/pdf$/.test(path)) return true;
     if (method === 'POST' && /^\/viewings\/\d+\/feedback-link$/.test(path)) return true;   // managers only (checked in the route)   // Contacts (CRM): every member of staff   // website valuation requests and messages: every member of staff
@@ -8216,6 +8217,43 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // The applicant's feedback on a viewing: a short private form; the member of staff who did the viewing is emailed.
   const VF_INTEREST = { yes: 'Yes — I’d like to make an offer', maybe: 'Maybe — I have some questions', no: 'No — it’s not for me' };
   async function vfViewing(p, token) { return /^[\w-]{12,40}$/.test(String(token || '')) ? (await p.query('SELECT * FROM viewings WHERE fb_token = $1', [token])).rows[0] : null; }
+  // Viewings in staff's own phone diary (iPhone, Android, Outlook): a private calendar link they subscribe to.
+  // One link per person and choice (their own viewings, or everyone's), kept in app_settings 'cal_feeds'; a new link stops the old one.
+  async function calFeeds(p) { const r = (await p.query("SELECT value FROM app_settings WHERE key = 'cal_feeds'")).rows[0]; return (r && r.value) || {}; }
+  app.post('/api/admin/cal-feed', withDb(async function (p, req, res) {
+    const b = req.body || {}, who = str(req.user ? req.user.name : b.who, 120) || 'Office', scope = b.scope === 'all' ? 'all' : 'mine', feeds = await calFeeds(p);
+    let tok = Object.keys(feeds).filter(function (k) { return feeds[k].who === who && feeds[k].scope === scope; })[0];
+    if (tok && b.renew === true) { delete feeds[tok]; tok = null; }
+    if (!tok) { tok = crypto.randomBytes(18).toString('base64url'); feeds[tok] = { who: who, scope: scope, at: new Date().toISOString() };
+      await p.query("INSERT INTO app_settings (key, value) VALUES ('cal_feeds', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()", [JSON.stringify(feeds)]); }
+    const site = String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '');
+    res.json({ ok: true, url: site + '/cal/' + tok + '.ics', who: who, scope: scope });
+  }));
+  function icsText(v) { return String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([,;])/g, '\\$1'); }
+  function icsFold(line) { const out = []; while (line.length > 72) { out.push(line.slice(0, 72)); line = ' ' + line.slice(72); } out.push(line); return out.join('\r\n'); }
+  function icsTime(d) { return new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
+  app.get('/cal/:token.ics', withDb(async function (p, req, res) {
+    const feeds = await calFeeds(p), f = feeds[String(req.params.token || '')];
+    if (!f) return res.status(404).type('text/plain').send('This calendar link has been replaced — get a new one from Fixflow → Calendar.');
+    const rows = (await p.query("SELECT id, property_address, at, applicant, status, staff, created_by, email, phone, mins, created_at FROM viewings WHERE at > now() - interval '60 days' AND at < now() + interval '400 days' ORDER BY at LIMIT 3000")).rows
+      .filter(function (v) { return f.scope === 'all' || (v.staff || v.created_by || 'Office') === f.who; });
+    const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Residential Realtors//Fixflow viewings//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+      'X-WR-CALNAME:' + icsText(f.scope === 'all' ? 'RR viewings (everyone)' : 'RR viewings – ' + f.who), 'X-WR-TIMEZONE:Europe/London', 'REFRESH-INTERVAL;VALUE=DURATION:PT15M', 'X-PUBLISHED-TTL:PT15M'];
+    const now = icsTime(Date.now());
+    rows.forEach(function (v) {
+      const who = v.staff || v.created_by || 'Office', end = new Date(new Date(v.at).getTime() + (v.mins || 30) * 60000);
+      const desc = ['Viewing' + (f.scope === 'all' ? ' – ' + who : ''), v.applicant ? 'Applicant: ' + v.applicant : '', v.phone ? 'Phone: ' + v.phone : '', v.email ? 'Email: ' + v.email : '',
+        v.status !== 'booked' ? 'Status: ' + ({ done: 'Done', cancelled: 'Cancelled', no_show: 'No-show' }[v.status] || v.status) : ''].filter(Boolean).join('\n');
+      L.push('BEGIN:VEVENT', 'UID:viewing-' + v.id + '@residentialrealtors.co.uk', 'DTSTAMP:' + now, 'DTSTART:' + icsTime(v.at), 'DTEND:' + icsTime(end),
+        'SUMMARY:' + icsText((v.status === 'cancelled' ? 'Cancelled: ' : '') + 'Viewing – ' + shortAddrText(v.property_address) + (v.applicant ? ' (' + v.applicant + ')' : '') + (f.scope === 'all' ? ' · ' + who : '')),
+        'LOCATION:' + icsText(v.property_address), 'DESCRIPTION:' + icsText(desc), 'STATUS:' + (v.status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED'));
+      if (v.status === 'booked' && new Date(v.at) > Date.now()) L.push('BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Viewing', 'TRIGGER:-PT30M', 'END:VALARM');
+      L.push('END:VEVENT');
+    });
+    L.push('END:VCALENDAR');
+    res.set('Cache-Control', 'no-store'); res.set('X-Robots-Tag', 'noindex');
+    res.type('text/calendar; charset=utf-8').send(L.map(icsFold).join('\r\n') + '\r\n');
+  }));
   app.get('/vf/:token', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
     const v = await vfViewing(p, req.params.token);

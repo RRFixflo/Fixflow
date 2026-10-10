@@ -11760,6 +11760,39 @@
       cal.items = d.viewings || []; renderCal();
     });
   }
+  // Add the viewings to staff's own phone diary: a private calendar link (iPhone: tap to subscribe; Android: Google Calendar on a computer; Outlook: from the web).
+  function calPhone(){
+    var m = $('calPhoneModal');
+    if (!m) {
+      document.body.insertAdjacentHTML('beforeend', '<div class="modal" id="calPhoneModal" hidden><div class="card" style="width:min(560px,100%);max-height:92vh;overflow:auto"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h3 style="margin:0;flex:1">📲 Viewings in your phone’s calendar</h3><button type="button" class="btn small" data-cp-close>Close</button></div>' +
+        '<div class="cal-people" style="margin:6px 0 10px"><button type="button" data-cp-scope="mine" class="on">My viewings</button><button type="button" data-cp-scope="all">Everyone’s viewings</button></div><div id="calPhoneBody" class="muted-note">Getting your link…</div></div></div>');
+      m = $('calPhoneModal');
+      m.addEventListener('click', function(e){
+        var b;
+        if (e.target === m || e.target.closest('[data-cp-close]')) { m.hidden = true; return; }
+        if ((b = e.target.closest('[data-cp-scope]'))) { m.querySelectorAll('[data-cp-scope]').forEach(function(x){ x.classList.toggle('on', x === b); }); load(b.dataset.cpScope); return; }
+        if ((b = e.target.closest('[data-cp-copy]'))) { copyText(m.dataset.url); toast('Link copied'); return; }
+        if (e.target.closest('[data-cp-renew]')) { if (confirm('Make a new link? The old one stops working, so any phone using it needs the new link.')) load(m.dataset.scope, true); return; }
+      });
+    }
+    function load(scope, renew){
+      m.dataset.scope = scope; $('calPhoneBody').innerHTML = 'Getting your link…';
+      api('POST', '/api/admin/cal-feed', { scope: scope, who: calMe(), renew: !!renew }).then(function(d){
+        if (!d || !d.ok) { $('calPhoneBody').innerHTML = 'Couldn’t make the link — try again.'; return; }
+        var url = d.url, web = url.replace(/^https?:/, 'webcal:'); m.dataset.url = url;
+        $('calPhoneBody').innerHTML =
+          '<p style="margin:0 0 10px">' + (scope === 'all' ? 'Everyone’s viewings' : 'Your viewings (' + esc(d.who) + ')') + ' appear in your phone’s own calendar app and keep up to date by themselves — new bookings, changed times and cancellations. A reminder pops up 30 minutes before each viewing.</p>' +
+          '<div class="row-actions" style="flex-wrap:wrap;gap:8px"><a class="btn primary" href="' + esc(web) + '">📅 Add to iPhone / Mac calendar</a><a class="btn" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(web) + '">Google Calendar (Android)</a><button type="button" class="btn" data-cp-copy>Copy link</button></div>' +
+          '<input class="inp" readonly value="' + esc(url) + '" style="width:100%;margin-top:10px;font-size:13px" onclick="this.select()">' +
+          '<ul style="margin:12px 0 0;padding-left:18px;line-height:1.5;font-size:14px">' +
+          '<li><b>iPhone:</b> open this page on your iPhone and tap “Add to iPhone calendar”, then Subscribe. (Or Settings → Calendar → Accounts → Add Account → Other → Add Subscribed Calendar, and paste the link.)</li>' +
+          '<li><b>Android:</b> tap “Google Calendar” (sign in with the Google account on your phone) and press Add — it then shows on your phone. If it doesn’t open, on a computer go to calendar.google.com → Other calendars ＋ → From URL, and paste the link.</li>' +
+          '<li><b>Outlook:</b> Add calendar → Subscribe from web, and paste the link.</li></ul>' +
+          '<p class="muted-note" style="margin:10px 0 0">The link is private to you — don’t share it. Phones check for changes every so often (iPhone about every 15 minutes, Google up to a few hours). <button type="button" class="btn small" data-cp-renew>Make a new link</button></p>';
+      });
+    }
+    m.hidden = false; m.querySelectorAll('[data-cp-scope]').forEach(function(x){ x.classList.toggle('on', x.dataset.cpScope === 'mine'); }); load('mine');
+  }
   function renderCal(){
     if (!cal.start) return;
     var days = cal.mode === 'day' ? 1 : 7, today = calDayKey(new Date()), end = new Date(cal.start); end.setDate(end.getDate() + days - 1);
@@ -11768,7 +11801,8 @@
     document.querySelectorAll('[data-cm]').forEach(function(b){ b.classList.toggle('on', b.dataset.cm === cal.mode); });
     var people = [calMe()]; cal.items.forEach(function(v){ var w = calWho(v); if (people.indexOf(w) === -1) people.push(w); }); if (cal.only && people.indexOf(cal.only) === -1) people.push(cal.only);   // just the people with viewings this week
     $('calPeople').innerHTML = '<button type="button" data-cal-only=""' + (cal.only ? '' : ' class="on"') + '>Everyone</button>' + people.map(function(n){ return '<button type="button" data-cal-only="' + esc(n) + '"' + (cal.only === n ? ' class="on"' : '') + '><i style="background:' + calColour(n) + '"></i>' + esc(n === calMe() ? n + ' (me)' : n) + '</button>'; }).join('') +
-      '<button type="button" data-cal-win title="Open the calendar in its own window — e.g. on your second screen">⧉ Open in a new window</button>';
+      '<button type="button" data-cal-win title="Open the calendar in its own window — e.g. on your second screen">⧉ Open in a new window</button>' +
+      '<button type="button" data-cal-phone title="See these viewings in the calendar on your iPhone or Android phone, or in Outlook">📲 Add to my phone’s calendar</button>';
     var h = '<div class="cal-week' + (days === 1 ? ' one' : '') + '">';
     for (var i = 0; i < days; i++) {
       var d = new Date(cal.start); d.setDate(d.getDate() + i); var key = calDayKey(d);
@@ -11793,6 +11827,7 @@
   $('calView').addEventListener('click', function(e){
     var b;
     if ((b = e.target.closest('[data-cal-only]'))) { cal.only = b.dataset.calOnly; renderCal(); return; }
+    if (e.target.closest('[data-cal-phone]')) { calPhone(); return; }
     if (e.target.closest('[data-cal-win]')) { window.open(location.pathname + '#cal', 'ffcal' + Date.now()); return; }
     if ((b = e.target.closest('[data-open-win]'))) { window.open(location.pathname + '#' + b.dataset.openWin, 'ff' + b.dataset.openWin + Date.now()); return; }
     if ((b = e.target.closest('[data-cal-new]'))) { openBook({ date: b.dataset.calNew }); return; }
