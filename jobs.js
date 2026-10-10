@@ -11895,7 +11895,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       v.beds = str(b.beds, 10) || ''; v.baths = str(b.baths, 10) || ''; v.ptype = str(b.ptype, 60) || '';
       const comps = function (list) { return (Array.isArray(list) ? list : []).slice(0, 12).map(function (c) { c = c || {}; const price = num(c.price); const url = /^https:\/\/(www\.)?rightmove\.co\.uk\//.test(String(c.url || '')) ? String(c.url).slice(0, 300) : '';
         const day = function (v) { v = String(v || ''); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : v === 'now' ? 'now' : ''; };
-        return { addr: str(c.addr, 160) || '', beds: str(c.beds, 10) || '', price: price, url: url, listed: day(c.listed), avail: day(c.avail), reduced: c.reduced ? true : false }; }).filter(function (c) { return c.price && (c.addr || c.url); }); };
+        return { addr: str(c.addr, 160) || '', beds: str(c.beds, 10) || '', price: price, url: url, listed: day(c.listed), avail: day(c.avail), reduced: c.reduced ? true : false, agreed: c.agreed ? true : false }; }).filter(function (c) { return c.price && (c.addr || c.url); }); };
       v.comps_sale = comps(b.comps_sale); v.comps_let = comps(b.comps_let); v.miles = ['0.25', '0.5', '1.0', '3.0'].indexOf(String(b.miles)) !== -1 ? String(b.miles) : '1.0';
     }
     if (v.sales_high && v.sales_low && v.sales_high < v.sales_low) { const x = v.sales_low; v.sales_low = v.sales_high; v.sales_high = x; }
@@ -12022,7 +12022,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
             const link = pdf.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: [M + 8, y - 3, M + 90 + tw, y + 10], Border: [0, 0, 0], A: { Type: 'Action', S: 'URI', URI: require('pdf-lib').PDFString.of(c.url) } });
             page.node.addAnnot(pdf.context.register(link)); }
           const fd = function (d) { return new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }); };
-          const when = [c.listed ? 'Listed ' + fd(c.listed) : '', c.reduced ? 'price reduced' : '', unit && c.avail ? (c.avail === 'now' ? 'available now' : 'available ' + fd(c.avail)) : ''].filter(Boolean).join('  \xB7  ');
+          const when = [c.agreed ? (unit ? 'Let agreed' : 'Sold STC') : '', c.listed ? 'Listed ' + fd(c.listed) : '', c.reduced ? 'price reduced' : '', unit && c.avail ? (c.avail === 'now' ? 'available now' : 'available ' + fd(c.avail)) : ''].filter(Boolean).join('  \xB7  ');
           if (when) { y -= 11; text(when, M + 8, y, 7.6, F, C.soft); }
           page.drawLine({ start: { x: M, y: y - 5 }, end: { x: W - M, y: y - 5 }, thickness: 0.4, color: C.line }); y -= 17;
         });
