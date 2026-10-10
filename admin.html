@@ -12463,7 +12463,7 @@
       var kinds = r.kinds || {}, size = function(b){ return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((b || 0) / 1024)) + ' KB'; };
       $('tfTdocs').innerHTML = '<h3>📁 Tenancy documents</h3><p class="muted-note" style="margin:-4px 0 8px">The deposit certificate, tenants’ ID and signed agreement. Ticked ones show on the landlord’s portal and are attached to the landlord’s welcome email.</p>' +
         (tdocsBy[id].length ? tdocsBy[id].map(function(x){
-          return '<div class="tle-file"><span class="tle-fn">' + (/pdf/i.test(x.mime) ? '📄' : /image/i.test(x.mime) ? '🖼️' : '📎') + ' ' + esc(kinds[x.kind] || 'Document') + ' <span class="muted-note" style="margin:0;display:block;font-weight:400">' + esc(x.name || '') + ' · ' + esc(size(x.size)) + ' · ' + esc(fmtShort(x.created_at)) + (x.added_by ? ' · ' + esc(x.added_by) : '') + '</span></span>' +
+          return '<div class="tle-file"><span class="tle-fn">' + (/pdf/i.test(x.mime) ? '📄' : /image/i.test(x.mime) ? '🖼️' : '📎') + ' <select class="inp" data-tdoc-kind="' + x.id + '" style="width:auto;display:inline-block;padding:3px 8px;font-weight:700;font-size:.9rem" title="What is it?">' + Object.keys(kinds).map(function(k){ return '<option value="' + k + '"' + (x.kind === k ? ' selected' : '') + '>' + esc(kinds[k]) + '</option>'; }).join('') + '</select> <span class="muted-note" style="margin:0;display:block;font-weight:400">' + esc(x.name || '') + ' · ' + esc(size(x.size)) + ' · ' + esc(fmtShort(x.created_at)) + (x.added_by ? ' · ' + esc(x.added_by) : '') + '</span></span>' +
             '<span class="tle-fa" style="align-items:center"><label class="muted-note" style="margin:0;display:flex;gap:5px;align-items:center"><input type="checkbox" data-tdoc-ll="' + x.id + '"' + (x.landlord ? ' checked' : '') + '> Landlord sees it</label>' +
             '<a class="btn small ghost" target="_blank" rel="noopener" href="/api/admin/tenancy-docs/' + x.id + '">Open</a><button type="button" class="btn small ghost" data-tdoc-del="' + x.id + '" aria-label="Remove">✕</button></span></div>';
         }).join('') : '<p class="muted-note" style="margin:0 0 6px">No documents saved yet.</p>') +
@@ -12472,7 +12472,12 @@
         '<button type="button" class="tm-drop" id="tdocAdd" style="flex:1 1 220px;padding:10px"><b>📎 Drag &amp; drop or click to add</b></button><input type="file" id="tdocFile" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx"></div>';
     });
   }
-  function tdocGuess(name){ name = String(name || '').toLowerCase(); return /deposit|dps|tds|mydeposit|protect/.test(name) ? 'deposit_cert' : /passport|\bid\b|\bbrp\b|licen[cs]e|right.?to.?rent|share.?code|visa/.test(name) ? 'tenant_id' : /agreement|signed|\bast\b/.test(name) ? 'signed_agreement' : ''; }
+  function tdocGuess(name, d){ name = String(name || '').toLowerCase();
+    // A file named after one of the tenancy's tenants (e.g. "Amy.png") is their ID.
+    var base = name.replace(/\.[a-z0-9]+$/, '').replace(/[^a-z]+/g, ' ').trim(), ts = ((d || tcyDraft || (tmCtx && tmCtx.d) || {}).tenants || []);
+    var byName = base && ts.some(function(t){ return String((t && t.name) || '').toLowerCase().replace(/^(mr|mrs|miss|ms|dr|mx)\.?\s+/, '').split(/\s+/).filter(function(w){ return w.length > 2; }).some(function(w){ return (' ' + base + ' ').indexOf(' ' + w + ' ') !== -1; }); });
+    if (byName && !/deposit|agreement|contract/.test(name)) return 'tenant_id';
+    return /deposit|dps|tds|mydeposit|protect/.test(name) ? 'deposit_cert' : /passport|\bid\b|\bbrp\b|licen[cs]e|right.?to.?rent|share.?code|visa/.test(name) ? 'tenant_id' : /agreement|signed|\bast\b/.test(name) ? 'signed_agreement' : ''; }
   function tdocUpload(files, kind){
     var id = openTcyId; if (!id || id === 'new') return;
     Promise.all(Array.prototype.map.call(files || [], function(f){
@@ -12488,6 +12493,8 @@
   });
   document.addEventListener('change', function(e){
     if (e.target && e.target.id === 'tdocFile') { tdocUpload(e.target.files, $('tdocKind').value); e.target.value = ''; return; }
+    var kd = e.target.closest && e.target.closest('[data-tdoc-kind]');
+    if (kd) { api('PATCH', '/api/admin/tenancy-docs/' + kd.dataset.tdocKind, { kind: kd.value }).then(function(r){ toast(r && r.ok ? '✓ Saved as ' + kd.options[kd.selectedIndex].text : 'Couldn’t save'); renderTcyDocs(); }); return; }
     var ll = e.target.closest && e.target.closest('[data-tdoc-ll]');
     if (ll) api('PATCH', '/api/admin/tenancy-docs/' + ll.dataset.tdocLl, { landlord: ll.checked }).then(function(r){ toast(r && r.ok ? (ll.checked ? 'Shown to the landlord' : 'Hidden from the landlord') : 'Couldn’t save'); renderTcyDocs(); });
   });
@@ -16823,7 +16830,7 @@
            { id: 'contacts', name: tcyFile(d, 'Tenant Contact Sheet'), label: 'Tenant contact sheet', on: true, kind: 'contacts' },
            { id: 'agr-pdf', name: tcyFile(d, 'Tenancy Agreement'), label: 'Tenancy agreement (PDF, unsigned)', on: !tdocs.some(function(x){ return x.kind === 'signed_agreement'; }), kind: 'agreement' }]
           // The tenancy's saved documents the landlord can see: deposit certificate, tenants' ID, signed agreement.
-          .concat(tdocs.filter(function(x){ return x.landlord && x.kind !== 'other'; }).map(function(x){ return { id: 'file', url: '/api/admin/tenancy-docs/' + x.id, name: x.name, label: (TDOC_LABEL[x.kind] || 'Document') + ' — ' + x.name, on: true, kind: x.kind }; }));
+          .concat(tdocs.filter(function(x){ return x.landlord; }).map(function(x){ return { id: 'file', url: '/api/admin/tenancy-docs/' + x.id, name: x.name, label: (TDOC_LABEL[x.kind] || 'Document') + ' — ' + x.name, on: true, kind: x.kind }; }));
       var label = who === 'tenants' ? 'Welcome email to tenants' : 'Welcome email to landlord';
       showMail({
         who: who, d: d, atts: atts, sendUrl: '/api/admin/tenancies/' + openTcyId + '/email',
