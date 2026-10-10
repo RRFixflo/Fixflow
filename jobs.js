@@ -10682,7 +10682,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     rows.sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : (b.in ? 1 : 0) - (a.in ? 1 : 0); });
     let bal = 0; const tb = {}; rows.forEach(function (r) { bal = r2(bal + (r.in || 0) - (r.out || 0)); tb[r.tid] = r2((tb[r.tid] || 0) + (r.in || 0) - (r.out || 0)); if (!r.note) { r.balance = bal; r.tbal = tb[r.tid]; } });
     const props = tcys.filter(function (t) { return rows.some(function (r) { return r.tid === t.id; }); }).map(function (t) { return { tid: t.id, address: (t.data || {}).address || t.address, prop: short((t.data || {}).address || t.address), balance: tb[t.id] || 0 }; });
-    return { rows: rows, props: props, money_in: r2(rows.reduce(function (a, r) { return a + (r.in || 0); }, 0)), money_out: r2(rows.reduce(function (a, r) { return a + (r.out || 0); }, 0)), balance: bal };
+    // Links to the landlord's own page for each unpaid invoice at these properties (to view and download it).
+    const keys = {}; tcys.forEach(function (t) { if (t.property_key) keys[t.property_key] = 1; });
+    const unpaidIds = (await p.query(`SELECT i.id, i.property_key, coalesce(j.property_address, i.address) AS addr FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.paid_at IS NULL AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL))`)).rows
+      .filter(function (i) { return keys[i.property_key] || keys[propKey(i.addr || '')]; }).map(function (i) { return i.id; });
+    const info = unpaidIds.length ? await invoiceInfo(p, unpaidIds) : {}, invLinks = {};
+    Object.keys(info).forEach(function (k) { if (info[k].url) invLinks[k] = info[k].url; });
+    return { rows: rows, props: props, inv_links: invLinks, money_in: r2(rows.reduce(function (a, r) { return a + (r.in || 0); }, 0)), money_out: r2(rows.reduce(function (a, r) { return a + (r.out || 0); }, 0)), balance: bal };
   }
   // The landlord's own full statement of account on their page: every payment in and out for a period
   // (all time, last 12 months, this tax year or chosen dates), brought forward, totals, balance, unpaid invoices.

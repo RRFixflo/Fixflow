@@ -9658,7 +9658,7 @@
       (st.rows.length ? st.rows.map(laRowHtml).join('') : '<div class="la-r la-note"><span></span><span class="la-w">Nothing in this period.</span><span></span><span></span><span></span></div>') +
       '<div class="la-r la-tot"><span></span><span class="la-w"><b>Totals</b></span><span class="la-in">' + gbp(st.tin) + '</span><span class="la-out">' + gbp(st.tout) + '</span><span></span></div>' +
       '<div class="la-r la-tot"><span></span><span class="la-w"><b>' + (st.cf < 0 ? 'They owe us' : 'Held for them') + ' at ' + esc(ukDay(st.to)) + '</b></span><span></span><span></span><span><b>' + gbp(Math.abs(st.cf)) + '</b></span></div></div>' +
-      (un.length ? '<h4 class="la-sub">Outstanding invoices (' + gbp(sumTotal(un)) + ')</h4><div class="la-tbl">' + un.map(function(i){ return '<div class="la-r la-inv"><span>' + esc(ukDay(String(i.created_at || '').slice(0, 10), true)) + '</span><span class="la-w">' + esc(i.number || '') + ' · ' + esc(String(i.property_address || '').split(',')[0]) + (i.due ? ' · due ' + esc(ukDay(i.due, true)) : '') + '</span><span></span><span class="la-out">' + gbp(i.total) + '</span><span></span></div>'; }).join('') + '</div>' : '');
+      (un.length ? '<h4 class="la-sub">Outstanding invoices (' + gbp(sumTotal(un)) + ')</h4><div class="la-tbl">' + un.map(function(i){ var lk = ((laCur.a && laCur.a.inv_links) || {})[i.id]; return '<div class="la-r la-inv"><span>' + esc(ukDay(String(i.created_at || '').slice(0, 10), true)) + '</span><span class="la-w">' + (lk ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener">' + esc(i.number || '') + ' ›</a>' : esc(i.number || '')) + ' · ' + esc(String(i.property_address || '').split(',')[0]) + (i.due ? ' · due ' + esc(ukDay(i.due, true)) : '') + '</span><span></span><span class="la-out">' + gbp(i.total) + '</span><span></span></div>'; }).join('') + '</div>' : '');
   }
   function openLlStatement(l, a, unpaid, prop){
     laCur = { l: l, a: a, unpaid: unpaid || [], prop: prop || '' };
@@ -9681,11 +9681,13 @@
     var head = function(){ y += 22; doc.setFillColor(11, 31, 58); doc.rect(X - 4, y - 11, R - X + 8, 16, 'F'); doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
       doc.text('Date', X, y); doc.text('Details', X + 62, y); doc.text('In', cIn, y, { align: 'right' }); doc.text('Out', cOut, y, { align: 'right' }); doc.text('Balance', cBal, y, { align: 'right' });
       doc.setTextColor(20); doc.setFont('helvetica', 'normal'); y += 6; };
-    var line = function(date, what, vin, vout, bal, bold){
-      var parts = doc.splitTextToSize(String(what || ''), wW);
+    var line = function(date, what, vin, vout, bal, bold, url){
+      var parts = doc.splitTextToSize(String(what || ''), wW - (url ? 60 : 0));
       if (y + 13 * parts.length > H - 60) { doc.addPage(); y = 40; head(); }
       y += 13; doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(8.8);
       doc.text(date || '', X, y); doc.text(parts, X + 62, y);
+      // An invoice: a small blue "view & download ›" after it, and the line opens the landlord's invoice page.
+      if (url) { var tw = doc.getTextWidth(parts[0] || ''); doc.setFontSize(7.6); doc.setTextColor(23, 92, 211); doc.text('view & download \u203a', X + 62 + tw + 6, y); doc.setTextColor(20); doc.setFontSize(8.8); doc.link(X + 62, y - 9, tw + 80, 12, { url: url }); }
       if (vin) { doc.setTextColor(6, 118, 71); doc.text(pdfGbp(vin), cIn, y, { align: 'right' }); }
       if (vout) { doc.setTextColor(180, 35, 24); doc.text(pdfGbp(vout), cOut, y, { align: 'right' }); }
       doc.setTextColor(20); if (bal !== null && bal !== undefined) doc.text(pdfGbp(bal), cBal, y, { align: 'right' });
@@ -9701,7 +9703,8 @@
     if (un.length) {
       y += 18; if (y > H - 100) { doc.addPage(); y = 40; }
       doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Outstanding invoices', X, y); y += 2;
-      un.forEach(function(i){ line(ukDay(String(i.created_at || '').slice(0, 10), true), (i.number || '') + ' · ' + String(i.property_address || '').split(',')[0] + (i.due ? ' · due ' + ukDay(i.due, true) : ''), 0, i.total, null); });
+      var links = (laCur.a && laCur.a.inv_links) || {};
+      un.forEach(function(i){ line(ukDay(String(i.created_at || '').slice(0, 10), true), (i.number || '') + ' · ' + String(i.property_address || '').split(',')[0] + (i.due ? ' · due ' + ukDay(i.due, true) : ''), 0, i.total, null, false, links[i.id]); });
       line('', 'Total outstanding', 0, sumTotal(un), null, true);
     }
     var n = doc.internal.getNumberOfPages();
@@ -9745,7 +9748,7 @@
     box.onclick = function(e){
       var t = e.target.closest('[data-la-tid]'); if (t) { box.dataset.tid = t.dataset.laTid; box.dataset.all = ''; acctDraw(box, a, o); return; }
       if (e.target.closest('[data-la-all]')) { box.dataset.all = allRows ? '' : '1'; acctDraw(box, a, o); return; }
-      if (e.target.closest('[data-la-full]')) openLlStatement(o.l, { rows: rows }, unpaid, prop ? prop.address : (o.prop || ''));
+      if (e.target.closest('[data-la-full]')) openLlStatement(o.l, { rows: rows, inv_links: (a && a.inv_links) || {} }, unpaid, prop ? prop.address : (o.prop || ''));
     };
   }
   function renderLlAccount(l, openJobs, unpaid){
