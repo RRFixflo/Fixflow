@@ -72,6 +72,7 @@ Public website changes must respect `prefers-reduced-motion`, work without horiz
 
 - A new repair job with no contractor pops up for the owner (not staff mode) to assign one (`newJobPrompt`: suggested contractor from the job's trade or the one chosen before for that kind of job; Assign sets it and opens the job; Later asks again in 2 hours, `rr_nj_later`).
 - Quick search (Ctrl K): matching properties come first, then jobs, tenants and the rest.
+- Offer form: right to rent (UK/Irish passport question, share code, passport/visa upload) is optional — “you can send this later”; only a share code that's been typed must be valid; an offer with no ID shows it as missing for the office to chase.
 - Offers page: “Send a form to an applicant” first, then “Offer forms sent”, for everyone including staff.
 
 - No "Last updated" label in the website header (removed at the owner's request).
