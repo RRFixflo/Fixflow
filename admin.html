@@ -2896,7 +2896,7 @@
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <h3 style="margin:0" id="ttTitle">Let the tenant know</h3>
     <p class="muted-note" style="margin:0" id="ttIntro"></p>
-    <label class="tt-inform" id="ttInformRow" hidden><input type="checkbox" id="ttInform"> <span><b>Just let them know it’s been reported</b> — don’t say we’re arranging a contractor</span></label>
+    <label class="tt-inform" id="ttInformRow" hidden><input type="checkbox" id="ttInform"> <span><b>Just let them know it’s been reported</b> — subject “Issue reported”, no mention of a contractor</span></label>
     <div id="ttList"></div>
     <div class="row-actions" style="margin-top:0"><button class="btn" type="button" id="ttLl" hidden>🏠 Tell the landlord too</button><button class="btn primary" type="button" id="ttDone">Done</button></div>
   </div>
@@ -7250,7 +7250,7 @@
       var cw = certWord(g.jobs);   // gas, electrical or EPC certificate jobs say so instead of "Repair"
       var llSubject = (cw || 'Repair') + (g.jobs.every(function(j){ return j.status === 'Completed'; }) ? ' completed — ' : ' update — ') + (g.jobs.length === 1 ? shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + (cw ? ' certificates' : ' repairs') + ' at your properties');
       // "Just let them know it's been reported": the subject says so, not "Repair update".
-      if (llInform && !ttCustom && g.jobs.every(function(j){ return !j.assigned_to && !j.landlord_handles && j.status !== 'Completed'; }))
+      if (!ttCustom && g.jobs.every(llJustReported))
         llSubject = g.jobs.length === 1 ? 'Issue reported — ' + shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + ' issues reported at ' + (g.jobs.every(function(j){ return propKey(j.property_address) === propKey(g.jobs[0].property_address); }) ? shortAddr(g.jobs[0].property_address) : 'your properties');
       if (meta.canEmail) {
         // Check the email first; sent once, logged on the first job, and the others get a note.
@@ -7569,6 +7569,8 @@
     return /certificate|cp12|eicr|\bepc\b/i.test(cat) ? 'cert' : 'other';
   }
   var llInform = false;   // "just let them know it's been reported" (no promise to arrange anyone)
+  // An open job we look after: with the box ticked, the landlord is only told it's been reported.
+  function llJustReported(j){ return llInform && j.status !== 'Completed' && !j.landlord_handles; }
   function landlordMessage(g, links){
     var jobs = g.jobs.slice().sort(function(a, b){ return a.id - b.id; });
     var oneHome = jobs.every(function(j){ return propKey(j.property_address) === propKey(jobs[0].property_address); });
@@ -7601,7 +7603,7 @@
         status = 'As agreed, you’re arranging this repair' + (j.landlord_handles === 'contractor' ? ' with your own contractor' + (j.landlord_contractor ? ' (' + j.landlord_contractor + ')' : '') : ' yourself') + '.' +
           (tn ? '\nTenant to contact: ' + tn : '') + (j.access_time ? '\nBest time for access: ' + j.access_time : '') + (j.access_notes ? '\nAccess notes: ' + clean(j.access_notes, 200) : '') +
           '\nPlease let us know when it’s booked in and once it’s done, so we can keep the tenant updated.';
-      } else if (!j.assigned_to) {
+      } else if (!j.assigned_to || llJustReported(j)) {
         var rep = new Date(j.created_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
         var urg = j.urgency === 'Emergency' ? ' as an emergency' : j.urgency === 'Urgent' ? ' as urgent' : '';
         status = (origin === 'tenant' ? 'Reported by the tenant on ' + rep + urg : origin === 'cert' ? 'Due for renewal' : origin === 'landlord' ? 'You asked us on ' + rep : origin === 'inspection' ? 'Found at our inspection on ' + rep : 'Raised on ' + rep + urg) + (llInform ? '. We’ll be in touch about the next steps.' : '. We’re arranging a contractor and will keep you posted.');
@@ -7610,12 +7612,12 @@
           (appt ? ' The visit is booked for ' + appt + '.' : who ? ' They’re arranging a time to attend with the tenant.' : '');
       }
       return head + '\n' + det.map(function(x){ return '– ' + x; }).join('\n') + (det.length ? '\n' : '') + status +
-        (link ? '\n' + (isDone(j) ? 'See the details: ' : !j.assigned_to ? 'See the report and follow the progress: ' : 'Follow the progress: ') + link : '');
+        (link ? '\n' + (isDone(j) ? 'See the details: ' : !j.assigned_to || llJustReported(j) ? 'See the report and follow the progress: ' : 'Follow the progress: ') + link : '');
     };
     var body = jobs.length === 1
-      ? (allDone ? (certWord(jobs) ? 'Good news — the ' + (certWord(jobs) === 'EPC' ? 'EPC' : certWord(jobs).toLowerCase()) + ' for ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n') : jobs[0].landlord_handles ? 'Here are the details of the repair at ' + shortAddr(jobs[0].property_address) + ' that you’re arranging.\n\n' : !jobs[0].assigned_to ? 'Just to let you know, a repair has been reported at ' + shortAddr(jobs[0].property_address) + '.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
-      : (llInform && jobs.every(function(j){ return !j.assigned_to && !j.landlord_handles && !isDone(j); }) ? 'Just to let you know, the following issues have been reported at ' : 'Here’s an update on the work at ') + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j, i){ return (i + 1) + '. ' + line(j); }).join('\n\n');
-    return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone || jobs.every(function(j){ return j.landlord_handles || isDone(j); }) ? 'Thank you — please get in touch if you have any questions.' : (llInform && jobs.every(function(j){ return isDone(j) || j.landlord_handles || !j.assigned_to; }) ? 'Please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.')) + '\n\nKind regards,\nResidential Realtors';
+      ? (allDone ? (certWord(jobs) ? 'Good news — the ' + (certWord(jobs) === 'EPC' ? 'EPC' : certWord(jobs).toLowerCase()) + ' for ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n') : jobs[0].landlord_handles ? 'Here are the details of the repair at ' + shortAddr(jobs[0].property_address) + ' that you’re arranging.\n\n' : !jobs[0].assigned_to || llJustReported(jobs[0]) ? 'Just to let you know, a repair has been reported at ' + shortAddr(jobs[0].property_address) + '.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
+      : (jobs.every(llJustReported) ? 'Just to let you know, the following issues have been reported at ' : 'Here’s an update on the work at ') + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j, i){ return (i + 1) + '. ' + line(j); }).join('\n\n');
+    return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone || jobs.every(function(j){ return j.landlord_handles || isDone(j); }) ? 'Thank you — please get in touch if you have any questions.' : (llInform && jobs.every(function(j){ return isDone(j) || j.landlord_handles || llJustReported(j); }) ? 'Please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.')) + '\n\nKind regards,\nResidential Realtors';
   }
   function llPhotoIds(g){ return [].concat.apply([], g.jobs.map(function(j){ var lj = jobs.filter(function(x){ return x.id === j.id; })[0] || j; return lj.photo_ids || []; })).slice(0, 30); }
   function openLandlordNotice(list, custom){
@@ -7639,7 +7641,7 @@
       (skipped ? ' ' + skipped + ' job' + (skipped === 1 ? ' was' : 's were') + ' left out (no landlord phone or email saved).' : '');
     if (custom) $('ttIntro').textContent = 'Check the message, then send it to ' + (groups.length === 1 ? (groups[0].name || 'the landlord') : 'each landlord') + '.';
     llInform = false; $('ttInform').checked = false;
-    $('ttInformRow').hidden = !!custom || !list.some(function(j){ return !j.assigned_to && !j.landlord_handles && j.status !== 'Completed'; });
+    $('ttInformRow').hidden = !!custom || !list.some(function(j){ return !j.landlord_handles && j.status !== 'Completed' && j.status !== 'Cancelled'; });
     $('ttInform').onchange = function(){ llInform = this.checked; $('ttList').querySelectorAll('.tt-card').forEach(function(card){ var ta = card.querySelector('.tt-msg'); if (!ta.dataset.edited) ta.value = lMsg(groups[Number(card.dataset.i)]); }); };
     var links = {};
     var lMsg = function(g){ return custom ? custom.text(g, links, 'landlord') : landlordMessage(g, links); };
