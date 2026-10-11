@@ -714,6 +714,18 @@
   .av-acc-det { margin-top: 4px; color: var(--ink-soft); } .av-acc-det b { color: var(--ink, #101828); } .av-acc-warn { color: #b54708; font-weight: 600; } .av-acc-det .linkish { padding: 0; min-height: 0; line-height: inherit; vertical-align: baseline; }
   .av-fromrm { font-style: normal; color: #00a88f; text-transform: none; letter-spacing: 0; }
   .av-llpick { width: auto; max-width: 220px; min-height: 30px; padding: 2px 6px; font-size: .8rem; }
+  .fn-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; } .fn-head h3 { margin: 0; }
+  .fn-list { display: grid; gap: 10px; margin-top: 10px; }
+  .fn-row { border: 1px solid var(--line, #e6e8ec); border-radius: 12px; padding: 12px 14px; }
+  .fn-top { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; } .fn-top b { font-size: 1rem; } .fn-money { font-weight: 800; color: #15803d; white-space: nowrap; }
+  .fn-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+  .fn-step { position: relative; background: #f1f5fb; border-radius: 8px; padding: 8px 10px; min-width: 0; overflow: hidden; }
+  .fn-step i { position: absolute; left: 0; bottom: 0; height: 4px; background: #1d3fae; border-radius: 0 4px 0 0; }
+  .fn-step span { display: block; font-size: .72rem; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .fn-step strong { font-size: 1.15rem; } .fn-step small { color: var(--ink-soft); font-weight: 700; margin-left: 4px; }
+  .fn-src { font-size: .8rem; color: var(--ink-soft); margin-top: 6px; }
+  .fn-stuck { margin-top: 8px; font-size: .86rem; } .fn-stuck summary { cursor: pointer; font-weight: 700; color: #b45309; } .fn-stuck ul { margin: 6px 0 0; padding-left: 18px; } .fn-stuck li { margin: 3px 0; }
+  .fn-tip { margin-top: 6px; font-size: .82rem; background: #fff7ed; color: #9a3412; border-radius: 8px; padding: 6px 10px; }
+  @media (max-width: 560px) { .fn-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .web-range { display: flex; gap: 6px; flex-wrap: wrap; } .web-range button { border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 999px; padding: 7px 14px; font: inherit; font-weight: 700; font-size: .86rem; cursor: pointer; color: var(--ink-soft); } .web-range button.on { background: var(--navy, #0b1f3a); border-color: var(--navy, #0b1f3a); color: #fff; }
   .web-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; } .web-tiles small { display: block; margin-top: 4px; font-size: .76rem; color: var(--ink-soft); } .web-up { color: #067647 !important; font-weight: 700; } .web-down { color: #b42318 !important; font-weight: 700; }
   .web-chart { display: grid; grid-template-columns: auto 1fr; gap: 8px; height: 200px; margin-top: 12px; } .web-yl { display: flex; flex-direction: column; justify-content: space-between; font-size: .72rem; color: var(--ink-soft); text-align: right; padding-bottom: 2px; }
@@ -2179,6 +2191,7 @@
       <div id="webView" hidden>
         <div class="card web-top"><div class="web-range" id="webRange" role="group" aria-label="Time range"><button type="button" data-days="1">Today</button><button type="button" data-days="7" class="on">7 days</button><button type="button" data-days="30">30 days</button><button type="button" data-days="90">90 days</button><button type="button" data-days="365">12 months</button></div>
           <p class="muted-note" style="margin:6px 0 0">Counted on our own website, without cookies. Staff and search-engine robots aren’t counted. A visitor is one person on one day.</p></div>
+        <div class="card fn-card" id="fnCard" hidden></div>
         <div id="webBody"><div class="empty">Loading…</div></div>
       </div>
       <div class="crm-nag" id="crmNag" hidden></div>
@@ -8999,9 +9012,44 @@
   });
   document.addEventListener('change', function(e){ var sel = e.target.closest('[data-vr-st]'); if (!sel) return;
     api('POST', '/api/admin/valuation-requests/' + sel.dataset.vrSt, { status: sel.value }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save that'); return; } vrAll.forEach(function(x){ if (String(x.id) === sel.dataset.vrSt) x.status = sel.value; }); renderVr(); loadVr(); toast('✓ Saved'); }); });
+  // ---------- Sales funnel (owner): for each thing sold on the website, visitors → requests → paid / won ----------
+  var fnDays = 30;
+  function loadFunnel(){
+    if (staffMode) { $('fnCard').hidden = true; return; }
+    api('GET', '/api/admin/sales-funnel?days=' + fnDays).then(function(d){
+      if (!d || !d.ok) { $('fnCard').hidden = true; return; }
+      $('fnCard').hidden = false;
+      var n = function(x){ return Number(x || 0).toLocaleString('en-GB'); };
+      var pc = function(a, b){ return b ? Math.round(a / b * 100) : 0; };
+      var tot = d.products.reduce(function(a, x){ a.r += x.requests; a.w += x.won; a.m += x.revenue; return a; }, { r: 0, w: 0, m: 0 });
+      var h = '<div class="fn-head"><h3>💷 Sales funnel</h3><div class="web-range" id="fnRange">' + [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '12 months']].map(function(r){ return '<button type="button" data-fn-days="' + r[0] + '"' + (r[0] === d.days ? ' class="on"' : '') + '>' + r[1] + '</button>'; }).join('') + '</div></div>' +
+        '<p class="muted-note" style="margin:2px 0 0">Everything you sell on the website: how many people looked, asked or booked, and paid or became clients. <b>' + n(tot.r) + '</b> requests, <b>' + n(tot.w) + '</b> paid or won' + (tot.m ? ', <b>' + gbp(tot.m) + '</b> taken online (inc. VAT)' : '') + '.</p><div class="fn-list">';
+      d.products.slice().sort(function(a, b){ return (b.requests - a.requests) || (b.visitors - a.visitors); }).forEach(function(x){
+        var cert = ['letting', 'sale'].indexOf(x.k) === -1 && !x.client, top = Math.max(x.visitors, x.requests, 1);
+        var steps = [['People who looked', x.visitors, ''], [cert ? 'Booked' : x.client ? 'Asked for free help' : 'Asked / signed up', x.requests, x.visitors && x.requests <= x.visitors ? pc(x.requests, x.visitors) + '%' : ''],
+          [cert ? 'Went to pay' : 'Contacted', x.progress, x.requests ? pc(x.progress, x.requests) + '%' : ''], [cert ? 'Paid' : x.client ? 'Became letting clients' : 'Won', x.won, x.requests ? pc(x.won, x.requests) + '%' : '']];
+        // Where the biggest drop is, in plain words.
+        var tip = x.visitors >= 20 && !x.requests ? 'Plenty of visitors but nobody booked — the page may need a clearer offer or price.' :
+          x.requests >= 2 && x.won / x.requests < 0.5 && cert ? 'Half or more of bookings didn’t pay — call them (list below).' :
+          x.requests >= 2 && !cert && x.progress / x.requests < 0.7 ? 'Some requests haven’t been contacted yet — call them today.' :
+          x.client && x.progress > x.won ? 'Landlords you’ve helped with a licence who aren’t letting clients yet — a good time to offer your letting service.' : '';
+        h += '<div class="fn-row"><div class="fn-top"><b>' + x.icon + ' ' + esc(x.name) + '</b>' + (x.revenue ? '<span class="fn-money">' + gbp(x.revenue) + '</span>' : '') + '</div>' +
+          '<div class="fn-steps">' + steps.map(function(s){ return '<div class="fn-step"><span>' + s[0] + '</span><strong>' + n(s[1]) + '</strong>' + (s[2] ? '<small>' + s[2] + '</small>' : '') + '<i style="width:' + Math.max(s[1] ? 4 : 0, Math.round(s[1] / top * 100)) + '%"></i></div>'; }).join('') + '</div>' +
+          (x.sources.length ? '<div class="fn-src">Found through: ' + x.sources.map(function(s){ return esc(s.k) + ' (' + s.n + ')'; }).join(' · ') + '</div>' : '') +
+          (tip ? '<div class="fn-tip">💡 ' + tip + '</div>' : '') +
+          (x.stuck.length ? '<details class="fn-stuck"><summary>📞 ' + x.stuck.length + ' to follow up</summary><ul>' + x.stuck.map(function(s){ return '<li><b>' + esc(s.name || '—') + '</b>' + (s.phone ? ' · <a href="tel:' + esc(s.phone) + '">' + esc(s.phone) + '</a>' : '') + ' · ' + esc(s.why) + ' · ' + esc(fmtShort(s.at)) + (s.lt ? '' : ' · <button type="button" class="linkish" data-fn-find="' + esc(s.name || '') + '">Open in Website leads</button>') + '</li>'; }).join('') + '</ul></details>' : '') + '</div>';
+      });
+      $('fnCard').innerHTML = h + '</div>';
+    }).catch(function(){ $('fnCard').hidden = true; });
+  }
+  $('fnCard').addEventListener('click', function(e){
+    var r = e.target.closest('[data-fn-days]'); if (r) { fnDays = +r.dataset.fnDays; loadFunnel(); return; }
+    var f = e.target.closest('[data-fn-find]'); if (f) { showView('crm'); $('crmQ').value = f.dataset.fnFind; $('crmQ').dispatchEvent(new Event('input')); }
+  });
   // ---------- Website visitors: who visits the website, what they look at and where they came from ----------
   var webDays = 7, webData = null;
   function loadWeb(){
+    loadFunnel();
     $('webRange').querySelectorAll('[data-days]').forEach(function(b){ b.classList.toggle('on', +b.dataset.days === webDays); });
     return api('GET', '/api/admin/site-stats?days=' + webDays).then(function(d){ if (!d || !d.ok) { $('webBody').innerHTML = '<div class="empty">Couldn’t load the visitor numbers.</div>'; return; } webData = d; renderWeb(); });
   }
@@ -9197,7 +9245,7 @@
     var t = x.claimed ? new Date(x.claimed).getTime() : 0;
     x.notes.forEach(function(n){ if (n.by_name === x.assigned) t = Math.max(t, new Date(n.at).getTime()); });
     var left = t + 24 * 3600000 - Date.now();
-    return { who: x.assigned, held: left > 0, left: left, since: Date.now() - t };
+    return { who: x.assigned, held: left > 0, left: left, since: t ? Date.now() - t : null };   // no note, call or claim by them yet: no date to count from
   }
   function applLocked(x){ var h = applHold(x); return isAppl(x) && h.held && h.who !== crm.me && !crm.manager; }
   var VERDICT = { good: ['✅', 'Good applicant', '#067647'], maybe: ['🤔', 'Maybe', '#b54708'], no: ['❌', 'Not suitable', '#b42318'] };
@@ -9251,7 +9299,7 @@
     var pill = x.type === 'sub' ? '<span class="crm-pill" style="color:' + (x.subSt === 'Subscribed' ? '#067647' : x.subSt === 'Unsubscribed' ? '#667085' : '#b54708') + '">' + x.subSt + '</span>' : '<span class="crm-pill" style="color:' + st[1] + '">' + st[0] + '</span>';
     var need = crmNeed(x), ap = isAppl(x), hold = ap ? applHold(x) : null, hrs = function(ms){ var h = Math.max(1, Math.round(ms / 3600000)); return h < 48 ? h + 'h' : Math.round(h / 24) + ' days'; };
     var holdFlag = !ap || !crmOpenItem(x) ? '' : hold.held ? '<span class="crm-flag' + (hold.who === crm.me ? ' ok' : '') + '">🔒 ' + (hold.who === crm.me ? 'Yours · ' + hrs(hold.left) + ' left to stay in touch' : esc(hold.who) + '’s applicant · open in ' + hrs(hold.left)) + '</span>'
-      : '<span class="crm-flag warn">🔓 Open to anyone' + (hold.who ? ' · no contact from ' + esc(hold.who) + ' for ' + hrs(hold.since) : '') + '</span>';
+      : '<span class="crm-flag warn">🔓 Open to anyone' + (hold.who ? (hold.since === null ? ' · no contact from ' + esc(hold.who) + ' yet' : ' · no contact from ' + esc(hold.who) + ' for ' + hrs(hold.since)) : '') + '</span>';
     var vd = ap && VERDICT[x.verdict] ? '<span class="crm-flag" style="color:' + VERDICT[x.verdict][2] + '">' + VERDICT[x.verdict][0] + ' ' + VERDICT[x.verdict][1] + '</span>' : '';
     var flags = holdFlag + vd + (x.archived ? '<span class="crm-flag">🗄 Archived ' + esc(fmtShort(x.archived)) + (x.archivedBy ? ' by ' + esc(x.archivedBy) : '') + '</span>' : '') + (need ? '<span class="crm-flag warn">📣 ' + esc(need) + '</span>' : '') + (x.type === 'viewing' && !d.confirmed && x.status !== 'lost' ? '<span class="crm-flag warn">Time to confirm</span>' : '') + (x.type === 'viewing' && d.confirmed ? '<span class="crm-flag ok">🗓 ' + esc(crmSlot(d.confirmed)) + '</span>' : '') +
       (x.follow && need !== 'Follow-up due' ? '<span class="crm-flag' + (x.follow <= today && x.status !== 'won' && x.status !== 'lost' ? ' warn' : '') + '">⏰ ' + (x.follow === today ? 'Today' : x.follow < today ? 'Overdue · ' + esc(fmtDateOnly(x.follow)) : esc(fmtDateOnly(x.follow))) + '</span>' : '') + (x.assigned ? '<span class="crm-flag">👤 ' + esc(x.assigned) + '</span>' : '') + (x.notes.filter(function(n){ return !n.auto; }).length ? '<span class="crm-flag">📝 ' + x.notes.filter(function(n){ return !n.auto; }).length + '</span>' : '');
@@ -11051,6 +11099,33 @@
     home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16"/><path d="M15 10h4a1 1 0 0 1 1 1v10"/><path d="M3 21h18"/></svg>',
     go: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
   };
+  // Pages and settings, so typing what you're looking for ("team", "staff", "funnel", "invoices"…) takes you there.
+  function cmdkGoTo(view, id){ closeDrawer(); showView(view); setTimeout(function(){ var el = $(id); if (!el) return; if (el.tagName === 'DETAILS') el.open = true; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 400); }
+  function cmdkPlaces(){
+    var shown = function(id){ var b = $(id); return b && !b.hidden && getComputedStyle(b).display !== 'none'; };
+    var out = [];
+    var places = [
+      { t: 'Team — add or remove staff', s: 'Staff logins, roles and passwords', k: 'team staff people users employees add staff remove staff new staff login access passwords roles', run: function(){ if (shown('navTeam')) $('navTeam').click(); else cmdkGoTo('act', 'teamSec'); }, ok: function(){ return !!$('teamSec') && (shown('navTeam') || !staffMode); } },
+      { t: 'Sales funnel', s: 'What you sell on the website: visitors, bookings, paid', k: 'sales funnel conversion revenue bookings paid won drop off follow up licence gas eicr epc cleaning diy inventory', run: function(){ cmdkGoTo('web', 'fnCard'); }, ok: function(){ return !staffMode; } },
+      { t: 'SEO health', s: 'Google, sitemap, website checks and the monthly market update', k: 'seo google search console sitemap indexnow health market update article', run: function(){ cmdkGoTo('act', 'seoSec'); }, ok: function(){ return !!$('seoSec'); } },
+      { t: 'Our track record on the website', s: 'Tenancies started this year', k: 'track record tenancies started 306 numbers website', run: function(){ cmdkGoTo('act', 'trkBox'); }, ok: function(){ return !!$('trkBox'); } },
+      { t: 'Rent & landlords', s: 'Collect rent, pay landlords, statements', k: 'rent statements pay landlords collect rent reminders fees', run: function(){ $('rentTopBtn').click(); }, ok: function(){ return shown('rentTopBtn'); } },
+      { t: 'Invoices', s: 'Every invoice to landlords', k: 'invoices invoice bills unpaid overdue', run: function(){ $('invTopBtn').click(); }, ok: function(){ return shown('invTopBtn'); } },
+      { t: 'Phone alerts', s: 'Get Fixflow alerts on your phone (ntfy)', k: 'phone alerts notifications ntfy push', run: function(){ $('navAlerts').click(); }, ok: function(){ return !!$('navAlerts'); } },
+      { t: 'My password', s: 'Change your password', k: 'password change login', run: function(){ $('myPwBtn').click(); }, ok: function(){ return shown('myPwBtn'); } },
+      { t: 'Arrange the menu', s: 'Put the side menu in the order you like', k: 'menu order arrange sidebar', run: function(){ $('navArrange').click(); }, ok: function(){ return !!$('navArrange'); } }
+    ];
+    places.forEach(function(x){ if (x.ok()) out.push({ t: x.t, s: x.s, k: x.k, ic: IC.go, run: x.run }); });
+    // Every page in the side menu too, by its name.
+    document.querySelectorAll('.side .nav').forEach(function(b){
+      if (b.hidden || getComputedStyle(b).display === 'none' || b.id === 'logoutBtn' || b.id === 'navArrange') return;
+      var c = b.cloneNode(true); c.querySelectorAll('svg, small, .badge, .count-chip').forEach(function(x){ x.remove(); });
+      var name = c.textContent.replace(/\s+/g, ' ').trim();
+      if (!name || out.some(function(o){ return o.t.toLowerCase().indexOf(name.toLowerCase()) === 0; })) return;
+      out.push({ t: name, s: b.title || 'Open this page', k: 'page', ic: IC.go, run: function(){ closeDrawer(); b.click(); } });
+    });
+    return out;
+  }
   function openCmdk(){
     if ($('appView').hidden) return;
     $('cmdk').hidden = false;
@@ -11082,7 +11157,8 @@
       { t: 'Contractor payments', s: 'What you owe contractors', ic: IC.go, run: function(){ closeDrawer(); showView('pay'); } },
       { t: 'Ask Fixflow', s: 'Speak or type an instruction, e.g. add a gas safety', ic: IC.go, run: function(){ openAsk('say'); } },
       { t: 'Jobs from an email', s: 'Paste a tenant’s email and let AI organise it into jobs', ic: IC.go, run: function(){ openAsk('email'); } }
-    ].filter(function(a){ return !raw || hit(a.t + ' ' + a.s); });
+    ].concat(cmdkPlaces()).filter(function(a, i, all){ return !all.slice(0, i).some(function(o){ return o.t.toLowerCase() === a.t.toLowerCase(); }); })
+      .filter(function(a){ return !raw || hit(a.t + ' ' + a.s + ' ' + (a.k || '')); });
     var js = (raw ? pick(X.jobs, 7, function(r){ return hitN(r.h) || phN(r.ph) || (pk && r.pk.indexOf(pk) !== -1); }) : jobs.filter(isOpen).sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); })).slice(0, raw ? 7 : 5);
     if (js.length) sections.push({ h: raw ? 'Jobs' : 'Recent open jobs', items: js.map(function(j){
       return { t: j.ref + ' · ' + (j.property_address || 'No address'), s: [issueOf(j), j.tenant_name, j.status].filter(Boolean).join(' · '), ic: IC.job, run: function(){ openJob(j.id); } };
