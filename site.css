@@ -764,7 +764,7 @@ body.bk-lock { overflow: hidden; }
 @media (prefers-reduced-motion: no-preference) { .rc-res .rc-bar i { animation: rcSlide 1s cubic-bezier(.2,.7,.2,1) backwards; } @keyframes rcSlide { from { left: 0; } } .rc-res, .rc-grid > *, .rc-cta { animation: rrUp .6s cubic-bezier(.2,.7,.2,1) backwards; } .rc-grid > :nth-child(2) { animation-delay: .08s; } .rc-grid > :nth-child(3) { animation-delay: .16s; } .rc-grid > :nth-child(n+4) { animation-delay: .24s; } }
 
 /* Landlords: get started (choose a service, then our terms) */
-.svc-ask { display: block; margin-top: 10px; text-align: center; font-size: .88rem; font-weight: 600; color: var(--soft); text-decoration: none; } .svc-ask:hover { color: var(--navy); text-decoration: underline; }
+.svc-ask { display: block; margin-top: 4px; padding: 8px 0; text-align: center; font-size: .88rem; font-weight: 600; color: var(--soft); text-decoration: none; } .svc-ask:hover { color: var(--navy); text-decoration: underline; }
 .ls-sec[hidden] { display: none; }
 .ls-box { display: grid; grid-template-columns: .9fr 1.1fr; gap: 32px; padding: 30px; border-radius: 24px; background: #fff; border: 1px solid #d3dbe6; box-shadow: 0 30px 70px -50px rgba(11,31,58,.5); } @media (max-width: 860px) { .ls-box { grid-template-columns: 1fr; padding: 22px; } }
 .ls-intro h2 { margin: 4px 0 8px; }
@@ -923,7 +923,7 @@ body.bk-lock { overflow: hidden; }
 .lp-price { margin: 0 0 8px; font-size: 1.15rem; color: #fff; } .lp-price b { font-size: 1.5rem; } .lp-price small { display: block; color: #9fb0c8; font-size: .85rem; } .lp-price[hidden] { display: none; }
 .lp-lead { margin: 0 0 22px; color: #d6deea; font-size: 1.08rem; line-height: 1.5; }
 .lp-cta { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; } .lp-go { background: var(--red); color: #fff; padding: 16px 26px; font-size: 1.05rem; box-shadow: 0 16px 30px -16px rgba(217,38,46,.9); } .lp-go:hover { filter: brightness(1.06); }
-.lp-call { color: #d6deea; font-weight: 700; text-decoration: none; } .lp-call:hover { color: #fff; }
+.lp-call { display: inline-block; padding: 8px 0; color: #d6deea; font-weight: 700; text-decoration: none; } .lp-call:hover { color: #fff; }
 .lp-ticks { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 10px; } .lp-ticks li { position: relative; padding-left: 30px; color: #e8edf5; } .lp-ticks li::before { content: "✓"; position: absolute; left: 0; color: #6ee7a8; font-weight: 800; }
 @media (max-width: 900px) { .lp-wrap { min-height: 0; display: block; } .lp-photo { position: relative; width: 100%; height: 260px; } .lp-card { width: auto; margin: -50px 12px 0; padding: 28px 22px; } .lp-chip { display: none; } }
 .lp-strip { background: #fff; border-bottom: 1px solid var(--line); } .lp-strip .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; justify-content: center; padding: 18px 0; color: var(--soft); font-weight: 600; } .lp-logos { display: flex; gap: 18px; align-items: center; } .lp-logos img { height: 34px; width: auto; }
@@ -1311,7 +1311,7 @@ html, body { overflow-x: clip; }
 .trk-n a { font-weight: 700; }
 .ar-cover a { flex-direction: column; align-items: flex-start; gap: 2px; }
 .ar-cover a span { white-space: normal; font-weight: 600; color: var(--muted, #667085); font-size: .86rem; }
-.ar-card h2 small { font-size: .5em; font-weight: 700; color: var(--muted, #667085); }
+.ar-card h2 small { font-size: max(.5em, 12px); font-weight: 700; color: var(--muted, #667085); }
 
 /* Monthly London rental market update */
 .mk-art { max-width: 900px; }
@@ -1353,3 +1353,30 @@ html, body { overflow-x: clip; }
 .cbq-done b { display: block; color: #067647; font-size: 1.05rem; } .cbq-done span { color: var(--soft); }
 .cbq-form:has(.cbq-done) { display: block; }
 @media (max-width: 860px) { .cbq-form { grid-template-columns: 1fr; } .cbq-f input { flex: 1 1 140px; width: auto; } .cbq-f .btn { flex: 1 1 100%; } }
+
+/* Phone polish (Oct 2026): fit tables, tidy wrapping, softer placeholders */
+h1, h2, h3, .ar-card > span, .trk span, .tl small { text-wrap: balance; }
+p, li { text-wrap: pretty; }
+input::placeholder, textarea::placeholder { font-weight: 400; color: #98a2b3; text-transform: none; opacity: 1; }
+.ar-card h2 small { white-space: nowrap; }
+.svc-c.star .svc-ask { color: #c9d3e1; }
+@media (max-width: 600px) {
+  .ar-card { padding: 20px 16px; }
+  .ar-tbl { min-width: 0; font-size: .8rem; }
+  .ar-tbl th, .ar-tbl td { padding: 9px 5px; }
+  .ar-tbl th:first-child, .ar-tbl td:first-child { padding-left: 8px; white-space: normal; }
+  .ar-tbl th:last-child, .ar-tbl td:last-child { padding-right: 8px; }
+  .ar-tbl thead th { white-space: normal; line-height: 1.2; vertical-align: bottom; }
+  .ar-tbl thead th::after { content: none; } .ar-tbl thead th.asc::after { content: " ↑"; } .ar-tbl thead th.desc::after { content: " ↓"; }
+  .pd-table table { min-width: 0; } .pd-table th, .pd-table td { padding: 10px 7px; font-size: .82rem; } .pd-table th:first-child, .pd-table td:first-child { padding-left: 12px; } .pd-table th:last-child, .pd-table td:last-child { padding-right: 12px; }
+  .pd-steps { gap: 6px; } .pd-steps span { font-size: .6rem; letter-spacing: .02em; line-height: 1.25; }
+  .ex-top { flex-direction: column; align-items: flex-start; gap: 10px; padding-right: 54px; }
+  .cb-form { padding: 20px 16px; }
+  .cb-item { grid-template-columns: auto 1fr; padding: 14px; }
+  .cb-pr { grid-column: 2; text-align: left; display: flex; gap: 6px; align-items: baseline; }
+  .cb-pr small { display: inline; }
+  .cb-size { width: 100% !important; }
+}
+.tw-hint { margin: 0 0 6px; font-size: .78rem; font-weight: 700; color: var(--soft); text-align: right; }
+.tw-hint[hidden] { display: none; }
+.tw-more { -webkit-mask-image: linear-gradient(to right, #000 82%, rgba(0,0,0,.25)); mask-image: linear-gradient(to right, #000 82%, rgba(0,0,0,.25)); }

@@ -90,7 +90,7 @@ The owner is not a developer: explain results in plain, non-technical English, b
 
 Speed: our CSS/JS are fingerprinted (`asset()`, `?v=`) and served with `max-age=31536000, immutable` (`noCache` in server.js); Google Fonts load without blocking the first paint (`SITE_FONTS`: preload + `media="print" onload`, `<noscript>` fallback; landlords.html the same). Only `site.js`, `ff.js` and `rrt.js` can be downloaded from the root — every other `.js` (server code) is 404 (`NOT_PUBLIC` allow-list), so new server modules are covered automatically.
 
-Public website changes must respect `prefers-reduced-motion`, work without horizontal scroll at phone width, and keep the existing SEO (titles, descriptions, sitemap, structured data).
+Public website changes must respect `prefers-reduced-motion`, work without horizontal scroll at phone width, and keep the existing SEO (titles, descriptions, sitemap, structured data). Wide tables sit in a scrolling wrapper (`.ar-tw`, `.pd-table`); site.js adds “Swipe the table to see more →” and a right-edge fade only when the table is wider than the screen. Grid columns holding tables use `minmax(0, 1fr)` so a table can't stretch its section past the screen.
 
 ## User preferences learned so far
 

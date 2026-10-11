@@ -467,3 +467,18 @@
     }).catch(function () { go.disabled = false; go.textContent = 'Send message'; err.textContent = 'Couldn’t connect — please try again or call 0207 096 8131.'; });
   });
 })();
+
+// Wide tables on phones: show "Swipe to see more" and fade the right edge while there's more to scroll to.
+(function () {
+  var boxes = document.querySelectorAll('.ar-tw, .pd-table');
+  if (!boxes.length) return;
+  var check = function (b) {
+    var more = b.scrollWidth > b.clientWidth + 2;
+    b.classList.toggle('tw-more', more && b.scrollLeft + b.clientWidth < b.scrollWidth - 4);
+    var h = b.previousElementSibling && b.previousElementSibling.classList.contains('tw-hint') ? b.previousElementSibling : null;
+    if (more && !h) { h = document.createElement('div'); h.className = 'tw-hint'; h.setAttribute('aria-hidden', 'true'); h.textContent = 'Swipe the table to see more →'; b.parentNode.insertBefore(h, b); }
+    if (h) h.hidden = !more;
+  };
+  Array.prototype.forEach.call(boxes, function (b) { check(b); b.addEventListener('scroll', function () { check(b); }, { passive: true }); });
+  window.addEventListener('resize', function () { Array.prototype.forEach.call(boxes, check); });
+})();
