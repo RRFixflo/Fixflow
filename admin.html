@@ -8975,7 +8975,7 @@
     return '<details class="card vr-card"' + (open || nNew ? ' open' : '') + ' data-vr-box><summary><b>🌐 Website requests</b>' + (nNew ? ' <span class="vr-new">' + nNew + ' new</span>' : '') + ' <span class="muted">· valuations and messages from the website</span></summary>' +
       vrItems.slice(0, 50).map(function(x){ var d = x.data || {}, st = VR_ST[x.status] || VR_ST.new;
         var enq = d.kind === 'enquiry';
-        return '<div class="vr-row"><div class="vr-main"><div>' + (enq ? '<span class="vr-tag">💬 Message · ' + esc(d.topic || '') + '</span> ' : d.kind === 'sale' ? '<span class="vr-tag val">🏷️ Sales valuation</span> ' : d.kind === 'quick' ? '<span class="vr-tag val">⚡ Quick valuation · ' + esc(d.service || '') + '</span> ' : d.kind === 'comps' ? '<span class="vr-tag val">📊 Comparables report</span> ' : '<span class="vr-tag val">🏠 Valuation</span> ') + '<b>' + esc(x.name) + '</b>' + ((enq && x.address === '(general enquiry)') || d.kind === 'quick' ? '' : ' · ' + esc(x.address)) + '</div>' +
+        return '<div class="vr-row"><div class="vr-main"><div>' + (enq ? '<span class="vr-tag">💬 Message · ' + esc(d.topic || '') + '</span> ' : d.kind === 'sale' ? '<span class="vr-tag val">🏷️ Sales valuation</span> ' : d.kind === 'quick' ? '<span class="vr-tag val">⚡ Quick valuation · ' + esc(d.service || '') + '</span> ' : d.kind === 'comps' ? '<span class="vr-tag val">📊 Comparables report</span> ' : d.kind === 'mortgage' ? '<span class="vr-tag val">🏦 Mortgage rental letter</span> ' : '<span class="vr-tag val">🏠 Valuation</span> ') + '<b>' + esc(x.name) + '</b>' + ((enq && x.address === '(general enquiry)') || d.kind === 'quick' ? '' : ' · ' + esc(x.address)) + '</div>' +
           '<div class="muted" style="font-size:.85rem">' + [d.beds ? (d.beds === 'Studio' ? 'Studio' : d.beds + ' bed') : '', d.type, d.service && d.service !== 'Not sure yet' ? 'wants ' + d.service : '', d.when ? (d.kind === 'sale' ? 'selling: ' : 'available: ') + d.when.toLowerCase() : '', 'sent ' + fmtShort(x.created_at), x.handled_by && x.status !== 'new' ? 'by ' + x.handled_by : ''].filter(Boolean).map(esc).join(' · ') + '</div>' +
           (d.message ? '<div class="vr-msg">“' + esc(d.message) + '”</div>' : '') +
           (d.kind === 'comps' ? compsEditor(x) : '') +
@@ -9026,7 +9026,7 @@
         '<p class="muted-note" style="margin:2px 0 0">Everything you sell on the website: how many people looked, asked or booked, and paid or became clients. <b>' + n(tot.r) + '</b> requests, <b>' + n(tot.w) + '</b> paid or won' + (tot.m ? ', <b>' + gbp(tot.m) + '</b> taken online (inc. VAT)' : '') + '.</p><div class="fn-list">';
       d.products.slice().sort(function(a, b){ return (b.requests - a.requests) || (b.visitors - a.visitors); }).forEach(function(x){
         var cert = ['letting', 'sale'].indexOf(x.k) === -1 && !x.client, top = Math.max(x.visitors, x.requests, 1);
-        var steps = [['People who looked', x.visitors, ''], [cert ? 'Booked' : x.client ? 'Asked for free help' : 'Asked / signed up', x.requests, x.visitors && x.requests <= x.visitors ? pc(x.requests, x.visitors) + '%' : ''],
+        var steps = [['People who looked', x.visitors, ''], [cert ? 'Booked' : x.k === 'mortgage' ? 'Asked for a letter' : x.client ? 'Asked for free help' : 'Asked / signed up', x.requests, x.visitors && x.requests <= x.visitors ? pc(x.requests, x.visitors) + '%' : ''],
           [cert ? 'Went to pay' : 'Contacted', x.progress, x.requests ? pc(x.progress, x.requests) + '%' : ''], [cert ? 'Paid' : x.client ? 'Became letting clients' : 'Won', x.won, x.requests ? pc(x.won, x.requests) + '%' : '']];
         // Where the biggest drop is, in plain words.
         var tip = x.visitors >= 20 && !x.requests ? 'Plenty of visitors but nobody booked — the page may need a clearer offer or price.' :
@@ -9207,7 +9207,7 @@
   var crm = { items: [], staff: [], me: '', type: '', open: {}, mode: 'crm' }, CRM_T = {
     rm: ['🏠', 'Rightmove', '#0e7a64', '#e6fbf6'], lead: ['📥', 'Portal lead', '#0e7a64', '#e6fbf6'],
     viewing: ['🗓', 'Viewing request', '#b54708', '#fffaeb'], val: ['🏠', 'Rental valuation', '#5925dc', '#f4f3ff'], sale: ['🏷️', 'Sales valuation', '#5925dc', '#f4f3ff'], quick: ['⚡', 'Quick valuation', '#5925dc', '#f4f3ff'],
-    cert: ['📜', 'Certificate booking', '#c4320a', '#fff6ed'], comps: ['📊', 'Comparables report', '#6941c6', '#f4f3ff'], enquiry: ['💬', 'Message', '#175cd3', '#eff8ff'], contact: ['📇', 'Added by staff', '#344054', '#f2f4f7'], call: ['📞', 'Out-of-hours call', '#b42318', '#fef3f2'], sub: ['🔔', 'Alert sign-up', '#067647', '#ecfdf3'] };
+    cert: ['📜', 'Certificate booking', '#c4320a', '#fff6ed'], comps: ['📊', 'Comparables report', '#6941c6', '#f4f3ff'], mortgage: ['🏦', 'Mortgage rental letter', '#5925dc', '#f4f3ff'], enquiry: ['💬', 'Message', '#175cd3', '#eff8ff'], contact: ['📇', 'Added by staff', '#344054', '#f2f4f7'], call: ['📞', 'Out-of-hours call', '#b42318', '#fef3f2'], sub: ['🔔', 'Alert sign-up', '#067647', '#ecfdf3'] };
   var CRM_ST = { new: ['New', '#b42318'], contacted: ['Contacted', '#175cd3'], booked: ['Booked', '#6941c6'], won: ['Won ✓', '#067647'], lost: ['Not going ahead', '#667085'] };
   function crmDay(d){ return new Date(d).toISOString().slice(0, 10); }
   function crmToday(){ return new Date().toLocaleDateString('en-CA', { timeZone: TZ }); }
@@ -9221,7 +9221,7 @@
       (d.meta || []).forEach(function(m){ mt[m.ref] = m; });
       crm.staff = d.staff || []; crm.me = d.me || ''; crm.manager = !!d.manager;
       crm.items = (d.items || []).map(function(x){ var dd = x.data || {}, ref = 'vr:' + x.id, m = mt[ref] || {};
-        return { ref: ref, id: x.id, type: dd.kind === 'viewing' ? 'viewing' : dd.kind === 'cert' ? 'cert' : dd.kind === 'sale' ? 'sale' : dd.kind === 'quick' ? 'quick' : dd.kind === 'comps' ? 'comps' : dd.kind === 'enquiry' ? 'enquiry' : dd.kind === 'contact' ? 'contact' : dd.kind === 'call' ? 'call' : dd.kind === 'rightmove' ? 'rm' : dd.kind === 'lead' ? 'lead' : 'val',
+        return { ref: ref, id: x.id, type: dd.kind === 'viewing' ? 'viewing' : dd.kind === 'cert' ? 'cert' : dd.kind === 'sale' ? 'sale' : dd.kind === 'quick' ? 'quick' : dd.kind === 'comps' ? 'comps' : dd.kind === 'mortgage' ? 'mortgage' : dd.kind === 'enquiry' ? 'enquiry' : dd.kind === 'contact' ? 'contact' : dd.kind === 'call' ? 'call' : dd.kind === 'rightmove' ? 'rm' : dd.kind === 'lead' ? 'lead' : 'val',
           name: x.name, email: x.email, phone: x.phone, address: /^\(/.test(x.address) ? '' : x.address, status: x.status, at: x.created_at, data: dd, by: x.handled_by, archived: m.archived_at || null, junk: !!m.junk, archivedBy: m.archived_by || '', assigned: m.assigned_to || x.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : x.follow_up ? crmDay(x.follow_up) : '', notes: notes[ref] || [], claimed: m.claimed_at || null, verdict: m.verdict || '' }; })
         .concat((d.subs || []).map(function(x){ var ref = 'sub:' + x.id, m = mt[ref] || {};
           return { ref: ref, id: x.id, type: 'sub', archived: m.archived_at || null, junk: !!m.junk, archivedBy: m.archived_by || '', name: x.name || x.email, email: x.email, phone: '', address: '', status: x.unsubscribed_at ? 'lost' : x.confirmed_at ? 'won' : 'new', subSt: x.unsubscribed_at ? 'Unsubscribed' : x.confirmed_at ? 'Subscribed' : 'Waiting for them to confirm', at: x.created_at, data: { freq: x.freq, sent: x.sent_count, last: x.last_sent_at }, assigned: m.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : '', notes: notes[ref] || [] }; }))
@@ -9295,7 +9295,7 @@
   function crmCard(x){
     var t = x.type === 'cert' && x.data && x.data.who === 'tenant' ? ['🧽', 'Cleaning booking (tenant)', '#067647', '#ecfdf3'] : CRM_T[x.type], d = x.data, st = CRM_ST[x.status] || CRM_ST.new, today = crmToday(), open = !!crm.open[x.ref];
     var tel = x.phone ? String(x.phone).replace(/[^\d+]/g, '') : '', wa = x.phone ? waNumber(x.phone) : '';
-    var sub = [x.address ? shortAddr(x.address) : '', x.type === 'sub' ? x.email + ' · ' + ({ instant: 'as it happens', weekly: 'weekly', monthly: 'monthly' }[d.freq] || d.freq) : '', x.type === 'contact' && d.topic ? d.topic : '', x.type === 'enquiry' && d.topic ? d.topic : '', x.type === 'cert' ? (d.items || []).map(function(i){ return i.name.replace(/ —.*/, ''); }).join(' + ') + ' · £' + Number(d.total || 0).toFixed(2) + (d.paid_at ? ' · paid ✓' : '') : '', x.type === 'quick' && d.service ? d.service + ' valuation' : '', fmtShort(x.at)].filter(Boolean);
+    var sub = [x.address ? shortAddr(x.address) : '', x.type === 'sub' ? x.email + ' · ' + ({ instant: 'as it happens', weekly: 'weekly', monthly: 'monthly' }[d.freq] || d.freq) : '', x.type === 'contact' && d.topic ? d.topic : '', x.type === 'enquiry' && d.topic ? d.topic : '', x.type === 'mortgage' ? [d.beds ? (d.beds === 'Studio' ? 'Studio' : d.beds + ' bed') : '', d.purpose, d.let_now, d.lender ? 'for ' + d.lender : '', d.needed ? 'needed ' + d.needed.toLowerCase() : ''].filter(Boolean).join(' · ') : '', x.type === 'cert' ? (d.items || []).map(function(i){ return i.name.replace(/ —.*/, ''); }).join(' + ') + ' · £' + Number(d.total || 0).toFixed(2) + (d.paid_at ? ' · paid ✓' : '') : '', x.type === 'quick' && d.service ? d.service + ' valuation' : '', fmtShort(x.at)].filter(Boolean);
     var pill = x.type === 'sub' ? '<span class="crm-pill" style="color:' + (x.subSt === 'Subscribed' ? '#067647' : x.subSt === 'Unsubscribed' ? '#667085' : '#b54708') + '">' + x.subSt + '</span>' : '<span class="crm-pill" style="color:' + st[1] + '">' + st[0] + '</span>';
     var need = crmNeed(x), ap = isAppl(x), hold = ap ? applHold(x) : null, hrs = function(ms){ var h = Math.max(1, Math.round(ms / 3600000)); return h < 48 ? h + 'h' : Math.round(h / 24) + ' days'; };
     var holdFlag = !ap || !crmOpenItem(x) ? '' : hold.held ? '<span class="crm-flag' + (hold.who === crm.me ? ' ok' : '') + '">🔒 ' + (hold.who === crm.me ? 'Yours · ' + hrs(hold.left) + ' left to stay in touch' : esc(hold.who) + '’s applicant · open in ' + hrs(hold.left)) + '</span>'
@@ -12160,7 +12160,11 @@
           '<div class="ap-ovrow" data-ov="let"><span>Rent £</span><input class="inp" id="apOvLetLo" inputmode="numeric"><span>to £</span><input class="inp" id="apOvLetHi" inputmode="numeric" placeholder="optional"><span>pcm</span></div>' +
           '<div class="row-actions" style="gap:6px;margin-top:4px"><button type="button" class="btn small ghost" data-ov-pct="-5">−5%</button><button type="button" class="btn small ghost" data-ov-pct="5">+5%</button><button type="button" class="btn small ghost" data-ov-reset>Use the average</button></div></div>' +
         '<p class="muted-note" id="apErr" style="color:var(--red,#c00);margin:6px 0 0" hidden></p>' +
-        '<div class="row-actions" style="flex-wrap:wrap;margin-top:10px"><button type="button" class="btn primary" id="apMake">📄 Make the report</button></div><div id="apDone"></div>' +
+        '<div class="lt-grid ap-purp" style="margin-top:10px"><label>Report type<select class="inp" id="apPurpose"><option value="">Market appraisal (for the landlord)</option><option value="mortgage">🏦 Mortgage rental letter (for the lender)</option></select></label>' +
+          '<label class="ap-mort" hidden>Lender or broker <span class="muted-note" style="margin:0">optional</span><input class="inp" id="apLender" maxlength="120" placeholder="Letter is addressed to them"></label>' +
+          '<label class="ap-mort" hidden>For<select class="inp" id="apMf"><option value="">—</option><option>Remortgage</option><option>Buying a buy-to-let</option><option>Product transfer / other</option></select></label></div>' +
+          '<p class="muted-note ap-mort" hidden style="margin:6px 0 0">Rent only, addressed to the lender, with no fees — and a line saying it’s a letting agent’s rental assessment, not a RICS valuation.</p>' +
+          '<div class="row-actions" style="flex-wrap:wrap;margin-top:10px"><button type="button" class="btn primary" id="apMake">📄 Make the report</button></div><div id="apDone"></div>' +
         '<h4 class="la-sub">Recent appraisals</h4><div id="apList" class="muted-note">Loading…</div>';
       b.addEventListener('paste', function(e){
         var zb = e.target.closest && e.target.closest('[data-zp-box]'); if (!zb) return; e.preventDefault();
@@ -12215,6 +12219,7 @@
           return; }
       });
       $('apMake').addEventListener('click', apprMake);
+      $('apPurpose').addEventListener('change', function(){ var m = this.value === 'mortgage'; document.querySelectorAll('.ap-mort').forEach(function(x){ x.hidden = !m; }); $('apMake').textContent = m ? '🏦 Make the rental letter' : '📄 Make the report'; });
       // Postcode (+ door number) → full addresses from the EPC register; picking one fills the address and, when it's
       // one of our properties, its landlord.
       var find = function(){
@@ -12423,11 +12428,15 @@
     if (!s && !r) return err('Tick at least one similar home' + (appr.mode === 'both' ? '' : appr.mode === 'sale' ? ' for sale' : ' to rent') + ' (press “Find similar homes”).');
     var clean = function(list, rent){ return list.filter(function(c){ return apprPrice(c.price, rent); }).map(function(c){ return { url: c.url || '', addr: c.addr || '', beds: c.beds || '', price: apprPrice(c.price, rent), listed: c.listed || '', avail: c.avail || '', reduced: !!c.reduced, agreed: !!c.agreed, sold: c.sold || '', ptype: c.ptype || '', tenure: c.tenure || '' }; }); };
     var ov = { slo: num($('apOvSaleLo').value), shi: num($('apOvSaleHi').value), llo: num($('apOvLetLo').value), lhi: num($('apOvLetHi').value) };
+    // A mortgage rental letter is about the rent only.
+    var mortL = $('apPurpose') && $('apPurpose').value === 'mortgage';
+    if (mortL && !r) return err('A mortgage rental letter needs similar homes to rent — switch the report to Lettings and tick some.');
+    if (mortL) s = null;
     var btn = $('apMake'); busy(btn, true, 'Making…');
     api('POST', '/api/admin/valuations', { appraisal: true, landlord_id: apprLl ? apprLl.id : null, address: addr, ptype: $('apType').value, beds: $('apBeds').value.trim(), baths: $('apBaths').value.trim(),
       sales: !!s, lettings: !!r, sales_low: s ? (ov.slo || s.est) : null, sales_high: s ? (ov.shi || ov.slo || s.est) : null, let_low: r ? (ov.llo || r.est) : null, let_high: r ? (ov.lhi || ov.llo || r.est) : null,
       comps_sale: s ? clean(appr.sale, false) : [], comps_let: r ? clean(appr.let, true) : [], miles: $('apMiles').value, to_name: $('apTo').value.trim(), to_address: $('apToAddr').value.trim(), highlights: $('apHi').value.trim(),
-      include_fees: true, signer: meta.user && meta.user.id && meta.user.name ? meta.user.name : '' }).then(function(d){
+      include_fees: !mortL, purpose: mortL ? 'mortgage' : '', lender: mortL ? $('apLender').value.trim() : '', mortgage_for: mortL ? $('apMf').value : '', signer: meta.user && meta.user.id && meta.user.name ? meta.user.name : '' }).then(function(d){
       busy(btn, false);
       if (!d || !d.ok) return err('Couldn’t make the report — please check the details.');
       // Ready: send it straight to the landlord from here (no new tab to get lost in).
@@ -12652,6 +12661,10 @@
   // Email an appraisal / valuation letter to the landlord (or whoever it's for).
   function emailValuation(x, l){
     var v = x.data || {}, email = (l && l.email) || v.to_email || '', first = String((l && l.name) || v.to_name || '').trim().split(/\s+/)[0];
+    // A mortgage rental letter: worded for passing on to the lender or broker.
+    if (v.purpose === 'mortgage') return composeMail({ title: '✉ Email the rental letter — check before sending', to: email ? [email] : [], landlordId: (l && l.id) || x.landlord_id || null, valuationIds: [x.id],
+      subject: 'Your rental valuation letter — ' + shortAddr(x.address),
+      body: 'Dear ' + (first || 'Sir or Madam') + ',\n\nPlease find attached our rental valuation letter for ' + shortAddr(x.address) + (v.lender ? ', addressed to ' + v.lender : '') + ', ready to send to your lender or broker. It shows the monthly rent we expect the property to achieve, with similar homes nearby.\n\nIf your lender or broker needs anything else, just reply to this email or call us on 0207 096 8131. And if you’d like help letting or managing the property, we’d be glad to help.' + mailSignoff() });
     composeMail({ title: '✉ Email the ' + (v.appraisal ? 'appraisal' : 'valuation') + ' — check before sending', to: email ? [email] : [], landlordId: (l && l.id) || x.landlord_id || null, valuationIds: [x.id],
       subject: (v.appraisal ? 'Your property appraisal' : 'Your property valuation') + ' — ' + shortAddr(x.address),
       body: 'Dear ' + (first || 'Sir or Madam') + ',\n\nThank you for the opportunity to look at ' + shortAddr(x.address) + '. Please find attached our ' + (v.appraisal ? 'appraisal' : 'valuation') + ', with the similar homes nearby that our figures are based on.\n\nIf you have any questions, or would like to go ahead, just reply to this email or call us on 0207 096 8131.' + mailSignoff() });
