@@ -27,7 +27,8 @@ module.exports = function (app, opts) {
         id BIGSERIAL PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT now(), path TEXT NOT NULL, title TEXT,
         ref TEXT, device TEXT, country TEXT, visitor TEXT);
       CREATE INDEX IF NOT EXISTS web_visits_at ON web_visits (at);
-      ALTER TABLE web_visits ADD COLUMN IF NOT EXISTS ip TEXT;`).catch(function (e) { ready = null; throw e; });
+      ALTER TABLE web_visits ADD COLUMN IF NOT EXISTS ip TEXT;
+      CREATE TABLE IF NOT EXISTS web_humans (visitor TEXT PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT now());`).catch(function (e) { ready = null; throw e; });
     await ready; return p;
   }
   // Where a visit came from: another website's name, or a campaign tag (?utm_source=…).
@@ -64,6 +65,23 @@ module.exports = function (app, opts) {
   setInterval(function () { flush().catch(function () {}); }, 10000).unref();
   setInterval(function () { pool().then(function (p) { return p && p.query("DELETE FROM web_visits WHERE at < now() - interval '13 months'").then(function () { return p.query("UPDATE web_visits SET ip = NULL WHERE ip IS NOT NULL AND at < now() - interval '30 days'"); }); }).catch(function () {}); }, 24 * 3600000).unref();
 
+  // A real person: the page tells us once someone scrolls, taps, types or stays a few seconds (robots and
+  // scrapers that only fetch pages never do). Same daily visitor code as the page views, so the sales funnel
+  // can count real people only.
+  const humanQ = new Set();
+  app.post('/api/visit/h', function (req, res) {
+    res.status(204).end();
+    try {
+      const ua = String(req.headers['user-agent'] || '');
+      if (!ua || BOT.test(ua) || (opts.isStaff && opts.isStaff(req))) return;
+      const ip = ipOf(req); if (ignore.some(function (x) { return ipKey(x.ip) === ipKey(ip); })) return;
+      const day = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+      const v = crypto.createHash('sha256').update(SALT + '|' + day + '|' + ip + '|' + ua).digest('hex').slice(0, 16);
+      if (humanQ.has(v)) return; humanQ.add(v); if (humanQ.size > 20000) humanQ.clear();
+      pool().then(function (p) { return p && p.query('INSERT INTO web_humans (visitor) VALUES ($1) ON CONFLICT DO NOTHING', [v]); }).catch(function () {});
+    } catch (e) {}
+  });
+  setInterval(function () { pool().then(function (p) { return p && p.query("DELETE FROM web_humans WHERE at < now() - interval '13 months'"); }).catch(function () {}); }, 24 * 3600000).unref();
   // Sources grouped into names people recognise.
   const SRC = [[/google/, 'Google'], [/bing/, 'Bing'], [/yahoo|duckduckgo|ecosia/, 'Other search'], [/rightmove/, 'Rightmove'], [/zoopla/, 'Zoopla'], [/onthemarket/, 'OnTheMarket'],
     [/facebook|fb\.|instagram|meta/, 'Facebook / Instagram'], [/tiktok/, 'TikTok'], [/whatsapp|wa\.me/, 'WhatsApp'], [/t\.co|twitter|x\.com/, 'X / Twitter'], [/linkedin/, 'LinkedIn'], [/youtube/, 'YouTube'],

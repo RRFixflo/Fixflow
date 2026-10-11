@@ -315,8 +315,21 @@ function siteFooter(home) {
     '<div class="legal">© <span id="yr"></span> Estallion Investments Ltd trading as Residential Realtors · Registered in England, company number 08760284 · 28-30 Harper Road, London SE1 6AD.</div></div></footer>';
 }
 const isSiteHost = function (req) { return SITE_HOSTS.indexOf(String(req.hostname || '').toLowerCase()) !== -1; };
+// "Prefer a call?" — a name-and-number call-back strip under the top of each product page (and its borough pages).
+const CB_LABEL = { gas: 'Gas Safety', eicr: 'EICR', epc: 'EPC', diy: 'DIY inventory', licence: 'Licence help', clean: 'Cleaning', sales: 'Selling', mortgage: 'Mortgage rental letter' };
+function cbStrip(key) {
+  const what = CB_LABEL[key]; if (!what) return '';
+  const lead = key === 'sales' ? 'Thinking of selling? Leave your number and we’ll call you about a free valuation.' : key === 'clean' ? 'Questions about your clean? Leave your number and we’ll call you back.' : key === 'mortgage' ? 'Need the letter quickly? Leave your number and we’ll call you.' : key === 'licence' ? 'Not sure which licence you need? Leave your number and we’ll call you.' : 'Questions, or rather book by phone? Leave your number and we’ll call you back.';
+  return '<section class="cbq"><div class="wrap"><form class="cbq-form" data-what="' + siteEsc(what) + '" novalidate><div class="cbq-t"><b>Prefer a call?</b><span>' + siteEsc(lead) + '</span></div>' +
+    '<div class="cbq-f"><input name="name" placeholder="Your name" autocomplete="name" aria-label="Your name" required><input name="phone" type="tel" placeholder="Phone number" autocomplete="tel" inputmode="tel" aria-label="Phone number" required>' +
+    '<button class="btn red" type="submit">Call me back</button></div><input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
+    '<label class="cbq-ok"><input type="checkbox" name="consent"> <span>I’m happy for Residential Realtors to call me (<a href="/privacy">privacy</a>)</span></label><p class="cbq-err" role="alert"></p></form></div></section>';
+}
+const firstSectionEnd = function (h) { const i = h.indexOf('</section>'); return i === -1 ? -1 : i + 10; };
+function addCb(h, key) { const s = cbStrip(key), i = firstSectionEnd(h); return !s || i === -1 ? h : h.slice(0, i) + s + h.slice(i); }
 function siteShell(name, home, req) {
   let body = fs.readFileSync(path.join(__dirname, 'site', name + '.html'), 'utf8');
+  body = addCb(body, name);
   if (name === 'home') body = body.replace('<section class="tools2">', trackHtml('') + '<section class="tools2">');
   if (name === 'home') body = body.replace('<!--FEATURED-->', listings ? listings.featured(req) : '').replace('<!--HEROSEARCH-->', heroSearch(req)).replace('<!--STATS-->', heroStats(req)).replace('<!--AREAS-->', heroAreas(req)).replace('<!--EXPERTS-->', heroExperts(req)).replace('<!--NEWS-->', news ? news.section() : '');
   return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
@@ -393,7 +406,8 @@ function heroAreas(req) {
 function landlordsShell(home, req) {
   let h = fs.readFileSync(path.join(__dirname, 'landlords.html'), 'utf8').replace('<section id="services">', trackHtml('London') + '<section id="services">');
   h = h.replace(/<title>[\s\S]*?<link rel="icon"[^>]*>/, siteHead('landlords', h)).replace('<style>', '<link rel="stylesheet" href="' + asset('site.css') + '">\n<style>')
-    .replace(/<header class="top">[\s\S]*?<\/header>/, siteHeader('landlords', home, req)).replace(/<footer>[\s\S]*?<\/footer>/, siteFooter(home));
+    .replace(/<header class="top">[\s\S]*?<\/header>/, siteHeader('landlords', home, req)).replace(/<footer>[\s\S]*?<\/footer>/, siteFooter(home))
+    .replace('</body>', '<script>(function(){var s=false,f=function(){if(s)return;s=true;try{navigator.sendBeacon?navigator.sendBeacon("/api/visit/h",location.pathname):fetch("/api/visit/h",{method:"POST",body:location.pathname,keepalive:true})}catch(e){}};["scroll","pointerdown","keydown","touchstart"].forEach(function(e){addEventListener(e,f,{once:true,passive:true})});setTimeout(function(){if(document.visibilityState==="visible")f()},4000)})()</script></body>');
   return h;
 }
 const siteCache = {};
@@ -432,7 +446,7 @@ const listings = require('./listings')(app, { siteUrl: SITE_URL, send: sendBuilt
 const areas = require('./areas')(app, { send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, track: function () { return jobs && jobs.trackRecord && jobs.trackRecord(); }, trackHtml: function (w) { return trackHtml(w); }, listings: function () { return listings; }, db: function () { return jobs ? jobs.db() : null; } });
 // Landlord guides and the rent-increase / certificate due-date tools (guides.js).
 const guides = require('./guides')(app, { siteUrl: SITE_URL, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, figures: function () { return areas.figures(); }, areas: areas.areasList, trackHtml: function (w) { return trackHtml(w); } });
-const svcAreas = require('./svcareas')(app, { siteUrl: SITE_URL, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, db: function () { return jobs ? jobs.db() : null; } });
+const svcAreas = require('./svcareas')(app, { addCb: addCb, siteUrl: SITE_URL, send: function (req, res, meta, body) { return sendBuilt(req, res, meta, body); }, db: function () { return jobs ? jobs.db() : null; } });
 // On the website's own address, /home is the same page as / — send search engines to one address.
 app.get('/home', (req, res, next) => { if (isSiteHost(req)) return res.redirect(301, '/'); next(); });
 Object.keys(SITE_PAGES).forEach(function (name) { if (SITE_PAGES[name].paths) app.get(SITE_PAGES[name].paths, function (req, res) { sendSite(req, res, name); }); });

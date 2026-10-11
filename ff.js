@@ -47,7 +47,7 @@
   // Cloudflare Turnstile on every enquiry form (only when the site key is set).
   if (window.FF_TS) {
     var add = function () {
-      document.querySelectorAll('#vForm, #sForm, #eForm, #bkForm, #qvForm, .la-form').forEach(function (f) {
+      document.querySelectorAll('#vForm, #sForm, #eForm, #bkForm, #qvForm, .la-form, .cbq-form').forEach(function (f) {
         if (f.querySelector('.cf-turnstile')) return;
         var d = document.createElement('div'); d.className = 'cf-turnstile'; d.setAttribute('data-sitekey', window.FF_TS); d.setAttribute('data-appearance', 'interaction-only'); d.setAttribute('data-size', 'flexible');
         var b = f.querySelector('button[type=submit]'); if (b && b.parentNode) b.parentNode.insertBefore(d, b); else f.appendChild(d);

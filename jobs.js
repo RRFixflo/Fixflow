@@ -11238,18 +11238,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const name = str(b.name, 120), email = str(b.email, 200), phone = str(b.phone, 40), addr = str(b.address, 300), pcm = POSTCODE_RE.exec(String(b.postcode || '') + ' ' + String(b.address || ''));
     // The quick form on the side of every page: just a name, email and phone — we call them back for the rest.
     if (b.kind === 'quick') {
+      // Also the "Prefer a call?" strip on each product page: just a name and number (email optional), for that product.
+      const PRODUCTS = ['Gas Safety', 'EICR', 'EPC', 'DIY inventory', 'Licence help', 'Cleaning', 'Mortgage rental letter', 'Selling', 'Letting'];
+      const product = PRODUCTS.indexOf(b.what) !== -1;
       if (!name || !phone) return res.status(400).json({ ok: false, error: 'missing' });
-      if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
+      if ((!product || email) && (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email))) return res.status(400).json({ ok: false, error: 'email' });
       if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
-      const what = ['Sales', 'Rental', 'Not sure'].indexOf(b.what) !== -1 ? b.what : 'Not sure', page = str(b.page, 120) || '';
-      const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, '(quick request — call back for the address)', JSON.stringify({ kind: 'quick', service: what, page: page })]);
+      const what = ['Sales', 'Rental', 'Not sure'].indexOf(b.what) !== -1 || product ? (b.what === 'Selling' ? 'Sales' : b.what === 'Letting' ? 'Rental' : b.what) : 'Not sure', page = str(b.page, 120) || '';
+      const callback = (product && ['Selling', 'Letting'].indexOf(b.what) === -1);   // a product page's call-back (not a valuation)
+      const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email || null, phone, callback ? '(call-back request)' : '(quick request — call back for the address)', JSON.stringify({ kind: 'quick', service: what, page: page })]);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
       // Every member of staff hears about it: a phone alert and an email each.
-      teamAlert({ title: '⚡ Quick valuation request: ' + name, message: phone + ' · ' + what + ' valuation — call them back for the address.', tags: ['house'] }, '#leads').catch(function () {});
-      staffEmailAll('⚡ Quick valuation request - ' + name, function (link) {
-        return 'Someone used the quick valuation form on the website. Please call them back for the property details.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\nValuation: ' + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s in Website leads — add a note once you’ve called:\n' + link;
+      teamAlert({ title: callback ? '📞 Call-back request (' + what + '): ' + name : '⚡ Quick valuation request: ' + name, message: callback ? phone + ' · wants a call about ' + what + (page ? ' · from ' + page : '') : phone + ' · ' + what + ' valuation — call them back for the address.', tags: ['house'] }, '#leads').catch(function () {});
+      staffEmailAll((callback ? '📞 Call-back request (' + what + ') - ' : '⚡ Quick valuation request - ') + name, function (link) {
+        return (callback ? 'Someone asked us to call them about ' + what + ' on the website. Please call them back.' : 'Someone used the quick valuation form on the website. Please call them back for the property details.') + '\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + (email || '—') + (callback ? '\nAbout: ' : '\nValuation: ') + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s in Website leads — add a note once you’ve called:\n' + link;
       }, '#leads').catch(function (e) { console.error('Valuation staff emails failed:', e.message); });
-      if (canEmail() && sendEmail) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Quick valuation request — ' + name, text: 'Someone used the quick valuation form on the website. Please call them back for the property details.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\nValuation: ' + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s also in Fixflow under Contacts.' }).catch(function () {});
+      if (canEmail() && sendEmail && !callback) sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Quick valuation request — ' + name, text: 'Someone used the quick valuation form on the website. Please call them back for the property details.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\nValuation: ' + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s also in Fixflow under Contacts.' }).catch(function () {});
       return res.json({ ok: true, id: r.rows[0].id });
     }
     if (!name || !addr) return res.status(400).json({ ok: false, error: 'missing' });
@@ -11570,17 +11574,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
     { k: 'licence', name: 'Free licence help → letting clients', icon: '📄', pages: ['/licence-application', '/licence-application/%', '/hmo-licence-application', '/property-licence', '/licence-checker'], items: /^licence$/, client: true },
     { k: 'clean', name: 'End of tenancy cleaning', icon: '🧽', pages: ['/book-a-clean', '/book-a-clean/%', '/end-of-tenancy-clean'], items: /^clean/ }
   ];
+  const QMAP = { 'Gas Safety': 'gas', 'EICR': 'eicr', 'EPC': 'epc', 'DIY inventory': 'diy', 'Licence help': 'licence', 'Cleaning': 'clean', 'Mortgage rental letter': 'mortgage' };
   app.get('/api/admin/sales-funnel', withDb(async function (p, req, res) {
     const days = [7, 30, 90, 365].indexOf(+req.query.days) !== -1 ? +req.query.days : 30;
     const since = new Date(Date.now() - days * 86400000);
     // Visitors per product (one query; a page belongs to the first product it matches).
-    const visits = {}, sources = {};
+    const visits = {}, sources = {}; let humanSince = null;
     try {
       const args = [since];
       const cases = FUNNEL.map(function (f) { return 'WHEN ' + f.pages.map(function (pg) { args.push(pg); return 'path LIKE $' + args.length; }).join(' OR ') + " THEN '" + f.k + "'"; }).join(' ');
-      (await p.query('SELECT k, count(DISTINCT visitor)::int AS n FROM (SELECT visitor, CASE ' + cases + ' END AS k FROM web_visits WHERE at >= $1) x WHERE k IS NOT NULL GROUP BY k', args)).rows.forEach(function (r) { visits[r.k] = r.n; });
+      (await p.query('SELECT k, count(DISTINCT visitor)::int AS n FROM (SELECT visitor, CASE ' + cases + ' END AS k FROM web_visits WHERE at >= $1 AND visitor IN (SELECT visitor FROM web_humans WHERE at >= $1 - interval \'1 day\')) x WHERE k IS NOT NULL GROUP BY k', args)).rows.forEach(function (r) { visits[r.k] = r.n; });
+      humanSince = ((await p.query('SELECT min(at) AS m FROM web_humans')).rows[0] || {}).m || null;
       // How people found each product's pages (the sources that sent the most visitors).
-      (await p.query('SELECT k, ref, count(DISTINCT visitor)::int AS n FROM (SELECT visitor, ref, CASE ' + cases + ' END AS k FROM web_visits WHERE at >= $1) x WHERE k IS NOT NULL AND ref IS NOT NULL GROUP BY k, ref ORDER BY n DESC', args)).rows
+      (await p.query('SELECT k, ref, count(DISTINCT visitor)::int AS n FROM (SELECT visitor, ref, CASE ' + cases + ' END AS k FROM web_visits WHERE at >= $1 AND visitor IN (SELECT visitor FROM web_humans WHERE at >= $1 - interval \'1 day\')) x WHERE k IS NOT NULL AND ref IS NOT NULL GROUP BY k, ref ORDER BY n DESC', args)).rows
         .forEach(function (r) { const s = /google/.test(r.ref) ? 'Google' : /bing/.test(r.ref) ? 'Bing' : /facebook|instagram|fb\./.test(r.ref) ? 'Facebook / Instagram' : /rightmove/.test(r.ref) ? 'Rightmove' : /whatsapp/.test(r.ref) ? 'WhatsApp' : r.ref;
           const o = sources[r.k] || (sources[r.k] = {}); o[s] = (o[s] || 0) + r.n; });
     } catch (e) { /* no visitor table yet */ }
@@ -11592,6 +11598,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const r = { k: f.k, name: f.name, icon: f.icon, client: !!f.client, visitors: visits[f.k] || 0, requests: 0, progress: 0, won: 0, revenue: 0, stuck: [], sources: Object.entries(sources[f.k] || {}).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 3).map(function (x) { return { k: x[0], n: x[1] }; }) };
       leads.forEach(function (l) {
         const d = l.data || {}, kind = d.kind || 'val';
+        // "Prefer a call?" call-backs from a product's page count for that product.
+        const qk = kind === 'quick' ? QMAP[d.service] : null;
+        if (qk) {
+          if (qk !== f.k) return;
+          r.requests++; if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
+          if (l.status === 'won') r.won++;
+          else if (l.status === 'new' && Date.now() - new Date(l.created_at) > 3600000) r.stuck.push({ id: l.id, at: l.created_at, name: l.name, phone: l.phone, why: 'Asked for a call back — not called yet' });
+          return;
+        }
         if (f.items) {
           if (kind !== 'cert') return;
           const mine = (d.items || []).filter(function (i) { return f.items.test(String(i.id)); }); if (!mine.length) return;
@@ -11629,7 +11644,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return r;
     });
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ ok: true, days: days, products: out });
+    res.json({ ok: true, days: days, products: out, human_since: humanSince });
   }));
   app.get('/api/admin/cert-services', withDb(async function (p, req, res) { res.json({ ok: true, items: await certServices(p), pay: canPay() }); }));
   app.put('/api/admin/cert-services', withDb(async function (p, req, res) {
