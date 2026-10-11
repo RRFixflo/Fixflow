@@ -2057,6 +2057,7 @@ module.exports = function mountJobs(app, opts) {
     if ((method === 'GET' || method === 'POST') && path === '/valuations') return true;   // property appraisals (Offers page)
     if (method === 'POST' && path === '/cal-feed') return true;
     if (method === 'GET' && path === '/appraisal/comps') return true;
+    if (path === '/rivals' || path === '/nearby' || (method === 'POST' && /^\/(rivals|nearby)\/(run|[\w-]+\/dismiss)$/.test(path))) return true;   // our properties with other agents; new near the office
     if (method === 'POST' && path === '/appraisal/paste') return true;   // appraisal: homes from a pasted Zoopla page
     if (method === 'GET' && path === '/appraisal/sold') return true;   // appraisal: Land Registry sold prices   // appraisal: similar homes on Rightmove   // calendar: add the viewings to their phone's diary
     if (method === 'GET' && (path === '/epc-addresses' || path === '/landlord-for-address' || path === '/rm-location')) return true;   // appraisal: find the address and our landlord
