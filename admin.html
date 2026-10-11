@@ -7249,6 +7249,9 @@
     if (ll && b.dataset.tt === 'email') {
       var cw = certWord(g.jobs);   // gas, electrical or EPC certificate jobs say so instead of "Repair"
       var llSubject = (cw || 'Repair') + (g.jobs.every(function(j){ return j.status === 'Completed'; }) ? ' completed — ' : ' update — ') + (g.jobs.length === 1 ? shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + (cw ? ' certificates' : ' repairs') + ' at your properties');
+      // "Just let them know it's been reported": the subject says so, not "Repair update".
+      if (llInform && !ttCustom && g.jobs.every(function(j){ return !j.assigned_to && !j.landlord_handles && j.status !== 'Completed'; }))
+        llSubject = g.jobs.length === 1 ? 'Issue reported — ' + shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + ' issues reported at ' + (g.jobs.every(function(j){ return propKey(j.property_address) === propKey(g.jobs[0].property_address); }) ? shortAddr(g.jobs[0].property_address) : 'your properties');
       if (meta.canEmail) {
         // Check the email first; sent once, logged on the first job, and the others get a note.
         composeMail({ title: '✉ Email the landlord — check before sending', to: [g.email], subject: llSubject, body: msg,
@@ -7611,7 +7614,7 @@
     };
     var body = jobs.length === 1
       ? (allDone ? (certWord(jobs) ? 'Good news — the ' + (certWord(jobs) === 'EPC' ? 'EPC' : certWord(jobs).toLowerCase()) + ' for ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n' : 'Good news — the work at ' + shortAddr(jobs[0].property_address) + ' has been completed.\n\n') : jobs[0].landlord_handles ? 'Here are the details of the repair at ' + shortAddr(jobs[0].property_address) + ' that you’re arranging.\n\n' : !jobs[0].assigned_to ? 'Just to let you know, a repair has been reported at ' + shortAddr(jobs[0].property_address) + '.\n\n' : 'Just a quick update on work at ' + shortAddr(jobs[0].property_address) + ' — it’s in hand.\n\n') + line(jobs[0])
-      : 'Here’s an update on the work at ' + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j, i){ return (i + 1) + '. ' + line(j); }).join('\n\n');
+      : (llInform && jobs.every(function(j){ return !j.assigned_to && !j.landlord_handles && !isDone(j); }) ? 'Just to let you know, the following issues have been reported at ' : 'Here’s an update on the work at ') + (oneHome ? shortAddr(jobs[0].property_address) : 'your properties') + ':\n\n' + jobs.map(function(j, i){ return (i + 1) + '. ' + line(j); }).join('\n\n');
     return llGreeting(g.name) + ',\n\n' + body + '\n\n' + (allDone || jobs.every(function(j){ return j.landlord_handles || isDone(j); }) ? 'Thank you — please get in touch if you have any questions.' : (llInform && jobs.every(function(j){ return isDone(j) || j.landlord_handles || !j.assigned_to; }) ? 'Please get in touch if you have any questions.' : 'We’ll keep you updated and let you know once the ' + (jobs.some(isDone) ? 'remaining ' : '') + 'work is complete. Please get in touch if you have any questions.')) + '\n\nKind regards,\nResidential Realtors';
   }
   function llPhotoIds(g){ return [].concat.apply([], g.jobs.map(function(j){ var lj = jobs.filter(function(x){ return x.id === j.id; })[0] || j; return lj.photo_ids || []; })).slice(0, 30); }
