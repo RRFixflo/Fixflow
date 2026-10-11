@@ -25,18 +25,21 @@
   if (sf) sf.addEventListener('submit', function (ev) {
     ev.preventDefault();
     var err = document.getElementById('sErr'), go = document.getElementById('sGo'), v = function (k) { var el = sf.elements[k]; return el ? String(el.value || '').trim() : ''; };
-    var data = { kind: 'sale', name: v('name'), email: v('email'), phone: v('phone'), address: v('address'), postcode: v('postcode'), beds: v('beds'), type: v('type'), when: v('when'), message: v('message'), website: v('website'), consent: sf.elements.consent.checked };
+    // The same form asks for a mortgage rental valuation letter on its own page (data-kind="mortgage").
+    var mort = sf.getAttribute('data-kind') === 'mortgage';
+    var data = { kind: mort ? 'mortgage' : 'sale', name: v('name'), email: v('email'), phone: v('phone'), address: v('address'), postcode: v('postcode'), beds: v('beds'), type: v('type'), when: v('when'), message: v('message'), website: v('website'), consent: sf.elements.consent.checked };
+    if (mort) { data.purpose = v('purpose'); data.lender = v('lender'); data.needed = v('needed'); data.let_now = v('let_now'); }
     err.textContent = '';
     if (!data.name) { err.textContent = 'Please enter your name.'; return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { err.textContent = 'Please enter a valid email address.'; return; }
     if (!data.address) { err.textContent = 'Please enter the property address.'; return; }
     if (!/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(data.postcode)) { err.textContent = 'Please enter the postcode.'; return; }
     if (!data.consent) { err.textContent = 'Please tick the box so we can contact you.'; return; }
-    go.disabled = true; go.textContent = 'Sending…';
+    var goTx = go.textContent; go.disabled = true; go.textContent = 'Sending…';
     ffPost('/api/valuation-request', data, sf).then(function (r) { return r.json(); }).then(function (d) {
-      if (!d.ok) { go.disabled = false; go.textContent = 'Request my free valuation →'; err.textContent = d.error === 'rate-limited' ? 'Too many requests — please try again later or call 0207 096 8131.' : d.error === 'postcode' ? 'Please check the postcode.' : 'Sorry, something went wrong. Please try again or call 0207 096 8131.'; return; }
-      document.getElementById('sBody').innerHTML = '<div class="done"><div class="big">✓</div><h3 style="margin:0">Thanks, ' + String(data.name.split(/\s+/)[0]).replace(/[<>&"]/g, '') + ' — request sent</h3><p style="color:var(--soft);margin:8px 0 0">We’ll be in touch shortly to arrange your free valuation. For anything urgent, call <a href="tel:02070968131" style="font-weight:700;color:var(--navy)">0207 096 8131</a>.</p></div>';
-    }).catch(function () { go.disabled = false; go.textContent = 'Request my free valuation →'; err.textContent = 'Couldn’t connect — please try again or call 0207 096 8131.'; });
+      if (!d.ok) { go.disabled = false; go.textContent = goTx; err.textContent = d.error === 'rate-limited' ? 'Too many requests — please try again later or call 0207 096 8131.' : d.error === 'postcode' ? 'Please check the postcode.' : 'Sorry, something went wrong. Please try again or call 0207 096 8131.'; return; }
+      document.getElementById('sBody').innerHTML = '<div class="done"><div class="big">✓</div><h3 style="margin:0">Thanks, ' + String(data.name.split(/\s+/)[0]).replace(/[<>&"]/g, '') + ' — request sent</h3><p style="color:var(--soft);margin:8px 0 0">' + (mort ? 'We’ll look at similar homes nearby and send your rental valuation letter by email — usually within one working day. Need it sooner' : 'We’ll be in touch shortly to arrange your free valuation. For anything urgent') + ', call <a href="tel:02070968131" style="font-weight:700;color:var(--navy)">0207 096 8131</a>.</p></div>';
+    }).catch(function () { go.disabled = false; go.textContent = goTx; err.textContent = 'Couldn’t connect — please try again or call 0207 096 8131.'; });
   });
 
   // Property list: filter and sort the cards on the page; a map view; homes near me.

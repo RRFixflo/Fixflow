@@ -29,6 +29,15 @@ const SERVICES = {
       ['Does ' + B + ' Council need landlords to have a licence?', 'It depends on the council’s current schemes and your property (for example an HMO, or a street in a selective licensing area). Check your address with our free licence checker, or call us and we’ll find out for you.'],
       ['Is your licence application help really free?', 'Yes. We prepare and submit the application and deal with ' + B + ' Council until it’s granted, free of charge. You only pay the council’s own licence fee.'],
       ['Do you cover ' + list(hoods.slice(0, 3)) + '?', 'Yes — all of ' + B + ' (' + pcs + ') and the rest of London.']]; } },
+  // Free rental valuation letter for buy-to-let mortgages (a letting agent's rental assessment, not a RICS valuation).
+  mortgage: { base: '/mortgage-rental-valuation', file: 'mortgage', short: 'rental valuation letter', thing: 'mortgage rental valuation letter', type: 'Rental valuation letter for buy-to-let mortgages', book: '/mortgage-rental-valuation#request', cta: 'Get your free letter',
+    price: function () { return '0'; }, faqHead: 'Questions landlords in ',
+    title: function (b) { return 'Mortgage Rental Valuation Letter ' + b + ' — Free | Residential Realtors'; },
+    desc: function (b) { return 'Remortgaging or buying a buy-to-let in ' + b + '? Get a free rental valuation letter with the achievable rent and similar homes nearby, ready for your lender.'; },
+    faq: function (B, hoods, pcs) { return [
+      ['Do you write rental valuation letters for properties in ' + list(hoods.slice(0, 3)) + '?', 'Yes — anywhere in ' + B + ' (' + pcs + ') and the rest of London. It’s free, and usually with you within one working day.'],
+      ['How do you work out the rent for a property in ' + B + '?', 'We look at similar homes let or advertised nearby in ' + B + ' — same type and bedrooms, close by — and give the monthly rent we expect it to achieve.'],
+      ['Is this a mortgage valuation survey?', 'No. Your lender arranges its own valuation of what the property is worth. Our letter confirms the achievable rent, which is what buy-to-let lenders ask letting agents for.']]; } },
   // End-of-tenancy cleaning for tenants moving out.
   clean: { base: '/book-a-clean', file: 'clean', short: 'end-of-tenancy clean', thing: 'end-of-tenancy clean', type: 'End-of-tenancy cleaning', who: 'tenants', book: '/book-a-clean#book', cta: 'Book your clean',
     price: function (m) { return m.clean; }, faqHead: 'Questions tenants in ', others: ['clean'],

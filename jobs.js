@@ -11270,6 +11270,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
       }, '#leads').catch(function (e) { console.error('Comparables staff emails failed:', e.message); });
       return res.json({ ok: true, id: r.rows[0].id });
     }
+    // Free rental valuation letter for a buy-to-let mortgage or remortgage (a letting agent's rental assessment —
+    // not a RICS valuation of what the property is worth, which the lender arranges itself).
+    if (b.kind === 'mortgage') {
+      const md = { kind: 'mortgage', postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', purpose: ['Remortgage', 'Buying a buy-to-let', 'Product transfer / other'].indexOf(String(b.purpose || '')) !== -1 ? String(b.purpose) : '',
+        lender: str(b.lender, 120) || '', needed: str(b.needed, 40) || '', let_now: ['Let now', 'Empty', 'Not bought yet'].indexOf(String(b.let_now || '')) !== -1 ? String(b.let_now) : '', message: str(b.message, 2000) || '' };
+      const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(md)]);
+      if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
+      const short = full.split(',').slice(0, 2).join(','), bt = md.beds ? (md.beds === 'Studio' ? 'studio' : md.beds + ' bed') : '';
+      teamAlert({ title: '🏦 Mortgage rental letter request: ' + short, message: name + ' · ' + (phone || email) + (bt ? ' · ' + bt : '') + (md.needed ? ' · needed ' + md.needed.toLowerCase() : '') + ' — make it with Appraisal → Mortgage rental letter.', tags: ['bank'] }, '#leads').catch(function () {});
+      staffEmailAll('🏦 Mortgage rental letter request - ' + short, function (link) {
+        return 'A landlord has asked for a free rental valuation letter for their mortgage.\n\nName: ' + name + '\nPhone: ' + (phone || '—') + '\nEmail: ' + email + '\nProperty: ' + full + '\nBedrooms: ' + (md.beds || '—') + '\nType: ' + (md.type || '—') +
+          '\nFor: ' + (md.purpose || '—') + '\nLender / broker: ' + (md.lender || '—') + '\nNeeded: ' + (md.needed || '—') + '\nThe property is: ' + (md.let_now || '—') + (md.message ? '\n\nMessage:\n' + md.message : '') +
+          '\n\nMake the letter in Fixflow: Appraisal → choose “Mortgage rental letter”, add similar homes, then email it.\n\nOpen Fixflow: ' + link;
+      }, '#leads').catch(function (e) { console.error('Mortgage letter staff emails failed:', e.message); });
+      return res.json({ ok: true, id: r.rows[0].id });
+    }
     const sale = b.kind === 'sale';   // from the Sales page: a homeowner thinking of selling
     const data = { postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', service: str(b.service, 40) || '', when: str(b.when, 40) || '', message: str(b.message, 2000) || '' }; if (sale) data.kind = 'sale';
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(data)]);
@@ -11545,6 +11561,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // won from the status staff give a lead (and landlords who signed the terms they started online).
   const FUNNEL = [
     { k: 'letting', name: 'Letting your property', icon: '🏠', pages: ['/landlords', '/landlords/%', '/letting-agents%', '/areas-we-cover', '/london-rents%', '/landlord-services', '/landlord-guides%', '/landlord-tools%', '/tools', '/switch-letting-agent', '/change-letting-agent', '/valuation', '/compliance', '/landlord-compliance', '/overseas-landlords', '/landlords-abroad', '/market-updates%', '/london-rental-market'], lead: 'letting' },
+    { k: 'mortgage', name: 'Free mortgage rental letters → letting clients', icon: '🏦', pages: ['/mortgage-rental-valuation%', '/rental-valuation-letter', '/mortgage-rental-letter'], lead: 'mortgage', client: true },
     { k: 'sale', name: 'Selling a home', icon: '🏷️', pages: ['/sales', '/sales/%', '/sell', '/selling'], lead: 'sale' },
     { k: 'gas', name: 'Gas Safety certificate', icon: '🔥', pages: ['/gas-safety', '/gas-safety-certificate%', '/cp12'], items: /^gas$/ },
     { k: 'eicr', name: 'EICR (electrical)', icon: '⚡', pages: ['/eicr', '/eicr/%', '/eicr-certificate', '/electrical-safety-certificate'], items: /^eicr/ },
@@ -11593,7 +11610,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
           return;
         }
         const isLet = kind === 'val' || kind === 'comps' || (kind === 'quick' && d.service !== 'Sales'), isSale = kind === 'sale' || (kind === 'quick' && d.service === 'Sales');
-        if (!(f.lead === 'letting' ? isLet : isSale)) return;
+        if (!(f.lead === 'letting' ? isLet : f.lead === 'mortgage' ? kind === 'mortgage' : isSale)) return;
+        // Free mortgage rental letters, like free licence help, are how we meet landlords: won once they're a letting client.
+        if (f.client) {
+          r.requests++; if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
+          const em = String(l.email || '').toLowerCase(), ph = String(l.phone || '').replace(/\D/g, '').slice(-9);
+          if (l.status === 'won' || clients.some(function (c) { return (em && c.e === em) || (ph.length === 9 && c.p === ph); })) r.won++;
+          else if (l.status !== 'lost') r.stuck.push({ id: l.id, at: l.created_at, name: l.name, phone: l.phone, why: l.status === 'new' ? 'Letter not sent yet' : 'Not a letting client yet — talk about letting' });
+          return;
+        }
         r.requests++;
         if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
         if (l.status === 'won') r.won++;
@@ -11994,6 +12019,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       to_name: str(b.to_name, 200) || '', salutation: str(b.salutation, 200) || '', to_address: str(b.to_address, 500) || '', highlights: str(b.highlights, 2000) || '', note: str(b.note, 2000) || '',
       signer: str(b.signer, 120) || '', signer_title: str(b.signer_title, 120) || '', include_fees: b.include_fees !== false,
       find_pct: pctNum(b.find_pct), collect_pct: pctNum(b.collect_pct), both_pct: pctNum(b.both_pct), sales_fee: str(b.sales_fee, 120) || '' };
+    // A rental valuation letter for a buy-to-let mortgage (lettings only, addressed to the lender).
+    if (b.purpose === 'mortgage') { v.purpose = 'mortgage'; v.sales = false; v.lettings = true; v.include_fees = false; v.lender = str(b.lender, 120) || ''; v.mortgage_for = ['Remortgage', 'Buying a buy-to-let', 'Product transfer / other'].indexOf(String(b.mortgage_for || '')) !== -1 ? String(b.mortgage_for) : ''; }
     // A property appraisal: the home's details and the similar homes (picked by hand from Rightmove within a mile)
     // the figures are the average of.
     if (b.appraisal) {
@@ -12052,6 +12079,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // The letter: a modern one-page (two at most) PDF in our colours.
   async function valuationPdf(p, row) {
     const v = row.data || {}, address = row.address;
+    // A rental valuation letter for a buy-to-let mortgage: rent only, addressed to the lender, no fees or sales pitch.
+    const mort = v.purpose === 'mortgage';
     const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     const pdf = await PDFDocument.create();
     const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -12079,10 +12108,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
         page.drawRectangle({ x: 0, y: H - 210, width: W, height: 210, color: C.navy });
         page.drawRectangle({ x: 0, y: H - 210, width: W, height: 3, color: C.red });
         if (logoW) { const h = 38, w = logoW.width * h / logoW.height; page.drawImage(logoW, { x: M, y: H - 72, width: w, height: h }); } else text('RESIDENTIAL REALTORS', M, H - 56, 14, B, C.white);
-        right((v.sales && v.lettings ? 'SALES & LETTINGS' : v.sales ? 'SALES' : 'LETTINGS') + ' VALUATION', W - M, H - 46, 7.4, B, hex('C7D2E4'));
+        right(mort ? 'RENTAL VALUATION LETTER' : (v.sales && v.lettings ? 'SALES & LETTINGS' : v.sales ? 'SALES' : 'LETTINGS') + ' VALUATION', W - M, H - 46, 7.4, B, hex('C7D2E4'));
         right(dayOf(v.date) + '  \xB7  ' + ref, W - M, H - 60, 8.4, F, C.white);
         page.drawRectangle({ x: M, y: H - 112, width: 34, height: 3, color: C.red });
-        text('Your property valuation', M, H - 138, 24, B, C.white);
+        text(mort ? 'Rental valuation letter' : 'Your property valuation', M, H - 138, 24, B, C.white);
         wrap(address, F, 12, CW).slice(0, 2).forEach(function (ln, i) { text(ln, M, H - 162 - i * 15, 12, F, hex('DCE3EE')); });
         y = H - 246;
       } else {
@@ -12105,15 +12134,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
     right('Reference', W - M - 110, y - (v.visited ? 28 : 14), 8, B, C.soft); right(ref, W - M, y - (v.visited ? 28 : 14), 9.2, F, C.ink);
     y -= Math.max(to.length * 13, 44) + 18;
     const short = safe(address).split(',').slice(0, 2).join(',');
+    if (mort) {
+      text(v.lender ? 'Dear ' + v.lender + ',' : 'To whom it may concern,', M, y, 10.4, F, C.ink); y -= 20;
+      para('We have been asked by ' + (v.to_name || 'the owner') + ' to give our opinion of the monthly rent that ' + short + ' would achieve if let on a standard residential tenancy in the current market' + (v.mortgage_for ? ', for their ' + String(v.mortgage_for).toLowerCase() : '') + '. Our opinion is based on our knowledge of the local lettings market, similar homes let or advertised nearby and the property details below.', 10.2);
+    } else {
     text('Dear ' + (v.salutation || v.to_name || 'Sir or Madam') + ',', M, y, 10.4, F, C.ink); y -= 20;
     para('Thank you for asking us to value ' + short + (v.visited ? ' and for showing us around' : '') + '. Based on our knowledge of the local market, recent comparable ' + (v.sales && v.lettings ? 'sales and lettings' : v.sales ? 'sales' : 'lettings') + ', current demand and the property itself, here is our recommendation.', 10.2);
+    }
     y -= 8;
     // The figures: one card per valuation, side by side when there are two.
     const cards = [];
     const range = function (lo, hi, unit) { return lo && hi && lo !== hi ? gbp0(lo) + ' - ' + gbp0(hi) : gbp0(lo || hi); };
     if (v.sales) cards.push({ k: 'SALES VALUATION', big: range(v.sales_low, v.sales_high), unit: '', cap: 'Recommended asking price' + (v.sales_low && v.sales_high && v.sales_low !== v.sales_high ? ' range' : '') });
     if (v.lettings) { const lo = v.let_low || v.let_high, hi = v.let_high || v.let_low, mid = (lo + hi) / 2;
-      cards.push({ k: 'LETTINGS VALUATION', big: range(v.let_low, v.let_high), unit: ' pcm', cap: (lo !== hi ? gbp0(lo * 12 / 52) + ' - ' + gbp0(hi * 12 / 52) : gbp0(mid * 12 / 52)) + ' a week  \xB7  ' + (lo !== hi ? gbp0(lo * 12) + ' - ' + gbp0(hi * 12) : gbp0(mid * 12)) + ' a year' }); }
+      cards.push({ k: mort ? 'ACHIEVABLE RENT' : 'LETTINGS VALUATION', big: range(v.let_low, v.let_high), unit: ' pcm', cap: (lo !== hi ? gbp0(lo * 12 / 52) + ' - ' + gbp0(hi * 12 / 52) : gbp0(mid * 12 / 52)) + ' a week  \xB7  ' + (lo !== hi ? gbp0(lo * 12) + ' - ' + gbp0(hi * 12) : gbp0(mid * 12)) + ' a year' }); }
     const gap = 14, cw = cards.length === 2 ? (CW - gap) / 2 : CW, ch = 96;
     ensure(ch + 10);
     cards.forEach(function (c, i) {
@@ -12164,7 +12198,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const ls = wrap(l, F, 9.6, CW - 16); ensure(ls.length * 13.5 + 2); page.drawCircle({ x: M + 4, y: y + 3.2, size: 2.2, color: C.navy2 }); ls.forEach(function (ln) { text(ln, M + 14, y, 9.6, F, C.ink2); y -= 13.5; }); y -= 1; });
     if (v.note) { y -= 4; para(v.note, 9.8); }
     // Our lettings services (with any discount on our standard fees)
-    if (v.lettings && v.include_fees) {
+    if (v.lettings && v.include_fees && !mort) {
       ensure(3 * 34 + 80); heading('Letting with Residential Realtors');
       const rent = ((v.let_low || v.let_high) + (v.let_high || v.let_low)) / 2;
       const rows = [['Let only', v.find_pct != null ? v.find_pct : LT_STD.sole, LT_STD.sole, 'Tenant find: % of the first 12 months\' rent, taken once'], ['Let + rent collection', v.collect_pct != null ? v.collect_pct : LT_STD.collect, LT_STD.collect, 'Plus % of the rent each month'], ['Fully managed', v.both_pct != null ? v.both_pct : LT_STD.both, LT_STD.both, 'Plus % of the rent each month - we look after everything']];
@@ -12180,13 +12214,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const mgd = rent - rent * (v.both_pct != null ? v.both_pct : LT_STD.both) / 100 * 1.2;
       rr(M, y, CW, 30, 8, C.greenBg); text('Fully managed at ' + gbp0(rent) + ' pcm, you would receive about ' + gbp0(mgd) + ' a month after our fee (inc VAT).', M + 14, y - 19, 9.2, B, C.green); y -= 40;
     }
-    if (v.sales && v.sales_fee) { ensure(60); heading('Selling with Residential Realtors'); para('Our sales fee: ' + v.sales_fee + '.', 9.8); }
+    if (v.sales && v.sales_fee && !mort) { ensure(60); heading('Selling with Residential Realtors'); para('Our sales fee: ' + v.sales_fee + '.', 9.8); }
     // EPC we hold
     const epc = (await p.query("SELECT rating, expires_on FROM property_certificates WHERE property_key = $1 AND type = 'EPC'", [propKey(address)])).rows[0];
     if (epc && epc.expires_on) { ensure(34); rr(M, y, CW, 26, 8, C.blueBg); text('EPC rating ' + (epc.rating || '?') + (epc.expires_on >= new Date().toISOString().slice(0, 10) ? ', valid until ' + dayOf(epc.expires_on) : ' - expired ' + dayOf(epc.expires_on) + ' (a new one is needed before marketing)') + (v.lettings ? '. Rented homes need a rating of E or above.' : '.'), M + 14, y - 16.5, 8.8, F, C.blue); y -= 36; }
     // Next steps and sign-off
+    if (mort) {
+      ensure(110); heading('Basis of this letter');
+      para('The rent above assumes the property is in good condition, let on standard terms to suitable tenants at the date of this letter. It is our opinion as a letting agent, given in good faith for the owner and their mortgage lender or broker. Residential Realtors is a member of ARLA Propertymark, a Propertymark Client Money Protection scheme and The Property Ombudsman.', 9.8);
+      para('If you need anything further for the application, please contact us on 0207 096 8131 or info@residentialrealtors.co.uk, quoting ' + ref + '.', 9.8);
+    } else {
     ensure(110); heading('Next steps');
     para('If you would like to go ahead, reply to this letter or call us on 0207 096 8131. We will arrange photographs and a floor plan, ' + (v.lettings ? 'check the safety certificates' : 'check the EPC') + ', and have the property advertised on Rightmove and our website straight away.', 9.8);
+    }
     y -= 10; ensure(70);
     text('Yours sincerely,', M, y, 10, F, C.ink); y -= 30;
     text(v.signer || 'Residential Realtors', M, y, 11, B, C.ink); y -= 14;
@@ -12203,8 +12243,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       y -= 64;
     }
     if (y - 22 < 64) newPage(false);   // the small print may sit just above the footer
-    wrap('This is a market appraisal to help you decide how to market your property. It is not a formal valuation for mortgage, tax or legal purposes (such as a RICS Red Book valuation). The figures reflect market conditions on the date above and may change; we suggest reviewing them after three months.', F, 7.2, CW).forEach(function (ln) { text(ln, M, y, 7.2, F, C.faint); y -= 9.6; });
-    const name = ((v.sales && v.lettings ? 'Sales and Lettings' : v.sales ? 'Sales' : 'Lettings') + ' Valuation - ' + address).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').slice(0, 120) + '.pdf';
+    wrap(mort ? 'This letter is a letting agent\'s opinion of the rent the property should achieve. It is not a valuation of the property\'s capital value, a survey or a RICS Red Book valuation, which the lender arranges separately. The figure reflects the lettings market on the date above and may change.' : 'This is a market appraisal to help you decide how to market your property. It is not a formal valuation for mortgage, tax or legal purposes (such as a RICS Red Book valuation). The figures reflect market conditions on the date above and may change; we suggest reviewing them after three months.', F, 7.2, CW).forEach(function (ln) { text(ln, M, y, 7.2, F, C.faint); y -= 9.6; });
+    const name = ((mort ? 'Rental Valuation Letter' : (v.sales && v.lettings ? 'Sales and Lettings' : v.sales ? 'Sales' : 'Lettings') + ' Valuation') + ' - ' + address).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').slice(0, 120) + '.pdf';
     return { bytes: await pdf.save(), name: name };
   }
   // Our standard scale of fees (% of the rent, + VAT): tenant find 10% (12% multi agency), rent collection 3%,
