@@ -745,7 +745,7 @@
   .crm-tile span { grid-row: span 2; font-size: 1.4rem; } .crm-tile b { font-size: 1.3rem; line-height: 1.1; } .crm-tile small { color: var(--ink-soft); font-size: .78rem; }
   .crm-tile.hot b { color: #b42318; } .crm-tile.on { border-color: var(--navy, #0b1f3a); box-shadow: 0 0 0 2px var(--navy, #0b1f3a) inset; }
   .crm-appl { border: 1px solid #d0d5dd; background: #f9fafb; border-radius: 10px; padding: 10px 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .crm-appl-own { font-size: .9rem; line-height: 1.4; } .crm-verdict { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; font-weight: 600; width: 100%; max-width: 320px; } .crm-hook { margin-bottom: 12px; } .crm-hook summary { cursor: pointer; font-weight: 600; }
-  body:not(.staff-mode) #navLeads { display: none; }   /* the owner sees applicants in Website leads */
+  body:not(.staff-mode) #navLeads, body:not(.staff-mode) .more-item[data-go="navLeads"] { display: none; }   /* the owner sees applicants in Website leads (side menu and the phone More menu) */
   @media (max-width: 520px) { #invTopBtn { display: none; } }   /* phones: Invoices is in the More menu */
   .inv-top { margin-bottom: 12px; } .inv-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .inv-bar #invQ { flex: 1; min-width: 200px; }
   .inv-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 120px 130px auto; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line, #eaecf0); }
