@@ -9022,7 +9022,11 @@
       var n = function(x){ return Number(x || 0).toLocaleString('en-GB'); };
       var pc = function(a, b){ return b ? Math.round(a / b * 100) : 0; };
       var tot = d.products.reduce(function(a, x){ a.r += x.requests; a.w += x.won; a.m += x.revenue; return a; }, { r: 0, w: 0, m: 0 });
-      var h = '<div class="fn-head"><h3>💷 Sales funnel</h3><div class="web-range" id="fnRange">' + [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '12 months']].map(function(r){ return '<button type="button" data-fn-days="' + r[0] + '"' + (r[0] === d.days ? ' class="on"' : '') + '>' + r[1] + '</button>'; }).join('') + '</div></div>' +
+      var fnMin = false; try { fnMin = localStorage.getItem('rr_fn_min') === '1'; } catch (e) {}
+      var minBtn = '<button type="button" class="btn small ghost" data-fn-min>' + (fnMin ? 'Show' : 'Minimise') + '</button>';
+      // Minimised: just the heading and one line, remembered on this device.
+      if (fnMin) { $('fnCard').innerHTML = '<div class="fn-head"><h3>💷 Sales funnel</h3>' + minBtn + '</div><p class="muted-note" style="margin:2px 0 0">' + n(tot.r) + ' requests, ' + n(tot.w) + ' paid or won in the last ' + (d.days === 365 ? '12 months' : d.days + ' days') + (tot.m ? ' · ' + gbp(tot.m) + ' taken online' : '') + '.</p>'; return; }
+      var h = '<div class="fn-head"><h3>💷 Sales funnel</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div class="web-range" id="fnRange">' + [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '12 months']].map(function(r){ return '<button type="button" data-fn-days="' + r[0] + '"' + (r[0] === d.days ? ' class="on"' : '') + '>' + r[1] + '</button>'; }).join('') + '</div>' + minBtn + '</div></div>' +
         '<p class="muted-note" style="margin:2px 0 0">Everything you sell on the website: how many <b>real people</b> looked (search-engine robots and scrapers left out' + (d.human_since ? ', counted from ' + esc(longDay(String(d.human_since).slice(0, 10))) : ' — counting starts with the next visitors') + '), asked or booked, and paid or became clients. <b>' + n(tot.r) + '</b> requests, <b>' + n(tot.w) + '</b> paid or won' + (tot.m ? ', <b>' + gbp(tot.m) + '</b> taken online (inc. VAT)' : '') + '.</p><div class="fn-list">';
       d.products.slice().sort(function(a, b){ return (b.requests - a.requests) || (b.visitors - a.visitors); }).forEach(function(x){
         var cert = ['letting', 'sale'].indexOf(x.k) === -1 && !x.client, top = Math.max(x.visitors, x.requests, 1);
@@ -9044,6 +9048,7 @@
   }
   $('fnCard').addEventListener('click', function(e){
     var r = e.target.closest('[data-fn-days]'); if (r) { fnDays = +r.dataset.fnDays; loadFunnel(); return; }
+    if (e.target.closest('[data-fn-min]')) { var mn = false; try { mn = localStorage.getItem('rr_fn_min') === '1'; localStorage.setItem('rr_fn_min', mn ? '0' : '1'); } catch (x) {} loadFunnel(); return; }
     var f = e.target.closest('[data-fn-find]'); if (f) { showView('crm'); $('crmQ').value = f.dataset.fnFind; $('crmQ').dispatchEvent(new Event('input')); }
   });
   // ---------- Website visitors: who visits the website, what they look at and where they came from ----------
