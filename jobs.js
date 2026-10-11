@@ -11545,13 +11545,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // won from the status staff give a lead (and landlords who signed the terms they started online).
   const FUNNEL = [
     { k: 'letting', name: 'Letting your property', icon: '🏠', pages: ['/landlords', '/landlords/%', '/letting-agents%', '/areas-we-cover', '/london-rents%', '/landlord-services', '/landlord-guides%', '/landlord-tools%', '/tools', '/switch-letting-agent', '/change-letting-agent', '/valuation', '/compliance', '/landlord-compliance', '/overseas-landlords', '/landlords-abroad', '/market-updates%', '/london-rental-market'], lead: 'letting' },
-    { k: 'sale', name: 'Selling a home', icon: '🏷️', pages: ['/sales', '/sell', '/selling'], lead: 'sale' },
+    { k: 'sale', name: 'Selling a home', icon: '🏷️', pages: ['/sales', '/sales/%', '/sell', '/selling'], lead: 'sale' },
     { k: 'gas', name: 'Gas Safety certificate', icon: '🔥', pages: ['/gas-safety', '/gas-safety-certificate%', '/cp12'], items: /^gas$/ },
     { k: 'eicr', name: 'EICR (electrical)', icon: '⚡', pages: ['/eicr', '/eicr/%', '/eicr-certificate', '/electrical-safety-certificate'], items: /^eicr/ },
     { k: 'epc', name: 'EPC', icon: '🌿', pages: ['/epc', '/epc/%', '/epc-certificate', '/book-epc'], items: /^epc$/ },
     { k: 'diy', name: 'DIY inventory', icon: '📋', pages: ['/diy-inventory%', '/inventory'], items: /^diy$/ },
-    { k: 'licence', name: 'Free licence help → letting clients', icon: '📄', pages: ['/licence-application', '/hmo-licence-application', '/property-licence', '/licence-checker'], items: /^licence$/, client: true },
-    { k: 'clean', name: 'End of tenancy cleaning', icon: '🧽', pages: ['/book-a-clean', '/end-of-tenancy-clean'], items: /^clean/ }
+    { k: 'licence', name: 'Free licence help → letting clients', icon: '📄', pages: ['/licence-application', '/licence-application/%', '/hmo-licence-application', '/property-licence', '/licence-checker'], items: /^licence$/, client: true },
+    { k: 'clean', name: 'End of tenancy cleaning', icon: '🧽', pages: ['/book-a-clean', '/book-a-clean/%', '/end-of-tenancy-clean'], items: /^clean/ }
   ];
   app.get('/api/admin/sales-funnel', withDb(async function (p, req, res) {
     const days = [7, 30, 90, 365].indexOf(+req.query.days) !== -1 ? +req.query.days : 30;
