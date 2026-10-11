@@ -13830,7 +13830,7 @@
   function ytUrl(id){ return 'https://www.youtube.com/watch?v=' + encodeURIComponent(id); }
   // Our properties on other agents' Rightmove adverts (owner and managers): checked each night.
   var rivData = null;
-  function loadRiv(){ if (!meta.canManageUsers) return; api('GET', '/api/admin/rivals').then(function(d){ if (d && d.ok) { rivData = d; renderRiv(); } }); }
+  function loadRiv(){ api('GET', '/api/admin/rivals').then(function(d){ if (d && d.ok) { rivData = d; renderRiv(); } }); }
   function renderRiv(){
     var d = rivData; if (!d) return; $('avRiv').hidden = false;
     var live = d.hits.filter(function(h){ return !h.dismissed_at; }), strong = live.filter(function(h){ return h.kind !== 'street'; }), weak = live.filter(function(h){ return h.kind === 'street'; }), gone = d.hits.filter(function(h){ return h.dismissed_at; });
@@ -13858,7 +13858,7 @@
   });
   // New on Rightmove within a short walk of the office (owner and managers).
   var nearData = null;
-  function loadNear(){ if (!meta.canManageUsers) return; api('GET', '/api/admin/nearby').then(function(d){ if (d && d.ok) { nearData = d; renderNear(); } }); }
+  function loadNear(){ api('GET', '/api/admin/nearby').then(function(d){ if (d && d.ok) { nearData = d; renderNear(); } }); }
   function renderNear(){
     var d = nearData; if (!d) return; $('avNear').hidden = false;
     var live = d.items.filter(function(x){ return !x.dismissed_at; }), gone = d.items.filter(function(x){ return x.dismissed_at; }), wk = live.filter(function(x){ return Date.now() - new Date(x.first_seen) < 7 * 864e5; }).length;

@@ -229,7 +229,8 @@ module.exports = function (app, opts) {
     nearPool().then(async function (p) { if (!p) return; const s = await nearState(p); if (s.run && Date.now() - Date.parse(s.run.at) < 115 * 60000) return; await nearRun(); }).catch(function (e) { console.error('Near the office check:', e.message); });
   }, 10 * 60000).unref();
 
-  const mgr = function (req) { return opts.isStaff(req) && opts.canManage(req); };
+  // Every member of staff can see (and check / dismiss) these — the owner asked for both sections to be open to all staff.
+  const mgr = function (req) { return opts.isStaff(req); };
   app.get('/api/admin/nearby', async function (req, res) {
     if (!mgr(req)) return res.status(403).json({ ok: false });
     try { const p = await nearPool(), s = await nearState(p);
