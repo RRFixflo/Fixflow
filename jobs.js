@@ -11539,6 +11539,73 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const row = (await p.query("SELECT * FROM valuation_requests WHERE data->>'kind' = 'cert' AND data->'checkouts' ? $1", [cid])).rows[0]; if (row) await certPaid(p, row);
     } catch (e) { console.error('SumUp webhook check failed:', e.message); }
   }));
+  // ---------- Sales funnel: for each thing we sell on the website, visitors → requests → paid / won ----------
+  // Visitors are the website's own counts (web_visits: one code per visitor per day, staff and bots left
+  // out) on that product's pages; requests are the website leads and bookings; paid comes from SumUp,
+  // won from the status staff give a lead (and landlords who signed the terms they started online).
+  const FUNNEL = [
+    { k: 'letting', name: 'Letting your property', icon: '🏠', pages: ['/landlords', '/landlords/%', '/letting-agents%', '/areas-we-cover', '/london-rents%', '/landlord-services', '/landlord-guides%', '/landlord-tools%', '/tools', '/switch-letting-agent', '/change-letting-agent', '/valuation', '/compliance', '/landlord-compliance', '/overseas-landlords', '/landlords-abroad', '/market-updates%', '/london-rental-market'], lead: 'letting' },
+    { k: 'sale', name: 'Selling a home', icon: '🏷️', pages: ['/sales', '/sell', '/selling'], lead: 'sale' },
+    { k: 'gas', name: 'Gas Safety certificate', icon: '🔥', pages: ['/gas-safety', '/gas-safety-certificate%', '/cp12'], items: /^gas$/ },
+    { k: 'eicr', name: 'EICR (electrical)', icon: '⚡', pages: ['/eicr', '/eicr/%', '/eicr-certificate', '/electrical-safety-certificate'], items: /^eicr/ },
+    { k: 'epc', name: 'EPC', icon: '🌿', pages: ['/epc', '/epc/%', '/epc-certificate', '/book-epc'], items: /^epc$/ },
+    { k: 'diy', name: 'DIY inventory', icon: '📋', pages: ['/diy-inventory%', '/inventory'], items: /^diy$/ },
+    { k: 'licence', name: 'Free licence help → letting clients', icon: '📄', pages: ['/licence-application', '/hmo-licence-application', '/property-licence', '/licence-checker'], items: /^licence$/, client: true },
+    { k: 'clean', name: 'End of tenancy cleaning', icon: '🧽', pages: ['/book-a-clean', '/end-of-tenancy-clean'], items: /^clean/ }
+  ];
+  app.get('/api/admin/sales-funnel', withDb(async function (p, req, res) {
+    const days = [7, 30, 90, 365].indexOf(+req.query.days) !== -1 ? +req.query.days : 30;
+    const since = new Date(Date.now() - days * 86400000);
+    // Visitors per product (one query; a page belongs to the first product it matches).
+    const visits = {}, sources = {};
+    try {
+      const args = [since];
+      const cases = FUNNEL.map(function (f) { return 'WHEN ' + f.pages.map(function (pg) { args.push(pg); return 'path LIKE $' + args.length; }).join(' OR ') + " THEN '" + f.k + "'"; }).join(' ');
+      (await p.query('SELECT k, count(DISTINCT visitor)::int AS n FROM (SELECT visitor, CASE ' + cases + ' END AS k FROM web_visits WHERE at >= $1) x WHERE k IS NOT NULL GROUP BY k', args)).rows.forEach(function (r) { visits[r.k] = r.n; });
+      // How people found each product's pages (the sources that sent the most visitors).
+      (await p.query('SELECT k, ref, count(DISTINCT visitor)::int AS n FROM (SELECT visitor, ref, CASE ' + cases + ' END AS k FROM web_visits WHERE at >= $1) x WHERE k IS NOT NULL AND ref IS NOT NULL GROUP BY k, ref ORDER BY n DESC', args)).rows
+        .forEach(function (r) { const s = /google/.test(r.ref) ? 'Google' : /bing/.test(r.ref) ? 'Bing' : /facebook|instagram|fb\./.test(r.ref) ? 'Facebook / Instagram' : /rightmove/.test(r.ref) ? 'Rightmove' : /whatsapp/.test(r.ref) ? 'WhatsApp' : r.ref;
+          const o = sources[r.k] || (sources[r.k] = {}); o[s] = (o[s] || 0) + r.n; });
+    } catch (e) { /* no visitor table yet */ }
+    const leads = (await p.query("SELECT v.id, v.created_at, v.name, v.phone, v.email, v.address, v.status, v.data FROM valuation_requests v LEFT JOIN crm_meta m ON m.ref = 'vr:' || v.id WHERE v.created_at >= $1 AND NOT coalesce(m.junk, false) ORDER BY v.id DESC", [since])).rows;
+    const signups = (await p.query("SELECT id, created_at, status, landlord_name, property_address FROM landlord_terms WHERE created_by = 'Website' AND created_at >= $1", [since]).catch(function () { return { rows: [] }; })).rows;
+    // Landlords who signed our terms (any time): the ones the free licence help turned into clients.
+    const clients = (await p.query("SELECT lower(coalesce(landlord_email, '')) AS e, right(regexp_replace(coalesce(landlord_phone, ''), '\\D', '', 'g'), 9) AS p FROM landlord_terms WHERE status = 'signed'").catch(function () { return { rows: [] }; })).rows;
+    const out = FUNNEL.map(function (f) {
+      const r = { k: f.k, name: f.name, icon: f.icon, client: !!f.client, visitors: visits[f.k] || 0, requests: 0, progress: 0, won: 0, revenue: 0, stuck: [], sources: Object.entries(sources[f.k] || {}).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 3).map(function (x) { return { k: x[0], n: x[1] }; }) };
+      leads.forEach(function (l) {
+        const d = l.data || {}, kind = d.kind || 'val';
+        if (f.items) {
+          if (kind !== 'cert') return;
+          const mine = (d.items || []).filter(function (i) { return f.items.test(String(i.id)); }); if (!mine.length) return;
+          const free = !Number(d.total), paid = !!d.paid_at;
+          // Free licence help is how we meet landlords: it counts as won once they become a letting client.
+          if (f.client) {
+            r.requests++; if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
+            const em = String(l.email || '').toLowerCase(), ph = String(l.phone || '').replace(/\D/g, '').slice(-9);
+            if (clients.some(function (c) { return (em && c.e === em) || (ph.length === 9 && c.p === ph); }) || l.status === 'won') r.won++;
+            else if (l.status !== 'lost') r.stuck.push({ id: l.id, at: l.created_at, name: l.name, phone: l.phone, why: l.status === 'new' ? 'Not contacted yet — offer our letting service' : 'Not a letting client yet — talk about letting' });
+            return;
+          }
+          r.requests++; if (d.checkout_id || paid || free) r.progress++;
+          if (paid || (free && l.status !== 'lost')) { r.won++; r.revenue += mine.reduce(function (a, i) { return a + (Number(i.price) || 0); }, 0) * (1 + CERT_VAT); }
+          else if (!free && l.status !== 'lost') r.stuck.push({ id: l.id, at: l.created_at, name: l.name, phone: l.phone, why: d.checkout_id ? 'Went to pay but didn’t finish' : 'Booked, not paid' });
+          return;
+        }
+        const isLet = kind === 'val' || kind === 'comps' || (kind === 'quick' && d.service !== 'Sales'), isSale = kind === 'sale' || (kind === 'quick' && d.service === 'Sales');
+        if (!(f.lead === 'letting' ? isLet : isSale)) return;
+        r.requests++;
+        if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
+        if (l.status === 'won') r.won++;
+        else if (l.status === 'new' && Date.now() - new Date(l.created_at) > 86400000) r.stuck.push({ id: l.id, at: l.created_at, name: l.name, phone: l.phone, why: 'Not contacted yet' });
+      });
+      if (f.k === 'letting') signups.forEach(function (s) { r.requests++; r.progress++; if (s.status === 'signed') r.won++; else r.stuck.push({ lt: s.id, at: s.created_at, name: s.landlord_name, why: 'Started signing up online, terms not signed' }); });
+      r.revenue = Math.round(r.revenue * 100) / 100; r.stuck = r.stuck.slice(0, 8);
+      return r;
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: true, days: days, products: out });
+  }));
   app.get('/api/admin/cert-services', withDb(async function (p, req, res) { res.json({ ok: true, items: await certServices(p), pay: canPay() }); }));
   app.put('/api/admin/cert-services', withDb(async function (p, req, res) {
     if (req.role === 'offers' && !(req.user && req.user.role === 'offers_admin')) return res.status(403).json({ ok: false, error: 'managers-only' });
