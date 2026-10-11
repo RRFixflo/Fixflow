@@ -2615,6 +2615,7 @@ module.exports = function mountJobs(app, opts) {
       const to = str(m && m.to, 200), text = str(m && m.text, 10000), k = str(m && m.key, 80);
       if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to) || !text) { if (k) failed.push(k); continue; }
       const sent = await sendEmail({ to: [to], subject: str(m && m.subject, 300) || subject, text: text }).catch(function () { return { ok: false }; });
+      logSent(req, [to], [], null, str(m && m.subject, 300) || subject, text, sent);   // in their Sent emails
       if (sent && sent.ok) { if (k) done[k] = 'email'; } else if (k) failed.push(k);
     }
     if (Object.keys(done).length) await p.query('UPDATE tenant_notices SET sent = sent || $2::jsonb WHERE id = $1', [id, JSON.stringify(done)]);
@@ -7377,6 +7378,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // The original's own layout when the wording wasn't changed; else our usual branded email.
     const html = !b.text && m.html ? m.html : brandEmail(text, subject);
     const sent = await sendEmail({ to: to, cc: cc, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: html, attachments: atts });
+    logSent(req, to, cc, 'info@residentialrealtors.co.uk', subject, text, sent);   // in their Sent emails
     if (sent && sent.ok === false) return res.status(502).json({ ok: false, error: 'send-failed' });
     await p.query('UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1',
       [id, JSON.stringify([{ at: new Date().toISOString(), text: 'Resent to ' + to.join(', ') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : '') + ' (' + who + ')', email: logEmail({ to: to, cc: cc, subject: subject, text: text, html: html, attachments: atts.map(function (a) { return a.filename; }), files: m.files || [] }) }])]);
@@ -7397,6 +7399,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const cc = (Array.isArray(b.cc) ? b.cc : []).map(function (x) { return str(x, 200); }).filter(function (x) { return x && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x) && to.indexOf(x) === -1; }).slice(0, 6);
     officeCc(to, cc);
     const sent = await sendEmail({ to: to, cc: cc, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: html || brandEmail(text, subject), attachments: atts });
+    logSent(req, to, cc, 'info@residentialrealtors.co.uk', subject, text, sent);   // in their Sent emails
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     const kept = await keepEmailFiles(p, atts);
     // Files added to the email that staff marked as the deposit certificate, tenant ID or signed agreement: kept on the tenancy too.
@@ -10571,6 +10574,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.preview) return res.json({ ok: true, preview: true, to: to, cc: cc, subject: defSubject, text: defText, soon: soon });
     const text = str(b.text, 20000) || defText, subject = str(b.subject, 300) || defSubject;
     const r = await sendEmail({ to: to, cc: cc, subject: subject, text: text, html: brandEmail(text, subject), replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors' });
+    logSent(req, to, cc, 'info@residentialrealtors.co.uk', subject, text, r);   // in their Sent emails
     if (r && r.ok === false) return res.status(502).json({ ok: false, error: 'send-failed' });
     const row = { at: new Date().toISOString(), to: to.length, by: who };
     await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_reminders}', coalesce(data->'rent_reminders', '{}'::jsonb) || jsonb_build_object($2::text, coalesce(data->'rent_reminders'->$2, '[]'::jsonb) || $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
@@ -12021,6 +12025,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const t = 'Dear ' + String(x.name).split(' ')[0] + ',\n\nYour viewing is confirmed:\n\n' + x.address + '\n' + slotText(b.at) + '\n\n' + (str(b.note, 1000) ? str(b.note, 1000) + '\n\n' : '') + 'If you need to change the time, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\n' + (req.user && req.user.id ? req.user.name + '\n' : '') + 'Residential Realtors';
       const r = await sendEmail({ to: [x.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Viewing confirmed — ' + slotText(b.at), text: t, html: brandEmail(t, 'Viewing confirmed') }).catch(function () { return { ok: false }; });
       emailed = !!(r && r.ok !== false);
+      logSent(req, [x.email], [], 'info@residentialrealtors.co.uk', 'Viewing confirmed — ' + slotText(b.at), t, r);   // in their Sent emails
     }
     await crmLog(p, 'vr:' + x.id, 'Viewing confirmed for ' + slotText(b.at) + (emailed ? ' · confirmation emailed' : ''), req);
     teamAlert({ title: '✅ Viewing booked: ' + slotText(b.at), message: String(x.address).split(',').slice(0, 2).join(',') + ' · ' + x.name + (x.phone ? ' · ' + x.phone : '') + ' — booked by ' + (req.user ? req.user.name : 'the office') + '.', tags: ['white_check_mark'] }, '#leads').catch(function () {});
