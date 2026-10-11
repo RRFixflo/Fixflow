@@ -102,7 +102,8 @@ module.exports = function (app, opts) {
       '<div class="rv"><h3>Nearby boroughs</h3><ul class="ar-list">' + near.map(function (b) { return '<li><a href="' + S.base + '/' + b.slug + '">' + esc(S.short.charAt(0).toUpperCase() + S.short.slice(1)) + ' in ' + esc(b.name) + '</a></li>'; }).join('') + '</ul>' +
         '<h3>' + (who === 'landlords' ? 'Other services in ' + esc(B) : who === 'homeowners' ? 'Letting instead?' : 'Moving out?') + '</h3><ul class="ar-list">' + (who === 'homeowners' ? '<li><a href="/london-rents/' + a.slug + '">Letting agents in ' + esc(B) + '</a></li>' : '') + (who === 'tenants' ? '<li><a href="/tenants">Help for tenants</a></li>' : '') + Object.keys(SERVICES).filter(function (k) { return k !== key && (SERVICES[k].who || 'landlords') === who && who === 'landlords'; }).map(function (k) { const o = SERVICES[k]; return '<li><a href="' + o.base + '/' + a.slug + '">' + esc(o.type) + '</a></li>'; }).join('') + '</ul></div>' +
       '</div></div></section>';
-    h = h.replace(/<!--areas-->[\s\S]*?<!--\/areas-->/g, '');   // the main page's list of every borough
+    h = h.replace(/<!--areas-->[\s\S]*?<!--\/areas-->/g, '');
+    if (opts.addCb) h = opts.addCb(h, key);   // "Prefer a call?" strip under the top of the page   // the main page's list of every borough
     const at = h.indexOf('<section><div class="wrap"><div class="cb-band') !== -1 ? '<section><div class="wrap"><div class="cb-band' : h.indexOf('<section class="rl">') !== -1 ? '<section class="rl">' : '';
     h = at ? h.replace(at, local + at) : h + local;
     // Questions about the borough, added to the page's own.

@@ -1340,3 +1340,15 @@ html, body { overflow-x: clip; }
 .tl-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-left-width: 5px; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
 .tl-row span { display: flex; flex-direction: column; } .tl-row small { color: var(--muted, #667085); }
 .tl-ok { border-left-color: #12b76a; } .tl-soon { border-left-color: #f79009; } .tl-over { border-left-color: #d92d20; }
+/* "Prefer a call?" strip on product pages */
+.cbq { padding: 18px 0; background: #f1f5fb; border-bottom: 1px solid #e3e8f1; }
+.cbq-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 22px; align-items: center; }
+.cbq-t b { display: block; font-size: 1.1rem; color: var(--navy); } .cbq-t span { color: var(--soft); font-size: .95rem; }
+.cbq-f { display: flex; gap: 8px; flex-wrap: wrap; }
+.cbq-f input { font: inherit; font-size: 16px; padding: 11px 14px; border: 1px solid #d0d7e2; border-radius: 10px; background: #fff; width: 170px; min-width: 0; }
+.cbq-f .btn { padding: 11px 18px; white-space: nowrap; }
+.cbq-ok { grid-column: 1 / -1; font-size: .85rem; color: var(--soft); display: flex; gap: 8px; align-items: flex-start; } .cbq-ok input { margin-top: 3px; }
+.cbq-err { grid-column: 1 / -1; margin: 0; color: #b42318; font-weight: 700; font-size: .9rem; } .cbq-err:empty { display: none; }
+.cbq-done b { display: block; color: #067647; font-size: 1.05rem; } .cbq-done span { color: var(--soft); }
+.cbq-form:has(.cbq-done) { display: block; }
+@media (max-width: 860px) { .cbq-form { grid-template-columns: 1fr; } .cbq-f input { flex: 1 1 140px; width: auto; } .cbq-f .btn { flex: 1 1 100%; } }

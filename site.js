@@ -1,5 +1,11 @@
 /* Residential Realtors website: menu, reveal-on-scroll and the enquiry form. */
 (function () {
+  // A real visitor (not a robot): tell the server once, after a scroll, tap, key press or a few seconds on the page.
+  (function () {
+    var sent = false, send = function () { if (sent) return; sent = true; try { if (!(navigator.sendBeacon && navigator.sendBeacon('/api/visit/h', location.pathname))) fetch('/api/visit/h', { method: 'POST', body: location.pathname, keepalive: true }); } catch (e) {} };
+    ['scroll', 'pointerdown', 'keydown', 'touchstart'].forEach(function (ev) { window.addEventListener(ev, send, { once: true, passive: true }); });
+    setTimeout(function () { if (document.visibilityState === 'visible') send(); }, 4000);
+  })();
   var btn = document.querySelector('.menu-btn'), nav = document.querySelector('.nav');
   if (btn && nav) {
     btn.addEventListener('click', function () { var o = nav.classList.toggle('open'); btn.setAttribute('aria-expanded', o ? 'true' : 'false'); btn.textContent = o ? '✕' : '☰'; });
@@ -40,6 +46,23 @@
       if (!d.ok) { go.disabled = false; go.textContent = goTx; err.textContent = d.error === 'rate-limited' ? 'Too many requests — please try again later or call 0207 096 8131.' : d.error === 'postcode' ? 'Please check the postcode.' : 'Sorry, something went wrong. Please try again or call 0207 096 8131.'; return; }
       document.getElementById('sBody').innerHTML = '<div class="done"><div class="big">✓</div><h3 style="margin:0">Thanks, ' + String(data.name.split(/\s+/)[0]).replace(/[<>&"]/g, '') + ' — request sent</h3><p style="color:var(--soft);margin:8px 0 0">' + (mort ? 'We’ll look at similar homes nearby and send your rental valuation letter by email — usually within one working day. Need it sooner' : 'We’ll be in touch shortly to arrange your free valuation. For anything urgent') + ', call <a href="tel:02070968131" style="font-weight:700;color:var(--navy)">0207 096 8131</a>.</p></div>';
     }).catch(function () { go.disabled = false; go.textContent = goTx; err.textContent = 'Couldn’t connect — please try again or call 0207 096 8131.'; });
+  });
+
+  // "Prefer a call?" strips on product pages: a name and number, and we call back about that product.
+  Array.prototype.forEach.call(document.querySelectorAll('.cbq-form'), function (f) {
+    f.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var v = function (k) { return String(f.elements[k].value || '').trim(); }, err = f.querySelector('.cbq-err'), go = f.querySelector('button[type=submit]');
+      err.textContent = '';
+      if (!v('name')) { err.textContent = 'Please enter your name.'; return; }
+      if (v('phone').replace(/\D/g, '').length < 10) { err.textContent = 'Please enter your phone number.'; return; }
+      if (!f.elements.consent.checked) { err.textContent = 'Please tick the box so we can call you.'; return; }
+      go.disabled = true; go.textContent = 'Sending…';
+      ffPost('/api/valuation-request', { kind: 'quick', what: f.getAttribute('data-what'), name: v('name'), phone: v('phone'), website: v('website'), consent: true, page: location.pathname }, f).then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) { go.disabled = false; go.textContent = 'Call me back'; err.textContent = d.error === 'rate-limited' ? 'Too many requests — please call 0207 096 8131.' : 'Sorry, something went wrong — please call 0207 096 8131.'; return; }
+        f.innerHTML = '<div class="cbq-done"><b>✓ Thanks, ' + v('name').split(/\s+/)[0].replace(/[<>&"]/g, '') + ' — we’ll call you back</b><span>If it’s urgent, call us on <a href="tel:02070968131">0207 096 8131</a>.</span></div>';
+      }).catch(function () { go.disabled = false; go.textContent = 'Call me back'; err.textContent = 'Couldn’t connect — please call 0207 096 8131.'; });
+    });
   });
 
   // Property list: filter and sort the cards on the page; a map view; homes near me.
