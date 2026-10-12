@@ -3565,6 +3565,25 @@ module.exports = function mountJobs(app, opts) {
   }));
 
   // Emails sent to someone other than the tenant (council, landlord…), when email is set up.
+  // The certificate a gas / EICR / EPC job produced: the property's certificate of that type with its file,
+  // done since the job was raised (never the old one it replaced).
+  async function jobCertDoc(p, jid, withData) {
+    const j = (await p.query('SELECT id, category, affected, property_address, created_at FROM jobs WHERE id = $1', [jid])).rows[0];
+    if (!j) return null;
+    const type = certTypeOf(j.category, j.affected), key = j.property_address ? propKey(j.property_address) : '';
+    if (!type || !key) return null;
+    const since = new Date(new Date(j.created_at).getTime() - 30 * 864e5).toISOString().slice(0, 10);
+    const c = (await p.query('SELECT c.id, c.issued_on, c.updated_at, d.name' + (withData ? ', d.mime, d.data' : '') + ' FROM property_certificates c JOIN certificate_docs d ON d.cert_id = c.id WHERE c.property_key = $1 AND c.type = $2 ORDER BY c.updated_at DESC LIMIT 1', [key, type])).rows[0];
+    if (!c) return null;
+    const fresh = c.issued_on ? String(isoDay(c.issued_on) || '') >= since : new Date(c.updated_at) >= new Date(j.created_at);
+    if (!fresh) return null;
+    const ext = /pdf/i.test(c.mime || c.name || '') || !c.name ? '.pdf' : (/\.[a-z0-9]{2,4}$/i.exec(c.name) || ['.pdf'])[0];
+    return { id: c.id, type: type, name: CERT_TYPES[type].name.replace(/[^a-zA-Z0-9 ]+/g, '') + ' - ' + shortAddrText(j.property_address).replace(/[^a-zA-Z0-9 ,.-]+/g, '') + ext, data: c.data, mime: c.mime };
+  }
+  app.get('/api/admin/jobs/:id/cert-doc', withDb(async function (p, req, res) {
+    const c = await jobCertDoc(p, jobId(req), false);
+    res.json(c ? { ok: true, found: true, cert_id: c.id, name: c.name } : { ok: true, found: false });
+  }));
   app.post('/api/admin/jobs/:id/email', withDb(async function (p, req, res) {
     if (!canEmail()) return res.status(503).json({ ok: false, error: 'email-not-configured' });
     const b = req.body || {};
@@ -3580,11 +3599,18 @@ module.exports = function mountJobs(app, opts) {
     const att = typeof b.attachment_base64 === 'string' && b.attachment_base64.length < 30 * 1024 * 1024 ? b.attachment_base64.replace(/^data:[^,]*,/, '') : null;
     const attName = (str(b.attachment_name, 150) || 'Report.pdf').replace(/[^a-zA-Z0-9.\-_]+/g, '-');
     const who = await senderOf(req);
-    const sent = await sendEmail({ to: [to], replyTo: who.replyTo, fromName: who.fromName, subject: subject, text: text, html: brandEmail(text, subject), attachmentBase64: att || undefined, attachmentFilename: att ? attName : undefined }).catch(function (err) { return { ok: false, error: err.message }; });
-    logSent(req, [to], [], who.replyTo, subject, text + (att ? '\n\n[Attached: ' + attName + ']' : ''), sent);
+    // Completed certificate jobs: the certificate itself goes with the email.
+    const atts = att ? [{ filename: attName, content: att }] : [];
+    for (const cj of (Array.isArray(b.cert_job_ids) ? b.cert_job_ids : []).slice(0, 10)) {
+      const c = await jobCertDoc(p, parseInt(cj, 10), true).catch(function () { return null; });
+      if (c && c.data && !atts.some(function (a) { return a.filename === c.name; })) atts.push({ filename: c.name, content: Buffer.from(c.data).toString('base64') });
+    }
+    const sent = await sendEmail({ to: [to], replyTo: who.replyTo, fromName: who.fromName, subject: subject, text: text, html: brandEmail(text, subject), attachments: atts.length ? atts : undefined }).catch(function (err) { return { ok: false, error: err.message }; });
+    const attNames = atts.map(function (a) { return a.filename; }).join(', ');
+    logSent(req, [to], [], who.replyTo, subject, text + (attNames ? '\n\n[Attached: ' + attNames + ']' : ''), sent);
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
-      [id, 'email', 'Emailed ' + to + (att ? ' (with ' + attName + ')' : '') + ' — ' + subject + '\n\n' + text]);
+      [id, 'email', 'Emailed ' + to + (attNames ? ' (with ' + attNames + ')' : '') + ' — ' + subject + '\n\n' + text]);
     await p.query('UPDATE jobs SET updated_at = now() WHERE id = $1', [id]);
     res.json({ ok: true });
   }));
