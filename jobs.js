@@ -11429,6 +11429,25 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   // ---------- Valuation requests (public Landlords page) ----------
   const vrHits = new Map();
+  // Where a website lead came from: the page its form was sent from, the first page that visitor landed on, how
+  // they found us (Google, Bing, another site — empty for typed in / bookmark) and the pages they looked at.
+  async function noteSource(p, req, id) {
+    try {
+      let page = ''; try { const u = new URL(String(req.headers.referer || '')); if (u.host === String(req.headers.host || '') || /residentialrealtors\.co\.uk$/i.test(u.hostname)) page = u.pathname.slice(0, 300); } catch (e) {}
+      const j = opts.journey ? await opts.journey(req) : null;
+      if (!page && !j) return;
+      const src = { page: page, landing: (j && j.landing) || page, from: (j && j.from) || '', first_at: (j && j.first_at) || null, pages: (j && j.pages) || (page ? [page] : []), views: (j && j.views) || 0 };
+      await p.query("UPDATE valuation_requests SET data = coalesce(data, '{}'::jsonb) || jsonb_build_object('src', $2::jsonb) WHERE id = $1", [id, JSON.stringify(src)]);
+    } catch (e) { console.error('[lead source]', e.message); }
+  }
+  // An older lead with no source saved: visitors on the website just before it came in (a best guess).
+  app.get('/api/admin/crm/:id/visits', withDb(async function (p, req, res) {
+    const r = (await p.query('SELECT id, created_at, data FROM valuation_requests WHERE id = $1', [jobId(req)])).rows[0];
+    if (!r) return res.status(404).json({ ok: false });
+    const d = r.data || {}, kind = d.kind || '', items = (d.items || []).map(function (x) { return x.id || ''; }).join(' ');
+    const hint = /eicr/i.test(items) ? 'eicr|certificate' : /gas/i.test(items) ? 'gas|certificate' : /epc/i.test(items) ? 'epc|certificate' : /clean/i.test(items) || kind === 'clean' ? 'clean' : kind === 'mortgage' ? 'mortgage' : kind === 'sale' ? 'sale|valuation' : kind === 'cert' ? 'certificate|eicr|gas|epc' : 'valuation|landlord';
+    res.json({ ok: true, visits: opts.visitsAround ? await opts.visitsAround(r.created_at, hint) : [] });
+  }));
   app.post('/api/valuation-request', withDb(async function (p, req, res) {
     const b = req.body || {}, ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim(), now = Date.now();
     const hits = (vrHits.get(ip) || []).filter(function (t) { return now - t < 3600000; }); if (hits.length >= 5) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -11447,6 +11466,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const what = ['Sales', 'Rental', 'Not sure'].indexOf(b.what) !== -1 || product ? (b.what === 'Selling' ? 'Sales' : b.what === 'Letting' ? 'Rental' : b.what) : 'Not sure', page = str(b.page, 120) || '';
       const callback = (product && ['Selling', 'Letting'].indexOf(b.what) === -1);   // a product page's call-back (not a valuation)
       const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email || null, phone, callback ? '(call-back request)' : '(quick request — call back for the address)', JSON.stringify({ kind: 'quick', service: what, page: page })]);
+      await noteSource(p, req, r.rows[0].id);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
       // Every member of staff hears about it: a phone alert and an email each.
       teamAlert({ title: callback ? '📞 Call-back request (' + what + '): ' + name : '⚡ Quick valuation request: ' + name, message: callback ? phone + ' · wants a call about ' + what + (page ? ' · from ' + page : '') : phone + ' · ' + what + ' valuation — call them back for the address.', tags: ['house'] }, '#leads').catch(function () {});
@@ -11466,6 +11486,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.kind === 'comps') {
       const cd = { kind: 'comps', postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', message: str(b.message, 2000) || '' };
       const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(cd)]);
+      await noteSource(p, req, r.rows[0].id);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
       const short = full.split(',').slice(0, 2).join(','), bt = cd.beds ? (cd.beds === 'Studio' ? 'studio' : cd.beds + ' bed') : '';
       teamAlert({ title: '📊 Comparables report request: ' + short, message: name + ' · ' + (phone || email) + (bt ? ' · ' + bt : '') + ' — add similar homes in Website requests and send it.', tags: ['house'] }, '#leads').catch(function () {});
@@ -11480,6 +11501,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const md = { kind: 'mortgage', postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', purpose: ['Remortgage', 'Buying a buy-to-let', 'Product transfer / other'].indexOf(String(b.purpose || '')) !== -1 ? String(b.purpose) : '',
         lender: str(b.lender, 120) || '', needed: str(b.needed, 40) || '', let_now: ['Let now', 'Empty', 'Not bought yet'].indexOf(String(b.let_now || '')) !== -1 ? String(b.let_now) : '', message: str(b.message, 2000) || '' };
       const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(md)]);
+      await noteSource(p, req, r.rows[0].id);
       if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
       const short = full.split(',').slice(0, 2).join(','), bt = md.beds ? (md.beds === 'Studio' ? 'studio' : md.beds + ' bed') : '';
       teamAlert({ title: '🏦 Mortgage rental letter request: ' + short, message: name + ' · ' + (phone || email) + (bt ? ' · ' + bt : '') + (md.needed ? ' · needed ' + md.needed.toLowerCase() : '') + ' — make it with Appraisal → Mortgage rental letter.', tags: ['bank'] }, '#leads').catch(function () {});
@@ -11493,6 +11515,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const sale = b.kind === 'sale';   // from the Sales page: a homeowner thinking of selling
     const data = { postcode: postcode, beds: str(b.beds, 20) || '', type: str(b.type, 40) || '', service: str(b.service, 40) || '', when: str(b.when, 40) || '', message: str(b.message, 2000) || '' }; if (sale) data.kind = 'sale';
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, full, JSON.stringify(data)]);
+    await noteSource(p, req, r.rows[0].id);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
     teamAlert({ title: (sale ? '🏷️ Sales valuation: ' : '🏠 Valuation request: ') + full.split(',').slice(0, 2).join(','), message: name + ' · ' + (phone || email) + (data.service && data.service !== 'Not sure yet' ? ' · ' + data.service : '') + ' — in Website leads.', tags: ['house'] }, '#leads').catch(function () {});
     staffEmailAll((sale ? '🏷️ Sales valuation request - ' : '🏠 Valuation request - ') + full.split(',').slice(0, 2).join(','), function (link) {
@@ -11550,7 +11573,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const c = await sumup('POST', '/v0.1/checkouts', { checkout_reference: ref, amount: Number(d.total), currency: 'GBP', merchant_code: SUMUP_MC,
       description: 'Residential Realtors — ' + (d.items || []).map(function (i) { return i.name; }).join(' + ').slice(0, 200), redirect_url: back, return_url: (PUBLIC_URL || SITE) + '/api/sumup/webhook', hosted_checkout: { enabled: true } });
     d.checkout_id = c.id; d.checkout_ref = ref; d.pay_url = c.hosted_checkout_url || ''; d.checkouts = (d.checkouts || []).concat([c.id]).slice(-5);
-    await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]);
+    await p.query('UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object(\'src\', data->\'src\')) WHERE id = $1', [row.id, JSON.stringify(d)]);
     return d.pay_url || (SITE + page + '?b=' + row.id + '&k=' + d.token + '&pay=1');
   }
   const certText = function (row) { const d = row.data || {};
@@ -11584,7 +11607,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'created', 'Job raised from a website certificate booking (' + it.name + ', ' + (it.price ? '£' + Number(it.price).toFixed(2) + ' + VAT' : 'free') + (!it.price ? '' : d.paid_at ? ', paid online' : ', payment to take') + ').' + (pick ? ' Assigned to ' + pick.name + '.' : ' No contractor chosen for this service yet — pick one in Certificates → Website bookings.')]);
       ntfy({ title: refFor(id) + ' raised: ' + cat, message: String(row.address).replace(/\s+/g, ' ') + '\n' + (pick ? 'Assigned to ' + pick.name + ' — open it to send them the job.' : 'No contractor chosen yet — open it to assign one.'), tags: ['scroll'] }, '#job-' + id).catch(function () {});
     }
-    d.jobs = ids; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]); row.data = d;
+    d.jobs = ids; await p.query('UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object(\'src\', data->\'src\')) WHERE id = $1', [row.id, JSON.stringify(d)]); row.data = d;
   }
   // ---------- Reminders before a certificate we sold runs out ----------
   // Counted from the booking (Gas Safety yearly, EICR every 5 years, EPC every 10), a month ahead.
@@ -11604,7 +11627,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           text: 'Dear ' + String(row.name).split(' ')[0] + ',\n\nThe ' + what + ' we arranged for ' + row.address + ' is due for renewal around ' + due.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + '.\n\nYou can book the renewal online in a couple of minutes:\n' + SITE + page + '\n\nOr just reply to this email and we’ll arrange it for you.\n\nResidential Realtors\n0207 096 8131' }).catch(function (e) { console.error('Certificate reminder failed:', e.message); });
         done[k] = new Date().toISOString(); changed = true;
       }
-      if (changed) { d.reminded = done; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]); }
+      if (changed) { d.reminded = done; await p.query('UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object(\'src\', data->\'src\')) WHERE id = $1', [row.id, JSON.stringify(d)]); }
     }
   }
   setInterval(function () { certReminders().catch(function (e) { console.error('Certificate reminders failed:', e.message); }); }, 6 * 3600 * 1000).unref();
@@ -11622,7 +11645,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const d = row.data || {}; if (d.diy_link || !(d.items || []).some(function (i) { return /^diy/.test(i.id); })) return;
     const n = (d.items || []).filter(function (i) { return /^diy/.test(i.id); }).length;
     const m = await diyMint(p, { kind: 'paid', booking: row.id, name: row.name, email: row.email, address: row.address, days: 180 });
-    d.diy_link = m.link; d.diy_reports = n; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]); row.data = d;
+    d.diy_link = m.link; d.diy_reports = n; await p.query('UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object(\'src\', data->\'src\')) WHERE id = $1', [row.id, JSON.stringify(d)]); row.data = d;
   }
   const diyCors = function (res) { res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Cache-Control', 'no-store'); };
   app.get('/api/public/diy-access/:token', withDb(async function (p, req, res) {
@@ -11653,7 +11676,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (dup) return res.json({ ok: true, id: dup.id, duplicate: true });
     const r = await p.query('INSERT INTO diy_reports (token, booking_id, address, meta, pdf, size) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id', [t, a.booking_id, clean.address || a.address, JSON.stringify(clean), pdf, pdf.length]);
     const id = r.rows[0].id, dl = SITE + '/api/public/diy-report/' + t + '/pdf';
-    if (a.booking_id) { const b = (await p.query('SELECT data FROM valuation_requests WHERE id = $1', [a.booking_id])).rows[0]; if (b) { const d = b.data || {}; d.diy_report_id = id; await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [a.booking_id, JSON.stringify(d)]); } }
+    if (a.booking_id) { const b = (await p.query('SELECT data FROM valuation_requests WHERE id = $1', [a.booking_id])).rows[0]; if (b) { const d = b.data || {}; d.diy_report_id = id; await p.query('UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object(\'src\', data->\'src\')) WHERE id = $1', [a.booking_id, JSON.stringify(d)]); } }
     ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#certs' : undefined, title: '📄 DIY inventory report received', message: (clean.address || a.address || 'A property') + (a.name ? ' · ' + a.name : '') + (a.kind === 'office' ? ' (tenancy check-in)' : ''), tags: ['page_facing_up'] }).catch(function () {});
     const to = a.email || (/@/.test(String(meta.email || '')) ? String(meta.email) : '');
     if (to && canEmail() && sendEmail) sendEmail({ to: to, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Your inventory report — ' + (clean.address || a.address || 'your property'),
@@ -11690,7 +11713,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   async function certPaid(p, row) {
     const d = row.data || {}; if (d.paid_at) return;
-    d.paid_at = new Date().toISOString(); await p.query("UPDATE valuation_requests SET data = $2 WHERE id = $1", [row.id, JSON.stringify(d)]); row.data = d;
+    d.paid_at = new Date().toISOString(); await p.query("UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object('src', data->'src')) WHERE id = $1", [row.id, JSON.stringify(d)]); row.data = d;
     await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); });
     await certDiy(p, row).catch(function (e) { console.error('DIY access failed:', e.message); });
     ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined, title: '💳 ' + (d.who === 'tenant' ? 'Cleaning' : 'Certificate') + ' booking paid: £' + Number(d.total).toFixed(2), message: (d.items || []).map(function (i) { return i.name; }).join(' + ') + ' · ' + row.address.split(',').slice(0, 2).join(','), tags: ['credit_card'] }).catch(function () {});
@@ -11728,6 +11751,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const data = { kind: 'cert', who: tenantClean ? 'tenant' : 'landlord', postcode: postcode, items: items.map(function (x) { return { id: x.id, name: x.name, price: x.price, contractor: x.contractor }; }), subtotal: subtotal, vat: vat, total: total, token: crypto.randomBytes(12).toString('base64url'),
       access: ['landlord', 'tenant', 'keys'].indexOf(b.access) !== -1 ? b.access : '', tenant_name: str(b.tenant_name, 120) || '', tenant_phone: str(b.tenant_phone, 40) || '', tenant_email: str(b.tenant_email, 200) || '', dates: (Array.isArray(b.dates) ? b.dates : []).map(function (x) { return str(x, 60); }).filter(Boolean).slice(0, 3), dates_iso: (Array.isArray(b.dates_iso) ? b.dates_iso : []).filter(function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(String(x)); }).slice(0, 3), message: str(b.message, 2000) || '' };
     const row = (await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING *', [name, email, phone, full, JSON.stringify(data)])).rows[0];
+    await noteSource(p, req, row.id);
     ntfy({ click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined, title: (tenantClean ? '🧽 Cleaning booking: ' : '📜 Certificate booking: ') + items.map(function (x) { return x.name.replace(/ —.*/, ''); }).join(' + '), message: full.split(',').slice(0, 2).join(',') + (total ? ' · £' + total.toFixed(2) : '') + (!total ? ' · free service' : canPay() ? ' · paying online' : ' · take payment'), tags: ['scroll'] }).catch(function () {});
     if (!canPay() || !total) certOwnerEmail('📜 Certificate booking - ' + full.split(',').slice(0, 2).join(','), (total ? 'A ' + (tenantClean ? 'tenant' : 'landlord') + ' has booked on the website. Please call them to take payment and arrange the visit.' : 'A landlord has asked for our free service on the website. Please call them to get started.') + '\n\n' + certText(row));
     if (!canPay() || !total) { await certJobs(p, row).catch(function (e) { console.error('Certificate work orders failed:', e.message); }); if (!total) await certDiy(p, row).catch(function () {}); return res.json({ ok: true, id: row.id, pay: false, diy: !total ? (row.data.diy_link || '') : '' }); }
@@ -11866,6 +11890,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!email || !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) return res.status(400).json({ ok: false, error: 'email' });
     if (b.consent !== true) return res.status(400).json({ ok: false, error: 'consent' });
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, addr || '(general enquiry)', JSON.stringify({ kind: 'enquiry', topic: topic, message: msg })]);
+    await noteSource(p, req, r.rows[0].id);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
     // Companies selling to us (cleaning, SEO, "quick call?"…): kept in Junk, nobody is alerted.
     const pitch = salesPitch(msg, topic);
@@ -11924,11 +11949,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
       p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', [req.user ? req.user.name : 'Office', [row.email], 'info@residentialrealtors.co.uk', subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
       if (!(r && r.ok)) return res.status(502).json({ ok: false, error: 'send' });
       d.comps_sent_at = new Date().toISOString(); d.comps_sent_by = req.user ? req.user.name : 'Office';
-      await p.query("UPDATE valuation_requests SET data = $2, status = CASE WHEN status = 'new' THEN 'contacted' ELSE status END, handled_at = coalesce(handled_at, now()), handled_by = coalesce(handled_by, $3) WHERE id = $1", [row.id, JSON.stringify(d), d.comps_sent_by]);
+      await p.query("UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object('src', data->'src')), status = CASE WHEN status = 'new' THEN 'contacted' ELSE status END, handled_at = coalesce(handled_at, now()), handled_by = coalesce(handled_by, $3) WHERE id = $1", [row.id, JSON.stringify(d), d.comps_sent_by]);
       await crmLog(p, 'vr:' + row.id, 'Comparables report sent (' + s.n + ' homes' + (s.n ? ', typical ' + gbp0(s.mid) + ' pcm' : '') + (est ? '; our estimate ' + est : '') + ')', req);
       return res.json({ ok: true, sent: true, link: link });
     }
-    await p.query('UPDATE valuation_requests SET data = $2 WHERE id = $1', [row.id, JSON.stringify(d)]);
+    await p.query('UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object(\'src\', data->\'src\')) WHERE id = $1', [row.id, JSON.stringify(d)]);
     res.json({ ok: true });
   }));
   // Our own lets near the landlord's postcode, to add to their comparables report.
@@ -11999,6 +12024,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const people = adults ? adults + (adults === '1' ? ' adult' : ' adults') + ', ' + kids : str(b.people, 20) || '';
     const data = { kind: 'viewing', listing: kind, ref: ref, url: url, slots: slots, flexible: !!b.flexible, message: msg, people: people, adults: adults, children: children || (adults ? '0' : ''), move_date: md, move: mdText || str(b.move, 40) || '', income: income, guarantor: guarantor };
     const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email, phone, addr, JSON.stringify(data)]);
+    await noteSource(p, req, r.rows[0].id);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
     const times = slots.map(slotText);
     // Every member of staff hears about it: a phone alert and an email each.
@@ -12262,7 +12288,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const d = Object.assign({}, x.data, { confirmed: String(b.at), confirmed_by: req.user ? req.user.name : 'Office', confirmed_at: new Date().toISOString() });
     if (d.viewing_id) await p.query('UPDATE viewings SET at = $2, status = \'booked\' WHERE id = $1', [d.viewing_id, at.toISOString()]).catch(function () {});
     else d.viewing_id = (await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, email, phone, lead_id, staff, created_by) VALUES ($1, $2, $3, $4, $6, $7, $8, $5, $5) RETURNING id', [x.address, propKey(x.address), at.toISOString(), x.name, req.user ? req.user.name : 'Office', x.email || null, x.phone || null, x.id])).rows[0].id;
-    await p.query('UPDATE valuation_requests SET data = $2, status = \'booked\', handled_at = now(), handled_by = $3 WHERE id = $1', [x.id, JSON.stringify(d), req.user ? req.user.name : 'Office']);
+    await p.query('UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object(\'src\', data->\'src\')), status = \'booked\', handled_at = now(), handled_by = $3 WHERE id = $1', [x.id, JSON.stringify(d), req.user ? req.user.name : 'Office']);
     let emailed = false;
     if (b.email !== false && x.email && canEmail() && sendEmail) {
       const t = 'Dear ' + String(x.name).split(' ')[0] + ',\n\nYour viewing is confirmed:\n\n' + x.address + '\n' + slotText(b.at) + '\n\n' + (str(b.note, 1000) ? str(b.note, 1000) + '\n\n' : '') + 'If you need to change the time, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\n' + (req.user && req.user.id ? req.user.name + '\n' : '') + 'Residential Realtors';
