@@ -746,6 +746,9 @@
   .appl-tabs button.on { background: var(--navy, #0b1f3a); color: #fff; border-color: transparent; } .appl-tabs button b { margin-left: 4px; }
   .crm-new { padding: 10px 14px; border-radius: 12px; background: #ecfdf3; color: #067647; font-weight: 600; margin: 0 0 10px; }
   .crm-flag.new { background: #d1fadf; color: #05603a; }
+  .appl-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 16px 12px 52px; }
+  .appl-qf { flex-basis: 100%; display: grid; gap: 6px; } .appl-qb { display: flex; gap: 6px; flex-wrap: wrap; }
+  @media (max-width: 700px) { .appl-quick { padding: 0 12px 10px; } }
   .appl-enq { margin: 6px 0 10px; padding: 0; list-style: none; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; }
   .appl-enq li { padding: 8px 12px; border-bottom: 1px solid var(--line, #e6e8ec); font-size: .88rem; } .appl-enq li:last-child { border-bottom: 0; } .appl-enq small { color: #667085; display: block; }
   .rec-list { max-height: 50vh; overflow: auto; display: grid; gap: 6px; }
@@ -9405,6 +9408,13 @@
     var h = '<div class="crm-card' + (open ? ' open' : '') + (need ? ' is-new' : '') + (x.archived ? ' is-arch' : '') + '" data-crm="' + x.ref + '">' +
       '<div class="crm-head" data-crm-tog><label class="crm-pick" title="Select"><input type="checkbox" data-crm-pick="' + x.ref + '"' + (crmSel[x.ref] ? ' checked' : '') + '></label><div class="crm-who"><span class="crm-tag" style="color:' + t[2] + ';background:' + t[3] + '">' + t[0] + ' ' + t[1] + '</span> <b>' + esc(x.name) + '</b> ' + pill + '<div class="crm-sub">' + sub.map(esc).join(' · ') + '</div>' + (flags ? '<div class="crm-flags">' + flags + '</div>' : '') + '</div>' +
       '<div class="crm-acts">' + acts + '<button type="button" class="crm-chev" aria-label="' + (open ? 'Less' : 'More') + '">' + (open ? '▴' : '▾') + '</button></div></div>';
+    // Applicants: note a conversation or add a note without opening the card.
+    if (ap && !x.archived) {
+      var lockedQ = applLocked(x);
+      h += '<div class="appl-quick">' + (lockedQ ? '<span class="muted-note" style="margin:0">🔒 ' + esc(hold.who) + '’s applicant — opens to everyone in ' + hrs(hold.left) + ' if they don’t get in touch</span>'
+        : '<button type="button" class="btn small primary" data-aq="spoke">' + (hold.held && hold.who === crm.me ? '📞 Spoke to them again' : '✅ I’ve spoken to them') + '</button><button type="button" class="btn small" data-aq="note">📝 Add a note</button>') +
+        '<div class="appl-qf" hidden><textarea class="inp" rows="2" data-aq-text></textarea><div class="appl-qb"><button type="button" class="btn small primary" data-aq-save></button><button type="button" class="btn small ghost" data-aq-cancel>Cancel</button></div></div></div>';
+    }
     if (!open) return h + '</div>';
     h += '<div class="crm-body">';
     if (x.type === 'comps') h += compsEditor({ id: x.id, data: d, name: x.name || '' });
@@ -9583,6 +9593,18 @@
   $('crmList').addEventListener('click', function(e){
     if (e.target.closest('.crm-pick')) { e.stopPropagation(); return; }
     var x = crmItem(e.target); if (!x) return;
+    // Quick buttons on an applicant's card.
+    var aq = e.target.closest('[data-aq]'), qbox = e.target.closest('.appl-quick');
+    if (aq && qbox) { var fq = qbox.querySelector('.appl-qf'), ta = fq.querySelector('textarea'), sv = fq.querySelector('[data-aq-save]'), spoke = aq.dataset.aq === 'spoke';
+      fq.hidden = false; fq.dataset.mode = aq.dataset.aq; ta.placeholder = spoke ? 'What did they say? (optional) — e.g. wants to view Saturday, moving in March, 2 adults' : 'Your note — a call, what they said, what’s next…';
+      sv.textContent = spoke ? '✅ Confirm — ' + (applHold(x).held && applHold(x).who === crm.me ? 'save it' : 'they’re my applicant') : 'Save note'; ta.focus(); return; }
+    if (e.target.closest('[data-aq-cancel]')) { var fc = e.target.closest('.appl-qf'); fc.hidden = true; fc.querySelector('textarea').value = ''; return; }
+    if (e.target.closest('[data-aq-save]')) { var fs = e.target.closest('.appl-qf'), txt = fs.querySelector('textarea').value.trim(), sp = fs.dataset.mode === 'spoke', sb = e.target.closest('[data-aq-save]');
+      if (!sp && !txt) { fs.querySelector('textarea').focus(); toast('Write the note first'); return; }
+      busy(sb, true, 'Saving…');
+      api('POST', '/api/admin/crm/note', { ref: x.ref, note: sp ? '📞 Spoke to ' + (x.name || 'them') + (txt ? ': ' + txt : '') : txt, spoke: sp }).then(function(d){ busy(sb, false); crmDone(sp ? '✅ ' + (x.name || 'The applicant') + ' is your applicant for the next 24 hours' : '✓ Note added')(d); });
+      return; }
+    if (qbox) return;
     if (e.target.closest('a, input, select, textarea, summary')) return;   // links and fields work as normal
     var card = e.target.closest('[data-crm]'), b;
     if ((b = e.target.closest('[data-crm-confirm]')) || e.target.closest('[data-crm-confirm-other]')) {
