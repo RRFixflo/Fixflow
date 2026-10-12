@@ -155,6 +155,16 @@ CREATE TABLE IF NOT EXISTS landlord_notes (
   at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS landlord_notes_ll ON landlord_notes (landlord_id, at DESC);
+-- Notes about a tenant or contractor (kind + their id, or a contractor's name when there's no record).
+CREATE TABLE IF NOT EXISTS person_notes (
+  id      SERIAL PRIMARY KEY,
+  kind    TEXT NOT NULL,
+  pkey    TEXT NOT NULL,
+  note    TEXT NOT NULL,
+  by_name TEXT,
+  at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS person_notes_key ON person_notes (kind, pkey, at DESC);
 CREATE TABLE IF NOT EXISTS property_landlords (
   property_key TEXT PRIMARY KEY,
   address      TEXT,
@@ -10818,6 +10828,24 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const n = (await p.query('SELECT by_name FROM landlord_notes WHERE id = $1', [jobId(req)])).rows[0]; if (!n) return res.status(404).json({ ok: false });
     if (n.by_name !== (req.user ? req.user.name : 'Office') && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-yours' });
     await p.query('DELETE FROM landlord_notes WHERE id = $1', [jobId(req)]);
+    res.json({ ok: true });
+  }));
+  // Notes on a tenant's or contractor's page, the same way as landlords'.
+  const NOTE_KINDS = ['tenant', 'contractor'];
+  app.get('/api/admin/notes/:kind/:key', withDb(async function (p, req, res) {
+    if (NOTE_KINDS.indexOf(req.params.kind) === -1) return res.status(400).json({ ok: false });
+    res.json({ ok: true, notes: (await p.query('SELECT id, note, by_name, at FROM person_notes WHERE kind = $1 AND pkey = $2 ORDER BY at DESC LIMIT 300', [req.params.kind, str(req.params.key, 200)])).rows, me: req.user ? req.user.name : 'Office' });
+  }));
+  app.post('/api/admin/notes/:kind/:key', withDb(async function (p, req, res) {
+    const note = str((req.body || {}).note, 4000), key = str(req.params.key, 200);
+    if (NOTE_KINDS.indexOf(req.params.kind) === -1 || !note || !key) return res.status(400).json({ ok: false });
+    const r = await p.query('INSERT INTO person_notes (kind, pkey, note, by_name) VALUES ($1, $2, $3, $4) RETURNING id', [req.params.kind, key, note, req.user ? req.user.name : 'Office']);
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+  app.post('/api/admin/person-notes/:id/delete', withDb(async function (p, req, res) {
+    const n = (await p.query('SELECT by_name FROM person_notes WHERE id = $1', [jobId(req)])).rows[0]; if (!n) return res.status(404).json({ ok: false });
+    if (n.by_name !== (req.user ? req.user.name : 'Office') && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-yours' });
+    await p.query('DELETE FROM person_notes WHERE id = $1', [jobId(req)]);
     res.json({ ok: true });
   }));
   app.get('/api/admin/landlords/:id/account', withDb(async function (p, req, res) {

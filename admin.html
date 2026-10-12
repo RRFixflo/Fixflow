@@ -1938,6 +1938,7 @@
               <button class="btn primary" id="tenantNewJob" type="button">+ New job for this tenant</button>
             </div>
           </div>
+          <div class="card ll-notes" id="tenantNotes" style="margin-bottom:12px"></div>
           <div class="card tenant-card" id="tenantCard"></div>
           <div class="card" id="tenantMails" style="margin-top:12px"></div>
           <div class="list" id="tenantJobs" style="margin-top:12px"></div>
@@ -6294,6 +6295,7 @@
     var rows = [['Phone', t.phone], ['Email', t.email], ['Notes', t.notes],
       ['Access days', last.access_days], ['Best time', last.access_time], ['Access notes', last.access_notes],
       ['Keys to contractor', last.key_permission], ['Contractor notes', last.key_instructions]];
+    loadPersonNotes($('tenantNotes'), 'tenant', String(t.id), t.notes, function(){ return openTenantKey === t.id; });
     $('tenantCard').innerHTML = '<h3>Details <span style="flex:1"></span><button class="btn small" id="tenantEditBtn" type="button">Edit details</button></h3><dl class="kv">' +
       rows.filter(function(r){ return r[1]; }).map(function(r){ return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl>' +
       '<h3 style="margin-top:16px">Propert' + (props.length === 1 ? 'y' : 'ies') + '</h3>' +
@@ -10026,6 +10028,23 @@
       box.querySelectorAll('[data-lln-del]').forEach(function(b){ b.addEventListener('click', function(){ if (!confirm('Delete this note?')) return; api('POST', '/api/admin/landlord-notes/' + b.dataset.llnDel + '/delete', {}).then(function(r){ if (!r || !r.ok) { toast('Couldn’t delete it'); return; } loadLlNotes(l); }); }); });
     });
   }
+  // Notes on a tenant's or contractor's page (dated and signed; the old Notes field shows first).
+  function loadPersonNotes(box, kind, key, legacy, still){
+    if (!box || !key) return;
+    var base = '/api/admin/notes/' + kind + '/' + encodeURIComponent(key);
+    box.innerHTML = '<h3 style="margin:0 0 8px">📝 Notes</h3><p class="muted-note" style="margin:0">Loading…</p>';
+    api('GET', base).then(function(d){
+      if (!still() || !d || !d.ok) return;
+      box.innerHTML = '<h3 style="margin:0 0 8px">📝 Notes <span class="count-chip">' + d.notes.length + '</span></h3>' +
+        '<div class="crm-add-note"><textarea class="inp" rows="2" data-pn-text placeholder="' + (kind === 'tenant' ? 'Anything to remember — access, pets, how they like to be contacted, what was agreed…' : 'Anything to remember — rates agreed, areas they cover, availability, quality of work…') + '"></textarea><button type="button" class="btn small primary" data-pn-add>Add note</button></div>' +
+        (legacy ? '<div class="ll-note"><span>' + esc(legacy) + '</span><small>From their details</small></div>' : '') +
+        d.notes.map(function(n){ return '<div class="ll-note"><span>' + esc(n.note) + '</span><small>' + esc(n.by_name || '') + ' · ' + esc(fmtShort(n.at)) + (n.by_name === d.me || meta.canManageUsers ? ' · <button type="button" class="linkish" data-pn-del="' + n.id + '">Delete</button>' : '') + '</small></div>'; }).join('') +
+        (!d.notes.length && !legacy ? '<p class="muted-note" style="margin:6px 0 0">No notes yet.</p>' : '');
+      box.querySelector('[data-pn-add]').addEventListener('click', function(){ var ta = box.querySelector('[data-pn-text]'), t = ta.value.trim(), b = this; if (!t) { ta.focus(); return; } busy(b, true, 'Saving…');
+        api('POST', base, { note: t }).then(function(r){ busy(b, false); if (!r || !r.ok) { toast('Couldn’t save the note'); return; } toast('✓ Note added'); loadPersonNotes(box, kind, key, legacy, still); }); });
+      box.querySelectorAll('[data-pn-del]').forEach(function(b){ b.addEventListener('click', function(){ if (!confirm('Delete this note?')) return; api('POST', '/api/admin/person-notes/' + b.dataset.pnDel + '/delete', {}).then(function(r){ if (!r || !r.ok) { toast('Couldn’t delete it'); return; } loadPersonNotes(box, kind, key, legacy, still); }); }); });
+    });
+  }
   function renderLandlord(){
     var l = landlordById(openLlId);
     if (!l) { $('llBack').click(); return; }
@@ -10301,6 +10320,7 @@
         '<div class="tile alert' + (owed.length ? ' has' : '') + '"><div class="k">Owed to them</div><div class="v">' + gbp(sum(owed)) + '</div><div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + owed.length + ' job' + (owed.length === 1 ? '' : 's') + (nocost.length ? ' · ' + nocost.length + ' done with no cost yet' : '') + '</div></div>' +
         '<div class="tile good"><div class="k">Paid so far</div><div class="v">' + gbp(sum(paid)) + '</div><div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + paid.length + ' job' + (paid.length === 1 ? '' : 's') + '</div></div>' +
       '</div>' +
+      '<div class="card ll-notes" id="ctrNotes" style="margin-bottom:12px"></div>' +
       (c.id ? ctrLinkCard(c) : '') +
       '<div class="toolbar"><div class="tabs" id="ctrTabs">' + tabs.map(function(t){ return '<button type="button" data-ctr-tab="' + t[0] + '"' + (t[0] === ctrTab ? ' class="on"' : '') + '>' + t[1] + ' <span class="n">' + t[2] + '</span></button>'; }).join('') + '</div>' +
         (ctrTab === 'owed' && owed.length ? '<button class="btn small" id="ctrPaySel" type="button">Mark ticked paid</button><button class="btn small primary" id="ctrPayAll" type="button">Mark all paid (' + gbp(sum(owed)) + ')</button>' : '') +
@@ -10316,6 +10336,7 @@
         '</div>';
       }).join('') : '<div class="empty">' + { open: 'No open jobs with ' + esc(c.name) + '.', done: 'No completed jobs yet.', owed: 'Nothing owed — all paid up.', paid: 'No payments marked yet.' }[ctrTab] + '</div>') + '</div>';
     $('ctrBack').addEventListener('click', goBack);
+    loadPersonNotes($('ctrNotes'), 'contractor', c.id ? 'id:' + c.id : 'name:' + c.name, c.notes, function(){ return openCtrName === name && view === 'ctr'; });
     if ($('ctrEdit')) $('ctrEdit').addEventListener('click', function(){ $('contractorsBtn').click(); var b = document.querySelector('[data-ct-edit="' + c.id + '"]'); if (b) b.click(); });
     var payIds = function(all){ return Array.from($('ctrView').querySelectorAll('[data-ctr-job]')).filter(function(i){ return all || i.checked; }).map(function(i){ return Number(i.dataset.ctrJob); }); };
     var pay = function(all){
