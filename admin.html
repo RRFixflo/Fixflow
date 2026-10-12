@@ -482,6 +482,8 @@
   .vw-fb { flex-basis: 100%; display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; } .vw-fb textarea { flex: 1; min-width: 220px; min-height: 54px; }
   .inv-cm { display: block; font-size: .76rem; color: var(--ink-soft); margin-top: 3px; } .inv-cm select, .inv-cm-sel { font: inherit; font-size: .76rem; border: 1px solid var(--line); border-radius: 6px; padding: 1px 4px; background: #fff; }
   .inv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); } .inv-main { flex: 1; min-width: 200px; } .inv-main b { display: block; } .inv-main span { display: block; font-size: .8rem; color: var(--ink-soft); }
+  /* Offer forms sent: its own row layout (the Invoices page's grid .inv-row mustn't apply here). */
+  #offInvList .inv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 0; grid-template-columns: none; } #offInvList .inv-ev { flex: 1 1 100%; width: 100%; min-width: 0; overflow-x: auto; }
   .inv-ev { flex-basis: 100%; background: #f7f8fa; border-radius: 10px; padding: 8px 12px; font-size: .84rem; } .inv-ev div { padding: 3px 0; } .inv-ev span { display: inline-block; min-width: 110px; color: var(--ink-soft); }
   .oc { position: relative; } .oc-minbtn { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-weight: 800; color: var(--ink-soft); line-height: 1; z-index: 2; }
   .oc .oc-price { margin-right: 26px; } .oc-mini { display: none; } .oc.oc-min > *:not(.oc-mini) { display: none !important; } .oc.oc-min { padding-top: 12px; padding-bottom: 12px; }
