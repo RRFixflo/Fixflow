@@ -10862,6 +10862,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const st = await statementsAll(p), byT = {}; st.items.forEach(function (x) { byT[x.tenancy_id] = x; });
     const rows = [], r2 = function (v) { return Math.round((Number(v) || 0) * 100) / 100; }, today = londonDay();
     const short = function (a) { return String(a || '').split(',')[0]; };
+    const rcAt = {};   // tenancy → rent date → the day that rent came in (to date what comes off it)
     tcys.forEach(function (t) {
       const n0 = rows.length;
       const d = t.data || {}, addr = short(d.address || t.address), x = byT[t.id], rc = Object.assign({}, d.rent_rcvd || {}), lp = d.ll_paid || {};
@@ -10880,10 +10881,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
       Object.keys(rc).forEach(function (from) {
         const got = rc[from] || {}, at = String(got.at || from).slice(0, 10), m = x && x.months.filter(function (mm) { return mm.from === from; })[0], mon = certDay(from).replace(/^\d+ /, '');
         rows.push({ at: at, what: (from === start ? 'First month’s rent (move-in money)' : 'Rent received') + ' · ' + addr + ' (' + mon + ')', in: r2(got.amount || (m ? m.rent : 0)) });
-        if (!m) return;
+        (rcAt[t.id] = rcAt[t.id] || {})[from] = at;
+        // Rent received before its statement exists (paid early): our fees on it, worked out as the Rent page does.
+        if (!m) { const rentM = Number(got.amount) || Number(d.rent_pcm) || 0; if (rentM > 0) (stmtFees(d, rentM, from === start, from).fees || []).filter(function (f) { return !f.invoice_id; }).forEach(function (f) { rows.push({ at: at, what: String(f.label || 'Fee').replace(/\s*\(repairs, inc\. VAT\)/, '') + ' · ' + addr, out: r2(Number(f.amount) + Number(f.vat || 0)) }); }); return; }
         if (m.deposit) rows.push({ at: at, what: 'Deposit (you hold it) · ' + addr, in: r2(m.deposit) });
         (m.credits || []).forEach(function (c) { rows.push({ at: at, what: c.label + ' · ' + addr, in: r2(c.amount) }); });
-        (m.fees || []).forEach(function (f) { rows.push({ at: at, what: String(f.label || 'Fee').replace(/\s*\(repairs, inc\. VAT\)/, '') + ' · ' + addr, out: r2(Number(f.amount) + Number(f.vat || 0)) }); });
+        (m.fees || []).forEach(function (f) { rows.push({ at: at, what: String(f.label || 'Fee').replace(/\s*\(repairs, inc\. VAT\)/, '') + ' · ' + addr, out: r2(Number(f.amount) + Number(f.vat || 0)), fee_inv: f.invoice_id || null }); });
       });
       Object.keys(lp).forEach(function (from) {
         const pd = lp[from] || {}, mon = certDay(from).replace(/^\d+ /, '');
@@ -10893,22 +10896,29 @@ document.querySelectorAll('.lcu').forEach(function(box){
     });
     // Unpaid invoices that will come off a rent (the current statement or the next rent): money out too.
     const pendI = await statementPending(p);
+    // Each unpaid invoice at these properties: a short "what it's for" (Gas safety, Boiler repair…) and a link
+    // to the landlord's own page for it (to view and download it).
+    const keys = {}; tcys.forEach(function (t) { if (t.property_key) keys[t.property_key] = 1; });
+    const unpaidIds = (await p.query(`SELECT i.id, i.property_key, coalesce(j.property_address, i.address) AS addr FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.paid_at IS NULL AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL))`)).rows
+      .filter(function (i) { return keys[i.property_key] || keys[propKey(i.addr || '')]; }).map(function (i) { return i.id; });
+    tcys.forEach(function (t) { (pendI[t.id] || []).forEach(function (g) { g.invoices.forEach(function (i) { if (unpaidIds.indexOf(i.id) === -1) unpaidIds.push(i.id); }); }); });
+    const feeInv = rows.filter(function (r) { return r.fee_inv; }).map(function (r) { return Number(r.fee_inv); }).filter(function (id) { return id && unpaidIds.indexOf(id) === -1; });
+    const info = unpaidIds.length || feeInv.length ? await invoiceInfo(p, unpaidIds.concat(feeInv)) : {};
+    // Invoices already taken off a statement: say what each was for too ("Invoice INV-RR-00089 · Gas safety").
+    rows.forEach(function (r) { if (!r.fee_inv) return; const w = info[r.fee_inv] && info[r.fee_inv].what; if (w && /^Invoice\s/.test(r.what) && r.what.indexOf(w) === -1) r.what = r.what.replace(/^(Invoice\s+\S+)/, '$1 · ' + w); delete r.fee_inv; });
     tcys.forEach(function (t) {
       const addr = short((t.data || {}).address || t.address);
       (pendI[t.id] || []).forEach(function (g) { g.invoices.forEach(function (i) {
-        rows.push({ at: g.from, what: 'Invoice ' + i.number + (i.title && i.title.indexOf(i.number) === -1 ? ' · ' + i.title : '') + ' · ' + addr + ' (to come off the ' + certDay(g.from) + ' rent)', out: r2(i.total), pending: true, tid: t.id, prop: addr });
+        const what = (info[i.id] && info[i.id].what) || (i.title && i.title.indexOf(i.number) === -1 ? i.title : '');
+        rows.push({ at: ((rcAt[t.id] || {})[g.from]) || g.from, what: 'Invoice ' + i.number + (what ? ' · ' + what : '') + ' · ' + addr + ' (to come off the ' + certDay(g.from) + ' rent)', out: r2(i.total), pending: true, inv_id: i.id, tid: t.id, prop: addr });
       }); });
     });
     rows.sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : (b.in ? 1 : 0) - (a.in ? 1 : 0); });
     let bal = 0; const tb = {}; rows.forEach(function (r) { bal = r2(bal + (r.in || 0) - (r.out || 0)); tb[r.tid] = r2((tb[r.tid] || 0) + (r.in || 0) - (r.out || 0)); if (!r.note) { r.balance = bal; r.tbal = tb[r.tid]; } });
     const props = tcys.filter(function (t) { return rows.some(function (r) { return r.tid === t.id; }); }).map(function (t) { return { tid: t.id, address: (t.data || {}).address || t.address, prop: short((t.data || {}).address || t.address), balance: tb[t.id] || 0 }; });
-    // Links to the landlord's own page for each unpaid invoice at these properties (to view and download it).
-    const keys = {}; tcys.forEach(function (t) { if (t.property_key) keys[t.property_key] = 1; });
-    const unpaidIds = (await p.query(`SELECT i.id, i.property_key, coalesce(j.property_address, i.address) AS addr FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id WHERE i.paid_at IS NULL AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL))`)).rows
-      .filter(function (i) { return keys[i.property_key] || keys[propKey(i.addr || '')]; }).map(function (i) { return i.id; });
-    const info = unpaidIds.length ? await invoiceInfo(p, unpaidIds) : {}, invLinks = {};
-    Object.keys(info).forEach(function (k) { if (info[k].url) invLinks[k] = info[k].url; });
-    return { rows: rows, props: props, inv_links: invLinks, money_in: r2(rows.reduce(function (a, r) { return a + (r.in || 0); }, 0)), money_out: r2(rows.reduce(function (a, r) { return a + (r.out || 0); }, 0)), balance: bal };
+    const invLinks = {}, invWhat = {};
+    Object.keys(info).forEach(function (k) { if (info[k].url) invLinks[k] = info[k].url; if (info[k].what) invWhat[k] = info[k].what; });
+    return { rows: rows, props: props, inv_links: invLinks, inv_what: invWhat, money_in: r2(rows.reduce(function (a, r) { return a + (r.in || 0); }, 0)), money_out: r2(rows.reduce(function (a, r) { return a + (r.out || 0); }, 0)), balance: bal };
   }
   // The landlord's own full statement of account on their page: every payment in and out for a period
   // (all time, last 12 months, this tax year or chosen dates), brought forward, totals, balance, unpaid invoices.
@@ -10944,7 +10954,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
         (list.length ? list.map(row).join('') : '<tr><td></td><td class="muted">Nothing in this period.</td><td></td><td></td><td></td></tr>') +
         '<tr class="t"><td></td><td>Totals</td><td class="a in">' + money(tin) + '</td><td class="a out">' + money(tout) + '</td><td></td></tr>' +
         '<tr class="t"><td></td><td>' + (cf < 0 ? 'Owed to us' : 'Held for you') + ' at ' + htmlEsc(dd(to)) + '</td><td class="a" colspan="3">' + money(Math.abs(cf)) + '</td></tr></tbody></table></div>' +
-      (unpaid.length ? '<div class="card"><h3 style="margin:0 0 6px">Unpaid invoices</h3><table>' + unpaid.map(function (i) { return '<tr><td><a href="/l/' + tok + '/invoice/' + i.id + '" style="color:var(--blue)">' + htmlEsc(i.number || 'Invoice') + '</a> · ' + htmlEsc(String(i.addr || '').split(',')[0]) + (i.due ? ' · due ' + htmlEsc(dd(i.due)) : '') + '</td><td class="a out">' + money(i.total) + '</td></tr>'; }).join('') + '</table></div>' : '') +
+      (unpaid.length ? '<div class="card"><h3 style="margin:0 0 6px">Unpaid invoices</h3><table>' + unpaid.map(function (i) { return '<tr><td><a href="/l/' + tok + '/invoice/' + i.id + '" style="color:var(--blue)">' + htmlEsc(i.number || 'Invoice') + '</a>' + ((a.inv_what || {})[i.id] ? ' · ' + htmlEsc(a.inv_what[i.id]) : '') + ' · ' + htmlEsc(String(i.addr || '').split(',')[0]) + (i.due ? ' · due ' + htmlEsc(dd(i.due)) : '') + '</td><td class="a out">' + money(i.total) + '</td></tr>'; }).join('') + '</table></div>' : '') +
       '<p class="noprint" style="text-align:center"><button onclick="window.print()">Print or save as PDF</button></p>', true));
   }));
   // Unpaid landlord invoices that will come off each tenancy's statements, as groups [{from, invoices}]:
