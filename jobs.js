@@ -2051,7 +2051,7 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (path === '/available-history' || /^\/available-history\/\d+\/restore$/.test(path)) return true;
     if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;
-    if (path === '/crm' || /^\/crm\/(note|meta|archive|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
+    if (path === '/crm' || /^\/crm\/(note|meta|archive|recommended|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
     if (method === 'GET' && path === '/lead-hook') return true;
     if (method === 'GET' && path === '/staff-names') return true;   // the calendar's people
     if ((method === 'GET' || method === 'POST') && path === '/valuations') return true;   // property appraisals (Offers page)
@@ -11845,15 +11845,38 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return d.kind === 'viewing' || d.kind === 'rightmove' || d.kind === 'lead' || ((d.kind === 'enquiry' || d.kind === 'contact') && /^(looking to rent|buying|applicant|buyer)$/i.test(String(d.topic || ''))) ||
       (d.kind === 'call' && /^(renting|buying)$/.test(String(d.category || '')));
   }
+  // One person, several enquiries: applicant leads sharing an email address or the last 10 digits of a phone number
+  // are the same applicant — one owner, one 24-hour clock.
+  async function applGroup(p, id) {
+    const v = (await p.query('SELECT id, email, phone, data FROM valuation_requests WHERE id = $1', [id])).rows[0];
+    if (!v || !isApplicant(v.data)) return null;
+    // Follow the chain (A shares a phone with B, B an email with C), as the Leads page does — a few steps at most.
+    const ids = [id], emails = {}, tails = {};
+    const add = function (r) { const e = String(r.email || '').trim().toLowerCase(), t = junkTail(r.phone); if (e) emails[e] = 1; if (t.length >= 9) tails[t] = 1; };
+    add(v);
+    for (let step = 0; step < 4; step++) {
+      const rows = (await p.query("SELECT id, email, phone, data FROM valuation_requests WHERE (lower(email) = ANY($1)) OR (right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = ANY($2))", [Object.keys(emails), Object.keys(tails)])).rows.filter(function (r) { return isApplicant(r.data) && ids.indexOf(r.id) === -1; });
+      if (!rows.length) break;
+      rows.forEach(function (r) { ids.push(r.id); add(r); });
+    }
+    return { ids: ids, emails: Object.keys(emails), tails: Object.keys(tails) };
+  }
+  // Whose applicant this is: whoever took them, booked a viewing with them or keeps in touch — for 24 hours from
+  // their last contact (a note, call or status change, or the viewing itself; an upcoming viewing holds them until
+  // 24 hours after it). After that anyone can take them.
   async function applHold(p, ref) {
     if (!/^vr:\d+$/.test(ref)) return null;
-    const v = (await p.query('SELECT data FROM valuation_requests WHERE id = $1', [+ref.slice(3)])).rows[0];
-    if (!v || !isApplicant(v.data)) return null;
-    const m = (await p.query('SELECT assigned_to, claimed_at FROM crm_meta WHERE ref = $1', [ref])).rows[0] || {};
-    if (!m.assigned_to) return { applicant: true, who: '', held: false };
-    const last = (await p.query('SELECT max(at) AS at FROM crm_notes WHERE ref = $1 AND by_name = $2', [ref, m.assigned_to])).rows[0].at;
-    const t = Math.max(m.claimed_at ? new Date(m.claimed_at).getTime() : 0, last ? new Date(last).getTime() : 0);
-    return { applicant: true, who: m.assigned_to, until: new Date(t + APPL_HOLD).toISOString(), held: t + APPL_HOLD > Date.now() };
+    const g = await applGroup(p, +ref.slice(3)); if (!g) return null;
+    const refs = g.ids.map(function (i) { return 'vr:' + i; }), cand = {};
+    (await p.query('SELECT assigned_to, claimed_at FROM crm_meta WHERE ref = ANY($1) AND assigned_to IS NOT NULL', [refs])).rows.forEach(function (m) { cand[m.assigned_to] = Math.max(cand[m.assigned_to] || 0, m.claimed_at ? new Date(m.claimed_at).getTime() : 0); });
+    (await p.query("SELECT coalesce(nullif(staff, ''), created_by) AS who, at FROM viewings WHERE status <> 'cancelled' AND (lead_id = ANY($1) OR lower(email) = ANY($2) OR right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 10) = ANY($3))", [g.ids, g.emails, g.tails]).catch(function () { return { rows: [] }; })).rows
+      .forEach(function (v) { if (v.who && v.who !== 'Office') cand[v.who] = Math.max(cand[v.who] || 0, new Date(v.at).getTime()); });
+    const names = Object.keys(cand);
+    if (!names.length) return { applicant: true, who: '', held: false, refs: refs };
+    (await p.query('SELECT by_name, max(at) AS at FROM crm_notes WHERE ref = ANY($1) AND by_name = ANY($2) GROUP BY by_name', [refs, names])).rows.forEach(function (n) { cand[n.by_name] = Math.max(cand[n.by_name], new Date(n.at).getTime()); });
+    let who = names[0]; names.forEach(function (n) { if (cand[n] > cand[who]) who = n; });
+    const t = cand[who];
+    return { applicant: true, who: who, until: new Date(t + APPL_HOLD).toISOString(), held: t > 0 && t + APPL_HOLD > Date.now(), refs: refs };
   }
   // Someone else's applicant (still within their 24 hours): only they or a manager can act on it.
   async function applBlocked(p, req, ref) {
@@ -11861,13 +11884,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (h && h.held && h.who !== me && !canManageUsers(req)) return h;
     return null;
   }
-  // A member of staff working an applicant nobody holds takes it.
+  // A member of staff working an applicant nobody holds takes them (every enquiry of theirs).
   async function applClaim(p, req, ref) {
     if (!req.user || !req.user.name) return;
-    const h = await applHold(p, ref); if (!h || h.held) return;
-    await p.query('INSERT INTO crm_meta (ref, assigned_to, claimed_at) VALUES ($1, $2, now()) ON CONFLICT (ref) DO UPDATE SET assigned_to = $2, claimed_at = now()', [ref, req.user.name]);
-    await p.query('UPDATE valuation_requests SET assigned_to = $2 WHERE id = $1', [+ref.slice(3), req.user.name]);
-    await crmLog(p, ref, (h.who ? 'Taken over by ' + req.user.name + ' (no contact from ' + h.who + ' for 24 hours)' : 'Taken by ' + req.user.name), req);
+    const h = await applHold(p, ref); if (!h || (h.held && h.who !== req.user.name)) return;
+    const already = h.held && h.who === req.user.name;
+    for (const r of h.refs) await p.query('INSERT INTO crm_meta (ref, assigned_to, claimed_at) VALUES ($1, $2, now()) ON CONFLICT (ref) DO UPDATE SET assigned_to = $2, claimed_at = now()', [r, req.user.name]);
+    await p.query('UPDATE valuation_requests SET assigned_to = $2 WHERE id = ANY($1)', [h.refs.map(function (r) { return +r.slice(3); }), req.user.name]);
+    if (!already) await crmLog(p, ref, (h.who && h.who !== req.user.name ? 'Taken over by ' + req.user.name + ' (no contact from ' + h.who + ' for 24 hours)' : 'Taken by ' + req.user.name), req);
   }
   const heldMsg = function (h) { return { ok: false, error: 'held', who: h.who, until: h.until }; };
   // Junk: senders staff have marked as junk (app_settings 'crm_junk'), and anyone sending more than 3 requests
@@ -11908,7 +11932,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const meta = (await p.query('SELECT * FROM crm_meta')).rows;
     let staff = [];
     try { staff = (await p.query('SELECT name FROM staff_users WHERE disabled_at IS NULL ORDER BY name')).rows.map(function (x) { return x.name; }); } catch (e) {}
-    res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, staff: staff, me: req.user ? req.user.name : '', manager: !!canManageUsers(req), junk: await junkList(p) });
+    // Viewings (to see who's booked or done one with an applicant): the last 4 months and everything coming up.
+    let vws = [];
+    try { vws = (await p.query("SELECT id, lead_id, at, staff, created_by, status, email, phone, property_address FROM viewings WHERE status <> 'cancelled' AND at > now() - interval '120 days' ORDER BY at")).rows; } catch (e) {}
+    res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, viewings: vws, staff: staff, me: req.user ? req.user.name : '', manager: !!canManageUsers(req), junk: await junkList(p) });
   }));
   app.post('/api/admin/crm/note', withDb(async function (p, req, res) {
     const b = req.body || {}, ref = String(b.ref || ''), note = str(b.note, 4000);
@@ -11917,6 +11944,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await applClaim(p, req, ref);
     await crmLog(p, ref, note, req, false);
     res.json({ ok: true });
+  }));
+  // A property recommended to several applicants by email: noted on each (it doesn't make them yours).
+  app.post('/api/admin/crm/recommended', withDb(async function (p, req, res) {
+    const b = req.body || {}, refs = (Array.isArray(b.refs) ? b.refs : []).map(String).filter(function (r) { return /^vr:\d+$/.test(r); }).slice(0, 200), what = str(b.address, 300);
+    if (!refs.length || !what) return res.status(400).json({ ok: false });
+    for (const r of refs) await crmLog(p, r, 'Recommended ' + what + ' by email' + (b.url ? ' — ' + str(b.url, 300) : ''), req);
+    res.json({ ok: true, n: refs.length });
   }));
   // Who's looking after it and when to follow up.
   app.post('/api/admin/crm/meta', withDb(async function (p, req, res) {
@@ -11934,9 +11968,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await crmLog(p, ref, v ? 'Verdict: ' + { good: '✅ Good applicant', maybe: '🤔 Maybe', no: '❌ Not suitable' }[v] + ' — ' + why : 'Verdict cleared', req, false);
       if (b.assigned_to === undefined && b.follow_up === undefined) return res.json({ ok: true });
     }
+    // Taking an applicant yourself: every enquiry of theirs, and your 24 hours start now.
+    if (who && req.user && who === req.user.name) await applClaim(p, req, ref);
     const next = { assigned_to: who !== undefined ? who : old.assigned_to || null, follow_up: fu !== undefined ? fu : (old.follow_up ? new Date(old.follow_up).toISOString().slice(0, 10) : null) };
     await p.query('INSERT INTO crm_meta (ref, assigned_to, follow_up) VALUES ($1, $2, $3) ON CONFLICT (ref) DO UPDATE SET assigned_to = $2, follow_up = $3', [ref, next.assigned_to, next.follow_up]);
     if (who !== undefined && who !== (old.assigned_to || null)) await p.query('UPDATE crm_meta SET claimed_at = ' + (who ? 'now()' : 'NULL') + ' WHERE ref = $1', [ref]);
+    // The same person's other enquiries follow.
+    if (who !== undefined && who !== (old.assigned_to || null) && ref.indexOf('vr:') === 0) {
+      const g = await applGroup(p, +ref.slice(3));
+      if (g) for (const id of g.ids) if ('vr:' + id !== ref) { await p.query('INSERT INTO crm_meta (ref, assigned_to, claimed_at) VALUES ($1, $2, ' + (who ? 'now()' : 'NULL') + ') ON CONFLICT (ref) DO UPDATE SET assigned_to = $2, claimed_at = ' + (who ? 'now()' : 'NULL'), ['vr:' + id, who]); await p.query('UPDATE valuation_requests SET assigned_to = $2 WHERE id = $1', [id, who]); }
+    }
     if (ref.indexOf('vr:') === 0) await p.query('UPDATE valuation_requests SET assigned_to = $2, follow_up = $3 WHERE id = $1', [+ref.slice(3), next.assigned_to, next.follow_up]);
     if (who !== undefined && who !== (old.assigned_to || null)) await crmLog(p, ref, who ? 'Assigned to ' + who : 'No longer assigned', req);
     if (fu !== undefined) await crmLog(p, ref, fu ? 'Follow up on ' + new Date(fu + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Follow-up cleared', req);
@@ -12027,6 +12068,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.post('/api/admin/crm/viewing/:id/confirm', withDb(async function (p, req, res) {
     const b = req.body || {}, x = (await p.query('SELECT * FROM valuation_requests WHERE id = $1', [jobId(req)])).rows[0];
     if (!x || (x.data || {}).kind !== 'viewing') return res.status(404).json({ ok: false });
+    const blk = await applBlocked(p, req, 'vr:' + x.id); if (blk) return res.status(409).json(heldMsg(blk));
     const at = londonToDate(b.at); if (!at) return res.status(400).json({ ok: false, error: 'time' });
     const d = Object.assign({}, x.data, { confirmed: String(b.at), confirmed_by: req.user ? req.user.name : 'Office', confirmed_at: new Date().toISOString() });
     if (d.viewing_id) await p.query('UPDATE viewings SET at = $2, status = \'booked\' WHERE id = $1', [d.viewing_id, at.toISOString()]).catch(function () {});
