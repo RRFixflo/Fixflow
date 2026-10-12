@@ -459,7 +459,10 @@ module.exports = function (app, opts) {
   // Properties taken off our website (Website visitors → Same photo): staff can still open them (page and photos).
   let offSite = {};
   const findStaff = function (req, id) { return find(id) || (staff(req) ? offSite[rmAlias[id] || id] || null : null); };
-  const find = function (id) { id = rmAlias[id] || id; return data.let.find(function (p) { return p.id === id; }) || data.sale.find(function (p) { return p.id === id; }); };
+  // Taken off the website: never served or listed, even in the moment between reading Gnomen's feed and
+  // applying the taken-off list (the weekly health check and IndexNow once caught them then and saw 404s).
+  const pub = function (p) { return !hidden.items.length || (!isHidden(p.id) && !(p.rmId && isHidden(p.rmId))); };
+  const find = function (id) { id = rmAlias[id] || id; const p = data.let.find(function (p) { return p.id === id; }) || data.sale.find(function (p) { return p.id === id; }); return p && pub(p) ? p : undefined; };
 
   // ---------- Photos: resized and cached ----------
   const imgCache = new Map(), inflight = new Map(), WIDTHS = [480, 800, 1200, 1600];
@@ -559,7 +562,7 @@ module.exports = function (app, opts) {
     return (day(d) === today ? 'today' : day(d) === yest ? 'yesterday' : d.toLocaleDateString('en-GB', Object.assign({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }, o))) + ' at ' + time;
   };
   function listPage(req, res, kind) {
-    const K = KIND[kind], pv = preview(req), items = show(req) ? data[kind] : [], avail = items.filter(function (p) { return !p.taken; }).length;
+    const K = KIND[kind], pv = preview(req), items = show(req) ? data[kind].filter(pub) : [], avail = items.filter(function (p) { return !p.taken; }).length;
     const prices = kind === 'let' ? [1000, 1250, 1500, 1750, 2000, 2500, 3000, 4000, 5000] : [250000, 300000, 400000, 500000, 600000, 750000, 1000000, 1500000, 2000000];
     const body = (pv ? '<div class="pvbar">👀 Staff preview — only people signed in to Fixflow can see these properties. They’re not public yet.</div>' : '') + '<div class="phead photo small lhead">' + (function () { const im = kind === 'let' ? 'u-flat-open' : 'u-london-night'; return '<img class="bg" src="/img/' + im + '.webp" srcset="/img/' + im + '-sm.webp 800w, /img/' + im + '.webp 1600w" sizes="100vw" alt="" fetchpriority="high" width="1600" height="1066">'; })() + '<div class="wrap"><div class="lupd-row"><span class="eyebrow"><i></i> ' + K.kicker + ' · London</span>' + (data.changedAt ? '<span class="lupd" title="When our property list last changed">🕒 Last updated ' + esc(whenText(data.changedAt)) + '</span>' : '') + '</div><h1>' + K.h1 + '</h1>' +
       '<p class="lead">' + (items.length ? avail + ' available now' + (items.length > avail ? ' · ' + (items.length - avail) + ' ' + (kind === 'let' ? 'let agreed or under offer' : 'under offer or sold STC') : '') + '.' : 'New properties are coming soon.') + '</p></div></div>' +
@@ -905,8 +908,8 @@ module.exports = function (app, opts) {
         if (sum !== lastAdDiag) { lastAdDiag = sum; console.log(sum); } }
       return { ids: out, maybe: maybe };
     },
-    urls: function () { return LIVE ? data.let.concat(data.sale).map(function (p) { return p.url; }) : []; },
+    urls: function () { return LIVE ? data.let.concat(data.sale).filter(pub).map(function (p) { return p.url; }) : []; },
     // What each property page shows that matters to search engines (price, status, photos, last update) — a change is pinged to IndexNow.
-    sigs: function () { const o = {}; if (LIVE) data.let.concat(data.sale).forEach(function (p) { o[p.url] = 'L:' + [p.price, p.status, p.taken ? 1 : 0, (p.images || []).length, p.updated].join('|'); }); return o; }
+    sigs: function () { const o = {}; if (LIVE) data.let.concat(data.sale).filter(pub).forEach(function (p) { o[p.url] = 'L:' + [p.price, p.status, p.taken ? 1 : 0, (p.images || []).length, p.updated].join('|'); }); return o; }
   };
 };
