@@ -102,6 +102,8 @@ Public website changes must respect `prefers-reduced-motion`, work without horiz
 
 ## User preferences learned so far
 
+- Messages to the contractor: every send (WhatsApp, copy, email) is logged on the job with the message itself (`logContractorSend(list, how, text)` → `contractor_message` update, text after “— Message —”; `updBody` folds it under “Show the message” in the history). The job's Send to contractor card has “🔧 Messages to the contractor (n)”: those messages, the contractor's replies, and emails to the assigned contractor mentioning the job's ref or street (loaded on opening from Sent emails). Automatic jobs (website bookings) don't message the contractor by themselves.
+
 - Job parts: each part says who bought it (`job_parts.paid_by`: empty = the office, `contractor` = the contractor bought it). Parts the contractor bought are added to what we owe them (`parts_ctr`; `ctrOwe`/`costToPay` in admin.html: Owed to…, Payments, contractor pages, “Contractor paid” note); parts a contractor adds from their job link count as theirs. The landlord is charged the same either way.
 - Contractor part payments: a job can be paid in parts (`jobs.ctr_part_paid` [{id, at, amount, by, note}], `POST /api/admin/jobs/:id/contractor-part-payment` with `due`, `…/remove`). Payments page and each contractor's page (Owed tab) show what's still to pay with “£x of £y paid” and “💷 Part pay”; the job's Money tab has “💷 Part payment” and lists each one (✕ to remove, which un-marks paid). Once part payments cover what's owed the job is marked paid; `costLeft`/`ctrPaidSoFar` in admin.html.
 
