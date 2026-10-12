@@ -10253,6 +10253,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const months = statementChain(t, next ? String(next.start_date).slice(0, 10) : null, settled, today);
       if (!months.length) return;
       const ll = lls[t.property_key] || {};
+      // Has this month's rent come in? Marked collected on the Rent page, paid with the move-in money, or due before
+      // rent collection started in Fixflow (taken as collected then). Only received rents are offered for sending.
+      const start = String(d.start_date || t.start_date || '').slice(0, 10), rcvd = d.rent_rcvd || {};
+      months.forEach(function (m) { m.received = !!rcvd[m.from] || m.from < RENT_START || (m.from === start && moveinCover(d).covered); });
       out.push({ tenancy_id: t.id, address: d.address || t.address, current: !next, landlord: llFullName(d.landlord && d.landlord.name, ll.name), email: (d.landlord && d.landlord.email) || ll.email || '', settled: settled, months: months });
     });
     return { today: today, items: out };
@@ -10889,7 +10893,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await statementsAll(p);
     const st = ((await p.query("SELECT value FROM app_settings WHERE key = 'stmt_alert'")).rows[0] || {}).value || {};
     const due = [];
-    r.items.forEach(function (x) { const m = x.months[x.months.length - 1]; if (x.current && m.n > 0 && m.from === r.today && !m.sent && !st[x.tenancy_id + '|' + m.from]) due.push({ x: x, m: m }); });
+    r.items.forEach(function (x) { const m = x.months[x.months.length - 1]; if (x.current && m.n > 0 && m.from === r.today && !m.sent && !st[x.tenancy_id + '|' + m.from] && (m.received || m.balance < -0.004 || m.bf)) due.push({ x: x, m: m }); });
     if (!due.length) return;
     const owe = due.filter(function (o) { return o.m.balance < -0.004 || o.m.bf; });
     for (const o of owe) {

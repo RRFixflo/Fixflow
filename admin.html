@@ -14817,7 +14817,8 @@
     Object.keys(stmtsBy).forEach(function(k){
       var x = stmtsBy[k], m = x.months[x.months.length - 1];
       x.months.forEach(function(o){ if (o !== m && o.changed) out.push({ x: x, m: o }); });
-      if (!x.current || (m.sent && !m.changed) || m.from < addDaysIso(stmtToday, -31)) return;
+      // Only statements whose rent has come in (marked collected or paid with the move-in money) are offered for sending.
+      if (!x.current || (m.sent && !m.changed) || m.from < addDaysIso(stmtToday, -31) || m.received === false) return;
       out.push({ x: x, m: m });
     });
     return out.sort(function(a, b){ return (stmtOwes(b.m) || b.m.bf || b.m.changed ? 1 : 0) - (stmtOwes(a.m) || a.m.bf || a.m.changed ? 1 : 0) || (a.m.from < b.m.from ? -1 : 1); });
