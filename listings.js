@@ -373,7 +373,7 @@ module.exports = function (app, opts) {
     if (SOURCE === 'rightmove') await refreshRightmove(); else await refresh();
     await loadHidden();
     if (hidden.items.length) {
-      const seen = {}, back = {}; let changed = false;
+      const seen = {}, back = {}; let changed = false; offSite = {};
       ['let', 'sale'].forEach(function (kind) {
         data[kind] = data[kind].filter(function (p) {
           if (!isHidden(p.id) && !(p.rmId && isHidden(p.rmId))) return true;
@@ -387,6 +387,7 @@ module.exports = function (app, opts) {
             if ((h.lastTaken === true && !p.taken) || (h.lastAdded && p.added && p.added > h.lastAdded) || (h.absentSince && Date.now() - Date.parse(h.absentSince) > 3600000)) { back[h.id] = { h: h, p: p }; show = true; return; }
             if (h.lastTaken !== !!p.taken || (p.added && h.lastAdded !== p.added) || h.absentSince) { h.lastTaken = !!p.taken; if (p.added) h.lastAdded = p.added; delete h.absentSince; changed = true; }
           });
+          if (!show && !p.src) offSite[p.id] = p;
           return show;
         });
       });
@@ -455,17 +456,20 @@ module.exports = function (app, opts) {
     const o = opts.onsBeds ? opts.onsBeds(g.gss, beds) : null;
     res.json({ ok: true, source: 'ons', postcode: pc, beds: beds, area: g.area, gss: g.gss, slug: o ? o.slug : '', mid: o ? o.rent : 0, month: o ? o.month : '', all: o ? o.all : 0, table: o && o.beds ? o.beds : null });
   });
+  // Properties taken off our website (Website visitors → Same photo): staff can still open them (page and photos).
+  let offSite = {};
+  const findStaff = function (req, id) { return find(id) || (staff(req) ? offSite[rmAlias[id] || id] || null : null); };
   const find = function (id) { id = rmAlias[id] || id; return data.let.find(function (p) { return p.id === id; }) || data.sale.find(function (p) { return p.id === id; }); };
 
   // ---------- Photos: resized and cached ----------
   const imgCache = new Map(), inflight = new Map(), WIDTHS = [480, 800, 1200, 1600];
   app.get('/listing-img/:id/:n.webp', async function (req, res) {
-    const p = find(req.params.id), n = req.params.n, w = WIDTHS.indexOf(parseInt(req.query.w, 10)) !== -1 ? parseInt(req.query.w, 10) : 800;
+    const p = findStaff(req, req.params.id), n = req.params.n, w = WIDTHS.indexOf(parseInt(req.query.w, 10)) !== -1 ? parseInt(req.query.w, 10) : 800;
     const src = !p ? '' : /^fp\d+$/.test(n) ? p.floorplans[+n.slice(2)] : n === 'epc' ? p.epc : /^\d+$/.test(n) ? p.images[+n] : '';
     if (!src) return res.status(404).end();
     if (!sharp) return res.redirect(302, src);
     const key = src + '|' + w;
-    const send = function (buf) { res.setHeader('Cache-Control', 'public, max-age=604800'); res.type('image/webp'); res.end(buf); };
+    const send = function (buf) { res.setHeader('Cache-Control', (offSite[p.id] && !find(p.id) ? 'private' : 'public') + ', max-age=604800'); res.type('image/webp'); res.end(buf); };
     if (imgCache.has(key)) { const b = imgCache.get(key); imgCache.delete(key); imgCache.set(key, b); return send(b); }
     try {
       if (!inflight.has(key)) inflight.set(key, (async function () {
@@ -622,7 +626,8 @@ module.exports = function (app, opts) {
       '<p class="bk-note">ℹ️ Sending this form <b>doesn’t book the viewing</b>. One of our agents will call or email you first to confirm a time that works.</p><p class="ferr" id="bkErr" role="alert"></p><button class="btn red" type="submit" id="bkGo">Request viewing →</button><p class="bk-call">Rather talk? Call <a href="tel:02070968131">0207 096 8131</a></p></div></form></div>';
   }
   app.get(['/property/:id', '/property/:id/*'], function (req, res) {
-    const pv = preview(req), p = show(req) ? find(String(req.params.id)) : null;
+    let pv = preview(req), p = show(req) ? find(String(req.params.id)) : null, off = false;
+    if (!p && staff(req) && (p = findStaff(req, String(req.params.id)))) { off = true; pv = true; }
     if (!p) {
       res.status(404);
       return opts.send(req, res, { canon: '/properties-to-rent', title: 'Property no longer available | Residential Realtors', desc: 'This property is no longer on the market.', robots: 'noindex, follow', name: '404' },
@@ -635,7 +640,7 @@ module.exports = function (app, opts) {
     const offer = '/offer?p=' + encodeURIComponent(p.where);
     const share = encodeURIComponent(p.headline + ', ' + p.where + ' — ' + opts.siteUrl + p.url);
     const extras = [p.furnished ? (p.furnished === 'Full' ? 'Furnished' : p.furnished) : '', p.parking ? 'Parking' : '', p.garden ? 'Garden' : '', p.kind === 'let' ? (p.pets ? 'Pets considered' : '') : ''].filter(Boolean);
-    const body = (pv ? '<div class="pvbar">👀 Staff preview — only people signed in to Fixflow can see these properties. They’re not public yet.</div>' : '') + '<div class="pdhead"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › <a href="' + K.path + '">' + K.h1 + '</a> › <span>' + esc(p.where) + '</span></nav></div></div>' +
+    const body = (off ? '<div class="pvbar">🚫 Taken off our website — only people signed in to Fixflow can see this page. Put it back from Website visitors → Same photo on more than one property.</div>' : pv ? '<div class="pvbar">👀 Staff preview — only people signed in to Fixflow can see these properties. They’re not public yet.</div>' : '') + '<div class="pdhead"><div class="wrap"><nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a> › <a href="' + K.path + '">' + K.h1 + '</a> › <span>' + esc(p.where) + '</span></nav></div></div>' +
       '<section class="pd"><div class="wrap">' + (hasMedia ? '<div class="pdtabs" role="tablist" aria-label="Photos, video and floorplan"><button type="button" class="on" data-pdtab="photos">📷 Photos' + (n ? '<span class="pdt-n"> (' + n + ')</span>' : '') + '</button>' + (p.vtour ? '<button type="button" class="pdt-v" data-pdtab="video">' + (isVid ? '▶ Video' : '🎥 360° tour') + '</button>' : '') + (p.floorplans.length ? '<button type="button" class="pdt-f" data-pdtab="plan">📐 Floorplan</button>' : '') + '</div>' : '') + '<div class="pdmedia" id="pdmedia">' +
       (n ? '<div class="gal" id="gal"><div class="gtrack" id="gTrack">' + p.images.map(function (u, i) { return '<figure>' + pic(p, i, '(max-width: 1100px) 100vw, 1100px', p.headline + ' — photo ' + (i + 1) + ' of ' + n, i === 0 ? ' fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"') + '</figure>'; }).join('') + '</div>' +
         (n > 1 ? '<button class="gbtn prev" type="button" aria-label="Previous photo">‹</button><button class="gbtn next" type="button" aria-label="Next photo">›</button><span class="gnum" id="gNum">1 / ' + n + '</span>' : '') +
@@ -765,7 +770,7 @@ module.exports = function (app, opts) {
       // With when each was put on the market and last updated in Gnomen (as of now, not the last photo check).
       const rec = {}; data.let.concat(data.sale).forEach(function (p) { rec[p.id] = p; });
       const dated = function (h) { const p = rec[h.id] || {}; return Object.assign({}, h, { added: p.added || '', updated: p.updated || '', status: p.status || '' }); };
-      return { at: dupesAt, checking: checking, done: progress.done, total: progress.total, hidden: hidden.items, back: hidden.back || [],
+      return { at: dupesAt, checking: checking, done: progress.done, total: progress.total, hidden: hidden.items.map(function (h) { const q = offSite[h.id]; return q ? Object.assign({}, h, { url: q.url, img: q.images && q.images.length ? '/listing-img/' + q.id + '/0.webp?w=480' : '', price: q.price || 0, kind: q.kind }) : h; }), back: hidden.back || [],
         groups: dupes.filter(function (g) { return hidden.ok.indexOf(g.key) === -1 && !g.homes.some(function (h) { return isHidden(h.id); }); }).map(function (g) { return Object.assign({}, g, { homes: g.homes.map(dated) }); }) };
     },
     // Take a property off our website (or put it back); the website updates straight away.
