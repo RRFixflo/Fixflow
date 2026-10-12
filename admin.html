@@ -754,7 +754,6 @@
   .crm-tile span { grid-row: span 2; font-size: 1.4rem; } .crm-tile b { font-size: 1.3rem; line-height: 1.1; } .crm-tile small { color: var(--ink-soft); font-size: .78rem; }
   .crm-tile.hot b { color: #b42318; } .crm-tile.on { border-color: var(--navy, #0b1f3a); box-shadow: 0 0 0 2px var(--navy, #0b1f3a) inset; }
   .crm-appl { border: 1px solid #d0d5dd; background: #f9fafb; border-radius: 10px; padding: 10px 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .crm-appl-own { font-size: .9rem; line-height: 1.4; } .crm-verdict { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; font-weight: 600; width: 100%; max-width: 320px; } .crm-hook { margin-bottom: 12px; } .crm-hook summary { cursor: pointer; font-weight: 600; }
-  body:not(.staff-mode) #navLeads, body:not(.staff-mode) .more-item[data-go="navLeads"] { display: none; }   /* the owner sees applicants in Website leads (side menu and the phone More menu) */
   @media (max-width: 520px) { #invTopBtn { display: none; } }   /* phones: Invoices is in the More menu */
   .inv-top { margin-bottom: 12px; } .inv-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .inv-bar #invQ { flex: 1; min-width: 200px; }
   .inv-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 120px 130px auto; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line, #eaecf0); }
@@ -4620,7 +4619,6 @@
   $('brandHomeM').addEventListener('click', goHome);
 
   function showView(v){
-    if (v === 'appl' && !staffMode) v = 'crm';   // the owner sees applicants in Website leads
     if (v === 'team' && !meta.canManageUsers) v = staffMode ? 'offers' : 'jobs';
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
@@ -7286,9 +7284,15 @@
         llSubject = g.jobs.length === 1 ? 'Issue reported — ' + shortAddr(g.jobs[0].property_address) + ' (' + g.jobs[0].ref + ')' : g.jobs.length + ' issues reported at ' + (g.jobs.every(function(j){ return propKey(j.property_address) === propKey(g.jobs[0].property_address); }) ? shortAddr(g.jobs[0].property_address) : 'your properties');
       if (meta.canEmail) {
         // Check the email first; sent once, logged on the first job, and the others get a note.
-        composeMail({ title: '✉ Email the landlord — check before sending', to: [g.email], subject: llSubject, body: msg,
-          sendFn: function(to, subj, body){ msg = body; return api('POST', '/api/admin/jobs/' + g.jobs[0].id + '/email', { to: to, subject: subj, body: body }); },
-          onSent: function(){ card.querySelector('.tt-done').hidden = false; g.jobs.slice(1).forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'landlord_message', body: 'Sent the landlord an update (email to ' + g.email + '):\n\n' + msg }); }); } });
+        // A completed gas / EICR / EPC job: the certificate goes with the email.
+        var certJobs = cw && g.jobs.every(function(j){ return j.status === 'Completed'; }) ? g.jobs : [];
+        Promise.all(certJobs.map(function(j){ return api('GET', '/api/admin/jobs/' + j.id + '/cert-doc').then(function(d){ return d && d.found ? { job: j.id, url: '/api/admin/certificates/' + d.cert_id + '/doc', name: d.name } : null; })['catch'](function(){ return null; }); })).then(function(found){
+          found = found.filter(Boolean);
+          if (certJobs.length && found.length < certJobs.length) toast(found.length ? 'Some certificate files aren’t saved yet — the others are attached' : 'No certificate file saved for this job yet — upload it under Certificates and it will be attached');
+          composeMail({ title: '✉ Email the landlord — check before sending', to: [g.email], subject: llSubject, body: msg, files: found.map(function(f){ return { name: f.name, url: f.url }; }),
+            sendFn: function(to, subj, body){ msg = body; return api('POST', '/api/admin/jobs/' + g.jobs[0].id + '/email', { to: to, subject: subj, body: body, cert_job_ids: found.map(function(f){ return f.job; }) }); },
+            onSent: function(){ card.querySelector('.tt-done').hidden = false; g.jobs.slice(1).forEach(function(j){ api('POST', '/api/admin/jobs/' + j.id + '/updates', { kind: 'landlord_message', body: 'Sent the landlord an update (email to ' + g.email + '):\n\n' + msg }); }); } });
+        });
       } else { openMailto('mailto:' + encodeURIComponent(g.email) + '?subject=' + encodeURIComponent(llSubject) + '&body=' + encodeURIComponent(msg)); log('email'); }
       return;
     }
@@ -9251,7 +9255,7 @@
           return { ref: ref, id: x.id, type: 'sub', archived: m.archived_at || null, junk: !!m.junk, archivedBy: m.archived_by || '', name: x.name || x.email, email: x.email, phone: '', address: '', status: x.unsubscribed_at ? 'lost' : x.confirmed_at ? 'won' : 'new', subSt: x.unsubscribed_at ? 'Unsubscribed' : x.confirmed_at ? 'Subscribed' : 'Waiting for them to confirm', at: x.created_at, data: { freq: x.freq, sent: x.sent_count, last: x.last_sent_at }, assigned: m.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : '', notes: notes[ref] || [] }; }))
         .sort(function(a, b){ return new Date(b.at) - new Date(a.at); });
       // Leads: the number of applicants nobody has contacted yet (one per person).
-      var nNeed = crm.items.filter(function(x){ return (!staffMode || !isAppl(x)) && crmNeed(x); }).length, nAppl = applGroups(crm.items.filter(function(x){ return isAppl(x) && !x.archived; })).filter(applFresh).length;
+      var nNeed = crm.items.filter(function(x){ return !isAppl(x) && crmNeed(x); }).length, nAppl = applGroups(crm.items.filter(function(x){ return isAppl(x) && !x.archived; })).filter(applFresh).length;
       // A new lead while Fixflow is open: say so.
       var mxA = crm.items.reduce(function(m, x){ return isAppl(x) && x.id > m ? x.id : m; }, 0);
       if (crm.maxAppl && mxA > crm.maxAppl) { var nw = crm.items.filter(function(x){ return isAppl(x) && x.id > crm.maxAppl && !x.archived; }); if (nw.length) toast('🆕 New lead' + (nw.length > 1 ? 's: ' + nw.length + ' — newest ' + nw[0].name : ': ' + nw[0].name + (nw[0].address ? ' — ' + shortAddr(nw[0].address) : '')) + ' · ' + fmtWhen(nw[0].at)); }
@@ -9341,10 +9345,10 @@
     b.hidden = !n.length || view === 'crm' || view === 'appl';
     if (!b.hidden) b.innerHTML = '<span>📣 <b>' + n.length + ' website lead' + (n.length === 1 ? '' : 's') + ' need contacting or an update.</b> Everyone on the list should hear from us.</span><button type="button" class="btn small primary" data-crm-nag>Open website leads →</button>';
   }
-  document.addEventListener('click', function(e){ if (e.target.closest('[data-crm-nag]')) { var ap = staffMode && crm.items.some(function(x){ return isAppl(x) && crmNeed(x); }); showView(ap ? 'appl' : 'crm'); crm.tile = 'attn'; crm.type = ''; renderCrm(); } });
+  document.addEventListener('click', function(e){ if (e.target.closest('[data-crm-nag]')) { var ap = crm.items.some(function(x){ return isAppl(x) && crmNeed(x); }); showView(ap ? 'appl' : 'crm'); crm.tile = 'attn'; crm.type = ''; renderCrm(); } });
   function crmOpenItem(x){ return x.type !== 'sub' && (x.status === 'new' || x.status === 'contacted' || (x.status === 'booked' && x.type !== 'viewing')); }
   function renderCrm(){
-    var appl = crm.mode === 'appl', base = crm.items.filter(function(x){ return appl ? isAppl(x) : (!staffMode || !isAppl(x)); });   // the owner's Website leads has everything
+    var appl = crm.mode === 'appl', base = crm.items.filter(function(x){ return appl ? isAppl(x) : !isAppl(x); });   // applicants on Leads, everything else on Website leads (owner and staff)
     var hk = crm.manager && (appl || !staffMode); $('crmHook').hidden = !hk; if (hk) loadLeadHook();
     $('crmView').classList.toggle('is-appl', appl);
     var today = crmToday(), archived = base.filter(function(x){ return x.archived && !x.junk; }), junked = base.filter(function(x){ return x.junk; }), rawLive = base.filter(function(x){ return !x.archived; });
@@ -14692,7 +14696,7 @@
     if (act === 'tcy') { var TT = (avLinkData[x.id] || {}).tenancy; if (!TT) return; (tenancies.some(function(t){ return t.id === TT.id; }) ? Promise.resolve() : loadTenancies()).then(function(){ openTenancy(TT.id); }); return; }
     if (act === 'addr') { var na = prompt('Correct address (one line, with the postcode):', x.address); if (!na || na.trim() === x.address) return; api('POST', '/api/admin/available/' + x.id, { address: na.trim() }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save the address'); return; } x.address = d.address; toast('✓ Address saved'); renderAvail(); }); return; }
     if (act === 'send' || act === 'ytshare') { avSendPanel(card, x, act === 'ytshare'); return; }
-    if (act === 'leads') { crm.prop = { keys: avLeadKeys(x), label: shortAddr(x.address), ext: true }; crm.tab = 'all'; $('crmQ').value = ''; $('crmSt').value = ''; $('crmWho').value = ''; showView(staffMode ? 'appl' : 'crm'); crm.tile = ''; crm.type = ''; renderCrm(); window.scrollTo(0, 0); return; }
+    if (act === 'leads') { crm.prop = { keys: avLeadKeys(x), label: shortAddr(x.address), ext: true }; crm.tab = 'all'; $('crmQ').value = ''; $('crmSt').value = ''; $('crmWho').value = ''; showView('appl'); crm.tile = ''; crm.type = ''; renderCrm(); window.scrollTo(0, 0); return; }
     if (act === 'ytshare-old') { var vid = ytVid((ytM[x.id] || [])[0]), txt = 'Here’s a video of ' + publicAddr(x.address) + ': ' + ytUrl(vid.id); if (navigator.share && matchMedia('(pointer: coarse)').matches) navigator.share({ text: txt })['catch'](function(){}); else copyText(txt).then(function(){ toast('Video link copied — paste it into WhatsApp or an email'); })['catch'](function(){ window.prompt('Copy the video link:', txt); }); return; }
     if (act === 'edit') { avOpenForm(x); return; }
     if (act === 'hist') { avHistory(x); return; }
