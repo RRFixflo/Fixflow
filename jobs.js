@@ -10418,8 +10418,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return null;
     let cur = start; for (let n = 1; n < 240; n++) { const f = addMonthsIso(start, n); if (f > today) break; cur = f; }
     // The first statement of a tenancy that started just before Fixflow took over rent collection is still the
-    // current one while it's the latest and hasn't been sent (invoices set to "the current statement" go on it).
-    const onBoard = cur >= RENT_START || (cur === start && moveinRowShown(d, start, today)) || !!(d.rent_rcvd || {})[cur] || (cur === start && !(d.stmt_sent || {})[cur]);
+    // current one until the next rent is due (invoices set to "the current statement" go on it, sent or not).
+    const onBoard = cur >= RENT_START || (cur === start && moveinRowShown(d, start, today)) || !!(d.rent_rcvd || {})[cur] || cur === start;
     if (onBoard && !lp[cur]) return cur;
     for (let n = 1; n < 240; n++) { const f = addMonthsIso(start, n); if (f > cur && !lp[f]) return f; }
     return null;
