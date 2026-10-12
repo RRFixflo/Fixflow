@@ -10908,6 +10908,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // landlord reviews the fees and terms, fills in the property details form and
   // signs. Fees are usually percentages; some landlords have no renewal fee.
   const LT_TERMS = (function () { try { return JSON.parse(require('fs').readFileSync(require('path').join(__dirname, 'landlord-terms.json'), 'utf8')); } catch (e) { console.error('Landlord terms text missing:', e.message); return { clauses: [], declaration: [], cancellation: [], intro: [], prices: [], contractor_rates: [] }; } })();
+  // A signed agreement always shows the wording that was signed: older versions are kept in terms/landlord-terms-<version>.json.
+  const ltOld = {};
+  const ltTermsFor = function (v) {
+    if (!v || v === LT_TERMS.version || !/^[A-Za-z0-9]+$/.test(v)) return LT_TERMS;
+    if (!(v in ltOld)) { try { ltOld[v] = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, 'terms', 'landlord-terms-' + v + '.json'), 'utf8')); } catch (e) { ltOld[v] = null; } }
+    return ltOld[v] || LT_TERMS;
+  };
   const pctNum = function (v, max) { const n = Math.round(parseFloat(String(v == null ? '' : v).replace(/[%£,\s]/g, '')) * 100) / 100; return n >= 0 && n <= (max || 100) ? n : null; };
   // Agreed fees: tenant find (sole/multi/none) with renewal or none, and an
   // ongoing service (rent collection / full management / none).
@@ -12614,7 +12621,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const shown = t.status === 'signed' ? t.fees : ltApplyService(t.fees || {}, String(req.query.service || ''), req.query.split === '1' ? true : req.query.split === '0' ? false : undefined);
     if (!(t.data || {}).viewed_at) p.query("UPDATE landlord_terms SET data = data || jsonb_build_object('viewed_at', to_jsonb(now())), log = log || $2::jsonb WHERE id = $1 AND NOT (data ? 'viewed_at')", [t.id, JSON.stringify([ltLog(req, 'Landlord opened the agreement link', 'landlord')])]).catch(function () {});
     res.json({ ok: true, ref: ltRef(t.id), status: t.status, property: t.property_address, landlord_name: t.landlord_name, landlord_email: t.landlord_email, landlord_phone: t.landlord_phone,
-      fees: shown, lines: feeLines(shown || {}), examples: feeExamples(shown || {}, exRent), example_rent: exRent || 2000, services: t.status === 'signed' ? null : ltServiceOptions(t.fees || {}), allow_split: t.status !== 'signed' && !!(t.fees || {}).allow_split && (t.fees || {}).find !== 'none', split: !!(shown || {}).find_monthly, service: (shown || {}).ongoing === 'manage' ? 'both' : (shown || {}).ongoing || 'none', examples_vat: (t.fees || {}).vat !== false, known: t.status === 'signed' ? null : ltPublicKnown((t.data || {}).known), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
+      fees: shown, lines: feeLines(shown || {}), examples: feeExamples(shown || {}, exRent), example_rent: exRent || 2000, services: t.status === 'signed' ? null : ltServiceOptions(t.fees || {}), allow_split: t.status !== 'signed' && !!(t.fees || {}).allow_split && (t.fees || {}).find !== 'none', split: !!(shown || {}).find_monthly, service: (shown || {}).ongoing === 'manage' ? 'both' : (shown || {}).ongoing || 'none', examples_vat: (t.fees || {}).vat !== false, known: t.status === 'signed' ? null : ltPublicKnown((t.data || {}).known), signed_at: t.signed_at, signed_by: (t.data || {}).signature || null, terms: t.status === 'signed' ? ltTermsFor((t.data || {}).terms_version) : LT_TERMS, epc: t.status === 'signed' ? (t.data || {}).epc || null : await ltEpc(p, t) });
   }));
   app.post('/api/landlord-terms/:token/sign', withDb(async function (p, req, res) {
     if (offerLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
@@ -12685,6 +12692,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const hex = function (h) { return rgb(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255); };
     const C = { navy: hex('0B1F3A'), navy2: hex('13294B'), red: hex('C8102E'), ink: hex('101828'), soft: hex('667085'), faint: hex('98A2B3'), line: hex('E4E7EC'), panel: hex('F7F8FA'), white: rgb(1, 1, 1), green: hex('067647'), greenBg: hex('ECFDF3'), amber: hex('B54708'), amberBg: hex('FFFAEB'), blue: hex('1D3FAE'), blueBg: hex('EEF2FF'), slate: hex('C6D0DE') };
     const d = t.data || {}, f = t.fees || {}, dt = d.details || {}, ref = ltRef(t.id), signed = t.status === 'signed', au = d.audit || {};
+    const TT = signed ? ltTermsFor(d.terms_version) : LT_TERMS;
     const sig = docs.filter(function (x) { return x.kind === 'signature'; })[0];
     const fp = d.fingerprint || sha256(canonical({ property: t.property_address, landlord: t.landlord_name, fees: f })), docId = docIdOf(fp);
     const money = function (v) { return '\xA3' + (Number(v) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
@@ -12793,7 +12801,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const ex = feeExamples(f, exRent);
     if (ex.length) { ensure(34 + ex.length * 13); rr(M, y + 4, CW, ex.length * 13 + 26, 8, C.blueBg); text('Worked example' + (exRent ? ' at this property\'s rent' : ' at \xA32,000 a month rent') + (f.vat !== false ? ' (fees include VAT)' : ''), M + 12, y - 8, 8.2, B, C.blue); ex.forEach(function (e, i) { text(e[0], M + 12, y - 22 - i * 13, 8.2, F, /^(A minimum|Figures exclude)/.test(e[0]) ? C.soft : C.blue); if (e[1]) right(e[1], M + CW - 12, y - 22 - i * 13, 8.2, /^You receive/.test(e[0]) ? B : F, C.blue); }); y -= ex.length * 13 + 34; }
     band('Key points');
-    (LT_TERMS.intro || []).forEach(function (s, i) { if (i === 0 && !(f.renewal && f.find !== 'none')) s = 'Under these terms you will be liable to pay Residential Realtors\' commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.'; para(s, { size: 8.6 }); });
+    (TT.intro || []).forEach(function (s, i) { if (i === 0 && !(f.renewal && f.find !== 'none')) s = 'Under these terms you will be liable to pay Residential Realtors\' commission fees in respect of the first 12 months of the tenancy. No anniversary fee has been agreed for this property.'; para(s, { size: 8.6 }); });
 
     // ===== Property details =====
     if (signed) {
@@ -12836,23 +12844,23 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const colX = function () { return M + col * (colW + colGap); };
     const nextCol = function () { if (col === 0) { col = 1; y = colTop; } else { col = 0; newPage(); colTop = y; } };
     const cEnsure = function (need) { if (y - need < 76) nextCol(); };
-    (LT_TERMS.clauses || []).forEach(function (c) {
-      if (c.h) { const noRen = c.n === '1.2' && !(f.renewal && f.find !== 'none'); const hl = wrap(c.n + '  ' + c.h, B, 8.6, colW); cEnsure(hl.length * 11 + 30); y -= 4; hl.forEach(function (ln) { text(ln, colX(), y, 8.6, B, C.navy); y -= 11; }); if (noRen) { pill('NOT APPLICABLE - NO ANNIVERSARY FEE AGREED', colX(), y - 8, C.green, C.greenBg, 6.4); y -= 16; } else if (c.n === '1.1' && f.find_monthly && f.find !== 'none') { wrap('Agreed for this property: the Initial Commission is paid monthly, in 12 equal instalments over the first 12 months of the tenancy, instead of in advance. Clauses 1.1.2 and 1.1.3 apply on that basis; if the tenancy ends early, any instalments still owing remain payable subject to clause 1.1.5.', F, 7.2, colW).forEach(function (ln) { text(ln, colX(), y, 7.2, F, C.blue); y -= 9.2; }); y -= 4; } else if (c.n === '1.2') { wrap(LT_TERMS.anniversary_note || '', F, 7.2, colW).forEach(function (ln) { text(ln, colX(), y, 7.2, F, C.blue); y -= 9.2; }); y -= 4; } y -= 2; return; }
+    (TT.clauses || []).forEach(function (c) {
+      if (c.h) { const noRen = c.n === '1.2' && !(f.renewal && f.find !== 'none'); const hl = wrap(c.n + '  ' + c.h, B, 8.6, colW); cEnsure(hl.length * 11 + 30); y -= 4; hl.forEach(function (ln) { text(ln, colX(), y, 8.6, B, C.navy); y -= 11; }); if (noRen) { pill('NOT APPLICABLE - NO ANNIVERSARY FEE AGREED', colX(), y - 8, C.green, C.greenBg, 6.4); y -= 16; } else if (c.n === '1.1' && f.find_monthly && f.find !== 'none') { wrap('Agreed for this property: the Initial Commission is paid monthly, in 12 equal instalments over the first 12 months of the tenancy, instead of in advance. Clauses 1.1.2 and 1.1.3 apply on that basis; if the tenancy ends early, any instalments still owing remain payable subject to clause 1.1.5.', F, 7.2, colW).forEach(function (ln) { text(ln, colX(), y, 7.2, F, C.blue); y -= 9.2; }); y -= 4; } else if (c.n === '1.2') { wrap(TT.anniversary_note || '', F, 7.2, colW).forEach(function (ln) { text(ln, colX(), y, 7.2, F, C.blue); y -= 9.2; }); y -= 4; } y -= 2; return; }
       const ls = wrap(c.t, F, 7.4, colW - 26); cEnsure(Math.min(ls.length, 2) * 9.4 + 2);
       text(c.n, colX(), y, 7, B, C.soft);
       ls.forEach(function (ln, j) { if (j && y - 10 < 76) { nextCol(); } text(ln, colX() + 26, y, 7.4, F, C.ink); y -= 9.4; }); y -= 3;
     });
     col = 0; newPage();
     band('Price list');
-    table([['Service', 0.56], ['Price', 0.22], ['Inc VAT', 0.22]], (LT_TERMS.prices || []).map(function (r) { return [r[0], money(r[1]) + ' + VAT', money(r[1] * 1.2)]; }));
+    table([['Service', 0.56], ['Price', 0.22], ['Inc VAT', 0.22]], (TT.prices || []).map(function (r) { return [r[0], money(r[1]) + ' + VAT', money(r[1] * 1.2)]; }));
     sub('Contractor rates (handyman, electrician, plumber)');
-    table([['Time', 0.56], ['Rate', 0.44]], (LT_TERMS.contractor_rates || []).map(function (r) { return [r[0], r[1]]; }));
-    band('Your right to cancel'); (LT_TERMS.cancellation || []).forEach(function (s) { para(s, { size: 8.4 }); });
+    table([['Time', 0.56], ['Rate', 0.44]], (TT.contractor_rates || []).map(function (r) { return [r[0], r[1]]; }));
+    band('Your right to cancel'); (TT.cancellation || []).forEach(function (s) { para(s, { size: 8.4 }); });
 
     // ===== Declaration and signature =====
     sect = 'Declaration & signature'; newPage();
     band('Declaration');
-    const dls = (LT_TERMS.declaration || []).map(function (s) { return wrap(s, F, 8.8, CW - 36); }), dh = dls.reduce(function (a, l) { return a + l.length * 12.4 + 8; }, 0) + 16;
+    const dls = (TT.declaration || []).map(function (s) { return wrap(s, F, 8.8, CW - 36); }), dh = dls.reduce(function (a, l) { return a + l.length * 12.4 + 8; }, 0) + 16;
     ensure(dh); rr(M, y + 2, CW, dh, 10, C.panel); let dy = y - 12;
     dls.forEach(function (l) { page.drawCircle({ x: M + 16, y: dy + 3, size: 2.2, color: C.navy }); l.forEach(function (ln) { text(ln, M + 26, dy, 8.8, F, C.ink); dy -= 12.4; }); dy -= 8; }); y -= dh + 10;
     if (signed) {
@@ -12871,7 +12879,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // ===== Audit trail =====
     sect = 'Audit trail'; newPage();
     band('Audit trail', 'How and when this agreement was completed, recorded by Fixflow for Residential Realtors.');
-    card('', [['Document', 'Landlord Terms of Business - ' + (t.property_address || ''), 'full'], ['Document ID', docId, '', 'mono'], ['Status', signed ? 'Signed' : t.status === 'cancelled' ? 'Cancelled' : 'Awaiting signature'], ['Fingerprint (SHA-256)', fp, 'full', 'mono'], ['Terms version', d.terms_version || LT_TERMS.version], ['Date format', 'DD/MM/YYYY HH:MM:SS, UK time']]);
+    card('', [['Document', 'Landlord Terms of Business - ' + (t.property_address || ''), 'full'], ['Document ID', docId, '', 'mono'], ['Status', signed ? 'Signed' : t.status === 'cancelled' ? 'Cancelled' : 'Awaiting signature'], ['Fingerprint (SHA-256)', fp, 'full', 'mono'], ['Terms version', d.terms_version || TT.version], ['Date format', 'DD/MM/YYYY HH:MM:SS, UK time']]);
     const ev = (t.log || []).filter(function (l) { return !opts.landlord || l.by === 'landlord' || /created|signed/i.test(l.text); }).concat([{ at: new Date().toISOString(), text: 'This copy generated', by: opts.landlord ? 'landlord' : 'office' }]);
     ev.forEach(function (l, idx) {
       const who = l.by === 'landlord' ? (t.landlord_name || 'Landlord') : 'Residential Realtors' + (!opts.landlord && l.user ? ' - ' + l.user : '');
