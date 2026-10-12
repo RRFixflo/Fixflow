@@ -102,6 +102,7 @@ Public website changes must respect `prefers-reduced-motion`, work without horiz
 ## User preferences learned so far
 
 - Job parts: each part says who bought it (`job_parts.paid_by`: empty = the office, `contractor` = the contractor bought it). Parts the contractor bought are added to what we owe them (`parts_ctr`; `ctrOwe`/`costToPay` in admin.html: Owed to…, Payments, contractor pages, “Contractor paid” note); parts a contractor adds from their job link count as theirs. The landlord is charged the same either way.
+- Contractor part payments: a job can be paid in parts (`jobs.ctr_part_paid` [{id, at, amount, by, note}], `POST /api/admin/jobs/:id/contractor-part-payment` with `due`, `…/remove`). Payments page (Owed tab) shows what's still to pay with “£x of £y paid” and “💷 Part pay”; the job's Money tab has “💷 Part payment” and lists each one (✕ to remove, which un-marks paid). Once part payments cover what's owed the job is marked paid; `costLeft`/`ctrPaidSoFar` in admin.html.
 
 - A new repair job with no contractor pops up for the owner (not staff mode) to assign one (`newJobPrompt`: suggested contractor from the job's trade or the one chosen before for that kind of job; Assign sets it and opens the job; Later asks again in 2 hours, `rr_nj_later`).
 - Quick search (Ctrl K): matching properties come first, then jobs, tenants and the rest.
