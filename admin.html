@@ -8969,8 +8969,9 @@
   function invRowHtml(i, showAddress){
     var od = invOverdue(i);
     return '<div class="pay-row" style="grid-template-columns:minmax(0,1fr) 120px 96px auto">' +
-      '<div class="addr">' + (i.job_id ? '<button type="button" class="link ref" data-open="' + i.job_id + '" style="border:0;background:none;padding:0;color:var(--blue);font-weight:650;cursor:pointer">' + esc(i.number || 'Invoice') + '</button>'
-          : '<a class="link ref" href="/api/admin/invoices/' + i.id + '/view" target="_blank" rel="noopener" style="color:var(--blue);font-weight:650">' + esc(i.number || 'Invoice') + '</a>') +
+      // The number opens the invoice itself (view, print, download); a job invoice also links to its job.
+      '<div class="addr"><a class="link ref" href="/api/admin/invoices/' + i.id + '/view" target="_blank" rel="noopener" title="Open the invoice" style="color:var(--blue);font-weight:650">' + esc(i.number || 'Invoice') + ' ↗</a>' +
+        (i.job_id ? ' <button type="button" class="linkish" data-open="' + i.job_id + '" style="font-size:.8rem">Job ›</button>' : '') +
         '<small>' + esc([showAddress ? i.property_address : '', i.job_id ? '' : (i.title || 'Tenancy'), 'Issued ' + fmtShort(i.created_at)].filter(Boolean).join(' · ')) + '</small>' +
         (!i.paid_at ? '<label class="inv-cm">Take from: <select data-inv-cm="' + i.id + '">' + invMonthOpts(i.collect_month) + '</select></label>' : '') + '</div>' +
       '<div class="when">' + (i.paid_at ? '<span class="pill status Completed">Paid ' + esc(fmtShort(i.paid_at).split(',')[0]) + '</span>'
@@ -9905,7 +9906,7 @@
       (st.rows.length ? st.rows.map(laRowHtml).join('') : '<div class="la-r la-note"><span></span><span class="la-w">Nothing in this period.</span><span></span><span></span><span></span></div>') +
       '<div class="la-r la-tot"><span></span><span class="la-w"><b>Totals</b></span><span class="la-in">' + gbp(st.tin) + '</span><span class="la-out">' + gbp(st.tout) + '</span><span></span></div>' +
       '<div class="la-r la-tot"><span></span><span class="la-w"><b>' + (st.cf < 0 ? 'They owe us' : 'Held for them') + ' at ' + esc(ukDay(st.to)) + '</b></span><span></span><span></span><span><b>' + gbp(Math.abs(st.cf)) + '</b></span></div></div>' +
-      (un.length ? '<h4 class="la-sub">Outstanding invoices (' + gbp(sumTotal(un)) + ')</h4><div class="la-tbl">' + un.map(function(i){ var lk = ((laCur.a && laCur.a.inv_links) || {})[i.id]; return '<div class="la-r la-inv"><span>' + esc(ukDay(String(i.created_at || '').slice(0, 10), true)) + '</span><span class="la-w">' + (lk ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener">' + esc(i.number || '') + ' ›</a>' : esc(i.number || '')) + (((laCur.a && laCur.a.inv_what) || {})[i.id] ? ' · ' + esc(laCur.a.inv_what[i.id]) : '') + ' · ' + esc(String(i.property_address || '').split(',')[0]) + (i.due ? ' · due ' + esc(ukDay(i.due, true)) : '') + '</span><span></span><span class="la-out">' + gbp(i.total) + '</span><span></span></div>'; }).join('') + '</div>' : '');
+      (un.length ? '<h4 class="la-sub">Outstanding invoices (' + gbp(sumTotal(un)) + ')</h4><div class="la-tbl">' + un.map(function(i){ var lk = ((laCur.a && laCur.a.inv_links) || {})[i.id]; return '<div class="la-r la-inv"><span>' + esc(ukDay(String(i.created_at || '').slice(0, 10), true)) + '</span><span class="la-w">' + (lk ? '<a href="' + esc(lk) + '" target="_blank" rel="noopener">' + esc(i.number || '') + ' ›</a>' : esc(i.number || '')) + (((laCur.a && laCur.a.inv_what) || {})[i.id] ? ' · ' + esc(laCur.a.inv_what[i.id]) : '') + (laCur.prop ? '' : ' · ' + esc(String(i.property_address || '').split(',')[0])) + (i.due ? ' · due ' + esc(ukDay(i.due, true)) : '') + '</span><span></span><span class="la-out">' + gbp(i.total) + '</span><span></span></div>'; }).join('') + '</div>' : '');
   }
   function openLlStatement(l, a, unpaid, prop){
     laCur = { l: l, a: a, unpaid: unpaid || [], prop: prop || '' };
@@ -9951,7 +9952,7 @@
       y += 18; if (y > H - 100) { doc.addPage(); y = 40; }
       doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Outstanding invoices', X, y); y += 2;
       var links = (laCur.a && laCur.a.inv_links) || {};
-      un.forEach(function(i){ line(ukDay(String(i.created_at || '').slice(0, 10), true), (i.number || '') + (((laCur.a && laCur.a.inv_what) || {})[i.id] ? ' · ' + laCur.a.inv_what[i.id] : '') + ' · ' + String(i.property_address || '').split(',')[0] + (i.due ? ' · due ' + ukDay(i.due, true) : ''), 0, i.total, null, false, links[i.id]); });
+      un.forEach(function(i){ line(ukDay(String(i.created_at || '').slice(0, 10), true), (i.number || '') + (((laCur.a && laCur.a.inv_what) || {})[i.id] ? ' · ' + laCur.a.inv_what[i.id] : '') + (laCur.prop ? '' : ' · ' + String(i.property_address || '').split(',')[0]) + (i.due ? ' · due ' + ukDay(i.due, true) : ''), 0, i.total, null, false, links[i.id]); });
       line('', 'Total outstanding', 0, sumTotal(un), null, true);
     }
     var n = doc.internal.getNumberOfPages();
@@ -9983,6 +9984,8 @@
     var tid = props.length > 1 ? (box.dataset.tid || String(props[0].tid)) : '';
     var prop = tid && tid !== 'all' ? props.filter(function(x){ return String(x.tid) === tid; })[0] : null;
     var rows = prop ? all.filter(function(r){ return String(r.tid) === tid; }).map(function(r){ return Object.assign({}, r, { balance: r.tbal }); }) : all;
+    // One property: its lines don't repeat the address. Several together: each line says which property.
+    if (!prop && ((a && a.props) || []).length > 1) rows = rows.map(function(r){ return r.prop && r.what.indexOf(r.prop) === -1 ? Object.assign({}, r, { what: r.what + ' · ' + r.prop }) : r; });
     var r2 = function(v){ return Math.round(v * 100) / 100; };
     var mIn = r2(rows.reduce(function(t, r){ return t + (r.in || 0); }, 0)), mOut = r2(rows.reduce(function(t, r){ return t + (r.out || 0); }, 0)), bal = r2(mIn - mOut);
     var pk = prop ? prop.address : null;
