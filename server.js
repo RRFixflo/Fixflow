@@ -502,6 +502,7 @@ app.get('/offer/review/:token', (req, res) => { sendPage(req, res, path.join(__d
 const jobs = require('./jobs')(app, {
   ourComps: function (pc, beds) { return listings.compsNear(pc, beds); },
   gnomenFor: function (rows) { return listings.gnomenFor(rows); },
+  webStatus: function (id, rmId) { return listings.webStatus(id, rmId); },
   gnomenForAdverts: function (items, typed) { return listings.gnomenForAdverts(items, typed); },
   sendEmail: function (opts) { return sendViaResend(opts); },
   canEmail: function () { return !!RESEND_API_KEY; },
