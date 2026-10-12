@@ -125,6 +125,18 @@ module.exports = function (app, opts) {
       devices: devices, countries: countries, live: live.map(function (l) { return { path: l.path, title: l.title, device: l.device, ip: l.ip, key: l.ip ? ipKey(l.ip) : '', at: l.at }; }),
       me: ipOf(req), meKey: ipKey(ipOf(req)), ignore: ignore.map(function (x) { return Object.assign({ key: ipKey(x.ip) }, x); }), names: named, recent: recent.map(function (r) { return { at: r.at, path: r.path, title: r.title, source: srcName(r.ref), device: r.device, country: r.country, ip: r.ip, key: r.ip ? ipKey(r.ip) : '' }; }) });
   });
+  // Older visits for the "Latest visits" list: 100 before a moment, or a whole London day (newest first).
+  app.get('/api/admin/site-visits', async function (req, res) {
+    if (!(opts.isStaff && opts.isStaff(req))) return res.status(401).json({ ok: false });
+    const p = await pool().catch(function () { return null; }); if (!p) return res.status(503).json({ ok: false, error: 'db' });
+    await flush().catch(function () {});
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.day || '')) ? String(req.query.day) : '', before = String(req.query.before || '');
+    const rows = (day
+      ? await p.query("SELECT at, path, title, ref, device, country, ip FROM web_visits WHERE at < (($1::date + 1)::timestamp AT TIME ZONE 'Europe/London') AND at >= ($1::date::timestamp AT TIME ZONE 'Europe/London') " + (before && !isNaN(Date.parse(before)) ? 'AND at < $2::timestamptz ' : '') + 'ORDER BY at DESC LIMIT 200', before && !isNaN(Date.parse(before)) ? [day, before] : [day])
+      : await p.query('SELECT at, path, title, ref, device, country, ip FROM web_visits WHERE at < $1::timestamptz ORDER BY at DESC LIMIT 100', [!isNaN(Date.parse(before)) ? before : new Date().toISOString()])).rows;
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: true, visits: rows.map(function (r) { return { at: r.at, path: r.path, title: r.title, source: srcName(r.ref), device: r.device, country: r.country, ip: r.ip, key: r.ip ? ipKey(r.ip) : '' }; }) });
+  });
   // Don't count visits from an address (the office, home) — or count them again.
   app.post('/api/admin/site-ignore', async function (req, res) {
     if (!(opts.isStaff && opts.isStaff(req))) return res.status(401).json({ ok: false });
@@ -157,5 +169,30 @@ module.exports = function (app, opts) {
     res.json({ ok: true });
   });
 
-  return { track: track };
+  // The pages one visitor has looked at (today and yesterday's code for them), oldest first, with where they came from.
+  function steps(rows) { const out = []; rows.forEach(function (r) { if (!out.length || out[out.length - 1].path !== r.path) out.push({ path: r.path, at: r.at }); }); return out; }
+  async function journey(req) {
+    const ua = String(req.headers['user-agent'] || ''), ip = ipOf(req); if (!ua || !ip) return null;
+    const codes = [0, 1].map(function (back) { const day = new Date(Date.now() - back * 86400000).toLocaleDateString('en-CA', { timeZone: 'Europe/London' }); return crypto.createHash('sha256').update(SALT + '|' + day + '|' + ip + '|' + ua).digest('hex').slice(0, 16); });
+    const p = await pool().catch(function () { return null; });
+    const rows = (p ? (await p.query("SELECT at, path, ref FROM web_visits WHERE visitor = ANY($1::text[]) AND at > now() - interval '2 days' ORDER BY at LIMIT 300", [codes])).rows : [])
+      .concat(queue.filter(function (q) { return codes.indexOf(q.visitor) !== -1; }).map(function (q) { return { at: new Date(), path: q.path, ref: q.ref }; }));
+    if (!rows.length) return null;
+    const st = steps(rows);
+    return { landing: rows[0].path, from: (rows.filter(function (r) { return r.ref; })[0] || {}).ref || '', first_at: rows[0].at, pages: st.slice(-15).map(function (x) { return x.path; }), views: rows.length };
+  }
+  // For an older lead with no record of where it came from: visitors who were on the website in the minutes
+  // before it came in (most likely first), with the pages they looked at — a best guess, not certain.
+  async function around(at, hint) {
+    const p = await pool().catch(function () { return null; }); if (!p) return [];
+    const t = new Date(at); if (isNaN(t)) return [];
+    const rows = (await p.query("SELECT visitor, at, path, ref, device FROM web_visits WHERE at BETWEEN $1::timestamptz - interval '45 minutes' AND $1::timestamptz + interval '2 minutes' AND visitor IS NOT NULL ORDER BY at", [t.toISOString()])).rows;
+    const by = {}; rows.forEach(function (r) { (by[r.visitor] = by[r.visitor] || []).push(r); });
+    const re = hint ? new RegExp(hint, 'i') : null;
+    return Object.keys(by).map(function (v) { const list = by[v], last = list[list.length - 1], gap = Math.abs(t - new Date(last.at)) / 60000;
+      return { visitor: v, landing: list[0].path, from: (list.filter(function (r) { return r.ref; })[0] || {}).ref || '', device: last.device || '', last_at: last.at, gap: Math.round(gap), pages: steps(list).slice(-15).map(function (x) { return x.path; }), match: re ? list.some(function (r) { return re.test(r.path); }) : false }; })
+      .filter(function (x) { return x.gap <= 30; })
+      .sort(function (a, b) { return (b.match - a.match) || (a.gap - b.gap); }).slice(0, 5);
+  }
+  return { track: track, journey: journey, around: around };
 };
