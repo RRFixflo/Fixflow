@@ -117,6 +117,8 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS part_done_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS part_price NUMERIC(10,2);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS landlord_address TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS contractor_paid_at TIMESTAMPTZ;
+-- Part payments to the contractor for this job: [{id, at, amount, by, note}]; paid in full once they cover what's owed.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS ctr_part_paid JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_number TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoiced_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS invoice_total NUMERIC(10,2);
@@ -1358,7 +1360,7 @@ const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, urgency_check
   (SELECT coalesce(sum(jp.charge), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_charge,
   (SELECT count(*)::int FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_count,
   (SELECT coalesce(sum(jp.cost), 0) FROM job_parts jp WHERE jp.job_id = jobs.id AND jp.paid_by = 'contractor') AS parts_ctr,
-  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total, contractor_paid_at, landlord_handles, landlord_contractor, no_charge_at,
+  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total, contractor_paid_at, ctr_part_paid, landlord_handles, landlord_contractor, no_charge_at,
   (SELECT max(u.created_at) FROM job_updates u WHERE u.job_id = jobs.id) AS last_update_at`;
 
 function str(v, max) {
@@ -4101,18 +4103,44 @@ module.exports = function mountJobs(app, opts) {
   // ---------- Contractor payments ----------
   // Marks jobs as paid (or not paid) to the contractor. What's owed is worked
   // out in the dashboard from each job's actual cost and contractor.
+  // A part payment to the contractor for one job (e.g. half up front). Once the part payments cover what's
+  // owed (sent by the app as `due`, their price + VAT + parts they bought), the job is marked paid.
+  app.post('/api/admin/jobs/:id/contractor-part-payment', withDb(async function (p, req, res) {
+    const id = jobId(req), b = req.body || {}, amount = money(b.amount), due = money(b.due);
+    if (!amount || amount <= 0) return res.status(400).json({ ok: false, error: 'Enter how much you paid' });
+    const cur = (await p.query('SELECT id, assigned_to, ctr_part_paid, contractor_paid_at FROM jobs WHERE id = $1', [id])).rows[0];
+    if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+    if (cur.contractor_paid_at) return res.status(400).json({ ok: false, error: 'This job is already marked as paid' });
+    const list = (cur.ctr_part_paid || []).concat([{ id: crypto.randomBytes(6).toString('hex'), at: new Date().toISOString(), amount: amount, by: (req.user && req.user.name) || '', note: str(b.note, 200) || '' }]);
+    const paidSoFar = Math.round(list.reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0) * 100) / 100, full = due != null && due > 0 && paidSoFar >= due - 0.004;
+    await p.query('UPDATE jobs SET ctr_part_paid = $2::jsonb' + (full ? ', contractor_paid_at = now()' : '') + ', updated_at = now() WHERE id = $1', [id, JSON.stringify(list)]);
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change',
+      'Part payment to ' + (cur.assigned_to || 'the contractor') + ': ' + gbp(amount) + (due ? ' — ' + gbp(paidSoFar) + ' of ' + gbp(due) + ' paid' : '') + (full ? ', now paid in full' : '') + (b.note ? ' (' + str(b.note, 200) + ')' : '') + '.']);
+    res.json({ ok: true, paid: paidSoFar, full: full });
+  }));
+  app.post('/api/admin/jobs/:id/contractor-part-payment/remove', withDb(async function (p, req, res) {
+    const id = jobId(req), pid = String((req.body || {}).pid || '');
+    const cur = (await p.query('SELECT id, ctr_part_paid FROM jobs WHERE id = $1', [id])).rows[0];
+    if (!cur) return res.status(404).json({ ok: false, error: 'not-found' });
+    const gone = (cur.ctr_part_paid || []).filter(function (x) { return x.id === pid; })[0];
+    if (!gone) return res.status(404).json({ ok: false, error: 'not-found' });
+    // No longer fully paid once a part payment is taken off.
+    await p.query('UPDATE jobs SET ctr_part_paid = $2::jsonb, contractor_paid_at = NULL, updated_at = now() WHERE id = $1', [id, JSON.stringify((cur.ctr_part_paid || []).filter(function (x) { return x.id !== pid; }))]);
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'change', 'Part payment of ' + gbp(gone.amount) + ' to the contractor removed.']);
+    res.json({ ok: true });
+  }));
   app.post('/api/admin/contractor-payments', withDb(async function (p, req, res) {
     const b = req.body || {};
     const ids = (Array.isArray(b.job_ids) ? b.job_ids : []).map(function (x) { return parseInt(x, 10); }).filter(function (x) { return x > 0; }).slice(0, 500);
     if (!ids.length) return res.status(400).json({ ok: false, error: 'no-jobs' });
     const paid = b.paid !== false;
     const r = await p.query(
-      'UPDATE jobs SET contractor_paid_at = ' + (paid ? 'coalesce(contractor_paid_at, now())' : 'NULL') + ', updated_at = now() WHERE id = ANY($1::int[]) RETURNING id, assigned_to, actual_cost, (SELECT coalesce(sum(jp.cost), 0) FROM job_parts jp WHERE jp.job_id = jobs.id AND jp.paid_by = \'contractor\') AS parts_ctr',
+      'UPDATE jobs SET contractor_paid_at = ' + (paid ? 'coalesce(contractor_paid_at, now())' : 'NULL') + ', updated_at = now() WHERE id = ANY($1::int[]) RETURNING id, assigned_to, actual_cost, ctr_part_paid, (SELECT coalesce(sum(jp.cost), 0) FROM job_parts jp WHERE jp.job_id = jobs.id AND jp.paid_by = \'contractor\') AS parts_ctr',
       [ids]);
     const note = str(b.note, 200);
     for (const row of r.rows) {
       await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [row.id, 'change',
-        paid ? 'Contractor paid' + (row.assigned_to ? ' (' + row.assigned_to + ')' : '') + (row.actual_cost != null ? ': ' + gbp(row.actual_cost) : '') + (Number(row.parts_ctr) > 0 ? ' + parts they bought ' + gbp(row.parts_ctr) : '') + (note ? ' — ' + note : '') + '.'
+        paid ? 'Contractor paid' + (row.assigned_to ? ' (' + row.assigned_to + ')' : '') + (row.actual_cost != null ? ': ' + gbp(row.actual_cost) : '') + (Number(row.parts_ctr) > 0 ? ' + parts they bought ' + gbp(row.parts_ctr) : '') + ((row.ctr_part_paid || []).length ? ' (' + gbp((row.ctr_part_paid || []).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0)) + ' of it paid earlier in part payments)' : '') + (note ? ' — ' + note : '') + '.'
              : 'Contractor payment un-marked.']);
     }
     res.json({ ok: true, updated: r.rows.length });

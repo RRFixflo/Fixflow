@@ -625,7 +625,7 @@
   .av-card { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px; position: relative; }
   .av-card.is-urgent { border-color: #f3a7a7; box-shadow: 0 0 0 2px #fdecec; } .av-card.is-off { opacity: .6; }
   .av-h { display: flex; gap: 10px; align-items: flex-start; } .av-beds { flex: 0 0 auto; min-width: 46px; text-align: center; border-radius: 12px; background: var(--navy, #0b1f3a); color: #fff; padding: 6px 4px; line-height: 1.1; } .av-beds b { display: block; font-size: 1.2rem; } .av-beds span { font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; opacity: .8; }
-  .av-addr { font-weight: 700; line-height: 1.3; } .part-by { color: var(--ink-soft); } .part-by.ctr { color: #b54708; font-weight: 600; } .part-who { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin-top: 10px; font-size: 14px; } .part-who label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; } .av-web { display: block; margin: 4px 0 2px; padding: 5px 8px; border-radius: 8px; background: #fef3f2; color: #912018; font-size: 12px; line-height: 1.4; border: 1px solid #fecdca; } .av-web .linkish { font-size: 12px; font-weight: 700; } a.av-gid-a { text-decoration: none; } a.av-gid-a:hover { text-decoration: underline; } .av-gid-ed { background: none; border: 0; padding: 0 2px; margin-left: 1px; cursor: pointer; font-size: 11px; line-height: 1; opacity: .65; vertical-align: middle; } .av-gid-ed:hover { opacity: 1; } .av-gid.maybe { color: #3538cd; border-color: #a4bcfd; } .av-gid.gone { background: #fef3f2; color: #b42318; border: 1px solid #fda29b; } .av-gid.none { background: #fff; color: var(--ink-soft); border: 1px dashed #c7cbe0; font-weight: 700; } button.av-gid { cursor: pointer; border: 0; font-family: inherit; line-height: 1.5; } .av-gid { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: #eef2ff; color: #3538cd; font-weight: 800; font-size: .74rem; letter-spacing: .02em; white-space: nowrap; } .av-pc { font-size: .8rem; color: var(--ink-soft); }
+  .av-addr { font-weight: 700; line-height: 1.3; } .ctr-parts { margin: -4px 0 10px; padding: 6px 10px; border-radius: 10px; background: #f6f7fb; font-size: 13px; } .ctr-parts > div { display: flex; gap: 10px; align-items: center; padding: 3px 0; } .ctr-parts > div span { flex: 1; color: var(--ink-soft); } .ctr-parts .linkish { color: var(--red, #c00); } .part-by { color: var(--ink-soft); } .part-by.ctr { color: #b54708; font-weight: 600; } .part-who { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin-top: 10px; font-size: 14px; } .part-who label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; } .av-web { display: block; margin: 4px 0 2px; padding: 5px 8px; border-radius: 8px; background: #fef3f2; color: #912018; font-size: 12px; line-height: 1.4; border: 1px solid #fecdca; } .av-web .linkish { font-size: 12px; font-weight: 700; } a.av-gid-a { text-decoration: none; } a.av-gid-a:hover { text-decoration: underline; } .av-gid-ed { background: none; border: 0; padding: 0 2px; margin-left: 1px; cursor: pointer; font-size: 11px; line-height: 1; opacity: .65; vertical-align: middle; } .av-gid-ed:hover { opacity: 1; } .av-gid.maybe { color: #3538cd; border-color: #a4bcfd; } .av-gid.gone { background: #fef3f2; color: #b42318; border: 1px solid #fda29b; } .av-gid.none { background: #fff; color: var(--ink-soft); border: 1px dashed #c7cbe0; font-weight: 700; } button.av-gid { cursor: pointer; border: 0; font-family: inherit; line-height: 1.5; } .av-gid { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: #eef2ff; color: #3538cd; font-weight: 800; font-size: .74rem; letter-spacing: .02em; white-space: nowrap; } .av-pc { font-size: .8rem; color: var(--ink-soft); }
   .av-tags { display: flex; gap: 4px; flex-wrap: wrap; } .av-tag { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: #eef2ff; color: #1d3fae; } .av-tag.urgent { background: #fdecec; color: #b42318; } .av-tag.let { background: #f1f2f4; color: #5f6673; }
   .av-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; } .av-row div { background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 6px 8px; } .av-row span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 700; } .av-row b { font-size: .92rem; } .av-row .now b { color: #0d7a3d; }
   .av-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -7911,7 +7911,10 @@
         (j.assigned_to && (j.actual_cost != null || ctrParts(j))
           ? '<div class="nearby" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
               (j.contractor_paid_at ? '<span><strong>' + esc(j.assigned_to) + ' paid</strong> ' + esc(gbp(ctrOwe(j))) + (ctrParts(j) ? ' (incl. parts ' + esc(gbp(ctrParts(j))) + ')' : '') + ' · ' + esc(fmtShort(j.contractor_paid_at)) + '</span><button class="btn small" id="unpayBtn" type="button">Undo</button>'
-                : '<span><strong>Owed to ' + esc(j.assigned_to) + ':</strong> ' + esc(gbp(ctrOwe(j))) + (ctrParts(j) ? ' <small>(their price ' + esc(gbp(num(j.actual_cost) || 0)) + ' + parts they bought ' + esc(gbp(ctrParts(j))) + ')</small>' : '') + '</span><button class="btn small primary" id="payBtn" type="button">Mark contractor paid</button>') + '</div>'
+                : '<span><strong>Owed to ' + esc(j.assigned_to) + ':</strong> ' + esc(gbp(ctrOwe(j))) + (ctrParts(j) ? ' <small>(their price ' + esc(gbp(num(j.actual_cost) || 0)) + ' + parts they bought ' + esc(gbp(ctrParts(j))) + ')</small>' : '') +
+                  (ctrPaidSoFar(j) ? '<br><small><b>' + esc(gbp(ctrPaidSoFar(j))) + ' paid so far · ' + esc(gbp(costLeft(j))) + ' still to pay</b></small>' : '') + '</span>' +
+                  '<span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" id="partPayBtn" type="button">💷 Part payment</button><button class="btn small primary" id="payBtn" type="button">Mark contractor paid</button></span>') + '</div>' +
+              ((j.ctr_part_paid || []).length ? '<div class="ctr-parts">' + (j.ctr_part_paid || []).map(function(x){ return '<div><span>' + esc(fmtShort(x.at)) + (x.by ? ' · ' + esc(x.by) : '') + (x.note ? ' · ' + esc(x.note) : '') + '</span><b>' + esc(gbp(x.amount)) + '</b>' + (j.contractor_paid_at ? '' : '<button type="button" class="linkish" data-pp-del="' + esc(x.id) + '" aria-label="Remove this part payment">✕</button>') + '</div>'; }).join('') + '</div>' : '')
           : '') +
         '<div class="row-actions">' +
           '<button class="btn primary" id="saveMoney" type="button">Save costs</button></div>' +
@@ -8398,7 +8401,12 @@
       setTimeout(function(){ $('fDoneNotes').focus({ preventScroll: true }); }, 350);
     });
     $('saveMoney').addEventListener('click', function(){ $('saveBtn').click(); });
-    if ($('payBtn')) $('payBtn').addEventListener('click', function(){ markPaid([j.id], true).then(function(){ openJob(j.id); }); });
+    if ($('payBtn')) $('payBtn').addEventListener('click', function(){ if (ctrPaidSoFar(j) && !confirm('Mark it paid in full? ' + gbp(costLeft(j)) + ' is still to pay after the part payments.')) return; markPaid([j.id], true).then(function(){ openJob(j.id); }); });
+    if ($('partPayBtn')) $('partPayBtn').addEventListener('click', function(){ partPay(j, function(){ openJob(j.id); }); });
+    document.querySelectorAll('[data-pp-del]').forEach(function(b){ b.addEventListener('click', function(){
+      if (!confirm('Remove this part payment?')) return;
+      api('POST', '/api/admin/jobs/' + j.id + '/contractor-part-payment/remove', { pid: b.dataset.ppDel }).then(function(d){ toast(d && d.ok ? 'Part payment removed' : 'Couldn’t remove it'); if (d && d.ok) loadJobs().then(function(){ openJob(j.id); }); });
+    }); });
     if ($('unpayBtn')) $('unpayBtn').addEventListener('click', function(){ markPaid([j.id], false).then(function(){ openJob(j.id); }); });
     $('dBody').querySelectorAll('[data-goto]').forEach(function(b){ b.addEventListener('click', function(){ setDrawerTab(b.dataset.goto); }); });
     wireAiEmail(j);
@@ -10236,7 +10244,22 @@
   function needsCost(j){ return j.assigned_to && j.status === 'Completed' && j.actual_cost == null; }
   // What we actually pay the contractor: their price, plus VAT when they charge it.
   function costToPay(j){ var c = num(j.actual_cost) || 0; return (j.cost_vat ? Math.round(c * 120) / 100 : c) + ctrParts(j); }
-  function owedTotal(){ return jobs.filter(isOwed).reduce(function(a, j){ return a + costToPay(j); }, 0); }
+  // Part payments already made to the contractor for a job, and what's still to pay.
+  function ctrPaidSoFar(j){ return Math.round((j.ctr_part_paid || []).reduce(function(a, x){ return a + (num(x.amount) || 0); }, 0) * 100) / 100; }
+  function costLeft(j){ return Math.max(0, Math.round((costToPay(j) - ctrPaidSoFar(j)) * 100) / 100); }
+  function owedTotal(){ return jobs.filter(isOwed).reduce(function(a, j){ return a + costLeft(j); }, 0); }
+  function partPay(j, after){
+    var left = costLeft(j), v = prompt('Part payment to ' + (j.assigned_to || 'the contractor') + ' for ' + j.ref + '.\nStill to pay: ' + gbp(left) + (ctrPaidSoFar(j) ? ' (' + gbp(ctrPaidSoFar(j)) + ' paid so far)' : '') + '\n\nHow much did you pay? (£)');
+    if (v === null) return;
+    var amt = Number(String(v).replace(/[£,\s]/g, ''));
+    if (!(amt > 0)) { toast('Enter the amount you paid, e.g. 200'); return; }
+    if (amt > left + 0.004 && !confirm(gbp(amt) + ' is more than the ' + gbp(left) + ' still to pay. Record it anyway?')) return;
+    api('POST', '/api/admin/jobs/' + j.id + '/contractor-part-payment', { amount: amt, due: costToPay(j) }).then(function(d){
+      if (!d || !d.ok) { toast((d && d.error) || 'Couldn’t save the part payment'); return; }
+      toast(d.full ? '✓ ' + gbp(amt) + ' paid — the job is now paid in full' : '✓ Part payment of ' + gbp(amt) + ' saved — ' + gbp(Math.max(0, costToPay(j) - d.paid)) + ' still to pay');
+      loadJobs().then(function(){ if (after) after(); });
+    });
+  }
   function markPaid(ids, paid){
     return api('POST', '/api/admin/contractor-payments', { job_ids: ids, paid: paid }).then(function(d){
       if (!d.ok) { toast('Couldn’t update the payment'); return; }
@@ -10269,7 +10292,7 @@
     order.sort(function(a, b){ return a.localeCompare(b); });
     $('payList').innerHTML = order.map(function(name){
       var g = groups[name].sort(function(a, b){ return new Date(payTab === 'paid' ? b.contractor_paid_at : (a.completed_at || a.created_at)) - new Date(payTab === 'paid' ? a.contractor_paid_at : (b.completed_at || b.created_at)); });
-      var total = g.reduce(function(a, j){ return a + costToPay(j); }, 0);
+      var total = g.reduce(function(a, j){ return a + (payTab === 'owed' ? costLeft(j) : costToPay(j)); }, 0);
       var c = contractorByName(name) || {};
       return '<div class="list pay-group" data-who="' + esc(name) + '"><div class="pay-head"><div class="who" data-ct-open="' + esc(name) + '" style="cursor:pointer" title="See all of ' + esc(name) + '’s jobs">' + avatar(name) + '<div><strong>' + esc(name) + ' ›</strong><span>' +
           esc([c.trade, g.length + ' job' + (g.length === 1 ? '' : 's')].filter(Boolean).join(' · ')) + '</span></div></div>' +
@@ -10282,7 +10305,9 @@
             '<div class="addr" role="button" tabindex="0" data-open="' + j.id + '" title="Open ' + esc(j.ref) + '">' + esc(j.property_address || 'No address') + '<small>' + esc(j.ref + ' · ' + issueOf(j)) + '</small></div>' +
             '<div class="when">' + esc(payTab === 'paid' ? 'Paid ' + fmtShort(j.contractor_paid_at) : j.completed_at ? 'Done ' + fmtShort(j.completed_at) : j.status) + '</div>' +
             '<div class="amt">' + (payTab === 'nocost' ? '<button type="button" class="link" data-open-money="' + j.id + '">Add cost</button>'
-              : gbp(costToPay(j)) + (j.cost_vat ? '<small style="display:block;font-weight:500;color:var(--ink-faint)">inc VAT</small>' : '') + (payTab === 'paid' ? ' <button type="button" class="link" style="font-size:.76rem" data-unpay="' + j.id + '">Undo</button>' : '')) + '</div>' +
+              : gbp(payTab === 'owed' ? costLeft(j) : costToPay(j)) + (j.cost_vat ? '<small style="display:block;font-weight:500;color:var(--ink-faint)">inc VAT</small>' : '') +
+                (payTab === 'owed' && ctrPaidSoFar(j) ? '<small style="display:block;font-weight:500;color:var(--ink-faint)">' + gbp(ctrPaidSoFar(j)) + ' of ' + gbp(costToPay(j)) + ' paid</small>' : '') +
+                (payTab === 'owed' ? '<button type="button" class="link" style="font-size:.76rem;display:block;margin-left:auto" data-part-pay="' + j.id + '">💷 Part pay</button>' : '') + (payTab === 'paid' ? ' <button type="button" class="link" style="font-size:.76rem" data-unpay="' + j.id + '">Undo</button>' : '')) + '</div>' +
           '</div>';
         }).join('') + '</div>';
     }).join('');
@@ -10298,12 +10323,13 @@
     if (t.dataset.open) openJob(Number(t.dataset.open));
     else if (t.dataset.openMoney) { drawerTab = 'money'; drawerTabJob = Number(t.dataset.openMoney); openJob(Number(t.dataset.openMoney)); }
     else if (t.dataset.unpay) markPaid([Number(t.dataset.unpay)], false);
+    else if (t.dataset.partPay) { var pj = jobs.filter(function(x){ return x.id === Number(t.dataset.partPay); })[0]; if (pj) partPay(pj); }
     else if (t.dataset.payAll || t.dataset.paySel) {
       var name = t.dataset.payAll || t.dataset.paySel;
       var box = t.closest('.pay-group');
       var ids = Array.from(box.querySelectorAll('input[data-pay-job]')).filter(function(i){ return t.dataset.payAll || i.checked; }).map(function(i){ return Number(i.dataset.payJob); });
       if (!ids.length) { toast('Tick the jobs you’ve paid first'); return; }
-      var sum = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; }).reduce(function(a, j){ return a + ctrOwe(j); }, 0);
+      var sum = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; }).reduce(function(a, j){ return a + costLeft(j); }, 0);
       if (!confirm('Mark ' + ids.length + ' job' + (ids.length === 1 ? '' : 's') + ' as paid to ' + name + ' (' + gbp(sum) + ')?')) return;
       markPaid(ids, true);
     }
