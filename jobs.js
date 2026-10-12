@@ -11969,6 +11969,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const blk = await applBlocked(p, req, ref); if (blk) return res.status(409).json(heldMsg(blk));
     await applClaim(p, req, ref);
     await crmLog(p, ref, note, req, false);
+    // "I've spoken to them": every new enquiry of theirs is now contacted.
+    if (b.spoke && ref.indexOf('vr:') === 0) {
+      const g = await applGroup(p, +ref.slice(3));
+      if (g) await p.query("UPDATE valuation_requests SET status = 'contacted', handled_at = now(), handled_by = $2 WHERE id = ANY($1) AND status = 'new'", [g.ids, req.user ? req.user.name : 'Office']);
+    }
     res.json({ ok: true });
   }));
   // A property recommended to several applicants by email: noted on each (it doesn't make them yours).
