@@ -8340,16 +8340,50 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.set('Cache-Control', 'no-store'); res.set('X-Robots-Tag', 'noindex');
     res.type('text/calendar; charset=utf-8').send(L.map(icsFold).join('\r\n') + '\r\n');
   }));
+  // The offer form for the property they viewed.
+  function vfOfferUrl(v) { return (OFFER_ORIGIN || PUBLIC_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '') + '/offer?p=' + encodeURIComponent(String(v.property_address || '')); }
+  function vfUrl(t) { return String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '') + '/vf/' + t; }
+  // After every viewing (booked or marked done, not cancelled or a no-show), the applicant is emailed their feedback
+  // link — with "make an offer" — about half an hour after it ends, between 8am and 9pm, once. Only viewings from the
+  // last day, so nothing old is sent. VIEWING_FB_AUTO=0 turns it off.
+  async function viewingFeedbackAuto() {
+    if (String(process.env.VIEWING_FB_AUTO || '') === '0' || !canEmail() || !sendEmail) return;
+    const hour = +new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false });
+    if (hour < 8 || hour >= 21) return;
+    const p = await db(); if (!p) return;
+    const rows = (await p.query("SELECT * FROM viewings WHERE status IN ('booked', 'done') AND coalesce(email, '') <> '' AND fb_sent_at IS NULL AND app_fb_at IS NULL AND at > now() - interval '24 hours' AND at + make_interval(mins => coalesce(mins, 30) + 30) < now() ORDER BY at LIMIT 40")).rows;
+    for (const v of rows) {
+      const claim = await p.query('UPDATE viewings SET fb_sent_at = now(), fb_token = coalesce(fb_token, $2) WHERE id = $1 AND fb_sent_at IS NULL RETURNING fb_token', [v.id, crypto.randomBytes(12).toString('base64url')]);
+      if (!claim.rows.length) continue;
+      const t = claim.rows[0].fb_token, addr = String(v.property_address || 'the property').split(',').slice(0, 2).join(','), first = String(v.applicant || '').trim().split(/\s+/)[0];
+      const subject = 'How was your viewing? — ' + addr;
+      const text = 'Hi' + (first ? ' ' + first : '') + ',\n\nThank you for viewing ' + addr + ' with us today. We’d love to know what you thought — it takes less than a minute:\n\n' + vfUrl(t) +
+        '\n\nIf you’d like to go ahead, you can make an offer straight away:\n\n' + vfOfferUrl(v) + '\n\nAny questions, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\n' + (v.staff ? String(v.staff).split(/\s+/)[0] + '\n' : '') + 'Residential Realtors';
+      let replyTo = 'info@residentialrealtors.co.uk';
+      try { const u = v.staff ? (await p.query("SELECT email FROM staff_users WHERE disabled_at IS NULL AND lower(name) = lower($1) AND coalesce(email, '') <> '' LIMIT 1", [v.staff])).rows[0] : null; if (u && /@/.test(u.email)) replyTo = u.email; } catch (e) {}
+      const r = await sendEmail({ to: [v.email], replyTo: replyTo, fromName: 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (e) { return { ok: false, error: e.message }; });
+      if (!r.ok) { await p.query('UPDATE viewings SET fb_sent_at = NULL WHERE id = $1', [v.id]); console.error('[viewing feedback]', r.error); continue; }
+      p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok) VALUES (NULL, $1, $2, $3, $4, $5, true)', ['Fixflow (automatic)', [v.email], replyTo, subject, text]).catch(function () {});
+      if (v.lead_id) p.query('INSERT INTO crm_notes (ref, note, by_name, auto) VALUES ($1, $2, $3, true)', ['vr:' + v.lead_id, 'Feedback link (with “make an offer”) emailed automatically after the viewing at ' + addr, 'Fixflow']).catch(function () {});
+    }
+  }
+  setTimeout(function () { viewingFeedbackAuto().catch(function (e) { console.error('[viewing feedback]', e.message); }); }, 150 * 1000);
+  setInterval(function () { viewingFeedbackAuto().catch(function (e) { console.error('[viewing feedback]', e.message); }); }, 10 * 60 * 1000).unref();
   app.get('/vf/:token', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
-    const v = await vfViewing(p, req.params.token);
+    // /vf/example: what applicants see, with a made-up property (nothing sent from it is saved).
+    const demo = req.params.token === 'example';
+    const v = demo ? { property_address: 'Flat 3, 12 Example Street, London SE1 0XX', at: new Date(), app_fb: {}, app_fb_at: null } : await vfViewing(p, req.params.token);
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex');
     if (!v) return res.status(404).send(trackShell('Link not found', '<h1>Link not found</h1><p>This link may have expired. Please call us on 0207 096 8131.</p>', true));
     const addr = String(v.property_address || 'the property').split(',').slice(0, 2).join(','), when = new Date(v.at).toLocaleDateString('en-GB', { timeZone: 'Europe/London', weekday: 'long', day: 'numeric', month: 'long' });
     const done = v.app_fb_at ? '<div class="card"><b>✓ Thank you — we’ve got your feedback.</b><p class="muted" style="margin:4px 0 0">You can change it below if you like.</p></div>' : '';
     const f = v.app_fb || {}, stars = [1, 2, 3, 4, 5].map(function (n) { return '<label class="st"><input type="radio" name="rating" value="' + n + '"' + (f.rating === n ? ' checked' : '') + ' required><span>' + n + '</span></label>'; }).join('');
-    const inner = '<h1>How was your viewing?</h1><p class="sub">' + htmlEsc(addr) + ' · ' + htmlEsc(when) + '</p>' + done +
-      '<div class="card"><form class="stack" id="vf">' +
+    const offerUrl = vfOfferUrl(v);
+    const offerCard = '<div class="card vf-offer"><div><b>Like it? Make an offer</b><span>Our online offer form takes about 10 minutes — the sooner you send it, the better your chances.</span></div><a class="btn" href="' + htmlEsc(offerUrl) + '">Make an offer →</a></div>';
+    const inner = (demo ? '<div class="card" style="background:#fffaeb;border-color:#fedf89"><b>Example page</b> — this is what applicants see after a viewing. The property is made up and nothing you send here is saved.</div>' : '') +
+      '<h1>How was your viewing?</h1><p class="sub">' + htmlEsc(addr) + ' · ' + htmlEsc(when) + '</p>' + done + offerCard +
+      '<div class="card"><form class="stack" id="vf" data-offer="' + htmlEsc(offerUrl) + '">' +
       '<fieldset><legend>Overall, how did you find the property? <span class="muted">(1 = not for me, 5 = loved it)</span></legend><div class="stars">' + stars + '</div></fieldset>' +
       '<fieldset><legend>Would you like to go ahead?</legend>' + Object.keys(VF_INTEREST).map(function (k) { return '<label class="opt"><input type="radio" name="interest" value="' + k + '"' + (f.interest === k ? ' checked' : '') + ' required> ' + htmlEsc(VF_INTEREST[k]) + '</label>'; }).join('') + '</fieldset>' +
       '<label>What did you like?<textarea name="liked" maxlength="1000" rows="3">' + htmlEsc(f.liked || '') + '</textarea></label>' +
@@ -8358,14 +8392,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
       '<button type="submit" class="btn" id="vb">Send feedback</button><p class="muted" id="vm" role="status"></p></form></div>' +
       '<p class="muted" style="text-align:center">Questions? Call 0207 096 8131 or email info@residentialrealtors.co.uk</p>' +
       '<style>#vf fieldset{border:0;padding:0;margin:0 0 6px}#vf legend{font-weight:600;font-size:.95rem;margin-bottom:8px}#vf label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:.92rem}#vf .opt{flex-direction:row;align-items:center;gap:8px;font-weight:500;padding:6px 0}' +
+      '.vf-offer{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-left:4px solid #d9262e}.vf-offer b{display:block;font-size:1.05rem}.vf-offer span{color:#475467;font-size:.92rem}.vf-offer .btn{display:inline-block;text-decoration:none;white-space:nowrap;background:#d9262e;color:#fff;font-weight:700;padding:12px 18px;border-radius:12px}.vf-offer .btn:hover{background:#b91c1c}@media(max-width:520px){.vf-offer .btn{width:100%;text-align:center}}' +
       '#vf textarea,#vf select{font:inherit;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}.stars{display:flex;gap:8px}.st{flex:1}.st input{position:absolute;opacity:0}.st span{display:block;text-align:center;padding:12px 0;border:1px solid var(--line);border-radius:12px;font-weight:700;background:#fff;cursor:pointer}.st input:checked+span{background:var(--ink);color:#fff;border-color:var(--ink)}.st input:focus-visible+span{outline:2px solid var(--blue)}</style>' +
       '<script>(function(){var f=document.getElementById("vf"),m=document.getElementById("vm"),b=document.getElementById("vb");f.addEventListener("submit",function(e){e.preventDefault();b.disabled=true;m.textContent="Sending…";' +
       'var r=f.querySelector("[name=rating]:checked"),i=f.querySelector("[name=interest]:checked");fetch(location.pathname,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rating:r?+r.value:0,interest:i?i.value:"",liked:f.liked.value,disliked:f.disliked.value,service:f.service.value})})' +
-      '.then(function(x){return x.json()}).then(function(d){b.disabled=false;m.textContent=d.ok?"✓ Thank you — your feedback has been sent.":"Sorry, that didn’t send — please try again.";}).catch(function(){b.disabled=false;m.textContent="Sorry, that didn’t send — please try again.";});});})();</script>';
+      '.then(function(x){return x.json()}).then(function(d){b.disabled=false;m.textContent=d.ok?"✓ Thank you — your feedback has been sent.":"Sorry, that didn’t send — please try again.";if(d.ok&&i&&i.value==="yes"){var a=document.createElement("a");a.href=f.getAttribute("data-offer");a.textContent=" Make your offer now →";a.style.fontWeight="700";m.appendChild(a);}}).catch(function(){b.disabled=false;m.textContent="Sorry, that didn’t send — please try again.";});});})();</script>';
     res.send(trackShell('Viewing feedback', inner, true, 'Viewing'));
   }));
   app.post('/vf/:token', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    if (req.params.token === 'example') return res.json({ ok: true, example: true });
     const v = await vfViewing(p, req.params.token); if (!v) return res.status(404).json({ ok: false });
     const b = req.body || {}, rating = Math.max(0, Math.min(5, parseInt(b.rating, 10) || 0)), interest = VF_INTEREST[b.interest] ? b.interest : '';
     if (!rating || !interest) return res.status(400).json({ ok: false, error: 'missing' });
