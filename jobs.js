@@ -11799,6 +11799,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
     { k: 'clean', name: 'End of tenancy cleaning', icon: '🧽', pages: ['/book-a-clean', '/book-a-clean/%', '/end-of-tenancy-clean'], items: /^clean/ }
   ];
   const QMAP = { 'Gas Safety': 'gas', 'EICR': 'eicr', 'EPC': 'epc', 'DIY inventory': 'diy', 'Licence help': 'licence', 'Cleaning': 'clean', 'Mortgage rental letter': 'mortgage' };
+  // A lead's source (saved by noteSource) counted for a product: the page its form was sent from, the page they
+  // landed on first, and how they found us.
+  function leadFrom(r, src) {
+    if (!src || !(src.page || src.landing)) return;
+    r.tracked++;
+    if (src.page) r.pages[src.page] = (r.pages[src.page] || 0) + 1;
+    if (src.landing) r.landings[src.landing] = (r.landings[src.landing] || 0) + 1;
+    const h = String(src.from || ''), how = !h ? 'Typed in / bookmark' : /google/.test(h) ? 'Google' : /bing/.test(h) ? 'Bing' : /duckduckgo/.test(h) ? 'DuckDuckGo' : /chatgpt|openai/.test(h) ? 'ChatGPT' : /facebook|instagram|fb\./.test(h) ? 'Facebook / Instagram' : /rightmove/.test(h) ? 'Rightmove' : /whatsapp/.test(h) ? 'WhatsApp' : h;
+    r.hows[how] = (r.hows[how] || 0) + 1;
+  }
   app.get('/api/admin/sales-funnel', withDb(async function (p, req, res) {
     const days = [7, 30, 90, 365].indexOf(+req.query.days) !== -1 ? +req.query.days : 30;
     const since = new Date(Date.now() - days * 86400000);
@@ -11819,14 +11829,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Landlords who signed our terms (any time): the ones the free licence help turned into clients.
     const clients = (await p.query("SELECT lower(coalesce(landlord_email, '')) AS e, right(regexp_replace(coalesce(landlord_phone, ''), '\\D', '', 'g'), 9) AS p FROM landlord_terms WHERE status = 'signed'").catch(function () { return { rows: [] }; })).rows;
     const out = FUNNEL.map(function (f) {
-      const r = { k: f.k, name: f.name, icon: f.icon, client: !!f.client, visitors: visits[f.k] || 0, requests: 0, progress: 0, won: 0, revenue: 0, stuck: [], sources: Object.entries(sources[f.k] || {}).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 3).map(function (x) { return { k: x[0], n: x[1] }; }) };
+      const r = { pages: {}, landings: {}, hows: {}, tracked: 0, k: f.k, name: f.name, icon: f.icon, client: !!f.client, visitors: visits[f.k] || 0, requests: 0, progress: 0, won: 0, revenue: 0, stuck: [], sources: Object.entries(sources[f.k] || {}).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 3).map(function (x) { return { k: x[0], n: x[1] }; }) };
       leads.forEach(function (l) {
-        const d = l.data || {}, kind = d.kind || 'val';
+        const d = l.data || {}, kind = d.kind || 'val', note = function () { leadFrom(r, d.src); };
         // "Prefer a call?" call-backs from a product's page count for that product.
         const qk = kind === 'quick' ? QMAP[d.service] : null;
         if (qk) {
           if (qk !== f.k) return;
-          r.requests++; if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
+          r.requests++; note(); if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
           if (l.status === 'won') r.won++;
           else if (l.status === 'new' && Date.now() - new Date(l.created_at) > 3600000) r.stuck.push({ id: l.id, at: l.created_at, name: l.name, phone: l.phone, why: 'Asked for a call back — not called yet' });
           return;
@@ -11837,13 +11847,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
           const free = !Number(d.total), paid = !!d.paid_at;
           // Free licence help is how we meet landlords: it counts as won once they become a letting client.
           if (f.client) {
-            r.requests++; if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
+            r.requests++; note(); if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
             const em = String(l.email || '').toLowerCase(), ph = String(l.phone || '').replace(/\D/g, '').slice(-9);
             if (clients.some(function (c) { return (em && c.e === em) || (ph.length === 9 && c.p === ph); }) || l.status === 'won') r.won++;
             else if (l.status !== 'lost') r.stuck.push({ id: l.id, at: l.created_at, name: l.name, phone: l.phone, why: l.status === 'new' ? 'Not contacted yet — offer our letting service' : 'Not a letting client yet — talk about letting' });
             return;
           }
-          r.requests++; if (d.checkout_id || paid || free) r.progress++;
+          r.requests++; note(); if (d.checkout_id || paid || free) r.progress++;
           if (paid || (free && l.status !== 'lost')) { r.won++; r.revenue += mine.reduce(function (a, i) { return a + (Number(i.price) || 0); }, 0) * (1 + CERT_VAT); }
           else if (!free && l.status !== 'lost') r.stuck.push({ id: l.id, at: l.created_at, name: l.name, phone: l.phone, why: d.checkout_id ? 'Went to pay but didn’t finish' : 'Booked, not paid' });
           return;
@@ -11852,19 +11862,21 @@ document.querySelectorAll('.lcu').forEach(function(box){
         if (!(f.lead === 'letting' ? isLet : f.lead === 'mortgage' ? kind === 'mortgage' : isSale)) return;
         // Free mortgage rental letters, like free licence help, are how we meet landlords: won once they're a letting client.
         if (f.client) {
-          r.requests++; if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
+          r.requests++; note(); if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
           const em = String(l.email || '').toLowerCase(), ph = String(l.phone || '').replace(/\D/g, '').slice(-9);
           if (l.status === 'won' || clients.some(function (c) { return (em && c.e === em) || (ph.length === 9 && c.p === ph); })) r.won++;
           else if (l.status !== 'lost') r.stuck.push({ id: l.id, at: l.created_at, name: l.name, phone: l.phone, why: l.status === 'new' ? 'Letter not sent yet' : 'Not a letting client yet — talk about letting' });
           return;
         }
-        r.requests++;
+        r.requests++; note();
         if (['contacted', 'booked', 'won'].indexOf(l.status) !== -1) r.progress++;
         if (l.status === 'won') r.won++;
         else if (l.status === 'new' && Date.now() - new Date(l.created_at) > 86400000) r.stuck.push({ id: l.id, at: l.created_at, name: l.name, phone: l.phone, why: 'Not contacted yet' });
       });
       if (f.k === 'letting') signups.forEach(function (s) { r.requests++; r.progress++; if (s.status === 'signed') r.won++; else r.stuck.push({ lt: s.id, at: s.created_at, name: s.landlord_name, why: 'Started signing up online, terms not signed' }); });
       r.revenue = Math.round(r.revenue * 100) / 100; r.stuck = r.stuck.slice(0, 8);
+      const top = function (o, n) { return Object.keys(o).map(function (k) { return { k: k, n: o[k] }; }).sort(function (a, b) { return b.n - a.n; }).slice(0, n); };
+      r.lead_pages = top(r.pages, 6); r.lead_landings = top(r.landings, 6); r.lead_hows = top(r.hows, 5); delete r.pages; delete r.landings; delete r.hows;
       return r;
     });
     res.setHeader('Cache-Control', 'no-store');
