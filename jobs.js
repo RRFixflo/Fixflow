@@ -1807,7 +1807,21 @@ const CONTRACTOR_PAGE_JS = `(function(){
 })();`;
 
 module.exports = function mountJobs(app, opts) {
-  const sendEmail = opts.sendEmail;           // async ({to, subject, text}) => {ok}
+  // Every email Fixflow sends to someone outside the office is kept in sent_emails as "Automatic" (booking
+  // confirmations, reminders…), so a person's page / lead card shows it; staff-sent emails replace that row
+  // with their own (logSent). The Sent emails list leaves "Automatic" out unless looking at one person.
+  const sendEmail = opts.sendEmail ? function (m) {
+    return Promise.resolve(opts.sendEmail(m)).then(function (r) {
+      try {
+        const to = [].concat(m && m.to || []).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+        if (to.length && to.some(function (x) { return !/^info@residentialrealtors\.co\.uk$/i.test(x); }))
+          // A few seconds later, and only if nobody has recorded this email already (staff-sent, or an automatic one logged on its own).
+          setTimeout(function () { db().then(function (p) { return p && p.query("INSERT INTO sent_emails (user_name, to_list, cc_list, reply_to, subject, body, ok, error) SELECT 'Automatic', $1::text[], $2::text[], $3, $4, $5, $6, $7 WHERE NOT EXISTS (SELECT 1 FROM sent_emails WHERE subject = $4 AND to_list && $1::text[] AND created_at > now() - interval '3 minutes')",
+            [to, [].concat(m.cc || []), m.replyTo || null, String(m.subject || '').slice(0, 300), String(m.text || '').slice(0, 20000), !!(r && r.ok), r && r.ok ? null : String((r && r.error) || 'failed').slice(0, 300)]); }).catch(function () {}); }, 6000).unref();
+      } catch (e) {}
+      return r;
+    });
+  } : null;
   const canEmail = opts.canEmail;             // () => bool
   const DATABASE_URL = process.env.DATABASE_URL || '';
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
@@ -8194,7 +8208,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   });
   // Keep a copy of an email we sent for someone (Sent emails, and the person's history).
   function logSent(req, to, cc, replyTo, subject, text, r, files) {
-    return db().then(function (p) { return p && p.query('INSERT INTO sent_emails (user_id, user_name, to_list, cc_list, reply_to, subject, body, ok, error, files) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+    return db().then(function (p) { return p && p.query("DELETE FROM sent_emails WHERE user_name = 'Automatic' AND subject = $1 AND to_list = $2::text[] AND created_at > now() - interval '5 minutes'", [subject, [].concat(to || [])]).catch(function () {}).then(function () { return p; }); }).then(function (p) { return p && p.query('INSERT INTO sent_emails (user_id, user_name, to_list, cc_list, reply_to, subject, body, ok, error, files) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
       [req.user && req.user.id ? req.user.id : null, req.user ? req.user.name : 'Office', [].concat(to || []), [].concat(cc || []), replyTo || null, subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300), JSON.stringify((files || []).map(function (f) { return { id: f.id, name: f.name, size: f.size || 0 }; }))]); }).catch(function (e) { console.error('Sent email log failed:', e.message); });
   }
   async function senderOf(req) {
@@ -8219,6 +8233,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   app.get('/api/admin/sent-emails', withDb(async function (p, req, res) {
     const to = String(req.query.to || '').trim().toLowerCase().slice(0, 200), vals = [], sc = sentScope(req, vals, !!to); let where = 'WHERE true' + sc.where;
+    if (!to) where += " AND user_name IS DISTINCT FROM 'Automatic'";
     if (to) { vals.push(to); where += ' AND $' + vals.length + ' = ANY (SELECT lower(x) FROM unnest(to_list || cc_list) x)'; }
     const q = str(req.query.q, 100); if (q) { vals.push('%' + q.toLowerCase().replace(/[%_]/g, '') + '%'); where += ' AND (lower(coalesce(subject, \'\')) LIKE $' + vals.length + ' OR lower(array_to_string(to_list || cc_list, \' \')) LIKE $' + vals.length + ' OR lower(coalesce(body, \'\')) LIKE $' + vals.length + ')'; }
     if (sc.all && req.query.who) { vals.push(String(req.query.who).slice(0, 120)); where += ' AND user_name = $' + vals.length; }
