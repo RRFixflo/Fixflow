@@ -41,7 +41,7 @@ module.exports = function (app, opts) {
     const out = []; gone[kind] = []; every[kind] = [];
     String(xml || '').replace(/<property>([\s\S]*?)<\/property>/g, function (m, x) {
       const status = tag(x, 'status'), id = tag(x, 'id');
-      if (/^\d+$/.test(id)) { const st1 = tag(x, 'address1'), b1 = tag(x, 'bedrooms'); every[kind].push({ id: id, street: st1, bname: tag(x, 'property_name'), street2: tag(x, 'address2'), postcode: tag(x, 'postcode').toUpperCase().replace(/\s+/g, ''), beds: /studio/i.test(b1) ? 0 : parseInt(b1, 10) || 0, unit: tag(x, 'property_no') ? (tag(x, 'property_no').toLowerCase().replace(/\b(flat|apartment|apt|unit|no)\b\.?/g, '') + '|' + st1.toLowerCase()).replace(/[^a-z0-9|]/g, '') : '', status: status, images: list(x, 'images', 'image').slice(0, 12) }); }
+      if (/^\d+$/.test(id)) { const st1 = tag(x, 'address1'), b1 = tag(x, 'bedrooms'); every[kind].push({ id: id, kind: kind, published: tag(x, 'published'), street: st1, bname: tag(x, 'property_name'), street2: tag(x, 'address2'), postcode: tag(x, 'postcode').toUpperCase().replace(/\s+/g, ''), beds: /studio/i.test(b1) ? 0 : parseInt(b1, 10) || 0, unit: tag(x, 'property_no') ? (tag(x, 'property_no').toLowerCase().replace(/\b(flat|apartment|apt|unit|no)\b\.?/g, '') + '|' + st1.toLowerCase()).replace(/[^a-z0-9|]/g, '') : '', status: status, images: list(x, 'images', 'image').slice(0, 12) }); }
       if (/^\d+$/.test(id) && /^(let|sold|withdrawn|completed|archived)$/i.test(status.trim())) { const st0 = tag(x, 'address1'), pc0 = tag(x, 'postcode').toUpperCase(); gone[kind].push({ street: st0, outcode: pc0.split(/\s+/)[0] || '', beds: /studio/i.test(tag(x, 'bedrooms')) ? 0 : parseInt(tag(x, 'bedrooms'), 10) || 0, status: status }); }
       if (!/^\d+$/.test(id) || tag(x, 'published') !== '1' || SHOW[kind].indexOf(status.toLowerCase()) === -1) return;
       const res = !/commercial|land/i.test(tag(x, 'category')), bedsRaw = res ? tag(x, 'bedrooms') : '', beds = /studio/i.test(bedsRaw) ? 0 : parseInt(bedsRaw, 10) || 0, type = tag(x, 'property_type') || tag(x, 'category') || 'Property';
@@ -907,6 +907,22 @@ module.exports = function (app, opts) {
       { const miss = (items || []).filter(function (r) { return !out[String(r.id)]; }); const sum = 'Advert Gnomen numbers: ' + (items || []).length + ' adverts · ' + Object.keys(out).length + ' numbered · ' + Object.keys(maybe).length + ' unsure · ' + (miss.length - Object.keys(maybe).length) + ' not found' + (miss.length ? ' — ' + miss.slice(0, 30).map(function (r) { return r.address + ' ' + r.beds + 'b £' + r.pcm + (maybe[String(r.id)] ? ' (maybe ' + maybe[String(r.id)].join('/') + ')' : ''); }).join(' | ') : '');
         if (sum !== lastAdDiag) { lastAdDiag = sum; console.log(sum); } }
       return { ids: out, maybe: maybe };
+    },
+    // Why a home with this Gnomen number is (or isn't) on our website, for the staff app:
+    // live, taken off by staff, not published in Gnomen, a status we don't show, or not in Gnomen's feed at all.
+    webStatus: function (id, rmId) {
+      id = String(id || ''); rmId = String(rmId || '');
+      if (!LIVE) return null;
+      if (id) { const h = hidden.items.find(function (x) { return String(x.id) === id; }); if (h) return { state: 'hidden', id: id, by: h.by || '', at: h.at || '', relisted: h.relisted || null }; }
+      const live = (id && find(id)) || (rmId && find(rmId));
+      if (live) return { state: 'live', url: live.url };
+      if (rmId && isHidden(rmId)) return { state: 'hidden', id: rmId, by: '', at: '' };
+      if (!id || !(every.let.length + every.sale.length)) return null;
+      const rec = every.let.concat(every.sale).find(function (p) { return String(p.id) === id; });
+      if (!rec) return { state: 'not_in_feed', id: id };
+      if (rec.published !== '1') return { state: 'unpublished', id: id, status: rec.status || '' };
+      if (SHOW[rec.kind].indexOf(String(rec.status || '').toLowerCase()) === -1) return { state: 'status', id: id, status: rec.status || '' };
+      return { state: 'other', id: id, status: rec.status || '' };
     },
     urls: function () { return LIVE ? data.let.concat(data.sale).filter(pub).map(function (p) { return p.url; }) : []; },
     // What each property page shows that matters to search engines (price, status, photos, last update) — a change is pinged to IndexNow.

@@ -13200,6 +13200,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.get('/api/admin/available', withDb(async function (p, req, res) {
     const items = (await p.query('SELECT * FROM available_props ORDER BY id DESC LIMIT 20000')).rows;
     try { const g = opts.gnomenFor ? opts.gnomenFor(items) : {}; items.forEach(function (r) { if (!r.gnomen_id && g[r.id]) { r.gnomen_id = g[r.id]; r.gnomen_auto = true; } if (r.status !== 'available') return; if (!r.gnomen_id && g.maybe && g.maybe[r.id]) r.gnomen_maybe = g.maybe[r.id]; if (r.gnomen_id ? g.known && !g.known(r.gnomen_id) : g.missing && g.missing[r.id]) r.gnomen_missing = true; }); } catch (e) { console.error('Gnomen numbers:', e.message); }
+    // Available but not on our website: say why (taken off, not published in Gnomen, status, not in the feed).
+    try { if (opts.webStatus) items.forEach(function (r) { if (r.status === 'available' && (r.gnomen_id || r.rm_id)) { const w = opts.webStatus(r.gnomen_id, r.rm_id); if (w && w.state !== 'live') r.web = w; } }); } catch (e) { console.error('Website status:', e.message); }
     res.json({ ok: true, items: items, links: await availLinks(p, items, req.role !== 'offers') });
   }));
   // What we already know about an address being added: its landlord, current tenants, key number
@@ -13727,7 +13729,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const val = Object.assign({}, listFresh('rightmove_list', (c && c.value) || {}));
     // Each advert's Gnomen number (worked out, or typed in by staff), and the likely ones when unsure.
     try { const typed = ((await p.query("SELECT value FROM app_settings WHERE key = 'rm_gnomen'")).rows[0] || {}).value || {}, g = opts.gnomenForAdverts ? opts.gnomenForAdverts(val.items || [], typed) : null;
-      if (g) val.items = (val.items || []).map(function (r) { const id = String(r.id); return Object.assign({}, r, { gnomen_id: g.ids[id] || null, gnomen_typed: !!typed[id], gnomen_maybe: g.maybe[id] || null }); }); } catch (e) { console.error('Advert Gnomen numbers:', e.message); }
+      if (g) val.items = (val.items || []).map(function (r) { const id = String(r.id); const w = opts.webStatus ? opts.webStatus(g.ids[id], id) : null; return Object.assign({}, r, { gnomen_id: g.ids[id] || null, gnomen_typed: !!typed[id], gnomen_maybe: g.maybe[id] || null, web: w && w.state !== 'live' ? w : null }); }); } catch (e) { console.error('Advert Gnomen numbers:', e.message); }
     res.json(Object.assign({ ok: true, branch: st.branch, branch_url: RM_BASE + '/property-to-rent/find.html?locationIdentifier=BRANCH%5E' + st.branch, items: [] }, val, { dreams: await rmDreams(p), today: londonDay() }));
   }));
   // Check the adverts' Gnomen numbers on their own too (logged, so missing ones can be looked into): soon after start, then hourly.
