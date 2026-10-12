@@ -10364,13 +10364,13 @@
       '<div class="tiles prop-tiles" style="margin-bottom:12px">' +
         '<div class="tile blue"><div class="k">Open jobs</div><div class="v">' + open.length + '</div></div>' +
         '<div class="tile"><div class="k">Done this year</div><div class="v">' + done.filter(function(j){ return new Date(j.completed_at || j.updated_at) >= yearStart; }).length + '</div><div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + done.length + ' in total</div></div>' +
-        '<div class="tile alert' + (owed.length ? ' has' : '') + '"><div class="k">Owed to them</div><div class="v">' + gbp(sum(owed)) + '</div><div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + owed.length + ' job' + (owed.length === 1 ? '' : 's') + (nocost.length ? ' · ' + nocost.length + ' done with no cost yet' : '') + '</div></div>' +
+        '<div class="tile alert' + (owed.length ? ' has' : '') + '"><div class="k">Owed to them</div><div class="v">' + gbp(owed.reduce(function(t, j){ return t + Math.max(0, ctrOwe(j) - ctrPaidSoFar(j)); }, 0)) + '</div><div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + owed.length + ' job' + (owed.length === 1 ? '' : 's') + (nocost.length ? ' · ' + nocost.length + ' done with no cost yet' : '') + '</div></div>' +
         '<div class="tile good"><div class="k">Paid so far</div><div class="v">' + gbp(sum(paid)) + '</div><div class="prop-sub" style="margin:2px 0 0;font-size:.75rem">' + paid.length + ' job' + (paid.length === 1 ? '' : 's') + '</div></div>' +
       '</div>' +
       '<div class="card ll-notes" id="ctrNotes" style="margin-bottom:12px"></div>' +
       (c.id ? ctrLinkCard(c) : '') +
       '<div class="toolbar"><div class="tabs" id="ctrTabs">' + tabs.map(function(t){ return '<button type="button" data-ctr-tab="' + t[0] + '"' + (t[0] === ctrTab ? ' class="on"' : '') + '>' + t[1] + ' <span class="n">' + t[2] + '</span></button>'; }).join('') + '</div>' +
-        (ctrTab === 'owed' && owed.length ? '<button class="btn small" id="ctrPaySel" type="button">Mark ticked paid</button><button class="btn small primary" id="ctrPayAll" type="button">Mark all paid (' + gbp(sum(owed)) + ')</button>' : '') +
+        (ctrTab === 'owed' && owed.length ? '<button class="btn small" id="ctrPaySel" type="button">Mark ticked paid</button><button class="btn small primary" id="ctrPayAll" type="button">Mark all paid (' + gbp(owed.reduce(function(t, j){ return t + Math.max(0, ctrOwe(j) - ctrPaidSoFar(j)); }, 0)) + ')</button>' : '') +
         (ctrTab === 'open' && open.length ? '<button class="btn small" id="ctrSendSel" type="button">Send ticked</button><button class="btn small wa" id="ctrSendAll" type="button">Send all open jobs (' + open.length + ')</button>' : '') + '</div>' +
       '<div class="list">' + (rows.length ? rows.map(function(j){
         return '<div class="pay-row">' +
@@ -10379,7 +10379,9 @@
           '<div class="addr" data-open="' + j.id + '" style="cursor:pointer">' + esc(j.property_address || 'No address') + '<small>' + esc(j.summary || issueOf(j)) + '</small></div>' +
           '<div class="when">' + esc(ctrTab === 'paid' ? 'Paid ' + fmtShort(j.contractor_paid_at) : j.status === 'Completed' ? 'Done ' + fmtShort(j.completed_at || j.updated_at) : j.status) + '</div>' +
           '<div class="amt">' + (ctrTab === 'open' ? '<button type="button" class="btn small" data-ctr-send="' + j.id + '">Resend</button>'
-            : num(j.actual_cost) !== null || ctrParts(j) ? gbp(ctrOwe(j)) + (ctrParts(j) ? '<small style="display:block;font-weight:500;color:var(--ink-faint)">inc. parts ' + gbp(ctrParts(j)) + '</small>' : '') : j.status === 'Completed' ? '<button type="button" class="link" data-open-money="' + j.id + '">Add cost</button>' : '—') + '</div>' +
+            : num(j.actual_cost) !== null || ctrParts(j) ? gbp(ctrTab === 'owed' ? Math.max(0, ctrOwe(j) - ctrPaidSoFar(j)) : ctrOwe(j)) + (ctrParts(j) ? '<small style="display:block;font-weight:500;color:var(--ink-faint)">inc. parts ' + gbp(ctrParts(j)) + '</small>' : '') +
+              (ctrTab === 'owed' && ctrPaidSoFar(j) ? '<small style="display:block;font-weight:500;color:var(--ink-faint)">' + gbp(ctrPaidSoFar(j)) + ' of ' + gbp(ctrOwe(j)) + ' paid</small>' : '') +
+              (ctrTab === 'owed' && isOwed(j) ? '<button type="button" class="link" style="font-size:.76rem;display:block;margin-left:auto" data-ctr-part="' + j.id + '">💷 Part pay</button>' : '') : j.status === 'Completed' ? '<button type="button" class="link" data-open-money="' + j.id + '">Add cost</button>' : '—') + '</div>' +
         '</div>';
       }).join('') : '<div class="empty">' + { open: 'No open jobs with ' + esc(c.name) + '.', done: 'No completed jobs yet.', owed: 'Nothing owed — all paid up.', paid: 'No payments marked yet.' }[ctrTab] + '</div>') + '</div>';
     $('ctrBack').addEventListener('click', goBack);
@@ -10388,7 +10390,7 @@
     var payIds = function(all){ return Array.from($('ctrView').querySelectorAll('[data-ctr-job]')).filter(function(i){ return all || i.checked; }).map(function(i){ return Number(i.dataset.ctrJob); }); };
     var pay = function(all){
       var ids = payIds(all); if (!ids.length) { toast('Tick the jobs you’ve paid first'); return; }
-      var total = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; }).reduce(function(a, j){ return a + ctrOwe(j); }, 0);
+      var total = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; }).reduce(function(a, j){ return a + Math.max(0, ctrOwe(j) - ctrPaidSoFar(j)); }, 0);
       if (!confirm('Mark ' + ids.length + ' job' + (ids.length === 1 ? '' : 's') + ' as paid to ' + c.name + ' (' + gbp(total) + ')?')) return;
       markPaid(ids, true).then(function(){ if (view === 'ctr') renderContractorPage(); });
     };
@@ -10398,6 +10400,7 @@
       showContractorMessage(list);
     };
     if ($('ctrSendAll')) $('ctrSendAll').addEventListener('click', function(){ send(true); });
+    $('ctrView').querySelectorAll('[data-ctr-part]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); var pj = jobs.filter(function(x){ return x.id === Number(b.dataset.ctrPart); })[0]; if (pj) partPay(pj, function(){ if (view === 'ctr') renderContractorPage(); }); }); });
     if ($('ctrSendSel')) $('ctrSendSel').addEventListener('click', function(){ send(false); });
     if ($('ctrPayAll')) $('ctrPayAll').addEventListener('click', function(){ pay(true); });
     if ($('ctrPaySel')) $('ctrPaySel').addEventListener('click', function(){ pay(false); });
