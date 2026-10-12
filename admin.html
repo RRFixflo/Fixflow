@@ -741,6 +741,15 @@
   .web-hb { display: block; height: 6px; background: #eef2f8; border-radius: 3px; margin-top: 5px; } .web-hb i { display: block; height: 100%; background: #1d4ed8; border-radius: 3px; }
   @media (max-width: 760px) { .web-tiles { grid-template-columns: 1fr 1fr; } .web-grid { grid-template-columns: 1fr; } .web-chart { height: 160px; } }
   .crm-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+  .appl-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .appl-tabs button { border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 999px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; color: #344054; }
+  .appl-tabs button.on { background: var(--navy, #0b1f3a); color: #fff; border-color: transparent; } .appl-tabs button b { margin-left: 4px; }
+  .crm-new { padding: 10px 14px; border-radius: 12px; background: #ecfdf3; color: #067647; font-weight: 600; margin: 0 0 10px; }
+  .crm-flag.new { background: #d1fadf; color: #05603a; }
+  .appl-enq { margin: 6px 0 10px; padding: 0; list-style: none; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; }
+  .appl-enq li { padding: 8px 12px; border-bottom: 1px solid var(--line, #e6e8ec); font-size: .88rem; } .appl-enq li:last-child { border-bottom: 0; } .appl-enq small { color: #667085; display: block; }
+  .rec-list { max-height: 50vh; overflow: auto; display: grid; gap: 6px; }
+  .rec-item { text-align: left; border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 12px; padding: 10px 12px; font: inherit; cursor: pointer; color: inherit; } .rec-item:hover { border-color: var(--navy, #0b1f3a); } .rec-item small { display: block; color: #667085; }
   .crm-tile { text-align: left; border: 1px solid var(--line, #e6e8ec); background: var(--panel, #fff); border-radius: 14px; padding: 10px 12px; cursor: pointer; font: inherit; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; color: var(--ink); }
   .crm-tile span { grid-row: span 2; font-size: 1.4rem; } .crm-tile b { font-size: 1.3rem; line-height: 1.1; } .crm-tile small { color: var(--ink-soft); font-size: .78rem; }
   .crm-tile.hot b { color: #b42318; } .crm-tile.on { border-color: var(--navy, #0b1f3a); box-shadow: 0 0 0 2px var(--navy, #0b1f3a) inset; }
@@ -2197,8 +2206,9 @@
       <div class="crm-nag" id="crmNag" hidden></div>
       <div id="crmView" hidden>
         <div class="card crm-top">
+          <div class="appl-tabs" id="applTabs" hidden></div>
           <div class="crm-tiles" id="crmTiles"></div>
-          <div class="crm-bar"><input class="inp" id="crmQ" type="search" placeholder="Search name, phone, email, address, notes…"><select class="inp" id="crmSt"><option value="">Any status</option><option value="open">Still to deal with</option><option value="new">New</option><option value="contacted">Contacted</option><option value="booked">Booked</option><option value="won">Won ✓</option><option value="lost">Not going ahead</option></select><select class="inp" id="crmWho"><option value="">Anyone</option><option value="me">Mine</option><option value="none">Not assigned</option></select><button type="button" class="btn small primary" id="crmAddBtn">➕ Add a lead</button></div>
+          <div class="crm-bar"><input class="inp" id="crmQ" type="search" placeholder="Search name, phone, email, address, notes…"><select class="inp" id="crmSt"><option value="">Any status</option><option value="open">Still to deal with</option><option value="new">New</option><option value="contacted">Contacted</option><option value="booked">Booked</option><option value="won">Won ✓</option><option value="lost">Not going ahead</option></select><select class="inp" id="crmWho"><option value="">Anyone</option><option value="me">Mine</option><option value="none">Not assigned</option></select><select class="inp" id="crmProp" title="Leads for one property"><option value="">All properties</option></select><button type="button" class="btn small primary" id="crmAddBtn">➕ Add a lead</button></div>
           <div class="av-chips" id="crmTypes"></div>
           <div class="crm-add" id="crmAdd" hidden>
             <div class="lt-grid"><label>Name<input class="inp" id="caName" maxlength="120" autocomplete="off"></label><label>Mobile<input class="inp" id="caPhone" type="tel" maxlength="40"></label><label>Email<input class="inp" id="caEmail" type="email" maxlength="200"></label>
@@ -2636,6 +2646,15 @@
     <p class="muted-note" id="caSub" style="margin:4px 0 10px"></p>
     <p id="caIntro" style="margin:0 0 12px;font-size:.92rem">Sends the landlord a private link where they can <b>upload the new certificate</b> or tap <b>“Please arrange it for me”</b>. You’ll get an alert when they answer.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn wa-btn" type="button" id="caWa">WhatsApp</button><button class="btn primary" type="button" id="caMail">✉ Email</button><button class="btn ghost" type="button" id="caTpl">Formal email (your template)</button></div>
+  </div>
+</div>
+<div class="modal" id="recPropModal" hidden>
+  <div class="card tn-card" role="dialog" aria-labelledby="recPropTitle">
+    <h3 id="recPropTitle" style="margin:0">✉ Recommend a property</h3>
+    <p class="muted-note" style="margin:0" id="recPropWho"></p>
+    <input class="inp" id="recPropQ" type="search" placeholder="Search address, postcode or bedrooms…">
+    <div class="rec-list" id="recPropList"></div>
+    <div class="row-actions"><span style="flex:1"></span><button class="btn" type="button" id="recPropClose">Cancel</button></div>
   </div>
 </div>
 <div class="modal" id="mlModal" hidden>
@@ -3621,7 +3640,7 @@
   function reloadView(){
     var v = view, safe = function(x){ return Promise.resolve(x).catch(function(){}); };
     if (v === 'avail') return safe(loadAvail());
-    if (v === 'crm') return safe(loadCrm(true));
+    if (v === 'crm' || v === 'appl') return safe(loadCrm(true));
     if (v === 'web') return safe(loadWeb());
     if (v === 'lt') return safe(loadLt());
     if (v === 'sent' || (v === 'act' && !staffMode)) return safe(loadSent());
@@ -4606,7 +4625,7 @@
     if (v === 'sent' && !staffMode) { v = 'act'; setTimeout(function(){ $('actSentSec').open = true; $('actSentSec').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200); }
     if (v === 'pvr') { v = 'offers'; setTimeout(function(){ $('pvCard').open = true; $('pvCard').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }
     if (staffMode && v !== 'web' && v !== 'calls' && v !== 'crm' && v !== 'appl' && v !== 'cal' && v !== 'offers' && v !== 'lt' && v !== 'sent' && v !== 'avail' && v !== 'team' && v !== 'who') v = 'avail';
-    view = v;
+    var prevView = view; view = v;
     $('jobsView').hidden = v !== 'jobs';
     $('propsView').hidden = v !== 'props';
     $('tenantsView').hidden = v !== 'tenants';
@@ -4623,7 +4642,7 @@
     $('ctsView').hidden = v !== 'cts';
     $('ltView').hidden = v !== 'lt'; $('navLt').classList.toggle('on', v === 'lt');
     $('availView').hidden = v !== 'avail'; $('navAvail').classList.toggle('on', v === 'avail');
-    if (v === 'crm' || v === 'appl') { if (crm.mode !== v) { crm.type = ''; crm.tile = ''; crmSel = {}; } crm.mode = v; }
+    if (v === 'crm' || v === 'appl') { if (crm.mode !== v) { crm.type = ''; crm.tile = ''; crmSel = {}; } crm.mode = v; if (v === 'appl' && prevView !== 'appl') crm.seen = null; }
     $('crmView').hidden = v !== 'crm' && v !== 'appl'; $('navCrm').classList.toggle('on', v === 'crm'); $('navLeads').classList.toggle('on', v === 'appl'); crmNag(); if ($('crmBulk')) crmSelDraw();
     $('calView').hidden = v !== 'cal'; $('navCal').classList.toggle('on', v === 'cal');
     $('invView').hidden = v !== 'inv'; $('invTopBtn').classList.toggle('on', v === 'inv');
@@ -9224,20 +9243,29 @@
       var notes = {}, mt = {};
       (d.notes || []).forEach(function(n){ (notes[n.ref] = notes[n.ref] || []).push(n); });
       (d.meta || []).forEach(function(m){ mt[m.ref] = m; });
-      crm.staff = d.staff || []; crm.me = d.me || ''; crm.manager = !!d.manager;
+      crm.staff = d.staff || []; crm.me = d.me || ''; crm.manager = !!d.manager; crm.viewings = d.viewings || []; crm.loaded = true;
       crm.items = (d.items || []).map(function(x){ var dd = x.data || {}, ref = 'vr:' + x.id, m = mt[ref] || {};
         return { ref: ref, id: x.id, type: dd.kind === 'viewing' ? 'viewing' : dd.kind === 'cert' ? 'cert' : dd.kind === 'sale' ? 'sale' : dd.kind === 'quick' ? 'quick' : dd.kind === 'comps' ? 'comps' : dd.kind === 'mortgage' ? 'mortgage' : dd.kind === 'enquiry' ? 'enquiry' : dd.kind === 'contact' ? 'contact' : dd.kind === 'call' ? 'call' : dd.kind === 'rightmove' ? 'rm' : dd.kind === 'lead' ? 'lead' : 'val',
           name: x.name, email: x.email, phone: x.phone, address: /^\(/.test(x.address) ? '' : x.address, status: x.status, at: x.created_at, data: dd, by: x.handled_by, archived: m.archived_at || null, junk: !!m.junk, archivedBy: m.archived_by || '', assigned: m.assigned_to || x.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : x.follow_up ? crmDay(x.follow_up) : '', notes: notes[ref] || [], claimed: m.claimed_at || null, verdict: m.verdict || '' }; })
         .concat((d.subs || []).map(function(x){ var ref = 'sub:' + x.id, m = mt[ref] || {};
           return { ref: ref, id: x.id, type: 'sub', archived: m.archived_at || null, junk: !!m.junk, archivedBy: m.archived_by || '', name: x.name || x.email, email: x.email, phone: '', address: '', status: x.unsubscribed_at ? 'lost' : x.confirmed_at ? 'won' : 'new', subSt: x.unsubscribed_at ? 'Unsubscribed' : x.confirmed_at ? 'Subscribed' : 'Waiting for them to confirm', at: x.created_at, data: { freq: x.freq, sent: x.sent_count, last: x.last_sent_at }, assigned: m.assigned_to || '', follow: m.follow_up ? crmDay(m.follow_up) : '', notes: notes[ref] || [] }; }))
         .sort(function(a, b){ return new Date(b.at) - new Date(a.at); });
-      var nNeed = crm.items.filter(function(x){ return (!staffMode || !isAppl(x)) && crmNeed(x); }).length, nAppl = crm.items.filter(function(x){ return isAppl(x) && crmNeed(x); }).length;
+      // Leads: the number of applicants nobody has contacted yet (one per person).
+      var nNeed = crm.items.filter(function(x){ return (!staffMode || !isAppl(x)) && crmNeed(x); }).length, nAppl = applGroups(crm.items.filter(function(x){ return isAppl(x) && !x.archived; })).filter(applFresh).length;
+      // A new lead while Fixflow is open: say so.
+      var mxA = crm.items.reduce(function(m, x){ return isAppl(x) && x.id > m ? x.id : m; }, 0);
+      if (crm.maxAppl && mxA > crm.maxAppl) { var nw = crm.items.filter(function(x){ return isAppl(x) && x.id > crm.maxAppl && !x.archived; }); if (nw.length) toast('🆕 New lead' + (nw.length > 1 ? 's: ' + nw.length + ' — newest ' + nw[0].name : ': ' + nw[0].name + (nw[0].address ? ' — ' + shortAddr(nw[0].address) : '')) + ' · ' + fmtWhen(nw[0].at)); }
+      crm.maxAppl = mxA;
       $('sCrm').hidden = !nNeed; $('sCrm').textContent = nNeed; $('stCrmN').hidden = !nNeed; $('stCrmN').textContent = nNeed;
       $('sLeads').hidden = !nAppl; $('sLeads').textContent = nAppl; $('stApplN').hidden = !nAppl; $('stApplN').textContent = nAppl;
       crmNag();
+      // The minute-by-minute check doesn't redraw while someone is typing on the page.
+      if (quiet === 'poll' && (view === 'crm' || view === 'appl') && ($('crmView').contains(document.activeElement) && document.activeElement !== document.body || Array.prototype.some.call(document.querySelectorAll('#crmList textarea, #crmList input:not([type=checkbox])'), function(i){ return i.value && i.defaultValue !== i.value; }))) return;
       if (!quiet || view === 'crm' || view === 'appl') renderCrm();
     }).catch(function(){});
   }
+  setInterval(function(){ if (meta.db && !$('appView').hidden && document.visibilityState === 'visible') loadCrm('poll'); }, 60000);   // new leads arrive without a refresh
+  function fmtWhen(d){ return d ? new Date(d).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''; }
   // Applicants (the Leads page): viewing requests, Rightmove and portal leads, people looking to rent or buy.
   function isAppl(x){
     var d = x.data || {};
@@ -9246,6 +9274,7 @@
   }
   // An applicant is the assigned member of staff's for 24 hours from their last contact; then anyone can take it.
   function applHold(x){
+    if (x._hold) return x._hold;
     if (!x.assigned) return { who: '', held: false };
     var t = x.claimed ? new Date(x.claimed).getTime() : 0;
     x.notes.forEach(function(n){ if (n.by_name === x.assigned) t = Math.max(t, new Date(n.at).getTime()); });
@@ -9253,6 +9282,48 @@
     return { who: x.assigned, held: left > 0, left: left, since: t ? Date.now() - t : null };   // no note, call or claim by them yet: no date to count from
   }
   function applLocked(x){ var h = applHold(x); return isAppl(x) && h.held && h.who !== crm.me && !crm.manager; }
+  // One card per person: enquiries sharing an email address or the last 10 digits of a phone number are joined.
+  function applTail(v){ return String(v || '').replace(/\D/g, '').slice(-10); }
+  function applGroups(list){
+    var by = {}, parent = {}, find = function(r){ while (parent[r] !== r) { parent[r] = parent[parent[r]]; r = parent[r]; } return r; };
+    list.forEach(function(x){ parent[x.ref] = x.ref; });
+    list.forEach(function(x){ var e = String(x.email || '').trim().toLowerCase(), t = applTail(x.phone);
+      [e ? 'e:' + e : '', t.length >= 9 ? 't:' + t : ''].forEach(function(k){ if (!k) return; if (by[k]) { var a = find(x.ref), b = find(by[k]); if (a !== b) parent[a] = b; } else by[k] = x.ref; }); });
+    var groups = {}, order = [];
+    list.forEach(function(x){ var r = find(x.ref); if (!groups[r]) { groups[r] = []; order.push(r); } groups[r].push(x); });
+    return order.map(function(r){ return applMerge(groups[r].sort(function(a, b){ return new Date(b.at) - new Date(a.at); })); }).sort(function(a, b){ return new Date(b.at) - new Date(a.at); });
+  }
+  // The person: their newest enquiry, with every enquiry, note and viewing of theirs, and whose applicant they are —
+  // whoever took them, booked a viewing or keeps in touch, for 24 hours from their last contact (an upcoming viewing
+  // holds them until 24 hours after it).
+  function applMerge(items){
+    var x0 = items[0], ids = items.map(function(i){ return i.id; }), es = {}, ts = {}, has = function(o, k){ return Object.prototype.hasOwnProperty.call(o, k); };
+    items.forEach(function(i){ var e = String(i.email || '').trim().toLowerCase(), t = applTail(i.phone); if (e) es[e] = 1; if (t.length >= 9) ts[t] = 1; });
+    var vws = (crm.viewings || []).filter(function(v){ var t = applTail(v.phone); return ids.indexOf(v.lead_id) !== -1 || (v.email && es[String(v.email).trim().toLowerCase()]) || (t.length >= 9 && ts[t]); });
+    var notes = [].concat.apply([], items.map(function(i){ return i.notes; })).sort(function(a, b){ return new Date(b.at) - new Date(a.at); });
+    var pick = function(k){ return (items.filter(function(i){ return i[k]; })[0] || {})[k] || ''; }, rank = ['won', 'booked', 'contacted', 'new', 'lost'];
+    var g = Object.assign({}, x0, { group: items, notes: notes, viewings: vws, email: x0.email || pick('email'), phone: x0.phone || pick('phone'), verdict: pick('verdict'),
+      follow: items.map(function(i){ return i.follow; }).filter(Boolean).sort()[0] || '', status: rank.filter(function(st){ return items.some(function(i){ return i.status === st; }); })[0] || x0.status });
+    var cand = {};
+    items.forEach(function(i){ if (i.assigned) cand[i.assigned] = Math.max(cand[i.assigned] || 0, i.claimed ? new Date(i.claimed).getTime() : 0); });
+    vws.forEach(function(v){ var w = v.staff || v.created_by; if (w && w !== 'Office') cand[w] = Math.max(cand[w] || 0, new Date(v.at).getTime()); });
+    notes.forEach(function(n){ if (has(cand, n.by_name)) cand[n.by_name] = Math.max(cand[n.by_name], new Date(n.at).getTime()); });
+    var who = ''; Object.keys(cand).forEach(function(n){ if (!who || cand[n] > cand[who]) who = n; });
+    var t = who ? cand[who] : 0, left = t + 24 * 3600000 - Date.now();
+    g.assigned = who; g._hold = { who: who, held: t > 0 && left > 0, left: left, since: t ? Date.now() - t : null };
+    return g;
+  }
+  // Nobody has spoken to them yet: every enquiry still new, no note written and no viewing.
+  function applFresh(g){ var it = g.group || [g]; return it.every(function(i){ return i.status === 'new' && !i.notes.some(function(n){ return !n.auto; }); }) && !(g.viewings || []).length; }
+  function applMine(g){ var h = applHold(g); return h.held && h.who === crm.me; }
+  // Which property an enquiry is about: the listing reference, and the address.
+  function applPropKeys(i){ var d = i.data || {}, k = []; if (d.ref) k.push('r:' + String(d.ref)); if (i.address) k.push('a:' + propKey(i.address)); return k; }
+  function avLeadKeys(x){ return ['a:' + propKey(x.address)].concat(x.gnomen_id ? ['r:' + x.gnomen_id] : []).concat(x.rm_id ? ['r:' + x.rm_id] : []); }
+  var avLeadIx = { src: null, map: {} };
+  function avLeadCount(x){
+    if (avLeadIx.src !== crm.items) { var m = {}; crm.items.forEach(function(i){ if (!isAppl(i) || i.archived) return; var who = String(i.email || '').trim().toLowerCase() || applTail(i.phone) || i.ref; applPropKeys(i).forEach(function(k){ (m[k] = m[k] || {})[who] = 1; }); }); avLeadIx = { src: crm.items, map: m }; }
+    var seen = {}; avLeadKeys(x).forEach(function(k){ Object.keys(avLeadIx.map[k] || {}).forEach(function(w){ seen[w] = 1; }); }); return Object.keys(seen).length;
+  }
   var VERDICT = { good: ['✅', 'Good applicant', '#067647'], maybe: ['🤔', 'Maybe', '#b54708'], no: ['❌', 'Not suitable', '#b42318'] };
   // Everyone on the list should hear from us: what's still owed to a lead (nothing when they're fine).
   function crmNeed(x){
@@ -9276,37 +9347,55 @@
     var appl = crm.mode === 'appl', base = crm.items.filter(function(x){ return appl ? isAppl(x) : (!staffMode || !isAppl(x)); });   // the owner's Website leads has everything
     var hk = crm.manager && (appl || !staffMode); $('crmHook').hidden = !hk; if (hk) loadLeadHook();
     $('crmView').classList.toggle('is-appl', appl);
-    var today = crmToday(), archived = base.filter(function(x){ return x.archived && !x.junk; }), junked = base.filter(function(x){ return x.junk; }), all = crm.type === 'archive' ? archived : crm.type === 'junk' ? junked : base.filter(function(x){ return !x.archived; });
-    var live = base.filter(function(x){ return !x.archived; }), openAppl = appl ? live.filter(function(x){ return crmOpenItem(x) && !applHold(x).held; }) : [];
+    var today = crmToday(), archived = base.filter(function(x){ return x.archived && !x.junk; }), junked = base.filter(function(x){ return x.junk; }), rawLive = base.filter(function(x){ return !x.archived; });
+    // Leads: one card per person (their enquiries joined by email or phone number).
+    var live = appl ? applGroups(rawLive) : rawLive, all = crm.type === 'archive' ? archived : crm.type === 'junk' ? junked : live;
+    crm.gmap = {}; if (appl) live.forEach(function(g){ crm.gmap[g.ref] = g; });
+    var its = function(x){ return x.group || [x]; };
+    var openAppl = appl ? live.filter(function(x){ return crmOpenItem(x) && !applHold(x).held; }) : [], fresh = appl ? live.filter(applFresh) : [], mineL = appl ? live.filter(applMine) : [];
     var due = live.filter(function(x){ return x.follow && x.follow <= today && x.status !== 'won' && x.status !== 'lost'; }), nNew = live.filter(crmNeed),
-      toConfirm = live.filter(function(x){ return x.type === 'viewing' && !x.data.confirmed && x.status !== 'lost'; }), subs = live.filter(function(x){ return x.type === 'sub' && x.subSt === 'Subscribed'; });
-    $('crmTiles').innerHTML = (appl ? [['attn', '📣', nNew.length, 'Need contacting or an update'], ['free', '🔓', openAppl.length, 'Open to anyone'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm']] : [['attn', '📣', nNew.length, 'Need contacting or an update'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm'], ['subs', '🔔', subs.length, 'Landlords getting alerts']]).map(function(t){
+      toConfirm = live.filter(function(x){ return its(x).some(function(i){ return i.type === 'viewing' && !i.data.confirmed && i.status !== 'lost'; }); }), subs = live.filter(function(x){ return x.type === 'sub' && x.subSt === 'Subscribed'; });
+    // New since you last opened Leads (remembered on this computer).
+    if (appl && crm.loaded && crm.seen == null) { var st0 = 0; try { st0 = +localStorage.getItem('rr_appl_seen') || 0; } catch (e) {} var mx = rawLive.reduce(function(m, i){ return Math.max(m, i.id); }, 0); crm.seen = st0 || mx; if (mx > st0) { try { localStorage.setItem('rr_appl_seen', String(mx)); } catch (e) {} } }
+    var newG = appl && crm.seen != null ? live.filter(function(g){ return g.group.some(function(i){ return i.id > crm.seen; }); }) : [];
+    $('applTabs').hidden = !appl;
+    if (appl) $('applTabs').innerHTML = '<button type="button" data-appl-tab="all"' + (crm.tab !== 'mine' ? ' class="on"' : '') + '>👥 All leads <b>' + live.length + '</b></button><button type="button" data-appl-tab="mine"' + (crm.tab === 'mine' ? ' class="on"' : '') + ' title="Applicants you’ve taken, spoken to or booked a viewing with in the last 24 hours">🙋 My leads <b>' + mineL.length + '</b></button>';
+    $('crmTiles').innerHTML = (appl ? [['fresh', '🆕', fresh.length, 'Not contacted yet'], ['attn', '📣', nNew.length, 'Need contacting or an update'], ['free', '🔓', openAppl.length, 'Open to anyone'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm']] : [['attn', '📣', nNew.length, 'Need contacting or an update'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm'], ['subs', '🔔', subs.length, 'Landlords getting alerts']]).map(function(t){
       return '<button type="button" class="crm-tile' + (crm.tile === t[0] ? ' on' : '') + (t[2] && t[0] !== 'subs' ? ' hot' : '') + '" data-crm-tile="' + t[0] + '"><span>' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></button>'; }).join('');
-    var counts = {}; live.forEach(function(x){ counts[x.type] = (counts[x.type] || 0) + 1; });
+    var counts = {}; live.forEach(function(x){ var seen = {}; its(x).forEach(function(i){ if (!seen[i.type]) { seen[i.type] = 1; counts[i.type] = (counts[i.type] || 0) + 1; } }); });
     $('crmTypes').innerHTML = '<button type="button" data-crm-type=""' + (crm.type ? '' : ' class="on"') + '>All ' + live.length + '</button>' + (appl ? ['rm', 'lead', 'viewing', 'enquiry', 'call', 'contact'] : ['rm', 'lead', 'call', 'viewing', 'cert', 'val', 'sale', 'quick', 'enquiry', 'contact', 'sub']).filter(function(k){ return counts[k]; }).map(function(k){ return '<button type="button" data-crm-type="' + k + '"' + (crm.type === k ? ' class="on"' : '') + '>' + CRM_T[k][0] + ' ' + ({ rm: 'Rightmove', lead: 'Other portals', call: 'Out-of-hours calls', viewing: 'Viewings', cert: 'Certificate bookings', val: 'Rental valuations', sale: 'Sales valuations', quick: 'Quick valuations', enquiry: 'Messages', contact: 'Added by staff', sub: 'Alert sign-ups' }[k]) + ' ' + counts[k] + '</button>'; }).join('') + (archived.length ? '<span class="av-sep"></span><button type="button" data-crm-type="archive"' + (crm.type === 'archive' ? ' class="on"' : '') + '>🗄 Archive ' + archived.length + '</button>' : '') + (junked.length ? '<button type="button" data-crm-type="junk"' + (crm.type === 'junk' ? ' class="on"' : '') + '>🚫 Junk ' + junked.length + '</button>' : '');
+    // Leads for one property: the properties people have enquired about (or one chosen from Available properties).
+    var props = {}; rawLive.forEach(function(i){ var k = applPropKeys(i)[0]; if (!k) return; var pp = props[k] = props[k] || { n: 0, label: i.address ? shortAddr(i.address) : 'Ref ' + i.data.ref }; pp.n++; });
+    var pk = Object.keys(props).sort(function(a, b){ return props[a].label.localeCompare(props[b].label); }), cur = crm.prop && !crm.prop.ext && crm.prop.keys[0];
+    $('crmProp').innerHTML = '<option value="">All properties</option>' + (crm.prop && crm.prop.ext ? '<option value="__ext" selected>🏠 ' + esc(crm.prop.label) + '</option>' : '') + pk.map(function(k){ return '<option value="' + esc(k) + '"' + (k === cur ? ' selected' : '') + '>' + esc(props[k].label) + ' (' + props[k].n + ')</option>'; }).join('');
     var q = $('crmQ').value.trim().toLowerCase(), qd = q.replace(/\D/g, ''), st = $('crmSt').value, who = $('crmWho').value;
     var list = all.filter(function(x){
-      if (crm.tile === 'attn' && nNew.indexOf(x) === -1) return false; if (crm.tile === 'due' && due.indexOf(x) === -1) return false; if (crm.tile === 'confirm' && toConfirm.indexOf(x) === -1) return false; if (crm.tile === 'free' && openAppl.indexOf(x) === -1) return false; if (crm.tile === 'subs' && subs.indexOf(x) === -1) return false;
-      if (crm.type && crm.type !== 'archive' && crm.type !== 'junk' && x.type !== crm.type) return false;
+      if (crm.tile === 'attn' && nNew.indexOf(x) === -1) return false; if (crm.tile === 'due' && due.indexOf(x) === -1) return false; if (crm.tile === 'confirm' && toConfirm.indexOf(x) === -1) return false; if (crm.tile === 'free' && openAppl.indexOf(x) === -1) return false; if (crm.tile === 'subs' && subs.indexOf(x) === -1) return false; if (crm.tile === 'fresh' && fresh.indexOf(x) === -1) return false;
+      if (appl && crm.tab === 'mine' && crm.type !== 'archive' && crm.type !== 'junk' && !applMine(x)) return false;
+      if (crm.type && crm.type !== 'archive' && crm.type !== 'junk' && !its(x).some(function(i){ return i.type === crm.type; })) return false;
       if (st === 'open' ? !crmOpenItem(x) : st && x.status !== st) return false;
       if (who === 'me' && x.assigned !== crm.me) return false; if (who === 'none' && x.assigned) return false;
+      if (crm.prop && !its(x).some(function(i){ return applPropKeys(i).some(function(k){ return crm.prop.keys.indexOf(k) !== -1; }); })) return false;
       if (!q) return true;
-      var hay = [x.name, x.email, x.address, x.data.message, x.data.topic, x.assigned, x.notes.map(function(n){ return n.note; }).join(' ')].join(' | ').toLowerCase();
-      return hay.indexOf(q) !== -1 || (qd.length >= 4 && String(x.phone || '').replace(/\D/g, '').indexOf(qd) !== -1);
+      var hay = its(x).map(function(i){ return [i.name, i.email, i.address, i.data.message, i.data.topic, i.data.ref].join(' | '); }).concat([x.assigned, x.notes.map(function(n){ return n.note; }).join(' ')]).join(' | ').toLowerCase();
+      return hay.indexOf(q) !== -1 || (qd.length >= 4 && its(x).some(function(i){ return String(i.phone || '').replace(/\D/g, '').indexOf(qd) !== -1; }));
     });
     if (crm.tile === 'due') list.sort(function(a, b){ return a.follow < b.follow ? -1 : 1; });
-    $('crmList').innerHTML = list.length ? list.slice(0, 300).map(crmCard).join('') + (list.length > 300 ? '<p class="muted-note">Showing the newest 300 — search to find older ones.</p>' : '') : '<div class="empty">' + (crm.type === 'archive' ? 'Nothing in the archive.' : all.length ? 'Nothing matches.' : (crm.mode === 'appl' ? 'No applicant leads yet. Website viewing requests, people looking to rent or buy, Rightmove leads and applicants you add yourself land here, newest first.' : 'No leads yet. Website valuation and viewing requests, messages and landlord alert sign-ups all land here — or add one yourself.')) + '</div>';
+    var banner = newG.length && !crm.type ? '<div class="crm-new">🆕 <b>' + newG.length + ' new lead' + (newG.length === 1 ? '' : 's') + '</b> since you last looked · newest: ' + esc(newG[0].name || 'no name') + ', ' + esc(fmtWhen(newG[0].at)) + '</div>' : '';
+    $('crmList').innerHTML = banner + (list.length ? list.slice(0, 300).map(crmCard).join('') + (list.length > 300 ? '<p class="muted-note">Showing the newest 300 — search to find older ones.</p>' : '') : '<div class="empty">' + (crm.type === 'archive' ? 'Nothing in the archive.' : appl && crm.tab === 'mine' && !all.some(applMine) ? 'No applicants are yours right now. Take one, add a note after you contact them or book a viewing, and they’re yours for 24 hours.' : all.length ? 'Nothing matches.' : (crm.mode === 'appl' ? 'No applicant leads yet. Website viewing requests, people looking to rent or buy, Rightmove leads and applicants you add yourself land here, newest first.' : 'No leads yet. Website valuation and viewing requests, messages and landlord alert sign-ups all land here — or add one yourself.')) + '</div>');
   }
   function crmCard(x){
     var t = x.type === 'cert' && x.data && x.data.who === 'tenant' ? ['🧽', 'Cleaning booking (tenant)', '#067647', '#ecfdf3'] : x.type === 'quick' && x.data && ['Sales', 'Rental', 'Not sure'].indexOf(x.data.service) === -1 ? ['📞', 'Call-back · ' + x.data.service, '#b54708', '#fffaeb'] : CRM_T[x.type], d = x.data, st = CRM_ST[x.status] || CRM_ST.new, today = crmToday(), open = !!crm.open[x.ref];
     var tel = x.phone ? String(x.phone).replace(/[^\d+]/g, '') : '', wa = x.phone ? waNumber(x.phone) : '';
-    var sub = [x.address ? shortAddr(x.address) : '', x.type === 'sub' ? x.email + ' · ' + ({ instant: 'as it happens', weekly: 'weekly', monthly: 'monthly' }[d.freq] || d.freq) : '', x.type === 'contact' && d.topic ? d.topic : '', x.type === 'enquiry' && d.topic ? d.topic : '', x.type === 'mortgage' ? [d.beds ? (d.beds === 'Studio' ? 'Studio' : d.beds + ' bed') : '', d.purpose, d.let_now, d.lender ? 'for ' + d.lender : '', d.needed ? 'needed ' + d.needed.toLowerCase() : ''].filter(Boolean).join(' · ') : '', x.type === 'cert' ? (d.items || []).map(function(i){ return i.name.replace(/ —.*/, ''); }).join(' + ') + ' · £' + Number(d.total || 0).toFixed(2) + (d.paid_at ? ' · paid ✓' : '') : '', x.type === 'quick' && d.service ? d.service + ' valuation' : '', fmtShort(x.at)].filter(Boolean);
+    var sub = [x.address ? shortAddr(x.address) : '', x.type === 'sub' ? x.email + ' · ' + ({ instant: 'as it happens', weekly: 'weekly', monthly: 'monthly' }[d.freq] || d.freq) : '', x.type === 'contact' && d.topic ? d.topic : '', x.type === 'enquiry' && d.topic ? d.topic : '', x.type === 'mortgage' ? [d.beds ? (d.beds === 'Studio' ? 'Studio' : d.beds + ' bed') : '', d.purpose, d.let_now, d.lender ? 'for ' + d.lender : '', d.needed ? 'needed ' + d.needed.toLowerCase() : ''].filter(Boolean).join(' · ') : '', x.type === 'cert' ? (d.items || []).map(function(i){ return i.name.replace(/ —.*/, ''); }).join(' + ') + ' · £' + Number(d.total || 0).toFixed(2) + (d.paid_at ? ' · paid ✓' : '') : '', x.type === 'quick' && d.service ? d.service + ' valuation' : '', '🕒 ' + fmtWhen(x.at)].filter(Boolean);
     var pill = x.type === 'sub' ? '<span class="crm-pill" style="color:' + (x.subSt === 'Subscribed' ? '#067647' : x.subSt === 'Unsubscribed' ? '#667085' : '#b54708') + '">' + x.subSt + '</span>' : '<span class="crm-pill" style="color:' + st[1] + '">' + st[0] + '</span>';
     var need = crmNeed(x), ap = isAppl(x), hold = ap ? applHold(x) : null, hrs = function(ms){ var h = Math.max(1, Math.round(ms / 3600000)); return h < 48 ? h + 'h' : Math.round(h / 24) + ' days'; };
-    var holdFlag = !ap || !crmOpenItem(x) ? '' : hold.held ? '<span class="crm-flag' + (hold.who === crm.me ? ' ok' : '') + '">🔒 ' + (hold.who === crm.me ? 'Yours · ' + hrs(hold.left) + ' left to stay in touch' : esc(hold.who) + '’s applicant · open in ' + hrs(hold.left)) + '</span>'
+    var holdFlag = !ap || x.archived || x.status === 'won' || x.status === 'lost' || (!x.group && !crmOpenItem(x)) ? '' : hold.held ? '<span class="crm-flag' + (hold.who === crm.me ? ' ok' : '') + '">🔒 ' + (hold.who === crm.me ? 'Yours · ' + hrs(hold.left) + ' left to stay in touch' : esc(hold.who) + '’s applicant · open in ' + hrs(hold.left)) + '</span>'
       : '<span class="crm-flag warn">🔓 Open to anyone' + (hold.who ? (hold.since === null ? ' · no contact from ' + esc(hold.who) + ' yet' : ' · no contact from ' + esc(hold.who) + ' for ' + hrs(hold.since)) : '') + '</span>';
     var vd = ap && VERDICT[x.verdict] ? '<span class="crm-flag" style="color:' + VERDICT[x.verdict][2] + '">' + VERDICT[x.verdict][0] + ' ' + VERDICT[x.verdict][1] + '</span>' : '';
-    var flags = holdFlag + vd + (x.archived ? '<span class="crm-flag">🗄 Archived ' + esc(fmtShort(x.archived)) + (x.archivedBy ? ' by ' + esc(x.archivedBy) : '') + '</span>' : '') + (need ? '<span class="crm-flag warn">📣 ' + esc(need) + '</span>' : '') + (x.type === 'viewing' && !d.confirmed && x.status !== 'lost' ? '<span class="crm-flag warn">Time to confirm</span>' : '') + (x.type === 'viewing' && d.confirmed ? '<span class="crm-flag ok">🗓 ' + esc(crmSlot(d.confirmed)) + '</span>' : '') +
+    var up = (x.viewings || []).filter(function(v){ return new Date(v.at).getTime() > Date.now() - 3 * 3600000; })[0];
+    var gflags = (crm.mode === 'appl' && x.group && crm.seen != null && x.group.some(function(i){ return i.id > crm.seen; }) ? '<span class="crm-flag new">🆕 New</span>' : '') + (x.group && x.group.length > 1 ? '<span class="crm-flag" title="Enquiries from the same email or phone number, joined">🔗 ' + x.group.length + ' enquiries</span>' : '') + (up ? '<span class="crm-flag ok">🗓 Viewing ' + esc(fmtWhen(up.at)) + (up.staff ? ' · ' + esc(up.staff) : '') + '</span>' : '');
+    var flags = gflags + holdFlag + vd + (x.archived ? '<span class="crm-flag">🗄 Archived ' + esc(fmtShort(x.archived)) + (x.archivedBy ? ' by ' + esc(x.archivedBy) : '') + '</span>' : '') + (need ? '<span class="crm-flag warn">📣 ' + esc(need) + '</span>' : '') + (x.type === 'viewing' && !d.confirmed && x.status !== 'lost' ? '<span class="crm-flag warn">Time to confirm</span>' : '') + (x.type === 'viewing' && d.confirmed ? '<span class="crm-flag ok">🗓 ' + esc(crmSlot(d.confirmed)) + '</span>' : '') +
       (x.follow && need !== 'Follow-up due' ? '<span class="crm-flag' + (x.follow <= today && x.status !== 'won' && x.status !== 'lost' ? ' warn' : '') + '">⏰ ' + (x.follow === today ? 'Today' : x.follow < today ? 'Overdue · ' + esc(fmtDateOnly(x.follow)) : esc(fmtDateOnly(x.follow))) + '</span>' : '') + (x.assigned ? '<span class="crm-flag">👤 ' + esc(x.assigned) + '</span>' : '') + (x.notes.filter(function(n){ return !n.auto; }).length ? '<span class="crm-flag">📝 ' + x.notes.filter(function(n){ return !n.auto; }).length + '</span>' : '');
     var acts = (tel ? '<a class="crm-act" href="tel:' + esc(tel) + '" title="Call ' + esc(x.phone) + '">📞<span> Call</span></a>' : '') + (wa ? '<a class="crm-act wa" href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener" title="WhatsApp">💬<span> WhatsApp</span></a>' : '') + (x.email ? '<a class="crm-act" href="mailto:' + esc(x.email) + '" title="Email ' + esc(x.email) + '">✉️<span> Email</span></a>' : '');
     var h = '<div class="crm-card' + (open ? ' open' : '') + (need ? ' is-new' : '') + (x.archived ? ' is-arch' : '') + '" data-crm="' + x.ref + '">' +
@@ -9336,6 +9425,9 @@
     h += '<div class="crm-facts">' + facts.map(function(f){ return '<div><span>' + f[0] + '</span><b>' + f[1] + '</b></div>'; }).join('') + '</div>';
     if (d.message) h += '<div class="vr-msg">“' + esc(d.message) + '”</div>';
     if (x.type === 'call') h += (d.urgent ? '<div class="crm-flag warn" style="display:inline-block;margin:6px 0">🚨 Marked urgent by the phone assistant</div>' : '') + (d.transcript ? '<details class="call-tr"><summary>📞 The whole call' + (d.caller_id ? ' · rang from ' + esc(d.caller_id.replace(/^\+44/, '0')) : '') + '</summary><pre>' + esc(d.transcript) + '</pre></details>' : '');
+    // The same person's other enquiries, and their viewings.
+    if (x.group && x.group.length > 1) h += '<b>All their enquiries</b><ul class="appl-enq">' + x.group.map(function(i){ var tt = CRM_T[i.type] || CRM_T.enquiry; return '<li>' + tt[0] + ' ' + esc(tt[1]) + (i.address ? ' · ' + esc(i.address) : '') + (i.data.url ? ' · <a href="' + esc(i.data.url) + '" target="_blank" rel="noopener">listing ↗</a>' : '') + '<small>🕒 ' + esc(fmtWhen(i.at)) + (i.data.message ? ' · “' + esc(String(i.data.message).slice(0, 140)) + (String(i.data.message).length > 140 ? '…' : '') + '”' : '') + '</small></li>'; }).join('') + '</ul>';
+    if ((x.viewings || []).length) h += '<b>Viewings</b><ul class="appl-enq">' + x.viewings.map(function(v){ return '<li>🗓 ' + esc(fmtWhen(v.at)) + (v.property_address ? ' · ' + esc(shortAddr(v.property_address)) : '') + '<small>' + esc(v.staff || v.created_by || '') + ' · ' + esc({ booked: 'Booked', done: 'Done', no_show: 'Didn’t show' }[v.status] || v.status || '') + '</small></li>'; }).join('') + '</ul>';
     // Viewing request: confirm one of their times, or another.
     if (x.type === 'viewing') {
       h += '<div class="crm-vw"><b>' + (d.confirmed ? '✓ Confirmed for ' + esc(crmSlot(d.confirmed)) + (d.confirmed_by ? ' <span class="muted-note" style="margin:0">by ' + esc(d.confirmed_by) + '</span>' : '') : (d.slots && d.slots.length ? 'Times they suggested — tap one to confirm it and email them' : 'They’re flexible — pick a time below')) + '</b>' +
@@ -9351,8 +9443,8 @@
     // Applicant: whose it is (24 hours from their last contact), and their verdict with the reason.
     if (ap) {
       var mine = hold.held && hold.who === crm.me;
-      h += '<div class="crm-appl"><div class="crm-appl-own">' + (hold.held ? (mine ? '🔒 <b>Your applicant.</b> It stays yours while you keep in touch — every note, call or status change resets the 24 hours (' + hrs(hold.left) + ' left).' : '🔒 <b>' + esc(hold.who) + ' is looking after this applicant</b> — it opens to everyone in ' + hrs(hold.left) + ' if they don’t get in touch.' + (crm.manager ? ' As a manager you can still reassign it.' : ''))
-          : '🔓 <b>Open to anyone.</b> ' + (hold.who ? esc(hold.who) + ' hasn’t been in touch for over 24 hours. ' : '') + 'Take it, or add a note after you contact them, and it’s yours for 24 hours.') + '</div>' +
+      h += '<div class="crm-appl"><div class="crm-appl-own">' + (hold.held ? (mine ? '🔒 <b>Your applicant.</b> It stays yours while you keep in touch — every note, call, status change or viewing resets the 24 hours (' + hrs(hold.left) + ' left).' : '🔒 <b>' + esc(hold.who) + ' is looking after this applicant</b> — it opens to everyone in ' + hrs(hold.left) + ' if they don’t get in touch.' + (crm.manager ? ' As a manager you can still reassign it.' : ''))
+          : '🔓 <b>Open to anyone.</b> ' + (hold.who ? esc(hold.who) + ' hasn’t been in touch for over 24 hours. ' : '') + 'Take it, add a note after you contact them, or book a viewing, and they’re yours for 24 hours. Sending them a recommended property doesn’t make them yours.') + '</div>' +
         (!hold.held || (crm.manager && !mine) ? '<button type="button" class="btn small primary" data-crm-take>🙋 Take this applicant</button>' : '') +
         '<label class="crm-verdict">Is this a good applicant?<select class="inp" data-crm-verdict><option value="">Not decided yet</option>' + Object.keys(VERDICT).map(function(k){ return '<option value="' + k + '"' + (x.verdict === k ? ' selected' : '') + '>' + VERDICT[k][0] + ' ' + VERDICT[k][1] + '</option>'; }).join('') + '</select></label>' +
         '<p class="muted-note" style="margin:4px 0 0">Write why in the note box below first (e.g. affordability, move date, references, who’s moving in). Judge on the facts only — never on benefits, nationality, race, religion, disability, age or family status.</p></div>';
@@ -9401,7 +9493,7 @@
     return { list: q, text: text, subject: 'Your viewing request — ' + addr };
   }
   function fmtDateOnly(d){ return new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }); }
-  function crmItem(el){ var c = el.closest('[data-crm]'); if (!c) return null; var ref = c.dataset.crm; return crm.items.filter(function(x){ return x.ref === ref; })[0] || null; }
+  function crmItem(el){ var c = el.closest('[data-crm]'); if (!c) return null; var ref = c.dataset.crm; if (crm.mode === 'appl' && crm.gmap && crm.gmap[ref]) return crm.gmap[ref]; return crm.items.filter(function(x){ return x.ref === ref; })[0] || null; }
   function crmHeldMsg(d){ return d && d.error === 'held' ? '🔒 ' + d.who + ' is looking after this applicant until ' + new Date(d.until).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) + ' — it opens to everyone if they don’t get in touch by then.' : ''; }
   function crmDone(msg){ return function(d){ if (!d || !d.ok) { toast(crmHeldMsg(d) || (d && d.error === 'reason' ? 'Write why in the note box first' : 'Couldn’t save that')); if (d && d.error === 'held') loadCrm(); return; } if (msg) toast(msg); loadCrm(); loadVr(); }; }
   $('navCrm').addEventListener('click', function(){ showView('crm'); });
@@ -9425,6 +9517,36 @@
   }
   document.addEventListener('click', function(e){ var c = e.target.closest('[data-hook-copy]'); if (c && leadHook) copyText(c.dataset.hookCopy === 'rm' ? (leadHook.rm_hook || {}).url : leadHook.url).then(function(){ toast('Copied'); }); });
   ['crmQ', 'crmSt', 'crmWho'].forEach(function(id){ $(id).addEventListener(id === 'crmQ' ? 'input' : 'change', renderCrm); });
+  $('applTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-appl-tab]'); if (!b) return; crm.tab = b.dataset.applTab; crm.tile = ''; renderCrm(); });
+  $('crmProp').addEventListener('change', function(){ var v = this.value; crm.prop = !v ? null : v === '__ext' ? crm.prop : { keys: [v] }; renderCrm(); });
+  // Recommend a property to the ticked applicants: one email each (nobody sees the others), noted on each lead.
+  var recPeople = [];
+  function applRecommend(refs){
+    var people = refs.map(function(r){ return (crm.gmap || {})[r] || crm.items.filter(function(x){ return x.ref === r; })[0]; }).filter(Boolean), withEmail = people.filter(function(x){ return x.email; });
+    if (!withEmail.length) { toast('None of them has an email address'); return; }
+    recPeople = withEmail;
+    $('recPropWho').textContent = 'To ' + withEmail.length + ' applicant' + (withEmail.length === 1 ? '' : 's') + ' — each gets their own email, so nobody sees the others’ addresses.' + (people.length > withEmail.length ? ' ' + (people.length - withEmail.length) + ' without an email left out.' : '') + ' Sending a property doesn’t make them your applicants.';
+    $('recPropQ').value = ''; $('recPropList').innerHTML = '<p class="muted-note">Loading the properties…</p>'; $('recPropModal').hidden = false;
+    (avItems && avItems.length ? Promise.resolve() : api('GET', '/api/admin/available').then(function(d){ if (d && d.ok) { avItems = d.items || []; avLinkData = d.links || {}; } })).then(recPropDraw);
+    setTimeout(function(){ $('recPropQ').focus(); }, 30);
+  }
+  function recPropDraw(){
+    var q = $('recPropQ').value.trim().toLowerCase(), items = (avItems || []).filter(function(x){ return x.status === 'available'; }).filter(function(x){ return !q || [x.address, x.beds === 0 ? 'studio' : x.beds + ' bed', x.rent_pcm].join(' ').toLowerCase().indexOf(q) !== -1; });
+    $('recPropList').innerHTML = items.length ? items.slice(0, 80).map(function(x){ return '<button type="button" class="rec-item" data-rec-id="' + x.id + '"><b>' + esc(publicAddr(x.address)) + '</b><small>' + esc([x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : '', x.rent_pcm ? gbp(Number(x.rent_pcm)) + ' pcm' : '', x.vacant ? 'Available now' : x.available_from ? 'Available ' + avDay(x.available_from) : ''].filter(Boolean).join(' · ')) + '</small></button>'; }).join('') : '<p class="muted-note">No available properties match.</p>';
+  }
+  $('recPropQ').addEventListener('input', recPropDraw);
+  $('recPropClose').addEventListener('click', function(){ $('recPropModal').hidden = true; });
+  $('recPropModal').addEventListener('mousedown', function(e){ if (e.target === $('recPropModal')) $('recPropModal').hidden = true; });
+  $('recPropList').addEventListener('click', function(e){
+    var b = e.target.closest('[data-rec-id]'); if (!b) return;
+    var x = avItems.filter(function(i){ return String(i.id) === b.dataset.recId; })[0]; if (!x) return;
+    var L = avLinks(x), site = x.gnomen_id ? 'https://www.residentialrealtors.co.uk/property/' + x.gnomen_id : '', link = site || L.rightmove, me = String((meta.user && meta.user.name) || '').split(/\s+/)[0].replace(/^Owner$/, ''), people = recPeople.slice();
+    var body = 'Hi,\n\nI thought this property might suit you:\n\n' + (x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bedroom' : 'Property') + ' — ' + publicAddr(x.address) + '\n' + [x.rent_pcm ? gbp(Number(x.rent_pcm)) + ' pcm' : '', x.vacant ? 'available now' : x.available_from ? 'available from ' + avDay(x.available_from) : ''].filter(Boolean).join(', ') + '\n' +
+      (link ? '\nPhotos and details: ' + link + '\n' : '') + (L.video ? '▶ Video: ' + L.video + '\n' : '') + '\nWould you like to arrange a viewing? Just reply to this email or call us on 0207 096 8131.\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors';
+    $('recPropModal').hidden = true;
+    composeMail({ to: [], bcc: people.map(function(p2){ return p2.email; }), subject: 'A property you might like — ' + publicAddr(x.address).split(',').slice(0, 2).join(','), body: body, title: '✉ Recommend a property',
+      onSent: function(){ api('POST', '/api/admin/crm/recommended', { refs: people.map(function(p2){ return p2.ref; }), address: publicAddr(x.address), url: link }).then(function(){ loadCrm(true); }); crmSel = {}; crmSelDraw(); } });
+  });
   $('crmTiles').addEventListener('click', function(e){ var b = e.target.closest('[data-crm-tile]'); if (!b) return; crm.tile = crm.tile === b.dataset.crmTile ? '' : b.dataset.crmTile; if (crm.tile === 'subs') crm.type = ''; renderCrm(); });
   $('crmView').addEventListener('click', function(e){ var j = e.target.closest('[data-crm-job]'); if (!j) return; e.stopPropagation(); var jid = Number(j.dataset.crmJob); showView('jobs'); Promise.resolve(loadJobs()).then(function(){ openJob(jid); }); });
   $('crmTypes').addEventListener('click', function(e){ var b = e.target.closest('[data-crm-type]'); if (!b) return; crm.type = b.dataset.crmType; crm.tile = ''; renderCrm(); });
@@ -9443,13 +9565,15 @@
       bar.addEventListener('click', function(e){ var b = e.target.closest('[data-cb]'); if (!b) return; var act = b.dataset.cb, refs2 = Object.keys(crmSel);
         if (act === 'clear') { crmSel = {}; crmSelDraw(); renderCrm(); return; }
         if (act === 'all') { document.querySelectorAll('[data-crm-pick]').forEach(function(c){ crmSel[c.dataset.crmPick] = 1; }); crmSelDraw(); renderCrm(); return; }
+        if (act === 'rec') { applRecommend(refs2); return; }
+        refs2 = [].concat.apply([], refs2.map(function(r){ var g = crm.mode === 'appl' && crm.gmap && crm.gmap[r]; return g ? g.group.map(function(i){ return i.ref; }) : [r]; }));   // a person: every enquiry of theirs
         if (!b.classList.contains('sure')) { bar.querySelectorAll('.sure').forEach(function(x){ x.classList.remove('sure'); x.textContent = x.dataset.label; }); b.classList.add('sure'); b.dataset.label = b.textContent; b.textContent = 'Tap again to ' + (act === 'junk' ? 'junk ' : 'delete ') + refs2.length; return; }
         busy(b, true, 'Saving…');
         Promise.all(refs2.map(function(r){ return api('POST', '/api/admin/crm/archive', act === 'junk' ? { ref: r, junk: true, block: true } : { ref: r, reason: 'Deleted with others' }); })).then(function(rs){
           var ok = rs.filter(function(d){ return d && d.ok; }).length; crmSel = {}; crmSelDraw(); toast((act === 'junk' ? '🚫 ' + ok + ' moved to Junk' : '🗄 ' + ok + ' moved to the archive') + (ok < rs.length ? ' · ' + (rs.length - ok) + ' couldn’t be saved' : '')); loadCrm(); loadVr(); });
       }); }
     bar.hidden = !refs.length || (view !== 'crm' && view !== 'appl');
-    bar.innerHTML = '<span><b>' + refs.length + '</b> selected</span><button type="button" class="btn small ghost" data-cb="all">Select all shown</button><button type="button" class="btn small" data-cb="junk">🚫 Junk</button><button type="button" class="btn small danger" data-cb="del">🗑 Delete</button><button type="button" class="btn small ghost" data-cb="clear">Clear</button>';
+    bar.innerHTML = '<span><b>' + refs.length + '</b> selected</span><button type="button" class="btn small ghost" data-cb="all">Select all shown</button>' + (crm.mode === 'appl' ? '<button type="button" class="btn small primary" data-cb="rec">✉ Recommend a property</button>' : '') + '<button type="button" class="btn small" data-cb="junk">🚫 Junk</button><button type="button" class="btn small danger" data-cb="del">🗑 Delete</button><button type="button" class="btn small ghost" data-cb="clear">Clear</button>';
   }
   $('crmList').addEventListener('change', function(e){ var c = e.target.closest('[data-crm-pick]'); if (!c) return; if (c.checked) crmSel[c.dataset.crmPick] = 1; else delete crmSel[c.dataset.crmPick]; crmSelDraw(); });
   $('crmList').addEventListener('click', function(e){
@@ -9476,7 +9600,7 @@
       if (dob.dataset.crmDo === 'cancel') { bx.hidden = true; return; }
       busy(dob, true, 'Saving…');
       var body = dob.dataset.crmDo === 'junk' ? { ref: x.ref, junk: true, block: !!(bx.querySelector('[data-crm-block]') || {}).checked } : { ref: x.ref, reason: ((bx.querySelector('[data-crm-reason]') || {}).value || '').trim() };
-      api('POST', '/api/admin/crm/archive', body).then(crmDone(body.junk ? '🚫 Moved to Junk' : '🗄 Moved to the archive')); return;
+      Promise.all((x.group || [x]).map(function(i){ return api('POST', '/api/admin/crm/archive', Object.assign({}, body, { ref: i.ref })); })).then(function(rs){ crmDone(body.junk ? '🚫 Moved to Junk' : '🗄 Moved to the archive')(rs[0]); }); return;
     }
     if (e.target.closest('[data-crm-take]')) { api('POST', '/api/admin/crm/meta', { ref: x.ref, assigned_to: crm.me }).then(crmDone('🙋 ' + (x.name || 'The applicant') + ' is yours for 24 hours — keep in touch to keep them')); return; }
     if (e.target.closest('[data-crm-restore]')) { api('POST', '/api/admin/crm/archive', { ref: x.ref, restore: true }).then(crmDone('↩︎ Put back')); return; }
@@ -14168,7 +14292,7 @@
         (x.notes ? '<div class="av-note">📝 ' + esc(x.notes) + '</div>' : '') +
         (function(){ var L = (avLinkData || {})[x.id] || {}, ct = L.contactIsLandlord ? '' : x.contact;   // the landlord's own details aren't a tenant contact
           return (ct || L.tenants) ? avContactHtml(ct, L.tenants) : ''; })() +
-        '<div class="av-acts"><button type="button" class="btn small av-more-btn" data-av-more>' + (avOpenCards[x.id] ? 'Less ▴' : 'More ▾') + '</button>' + (off ? '<button type="button" class="btn small" data-avs="available">↩ Back on the list</button>' : '<button type="button" class="btn small primary" data-ava="offer">📝 Offer form</button><button type="button" class="btn small" data-ava="pvr">🗓 PVR</button><button type="button" class="btn small" data-ava="view">👀 Book viewing</button><button type="button" class="btn small" data-ava="send" title="Send the property or its video by WhatsApp or email">📤 Send</button><button type="button" class="btn small ghost" data-ava="copy">📋 Copy</button>') +
+        '<div class="av-acts"><button type="button" class="btn small av-more-btn" data-av-more>' + (avOpenCards[x.id] ? 'Less ▴' : 'More ▾') + '</button>' + (off ? '<button type="button" class="btn small" data-avs="available">↩ Back on the list</button>' : '<button type="button" class="btn small primary" data-ava="offer">📝 Offer form</button><button type="button" class="btn small" data-ava="pvr">🗓 PVR</button><button type="button" class="btn small" data-ava="view">👀 Book viewing</button><button type="button" class="btn small" data-ava="send" title="Send the property or its video by WhatsApp or email">📤 Send</button>' + (crm.loaded ? '<button type="button" class="btn small ghost" data-ava="leads" title="Everyone who has enquired about this property">👥 Leads ' + avLeadCount(x) + '</button>' : '') + '<button type="button" class="btn small ghost" data-ava="copy">📋 Copy</button>') +
           (!off ? '<button type="button" class="btn small ghost" data-ava="rm" title="Link to a Rightmove listing">🔗 Rightmove</button>' : '') + ((ytM[x.id] || []).length && !off ? '<button type="button" class="btn small ghost" data-ava="ytshare" title="Send the video">📤 Video</button>' : '') + (ytData && ytData.at && !off ? '<button type="button" class="btn small ghost" data-ava="yt" title="Choose the video">🎬</button>' : '') + '<button type="button" class="btn small ghost" data-ava="edit">✏️</button>' + (off ? '' : '<button type="button" class="btn small ghost" data-avs="let" title="Mark as let">✓ Let</button>') + (canDel ? '<button type="button" class="btn small ghost danger" data-ava="del" title="Delete">🗑</button><button type="button" class="btn small ghost" data-ava="hist" title="Earlier versions — put back anything changed or lost">🕘 History</button>' : '') + '</div></div>';
     }).join('') + (avMore ? '<div style="grid-column:1/-1;text-align:center"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more (' + avMore + ' not shown — or search above)</button></div>' : '') : '<div class="card"><p class="muted-note" style="margin:0">' + (avItems.length ? 'Nothing matches — try another filter.' : 'No properties yet — add one, or paste your list from the spreadsheet.') + '</p></div>';
   }
@@ -14568,6 +14692,7 @@
     if (act === 'tcy') { var TT = (avLinkData[x.id] || {}).tenancy; if (!TT) return; (tenancies.some(function(t){ return t.id === TT.id; }) ? Promise.resolve() : loadTenancies()).then(function(){ openTenancy(TT.id); }); return; }
     if (act === 'addr') { var na = prompt('Correct address (one line, with the postcode):', x.address); if (!na || na.trim() === x.address) return; api('POST', '/api/admin/available/' + x.id, { address: na.trim() }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save the address'); return; } x.address = d.address; toast('✓ Address saved'); renderAvail(); }); return; }
     if (act === 'send' || act === 'ytshare') { avSendPanel(card, x, act === 'ytshare'); return; }
+    if (act === 'leads') { crm.prop = { keys: avLeadKeys(x), label: shortAddr(x.address), ext: true }; crm.tab = 'all'; $('crmQ').value = ''; $('crmSt').value = ''; $('crmWho').value = ''; showView(staffMode ? 'appl' : 'crm'); crm.tile = ''; crm.type = ''; renderCrm(); window.scrollTo(0, 0); return; }
     if (act === 'ytshare-old') { var vid = ytVid((ytM[x.id] || [])[0]), txt = 'Here’s a video of ' + publicAddr(x.address) + ': ' + ytUrl(vid.id); if (navigator.share && matchMedia('(pointer: coarse)').matches) navigator.share({ text: txt })['catch'](function(){}); else copyText(txt).then(function(){ toast('Video link copied — paste it into WhatsApp or an email'); })['catch'](function(){ window.prompt('Copy the video link:', txt); }); return; }
     if (act === 'edit') { avOpenForm(x); return; }
     if (act === 'hist') { avHistory(x); return; }
