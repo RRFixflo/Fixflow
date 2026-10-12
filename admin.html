@@ -15068,9 +15068,11 @@
   // rent's collected) — so it matches the rent page's "to the landlord".
   function stmtWithPend(tid, m){
     var pp = (stmtPend[tid] || []).filter(function(g){ return m && String(m.from || '').slice(0, 10) === g.from; })[0]; if (!m || !pp || !pp.invoices.length) return m;
-    var extra = pp.invoices.map(function(i){ return { label: 'Invoice ' + i.number + (i.title && i.title.indexOf(i.number) === -1 && !/^repair\s+[A-Z]{1,4}-?\d+$/i.test(i.title) ? ' · ' + i.title : ''), amount: i.total, vat: 0, novat: true, pending: true, invoice_id: i.id }; });
+    var bfInv = pp.invoices.filter(function(i){ return i.bf; }), bfT = r2(bfInv.reduce(function(a, i){ return a + (num(i.total) || 0); }, 0));
+    var extra = pp.invoices.filter(function(i){ return !i.bf; }).map(function(i){ return { label: 'Invoice ' + i.number + (i.title && i.title.indexOf(i.number) === -1 && !/^repair\s+[A-Z]{1,4}-?\d+$/i.test(i.title) ? ' · ' + i.title : ''), amount: i.total, vat: 0, novat: true, pending: true, invoice_id: i.id }; });
     var t = r2(extra.reduce(function(a, f){ return a + f.amount; }, 0));
-    return Object.assign({}, m, { fees: (m.fees || []).concat(extra), sub: r2((m.sub || 0) + t), total: r2((m.total || 0) + t), balance: r2((m.balance || 0) - t) });
+    // Unpaid invoices from the last statement period: part of the balance brought forward, each listed with its link.
+    return Object.assign({}, m, { fees: (m.fees || []).concat(extra), sub: r2((m.sub || 0) + t), bf: r2((m.bf || 0) + bfT), bf_from: m.bf_from || (bfInv.length ? addMonthsIso(m.from, -1) : null), bf_inv: bfInv, total: r2((m.total || 0) + t + bfT), balance: r2((m.balance || 0) - t - bfT) });
   }
   function loadStatements(){
     if (!meta.db) return Promise.resolve();
@@ -15115,6 +15117,7 @@
     (m.credits || []).forEach(function(c){ lines.push('- ' + c.label + ': ' + gbp(c.amount)); });
     m.fees.forEach(function(f){ var iu = f.invoice_id && stmtInv[f.invoice_id] && stmtInv[f.invoice_id].url; lines.push('- ' + stmtInvLabel(f) + ': ' + gbp(f.amount) + (f.vat ? ' + VAT ' + gbp(f.vat) : m.vatOn && !f.invoice_id ? ' (no VAT)' : '') + (iu ? '\n  View the invoice: ' + iu : '')); });
     if (m.bf) lines.push('- Balance brought forward from your ' + monthName(m.bf_from) + ' statement: ' + gbp(m.bf));
+    (m.bf_inv || []).forEach(function(i){ var iv = stmtInv[i.id] || {}; lines.push('    including ' + (iv.what ? iv.what + ' (' + i.number + ')' : i.number) + ': ' + gbp(i.total) + (iv.url ? '\n    View the invoice: ' + iv.url : '')); });
     return (withAddr ? shortAddr(x.address) + ' — ' : '') + monthName(m.from) + ':\n' + lines.join('\n') + '\nClosing balance: ' + (stmtOwes(m) ? '−' : '') + gbp(Math.abs(m.balance)) + '\n' +
       (stmtOwes(m) ? 'After this month’s rent there is still ' + gbp(-m.balance) + ' owed to us. Please pay it by bank transfer' + (cfg.payee && cfg.accountNumber ? ' to ' + cfg.payee + ', sort code ' + cfg.sortCode + ', account ' + cfg.accountNumber + ', reference ' + (payRef(x.address) || 'the property address') : '') + ' — otherwise it will be taken from next month’s rent.'
         : 'We have paid ' + gbp(m.balance) + ' to you by bank transfer.');
@@ -17850,7 +17853,7 @@
     // Always one page: the gaps (then the rows) shrink so everything ends above the footer.
     var owes = c.balance < 0, bank = owes && cfg.payee && cfg.accountNumber;
     var fy = doc.internal.pageSize.getHeight() - 90, limit = fy - 16;
-    var incRows = 1 + (c.deposit ? 1 : 0) + (m.credits || []).length, feeRows = Math.max(1, c.fees.length), smalls = (c.vat ? 1 : 0) + (m.bf ? 1 : 0);
+    var incRows = 1 + (c.deposit ? 1 : 0) + (m.credits || []).length, feeRows = Math.max(1, c.fees.length), smalls = (c.vat ? 1 : 0) + (m.bf ? 1 : 0) + (m.bf_inv || []).length;
     // Each gap shrinks from its normal size towards a minimum that keeps headings and totals apart;
     // after that, the rows get tighter.
     var GAP = { band: [32, 30], inc: [36, 18], exp: [50, 24], fees: [50, 22], small: [18, 14], total: [38, 20], closing: [32, 18], amount: [24, 17] };
@@ -17886,6 +17889,12 @@
     if (c.vat) { y += gk('small'); doc.text('VAT (20%)', R - 80, y, { align: 'right' }); doc.text(pdfGbp(c.vat), R, y, { align: 'right' }); }
     // What the landlord still owed from the last statement (VAT was already on it).
     if (m.bf) { y += gk('small'); doc.text('Balance brought forward' + (m.bf_from ? ' (' + monthName(m.bf_from) + ' statement)' : '') + ':', R - 80, y, { align: 'right' }); doc.text(pdfGbp(m.bf), R, y, { align: 'right' }); }
+    // The unpaid invoices in that balance, each a link to the invoice.
+    (m.bf_inv || []).forEach(function(i){ var iv = stmtInv[i.id], lbl = 'incl. ' + (iv && iv.what ? iv.what + ' · ' : '') + i.number + ' ' + pdfGbp(i.total);
+      y += 12; doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(23, 92, 211);
+      doc.text(lbl + (iv && iv.url ? '  view \u203a' : ''), R - 80, y, { align: 'right' });
+      if (iv && iv.url) { var w = doc.getTextWidth(lbl + '  view \u203a'); doc.link(R - 80 - w, y - 8, w, 11, { url: iv.url }); }
+      doc.setTextColor(20); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); });
     y += gk('total'); doc.setFontSize(11.5); doc.text('Total', X - 2, y); doc.text(pdfGbp(c.feeTotal), R, y, { align: 'right' });
     y += gk('closing'); doc.text('Closing Balance', X - 2, y); doc.text(pdfGbp(c.balance), R, y, { align: 'right' });
     // Fees can be more than the rent received (e.g. a tenant find fee taken up front): the landlord owes the difference.

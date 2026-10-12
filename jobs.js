@@ -10417,19 +10417,21 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const d = t.data || {}, start = String(d.start_date || t.start_date || '').slice(0, 10), today = londonDay(), lp = d.ll_paid || {};
     if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return null;
     let cur = start; for (let n = 1; n < 240; n++) { const f = addMonthsIso(start, n); if (f > today) break; cur = f; }
-    const onBoard = cur >= RENT_START || (cur === start && moveinRowShown(d, start, today)) || !!(d.rent_rcvd || {})[cur];
+    // The first statement of a tenancy that started just before Fixflow took over rent collection is still the
+    // current one while it's the latest and hasn't been sent (invoices set to "the current statement" go on it).
+    const onBoard = cur >= RENT_START || (cur === start && moveinRowShown(d, start, today)) || !!(d.rent_rcvd || {})[cur] || (cur === start && !(d.stmt_sent || {})[cur]);
     if (onBoard && !lp[cur]) return cur;
     for (let n = 1; n < 240; n++) { const f = addMonthsIso(start, n); if (f > cur && !lp[f]) return f; }
     return null;
   }
-  async function rentPendingInvoices(p, t, from) {
+  async function rentPendingInvoices(p, t, from, currentOnly) {
     // Every unpaid landlord invoice for the property so far — repair invoices included (they're linked
     // through the job's address) — unless it's set to be taken from a later month's rent.
     const ym = from.slice(0, 7), curRent = currentStmtRent(t);
     return (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.data->>'collect_month' AS cm, coalesce(i.data->>'title', '') AS title, i.job_id, i.tenancy_id, i.property_key, coalesce(j.property_address, i.address) AS addr, j.category, j.affected, j.symptom, j.description, i.data->>'short' AS short
       FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id
       WHERE i.paid_at IS NULL AND coalesce(i.data->>'collect_month', '') <> 'direct' AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.created_at`)).rows
-      .filter(function (i) { return (i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key))) && (i.cm === 'current' ? !curRent || from === curRent : i.cm ? i.cm <= ym : true); })
+      .filter(function (i) { return (i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key))) && (currentOnly ? i.cm === 'current' && from === curRent : i.cm === 'current' ? !curRent || from === curRent : i.cm ? i.cm <= ym : true); })
       .map(function (i) { const t = String(i.title || '').trim(), generic = !t || /^repair\s+[A-Z]{1,4}-?\d+$/i.test(t) || t.indexOf(i.number) !== -1;
         return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.short || shortOf((i.category || i.affected || i.description ? jobBrief(i, 48) : '') || (generic ? '' : t)), job_id: i.job_id }; });
   }
@@ -10529,7 +10531,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
         // to more than that rent) comes off this one — once, not counted again with the invoices.
         let owedBf = 0;
         if (prevRow && !prevRow.paid && prevRow.to_landlord < -0.004) owedBf = stm ? Math.max(0, r2(-prevRow.to_landlord - (stm.bf || 0))) : r2(-prevRow.to_landlord);
-        else if (!prevRow && !stm && n > 0) { const pm = stBy[t.id] && stBy[t.id].months.filter(function (m) { return m.from === addMonthsIso(start, n - 1); })[0]; if (pm && pm.balance < -0.004 && !paid[pm.from]) owedBf = r2(-pm.balance); }
+        else if (!prevRow && n > 0) {
+          const pmFrom = addMonthsIso(start, n - 1), pm = stBy[t.id] && stBy[t.id].months.filter(function (m) { return m.from === pmFrom; })[0];
+          // Invoices set to "the current statement" that went on the previous statement (a rent not on this page,
+          // e.g. a move-in before rent collection started) come off this rent.
+          const pmInv = !paid[pmFrom] ? r2((await rentPendingInvoices(p, t, pmFrom, true)).reduce(function (a, x) { return a + x.total; }, 0)) : 0;
+          if (!stm) owedBf = r2((pm && !paid[pmFrom] && pm.balance < -0.004 ? -pm.balance : 0) + pmInv);
+          else if (pmInv > 0) owedBf = pmInv;   // this statement's brought-forward already has the rest of that balance
+        }
         const toLl = r2(base - owedBf - pendTotal - llPartSent);
         items.push({ owed_bf: owedBf,
           part_out: partOut, part_fees: partFees, part_in: partIn, ll_parts: llParts, ll_part_sent: llPartSent,
@@ -10997,7 +11006,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // statement for that rent shows them, so it matches the rent page's "to the landlord".
     const today = londonDay(), pend = {};
     const tcys = (await p.query('SELECT id, property_key, start_date, data FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date, id')).rows;
-    const inv = (await p.query(`SELECT i.id, i.number, i.total, i.data->>'collect_month' AS cm, coalesce(i.data->>'title', '') AS title, i.tenancy_id, i.property_key, coalesce(j.property_address, i.address) AS addr
+    const inv = (await p.query(`SELECT i.id, i.number, i.total, i.created_at, i.data->>'collect_month' AS cm, coalesce(i.data->>'title', '') AS title, i.tenancy_id, i.property_key, coalesce(j.property_address, i.address) AS addr
       FROM invoices i LEFT JOIN jobs j ON j.id = i.job_id
       WHERE i.paid_at IS NULL AND coalesce(i.data->>'collect_month', '') <> 'direct' AND (i.job_id IS NULL OR (j.id IS NOT NULL AND j.archived_at IS NULL)) ORDER BY i.created_at`)).rows;
     tcys.forEach(function (t, k) {
@@ -11013,7 +11022,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const mine = inv.filter(function (i) { return i.tenancy_id === t.id || (t.property_key && (i.property_key === t.property_key || propKey(i.addr || '') === t.property_key)); });
       const pick = function (i) { return { id: i.id, number: i.number, total: Number(i.total) || 0, title: i.title }; };
       const groups = [];
-      const now = mine.filter(function (i) { return i.cm === 'current'; }).map(pick);
+      // Invoices raised during an earlier statement period, still unpaid: on this statement they're part of the
+      // balance brought forward (listed with links), not new charges.
+      const now = mine.filter(function (i) { return i.cm === 'current'; }).map(function (i) { const x = pick(i); if (cur > start && i.created_at && new Date(i.created_at).toISOString().slice(0, 10) < cur) x.bf = true; return x; });
       if (now.length) groups.push({ from: cur, invoices: now });
       if (from && from <= addDaysIso(today, 62)) {
         const ym = from.slice(0, 7), list = mine.filter(function (i) { return i.cm !== 'current' && (i.cm ? i.cm <= ym : true); }).map(pick);
