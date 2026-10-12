@@ -581,6 +581,9 @@
   .sent-row { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 14px; margin-bottom: 8px; overflow: hidden; }
   .sent-row > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 118px 1fr auto; gap: 4px 14px; align-items: center; padding: 12px 14px; }
   .sent-row > summary::-webkit-details-marker { display: none; }
+  .sent-att { font-size: .78rem; font-weight: 700; color: #475467; background: #f2f4f7; border-radius: 999px; padding: 1px 7px; margin-left: 4px; white-space: nowrap; }
+  .sent-files { display: grid; gap: 6px; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #f9fafb; }
+  .sent-file { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; } .sent-file span { flex: 1; min-width: 160px; font-weight: 600; overflow-wrap: anywhere; } .sent-file small { color: #667085; font-weight: 500; }
   .sent-when { font-size: .8rem; color: var(--ink-soft); line-height: 1.3; } .sent-when b { display: block; color: var(--ink); font-size: .86rem; }
   .sent-main { min-width: 0; } .sent-main b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .sent-main span { display: block; font-size: .82rem; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sent-by { font-size: .78rem; color: var(--ink-soft); text-align: right; } .sent-fail { color: #b42318; font-weight: 700; }
@@ -13918,7 +13921,7 @@
   function sentRows(list, showBy, person){
     return list.map(function(e){
       var dt = new Date(e.created_at), day = dt.toLocaleDateString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', year: dt.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined }), tm = dt.toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
-      return '<details class="sent-row" data-sent="' + e.id + '"' + (person ? ' data-person="1"' : '') + '><summary><div class="sent-when"><b>' + esc(day) + '</b>' + esc(tm) + '</div><div class="sent-main"><b>' + esc(e.subject || '(no subject)') + '</b><span>To ' + esc((e.to_list || []).join(', ')) + (e.cc_list && e.cc_list.length ? ' · cc ' + esc(e.cc_list.join(', ')) : '') + '</span><span>' + esc(String(e.preview || '').replace(/\s+/g, ' ')) + '</span></div>' +
+      return '<details class="sent-row" data-sent="' + e.id + '"' + (person ? ' data-person="1"' : '') + '><summary><div class="sent-when"><b>' + esc(day) + '</b>' + esc(tm) + '</div><div class="sent-main"><b>' + esc(e.subject || '(no subject)') + (e.nfiles ? ' <span class="sent-att" title="' + e.nfiles + ' attachment' + (e.nfiles === 1 ? '' : 's') + '">📎 ' + e.nfiles + '</span>' : '') + '</b><span>To ' + esc((e.to_list || []).join(', ')) + (e.cc_list && e.cc_list.length ? ' · cc ' + esc(e.cc_list.join(', ')) : '') + '</span><span>' + esc(String(e.preview || '').replace(/\s+/g, ' ')) + '</span></div>' +
         '<div class="sent-by">' + (e.ok ? '✓ Sent' : '<span class="sent-fail">✕ Not sent</span>') + (showBy ? '<br>by ' + esc(e.user_name || 'Office') : '') + '</div></summary><div class="sent-body"></div></details>';
     }).join('');
   }
@@ -13952,6 +13955,7 @@
       if (!d || !d.ok) { box.innerHTML = '<p class="muted-note">Couldn’t load this email.</p>'; return; }
       var m = d.email;
       box.innerHTML = '<div class="sent-meta"><span>Sent</span><b>' + esc(new Date(m.created_at).toLocaleString('en-GB', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })) + '</b><span>From</span><b>' + esc((m.user_name || 'Office') + ' — Residential Realtors') + '</b><span>To</span><b>' + esc((m.to_list || []).join(', ')) + '</b>' + (m.cc_list && m.cc_list.length ? '<span>Cc</span><b>' + esc(m.cc_list.join(', ')) + '</b>' : '') + '<span>Replies to</span><b>' + esc(m.reply_to || '') + '</b><span>Subject</span><b>' + esc(m.subject || '') + '</b>' + (m.ok ? '' : '<span>Problem</span><b class="sent-fail">' + esc(m.error || 'It wasn’t sent') + '</b>') + '</div>' +
+        ((m.files || []).length ? '<div class="sent-files"><b>📎 Attached</b>' + m.files.map(function(f){ var u = '/api/admin/sent-emails/' + m.id + '/file/' + f.id + (pq ? pq : ''); return '<div class="sent-file"><span>' + esc(f.name || 'File') + (f.size ? ' <small>' + (f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB') + '</small>' : '') + '</span><a class="btn small" href="' + esc(u) + '" target="_blank" rel="noopener">Open</a><a class="btn small" href="' + esc(u + (pq ? '&' : '?') + 'dl=1') + '">⬇ Download</a></div>'; }).join('') + '</div>' : '') +
         '<div style="display:flex;gap:6px;margin:0 0 8px;flex-wrap:wrap"><button type="button" class="btn small on" data-sv="look">As they saw it</button><button type="button" class="btn small" data-sv="text">Plain text</button><button type="button" class="btn small" data-sv="again">↻ Send again</button></div>' +
         '<iframe class="sent-frame" sandbox="" src="/api/admin/sent-emails/' + m.id + (pq ? pq + '&' : '?') + 'html=1" title="The email as sent"></iframe><pre class="sent-text" hidden>' + esc(m.body || '') + '</pre>';
       box.em = m;

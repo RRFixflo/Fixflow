@@ -790,6 +790,8 @@ CREATE TABLE IF NOT EXISTS sent_emails (
   error       TEXT
 );
 CREATE INDEX IF NOT EXISTS sent_emails_user ON sent_emails (user_id, created_at DESC);
+-- Copies of the attachments sent (email_files ids), to open or download from Sent emails.
+ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS files JSONB NOT NULL DEFAULT '[]'::jsonb;
 CREATE TABLE IF NOT EXISTS pvr_reservations (
   id               SERIAL PRIMARY KEY,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -2048,7 +2050,7 @@ module.exports = function mountJobs(app, opts) {
     if (/^\/pvr(\/\d+(\/pdf)?)?$/.test(path)) return true;
     if (path === '/available-dedupe' || path === '/available-lookup' || path === '/available-clear-let' || /^\/available(\/\d+(\/(rightmove|youtube|dream))?)?$/.test(path) || /^\/(rightmove|youtube)(\/(refresh|settings))?$/.test(path) || /^\/dreams\/\d+$/.test(path)) return true;   // the available list (delete: managers only, checked in the route)   // pre-viewing reservations (delete: managers only, checked in the route)
     if (method === 'DELETE' && /^\/offer-invites\/\d+$/.test(path)) return true;   // managers only (checked in the route)   // landlord terms tab
-    if (method === 'GET' && /^\/sent-emails(\/\d+)?$/.test(path)) return true;   // their own emails only (checked in the route)
+    if (method === 'GET' && /^\/sent-emails(\/\d+(\/file\/\d+)?)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (path === '/available-history' || /^\/available-history\/\d+\/restore$/.test(path)) return true;
     if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;
     if (path === '/crm' || /^\/crm\/(note|meta|archive|recommended|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
@@ -3607,7 +3609,7 @@ module.exports = function mountJobs(app, opts) {
     }
     const sent = await sendEmail({ to: [to], replyTo: who.replyTo, fromName: who.fromName, subject: subject, text: text, html: brandEmail(text, subject), attachments: atts.length ? atts : undefined }).catch(function (err) { return { ok: false, error: err.message }; });
     const attNames = atts.map(function (a) { return a.filename; }).join(', ');
-    logSent(req, [to], [], who.replyTo, subject, text + (attNames ? '\n\n[Attached: ' + attNames + ']' : ''), sent);
+    logSent(req, [to], [], who.replyTo, subject, text + (attNames ? '\n\n[Attached: ' + attNames + ']' : ''), sent, atts.length && sent.ok ? await keepEmailFiles(p, atts) : []);
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
     await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)',
       [id, 'email', 'Emailed ' + to + (attNames ? ' (with ' + attNames + ')' : '') + ' — ' + subject + '\n\n' + text]);
@@ -7405,7 +7407,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // The original's own layout when the wording wasn't changed; else our usual branded email.
     const html = !b.text && m.html ? m.html : brandEmail(text, subject);
     const sent = await sendEmail({ to: to, cc: cc, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: html, attachments: atts });
-    logSent(req, to, cc, 'info@residentialrealtors.co.uk', subject, text, sent);   // in their Sent emails
+    logSent(req, to, cc, 'info@residentialrealtors.co.uk', subject, text, sent, (m.files || []).filter(function (f) { return files.some(function (x) { return x.id === Number(f.id); }); }));   // in their Sent emails
     if (sent && sent.ok === false) return res.status(502).json({ ok: false, error: 'send-failed' });
     await p.query('UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1',
       [id, JSON.stringify([{ at: new Date().toISOString(), text: 'Resent to ' + to.join(', ') + ' — ' + subject + (atts.length ? ' (with ' + atts.map(function (a) { return a.filename; }).join(', ') + ')' : '') + ' (' + who + ')', email: logEmail({ to: to, cc: cc, subject: subject, text: text, html: html, attachments: atts.map(function (a) { return a.filename; }), files: m.files || [] }) }])]);
@@ -7426,9 +7428,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const cc = (Array.isArray(b.cc) ? b.cc : []).map(function (x) { return str(x, 200); }).filter(function (x) { return x && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x) && to.indexOf(x) === -1; }).slice(0, 6);
     officeCc(to, cc);
     const sent = await sendEmail({ to: to, cc: cc, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: text, html: html || brandEmail(text, subject), attachments: atts });
-    logSent(req, to, cc, 'info@residentialrealtors.co.uk', subject, text, sent);   // in their Sent emails
+    const kept = sent.ok ? await keepEmailFiles(p, atts) : [];
+    logSent(req, to, cc, 'info@residentialrealtors.co.uk', subject, text, sent, kept);   // in their Sent emails
     if (!sent.ok) return res.status(502).json({ ok: false, error: 'send-failed' });
-    const kept = await keepEmailFiles(p, atts);
     // Files added to the email that staff marked as the deposit certificate, tenant ID or signed agreement: kept on the tenancy too.
     for (const a of atts.filter(function (x) { return x.kind; })) await addTenancyDoc(p, jobId(req), { data: a.content, name: a.filename, kind: a.kind, by: (req.user && req.user.name) || 'Office', how: 'from the welcome email' });
     await p.query(`UPDATE tenancies SET log = log || $2::jsonb, updated_at = now() WHERE id = $1`,
@@ -8133,15 +8135,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     const r = await sendEmail({ to: to, cc: cc, bcc: b.copy !== false && isEmail(me) && to.concat(cc).indexOf(me) === -1 ? [me] : undefined, replyTo: replyTo, fromName: name, subject: subject, text: text, html: brandEmail(text, subject), attachments: atts }).catch(function (err) { return { ok: false, error: err.message }; });
     // Kept so each person can look back at what they sent, and when.
-    try { await (await db()).query('INSERT INTO sent_emails (user_id, user_name, to_list, cc_list, reply_to, subject, body, ok, error) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-      [req.user && req.user.id ? req.user.id : null, req.user ? req.user.name : 'Office', to, cc, replyTo, subject, text, !!r.ok, r.ok ? null : String(r.error || '').slice(0, 300)]); } catch (e) { console.error('Sent email log failed:', e.message); }
+    try { const pdb = await db(), kept = r.ok && atts && atts.length ? await keepEmailFiles(pdb, atts) : [];
+      await pdb.query('INSERT INTO sent_emails (user_id, user_name, to_list, cc_list, reply_to, subject, body, ok, error, files) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+      [req.user && req.user.id ? req.user.id : null, req.user ? req.user.name : 'Office', to, cc, replyTo, subject, text, !!r.ok, r.ok ? null : String(r.error || '').slice(0, 300), JSON.stringify(kept)]); } catch (e) { console.error('Sent email log failed:', e.message); }
     if (!r.ok) { console.error('Send email failed:', r.error); return res.status(502).json({ ok: false, error: 'send-failed', detail: String(r.error || '').slice(0, 200) }); }
     res.json({ ok: true, replyTo: replyTo });
   });
   // Keep a copy of an email we sent for someone (Sent emails, and the person's history).
-  function logSent(req, to, cc, replyTo, subject, text, r) {
-    return db().then(function (p) { return p && p.query('INSERT INTO sent_emails (user_id, user_name, to_list, cc_list, reply_to, subject, body, ok, error) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-      [req.user && req.user.id ? req.user.id : null, req.user ? req.user.name : 'Office', [].concat(to || []), [].concat(cc || []), replyTo || null, subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]); }).catch(function (e) { console.error('Sent email log failed:', e.message); });
+  function logSent(req, to, cc, replyTo, subject, text, r, files) {
+    return db().then(function (p) { return p && p.query('INSERT INTO sent_emails (user_id, user_name, to_list, cc_list, reply_to, subject, body, ok, error, files) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+      [req.user && req.user.id ? req.user.id : null, req.user ? req.user.name : 'Office', [].concat(to || []), [].concat(cc || []), replyTo || null, subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300), JSON.stringify((files || []).map(function (f) { return { id: f.id, name: f.name, size: f.size || 0 }; }))]); }).catch(function (e) { console.error('Sent email log failed:', e.message); });
   }
   async function senderOf(req) {
     let me = ''; try { if (req.user && req.user.id) me = ((await (await db()).query('SELECT email FROM staff_users WHERE id = $1', [req.user.id])).rows[0] || {}).email || ''; } catch (e) {}
@@ -8168,9 +8171,22 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (to) { vals.push(to); where += ' AND $' + vals.length + ' = ANY (SELECT lower(x) FROM unnest(to_list || cc_list) x)'; }
     const q = str(req.query.q, 100); if (q) { vals.push('%' + q.toLowerCase().replace(/[%_]/g, '') + '%'); where += ' AND (lower(coalesce(subject, \'\')) LIKE $' + vals.length + ' OR lower(array_to_string(to_list || cc_list, \' \')) LIKE $' + vals.length + ' OR lower(coalesce(body, \'\')) LIKE $' + vals.length + ')'; }
     if (sc.all && req.query.who) { vals.push(String(req.query.who).slice(0, 120)); where += ' AND user_name = $' + vals.length; }
-    const r = await p.query('SELECT id, created_at, user_id, user_name, to_list, cc_list, reply_to, subject, left(body, 240) AS preview, ok, error FROM sent_emails ' + where + ' ORDER BY id DESC LIMIT 300', vals);
+    const r = await p.query('SELECT id, created_at, user_id, user_name, to_list, cc_list, reply_to, subject, left(body, 240) AS preview, ok, error, jsonb_array_length(files) AS nfiles FROM sent_emails ' + where + ' ORDER BY id DESC LIMIT 300', vals);
     const people = sc.all ? (await p.query('SELECT user_name, count(*)::int AS n FROM sent_emails GROUP BY user_name ORDER BY lower(user_name)')).rows : [];
     res.json({ ok: true, all: sc.all, emails: r.rows, people: people });
+  }));
+  // An attachment of an email you can see in Sent emails (open, or ?dl=1 to download).
+  app.get('/api/admin/sent-emails/:id/file/:fid', withDb(async function (p, req, res) {
+    const vals = [jobId(req)], sc = sentScope(req, vals, req.query.person === '1');
+    const e = (await p.query('SELECT files FROM sent_emails WHERE id = $1' + sc.where, vals)).rows[0], fid = parseInt(req.params.fid, 10) || 0;
+    const f = e && (e.files || []).filter(function (x) { return Number(x.id) === fid; })[0];
+    if (!f) return res.status(404).send('Not found');
+    const r = (await p.query('SELECT file_name, file_mime, file FROM email_files WHERE id = $1', [fid])).rows[0];
+    if (!r || !r.file) return res.status(404).send('Not found');
+    const name = String(f.name || r.file_name || 'file').replace(/[^\w .,()-]/g, '').slice(0, 150) || 'file';
+    res.setHeader('Content-Type', r.file_mime || 'application/octet-stream'); res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + '; filename="' + name + '"');
+    res.end(r.file);
   }));
   app.get('/api/admin/sent-emails/:id', withDb(async function (p, req, res) {
     const vals = [jobId(req)], sc = sentScope(req, vals, req.query.person === '1');
