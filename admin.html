@@ -625,7 +625,7 @@
   .av-card { background: var(--panel, #fff); border: 1px solid var(--line, #e6e8ec); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px; position: relative; }
   .av-card.is-urgent { border-color: #f3a7a7; box-shadow: 0 0 0 2px #fdecec; } .av-card.is-off { opacity: .6; }
   .av-h { display: flex; gap: 10px; align-items: flex-start; } .av-beds { flex: 0 0 auto; min-width: 46px; text-align: center; border-radius: 12px; background: var(--navy, #0b1f3a); color: #fff; padding: 6px 4px; line-height: 1.1; } .av-beds b { display: block; font-size: 1.2rem; } .av-beds span { font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; opacity: .8; }
-  .av-addr { font-weight: 700; line-height: 1.3; } .av-web { display: block; margin: 4px 0 2px; padding: 5px 8px; border-radius: 8px; background: #fef3f2; color: #912018; font-size: 12px; line-height: 1.4; border: 1px solid #fecdca; } .av-web .linkish { font-size: 12px; font-weight: 700; } a.av-gid-a { text-decoration: none; } a.av-gid-a:hover { text-decoration: underline; } .av-gid-ed { background: none; border: 0; padding: 0 2px; margin-left: 1px; cursor: pointer; font-size: 11px; line-height: 1; opacity: .65; vertical-align: middle; } .av-gid-ed:hover { opacity: 1; } .av-gid.maybe { color: #3538cd; border-color: #a4bcfd; } .av-gid.gone { background: #fef3f2; color: #b42318; border: 1px solid #fda29b; } .av-gid.none { background: #fff; color: var(--ink-soft); border: 1px dashed #c7cbe0; font-weight: 700; } button.av-gid { cursor: pointer; border: 0; font-family: inherit; line-height: 1.5; } .av-gid { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: #eef2ff; color: #3538cd; font-weight: 800; font-size: .74rem; letter-spacing: .02em; white-space: nowrap; } .av-pc { font-size: .8rem; color: var(--ink-soft); }
+  .av-addr { font-weight: 700; line-height: 1.3; } .part-by { color: var(--ink-soft); } .part-by.ctr { color: #b54708; font-weight: 600; } .part-who { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin-top: 10px; font-size: 14px; } .part-who label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; } .av-web { display: block; margin: 4px 0 2px; padding: 5px 8px; border-radius: 8px; background: #fef3f2; color: #912018; font-size: 12px; line-height: 1.4; border: 1px solid #fecdca; } .av-web .linkish { font-size: 12px; font-weight: 700; } a.av-gid-a { text-decoration: none; } a.av-gid-a:hover { text-decoration: underline; } .av-gid-ed { background: none; border: 0; padding: 0 2px; margin-left: 1px; cursor: pointer; font-size: 11px; line-height: 1; opacity: .65; vertical-align: middle; } .av-gid-ed:hover { opacity: 1; } .av-gid.maybe { color: #3538cd; border-color: #a4bcfd; } .av-gid.gone { background: #fef3f2; color: #b42318; border: 1px solid #fda29b; } .av-gid.none { background: #fff; color: var(--ink-soft); border: 1px dashed #c7cbe0; font-weight: 700; } button.av-gid { cursor: pointer; border: 0; font-family: inherit; line-height: 1.5; } .av-gid { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 6px; background: #eef2ff; color: #3538cd; font-weight: 800; font-size: .74rem; letter-spacing: .02em; white-space: nowrap; } .av-pc { font-size: .8rem; color: var(--ink-soft); }
   .av-tags { display: flex; gap: 4px; flex-wrap: wrap; } .av-tag { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: #eef2ff; color: #1d3fae; } .av-tag.urgent { background: #fdecec; color: #b42318; } .av-tag.let { background: #f1f2f4; color: #5f6673; }
   .av-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; } .av-row div { background: var(--panel-2, #f5f6f8); border-radius: 10px; padding: 6px 8px; } .av-row span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); font-weight: 700; } .av-row b { font-size: .92rem; } .av-row .now b { color: #0d7a3d; }
   .av-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -3860,7 +3860,7 @@
     }).join('');
     contractors.forEach(function(c){
       var mine = ctrJobs(c.name);
-      stat[c.id] = { open: mine.filter(isOpen).length, done: mine.filter(function(j){ return j.status === 'Completed'; }).length, total: mine.length, owed: mine.filter(isOwed).reduce(function(a, j){ return a + num(j.actual_cost); }, 0) };
+      stat[c.id] = { open: mine.filter(isOpen).length, done: mine.filter(function(j){ return j.status === 'Completed'; }).length, total: mine.length, owed: mine.filter(isOwed).reduce(function(a, j){ return a + ctrOwe(j); }, 0) };
     });
     var sorted = contractors.slice().sort(function(a, b){
       if (a.active !== b.active) return a.active ? -1 : 1;
@@ -7112,6 +7112,7 @@
       jobInvoices = d.invoices || [];
       jobParts = d.parts || [];
       d.job.parts_cost = jobParts.reduce(function(s, x){ return s + (num(x.cost) || 0); }, 0);
+      d.job.parts_ctr = jobParts.reduce(function(s, x){ return s + (x.paid_by === 'contractor' ? num(x.cost) || 0 : 0); }, 0);
       d.job.parts_charge = jobParts.reduce(function(s, x){ return s + (num(x.charge) || 0); }, 0);
       renderJob(d.job, d.updates, d.photos || []);
       if ((d.updates || []).some(function(u){ return u.kind === 'contractor_note' && !u.seen_at; })) {
@@ -7907,17 +7908,17 @@
           '<div><label class="lbl" for="fCharge">Charge to landlord (£)' + (jobParts.length ? ' <span style="font-weight:500;color:var(--ink-faint)">+ parts below</span>' : '') + '</label><input class="inp" id="fCharge" inputmode="decimal" value="' + esc(j.landlord_charge == null ? '' : j.landlord_charge) + '"><label class="vat-tick"><input type="checkbox" id="fChargeVat"' + (j.charge_vat ? ' checked' : '') + '> + VAT (20%) <span id="fChargeGross"></span></label></div>' +
         '</div>' + mkChips('data-mk-base="#fAct" data-mk-target="#fCharge"', 'Our price = contractor’s price +') +
         '<div class="profit-box" id="profitBox"><div><div class="lbl2" id="profitLbl">Profit</div><div class="big" id="profitVal">—</div></div><div class="lbl2" id="profitMargin"></div></div>' +
-        (j.assigned_to && j.actual_cost != null
+        (j.assigned_to && (j.actual_cost != null || ctrParts(j))
           ? '<div class="nearby" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
-              (j.contractor_paid_at ? '<span><strong>' + esc(j.assigned_to) + ' paid</strong> ' + esc(gbp(j.actual_cost)) + ' · ' + esc(fmtShort(j.contractor_paid_at)) + '</span><button class="btn small" id="unpayBtn" type="button">Undo</button>'
-                : '<span><strong>Owed to ' + esc(j.assigned_to) + ':</strong> ' + esc(gbp(j.actual_cost)) + '</span><button class="btn small primary" id="payBtn" type="button">Mark contractor paid</button>') + '</div>'
+              (j.contractor_paid_at ? '<span><strong>' + esc(j.assigned_to) + ' paid</strong> ' + esc(gbp(ctrOwe(j))) + (ctrParts(j) ? ' (incl. parts ' + esc(gbp(ctrParts(j))) + ')' : '') + ' · ' + esc(fmtShort(j.contractor_paid_at)) + '</span><button class="btn small" id="unpayBtn" type="button">Undo</button>'
+                : '<span><strong>Owed to ' + esc(j.assigned_to) + ':</strong> ' + esc(gbp(ctrOwe(j))) + (ctrParts(j) ? ' <small>(their price ' + esc(gbp(num(j.actual_cost) || 0)) + ' + parts they bought ' + esc(gbp(ctrParts(j))) + ')</small>' : '') + '</span><button class="btn small primary" id="payBtn" type="button">Mark contractor paid</button>') + '</div>'
           : '') +
         '<div class="row-actions">' +
           '<button class="btn primary" id="saveMoney" type="button">Save costs</button></div>' +
       '</div>' +
       '<div class="card" data-pane="money" id="partsCard"><h3>Parts' + (jobParts.length ? ' <span class="count-chip">' + jobParts.length + '</span>' : '') + '</h3>' +
         (jobParts.length ? '<div class="parts-list">' + jobParts.map(function(x){
-          return '<div class="part-row" data-part="' + x.id + '"><div class="pd"><strong>' + esc(x.description) + '</strong>' + (x.supplier ? '<small>' + esc(x.supplier) + '</small>' : '') + '</div>' +
+          return '<div class="part-row" data-part="' + x.id + '"><div class="pd"><strong>' + esc(x.description) + '</strong>' + (x.supplier ? '<small>' + esc(x.supplier) + '</small>' : '') + '<small class="part-by' + (x.paid_by === 'contractor' ? ' ctr' : '') + '">' + (x.paid_by === 'contractor' ? '🧰 Contractor bought it — paid back to ' + esc(j.assigned_to || 'them') : '🏢 We bought it') + '</small></div>' +
             '<select class="inp part-st" data-part-status="' + x.id + '" aria-label="Part status">' + ['Ordered', 'Arrived', 'Fitted'].map(function(s){ return '<option' + (s === x.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
             '<div class="pm"><span>Cost ' + (x.cost == null ? '<em style="color:var(--red,#c00)">not set</em>' : esc(gbp(num(x.cost)))) + '</span><span class="pc">Landlord ' + (x.charge == null ? '<em style="color:var(--red,#c00)">not set</em>' : esc(gbp(num(x.charge))) + mkPct(x.cost, x.charge)) + '</span>' +
               '<button type="button" class="linkish" data-part-edit="' + x.id + '">✎ Edit</button></div>' +
@@ -7925,8 +7926,9 @@
             '<div class="part-edit" data-part-form="' + x.id + '" style="grid-column:1/-1;display:none;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;align-items:end">' +
               '<div><label class="lbl">Part</label><input class="inp" data-pe="description" value="' + esc(x.description || '') + '"></div>' +
               '<div><label class="lbl">Supplier</label><input class="inp" data-pe="supplier" value="' + esc(x.supplier || '') + '"></div>' +
-              '<div><label class="lbl">What we paid (£)</label><input class="inp" data-pe="cost" inputmode="decimal" placeholder="0.00" value="' + esc(x.cost == null ? '' : x.cost) + '"></div>' +
+              '<div><label class="lbl">Part cost (£)</label><input class="inp" data-pe="cost" inputmode="decimal" placeholder="0.00" value="' + esc(x.cost == null ? '' : x.cost) + '"></div>' +
               '<div><label class="lbl">Charge to landlord (£)</label><input class="inp" data-pe="charge" inputmode="decimal" placeholder="0.00" value="' + esc(x.charge == null ? '' : x.charge) + '"></div>' +
+              '<div><label class="lbl">Who bought it?</label><select class="inp" data-pe="paid_by"><option value="">We did (the office)</option><option value="contractor"' + (x.paid_by === 'contractor' ? ' selected' : '') + '>The contractor — pay them back</option></select></div>' +
               '<div><button type="button" class="btn small primary" data-part-save="' + x.id + '">Save part</button></div>' +
               '<div style="grid-column:1/-1">' + mkChips('data-mk-scope="[data-part-form]" data-mk-base="[data-pe=cost]" data-mk-target="[data-pe=charge]"', 'Landlord price = what we paid +') + '</div></div>' +
             (x.cost != null && num(x.cost) > 0 ? '<div style="grid-column:1/-1">' + mkChips('data-mk-part="' + x.id + '" data-mk-job="' + j.id + '" data-mk-cost="' + num(x.cost) + '"', num(x.charge) > num(x.cost) ? 'Change markup:' : 'Add our markup:') + '</div>' : '') +
@@ -7934,16 +7936,18 @@
               '<button type="button" class="btn small" data-part-tell="tenant" data-pid="' + x.id + '">💬 Tell tenant</button>' +
               '<button type="button" class="btn small" data-part-tell="landlord" data-pid="' + x.id + '">🏠 Tell landlord</button></div></div>';
         }).join('') + '</div>' +
-          '<div class="parts-total">Parts total: cost <strong>' + esc(gbp(j.parts_cost)) + '</strong> · charged to landlord <strong>' + esc(gbp(j.parts_charge)) + '</strong></div>' : '<p class="muted-note">No parts yet. Add any parts ordered for this job — the landlord charge is added to the job’s total and invoice.</p>') +
+          '<div class="parts-total">Parts total: cost <strong>' + esc(gbp(j.parts_cost)) + '</strong> · charged to landlord <strong>' + esc(gbp(j.parts_charge)) + '</strong>' + (ctrParts(j) ? ' · <strong>' + esc(gbp(ctrParts(j))) + '</strong> to pay back to ' + esc(j.assigned_to || 'the contractor') : '') + '</div>' : '<p class="muted-note">No parts yet. Add any parts ordered for this job — the landlord charge is added to the job’s total and invoice.</p>') +
         (jobParts.some(function(x){ return x.status === 'Ordered'; }) && j.status !== 'Awaiting parts' && isOpen(j) ? '<div class="nearby" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>Waiting for parts to arrive?</span><button class="btn small" id="partsAwait" type="button">Set status to Awaiting parts</button></div>' : '') +
         (j.status === 'Awaiting parts' && jobParts.length && jobParts.every(function(x){ return x.status !== 'Ordered'; }) ? '<div class="nearby" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>All parts have arrived.</span><button class="btn small primary" id="partsBack" type="button">Set status to Contractor booked</button></div>' : '') +
         '<div class="part-add"><div class="grid2">' +
           '<div><label class="lbl" for="ptDesc">Part</label><input class="inp" id="ptDesc" placeholder="e.g. Boiler diverter valve"></div>' +
           '<div><label class="lbl" for="ptSupplier">Supplier (optional)</label><input class="inp" id="ptSupplier" placeholder="e.g. Screwfix"></div>' +
         '</div><div class="grid2" style="margin-top:10px">' +
-          '<div><label class="lbl" for="ptCost">What we paid (£)</label><input class="inp" id="ptCost" inputmode="decimal" placeholder="0.00"></div>' +
+          '<div><label class="lbl" for="ptCost">Part cost (£)</label><input class="inp" id="ptCost" inputmode="decimal" placeholder="0.00"></div>' +
           '<div><label class="lbl" for="ptCharge">Charge to landlord (£)</label><input class="inp" id="ptCharge" inputmode="decimal" placeholder="0.00"></div>' +
-        '</div>' + mkChips('data-mk-base="#ptCost" data-mk-target="#ptCharge"', 'Landlord price = what we paid +') + '<div class="row-actions"><button class="btn primary" id="ptAdd" type="button">+ Add part</button></div></div>' +
+        '</div><div class="part-who" role="radiogroup" aria-label="Who bought the part?"><span class="lbl" style="margin:0">Who bought it?</span>' +
+          '<label><input type="radio" name="ptBy" value="" checked> We did (the office)</label>' +
+          '<label><input type="radio" name="ptBy" value="contractor"> ' + (j.assigned_to ? esc(j.assigned_to) + ' (the contractor)' : 'The contractor') + ' — add it to what we pay them</label></div>' + mkChips('data-mk-base="#ptCost" data-mk-target="#ptCharge"', 'Landlord price = what we paid +') + '<div class="row-actions"><button class="btn primary" id="ptAdd" type="button">+ Add part</button></div></div>' +
       '</div>' +
       '<div class="card" data-pane="money"><h3>Landlord invoices' + (jobInvoices.length ? ' <span class="count-chip">' + jobInvoices.length + '</span>' : '') + '</h3>' +
         (jobInvoices.length
@@ -8744,7 +8748,7 @@
       var cost = $('ptCost').value.replace(/[£,\s]/g, ''), charge = $('ptCharge').value.replace(/[£,\s]/g, '');
       if ((cost && !(Number(cost) >= 0)) || (charge && !(Number(charge) >= 0))) { toast('Please enter amounts as numbers, e.g. 45.99'); return; }
       busy($('ptAdd'), true, 'Adding…');
-      api('POST', '/api/admin/jobs/' + j.id + '/parts', { description: desc, supplier: $('ptSupplier').value, cost: cost, charge: charge }).then(function(d){
+      api('POST', '/api/admin/jobs/' + j.id + '/parts', { description: desc, supplier: $('ptSupplier').value, cost: cost, charge: charge, paid_by: (document.querySelector('input[name="ptBy"]:checked') || {}).value || '' }).then(function(d){
         busy($('ptAdd'), false);
         if (!d.ok) { toast('Couldn’t add the part (' + (d.error || 'error') + ')'); return; }
         partJust = d.part && d.part.id; partsReload('Part added — let the tenant know it’s on order');
@@ -8765,7 +8769,7 @@
         var c = val('cost').replace(/[£,\s]/g, ''), ch = val('charge').replace(/[£,\s]/g, '');
         if ((c && !(Number(c) >= 0)) || (ch && !(Number(ch) >= 0))) { toast('Please enter amounts as numbers, e.g. 45.99'); return; }
         busy(sv, true, 'Saving…');
-        api('PATCH', '/api/admin/parts/' + sv.dataset.partSave, { description: val('description'), supplier: val('supplier'), cost: c, charge: ch }).then(function(d){
+        api('PATCH', '/api/admin/parts/' + sv.dataset.partSave, { description: val('description'), supplier: val('supplier'), cost: c, charge: ch, paid_by: val('paid_by') }).then(function(d){
           busy(sv, false);
           if (!d.ok) { toast('Couldn’t save the part (' + (d.error || 'error') + ')'); return; }
           partsReload('Part updated');
@@ -10222,10 +10226,13 @@
   // Owed: a job with a contractor and an actual cost that hasn't been marked paid.
   // Missing a cost: a completed job with a contractor but no actual cost yet.
   var payTab = 'owed';
-  function isOwed(j){ return j.assigned_to && num(j.actual_cost) > 0 && !j.contractor_paid_at && j.status !== 'Cancelled'; }
+  // What we owe the contractor for a job: their price, plus any parts they bought themselves (paid back to them).
+  function ctrParts(j){ return num(j.parts_ctr) || 0; }
+  function ctrOwe(j){ return (num(j.actual_cost) || 0) + ctrParts(j); }
+  function isOwed(j){ return j.assigned_to && ctrOwe(j) > 0 && !j.contractor_paid_at && j.status !== 'Cancelled'; }
   function needsCost(j){ return j.assigned_to && j.status === 'Completed' && j.actual_cost == null; }
   // What we actually pay the contractor: their price, plus VAT when they charge it.
-  function costToPay(j){ var c = num(j.actual_cost) || 0; return j.cost_vat ? Math.round(c * 120) / 100 : c; }
+  function costToPay(j){ var c = num(j.actual_cost) || 0; return (j.cost_vat ? Math.round(c * 120) / 100 : c) + ctrParts(j); }
   function owedTotal(){ return jobs.filter(isOwed).reduce(function(a, j){ return a + costToPay(j); }, 0); }
   function markPaid(ids, paid){
     return api('POST', '/api/admin/contractor-payments', { job_ids: ids, paid: paid }).then(function(d){
@@ -10293,7 +10300,7 @@
       var box = t.closest('.pay-group');
       var ids = Array.from(box.querySelectorAll('input[data-pay-job]')).filter(function(i){ return t.dataset.payAll || i.checked; }).map(function(i){ return Number(i.dataset.payJob); });
       if (!ids.length) { toast('Tick the jobs you’ve paid first'); return; }
-      var sum = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; }).reduce(function(a, j){ return a + num(j.actual_cost); }, 0);
+      var sum = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; }).reduce(function(a, j){ return a + ctrOwe(j); }, 0);
       if (!confirm('Mark ' + ids.length + ' job' + (ids.length === 1 ? '' : 's') + ' as paid to ' + name + ' (' + gbp(sum) + ')?')) return;
       markPaid(ids, true);
     }
@@ -10307,7 +10314,7 @@
     var name = openCtrName; if (!name) return;
     var c = contractorByName(name) || { name: name }, list = ctrJobs(name);
     var open = list.filter(isOpen), done = list.filter(function(j){ return j.status === 'Completed'; }), owed = list.filter(isOwed), paid = list.filter(function(j){ return j.contractor_paid_at; }), nocost = list.filter(needsCost);
-    var sum = function(a){ return a.reduce(function(t, j){ return t + (num(j.actual_cost) || 0); }, 0); };
+    var sum = function(a){ return a.reduce(function(t, j){ return t + ctrOwe(j); }, 0); };
     var yearStart = new Date(new Date().getFullYear(), 0, 1);
     var wa = waNumber(c.phone);
     var tabs = [['open', 'Open', open.length], ['done', 'Done', done.length], ['owed', 'Owed', owed.length], ['paid', 'Paid', paid.length]];
@@ -10343,7 +10350,7 @@
           '<div class="addr" data-open="' + j.id + '" style="cursor:pointer">' + esc(j.property_address || 'No address') + '<small>' + esc(j.summary || issueOf(j)) + '</small></div>' +
           '<div class="when">' + esc(ctrTab === 'paid' ? 'Paid ' + fmtShort(j.contractor_paid_at) : j.status === 'Completed' ? 'Done ' + fmtShort(j.completed_at || j.updated_at) : j.status) + '</div>' +
           '<div class="amt">' + (ctrTab === 'open' ? '<button type="button" class="btn small" data-ctr-send="' + j.id + '">Resend</button>'
-            : num(j.actual_cost) !== null ? gbp(j.actual_cost) : j.status === 'Completed' ? '<button type="button" class="link" data-open-money="' + j.id + '">Add cost</button>' : '—') + '</div>' +
+            : num(j.actual_cost) !== null || ctrParts(j) ? gbp(ctrOwe(j)) + (ctrParts(j) ? '<small style="display:block;font-weight:500;color:var(--ink-faint)">inc. parts ' + gbp(ctrParts(j)) + '</small>' : '') : j.status === 'Completed' ? '<button type="button" class="link" data-open-money="' + j.id + '">Add cost</button>' : '—') + '</div>' +
         '</div>';
       }).join('') : '<div class="empty">' + { open: 'No open jobs with ' + esc(c.name) + '.', done: 'No completed jobs yet.', owed: 'Nothing owed — all paid up.', paid: 'No payments marked yet.' }[ctrTab] + '</div>') + '</div>';
     $('ctrBack').addEventListener('click', goBack);
@@ -10352,7 +10359,7 @@
     var payIds = function(all){ return Array.from($('ctrView').querySelectorAll('[data-ctr-job]')).filter(function(i){ return all || i.checked; }).map(function(i){ return Number(i.dataset.ctrJob); }); };
     var pay = function(all){
       var ids = payIds(all); if (!ids.length) { toast('Tick the jobs you’ve paid first'); return; }
-      var total = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; }).reduce(function(a, j){ return a + num(j.actual_cost); }, 0);
+      var total = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; }).reduce(function(a, j){ return a + ctrOwe(j); }, 0);
       if (!confirm('Mark ' + ids.length + ' job' + (ids.length === 1 ? '' : 's') + ' as paid to ' + c.name + ' (' + gbp(total) + ')?')) return;
       markPaid(ids, true).then(function(){ if (view === 'ctr') renderContractorPage(); });
     };
