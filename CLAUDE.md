@@ -101,6 +101,8 @@ Public website changes must respect `prefers-reduced-motion`, work without horiz
 
 ## User preferences learned so far
 
+- Job parts: each part says who bought it (`job_parts.paid_by`: empty = the office, `contractor` = the contractor bought it). Parts the contractor bought are added to what we owe them (`parts_ctr`; `ctrOwe`/`costToPay` in admin.html: Owed to…, Payments, contractor pages, “Contractor paid” note); parts a contractor adds from their job link count as theirs. The landlord is charged the same either way.
+
 - A new repair job with no contractor pops up for the owner (not staff mode) to assign one (`newJobPrompt`: suggested contractor from the job's trade or the one chosen before for that kind of job; Assign sets it and opens the job; Later asks again in 2 hours, `rr_nj_later`).
 - Quick search (Ctrl K): matching properties come first, then jobs, tenants and the rest.
 - Offer form: right to rent (UK/Irish passport question, share code, passport/visa upload) is optional — “you can send this later”; only a share code that's been typed must be valid; an offer with no ID shows it as missing for the office to chase. Once they've paid (or said they've paid), the applicant's tracking page `/offer/track/<token>` has “Add your ID”: per tenant still missing ID or a share code, the passport question, share code and ID files (`POST /api/offers/track/:token/id` → `offer_docs` and `data.tenants`, logged and alerted to the offers staff). Nothing else in a sent offer can be changed.
