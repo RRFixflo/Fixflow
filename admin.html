@@ -749,6 +749,9 @@
   .appl-tabs button.on { background: var(--navy, #0b1f3a); color: #fff; border-color: transparent; } .appl-tabs button b { margin-left: 4px; }
   .crm-new { padding: 10px 14px; border-radius: 12px; background: #ecfdf3; color: #067647; font-weight: 600; margin: 0 0 10px; }
   .crm-flag.new { background: #d1fadf; color: #05603a; }
+  .ll-note { padding: 9px 0; border-top: 1px solid var(--line, #e6e8ec); } .ll-note span { display: block; white-space: pre-wrap; overflow-wrap: anywhere; } .ll-note small { color: #667085; }
+  .ll-notes .crm-add-note { margin-bottom: 8px; }
+  .vw-fb { margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: #f9fafb; font-size: .86rem; } .vw-fb b { color: #101828; }
   .appl-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 16px 12px 52px; }
   .appl-qf { flex-basis: 100%; display: grid; gap: 6px; } .appl-qb { display: flex; gap: 6px; flex-wrap: wrap; }
   @media (max-width: 700px) { .appl-quick { padding: 0 12px 10px; } }
@@ -1961,6 +1964,7 @@
           </div>
           <div id="llAvBanner"></div>
           <div id="llPayTo"></div>
+          <div class="card ll-notes" id="llNotes" style="margin-bottom:12px"></div>
           <div class="card" id="llAcct" style="margin-bottom:12px"></div>
           <div class="card" id="llCard"></div>
           <div class="card" id="llTerms" style="margin-top:12px" hidden></div>
@@ -9404,7 +9408,8 @@
       : '<span class="crm-flag warn">🔓 Open to anyone' + (hold.who ? (hold.since === null ? ' · no contact from ' + esc(hold.who) + ' yet' : ' · no contact from ' + esc(hold.who) + ' for ' + hrs(hold.since)) : '') + '</span>';
     var vd = ap && VERDICT[x.verdict] ? '<span class="crm-flag" style="color:' + VERDICT[x.verdict][2] + '">' + VERDICT[x.verdict][0] + ' ' + VERDICT[x.verdict][1] + '</span>' : '';
     var up = (x.viewings || []).filter(function(v){ return new Date(v.at).getTime() > Date.now() - 3 * 3600000; })[0];
-    var gflags = (crm.mode === 'appl' && x.group && crm.seen != null && x.group.some(function(i){ return i.id > crm.seen; }) ? '<span class="crm-flag new">🆕 New</span>' : '') + (x.group && x.group.length > 1 ? '<span class="crm-flag" title="Enquiries from the same email or phone number, joined">🔗 ' + x.group.length + ' enquiries</span>' : '') + (up ? '<span class="crm-flag ok">🗓 Viewing ' + esc(fmtWhen(up.at)) + (up.staff ? ' · ' + esc(up.staff) : '') + '</span>' : '');
+    var gflags = (crm.mode === 'appl' && x.group && crm.seen != null && x.group.some(function(i){ return i.id > crm.seen; }) ? '<span class="crm-flag new">🆕 New</span>' : '') + (x.group && x.group.length > 1 ? '<span class="crm-flag" title="Enquiries from the same email or phone number, joined">🔗 ' + x.group.length + ' enquiries</span>' : '') + (up ? '<span class="crm-flag ok">🗓 Viewing ' + esc(fmtWhen(up.at)) + (up.staff ? ' · ' + esc(up.staff) : '') + '</span>' : '') +
+      (function(){ var fv = (x.viewings || []).filter(function(v){ return v.app_fb_at; }).sort(function(a, b){ return new Date(b.app_fb_at) - new Date(a.app_fb_at); })[0], f = fv && fv.app_fb || {}; return fv ? '<span class="crm-flag' + (f.interest === 'yes' ? ' ok' : '') + '" title="Their feedback after the viewing">⭐ Feedback ' + (f.rating || '–') + '/5' + (f.interest === 'yes' ? ' · wants to offer' : f.interest === 'maybe' ? ' · has questions' : f.interest === 'no' ? ' · not for them' : '') + '</span>' : ''; })();
     var flags = gflags + holdFlag + vd + (x.archived ? '<span class="crm-flag">🗄 Archived ' + esc(fmtShort(x.archived)) + (x.archivedBy ? ' by ' + esc(x.archivedBy) : '') + '</span>' : '') + (need ? '<span class="crm-flag warn">📣 ' + esc(need) + '</span>' : '') + (x.type === 'viewing' && !d.confirmed && x.status !== 'lost' ? '<span class="crm-flag warn">Time to confirm</span>' : '') + (x.type === 'viewing' && d.confirmed ? '<span class="crm-flag ok">🗓 ' + esc(crmSlot(d.confirmed)) + '</span>' : '') +
       (x.follow && need !== 'Follow-up due' ? '<span class="crm-flag' + (x.follow <= today && x.status !== 'won' && x.status !== 'lost' ? ' warn' : '') + '">⏰ ' + (x.follow === today ? 'Today' : x.follow < today ? 'Overdue · ' + esc(fmtDateOnly(x.follow)) : esc(fmtDateOnly(x.follow))) + '</span>' : '') + (x.assigned ? '<span class="crm-flag">👤 ' + esc(x.assigned) + '</span>' : '') + (x.notes.filter(function(n){ return !n.auto; }).length ? '<span class="crm-flag">📝 ' + x.notes.filter(function(n){ return !n.auto; }).length + '</span>' : '');
     var acts = (tel ? '<a class="crm-act" href="tel:' + esc(tel) + '" title="Call ' + esc(x.phone) + '">📞<span> Call</span></a>' : '') + (wa ? '<a class="crm-act wa" href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener" title="WhatsApp">💬<span> WhatsApp</span></a>' : '') + (x.email ? '<a class="crm-act" href="mailto:' + esc(x.email) + '" title="Email ' + esc(x.email) + '">✉️<span> Email</span></a>' : '');
@@ -9444,7 +9449,10 @@
     if (x.type === 'call') h += (d.urgent ? '<div class="crm-flag warn" style="display:inline-block;margin:6px 0">🚨 Marked urgent by the phone assistant</div>' : '') + (d.transcript ? '<details class="call-tr"><summary>📞 The whole call' + (d.caller_id ? ' · rang from ' + esc(d.caller_id.replace(/^\+44/, '0')) : '') + '</summary><pre>' + esc(d.transcript) + '</pre></details>' : '');
     // The same person's other enquiries, and their viewings.
     if (x.group && x.group.length > 1) h += '<b>All their enquiries</b><ul class="appl-enq">' + x.group.map(function(i){ var tt = CRM_T[i.type] || CRM_T.enquiry; return '<li>' + tt[0] + ' ' + esc(tt[1]) + (i.address ? ' · ' + esc(i.address) : '') + (i.data.url ? ' · <a href="' + esc(i.data.url) + '" target="_blank" rel="noopener">listing ↗</a>' : '') + '<small>🕒 ' + esc(fmtWhen(i.at)) + (i.data.message ? ' · “' + esc(String(i.data.message).slice(0, 140)) + (String(i.data.message).length > 140 ? '…' : '') + '”' : '') + '</small></li>'; }).join('') + '</ul>';
-    if ((x.viewings || []).length) h += '<b>Viewings</b><ul class="appl-enq">' + x.viewings.map(function(v){ return '<li>🗓 ' + esc(fmtWhen(v.at)) + (v.property_address ? ' · ' + esc(shortAddr(v.property_address)) : '') + '<small>' + esc(v.staff || v.created_by || '') + ' · ' + esc({ booked: 'Booked', done: 'Done', no_show: 'Didn’t show' }[v.status] || v.status || '') + '</small></li>'; }).join('') + '</ul>';
+    if ((x.viewings || []).length) h += '<b>Viewings &amp; feedback</b><ul class="appl-enq">' + x.viewings.map(function(v){ var f = v.app_fb || {};
+      return '<li>🗓 ' + esc(fmtWhen(v.at)) + (v.property_address ? ' · ' + esc(shortAddr(v.property_address)) : '') + '<small>' + esc(v.staff || v.created_by || '') + ' · ' + esc({ booked: 'Booked', done: 'Done', no_show: 'Didn’t show' }[v.status] || v.status || '') + (v.fb_sent_at && !v.app_fb_at ? ' · feedback form sent ' + esc(fmtShort(v.fb_sent_at)) + ', no reply yet' : '') + '</small>' +
+        (v.app_fb_at ? '<div class="vw-fb"><b>Their feedback</b> · ' + esc(fmtShort(v.app_fb_at)) + '<br>' + '⭐ ' + (f.rating || '–') + '/5 · ' + esc({ yes: 'Yes — wants to make an offer', maybe: 'Maybe — has questions', no: 'No — not for them' }[f.interest] || '') + (f.liked ? '<br>👍 Liked: ' + esc(f.liked) : '') + (f.disliked ? '<br>👎 Didn’t like / questions: ' + esc(f.disliked) : '') + (f.service ? '<br>Our service: ' + esc(f.service) : '') + '</div>' : '') +
+        (v.feedback ? '<div class="vw-fb"><b>Our notes from the viewing</b><br>' + esc(v.feedback) + '</div>' : '') + '</li>'; }).join('') + '</ul>';
     // Viewing request: confirm one of their times, or another.
     if (x.type === 'viewing') {
       h += '<div class="crm-vw"><b>' + (d.confirmed ? '✓ Confirmed for ' + esc(crmSlot(d.confirmed)) + (d.confirmed_by ? ' <span class="muted-note" style="margin:0">by ' + esc(d.confirmed_by) + '</span>' : '') : (d.slots && d.slots.length ? 'Times they suggested — tap one to confirm it and email them' : 'They’re flexible — pick a time below')) + '</b>' +
@@ -10002,6 +10010,22 @@
         unpaid: allInvoices.filter(function(i){ return !i.paid_at && propKey(i.property_address) === pk; }), openJobs: jobs.filter(function(j){ return isOpen(j) && propKey(j.property_address) === pk; }) });
     });
   }
+  // Notes about the landlord: anything worth remembering, dated and signed (the old single "Notes" box shows first).
+  function loadLlNotes(l){
+    var box = $('llNotes'); if (!box) return;
+    box.innerHTML = '<h3 style="margin:0 0 8px">📝 Notes</h3><p class="muted-note" style="margin:0">Loading…</p>';
+    api('GET', '/api/admin/landlords/' + l.id + '/notes').then(function(d){
+      if (openLlId !== l.id || !d || !d.ok) return;
+      box.innerHTML = '<h3 style="margin:0 0 8px">📝 Notes <span class="count-chip">' + d.notes.length + '</span></h3>' +
+        '<div class="crm-add-note"><textarea class="inp" rows="2" id="llNoteText" placeholder="Anything to remember — how they like to be contacted, keys, plans for the property, what was agreed…"></textarea><button type="button" class="btn small primary" id="llNoteAdd">Add note</button></div>' +
+        (l.notes ? '<div class="ll-note"><span>' + esc(l.notes) + '</span><small>From their details</small></div>' : '') +
+        d.notes.map(function(n){ return '<div class="ll-note"><span>' + esc(n.note) + '</span><small>' + esc(n.by_name || '') + ' · ' + esc(fmtShort(n.at)) + (n.by_name === d.me || meta.canManageUsers ? ' · <button type="button" class="linkish" data-lln-del="' + n.id + '">Delete</button>' : '') + '</small></div>'; }).join('') +
+        (!d.notes.length && !l.notes ? '<p class="muted-note" style="margin:6px 0 0">No notes yet.</p>' : '');
+      $('llNoteAdd').addEventListener('click', function(){ var t = $('llNoteText').value.trim(), b = this; if (!t) { $('llNoteText').focus(); return; } busy(b, true, 'Saving…');
+        api('POST', '/api/admin/landlords/' + l.id + '/notes', { note: t }).then(function(r){ busy(b, false); if (!r || !r.ok) { toast('Couldn’t save the note'); return; } toast('✓ Note added'); loadLlNotes(l); }); });
+      box.querySelectorAll('[data-lln-del]').forEach(function(b){ b.addEventListener('click', function(){ if (!confirm('Delete this note?')) return; api('POST', '/api/admin/landlord-notes/' + b.dataset.llnDel + '/delete', {}).then(function(r){ if (!r || !r.ok) { toast('Couldn’t delete it'); return; } loadLlNotes(l); }); }); });
+    });
+  }
   function renderLandlord(){
     var l = landlordById(openLlId);
     if (!l) { $('llBack').click(); return; }
@@ -10038,6 +10062,7 @@
     $('llCard').innerHTML = '<dl class="kv">' + [['Name', l.name], ['Phone', l.phone], ['Email', l.email], ['Address (for invoices)', l.address], ['Notes', l.notes]]
       .filter(function(r){ return r[1]; }).map(function(r){ return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
     $('llEditBtn').addEventListener('click', function(){ openLandlordForm(l); });
+    loadLlNotes(l);
     $('llProps').innerHTML = props.length ? props.map(function(x){
       var o = x.jobs.filter(isOpen).length;
       return '<div class="prop-row" style="cursor:default"><div class="addr"><button type="button" class="btn ghost small" style="padding:0;font-weight:600" data-prop="' + esc(x.key) + '">' + esc(x.address) + '</button></div>' +

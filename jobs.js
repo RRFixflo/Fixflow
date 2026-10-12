@@ -146,6 +146,15 @@ ALTER TABLE landlords ADD COLUMN IF NOT EXISTS portal_token TEXT;
 ALTER TABLE landlords ADD COLUMN IF NOT EXISTS link_sent JSONB;
 -- Who the rent money is paid to, when it isn't the landlord personally (e.g. their company).
 ALTER TABLE landlords ADD COLUMN IF NOT EXISTS pay_to TEXT;
+-- Notes about a landlord (who wrote it, when), shown on their page.
+CREATE TABLE IF NOT EXISTS landlord_notes (
+  id          SERIAL PRIMARY KEY,
+  landlord_id INTEGER NOT NULL,
+  note        TEXT NOT NULL,
+  by_name     TEXT,
+  at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS landlord_notes_ll ON landlord_notes (landlord_id, at DESC);
 CREATE TABLE IF NOT EXISTS property_landlords (
   property_key TEXT PRIMARY KEY,
   address      TEXT,
@@ -10796,6 +10805,21 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!t.length) return res.status(404).json({ ok: false, error: 'not-found' });
     res.json(Object.assign({ ok: true }, await accountFor(p, t)));
   }));
+  // Notes about a landlord: anything staff want to remember, dated and signed.
+  app.get('/api/admin/landlords/:id/notes', withDb(async function (p, req, res) {
+    res.json({ ok: true, notes: (await p.query('SELECT id, note, by_name, at FROM landlord_notes WHERE landlord_id = $1 ORDER BY at DESC LIMIT 300', [jobId(req)])).rows, me: req.user ? req.user.name : 'Office' });
+  }));
+  app.post('/api/admin/landlords/:id/notes', withDb(async function (p, req, res) {
+    const note = str((req.body || {}).note, 4000); if (!note) return res.status(400).json({ ok: false });
+    const r = await p.query('INSERT INTO landlord_notes (landlord_id, note, by_name) VALUES ($1, $2, $3) RETURNING id', [jobId(req), note, req.user ? req.user.name : 'Office']);
+    res.json({ ok: true, id: r.rows[0].id });
+  }));
+  app.post('/api/admin/landlord-notes/:id/delete', withDb(async function (p, req, res) {
+    const n = (await p.query('SELECT by_name FROM landlord_notes WHERE id = $1', [jobId(req)])).rows[0]; if (!n) return res.status(404).json({ ok: false });
+    if (n.by_name !== (req.user ? req.user.name : 'Office') && !canManageUsers(req)) return res.status(403).json({ ok: false, error: 'not-yours' });
+    await p.query('DELETE FROM landlord_notes WHERE id = $1', [jobId(req)]);
+    res.json({ ok: true });
+  }));
   app.get('/api/admin/landlords/:id/account', withDb(async function (p, req, res) {
     res.json(Object.assign({ ok: true }, await landlordAccount(p, jobId(req))));
   }));
@@ -12012,7 +12036,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     try { staff = (await p.query('SELECT name FROM staff_users WHERE disabled_at IS NULL ORDER BY name')).rows.map(function (x) { return x.name; }); } catch (e) {}
     // Viewings (to see who's booked or done one with an applicant): the last 4 months and everything coming up.
     let vws = [];
-    try { vws = (await p.query("SELECT id, lead_id, at, staff, created_by, status, email, phone, property_address FROM viewings WHERE status <> 'cancelled' AND at > now() - interval '120 days' ORDER BY at")).rows; } catch (e) {}
+    try { vws = (await p.query("SELECT id, lead_id, at, staff, created_by, status, email, phone, property_address, app_fb, app_fb_at, feedback, fb_sent_at FROM viewings WHERE status <> 'cancelled' AND at > now() - interval '120 days' ORDER BY at")).rows; } catch (e) {}
     res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, viewings: vws, staff: staff, me: req.user ? req.user.name : '', manager: !!canManageUsers(req), junk: await junkList(p) });
   }));
   app.post('/api/admin/crm/note', withDb(async function (p, req, res) {
