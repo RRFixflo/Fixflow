@@ -1,5 +1,5 @@
 {
- "version": "V100719",
+ "version": "V121026",
  "clauses": [
   {
    "n": "1.0",
@@ -563,7 +563,11 @@
   },
   {
    "n": "2.13.1",
-   "t": "You agree to comply with landlord licensing schemes operated by the local authority and to pay all fees and complete all documentation required. The landlord license must be applied for by the landlord."
+   "t": "You agree to comply with landlord licensing schemes operated by the local authority and to pay all fees and complete all documentation required. The landlord licence must be applied for by the landlord."
+  },
+  {
+   "n": "2.13.2",
+   "t": "Obtaining and keeping any licence the Property needs is your responsibility. Residential Realtors is not liable for any loss, fine, penalty, rent repayment order, claim or cost arising because the Property is not licensed, or does not meet the conditions of its licence. You agree to indemnify Residential Realtors in full against any such claim, demand, liability or cost, including where it is made against us as your agent."
   },
   {
    "n": "2.14",
@@ -761,6 +765,7 @@
  "declaration": [
   "I/we declare that I am/we are the sole/joint owner(s) of the Freehold/Leasehold property as stated above and that prior to the commencement of the tenancy all furniture and upholstered furniture, soft furnishings, beds, mattresses, pillows and cushions (if any) supplied to the property, comply (if appropriate) with the provisions of the Furniture and Furnishings (Fire) (Safety) Regulations 1988 and (Amendment) 1993, and warrant that the property complies with the Gas Safety (Installation and Use) Regulations 1998 and the Electrical Equipment (Safety) Regulations 1994.",
   "The fees set out in \"Your agreed fees\" are the fees agreed between the parties and are the prevailing rate for the purpose of this Agreement. In the event of any conflict with our standard fees, the agreed fees prevail. I hereby instruct Residential Realtors to act as agents on my behalf. I authorise Residential Realtors to sign the tenancy agreement, and any other documents needed for the letting, on my behalf (see clause 1.18 Agency).",
+  "Where Residential Realtors has given me an offer for the property, by signing these terms I accept that offer on the rent, move-in date and conditions shown to me, and I instruct Residential Realtors to proceed with the letting.",
   "Where I am a joint owner of the property, I warrant that I am authorised to instruct Residential Realtors on behalf of all joint owners (see clause 3.1.4)."
  ],
  "cancellation": [
