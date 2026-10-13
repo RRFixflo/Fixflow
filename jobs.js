@@ -616,6 +616,7 @@ ALTER TABLE viewings ADD COLUMN IF NOT EXISTS fb_token TEXT;
 ALTER TABLE viewings ADD COLUMN IF NOT EXISTS fb_sent_at TIMESTAMPTZ;
 ALTER TABLE viewings ADD COLUMN IF NOT EXISTS app_fb JSONB;
 ALTER TABLE viewings ADD COLUMN IF NOT EXISTS app_fb_at TIMESTAMPTZ;
+ALTER TABLE viewings ADD COLUMN IF NOT EXISTS att_ok_at TIMESTAMPTZ;
 CREATE UNIQUE INDEX IF NOT EXISTS viewings_fb_token ON viewings (fb_token);
 -- Each offer-form link sent to an applicant from Fixflow: who, how, and what they did with it.
 CREATE TABLE IF NOT EXISTS offer_invites (
@@ -8134,7 +8135,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let sig = []; const sm = /\n\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Thanks,?|Yours sincerely,?)\s*\n([\s\S]*)$/i.exec(body);
     if (sm) { sig = sm[2].split('\n').map(function (l) { return unmark(l).trim(); }).filter(Boolean); body = body.slice(0, sm.index); }
     if (!sm) { const sm2 = /\n\s*(\[[a-z]+\])*\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Yours sincerely,?)\s*(\[\/[a-z]+\])*\s*\n([\s\S]*)$/i.exec(body); if (sm2) { sig = sm2[4].split('\n').map(function (l) { return unmark(l).trim(); }).filter(Boolean); body = body.slice(0, sm2.index); } }
-    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer']];
+    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer'], [/\/vc\/[\w-]+/, 'Yes, I’ll be there']];
     const buttons = [];
     const btnOf = function (b) {
       // The offer form for a property: a card with the address and a wide, rounded button.
@@ -8145,6 +8146,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
         '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%"><tr><td align="center" bgcolor="#D9262E" style="background:#D9262E;border-radius:999px"><a href="' + e(b.url) + '" style="display:block;padding:16px 24px;color:#ffffff;text-decoration:none;font-weight:800;font-size:17px;line-height:20px;text-align:center">Make your offer &rarr;</a></td></tr></table>' +
         '<div style="margin:12px 0 0;font-size:13px;color:#667085;text-align:center">&#9201; Takes about 5 minutes &middot; works on your phone</div></td></tr></table>' +
         '<p style="margin:-14px 0 22px;font-size:12px;color:#98a2b3;text-align:center">Button not working? Copy this link: <a href="' + e(b.url) + '" style="color:#98a2b3;word-break:break-all">' + e(b.url) + '</a></p>';
+      // The applicant's one-click "I'm coming" link: a wide green button.
+      if (b.label === 'Yes, I’ll be there') return '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:2px 0 22px"><tr><td align="center" bgcolor="#067647" style="background:#067647;border-radius:999px"><a href="' + e(b.url) + '" style="display:block;padding:16px 24px;color:#ffffff;text-decoration:none;font-weight:800;font-size:17px;line-height:20px;text-align:center">&#10003; Yes, I’ll be there</a></td></tr></table>' +
+        '<p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3;text-align:center">Can’t make it? Just reply to this email or call 0207 096 8131.</p>';
       return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 22px"><tr><td bgcolor="#0b1f3a" style="background:#0b1f3a;border-radius:12px;padding:15px 26px"><a href="' + e(b.url) + '" style="display:block;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;line-height:20px">' + e(b.label) + ' &rarr;</a></td></tr></table><p style="margin:-12px 0 20px;font-size:12px;color:#98a2b3">Or copy this link: <a href="' + e(b.url) + '" style="color:#98a2b3;word-break:break-all">' + e(b.url) + '</a></p>';
     };
     // Long web addresses show as their site (e.g. "google.co.uk/…") — the link itself is unchanged.
@@ -8360,7 +8364,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
   // Viewings: book them, mark them done (or cancelled / no-show) and add feedback.
   // The calendar asks for a date range (from / to); the Offers page for the recent ones.
-  const VW_COLS = 'id, created_at, property_address, property_key, at, applicant, status, feedback, share, created_by, staff, email, phone, lead_id, mins, fb_sent_at, app_fb, app_fb_at';
+  const VW_COLS = 'id, created_at, property_address, property_key, at, applicant, status, feedback, share, created_by, staff, email, phone, lead_id, mins, fb_sent_at, app_fb, app_fb_at, att_ok_at';
   app.get('/api/admin/viewings', withDb(async function (p, req, res) {
     const from = Date.parse(req.query.from), to = Date.parse(req.query.to);
     if (from && to && to > from && to - from < 100 * 86400000) return res.json({ ok: true, viewings: (await p.query('SELECT ' + VW_COLS + ' FROM viewings WHERE at >= $1 AND at < $2 ORDER BY at LIMIT 2000', [new Date(from).toISOString(), new Date(to).toISOString()])).rows });
@@ -8380,7 +8384,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       'Due to the fast-paced London market, Residential Realtors offers the opportunity to make a [b]Pre Viewing Reservation (PVR)[/b]. PVRs are made on a non-obligation basis and are particularly popular with applicants who live abroad and those unable to view properties as quickly as they would like. A PVR can be made at any point before your scheduled viewing, giving you peace of mind that the property is reserved for you until your viewing slot. If you are not interested in the property, your PVR will be refunded to you within 24 hours. [b]To make a Pre Viewing Reservation, simply call the Residential Realtors office on 0207 096 8131 and a member of the lettings team will be happy to walk you through the process. Payments can be made over the telephone with a valid credit/debit card or by bank transfer.[/b]\n\n' +
       'Should we receive a formal offer on ' + addr + ' from a different party before your scheduled viewing, we will let you know in good time.\n\n' +
       'It is more than likely other parties will be joining us to view the property, so a dedicated slot has been assigned to you. Please let us know if you are running late so we can change slots around to better accommodate everyone.\n\n' +
-      '[b][u]Lastly, please reply to this email simply confirming your attendance.[/u][/b]\n\n' +
+      (o.confirmUrl ? '[b][u]Lastly, please confirm your attendance.[/u][/b]\n\nJust press the button below — one click is all it takes. ' + o.confirmUrl + '\n\n' : '[b][u]Lastly, please reply to this email simply confirming your attendance.[/u][/b]\n\n') +
       'Kind regards,\n' + (o.me ? o.me + '\n' : '') + 'Residential Realtors\n0207 096 8131';
   }
   function viewingWhen(at) {
@@ -8429,6 +8433,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     return out;
   }
+  // The viewing's private token (also used for the feedback form) and the applicant's one-click "I'm coming" link.
+  async function vwToken(p, id) {
+    const v = (await p.query('SELECT fb_token FROM viewings WHERE id = $1', [id])).rows[0]; if (!v) return '';
+    if (v.fb_token) return v.fb_token;
+    const t = crypto.randomBytes(12).toString('base64url');
+    return ((await p.query('UPDATE viewings SET fb_token = coalesce(fb_token, $2) WHERE id = $1 RETURNING fb_token', [id, t])).rows[0] || {}).fb_token || '';
+  }
+  async function vcUrl(p, id) { const t = await vwToken(p, id); return t ? String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, '') + '/vc/' + t : ''; }
   // Email the applicant about their viewing: booked, moved to a new time, or cancelled (sent from Fixflow, kept in Sent emails, noted on their lead).
   async function viewingMail(p, req, v, kind) {
     if (!v || !v.email || !canEmail() || !sendEmail) return false;
@@ -8436,7 +8448,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const first = String(v.applicant || '').trim().split(/\s+/)[0], me = req.user && req.user.id ? req.user.name : '', addr = String(v.property_address || '');
     const subject = { booked: 'Viewing Confirmation', moved: 'Viewing Confirmation — new time', cancelled: 'Viewing cancelled' }[kind] + ' — ' + (kind === 'cancelled' ? when : addr.split(',').slice(0, 2).join(',') + ', ' + when);
     const t = kind === 'cancelled' ? 'Dear ' + (first || 'applicant') + ',\n\nYour viewing of ' + addr + ' on ' + when + ' has been cancelled.\n\nIf you’d like to book another time, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors'
-      : viewingConfirmText({ name: v.applicant, address: addr, when: viewingWhen(v.at), me: me, moved: kind === 'moved', offerUrl: vfOfferUrl(v) });
+      : viewingConfirmText({ name: v.applicant, address: addr, when: viewingWhen(v.at), me: me, moved: kind === 'moved', offerUrl: vfOfferUrl(v), confirmUrl: await vcUrl(p, v.id) });
     const r = await sendEmail({ to: [v.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: t, html: brandEmail(t, subject.split(' — ')[0]) }).catch(function () { return { ok: false }; });
     const ok = !!(r && r.ok !== false);
     logSent(req, [v.email], [], 'info@residentialrealtors.co.uk', subject, t, r);
@@ -8488,6 +8500,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const cancelled = now.status === 'cancelled' && before.status !== 'cancelled', moved = !cancelled && new Date(now.at).getTime() !== new Date(before.at).getTime();
       const when = new Date(now.at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
       if (cancelled && now.lead_id) await crmLog(p, 'vr:' + now.lead_id, '🗓 Viewing cancelled: ' + when + ' · ' + String(now.property_address || '').split(',').slice(0, 2).join(','), req, false);
+      if (moved && now.att_ok_at) { await p.query('UPDATE viewings SET att_ok_at = NULL WHERE id = $1', [id]); now.att_ok_at = null; }   // a new time: they confirm again
       if (moved && now.lead_id) await crmLog(p, 'vr:' + now.lead_id, '🗓 Viewing moved to ' + when, req, false);
       if (b.notify === true && (cancelled || moved)) emailed = await viewingMail(p, req, now, cancelled ? 'cancelled' : 'moved');
       if ((b.notify_tenants === true || b.notify_landlord === true) && (cancelled || moved)) var others = await viewingNotifyOthers(p, req, now, cancelled ? 'cancelled' : 'moved', { tenants: b.notify_tenants === true, landlord: b.notify_landlord === true });
@@ -8619,6 +8632,49 @@ document.querySelectorAll('.lcu').forEach(function(box){
       sendEmail({ to: [u ? u.email : 'info@residentialrealtors.co.uk'], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subj, text: text, html: brandEmail(text, 'Viewing feedback') }).catch(function (e) { console.error('Viewing feedback email failed:', e.message); });
     }
     res.json({ ok: true });
+  }));
+  // The applicant confirms they're coming to the viewing, with one click from the confirmation email (/vc/<token>).
+  // The page confirms by itself as it opens (a button too, for browsers without JavaScript); noted on their lead
+  // and emailed to whoever is doing the viewing. Moving the viewing clears it, so they confirm the new time.
+  app.get('/vc/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
+    const demo = req.params.token === 'example';
+    const v = demo ? { property_address: 'Flat 3, 12 Example Street, London SE1 0XX', at: new Date(Date.now() + 2 * 86400000), status: 'booked' } : await vfViewing(p, req.params.token);
+    res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex');
+    if (!v) return res.status(404).send(trackShell('Link not found', '<h1>Link not found</h1><p>This link may have expired. Please call us on 0207 096 8131.</p>', true));
+    const addr = String(v.property_address || 'the property').split(',').slice(0, 2).join(','), when = viewingWhen(v.at);
+    const past = new Date(v.at).getTime() < Date.now() - 3600000, off = v.status === 'cancelled';
+    const head = (demo ? '<div class="card" style="background:#fffaeb;border-color:#fedf89"><b>Example page</b> — this is what applicants see when they confirm. The viewing is made up and nothing is saved.</div>' : '') +
+      '<p class="sub" style="margin:0 0 4px">Your viewing</p><h1 style="margin:0 0 6px">' + htmlEsc(addr) + '</h1><p class="sub">🗓 ' + htmlEsc(when) + '</p>';
+    const help = '<p class="muted" style="text-align:center">Can’t make it or need another time? Call <a href="tel:02070968131">0207 096 8131</a> or email <a href="mailto:info@residentialrealtors.co.uk?subject=' + encodeURIComponent('Viewing — ' + addr) + '">info@residentialrealtors.co.uk</a></p>';
+    let body;
+    if (off) body = '<div class="card"><b>This viewing has been cancelled.</b><p class="muted" style="margin:4px 0 0">If you’d like to book another time, please get in touch.</p></div>';
+    else if (past) body = '<div class="card"><b>This viewing has already taken place.</b></div>';
+    else body = '<div class="card vc-card" id="vcBox">' + (v.att_ok_at ? '<div class="vc-ok">✓</div><b>You’re confirmed — see you there!</b><p class="muted" style="margin:4px 0 0">Please let us know if you’re running late.</p>'
+      : '<form method="post" id="vcF"><p style="margin:0 0 12px">Please confirm you’re coming to this viewing.</p><button type="submit" class="btn vc-btn">✓ Yes, I’ll be there</button></form>') + '</div>' +
+      (v.att_ok_at ? '' : '<script>(function(){var f=document.getElementById("vcF"),box=document.getElementById("vcBox");if(!f)return;function go(e){if(e)e.preventDefault();var b=f.querySelector("button");b.disabled=true;b.textContent="Confirming…";' +
+        'fetch(location.pathname,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).then(function(r){return r.json()}).then(function(d){if(d.ok)box.innerHTML="<div class=\\"vc-ok\\">✓</div><b>Thank you — you’re confirmed. See you there!</b><p class=\\"muted\\" style=\\"margin:4px 0 0\\">Please let us know if you’re running late.</p>";else{b.disabled=false;b.textContent="✓ Yes, I’ll be there";}}).catch(function(){b.disabled=false;b.textContent="✓ Yes, I’ll be there";});}' +
+        'f.addEventListener("submit",go);setTimeout(go,400);})();</script>');
+    const css = '<style>.vc-card{text-align:center;padding:24px 18px}.vc-btn{width:100%;max-width:360px;background:#067647;border-color:#067647;font-size:1.05rem;padding:14px 18px;border-radius:999px}.vc-ok{width:56px;height:56px;line-height:56px;border-radius:50%;background:#ecfdf3;color:#067647;font-size:30px;font-weight:800;margin:0 auto 10px}.vc-card b{font-size:1.1rem}</style>';
+    res.send(trackShell('Confirm your viewing', head + body + help + css, true, 'Viewing'));
+  }));
+  app.post('/vc/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).json({ ok: false, error: 'rate-limited' });
+    const ok = function () { return /json/.test(String(req.headers['content-type'] || '')) ? res.json({ ok: true }) : res.redirect(303, req.originalUrl); };
+    if (req.params.token === 'example') return ok();
+    const v = await vfViewing(p, req.params.token); if (!v) return res.status(404).json({ ok: false });
+    if (v.status === 'cancelled') return res.status(409).json({ ok: false, error: 'cancelled' });
+    const r = await p.query('UPDATE viewings SET att_ok_at = now() WHERE id = $1 AND att_ok_at IS NULL RETURNING id', [v.id]);
+    if (r.rows.length) {
+      const addr = String(v.property_address || '').split(',').slice(0, 2).join(','), when = viewingWhen(v.at), name = v.applicant || 'The applicant';
+      if (v.lead_id) await p.query('INSERT INTO crm_notes (ref, note, by_name, auto) VALUES ($1, $2, $3, true)', ['vr:' + v.lead_id, '✅ Confirmed they’re coming to the viewing: ' + when + ' · ' + addr, name]).catch(function () {});
+      if (canEmail() && sendEmail) {
+        const who = v.staff || v.created_by || '', u = who ? (await p.query("SELECT email FROM staff_users WHERE disabled_at IS NULL AND lower(name) = lower($1) AND coalesce(email, '') <> '' LIMIT 1", [who])).rows[0] : null;
+        const subj = '✅ Viewing confirmed: ' + name + ' — ' + addr, text = name + ' has confirmed they’re coming to the viewing at ' + addr + ' on ' + when + '.' + (v.phone ? '\n\nTheir number: ' + v.phone : '') + '\n\nFixflow - Residential Realtors';
+        sendEmail({ to: [u ? u.email : 'info@residentialrealtors.co.uk'], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subj, text: text, html: brandEmail(text, 'Viewing confirmed') }).catch(function (e) { console.error('Viewing confirmed email failed:', e.message); });
+      }
+    }
+    ok();
   }));
   // Offer-form links sent to applicants: one private link each, so we can see if it was opened.
   app.post('/api/admin/offer-invites', withDb(async function (p, req, res) {
@@ -12312,7 +12368,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     try { staff = (await p.query('SELECT name FROM staff_users WHERE disabled_at IS NULL ORDER BY name')).rows.map(function (x) { return x.name; }); } catch (e) {}
     // Viewings (to see who's booked or done one with an applicant): the last 4 months and everything coming up.
     let vws = [];
-    try { vws = (await p.query("SELECT id, lead_id, at, staff, created_by, status, email, phone, property_address, app_fb, app_fb_at, feedback, fb_sent_at FROM viewings WHERE status <> 'cancelled' AND at > now() - interval '120 days' ORDER BY at")).rows; } catch (e) {}
+    try { vws = (await p.query("SELECT id, lead_id, at, staff, created_by, status, email, phone, property_address, app_fb, app_fb_at, feedback, fb_sent_at, att_ok_at FROM viewings WHERE status <> 'cancelled' AND at > now() - interval '120 days' ORDER BY at")).rows; } catch (e) {}
     res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, viewings: vws, staff: staff, me: req.user ? req.user.name : '', manager: !!canManageUsers(req), junk: await junkList(p) });
   }));
   app.post('/api/admin/crm/note', withDb(async function (p, req, res) {
@@ -12454,12 +12510,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const blk = await applBlocked(p, req, 'vr:' + x.id); if (blk) return res.status(409).json(heldMsg(blk));
     const at = londonToDate(b.at); if (!at) return res.status(400).json({ ok: false, error: 'time' });
     const d = Object.assign({}, x.data, { confirmed: String(b.at), confirmed_by: req.user ? req.user.name : 'Office', confirmed_at: new Date().toISOString() });
-    if (d.viewing_id) await p.query('UPDATE viewings SET at = $2, status = \'booked\' WHERE id = $1', [d.viewing_id, at.toISOString()]).catch(function () {});
+    if (d.viewing_id) await p.query('UPDATE viewings SET att_ok_at = CASE WHEN at = $2 THEN att_ok_at END, at = $2, status = \'booked\' WHERE id = $1', [d.viewing_id, at.toISOString()]).catch(function () {});
     else d.viewing_id = (await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, email, phone, lead_id, staff, created_by) VALUES ($1, $2, $3, $4, $6, $7, $8, $5, $5) RETURNING id', [x.address, propKey(x.address), at.toISOString(), x.name, req.user ? req.user.name : 'Office', x.email || null, x.phone || null, x.id])).rows[0].id;
     await p.query('UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object(\'src\', data->\'src\')), status = \'booked\', handled_at = now(), handled_by = $3 WHERE id = $1', [x.id, JSON.stringify(d), req.user ? req.user.name : 'Office']);
     let emailed = false;
     if (b.email !== false && x.email && canEmail() && sendEmail) {
-      const t = viewingConfirmText({ name: x.name, address: x.address, when: viewingWhen(at), note: str(b.note, 1000), me: req.user && req.user.id ? req.user.name : '', offerUrl: vfOfferUrl({ property_address: x.address }) });
+      const t = viewingConfirmText({ name: x.name, address: x.address, when: viewingWhen(at), note: str(b.note, 1000), me: req.user && req.user.id ? req.user.name : '', offerUrl: vfOfferUrl({ property_address: x.address }), confirmUrl: await vcUrl(p, d.viewing_id) });
       const r = await sendEmail({ to: [x.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Viewing Confirmation — ' + String(x.address).split(',').slice(0, 2).join(',') + ', ' + slotText(b.at), text: t, html: brandEmail(t, 'Viewing Confirmation') }).catch(function () { return { ok: false }; });
       emailed = !!(r && r.ok !== false);
       logSent(req, [x.email], [], 'info@residentialrealtors.co.uk', 'Viewing Confirmation — ' + String(x.address).split(',').slice(0, 2).join(',') + ', ' + slotText(b.at), t, r);   // in their Sent emails
