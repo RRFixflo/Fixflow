@@ -332,7 +332,7 @@ function siteShell(name, home, req) {
   body = addCb(body, name);
   if (name === 'home') body = body.replace('<section class="tools2">', trackHtml('') + '<section class="tools2">');
   if (name === 'home') body = body.replace('<!--FEATURED-->', listings ? listings.featured(req) : '').replace('<!--HEROSEARCH-->', heroSearch(req)).replace('<!--STATS-->', heroStats(req)).replace('<!--AREAS-->', heroAreas(req)).replace('<!--EXPERTS-->', heroExperts(req)).replace('<!--NEWS-->', news ? news.section() : '');
-  return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
+  return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light only">' +
     siteHead(name, body) + SITE_FONTS + '<link rel="stylesheet" href="' + asset('site.css') + '"></head><body>' + siteHeader(name, home, req) + '<main>' + body + '</main>' + siteFooter(home) +
     '<script src="' + asset('site.js') + '" defer></script></body></html>';
 }
@@ -429,7 +429,7 @@ function sendBuilt(req, res, meta, body) {
   const home = isSiteHost(req) ? '/' : '/home', ck = meta.name + home + (meta.stamp || '') + listings.show(req) + listings.stamp() + londonDay();
   let c = builtCache.get(ck);
   if (!c) {
-    const raw = Buffer.from('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
+    const raw = Buffer.from('<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light only">' +
       siteHeadFor(meta, body) + SITE_FONTS + '<link rel="stylesheet" href="' + asset('site.css') + '"></head><body>' + siteHeader(meta.name, home, req) + '<main>' + body + '</main>' + siteFooter(home) + '<script src="' + asset('site.js') + '" defer></script></body></html>');
     c = { raw: raw, gzip: zlib.gzipSync(raw, { level: 6 }), etag: '"b' + crypto.createHash('sha1').update(raw).digest('base64').slice(0, 26) + '"' };
     if (res.statusCode === 200) { builtCache.set(ck, c); while (builtCache.size > 400) builtCache.delete(builtCache.keys().next().value); }
