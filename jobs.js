@@ -7911,6 +7911,18 @@ document.querySelectorAll('.lcu').forEach(function(box){
     (await allProperties(p)).forEach(function (x) { add(x.address, 'ours'); });
     (await p.query('SELECT address FROM tenancies WHERE address IS NOT NULL UNION SELECT address FROM landlord_properties WHERE address IS NOT NULL UNION SELECT address FROM property_landlords WHERE address IS NOT NULL')).rows.forEach(function (r) { add(r.address, 'ours'); });
     (await p.query("SELECT DISTINCT ON (lower(address)) address, status FROM available_props ORDER BY lower(address), updated_at DESC")).rows.forEach(function (r) { add(r.address, r.status === 'available' ? 'listed' : 'before'); });
+    // Which of these has a tenancy (the latest one: when it started and who the tenants are) and which landlord —
+    // so staff can tell the right record from look-alikes. Matched by key, or loosely within the same postcode.
+    const tcys = (await p.query('SELECT id, property_key, address, start_date, data FROM tenancies WHERE address IS NOT NULL ORDER BY start_date DESC NULLS LAST, id DESC')).rows;
+    const byKey = {}, byPc = {};
+    tcys.forEach(function (t) { const k = t.property_key || propKey(t.address); if (k && !byKey[k]) byKey[k] = t; const pp = addrParts(t.address); if (pp.pc) (byPc[pp.pc] = byPc[pp.pc] || []).push({ t: t, parts: pp }); });
+    const lls = {}; (await p.query('SELECT pl.property_key, l.name FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r.name; });
+    out.forEach(function (x) {
+      const k = propKey(x.address); let t = byKey[k], exact = !!t;
+      if (!t) { const pp = addrParts(x.address); const hit = pp.pc && (byPc[pp.pc] || []).filter(function (c) { return addrLoose(pp, c.parts); })[0]; if (hit) t = hit.t; }
+      if (t) { const d = t.data || {}; x.tcy = { id: t.id, exact: exact, address: t.address, start: t.start_date || d.start_date || null, tenants: (d.tenants || []).map(function (n) { return String((n && n.name) || '').trim(); }).filter(Boolean).slice(0, 3) }; }
+      if (lls[k]) x.landlord = lls[k];
+    });
     res.json({ ok: true, items: out.slice(0, 8000) });
   }));
   app.get('/api/admin/property-match', withDb(async function (p, req, res) {
