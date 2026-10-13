@@ -8352,6 +8352,49 @@ document.querySelectorAll('.lcu').forEach(function(box){
   function viewingWhen(at) {
     return new Date(at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).replace(',', '').replace(/ (am|pm)$/i, '$1');
   }
+  // Who else to tell about a viewing: the tenants living there now (with an email) and the property's landlord.
+  async function viewingContacts(p, addr) {
+    const k = propKey(String(addr || '')); if (!k) return { tenants: [], landlord: null };
+    const ok = function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); };
+    const tenants = (await p.query(`SELECT DISTINCT ON (lower(tn.email)) tn.name, tn.email FROM property_tenants pt JOIN tenants tn ON tn.id = pt.tenant_id
+      WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND tn.deleted_at IS NULL AND coalesce(pt.role, '') <> 'guarantor' AND coalesce(tn.email, '') <> ''`, [k]).catch(function () { return { rows: [] }; })).rows.filter(function (r) { return ok(r.email); });
+    const l = (await p.query('SELECT l.id, l.name, l.email FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id WHERE pl.property_key = $1 LIMIT 1', [k])).rows[0] || null;
+    return { tenants: tenants, landlord: l && ok(l.email) ? l : (l ? Object.assign({}, l, { email: null }) : null) };
+  }
+  app.get('/api/admin/viewing-contacts', withDb(async function (p, req, res) {
+    res.json(Object.assign({ ok: true }, await viewingContacts(p, str(req.query.property, 400))));
+  }));
+  // Tell the tenants living there and/or the landlord: booked, moved or cancelled. The landlord never gets the
+  // applicant's details; tenants get the time and who from the office is coming.
+  async function viewingNotifyOthers(p, req, v, kind, o) {
+    if (!v || !(o.tenants || o.landlord) || !canEmail() || !sendEmail) return { tenants: 0, landlord: false };
+    const c = await viewingContacts(p, v.property_address), when = viewingWhen(v.at), addr = String(v.property_address || ''), short = addr.split(',').slice(0, 2).join(','), me = req.user && req.user.id ? req.user.name : '';
+    const staff = String(v.staff || v.created_by || '').trim(), staffFirst = staff && !/^(owner|office)$/i.test(staff) ? staff.split(/\s+/)[0] : '';
+    const sign = '\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors\n0207 096 8131', out = { tenants: 0, landlord: false };
+    const send = async function (to, subject, t, title) {
+      const r = await sendEmail({ to: to, replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: t, html: brandEmail(t, title) }).catch(function () { return { ok: false }; });
+      logSent(req, to, [], 'info@residentialrealtors.co.uk', subject, t, r); return !!(r && r.ok !== false);
+    };
+    if (o.tenants && c.tenants.length) {
+      const names = c.tenants.map(function (x) { return String(x.name || '').trim().split(/\s+/)[0]; }).filter(Boolean);
+      const hi = 'Dear ' + (names.length ? names.join(' and ').replace(/ and (?=[^ ]+ and )/g, ', ') : 'tenant') + ',\n\n';
+      const t = hi + (kind === 'cancelled' ? 'The viewing we had arranged at ' + addr + ' on ' + when + ' has been cancelled — nobody will be coming at that time.'
+        : kind === 'moved' ? 'The viewing at ' + addr + ' has moved to a new time: ' + when + '.' + (staffFirst ? ' ' + staffFirst + ' from Residential Realtors will attend.' : '')
+        : 'We’d like to let you know that we have arranged a viewing at ' + addr + ' on ' + when + '.' + (staffFirst ? ' ' + staffFirst + ' from Residential Realtors will attend.' : ' Someone from Residential Realtors will attend.')) +
+        (kind === 'cancelled' ? '' : '\n\nIf this time isn’t convenient, please reply to this email or call us on 0207 096 8131 as soon as possible. Thank you for your help.') + sign;
+      const subj = (kind === 'cancelled' ? 'Viewing cancelled' : kind === 'moved' ? 'Viewing time changed' : 'Viewing arranged') + ' at your home — ' + when;
+      if (await send(c.tenants.map(function (x) { return x.email; }), subj, t, kind === 'cancelled' ? 'Viewing cancelled' : 'Viewing at your home')) out.tenants = c.tenants.length;
+    }
+    if (o.landlord && c.landlord && c.landlord.email) {
+      const first = String(c.landlord.name || '').trim().split(/\s+/)[0] || 'landlord', n = o.count > 1 ? o.count : 0;
+      const t = 'Dear ' + first + ',\n\n' + (kind === 'cancelled' ? 'The viewing booked at ' + addr + ' on ' + when + ' has been cancelled.'
+        : kind === 'moved' ? 'The viewing at ' + addr + ' has moved to ' + when + '.'
+        : 'Good news — a viewing has been booked at ' + addr + ' on ' + when + (n ? ' with ' + n + ' applicants' : '') + '. We’ll let you know how it goes; feedback from viewings also appears on your landlord page.') + sign;
+      const subj = (kind === 'cancelled' ? 'Viewing cancelled' : kind === 'moved' ? 'Viewing moved' : 'Viewing booked') + ' — ' + short + ', ' + when;
+      out.landlord = await send([c.landlord.email], subj, t, kind === 'cancelled' ? 'Viewing cancelled' : 'Viewing booked');
+    }
+    return out;
+  }
   // Email the applicant about their viewing: booked, moved to a new time, or cancelled (sent from Fixflow, kept in Sent emails, noted on their lead).
   async function viewingMail(p, req, v, kind) {
     if (!v || !v.email || !canEmail() || !sendEmail) return false;
@@ -8373,10 +8416,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, created_by, staff, email, phone, lead_id, mins) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
       [addr, propKey(addr), new Date(at).toISOString(), str(b.applicant, 120) || null, me, str(b.staff, 120) || me, vwEmail(b.email), str(b.phone, 40) || null, parseInt(b.lead_id, 10) || null, mins]);
     // Booked from an applicant: noted on their lead (it shows on their card for everyone).
-    let emailed = false;
-    if (b.notify === true) emailed = await viewingMail(p, req, (await p.query('SELECT * FROM viewings WHERE id = $1', [r.rows[0].id])).rows[0], 'booked');
+    let emailed = false, others = null;
+    const vrow = (await p.query('SELECT * FROM viewings WHERE id = $1', [r.rows[0].id])).rows[0];
+    if (b.notify === true) emailed = await viewingMail(p, req, vrow, 'booked');
+    if (b.notify_tenants === true || b.notify_landlord === true) others = await viewingNotifyOthers(p, req, vrow, 'booked', { tenants: b.notify_tenants === true, landlord: b.notify_landlord === true, count: parseInt(b.count, 10) || 1 });
     if (parseInt(b.lead_id, 10)) await crmLog(p, 'vr:' + parseInt(b.lead_id, 10), '🗓 Viewing booked: ' + new Date(at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · ' + addr.split(',').slice(0, 2).join(',') + ' · with ' + (str(b.staff, 120) || me), req, false);
-    res.json({ ok: true, id: r.rows[0].id, emailed: emailed });
+    res.json({ ok: true, id: r.rows[0].id, emailed: emailed, others: others });
   }));
   // A private link for the applicant to give feedback on the viewing (staff send it from Fixflow's email window).
   app.post('/api/admin/viewings/:id/feedback-link', withDb(async function (p, req, res) {
@@ -8411,8 +8456,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (cancelled && now.lead_id) await crmLog(p, 'vr:' + now.lead_id, '🗓 Viewing cancelled: ' + when + ' · ' + String(now.property_address || '').split(',').slice(0, 2).join(','), req, false);
       if (moved && now.lead_id) await crmLog(p, 'vr:' + now.lead_id, '🗓 Viewing moved to ' + when, req, false);
       if (b.notify === true && (cancelled || moved)) emailed = await viewingMail(p, req, now, cancelled ? 'cancelled' : 'moved');
+      if ((b.notify_tenants === true || b.notify_landlord === true) && (cancelled || moved)) var others = await viewingNotifyOthers(p, req, now, cancelled ? 'cancelled' : 'moved', { tenants: b.notify_tenants === true, landlord: b.notify_landlord === true });
     }
-    res.json({ ok: true, emailed: emailed });
+    res.json({ ok: true, emailed: emailed, others: typeof others === 'undefined' ? null : others });
   }));
   // The applicant's feedback on a viewing: a short private form; the member of staff who did the viewing is emailed.
   const VF_INTEREST = { yes: 'Yes — I’d like to make an offer', maybe: 'Maybe — I have some questions', no: 'No — it’s not for me' };

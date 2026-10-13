@@ -782,6 +782,7 @@
   .chip-lbl { align-self: center; font-size: .8rem; font-weight: 700; color: var(--ink-soft); margin-right: 2px; }
   .appl-key { margin-top: 10px; font-size: .76rem; color: var(--ink-soft); } .appl-key summary { cursor: pointer; font-weight: 700; } .appl-key-in { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; align-items: center; } .appl-key span { display: inline-flex; align-items: center; gap: 5px; }
   .appl-key i { display: inline-block; width: 4px; height: 14px; border-radius: 2px; } .appl-key .k-red { background: #d92d20; } .appl-key .k-pur { background: #6941c6; }
+  .cb-others, .vo-box { display: flex; flex-direction: column; gap: 4px; }
   .vw-ask { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: .78rem; color: var(--ink-soft); } .vw-ask > span { flex-basis: 100%; }
   .vw-cx-b { display: flex; gap: 6px; flex-wrap: wrap; } .appl-vw[data-vw-edit] { cursor: pointer; } .appl-vw[data-vw-edit]:hover { background: #53389e; }
   .crm-flag.vw { background: #6941c6 !important; color: #fff !important; border-color: #6941c6 !important; font-weight: 700; }
@@ -3162,6 +3163,7 @@
     <div id="cbMore"></div>
     <button type="button" class="btn small ghost" id="cbAddPerson" style="align-self:flex-start">＋ Add another applicant to this viewing</button>
     <label class="crm-chk" style="flex-direction:row;font-weight:600"><input type="checkbox" id="cbMail"> <span id="cbMailLbl">✉ Email each applicant a confirmation</span></label>
+    <div id="cbOthers" class="cb-others"></div>
     <p class="muted-note" style="margin:0">The applicant’s email lets you send them the feedback form after the viewing. Their details are never shown to the landlord.</p>
     <div class="banner" id="cbClash" hidden style="margin:0"></div>
     <div class="row-actions"><button class="btn ghost" id="cbDel" type="button" hidden>Delete</button><span style="flex:1"></span><button class="btn" id="cbClose" type="button">Cancel</button><button class="btn primary" id="cbSave" type="button">Book viewing</button></div>
@@ -9736,12 +9738,13 @@
     var cx = e.target.closest('[data-vw-cx]');
     if (cx) { var gv = crmItem(cx), vw = gv && (gv.viewings || []).filter(function(v){ return String(v.id) === cx.dataset.vwCx; })[0]; if (!vw) return;
       var wrap = cx.closest('.vw-cx');
-      wrap.innerHTML = '<b>Cancel this viewing?</b>' + (vw.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vw-cx-mail checked> Email them to let them know</label>' : '<span class="muted-note" style="margin:0">No email saved for them — remember to tell them.</span>') + '<div class="row-actions" style="margin:0"><button type="button" class="btn small danger" data-vw-cx-go="' + vw.id + '">Yes, cancel it</button><button type="button" class="btn small ghost" data-vw-cx-no>Keep it</button></div>';
+      api('GET', '/api/admin/viewing-contacts?property=' + encodeURIComponent(vw.property_address || '')).then(function(c){ var vb = wrap.querySelector('.vo-box'); if (vb) vb.innerHTML = vwOthersHtml(c, true, ''); });
+      wrap.innerHTML = '<b>Cancel this viewing?</b>' + (vw.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vw-cx-mail checked> Email them to let them know</label>' : '<span class="muted-note" style="margin:0">No email saved for them — remember to tell them.</span>') + '<div class="vo-box"></div><div class="row-actions" style="margin:0"><button type="button" class="btn small danger" data-vw-cx-go="' + vw.id + '">Yes, cancel it</button><button type="button" class="btn small ghost" data-vw-cx-no>Keep it</button></div>';
       return; }
     if (e.target.closest('[data-vw-cx-no]')) { renderCrm(); return; }
     var go = e.target.closest('[data-vw-cx-go]');
     if (go) { var mm = go.closest('.vw-cx').querySelector('[data-vw-cx-mail]'), em = !!(mm && mm.checked); busy(go, true, 'Cancelling…');
-      api('POST', '/api/admin/viewings/' + go.dataset.vwCxGo, { status: 'cancelled', notify: em }).then(function(r){ toast(r && r.ok ? '✓ Viewing cancelled' + (r.emailed ? ' — they’ve been emailed' : '') : 'Couldn’t cancel it'); if (typeof calChanged === 'function') calChanged(); loadCrm('poll'); }); return; }
+      api('POST', '/api/admin/viewings/' + go.dataset.vwCxGo, Object.assign({ status: 'cancelled', notify: em }, vwOthersGet(go.closest('.vw-cx')))).then(function(r){ toast(r && r.ok ? '✓ Viewing cancelled' + (r.emailed ? ' — they’ve been emailed' : '') : 'Couldn’t cancel it'); if (typeof calChanged === 'function') calChanged(); loadCrm('poll'); }); return; }
     var h = e.target.closest('[data-asort]'); if (!h) return;
     var k = h.dataset.asort; crm.asort = crm.asort.k === k ? { k: k, d: -crm.asort.d } : { k: k, d: k === 'at' || k === 'id' || k === 'rent' ? -1 : 1 };
     try { localStorage.setItem('rr_appl_sort', JSON.stringify(crm.asort)); } catch (er) {}
@@ -12554,6 +12557,7 @@
     $('cbProp').value = v ? v.property_address : (o.property || '');
     $('cbDate').value = at ? calDayKey(at) : (o.date || calDayKey(new Date()));
     cbTimes(at ? calHm(at) : '');
+    cbLoadOthers(!v);
     $('cbMail').checked = !v; $('cbMailLbl').textContent = v ? '✉ Email them if the time changes' : '✉ Email each applicant a confirmation (those with an email)';
     $('cbMore').innerHTML = ''; (o.more || []).forEach(cbAddPerson);
     cal.mates = v ? cal.items.filter(function(x){ return x.id !== v.id && x.status !== 'cancelled' && x.at === v.at && calWho(x) === calWho(v) && String(x.property_address || '').trim().toLowerCase() === String(v.property_address || '').trim().toLowerCase(); }) : [];
@@ -12563,6 +12567,22 @@
     $('cbWho').value = v ? (v.applicant || '') : (o.applicant || ''); $('cbPhone').value = v ? (v.phone || '') : (o.phone || ''); $('cbEmail').value = v ? (v.email || '') : (o.email || '');
     $('cbClash').hidden = true; $('cbModal').hidden = false; setTimeout(function(){ ($('cbProp').value ? $('cbTime') : $('cbProp')).focus(); }, 30);
   }
+  // The tenants living at the property and its landlord: ticks to email them about the viewing (on for a new booking).
+  // vwOthersHtml is shared with the cancel boxes; the landlord never gets the applicant's details.
+  function vwOthersHtml(c, on, verb){
+    var t = (c && c.tenants) || [], l = c && c.landlord;
+    return (t.length ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vo="tenants"' + (on ? ' checked' : '') + '> 🏠 Email the tenants living there' + verb + ' <span class="muted-note" style="margin:0">(' + esc(t.map(function(x){ return x.name || x.email; }).join(', ')) + ')</span></label>' : '<span class="muted-note" style="margin:0">🏠 No current tenants with an email saved for this property.</span>') +
+      (l && l.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vo="landlord"' + (on ? ' checked' : '') + '> 🔑 Email the landlord' + verb + ' <span class="muted-note" style="margin:0">(' + esc(l.name || l.email) + ' — never the applicant’s details)</span></label>' : '<span class="muted-note" style="margin:0">🔑 ' + (l ? esc(l.name || 'The landlord') + ' has no email saved.' : 'No landlord linked to this property.') + '</span>');
+  }
+  function vwOthersGet(box){ var g = function(k){ var i = box && box.querySelector('[data-vo="' + k + '"]'); return !!(i && i.checked); }; return { notify_tenants: g('tenants'), notify_landlord: g('landlord') }; }
+  var cbOthersT = null;
+  function cbLoadOthers(on){
+    var prop = $('cbProp').value.trim(), box = $('cbOthers');
+    if (!prop) { box.innerHTML = ''; return; }
+    box.dataset.on = on ? '1' : ''; box.innerHTML = '<span class="muted-note" style="margin:0">Looking up the tenants and landlord…</span>';
+    api('GET', '/api/admin/viewing-contacts?property=' + encodeURIComponent(prop)).then(function(c){ if ($('cbProp').value.trim() !== prop) return; box.innerHTML = vwOthersHtml(c, on, cal.edit ? ' if the time changes' : ''); });
+  }
+  $('cbProp').addEventListener('input', function(){ clearTimeout(cbOthersT); cbOthersT = setTimeout(function(){ cbLoadOthers($('cbOthers').dataset.on === '1' || !cal.edit); }, 600); });
   // Times in 15-minute steps, 7am to 9pm (an older booking at another minute keeps its own time in the list).
   function cbTimes(cur){
     var opts = [], h, m; for (h = 7; h <= 21; h++) for (m = 0; m < 60; m += 15) { if (h === 21 && m) break; opts.push(String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0')); }
@@ -12598,6 +12618,7 @@
     var body = { property: prop, at: new Date(d + 'T' + t).toISOString(), mins: +$('cbMins').value, staff: $('cbStaff').value, applicant: $('cbWho').value.trim(), phone: $('cbPhone').value.trim(), email: $('cbEmail').value.trim() };
     if (!cal.edit && cal.leadId) body.lead_id = cal.leadId;
     if ($('cbMail').checked) body.notify = true;
+    Object.assign(body, vwOthersGet($('cbOthers')));
     var more = Array.prototype.map.call($('cbMore').querySelectorAll('.cb-extra'), function(r){ var g = function(k){ return r.querySelector('[data-cbx="' + k + '"]').value.trim(); }; return { applicant: g('name'), phone: g('phone'), email: g('email'), lead_id: r.dataset.lead ? +r.dataset.lead : undefined }; }).filter(function(x){ return x.applicant || x.phone || x.email; });
     var edit = cal.edit, mates = edit ? (cal.mates || []) : [];
     busy(b, true, 'Saving…');
@@ -12609,8 +12630,8 @@
       return moves.concat(adds).reduce(function(pr, f){ return pr.then(f); }, Promise.resolve()).then(function(){ return r; });
     }).then(function(r){
       busy(b, false); if (!r || !r.ok) { toast('Couldn’t save the viewing'); return; }
-      var n = 1 + more.length + mates.length;
-      $('cbModal').hidden = true; toast('✓ ' + (edit ? 'Viewing updated' : 'Viewing booked for ' + body.staff + ' — ' + new Date(body.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + (n > 1 ? ' · ' + n + ' applicants' : ''));
+      var n = 1 + more.length + mates.length, ot = r.others;
+      $('cbModal').hidden = true; toast('✓ ' + (edit ? 'Viewing updated' : 'Viewing booked for ' + body.staff + ' — ' + new Date(body.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + (n > 1 ? ' · ' + n + ' applicants' : '') + (ot && ot.tenants ? ' · tenants told' : '') + (ot && ot.landlord ? ' · landlord told' : ''));
       if (more.some(function(x){ return x.lead_id; })) body.lead_id = 1;
       if (!cal.edit && view === 'cal') { cal.start = cal.mode === 'day' ? new Date(new Date(body.at).setHours(0, 0, 0, 0)) : calMonday(body.at); }
       calChanged(); if (body.lead_id || view === 'appl' || view === 'crm') loadCrm('poll');
@@ -12643,10 +12664,11 @@
     var v = cal.open, b; if (e.target === this || e.target.closest('[data-vd-close]')) { this.hidden = true; return; } if (!v) return;
     if ((b = e.target.closest('[data-vd-st="cancelled"]')) && !b.dataset.sure) {   // ask first, on screen (phones can block pop-ups)
       var bx = $('vdBody').querySelector('.vd-cx'); if (bx) bx.remove();
-      b.closest('.row-actions').insertAdjacentHTML('afterend', '<div class="vd-cx"><b>Cancel this viewing?</b>' + (v.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vd-cx-mail checked> Email ' + esc(v.applicant || 'the applicant') + ' to let them know</label>' : '<span class="muted-note" style="margin:0">No email saved for them — remember to tell them.</span>') + '<div class="row-actions" style="margin:0"><button type="button" class="btn small danger" data-vd-st="cancelled" data-sure="1">Yes, cancel it</button><button type="button" class="btn small ghost" data-vd-cx-no>Keep it</button></div></div>');
+      b.closest('.row-actions').insertAdjacentHTML('afterend', '<div class="vd-cx"><b>Cancel this viewing?</b>' + (v.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vd-cx-mail checked> Email ' + esc(v.applicant || 'the applicant') + ' to let them know</label>' : '<span class="muted-note" style="margin:0">No email saved for them — remember to tell them.</span>') + '<div class="vo-box"></div><div class="row-actions" style="margin:0"><button type="button" class="btn small danger" data-vd-st="cancelled" data-sure="1">Yes, cancel it</button><button type="button" class="btn small ghost" data-vd-cx-no>Keep it</button></div></div>');
+      var vbx = $('vdBody').querySelector('.vd-cx .vo-box'); api('GET', '/api/admin/viewing-contacts?property=' + encodeURIComponent(v.property_address || '')).then(function(c){ if (vbx) vbx.innerHTML = vwOthersHtml(c, true, ''); });
       return; }
     if (e.target.closest('[data-vd-cx-no]')) { e.target.closest('.vd-cx').remove(); return; }
-    if ((b = e.target.closest('[data-vd-st]'))) { var cxm = $('vdBody').querySelector('[data-vd-cx-mail]'); api('POST', '/api/admin/viewings/' + v.id, { status: b.dataset.vdSt, notify: b.dataset.vdSt === 'cancelled' && !!(cxm && cxm.checked) }).then(function(){ toast(b.dataset.vdSt === 'done' ? '✓ Marked done — add your feedback, and ask the applicant for theirs' : b.dataset.vdSt === 'cancelled' ? '✓ Viewing cancelled' + (cxm && cxm.checked ? ' — ' + (v.applicant || 'the applicant') + ' has been emailed' : '') : 'Updated'); if (b.dataset.vdSt === 'cancelled') loadCrm('poll'); v.status = b.dataset.vdSt; openViewing(v); calChanged(); }); return; }
+    if ((b = e.target.closest('[data-vd-st]'))) { var cxm = $('vdBody').querySelector('[data-vd-cx-mail]'); api('POST', '/api/admin/viewings/' + v.id, Object.assign({ status: b.dataset.vdSt, notify: b.dataset.vdSt === 'cancelled' && !!(cxm && cxm.checked) }, b.dataset.vdSt === 'cancelled' ? vwOthersGet($('vdBody').querySelector('.vd-cx')) : {})).then(function(){ toast(b.dataset.vdSt === 'done' ? '✓ Marked done — add your feedback, and ask the applicant for theirs' : b.dataset.vdSt === 'cancelled' ? '✓ Viewing cancelled' + (cxm && cxm.checked ? ' — ' + (v.applicant || 'the applicant') + ' has been emailed' : '') : 'Updated'); if (b.dataset.vdSt === 'cancelled') loadCrm('poll'); v.status = b.dataset.vdSt; openViewing(v); calChanged(); }); return; }
     if (e.target.closest('[data-vd-edit]')) { this.hidden = true; openBook({ edit: v }); return; }
     if (e.target.closest('[data-vd-fb]')) { var fbt = $('vdFb').value.trim(), sh = $('vdShare').checked; api('POST', '/api/admin/viewings/' + v.id, { feedback: fbt, share: sh }).then(function(r){ toast(r && r.ok ? '✓ Feedback saved' : 'Couldn’t save'); v.feedback = fbt; v.share = sh; calChanged(); }); return; }
     if ((b = e.target.closest('[data-vd-ask]'))) { var modal = this; vwAskFeedback(v, b.dataset.vdAsk, function(){ modal.hidden = true; }); }
