@@ -9630,7 +9630,7 @@
   crm.asort = (function(){ try { var s = JSON.parse(localStorage.getItem('rr_appl_sort') || 'null'); if (s && s.k) return s; } catch (e) {} return { k: 'at', d: -1 }; })();
   function applSrc(i){
     var d = i.data || {};
-    if (i.type === 'rm') return rmSoftCheck(i) ? 'Rightmove soft credit check' : 'Rightmove'; if (i.type === 'lead') return d.source || 'Portal'; if (i.type === 'viewing') return 'Website';
+    if (i.type === 'rm') return 'Rightmove'; if (i.type === 'lead') return d.source || 'Portal'; if (i.type === 'viewing') return 'Website';
     if (i.type === 'call') return 'Phone (out of hours)'; if (i.type === 'enquiry') return 'Website message'; if (i.type === 'contact') return d.source || 'Added by staff';
     return (CRM_T[i.type] || [])[1] || '';
   }
@@ -9778,10 +9778,8 @@
     try { localStorage.setItem('rr_appl_sort', JSON.stringify(crm.asort)); } catch (er) {}
     renderCrm();
   });
-  // A Rightmove enhanced lead (the applicant answered Rightmove's soft credit check questions).
-  function rmSoftCheck(x){ var d = (x && x.data) || {}; return x && x.type === 'rm' && (/ENHANCED/i.test(String(d.lead_type || '')) || (d.rm || []).some(function(r){ return r && /credit check/i.test(r[0] || ''); })); }
   function crmCard(x){
-    var t = rmSoftCheck(x) ? ['🏠', 'Rightmove soft credit check', '#0e7a64', '#e6fbf6'] : x.type === 'cert' && x.data && x.data.who === 'tenant' ? ['🧽', 'Cleaning booking (tenant)', '#067647', '#ecfdf3'] : x.type === 'quick' && x.data && ['Sales', 'Rental', 'Not sure'].indexOf(x.data.service) === -1 ? ['📞', 'Call-back · ' + x.data.service, '#b54708', '#fffaeb'] : CRM_T[x.type], d = x.data, st = CRM_ST[x.status] || CRM_ST.new, today = crmToday(), open = !!crm.open[x.ref];
+    var t = x.type === 'cert' && x.data && x.data.who === 'tenant' ? ['🧽', 'Cleaning booking (tenant)', '#067647', '#ecfdf3'] : x.type === 'quick' && x.data && ['Sales', 'Rental', 'Not sure'].indexOf(x.data.service) === -1 ? ['📞', 'Call-back · ' + x.data.service, '#b54708', '#fffaeb'] : CRM_T[x.type], d = x.data, st = CRM_ST[x.status] || CRM_ST.new, today = crmToday(), open = !!crm.open[x.ref];
     var tel = x.phone ? String(x.phone).replace(/[^\d+]/g, '') : '', wa = x.phone ? waNumber(x.phone) : '';
     var sub = [x.address ? shortAddr(x.address) : '', x.type === 'sub' ? x.email + ' · ' + ({ instant: 'as it happens', weekly: 'weekly', monthly: 'monthly' }[d.freq] || d.freq) : '', x.type === 'contact' && d.topic ? d.topic : '', x.type === 'enquiry' && d.topic ? d.topic : '', x.type === 'mortgage' ? [d.beds ? (d.beds === 'Studio' ? 'Studio' : d.beds + ' bed') : '', d.purpose, d.let_now, d.lender ? 'for ' + d.lender : '', d.needed ? 'needed ' + d.needed.toLowerCase() : ''].filter(Boolean).join(' · ') : '', x.type === 'cert' ? (d.items || []).map(function(i){ return i.name.replace(/ —.*/, ''); }).join(' + ') + ' · £' + Number(d.total || 0).toFixed(2) + (d.paid_at ? ' · paid ✓' : '') : '', x.type === 'quick' && d.service ? d.service + ' valuation' : '', '🕒 ' + fmtWhen(x.at)].filter(Boolean);
     var pill = x.type === 'sub' ? '<span class="crm-pill" style="color:' + (x.subSt === 'Subscribed' ? '#067647' : x.subSt === 'Unsubscribed' ? '#667085' : '#b54708') + '">' + x.subSt + '</span>' : '<span class="crm-pill" style="color:' + st[1] + '">' + st[0] + '</span>';
