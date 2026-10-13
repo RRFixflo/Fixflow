@@ -749,12 +749,16 @@
   .appl-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
   .appl-tabs button { border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 999px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; color: #344054; }
   .appl-tabs button.on { background: var(--navy, #0b1f3a); color: #fff; border-color: transparent; } .appl-tabs button b { margin-left: 4px; }
+  .wrap:has(#crmView.tbl:not([hidden])) { max-width: 1680px; }
   .appl-view { margin-left: auto; display: inline-flex; gap: 4px; } .appl-view button { padding: 6px 12px; font-size: .85rem; }
   .appl-lt-wrap { overflow-x: auto; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #fff; margin-top: 8px; }
   .appl-lt tr.appl-tr { cursor: pointer; } .appl-lt tr.appl-tr.on td { background: #eef4ff; } .appl-lt tr.is-new td:first-child { box-shadow: inset 3px 0 0 #d92d20; }
   .appl-lt th.ck, .appl-lt td.ck { width: 34px; padding-right: 0; cursor: default; } .appl-lt td.ck .crm-pick { padding: 0; }
-  .appl-lt td.nm { white-space: nowrap; } .appl-lt td.pr { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .appl-lt td.em { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .appl-lt td.td { white-space: nowrap; font-size: .8rem; }
+  .appl-lt { font-size: .82rem; } .appl-lt th, .appl-lt td { padding: 7px 7px; } .appl-lt th { font-size: .7rem; letter-spacing: .02em; }
+  .appl-lt td.nm { white-space: nowrap; max-width: 170px; overflow: hidden; text-overflow: ellipsis; } .appl-lt td.cut { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+  .appl-lt td.pr { max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .appl-lt td.em { max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .appl-lt td.td { min-width: 110px; max-width: 150px; font-size: .76rem; line-height: 1.3; }
+  .appl-lt.no-email .c-email, .appl-lt.no-src .c-src, .appl-lt.no-todo .c-todo, .appl-lt.no-rent .c-rent, .appl-lt.no-who .c-who, .appl-lt.no-id .c-id { display: none; }
   .appl-lt td.td .warn { color: #b42318; font-weight: 600; } .appl-lt td.td .ok { color: #067647; font-weight: 600; } .appl-lt .muted { color: var(--ink-soft); }
   .appl-lt td a { color: inherit; text-decoration: none; } .appl-lt td a:hover { text-decoration: underline; color: #175cd3; }
   .appl-new { display: inline-block; background: #12b76a; color: #fff; font-size: .62rem; font-weight: 800; border-radius: 4px; padding: 1px 4px; vertical-align: 1px; } .appl-n { font-size: .78rem; color: var(--ink-soft); }
@@ -9460,7 +9464,7 @@
   function renderCrm(){
     var appl = crm.mode === 'appl', base = crm.items.filter(function(x){ return appl ? isAppl(x) : !isAppl(x); });   // applicants on Leads, everything else on Website leads (owner and staff)
     var hk = crm.manager && (appl || !staffMode); $('crmHook').hidden = !hk; if (hk) loadLeadHook();
-    $('crmView').classList.toggle('is-appl', appl);
+    $('crmView').classList.toggle('is-appl', appl); $('crmView').classList.toggle('tbl', appl && crm.view === 'table');
     var today = crmToday(), archived = base.filter(function(x){ return x.archived && !x.junk; }), junked = base.filter(function(x){ return x.junk; }), rawLive = base.filter(function(x){ return !x.archived; });
     // Leads: one card per person (their enquiries joined by email or phone number).
     var live = appl ? applGroups(rawLive) : rawLive, all = crm.type === 'archive' ? archived : crm.type === 'junk' ? junked : live;
@@ -9566,7 +9570,7 @@
     for (var i = 0; i < its.length; i++) { var ks = applPropKeys(its[i]); for (var j = 0; j < ks.length; j++) if (applRentIx.map[ks[j]]) return applRentIx.map[ks[j]]; }
     return 0;
   }
-  var APPL_COLS = [['id', 'ID'], ['name', 'Name'], ['who', 'Assigned to'], ['src', 'Source'], ['phone', 'Mobile'], ['status', 'Status'], ['prop', 'Property'], ['rent', 'Rent'], ['at', 'Date added'], ['email', 'Email'], ['todo', 'To do']];
+  var APPL_COLS = [['id', 'ID'], ['name', 'Name'], ['who', 'Assigned to'], ['src', 'Source'], ['phone', 'Mobile'], ['status', 'Status'], ['prop', 'Property'], ['rent', 'Rent pcm'], ['at', 'Date added'], ['email', 'Email'], ['todo', 'To do']];
   function applVal(g, k){
     var rank = { new: 0, contacted: 1, booked: 2, won: 3, lost: 4 };
     switch (k) {
@@ -9579,8 +9583,8 @@
   }
   function applTable(list){
     var s = crm.asort, rows = list.slice().sort(function(a, b){ var x = applVal(a, s.k), y = applVal(b, s.k); return (x < y ? -1 : x > y ? 1 : b.id - a.id) * (x === y ? 1 : s.d); }).slice(0, 300);
-    var day = function(v){ return v ? new Date(v).toLocaleString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; };
-    var head = '<tr><th class="ck" title="Select"></th>' + APPL_COLS.map(function(c){ return '<th data-asort="' + c[0] + '"' + (s.k === c[0] ? ' class="on"' : '') + '>' + c[1] + (s.k === c[0] ? (s.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr>';
+    var thisYr = new Date().getFullYear(), day = function(v){ if (!v) return ''; var d = new Date(v); return d.toLocaleString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', year: d.getFullYear() === thisYr ? undefined : '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', ''); };
+    var head = '<tr><th class="ck" title="Select"></th>' + APPL_COLS.map(function(c){ return '<th data-asort="' + c[0] + '" class="c-' + c[0] + (s.k === c[0] ? ' on' : '') + '">' + c[1] + (s.k === c[0] ? (s.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr>';
     var body = rows.map(function(g){
       var st = CRM_ST[g.status] || CRM_ST.new, need = crmNeed(g), hold = applHold(g), open = !!crm.open[g.ref], rent = applRent(g), tel = g.phone ? String(g.phone).replace(/[^\d+]/g, '') : '';
       var isNew = g.group && crm.seen != null && g.group.some(function(i){ return i.id > crm.seen; });
@@ -9588,24 +9592,31 @@
       var todo = up ? '<span class="ok">🗓 Viewing ' + esc(fmtWhen(up.at)) + '</span>' : need ? '<span class="warn">📣 ' + esc(need) + '</span>' : '';
       var r = '<tr class="appl-tr' + (open ? ' on' : '') + (need ? ' is-new' : '') + '" data-crm="' + esc(g.ref) + '" data-crm-tog>' +
         '<td class="ck"><label class="crm-pick"><input type="checkbox" data-crm-pick="' + esc(g.ref) + '"' + (crmSel[g.ref] ? ' checked' : '') + ' aria-label="Select"></label></td>' +
-        '<td class="nw">' + g.id + (isNew ? ' <span class="appl-new">NEW</span>' : '') + '</td>' +
-        '<td class="nm"><b>' + esc(g.name || 'No name') + '</b>' + (g.group && g.group.length > 1 ? ' <span class="appl-n" title="Enquiries from the same email or phone number, joined">🔗' + g.group.length + '</span>' : '') + (VERDICT[g.verdict] ? ' <span title="' + VERDICT[g.verdict][1] + '">' + VERDICT[g.verdict][0] + '</span>' : '') + '</td>' +
-        '<td class="nw">' + (g.assigned ? (hold.held ? '🔒 ' : '') + esc(g.assigned) : '<span class="muted">—</span>') + '</td>' +
-        '<td class="nw">' + esc(applSrc(g)) + '</td>' +
-        '<td class="nw">' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(g.phone) + '</a>' : '') + '</td>' +
-        '<td class="nw"><span style="color:' + st[1] + ';font-weight:700">' + st[0] + '</span></td>' +
-        '<td class="pr" title="' + esc(g.address || '') + '">' + (g.address && g.address !== '(no property given)' ? esc(shortAddr(g.address)) : (g.data && g.data.ref ? 'Ref ' + esc(g.data.ref) : '')) + '</td>' +
-        '<td class="nw">' + (rent ? gbp(Math.round(rent)).replace(/\.00$/, '') + ' pcm' : '') + '</td>' +
-        '<td class="nw">' + esc(day(g.at)) + '</td>' +
-        '<td class="em">' + (g.email ? '<a href="mailto:' + esc(g.email) + '">' + esc(g.email) + '</a>' : '') + '</td>' +
-        '<td class="td">' + todo + '</td></tr>';
+        '<td class="nw c-id">' + g.id + (isNew ? ' <span class="appl-new">NEW</span>' : '') + '</td>' +
+        '<td class="nm c-name"><b>' + esc(g.name || 'No name') + '</b>' + (g.group && g.group.length > 1 ? ' <span class="appl-n" title="Enquiries from the same email or phone number, joined">🔗' + g.group.length + '</span>' : '') + (VERDICT[g.verdict] ? ' <span title="' + VERDICT[g.verdict][1] + '">' + VERDICT[g.verdict][0] + '</span>' : '') + '</td>' +
+        '<td class="nw cut c-who">' + (g.assigned ? (hold.held ? '🔒 ' : '') + esc(g.assigned) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="nw c-src">' + esc(applSrc(g).replace('Website message', 'Web message').replace(' (out of hours)', '')) + '</td>' +
+        '<td class="nw c-phone">' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(g.phone) + '</a>' : '') + '</td>' +
+        '<td class="nw c-status"><span style="color:' + st[1] + ';font-weight:700">' + st[0] + '</span></td>' +
+        '<td class="pr c-prop" title="' + esc(g.address || '') + '">' + (g.address && g.address !== '(no property given)' ? esc(shortAddr(g.address)) : (g.data && g.data.ref ? 'Ref ' + esc(g.data.ref) : '')) + '</td>' +
+        '<td class="nw c-rent">' + (rent ? gbp(Math.round(rent)).replace(/\.00$/, '') : '') + '</td>' +
+        '<td class="nw c-at">' + esc(day(g.at)) + '</td>' +
+        '<td class="em c-email" title="' + esc(g.email || '') + '">' + (g.email ? '<a href="mailto:' + esc(g.email) + '">' + esc(g.email) + '</a>' : '') + '</td>' +
+        '<td class="td c-todo">' + todo + '</td></tr>';
       return r + (open ? '<tr class="appl-exp"><td colspan="' + (APPL_COLS.length + 1) + '">' + crmCard(g) + '</td></tr>' : '');
     }).join('');
     return '<div class="appl-lt-wrap"><table class="av-lt appl-lt"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
       '<p class="muted-note">' + (list.length > 300 ? 'Showing 300 of ' + list.length + ' — sort or search to find others. ' : list.length + ' applicant' + (list.length === 1 ? '' : 's') + '. ') + 'Tap a heading to sort, tap a line to open it.</p>';
   }
   // An opened card stays the width of the screen even when the table is wider and scrolled.
-  function applTableFit(){ var w = document.querySelector('.appl-lt-wrap'); if (w) w.style.setProperty('--aw', (w.clientWidth - 18) + 'px'); }
+  // Too wide for the screen: leave out the least important columns (still on the card when a line is opened).
+  function applTableFit(){
+    var w = document.querySelector('.appl-lt-wrap'); if (!w) return; var t = w.querySelector('table');
+    var drop = ['email', 'src', 'todo', 'rent', 'who', 'id'];
+    drop.forEach(function(k){ t.classList.remove('no-' + k); });
+    if (window.innerWidth >= 760) for (var i = 0; i < drop.length && t.scrollWidth > w.clientWidth + 1; i++) t.classList.add('no-' + drop[i]);
+    w.style.setProperty('--aw', (w.clientWidth - 18) + 'px');
+  }
   window.addEventListener('resize', function(){ if (crm.mode === 'appl' && crm.view === 'table') applTableFit(); });
   $('crmList').addEventListener('click', function(e){
     var h = e.target.closest('[data-asort]'); if (!h) return;
