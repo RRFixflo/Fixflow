@@ -8333,6 +8333,21 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, viewings: (await p.query("SELECT " + VW_COLS + " FROM viewings WHERE at > now() - interval '120 days' ORDER BY at DESC LIMIT 300")).rows });
   }));
   const vwEmail = function (v) { v = str(v, 200); return v && /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(v) ? v.toLowerCase() : null; };
+  // Email the applicant about their viewing: booked, moved to a new time, or cancelled (sent from Fixflow, kept in Sent emails, noted on their lead).
+  async function viewingMail(p, req, v, kind) {
+    if (!v || !v.email || !canEmail() || !sendEmail) return false;
+    const when = new Date(v.at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).replace(',', '');
+    const first = String(v.applicant || '').trim().split(/\s+/)[0], me = req.user && req.user.id ? req.user.name : '', addr = String(v.property_address || '');
+    const subject = { booked: 'Viewing confirmed', moved: 'Viewing time changed', cancelled: 'Viewing cancelled' }[kind] + ' — ' + when;
+    const body = kind === 'cancelled' ? 'Your viewing of ' + addr + ' on ' + when + ' has been cancelled.\n\nIf you’d like to book another time, just reply to this email or call us on 0207 096 8131.'
+      : (kind === 'moved' ? 'Your viewing has moved to a new time:' : 'Your viewing is confirmed:') + '\n\n' + addr + '\n' + when + '\n\nIf you need to change the time, just reply to this email or call us on 0207 096 8131.';
+    const t = 'Dear ' + (first || 'applicant') + ',\n\n' + body + '\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors';
+    const r = await sendEmail({ to: [v.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: t, html: brandEmail(t, subject.split(' — ')[0]) }).catch(function () { return { ok: false }; });
+    const ok = !!(r && r.ok !== false);
+    logSent(req, [v.email], [], 'info@residentialrealtors.co.uk', subject, t, r);
+    if (ok && v.lead_id) await crmLog(p, 'vr:' + v.lead_id, '✉ ' + subject + ' emailed to ' + v.email, req);
+    return ok;
+  }
   app.post('/api/admin/viewings', withDb(async function (p, req, res) {
     const b = req.body || {}, addr = str(b.property, 400), at = Date.parse(b.at);
     if (!addr || !at) return res.status(400).json({ ok: false, error: 'details' });
@@ -8340,8 +8355,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, created_by, staff, email, phone, lead_id, mins) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
       [addr, propKey(addr), new Date(at).toISOString(), str(b.applicant, 120) || null, me, str(b.staff, 120) || me, vwEmail(b.email), str(b.phone, 40) || null, parseInt(b.lead_id, 10) || null, mins]);
     // Booked from an applicant: noted on their lead (it shows on their card for everyone).
+    let emailed = false;
+    if (b.notify === true) emailed = await viewingMail(p, req, (await p.query('SELECT * FROM viewings WHERE id = $1', [r.rows[0].id])).rows[0], 'booked');
     if (parseInt(b.lead_id, 10)) await crmLog(p, 'vr:' + parseInt(b.lead_id, 10), '🗓 Viewing booked: ' + new Date(at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · ' + addr.split(',').slice(0, 2).join(',') + ' · with ' + (str(b.staff, 120) || me), req, false);
-    res.json({ ok: true, id: r.rows[0].id });
+    res.json({ ok: true, id: r.rows[0].id, emailed: emailed });
   }));
   // A private link for the applicant to give feedback on the viewing (staff send it from Fixflow's email window).
   app.post('/api/admin/viewings/:id/feedback-link', withDb(async function (p, req, res) {
@@ -8365,8 +8382,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.property !== undefined && str(b.property, 400)) { vals.push(str(b.property, 400)); sets.push('property_address = $' + vals.length); vals.push(propKey(str(b.property, 400))); sets.push('property_key = $' + vals.length); }
     if (b.delete === true) { await p.query('DELETE FROM viewings WHERE id = $1', [id]); return res.json({ ok: true }); }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
+    const before = (await p.query('SELECT at, status FROM viewings WHERE id = $1', [id])).rows[0];
     await p.query('UPDATE viewings SET ' + sets.join(', ') + ' WHERE id = $1', vals);
-    res.json({ ok: true });
+    // Cancelled, or moved to a new time: noted on their lead, and (when ticked) the applicant is told.
+    const now = (await p.query('SELECT * FROM viewings WHERE id = $1', [id])).rows[0];
+    let emailed = false;
+    if (now && before) {
+      const cancelled = now.status === 'cancelled' && before.status !== 'cancelled', moved = !cancelled && new Date(now.at).getTime() !== new Date(before.at).getTime();
+      const when = new Date(now.at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      if (cancelled && now.lead_id) await crmLog(p, 'vr:' + now.lead_id, '🗓 Viewing cancelled: ' + when + ' · ' + String(now.property_address || '').split(',').slice(0, 2).join(','), req, false);
+      if (moved && now.lead_id) await crmLog(p, 'vr:' + now.lead_id, '🗓 Viewing moved to ' + when, req, false);
+      if (b.notify === true && (cancelled || moved)) emailed = await viewingMail(p, req, now, cancelled ? 'cancelled' : 'moved');
+    }
+    res.json({ ok: true, emailed: emailed });
   }));
   // The applicant's feedback on a viewing: a short private form; the member of staff who did the viewing is emailed.
   const VF_INTEREST = { yes: 'Yes — I’d like to make an offer', maybe: 'Maybe — I have some questions', no: 'No — it’s not for me' };
