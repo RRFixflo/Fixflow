@@ -91,7 +91,7 @@ module.exports = function (app, opts) {
 
   // ---------- Sample documents (printable) ----------
   function shell(title, body) {
-    return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>' + esc(title) + ' — sample</title>' +
+    return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light only"><meta name="robots" content="noindex"><title>' + esc(title) + ' — sample</title>' +
       '<style>body{margin:0;background:#eef1f6;font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:#0f172a}.pg{max-width:820px;margin:24px auto;background:#fff;padding:44px 48px;border-radius:6px;box-shadow:0 10px 40px -20px rgba(0,0,0,.35);position:relative;overflow:hidden}' +
       '.wm{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;font-size:110px;font-weight:900;color:rgba(217,38,46,.07);transform:rotate(-24deg)}.hd{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:3px solid #0b1f3a;padding-bottom:16px;margin-bottom:22px}.hd img{height:46px}.hd small{color:#475467;text-align:right;display:block}' +
       'h1{font-size:24px;margin:0 0 4px;color:#0b1f3a}h2{font-size:16px;margin:24px 0 8px;color:#0b1f3a}table{width:100%;border-collapse:collapse;margin:8px 0}td,th{border-bottom:1px solid #e6e9ef;padding:8px 6px;text-align:left;vertical-align:top}th{background:#f6f7fb;font-size:13px}.r{text-align:right}.tot td{font-weight:800;border-top:2px solid #0b1f3a}' +
