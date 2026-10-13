@@ -4974,15 +4974,16 @@
   function psOurList(){
     if (!psOur) { if (!psOurAsk) { psOurAsk = true; api('GET', '/api/admin/our-props').then(function(d){ psOur = (d && d.ok && d.items || []).map(function(x){ var o = psItem(x.address, x.kind === 'ours' ? 'Our property' : x.kind === 'listed' ? 'Already on the available list' : 'Listed before', (x.kind === 'ours' ? 2 : x.kind === 'listed' ? 1 : 0) + (x.tcy ? (x.tcy.exact ? 4 : 1) : 0));
           // Which look-alike is the real one: the record with our tenancy (and its tenants), and the landlord.
-          if (x.tcy && x.tcy.exact) o.isTcy = true;
+          if (x.avail) { var a2 = psItem(x.avail_address || x.address, 'On our available list', o.rank); o.address = a2.address; o.n = a2.n; o.pc = a2.pc; o.extra = a2.extra; o.avail = true; }
+          if (x.tcy) o.tcyAddr = x.tcy.address;
           if (x.tcy) o.tcy = (x.tcy.exact ? '✅ The tenancy is under this address' : '↪ Same flat as our tenancy at “' + x.tcy.address + '”') + (x.tcy.start ? ' · from ' + longDay(String(x.tcy.start).slice(0, 10)) : '') + (x.tcy.tenants && x.tcy.tenants.length ? ' — ' + x.tcy.tenants.join(', ') : '');
           if (x.landlord) o.ll = '🔑 ' + x.landlord;
           return o; }); if (psFor && document.activeElement === psFor) psShow(psFor); if (view === 'avail' && avItems.length) renderAvail(); }); } return []; }
     return psOur;
   }
   function psShow(inp){
-    // The viewing boxes suggest only addresses from our tenancies (the record the tenants are saved under).
-    psFor = inp; psList = psMatch(inp.value, inp.dataset.psug === 'our' ? psOurList() : inp.dataset.psug === 'tcy' ? psOurList().filter(function(o){ return o.isTcy; }) : undefined); psOn = -1;
+    // The viewing boxes suggest the properties on our available list, each with its tenancy when there is one.
+    psFor = inp; psList = psMatch(inp.value, inp.dataset.psug === 'our' ? psOurList() : inp.dataset.psug === 'tcy' ? psOurList().filter(function(o){ return o.avail; }) : undefined); psOn = -1;
     if (!psBox) { psBox = document.createElement('div'); psBox.className = 'psug'; psBox.setAttribute('role', 'listbox'); document.body.appendChild(psBox);
       psBox.addEventListener('mousedown', function(e){ e.preventDefault(); });
       psBox.addEventListener('click', function(e){ var b = e.target.closest('[data-ps]'); if (b) psPick(Number(b.dataset.ps)); }); }
@@ -4992,7 +4993,8 @@
   }
   function psPick(i){
     var o = psList[i], inp = psFor; if (!o || !inp) return;
-    inp.value = o.address; psHide();
+    // A viewing: the available property, written as its tenancy's address when it has one (so the tenants are found).
+    inp.value = inp.dataset.psug === 'tcy' && o.tcyAddr ? o.tcyAddr : o.address; psHide();
     inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true }));
     psHide();
   }
