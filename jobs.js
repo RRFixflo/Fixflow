@@ -8339,6 +8339,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const me = req.user ? req.user.name : 'Office', mins = [15, 30, 45, 60, 90].indexOf(+b.mins) !== -1 ? +b.mins : 30;
     const r = await p.query('INSERT INTO viewings (property_address, property_key, at, applicant, created_by, staff, email, phone, lead_id, mins) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
       [addr, propKey(addr), new Date(at).toISOString(), str(b.applicant, 120) || null, me, str(b.staff, 120) || me, vwEmail(b.email), str(b.phone, 40) || null, parseInt(b.lead_id, 10) || null, mins]);
+    // Booked from an applicant: noted on their lead (it shows on their card for everyone).
+    if (parseInt(b.lead_id, 10)) await crmLog(p, 'vr:' + parseInt(b.lead_id, 10), '🗓 Viewing booked: ' + new Date(at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · ' + addr.split(',').slice(0, 2).join(',') + ' · with ' + (str(b.staff, 120) || me), req, false);
     res.json({ ok: true, id: r.rows[0].id });
   }));
   // A private link for the applicant to give feedback on the viewing (staff send it from Fixflow's email window).

@@ -764,7 +764,11 @@
   .appl-lt td.c-act { padding-top: 4px; padding-bottom: 4px; } .appl-lt th.c-act { cursor: default; }
   .appl-ic { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 8px; padding: 4px 8px; margin-right: 4px; font-size: .76rem; font-weight: 700; color: #344054 !important; text-decoration: none !important; }
   .appl-ic.wa { color: #067647 !important; border-color: #abefc6; background: #f6fef9; } .appl-ic:hover { background: #f2f4f7; } .appl-ic.wa:hover { background: #ecfdf3; }
-  .appl-lt.slim .appl-ic span { display: none; }
+  .appl-lt.slim .appl-ic span { display: none; } .appl-ic.bk { color: #5925dc !important; border-color: #d9d6fe; background: #f9f8ff; }
+  .appl-vw { display: block; width: max-content; margin-top: 3px; background: #6941c6; color: #fff; font-size: .7rem; font-weight: 700; border-radius: 6px; padding: 2px 7px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
+  .appl-lt tr.has-vw td { background: #faf8ff; } .appl-lt tr.has-vw td.nm { max-width: 215px; } .appl-lt tr.has-vw td:first-child { box-shadow: inset 3px 0 0 #6941c6; }
+  .crm-flag.vw { background: #6941c6 !important; color: #fff !important; border-color: #6941c6 !important; font-weight: 700; }
+  .appl-view [data-appl-cal], .appl-view [data-appl-phone] { color: #5925dc; }
   .appl-lt td a { color: inherit; text-decoration: none; } .appl-lt td a.appl-pl { color: #175cd3; } .appl-lt td a:hover { text-decoration: underline; color: #175cd3; }
   .appl-new { display: inline-block; background: #12b76a; color: #fff; font-size: .62rem; font-weight: 800; border-radius: 4px; padding: 1px 4px; vertical-align: 1px; } .appl-n { font-size: .78rem; color: var(--ink-soft); }
   .appl-lt tr.appl-exp > td { padding: 0 8px 10px; background: #eef4ff; cursor: default; } .appl-lt tr.appl-exp:hover td { background: #eef4ff; }
@@ -9496,7 +9500,7 @@
     var newG = appl && crm.seen != null ? live.filter(function(g){ return g.group.some(function(i){ return i.id > crm.seen; }); }) : [];
     $('applTabs').hidden = !appl;
     if (appl) $('applTabs').innerHTML = '<button type="button" data-appl-tab="all"' + (crm.tab !== 'mine' ? ' class="on"' : '') + '>👥 All leads <b>' + live.length + '</b></button><button type="button" data-appl-tab="mine"' + (crm.tab === 'mine' ? ' class="on"' : '') + ' title="Applicants you’ve taken, spoken to or booked a viewing with in the last 24 hours">🙋 My leads <b>' + mineL.length + '</b></button>' +
-      '<span class="appl-view"><button type="button" data-appl-view="table"' + (crm.view === 'table' ? ' class="on"' : '') + ' title="One line per applicant, in columns you can sort">📋 Table</button><button type="button" data-appl-view="cards"' + (crm.view !== 'table' ? ' class="on"' : '') + '>🗂 Cards</button></span>';
+      '<span class="appl-view"><button type="button" data-appl-cal title="Everyone’s viewings by week or day">🗓 Calendar</button><button type="button" data-appl-phone title="Put the viewings calendar on your phone">📲 On my phone</button><button type="button" data-appl-view="table"' + (crm.view === 'table' ? ' class="on"' : '') + ' title="One line per applicant, in columns you can sort">📋 Table</button><button type="button" data-appl-view="cards"' + (crm.view !== 'table' ? ' class="on"' : '') + '>🗂 Cards</button></span>';
     $('crmTiles').innerHTML = (appl ? [['fresh', '🆕', fresh.length, 'Not contacted yet'], ['attn', '📣', nNew.length, 'Need contacting or an update'], ['free', '🔓', openAppl.length, 'Open to anyone'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm']] : [['attn', '📣', nNew.length, 'Need contacting or an update'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm'], ['subs', '🔔', subs.length, 'Landlords getting alerts']]).map(function(t){
       return '<button type="button" class="crm-tile' + (crm.tile === t[0] ? ' on' : '') + (t[2] && t[0] !== 'subs' ? ' hot' : '') + '" data-crm-tile="' + t[0] + '"><span>' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></button>'; }).join('');
     var counts = {}; live.forEach(function(x){ var seen = {}; its(x).forEach(function(i){ if (!seen[i.type]) { seen[i.type] = 1; counts[i.type] = (counts[i.type] || 0) + 1; } }); });
@@ -9602,6 +9606,17 @@
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\//.test(String(d.url || ''))) return d.url; }
     return '';
   }
+  // Their next viewing still to happen (booked, from 3 hours ago on) — shown boldly so nobody books them twice.
+  function applNextVw(g){ return (g.viewings || []).filter(function(v){ return (v.status || 'booked') === 'booked' && new Date(v.at).getTime() > Date.now() - 3 * 3600000; }).sort(function(a, b){ return new Date(a.at) - new Date(b.at); })[0] || null; }
+  function applVwText(v){ return new Date(v.at).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).replace(/,/g, ''); }
+  // Book a viewing for an applicant: the calendar's booking window, filled in with them and the property they asked about.
+  function applBook(g){
+    if (applLocked(g)) { var hd = applHold(g); toast('🔒 ' + hd.who + ' is looking after ' + (g.name || 'this applicant') + ' — ask them, or a manager, to book it'); return; }
+    var up = applNextVw(g);
+    if (up && !confirm((g.name || 'This applicant') + ' already has a viewing booked:\n\n' + applVwText(up) + (up.property_address ? ' · ' + shortAddr(up.property_address) : '') + (up.staff || up.created_by ? ' · with ' + (up.staff || up.created_by) : '') + '\n\nBook another one?')) return;
+    var it = (g.group || [g]).filter(function(i){ return i.address && i.address !== '(no property given)'; })[0];
+    openBook({ property: it ? it.address : '', applicant: g.name || '', phone: g.phone || '', email: g.email || '', leadId: (it || g).id });
+  }
   var APPL_COLS = [['id', 'ID'], ['name', 'Name'], ['act', ''], ['who', 'Assigned to'], ['src', 'Source'], ['phone', 'Mobile'], ['status', 'Status'], ['prop', 'Property'], ['rent', 'Rent pcm'], ['at', 'Date added'], ['email', 'Email'], ['todo', 'To do']];
   function applVal(g, k){
     var rank = { new: 0, contacted: 1, booked: 2, won: 3, lost: 4 };
@@ -9620,15 +9635,17 @@
     var body = rows.map(function(g){
       var st = CRM_ST[g.status] || CRM_ST.new, need = crmNeed(g), hold = applHold(g), open = !!crm.open[g.ref], rent = applRent(g), tel = g.phone ? String(g.phone).replace(/[^\d+]/g, '') : '';
       var isNew = g.group && crm.seen != null && g.group.some(function(i){ return i.id > crm.seen; });
-      var up = (g.viewings || []).filter(function(v){ return new Date(v.at).getTime() > Date.now() - 3 * 3600000; })[0];
+      var up = applNextVw(g);
       var todo = up ? '<span class="ok">🗓 Viewing ' + esc(fmtWhen(up.at)) + '</span>' : need ? '<span class="warn">📣 ' + esc(need) + '</span>' : '';
-      var r = '<tr class="appl-tr' + (open ? ' on' : '') + (need ? ' is-new' : '') + '" data-crm="' + esc(g.ref) + '" data-crm-tog>' +
+      var r = '<tr class="appl-tr' + (open ? ' on' : '') + (need ? ' is-new' : '') + (up ? ' has-vw' : '') + '" data-crm="' + esc(g.ref) + '" data-crm-tog>' +
         '<td class="ck"><label class="crm-pick"><input type="checkbox" data-crm-pick="' + esc(g.ref) + '"' + (crmSel[g.ref] ? ' checked' : '') + ' aria-label="Select"></label></td>' +
         '<td class="nw c-id">' + g.id + (isNew ? ' <span class="appl-new">NEW</span>' : '') + '</td>' +
-        '<td class="nm c-name"><b>' + esc(g.name || 'No name') + '</b>' + (g.group && g.group.length > 1 ? ' <span class="appl-n" title="Enquiries from the same email or phone number, joined">🔗' + g.group.length + '</span>' : '') + (VERDICT[g.verdict] ? ' <span title="' + VERDICT[g.verdict][1] + '">' + VERDICT[g.verdict][0] + '</span>' : '') + '</td>' +
+        '<td class="nm c-name"><b>' + esc(g.name || 'No name') + '</b>' + (g.group && g.group.length > 1 ? ' <span class="appl-n" title="Enquiries from the same email or phone number, joined">🔗' + g.group.length + '</span>' : '') + (VERDICT[g.verdict] ? ' <span title="' + VERDICT[g.verdict][1] + '">' + VERDICT[g.verdict][0] + '</span>' : '') +
+          (up ? '<div class="appl-vw" title="Viewing booked' + (up.property_address ? ' at ' + esc(up.property_address) : '') + (up.staff || up.created_by ? ' with ' + esc(up.staff || up.created_by) : '') + '">🗓 Viewing ' + esc(applVwText(up)) + '</div>' : '') + '</td>' +
         '<td class="nw c-act">' + (function(){ var wa = g.phone ? waNumber(g.phone) : '', m = wa || g.email ? leadMsg(g) : null;
           return (wa ? '<a class="appl-ic wa" href="https://wa.me/' + esc(wa) + '?text=' + encodeURIComponent(m.body) + '" target="_blank" rel="noopener" title="WhatsApp ' + esc(g.name || '') + ' with a ready-written message">💬<span> WhatsApp</span></a>' : '') +
-            (g.email ? '<a class="appl-ic" href="mailto:' + esc(g.email) + '?subject=' + encodeURIComponent(m.subject) + '&body=' + encodeURIComponent(m.body) + '" title="Email ' + esc(g.email) + ' with a ready-written message">✉️<span> Email</span></a>' : ''); })() + '</td>' +
+            (g.email ? '<a class="appl-ic" href="mailto:' + esc(g.email) + '?subject=' + encodeURIComponent(m.subject) + '&body=' + encodeURIComponent(m.body) + '" title="Email ' + esc(g.email) + ' with a ready-written message">✉️<span> Email</span></a>' : '') +
+            '<a class="appl-ic bk" href="#" data-appl-book title="Book a viewing with ' + esc(g.name || 'them') + ' — it goes in the calendar">🗓<span> Book</span></a>'; })() + '</td>' +
         '<td class="nw cut c-who">' + (g.assigned ? (hold.held ? '🔒 ' : '') + esc(g.assigned) : '<span class="muted">—</span>') + '</td>' +
         '<td class="nw c-src">' + esc(applSrc(g).replace('Website message', 'Web message').replace(' (out of hours)', '')) + '</td>' +
         '<td class="nw c-phone">' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(g.phone) + '</a>' : '') + '</td>' +
@@ -9655,6 +9672,8 @@
   }
   window.addEventListener('resize', function(){ if (crm.mode === 'appl' && crm.view === 'table') applTableFit(); });
   $('crmList').addEventListener('click', function(e){
+    var bk = e.target.closest('[data-appl-book]');
+    if (bk) { e.preventDefault(); var gx = crmItem(bk); if (gx) applBook(gx); return; }
     var h = e.target.closest('[data-asort]'); if (!h) return;
     var k = h.dataset.asort; crm.asort = crm.asort.k === k ? { k: k, d: -crm.asort.d } : { k: k, d: k === 'at' || k === 'id' || k === 'rent' ? -1 : 1 };
     try { localStorage.setItem('rr_appl_sort', JSON.stringify(crm.asort)); } catch (er) {}
@@ -9669,8 +9688,8 @@
     var holdFlag = !ap || x.archived || x.status === 'won' || x.status === 'lost' || (!x.group && !crmOpenItem(x)) ? '' : hold.held ? '<span class="crm-flag' + (hold.who === crm.me ? ' ok' : '') + '">🔒 ' + (hold.who === crm.me ? 'Yours · ' + hrs(hold.left) + ' left to stay in touch' : esc(hold.who) + '’s applicant · open in ' + hrs(hold.left)) + '</span>'
       : '<span class="crm-flag warn">🔓 Open to anyone' + (hold.who ? (hold.since === null ? ' · no contact from ' + esc(hold.who) + ' yet' : ' · no contact from ' + esc(hold.who) + ' for ' + hrs(hold.since)) : '') + '</span>';
     var vd = ap && VERDICT[x.verdict] ? '<span class="crm-flag" style="color:' + VERDICT[x.verdict][2] + '">' + VERDICT[x.verdict][0] + ' ' + VERDICT[x.verdict][1] + '</span>' : '';
-    var up = (x.viewings || []).filter(function(v){ return new Date(v.at).getTime() > Date.now() - 3 * 3600000; })[0];
-    var gflags = (crm.mode === 'appl' && x.group && crm.seen != null && x.group.some(function(i){ return i.id > crm.seen; }) ? '<span class="crm-flag new">🆕 New</span>' : '') + (x.group && x.group.length > 1 ? '<span class="crm-flag" title="Enquiries from the same email or phone number, joined">🔗 ' + x.group.length + ' enquiries</span>' : '') + (up ? '<span class="crm-flag ok">🗓 Viewing ' + esc(fmtWhen(up.at)) + (up.staff ? ' · ' + esc(up.staff) : '') + '</span>' : '') +
+    var up = ap ? applNextVw(x) : null;
+    var gflags = (crm.mode === 'appl' && x.group && crm.seen != null && x.group.some(function(i){ return i.id > crm.seen; }) ? '<span class="crm-flag new">🆕 New</span>' : '') + (x.group && x.group.length > 1 ? '<span class="crm-flag" title="Enquiries from the same email or phone number, joined">🔗 ' + x.group.length + ' enquiries</span>' : '') + (up ? '<span class="crm-flag vw">🗓 Viewing booked · ' + esc(applVwText(up)) + (up.property_address ? ' · ' + esc(shortAddr(up.property_address)) : '') + (up.staff || up.created_by ? ' · with ' + esc(up.staff || up.created_by) : '') + '</span>' : '') +
       (function(){ var fv = (x.viewings || []).filter(function(v){ return v.app_fb_at; }).sort(function(a, b){ return new Date(b.app_fb_at) - new Date(a.app_fb_at); })[0], f = fv && fv.app_fb || {}; return fv ? '<span class="crm-flag' + (f.interest === 'yes' ? ' ok' : '') + '" title="Their feedback after the viewing">⭐ Feedback ' + (f.rating || '–') + '/5' + (f.interest === 'yes' ? ' · wants to offer' : f.interest === 'maybe' ? ' · has questions' : f.interest === 'no' ? ' · not for them' : '') + '</span>' : ''; })();
     var flags = gflags + holdFlag + vd + (x.archived ? '<span class="crm-flag">🗄 Archived ' + esc(fmtShort(x.archived)) + (x.archivedBy ? ' by ' + esc(x.archivedBy) : '') + '</span>' : '') + (need ? '<span class="crm-flag warn">📣 ' + esc(need) + '</span>' : '') + (x.type === 'viewing' && !d.confirmed && x.status !== 'lost' ? '<span class="crm-flag warn">Time to confirm</span>' : '') + (x.type === 'viewing' && d.confirmed ? '<span class="crm-flag ok">🗓 ' + esc(crmSlot(d.confirmed)) + '</span>' : '') +
       (x.follow && need !== 'Follow-up due' ? '<span class="crm-flag' + (x.follow <= today && x.status !== 'won' && x.status !== 'lost' ? ' warn' : '') + '">⏰ ' + (x.follow === today ? 'Today' : x.follow < today ? 'Overdue · ' + esc(fmtDateOnly(x.follow)) : esc(fmtDateOnly(x.follow))) + '</span>' : '') + (x.assigned ? '<span class="crm-flag">👤 ' + esc(x.assigned) + '</span>' : '') + (x.notes.filter(function(n){ return !n.auto; }).length ? '<span class="crm-flag">📝 ' + x.notes.filter(function(n){ return !n.auto; }).length + '</span>' : '');
@@ -9683,6 +9702,7 @@
       var lockedQ = applLocked(x);
       h += '<div class="appl-quick">' + (lockedQ ? '<span class="muted-note" style="margin:0">🔒 ' + esc(hold.who) + '’s applicant — opens to everyone in ' + hrs(hold.left) + ' if they don’t get in touch</span>'
         : '<button type="button" class="btn small primary" data-aq="spoke">' + (hold.held && hold.who === crm.me ? '📞 Spoke to them again' : '✅ I’ve spoken to them') + '</button><button type="button" class="btn small" data-aq="note">📝 Add a note</button>') +
+        (lockedQ ? '' : '<a class="btn small" href="#" data-appl-book>🗓 Book a viewing</a>') +
         '<div class="appl-qf" hidden><textarea class="inp" rows="2" data-aq-text></textarea><div class="appl-qb"><button type="button" class="btn small primary" data-aq-save></button><button type="button" class="btn small ghost" data-aq-cancel>Cancel</button></div></div></div>';
     }
     if (!open) return h + '</div>';
@@ -9805,7 +9825,9 @@
   }
   document.addEventListener('click', function(e){ var c = e.target.closest('[data-hook-copy]'); if (c && leadHook) copyText(c.dataset.hookCopy === 'rm' ? (leadHook.rm_hook || {}).url : leadHook.url).then(function(){ toast('Copied'); }); });
   ['crmQ', 'crmSt', 'crmWho'].forEach(function(id){ $(id).addEventListener(id === 'crmQ' ? 'input' : 'change', renderCrm); });
-  $('applTabs').addEventListener('click', function(e){ var v = e.target.closest('[data-appl-view]'); if (v) { crm.view = v.dataset.applView; try { localStorage.setItem('rr_appl_view', crm.view); } catch (er) {} renderCrm(); return; }
+  $('applTabs').addEventListener('click', function(e){
+    if (e.target.closest('[data-appl-cal]')) { showView('cal'); return; } if (e.target.closest('[data-appl-phone]')) { calPhone(); return; }
+    var v = e.target.closest('[data-appl-view]'); if (v) { crm.view = v.dataset.applView; try { localStorage.setItem('rr_appl_view', crm.view); } catch (er) {} renderCrm(); return; }
     var b = e.target.closest('[data-appl-tab]'); if (!b) return; crm.tab = b.dataset.applTab; crm.tile = ''; renderCrm(); });
   $('crmProp').addEventListener('change', function(){ var v = this.value; crm.prop = !v ? null : v === '__ext' ? crm.prop : { keys: [v] }; renderCrm(); });
   // Recommend a property to the ticked applicants: one email each (nobody sees the others), noted on each lead.
@@ -12438,7 +12460,7 @@
   setInterval(function(){ if (view === 'cal' && !document.hidden && !$('appView').hidden) loadCal(true); }, 60000);   // others' bookings
   // Book (or change) a viewing — from the calendar, the Available list or anywhere.
   function openBook(o){
-    o = o || {}; var v = o.edit || null; cal.edit = v;
+    o = o || {}; var v = o.edit || null; cal.edit = v; cal.leadId = v ? null : (o.leadId || null);
     var at = v ? new Date(v.at) : null, me = calMe();
     var names = cal.staff.slice(); if (names.indexOf(me) === -1) names.unshift(me); if (v && names.indexOf(calWho(v)) === -1) names.push(calWho(v));
     $('cbStaff').innerHTML = names.map(function(n){ return '<option' + ((v ? calWho(v) : me) === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('');
@@ -12467,12 +12489,13 @@
     var b = this, prop = $('cbProp').value.trim(), d = $('cbDate').value, t = $('cbTime').value;
     if (!prop) { toast('Enter the property'); $('cbProp').focus(); return; } if (!d || !t) { toast('Choose the date and time'); (d ? $('cbTime') : $('cbDate')).focus(); return; }
     var body = { property: prop, at: new Date(d + 'T' + t).toISOString(), mins: +$('cbMins').value, staff: $('cbStaff').value, applicant: $('cbWho').value.trim(), phone: $('cbPhone').value.trim(), email: $('cbEmail').value.trim() };
+    if (!cal.edit && cal.leadId) body.lead_id = cal.leadId;
     busy(b, true, 'Saving…');
     api('POST', '/api/admin/viewings' + (cal.edit ? '/' + cal.edit.id : ''), body).then(function(r){
       busy(b, false); if (!r || !r.ok) { toast('Couldn’t save the viewing'); return; }
       $('cbModal').hidden = true; toast('✓ ' + (cal.edit ? 'Viewing updated' : 'Viewing booked for ' + body.staff + ' — ' + new Date(body.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })));
       if (!cal.edit && view === 'cal') { cal.start = cal.mode === 'day' ? new Date(new Date(body.at).setHours(0, 0, 0, 0)) : calMonday(body.at); }
-      calChanged();
+      calChanged(); if (body.lead_id || view === 'appl' || view === 'crm') loadCrm('poll');
     });
   });
   $('cbDel').addEventListener('click', function(){ if (!cal.edit || !confirm('Delete this viewing? (To keep a record, use Cancel on the viewing instead.)')) return; api('POST', '/api/admin/viewings/' + cal.edit.id, { delete: true }).then(function(){ $('cbModal').hidden = true; toast('Viewing deleted'); calChanged(); }); });
