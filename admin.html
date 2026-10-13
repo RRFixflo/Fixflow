@@ -782,7 +782,13 @@
   .av-side { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); background: var(--bg, #f4f5f8); box-shadow: -18px 0 40px -18px rgba(16,24,40,.35); z-index: 45; overflow-y: auto; padding: 16px; transform: translateX(105%); transition: transform .22s ease; }
   .av-side.open { transform: none; } .av-side-bg { position: fixed; inset: 0; background: rgba(8,9,12,.25); z-index: 44; }
   .av-side-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 1.05rem; } .av-side .av-tools { background: #fff; }
-  .av-win .av-side-btn { margin-right: auto; font-weight: 700; } .av-side-n { display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 999px; background: #d92d20; color: #fff; font-size: .72rem; line-height: 18px; text-align: center; }
+  .av-alert { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border-radius: 12px; padding: 12px 14px; margin: 0 0 12px; font: inherit; cursor: pointer; border: 1px solid; }
+  .av-alert.warn { background: #fff4e5; border-color: #f79009; color: #7a2e0e; box-shadow: 0 0 0 3px rgba(247,144,9,.15); } .av-alert.ok { background: #ecfdf3; border-color: #abefc6; color: #05603a; padding: 8px 14px; }
+  .av-alert-i { font-size: 1.5rem; line-height: 1; } .av-alert.ok .av-alert-i { font-size: 1.1rem; } .av-alert-t { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; } .av-alert-t b { font-size: 1.02rem; } .av-alert.ok .av-alert-t b { font-size: .9rem; } .av-alert-t span { font-size: .86rem; }
+  .av-alert-go { flex: none; font-weight: 800; border-radius: 10px; padding: 9px 14px; } .av-alert.warn .av-alert-go { background: #b54708; color: #fff; } .av-alert.ok .av-alert-go { background: #fff; border: 1px solid #abefc6; font-size: .82rem; padding: 6px 10px; }
+  .av-alert.warn .av-alert-i { animation: avbell 2.4s ease-in-out infinite; } @keyframes avbell { 0%, 90%, 100% { transform: rotate(0); } 93% { transform: rotate(14deg); } 96% { transform: rotate(-12deg); } }
+  @media (prefers-reduced-motion: reduce) { .av-alert.warn .av-alert-i { animation: none; } }
+  @media (max-width: 640px) { .av-alert { flex-wrap: wrap; } .av-alert-go { width: 100%; text-align: center; } .av-alert.ok .av-alert-t span { display: none; } }
   @media (prefers-reduced-motion: reduce) { .av-side { transition: none; } }
   .psug .psug-tcy { display: block; color: #175cd3; font-weight: 700; font-size: .74rem; margin-top: 1px; } .psug .psug-none { display: block; color: #98a2b3; font-size: .72rem; }
   .chip-lbl { align-self: center; font-size: .8rem; font-weight: 700; color: var(--ink-soft); margin-right: 2px; }
@@ -822,7 +828,7 @@
   .inv-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
   .ie-line { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto auto; gap: 6px; align-items: center; } .ie-line label { flex-direction: row !important; font-size: .78rem; white-space: nowrap; } .ie-tot { text-align: right; font-size: .92rem; }
   @media (max-width: 760px) { .inv-row { grid-template-columns: minmax(0, 1fr) auto; } .inv-st { grid-column: 1; } .inv-acts { grid-column: 1 / -1; justify-content: flex-start; } .ie-line { grid-template-columns: minmax(0, 1fr) 90px; } }
-  .av-win { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin: -4px 0 8px; } @media (max-width: 760px) { .av-win > :not(.av-side-btn) { display: none; } .av-win .av-side-btn { margin: 0; width: 100%; } }
+  .av-win { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin: -4px 0 8px; } @media (max-width: 760px) { .av-win { display: none; } }
   .cal-top { margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
   .cal-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .cal-bar b { font-size: 1.05rem; margin: 0 6px; flex: 1; min-width: 140px; }
   .cal-seg { display: inline-flex; border: 1px solid var(--line, #e5e7eb); border-radius: 10px; overflow: hidden; } .cal-seg button { border: 0; background: #fff; padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: var(--ink-soft, #475467); } .cal-seg button.on { background: var(--ink, #101828); color: #fff; }
@@ -2296,7 +2302,8 @@
       </div>
       <div id="availView" hidden>
         <div class="card av-top">
-          <div class="av-win"><button type="button" class="btn small av-side-btn" id="avSideBtn" title="Rightmove and YouTube checks, Dreams, other agents, new adverts nearby">🔔 Checks &amp; alerts <span class="av-side-n" id="avSideN" hidden></span></button><button type="button" class="btn small ghost" data-open-win="cal" title="Keep the calendar open on your other screen">🗓 Open the calendar in a new window</button><button type="button" class="btn small ghost" data-open-win="avail" title="Open this list in its own window">⧉ This list in a new window</button></div>
+          <button type="button" class="av-alert ok" id="avSideBtn" title="Rightmove and YouTube checks, Dream adverts, our properties with other agents, new adverts near the office"><span class="av-alert-i">🔔</span><span class="av-alert-t" id="avAlertT"><b>Checks &amp; alerts</b></span><span class="av-alert-go">Open checks →</span><span id="avSideN" hidden></span></button>
+          <div class="av-win"><button type="button" class="btn small ghost" data-open-win="cal" title="Keep the calendar open on your other screen">🗓 Open the calendar in a new window</button><button type="button" class="btn small ghost" data-open-win="avail" title="Open this list in its own window">⧉ This list in a new window</button></div>
           <div class="av-search"><input class="inp" id="avQ" placeholder="Search address, landlord, postcode, Gnomen no., notes…"><select class="inp" id="avSort" style="width:auto"><option value="date">Available soonest</option><option value="lo">Rent: low to high</option><option value="hi">Rent: high to low</option><option value="beds">Bedrooms</option><option value="new">Newest added</option><option value="online">Longest online</option><option value="fee">Commission: highest</option></select><div class="av-modes" id="avModes" title="How to see the list"><button type="button" data-avm="cards" class="on">▦ Cards</button><button type="button" data-avm="list">☰ List</button><button type="button" data-avm="compact">≡ Compact</button></div></div>
           <div class="av-chips" id="avBeds"><button type="button" class="on" data-avb="">All</button><button type="button" data-avb="1">Studio / 1 bed</button><button type="button" data-avb="2">2 bed</button><button type="button" data-avb="3">3 bed</button><button type="button" data-avb="4">4+ bed</button><span class="av-sep"></span><button type="button" data-avf="now">Available now</button><button type="button" data-avf="urgent">🔥 Urgent</button><button type="button" data-avf="novideo">🎥 Needs a video</button><button type="button" data-avf="let">✓ Been let</button><button type="button" data-avf="withdrawn">Withdrawn</button></div>
           <div class="av-sum" id="avSum"></div>
@@ -4789,7 +4796,7 @@
     // Folded away unless you open it (remembered on this device) — keeps the page calm.
     t.open = phone.matches ? saved === '1' : saved !== '0';   // open on computers unless folded, folded on phones unless opened
     t.addEventListener('toggle', function(){ saved = t.open ? '1' : '0'; try { localStorage.setItem('rr_av_tools', saved); } catch (e) {} });
-    var badge = function(){ var txt = ($('avRm').innerText || '') + ' ' + ($('avYt').innerText || ''); $('avToolsBadge').textContent = /didn.t work|Dream advert|has been up|not linked|unlinked|need/i.test(txt) ? '⚠️ needs a look' : ''; };
+    var badge = function(){ var txt = ($('avRm').textContent || '') + ' ' + ($('avYt').textContent || '');   /* textContent: still read when the section is folded */ $('avToolsBadge').textContent = /didn.t work|Dream advert|has been up|not linked|unlinked|need/i.test(txt) ? '⚠️ needs a look' : ''; };
     if (window.MutationObserver) { var mo = new MutationObserver(badge); mo.observe($('avRm'), { childList: true, subtree: true, characterData: true }); mo.observe($('avYt'), { childList: true, subtree: true, characterData: true }); }
   })();
 
@@ -12620,8 +12627,19 @@
   $('avSideX').addEventListener('click', function(){ avSide(false); }); $('avSideBg').addEventListener('click', function(){ avSide(false); });
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && $('avSide').classList.contains('open')) avSide(false); });
   // How many of the checks need a look (their own badges say so).
-  function avSideCount(){ var n = ['avToolsBadge', 'avRivBadge', 'avNearBadge'].filter(function(id){ var b = $(id); return b && b.textContent.trim() && !b.closest('[hidden]'); }).length; $('avSideN').hidden = !n; $('avSideN').textContent = n; }
+  // The banner at the top of Available properties: what needs a look, in words, so staff can't miss it.
+  function avSideCount(){
+    var on = function(id){ var b = $(id); return b && b.textContent.trim() && !b.closest('[hidden]') ? b.textContent.trim() : ''; };
+    var t = on('avToolsBadge'), r = on('avRivBadge'), nr = on('avNearBadge'), items = [];
+    if (t) items.push('📡 Rightmove / Dream adverts / videos need a look');
+    if (r) items.push('🔎 ' + r + ' of our properties seen with other agents');
+    if (nr) items.push('📍 ' + nr + ' new advert' + (nr === '1' ? '' : 's') + ' near the office this week');
+    var b = $('avSideBtn'); b.classList.toggle('ok', !items.length); b.classList.toggle('warn', !!items.length);
+    $('avSideN').textContent = items.length;
+    $('avAlertT').innerHTML = items.length ? '<b>' + items.length + ' check' + (items.length === 1 ? ' needs' : 's need') + ' a look</b><span>' + items.map(esc).join(' · ') + '</span>' : '<b>✅ Checks &amp; alerts</b><span>Nothing needs a look right now — Rightmove, Dream adverts, videos, other agents and adverts nearby</span>';
+  }
   try { new MutationObserver(avSideCount).observe($('avSide'), { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] }); } catch (e) {}
+  avSideCount();
   // Times in 15-minute steps, 7am to 9pm (an older booking at another minute keeps its own time in the list).
   function cbTimes(cur){
     var opts = [], h, m; for (h = 7; h <= 21; h++) for (m = 0; m < 60; m += 15) { if (h === 21 && m) break; opts.push(String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0')); }
