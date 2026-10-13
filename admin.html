@@ -4974,13 +4974,15 @@
   function psOurList(){
     if (!psOur) { if (!psOurAsk) { psOurAsk = true; api('GET', '/api/admin/our-props').then(function(d){ psOur = (d && d.ok && d.items || []).map(function(x){ var o = psItem(x.address, x.kind === 'ours' ? 'Our property' : x.kind === 'listed' ? 'Already on the available list' : 'Listed before', (x.kind === 'ours' ? 2 : x.kind === 'listed' ? 1 : 0) + (x.tcy ? (x.tcy.exact ? 4 : 1) : 0));
           // Which look-alike is the real one: the record with our tenancy (and its tenants), and the landlord.
+          if (x.tcy && x.tcy.exact) o.isTcy = true;
           if (x.tcy) o.tcy = (x.tcy.exact ? '✅ The tenancy is under this address' : '↪ Same flat as our tenancy at “' + x.tcy.address + '”') + (x.tcy.start ? ' · from ' + longDay(String(x.tcy.start).slice(0, 10)) : '') + (x.tcy.tenants && x.tcy.tenants.length ? ' — ' + x.tcy.tenants.join(', ') : '');
           if (x.landlord) o.ll = '🔑 ' + x.landlord;
           return o; }); if (psFor && document.activeElement === psFor) psShow(psFor); if (view === 'avail' && avItems.length) renderAvail(); }); } return []; }
     return psOur;
   }
   function psShow(inp){
-    psFor = inp; psList = psMatch(inp.value, inp.dataset.psug === 'our' ? psOurList() : undefined); psOn = -1;
+    // The viewing boxes suggest only addresses from our tenancies (the record the tenants are saved under).
+    psFor = inp; psList = psMatch(inp.value, inp.dataset.psug === 'our' ? psOurList() : inp.dataset.psug === 'tcy' ? psOurList().filter(function(o){ return o.isTcy; }) : undefined); psOn = -1;
     if (!psBox) { psBox = document.createElement('div'); psBox.className = 'psug'; psBox.setAttribute('role', 'listbox'); document.body.appendChild(psBox);
       psBox.addEventListener('mousedown', function(e){ e.preventDefault(); });
       psBox.addEventListener('click', function(e){ var b = e.target.closest('[data-ps]'); if (b) psPick(Number(b.dataset.ps)); }); }
@@ -4997,9 +4999,9 @@
   var PS_LISTS = { offProps: 1, tfProps: 1, tenantPropList: 1 };
   document.addEventListener('focusin', function(e){
     var inp = e.target; if (!inp || inp.tagName !== 'INPUT') return;
-    var l = inp.getAttribute('list'); if (l && PS_LISTS[l]) { inp.removeAttribute('list'); inp.dataset.psug = inp.id === 'avAddr' || inp.id === 'cbProp' || inp.id === 'vdOccAddr' ? 'our' : '1'; inp.setAttribute('autocomplete', 'off'); }
-    if (inp.dataset.psug === 'our') psOurList();
-    if (inp.dataset.psug) { if (inp.dataset.psug !== 'our') psLoadAvail(); if (inp.value.trim()) psShow(inp); }
+    var l = inp.getAttribute('list'); if (l && PS_LISTS[l]) { inp.removeAttribute('list'); inp.dataset.psug = inp.id === 'cbProp' || inp.id === 'vdOccAddr' ? 'tcy' : inp.id === 'avAddr' ? 'our' : '1'; inp.setAttribute('autocomplete', 'off'); }
+    if (inp.dataset.psug === 'our' || inp.dataset.psug === 'tcy') psOurList();
+    if (inp.dataset.psug) { if (inp.dataset.psug === '1') psLoadAvail(); if (inp.value.trim()) psShow(inp); }
   });
   document.addEventListener('input', function(e){ var inp = e.target; if (inp && inp.dataset && inp.dataset.psug && e.isTrusted !== false) { if (document.activeElement === inp) psShow(inp); } });
   document.addEventListener('keydown', function(e){
