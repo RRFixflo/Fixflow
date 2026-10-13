@@ -765,13 +765,24 @@
   .appl-lt td.c-act { padding-top: 4px; padding-bottom: 4px; } .appl-lt th.c-act { cursor: default; }
   .appl-ic { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 8px; padding: 4px 8px; margin-right: 4px; font-size: .76rem; font-weight: 700; color: #344054 !important; text-decoration: none !important; }
   .appl-ic.wa { color: #067647 !important; border-color: #abefc6; background: #f6fef9; } .appl-ic:hover { background: #f2f4f7; } .appl-ic.wa:hover { background: #ecfdf3; }
-  .appl-lt.slim .appl-ic span { display: none; } .appl-ic:not(.wa):not(.bk) { color: #175cd3 !important; border-color: #b2ddff; background: #f5faff; }
+  .appl-lt.slim .appl-ic { padding: 3px 5px; margin-right: 2px; font-size: .7rem; gap: 2px; } .appl-lt.slim .appl-ic em { display: none; } .appl-ic em { font-style: normal; } .appl-ic:not(.wa):not(.bk) { color: #175cd3 !important; border-color: #b2ddff; background: #f5faff; }
   .cb-extra { grid-template-columns: 1fr 1fr 1fr auto !important; align-items: end; padding-top: 8px; border-top: 1px dashed var(--line, #e6e8ec); } .cb-x { border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 8px; width: 36px; height: 40px; cursor: pointer; color: #b42318; font-weight: 700; }
   @media (max-width: 760px) { .cb-extra { grid-template-columns: 1fr !important; } .cb-x { width: 100%; height: 34px; } }
   .cal-grp { display: flex; flex-direction: column; gap: 3px; cursor: default; } .cal-gp { text-align: left; border: 1px solid rgba(16,24,40,.12); background: rgba(255,255,255,.75); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: .76rem; font-weight: 600; cursor: pointer; } .cal-gp:hover { background: #fff; } .cal-gp.st-cancelled, .cal-gp.st-no_show { text-decoration: line-through; opacity: .7; } .appl-ic.bk { color: #5925dc !important; border-color: #d9d6fe; background: #f9f8ff; }
   .appl-vw { display: block; width: max-content; margin-top: 3px; background: #6941c6; color: #fff; font-size: .7rem; font-weight: 700; border-radius: 6px; padding: 2px 7px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
   .appl-lt tr.has-vw td { background: #faf8ff; } .appl-lt tr.has-vw td.nm { max-width: 215px; } .appl-lt tr.has-vw td:first-child { box-shadow: inset 3px 0 0 #6941c6; }
   .vd-cx, .vw-cx:has(b) { display: flex; flex-direction: column; gap: 6px; border: 1px solid #fecdca; background: #fef3f2; border-radius: 10px; padding: 10px; margin-top: 6px; } .vw-cx { margin-top: 6px; }
+  .crm-tile small em { font-style: normal; } @media (max-width: 760px) { .lg-only { display: none; } }
+  @media (max-width: 760px) {
+    .appl-tabs { gap: 6px; } .appl-tabs > button { flex: 1; padding: 8px 10px; }
+    .appl-view { margin-left: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; } .appl-view { grid-template-columns: 1.25fr 1fr 1fr 1fr !important; } .appl-view button { padding: 7px 2px; font-size: .76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #crmView.is-appl .crm-tile small em { display: none; }
+    #crmView.is-appl .crm-tile { padding: 10px; } .crm-bar select, .crm-bar #crmQ { width: 100%; max-width: 100%; }
+  }
+  .chip-lbl { align-self: center; font-size: .8rem; font-weight: 700; color: var(--ink-soft); margin-right: 2px; }
+  .appl-key { margin-top: 10px; font-size: .76rem; color: var(--ink-soft); } .appl-key summary { cursor: pointer; font-weight: 700; } .appl-key-in { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; align-items: center; } .appl-key span { display: inline-flex; align-items: center; gap: 5px; }
+  .appl-key i { display: inline-block; width: 4px; height: 14px; border-radius: 2px; } .appl-key .k-red { background: #d92d20; } .appl-key .k-pur { background: #6941c6; }
+  .vw-ask { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: .78rem; color: var(--ink-soft); } .vw-ask > span { flex-basis: 100%; }
   .vw-cx-b { display: flex; gap: 6px; flex-wrap: wrap; } .appl-vw[data-vw-edit] { cursor: pointer; } .appl-vw[data-vw-edit]:hover { background: #53389e; }
   .crm-flag.vw { background: #6941c6 !important; color: #fff !important; border-color: #6941c6 !important; font-weight: 700; }
   .appl-view [data-appl-cal], .appl-view [data-appl-phone] { color: #5925dc; }
@@ -870,7 +881,7 @@
   .crm-card.is-arch { opacity: .75; } .crm-arch { margin-top: 12px; display: flex; justify-content: flex-end; } .btn.danger { color: #b42318; }
   .st-n { background: #b42318; color: #fff; border-radius: 999px; padding: 0 6px; font-size: .72rem; margin-left: 2px; }
   @media (max-width: 760px) {
-    .crm-tiles { grid-template-columns: 1fr 1fr; } .crm-ctl { grid-template-columns: 1fr; } .crm-act span { display: none; } .crm-head { padding: 10px 12px; } .crm-acts { gap: 4px; } .crm-act { padding: 6px 8px; }
+    .crm-tiles { grid-template-columns: 1fr 1fr; } .crm-ctl { grid-template-columns: 1fr; } .crm-head { padding: 10px 12px; flex-wrap: wrap; } .crm-who { flex: 1 1 calc(100% - 44px); } .crm-acts { gap: 6px; width: 100%; padding-left: 32px; } .crm-act { padding: 7px 10px; flex: 1; justify-content: center; } .crm-chev { margin-left: auto; }
     .crm-add-note { flex-direction: column; align-items: stretch; } .crm-bar select { flex: 1; }
   }
   .vr-tag { display: inline-block; padding: 1px 8px; border-radius: 6px; background: #eff8ff; color: #175cd3; font-size: .74rem; font-weight: 700; margin-right: 4px; } .vr-tag.val { background: #f4f3ff; color: #5925dc; }
@@ -2250,8 +2261,9 @@
         <div class="card crm-top">
           <div class="appl-tabs" id="applTabs" hidden></div>
           <div class="crm-tiles" id="crmTiles"></div>
-          <div class="crm-bar"><input class="inp" id="crmQ" type="search" placeholder="Search name, phone, email, address, notes…"><select class="inp" id="crmSt"><option value="">Any status</option><option value="open">Still to deal with</option><option value="new">New</option><option value="contacted">Contacted</option><option value="booked">Booked</option><option value="won">Won ✓</option><option value="lost">Not going ahead</option></select><select class="inp" id="crmWho"><option value="">Anyone</option><option value="me">Mine</option><option value="none">Not assigned</option></select><select class="inp" id="crmProp" title="Leads for one property"><option value="">All properties</option></select><button type="button" class="btn small primary" id="crmAddBtn">➕ Add a lead</button></div>
+          <div class="crm-bar"><input class="inp" id="crmQ" type="search" placeholder="Search name, phone, email, address, notes…"><select class="inp" id="crmSt" title="Status"><option value="">Status: any</option><option value="open">Still to deal with</option><option value="new">New</option><option value="contacted">Contacted</option><option value="booked">Booked</option><option value="won">Won ✓</option><option value="lost">Not going ahead</option></select><select class="inp" id="crmWho" title="Who is looking after them"><option value="">Looked after by: anyone</option><option value="me">Mine</option><option value="none">Not assigned</option></select><select class="inp" id="crmProp" title="Leads for one property"><option value="">All properties</option></select><button type="button" class="btn small primary" id="crmAddBtn">➕ Add a lead</button></div>
           <div class="av-chips" id="crmTypes"></div>
+          <div class="appl-key" id="applKey" hidden></div>
           <div class="crm-add" id="crmAdd" hidden>
             <div class="lt-grid"><label>Name<input class="inp" id="caName" maxlength="120" autocomplete="off"></label><label>Mobile<input class="inp" id="caPhone" type="tel" maxlength="40"></label><label>Email<input class="inp" id="caEmail" type="email" maxlength="200"></label>
               <label>They are<select class="inp" id="caType"><option>Landlord</option><option>Applicant</option><option>Tenant</option><option>Buyer</option><option>Seller</option><option>Contractor</option><option>Other</option></select></label><label>How they got in touch<select class="inp" id="caSource"><option>Phone call</option><option>Walk-in</option><option>Email</option><option>Viewing</option><option>Rightmove</option><option>Referral</option><option>Other</option></select></label>
@@ -9367,7 +9379,7 @@
   // ---------- Contacts (CRM): every website request, viewing request, landlord alert sign-up and contact staff add ----------
   var crm = { items: [], staff: [], me: '', type: '', open: {}, mode: 'crm' }, CRM_T = {
     rm: ['🏠', 'Rightmove', '#0e7a64', '#e6fbf6'], lead: ['📥', 'Portal lead', '#0e7a64', '#e6fbf6'],
-    viewing: ['🗓', 'Viewing request', '#b54708', '#fffaeb'], val: ['🏠', 'Rental valuation', '#5925dc', '#f4f3ff'], sale: ['🏷️', 'Sales valuation', '#5925dc', '#f4f3ff'], quick: ['⚡', 'Quick valuation', '#5925dc', '#f4f3ff'],
+    viewing: ['🌐', 'Website viewing request', '#b54708', '#fffaeb'], val: ['🏠', 'Rental valuation', '#5925dc', '#f4f3ff'], sale: ['🏷️', 'Sales valuation', '#5925dc', '#f4f3ff'], quick: ['⚡', 'Quick valuation', '#5925dc', '#f4f3ff'],
     cert: ['📜', 'Certificate booking', '#c4320a', '#fff6ed'], comps: ['📊', 'Comparables report', '#6941c6', '#f4f3ff'], mortgage: ['🏦', 'Mortgage rental letter', '#5925dc', '#f4f3ff'], enquiry: ['💬', 'Message', '#175cd3', '#eff8ff'], contact: ['📇', 'Added by staff', '#344054', '#f2f4f7'], call: ['📞', 'Out-of-hours call', '#b42318', '#fef3f2'], sub: ['🔔', 'Alert sign-up', '#067647', '#ecfdf3'] };
   var CRM_ST = { new: ['New', '#b42318'], contacted: ['Contacted', '#175cd3'], booked: ['Booked', '#6941c6'], won: ['Won ✓', '#067647'], lost: ['Not going ahead', '#667085'] };
   function crmDay(d){ return new Date(d).toISOString().slice(0, 10); }
@@ -9495,7 +9507,7 @@
   function crmOpenItem(x){ return x.type !== 'sub' && (x.status === 'new' || x.status === 'contacted' || (x.status === 'booked' && x.type !== 'viewing')); }
   function renderCrm(){
     var appl = crm.mode === 'appl', base = crm.items.filter(function(x){ return appl ? isAppl(x) : !isAppl(x); });   // applicants on Leads, everything else on Website leads (owner and staff)
-    var hk = crm.manager && (appl || !staffMode); $('crmHook').hidden = !hk; if (hk) loadLeadHook();
+    $('crmHook').hidden = true;   // the owner asked for the portal-connection box to go (Rightmove is connected; the links keep working)
     $('crmView').classList.toggle('is-appl', appl); $('crmView').classList.toggle('tbl', appl && crm.view === 'table');
     var today = crmToday(), archived = base.filter(function(x){ return x.archived && !x.junk; }), junked = base.filter(function(x){ return x.junk; }), rawLive = base.filter(function(x){ return !x.archived; });
     // Leads: one card per person (their enquiries joined by email or phone number).
@@ -9510,11 +9522,13 @@
     var newG = appl && crm.seen != null ? live.filter(function(g){ return g.group.some(function(i){ return i.id > crm.seen; }); }) : [];
     $('applTabs').hidden = !appl;
     if (appl) $('applTabs').innerHTML = '<button type="button" data-appl-tab="all"' + (crm.tab !== 'mine' ? ' class="on"' : '') + '>👥 All leads <b>' + live.length + '</b></button><button type="button" data-appl-tab="mine"' + (crm.tab === 'mine' ? ' class="on"' : '') + ' title="Applicants you’ve taken, spoken to or booked a viewing with in the last 24 hours">🙋 My leads <b>' + mineL.length + '</b></button>' +
-      '<span class="appl-view"><button type="button" data-appl-cal title="Everyone’s viewings by week or day">🗓 Calendar</button><button type="button" data-appl-phone title="Put the viewings calendar on your phone">📲 On my phone</button><button type="button" data-appl-view="table"' + (crm.view === 'table' ? ' class="on"' : '') + ' title="One line per applicant, in columns you can sort">📋 Table</button><button type="button" data-appl-view="cards"' + (crm.view !== 'table' ? ' class="on"' : '') + '>🗂 Cards</button></span>';
-    $('crmTiles').innerHTML = (appl ? [['fresh', '🆕', fresh.length, 'Not contacted yet'], ['attn', '📣', nNew.length, 'Need contacting or an update'], ['free', '🔓', openAppl.length, 'Open to anyone'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm']] : [['attn', '📣', nNew.length, 'Need contacting or an update'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm'], ['subs', '🔔', subs.length, 'Landlords getting alerts']]).map(function(t){
+      '<span class="appl-view"><button type="button" data-appl-cal title="Everyone’s viewings by week or day">🗓 Calendar</button><button type="button" data-appl-phone title="Put the viewings calendar on your phone">📲 <span class="lg-only">On my </span>phone</button><button type="button" data-appl-view="table"' + (crm.view === 'table' ? ' class="on"' : '') + ' title="One line per applicant, in columns you can sort">📋 Table</button><button type="button" data-appl-view="cards"' + (crm.view !== 'table' ? ' class="on"' : '') + '>🗂 Cards</button></span>';
+    $('crmTiles').innerHTML = (appl ? [['fresh', '🆕', fresh.length, 'Not contacted yet<em> — nobody has spoken to them</em>'], ['attn', '📣', nNew.length, 'Need a call or an update'], ['free', '🔓', openAppl.length, 'Open to anyone<em> — nobody looking after them</em>'], ['confirm', '🌐', toConfirm.length, 'Viewing requests<em> from the website</em> waiting for a time']] : [['attn', '📣', nNew.length, 'Need contacting or an update'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm'], ['subs', '🔔', subs.length, 'Landlords getting alerts']]).map(function(t){
       return '<button type="button" class="crm-tile' + (crm.tile === t[0] ? ' on' : '') + (t[2] && t[0] !== 'subs' ? ' hot' : '') + '" data-crm-tile="' + t[0] + '"><span>' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></button>'; }).join('');
     var counts = {}; live.forEach(function(x){ var seen = {}; its(x).forEach(function(i){ if (!seen[i.type]) { seen[i.type] = 1; counts[i.type] = (counts[i.type] || 0) + 1; } }); });
-    $('crmTypes').innerHTML = '<button type="button" data-crm-type=""' + (crm.type ? '' : ' class="on"') + '>All ' + live.length + '</button>' + (appl ? ['rm', 'lead', 'viewing', 'enquiry', 'call', 'contact'] : ['rm', 'lead', 'call', 'viewing', 'cert', 'val', 'sale', 'quick', 'enquiry', 'contact', 'sub']).filter(function(k){ return counts[k]; }).map(function(k){ return '<button type="button" data-crm-type="' + k + '"' + (crm.type === k ? ' class="on"' : '') + '>' + CRM_T[k][0] + ' ' + ({ rm: 'Rightmove', lead: 'Other portals', call: 'Out-of-hours calls', viewing: 'Viewings', cert: 'Certificate bookings', val: 'Rental valuations', sale: 'Sales valuations', quick: 'Quick valuations', enquiry: 'Messages', contact: 'Added by staff', sub: 'Alert sign-ups' }[k]) + ' ' + counts[k] + '</button>'; }).join('') + (archived.length ? '<span class="av-sep"></span><button type="button" data-crm-type="archive"' + (crm.type === 'archive' ? ' class="on"' : '') + '>🗄 Archive ' + archived.length + '</button>' : '') + (junked.length ? '<button type="button" data-crm-type="junk"' + (crm.type === 'junk' ? ' class="on"' : '') + '>🚫 Junk ' + junked.length + '</button>' : '');
+    $('applKey').hidden = !appl;
+    if (appl) $('applKey').innerHTML = '<details' + (window.innerWidth >= 760 ? ' open' : '') + '><summary>What the colours and signs mean</summary><div class="appl-key-in"><span><i class="k-red"></i>Red edge = needs a call or an update</span><span><i class="k-pur"></i>Purple = viewing booked (tap the badge to change it)</span><span><b class="appl-new">NEW</b> = came in since you last looked</span><span>🔗 3 = the same person enquired 3 times (joined into one)</span><span>🔒 = someone is looking after them</span></div></details>';
+    $('crmTypes').innerHTML = '<span class="chip-lbl">Show:</span><button type="button" data-crm-type=""' + (crm.type ? '' : ' class="on"') + '>Everyone ' + live.length + '</button>' + (appl && live.some(applNextVw) ? '<button type="button" data-crm-type="booked"' + (crm.type === 'booked' ? ' class="on"' : '') + ' title="Applicants with a viewing booked that hasn’t happened yet">🗓 Viewing booked ' + live.filter(applNextVw).length + '</button>' : '') + (appl ? ['rm', 'lead', 'viewing', 'enquiry', 'call', 'contact'] : ['rm', 'lead', 'call', 'viewing', 'cert', 'val', 'sale', 'quick', 'enquiry', 'contact', 'sub']).filter(function(k){ return counts[k]; }).map(function(k){ return '<button type="button" data-crm-type="' + k + '"' + (crm.type === k ? ' class="on"' : '') + (k === 'viewing' && appl ? ' title="People who asked for a viewing on our website (the Request a viewing form on a property page)"' : '') + '>' + (k === 'viewing' && appl ? '🌐' : CRM_T[k][0]) + ' ' + ({ rm: 'Rightmove', lead: 'Other portals', call: 'Out-of-hours calls', viewing: appl ? 'Website viewing requests' : 'Viewings', cert: 'Certificate bookings', val: 'Rental valuations', sale: 'Sales valuations', quick: 'Quick valuations', enquiry: appl ? 'Website messages' : 'Messages', contact: 'Added by staff', sub: 'Alert sign-ups' }[k]) + ' ' + counts[k] + '</button>'; }).join('') + (archived.length ? '<span class="av-sep"></span><button type="button" data-crm-type="archive"' + (crm.type === 'archive' ? ' class="on"' : '') + '>🗄 Archive ' + archived.length + '</button>' : '') + (junked.length ? '<button type="button" data-crm-type="junk"' + (crm.type === 'junk' ? ' class="on"' : '') + '>🚫 Junk ' + junked.length + '</button>' : '');
     // Leads for one property: the properties people have enquired about (or one chosen from Available properties).
     var props = {}; rawLive.forEach(function(i){ var k = applPropKeys(i)[0]; if (!k) return; var pp = props[k] = props[k] || { n: 0, label: i.address ? shortAddr(i.address) : 'Ref ' + i.data.ref }; pp.n++; });
     var pk = Object.keys(props).sort(function(a, b){ return props[a].label.localeCompare(props[b].label); }), cur = crm.prop && !crm.prop.ext && crm.prop.keys[0];
@@ -9523,7 +9537,8 @@
     var list = all.filter(function(x){
       if (crm.tile === 'attn' && nNew.indexOf(x) === -1) return false; if (crm.tile === 'due' && due.indexOf(x) === -1) return false; if (crm.tile === 'confirm' && toConfirm.indexOf(x) === -1) return false; if (crm.tile === 'free' && openAppl.indexOf(x) === -1) return false; if (crm.tile === 'subs' && subs.indexOf(x) === -1) return false; if (crm.tile === 'fresh' && fresh.indexOf(x) === -1) return false;
       if (appl && crm.tab === 'mine' && crm.type !== 'archive' && crm.type !== 'junk' && !applMine(x)) return false;
-      if (crm.type && crm.type !== 'archive' && crm.type !== 'junk' && !its(x).some(function(i){ return i.type === crm.type; })) return false;
+      if (crm.type === 'booked') { if (!applNextVw(x)) return false; }
+      else if (crm.type && crm.type !== 'archive' && crm.type !== 'junk' && !its(x).some(function(i){ return i.type === crm.type; })) return false;
       if (st === 'open' ? !crmOpenItem(x) : st && x.status !== st) return false;
       if (who === 'me' && x.assigned !== crm.me) return false; if (who === 'none' && x.assigned) return false;
       if (crm.prop && !its(x).some(function(i){ return applPropKeys(i).some(function(k){ return crm.prop.keys.indexOf(k) !== -1; }); })) return false;
@@ -9619,6 +9634,20 @@
   // Their next viewing still to happen (booked, from 3 hours ago on) — shown boldly so nobody books them twice.
   function applNextVw(g){ return (g.viewings || []).filter(function(v){ return (v.status || 'booked') === 'booked' && new Date(v.at).getTime() > Date.now() - 3 * 3600000; }).sort(function(a, b){ return new Date(a.at) - new Date(b.at); })[0] || null; }
   function applVwText(v){ return new Date(v.at).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).replace(/,/g, ''); }
+  // Send the applicant the feedback form for a viewing (from the Calendar or the applicant's card): by email
+  // (Fixflow's email window) or WhatsApp, with "make an offer" on the form itself.
+  function vwAskFeedback(v, how, beforeMail){
+    var wa = how === 'wa' ? window.open('', '_blank') : null;   // opened straight away so phones don't block it
+    api('POST', '/api/admin/viewings/' + v.id + '/feedback-link', {}).then(function(r){
+      if (!r || !r.ok) { if (wa) wa.close(); toast('Couldn’t make the link'); return; }
+      var first = String(v.applicant || '').trim().split(/\s+/)[0] || 'there', addr = String(v.property_address || '').split(',').slice(0, 2).join(','), me = String(calMe()).split(/\s+/)[0].replace(/^(Owner|Office)$/, '');
+      var text = 'Hi ' + first + ',\n\nThank you for viewing ' + addr + '. We’d love to know what you thought — it only takes a minute, and if you’d like to go ahead you can make an offer from the same page:\n\n' + r.url + '\n\nAny questions, just reply or call us on 0207 096 8131.\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors';
+      var mark = function(){ api('POST', '/api/admin/viewings/' + v.id + '/feedback-link', { sent: true }).then(function(){ v.fb_sent_at = new Date().toISOString(); calChanged(); if (crm.mode === 'appl') loadCrm('poll'); }); };
+      if (wa) { wa.location.href = 'https://wa.me/' + waNumber(v.phone) + '?text=' + encodeURIComponent(text); mark(); toast('Opened WhatsApp'); return; }
+      if (beforeMail) beforeMail();
+      composeMail({ to: [v.email], subject: 'How was your viewing? — ' + addr, body: text, title: '✉ Ask for viewing feedback', onSent: mark });
+    });
+  }
   // Change a booked viewing from Applicants: the calendar's own Change window, with the full viewing and anyone sharing it.
   function applEditViewing(id, at){
     var t = new Date(at).getTime();
@@ -9665,7 +9694,7 @@
         '<td class="nw c-act">' + (function(){ var wa = g.phone ? waNumber(g.phone) : '', m = wa || g.email ? leadMsg(g) : null;
           return (wa ? '<a class="appl-ic wa" href="https://wa.me/' + esc(wa) + '?text=' + encodeURIComponent(m.body) + '" target="_blank" rel="noopener" title="WhatsApp ' + esc(g.name || '') + ' with a ready-written message">💬<span> WhatsApp</span></a>' : '') +
             (g.email ? '<a class="appl-ic" href="mailto:' + esc(g.email) + '?subject=' + encodeURIComponent(m.subject) + '&body=' + encodeURIComponent(m.body) + '" title="Email ' + esc(g.email) + ' with a ready-written message">✉️<span> Email</span></a>' : '') +
-            '<a class="appl-ic bk" href="#" data-appl-book title="Book a viewing with ' + esc(g.name || 'them') + ' — it goes in the calendar">🗓<span> Book</span></a>'; })() + '</td>' +
+            '<a class="appl-ic bk" href="#" data-appl-book title="Book a viewing with ' + esc(g.name || 'them') + ' — it goes in the calendar">🗓<span> Book<em> viewing</em></span></a>'; })() + '</td>' +
         '<td class="nw cut c-who">' + (g.assigned ? (hold.held ? '🔒 ' : '') + esc(g.assigned) : '<span class="muted">—</span>') + '</td>' +
         '<td class="nw c-src">' + esc(applSrc(g).replace('Website message', 'Web message').replace(' (out of hours)', '')) + '</td>' +
         '<td class="nw c-phone">' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(g.phone) + '</a>' : '') + '</td>' +
@@ -9685,7 +9714,7 @@
   // Too wide for the screen: leave out the least important columns (still on the card when a line is opened).
   function applTableFit(){
     var w = document.querySelector('.appl-lt-wrap'); if (!w) return; var t = w.querySelector('table');
-    var drop = ['slim', 'email', 'src', 'todo', 'rent', 'who', 'id'];
+    var drop = ['email', 'src', 'todo', 'rent', 'id', 'slim', 'who'];
     drop.forEach(function(k){ t.classList.remove(k === 'slim' ? k : 'no-' + k); });
     if (window.innerWidth >= 760) for (var i = 0; i < drop.length && t.scrollWidth > w.clientWidth + 1; i++) t.classList.add(drop[i] === 'slim' ? 'slim' : 'no-' + drop[i]);
     w.style.setProperty('--aw', (w.clientWidth - 18) + 'px');
@@ -9697,6 +9726,9 @@
     var ed = e.target.closest('[data-appl-edit]');
     if (ed) { e.preventDefault(); var ge = crmItem(ed); if (!ge) return; crm.open[ge.ref] = 1; crm.editOpen = ge.ref; renderCrm();
       var ce = document.querySelector('[data-crm="' + ge.ref + '"] .crm-edit'); if (ce) { ce.open = true; ce.scrollIntoView({ block: 'center', behavior: 'smooth' }); var fi = ce.querySelector('[data-ce="name"]'); if (fi) setTimeout(function(){ fi.focus(); }, 300); } return; }
+    var ask = e.target.closest('[data-vw-ask]');
+    if (ask) { var ga = crmItem(ask), va = ga && (ga.viewings || []).filter(function(v){ return String(v.id) === ask.dataset.vw; })[0]; if (!va) return;
+      vwAskFeedback(Object.assign({ applicant: ga.name }, va), ask.dataset.vwAsk); return; }
     var vwe = e.target.closest('[data-vw-edit]');
     if (vwe) { e.preventDefault(); e.stopImmediatePropagation(); var gw = crmItem(vwe), vq = gw && (gw.viewings || []).filter(function(v){ return String(v.id) === vwe.dataset.vwEdit; })[0]; if (!vq) return;
       if (applLocked(gw)) { toast('🔒 ' + applHold(gw).who + ' is looking after ' + (gw.name || 'this applicant')); return; }
@@ -9771,6 +9803,8 @@
       return '<li>🗓 ' + esc(fmtWhen(v.at)) + (v.property_address ? ' · ' + esc(shortAddr(v.property_address)) : '') + '<small>' + esc(v.staff || v.created_by || '') + ' · ' + esc({ booked: 'Booked', done: 'Done', no_show: 'Didn’t show' }[v.status] || v.status || '') + (v.fb_sent_at && !v.app_fb_at ? ' · feedback form sent ' + esc(fmtShort(v.fb_sent_at)) + ', no reply yet' : '') + '</small>' +
         (v.app_fb_at ? '<div class="vw-fb"><b>Their feedback</b> · ' + esc(fmtShort(v.app_fb_at)) + '<br>' + '⭐ ' + (f.rating || '–') + '/5 · ' + esc({ yes: 'Yes — wants to make an offer', maybe: 'Maybe — has questions', no: 'No — not for them' }[f.interest] || '') + (f.liked ? '<br>👍 Liked: ' + esc(f.liked) : '') + (f.disliked ? '<br>👎 Didn’t like / questions: ' + esc(f.disliked) : '') + (f.service ? '<br>Our service: ' + esc(f.service) : '') + '</div>' : '') +
         (v.feedback ? '<div class="vw-fb"><b>Our notes from the viewing</b><br>' + esc(v.feedback) + '</div>' : '') +
+        (v.status !== 'cancelled' && v.status !== 'no_show' && !v.app_fb_at && (v.email || (v.phone && waNumber(v.phone))) ? '<div class="vw-ask"><span>' + (v.fb_sent_at ? 'Feedback form sent ' + esc(fmtShort(v.fb_sent_at)) + ' — send again:' : 'Ask for their feedback (and if they’d like to make an offer):') + '</span>' +
+          (v.email ? '<button type="button" class="btn small" data-vw-ask="email" data-vw="' + v.id + '">✉ Email feedback form</button>' : '') + (v.phone && waNumber(v.phone) ? '<button type="button" class="btn small wa-btn" data-vw-ask="wa" data-vw="' + v.id + '">💬 WhatsApp feedback form</button>' : '') + '</div>' : '') +
         ((v.status || 'booked') === 'booked' && new Date(v.at).getTime() > Date.now() - 3 * 3600000 && !applLocked(x) ? '<div class="vw-cx"><span class="vw-cx-b"><button type="button" class="btn small" data-vw-edit="' + v.id + '">✏️ Change</button><button type="button" class="btn small ghost danger" data-vw-cx="' + v.id + '">✕ Cancel this viewing</button></span></div>' : '') + '</li>'; }).join('') + '</ul>';
     // Viewing request: confirm one of their times, or another.
     if (x.type === 'viewing') {
@@ -12615,17 +12649,7 @@
     if ((b = e.target.closest('[data-vd-st]'))) { var cxm = $('vdBody').querySelector('[data-vd-cx-mail]'); api('POST', '/api/admin/viewings/' + v.id, { status: b.dataset.vdSt, notify: b.dataset.vdSt === 'cancelled' && !!(cxm && cxm.checked) }).then(function(){ toast(b.dataset.vdSt === 'done' ? '✓ Marked done — add your feedback, and ask the applicant for theirs' : b.dataset.vdSt === 'cancelled' ? '✓ Viewing cancelled' + (cxm && cxm.checked ? ' — ' + (v.applicant || 'the applicant') + ' has been emailed' : '') : 'Updated'); if (b.dataset.vdSt === 'cancelled') loadCrm('poll'); v.status = b.dataset.vdSt; openViewing(v); calChanged(); }); return; }
     if (e.target.closest('[data-vd-edit]')) { this.hidden = true; openBook({ edit: v }); return; }
     if (e.target.closest('[data-vd-fb]')) { var fbt = $('vdFb').value.trim(), sh = $('vdShare').checked; api('POST', '/api/admin/viewings/' + v.id, { feedback: fbt, share: sh }).then(function(r){ toast(r && r.ok ? '✓ Feedback saved' : 'Couldn’t save'); v.feedback = fbt; v.share = sh; calChanged(); }); return; }
-    if ((b = e.target.closest('[data-vd-ask]'))) {
-      var how = b.dataset.vdAsk, modal = this;
-      api('POST', '/api/admin/viewings/' + v.id + '/feedback-link', {}).then(function(r){
-        if (!r || !r.ok) { toast('Couldn’t make the link'); return; }
-        var first = String(v.applicant || '').trim().split(/\s+/)[0] || 'there', addr = String(v.property_address || '').split(',').slice(0, 2).join(','), me = String(calMe()).split(/\s+/)[0].replace(/^(Owner|Office)$/, '');
-        var text = 'Hi ' + first + ',\n\nThank you for viewing ' + addr + '. We’d love to know what you thought — it only takes a minute:\n\n' + r.url + '\n\nIf you’d like to go ahead or have any questions, just reply or call us on 0207 096 8131.\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors';
-        var mark = function(){ api('POST', '/api/admin/viewings/' + v.id + '/feedback-link', { sent: true }).then(function(){ v.fb_sent_at = new Date().toISOString(); calChanged(); }); };
-        if (how === 'wa') { window.open('https://wa.me/' + waNumber(v.phone) + '?text=' + encodeURIComponent(text), '_blank', 'noopener'); mark(); toast('Opened WhatsApp'); return; }
-        modal.hidden = true; composeMail({ to: [v.email], subject: 'How was your viewing? — ' + addr, body: text, title: '✉ Ask for viewing feedback', onSent: mark });
-      });
-    }
+    if ((b = e.target.closest('[data-vd-ask]'))) { var modal = this; vwAskFeedback(v, b.dataset.vdAsk, function(){ modal.hidden = true; }); }
   });
   document.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; if (!$('cbModal').hidden) { e.stopImmediatePropagation(); $('cbModal').hidden = true; } else if (!$('vdModal').hidden) { e.stopImmediatePropagation(); $('vdModal').hidden = true; } }, true);
 
