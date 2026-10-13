@@ -8333,15 +8333,33 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true, viewings: (await p.query("SELECT " + VW_COLS + " FROM viewings WHERE at > now() - interval '120 days' ORDER BY at DESC LIMIT 300")).rows });
   }));
   const vwEmail = function (v) { v = str(v, 200); return v && /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(v) ? v.toLowerCase() : null; };
+  // The viewing confirmation in the office's own words (as in the old system): the appointment, how renting with us
+  // works (holding deposit + offer form), the Pre Viewing Reservation, other parties at the viewing, and please reply.
+  function viewingConfirmText(o) {
+    const first = String(o.name || '').trim().split(/\s+/)[0] || 'applicant', addr = String(o.address || '').trim();
+    return 'Dear ' + first + ',\n\n' +
+      (o.moved ? 'Your viewing has moved. We now have an appointment scheduled for ' : 'We have an appointment scheduled for ') + '[b]' + addr + '[/b] on [b]' + o.when + '[/b].\n\n' +
+      'This email is a confirmation of the above appointment.\n\n' +
+      (o.note ? o.note + '\n\n' : '') +
+      '[b]Rental process[/b] — If you are interested in making an offer to rent a property, you are required to pay a holding deposit of one week’s rent and complete a Holding Deposit Form. This form gives you the opportunity to outline any terms of your offer, including negotiating a lower price if applicable. If the offer is accepted by the landlord, your holding deposit (reservation fee) will be used towards the initial payment of your first month’s rent. Residential Realtors operates a strict first come, first served policy and does not offer a bidding service. Should your offer be rejected, your reservation fee will be returned to you within 24 hours; before the property is offered to a different interested party or put back on the market, you will be offered an opportunity to renegotiate any terms which an agreement could not be reached on.\n\n' +
+      (o.offerUrl ? 'Holding Deposit Form for this property: ' + o.offerUrl + '\n\n' : '') +
+      'Due to the fast-paced London market, Residential Realtors offers the opportunity to make a [b]Pre Viewing Reservation (PVR)[/b]. PVRs are made on a non-obligation basis and are particularly popular with applicants who live abroad and those unable to view properties as quickly as they would like. A PVR can be made at any point before your scheduled viewing, giving you peace of mind that the property is reserved for you until your viewing slot. If you are not interested in the property, your PVR will be refunded to you within 24 hours. [b]To make a Pre Viewing Reservation, simply call the Residential Realtors office on 0207 096 8131 and a member of the lettings team will be happy to walk you through the process. Payments can be made over the telephone with a valid credit/debit card or by bank transfer.[/b]\n\n' +
+      'Should we receive a formal offer on ' + addr + ' from a different party before your scheduled viewing, we will let you know in good time.\n\n' +
+      'It is more than likely other parties will be joining us to view the property, so a dedicated slot has been assigned to you. Please let us know if you are running late so we can change slots around to better accommodate everyone.\n\n' +
+      '[b][u]Lastly, please reply to this email simply confirming your attendance.[/u][/b]\n\n' +
+      'Kind regards,\n' + (o.me ? o.me + '\n' : '') + 'Residential Realtors\n0207 096 8131';
+  }
+  function viewingWhen(at) {
+    return new Date(at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).replace(',', '').replace(/ (am|pm)$/i, '$1');
+  }
   // Email the applicant about their viewing: booked, moved to a new time, or cancelled (sent from Fixflow, kept in Sent emails, noted on their lead).
   async function viewingMail(p, req, v, kind) {
     if (!v || !v.email || !canEmail() || !sendEmail) return false;
     const when = new Date(v.at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).replace(',', '');
     const first = String(v.applicant || '').trim().split(/\s+/)[0], me = req.user && req.user.id ? req.user.name : '', addr = String(v.property_address || '');
-    const subject = { booked: 'Viewing confirmed', moved: 'Viewing time changed', cancelled: 'Viewing cancelled' }[kind] + ' — ' + when;
-    const body = kind === 'cancelled' ? 'Your viewing of ' + addr + ' on ' + when + ' has been cancelled.\n\nIf you’d like to book another time, just reply to this email or call us on 0207 096 8131.'
-      : (kind === 'moved' ? 'Your viewing has moved to a new time:' : 'Your viewing is confirmed:') + '\n\n' + addr + '\n' + when + '\n\nIf you need to change the time, just reply to this email or call us on 0207 096 8131.';
-    const t = 'Dear ' + (first || 'applicant') + ',\n\n' + body + '\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors';
+    const subject = { booked: 'Viewing Confirmation', moved: 'Viewing Confirmation — new time', cancelled: 'Viewing cancelled' }[kind] + ' — ' + (kind === 'cancelled' ? when : addr.split(',').slice(0, 2).join(',') + ', ' + when);
+    const t = kind === 'cancelled' ? 'Dear ' + (first || 'applicant') + ',\n\nYour viewing of ' + addr + ' on ' + when + ' has been cancelled.\n\nIf you’d like to book another time, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors'
+      : viewingConfirmText({ name: v.applicant, address: addr, when: viewingWhen(v.at), me: me, moved: kind === 'moved', offerUrl: vfOfferUrl(v) });
     const r = await sendEmail({ to: [v.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: t, html: brandEmail(t, subject.split(' — ')[0]) }).catch(function () { return { ok: false }; });
     const ok = !!(r && r.ok !== false);
     logSent(req, [v.email], [], 'info@residentialrealtors.co.uk', subject, t, r);
@@ -12361,10 +12379,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await p.query('UPDATE valuation_requests SET data = $2::jsonb || jsonb_strip_nulls(jsonb_build_object(\'src\', data->\'src\')), status = \'booked\', handled_at = now(), handled_by = $3 WHERE id = $1', [x.id, JSON.stringify(d), req.user ? req.user.name : 'Office']);
     let emailed = false;
     if (b.email !== false && x.email && canEmail() && sendEmail) {
-      const t = 'Dear ' + String(x.name).split(' ')[0] + ',\n\nYour viewing is confirmed:\n\n' + x.address + '\n' + slotText(b.at) + '\n\n' + (str(b.note, 1000) ? str(b.note, 1000) + '\n\n' : '') + 'If you need to change the time, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\n' + (req.user && req.user.id ? req.user.name + '\n' : '') + 'Residential Realtors';
-      const r = await sendEmail({ to: [x.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Viewing confirmed — ' + slotText(b.at), text: t, html: brandEmail(t, 'Viewing confirmed') }).catch(function () { return { ok: false }; });
+      const t = viewingConfirmText({ name: x.name, address: x.address, when: viewingWhen(at), note: str(b.note, 1000), me: req.user && req.user.id ? req.user.name : '', offerUrl: vfOfferUrl({ property_address: x.address }) });
+      const r = await sendEmail({ to: [x.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Viewing Confirmation — ' + String(x.address).split(',').slice(0, 2).join(',') + ', ' + slotText(b.at), text: t, html: brandEmail(t, 'Viewing Confirmation') }).catch(function () { return { ok: false }; });
       emailed = !!(r && r.ok !== false);
-      logSent(req, [x.email], [], 'info@residentialrealtors.co.uk', 'Viewing confirmed — ' + slotText(b.at), t, r);   // in their Sent emails
+      logSent(req, [x.email], [], 'info@residentialrealtors.co.uk', 'Viewing Confirmation — ' + String(x.address).split(',').slice(0, 2).join(',') + ', ' + slotText(b.at), t, r);   // in their Sent emails
     }
     await crmLog(p, 'vr:' + x.id, 'Viewing confirmed for ' + slotText(b.at) + (emailed ? ' · confirmation emailed' : ''), req);
     teamAlert({ title: '✅ Viewing booked: ' + slotText(b.at), message: String(x.address).split(',').slice(0, 2).join(',') + ' · ' + x.name + (x.phone ? ' · ' + x.phone : '') + ' — booked by ' + (req.user ? req.user.name : 'the office') + '.', tags: ['white_check_mark'] }, '#leads').catch(function () {});
