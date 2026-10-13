@@ -12390,7 +12390,26 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Viewings (to see who's booked or done one with an applicant): the last 4 months and everything coming up.
     let vws = [];
     try { vws = (await p.query("SELECT id, lead_id, at, staff, created_by, status, email, phone, property_address, app_fb, app_fb_at, feedback, fb_sent_at, att_ok_at FROM viewings WHERE status <> 'cancelled' AND at > now() - interval '120 days' ORDER BY at")).rows; } catch (e) {}
-    res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, viewings: vws, staff: staff, me: req.user ? req.user.name : '', manager: !!canManageUsers(req), junk: await junkList(p) });
+    // An applicant who is (or was) one of our tenants: matched by phone (last 10 digits), email or full name.
+    const tenantOf = {};
+    try {
+      const tns = (await p.query(`SELECT t.id, t.name, t.phone, t.email, pt.address, pt.property_key, pt.moved_out_at FROM tenants t LEFT JOIN property_tenants pt ON pt.tenant_id = t.id
+        WHERE t.deleted_at IS NULL AND coalesce(pt.role, '') <> 'guarantor' ORDER BY (pt.moved_out_at IS NULL) DESC, pt.created_at DESC NULLS LAST`)).rows;
+      const nm = function (v) { return String(v || '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr)\b\.?/g, ' ').replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim(); };
+      const byPhone = {}, byEmail = {}, byName = {};
+      tns.forEach(function (t) {
+        const e = { id: t.id, name: t.name, address: t.address || '', current: !!t.property_key && !t.moved_out_at };
+        const ph = junkTail(t.phone), em = String(t.email || '').trim().toLowerCase(), n = nm(t.name);
+        if (ph.length >= 9 && !byPhone[ph]) byPhone[ph] = e; if (em && !byEmail[em]) byEmail[em] = e; if (n.split(' ').length >= 2 && !byName[n]) byName[n] = e;
+      });
+      items.forEach(function (x) {
+        if (!isApplicant(x.data)) return;
+        const ph = junkTail(x.phone), em = String(x.email || '').trim().toLowerCase(), n = nm(x.name);
+        const hit = (ph.length >= 9 && byPhone[ph] && Object.assign({ how: 'phone number' }, byPhone[ph])) || (em && byEmail[em] && Object.assign({ how: 'email' }, byEmail[em])) || (n.split(' ').length >= 2 && byName[n] && Object.assign({ how: 'name' }, byName[n]));
+        if (hit) tenantOf[x.id] = hit;
+      });
+    } catch (e) { console.error('Tenant match failed:', e.message); }
+    res.json({ ok: true, items: items, subs: subs, notes: notes, meta: meta, viewings: vws, staff: staff, me: req.user ? req.user.name : '', manager: !!canManageUsers(req), junk: await junkList(p), tenantOf: tenantOf });
   }));
   app.post('/api/admin/crm/note', withDb(async function (p, req, res) {
     const b = req.body || {}, ref = String(b.ref || ''), note = str(b.note, 4000);
