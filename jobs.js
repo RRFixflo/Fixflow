@@ -12392,7 +12392,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.post('/api/admin/crm/recommended', withDb(async function (p, req, res) {
     const b = req.body || {}, refs = (Array.isArray(b.refs) ? b.refs : []).map(String).filter(function (r) { return /^vr:\d+$/.test(r); }).slice(0, 200), what = str(b.address, 300);
     if (!refs.length || !what) return res.status(400).json({ ok: false });
-    for (const r of refs) await crmLog(p, r, 'Recommended ' + what + ' by email' + (b.url ? ' — ' + str(b.url, 300) : ''), req);
+    for (const r of refs) await crmLog(p, r, 'Recommended ' + what + ' by ' + (b.via === 'whatsapp' ? 'WhatsApp' : 'email') + (b.url ? ' — ' + str(b.url, 300) : ''), req);
     res.json({ ok: true, n: refs.length });
   }));
   // Who's looking after it and when to follow up.

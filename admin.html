@@ -706,6 +706,8 @@
   .neg-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 40px; align-items: center; } .neg-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); border-radius: 999px; padding: 6px 12px; font-size: .86rem; cursor: pointer; background: var(--dk-bg-fff, #fff); } .neg-chip:has(input:checked) { border-color: var(--blue, #2F5BEA); background: var(--dk-bg-eef2fe, #eef2fe); font-weight: 600; } .neg-chip.warn { border-color: #f79009; background: var(--dk-bg-fffaeb, #fffaeb); } .neg-chip input { margin: 0; }
   .rb-llmark { display: inline-block; font-weight: 600; font-size: .8rem; padding: 1px 8px; border-radius: 999px; background: var(--dk-bg-f2f4f7, #f2f4f7); color: var(--dk-fg-475467, #475467); } .rb-llmark.ok { background: var(--dk-bg-ecfdf3, #ecfdf3); color: var(--dk-fg-067647, #067647); } .rb-llmark.due { background: var(--dk-bg-fffaeb, #fffaeb); color: var(--dk-fg-b54708, #b54708); }
   .rb-dchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .rb-dchip { border: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); background: var(--dk-bg-fff, #fff); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: .85rem; cursor: pointer; } .vd-occ { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); font-size: .9rem; } .vd-occ:first-of-type { border-top: 0; } .vd-occ b { flex-basis: 100%; } .vd-occ a { color: var(--blue, #175cd3); text-decoration: none; word-break: break-all; }
+  .wa-kinds { display: flex; flex-wrap: wrap; gap: 6px; } .wa-kinds button { border: 1px solid var(--line); background: var(--panel); color: inherit; border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; } .wa-kinds button.on { background: var(--ok-tint, #ecfdf3); border-color: var(--ok, #067647); color: var(--ok, #067647); }
+  .wa-alt { display: grid; gap: 6px; } .wa-alt[hidden] { display: none; } .wa-alt-list { max-height: 30vh; } .wa-picked { display: flex; gap: 10px; align-items: center; justify-content: space-between; border: 1px solid var(--ok, #067647); background: var(--ok-tint, #ecfdf3); border-radius: 12px; padding: 8px 12px; font-size: .9rem; } #waText { font: inherit; font-size: 15px; font-weight: 400; color: var(--ink); resize: vertical; }
   .vw-ok { color: var(--dk-fg-067647, #067647); font-weight: 700; white-space: nowrap; } .vw-wait { color: var(--dk-fg-b54708, #b54708); white-space: nowrap; } .rb-dsort { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted, var(--dk-fg-667085, #667085)); } .rb-dchip.on { background: var(--ink, #111); color: var(--on-ink, #fff); border-color: var(--ink, #111); }
   .mip { margin-bottom: 12px; } .mip-t { display: block; border-top: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); padding-top: 8px; margin-top: 8px; } .mip h3 + .mip-t { border-top: 0; margin-top: 0; padding-top: 0; } .mip-h { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; } .mip-h .linkish { text-align: left; }
   .aa-card { border: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); border-radius: 12px; padding: 10px 12px; background: var(--dk-bg-fff, #fff); } .aa-answer { background: var(--dk-bg-f5f3ff, #f5f3ff); border-color: var(--dk-bd-ddd6fe, #ddd6fe); } .aa-h { display: block; margin-bottom: 4px; font-size: .86rem; }
@@ -2726,6 +2728,25 @@
     <p class="muted-note" id="caSub" style="margin:4px 0 10px"></p>
     <p id="caIntro" style="margin:0 0 12px;font-size:.92rem">Sends the landlord a private link where they can <b>upload the new certificate</b> or tap <b>“Please arrange it for me”</b>. You’ll get an alert when they answer.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn wa-btn" type="button" id="caWa">WhatsApp</button><button class="btn primary" type="button" id="caMail">✉ Email</button><button class="btn ghost" type="button" id="caTpl">Formal email (your template)</button></div>
+  </div>
+</div>
+<div class="modal" id="waModal" hidden>
+  <div class="card tn-card" role="dialog" aria-labelledby="waTitle">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3 id="waTitle" style="margin:0">💬 WhatsApp</h3><button class="btn small ghost" type="button" id="waX" aria-label="Close">✕</button></div>
+    <p class="muted-note" style="margin:0" id="waWho"></p>
+    <div class="wa-kinds" id="waKinds">
+      <button type="button" data-wa-kind="view">🗓 When can they view?</button>
+      <button type="button" data-wa-kind="gone">🚫 No longer available</button>
+      <button type="button" data-wa-kind="usual">💬 Usual message</button>
+    </div>
+    <div id="waAltBox" class="wa-alt">
+      <b id="waAltLbl">🏠 Suggest another available property <span class="muted">(optional)</span></b>
+      <div id="waAltPicked"></div>
+      <input class="inp" id="waAltQ" type="search" placeholder="Search address, postcode or bedrooms…">
+      <div class="rec-list wa-alt-list" id="waAltList"></div>
+    </div>
+    <label class="ml-f" style="display:grid;grid-template-columns:1fr;gap:4px"><span>Message <span class="muted">(you can change it)</span></span><textarea class="inp" id="waText" rows="9"></textarea></label>
+    <div class="row-actions"><span style="flex:1"></span><button class="btn" type="button" id="waCancel">Cancel</button><button class="btn wa-btn" type="button" id="waGo">💬 Open WhatsApp</button></div>
   </div>
 </div>
 <div class="modal" id="recPropModal" hidden>
@@ -9731,7 +9752,7 @@
         '<td class="nm c-name"><b>' + esc(g.name || 'No name') + '</b>' + (g.group && g.group.length > 1 ? ' <span class="appl-n" title="Enquiries from the same email or phone number, joined">🔗' + g.group.length + '</span>' : '') + (VERDICT[g.verdict] ? ' <span title="' + VERDICT[g.verdict][1] + '">' + VERDICT[g.verdict][0] + '</span>' : '') +
           (up ? '<div class="appl-vw" data-vw-edit="' + up.id + '" title="Tap to change — viewing booked' + (up.property_address ? ' at ' + esc(up.property_address) : '') + (up.staff || up.created_by ? ' with ' + esc(up.staff || up.created_by) : '') + '">🗓 Viewing ' + esc(applVwText(up)) + (up.att_ok_at ? ' ✅' : '') + '</div>' : '') + '</td>' +
         '<td class="nw c-act">' + (function(){ var wa = g.phone ? waNumber(g.phone) : '', m = wa || g.email ? leadMsg(g) : null;
-          return (wa ? '<a class="appl-ic wa" href="https://wa.me/' + esc(wa) + '?text=' + encodeURIComponent(m.body) + '" target="_blank" rel="noopener" title="WhatsApp ' + esc(g.name || '') + ' with a ready-written message">💬<span> WhatsApp</span></a>' : '') +
+          return (wa ? '<a class="appl-ic wa" data-wa-ref="' + esc(g.ref) + '" href="https://wa.me/' + esc(wa) + '?text=' + encodeURIComponent(m.body) + '" target="_blank" rel="noopener" title="WhatsApp ' + esc(g.name || '') + ' — choose a ready-written message">💬<span> WhatsApp</span></a>' : '') +
             (g.email ? '<a class="appl-ic" href="mailto:' + esc(g.email) + '?subject=' + encodeURIComponent(m.subject) + '&body=' + encodeURIComponent(m.body) + '" title="Email ' + esc(g.email) + ' with a ready-written message">✉️<span> Email</span></a>' : '') +
             '<a class="appl-ic bk" href="#" data-appl-book title="Book a viewing with ' + esc(g.name || 'them') + ' — it goes in the calendar">🗓<span> Book<em> viewing</em></span></a>'; })() + '</td>' +
         '<td class="nw cut c-who">' + (g.assigned ? (hold.held ? '🔒 ' : '') + esc(g.assigned) : '<span class="muted">—</span>') + '</td>' +
@@ -9801,7 +9822,7 @@
       (function(){ var fv = (x.viewings || []).filter(function(v){ return v.app_fb_at; }).sort(function(a, b){ return new Date(b.app_fb_at) - new Date(a.app_fb_at); })[0], f = fv && fv.app_fb || {}; return fv ? '<span class="crm-flag' + (f.interest === 'yes' ? ' ok' : '') + '" title="Their feedback after the viewing">⭐ Feedback ' + (f.rating || '–') + '/5' + (f.interest === 'yes' ? ' · wants to offer' : f.interest === 'maybe' ? ' · has questions' : f.interest === 'no' ? ' · not for them' : '') + '</span>' : ''; })();
     var flags = gflags + holdFlag + vd + (x.archived ? '<span class="crm-flag">🗄 Archived ' + esc(fmtShort(x.archived)) + (x.archivedBy ? ' by ' + esc(x.archivedBy) : '') + '</span>' : '') + (need ? '<span class="crm-flag warn">📣 ' + esc(need) + '</span>' : '') + (x.type === 'viewing' && !d.confirmed && x.status !== 'lost' ? '<span class="crm-flag warn">Time to confirm</span>' : '') + (x.type === 'viewing' && d.confirmed ? '<span class="crm-flag ok">🗓 ' + esc(crmSlot(d.confirmed)) + '</span>' : '') +
       (x.follow && need !== 'Follow-up due' ? '<span class="crm-flag' + (x.follow <= today && x.status !== 'won' && x.status !== 'lost' ? ' warn' : '') + '">⏰ ' + (x.follow === today ? 'Today' : x.follow < today ? 'Overdue · ' + esc(fmtDateOnly(x.follow)) : esc(fmtDateOnly(x.follow))) + '</span>' : '') + (x.assigned ? '<span class="crm-flag">👤 ' + esc(x.assigned) + '</span>' : '') + (x.notes.filter(function(n){ return !n.auto; }).length ? '<span class="crm-flag">📝 ' + x.notes.filter(function(n){ return !n.auto; }).length + '</span>' : '');
-    var acts = (tel ? '<a class="crm-act" href="tel:' + esc(tel) + '" title="Call ' + esc(x.phone) + '">📞<span> Call</span></a>' : '') + (wa ? '<a class="crm-act wa" href="https://wa.me/' + esc(wa) + (x.type === 'sub' ? '' : '?text=' + encodeURIComponent(leadMsg(x).body)) + '" target="_blank" rel="noopener" title="WhatsApp with a ready-written message">💬<span> WhatsApp</span></a>' : '') + (x.email ? '<a class="crm-act" href="mailto:' + esc(x.email) + (x.type === 'sub' ? '' : '?subject=' + encodeURIComponent(leadMsg(x).subject) + '&body=' + encodeURIComponent(leadMsg(x).body)) + '" title="Email ' + esc(x.email) + ' with a ready-written message">✉️<span> Email</span></a>' : '');
+    var acts = (tel ? '<a class="crm-act" href="tel:' + esc(tel) + '" title="Call ' + esc(x.phone) + '">📞<span> Call</span></a>' : '') + (wa ? '<a class="crm-act wa"' + (crm.mode === 'appl' ? ' data-wa-ref="' + esc(x.ref) + '"' : '') + ' href="https://wa.me/' + esc(wa) + (x.type === 'sub' ? '' : '?text=' + encodeURIComponent(leadMsg(x).body)) + '" target="_blank" rel="noopener" title="WhatsApp with a ready-written message">💬<span> WhatsApp</span></a>' : '') + (x.email ? '<a class="crm-act" href="mailto:' + esc(x.email) + (x.type === 'sub' ? '' : '?subject=' + encodeURIComponent(leadMsg(x).subject) + '&body=' + encodeURIComponent(leadMsg(x).body)) + '" title="Email ' + esc(x.email) + ' with a ready-written message">✉️<span> Email</span></a>' : '');
     var h = '<div class="crm-card' + (open ? ' open' : '') + (need ? ' is-new' : '') + (x.archived ? ' is-arch' : '') + '" data-crm="' + x.ref + '">' +
       '<div class="crm-head" data-crm-tog><label class="crm-pick" title="Select"><input type="checkbox" data-crm-pick="' + x.ref + '"' + (crmSel[x.ref] ? ' checked' : '') + '></label><div class="crm-who"><span class="crm-tag" style="color:' + t[2] + ';background:' + t[3] + '">' + t[0] + ' ' + t[1] + '</span> <b>' + esc(x.name) + '</b> ' + pill + '<div class="crm-sub">' + sub.map(esc).join(' · ') + '</div>' + (flags ? '<div class="crm-flags">' + flags + '</div>' : '') + '</div>' +
       '<div class="crm-acts">' + acts + '<button type="button" class="crm-chev" aria-label="' + (open ? 'Less' : 'More') + '">' + (open ? '▴' : '▾') + '</button></div></div>';
@@ -9968,6 +9989,62 @@
     $('recPropModal').hidden = true;
     composeMail({ to: [], bcc: people.map(function(p2){ return p2.email; }), subject: 'A property you might like — ' + publicAddr(x.address).split(',').slice(0, 2).join(','), body: body, title: '✉ Recommend a property',
       onSent: function(){ api('POST', '/api/admin/crm/recommended', { refs: people.map(function(p2){ return p2.ref; }), address: publicAddr(x.address), url: link }).then(function(){ loadCrm(true); }); crmSel = {}; crmSelDraw(); } });
+  });
+  // WhatsApp an applicant: choose a ready-written message — ask when they can view, say the property is no longer
+  // available (optionally suggesting another available home), or the usual message — check it, then open WhatsApp.
+  var waCur = null;
+  function waAltLine(x){ return (x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : 'Home') + ' — ' + publicAddr(x.address) + [x.rent_pcm ? ' · ' + gbp(Number(x.rent_pcm)) + ' pcm' : '', x.vacant ? ' · available now' : x.available_from ? ' · available from ' + avDay(x.available_from) : ''].join(''); }
+  function waAltLink(x){ var L = avLinks(x); return x.gnomen_id ? 'https://www.residentialrealtors.co.uk/property/' + x.gnomen_id : L.rightmove || ''; }
+  function waText(){
+    var g = waCur.g, first = String(g.name || '').trim().split(/\s+/)[0] || 'there', addr = g.address && g.address !== '(no property given)' ? publicAddr(g.address).split(',').slice(0, 2).join(',') : '';
+    var me = String((meta.user && meta.user.name) || '').replace(/^(Owner|Offers staff)$/, ''), sign = '\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors\n0207 096 8131';
+    var alt = waCur.alt, altTxt = alt ? waAltLine(alt) + (waAltLink(alt) ? '\n' + waAltLink(alt) : '') : '';
+    if (waCur.kind === 'usual') return leadMsg(g).body;
+    if (waCur.kind === 'gone') return 'Hi ' + first + ',\n\nThank you for your interest' + (addr ? ' in ' + addr : '') + '. Unfortunately this property is no longer available.' +
+      (alt ? '\n\nHowever, we have a similar home that might suit you:\n' + altTxt + '\n\nWould you like to arrange a viewing?' : '\n\nWe have new homes coming up all the time — let us know what you’re looking for (area, budget, bedrooms and move-in date) and we’ll send you the best matches.') + sign;
+    return 'Hi ' + first + ',\n\nThank you for your enquiry' + (addr ? ' about ' + addr : '') + '. When would you be available for a viewing? Please send us a few days and times that suit you and we’ll book you in.' +
+      (alt ? '\n\nYou might also like this one:\n' + altTxt : '') + sign;
+  }
+  function waDraw(){
+    [].forEach.call($('waKinds').querySelectorAll('[data-wa-kind]'), function(b){ b.classList.toggle('on', b.dataset.waKind === waCur.kind); });
+    $('waAltBox').hidden = waCur.kind === 'usual';
+    $('waAltLbl').innerHTML = waCur.kind === 'gone' ? '🏠 Suggest another available property instead <span class="muted">(optional)</span>' : '🏠 Also suggest another available property <span class="muted">(optional)</span>';
+    $('waAltPicked').innerHTML = waCur.alt ? '<div class="wa-picked"><span>✓ ' + esc(waAltLine(waCur.alt)) + '</span><button type="button" class="linkish" id="waAltClear">Remove</button></div>' : '';
+    $('waAltQ').hidden = $('waAltList').hidden = !!waCur.alt;
+    if (!waCur.alt) waAltList();
+    $('waText').value = waText();
+  }
+  function waAltList(){
+    var q = $('waAltQ').value.trim().toLowerCase(), own = waCur.g.address ? propKeyJs(waCur.g.address) : '';
+    var items = (avItems || []).filter(function(x){ return x.status === 'available' && (!own || propKeyJs(x.address) !== own); }).filter(function(x){ return !q || [x.address, x.beds === 0 ? 'studio' : x.beds + ' bed', x.rent_pcm].join(' ').toLowerCase().indexOf(q) !== -1; });
+    $('waAltList').innerHTML = avItems == null ? '<p class="muted-note">Loading the properties…</p>' : items.length ? items.slice(0, 60).map(function(x){ return '<button type="button" class="rec-item" data-wa-alt="' + x.id + '"><b>' + esc(publicAddr(x.address)) + '</b><small>' + esc([x.beds === 0 ? 'Studio' : x.beds != null ? x.beds + ' bed' : '', x.rent_pcm ? gbp(Number(x.rent_pcm)) + ' pcm' : '', x.vacant ? 'available now' : x.available_from ? 'from ' + avDay(x.available_from) : ''].filter(Boolean).join(' · ')) + '</small></button>'; }).join('') : '<p class="muted-note">No available properties match.</p>';
+  }
+  function propKeyJs(a){ return String(a || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  function waOpen(g){
+    var wa = g.phone ? waNumber(g.phone) : ''; if (!wa) return;
+    waCur = { g: g, wa: wa, kind: 'view', alt: null };
+    $('waWho').textContent = 'To ' + (g.name || 'the applicant') + ' · ' + g.phone + (g.address && g.address !== '(no property given)' ? ' · asked about ' + shortAddr(g.address) : '');
+    $('waAltQ').value = ''; $('waModal').hidden = false; waDraw();
+    if (!avItems || !avItems.length) api('GET', '/api/admin/available').then(function(d){ if (d && d.ok) { avItems = d.items || []; avLinkData = d.links || {}; } if (waCur && !waCur.alt) waAltList(); });
+  }
+  document.addEventListener('click', function(e){
+    var a = e.target.closest('a[data-wa-ref]'); if (!a || e.ctrlKey || e.metaKey) return;
+    var g = (crm.gmap || {})[a.dataset.waRef] || crm.items.filter(function(x){ return x.ref === a.dataset.waRef; })[0]; if (!g) return;
+    e.preventDefault(); e.stopPropagation(); waOpen(g);
+  }, true);
+  $('waKinds').addEventListener('click', function(e){ var b = e.target.closest('[data-wa-kind]'); if (!b) return; waCur.kind = b.dataset.waKind; waDraw(); });
+  $('waAltQ').addEventListener('input', waAltList);
+  $('waAltList').addEventListener('click', function(e){ var b = e.target.closest('[data-wa-alt]'); if (!b) return; waCur.alt = avItems.filter(function(i){ return String(i.id) === b.dataset.waAlt; })[0] || null; waDraw(); });
+  $('waAltPicked').addEventListener('click', function(e){ if (e.target.id === 'waAltClear') { waCur.alt = null; $('waAltQ').value = ''; waDraw(); } });
+  function waClose(){ $('waModal').hidden = true; waCur = null; }
+  $('waX').addEventListener('click', waClose); $('waCancel').addEventListener('click', waClose);
+  $('waModal').addEventListener('mousedown', function(e){ if (e.target === $('waModal')) waClose(); });
+  $('waGo').addEventListener('click', function(){
+    var c = waCur; if (!c) return;
+    window.open('https://wa.me/' + c.wa + '?text=' + encodeURIComponent($('waText').value), '_blank', 'noopener');
+    // A suggested property is noted on their card (without making them yours).
+    if (c.alt) api('POST', '/api/admin/crm/recommended', { refs: [c.g.ref], address: publicAddr(c.alt.address), url: waAltLink(c.alt), via: 'whatsapp' }).then(function(){ loadCrm(true); });
+    waClose();
   });
   $('crmTiles').addEventListener('click', function(e){ var b = e.target.closest('[data-crm-tile]'); if (!b) return; crm.tile = crm.tile === b.dataset.crmTile ? '' : b.dataset.crmTile; if (crm.tile === 'subs') crm.type = ''; renderCrm(); });
   $('crmView').addEventListener('click', function(e){ var j = e.target.closest('[data-crm-job]'); if (!j) return; e.stopPropagation(); var jid = Number(j.dataset.crmJob); showView('jobs'); Promise.resolve(loadJobs()).then(function(){ openJob(jid); }); });
