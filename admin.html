@@ -9631,6 +9631,10 @@
     var a = applHome(g); if (a && (a.rm_url || a.rm_id)) return /^https?:\/\//.test(String(a.rm_url || '')) ? a.rm_url : 'https://www.rightmove.co.uk/properties/' + encodeURIComponent(a.rm_id);
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if ((its[i].type === 'rm' || d.source === 'Rightmove') && /^\d{6,}$/.test(String(d.ref || ''))) return 'https://www.rightmove.co.uk/properties/' + d.ref; }
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\//.test(String(d.url || ''))) return d.url; }
+    if (a && a.gnomen_id) return location.origin + '/property/' + encodeURIComponent(a.gnomen_id);   // our own page for it
+    // Nothing better: search Rightmove for that address (always something to open).
+    var ad = (its.filter(function(i){ return i.address && i.address !== '(no property given)'; })[0] || {}).address;
+    if (ad) return 'https://www.google.com/search?q=' + encodeURIComponent(ad.replace(/^Rightmove ref\s*/i, '') + ' rightmove');
     return '';
   }
   // Their next viewing still to happen (booked, from 3 hours ago on) — shown boldly so nobody books them twice.
@@ -9702,7 +9706,7 @@
         '<td class="nw c-phone">' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(g.phone) + '</a>' : '') + '</td>' +
         '<td class="nw c-status"><span style="color:' + st[1] + ';font-weight:700">' + st[0] + '</span></td>' +
         '<td class="pr c-prop" title="' + esc(g.address || '') + '">' + (function(){ var lbl = g.address && g.address !== '(no property given)' ? esc(shortAddr(g.address)) : (g.data && g.data.ref ? 'Ref ' + esc(g.data.ref) : ''), u = lbl && applPropUrl(g);
-          return u ? '<a class="appl-pl" href="' + esc(u) + '" target="_blank" rel="noopener" title="' + (/rightmove/.test(u) ? 'Open on Rightmove' : 'Open the property') + ': ' + esc(g.address || '') + '">' + lbl + '</a>' : lbl; })() + '</td>' +
+          return u ? '<a class="appl-pl" href="' + esc(u) + '" target="_blank" rel="noopener" title="' + (/google\.com\/search/.test(u) ? 'Find this property on Rightmove' : /rightmove/.test(u) ? 'Open on Rightmove' : 'Open the property on our website') + ': ' + esc(g.address || '') + '">' + lbl + '</a>' : lbl; })() + '</td>' +
         '<td class="nw c-rent">' + (rent ? gbp(Math.round(rent)).replace(/\.00$/, '') : '') + '</td>' +
         '<td class="nw c-at">' + esc(day(g.at)) + '</td>' +
         '<td class="em c-email" title="' + esc(g.email || '') + '">' + (g.email ? '<a href="mailto:' + esc(g.email) + '">' + esc(g.email) + '</a>' : '') + '</td>' +
@@ -11875,11 +11879,19 @@
       .then(function(){ return api('GET', '/api/admin/property-info'); }).then(function(d){ if (d.ok) { propInfo = {}; d.info.forEach(function(r){ propInfo[r.property_key] = r; }); propRefs = d.refs || {}; } });
   }
   // A key number another property already has: say which (each key belongs to one property).
-  function keyTaken(d){ if (!d || d.error !== 'key-taken') return false; alert('That key number is already used for ' + (d.address || 'another property') + '.\n\nEach key number can only belong to one property — check the key, or change it on ' + (d.address || 'the other property') + ' first.'); return true; }
+  // A key number Fixflow thinks belongs to another property: if it's really the same home (written differently),
+  // staff can use it here anyway — it's then taken off the other record (retry sends key_force).
+  function keyTaken(d, retry){
+    if (!d || d.error !== 'key-taken') return false;
+    var msg = 'That key number is already saved on:\n' + (d.address || 'another property') + '.';
+    if (retry) { if (confirm(msg + '\n\nIf that is the SAME property, press OK to use the key here — it will be taken off the other record.\nIf it is a different property, press Cancel and check the key.')) retry(); }
+    else alert(msg + '\n\nEach key number can only belong to one property — check the key, or change it on the other property first.');
+    return true;
+  }
   function keyNo(address){ var r = propInfo[propKey(address)]; return r && r.key_number ? r.key_number : ''; }
-  function saveKey(address, num, notes){
-    return api('PUT', '/api/admin/property-info', { address: address, key_number: num, key_notes: notes }).then(function(d){
-      if (!d.ok) { if (!keyTaken(d)) toast('Couldn’t save the key number'); return false; }
+  function saveKey(address, num, notes, force){
+    return api('PUT', '/api/admin/property-info', { address: address, key_number: num, key_notes: notes, key_force: !!force }).then(function(d){
+      if (!d.ok) { if (!keyTaken(d, function(){ saveKey(address, num, notes, true); })) toast('Couldn’t save the key number'); return false; }
       propInfo[propKey(address)] = Object.assign({}, propInfo[propKey(address)], { property_key: propKey(address), address: address, key_number: String(num || '').trim().toUpperCase() || null, key_notes: String(notes || '').trim() || null });
       toast(num ? 'Key number saved' : 'Key number removed');
       return true;
@@ -14724,7 +14736,7 @@
     if (v && !/^\d{1,12}$/.test(v)) { toast('A Gnomen number is digits only, e.g. 1234'); return; }
     avPatch(x, { gnomen_id: v }, v ? '✓ Gnomen ' + v + ' saved' : 'Gnomen number cleared').then(function(ok){ if (ok) { x.gnomen_auto = false; loadAvail(); } });
   }, true);
-  function avPatch(x, body, msg){ if (typeof body.key_no === 'string') body.key_no = body.key_no.toUpperCase(); return api('POST', '/api/admin/available/' + x.id, Object.assign({ patch: true }, body)).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save that'); return false; } Object.keys(body).forEach(function(k){ x[k] = body[k] || null; }); if (msg) toast(msg); renderAvail(); return true; }); }
+  function avPatch(x, body, msg){ if (typeof body.key_no === 'string') body.key_no = body.key_no.toUpperCase(); return api('POST', '/api/admin/available/' + x.id, Object.assign({ patch: true }, body)).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d, function(){ avPatch(x, Object.assign({}, body, { key_force: true }), msg); })) toast('Couldn’t save that'); return false; } Object.keys(body).forEach(function(k){ x[k] = body[k] || null; }); if (msg) toast(msg); renderAvail(); return true; }); }
   // Offers made on a property on the available list: how many in total, and any waiting for a decision.
   function offSameProp(addr, o){ var k = propKey(addr), sg = avSig(addr); return !!o.property_address && (propKey(o.property_address) === k || (sg && avSig(o.property_address) === sg)); }
   function avOffersHtml(x){
@@ -15020,7 +15032,7 @@
     if (miss.length && !confirm('This is missing ' + miss.join(' and ') + '.\n\nOK — save it anyway (it will be flagged on the card).\nCancel — go back and add ' + (miss.length > 1 ? 'them' : 'it') + '.')) { (addressProblem(body.address) ? $('avAddr') : $('avLl')).focus(); return; }
     if (body.status === 'let' && !body.let_on) body.let_on = new Date().toISOString().slice(0, 10);
     var b = this; busy(b, true, 'Saving…');
-    api('POST', '/api/admin/available' + (avEdit ? '/' + avEdit : ''), body).then(function(d){ busy(b, false); if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save it'); return; } if (d.failures && d.failures[0] && /^Key /.test(d.failures[0].error)) alert(d.failures[0].error); $('avForm').hidden = true; avEdit = null; toast('✓ Saved'); loadAvail(); });
+    (function avSend(body){ api('POST', '/api/admin/available' + (avEdit ? '/' + avEdit : ''), body).then(function(d){ busy(b, false); if (!d || !d.ok) { if (!keyTaken(d, function(){ busy(b, true, 'Saving…'); avSend(Object.assign({}, body, { key_force: true })); })) toast('Couldn’t save it'); return; } if (d.failures && d.failures[0] && /^Key /.test(d.failures[0].error)) alert(d.failures[0].error); $('avForm').hidden = true; avEdit = null; toast('✓ Saved'); loadAvail(); }); })(body);
   });
   // Paste rows from the spreadsheet (tab-separated, cells with line breaks come in quotes).
   function avTsv(t){
@@ -15230,7 +15242,7 @@
     if (act === 'fee') { var nf = prompt('Commission / fee for ' + shortAddr(x.address) + ' (a figure or %):', x.commission || ''); if (nf === null) return; nf = nf.trim(); if (nf && !/\d/.test(nf)) { toast('Type the fee as a figure or %, e.g. 8% or £1,000'); return; } avPatch(x, { commission: nf }, nf ? '✓ Commission saved' : 'Commission removed'); return; }
     if (act === 'tcontact') { var tc = prompt('Tenants’ contact (names, mobiles, emails):', x.contact || ''); if (tc === null) return; avPatch(x, { contact: tc.trim() }, tc.trim() ? '✓ Tenants’ contact saved' : 'Contact removed'); return; }
     if (act === 'accnote') { var an = prompt('Access note (e.g. call 1 hour before, concierge, lockbox code with the office):', x.access_note || ''); if (an === null) return; avPatch(x, { access_note: an.trim() }, '✓ Access note saved'); return; }
-    if (act === 'key') { var kn = prompt('Key number for ' + shortAddr(x.address) + ':', x.key_no || ''); if (kn === null) return; kn = kn.toUpperCase(); api('POST', '/api/admin/available/' + x.id, { key_no: kn.trim() }).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d)) toast('Couldn’t save the key number'); return; } x.key_no = kn.trim() || null; toast(kn.trim() ? '✓ Key number saved' : 'Key number removed'); renderAvail(); }); return; }
+    if (act === 'key') { var kn = prompt('Key number for ' + shortAddr(x.address) + ':', x.key_no || ''); if (kn === null) return; kn = kn.toUpperCase(); var sendKey = function(force){ api('POST', '/api/admin/available/' + x.id, force ? { key_no: kn.trim(), key_force: true } : { key_no: kn.trim() }).then(function(d){ if (!d || !d.ok) { if (!keyTaken(d, function(){ sendKey(true); })) toast('Couldn’t save the key number'); return; } x.key_no = kn.trim() || null; toast(kn.trim() ? '✓ Key number saved' : 'Key number removed'); renderAvail(); }); }; sendKey(false); return; }
     if (act === 'llq') {
       var ex = card.querySelector('.av-llqf'); if (ex) { ex.remove(); return; }
       var LQ = (avLinkData[x.id] || {}).landlord || {}, row = card.querySelector('.av-llq');
