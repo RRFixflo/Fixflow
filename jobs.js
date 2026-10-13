@@ -7911,7 +7911,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const add = function (a, kind) { const k = propKey(a); if (!k) return; if (have[k]) { if (POSTCODE_RE.test(a) && !POSTCODE_RE.test(have[k].address)) have[k].address = a; return; } have[k] = { address: a, kind: kind }; out.push(have[k]); };
     (await allProperties(p)).forEach(function (x) { add(x.address, 'ours'); });
     (await p.query('SELECT address FROM tenancies WHERE address IS NOT NULL UNION SELECT address FROM landlord_properties WHERE address IS NOT NULL UNION SELECT address FROM property_landlords WHERE address IS NOT NULL')).rows.forEach(function (r) { add(r.address, 'ours'); });
-    (await p.query("SELECT DISTINCT ON (lower(address)) address, status FROM available_props ORDER BY lower(address), updated_at DESC")).rows.forEach(function (r) { add(r.address, r.status === 'available' ? 'listed' : 'before'); });
+    (await p.query("SELECT DISTINCT ON (lower(address)) address, status FROM available_props ORDER BY lower(address), updated_at DESC")).rows.forEach(function (r) { add(r.address, r.status === 'available' ? 'listed' : 'before'); const k = propKey(r.address); if (r.status === 'available' && have[k]) { have[k].avail = true; have[k].avail_address = r.address; } });
     // Which of these has a tenancy (the latest one: when it started and who the tenants are) and which landlord —
     // so staff can tell the right record from look-alikes. Matched by key, or loosely within the same postcode.
     const tcys = (await p.query('SELECT id, property_key, address, start_date, data FROM tenancies WHERE address IS NOT NULL ORDER BY start_date DESC NULLS LAST, id DESC')).rows;
