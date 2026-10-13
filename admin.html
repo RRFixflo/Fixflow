@@ -699,7 +699,7 @@
   .lt-given { margin-top: 10px; padding: 10px 12px; background: var(--bg, #f6f7f9); border-radius: 10px; } .lt-given > b { display: block; margin-bottom: 6px; }
   .neg-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 40px; align-items: center; } .neg-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line, #e5e7eb); border-radius: 999px; padding: 6px 12px; font-size: .86rem; cursor: pointer; background: #fff; } .neg-chip:has(input:checked) { border-color: var(--blue, #2F5BEA); background: #eef2fe; font-weight: 600; } .neg-chip.warn { border-color: #f79009; background: #fffaeb; } .neg-chip input { margin: 0; }
   .rb-llmark { display: inline-block; font-weight: 600; font-size: .8rem; padding: 1px 8px; border-radius: 999px; background: #f2f4f7; color: #475467; } .rb-llmark.ok { background: #ecfdf3; color: #067647; } .rb-llmark.due { background: #fffaeb; color: #b54708; }
-  .rb-dchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .rb-dchip { border: 1px solid var(--line, #e5e7eb); background: #fff; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: .85rem; cursor: pointer; } .rb-dchip.on { background: var(--ink, #111); color: #fff; border-color: var(--ink, #111); }
+  .rb-dchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .rb-dchip { border: 1px solid var(--line, #e5e7eb); background: #fff; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: .85rem; cursor: pointer; } .rb-dsort { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted, #667085); } .rb-dchip.on { background: var(--ink, #111); color: #fff; border-color: var(--ink, #111); }
   .mip { margin-bottom: 12px; } .mip-t { display: block; border-top: 1px solid var(--line, #e5e7eb); padding-top: 8px; margin-top: 8px; } .mip h3 + .mip-t { border-top: 0; margin-top: 0; padding-top: 0; } .mip-h { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; } .mip-h .linkish { text-align: left; }
   .aa-card { border: 1px solid var(--line, #e5e7eb); border-radius: 12px; padding: 10px 12px; background: #fff; } .aa-answer { background: #f5f3ff; border-color: #ddd6fe; } .aa-h { display: block; margin-bottom: 4px; font-size: .86rem; }
   .aa-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .92rem; line-height: 1.45; } .aa-clip { max-height: 160px; overflow: auto; margin-top: 6px; padding: 8px; background: var(--bg, #f6f7f9); border-radius: 8px; }
@@ -16798,7 +16798,9 @@
       }).join('') + '</div>';
     });
   }
-  var rbDoneF = 'all';
+  var rbDoneF = 'all', rbDoneSort = 'sent';
+  try { if (localStorage.getItem('rr_rb_dsort') === 'due') rbDoneSort = 'due'; } catch (e) {}
+  document.addEventListener('click', function(e){ var c = e.target.closest('[data-rb-dsort]'); if (!c) return; rbDoneSort = c.dataset.rbDsort; try { localStorage.setItem('rr_rb_dsort', rbDoneSort); } catch (x) {} renderRentBoard(); });
   document.addEventListener('click', function(e){ var c = e.target.closest('[data-rb-donef]'); if (!c) return; rbDoneF = c.dataset.rbDonef; renderRentBoard(); });
   function renderRentBoard(){
     var d = rbData, today = d.today, isNow = d.month === today.slice(0, 7);
@@ -16879,7 +16881,7 @@
         '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div><div class="rb-sub">' + svcTag(x.service) + (x.first_only ? '<span class="rb-earlytag">Move-in money</span> · ' : '') + 'Landlord: ' + (x.landlord ? rbLl(x, true) : '<b>not saved</b>') + (x.pay_to ? ' · Pay to: <b>' + esc(x.pay_to) + '</b>' : '') + (x.landlord ? '' : ' · <button type="button" class="linkish" data-rb-payto="' + x.tenancy_id + '" data-cur="' + esc(x.pay_to || '') + '" data-ll="the landlord of ' + esc(rbAddr(x.address)) + '">' + (x.pay_to ? 'Change' : 'Pay into a company?') + '</button>') + '</div><div class="rb-sub">' + more(k, '🔍 See the charges') + ' · ' + (x.from > today ? '<span class="rb-earlytag">Paid early · rent due ' + esc(rbDay(x.from)) + '</span> · ' : '') +
           (x.collected && !x.collected.auto ? '<button type="button" class="linkish rb-notpaid" data-rb-uncollect="' + k + '">Rent not paid? Undo</button> · ' : '') +
           (st ? (st.sent && !st.changed ? '✓ Statement sent' : '<button type="button" class="linkish" data-st-pdf="' + k + '">Statement</button>' + (x.landlord_email ? ' · <button type="button" class="linkish" data-st-mail="' + k + '">Email it</button>' : '') + ' · <button type="button" class="linkish" data-st-sent="' + k + '">Mark sent</button>') : 'No statement') + '</div>' + depSwitch(x) + details(x, k) + '</div>' +
-        '<div class="rb-amt">' + gbp(x.to_landlord) + (x.ll_part_sent ? '<small>' + gbp(x.ll_part_sent) + ' sent earlier</small>' : '') + '</div><div class="rb-btn"><button type="button" class="btn small primary" data-rb-pay="' + k + '">Paid</button></div></div>';
+        '<div class="rb-amt">' + gbp(x.to_landlord) + (x.ll_part_sent ? '<small>' + gbp(x.ll_part_sent) + ' sent earlier · <button type="button" class="linkish" data-rb-unllpart="' + k + '" title="Undo the part payment recorded as sent to the landlord">undo</button></small>' : '') + '</div><div class="rb-btn"><button type="button" class="btn small primary" data-rb-pay="' + k + '">Paid</button></div></div>';
     };
     var payHtml = Object.keys(byLl).sort().map(function(n){ var l = byLl[n];
       return '<div class="rb-sect"><div class="rb-sh">' + (l.length > 1 ? '<label class="rb-sall" title="Select all for this landlord"><input type="checkbox" data-rb-sall="p"> All</label>' : '') + '<span style="flex:1;min-width:0">' + (l[0].landlord_id ? rbLl(l[0], true) : esc(n)) + (n === 'No landlord saved' ? '' : '<span class="rb-payto">' + (l[0].pay_to ? 'Pay to: <b>' + esc(l[0].pay_to) + '</b> · ' : 'Paid to the landlord · ') + '<button type="button" class="linkish" data-rb-payto="' + l[0].tenancy_id + '" data-cur="' + esc(l[0].pay_to || '') + '" data-ll="' + esc(n) + '">' + (l[0].pay_to ? 'Change' : 'Pay into a company?') + '</button></span>') + '</span><span>' + l.length + ' · ' + gbp(sum(l, 'to_landlord')) + '</span></div>' + l.map(prow).join('') + '</div>'; }).join('');
@@ -16890,7 +16892,7 @@
         '✓ ' + (x.collected.auto ? 'Move-in money paid' : (early(x) ? 'Paid early ' : 'Rent collected ') + esc(fmtShort(x.collected.at).split(',')[0]) + (early(x) ? ' (due ' + esc(rbDay(x.from)) + ')' : '')) +
         '</div>' +
         // Landlord paid or not, as a clear mark of its own; and that month's statement to send.
-        '<div class="rb-sub">' + (x.ll_part_sent ? '<span class="rb-llmark">' + gbp(x.ll_part_sent) + ' sent from part rent</span> ' : '') + (x.paid ? '<span class="rb-llmark ok">✓ Landlord paid ' + esc(gbp(x.paid.amount)) + (x.paid.at ? ' · ' + esc(fmtShort(x.paid.at).split(',')[0]) : '') + (x.paid.ref ? ' (' + esc(x.paid.ref) + ')' : '') + '</span> <button type="button" class="linkish" data-rb-unpay="' + k + '">undo</button>'
+        '<div class="rb-sub">' + (x.ll_part_sent ? '<span class="rb-llmark">' + gbp(x.ll_part_sent) + ' sent from part rent</span> <button type="button" class="linkish" data-rb-unllpart="' + k + '" title="Undo the part payment recorded as sent to the landlord">undo</button> · ' : '') + (x.paid ? '<span class="rb-llmark ok">✓ Landlord paid ' + esc(gbp(x.paid.amount)) + (x.paid.at ? ' · ' + esc(fmtShort(x.paid.at).split(',')[0]) : '') + (x.paid.ref ? ' (' + esc(x.paid.ref) + ')' : '') + '</span> <button type="button" class="linkish" data-rb-unpay="' + k + '">undo</button>'
           : x.to_landlord > 0 ? '<span class="rb-llmark due">Landlord not paid · ' + esc(gbp(x.to_landlord)) + ' to pay</span>' : '<span class="rb-llmark">Nothing to pay the landlord</span>') +
           (x.stmt ? ' · ' + (x.stmt.sent && !x.stmt.changed ? '✓ Statement sent · ' : '') + '<button type="button" class="linkish" data-st-pdf="' + k + '">Statement</button>' + (x.landlord_email ? ' · <button type="button" class="linkish" data-st-mail="' + k + '">' + (x.stmt.sent && !x.stmt.changed ? 'Email again' : 'Email it to the landlord') + '</button>' : '') + (x.stmt.sent && !x.stmt.changed ? '' : ' · <button type="button" class="linkish" data-st-sent="' + k + '">Mark sent</button>') : '') + '</div>' + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(x.rent) + '</div>' +
@@ -16903,10 +16905,17 @@
       ? (function(){
           // Filter: all, landlord paid, landlord not paid yet.
           var isPaid = function(x){ return !!x.paid; }, notPaid = function(x){ return !x.paid && x.to_landlord > 0; };
+          // In the order the landlords were paid, the latest first; ones not paid yet on top (latest rent in first).
+          var tms = function(v){ var t = v ? new Date(v).getTime() : 0; return isNaN(t) ? 0 : t; };
+          var rbPaidOrder = function(a){ if (rbDoneSort === 'due') return a.slice().reverse(); return a.map(function(x, i){ return { x: x, i: i }; }).sort(function(p, q){
+            var pp = p.x.paid ? 1 : 0, qp = q.x.paid ? 1 : 0; if (pp !== qp) return pp - qp;
+            var d = pp ? tms(q.x.paid.at) - tms(p.x.paid.at) : tms(q.x.collected && q.x.collected.at) - tms(p.x.collected && p.x.collected.at);
+            return d || q.i - p.i; }).map(function(o){ return o.x; }); };
           var lst = rbDoneF === 'paid' ? got.filter(isPaid) : rbDoneF === 'unpaid' ? got.filter(notPaid) : got;
           var chip = function(id, label, n){ return '<button type="button" class="rb-dchip' + (rbDoneF === id ? ' on' : '') + '" data-rb-donef="' + id + '">' + label + ' <span class="rb-count">' + n + '</span></button>'; };
-          return (got.length ? '<div class="rb-dchips">' + chip('all', 'All', got.length) + chip('paid', '✓ Landlord paid', got.filter(isPaid).length) + chip('unpaid', 'Landlord not paid', got.filter(notPaid).length) + '</div>' : '') +
-            (lst.length ? lst.slice().reverse().map(drow).join('') : got.length ? '<p class="rb-empty">None here.</p>' : '<p class="rb-empty">Nothing collected yet in ' + esc(mLabel) + '.</p>');
+          return (got.length ? '<div class="rb-dchips">' + chip('all', 'All', got.length) + chip('paid', '✓ Landlord paid', got.filter(isPaid).length) + chip('unpaid', 'Landlord not paid', got.filter(notPaid).length) +
+            '<span class="rb-dsort">Sort by: <button type="button" class="rb-dchip' + (rbDoneSort === 'sent' ? ' on' : '') + '" data-rb-dsort="sent" title="Latest payment to the landlord first">Date sent</button><button type="button" class="rb-dchip' + (rbDoneSort === 'due' ? ' on' : '') + '" data-rb-dsort="due" title="Latest rent due date first">Due date</button></span></div>' : '') +
+            (lst.length ? rbPaidOrder(lst).map(drow).join('') : got.length ? '<p class="rb-empty">None here.</p>' : '<p class="rb-empty">Nothing collected yet in ' + esc(mLabel) + '.</p>');
         })()
       : ('<div class="rb-bulk"><span id="rbBulkC"></span></div>' +
          sect(isNow ? 'Due today & late' : 'Due', now) + sect('Waiting for move-in money', mov, 'New tenancies — the landlord’s payment comes up once the tenants have paid everything due at move-in.') + sect('Tomorrow', tmw) + sect(isNow ? 'Later this month' : 'Later', later) + sect('Early next month', soonNext, 'Due in the next few days — mark it collected if the tenant has paid early.') +
@@ -17092,6 +17101,10 @@
         toast((cin ? '✓ Credit added' : '✓ Charge added') + ' — on the ' + monthName(xc.from) + ' statement'); loadStatements(); loadRentBoard(true);
       });
       return; }
+    var ulp = e.target.closest('[data-rb-unllpart]');
+    if (ulp) { var xl = rbFind(ulp.dataset.rbUnllpart); if (!xl || !confirm('Undo the ' + gbp(xl.ll_part_sent) + ' recorded as sent to the landlord from the part rent?')) return;
+      busy(ulp, true, '…');
+      api('POST', '/api/admin/tenancies/' + xl.tenancy_id + '/landlord-paid', { from: xl.from, undo_parts: true }).then(function(d){ busy(ulp, false); if (!d || !d.ok) { toast('Couldn’t undo that'); return; } toast('✓ Part payment to the landlord undone'); loadStatements(); loadRentBoard(true); }); return; }
     var upx = e.target.closest('[data-rb-unpart]');
     if (upx) { var xp2 = rbFind(upx.dataset.rbUnpart); if (!xp2 || !confirm('Clear the part payments recorded for this rent (' + gbp(xp2.part_paid) + ')?')) return;
       api('POST', '/api/admin/tenancies/' + xp2.tenancy_id + '/rent-collected', { from: xp2.from, undo: true }).then(function(){ loadRentBoard(true); }); return; }
