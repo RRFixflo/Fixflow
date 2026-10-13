@@ -121,6 +121,7 @@
   .crm-confirm { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #fef3f2; border: 1px solid #fda29b; } .crm-cb { display: flex; gap: 8px; align-items: center; margin: 6px 0 8px; font-size: .86rem; }
   .crm-arch .btn + .btn { margin-left: 6px; }
   .crm-bulk { position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; z-index: 300; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; background: #0b1f3a; color: #fff; padding: 10px 14px; border-radius: 14px; box-shadow: 0 16px 40px -12px rgba(0,0,0,.45); max-width: calc(100vw - 24px); }
+  body:has(.modal:not([hidden])) .crm-bulk { display: none; }   /* never over a window's buttons */
   .crm-bulk .btn:not(.ghost):not(.primary):not(.danger) { background: #fff; color: #0b1f3a; border-color: #fff; } .crm-bulk .btn.ghost { color: #fff; }
   .crm-bulk .btn.sure { background: #d92d20 !important; color: #fff !important; border-color: #d92d20 !important; }
   @media (max-width: 900px) { .crm-bulk { bottom: calc(76px + env(safe-area-inset-bottom)); } }
@@ -764,7 +765,10 @@
   .appl-lt td.c-act { padding-top: 4px; padding-bottom: 4px; } .appl-lt th.c-act { cursor: default; }
   .appl-ic { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 8px; padding: 4px 8px; margin-right: 4px; font-size: .76rem; font-weight: 700; color: #344054 !important; text-decoration: none !important; }
   .appl-ic.wa { color: #067647 !important; border-color: #abefc6; background: #f6fef9; } .appl-ic:hover { background: #f2f4f7; } .appl-ic.wa:hover { background: #ecfdf3; }
-  .appl-lt.slim .appl-ic span { display: none; } .appl-ic.bk { color: #5925dc !important; border-color: #d9d6fe; background: #f9f8ff; }
+  .appl-lt.slim .appl-ic span { display: none; } .appl-ic:not(.wa):not(.bk) { color: #175cd3 !important; border-color: #b2ddff; background: #f5faff; }
+  .cb-extra { grid-template-columns: 1fr 1fr 1fr auto !important; align-items: end; padding-top: 8px; border-top: 1px dashed var(--line, #e6e8ec); } .cb-x { border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 8px; width: 36px; height: 40px; cursor: pointer; color: #b42318; font-weight: 700; }
+  @media (max-width: 760px) { .cb-extra { grid-template-columns: 1fr !important; } .cb-x { width: 100%; height: 34px; } }
+  .cal-grp { display: flex; flex-direction: column; gap: 3px; cursor: default; } .cal-gp { text-align: left; border: 1px solid rgba(16,24,40,.12); background: rgba(255,255,255,.75); border-radius: 6px; padding: 3px 6px; font: inherit; font-size: .76rem; font-weight: 600; cursor: pointer; } .cal-gp:hover { background: #fff; } .cal-gp.st-cancelled, .cal-gp.st-no_show { text-decoration: line-through; opacity: .7; } .appl-ic.bk { color: #5925dc !important; border-color: #d9d6fe; background: #f9f8ff; }
   .appl-vw { display: block; width: max-content; margin-top: 3px; background: #6941c6; color: #fff; font-size: .7rem; font-weight: 700; border-radius: 6px; padding: 2px 7px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
   .appl-lt tr.has-vw td { background: #faf8ff; } .appl-lt tr.has-vw td.nm { max-width: 215px; } .appl-lt tr.has-vw td:first-child { box-shadow: inset 3px 0 0 #6941c6; }
   .crm-flag.vw { background: #6941c6 !important; color: #fff !important; border-color: #6941c6 !important; font-weight: 700; }
@@ -3137,9 +3141,12 @@
   <div class="card cal-form">
     <h3 id="cbTitle">Book a viewing</h3>
     <label>Property<input class="inp" id="cbProp" list="offProps" maxlength="400" autocomplete="off" placeholder="Start typing the address"></label>
-    <div class="cal-g3"><label>Date<input class="inp" id="cbDate" type="date"></label><label>Time<input class="inp" id="cbTime" type="time" step="900"></label><label>Length<select class="inp" id="cbMins"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 hour</option><option value="90">1½ hours</option></select></label></div>
+    <div class="cal-g3"><label>Date<input class="inp" id="cbDate" type="date"></label><label>Time<select class="inp" id="cbTime"></select></label><label>Length<select class="inp" id="cbMins"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 hour</option><option value="90">1½ hours</option></select></label></div>
     <label>Who’s doing it<select class="inp" id="cbStaff"></select></label>
+    <div class="banner" id="cbGroup" hidden style="margin:0"></div>
     <div class="cal-g3"><label>Applicant<input class="inp" id="cbWho" maxlength="120" autocomplete="off"></label><label>Mobile<input class="inp" id="cbPhone" type="tel" maxlength="40" autocomplete="off"></label><label>Email<input class="inp" id="cbEmail" type="email" maxlength="200" autocomplete="off"></label></div>
+    <div id="cbMore"></div>
+    <button type="button" class="btn small ghost" id="cbAddPerson" style="align-self:flex-start">＋ Add another applicant to this viewing</button>
     <p class="muted-note" style="margin:0">The applicant’s email lets you send them the feedback form after the viewing. Their details are never shown to the landlord.</p>
     <div class="banner" id="cbClash" hidden style="margin:0"></div>
     <div class="row-actions"><button class="btn ghost" id="cbDel" type="button" hidden>Delete</button><span style="flex:1"></span><button class="btn" id="cbClose" type="button">Cancel</button><button class="btn primary" id="cbSave" type="button">Book viewing</button></div>
@@ -9610,12 +9617,13 @@
   function applNextVw(g){ return (g.viewings || []).filter(function(v){ return (v.status || 'booked') === 'booked' && new Date(v.at).getTime() > Date.now() - 3 * 3600000; }).sort(function(a, b){ return new Date(a.at) - new Date(b.at); })[0] || null; }
   function applVwText(v){ return new Date(v.at).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).replace(/,/g, ''); }
   // Book a viewing for an applicant: the calendar's booking window, filled in with them and the property they asked about.
-  function applBook(g){
+  function applBook(g, others){
     if (applLocked(g)) { var hd = applHold(g); toast('🔒 ' + hd.who + ' is looking after ' + (g.name || 'this applicant') + ' — ask them, or a manager, to book it'); return; }
     var up = applNextVw(g);
     if (up && !confirm((g.name || 'This applicant') + ' already has a viewing booked:\n\n' + applVwText(up) + (up.property_address ? ' · ' + shortAddr(up.property_address) : '') + (up.staff || up.created_by ? ' · with ' + (up.staff || up.created_by) : '') + '\n\nBook another one?')) return;
     var it = (g.group || [g]).filter(function(i){ return i.address && i.address !== '(no property given)'; })[0];
-    openBook({ property: it ? it.address : '', applicant: g.name || '', phone: g.phone || '', email: g.email || '', leadId: (it || g).id });
+    var more = (others || []).map(function(o){ var oi = (o.group || [o]).filter(function(i){ return i.address && i.address !== '(no property given)'; })[0]; return { name: o.name || '', phone: o.phone || '', email: o.email || '', leadId: (oi || o).id }; });
+    openBook({ property: it ? it.address : '', applicant: g.name || '', phone: g.phone || '', email: g.email || '', leadId: (it || g).id, more: more });
   }
   var APPL_COLS = [['id', 'ID'], ['name', 'Name'], ['act', ''], ['who', 'Assigned to'], ['src', 'Source'], ['phone', 'Mobile'], ['status', 'Status'], ['prop', 'Property'], ['rent', 'Rent pcm'], ['at', 'Date added'], ['email', 'Email'], ['todo', 'To do']];
   function applVal(g, k){
@@ -9877,6 +9885,9 @@
         if (act === 'clear') { crmSel = {}; crmSelDraw(); renderCrm(); return; }
         if (act === 'all') { document.querySelectorAll('[data-crm-pick]').forEach(function(c){ crmSel[c.dataset.crmPick] = 1; }); crmSelDraw(); renderCrm(); return; }
         if (act === 'rec') { applRecommend(refs2); return; }
+        if (act === 'book') { var gs = refs2.map(function(r){ return crm.gmap && crm.gmap[r]; }).filter(Boolean); if (!gs.length) return;
+          var lk = gs.filter(applLocked); if (lk.length) { toast('🔒 ' + lk.map(function(g){ return g.name; }).join(', ') + (lk.length === 1 ? ' is' : ' are') + ' someone else’s applicant — untick them first'); return; }
+          applBook(gs[0], gs.slice(1)); return; }
         refs2 = [].concat.apply([], refs2.map(function(r){ var g = crm.mode === 'appl' && crm.gmap && crm.gmap[r]; return g ? g.group.map(function(i){ return i.ref; }) : [r]; }));   // a person: every enquiry of theirs
         if (!b.classList.contains('sure')) { bar.querySelectorAll('.sure').forEach(function(x){ x.classList.remove('sure'); x.textContent = x.dataset.label; }); b.classList.add('sure'); b.dataset.label = b.textContent; b.textContent = 'Tap again to ' + (act === 'junk' ? 'junk ' : 'delete ') + refs2.length; return; }
         busy(b, true, 'Saving…');
@@ -9884,7 +9895,7 @@
           var ok = rs.filter(function(d){ return d && d.ok; }).length; crmSel = {}; crmSelDraw(); toast((act === 'junk' ? '🚫 ' + ok + ' moved to Junk' : '🗄 ' + ok + ' moved to the archive') + (ok < rs.length ? ' · ' + (rs.length - ok) + ' couldn’t be saved' : '')); loadCrm(); loadVr(); });
       }); }
     bar.hidden = !refs.length || (view !== 'crm' && view !== 'appl');
-    bar.innerHTML = '<span><b>' + refs.length + '</b> selected</span><button type="button" class="btn small ghost" data-cb="all">Select all shown</button>' + (crm.mode === 'appl' ? '<button type="button" class="btn small primary" data-cb="rec">✉ Recommend a property</button>' : '') + '<button type="button" class="btn small" data-cb="junk">🚫 Junk</button><button type="button" class="btn small danger" data-cb="del">🗑 Delete</button><button type="button" class="btn small ghost" data-cb="clear">Clear</button>';
+    bar.innerHTML = '<span><b>' + refs.length + '</b> selected</span><button type="button" class="btn small ghost" data-cb="all">Select all shown</button>' + (crm.mode === 'appl' ? '<button type="button" class="btn small primary" data-cb="rec">✉ Recommend a property</button><button type="button" class="btn small" data-cb="book">🗓 Book a viewing together</button>' : '') + '<button type="button" class="btn small" data-cb="junk">🚫 Junk</button><button type="button" class="btn small danger" data-cb="del">🗑 Delete</button><button type="button" class="btn small ghost" data-cb="clear">Clear</button>';
   }
   $('crmList').addEventListener('change', function(e){ var c = e.target.closest('[data-crm-pick]'); if (!c) return; if (c.checked) crmSel[c.dataset.crmPick] = 1; else delete crmSel[c.dataset.crmPick]; crmSelDraw(); });
   $('crmList').addEventListener('click', function(e){
@@ -12416,6 +12427,12 @@
     }
     m.hidden = false; m.querySelectorAll('[data-cp-scope]').forEach(function(x){ x.classList.toggle('on', x.dataset.cpScope === 'mine'); }); load('mine');
   }
+  // Applicants booked for the same property, time and person are one viewing in the calendar.
+  function calGroups(list){
+    var out = [], ix = {};
+    list.forEach(function(v){ var k = v.status === 'cancelled' ? 'c' + v.id : v.at + '|' + String(v.property_address || '').trim().toLowerCase() + '|' + calWho(v); if (ix[k]) ix[k].push(v); else { ix[k] = [v]; out.push(ix[k]); } });
+    return out;
+  }
   function renderCal(){
     if (!cal.start) return;
     var days = cal.mode === 'day' ? 1 : 7, today = calDayKey(new Date()), end = new Date(cal.start); end.setDate(end.getDate() + days - 1);
@@ -12431,8 +12448,10 @@
       var d = new Date(cal.start); d.setDate(d.getDate() + i); var key = calDayKey(d);
       var list = cal.items.filter(function(v){ return calDayKey(v.at) === key && (!cal.only || calWho(v) === cal.only); }).sort(function(a, b){ return new Date(a.at) - new Date(b.at); });
       h += '<div class="cal-day' + (key === today ? ' today' : '') + (key < today ? ' past' : '') + (list.length ? '' : ' empty-day') + '"><div class="cal-dh"><span>' + esc(f(d, { weekday: 'short' })) + '</span><b>' + d.getDate() + '</b><span>' + esc(f(d, { month: 'short' })) + '</span></div>' +
-        (list.length ? list.map(function(v){
-          var who = calWho(v), c = calColour(who), endT = new Date(new Date(v.at).getTime() + (v.mins || 30) * 60000);
+        (list.length ? calGroups(list).map(function(gr){
+          var v = gr[0], who = calWho(v), c = calColour(who), endT = new Date(new Date(v.at).getTime() + (v.mins || 30) * 60000);
+          if (gr.length > 1) return '<div class="cal-ev cal-grp st-' + esc(v.status) + '" style="--c:' + c + '"><span class="t">' + calHm(v.at) + '–' + calHm(endT) + ' · 👥 ' + gr.length + ' applicants</span><span class="p">' + esc(shortAddr(v.property_address)) + '</span>' +
+            gr.map(function(x){ return '<button type="button" class="cal-gp st-' + esc(x.status) + '" data-cal-ev="' + x.id + '">' + esc(x.applicant || 'Applicant') + (x.status !== 'booked' ? ' · ' + esc({ done: 'done', no_show: 'no-show', cancelled: 'cancelled' }[x.status] || x.status) : '') + (x.app_fb_at ? ' ⭐' : '') + '</button>'; }).join('') + '<span class="who">● ' + esc(who) + '</span></div>';
           return '<button type="button" class="cal-ev st-' + esc(v.status) + '" style="--c:' + c + '" data-cal-ev="' + v.id + '"><span class="t">' + calHm(v.at) + '–' + calHm(endT) + '</span><span class="p">' + esc(shortAddr(v.property_address)) + '</span>' + (v.applicant ? '<small>' + esc(v.applicant) + '</small>' : '') + '<span class="who">● ' + esc(who) + '</span>' + (v.app_fb_at ? '<small>💬 Applicant feedback</small>' : '') + '</button>';
         }).join('') : '<div class="cal-none">No viewings</div>') +
         (key >= today ? '<button type="button" class="cal-add" data-cal-new="' + key + '">＋ Add</button>' : '') + '</div>';
@@ -12468,21 +12487,42 @@
     $('cbTitle').textContent = v ? 'Change viewing' : 'Book a viewing'; $('cbSave').textContent = v ? 'Save changes' : 'Book viewing'; $('cbDel').hidden = !v;
     $('cbProp').value = v ? v.property_address : (o.property || '');
     $('cbDate').value = at ? calDayKey(at) : (o.date || calDayKey(new Date()));
-    $('cbTime').value = at ? calHm(at) : '';
+    cbTimes(at ? calHm(at) : '');
+    $('cbMore').innerHTML = ''; (o.more || []).forEach(cbAddPerson);
+    cal.mates = v ? cal.items.filter(function(x){ return x.id !== v.id && x.status !== 'cancelled' && x.at === v.at && calWho(x) === calWho(v) && String(x.property_address || '').trim().toLowerCase() === String(v.property_address || '').trim().toLowerCase(); }) : [];
+    $('cbGroup').hidden = !cal.mates.length;
+    if (cal.mates.length) $('cbGroup').innerHTML = '👥 Also at this viewing: <b>' + cal.mates.map(function(x){ return esc(x.applicant || 'applicant'); }).join(', ') + '</b> — changing the time, person or property moves them too.';
     $('cbMins').value = String(v && v.mins || 30);
     $('cbWho').value = v ? (v.applicant || '') : (o.applicant || ''); $('cbPhone').value = v ? (v.phone || '') : (o.phone || ''); $('cbEmail').value = v ? (v.email || '') : (o.email || '');
     $('cbClash').hidden = true; $('cbModal').hidden = false; setTimeout(function(){ ($('cbProp').value ? $('cbTime') : $('cbProp')).focus(); }, 30);
   }
+  // Times in 15-minute steps, 7am to 9pm (an older booking at another minute keeps its own time in the list).
+  function cbTimes(cur){
+    var opts = [], h, m; for (h = 7; h <= 21; h++) for (m = 0; m < 60; m += 15) { if (h === 21 && m) break; opts.push(String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0')); }
+    if (cur && opts.indexOf(cur) === -1) { opts.push(cur); opts.sort(); }
+    $('cbTime').innerHTML = '<option value="">Choose a time</option>' + opts.map(function(t){ return '<option' + (t === cur ? ' selected' : '') + '>' + t + '</option>'; }).join('');
+  }
+  // More applicants on the same viewing (one viewing record each, so each gets their own feedback form and notes).
+  function cbAddPerson(p){
+    p = p || {};
+    $('cbMore').insertAdjacentHTML('beforeend', '<div class="cal-g3 cb-extra" data-lead="' + esc(p.leadId || '') + '"><label>Applicant<input class="inp" data-cbx="name" maxlength="120" autocomplete="off" value="' + esc(p.name || '') + '"></label><label>Mobile<input class="inp" data-cbx="phone" type="tel" maxlength="40" autocomplete="off" value="' + esc(p.phone || '') + '"></label><label>Email<input class="inp" data-cbx="email" type="email" maxlength="200" autocomplete="off" value="' + esc(p.email || '') + '"></label><button type="button" class="cb-x" data-cb-rm title="Remove">✕</button></div>');
+  }
+  $('cbAddPerson').addEventListener('click', function(){ cbAddPerson(); var r = $('cbMore').lastElementChild; if (r) r.querySelector('input').focus(); });
+  $('cbMore').addEventListener('click', function(e){ var x = e.target.closest('[data-cb-rm]'); if (x) x.closest('.cb-extra').remove(); });
   // Warn when the person doing it already has a viewing at that time.
   function calClash(){
     var d = $('cbDate').value, t = $('cbTime').value, who = $('cbStaff').value; if (!d || !t) { $('cbClash').hidden = true; return; }
     var st = new Date(d + 'T' + t).getTime(), en = st + (+$('cbMins').value || 30) * 60000;
     api('GET', '/api/admin/viewings?from=' + encodeURIComponent(new Date(st - 3 * 3600000).toISOString()) + '&to=' + encodeURIComponent(new Date(en + 3 * 3600000).toISOString())).then(function(r){
-      var hit = ((r && r.viewings) || []).filter(function(v){ var a = new Date(v.at).getTime(), b = a + (v.mins || 30) * 60000; return v.status === 'booked' && calWho(v) === who && (!cal.edit || v.id !== cal.edit.id) && a < en && b > st; })[0];
-      $('cbClash').hidden = !hit; if (hit) $('cbClash').textContent = '⚠ ' + who + ' already has a viewing then: ' + calHm(hit.at) + ' at ' + shortAddr(hit.property_address) + '. You can still book it.';
+      var pk = $('cbProp').value.trim().toLowerCase(), mine = function(v){ return cal.edit && (v.id === cal.edit.id || (cal.mates || []).some(function(x){ return x.id === v.id; })); };
+      var all = ((r && r.viewings) || []).filter(function(v){ var a = new Date(v.at).getTime(), b = a + (v.mins || 30) * 60000; return v.status === 'booked' && calWho(v) === who && !mine(v) && a < en && b > st; });
+      var same = all.filter(function(v){ return new Date(v.at).getTime() === st && String(v.property_address || '').trim().toLowerCase() === pk; }), hit = all.filter(function(v){ return same.indexOf(v) === -1; })[0];
+      $('cbClash').hidden = !hit && !same.length;
+      if (hit) $('cbClash').textContent = '⚠ ' + who + ' already has a viewing then: ' + calHm(hit.at) + ' at ' + shortAddr(hit.property_address) + '. You can still book it.';
+      else if (same.length) $('cbClash').textContent = '👥 ' + who + ' is already showing this property then to ' + same.map(function(v){ return v.applicant || 'an applicant'; }).join(', ') + ' — this applicant joins the same viewing.';
     });
   }
-  ['cbDate', 'cbTime', 'cbMins', 'cbStaff'].forEach(function(id){ $(id).addEventListener('change', calClash); });
+  ['cbDate', 'cbTime', 'cbMins', 'cbStaff', 'cbProp'].forEach(function(id){ $(id).addEventListener('change', calClash); });
   $('cbClose').addEventListener('click', function(){ $('cbModal').hidden = true; });
   $('cbModal').addEventListener('click', function(e){ if (e.target === this) this.hidden = true; });
   $('cbSave').addEventListener('click', function(){
@@ -12490,10 +12530,20 @@
     if (!prop) { toast('Enter the property'); $('cbProp').focus(); return; } if (!d || !t) { toast('Choose the date and time'); (d ? $('cbTime') : $('cbDate')).focus(); return; }
     var body = { property: prop, at: new Date(d + 'T' + t).toISOString(), mins: +$('cbMins').value, staff: $('cbStaff').value, applicant: $('cbWho').value.trim(), phone: $('cbPhone').value.trim(), email: $('cbEmail').value.trim() };
     if (!cal.edit && cal.leadId) body.lead_id = cal.leadId;
+    var more = Array.prototype.map.call($('cbMore').querySelectorAll('.cb-extra'), function(r){ var g = function(k){ return r.querySelector('[data-cbx="' + k + '"]').value.trim(); }; return { applicant: g('name'), phone: g('phone'), email: g('email'), lead_id: r.dataset.lead ? +r.dataset.lead : undefined }; }).filter(function(x){ return x.applicant || x.phone || x.email; });
+    var edit = cal.edit, mates = edit ? (cal.mates || []) : [];
     busy(b, true, 'Saving…');
-    api('POST', '/api/admin/viewings' + (cal.edit ? '/' + cal.edit.id : ''), body).then(function(r){
+    api('POST', '/api/admin/viewings' + (edit ? '/' + edit.id : ''), body).then(function(r){
+      if (!r || !r.ok) return r;
+      // The others at this viewing move with it; extra applicants are booked into the same slot.
+      var moves = mates.map(function(x){ return function(){ return api('POST', '/api/admin/viewings/' + x.id, { property: body.property, at: body.at, mins: body.mins, staff: body.staff }); }; });
+      var adds = more.map(function(x){ return function(){ return api('POST', '/api/admin/viewings', Object.assign({ property: body.property, at: body.at, mins: body.mins, staff: body.staff }, x)); }; });
+      return moves.concat(adds).reduce(function(pr, f){ return pr.then(f); }, Promise.resolve()).then(function(){ return r; });
+    }).then(function(r){
       busy(b, false); if (!r || !r.ok) { toast('Couldn’t save the viewing'); return; }
-      $('cbModal').hidden = true; toast('✓ ' + (cal.edit ? 'Viewing updated' : 'Viewing booked for ' + body.staff + ' — ' + new Date(body.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })));
+      var n = 1 + more.length + mates.length;
+      $('cbModal').hidden = true; toast('✓ ' + (edit ? 'Viewing updated' : 'Viewing booked for ' + body.staff + ' — ' + new Date(body.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + (n > 1 ? ' · ' + n + ' applicants' : ''));
+      if (more.some(function(x){ return x.lead_id; })) body.lead_id = 1;
       if (!cal.edit && view === 'cal') { cal.start = cal.mode === 'day' ? new Date(new Date(body.at).setHours(0, 0, 0, 0)) : calMonday(body.at); }
       calChanged(); if (body.lead_id || view === 'appl' || view === 'crm') loadCrm('poll');
     });
