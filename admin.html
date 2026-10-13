@@ -10752,10 +10752,11 @@
       (c.id ? ctrLinkCard(c) : '') +
       '<div class="toolbar"><div class="tabs" id="ctrTabs">' + tabs.map(function(t){ return '<button type="button" data-ctr-tab="' + t[0] + '"' + (t[0] === ctrTab ? ' class="on"' : '') + '>' + t[1] + ' <span class="n">' + t[2] + '</span></button>'; }).join('') + '</div>' +
         (ctrTab === 'owed' && owed.length ? '<button class="btn small" id="ctrPaySel" type="button">Mark ticked paid</button><button class="btn small primary" id="ctrPayAll" type="button">Mark all paid (' + gbp(owed.reduce(function(t, j){ return t + Math.max(0, ctrOwe(j) - ctrPaidSoFar(j)); }, 0)) + ')</button>' : '') +
-        (ctrTab === 'open' && open.length ? '<button class="btn small" id="ctrSendSel" type="button">Send ticked</button><button class="btn small wa" id="ctrSendAll" type="button">Send all open jobs (' + open.length + ')</button>' : '') + '</div>' +
+        (ctrTab === 'open' && open.length ? '<button class="btn small" id="ctrSendSel" type="button">Send ticked</button><button class="btn small wa" id="ctrSendAll" type="button">Send all open jobs (' + open.length + ')</button>' : '') +
+        (rows.length ? '<button class="btn small" id="ctrTickAll" type="button">☑ Tick all</button><button class="btn small" id="ctrPrint" type="button" title="A printout with every detail of the ticked jobs">🖨 Print ticked</button>' : '') + '</div>' +
       '<div class="list">' + (rows.length ? rows.map(function(j){
         return '<div class="pay-row">' +
-          (ctrTab === 'owed' || ctrTab === 'open' ? '<input type="checkbox" data-ctr-job="' + j.id + '" aria-label="Select ' + esc(j.ref) + '">' : '<span></span>') +
+          '<input type="checkbox" data-ctr-job="' + j.id + '" aria-label="Select ' + esc(j.ref) + '">' +
           '<button type="button" class="link ref" data-open="' + j.id + '">' + esc(j.ref) + '</button>' +
           '<div class="addr" data-open="' + j.id + '" style="cursor:pointer">' + esc(j.property_address || 'No address') + '<small>' + esc(j.summary || issueOf(j)) + '</small></div>' +
           '<div class="when">' + esc(ctrTab === 'paid' ? 'Paid ' + fmtShort(j.contractor_paid_at) : j.status === 'Completed' ? 'Done ' + fmtShort(j.completed_at || j.updated_at) : j.status) + '</div>' +
@@ -10785,6 +10786,42 @@
     if ($('ctrSendSel')) $('ctrSendSel').addEventListener('click', function(){ send(false); });
     if ($('ctrPayAll')) $('ctrPayAll').addEventListener('click', function(){ pay(true); });
     if ($('ctrPaySel')) $('ctrPaySel').addEventListener('click', function(){ pay(false); });
+    if ($('ctrTickAll')) $('ctrTickAll').addEventListener('click', function(){ var bs = $('ctrView').querySelectorAll('[data-ctr-job]'), all = Array.prototype.every.call(bs, function(i){ return i.checked; }); bs.forEach(function(i){ i.checked = !all; }); this.textContent = all ? '☑ Tick all' : '☐ Untick all'; });
+    if ($('ctrPrint')) $('ctrPrint').addEventListener('click', function(){
+      var ids = payIds(false), list = jobs.filter(function(j){ return ids.indexOf(j.id) !== -1; });
+      if (!list.length) { toast('Tick the jobs to print first (or ☑ Tick all)'); return; }
+      printJobs(list, c.name, { open: 'Open jobs', done: 'Completed jobs', owed: 'Jobs owed for', paid: 'Paid jobs' }[ctrTab]);
+    });
+  }
+  // A printout of jobs with all their details (the contractor page's 🖨 Print ticked): one block per job.
+  function printJobs(list, who, what){
+    var w = window.open('', '_blank'); if (!w) { toast('Allow pop-ups to print'); return; }
+    var e = function(v){ return esc(v == null ? '' : String(v)); }, day = function(v){ return v ? fmtShort(v) : ''; };
+    var row = function(k, v){ return v ? '<tr><th>' + e(k) + '</th><td>' + v + '</td></tr>' : ''; };
+    var body = list.slice().sort(function(a, b){ return String(a.property_address || '').localeCompare(String(b.property_address || '')); }).map(function(j){
+      var ten = [], seen = {};
+      var addT = function(n, ph){ var k = String(n || '').trim().toLowerCase(); if (!k && !ph) return; if (seen[k]) { if (ph && seen[k].ph.indexOf(ph) === -1) seen[k].ph.push(ph); return; } seen[k] = { n: n || 'Tenant', ph: ph ? [ph] : [] }; ten.push(seen[k]); };
+      addT(j.tenant_name, j.tenant_phone || (tenantForJob(j) || {}).phone); otherTenants(j).forEach(function(o){ addT(o.name, o.phone); });
+      var owe = ctrOwe(j), paidSoFar = ctrPaidSoFar(j);
+      return '<section><div class="jh"><b>' + e(j.ref) + '</b><span>' + e(j.status || '') + (j.urgency ? ' · ' + e(j.urgency) : '') + '</span></div>' +
+        '<div class="ja">' + e(j.property_address || 'No address') + '</div>' +
+        '<table>' + row('Job', e(taskText(j))) + row('What’s wrong', e(issueOf(j))) + row('Details', e(j.description || '').replace(/\n/g, '<br>')) +
+          row('Raised', e(day(j.created_at))) + row('Booked for', e(apptText(j))) + row('Completed', j.status === 'Completed' ? e(day(j.completed_at || j.updated_at)) : '') +
+          row('Tenant' + (ten.length > 1 ? 's' : ''), ten.map(function(t){ return e(t.n) + (t.ph.length ? ' — ' + e(t.ph.join(' / ')) : ''); }).join('<br>')) +
+          row('Keys', e(keysText(j)) + (keyNo(j.property_address) ? ' · key number ' + e(keyNo(j.property_address)) : '')) +
+          row('Access', j.direct_contact !== 'No' ? 'Contractor contacts the tenant to arrange access' : 'The office arranges access with the tenant') +
+          row('Contractor', e([j.assigned_to, j.assigned_to_2].filter(Boolean).join(' & '))) +
+          row('Cost', owe ? e(gbp(owe)) + (ctrParts(j) ? ' (inc. parts ' + e(gbp(ctrParts(j))) + ')' : '') + (j.contractor_paid_at ? ' · paid ' + e(day(j.contractor_paid_at)) : paidSoFar ? ' · ' + e(gbp(paidSoFar)) + ' paid so far' : '') : '') +
+        '</table><div class="jn">Notes:</div></section>';
+    }).join('');
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + e(who) + ' — ' + e(what) + '</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>' +
+      'body{font-family:Arial,Helvetica,sans-serif;color:#101828;margin:24px;font-size:13px}h1{font-size:18px;margin:0}p.s{margin:2px 0 16px;color:#475467}' +
+      'section{border:1px solid #d0d5dd;border-radius:8px;padding:10px 12px;margin:0 0 12px;page-break-inside:avoid;break-inside:avoid}.jh{display:flex;justify-content:space-between;font-size:14px}.jh span{color:#475467}' +
+      '.ja{font-weight:700;margin:2px 0 6px}table{border-collapse:collapse;width:100%}th{text-align:left;vertical-align:top;width:110px;color:#475467;font-weight:600;padding:3px 8px 3px 0}td{padding:3px 0}' +
+      '.jn{margin-top:6px;border-top:1px dashed #d0d5dd;padding-top:4px;color:#98a2b3;min-height:28px}.bar{margin-bottom:12px}@media print{.bar{display:none}body{margin:10mm}}</style></head><body>' +
+      '<div class="bar"><button onclick="window.print()">🖨 Print</button></div><h1>Residential Realtors · ' + e(who) + '</h1><p class="s">' + e(what) + ' — ' + list.length + ' job' + (list.length === 1 ? '' : 's') + ' · printed ' + e(new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })) + '</p>' +
+      body + '<script>setTimeout(function(){window.print()},400)<\/script></body></html>');
+    w.document.close();
   }
   // The contractor's own job link: on/off, copy, send, or replace.
   function ctrLinkCard(c){
