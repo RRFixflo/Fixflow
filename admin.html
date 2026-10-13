@@ -749,6 +749,17 @@
   .appl-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
   .appl-tabs button { border: 1px solid var(--line, #e6e8ec); background: #fff; border-radius: 999px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; color: #344054; }
   .appl-tabs button.on { background: var(--navy, #0b1f3a); color: #fff; border-color: transparent; } .appl-tabs button b { margin-left: 4px; }
+  .appl-view { margin-left: auto; display: inline-flex; gap: 4px; } .appl-view button { padding: 6px 12px; font-size: .85rem; }
+  .appl-lt-wrap { overflow-x: auto; border: 1px solid var(--line, #e6e8ec); border-radius: 12px; background: #fff; margin-top: 8px; }
+  .appl-lt tr.appl-tr { cursor: pointer; } .appl-lt tr.appl-tr.on td { background: #eef4ff; } .appl-lt tr.is-new td:first-child { box-shadow: inset 3px 0 0 #d92d20; }
+  .appl-lt th.ck, .appl-lt td.ck { width: 34px; padding-right: 0; cursor: default; } .appl-lt td.ck .crm-pick { padding: 0; }
+  .appl-lt td.nm { white-space: nowrap; } .appl-lt td.pr { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .appl-lt td.em { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .appl-lt td.td { white-space: nowrap; font-size: .8rem; }
+  .appl-lt td.td .warn { color: #b42318; font-weight: 600; } .appl-lt td.td .ok { color: #067647; font-weight: 600; } .appl-lt .muted { color: var(--ink-soft); }
+  .appl-lt td a { color: inherit; text-decoration: none; } .appl-lt td a:hover { text-decoration: underline; color: #175cd3; }
+  .appl-new { display: inline-block; background: #12b76a; color: #fff; font-size: .62rem; font-weight: 800; border-radius: 4px; padding: 1px 4px; vertical-align: 1px; } .appl-n { font-size: .78rem; color: var(--ink-soft); }
+  .appl-lt tr.appl-exp > td { padding: 0 8px 10px; background: #eef4ff; cursor: default; } .appl-lt tr.appl-exp:hover td { background: #eef4ff; }
+  .appl-lt tr.appl-exp .crm-card { position: sticky; left: 8px; width: var(--aw, auto); max-width: var(--aw, none); margin-top: 0; font-size: .9rem; }
   .crm-new { padding: 10px 14px; border-radius: 12px; background: #ecfdf3; color: #067647; font-weight: 600; margin: 0 0 10px; }
   .crm-flag.new { background: #d1fadf; color: #05603a; }
   .ll-note { padding: 9px 0; border-top: 1px solid var(--line, #e6e8ec); } .ll-note span { display: block; white-space: pre-wrap; overflow-wrap: anywhere; } .ll-note small { color: #667085; }
@@ -9462,7 +9473,8 @@
     if (appl && crm.loaded && crm.seen == null) { var st0 = 0; try { st0 = +localStorage.getItem('rr_appl_seen') || 0; } catch (e) {} var mx = rawLive.reduce(function(m, i){ return Math.max(m, i.id); }, 0); crm.seen = st0 || mx; if (mx > st0) { try { localStorage.setItem('rr_appl_seen', String(mx)); } catch (e) {} } }
     var newG = appl && crm.seen != null ? live.filter(function(g){ return g.group.some(function(i){ return i.id > crm.seen; }); }) : [];
     $('applTabs').hidden = !appl;
-    if (appl) $('applTabs').innerHTML = '<button type="button" data-appl-tab="all"' + (crm.tab !== 'mine' ? ' class="on"' : '') + '>👥 All leads <b>' + live.length + '</b></button><button type="button" data-appl-tab="mine"' + (crm.tab === 'mine' ? ' class="on"' : '') + ' title="Applicants you’ve taken, spoken to or booked a viewing with in the last 24 hours">🙋 My leads <b>' + mineL.length + '</b></button>';
+    if (appl) $('applTabs').innerHTML = '<button type="button" data-appl-tab="all"' + (crm.tab !== 'mine' ? ' class="on"' : '') + '>👥 All leads <b>' + live.length + '</b></button><button type="button" data-appl-tab="mine"' + (crm.tab === 'mine' ? ' class="on"' : '') + ' title="Applicants you’ve taken, spoken to or booked a viewing with in the last 24 hours">🙋 My leads <b>' + mineL.length + '</b></button>' +
+      '<span class="appl-view"><button type="button" data-appl-view="table"' + (crm.view === 'table' ? ' class="on"' : '') + ' title="One line per applicant, in columns you can sort">📋 Table</button><button type="button" data-appl-view="cards"' + (crm.view !== 'table' ? ' class="on"' : '') + '>🗂 Cards</button></span>';
     $('crmTiles').innerHTML = (appl ? [['fresh', '🆕', fresh.length, 'Not contacted yet'], ['attn', '📣', nNew.length, 'Need contacting or an update'], ['free', '🔓', openAppl.length, 'Open to anyone'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm']] : [['attn', '📣', nNew.length, 'Need contacting or an update'], ['due', '⏰', due.length, 'Follow-ups due'], ['confirm', '🗓', toConfirm.length, 'Viewings to confirm'], ['subs', '🔔', subs.length, 'Landlords getting alerts']]).map(function(t){
       return '<button type="button" class="crm-tile' + (crm.tile === t[0] ? ' on' : '') + (t[2] && t[0] !== 'subs' ? ' hot' : '') + '" data-crm-tile="' + t[0] + '"><span>' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></button>'; }).join('');
     var counts = {}; live.forEach(function(x){ var seen = {}; its(x).forEach(function(i){ if (!seen[i.type]) { seen[i.type] = 1; counts[i.type] = (counts[i.type] || 0) + 1; } }); });
@@ -9485,6 +9497,9 @@
     });
     if (crm.tile === 'due') list.sort(function(a, b){ return a.follow < b.follow ? -1 : 1; });
     var banner = newG.length && !crm.type ? '<div class="crm-new">🆕 <b>' + newG.length + ' new lead' + (newG.length === 1 ? '' : 's') + '</b> since you last looked · newest: ' + esc(newG[0].name || 'no name') + ', ' + esc(fmtWhen(newG[0].at)) + '</div>' : '';
+    if (appl && crm.view === 'table' && list.length && crm.type !== 'archive' && crm.type !== 'junk') {
+      $('crmList').innerHTML = banner + applTable(list); applTableFit(); return;
+    }
     $('crmList').innerHTML = banner + (list.length ? list.slice(0, 300).map(crmCard).join('') + (list.length > 300 ? '<p class="muted-note">Showing the newest 300 — search to find older ones.</p>' : '') : '<div class="empty">' + (crm.type === 'archive' ? 'Nothing in the archive.' : appl && crm.tab === 'mine' && !all.some(applMine) ? 'No applicants are yours right now. Take one, add a note after you contact them or book a viewing, and they’re yours for 24 hours.' : all.length ? 'Nothing matches.' : (crm.mode === 'appl' ? 'No applicant leads yet. Website viewing requests, people looking to rent or buy, Rightmove leads and applicants you add yourself land here, newest first.' : 'No leads yet. Website valuation and viewing requests, messages and landlord alert sign-ups all land here — or add one yourself.')) + '</div>');
   }
   // A ready-written first message for each kind of request (opened in the email window / WhatsApp to check and send).
@@ -9532,6 +9547,72 @@
     body = 'Hi ' + first + ',\n\n' + body + sign;
     return { subject: subj, body: body };
   }
+  // Applicants as a table: one line per person, columns that sort when their heading is tapped (like the
+  // applicant list in the old software). Tapping a line opens the full card underneath it.
+  crm.view = (function(){ try { return localStorage.getItem('rr_appl_view') || ''; } catch (e) { return ''; } })() || (window.innerWidth >= 760 ? 'table' : 'cards');
+  crm.asort = (function(){ try { var s = JSON.parse(localStorage.getItem('rr_appl_sort') || 'null'); if (s && s.k) return s; } catch (e) {} return { k: 'at', d: -1 }; })();
+  function applSrc(i){
+    var d = i.data || {};
+    if (i.type === 'rm') return 'Rightmove'; if (i.type === 'lead') return d.source || 'Portal'; if (i.type === 'viewing') return 'Website';
+    if (i.type === 'call') return 'Phone (out of hours)'; if (i.type === 'enquiry') return 'Website message'; if (i.type === 'contact') return d.source || 'Added by staff';
+    return (CRM_T[i.type] || [])[1] || '';
+  }
+  var applRentIx = { src: null, map: {} }, applAvAsked = false;
+  // The rent of the property they asked about (from Available properties, matched by reference or address).
+  function applRent(g){
+    if (!(avItems || []).length && !applAvAsked && meta.db) { applAvAsked = true; api('GET', '/api/admin/available').then(function(d){ if (d && d.ok && !avItems.length) { avItems = d.items || []; avLinkData = d.links || {}; } if (crm.mode === 'appl' && crm.view === 'table') renderCrm(); }); }
+    if (applRentIx.src !== avItems) { var m = {}; (avItems || []).forEach(function(a){ var r = Number(a.rent_pcm) || 0; if (r) avLeadKeys(a).forEach(function(k){ if (!m[k]) m[k] = r; }); }); applRentIx = { src: avItems, map: m }; }
+    var its = g.group || [g];
+    for (var i = 0; i < its.length; i++) { var ks = applPropKeys(its[i]); for (var j = 0; j < ks.length; j++) if (applRentIx.map[ks[j]]) return applRentIx.map[ks[j]]; }
+    return 0;
+  }
+  var APPL_COLS = [['id', 'ID'], ['name', 'Name'], ['who', 'Assigned to'], ['src', 'Source'], ['phone', 'Mobile'], ['status', 'Status'], ['prop', 'Property'], ['rent', 'Rent'], ['at', 'Date added'], ['email', 'Email'], ['todo', 'To do']];
+  function applVal(g, k){
+    var rank = { new: 0, contacted: 1, booked: 2, won: 3, lost: 4 };
+    switch (k) {
+      case 'id': return g.id; case 'name': return String(g.name || '').toLowerCase(); case 'who': return String(g.assigned || '').toLowerCase() || '￿';
+      case 'src': return applSrc(g).toLowerCase(); case 'phone': return String(g.phone || '').replace(/\D/g, '') || '￿'; case 'status': return rank[g.status] != null ? rank[g.status] : 9;
+      case 'prop': return g.address && g.address !== '(no property given)' ? shortAddr(g.address).toLowerCase() : '￿'; case 'rent': return applRent(g) || -1;
+      case 'at': return new Date(g.at).getTime(); case 'email': return String(g.email || '').toLowerCase() || '￿'; case 'todo': return crmNeed(g) ? 0 : 1;
+    }
+    return 0;
+  }
+  function applTable(list){
+    var s = crm.asort, rows = list.slice().sort(function(a, b){ var x = applVal(a, s.k), y = applVal(b, s.k); return (x < y ? -1 : x > y ? 1 : b.id - a.id) * (x === y ? 1 : s.d); }).slice(0, 300);
+    var day = function(v){ return v ? new Date(v).toLocaleString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; };
+    var head = '<tr><th class="ck" title="Select"></th>' + APPL_COLS.map(function(c){ return '<th data-asort="' + c[0] + '"' + (s.k === c[0] ? ' class="on"' : '') + '>' + c[1] + (s.k === c[0] ? (s.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr>';
+    var body = rows.map(function(g){
+      var st = CRM_ST[g.status] || CRM_ST.new, need = crmNeed(g), hold = applHold(g), open = !!crm.open[g.ref], rent = applRent(g), tel = g.phone ? String(g.phone).replace(/[^\d+]/g, '') : '';
+      var isNew = g.group && crm.seen != null && g.group.some(function(i){ return i.id > crm.seen; });
+      var up = (g.viewings || []).filter(function(v){ return new Date(v.at).getTime() > Date.now() - 3 * 3600000; })[0];
+      var todo = up ? '<span class="ok">🗓 Viewing ' + esc(fmtWhen(up.at)) + '</span>' : need ? '<span class="warn">📣 ' + esc(need) + '</span>' : '';
+      var r = '<tr class="appl-tr' + (open ? ' on' : '') + (need ? ' is-new' : '') + '" data-crm="' + esc(g.ref) + '" data-crm-tog>' +
+        '<td class="ck"><label class="crm-pick"><input type="checkbox" data-crm-pick="' + esc(g.ref) + '"' + (crmSel[g.ref] ? ' checked' : '') + ' aria-label="Select"></label></td>' +
+        '<td class="nw">' + g.id + (isNew ? ' <span class="appl-new">NEW</span>' : '') + '</td>' +
+        '<td class="nm"><b>' + esc(g.name || 'No name') + '</b>' + (g.group && g.group.length > 1 ? ' <span class="appl-n" title="Enquiries from the same email or phone number, joined">🔗' + g.group.length + '</span>' : '') + (VERDICT[g.verdict] ? ' <span title="' + VERDICT[g.verdict][1] + '">' + VERDICT[g.verdict][0] + '</span>' : '') + '</td>' +
+        '<td class="nw">' + (g.assigned ? (hold.held ? '🔒 ' : '') + esc(g.assigned) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="nw">' + esc(applSrc(g)) + '</td>' +
+        '<td class="nw">' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(g.phone) + '</a>' : '') + '</td>' +
+        '<td class="nw"><span style="color:' + st[1] + ';font-weight:700">' + st[0] + '</span></td>' +
+        '<td class="pr" title="' + esc(g.address || '') + '">' + (g.address && g.address !== '(no property given)' ? esc(shortAddr(g.address)) : (g.data && g.data.ref ? 'Ref ' + esc(g.data.ref) : '')) + '</td>' +
+        '<td class="nw">' + (rent ? gbp(Math.round(rent)).replace(/\.00$/, '') + ' pcm' : '') + '</td>' +
+        '<td class="nw">' + esc(day(g.at)) + '</td>' +
+        '<td class="em">' + (g.email ? '<a href="mailto:' + esc(g.email) + '">' + esc(g.email) + '</a>' : '') + '</td>' +
+        '<td class="td">' + todo + '</td></tr>';
+      return r + (open ? '<tr class="appl-exp"><td colspan="' + (APPL_COLS.length + 1) + '">' + crmCard(g) + '</td></tr>' : '');
+    }).join('');
+    return '<div class="appl-lt-wrap"><table class="av-lt appl-lt"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
+      '<p class="muted-note">' + (list.length > 300 ? 'Showing 300 of ' + list.length + ' — sort or search to find others. ' : list.length + ' applicant' + (list.length === 1 ? '' : 's') + '. ') + 'Tap a heading to sort, tap a line to open it.</p>';
+  }
+  // An opened card stays the width of the screen even when the table is wider and scrolled.
+  function applTableFit(){ var w = document.querySelector('.appl-lt-wrap'); if (w) w.style.setProperty('--aw', (w.clientWidth - 18) + 'px'); }
+  window.addEventListener('resize', function(){ if (crm.mode === 'appl' && crm.view === 'table') applTableFit(); });
+  $('crmList').addEventListener('click', function(e){
+    var h = e.target.closest('[data-asort]'); if (!h) return;
+    var k = h.dataset.asort; crm.asort = crm.asort.k === k ? { k: k, d: -crm.asort.d } : { k: k, d: k === 'at' || k === 'id' || k === 'rent' ? -1 : 1 };
+    try { localStorage.setItem('rr_appl_sort', JSON.stringify(crm.asort)); } catch (er) {}
+    renderCrm();
+  });
   function crmCard(x){
     var t = x.type === 'cert' && x.data && x.data.who === 'tenant' ? ['🧽', 'Cleaning booking (tenant)', '#067647', '#ecfdf3'] : x.type === 'quick' && x.data && ['Sales', 'Rental', 'Not sure'].indexOf(x.data.service) === -1 ? ['📞', 'Call-back · ' + x.data.service, '#b54708', '#fffaeb'] : CRM_T[x.type], d = x.data, st = CRM_ST[x.status] || CRM_ST.new, today = crmToday(), open = !!crm.open[x.ref];
     var tel = x.phone ? String(x.phone).replace(/[^\d+]/g, '') : '', wa = x.phone ? waNumber(x.phone) : '';
@@ -9677,7 +9758,8 @@
   }
   document.addEventListener('click', function(e){ var c = e.target.closest('[data-hook-copy]'); if (c && leadHook) copyText(c.dataset.hookCopy === 'rm' ? (leadHook.rm_hook || {}).url : leadHook.url).then(function(){ toast('Copied'); }); });
   ['crmQ', 'crmSt', 'crmWho'].forEach(function(id){ $(id).addEventListener(id === 'crmQ' ? 'input' : 'change', renderCrm); });
-  $('applTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-appl-tab]'); if (!b) return; crm.tab = b.dataset.applTab; crm.tile = ''; renderCrm(); });
+  $('applTabs').addEventListener('click', function(e){ var v = e.target.closest('[data-appl-view]'); if (v) { crm.view = v.dataset.applView; try { localStorage.setItem('rr_appl_view', crm.view); } catch (er) {} renderCrm(); return; }
+    var b = e.target.closest('[data-appl-tab]'); if (!b) return; crm.tab = b.dataset.applTab; crm.tile = ''; renderCrm(); });
   $('crmProp').addEventListener('change', function(){ var v = this.value; crm.prop = !v ? null : v === '__ext' ? crm.prop : { keys: [v] }; renderCrm(); });
   // Recommend a property to the ticked applicants: one email each (nobody sees the others), noted on each lead.
   var recPeople = [];
