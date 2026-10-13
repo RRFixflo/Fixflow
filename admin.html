@@ -784,6 +784,7 @@
   .av-side-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 1.05rem; } .av-side .av-tools { background: #fff; }
   .av-win .av-side-btn { margin-right: auto; font-weight: 700; } .av-side-n { display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 999px; background: #d92d20; color: #fff; font-size: .72rem; line-height: 18px; text-align: center; }
   @media (prefers-reduced-motion: reduce) { .av-side { transition: none; } }
+  .psug .psug-tcy { display: block; color: #175cd3; font-weight: 700; font-size: .74rem; margin-top: 1px; } .psug .psug-none { display: block; color: #98a2b3; font-size: .72rem; }
   .chip-lbl { align-self: center; font-size: .8rem; font-weight: 700; color: var(--ink-soft); margin-right: 2px; }
   .appl-key { margin-top: 10px; font-size: .76rem; color: var(--ink-soft); } .appl-key summary { cursor: pointer; font-weight: 700; } .appl-key-in { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; align-items: center; } .appl-key span { display: inline-flex; align-items: center; gap: 5px; }
   .appl-key i { display: inline-block; width: 4px; height: 14px; border-radius: 2px; } .appl-key .k-red { background: #d92d20; } .appl-key .k-pur { background: #6941c6; }
@@ -4935,7 +4936,11 @@
   // then ones listed before — loaded from the server, so offers staff get them too.
   var psOur = null, psOurAsk = false;
   function psOurList(){
-    if (!psOur) { if (!psOurAsk) { psOurAsk = true; api('GET', '/api/admin/our-props').then(function(d){ psOur = (d && d.ok && d.items || []).map(function(x){ return psItem(x.address, x.kind === 'ours' ? 'Our property' : x.kind === 'listed' ? 'Already on the available list' : 'Listed before', x.kind === 'ours' ? 2 : x.kind === 'listed' ? 1 : 0); }); if (psFor && document.activeElement === psFor) psShow(psFor); if (view === 'avail' && avItems.length) renderAvail(); }); } return []; }
+    if (!psOur) { if (!psOurAsk) { psOurAsk = true; api('GET', '/api/admin/our-props').then(function(d){ psOur = (d && d.ok && d.items || []).map(function(x){ var o = psItem(x.address, x.kind === 'ours' ? 'Our property' : x.kind === 'listed' ? 'Already on the available list' : 'Listed before', (x.kind === 'ours' ? 2 : x.kind === 'listed' ? 1 : 0) + (x.tcy ? (x.tcy.exact ? 4 : 1) : 0));
+          // Which look-alike is the real one: the record with our tenancy (and its tenants), and the landlord.
+          if (x.tcy) o.tcy = (x.tcy.exact ? '✅ The tenancy is under this address' : '↪ Same flat as our tenancy at “' + x.tcy.address + '”') + (x.tcy.start ? ' · from ' + longDay(String(x.tcy.start).slice(0, 10)) : '') + (x.tcy.tenants && x.tcy.tenants.length ? ' — ' + x.tcy.tenants.join(', ') : '');
+          if (x.landlord) o.ll = '🔑 ' + x.landlord;
+          return o; }); if (psFor && document.activeElement === psFor) psShow(psFor); if (view === 'avail' && avItems.length) renderAvail(); }); } return []; }
     return psOur;
   }
   function psShow(inp){
@@ -4944,7 +4949,7 @@
       psBox.addEventListener('mousedown', function(e){ e.preventDefault(); });
       psBox.addEventListener('click', function(e){ var b = e.target.closest('[data-ps]'); if (b) psPick(Number(b.dataset.ps)); }); }
     if (!psList.length || (psList.length === 1 && psList[0].address === inp.value.trim())) { psBox.hidden = true; return; }
-    psBox.innerHTML = psList.map(function(o, i){ return '<button type="button" role="option" data-ps="' + i + '">' + psHi(o.address, inp.value) + (o.extra ? '<small class="psug-av">' + esc(o.extra) + '</small>' : '') + '</button>'; }).join('');
+    psBox.innerHTML = psList.map(function(o, i){ return '<button type="button" role="option" data-ps="' + i + '">' + psHi(o.address, inp.value) + (o.extra ? '<small class="psug-av">' + esc(o.extra) + '</small>' : '') + (o.tcy || o.ll ? '<small class="psug-tcy">' + esc([o.tcy, o.ll].filter(Boolean).join(' · ')) + '</small>' : (inp.dataset.psug === 'our' && psOur ? '<small class="psug-none">No tenancy in Fixflow</small>' : '')) + '</button>'; }).join('');
     psBox.hidden = false; psPlace();
   }
   function psPick(i){
