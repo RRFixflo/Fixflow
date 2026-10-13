@@ -772,6 +772,7 @@
   .appl-vw { display: block; width: max-content; margin-top: 3px; background: #6941c6; color: #fff; font-size: .7rem; font-weight: 700; border-radius: 6px; padding: 2px 7px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
   .appl-lt tr.has-vw td { background: #faf8ff; } .appl-lt tr.has-vw td.nm { max-width: 215px; } .appl-lt tr.has-vw td:first-child { box-shadow: inset 3px 0 0 #6941c6; }
   .vd-cx, .vw-cx:has(b) { display: flex; flex-direction: column; gap: 6px; border: 1px solid #fecdca; background: #fef3f2; border-radius: 10px; padding: 10px; margin-top: 6px; } .vw-cx { margin-top: 6px; }
+  .vw-cx-b { display: flex; gap: 6px; flex-wrap: wrap; } .appl-vw[data-vw-edit] { cursor: pointer; } .appl-vw[data-vw-edit]:hover { background: #53389e; }
   .crm-flag.vw { background: #6941c6 !important; color: #fff !important; border-color: #6941c6 !important; font-weight: 700; }
   .appl-view [data-appl-cal], .appl-view [data-appl-phone] { color: #5925dc; }
   .appl-lt td a { color: inherit; text-decoration: none; } .appl-lt td a.appl-pl { color: #175cd3; } .appl-lt td a:hover { text-decoration: underline; color: #175cd3; }
@@ -9618,6 +9619,15 @@
   // Their next viewing still to happen (booked, from 3 hours ago on) — shown boldly so nobody books them twice.
   function applNextVw(g){ return (g.viewings || []).filter(function(v){ return (v.status || 'booked') === 'booked' && new Date(v.at).getTime() > Date.now() - 3 * 3600000; }).sort(function(a, b){ return new Date(a.at) - new Date(b.at); })[0] || null; }
   function applVwText(v){ return new Date(v.at).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).replace(/,/g, ''); }
+  // Change a booked viewing from Applicants: the calendar's own Change window, with the full viewing and anyone sharing it.
+  function applEditViewing(id, at){
+    var t = new Date(at).getTime();
+    api('GET', '/api/admin/viewings?from=' + encodeURIComponent(new Date(t - 6 * 3600000).toISOString()) + '&to=' + encodeURIComponent(new Date(t + 6 * 3600000).toISOString())).then(function(r){
+      var rows = (r && r.viewings) || [], v = rows.filter(function(x){ return x.id === id; })[0]; if (!v) { toast('Couldn’t open that viewing — try the Calendar'); return; }
+      rows.forEach(function(x){ if (!cal.items.some(function(y){ return y.id === x.id; })) cal.items.push(x); });   // so the others at the same viewing move with it
+      openBook({ edit: v });
+    });
+  }
   // Book a viewing for an applicant: the calendar's booking window, filled in with them and the property they asked about.
   function applBook(g, others){
     if (applLocked(g)) { var hd = applHold(g); toast('🔒 ' + hd.who + ' is looking after ' + (g.name || 'this applicant') + ' — ask them, or a manager, to book it'); return; }
@@ -9651,7 +9661,7 @@
         '<td class="ck"><label class="crm-pick"><input type="checkbox" data-crm-pick="' + esc(g.ref) + '"' + (crmSel[g.ref] ? ' checked' : '') + ' aria-label="Select"></label></td>' +
         '<td class="nw c-id">' + g.id + (isNew ? ' <span class="appl-new">NEW</span>' : '') + '</td>' +
         '<td class="nm c-name"><b>' + esc(g.name || 'No name') + '</b>' + (g.group && g.group.length > 1 ? ' <span class="appl-n" title="Enquiries from the same email or phone number, joined">🔗' + g.group.length + '</span>' : '') + (VERDICT[g.verdict] ? ' <span title="' + VERDICT[g.verdict][1] + '">' + VERDICT[g.verdict][0] + '</span>' : '') +
-          (up ? '<div class="appl-vw" title="Viewing booked' + (up.property_address ? ' at ' + esc(up.property_address) : '') + (up.staff || up.created_by ? ' with ' + esc(up.staff || up.created_by) : '') + '">🗓 Viewing ' + esc(applVwText(up)) + '</div>' : '') + '</td>' +
+          (up ? '<div class="appl-vw" data-vw-edit="' + up.id + '" title="Tap to change — viewing booked' + (up.property_address ? ' at ' + esc(up.property_address) : '') + (up.staff || up.created_by ? ' with ' + esc(up.staff || up.created_by) : '') + '">🗓 Viewing ' + esc(applVwText(up)) + '</div>' : '') + '</td>' +
         '<td class="nw c-act">' + (function(){ var wa = g.phone ? waNumber(g.phone) : '', m = wa || g.email ? leadMsg(g) : null;
           return (wa ? '<a class="appl-ic wa" href="https://wa.me/' + esc(wa) + '?text=' + encodeURIComponent(m.body) + '" target="_blank" rel="noopener" title="WhatsApp ' + esc(g.name || '') + ' with a ready-written message">💬<span> WhatsApp</span></a>' : '') +
             (g.email ? '<a class="appl-ic" href="mailto:' + esc(g.email) + '?subject=' + encodeURIComponent(m.subject) + '&body=' + encodeURIComponent(m.body) + '" title="Email ' + esc(g.email) + ' with a ready-written message">✉️<span> Email</span></a>' : '') +
@@ -9687,6 +9697,10 @@
     var ed = e.target.closest('[data-appl-edit]');
     if (ed) { e.preventDefault(); var ge = crmItem(ed); if (!ge) return; crm.open[ge.ref] = 1; crm.editOpen = ge.ref; renderCrm();
       var ce = document.querySelector('[data-crm="' + ge.ref + '"] .crm-edit'); if (ce) { ce.open = true; ce.scrollIntoView({ block: 'center', behavior: 'smooth' }); var fi = ce.querySelector('[data-ce="name"]'); if (fi) setTimeout(function(){ fi.focus(); }, 300); } return; }
+    var vwe = e.target.closest('[data-vw-edit]');
+    if (vwe) { e.preventDefault(); e.stopImmediatePropagation(); var gw = crmItem(vwe), vq = gw && (gw.viewings || []).filter(function(v){ return String(v.id) === vwe.dataset.vwEdit; })[0]; if (!vq) return;
+      if (applLocked(gw)) { toast('🔒 ' + applHold(gw).who + ' is looking after ' + (gw.name || 'this applicant')); return; }
+      applEditViewing(vq.id, vq.at); return; }
     var cx = e.target.closest('[data-vw-cx]');
     if (cx) { var gv = crmItem(cx), vw = gv && (gv.viewings || []).filter(function(v){ return String(v.id) === cx.dataset.vwCx; })[0]; if (!vw) return;
       var wrap = cx.closest('.vw-cx');
@@ -9757,7 +9771,7 @@
       return '<li>🗓 ' + esc(fmtWhen(v.at)) + (v.property_address ? ' · ' + esc(shortAddr(v.property_address)) : '') + '<small>' + esc(v.staff || v.created_by || '') + ' · ' + esc({ booked: 'Booked', done: 'Done', no_show: 'Didn’t show' }[v.status] || v.status || '') + (v.fb_sent_at && !v.app_fb_at ? ' · feedback form sent ' + esc(fmtShort(v.fb_sent_at)) + ', no reply yet' : '') + '</small>' +
         (v.app_fb_at ? '<div class="vw-fb"><b>Their feedback</b> · ' + esc(fmtShort(v.app_fb_at)) + '<br>' + '⭐ ' + (f.rating || '–') + '/5 · ' + esc({ yes: 'Yes — wants to make an offer', maybe: 'Maybe — has questions', no: 'No — not for them' }[f.interest] || '') + (f.liked ? '<br>👍 Liked: ' + esc(f.liked) : '') + (f.disliked ? '<br>👎 Didn’t like / questions: ' + esc(f.disliked) : '') + (f.service ? '<br>Our service: ' + esc(f.service) : '') + '</div>' : '') +
         (v.feedback ? '<div class="vw-fb"><b>Our notes from the viewing</b><br>' + esc(v.feedback) + '</div>' : '') +
-        ((v.status || 'booked') === 'booked' && new Date(v.at).getTime() > Date.now() - 3 * 3600000 && !applLocked(x) ? '<div class="vw-cx"><button type="button" class="btn small ghost danger" data-vw-cx="' + v.id + '">✕ Cancel this viewing</button></div>' : '') + '</li>'; }).join('') + '</ul>';
+        ((v.status || 'booked') === 'booked' && new Date(v.at).getTime() > Date.now() - 3 * 3600000 && !applLocked(x) ? '<div class="vw-cx"><span class="vw-cx-b"><button type="button" class="btn small" data-vw-edit="' + v.id + '">✏️ Change</button><button type="button" class="btn small ghost danger" data-vw-cx="' + v.id + '">✕ Cancel this viewing</button></span></div>' : '') + '</li>'; }).join('') + '</ul>';
     // Viewing request: confirm one of their times, or another.
     if (x.type === 'viewing') {
       h += '<div class="crm-vw"><b>' + (d.confirmed ? '✓ Confirmed for ' + esc(crmSlot(d.confirmed)) + (d.confirmed_by ? ' <span class="muted-note" style="margin:0">by ' + esc(d.confirmed_by) + '</span>' : '') : (d.slots && d.slots.length ? 'Times they suggested — tap one to confirm it and email them' : 'They’re flexible — pick a time below')) + '</b>' +
