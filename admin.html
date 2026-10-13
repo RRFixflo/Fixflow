@@ -9388,6 +9388,19 @@
     }).catch(function(){});
   }
   setInterval(function(){ if (meta.db && !$('appView').hidden && document.visibilityState === 'visible') loadCrm('poll'); }, 60000);   // new leads arrive without a refresh
+  // New leads show within seconds: a tiny check every 10 seconds (and straight away when the window comes back on screen);
+  // the full list reloads only when there's a new lead or note.
+  var crmLatest = null;
+  function crmCheckNew(){
+    if (!meta.db || $('appView').hidden || document.visibilityState !== 'visible') return;
+    api('GET', '/api/admin/crm/latest').then(function(d){
+      if (!d || !d.ok) return; var k = d.lead + ':' + d.note;
+      if (crmLatest !== null && k !== crmLatest) loadCrm('poll');
+      crmLatest = k;
+    });
+  }
+  setInterval(crmCheckNew, 10000);
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') { if (crmLatest === null) crmCheckNew(); else { crmLatest = null; crmCheckNew(); loadCrm('poll'); } } });
   function fmtWhen(d){ return d ? new Date(d).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''; }
   // Applicants (the Leads page): viewing requests, Rightmove and portal leads, people looking to rent or buy.
   function isAppl(x){
