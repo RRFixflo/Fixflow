@@ -12447,6 +12447,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.post('/api/admin/crm/archive', withDb(async function (p, req, res) {
     const b = req.body || {}, ref = String(b.ref || ''), restore = b.restore === true;
     if (!CRM_REF.test(ref)) return res.status(400).json({ ok: false });
+    // Applicants can only be deleted (or junked) by a manager — the owner asked.
+    if (!restore && !canManageUsers(req) && await applHold(p, ref)) return res.status(403).json({ ok: false, error: 'managers-only' });
     const who = req.user ? req.user.name : 'Office', sub = ref.indexOf('sub:') === 0, id = +ref.slice(ref.indexOf(':') + 1);
     const old = (await p.query('SELECT * FROM crm_meta WHERE ref = $1', [ref])).rows[0] || {};
     const row = !sub ? (await p.query('SELECT email, phone FROM valuation_requests WHERE id = $1', [id])).rows[0] : (await p.query('SELECT email FROM landlord_alert_subs WHERE id = $1', [id]).catch(function () { return { rows: [] }; })).rows[0];
