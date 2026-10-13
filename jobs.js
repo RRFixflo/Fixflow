@@ -8394,12 +8394,20 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Residential Realtors//Fixflow viewings//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
       'X-WR-CALNAME:' + icsText(f.scope === 'all' ? 'RR viewings (everyone)' : 'RR viewings – ' + f.who), 'X-WR-TIMEZONE:Europe/London', 'REFRESH-INTERVAL;VALUE=DURATION:PT15M', 'X-PUBLISHED-TTL:PT15M'];
     const now = icsTime(Date.now());
+    // Several applicants booked for the same property, time and person show as one viewing.
+    const groups = [], gix = {};
     rows.forEach(function (v) {
-      const who = v.staff || v.created_by || 'Office', end = new Date(new Date(v.at).getTime() + (v.mins || 30) * 60000);
-      const desc = ['Viewing' + (f.scope === 'all' ? ' – ' + who : ''), v.applicant ? 'Applicant: ' + v.applicant : '', v.phone ? 'Phone: ' + v.phone : '', v.email ? 'Email: ' + v.email : '',
-        v.status !== 'booked' ? 'Status: ' + ({ done: 'Done', cancelled: 'Cancelled', no_show: 'No-show' }[v.status] || v.status) : ''].filter(Boolean).join('\n');
+      const who = v.staff || v.created_by || 'Office', k = v.status === 'cancelled' ? 'c' + v.id : new Date(v.at).toISOString() + '|' + String(v.property_address || '').trim().toLowerCase() + '|' + who;
+      if (gix[k]) gix[k].people.push(v); else { gix[k] = { v: v, people: [v] }; groups.push(gix[k]); }
+    });
+    groups.forEach(function (g) {
+      const v = g.v, ps = g.people, who = v.staff || v.created_by || 'Office', end = new Date(new Date(v.at).getTime() + (v.mins || 30) * 60000);
+      const desc = ['Viewing' + (f.scope === 'all' ? ' – ' + who : '') + (ps.length > 1 ? ' · ' + ps.length + ' applicants' : '')].concat(ps.map(function (x) {
+        return [x.applicant ? (ps.length > 1 ? '• ' : 'Applicant: ') + x.applicant : '', x.phone ? 'Phone: ' + x.phone : '', x.email ? 'Email: ' + x.email : '', x.status !== 'booked' ? 'Status: ' + ({ done: 'Done', cancelled: 'Cancelled', no_show: 'No-show' }[x.status] || x.status) : ''].filter(Boolean).join(ps.length > 1 ? ' · ' : '\n');
+      })).filter(Boolean).join('\n');
+      const names = ps.map(function (x) { return x.applicant; }).filter(Boolean).join(', ');
       L.push('BEGIN:VEVENT', 'UID:viewing-' + v.id + '@residentialrealtors.co.uk', 'DTSTAMP:' + now, 'DTSTART:' + icsTime(v.at), 'DTEND:' + icsTime(end),
-        'SUMMARY:' + icsText((v.status === 'cancelled' ? 'Cancelled: ' : '') + 'Viewing – ' + shortAddrText(v.property_address) + (v.applicant ? ' (' + v.applicant + ')' : '') + (f.scope === 'all' ? ' · ' + who : '')),
+        'SUMMARY:' + icsText((v.status === 'cancelled' ? 'Cancelled: ' : '') + 'Viewing – ' + shortAddrText(v.property_address) + (names ? ' (' + names + ')' : '') + (f.scope === 'all' ? ' · ' + who : '')),
         'LOCATION:' + icsText(v.property_address), 'DESCRIPTION:' + icsText(desc), 'STATUS:' + (v.status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED'));
       if (v.status === 'booked' && new Date(v.at) > Date.now()) L.push('BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Viewing', 'TRIGGER:-PT30M', 'END:VALARM');
       L.push('END:VEVENT');
