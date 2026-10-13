@@ -12161,6 +12161,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return true;
     } catch (err) { console.error('Junk check failed:', err.message); return false; }
   }
+  // A tiny check the staff app makes every few seconds: the newest lead and note, so the full list only reloads when something changed.
+  app.get('/api/admin/crm/latest', withDb(async function (p, req, res) {
+    const r = (await p.query('SELECT (SELECT max(id) FROM valuation_requests) AS lead, (SELECT max(id) FROM crm_notes) AS note')).rows[0] || {};
+    res.json({ ok: true, lead: Number(r.lead) || 0, note: Number(r.note) || 0 });
+  }));
   app.get('/api/admin/crm', withDb(async function (p, req, res) {
     const items = (await p.query('SELECT * FROM valuation_requests ORDER BY id DESC LIMIT 1000')).rows.filter(function (x) { return req.role !== 'offers' || !x.data || x.data.kind !== 'cert'; });   // certificate bookings: the owner only
     let subs = [];
