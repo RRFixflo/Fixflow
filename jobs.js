@@ -8379,13 +8379,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     return 'Dear ' + first + ',\n\n' +
       (o.moved ? 'Your viewing has moved. We now have an appointment scheduled for ' : 'We have an appointment scheduled for ') + '[b]' + addr + '[/b] on [b]' + o.when + '[/b].\n\n' +
       'This email is a confirmation of the above appointment.\n\n' +
+      (o.confirmUrl ? '[b]Please confirm you’re coming — just press the button below.[/b] ' + o.confirmUrl + '\n\n' : '') +
       (o.note ? o.note + '\n\n' : '') +
       '[b]Rental process[/b] — If you are interested in making an offer to rent a property, you are required to pay a holding deposit of one week’s rent and complete a Holding Deposit Form. This form gives you the opportunity to outline any terms of your offer, including negotiating a lower price if applicable. If the offer is accepted by the landlord, your holding deposit (reservation fee) will be used towards the initial payment of your first month’s rent. Residential Realtors operates a strict first come, first served policy and does not offer a bidding service. Should your offer be rejected, your reservation fee will be returned to you within 24 hours; before the property is offered to a different interested party or put back on the market, you will be offered an opportunity to renegotiate any terms which an agreement could not be reached on.\n\n' +
       (o.offerUrl ? 'Holding Deposit Form for this property: ' + o.offerUrl + '\n\n' : '') +
       'Due to the fast-paced London market, Residential Realtors offers the opportunity to make a [b]Pre Viewing Reservation (PVR)[/b]. PVRs are made on a non-obligation basis and are particularly popular with applicants who live abroad and those unable to view properties as quickly as they would like. A PVR can be made at any point before your scheduled viewing, giving you peace of mind that the property is reserved for you until your viewing slot. If you are not interested in the property, your PVR will be refunded to you within 24 hours. [b]To make a Pre Viewing Reservation, simply call the Residential Realtors office on 0207 096 8131 and a member of the lettings team will be happy to walk you through the process. Payments can be made over the telephone with a valid credit/debit card or by bank transfer.[/b]\n\n' +
       'Should we receive a formal offer on ' + addr + ' from a different party before your scheduled viewing, we will let you know in good time.\n\n' +
       'It is more than likely other parties will be joining us to view the property, so a dedicated slot has been assigned to you. Please let us know if you are running late so we can change slots around to better accommodate everyone.\n\n' +
-      (o.confirmUrl ? '[b][u]Lastly, please confirm your attendance.[/u][/b]\n\nJust press the button below — one click is all it takes. ' + o.confirmUrl + '\n\n' : '[b][u]Lastly, please reply to this email simply confirming your attendance.[/u][/b]\n\n') +
+      (o.confirmUrl ? '' : '[b][u]Lastly, please reply to this email simply confirming your attendance.[/u][/b]\n\n') +
       'Kind regards,\n' + (o.me ? o.me + '\n' : '') + 'Residential Realtors\n0207 096 8131';
   }
   function viewingWhen(at) {
@@ -8393,7 +8394,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }
   // Who else to tell about a viewing: the tenants living there now (with an email) and the property's landlord.
   async function viewingContacts(p, addr) {
-    const k = propKey(String(addr || '')); if (!k) return { tenants: [], landlord: null };
+    let k = propKey(String(addr || '')); if (!k) return { tenants: [], landlord: null };
+    // Written differently from our records ("Flat 3, 10 Sample Road" / "3 Sample Road, SE1 1AA")? Use the record
+    // with current tenants that is loosely the same home (same postcode, same numbers, a street word in common).
+    if (!(await p.query('SELECT 1 FROM property_tenants WHERE property_key = $1 AND moved_out_at IS NULL LIMIT 1', [k])).rows.length) {
+      const ap = addrParts(addr);
+      if (ap.pc && ap.nums.length) {
+        const hit = (await p.query('SELECT DISTINCT property_key, address FROM property_tenants WHERE moved_out_at IS NULL AND address IS NOT NULL')).rows.filter(function (r) { return addrLoose(ap, addrParts(r.address)); });
+        if (hit.length && hit.every(function (r) { return r.property_key === hit[0].property_key; })) k = hit[0].property_key;
+      }
+    }
     const ok = function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); };
     const tenants = (await p.query(`SELECT DISTINCT ON (lower(tn.email)) tn.name, tn.email FROM property_tenants pt JOIN tenants tn ON tn.id = pt.tenant_id
       WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND tn.deleted_at IS NULL AND coalesce(pt.role, '') <> 'guarantor' AND coalesce(tn.email, '') <> ''`, [k]).catch(function () { return { rows: [] }; })).rows.filter(function (r) { return ok(r.email); });
@@ -8401,7 +8411,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     // Everyone living there now, with their numbers (for staff arranging access on the Calendar).
     const occupants = (await p.query(`SELECT DISTINCT ON (tn.id) tn.id, tn.name, tn.phone, tn.email FROM property_tenants pt JOIN tenants tn ON tn.id = pt.tenant_id
       WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND tn.deleted_at IS NULL AND coalesce(pt.role, '') <> 'guarantor'`, [k]).catch(function () { return { rows: [] }; })).rows;
-    return { tenants: tenants, occupants: occupants, landlord: l && ok(l.email) ? l : (l ? Object.assign({}, l, { email: null }) : null) };
+    return { key: k, tenants: tenants, occupants: occupants, landlord: l && ok(l.email) ? l : (l ? Object.assign({}, l, { email: null }) : null) };
   }
   app.get('/api/admin/viewing-contacts', withDb(async function (p, req, res) {
     res.json(Object.assign({ ok: true }, await viewingContacts(p, str(req.query.property, 400))));
@@ -8494,6 +8504,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.mins !== undefined && [15, 30, 45, 60, 90].indexOf(+b.mins) !== -1) { vals.push(+b.mins); sets.push('mins = $' + vals.length); }
     if (b.property !== undefined && str(b.property, 400)) { vals.push(str(b.property, 400)); sets.push('property_address = $' + vals.length); vals.push(propKey(str(b.property, 400))); sets.push('property_key = $' + vals.length); }
     if (b.delete === true) { await p.query('DELETE FROM viewings WHERE id = $1', [id]); return res.json({ ok: true }); }
+    // Tell the tenants living there about this viewing now (e.g. once the right address is in).
+    if (b.tell_tenants === true && !sets.length) {
+      const v = (await p.query('SELECT * FROM viewings WHERE id = $1', [id])).rows[0]; if (!v) return res.status(404).json({ ok: false });
+      const o = await viewingNotifyOthers(p, req, v, 'booked', { tenants: true });
+      if (o.tenants && v.lead_id) await crmLog(p, 'vr:' + v.lead_id, '🏠 Tenants at ' + String(v.property_address || '').split(',').slice(0, 2).join(',') + ' told about the viewing', req, false);
+      return res.json({ ok: true, others: o });
+    }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
     const before = (await p.query('SELECT at, status FROM viewings WHERE id = $1', [id])).rows[0];
     await p.query('UPDATE viewings SET ' + sets.join(', ') + ' WHERE id = $1', vals);

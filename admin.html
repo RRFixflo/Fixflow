@@ -708,6 +708,7 @@
   .rb-dchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .rb-dchip { border: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); background: var(--dk-bg-fff, #fff); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: .85rem; cursor: pointer; } .vd-occ { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); font-size: .9rem; } .vd-occ:first-of-type { border-top: 0; } .vd-occ b { flex-basis: 100%; } .vd-occ a { color: var(--blue, #175cd3); text-decoration: none; word-break: break-all; }
   .wa-kinds { display: flex; flex-wrap: wrap; gap: 6px; } .wa-kinds button { border: 1px solid var(--line); background: var(--panel); color: inherit; border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; } .wa-kinds button.on { background: var(--ok-tint, #ecfdf3); border-color: var(--ok, #067647); color: var(--ok, #067647); }
   .wa-alt { display: grid; gap: 6px; } .wa-alt[hidden] { display: none; } .wa-alt-list { max-height: 30vh; } .wa-picked { display: flex; gap: 10px; align-items: center; justify-content: space-between; border: 1px solid var(--ok, #067647); background: var(--ok-tint, #ecfdf3); border-radius: 12px; padding: 8px 12px; font-size: .9rem; } #waText { font: inherit; font-size: 15px; font-weight: 400; color: var(--ink); resize: vertical; }
+  .vd-addr { margin-top: 6px; font-size: .9rem; } .vd-addr summary { cursor: pointer; color: var(--blue, #175cd3); font-weight: 600; } .vd-addr-row { display: flex; gap: 6px; margin: 6px 0 4px; } .vd-addr-row .inp { flex: 1; min-width: 0; }
   .vw-ok { color: var(--dk-fg-067647, #067647); font-weight: 700; white-space: nowrap; } .vw-wait { color: var(--dk-fg-b54708, #b54708); white-space: nowrap; } .rb-dsort { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted, var(--dk-fg-667085, #667085)); } .rb-dchip.on { background: var(--ink, #111); color: var(--on-ink, #fff); border-color: var(--ink, #111); }
   .mip { margin-bottom: 12px; } .mip-t { display: block; border-top: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); padding-top: 8px; margin-top: 8px; } .mip h3 + .mip-t { border-top: 0; margin-top: 0; padding-top: 0; } .mip-h { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; } .mip-h .linkish { text-align: left; }
   .aa-card { border: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); border-radius: 12px; padding: 10px 12px; background: var(--dk-bg-fff, #fff); } .aa-answer { background: var(--dk-bg-f5f3ff, #f5f3ff); border-color: var(--dk-bd-ddd6fe, #ddd6fe); } .aa-h { display: block; margin-bottom: 4px; font-size: .86rem; }
@@ -4996,9 +4997,9 @@
   var PS_LISTS = { offProps: 1, tfProps: 1, tenantPropList: 1 };
   document.addEventListener('focusin', function(e){
     var inp = e.target; if (!inp || inp.tagName !== 'INPUT') return;
-    var l = inp.getAttribute('list'); if (l && PS_LISTS[l]) { inp.removeAttribute('list'); inp.dataset.psug = inp.id === 'avAddr' ? 'our' : '1'; inp.setAttribute('autocomplete', 'off'); }
+    var l = inp.getAttribute('list'); if (l && PS_LISTS[l]) { inp.removeAttribute('list'); inp.dataset.psug = inp.id === 'avAddr' || inp.id === 'cbProp' || inp.id === 'vdOccAddr' ? 'our' : '1'; inp.setAttribute('autocomplete', 'off'); }
     if (inp.dataset.psug === 'our') psOurList();
-    if (inp.dataset.psug) { psLoadAvail(); if (inp.value.trim()) psShow(inp); }
+    if (inp.dataset.psug) { if (inp.dataset.psug !== 'our') psLoadAvail(); if (inp.value.trim()) psShow(inp); }
   });
   document.addEventListener('input', function(e){ var inp = e.target; if (inp && inp.dataset && inp.dataset.psug && e.isTrusted !== false) { if (document.activeElement === inp) psShow(inp); } });
   document.addEventListener('keydown', function(e){
@@ -12724,14 +12725,15 @@
     if (cal.mates.length) $('cbGroup').innerHTML = '👥 Also at this viewing: <b>' + cal.mates.map(function(x){ return esc(x.applicant || 'applicant'); }).join(', ') + '</b> — changing the time, person or property moves them too.';
     $('cbMins').value = String(v && v.mins || 30);
     $('cbWho').value = v ? (v.applicant || '') : (o.applicant || ''); $('cbPhone').value = v ? (v.phone || '') : (o.phone || ''); $('cbEmail').value = v ? (v.email || '') : (o.email || '');
+    psOurList();   // the address suggestions, ready before they start typing
     $('cbClash').hidden = true; $('cbModal').hidden = false; setTimeout(function(){ ($('cbProp').value ? $('cbTime') : $('cbProp')).focus(); }, 30);
   }
   // The tenants living at the property and its landlord: ticks to email them about the viewing (on for a new booking).
   // vwOthersHtml is shared with the cancel boxes; the landlord never gets the applicant's details.
   function vwOthersHtml(c, on, verb){
     var t = (c && c.tenants) || [], l = c && c.landlord;
-    return (t.length ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vo="tenants"' + (on ? ' checked' : '') + '> 🏠 Email the tenants living there' + verb + ' <span class="muted-note" style="margin:0">(' + esc(t.map(function(x){ return x.name || x.email; }).join(', ')) + ')</span></label>' : '<span class="muted-note" style="margin:0">🏠 No current tenants with an email saved for this property.</span>') +
-      (l && l.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vo="landlord"' + (on ? ' checked' : '') + '> 🔑 Email the landlord' + verb + ' <span class="muted-note" style="margin:0">(' + esc(l.name || l.email) + ' — never the applicant’s details)</span></label>' : '<span class="muted-note" style="margin:0">🔑 ' + (l ? esc(l.name || 'The landlord') + ' has no email saved.' : 'No landlord linked to this property.') + '</span>');
+    return (t.length ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vo="tenants"' + (on ? ' checked' : '') + '> 🏠 Email the tenants living there' + verb + ' <span class="muted-note" style="margin:0">(' + esc(t.map(function(x){ return x.name || x.email; }).join(', ')) + ')</span></label>' : '<span class="muted-note" style="margin:0">🏠 ' + ((c && c.occupants || []).length ? 'The tenants living there have no email saved.' : 'No tenants found for this address — type the full address with the flat / door number and postcode, or pick it from the suggestions (✅ shows the address our tenancy is under).') + '</span>') +
+      (l && l.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vo="landlord"> 🔑 Email the landlord' + verb + ' <span class="muted-note" style="margin:0">(' + esc(l.name || l.email) + ' — never the applicant’s details)</span></label>' : '<span class="muted-note" style="margin:0">🔑 ' + (l ? esc(l.name || 'The landlord') + ' has no email saved.' : 'No landlord linked to this property.') + '</span>');
   }
   function vwOthersGet(box){ var g = function(k){ var i = box && box.querySelector('[data-vo="' + k + '"]'); return !!(i && i.checked); }; return { notify_tenants: g('tenants'), notify_landlord: g('landlord') }; }
   var cbOthersT = null;
@@ -12843,14 +12845,23 @@
     // The current tenants' numbers and emails, to arrange access (from the property's tenants in Fixflow).
     api('GET', '/api/admin/viewing-contacts?property=' + encodeURIComponent(v.property_address || '')).then(function(c){
       var box = $('vdOcc'); if (!box || cal.open !== v) return;
-      var occ = (c && c.occupants) || [];
+      var occ = (c && c.occupants) || [], withMail = occ.filter(function(o){ return o.email; }).length;
+      var fix = '<details class="vd-addr"' + (occ.length ? '' : ' open') + '><summary>✏️ ' + (occ.length ? 'Not the right address? Change it' : 'Put in the full address (flat / door number and postcode) to find the tenants') + '</summary>' +
+        '<div class="vd-addr-row"><input class="inp" id="vdOccAddr" list="offProps" maxlength="400" autocomplete="off" value="' + esc(v.property_address || '') + '"><button type="button" class="btn small primary" data-vd-addr>Save address</button></div>' +
+        '<p class="muted-note" style="margin:0">Pick it from the suggestions — ✅ shows the address our tenancy is under, with its tenants.</p></details>';
+      var tell = withMail ? '<div class="row-actions" style="margin:4px 0 0"><button type="button" class="btn small" data-vd-tell>✉ Email the tenants about this viewing</button></div>' : '';
       box.innerHTML = '<b>🏠 Living there now</b>' + (occ.length ? occ.map(function(o){ var tel = o.phone ? String(o.phone).replace(/[^\d+]/g, '') : '', wa = o.phone ? waNumber(o.phone) : '';
         return '<div class="vd-occ"><b>' + esc(o.name || 'Tenant') + '</b>' + (o.phone ? '<a href="tel:' + esc(tel) + '">📞 ' + esc(o.phone) + '</a>' : '') + (wa ? '<a href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener">💬 WhatsApp</a>' : '') + (o.email ? '<a href="mailto:' + esc(o.email) + '">✉ ' + esc(o.email) + '</a>' : '') + (!o.phone && !o.email ? '<span class="muted-note" style="margin:0">No number or email saved</span>' : '') + '</div>'; }).join('')
-        : '<p class="muted-note" style="margin:0">No current tenants saved for this property in Fixflow (it may be empty).</p>');
+        : '<p class="muted-note" style="margin:0">No current tenants found for this address in Fixflow' + (/\d/.test(String(v.property_address || '').replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i, '').replace(/\b[A-Z]{1,2}\d[A-Z\d]?\b/i, '')) ? ' (it may be empty).' : ' — the address has no flat or door number.') + '</p>') + tell + fix;
     });
   }
   $('vdModal').addEventListener('click', function(e){
     var v = cal.open, b; if (e.target === this || e.target.closest('[data-vd-close]')) { this.hidden = true; return; } if (!v) return;
+    // Correct the property's address (so the tenants living there are found), or tell those tenants about the viewing.
+    if ((b = e.target.closest('[data-vd-addr]'))) { var na = $('vdOccAddr').value.trim(); if (!na || na === v.property_address) return; busy(b, true, 'Saving…');
+      api('POST', '/api/admin/viewings/' + v.id, { property: na }).then(function(r){ busy(b, false); if (!r || !r.ok) { toast('Couldn’t save the address'); return; } v.property_address = na; toast('✓ Address saved'); calChanged && calChanged(); openViewing(v); }); return; }
+    if ((b = e.target.closest('[data-vd-tell]'))) { if (!confirm('Email the tenants living there about this viewing (' + new Date(v.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ')?')) return; busy(b, true, 'Sending…');
+      api('POST', '/api/admin/viewings/' + v.id, { tell_tenants: true }).then(function(r){ busy(b, false); toast(r && r.ok && r.others && r.others.tenants ? '✓ Emailed ' + r.others.tenants + ' tenant' + (r.others.tenants === 1 ? '' : 's') : 'Couldn’t email the tenants'); if (r && r.ok && r.others && r.others.tenants) { b.disabled = true; b.textContent = '✓ Tenants emailed'; } }); return; }
     if ((b = e.target.closest('[data-vd-st="cancelled"]')) && !b.dataset.sure) {   // ask first, on screen (phones can block pop-ups)
       var bx = $('vdBody').querySelector('.vd-cx'); if (bx) bx.remove();
       b.closest('.row-actions').insertAdjacentHTML('afterend', '<div class="vd-cx"><b>Cancel this viewing?</b>' + (v.email ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" data-vd-cx-mail checked> Email ' + esc(v.applicant || 'the applicant') + ' to let them know</label>' : '<span class="muted-note" style="margin:0">No email saved for them — remember to tell them.</span>') + '<div class="vo-box"></div><div class="row-actions" style="margin:0"><button type="button" class="btn small danger" data-vd-st="cancelled" data-sure="1">Yes, cancel it</button><button type="button" class="btn small ghost" data-vd-cx-no>Keep it</button></div></div>');
