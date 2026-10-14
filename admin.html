@@ -9694,7 +9694,8 @@
   // Is this applicant one of our tenants (now or before)? Matched on the server by phone, email or full name.
   function applTenant(g){ var it = g.group || [g]; for (var i = 0; i < it.length; i++) { var t = (crm.tenantOf || {})[it[i].id]; if (t) return t; } return null; }
   function applTenantTitle(t){ return (t.current ? 'One of our current tenants' : 'A former tenant of ours') + ': ' + (t.name || '') + (t.address ? ' at ' + t.address : '') + ' (matched by ' + t.how + ')'; }
-  function applFresh(g){ var it = g.group || [g]; return it.every(function(i){ return i.status === 'new' && !i.notes.some(function(n){ return !n.auto; }); }) && !(g.viewings || []).length; }
+  // Not contacted yet: every enquiry still New, and nothing but the "Came in from …" line in the notes (a viewing booked or cancelled, an email sent, a call all count).
+  function applFresh(g){ var it = g.group || [g]; return it.every(function(i){ return i.status === 'new' && !i.notes.some(function(n){ return !(n.auto && /^Came in from/i.test(String(n.note || n.text || ''))); }); }) && !(g.viewings || []).length; }
   function applMine(g){ var h = applHold(g); return h.held && h.who === crm.me; }
   // Which property an enquiry is about: the listing reference, and the address.
   function applPropKeys(i){ var d = i.data || {}, k = [], m = String(d.url || '').match(/rightmove\.co\.uk\/properties\/(\d+)/); if (d.ref) k.push('r:' + String(d.ref)); if (m) k.push('r:' + m[1]); if (i.address) k.push('a:' + propKey(i.address)); return k; }
