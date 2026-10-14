@@ -687,6 +687,7 @@
   .av-cl { display: grid; grid-template-columns: 1fr auto 150px 90px; gap: 10px; align-items: center; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--dk-bd-f2f4f7, #f2f4f7); background: var(--dk-bg-fff, #fff); padding: 9px 10px; font: inherit; color: inherit; cursor: pointer; } .av-cl:hover { background: var(--dk-bg-f9fafb, #f9fafb); } .av-cl.is-urgent { box-shadow: inset 3px 0 0 #d92d20; } .av-cl-a { font-weight: 600; } .av-cl-a small, .av-cl-p small { color: var(--ink-soft); font-weight: 500; } .av-cl-p { font-weight: 800; } .av-cl-d { font-size: .84rem; } .av-cl-f { text-align: right; }
   @media (max-width: 640px) { .av-cl { grid-template-columns: 1fr auto; } .av-cl-d { grid-column: 1; } .av-cl-f { grid-column: 2; } .av-modes button { padding: 0 9px; } }
   .av-card.av-flash { box-shadow: 0 0 0 3px #155eef; transition: box-shadow .3s; }
+  .cb-hint { font-size: .82rem; margin: -2px 0 4px; color: var(--dk-fg-067647, #067647); } .cb-hint.warn { color: var(--dk-fg-b42318, #b42318); }
   .tcy-notice { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--dk-bg-fffaeb, #fffaeb); border: 1px solid var(--dk-bd-fedf89, #fedf89); font-size: .9rem; }
   .nt-opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 10px; margin-bottom: 6px; cursor: pointer; } .nt-opt small { display: block; color: var(--ink-soft); font-size: .8rem; } .nt-opt span { flex: 1; min-width: 0; } .nt-opt input[type=radio] { margin-top: 4px; }
   .rr-stage { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; } .rb-claim { display: inline-block; background: var(--dk-bg-ecfdf3, #ecfdf3); color: var(--dk-fg-067647, #067647); border-radius: 999px; padding: 1px 8px; font-size: .78rem; font-weight: 600; } p.rb-claim { border-radius: 10px; padding: 6px 10px; font-size: .85rem; }
@@ -3213,7 +3214,7 @@
 <div class="modal" id="cbModal" hidden>
   <div class="card cal-form">
     <h3 id="cbTitle">Book a viewing</h3>
-    <label>Property<input class="inp" id="cbProp" list="offProps" maxlength="400" autocomplete="off" placeholder="Start typing the address"></label>
+    <label>Property<input class="inp" id="cbProp" list="offProps" maxlength="400" autocomplete="off" placeholder="Start typing — choose from the available list"></label><div id="cbPropHint" class="cb-hint" hidden></div>
     <div class="cal-g3"><label>Date<input class="inp" id="cbDate" type="date"></label><label>Time<select class="inp" id="cbTime"></select></label><label>Length<select class="inp" id="cbMins"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1 hour</option><option value="90">1½ hours</option></select></label></div>
     <label>Who’s doing it<select class="inp" id="cbStaff"></select></label>
     <div class="banner" id="cbGroup" hidden style="margin:0"></div>
@@ -9866,7 +9867,8 @@
     if (up && !confirm((g.name || 'This applicant') + ' already has a viewing booked:\n\n' + applVwText(up) + (up.property_address ? ' · ' + shortAddr(up.property_address) : '') + (up.staff || up.created_by ? ' · with ' + (up.staff || up.created_by) : '') + '\n\nBook another one?')) return;
     var it = (g.group || [g]).filter(function(i){ return i.address && i.address !== '(no property given)'; })[0];
     var more = (others || []).map(function(o){ var oi = (o.group || [o]).filter(function(i){ return i.address && i.address !== '(no property given)'; })[0]; return { name: o.name || '', phone: o.phone || '', email: o.email || '', leadId: (oi || o).id }; });
-    openBook({ property: it ? it.address : '', applicant: g.name || '', phone: g.phone || '', email: g.email || '', leadId: (it || g).id, more: more });
+    var home = applHome(g);
+    openBook({ property: home ? home.address : it ? it.address : '', applicant: g.name || '', phone: g.phone || '', email: g.email || '', leadId: (it || g).id, more: more });
   }
   var APPL_COLS = [['id', 'ID'], ['name', 'Name'], ['act', ''], ['who', 'Assigned to'], ['src', 'Source'], ['phone', 'Mobile'], ['status', 'Status'], ['prop', 'Property'], ['rent', 'Rent pcm'], ['at', 'Date added'], ['email', 'Email'], ['todo', 'To do']];
   function applVal(g, k){
@@ -12877,7 +12879,29 @@
     $('cbMins').value = String(v && v.mins || 30);
     $('cbWho').value = v ? (v.applicant || '') : (o.applicant || ''); $('cbPhone').value = v ? (v.phone || '') : (o.phone || ''); $('cbEmail').value = v ? (v.email || '') : (o.email || '');
     psOurList();   // the address suggestions, ready before they start typing
+    $('cbPropHint').hidden = true; cbPropOrig = v ? String(v.property_address || '').trim() : null;
+    if (!v) cbResolveProp(0);
     $('cbClash').hidden = true; $('cbModal').hidden = false; setTimeout(function(){ ($('cbProp').value ? $('cbTime') : $('cbProp')).focus(); }, 30);
+  }
+  // Viewings are only booked for a property on our available list, written in full (the confirmation email
+  // tells the applicant where to come): the list's address, or its tenancy's full address when it has one.
+  var cbPropOrig = null;
+  function cbNorm(a){ return String(a || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  function cbAvailOf(prop){
+    var n = cbNorm(prop), k = propKey(prop); if (!n) return null;
+    return (psOur || []).filter(function(o){ return o.avail && (cbNorm(o.address) === n || cbNorm(o.tcyAddr) === n || propKey(o.address) === k || (o.tcyAddr && propKey(o.tcyAddr) === k)); })[0] || null;
+  }
+  function cbFull(o){ return o.tcyAddr || o.address; }
+  function cbHasDoor(a){ var first = String(a || '').split(',')[0]; return /\d/.test(first) || /\b(house|court|mansions|lodge|cottage|building|tower|apartments?|place|point|wharf|works)\b/i.test(first); }
+  function cbHint(html, warn){ var h = $('cbPropHint'); h.hidden = !html; h.innerHTML = html || ''; h.classList.toggle('warn', !!warn); }
+  // On opening: an enquiry's short Rightmove address ("Warwick Way, London SW1V") becomes the available property's full address.
+  function cbResolveProp(tries){
+    if (!psOur) { if (tries < 25 && !$('cbModal').hidden) setTimeout(function(){ cbResolveProp(tries + 1); }, 200); return; }
+    var inp = $('cbProp'), val = inp.value.trim(); if (!val) return;
+    var hit = cbAvailOf(val);
+    if (!hit) { var c = psMatch(val, psOur.filter(function(o){ return o.avail; })); if (c.length === 1) hit = c[0]; }
+    if (hit) { var full = cbFull(hit); if (full !== val) { inp.value = full; cbHint('✓ Matched to <b>' + esc(full) + '</b> on the available list', false); cbLoadOthers(!cal.edit); } else cbHint(''); }
+    else cbHint('⚠ <b>' + esc(val) + '</b> isn’t on the available list — choose the property from the suggestions (start typing the road).', true);
   }
   // The tenants living at the property and its landlord: ticks to email them about the viewing (on for a new booking).
   // vwOthersHtml is shared with the cancel boxes; the landlord never gets the applicant's details.
@@ -12894,6 +12918,7 @@
     box.dataset.on = on ? '1' : ''; box.innerHTML = '<span class="muted-note" style="margin:0">Looking up the tenants and landlord…</span>';
     api('GET', '/api/admin/viewing-contacts?property=' + encodeURIComponent(prop)).then(function(c){ if ($('cbProp').value.trim() !== prop) return; box.innerHTML = vwOthersHtml(c, on, cal.edit ? ' if the time changes' : ''); });
   }
+  $('cbProp').addEventListener('input', function(){ var hv = cbAvailOf(this.value); cbHint(hv ? '✓ On the available list' + (cbHasDoor(this.value) ? '' : ' — but no door or flat number') : '', hv && !cbHasDoor(this.value)); });
   $('cbProp').addEventListener('input', function(){ clearTimeout(cbOthersT); cbOthersT = setTimeout(function(){ cbLoadOthers($('cbOthers').dataset.on === '1' || !cal.edit); }, 600); });
   // Offers page: the Property appraisal box sits at the bottom (the owner asked).
   if ($('offAppr') && $('offersView')) $('offersView').appendChild($('offAppr'));
@@ -12947,7 +12972,13 @@
   $('cbModal').addEventListener('click', function(e){ if (e.target === this) this.hidden = true; });
   $('cbSave').addEventListener('click', function(){
     var b = this, prop = $('cbProp').value.trim(), d = $('cbDate').value, t = $('cbTime').value;
-    if (!prop) { toast('Enter the property'); $('cbProp').focus(); return; } if (!d || !t) { toast('Choose the date and time'); (d ? $('cbTime') : $('cbDate')).focus(); return; }
+    if (!prop) { toast('Enter the property'); $('cbProp').focus(); return; }
+    if (!psOur) { psOurList(); toast('Loading the available list — press again in a moment'); return; }
+    var avl = cbAvailOf(prop);
+    if (!avl && !(cal.edit && cbPropOrig === prop)) { cbHint('⚠ Viewings can only be booked for a property on the available list — choose it from the suggestions.', true); toast('Choose a property from the available list'); $('cbProp').focus(); psShow($('cbProp')); return; }
+    if (avl && avl.tcyAddr && prop !== avl.tcyAddr && cbNorm(prop) === cbNorm(avl.address)) { prop = avl.tcyAddr; $('cbProp').value = prop; }
+    if (!cbHasDoor(prop) && !confirm('“' + prop + '” has no door or flat number.\n\nThe confirmation email gives the applicant this address, so they need the full address to find it. Book anyway?')) { $('cbProp').focus(); return; }
+    if (!d || !t) { toast('Choose the date and time'); (d ? $('cbTime') : $('cbDate')).focus(); return; }
     var body = { property: prop, at: new Date(d + 'T' + t).toISOString(), mins: +$('cbMins').value, staff: $('cbStaff').value, applicant: $('cbWho').value.trim(), phone: $('cbPhone').value.trim(), email: $('cbEmail').value.trim() };
     if (!cal.edit && cal.leadId) body.lead_id = cal.leadId;
     if ($('cbMail').checked) body.notify = true;
