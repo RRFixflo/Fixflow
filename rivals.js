@@ -147,6 +147,7 @@ module.exports = function (app, opts) {
     await p.query('UPDATE rival_hits SET told = true WHERE id = ANY($1::int[])', [rows.map(function (r) { return r.id; })]);
     const line = function (r) { return '• ' + r.ours + (r.our_status === 'let' ? ' (we let it)' : ' (on our books)') + ' — ' + (r.kind === 'photos' ? 'our photos (' + r.photos + ')' : 'same building') + ' on ' + r.agent + '’s advert ' + r.url + (r.landlord ? '\n  Landlord: ' + r.landlord + (r.landlord_phone ? ' · ' + r.landlord_phone : '') : ''); };
     if (opts.alert) opts.alert({ title: '🔎 ' + (rows.length === 1 ? 'One of our properties is' : rows.length + ' of our properties are') + ' with another agent', message: rows[0].ours.split(',')[0] + ' — ' + rows[0].agent + (rows.length > 1 ? ' (+' + (rows.length - 1) + ' more)' : '') + '. Call the landlord.', tags: ['mag'] });
+    if (opts.email) opts.email('Our properties advertised by other agents on Rightmove', function (link) { return 'The latest check found these on Rightmove with other agents:\n\n' + rows.map(line).join('\n\n') + '\n\nThe full list is in Fixflow → Available properties → Other agents:\n' + link; }, '#avail');
   }
   // Every night at about 2am (London).
   setInterval(function () {

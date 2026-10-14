@@ -12112,7 +12112,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email || null, phone, callback ? '(call-back request)' : '(quick request — call back for the address)', JSON.stringify({ kind: 'quick', service: what, page: page })]);
       await noteSource(p, req, r.rows[0].id);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
-      // Every member of staff hears about it by phone alert; the office gets one email.
+      // Every member of staff hears about it by phone alert; the office gets one email (below, replies go to the applicant).
       teamAlert({ title: callback ? '📞 Call-back request (' + what + '): ' + name : '⚡ Quick valuation request: ' + name, message: callback ? phone + ' · wants a call about ' + what + (page ? ' · from ' + page : '') : phone + ' · ' + what + ' valuation — call them back for the address.', tags: ['house'] }, '#leads').catch(function () {});
       staffEmailAll((callback ? '📞 Call-back request (' + what + ') - ' : '⚡ Quick valuation request - ') + name, function (link) {
         return (callback ? 'Someone asked us to call them about ' + what + ' on the website. Please call them back.' : 'Someone used the quick valuation form on the website. Please call them back for the property details.') + '\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + (email || '—') + (callback ? '\nAbout: ' : '\nValuation: ') + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s in Website leads — add a note once you’ve called:\n' + link;
@@ -12683,10 +12683,11 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await noteSource(p, req, r.rows[0].id);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
     const times = slots.map(slotText);
-    // Every member of staff hears about it by phone alert (no email — the owner asked).
+    // Every member of staff hears about it: a phone alert and an email each.
     teamAlert({ title: '🗓 Viewing request: ' + addr.split(',').slice(0, 2).join(','), message: name + ' · ' + phone + (times.length ? ' · ' + times.join(' / ') : ' · any time') + ' — confirm a time in Website leads.', tags: ['calendar'] }, '#leads').catch(function () {});
     if (canEmail() && sendEmail) {
-      // No office email for viewing requests (the owner asked): staff get the phone alert and it's on Applicants.
+      sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Viewing request — ' + addr, text: 'Someone has asked to view a property on the website.\n\nProperty: ' + addr + (ref ? ' (ref ' + ref + ')' : '') + '\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email +
+        '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') + (data.people ? '\nPeople: ' + data.people : '') + (data.move ? (md ? '\nMove-in date: ' : '\nMove / buy: ') + data.move : '') + (income ? '\nRent paid by: ' + income : '') + (guarantor ? '\nUK guarantor: ' + guarantor : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Fixflow under Contacts — they’re emailed straight away.' }).catch(function () {});
       const t = 'Dear ' + name.split(' ')[0] + ',\n\nThank you for asking to view ' + addr + '.\n\n' + (times.length ? 'You suggested:\n' + times.map(function (x) { return '• ' + x; }).join('\n') + '\n\n' : '') + 'Please note: this is a viewing request, not a confirmed booking. One of our agents will contact you first, by phone or email, to agree a time — usually within a few hours during opening hours (Monday to Sunday, 9am–7pm). Your viewing is only booked once we’ve confirmed it with you. If you need us sooner, call 0207 096 8131.\n\nKind regards,\nResidential Realtors';
       sendEmail({ to: [email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Viewing request received (not yet booked) — ' + addr, text: t, html: brandEmail(t, 'Your viewing request') }).catch(function () {});
     }
@@ -12932,7 +12933,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const line = function (x) { return '• ' + x.name + (x.address && !/^\(/.test(x.address) ? ' — ' + String(x.address).split(',').slice(0, 2).join(',') : '') + (x.phone ? ' — ' + x.phone : '') + (x.assigned_to ? ' (' + x.assigned_to + ')' : ''); };
     const parts = [n.fresh.length ? n.fresh.length + ' not contacted yet' : '', n.due.length ? n.due.length + ' follow-up' + (n.due.length === 1 ? '' : 's') + ' due' : '', n.stale.length ? n.stale.length + ' with no update for a week' : ''].filter(Boolean);
     ntfy({ title: '📣 ' + total + ' website lead' + (total === 1 ? '' : 's') + ' to contact', message: parts.join(' · ') + ' — everyone on the list should hear from us.', tags: ['loudspeaker'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined }).catch(function () {});
-    // No email (the owner asked) — the phone alert above and the staff app are enough.
+    if (canEmail() && sendEmail) {
+      const text = 'Website leads that need contacting or an update:\n\n' + (n.fresh.length ? 'NOT CONTACTED YET\n' + n.fresh.map(line).join('\n') + '\n\n' : '') + (n.due.length ? 'FOLLOW-UP DUE\n' + n.due.map(line).join('\n') + '\n\n' : '') + (n.stale.length ? 'NO UPDATE FOR A WEEK\n' + n.stale.map(line).join('\n') + '\n\n' : '') + 'Everyone on the list should hear from us. Open Website leads in Fixflow, call or message them, and add a note.';
+      sendEmail({ to: ['info@residentialrealtors.co.uk'], fromName: 'Fixflow', subject: total + ' website lead' + (total === 1 ? '' : 's') + ' to contact', text: text, html: brandEmail(text, 'Website leads to contact') }).catch(function () {});
+    }
   }
   setTimeout(function () { crmRemind().catch(function (e) { console.error('Lead reminder failed:', e.message); }); }, 120 * 1000);
   setInterval(function () { crmRemind().catch(function (e) { console.error('Lead reminder failed:', e.message); }); }, 20 * 60 * 1000).unref();

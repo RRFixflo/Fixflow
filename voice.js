@@ -167,7 +167,7 @@ module.exports = function (app, opts) {
     const heard = [info.about, info.summary, data.message].concat(said.map(function (t) { return t.text; })).join(' ').toLowerCase();
     const repairish = /\b(repair|leak\w*|boiler|heating|hot water|no water|flood\w*|burst|damp|mou?ld|broken|blocked|toilet|drain|sink|shower|electric\w*|power cut|no power|fuse|socket|lights? (?:not|don)|lock(?:ed)? out|door won|window won|pest\w*|mice|rats?|cockroach\w*|bed ?bugs|gas smell|smell of gas|carbon monoxide|alarm going|fridge|oven|washing machine|dishwasher|ceiling|roof)\b/.test(heard);
     if (data.category === 'repair' || (repairish && ['letting', 'renting', 'buying', 'selling', 'valuation'].indexOf(data.category) === -1)) { opts.ntfy({ title: title, message: line, tags: [data.urgent ? 'rotating_light' : 'telephone_receiver'], priority: data.urgent ? 5 : 4 }); opts.ownerEmail(title, text, '#leads'); }
-    else { opts.teamAlert({ title: title, message: line, tags: ['telephone_receiver'] }, '#leads'); }   // no email (the owner asked)
+    else { opts.teamAlert({ title: title, message: line, tags: ['telephone_receiver'] }, '#leads'); opts.staffEmailAll(title, text, '#leads'); }
   }
 
   return { on: function () { return !!(process.env.TWILIO_AUTH_TOKEN && process.env.ANTHROPIC_API_KEY); } };
