@@ -4414,6 +4414,10 @@ module.exports = function mountJobs(app, opts) {
       'Do not make a job for that. Put each contact in "contacts" with: type ("contractor", "landlord" or "tenant"), name (the person, as given), company (business name if given, else ""), ' +
       'trade (for contractors: e.g. "Cleaner", "Plumber", "Handyman", "Electrician", "Gas safety"; else ""), phone, email, address (a landlord\'s own postal address if given, else ""), ' +
       'property (for tenants: the property they live at; for landlords: every property they own, separated by "; "; else ""), notes (anything else useful, else "").\n' +
+      'The instruction may instead be an ENQUIRY FROM SOMEONE LOOKING TO RENT OR BUY (e.g. a pasted email, WhatsApp, text or portal message — or a screenshot of one — asking about a property, a viewing, or to be kept in mind for future listings). ' +
+      'Do not make a job or a contact for that. Put each person in "applicants" with: name, email, phone, looking ("rent" or "buy"), property (the specific property or advert they ask about, as written, else ""), ' +
+      'wants (one short line of what they are looking for — bedrooms, bathrooms, areas, budget, outdoor space, how many people, when — only what they said, else ""), message (their message shortened to the key points, in their words), ' +
+      'source ("Email", "WhatsApp", "Rightmove", "Zoopla", "OnTheMarket", "Phone call", "Website" or "Other" — how it reached us, "Email" for a pasted email). Never invent names, numbers or details.\n' +
       'The instruction may instead (or also) ask to ADD A PROPERTY, usually with the tenants who live there (e.g. "add 36 Balin House, tenants Sarah Jones 07700 900123 and Tom Lee", "new property Flat 2, 10 Long Lane SE1 4PA, landlord Mr Khan, key 12"). ' +
       'Do not make a job for that, and do not also list those tenants or that landlord in "contacts". Put each in "properties" with: address (full as given, or the exact one from their property list if it clearly matches; keep flat/house number and postcode), ' +
       'tenants ([{"name": "", "phone": "", "email": ""}] exactly as given), landlord (name as given, else ""), key_number (the office key tag number if given, else ""), notes (anything else useful, else "").\n' +
@@ -4439,8 +4443,8 @@ module.exports = function mountJobs(app, opts) {
       'type, issued_on = the inspection / check date (or date of assessment for an EPC), expires_on = the date the next check is due if printed ("next inspection due", "recommended date for next inspection", "valid until"; else ""), reference = the certificate / report / serial number. Do not make a job for it.\n' +
       'Reply with ONLY JSON: {"jobs": [{"address": "", "category": "", "title": "", "description": "", "urgency": "Routine", "contractor": "", "send": false, "tenants": [], "warning": ""}], ' +
       '"certificates": [{"address": "", "type": "Gas", "issued_on": "", "expires_on": "", "reference": "", "rating": "", "document": 0}], ' +
-      '"documents": [], "contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "properties": [{"address": "", "tenants": [], "landlord": "", "key_number": "", "notes": ""}], "tenancies": [], "understood": true}. ' +
-      'Use [] for jobs, certificates, contacts, properties or tenancies when there are none. If the instruction is none of these, reply {"jobs": [], "certificates": [], "contacts": [], "properties": [], "tenancies": [], "understood": false}.';
+      '"documents": [], "contacts": [{"type": "contractor", "name": "", "company": "", "trade": "", "phone": "", "email": "", "address": "", "property": "", "notes": ""}], "properties": [{"address": "", "tenants": [], "landlord": "", "key_number": "", "notes": ""}], "tenancies": [], "applicants": [{"name": "", "email": "", "phone": "", "looking": "rent", "property": "", "wants": "", "message": "", "source": "Email"}], "understood": true}. ' +
+      'Use [] for jobs, certificates, contacts, properties, tenancies or applicants when there are none. If the instruction is none of these, reply {"jobs": [], "certificates": [], "contacts": [], "properties": [], "tenancies": [], "applicants": [], "understood": false}.';
     // Typed or spoken (no documents): Fixflow also acts as the office assistant — answers questions from
     // the live data, drafts emails and WhatsApp messages to the right people, and sets reminders.
     const learned = await learnedLines(p);
@@ -4548,8 +4552,13 @@ module.exports = function mountJobs(app, opts) {
     const reminders = (Array.isArray(parsed.reminders) ? parsed.reminders : []).slice(0, 10).map(function (r) { return { text: str(r && r.text, 500) || '', due: str(r && r.due, 30) || '' }; }).filter(function (r) { return r.text && /^\d{4}-\d{2}-\d{2}/.test(r.due); });
     const remember = (Array.isArray(parsed.remember) ? parsed.remember : []).slice(0, 5).map(function (x) { return str(String(x || '').replace(/\s+/g, ' ').trim(), 300) || ''; }).filter(Boolean);
     for (const t of remember) await learn(p, req, 'note', t.toLowerCase().replace(/[^a-z0-9 ]/g, '').slice(0, 120), t).catch(function (e) { console.error('Learn failed:', e.message); });
-    const made = jobs.length > 0 || certificates.length > 0 || contacts.length > 0 || properties.length > 0 || tenancies.length > 0;
-    res.json({ ok: true, jobs: jobs, certificates: certificates, contacts: contacts, properties: properties, tenancies: tenancies, answer: answer, emails: emails, messages: messages, reminders: reminders, remembered: remember,
+    // People looking to rent or buy (a pasted enquiry email, WhatsApp, screenshot): added as applicants once staff press Add.
+    const SRC = ['Email', 'WhatsApp', 'Rightmove', 'Zoopla', 'OnTheMarket', 'Phone call', 'Website', 'Other'];
+    const applicants = (Array.isArray(parsed.applicants) ? parsed.applicants : []).slice(0, 10).map(function (x) {
+      x = x || {}; return { name: str(x.name, 120) || '', email: str(x.email, 200) || '', phone: str(x.phone, 40) || '', looking: x.looking === 'buy' ? 'buy' : 'rent', property: str(x.property, 300) || '', wants: str(x.wants, 500) || '', message: str(x.message, 2000) || '', source: SRC.indexOf(x.source) !== -1 ? x.source : 'Other' };
+    }).filter(function (x) { return x.name || x.email || x.phone; });
+    const made = jobs.length > 0 || certificates.length > 0 || contacts.length > 0 || properties.length > 0 || tenancies.length > 0 || applicants.length > 0;
+    res.json({ ok: true, jobs: jobs, certificates: certificates, contacts: contacts, properties: properties, tenancies: tenancies, applicants: applicants, answer: answer, emails: emails, messages: messages, reminders: reminders, remembered: remember,
       understood: ((parsed.understood !== false || certificates.length > 0) && made) || !!answer || remember.length > 0 || emails.length > 0 || messages.length > 0 || reminders.length > 0 });
   }));
 

@@ -2714,6 +2714,7 @@
     <div id="askCerts" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askProps" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askContacts" style="display:flex;flex-direction:column;gap:12px"></div>
+    <div id="askAppl" style="display:flex;flex-direction:column;gap:12px"></div>
     <div id="askDrafts" style="display:flex;flex-direction:column;gap:12px"></div>
   </div>
 </div>
@@ -11560,6 +11561,7 @@
       if (d.understood) setAskFile(null);
       if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can answer questions about your properties, rents and repairs, write emails and WhatsApp messages, set reminders, and add jobs, properties, contacts and tenancies — try “which rents are late?”, “add a gas safety for 6 Whitworth House”, “add 36 Balin House with tenants Sarah Jones 07700 900123 and Tom Lee”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; askProps = []; askCerts = []; renderAskContacts(); renderAskTenancies(); renderAskProps(); renderAskCerts(); $('askAllRow').hidden = true; return; }
       askContacts = (d.contacts || []).slice();
+      askAppl = (d.applicants || []).slice(); renderAskAppl();
       askTenancies = (d.tenancies || []).slice();
       // Tenants or a landlord the AI listed as separate contacts alongside a new
       // tenancy belong to that tenancy (not new contacts to save again).
@@ -11940,6 +11942,48 @@
     var i = Number(b.closest('[data-ti]').dataset.ti), t = askTenancies[i];
     askTenancies.splice(i, 1); renderAskTenancies();
     if (b.dataset.tact === 'open') { closeAsk(); var clean = Object.assign({}, t); ['onFile', 'filled', 'extra', 'llOnFile', 'rent_text', 'rent_check', 'docs_read', 'fees_check'].forEach(function(k){ delete clean[k]; }); openTenancy('new', { data: clean }); toast(t.rent_check ? '⚠ ' + t.rent_check : 'Filled in from your message — check the details and press Save tenancy'); }
+  });
+  // Someone looking to rent or buy (a pasted enquiry email, WhatsApp or a screenshot of one): check, then add to Applicants.
+  var askAppl = [];
+  function renderAskAppl(){
+    var srcs = ['Email', 'WhatsApp', 'Rightmove', 'Zoopla', 'OnTheMarket', 'Phone call', 'Website', 'Referral', 'Other'];
+    $('askAppl').innerHTML = askAppl.map(function(x, i){
+      var tail = phoneTail(x.phone), em = String(x.email || '').toLowerCase();
+      var dupe = (crm.items || []).filter(function(c){ return (em && String(c.email || '').toLowerCase() === em) || (tail && phoneTail(c.phone) === tail); })[0];
+      return '<div class="draft adraft" data-i="' + i + '">' +
+        '<div style="display:flex;align-items:center;gap:8px"><strong>👥 New applicant</strong><span style="flex:1"></span>' +
+          '<select class="inp" data-a="looking" style="width:auto"><option value="rent"' + (x.looking !== 'buy' ? ' selected' : '') + '>Looking to rent</option><option value="buy"' + (x.looking === 'buy' ? ' selected' : '') + '>Looking to buy</option></select></div>' +
+        (dupe ? '<div class="banner" style="margin:0">' + esc(dupe.name || 'They') + ' is already on Applicants (same ' + (em && String(dupe.email || '').toLowerCase() === em ? 'email' : 'phone') + ') — adding joins this enquiry to their card.</div>' : '') +
+        '<div class="grid3">' +
+          '<div><label class="lbl">Name</label><input class="inp" data-a="name" value="' + esc(x.name) + '"></div>' +
+          '<div><label class="lbl">Mobile</label><input class="inp" data-a="phone" type="tel" value="' + esc(x.phone) + '"></div>' +
+          '<div><label class="lbl">Email</label><input class="inp" data-a="email" type="email" value="' + esc(x.email) + '"></div>' +
+        '</div>' +
+        '<div class="grid2">' +
+          '<div><label class="lbl">Property they asked about <span class="muted-note" style="margin:0">optional</span></label><input class="inp" data-a="property" list="offProps" value="' + esc(x.property) + '"></div>' +
+          '<div><label class="lbl">How they got in touch</label><select class="inp" data-a="source">' + srcs.map(function(t){ return '<option' + (t === x.source ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></div>' +
+        '</div>' +
+        '<div><label class="lbl">What they’re looking for</label><input class="inp" data-a="wants" value="' + esc(x.wants) + '"></div>' +
+        '<div><label class="lbl">Their message</label><textarea class="inp" data-a="message" rows="3">' + esc(x.message) + '</textarea></div>' +
+        '<div class="row-actions" style="margin-top:0"><button class="btn" type="button" data-aact="skip">Skip</button><button class="btn primary" type="button" data-aact="save">Add to Applicants</button></div>' +
+      '</div>';
+    }).join('');
+  }
+  $('askAppl').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-aact]'); if (!b) return;
+    var box = b.closest('.adraft'), i = Number(box.dataset.i);
+    var f = function(n){ var el = box.querySelector('[data-a="' + n + '"]'); return el ? el.value.trim() : ''; };
+    function done(msg){ askAppl.splice(i, 1); renderAskAppl(); if (msg) toast(msg); if (!askAppl.length && !askContacts.length && !askDrafts.length) closeAsk(); if (typeof loadCrm === 'function') loadCrm(true); }
+    if (b.dataset.aact === 'skip') { done(''); return; }
+    if (!f('name')) { toast('Add their name'); return; }
+    if (!f('phone') && !f('email')) { toast('Add a mobile or an email'); return; }
+    var msg = [f('wants') ? 'Looking for: ' + f('wants') : '', f('message')].filter(Boolean).join('\n\n');
+    busy(b, true, 'Adding…');
+    api('POST', '/api/admin/crm/contact', { type: f('looking') === 'buy' ? 'Buyer' : 'Applicant', name: f('name'), phone: f('phone'), email: f('email'), address: f('property'), message: msg, source: f('source') }).then(function(d){
+      busy(b, false);
+      if (!d || !d.ok) { toast('Couldn’t add them — check the name and a mobile or email'); return; }
+      done('✓ ' + f('name') + ' added to Applicants');
+    });
   });
   function renderAskContacts(){
     var label = { contractor: 'contractor', landlord: 'landlord', tenant: 'tenant' };
