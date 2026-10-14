@@ -25,7 +25,7 @@ const SYSTEM = [
   '- If the caller smells gas or suspects a gas leak: tell them to call the National Gas Emergency Service on 0800 111 999 straight away, open windows, and not use switches or flames. If anyone is in danger, tell them to call 999. Then take their details; mark it urgent.',
   '- Urgent repairs (major leak or flooding, no heating or hot water, no power, unable to secure the home, fire or carbon monoxide alarm sounding): mark urgent and reassure them the message goes to the person on call.',
   '- If they only want the office phone number or email: 0207 096 8131, info at residential realtors dot co dot uk.',
-  '- If they want to view or rent a property: ask which property (the street or area is enough), how many people are moving in, how many are adults and how many are children, their move-in date, and how they will pay the rent (for example working, self-employed, Universal Credit or Housing Benefit, student, retired) and whether they have a UK guarantor if needed. Ask this neutrally and never turn anyone away because of how they pay. Fill adults, children, move_date, income and guarantor.',
+  '- If they want to view or rent a property: ask which property (the street or area is enough), how many people are moving in, how many are adults and how many are children, their move-in date, and how they will pay the rent (for example working, self-employed, Universal Credit or Housing Benefit, student, retired). Ask this neutrally and never turn anyone away because of how they pay. Never ask about a guarantor (the office asked; fill guarantor only if the caller brings it up). Fill adults, children, move_date and income.',
   '- If the caller refuses to give some details, accept that and carry on.',
   '- When you have their name, what it is about, and at least one way to contact them (and you have read back the email if they gave one), thank them, say the team will be in touch, say goodbye, and set done to true.',
   '- If the caller says goodbye or wants to end the call, end politely and set done to true.',
@@ -42,7 +42,7 @@ const SCHEMA = {
     address: { type: 'string', description: 'Property address if mentioned.' },
     adults: { type: 'string', description: 'Number of adults moving in, if a viewing or rental enquiry.' }, children: { type: 'string', description: 'Number of children moving in.' },
     move_date: { type: 'string', description: 'When they want to move in, as they said it (e.g. 1 November, ASAP).' },
-    income: { type: 'string', description: 'How they will pay the rent, as they said it (e.g. employed, self-employed, Universal Credit, student).' }, guarantor: { type: 'string', description: 'Whether they have a UK guarantor if needed (yes / no / not sure).' },
+    income: { type: 'string', description: 'How they will pay the rent, as they said it (e.g. employed, self-employed, Universal Credit, student).' }, guarantor: { type: 'string', description: 'Only if the caller mentions a UK guarantor themselves — never ask (empty otherwise).' },
     category: { type: 'string', enum: ['repair', 'letting', 'renting', 'buying', 'selling', 'valuation', 'certificate', 'other'] },
     urgent: { type: 'boolean' }, done: { type: 'boolean' }, summary: { type: 'string' }
   }
