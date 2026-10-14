@@ -868,6 +868,13 @@
   .cal-top { margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
   .cal-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .cal-bar b { font-size: 1.05rem; margin: 0 6px; flex: 1; min-width: 140px; }
   .cal-seg { display: inline-flex; border: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); border-radius: 10px; overflow: hidden; } .cal-seg button { border: 0; background: var(--dk-bg-fff, #fff); padding: 6px 12px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; color: var(--ink-soft, var(--dk-fg-475467, #475467)); } .cal-seg button.on { background: var(--ink, #101828); color: var(--on-ink, #fff); }
+  .vwnow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 30px 0; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--dk-bd-f5c26b, #f5c26b); background: var(--dk-bg-fff7e6, #fff7e6); color: var(--dk-fg-7a4b00, #7a4b00); font-size: .92rem; }
+  .vwnow.at { border-color: var(--dk-bd-c4b5fd, #c4b5fd); background: var(--dk-bg-f4f0ff, #f4f0ff); color: var(--dk-fg-4c1d95, #4c1d95); }
+  @media (max-width: 760px) { .vwnow { margin: 8px 16px 0; padding: 9px 12px; } }
+  .vwnow[hidden] { display: none; } .vwnow b { font-weight: 700; } .vwnow .vn-t { flex: 1; min-width: 200px; } .vwnow .vn-i { font-size: 1.3rem; } .vwnow .btn { flex: none; }
+  .cal-now { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: .86rem; } .cal-now:empty { display: none; }
+  .cal-now div { padding: 6px 10px; border-radius: 9px; background: var(--dk-bg-f4f0ff, #f4f0ff); color: var(--dk-fg-4c1d95, #4c1d95); } .cal-now div.lv { background: var(--dk-bg-fff7e6, #fff7e6); color: var(--dk-fg-7a4b00, #7a4b00); }
+  .cal-ev .nowtag { font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 1px 7px; align-self: flex-start; background: var(--dk-bg-ede9fe, #ede9fe); color: var(--dk-fg-5b21b6, #5b21b6); } .cal-ev .nowtag.lv { background: var(--dk-bg-fef0c7, #fef0c7); color: var(--dk-fg-7a4b00, #7a4b00); }
   .cal-people { display: flex; gap: 6px; flex-wrap: wrap; } .cal-people button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); background: var(--dk-bg-fff, #fff); border-radius: 999px; padding: 5px 11px; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer; } .cal-people button.on { border-color: var(--ink, #101828); background: var(--dk-bg-f2f4f7, #f2f4f7); } .cal-people i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   .cal-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; } .cal-week.one { grid-template-columns: 1fr; max-width: 760px; }
   .cal-day { background: var(--dk-bg-fff, #fff); border: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); border-radius: 14px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-height: 220px; min-width: 0; }
@@ -1945,6 +1952,7 @@
       <button class="btn small ghost" hidden id="myPwBtnM" type="button" title="Change my password"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16 7 3 3"/><path d="m14 9 2 2"/></svg></button>
       <button class="btn small ghost" hidden id="logoutBtnM" type="button" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H4"/></svg></button>
     </header>
+    <div class="vwnow" id="vwNow" hidden></div>
 
     <div class="wrap">
       <div class="banner" id="dbBanner" hidden>
@@ -2335,7 +2343,7 @@
         <div class="card cal-top">
           <div class="cal-bar"><button type="button" class="btn small" id="calPrev" aria-label="Previous">‹</button><button type="button" class="btn small" id="calToday">Today</button><button type="button" class="btn small" id="calNext" aria-label="Next">›</button>
             <b id="calLbl"></b><span class="cal-seg" id="calMode"><button type="button" data-cm="week" class="on">Week</button><button type="button" data-cm="day">Day</button></span><button type="button" class="btn small primary" id="calAdd">＋ Book a viewing</button></div>
-          <div class="cal-people" id="calPeople"></div>
+          <div class="cal-people" id="calPeople"></div><div class="cal-now" id="calNow"></div>
         </div>
         <div id="calBody"><div class="empty">Loading…</div></div>
       </div>
@@ -12848,7 +12856,7 @@
   var cal = { start: null, mode: 'week', items: [], staff: [], only: '', edit: null }, CAL_COL = ['#2563eb', '#d92d20', '#079455', '#7a5af8', '#dc6803', '#0e9384', '#c11574', '#4e5ba6', '#ca8504', '#475467'];
   var calChan = null; try { calChan = 'BroadcastChannel' in window ? new BroadcastChannel('ff-calendar') : null; } catch (e) {}
   if (calChan) calChan.onmessage = function(){ if (view === 'cal') loadCal(true); loadViewings(); };
-  function calChanged(){ if (calChan) try { calChan.postMessage('changed'); } catch (e) {} if (view === 'cal') loadCal(true); loadViewings(); }
+  function calChanged(){ if (calChan) try { calChan.postMessage('changed'); } catch (e) {} if (view === 'cal') loadCal(true); loadViewings();  vnLoad(); }
   function calMonday(d){ d = new Date(d); d.setHours(0, 0, 0, 0); var w = (d.getDay() + 6) % 7; d.setDate(d.getDate() - w); return d; }
   function calDayKey(d){ d = new Date(d); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function calHm(d){ return new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
@@ -12920,13 +12928,15 @@
       h += '<div class="cal-day' + (key === today ? ' today' : '') + (key < today ? ' past' : '') + (list.length ? '' : ' empty-day') + '"><div class="cal-dh"><span>' + esc(f(d, { weekday: 'short' })) + '</span><b>' + d.getDate() + '</b><span>' + esc(f(d, { month: 'short' })) + '</span></div>' +
         (list.length ? calGroups(list).map(function(gr){
           var v = gr[0], who = calWho(v), c = calColour(who), endT = new Date(new Date(v.at).getTime() + (v.mins || 30) * 60000);
-          if (gr.length > 1) return '<div class="cal-ev cal-grp st-' + esc(v.status) + '" style="--c:' + c + '"><span class="t">' + calHm(v.at) + '–' + calHm(endT) + ' · 👥 ' + gr.length + ' applicants</span><span class="p">' + esc(shortAddr(v.property_address)) + '</span>' +
+          var nt = vnPhase(v), vtag = nt === 'at' ? '<span class="nowtag">📍 Out on this viewing now</span>' : nt === 'leave' ? '<span class="nowtag lv">🚶 Time to leave</span>' : '';
+          if (gr.length > 1) return '<div class="cal-ev cal-grp st-' + esc(v.status) + '" style="--c:' + c + '">' + vtag + '<span class="t">' + calHm(v.at) + '–' + calHm(endT) + ' · 👥 ' + gr.length + ' applicants</span><span class="p">' + esc(shortAddr(v.property_address)) + '</span>' +
             gr.map(function(x){ return '<button type="button" class="cal-gp st-' + esc(x.status) + '" data-cal-ev="' + x.id + '">' + esc(x.applicant || 'Applicant') + (x.status !== 'booked' ? ' · ' + esc({ done: 'done', no_show: 'no-show', cancelled: 'cancelled' }[x.status] || x.status) : '') + (x.att_ok_at ? ' ✅' : '') + (x.app_fb_at ? ' ⭐' : '') + '</button>'; }).join('') + '<span class="who">● ' + esc(who) + '</span></div>';
-          return '<button type="button" class="cal-ev st-' + esc(v.status) + '" style="--c:' + c + '" data-cal-ev="' + v.id + '"><span class="t">' + calHm(v.at) + '–' + calHm(endT) + '</span><span class="p">' + esc(shortAddr(v.property_address)) + '</span>' + (v.applicant ? '<small>' + esc(v.applicant) + (v.att_ok_at ? ' ✅' : '') + '</small>' : '') + '<span class="who">● ' + esc(who) + '</span>' + (v.app_fb_at ? '<small>💬 Applicant feedback</small>' : '') + '</button>';
+          return '<button type="button" class="cal-ev st-' + esc(v.status) + '" style="--c:' + c + '" data-cal-ev="' + v.id + '">' + vtag + '<span class="t">' + calHm(v.at) + '–' + calHm(endT) + '</span><span class="p">' + esc(shortAddr(v.property_address)) + '</span>' + (v.applicant ? '<small>' + esc(v.applicant) + (v.att_ok_at ? ' ✅' : '') + '</small>' : '') + '<span class="who">● ' + esc(who) + '</span>' + (v.app_fb_at ? '<small>💬 Applicant feedback</small>' : '') + '</button>';
         }).join('') : '<div class="cal-none">No viewings</div>') +
         (key >= today ? '<button type="button" class="cal-add" data-cal-new="' + key + '">＋ Add</button>' : '') + '</div>';
     }
     $('calBody').innerHTML = h + '</div>';
+    vnCalStrip();
     var n = cal.items.filter(function(v){ return calDayKey(v.at) === today && v.status === 'booked'; }).length;
     $('sCal').hidden = !n; $('sCal').textContent = n;
   }
@@ -12947,6 +12957,61 @@
   });
   document.addEventListener('click', function(e){ var b = e.target.closest('#availView [data-open-win]'); if (b) window.open(location.pathname + '#' + b.dataset.openWin, 'ff' + b.dataset.openWin + Date.now()); });
   setInterval(function(){ if (view === 'cal' && !document.hidden && !$('appView').hidden) loadCal(true); }, 60000);   // others' bookings
+  // Who is out on viewings now / should be setting off: from 30 minutes before a booked viewing "time to leave",
+  // during it "out on a viewing". A banner for your own viewings on every page; the Calendar lists everyone.
+  var vnToday = [], VN_LEAD = 30 * 60000;
+  function vnPhase(v, now){
+    if (!v || v.status !== 'booked') return '';
+    now = now || Date.now(); var t = new Date(v.at).getTime(), end = t + (v.mins || 30) * 60000;
+    return now >= t && now < end ? 'at' : now >= t - VN_LEAD && now < t ? 'leave' : '';
+  }
+  function vnSlots(list){   // one entry per person, time and property (shared viewings count once)
+    var seen = {}, out = [];
+    list.forEach(function(v){ var ph = vnPhase(v); if (!ph) return; var k = calWho(v) + '|' + v.at + '|' + String(v.property_address || '').trim().toLowerCase(); if (seen[k]) { seen[k].n++; return; } seen[k] = { v: v, ph: ph, who: calWho(v), n: 1 }; out.push(seen[k]); });
+    return out.sort(function(a, b){ return new Date(a.v.at) - new Date(b.v.at); });
+  }
+  function vnAll(){ var ids = {}, all = []; vnToday.concat(cal.items || []).forEach(function(v){ if (!ids[v.id]) { ids[v.id] = 1; all.push(v); } }); return all; }
+  function vnMins(ms){ var m = Math.max(1, Math.round(ms / 60000)); return m + ' min' + (m === 1 ? '' : 's'); }
+  function vnRender(){
+    var me = calMe(), now = Date.now(), mine = vnSlots(vnAll()).filter(function(x){ return x.who === me; }), box = $('vwNow');
+    var hide = {}; try { hide = JSON.parse(sessionStorage.getItem('rr_vn_hide') || '{}'); } catch (e) {}
+    mine = mine.filter(function(x){ return !hide[x.v.id + x.ph]; });
+    var x = mine.filter(function(y){ return y.ph === 'at'; })[0] || mine[0];
+    if (!x) { box.hidden = true; box.innerHTML = ''; }
+    else {
+      var v = x.v, t = new Date(v.at).getTime(), end = t + (v.mins || 30) * 60000, ppl = x.n > 1 ? x.n + ' applicants' : (v.applicant || '');
+      box.className = 'vwnow' + (x.ph === 'at' ? ' at' : ''); box.hidden = false;
+      box.innerHTML = '<span class="vn-i">' + (x.ph === 'at' ? '📍' : '🚶') + '</span><span class="vn-t">' + (x.ph === 'at'
+        ? '<b>You should be at your viewing now</b> — ' + esc(v.property_address || '') + (ppl ? ' · ' + esc(ppl) : '') + ' · until ' + calHm(end)
+        : '<b>Time to leave for your ' + calHm(v.at) + ' viewing</b> (in ' + vnMins(t - now) + ') — ' + esc(v.property_address || '') + (ppl ? ' · ' + esc(ppl) : '')) + '</span>' +
+        '<a class="btn small" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(v.property_address || '') + '">🗺 Directions</a>' +
+        '<button type="button" class="btn small" data-vn-open="' + v.id + '">Open</button><button type="button" class="btn small ghost" data-vn-hide="' + v.id + x.ph + '" title="Hide this reminder">✕</button>';
+      if (x.ph === 'leave' && !vnRender.told[v.id]) { vnRender.told[v.id] = 1; toast('🚶 Time to leave for your ' + calHm(v.at) + ' viewing'); }
+    }
+    vnCalStrip();
+  }
+  vnRender.told = {};
+  function vnCalStrip(){
+    var el = $('calNow'); if (!el) return;
+    var sl = vnSlots(vnAll()), at = sl.filter(function(x){ return x.ph === 'at'; }), lv = sl.filter(function(x){ return x.ph === 'leave'; });
+    var line = function(x){ var v = x.v, end = new Date(v.at).getTime() + (v.mins || 30) * 60000; return '<b>' + esc(x.who === calMe() ? x.who + ' (me)' : x.who) + '</b> — ' + esc(shortAddr(v.property_address)) + (x.ph === 'at' ? ' · until ' + calHm(end) : ' · viewing at ' + calHm(v.at)); };
+    el.innerHTML = (at.length ? '<div>📍 <b>Out on viewings now:</b> ' + at.map(line).join(' · ') + '</div>' : '') + (lv.length ? '<div class="lv">🚶 <b>Should be leaving now</b> (viewing within 30 minutes): ' + lv.map(line).join(' · ') + '</div>' : '');
+  }
+  function vnLoad(){
+    if ($('appView').hidden || document.hidden) return;
+    var a = new Date(); a.setHours(0, 0, 0, 0); var b = new Date(a); b.setDate(b.getDate() + 1);
+    api('GET', '/api/admin/viewings?from=' + encodeURIComponent(a.toISOString()) + '&to=' + encodeURIComponent(b.toISOString())).then(function(d){
+      if (d && d.ok) { vnToday = d.viewings || []; vnRender(); if (view === 'cal' && cal.start) renderCal(); }
+    });
+  }
+  $('vwNow').addEventListener('click', function(e){
+    var b;
+    if ((b = e.target.closest('[data-vn-hide]'))) { try { var h = JSON.parse(sessionStorage.getItem('rr_vn_hide') || '{}'); h[b.dataset.vnHide] = 1; sessionStorage.setItem('rr_vn_hide', JSON.stringify(h)); } catch (er) {} vnRender(); return; }
+    if ((b = e.target.closest('[data-vn-open]'))) { var v = vnAll().filter(function(x){ return String(x.id) === b.dataset.vnOpen; })[0]; if (v) openViewing(v); }
+  });
+  setTimeout(vnLoad, 4000);
+  setInterval(vnLoad, 60000);
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) vnLoad(); });
   // Book (or change) a viewing — from the calendar, the Available list or anywhere.
   function openBook(o){
     o = o || {}; var v = o.edit || null; cal.edit = v; cal.leadId = v ? null : (o.leadId || null);
