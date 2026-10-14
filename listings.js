@@ -897,7 +897,12 @@ module.exports = function (app, opts) {
         const e = rmDetails.get(rid), pid = e && e.d && e.d.gnomenPid; if (pid && seen[pid]) { out[rid] = String(pid); return; }
         const addr = plain(r.address), m = /\b([A-Z]{1,2}\d[A-Z\d]?)(?:\s*\d[A-Z]{2})?\s*$/i.exec(String(r.address || '').replace(/[,\s]+$/, '')), o = m ? m[1].toUpperCase() : '';
         // The road can be in Gnomen's street box or in the next line (area) when the street box holds the building name.
-        let c = recs.filter(function (p) { return (!o || oc(p) === o) && (r.beds == null || p.beds === Number(r.beds)) && [p.street, p.area].some(function (v) { const sn = stName(v); return sn.length >= 4 && !/^(london|central london)$/.test(sn) && (' ' + addr + ' ').indexOf(' ' + sn + ' ') !== -1; }); });
+        // Only when the street box gives no home at the advert's rent, and the area line does (so it never adds doubt).
+        const hit = function (v) { const sn = stName(v); return sn.length >= 4 && !/^(london|central london)$/.test(sn) && (' ' + addr + ' ').indexOf(' ' + sn + ' ') !== -1; };
+        const near = function (list) { return r.pcm ? list.filter(function (p) { return p.price && Math.abs(p.price - r.pcm) / r.pcm <= 0.06; }) : []; };
+        const base = recs.filter(function (p) { return (!o || oc(p) === o) && (r.beds == null || p.beds === Number(r.beds)); });
+        let c = base.filter(function (p) { return hit(p.street); });
+        if (!near(c).length) { const viaArea = near(base.filter(function (p) { return !hit(p.street) && hit(p.area); })); if (viaArea.length) c = viaArea; }
         if (c.length > 1 && r.pcm) { const byRent = c.filter(function (p) { return p.price && Math.abs(p.price - r.pcm) / r.pcm <= 0.06; }); if (byRent.length) c = byRent; }
         if (c.length > 1) { const cur = c.filter(function (p) { return !/^(let|sold|withdrawn|completed|archived)$/i.test(String(p.status || '').trim()); }); if (cur.length) c = cur; }
         // The same home entered twice in Gnomen: the one shown on the website wins.
