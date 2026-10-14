@@ -232,6 +232,8 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS no_charge_at TIMESTAMPTZ;
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_photo_token_idx ON jobs (photo_token);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS track_token TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS urgency_check JSONB;
+-- A certificate renewal raised automatically: which certificate, when it expires, and whether the landlord wants us to do it.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS renewal JSONB;
 CREATE TABLE IF NOT EXISTS job_parts (
   id          SERIAL PRIMARY KEY,
   job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
@@ -1361,7 +1363,7 @@ const LIST_COLUMNS = `id, created_at, updated_at, status, urgency, urgency_check
   (SELECT coalesce(sum(jp.charge), 0) FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_charge,
   (SELECT count(*)::int FROM job_parts jp WHERE jp.job_id = jobs.id) AS parts_count,
   (SELECT coalesce(sum(jp.cost), 0) FROM job_parts jp WHERE jp.job_id = jobs.id AND jp.paid_by = 'contractor') AS parts_ctr,
-  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total, contractor_paid_at, ctr_part_paid, landlord_handles, landlord_contractor, no_charge_at,
+  landlord_name, landlord_email, landlord_phone, landlord_address, invoice_number, invoiced_at, invoice_total, contractor_paid_at, ctr_part_paid, landlord_handles, landlord_contractor, no_charge_at, renewal,
   (SELECT max(u.created_at) FROM job_updates u WHERE u.job_id = jobs.id) AS last_update_at`;
 
 function str(v, max) {
@@ -8135,7 +8137,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let sig = []; const sm = /\n\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Thanks,?|Yours sincerely,?)\s*\n([\s\S]*)$/i.exec(body);
     if (sm) { sig = sm[2].split('\n').map(function (l) { return unmark(l).trim(); }).filter(Boolean); body = body.slice(0, sm.index); }
     if (!sm) { const sm2 = /\n\s*(\[[a-z]+\])*\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Yours sincerely,?)\s*(\[\/[a-z]+\])*\s*\n([\s\S]*)$/i.exec(body); if (sm2) { sig = sm2[4].split('\n').map(function (l) { return unmark(l).trim(); }).filter(Boolean); body = body.slice(0, sm2.index); } }
-    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer'], [/\/vc\/[\w-]+/, 'Yes, I’ll be there']];
+    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer'], [/\/vc\/[\w-]+/, 'Yes, I’ll be there'], [/\/cr\/[\w-]+/, 'Choose in one click']];
     const buttons = [];
     const btnOf = function (b) {
       // The offer form for a property: a card with the address and a wide, rounded button.
@@ -8839,7 +8841,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
           await ntfy({ title: 'Can’t raise job: ' + def.name, message: String(c.address || '') + '\nExpires ' + certDay(c.expires_on) + '\nAdd the door number and postcode, then book it from Certificates.', priority: 4, tags: ['page_facing_up'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#certs' : undefined });
           continue;
         }
-        const assigned = who[c.type] || (contractorsList.filter(function (x) { return def.trade.test((x.trade || '') + ' ' + x.name); })[0] || {}).name || null;
+        // Not given to a contractor: the landlord may do it themselves, so we ask them first (the owner asked).
+        const assigned = null; void who; void contractorsList;
         const tenant = (await p.query(`SELECT t.name, t.phone, t.email FROM property_tenants pt JOIN tenants t ON t.id = pt.tenant_id
           WHERE pt.property_key = $1 AND pt.moved_out_at IS NULL AND pt.role IS DISTINCT FROM 'guarantor' AND t.deleted_at IS NULL ORDER BY pt.created_at DESC LIMIT 1`, [c.property_key])).rows[0] || null;
         const last = recent.filter(function (x) { return x.tenant_name || x.tenant_phone; })[0] || {};
@@ -8851,23 +8854,109 @@ document.querySelectorAll('.lcu').forEach(function(box){
             tenant_name, tenant_phone, tenant_email, key_permission, key_instructions, access_notes, landlord_name, landlord_email, landlord_phone, landlord_address, estimated_cost)
           VALUES ($1, $2, $3, 'Other', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
           [assigned ? 'Assigned' : 'New', past ? 'Urgent' : 'Routine', due, tidyAddress(address), def.category, def.job,
-            def.long + (past ? ' expired on ' : ' expires on ') + certDay(c.expires_on) + '. Please contact the tenant directly to arrange a time.', assigned,
+            def.long + (past ? ' expired on ' : ' expires on ') + certDay(c.expires_on) + '. Renewal reminder — not a reported problem. Ask the landlord whether they would like us to carry it out or will arrange it themselves.', assigned,
             tenant ? tenant.name : last.tenant_name || null, tenant ? tenant.phone : last.tenant_phone || null, tenant ? tenant.email : last.tenant_email || null,
             last.key_permission || null, last.key_instructions || null, last.access_notes || null,
             ll ? ll.name : null, ll ? ll.email : null, ll ? ll.phone : null, ll ? ll.address : null, cost == null ? null : cost]);
         const id = r.rows[0].id;
+        await p.query('UPDATE jobs SET renewal = $2 WHERE id = $1', [id, JSON.stringify({ type: c.type, name: def.name, expires_on: c.expires_on, cert_id: c.id, token: crypto.randomBytes(12).toString('base64url') })]);
         await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [id, 'created',
-          'Job raised automatically: ' + def.name + (past ? ' expired on ' : ' expires on ') + certDay(c.expires_on) + '.' + (assigned ? ' Assigned to ' + assigned + '.' : ' No contractor chosen for ' + def.name + ' yet.')]);
+          'Renewal reminder raised automatically: ' + def.name + (past ? ' expired on ' : ' expires on ') + certDay(c.expires_on) + '. Not given to a contractor — ask the landlord whether we should carry it out or they will arrange it themselves.']);
         await p.query('UPDATE property_certificates SET job_id = $2, updated_at = now() WHERE id = $1', [c.id, id]);
         console.log('Raised ' + refFor(id) + ' for ' + def.name + ' at ' + address);
         await ntfy({
           title: refFor(id) + ' raised: ' + def.name,
-          message: String(address).replace(/\s+/g, ' ') + '\n' + (past ? 'Expired ' : 'Expires ') + certDay(c.expires_on) + '\n' + (assigned ? 'Assigned to ' + assigned + ' — open it to send them the job.' : 'No contractor chosen yet — open it to assign one.'),
+          message: String(address).replace(/\s+/g, ' ') + '\n' + (past ? 'Expired ' : 'Expires ') + certDay(c.expires_on) + '\nAsk the landlord whether we should do it — open the job.',
           priority: past ? 5 : 4, tags: ['page_facing_up'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#job=' + id : undefined
         });
       }
     } finally { raising = false; }
   }
+  // ---------- Certificate renewal: ask the landlord whether we should do it ----------
+  // Open renewal jobs raised before this change: mark them as renewals (from the certificate they're linked to).
+  setTimeout(function () {
+    db().then(async function (p) {
+      if (!p) return;
+      const rows = (await p.query(`SELECT j.id, c.id AS cert_id, c.type, c.expires_on FROM property_certificates c JOIN jobs j ON j.id = c.job_id
+        WHERE j.renewal IS NULL AND j.archived_at IS NULL AND j.status NOT IN ('Completed', 'Cancelled') AND j.source = 'Other' AND j.description ~* '(expires|expired) on'`)).rows;
+      for (const r of rows) { const def = CERT_TYPES[r.type]; if (!def) continue;
+        await p.query('UPDATE jobs SET renewal = $2 WHERE id = $1 AND renewal IS NULL', [r.id, JSON.stringify({ type: r.type, name: def.name, expires_on: r.expires_on, cert_id: r.cert_id, token: crypto.randomBytes(12).toString('base64url') })]); }
+      if (rows.length) console.log('Marked ' + rows.length + ' open certificate jobs as renewals');
+    }).catch(function (e) { console.error('Renewal backfill failed:', e.message); });
+  }, 50 * 1000);
+  const crSite = function () { return String(process.env.SITE_URL || 'https://www.residentialrealtors.co.uk').replace(/\/+$/, ''); };
+  function renewalText(j, url, me) {
+    const rn = j.renewal || {}, past = rn.expires_on && rn.expires_on < new Date().toISOString().slice(0, 10);
+    // "Mr A Khan" → "Mr Khan"; "Sarah Jones" → "Sarah".
+    const nm = String(j.landlord_name || '').trim().split(/\s+/).filter(Boolean), title = nm.length > 1 && /^(mr|mrs|ms|miss|dr)\.?$/i.test(nm[0]);
+    const hi = !nm.length ? 'Landlord' : title ? nm[0].replace(/\.$/, '') + ' ' + nm[nm.length - 1] : nm[0].length > 1 ? nm[0] : nm.join(' ');
+    const what = String(rn.name || 'certificate').replace(/^Gas/, 'gas').replace(/^Electrical/, 'electrical');
+    return 'Dear ' + hi + ',\n\nThe ' + what + ' for ' + j.property_address + (past ? ' expired on ' : ' is due for renewal on ') + '[b]' + certDay(rn.expires_on) + '[/b].' +
+      '\n\nWould you like us to carry it out for you, or will you be arranging it yourself? Just press the button below to choose — it takes one click. ' + url +
+      '\n\nIf we carry it out, we’ll arrange a time with your tenant and send you the new certificate. If you arrange it yourself, please send us a copy of the new certificate once it’s done.' +
+      '\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors\n0207 096 8131';
+  }
+  async function renewalOf(p, id) {
+    const j = (await p.query('SELECT id, property_address, landlord_name, landlord_email, landlord_phone, renewal, status FROM jobs WHERE id = $1', [id])).rows[0];
+    if (!j || !j.renewal) return null;
+    if (!j.renewal.token) { j.renewal.token = crypto.randomBytes(12).toString('base64url'); await p.query('UPDATE jobs SET renewal = $2 WHERE id = $1', [id, JSON.stringify(j.renewal)]); }
+    return j;
+  }
+  // Staff: email the landlord the question (with the one-click answer link), or get the text for WhatsApp.
+  app.post('/api/admin/jobs/:id/renewal-ask', withDb(async function (p, req, res) {
+    const j = await renewalOf(p, jobId(req)); if (!j) return res.status(404).json({ ok: false });
+    const via = (req.body || {}).via === 'email' ? 'email' : 'whatsapp', url = crSite() + '/cr/' + j.renewal.token, me = req.user && req.user.id ? req.user.name : '';
+    const text = renewalText(j, url, me), subject = (j.renewal.name || 'Certificate') + ' due — ' + String(j.property_address || '').split(',').slice(0, 2).join(',');
+    let emailed = false;
+    if (via === 'email') {
+      const to = String(j.landlord_email || '').trim();
+      if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(to)) return res.status(400).json({ ok: false, error: 'no-email' });
+      if (!canEmail() || !sendEmail) return res.status(503).json({ ok: false, error: 'email-not-configured' });
+      const cc = []; officeCc([to], cc);
+      const r = await sendEmail({ to: [to], cc: cc, replyTo: 'info@residentialrealtors.co.uk', fromName: me ? me + ' - Residential Realtors' : 'Residential Realtors', subject: subject, text: text, html: brandEmail(text, (j.renewal.name || 'Certificate') + ' due') }).catch(function () { return { ok: false }; });
+      emailed = !!(r && r.ok !== false); logSent(req, [to], cc, 'info@residentialrealtors.co.uk', subject, text, r);
+      if (!emailed) return res.status(502).json({ ok: false, error: 'send-failed' });
+    }
+    if (via === 'email' || (req.body || {}).sent === true) {
+      const rn = Object.assign({}, j.renewal, { asked_at: new Date().toISOString(), asked_via: via, asked_by: me || 'Office' });
+      await p.query('UPDATE jobs SET renewal = $2, updated_at = now() WHERE id = $1', [j.id, JSON.stringify(rn)]);
+      await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [j.id, 'change', 'Asked the landlord by ' + (via === 'email' ? 'email' : 'WhatsApp') + ' whether we should carry out the ' + (j.renewal.name || 'certificate') + ' or they will arrange it (' + (me || 'Office') + ')']);
+    }
+    res.json({ ok: true, url: url, text: text.replace(/\[\/?b\]/g, ''), phone: j.landlord_phone || '', emailed: emailed });
+  }));
+  async function crJob(p, token) { return /^[\w-]{12,40}$/.test(String(token || '')) ? (await p.query("SELECT id, property_address, landlord_name, renewal, status FROM jobs WHERE renewal->>'token' = $1", [token])).rows[0] : null; }
+  // The landlord's one-click answer page: "Yes, please carry it out" / "I'll arrange it myself".
+  app.get('/cr/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
+    const demo = req.params.token === 'example';
+    const j = demo ? { property_address: 'Flat 3, 12 Example Street, London SE1 0XX', renewal: { name: 'Gas Safety Certificate', expires_on: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10) } } : await crJob(p, req.params.token);
+    res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex');
+    if (!j) return res.status(404).send(trackShell('Link not found', '<h1>Link not found</h1><p>This link may have expired. Please call us on 0207 096 8131.</p>', true));
+    const rn = j.renewal || {}, addr = String(j.property_address || '').split(',').slice(0, 2).join(','), past = rn.expires_on && rn.expires_on < new Date().toISOString().slice(0, 10);
+    const ans = rn.answer === 'us' ? '<div class="card cr-done"><div class="cr-ok">✓</div><b>Thank you — we’ll carry it out.</b><p class="muted" style="margin:4px 0 0">We’ll arrange a time with your tenant and send you the new certificate.</p></div>'
+      : rn.answer === 'self' ? '<div class="card cr-done"><div class="cr-ok">✓</div><b>Thank you — you’re arranging it yourself.</b><p class="muted" style="margin:4px 0 0">Please email us a copy of the new certificate at <a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a> once it’s done.</p></div>' : '';
+    const inner = (demo ? '<div class="card" style="background:#fffaeb;border-color:#fedf89"><b>Example page</b> — this is what landlords see. The property is made up and nothing is saved.</div>' : '') +
+      '<p class="sub" style="margin:0 0 4px">' + htmlEsc(rn.name || 'Certificate') + '</p><h1 style="margin:0 0 6px">' + htmlEsc(addr) + '</h1><p class="sub">' + (past ? 'Expired on ' : 'Due for renewal on ') + '<b>' + htmlEsc(certDay(rn.expires_on)) + '</b></p>' +
+      (ans || '<div class="card" id="crBox"><p style="margin:0 0 14px;font-weight:600">Would you like us to carry it out, or will you arrange it yourself?</p>' +
+        '<form method="post" class="cr-btns"><button class="btn cr-us" name="answer" value="us" type="submit">✓ Yes, please carry it out</button><button class="btn cr-self" name="answer" value="self" type="submit">I’ll arrange it myself</button></form>' +
+        '<p class="muted" style="margin:12px 0 0">If we carry it out, we’ll arrange a time with your tenant and send you the new certificate.</p></div>') +
+      '<p class="muted" style="text-align:center">Questions? Call <a href="tel:02070968131">0207 096 8131</a> or email <a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a></p>' +
+      '<style>.cr-btns{display:grid;gap:10px}.cr-btns .btn{width:100%;font-size:1.02rem;padding:14px 16px;border-radius:999px}.cr-us{background:#067647;border-color:#067647}.cr-self{background:#fff;color:#0b1f3a;border:1.5px solid #0b1f3a}.cr-done{text-align:center;padding:24px 18px}.cr-ok{width:56px;height:56px;line-height:56px;border-radius:50%;background:#ecfdf3;color:#067647;font-size:30px;font-weight:800;margin:0 auto 10px}</style>';
+    res.send(trackShell(rn.name || 'Certificate renewal', inner, true, 'Certificate'));
+  }));
+  app.post('/cr/:token', require('express').urlencoded({ extended: false, limit: '4kb' }), withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
+    if (req.params.token === 'example') return res.redirect(303, req.originalUrl);
+    const j = await crJob(p, req.params.token); if (!j) return res.status(404).send('Not found');
+    const ans = (req.body || {}).answer === 'self' ? 'self' : (req.body || {}).answer === 'us' ? 'us' : '';
+    if (!ans) return res.redirect(303, req.originalUrl);
+    const rn = Object.assign({}, j.renewal, { answer: ans, answered_at: new Date().toISOString() }), name = rn.name || 'certificate', addr = String(j.property_address || '').split(',').slice(0, 2).join(',');
+    await p.query('UPDATE jobs SET renewal = $2, landlord_handles = $3, status = CASE WHEN $3 = \'self\' AND status NOT IN (\'Completed\', \'Cancelled\') THEN \'On hold\' ELSE status END, updated_at = now() WHERE id = $1', [j.id, JSON.stringify(rn), ans === 'self' ? 'self' : null]);
+    await p.query('INSERT INTO job_updates (job_id, kind, body) VALUES ($1, $2, $3)', [j.id, 'change', ans === 'us' ? 'Landlord answered: please carry out the ' + name + '. Assign a contractor.' : 'Landlord answered: they will arrange the ' + name + ' themselves. Set to “Landlord themselves” and On hold until they send the new certificate.']);
+    ntfy({ title: (ans === 'us' ? '✅ Landlord wants us to do the ' : '🏠 Landlord will arrange the ') + name, message: addr + (ans === 'us' ? '\nAssign a contractor — ' : '\nWaiting for their new certificate — ') + refFor(j.id), tags: ['page_facing_up'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#job=' + j.id : undefined }).catch(function () {});
+    ownerEmail((ans === 'us' ? 'Landlord wants us to carry out the ' : 'Landlord will arrange the ') + name + ' — ' + addr, function (link) { return (j.landlord_name || 'The landlord') + ' answered about the ' + name + ' at ' + j.property_address + ': ' + (ans === 'us' ? 'please carry it out. Assign a contractor on ' + refFor(j.id) + '.' : 'they will arrange it themselves. ' + refFor(j.id) + ' is on hold until they send the new certificate.') + '\n\nOpen the job: ' + link; }, '#job=' + j.id).catch(function () {});
+    res.redirect(303, req.originalUrl);
+  }));
   // Open certificate jobs raised before costs were set get the cost to us.
   setTimeout(function () {
     db().then(async function (p) {

@@ -709,6 +709,7 @@
   .wa-kinds { display: flex; flex-wrap: wrap; gap: 6px; } .wa-kinds button { border: 1px solid var(--line); background: var(--panel); color: inherit; border-radius: 999px; padding: 7px 12px; font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; } .wa-kinds button.on { background: var(--ok-tint, #ecfdf3); border-color: var(--ok, #067647); color: var(--ok, #067647); }
   .wa-alt { display: grid; gap: 6px; } .wa-alt[hidden] { display: none; } .wa-alt-list { max-height: 30vh; } .wa-picked { display: flex; gap: 10px; align-items: center; justify-content: space-between; border: 1px solid var(--ok, #067647); background: var(--ok-tint, #ecfdf3); border-radius: 12px; padding: 8px 12px; font-size: .9rem; } #apwText { font: inherit; font-size: 15px; font-weight: 400; color: var(--ink); resize: vertical; }
   .vd-addr { margin-top: 6px; font-size: .9rem; } .vd-addr summary { cursor: pointer; color: var(--blue, #175cd3); font-weight: 600; } .vd-addr-row { display: flex; gap: 6px; margin: 6px 0 4px; } .vd-addr-row .inp { flex: 1; min-width: 0; }
+  .rn-box { border-left: 4px solid var(--blue, #175cd3); } .rn-h { font-weight: 800; font-size: 1rem; } .rn-st { margin-top: 8px; padding: 8px 10px; border-radius: 10px; font-size: .9rem; } .rn-st.ok { background: var(--ok-tint, #ecfdf3); color: var(--ok, #067647); } .rn-st.self { background: var(--blue-tint, #eff4ff); } .rn-st.wait { background: var(--warn-tint, #fffaeb); }
   .vw-ok { color: var(--dk-fg-067647, #067647); font-weight: 700; white-space: nowrap; } .vw-wait { color: var(--dk-fg-b54708, #b54708); white-space: nowrap; } .rb-dsort { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted, var(--dk-fg-667085, #667085)); } .rb-dchip.on { background: var(--ink, #111); color: var(--on-ink, #fff); border-color: var(--ink, #111); }
   .mip { margin-bottom: 12px; } .mip-t { display: block; border-top: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); padding-top: 8px; margin-top: 8px; } .mip h3 + .mip-t { border-top: 0; margin-top: 0; padding-top: 0; } .mip-h { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; } .mip-h .linkish { text-align: left; }
   .aa-card { border: 1px solid var(--line, var(--dk-bd-e5e7eb, #e5e7eb)); border-radius: 12px; padding: 10px 12px; background: var(--dk-bg-fff, #fff); } .aa-answer { background: var(--dk-bg-f5f3ff, #f5f3ff); border-color: var(--dk-bd-ddd6fe, #ddd6fe); } .aa-h { display: block; margin-bottom: 4px; font-size: .86rem; }
@@ -3284,6 +3285,27 @@
     return Math.max(1, m) + 'm';
   }
   function ago(d){ return dur(Date.now() - new Date(d).getTime()) + ' ago'; }
+  // Certificate renewal job: the due date, whether we've asked the landlord, and their one-click answer.
+  function renewalBox(j){
+    var r = j.renewal; if (!r) return '';
+    var past = r.expires_on && r.expires_on < isoDay(new Date()), due = r.expires_on ? longDay(String(r.expires_on).slice(0, 10)) : '';
+    var st = r.answer === 'us' ? '<div class="rn-st ok">✅ Landlord answered ' + esc(fmtShort(r.answered_at)) + ': <b>please carry it out</b> — assign a contractor below.</div>'
+      : r.answer === 'self' ? '<div class="rn-st self">🏠 Landlord answered ' + esc(fmtShort(r.answered_at)) + ': <b>they’ll arrange it themselves</b> — waiting for their new certificate.</div>'
+      : r.asked_at ? '<div class="rn-st wait">✉ Asked by ' + (r.asked_via === 'email' ? 'email' : 'WhatsApp') + ' ' + esc(fmtShort(r.asked_at)) + (r.asked_by ? ' (' + esc(r.asked_by) + ')' : '') + ' — no answer yet.</div>' : '';
+    return '<div class="card rn-box" data-pane="overview"><div class="rn-h">📅 ' + esc(r.name || 'Certificate') + ' renewal — ' + (past ? 'expired' : 'due') + ' <b>' + esc(due) + '</b></div>' +
+      '<p class="muted-note" style="margin:4px 0 0">A renewal reminder, not a reported problem. Ask the landlord whether they’d like us to carry it out or will arrange it themselves — they answer with one click.</p>' + st +
+      (r.answer ? '' : '<div class="row-actions" style="margin:10px 0 0;flex-wrap:wrap">' + (j.landlord_email ? '<button type="button" class="btn small primary" data-rn-ask="email">✉ Email the landlord</button>' : '') + (j.landlord_phone && waNumber(j.landlord_phone) ? '<button type="button" class="btn small wa-btn" data-rn-ask="wa">💬 WhatsApp the landlord</button>' : '') +
+        (!j.landlord_email && !(j.landlord_phone && waNumber(j.landlord_phone)) ? '<span class="muted-note" style="margin:0">No landlord email or mobile on this job — add them under the job’s landlord details.</span>' : '') + '</div>') + '</div>';
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-rn-ask]'); if (!b || !openJobId) return;
+    var jid = openJobId, how = b.dataset.rnAsk;
+    if (how === 'email') { if (!confirm('Email the landlord asking whether we should carry out this renewal or they will arrange it themselves?')) return; busy(b, true, 'Sending…');
+      api('POST', '/api/admin/jobs/' + jid + '/renewal-ask', { via: 'email' }).then(function(r){ busy(b, false); if (!r || !r.ok) { toast(r && r.error === 'no-email' ? 'No landlord email on this job' : 'Couldn’t send the email'); return; } toast('✓ Email sent to the landlord'); if (openJobId === jid) openJob(jid); }); return; }
+    var w = window.open('', '_blank');
+    api('POST', '/api/admin/jobs/' + jid + '/renewal-ask', { via: 'whatsapp', sent: true }).then(function(r){ if (!r || !r.ok) { if (w) w.close(); toast('Couldn’t make the message'); return; }
+      var url = 'https://wa.me/' + waNumber(r.phone) + '?text=' + encodeURIComponent(r.text); if (w) w.location.href = url; else window.open(url, '_blank', 'noopener'); if (openJobId === jid) openJob(jid); });
+  });
   function toLocalInput(d){
     if (!d) return '';
     var x = new Date(d), pad = function(n){ return String(n).padStart(2, '0'); };
@@ -7966,6 +7988,8 @@
           : '<p class="muted-note">' + (j.photo_count ? 'This report\u2019s ' + j.photo_count + ' photo' + (j.photo_count === 1 ? ' is' : 's are') + ' inside the tenant\u2019s original PDF (it was sent before photos were saved separately).' : 'No photos yet.') + '</p>') +
       '</div>' +
 
+      // A certificate renewal raised automatically: not a reported problem — ask the landlord who does it.
+      renewalBox(j) +
       // At a glance
       '<div class="glance" data-pane="overview">' +
         '<div><div class="k">' + (completed ? 'Completed' : 'Raised') + '</div><div class="v"><span class="time ' + t.cls + '">' + esc(completed ? t.text : t.text.replace(/^Raised t/, 'T').replace(/^Raised /, '')) + '</span>' +
