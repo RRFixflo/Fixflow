@@ -842,6 +842,8 @@
   .ll-note { padding: 9px 0; border-top: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); } .ll-note span { display: block; white-space: pre-wrap; overflow-wrap: anywhere; } .ll-note small { color: var(--dk-fg-667085, #667085); }
   .ll-notes .crm-add-note { margin-bottom: 8px; }
   .vw-fb { margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: var(--dk-bg-f9fafb, #f9fafb); font-size: .86rem; } .vw-fb b { color: var(--dk-fg-101828, #101828); }
+  .c-todo .tdo-who { display: block; font-size: .78rem; font-weight: 600; color: var(--dk-fg-475467, #475467); } .c-todo .tdo-who.open { color: var(--dk-fg-b54708, #b54708); }
+  .appl-try { display: inline-flex; gap: 4px; flex-wrap: wrap; } .appl-try[hidden] { display: none; }
   .appl-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 16px 12px 52px; }
   .appl-qf { flex-basis: 100%; display: grid; gap: 6px; } .appl-qb { display: flex; gap: 6px; flex-wrap: wrap; }
   @media (max-width: 700px) { .appl-quick { padding: 0 12px 10px; } }
@@ -9696,7 +9698,9 @@
   function applTenant(g){ var it = g.group || [g]; for (var i = 0; i < it.length; i++) { var t = (crm.tenantOf || {})[it[i].id]; if (t) return t; } return null; }
   function applTenantTitle(t){ return (t.current ? 'One of our current tenants' : 'A former tenant of ours') + ': ' + (t.name || '') + (t.address ? ' at ' + t.address : '') + ' (matched by ' + t.how + ')'; }
   // Not contacted yet: every enquiry still New, and nothing but the "Came in from …" line in the notes (a viewing booked or cancelled, an email sent, a call all count).
-  function applFresh(g){ var it = g.group || [g]; return it.every(function(i){ return i.status === 'new' && !i.notes.some(function(n){ return !(n.auto && /^Came in from/i.test(String(n.note || n.text || ''))); }); }) && !(g.viewings || []).length; }
+  function applFresh(g){ var it = g.group || [g]; return it.every(function(i){ return i.status === 'new' && !i.notes.some(function(n){ var t = String(n.note || n.text || ''); return !(n.auto && /^Came in from/i.test(t)) && !/^📵 Tried to call/.test(t); }); }) && !(g.viewings || []).length; }
+  // Calls tried without getting through ("📵 Tried to call — no answer"), so everyone can see it was attempted.
+  function applTried(x){ var n = 0, last = 0; (x.notes || []).forEach(function(m){ if (/^📵 Tried to call/.test(String(m.note || ''))) { n++; last = Math.max(last, new Date(m.at).getTime()); } }); return { n: n, last: last }; }
   function applMine(g){ var h = applHold(g); return h.held && h.who === crm.me; }
   // Which property an enquiry is about: the listing reference, and the address.
   function applPropKeys(i){ var d = i.data || {}, k = [], m = String(d.url || '').match(/rightmove\.co\.uk\/properties\/(\d+)/); if (d.ref) k.push('r:' + String(d.ref)); if (m) k.push('r:' + m[1]); if (i.address) k.push('a:' + propKey(i.address)); return k; }
@@ -9725,7 +9729,8 @@
     if (x.archived || x.type === 'sub' || x.status === 'won' || x.status === 'lost') return '';
     if (x.type === 'viewing' && x.status === 'booked') return '';
     var age = Date.now() - new Date(x.at).getTime(), last = x.notes.reduce(function(m, n){ return Math.max(m, new Date(n.at).getTime()); }, new Date(x.at).getTime()), today = crmToday();
-    if (x.status === 'new') return age > 2 * 3600000 ? 'Not contacted · ' + crmAgo(age) : 'New · contact today';
+    var tr = applTried(x); if (x.status === 'new' && tr.n && !x.notes.some(function(n){ var t = String(n.note || ''); return !n.auto && !/^📵 Tried to call/.test(t); })) return 'Tried to call ' + (tr.n > 1 ? tr.n + '× · last ' : '') + (Date.now() - tr.last < 3600000 ? 'just now' : crmAgo(Date.now() - tr.last) + ' ago') + ' — no answer yet';
+    if (x.status === 'new') return age > 2 * 3600000 ? 'Not contacted · came in ' + crmAgo(age) + ' ago' : 'New · contact today';
     if (x.follow && x.follow <= today) return 'Follow-up due';
     if (Date.now() - last > 7 * 86400000) return 'No update for ' + Math.floor((Date.now() - last) / 86400000) + ' days';
     return '';
@@ -9874,6 +9879,7 @@
   function applPropUrl(g){
     var its = g.group || [g], i, d;
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\//.test(String(d.deeplink || ''))) return d.deeplink; }   // the Rightmove link the enquiry came with
+    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\//.test(String(d.rm_link || ''))) return d.rm_link; }   // our Rightmove advert for that property (worked out on the server)
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\/(www\.)?rightmove\.co\.uk\//.test(String(d.url || ''))) return d.url; }
     var mt = applMatch(g); if (mt && /^https?:\/\//.test(String(mt.url || ''))) return mt.url;
     var a = applHome(g); if (a && (a.rm_url || a.rm_id)) return /^https?:\/\//.test(String(a.rm_url || '')) ? a.rm_url : 'https://www.rightmove.co.uk/properties/' + encodeURIComponent(a.rm_id);
@@ -9942,7 +9948,8 @@
       var st = CRM_ST[g.status] || CRM_ST.new, need = crmNeed(g), hold = applHold(g), open = !!crm.open[g.ref], rent = applRent(g), tel = g.phone ? String(g.phone).replace(/[^\d+]/g, '') : '';
       var isNew = applFresh(g), tn = applTenant(g);   // NEW until someone has contacted them
       var up = applNextVw(g);
-      var todo = up ? '<span class="ok">🗓 Viewing ' + esc(fmtWhen(up.at)) + '</span>' : need ? '<span class="warn">📣 ' + esc(need) + '</span>' : '';
+      var holdTxt = g.assigned ? (hold.held ? '<span class="tdo-who">🔒 ' + esc(String(g.assigned).split(' ')[0]) + ' · ' + crmAgo(hold.left) + ' left to update</span>' : '<span class="tdo-who open">🔓 Open to anyone</span>') : '';
+      var todo = up ? '<span class="ok">🗓 Viewing ' + esc(fmtWhen(up.at)) + '</span>' : (holdTxt + (need ? '<span class="warn">' + (/^Tried/.test(need) ? '📵 ' : '📣 ') + esc(need) + '</span>' : '')) || '';
       var r = '<tr class="appl-tr' + (open ? ' on' : '') + (need ? ' is-new' : '') + (up ? ' has-vw' : '') + '" data-crm="' + esc(g.ref) + '" data-crm-tog>' +
         '<td class="ck"><label class="crm-pick"><input type="checkbox" data-crm-pick="' + esc(g.ref) + '"' + (crmSel[g.ref] ? ' checked' : '') + ' aria-label="Select"></label></td>' +
         '<td class="nw c-id">' + g.id + '</td>' +
@@ -10028,7 +10035,7 @@
     if (ap && !x.archived) {
       var lockedQ = applLocked(x);
       h += '<div class="appl-quick">' + (lockedQ ? '<span class="muted-note" style="margin:0">🔒 ' + esc(hold.who) + '’s applicant — opens to everyone in ' + hrs(hold.left) + ' if they don’t get in touch</span>'
-        : '<button type="button" class="btn small primary" data-aq="spoke">' + (hold.held && hold.who === crm.me ? '📞 Spoke to them again' : '✅ I’ve spoken to them') + '</button><button type="button" class="btn small" data-aq="note">📝 Add a note</button>') +
+        : '<button type="button" class="btn small primary" data-aq="spoke">' + (hold.held && hold.who === crm.me ? '📞 Spoke to them again' : '✅ I’ve spoken to them') + '</button><button type="button" class="btn small" data-aq="note">📝 Add a note</button><button type="button" class="btn small" data-aq-try>📵 Tried to call</button><span class="appl-try" hidden><button type="button" class="btn small ghost" data-aq-tried="no answer">No answer</button><button type="button" class="btn small ghost" data-aq-tried="couldn’t get through">Couldn’t get through</button><button type="button" class="btn small ghost" data-aq-tried="left a voicemail">Left a voicemail</button></span>') +
         (lockedQ ? '' : '<a class="btn small" href="#" data-appl-book>🗓 Book a viewing</a><a class="btn small" href="#" data-appl-edit>✏️ Edit details</a>') +
         '<div class="appl-qf" hidden><textarea class="inp" rows="2" data-aq-text></textarea><div class="appl-qb"><button type="button" class="btn small primary" data-aq-save></button><button type="button" class="btn small ghost" data-aq-cancel>Cancel</button></div></div></div>';
     }
@@ -10330,6 +10337,9 @@
     var x = crmItem(e.target); if (!x) return;
     // Quick buttons on an applicant's card.
     var aq = e.target.closest('[data-aq]'), qbox = e.target.closest('.appl-quick');
+    if (e.target.closest('[data-aq-try]') && qbox) { var ts = qbox.querySelector('.appl-try'); ts.hidden = !ts.hidden; return; }
+    var tb = e.target.closest('[data-aq-tried]');
+    if (tb && qbox) { busy(tb, true, 'Saving…'); api('POST', '/api/admin/crm/note', { ref: x.ref, note: '📵 Tried to call — ' + tb.dataset.aqTried }).then(function(d){ busy(tb, false); crmDone('📵 Noted: tried to call — ' + tb.dataset.aqTried)(d); }); return; }
     if (aq && qbox) { var fq = qbox.querySelector('.appl-qf'), ta = fq.querySelector('textarea'), sv = fq.querySelector('[data-aq-save]'), spoke = aq.dataset.aq === 'spoke';
       fq.hidden = false; fq.dataset.mode = aq.dataset.aq; ta.placeholder = spoke ? 'What did they say? (optional) — e.g. wants to view Saturday, moving in March, 2 adults' : 'Your note — a call, what they said, what’s next…';
       sv.textContent = spoke ? '✅ Confirm — ' + (applHold(x).held && applHold(x).who === crm.me ? 'save it' : 'they’re my applicant') : 'Save note'; ta.focus(); return; }
