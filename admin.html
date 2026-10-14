@@ -9878,7 +9878,8 @@
   // Rightmove number from Available properties, or a Rightmove reference), else our own property page.
   function applPropUrl(g){
     var its = g.group || [g], i, d;
-    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\//.test(String(d.deeplink || ''))) return d.deeplink; }   // the Rightmove link the enquiry came with
+    // The public Rightmove advert first (never Rightmove Plus — that's the lead's page in our own Rightmove account, on the card instead).
+    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/rightmove\.co\.uk\/properties\/\d+/.test(String(d.deeplink || ''))) return d.deeplink; }
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\//.test(String(d.rm_link || ''))) return d.rm_link; }   // our Rightmove advert for that property (worked out on the server)
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\/(www\.)?rightmove\.co\.uk\//.test(String(d.url || ''))) return d.url; }
     var mt = applMatch(g); if (mt && /^https?:\/\//.test(String(mt.url || ''))) return mt.url;
@@ -10046,6 +10047,7 @@
     var facts = [];
     if (x.phone) facts.push(['Phone', esc(x.phone)]); if (x.email) facts.push(['Email', esc(x.email)]);
     if (x.address) facts.push(['Property', esc(x.address) + (d.url ? ' · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">see listing ↗</a>' : '')]);
+    if (/^https?:\/\//.test(String(d.deeplink || '')) && !/rightmove\.co\.uk\/properties\/\d+/.test(String(d.deeplink))) facts.push(['Rightmove Plus', '<a href="' + esc(d.deeplink) + '" target="_blank" rel="noopener">Open this lead in Rightmove Plus ↗</a>']);
     if (d.match && d.match.address && d.match.address !== x.address) facts.push(['Matched to', (d.match.kind === 'dream' ? 'Dream advert · ' : 'Available · ') + (d.match.url ? '<a href="' + esc(d.match.url) + '" target="_blank" rel="noopener">' + esc(d.match.address) + ' ↗</a>' : esc(d.match.address)) + (d.match.pcm ? ' · ' + gbp(Math.round(d.match.pcm)).replace(/\.00$/, '') + ' pcm' : '')]);
     if (d.beds) facts.push(['Bedrooms', esc(d.beds)]); if (d.type) facts.push(['Type', esc(d.type)]); if (d.service && x.type !== 'quick') facts.push(['Wants', esc(d.service)]);
     if (d.when) facts.push([x.type === 'sale' ? 'Selling' : 'Available', esc(d.when)]); if (d.people) facts.push(['People', esc(d.people)]); if (d.move) facts.push([d.listing === 'sale' ? 'Position' : d.move_date ? 'Move-in date' : 'Moving', esc(d.move)]); if (d.income) facts.push(['Rent paid by', esc(d.income)]); if (d.guarantor) facts.push(['UK guarantor', esc(d.guarantor)]);
