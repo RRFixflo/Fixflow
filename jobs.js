@@ -2246,7 +2246,7 @@ module.exports = function mountJobs(app, opts) {
     } catch (err) { console.error('Sign-in check failed:', err.message); if (t.role) return res.status(503).json({ ok: false, error: 'db' }); }
     req.role = t.role || null;
     if (!req.user) req.user = { id: null, name: req.role === 'offers' ? 'Offers staff' : 'Owner', role: req.role === 'offers' ? 'offers' : 'owner' };
-    if (req.role === 'offers' && !staffAllowed(req.method, req.path) && !(req.user.role === 'offers_admin' && /^\/(users(\/\d+(\/send-login)?)?|staff-activity)$/.test(req.path))) return res.status(403).json({ ok: false, error: 'not-allowed' });
+    if (req.role === 'offers' && !staffAllowed(req.method, req.path) && !(req.user.role === 'offers_admin' && /^\/(users(\/\d+(\/send-login)?)?|staff-activity)$/.test(req.path)) && !(canManageUsers(req) && /^\/(outlook(\/.*)?|email-usage(\/mute)?)$/.test(req.path))) return res.status(403).json({ ok: false, error: 'not-allowed' });
     // (A whole licence register can also come as the file itself — types a cross-site form can't send.)
     if (req.method !== 'GET' && !req.is('application/json') && !(req.method === 'POST' && req.path === '/licence-register-scan' && req.is(['application/pdf', 'text/csv']))) return res.status(415).json({ ok: false, error: 'json-only' });
     // Who did what: note each change once it has gone through.
