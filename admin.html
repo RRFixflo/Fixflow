@@ -15118,7 +15118,7 @@
       '<p class="muted-note" style="margin:0 0 4px">Automatic emails sent only to the office or staff in the last 30 days, most frequent first. Switched off means nobody in the office gets that kind of email any more (phone alerts and the staff app still show it). Emails to tenants, landlords, applicants and contractors always go.</p>' +
       (d.kinds.length ? d.kinds.map(function(k, i){
         var per = k.n >= 30 ? Math.round(k.n / 30) + ' a day' : k.n + ' in 30 days';
-        return '<div class="mu-kind' + (k.off ? ' off' : '') + '"><div><div class="mk-t">' + esc(k.kind) + '</div><div class="mk-s">' + (k.off ? 'Switched off' + (k.held ? ' · ' + k.held + ' held back' : '') : per) + (k.example && k.example !== k.kind ? ' · e.g. “' + esc(k.example) + '”' : '') + ((k.who || []).length ? ' · to ' + esc(k.who.length > 3 ? k.who.length + ' people' : k.who.join(', ')) : '') + '</div></div>' +
+        return '<div class="mu-kind' + (k.off ? ' off' : '') + '"><div><div class="mk-t">' + esc(k.kind.replace(/#/g, 'n')) + '</div><div class="mk-s">' + (k.off ? 'Switched off' + (k.held ? ' · ' + k.held + ' held back' : '') : per) + (k.example && k.example !== k.kind ? ' · e.g. “' + esc(k.example) + '”' : '') + ((k.who || []).length ? ' · to ' + esc(k.who.length > 3 ? k.who.length + ' people' : k.who.join(', ')) : '') + '</div></div>' +
           '<button type="button" class="btn small ' + (k.off ? 'mk-off' : 'mk-on') + '" data-mu-kind="' + i + '">' + (k.off ? '✕ Off — turn on' : '✓ On — switch off') + '</button></div>';
       }).join('') : '<p class="muted-note">No emails to the office counted yet — they’ll appear here as they’re sent.</p>') + '</details>';
   }
