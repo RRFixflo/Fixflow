@@ -131,7 +131,6 @@ module.exports = function (app, opts) {
       await load();
       const row = cache.filter(function (r) { return r.month === f.key; })[0];
       console.log('Market update: ' + f.month + ' ' + (force ? 'written' : 'published') + (w.ai ? ' (AI wording, figures checked)' : ' (plain wording)'));
-      if (row && LIVE && opts.sendMail && !force) opts.sendMail({ to: ['info@residentialrealtors.co.uk'], subject: 'Website: ' + title, text: 'This month’s London rental market update is live on the website:\n\n' + opts.siteUrl + '/market-updates/' + row.slug + '\n\nIt uses the latest ONS figures and our own track record. To hide it or rewrite it: Fixflow → Activity → SEO health.' }).catch(function () {});
       return row;
     } finally { making = false; }
   }
