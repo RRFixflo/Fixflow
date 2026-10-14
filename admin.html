@@ -9909,7 +9909,7 @@
   function applTable(list){
     var s = crm.asort, rows = list.slice().sort(function(a, b){ var x = applVal(a, s.k), y = applVal(b, s.k); return (x < y ? -1 : x > y ? 1 : b.id - a.id) * (x === y ? 1 : s.d); }).slice(0, 300);
     var thisYr = new Date().getFullYear(), day = function(v){ if (!v) return ''; var d = new Date(v); return d.toLocaleString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', year: d.getFullYear() === thisYr ? undefined : '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', ''); };
-    var head = '<tr><th class="ck" title="Select"></th>' + APPL_COLS.map(function(c){ if (c[0] === 'act') return '<th class="c-act">Contact</th>'; return '<th data-avsort="' + c[0] + '" class="c-' + c[0] + (s.k === c[0] ? ' on' : '') + '">' + c[1] + (s.k === c[0] ? (s.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr>';
+    var head = '<tr><th class="ck" title="Select"></th>' + APPL_COLS.map(function(c){ if (c[0] === 'act') return '<th class="c-act">Contact</th>'; return '<th data-asort="' + c[0] + '" class="c-' + c[0] + (s.k === c[0] ? ' on' : '') + '">' + c[1] + (s.k === c[0] ? (s.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr>';
     var body = rows.map(function(g){
       var st = CRM_ST[g.status] || CRM_ST.new, need = crmNeed(g), hold = applHold(g), open = !!crm.open[g.ref], rent = applRent(g), tel = g.phone ? String(g.phone).replace(/[^\d+]/g, '') : '';
       var isNew = applFresh(g), tn = applTenant(g);   // NEW until someone has contacted them
