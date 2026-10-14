@@ -855,13 +855,15 @@
   .crm-appl { border: 1px solid var(--dk-bd-d0d5dd, #d0d5dd); background: var(--dk-bg-f9fafb, #f9fafb); border-radius: 10px; padding: 10px 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; } .crm-appl-own { font-size: .9rem; line-height: 1.4; } .crm-verdict { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; font-weight: 600; width: 100%; max-width: 320px; } .crm-hook { margin-bottom: 12px; } .crm-hook summary { cursor: pointer; font-weight: 600; }
   @media (max-width: 520px) { #invTopBtn { display: none; } }   /* phones: Invoices is in the More menu */
   .inv-top { margin-bottom: 12px; } .inv-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .inv-bar #invQ { flex: 1; min-width: 200px; }
-  .inv-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 120px 130px auto; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line, var(--dk-bd-eaecf0, #eaecf0)); }
+  .inv-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) 150px 110px 300px; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line, var(--dk-bd-eaecf0, #eaecf0)); }
   .inv-row:last-child { border-bottom: 0; } .inv-num { font-weight: 800; } .inv-num small, .inv-main small, .inv-amt small { display: block; font-weight: 500; color: var(--ink-soft, var(--dk-fg-667085, #667085)); font-size: .76rem; }
   .inv-main { min-width: 0; } .inv-main b { display: block; overflow-wrap: anywhere; } .inv-amt { text-align: right; font-weight: 800; }
   .inv-st { font-size: .78rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; justify-self: start; } .inv-st.paid { background: var(--dk-bg-ecfdf3, #ecfdf3); color: var(--dk-fg-067647, #067647); } .inv-st.due { background: var(--dk-bg-eff8ff, #eff8ff); color: var(--dk-fg-175cd3, #175cd3); } .inv-st.over { background: var(--dk-bg-fef3f2, #fef3f2); color: var(--dk-fg-b42318, #b42318); }
-  .inv-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .inv-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-start; }
+  .inv-head { background: var(--dk-bg-f9fafb, #f9fafb); padding-top: 8px; padding-bottom: 8px; } .inv-hk { background: none; border: 0; padding: 0; min-height: 0; font: inherit; font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); cursor: pointer; margin-right: 6px; } .inv-hk.on, .inv-hk:hover { color: var(--ink, var(--dk-fg-101828, #101828)); }
+  .inv-sortsel { display: flex; align-items: center; gap: 6px; font-size: .78rem; font-weight: 700; color: var(--ink-soft); } .inv-sortsel select { width: auto; min-height: 32px; padding: 4px 8px; font-size: .82rem; }
   .ie-line { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto auto; gap: 6px; align-items: center; } .ie-line label { flex-direction: row !important; font-size: .78rem; white-space: nowrap; } .ie-tot { text-align: right; font-size: .92rem; }
-  @media (max-width: 760px) { .inv-row { grid-template-columns: minmax(0, 1fr) auto; } .inv-st { grid-column: 1; } .inv-acts { grid-column: 1 / -1; justify-content: flex-start; } .ie-line { grid-template-columns: minmax(0, 1fr) 90px; } }
+  @media (max-width: 760px) { .inv-head > div:not(.inv-acts) { display: none; } .inv-head .inv-acts { grid-column: 1 / -1; } .inv-row { grid-template-columns: minmax(0, 1fr) auto; } .inv-st { grid-column: 1; } .inv-acts { grid-column: 1 / -1; justify-content: flex-start; } .ie-line { grid-template-columns: minmax(0, 1fr) 90px; } }
   .av-win { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin: -4px 0 8px; } @media (max-width: 760px) { .av-win { display: none; } }
   .cal-top { margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
   .cal-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .cal-bar b { font-size: 1.05rem; margin: 0 6px; flex: 1; min-width: 140px; }
@@ -12737,6 +12739,7 @@
   var invF = 'unpaid', invEditRow = null;
   $('invTopBtn').addEventListener('click', function(){ closeDrawer(); showView('inv'); });
   function invStatus(i){ return i.paid_at ? 'paid' : invOverdue(i) ? 'over' : 'due'; }
+  var invSort = (function(){ try { return JSON.parse(localStorage.getItem('rr_inv_sort') || 'null') || { k: '', d: 1 }; } catch (e) { return { k: '', d: 1 }; } })();
   function renderInvoices(){
     if (view !== 'inv') return;
     var all = allInvoices.slice(), unpaid = all.filter(function(i){ return !i.paid_at; }), over = unpaid.filter(invOverdue);
@@ -12753,7 +12756,22 @@
       if (!q.length) return true; var h = psNorm([i.number, i.property_address, i.landlord_name, i.ref, i.title].join(' ')); return q.every(function(t){ return h.indexOf(t) !== -1; });
     });
     var day = function(v){ return v ? new Date(String(v).length === 10 ? v + 'T12:00:00' : v).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; };
-    $('invList').innerHTML = list.length ? list.slice(0, 400).map(function(i){
+    // Sort: tap a heading (or choose from "Sort by"); tap again to reverse. Empty values always last. Remembered per browser.
+    var sv = function(i){ var k = invSort.k;
+      if (k === 'number') return String(i.number || '') || null;
+      if (k === 'date') return i.created_at ? String(i.created_at) : null;
+      if (k === 'property') return String(shortAddr(i.property_address || '')).toLowerCase() || null;
+      if (k === 'landlord') return String(i.landlord_name || '').toLowerCase() || null;
+      if (k === 'job') return i.job_id ? String(i.ref || '') : null;
+      if (k === 'due') return i.due ? String(i.due).slice(0, 10) : null;
+      if (k === 'amount') return num(i.total) || null;
+      if (k === 'paid') return i.paid_at ? String(i.paid_at) : null;
+      return null; };
+    if (invSort.k) list = list.slice().sort(function(a, b){ var x = sv(a), y = sv(b); if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1; return (x < y ? -1 : x > y ? 1 : 0) * invSort.d; });
+    var hd = function(k, t){ return '<button type="button" class="inv-hk' + (invSort.k === k ? ' on' : '') + '" data-inv-sort="' + k + '">' + t + (invSort.k === k ? (invSort.d > 0 ? ' ▲' : ' ▼') : '') + '</button>'; };
+    var head = '<div class="inv-row inv-head"><div>' + hd('number', 'Invoice') + ' ' + hd('date', 'Date') + '</div><div>' + hd('property', 'Property') + ' ' + hd('job', 'Job') + ' ' + hd('landlord', 'Landlord') + '</div><div>' + hd(invF === 'paid' ? 'paid' : 'due', invF === 'paid' ? 'Paid' : 'Due') + '</div><div style="text-align:right">' + hd('amount', 'Amount') + '</div>' +
+      '<div class="inv-acts"><label class="inv-sortsel">Sort by <select class="inp" id="invSortSel">' + [['', 'Newest first'], ['date', 'Date raised'], ['due', 'Due date'], ['paid', 'Date paid'], ['amount', 'Amount'], ['job', 'Job'], ['property', 'Property'], ['landlord', 'Landlord'], ['number', 'Invoice number']].map(function(o){ return '<option value="' + o[0] + '"' + (invSort.k === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label></div></div>';
+    $('invList').innerHTML = list.length ? head + list.slice(0, 400).map(function(i){
       var st = invStatus(i);
       return '<div class="inv-row" data-inv-row="' + i.id + '"><div class="inv-num">' + esc(i.number || '—') + '<small>' + esc(day(i.created_at)) + '</small></div>' +
         '<div class="inv-main"><b>' + esc(shortAddr(i.property_address || 'No address')) + '</b><small>' + esc([i.job_id ? 'Repair ' + i.ref : (i.title || i.ref), i.landlord_name].filter(Boolean).join(' · ')) + (i.collect_month === 'direct' ? ' · landlord pays directly' : i.collect_month ? ' · from ' + esc(new Date(i.collect_month + '-15').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })) + ' rent' : '') + '</small></div>' +
@@ -12766,6 +12784,9 @@
     var n = over.length; $('invTopBadge').hidden = !n; $('invTopBadge').textContent = n;
   }
   $('invQ').addEventListener('input', renderInvoices);
+  function invSetSort(k, fromSel){ invSort = !k ? { k: '', d: 1 } : fromSel ? { k: k, d: k === 'amount' || k === 'date' || k === 'paid' ? -1 : 1 } : invSort.k === k ? { k: k, d: -invSort.d } : { k: k, d: k === 'amount' || k === 'date' || k === 'paid' ? -1 : 1 }; try { localStorage.setItem('rr_inv_sort', JSON.stringify(invSort)); } catch (e) {} renderInvoices(); }
+  $('invList').addEventListener('click', function(e){ var b = e.target.closest('[data-inv-sort]'); if (b) invSetSort(b.dataset.invSort); });
+  $('invList').addEventListener('change', function(e){ if (e.target.id === 'invSortSel') invSetSort(e.target.value, true); });
   $('invF').addEventListener('click', function(e){ var b = e.target.closest('[data-invf]'); if (!b) return; invF = b.dataset.invf; renderInvoices(); });
   $('invNew').addEventListener('click', function(){ openNewInvoice({ after: function(){ loadAllInvoices().then(renderInvoices); } }); });
   function invRefresh(){ return loadAllInvoices().then(function(){ renderInvoices(); if (typeof loadJobs === 'function') loadJobs(); }); }
