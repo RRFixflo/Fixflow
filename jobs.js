@@ -8866,13 +8866,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const who = v.staff || v.created_by || '', u = who ? (await p.query("SELECT email FROM staff_users WHERE disabled_at IS NULL AND lower(name) = lower($1) AND coalesce(email, '') <> '' LIMIT 1", [who])).rows[0] : null;
       const addr = String(v.property_address || '').split(',').slice(0, 2).join(','), subj = 'Viewing feedback: ' + (v.applicant || 'Applicant') + ' — ' + addr;
       const text = (v.applicant || 'The applicant') + ' has given feedback on the viewing at ' + addr + '.\n\nRating: ' + rating + '/5\nGoing ahead: ' + VF_INTEREST[interest] + (fb.liked ? '\nLiked: ' + fb.liked : '') + (fb.disliked ? '\nDidn’t like / questions: ' + fb.disliked : '') + (fb.service ? '\nOur service: ' + fb.service : '') + '\n\nIt’s on the viewing in Fixflow’s calendar.';
-      sendEmail({ to: [u ? u.email : 'info@residentialrealtors.co.uk'], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subj, text: text, html: brandEmail(text, 'Viewing feedback') }).catch(function (e) { console.error('Viewing feedback email failed:', e.message); });
+      // No email to whoever is doing the viewing (the owner asked) — it shows on the viewing card and the applicant's card.
     }
     res.json({ ok: true });
   }));
   // The applicant confirms they're coming to the viewing, with one click from the confirmation email (/vc/<token>).
   // The page confirms by itself as it opens (a button too, for browsers without JavaScript); noted on their lead
-  // and emailed to whoever is doing the viewing. Moving the viewing clears it, so they confirm the new time.
+  // and shown on the viewing (no email — the owner asked). Moving the viewing clears it, so they confirm the new time.
   app.get('/vc/:token', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
     const demo = req.params.token === 'example';
@@ -8908,7 +8908,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (canEmail() && sendEmail) {
         const who = v.staff || v.created_by || '', u = who ? (await p.query("SELECT email FROM staff_users WHERE disabled_at IS NULL AND lower(name) = lower($1) AND coalesce(email, '') <> '' LIMIT 1", [who])).rows[0] : null;
         const subj = '✅ Viewing confirmed: ' + name + ' — ' + addr, text = name + ' has confirmed they’re coming to the viewing at ' + addr + ' on ' + when + '.' + (v.phone ? '\n\nTheir number: ' + v.phone : '') + '\n\nFixflow - Residential Realtors';
-        sendEmail({ to: [u ? u.email : 'info@residentialrealtors.co.uk'], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subj, text: text, html: brandEmail(text, 'Viewing confirmed') }).catch(function (e) { console.error('Viewing confirmed email failed:', e.message); });
+        // No email to whoever is doing the viewing (the owner asked) — it shows on the viewing card and the applicant's card.
       }
     }
     ok();
