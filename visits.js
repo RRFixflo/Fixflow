@@ -28,6 +28,7 @@ module.exports = function (app, opts) {
         ref TEXT, device TEXT, country TEXT, visitor TEXT);
       CREATE INDEX IF NOT EXISTS web_visits_at ON web_visits (at);
       ALTER TABLE web_visits ADD COLUMN IF NOT EXISTS ip TEXT;
+      ALTER TABLE web_visits ADD COLUMN IF NOT EXISTS secs INT;
       CREATE TABLE IF NOT EXISTS web_humans (visitor TEXT PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT now());`).catch(function (e) { ready = null; throw e; });
     await ready; return p;
   }
@@ -81,6 +82,23 @@ module.exports = function (app, opts) {
       pool().then(function (p) { return p && p.query('INSERT INTO web_humans (visitor) VALUES ($1) ON CONFLICT DO NOTHING', [v]); }).catch(function () {});
     } catch (e) {}
   });
+  // Time on page: the page reports how long it was on screen (visible time only) when it's left or hidden;
+  // saved on that visitor's latest view of the page (same daily visitor code as the page views).
+  app.post('/api/visit/t', require('express').text({ type: function () { return true; }, limit: '2kb' }), function (req, res) {
+    res.status(204).end();
+    try {
+      const ua = String(req.headers['user-agent'] || '');
+      if (!ua || BOT.test(ua) || (opts.isStaff && opts.isStaff(req))) return;
+      const ip = ipOf(req); if (ignore.some(function (x) { return ipKey(x.ip) === ipKey(ip); })) return;
+      const m = /^(\/[^|\s]{0,299})\|(\d{1,5})$/.exec(String(typeof req.body === 'string' ? req.body : '').trim()); if (!m) return;
+      const secs = Math.min(3600, parseInt(m[2], 10)); if (!(secs > 0)) return;
+      const day = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+      const v = crypto.createHash('sha256').update(SALT + '|' + day + '|' + ip + '|' + ua).digest('hex').slice(0, 16);
+      setTimeout(function () {   // after the page view itself has been saved (they're written every 10 seconds)
+        pool().then(function (p) { return p && p.query("UPDATE web_visits SET secs = GREATEST(coalesce(secs, 0), $3) WHERE id = (SELECT id FROM web_visits WHERE visitor = $1 AND path = $2 AND at > now() - interval '3 hours' ORDER BY at DESC LIMIT 1)", [v, m[1], secs]); }).catch(function () {});
+      }, 12000);
+    } catch (e) {}
+  });
   setInterval(function () { pool().then(function (p) { return p && p.query("DELETE FROM web_humans WHERE at < now() - interval '13 months'"); }).catch(function () {}); }, 24 * 3600000).unref();
   // Sources grouped into names people recognise.
   const SRC = [[/google/, 'Google'], [/bing/, 'Bing'], [/yahoo|duckduckgo|ecosia/, 'Other search'], [/rightmove/, 'Rightmove'], [/zoopla/, 'Zoopla'], [/onthemarket/, 'OnTheMarket'],
@@ -99,12 +117,14 @@ module.exports = function (app, opts) {
     const prevSince = since + " - interval '" + days + " days'";
     const q = function (sql) { return p.query(sql).then(function (r) { return r.rows; }); };
     let recent = [];
+    // Time on each page view: what the page reported, else the gap to that visitor's next page (if under 30 minutes).
+    const timed = "SELECT path, title, visitor, coalesce(secs, CASE WHEN nx - at < interval '30 minutes' THEN extract(epoch FROM nx - at) END) AS s FROM (SELECT path, title, visitor, at, secs, lead(at) OVER (PARTITION BY visitor ORDER BY at) AS nx FROM web_visits WHERE at >= " + since + ") z";
     const [tot, prev, byDay, pages, props, refs, devices, countries, live] = await Promise.all([
       q('SELECT count(*)::int AS views, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= ' + since),
       q('SELECT count(*)::int AS views, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= ' + prevSince + ' AND at < ' + since),
       q("SELECT to_char(at AT TIME ZONE 'Europe/London', " + (days === 1 ? "'HH24'" : "'YYYY-MM-DD'") + ") AS k, count(*)::int AS views, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= " + since + ' GROUP BY 1 ORDER BY 1'),
-      q("SELECT path, max(title) AS title, count(*)::int AS views, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= " + since + " AND path NOT LIKE '/property/%' GROUP BY path ORDER BY views DESC LIMIT 25"),
-      q("SELECT split_part(path, '/', 3) AS id, max(title) AS title, max(path) AS path, count(*)::int AS views, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= " + since + " AND path LIKE '/property/%' GROUP BY 1 ORDER BY views DESC LIMIT 25"),
+      q("WITH v AS (" + timed + ") SELECT path, max(title) AS title, count(*)::int AS views, count(DISTINCT visitor)::int AS visitors, round(avg(s))::int AS avg_secs FROM v WHERE path NOT LIKE '/property/%' GROUP BY path ORDER BY views DESC LIMIT 25"),
+      q("WITH v AS (" + timed + ") SELECT split_part(path, '/', 3) AS id, max(title) AS title, max(path) AS path, count(*)::int AS views, count(DISTINCT visitor)::int AS visitors, round(avg(s))::int AS avg_secs FROM v WHERE path LIKE '/property/%' GROUP BY 1 ORDER BY views DESC LIMIT 25"),
       q('SELECT ref, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= ' + since + ' GROUP BY ref'),
       q('SELECT device AS k, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= ' + since + ' GROUP BY 1 ORDER BY 2 DESC'),
       q('SELECT coalesce(country, \'\') AS k, count(DISTINCT visitor)::int AS visitors FROM web_visits WHERE at >= ' + since + ' GROUP BY 1 ORDER BY 2 DESC LIMIT 8'),
