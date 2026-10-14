@@ -831,6 +831,7 @@ CREATE TABLE IF NOT EXISTS email_log (
 );
 CREATE INDEX IF NOT EXISTS email_log_at ON email_log (at DESC);
 ALTER TABLE email_log ADD COLUMN IF NOT EXISTS auto BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE email_log ADD COLUMN IF NOT EXISTS via TEXT;
 -- Copies of the attachments sent (email_files ids), to open or download from Sent emails.
 ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS files JSONB NOT NULL DEFAULT '[]'::jsonb;
 CREATE TABLE IF NOT EXISTS pvr_reservations (
@@ -1836,6 +1837,7 @@ module.exports = function mountJobs(app, opts) {
   // aren't sent at all; anything to a customer, or written by staff, always goes.
   const MAIL_DAY = parseInt(process.env.MAIL_DAILY_LIMIT, 10) || 100, MAIL_MONTH = parseInt(process.env.MAIL_MONTHLY_LIMIT, 10) || 3000;
   const mailCache = { at: 0, mute: [], staff: [] }; let mailQuotaDay = '';
+  let outlookMail = null;   // set when outlook.js is mounted: sends from the office mailbox once it's connected
   function mailKind(subject) {
     const s = String(subject || '').replace(/\s+/g, ' ').trim();
     let k = s.split(/\s*(?::|—|–|\|)\s*|\s+-\s+/)[0]; if (k.length < 4) k = s;
@@ -1852,18 +1854,20 @@ module.exports = function mountJobs(app, opts) {
     return mailCache;
   }
   function mailOurs(addr, c) { const a = String(addr || '').trim().toLowerCase().replace(/^.*<([^>]+)>.*$/, '$1'); return /@residentialrealtors\.co\.uk$/.test(a) || c.staff.indexOf(a) !== -1; }
-  function mailLog(m, kind, all, internal, auto, status, error) {
-    db().then(function (p) { return p && p.query('INSERT INTO email_log (kind, subject, to_list, internal, auto, status, error) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [kind, String(m.subject || '').slice(0, 300), all.slice(0, 20), internal, auto, status, error ? String(error).slice(0, 300) : null]); }).catch(function () {});
+  function mailLog(m, kind, all, internal, auto, status, error, via) {
+    db().then(function (p) { return p && p.query('INSERT INTO email_log (kind, subject, to_list, internal, auto, status, error, via) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [kind, String(m.subject || '').slice(0, 300), all.slice(0, 20), internal, auto, status, error ? String(error).slice(0, 300) : null, via || null]); }).catch(function () {});
   }
   const sendRaw = opts.sendEmail ? async function (m) {
     const c = await mailCtx(), kind = mailKind(m && m.subject);
     const all = [].concat(m.to || [], m.cc || [], m.bcc || []).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
     const internal = all.length > 0 && all.every(function (a) { return mailOurs(a, c); }), auto = !actor.getStore();
     if (internal && auto && c.mute.indexOf(kind) !== -1) { mailLog(m, kind, all, true, true, 'off'); return { ok: true, muted: true }; }
-    const r = await opts.sendEmail(m);
+    // The office Outlook mailbox first (when connected); Resend if it isn't, or if Microsoft refuses.
+    let r = outlookMail ? await outlookMail.send(m).catch(function (e) { return { ok: false, error: e.message }; }) : null, via = 'outlook';
+    if (!r || !r.ok) { r = await opts.sendEmail(m); via = 'resend'; }
     const err = r && !r.ok ? String(r.error || 'failed') : '', limit = /HTTP 429|quota|daily|limit/i.test(err);
-    mailLog(m, kind, all, internal, auto, r && r.ok ? 'sent' : limit ? 'limit' : 'failed', err);
+    mailLog(m, kind, all, internal, auto, r && r.ok ? 'sent' : limit ? 'limit' : 'failed', err, via);
     if (limit) { const day = new Date().toISOString().slice(0, 10); if (mailQuotaDay !== day) { mailQuotaDay = day;
       console.error('Email refused by Resend (plan limit): ' + err.slice(0, 200));
       ntfy({ title: '⚠️ Emails not sending', message: 'Resend refused an email — the free plan’s daily limit (' + MAIL_DAY + ' a day) looks used up, so emails won’t go out until tomorrow. Upgrade Resend to Pro, or see Fixflow → Sent emails → Email usage.', priority: 4, tags: ['warning'] }).catch(function () {}); } }
@@ -7677,7 +7681,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   }));
 
   // Outlook drafts (Microsoft 365), see outlook.js.
-  require('./outlook')(app, { db: db, withDb: withDb, str: str, publicUrl: PUBLIC_URL });
+  outlookMail = require('./outlook')(app, { db: db, withDb: withDb, str: str, publicUrl: PUBLIC_URL, alert: function (b) { return ntfy(b).catch(function () {}); } });
 
   app.get('/api/admin/certificates', withDb(async function (p, req, res) {
     const r = await p.query(`SELECT id, property_key, address, type, issued_on, expires_on, reference, rating, notes, not_required, outcome, faults, remedial_cost, job_id, reminded_at, updated_at,
@@ -8440,13 +8444,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
   app.get('/api/admin/email-usage', withDb(async function (p, req, res) {
     if (!canManageUsers(req)) return res.status(403).json({ ok: false });
     const tz = "AT TIME ZONE 'Europe/London'";
-    const n = (await p.query("SELECT count(*) FILTER (WHERE (at " + tz + ")::date = (now() " + tz + ")::date AND status <> 'off')::int AS today, count(*) FILTER (WHERE date_trunc('month', at " + tz + ") = date_trunc('month', now() " + tz + ") AND status <> 'off')::int AS month, count(*) FILTER (WHERE status IN ('limit', 'failed') AND at > now() - interval '7 days')::int AS refused, max(at) FILTER (WHERE status = 'limit') AS last_limit, min(at) AS since FROM email_log")).rows[0];
+    const n = (await p.query("SELECT count(*) FILTER (WHERE (at " + tz + ")::date = (now() " + tz + ")::date AND status <> 'off' AND coalesce(via, '') <> 'outlook')::int AS today, count(*) FILTER (WHERE date_trunc('month', at " + tz + ") = date_trunc('month', now() " + tz + ") AND status <> 'off' AND coalesce(via, '') <> 'outlook')::int AS month, count(*) FILTER (WHERE (at " + tz + ")::date = (now() " + tz + ")::date AND via = 'outlook')::int AS ol_today, count(*) FILTER (WHERE status IN ('limit', 'failed') AND at > now() - interval '7 days')::int AS refused, max(at) FILTER (WHERE status = 'limit') AS last_limit, min(at) AS since FROM email_log")).rows[0];
     const days = (await p.query("SELECT to_char((at " + tz + ")::date, 'YYYY-MM-DD') AS day, count(*) FILTER (WHERE status <> 'off')::int AS n, count(*) FILTER (WHERE internal AND status <> 'off')::int AS ours, count(*) FILTER (WHERE status = 'off')::int AS held, count(*) FILTER (WHERE status IN ('limit', 'failed'))::int AS refused FROM email_log WHERE at > now() - interval '14 days' GROUP BY 1 ORDER BY 1 DESC")).rows;
     const kinds = (await p.query("SELECT kind, count(*) FILTER (WHERE status <> 'off')::int AS n, count(*) FILTER (WHERE status = 'off')::int AS held, max(at) AS last, (array_agg(subject ORDER BY at DESC))[1] AS example, (SELECT array_agg(DISTINCT x) FROM (SELECT unnest(to_list) AS x FROM email_log e2 WHERE e2.kind = email_log.kind AND e2.internal AND e2.at > now() - interval '30 days' LIMIT 200) q) AS who FROM email_log WHERE internal AND auto AND at > now() - interval '30 days' GROUP BY kind ORDER BY count(*) DESC LIMIT 80")).rows;
     const c = await mailCtx(), seen = kinds.map(function (k) { return k.kind; });
     c.mute.forEach(function (k) { if (seen.indexOf(k) === -1) kinds.push({ kind: k, n: 0, held: 0, last: null, example: '', who: [] }); });
     kinds.forEach(function (k) { k.off = c.mute.indexOf(k.kind) !== -1; });
-    res.json({ ok: true, limits: { day: MAIL_DAY, month: MAIL_MONTH }, today: n.today, month: n.month, refused: n.refused, last_limit: n.last_limit, since: n.since, days: days, kinds: kinds });
+    res.json({ ok: true, limits: { day: MAIL_DAY, month: MAIL_MONTH }, today: n.today, month: n.month, ol_today: n.ol_today, outlook: outlookMail ? { connected: await outlookMail.connected().catch(function () { return false; }), office: outlookMail.office, ok_at: outlookMail.state.ok_at, error: outlookMail.state.error, error_at: outlookMail.state.error_at } : null, refused: n.refused, last_limit: n.last_limit, since: n.since, days: days, kinds: kinds });
   }));
   app.post('/api/admin/email-usage/mute', withDb(async function (p, req, res) {
     if (!canManageUsers(req)) return res.status(403).json({ ok: false });
