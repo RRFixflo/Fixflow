@@ -12843,7 +12843,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!name || (!email && !phone)) return res.status(400).json({ ok: false, error: 'missing' });
     const type = ['Landlord', 'Tenant', 'Applicant', 'Buyer', 'Seller', 'Contractor', 'Other'].indexOf(b.type) !== -1 ? b.type : 'Other';
     const data = { kind: 'contact', topic: type, message: str(b.message, 3000) || '', source: ['Phone call', 'Walk-in', 'Email', 'WhatsApp', 'Viewing', 'Rightmove', 'Zoopla', 'OnTheMarket', 'Website', 'Referral', 'Other'].indexOf(b.source) !== -1 ? b.source : '' };
-    const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id', [name, email, phone, str(b.address, 300) || (type === 'Applicant' ? '(no property given)' : '(no address)'), JSON.stringify(data), 'contacted']);
+    const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id', [name, email, phone, str(b.address, 300) || (type === 'Applicant' ? '(no property given)' : '(no address)'), JSON.stringify(data), /^(Phone call|Walk-in|Viewing)$/.test(data.source) ? 'contacted' : 'new']);   // spoken to in person or on the phone: contacted; an email, message or portal enquiry still needs a reply
     await crmLog(p, 'vr:' + r.rows[0].id, 'Added by ' + (req.user ? req.user.name : 'Office') + (data.source ? ' · ' + data.source : ''), req);
     res.json({ ok: true, id: r.rows[0].id });
   }));
