@@ -687,6 +687,8 @@
   .av-cl { display: grid; grid-template-columns: 1fr auto 150px 90px; gap: 10px; align-items: center; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--dk-bd-f2f4f7, #f2f4f7); background: var(--dk-bg-fff, #fff); padding: 9px 10px; font: inherit; color: inherit; cursor: pointer; } .av-cl:hover { background: var(--dk-bg-f9fafb, #f9fafb); } .av-cl.is-urgent { box-shadow: inset 3px 0 0 #d92d20; } .av-cl-a { font-weight: 600; } .av-cl-a small, .av-cl-p small { color: var(--ink-soft); font-weight: 500; } .av-cl-p { font-weight: 800; } .av-cl-d { font-size: .84rem; } .av-cl-f { text-align: right; }
   @media (max-width: 640px) { .av-cl { grid-template-columns: 1fr auto; } .av-cl-d { grid-column: 1; } .av-cl-f { grid-column: 2; } .av-modes button { padding: 0 9px; } }
   .av-card.av-flash { box-shadow: 0 0 0 3px #155eef; transition: box-shadow .3s; }
+  .ca-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; } .ca-paste { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: .88rem; margin-bottom: 10px; }
+  .ca-dup { margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: var(--dk-bg-fffaeb, #fffaeb); border: 1px solid var(--dk-bd-fedf89, #fedf89); font-size: .88rem; }
   .cb-hint { font-size: .82rem; margin: -2px 0 4px; color: var(--dk-fg-067647, #067647); } .cb-hint.warn { color: var(--dk-fg-b42318, #b42318); }
   .tcy-notice { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--dk-bg-fffaeb, #fffaeb); border: 1px solid var(--dk-bd-fedf89, #fedf89); font-size: .9rem; }
   .nt-opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 10px; margin-bottom: 6px; cursor: pointer; } .nt-opt small { display: block; color: var(--ink-soft); font-size: .8rem; } .nt-opt span { flex: 1; min-width: 0; } .nt-opt input[type=radio] { margin-top: 4px; }
@@ -2299,10 +2301,13 @@
           <div class="av-chips" id="crmTypes"></div>
           <div class="appl-key" id="applKey" hidden></div>
           <div class="crm-add" id="crmAdd" hidden>
+            <div class="ca-head" id="caHead" hidden><b>➕ Add an applicant</b><span class="muted-note" style="margin:0">Just a name and a mobile or email — everything else is optional.</span></div>
+            <label class="ca-paste" id="caPasteRow" hidden>📋 Paste their details <span class="muted-note" style="margin:0">— from an email, a text or a portal enquiry; the boxes fill in by themselves</span><textarea class="inp" id="caPaste" rows="2" placeholder="e.g. Jane Example · 07700 900123 · jane@example.com"></textarea></label>
             <div class="lt-grid"><label>Name<input class="inp" id="caName" maxlength="120" autocomplete="off"></label><label>Mobile<input class="inp" id="caPhone" type="tel" maxlength="40"></label><label>Email<input class="inp" id="caEmail" type="email" maxlength="200"></label>
-              <label>They are<select class="inp" id="caType"><option>Landlord</option><option>Applicant</option><option>Tenant</option><option>Buyer</option><option>Seller</option><option>Contractor</option><option>Other</option></select></label><label>How they got in touch<select class="inp" id="caSource"><option>Phone call</option><option>Walk-in</option><option>Email</option><option>Viewing</option><option>Rightmove</option><option>Referral</option><option>Other</option></select></label>
-              <label>Property / address <span class="muted-note" style="margin:0">optional</span><input class="inp" id="caAddr" list="offProps" maxlength="300"></label><label class="crm-wide">Notes<textarea class="inp" id="caMsg" rows="2" placeholder="What they want, budget, when to call back…"></textarea></label></div>
-            <div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="btn primary" id="caSave">Save lead</button><button type="button" class="btn ghost" id="caCancel">Cancel</button></div>
+              <label id="caTypeLbl">They are<select class="inp" id="caType"><option>Landlord</option><option>Applicant</option><option>Tenant</option><option>Buyer</option><option>Seller</option><option>Contractor</option><option>Other</option></select></label><label>How they got in touch<select class="inp" id="caSource"><option>Phone call</option><option>Walk-in</option><option>Email</option><option>WhatsApp</option><option>Viewing</option><option>Rightmove</option><option>Zoopla</option><option>OnTheMarket</option><option>Website</option><option>Referral</option><option>Other</option></select></label>
+              <label><span id="caAddrLbl">Property / address</span> <span class="muted-note" style="margin:0">optional</span><input class="inp" id="caAddr" list="offProps" maxlength="300"></label><label class="crm-wide">Notes<textarea class="inp" id="caMsg" rows="2" placeholder="What they want, budget, when to call back…"></textarea></label></div>
+            <div class="ca-dup" id="caDup" hidden></div>
+            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button type="button" class="btn primary" id="caSave">Save lead</button><button type="button" class="btn" id="caSaveBook" hidden>Save &amp; book a viewing</button><button type="button" class="btn ghost" id="caCancel">Cancel</button></div>
           </div>
         </div>
         <details class="card crm-hook" id="crmHook" hidden><summary>🔌 Connect Rightmove and other portals</summary><div id="crmHookBody" class="muted-note">Loading…</div></details>
@@ -9703,6 +9708,7 @@
   document.addEventListener('click', function(e){ if (e.target.closest('[data-crm-nag]')) { var ap = crm.items.some(function(x){ return isAppl(x) && crmNeed(x); }); showView(ap ? 'appl' : 'crm'); crm.tile = 'attn'; crm.type = ''; renderCrm(); } });
   function crmOpenItem(x){ return x.type !== 'sub' && (x.status === 'new' || x.status === 'contacted' || (x.status === 'booked' && x.type !== 'viewing')); }
   function renderCrm(){
+    $('crmAddBtn').textContent = crm.mode === 'appl' ? '➕ Add an applicant' : '➕ Add a lead'; if (!$('crmAdd').hidden) caMode();
     var appl = crm.mode === 'appl', base = crm.items.filter(function(x){ return appl ? isAppl(x) : !isAppl(x); });   // applicants on Leads, everything else on Website leads (owner and staff)
     $('crmHook').hidden = true;   // the owner asked for the portal-connection box to go (Rightmove is connected; the links keep working)
     $('crmView').classList.toggle('is-appl', appl); $('crmView').classList.toggle('tbl', appl && crm.view === 'table');
@@ -10203,13 +10209,52 @@
   $('crmTiles').addEventListener('click', function(e){ var b = e.target.closest('[data-crm-tile]'); if (!b) return; crm.tile = crm.tile === b.dataset.crmTile ? '' : b.dataset.crmTile; if (crm.tile === 'subs') crm.type = ''; renderCrm(); });
   $('crmView').addEventListener('click', function(e){ var j = e.target.closest('[data-crm-job]'); if (!j) return; e.stopPropagation(); var jid = Number(j.dataset.crmJob); showView('jobs'); Promise.resolve(loadJobs()).then(function(){ openJob(jid); }); });
   $('crmTypes').addEventListener('click', function(e){ var b = e.target.closest('[data-crm-type]'); if (!b) return; crm.type = b.dataset.crmType; crm.tile = ''; renderCrm(); });
-  $('crmAddBtn').addEventListener('click', function(){ $('crmAdd').hidden = !$('crmAdd').hidden; if (!$('crmAdd').hidden) { if (crm.mode === 'appl') $('caType').value = 'Applicant'; $('caName').focus(); } });
+  // Adding someone: on Applicants it's "Add an applicant" — name and a mobile or email, the property from the
+  // available list, paste-to-fill, a warning if they're already on the list, and "Save & book a viewing".
+  function caMode(){
+    var appl = crm.mode === 'appl';
+    $('caHead').hidden = $('caPasteRow').hidden = $('caSaveBook').hidden = !appl; $('caTypeLbl').hidden = appl;
+    $('caAddrLbl').textContent = appl ? 'Property they’re interested in' : 'Property / address';
+    $('caSave').textContent = appl ? 'Save applicant' : 'Save lead';
+    $('caAddr').placeholder = appl ? 'Start typing — from the available list' : '';
+    if (appl) { $('caType').value = 'Applicant'; if ($('caAddr').getAttribute('list')) { $('caAddr').removeAttribute('list'); $('caAddr').dataset.psug = 'tcy'; } } else if (!$('caAddr').getAttribute('list')) { $('caAddr').setAttribute('list', 'offProps'); delete $('caAddr').dataset.psug; }
+  }
+  $('crmAddBtn').addEventListener('click', function(){ $('crmAdd').hidden = !$('crmAdd').hidden; if (!$('crmAdd').hidden) { caMode(); if (crm.mode === 'appl') psOurList(); $('caName').focus(); } });
   $('caCancel').addEventListener('click', function(){ $('crmAdd').hidden = true; });
-  $('caSave').addEventListener('click', function(){
-    var b = { name: $('caName').value.trim(), phone: $('caPhone').value.trim(), email: $('caEmail').value.trim(), type: $('caType').value, source: $('caSource').value, address: $('caAddr').value.trim(), message: $('caMsg').value.trim() };
-    if (!b.name) { toast('Add their name'); $('caName').focus(); return; } if (!b.phone && !b.email) { toast('Add a phone number or email'); $('caPhone').focus(); return; }
-    api('POST', '/api/admin/crm/contact', b).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save'); return; } ['caName', 'caPhone', 'caEmail', 'caAddr', 'caMsg'].forEach(function(id){ $(id).value = ''; }); $('crmAdd').hidden = true; crm.open['vr:' + d.id] = 1; crm.type = ''; crm.tile = ''; toast('✓ Contact saved'); loadCrm(); });
+  // Paste: pick out the email, a UK phone number and the name.
+  $('caPaste').addEventListener('input', function(){
+    var t = this.value; if (!t.trim()) return;
+    var em = (t.match(/[^\s@<>,;:()]+@[^\s@<>,;:()]+\.[a-z]{2,}/i) || [''])[0];
+    var ph = (t.replace(em, ' ').match(/(?:\+44\s?7|\b07)\d{3}[\s-]?\d{3}[\s-]?\d{3}\b|(?:\+44\s?|\b0)\d{2,4}[\s-]?\d{3,4}[\s-]?\d{3,4}\b/) || [''])[0];
+    var nm = (t.match(/\bname\s*[:\-]\s*([A-Za-z'’\- ]{2,60})/i) || [])[1];
+    if (!nm) { var line = t.split(/\n|·|\||,/).map(function(x){ return x.replace(em, '').replace(ph, '').replace(/\b(mobile|phone|tel|email|e-mail)\b\s*[:\-]?/ig, '').trim(); }).filter(function(x){ return /^[A-Za-z][A-Za-z'’.\- ]{1,60}$/.test(x) && x.split(/\s+/).length <= 4 && !/^(hi|hello|hey|dear|thanks|thank you|regards|kind regards|best|cheers|many thanks|sent from)\b/i.test(x) && !/\b(is|am|are|my|the|would|like|please|interested)\b/i.test(x); });
+      nm = line.filter(function(x){ return /^[A-Z][a-z'’\-]+(\s+[A-Z][A-Za-z'’\-]+){1,3}$/.test(x); })[0] || line[0]; }
+    if (nm && !$('caName').value.trim()) $('caName').value = nm.trim().replace(/\s+/g, ' ');
+    if (ph && !$('caPhone').value.trim()) $('caPhone').value = ph.replace(/[^\d+]/g, '');
+    if (em && !$('caEmail').value.trim()) $('caEmail').value = em.toLowerCase();
+    caDupCheck();
   });
+  // Already on the list (same email or last 10 digits of the phone): say so, with a link to them.
+  function caDupCheck(){
+    var e = $('caEmail').value.trim().toLowerCase(), t = applTail($('caPhone').value), hit = null;
+    if (e || t.length >= 9) hit = crm.items.filter(function(x){ return !x.archived && ((e && String(x.email || '').trim().toLowerCase() === e) || (t.length >= 9 && applTail(x.phone) === t)); })[0];
+    $('caDup').hidden = !hit;
+    if (hit) $('caDup').innerHTML = '👀 <b>' + esc(hit.name || 'They') + '</b> ' + (isAppl(hit) ? 'is already an applicant' : 'is already on Landlord enquiries') + ' (added ' + esc(fmtShort(hit.at)) + (hit.address && hit.address !== '(no property given)' ? ' · ' + esc(shortAddr(hit.address)) : '') + '). Saving adds a new enquiry to the same card. <button type="button" class="linkish" data-ca-open="' + esc(hit.ref) + '">Open them instead</button>';
+  }
+  ['caPhone', 'caEmail'].forEach(function(id){ $(id).addEventListener('input', caDupCheck); });
+  $('caDup').addEventListener('click', function(e){ var b = e.target.closest('[data-ca-open]'); if (!b) return; $('crmAdd').hidden = true; crm.open[b.dataset.caOpen] = 1; $('crmQ').value = $('caPhone').value.trim() || $('caEmail').value.trim(); renderCrm(); });
+  function caSave(book){
+    var b = { name: $('caName').value.trim(), phone: $('caPhone').value.trim(), email: $('caEmail').value.trim(), type: crm.mode === 'appl' ? 'Applicant' : $('caType').value, source: $('caSource').value, address: $('caAddr').value.trim(), message: $('caMsg').value.trim() };
+    if (!b.name) { toast('Add their name'); $('caName').focus(); return; } if (!b.phone && !b.email) { toast('Add a mobile number or email'); $('caPhone').focus(); return; }
+    api('POST', '/api/admin/crm/contact', b).then(function(d){
+      if (!d || !d.ok) { toast('Couldn’t save'); return; }
+      ['caName', 'caPhone', 'caEmail', 'caAddr', 'caMsg', 'caPaste'].forEach(function(id){ $(id).value = ''; }); $('caDup').hidden = true; $('crmAdd').hidden = true;
+      crm.open['vr:' + d.id] = 1; crm.type = ''; crm.tile = ''; toast(b.type === 'Applicant' ? '✓ ' + b.name + ' added to Applicants' : '✓ Contact saved'); loadCrm();
+      if (book) openBook({ property: b.address, applicant: b.name, phone: b.phone, email: b.email, leadId: d.id });
+    });
+  }
+  $('caSave').addEventListener('click', function(){ caSave(false); });
+  $('caSaveBook').addEventListener('click', function(){ caSave(true); });
   // Several leads at once: tick them, then Delete or Junk from the bar (tap twice to confirm — no pop-ups).
   var crmSel = {};
   function crmSelDraw(){
