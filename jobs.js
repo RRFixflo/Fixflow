@@ -14416,6 +14416,27 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], typed = ((await p.query("SELECT value FROM app_settings WHERE key = 'rm_gnomen'")).rows[0] || {}).value || {};
     const items = (c && c.value && c.value.items) || []; if (items.length) opts.gnomenForAdverts(items, typed);
   }
+  // Rightmove leads: the link to the Rightmove advert they enquired on. Rightmove's own link when the lead brought
+  // one (data.deeplink); otherwise our Rightmove advert for that property — found by the lead's reference (the
+  // advert's Gnomen number) or, failing that, the one advert with the same road and postcode area.
+  async function rmLinkLeads() {
+    const p = await db(); if (!p || !opts.gnomenForAdverts) return;
+    const rows = (await p.query("SELECT id, address, data FROM valuation_requests WHERE created_at > now() - interval '120 days' AND data->>'source' = 'Rightmove' AND (data->'rm_link') IS NULL AND coalesce(data->>'deeplink', '') = '' AND coalesce(data->>'url', '') NOT LIKE '%rightmove.co.uk%' ORDER BY id DESC LIMIT 300")).rows;
+    if (!rows.length) return;
+    const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], typed = ((await p.query("SELECT value FROM app_settings WHERE key = 'rm_gnomen'")).rows[0] || {}).value || {};
+    const items = (c && c.value && c.value.items) || []; if (!items.length) return;
+    const g = opts.gnomenForAdverts(items, typed) || {}, byGid = {}; Object.keys(g.ids || {}).forEach(function (rid) { if (!byGid[g.ids[rid]]) byGid[g.ids[rid]] = rid; });
+    const cands = items.filter(function (r) { return r.address; }).map(function (r) { return { kind: 'available', id: String(r.id), address: r.address }; });
+    for (const r of rows) {
+      const d = r.data || {}, ref = String(d.ref || '').trim();
+      let rid = (ref && byGid[ref]) || (/^\d{6,}$/.test(ref) && items.some(function (x) { return String(x.id) === ref; }) ? ref : '');
+      if (!rid && r.address && !/^Rightmove ref|^\(/.test(r.address)) { const hit = matchOne(r.address, cands); if (hit) rid = hit.id; }
+      if (!rid) continue;
+      await p.query("UPDATE valuation_requests SET data = jsonb_set(coalesce(data, '{}'::jsonb), '{rm_link}', $2::jsonb) WHERE id = $1", [r.id, JSON.stringify('https://www.rightmove.co.uk/properties/' + rid)]);
+    }
+  }
+  setTimeout(function () { rmLinkLeads().catch(function (e) { console.error('Rightmove links for leads:', e.message); }); }, 100 * 1000).unref();
+  setInterval(function () { rmLinkLeads().catch(function (e) { console.error('Rightmove links for leads:', e.message); }); }, 10 * 60 * 1000).unref();
   setTimeout(function () { advertGnomenCheck().catch(function () {}); }, 90 * 1000).unref();
   setInterval(function () { advertGnomenCheck().catch(function () {}); }, 3600 * 1000).unref();
   // A Gnomen number typed in for a Rightmove advert (empty = work it out again).
