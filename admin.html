@@ -524,6 +524,7 @@
   /* Offers staff sign-in: the Offers page only. */
   body:not(.staff-mode) #navAlerts { display: none !important; }
   .sp-sub { display: block; margin: 10px 0 6px; font-size: .92rem; } .sp-vw { margin-bottom: 6px; }
+  .oc-amt { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--dk-bd-fedf89, #fedf89); background: var(--dk-bg-fffaeb, #fffaeb); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; } .oc-amt label { font-weight: 600; font-size: .9rem; } .oc-amt-r { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .oc-amt-r .inp { width: 120px; font-size: 16px; }
   .staff-mode #askMode, .staff-mode #askIdeas, .staff-mode #askRem, .staff-mode #askLearn, .staff-mode #askDriveBtn, .staff-mode #askEmailHelp { display: none !important; }
   .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#navAppr):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #rentTopBtn, .staff-mode #invTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
@@ -13880,6 +13881,17 @@
       : diff > 0 ? '<span class="oc-pill ok">💷 ' + esc(gbp(got)) + ' received ' + day + ' — ' + esc(gbp(diff)) + ' over</span>'
       : '<span class="oc-pill ok">💷 Deposit received ' + day + (d.paid_amount != null ? ' · ' + esc(gbp(got)) : '') + '</span>';
   }
+  // How much arrived: a box on the card itself (some phone browsers silently block pop-up questions).
+  function offAmountBox(btn, o, onSave){
+    var row = btn.parentNode, old = row.parentNode.querySelector('.oc-amt'); if (old) { old.remove(); return; }
+    var d = o.data || {}, due = Number((d.money || {}).holding) || 0, box = document.createElement('div'); box.className = 'oc-amt';
+    box.innerHTML = '<label>💷 How much arrived in the bank? <span class="muted-note" style="margin:0">holding deposit due ' + esc(gbp(due)) + '</span></label><div class="oc-amt-r"><span>£</span><input class="inp" type="text" inputmode="decimal" value="' + esc(String(d.paid_amount != null ? d.paid_amount : due)) + '"><button type="button" class="btn small primary" data-amt-ok>Save</button><button type="button" class="btn small ghost" data-amt-x>Cancel</button></div>';
+    row.parentNode.insertBefore(box, row.nextSibling);
+    var inp = box.querySelector('input'); setTimeout(function(){ inp.focus(); inp.select(); }, 30);
+    var save = function(){ var n = Math.round(parseFloat(String(inp.value).replace(/[£,\s]/g, '')) * 100) / 100; if (!(n > 0)) { toast('Enter the amount received, e.g. ' + due); inp.focus(); return; } busy(box.querySelector('[data-amt-ok]'), true, 'Saving…'); onSave(n); };
+    box.addEventListener('click', function(ev){ ev.stopPropagation(); if (ev.target.closest('[data-amt-x]')) box.remove(); else if (ev.target.closest('[data-amt-ok]')) save(); });
+    inp.addEventListener('keydown', function(ev){ if (ev.key === 'Enter') { ev.preventDefault(); save(); } });
+  }
   function offAskAmount(o){
     var d = o.data || {}, due = Number((d.money || {}).holding) || 0;
     var v = window.prompt('How much arrived in the bank? (holding deposit due: ' + gbp(due) + ')', String(d.paid_amount != null ? d.paid_amount : due));
@@ -14319,11 +14331,11 @@
     if (cb) { var cur = (offConds(o)[Number(cb.dataset.cond)] || {}).status, v = cur === cb.dataset.v ? '' : cb.dataset.v;
       api('POST', '/api/admin/offers/' + o.id + '/conditions', { i: Number(cb.dataset.cond), v: v }).then(function(d2){ if (!d2.ok) { toast('Couldn’t save that'); return; } o.data.cond_decisions = {}; d2.conditions.forEach(function(c, i){ if (c.status) o.data.cond_decisions[i] = c.status; }); var tmp = document.createElement('div'); tmp.innerHTML = offCondsHtml(o); cb.closest('.oc-cond').replaceWith(tmp.firstChild); }); return; }
     var am = e.target.closest('[data-off-amount]');
-    if (am) { var nv = offAskAmount(o); if (nv == null) return; api('POST', '/api/admin/offers/' + o.id, { paid_amount: nv }).then(function(d2){ toast(d2.ok ? 'Amount received saved: ' + gbp(nv) : 'Couldn’t save that'); loadOffers(); }); return; }
+    if (am) { offAmountBox(am, o, function(nv){ api('POST', '/api/admin/offers/' + o.id, { paid_amount: nv }).then(function(d2){ toast(d2.ok ? 'Amount received saved: ' + gbp(nv) : 'Couldn’t save that'); loadOffers(); }); }); return; }
     var a = e.target.closest('[data-off-act]'), pd = e.target.closest('[data-off-paid]');
     if (a || pd) {
       var body = a ? { status: a.dataset.offAct } : { paid: pd.dataset.offPaid === '1' };
-      if (pd && body.paid) { var got = offAskAmount(o); if (got == null) return; body.paid_amount = got; }
+      if (pd && body.paid) { offAmountBox(pd, o, function(got){ api('POST', '/api/admin/offers/' + o.id, { paid: true, paid_amount: got }).then(function(d){ if (!d.ok) { toast('Couldn’t save that'); loadOffers(); return; } toast('Holding deposit received · ' + gbp(got)); loadOffers(); }); }); return; }
       if (a && a.dataset.offAct === 'rejected' && !confirm('Reject this offer?')) return;
       busy(a || pd, true, '…');
       api('POST', '/api/admin/offers/' + o.id, body).then(function(d){
