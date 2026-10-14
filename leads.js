@@ -158,5 +158,33 @@ module.exports = function (app, opts) {
     setTimeout(function () { rmCheck().catch(function (e) { console.error('Rightmove leads:', e.message); }); }, 90 * 1000);
     setInterval(function () { rmCheck().catch(function (e) { rmLast = { at: new Date().toISOString(), error: e.message }; console.error('Rightmove leads:', e.message); }); }, every).unref();
   }
+  // A Rightmove lead carries only our reference (the Gnomen number, sometimes a Rightmove number). When the
+  // property wasn't on our website as the lead came in, it showed as "Rightmove ref 3467". Look again every
+  // 10 minutes: our website, then Available properties (its Gnomen number, Rightmove number or Dream adverts),
+  // and fill in the address once one of them knows it.
+  async function resolveRefs() {
+    try {
+      const p = await opts.db(); if (!p) return;
+      const rows = (await p.query("SELECT id, address, data FROM valuation_requests WHERE address LIKE 'Rightmove ref %' AND created_at > now() - interval '120 days' ORDER BY id DESC LIMIT 200")).rows;
+      if (!rows.length) return;
+      const av = (await p.query("SELECT address, gnomen_id, rm_id, dream_rm FROM available_props WHERE address <> '' ORDER BY (status = 'available') DESC, updated_at DESC")).rows;
+      for (const r of rows) {
+        const d = r.data || {}, ref = str(d.ref || r.address.replace(/^Rightmove ref\s*/i, ''), 60);
+        const m = String(d.url || '').match(/rightmove\.co\.uk\/properties\/(\d+)/), rmNo = m ? m[1] : '';
+        const keys = [ref, rmNo].filter(Boolean);
+        let where = '', url = '';
+        for (const k of keys) { const h = opts.findListing ? opts.findListing(k) : null; if (h && h.where) { where = h.where; url = h.url; break; } }
+        if (!where) {
+          const a = av.find(function (x) { return keys.some(function (k) { return String(x.gnomen_id || '') === k || String(x.rm_id || '') === k || (Array.isArray(x.dream_rm) && x.dream_rm.map(String).indexOf(k) !== -1); }); });
+          if (a) where = a.address;
+        }
+        if (!where) continue;
+        const nd = Object.assign({}, d, url && !/rightmove\.co\.uk/.test(String(d.url || '')) ? { url: url } : {});
+        await p.query('UPDATE valuation_requests SET address = $2, data = $3 WHERE id = $1', [r.id, str(where, 300), JSON.stringify(nd)]);
+      }
+    } catch (e) { console.error('Leads: filling in Rightmove addresses', e.message); }
+  }
+  setTimeout(resolveRefs, 90000).unref(); setInterval(resolveRefs, 10 * 60000).unref();
+
   return { addLead: addLead };
 };
