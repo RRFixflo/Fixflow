@@ -687,6 +687,7 @@
   .av-cl { display: grid; grid-template-columns: 1fr auto 150px 90px; gap: 10px; align-items: center; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--dk-bd-f2f4f7, #f2f4f7); background: var(--dk-bg-fff, #fff); padding: 9px 10px; font: inherit; color: inherit; cursor: pointer; } .av-cl:hover { background: var(--dk-bg-f9fafb, #f9fafb); } .av-cl.is-urgent { box-shadow: inset 3px 0 0 #d92d20; } .av-cl-a { font-weight: 600; } .av-cl-a small, .av-cl-p small { color: var(--ink-soft); font-weight: 500; } .av-cl-p { font-weight: 800; } .av-cl-d { font-size: .84rem; } .av-cl-f { text-align: right; }
   @media (max-width: 640px) { .av-cl { grid-template-columns: 1fr auto; } .av-cl-d { grid-column: 1; } .av-cl-f { grid-column: 2; } .av-modes button { padding: 0 9px; } }
   .av-card.av-flash { box-shadow: 0 0 0 3px #155eef; transition: box-shadow .3s; }
+  .rr-stage { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; } .rb-claim { display: inline-block; background: var(--dk-bg-ecfdf3, #ecfdf3); color: var(--dk-fg-067647, #067647); border-radius: 999px; padding: 1px 8px; font-size: .78rem; font-weight: 600; } p.rb-claim { border-radius: 10px; padding: 6px 10px; font-size: .85rem; }
   .col-bar { grid-column: 1 / -1; position: relative; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; } .col-bar .muted-note { margin: 0; font-size: .78rem; }
   .col-th { position: relative; } .col-rs { position: absolute; top: 0; right: -4px; width: 9px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; } .col-rs::after { content: ''; position: absolute; top: 25%; bottom: 25%; left: 4px; width: 1px; background: var(--dk-bd-d0d5dd, #d0d5dd); } .col-th:hover .col-rs::after, .col-rs:hover::after { background: var(--primary, #1e2a4a); width: 2px; }
   .col-th.col-dragging { opacity: .45; } .col-th.col-over { box-shadow: inset 0 -3px 0 var(--primary, #1e2a4a); }
@@ -17101,7 +17102,7 @@
       return '<div class="rb-line rb-' + x.status + '">' + (mi ? '<span class="rb-pickpad"></span>' : '<input type="checkbox" class="rb-pick" data-rb-cpick="' + k + '"' + (rbSelC[k] ? ' checked' : '') + ' aria-label="Select">') + day(x) +
         '<div class="rb-main"><div class="rb-addr">' + esc(rbAddr(x.address)) + '</div>' +
           '<div class="rb-sub">' + svcTag(x.service) + (mi ? 'New tenancy · move-in money <b>' + gbp(x.movein.paid) + '</b> of ' + gbp(x.movein.due) + ' paid' : x.status === 'overdue' ? '<span class="rb-late">' + Math.round((parseDay(today) - parseDay(x.from)) / 86400000) + ' days late</span>' : esc(x.tenants[0] || x.landlord || '')) + ' · ' + more(k) +
-          (x.status !== 'movein' ? ' · ' + (x.emails ? '<button type="button" class="linkish" data-rb-remind="' + k + '">📧 ' + (x.status === 'overdue' || x.status === 'today' ? 'Remind' : 'Rent due reminder') + (x.reminded ? ' again' : '') + '</button>' : '<span class="muted">no tenant email</span>') + (x.reminded ? ' <span class="rb-reminded">reminded ' + esc(fmtShort(x.reminded.at).split(',')[0]) + '</span>' : '') : '') + '</div>' +
+          (x.status !== 'movein' ? ' · ' + (x.emails ? '<button type="button" class="linkish" data-rb-remind="' + k + '">📧 ' + (x.status === 'overdue' || x.status === 'today' ? 'Remind' : 'Rent due reminder') + (x.reminded ? ' again' : '') + '</button>' : '<span class="muted">no tenant email</span>') + (x.reminded ? ' <span class="rb-reminded">' + (x.reminded.stage === 'final' ? 'final notice ' : 'reminded ') + esc(fmtShort(x.reminded.at).split(',')[0]) + '</span>' : '') : '') + (x.claim && !x.collected ? ' <span class="rb-claim">💬 Tenant says paid ' + esc(longDay(x.claim.date)) + (x.claim.amount ? ' · ' + gbp(x.claim.amount) : '') + '</span>' : '') + '</div>' +
           (x.part_paid ? '<div class="rb-parts">Part paid <b>' + gbp(x.part_paid) + '</b> of ' + gbp(x.rent) + ' — ' + x.parts.map(function(pp){ return gbp(pp.amount) + (pp.who ? ' ' + esc(pp.who.split(' ')[0]) : '') + ' ' + esc(rbDay(pp.date)); }).join(', ') + ' <button type="button" class="linkish" data-rb-unpart="' + k + '">clear</button></div>' : '') + details(x, k) + '</div>' +
         '<div class="rb-amt">' + gbp(mi ? x.movein.left : x.rent - (x.part_paid || 0)) + (mi ? '<small>still to pay</small>' : x.part_paid ? '<small>left to pay</small>' : '') + '</div>' +
         '<div class="rb-btn">' + (mi ? '<button type="button" class="btn small" data-rb-open="' + x.tenancy_id + '">Record payment</button>' : '<button type="button" class="btn small primary" data-rb-collect="' + k + '">Collected</button>') + '</div></div>';
@@ -17289,26 +17290,33 @@
   }
   // Rent reminders: see exactly what goes out (and change it) before it's sent. Several at once: the first
   // one is shown; each tenancy gets its own date and amounts.
-  var rrList = [];
-  function rentRemindPreview(list){
-    rrList = list; var x = list[0];
+  var rrList = [], rrStage = '';
+  function rentRemindPreview(list, stage){
+    rrList = list; rrStage = stage || ''; var x = list[0];
     $('rrTitle').textContent = list.length > 1 ? '📧 Rent reminders — ' + list.length + ' tenancies' : '📧 Rent reminder — ' + rbAddr(x.address);
     $('rrMeta').innerHTML = 'Loading…'; $('rrSubj').value = ''; $('rrBody').value = ''; $('rrModal').hidden = false;
     $('rrSubj').disabled = $('rrBody').disabled = list.length > 1;
-    api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-reminder', { from: x.from, due: x.rent, preview: true }).then(function(d){
+    api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-reminder', { from: x.from, due: x.rent, preview: true, stage: rrStage || undefined }).then(function(d){
       if (!d || !d.ok || !d.preview) { $('rrMeta').innerHTML = '<span style="color:var(--red,var(--dk-fg-c00, #c00))">' + esc(d && d.error === 'no-email' ? 'No email address for the tenants.' : d && d.error === 'email-not-configured' ? 'Email isn’t set up.' : 'Couldn’t prepare the reminder.') + '</span>'; return; }
       $('rrMeta').innerHTML = (list.length > 1 ? '<p class="muted-note" style="margin:0 0 6px">This is the first of ' + list.length + '. Each tenancy gets its own date and amounts; the wording is the same.</p>' : '') +
         '<div class="kv-mini"><span>To</span><b>' + esc(d.to.join(', ')) + '</b>' + (d.cc && d.cc.length ? '<span>Cc</span><b>' + esc(d.cc.join(', ')) + '</b>' : '') +
-        '<span>Rent</span><b>' + esc(longDay(x.from)) + ' · ' + gbp(x.rent) + (x.part_paid ? ' (' + gbp(x.part_paid) + ' paid, ' + gbp(x.rent - x.part_paid) + ' left)' : '') + '</b></div>';
+        '<span>Rent</span><b>' + esc(longDay(x.from)) + ' · ' + gbp(x.rent) + (x.part_paid ? ' (' + gbp(x.part_paid) + ' paid, ' + gbp(x.rent - x.part_paid) + ' left)' : '') + '</b></div>' +
+        (d.soon ? '' : '<div class="rr-stage" role="group" aria-label="Which letter">' + [['first', '1 · Overdue rent reminder'], ['final', '2 · Final notice']].map(function(o){ return '<button type="button" class="btn small' + (d.stage === o[0] ? ' primary' : ' ghost') + '" data-rr-stage="' + o[0] + '">' + o[1] + '</button>'; }).join('') +
+          '<span class="muted-note" style="margin:0">' + (d.sent_before ? d.sent_before + ' overdue reminder' + (d.sent_before === 1 ? '' : 's') + ' already sent for this rent' : 'No overdue reminder sent yet for this rent') + '</span></div>' +
+          '<p class="muted-note" style="margin:6px 0 0">Both letters include an “I’ve already paid — tell us when” button with an apology, so a tenant who has paid can tell us the date.</p>' +
+          (d.no_bank ? '<p class="muted-note" style="margin:6px 0 0;color:var(--dk-fg-b42318, #b42318)">⚠ No bank details saved — add them under Templates so they appear in the letter.</p>' : '')) +
+        (x.claim ? '<p class="rb-claim" style="margin:8px 0 0">💬 The tenant says they paid on <b>' + esc(longDay(x.claim.date)) + '</b>' + (x.claim.amount ? ' (' + gbp(x.claim.amount) + ')' : '') + ' — check the bank before sending.</p>' : '');
+      rrStage = d.stage || rrStage;
       $('rrSubj').value = d.subject; $('rrBody').value = d.text;
     });
   }
   $('rrCancel').addEventListener('click', function(){ $('rrModal').hidden = true; });
+  $('rrMeta').addEventListener('click', function(e){ var b = e.target.closest('[data-rr-stage]'); if (!b || b.dataset.rrStage === rrStage) return; rentRemindPreview(rrList, b.dataset.rrStage); });
   $('rrSend').addEventListener('click', function(){
     var list = rrList, one = list.length === 1, btn = this, sent = 0, failed = 0;
     if (!list.length || !$('rrBody').value.trim()) return;
     busy(btn, true, 'Sending…');
-    list.reduce(function(pr, x){ return pr.then(function(){ return api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-reminder', one ? { from: x.from, due: x.rent, subject: $('rrSubj').value.trim(), text: $('rrBody').value } : { from: x.from, due: x.rent }).then(function(d){ if (d && d.ok) sent++; else failed++; }); }); }, Promise.resolve())
+    list.reduce(function(pr, x){ return pr.then(function(){ return api('POST', '/api/admin/tenancies/' + x.tenancy_id + '/rent-reminder', one ? { from: x.from, due: x.rent, stage: rrStage || undefined, subject: $('rrSubj').value.trim(), text: $('rrBody').value } : { from: x.from, due: x.rent, stage: rrStage || undefined }).then(function(d){ if (d && d.ok) sent++; else failed++; }); }); }, Promise.resolve())
       .then(function(){ busy(btn, false); $('rrModal').hidden = true; toast(sent ? '✓ ' + sent + ' reminder' + (sent === 1 ? '' : 's') + ' emailed' + (failed ? ' · ' + failed + ' couldn’t be sent' : '') : 'Couldn’t send it'); loadRentBoard(true); });
   });
   function rbFind(k){ var a = String(k).split('|'); return (rbData && rbData.items || []).filter(function(x){ return x.tenancy_id === Number(a[0]) && x.from === a[1]; })[0]; }

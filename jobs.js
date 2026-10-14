@@ -8215,7 +8215,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     let sig = []; const sm = /\n\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Thanks,?|Yours sincerely,?)\s*\n([\s\S]*)$/i.exec(body);
     if (sm) { sig = sm[2].split('\n').map(function (l) { return unmark(l).trim(); }).filter(Boolean); body = body.slice(0, sm.index); }
     if (!sm) { const sm2 = /\n\s*(\[[a-z]+\])*\s*((?:Kind |Best |Warm )?regards,?|Many thanks,?|Yours sincerely,?)\s*(\[\/[a-z]+\])*\s*\n([\s\S]*)$/i.exec(body); if (sm2) { sig = sm2[4].split('\n').map(function (l) { return unmark(l).trim(); }).filter(Boolean); body = body.slice(0, sm2.index); } }
-    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer'], [/\/vc\/[\w-]+/, 'Yes, I’ll be there'], [/\/cr\/[\w-]+/, 'Choose in one click']];
+    const BTN = [[/\/landlord\/[\w-]+/, 'Review and sign your terms'], [/\/reserve\/[\w-]+/, 'Open your reservation'], [/\/(staff|admin)#lt$/, 'Open Landlord Terms'], [/\/(staff|admin)$/, 'Sign in to Fixflow'], [/\/offer\/review\/[\w-]+/, 'View the offer'], [/\/offer\/track\/[\w-]+/, 'Open your tracking page'], [/\/offer(\?|$|#)/, 'Make your offer'], [/\/vc\/[\w-]+/, 'Yes, I’ll be there'], [/\/cr\/[\w-]+/, 'Choose in one click'], [/\/rp\/[\w-]+/, 'I’ve already paid — tell us when']];
     const buttons = [];
     const btnOf = function (b) {
       // The offer form for a property: a card with the address and a wide, rounded button.
@@ -10950,7 +10950,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           pending: pend, pending_total: pendTotal, to_landlord: toLl,
           collected: rcvd[from] || autoIn || null, paid: paid[from] || null, movein: movein,
           parts: (d.rent_parts || {})[from] || [], part_paid: r2(((d.rent_parts || {})[from] || []).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0)),
-          reminded: ((d.rent_reminders || {})[from] || []).slice(-1)[0] || null, emails: (d.tenants || []).map(function (x) { return x && x.email; }).filter(function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); }).length,
+          reminded: ((d.rent_reminders || {})[from] || []).slice(-1)[0] || null, claim: ((d.rent_claims || {})[from] || []).slice(-1)[0] || null, emails: (d.tenants || []).map(function (x) { return x && x.email; }).filter(function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); }).length,
           stmt: stm ? { sent: stm.sent || null, changed: stm.changed || null } : null,
           status: isIn ? 'collected' : movein && movein.left > 0.004 ? 'movein' : from < today ? 'overdue' : from === today ? 'today' : from === tomorrow ? 'tomorrow' : 'upcoming'
         });
@@ -11099,26 +11099,103 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const sign = '\n\nKind regards,\nResidential Realtors\n0207 096 8131 \u00b7 info@residentialrealtors.co.uk';
     // Rent not due yet: a heads-up with the day and amount, so there's enough in the account for the standing order.
     const soon = dd < 0;
+    // Late rent: a first reminder, then a final notice (the office's own letters, updated for the Renters' Rights Act —
+    // section 21 no longer exists, so the next step is a section 8 notice on the rent arrears grounds).
+    const sentBefore = ((d.rent_reminders || {})[from] || []).filter(function (x) { return !x.soon; });
+    const stage = soon ? 'soon' : (b.stage === 'first' || b.stage === 'final' ? b.stage : sentBefore.length ? 'final' : 'first');
+    const formal = people.map(function (x) {
+      const n = String(x.name || '').trim().split(/\s+/).filter(Boolean), title = n.length > 1 && /^(mr|mrs|ms|miss|dr|mx)\.?$/i.test(n[0]);
+      return title ? n[0].replace(/\.$/, '') + ' ' + n[n.length - 1] : n.join(' ');
+    }).filter(Boolean);
+    const dear = formal.length ? 'Dear ' + (formal.length > 1 ? formal.slice(0, -1).join(', ') + ' and ' + formal.slice(-1) : formal[0]) : 'Dear Tenant';
+    if (!d.rp_token) { d.rp_token = crypto.randomBytes(12).toString('base64url'); await p.query("UPDATE tenancies SET data = jsonb_set(data, '{rp_token}', to_jsonb($2::text)) WHERE id = $1", [id, d.rp_token]); }
+    const paidUrl = crSite() + '/rp/' + d.rp_token + '?d=' + from;
+    const owe = got > 0 ? left : due;
+    const bank = String((await tenancyTemplates(p)).bank_details || '').trim();
+    const sorry = '\n\nAlready paid? If you have already sent this payment, please accept our apologies for this reminder and disregard it — you can tell us the date you paid here: ' + paidUrl;
+    const yours = '\n\nYours sincerely,\nResidential Realtors\n0207 096 8131 · info@residentialrealtors.co.uk';
+    const lastAt = sentBefore.length ? certDay(String(sentBefore[sentBefore.length - 1].at).slice(0, 10)) : '';
     const defText = soon
       ? hello + ',\n\nThis is a friendly reminder that your rent for ' + addr + ' is due on ' + certDay(from) + ' (in ' + (-dd) + ' day' + (dd === -1 ? '' : 's') + ').\n\n' +
         'Rent due: ' + gbp(due) + (got > 0 ? '\nReceived so far: ' + gbp(got) + '\nStill to pay: ' + gbp(left) : '') + (d.pay_ref ? '\nPayment reference: ' + d.pay_ref : '') +
         '\n\nPlease make sure there is enough money in your account on that day for your standing order (or payment) to go through. If you share the rent, please each check your part is set up. If anything has changed with how you pay, just reply to this email.' + sign
-      : hello + ',\n\nThis is a friendly reminder that the rent for ' + addr + ' was due on ' + certDay(from) + (late ? ' (' + late + ' day' + (late === 1 ? '' : 's') + ' ago)' : '') + ' and we haven\u2019t received it in full yet.\n\n' +
-        'Rent due: ' + gbp(due) + (got > 0 ? '\nReceived so far: ' + gbp(got) + '\nStill to pay: ' + gbp(left) : '') + (d.pay_ref ? '\nPayment reference: ' + d.pay_ref : '') +
-        '\n\nPlease make the payment as soon as possible using your usual payment details' + (d.pay_ref ? ' and reference' : '') + '. If you share the rent, please each check your part has been sent. If you have already paid, please reply with the date and amount so we can match it \u2014 and thank you.\n\n' +
-        'If you\u2019re having difficulty paying, please get in touch with us straight away so we can help.' + sign;
-    const defSubject = (soon ? 'Rent due ' + certDay(from) + ' \u2014 ' : 'Rent reminder \u2014 ') + addr.split(',').slice(0, 2).join(',');
+      : stage === 'first'
+      ? dear + ',\n\n[b]IMPORTANT — OVERDUE RENT FOR ' + addr.toUpperCase() + '[/b]\n\n' +
+        'Our records show that you have overdue rent of [b]' + gbp(owe) + '[/b] for the above property, which was due on [b]' + certDay(from) + '[/b]' + (got > 0 ? ' (rent ' + gbp(due) + ', ' + gbp(got) + ' received so far)' : '') + '.\n\n' +
+        'You are currently in breach of your tenancy agreement. Schedule 1, Clause 2 sets out the terms for paying rent:\n\n' +
+        '2. Paying Rent\n2.1. To pay the Rent as set out in clause 2 of the Particulars whether or not it has been formally demanded. The Rent shall be paid by the Tenant by standing order' + (bank ? ' to:\n' + bank : ' to the account given in your tenancy agreement.') +
+        '\n2.2. To pay interest on any payment of Rent not made as set out in clause 2 of the Particulars. Interest is payable from the date on which the Rent was due until the date on which the Rent is actually paid. The interest rate will be 3% above the Bank of England Base Rate.' +
+        (d.pay_ref ? '\n\nPayment reference: ' + d.pay_ref : '') +
+        '\n\nShould payment not be received within 5 days of your rent being due, we may take further legal steps to recover the outstanding debt.' + sorry +
+        '\n\nIf you have any questions, or are having difficulty paying your rent, please reply to this email or call us — we will be happy to help.' + yours
+      : dear + ',\n\n[b]IMPORTANT — OVERDUE RENT[/b]\n\n' +
+        (lastAt ? 'Having received no reply to our letter dated ' + lastAt + ' regarding your overdue rent' : 'We write regarding your overdue rent') + ' of [b]' + gbp(owe) + '[/b] for ' + addr + ', which was due on ' + certDay(from) +
+        ', we write to advise you that if the arrears are not paid immediately, our next course of action may be to serve a notice seeking possession under Section 8 of the Housing Act 1988 (as amended by the Renters’ Rights Act 2025) on the grounds of rent arrears, [b]requiring possession of the property[/b].\n\n' +
+        'Please note that it is also our policy to take enforcement action to recover any arrears through the courts. This may involve you in additional costs, and is likely to affect your ability to obtain credit and to secure rented accommodation in the future.\n\n' +
+        'To avoid further action as above, you must contact us immediately to arrange payment of your arrears.' +
+        (bank ? '\n\nPayment can be made to:\n' + bank + (d.pay_ref ? '\nReference: ' + d.pay_ref : '') : d.pay_ref ? '\n\nPayment reference: ' + d.pay_ref : '') + sorry +
+        '\n\nIf you are having difficulty paying, please contact us straight away so we can discuss it with you.' + yours;
+    const defSubject = (soon ? 'Rent due ' + certDay(from) + ' \u2014 ' : stage === 'final' ? 'IMPORTANT \u2014 overdue rent: final notice \u2014 ' : 'IMPORTANT \u2014 overdue rent \u2014 ') + addr.split(',').slice(0, 2).join(',');
     const cc = officeCc(to, []);
     // Preview: what would be sent, to check (and change) before sending.
-    if (b.preview) return res.json({ ok: true, preview: true, to: to, cc: cc, subject: defSubject, text: defText, soon: soon });
+    if (b.preview) return res.json({ ok: true, preview: true, to: to, cc: cc, subject: defSubject, text: defText, soon: soon, stage: stage, sent_before: sentBefore.length, no_bank: !bank });
     const text = str(b.text, 20000) || defText, subject = str(b.subject, 300) || defSubject;
     const r = await sendEmail({ to: to, cc: cc, subject: subject, text: text, html: brandEmail(text, subject), replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors' });
     logSent(req, to, cc, 'info@residentialrealtors.co.uk', subject, text, r);   // in their Sent emails
     if (r && r.ok === false) return res.status(502).json({ ok: false, error: 'send-failed' });
-    const row = { at: new Date().toISOString(), to: to.length, by: who };
+    const row = { at: new Date().toISOString(), to: to.length, by: who, stage: stage, soon: soon || undefined };
     await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_reminders}', coalesce(data->'rent_reminders', '{}'::jsonb) || jsonb_build_object($2::text, coalesce(data->'rent_reminders'->$2, '[]'::jsonb) || $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
-      [id, from, JSON.stringify([row]), JSON.stringify([{ at: row.at, text: 'Rent reminder emailed to ' + to.length + ' tenant' + (to.length === 1 ? '' : 's') + ' for the rent due ' + certDay(from) + ' (' + who + ')', email: logEmail({ to: to, cc: cc, subject: subject, text: text, attachments: [] }) }])]);
+      [id, from, JSON.stringify([row]), JSON.stringify([{ at: row.at, text: (stage === 'final' ? 'Final overdue rent notice' : stage === 'first' ? 'Overdue rent reminder' : 'Rent due reminder') + ' emailed to ' + to.length + ' tenant' + (to.length === 1 ? '' : 's') + ' for the rent due ' + certDay(from) + ' (' + who + ')', email: logEmail({ to: to, cc: cc, subject: subject, text: text, attachments: [] }) }])]);
     res.json({ ok: true, sent: to.length });
+  }));
+  // "I've already paid": the tenant's link from a rent reminder — they give the date they paid (and the amount);
+  // noted on the tenancy, shown on the Rent page and emailed to the office. Nothing is marked collected until staff check.
+  async function rpTenancy(p, token) { return /^[\w-]{12,40}$/.test(String(token || '')) ? (await p.query("SELECT id, address, data FROM tenancies WHERE data->>'rp_token' = $1", [token])).rows[0] : null; }
+  function rpPage(t, from, msg) {
+    const d = t.data || {}, addr = String(d.address || t.address || '').split(',').slice(0, 2).join(','), rcvd = (d.rent_rcvd || {})[from], claims = (d.rent_claims || {})[from] || [], last = claims[claims.length - 1];
+    const today = londonDay(), due = Number(d.rent_pcm) || 0;
+    const body = rcvd ? '<div class="card rp-done"><div class="rp-ok">✓</div><b>Thank you — our records show this rent as received.</b><p class="muted" style="margin:4px 0 0">Sorry for any confusion. There is nothing more you need to do.</p></div>'
+      : msg === 'ok' || last ? '<div class="card rp-done"><div class="rp-ok">✓</div><b>Thank you — we’ve noted that you paid on ' + htmlEsc(certDay(last ? last.date : today)) + (last && last.amount ? ' (' + htmlEsc(gbp(last.amount)) + ')' : '') + '.</b><p class="muted" style="margin:4px 0 0">We’ll match it with our bank and be in touch if anything doesn’t add up. Sorry for the reminder.</p>' +
+        (last ? '<details style="margin-top:12px;text-align:left"><summary>Paid on a different date or amount?</summary>' : '')
+      : '<div class="card"><p style="margin:0 0 12px;font-weight:600">When did you pay?</p>';
+    const form = rcvd ? '' : '<form method="post" class="rp-form"><input type="hidden" name="d" value="' + htmlEsc(from) + '">' +
+      '<label>Date you paid<input type="date" name="date" required max="' + today + '" value="' + today + '"></label>' +
+      '<label>Amount paid (£)<input type="text" name="amount" inputmode="decimal" placeholder="' + (due ? due.toFixed(2) : '') + '" value="' + (due ? due.toFixed(2) : '') + '"></label>' +
+      '<label>Anything we should know? (optional)<textarea name="note" rows="2" maxlength="500" placeholder="e.g. paid by two of us, or a different reference"></textarea></label>' +
+      '<button class="btn" type="submit">Send to the office</button></form>';
+    const close = rcvd ? '' : (msg === 'ok' || last ? (last ? form + '</details>' : '') + '</div>' : form + '</div>');
+    return '<p class="sub" style="margin:0 0 4px">Rent due ' + htmlEsc(certDay(from)) + '</p><h1 style="margin:0 0 10px">' + htmlEsc(addr) + '</h1>' + body + close +
+      '<p class="muted" style="text-align:center">Questions? Call <a href="tel:02070968131">0207 096 8131</a> or email <a href="mailto:info@residentialrealtors.co.uk">info@residentialrealtors.co.uk</a></p>' +
+      '<style>.rp-form{display:grid;gap:12px}.rp-form label{display:grid;gap:5px;font-weight:600;font-size:.95rem}.rp-form input,.rp-form textarea{font:inherit;font-size:16px;padding:11px 12px;border:1px solid #d0d5dd;border-radius:10px;width:100%;box-sizing:border-box}.rp-form .btn{width:100%;padding:14px 16px;border-radius:999px;font-size:1.02rem}.rp-done{text-align:center;padding:24px 18px}.rp-ok{width:56px;height:56px;border-radius:50%;background:#ecfdf3;color:#067647;font-size:28px;line-height:56px;margin:0 auto 10px;font-weight:800}</style>';
+  }
+  app.get('/rp/:token', withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
+    res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex');
+    const demo = req.params.token === 'example', from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.d || '')) ? String(req.query.d) : londonDay().slice(0, 8) + '01';
+    const t = demo ? { id: 0, address: 'Flat 3, 12 Example Street, London SE1 0XX', data: { rent_pcm: 1650 } } : await rpTenancy(p, req.params.token);
+    if (!t) return res.status(404).send(trackShell('Link not found', '<h1>Link not found</h1><p>This link may have expired. Please call us on 0207 096 8131.</p>', true));
+    res.send(trackShell('Rent payment', (demo ? '<div class="card" style="background:#fffaeb;border-color:#fedf89"><b>Example page</b> — this is what tenants see. The property is made up and nothing is saved.</div>' : '') + rpPage(t, from, req.query.ok ? 'ok' : ''), true, 'Rent'));
+  }));
+  app.post('/rp/:token', require('express').urlencoded({ extended: false, limit: '20kb' }), withDb(async function (p, req, res) {
+    if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
+    const b = req.body || {}, from = /^\d{4}-\d{2}-\d{2}$/.test(String(b.d || '')) ? String(b.d) : '';
+    if (req.params.token === 'example') return res.redirect(303, '/rp/example?ok=1&d=' + encodeURIComponent(from));
+    const t = await rpTenancy(p, req.params.token);
+    if (!t || !from) return res.status(404).send(trackShell('Link not found', '<h1>Link not found</h1><p>Please call us on 0207 096 8131.</p>', true));
+    const today = londonDay(), date = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) && b.date <= today ? String(b.date) : today;
+    const amount = Number(String(b.amount || '').replace(/[£,\s]/g, '')) || null, note = str(b.note, 500) || null;
+    const claims = (((t.data || {}).rent_claims || {})[from] || []);
+    if (claims.length >= 10) return res.redirect(303, '/rp/' + req.params.token + '?ok=1&d=' + from);
+    const c = { date: date, amount: amount, note: note, at: new Date().toISOString() };
+    const addr = (t.data || {}).address || t.address || '';
+    const line = 'Tenant says the rent due ' + certDay(from) + ' was paid on ' + certDay(date) + (amount ? ' (' + gbp(amount) + ')' : '') + (note ? ' — “' + note + '”' : '') + ' — check the bank and mark it collected';
+    await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{rent_claims}', coalesce(data->'rent_claims', '{}'::jsonb) || jsonb_build_object($2::text, coalesce(data->'rent_claims'->$2, '[]'::jsonb) || $3::jsonb)), log = log || $4::jsonb, updated_at = now() WHERE id = $1`,
+      [t.id, from, JSON.stringify([c]), JSON.stringify([{ at: c.at, text: line }])]);
+    if (canEmail() && sendEmail) {
+      const txt = line.replace(/ — check the bank and mark it collected$/, '') + '.\n\nProperty: ' + addr + '\n\nPlease check the bank and mark the rent collected on the Rent page if it has arrived.';
+      sendEmail({ to: ['info@residentialrealtors.co.uk'], subject: 'Tenant says rent paid — ' + String(addr).split(',').slice(0, 2).join(','), text: txt, html: brandEmail(txt, 'Tenant says rent paid') }).catch(function () {});
+    }
+    res.redirect(303, '/rp/' + req.params.token + '?ok=1&d=' + from);
   }));
   // An earlier tenancy's move-in rent added to (or taken off) Pay landlords — for one that still has to be paid.
   app.post('/api/admin/tenancies/:id/movein-pay', withDb(async function (p, req, res) {
