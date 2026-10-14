@@ -8564,6 +8564,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (b.notify === true) emailed = await viewingMail(p, req, vrow, 'booked');
     if (b.notify_tenants === true || b.notify_landlord === true) others = await viewingNotifyOthers(p, req, vrow, 'booked', { tenants: b.notify_tenants === true, landlord: b.notify_landlord === true, count: parseInt(b.count, 10) || 1 });
     if (parseInt(b.lead_id, 10)) await crmLog(p, 'vr:' + parseInt(b.lead_id, 10), '🗓 Viewing booked: ' + new Date(at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · ' + addr.split(',').slice(0, 2).join(',') + ' · with ' + (str(b.staff, 120) || me), req, false);
+    // Booking a viewing means someone has been in touch: every new enquiry of theirs is now contacted.
+    if (parseInt(b.lead_id, 10)) { const g = await applGroup(p, parseInt(b.lead_id, 10)).catch(function () { return null; }); await p.query("UPDATE valuation_requests SET status = 'contacted', handled_at = now(), handled_by = $2 WHERE id = ANY($1) AND status = 'new'", [g && g.ids && g.ids.length ? g.ids : [parseInt(b.lead_id, 10)], req.user ? req.user.name : 'Office']); }
     res.json({ ok: true, id: r.rows[0].id, emailed: emailed, others: others });
   }));
   // An available property's address corrected: its upcoming booked viewings take the new address, and (when
@@ -14357,6 +14359,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
       await p.query("UPDATE valuation_requests SET data = jsonb_set(coalesce(data, '{}'::jsonb), '{match}', $2::jsonb) WHERE id = $1", [r.id, JSON.stringify(m)]);
     }
   }
+  // Applicants who had a viewing booked but were left as "New" (before booking set them to contacted).
+  setTimeout(function () { db().then(function (p) { return p && p.query("UPDATE valuation_requests SET status = 'contacted', handled_at = coalesce(handled_at, now()), handled_by = coalesce(handled_by, 'Viewing booked') WHERE status = 'new' AND id IN (SELECT lead_id FROM viewings WHERE lead_id IS NOT NULL)"); }).catch(function (e) { console.error('Marking booked applicants contacted:', e.message); }); }, 75000).unref();
   setTimeout(function () { matchLeads().catch(function (e) { console.error('Matching leads to properties:', e.message); }); }, 2 * 60000).unref();
   setInterval(function () { matchLeads().catch(function (e) { console.error('Matching leads to properties:', e.message); }); }, 2 * 60000).unref();
   // Dreams: adverts on Rightmove that aren't one of our available properties. Each has a 7-day review —
