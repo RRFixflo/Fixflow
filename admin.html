@@ -9600,7 +9600,7 @@
   var crm = { items: [], staff: [], me: '', type: '', open: {}, mode: 'crm' }, CRM_T = {
     rm: ['🏠', 'Rightmove', '#0e7a64', '#e6fbf6'], lead: ['📥', 'Portal lead', '#0e7a64', '#e6fbf6'],
     viewing: ['🌐', 'Website viewing request', '#b54708', '#fffaeb'], val: ['🏠', 'Rental valuation', '#5925dc', '#f4f3ff'], sale: ['🏷️', 'Sales valuation', '#5925dc', '#f4f3ff'], quick: ['⚡', 'Quick valuation', '#5925dc', '#f4f3ff'],
-    cert: ['📜', 'Certificate booking', '#c4320a', '#fff6ed'], comps: ['📊', 'Comparables report', '#6941c6', '#f4f3ff'], mortgage: ['🏦', 'Mortgage rental letter', '#5925dc', '#f4f3ff'], enquiry: ['💬', 'Message', '#175cd3', '#eff8ff'], contact: ['📇', 'Added by staff', '#344054', '#f2f4f7'], call: ['📞', 'Out-of-hours call', '#b42318', '#fef3f2'], sub: ['🔔', 'Alert sign-up', '#067647', '#ecfdf3'] };
+    cert: ['📜', 'Certificate booking', '#c4320a', '#fff6ed'], comps: ['📊', 'Comparables report', '#6941c6', '#f4f3ff'], mortgage: ['🏦', 'Mortgage rental letter', '#5925dc', '#f4f3ff'], enquiry: ['💬', 'Message', '#175cd3', '#eff8ff'], contact: ['📇', 'Added by staff', '#344054', '#f2f4f7'], call: ['📞', 'Phone message', '#b42318', '#fef3f2'], sub: ['🔔', 'Alert sign-up', '#067647', '#ecfdf3'] };
   var CRM_ST = { new: ['New', '#b42318'], contacted: ['Contacted', '#175cd3'], booked: ['Booked', '#6941c6'], won: ['Won ✓', '#067647'], lost: ['Not going ahead', '#667085'] };
   function crmDay(d){ return new Date(d).toISOString().slice(0, 10); }
   function crmToday(){ return new Date().toLocaleDateString('en-CA', { timeZone: TZ }); }
@@ -9651,6 +9651,7 @@
   // Applicants (the Leads page): viewing requests, Rightmove and portal leads, people looking to rent or buy.
   function isAppl(x){
     var d = x.data || {};
+    if (d.appl === true) return true; if (d.appl === false) return false;   // moved by staff (Landlord enquiries ⇄ Applicants)
     return x.type === 'viewing' || x.type === 'rm' || x.type === 'lead' || ((x.type === 'enquiry' || x.type === 'contact') && /^(looking to rent|buying|applicant|buyer)$/i.test(String(d.topic || ''))) ||
       (x.type === 'call' && /^(renting|buying)$/.test(String(d.category || '')));
   }
@@ -10111,7 +10112,7 @@
       (x.notes.length ? '<ul>' + x.notes.map(function(n){ return '<li class="' + (n.auto ? 'auto' : '') + '"><span>' + esc(n.note) + '</span><small>' + esc(n.by_name || '') + ' · ' + esc(fmtShort(n.at)) + '</small></li>'; }).join('') + '</ul>' : '') +
       '<p class="muted-note" style="margin:6px 0 0">Came in ' + esc(fmtShort(x.at)) + (x.type === 'sub' ? ' · signed up on the website' : '') + '</p>' + leadSrcHtml(x) +
       (x.email ? '<details class="lead-mails" data-lm="' + esc(x.email) + '"><summary>✉ Emails sent to them</summary><div class="lead-mails-box"></div></details>' : '') + '</div>';
-    h += '<div class="crm-arch">' + (x.archived ? '<button type="button" class="btn small" data-crm-restore>' + (x.junk ? '↩︎ Not junk — put it back' : '↩︎ Put back from the archive') + '</button>' : (isAppl(x) && !meta.canManageUsers ? '<span class="muted-note" style="margin:0">Only managers can delete or junk applicants.</span>' : '<button type="button" class="btn small ghost" data-crm-ask="junk">🚫 Junk</button><button type="button" class="btn small ghost danger" data-crm-ask="del">🗑 Delete (moves to the archive)</button>')) + '</div>' +
+    h += '<div class="crm-arch">' + (!x.archived && x.type !== 'sub' && /^vr:/.test(String(x.ref || '')) ? (isAppl(x) ? '<button type="button" class="btn small ghost" data-crm-move="0" title="Not someone looking to rent or buy — move it to Landlord enquiries">🏠 Move to Landlord enquiries</button>' : '<button type="button" class="btn small" data-crm-move="1" title="Someone looking to rent or buy — move them to the Applicants page">👥 Move to Applicants</button>') : '') + (x.archived ? '<button type="button" class="btn small" data-crm-restore>' + (x.junk ? '↩︎ Not junk — put it back' : '↩︎ Put back from the archive') + '</button>' : (isAppl(x) && !meta.canManageUsers ? '<span class="muted-note" style="margin:0">Only managers can delete or junk applicants.</span>' : '<button type="button" class="btn small ghost" data-crm-ask="junk">🚫 Junk</button><button type="button" class="btn small ghost danger" data-crm-ask="del">🗑 Delete (moves to the archive)</button>')) + '</div>' +
       '<div class="crm-confirm" data-crm-confirmbox hidden></div>';
     if (ap && applLocked(x)) h = h.replace(/data-crm-(st|who|verdict|fu)(?=[\s>])/g, 'data-crm-$1 disabled').replace(/data-crm-(note-save|qq|confirm|confirm-other|fu-in)(?=[=\s>])/g, 'disabled data-crm-$1');
     if (x.type !== 'sub') h += '<details class="crm-edit"' + (crm.editOpen === x.ref ? ' open' : '') + '><summary>✏️ Edit contact details</summary><div class="lt-grid"><label>Name<input class="inp" data-ce="name" value="' + esc(x.name) + '"></label><label>Mobile<input class="inp" data-ce="phone" type="tel" value="' + esc(x.phone || '') + '"></label><label>Email<input class="inp" data-ce="email" type="email" value="' + esc(x.email || '') + '"></label><label>Address<input class="inp" data-ce="address" value="' + esc(x.address || '') + '"></label></div><button type="button" class="btn small" data-crm-edit-save style="margin-top:8px">Save details</button></details>';
@@ -10396,6 +10397,8 @@
       // Name, mobile and email go on every enquiry of theirs (so the joined card stays one person); the property only on this one.
       crm.editOpen = null;
       Promise.all((x.group || [x]).map(function(i){ return api('POST', '/api/admin/crm/contact/' + i.id, i.id === x.id ? v : { name: v.name, phone: v.phone, email: v.email }); })).then(function(rs){ crmDone('✓ Details saved')(rs[0]); }); return; }
+    var mv = e.target.closest('[data-crm-move]');
+    if (mv) { var toA = mv.dataset.crmMove === '1'; busy(mv, true, 'Moving…'); api('POST', '/api/admin/crm/move', { ref: x.ref, applicant: toA }).then(function(d){ busy(mv, false); if (!d || !d.ok) { toast('Couldn’t move it'); return; } x.data = Object.assign({}, x.data, { appl: toA }); toast(toA ? '👥 Moved to Applicants' : '🏠 Moved to Landlord enquiries'); loadCrm(true); }); return; }
     if (e.target.closest('[data-crm-tog]')) { if (crm.open[x.ref]) delete crm.open[x.ref]; else crm.open[x.ref] = 1; renderCrm(); }
   });
   $('crmList').addEventListener('change', function(e){
