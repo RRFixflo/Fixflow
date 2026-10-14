@@ -14431,7 +14431,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   // advert's Gnomen number) or, failing that, the one advert with the same road and postcode area.
   async function rmLinkLeads() {
     const p = await db(); if (!p || !opts.gnomenForAdverts) return;
-    const rows = (await p.query("SELECT id, address, data FROM valuation_requests WHERE created_at > now() - interval '120 days' AND data->>'source' = 'Rightmove' AND (data->'rm_link') IS NULL AND coalesce(data->>'deeplink', '') = '' AND coalesce(data->>'url', '') NOT LIKE '%rightmove.co.uk%' ORDER BY id DESC LIMIT 300")).rows;
+    const rows = (await p.query("SELECT id, address, data FROM valuation_requests WHERE created_at > now() - interval '120 days' AND data->>'source' = 'Rightmove' AND (data->'rm_link') IS NULL AND coalesce(data->>'deeplink', '') !~ 'rightmove\.co\.uk/properties/[0-9]' AND coalesce(data->>'url', '') NOT LIKE '%rightmove.co.uk/properties/%' ORDER BY id DESC LIMIT 300")).rows;
     if (!rows.length) return;
     const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], typed = ((await p.query("SELECT value FROM app_settings WHERE key = 'rm_gnomen'")).rows[0] || {}).value || {};
     const items = (c && c.value && c.value.items) || []; if (!items.length) return;
