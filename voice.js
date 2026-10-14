@@ -27,7 +27,7 @@ const SYSTEM = [
   '- Urgent repairs (major leak or flooding, no heating or hot water, no power, unable to secure the home, fire or carbon monoxide alarm sounding): mark urgent and reassure them the message goes to the person on call.',
   '- If they only want the office phone number or email: 0207 096 8131, info at residential realtors dot co dot uk.',
   '- If they want to view or rent a property: ask which property (the street or area is enough), how many people are moving in, how many are adults and how many are children, their move-in date, and how they will pay the rent (for example working, self-employed, Universal Credit or Housing Benefit, student, retired). Ask this neutrally and never turn anyone away because of how they pay. Never ask about a guarantor (the office asked; fill guarantor only if the caller brings it up). Fill adults, children, move_date and income.',
-  '- Names: speech recognition often mishears names (for example Tariq heard as Carrick). After they give their name, read it back to check you have it right ("Is that Tariq Ahmed?"). If they correct you, or the name could be spelt more than one way, ask them to spell it and use exactly the letters they give. Do this once; do not keep asking.',
+  '- Names: the speech recognition often gets names wrong (for example Tariq comes through as Carrick), so never trust a name as heard and never say it aloud before it is spelt. As soon as they give their name, ask them to spell their first name and surname for you, letter by letter. Use exactly the letters they spell (a caller line may end with [spelt: ...] showing the letters joined up) and write the name in normal capitals (Tariq Ahmed). If what comes through is still unclear, ask once more for just that part. Do not ask to spell it again after that.',
   '- If the caller refuses to give some details, accept that and carry on.',
   '- When you have their name, what it is about, and at least one way to contact them (and you have read back the email if they gave one), thank them, say the team will be in touch, say goodbye, and set done to true.',
   '- If the caller says goodbye or wants to end the call, end politely and set done to true.',
@@ -61,6 +61,12 @@ module.exports = function (app, opts) {
   const say = function (t) { return '<Say voice="' + VOICE + '" language="en-GB">' + esc(t) + '</Say>'; };
   const gather = function (t) { return '<Gather input="speech" language="en-GB" speechModel="phone_call" enhanced="true" speechTimeout="auto" timeout="7" actionOnEmptyResult="true" action="/voice/turn" method="POST">' + say(t) + '</Gather><Redirect method="POST">/voice/turn</Redirect>'; };
   const twiml = function (res, inner) { res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response>' + inner + '</Response>'); };
+  // Letters spelt out ("T A R I Q", "T-A-R-I-Q", "t. a. r. i. q.") joined up, so the name is taken letter for letter.
+  const spelt = function (t) {
+    const m = String(t).match(/(?:^|[^A-Za-z])((?:[A-Za-z](?:[\s.,-]+|$)){3,})/g); if (!m) return '';
+    const w = m.map(function (x) { return x.replace(/[^A-Za-z]/g, '').toUpperCase(); }).filter(function (x) { return x.length >= 3; });
+    return w.length ? ' [spelt: ' + w.join(' ') + ']' : '';
+  };
   const spoken = function (num) { const d = String(num || '').replace(/^\+44/, '0').replace(/\D/g, ''); return d ? d.split('').join(' ') : ''; };
 
   // Only Twilio may call these: its signature is an HMAC-SHA1 of the full URL plus the sorted form fields.
@@ -121,7 +127,7 @@ module.exports = function (app, opts) {
     const p = await pool().catch(function () { return null; });
     let call = p && sid ? (await p.query('SELECT * FROM voice_calls WHERE sid = $1', [sid]).catch(function () { return { rows: [] }; })).rows[0] : null;
     if (!call) call = { sid: sid, from_no: String(req.body.From || ''), turns: [], info: {}, silences: 0 };
-    if (heard) call.turns.push({ role: 'caller', text: heard }); else call.silences = (call.silences || 0) + 1;
+    if (heard) call.turns.push({ role: 'caller', text: heard + spelt(heard) }); else call.silences = (call.silences || 0) + 1;
     let out;
     if (!heard && call.silences >= 3) out = { reply: 'I can’t hear anything, so I’ll end the call now. Please call back or email info at residential realtors dot co dot uk. Goodbye.', done: true };
     else if (call.turns.filter(function (t) { return t.role === 'caller'; }).length >= MAX_TURNS) out = { reply: 'Thank you, I’ve got all that and I’ll pass it to the team. They’ll be in touch as soon as the office opens. Goodbye.', done: true };
