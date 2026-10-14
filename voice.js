@@ -95,8 +95,9 @@ module.exports = function (app, opts) {
       if (last.role === role) last.content += '\n' + t.text; else msgs.push({ role: role, content: t.text }); });
     if (msgs[msgs.length - 1].role !== 'user') msgs.push({ role: 'user', content: '[silence]' });
     try {
-      const r = await c.beta.messages.create({ model: MODEL, max_tokens: 2000, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
-        output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } }, system: SYSTEM, messages: msgs });
+      const req = { model: MODEL, max_tokens: 2000, output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } }, system: SYSTEM, messages: msgs };
+      // Haiku has no server-side fallback; the other models fall back if a reply is declined.
+      const r = /haiku/.test(MODEL) ? await c.messages.create(req) : await c.beta.messages.create(Object.assign({ betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }, req));
       if (r.stop_reason === 'refusal') return null;
       const t = (r.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('');
       const o = JSON.parse(t); return o && typeof o.reply === 'string' ? o : null;
@@ -106,7 +107,7 @@ module.exports = function (app, opts) {
   function scripted(info, n) {
     if (!info.name && n < 3) return { reply: 'Sorry, could you tell me your name again?', done: false };
     if (!info.about && n < 6) return { reply: 'Thank you. And what is your call about?', done: false };
-    return { reply: 'Thank you. I’ve passed your message to the team, and they’ll be in touch as soon as the office opens. Goodbye.', done: true };
+    return { reply: 'Thank you. I’ve passed your message to the team, and they’ll be in touch as soon as they can. Goodbye.', done: true };
   }
 
   app.post('/voice/turn', form, guard, async function (req, res) {
