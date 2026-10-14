@@ -687,6 +687,11 @@
   .av-cl { display: grid; grid-template-columns: 1fr auto 150px 90px; gap: 10px; align-items: center; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--dk-bd-f2f4f7, #f2f4f7); background: var(--dk-bg-fff, #fff); padding: 9px 10px; font: inherit; color: inherit; cursor: pointer; } .av-cl:hover { background: var(--dk-bg-f9fafb, #f9fafb); } .av-cl.is-urgent { box-shadow: inset 3px 0 0 #d92d20; } .av-cl-a { font-weight: 600; } .av-cl-a small, .av-cl-p small { color: var(--ink-soft); font-weight: 500; } .av-cl-p { font-weight: 800; } .av-cl-d { font-size: .84rem; } .av-cl-f { text-align: right; }
   @media (max-width: 640px) { .av-cl { grid-template-columns: 1fr auto; } .av-cl-d { grid-column: 1; } .av-cl-f { grid-column: 2; } .av-modes button { padding: 0 9px; } }
   .av-card.av-flash { box-shadow: 0 0 0 3px #155eef; transition: box-shadow .3s; }
+  .col-bar { grid-column: 1 / -1; position: relative; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; } .col-bar .muted-note { margin: 0; font-size: .78rem; }
+  .col-th { position: relative; } .col-rs { position: absolute; top: 0; right: -4px; width: 9px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; } .col-rs::after { content: ''; position: absolute; top: 25%; bottom: 25%; left: 4px; width: 1px; background: var(--dk-bd-d0d5dd, #d0d5dd); } .col-th:hover .col-rs::after, .col-rs:hover::after { background: var(--primary, #1e2a4a); width: 2px; }
+  .col-th.col-dragging { opacity: .45; } .col-th.col-over { box-shadow: inset 0 -3px 0 var(--primary, #1e2a4a); }
+  .col-menu { position: absolute; top: 100%; left: 0; z-index: 30; background: var(--dk-bg-fff, #fff); border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 12px; box-shadow: 0 12px 32px rgba(16,24,40,.18); padding: 10px; min-width: 250px; max-width: calc(100vw - 32px); }
+  .col-menu-h { font-weight: 700; margin: 0 0 6px; } .col-menu-r { display: flex; align-items: center; gap: 4px; padding: 3px 0; border-bottom: 1px solid var(--dk-bd-f2f4f7, #f2f4f7); } .col-menu-r span { flex: 1; } .col-menu-r small { color: var(--ink-soft); } .col-menu-f { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
   .av-lt-wrap { grid-column: 1 / -1; overflow-x: auto; border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 12px; background: var(--dk-bg-fff, #fff); }
   .av-lt { width: 100%; border-collapse: collapse; font-size: .85rem; } .av-lt th { position: sticky; top: 0; background: var(--dk-bg-f9fafb, #f9fafb); text-align: left; padding: 8px 10px; font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-soft); cursor: pointer; user-select: none; white-space: nowrap; border-bottom: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); } .av-lt th.on { color: var(--ink, var(--dk-fg-101828, #101828)); }
   .av-lt td { padding: 7px 10px; border-bottom: 1px solid var(--dk-bd-f2f4f7, #f2f4f7); vertical-align: middle; } .av-lt tr:hover td { background: var(--dk-bg-f9fafb, #f9fafb); } .av-lt td.nw { white-space: nowrap; } .av-lt td.ad { min-width: 260px; } .av-lt td.ad .linkish { opacity: .5; } .av-lt tr:hover td.ad .linkish { opacity: 1; } .av-lt td.nt { max-width: 200px; color: var(--ink-soft); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -3305,6 +3310,78 @@
     var w = window.open('', '_blank');
     api('POST', '/api/admin/jobs/' + jid + '/renewal-ask', { via: 'whatsapp', sent: true }).then(function(r){ if (!r || !r.ok) { if (w) w.close(); toast('Couldn’t make the message'); return; }
       var url = 'https://wa.me/' + waNumber(r.phone) + '?text=' + encodeURIComponent(r.text); if (w) w.location.href = url; else window.open(url, '_blank', 'noopener'); if (openJobId === jid) openJob(jid); });
+  });
+  // Tables whose columns staff can arrange (Available / Let lists): drag a heading to move it, drag its
+  // right edge to resize, or "⇄ Arrange columns" (works on phones). Remembered per browser (rr_cols_<key>).
+  function colPrefs(key){ try { return JSON.parse(localStorage.getItem('rr_cols_' + key) || '{}') || {}; } catch (e) { return {}; } }
+  function colSave(key, p){ try { localStorage.setItem('rr_cols_' + key, JSON.stringify(p)); } catch (e) {} }
+  function colName(th){ return th.textContent.replace(/[▲▼]/g, '').trim(); }
+  function colsArrange(table, key){
+    if (!table || !table.tHead) return;
+    var p = colPrefs(key), head = table.tHead.rows[0];
+    var keys = [].map.call(head.cells, function(th, i){ return th.dataset.col || (th.dataset.col = colName(th).toLowerCase() || (th.classList.contains('av-lt-act') ? 'actions' : 'col' + i)); });
+    var fixed = keys.filter(function(k, i){ return head.cells[i].classList.contains('av-lt-act'); });
+    var movable = keys.filter(function(k){ return fixed.indexOf(k) === -1; });
+    var order = (p.order || []).filter(function(k){ return movable.indexOf(k) !== -1; });
+    movable.forEach(function(k, i){ if (order.indexOf(k) === -1) order.splice(Math.min(i, order.length), 0, k); });
+    var fin = order.concat(fixed), idx = fin.map(function(k){ return keys.indexOf(k); });
+    [].forEach.call(table.rows, function(r){ if (r.cells.length !== keys.length) return; var cells = [].slice.call(r.cells); idx.forEach(function(i){ r.appendChild(cells[i]); }); });
+    table.dataset.colkey = key;
+    var st = document.getElementById('colw_' + key); if (!st) { st = document.createElement('style'); st.id = 'colw_' + key; document.head.appendChild(st); }
+    var w = p.w || {}, css = '';
+    fin.forEach(function(k, i){ if (w[k]) css += 'table[data-colkey="' + key + '"] tr > :nth-child(' + (i + 1) + '){width:' + w[k] + 'px!important;min-width:' + w[k] + 'px!important;max-width:' + w[k] + 'px!important;overflow:hidden;text-overflow:ellipsis}'; });
+    st.textContent = css;
+    table.style.width = Object.keys(w).some(function(k){ return fin.indexOf(k) !== -1; }) ? 'auto' : '';
+    [].forEach.call(head.cells, function(th){
+      var k = th.dataset.col; if (fixed.indexOf(k) !== -1 || th.dataset.colwired) return;
+      th.dataset.colwired = '1'; th.draggable = true; th.classList.add('col-th');
+      th.title = (th.title ? th.title + ' · ' : '') + 'Drag to move this column';
+      var h = document.createElement('span'); h.className = 'col-rs'; h.title = 'Drag to resize · double-click to reset'; th.appendChild(h);
+      h.addEventListener('click', function(e){ e.stopPropagation(); });
+      h.addEventListener('dblclick', function(e){ e.stopPropagation(); var q = colPrefs(key); if (q.w) delete q.w[k]; colSave(key, q); colsArrange(table, key); });
+      h.addEventListener('pointerdown', function(e){
+        e.preventDefault(); e.stopPropagation(); th.draggable = false;
+        var x0 = e.clientX, w0 = th.offsetWidth, q = colPrefs(key); q.w = q.w || {};
+        try { h.setPointerCapture(e.pointerId); } catch (er) {}
+        var mv = function(ev){ q.w[k] = Math.max(40, Math.round(w0 + ev.clientX - x0)); colSave(key, q); colsArrange(table, key); };
+        var up = function(){ h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); th.draggable = true; };
+        h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
+      });
+      th.addEventListener('dragstart', function(e){ e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', k); } catch (er) {} table.dataset.colDrag = k; th.classList.add('col-dragging'); });
+      th.addEventListener('dragend', function(){ th.classList.remove('col-dragging'); delete table.dataset.colDrag; [].forEach.call(head.cells, function(c){ c.classList.remove('col-over'); }); });
+      th.addEventListener('dragover', function(e){ if (!table.dataset.colDrag || table.dataset.colDrag === k) return; e.preventDefault(); th.classList.add('col-over'); });
+      th.addEventListener('dragleave', function(){ th.classList.remove('col-over'); });
+      th.addEventListener('drop', function(e){
+        e.preventDefault(); var from = table.dataset.colDrag; if (!from || from === k) return;
+        var cur = [].map.call(head.cells, function(c){ return c.dataset.col; }).filter(function(c){ return fixed.indexOf(c) === -1; });
+        cur.splice(cur.indexOf(from), 1); var at = cur.indexOf(k), right = e.clientX > th.getBoundingClientRect().left + th.offsetWidth / 2;
+        cur.splice(at + (right ? 1 : 0), 0, from);
+        var q = colPrefs(key); q.order = cur; colSave(key, q); colsArrange(table, key);
+      });
+    });
+  }
+  // "⇄ Arrange columns": move each column up / down the order, reset sizes or everything.
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-colmenu]'), old = document.querySelector('.col-menu');
+    if (old && !e.target.closest('.col-menu')) { old.remove(); if (b && old.dataset.key === b.dataset.colmenu) return; }
+    if (!b) return;
+    var key = b.dataset.colmenu, table = document.querySelector('table[data-colkey="' + key + '"]'); if (!table) return;
+    var draw = function(m){
+      var cells = [].filter.call(table.tHead.rows[0].cells, function(c){ return c.classList.contains('col-th'); }), w = colPrefs(key).w || {};
+      m.innerHTML = '<div class="col-menu-h">Arrange columns</div>' + cells.map(function(c, i){ return '<div class="col-menu-r"><span>' + esc(colName(c) || '(icons)') + (w[c.dataset.col] ? ' <small>' + w[c.dataset.col] + 'px</small>' : '') + '</span><button type="button" class="btn small ghost" data-colmv="-1" data-k="' + esc(c.dataset.col) + '"' + (i ? '' : ' disabled') + ' aria-label="Move left">↑</button><button type="button" class="btn small ghost" data-colmv="1" data-k="' + esc(c.dataset.col) + '"' + (i < cells.length - 1 ? '' : ' disabled') + ' aria-label="Move right">↓</button></div>'; }).join('') +
+        '<div class="col-menu-f"><button type="button" class="btn small ghost" data-colreset="w">Reset sizes</button><button type="button" class="btn small ghost" data-colreset="all">Reset everything</button></div>';
+    };
+    var m = document.createElement('div'); m.className = 'col-menu'; m.dataset.key = key; b.parentNode.appendChild(m); draw(m);
+    m.addEventListener('click', function(ev){
+      var mv = ev.target.closest('[data-colmv]'), rs = ev.target.closest('[data-colreset]'), q = colPrefs(key);
+      if (mv) { var cur = [].filter.call(table.tHead.rows[0].cells, function(c){ return c.classList.contains('col-th'); }).map(function(c){ return c.dataset.col; }), i = cur.indexOf(mv.dataset.k), j = i + Number(mv.dataset.colmv);
+        if (j < 0 || j >= cur.length) return; cur.splice(j, 0, cur.splice(i, 1)[0]); q.order = cur; }
+      else if (rs) { if (rs.dataset.colreset === 'w') delete q.w; else q = {}; }
+      else return;
+      colSave(key, q);
+      if (rs && rs.dataset.colreset === 'all') { m.remove(); renderAvail(); return; }
+      colsArrange(table, key); draw(m);
+    });
   });
   function toLocalInput(d){
     if (!d) return '';
@@ -15047,11 +15124,12 @@
       var bedTxt = function(x){ return x.beds == null ? '—' : x.beds === 0 ? 'Studio' : x.beds + ' bed'; };
       var flags = function(x){ var v = ((ytData && ytData.matches) || {})[x.id] || [], r = x.rm_id && rmBy[x.rm_id]; return (x.urgent ? '<span class="av-tag urgent" title="Urgent">🔥</span>' : '') + (r ? '<a class="av-mini rm" target="_blank" rel="noopener" href="' + esc(r.url) + '" title="On Rightmove">RM</a>' : '') + (v.length ? '<a class="av-mini yt" target="_blank" rel="noopener" href="' + esc(ytUrl(v[0])) + '" title="Video">▶</a>' : ytData && ytData.at ? '<span class="av-mini novid" title="No video yet">🎥?</span>' : ''); };
       if (avMode === 'list') {
-        $('avList').innerHTML = '<div class="av-lt-wrap"><table class="av-lt"><thead><tr><th>Available</th><th>Online</th><th>Address</th><th>Beds</th><th>pcm</th><th>Fee</th><th>pw</th><th>Access</th><th>Landlord</th><th></th><th class="av-lt-act"></th></tr></thead><tbody>' + list.map(function(x){
+        $('avList').innerHTML = '<div class="col-bar"><button type="button" class="btn small ghost" data-colmenu="av_list">⇄ Arrange columns</button><span class="muted-note">Drag a heading to move it · drag its right edge to make it wider or narrower</span></div>' + '<div class="av-lt-wrap"><table class="av-lt"><thead><tr><th>Available</th><th>Online</th><th>Address</th><th>Beds</th><th>pcm</th><th>Fee</th><th>pw</th><th>Access</th><th>Landlord</th><th></th><th class="av-lt-act"></th></tr></thead><tbody>' + list.map(function(x){
           var LL = (avLinkData[x.id] || {}).landlord, acc = x.access ? { landlord: '🏠 Landlord', tenants: '👥 Tenants', keys: '🔑 Keys' }[x.access] + (x.key_no ? ' · ' + esc(x.key_no) : '') : (x.key_no ? '🔑 ' + esc(x.key_no) : '<span class="muted-note" style="margin:0">—</span>');
           return '<tr data-av="' + x.id + '"' + (x.urgent ? ' class="is-urgent"' : '') + '><td class="nw">' + whenTxt(x) + '</td><td class="nw">' + avOnHtml(x, true) + '</td><td class="ad"><button type="button" class="linkish av-open" data-avopen="' + x.id + '">' + esc(x.address) + '</button>' + (x.gnomen_id ? ' <span class="av-gid">Gnomen ' + esc(x.gnomen_id) + '</span>' : '') + '</td><td class="nw">' + bedTxt(x) + '</td><td class="nw"><b>' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</b></td><td class="nw">' + (avFeeHtml(x, true) || '<span class="muted-note" style="margin:0">—</span>') + '</td><td class="nw">' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</td><td class="nw">' + acc + '</td><td>' + esc(x.landlord || (LL ? LL.name : '')) + (function(){ var ph = x.landlord_phone || (LL && LL.phone) || ''; return ph ? '<br><a href="tel:' + esc(String(ph).replace(/[^\d+]/g, '')) + '">' + esc(ph) + '</a>' : ''; })() + '</td><td class="nw">' + flags(x) + '</td>' +
             '<td class="nw av-lt-act"><button type="button" class="btn small primary" data-ava="offer">📝 Offer</button> <button type="button" class="btn small" data-ava="pvr">PVR</button> <button type="button" class="btn small" data-ava="view">👀 Viewing</button> <button type="button" class="btn small ghost" data-avopen="' + x.id + '" title="Open the full card">Open</button></td></tr>';
         }).join('') + '</tbody></table></div>' + (avMore ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more</button></div>' : '');
+        colsArrange($('avList').querySelector('table.av-lt'), 'av_list');
       } else {
         var groups = {}; list.forEach(function(x){ var g = x.beds == null ? 'Other' : x.beds === 0 ? 'Studios' : x.beds >= 4 ? '4+ bedrooms' : x.beds + ' bedroom' + (x.beds === 1 ? '' : 's'); (groups[g] = groups[g] || []).push(x); });
         var order = ['Studios', '1 bedroom', '2 bedrooms', '3 bedrooms', '4+ bedrooms', 'Other'].filter(function(g){ return groups[g]; });
@@ -15063,9 +15141,10 @@
     }
     if ((avFlag === 'let' || avFlag === 'withdrawn') && list.length) {
       var th = function(k, t){ return '<th data-lsort="' + k + '"' + (avLs.k === k ? ' class="on"' : '') + '>' + t + (avLs.k === k ? (avLs.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; };
-      $('avList').innerHTML = '<div class="av-lt-wrap"><table class="av-lt"><thead><tr>' + th('let_on', 'Let on') + th('address', 'Address') + th('beds', 'Beds') + th('rent_pcm', 'pcm') + th('rent_pw', 'pw') + th('landlord', 'Landlord') + th('commission', 'Fee') + th('notes', 'Notes') + '<th class="av-lt-act"></th></tr></thead><tbody>' + list.map(function(x){
+      $('avList').innerHTML = '<div class="col-bar"><button type="button" class="btn small ghost" data-colmenu="av_let">⇄ Arrange columns</button><span class="muted-note">Drag a heading to move it · drag its right edge to make it wider or narrower</span></div>' + '<div class="av-lt-wrap"><table class="av-lt"><thead><tr>' + th('let_on', 'Let on') + th('address', 'Address') + th('beds', 'Beds') + th('rent_pcm', 'pcm') + th('rent_pw', 'pw') + th('landlord', 'Landlord') + th('commission', 'Fee') + th('notes', 'Notes') + '<th class="av-lt-act"></th></tr></thead><tbody>' + list.map(function(x){
         return '<tr data-av="' + x.id + '"><td class="nw">' + (x.status === 'withdrawn' ? '<span class="av-wd">Withdrawn</span>' + (x.let_on ? '<br><small>' + esc(avDay(x.let_on)) + '</small>' : '') : esc(x.let_on ? avDay(x.let_on) : '—')) + '</td><td class="ad"><span>' + esc(x.address) + '</span> <button type="button" class="linkish" data-ava="addr" title="Correct the address">✎</button></td><td>' + (x.beds == null ? '—' : x.beds === 0 ? 'Studio' : x.beds) + '</td><td class="nw">' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</td><td class="nw">' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</td><td>' + (function(){ var LL = (avLinkData[x.id] || {}).landlord; return LL ? '<b title="Landlord on file' + (LL.phone ? ' · ' + esc(LL.phone) : '') + (LL.email ? ' · ' + esc(LL.email) : '') + '">' + esc(LL.name || 'Landlord') + '</b>' + (LL.phone ? '<br><small><a href="tel:' + esc(String(LL.phone).replace(/[^\d+]/g, '')) + '">' + esc(LL.phone) + '</a></small>' : '') : esc(x.landlord || ''); })() + '</td><td>' + esc(x.commission || '') + '</td><td class="nt" title="' + esc([x.contact, x.notes].filter(Boolean).join(' · ')) + '">' + esc([x.notes, x.tags].filter(Boolean).join(' · ').slice(0, 80)) + '</td><td class="nw av-lt-act"><button type="button" class="btn small primary" data-ava="edit" title="Edit this property">✏️ Edit</button> <button type="button" class="btn small" data-avs="available" title="Put it back on the available list">↩ Available</button></td></tr>';
       }).join('') + '</tbody></table></div>' + (avMore ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more (' + avMore + ' not shown — or search above)</button></div>' : '');
+      colsArrange($('avList').querySelector('table.av-lt'), 'av_let');
       return;
     }
     $('avList').innerHTML = list.length ? list.map(function(x){
