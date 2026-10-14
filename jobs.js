@@ -2094,7 +2094,7 @@ module.exports = function mountJobs(app, opts) {
     if (method === 'GET' && /^\/sent-emails(\/\d+(\/file\/\d+)?)?$/.test(path)) return true;   // their own emails only (checked in the route)
     if (path === '/available-history' || /^\/available-history\/\d+\/restore$/.test(path)) return true;
     if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;
-    if (path === '/crm' || /^\/crm\/(note|meta|archive|recommended|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
+    if (path === '/crm' || /^\/crm\/(note|meta|move|archive|recommended|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
     if (method === 'POST' && path === '/assistant') return true;   // Ask Fixflow: staff only get applicants from a pasted enquiry (checked in the route)
     if (method === 'GET' && path === '/lead-hook') return true;
     if (method === 'GET' && path === '/staff-names') return true;   // the calendar's people
@@ -12628,6 +12628,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
   const APPL_HOLD = 24 * 3600000;
   function isApplicant(d) {
     d = d || {};
+    if (d.appl === true) return true; if (d.appl === false) return false;   // moved by staff (Landlord enquiries ⇄ Applicants)
     return d.kind === 'viewing' || d.kind === 'rightmove' || d.kind === 'lead' || ((d.kind === 'enquiry' || d.kind === 'contact') && /^(looking to rent|buying|applicant|buyer)$/i.test(String(d.topic || ''))) ||
       (d.kind === 'call' && /^(renting|buying)$/.test(String(d.category || '')));
   }
@@ -12864,6 +12865,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
   setTimeout(function () { crmRemind().catch(function (e) { console.error('Lead reminder failed:', e.message); }); }, 120 * 1000);
   setInterval(function () { crmRemind().catch(function (e) { console.error('Lead reminder failed:', e.message); }); }, 20 * 60 * 1000).unref();
   // A contact staff add themselves: a phone call, walk-in or someone met at a viewing.
+  // Move an enquiry between Landlord enquiries and Applicants (e.g. a phone message that is really someone looking to rent).
+  app.post('/api/admin/crm/move', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = parseInt(String(b.ref || '').replace(/^vr:/, ''), 10), to = b.applicant !== false;
+    if (!id) return res.status(400).json({ ok: false });
+    const r = await p.query("UPDATE valuation_requests SET data = jsonb_set(coalesce(data, '{}'::jsonb), '{appl}', $2::jsonb) WHERE id = $1 RETURNING id", [id, JSON.stringify(to)]);
+    if (!r.rows.length) return res.status(404).json({ ok: false });
+    await crmLog(p, 'vr:' + id, to ? '👥 Moved to Applicants' : '🏠 Moved to Landlord enquiries', req);
+    res.json({ ok: true });
+  }));
   app.post('/api/admin/crm/contact', withDb(async function (p, req, res) {
     const b = req.body || {}, name = str(b.name, 120), email = str(b.email, 200) || null, phone = str(b.phone, 40) || null;
     if (!name || (!email && !phone)) return res.status(400).json({ ok: false, error: 'missing' });
