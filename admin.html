@@ -9837,7 +9837,7 @@
   function applSrc(i){
     var d = i.data || {};
     if (i.type === 'rm') return 'Rightmove'; if (i.type === 'lead') return d.source || 'Portal'; if (i.type === 'viewing') return 'Website';
-    if (i.type === 'call') return 'Phone (out of hours)'; if (i.type === 'enquiry') return 'Website message'; if (i.type === 'contact') return d.source || 'Added by staff';
+    if (i.type === 'call') return 'Phone (assistant)'; if (i.type === 'enquiry') return 'Website message'; if (i.type === 'contact') return d.source || 'Added by staff';
     return (CRM_T[i.type] || [])[1] || '';
   }
   var applRentIx = { src: null, map: {} }, applAvAsked = false;
@@ -9935,7 +9935,7 @@
             (g.email ? '<a class="appl-ic" data-ml-ref="' + esc(g.ref) + '" href="mailto:' + esc(g.email) + '?subject=' + encodeURIComponent(m.subject) + '&body=' + encodeURIComponent(m.body) + '" title="Email ' + esc(g.email) + ' with a ready-written message">✉️<span> Email</span></a>' : '') +
             '<a class="appl-ic bk" href="#" data-appl-book title="Book a viewing with ' + esc(g.name || 'them') + ' — it goes in the calendar">🗓<span> Book<em> viewing</em></span></a>'; })() + '</td>' +
         '<td class="nw cut c-who">' + (g.assigned ? (hold.held ? '🔒 ' : '') + esc(g.assigned) : '<span class="muted">—</span>') + '</td>' +
-        '<td class="nw c-src">' + esc(applSrc(g).replace('Website message', 'Web message').replace(' (out of hours)', '')) + '</td>' +
+        '<td class="nw c-src">' + esc(applSrc(g).replace('Website message', 'Web message').replace(' (assistant)', '')) + '</td>' +
         '<td class="nw c-phone">' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(g.phone) + '</a>' : '') + '</td>' +
         '<td class="nw c-status"><span style="color:' + st[1] + ';font-weight:700">' + st[0] + '</span></td>' +
         '<td class="pr c-prop" title="' + esc(g.address || '') + '">' + (function(){ var lbl = g.address && g.address !== '(no property given)' ? esc(shortAddr(g.address)) : (g.data && g.data.ref ? 'Ref ' + esc(g.data.ref) : ''), u = lbl && applPropUrl(g);
