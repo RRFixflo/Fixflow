@@ -2475,6 +2475,7 @@
             <div><h2 id="propTitle"></h2><div class="prop-sub" id="propSub"></div></div>
             <div class="prop-actions">
               <button class="btn small primary" id="propNewJob" type="button">🔧 New job</button>
+              <button class="btn small" id="propLlBtn" type="button" hidden>👤 Landlord</button>
               <button class="btn small" id="propMsgTenants" type="button">📣 Message tenants</button>
               <button class="btn small" id="propAddrEdit" type="button">✎ Edit address</button>
               <button class="btn small ghost danger" id="propDelete" type="button">🗑 Delete property</button>
@@ -6239,6 +6240,8 @@
   function renderPropLandlord(pr){
     var l = landlordRecordAt(pr.address);
     $('propShare').textContent = l ? 'Share with ' + l.name : 'Share report';
+    // Straight to the landlord's page from the top of the property (like the tenancy page).
+    $('propLlBtn').hidden = !l; $('propLlBtn').textContent = l ? '👤 Landlord: ' + l.name : '👤 Landlord'; $('propLlBtn').onclick = l ? function(){ openLandlord(l.id); } : null;
     var opts = '<option value="">Choose a landlord…</option>' + landlords.map(function(x){ return '<option value="' + x.id + '"' + (l && l.id === x.id ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '<option value="new">+ New landlord…</option>';
     $('propLandlord').innerHTML = '<h3>Landlord <span style="flex:1"></span>' + (l ? '<button class="btn small" id="plOpen" type="button">Open landlord</button>' : '') + '</h3>' +
       (l ? '<div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">' + avatar(l.name) + '<div><strong>' + esc(l.name) + '</strong><div class="prop-sub" style="margin:0">' +
