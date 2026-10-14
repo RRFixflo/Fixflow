@@ -687,6 +687,8 @@
   .av-cl { display: grid; grid-template-columns: 1fr auto 150px 90px; gap: 10px; align-items: center; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--dk-bd-f2f4f7, #f2f4f7); background: var(--dk-bg-fff, #fff); padding: 9px 10px; font: inherit; color: inherit; cursor: pointer; } .av-cl:hover { background: var(--dk-bg-f9fafb, #f9fafb); } .av-cl.is-urgent { box-shadow: inset 3px 0 0 #d92d20; } .av-cl-a { font-weight: 600; } .av-cl-a small, .av-cl-p small { color: var(--ink-soft); font-weight: 500; } .av-cl-p { font-weight: 800; } .av-cl-d { font-size: .84rem; } .av-cl-f { text-align: right; }
   @media (max-width: 640px) { .av-cl { grid-template-columns: 1fr auto; } .av-cl-d { grid-column: 1; } .av-cl-f { grid-column: 2; } .av-modes button { padding: 0 9px; } }
   .av-card.av-flash { box-shadow: 0 0 0 3px #155eef; transition: box-shadow .3s; }
+  .tcy-notice { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--dk-bg-fffaeb, #fffaeb); border: 1px solid var(--dk-bd-fedf89, #fedf89); font-size: .9rem; }
+  .nt-opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 10px; margin-bottom: 6px; cursor: pointer; } .nt-opt small { display: block; color: var(--ink-soft); font-size: .8rem; } .nt-opt span { flex: 1; min-width: 0; } .nt-opt input[type=radio] { margin-top: 4px; }
   .rr-stage { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; } .rb-claim { display: inline-block; background: var(--dk-bg-ecfdf3, #ecfdf3); color: var(--dk-fg-067647, #067647); border-radius: 999px; padding: 1px 8px; font-size: .78rem; font-weight: 600; } p.rb-claim { border-radius: 10px; padding: 6px 10px; font-size: .85rem; }
   .col-bar { grid-column: 1 / -1; position: relative; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; } .col-bar .muted-note { margin: 0; font-size: .78rem; }
   .col-th { position: relative; } .col-rs { position: absolute; top: 0; right: -4px; width: 9px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; } .col-rs::after { content: ''; position: absolute; top: 25%; bottom: 25%; left: 4px; width: 1px; background: var(--dk-bd-d0d5dd, #d0d5dd); } .col-th:hover .col-rs::after, .col-rs:hover::after { background: var(--primary, #1e2a4a); width: 2px; }
@@ -16849,7 +16851,74 @@
     var t = new Date(); t.setHours(0, 0, 0, 0);
     var s = parseDay(d.start_date);
     if (!s) return 'Draft';
-    return s > t ? 'Starts ' + longDay(d.start_date) : 'Started ' + longDay(d.start_date);
+    var n = d.notice && d.notice.end_on ? (d.notice.end_on < isoDay(t) ? ' · Ended ' : ' · Notice given — ends ') + longDay(d.notice.end_on) : '';
+    return (s > t ? 'Starts ' + longDay(d.start_date) : 'Started ' + longDay(d.start_date)) + n;
+  }
+  // Tenants' notice to leave: at least two months, ending on the last day of a rent period (the day before
+  // the rent date) or on the rent date. The rent day comes from the start date (31st → the month's last day).
+  function ntIso(y, m, d){ var last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); return new Date(Date.UTC(y, m, Math.min(d, last))).toISOString().slice(0, 10); }
+  function ntPrev(iso){ var x = new Date(iso + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() - 1); return x.toISOString().slice(0, 10); }
+  function noticeDates(start, given){
+    var sd = Number(String(start || '').slice(8, 10)); if (!sd || !/^\d{4}-\d{2}-\d{2}$/.test(given || '')) return null;
+    var g = given.split('-').map(Number), min = ntIso(g[0], g[1] - 1 + 2, g[2]), rents = [];
+    for (var i = 1; i <= 5; i++) rents.push(ntIso(g[0], g[1] - 1 + i, sd));
+    var rent = rents.filter(function(r){ return r >= min; })[0], before = rents.map(ntPrev).filter(function(r){ return r >= min; })[0];
+    return { min: min, before: before, rent: rent, day: sd };
+  }
+  function noticeOpen(){
+    var d = tcyDraft || {}, id = openTcyId, n = d.notice || {}, m = $('ntModal');
+    if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'ntModal'; m.hidden = true; document.body.appendChild(m); m.addEventListener('mousedown', function(e){ if (e.target === m) m.hidden = true; }); }
+    if (!d.start_date) { toast('Add the tenancy’s start date first — the rent day comes from it'); return; }
+    var today = isoDay(new Date()), tEmails = (d.tenants || []).map(function(t){ return t && t.email; }).filter(Boolean);
+    m.innerHTML = '<div class="card" style="width:min(560px,100%);display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 32px);overflow:auto">' +
+      '<h3 style="margin:0">📅 Tenants’ notice to leave</h3>' +
+      '<p class="muted-note" style="margin:0">Tenants must give at least <b>two months’ notice</b>, ending on the <b>last day of a rent period</b> (the day before the rent date) or <b>on the rent date</b>. Rent here is due on the <b>' + esc(ordinal(Number(String(d.start_date).slice(8, 10)))) + '</b> of each month.</p>' +
+      '<div class="grid2"><div><label class="lbl" for="ntGiven">Date notice was given</label><input class="inp" type="date" id="ntGiven" max="' + today + '" value="' + esc(n.given_on || today) + '"></div>' +
+      '<div><label class="lbl" for="ntHow">How it was given</label><select class="inp" id="ntHow">' + ['Email', 'Letter', 'WhatsApp / text', 'In person', 'Other'].map(function(o){ return '<option' + (n.how === o ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select></div></div>' +
+      '<div id="ntOpts"></div>' +
+      '<div><label class="lbl" for="ntNote">Note (optional)</label><input class="inp" id="ntNote" value="' + esc(n.note || '') + '" placeholder="e.g. moving abroad, keys back on the last day"></div>' +
+      (tEmails.length ? '<label class="switch-row"><input type="checkbox" id="ntMail"' + (n.given_on ? '' : ' checked') + '> ✉ Then email the tenants to confirm the end date (you check it before it’s sent)</label>' : '') +
+      '<div class="row-actions" style="flex-wrap:wrap">' + (n.given_on ? '<button class="btn ghost" type="button" id="ntRemove" style="color:var(--dk-fg-b42318, #b42318)">Remove notice</button>' : '') + '<span style="flex:1"></span><button class="btn ghost" type="button" id="ntCancel">Cancel</button><button class="btn primary" type="button" id="ntSave">Save</button></div></div>';
+    var draw = function(){
+      var nd = noticeDates(d.start_date, $('ntGiven').value), cur = $('ntOpts').querySelector('input[name=ntEnd]:checked'), pick = cur ? cur.value : '';
+      if (!nd) { $('ntOpts').innerHTML = '<p class="muted-note" style="margin:0">Enter the date notice was given.</p>'; return; }
+      var own = pick === 'own' || (!pick && n.end_on && n.end_on !== nd.before && n.end_on !== nd.rent);
+      var sel = own ? 'own' : pick || (n.end_on === nd.rent ? 'rent' : 'before');
+      $('ntOpts').innerHTML = '<div class="lbl" style="margin:0 0 4px">The tenancy ends on</div>' +
+        '<label class="nt-opt"><input type="radio" name="ntEnd" value="before"' + (sel === 'before' ? ' checked' : '') + '> <span><b>' + esc(longDay(nd.before)) + '</b><small>Last day of a rent period — the day before the rent date. Usually the right choice.</small></span></label>' +
+        '<label class="nt-opt"><input type="radio" name="ntEnd" value="rent"' + (sel === 'rent' ? ' checked' : '') + '> <span><b>' + esc(longDay(nd.rent)) + '</b><small>On the rent date</small></span></label>' +
+        '<label class="nt-opt"><input type="radio" name="ntEnd" value="own"' + (sel === 'own' ? ' checked' : '') + '> <span><b>A later date</b><small>Must still be a rent date or the day before one</small> <input class="inp" type="date" id="ntOwn" min="' + esc(nd.min) + '" value="' + esc(own ? n.end_on : '') + '" style="margin-top:4px"></span></label>' +
+        '<p class="muted-note" style="margin:6px 0 0">Two months from ' + esc(longDay($('ntGiven').value)) + ' is ' + esc(longDay(nd.min)) + ' — the earliest the tenancy can end.</p>';
+    };
+    draw();
+    $('ntGiven').addEventListener('change', draw);
+    $('ntOpts').addEventListener('change', function(e){ if (e.target.id === 'ntOwn') { var r = $('ntOpts').querySelector('input[value=own]'); if (r) r.checked = true; } });
+    $('ntCancel').onclick = function(){ m.hidden = true; };
+    if ($('ntRemove')) $('ntRemove').onclick = function(){ if (!confirm('Remove the notice from this tenancy?')) return; api('POST', '/api/admin/tenancies/' + id + '/notice', { remove: true }).then(function(r){ if (!r || !r.ok) { toast('Couldn’t remove it'); return; } m.hidden = true; toast('Notice removed'); loadTenancies().then(function(){ openTenancy(id); }); }); };
+    $('ntSave').onclick = function(){
+      var nd = noticeDates(d.start_date, $('ntGiven').value), c = $('ntOpts').querySelector('input[name=ntEnd]:checked'); if (!nd || !c) return;
+      var end = c.value === 'before' ? nd.before : c.value === 'rent' ? nd.rent : ($('ntOwn') || {}).value;
+      if (!end) { toast('Choose the end date'); return; }
+      var body = { given_on: $('ntGiven').value, end_on: end, how: $('ntHow').value, note: $('ntNote').value.trim(), by: 'tenant' }, btn = this, mail = $('ntMail') && $('ntMail').checked;
+      var go = function(force){ busy(btn, true, 'Saving…'); body.force = !!force;
+        api('POST', '/api/admin/tenancies/' + id + '/notice', body).then(function(r){ busy(btn, false);
+          if (r && !r.ok && (r.error === 'short' || r.error === 'not-period')) {
+            if (confirm((r.error === 'short' ? 'That is less than two months from the date notice was given.' : 'That date isn’t a rent date or the day before one, so it isn’t the end of a rent period.') + '\n\nSave it anyway (e.g. the landlord has agreed to it)?')) go(true); return; }
+          if (!r || !r.ok) { toast('Couldn’t save the notice'); return; }
+          m.hidden = true; toast('✓ Notice saved — the tenancy ends ' + longDay(end));
+          loadTenancies().then(function(){ openTenancy(id);
+            if (mail) {
+              var names = (d.tenants || []).map(function(t){ return String(t && t.name || '').trim().split(/\s+/)[0]; }).filter(Boolean);
+              composeMail({ title: '✉ Confirm the notice to the tenants', to: tEmails, subject: 'Your notice to leave — ' + String(d.address || '').split(',').slice(0, 2).join(','),
+                body: 'Dear ' + (names.length ? (names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names.slice(-1) : names[0]) : 'tenant') + ',\n\nThank you for your notice to end your tenancy at ' + d.address + ', which we received on ' + longDay(body.given_on) + '.\n\n' +
+                  'We confirm that your tenancy will end on ' + longDay(end) + '. Rent remains payable up to that date.\n\nWe’ll be in touch nearer the time to arrange the check-out and the return of the keys. If anything changes, please let us know as soon as possible.\n\nKind regards,\nResidential Realtors\n0207 096 8131' });
+            }
+          });
+        });
+      };
+      go(false);
+    };
+    m.hidden = false;
   }
   // Sort and filter: by move-in date, fees, rent or when added; by service
   // (fully managed, not managed, tenant find only, rent collection).
@@ -17690,7 +17759,9 @@
             (lr ? '<button type="button" class="btn small" data-tcy-ll="' + lr.id + '">👤 Landlord: ' + esc(lr.name) + '</button>' : '') +
             '<button type="button" class="btn small primary" data-tcy-job="1">🔧 New job</button>' +
             '<button type="button" class="btn small" data-tcy-inv="1">🧾 Invoice the landlord</button>' +
-            '<button type="button" class="btn small" data-tcy-swap="1">🔁 Change of tenant</button></div>' +
+            '<button type="button" class="btn small" data-tcy-swap="1">🔁 Change of tenant</button>' +
+            '<button type="button" class="btn small" data-tcy-notice="1">📅 ' + (d.notice ? 'Notice given' : 'Notice to leave') + '</button></div>' +
+            (d.notice ? '<div class="tcy-notice">📅 The tenants gave notice on <b>' + esc(longDay(d.notice.given_on)) + '</b> — the tenancy ' + (d.notice.end_on < isoDay(new Date()) ? 'ended' : 'ends') + ' on <b>' + esc(longDay(d.notice.end_on)) + '</b>' + (d.notice.override ? ' <small>(date entered by hand)</small>' : '') + ' <button type="button" class="linkish" data-tcy-notice="1">Change</button></div>' : '') +
             ((d.tenant_changes || []).length ? '<div class="prop-sub" style="margin-top:8px">' + d.tenant_changes.slice().reverse().map(function(c){ return '🔁 ' + esc(longDay(c.effective)) + ': ' + esc((c.out || {}).name || '') + ' → ' + esc((c.in || {}).name || '') + (c.doc ? ' · <a href="/d/' + esc(c.doc) + '" target="_blank" rel="noopener">Change of Tenancy Agreement</a>' : ''); }).join('<br>') + '</div>' : '');
         })() : '') + '</div></div>' +
       '<div class="tcy-form">' +
@@ -17801,8 +17872,9 @@
   }
   $('tcyDetail').addEventListener('click', function(e){
     if (e.target.closest('#tfStmts')) { stmtClick(e); return; }
-    var b = e.target.closest('[data-tcy-prop],[data-tcy-ll],[data-tcy-inv],[data-tcy-swap],[data-tcy-job],[data-owe]'); if (!b) return;
+    var b = e.target.closest('[data-tcy-prop],[data-tcy-ll],[data-tcy-inv],[data-tcy-swap],[data-tcy-notice],[data-tcy-job],[data-owe]'); if (!b) return;
     if (b.dataset.tcySwap) { ctoOpen(); return; }
+    if (b.dataset.tcyNotice) { noticeOpen(); return; }
     if (b.dataset.tcyJob) { var dj = tcySaved() || tcyDraft; newJobAt(dj.address, dj.tenants); return; }
     if (b.dataset.tcyInv) { var dd = tcySaved() || tcyDraft; openNewInvoice({ address: dd.address, props: [dd.address], tenancy_id: openTcyId === 'new' ? null : openTcyId, vat: dd.vat !== false && !/rent\s*4\s*rent/i.test(String(dd.service || '')) }); return; }
     if (b.dataset.owe) { tcyOwe(b.dataset.owe, b); return; }
