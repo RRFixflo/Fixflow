@@ -591,6 +591,19 @@
   .pv-editbox { margin: 8px 0 12px; padding: 12px; border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 12px; }
   @media (max-width: 640px) { .off-kind, .off-pvr { grid-template-columns: 1fr; } }
   .sent-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+  .mu-top { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 8px 0; }
+  .mu-tile { border: 1px solid var(--dk-bd-e6e8ec, #e6e8ec); border-radius: 12px; padding: 10px 12px; }
+  .mu-tile b { font-size: 22px; display: block; } .mu-tile small { color: var(--dk-fg-667085, #667085); }
+  .mu-bar { height: 8px; border-radius: 6px; background: var(--dk-bg-f2f4f7, #f2f4f7); margin-top: 6px; overflow: hidden; }
+  .mu-bar i { display: block; height: 100%; background: var(--dk-fg-067647, #067647); border-radius: 6px; }
+  .mu-bar i.amber { background: var(--dk-fg-b54708, #b54708); } .mu-bar i.red { background: var(--dk-fg-b42318, #b42318); }
+  .mu-warn { background: var(--dk-bg-fef3f2, #fef3f2); color: var(--dk-fg-b42318, #b42318); border-radius: 10px; padding: 8px 10px; margin: 8px 0; font-weight: 600; }
+  .mu-sec { margin-top: 8px; } .mu-sec > summary { cursor: pointer; font-weight: 700; padding: 6px 0; }
+  .mu-days { width: 100%; border-collapse: collapse; font-size: 13px; } .mu-days td, .mu-days th { padding: 4px 6px; border-bottom: 1px solid var(--dk-bd-e6e8ec, #e6e8ec); text-align: right; } .mu-days td:first-child, .mu-days th:first-child { text-align: left; }
+  .mu-kind { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--dk-bd-e6e8ec, #e6e8ec); }
+  .mu-kind .mk-t { font-weight: 600; overflow-wrap: anywhere; } .mu-kind .mk-s { color: var(--dk-fg-667085, #667085); font-size: 12px; overflow-wrap: anywhere; }
+  .mu-kind.off .mk-t { text-decoration: line-through; color: var(--dk-fg-667085, #667085); }
+  .mu-kind .btn.mk-on { background: var(--dk-bg-ecfdf3, #ecfdf3); color: var(--dk-fg-067647, #067647); } .mu-kind .btn.mk-off { background: var(--dk-bg-fef3f2, #fef3f2); color: var(--dk-fg-b42318, #b42318); }
   .sent-row { background: var(--panel, var(--dk-bg-fff, #fff)); border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 14px; margin-bottom: 8px; overflow: hidden; }
   .sent-row > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 118px 1fr auto; gap: 4px 14px; align-items: center; padding: 12px 14px; }
   .sent-row > summary::-webkit-details-marker { display: none; }
@@ -2303,6 +2316,7 @@
         <div id="ltDeleted" style="margin-top:12px"></div>
       </div>
       <div id="sentView" hidden>
+        <div class="card" id="mailUse" hidden style="margin-bottom:12px"></div>
         <div class="card" style="margin-bottom:12px"><div class="sent-bar"><input class="inp" id="sentQ" placeholder="Search who it went to, subject or text" style="flex:1;min-width:200px"><select class="inp" id="sentWho" hidden style="width:auto"><option value="">Everyone</option></select></div>
           <p class="muted-note" id="sentNote" style="margin:8px 0 0"></p></div>
         <div id="sentList"></div>
@@ -15074,7 +15088,7 @@
     }).join('');
   }
   function loadSent(){
-    var q = $('sentQ').value.trim(), who = $('sentWho').value;
+    var q = $('sentQ').value.trim(), who = $('sentWho').value; if (!q && !who) loadMailUse();
     return api('GET', '/api/admin/sent-emails?q=' + encodeURIComponent(q) + (who ? '&who=' + encodeURIComponent(who) : '')).then(function(d){
       if (!d || !d.ok) { $('sentList').innerHTML = '<p class="muted-note">Couldn’t load the sent emails.</p>'; return; }
       if (d.all && !sentWhoSet) { sentWhoSet = true; $('sentWho').hidden = false; $('sentWho').innerHTML = '<option value="">Everyone</option>' + d.people.map(function(p){ return '<option value="' + esc(p.user_name || '') + '">' + esc(p.user_name || 'Office') + ' (' + p.n + ')</option>'; }).join(''); }
@@ -15083,6 +15097,39 @@
       $('sentList').innerHTML = d.emails.length ? sentRows(d.emails, d.all) : '<div class="card"><p class="muted-note" style="margin:0">' + (q || who ? 'No emails match.' : 'No emails sent through Fixflow yet. Emails sent with the ✉ Email buttons will appear here.') + '</p></div>';
     });
   }
+  // 📊 Email usage (managers only — the server refuses others and the card stays hidden): today and this month
+  // against the Resend plan, the last 14 days, and an on/off switch for each kind of email sent only to the office.
+  function loadMailUse(){
+    api('GET', '/api/admin/email-usage').then(function(d){ if (d && d.ok) { mailUseData = d; drawMailUse(); } else $('mailUse').hidden = true; })['catch'](function(){ $('mailUse').hidden = true; });
+  }
+  var mailUseData = null, mailUseOpen = {};
+  function drawMailUse(){
+    var d = mailUseData, box = $('mailUse'); if (!d) return; box.hidden = false;
+    function tile(n, max, what){ var pc = Math.min(100, Math.round(n / max * 100)); return '<div class="mu-tile"><small>' + what + '</small><b>' + n + ' <small>of ' + max.toLocaleString('en-GB') + '</small></b><div class="mu-bar"><i class="' + (pc >= 90 ? 'red' : pc >= 70 ? 'amber' : '') + '" style="width:' + pc + '%"></i></div></div>'; }
+    var limToday = d.last_limit && new Date(d.last_limit).toLocaleDateString('en-GB', { timeZone: TZ }) === new Date().toLocaleDateString('en-GB', { timeZone: TZ });
+    var since = d.since ? new Date(d.since).toLocaleDateString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short' }) : '';
+    var fmtDay = function(x){ return new Date(x + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); };
+    var offN = d.kinds.filter(function(k){ return k.off; }).length;
+    box.innerHTML = '<h3 style="margin:0">📊 Email usage</h3><p class="muted-note" style="margin:4px 0 0">Every email Fixflow sends goes through Resend. Your plan allows ' + d.limits.day + ' a day and ' + d.limits.month.toLocaleString('en-GB') + ' a month — over that, Resend stops sending until the next day.' + (since ? ' Counting since ' + esc(since) + '.' : ' Counting starts with the next email.') + '</p>' +
+      (limToday ? '<div class="mu-warn">⚠️ Resend refused emails today — the daily limit is used up, so emails aren’t going out until tomorrow. Upgrade Resend to Pro ($20 a month) to stop this happening.</div>' : d.refused ? '<div class="mu-warn" style="font-weight:500">' + d.refused + ' email' + (d.refused === 1 ? '' : 's') + ' couldn’t be sent in the last 7 days (see Last 14 days).</div>' : '') +
+      '<div class="mu-top">' + tile(d.today, d.limits.day, 'Sent today') + tile(d.month, d.limits.month, 'Sent this month') + '</div>' +
+      '<details class="mu-sec" data-mu="days"' + (mailUseOpen.days ? ' open' : '') + '><summary>Last 14 days</summary>' + (d.days.length ? '<table class="mu-days"><tr><th>Day</th><th>Sent</th><th>To the office</th><th>Switched off</th><th>Refused</th></tr>' + d.days.map(function(x){ return '<tr><td>' + esc(fmtDay(x.day)) + '</td><td><b>' + x.n + '</b></td><td>' + x.ours + '</td><td>' + (x.held || '') + '</td><td>' + (x.refused ? '<b style="color:var(--dk-fg-b42318, #b42318)">' + x.refused + '</b>' : '') + '</td></tr>'; }).join('') + '</table>' : '<p class="muted-note">Nothing counted yet.</p>') + '</details>' +
+      '<details class="mu-sec" data-mu="kinds"' + (mailUseOpen.kinds ? ' open' : '') + '><summary>✉ Emails to the office — switch off the ones you don’t need' + (offN ? ' (' + offN + ' off)' : '') + '</summary>' +
+      '<p class="muted-note" style="margin:0 0 4px">Automatic emails sent only to the office or staff in the last 30 days, most frequent first. Switched off means nobody in the office gets that kind of email any more (phone alerts and the staff app still show it). Emails to tenants, landlords, applicants and contractors always go.</p>' +
+      (d.kinds.length ? d.kinds.map(function(k, i){
+        var per = k.n >= 30 ? Math.round(k.n / 30) + ' a day' : k.n + ' in 30 days';
+        return '<div class="mu-kind' + (k.off ? ' off' : '') + '"><div><div class="mk-t">' + esc(k.kind.replace(/#/g, 'n')) + '</div><div class="mk-s">' + (k.off ? 'Switched off' + (k.held ? ' · ' + k.held + ' held back' : '') : per) + (k.example && k.example !== k.kind ? ' · e.g. “' + esc(k.example) + '”' : '') + ((k.who || []).length ? ' · to ' + esc(k.who.length > 3 ? k.who.length + ' people' : k.who.join(', ')) : '') + '</div></div>' +
+          '<button type="button" class="btn small ' + (k.off ? 'mk-off' : 'mk-on') + '" data-mu-kind="' + i + '">' + (k.off ? '✕ Off — turn on' : '✓ On — switch off') + '</button></div>';
+      }).join('') : '<p class="muted-note">No emails to the office counted yet — they’ll appear here as they’re sent.</p>') + '</details>';
+  }
+  document.addEventListener('toggle', function(e){ var t = e.target; if (t.matches && t.matches('#mailUse [data-mu]')) mailUseOpen[t.dataset.mu] = t.open; }, true);
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-mu-kind]'); if (!b || !mailUseData) return;
+    var k = mailUseData.kinds[+b.dataset.muKind]; if (!k) return;
+    if (!k.off && !confirm('Switch off “' + k.kind + '” emails? Nobody in the office will get them any more. You can turn them back on here.')) return;
+    b.disabled = true;
+    api('POST', '/api/admin/email-usage/mute', { kind: k.kind, off: !k.off }).then(function(r){ if (r && r.ok) { k.off = r.off; drawMailUse(); toast(r.off ? 'Switched off' : 'Turned back on'); } else { b.disabled = false; toast('Couldn’t save — try again'); } })['catch'](function(){ b.disabled = false; });
+  });
   // Emails sent to one person (tenant or landlord page).
   function personMails(box, email){
     if (!box) return; email = String(email || '').trim();

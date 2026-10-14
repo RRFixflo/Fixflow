@@ -857,7 +857,7 @@ app.post('/api/send-report', async (req, res) => {
     // 2) Email it to Residential Realtors, PDF attached, when email is set up.
     let emailed = false;
     if (RESEND_API_KEY) {
-      const mainResult = await sendViaResend({
+      const mainResult = await jobs.sendMail({
         to: [REPORT_TO_EMAIL],
         subject: subject,
         text: (saved ? 'Job reference: ' + saved.ref + '\n\n' : '') + reportText,
@@ -879,7 +879,7 @@ app.post('/api/send-report', async (req, res) => {
     // (the important part) already went through.
     let tenantCopySent = false;
     if (sendCopyToTenant && RESEND_API_KEY) {
-      const tenantResult = await sendViaResend({
+      const tenantResult = await jobs.sendMail({
         to: [tenantEmail],
         subject: 'Your repair report — Residential Realtors' + (saved ? ' [' + saved.ref + ']' : ''),
         text: 'This is a copy of the repair report you submitted, for your own records.' +
