@@ -6,6 +6,13 @@
     ['scroll', 'pointerdown', 'keydown', 'touchstart'].forEach(function (ev) { window.addEventListener(ev, send, { once: true, passive: true }); });
     setTimeout(function () { if (document.visibilityState === 'visible') send(); }, 4000);
   })();
+  // Time on page (on-screen time only), sent when the page is hidden or left — for "Avg time on page".
+  (function () {
+    var total = 0, since = document.visibilityState === 'visible' ? Date.now() : 0;
+    var report = function () { var secs = Math.round(total / 1000); if (secs < 1) return; try { var b = location.pathname + '|' + secs; if (!(navigator.sendBeacon && navigator.sendBeacon('/api/visit/t', b))) fetch('/api/visit/t', { method: 'POST', body: b, keepalive: true }); } catch (e) {} };
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') { if (since) { total += Date.now() - since; since = 0; } report(); } else since = Date.now(); });
+    window.addEventListener('pagehide', function () { if (since) { total += Date.now() - since; since = 0; } report(); });
+  })();
   var btn = document.querySelector('.menu-btn'), nav = document.querySelector('.nav');
   if (btn && nav) {
     btn.addEventListener('click', function () { var o = nav.classList.toggle('open'); btn.setAttribute('aria-expanded', o ? 'true' : 'false'); btn.textContent = o ? '✕' : '☰'; });

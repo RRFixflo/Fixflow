@@ -693,6 +693,11 @@
   .av-ct td.c-address { min-width: 200px; white-space: normal; } .av-ct td.c-links { white-space: nowrap; }
   @media (max-width: 640px) { .col-bar .muted-note { display: none; } }
   @media (max-width: 640px) { .av-ct th[data-col="area"], .av-ct td.c-area, .av-ct th[data-col="online"], .av-ct td.c-online, .av-ct th[data-col="fee"], .av-ct td.c-fee { display: none; } .av-ct td.c-address { min-width: 0; } .av-ct td, .av-ct th { padding: 7px 6px; } .av-ct td.c-available { white-space: normal; min-width: 84px; } }
+  .web-mv { margin-bottom: 12px; } .web-mv-t { overflow-x: auto; margin-top: 8px; border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 12px; }
+  .web-mv table { width: 100%; border-collapse: collapse; font-size: .9rem; } .web-mv th { text-align: left; background: var(--dk-bg-f9fafb, #f9fafb); padding: 9px 12px; font-weight: 700; border-bottom: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); }
+  .web-mv td { padding: 9px 12px; border-bottom: 1px solid var(--dk-bd-f2f4f7, #f2f4f7); vertical-align: top; } .web-mv tr:last-child td { border-bottom: 0; } .web-mv .num { text-align: right; white-space: nowrap; width: 1%; }
+  .web-path { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; background: var(--dk-bg-f2f4f7, #f2f4f7); color: var(--ink, var(--dk-fg-101828, #101828)); border-radius: 6px; padding: 2px 7px; text-decoration: none; word-break: break-all; } .web-path:hover { text-decoration: underline; }
+  .web-mv td small { display: block; color: var(--ink-soft); font-size: .78rem; margin-top: 3px; }
   .ll-props { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
   .ar-list { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; }
   .cb-hint { font-size: .82rem; margin: -2px 0 4px; color: var(--dk-fg-067647, #067647); } .cb-hint.warn { color: var(--dk-fg-b42318, #b42318); }
@@ -9438,9 +9443,13 @@
     var propName = function(r){ var tt = String(r.title || '').replace(/\s*\|\s*Residential Realtors\s*$/, ''), m = String(r.path || '').match(/^\/property\/(\d+)(?:\/|$)/), url = (location.origin.indexOf('residentialrealtors') !== -1 ? '' : 'https://www.residentialrealtors.co.uk') + r.path; var nm = tt.replace(/^.*?\b(?:to rent|for sale)\s+in\s+/i, '') || tt || r.path; return '<b>' + esc(nm) + '</b>' + (m ? ' <span class="av-gid" style="cursor:default;white-space:nowrap">Gnomen ' + esc(m[1]) + '</span>' : '') + '<small style="display:block;margin:2px 0 0"><a href="' + esc(url) + '" target="_blank" rel="noopener">View on our site ↗</a></small>'; };
     var pageName = function(r){ var tt = String(r.title || '').replace(/\s*\|\s*Residential Realtors\s*$/, ''); return '<a href="' + esc((location.origin.indexOf('residentialrealtors') !== -1 ? '' : 'https://www.residentialrealtors.co.uk') + r.path) + '" target="_blank" rel="noopener">' + esc(tt || r.path) + '</a><small class="muted-note" style="display:block;margin:0">' + esc(r.path) + '</small>'; };
     var topS = (d.sources[0] || {}).visitors || 0, topD = (d.devices[0] || {}).visitors || 0;
+    // Most viewed pages, full width: the page's address, views and average time on the page.
+    h += '<div class="card web-mv"><b>Most viewed pages</b>' + (d.pages.length ? '<div class="web-mv-t"><table><thead><tr><th>Page</th><th class="num">Views</th><th class="num">Avg time on page</th></tr></thead><tbody>' +
+      d.pages.map(function(r){ var tt = String(r.title || '').replace(/\s*\|\s*Residential Realtors\s*$/, ''); return '<tr><td><a class="web-path" href="' + esc((location.origin.indexOf('residentialrealtors') !== -1 ? '' : 'https://www.residentialrealtors.co.uk') + r.path) + '" target="_blank" rel="noopener" title="' + esc(tt) + '">' + esc(r.path) + '</a>' + (tt ? '<small>' + esc(tt) + '</small>' : '') + '</td><td class="num">' + n(r.views) + '</td><td class="num">' + webSecs(r.avg_secs) + '</td></tr>'; }).join('') +
+      '</tbody></table></div><p class="muted-note" style="margin:8px 0 0">Avg time on page: how long the page was on screen; for older visits, the time until they opened their next page.</p>' : '<p class="muted-note" style="margin:6px 0 0">No page views yet in this period.</p>') + '</div>';
     h += '<div class="web-grid">' +
-      list('🏠 Most viewed properties', d.properties, [['Property', propName], ['Views', function(r){ return n(r.views); }, 1], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
-      list('📄 Top pages', d.pages, [['Page', pageName], ['Views', function(r){ return n(r.views); }, 1], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
+      list('🏠 Most viewed properties', d.properties, [['Property', propName], ['Views', function(r){ return n(r.views); }, 1], ['Avg time', function(r){ return webSecs(r.avg_secs); }, 1]]) +
+
       list('🔗 Where visitors came from', d.sources, [['Source', function(r){ return esc(r.k) + bar(r.visitors, topS); }], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
       list('📱 Devices', d.devices, [['Device', function(r){ return esc(r.k || 'Unknown') + bar(r.visitors, topD); }], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
       list('🌍 Countries', d.countries, [['Country', function(r){ return esc(webCountry(r.k)); }], ['Visitors', function(r){ return n(r.visitors); }, 1]]) +
@@ -19803,6 +19812,7 @@
     if (r.landing === 'landlord' || /landlord page/.test(r.subject || '')) return { k: 'landlord', t: r.subject || 'Landlord page', c: '' };
     return { k: 'track', t: r.subject || 'Repair tracker', c: '' };
   }
+  function webSecs(x){ x = Math.round(Number(x) || 0); if (!x) return '<span class="muted-note" style="margin:0">—</span>'; return x < 60 ? x + 's' : Math.floor(x / 60) + 'm ' + (x % 60 ? (x % 60) + 's' : ''); }
   function svDur(secs){ if (!secs || secs < 10) return 'under 10 sec'; if (secs < 60) return secs + ' sec'; var m = Math.round(secs / 60); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' hr ' + (m % 60) + ' min'; }
   function svIcon(d){ return d === 'Mobile' ? '📱' : d === 'Tablet' ? '📲' : '💻'; }
   function loadSiteSessions(){
