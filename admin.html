@@ -9895,7 +9895,7 @@
   function applTable(list){
     var s = crm.asort, rows = list.slice().sort(function(a, b){ var x = applVal(a, s.k), y = applVal(b, s.k); return (x < y ? -1 : x > y ? 1 : b.id - a.id) * (x === y ? 1 : s.d); }).slice(0, 300);
     var thisYr = new Date().getFullYear(), day = function(v){ if (!v) return ''; var d = new Date(v); return d.toLocaleString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', year: d.getFullYear() === thisYr ? undefined : '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', ''); };
-    var head = '<tr><th class="ck" title="Select"></th>' + APPL_COLS.map(function(c){ if (c[0] === 'act') return '<th class="c-act">Contact</th>'; return '<th data-asort="' + c[0] + '" class="c-' + c[0] + (s.k === c[0] ? ' on' : '') + '">' + c[1] + (s.k === c[0] ? (s.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr>';
+    var head = '<tr><th class="ck" title="Select"></th>' + APPL_COLS.map(function(c){ if (c[0] === 'act') return '<th class="c-act">Contact</th>'; return '<th data-avsort="' + c[0] + '" class="c-' + c[0] + (s.k === c[0] ? ' on' : '') + '">' + c[1] + (s.k === c[0] ? (s.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr>';
     var body = rows.map(function(g){
       var st = CRM_ST[g.status] || CRM_ST.new, need = crmNeed(g), hold = applHold(g), open = !!crm.open[g.ref], rent = applRent(g), tel = g.phone ? String(g.phone).replace(/[^\d+]/g, '') : '';
       var isNew = applFresh(g), tn = applTenant(g);   // NEW until someone has contacted them
@@ -14917,6 +14917,7 @@
       .then(function(){ if (view === 'avail') loadAvail(); });
   }
   // ---------- Available properties: the lettings list staff work from ----------
+  var avSortL = (function(){ try { return JSON.parse(localStorage.getItem('rr_av_lsort') || 'null') || { k: '', d: 1 }; } catch (e) { return { k: '', d: 1 }; } })();
   var avMode = (function(){ try { return localStorage.getItem('rr_av_mode') || 'cards'; } catch (e) { return 'cards'; } })(), avLinkData = {}, avItems = [], avBeds = '', avFlag = '', avEdit = null, avLimit = 200, avLs = { k: 'let_on', d: -1 };
   var rmData = null;
   function loadRm(){ return api('GET', '/api/admin/rightmove').then(function(d){ if (d && d.ok) { rmData = d; renderAvail(); } }); }
@@ -15219,6 +15220,22 @@
     var ytM = (ytData && ytData.matches) || {}, withV = live.filter(function(x){ return (ytM[x.id] || []).length; }).length;
     $('avYt').innerHTML = !ytData ? '' : '<div class="av-rm-bar av-yt-bar"><span class="av-yt-logo">▶ YouTube</span><span>' + (ytData.at ? '<b>' + (ytData.items || []).length + '</b> videos on our channel · <b>' + withV + '</b> of ' + live.length + ' properties have a video · checked ' + esc(fmtShort(ytData.at)) : 'Not checked yet') + (ytData.error ? ' · <span style="color:var(--dk-fg-b42318, #b42318)">couldn’t reach YouTube last time</span>' : '') + ' <button type="button" class="linkish" id="avYtWhy">details</button></span><span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small" id="avYtCheck">🔄 Check now</button><a class="btn small ghost" target="_blank" rel="noopener" href="' + esc(ytData.channel_url) + '">Our channel ↗</a>' + (canSet ? '<button type="button" class="btn small ghost" id="avYtSet" title="Change the YouTube channel">⚙︎</button>' : '') + '</span></div>';
     var canDel = !staffMode;   // only the owner deletes properties
+    // List view: tap a heading to sort by it (tap again to reverse); remembered per browser.
+    if (avMode === 'list' && avFlag !== 'let' && avFlag !== 'withdrawn' && avSortL.k) {
+      var sv = function(x){ var k = avSortL.k, L = (avLinkData[x.id] || {}).landlord;
+        // null = nothing filled in: always at the bottom, whichever way it's sorted.
+        if (k === 'available') return avNow(x) ? '0000' : x.available_from ? String(x.available_from).slice(0, 10) : null;
+        if (k === 'online') { var n = avOnline(x); return n == null ? null : n; }
+        if (k === 'address') return String(x.address || '').toLowerCase() || null;
+        if (k === 'beds') return x.beds == null ? null : x.beds;
+        if (k === 'pcm') return Number(x.rent_pcm) || null;
+        if (k === 'pw') return Number(x.rent_pw) || null;
+        if (k === 'fee') return parseFloat(String(x.commission || '').replace(/[^\d.]/g, '')) || null;
+        if (k === 'access') return x.access || (x.key_no ? 'keys' : null);
+        if (k === 'landlord') return String((L && L.name) || x.landlord || '').toLowerCase() || null;
+        return null; };
+      list = list.slice().sort(function(p, q){ var a = sv(p), b = sv(q); if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1; return (a < b ? -1 : a > b ? 1 : 0) * avSortL.d; });
+    }
     var avMore = list.length > avLimit ? list.length - avLimit : 0; list = list.slice(0, avLimit);
     // Other ways to see the available list: one line each (List), or short lines grouped by bedrooms (Compact).
     if (avFlag !== 'let' && avFlag !== 'withdrawn' && list.length && avMode !== 'cards') {
@@ -15226,7 +15243,7 @@
       var bedTxt = function(x){ return x.beds == null ? '—' : x.beds === 0 ? 'Studio' : x.beds + ' bed'; };
       var flags = function(x){ var v = ((ytData && ytData.matches) || {})[x.id] || [], r = x.rm_id && rmBy[x.rm_id]; return (x.urgent ? '<span class="av-tag urgent" title="Urgent">🔥</span>' : '') + (r ? '<a class="av-mini rm" target="_blank" rel="noopener" href="' + esc(r.url) + '" title="On Rightmove">RM</a>' : '') + (v.length ? '<a class="av-mini yt" target="_blank" rel="noopener" href="' + esc(ytUrl(v[0])) + '" title="Video">▶</a>' : ytData && ytData.at ? '<span class="av-mini novid" title="No video yet">🎥?</span>' : ''); };
       if (avMode === 'list') {
-        $('avList').innerHTML = '<div class="col-bar"><button type="button" class="btn small ghost" data-colmenu="av_list">⇄ Arrange columns</button><span class="muted-note">Drag a heading to move it · drag its right edge to make it wider or narrower</span></div>' + '<div class="av-lt-wrap"><table class="av-lt"><thead><tr><th>Available</th><th>Online</th><th>Address</th><th>Beds</th><th>pcm</th><th>Fee</th><th>pw</th><th>Access</th><th>Landlord</th><th></th><th class="av-lt-act"></th></tr></thead><tbody>' + list.map(function(x){
+        $('avList').innerHTML = '<div class="col-bar"><button type="button" class="btn small ghost" data-colmenu="av_list">⇄ Arrange columns</button><span class="muted-note">Drag a heading to move it · drag its right edge to make it wider or narrower</span></div>' + '<div class="av-lt-wrap"><table class="av-lt"><thead><tr>' + [['available', 'Available'], ['online', 'Online'], ['address', 'Address'], ['beds', 'Beds'], ['pcm', 'pcm'], ['fee', 'Fee'], ['pw', 'pw'], ['access', 'Access'], ['landlord', 'Landlord']].map(function(c){ return '<th data-avsort="' + c[0] + '" data-col="' + c[1].toLowerCase() + '"' + (avSortL.k === c[0] ? ' class="on"' : '') + ' title="Tap to sort">' + c[1] + (avSortL.k === c[0] ? (avSortL.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '<th></th><th class="av-lt-act"></th></tr></thead><tbody>' + list.map(function(x){
           var LL = (avLinkData[x.id] || {}).landlord, acc = x.access ? { landlord: '🏠 Landlord', tenants: '👥 Tenants', keys: '🔑 Keys' }[x.access] + (x.key_no ? ' · ' + esc(x.key_no) : '') : (x.key_no ? '🔑 ' + esc(x.key_no) : '<span class="muted-note" style="margin:0">—</span>');
           return '<tr data-av="' + x.id + '"' + (x.urgent ? ' class="is-urgent"' : '') + '><td class="nw">' + whenTxt(x) + '</td><td class="nw">' + avOnHtml(x, true) + '</td><td class="ad"><button type="button" class="linkish av-open" data-avopen="' + x.id + '">' + esc(x.address) + '</button>' + (x.gnomen_id ? ' <span class="av-gid">Gnomen ' + esc(x.gnomen_id) + '</span>' : '') + '</td><td class="nw">' + bedTxt(x) + '</td><td class="nw"><b>' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))) : '—') + '</b></td><td class="nw">' + (avFeeHtml(x, true) || '<span class="muted-note" style="margin:0">—</span>') + '</td><td class="nw">' + (x.rent_pw ? esc(gbp(Number(x.rent_pw))) : '—') + '</td><td class="nw">' + acc + '</td><td>' + esc(x.landlord || (LL ? LL.name : '')) + (function(){ var ph = x.landlord_phone || (LL && LL.phone) || ''; return ph ? '<br><a href="tel:' + esc(String(ph).replace(/[^\d+]/g, '')) + '">' + esc(ph) + '</a>' : ''; })() + '</td><td class="nw">' + flags(x) + '</td>' +
             '<td class="nw av-lt-act"><button type="button" class="btn small primary" data-ava="offer">📝 Offer</button> <button type="button" class="btn small" data-ava="pvr">PVR</button> <button type="button" class="btn small" data-ava="view">👀 Viewing</button> <button type="button" class="btn small ghost" data-avopen="' + x.id + '" title="Open the full card">Open</button></td></tr>';
@@ -15305,6 +15322,7 @@
     // From List / Compact: open that property's full card.
     var op = e.target.closest('[data-avopen]');
     if (op && !e.target.closest('a')) { var id = op.dataset.avopen; avSetMode('cards'); renderAvail(); var c = document.querySelector('.av-card[data-av="' + id + '"]'); if (c) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.add('av-flash'); setTimeout(function(){ c.classList.remove('av-flash'); }, 1600); } return; }
+    var hs = e.target.closest('[data-avsort]'); if (hs) { var ks = hs.dataset.avsort; avSortL = avSortL.k === ks ? (avSortL.d > 0 ? { k: ks, d: -1 } : { k: '', d: 1 }) : { k: ks, d: ks === 'online' ? -1 : 1 }; try { localStorage.setItem('rr_av_lsort', JSON.stringify(avSortL)); } catch (er) {} renderAvail(); return; }
     var h = e.target.closest('[data-lsort]'); if (h) { var k = h.dataset.lsort; avLs = avLs.k === k ? { k: k, d: -avLs.d } : { k: k, d: k === 'let_on' ? -1 : 1 }; renderAvail(); }
   });
   $('avSum').addEventListener('click', function(e){
