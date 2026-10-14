@@ -689,6 +689,7 @@
   .av-card.av-flash { box-shadow: 0 0 0 3px #155eef; transition: box-shadow .3s; }
   .ca-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; } .ca-paste { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: .88rem; margin-bottom: 10px; }
   .ca-dup { margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: var(--dk-bg-fffaeb, #fffaeb); border: 1px solid var(--dk-bd-fedf89, #fedf89); font-size: .88rem; }
+  .ar-list { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; }
   .cb-hint { font-size: .82rem; margin: -2px 0 4px; color: var(--dk-fg-067647, #067647); } .cb-hint.warn { color: var(--dk-fg-b42318, #b42318); }
   .tcy-notice { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--dk-bg-fffaeb, #fffaeb); border: 1px solid var(--dk-bd-fedf89, #fedf89); font-size: .9rem; }
   .nt-opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 10px; margin-bottom: 6px; cursor: pointer; } .nt-opt small { display: block; color: var(--ink-soft); font-size: .8rem; } .nt-opt span { flex: 1; min-width: 0; } .nt-opt input[type=radio] { margin-top: 4px; }
@@ -15451,8 +15452,28 @@
     if (miss.length && !confirm('This is missing ' + miss.join(' and ') + '.\n\nOK — save it anyway (it will be flagged on the card).\nCancel — go back and add ' + (miss.length > 1 ? 'them' : 'it') + '.')) { (addressProblem(body.address) ? $('avAddr') : $('avLl')).focus(); return; }
     if (body.status === 'let' && !body.let_on) body.let_on = new Date().toISOString().slice(0, 10);
     var b = this; busy(b, true, 'Saving…');
-    (function avSend(body){ api('POST', '/api/admin/available' + (avEdit ? '/' + avEdit : ''), body).then(function(d){ busy(b, false); if (!d || !d.ok) { if (!keyTaken(d, function(){ busy(b, true, 'Saving…'); avSend(Object.assign({}, body, { key_force: true })); })) toast('Couldn’t save it'); return; } if (d.failures && d.failures[0] && /^Key /.test(d.failures[0].error)) alert(d.failures[0].error); $('avForm').hidden = true; avEdit = null; toast('✓ Saved'); loadAvail(); }); })(body);
+    (function avSend(body){ api('POST', '/api/admin/available' + (avEdit ? '/' + avEdit : ''), body).then(function(d){ busy(b, false); if (!d || !d.ok) { if (!keyTaken(d, function(){ busy(b, true, 'Saving…'); avSend(Object.assign({}, body, { key_force: true })); })) toast('Couldn’t save it'); return; } if (d.failures && d.failures[0] && /^Key /.test(d.failures[0].error)) alert(d.failures[0].error); $('avForm').hidden = true; avEdit = null; toast('✓ Saved'); loadAvail(); if (was && was.address && was.address !== body.address) avReaddress(was.address, body.address); }); })(body);
   });
+  // An available property's address changed: upcoming viewings booked at the old address can take the new one,
+  // and the applicants can be emailed the confirmation again with the full address.
+  function avReaddress(from, to){
+    api('POST', '/api/admin/viewings/readdress', { from: from, to: to, preview: true }).then(function(d){
+      var it = (d && d.ok && d.items) || []; if (!it.length) return;
+      var m = $('arModal'); if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'arModal'; m.hidden = true; document.body.appendChild(m); m.addEventListener('mousedown', function(e){ if (e.target === m) m.hidden = true; }); }
+      var withMail = it.filter(function(v){ return v.email; }).length;
+      m.innerHTML = '<div class="card" style="width:min(520px,100%);display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 32px);overflow:auto">' +
+        '<h3 style="margin:0">🗓 ' + it.length + ' upcoming viewing' + (it.length === 1 ? ' is' : 's are') + ' booked at the old address</h3>' +
+        '<p class="muted-note" style="margin:0">Old: ' + esc(from) + '<br>New: <b>' + esc(to) + '</b></p>' +
+        '<div class="ar-list">' + it.map(function(v){ return '<div>• <b>' + esc(v.applicant || 'Applicant') + '</b> — ' + esc(new Date(v.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + (v.staff ? ' · with ' + esc(v.staff) : '') + (v.email ? '' : ' <span class="muted-note" style="margin:0">(no email)</span>') + '</div>'; }).join('') + '</div>' +
+        (withMail ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" id="arMail" checked> ✉ Email ' + (withMail === 1 ? 'them' : 'the ' + withMail + ' applicants with an email') + ' the new address (the confirmation again)</label>' : '') +
+        '<div class="row-actions" style="flex-wrap:wrap"><button class="btn ghost" type="button" id="arNo">Leave them</button><button class="btn primary" type="button" id="arGo">Update the viewing' + (it.length === 1 ? '' : 's') + '</button></div></div>';
+      $('arNo').onclick = function(){ m.hidden = true; };
+      $('arGo').onclick = function(){ var bt = this, mail = !!($('arMail') && $('arMail').checked); busy(bt, true, 'Updating…');
+        api('POST', '/api/admin/viewings/readdress', { from: from, to: to, notify: mail }).then(function(r){ busy(bt, false); if (!r || !r.ok) { toast('Couldn’t update the viewings'); return; } m.hidden = true;
+          toast('✓ ' + r.updated + ' viewing' + (r.updated === 1 ? '' : 's') + ' updated' + (mail ? ' · ' + r.emailed + ' applicant' + (r.emailed === 1 ? '' : 's') + ' emailed the new address' : '')); if (typeof calChanged === 'function') calChanged(); }); };
+      m.hidden = false;
+    });
+  }
   // Paste rows from the spreadsheet (tab-separated, cells with line breaks come in quotes).
   function avTsv(t){
     // A cell is only "quoted" when its closing quote is followed by a tab, a new line or the end, with no tab
@@ -15624,7 +15645,7 @@
     var a = e.target.closest('[data-ava]'), st = e.target.closest('[data-avs]'), ac = e.target.closest('[data-acc]');
     var fa = e.target.closest('[data-avfixaddr]');
     if (fa) { var na = fa.dataset.avfixaddr; if (!confirm('Use “' + na + '” as the address for this listing?')) return;
-      api('POST', '/api/admin/available/' + x.id, { address: na }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save the address'); return; } toast('✓ Full address saved — filling in what we know'); loadAvail().then(function(){ var nx = avItems.filter(function(i){ return i.id === x.id; })[0]; if (nx && (!nx.landlord || !nx.key_no)) { avOpenForm(nx); avLookup(); } }); }); return; }
+      api('POST', '/api/admin/available/' + x.id, { address: na }).then(function(d){ if (!d || !d.ok) { toast('Couldn’t save the address'); return; } toast('✓ Full address saved — filling in what we know'); avReaddress(x.address, na); loadAvail().then(function(){ var nx = avItems.filter(function(i){ return i.id === x.id; })[0]; if (nx && (!nx.landlord || !nx.key_no)) { avOpenForm(nx); avLookup(); } }); }); return; }
     if (e.target.closest('[data-avfixll]')) { avOpenForm(x); setTimeout(function(){ $('avLl').focus(); $('avLl').scrollIntoView({ block: 'center' }); }, 300); return; }
     if (ac) {
       var mode = ac.dataset.acc === x.access ? '' : ac.dataset.acc, body = { access: mode };

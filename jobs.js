@@ -8566,6 +8566,23 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (parseInt(b.lead_id, 10)) await crmLog(p, 'vr:' + parseInt(b.lead_id, 10), '🗓 Viewing booked: ' + new Date(at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · ' + addr.split(',').slice(0, 2).join(',') + ' · with ' + (str(b.staff, 120) || me), req, false);
     res.json({ ok: true, id: r.rows[0].id, emailed: emailed, others: others });
   }));
+  // An available property's address corrected: its upcoming booked viewings take the new address, and (when
+  // ticked) each applicant is emailed the confirmation again with the full new address.
+  app.post('/api/admin/viewings/readdress', withDb(async function (p, req, res) {
+    const b = req.body || {}, from = str(b.from, 400), to = str(b.to, 400);
+    if (!from || !to || from.trim().toLowerCase() === to.trim().toLowerCase()) return res.json({ ok: true, items: [] });
+    const rows = (await p.query("SELECT * FROM viewings WHERE status = 'booked' AND at > now() AND (property_key = $1 OR lower(trim(property_address)) = lower(trim($2))) ORDER BY at LIMIT 100", [propKey(from), from])).rows;
+    const items = rows.map(function (v) { return { id: v.id, applicant: v.applicant || '', at: v.at, email: !!v.email, staff: v.staff || v.created_by || '' }; });
+    if (b.preview) return res.json({ ok: true, items: items });
+    let emailed = 0;
+    for (const v of rows) {
+      await p.query('UPDATE viewings SET property_address = $2, property_key = $3 WHERE id = $1', [v.id, to, propKey(to)]);
+      v.property_address = to; v.property_key = propKey(to);
+      if (v.lead_id) await crmLog(p, 'vr:' + v.lead_id, '🗓 Viewing address changed to ' + to, req, false);
+      if (b.notify === true && v.email && await viewingMail(p, req, v, 'address')) emailed++;
+    }
+    res.json({ ok: true, updated: rows.length, emailed: emailed });
+  }));
   // A private link for the applicant to give feedback on the viewing (staff send it from Fixflow's email window).
   app.post('/api/admin/viewings/:id/feedback-link', withDb(async function (p, req, res) {
     const v = (await p.query('SELECT id, fb_token FROM viewings WHERE id = $1', [jobId(req)])).rows[0];
