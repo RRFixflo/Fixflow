@@ -523,6 +523,7 @@
   .oc-warn { color: var(--dk-fg-8a5200, #8a5200); margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
   body:not(.staff-mode) #navAlerts { display: none !important; }
+  .sp-sub { display: block; margin: 10px 0 6px; font-size: .92rem; } .sp-vw { margin-bottom: 6px; }
   .staff-mode #askMode, .staff-mode #askIdeas, .staff-mode #askRem, .staff-mode #askLearn, .staff-mode #askDriveBtn, .staff-mode #askEmailHelp { display: none !important; }
   .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#navAppr):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #rentTopBtn, .staff-mode #invTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
@@ -2195,7 +2196,7 @@
           <summary><span class="act-sec-t">👥 Team — who’s doing what</span><span class="act-sum" id="sum_team"></span><span class="act-chev" aria-hidden="true"></span></summary>
           <div class="act-sec-b">
             <div class="sp-box"><div class="sp-h"><b>📈 Staff progress</b><span class="sp-chips" id="spChips"><button type="button" data-sp="week">This week</button><button type="button" data-sp="month" class="on">This month</button><button type="button" data-sp="last">Last month</button><button type="button" data-sp="3m">Last 3 months</button><button type="button" data-sp="custom">Choose dates</button></span><span id="spCustom" hidden><input type="date" class="inp" id="spFrom"> – <input type="date" class="inp" id="spTo"></span></div>
-              <p class="muted-note" style="margin:4px 0 8px">How many offer forms, landlord terms and pre-viewing reservations each person sent, and how many came back signed — several to the same person count as one. Signed offer forms count for whoever the offer is credited to; Paid means the holding deposit came in — a fully completed offer.</p><div id="spTable"></div></div>
+              <p class="muted-note" style="margin:4px 0 8px">How many viewings each person did (and has booked ahead), and how many offer forms, landlord terms and pre-viewing reservations each person sent, and how many came back signed — several to the same person count as one. Signed offer forms count for whoever the offer is credited to; Paid means the holding deposit came in — a fully completed offer.</p><div id="spTable"></div></div>
             <p class="muted-note" style="margin:0 0 10px">Give each person their own sign-in. Everything they change is recorded with their name — in job updates, offer and tenancy histories, and below.</p>
             <div id="teamList"></div>
             <div class="team-add"><b>Add a person</b>
@@ -19785,11 +19786,12 @@
   var spPeriod = 'month';
   function spRange(){
     var t = new Date(), iso = function(d){ return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
-    if (spPeriod === 'week') { var m = new Date(t); m.setDate(t.getDate() - ((t.getDay() + 6) % 7)); return [iso(m), iso(t)]; }
+    // This week / this month run to their end, so viewings booked for later in it show as Booked ahead.
+    if (spPeriod === 'week') { var m = new Date(t); m.setDate(t.getDate() - ((t.getDay() + 6) % 7)); var su = new Date(m); su.setDate(m.getDate() + 6); return [iso(m), iso(su)]; }
     if (spPeriod === 'last') return [iso(new Date(t.getFullYear(), t.getMonth() - 1, 1)), iso(new Date(t.getFullYear(), t.getMonth(), 0))];
     if (spPeriod === '3m') return [iso(new Date(t.getFullYear(), t.getMonth() - 2, 1)), iso(t)];
     if (spPeriod === 'custom') return [$('spFrom').value || iso(new Date(t.getFullYear(), t.getMonth(), 1)), $('spTo').value || iso(t)];
-    return [iso(new Date(t.getFullYear(), t.getMonth(), 1)), iso(t)];
+    return [iso(new Date(t.getFullYear(), t.getMonth(), 1)), iso(new Date(t.getFullYear(), t.getMonth() + 1, 0))];
   }
   function loadStaffProgress(){
     if (!$('spTable')) return;
@@ -19799,10 +19801,16 @@
       var ps = d.people, tot = { fp: 0, fo: 0, fx: 0, fd: 0, tp: 0, to: 0, ts: 0, pp: 0, pg: 0, pd: 0 };
       ps.forEach(function(x){ tot.fp += x.forms.people; tot.fo += x.forms.opened; tot.fx += x.forms.offers; tot.fd += x.forms.paid || 0; tot.tp += x.terms.people; tot.to += x.terms.opened; tot.ts += x.terms.signed; tot.pp += x.pvr.people; tot.pg += x.pvr.signed; tot.pd += x.pvr.paid; });
       var cell = function(main, sub, cls){ return '<td class="sp-n' + (cls ? ' ' + cls : '') + '"><b>' + main + '</b>' + (sub && sub !== 'signed' ? '<small>' + sub + '</small>' : '') + '</td>'; };
-      $('spTable').innerHTML = ps.length ? '<div class="av-lt-wrap"><table class="av-lt sp-t"><thead><tr class="sp-grp"><th></th><th colspan="4">📝 Offer forms</th><th colspan="3">🏠 Landlord terms</th><th colspan="3">🗓 Pre-viewing reservations</th></tr><tr><th>Person</th><th>Sent</th><th>Opened</th><th>Signed</th><th title="Holding deposit received — a fully completed offer">Paid</th><th>Sent</th><th>Opened</th><th>Signed</th><th>Sent</th><th>Signed</th><th>Paid</th></tr></thead><tbody>' +
+      // Viewings each person did (or has booked ahead) in the period.
+      var vp = ps.filter(function(x){ var v = x.vw || {}; return v.done || v.ahead || v.noshow || v.cancel; }).sort(function(a, b){ return (b.vw.done + b.vw.ahead) - (a.vw.done + a.vw.ahead); }), vt = { done: 0, apps: 0, ahead: 0, noshow: 0, cancel: 0, fb: 0, offer: 0 };
+      vp.forEach(function(x){ Object.keys(vt).forEach(function(k){ vt[k] += x.vw[k] || 0; }); });
+      var vrow = function(nm, v, cls){ return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + nm + '</td>' + cell(v.done, v.apps > v.done ? v.apps + ' applicants' : '', 'sig') + cell(v.ahead) + cell(v.noshow) + cell(v.cancel) + cell(v.fb) + cell(v.offer, '', 'paid') + '</tr>'; };
+      var vwHtml = '<div class="sp-vw"><b class="sp-sub">🗓 Viewings</b>' + (vp.length ? '<div class="av-lt-wrap"><table class="av-lt sp-t"><thead><tr><th>Person</th><th title="Viewings that have happened (several applicants at the same time and place count once)">Done</th><th title="Booked for later in this period">Booked ahead</th><th>No-shows</th><th>Cancelled</th><th title="Applicants who sent back the feedback form">Feedback</th><th title="Applicants who said on the feedback form they want to make an offer">Want to offer</th></tr></thead><tbody>' +
+        vp.map(function(x){ return vrow('<b>' + esc(x.name) + '</b>', x.vw); }).join('') + vrow('Everyone', vt, 'sp-tot') + '</tbody></table></div>' : '<p class="muted-note">No viewings in this period.</p>') + '</div><b class="sp-sub">📝 Offers, landlord terms and reservations</b>';
+      $('spTable').innerHTML = vwHtml + (ps.length ? '<div class="av-lt-wrap"><table class="av-lt sp-t"><thead><tr class="sp-grp"><th></th><th colspan="4">📝 Offer forms</th><th colspan="3">🏠 Landlord terms</th><th colspan="3">🗓 Pre-viewing reservations</th></tr><tr><th>Person</th><th>Sent</th><th>Opened</th><th>Signed</th><th title="Holding deposit received — a fully completed offer">Paid</th><th>Sent</th><th>Opened</th><th>Signed</th><th>Sent</th><th>Signed</th><th>Paid</th></tr></thead><tbody>' +
         ps.map(function(x){ return '<tr><td><b>' + esc(x.name) + '</b></td>' + cell(x.forms.people, x.forms.sends > x.forms.people ? x.forms.sends + ' sends' : '') + cell(x.forms.opened) + cell(x.forms.offers, 'signed', 'sig') + cell(x.forms.paid || 0, '', 'paid') + cell(x.terms.people, x.terms.sends > x.terms.people ? x.terms.sends + ' sends' : '') + cell(x.terms.opened) + cell(x.terms.signed, 'signed', 'sig') + cell(x.pvr.people, x.pvr.sends > x.pvr.people ? x.pvr.sends + ' sends' : '') + cell(x.pvr.signed, '', 'sig') + cell(x.pvr.paid) + '</tr>'; }).join('') +
         '<tr class="sp-tot"><td>Everyone</td>' + cell(tot.fp) + cell(tot.fo) + cell(tot.fx, '', 'sig') + cell(tot.fd, '', 'paid') + cell(tot.tp) + cell(tot.to) + cell(tot.ts, '', 'sig') + cell(tot.pp) + cell(tot.pg, '', 'sig') + cell(tot.pd) + '</tr></tbody></table></div>'
-        : '<p class="muted-note">Nothing sent in this period.</p>';
+        : '<p class="muted-note">Nothing sent in this period.</p>');
     });
   }
   $('spChips').addEventListener('click', function(e){ var b = e.target.closest('[data-sp]'); if (!b) return; spPeriod = b.dataset.sp; this.querySelectorAll('[data-sp]').forEach(function(x){ x.classList.toggle('on', x === b); }); $('spCustom').hidden = spPeriod !== 'custom'; loadStaffProgress(); });
