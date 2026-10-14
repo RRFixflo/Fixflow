@@ -5997,12 +5997,87 @@ document.querySelectorAll('.lcu').forEach(function(box){
     res.json({ ok: true });
   }));
 
+  // The repair report for the landlord (and tenant): from the contractor report staff saved for the job, or else
+  // from the job itself — what was reported and the work done. Never prices, costs or the contractor's name
+  // (unless staff ticked "show name" on the contractor report).
+  async function repairReport(p, j) {
+    await jrTable(p);
+    const jr = ((await p.query('SELECT data FROM job_reports WHERE job_id = $1', [j.id])).rows[0] || {}).data || null;
+    const names = (await p.query("SELECT name FROM contractors WHERE coalesce(trim(name), '') <> ''")).rows.map(function (r) { return r.name.trim(); });
+    [j.assigned_to, j.assigned_to_2].forEach(function (n) { if (n && n.trim() && names.indexOf(n.trim()) === -1) names.push(n.trim()); });
+    names.sort(function (x, y) { return y.length - x.length; });
+    const scrub = function (t) { t = String(t || '').trim(); if (!jr || !jr.show_name) names.forEach(function (n) { t = t.replace(new RegExp('\\b' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi'), 'our contractor'); }); return t; };
+    const MONEY = /(£|\bcost|\bprice|invoice|\bcharge|profit|margin|\bpaid\b|\bVAT\b)/i;
+    const clean = function (t) { return scrub(String(t || '').split(/\n/).filter(function (l) { return !MONEY.test(l); }).join('\n')); };
+    const secs = jr ? [['Attended', jr.attended], ['The problem reported', jr.reported], ['What was found', jr.found], ['Work carried out', jr.work], ['Parts used', jr.parts], ['Recommendations', jr.recommend], ['Next steps', jr.next]]
+      : [['The problem reported', j.description], ['Work carried out', j.completion_notes]];
+    return { sections: secs.map(function (x) { return [x[0], jr ? scrub(x[1]) : clean(x[1])]; }).filter(function (x) { return x[1]; }), fromContractor: !!jr, contractor: jr && jr.show_name ? (j.assigned_to || '') : '' };
+  }
+  async function repairReportPdf(p, j) {
+    const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+    const rep = await repairReport(p, j);
+    const pdf = await PDFDocument.create(), W = 595.28, H = 841.89, M = 56;
+    const F = await pdf.embedFont(StandardFonts.Helvetica), B = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const ink = rgb(0.06, 0.07, 0.09), soft = rgb(0.38, 0.4, 0.45), line = rgb(0.86, 0.87, 0.9), red = rgb(0.85, 0.15, 0.18), okc = rgb(0.07, 0.57, 0.29), band = rgb(0.96, 0.97, 0.98);
+    const safe = function (x) { return String(x == null ? '' : x).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/[^\x20-\x7E\xA3\xA0-\xFF]/g, ''); };
+    const wrap = function (text, font, size, width) { const out = []; String(text || '').split(/\n/).forEach(function (para) { let cur = ''; safe(para).split(' ').forEach(function (w) { const t = cur ? cur + ' ' + w : w; if (cur && font.widthOfTextAtSize(t, size) > width) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); }); return out; };
+    const day = function (v) { return v ? new Date(v).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' }) : ''; };
+    let page = pdf.addPage([W, H]), y;
+    const footer = function (pg) { pg.drawText(safe('Residential Realtors - 28-30 Harper Road, London SE1 6AD - 0207 096 8131 - info@residentialrealtors.co.uk'), { x: M, y: 30, size: 7.5, font: F, color: soft }); };
+    const need = function (h) { if (y - h < 70) { footer(page); page = pdf.addPage([W, H]); y = H - 70; } };
+    try { const logo = await pdf.embedPng(require('fs').readFileSync(require('path').join(__dirname, 'logo-ink.png'))); page.drawImage(logo, { x: M, y: 760, width: logo.width * 40 / logo.height, height: 40 }); } catch (e) {}
+    const right = function (text, x, yy, size, font, color) { const t = safe(text); page.drawText(t, { x: x - font.widthOfTextAtSize(t, size), y: yy, size: size, font: font, color: color || ink }); };
+    right('REPAIR REPORT', W - M, 772, 20, B);
+    page.drawLine({ start: { x: M, y: 742 }, end: { x: W - M, y: 742 }, thickness: 1.2, color: red });
+    y = 716;
+    const done = j.status === 'Completed';
+    const facts = [['Reference', refFor(j.id)], ['Property', publicAddress(j.property_address)], ['Repair', issueText(j)], ['Reported', day(j.created_at)], ['Status', done ? 'Completed' + (j.completed_at ? ' on ' + day(j.completed_at) : '') : (j.status === 'Contractor booked' ? 'Contractor arranged' : j.status)]].concat(rep.contractor ? [['Contractor', rep.contractor]] : []);
+    page.drawRectangle({ x: M, y: y - facts.length * 17 - 6, width: W - M * 2, height: facts.length * 17 + 22, color: band });
+    facts.forEach(function (f, i) { const yy = y - i * 17; page.drawText(safe(f[0]).toUpperCase(), { x: M + 12, y: yy, size: 8, font: B, color: soft }); const v = wrap(f[1], f[0] === 'Status' ? B : F, 10, W - M * 2 - 140)[0] || ''; page.drawText(v, { x: M + 120, y: yy, size: 10, font: f[0] === 'Status' ? B : F, color: f[0] === 'Status' && done ? okc : ink }); });
+    y -= facts.length * 17 + 34;
+    if (!rep.sections.length) { page.drawText(safe('The full report will appear here once the repair has been completed.'), { x: M, y: y, size: 10.5, font: F, color: soft }); y -= 20; }
+    rep.sections.forEach(function (sc) {
+      const rows = wrap(sc[1], F, 10.5, W - M * 2);
+      need(30 + rows.length * 15);
+      page.drawRectangle({ x: M, y: y - 3, width: 3, height: 14, color: red });
+      page.drawText(safe(sc[0]), { x: M + 10, y: y, size: 12, font: B, color: ink }); y -= 20;
+      rows.forEach(function (r) { need(15); page.drawText(r, { x: M, y: y, size: 10.5, font: F, color: ink }); y -= 15; });
+      y -= 12;
+    });
+    // Photos (JPEG / PNG ones), two to a row.
+    const photos = (await p.query("SELECT mime, data FROM job_photos WHERE job_id = $1 AND mime IN ('image/jpeg', 'image/png') ORDER BY id LIMIT 6", [j.id])).rows;
+    if (photos.length) {
+      need(60); page.drawRectangle({ x: M, y: y - 3, width: 3, height: 14, color: red }); page.drawText('Photos', { x: M + 10, y: y, size: 12, font: B, color: ink }); y -= 22;
+      const cw = (W - M * 2 - 14) / 2; let col = 0, rowH = 0;
+      for (const ph of photos) {
+        let img; try { img = ph.mime === 'image/png' ? await pdf.embedPng(ph.data) : await pdf.embedJpg(ph.data); } catch (e) { continue; }
+        const sc = Math.min(cw / img.width, 200 / img.height), w = img.width * sc, h = img.height * sc;
+        if (col === 0) { need(h + 10); rowH = 0; }
+        page.drawImage(img, { x: M + col * (cw + 14), y: y - h, width: w, height: h }); rowH = Math.max(rowH, h);
+        col++; if (col === 2) { col = 0; y -= rowH + 14; }
+      }
+      if (col) y -= rowH + 14;
+    }
+    need(40); page.drawLine({ start: { x: M, y: y }, end: { x: W - M, y: y }, thickness: 0.5, color: line }); y -= 16;
+    wrap('Questions about this repair? Call 0207 096 8131 or email info@residentialrealtors.co.uk, quoting ' + refFor(j.id) + '.', F, 9, W - M * 2).forEach(function (r) { page.drawText(r, { x: M, y: y, size: 9, font: F, color: soft }); y -= 13; });
+    footer(page);
+    return pdf.save();
+  }
+  app.get('/t/:token/report.pdf', withDb(async function (p, req, res) {
+    res.setHeader('X-Robots-Tag', 'noindex');
+    const token = String(req.params.token || ''); if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
+    const j = (await p.query('SELECT * FROM jobs WHERE track_token = $1 AND archived_at IS NULL', [token])).rows[0];
+    if (!j) return res.status(404).send('Not found');
+    const bytes = await repairReportPdf(p, j);
+    res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', 'attachment; filename="Repair-report-' + refFor(j.id) + '.pdf"'); res.setHeader('Cache-Control', 'no-store');
+    res.send(Buffer.from(bytes));
+  }));
   app.get('/t/:token', withDb(async function (p, req, res) {
     countVisit(req, 'track').catch(function () {});
     res.setHeader('X-Robots-Tag', 'noindex'); res.setHeader('Referrer-Policy', 'no-referrer');
     const token = String(req.params.token || '');
     if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return res.status(404).send('Not found');
-    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, appointment_date, appointment_time, assigned_to, assigned_to_2, landlord_handles
+    const j = (await p.query(`SELECT id, status, urgency, created_at, updated_at, completed_at, category, affected, symptom, location, property_address, direct_contact, appointment_date, appointment_time, assigned_to, assigned_to_2, landlord_handles, description, completion_notes
       FROM jobs WHERE track_token = $1 AND archived_at IS NULL`, [token])).rows[0];
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (!j) return res.status(404).send(trackShell('Repair not found', '<h1>Repair not found</h1><p class="sub">This link is no longer available. <a class="more" href="/track">Look up a repair</a></p>'));
@@ -6063,6 +6138,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return '<li class="' + cls + '"><span class="dot">' + (cls === 'done' ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>' : '') + '</span>' +
         '<div><div class="t">' + x.label + '</div>' + (stepSub[i] ? '<div class="s">' + htmlEsc(stepSub[i]) + '</div>' : '') + '</div></li>';
     }).join('');
+    const rep = j.status === 'Completed' ? await repairReport(p, j) : { sections: [] };
     const pin = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
     res.send(trackShell('Repair ' + refFor(j.id),
       '<div class="card hero">' +
@@ -6072,6 +6148,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
         '<div class="now ' + tone + '"><span class="ic">' + icon + '</span><div><h2>' + htmlEsc(headline) + '</h2><p>' + htmlEsc(appt ? 'Please make sure someone can give access, or let us know if this time doesn’t suit.' : statusNote(j)) + '</p></div></div>' +
       '</div>' +
       '<div class="card"><div class="sec">Progress</div><ol class="tl">' + steps + '</ol></div>' +
+      (j.status === 'Completed' ? '<div class="card"><div class="sec">Repair report</div><p class="sub" style="margin:0 0 14px">' + htmlEsc(rep.sections.length ? rep.sections.map(function (x) { return x[0]; }).join(' · ') : 'What was reported and the work carried out') + '</p>' +
+        '<a class="btn" style="display:block;background:#1e2a4a;color:#fff;text-align:center;border-radius:999px;padding:14px 16px;font-weight:800;text-decoration:none" href="/t/' + htmlEsc(token) + '/report.pdf">⬇ Download the repair report (PDF)</a></div>' : '') +
       '<div class="card"><div class="sec">Details</div><div class="facts">' +
         '<div class="fact"><div class="k">Reference</div><div class="v">' + refFor(j.id) + '</div></div>' +
         '<div class="fact"><div class="k">Reported</div><div class="v">' + whenUk(j.created_at) + '</div></div>' +
