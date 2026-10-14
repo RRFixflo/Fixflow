@@ -14352,9 +14352,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const ws = matchWords(text), road = ws.filter(function (w) { return w.length > 2 && !/\d/.test(w) && !MATCH_GENERIC[w]; }), nums = ws.filter(function (w) { return /^\d+[a-z]?$/.test(w); }), oc = matchOc(text);
     if (!road.length) return null;
     let hits = cands.filter(function (c) { const cw = ' ' + matchWords(c.address).join(' ') + ' ', co = matchOc(c.address); return (!oc || !co || oc === co) && road.every(function (w) { return cw.indexOf(' ' + w + ' ') !== -1; }); });
+    // Misheard or misspelt road (a phone transcript's "Copper Road" for Coopers Road): the same word give or take
+    // one letter (and a plural "s"), only when nothing matched exactly and both give the same postcode area.
+    if (!hits.length && oc) hits = cands.filter(function (c) { const cw = matchWords(c.address), co = matchOc(c.address); return co === oc && road.every(function (w) { return cw.some(function (v) { return nearWord(w, v); }); }); });
     if (hits.length > 1 && nums.length) { const n2 = hits.filter(function (c) { const cw = matchWords(c.address); return nums.every(function (n) { return cw.indexOf(n) !== -1; }); }); if (n2.length) hits = n2; }
     if (hits.length > 1) { const av = hits.filter(function (c) { return c.kind === 'available'; }); if (av.length === 1) hits = av; }
     return hits.length === 1 ? hits[0] : null;
+  }
+  function nearWord(a, b) {
+    a = a.replace(/s$/, ''); b = b.replace(/s$/, ''); if (a === b) return true;
+    if (a.length < 5 || b.length < 5 || Math.abs(a.length - b.length) > 1 || a[0] !== b[0]) return false;
+    const m = a.length, n = b.length, d = []; for (let i = 0; i <= m; i++) { d[i] = [i]; } for (let j = 0; j <= n; j++) d[0][j] = j;
+    for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    return d[m][n] <= 1;
   }
   async function matchLeads() {
     const p = await db(); if (!p) return;

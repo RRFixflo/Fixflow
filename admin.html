@@ -10341,11 +10341,11 @@
     var tb = e.target.closest('[data-aq-tried]');
     if (tb && qbox) { busy(tb, true, 'Saving…'); api('POST', '/api/admin/crm/note', { ref: x.ref, note: '📵 Tried to call — ' + tb.dataset.aqTried }).then(function(d){ busy(tb, false); crmDone('📵 Noted: tried to call — ' + tb.dataset.aqTried)(d); }); return; }
     if (aq && qbox) { var fq = qbox.querySelector('.appl-qf'), ta = fq.querySelector('textarea'), sv = fq.querySelector('[data-aq-save]'), spoke = aq.dataset.aq === 'spoke';
-      fq.hidden = false; fq.dataset.mode = aq.dataset.aq; ta.placeholder = spoke ? 'What did they say? (optional) — e.g. wants to view Saturday, moving in March, 2 adults' : 'Your note — a call, what they said, what’s next…';
+      fq.hidden = false; fq.dataset.mode = aq.dataset.aq; ta.placeholder = spoke ? 'What did they say? (required) — e.g. wants to view Saturday, moving in March, 2 adults' : 'Your note — a call, what they said, what’s next…';
       sv.textContent = spoke ? '✅ Confirm — ' + (applHold(x).held && applHold(x).who === crm.me ? 'save it' : 'they’re my applicant') : 'Save note'; ta.focus(); return; }
     if (e.target.closest('[data-aq-cancel]')) { var fc = e.target.closest('.appl-qf'); fc.hidden = true; fc.querySelector('textarea').value = ''; return; }
     if (e.target.closest('[data-aq-save]')) { var fs = e.target.closest('.appl-qf'), txt = fs.querySelector('textarea').value.trim(), sp = fs.dataset.mode === 'spoke', sb = e.target.closest('[data-aq-save]');
-      if (!sp && !txt) { fs.querySelector('textarea').focus(); toast('Write the note first'); return; }
+      if (!txt) { fs.querySelector('textarea').focus(); toast(sp ? '📝 Write what they said first — a note is required when you’ve spoken to them' : 'Write the note first'); return; }
       busy(sb, true, 'Saving…');
       api('POST', '/api/admin/crm/note', { ref: x.ref, note: sp ? '📞 Spoke to ' + (x.name || 'them') + (txt ? ': ' + txt : '') : txt, spoke: sp }).then(function(d){ busy(sb, false); crmDone(sp ? '✅ ' + (x.name || 'The applicant') + ' is your applicant for the next 24 hours' : '✓ Note added')(d); });
       return; }
@@ -10392,7 +10392,12 @@
   });
   $('crmList').addEventListener('change', function(e){
     var x = crmItem(e.target); if (!x) return;
-    if (e.target.matches('[data-crm-st]')) api('POST', '/api/admin/valuation-requests/' + x.id, { status: e.target.value }).then(crmDone('✓ Status saved'));
+    if (e.target.matches('[data-crm-st]')) {
+      // Marking an applicant as contacted (or further) needs a note of what was said — written in the note box first.
+      var stv = e.target.value, card = e.target.closest('[data-crm]'), nb = card && card.querySelector('[data-crm-note]'), ntxt = nb ? nb.value.trim() : '';
+      if (isAppl(x) && x.status === 'new' && /^(contacted|booked|won)$/.test(stv) && !ntxt) { e.target.value = x.status; if (nb) { nb.focus(); nb.placeholder = 'Write what was said first (required), then change the status'; } toast('📝 Add a note of what was said first — then change the status'); return; }
+      (ntxt && isAppl(x) && x.status === 'new' ? api('POST', '/api/admin/crm/note', { ref: x.ref, note: ntxt }).then(function(){ if (nb) nb.value = ''; }) : Promise.resolve()).then(function(){ return api('POST', '/api/admin/valuation-requests/' + x.id, { status: stv }); }).then(crmDone('✓ Status saved'));
+    }
     if (e.target.matches('[data-crm-who]')) api('POST', '/api/admin/crm/meta', { ref: x.ref, assigned_to: e.target.value }).then(crmDone(e.target.value ? '✓ ' + e.target.value + ' is looking after it' : 'Unassigned'));
     if (e.target.matches('[data-crm-verdict]')) {
       var card2 = e.target.closest('[data-crm]'), nb = card2 && card2.querySelector('[data-crm-note]'), why = nb ? nb.value.trim() : '';
