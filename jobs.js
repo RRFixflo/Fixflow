@@ -8986,7 +8986,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const via = (req.body || {}).via === 'email' ? 'email' : 'whatsapp', url = crSite() + '/cr/' + j.renewal.token, me = req.user && req.user.id ? req.user.name : '';
     const text = renewalText(j, url, me), subject = (j.renewal.name || 'Certificate') + ' due — ' + String(j.property_address || '').split(',').slice(0, 2).join(',');
     let emailed = false;
-    if (via === 'email') {
+    // sent: true = already sent from the "Let the landlord know" window — only note that we asked.
+    if (via === 'email' && (req.body || {}).sent !== true) {
       const to = String(j.landlord_email || '').trim();
       if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(to)) return res.status(400).json({ ok: false, error: 'no-email' });
       if (!canEmail() || !sendEmail) return res.status(503).json({ ok: false, error: 'email-not-configured' });
