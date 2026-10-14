@@ -79,7 +79,7 @@ module.exports = function (app, opts) {
       turns JSONB NOT NULL DEFAULT '[]'::jsonb, info JSONB NOT NULL DEFAULT '{}'::jsonb, silences INT NOT NULL DEFAULT 0, lead_id INT, ended_at TIMESTAMPTZ)`).catch(function (e) { ready = null; throw e; });
     await ready; return p;
   }
-  const GREETING = 'Hello, you’ve reached Residential Realtors. I’m sorry, nobody is available to take your call right now, but I can take a message so the team can get back to you. Can I take your name, please?';
+  const GREETING = 'Hello, you’ve reached Residential Realtors. I’m sorry, nobody is available to take your call right now. If it’s a property enquiry, I can take the details for you now and the team will call you back. Can I take your name, please?';
 
   app.post('/voice/incoming', form, guard, async function (req, res) {
     const sid = String(req.body.CallSid || '').slice(0, 64), from = String(req.body.From || '').slice(0, 32);
