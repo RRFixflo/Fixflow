@@ -12916,7 +12916,7 @@
     $('cbDate').value = at ? calDayKey(at) : (o.date || calDayKey(new Date()));
     cbTimes(at ? calHm(at) : '');
     cbLoadOthers(!v);
-    $('cbMail').checked = !v; $('cbMailLbl').textContent = v ? '✉ Email them if the time changes' : '✉ Email each applicant a confirmation (those with an email)';
+    $('cbMail').checked = !v; $('cbMailLbl').textContent = v ? '✉ Email them if the time or address changes' : '✉ Email each applicant a confirmation (those with an email)';
     $('cbMore').innerHTML = ''; (o.more || []).forEach(cbAddPerson);
     cal.mates = v ? cal.items.filter(function(x){ return x.id !== v.id && x.status !== 'cancelled' && x.at === v.at && calWho(x) === calWho(v) && String(x.property_address || '').trim().toLowerCase() === String(v.property_address || '').trim().toLowerCase(); }) : [];
     $('cbGroup').hidden = !cal.mates.length;
@@ -13075,6 +13075,7 @@
       var occ = (c && c.occupants) || [], withMail = occ.filter(function(o){ return o.email; }).length;
       var fix = '<details class="vd-addr"' + (occ.length ? '' : ' open') + '><summary>✏️ ' + (occ.length ? 'Not the right address? Change it' : 'Put in the full address (flat / door number and postcode) to find the tenants') + '</summary>' +
         '<div class="vd-addr-row"><input class="inp" id="vdOccAddr" list="offProps" maxlength="400" autocomplete="off" value="' + esc(v.property_address || '') + '"><button type="button" class="btn small primary" data-vd-addr>Save address</button></div>' +
+        (v.email && v.status === 'booked' ? '<label class="crm-chk" style="flex-direction:row;font-weight:500"><input type="checkbox" id="vdAddrMail" checked> ✉ Email ' + esc(v.applicant || 'the applicant') + ' the new address (the confirmation again)</label>' : '') +
         '<p class="muted-note" style="margin:0">Pick it from the suggestions — ✅ shows the address our tenancy is under, with its tenants.</p></details>';
       var tell = withMail ? '<div class="row-actions" style="margin:4px 0 0"><button type="button" class="btn small" data-vd-tell>✉ Email the tenants about this viewing</button></div>' : '';
       box.innerHTML = '<b>🏠 Living there now</b>' + (occ.length ? occ.map(function(o){ var tel = o.phone ? String(o.phone).replace(/[^\d+]/g, '') : '', wa = o.phone ? waNumber(o.phone) : '';
@@ -13086,7 +13087,8 @@
     var v = cal.open, b; if (e.target === this || e.target.closest('[data-vd-close]')) { this.hidden = true; return; } if (!v) return;
     // Correct the property's address (so the tenants living there are found), or tell those tenants about the viewing.
     if ((b = e.target.closest('[data-vd-addr]'))) { var na = $('vdOccAddr').value.trim(); if (!na || na === v.property_address) return; busy(b, true, 'Saving…');
-      api('POST', '/api/admin/viewings/' + v.id, { property: na }).then(function(r){ busy(b, false); if (!r || !r.ok) { toast('Couldn’t save the address'); return; } v.property_address = na; toast('✓ Address saved'); calChanged && calChanged(); openViewing(v); }); return; }
+      var tellIt = !!($('vdAddrMail') && $('vdAddrMail').checked);
+      api('POST', '/api/admin/viewings/' + v.id, { property: na, notify: tellIt }).then(function(r){ busy(b, false); if (!r || !r.ok) { toast('Couldn’t save the address'); return; } v.property_address = na; toast('✓ Address saved' + (r.emailed ? ' — ' + (v.applicant || 'the applicant') + ' emailed the new address' : tellIt ? ' (the email couldn’t be sent)' : '')); calChanged && calChanged(); openViewing(v); }); return; }
     if ((b = e.target.closest('[data-vd-tell]'))) { if (!confirm('Email the tenants living there about this viewing (' + new Date(v.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ')?')) return; busy(b, true, 'Sending…');
       api('POST', '/api/admin/viewings/' + v.id, { tell_tenants: true }).then(function(r){ busy(b, false); toast(r && r.ok && r.others && r.others.tenants ? '✓ Emailed ' + r.others.tenants + ' tenant' + (r.others.tenants === 1 ? '' : 's') : 'Couldn’t email the tenants'); if (r && r.ok && r.others && r.others.tenants) { b.disabled = true; b.textContent = '✓ Tenants emailed'; } }); return; }
     if ((b = e.target.closest('[data-vd-st="cancelled"]')) && !b.dataset.sure) {   // ask first, on screen (phones can block pop-ups)
