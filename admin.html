@@ -2633,7 +2633,7 @@
     <h3 id="tmTitle" style="margin:0">Welcome email</h3>
     <div id="tmFromRow" hidden><label class="lbl" for="tmFrom">From (your Outlook)</label><select class="inp" id="tmFrom"></select></div>
     <div><label class="lbl" for="tmTo">To</label><input class="inp" id="tmTo" placeholder="name@example.com, …"></div>
-    <div><label class="lbl" for="tmCc">Cc</label><input class="inp" id="tmCc" placeholder="Optional — e.g. the negotiator"><small class="muted-note" style="display:block;margin:3px 0 0">info@residentialrealtors.co.uk is always copied in.</small></div>
+    <div><label class="lbl" for="tmCc">Cc</label><input class="inp" id="tmCc" placeholder="Optional — e.g. the negotiator"></div>
     <div><label class="lbl" for="tmSubject">Subject</label><input class="inp" id="tmSubject"></div>
     <div id="tmInclRow" hidden><label class="lbl">Listed in the email as included</label><div id="tmIncl" class="tm-incl"></div><p class="match warn" id="tmInclWarn" hidden style="margin:8px 0 0"></p>
       <div style="display:flex;gap:6px;margin-top:6px"><input class="inp" id="tmInclNew" placeholder="Add another item, e.g. Gas Safety Certificate" style="flex:1;min-width:0"><button type="button" class="btn small" id="tmInclAdd">＋ Add</button></div></div>
@@ -13949,7 +13949,7 @@
     mlView('edit'); $('mlAppr').hidden = true; $('mlAppr').innerHTML = ''; setTimeout(mlApprOffer, 0); $('mlAtt').hidden = !o.attachment && !(o.files || []).length; if ((o.files || []).length) $('mlAtt').innerHTML = '📎 Attached (tap to check): ' + o.files.map(function(f){ return '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">' + esc(f.name) + '</a>'; }).join(', '); else $('mlAtt').textContent = o.attachment ? '📎 Attached: ' + o.attachment : ''; $('mlTitle').textContent = o.title || '✉ Send email';
     $('mlCcRow').parentNode.querySelector('#mlAddCc').hidden = !!o.sendFn || !$('mlCcRow').hidden; $('mlCopy').parentNode.hidden = !me || !!o.sendFn; $('mlNative').hidden = !!o.sendFn;
     $('mlCopy').parentNode.hidden = !me;
-    $('mlFrom').innerHTML = 'From <b>' + esc(meta.user && meta.user.id && meta.user.name ? meta.user.name + ' - Residential Realtors' : 'Residential Realtors') + '</b> · replies go to <b>' + esc(me || 'info@residentialrealtors.co.uk') + '</b> · info@residentialrealtors.co.uk is copied in';
+    $('mlFrom').innerHTML = 'From <b>' + esc(meta.user && meta.user.id && meta.user.name ? meta.user.name + ' - Residential Realtors' : 'Residential Realtors') + '</b> · replies go to <b>' + esc(me || 'info@residentialrealtors.co.uk') + '</b>';
     $('mlModal').hidden = false; setTimeout(function(){ ($('mlTo').value ? $('mlBody') : $('mlTo')).focus(); if ($('mlBody') === document.activeElement) $('mlBody').setSelectionRange(0, 0); $('mlBody').scrollTop = 0; }, 30);
   }
   function mlClose(){ $('mlModal').hidden = true; mlCur = null; }
