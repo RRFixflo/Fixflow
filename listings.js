@@ -902,7 +902,7 @@ module.exports = function (app, opts) {
         const near = function (list) { return r.pcm ? list.filter(function (p) { return p.price && Math.abs(p.price - r.pcm) / r.pcm <= 0.06; }) : []; };
         const base = recs.filter(function (p) { return (!o || oc(p) === o) && (r.beds == null || p.beds === Number(r.beds)); });
         let c = base.filter(function (p) { return hit(p.street); });
-        if (!near(c).length) { const viaArea = near(base.filter(function (p) { return !hit(p.street) && hit(p.area); })); if (viaArea.length) c = viaArea; }
+        if (!near(c).length) { const viaArea = near(base.filter(function (p) { return !hit(p.street) && hit(p.area); })); if (viaArea.length === 1 || (viaArea.length && !c.length)) c = viaArea; }
         if (c.length > 1 && r.pcm) { const byRent = c.filter(function (p) { return p.price && Math.abs(p.price - r.pcm) / r.pcm <= 0.06; }); if (byRent.length) c = byRent; }
         if (c.length > 1) { const cur = c.filter(function (p) { return !/^(let|sold|withdrawn|completed|archived)$/i.test(String(p.status || '').trim()); }); if (cur.length) c = cur; }
         // The same home entered twice in Gnomen: the one shown on the website wins.
