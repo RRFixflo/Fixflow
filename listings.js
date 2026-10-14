@@ -902,6 +902,8 @@ module.exports = function (app, opts) {
         // The same home entered twice in Gnomen: the one shown on the website wins.
         if (c.length > 1) { const shown = c.filter(function (p) { return data.let.concat(data.sale).some(function (q) { return q === p || String(q.id) === String(p.id); }) && p.url; }); if (shown.length) c = shown; }
         const ids = Array.from(new Set(c.map(function (p) { return String(p.id); })));
+        // Unsure: the one whose rent is nearest the advert's first.
+        if (ids.length > 1 && r.pcm) ids.sort(function (x, y) { const px = c.find(function (p) { return String(p.id) === x; }), py = c.find(function (p) { return String(p.id) === y; }); return Math.abs(((px && px.price) || 0) - r.pcm) - Math.abs(((py && py.price) || 0) - r.pcm); });
         if (ids.length === 1) out[rid] = ids[0]; else if (ids.length) maybe[rid] = ids.slice(0, 3);
       });
       { const miss = (items || []).filter(function (r) { return !out[String(r.id)]; }); const sum = 'Advert Gnomen numbers: ' + (items || []).length + ' adverts · ' + Object.keys(out).length + ' numbered · ' + Object.keys(maybe).length + ' unsure · ' + (miss.length - Object.keys(maybe).length) + ' not found' + (miss.length ? ' — ' + miss.slice(0, 30).map(function (r) { return r.address + ' ' + r.beds + 'b £' + r.pcm + (maybe[String(r.id)] ? ' (maybe ' + maybe[String(r.id)].join('/') + ')' : ''); }).join(' | ') : '');
