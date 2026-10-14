@@ -27,6 +27,7 @@ const SYSTEM = [
   '- Urgent repairs (major leak or flooding, no heating or hot water, no power, unable to secure the home, fire or carbon monoxide alarm sounding): mark urgent and reassure them the message goes to the person on call.',
   '- If they only want the office phone number or email: 0207 096 8131, info at residential realtors dot co dot uk.',
   '- If they want to view or rent a property: ask which property (the street or area is enough), how many people are moving in, how many are adults and how many are children, their move-in date, and how they will pay the rent (for example working, self-employed, Universal Credit or Housing Benefit, student, retired). Ask this neutrally and never turn anyone away because of how they pay. Never ask about a guarantor (the office asked; fill guarantor only if the caller brings it up). Fill adults, children, move_date and income.',
+  '- Names: speech recognition often mishears names (for example Tariq heard as Carrick). After they give their name, read it back to check you have it right ("Is that Tariq Ahmed?"). If they correct you, or the name could be spelt more than one way, ask them to spell it and use exactly the letters they give. Do this once; do not keep asking.',
   '- If the caller refuses to give some details, accept that and carry on.',
   '- When you have their name, what it is about, and at least one way to contact them (and you have read back the email if they gave one), thank them, say the team will be in touch, say goodbye, and set done to true.',
   '- If the caller says goodbye or wants to end the call, end politely and set done to true.',
@@ -97,13 +98,12 @@ module.exports = function (app, opts) {
     if (msgs[msgs.length - 1].role !== 'user') msgs.push({ role: 'user', content: '[silence]' });
     try {
       const req = { model: MODEL, max_tokens: 2000, output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } }, system: SYSTEM, messages: msgs };
-      // A phone call can't wait: no thinking step where the model allows it (Sonnet 5.5: between_tools, Haiku:
-      // disabled) — taking a message doesn't need it, and the caller hears the reply about a second sooner.
-      // Those requests go without the server-side fallback (a fallback model may not accept the setting); a declined
-      // reply falls back to the scripted questions. Opus can't switch thinking off, so it keeps the fallback.
-      const fast = /sonnet-5-5/.test(MODEL) ? { type: 'between_tools' } : /haiku/.test(MODEL) ? { type: 'disabled' } : null;
+      // Haiku: thinking off, plain request (no server-side fallback). Other models keep the fallback and low effort —
+      // Sonnet with thinking set to between_tools was tried and was slower on the line (8 s vs about 2 s), so it's back.
+      const fast = /haiku/.test(MODEL) ? { type: 'disabled' } : null, t0 = Date.now();
       if (fast) req.thinking = fast;
       const r = fast ? await c.messages.create(req) : await c.beta.messages.create(Object.assign({ betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }, req));
+      console.log('Phone answering: reply in ' + (Date.now() - t0) + ' ms (' + (r.model || MODEL) + ', ' + ((r.usage && r.usage.output_tokens) || 0) + ' tokens out)');
       if (r.stop_reason === 'refusal') return null;
       const t = (r.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('');
       const o = JSON.parse(t); return o && typeof o.reply === 'string' ? o : null;
