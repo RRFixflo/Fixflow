@@ -6728,7 +6728,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!d.address) return res.status(400).json({ ok: false, error: 'address-required' });
     // Kept from the saved tenancy: its move-in fees invoice and whether the landlord paid.
     const r = await p.query(`UPDATE tenancies SET property_key = $2, address = $3, start_date = $4,
-        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid', 'stmt_sent', data->'stmt_sent', 'month_costs', data->'month_costs', 'inventory_job_id', data->'inventory_job_id', 'tenant_changes', data->'tenant_changes', 'rent_rcvd', data->'rent_rcvd', 'll_paid', data->'ll_paid', 'rent_parts', data->'rent_parts', 'rent_reminders', data->'rent_reminders', 'pay_to', data->'pay_to')), updated_at = now() WHERE id = $1 RETURNING id`,
+        data = $5::jsonb || jsonb_strip_nulls(jsonb_build_object('fees_invoice_id', data->'fees_invoice_id', 'fees_paid', data->'fees_paid', 'stmt_sent', data->'stmt_sent', 'month_costs', data->'month_costs', 'inventory_job_id', data->'inventory_job_id', 'tenant_changes', data->'tenant_changes', 'rent_rcvd', data->'rent_rcvd', 'll_paid', data->'ll_paid', 'rent_parts', data->'rent_parts', 'rent_reminders', data->'rent_reminders', 'pay_to', data->'pay_to',
+          'pay_token', data->'pay_token', 'pay_amount', data->'pay_amount', 'pay_due', data->'pay_due', 'pay_reminded_at', data->'pay_reminded_at', 'll_paid_parts', data->'ll_paid_parts', 'movein_pay', data->'movein_pay',
+          'rent_claims', data->'rent_claims', 'rp_token', data->'rp_token', 'notice', data->'notice')), updated_at = now() WHERE id = $1 RETURNING id`,
       [jobId(req), propKey(d.address), d.address, d.start_date, JSON.stringify(d)]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not-found' });
     await linkTenancyPeople(p, d);
@@ -11196,6 +11198,37 @@ document.querySelectorAll('.lcu').forEach(function(box){
       sendEmail({ to: ['info@residentialrealtors.co.uk'], subject: 'Tenant says rent paid — ' + String(addr).split(',').slice(0, 2).join(','), text: txt, html: brandEmail(txt, 'Tenant says rent paid') }).catch(function () {});
     }
     res.redirect(303, '/rp/' + req.params.token + '?ok=1&d=' + from);
+  }));
+  // Notice to leave: the tenants' two months' notice. It must run at least two months and end on a rent
+  // date or the day before one (the end of a rent period) — the rent day comes from the tenancy's start date.
+  function rentDayIn(y, m, day) { const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); return Math.min(day, last); }
+  function noticeCheck(start, given, end) {
+    const sd = Number(String(start || '').slice(8, 10)); if (!sd) return 'start';
+    const g = given.split('-').map(Number), e = end.split('-').map(Number);
+    const min = new Date(Date.UTC(g[0], g[1] - 1 + 2, rentDayIn(g[0], g[1] - 1 + 2, g[2]))).toISOString().slice(0, 10);
+    if (end < min) return 'short';
+    const rd = rentDayIn(e[0], e[1] - 1, sd), nextM = new Date(Date.UTC(e[0], e[1], 1)), rdNext = rentDayIn(nextM.getUTCFullYear(), nextM.getUTCMonth(), sd);
+    // On the rent date, or the day before it (also the day before next month's rent date, when that falls on the 1st).
+    const ok = e[2] === rd || e[2] === rd - 1 || (rdNext === 1 && e[2] === new Date(Date.UTC(e[0], e[1], 0)).getUTCDate());
+    return ok ? '' : 'not-period';
+  }
+  app.post('/api/admin/tenancies/:id/notice', withDb(async function (p, req, res) {
+    const b = req.body || {}, id = jobId(req), who = req.user ? req.user.name : 'Office';
+    const t = (await p.query('SELECT id, start_date, data FROM tenancies WHERE id = $1', [id])).rows[0];
+    if (!t) return res.status(404).json({ ok: false, error: 'not-found' });
+    if (b.remove) {
+      await p.query(`UPDATE tenancies SET data = data - 'notice', log = log || $2::jsonb, updated_at = now() WHERE id = $1`, [id, JSON.stringify([{ at: new Date().toISOString(), text: 'Notice to leave removed (' + who + ')' }])]);
+      return res.json({ ok: true });
+    }
+    const day = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null; };
+    const given = day(b.given_on), end = day(b.end_on), start = String((t.data || {}).start_date || t.start_date || '').slice(0, 10);
+    if (!given || !end) return res.status(400).json({ ok: false, error: 'dates' });
+    const bad = noticeCheck(start, given, end);
+    if (bad && !b.force) return res.status(400).json({ ok: false, error: bad });
+    const n = { given_on: given, end_on: end, by: b.by === 'landlord' ? 'landlord' : 'tenant', how: str(b.how, 60) || null, note: str(b.note, 500) || null, recorded_by: who, at: new Date().toISOString(), override: bad ? true : undefined };
+    await p.query(`UPDATE tenancies SET data = jsonb_set(data, '{notice}', $2::jsonb), log = log || $3::jsonb, updated_at = now() WHERE id = $1`,
+      [id, JSON.stringify(n), JSON.stringify([{ at: n.at, text: (n.by === 'landlord' ? 'Landlord' : 'Tenants') + ' gave notice on ' + certDay(given) + (n.how ? ' (' + n.how + ')' : '') + ' — tenancy ends ' + certDay(end) + (bad ? ' (date entered by hand)' : '') + (n.note ? ' — ' + n.note : '') + ' (' + who + ')' }])]);
+    res.json({ ok: true, notice: n });
   }));
   // An earlier tenancy's move-in rent added to (or taken off) Pay landlords — for one that still has to be paid.
   app.post('/api/admin/tenancies/:id/movein-pay', withDb(async function (p, req, res) {
