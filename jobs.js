@@ -816,6 +816,21 @@ CREATE TABLE IF NOT EXISTS sent_emails (
   error       TEXT
 );
 CREATE INDEX IF NOT EXISTS sent_emails_user ON sent_emails (user_id, created_at DESC);
+-- Every email handed to Resend (or held back because it was switched off): counts for the plan's limits, and the
+-- kinds of email sent to the office so managers can switch off the ones they don't need.
+CREATE TABLE IF NOT EXISTS email_log (
+  id        BIGSERIAL PRIMARY KEY,
+  at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  kind      TEXT,
+  subject   TEXT,
+  to_list   TEXT[] NOT NULL DEFAULT '{}',
+  internal  BOOLEAN NOT NULL DEFAULT false,
+  auto      BOOLEAN NOT NULL DEFAULT true,
+  status    TEXT NOT NULL DEFAULT 'sent',
+  error     TEXT
+);
+CREATE INDEX IF NOT EXISTS email_log_at ON email_log (at DESC);
+ALTER TABLE email_log ADD COLUMN IF NOT EXISTS auto BOOLEAN NOT NULL DEFAULT true;
 -- Copies of the attachments sent (email_files ids), to open or download from Sent emails.
 ALTER TABLE sent_emails ADD COLUMN IF NOT EXISTS files JSONB NOT NULL DEFAULT '[]'::jsonb;
 CREATE TABLE IF NOT EXISTS pvr_reservations (
@@ -1813,8 +1828,50 @@ module.exports = function mountJobs(app, opts) {
   // Every email Fixflow sends to someone outside the office is kept in sent_emails as "Automatic" (booking
   // confirmations, reminders…), so a person's page / lead card shows it; staff-sent emails replace that row
   // with their own (logSent). The Sent emails list leaves "Automatic" out unless looking at one person.
-  const sendEmail = opts.sendEmail ? function (m) {
-    return Promise.resolve(opts.sendEmail(m)).then(function (r) {
+  // Email usage and emails to the office (Sent emails → 📊 Email usage, managers): every email is counted in email_log
+  // against the Resend plan's limits (MAIL_DAILY_LIMIT / MAIL_MONTHLY_LIMIT, the free plan's 100 a day / 3,000 a month);
+  // when Resend refuses one (over the limit, or any error) it is recorded and, for the limit, the owner's phone is
+  // alerted once a day. Automatic emails (not sent while a signed-in person's request is running) only to us (our
+  // domain or a staff login's email) can be switched off by kind (app_settings mail_mute, kinds from mailKind) — those
+  // aren't sent at all; anything to a customer, or written by staff, always goes.
+  const MAIL_DAY = parseInt(process.env.MAIL_DAILY_LIMIT, 10) || 100, MAIL_MONTH = parseInt(process.env.MAIL_MONTHLY_LIMIT, 10) || 3000;
+  const mailCache = { at: 0, mute: [], staff: [] }; let mailQuotaDay = '';
+  function mailKind(subject) {
+    const s = String(subject || '').replace(/\s+/g, ' ').trim();
+    let k = s.split(/\s*(?::|—|–|\|)\s*|\s+-\s+/)[0]; if (k.length < 4) k = s;
+    return k.replace(/\d[\d,.]*/g, '#').split(' ').slice(0, 7).join(' ').slice(0, 80).trim() || '(no subject)';
+  }
+  async function mailCtx() {
+    if (Date.now() - mailCache.at < 120000) return mailCache;
+    mailCache.at = Date.now();
+    try { const p = await db(); if (p) {
+      const m = (await p.query("SELECT value FROM app_settings WHERE key = 'mail_mute'")).rows[0];
+      mailCache.mute = (m && m.value && Array.isArray(m.value.kinds)) ? m.value.kinds : [];
+      mailCache.staff = (await p.query("SELECT lower(trim(email)) AS e FROM staff_users WHERE coalesce(email, '') <> ''")).rows.map(function (r) { return r.e; });
+    } } catch (e) {}
+    return mailCache;
+  }
+  function mailOurs(addr, c) { const a = String(addr || '').trim().toLowerCase().replace(/^.*<([^>]+)>.*$/, '$1'); return /@residentialrealtors\.co\.uk$/.test(a) || c.staff.indexOf(a) !== -1; }
+  function mailLog(m, kind, all, internal, auto, status, error) {
+    db().then(function (p) { return p && p.query('INSERT INTO email_log (kind, subject, to_list, internal, auto, status, error) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [kind, String(m.subject || '').slice(0, 300), all.slice(0, 20), internal, auto, status, error ? String(error).slice(0, 300) : null]); }).catch(function () {});
+  }
+  const sendRaw = opts.sendEmail ? async function (m) {
+    const c = await mailCtx(), kind = mailKind(m && m.subject);
+    const all = [].concat(m.to || [], m.cc || [], m.bcc || []).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+    const internal = all.length > 0 && all.every(function (a) { return mailOurs(a, c); }), auto = !actor.getStore();
+    if (internal && auto && c.mute.indexOf(kind) !== -1) { mailLog(m, kind, all, true, true, 'off'); return { ok: true, muted: true }; }
+    const r = await opts.sendEmail(m);
+    const err = r && !r.ok ? String(r.error || 'failed') : '', limit = /HTTP 429|quota|daily|limit/i.test(err);
+    mailLog(m, kind, all, internal, auto, r && r.ok ? 'sent' : limit ? 'limit' : 'failed', err);
+    if (limit) { const day = new Date().toISOString().slice(0, 10); if (mailQuotaDay !== day) { mailQuotaDay = day;
+      console.error('Email refused by Resend (plan limit): ' + err.slice(0, 200));
+      ntfy({ title: '⚠️ Emails not sending', message: 'Resend refused an email — the free plan’s daily limit (' + MAIL_DAY + ' a day) looks used up, so emails won’t go out until tomorrow. Upgrade Resend to Pro, or see Fixflow → Sent emails → Email usage.', priority: 4, tags: ['warning'] }).catch(function () {}); } }
+    else if (err) console.error('Email not sent: ' + err.slice(0, 200));
+    return r;
+  } : null;
+  const sendEmail = sendRaw ? function (m) {
+    return Promise.resolve(sendRaw(m)).then(function (r) {
       try {
         const to = [].concat(m && m.to || []).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
         if (to.length && to.some(function (x) { return !/^info@residentialrealtors\.co\.uk$/i.test(x); }))
@@ -8225,7 +8282,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const p = await db(); if (!p || !canEmail() || !sendEmail) return;
     const to = 'info@residentialrealtors.co.uk', text = 'Hi,\n\n' + textFor((PUBLIC_URL || OFFER_ORIGIN) + '/admin' + (hash || ''));
     const r = await sendEmail({ to: [to], fromName: 'Fixflow - Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
-    p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', ['Fixflow (automatic)', [to], null, subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
+    if (!(r && r.muted)) p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', ['Fixflow (automatic)', [to], null, subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
   }
   async function staffEmailAll(subject, textFor, hash) {
     const p = await db(); if (!p || !canEmail() || !sendEmail) return;
@@ -8234,7 +8291,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const offersOnly = u.role === 'offers' || u.role === 'offers_admin', link = (offersOnly ? (OFFER_ORIGIN || PUBLIC_URL) + '/staff' : (PUBLIC_URL || OFFER_ORIGIN) + '/admin') + (hash || '');
       const text = 'Hi ' + (String(u.name || '').split(/\s+/)[0] || 'there') + ',\n\n' + textFor(link);
       const r = await sendEmail({ to: [String(u.email).trim()], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
-      p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', ['Fixflow (automatic)', [String(u.email).trim()], 'info@residentialrealtors.co.uk', subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
+      if (!(r && r.muted)) p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', ['Fixflow (automatic)', [String(u.email).trim()], 'info@residentialrealtors.co.uk', subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
     }
   }
   // Our emails as a modern branded page: navy header with the logo, the message,
@@ -8387,6 +8444,31 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (req.user && req.user.id) { vals.push(req.user.id); return { all: false, where: ' AND user_id = $' + vals.length }; }
     vals.push(req.user ? req.user.name : ''); return { all: false, where: ' AND user_id IS NULL AND user_name = $' + vals.length };
   }
+  // 📊 Email usage (managers): today / this month against the plan, the last 14 days, refusals, and the kinds of email
+  // sent only to us in the last 30 days with an on/off switch each.
+  app.get('/api/admin/email-usage', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false });
+    const tz = "AT TIME ZONE 'Europe/London'";
+    const n = (await p.query("SELECT count(*) FILTER (WHERE (at " + tz + ")::date = (now() " + tz + ")::date AND status <> 'off')::int AS today, count(*) FILTER (WHERE date_trunc('month', at " + tz + ") = date_trunc('month', now() " + tz + ") AND status <> 'off')::int AS month, count(*) FILTER (WHERE status IN ('limit', 'failed') AND at > now() - interval '7 days')::int AS refused, max(at) FILTER (WHERE status = 'limit') AS last_limit, min(at) AS since FROM email_log")).rows[0];
+    const days = (await p.query("SELECT to_char((at " + tz + ")::date, 'YYYY-MM-DD') AS day, count(*) FILTER (WHERE status <> 'off')::int AS n, count(*) FILTER (WHERE internal AND status <> 'off')::int AS ours, count(*) FILTER (WHERE status = 'off')::int AS held, count(*) FILTER (WHERE status IN ('limit', 'failed'))::int AS refused FROM email_log WHERE at > now() - interval '14 days' GROUP BY 1 ORDER BY 1 DESC")).rows;
+    const kinds = (await p.query("SELECT kind, count(*) FILTER (WHERE status <> 'off')::int AS n, count(*) FILTER (WHERE status = 'off')::int AS held, max(at) AS last, (array_agg(subject ORDER BY at DESC))[1] AS example, (SELECT array_agg(DISTINCT x) FROM (SELECT unnest(to_list) AS x FROM email_log e2 WHERE e2.kind = email_log.kind AND e2.internal AND e2.at > now() - interval '30 days' LIMIT 200) q) AS who FROM email_log WHERE internal AND auto AND at > now() - interval '30 days' GROUP BY kind ORDER BY count(*) DESC LIMIT 80")).rows;
+    const c = await mailCtx(), seen = kinds.map(function (k) { return k.kind; });
+    c.mute.forEach(function (k) { if (seen.indexOf(k) === -1) kinds.push({ kind: k, n: 0, held: 0, last: null, example: '', who: [] }); });
+    kinds.forEach(function (k) { k.off = c.mute.indexOf(k.kind) !== -1; });
+    res.json({ ok: true, limits: { day: MAIL_DAY, month: MAIL_MONTH }, today: n.today, month: n.month, refused: n.refused, last_limit: n.last_limit, since: n.since, days: days, kinds: kinds });
+  }));
+  app.post('/api/admin/email-usage/mute', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false });
+    const kind = String((req.body || {}).kind || '').slice(0, 80).trim(), off = !!(req.body || {}).off; if (!kind) return res.status(400).json({ ok: false });
+    const row = (await p.query("SELECT value FROM app_settings WHERE key = 'mail_mute'")).rows[0];
+    let kinds = (row && row.value && Array.isArray(row.value.kinds)) ? row.value.kinds : [];
+    kinds = kinds.filter(function (k) { return k !== kind; }); if (off) kinds.push(kind);
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('mail_mute', $1) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()", [JSON.stringify({ kinds: kinds, by: (req.user && req.user.name) || 'Owner', at: new Date().toISOString() })]);
+    mailCache.at = 0;
+    res.json({ ok: true, off: off });
+  }));
+  // Keep three months of the email count.
+  setInterval(function () { db().then(function (p) { return p && p.query("DELETE FROM email_log WHERE at < now() - interval '100 days'"); }).catch(function () {}); }, 24 * 3600 * 1000).unref();
   app.get('/api/admin/sent-emails', withDb(async function (p, req, res) {
     const to = String(req.query.to || '').trim().toLowerCase().slice(0, 200), vals = [], sc = sentScope(req, vals, !!to); let where = 'WHERE true' + sc.where;
     if (!to) where += " AND user_name IS DISTINCT FROM 'Automatic'";
