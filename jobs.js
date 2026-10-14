@@ -7611,9 +7611,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!t) return res.status(404).json({ ok: false });
     res.json(Object.assign({ ok: true }, await tcyNegotiator(p, t.data || {})));
   }));
-  // Emails staff send from Fixflow no longer copy in the office inbox (the owner asked — too much in the inbox);
-  // every one is still kept in Sent emails. Only the Cc's chosen by staff go.
-  function officeCc(to, cc) { return cc; }
+  // Emails staff send from Fixflow always copy in the office inbox, so they're in Outlook too.
+  function officeCc(to, cc) {
+    const office = 'info@residentialrealtors.co.uk', has = function (l) { return l.some(function (x) { return String(x).toLowerCase() === office; }); };
+    if (!has(to) && !has(cc)) cc.push(office);
+    return cc;
+  }
   // Everyone to email about a tenancy's rent: the tenants on the tenancy plus anyone else saved as a current
   // tenant at the property since it started (not guarantors, not moved out) — so every tenant gets it.
   async function tenancyTenants(p, t) {
