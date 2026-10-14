@@ -762,6 +762,8 @@ module.exports = function (app, opts) {
 
   return {
     // A property on our website by its Gnomen number or Rightmove id (e.g. the reference on a Rightmove lead).
+    // Every home on our website (for matching a lead's words to a property page).
+    homes: function () { return data.let.concat(data.sale).filter(pub).map(function (p) { return { id: String(p.id), address: [p.where, p.postcode].filter(Boolean).join(' '), url: p.url ? opts.siteUrl + p.url : '', taken: !!p.taken, kind: p.kind }; }); },
     findRef: function (ref) {
       ref = String(ref || '').trim(); if (!ref) return null;
       const p = data.let.concat(data.sale).filter(function (q) { return String(q.id) === ref || String(q.rmId || '') === ref; })[0];
