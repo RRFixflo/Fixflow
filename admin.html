@@ -689,6 +689,10 @@
   .av-card.av-flash { box-shadow: 0 0 0 3px #155eef; transition: box-shadow .3s; }
   .ca-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; } .ca-paste { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: .88rem; margin-bottom: 10px; }
   .ca-dup { margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: var(--dk-bg-fffaeb, #fffaeb); border: 1px solid var(--dk-bd-fedf89, #fedf89); font-size: .88rem; }
+  .av-ct-r { cursor: pointer; } .av-cmuted { color: var(--ink-soft); font-weight: 400; font-size: .8rem; } .av-cold { color: var(--dk-fg-b54708, #b54708); font-weight: 600; }
+  .av-ct td.c-address { min-width: 200px; white-space: normal; } .av-ct td.c-links { white-space: nowrap; }
+  @media (max-width: 640px) { .col-bar .muted-note { display: none; } }
+  @media (max-width: 640px) { .av-ct th[data-col="area"], .av-ct td.c-area, .av-ct th[data-col="online"], .av-ct td.c-online, .av-ct th[data-col="fee"], .av-ct td.c-fee { display: none; } .av-ct td.c-address { min-width: 0; } .av-ct td, .av-ct th { padding: 7px 6px; } .av-ct td.c-available { white-space: normal; min-width: 84px; } }
   .ll-props { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
   .ar-list { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; }
   .cb-hint { font-size: .82rem; margin: -2px 0 4px; color: var(--dk-fg-067647, #067647); } .cb-hint.warn { color: var(--dk-fg-b42318, #b42318); }
@@ -3328,6 +3332,7 @@
   function colPrefs(key){ try { return JSON.parse(localStorage.getItem('rr_cols_' + key) || '{}') || {}; } catch (e) { return {}; } }
   function colSave(key, p){ try { localStorage.setItem('rr_cols_' + key, JSON.stringify(p)); } catch (e) {} }
   function colName(th){ return th.textContent.replace(/[▲▼]/g, '').trim(); }
+  function colsAll(key){ document.querySelectorAll('table[data-colkey="' + key + '"]').forEach(function(t){ colsArrange(t, key); }); }
   function colsArrange(table, key){
     if (!table || !table.tHead) return;
     var p = colPrefs(key), head = table.tHead.rows[0];
@@ -3350,12 +3355,12 @@
       th.title = (th.title ? th.title + ' · ' : '') + 'Drag to move this column';
       var h = document.createElement('span'); h.className = 'col-rs'; h.title = 'Drag to resize · double-click to reset'; th.appendChild(h);
       h.addEventListener('click', function(e){ e.stopPropagation(); });
-      h.addEventListener('dblclick', function(e){ e.stopPropagation(); var q = colPrefs(key); if (q.w) delete q.w[k]; colSave(key, q); colsArrange(table, key); });
+      h.addEventListener('dblclick', function(e){ e.stopPropagation(); var q = colPrefs(key); if (q.w) delete q.w[k]; colSave(key, q); colsAll(key); });
       h.addEventListener('pointerdown', function(e){
         e.preventDefault(); e.stopPropagation(); th.draggable = false;
         var x0 = e.clientX, w0 = th.offsetWidth, q = colPrefs(key); q.w = q.w || {};
         try { h.setPointerCapture(e.pointerId); } catch (er) {}
-        var mv = function(ev){ q.w[k] = Math.max(40, Math.round(w0 + ev.clientX - x0)); colSave(key, q); colsArrange(table, key); };
+        var mv = function(ev){ q.w[k] = Math.max(40, Math.round(w0 + ev.clientX - x0)); colSave(key, q); colsAll(key); };
         var up = function(){ h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); th.draggable = true; };
         h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
       });
@@ -3368,7 +3373,7 @@
         var cur = [].map.call(head.cells, function(c){ return c.dataset.col; }).filter(function(c){ return fixed.indexOf(c) === -1; });
         cur.splice(cur.indexOf(from), 1); var at = cur.indexOf(k), right = e.clientX > th.getBoundingClientRect().left + th.offsetWidth / 2;
         cur.splice(at + (right ? 1 : 0), 0, from);
-        var q = colPrefs(key); q.order = cur; colSave(key, q); colsArrange(table, key);
+        var q = colPrefs(key); q.order = cur; colSave(key, q); colsAll(key);
       });
     });
   }
@@ -3392,7 +3397,7 @@
       else return;
       colSave(key, q);
       if (rs && rs.dataset.colreset === 'all') { m.remove(); renderAvail(); return; }
-      colsArrange(table, key); draw(m);
+      colsAll(key); draw(m);
     });
   });
   function toLocalInput(d){
@@ -14917,6 +14922,7 @@
       .then(function(){ if (view === 'avail') loadAvail(); });
   }
   // ---------- Available properties: the lettings list staff work from ----------
+  var avSortC = (function(){ try { return JSON.parse(localStorage.getItem('rr_av_csort') || 'null') || { k: '', d: 1 }; } catch (e) { return { k: '', d: 1 }; } })();
   var avSortL = (function(){ try { return JSON.parse(localStorage.getItem('rr_av_lsort') || 'null') || { k: '', d: 1 }; } catch (e) { return { k: '', d: 1 }; } })();
   var avMode = (function(){ try { return localStorage.getItem('rr_av_mode') || 'cards'; } catch (e) { return 'cards'; } })(), avLinkData = {}, avItems = [], avBeds = '', avFlag = '', avEdit = null, avLimit = 200, avLs = { k: 'let_on', d: -1 };
   var rmData = null;
@@ -15250,11 +15256,36 @@
         }).join('') + '</tbody></table></div>' + (avMore ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn" id="avMoreBtn">Show ' + Math.min(avMore, 200) + ' more</button></div>' : '');
         colsArrange($('avList').querySelector('table.av-lt'), 'av_list');
       } else {
+        // Compact: one simple table per bedroom size, plain words, headings that sort (tap) and can be
+        // moved / resized like the List view (shared column settings rr_cols_av_compact, sort rr_av_csort).
         var groups = {}; list.forEach(function(x){ var g = x.beds == null ? 'Other' : x.beds === 0 ? 'Studios' : x.beds >= 4 ? '4+ bedrooms' : x.beds + ' bedroom' + (x.beds === 1 ? '' : 's'); (groups[g] = groups[g] || []).push(x); });
         var order = ['Studios', '1 bedroom', '2 bedrooms', '3 bedrooms', '4+ bedrooms', 'Other'].filter(function(g){ return groups[g]; });
-        $('avList').innerHTML = '<div class="av-compact">' + order.map(function(g){ return '<div class="av-cg"><div class="av-cg-h">' + g + ' <span>' + groups[g].length + '</span></div>' + groups[g].map(function(x){
-          return '<button type="button" class="av-cl' + (x.urgent ? ' is-urgent' : '') + '" data-avopen="' + x.id + '"><span class="av-cl-a">' + esc(shortAddr(x.address)) + ' <small>' + esc(avOutcode(x.address) || '') + (x.gnomen_id ? ' · #' + esc(x.gnomen_id) : '') + '</small></span><span class="av-cl-p">' + (x.rent_pcm ? esc(gbp(Number(x.rent_pcm))).replace(/\.00$/, '') + '<small> pcm</small>' : '—') + (x.commission ? ' ' + avFeeHtml(x, true) : '') + '</span><span class="av-cl-d">' + whenTxt(x) + ' ' + avOnHtml(x, true) + '</span><span class="av-cl-f">' + flags(x) + '</span></button>';
-        }).join('') + '</div>'; }).join('') + '</div>';
+        var CC = [['address', 'Property'], ['area', 'Area'], ['pcm', 'Rent'], ['fee', 'Fee'], ['available', 'Available'], ['online', 'Online'], ['links', 'Links']];
+        var cv = function(x, k){ var n;
+          if (k === 'address') return String(shortAddr(x.address) || '').toLowerCase() || null;
+          if (k === 'area') return avOutcode(x.address) || null;
+          if (k === 'pcm') return Number(x.rent_pcm) || null;
+          if (k === 'fee') return parseFloat(String(x.commission || '').replace(/[^\d.]/g, '')) || null;
+          if (k === 'available') return avNow(x) ? '0000' : x.available_from ? String(x.available_from).slice(0, 10) : null;
+          if (k === 'online') { n = avOnline(x); return n == null ? null : n; }
+          return null; };
+        var csort = function(arr){ if (!avSortC.k) return arr; return arr.slice().sort(function(p, q){ var a = cv(p, avSortC.k), b = cv(q, avSortC.k); if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1; return (a < b ? -1 : a > b ? 1 : 0) * avSortC.d; }); };
+        var days = function(n){ return n + ' day' + (n === 1 ? '' : 's'); };
+        var cell = {
+          address: function(x){ return '<b>' + esc(shortAddr(x.address)) + '</b>' + (x.gnomen_id ? ' <small class="av-cmuted">#' + esc(x.gnomen_id) + '</small>' : ''); },
+          area: function(x){ return esc(avOutcode(x.address) || '—'); },
+          pcm: function(x){ return x.rent_pcm ? '<b>' + esc(gbp(Number(x.rent_pcm))).replace(/\.00$/, '') + '</b>' : '—'; },
+          fee: function(x){ return x.commission ? esc(String(x.commission)) : '—'; },
+          available: function(x){ var n = avVacIn(x); return x.vacant || avNow(x) ? '<span class="av-now">Vacant now</span>' : x.available_from ? esc(avDay(x.available_from)) + (n ? ' <small class="av-cmuted">in ' + days(n) + '</small>' : '') : '<span class="av-cmuted">Not set</span>'; },
+          online: function(x){ var n = avOnline(x); return n == null ? '—' : '<span class="' + (n > 30 ? 'av-cold' : '') + '">' + days(n) + '</span>'; },
+          links: function(x){ return flags(x) || '—'; }
+        };
+        $('avList').innerHTML = '<div class="col-bar"><button type="button" class="btn small ghost" data-colmenu="av_compact">⇄ Arrange columns</button><span class="muted-note">Tap a heading to sort · drag a heading to move it · drag its edge to resize</span></div>' +
+          '<div class="av-compact">' + order.map(function(g){ return '<div class="av-cg"><div class="av-cg-h">' + g + ' <span>' + groups[g].length + '</span></div>' +
+          '<div class="av-lt-wrap"><table class="av-lt av-ct"><thead><tr>' + CC.map(function(c){ var sortable = c[0] !== 'links'; return '<th data-col="' + c[0] + '"' + (sortable ? ' data-avcsort="' + c[0] + '" title="Tap to sort"' : '') + (avSortC.k === c[0] ? ' class="on"' : '') + '>' + c[1] + (avSortC.k === c[0] ? (avSortC.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr></thead><tbody>' +
+          csort(groups[g]).map(function(x){ return '<tr class="av-ct-r' + (x.urgent ? ' is-urgent' : '') + '" data-avopen="' + x.id + '" title="Open the full card">' + CC.map(function(c){ return '<td class="' + (c[0] === 'address' || c[0] === 'available' ? '' : 'nw ') + 'c-' + c[0] + '">' + cell[c[0]](x) + '</td>'; }).join('') + '</tr>'; }).join('') +
+          '</tbody></table></div></div>'; }).join('') + '</div>';
+        $('avList').querySelectorAll('table.av-ct').forEach(function(t){ colsArrange(t, 'av_compact'); });
       }
       return;
     }
@@ -15322,6 +15353,7 @@
     // From List / Compact: open that property's full card.
     var op = e.target.closest('[data-avopen]');
     if (op && !e.target.closest('a')) { var id = op.dataset.avopen; avSetMode('cards'); renderAvail(); var c = document.querySelector('.av-card[data-av="' + id + '"]'); if (c) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.add('av-flash'); setTimeout(function(){ c.classList.remove('av-flash'); }, 1600); } return; }
+    var hc = e.target.closest('[data-avcsort]'); if (hc) { var kc = hc.dataset.avcsort; avSortC = avSortC.k === kc ? (avSortC.d > 0 ? { k: kc, d: -1 } : { k: '', d: 1 }) : { k: kc, d: kc === 'online' ? -1 : 1 }; try { localStorage.setItem('rr_av_csort', JSON.stringify(avSortC)); } catch (er) {} renderAvail(); return; }
     var hs = e.target.closest('[data-avsort]'); if (hs) { var ks = hs.dataset.avsort; avSortL = avSortL.k === ks ? (avSortL.d > 0 ? { k: ks, d: -1 } : { k: '', d: 1 }) : { k: ks, d: ks === 'online' ? -1 : 1 }; try { localStorage.setItem('rr_av_lsort', JSON.stringify(avSortL)); } catch (er) {} renderAvail(); return; }
     var h = e.target.closest('[data-lsort]'); if (h) { var k = h.dataset.lsort; avLs = avLs.k === k ? { k: k, d: -avLs.d } : { k: k, d: k === 'let_on' ? -1 : 1 }; renderAvail(); }
   });
