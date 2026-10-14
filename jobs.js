@@ -8542,9 +8542,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!v || !v.email || !canEmail() || !sendEmail) return false;
     const when = new Date(v.at).toLocaleString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).replace(',', '');
     const first = String(v.applicant || '').trim().split(/\s+/)[0], me = req.user && req.user.id ? req.user.name : '', addr = String(v.property_address || '');
-    const subject = { booked: 'Viewing Confirmation', moved: 'Viewing Confirmation — new time', cancelled: 'Viewing cancelled' }[kind] + ' — ' + (kind === 'cancelled' ? when : addr.split(',').slice(0, 2).join(',') + ', ' + when);
+    const subject = { booked: 'Viewing Confirmation', moved: 'Viewing Confirmation — new time', address: 'Viewing Confirmation — updated address', cancelled: 'Viewing cancelled' }[kind] + ' — ' + (kind === 'cancelled' ? when : addr.split(',').slice(0, 2).join(',') + ', ' + when);
     const t = kind === 'cancelled' ? 'Dear ' + (first || 'applicant') + ',\n\nYour viewing of ' + addr + ' on ' + when + ' has been cancelled.\n\nIf you’d like to book another time, just reply to this email or call us on 0207 096 8131.\n\nKind regards,\n' + (me ? me + '\n' : '') + 'Residential Realtors'
-      : viewingConfirmText({ name: v.applicant, address: addr, when: viewingWhen(v.at), me: me, moved: kind === 'moved', offerUrl: vfOfferUrl(v), confirmUrl: await vcUrl(p, v.id) });
+      : viewingConfirmText({ name: v.applicant, address: addr, when: viewingWhen(v.at), me: me, moved: kind === 'moved', offerUrl: vfOfferUrl(v), confirmUrl: await vcUrl(p, v.id) })
+        .replace(/^(Dear[^\n]*\n\n)/, kind === 'address' ? '$1Please note the address for your viewing has been updated. The full address is: [b]' + addr + '[/b]\n\n' : '$1');
     const r = await sendEmail({ to: [v.email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: subject, text: t, html: brandEmail(t, subject.split(' — ')[0]) }).catch(function () { return { ok: false }; });
     const ok = !!(r && r.ok !== false);
     logSent(req, [v.email], [], 'info@residentialrealtors.co.uk', subject, t, r);
@@ -8594,7 +8595,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       return res.json({ ok: true, others: o });
     }
     if (!sets.length) return res.status(400).json({ ok: false, error: 'nothing' });
-    const before = (await p.query('SELECT at, status FROM viewings WHERE id = $1', [id])).rows[0];
+    const before = (await p.query('SELECT at, status, property_address FROM viewings WHERE id = $1', [id])).rows[0];
     await p.query('UPDATE viewings SET ' + sets.join(', ') + ' WHERE id = $1', vals);
     // Cancelled, or moved to a new time: noted on their lead, and (when ticked) the applicant is told.
     const now = (await p.query('SELECT * FROM viewings WHERE id = $1', [id])).rows[0];
@@ -8605,7 +8606,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (cancelled && now.lead_id) await crmLog(p, 'vr:' + now.lead_id, '🗓 Viewing cancelled: ' + when + ' · ' + String(now.property_address || '').split(',').slice(0, 2).join(','), req, false);
       if (moved && now.att_ok_at) { await p.query('UPDATE viewings SET att_ok_at = NULL WHERE id = $1', [id]); now.att_ok_at = null; }   // a new time: they confirm again
       if (moved && now.lead_id) await crmLog(p, 'vr:' + now.lead_id, '🗓 Viewing moved to ' + when, req, false);
-      if (b.notify === true && (cancelled || moved)) emailed = await viewingMail(p, req, now, cancelled ? 'cancelled' : 'moved');
+      // A corrected address (time unchanged): the applicant gets the confirmation again with the full address.
+      const readdr = !cancelled && !moved && String(now.property_address || '').trim() !== String(before.property_address || '').trim();
+      if (readdr && now.lead_id) await crmLog(p, 'vr:' + now.lead_id, '🗓 Viewing address changed to ' + now.property_address, req, false);
+      if (b.notify === true && (cancelled || moved || readdr)) emailed = await viewingMail(p, req, now, cancelled ? 'cancelled' : moved ? 'moved' : 'address');
       if ((b.notify_tenants === true || b.notify_landlord === true) && (cancelled || moved)) var others = await viewingNotifyOthers(p, req, now, cancelled ? 'cancelled' : 'moved', { tenants: b.notify_tenants === true, landlord: b.notify_landlord === true });
     }
     res.json({ ok: true, emailed: emailed, others: typeof others === 'undefined' ? null : others });
