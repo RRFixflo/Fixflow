@@ -689,6 +689,7 @@
   .av-card.av-flash { box-shadow: 0 0 0 3px #155eef; transition: box-shadow .3s; }
   .ca-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; } .ca-paste { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: .88rem; margin-bottom: 10px; }
   .ca-dup { margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: var(--dk-bg-fffaeb, #fffaeb); border: 1px solid var(--dk-bd-fedf89, #fedf89); font-size: .88rem; }
+  .ll-props { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
   .ar-list { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; }
   .cb-hint { font-size: .82rem; margin: -2px 0 4px; color: var(--dk-fg-067647, #067647); } .cb-hint.warn { color: var(--dk-fg-b42318, #b42318); }
   .tcy-notice { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--dk-bg-fffaeb, #fffaeb); border: 1px solid var(--dk-bd-fedf89, #fedf89); font-size: .9rem; }
@@ -10763,7 +10764,10 @@
       '<button class="btn" id="llValBtn" type="button">📄 Valuation letter</button>' +
       '<button class="btn" id="llApprBtn" type="button">🏠 Appraisal</button>' +
       '<button class="btn" id="llLicBtn" type="button">📜 Licence check</button>' +
-      '<button class="btn primary" id="llEditBtn" type="button">Edit details</button>';
+      '<button class="btn primary" id="llEditBtn" type="button">Edit details</button>' +
+      // Straight to each of their properties from the top of the page.
+      (props.length ? '<div class="ll-props">' + props.map(function(x){ return '<button type="button" class="btn small" data-ll-prop="' + esc(x.key) + '">🏠 ' + esc(shortAddr(x.address)) + '</button>'; }).join('') + '</div>' : '');
+    $('llActions').querySelectorAll('[data-ll-prop]').forEach(function(b){ b.addEventListener('click', function(){ openProperty(b.dataset.llProp); }); });
     $('llLinkBtn').addEventListener('click', function(){ openLlLink(l); });
     $('llInvBtn').addEventListener('click', function(){ var ps = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; }); openNewInvoice({ props: ps.length ? ps : null, address: ps.length === 1 ? ps[0] : '' }); });
     if ($('llQuoteBtn')) $('llQuoteBtn').addEventListener('click', function(){ var ps = llProperties(l).map(function(x){ return knownFullAddress(x.key) || x.address; }); openNewInvoice({ mode: 'quote', landlord_id: l.id, props: ps.length ? ps : null, address: ps.length === 1 ? ps[0] : '' }); });
