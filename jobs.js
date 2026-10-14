@@ -8288,10 +8288,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await sendEmail({ to: [to], fromName: 'Fixflow - Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
     if (!(r && r.muted)) p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', ['Fixflow (automatic)', [to], null, subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
   }
-  // Team emails (website requests, landlord sign-ups, phone messages): one email to the office inbox — no longer one
-  // to every member of staff (the owner asked; staff already get the phone alert and see it in the staff app).
-  async function staffEmailAll(subject, textFor, hash) { return ownerEmail(subject, textFor, hash); }
-
+  async function staffEmailAll(subject, textFor, hash) {
+    const p = await db(); if (!p || !canEmail() || !sendEmail) return;
+    const users = (await p.query("SELECT id, name, email, role FROM staff_users WHERE disabled_at IS NULL AND coalesce(email, '') <> ''")).rows.filter(function (u) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(u.email).trim()); });
+    for (const u of users) {
+      const offersOnly = u.role === 'offers' || u.role === 'offers_admin', link = (offersOnly ? (OFFER_ORIGIN || PUBLIC_URL) + '/staff' : (PUBLIC_URL || OFFER_ORIGIN) + '/admin') + (hash || '');
+      const text = 'Hi ' + (String(u.name || '').split(/\s+/)[0] || 'there') + ',\n\n' + textFor(link);
+      const r = await sendEmail({ to: [String(u.email).trim()], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
+      if (!(r && r.muted)) p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', ['Fixflow (automatic)', [String(u.email).trim()], 'info@residentialrealtors.co.uk', subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
+    }
+  }
   // Our emails as a modern branded page: navy header with the logo, the message,
   // a big button for our main link (terms, offer, tracking page), a signature card
   // and the company footer. Built from the plain text, which is sent alongside it.
@@ -12112,7 +12118,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email || null, phone, callback ? '(call-back request)' : '(quick request — call back for the address)', JSON.stringify({ kind: 'quick', service: what, page: page })]);
       await noteSource(p, req, r.rows[0].id);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
-      // Every member of staff hears about it by phone alert; the office gets one email (below, replies go to the applicant).
+      // Every member of staff hears about it: a phone alert and an email each.
       teamAlert({ title: callback ? '📞 Call-back request (' + what + '): ' + name : '⚡ Quick valuation request: ' + name, message: callback ? phone + ' · wants a call about ' + what + (page ? ' · from ' + page : '') : phone + ' · ' + what + ' valuation — call them back for the address.', tags: ['house'] }, '#leads').catch(function () {});
       staffEmailAll((callback ? '📞 Call-back request (' + what + ') - ' : '⚡ Quick valuation request - ') + name, function (link) {
         return (callback ? 'Someone asked us to call them about ' + what + ' on the website. Please call them back.' : 'Someone used the quick valuation form on the website. Please call them back for the property details.') + '\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + (email || '—') + (callback ? '\nAbout: ' : '\nValuation: ') + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s in Website leads — add a note once you’ve called:\n' + link;
@@ -12685,6 +12691,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const times = slots.map(slotText);
     // Every member of staff hears about it: a phone alert and an email each.
     teamAlert({ title: '🗓 Viewing request: ' + addr.split(',').slice(0, 2).join(','), message: name + ' · ' + phone + (times.length ? ' · ' + times.join(' / ') : ' · any time') + ' — confirm a time in Website leads.', tags: ['calendar'] }, '#leads').catch(function () {});
+    staffEmailAll('🗓 Viewing request - ' + addr.split(',').slice(0, 2).join(','), function (link) {
+      return 'Someone has asked to view ' + addr + (ref ? ' (ref ' + ref + ')' : '') + ' on the website.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') +
+        (data.people ? '\nPeople: ' + data.people : '') + (data.move ? (md ? '\nMove-in date: ' : '\nMove / buy: ') + data.move : '') + (income ? '\nRent paid by: ' + income : '') + (guarantor ? '\nUK guarantor: ' + guarantor : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Website leads (they’re emailed straight away):\n' + link;
+    }, '#leads').catch(function (e) { console.error('Viewing request staff emails failed:', e.message); });
     if (canEmail() && sendEmail) {
       sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Viewing request — ' + addr, text: 'Someone has asked to view a property on the website.\n\nProperty: ' + addr + (ref ? ' (ref ' + ref + ')' : '') + '\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email +
         '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') + (data.people ? '\nPeople: ' + data.people : '') + (data.move ? (md ? '\nMove-in date: ' : '\nMove / buy: ') + data.move : '') + (income ? '\nRent paid by: ' + income : '') + (guarantor ? '\nUK guarantor: ' + guarantor : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Fixflow under Contacts — they’re emailed straight away.' }).catch(function () {});

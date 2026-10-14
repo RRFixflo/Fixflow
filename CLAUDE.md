@@ -132,7 +132,7 @@ Public website changes must respect `prefers-reduced-motion`, work without horiz
 
 - No "Last updated" label in the website header (removed at the owner's request).
 - No notifications about properties that share photos — the report stays on the Website visitors page only.
-- Staff alerts for viewings and valuation requests go to all staff as phone alerts; the email goes once to the office inbox (`staffEmailAll` = `ownerEmail`), not to every member of staff — the owner asked, to cut down emails (website viewing requests: one office email, replies go to the applicant).
+- Staff alerts for viewings and valuation requests go to all staff.
 - New repair emails and phone alerts go to the owner only, never staff.
 - Refreshing the staff app keeps you on the same page; the Refresh button reloads every page's data.
 - Calls isn't in the side menu or the phone More menu (hidden with CSS on `#navCalls`); the ringing pop-up still opens the Calls page.
