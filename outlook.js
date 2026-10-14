@@ -8,7 +8,9 @@
 //   MS_TENANT_ID      Directory (tenant) ID
 //   MS_CLIENT_SECRET  a client secret's Value
 // Redirect URI to register (type Web): <site>/ms/callback
-// Delegated permissions: offline_access, User.Read, Mail.ReadWrite.
+// Delegated permissions: offline_access, User.Read, Mail.ReadWrite, Mail.Send.
+// Once the office mailbox (OFFICE_MAILBOX, default info@) is connected, every email Fixflow sends goes
+// through it (Microsoft Graph sendMail, kept in its Sent Items); Resend is only used if that fails.
 //
 // Each person connects their own mailbox once; the sign-in is kept (encrypted)
 // in the database so drafts can be made without signing in again.
@@ -17,7 +19,9 @@ const crypto = require('crypto');
 const CLIENT_ID = process.env.MS_CLIENT_ID || '';
 const TENANT = process.env.MS_TENANT_ID || 'organizations';
 const SECRET = process.env.MS_CLIENT_SECRET || '';
-const SCOPES = 'offline_access User.Read Mail.ReadWrite';
+const SCOPES = 'offline_access User.Read Mail.ReadWrite Mail.Send';
+// The office mailbox Fixflow sends all its emails from once it's connected (Resend stays as the backup).
+const OFFICE = String(process.env.OFFICE_MAILBOX || 'info@residentialrealtors.co.uk').toLowerCase();
 const AUTH = 'https://login.microsoftonline.com/' + encodeURIComponent(TENANT) + '/oauth2/v2.0';
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 
@@ -58,7 +62,7 @@ module.exports = function (app, o) {
 
   app.get('/api/admin/outlook', withDb(async function (p, req, res) {
     const list = await accounts(p);
-    res.json({ ok: true, configured: configured(), redirect: redirectUri(req),
+    res.json({ ok: true, configured: configured(), redirect: redirectUri(req), office: OFFICE, sending: !!(configured() && list[OFFICE]), send_state: sendState,
       accounts: Object.keys(list).map(function (k) { return { email: k, name: list[k].name || '' }; }) });
   }));
   // Start signing in with Microsoft (a normal page visit from the admin page).
@@ -86,6 +90,7 @@ module.exports = function (app, o) {
       const list = await accounts(p);
       list[email] = { name: me.displayName || '', rt: seal(t.refresh_token), at: new Date().toISOString() };
       await saveAccounts(p, list);
+      if (email === OFFICE) { officeTok = null; sendState.error = ''; sendState.alerted = ''; }
       res.redirect('/admin#outlook=connected');
     } catch (err) {
       console.error('Outlook sign-in failed:', err.message);
@@ -96,6 +101,7 @@ module.exports = function (app, o) {
     const list = await accounts(p), k = String(req.params.email || '').toLowerCase();
     delete list[k];
     await saveAccounts(p, list);
+    if (k === OFFICE) officeTok = null;
     res.json({ ok: true });
   }));
   // Make a draft in that person's Outlook: HTML body, recipients, attachments.
@@ -132,5 +138,52 @@ module.exports = function (app, o) {
     if (!r.ok) { console.error('Outlook draft failed:', r.status, d.error && d.error.message); return res.status(502).json({ ok: false, error: 'draft-failed' }); }
     res.json({ ok: true, from: from, webLink: d.webLink || null });
   }));
+
+  // ---- Sending every Fixflow email from the office mailbox ----
+  let officeTok = null;   // { token, exp }
+  const sendState = { ok_at: null, error: '', error_at: null, alerted: '' };
+  async function officeToken() {
+    if (officeTok && officeTok.exp > Date.now() + 120000) return officeTok.token;
+    const p = await db(); if (!p) throw new Error('no-db');
+    const list = await accounts(p), acc = list[OFFICE]; if (!acc) throw new Error('not-connected');
+    const rt = unseal(acc.rt); if (!rt) throw new Error('reconnect');
+    const t = await tokenRequest({ grant_type: 'refresh_token', refresh_token: rt });
+    if (t.refresh_token && t.refresh_token !== rt) { list[OFFICE].rt = seal(t.refresh_token); await saveAccounts(p, list); }
+    officeTok = { token: t.access_token, exp: Date.now() + (Number(t.expires_in) || 3600) * 1000 };
+    return officeTok.token;
+  }
+  const addrs = function (v) { return [].concat(v || []).map(function (x) { return String(x || '').trim(); }).filter(function (x) { return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(x); }).map(function (x) { return { emailAddress: { address: x } }; }); };
+  function mimeOf(name) { const e = (String(name).split('.').pop() || '').toLowerCase(); return { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', csv: 'text/csv', txt: 'text/plain', ics: 'text/calendar' }[e] || 'application/octet-stream'; }
+  // Same message shape as Resend's ({ to, cc, bcc, replyTo, subject, text, html, attachments: [{ filename, content }] }).
+  // Returns { ok } — anything not ok (not connected, over ~3 MB of attachments, Microsoft refused) is sent by Resend instead.
+  async function send(m) {
+    if (!configured()) return { ok: false, error: 'not-set-up', skip: true };
+    const atts = (m.attachments && m.attachments.length ? m.attachments : m.attachmentBase64 ? [{ filename: m.attachmentFilename, content: m.attachmentBase64 }] : [])
+      .map(function (a) { const c = Buffer.isBuffer(a.content) ? a.content.toString('base64') : String(a.content || '').replace(/^data:[^,]*,/, ''); return { '@odata.type': '#microsoft.graph.fileAttachment', name: String(a.filename || 'file').slice(0, 150), contentType: a.contentType || mimeOf(a.filename), contentBytes: c }; })
+      .filter(function (a) { return a.contentBytes; });
+    if (atts.reduce(function (n, a) { return n + a.contentBytes.length; }, 0) > 3 * 1024 * 1024) return { ok: false, error: 'too-large', skip: true };
+    let token;
+    try { token = await officeToken(); }
+    catch (err) { if (err.message === 'not-connected') return { ok: false, error: 'not-connected', skip: true }; return fail('sign-in: ' + err.message); }
+    const msg = { subject: String(m.subject || ''), body: m.html ? { contentType: 'HTML', content: String(m.html) } : { contentType: 'Text', content: String(m.text || '') },
+      toRecipients: addrs(m.to), ccRecipients: addrs(m.cc), bccRecipients: addrs(m.bcc), replyTo: addrs(m.replyTo), attachments: atts };
+    try {
+      const r = await fetch(GRAPH + '/me/sendMail', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg, saveToSentItems: true }), signal: AbortSignal.timeout(30000) });
+      if (r.status === 202 || r.ok) { sendState.ok_at = new Date().toISOString(); sendState.error = ''; return { ok: true, via: 'outlook' }; }
+      const d = await r.json().catch(function () { return {}; });
+      if (r.status === 401) officeTok = null;
+      return fail('HTTP ' + r.status + ' ' + ((d.error && d.error.message) || '').slice(0, 200));
+    } catch (err) { return fail(err.message); }
+  }
+  // A problem with the office mailbox: noted for the Email usage box, and the owner's phone told once a day.
+  function fail(why) {
+    sendState.error = String(why).slice(0, 300); sendState.error_at = new Date().toISOString();
+    console.error('Outlook sending failed (Resend used instead): ' + sendState.error);
+    const day = new Date().toISOString().slice(0, 10);
+    if (sendState.alerted !== day && o.alert) { sendState.alerted = day; o.alert({ title: '⚠️ Outlook sending stopped', message: 'Fixflow couldn’t send through ' + OFFICE + ' (' + sendState.error.slice(0, 80) + ') so it’s using Resend. If it keeps happening, reconnect Outlook in Fixflow (Tenancies → Settings) — the app secret may have expired.', priority: 4, tags: ['warning'] }); }
+    return { ok: false, error: sendState.error };
+  }
+  async function connected() { const p = await db(); if (!p || !configured()) return false; return !!(await accounts(p))[OFFICE]; }
+  return { send: send, office: OFFICE, state: sendState, connected: connected };
 };
 module.exports.configured = configured;
