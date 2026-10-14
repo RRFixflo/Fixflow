@@ -29,7 +29,7 @@ module.exports = function (app, opts) {
     if (ext && (await p.query("SELECT 1 FROM valuation_requests WHERE data->>'ext_id' = $1 LIMIT 1", [ext])).rows.length) return { skipped: 'duplicate' };
     if (!ext && (await p.query("SELECT 1 FROM valuation_requests WHERE created_at > now() - interval '1 hour' AND address = $1 AND (lower(email) = $2 OR phone = $3) LIMIT 1", [addr, email || '-', phone || '-'])).rows.length) return { skipped: 'duplicate' };
     const data = { kind: l.kind || (l.source === 'Rightmove' ? 'rightmove' : 'lead'), rm: Array.isArray(l.rm) ? l.rm : undefined, lead_type: l.lead_type || undefined, source: str(l.source, 40) || 'Other', listing: l.listing === 'sale' ? 'sale' : 'let', message: str(l.message, 3000),
-      ref: str(l.ref, 60), url: /^https?:\/\//.test(String(l.url || '')) ? str(l.url, 400) : '', ext_id: ext, people: str(l.people, 60), move: str(l.move, 60) };
+      ref: str(l.ref, 60), url: /^https?:\/\//.test(String(l.url || '')) ? str(l.url, 400) : '', deeplink: /^https?:\/\//.test(String(l.deeplink || '')) ? str(l.deeplink, 400) : undefined, rm_prop: l.rm_prop && typeof l.rm_prop === 'object' ? Object.fromEntries(Object.entries(l.rm_prop).slice(0, 60)) : undefined, ext_id: ext, people: str(l.people, 60), move: str(l.move, 60) };
     const at = l.at && !isNaN(new Date(l.at).getTime()) && new Date(l.at).getTime() < Date.now() + 3600000 ? new Date(l.at).toISOString() : new Date().toISOString();
     const r = await p.query('INSERT INTO valuation_requests (created_at, name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id', [at, name, email, phone, addr, JSON.stringify(data)]);
     await p.query('INSERT INTO crm_notes (ref, note, by_name, auto) VALUES ($1, $2, $3, true)', ['vr:' + r.rows[0].id, 'Came in from ' + data.source + (data.ref ? ' · ref ' + data.ref : ''), data.source]).catch(function () {});
@@ -98,7 +98,15 @@ module.exports = function (app, opts) {
       if (b.eventType !== 'lead.created' || !d || typeof d !== 'object') { rmHook.ok++; return res.json({ ok: true, ignored: true }); }
       const p = await opts.db(); if (!p) return res.status(503).end();
       const a = d.applicant || {}, type = String(d.leadType || ''), val = /VALUATION/.test(type), sale = /RESALE|OVERSEAS/.test(type);
-      const home = d.reference && opts.findListing ? opts.findListing(d.reference) : null;
+      // Rightmove may send the property's own details too (its Rightmove number, address): look for them
+      // anywhere outside the applicant's details, and keep those parts as they came for checking later.
+      const prop = {}; (function walk(o, depth, pre) { if (!o || typeof o !== 'object' || depth > 4) return; Object.keys(o).forEach(function (k) { if (k === 'applicant' || k === 'comments') return; const v = o[k], key = (pre + k).toLowerCase();
+        if (v && typeof v === 'object' && !Array.isArray(v)) return walk(v, depth + 1, pre + k + '.');
+        if (typeof v !== 'string' && typeof v !== 'number') return; const t = String(v).trim(); if (!t) return; prop[pre + k] = t.slice(0, 300);
+        if (!prop._addr && /(display)?address$|addressline1$|address\.(full|display)/.test(key) && !/email/.test(key)) prop._addr = t;
+        if (!prop._rmid && /(rightmove|property)_?id$|propertyidentifier$/.test(key) && /^\d{6,}$/.test(t)) prop._rmid = t; }); })(d, 0, '');
+      const rmNo = prop._rmid || (String(d.reference || '').match(/^\d{6,}$/) || [])[0] || '';
+      const home = (d.reference && opts.findListing ? opts.findListing(d.reference) : null) || (rmNo && opts.findListing ? opts.findListing(rmNo) : null);
       const adults = String(d.numberOfAdultsMoving || ''), kids = String(d.numberOfChildrenMoving || '');
       const rm = [['Lead type', RM_TYPES[type] || words(type)], ['Wants a viewing', yn(d.requestViewing)], ['Wants more details', yn(d.requestPropertyDetails)],
         ['Income satisfactory', words(d.incomeSatisfactory)], ['Adverse credit', d.adverseCredit === 'HAS_ADVERSE_CREDIT' ? 'Yes' : d.adverseCredit === 'NO_ADVERSE_CREDIT' ? 'No' : ''],
@@ -107,7 +115,7 @@ module.exports = function (app, opts) {
         ['Credit check consent', words(d.creditCheckConsentStatus)], ['Selling', words(d.sellingSituationType)], ['Renting', words(d.rentingSituationType)], ['Valuation wanted', yn(d.valuationRequested)],
         ['Buyer', words(d.buyerStatus)], ['Timescale', words(d.urgency)], ['Their address', str(a.address, 200)]].filter(function (x) { return x[1]; });
       const got = await addLead(p, { source: 'Rightmove', ext_id: 'rm:' + (d.enquiryId || b.eventId), at: d.submitTime || d.createTime, name: [a.firstName, a.lastName].filter(Boolean).join(' '),
-        email: a.emailAddress, phone: a.telephone, address: home ? home.where : (val ? str(a.address, 300) : (d.reference ? 'Rightmove ref ' + d.reference : '')), ref: d.reference, url: home ? home.url : str(d.deepLink, 400),
+        email: a.emailAddress, phone: a.telephone, address: home ? home.where : (val ? str(a.address, 300) : (prop._addr ? str(prop._addr, 300) : (d.reference ? 'Rightmove ref ' + d.reference : ''))), ref: d.reference, url: home ? home.url : (rmNo ? 'https://www.rightmove.co.uk/properties/' + rmNo : str(d.deepLink, 400)), deeplink: str(d.deepLink, 400), rm_prop: prop,
         listing: sale ? 'sale' : 'let', message: d.comments, people: adults ? adults + ' adult' + (adults === '1' ? '' : 's') + (kids && kids !== '0' ? ', ' + kids + ' child' + (kids === '1' ? '' : 'ren') : '') : '',
         move: words(d.moveByUrgency), kind: val ? (sale ? 'sale' : 'val') : '', rm: rm, lead_type: type });
       rmHook.ok++;
@@ -170,7 +178,7 @@ module.exports = function (app, opts) {
       const av = (await p.query("SELECT address, gnomen_id, rm_id, dream_rm FROM available_props WHERE address <> '' ORDER BY (status = 'available') DESC, updated_at DESC")).rows;
       for (const r of rows) {
         const d = r.data || {}, ref = str(d.ref || r.address.replace(/^Rightmove ref\s*/i, ''), 60);
-        const m = String(d.url || '').match(/rightmove\.co\.uk\/properties\/(\d+)/), rmNo = m ? m[1] : '';
+        const m = (String(d.url || '') + ' ' + String(d.deeplink || '')).match(/rightmove\.co\.uk\/properties\/(\d+)/), rmNo = m ? m[1] : '';
         const keys = [ref, rmNo].filter(Boolean);
         let where = '', url = '';
         for (const k of keys) { const h = opts.findListing ? opts.findListing(k) : null; if (h && h.where) { where = h.where; url = h.url; break; } }

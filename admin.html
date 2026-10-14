@@ -9851,12 +9851,24 @@
     if (applRentIx.src !== avItems) { var m = {}; (avItems || []).forEach(function(a){ avLeadKeys(a).forEach(function(k){ if (!m[k] || (!Number(m[k].rent_pcm) && Number(a.rent_pcm))) m[k] = a; }); }); applRentIx = { src: avItems, map: m }; }
     var its = g.group || [g];
     for (var i = 0; i < its.length; i++) { var ks = applPropKeys(its[i]); for (var j = 0; j < ks.length; j++) if (applRentIx.map[ks[j]]) return applRentIx.map[ks[j]]; }
+    // Written differently (e.g. "Tachbrook Street, London SW1V" from Rightmove, or a road typed by staff): the one
+    // available property whose address has the same road (and postcode area, when both have one).
+    for (i = 0; i < its.length; i++) { var lz = applLoose(its[i].address); if (lz) return lz; }
     return null;
+  }
+  function applLoose(addr){
+    addr = String(addr || ''); if (!addr || /^Rightmove ref|^\(no property/i.test(addr)) return null;
+    var oc = function(t){ var m = String(t || '').toUpperCase().match(/\b([A-Z]{1,2}\d[A-Z\d]?)(?:\s*\d[A-Z]{2})?\b/g); return m ? m[m.length - 1].replace(/\s*\d[A-Z]{2}$/, '') : ''; };
+    var words = propKey(addr).split(' ').filter(function(w){ return w.length > 2 && !/\d/.test(w) && !PLACE_GENERIC[w]; });
+    if (!words.length) return null;
+    var o = oc(addr), hits = (avItems || []).filter(function(a){ if (a.status && a.status !== 'available') return false; var k = ' ' + propKey(a.address) + ' ', ao = oc(a.address); return (!o || !ao || o === ao) && words.every(function(w){ return k.indexOf(' ' + w + ' ') !== -1; }); });
+    return hits.length === 1 ? hits[0] : null;
   }
   // Where tapping the property goes: its Rightmove advert (the enquiry's own Rightmove link, the property's
   // Rightmove number from Available properties, or a Rightmove reference), else our own property page.
   function applPropUrl(g){
     var its = g.group || [g], i, d;
+    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\//.test(String(d.deeplink || ''))) return d.deeplink; }   // the Rightmove link the enquiry came with
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\/(www\.)?rightmove\.co\.uk\//.test(String(d.url || ''))) return d.url; }
     var a = applHome(g); if (a && (a.rm_url || a.rm_id)) return /^https?:\/\//.test(String(a.rm_url || '')) ? a.rm_url : 'https://www.rightmove.co.uk/properties/' + encodeURIComponent(a.rm_id);
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if ((its[i].type === 'rm' || d.source === 'Rightmove') && /^\d{6,}$/.test(String(d.ref || ''))) return 'https://www.rightmove.co.uk/properties/' + d.ref; }
