@@ -523,7 +523,8 @@
   .oc-warn { color: var(--dk-fg-8a5200, #8a5200); margin-top: 4px; font-size: .84rem; }
   /* Offers staff sign-in: the Offers page only. */
   body:not(.staff-mode) #navAlerts { display: none !important; }
-  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#navAppr):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #askBtn, .staff-mode #rentTopBtn, .staff-mode #invTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
+  .staff-mode #askMode, .staff-mode #askIdeas, .staff-mode #askRem, .staff-mode #askLearn, .staff-mode #askDriveBtn, .staff-mode #askEmailHelp { display: none !important; }
+  .staff-mode .side .nav:not(#logoutBtn):not(#navRepLink):not(#navAlerts):not(#navTeam):not(#navWho):not(#navAvail):not(#navCal):not(#navLeads):not(#navCrm):not(#navWeb):not(#navCalls):not(#navAppr):not(#myPwBtn), .staff-mode .side-search, .staff-mode .side-sec, .staff-mode #rentTopBtn, .staff-mode #invTopBtn, .staff-mode #searchBtnM, .staff-mode #newJobBtn, .staff-mode #backBtn, .staff-mode #tabbar, .staff-mode #todoBox, .staff-mode #offStaff { display: none !important; }
   .staff-mode #logoutBtnM { display: inline-flex !important; }
   .tcy-vat { display: block; margin-top: 3px; font-size: .76rem; color: var(--dk-fg-5f6673, #5f6673); font-weight: 500; }
   .tcy-tiles .tcy-vat b { display: inline; font-size: inherit; }
@@ -9877,17 +9878,21 @@
   // Where tapping the property goes: its Rightmove advert (the enquiry's own Rightmove link, the property's
   // Rightmove number from Available properties, or a Rightmove reference), else our own property page.
   function applPropUrl(g){
-    var its = g.group || [g], i, d;
-    // The public Rightmove advert first (never Rightmove Plus — that's the lead's page in our own Rightmove account, on the card instead).
-    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/rightmove\.co\.uk\/properties\/\d+/.test(String(d.deeplink || ''))) return d.deeplink; }
-    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\//.test(String(d.rm_link || ''))) return d.rm_link; }   // our Rightmove advert for that property (worked out on the server)
-    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\/(www\.)?rightmove\.co\.uk\//.test(String(d.url || ''))) return d.url; }
-    var mt = applMatch(g); if (mt && /^https?:\/\//.test(String(mt.url || ''))) return mt.url;
-    var a = applHome(g); if (a && (a.rm_url || a.rm_id)) return /^https?:\/\//.test(String(a.rm_url || '')) ? a.rm_url : 'https://www.rightmove.co.uk/properties/' + encodeURIComponent(a.rm_id);
+    var its = g.group || [g], i, d, isRm = function(u){ return /rightmove\.co\.uk\/properties\/\d+/.test(String(u || '')); }, isWeb = function(u){ return /^https?:\/\//.test(String(u || '')) && !/rightmove/i.test(String(u)); };
+    // 1. The Rightmove advert they enquired on (never Rightmove Plus — that's the lead's page in our own account, on the card instead).
+    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (isRm(d.deeplink)) return d.deeplink; }
+    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (isRm(d.rm_link)) return d.rm_link; }   // our advert for it, worked out on the server
+    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (isRm(d.url)) return d.url; }
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if ((its[i].type === 'rm' || d.source === 'Rightmove') && /^\d{6,}$/.test(String(d.ref || ''))) return 'https://www.rightmove.co.uk/properties/' + d.ref; }
-    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\//.test(String(d.url || ''))) return d.url; }
-    if (a && a.gnomen_id) return location.origin + '/property/' + encodeURIComponent(a.gnomen_id);   // our own page for it
-    // Nothing better: search Rightmove for that address (always something to open).
+    // 2. The property on our available list or a Dream advert: its Rightmove advert.
+    var a = applHome(g), mt = applMatch(g);
+    if (a && (a.rm_url || (a.rm_id && a.rm_id !== 'none'))) return /^https?:\/\//.test(String(a.rm_url || '')) ? a.rm_url : 'https://www.rightmove.co.uk/properties/' + encodeURIComponent(a.rm_id);
+    if (mt && isRm(mt.url)) return mt.url;
+    // 3. Its page on our website.
+    if (a && a.gnomen_id) return location.origin + '/property/' + encodeURIComponent(a.gnomen_id);
+    if (mt && isWeb(mt.site || mt.url)) return mt.site || mt.url;
+    for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (isWeb(d.url)) return d.url; }
+    // 4. Last resort: search for that address (always something to open).
     var ad = (its.filter(function(i){ return i.address && i.address !== '(no property given)'; })[0] || {}).address;
     if (ad) return 'https://www.google.com/search?q=' + encodeURIComponent(ad.replace(/^Rightmove ref\s*/i, '') + ' rightmove');
     return '';
@@ -9964,7 +9969,7 @@
         '<td class="nw c-src">' + esc(applSrc(g).replace('Website message', 'Web message').replace(' (assistant)', '')) + '</td>' +
         '<td class="nw c-phone">' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(g.phone) + '</a>' : '') + '</td>' +
         '<td class="nw c-status"><span style="color:' + st[1] + ';font-weight:700">' + st[0] + '</span></td>' +
-        '<td class="pr c-prop" title="' + esc((g.address || '') + (applMatch(g) && applMatch(g).address !== g.address ? ' — matched to ' + (applMatch(g).kind === 'dream' ? 'Dream advert ' : '') + applMatch(g).address : '')) + '">' + (function(){ var lbl = g.address && g.address !== '(no property given)' ? esc(shortAddr(g.address)) : (g.data && g.data.ref ? 'Ref ' + esc(g.data.ref) : ''), u = lbl && applPropUrl(g);
+        '<td class="pr c-prop" title="' + esc((g.address || '') + (applMatch(g) && applMatch(g).address !== g.address ? ' — matched to ' + (applMatch(g).kind === 'dream' ? 'Dream advert ' : applMatch(g).kind === 'website' ? 'our website: ' : '') + applMatch(g).address : '')) + '">' + (function(){ var lbl = g.address && g.address !== '(no property given)' ? esc(shortAddr(g.address)) : (g.data && g.data.ref ? 'Ref ' + esc(g.data.ref) : ''), u = lbl && applPropUrl(g);
           return u ? '<a class="appl-pl" href="' + esc(u) + '" target="_blank" rel="noopener" title="' + (/google\.com\/search/.test(u) ? 'Find this property on Rightmove' : /rightmove/.test(u) ? 'Open on Rightmove' : 'Open the property on our website') + ': ' + esc(g.address || '') + '">' + lbl + '</a>' : lbl; })() + '</td>' +
         '<td class="nw c-rent">' + (rent ? gbp(Math.round(rent)).replace(/\.00$/, '') : '') + '</td>' +
         '<td class="nw c-at">' + esc(day(g.at)) + '</td>' +
@@ -10048,7 +10053,7 @@
     if (x.phone) facts.push(['Phone', esc(x.phone)]); if (x.email) facts.push(['Email', esc(x.email)]);
     if (x.address) facts.push(['Property', esc(x.address) + (d.url ? ' · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">see listing ↗</a>' : '')]);
     if (/^https?:\/\//.test(String(d.deeplink || '')) && !/rightmove\.co\.uk\/properties\/\d+/.test(String(d.deeplink))) facts.push(['Rightmove Plus', '<a href="' + esc(d.deeplink) + '" target="_blank" rel="noopener">Open this lead in Rightmove Plus ↗</a>']);
-    if (d.match && d.match.address && d.match.address !== x.address) facts.push(['Matched to', (d.match.kind === 'dream' ? 'Dream advert · ' : 'Available · ') + (d.match.url ? '<a href="' + esc(d.match.url) + '" target="_blank" rel="noopener">' + esc(d.match.address) + ' ↗</a>' : esc(d.match.address)) + (d.match.pcm ? ' · ' + gbp(Math.round(d.match.pcm)).replace(/\.00$/, '') + ' pcm' : '')]);
+    if (d.match && d.match.address && d.match.address !== x.address) facts.push(['Matched to', (d.match.kind === 'dream' ? 'Dream advert · ' : d.match.kind === 'website' ? 'On our website · ' : 'Available · ') + (d.match.url ? '<a href="' + esc(d.match.url) + '" target="_blank" rel="noopener">' + esc(d.match.address) + ' ↗</a>' : esc(d.match.address)) + (d.match.pcm ? ' · ' + gbp(Math.round(d.match.pcm)).replace(/\.00$/, '') + ' pcm' : '')]);
     if (d.beds) facts.push(['Bedrooms', esc(d.beds)]); if (d.type) facts.push(['Type', esc(d.type)]); if (d.service && x.type !== 'quick') facts.push(['Wants', esc(d.service)]);
     if (d.when) facts.push([x.type === 'sale' ? 'Selling' : 'Available', esc(d.when)]); if (d.people) facts.push(['People', esc(d.people)]); if (d.move) facts.push([d.listing === 'sale' ? 'Position' : d.move_date ? 'Move-in date' : 'Moving', esc(d.move)]); if (d.income) facts.push(['Rent paid by', esc(d.income)]); if (d.guarantor) facts.push(['UK guarantor', esc(d.guarantor)]);
     if (x.type === 'cert') {
@@ -11238,9 +11243,14 @@
   var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
   var rec = null, listening = false;
   function openAsk(mode){
-    $('askModal').hidden = false; $('askErr').textContent = ''; loadReminders(); loadLearned();
+    $('askModal').hidden = false; $('askErr').textContent = '';
+    if (!staffMode) { loadReminders(); loadLearned(); }
     if (!askDrafts.length && !askContacts.length) { $('askText').value = ''; $('askDrafts').innerHTML = ''; $('askContacts').innerHTML = ''; $('askAllRow').hidden = true; }
     setAskMode(mode === 'email' ? 'email' : (typeof mode === 'string' ? mode : askMode));
+    if (staffMode) {   // staff: Ask Fixflow turns a pasted enquiry (or a screenshot of one) into applicants
+      $('askTitle').textContent = 'Add an applicant from a message';
+      $('askText').placeholder = 'Paste their email, WhatsApp or portal message here — or attach a screenshot of it — and press Go. Fixflow fills in an applicant for you to check and add.';
+    }
     setTimeout(function(){ $('askText').focus(); }, 50);
   }
   function closeAsk(){ stopListening(); $('askModal').hidden = true; if (typeof setAskForProp === 'function') setAskForProp(''); }
@@ -11576,6 +11586,7 @@
       renderAskAssist(d.ok && d.understood ? d : null);
       var sentFiles = askFiles.slice();   // kept for certificates read from them
       if (d.understood) setAskFile(null);
+      if (!d.understood && staffMode) { $('askErr').textContent = 'I couldn’t find anyone looking to rent or buy in that — paste their whole message (or a screenshot) and try again.'; return; }
       if (!d.understood) { $('askErr').textContent = askMode === 'email' ? 'I couldn’t find any repair requests in that email.' : 'I can answer questions about your properties, rents and repairs, write emails and WhatsApp messages, set reminders, and add jobs, properties, contacts and tenancies — try “which rents are late?”, “add a gas safety for 6 Whitworth House”, “add 36 Balin House with tenants Sarah Jones 07700 900123 and Tom Lee”, “add a contractor: Miguel, cleaner, 07404 043045”, or paste the details of a new let.'; $('askDrafts').innerHTML = ''; askDrafts = []; askContacts = []; askTenancies = []; askProps = []; askCerts = []; renderAskContacts(); renderAskTenancies(); renderAskProps(); renderAskCerts(); $('askAllRow').hidden = true; return; }
       askContacts = (d.contacts || []).slice();
       askAppl = (d.applicants || []).slice(); renderAskAppl();

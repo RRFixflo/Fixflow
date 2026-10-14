@@ -2095,6 +2095,7 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/available-history' || /^\/available-history\/\d+\/restore$/.test(path)) return true;
     if (path === '/valuation-requests' || (method === 'POST' && /^\/valuation-requests\/\d+$/.test(path))) return true;
     if (path === '/crm' || /^\/crm\/(note|meta|archive|recommended|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
+    if (method === 'POST' && path === '/assistant') return true;   // Ask Fixflow: staff only get applicants from a pasted enquiry (checked in the route)
     if (method === 'GET' && path === '/lead-hook') return true;
     if (method === 'GET' && path === '/staff-names') return true;   // the calendar's people
     if ((method === 'GET' || method === 'POST') && path === '/valuations') return true;   // property appraisals (Offers page)
@@ -4389,6 +4390,21 @@ module.exports = function mountJobs(app, opts) {
     if (!text) return res.status(400).json({ ok: false, error: 'no-text' });
     const said = text;
     text = text + fileNote;
+    // Staff sign-ins (offers role) use Ask Fixflow for one thing: turning a pasted enquiry — email, WhatsApp,
+    // portal message or a screenshot of one — into applicants. No business summary, jobs, money or contacts.
+    if (req.role === 'offers') {
+      const sp = 'A UK letting agent\'s member of staff pasted (or attached a screenshot of) a message from someone looking to RENT or BUY a property — an email, WhatsApp, text or portal enquiry. Between the ---- lines:\n----\n' + text + '\n----\n' +
+        'Return JSON only: {"applicants": [{"name": "", "email": "", "phone": "", "looking": "rent" or "buy", "property": "the specific property or advert they ask about, as written, else \\"\\"", "wants": "one short line of what they are looking for — bedrooms, bathrooms, areas, budget, outdoor space, how many people, when — only what they said, else \\"\\"", "message": "their message shortened to the key points, in their words", "source": "Email" | "WhatsApp" | "Rightmove" | "Zoopla" | "OnTheMarket" | "Phone call" | "Website" | "Other"}], "understood": true}. ' +
+        'One entry per person enquiring. Never invent names, numbers or details. If it is not an enquiry from someone looking to rent or buy, reply {"applicants": [], "understood": false}.';
+      const rs = await opts.askAi(sp, true, files);
+      if (!rs.ok) return res.status(502).json({ ok: false, error: 'ai-failed' });
+      let pj = null; try { pj = JSON.parse(rs.text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim()); } catch (e) { pj = null; }
+      if (!pj) return res.status(502).json({ ok: false, error: 'ai-bad-reply' });
+      const SRC0 = ['Email', 'WhatsApp', 'Rightmove', 'Zoopla', 'OnTheMarket', 'Phone call', 'Website', 'Other'];
+      const ap = (Array.isArray(pj.applicants) ? pj.applicants : []).slice(0, 10).map(function (x) { x = x || {}; return { name: str(x.name, 120) || '', email: str(x.email, 200) || '', phone: str(x.phone, 40) || '', looking: x.looking === 'buy' ? 'buy' : 'rent', property: str(x.property, 300) || '', wants: str(x.wants, 500) || '', message: str(x.message, 2000) || '', source: SRC0.indexOf(x.source) !== -1 ? x.source : 'Other' }; })
+        .filter(function (x) { return x.name || x.email || x.phone; });
+      return res.json({ ok: true, staff: true, applicants: ap, jobs: [], certificates: [], contacts: [], properties: [], tenancies: [], understood: ap.length > 0 });
+    }
     const trades = (await p.query('SELECT name, trade FROM contractors WHERE active ORDER BY name')).rows
       .map(function (c) { return c.name + (c.trade ? ' (' + c.trade + ')' : ''); }).join('; ');
     const fromEmail = (req.body || {}).mode === 'email';
@@ -14370,11 +14386,17 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const p = await db(); if (!p) return;
     const rows = (await p.query("SELECT id, address, data FROM valuation_requests WHERE created_at > now() - interval '14 days' AND (data->'match') IS NULL AND address <> '' AND address NOT LIKE '(%' AND address NOT LIKE 'Rightmove ref %' AND coalesce(data->>'kind', '') IN ('call', 'contact', 'lead', 'rightmove', 'viewing', 'enquiry') ORDER BY id DESC LIMIT 300")).rows;
     if (!rows.length) return;
-    const cands = (await p.query("SELECT id, address, rm_id, rm_url, gnomen_id, rent_pcm FROM available_props WHERE status = 'available' AND address <> ''")).rows.map(function (r) { return { kind: 'available', id: r.id, address: r.address, rm_id: r.rm_id && r.rm_id !== 'none' ? r.rm_id : '', rm_url: r.rm_url || '', pcm: Number(r.rent_pcm) || 0 }; })
+    let site = []; try { site = (opts.siteHomes ? opts.siteHomes() : []).filter(function (h) { return h.address && h.url; }).map(function (h) { return Object.assign({}, h, { kind: 'website' }); }); } catch (e) {}
+    const cands = (await p.query("SELECT id, address, rm_id, rm_url, gnomen_id, rent_pcm FROM available_props WHERE status = 'available' AND address <> ''")).rows.map(function (r) { return { kind: 'available', id: r.id, gid: r.gnomen_id ? String(r.gnomen_id) : '', address: r.address, rm_id: r.rm_id && r.rm_id !== 'none' ? r.rm_id : '', rm_url: r.rm_url || '', pcm: Number(r.rent_pcm) || 0 }; })
       .concat((await p.query("SELECT rm_id, snap FROM rm_dreams WHERE last_seen > now() - interval '3 days' AND takedown_at IS NULL AND snap IS NOT NULL")).rows.filter(function (r) { return r.snap && r.snap.address; }).map(function (r) { return { kind: 'dream', id: null, address: r.snap.address, rm_id: r.rm_id, rm_url: '', pcm: Number(r.snap.pcm) || 0 }; }));
     for (const r of rows) {
-      const d = r.data || {}, hit = matchOne(r.address, cands); if (!hit) continue;
-      const m = { kind: hit.kind, avail_id: hit.id, address: hit.address, pcm: hit.pcm || null, url: /^https?:\/\//.test(hit.rm_url) ? hit.rm_url : (hit.rm_id ? 'https://www.rightmove.co.uk/properties/' + hit.rm_id : ''), at: new Date().toISOString() };
+      const d = r.data || {};
+      let hit = matchOne(r.address, cands), web = null;
+      // Not on the available list or a Dream: a page on our website for that road (available homes before let ones).
+      if (!hit) { web = matchOne(r.address, site.filter(function (h) { return !h.taken; })) || matchOne(r.address, site); if (!web) continue; }
+      const page = web || (hit.gid && site.find(function (h) { return h.id === hit.gid; })) || null;
+      const m = web ? { kind: 'website', avail_id: null, address: web.address, pcm: null, url: web.url, at: new Date().toISOString() }
+        : { kind: hit.kind, avail_id: hit.id, address: hit.address, pcm: hit.pcm || null, url: /^https?:\/\//.test(hit.rm_url) ? hit.rm_url : (hit.rm_id ? 'https://www.rightmove.co.uk/properties/' + hit.rm_id : (page ? page.url : '')), site: page ? page.url : '', at: new Date().toISOString() };
       await p.query("UPDATE valuation_requests SET data = jsonb_set(coalesce(data, '{}'::jsonb), '{match}', $2::jsonb) WHERE id = $1", [r.id, JSON.stringify(m)]);
     }
   }
