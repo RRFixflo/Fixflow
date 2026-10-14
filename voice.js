@@ -97,8 +97,13 @@ module.exports = function (app, opts) {
     if (msgs[msgs.length - 1].role !== 'user') msgs.push({ role: 'user', content: '[silence]' });
     try {
       const req = { model: MODEL, max_tokens: 2000, output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } }, system: SYSTEM, messages: msgs };
-      // Haiku has no server-side fallback; the other models fall back if a reply is declined.
-      const r = /haiku/.test(MODEL) ? await c.messages.create(req) : await c.beta.messages.create(Object.assign({ betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }, req));
+      // A phone call can't wait: no thinking step where the model allows it (Sonnet 5.5: between_tools, Haiku:
+      // disabled) — taking a message doesn't need it, and the caller hears the reply about a second sooner.
+      // Those requests go without the server-side fallback (a fallback model may not accept the setting); a declined
+      // reply falls back to the scripted questions. Opus can't switch thinking off, so it keeps the fallback.
+      const fast = /sonnet-5-5/.test(MODEL) ? { type: 'between_tools' } : /haiku/.test(MODEL) ? { type: 'disabled' } : null;
+      if (fast) req.thinking = fast;
+      const r = fast ? await c.messages.create(req) : await c.beta.messages.create(Object.assign({ betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }, req));
       if (r.stop_reason === 'refusal') return null;
       const t = (r.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('');
       const o = JSON.parse(t); return o && typeof o.reply === 'string' ? o : null;
