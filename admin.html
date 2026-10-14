@@ -9844,18 +9844,21 @@
   // The rent of the property they asked about (from Available properties, matched by reference or address).
   function applRent(g){
     if (!(avItems || []).length && !applAvAsked && meta.db) { applAvAsked = true; api('GET', '/api/admin/available').then(function(d){ if (d && d.ok && !avItems.length) { avItems = d.items || []; avLinkData = d.links || {}; } if (crm.mode === 'appl' && crm.view === 'table') renderCrm(); }); }
-    var a = applHome(g); return a ? Number(a.rent_pcm) || 0 : 0;
+    var a = applHome(g), mt; if (a) return Number(a.rent_pcm) || 0; mt = applMatch(g); return mt ? Number(mt.pcm) || 0 : 0;
   }
   // The available property they asked about (matched by reference or address), newest enquiry first.
   function applHome(g){
     if (applRentIx.src !== avItems) { var m = {}; (avItems || []).forEach(function(a){ avLeadKeys(a).forEach(function(k){ if (!m[k] || (!Number(m[k].rent_pcm) && Number(a.rent_pcm))) m[k] = a; }); }); applRentIx = { src: avItems, map: m }; }
-    var its = g.group || [g];
+    var its = g.group || [g], mt = applMatch(g);
+    if (mt && mt.avail_id) { var mh = (avItems || []).filter(function(x){ return x.id === mt.avail_id; })[0]; if (mh) return mh; }
     for (var i = 0; i < its.length; i++) { var ks = applPropKeys(its[i]); for (var j = 0; j < ks.length; j++) if (applRentIx.map[ks[j]]) return applRentIx.map[ks[j]]; }
     // Written differently (e.g. "Tachbrook Street, London SW1V" from Rightmove, or a road typed by staff): the one
     // available property whose address has the same road (and postcode area, when both have one).
     for (i = 0; i < its.length; i++) { var lz = applLoose(its[i].address); if (lz) return lz; }
     return null;
   }
+  // The property Fixflow matched their words to (server: matchLeads) — an available property or a Dream advert.
+  function applMatch(g){ var its = g.group || [g]; for (var i = 0; i < its.length; i++) { var m = (its[i].data || {}).match; if (m && m.address) return m; } return null; }
   function applLoose(addr){
     addr = String(addr || ''); if (!addr || /^Rightmove ref|^\(no property/i.test(addr)) return null;
     var oc = function(t){ var m = String(t || '').toUpperCase().match(/\b([A-Z]{1,2}\d[A-Z\d]?)(?:\s*\d[A-Z]{2})?\b/g); return m ? m[m.length - 1].replace(/\s*\d[A-Z]{2}$/, '') : ''; };
@@ -9870,6 +9873,7 @@
     var its = g.group || [g], i, d;
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\//.test(String(d.deeplink || ''))) return d.deeplink; }   // the Rightmove link the enquiry came with
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\/(www\.)?rightmove\.co\.uk\//.test(String(d.url || ''))) return d.url; }
+    var mt = applMatch(g); if (mt && /^https?:\/\//.test(String(mt.url || ''))) return mt.url;
     var a = applHome(g); if (a && (a.rm_url || a.rm_id)) return /^https?:\/\//.test(String(a.rm_url || '')) ? a.rm_url : 'https://www.rightmove.co.uk/properties/' + encodeURIComponent(a.rm_id);
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if ((its[i].type === 'rm' || d.source === 'Rightmove') && /^\d{6,}$/.test(String(d.ref || ''))) return 'https://www.rightmove.co.uk/properties/' + d.ref; }
     for (i = 0; i < its.length; i++) { d = its[i].data || {}; if (/^https?:\/\//.test(String(d.url || ''))) return d.url; }
@@ -9950,7 +9954,7 @@
         '<td class="nw c-src">' + esc(applSrc(g).replace('Website message', 'Web message').replace(' (assistant)', '')) + '</td>' +
         '<td class="nw c-phone">' + (tel ? '<a href="tel:' + esc(tel) + '">' + esc(g.phone) + '</a>' : '') + '</td>' +
         '<td class="nw c-status"><span style="color:' + st[1] + ';font-weight:700">' + st[0] + '</span></td>' +
-        '<td class="pr c-prop" title="' + esc(g.address || '') + '">' + (function(){ var lbl = g.address && g.address !== '(no property given)' ? esc(shortAddr(g.address)) : (g.data && g.data.ref ? 'Ref ' + esc(g.data.ref) : ''), u = lbl && applPropUrl(g);
+        '<td class="pr c-prop" title="' + esc((g.address || '') + (applMatch(g) && applMatch(g).address !== g.address ? ' — matched to ' + (applMatch(g).kind === 'dream' ? 'Dream advert ' : '') + applMatch(g).address : '')) + '">' + (function(){ var lbl = g.address && g.address !== '(no property given)' ? esc(shortAddr(g.address)) : (g.data && g.data.ref ? 'Ref ' + esc(g.data.ref) : ''), u = lbl && applPropUrl(g);
           return u ? '<a class="appl-pl" href="' + esc(u) + '" target="_blank" rel="noopener" title="' + (/google\.com\/search/.test(u) ? 'Find this property on Rightmove' : /rightmove/.test(u) ? 'Open on Rightmove' : 'Open the property on our website') + ': ' + esc(g.address || '') + '">' + lbl + '</a>' : lbl; })() + '</td>' +
         '<td class="nw c-rent">' + (rent ? gbp(Math.round(rent)).replace(/\.00$/, '') : '') + '</td>' +
         '<td class="nw c-at">' + esc(day(g.at)) + '</td>' +
@@ -10033,6 +10037,7 @@
     var facts = [];
     if (x.phone) facts.push(['Phone', esc(x.phone)]); if (x.email) facts.push(['Email', esc(x.email)]);
     if (x.address) facts.push(['Property', esc(x.address) + (d.url ? ' · <a href="' + esc(d.url) + '" target="_blank" rel="noopener">see listing ↗</a>' : '')]);
+    if (d.match && d.match.address && d.match.address !== x.address) facts.push(['Matched to', (d.match.kind === 'dream' ? 'Dream advert · ' : 'Available · ') + (d.match.url ? '<a href="' + esc(d.match.url) + '" target="_blank" rel="noopener">' + esc(d.match.address) + ' ↗</a>' : esc(d.match.address)) + (d.match.pcm ? ' · ' + gbp(Math.round(d.match.pcm)).replace(/\.00$/, '') + ' pcm' : '')]);
     if (d.beds) facts.push(['Bedrooms', esc(d.beds)]); if (d.type) facts.push(['Type', esc(d.type)]); if (d.service && x.type !== 'quick') facts.push(['Wants', esc(d.service)]);
     if (d.when) facts.push([x.type === 'sale' ? 'Selling' : 'Available', esc(d.when)]); if (d.people) facts.push(['People', esc(d.people)]); if (d.move) facts.push([d.listing === 'sale' ? 'Position' : d.move_date ? 'Move-in date' : 'Moving', esc(d.move)]); if (d.income) facts.push(['Rent paid by', esc(d.income)]); if (d.guarantor) facts.push(['UK guarantor', esc(d.guarantor)]);
     if (x.type === 'cert') {

@@ -14331,6 +14331,34 @@ document.querySelectorAll('.lcu').forEach(function(box){
     }
     return n;
   }
+  // Leads that name a property in their own words (a phone call, an applicant typed in by staff, a portal
+  // enquiry with only the road): find the one property on our available list — or a Dream advert — with the
+  // same road (and postcode area / door number when given). Saved as data.match; the address isn't changed.
+  const MATCH_GENERIC = { flat: 1, apartment: 1, apt: 1, house: 1, london: 1, road: 1, rd: 1, street: 1, st: 1, lane: 1, way: 1, avenue: 1, ave: 1, close: 1, court: 1, ct: 1, the: 1, and: 1, of: 1, floor: 1, unit: 1, property: 1, bed: 1, bedroom: 1, studio: 1, near: 1, place: 1, square: 1, gardens: 1 };
+  function matchWords(t) { return String(t || '').toLowerCase().replace(/\b[a-z]{1,2}\d[a-z\d]?\s*\d[a-z]{2}\b/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean); }
+  function matchOc(t) { const m = String(t || '').toUpperCase().match(/\b([A-Z]{1,2}\d[A-Z\d]?)(?:\s*\d[A-Z]{2})?\b/g); return m ? m[m.length - 1].replace(/\s*\d[A-Z]{2}$/, '') : ''; }
+  function matchOne(text, cands) {
+    const ws = matchWords(text), road = ws.filter(function (w) { return w.length > 2 && !/\d/.test(w) && !MATCH_GENERIC[w]; }), nums = ws.filter(function (w) { return /^\d+[a-z]?$/.test(w); }), oc = matchOc(text);
+    if (!road.length) return null;
+    let hits = cands.filter(function (c) { const cw = ' ' + matchWords(c.address).join(' ') + ' ', co = matchOc(c.address); return (!oc || !co || oc === co) && road.every(function (w) { return cw.indexOf(' ' + w + ' ') !== -1; }); });
+    if (hits.length > 1 && nums.length) { const n2 = hits.filter(function (c) { const cw = matchWords(c.address); return nums.every(function (n) { return cw.indexOf(n) !== -1; }); }); if (n2.length) hits = n2; }
+    if (hits.length > 1) { const av = hits.filter(function (c) { return c.kind === 'available'; }); if (av.length === 1) hits = av; }
+    return hits.length === 1 ? hits[0] : null;
+  }
+  async function matchLeads() {
+    const p = await db(); if (!p) return;
+    const rows = (await p.query("SELECT id, address, data FROM valuation_requests WHERE created_at > now() - interval '14 days' AND (data->'match') IS NULL AND address <> '' AND address NOT LIKE '(%' AND address NOT LIKE 'Rightmove ref %' AND coalesce(data->>'kind', '') IN ('call', 'contact', 'lead', 'rightmove', 'viewing', 'enquiry') ORDER BY id DESC LIMIT 300")).rows;
+    if (!rows.length) return;
+    const cands = (await p.query("SELECT id, address, rm_id, rm_url, gnomen_id, rent_pcm FROM available_props WHERE status = 'available' AND address <> ''")).rows.map(function (r) { return { kind: 'available', id: r.id, address: r.address, rm_id: r.rm_id && r.rm_id !== 'none' ? r.rm_id : '', rm_url: r.rm_url || '', pcm: Number(r.rent_pcm) || 0 }; })
+      .concat((await p.query("SELECT rm_id, snap FROM rm_dreams WHERE last_seen > now() - interval '3 days' AND takedown_at IS NULL AND snap IS NOT NULL")).rows.filter(function (r) { return r.snap && r.snap.address; }).map(function (r) { return { kind: 'dream', id: null, address: r.snap.address, rm_id: r.rm_id, rm_url: '', pcm: Number(r.snap.pcm) || 0 }; }));
+    for (const r of rows) {
+      const d = r.data || {}, hit = matchOne(r.address, cands); if (!hit) continue;
+      const m = { kind: hit.kind, avail_id: hit.id, address: hit.address, pcm: hit.pcm || null, url: /^https?:\/\//.test(hit.rm_url) ? hit.rm_url : (hit.rm_id ? 'https://www.rightmove.co.uk/properties/' + hit.rm_id : ''), at: new Date().toISOString() };
+      await p.query("UPDATE valuation_requests SET data = jsonb_set(coalesce(data, '{}'::jsonb), '{match}', $2::jsonb) WHERE id = $1", [r.id, JSON.stringify(m)]);
+    }
+  }
+  setTimeout(function () { matchLeads().catch(function (e) { console.error('Matching leads to properties:', e.message); }); }, 2 * 60000).unref();
+  setInterval(function () { matchLeads().catch(function (e) { console.error('Matching leads to properties:', e.message); }); }, 2 * 60000).unref();
   // Dreams: adverts on Rightmove that aren't one of our available properties. Each has a 7-day review —
   // keep it up 7 more days, link it to a different property, or take it down.
   async function rmDreamTrack(p, items) {
