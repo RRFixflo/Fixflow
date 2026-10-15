@@ -11611,8 +11611,9 @@ document.querySelectorAll('.lcu').forEach(function(box){
         const got = rc[from] || {}, at = String(got.at || from).slice(0, 10), m = x && x.months.filter(function (mm) { return mm.from === from; })[0], mon = certDay(from).replace(/^\d+ /, '');
         rows.push({ at: at, what: (from === start ? 'First month’s rent (move-in money)' : 'Rent received') + ' (' + mon + ')', in: r2(got.amount || (m ? m.rent : 0)) });
         (rcAt[t.id] = rcAt[t.id] || {})[from] = at;
-        // Rent received before its statement exists (paid early): our fees on it, worked out as the Rent page does.
-        if (!m) { const rentM = Number(got.amount) || Number(d.rent_pcm) || 0; if (rentM > 0) (stmtFees(d, rentM, from === start, from).fees || []).filter(function (f) { return !f.invoice_id; }).forEach(function (f) { rows.push({ at: at, what: String(f.label || 'Fee').replace(/\s*\(repairs, inc\. VAT\)/, ''), out: r2(Number(f.amount) + Number(f.vat || 0)) }); }); return; }
+        // Rent received before its statement exists (paid early): our fees on it, worked out as the Rent page does —
+        // including invoices taken off this rent when it was collected (`invoice_ids`; paid now, so not in the pending list).
+        if (!m) { const rentM = Number(got.amount) || Number(d.rent_pcm) || 0; if (rentM > 0) (stmtFees(d, rentM, from === start, from).fees || []).filter(function (f) { return !f.invoice_id || (got.invoice_ids || []).map(Number).indexOf(Number(f.invoice_id)) !== -1; }).forEach(function (f) { rows.push({ at: at, what: String(f.label || 'Fee').replace(/\s*\(repairs, inc\. VAT\)/, ''), out: r2(Number(f.amount) + Number(f.vat || 0)), fee_inv: f.invoice_id || null }); }); return; }
         if (m.deposit) rows.push({ at: at, what: 'Deposit (you hold it)', in: r2(m.deposit) });
         (m.credits || []).forEach(function (c) { rows.push({ at: at, what: c.label, in: r2(c.amount) }); });
         (m.fees || []).forEach(function (f) { rows.push({ at: at, what: String(f.label || 'Fee').replace(/\s*\(repairs, inc\. VAT\)/, ''), out: r2(Number(f.amount) + Number(f.vat || 0)), fee_inv: f.invoice_id || null }); });
