@@ -10996,6 +10996,14 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const mStart = month + '-01', mEnd = addDaysIso(addMonthsIso(mStart, 1), -1);
     const st = await statementsAll(p), stBy = {}; st.items.forEach(function (x) { stBy[x.tenancy_id] = x; });
     const tcys = (await p.query('SELECT id, property_key, address, start_date, data, intention FROM tenancies WHERE start_date IS NOT NULL ORDER BY start_date, id')).rows;
+    // Tenants saved at the property (Tenants page) count too, as the reminder itself goes to them (tenancyTenants) —
+    // so a tenancy whose tenants' emails are only on their tenant records doesn't say "no tenant email".
+    const ptMail = {};
+    (await p.query(`SELECT pt.property_key AS k, pt.created_at AS at FROM property_tenants pt JOIN tenants tn ON tn.id = pt.tenant_id
+      WHERE pt.moved_out_at IS NULL AND tn.deleted_at IS NULL AND coalesce(pt.role, '') <> 'guarantor' AND tn.email ~ '^[^[:space:]@<>,;]+@[^[:space:]@<>,;]+\\.[^[:space:]@<>,;]+$'`).catch(function () { return { rows: [] }; })).rows
+      .forEach(function (r) { (ptMail[r.k] = ptMail[r.k] || []).push(new Date(r.at).getTime()); });
+    const ptHas = function (t) { const d = t.data || {}, key = t.property_key || propKey(d.address || t.address || ''), st = Date.parse(String(d.start_date || t.start_date || '').slice(0, 10));
+      return (ptMail[key] || []).some(function (at) { return !st || at >= st - 60 * 86400000; }); };
     const lls = {}; (await p.query('SELECT pl.property_key, l.id, l.name, l.email, l.pay_to FROM property_landlords pl JOIN landlords l ON l.id = pl.landlord_id')).rows.forEach(function (r) { lls[r.property_key] = r; });
     const items = [], feeList = [], feesPre = { amount: 0, net: 0, once: 0, once_net: 0 }; let notOurs = 0, feesAll = 0, feesN = 0, feesNnet = 0;
     // On this month's page, tomorrow's rents too (even when tomorrow is next month).
@@ -11104,7 +11112,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
           pending: pend, pending_total: pendTotal, to_landlord: toLl,
           collected: rcvd[from] || autoIn || null, paid: paid[from] || null, movein: movein,
           parts: (d.rent_parts || {})[from] || [], part_paid: r2(((d.rent_parts || {})[from] || []).reduce(function (a, x) { return a + (Number(x.amount) || 0); }, 0)),
-          reminded: ((d.rent_reminders || {})[from] || []).slice(-1)[0] || null, claim: ((d.rent_claims || {})[from] || []).slice(-1)[0] || null, emails: (d.tenants || []).map(function (x) { return x && x.email; }).filter(function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); }).length,
+          reminded: ((d.rent_reminders || {})[from] || []).slice(-1)[0] || null, claim: ((d.rent_claims || {})[from] || []).slice(-1)[0] || null, emails: (d.tenants || []).map(function (x) { return x && x.email; }).filter(function (e) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(e || '').trim()); }).length || (ptHas(t) ? 1 : 0),
           stmt: stm ? { sent: stm.sent || null, changed: stm.changed || null } : null,
           status: isIn ? 'collected' : movein && movein.left > 0.004 ? 'movein' : from < today ? 'overdue' : from === today ? 'today' : from === tomorrow ? 'tomorrow' : 'upcoming'
         });
