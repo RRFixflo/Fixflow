@@ -60,48 +60,59 @@ module.exports = function (app, o) {
     return d;
   }
 
+  // Who is signed in to Fixflow: a staff login ('u<id>') or the owner's password ('owner').
+  const whoOf = function (req) { return req.user && req.user.id ? 'u' + req.user.id : 'owner'; };
+  const manager = function (req) { return !!(req.user && /^(owner|admin|offers_admin)$/.test(req.user.role)); };
+  function mineOf(list, who) {
+    return Object.keys(list).filter(function (k) { return k !== OFFICE && list[k].uid === who; }).sort(function (a, b) { return String(list[b].at || '').localeCompare(String(list[a].at || '')); })[0] || '';
+  }
   app.get('/api/admin/outlook', withDb(async function (p, req, res) {
-    const list = await accounts(p);
-    res.json({ ok: true, configured: configured(), redirect: redirectUri(req), office: OFFICE, sending: !!(configured() && list[OFFICE]), send_state: sendState,
-      accounts: Object.keys(list).map(function (k) { return { email: k, name: list[k].name || '' }; }) });
+    const list = await accounts(p), all = manager(req);
+    res.json({ ok: true, configured: configured(), redirect: redirectUri(req), office: OFFICE, sending: !!(configured() && list[OFFICE]), send_state: all ? sendState : undefined,
+      mine: mineOf(list, whoOf(req)),
+      // Staff see only their own mailbox; managers see every connected one.
+      accounts: Object.keys(list).filter(function (k) { return all || list[k].uid === whoOf(req); }).map(function (k) { return { email: k, name: list[k].name || '' }; }) });
   }));
   // Start signing in with Microsoft (a normal page visit from the admin page).
   app.get('/api/admin/outlook/connect', function (req, res) {
     if (!configured()) return res.redirect('/admin#outlook=not-set-up');
     const state = crypto.randomBytes(24).toString('hex');
-    pending.set(state, Date.now() + 10 * 60 * 1000);
+    pending.set(state, { exp: Date.now() + 10 * 60 * 1000, who: whoOf(req), back: req.role === 'offers' ? '/staff' : '/admin' });
     const q = new URLSearchParams({ client_id: CLIENT_ID, response_type: 'code', redirect_uri: redirectUri(req), response_mode: 'query', scope: SCOPES, state: state, prompt: 'select_account' });
     res.redirect(AUTH + '/authorize?' + q.toString());
   });
   // Microsoft sends the person back here. The session cookie isn't sent on this
   // cross-site return, so the one-time state from /connect is what proves it.
   app.get('/ms/callback', async function (req, res) {
-    const state = String(req.query.state || ''), exp = pending.get(state);
+    const state = String(req.query.state || ''), st = pending.get(state), back = (st && st.back) || '/admin';
     pending.delete(state);
-    if (!exp || exp < Date.now()) return res.redirect('/admin#outlook=expired');
-    if (req.query.error || !req.query.code) return res.redirect('/admin#outlook=cancelled');
+    if (!st || st.exp < Date.now()) return res.redirect(back + '#outlook=expired');
+    if (req.query.error || !req.query.code) return res.redirect(back + '#outlook=cancelled');
     try {
       const p = await db();
-      if (!p) return res.redirect('/admin#outlook=failed');
+      if (!p) return res.redirect(back + '#outlook=failed');
       const t = await tokenRequest({ grant_type: 'authorization_code', code: String(req.query.code), redirect_uri: redirectUri(req) });
       const me = await (await fetch(GRAPH + '/me?$select=mail,userPrincipalName,displayName', { headers: { Authorization: 'Bearer ' + t.access_token } })).json();
       const email = String(me.mail || me.userPrincipalName || '').toLowerCase();
-      if (!email || !t.refresh_token) return res.redirect('/admin#outlook=failed');
+      if (!email || !t.refresh_token) return res.redirect(back + '#outlook=failed');
       const list = await accounts(p);
-      list[email] = { name: me.displayName || '', rt: seal(t.refresh_token), at: new Date().toISOString() };
+      // Remember whose mailbox it is, so what that person sends from Fixflow goes from it (the office one is shared).
+      list[email] = { name: me.displayName || '', rt: seal(t.refresh_token), at: new Date().toISOString(), uid: email === OFFICE ? (list[email] && list[email].uid) || '' : st.who };
       await saveAccounts(p, list);
-      if (email === OFFICE) { officeTok = null; sendState.error = ''; sendState.alerted = ''; }
-      res.redirect('/admin#outlook=connected');
+      delete toks[email];
+      if (email === OFFICE) { sendState.error = ''; sendState.alerted = ''; }
+      res.redirect(back + '#outlook=' + (email === OFFICE ? 'connected' : 'mine'));
     } catch (err) {
       console.error('Outlook sign-in failed:', err.message);
-      res.redirect('/admin#outlook=failed');
+      res.redirect(back + '#outlook=failed');
     }
   });
   app.delete('/api/admin/outlook/:email', withDb(async function (p, req, res) {
     const list = await accounts(p), k = String(req.params.email || '').toLowerCase();
+    if (list[k] && !manager(req) && list[k].uid !== whoOf(req)) return res.status(403).json({ ok: false, error: 'not-yours' });
     delete list[k];
     await saveAccounts(p, list);
-    if (k === OFFICE) officeTok = null;
+    delete toks[k];
     res.json({ ok: true });
   }));
   // Make a draft in that person's Outlook: HTML body, recipients, attachments.
@@ -140,40 +151,54 @@ module.exports = function (app, o) {
   }));
 
   // ---- Sending every Fixflow email from the office mailbox ----
-  let officeTok = null;   // { token, exp }
+  const toks = {};   // mailbox -> { token, exp }
   const sendState = { ok_at: null, error: '', error_at: null, alerted: '' };
-  async function officeToken() {
-    if (officeTok && officeTok.exp > Date.now() + 120000) return officeTok.token;
+  async function tokenFor(email) {
+    const c = toks[email]; if (c && c.exp > Date.now() + 120000) return c.token;
     const p = await db(); if (!p) throw new Error('no-db');
-    const list = await accounts(p), acc = list[OFFICE]; if (!acc) throw new Error('not-connected');
+    const list = await accounts(p), acc = list[email]; if (!acc) throw new Error('not-connected');
     const rt = unseal(acc.rt); if (!rt) throw new Error('reconnect');
     const t = await tokenRequest({ grant_type: 'refresh_token', refresh_token: rt });
-    if (t.refresh_token && t.refresh_token !== rt) { list[OFFICE].rt = seal(t.refresh_token); await saveAccounts(p, list); }
-    officeTok = { token: t.access_token, exp: Date.now() + (Number(t.expires_in) || 3600) * 1000 };
-    return officeTok.token;
+    if (t.refresh_token && t.refresh_token !== rt) { list[email].rt = seal(t.refresh_token); await saveAccounts(p, list); }
+    toks[email] = { token: t.access_token, exp: Date.now() + (Number(t.expires_in) || 3600) * 1000 };
+    return toks[email].token;
+  }
+  // The mailbox to send from: the signed-in person's own (who = 'u<id>' / 'owner') when they've connected one, else info@.
+  async function mailboxFor(who) {
+    if (!who) return OFFICE;
+    const p = await db(); if (!p) return OFFICE;
+    return mineOf(await accounts(p), who) || OFFICE;
   }
   const addrs = function (v) { return [].concat(v || []).map(function (x) { return String(x || '').trim(); }).filter(function (x) { return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(x); }).map(function (x) { return { emailAddress: { address: x } }; }); };
   function mimeOf(name) { const e = (String(name).split('.').pop() || '').toLowerCase(); return { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', csv: 'text/csv', txt: 'text/plain', ics: 'text/calendar' }[e] || 'application/octet-stream'; }
   // Same message shape as Resend's ({ to, cc, bcc, replyTo, subject, text, html, attachments: [{ filename, content }] }).
   // Returns { ok } — anything not ok (not connected, over ~3 MB of attachments, Microsoft refused) is sent by Resend instead.
-  async function send(m) {
+  async function send(m, who) {
     if (!configured()) return { ok: false, error: 'not-set-up', skip: true };
+    const box = await mailboxFor(who).catch(function () { return OFFICE; }), own = box !== OFFICE;
     const atts = (m.attachments && m.attachments.length ? m.attachments : m.attachmentBase64 ? [{ filename: m.attachmentFilename, content: m.attachmentBase64 }] : [])
       .map(function (a) { const c = Buffer.isBuffer(a.content) ? a.content.toString('base64') : String(a.content || '').replace(/^data:[^,]*,/, ''); return { '@odata.type': '#microsoft.graph.fileAttachment', name: String(a.filename || 'file').slice(0, 150), contentType: a.contentType || mimeOf(a.filename), contentBytes: c }; })
       .filter(function (a) { return a.contentBytes; });
     if (atts.reduce(function (n, a) { return n + a.contentBytes.length; }, 0) > 3 * 1024 * 1024) return { ok: false, error: 'too-large', skip: true };
     let token;
-    try { token = await officeToken(); }
-    catch (err) { if (err.message === 'not-connected') return { ok: false, error: 'not-connected', skip: true }; return fail('sign-in: ' + err.message); }
+    try { token = await tokenFor(box); }
+    catch (err) {
+      // A person's own mailbox not working: send from info@ instead (and tell them in Sent emails, not the owner's phone).
+      if (own) { console.error('Outlook: ' + box + ' couldn’t send (' + err.message + ') — sending from ' + OFFICE); return send(m, null); }
+      if (err.message === 'not-connected') return { ok: false, error: 'not-connected', skip: true }; return fail('sign-in: ' + err.message);
+    }
+    // From a person's own mailbox, replies come back to them, not to info@.
+    const replyTo = own ? [].concat(m.replyTo || []).filter(function (x) { return String(x).toLowerCase() !== OFFICE; }) : m.replyTo;
     const msg = { subject: String(m.subject || ''), body: m.html ? { contentType: 'HTML', content: String(m.html) } : { contentType: 'Text', content: String(m.text || '') },
-      toRecipients: addrs(m.to), ccRecipients: addrs(m.cc), bccRecipients: addrs(m.bcc), replyTo: addrs(m.replyTo), attachments: atts };
+      toRecipients: addrs(m.to), ccRecipients: addrs(m.cc), bccRecipients: addrs(m.bcc), replyTo: addrs(replyTo), attachments: atts };
     try {
       const r = await fetch(GRAPH + '/me/sendMail', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg, saveToSentItems: true }), signal: AbortSignal.timeout(30000) });
-      if (r.status === 202 || r.ok) { sendState.ok_at = new Date().toISOString(); sendState.error = ''; return { ok: true, via: 'outlook' }; }
+      if (r.status === 202 || r.ok) { if (!own) { sendState.ok_at = new Date().toISOString(); sendState.error = ''; } return { ok: true, via: 'outlook', from: box }; }
       const d = await r.json().catch(function () { return {}; });
-      if (r.status === 401) officeTok = null;
+      if (r.status === 401) delete toks[box];
+      if (own) { console.error('Outlook: ' + box + ' refused (HTTP ' + r.status + ') — sending from ' + OFFICE); return send(m, null); }
       return fail('HTTP ' + r.status + ' ' + ((d.error && d.error.message) || '').slice(0, 200));
-    } catch (err) { return fail(err.message); }
+    } catch (err) { if (own) return send(m, null); return fail(err.message); }
   }
   // A problem with the office mailbox: noted for the Email usage box, and the owner's phone told once a day.
   function fail(why) {

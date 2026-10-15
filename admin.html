@@ -2316,6 +2316,7 @@
         <div id="ltDeleted" style="margin-top:12px"></div>
       </div>
       <div id="sentView" hidden>
+        <div class="card" id="mySender" hidden style="margin-bottom:12px"></div>
         <div class="card" id="mailUse" hidden style="margin-bottom:12px"></div>
         <div class="card" style="margin-bottom:12px"><div class="sent-bar"><input class="inp" id="sentQ" placeholder="Search who it went to, subject or text" style="flex:1;min-width:200px"><select class="inp" id="sentWho" hidden style="width:auto"><option value="">Everyone</option></select></div>
           <p class="muted-note" id="sentNote" style="margin:8px 0 0"></p></div>
@@ -15088,7 +15089,7 @@
     }).join('');
   }
   function loadSent(){
-    var q = $('sentQ').value.trim(), who = $('sentWho').value; if (!q && !who) loadMailUse();
+    var q = $('sentQ').value.trim(), who = $('sentWho').value; if (!q && !who) { loadMailUse(); loadMySender(); }
     return api('GET', '/api/admin/sent-emails?q=' + encodeURIComponent(q) + (who ? '&who=' + encodeURIComponent(who) : '')).then(function(d){
       if (!d || !d.ok) { $('sentList').innerHTML = '<p class="muted-note">Couldn’t load the sent emails.</p>'; return; }
       if (d.all && !sentWhoSet) { sentWhoSet = true; $('sentWho').hidden = false; $('sentWho').innerHTML = '<option value="">Everyone</option>' + d.people.map(function(p){ return '<option value="' + esc(p.user_name || '') + '">' + esc(p.user_name || 'Office') + ' (' + p.n + ')</option>'; }).join(''); }
@@ -15097,6 +15098,23 @@
       $('sentList').innerHTML = d.emails.length ? sentRows(d.emails, d.all) : '<div class="card"><p class="muted-note" style="margin:0">' + (q || who ? 'No emails match.' : 'No emails sent through Fixflow yet. Emails sent with the ✉ Email buttons will appear here.') + '</p></div>';
     });
   }
+  // ✉ Send from my own email: each person connects their own Outlook once; what they send from Fixflow then goes
+  // from their address (their Sent Items, replies to them). Not connected → it goes from the office mailbox.
+  function loadMySender(){
+    if (!meta.db) return;
+    api('GET', '/api/admin/outlook').then(function(d){
+      var box = $('mySender'); if (!d || !d.ok || !d.configured || !d.sending) { box.hidden = true; return; }
+      box.hidden = false;
+      box.innerHTML = d.mine
+        ? '<b>✉ Emails you send go from your own address: ' + esc(d.mine) + '</b><p class="muted-note" style="margin:4px 0 8px">They’re in your Outlook Sent Items and replies come back to you. Automatic emails (confirmations, reminders) still go from ' + esc(d.office) + '.</p><button type="button" class="btn small ghost" data-my-ol-del="' + esc(d.mine) + '">Stop — send from ' + esc(d.office) + ' instead</button>'
+        : '<b>✉ Emails you send from Fixflow go from ' + esc(d.office) + '</b><p class="muted-note" style="margin:4px 0 8px">Connect your own Outlook once so they go from your work email address, show in your Sent Items, and replies come back to you.</p><a class="btn small primary" href="/api/admin/outlook/connect">Send from my own email — connect Outlook</a>';
+    })['catch'](function(){});
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('[data-my-ol-del]'); if (!b) return;
+    if (!confirm('Stop sending from ' + b.dataset.myOlDel + '? Your emails will go from the office mailbox again.')) return;
+    api('DELETE', '/api/admin/outlook/' + encodeURIComponent(b.dataset.myOlDel), { confirm: true }).then(function(){ loadMySender(); toast('Done — your emails go from the office mailbox again'); });
+  });
   // 📊 Email usage (managers only — the server refuses others and the card stays hidden): today and this month
   // against the Resend plan, the last 14 days, and an on/off switch for each kind of email sent only to the office.
   function loadMailUse(){
@@ -19663,8 +19681,8 @@
   (function(){
     var m = /[#&]outlook=([a-z-]+)/.exec(location.hash); if (!m) return;
     history.replaceState(null, '', location.pathname);
-    var msg = { connected: 'Outlook connected — welcome emails can now go straight into your Drafts', cancelled: 'Outlook sign-in was cancelled', expired: 'That sign-in took too long — please try Connect Outlook again', failed: 'Couldn’t connect Outlook — please try again', 'not-set-up': 'Outlook isn’t set up for Fixflow yet' }[m[1]];
-    setTimeout(function(){ if (msg) toast(msg); if ($('navTcy')) { $('navTcy').click(); $('tcySettings').open = true; } }, 1200);
+    var msg = { mine: 'Your Outlook is connected — emails you send from Fixflow now go from your own address', connected: 'Outlook connected — Fixflow’s emails now go out from the office mailbox', cancelled: 'Outlook sign-in was cancelled', expired: 'That sign-in took too long — please try Connect Outlook again', failed: 'Couldn’t connect Outlook — please try again', 'not-set-up': 'Outlook isn’t set up for Fixflow yet' }[m[1]];
+    setTimeout(function(){ if (msg) toast(msg); if (m[1] === 'mine' || staffMode) { if (staffMode) { var t = document.querySelector('[data-stab="sent"]'); if (t) t.click(); } else if ($('navAct')) $('navAct').click(); return; } if ($('navTcy')) { $('navTcy').click(); $('tcySettings').open = true; } }, 1200);
   })();
   $('tmDraft').addEventListener('click', function(){
     var to = $('tmTo').value.split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean), subject = $('tmSubject').value, ctx = tmCtx, from = $('tmFrom').value;

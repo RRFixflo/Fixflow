@@ -1864,7 +1864,9 @@ module.exports = function mountJobs(app, opts) {
     const internal = all.length > 0 && all.every(function (a) { return mailOurs(a, c); }), auto = !actor.getStore();
     if (internal && auto && c.mute.indexOf(kind) !== -1) { mailLog(m, kind, all, true, true, 'off'); return { ok: true, muted: true }; }
     // The office Outlook mailbox first (when connected); Resend if it isn't, or if Microsoft refuses.
-    let r = outlookMail ? await outlookMail.send(m).catch(function (e) { return { ok: false, error: e.message }; }) : null, via = 'outlook';
+    // Staff-sent emails go from that person's own Outlook when they've connected it (outlook.js mailboxFor), else info@.
+    const sender = actor.getStore();
+    let r = outlookMail ? await outlookMail.send(m, sender ? (sender.id ? 'u' + sender.id : 'owner') : null).catch(function (e) { return { ok: false, error: e.message }; }) : null, via = 'outlook';
     if (!r || !r.ok) { r = await opts.sendEmail(m); via = 'resend'; }
     const err = r && !r.ok ? String(r.error || 'failed') : '', limit = /HTTP 429|quota|daily|limit/i.test(err);
     mailLog(m, kind, all, internal, auto, r && r.ok ? 'sent' : limit ? 'limit' : 'failed', err, via);
@@ -2158,6 +2160,7 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/crm' || /^\/crm\/(note|meta|move|archive|recommended|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
     if (method === 'POST' && path === '/assistant') return true;   // Ask Fixflow: staff only get applicants from a pasted enquiry (checked in the route)
     if (method === 'GET' && path === '/lead-hook') return true;
+    if ((method === 'GET' && /^\/outlook(\/connect)?$/.test(path)) || (method === 'DELETE' && /^\/outlook\/[^/]+$/.test(path))) return true;   // their own Outlook (others' refused in outlook.js)
     if (method === 'GET' && path === '/staff-names') return true;   // the calendar's people
     if ((method === 'GET' || method === 'POST') && path === '/valuations') return true;   // property appraisals (Offers page)
     if (method === 'POST' && path === '/cal-feed') return true;
