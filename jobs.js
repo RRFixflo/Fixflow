@@ -13283,10 +13283,19 @@ document.querySelectorAll('.lcu').forEach(function(box){
         page.drawRectangle({ x: M, y: y - 4, width: CW, height: 16, color: C.panel });
         text('Address', M + 8, y + 1, 7.6, B, C.soft); if (!soldTbl) text('Beds', M + CW - 170, y + 1, 7.6, B, C.soft); right((soldTbl ? 'Sold for' : 'Asking') + (unit ? ' (pcm)' : ''), W - M - 8, y + 1, 7.6, B, C.soft); y -= 18;
         list.forEach(function (c) {
-          ensure(30); const a = wrap(c.addr || 'Similar home', F, 9.2, CW - 200)[0];
-          text(a, M + 8, y, 9.2, F, C.ink); text(String(c.beds || ''), M + CW - 170, y, 9.2, F, C.ink2); right(gbp0(c.price), W - M - 8, y, 9.2, B, C.ink);
-          if (c.url) { const tw = F.widthOfTextAtSize(safe(a), 9.2); text(/zoopla/.test(c.url) ? 'view on Zoopla \xBB' : 'view on Rightmove \xBB', M + 14 + tw, y, 7.6, F, hex('175CD3'));
-            const link = pdf.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: [M + 8, y - 3, M + 90 + tw, y + 10], Border: [0, 0, 0], A: { Type: 'Action', S: 'URI', URI: require('pdf-lib').PDFString.of(c.url) } });
+          // The address stays inside its own column (wrapped onto a second line if long, never running into Beds), and the
+          // "view on Rightmove" link goes after it only when it fits — otherwise on the line below.
+          const addrW = CW - 170 - 18, al = wrap(c.addr || 'Similar home', F, 9.2, addrW).slice(0, 2);
+          if (wrap(c.addr || '', F, 9.2, addrW).length > 2) { let l2 = al[1]; while (l2.length > 1 && F.widthOfTextAtSize(safe(l2 + '\u2026'), 9.2) > addrW) l2 = l2.slice(0, -1); al[1] = l2.replace(/[\s,]+$/, '') + '\u2026'; }
+          const lk = c.url ? (/zoopla/.test(c.url) ? 'view on Zoopla \xBB' : 'view on Rightmove \xBB') : '', lkW = lk ? F.widthOfTextAtSize(safe(lk), 7.6) : 0;
+          const lastW = F.widthOfTextAtSize(safe(al[al.length - 1]), 9.2), inline = lk && lastW + 6 + lkW <= addrW;
+          ensure(30 + (al.length - 1) * 11.5 + (lk && !inline ? 10.5 : 0));
+          text(String(c.beds || ''), M + CW - 170, y, 9.2, F, C.ink2); right(gbp0(c.price), W - M - 8, y, 9.2, B, C.ink);
+          al.forEach(function (ln, i) { if (i) y -= 11.5; text(ln, M + 8, y, 9.2, F, C.ink); });
+          if (lk) {
+            let lx = M + 8; if (inline) lx = M + 8 + lastW + 6; else y -= 10.5;
+            text(lk, lx, y, 7.6, F, hex('175CD3'));
+            const link = pdf.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: [lx - 2, y - 3, lx + lkW + 2, y + 9], Border: [0, 0, 0], A: { Type: 'Action', S: 'URI', URI: require('pdf-lib').PDFString.of(c.url) } });
             page.node.addAnnot(pdf.context.register(link)); }
           const fd = function (d) { return new Date(d + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' }); };
           const when = c.sold ? ['Sold ' + fd(c.sold), c.ptype, c.tenure].filter(Boolean).join('  \xB7  ') : [c.agreed ? (unit ? 'Let agreed' : 'Sold STC') : '', c.listed ? 'Listed ' + fd(c.listed) : '', c.reduced ? 'price reduced' : '', unit && c.avail ? (c.avail === 'now' ? 'available now' : 'available ' + fd(c.avail)) : ''].filter(Boolean).join('  \xB7  ');
