@@ -14648,7 +14648,8 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const img = (x.propertyImages && (x.propertyImages.mainImageSrc || ((x.propertyImages.images || [])[0] || {}).srcUrl)) || x.mainImageSrc || '';
     const url = String(x.propertyUrl || '/properties/' + x.id).replace(/#.*$/, '');
     return { id: String(x.id), address: String(x.displayAddress || x.address).replace(/\s+/g, ' ').trim(), beds: x.bedrooms != null ? Number(x.bedrooms) : null, pcm: pcm || null,
-      url: /^https?:/.test(url) ? url : RM_BASE + url, image: img, added: rmAdded(x), status: String(x.displayStatus || ((x.listingUpdate || {}).listingUpdateReason) || x.addedOrReduced || '').slice(0, 60), type: String(x.propertySubType || x.propertyTypeFullDescription || '').slice(0, 60) };
+      url: /^https?:/.test(url) ? url : RM_BASE + url, image: img, added: rmAdded(x),
+      lat: x.location && isFinite(Number(x.location.latitude)) && Number(x.location.latitude) ? Number(x.location.latitude) : null, lng: x.location && isFinite(Number(x.location.longitude)) && Number(x.location.longitude) ? Number(x.location.longitude) : null, status: String(x.displayStatus || ((x.listingUpdate || {}).listingUpdateReason) || x.addedOrReduced || '').slice(0, 60), type: String(x.propertySubType || x.propertyTypeFullDescription || '').slice(0, 60) };
   }
   // When the advert first went up, if Rightmove says (an ISO date, or "Added on 12/09/2026").
   function rmAdded(x) {
@@ -14879,6 +14880,72 @@ document.querySelectorAll('.lcu').forEach(function(box){
   async function rmDreams(p) {
     const out = {}; (await p.query("SELECT rm_id, first_seen, review_at::text AS review_at, extended, takedown_at, by_name, change_note, changed_at FROM rm_dreams")).rows.forEach(function (r) { out[r.rm_id] = r; }); return out;
   }
+  // Rightmove stock check (Available properties → checks): Rightmove charges a branch as a "Geographical Advertiser" (a
+  // second, virtual branch — more than double the bill) when more of its available lettings adverts sit outside the
+  // radius around the branch than the national average (13 in October 2026), measured over a 14-day review window.
+  // Each live advert's distance from the office (its map position, else its postcode area's centre), whether it is a
+  // Dream (an extra advert for a home already advertised) or matches nothing on our available list, and the count
+  // outside the radius. Radius, limit and review dates are set by managers (app_settings rm_stock).
+  const RS_DEFAULT = { radius: 3, limit: 13, review_from: '2026-11-17', review_to: '2026-11-30' };
+  async function rsSettings(p) { const r = (await p.query("SELECT value FROM app_settings WHERE key = 'rm_stock'")).rows[0]; return Object.assign({}, RS_DEFAULT, (r && r.value) || {}); }
+  const rsMiles = function (a, b, c, d) { const R = 3958.8, r = Math.PI / 180, x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2); return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * r) * Math.cos(c * r) * y * y)); };
+  async function rsGeo(p, set) {
+    // The office (the nearby check keeps it), else postcodes.io; postcode-area centres for adverts without a map position.
+    let office = set.office;
+    if (!office) { const nb = ((await p.query("SELECT value FROM app_settings WHERE key = 'nearby'")).rows[0] || {}).value || {}; if (nb.office && nb.office.lat) office = { lat: nb.office.lat, lng: nb.office.lng, pc: nb.office.pc }; }
+    if (!office) { try { const pc = String(process.env.OFFICE_POSTCODE || 'SE1 6AD').replace(/\s/g, ''); const j = await (await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc), { signal: AbortSignal.timeout(10000) })).json(); if (j.result && j.result.latitude) office = { lat: j.result.latitude, lng: j.result.longitude, pc: j.result.postcode }; } catch (e) {} }
+    return office || null;
+  }
+  async function rsOutcodes(p, set, codes) {
+    const oc = Object.assign({}, set.oc || {}); let changed = false;
+    for (const c of codes) { if (!c || oc[c]) continue; try { const j = await (await fetch('https://api.postcodes.io/outcodes/' + encodeURIComponent(c), { signal: AbortSignal.timeout(8000) })).json(); if (j.result && j.result.latitude) { oc[c] = [j.result.latitude, j.result.longitude]; changed = true; } } catch (e) {} }
+    return { oc: oc, changed: changed };
+  }
+  async function rmStock(p) {
+    const set = await rsSettings(p), c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], v = c && listFresh('rightmove_list', c.value);
+    const items = (v && v.items) || [], office = await rsGeo(p, set);
+    const need = items.filter(function (x) { return !(x.lat && x.lng); }).map(function (x) { return rmOutcode(x.address); }).filter(function (o, i, a) { return o && a.indexOf(o) === i; });
+    const og = await rsOutcodes(p, set, need);
+    if (og.changed || (office && !set.office)) await p.query("INSERT INTO app_settings (key, value) VALUES ('rm_stock', $1) ON CONFLICT (key) DO UPDATE SET value = app_settings.value || $1", [JSON.stringify({ oc: og.oc, office: office })]).catch(function () {});
+    const av = (await p.query("SELECT id, address, rm_id, dream_rm, status FROM available_props")).rows, byRm = {}, dreamOf = {};
+    av.forEach(function (a) { if (a.rm_id && a.rm_id !== 'none' && a.status === 'available') byRm[a.rm_id] = a; (a.dream_rm || []).forEach(function (d) { dreamOf[d] = a; }); });
+    const list = items.map(function (x) {
+      const exact = !!(x.lat && x.lng), oc = rmOutcode(x.address), ll = exact ? [x.lat, x.lng] : og.oc[oc];
+      const dist = office && ll ? Math.round(rsMiles(office.lat, office.lng, ll[0], ll[1]) * 100) / 100 : null;
+      const agreed = /let agreed|under offer/i.test(x.status || '');
+      const home = byRm[x.id], dream = dreamOf[x.id];
+      return { id: x.id, address: x.address, beds: x.beds, pcm: x.pcm, url: x.url, image: x.image, status: x.status || '', added: x.added, dist: dist, exact: exact, agreed: agreed,
+        kind: dream ? 'dream' : home ? 'ours' : 'none', home: (home || dream) ? { id: (home || dream).id, address: (home || dream).address } : null };
+    }).sort(function (a, b) { return (b.dist == null ? 99 : b.dist) - (a.dist == null ? 99 : a.dist); });
+    const live = list.filter(function (x) { return !x.agreed; }), radius = Number(set.radius) || 3, limit = Number(set.limit) || 13;
+    const outside = live.filter(function (x) { return x.dist != null && x.dist > radius; }).length, unknown = live.filter(function (x) { return x.dist == null; }).length;
+    const at = function (mi) { return live.filter(function (x) { return x.dist != null && x.dist > mi; }).length; };
+    return { checked_at: v ? v.at : null, error: v ? v.error : null, office: office, radius: radius, limit: limit, review_from: set.review_from, review_to: set.review_to,
+      total: list.length, live: live.length, agreed: list.length - live.length, outside: outside, inside: live.length - outside - unknown, unknown: unknown,
+      over: Math.max(0, outside - limit), by_radius: [1, 2, 3, 5, 10].map(function (mi) { return { miles: mi, outside: at(mi) }; }), items: list };
+  }
+  app.get('/api/admin/rm-stock', withDb(async function (p, req, res) { res.json(Object.assign({ ok: true }, await rmStock(p))); }));
+  app.post('/api/admin/rm-stock/settings', withDb(async function (p, req, res) {
+    if (!canManageUsers(req)) return res.status(403).json({ ok: false, error: 'managers-only' });
+    const b = req.body || {}, v = {};
+    if (b.radius != null) { const r = Number(b.radius); if (!(r > 0 && r <= 50)) return res.status(400).json({ ok: false, error: 'radius' }); v.radius = r; }
+    if (b.limit != null) { const l = parseInt(b.limit, 10); if (!(l >= 0 && l <= 500)) return res.status(400).json({ ok: false, error: 'limit' }); v.limit = l; }
+    ['review_from', 'review_to'].forEach(function (k) { if (b[k] !== undefined) v[k] = /^\d{4}-\d{2}-\d{2}$/.test(String(b[k])) ? String(b[k]) : null; });
+    await p.query("INSERT INTO app_settings (key, value) VALUES ('rm_stock', $1) ON CONFLICT (key) DO UPDATE SET value = app_settings.value || $1", [JSON.stringify(v)]);
+    res.json(Object.assign({ ok: true }, await rmStock(p)));
+  }));
+  // From 7 days before Rightmove's review until its last day: once a day (from 9am), tell the owner's phone when too many
+  // live adverts are outside the radius.
+  let rsDay = '';
+  setInterval(function () {
+    db().then(async function (p) {
+      if (!p) return; const day = londonDay(); if (rsDay === day || Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: 'numeric', hour12: false })) < 9) return;
+      const st = await rmStock(p); if (!st.review_from || !st.review_to || day < addDaysIso(st.review_from, -7) || day > st.review_to) return;
+      rsDay = day; if (!st.over) return;
+      const during = day >= st.review_from;
+      ntfy({ title: (during ? '⚠ Rightmove stock review is on: ' : '⏰ Rightmove stock review starts ' + certDay(st.review_from) + ': ') + st.outside + ' adverts outside ' + st.radius + ' miles', message: 'The limit is ' + st.limit + ' — take ' + st.over + ' off (let, withdrawn, duplicates/Dreams first) to avoid the higher Rightmove bill. See Available properties → Checks → Rightmove stock check.', priority: during ? 4 : 3, tags: ['warning'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#avail' : undefined }).catch(function () {});
+    }).catch(function (e) { console.error('Rightmove stock check:', e.message); });
+  }, 30 * 60 * 1000).unref();
   app.get('/api/admin/rightmove', withDb(async function (p, req, res) {
     const c = (await p.query("SELECT value FROM app_settings WHERE key = 'rightmove_list'")).rows[0], st = await rmSettings(p);
     const val = Object.assign({}, listFresh('rightmove_list', (c && c.value) || {}));

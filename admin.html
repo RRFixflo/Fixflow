@@ -809,6 +809,19 @@
   .ls-tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: .7rem; font-weight: 700; background: var(--dk-bg-eef4ff, #EEF4FF); color: var(--dk-fg-1d4ed8, #1D4ED8); }
   .ls-tag.ai { background: var(--dk-bg-f4ebff, #F4EBFF); color: var(--dk-fg-6941c6, #6941C6); }
   @media (max-width: 480px) { .ls-tiles { grid-template-columns: 1fr; } }
+  .rs-big { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--dk-bd-abefc6, #ABEFC6); background: var(--dk-bg-ecfdf3, #ECFDF3); }
+  .rs-big b { font-size: 1.8rem; line-height: 1; } .rs-big span { font-size: .84rem; } .rs-big em { font-style: normal; font-weight: 700; font-size: .86rem; }
+  .rs-big.bad { border-color: var(--dk-bd-fda29b, #FDA29B); background: var(--dk-bg-fef3f2, #FEF3F2); color: var(--dk-fg-b42318, #B42318); }
+  .rs-radii { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; } .rs-radii span { font-size: .74rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line, #E4E7EC); }
+  .rs-radii span.on { border-color: var(--primary, #1D2B4F); font-weight: 700; }
+  .rs-h { margin: 10px 0 4px; font-size: .86rem; }
+  .rs-row { display: flex; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line, #E4E7EC); align-items: flex-start; }
+  .rs-d { flex: none; width: 54px; font-weight: 700; font-size: .84rem; } .rs-d small { display: block; font-weight: 400; font-size: .68rem; color: var(--ink-soft); }
+  .rs-m { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: .86rem; }
+  .rs-tag { display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 999px; font-size: .72rem; font-weight: 600; }
+  .rs-tag.dream { background: var(--dk-bg-fef0c7, #FEF0C7); color: var(--dk-fg-93370d, #93370D); } .rs-tag.none { background: var(--dk-bg-fee4e2, #FEE4E2); color: var(--dk-fg-b42318, #B42318); } .rs-tag.ours { background: var(--dk-bg-ecfdf3, #ECFDF3); color: var(--dk-fg-067647, #067647); }
+  .rs-set { margin-top: 10px; } .rs-set summary { cursor: pointer; font-size: .84rem; font-weight: 600; }
+  .rs-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: end; } .rs-form label { font-size: .78rem; display: flex; flex-direction: column; gap: 2px; } .rs-form .btn { grid-column: 1 / -1; justify-self: start; margin: 0; }
   .fn-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; } .fn-head h3 { margin: 0; }
   .fn-list { display: grid; gap: 10px; margin-top: 10px; }
   .fn-row { border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 12px; padding: 12px 14px; }
@@ -2440,6 +2453,7 @@
         <aside class="av-side" id="avSide" aria-label="Checks and alerts">
           <div class="av-side-h"><b>🔔 Checks &amp; alerts</b><button type="button" class="btn small ghost" id="avSideX" aria-label="Close">✕</button></div>
           <p class="muted-note" style="margin:0 0 10px">Rightmove and YouTube checks, Dream adverts, our properties with other agents and new adverts near the office.</p>
+          <details class="av-tools" id="avStock" hidden><summary class="av-tools-s">📏 Rightmove stock check<span class="av-tools-b" id="avStockBadge"></span></summary><div id="avStockBody"></div></details>
           <details class="av-tools" id="avTools"><summary class="av-tools-s">📡 Rightmove &amp; video checks<span class="av-tools-b" id="avToolsBadge"></span></summary>
           <div class="av-rm" id="avRm"></div>
           <div class="av-rm" id="avYt"></div></details>
@@ -13476,7 +13490,8 @@
   // The banner at the top of Available properties: what needs a look, in words, so staff can't miss it.
   function avSideCount(){
     var on = function(id){ var b = $(id); return b && b.textContent.trim() && !b.closest('[hidden]') ? b.textContent.trim() : ''; };
-    var t = on('avToolsBadge'), r = on('avRivBadge'), nr = on('avNearBadge'), items = [];
+    var t = on('avToolsBadge'), r = on('avRivBadge'), nr = on('avNearBadge'), sk = on('avStockBadge'), items = [];
+    if (sk) items.push('📏 ' + rsData.outside + ' Rightmove adverts outside ' + rsData.radius + ' miles — over the limit of ' + rsData.limit);
     if (t) items.push('📡 Rightmove / Dream adverts / videos need a look');
     if (r) items.push('🔎 ' + r + ' of our properties seen with other agents');
     if (nr) items.push('📍 ' + nr + ' new advert' + (nr === '1' ? '' : 's') + ' near the office this week');
@@ -15580,7 +15595,38 @@
     if (run) { run.disabled = true; run.textContent = 'Checking…'; api('POST', '/api/admin/nearby/run', {}).then(function(){ toast('Checking Rightmove near the office — about a minute'); setTimeout(loadNear, 60000); }); return; }
     if (hide || undo) { var b = hide || undo; api('POST', '/api/admin/nearby/' + (hide ? b.dataset.nearHide : b.dataset.nearUndo) + '/dismiss', { undo: !!undo }).then(function(){ loadNear(); }); }
   });
-  function loadAvail(){ loadRm(); loadYt(); loadRiv(); loadNear(); psOurList(); return api('GET', '/api/admin/available').then(function(d){ if (!d || !d.ok) return; avItems = d.items || []; avLinkData = d.links || {}; renderAvail(); var n = avItems.filter(function(x){ return x.status === 'available'; }).length; $('sAvail').hidden = !n; $('sAvail').textContent = n; }); }
+  // ---------- Rightmove stock check: live adverts outside the radius vs Rightmove's limit (Geographical Advertiser) ----------
+  var rsData = null;
+  function loadStock(){ api('GET', '/api/admin/rm-stock').then(function(d){ if (d && d.ok) { rsData = d; renderStock(); } }); }
+  function renderStock(){
+    var d = rsData; if (!d) return; $('avStock').hidden = false;
+    var bad = d.outside > d.limit, today = new Date().toISOString().slice(0, 10), during = d.review_from && d.review_to && today >= d.review_from && today <= d.review_to;
+    $('avStockBadge').textContent = bad ? String(d.over) : '';
+    var mi = function(x){ return x == null ? '?' : (x < 10 ? x.toFixed(1) : Math.round(x)) + ' mi'; };
+    var out = d.items.filter(function(x){ return !x.agreed && x.dist != null && x.dist > d.radius; }), unk = d.items.filter(function(x){ return !x.agreed && x.dist == null; });
+    var tag = function(x){ return x.kind === 'dream' ? '<span class="rs-tag dream">🔁 Extra (Dream) advert' + (x.home ? ' for ' + esc(shortAddr(x.home.address)) : '') + ' — take this off first</span>'
+      : x.kind === 'none' ? '<span class="rs-tag none">❓ Not on our available list — let or withdrawn? Take it down</span>' : '<span class="rs-tag ours">✅ On our available list</span>'; };
+    var row = function(x){ return '<div class="rs-row"><div class="rs-d">' + mi(x.dist) + (x.exact ? '' : '<small>approx.</small>') + '</div><div class="rs-m"><a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.address) + ' ↗</a><div class="muted-note" style="margin:1px 0 0">' + (x.beds != null ? x.beds + ' bed · ' : '') + (x.pcm ? esc(gbp(x.pcm)).replace('.00', '') + ' pcm' : '') + (x.status ? ' · ' + esc(x.status) : '') + '</div>' + tag(x) + '</div></div>'; };
+    var order = function(a, b){ var r = function(x){ return x.kind === 'dream' ? 0 : x.kind === 'none' ? 1 : 2; }; return (r(a) - r(b)) || ((b.dist || 0) - (a.dist || 0)); };
+    $('avStockBody').innerHTML =
+      '<div class="rs-big ' + (bad ? 'bad' : 'ok') + '"><b>' + d.outside + '</b><span>live adverts more than ' + d.radius + ' miles from the office · limit ' + d.limit + '</span>' +
+        '<em>' + (bad ? 'Take ' + d.over + ' off to get under the limit' + (during ? ' — Rightmove’s review is on now' : '') : '✓ Under the limit') + '</em></div>' +
+      '<p class="muted-note" style="margin:6px 0">' + d.inside + ' within ' + d.radius + ' miles · ' + d.agreed + ' let agreed (not counted)' + (d.unknown ? ' · ' + d.unknown + ' with no location' : '') + ' · ' + d.total + ' adverts on Rightmove' + (d.checked_at ? ' · checked ' + esc(fmtShort(d.checked_at)) : '') + '.' +
+        (d.review_from ? ' <b>Rightmove’s next stock review: ' + esc(longDay(d.review_from)) + ' – ' + esc(longDay(d.review_to)) + '</b> — only the adverts live then count.' : '') + '</p>' +
+      '<div class="rs-radii">' + d.by_radius.map(function(r){ return '<span' + (r.miles === d.radius ? ' class="on"' : '') + '>' + r.miles + ' mi: <b>' + r.outside + '</b> outside</span>'; }).join('') + '</div>' +
+      (out.length ? '<h4 class="rs-h">Outside ' + d.radius + ' miles (' + out.length + ') — extra Dream adverts and ones not on our list first</h4>' + out.slice().sort(order).map(row).join('') : '<p class="muted-note">No live adverts outside ' + d.radius + ' miles.</p>') +
+      (unk.length ? '<h4 class="rs-h">No location found (' + unk.length + ')</h4>' + unk.map(row).join('') : '') +
+      '<details class="rs-set"' + (meta.canManageUsers ? '' : ' hidden') + '><summary>⚙ Radius, limit and review dates</summary><p class="muted-note" style="margin:4px 0">Ask Rightmove (your account manager) for the exact radius they use around the branch. The limit is the national average they quote (13 for lettings in October 2026).</p>' +
+        '<div class="rs-form"><label>Radius (miles)<input class="inp" id="rsRadius" inputmode="decimal" value="' + esc(String(d.radius)) + '"></label><label>Limit<input class="inp" id="rsLimit" inputmode="numeric" value="' + esc(String(d.limit)) + '"></label><label>Review from<input class="inp" id="rsFrom" type="date" value="' + esc(d.review_from || '') + '"></label><label>Review to<input class="inp" id="rsTo" type="date" value="' + esc(d.review_to || '') + '"></label><button type="button" class="btn small primary" id="rsSave">Save</button></div></details>' +
+      '<p class="muted-note" style="margin:8px 0 0">Distances from the office postcode to each advert’s map pin on Rightmove (“approx.” = the postcode area’s centre). From a week before the review until it ends, the owner’s phone is told each morning if you’re over the limit.</p>';
+  }
+  document.addEventListener('click', function(e){
+    if (!e.target.closest || !e.target.closest('#rsSave')) return;
+    var b = e.target.closest('#rsSave'); busy(b, true, 'Saving…');
+    api('POST', '/api/admin/rm-stock/settings', { radius: $('rsRadius').value.trim(), limit: $('rsLimit').value.trim(), review_from: $('rsFrom').value, review_to: $('rsTo').value }).then(function(d){
+      busy(b, false); if (!d || !d.ok) { toast('Check the numbers'); return; } rsData = d; renderStock(); toast('✓ Saved'); });
+  });
+  function loadAvail(){ loadStock(); loadRm(); loadYt(); loadRiv(); loadNear(); psOurList(); return api('GET', '/api/admin/available').then(function(d){ if (!d || !d.ok) return; avItems = d.items || []; avLinkData = d.links || {}; renderAvail(); var n = avItems.filter(function(x){ return x.status === 'available'; }).length; $('sAvail').hidden = !n; $('sAvail').textContent = n; }); }
   function avOutcode(a){ var t = String(a || '').replace(/[,\s]+$/, ''), m = /\b([A-Z]{1,2}\d[A-Z\d]?)\s*\d[A-Z]{2}\b/i.exec(t) || /\b([A-Z]{1,2}\d[A-Z\d]?)\s*$/i.exec(t); return m ? m[1].toUpperCase() : ''; }
   function avDay(v){ return v ? certDay(String(v).slice(0, 10)) : ''; }
   // How long an available property has been online: from its Rightmove advert when linked, else since it went on our list.
