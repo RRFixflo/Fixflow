@@ -504,6 +504,7 @@ const jobs = require('./jobs')(app, {
   gnomenFor: function (rows) { return listings.gnomenFor(rows); },
   journey: function (req) { return visits ? visits.journey(req) : null; },
   visitsAround: function (at, hint) { return visits ? visits.around(at, hint) : []; },
+  visitsBySource: function (since) { return visits ? visits.bySource(since) : Promise.resolve([]); },
   webStatus: function (id, rmId) { return listings.webStatus(id, rmId); },
   siteHomes: function () { return listings.homes ? listings.homes() : []; },
   gnomenForAdverts: function (items, typed) { return listings.gnomenForAdverts(items, typed); },

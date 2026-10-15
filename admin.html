@@ -795,6 +795,20 @@
   .av-acc-det { margin-top: 4px; color: var(--ink-soft); } .av-acc-det b { color: var(--ink, var(--dk-fg-101828, #101828)); } .av-acc-warn { color: var(--dk-fg-b54708, #b54708); font-weight: 600; } .av-acc-det .linkish { padding: 0; min-height: 0; line-height: inherit; vertical-align: baseline; }
   .av-fromrm { font-style: normal; color: #00a88f; text-transform: none; letter-spacing: 0; }
   .av-llpick { width: auto; max-width: 220px; min-height: 30px; padding: 2px 6px; font-size: .8rem; }
+  .ls-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+  .ls-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .ls-tile { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line, #E4E7EC); background: var(--dk-bg-ffffff, #fff); color: inherit; font: inherit; cursor: pointer; min-width: 0; }
+  .ls-tile span { font-size: .8rem; color: var(--ink-soft); } .ls-tile b { font-size: 1.15rem; } .ls-tile small { font-size: .74rem; color: var(--ink-soft); }
+  .ls-tile.on, .ls-src.on { border-color: var(--primary, #1D2B4F); box-shadow: 0 0 0 1px var(--primary, #1D2B4F) inset; }
+  .ls-srcs { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+  .ls-src { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line, #E4E7EC); background: var(--dk-bg-ffffff, #fff); color: inherit; font: inherit; font-size: .8rem; cursor: pointer; }
+  .ls-src small { color: var(--ink-soft); }
+  .ls-list { margin-top: 8px; border-top: 1px solid var(--line, #E4E7EC); }
+  .ls-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line, #E4E7EC); }
+  .ls-main { flex: 1; min-width: 0; overflow-wrap: anywhere; } .ls-row .btn { flex: none; margin: 0; }
+  .ls-tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: .7rem; font-weight: 700; background: var(--dk-bg-eef4ff, #EEF4FF); color: var(--dk-fg-1d4ed8, #1D4ED8); }
+  .ls-tag.ai { background: var(--dk-bg-f4ebff, #F4EBFF); color: var(--dk-fg-6941c6, #6941C6); }
+  @media (max-width: 480px) { .ls-tiles { grid-template-columns: 1fr; } }
   .fn-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; } .fn-head h3 { margin: 0; }
   .fn-list { display: grid; gap: 10px; margin-top: 10px; }
   .fn-row { border: 1px solid var(--line, var(--dk-bd-e6e8ec, #e6e8ec)); border-radius: 12px; padding: 12px 14px; }
@@ -2356,6 +2370,7 @@
         <div class="card web-top"><div class="web-range" id="webRange" role="group" aria-label="Time range"><button type="button" data-days="1">Today</button><button type="button" data-days="7" class="on">7 days</button><button type="button" data-days="30">30 days</button><button type="button" data-days="90">90 days</button><button type="button" data-days="365">12 months</button></div>
           <p class="muted-note" style="margin:6px 0 0">Counted on our own website, without cookies. Staff and search-engine robots aren’t counted. A visitor is one person on one day.</p></div>
         <div class="card fn-card" id="fnCard" hidden></div>
+        <div class="card ls-card" id="lsCard" hidden></div>
         <details class="card act-sec" data-sec="seo" id="seoSec" hidden>
           <summary><span class="act-sec-t">🔎 SEO health</span><span class="act-sum" id="sum_seo"></span><span class="act-chev" aria-hidden="true"></span></summary>
           <div class="act-sec-b"><div id="seoBox" class="muted-note">Loading…</div></div>
@@ -9576,10 +9591,42 @@
     if (e.target.closest('[data-fn-min]')) { var mn = false; try { mn = localStorage.getItem('rr_fn_min') === '1'; localStorage.setItem('rr_fn_min', mn ? '0' : '1'); } catch (x) {} loadFunnel(); return; }
     var f = e.target.closest('[data-fn-find]'); if (f) { showView('crm'); $('crmQ').value = f.dataset.fnFind; $('crmQ').dispatchEvent(new Event('input')); }
   });
+  // ---------- Leads from search engines & AI (Website visitors): website leads whose visitor came from Google, Bing,
+  // ChatGPT, Perplexity… (the lead's saved data.src), with how many visits each source sent ----------
+  var lsDays = 90, lsShow = 'all';
+  function loadLeadSrc(){
+    api('GET', '/api/admin/lead-sources?days=' + lsDays).then(function(d){
+      var box = $('lsCard'); if (!d || !d.ok) { box.hidden = true; return; }
+      box.hidden = false;
+      var n = function(x){ return Number(x || 0).toLocaleString('en-GB'); };
+      var tot = function(g){ return d.sources.filter(function(x){ return x.group === g; }).reduce(function(a, x){ a.l += x.leads; a.v += x.visitors; return a; }, { l: 0, v: 0 }); };
+      var se = tot('search'), ai = tot('ai');
+      var list = d.leads.filter(function(x){ return lsShow === 'all' || x.group === lsShow || x.source === lsShow; });
+      var tile = function(key, icon, label, t){ return '<button type="button" class="ls-tile' + (lsShow === key ? ' on' : '') + '" data-ls-show="' + key + '"><span>' + icon + ' ' + label + '</span><b>' + n(t.l) + ' lead' + (t.l === 1 ? '' : 's') + '</b><small>' + n(t.v) + ' visit' + (t.v === 1 ? '' : 's') + ' from them</small></button>'; };
+      box.innerHTML = '<div class="ls-head"><h3 style="margin:0">🔎 Leads from search engines &amp; AI</h3><div class="seg" role="group">' + [7, 30, 90, 365].map(function(x){ return '<button type="button" data-ls-days="' + x + '" class="' + (x === lsDays ? 'on' : '') + '">' + (x === 365 ? '12 months' : x + ' days') + '</button>'; }).join('') + '</div></div>' +
+        '<p class="muted-note" style="margin:4px 0 10px">Website enquiries from people who arrived from Google, Bing and other search engines, or from AI assistants such as ChatGPT, Perplexity, Gemini and Copilot. Some AI apps don’t say they sent the visitor, so those show as “typed in”.</p>' +
+        '<div class="ls-tiles">' + tile('all', '🌐', 'All', { l: se.l + ai.l, v: se.v + ai.v }) + tile('search', '🔍', 'Search engines', se) + tile('ai', '🤖', 'AI assistants', ai) + '</div>' +
+        (d.sources.length ? '<div class="ls-srcs">' + d.sources.map(function(x){ return '<button type="button" class="ls-src' + (lsShow === x.name ? ' on' : '') + '" data-ls-show="' + esc(x.name) + '">' + (x.group === 'ai' ? '🤖 ' : '🔍 ') + esc(x.name) + ' <b>' + n(x.leads) + '</b><small> · ' + n(x.visitors) + ' visits</small></button>'; }).join('') + '</div>' : '') +
+        (list.length ? '<div class="ls-list">' + list.map(function(x){
+            return '<div class="ls-row"><div class="ls-main"><b>' + esc(x.name || 'No name') + '</b> <span class="ls-tag ' + x.group + '">' + esc(x.source) + '</span><div class="muted-note" style="margin:2px 0 0">' + esc(x.kind) + (x.address ? ' · ' + esc(shortAddr(x.address)) : '') + ' · ' + esc(fmtShort(x.at)) + '</div>' +
+              (x.landing ? '<div class="muted-note" style="margin:2px 0 0">Landed on ' + srcPage(x.landing) + (x.page && x.page !== x.landing ? ' · sent from ' + srcPage(x.page) : '') + '</div>' : '') + '</div>' +
+              '<button type="button" class="btn small" data-ls-open="' + x.id + '">Open</button></div>'; }).join('') + '</div>'
+          : '<div class="empty" style="padding:14px 0">No leads from ' + (lsShow === 'all' ? 'search engines or AI' : lsShow === 'search' ? 'search engines' : lsShow === 'ai' ? 'AI assistants' : esc(lsShow)) + ' in the last ' + (lsDays === 365 ? '12 months' : lsDays + ' days') + ' yet.</div>') +
+        '<p class="muted-note" style="margin:10px 0 0">' + n(d.tracked) + ' of ' + n(d.total) + ' website leads in this period have a record of how they found us' + (d.total > d.tracked ? ' (older leads and ones typed in by staff don’t)' : '') + '.</p>';
+      box._leads = d.leads;
+    });
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('#lsCard [data-ls-days], #lsCard [data-ls-show], #lsCard [data-ls-open]'); if (!b) return;
+    if (b.dataset.lsDays) { lsDays = +b.dataset.lsDays; loadLeadSrc(); return; }
+    if (b.dataset.lsShow) { lsShow = lsShow === b.dataset.lsShow && b.dataset.lsShow !== 'all' ? 'all' : b.dataset.lsShow; loadLeadSrc(); return; }
+    var x = ($('lsCard')._leads || []).filter(function(l){ return String(l.id) === b.dataset.lsOpen; })[0]; if (!x) return;
+    showView(x.appl ? 'appl' : 'crm'); $('crmQ').value = x.name || ''; $('crmQ').dispatchEvent(new Event('input'));
+  });
   // ---------- Website visitors: who visits the website, what they look at and where they came from ----------
   var webDays = 7, webData = null;
   function loadWeb(){
-    loadFunnel(); loadSeo();   // SEO health lives on Website visitors (hidden if this login can't see it)
+    loadFunnel(); loadLeadSrc(); loadSeo();   // SEO health lives on Website visitors (hidden if this login can't see it)
     $('webRange').querySelectorAll('[data-days]').forEach(function(b){ b.classList.toggle('on', +b.dataset.days === webDays); });
     return api('GET', '/api/admin/site-stats?days=' + webDays).then(function(d){ if (!d || !d.ok) { $('webBody').innerHTML = '<div class="empty">Couldn’t load the visitor numbers.</div>'; return; } webData = d; renderWeb(); });
   }

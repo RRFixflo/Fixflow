@@ -214,5 +214,10 @@ module.exports = function (app, opts) {
       .filter(function (x) { return x.gap <= 30; })
       .sort(function (a, b) { return (b.match - a.match) || (a.gap - b.gap); }).slice(0, 5);
   }
-  return { track: track, journey: journey, around: around };
+  // Real visitors (web_humans) per source since a date — for "Leads from search engines & AI".
+  async function bySource(since) {
+    const p = await pool().catch(function () { return null; }); if (!p) return [];
+    return (await p.query("SELECT ref, count(DISTINCT visitor)::int AS n FROM web_visits WHERE at >= $1 AND ref IS NOT NULL AND visitor IN (SELECT visitor FROM web_humans WHERE at >= $1::timestamptz - interval '1 day') GROUP BY ref", [since])).rows;
+  }
+  return { track: track, journey: journey, around: around, bySource: bySource };
 };
