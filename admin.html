@@ -10120,7 +10120,7 @@
       (function(){ var fv = (x.viewings || []).filter(function(v){ return v.app_fb_at; }).sort(function(a, b){ return new Date(b.app_fb_at) - new Date(a.app_fb_at); })[0], f = fv && fv.app_fb || {}; return fv ? '<span class="crm-flag' + (f.interest === 'yes' ? ' ok' : '') + '" title="Their feedback after the viewing">⭐ Feedback ' + (f.rating || '–') + '/5' + (f.interest === 'yes' ? ' · wants to offer' : f.interest === 'maybe' ? ' · has questions' : f.interest === 'no' ? ' · not for them' : '') + '</span>' : ''; })();
     var flags = gflags + holdFlag + vd + (x.archived ? '<span class="crm-flag">🗄 Archived ' + esc(fmtShort(x.archived)) + (x.archivedBy ? ' by ' + esc(x.archivedBy) : '') + '</span>' : '') + (need ? '<span class="crm-flag warn">📣 ' + esc(need) + '</span>' : '') + (x.type === 'viewing' && !d.confirmed && x.status !== 'lost' ? '<span class="crm-flag warn">Time to confirm</span>' : '') + (x.type === 'viewing' && d.confirmed ? '<span class="crm-flag ok">🗓 ' + esc(crmSlot(d.confirmed)) + '</span>' : '') +
       (x.follow && need !== 'Follow-up due' ? '<span class="crm-flag' + (x.follow <= today && x.status !== 'won' && x.status !== 'lost' ? ' warn' : '') + '">⏰ ' + (x.follow === today ? 'Today' : x.follow < today ? 'Overdue · ' + esc(fmtDateOnly(x.follow)) : esc(fmtDateOnly(x.follow))) + '</span>' : '') + (x.assigned ? '<span class="crm-flag">👤 ' + esc(x.assigned) + '</span>' : '') + (x.notes.filter(function(n){ return !n.auto; }).length ? '<span class="crm-flag">📝 ' + x.notes.filter(function(n){ return !n.auto; }).length + '</span>' : '');
-    var acts = (tel ? '<a class="crm-act" href="tel:' + esc(tel) + '" title="Call ' + esc(x.phone) + '">📞<span> Call</span></a>' : '') + (wa ? '<a class="crm-act wa"' + (crm.mode === 'appl' ? ' data-wa-ref="' + esc(x.ref) + '"' : '') + ' href="https://wa.me/' + esc(wa) + (x.type === 'sub' ? '' : '?text=' + encodeURIComponent(leadMsg(x).body)) + '" target="_blank" rel="noopener" title="WhatsApp with a ready-written message">💬<span> WhatsApp</span></a>' : '') + (x.email ? '<a class="crm-act"' + (crm.mode === 'appl' ? ' data-ml-ref="' + esc(x.ref) + '"' : '') + ' href="mailto:' + esc(x.email) + (x.type === 'sub' ? '' : '?subject=' + encodeURIComponent(leadMsg(x).subject) + '&body=' + encodeURIComponent(leadMsg(x).body)) + '" title="Email ' + esc(x.email) + ' with a ready-written message">✉️<span> Email</span></a>' : '');
+    var acts = (tel ? '<a class="crm-act" href="tel:' + esc(tel) + '" title="Call ' + esc(x.phone) + '">📞<span> Call</span></a>' : '') + (wa ? '<a class="crm-act wa"' + (crm.mode === 'appl' ? ' data-wa-ref="' + esc(x.ref) + '"' : '') + ' href="https://wa.me/' + esc(wa) + (x.type === 'sub' ? '' : '?text=' + encodeURIComponent(leadMsg(x).body)) + '" target="_blank" rel="noopener" title="WhatsApp with a ready-written message">💬<span> WhatsApp</span></a>' : '') + (x.email ? '<a class="crm-act"' + (crm.mode === 'appl' ? ' data-ml-ref="' + esc(x.ref) + '"' : '') + ' href="mailto:' + esc(x.email) + (x.type === 'sub' ? '' : '?subject=' + encodeURIComponent(leadMsg(x).subject) + '&body=' + encodeURIComponent(leadMsg(x).body)) + '" title="Email ' + esc(x.email) + ' with a ready-written message">✉️<span> Email</span></a>' : '') + (x.type === 'mortgage' ? '<button type="button" class="crm-act" data-mort-letter="' + esc(x.ref) + '" title="Open Appraisal set up for a mortgage rental letter, filled in from this enquiry">🏦<span> Make the letter</span></button>' : '');
     var h = '<div class="crm-card' + (open ? ' open' : '') + (need ? ' is-new' : '') + (x.archived ? ' is-arch' : '') + '" data-crm="' + x.ref + '">' +
       '<div class="crm-head" data-crm-tog><label class="crm-pick" title="Select"><input type="checkbox" data-crm-pick="' + x.ref + '"' + (crmSel[x.ref] ? ' checked' : '') + '></label><div class="crm-who"><span class="crm-tag" style="color:' + t[2] + ';background:' + t[3] + '">' + t[0] + ' ' + t[1] + '</span> <b>' + esc(x.name) + '</b> ' + pill + '<div class="crm-sub">' + sub.map(esc).join(' · ') + '</div>' + (flags ? '<div class="crm-flags">' + flags + '</div>' : '') + '</div>' +
       '<div class="crm-acts">' + acts + '<button type="button" class="crm-chev" aria-label="' + (open ? 'Less' : 'More') + '">' + (open ? '▴' : '▾') + '</button></div></div>';
@@ -10333,6 +10333,31 @@
     $('apwWho').textContent = 'To ' + (g.name || 'the applicant') + ' · ' + (ch === 'wa' ? g.phone : g.email) + (g.address && g.address !== '(no property given)' ? ' · asked about ' + shortAddr(g.address) : '');
     $('apwAltQ').value = ''; $('apwModal').hidden = false; apwDraw();
     if (!avItems || !avItems.length) api('GET', '/api/admin/available').then(function(d){ if (d && d.ok) { avItems = d.items || []; avLinkData = d.links || {}; } if (apw) apwDraw(); });
+  }
+  // Mortgage rental letter enquiry → Appraisal set to "Mortgage rental letter", filled in from the enquiry, and the
+  // search for similar homes to let started straight away (the owner asked for it at the click of a button).
+  document.addEventListener('click', function(e){
+    var mb = e.target.closest('[data-mort-letter]'); if (!mb) return;
+    e.preventDefault(); e.stopPropagation();
+    var x = crm.items.filter(function(y){ return y.ref === mb.dataset.mortLetter; })[0]; if (x) openMortLetter(x);
+  }, true);
+  function openMortLetter(x){
+    var d = x.data || {};
+    openApprFor(null);
+    appr.sale = []; appr.let = []; appr.res = { sale: null, let: null, sold: null }; appr.mode = 'let'; apprLl = null;
+    $('apPurpose').value = 'mortgage'; $('apPurpose').dispatchEvent(new Event('change'));
+    var pc = String(d.postcode || (String(x.address || '').match(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i) || [''])[0]).toUpperCase();
+    $('apAddr').value = (x.address || '') + (pc && !POSTCODE_RE.test(x.address || '') ? ', ' + pc : ''); if ($('apPc')) $('apPc').value = pc;
+    var beds = /studio/i.test(String(d.beds || '') + ' ' + String(d.type || '')) ? '0' : (String(d.beds || '').match(/\d+/) || [''])[0];
+    $('apBeds').value = beds;
+    var t = String(d.type || '').toLowerCase(), opt = [].slice.call($('apType').options).filter(function(o){ return o.value && t.indexOf(o.value.toLowerCase()) !== -1; })[0];
+    $('apType').value = opt ? opt.value : (beds === '0' ? 'Studio' : '');
+    $('apLender').value = d.lender || ''; $('apMf').value = d.purpose || '';
+    $('apTo').value = x.name || ''; $('apToAddr').value = '';
+    if ($('apLlNote')) $('apLlNote').hidden = true;
+    apprDraw();
+    if (pc && beds !== '') setTimeout(apprAuto, 50);
+    else toast('Add the ' + (!pc ? 'postcode' : 'number of bedrooms') + ', then press “Find similar homes on Rightmove”');
   }
   document.addEventListener('click', function(e){
     var a = e.target.closest('a[data-wa-ref], a[data-ml-ref]'); if (!a || e.ctrlKey || e.metaKey) return;
@@ -13525,7 +13550,12 @@
     var b = $('apprBody'); if (!b) return;
     if (!b.dataset.built) {
       b.dataset.built = 1;
-      b.innerHTML = '<div class="ap-find"><span class="muted-note" style="margin:0">Find the address:</span><input class="inp" id="apPc" placeholder="Postcode" style="width:120px;text-transform:uppercase"><input class="inp" id="apDoor" placeholder="Door / flat no. (optional)" style="width:170px"><button type="button" class="btn small" id="apFind">🔎 Find address</button></div><div id="apFindRes"></div>' +
+      b.innerHTML = '' +
+        '<div class="lt-grid ap-purp" style="margin:0 0 12px"><label>Report type<select class="inp" id="apPurpose"><option value="">Market appraisal (for the landlord)</option><option value="mortgage">🏦 Mortgage rental letter (for the lender)</option></select></label>' +
+          '<label class="ap-mort" hidden>Lender or broker <span class="muted-note" style="margin:0">optional</span><input class="inp" id="apLender" maxlength="120" placeholder="Letter is addressed to them"></label>' +
+          '<label class="ap-mort" hidden>For<select class="inp" id="apMf"><option value="">—</option><option>Remortgage</option><option>Buying a buy-to-let</option><option>Product transfer / other</option></select></label></div>' +
+          '<p class="muted-note ap-mort" hidden style="margin:-6px 0 12px">Rent only, addressed to the lender, with no fees — and a line saying it’s a letting agent’s rental assessment, not a RICS valuation.</p>' +
+        '<div class="ap-find"><span class="muted-note" style="margin:0">Find the address:</span><input class="inp" id="apPc" placeholder="Postcode" style="width:120px;text-transform:uppercase"><input class="inp" id="apDoor" placeholder="Door / flat no. (optional)" style="width:170px"><button type="button" class="btn small" id="apFind">🔎 Find address</button></div><div id="apFindRes"></div>' +
         '<div class="grid2"><label class="lbl">Property address<input class="inp" id="apAddr" placeholder="Full address with postcode"></label><label class="lbl">Type<select class="inp" id="apType"><option value="">—</option><option>Flat</option><option>Maisonette</option><option>House</option><option>Studio</option></select></label></div>' +
         '<div class="grid3"><label class="lbl">Bedrooms<input class="inp" id="apBeds" inputmode="numeric" placeholder="e.g. 2"></label><label class="lbl">Bathrooms<input class="inp" id="apBaths" inputmode="numeric" placeholder="e.g. 1"></label><label class="lbl" style="position:relative">Report for <span class="muted-note" style="margin:0">optional</span><input class="inp" id="apTo" placeholder="Landlord — type to search ours" autocomplete="off"><div class="lt-sugg" id="apSugg" hidden></div></label></div>' +
         '<p class="muted-note" id="apLlNote" style="margin:-4px 0 6px" hidden></p>' +
@@ -13542,10 +13572,6 @@
           '<div class="ap-ovrow" data-ov="let"><span>Rent £</span><input class="inp" id="apOvLetLo" inputmode="numeric"><span>to £</span><input class="inp" id="apOvLetHi" inputmode="numeric" placeholder="optional"><span>pcm</span></div>' +
           '<div class="row-actions" style="gap:6px;margin-top:4px"><button type="button" class="btn small ghost" data-ov-pct="-5">−5%</button><button type="button" class="btn small ghost" data-ov-pct="5">+5%</button><button type="button" class="btn small ghost" data-ov-reset>Use the average</button></div></div>' +
         '<p class="muted-note" id="apErr" style="color:var(--red,var(--dk-fg-c00, #c00));margin:6px 0 0" hidden></p>' +
-        '<div class="lt-grid ap-purp" style="margin-top:10px"><label>Report type<select class="inp" id="apPurpose"><option value="">Market appraisal (for the landlord)</option><option value="mortgage">🏦 Mortgage rental letter (for the lender)</option></select></label>' +
-          '<label class="ap-mort" hidden>Lender or broker <span class="muted-note" style="margin:0">optional</span><input class="inp" id="apLender" maxlength="120" placeholder="Letter is addressed to them"></label>' +
-          '<label class="ap-mort" hidden>For<select class="inp" id="apMf"><option value="">—</option><option>Remortgage</option><option>Buying a buy-to-let</option><option>Product transfer / other</option></select></label></div>' +
-          '<p class="muted-note ap-mort" hidden style="margin:6px 0 0">Rent only, addressed to the lender, with no fees — and a line saying it’s a letting agent’s rental assessment, not a RICS valuation.</p>' +
           '<div class="row-actions" style="flex-wrap:wrap;margin-top:10px"><button type="button" class="btn primary" id="apMake">📄 Make the report</button></div><div id="apDone"></div>' +
         '<h4 class="la-sub">Recent appraisals</h4><div id="apList" class="muted-note">Loading…</div>';
       b.addEventListener('paste', function(e){
