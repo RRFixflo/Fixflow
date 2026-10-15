@@ -1864,7 +1864,9 @@ module.exports = function mountJobs(app, opts) {
     const internal = all.length > 0 && all.every(function (a) { return mailOurs(a, c); }), auto = !actor.getStore();
     if (internal && auto && c.mute.indexOf(kind) !== -1) { mailLog(m, kind, all, true, true, 'off'); return { ok: true, muted: true }; }
     // The office Outlook mailbox first (when connected); Resend if it isn't, or if Microsoft refuses.
-    let r = outlookMail ? await outlookMail.send(m).catch(function (e) { return { ok: false, error: e.message }; }) : null, via = 'outlook';
+    // Staff-sent emails go from that person's own Outlook when they've connected it (outlook.js mailboxFor), else info@.
+    const sender = actor.getStore();
+    let r = outlookMail ? await outlookMail.send(m, sender ? (sender.id ? 'u' + sender.id : 'owner') : null).catch(function (e) { return { ok: false, error: e.message }; }) : null, via = 'outlook';
     if (!r || !r.ok) { r = await opts.sendEmail(m); via = 'resend'; }
     const err = r && !r.ok ? String(r.error || 'failed') : '', limit = /HTTP 429|quota|daily|limit/i.test(err);
     mailLog(m, kind, all, internal, auto, r && r.ok ? 'sent' : limit ? 'limit' : 'failed', err, via);
@@ -2158,6 +2160,7 @@ module.exports = function mountJobs(app, opts) {
     if (path === '/crm' || /^\/crm\/(note|meta|move|archive|recommended|contact(\/\d+)?|viewing\/\d+\/confirm)$/.test(path)) return true;
     if (method === 'POST' && path === '/assistant') return true;   // Ask Fixflow: staff only get applicants from a pasted enquiry (checked in the route)
     if (method === 'GET' && path === '/lead-hook') return true;
+    if ((method === 'GET' && /^\/outlook(\/connect)?$/.test(path)) || (method === 'DELETE' && /^\/outlook\/[^/]+$/.test(path))) return true;   // their own Outlook (others' refused in outlook.js)
     if (method === 'GET' && path === '/staff-names') return true;   // the calendar's people
     if ((method === 'GET' || method === 'POST') && path === '/valuations') return true;   // property appraisals (Offers page)
     if (method === 'POST' && path === '/cal-feed') return true;
@@ -7611,9 +7614,12 @@ document.querySelectorAll('.lcu').forEach(function(box){
     if (!t) return res.status(404).json({ ok: false });
     res.json(Object.assign({ ok: true }, await tcyNegotiator(p, t.data || {})));
   }));
-  // Emails staff send from Fixflow no longer copy in the office inbox (the owner asked — too much in the inbox);
-  // every one is still kept in Sent emails. Only the Cc's chosen by staff go.
-  function officeCc(to, cc) { return cc; }
+  // Emails staff send from Fixflow always copy in the office inbox, so they're in Outlook too.
+  function officeCc(to, cc) {
+    const office = 'info@residentialrealtors.co.uk', has = function (l) { return l.some(function (x) { return String(x).toLowerCase() === office; }); };
+    if (!has(to) && !has(cc)) cc.push(office);
+    return cc;
+  }
   // Everyone to email about a tenancy's rent: the tenants on the tenancy plus anyone else saved as a current
   // tenant at the property since it started (not guarantors, not moved out) — so every tenant gets it.
   async function tenancyTenants(p, t) {
@@ -8285,10 +8291,16 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const r = await sendEmail({ to: [to], fromName: 'Fixflow - Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
     if (!(r && r.muted)) p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', ['Fixflow (automatic)', [to], null, subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
   }
-  // Team emails (website requests, landlord sign-ups, phone messages): one email to the office inbox — no longer one
-  // to every member of staff (the owner asked; staff already get the phone alert and see it in the staff app).
-  async function staffEmailAll(subject, textFor, hash) { return ownerEmail(subject, textFor, hash); }
-
+  async function staffEmailAll(subject, textFor, hash) {
+    const p = await db(); if (!p || !canEmail() || !sendEmail) return;
+    const users = (await p.query("SELECT id, name, email, role FROM staff_users WHERE disabled_at IS NULL AND coalesce(email, '') <> ''")).rows.filter(function (u) { return /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(u.email).trim()); });
+    for (const u of users) {
+      const offersOnly = u.role === 'offers' || u.role === 'offers_admin', link = (offersOnly ? (OFFER_ORIGIN || PUBLIC_URL) + '/staff' : (PUBLIC_URL || OFFER_ORIGIN) + '/admin') + (hash || '');
+      const text = 'Hi ' + (String(u.name || '').split(/\s+/)[0] || 'there') + ',\n\n' + textFor(link);
+      const r = await sendEmail({ to: [String(u.email).trim()], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subject, text: text, html: brandEmail(text, subject) }).catch(function (err) { return { ok: false, error: err.message }; });
+      if (!(r && r.muted)) p.query('INSERT INTO sent_emails (user_id, user_name, to_list, reply_to, subject, body, ok, error) VALUES (NULL, $1, $2, $3, $4, $5, $6, $7)', ['Fixflow (automatic)', [String(u.email).trim()], 'info@residentialrealtors.co.uk', subject, text, !!(r && r.ok), r && r.ok ? null : String((r && r.error) || '').slice(0, 300)]).catch(function () {});
+    }
+  }
   // Our emails as a modern branded page: navy header with the logo, the message,
   // a big button for our main link (terms, offer, tracking page), a signature card
   // and the company footer. Built from the plain text, which is sent alongside it.
@@ -8867,13 +8879,13 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const who = v.staff || v.created_by || '', u = who ? (await p.query("SELECT email FROM staff_users WHERE disabled_at IS NULL AND lower(name) = lower($1) AND coalesce(email, '') <> '' LIMIT 1", [who])).rows[0] : null;
       const addr = String(v.property_address || '').split(',').slice(0, 2).join(','), subj = 'Viewing feedback: ' + (v.applicant || 'Applicant') + ' — ' + addr;
       const text = (v.applicant || 'The applicant') + ' has given feedback on the viewing at ' + addr + '.\n\nRating: ' + rating + '/5\nGoing ahead: ' + VF_INTEREST[interest] + (fb.liked ? '\nLiked: ' + fb.liked : '') + (fb.disliked ? '\nDidn’t like / questions: ' + fb.disliked : '') + (fb.service ? '\nOur service: ' + fb.service : '') + '\n\nIt’s on the viewing in Fixflow’s calendar.';
-      // No email to whoever is doing the viewing (the owner asked) — it shows on the viewing card and the applicant's card.
+      sendEmail({ to: [u ? u.email : 'info@residentialrealtors.co.uk'], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subj, text: text, html: brandEmail(text, 'Viewing feedback') }).catch(function (e) { console.error('Viewing feedback email failed:', e.message); });
     }
     res.json({ ok: true });
   }));
   // The applicant confirms they're coming to the viewing, with one click from the confirmation email (/vc/<token>).
   // The page confirms by itself as it opens (a button too, for browsers without JavaScript); noted on their lead
-  // and shown on the viewing (no email — the owner asked). Moving the viewing clears it, so they confirm the new time.
+  // and emailed to whoever is doing the viewing. Moving the viewing clears it, so they confirm the new time.
   app.get('/vc/:token', withDb(async function (p, req, res) {
     if (portalLimited(req)) return res.status(429).send('Too many requests — please try again in a few minutes.');
     const demo = req.params.token === 'example';
@@ -8909,7 +8921,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       if (canEmail() && sendEmail) {
         const who = v.staff || v.created_by || '', u = who ? (await p.query("SELECT email FROM staff_users WHERE disabled_at IS NULL AND lower(name) = lower($1) AND coalesce(email, '') <> '' LIMIT 1", [who])).rows[0] : null;
         const subj = '✅ Viewing confirmed: ' + name + ' — ' + addr, text = name + ' has confirmed they’re coming to the viewing at ' + addr + ' on ' + when + '.' + (v.phone ? '\n\nTheir number: ' + v.phone : '') + '\n\nFixflow - Residential Realtors';
-        // No email to whoever is doing the viewing (the owner asked) — it shows on the viewing card and the applicant's card.
+        sendEmail({ to: [u ? u.email : 'info@residentialrealtors.co.uk'], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Fixflow - Residential Realtors', subject: subj, text: text, html: brandEmail(text, 'Viewing confirmed') }).catch(function (e) { console.error('Viewing confirmed email failed:', e.message); });
       }
     }
     ok();
@@ -12109,7 +12121,7 @@ document.querySelectorAll('.lcu').forEach(function(box){
       const r = await p.query('INSERT INTO valuation_requests (name, email, phone, address, data) VALUES ($1, $2, $3, $4, $5) RETURNING id', [name, email || null, phone, callback ? '(call-back request)' : '(quick request — call back for the address)', JSON.stringify({ kind: 'quick', service: what, page: page })]);
       await noteSource(p, req, r.rows[0].id);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
-      // Every member of staff hears about it by phone alert; the office gets one email.
+      // Every member of staff hears about it: a phone alert and an email each.
       teamAlert({ title: callback ? '📞 Call-back request (' + what + '): ' + name : '⚡ Quick valuation request: ' + name, message: callback ? phone + ' · wants a call about ' + what + (page ? ' · from ' + page : '') : phone + ' · ' + what + ' valuation — call them back for the address.', tags: ['house'] }, '#leads').catch(function () {});
       staffEmailAll((callback ? '📞 Call-back request (' + what + ') - ' : '⚡ Quick valuation request - ') + name, function (link) {
         return (callback ? 'Someone asked us to call them about ' + what + ' on the website. Please call them back.' : 'Someone used the quick valuation form on the website. Please call them back for the property details.') + '\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + (email || '—') + (callback ? '\nAbout: ' : '\nValuation: ') + what + (page ? '\nSent from: ' + page : '') + '\n\nIt’s in Website leads — add a note once you’ve called:\n' + link;
@@ -12680,10 +12692,15 @@ document.querySelectorAll('.lcu').forEach(function(box){
     await noteSource(p, req, r.rows[0].id);
     if (await leadJunk(p, r.rows[0].id, email, phone)) return res.json({ ok: true, id: r.rows[0].id });
     const times = slots.map(slotText);
-    // Every member of staff hears about it by phone alert (no email — the owner asked).
+    // Every member of staff hears about it: a phone alert and an email each.
     teamAlert({ title: '🗓 Viewing request: ' + addr.split(',').slice(0, 2).join(','), message: name + ' · ' + phone + (times.length ? ' · ' + times.join(' / ') : ' · any time') + ' — confirm a time in Website leads.', tags: ['calendar'] }, '#leads').catch(function () {});
+    staffEmailAll('🗓 Viewing request - ' + addr.split(',').slice(0, 2).join(','), function (link) {
+      return 'Someone has asked to view ' + addr + (ref ? ' (ref ' + ref + ')' : '') + ' on the website.\n\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email + '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') +
+        (data.people ? '\nPeople: ' + data.people : '') + (data.move ? (md ? '\nMove-in date: ' : '\nMove / buy: ') + data.move : '') + (income ? '\nRent paid by: ' + income : '') + (guarantor ? '\nUK guarantor: ' + guarantor : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Website leads (they’re emailed straight away):\n' + link;
+    }, '#leads').catch(function (e) { console.error('Viewing request staff emails failed:', e.message); });
     if (canEmail() && sendEmail) {
-      // No office email for viewing requests (the owner asked): staff get the phone alert and it's on Applicants.
+      sendEmail({ to: 'info@residentialrealtors.co.uk', replyTo: email, fromName: 'Residential Realtors website', subject: 'Viewing request — ' + addr, text: 'Someone has asked to view a property on the website.\n\nProperty: ' + addr + (ref ? ' (ref ' + ref + ')' : '') + '\nName: ' + name + '\nPhone: ' + phone + '\nEmail: ' + email +
+        '\n\nTimes they suggested:\n' + (times.length ? times.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n') : 'Any time — they’re flexible') + (data.people ? '\nPeople: ' + data.people : '') + (data.move ? (md ? '\nMove-in date: ' : '\nMove / buy: ') + data.move : '') + (income ? '\nRent paid by: ' + income : '') + (guarantor ? '\nUK guarantor: ' + guarantor : '') + (msg ? '\n\nMessage:\n' + msg : '') + '\n\nConfirm a time in Fixflow under Contacts — they’re emailed straight away.' }).catch(function () {});
       const t = 'Dear ' + name.split(' ')[0] + ',\n\nThank you for asking to view ' + addr + '.\n\n' + (times.length ? 'You suggested:\n' + times.map(function (x) { return '• ' + x; }).join('\n') + '\n\n' : '') + 'Please note: this is a viewing request, not a confirmed booking. One of our agents will contact you first, by phone or email, to agree a time — usually within a few hours during opening hours (Monday to Sunday, 9am–7pm). Your viewing is only booked once we’ve confirmed it with you. If you need us sooner, call 0207 096 8131.\n\nKind regards,\nResidential Realtors';
       sendEmail({ to: [email], replyTo: 'info@residentialrealtors.co.uk', fromName: 'Residential Realtors', subject: 'Viewing request received (not yet booked) — ' + addr, text: t, html: brandEmail(t, 'Your viewing request') }).catch(function () {});
     }
@@ -12929,7 +12946,10 @@ document.querySelectorAll('.lcu').forEach(function(box){
     const line = function (x) { return '• ' + x.name + (x.address && !/^\(/.test(x.address) ? ' — ' + String(x.address).split(',').slice(0, 2).join(',') : '') + (x.phone ? ' — ' + x.phone : '') + (x.assigned_to ? ' (' + x.assigned_to + ')' : ''); };
     const parts = [n.fresh.length ? n.fresh.length + ' not contacted yet' : '', n.due.length ? n.due.length + ' follow-up' + (n.due.length === 1 ? '' : 's') + ' due' : '', n.stale.length ? n.stale.length + ' with no update for a week' : ''].filter(Boolean);
     ntfy({ title: '📣 ' + total + ' website lead' + (total === 1 ? '' : 's') + ' to contact', message: parts.join(' · ') + ' — everyone on the list should hear from us.', tags: ['loudspeaker'], click: PUBLIC_URL ? PUBLIC_URL + '/admin#leads' : undefined }).catch(function () {});
-    // No email (the owner asked) — the phone alert above and the staff app are enough.
+    if (canEmail() && sendEmail) {
+      const text = 'Website leads that need contacting or an update:\n\n' + (n.fresh.length ? 'NOT CONTACTED YET\n' + n.fresh.map(line).join('\n') + '\n\n' : '') + (n.due.length ? 'FOLLOW-UP DUE\n' + n.due.map(line).join('\n') + '\n\n' : '') + (n.stale.length ? 'NO UPDATE FOR A WEEK\n' + n.stale.map(line).join('\n') + '\n\n' : '') + 'Everyone on the list should hear from us. Open Website leads in Fixflow, call or message them, and add a note.';
+      sendEmail({ to: ['info@residentialrealtors.co.uk'], fromName: 'Fixflow', subject: total + ' website lead' + (total === 1 ? '' : 's') + ' to contact', text: text, html: brandEmail(text, 'Website leads to contact') }).catch(function () {});
+    }
   }
   setTimeout(function () { crmRemind().catch(function (e) { console.error('Lead reminder failed:', e.message); }); }, 120 * 1000);
   setInterval(function () { crmRemind().catch(function (e) { console.error('Lead reminder failed:', e.message); }); }, 20 * 60 * 1000).unref();

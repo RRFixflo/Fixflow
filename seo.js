@@ -149,6 +149,11 @@ module.exports = function (app, opts) {
         total: out.length, ok: out.filter(function (r) { return !r.issues.length; }).length, errors: count('error'), warnings: count('warn'), info: count('info'), score: score, changed: changed.length };
       await save('seo_health', health);
       console.log('SEO check: ' + out.length + ' pages, score ' + score + ', ' + health.errors + ' errors, ' + health.warnings + ' warnings, ' + changed.length + ' changed (' + health.secs + 's)');
+      if (newErr.length && LIVE && opts.sendMail) {
+        const text = 'The weekly website check found ' + newErr.length + ' new problem' + (newErr.length === 1 ? '' : 's') + ':\n\n' + newErr.slice(0, 40).map(function (l) { return '• ' + l; }).join('\n') + (newErr.length > 40 ? '\n…and ' + (newErr.length - 40) + ' more.' : '') +
+          '\n\nSee them all in Fixflow → Website visitors → SEO health. Website score: ' + score + '/100.';
+        opts.sendMail({ to: ['info@residentialrealtors.co.uk'], subject: 'Website check: ' + newErr.length + ' new problem' + (newErr.length === 1 ? '' : 's'), text: text }).catch(function () {});
+      }
       return health;
     } finally { checking = false; }
   }
